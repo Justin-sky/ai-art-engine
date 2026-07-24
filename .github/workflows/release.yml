@@ -75,28 +75,45 @@ jobs:
       - name: Package (Windows)
         if: matrix.platform == 'win'
         env:
-          # 有 WIN_CSC_* 时 electron-builder 自动签名；无则打未签名包
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npx electron-builder --win --publish never
+          # 勿直接注入空 secret：空 WIN_CSC_LINK 会被当成证书路径
+          WIN_CSC_LINK_SECRET: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD_SECRET: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -n "${WIN_CSC_LINK_SECRET}" ]; then
+            export WIN_CSC_LINK="${WIN_CSC_LINK_SECRET}"
+            export WIN_CSC_KEY_PASSWORD="${WIN_CSC_KEY_PASSWORD_SECRET}"
+            echo "Windows code signing enabled"
+          else
+            echo "Unsigned Windows build (no WIN_CSC_* secrets)"
+          fi
+          npx electron-builder --win --publish never
 
       - name: Package (macOS)
         if: matrix.platform == 'mac'
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          # 无证书时关闭钥匙串自动发现，避免 CI 误报
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+          # 勿直接注入空 CSC_LINK：electron-builder 会把空值当成路径 → "not a file"
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           EXTRA_ARGS=()
-          if [ -n "${CSC_LINK}" ] && [ -n "${APPLE_ID}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD}" ] && [ -n "${APPLE_TEAM_ID}" ]; then
-            echo "Notarization enabled"
-            EXTRA_ARGS+=(--config.mac.notarize=true)
+          if [ -n "${MAC_CSC_LINK}" ]; then
+            export CSC_LINK="${MAC_CSC_LINK}"
+            export CSC_KEY_PASSWORD="${MAC_CSC_KEY_PASSWORD}"
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+            if [ -n "${APPLE_ID}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD}" ] && [ -n "${APPLE_TEAM_ID}" ]; then
+              echo "Notarization enabled"
+              EXTRA_ARGS+=(--config.mac.notarize=true)
+            else
+              echo "Signing enabled; notarization skipped (need APPLE_* secrets)"
+            fi
           else
-            echo "Notarization skipped (need MAC_CSC_* + APPLE_* secrets)"
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            EXTRA_ARGS+=(--config.mac.identity=null)
+            echo "Unsigned macOS build (no MAC_CSC_* secrets)"
           fi
           npx electron-builder --mac --publish never "${EXTRA_ARGS[@]}"
 
