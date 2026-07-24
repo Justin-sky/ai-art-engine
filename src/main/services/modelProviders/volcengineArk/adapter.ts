@@ -14,7 +14,10 @@ import {
   classifyVolcengineArkModelModality,
   normalizeVideoInputReference
 } from '@shared/openrouter'
-import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
+import {
+  isOpaqueVolcengineArkEndpointId,
+  resolveVolcengineArkModelCapabilities
+} from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
@@ -130,13 +133,22 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
         .map((m) => {
           const id = String(m.id)
           const name = (m.name && String(m.name)) || id
+          let modelModality = classifyVolcengineArkModelModality({ id, name })
+          // ep-* 接入点无法从名称判断模态：归入当前正在拉取的图片/视频页签
+          if (
+            modelModality === 'text' &&
+            isOpaqueVolcengineArkEndpointId(id) &&
+            (modality === 'image' || modality === 'video')
+          ) {
+            modelModality = modality
+          }
           const capabilities =
             resolveVolcengineArkModelCapabilities(id, name, modality) ?? undefined
           return {
             id,
             name,
             description: m.owned_by ? `owned_by: ${m.owned_by}` : undefined,
-            modality: classifyVolcengineArkModelModality({ id, name }),
+            modality: modelModality,
             ...(capabilities ? { capabilities } : {})
           }
         })

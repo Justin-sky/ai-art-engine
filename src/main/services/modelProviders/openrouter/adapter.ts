@@ -28,6 +28,16 @@ import {
   generateOpenAiCompatibleText
 } from '../openaiCompat'
 
+/** OpenRouter 目录接口偶发返回裸数组或 { data / models }，统一拆成行列表 */
+function asCatalogRows<T extends { id?: string }>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[]
+  if (!body || typeof body !== 'object') return []
+  const record = body as Record<string, unknown>
+  if (Array.isArray(record.data)) return record.data as T[]
+  if (Array.isArray(record.models)) return record.models as T[]
+  return []
+}
+
 export const openRouterAdapter: ModelProviderAdapter = {
   kind: 'openrouter',
 
@@ -67,8 +77,8 @@ export const openRouterAdapter: ModelProviderAdapter = {
     const client = createProviderHttpClient(provider)
     try {
       if (modality === 'image') {
-        const { data } = await client.get<{ data: OpenRouterImageModel[] }>('/images/models')
-        return (data.data ?? []).map((m) => ({
+        const { data } = await client.get('/images/models')
+        return asCatalogRows<OpenRouterImageModel>(data).map((m) => ({
           id: m.id,
           name: m.name || m.id,
           description: m.description,
@@ -82,8 +92,8 @@ export const openRouterAdapter: ModelProviderAdapter = {
       }
 
       if (modality === 'video') {
-        const { data } = await client.get<{ data: OpenRouterVideoModel[] }>('/videos/models')
-        return (data.data ?? []).map((m) => ({
+        const { data } = await client.get('/videos/models')
+        return asCatalogRows<OpenRouterVideoModel>(data).map((m) => ({
           id: m.id,
           name: m.name || m.id,
           description: m.description,
@@ -102,10 +112,10 @@ export const openRouterAdapter: ModelProviderAdapter = {
       }
 
       if (modality === 'audio') {
-        const { data } = await client.get<{ data: OpenRouterTextModel[] }>('/models', {
+        const { data } = await client.get('/models', {
           params: { output_modalities: 'speech' }
         })
-        return (data.data ?? []).map((m) => ({
+        return asCatalogRows<OpenRouterTextModel>(data).map((m) => ({
           id: m.id,
           name: m.name || m.id,
           description: m.description,
@@ -119,10 +129,10 @@ export const openRouterAdapter: ModelProviderAdapter = {
         }))
       }
 
-      const { data } = await client.get<{ data: OpenRouterTextModel[] }>('/models', {
+      const { data } = await client.get('/models', {
         params: { output_modalities: 'text' }
       })
-      const rows = data.data ?? []
+      const rows = asCatalogRows<OpenRouterTextModel>(data)
       return rows.filter(isTextCatalogModel).map((m) => ({
         id: m.id,
         name: m.name || m.id,

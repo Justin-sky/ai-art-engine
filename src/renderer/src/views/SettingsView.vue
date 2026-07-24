@@ -1,5 +1,10 @@
 <template>
-  <div class="settings" @click.self="router.back()">
+  <div
+    class="settings"
+    tabindex="-1"
+    @click.self="router.back()"
+    @keydown="onSettingsKeydown"
+  >
     <div class="panel">
       <h1>{{ t('settings.title') }}</h1>
       <p class="hint">{{ t('settings.hint') }}</p>
@@ -163,6 +168,49 @@ let stopUpdateListen: (() => void) | null = null
 
 const updateStatusDefault = computed(() => t('settings.about.idle'))
 
+function isEditableKeyTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement ||
+    el.isContentEditable
+  )
+}
+
+/**
+ * 设置层盖在 KeepAlive 的 Studio 上：
+ * - Delete/Backspace 会冒泡到节点图/资产库快捷键
+ * - 非输入框时 Backspace（Mac 上标为 Delete）还会触发 history.back，从而关掉设置
+ * 使用冒泡阶段：先让 input 处理删字，再 stopPropagation 挡住底层快捷键。
+ */
+function onSettingsKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    void router.back()
+    return
+  }
+  if (e.key !== 'Backspace' && e.key !== 'Delete') return
+  e.stopPropagation()
+  if (!isEditableKeyTarget(e.target)) {
+    e.preventDefault()
+    return
+  }
+  // 光标在开头时 Backspace 在部分 Chromium/Electron 仍会 history.back
+  if (e.key === 'Backspace') {
+    const el = e.target
+    if (
+      (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) &&
+      el.selectionStart === 0 &&
+      el.selectionEnd === 0
+    ) {
+      e.preventDefault()
+    }
+  }
+}
+
 function applyUpdateEvent(event: AppUpdateEvent): void {
   switch (event.type) {
     case 'checking':
@@ -257,8 +305,13 @@ function applyToForm(cloned: AppSettings): void {
   Object.assign(form.editor, cloned.editor)
   Object.assign(form.seedance, cloned.seedance)
   Object.assign(form.llm, cloned.llm)
-  form.models.providers = cloned.models.providers
-  form.objectStorage.providers = cloned.objectStorage.providers
+  // 就地替换 providers，避免拉取模型 await 期间整表替换导致设置页引用失效
+  form.models.providers.splice(0, form.models.providers.length, ...cloned.models.providers)
+  form.objectStorage.providers.splice(
+    0,
+    form.objectStorage.providers.length,
+    ...cloned.objectStorage.providers
+  )
 }
 
 function schedulePersist(): void {

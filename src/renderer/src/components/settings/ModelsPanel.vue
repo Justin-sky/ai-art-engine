@@ -192,7 +192,7 @@
         v-if="
           !isArkVoiceModality(provider) &&
           catalogs[catalogKey(provider.id, currentModality(provider))] &&
-          !(catalogs[catalogKey(provider.id, currentModality(provider))] ?? []).length &&
+          !catalogSize(provider) &&
           !catalogErrors[catalogKey(provider.id, currentModality(provider))]
         "
         class="meta empty-catalog"
@@ -210,10 +210,8 @@
         {{ t('settings.models.emptySpeakers') }}
       </p>
 
-      <div
-        v-if="modalityCatalog(provider).length"
-        class="model-list-wrap"
-      >
+      <!-- 用未筛选数量决定是否展示，避免筛选无匹配时连筛选框一起消失 -->
+      <div v-if="catalogSize(provider) > 0" class="model-list-wrap">
         <div class="list-actions">
           <button
             v-if="!isArkVoiceModality(provider)"
@@ -229,17 +227,28 @@
             v-model="filters[catalogKey(provider.id, currentModality(provider))]"
             class="filter"
             type="search"
+            autocomplete="off"
             :placeholder="
               isArkVoiceModality(provider)
                 ? t('settings.models.filterSpeakerPlaceholder')
                 : t('settings.models.filterPlaceholder')
             "
           />
+          <button
+            v-if="(filters[catalogKey(provider.id, currentModality(provider))] ?? '').trim()"
+            type="button"
+            @click="filters[catalogKey(provider.id, currentModality(provider))] = ''"
+          >
+            {{ t('settings.models.clearFilter') }}
+          </button>
         </div>
-        <ul class="model-list">
+        <p v-if="!modalityCatalog(provider).length" class="meta empty-catalog">
+          {{ t('settings.models.filterNoMatch') }}
+        </p>
+        <ul v-else class="model-list">
           <li
             v-for="model in modalityCatalog(provider)"
-            :key="model.id"
+            :key="model.id || model.name"
           >
             <label class="check model-row">
               <input
@@ -382,6 +391,13 @@ function modalityCatalog(provider: ModelProviderInstance): CatalogModel[] {
   return filteredCatalog(provider.id, currentModality(provider))
 }
 
+/** 未筛选的目录数量（用于显示列表容器，避免筛选无匹配时整块消失） */
+function catalogSize(provider: ModelProviderInstance): number {
+  ensureArkVoiceCatalog(provider)
+  const key = catalogKey(provider.id, currentModality(provider))
+  return (catalogs[key] ?? []).length
+}
+
 const providerKinds = MODEL_PROVIDER_KINDS
 const pendingProviderKind = ref<ModelProviderKind>('openrouter')
 const loadingKey = ref<string | null>(null)
@@ -393,6 +409,8 @@ const revealedKeys = reactive<Record<string, boolean>>({})
 const activeModality = reactive<Record<string, ModelModality>>({})
 /** true = 折叠；缺省为展开 */
 const collapsedProviders = reactive<Record<string, boolean>>({})
+/** 同一页签并发/过期响应序号，避免第二次空结果盖住第一次成功列表 */
+const refreshSeqByKey = reactive<Record<string, number>>({})
 
 const providers = computed(() => props.models.providers)
 
@@ -452,30 +470,46 @@ async function refreshModels(
   provider: ModelProviderInstance,
   modality: ModelModality
 ): Promise<void> {
-  const key = catalogKey(provider.id, modality)
+  const providerId = provider.id
+  const key = catalogKey(providerId, modality)
+  const seq = (refreshSeqByKey[key] = (refreshSeqByKey[key] ?? 0) + 1)
   loadingKey.value = key
   catalogErrors[key] = ''
+  const previous = catalogs[key] ? [...catalogs[key]] : []
   try {
     if (typeof window.studio?.listModels !== 'function') {
       throw new Error(
         'window.studio.listModels 不可用：请完全退出并重新运行 npm run dev（preload 变更不会热更新）'
       )
     }
-    const list = await window.studio.listModels({
+    // await 期间设置自动保存可能替换 providers，结束后按 id 取最新引用
+    const latestBefore = props.models.providers.find((p) => p.id === providerId) ?? provider
+    const listRaw = await window.studio.listModels({
       modality,
-      providerInstanceId: provider.id,
-      apiKey: provider.apiKey,
-      baseUrl: provider.baseUrl,
-      providerKind: provider.providerKind
+      providerInstanceId: providerId,
+      apiKey: latestBefore.apiKey,
+      baseUrl: latestBefore.baseUrl,
+      providerKind: latestBefore.providerKind
     })
-    catalogs[key] = list
-    const sel = modalityConfig(provider, modality)
-    const seen = new Set(list.map((m) => m.id))
+    if (seq !== refreshSeqByKey[key]) return
+
+    const list = Array.isArray(listRaw) ? listRaw : []
+    // 远端偶发空列表：保留上次成功结果，避免图片页签「第二次拉取为空」
+    if (!list.length && previous.length) {
+      catalogs[key] = previous
+      catalogErrors[key] = t('settings.models.emptyRemoteKeepPrevious')
+      return
+    }
+
+    const latest = props.models.providers.find((p) => p.id === providerId) ?? latestBefore
+    const next = [...list]
+    const sel = modalityConfig(latest, modality)
+    const seen = new Set(next.map((m) => m.id))
     // 保留已勾选但不在远端目录的模型（手动添加 / 方舟音频 Resource ID）
     for (const id of sel.selectedModelIds) {
       if (!seen.has(id)) {
         const saved = sel.catalog?.[id]
-        catalogs[key].push({
+        next.push({
           id,
           name: saved?.name || id,
           modality,
@@ -484,18 +518,22 @@ async function refreshModels(
         seen.add(id)
       }
     }
+    catalogs[key] = next
     // 把分辨率 / 时长 / supported_frame_images 等能力写入设置快照
-    syncModalityCatalogEntries(sel, catalogs[key])
+    syncModalityCatalogEntries(sel, next)
     clearImageGenerateCapabilitiesCache()
     clearVideoGenerateCapabilitiesCache()
     if (sel.defaultModelId && !sel.selectedModelIds.includes(sel.defaultModelId)) {
       sel.defaultModelId = sel.selectedModelIds[0] ?? ''
     }
   } catch (e) {
-    catalogs[key] = []
+    if (seq !== refreshSeqByKey[key]) return
+    // 失败时保留上次列表，只展示错误
+    if (previous.length) catalogs[key] = previous
+    else catalogs[key] = []
     catalogErrors[key] = e instanceof Error ? e.message : String(e)
   } finally {
-    loadingKey.value = null
+    if (seq === refreshSeqByKey[key]) loadingKey.value = null
   }
 }
 
