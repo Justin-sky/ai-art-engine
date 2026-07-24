@@ -234,7 +234,7 @@ async function onDelete(id: string): Promise<void> {
   aspect-ratio: 16 / 9;
   border-radius: 4px;
   overflow: hidden;
-  background: #1a1d21;
+  background: var(--graph-preview-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -250,7 +250,7 @@ async function onDelete(id: string): Promise<void> {
 .thumb-placeholder {
   font-size: 18px;
   font-weight: 600;
-  color: #4a5159;
+  color: var(--text-muted);
   font-family: var(--mono);
 }
 

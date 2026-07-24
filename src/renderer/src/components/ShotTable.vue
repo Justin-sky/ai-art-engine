@@ -994,14 +994,22 @@ textarea::placeholder {
 }
 
 textarea::-webkit-resizer {
-  border: 0;
-  background-color: var(--bg-input);
+  border: none;
+  /* 与文本框底色一致，避免亮色斑马纹行出现白角块 */
+  background-color: var(--shot-card-odd);
   background-image: linear-gradient(
     135deg,
-    transparent 48%,
-    color-mix(in srgb, var(--text-muted) 55%, transparent) 49%,
-    color-mix(in srgb, var(--text-muted) 55%, transparent) 58%,
-    transparent 59%
+    transparent 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
+    transparent 62%,
+    transparent 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
+    transparent 79%,
+    transparent 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
   );
 }
 
@@ -1022,6 +1030,10 @@ tbody tr.row-even > td textarea {
     var(--shot-card-even)
   );
   border-color: color-mix(in srgb, var(--border) 50%, var(--text-muted));
+}
+
+tbody tr.row-even > td textarea::-webkit-resizer {
+  background-color: var(--shot-card-even);
 }
 
 .field-stack {

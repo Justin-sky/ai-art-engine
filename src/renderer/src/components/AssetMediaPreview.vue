@@ -864,7 +864,7 @@ onBeforeUnmount(() => {
 .text-wrap {
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 8px;
-  background: #16191d;
+  background: var(--graph-text-preview-bg);
   padding: 10px;
   max-height: 240px;
   overflow: auto;
@@ -876,7 +876,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--text);
+  color: var(--graph-text-preview);
   font-family: inherit;
 }
 </style>
