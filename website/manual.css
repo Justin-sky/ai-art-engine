@@ -73,8 +73,9 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   padding: 14px var(--pad);
+  overflow: visible;
   background: rgba(245, 247, 251, 0.92);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(10px);
@@ -388,7 +389,7 @@ img {
   color: var(--blue-deep);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   :root {
     --pad: clamp(16px, 4vw, 28px);
   }
@@ -403,8 +404,9 @@ img {
   }
 
   .mobile-menu {
-    position: relative;
+    position: static;
     display: block;
+    flex: 0 0 auto;
   }
 
   .mobile-menu summary {
@@ -433,25 +435,34 @@ img {
 
   .mobile-nav {
     position: absolute;
-    top: calc(100% + 10px);
+    top: 100%;
+    left: 0;
     right: 0;
-    width: min(280px, calc(100vw - 32px));
+    z-index: 50;
+    width: auto;
+    max-height: min(70vh, calc(100svh - 72px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     display: grid;
-    padding: 8px;
+    gap: 2px;
+    padding: 10px var(--pad) 14px;
+    margin: 0;
     background: rgba(255, 255, 255, 0.98);
-    border: 1px solid var(--line);
-    box-shadow: 0 18px 46px rgba(21, 32, 51, 0.2);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 18px 40px rgba(21, 32, 51, 0.16);
     backdrop-filter: blur(14px);
   }
 
   .mobile-nav a {
-    min-height: 46px;
+    min-height: 48px;
     display: flex;
     align-items: center;
     padding: 0 14px;
     color: var(--ink-soft);
-    font-size: 0.92rem;
+    font-size: 0.95rem;
     font-weight: 700;
+    border-radius: 8px;
   }
 
   .mobile-nav a:hover,
