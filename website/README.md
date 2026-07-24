@@ -47,3 +47,15 @@ node website/optimize-assets.mjs
 1. Settings → Pages → Source 选 **GitHub Actions**
 2. 推送到 `main`（或手动跑该 workflow）后自动发布
 3. 地址：https://justin-sky.github.io/ai-art-engine/
+
+## 部署（腾讯云静态托管 · 国内）
+
+环境 ID：`ai-art-engine-d9g4us7uqeeabec58`
+
+```bash
+# 项目根目录（首次需登录腾讯云）
+npx --yes -p @cloudbase/cli tcb login
+npm run site:deploy
+```
+
+线上地址：https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com

@@ -37,11 +37,19 @@
 
 ## Website
 
-The landing page is hosted on GitHub Pages (contents of `website/` are published at the site root):
+Landing page sources live in `website/`:
 
-**https://justin-sky.github.io/ai-art-engine/**
+| Channel | URL |
+|---------|-----|
+| **GitHub Pages** | https://justin-sky.github.io/ai-art-engine/ |
+| **Tencent CloudBase** (CN) | https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com |
 
 Do not use paths with `/website/` (e.g. `.../website/index.html`) — they 404.
+
+```bash
+npm run site          # local preview
+npm run site:deploy   # deploy website/ to CloudBase (first time: tcb login)
+```
 
 ---
 

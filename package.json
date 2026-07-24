@@ -26,7 +26,8 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "site": "npx --yes serve website -p 5174"
+    "site": "npx --yes serve website -p 5174",
+    "site:deploy": "npx --yes -p @cloudbase/cli tcb hosting deploy website -e ai-art-engine-d9g4us7uqeeabec58"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

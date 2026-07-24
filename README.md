@@ -40,11 +40,23 @@
 
 ## 官网
 
-落地页由 GitHub Pages 托管（部署的是 `website/` 目录内容，站点根路径即首页）：
+落地页源码在仓库 `website/` 目录：
 
-**https://justin-sky.github.io/ai-art-engine/**
+| 渠道 | 地址 |
+|------|------|
+| **GitHub Pages**（国际） | https://justin-sky.github.io/ai-art-engine/ |
+| **腾讯云静态托管**（国内） | https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com |
 
 请勿使用带 `/website/` 的地址（例如 `.../website/index.html`），会 404。
+
+本地预览 / 发布国内镜像：
+
+```bash
+npm run site          # 本地预览 http://localhost:5174
+npm run site:deploy   # 部署 website/ 到腾讯云静态托管（首次需 tcb login）
+```
+
+配置见根目录 `cloudbaserc.json`。
 
 ---
 
@@ -160,7 +172,8 @@ npm run typecheck && npm test
 
 ## 交流
 
-- **官网**：[justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **官网**：[GitHub Pages](https://justin-sky.github.io/ai-art-engine/) · [腾讯云](https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com)
+- **国内镜像**：腾讯云静态托管（环境 `ai-art-engine-d9g4us7uqeeabec58`，域名见控制台）
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
 - **QQ 群**：647306826（扫码入群）
