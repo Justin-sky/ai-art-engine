@@ -1,0 +1,183 @@
+{
+  "meta": {
+    "console": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
+    "docs": [
+      "https://www.volcengine.com/docs/82379/1541523",
+      "https://www.volcengine.com/docs/82379/1520757"
+    ],
+    "note": "控制台模型页需登录，无法程序化抓取。本文件按火山方舟官方图片/视频生成 API 与 Seedream/Seedance 模型族公开能力整理；按 model id/name 正则匹配。endpoint(ep-*) 在指令面板按当前模态回退到 seedream-4.5 / seedance-2。"
+  },
+  "profiles": {
+    "seedream-5": {
+      "modality": "image",
+      "label": "Seedream 5.x",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"]
+          },
+          "resolution": {
+            "values": ["2K", "3K", "4K"]
+          },
+          "n": { "min": 1, "max": 15 },
+          "input_references": { "max": 14 }
+        }
+      }
+    },
+    "seedream-4.5": {
+      "modality": "image",
+      "label": "Seedream 4.5",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"]
+          },
+          "resolution": {
+            "values": ["2K", "4K"]
+          },
+          "n": { "min": 1, "max": 15 },
+          "input_references": { "max": 10 }
+        }
+      }
+    },
+    "seedream-4": {
+      "modality": "image",
+      "label": "Seedream 4.0",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"]
+          },
+          "resolution": {
+            "values": ["2K", "4K"]
+          },
+          "n": { "min": 1, "max": 15 },
+          "input_references": { "max": 10 }
+        }
+      }
+    },
+    "seedream-3": {
+      "modality": "image",
+      "label": "Seedream 3.x",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1K", "2K"]
+          },
+          "n": { "min": 1, "max": 4 },
+          "input_references": { "max": 1 }
+        }
+      }
+    },
+    "seedance-2-fast": {
+      "modality": "video",
+      "label": "Seedance 2.0 Fast",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        "supported_durations": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 9,
+        "max_input_videos": 3,
+        "max_input_audios": 3,
+        "supported_parameters": {
+          "input_references": { "max": 9 },
+          "max_videos": { "max": 3 },
+          "max_audios": { "max": 3 }
+        }
+      }
+    },
+    "seedance-2": {
+      "modality": "video",
+      "label": "Seedance 2.0",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        "supported_durations": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 9,
+        "max_input_videos": 3,
+        "max_input_audios": 3,
+        "supported_parameters": {
+          "input_references": { "max": 9 },
+          "max_videos": { "max": 3 },
+          "max_audios": { "max": 3 }
+        }
+      }
+    },
+    "seedance-1.5": {
+      "modality": "video",
+      "label": "Seedance 1.5 Pro",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        "supported_durations": [4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 2 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "seedance-1-lite-i2v": {
+      "modality": "video",
+      "label": "Seedance 1.0 Lite I2V",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        "supported_durations": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": false,
+        "max_input_images": 4,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 4 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "seedance-1": {
+      "modality": "video",
+      "label": "Seedance 1.0",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
+        "supported_durations": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": false,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 2 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    }
+  },
+  "rules": [
+    { "match": "seedream[-_]?5|seedream[-_]?5\\.0", "profile": "seedream-5" },
+    { "match": "seedream[-_]?4[-_.]?5|seedream[-_]?4\\.5", "profile": "seedream-4.5" },
+    { "match": "seedream[-_]?4([-_.]?0)?(?![-_.]?5)", "profile": "seedream-4" },
+    { "match": "seedream[-_]?3|seedream[-_]?3\\.0", "profile": "seedream-3" },
+    { "match": "seedream", "profile": "seedream-4.5" },
+    { "match": "seedance[-_]?2([-_.]?0)?[-_]?fast|seedance[-_]?2\\.0[-_]?fast", "profile": "seedance-2-fast" },
+    { "match": "seedance[-_]?2([-_.]?0)?(?![-_]?fast)|seedance[-_]?2\\.0(?![-_]?fast)", "profile": "seedance-2" },
+    { "match": "seedance[-_]?1[-_.]?5|seedance[-_]?1\\.5", "profile": "seedance-1.5" },
+    { "match": "seedance[-_]?1([-_.]?0)?[-_]?lite[-_]?i2v|seedance.*lite.*i2v", "profile": "seedance-1-lite-i2v" },
+    { "match": "seedance[-_]?1|seedance", "profile": "seedance-1" }
+  ]
+}

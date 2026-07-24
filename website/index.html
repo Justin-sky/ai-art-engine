@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AIArtEngine — 本地 AI 短视频创作工作台。分镜与节点图驱动生成，对接 OpenRouter 与火山方舟。开源 · GPL-3.0。"
+    />
+    <title>AIArtEngine — 本地 AI 短视频创作工作台</title>
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="scroll-progress" aria-hidden="true"><i></i></div>
+    <a class="skip" href="#main">跳到主要内容</a>
+
+    <header class="top">
+      <a class="brand" href="#top">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AIArtEngine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="#top">界面</a>
+        <a href="#demo">示例</a>
+        <a href="#workflow">工作流</a>
+        <a href="#download">下载</a>
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/aiartengine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-label="首页主视觉">
+        <div class="hero-bg" aria-hidden="true">
+          <div class="hero-wash"></div>
+          <div class="hero-mesh"></div>
+        </div>
+
+        <div class="hero-body">
+          <p class="eyebrow reveal">AIArtEngine · Open Source</p>
+          <h1 class="reveal" style="--d: 0.04s">本地短视频 <em>AI 创作台</em></h1>
+          <p class="lede reveal" style="--d: 0.08s">
+            资产 · 分镜 · 节点图一体。工程在本机，模型用你的 Key。
+          </p>
+        </div>
+
+        <div class="coverflow reveal reveal-stage" style="--d: 0.1s" data-coverflow>
+          <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="上一张">‹</button>
+          <div class="cf-stage">
+            <div class="cf-track">
+              <figure class="cf-card">
+                <img src="assets/banner/node-graph.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>节点图</strong>
+                  <span>生成链路、资产预览与任务执行</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/storyboard.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>分镜编辑</strong>
+                  <span>镜头参数、画布与节点一体编排</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/director-stage.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>3D 导演台</strong>
+                  <span>骨骼姿态、时间轴与机位视角</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/multi-angle-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>多角度</strong>
+                  <span>机位与构图快速切换</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/lighting-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>打光</strong>
+                  <span>光影氛围精细调节</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/mood-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>情绪</strong>
+                  <span>画面情绪与色调控制</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/image-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>图片修改</strong>
+                  <span>局部重绘与画面修订</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+          <button type="button" class="cf-nav cf-next" data-cf-next aria-label="下一张">›</button>
+          <div class="cf-dots" data-cf-dots role="tablist" aria-label="幻灯片"></div>
+        </div>
+
+        <div class="hero-foot">
+          <div class="cta reveal" style="--d: 0.14s">
+            <a class="btn btn-solid" href="#download">立即下载</a>
+            <a
+              class="btn btn-line"
+              href="https://github.com/Justin-sky/aiartengine"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub</a
+            >
+          </div>
+          <p class="hero-meta reveal" style="--d: 0.18s">
+            <span>Windows</span><i></i><span>macOS</span><i></i><span>Linux</span
+            ><i></i><span>GPL-3.0</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="statement">
+        <div class="statement-inner reveal reveal-blur">
+          <h2>文件在你磁盘上。创作节奏由你掌控。</h2>
+          <p>
+            没有强制上云。导入素材、编排分镜、跑通节点图——整条链路都在本地工作台完成。
+          </p>
+        </div>
+      </section>
+
+      <section class="demo" id="demo" aria-label="节点图示例">
+        <div class="demo-inner">
+          <div class="section-label reveal">Demo</div>
+          <h2 class="reveal">从节点连线到成片</h2>
+          <p class="demo-lede reveal" style="--d: 0.06s">
+            同一条生成链路：参考图 → 角色设定图 → 选取图片 → 视频生成。
+          </p>
+          <div class="demo-stage reveal reveal-stage" style="--d: 0.1s">
+            <figure class="demo-graph">
+              <img
+                src="assets/demo/demo.png"
+                alt="节点图示例：引用图片生成角色设定图，再选取图片生成视频"
+                width="864"
+                height="496"
+                loading="lazy"
+              />
+              <figcaption>节点连接</figcaption>
+            </figure>
+            <figure class="demo-video">
+              <video
+                src="assets/demo/video-output.mp4"
+                poster="assets/demo/video-poster.jpg"
+                autoplay
+                muted
+                loop
+                playsinline
+                controls
+                preload="metadata"
+              >
+                你的浏览器不支持视频播放。
+              </video>
+              <figcaption>视频输出</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow" id="workflow">
+        <div class="section-label reveal">Workflow</div>
+        <ol class="steps">
+          <li class="reveal">
+            <span class="n">01</span>
+            <div>
+              <h3>资产入库</h3>
+              <p>图片、视频、音色以 GUID 引用，支持素材包导入导出。</p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.08s">
+            <span class="n">02</span>
+            <div>
+              <h3>分镜编排</h3>
+              <p>镜头参数与构图画布并排，把叙事节奏落到画面。</p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.16s">
+            <span class="n">03</span>
+            <div>
+              <h3>节点生成</h3>
+              <p>文本 / 图像 / 视频 / 音色节点，对接 OpenRouter 与火山方舟。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="download" id="download">
+        <div class="download-head">
+          <div class="section-label reveal">Download</div>
+          <h2 class="reveal">获取安装包</h2>
+        </div>
+        <ul class="dl-list">
+          <li class="reveal">
+            <a
+              href="https://github.com/Justin-sky/aiartengine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">Windows</span>
+              <span class="dl-file">NSIS · .exe</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+          <li class="reveal" style="--d: 0.06s">
+            <a
+              href="https://github.com/Justin-sky/aiartengine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">macOS</span>
+              <span class="dl-file">Disk Image · .dmg</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+          <li class="reveal" style="--d: 0.12s">
+            <a
+              href="https://github.com/Justin-sky/aiartengine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">Linux</span>
+              <span class="dl-file">AppImage</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+        </ul>
+        <p class="dl-note reveal">推送 <code>v*</code> 标签可由 GitHub Actions 自动构建多平台产物。</p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <div class="foot-brand">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AIArtEngine
+        </div>
+        <p>GPL-3.0 · 本地创作 · Open Source</p>
+        <div class="foot-links">
+          <a
+            href="https://github.com/Justin-sky/aiartengine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <a href="../LICENSE">License</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+      function initCoverflow(root) {
+        const cards = [...root.querySelectorAll('.cf-card')]
+        const dotsEl = root.querySelector('[data-cf-dots]')
+        const prev = root.querySelector('[data-cf-prev]')
+        const next = root.querySelector('[data-cf-next]')
+        let index = 0
+        let timer = null
+
+        if (dotsEl) {
+          dotsEl.innerHTML = cards
+            .map(
+              (_, i) =>
+                `<button type="button" class="cf-dot${i === 0 ? ' is-active' : ''}" aria-label="第 ${i + 1} 张" data-i="${i}"></button>`
+            )
+            .join('')
+        }
+
+        function render() {
+          const n = cards.length
+          cards.forEach((card, i) => {
+            let offset = i - index
+            if (offset > n / 2) offset -= n
+            if (offset < -n / 2) offset += n
+            card.dataset.offset = String(offset)
+            card.classList.toggle('is-active', offset === 0)
+            card.style.zIndex = String(20 - Math.abs(offset))
+            card.setAttribute('aria-hidden', offset === 0 ? 'false' : 'true')
+          })
+          dotsEl?.querySelectorAll('.cf-dot').forEach((d, i) => d.classList.toggle('is-active', i === index))
+        }
+
+        function go(i) {
+          index = ((i % cards.length) + cards.length) % cards.length
+          render()
+          restart()
+        }
+
+        function restart() {
+          if (reduceMotion) return
+          clearInterval(timer)
+          timer = setInterval(() => go(index + 1), 1000)
+        }
+
+        prev?.addEventListener('click', () => go(index - 1))
+        next?.addEventListener('click', () => go(index + 1))
+        dotsEl?.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-i]')
+          if (btn) go(Number(btn.dataset.i))
+        })
+        cards.forEach((card, i) => {
+          card.addEventListener('click', () => {
+            if (Number(card.dataset.offset) !== 0) go(i)
+          })
+        })
+
+        let touchX = null
+        root.addEventListener(
+          'touchstart',
+          (e) => {
+            touchX = e.changedTouches[0].clientX
+          },
+          { passive: true }
+        )
+        root.addEventListener(
+          'touchend',
+          (e) => {
+            if (touchX == null) return
+            const dx = e.changedTouches[0].clientX - touchX
+            touchX = null
+            if (Math.abs(dx) < 36) return
+            go(index + (dx < 0 ? 1 : -1))
+          },
+          { passive: true }
+        )
+
+        root.addEventListener('mouseenter', () => clearInterval(timer))
+        root.addEventListener('mouseleave', restart)
+
+        render()
+        restart()
+      }
+
+      document.querySelectorAll('[data-coverflow]').forEach(initCoverflow)
+
+      document.querySelectorAll('a[href="#top"]').forEach((a) => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault()
+          window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+          history.pushState(null, '', '#top')
+        })
+      })
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue
+            e.target.classList.add('in')
+            if (e.target.matches('.steps li, .dl-list li')) {
+              e.target.style.setProperty('--stagger', `${[...e.target.parentElement.children].indexOf(e.target) * 40}ms`)
+            }
+          }
+        },
+        { rootMargin: '0px 0px -4% 0px', threshold: 0.06 }
+      )
+      document.querySelectorAll('.reveal, .steps li, .dl-list li').forEach((el) => {
+        if (!el.classList.contains('reveal')) el.classList.add('reveal-item')
+        io.observe(el)
+      })
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.hero .reveal').forEach((el) => el.classList.add('in'))
+      })
+
+      const progress = document.querySelector('.scroll-progress i')
+      const topBar = document.querySelector('.top')
+      const heroBg = document.querySelector('.hero-bg')
+
+      let ticking = false
+      function onScroll() {
+        if (ticking) return
+        ticking = true
+        requestAnimationFrame(() => {
+          const y = window.scrollY
+          const max = document.documentElement.scrollHeight - window.innerHeight
+          const p = max > 0 ? y / max : 0
+          if (progress) progress.style.transform = `scaleX(${p})`
+          topBar?.classList.toggle('is-scrolled', y > 24)
+
+          if (!reduceMotion && heroBg) {
+            const heroH = document.querySelector('.hero')?.offsetHeight || 1
+            const heroP = Math.min(1, Math.max(0, y / (heroH * 0.85)))
+            heroBg.style.transform = `translate3d(0, ${heroP * 48}px, 0)`
+          }
+          ticking = false
+        })
+      }
+      window.addEventListener('scroll', onScroll, { passive: true })
+      onScroll()
+    </script>
+  </body>
+</html>

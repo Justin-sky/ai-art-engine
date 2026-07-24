@@ -1,0 +1,1205 @@
+{
+  "version": 2,
+  "styles": [
+    {
+      "id": "character-hyper-real-photo",
+      "index": 1,
+      "category": "character",
+      "name": "超写实摄影",
+      "nameEn": "Hyper-realistic photography",
+      "image": "character-01-hyper-real-photo.webp",
+      "prompt": "超写实摄影：真实相机质感，自然光学透视与景深，细腻皮肤/材质微纹理，柔和全局光照与真实阴影，色彩还原准确，无插画感、无过度磨皮、无塑料感。",
+      "promptEn": "Hyper-realistic photography: real camera look, natural optics and depth of field, fine material micro-texture, soft global illumination and believable shadows, accurate color, no illustration look, no over-smoothed plastic skin."
+    },
+    {
+      "id": "character-cinematic",
+      "index": 2,
+      "category": "character",
+      "name": "电影感",
+      "nameEn": "Cinematic",
+      "image": "character-02-cinematic.webp",
+      "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+    },
+    {
+      "id": "character-commercial-product",
+      "index": 3,
+      "category": "character",
+      "name": "商业产品摄影",
+      "nameEn": "Commercial product photography",
+      "image": "character-03-commercial-product.webp",
+      "prompt": "商业产品摄影：干净棚拍感，均匀柔光与受控高光，背景简洁，产品边缘清晰、材质可读，色彩干净通透，商业广告级完成度，无杂乱道具抢戏。",
+      "promptEn": "Commercial product photography: clean studio look, even soft light with controlled highlights, simple backdrop, crisp edges and readable materials, clean commercial finish, no clutter stealing focus."
+    },
+    {
+      "id": "character-japanese-anime",
+      "index": 4,
+      "category": "character",
+      "name": "日系动漫",
+      "nameEn": "Japanese anime",
+      "image": "character-04-japanese-anime.webp",
+      "prompt": "日系动漫：现代日漫画面，清晰赛璐璐色块与干净线稿，明亮色彩与柔和渐变，二次元光影，非写实皮肤质感，保持动画美学。",
+      "promptEn": "Japanese anime: modern anime look, clean cel blocks and linework, bright palette with soft gradients, anime lighting, non-photoreal skin, keep 2D animation aesthetics."
+    },
+    {
+      "id": "character-chibi-cartoon",
+      "index": 5,
+      "category": "character",
+      "name": "Q版卡通",
+      "nameEn": "Chibi / Q-style cartoon",
+      "image": "character-05-chibi-cartoon.webp",
+      "prompt": "Q版卡通：头身比夸张可爱，圆润形体与软萌表情，简化五官与肢体，马卡龙/粉彩色，轻松可爱氛围，避免写实解剖与沉重阴影。",
+      "promptEn": "Chibi / Q-style cartoon: exaggerated cute proportions, rounded forms, simplified features, pastel candy colors, playful mood, avoid realistic anatomy and heavy shadows."
+    },
+    {
+      "id": "character-cel-shading",
+      "index": 6,
+      "category": "character",
+      "name": "赛璐璐",
+      "nameEn": "Cel shading",
+      "image": "character-06-cel-shading.webp",
+      "prompt": "赛璐璐：硬边色块阴影、有限色阶，干净勾线，平涂为主、少量高光，经典动画上色，轮廓清晰，避免复杂写实纹理与照片噪点。",
+      "promptEn": "Cel shading: hard-edged color blocks, limited value steps, clean outlines, mostly flat fills with sparse highlights, classic animation shading, no complex photo textures or noise."
+    },
+    {
+      "id": "character-cartoon-3d",
+      "index": 7,
+      "category": "character",
+      "name": "3D卡通",
+      "nameEn": "3D cartoon",
+      "image": "character-07-cartoon-3d.webp",
+      "prompt": "3D卡通：风格化三维渲染，圆滑曲面与卡通比例，柔和次表面与干净材质，明亮友好光照，玩具/动画短片质感，非写实扫描感。",
+      "promptEn": "3D cartoon: stylized 3D render, smooth surfaces and cartoon proportions, soft subsurface and clean materials, bright friendly lighting, toy/short-film look, not photogrammetry realism."
+    },
+    {
+      "id": "character-pixar",
+      "index": 8,
+      "category": "character",
+      "name": "Pixar风",
+      "nameEn": "Pixar style",
+      "image": "character-08-pixar.webp",
+      "prompt": "Pixar风：高品质动画电影渲染，亲和造型，细腻次表面散射与织物毛发，电影级布光与景深，温暖情感氛围，精致但不阴郁。",
+      "promptEn": "Pixar style: high-end animated-feature rendering, appealing shapes, refined SSS/fabric/hair, cinematic lighting and DOF, warm emotional mood, polished not grim."
+    },
+    {
+      "id": "character-hand-drawn",
+      "index": 9,
+      "category": "character",
+      "name": "手绘插画",
+      "nameEn": "Hand-drawn illustration",
+      "image": "character-09-hand-drawn.webp",
+      "prompt": "手绘插画：可见铅笔/钢笔笔触与手绘纹理，轻微不完美线条，纸面感，艺术插画气息，保留手作温度，避免矢量死板与照片贴图感。",
+      "promptEn": "Hand-drawn illustration: visible pencil/ink strokes and paper tooth, slightly imperfect lines, artful sketch energy, handmade warmth, avoid stiff vector look or photo cutouts."
+    },
+    {
+      "id": "character-flat-illustration",
+      "index": 10,
+      "category": "character",
+      "name": "扁平插画",
+      "nameEn": "Flat illustration",
+      "image": "character-10-flat-illustration.webp",
+      "prompt": "扁平插画：矢量扁平构成，大色块、少透视、少纹理，几何化造型，现代信息图/UI插画感，阴影极简或无阴影，边缘干净。",
+      "promptEn": "Flat illustration: vector flat design, big color shapes, little perspective/texture, geometric forms, modern infographic/UI-illustration feel, minimal or no shadows, clean edges."
+    },
+    {
+      "id": "character-watercolor",
+      "index": 11,
+      "category": "character",
+      "name": "水彩",
+      "nameEn": "Watercolor",
+      "image": "character-11-watercolor.webp",
+      "prompt": "水彩：透明叠色与湿边晕染，颜料流动与纸纹，柔和边缘与水渍感，清新透气的色彩层次，保留留白，避免厚重油画堆叠与数码硬边。",
+      "promptEn": "Watercolor: transparent washes and wet-edge blooms, pigment flow and paper grain, soft edges and water stains, airy layered color, keep whites, avoid thick oil buildup or hard digital edges."
+    },
+    {
+      "id": "character-oil-painting",
+      "index": 12,
+      "category": "character",
+      "name": "油画",
+      "nameEn": "Oil painting",
+      "image": "character-12-oil-painting.webp",
+      "prompt": "油画：厚涂笔触与可见肌理，油画颜料层叠，古典或印象派光色，丰富暗部与高光，画布纹理，艺术绘画感强，非照片滤镜。",
+      "promptEn": "Oil painting: impasto strokes and visible texture, layered oil paint, classical or impressionist light-color, rich shadows and highlights, canvas grain, painterly not a photo filter."
+    },
+    {
+      "id": "character-chinese-ink",
+      "index": 13,
+      "category": "character",
+      "name": "国风水墨",
+      "nameEn": "Chinese ink wash",
+      "image": "character-13-chinese-ink.webp",
+      "prompt": "国风水墨：墨色浓淡干湿变化，写意笔法与留白，宣纸晕染，青绿或墨韵气质，东方审美气韵，少繁复西式光影，避免彩色厚涂。",
+      "promptEn": "Chinese ink wash: graded ink wet/dry strokes, expressive brushwork and negative space, xuan-paper bleed, Eastern ink elegance, spare Western lighting, avoid heavy polychrome impasto."
+    },
+    {
+      "id": "character-minimalist",
+      "index": 14,
+      "category": "character",
+      "name": "极简设计",
+      "nameEn": "Minimalist design",
+      "image": "character-14-minimalist.webp",
+      "prompt": "极简设计：极简构图与大量留白，有限配色，干净几何与克制细节，现代设计海报感，信息层级清晰，去除装饰噪音。",
+      "promptEn": "Minimalist design: sparse composition and generous whitespace, limited palette, clean geometry, restrained detail, modern poster clarity, remove decorative noise."
+    },
+    {
+      "id": "character-logo-design",
+      "index": 15,
+      "category": "character",
+      "name": "Logo设计",
+      "nameEn": "Logo design",
+      "image": "character-15-logo-design.webp",
+      "prompt": "Logo设计：强识别图形符号，简洁黑白或少色，清晰负形与平衡，可缩放的标志感，线条肯定，避免复杂场景与写实照片细节。",
+      "promptEn": "Logo design: strong iconic mark, simple mono/few-color, clear negative space and balance, scalable emblem feel, decisive lines, avoid busy scenes and photoreal detail."
+    },
+    {
+      "id": "character-poster-design",
+      "index": 16,
+      "category": "character",
+      "name": "海报设计",
+      "nameEn": "Poster design",
+      "image": "character-16-poster-design.webp",
+      "prompt": "海报设计：大胆排版层级，强对比色块与视觉焦点，宣传海报构图，醒目标题区气质，图形化信息传达，杂志封面完成度。",
+      "promptEn": "Poster design: bold typographic hierarchy, strong contrast blocks and focal point, promotional poster composition, graphic communication, magazine-cover finish."
+    },
+    {
+      "id": "character-cyberpunk",
+      "index": 17,
+      "category": "character",
+      "name": "赛博朋克",
+      "nameEn": "Cyberpunk",
+      "image": "character-17-cyberpunk.webp",
+      "prompt": "赛博朋克：霓虹品红/青色光，夜城雨湿反光，高科技低生活氛围，体积光与故障美学，冷暖对比强烈，未来都市细节，避免白天清新风。",
+      "promptEn": "Cyberpunk: neon magenta/cyan glow, wet night-city reflections, high-tech low-life mood, volumetrics and glitch aesthetics, strong cool-warm contrast, avoid sunny fresh daylight."
+    },
+    {
+      "id": "character-steampunk",
+      "index": 18,
+      "category": "character",
+      "name": "蒸汽朋克",
+      "nameEn": "Steampunk",
+      "image": "character-18-steampunk.webp",
+      "prompt": "蒸汽朋克：黄铜齿轮与蒸汽管道，维多利亚工业美学，皮革/铆钉/仪表，暖褐铜绿色调，复古机械幻想，蒸汽烟雾氛围。",
+      "promptEn": "Steampunk: brass gears and steam pipes, Victorian industrial aesthetic, leather/rivets/gauges, warm copper-sepia palette, retro-mechanical fantasy, steam haze."
+    },
+    {
+      "id": "character-dark-fantasy",
+      "index": 19,
+      "category": "character",
+      "name": "黑暗幻想",
+      "nameEn": "Dark fantasy",
+      "image": "character-19-dark-fantasy.webp",
+      "prompt": "黑暗幻想：阴郁史诗氛围，低键光与浓重暗部，哥特/魔幻材质，冷雾与神秘辉光，沉重色彩，奇幻危险感，避免甜美卡通。",
+      "promptEn": "Dark fantasy: grim epic mood, low-key light and deep shadows, gothic/fantasy materials, cold mist and eerie glow, heavy palette, sense of peril, avoid cute cartoon sweetness."
+    },
+    {
+      "id": "character-game-concept",
+      "index": 20,
+      "category": "character",
+      "name": "游戏概念图",
+      "nameEn": "Game concept art",
+      "image": "character-20-game-concept.webp",
+      "prompt": "游戏概念图：游戏原画制作感，清晰可读的设计信息，氛围铺陈与材质暗示，概念设定完整性，数字绘画笔触，服务角色/场景设定表达。",
+      "promptEn": "Game concept art: production concept-art clarity, readable design info, mood and material indication, complete concept staging, digital-paint strokes for character/env design."
+    },
+    {
+      "id": "character-character-design",
+      "index": 21,
+      "category": "character",
+      "name": "角色设计",
+      "nameEn": "Character design",
+      "image": "character-21-character-design.webp",
+      "prompt": "角色设计：角色设定展示感，清晰的外形、服装与识别特征，造型完整可读，设计表气质，突出人物设计而非环境叙事堆砌。",
+      "promptEn": "Character design: character-sheet clarity, readable silhouette/costume/signature traits, complete posing for design read, focus on character design over busy environment story."
+    },
+    {
+      "id": "character-ui-icon",
+      "index": 22,
+      "category": "character",
+      "name": "UI图标",
+      "nameEn": "UI icon",
+      "image": "character-22-ui-icon.webp",
+      "prompt": "UI图标：圆角图标画幅与清晰符号，简洁可识别轮廓，适合界面图标的简化造型，统一光源与轻微质感，避免复杂透视场景。",
+      "promptEn": "UI icon: rounded-icon framing and clear glyph, simplified readable silhouette for UI, unified light and light material cue, avoid complex perspective scenes."
+    },
+    {
+      "id": "character-pixel-art",
+      "index": 23,
+      "category": "character",
+      "name": "像素艺术",
+      "nameEn": "Pixel art",
+      "image": "character-23-pixel-art.webp",
+      "prompt": "像素艺术：低分辨率像素格，限制色板，清晰像素簇与可选抖动，复古掌机/街机美学，无抗锯齿模糊，保持像素对齐。",
+      "promptEn": "Pixel art: low-res pixel grid, limited palette, clean pixel clusters (optional dither), retro handheld/arcade aesthetic, no antialias blur, keep pixel alignment."
+    },
+    {
+      "id": "character-vintage-poster",
+      "index": 24,
+      "category": "character",
+      "name": "复古海报",
+      "nameEn": "Vintage poster",
+      "image": "character-24-vintage-poster.webp",
+      "prompt": "复古海报：老印刷网点与做旧纸色，怀旧广告排版气质，褪色油墨与轻微磨损，复古旅行/宣传海报印刷质感。",
+      "promptEn": "Vintage poster: aged print halftone and paper tint, nostalgic ad layout, faded ink and light wear, retro travel/poster print texture."
+    },
+    {
+      "id": "character-pop-art",
+      "index": 25,
+      "category": "character",
+      "name": "波普艺术",
+      "nameEn": "Pop art",
+      "image": "character-25-pop-art.webp",
+      "prompt": "波普艺术：高饱和撞色，粗黑描边，半调网点，漫画网点与重复图形，安迪沃霍尔式波普冲击力，平面印刷感强。",
+      "promptEn": "Pop art: high-saturation clashing colors, thick black outlines, halftone dots, comic Ben-Day energy, Warhol-like pop punch, strong print flatness."
+    },
+    {
+      "id": "character-ukiyo-e",
+      "index": 26,
+      "category": "character",
+      "name": "浮世绘",
+      "nameEn": "Ukiyo-e",
+      "image": "character-26-ukiyo-e.webp",
+      "prompt": "浮世绘：日本浮世绘木版画，平面色块与流畅勾线，传统配色与波浪/云纹等纹样气质，透视扁平，版画边缘与套色感，非写实油画。",
+      "promptEn": "Ukiyo-e: Japanese woodblock print, flat color fields and flowing outlines, traditional palette and pattern vernacular, flattened perspective, print registration feel, not oil realism."
+    },
+    {
+      "id": "character-clay",
+      "index": 27,
+      "category": "character",
+      "name": "黏土风",
+      "nameEn": "Clay style",
+      "image": "character-27-clay.webp",
+      "prompt": "黏土风：黏土/橡皮泥雕塑质感，柔软圆角与指纹般微表面，定格动画光照，哑光黏土材质，可爱手作立体感。",
+      "promptEn": "Clay style: clay/plasticine sculpt look, soft rounded forms and fingerprint micro-surface, stop-motion lighting, matte clay material, handmade 3D charm."
+    },
+    {
+      "id": "character-low-poly",
+      "index": 28,
+      "category": "character",
+      "name": "Low Poly",
+      "nameEn": "Low poly",
+      "image": "character-28-low-poly.webp",
+      "prompt": "Low Poly：低多边形几何面，可见三角面与硬边法线，低模游戏/艺术低面数美学，简洁着色，避免高模细节与照片贴图。",
+      "promptEn": "Low poly: faceted low-polygon geometry, visible tris and hard normals, low-poly game/art aesthetic, simple shading, avoid high-poly detail and photo textures."
+    },
+    {
+      "id": "character-children-book",
+      "index": 29,
+      "category": "character",
+      "name": "儿童绘本",
+      "nameEn": "Children's picture book",
+      "image": "character-29-children-book.webp",
+      "prompt": "儿童绘本：温柔手绘绘本风，柔和色彩与友好造型，故事书插画笔触，温暖安全氛围，适合儿童读物的简洁可爱表达。",
+      "promptEn": "Children's picture book: gentle storybook illustration, soft colors and friendly shapes, warm safe mood, simple lovable expression for kids' books."
+    },
+    {
+      "id": "character-surrealism",
+      "index": 30,
+      "category": "character",
+      "name": "超现实艺术",
+      "nameEn": "Surrealist art",
+      "image": "character-30-surrealism.webp",
+      "prompt": "超现实艺术：梦境逻辑与超现实并置，非常规比例/空间，奇异象征物，迷离光感与诗意不安，超现实主义绘画气质，非日常纪实。",
+      "promptEn": "Surrealist art: dream logic and surreal juxtaposition, odd scale/space, uncanny symbols, hazy poetic unease, surrealist painting mood, not everyday documentary."
+    },
+    {
+      "id": "hyper-real-photo",
+      "index": 1,
+      "name": "超写实摄影",
+      "nameEn": "Hyper-realistic photography",
+      "image": "01-hyper-real-photo.webp",
+      "prompt": "超写实摄影：真实相机质感，自然光学透视与景深，细腻皮肤/材质微纹理，柔和全局光照与真实阴影，色彩还原准确，无插画感、无过度磨皮、无塑料感。",
+      "promptEn": "Hyper-realistic photography: real camera look, natural optics and depth of field, fine material micro-texture, soft global illumination and believable shadows, accurate color, no illustration look, no over-smoothed plastic skin.",
+      "category": "scene"
+    },
+    {
+      "id": "cinematic",
+      "index": 2,
+      "name": "电影感",
+      "nameEn": "Cinematic",
+      "image": "02-cinematic.webp",
+      "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting.",
+      "category": "scene"
+    },
+    {
+      "id": "commercial-product",
+      "index": 3,
+      "name": "商业产品摄影",
+      "nameEn": "Commercial product photography",
+      "image": "03-commercial-product.webp",
+      "prompt": "商业产品摄影：干净棚拍感，均匀柔光与受控高光，背景简洁，产品边缘清晰、材质可读，色彩干净通透，商业广告级完成度，无杂乱道具抢戏。",
+      "promptEn": "Commercial product photography: clean studio look, even soft light with controlled highlights, simple backdrop, crisp edges and readable materials, clean commercial finish, no clutter stealing focus.",
+      "category": "scene"
+    },
+    {
+      "id": "japanese-anime",
+      "index": 4,
+      "name": "日系动漫",
+      "nameEn": "Japanese anime",
+      "image": "04-japanese-anime.webp",
+      "prompt": "日系动漫：现代日漫画面，清晰赛璐璐色块与干净线稿，明亮色彩与柔和渐变，二次元光影，非写实皮肤质感，保持动画美学。",
+      "promptEn": "Japanese anime: modern anime look, clean cel blocks and linework, bright palette with soft gradients, anime lighting, non-photoreal skin, keep 2D animation aesthetics.",
+      "category": "scene"
+    },
+    {
+      "id": "chibi-cartoon",
+      "index": 5,
+      "name": "Q版卡通",
+      "nameEn": "Chibi / Q-style cartoon",
+      "image": "05-chibi-cartoon.webp",
+      "prompt": "Q版卡通：头身比夸张可爱，圆润形体与软萌表情，简化五官与肢体，马卡龙/粉彩色，轻松可爱氛围，避免写实解剖与沉重阴影。",
+      "promptEn": "Chibi / Q-style cartoon: exaggerated cute proportions, rounded forms, simplified features, pastel candy colors, playful mood, avoid realistic anatomy and heavy shadows.",
+      "category": "scene"
+    },
+    {
+      "id": "cel-shading",
+      "index": 6,
+      "name": "赛璐璐",
+      "nameEn": "Cel shading",
+      "image": "06-cel-shading.webp",
+      "prompt": "赛璐璐：硬边色块阴影、有限色阶，干净勾线，平涂为主、少量高光，经典动画上色，轮廓清晰，避免复杂写实纹理与照片噪点。",
+      "promptEn": "Cel shading: hard-edged color blocks, limited value steps, clean outlines, mostly flat fills with sparse highlights, classic animation shading, no complex photo textures or noise.",
+      "category": "scene"
+    },
+    {
+      "id": "cartoon-3d",
+      "index": 7,
+      "name": "3D卡通",
+      "nameEn": "3D cartoon",
+      "image": "07-cartoon-3d.webp",
+      "prompt": "3D卡通：风格化三维渲染，圆滑曲面与卡通比例，柔和次表面与干净材质，明亮友好光照，玩具/动画短片质感，非写实扫描感。",
+      "promptEn": "3D cartoon: stylized 3D render, smooth surfaces and cartoon proportions, soft subsurface and clean materials, bright friendly lighting, toy/short-film look, not photogrammetry realism.",
+      "category": "scene"
+    },
+    {
+      "id": "pixar",
+      "index": 8,
+      "name": "Pixar风",
+      "nameEn": "Pixar style",
+      "image": "08-pixar.webp",
+      "prompt": "Pixar风：高品质动画电影渲染，亲和造型，细腻次表面散射与织物毛发，电影级布光与景深，温暖情感氛围，精致但不阴郁。",
+      "promptEn": "Pixar style: high-end animated-feature rendering, appealing shapes, refined SSS/fabric/hair, cinematic lighting and DOF, warm emotional mood, polished not grim.",
+      "category": "scene"
+    },
+    {
+      "id": "hand-drawn",
+      "index": 9,
+      "name": "手绘插画",
+      "nameEn": "Hand-drawn illustration",
+      "image": "09-hand-drawn.webp",
+      "prompt": "手绘插画：可见铅笔/钢笔笔触与手绘纹理，轻微不完美线条，纸面感，艺术插画气息，保留手作温度，避免矢量死板与照片贴图感。",
+      "promptEn": "Hand-drawn illustration: visible pencil/ink strokes and paper tooth, slightly imperfect lines, artful sketch energy, handmade warmth, avoid stiff vector look or photo cutouts.",
+      "category": "scene"
+    },
+    {
+      "id": "flat-illustration",
+      "index": 10,
+      "name": "扁平插画",
+      "nameEn": "Flat illustration",
+      "image": "10-flat-illustration.webp",
+      "prompt": "扁平插画：矢量扁平构成，大色块、少透视、少纹理，几何化造型，现代信息图/UI插画感，阴影极简或无阴影，边缘干净。",
+      "promptEn": "Flat illustration: vector flat design, big color shapes, little perspective/texture, geometric forms, modern infographic/UI-illustration feel, minimal or no shadows, clean edges.",
+      "category": "scene"
+    },
+    {
+      "id": "watercolor",
+      "index": 11,
+      "name": "水彩",
+      "nameEn": "Watercolor",
+      "image": "11-watercolor.webp",
+      "prompt": "水彩：透明叠色与湿边晕染，颜料流动与纸纹，柔和边缘与水渍感，清新透气的色彩层次，保留留白，避免厚重油画堆叠与数码硬边。",
+      "promptEn": "Watercolor: transparent washes and wet-edge blooms, pigment flow and paper grain, soft edges and water stains, airy layered color, keep whites, avoid thick oil buildup or hard digital edges.",
+      "category": "scene"
+    },
+    {
+      "id": "oil-painting",
+      "index": 12,
+      "name": "油画",
+      "nameEn": "Oil painting",
+      "image": "12-oil-painting.webp",
+      "prompt": "油画：厚涂笔触与可见肌理，油画颜料层叠，古典或印象派光色，丰富暗部与高光，画布纹理，艺术绘画感强，非照片滤镜。",
+      "promptEn": "Oil painting: impasto strokes and visible texture, layered oil paint, classical or impressionist light-color, rich shadows and highlights, canvas grain, painterly not a photo filter.",
+      "category": "scene"
+    },
+    {
+      "id": "chinese-ink",
+      "index": 13,
+      "name": "国风水墨",
+      "nameEn": "Chinese ink wash",
+      "image": "13-chinese-ink.webp",
+      "prompt": "国风水墨：墨色浓淡干湿变化，写意笔法与留白，宣纸晕染，青绿或墨韵气质，东方审美气韵，少繁复西式光影，避免彩色厚涂。",
+      "promptEn": "Chinese ink wash: graded ink wet/dry strokes, expressive brushwork and negative space, xuan-paper bleed, Eastern ink elegance, spare Western lighting, avoid heavy polychrome impasto.",
+      "category": "scene"
+    },
+    {
+      "id": "minimalist",
+      "index": 14,
+      "name": "极简设计",
+      "nameEn": "Minimalist design",
+      "image": "14-minimalist.webp",
+      "prompt": "极简设计：极简构图与大量留白，有限配色，干净几何与克制细节，现代设计海报感，信息层级清晰，去除装饰噪音。",
+      "promptEn": "Minimalist design: sparse composition and generous whitespace, limited palette, clean geometry, restrained detail, modern poster clarity, remove decorative noise.",
+      "category": "scene"
+    },
+    {
+      "id": "logo-design",
+      "index": 15,
+      "name": "Logo设计",
+      "nameEn": "Logo design",
+      "image": "15-logo-design.webp",
+      "prompt": "Logo设计：强识别图形符号，简洁黑白或少色，清晰负形与平衡，可缩放的标志感，线条肯定，避免复杂场景与写实照片细节。",
+      "promptEn": "Logo design: strong iconic mark, simple mono/few-color, clear negative space and balance, scalable emblem feel, decisive lines, avoid busy scenes and photoreal detail.",
+      "category": "scene"
+    },
+    {
+      "id": "poster-design",
+      "index": 16,
+      "name": "海报设计",
+      "nameEn": "Poster design",
+      "image": "16-poster-design.webp",
+      "prompt": "海报设计：大胆排版层级，强对比色块与视觉焦点，宣传海报构图，醒目标题区气质，图形化信息传达，杂志封面完成度。",
+      "promptEn": "Poster design: bold typographic hierarchy, strong contrast blocks and focal point, promotional poster composition, graphic communication, magazine-cover finish.",
+      "category": "scene"
+    },
+    {
+      "id": "cyberpunk",
+      "index": 17,
+      "name": "赛博朋克",
+      "nameEn": "Cyberpunk",
+      "image": "17-cyberpunk.webp",
+      "prompt": "赛博朋克：霓虹品红/青色光，夜城雨湿反光，高科技低生活氛围，体积光与故障美学，冷暖对比强烈，未来都市细节，避免白天清新风。",
+      "promptEn": "Cyberpunk: neon magenta/cyan glow, wet night-city reflections, high-tech low-life mood, volumetrics and glitch aesthetics, strong cool-warm contrast, avoid sunny fresh daylight.",
+      "category": "scene"
+    },
+    {
+      "id": "steampunk",
+      "index": 18,
+      "name": "蒸汽朋克",
+      "nameEn": "Steampunk",
+      "image": "18-steampunk.webp",
+      "prompt": "蒸汽朋克：黄铜齿轮与蒸汽管道，维多利亚工业美学，皮革/铆钉/仪表，暖褐铜绿色调，复古机械幻想，蒸汽烟雾氛围。",
+      "promptEn": "Steampunk: brass gears and steam pipes, Victorian industrial aesthetic, leather/rivets/gauges, warm copper-sepia palette, retro-mechanical fantasy, steam haze.",
+      "category": "scene"
+    },
+    {
+      "id": "dark-fantasy",
+      "index": 19,
+      "name": "黑暗幻想",
+      "nameEn": "Dark fantasy",
+      "image": "19-dark-fantasy.webp",
+      "prompt": "黑暗幻想：阴郁史诗氛围，低键光与浓重暗部，哥特/魔幻材质，冷雾与神秘辉光，沉重色彩，奇幻危险感，避免甜美卡通。",
+      "promptEn": "Dark fantasy: grim epic mood, low-key light and deep shadows, gothic/fantasy materials, cold mist and eerie glow, heavy palette, sense of peril, avoid cute cartoon sweetness.",
+      "category": "scene"
+    },
+    {
+      "id": "game-concept",
+      "index": 20,
+      "name": "游戏概念图",
+      "nameEn": "Game concept art",
+      "image": "20-game-concept.webp",
+      "prompt": "游戏概念图：游戏原画制作感，清晰可读的设计信息，氛围铺陈与材质暗示，概念设定完整性，数字绘画笔触，服务角色/场景设定表达。",
+      "promptEn": "Game concept art: production concept-art clarity, readable design info, mood and material indication, complete concept staging, digital-paint strokes for character/env design.",
+      "category": "scene"
+    },
+    {
+      "id": "character-design",
+      "index": 21,
+      "name": "角色设计",
+      "nameEn": "Character design",
+      "image": "21-character-design.webp",
+      "prompt": "角色设计：角色设定展示感，清晰的外形、服装与识别特征，造型完整可读，设计表气质，突出人物设计而非环境叙事堆砌。",
+      "promptEn": "Character design: character-sheet clarity, readable silhouette/costume/signature traits, complete posing for design read, focus on character design over busy environment story.",
+      "category": "scene"
+    },
+    {
+      "id": "ui-icon",
+      "index": 22,
+      "name": "UI图标",
+      "nameEn": "UI icon",
+      "image": "22-ui-icon.webp",
+      "prompt": "UI图标：圆角图标画幅与清晰符号，简洁可识别轮廓，适合界面图标的简化造型，统一光源与轻微质感，避免复杂透视场景。",
+      "promptEn": "UI icon: rounded-icon framing and clear glyph, simplified readable silhouette for UI, unified light and light material cue, avoid complex perspective scenes.",
+      "category": "scene"
+    },
+    {
+      "id": "pixel-art",
+      "index": 23,
+      "name": "像素艺术",
+      "nameEn": "Pixel art",
+      "image": "23-pixel-art.webp",
+      "prompt": "像素艺术：低分辨率像素格，限制色板，清晰像素簇与可选抖动，复古掌机/街机美学，无抗锯齿模糊，保持像素对齐。",
+      "promptEn": "Pixel art: low-res pixel grid, limited palette, clean pixel clusters (optional dither), retro handheld/arcade aesthetic, no antialias blur, keep pixel alignment.",
+      "category": "scene"
+    },
+    {
+      "id": "vintage-poster",
+      "index": 24,
+      "name": "复古海报",
+      "nameEn": "Vintage poster",
+      "image": "24-vintage-poster.webp",
+      "prompt": "复古海报：老印刷网点与做旧纸色，怀旧广告排版气质，褪色油墨与轻微磨损，复古旅行/宣传海报印刷质感。",
+      "promptEn": "Vintage poster: aged print halftone and paper tint, nostalgic ad layout, faded ink and light wear, retro travel/poster print texture.",
+      "category": "scene"
+    },
+    {
+      "id": "pop-art",
+      "index": 25,
+      "name": "波普艺术",
+      "nameEn": "Pop art",
+      "image": "25-pop-art.webp",
+      "prompt": "波普艺术：高饱和撞色，粗黑描边，半调网点，漫画网点与重复图形，安迪沃霍尔式波普冲击力，平面印刷感强。",
+      "promptEn": "Pop art: high-saturation clashing colors, thick black outlines, halftone dots, comic Ben-Day energy, Warhol-like pop punch, strong print flatness.",
+      "category": "scene"
+    },
+    {
+      "id": "ukiyo-e",
+      "index": 26,
+      "name": "浮世绘",
+      "nameEn": "Ukiyo-e",
+      "image": "26-ukiyo-e.webp",
+      "prompt": "浮世绘：日本浮世绘木版画，平面色块与流畅勾线，传统配色与波浪/云纹等纹样气质，透视扁平，版画边缘与套色感，非写实油画。",
+      "promptEn": "Ukiyo-e: Japanese woodblock print, flat color fields and flowing outlines, traditional palette and pattern vernacular, flattened perspective, print registration feel, not oil realism.",
+      "category": "scene"
+    },
+    {
+      "id": "clay",
+      "index": 27,
+      "name": "黏土风",
+      "nameEn": "Clay style",
+      "image": "27-clay.webp",
+      "prompt": "黏土风：黏土/橡皮泥雕塑质感，柔软圆角与指纹般微表面，定格动画光照，哑光黏土材质，可爱手作立体感。",
+      "promptEn": "Clay style: clay/plasticine sculpt look, soft rounded forms and fingerprint micro-surface, stop-motion lighting, matte clay material, handmade 3D charm.",
+      "category": "scene"
+    },
+    {
+      "id": "low-poly",
+      "index": 28,
+      "name": "Low Poly",
+      "nameEn": "Low poly",
+      "image": "28-low-poly.webp",
+      "prompt": "Low Poly：低多边形几何面，可见三角面与硬边法线，低模游戏/艺术低面数美学，简洁着色，避免高模细节与照片贴图。",
+      "promptEn": "Low poly: faceted low-polygon geometry, visible tris and hard normals, low-poly game/art aesthetic, simple shading, avoid high-poly detail and photo textures.",
+      "category": "scene"
+    },
+    {
+      "id": "children-book",
+      "index": 29,
+      "name": "儿童绘本",
+      "nameEn": "Children's picture book",
+      "image": "29-children-book.webp",
+      "prompt": "儿童绘本：温柔手绘绘本风，柔和色彩与友好造型，故事书插画笔触，温暖安全氛围，适合儿童读物的简洁可爱表达。",
+      "promptEn": "Children's picture book: gentle storybook illustration, soft colors and friendly shapes, warm safe mood, simple lovable expression for kids' books.",
+      "category": "scene"
+    },
+    {
+      "id": "surrealism",
+      "index": 30,
+      "name": "超现实艺术",
+      "nameEn": "Surrealist art",
+      "image": "30-surrealism.webp",
+      "prompt": "超现实艺术：梦境逻辑与超现实并置，非常规比例/空间，奇异象征物，迷离光感与诗意不安，超现实主义绘画气质，非日常纪实。",
+      "promptEn": "Surrealist art: dream logic and surreal juxtaposition, odd scale/space, uncanny symbols, hazy poetic unease, surrealist painting mood, not everyday documentary.",
+      "category": "scene"
+    },
+    {
+      "id": "prop-hyper-real-photo",
+      "index": 1,
+      "category": "prop",
+      "name": "超写实摄影",
+      "nameEn": "Hyper-realistic photography",
+      "image": "prop-01-hyper-real-photo.webp",
+      "prompt": "超写实摄影：真实相机质感，自然光学透视与景深，细腻皮肤/材质微纹理，柔和全局光照与真实阴影，色彩还原准确，无插画感、无过度磨皮、无塑料感。",
+      "promptEn": "Hyper-realistic photography: real camera look, natural optics and depth of field, fine material micro-texture, soft global illumination and believable shadows, accurate color, no illustration look, no over-smoothed plastic skin."
+    },
+    {
+      "id": "prop-cinematic",
+      "index": 2,
+      "category": "prop",
+      "name": "电影感",
+      "nameEn": "Cinematic",
+      "image": "prop-02-cinematic.webp",
+      "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+    },
+    {
+      "id": "prop-commercial-product",
+      "index": 3,
+      "category": "prop",
+      "name": "商业产品摄影",
+      "nameEn": "Commercial product photography",
+      "image": "prop-03-commercial-product.webp",
+      "prompt": "商业产品摄影：干净棚拍感，均匀柔光与受控高光，背景简洁，产品边缘清晰、材质可读，色彩干净通透，商业广告级完成度，无杂乱道具抢戏。",
+      "promptEn": "Commercial product photography: clean studio look, even soft light with controlled highlights, simple backdrop, crisp edges and readable materials, clean commercial finish, no clutter stealing focus."
+    },
+    {
+      "id": "prop-japanese-anime",
+      "index": 4,
+      "category": "prop",
+      "name": "日系动漫",
+      "nameEn": "Japanese anime",
+      "image": "prop-04-japanese-anime.webp",
+      "prompt": "日系动漫：现代日漫画面，清晰赛璐璐色块与干净线稿，明亮色彩与柔和渐变，二次元光影，非写实皮肤质感，保持动画美学。",
+      "promptEn": "Japanese anime: modern anime look, clean cel blocks and linework, bright palette with soft gradients, anime lighting, non-photoreal skin, keep 2D animation aesthetics."
+    },
+    {
+      "id": "prop-chibi-cartoon",
+      "index": 5,
+      "category": "prop",
+      "name": "Q版卡通",
+      "nameEn": "Chibi / Q-style cartoon",
+      "image": "prop-05-chibi-cartoon.webp",
+      "prompt": "Q版卡通：头身比夸张可爱，圆润形体与软萌表情，简化五官与肢体，马卡龙/粉彩色，轻松可爱氛围，避免写实解剖与沉重阴影。",
+      "promptEn": "Chibi / Q-style cartoon: exaggerated cute proportions, rounded forms, simplified features, pastel candy colors, playful mood, avoid realistic anatomy and heavy shadows."
+    },
+    {
+      "id": "prop-cel-shading",
+      "index": 6,
+      "category": "prop",
+      "name": "赛璐璐",
+      "nameEn": "Cel shading",
+      "image": "prop-06-cel-shading.webp",
+      "prompt": "赛璐璐：硬边色块阴影、有限色阶，干净勾线，平涂为主、少量高光，经典动画上色，轮廓清晰，避免复杂写实纹理与照片噪点。",
+      "promptEn": "Cel shading: hard-edged color blocks, limited value steps, clean outlines, mostly flat fills with sparse highlights, classic animation shading, no complex photo textures or noise."
+    },
+    {
+      "id": "prop-cartoon-3d",
+      "index": 7,
+      "category": "prop",
+      "name": "3D卡通",
+      "nameEn": "3D cartoon",
+      "image": "prop-07-cartoon-3d.webp",
+      "prompt": "3D卡通：风格化三维渲染，圆滑曲面与卡通比例，柔和次表面与干净材质，明亮友好光照，玩具/动画短片质感，非写实扫描感。",
+      "promptEn": "3D cartoon: stylized 3D render, smooth surfaces and cartoon proportions, soft subsurface and clean materials, bright friendly lighting, toy/short-film look, not photogrammetry realism."
+    },
+    {
+      "id": "prop-pixar",
+      "index": 8,
+      "category": "prop",
+      "name": "Pixar风",
+      "nameEn": "Pixar style",
+      "image": "prop-08-pixar.webp",
+      "prompt": "Pixar风：高品质动画电影渲染，亲和造型，细腻次表面散射与织物毛发，电影级布光与景深，温暖情感氛围，精致但不阴郁。",
+      "promptEn": "Pixar style: high-end animated-feature rendering, appealing shapes, refined SSS/fabric/hair, cinematic lighting and DOF, warm emotional mood, polished not grim."
+    },
+    {
+      "id": "prop-hand-drawn",
+      "index": 9,
+      "category": "prop",
+      "name": "手绘插画",
+      "nameEn": "Hand-drawn illustration",
+      "image": "prop-09-hand-drawn.webp",
+      "prompt": "手绘插画：可见铅笔/钢笔笔触与手绘纹理，轻微不完美线条，纸面感，艺术插画气息，保留手作温度，避免矢量死板与照片贴图感。",
+      "promptEn": "Hand-drawn illustration: visible pencil/ink strokes and paper tooth, slightly imperfect lines, artful sketch energy, handmade warmth, avoid stiff vector look or photo cutouts."
+    },
+    {
+      "id": "prop-flat-illustration",
+      "index": 10,
+      "category": "prop",
+      "name": "扁平插画",
+      "nameEn": "Flat illustration",
+      "image": "prop-10-flat-illustration.webp",
+      "prompt": "扁平插画：矢量扁平构成，大色块、少透视、少纹理，几何化造型，现代信息图/UI插画感，阴影极简或无阴影，边缘干净。",
+      "promptEn": "Flat illustration: vector flat design, big color shapes, little perspective/texture, geometric forms, modern infographic/UI-illustration feel, minimal or no shadows, clean edges."
+    },
+    {
+      "id": "prop-watercolor",
+      "index": 11,
+      "category": "prop",
+      "name": "水彩",
+      "nameEn": "Watercolor",
+      "image": "prop-11-watercolor.webp",
+      "prompt": "水彩：透明叠色与湿边晕染，颜料流动与纸纹，柔和边缘与水渍感，清新透气的色彩层次，保留留白，避免厚重油画堆叠与数码硬边。",
+      "promptEn": "Watercolor: transparent washes and wet-edge blooms, pigment flow and paper grain, soft edges and water stains, airy layered color, keep whites, avoid thick oil buildup or hard digital edges."
+    },
+    {
+      "id": "prop-oil-painting",
+      "index": 12,
+      "category": "prop",
+      "name": "油画",
+      "nameEn": "Oil painting",
+      "image": "prop-12-oil-painting.webp",
+      "prompt": "油画：厚涂笔触与可见肌理，油画颜料层叠，古典或印象派光色，丰富暗部与高光，画布纹理，艺术绘画感强，非照片滤镜。",
+      "promptEn": "Oil painting: impasto strokes and visible texture, layered oil paint, classical or impressionist light-color, rich shadows and highlights, canvas grain, painterly not a photo filter."
+    },
+    {
+      "id": "prop-chinese-ink",
+      "index": 13,
+      "category": "prop",
+      "name": "国风水墨",
+      "nameEn": "Chinese ink wash",
+      "image": "prop-13-chinese-ink.webp",
+      "prompt": "国风水墨：墨色浓淡干湿变化，写意笔法与留白，宣纸晕染，青绿或墨韵气质，东方审美气韵，少繁复西式光影，避免彩色厚涂。",
+      "promptEn": "Chinese ink wash: graded ink wet/dry strokes, expressive brushwork and negative space, xuan-paper bleed, Eastern ink elegance, spare Western lighting, avoid heavy polychrome impasto."
+    },
+    {
+      "id": "prop-minimalist",
+      "index": 14,
+      "category": "prop",
+      "name": "极简设计",
+      "nameEn": "Minimalist design",
+      "image": "prop-14-minimalist.webp",
+      "prompt": "极简设计：极简构图与大量留白，有限配色，干净几何与克制细节，现代设计海报感，信息层级清晰，去除装饰噪音。",
+      "promptEn": "Minimalist design: sparse composition and generous whitespace, limited palette, clean geometry, restrained detail, modern poster clarity, remove decorative noise."
+    },
+    {
+      "id": "prop-logo-design",
+      "index": 15,
+      "category": "prop",
+      "name": "Logo设计",
+      "nameEn": "Logo design",
+      "image": "prop-15-logo-design.webp",
+      "prompt": "Logo设计：强识别图形符号，简洁黑白或少色，清晰负形与平衡，可缩放的标志感，线条肯定，避免复杂场景与写实照片细节。",
+      "promptEn": "Logo design: strong iconic mark, simple mono/few-color, clear negative space and balance, scalable emblem feel, decisive lines, avoid busy scenes and photoreal detail."
+    },
+    {
+      "id": "prop-poster-design",
+      "index": 16,
+      "category": "prop",
+      "name": "海报设计",
+      "nameEn": "Poster design",
+      "image": "prop-16-poster-design.webp",
+      "prompt": "海报设计：大胆排版层级，强对比色块与视觉焦点，宣传海报构图，醒目标题区气质，图形化信息传达，杂志封面完成度。",
+      "promptEn": "Poster design: bold typographic hierarchy, strong contrast blocks and focal point, promotional poster composition, graphic communication, magazine-cover finish."
+    },
+    {
+      "id": "prop-cyberpunk",
+      "index": 17,
+      "category": "prop",
+      "name": "赛博朋克",
+      "nameEn": "Cyberpunk",
+      "image": "prop-17-cyberpunk.webp",
+      "prompt": "赛博朋克：霓虹品红/青色光，夜城雨湿反光，高科技低生活氛围，体积光与故障美学，冷暖对比强烈，未来都市细节，避免白天清新风。",
+      "promptEn": "Cyberpunk: neon magenta/cyan glow, wet night-city reflections, high-tech low-life mood, volumetrics and glitch aesthetics, strong cool-warm contrast, avoid sunny fresh daylight."
+    },
+    {
+      "id": "prop-steampunk",
+      "index": 18,
+      "category": "prop",
+      "name": "蒸汽朋克",
+      "nameEn": "Steampunk",
+      "image": "prop-18-steampunk.webp",
+      "prompt": "蒸汽朋克：黄铜齿轮与蒸汽管道，维多利亚工业美学，皮革/铆钉/仪表，暖褐铜绿色调，复古机械幻想，蒸汽烟雾氛围。",
+      "promptEn": "Steampunk: brass gears and steam pipes, Victorian industrial aesthetic, leather/rivets/gauges, warm copper-sepia palette, retro-mechanical fantasy, steam haze."
+    },
+    {
+      "id": "prop-dark-fantasy",
+      "index": 19,
+      "category": "prop",
+      "name": "黑暗幻想",
+      "nameEn": "Dark fantasy",
+      "image": "prop-19-dark-fantasy.webp",
+      "prompt": "黑暗幻想：阴郁史诗氛围，低键光与浓重暗部，哥特/魔幻材质，冷雾与神秘辉光，沉重色彩，奇幻危险感，避免甜美卡通。",
+      "promptEn": "Dark fantasy: grim epic mood, low-key light and deep shadows, gothic/fantasy materials, cold mist and eerie glow, heavy palette, sense of peril, avoid cute cartoon sweetness."
+    },
+    {
+      "id": "prop-game-concept",
+      "index": 20,
+      "category": "prop",
+      "name": "游戏概念图",
+      "nameEn": "Game concept art",
+      "image": "prop-20-game-concept.webp",
+      "prompt": "游戏概念图：游戏原画制作感，清晰可读的设计信息，氛围铺陈与材质暗示，概念设定完整性，数字绘画笔触，服务角色/场景设定表达。",
+      "promptEn": "Game concept art: production concept-art clarity, readable design info, mood and material indication, complete concept staging, digital-paint strokes for character/env design."
+    },
+    {
+      "id": "prop-character-design",
+      "index": 21,
+      "category": "prop",
+      "name": "角色设计",
+      "nameEn": "Character design",
+      "image": "prop-21-character-design.webp",
+      "prompt": "角色设计：角色设定展示感，清晰的外形、服装与识别特征，造型完整可读，设计表气质，突出人物设计而非环境叙事堆砌。",
+      "promptEn": "Character design: character-sheet clarity, readable silhouette/costume/signature traits, complete posing for design read, focus on character design over busy environment story."
+    },
+    {
+      "id": "prop-ui-icon",
+      "index": 22,
+      "category": "prop",
+      "name": "UI图标",
+      "nameEn": "UI icon",
+      "image": "prop-22-ui-icon.webp",
+      "prompt": "UI图标：圆角图标画幅与清晰符号，简洁可识别轮廓，适合界面图标的简化造型，统一光源与轻微质感，避免复杂透视场景。",
+      "promptEn": "UI icon: rounded-icon framing and clear glyph, simplified readable silhouette for UI, unified light and light material cue, avoid complex perspective scenes."
+    },
+    {
+      "id": "prop-pixel-art",
+      "index": 23,
+      "category": "prop",
+      "name": "像素艺术",
+      "nameEn": "Pixel art",
+      "image": "prop-23-pixel-art.webp",
+      "prompt": "像素艺术：低分辨率像素格，限制色板，清晰像素簇与可选抖动，复古掌机/街机美学，无抗锯齿模糊，保持像素对齐。",
+      "promptEn": "Pixel art: low-res pixel grid, limited palette, clean pixel clusters (optional dither), retro handheld/arcade aesthetic, no antialias blur, keep pixel alignment."
+    },
+    {
+      "id": "prop-vintage-poster",
+      "index": 24,
+      "category": "prop",
+      "name": "复古海报",
+      "nameEn": "Vintage poster",
+      "image": "prop-24-vintage-poster.webp",
+      "prompt": "复古海报：老印刷网点与做旧纸色，怀旧广告排版气质，褪色油墨与轻微磨损，复古旅行/宣传海报印刷质感。",
+      "promptEn": "Vintage poster: aged print halftone and paper tint, nostalgic ad layout, faded ink and light wear, retro travel/poster print texture."
+    },
+    {
+      "id": "prop-pop-art",
+      "index": 25,
+      "category": "prop",
+      "name": "波普艺术",
+      "nameEn": "Pop art",
+      "image": "prop-25-pop-art.webp",
+      "prompt": "波普艺术：高饱和撞色，粗黑描边，半调网点，漫画网点与重复图形，安迪沃霍尔式波普冲击力，平面印刷感强。",
+      "promptEn": "Pop art: high-saturation clashing colors, thick black outlines, halftone dots, comic Ben-Day energy, Warhol-like pop punch, strong print flatness."
+    },
+    {
+      "id": "prop-ukiyo-e",
+      "index": 26,
+      "category": "prop",
+      "name": "浮世绘",
+      "nameEn": "Ukiyo-e",
+      "image": "prop-26-ukiyo-e.webp",
+      "prompt": "浮世绘：日本浮世绘木版画，平面色块与流畅勾线，传统配色与波浪/云纹等纹样气质，透视扁平，版画边缘与套色感，非写实油画。",
+      "promptEn": "Ukiyo-e: Japanese woodblock print, flat color fields and flowing outlines, traditional palette and pattern vernacular, flattened perspective, print registration feel, not oil realism."
+    },
+    {
+      "id": "prop-clay",
+      "index": 27,
+      "category": "prop",
+      "name": "黏土风",
+      "nameEn": "Clay style",
+      "image": "prop-27-clay.webp",
+      "prompt": "黏土风：黏土/橡皮泥雕塑质感，柔软圆角与指纹般微表面，定格动画光照，哑光黏土材质，可爱手作立体感。",
+      "promptEn": "Clay style: clay/plasticine sculpt look, soft rounded forms and fingerprint micro-surface, stop-motion lighting, matte clay material, handmade 3D charm."
+    },
+    {
+      "id": "prop-low-poly",
+      "index": 28,
+      "category": "prop",
+      "name": "Low Poly",
+      "nameEn": "Low poly",
+      "image": "prop-28-low-poly.webp",
+      "prompt": "Low Poly：低多边形几何面，可见三角面与硬边法线，低模游戏/艺术低面数美学，简洁着色，避免高模细节与照片贴图。",
+      "promptEn": "Low poly: faceted low-polygon geometry, visible tris and hard normals, low-poly game/art aesthetic, simple shading, avoid high-poly detail and photo textures."
+    },
+    {
+      "id": "prop-children-book",
+      "index": 29,
+      "category": "prop",
+      "name": "儿童绘本",
+      "nameEn": "Children's picture book",
+      "image": "prop-29-children-book.webp",
+      "prompt": "儿童绘本：温柔手绘绘本风，柔和色彩与友好造型，故事书插画笔触，温暖安全氛围，适合儿童读物的简洁可爱表达。",
+      "promptEn": "Children's picture book: gentle storybook illustration, soft colors and friendly shapes, warm safe mood, simple lovable expression for kids' books."
+    },
+    {
+      "id": "prop-surrealism",
+      "index": 30,
+      "category": "prop",
+      "name": "超现实艺术",
+      "nameEn": "Surrealist art",
+      "image": "prop-30-surrealism.webp",
+      "prompt": "超现实艺术：梦境逻辑与超现实并置，非常规比例/空间，奇异象征物，迷离光感与诗意不安，超现实主义绘画气质，非日常纪实。",
+      "promptEn": "Surrealist art: dream logic and surreal juxtaposition, odd scale/space, uncanny symbols, hazy poetic unease, surrealist painting mood, not everyday documentary."
+    },
+    {
+      "id": "weapon-hyper-real-photo",
+      "index": 1,
+      "category": "weapon",
+      "name": "超写实摄影",
+      "nameEn": "Hyper-realistic photography",
+      "image": "weapon-01-hyper-real-photo.webp",
+      "prompt": "超写实摄影：真实相机质感，自然光学透视与景深，细腻皮肤/材质微纹理，柔和全局光照与真实阴影，色彩还原准确，无插画感、无过度磨皮、无塑料感。",
+      "promptEn": "Hyper-realistic photography: real camera look, natural optics and depth of field, fine material micro-texture, soft global illumination and believable shadows, accurate color, no illustration look, no over-smoothed plastic skin."
+    },
+    {
+      "id": "weapon-cinematic",
+      "index": 2,
+      "category": "weapon",
+      "name": "电影感",
+      "nameEn": "Cinematic",
+      "image": "weapon-02-cinematic.webp",
+      "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+    },
+    {
+      "id": "weapon-commercial-product",
+      "index": 3,
+      "category": "weapon",
+      "name": "商业产品摄影",
+      "nameEn": "Commercial product photography",
+      "image": "weapon-03-commercial-product.webp",
+      "prompt": "商业产品摄影：干净棚拍感，均匀柔光与受控高光，背景简洁，产品边缘清晰、材质可读，色彩干净通透，商业广告级完成度，无杂乱道具抢戏。",
+      "promptEn": "Commercial product photography: clean studio look, even soft light with controlled highlights, simple backdrop, crisp edges and readable materials, clean commercial finish, no clutter stealing focus."
+    },
+    {
+      "id": "weapon-japanese-anime",
+      "index": 4,
+      "category": "weapon",
+      "name": "日系动漫",
+      "nameEn": "Japanese anime",
+      "image": "weapon-04-japanese-anime.webp",
+      "prompt": "日系动漫：现代日漫画面，清晰赛璐璐色块与干净线稿，明亮色彩与柔和渐变，二次元光影，非写实皮肤质感，保持动画美学。",
+      "promptEn": "Japanese anime: modern anime look, clean cel blocks and linework, bright palette with soft gradients, anime lighting, non-photoreal skin, keep 2D animation aesthetics."
+    },
+    {
+      "id": "weapon-chibi-cartoon",
+      "index": 5,
+      "category": "weapon",
+      "name": "Q版卡通",
+      "nameEn": "Chibi / Q-style cartoon",
+      "image": "weapon-05-chibi-cartoon.webp",
+      "prompt": "Q版卡通：头身比夸张可爱，圆润形体与软萌表情，简化五官与肢体，马卡龙/粉彩色，轻松可爱氛围，避免写实解剖与沉重阴影。",
+      "promptEn": "Chibi / Q-style cartoon: exaggerated cute proportions, rounded forms, simplified features, pastel candy colors, playful mood, avoid realistic anatomy and heavy shadows."
+    },
+    {
+      "id": "weapon-cel-shading",
+      "index": 6,
+      "category": "weapon",
+      "name": "赛璐璐",
+      "nameEn": "Cel shading",
+      "image": "weapon-06-cel-shading.webp",
+      "prompt": "赛璐璐：硬边色块阴影、有限色阶，干净勾线，平涂为主、少量高光，经典动画上色，轮廓清晰，避免复杂写实纹理与照片噪点。",
+      "promptEn": "Cel shading: hard-edged color blocks, limited value steps, clean outlines, mostly flat fills with sparse highlights, classic animation shading, no complex photo textures or noise."
+    },
+    {
+      "id": "weapon-cartoon-3d",
+      "index": 7,
+      "category": "weapon",
+      "name": "3D卡通",
+      "nameEn": "3D cartoon",
+      "image": "weapon-07-cartoon-3d.webp",
+      "prompt": "3D卡通：风格化三维渲染，圆滑曲面与卡通比例，柔和次表面与干净材质，明亮友好光照，玩具/动画短片质感，非写实扫描感。",
+      "promptEn": "3D cartoon: stylized 3D render, smooth surfaces and cartoon proportions, soft subsurface and clean materials, bright friendly lighting, toy/short-film look, not photogrammetry realism."
+    },
+    {
+      "id": "weapon-pixar",
+      "index": 8,
+      "category": "weapon",
+      "name": "Pixar风",
+      "nameEn": "Pixar style",
+      "image": "weapon-08-pixar.webp",
+      "prompt": "Pixar风：高品质动画电影渲染，亲和造型，细腻次表面散射与织物毛发，电影级布光与景深，温暖情感氛围，精致但不阴郁。",
+      "promptEn": "Pixar style: high-end animated-feature rendering, appealing shapes, refined SSS/fabric/hair, cinematic lighting and DOF, warm emotional mood, polished not grim."
+    },
+    {
+      "id": "weapon-hand-drawn",
+      "index": 9,
+      "category": "weapon",
+      "name": "手绘插画",
+      "nameEn": "Hand-drawn illustration",
+      "image": "weapon-09-hand-drawn.webp",
+      "prompt": "手绘插画：可见铅笔/钢笔笔触与手绘纹理，轻微不完美线条，纸面感，艺术插画气息，保留手作温度，避免矢量死板与照片贴图感。",
+      "promptEn": "Hand-drawn illustration: visible pencil/ink strokes and paper tooth, slightly imperfect lines, artful sketch energy, handmade warmth, avoid stiff vector look or photo cutouts."
+    },
+    {
+      "id": "weapon-flat-illustration",
+      "index": 10,
+      "category": "weapon",
+      "name": "扁平插画",
+      "nameEn": "Flat illustration",
+      "image": "weapon-10-flat-illustration.webp",
+      "prompt": "扁平插画：矢量扁平构成，大色块、少透视、少纹理，几何化造型，现代信息图/UI插画感，阴影极简或无阴影，边缘干净。",
+      "promptEn": "Flat illustration: vector flat design, big color shapes, little perspective/texture, geometric forms, modern infographic/UI-illustration feel, minimal or no shadows, clean edges."
+    },
+    {
+      "id": "weapon-watercolor",
+      "index": 11,
+      "category": "weapon",
+      "name": "水彩",
+      "nameEn": "Watercolor",
+      "image": "weapon-11-watercolor.webp",
+      "prompt": "水彩：透明叠色与湿边晕染，颜料流动与纸纹，柔和边缘与水渍感，清新透气的色彩层次，保留留白，避免厚重油画堆叠与数码硬边。",
+      "promptEn": "Watercolor: transparent washes and wet-edge blooms, pigment flow and paper grain, soft edges and water stains, airy layered color, keep whites, avoid thick oil buildup or hard digital edges."
+    },
+    {
+      "id": "weapon-oil-painting",
+      "index": 12,
+      "category": "weapon",
+      "name": "油画",
+      "nameEn": "Oil painting",
+      "image": "weapon-12-oil-painting.webp",
+      "prompt": "油画：厚涂笔触与可见肌理，油画颜料层叠，古典或印象派光色，丰富暗部与高光，画布纹理，艺术绘画感强，非照片滤镜。",
+      "promptEn": "Oil painting: impasto strokes and visible texture, layered oil paint, classical or impressionist light-color, rich shadows and highlights, canvas grain, painterly not a photo filter."
+    },
+    {
+      "id": "weapon-chinese-ink",
+      "index": 13,
+      "category": "weapon",
+      "name": "国风水墨",
+      "nameEn": "Chinese ink wash",
+      "image": "weapon-13-chinese-ink.webp",
+      "prompt": "国风水墨：墨色浓淡干湿变化，写意笔法与留白，宣纸晕染，青绿或墨韵气质，东方审美气韵，少繁复西式光影，避免彩色厚涂。",
+      "promptEn": "Chinese ink wash: graded ink wet/dry strokes, expressive brushwork and negative space, xuan-paper bleed, Eastern ink elegance, spare Western lighting, avoid heavy polychrome impasto."
+    },
+    {
+      "id": "weapon-minimalist",
+      "index": 14,
+      "category": "weapon",
+      "name": "极简设计",
+      "nameEn": "Minimalist design",
+      "image": "weapon-14-minimalist.webp",
+      "prompt": "极简设计：极简构图与大量留白，有限配色，干净几何与克制细节，现代设计海报感，信息层级清晰，去除装饰噪音。",
+      "promptEn": "Minimalist design: sparse composition and generous whitespace, limited palette, clean geometry, restrained detail, modern poster clarity, remove decorative noise."
+    },
+    {
+      "id": "weapon-logo-design",
+      "index": 15,
+      "category": "weapon",
+      "name": "Logo设计",
+      "nameEn": "Logo design",
+      "image": "weapon-15-logo-design.webp",
+      "prompt": "Logo设计：强识别图形符号，简洁黑白或少色，清晰负形与平衡，可缩放的标志感，线条肯定，避免复杂场景与写实照片细节。",
+      "promptEn": "Logo design: strong iconic mark, simple mono/few-color, clear negative space and balance, scalable emblem feel, decisive lines, avoid busy scenes and photoreal detail."
+    },
+    {
+      "id": "weapon-poster-design",
+      "index": 16,
+      "category": "weapon",
+      "name": "海报设计",
+      "nameEn": "Poster design",
+      "image": "weapon-16-poster-design.webp",
+      "prompt": "海报设计：大胆排版层级，强对比色块与视觉焦点，宣传海报构图，醒目标题区气质，图形化信息传达，杂志封面完成度。",
+      "promptEn": "Poster design: bold typographic hierarchy, strong contrast blocks and focal point, promotional poster composition, graphic communication, magazine-cover finish."
+    },
+    {
+      "id": "weapon-cyberpunk",
+      "index": 17,
+      "category": "weapon",
+      "name": "赛博朋克",
+      "nameEn": "Cyberpunk",
+      "image": "weapon-17-cyberpunk.webp",
+      "prompt": "赛博朋克：霓虹品红/青色光，夜城雨湿反光，高科技低生活氛围，体积光与故障美学，冷暖对比强烈，未来都市细节，避免白天清新风。",
+      "promptEn": "Cyberpunk: neon magenta/cyan glow, wet night-city reflections, high-tech low-life mood, volumetrics and glitch aesthetics, strong cool-warm contrast, avoid sunny fresh daylight."
+    },
+    {
+      "id": "weapon-steampunk",
+      "index": 18,
+      "category": "weapon",
+      "name": "蒸汽朋克",
+      "nameEn": "Steampunk",
+      "image": "weapon-18-steampunk.webp",
+      "prompt": "蒸汽朋克：黄铜齿轮与蒸汽管道，维多利亚工业美学，皮革/铆钉/仪表，暖褐铜绿色调，复古机械幻想，蒸汽烟雾氛围。",
+      "promptEn": "Steampunk: brass gears and steam pipes, Victorian industrial aesthetic, leather/rivets/gauges, warm copper-sepia palette, retro-mechanical fantasy, steam haze."
+    },
+    {
+      "id": "weapon-dark-fantasy",
+      "index": 19,
+      "category": "weapon",
+      "name": "黑暗幻想",
+      "nameEn": "Dark fantasy",
+      "image": "weapon-19-dark-fantasy.webp",
+      "prompt": "黑暗幻想：阴郁史诗氛围，低键光与浓重暗部，哥特/魔幻材质，冷雾与神秘辉光，沉重色彩，奇幻危险感，避免甜美卡通。",
+      "promptEn": "Dark fantasy: grim epic mood, low-key light and deep shadows, gothic/fantasy materials, cold mist and eerie glow, heavy palette, sense of peril, avoid cute cartoon sweetness."
+    },
+    {
+      "id": "weapon-game-concept",
+      "index": 20,
+      "category": "weapon",
+      "name": "游戏概念图",
+      "nameEn": "Game concept art",
+      "image": "weapon-20-game-concept.webp",
+      "prompt": "游戏概念图：游戏原画制作感，清晰可读的设计信息，氛围铺陈与材质暗示，概念设定完整性，数字绘画笔触，服务角色/场景设定表达。",
+      "promptEn": "Game concept art: production concept-art clarity, readable design info, mood and material indication, complete concept staging, digital-paint strokes for character/env design."
+    },
+    {
+      "id": "weapon-character-design",
+      "index": 21,
+      "category": "weapon",
+      "name": "角色设计",
+      "nameEn": "Character design",
+      "image": "weapon-21-character-design.webp",
+      "prompt": "角色设计：角色设定展示感，清晰的外形、服装与识别特征，造型完整可读，设计表气质，突出人物设计而非环境叙事堆砌。",
+      "promptEn": "Character design: character-sheet clarity, readable silhouette/costume/signature traits, complete posing for design read, focus on character design over busy environment story."
+    },
+    {
+      "id": "weapon-ui-icon",
+      "index": 22,
+      "category": "weapon",
+      "name": "UI图标",
+      "nameEn": "UI icon",
+      "image": "weapon-22-ui-icon.webp",
+      "prompt": "UI图标：圆角图标画幅与清晰符号，简洁可识别轮廓，适合界面图标的简化造型，统一光源与轻微质感，避免复杂透视场景。",
+      "promptEn": "UI icon: rounded-icon framing and clear glyph, simplified readable silhouette for UI, unified light and light material cue, avoid complex perspective scenes."
+    },
+    {
+      "id": "weapon-pixel-art",
+      "index": 23,
+      "category": "weapon",
+      "name": "像素艺术",
+      "nameEn": "Pixel art",
+      "image": "weapon-23-pixel-art.webp",
+      "prompt": "像素艺术：低分辨率像素格，限制色板，清晰像素簇与可选抖动，复古掌机/街机美学，无抗锯齿模糊，保持像素对齐。",
+      "promptEn": "Pixel art: low-res pixel grid, limited palette, clean pixel clusters (optional dither), retro handheld/arcade aesthetic, no antialias blur, keep pixel alignment."
+    },
+    {
+      "id": "weapon-vintage-poster",
+      "index": 24,
+      "category": "weapon",
+      "name": "复古海报",
+      "nameEn": "Vintage poster",
+      "image": "weapon-24-vintage-poster.webp",
+      "prompt": "复古海报：老印刷网点与做旧纸色，怀旧广告排版气质，褪色油墨与轻微磨损，复古旅行/宣传海报印刷质感。",
+      "promptEn": "Vintage poster: aged print halftone and paper tint, nostalgic ad layout, faded ink and light wear, retro travel/poster print texture."
+    },
+    {
+      "id": "weapon-pop-art",
+      "index": 25,
+      "category": "weapon",
+      "name": "波普艺术",
+      "nameEn": "Pop art",
+      "image": "weapon-25-pop-art.webp",
+      "prompt": "波普艺术：高饱和撞色，粗黑描边，半调网点，漫画网点与重复图形，安迪沃霍尔式波普冲击力，平面印刷感强。",
+      "promptEn": "Pop art: high-saturation clashing colors, thick black outlines, halftone dots, comic Ben-Day energy, Warhol-like pop punch, strong print flatness."
+    },
+    {
+      "id": "weapon-ukiyo-e",
+      "index": 26,
+      "category": "weapon",
+      "name": "浮世绘",
+      "nameEn": "Ukiyo-e",
+      "image": "weapon-26-ukiyo-e.webp",
+      "prompt": "浮世绘：日本浮世绘木版画，平面色块与流畅勾线，传统配色与波浪/云纹等纹样气质，透视扁平，版画边缘与套色感，非写实油画。",
+      "promptEn": "Ukiyo-e: Japanese woodblock print, flat color fields and flowing outlines, traditional palette and pattern vernacular, flattened perspective, print registration feel, not oil realism."
+    },
+    {
+      "id": "weapon-clay",
+      "index": 27,
+      "category": "weapon",
+      "name": "黏土风",
+      "nameEn": "Clay style",
+      "image": "weapon-27-clay.webp",
+      "prompt": "黏土风：黏土/橡皮泥雕塑质感，柔软圆角与指纹般微表面，定格动画光照，哑光黏土材质，可爱手作立体感。",
+      "promptEn": "Clay style: clay/plasticine sculpt look, soft rounded forms and fingerprint micro-surface, stop-motion lighting, matte clay material, handmade 3D charm."
+    },
+    {
+      "id": "weapon-low-poly",
+      "index": 28,
+      "category": "weapon",
+      "name": "Low Poly",
+      "nameEn": "Low poly",
+      "image": "weapon-28-low-poly.webp",
+      "prompt": "Low Poly：低多边形几何面，可见三角面与硬边法线，低模游戏/艺术低面数美学，简洁着色，避免高模细节与照片贴图。",
+      "promptEn": "Low poly: faceted low-polygon geometry, visible tris and hard normals, low-poly game/art aesthetic, simple shading, avoid high-poly detail and photo textures."
+    },
+    {
+      "id": "weapon-children-book",
+      "index": 29,
+      "category": "weapon",
+      "name": "儿童绘本",
+      "nameEn": "Children's picture book",
+      "image": "weapon-29-children-book.webp",
+      "prompt": "儿童绘本：温柔手绘绘本风，柔和色彩与友好造型，故事书插画笔触，温暖安全氛围，适合儿童读物的简洁可爱表达。",
+      "promptEn": "Children's picture book: gentle storybook illustration, soft colors and friendly shapes, warm safe mood, simple lovable expression for kids' books."
+    },
+    {
+      "id": "weapon-surrealism",
+      "index": 30,
+      "category": "weapon",
+      "name": "超现实艺术",
+      "nameEn": "Surrealist art",
+      "image": "weapon-30-surrealism.webp",
+      "prompt": "超现实艺术：梦境逻辑与超现实并置，非常规比例/空间，奇异象征物，迷离光感与诗意不安，超现实主义绘画气质，非日常纪实。",
+      "promptEn": "Surrealist art: dream logic and surreal juxtaposition, odd scale/space, uncanny symbols, hazy poetic unease, surrealist painting mood, not everyday documentary."
+    }
+  ]
+}

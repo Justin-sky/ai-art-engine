@@ -1,0 +1,71 @@
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { AssetType, ShotAudioRefKind, ShotGenRefRole, ShotStatus } from '@shared/domain'
+
+/** Typed helpers for common domain labels */
+export function useStudioI18n() {
+  const { t, te, locale } = useI18n()
+
+  function assetTypeLabel(type: AssetType | string): string {
+    const key = `asset.type.${type}`
+    return te(key) ? String(t(key)) : String(type)
+  }
+
+  function assetCreateName(type: AssetType): string {
+    const key = `asset.create.${type}`
+    return te(key) ? String(t(key)) : String(t('asset.create.default'))
+  }
+
+  function shotStatusLabel(status: ShotStatus | string): string {
+    const key = `shot.status.${status}`
+    return te(key) ? String(t(key)) : String(status)
+  }
+
+  function shotSizeLabel(size: string): string {
+    const key = `shot.shotSize.${size}`
+    return te(key) ? String(t(key)) : size
+  }
+
+  function refRoleLabel(role: ShotGenRefRole | string): string {
+    const key = `shot.refRole.${role}`
+    return te(key) ? String(t(key)) : String(role)
+  }
+
+  function audioKindLabel(kind: ShotAudioRefKind | string): string {
+    const key = `shot.audioKind.${kind}`
+    return te(key) ? String(t(key)) : String(kind)
+  }
+
+  function graphTypeLabel(typeId: string): string {
+    if (typeId.startsWith('asset.')) {
+      const kind = typeId.slice('asset.'.length)
+      const key = `graph.types.asset.${kind}`
+      if (te(key)) return String(t(key))
+      const typeName = assetTypeLabel(kind)
+      return `${typeName}${t('graph.nodeRole.generate')}`
+    }
+    const key = `graph.types.${typeId}`
+    return te(key) ? String(t(key)) : typeId
+  }
+
+  function graphTitleForAssetType(type: AssetType): string {
+    const key = `graph.titles.${type}`
+    return te(key) ? String(t(key)) : assetTypeLabel(type)
+  }
+
+  const localeRef = computed(() => locale.value)
+
+  return {
+    t,
+    te,
+    locale: localeRef,
+    assetTypeLabel,
+    assetCreateName,
+    shotStatusLabel,
+    shotSizeLabel,
+    refRoleLabel,
+    audioKindLabel,
+    graphTypeLabel,
+    graphTitleForAssetType
+  }
+}

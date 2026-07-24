@@ -1,0 +1,633 @@
+import { describe, expect, it } from 'vitest'
+import {
+  createNodeFromType,
+  createOutputGraphNode,
+  runGraph
+} from '../src/shared/graph'
+import { graphOutputNodeId } from '../src/shared/graph/types'
+
+const TEXT_OUTPUT_ID = graphOutputNodeId('text')
+const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
+
+describe('graph run', () => {
+  it('merges play.script text through screenplay processing into output notes', async () => {
+    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      params: { text: '开场独白' }
+    })
+    const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 })
+    const output = createOutputGraphNode('text', { x: 400, y: 0 }, {
+      id: TEXT_OUTPUT_ID
+    })
+
+    const result = await runGraph(
+      {
+        nodes: [text, screenplay, output],
+        edges: [
+          {
+            id: 'e1',
+            source: text.id,
+            target: screenplay.id,
+            sourcePort: 'out',
+            targetPort: 'in'
+          },
+          {
+            id: 'e2',
+            source: screenplay.id,
+            target: output.id,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      { stepDelayMs: 1 }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.contribution?.genRefs.length ?? 0).toBe(0)
+    expect(result.output?.notes.map((item) => item.text).join('\n')).toContain('开场独白')
+  })
+
+  it('preserves outside nodes when running to a target with preserveOutsideSubset', async () => {
+    const a = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      id: 'a',
+      params: { text: 'A' }
+    })
+    const b = createNodeFromType('asset.screenplay', { x: 120, y: 0 }, { id: 'b' })
+    const c = createNodeFromType('asset.screenplay', { x: 240, y: 80 }, { id: 'c' })
+    const updates: Array<{ id: string; status: string }> = []
+
+    await runGraph(
+      {
+        nodes: [a, b, c],
+        edges: [
+          {
+            id: 'e1',
+            source: 'a',
+            target: 'b',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'b',
+        preserveOutsideSubset: true,
+        onNodeUpdate: (id, state) => {
+          updates.push({ id, status: state.status })
+        }
+      }
+    )
+
+    expect(updates.some((u) => u.id === 'c' && u.status === 'skipped')).toBe(false)
+    expect(updates.some((u) => u.id === 'b' && u.status === 'done')).toBe(true)
+  })
+
+  it('generates screenplay text via generateText service and patches node', async () => {
+    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      params: { text: '草稿' }
+    })
+    const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
+      id: 'sp-1',
+      params: { text: '…', generateInstruction: '写成完整剧本' }
+    })
+    const patches: Array<{ id: string; text?: string; generatedCount?: number }> = []
+
+    const result = await runGraph(
+      {
+        nodes: [text, screenplay],
+        edges: [
+          {
+            id: 'e1',
+            source: text.id,
+            target: screenplay.id,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'sp-1',
+        preserveOutsideSubset: true,
+        generateText: async () => ({ text: '完整故事剧本正文', model: 'test' }),
+        onNodePatch: (nodeId, patch) => {
+          patches.push({
+            id: nodeId,
+            text: patch.params?.text,
+            generatedCount: patch.params?.generatedTexts?.length
+          })
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(patches).toEqual([
+      { id: 'sp-1', text: '完整故事剧本正文', generatedCount: 1 }
+    ])
+    expect(result.states['sp-1']?.outputs?.out).toMatchObject({
+      kind: 'texts',
+      items: [{ text: '完整故事剧本正文' }]
+    })
+  })
+
+  it('onlyTargetNode executes a single node without re-running upstream generateText', async () => {
+    const text = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      id: 't1',
+      params: { text: '草稿' }
+    })
+    const screenplay = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
+      id: 'sp',
+      params: { text: '旧文本', generateInstruction: '扩写' }
+    })
+    let calls = 0
+
+    const result = await runGraph(
+      {
+        nodes: [text, screenplay],
+        edges: [
+          {
+            id: 'e1',
+            source: 't1',
+            target: 'sp',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'sp',
+        onlyTargetNode: true,
+        preserveOutsideSubset: true,
+        generateText: async () => {
+          calls += 1
+          return { text: '仅当前节点生成', model: 'm' }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.order).toEqual(['sp'])
+    expect(calls).toBe(1)
+    expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'texts',
+      items: [{ text: '仅当前节点生成' }]
+    })
+  })
+
+  it('onlyTargetNode ignores empty prior text and re-resolves screenplay ref', async () => {
+    const assetId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const ref = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'ref',
+      assetId,
+      assetType: 'screenplay',
+      params: { assetRef: true }
+    })
+    const split = createNodeFromType('narrative.split', { x: 200, y: 0 }, {
+      id: 'split'
+    })
+    let promptSeen = ''
+
+    const result = await runGraph(
+      {
+        nodes: [ref, split],
+        edges: [
+          {
+            id: 'e-ref-split',
+            source: 'ref',
+            target: 'split',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'split',
+        onlyTargetNode: true,
+        preserveOutsideSubset: true,
+        priorNodeStates: {
+          ref: {
+            status: 'done',
+            outputs: { out: { kind: 'text', text: '' } }
+          }
+        },
+        resolveAssetText: async (id) => (id === assetId ? '缓存为空后重读正文' : undefined),
+        generateText: async ({ prompt }) => {
+          promptSeen = prompt
+          return {
+            text: JSON.stringify([
+              {
+                id: 'nu-1',
+                title: '开场',
+                order: 1,
+                summary: '登场',
+                dramaticFunction: '建置',
+                characters: [],
+                location: '',
+                sourceExcerpt: '',
+                emotionalBeat: '',
+                durationHint: '',
+                status: '未审核'
+              }
+            ]),
+            model: 'm'
+          }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(promptSeen).toContain('缓存为空后重读正文')
+  })
+
+  it('onlyTargetNode soft-snapshots screenplay asset ref text into narrative.split', async () => {
+    const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const ref = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'ref',
+      assetId,
+      assetType: 'screenplay',
+      params: { assetRef: true }
+    })
+    const split = createNodeFromType('narrative.split', { x: 200, y: 0 }, {
+      id: 'split'
+    })
+    let promptSeen = ''
+
+    const result = await runGraph(
+      {
+        nodes: [ref, split],
+        edges: [
+          {
+            id: 'e-ref-split',
+            source: 'ref',
+            target: 'split',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'split',
+        onlyTargetNode: true,
+        preserveOutsideSubset: true,
+        resolveAssetText: async (id) => (id === assetId ? '雨夜开场剧本正文' : undefined),
+        generateText: async ({ prompt }) => {
+          promptSeen = prompt
+          return {
+            text: JSON.stringify([
+              {
+                id: 'nu-1',
+                title: '开场',
+                order: 1,
+                summary: '登场',
+                dramaticFunction: '建置',
+                characters: ['林晓'],
+                location: '街道',
+                sourceExcerpt: '……',
+                emotionalBeat: '平静',
+                durationHint: '中',
+                status: '未审核'
+              }
+            ]),
+            model: 'm'
+          }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(promptSeen).toContain('雨夜开场剧本正文')
+    expect(result.states.split?.outputs?.out).toMatchObject({
+      kind: 'text'
+    })
+  })
+
+  it('skipCompletedNodes reuses done upstream and still runs the target', async () => {
+    const mid = createNodeFromType('play.script', { x: 120, y: 0 }, {
+      id: 'mid',
+      params: { text: '已缓存中游' }
+    })
+    const target = createNodeFromType('asset.screenplay', { x: 240, y: 0 }, {
+      id: 'sp',
+      params: { text: '旧目标', generateInstruction: '扩写目标' }
+    })
+    const called: string[] = []
+
+    const result = await runGraph(
+      {
+        nodes: [mid, target],
+        edges: [
+          {
+            id: 'e2',
+            source: 'mid',
+            target: 'sp',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'sp',
+        preserveOutsideSubset: true,
+        skipCompletedNodes: true,
+        priorNodeStates: {
+          mid: {
+            status: 'done',
+            outputs: { out: { kind: 'text', text: '已缓存中游' } }
+          }
+        },
+        generateText: async ({ prompt }) => {
+          called.push(prompt)
+          return { text: '新目标文本', model: 'm' }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.states.mid?.status).toBe('done')
+    expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'texts',
+      items: [{ text: '新目标文本' }]
+    })
+    expect(called.length).toBe(1)
+  })
+
+  it('screenplay output node passes text through without calling generateText twice', async () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'sp',
+      params: { text: '已有剧本' }
+    })
+    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
+      id: TEXT_OUTPUT_ID,
+      title: 'Screenplay output'
+    })
+    let generateCalls = 0
+
+    const result = await runGraph(
+      {
+        nodes: [screenplay, output],
+        edges: [
+          {
+            id: 'e1',
+            source: 'sp',
+            target: TEXT_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        generateText: async () => {
+          generateCalls += 1
+          return { text: '生成结果', model: 'x' }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(generateCalls).toBe(1)
+    expect(result.states[TEXT_OUTPUT_ID]?.outputs?.out).toMatchObject({
+      kind: 'output',
+      outputKind: 'text',
+      texts: [{ text: '生成结果' }]
+    })
+    expect(result.output?.texts?.map((n) => n.text).join('\n')).toContain('生成结果')
+    expect(result.output?.notes.map((n) => n.text).join('\n')).toContain('生成结果')
+  })
+
+  it('screenplay generate with saveRunText transmits relativePath without inline text', async () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'sp',
+      title: '雨夜',
+      params: { generateInstruction: '写剧本' }
+    })
+    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
+      id: TEXT_OUTPUT_ID
+    })
+    const files = new Map<string, string>()
+    const keys: string[] = []
+    const result = await runGraph(
+      {
+        nodes: [screenplay, output],
+        edges: [
+          {
+            id: 'e1',
+            source: 'sp',
+            target: TEXT_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        generateText: async () => ({
+          text: '剧本名：落盘测试\n\n落盘剧本正文',
+          model: 'x'
+        }),
+        saveRunText: async ({ content, key }) => {
+          keys.push(key)
+          const relativePath = `Texts/${key}.txt`
+          files.set(relativePath, content)
+          return relativePath
+        },
+        readRunText: async (relativePath) => files.get(relativePath) ?? ''
+      }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(keys).toEqual(['落盘测试_1'])
+    expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'texts',
+      items: [{ text: '', relativePath: 'Texts/落盘测试_1.txt' }]
+    })
+    expect(result.states[TEXT_OUTPUT_ID]?.outputs?.out).toMatchObject({
+      kind: 'output',
+      texts: [{ text: '', relativePath: 'Texts/落盘测试_1.txt' }],
+      notes: [{ kind: 'text', text: '剧本名：落盘测试\n\n落盘剧本正文' }]
+    })
+    expect(screenplay.params.generatedTexts?.[0]).toMatchObject({
+      text: '',
+      relativePath: 'Texts/落盘测试_1.txt'
+    })
+    // 节点本地编辑仍保留最近一次全文
+    expect(screenplay.params.text).toBe('剧本名：落盘测试\n\n落盘剧本正文')
+  })
+
+  it('screenplay generate file key falls back to host name when title line missing', async () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'sp',
+      title: '节点标题',
+      params: {
+        generateInstruction: '写剧本',
+        generatedTexts: [
+          { id: 't1', text: '', createdAt: '2026-01-01T00:00:00.000Z', relativePath: 'Texts/a.txt' }
+        ]
+      }
+    })
+    const keys: string[] = []
+    const result = await runGraph(
+      {
+        nodes: [screenplay],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'sp',
+        onlyTargetNode: true,
+        generateText: async () => ({ text: '第二版', model: 'x' }),
+        resolveHostAssetName: () => '雨夜剧本',
+        saveRunText: async ({ key }) => {
+          keys.push(key)
+          return `Texts/${key}.txt`
+        }
+      }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(keys).toEqual(['雨夜剧本_2'])
+  })
+
+  it('screenplay generate file key prefers title line from generated text', async () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'sp',
+      title: '节点标题',
+      params: { generateInstruction: '写剧本' }
+    })
+    const keys: string[] = []
+    const result = await runGraph(
+      {
+        nodes: [screenplay],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'sp',
+        onlyTargetNode: true,
+        generateText: async () => ({
+          text: '剧本名：潮汐\n\n第一场 外景 海边 夜\n浪打上岸。',
+          model: 'x'
+        }),
+        resolveHostAssetName: () => '雨夜剧本',
+        saveRunText: async ({ key }) => {
+          keys.push(key)
+          return `Texts/${key}.txt`
+        }
+      }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(keys).toEqual(['潮汐_1'])
+  })
+
+  it('screenplay output receives accumulated generatedTexts after multiple runs', async () => {
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'sp',
+      params: { generateInstruction: '写剧本' }
+    })
+    const output = createOutputGraphNode('text', { x: 200, y: 0 }, {
+      id: TEXT_OUTPUT_ID
+    })
+    const doc = {
+      nodes: [screenplay, output],
+      edges: [
+        {
+          id: 'e1',
+          source: 'sp',
+          target: TEXT_OUTPUT_ID,
+          sourcePort: 'out',
+          targetPort: 'in'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    let n = 0
+    const generateText = async () => {
+      n += 1
+      return { text: `剧本版本${n}`, model: 'x' }
+    }
+
+    const first = await runGraph(doc, { stepDelayMs: 1, generateText })
+    expect(first.ok, first.error).toBe(true)
+    // 把第一次落盘的 generatedTexts 写回节点，模拟第二次执行前的状态
+    const firstTexts =
+      first.states.sp?.outputs?.out?.kind === 'texts'
+        ? first.states.sp.outputs.out.items
+        : []
+    screenplay.params = {
+      ...screenplay.params,
+      generatedTexts: firstTexts.map((item) => ({
+        id: item.id || 't1',
+        text: item.text,
+        createdAt: item.createdAt
+      }))
+    }
+
+    const second = await runGraph(doc, { stepDelayMs: 1, generateText })
+    expect(second.ok, second.error).toBe(true)
+    expect(second.states.sp?.outputs?.out).toMatchObject({
+      kind: 'texts',
+      items: [{ text: '剧本版本1' }, { text: '剧本版本2' }]
+    })
+    expect(second.states[TEXT_OUTPUT_ID]?.outputs?.out).toMatchObject({
+      kind: 'output',
+      texts: [{ text: '剧本版本1' }, { text: '剧本版本2' }]
+    })
+  })
+
+  it('merges director deck images into output.images (not genRefs)', async () => {
+    const motion = createNodeFromType('asset.motion', { x: 0, y: 0 }, {
+      id: 'motion',
+      params: {
+        cameraShots: [
+          {
+            id: 'shot:0',
+            dataUrl: 'data:image/png;base64,dir',
+            createdAt: '2026-01-01T00:00:00.000Z'
+          }
+        ]
+      }
+    })
+    const output = createOutputGraphNode('image', { x: 240, y: 0 }, {
+      id: IMAGE_OUTPUT_ID,
+      title: 'Director deck output',
+      params: { outputKind: 'image', inputDataType: 'images' }
+    })
+
+    const result = await runGraph(
+      {
+        nodes: [motion, output],
+        edges: [
+          {
+            id: 'e1',
+            source: 'motion',
+            target: IMAGE_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      { stepDelayMs: 1 }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.contribution?.genRefs.length ?? 0).toBe(0)
+    expect(result.output?.images?.map((item) => item.dataUrl)).toEqual([
+      'data:image/png;base64,dir'
+    ])
+  })
+})

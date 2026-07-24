@@ -1,0 +1,318 @@
+:root,
+[data-theme='dark'] {
+  --bg: #141516;
+  --bg-panel: #1c1e21;
+  --bg-elevated: #25282c;
+  --bg-hover: #2a2f36;
+  --bg-input: #1a1c1f;
+  --border: #2e3238;
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --accent: #3d8bfd;
+  --accent-hover: #5a9dff;
+  --danger: #e35d6a;
+  --success: #3dd68c;
+  --warning: #f0b429;
+  --overlay: rgba(10, 12, 14, 0.45);
+  --panel-glass: rgba(28, 30, 33, 0.92);
+  --panel-inset: rgba(20, 22, 25, 0.72);
+  --scrollbar-thumb: #3a3f46;
+  --shadow: rgba(0, 0, 0, 0.45);
+  --radius: 6px;
+  --font: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'Cascadia Code', 'Consolas', monospace;
+  --graph-bg: #12151a;
+  --graph-viewport-bg: #181a1d;
+  --graph-grid-minor: rgba(255, 255, 255, 0.06);
+  --graph-grid-major: rgba(255, 255, 255, 0.14);
+  --graph-node-bg: #1e2228;
+  --graph-node-asset-bg: #1a1d22;
+  --graph-node-output-from: #1a2838;
+  --graph-node-processing-from: #1a2820;
+  --graph-preview-bg: #12151a;
+  --graph-text-preview-bg: #0e1218;
+  --graph-text-preview: #d5dae3;
+  --graph-instruction-bg: #161a1f;
+  --graph-port-bg: #1e2228;
+  --graph-port-in-bg: #2a2218;
+  --graph-run-banner-bg: #1a1e24;
+  --graph-float-bg: rgba(22, 26, 33, 0.94);
+  --graph-note-bg-from: #2a2618;
+  --graph-note-bg-to: #1e1c14;
+  --graph-note-preview-bg: #12110c;
+  --graph-note-text: #e8e0c8;
+  --director-sky: #121416;
+  --director-label-bg: rgba(0, 0, 0, 0.55);
+  --director-label-fg: #ffffff;
+  --number-spin-bg: #25282c;
+  --number-spin-bg-hover: #30343a;
+  --number-spin-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%239aa0a8' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  --number-spin-icon-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%23d6dbe0' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --bg: #f0f2f5;
+  --bg-panel: #ffffff;
+  --bg-elevated: #e8ebf0;
+  --bg-hover: #dfe3ea;
+  --bg-input: #ffffff;
+  --border: #d0d5dd;
+  --text: #1a1d21;
+  --text-muted: #5f6b7a;
+  --accent: #2f6bff;
+  --accent-hover: #1d4ed8;
+  --danger: #d64550;
+  --success: #1f9d61;
+  --warning: #c98a16;
+  --overlay: rgba(20, 28, 40, 0.28);
+  --panel-glass: rgba(255, 255, 255, 0.94);
+  --panel-inset: rgba(244, 246, 249, 0.95);
+  --scrollbar-thumb: #b8c0cc;
+  --shadow: rgba(21, 32, 51, 0.14);
+  --graph-bg: #e6e9ef;
+  --graph-viewport-bg: #f4f6f9;
+  --graph-grid-minor: rgba(20, 28, 40, 0.07);
+  --graph-grid-major: rgba(20, 28, 40, 0.14);
+  --graph-node-bg: #ffffff;
+  --graph-node-asset-bg: #f7f8fa;
+  --graph-node-output-from: #e8f1fb;
+  --graph-node-processing-from: #e8f5ee;
+  --graph-preview-bg: #f0f2f5;
+  --graph-text-preview-bg: #f7f8fa;
+  --graph-text-preview: #1a1d21;
+  --graph-instruction-bg: #ffffff;
+  --graph-port-bg: #ffffff;
+  --graph-port-in-bg: #fff6eb;
+  --graph-run-banner-bg: #e8ebf0;
+  --graph-float-bg: rgba(255, 255, 255, 0.94);
+  --graph-note-bg-from: #f7f1df;
+  --graph-note-bg-to: #efe8d2;
+  --graph-note-preview-bg: #faf6ea;
+  --graph-note-text: #3a3426;
+  --director-sky: #e8eaee;
+  --director-label-bg: rgba(255, 255, 255, 0.88);
+  --director-label-fg: #1a1d21;
+  --number-spin-bg: #e8ebf0;
+  --number-spin-bg-hover: #dfe3ea;
+  --number-spin-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%235f6b7a' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  --number-spin-icon-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%231a1d21' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+.director-stage-label {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--director-label-bg);
+  color: var(--director-label-fg);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  user-select: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+input,
+textarea,
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  outline: none;
+  width: 100%;
+}
+
+/* range 不能沿用上面的 padding/border，否则滑块左右到不了头 */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--range-pct, 0%),
+    var(--bg-hover) var(--range-pct, 0%),
+    var(--bg-hover) 100%
+  );
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+  cursor: pointer;
+}
+
+input[type='range']::-moz-range-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--bg-hover);
+}
+
+input[type='range']::-moz-range-progress {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+  cursor: pointer;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+input[type='range']:focus {
+  border: none;
+  outline: none;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 图工作流入队：飞向任务列表按钮 */
+.graph-task-flyer {
+  box-sizing: border-box;
+  max-width: 180px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(158, 197, 255, 0.45);
+  background: rgba(30, 40, 56, 0.96);
+  color: #9ec5ff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+[data-graph-task-anchor].graph-task-anchor-pulse {
+  animation: graph-task-anchor-pulse 0.38s ease-out;
+}
+
+@keyframes graph-task-anchor-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(61, 139, 253, 0.55);
+  }
+  40% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(61, 139, 253, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(61, 139, 253, 0);
+  }
+}

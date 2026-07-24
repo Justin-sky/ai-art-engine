@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scopes": {
+    "workflow": {
+      "addableNodeTypes": ["*"]
+    },
+    "shotWorkflow": {
+      "addableNodeTypes": ["*"]
+    },
+    "visual": {
+      "addableNodeTypes": ["*"]
+    },
+    "screenplayAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "directorAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "scriptAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "canvasAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "worldAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "narrativeAsset": {
+      "addableNodeTypes": ["*"]
+    },
+    "elementWorkflow": {
+      "addableNodeTypes": ["*"]
+    }
+  }
+}

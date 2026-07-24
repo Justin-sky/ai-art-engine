@@ -1,0 +1,60 @@
+{
+  "name": "aiartengine",
+  "version": "1.0.0",
+  "description": "AIArtEngine — local AI short-video creation studio",
+  "main": "./out/main/index.js",
+  "author": "AIArtEngine",
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/Justin-sky/aiartengine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Justin-sky/aiartengine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Justin-sky/aiartengine/issues"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "site": "npx --yes serve website -p 5174"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@volcengine/tos-sdk": "^2.9.1",
+    "axios": "^1.10.0",
+    "dockview-vue": "^7.0.2",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.9",
+    "fabric": "^6.7.0",
+    "gpt-tokenizer": "^3.4.0",
+    "jszip": "^3.10.1",
+    "pinia": "^3.0.3",
+    "three": "^0.185.1",
+    "vue": "^3.5.17",
+    "vue-i18n": "^11.4.6",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/node": "^22.15.32",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "electron": "^35.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^2.2.10"
+  }
+}

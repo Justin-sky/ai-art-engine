@@ -1,0 +1,35 @@
+appId: com.aiartengine.app
+productName: AIArtEngine
+publish:
+  provider: github
+  owner: Justin-sky
+  repo: aiartengine
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml}'
+  - '!{dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{*.code-workspace}'
+  - '!{.github,.git}'
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+win:
+  target:
+    - nsis
+  # 签名：CI 注入 WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD（.pfx base64）后自动签名
+mac:
+  target:
+    - dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # 公证：CI 在配置了 APPLE_* Secrets 时通过 --config.mac.notarize=true 开启
+linux:
+  target:
+    - AppImage

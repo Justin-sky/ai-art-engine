@@ -1,0 +1,339 @@
+<template>
+  <div class="camera-inspector" v-if="node">
+    <div class="head">
+      <span class="type">{{ t('graph.types.asset.motion') }}</span>
+      <h2>{{ node.title || t('graph.types.asset.motion') }}</h2>
+    </div>
+
+    <button type="button" class="link-btn" @click="openStage">{{ t('graph.inspector.camera.openStage') }}</button>
+    <p class="subhint">{{ t('director.stage.editInStage') }}</p>
+
+    <label>
+      {{ t('graph.inspector.displayName') }}
+      <input v-model="localTitle" @change="persist" />
+    </label>
+
+    <section class="out-images" :aria-label="t('graph.inspector.camera.outImages')">
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.camera.outImages') }}</span>
+        <span v-if="outImages.length" class="section-count">
+          {{ t('graph.inspector.camera.outImagesCount', { n: outImages.length }) }}
+        </span>
+      </div>
+      <p class="section-hint">{{ t('graph.inspector.camera.outImagesHint') }}</p>
+      <div v-if="!outImages.length" class="empty-shots">
+        {{ t('graph.inspector.camera.outImagesEmpty') }}
+      </div>
+      <div v-else class="shot-grid">
+        <button
+          v-for="(shot, index) in outImages"
+          :key="shot.id || `index:${index}`"
+          type="button"
+          class="shot-card"
+          :title="t('graph.selectImage.previewHint')"
+          @dblclick="openShotPreview(shot)"
+        >
+          <img
+            :src="shotBlobSrc[shot.id || `index:${index}`] || shot.dataUrl"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <span class="shot-index">{{ index + 1 }}</span>
+        </button>
+      </div>
+    </section>
+  </div>
+  <div v-else class="camera-inspector empty">{{ t('graph.inspector.camera.empty') }}</div>
+</template>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { resolveNodeType, type GraphImageItem } from '@shared/graph'
+import { useDirectorPreview } from '../features/director/directorPreview'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { useStudioI18n } from '../composables/useStudioI18n'
+import { useEditorKernel } from '../editor/kernel'
+import { openFullImagePreview } from '../features/media/openFullImagePreview'
+
+const { t } = useStudioI18n()
+const editor = useEditorKernel()
+const preview = useDirectorPreview()
+
+const localTitle = ref('')
+const shotBlobCache = new Map<string, { dataUrl: string; blobUrl: string }>()
+const shotBlobSrc = ref<Record<string, string>>({})
+
+const graphSelection = computed(() => {
+  const selection = editor.selection.current.value
+  return selection.kind === 'graph.node' ? selection : null
+})
+
+const node = computed(() => {
+  const selection = graphSelection.value
+  const id = selection?.id
+  if (!id) return null
+  const n = graphEditorHosts.getNode(selection.hostId, id)
+  if (!n || resolveNodeType(n)?.inspector !== 'camera') return null
+  return n
+})
+
+/** 输出端口 images：优先运行态，其次节点上的站位图 / 预览图 */
+const outImages = computed<GraphImageItem[]>(() => {
+  const current = node.value
+  const selection = graphSelection.value
+  if (!current || !selection) return []
+
+  const runOut = graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.out
+  if (runOut?.kind === 'images') {
+    const live = runOut.items.filter(
+      (item) => item.dataUrl?.trim() || item.relativePath?.trim()
+    )
+    if (live.length) return live
+  }
+
+  const shots = (current.params.cameraShots ?? [])
+    .filter((shot) => shot.dataUrl?.trim() || shot.relativePath?.trim())
+    .map((shot) => ({
+      id: shot.id,
+      dataUrl: shot.dataUrl || '',
+      createdAt: shot.createdAt,
+      relativePath: shot.relativePath
+    }))
+  if (shots.length) return shots
+
+  const previewUrl = current.params.previewDataUrl?.trim()
+  const previewRel = current.params.previewRelativePath?.trim()
+  if (previewUrl || previewRel) {
+    return [{ dataUrl: previewUrl || '', relativePath: previewRel }]
+  }
+  return []
+})
+
+watch(
+  node,
+  (n) => {
+    if (!n) return
+    localTitle.value = n.title ?? ''
+  },
+  { immediate: true }
+)
+
+function dataUrlToBlobUrl(dataUrl: string): string {
+  const comma = dataUrl.indexOf(',')
+  if (comma < 0) return dataUrl
+  const header = dataUrl.slice(0, comma)
+  const payload = dataUrl.slice(comma + 1)
+  const mime = /data:(.*?);/i.exec(header)?.[1] ?? 'image/jpeg'
+  const binary = atob(payload)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return URL.createObjectURL(new Blob([bytes], { type: mime }))
+}
+
+function shotKey(shot: GraphImageItem, index: number): string {
+  return shot.id || `index:${index}`
+}
+
+async function syncShotBlobUrls(): Promise<void> {
+  const shots = outImages.value
+  const alive = new Set(shots.map((shot, index) => shotKey(shot, index)))
+  for (const [id, entry] of shotBlobCache) {
+    if (alive.has(id)) continue
+    URL.revokeObjectURL(entry.blobUrl)
+    shotBlobCache.delete(id)
+  }
+  const next: Record<string, string> = {}
+  await Promise.all(
+    shots.map(async (shot, index) => {
+      const id = shotKey(shot, index)
+      const relativePath = shot.relativePath?.trim()
+      if (relativePath) {
+        try {
+          next[id] = await window.studio.getAssetPreviewUrl(relativePath)
+          return
+        } catch {
+          /* fall through */
+        }
+      }
+      const dataUrl = shot.dataUrl?.trim()
+      if (!dataUrl) return
+      const cached = shotBlobCache.get(id)
+      if (cached?.dataUrl === dataUrl) {
+        next[id] = cached.blobUrl
+        return
+      }
+      if (cached) URL.revokeObjectURL(cached.blobUrl)
+      const blobUrl = dataUrlToBlobUrl(dataUrl)
+      shotBlobCache.set(id, { dataUrl, blobUrl })
+      next[id] = blobUrl
+    })
+  )
+  shotBlobSrc.value = next
+}
+
+watch(outImages, () => void syncShotBlobUrls(), { immediate: true, deep: true })
+
+onBeforeUnmount(() => {
+  for (const entry of shotBlobCache.values()) URL.revokeObjectURL(entry.blobUrl)
+  shotBlobCache.clear()
+  shotBlobSrc.value = {}
+})
+
+function persist(): void {
+  const selection = graphSelection.value
+  const id = selection?.id
+  if (!id) return
+  graphEditorHosts.updateNode(selection.hostId, id, {}, localTitle.value.trim() || undefined)
+}
+
+function openStage(): void {
+  preview?.openStageView(node.value?.id)
+}
+
+function openShotPreview(shot: GraphImageItem): void {
+  void openFullImagePreview({
+    dataUrl: shot.dataUrl,
+    relativePath: shot.relativePath
+  })
+}
+</script>
+
+<style scoped>
+.camera-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  height: 100%;
+  overflow: auto;
+}
+
+.camera-inspector.empty {
+  color: var(--text-muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.head .type {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.head h2 {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.link-btn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.subhint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.out-images {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.section-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.section-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.empty-shots {
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shot-card {
+  position: relative;
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--graph-preview-bg);
+  cursor: zoom-in;
+}
+
+.shot-card:hover {
+  border-color: var(--accent);
+}
+
+.shot-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--graph-preview-bg);
+}
+
+.shot-index {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+}
+</style>

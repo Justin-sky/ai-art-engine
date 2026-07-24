@@ -1,0 +1,382 @@
+﻿import { ensureBuiltinNodeTypes } from './builtinState'
+import { createOutputGraphNode } from './create'
+import { getNodeTypeOrThrow } from './registry'
+import { isProcessingAssetNode } from './nodeRole'
+import { sanitizeGraphGroups } from './groups'
+import { canConnectNodes } from './ports'
+import { inferNodeTypeId, resolveNodeType } from './registry'
+import type { GraphAddScope } from './registry'
+import {
+  assetTypeToGraphScope,
+  createDefaultScopedGraph,
+  createScopeOutputNode,
+  createScopeSingletonNode,
+  ensureAssetEditorProcessingChain,
+  ensureNarrativeAssetDefaultChain,
+  ensureShotWorkflowDefaultChain,
+  getGraphScopeDefinition,
+  resolveScopeOutput
+} from './scopes'
+import type {
+  GraphDocument,
+  GraphEdge,
+  GraphNode,
+  GraphOutputKind,
+  GraphPersistedRunState,
+  NormalizeGraphOptions
+} from './types'
+import {
+  graphOutputNodeId,
+  graphOutputNodeIdForType,
+  isCanonicalGraphOutputNodeId
+} from './types'
+import { syncNodeAssetRefFields } from '../assetRef'
+import { sanitizePersistedRunStates } from './runStatePersist'
+
+export {
+  ASSET_DIRECTOR_OUTPUT_TITLE,
+  ASSET_SCREENPLAY_OUTPUT_TITLE,
+  SHOT_VISUAL_OUTPUT_TITLE
+} from './scopes'
+
+export function createDefaultGraph(options?: NormalizeGraphOptions): GraphDocument {
+  ensureBuiltinNodeTypes()
+  const kind: GraphOutputKind = options?.outputKind ?? 'video'
+  const title = options?.outputTitle ?? (kind === 'video' ? 'Shot video output' : undefined)
+  return {
+    nodes: [
+      createOutputGraphNode(kind, { x: 480, y: 160 }, {
+        id: options?.outputNodeId ?? graphOutputNodeId(kind),
+        title
+      })
+    ],
+    edges: [],
+    groups: [],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  }
+}
+
+function renameNodeIdInGraph(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates: Record<string, GraphPersistedRunState> | undefined,
+  fromId: string,
+  toId: string
+): void {
+  if (fromId === toId) return
+  if (nodes.some((n) => n.id === toId)) return
+  for (const node of nodes) {
+    if (node.id === fromId) node.id = toId
+  }
+  for (const edge of edges) {
+    if (edge.source === fromId) edge.source = toId
+    if (edge.target === fromId) edge.target = toId
+  }
+  if (runStates && fromId in runStates) {
+    runStates[toId] = runStates[fromId]!
+    delete runStates[fromId]
+  }
+}
+
+/**
+ * 将遗留 `shot-output` 及与当前 type/kind 不符的规范输出 id 校正为
+ * image-output / video-output / …。
+ */
+export function syncCanonicalOutputNodeIds(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates?: Record<string, GraphPersistedRunState>
+): void {
+  for (const node of nodes) {
+    if (node.category !== 'output') continue
+    if (!isCanonicalGraphOutputNodeId(node.id)) continue
+    const kind = node.params.outputKind ?? 'video'
+    const desired = graphOutputNodeIdForType(node.typeId, kind)
+    if (node.id === desired) continue
+    renameNodeIdInGraph(nodes, edges, runStates, node.id, desired)
+  }
+}
+
+function hydrateNode(raw: GraphNode): GraphNode {
+  const typeId = inferNodeTypeId(raw)
+  const def = resolveNodeType({ ...raw, typeId })
+  const params = { ...raw.params }
+  if (def?.category === 'output' && !params.outputKind) {
+    const fromDef = def.defaultParams().outputKind
+    const suffix = typeId.startsWith('output.') ? typeId.slice('output.'.length) : ''
+    const fromSuffix =
+      suffix === 'video' || suffix === 'image' || suffix === 'voice' || suffix === 'text'
+        ? (suffix as GraphOutputKind)
+        : undefined
+    params.outputKind = fromDef ?? fromSuffix ?? 'video'
+  }
+  const node: GraphNode = {
+    ...raw,
+    typeId,
+    category: def?.category ?? raw.category,
+    params,
+    position: { ...raw.position }
+  }
+  if (raw.size) node.size = { ...raw.size }
+  if (def?.assetType && !node.assetType) node.assetType = def.assetType
+  const synced = syncNodeAssetRefFields(node)
+  // 有 assetId 即视为引用节点；补齐 params.assetRef，避免检查器/执行误走加工路径
+  if (synced.category === 'asset' && synced.assetId && synced.params.assetRef !== true) {
+    return { ...synced, params: { ...synced.params, assetRef: true } }
+  }
+  return synced
+}
+
+function sanitizeEdges(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  scope: GraphAddScope
+): GraphEdge[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const seen = new Set<string>()
+  const next: GraphEdge[] = []
+  for (const edge of edges) {
+    const source = byId.get(edge.source)
+    const target = byId.get(edge.target)
+    if (!source || !target) continue
+    if (!canConnectNodes(source, target, {
+      scope,
+      sourcePort: edge.sourcePort,
+      targetPort: edge.targetPort
+    })) {
+      continue
+    }
+    const key = `${edge.source}:${edge.sourcePort ?? 'out'}->${edge.target}:${edge.targetPort ?? 'in'}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    next.push({
+      id: edge.id || `edge-${crypto.randomUUID()}`,
+      source: edge.source,
+      target: edge.target,
+      sourcePort: edge.sourcePort ?? 'out',
+      targetPort: edge.targetPort ?? 'in'
+    })
+  }
+  return next
+}
+
+function applyScopeOutput(
+  nodes: GraphNode[],
+  scope: GraphAddScope,
+  assetType?: string | null
+): void {
+  const output = resolveScopeOutput(scope, assetType)
+  const targetTypeId = `output.${output.kind}` as const
+  for (const node of nodes) {
+    if (node.category !== 'output') continue
+    node.params = {
+      ...node.params,
+      outputKind: output.kind,
+      ...(output.inputDataType ? { inputDataType: output.inputDataType } : {})
+    }
+    node.typeId = targetTypeId
+    if (output.title) node.title = output.title
+  }
+}
+
+function ensureScopeSingletons(nodes: GraphNode[], scope: GraphAddScope): void {
+  const def = getGraphScopeDefinition(scope)
+  let index = 0
+  for (const typeId of def.ensureSingletonTypeIds ?? []) {
+    // 分镜 / 世界 / 叙事链仅新建图时创建；不向旧工程补插（删除后保持）
+    if (
+      typeId === 'script.shotSplit' ||
+      typeId === 'script.shotTable' ||
+      typeId === 'script.shotEditor' ||
+      typeId === 'world.extract' ||
+      typeId === 'world.table' ||
+      typeId === 'world.editor' ||
+      typeId === 'narrative.split' ||
+      typeId === 'narrative.table' ||
+      typeId === 'narrative.editor' ||
+      typeId === 'output.narrative'
+    ) {
+      continue
+    }
+    const singletonId = getNodeTypeOrThrow(typeId).singletonId
+    if (singletonId && nodes.some((node) => node.id === singletonId)) continue
+    if (nodes.some((node) => node.typeId === typeId && (!singletonId || node.id === singletonId))) {
+      continue
+    }
+    nodes.unshift(createScopeSingletonNode(typeId, { x: 120, y: 80 + index * 160 }))
+    index += 1
+  }
+}
+
+function ensureDirectorProcessingDefaults(nodes: GraphNode[]): void {
+  for (const node of nodes) {
+    if (node.typeId !== 'asset.motion' || !isProcessingAssetNode(node)) continue
+    if (node.params.viewer) continue
+    node.params = {
+      ...node.params,
+      viewer: {
+        position: { x: 0, y: 2.2, z: 10 },
+        rotation: { x: (5.71 * Math.PI) / 180, y: Math.PI, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        target: { x: 0, y: 1.2, z: 0 },
+        fov: 50
+      }
+    }
+  }
+}
+
+function ensureScopeOutput(nodes: GraphNode[], scope: GraphAddScope, assetType?: string | null): void {
+  const scopeDef = getGraphScopeDefinition(scope)
+  if (scopeDef.ensureOutput === false) return
+  const output = resolveScopeOutput(scope, assetType)
+  const hasOutput = nodes.some((node) => node.category === 'output')
+  if (hasOutput) return
+  nodes.push(createScopeOutputNode(output, { x: 480, y: 160 }))
+}
+
+function migrateImageGenerateLegacyPorts(nodes: GraphNode[], edges: GraphEdge[]): void {
+  const imageProcessingIds = new Set(
+    nodes
+      .filter(
+        (node) =>
+          (node.typeId === 'asset.image' || node.assetType === 'image') &&
+          isProcessingAssetNode(node)
+      )
+      .map((node) => node.id)
+  )
+  for (const edge of edges) {
+    if (!imageProcessingIds.has(edge.target)) continue
+    const port = edge.targetPort ?? 'in'
+    if (port === 'in') edge.targetPort = 'in-image'
+  }
+}
+
+function finalizeGraph(
+  nodes: GraphNode[],
+  raw: GraphDocument,
+  scope: GraphAddScope
+): GraphDocument {
+  const edges = Array.isArray(raw.edges) ? raw.edges.map((e) => ({ ...e })) : []
+  const runStates = raw.runStates ? { ...raw.runStates } : undefined
+  syncCanonicalOutputNodeIds(nodes, edges, runStates)
+  migrateImageGenerateLegacyPorts(nodes, edges)
+  const sanitizedEdges = sanitizeEdges(nodes, edges, scope)
+  return {
+    nodes,
+    edges: sanitizedEdges,
+    groups: sanitizeGraphGroups({
+      nodes,
+      edges: sanitizedEdges,
+      groups: raw.groups,
+      viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 }
+    }),
+    viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 },
+    runStates: sanitizePersistedRunStates(
+      runStates,
+      nodes.map((node) => node.id)
+    )
+  }
+}
+
+/** 按作用域规范化图：过滤节点、校正输出、确保单例 */
+export function normalizeScopedGraph(
+  scope: GraphAddScope,
+  raw: GraphDocument | null | undefined,
+  options?: {
+    assetType?: string | null
+    hostAssetId?: string | null
+    hasMediaFile?: boolean
+  }
+): GraphDocument {
+  ensureBuiltinNodeTypes()
+  const scopeDef = getGraphScopeDefinition(scope)
+  const chainOptions = {
+    hostAssetId: options?.hostAssetId,
+    hasMediaFile: options?.hasMediaFile
+  }
+  if (!raw?.nodes?.length) {
+    return createDefaultScopedGraph(scope, options?.assetType, chainOptions)
+  }
+
+  const doc = {
+    ...raw,
+    nodes: raw.nodes.map((node) => ({ ...node }))
+  }
+
+  let nodes = doc.nodes.map(hydrateNode)
+  if (scopeDef.persistNode) {
+    nodes = nodes.filter(scopeDef.persistNode)
+  }
+
+  const edges = Array.isArray(doc.edges) ? doc.edges.map((edge) => ({ ...edge })) : []
+  if (scopeDef.coerceOutput) {
+    applyScopeOutput(nodes, scope, options?.assetType)
+  }
+  ensureScopeSingletons(nodes, scope)
+  if (scope === 'directorAsset') {
+    ensureDirectorProcessingDefaults(nodes)
+  }
+  ensureScopeOutput(nodes, scope, options?.assetType)
+
+  ensureAssetEditorProcessingChain(nodes, edges, scope, options?.assetType, chainOptions)
+  if (scope === 'shotWorkflow') {
+    ensureShotWorkflowDefaultChain(nodes, edges)
+  }
+  if (scope === 'narrativeAsset') {
+    ensureNarrativeAssetDefaultChain(nodes, edges)
+  }
+
+  return finalizeGraph(nodes, { ...doc, edges }, scope)
+}
+
+export function normalizeGraph(
+  raw: GraphDocument | null | undefined,
+  options?: NormalizeGraphOptions
+): GraphDocument {
+  ensureBuiltinNodeTypes()
+  const ensureOutput = options?.ensureOutput !== false
+  if (!raw?.nodes?.length) {
+    return createDefaultGraph(options)
+  }
+
+  const doc = {
+    ...raw,
+    nodes: raw.nodes.map((node) => ({ ...node }))
+  }
+
+  const hydrated = doc.nodes.map(hydrateNode)
+  const hasOutput = hydrated.some((n) => n.category === 'output')
+  const kind = options?.outputKind ?? 'video'
+  if (ensureOutput && !hasOutput) {
+    hydrated.push(
+      createOutputGraphNode(kind, { x: 480, y: 160 }, {
+        id: options?.outputNodeId ?? graphOutputNodeId(kind),
+        title: options?.outputTitle ?? 'Shot video output'
+      })
+    )
+  }
+
+  if (options?.outputKind) {
+    for (const node of hydrated) {
+      if (node.category !== 'output') continue
+      node.params = { ...node.params, outputKind: options.outputKind }
+      node.typeId = `output.${options.outputKind}`
+      if (options.outputTitle) node.title = options.outputTitle
+    }
+  }
+
+  return finalizeGraph(hydrated, doc, 'shotWorkflow')
+}
+
+/** 资产宿主：按资产类型校正输出节点语义 */
+export function normalizeAssetGraph(
+  raw: GraphDocument | null | undefined,
+  assetType?: string | null,
+  options?: { hostAssetId?: string | null; hasMediaFile?: boolean }
+): GraphDocument {
+  return normalizeScopedGraph(assetTypeToGraphScope(assetType), raw, {
+    assetType,
+    hostAssetId: options?.hostAssetId,
+    hasMediaFile: options?.hasMediaFile
+  })
+}

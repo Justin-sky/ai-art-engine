@@ -1,0 +1,695 @@
+import { computed, reactive, ref, shallowRef } from 'vue'
+import { defineStore } from 'pinia'
+import {
+  cloneGraphDocument,
+  collectUpstreamNodeIds,
+  findOutputNode,
+  getNodeType,
+  resolveNodeType,
+  runGraph,
+  topologicalSort,
+  type GraphAddScope,
+  type GraphDocument,
+  type GraphNode,
+  type GraphNodeParams,
+  type GraphNodeRunState,
+  type GraphNodeRunStatus,
+  type ShotCanvasGraphField
+} from '@shared/graph'
+import {
+  isDraftAssetId,
+  isDraftShotId,
+  normalizeProjectStyleImages,
+  resolveMediaOutputDir,
+  shotScriptAssetId,
+  type Shot
+} from '@shared/domain'
+import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
+import { persistAssetRecord } from '../composables/useAssetRecord'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
+import { resolveImageGenerateCapabilitiesForRun } from '../features/graph/model/imageGenerateCapabilities'
+import { resolveVideoGenerateCapabilitiesForRun } from '../features/graph/model/videoGenerateCapabilities'
+import {
+  resolveAssetImageUrl,
+  resolveAssetMediaDataUrl,
+  resolveGraphImageUrls
+} from '../features/graph/model/resolveGraphImageUrls'
+import { resolveAssetText } from '../features/media/resolveAssetText'
+import { enrichStyleImagesWithLibraryPrompts } from '../features/stylePresets/defaultLibrary'
+import { resolveStyleImageUrls } from '../features/stylePresets/resolveStyleImageUrls'
+import i18n from '../i18n'
+import { composeImageExpandCanvas } from '../features/graph/model/composeImageExpandCanvas'
+import { composeImageRedrawCanvas } from '../features/graph/model/composeImageRedrawCanvas'
+import { composeImageCropCanvas } from '../features/graph/model/composeImageCropCanvas'
+import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import {
+  prepareGraphDocumentForPersist
+} from '../features/graph/persistGraphRunOutputs'
+import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
+import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
+import { readGraphRunText } from '../features/graph/readGraphRunText'
+import { useDraftStore } from './drafts'
+import { useProjectStore } from './project'
+import { toPlain } from '../utils/toPlain'
+
+export type GraphTaskStatus = 'pending' | 'running' | 'done' | 'error' | 'stopped'
+
+export type GraphTaskTarget =
+  | {
+      kind: 'script-shot'
+      scriptAssetId: string
+      shotId: string
+      scope: GraphAddScope
+      canvasField: ShotCanvasGraphField
+      hostId: string
+    }
+  | {
+      kind: 'asset'
+      assetId: string
+      hostId: string
+    }
+
+export interface GraphTaskNodeSnapshot {
+  nodeId: string
+  typeId?: string
+  title: string
+  icon: string
+  status: GraphNodeRunStatus
+  error?: string
+}
+
+export interface GraphTask {
+  id: string
+  title: string
+  createdAt: number
+  status: GraphTaskStatus
+  message: string
+  target: GraphTaskTarget
+  order: string[]
+  nodes: GraphTaskNodeSnapshot[]
+  runStates: Record<string, GraphNodeRunState>
+}
+
+interface GraphTaskInternal extends GraphTask {
+  graph: GraphDocument
+  abort: AbortController
+  /** 入队时的工程会话；切换工程后禁止写回 */
+  sessionEpoch: number
+  discardWriteBack?: boolean
+}
+
+function nodeIcon(node: GraphNode): string {
+  const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
+  return def?.icon ?? '◆'
+}
+
+function nodeTitle(node: GraphNode): string {
+  const custom = node.title?.trim()
+  if (custom) return custom
+  const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
+  return def?.label ?? node.typeId ?? node.id
+}
+
+function buildOrder(graph: GraphDocument): string[] {
+  const target = findOutputNode(graph)
+  if (!target) return graph.nodes.map((n) => n.id)
+  const subset = collectUpstreamNodeIds(graph, target.id)
+  return topologicalSort(subset, graph.edges) ?? [...subset]
+}
+
+function snapshotNodes(graph: GraphDocument, order: string[]): GraphTaskNodeSnapshot[] {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  return order.map((id) => {
+    const node = byId.get(id)
+    return {
+      nodeId: id,
+      typeId: node?.typeId,
+      title: node ? nodeTitle(node) : id,
+      icon: node ? nodeIcon(node) : '◆',
+      status: 'idle' as GraphNodeRunStatus
+    }
+  })
+}
+
+function applyRunStateToNodes(
+  nodes: GraphTaskNodeSnapshot[],
+  runStates: Record<string, GraphNodeRunState>
+): void {
+  for (const item of nodes) {
+    const state = runStates[item.nodeId]
+    item.status = state?.status ?? 'idle'
+    item.error = state?.error
+  }
+}
+
+function taskTargetKey(target: GraphTaskTarget): string {
+  if (target.kind === 'asset') {
+    return `asset:${target.assetId}`
+  }
+  return `shot:${target.scriptAssetId}:${target.shotId}:${target.scope}:${target.canvasField}`
+}
+
+function isActiveStatus(status: GraphTaskStatus): boolean {
+  return status === 'pending' || status === 'running'
+}
+
+const MAX_COMPLETED_TASKS = 100
+
+export type EnqueueWorkflowResult =
+  | { ok: true; id: string }
+  | { ok: false; reason: 'duplicate' }
+
+export const useGraphTaskStore = defineStore('graphTasks', () => {
+  const activeTasks = ref<GraphTaskInternal[]>([])
+  const completedTasks = ref<GraphTaskInternal[]>([])
+  const dialogOpen = ref(false)
+  const dialogAnchor = shallowRef<HTMLElement | null>(null)
+  const tick = ref(0)
+
+  const tasks = computed(() => {
+    void tick.value
+    return activeTasks.value.map(({ abort: _a, graph: _g, ...publicTask }) => publicTask)
+  })
+  const completed = computed(() => {
+    void tick.value
+    return completedTasks.value.map(({ abort: _a, graph: _g, ...publicTask }) => publicTask)
+  })
+  const runningCount = computed(() => {
+    void tick.value
+    return activeTasks.value.filter((t) => isActiveStatus(t.status)).length
+  })
+
+  function bump(): void {
+    tick.value += 1
+  }
+
+  function hasActiveTaskForTarget(target: GraphTaskTarget): boolean {
+    const key = taskTargetKey(target)
+    return activeTasks.value.some((t) => taskTargetKey(t.target) === key)
+  }
+
+  function moveToCompleted(task: GraphTaskInternal): void {
+    const activeIdx = activeTasks.value.findIndex((t) => t.id === task.id)
+    if (activeIdx >= 0) {
+      activeTasks.value.splice(activeIdx, 1)
+    }
+    const completedIdx = completedTasks.value.findIndex((t) => t.id === task.id)
+    if (completedIdx >= 0) {
+      completedTasks.value.splice(completedIdx, 1)
+    }
+    completedTasks.value = [task, ...completedTasks.value].slice(0, MAX_COMPLETED_TASKS)
+    bump()
+  }
+
+  function openDialog(anchor?: HTMLElement | null): void {
+    dialogAnchor.value =
+      anchor ?? document.querySelector<HTMLElement>('[data-graph-task-anchor]')
+    dialogOpen.value = true
+  }
+
+  function closeDialog(): void {
+    dialogOpen.value = false
+    dialogAnchor.value = null
+  }
+
+  function removeTask(taskId: string): void {
+    const activeIdx = activeTasks.value.findIndex((t) => t.id === taskId)
+    if (activeIdx >= 0) {
+      const task = activeTasks.value[activeIdx]
+      if (isActiveStatus(task.status)) {
+        task.abort.abort()
+      }
+      activeTasks.value.splice(activeIdx, 1)
+      bump()
+      return
+    }
+    const completedIdx = completedTasks.value.findIndex((t) => t.id === taskId)
+    if (completedIdx < 0) return
+    completedTasks.value.splice(completedIdx, 1)
+    bump()
+  }
+
+  async function stopAndRemove(taskId: string): Promise<void> {
+    const task = activeTasks.value.find((t) => t.id === taskId)
+    if (!task) return
+    if (isActiveStatus(task.status)) {
+      task.abort.abort()
+      task.status = 'stopped'
+      task.message = 'stopped'
+      for (const node of task.nodes) {
+        if (node.status === 'pending' || node.status === 'running') {
+          node.status = 'error'
+          node.error = 'GRAPH_CANCELLED'
+          task.runStates[node.nodeId] = { status: 'error', error: 'GRAPH_CANCELLED' }
+        }
+      }
+      bump()
+      await writeBack(task)
+    }
+    moveToCompleted(task)
+  }
+
+  async function writeBack(task: GraphTaskInternal): Promise<void> {
+    if (task.discardWriteBack) return
+    const project = useProjectStore()
+    if (task.sessionEpoch !== project.sessionEpoch) return
+
+    const { document: graph, materializedStates } = await prepareGraphDocumentForPersist(
+      task.graph,
+      task.runStates,
+      {
+        hostAssetId:
+          task.target.kind === 'asset'
+            ? task.target.assetId
+            : task.target.scriptAssetId
+      }
+    )
+    // 同步内存 runStates 为物化后版本，便于后续增量重跑 / 预览
+    for (const key of Object.keys(task.runStates)) delete task.runStates[key]
+    Object.assign(task.runStates, materializedStates)
+    task.graph = graph
+
+    // 实时编辑器若仍打开，先同步 UI（含已物化 outputs）
+    graphEditorHosts.applyExternalGraph(task.target.hostId, graph)
+
+    if (task.target.kind === 'asset') {
+      const assetId = task.target.assetId
+      const drafts = useDraftStore()
+      const draft = drafts.getDraft(assetId)
+      const asset = project.assets.find((a) => a.id === assetId)
+      if (!draft && !asset) return
+      const prevParams = draft?.genParams ?? asset?.genParams ?? {}
+      await persistAssetRecord(assetId, {
+        genParams: { ...prevParams, graphJson: toPlain(graph) }
+      })
+      return
+    }
+
+    const { shotId, canvasField, scriptAssetId } = task.target
+    const shot =
+      project.shots.find((s) => s.id === shotId) ??
+      (isDraftAssetId(scriptAssetId)
+        ? useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId)
+        : null)
+    if (!shot) return
+
+    const next: Shot = {
+      ...shot,
+      canvas: {
+        ...shot.canvas,
+        [canvasField]: toPlain(graph)
+      }
+    }
+    project.persistShotLocal(next)
+    const ownerId = shotScriptAssetId(next)
+    if (ownerId && isDraftAssetId(ownerId)) return
+    if (isDraftShotId(next.id)) return
+    await project.persistShot(next)
+  }
+
+  function enqueueWorkflow(input: {
+    title: string
+    graph: GraphDocument
+    target: GraphTaskTarget
+  }): EnqueueWorkflowResult {
+    if (hasActiveTaskForTarget(input.target)) {
+      return { ok: false, reason: 'duplicate' }
+    }
+
+    const graph = cloneGraphDocument(input.graph)
+    const order = buildOrder(graph)
+    const abort = new AbortController()
+    const id = `graph-task-${crypto.randomUUID()}`
+    const task: GraphTaskInternal = reactive({
+      id,
+      title: input.title,
+      createdAt: Date.now(),
+      status: 'pending',
+      message: '',
+      target: input.target,
+      order,
+      nodes: snapshotNodes(graph, order),
+      runStates: {},
+      graph,
+      abort,
+      sessionEpoch: useProjectStore().sessionEpoch
+    }) as GraphTaskInternal
+
+    activeTasks.value = [task, ...activeTasks.value]
+    bump()
+    void runTask(task)
+    return { ok: true, id }
+  }
+
+  async function runTask(task: GraphTaskInternal): Promise<void> {
+    task.status = 'running'
+    bump()
+    const logBridge = createGraphRunLogBridge({
+      runId: task.id,
+      title: task.title,
+      hostId: task.target.hostId,
+      mode: 'task',
+      graph: task.graph,
+      startMessage: 'task'
+    })
+    try {
+      const result = await runGraph(task.graph, {
+        signal: task.abort.signal,
+        stepDelayMs: 100,
+        onNodeUpdate: (nodeId, state) => {
+          if (task.abort.signal.aborted) return
+          logBridge.onNodeUpdate(nodeId, state)
+          if (state.status === 'skipped') return
+          task.runStates[nodeId] = { ...state }
+          applyRunStateToNodes(task.nodes, task.runStates)
+          bump()
+        },
+        onNodePatch: (nodeId, patch) => {
+          if (task.abort.signal.aborted) return
+          const node = task.graph.nodes.find((n) => n.id === nodeId)
+          if (!node) return
+          if (patch.params) {
+            node.params = { ...node.params, ...patch.params } as GraphNodeParams
+          }
+          if (patch.title !== undefined) node.title = patch.title
+        },
+        saveRunMedia: (input) =>
+          saveGraphRunMediaForNode({
+            ...input,
+            hostAssetId:
+              task.target.kind === 'asset'
+                ? task.target.assetId
+                : task.target.scriptAssetId
+          }),
+        saveRunText: (input) =>
+          saveGraphRunTextForNode({
+            ...input,
+            hostAssetId:
+              task.target.kind === 'asset'
+                ? task.target.assetId
+                : task.target.scriptAssetId
+          }),
+        readRunText: readGraphRunText,
+        generateText: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            prompt: input.prompt,
+            system: input.system,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            imageCount: input.images?.length || undefined
+          }
+          try {
+            const value = await window.studio.generateText(input)
+            logBridge.recordApiCall({
+              kind: 'generateText',
+              request,
+              response: { text: value.text, model: value.model },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateText',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        generateImage: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            aspectRatio: input.aspectRatio,
+            resolution: input.resolution,
+            quality: input.quality,
+            n: input.n,
+            inputReferenceCount: input.inputReferences?.length || undefined
+          }
+          try {
+            const value = await window.studio.generateImage(input)
+            logBridge.recordApiCall({
+              kind: 'generateImage',
+              request,
+              response: { model: value.model, imageCount: value.images?.length ?? 0 },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateImage',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        generateVideo: async (input) => {
+          const startedAt = Date.now()
+          const request: {
+            prompt: string
+            model?: string
+            providerInstanceId?: string
+            aspectRatio?: string
+            resolution?: string
+            duration?: number
+            generateAudio?: boolean
+            inputReferenceCount?: number
+            tosUploads?: Array<{
+              sourceLabel: string
+              objectKey: string
+              bytes: number
+              urlPreview: string
+            }>
+          } = {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            aspectRatio: input.aspectRatio,
+            resolution: input.resolution,
+            duration: input.duration,
+            generateAudio: input.generateAudio,
+            inputReferenceCount: input.inputReferences?.length || undefined
+          }
+          try {
+            const project = useProjectStore()
+            const hostAssetId =
+              task.target.kind === 'asset'
+                ? task.target.assetId
+                : task.target.scriptAssetId
+            const hostAsset = hostAssetId
+              ? project.assets.find((a) => a.id === hostAssetId)
+              : null
+            const dirs = assetMediaHostDirs(hostAsset, project.folders)
+            const outputDir = resolveMediaOutputDir({
+              mediaOutputDir: input.outputDir,
+              hostRelativePath: dirs.hostRelativePath,
+              hostFolderDir: dirs.hostFolderDir,
+              hostAssetName: dirs.hostAssetName,
+              kind: 'video'
+            })
+            const value = await window.studio.generateVideo({ ...input, outputDir })
+            await project.scheduleRefreshLibrary()
+            if (value.tosUploads?.length) {
+              request.tosUploads = value.tosUploads.map((item) => ({
+                sourceLabel: item.sourceLabel,
+                objectKey: item.objectKey,
+                bytes: item.bytes,
+                urlPreview: item.url.slice(0, 120)
+              }))
+              for (const item of value.tosUploads) {
+                for (const log of item.logs) {
+                  logBridge.appendMessage(`[TOS] ${log.message}`, log.level)
+                }
+              }
+            }
+            logBridge.recordApiCall({
+              kind: 'generateVideo',
+              request,
+              response: {
+                model: value.model,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateVideo',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        generateSpeech: async (input) => {
+          const startedAt = Date.now()
+          const request = {
+            input: input.input,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            voice: input.voice,
+            name: input.name,
+            imageCount: input.images?.length
+          }
+          try {
+            const project = useProjectStore()
+            const hostAssetId =
+              task.target.kind === 'asset'
+                ? task.target.assetId
+                : task.target.scriptAssetId
+            const hostAsset = hostAssetId
+              ? project.assets.find((a) => a.id === hostAssetId)
+              : null
+            const dirs = assetMediaHostDirs(hostAsset, project.folders)
+            const outputDir = resolveMediaOutputDir({
+              mediaOutputDir: input.outputDir,
+              hostRelativePath: dirs.hostRelativePath,
+              hostFolderDir: dirs.hostFolderDir,
+              hostAssetName: dirs.hostAssetName,
+              kind: 'voice'
+            })
+            const value = await window.studio.generateSpeech({ ...input, outputDir })
+            await project.refreshAssets()
+            logBridge.recordApiCall({
+              kind: 'generateSpeech',
+              request,
+              response: {
+                model: value.model,
+                voice: value.voice,
+                assetId: value.assetId,
+                relativePath: value.relativePath
+              },
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            return value
+          } catch (err) {
+            logBridge.recordApiCall({
+              kind: 'generateSpeech',
+              request,
+              error: err instanceof Error ? err.message : String(err),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            })
+            throw err
+          }
+        },
+        resolveAssetGenParams: (assetId) => {
+          const project = useProjectStore()
+          return project.assets.find((asset) => asset.id === assetId)?.genParams as
+            | Record<string, unknown>
+            | undefined
+        },
+        resolveAssetName: (assetId) => {
+          const project = useProjectStore()
+          return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
+        },
+        resolveHostAssetName: () => {
+          if (task.target.kind !== 'asset') return undefined
+          const project = useProjectStore()
+          return (
+            project.assets.find((asset) => asset.id === task.target.assetId)?.name?.trim() ||
+            undefined
+          )
+        },
+        resolveAssetText,
+        resolveImageUrls: resolveGraphImageUrls,
+        resolveStyleImageUrls,
+        resolveProjectStyleImages: () =>
+          normalizeProjectStyleImages(useProjectStore().config?.styleImages),
+        enrichStyleImages: (images) =>
+          enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),
+        resolveImageGenerateCapabilities: resolveImageGenerateCapabilitiesForRun,
+        resolveVideoGenerateCapabilities: resolveVideoGenerateCapabilitiesForRun,
+        resolveAssetImageUrl,
+        resolveAssetMediaUrl: resolveAssetMediaDataUrl,
+        composeImageExpandCanvas,
+        composeImageRedrawCanvas,
+        composeImageCropCanvas,
+        composeImageGridCell
+      })
+
+      if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
+        task.status = 'stopped'
+        task.message = 'GRAPH_CANCELLED'
+        applyRunStateToNodes(task.nodes, task.runStates)
+        logBridge.endFromResult(result, { aborted: true })
+        bump()
+        await writeBack(task)
+        moveToCompleted(task)
+        return
+      }
+
+      // 合并引擎最终 states
+      for (const [id, state] of Object.entries(result.states)) {
+        if (state.status === 'skipped') continue
+        task.runStates[id] = { ...state }
+      }
+      applyRunStateToNodes(task.nodes, task.runStates)
+
+      if (result.ok) {
+        task.status = 'done'
+        task.message = 'ok'
+      } else {
+        task.status = 'error'
+        task.message = result.error ?? 'failed'
+      }
+      logBridge.endFromResult(result, { message: task.message })
+      bump()
+      await writeBack(task)
+      moveToCompleted(task)
+    } catch (error) {
+      if (task.abort.signal.aborted) {
+        task.status = 'stopped'
+        task.message = 'GRAPH_CANCELLED'
+        logBridge.endFromResult(null, { aborted: true })
+      } else {
+        task.status = 'error'
+        task.message = error instanceof Error ? error.message : String(error)
+        logBridge.endFromResult(null, { message: task.message })
+      }
+      applyRunStateToNodes(task.nodes, task.runStates)
+      bump()
+      await writeBack(task)
+      moveToCompleted(task)
+    }
+  }
+
+  function clearForProjectSwitch(): void {
+    for (const task of activeTasks.value) {
+      task.discardWriteBack = true
+      if (isActiveStatus(task.status)) {
+        task.abort.abort()
+        task.status = 'stopped'
+        task.message = 'stopped'
+      }
+    }
+    activeTasks.value = []
+    completedTasks.value = []
+    dialogOpen.value = false
+    dialogAnchor.value = null
+    bump()
+  }
+
+  return {
+    tasks,
+    completed,
+    dialogOpen,
+    dialogAnchor,
+    runningCount,
+    hasActiveTaskForTarget,
+    openDialog,
+    closeDialog,
+    enqueueWorkflow,
+    removeTask,
+    stopAndRemove,
+    clearForProjectSwitch
+  }
+})

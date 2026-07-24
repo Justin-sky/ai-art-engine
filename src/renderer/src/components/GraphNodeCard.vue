@@ -1,0 +1,2254 @@
+﻿<template>
+  <div
+    class="graph-node"
+    :class="{
+      selected,
+      output: node.category === 'output',
+      'asset-ref': isAssetRef,
+      'processing-node': isProcessingNode,
+      connecting: connecting,
+      'run-error': runStatus === 'error',
+      'run-running': runStatus === 'running',
+      'instruction-open': instructionOpen,
+      'preview-collapsed': previewCollapsed
+    }"
+    :data-node-id="node.id"
+    :style="{
+      left: `${node.position.x}px`,
+      top: `${node.position.y}px`,
+      width: `${width}px`,
+      height: `${height}px`
+    }"
+    @pointerdown.stop="onPointerDown"
+    @dragstart.prevent
+  >
+    <div class="node-head">
+      <button
+        type="button"
+        class="collapse-tri-btn"
+        :class="{ collapsed: previewCollapsed }"
+        :title="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        :aria-expanded="!previewCollapsed"
+        :aria-label="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        @pointerdown.stop
+        @click.stop="togglePreviewCollapsed"
+      >
+        <span class="collapse-tri" aria-hidden="true" />
+      </button>
+      <span v-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
+      <span v-else class="type-pill">{{ typeLabel }}</span>
+      <span v-if="isAssetRef" class="kind-pill">{{ typeLabel }}</span>
+      <input
+        v-if="editingTitle && !isAssetRef"
+        ref="titleInputEl"
+        v-model="titleDraft"
+        class="title-input"
+        @pointerdown.stop
+        @dblclick.stop
+        @blur="commitTitleEdit"
+        @keydown.enter.prevent="commitTitleEdit"
+        @keydown.esc.prevent="cancelTitleEdit"
+      />
+      <span
+        v-else
+        class="title"
+        :class="{ readonly: isAssetRef }"
+        :title="displayTitle"
+        @dblclick.stop="startTitleEdit"
+      >{{ displayTitle }}</span>
+      <div class="head-actions">
+        <span
+          v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
+          class="run-pill"
+          :class="runStatus"
+          :title="runError || runStatusLabel"
+        >
+          {{ runStatusLabel }}
+        </span>
+        <GraphNodeRunControl
+          v-if="hasInPort"
+          compact
+          :status="runStatus"
+          :is-running="isGraphRunning"
+          :blocked="isGraphRunning"
+          @toggle="emit('runToggle', node.id)"
+        />
+      </div>
+    </div>
+
+    <div
+      v-show="!previewCollapsed"
+      class="preview"
+      :class="{ 'has-text': !!textPreview, 'preview-icon-only': hideCardPreview }"
+      @dblclick.stop="onPreviewDblClick"
+    >
+      <div
+        v-if="hideCardPreview"
+        class="media-fallback preview-icon-fallback"
+        :title="scriptNodePreviewTitle"
+      >
+        <span class="icon">{{ typeIcon }}</span>
+        <span class="hint">{{ scriptNodePreviewTitle }}</span>
+      </div>
+
+      <template v-else>
+      <img
+        v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview"
+        :src="directorLivePreview"
+        alt=""
+        class="camera-live-preview"
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      />
+
+      <img
+        v-else-if="(isSelectImageNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
+        :src="selectImagePreview"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      />
+
+      <div v-else-if="textPreview" class="text-preview" :title="previewOpenHint">
+        <pre class="text-preview-body">{{ textPreview }}</pre>
+        <span class="text-preview-hint">{{ previewOpenHint }}</span>
+      </div>
+
+      <img
+        v-else-if="previewKind === 'image' && previewUrl"
+        :src="previewUrl"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      />
+
+      <video
+        v-else-if="previewKind === 'video' && previewUrl"
+        ref="videoEl"
+        :src="previewUrl"
+        :muted="mediaMuted"
+        :loop="mediaLoop"
+        preload="auto"
+        playsinline
+        draggable="false"
+        @play="onMediaPlay"
+        @pause="onMediaPause"
+        @ended="onMediaEnded"
+        @timeupdate="onMediaTimeUpdate"
+        @loadedmetadata="onMediaLoaded"
+        @durationchange="onMediaLoaded"
+        @mouseenter="onVideoMouseEnter"
+        @mouseleave="onVideoMouseLeave"
+        @error="onVideoError"
+      />
+
+      <div v-else-if="previewKind === 'voice'" class="media-fallback audio">
+        <span class="icon">{{ typeIcon }}</span>
+        <span v-if="!showMediaTransport || !previewUrl || mediaError" class="hint">{{
+          previewHint
+        }}</span>
+        <audio
+          v-if="previewUrl"
+          ref="audioEl"
+          :src="previewUrl"
+          :muted="mediaMuted"
+          :loop="mediaLoop"
+          preload="auto"
+          @play="onMediaPlay"
+          @pause="onMediaPause"
+          @ended="onMediaEnded"
+          @timeupdate="onMediaTimeUpdate"
+          @loadedmetadata="onMediaLoaded"
+          @durationchange="onMediaLoaded"
+          @error="onAudioError"
+        />
+      </div>
+
+      <div v-else class="media-fallback">
+        <span class="icon">{{ typeIcon }}</span>
+        <span class="hint">{{ previewHint }}</span>
+      </div>
+
+      <div
+        v-if="showMediaTransport && previewUrl && !mediaError"
+        class="transport"
+        @pointerdown.stop
+        @click.stop
+        @wheel.stop
+      >
+        <div class="transport-actions">
+          <button type="button" class="ctrl-btn" :title="t('graph.media.restart')" @click="seekToStart">
+            <span class="icon-restart" />
+          </button>
+          <button
+            type="button"
+            class="ctrl-btn primary"
+            :title="mediaPlaying ? t('graph.media.pause') : t('graph.media.play')"
+            @click="togglePlayback"
+          >
+            <span :class="{ pause: mediaPlaying, triangle: !mediaPlaying }" />
+          </button>
+          <div class="time-row inline">
+            <span>{{ formatTime(currentTime) }}</span>
+            <span>/</span>
+            <span>{{ formatTime(duration) }}</span>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <input
+            ref="progressInput"
+            class="progress"
+            type="range"
+            min="0"
+            max="1000"
+            step="1"
+            :value="progressValue"
+            @input="onSeekInput"
+            @change="onSeekChange"
+          />
+        </div>
+      </div>
+
+      <span v-if="mediaError" class="media-error">{{ mediaErrorText }}</span>
+      </template>
+    </div>
+
+    <div
+      v-if="instructionOpen && instructionKind && hostId"
+      class="instruction-panel"
+      @pointerdown.stop
+      @dblclick.stop
+      @wheel.stop
+    >
+      <div class="instruction-panel-label">{{ t('graph.inspector.generate.instruction') }}</div>
+      <GraphInstructionMentionEditor
+        v-model="instruction"
+        :host-id="hostId"
+        :node-id="node.id"
+        :preset-kind="instructionKind"
+        :rows="5"
+        :placeholder="instructionPlaceholder"
+        @change="persistInstruction"
+        @expand="openInstructionDialog"
+      >
+        <template #footer>
+          <InstructionModelSelect
+            v-model="selectedModelKey"
+            :options="modelOptions"
+            :title="instructionModelTitle"
+            :empty-label="t('graph.inspector.generate.noModels')"
+            @change="persistGenerateModel"
+          />
+          <ImageGenerateParamsSelect
+            v-if="showImageGenerateParams"
+            v-model="imageGenerateParams"
+            :model-key="selectedModelKey"
+            @change="persistImageGenerateParams"
+          />
+          <VideoGenerateParamsSelect
+            v-if="showVideoGenerateParams"
+            v-model="videoGenerateParams"
+            :model-key="selectedModelKey"
+            :hide-frame-mode="instructionKind === 'lipSync'"
+            @change="persistVideoGenerateParams"
+          />
+        </template>
+      </GraphInstructionMentionEditor>
+      <GraphInstructionEditorDialog
+        v-if="instructionDialogMounted"
+        :open="instructionDialogOpen"
+        v-model="instruction"
+        :host-id="hostId"
+        :node-id="node.id"
+        :preset-kind="instructionKind"
+        :placeholder="instructionPlaceholder"
+        @change="persistInstruction"
+        @close="instructionDialogOpen = false"
+      />
+    </div>
+
+    <div
+      v-for="(port, index) in inPorts"
+      :key="`in-${port.id}`"
+      class="port-wrap in"
+      :style="portWrapStyle(inPorts.length, index)"
+    >
+      <span class="port-type">{{ inPortTypeLabel(port) }}</span>
+      <button
+        type="button"
+        class="port in"
+        :data-port-id="port.id"
+        :title="inPortTitle(port)"
+        @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
+      />
+      <span
+        v-if="shouldShowPortLimitBadge(port)"
+        class="port-limit"
+      >{{ portLimitBadge(port) }}</span>
+    </div>
+    <div
+      v-for="(port, index) in outPorts"
+      :key="`out-${port.id}`"
+      class="port-wrap out"
+      :style="portWrapStyle(outPorts.length, index)"
+    >
+      <button
+        type="button"
+        class="port out"
+        :data-port-id="port.id"
+        :title="`${t('graph.port.outTitle')} · ${portTypeLabel(port.dataType)}`"
+        @pointerdown.stop.prevent="onOutPortDown(port.id, $event)"
+      />
+      <span class="port-type">{{ portTypeLabel(port.dataType) }}</span>
+    </div>
+
+    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
+import GraphNodeRunControl from './GraphNodeRunControl.vue'
+import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
+import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
+import InstructionModelSelect from './InstructionModelSelect.vue'
+import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
+import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import {
+  loadGenerateModelOptions,
+  parseModelKey,
+  preferredModelKey,
+  type GenerateModelModality,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
+import { loadImageGenerateCapabilities } from '../features/graph/model/imageGenerateCapabilities'
+import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenerateCapabilities'
+import {
+  ASSET_TYPE_ICONS,
+  assetDisplayIcon,
+  isSoundAsset,
+  resolveGenerateStyleImages,
+  type AssetInfo
+} from '@shared/domain'
+import {
+  VIDEO_FIRST_FRAME_PORT_ID,
+  VIDEO_LAST_FRAME_PORT_ID,
+  deductReservedImageSlots,
+  formatDurationRange,
+  formatPortLimitBadge,
+  getGraphScopeDefinition,
+  getNodePorts,
+  getNodeSize,
+  nodePortYRatio,
+  GraphPortType,
+  imageGenerateParamsToNodePatch,
+  isNodeTextCapable,
+  isAssetRefNode,
+  isProcessingAssetNode,
+  isVideoFramePortId,
+  isDirectorProcessingNode,
+  isScriptShotEditorNode,
+  isScriptShotSplitNode,
+  isScriptShotTableNode,
+  isWorldEditorNode,
+  isWorldExtractNode,
+  isWorldTableNode,
+  isNarrativeSplitNode,
+  isNarrativeTableNode,
+  isNarrativeEditorNode,
+  isNarrativeOutputNode,
+  isSelectImageNode,
+  isSelectVideoNode,
+  isSelectScreenplayNode,
+  isMultiAngleEditorNode,
+  isLightingEditorNode,
+  isPortraitTextureEditorNode,
+  isEmotionEditorNode,
+  isUpscaleEditorNode,
+  isLipSyncNode,
+  isExpandEditorNode,
+  isRedrawEditorNode,
+  isEraseEditorNode,
+  isMatteEditorNode,
+  isCropEditorNode,
+  isGridSplitEditorNode,
+  portLimitMaxForDataType,
+  readImageGenerateParamsFromNode,
+  readVideoGenerateParamsFromNode,
+  resolveNodeTextContent,
+  shouldShowPortLimitBadge as shouldShowPortLimitBadgeShared,
+  videoGenerateParamsToNodePatch,
+  type GraphNode,
+  type GraphPortDataType,
+  type GraphPortDef,
+  type GraphNodeRunState,
+  type GraphNodeRunStatus,
+  type ImageGenerateParams,
+  type InstructionPresetKind,
+  type VideoGenerateParams,
+  type VideoGeneratePortLimits
+} from '@shared/graph'
+import { useStudioI18n } from '../composables/useStudioI18n'
+import { useGraphScope } from '../composables/useGraphScope'
+import { useDirectorPreview } from '../features/director/directorPreview'
+import { useScriptPreview } from '../features/script/scriptPreview'
+import { useWorldEditor } from '../features/world/worldEditor'
+import { useWorldTable } from '../features/world/worldTable'
+import { useNarrativeEditor } from '../features/narrative/narrativeEditor'
+import { useNarrativeTable } from '../features/narrative/narrativeTable'
+import { isAudioFilePath, isVideoFilePath } from '@shared/import'
+import {
+  resolveAssetFileUrl,
+  resolveAssetPreviewUrl
+} from '../features/media/assetUrlCache'
+import { graphPreviewLoadScheduler } from '../features/media/previewLoadScheduler'
+import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
+import { openFullImagePreview } from '../features/media/openFullImagePreview'
+import { useProjectStore } from '../stores/project'
+
+const { t, assetTypeLabel, graphTypeLabel } = useStudioI18n()
+const project = useProjectStore()
+const graphScope = useGraphScope()
+const directorPreview = useDirectorPreview()
+const scriptPreview = useScriptPreview()
+const worldEditor = useWorldEditor()
+const worldTable = useWorldTable()
+const narrativeTable = useNarrativeTable()
+const narrativeEditor = useNarrativeEditor()
+const previewVisibility = inject(graphPreviewVisibilityKey, null)
+
+const previewInViewport = computed(() => {
+  if (!previewVisibility) return true
+  // 触达 revision，保证视口变化时重算
+  void previewVisibility.revision.value
+  return previewVisibility.visibleNodeIds.value.has(props.node.id)
+})
+
+const previewPriority = computed(() => (props.selected ? 100 : 10))
+
+let previewLoadCancel: (() => void) | null = null
+let selectPreviewCancel: (() => void) | null = null
+let directorPreviewCancel: (() => void) | null = null
+
+function cancelPreviewLoads(): void {
+  previewLoadCancel?.()
+  previewLoadCancel = null
+  selectPreviewCancel?.()
+  selectPreviewCancel = null
+  directorPreviewCancel?.()
+  directorPreviewCancel = null
+}
+
+const props = defineProps<{
+  node: GraphNode
+  selected: boolean
+  connecting?: boolean
+  asset?: AssetInfo | null
+  runStatus?: GraphNodeRunStatus
+  runError?: string
+  runState?: GraphNodeRunState | null
+  isGraphRunning?: boolean
+  hostId?: string
+}>()
+
+const emit = defineEmits<{
+  dragStart: [nodeId: string, event: PointerEvent]
+  outPortDown: [nodeId: string, portId: string, event: PointerEvent]
+  inPortDown: [nodeId: string, portId: string, event: PointerEvent]
+  textOpen: [nodeId: string]
+  textsOpen: [nodeId: string]
+  resizeStart: [nodeId: string, event: PointerEvent]
+  titleChange: [nodeId: string, title: string]
+  runToggle: [nodeId: string]
+  selectImageOpen: [nodeId: string]
+  selectVideoOpen: [nodeId: string]
+  selectTextOpen: [nodeId: string]
+  multiAngleOpen: [nodeId: string]
+  lightingOpen: [nodeId: string]
+  portraitTextureOpen: [nodeId: string]
+  emotionOpen: [nodeId: string]
+  upscaleOpen: [nodeId: string]
+  expandOpen: [nodeId: string]
+  redrawOpen: [nodeId: string]
+  eraseOpen: [nodeId: string]
+  matteOpen: [nodeId: string]
+  cropOpen: [nodeId: string]
+  gridSplitOpen: [nodeId: string]
+}>()
+
+const audioEl = ref<HTMLAudioElement | null>(null)
+const videoEl = ref<HTMLVideoElement | null>(null)
+const progressInput = ref<HTMLInputElement | null>(null)
+const previewUrl = ref('')
+const mediaPlaying = ref(false)
+const mediaError = ref(false)
+const currentTime = ref(0)
+const duration = ref(0)
+const seeking = ref(false)
+const editingTitle = ref(false)
+const titleDraft = ref('')
+const titleInputEl = ref<HTMLInputElement | null>(null)
+const instructionOpen = ref(false)
+/** 首次展开大窗后再挂载，避免双击打开指令面板时顺带创建 Dialog */
+const instructionDialogMounted = ref(false)
+const instructionDialogOpen = ref(false)
+const instruction = ref('')
+const modelOptions = ref<GenerateModelOption[]>([])
+const selectedModelKey = ref('')
+const imageGenerateParams = ref<ImageGenerateParams>(
+  readImageGenerateParamsFromNode(props.node.params)
+)
+const videoGenerateParams = ref<VideoGenerateParams>(
+  readVideoGenerateParamsFromNode(props.node.params)
+)
+/** 当前图片模型参考图上限；非图片生成时为 null（角标用 *） */
+const imageMaxInputReferences = ref<number | null>(null)
+/** 视频生成节点端口限额（含时长） */
+const videoPortLimits = ref<VideoGeneratePortLimits | null>(null)
+
+const nodeSize = computed(() => getNodeSize(props.node))
+const nodePorts = computed(() => getNodePorts(props.node))
+const inPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'in'))
+const outPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'out'))
+const hasInPort = computed(() => inPorts.value.length > 0)
+
+function portTypeLabel(dataType: GraphPortDataType): string {
+  return t(`graph.port.types.${dataType}`)
+}
+
+function inPortTypeLabel(port: GraphPortDef): string {
+  if (port.id === VIDEO_FIRST_FRAME_PORT_ID) return t('graph.port.firstFrame')
+  if (port.id === VIDEO_LAST_FRAME_PORT_ID) return t('graph.port.lastFrame')
+  if (
+    port.id === 'in-image' &&
+    (props.node.typeId === 'asset.video' || props.node.typeId === 'video.lipSync') &&
+    (isProcessingAssetNode(props.node) || props.node.typeId === 'video.lipSync')
+  ) {
+    return t('graph.port.referenceImage')
+  }
+  return portTypeLabel(port.dataType)
+}
+
+function portWrapStyle(count: number, index: number): Record<string, string> {
+  // 与 getNodePortCenter 同源：在标题栏下方 body 区排布，避免盖住标题
+  const pct = nodePortYRatio(index, count, height.value) * 100
+  return { top: `${pct}%` }
+}
+const width = computed(() => nodeSize.value.w)
+const height = computed(() => nodeSize.value.h)
+
+const isAssetRef = computed(() => isAssetRefNode(props.node))
+const isProcessingNode = computed(() => isProcessingAssetNode(props.node))
+const isScreenplayOutputNode = computed(
+  () =>
+    props.node.category === 'output' &&
+    !isNarrativeOutputNode(props.node) &&
+    (props.node.typeId === 'output.text' || props.node.params.outputKind === 'text')
+)
+const previewCollapsed = computed(() => props.node.params.previewCollapsed === true)
+
+function togglePreviewCollapsed(): void {
+  if (!props.hostId) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    previewCollapsed: !previewCollapsed.value
+  })
+}
+
+/**
+ * 支持节点下方生成指令面板：
+ * - 生成节点：剧本 / 图片 / 视频 / 声音 / 全景
+ * - 工具节点：图片反推提示词（对齐图片生成）/ 提示词优化（对齐剧本生成）
+ */
+const instructionKind = computed((): InstructionPresetKind | null => {
+  switch (props.node.typeId) {
+    case 'image.toPrompt':
+      return 'toPrompt'
+    case 'prompt.optimize':
+      return 'optimize'
+    case 'script.shotSplit':
+      return 'shotSplit'
+    case 'world.extract':
+      return 'worldExtract'
+    case 'narrative.split':
+      return 'narrativeSplit'
+    case 'asset.screenplay':
+      return isProcessingNode.value ? 'screenplay' : null
+    case 'asset.image':
+      return isProcessingNode.value ? 'image' : null
+    case 'asset.video':
+      return isProcessingNode.value ? 'video' : null
+    case 'video.lipSync':
+      return 'lipSync'
+    case 'asset.voice':
+      return isProcessingNode.value ? 'voice' : null
+    default:
+      return null
+  }
+})
+
+const portLimitKind = computed((): 'image' | 'video' | null => {
+  if (instructionKind.value === 'image') return 'image'
+  if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
+  return null
+})
+
+/** 画面风格参考图占用图片输入口槽位 */
+const styleImageSlotCount = computed(() => {
+  if (portLimitKind.value !== 'image' && portLimitKind.value !== 'video') return 0
+  return resolveGenerateStyleImages(
+    {
+      styleImagesUseGlobal: props.node.params.styleImagesUseGlobal,
+      styleImages: props.node.params.styleImages
+    },
+    project.config?.styleImages
+  ).length
+})
+
+function shouldShowPortLimitBadge(port: GraphPortDef): boolean {
+  return portLimitKind.value != null && shouldShowPortLimitBadgeShared(port)
+}
+
+function portLimitMax(port: GraphPortDef): number | null | undefined {
+  if (isVideoFramePortId(port.id)) return 1
+  const raw = portLimitMaxForDataType(port.dataType, {
+    kind: portLimitKind.value,
+    imageMax: imageMaxInputReferences.value,
+    videoLimits: videoPortLimits.value
+  })
+  if (port.dataType === GraphPortType.image || port.dataType === GraphPortType.images) {
+    return deductReservedImageSlots(raw, styleImageSlotCount.value)
+  }
+  return raw
+}
+
+function portLimitBadge(port: GraphPortDef): string {
+  return formatPortLimitBadge(portLimitMax(port))
+}
+
+function inPortTitle(port: GraphPortDef): string {
+  const parts = [t('graph.port.inTitle'), inPortTypeLabel(port)]
+  if (shouldShowPortLimitBadge(port)) {
+    const max = portLimitMax(port)
+    if (typeof max === 'number') {
+      const styleN = styleImageSlotCount.value
+      if (
+        styleN > 0 &&
+        (port.dataType === GraphPortType.image || port.dataType === GraphPortType.images)
+      ) {
+        parts.push(t('graph.port.limitMaxAfterStyle', { n: max, style: styleN }))
+      } else {
+        parts.push(t('graph.port.limitMax', { n: max }))
+      }
+    } else {
+      parts.push(t('graph.port.limitUnknown'))
+    }
+  }
+  if (
+    portLimitKind.value === 'video' &&
+    port.dataType === 'video' &&
+    videoPortLimits.value?.durations.length
+  ) {
+    parts.push(
+      t('graph.port.outputDuration', {
+        range: formatDurationRange(videoPortLimits.value.durations)
+      })
+    )
+  }
+  return parts.join(' · ')
+}
+
+const instructionModality = computed((): GenerateModelModality => {
+  // 图片反推走文本多模态（vision），其余媒体生成用对应模态
+  if (instructionKind.value === 'image') {
+    return 'image'
+  }
+  if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
+  if (instructionKind.value === 'voice') return 'voice'
+  return 'text'
+})
+
+const instructionPlaceholder = computed(() => {
+  if (instructionKind.value === 'toPrompt') {
+    return t('graph.inspector.generate.toPromptInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'image') {
+    return t('graph.inspector.generate.imageInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'lipSync') {
+    return t('graph.inspector.generate.lipSyncInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'video') {
+    return t('graph.inspector.generate.videoInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'voice') {
+    return t('graph.inspector.generate.voiceInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'shotSplit') {
+    return t('graph.inspector.generate.shotSplitInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'worldExtract') {
+    return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'narrativeSplit') {
+    return t('graph.inspector.generate.narrativeSplitInstructionPlaceholder')
+  }
+  // screenplay / optimize：文本向指令
+  return t('graph.inspector.generate.instructionPlaceholder')
+})
+
+const instructionModelTitle = computed(() => {
+  if (instructionKind.value === 'image') {
+    return t('graph.inspector.generate.imageModel')
+  }
+  if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') {
+    return t('graph.inspector.generate.videoModel')
+  }
+  if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
+  return t('graph.inspector.generate.model')
+})
+
+/** 图片生成：模型旁展示生成参数（按模型能力动态） */
+const showImageGenerateParams = computed(
+  () => instructionKind.value === 'image'
+)
+
+/** 视频 / 对口型：模型旁展示生成参数（按时长/比例等能力动态） */
+const showVideoGenerateParams = computed(
+  () => instructionKind.value === 'video' || instructionKind.value === 'lipSync'
+)
+
+const typeLabel = computed(() => {
+  if (
+    isScriptShotSplitNode(props.node) ||
+    isScriptShotTableNode(props.node) ||
+    isScriptShotEditorNode(props.node) ||
+    isWorldExtractNode(props.node) ||
+    isWorldTableNode(props.node) ||
+    isWorldEditorNode(props.node) ||
+    isNarrativeSplitNode(props.node) ||
+    isNarrativeTableNode(props.node) ||
+    isNarrativeEditorNode(props.node)
+  ) {
+    return graphTypeLabel(props.node.typeId!)
+  }
+  // 生成节点 + 图片反推提示词 / 提示词优化等带指令面板的工具节点
+  if (props.node.typeId && (isProcessingNode.value || instructionKind.value)) {
+    return graphTypeLabel(props.node.typeId)
+  }
+  if (props.node.category === 'output') {
+    if (isNarrativeOutputNode(props.node)) return t('graph.titles.narrativeOutput')
+    if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
+    const scopeDef = getGraphScopeDefinition(graphScope.value)
+    if (scopeDef.outputTitleI18nKey && props.node.params.outputKind === scopeDef.output.kind) {
+      return t(scopeDef.outputTitleI18nKey)
+    }
+    return t(`graph.titles.assetOutput.${props.node.params.outputKind ?? 'video'}`)
+  }
+  const assetType = props.node.assetType ?? props.asset?.type
+  return assetType ? assetTypeLabel(assetType) : t('asset.generic')
+})
+
+const rolePill = computed(() => {
+  if (isAssetRef.value) return t('graph.nodeRole.ref')
+  if (isProcessingNode.value) return t('graph.nodeRole.generate')
+  return ''
+})
+
+const rolePillClass = computed(() => {
+  if (isAssetRef.value) return 'ref'
+  if (isProcessingNode.value) return 'generate'
+  return ''
+})
+
+const displayTitle = computed(
+  () => props.node.title?.trim() || typeLabel.value || t('graph.defaultNode')
+)
+
+const typeIcon = computed(() => {
+  if (isScriptShotSplitNode(props.node)) return '✂️'
+  if (isScriptShotTableNode(props.node)) return '📊'
+  if (isScriptShotEditorNode(props.node)) return '🎬'
+  if (isWorldExtractNode(props.node)) return '🗡️'
+  if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
+  if (isNarrativeEditorNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
+  if (isWorldEditorNode(props.node)) return '🤺'
+  if (isNarrativeOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
+  if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🗣️'
+  if (props.asset) return assetDisplayIcon(props.asset)
+  const t = props.node.assetType ?? props.asset?.type
+  return t ? ASSET_TYPE_ICONS[t] : '◆'
+})
+
+const runStatusLabel = computed(() => {
+  switch (props.runStatus) {
+    case 'pending':
+      return t('graph.runStatus.pending')
+    case 'running':
+      return t('graph.runStatus.running')
+    case 'done':
+      return t('graph.runStatus.done')
+    case 'error':
+      return t('graph.runStatus.error')
+    default:
+      return ''
+  }
+})
+
+const assetName = computed(() => props.asset?.name ?? '')
+
+const isDirectorGenerateNode = computed(() => isDirectorProcessingNode(props.node))
+const isDirectorOutputNode = computed(
+  () =>
+    props.node.category === 'output' &&
+    props.node.params.outputKind === 'image' &&
+    props.node.params.inputDataType === 'images'
+)
+const directorLivePreviewRaw = computed(() => {
+  if (!isDirectorGenerateNode.value && !isDirectorOutputNode.value) {
+    return { dataUrl: '', relativePath: '' }
+  }
+  return {
+    dataUrl:
+      props.node.params.previewDataUrl ||
+      props.node.params.cameraShots?.[0]?.dataUrl ||
+      '',
+    relativePath:
+      props.node.params.previewRelativePath ||
+      props.node.params.cameraShots?.[0]?.relativePath ||
+      ''
+  }
+})
+const directorLivePreview = ref('')
+watch(
+  () =>
+    [directorLivePreviewRaw.value, previewInViewport.value, previewPriority.value] as const,
+  async ([raw, visible, priority]) => {
+    directorPreviewCancel?.()
+    directorPreviewCancel = null
+    if (!visible) {
+      directorLivePreview.value = ''
+      return
+    }
+    if (raw.dataUrl?.trim()) {
+      directorLivePreview.value = raw.dataUrl
+      return
+    }
+    if (!raw.relativePath?.trim()) {
+      directorLivePreview.value = ''
+      return
+    }
+    const path = raw.relativePath.trim()
+    const { promise, cancel } = graphPreviewLoadScheduler.enqueue(priority, () =>
+      resolveAssetPreviewUrl(path)
+    )
+    directorPreviewCancel = cancel
+    try {
+      directorLivePreview.value = await promise
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      directorLivePreview.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+const selectImagePreview = ref('')
+watch(
+  () =>
+    [
+      props.node.params.previewDataUrl,
+      props.node.params.previewRelativePath,
+      props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]?.dataUrl,
+      props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]
+        ?.relativePath,
+      isSelectImageNode(props.node) ||
+        isUpscaleEditorNode(props.node) ||
+        isExpandEditorNode(props.node) ||
+        isRedrawEditorNode(props.node) ||
+        isEraseEditorNode(props.node) ||
+        isMatteEditorNode(props.node) ||
+        isCropEditorNode(props.node) ||
+        isGridSplitEditorNode(props.node),
+      previewInViewport.value,
+      previewPriority.value
+    ] as const,
+  async ([dataUrl, relativePath, genDataUrl, genRel, showPreview, visible, priority]) => {
+    selectPreviewCancel?.()
+    selectPreviewCancel = null
+    if (!showPreview || !visible) {
+      selectImagePreview.value = ''
+      return
+    }
+    const resolvedData = dataUrl?.trim() || genDataUrl?.trim()
+    if (resolvedData) {
+      selectImagePreview.value = resolvedData
+      return
+    }
+    const path = relativePath?.trim() || genRel?.trim()
+    if (!path) {
+      selectImagePreview.value = ''
+      return
+    }
+    const { promise, cancel } = graphPreviewLoadScheduler.enqueue(priority, () =>
+      resolveAssetPreviewUrl(path)
+    )
+    selectPreviewCancel = cancel
+    try {
+      selectImagePreview.value = await promise
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      selectImagePreview.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+/** 分镜 / 世界元素流程节点：不展示正文预览，仅显示图标+提示以便双击 */
+const hideCardPreview = computed(
+  () =>
+    isScriptShotSplitNode(props.node) ||
+    isScriptShotTableNode(props.node) ||
+    isScriptShotEditorNode(props.node) ||
+    isWorldExtractNode(props.node) ||
+    isWorldTableNode(props.node) ||
+    isWorldEditorNode(props.node) ||
+    isNarrativeSplitNode(props.node) ||
+    isNarrativeTableNode(props.node) ||
+    isNarrativeEditorNode(props.node)
+)
+
+const scriptNodePreviewTitle = computed(() => {
+  if (
+    isScriptShotSplitNode(props.node) ||
+    isWorldExtractNode(props.node) ||
+    isNarrativeSplitNode(props.node)
+  ) {
+    return t('graph.generateNode.instructionHint')
+  }
+  if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
+  if (isScriptShotEditorNode(props.node)) return t('graph.scriptShotEditorNode.hint')
+  if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
+  if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
+  if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
+  if (isNarrativeEditorNode(props.node)) return t('graph.narrativeEditorNode.hint')
+  return ''
+})
+
+/** 节点上展示的文本输出（执行结果或已保存正文）；有内容才覆盖媒体预览 */
+const textPreview = computed(() => {
+  // 多角度 / 打光：输出在 Inspector 预览，节点卡片不展示正文/图片
+  if (
+    isMultiAngleEditorNode(props.node) ||
+    isLightingEditorNode(props.node) ||
+    isPortraitTextureEditorNode(props.node) ||
+    isEmotionEditorNode(props.node)
+  )
+    return ''
+  // 剧本 / 分镜引用：不展示正文预览（图标 + 引用提示）
+  if (
+    isAssetRef.value &&
+    (props.node.assetType === 'screenplay' || props.node.assetType === 'script')
+  ) {
+    return ''
+  }
+  if (hideCardPreview.value) return ''
+  if (!isNodeTextCapable(props.node)) return ''
+  const content = resolveNodeTextContent(props.node, props.runState)
+  return content?.text.trim() ?? ''
+})
+
+const previewHint = computed(() => {
+  if (isDirectorGenerateNode.value) {
+    return directorLivePreview.value
+      ? t('graph.directorNode.live')
+      : t('graph.directorNode.hint')
+  }
+  if (
+    graphScope.value === 'scriptAsset' &&
+    props.node.category === 'output' &&
+    props.node.params.outputKind === 'video'
+  ) {
+    return t('graph.scriptOutputNode.hint')
+  }
+  if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
+  if (isScriptShotEditorNode(props.node)) return t('graph.scriptShotEditorNode.hint')
+  if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
+  if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
+  if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
+  if (isNarrativeEditorNode(props.node)) return t('graph.narrativeEditorNode.hint')
+  if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
+  if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
+  if (isSelectScreenplayNode(props.node)) return t('graph.selectText.hint')
+  if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
+  if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
+  if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
+  if (isEmotionEditorNode(props.node)) return t('graph.emotion.hint')
+  if (isUpscaleEditorNode(props.node)) return t('graph.upscale.hint')
+  if (isLipSyncNode(props.node)) return t('graph.lipSync.hint')
+  if (isExpandEditorNode(props.node)) return t('graph.expand.hint')
+  if (isRedrawEditorNode(props.node)) return t('graph.redraw.hint')
+  if (isEraseEditorNode(props.node)) return t('graph.erase.hint')
+  if (isMatteEditorNode(props.node)) return t('graph.matte.hint')
+  if (isCropEditorNode(props.node)) return t('graph.crop.hint')
+  if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
+  if (instructionKind.value) return t('graph.generateNode.instructionHint')
+  if (isAssetRef.value) return t('graph.assetRef.hint')
+  if (isProcessingNode.value) return t('graph.generateNode.hint')
+  return assetName.value || typeLabel.value
+})
+
+const previewOpenHint = computed(() => {
+  if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
+  if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
+  if (isSelectScreenplayNode(props.node)) return t('graph.selectText.hint')
+  // 预览区已有正文时，双击优先打开记事本
+  if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
+    return t('graph.notepad.openHint')
+  }
+  if (instructionKind.value) return t('graph.generateNode.instructionHint')
+  return t('graph.notepad.openHint')
+})
+
+const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
+  // 文本/剧本输出：预览走记事本，不走媒体预览
+  if (isScreenplayOutputNode.value) return 'none'
+  // 输出节点以 outputKind 为准（宿主资产可能是 script，不能用来决定预览类型）
+  if (props.node.category === 'output') {
+    const kind = props.node.params.outputKind
+    if (kind === 'image') return 'image'
+    if (kind === 'video') return 'video'
+    if (kind === 'voice') return 'voice'
+    if (kind === 'text') return 'none'
+  }
+  if (isSelectVideoNode(props.node)) return 'video'
+  const t = props.node.assetType ?? props.asset?.type
+  if (!t) return 'none'
+  if (t === 'image') return 'image'
+  if (t === 'video') return 'video'
+  if (isSoundAsset(t)) return 'voice'
+  return 'none'
+})
+
+const showMediaTransport = computed(
+  () => previewKind.value === 'video' || previewKind.value === 'voice'
+)
+
+const mediaMuted = computed(() => props.node.params.muted === true)
+const mediaLoop = computed(() => props.node.params.loop === true)
+const mediaVolume = computed(() => props.node.params.volume ?? 1)
+const mediaRate = computed(() => props.node.params.playbackRate ?? 1)
+
+const progressValue = computed(() => {
+  if (!duration.value) return 0
+  return Math.round((currentTime.value / duration.value) * 1000)
+})
+
+const mediaErrorText = computed(() =>
+  previewKind.value === 'voice' ? t('graph.preview.audioError') : t('graph.preview.videoError')
+)
+
+function activeMediaEl(): HTMLMediaElement | null {
+  if (previewKind.value === 'video') return videoEl.value
+  if (previewKind.value === 'voice') return audioEl.value
+  return null
+}
+
+function applyMediaParams(): void {
+  const el = activeMediaEl()
+  if (!el) return
+  el.muted = mediaMuted.value
+  el.loop = mediaLoop.value
+  el.volume = Math.min(1, Math.max(0, mediaVolume.value))
+  try {
+    el.playbackRate = mediaRate.value
+  } catch {
+    // ignore unsupported rate
+  }
+}
+
+function syncMediaClock(el?: HTMLMediaElement | null): void {
+  const media = el ?? activeMediaEl()
+  if (!media) return
+  if (!seeking.value) currentTime.value = media.currentTime || 0
+  if (Number.isFinite(media.duration) && media.duration > 0) {
+    duration.value = media.duration
+  }
+  // Chromium 对受控 range 有时不刷新滑块，直接写 DOM value
+  if (progressInput.value && duration.value > 0 && !seeking.value) {
+    progressInput.value.value = String(
+      Math.round((currentTime.value / duration.value) * 1000)
+    )
+  }
+}
+
+let progressRaf = 0
+
+function stopProgressTicker(): void {
+  if (progressRaf) {
+    cancelAnimationFrame(progressRaf)
+    progressRaf = 0
+  }
+}
+
+function startProgressTicker(): void {
+  stopProgressTicker()
+  const tick = (): void => {
+    syncMediaClock()
+    if (mediaPlaying.value) progressRaf = requestAnimationFrame(tick)
+    else progressRaf = 0
+  }
+  progressRaf = requestAnimationFrame(tick)
+}
+
+const loadedMediaKey = ref('')
+
+watch(
+  () => {
+    const kind = previewKind.value
+    const ownRel = props.asset?.relativePath?.trim() || ''
+    const previewRel = props.node.params.previewRelativePath?.trim() || ''
+    // 音视频只接受可播放扩展名，避免把首帧 PNG / 缩略图塞进 <video>
+    let path = ownRel || previewRel
+    if (kind === 'video') {
+      path = [ownRel, previewRel].find((p) => p && isVideoFilePath(p)) || ''
+    } else if (kind === 'voice') {
+      path = [ownRel, previewRel].find((p) => p && isAudioFilePath(p)) || ''
+    }
+    const mode = kind === 'video' || kind === 'voice' ? 'full' : 'preview'
+    // 图片始终用原图路径走 preview API（内部 ensure thumb）；音视频用原文件
+    return {
+      mediaKey: `${props.asset?.id ?? props.node.id}::${kind}::${mode}::${path}`,
+      path,
+      mode,
+      visible: previewInViewport.value && kind !== 'none',
+      priority: previewPriority.value
+    }
+  },
+  async ({ mediaKey, path, mode, visible, priority }) => {
+    previewLoadCancel?.()
+    previewLoadCancel = null
+
+    if (!visible) {
+      stopProgressTicker()
+      mediaError.value = false
+      mediaPlaying.value = false
+      currentTime.value = 0
+      duration.value = 0
+      previewUrl.value = ''
+      loadedMediaKey.value = ''
+      return
+    }
+
+    // 同一媒体不要重载，否则滚轮缩放触发的资产保存会打断播放
+    if (mediaKey && mediaKey === loadedMediaKey.value && previewUrl.value) return
+
+    stopProgressTicker()
+    mediaError.value = false
+    mediaPlaying.value = false
+    currentTime.value = 0
+    duration.value = 0
+    if (!path) {
+      previewUrl.value = ''
+      loadedMediaKey.value = ''
+      return
+    }
+    const { promise, cancel } = graphPreviewLoadScheduler.enqueue(priority, () =>
+      mode === 'preview' ? resolveAssetPreviewUrl(path) : resolveAssetFileUrl(path)
+    )
+    previewLoadCancel = cancel
+    try {
+      const url = await promise
+      if (url === previewUrl.value && loadedMediaKey.value === mediaKey) return
+      previewUrl.value = url
+      loadedMediaKey.value = mediaKey
+      await nextTick()
+      const el = activeMediaEl()
+      el?.load()
+      applyMediaParams()
+      syncMediaClock(el)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      previewUrl.value = ''
+      loadedMediaKey.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () =>
+    [
+      props.node.params.muted,
+      props.node.params.loop,
+      props.node.params.volume,
+      props.node.params.playbackRate
+    ] as const,
+  () => applyMediaParams()
+)
+
+function onPointerDown(e: PointerEvent): void {
+  if (editingTitle.value) return
+  emit('dragStart', props.node.id, e)
+}
+
+function startTitleEdit(): void {
+  if (isAssetRef.value) return
+  titleDraft.value = props.node.title?.trim() || displayTitle.value
+  editingTitle.value = true
+  void nextTick(() => {
+    titleInputEl.value?.focus()
+    titleInputEl.value?.select()
+  })
+}
+
+function commitTitleEdit(): void {
+  if (!editingTitle.value) return
+  editingTitle.value = false
+  const next = titleDraft.value.trim()
+  const prev = props.node.title?.trim() ?? ''
+  if (next === prev) return
+  emit('titleChange', props.node.id, next)
+}
+
+function cancelTitleEdit(): void {
+  editingTitle.value = false
+  titleDraft.value = props.node.title?.trim() || displayTitle.value
+}
+
+watch(
+  () => props.selected,
+  (on) => {
+    if (!on) {
+      editingTitle.value = false
+      instructionOpen.value = false
+      instructionDialogOpen.value = false
+    }
+  }
+)
+
+watch(
+  () => props.node.params.generateInstruction,
+  (value) => {
+    const next = value ?? ''
+    if (next !== instruction.value) instruction.value = next
+  },
+  { immediate: true }
+)
+
+watch(instructionOpen, (open) => {
+  if (open) {
+    instruction.value = props.node.params.generateInstruction ?? ''
+    // 先让指令面板上屏，再拉模型列表，避免双击卡顿
+    window.setTimeout(() => {
+      void refreshModelOptions()
+    }, 0)
+  } else {
+    instructionDialogOpen.value = false
+  }
+})
+
+watch(instructionDialogOpen, (open) => {
+  if (open) instructionDialogMounted.value = true
+})
+
+function openInstructionDialog(): void {
+  instructionDialogMounted.value = true
+  instructionDialogOpen.value = true
+}
+
+watch(
+  () =>
+    [
+      props.node.params.generateProviderInstanceId,
+      props.node.params.generateModel
+    ] as const,
+  ([providerInstanceId, model]) => {
+    const key = preferredModelKey(providerInstanceId, model)
+    if (key && key !== selectedModelKey.value && modelOptions.value.some((o) => o.key === key)) {
+      selectedModelKey.value = key
+    }
+  }
+)
+
+watch(
+  () =>
+    [
+      props.node.params.generateAspectRatio,
+      props.node.params.generateResolution,
+      props.node.params.generateQuality,
+      props.node.params.generateCount
+    ] as const,
+  () => {
+    imageGenerateParams.value = readImageGenerateParamsFromNode(props.node.params)
+  }
+)
+
+watch(
+  () =>
+    [
+      props.node.params.generateAspectRatio,
+      props.node.params.generateResolution,
+      props.node.params.generateDuration,
+      props.node.params.generateAudio
+    ] as const,
+  () => {
+    if (!showVideoGenerateParams.value) return
+    videoGenerateParams.value = readVideoGenerateParamsFromNode(props.node.params)
+  }
+)
+
+watch(
+  [selectedModelKey, showImageGenerateParams],
+  async ([key, show]) => {
+    if (!show || !key.trim()) {
+      imageMaxInputReferences.value = null
+      return
+    }
+    try {
+      const caps = await loadImageGenerateCapabilities(key)
+      imageMaxInputReferences.value =
+        typeof caps.maxInputReferences === 'number' ? caps.maxInputReferences : null
+    } catch {
+      imageMaxInputReferences.value = null
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  [selectedModelKey, portLimitKind],
+  async ([key, kind]) => {
+    if (kind !== 'video' || !key.trim()) {
+      videoPortLimits.value = null
+      return
+    }
+    try {
+      videoPortLimits.value = await loadVideoGeneratePortLimits(key)
+    } catch {
+      videoPortLimits.value = null
+    }
+  },
+  { immediate: true }
+)
+
+async function refreshModelOptions(): Promise<void> {
+  if (!instructionKind.value) return
+  const preferred = preferredModelKey(
+    props.node.params.generateProviderInstanceId,
+    props.node.params.generateModel
+  )
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    instructionModality.value,
+    preferred,
+    selectedModelKey.value
+  )
+  modelOptions.value = options
+  selectedModelKey.value = selectedKey
+}
+
+function persistInstruction(): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateInstruction: instruction.value
+  })
+}
+
+function persistGenerateModel(): void {
+  if (!props.hostId || !instructionKind.value) return
+  const parsed = parseModelKey(selectedModelKey.value)
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateModel: parsed?.model ?? '',
+    generateProviderInstanceId: parsed?.providerInstanceId ?? ''
+  })
+}
+
+function persistImageGenerateParams(): void {
+  if (!props.hostId || !showImageGenerateParams.value) return
+  graphEditorHosts.updateNode(
+    props.hostId,
+    props.node.id,
+    imageGenerateParamsToNodePatch(imageGenerateParams.value)
+  )
+}
+
+function persistVideoGenerateParams(): void {
+  if (!props.hostId || !showVideoGenerateParams.value) return
+  const nextMode = videoGenerateParams.value.frameMode ?? 'none'
+  graphEditorHosts.updateNode(
+    props.hostId,
+    props.node.id,
+    videoGenerateParamsToNodePatch(videoGenerateParams.value)
+  )
+  // 收窄帧模式时去掉失效的首/尾帧入边
+  for (const edge of graphEditorHosts.listIncomingEdges(props.hostId, props.node.id)) {
+    const port = edge.targetPort
+    if (!isVideoFramePortId(port)) continue
+    if (nextMode === 'none') {
+      graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+      continue
+    }
+    if (nextMode === 'first' && port === VIDEO_LAST_FRAME_PORT_ID) {
+      graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+    }
+  }
+  // 动态端口依赖 generateFrameMode，通知 Inspector / 指令条刷新
+  graphEditorHosts.bumpRevision()
+}
+
+function onOutPortDown(portId: string, e: PointerEvent): void {
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  emit('outPortDown', props.node.id, portId, e)
+}
+
+function onInPortDown(portId: string, e: PointerEvent): void {
+  emit('inPortDown', props.node.id, portId, e)
+}
+
+function onPreviewDblClick(): void {
+  if (isDirectorProcessingNode(props.node)) {
+    directorPreview?.openStageView(props.node.id)
+    return
+  }
+  if (isSelectImageNode(props.node)) {
+    emit('selectImageOpen', props.node.id)
+    return
+  }
+  if (isSelectVideoNode(props.node)) {
+    emit('selectVideoOpen', props.node.id)
+    return
+  }
+  if (isSelectScreenplayNode(props.node)) {
+    emit('selectTextOpen', props.node.id)
+    return
+  }
+  if (isScreenplayOutputNode.value) {
+    emit('textsOpen', props.node.id)
+    return
+  }
+  if (isMultiAngleEditorNode(props.node)) {
+    emit('multiAngleOpen', props.node.id)
+    return
+  }
+  if (isLightingEditorNode(props.node)) {
+    emit('lightingOpen', props.node.id)
+    return
+  }
+  if (isPortraitTextureEditorNode(props.node)) {
+    emit('portraitTextureOpen', props.node.id)
+    return
+  }
+  if (isEmotionEditorNode(props.node)) {
+    emit('emotionOpen', props.node.id)
+    return
+  }
+  if (isUpscaleEditorNode(props.node)) {
+    emit('upscaleOpen', props.node.id)
+    return
+  }
+  if (isExpandEditorNode(props.node)) {
+    emit('expandOpen', props.node.id)
+    return
+  }
+  if (isRedrawEditorNode(props.node)) {
+    emit('redrawOpen', props.node.id)
+    return
+  }
+  if (isEraseEditorNode(props.node)) {
+    emit('eraseOpen', props.node.id)
+    return
+  }
+  if (isMatteEditorNode(props.node)) {
+    emit('matteOpen', props.node.id)
+    return
+  }
+  if (isCropEditorNode(props.node)) {
+    emit('cropOpen', props.node.id)
+    return
+  }
+  if (isGridSplitEditorNode(props.node)) {
+    emit('gridSplitOpen', props.node.id)
+    return
+  }
+  if (isScriptShotTableNode(props.node)) {
+    scriptPreview?.openShotTable()
+    return
+  }
+  if (isScriptShotEditorNode(props.node)) {
+    scriptPreview?.openShotEditor()
+    return
+  }
+  if (isWorldTableNode(props.node)) {
+    worldTable?.openWorldTable()
+    return
+  }
+  if (isWorldEditorNode(props.node)) {
+    worldEditor?.openWorldEditor()
+    return
+  }
+  if (isNarrativeTableNode(props.node)) {
+    narrativeTable?.openNarrativeTable()
+    return
+  }
+  if (isNarrativeEditorNode(props.node)) {
+    narrativeEditor?.openNarrativeEditor()
+    return
+  }
+  // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
+  if (instructionKind.value === 'screenplay') {
+    instructionOpen.value = !instructionOpen.value
+    return
+  }
+  // 预览区已有正文（提取 JSON / 优化结果等）：双击打开记事本，避免误开空的生成指令
+  if (
+    textPreview.value &&
+    !isAssetRef.value &&
+    !isScreenplayOutputNode.value &&
+    isNodeTextCapable(props.node)
+  ) {
+    emit('textOpen', props.node.id)
+    return
+  }
+  // 加工 / 工具节点：双击展开 / 收起生成指令（含分镜拆分、图片反推提示词、提示词优化）
+  if (instructionKind.value) {
+    instructionOpen.value = !instructionOpen.value
+    return
+  }
+  // 有文本输出 / 剧本文档的节点：双击打开记事本（引用节点除外）
+  if (!isAssetRef.value && isNodeTextCapable(props.node)) {
+    emit('textOpen', props.node.id)
+    return
+  }
+  // 图片资产节点：双击预览原图
+  if (previewKind.value === 'image' && props.asset?.relativePath) {
+    void openFullImagePreview({ relativePath: props.asset.relativePath })
+  }
+}
+
+function onResizeStart(e: PointerEvent): void {
+  emit('resizeStart', props.node.id, e)
+}
+
+let playRequestId = 0
+
+async function togglePlayback(): Promise<void> {
+  const el = activeMediaEl()
+  if (!el) return
+  applyMediaParams()
+
+  // 串行化 play/pause，避免连点时 play() 被后续 pause() 打断（AbortError）
+  const requestId = ++playRequestId
+  if (!el.paused) {
+    el.pause()
+    mediaPlaying.value = false
+    stopProgressTicker()
+    syncMediaClock(el)
+    return
+  }
+
+  mediaPlaying.value = true
+  startProgressTicker()
+  try {
+    await el.play()
+    if (requestId !== playRequestId) return
+    mediaPlaying.value = !el.paused
+    if (mediaPlaying.value) startProgressTicker()
+    else stopProgressTicker()
+    syncMediaClock(el)
+  } catch (error) {
+    if (requestId !== playRequestId) return
+    // AbortError 通常是下一次 pause/重载打断当前 play，属于正常竞态
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      mediaPlaying.value = !el.paused
+      if (mediaPlaying.value) startProgressTicker()
+      else stopProgressTicker()
+      return
+    }
+    mediaError.value = true
+    mediaPlaying.value = false
+    stopProgressTicker()
+    console.error('[GraphNodeCard] playback failed', error)
+  }
+}
+
+function seekToStart(): void {
+  const el = activeMediaEl()
+  if (!el) return
+  el.currentTime = 0
+  currentTime.value = 0
+}
+
+function onSeekInput(e: Event): void {
+  seeking.value = true
+  const el = activeMediaEl()
+  if (!el || !duration.value) return
+  const value = Number((e.target as HTMLInputElement).value)
+  currentTime.value = (value / 1000) * duration.value
+}
+
+function onSeekChange(e: Event): void {
+  const el = activeMediaEl()
+  if (!el || !duration.value) {
+    seeking.value = false
+    return
+  }
+  const value = Number((e.target as HTMLInputElement).value)
+  el.currentTime = (value / 1000) * duration.value
+  currentTime.value = el.currentTime
+  seeking.value = false
+}
+
+function onMediaPlay(): void {
+  mediaPlaying.value = true
+  startProgressTicker()
+}
+
+function onMediaPause(): void {
+  mediaPlaying.value = false
+  stopProgressTicker()
+  syncMediaClock()
+}
+
+function onMediaEnded(): void {
+  mediaPlaying.value = false
+  stopProgressTicker()
+  syncMediaClock()
+  if (!mediaLoop.value && duration.value) currentTime.value = duration.value
+}
+
+function onMediaTimeUpdate(e: Event): void {
+  syncMediaClock(e.currentTarget as HTMLMediaElement)
+}
+
+function onMediaLoaded(e: Event): void {
+  const el = e.currentTarget as HTMLMediaElement
+  applyMediaParams()
+  syncMediaClock(el)
+}
+
+onBeforeUnmount(() => {
+  cancelPreviewLoads()
+  stopProgressTicker()
+})
+
+function onVideoMouseEnter(e: MouseEvent): void {
+  // 有播放控件时改为手动控制，避免悬停自动播放抢占进度条
+  if (showMediaTransport.value) return
+  void (e.currentTarget as HTMLVideoElement).play()
+}
+
+function onVideoMouseLeave(e: MouseEvent): void {
+  if (showMediaTransport.value) return
+  ;(e.currentTarget as HTMLVideoElement).pause()
+}
+
+function onVideoError(): void {
+  if (!previewUrl.value) return
+  mediaError.value = true
+  mediaPlaying.value = false
+  stopProgressTicker()
+}
+
+function onAudioError(): void {
+  if (!previewUrl.value) return
+  mediaError.value = true
+  mediaPlaying.value = false
+  stopProgressTicker()
+}
+
+function formatTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00'
+  const total = Math.floor(sec)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+</script>
+
+<style scoped>
+.graph-node {
+  position: absolute;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--graph-node-bg);
+  box-shadow: 0 4px 16px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  box-sizing: border-box;
+  cursor: grab;
+  user-select: none;
+  z-index: 2;
+}
+
+.graph-node.output {
+  background: linear-gradient(
+    160deg,
+    var(--graph-node-output-from) 0%,
+    var(--graph-node-bg) 55%
+  );
+  border-color: #3d6ea8;
+  z-index: 12;
+}
+
+.graph-node.asset-ref {
+  border-style: dashed;
+  border-color: #6b7280;
+  background: var(--graph-node-asset-bg);
+}
+
+.graph-node.processing-node {
+  border-color: #3d9a6e;
+  background: linear-gradient(
+    160deg,
+    var(--graph-node-processing-from) 0%,
+    var(--graph-node-bg) 55%
+  );
+}
+
+.graph-node.connecting {
+  border-color: var(--warning);
+}
+
+.graph-node.selected,
+.graph-node.connecting,
+.graph-node.instruction-open {
+  z-index: 20;
+}
+
+.instruction-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 320px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #3d9a6e;
+  border-radius: 10px;
+  background: var(--graph-instruction-bg);
+  box-shadow: 0 8px 24px var(--shadow);
+  box-sizing: border-box;
+  cursor: default;
+  user-select: text;
+}
+
+.instruction-panel-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #7dcea0;
+}
+
+
+.graph-node.run-error {
+  border-color: #c45c5c;
+}
+
+.graph-node.run-running {
+  border-color: var(--accent);
+}
+
+/* 真实拖动时由画布 .dragging-nodes 统一切换为 grabbing，避免单击/双击变成移动光标 */
+
+.graph-node.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 20px rgba(61, 139, 253, 0.2);
+}
+
+.node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+}
+
+.graph-node.preview-collapsed .node-head {
+  border-bottom: none;
+  border-radius: 10px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.collapse-tri-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted, #9aa3ad);
+}
+
+.collapse-tri-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #e8eaed);
+}
+
+/* 实心三角：展开朝下，收起朝右 */
+.collapse-tri {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+
+.collapse-tri-btn.collapsed .collapse-tri {
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  border-right: none;
+}
+
+.type-pill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(61, 139, 253, 0.18);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.graph-node.output .type-pill {
+  background: rgba(100, 180, 255, 0.22);
+  color: #8ec5ff;
+}
+
+.type-pill.ref {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+}
+
+.type-pill.generate {
+  background: rgba(61, 180, 120, 0.22);
+  color: #7dcea0;
+}
+
+.kind-pill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(61, 139, 253, 0.12);
+  color: #8ec5ff;
+  flex-shrink: 0;
+}
+
+.title.readonly {
+  cursor: default;
+}
+
+.title {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  padding: 1px 4px;
+  border: 1px solid #5a8fd466;
+  border-radius: 4px;
+  background: var(--graph-preview-bg);
+  color: var(--text);
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.run-pill {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+
+.run-pill.pending {
+  background: rgba(160, 160, 160, 0.2);
+  color: #b0b0b0;
+}
+
+.run-pill.running {
+  background: rgba(61, 139, 253, 0.22);
+  color: #8ec5ff;
+}
+
+.run-pill.done {
+  background: rgba(46, 125, 80, 0.25);
+  color: #7dcea0;
+}
+
+.run-pill.error {
+  background: rgba(160, 50, 50, 0.3);
+  color: #f0a0a0;
+}
+
+.preview {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--graph-preview-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0 0 10px 10px;
+}
+
+.preview.has-text {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.preview.preview-icon-only {
+  cursor: pointer;
+}
+
+.preview-icon-fallback {
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+}
+
+.preview-icon-fallback .icon {
+  font-size: 28px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.preview img,
+.preview video,
+.camera-live-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.text-preview {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 8px 6px;
+  box-sizing: border-box;
+  background: var(--graph-text-preview-bg);
+  cursor: text;
+}
+
+.text-preview-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--graph-text-preview);
+  mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+}
+
+.text-preview-hint {
+  flex: none;
+  margin-top: 4px;
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.media-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 8px;
+  text-align: center;
+}
+
+.media-fallback .icon {
+  font-size: 22px;
+}
+
+.media-fallback.audio {
+  gap: 6px;
+  padding-bottom: 52px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+}
+
+.transport {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 7px 7px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  backdrop-filter: none;
+  z-index: 5;
+}
+
+.transport-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ctrl-btn {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ctrl-btn.primary {
+  width: 28px;
+  height: 28px;
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.ctrl-btn .triangle {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.ctrl-btn .pause {
+  width: 8px;
+  height: 12px;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.ctrl-btn .icon-restart {
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  border-left-color: transparent;
+  position: relative;
+}
+
+.ctrl-btn .icon-restart::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 4px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transform: rotate(-35deg);
+}
+
+.progress-wrap {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 1px;
+}
+
+.progress {
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--mono);
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.time-row.inline {
+  margin-left: auto;
+  justify-content: flex-end;
+  gap: 3px;
+  white-space: nowrap;
+  opacity: 0.95;
+}
+
+.media-error {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 5px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  background: rgba(130, 45, 35, 0.86);
+  color: #fff;
+  font-size: 9px;
+  text-align: center;
+}
+
+.port-wrap {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.port-wrap.in {
+  left: 0;
+}
+
+.port-wrap.out {
+  right: 0;
+}
+
+/* 输入口：类型在端口左侧（节点外），数量在右侧（节点内） */
+.port-wrap.in .port-type {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-muted, #9aa3ad);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 52px;
+  pointer-events: none;
+  user-select: none;
+  text-align: right;
+}
+
+.port-wrap.in .port-limit {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  transform: translateY(-50%);
+  min-width: 14px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 9px;
+  line-height: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.port-wrap.out .port-type {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-muted, #9aa3ad);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+  text-align: left;
+}
+
+.port {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #8ec5ff;
+  background: var(--graph-port-bg);
+  padding: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.port.in {
+  border-color: #ffb347;
+  background: var(--graph-port-in-bg);
+}
+
+.port:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+:deep(.resize-handle) {
+  z-index: 50;
+}
+</style>

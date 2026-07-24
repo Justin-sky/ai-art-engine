@@ -1,0 +1,128 @@
+<div align="center">
+  <img src="docs/assets/logo.png" alt="AIArtEngine" width="120" />
+
+  <h1>AIArtEngine</h1>
+
+  <p><b>Local AI short-video creation studio</b></p>
+  <p>
+    Projects stay on disk · Shot & node-graph workflows<br />
+    OpenRouter & Volcengine Ark (Seedream · Seedance · Audio)
+  </p>
+
+  <p>
+    <a href="https://github.com/Justin-sky/aiartengine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/aiartengine?style=social" alt="GitHub stars" /></a>
+    <a href="https://github.com/Justin-sky/aiartengine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/aiartengine?style=social" alt="GitHub forks" /></a>
+    <a href="https://github.com/Justin-sky/aiartengine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/aiartengine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
+    <a href="package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/Local--First-00B894?style=for-the-badge" alt="local" />
+    <img src="https://img.shields.io/badge/Node_Graph-6C5CE7?style=for-the-badge" alt="graph" />
+    <img src="https://img.shields.io/badge/Win%20%7C%20macOS%20%7C%20Linux-0984E3?style=for-the-badge" alt="platform" />
+  </p>
+
+  <p>
+    <a href="./website/index.html"><b>Website</b></a> ·
+    <a href="#download"><b>Download</b></a> ·
+    <a href="#features"><b>Features</b></a> ·
+    <a href="#quick-start"><b>Quick Start</b></a> ·
+    <a href="./README.md"><b>中文</b></a>
+  </p>
+</div>
+
+---
+
+<a id="download"></a>
+
+## Download
+
+| Platform | Package | Get it |
+|----------|---------|--------|
+| **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/aiartengine/releases) |
+| **macOS** | `.dmg` | Same (Mac / CI build; allow in Privacy & Security if unsigned) |
+| **Linux** | `.AppImage` | Same (`chmod +x` then run) |
+
+Push a `v*` tag to trigger GitHub Actions multi-platform builds, or package locally:
+
+```bash
+npm run dist:win | dist:mac | dist:linux
+```
+
+---
+
+<a id="features"></a>
+
+## Features
+
+**AIArtEngine** is a local-first desktop studio for AI short video: assets, shots, and a node graph in one workbench — your API keys, your files.
+
+- **Local projects** — create / open / recent; JSON + media on disk  
+- **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
+- **Shots & canvas** — params, Fabric composition, dockable layout  
+- **Node graph** — text / image / video / audio generation  
+- **Providers** — OpenRouter, Volcengine Ark  
+- **Extensible** — Editor Kernel + declarative extensions  
+
+---
+
+<a id="quick-start"></a>
+
+## Quick Start
+
+**Installers**
+
+1. Grab a build from [Releases](https://github.com/Justin-sky/aiartengine/releases)  
+2. Install → create a project  
+3. Add API keys in Settings → create in shots / node graph  
+
+**From source**
+
+```bash
+git clone https://github.com/Justin-sky/aiartengine.git
+cd aiartengine
+npm install
+npm run dev
+```
+
+Requires **Node.js 22+**.
+
+```bash
+npm run typecheck && npm test
+```
+
+---
+
+## Versioning & updates
+
+- SemVer lives in [`package.json`](./package.json); see [`CHANGELOG.md`](./CHANGELOG.md).
+- **Release**: bump `package.json` + CHANGELOG, commit, then tag and push:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+  CI verifies the tag (without `v`) matches `package.json`, then builds and publishes a [GitHub Release](https://github.com/Justin-sky/aiartengine/releases) (including `latest.yml` for auto-update).
+- **In-app updates**: packaged builds check Releases on startup; use **Settings → General → About & updates** to check manually, then restart to install. Dev mode (`npm run dev`) skips update checks.
+
+---
+
+## Contribute
+
+Issues and PRs welcome. Please run `npm run typecheck && npm test` before opening a PR.  
+Track bugs on [GitHub Issues](https://github.com/Justin-sky/aiartengine/issues).
+
+---
+
+## License
+
+[GPL-3.0](./LICENSE)
+
+---
+
+<div align="center">
+  <p>If this helps you, please give it a ⭐ Star</p>
+  <img src="docs/assets/logo-mark.png" alt="" width="40" />
+</div>
