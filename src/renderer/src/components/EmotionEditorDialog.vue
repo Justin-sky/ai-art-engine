@@ -13,11 +13,13 @@
     <div class="editor-root">
       <div class="body">
         <div class="preview-pane">
-          <img v-if="previewUrl" class="preview-img" :src="previewUrl" alt="" />
-          <div v-else class="preview-empty">
-            <span class="empty-icon">😶</span>
-            <span>{{ t('graph.emotion.previewEmpty') }}</span>
-          </div>
+          <img
+            class="emotion-preview"
+            :src="emotionPreviewUrl"
+            :alt="currentLabel"
+            :title="currentLabel"
+            draggable="false"
+          />
         </div>
 
         <div class="pad-pane">
@@ -82,6 +84,18 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
+/** 预切好的 5×5 小图：每格已向内缩 6px，并去掉深色背景 */
+const emotionCellModules = import.meta.glob('../assets/emotion-pad/cells/*.png', {
+  eager: true,
+  import: 'default'
+}) as Record<string, string>
+
+const emotionCellUrls: Record<string, string> = {}
+for (const [path, url] of Object.entries(emotionCellModules)) {
+  const name = path.split('/').pop()?.replace(/\.png$/i, '')
+  if (name) emotionCellUrls[name] = url
+}
+
 const props = defineProps<{
   open: boolean
   previewUrl?: string | null
@@ -113,6 +127,10 @@ const cells = computed(() => {
 })
 
 const currentLabel = computed(() => getEmotionCell(draft).label)
+
+const emotionPreviewUrl = computed(
+  () => emotionCellUrls[`${draft.gridX}-${draft.gridY}`] ?? emotionCellUrls['2-2'] ?? ''
+)
 
 const dirty = computed(() => {
   const a = normalizeEmotionPad(props.setup)
@@ -181,6 +199,7 @@ function onClose(): void {
 }
 
 .preview-pane {
+  position: relative;
   border: 1px solid var(--border, #333);
   border-radius: 10px;
   background: var(--graph-preview-bg);
@@ -191,25 +210,16 @@ function onClose(): void {
   min-height: 280px;
 }
 
-.preview-img {
-  width: 100%;
-  height: 100%;
+.emotion-preview {
+  width: min(72%, 280px);
+  aspect-ratio: 1 / 1;
+  flex: none;
   object-fit: contain;
   display: block;
-}
-
-.preview-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted, #9aa3ad);
-  font-size: 12px;
-}
-
-.empty-icon {
-  font-size: 36px;
-  opacity: 0.7;
+  border-radius: 14px;
+  background: transparent;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .pad-pane {
