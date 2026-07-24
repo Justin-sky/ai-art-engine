@@ -1,6 +1,6 @@
 # AIArtEngine 官方主页
 
-静态落地页，无需构建。仓库：https://github.com/Justin-sky/aiartengine
+静态落地页，无需构建。仓库：https://github.com/Justin-sky/ai-art-engine
 
 ```bash
 # 项目根目录：

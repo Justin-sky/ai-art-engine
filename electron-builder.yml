@@ -3,7 +3,7 @@ productName: AIArtEngine
 publish:
   provider: github
   owner: Justin-sky
-  repo: aiartengine
+  repo: ai-art-engine
 directories:
   buildResources: build
 files:

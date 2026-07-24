@@ -10,10 +10,10 @@
   </p>
 
   <p>
-    <a href="https://github.com/Justin-sky/aiartengine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/aiartengine?style=social" alt="GitHub stars" /></a>
-    <a href="https://github.com/Justin-sky/aiartengine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/aiartengine?style=social" alt="GitHub forks" /></a>
-    <a href="https://github.com/Justin-sky/aiartengine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/aiartengine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
-    <a href="https://github.com/Justin-sky/aiartengine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/aiartengine/total?label=downloads&style=flat-square" alt="downloads" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=social" alt="GitHub stars" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
     <a href="package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
@@ -41,7 +41,7 @@
 
 | Platform | Package | Get it |
 |----------|---------|--------|
-| **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/aiartengine/releases) |
+| **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
 | **macOS** | `.dmg` | 同上（需 Mac / CI 构建；未签名时在「隐私与安全性」允许） |
 | **Linux** | `.AppImage` | 同上（`chmod +x` 后运行） |
 
@@ -76,15 +76,15 @@ npm run dist:linux  # Linux
 
 **用安装包**
 
-1. 从 [Releases](https://github.com/Justin-sky/aiartengine/releases) 下载对应平台包  
+1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包  
 2. 安装启动 → 新建工程  
 3. 设置里填写 API Key → 在分镜 / 节点图中创作  
 
 **从源码**
 
 ```bash
-git clone https://github.com/Justin-sky/aiartengine.git
-cd aiartengine
+git clone https://github.com/Justin-sky/ai-art-engine.git
+cd ai-art-engine
 npm install
 npm run dev
 ```
@@ -113,7 +113,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-  CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/aiartengine/releases)（含 `latest.yml` 等更新元数据）。
+  CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
 - **客户端更新**：安装包启动后会检查 Releases；也可在 **设置 → 通用 → 关于与更新** 中手动检查，下载完成后重启安装。开发模式（`npm run dev`）不检查更新。
 
 ---
@@ -126,7 +126,7 @@ git push origin v1.0.0
 npm run typecheck && npm test
 ```
 
-讨论与缺陷跟踪请走 [GitHub Issues](https://github.com/Justin-sky/aiartengine/issues)。
+讨论与缺陷跟踪请走 [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues)。
 
 ---
 

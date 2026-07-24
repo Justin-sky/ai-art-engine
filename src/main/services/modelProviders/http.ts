@@ -14,7 +14,7 @@ export function authHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://github.com/Justin-sky/aiartengine',
+    'HTTP-Referer': 'https://github.com/Justin-sky/ai-art-engine',
     'X-Title': 'AIArtEngine',
     'X-OpenRouter-Title': 'AIArtEngine'
   }

@@ -5,13 +5,13 @@
   "main": "./out/main/index.js",
   "author": "AIArtEngine",
   "license": "GPL-3.0-only",
-  "homepage": "https://github.com/Justin-sky/aiartengine#readme",
+  "homepage": "https://github.com/Justin-sky/ai-art-engine#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Justin-sky/aiartengine.git"
+    "url": "git+https://github.com/Justin-sky/ai-art-engine.git"
   },
   "bugs": {
-    "url": "https://github.com/Justin-sky/aiartengine/issues"
+    "url": "https://github.com/Justin-sky/ai-art-engine/issues"
   },
   "scripts": {
     "dev": "electron-vite dev",
