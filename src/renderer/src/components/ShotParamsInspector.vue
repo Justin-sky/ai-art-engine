@@ -31,7 +31,8 @@
         v-model="localStoryboard.visualDescription"
         :options="mentionOptions"
         :rows="4"
-        :placeholder="t('shot.mention.hint')"
+        :placeholder="t('shot.mention.labelHint')"
+        :hint="t('shot.mention.labelHint')"
         @focus="activeStagingField = 'visualDescription'"
         @change="persistStoryboard"
       />
@@ -197,10 +198,6 @@ const mentionOptions = computed(() =>
 
 const finalPromptDisplay = computed(() =>
   buildShotGenerationPrompt(localStoryboard, {
-    genRefs: indexedRefs.value.genRefs,
-    audioRefs: indexedRefs.value.audioRefs,
-    assetNames: assetNameMap.value,
-    assetTypes: assetTypeMap.value,
     stylePreset: project.config?.stylePreset
   })
 )

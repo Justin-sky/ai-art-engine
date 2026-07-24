@@ -165,7 +165,7 @@ export type ShotAudioRefKind = 'voice' | 'dialogue_tts' | 'sfx' | 'bgm'
 export interface ShotGenRef {
   role: ShotGenRefRole
   assetId: string
-  /** LibTV 式图片参考编号，从 1 开始；画面描述中用 @1 @2 引用 */
+  /** 参考编号，从 1 开始 */
   refIndex: number
   /** 角色名或备注 */
   label?: string
@@ -178,14 +178,11 @@ export interface ShotAudioRef {
   kind: ShotAudioRefKind
   assetId?: string
   text?: string
-  /** 声音参考编号（与图片参考连续编号）；画面描述中用 @编号 引用 */
+  /** 声音参考编号（与图片参考连续编号） */
   refIndex?: number
 }
 
 export const IMAGE_REF_PARAM_LABEL = '参考'
-
-/** 画面描述中引用参考：@1 @2（图片、全景、声音等统一编号） */
-export const IMAGE_REF_MENTION_RE = /@(\d+)/g
 
 export const GEN_REF_ROLE_LABELS: Record<ShotGenRefRole, string> = {
   background: 'Background',
@@ -1814,10 +1811,6 @@ export function normalizeStoryboard(shot: Pick<Shot, 'prompt' | 'storyboard' | '
 export function buildShotGenerationPrompt(
   storyboard: ShotStoryboard,
   options?: {
-    genRefs?: ShotGenRef[]
-    audioRefs?: ShotAudioRef[]
-    assetNames?: Map<string, string>
-    assetTypes?: Map<string, AssetType>
     /** 工程级画面风格，追加到自动组装提示词 */
     stylePreset?: string
   }
@@ -1825,24 +1818,10 @@ export function buildShotGenerationPrompt(
   if (storyboard.finalPrompt.trim()) return storyboard.finalPrompt.trim()
   const parts: string[] = []
 
-  const indexed = reindexAllShotRefs(options?.genRefs ?? [], options?.audioRefs ?? [])
-  const genRefs = indexed.genRefs
-  const audioRefs = indexed.audioRefs
-  const names = options?.assetNames
-  const types = options?.assetTypes
-
-  if (storyboard.visualDescription.trim()) {
-    parts.push(
-      expandRefMentions(storyboard.visualDescription.trim(), genRefs, audioRefs, names, types)
-    )
-  }
+  if (storyboard.visualDescription.trim()) parts.push(storyboard.visualDescription.trim())
   if (storyboard.shotSize.trim()) parts.push(`景别：${storyboard.shotSize.trim()}`)
   if (storyboard.lighting.trim()) parts.push(`光影：${storyboard.lighting.trim()}`)
-  if (storyboard.dialogue.trim()) {
-    parts.push(
-      `对白：${expandRefMentions(storyboard.dialogue.trim(), genRefs, audioRefs, names, types)}`
-    )
-  }
+  if (storyboard.dialogue.trim()) parts.push(`对白：${storyboard.dialogue.trim()}`)
   if (storyboard.soundFx.trim()) parts.push(`音效：${storyboard.soundFx.trim()}`)
   if (storyboard.cameraMove.trim()) parts.push(`运镜：${storyboard.cameraMove.trim()}`)
   const style = options?.stylePreset?.trim()
@@ -1917,39 +1896,12 @@ export function buildUnifiedShotRefs(
   return items.sort((x, y) => x.refIndex - y.refIndex)
 }
 
-function findShotRefAtIndex(
-  index: number,
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[]
-): { assetId: string; label?: string } | null {
-  const visual = genRefs.find((r) => r.refIndex === index)
-  if (visual) return { assetId: visual.assetId, label: visual.label }
-  const audio = audioRefs.find((a) => a.kind === 'voice' && a.refIndex === index && a.assetId)
-  if (audio?.assetId) return { assetId: audio.assetId }
-  return null
-}
-
-/** 将 @1 展开为可读标签 */
-export function expandRefMentions(
-  text: string,
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[],
-  assetNames?: Map<string, string>,
-  assetTypes?: Map<string, AssetType>
-): string {
-  const indexed = reindexAllShotRefs(genRefs, audioRefs)
-
-  return text.replace(IMAGE_REF_MENTION_RE, (_m, num: string) => {
-    const hit = findShotRefAtIndex(Number(num), indexed.genRefs, indexed.audioRefs)
-    if (!hit) return `@${num}`
-    return `[${formatShotRefLabel(hit.assetId, Number(num), assetNames, assetTypes, hit.label)}]`
-  })
-}
-
 export interface RefMentionOption {
   token: string
   label: string
   kind: 'visual' | 'voice'
+  /** 选中后实际写入文本；省略时写入 token（生成指令继续使用 @n） */
+  insertText?: string
 }
 
 export function listRefMentionOptions(
@@ -1958,11 +1910,22 @@ export function listRefMentionOptions(
   assetNames?: Map<string, string>,
   assetTypes?: Map<string, AssetType>
 ): RefMentionOption[] {
-  return buildUnifiedShotRefs(genRefs, audioRefs).map((ref) => ({
-    token: `@${ref.refIndex}`,
-    label: formatShotRefLabel(ref.assetId, ref.refIndex, assetNames, assetTypes, ref.label),
-    kind: ref.kind
-  }))
+  return buildUnifiedShotRefs(genRefs, audioRefs).map((ref) => {
+    const label = formatShotRefLabel(
+      ref.assetId,
+      ref.refIndex,
+      assetNames,
+      assetTypes,
+      ref.label
+    )
+    return {
+      token: `@${ref.refIndex}`,
+      label,
+      kind: ref.kind,
+      // 分镜描述只保存稳定、可读的语义标签，不冒充生成节点端口引用。
+      insertText: `[${label}]`
+    }
+  })
 }
 
 export function normalizeShotRefs(shot: Pick<Shot, 'genRefs' | 'audioRefs'>): {

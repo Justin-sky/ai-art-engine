@@ -80,4 +80,25 @@ describe('video instruction presets', () => {
     expect(continuity?.body).toContain('不让首尾帧直接变形互溶')
     expect(dissolve?.body).toContain('人物五官')
   })
+
+  it('uses readable placeholders instead of hard-coded @n port mentions', () => {
+    const kinds = [
+      'screenplay',
+      'image',
+      'video',
+      'lipSync',
+      'optimize',
+      'shotSplit',
+      'worldExtract',
+      'narrativeSplit'
+    ] as const
+    for (const kind of kinds) {
+      for (const preset of listInstructionPresets(kind)) {
+        expect(preset.body, `${kind}/${preset.id}`).not.toMatch(/@\d+/)
+      }
+    }
+    const multimodal = getInstructionPreset('video', 'video.multimodalRef')
+    expect(multimodal?.body).toContain('[主体参考图，可选]')
+    expect(multimodal?.body).toContain('[风格/场景参考，可选]')
+  })
 })

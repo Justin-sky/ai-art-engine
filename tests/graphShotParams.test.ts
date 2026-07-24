@@ -43,6 +43,17 @@ describe('script.shotParams node', () => {
     })
   })
 
+  it('does not expand legacy @n text in storyboard fields', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      params: shotStoryboardToNodeParams({
+        ...createEmptyStoryboard(),
+        visualDescription: '人物看向 @1'
+      })
+    })
+    const result = executeShotParamsNode({ node, inputs: {} })
+    expect(result.out).toEqual({ kind: 'text', text: '人物看向 @1' })
+  })
+
   it('uses default empty storyboard params', () => {
     expect(defaultShotParamsNodeParams().shotStoryboard).toEqual(createEmptyStoryboard())
   })

@@ -187,20 +187,17 @@ import {
   normalizeProjectStyleImages,
   portMentionIndex,
   resolveGenerateStyleImages,
-  type AssetType,
   type ProjectStyleImage,
   type RefMentionOption
 } from '@shared/domain'
 import {
   buildInstructionFinalPromptPreview,
   insertInstructionPresetText,
-  listVideoMentionContribution,
   resolveInstructionFinalPreviewKind,
   resolveNodeTextContent,
   resolveShotParamsNodePrompt,
   shouldKeepInstructionMentionToken,
   type GraphNode,
-  type GraphDocument,
   type InstructionMentionSource,
   type InstructionPreset,
   type InstructionPresetKind
@@ -212,7 +209,6 @@ import GraphTextNotepadDialog, {
 import RefMentionTextarea from './RefMentionTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
-import { useWorkspaceStore } from '../stores/workspace'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import {
   enrichStyleImagesWithLibraryPrompts,
@@ -285,7 +281,6 @@ const emit = defineEmits<{
 
 const { t, locale, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
-const workspace = useWorkspaceStore()
 const revision = useGraphEditorRevision()
 const thumbUrls = ref<Record<string, string>>({})
 const menuOpen = ref(false)
@@ -373,27 +368,10 @@ function sourceIcon(node: GraphNode): string {
   return '📄'
 }
 
-function liveGraphForHost(): GraphDocument | null {
-  void revision.value
-  return workspace.getActiveGraph()
-}
-
 /** 预览/芯片摘要用：分镜参数节点需现场拼 storyboard，不能只读 params.text */
 function resolveSourcePlainText(node: GraphNode): string {
   if (node.typeId === 'script.shotParams') {
-    const graph = liveGraphForHost()
-    const contrib = graph
-      ? listVideoMentionContribution(graph)
-      : { genRefs: [], audioRefs: [] }
-    const assetNames = new Map(project.assets.map((a) => [a.id, a.name]))
-    const assetTypes = new Map<string, AssetType>(
-      project.assets.map((a) => [a.id, a.type])
-    )
     return resolveShotParamsNodePrompt(node, {
-      genRefs: contrib.genRefs,
-      audioRefs: contrib.audioRefs,
-      assetNames,
-      assetTypes,
       stylePreset: project.config?.stylePreset
     }).trim()
   }

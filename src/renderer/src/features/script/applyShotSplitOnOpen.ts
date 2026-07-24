@@ -80,10 +80,7 @@ function mergeShotWithRow(shot: Shot, row: ShotSplitRow): Shot {
     title: row.title,
     reviewStatus: normalizeShotReviewStatus(row.status),
     storyboard,
-    prompt: buildShotGenerationPrompt(storyboard, {
-      genRefs: shot.genRefs,
-      audioRefs: shot.audioRefs
-    }),
+    prompt: buildShotGenerationPrompt(storyboard),
     camera: {
       ...shot.camera,
       durationSec: row.durationSec

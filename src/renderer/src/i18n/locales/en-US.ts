@@ -676,7 +676,9 @@ export default {
       }
     },
     mention: {
-      hint: "Type {'@'} to mention a reference, e.g. {'@'}1, {'@'}2"
+      hint: "Type {'@'} to mention a reference, e.g. {'@'}1, {'@'}2",
+      labelHint:
+        "Type {'@'} to insert a readable reference label; configure generation-port mentions in the instruction editor"
     }
   },
   script: {

@@ -2032,10 +2032,6 @@ export function executeShotParamsNode(ctx: NodeExecuteContext): Record<string, G
   const storyboard = readShotStoryboardFromNodeParams(ctx.node.params)
   const refs = ctx.resolveShotStoryboard?.(ctx.node.params.boundShotId)
   const text = buildShotGenerationPrompt(storyboard, {
-    genRefs: refs?.genRefs,
-    audioRefs: refs?.audioRefs,
-    assetNames: refs?.assetNames,
-    assetTypes: refs?.assetTypes,
     stylePreset: refs?.stylePreset
   })
   return { out: { kind: 'text', text } }

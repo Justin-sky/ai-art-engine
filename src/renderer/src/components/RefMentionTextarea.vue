@@ -225,12 +225,13 @@ function pickOption(opt: RefMentionOption): void {
   const el = textareaEl.value
   if (!el || mentionStart.value < 0) return
   const pos = el.selectionStart ?? 0
-  const next = `${el.value.slice(0, mentionStart.value)}${opt.token} ${el.value.slice(pos)}`
+  const inserted = opt.insertText ?? opt.token
+  const next = `${el.value.slice(0, mentionStart.value)}${inserted} ${el.value.slice(pos)}`
   emit('update:modelValue', next)
   emit('change')
   closeMenu()
   void nextTick(() => {
-    const cursor = mentionStart.value + opt.token.length + 1
+    const cursor = mentionStart.value + inserted.length + 1
     el.focus()
     el.setSelectionRange(cursor, cursor)
   })

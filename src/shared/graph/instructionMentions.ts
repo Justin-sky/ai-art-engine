@@ -1,4 +1,4 @@
-import { IMAGE_REF_MENTION_RE } from '../domain'
+const INSTRUCTION_MENTION_RE = /@(\d+)/g
 
 export interface InstructionMentionSource {
   /** 1-based，与 UI / @n 一致（含风格图占位偏移） */
@@ -40,7 +40,7 @@ export function expandInstructionMentions(
   if (!instruction) return ''
   const byIndex = new Map(sources.map((s) => [s.index, s]))
   return instruction
-    .replace(IMAGE_REF_MENTION_RE, (_match, num: string) => {
+    .replace(INSTRUCTION_MENTION_RE, (_match, num: string) => {
       const index = Number(num)
       const hit = byIndex.get(index)
       if (!hit) return ''
@@ -61,7 +61,7 @@ export function expandInstructionMentions(
 /** 指令中出现过的引用编号 */
 export function collectMentionedIndexes(instruction: string): Set<number> {
   const indexes = new Set<number>()
-  instruction.replace(IMAGE_REF_MENTION_RE, (_m, num: string) => {
+  instruction.replace(INSTRUCTION_MENTION_RE, (_m, num: string) => {
     indexes.add(Number(num))
     return _m
   })

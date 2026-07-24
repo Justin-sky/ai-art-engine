@@ -49,7 +49,8 @@
         v-model="local.storyboard.visualDescription"
         :options="mentionOptions"
         :rows="4"
-        :placeholder="t('shot.mention.hint')"
+        :placeholder="t('shot.mention.labelHint')"
+        :hint="t('shot.mention.labelHint')"
         @focus="activeStagingField = 'visualDescription'"
         @change="persist"
       />
@@ -217,10 +218,6 @@ const indexedRefs = computed(() => reindexAllShotRefs(local.genRefs, local.audio
 
 const finalPromptDisplay = computed(() =>
   buildShotGenerationPrompt(local.storyboard, {
-    genRefs: indexedRefs.value.genRefs,
-    audioRefs: indexedRefs.value.audioRefs,
-    assetNames: assetNameMap.value,
-    assetTypes: assetTypeMap.value,
     stylePreset: project.config?.stylePreset
   })
 )
@@ -276,10 +273,6 @@ function buildShotPayload(): Shot | null {
   const storyboard: ShotStoryboard = { ...local.storyboard }
   const indexed = reindexAllShotRefs(local.genRefs, local.audioRefs)
   const prompt = buildShotGenerationPrompt(storyboard, {
-    genRefs: indexed.genRefs,
-    audioRefs: indexed.audioRefs,
-    assetNames: assetNameMap.value,
-    assetTypes: assetTypeMap.value,
     stylePreset: project.config?.stylePreset
   })
   const liveGraph = workspace.getActiveGraph()

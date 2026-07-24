@@ -2,10 +2,7 @@ import {
   buildShotGenerationPrompt,
   createEmptyStoryboard,
   normalizeStoryboard,
-  type AssetType,
   type Shot,
-  type ShotAudioRef,
-  type ShotGenRef,
   type ShotStoryboard
 } from '../domain'
 import type { GraphDocument, GraphNode, GraphNodeParams } from './types'
@@ -95,13 +92,7 @@ export function withShotWorkflowGraph(
 /** 分镜参数节点在图未执行时的可读正文（与 executeShotParamsNode 输出一致） */
 export function resolveShotParamsNodePrompt(
   node: Pick<GraphNode, 'typeId' | 'params'>,
-  options?: {
-    genRefs?: ShotGenRef[]
-    audioRefs?: ShotAudioRef[]
-    assetNames?: Map<string, string>
-    assetTypes?: Map<string, AssetType>
-    stylePreset?: string
-  }
+  options?: { stylePreset?: string }
 ): string {
   if (node.typeId !== 'script.shotParams') return ''
   return buildShotGenerationPrompt(readShotStoryboardFromNodeParams(node.params), options)

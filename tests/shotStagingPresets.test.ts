@@ -56,6 +56,11 @@ describe('shot staging presets', () => {
     expect(SHOT_STAGING_PRESETS.filter((preset) => preset.group === 'lighting')).toHaveLength(6)
   })
 
+  it('uses readable placeholders instead of generation-port mentions', () => {
+    expect(JSON.stringify(SHOT_STAGING_PRESETS)).not.toMatch(/@\d+/)
+    expect(JSON.stringify(SHOT_STAGING_PRESETS)).toContain('[主体]')
+  })
+
   it('inserts preset text at the caret without clearing existing content', () => {
     const original = {
       ...createEmptyStoryboard(),

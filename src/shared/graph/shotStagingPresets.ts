@@ -33,8 +33,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.heroEntrance',
     shotSize: '全景',
     visualDescription: text(
-      '低机位仰拍，@1 从 @2 中进入画面；先用局部细节建立悬念，再逐步露出全身与坚定神态。',
-      'Low-angle view: @1 enters through @2. Begin on a revealing detail, then gradually reveal the full figure and a determined expression.'
+      '低机位仰拍，[主体] 从 [场景] 中进入画面；先用局部细节建立悬念，再逐步露出全身与坚定神态。',
+      'Low-angle view: [subject] enters through [scene]. Begin on a revealing detail, then gradually reveal the full figure and a determined expression.'
     ),
     lighting: text(
       '强轮廓逆光，空气中可见尘雾或体积光，史诗氛围',
@@ -51,8 +51,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.mysteriousEntrance',
     shotSize: '中景',
     visualDescription: text(
-      '从 @1 的背影或被前景遮挡的局部开始，人物进入 @2；面部信息延迟揭示，保持压迫与悬念。',
-      'Begin behind @1 or through a foreground obstruction as the subject enters @2. Delay the facial reveal to preserve pressure and suspense.'
+      '从 [主体] 的背影或被前景遮挡的局部开始，人物进入 [场景]；面部信息延迟揭示，保持压迫与悬念。',
+      'Begin behind [subject] or through a foreground obstruction as the subject enters [scene]. Delay the facial reveal to preserve pressure and suspense.'
     ),
     lighting: text(
       '高反差暗调，人物从明处走入阴影，环境微尘可见',
@@ -69,8 +69,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.storyEntrance',
     shotSize: '中景',
     visualDescription: text(
-      '@1 在 @2 中自然行动，人物与环境保持清晰空间关系，动作透露其处境和性格。',
-      '@1 acts naturally in @2, with a clear spatial relationship between subject and environment; behavior reveals situation and character.'
+      '[主体] 在 [场景] 中自然行动，人物与环境保持清晰空间关系，动作透露其处境和性格。',
+      '[subject] acts naturally in [scene], with a clear spatial relationship between subject and environment; behavior reveals situation and character.'
     ),
     cameraMove: text(
       '平视手持跟拍并做缓慢小幅环绕，运动带轻微呼吸感',
@@ -83,8 +83,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.twoShot',
     shotSize: '中景',
     visualDescription: text(
-      '@1 与第二人物处于同一画面，站位错落且视线关系明确，环境信息辅助交代双方关系。',
-      '@1 and the second character share the frame with staggered blocking and a clear eyeline; the environment supports their relationship.'
+      '[主体] 与 [第二人物] 处于同一画面，站位错落且视线关系明确，环境信息辅助交代双方关系。',
+      '[subject] and [second character] share the frame with staggered blocking and a clear eyeline; the environment supports their relationship.'
     ),
     cameraMove: text(
       '稳定机位或极缓慢推进，优先保留双人互动和空间关系',
@@ -97,8 +97,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.overShoulder',
     shotSize: '半身景',
     visualDescription: text(
-      '过肩反打（OTS）：前景保留一名人物虚化的肩部轮廓，焦点落在 @1 的面部，保持正确视线方向。',
-      'Over-the-shoulder reverse shot (OTS): keep a soft shoulder silhouette in the foreground and focus on @1, preserving the eyeline.'
+      '过肩反打（OTS）：前景保留一名人物虚化的肩部轮廓，焦点落在 [主体] 的面部，保持正确视线方向。',
+      'Over-the-shoulder reverse shot (OTS): keep a soft shoulder silhouette in the foreground and focus on [subject], preserving the eyeline.'
     ),
     cameraMove: text(
       '固定或轻微推进，切换反打时遵守轴线与视线匹配',
@@ -111,8 +111,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.highEmotion',
     shotSize: '中远景',
     visualDescription: text(
-      '高机位俯拍 @1，人物在环境中显得渺小；构图保留大面积负空间，表现无助与被压制。',
-      'High-angle view of @1, making the subject small within the environment; use broad negative space to convey helplessness and pressure.'
+      '高机位俯拍 [主体]，人物在环境中显得渺小；构图保留大面积负空间，表现无助与被压制。',
+      'High-angle view of [subject], making the subject small within the environment; use broad negative space to convey helplessness and pressure.'
     ),
     cameraMove: text(
       '从平视缓慢升高并转为俯视，情绪逐步下沉',
@@ -125,8 +125,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.backEmotion',
     shotSize: '中远景',
     visualDescription: text(
-      '从背面拍摄 @1，让观众与人物共同面对 @2；人物偏离中心并保留前方未知空间，强调孤独与疏离。',
-      'Film @1 from behind so the audience faces @2 with the subject; place the subject off-center with unknown space ahead to emphasize isolation.'
+      '从背面拍摄 [主体]，让观众与人物共同面对 [场景/目标]；人物偏离中心并保留前方未知空间，强调孤独与疏离。',
+      'Film [subject] from behind so the audience faces [scene/target] with the subject; place the subject off-center with unknown space ahead to emphasize isolation.'
     ),
     cameraMove: text(
       '缓慢跟随或静止观察，不抢先揭示人物正脸',
@@ -139,8 +139,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.dutch',
     shotSize: '中景',
     visualDescription: text(
-      '荷兰角（Dutch angle）倾斜构图，垂直线明显失衡，@1 与环境产生不稳定关系。',
-      'Dutch-angle composition with visibly tilted verticals, creating an unstable relationship between @1 and the environment.'
+      '荷兰角（Dutch angle）倾斜构图，垂直线明显失衡，[主体] 与环境产生不稳定关系。',
+      'Dutch-angle composition with visibly tilted verticals, creating an unstable relationship between [subject] and the environment.'
     ),
     cameraMove: text(
       '轻微不稳定推近，可在关键情绪点进一步倾斜画面',
@@ -153,8 +153,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.facingFront',
     shotSize: '半身景',
     visualDescription: text(
-      '严格全正面拍摄 @1，眼神看向镜头；面部情绪直接可读，手部在画面下方做细微且有动机的动作。',
-      'Film @1 strictly front-on with eyes toward camera; keep the facial emotion readable and include a small motivated hand action low in frame.'
+      '严格全正面拍摄 [主体]，眼神看向镜头；面部情绪直接可读，手部在画面下方做细微且有动机的动作。',
+      'Film [subject] strictly front-on with eyes toward camera; keep the facial emotion readable and include a small motivated hand action low in frame.'
     )
   },
   {
@@ -163,8 +163,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.facingThreeQuarter',
     shotSize: '半身景',
     visualDescription: text(
-      '45度正面（三分之四侧面）拍摄 @1，兼顾面部表情与身体立体感；加入视线扫动、手指动作或重心转移。',
-      'Film @1 at a front three-quarter angle, balancing facial expression and body volume; add an eye scan, finger action, or weight shift.'
+      '45度正面（三分之四侧面）拍摄 [主体]，兼顾面部表情与身体立体感；加入视线扫动、手指动作或重心转移。',
+      'Film [subject] at a front three-quarter angle, balancing facial expression and body volume; add an eye scan, finger action, or weight shift.'
     )
   },
   {
@@ -173,8 +173,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.facingProfile',
     shotSize: '特写',
     visualDescription: text(
-      '纯侧面拍摄 @1，人物视线专注于画外目标而非镜头；轮廓清晰，观众处于旁观位置。',
-      'Film @1 in pure profile, focused on an off-screen target rather than camera; keep the silhouette clear and the audience observational.'
+      '纯侧面拍摄 [主体]，人物视线专注于画外目标而非镜头；轮廓清晰，观众处于旁观位置。',
+      'Film [subject] in pure profile, focused on an off-screen target rather than camera; keep the silhouette clear and the audience observational.'
     )
   },
   {
@@ -183,8 +183,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.facingBackThreeQuarter',
     shotSize: '半身景',
     visualDescription: text(
-      '45度背面拍摄 @1，前景加入轻微遮挡，人物只露出少量侧脸与动作线索，形成窥视和疏离感。',
-      'Film @1 from a rear three-quarter angle with a soft foreground obstruction; reveal only a hint of profile and action for a voyeuristic, distant feeling.'
+      '45度背面拍摄 [主体]，前景加入轻微遮挡，人物只露出少量侧脸与动作线索，形成窥视和疏离感。',
+      'Film [subject] from a rear three-quarter angle with a soft foreground obstruction; reveal only a hint of profile and action for a voyeuristic, distant feeling.'
     )
   },
   {
@@ -193,8 +193,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     titleKey: 'shot.staging.preset.facingBack',
     shotSize: '中远景',
     visualDescription: text(
-      '严格背面拍摄 @1，让人物与观众共同望向 @2；用肩线、头部偏转、手部动作和重心变化传递情绪，不提前露出正脸。',
-      'Film @1 strictly from behind so the character and audience face @2 together; convey emotion through the shoulders, head turn, hands, and weight shift without revealing the face early.'
+      '严格背面拍摄 [主体]，让人物与观众共同望向 [场景/目标]；用肩线、头部偏转、手部动作和重心变化传递情绪，不提前露出正脸。',
+      'Film [subject] strictly from behind so the character and audience face [scene/target] together; convey emotion through the shoulders, head turn, hands, and weight shift without revealing the face early.'
     )
   },
   {
@@ -202,8 +202,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceAnger',
     visualDescription: text(
-      '@1 先短暂疑惑地皱眉，随后唇角紧抿、眉间收紧、鼻翼翕张，下颌与肩颈逐渐绷紧。',
-      '@1 first frowns in brief confusion, then presses the lips, draws the brows together, flares the nostrils, and gradually tenses the jaw and shoulders.'
+      '[主体] 先短暂疑惑地皱眉，随后唇角紧抿、眉间收紧、鼻翼翕张，下颌与肩颈逐渐绷紧。',
+      '[subject] first frowns in brief confusion, then presses the lips, draws the brows together, flares the nostrils, and gradually tenses the jaw and shoulders.'
     )
   },
   {
@@ -211,8 +211,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceDazed',
     visualDescription: text(
-      '@1 的瞳孔焦距逐渐涣散，眨眼变慢，嘴唇微张；身体失去支撑感，肩膀下沉，可有一滴泪无意识滑落。',
-      '@1 gradually loses eye focus, blinks more slowly, and parts the lips; the body loses support, shoulders sink, and a tear may slip out involuntarily.'
+      '[主体] 的瞳孔焦距逐渐涣散，眨眼变慢，嘴唇微张；身体失去支撑感，肩膀下沉，可有一滴泪无意识滑落。',
+      '[subject] gradually loses eye focus, blinks more slowly, and parts the lips; the body loses support, shoulders sink, and a tear may slip out involuntarily.'
     )
   },
   {
@@ -220,8 +220,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceManic',
     visualDescription: text(
-      '@1 快速眨眼并露出神经质笑容，嘴角和面部肌肉轻微抽动；突然大幅歪头，发丝随动作甩动，眼神瞬间锁定镜头。',
-      '@1 blinks rapidly with a nervous grin and subtle facial twitches; suddenly tilts the head sharply, hair following the motion, and snaps the gaze onto camera.'
+      '[主体] 快速眨眼并露出神经质笑容，嘴角和面部肌肉轻微抽动；突然大幅歪头，发丝随动作甩动，眼神瞬间锁定镜头。',
+      '[subject] blinks rapidly with a nervous grin and subtle facial twitches; suddenly tilts the head sharply, hair following the motion, and snaps the gaze onto camera.'
     ),
     cameraMove: text(
       '在眼神锁定时加入一次短促、不稳定的微推镜',
@@ -233,8 +233,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceRelief',
     visualDescription: text(
-      '@1 的眉头逐渐舒展，长舒一口气并微微仰头，肩膀与手指从紧绷过渡到放松。',
-      '@1 gradually relaxes the brow, exhales deeply, lifts the chin slightly, and releases tension from the shoulders and fingers.'
+      '[主体] 的眉头逐渐舒展，长舒一口气并微微仰头，肩膀与手指从紧绷过渡到放松。',
+      '[subject] gradually relaxes the brow, exhales deeply, lifts the chin slightly, and releases tension from the shoulders and fingers.'
     )
   },
   {
@@ -242,8 +242,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceAnxiety',
     visualDescription: text(
-      '@1 眉头轻锁，视线在画外目标之间快速扫动；手指反复摩挲或按动手中物件，呼吸变浅，身体不耐烦地转换重心。',
-      '@1 lightly knits the brows and scans quickly between off-screen targets; fingers repeatedly rub or click an object, breathing turns shallow, and body weight shifts impatiently.'
+      '[主体] 眉头轻锁，视线在画外目标之间快速扫动；手指反复摩挲或按动手中物件，呼吸变浅，身体不耐烦地转换重心。',
+      '[subject] lightly knits the brows and scans quickly between off-screen targets; fingers repeatedly rub or click an object, breathing turns shallow, and body weight shifts impatiently.'
     )
   },
   {
@@ -251,8 +251,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceGrief',
     visualDescription: text(
-      '@1 先屏住呼吸，眼眶逐渐湿润但不立即落泪；下颌微颤，嘴唇试图抿紧，胸口塌下，双手失去原本的力量。',
-      '@1 first holds the breath as the eyes gradually well without immediately crying; the jaw trembles, lips try to press together, the chest collapses, and the hands lose strength.'
+      '[主体] 先屏住呼吸，眼眶逐渐湿润但不立即落泪；下颌微颤，嘴唇试图抿紧，胸口塌下，双手失去原本的力量。',
+      '[subject] first holds the breath as the eyes gradually well without immediately crying; the jaw trembles, lips try to press together, the chest collapses, and the hands lose strength.'
     )
   },
   {
@@ -260,8 +260,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceConfidence',
     visualDescription: text(
-      '@1 目光稳定锁定目标，眨眼减少，唇角仅轻微上扬；肩背打开、下颌保持水平，动作从容且没有多余摆动。',
-      '@1 holds a steady gaze with fewer blinks and only a slight lift at the mouth; shoulders open, chin stays level, and movements remain deliberate without excess motion.'
+      '[主体] 目光稳定锁定目标，眨眼减少，唇角仅轻微上扬；肩背打开、下颌保持水平，动作从容且没有多余摆动。',
+      '[subject] holds a steady gaze with fewer blinks and only a slight lift at the mouth; shoulders open, chin stays level, and movements remain deliberate without excess motion.'
     )
   },
   {
@@ -269,8 +269,8 @@ export const SHOT_STAGING_PRESETS: readonly ShotStagingPreset[] = [
     group: 'performance',
     titleKey: 'shot.staging.preset.performanceSurprise',
     visualDescription: text(
-      '@1 先在动作中短暂停住，瞳孔迅速聚焦，眉毛抬起、嘴唇微张；随后上身轻微后撤，手指收紧，再决定下一步反应。',
-      '@1 briefly freezes mid-action, snaps the eyes into focus, raises the brows, and parts the lips; the torso then recoils slightly and fingers tighten before the next response.'
+      '[主体] 先在动作中短暂停住，瞳孔迅速聚焦，眉毛抬起、嘴唇微张；随后上身轻微后撤，手指收紧，再决定下一步反应。',
+      '[subject] briefly freezes mid-action, snaps the eyes into focus, raises the brows, and parts the lips; the torso then recoils slightly and fingers tighten before the next response.'
     )
   },
   {
