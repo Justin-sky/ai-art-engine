@@ -234,16 +234,31 @@ const dirty = computed(() => {
   )
 })
 
+/** StudioFloatingWindow 延迟两帧挂 body，等内容挂上后再初始化 canvas */
+function afterFloatingBodyReady(run: () => void): void {
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void nextTick(run)
+      })
+    })
+  })
+}
+
+function initPreviewSurface(): void {
+  if (!props.open || !canvasEl.value) return
+  startPaneObserver()
+  resizeCanvas()
+  scheduleDraw()
+}
+
 watch(
   () => [props.open, props.camera, props.panelPrompt] as const,
   ([open]) => {
     if (!open) return
     Object.assign(draft, normalizeMultiAngleCamera(props.camera))
     panelDraft.value = props.panelPrompt ?? ''
-    void nextTick(() => {
-      resizeCanvas()
-      scheduleDraw()
-    })
+    afterFloatingBodyReady(initPreviewSurface)
   },
   { immediate: true, deep: true }
 )
@@ -254,27 +269,28 @@ watch(
     previewImage.value = null
     const token = ++previewLoadToken
     if (!open || !url?.trim()) {
-      scheduleDraw()
+      afterFloatingBodyReady(initPreviewSurface)
       return
     }
     const img = new Image()
     img.onload = () => {
       if (token !== previewLoadToken) return
       previewImage.value = img
-      void nextTick(() => {
-        resizeCanvas()
-        scheduleDraw()
-      })
+      afterFloatingBodyReady(initPreviewSurface)
     }
     img.onerror = () => {
       if (token !== previewLoadToken) return
       previewImage.value = null
-      scheduleDraw()
+      afterFloatingBodyReady(initPreviewSurface)
     }
     img.src = url
   },
   { immediate: true }
 )
+
+watch(canvasEl, (el) => {
+  if (el && props.open) initPreviewSurface()
+})
 
 watch(
   () =>
@@ -793,16 +809,13 @@ watch(
   (open) => {
     if (open) {
       window.addEventListener('resize', onWinResize)
-      void nextTick(() => {
-        startPaneObserver()
-        resizeCanvas()
-        scheduleDraw()
-      })
+      afterFloatingBodyReady(initPreviewSurface)
     } else {
       window.removeEventListener('resize', onWinResize)
       stopPaneObserver()
     }
-  }
+  },
+  { immediate: true }
 )
 
 watch(themePreference, () => {

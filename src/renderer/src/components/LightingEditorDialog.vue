@@ -229,15 +229,41 @@ const dirty = computed(() => {
   return JSON.stringify(a) !== JSON.stringify(b)
 })
 
+/** StudioFloatingWindow 延迟两帧挂 body，等内容挂上后再初始化 canvas */
+function afterFloatingBodyReady(run: () => void): void {
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void nextTick(run)
+      })
+    })
+  })
+}
+
+function startPaneObserver(): void {
+  stopPaneObserver()
+  const pane = spherePaneEl.value
+  if (!pane || typeof ResizeObserver === 'undefined') return
+  paneObserver = new ResizeObserver(() => {
+    resizeCanvas()
+    scheduleDraw()
+  })
+  paneObserver.observe(pane)
+}
+
+function initPreviewSurface(): void {
+  if (!props.open || !canvasEl.value) return
+  startPaneObserver()
+  resizeCanvas()
+  scheduleDraw()
+}
+
 watch(
   () => [props.open, props.setup] as const,
   ([open]) => {
     if (!open) return
     Object.assign(draft, normalizeLightingSetup(props.setup))
-    void nextTick(() => {
-      resizeCanvas()
-      scheduleDraw()
-    })
+    afterFloatingBodyReady(initPreviewSurface)
   },
   { immediate: true, deep: true }
 )
@@ -248,24 +274,28 @@ watch(
     previewImage.value = null
     const token = ++previewLoadToken
     if (!open || !url?.trim()) {
-      scheduleDraw()
+      afterFloatingBodyReady(initPreviewSurface)
       return
     }
     const img = new Image()
     img.onload = () => {
       if (token !== previewLoadToken) return
       previewImage.value = img
-      scheduleDraw()
+      afterFloatingBodyReady(initPreviewSurface)
     }
     img.onerror = () => {
       if (token !== previewLoadToken) return
       previewImage.value = null
-      scheduleDraw()
+      afterFloatingBodyReady(initPreviewSurface)
     }
     img.src = url
   },
   { immediate: true }
 )
+
+watch(canvasEl, (el) => {
+  if (el && props.open) initPreviewSurface()
+})
 
 watch(
   () =>
@@ -343,10 +373,11 @@ function onPointerDown(e: PointerEvent): void {
 
 function onPointerMove(e: PointerEvent): void {
   if (!drag) return
+  e.preventDefault()
   const dx = e.clientX - drag.x
   const dy = e.clientY - drag.y
-  const yaw = drag.yaw + dx * 0.4
-  const pitch = drag.pitch - dy * 0.25
+  const yaw = drag.yaw + dx * 0.45
+  const pitch = drag.pitch - dy * 0.35
   Object.assign(
     draft,
     markLightingCustom(
@@ -414,6 +445,88 @@ function project(
   }
 }
 
+/** 与多角度预览同构：Rx(-pitch) → Ry(yaw)，使透视球随鼠标旋转 */
+function rotateByView(
+  x: number,
+  y: number,
+  z: number,
+  yawDeg: number,
+  pitchDeg: number
+): { x: number; y: number; z: number } {
+  const yaw = (yawDeg * Math.PI) / 180
+  const pitch = (pitchDeg * Math.PI) / 180
+  const cP = Math.cos(-pitch)
+  const sP = Math.sin(-pitch)
+  const y1 = y * cP - z * sP
+  const z1 = y * sP + z * cP
+  const cY = Math.cos(yaw)
+  const sY = Math.sin(yaw)
+  return {
+    x: x * cY + z1 * sY,
+    y: y1,
+    z: -x * sY + z1 * cY
+  }
+}
+
+function projectWorld(
+  x: number,
+  y: number,
+  z: number,
+  cx: number,
+  cy: number,
+  scale: number,
+  frontal: boolean,
+  yawDeg: number,
+  pitchDeg: number
+): { x: number; y: number; viewZ: number } {
+  if (frontal) {
+    const p = project(x, y, z, cx, cy, scale, true)
+    return { ...p, viewZ: z }
+  }
+  const r = rotateByView(x, y, z, yawDeg, pitchDeg)
+  const p = project(r.x, r.y, r.z, cx, cy, scale, false)
+  const tilt = 0.35
+  const viewZ = r.y * Math.sin(tilt) + r.z * Math.cos(tilt)
+  return { ...p, viewZ }
+}
+
+type GridPoint = ReturnType<typeof projectWorld>
+
+/** 按视深拆线，在球体轮廓处插值衔接正背面。 */
+function strokeGridSide(
+  ctx: CanvasRenderingContext2D,
+  points: GridPoint[],
+  front: boolean
+): void {
+  if (points.length < 2) return
+  ctx.beginPath()
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!
+    const b = points[i]!
+    const aFront = a.viewZ >= 0
+    const bFront = b.viewZ >= 0
+    if (aFront === bFront) {
+      if (aFront === front) {
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+      }
+      continue
+    }
+
+    const t = a.viewZ / (a.viewZ - b.viewZ)
+    const joinX = a.x + (b.x - a.x) * t
+    const joinY = a.y + (b.y - a.y) * t
+    if (aFront === front) {
+      ctx.moveTo(a.x, a.y)
+      ctx.lineTo(joinX, joinY)
+    } else {
+      ctx.moveTo(joinX, joinY)
+      ctx.lineTo(b.x, b.y)
+    }
+  }
+  ctx.stroke()
+}
+
 function drawPreview(): void {
   const canvas = canvasEl.value
   if (!canvas) return
@@ -426,11 +539,14 @@ function drawPreview(): void {
   const outerR = Math.min(w, h) * 0.42
   const radius = outerR / 0.55
   const frontal = draft.viewMode === 'frontal'
+  const viewYaw = draft.yaw
+  const viewPitch = draft.pitch
 
   const lightTheme = themePreference.value === 'light'
   const disc = cssColor('--bg-elevated', lightTheme ? '#e8ebf0' : '#1a1d22')
   const emptyThumb = cssColor('--bg-hover', lightTheme ? '#dfe3ea' : '#2a3038')
-  const grid = lightTheme ? 'rgba(60, 80, 110, 0.28)' : 'rgba(160, 180, 200, 0.28)'
+  const gridBack = lightTheme ? 'rgba(60, 80, 110, 0.2)' : 'rgba(160, 180, 200, 0.18)'
+  const gridFront = lightTheme ? 'rgba(50, 70, 100, 0.52)' : 'rgba(180, 200, 220, 0.5)'
   const rimStroke = lightTheme ? 'rgba(70, 90, 120, 0.5)' : 'rgba(200, 210, 220, 0.5)'
   const bulbCore = cssColor('--bg', lightTheme ? '#ffffff' : '#111111')
 
@@ -445,23 +561,52 @@ function drawPreview(): void {
   ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
   ctx.clip()
 
-  // 简单经纬网格
-  ctx.lineWidth = Math.max(1, w / 420)
-  ctx.strokeStyle = grid
-  for (let i = 0; i < 10; i++) {
-    const yaw = (i / 10) * Math.PI * 2
-    ctx.beginPath()
-    for (let j = 0; j <= 48; j++) {
-      const pitch = -Math.PI / 2 + (j / 48) * Math.PI
+  const toScreen = (x: number, y: number, z: number) =>
+    projectWorld(x, y, z, cx, cy, radius, frontal, viewYaw, viewPitch)
+
+  const gridLines: GridPoint[][] = []
+  const meridians = 16
+  const parallels = 10
+  const meridianSteps = 72
+  const parallelSteps = 96
+
+  for (let i = 0; i < meridians; i++) {
+    const yaw = (i / meridians) * Math.PI * 2
+    const line: GridPoint[] = []
+    for (let j = 0; j <= meridianSteps; j++) {
+      const pitch = -Math.PI / 2 + (j / meridianSteps) * Math.PI
       const x = Math.cos(pitch) * Math.sin(yaw)
       const y = Math.sin(pitch)
       const z = Math.cos(pitch) * Math.cos(yaw)
-      const p = project(x, y, z, cx, cy, radius, frontal)
-      if (j === 0) ctx.moveTo(p.x, p.y)
-      else ctx.lineTo(p.x, p.y)
+      line.push(toScreen(x, y, z))
     }
-    ctx.stroke()
+    gridLines.push(line)
   }
+
+  for (let i = 1; i < parallels; i++) {
+    const pitch = -Math.PI / 2 + (i / parallels) * Math.PI
+    const cp = Math.cos(pitch)
+    const y = Math.sin(pitch)
+    const line: GridPoint[] = []
+    for (let j = 0; j <= parallelSteps; j++) {
+      const yaw = (j / parallelSteps) * Math.PI * 2
+      line.push(toScreen(cp * Math.sin(yaw), y, cp * Math.cos(yaw)))
+    }
+    gridLines.push(line)
+  }
+
+  // 背面低透明虚线先画，正面实线覆盖其上。
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = Math.max(1, w / 440)
+  ctx.strokeStyle = gridBack
+  ctx.setLineDash([Math.max(3, w / 130), Math.max(4, w / 100)])
+  for (const line of gridLines) strokeGridSide(ctx, line, false)
+
+  ctx.setLineDash([])
+  ctx.lineWidth = Math.max(1.15, w / 390)
+  ctx.strokeStyle = gridFront
+  for (const line of gridLines) strokeGridSide(ctx, line, true)
 
   // 中心参考图
   const img = previewImage.value
@@ -484,9 +629,9 @@ function drawPreview(): void {
   }
   ctx.restore()
 
-  // 主光位置 + 锥光
+  // 主光位置 + 锥光（与球体同一视角旋转，灯光相对画面保持在瞄准方向）
   const light = lightingSphericalPoint(draft.yaw, draft.pitch, 1)
-  const lp = project(light.x, light.y, light.z, cx, cy, radius, frontal)
+  const lp = toScreen(light.x, light.y, light.z)
   const intensity = 0.35 + (draft.brightness / 100) * 0.65
 
   ctx.strokeStyle = hexToRgba(draft.color, 0.35 * intensity)
@@ -516,7 +661,7 @@ function drawPreview(): void {
 
   if (draft.rimLight) {
     const rim = lightingSphericalPoint(draft.yaw + 180, Math.max(-20, draft.pitch * 0.3), 1)
-    const rp = project(rim.x, rim.y, rim.z, cx, cy, radius, frontal)
+    const rp = toScreen(rim.x, rim.y, rim.z)
     ctx.strokeStyle = lightTheme ? 'rgba(70, 100, 160, 0.55)' : 'rgba(200, 220, 255, 0.55)'
     ctx.lineWidth = Math.max(1.5, w / 260)
     ctx.beginPath()
@@ -564,21 +709,13 @@ function stopPaneObserver(): void {
 watch(
   () => props.open,
   (open) => {
-    stopPaneObserver()
-    if (!open) return
-    void nextTick(() => {
-      const pane = spherePaneEl.value
-      if (pane && typeof ResizeObserver !== 'undefined') {
-        paneObserver = new ResizeObserver(() => {
-          resizeCanvas()
-          scheduleDraw()
-        })
-        paneObserver.observe(pane)
-      }
+    if (open) {
       window.addEventListener('resize', onWinResize)
-      resizeCanvas()
-      scheduleDraw()
-    })
+      afterFloatingBodyReady(initPreviewSurface)
+    } else {
+      window.removeEventListener('resize', onWinResize)
+      stopPaneObserver()
+    }
   },
   { immediate: true }
 )
