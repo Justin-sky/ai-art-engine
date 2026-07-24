@@ -961,7 +961,7 @@ button {
   }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1200px) {
   .top {
     padding: 14px var(--pad);
     background: rgba(245, 247, 251, 0.96);

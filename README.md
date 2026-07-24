@@ -27,6 +27,8 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
+    <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
+    <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"><b>Gitee</b></a> ·
     <a href="#交流"><b>交流</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
@@ -43,6 +45,15 @@
 **https://justin-sky.github.io/ai-art-engine/**
 
 请勿使用带 `/website/` 的地址（例如 `.../website/index.html`），会 404。
+
+---
+
+## 源码仓库
+
+- GitHub（主仓库）：https://github.com/Justin-sky/ai-art-engine
+- Gitee（国内镜像）：https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine
+
+两个仓库的 `main` 分支保持同步；Release 与客户端自动更新仍以 GitHub 为准。
 
 ---
 
@@ -94,7 +105,12 @@ npm run dist:linux  # Linux
 **从源码**
 
 ```bash
+# GitHub
 git clone https://github.com/Justin-sky/ai-art-engine.git
+
+# 或使用 Gitee 国内镜像
+git clone https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine.git
+
 cd ai-art-engine
 npm install
 npm run dev
@@ -137,13 +153,16 @@ git push origin v1.0.0
 npm run typecheck && npm test
 ```
 
-讨论与缺陷跟踪请走 [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues)。
+讨论与缺陷跟踪可使用 [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues) 或
+[Gitee Issues](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine/issues)。
 
 ---
 
 ## 交流
 
 - **官网**：[justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
+- **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
 - **QQ 群**：647306826（扫码入群）
 
   <img src="docs/assets/qq-group.png" alt="AIArtEngine QQ 群二维码" width="220" />

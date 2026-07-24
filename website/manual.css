@@ -389,7 +389,7 @@ img {
   color: var(--blue-deep);
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1200px) {
   :root {
     --pad: clamp(16px, 4vw, 28px);
   }
