@@ -13,8 +13,8 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=social" alt="GitHub stars" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -25,12 +25,22 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
-    <a href="#download"><b>Download</b></a> ·
+    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
     <a href="./README.md"><b>中文</b></a>
   </p>
 </div>
+
+---
+
+## Website
+
+The landing page is hosted on GitHub Pages (contents of `website/` are published at the site root):
+
+**https://justin-sky.github.io/ai-art-engine/**
+
+Do not use paths with `/website/` (e.g. `.../website/index.html`) — they 404.
 
 ---
 
@@ -41,8 +51,8 @@
 | Platform | Package | Get it |
 |----------|---------|--------|
 | **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
-| **macOS** | `.dmg` | Same (Mac / CI build; allow in Privacy & Security if unsigned) |
-| **Linux** | `.AppImage` | Same (`chmod +x` then run) |
+| **macOS** | `.dmg` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (Mac / CI build; allow in Privacy & Security if unsigned) |
+| **Linux** | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) (`chmod +x` then run) |
 
 Push a `v*` tag to trigger GitHub Actions multi-platform builds, or package locally:
 

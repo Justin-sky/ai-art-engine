@@ -14,8 +14,8 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-1.0.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -26,12 +26,22 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
-    <a href="#download"><b>Download</b></a> ·
+    <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
     <a href="./README.en.md"><b>English</b></a>
   </p>
 </div>
+
+---
+
+## 官网
+
+落地页由 GitHub Pages 托管（部署的是 `website/` 目录内容，站点根路径即首页）：
+
+**https://justin-sky.github.io/ai-art-engine/**
+
+请勿使用带 `/website/` 的地址（例如 `.../website/index.html`），会 404。
 
 ---
 
@@ -42,8 +52,8 @@
 | Platform | Package | Get it |
 |----------|---------|--------|
 | **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
-| **macOS** | `.dmg` | 同上（需 Mac / CI 构建；未签名时在「隐私与安全性」允许） |
-| **Linux** | `.AppImage` | 同上（`chmod +x` 后运行） |
+| **macOS** | `.dmg` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（需 Mac / CI 构建；未签名时在「隐私与安全性」允许） |
+| **Linux** | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（`chmod +x` 后运行） |
 
 推送 `v*` tag 可由 GitHub Actions 自动构建并发布多平台安装包。也可自行打包：
 
