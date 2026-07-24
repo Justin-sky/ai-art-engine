@@ -34,6 +34,10 @@ export function isScriptShotEditorNode(node: Pick<GraphNode, 'typeId'>): boolean
   return node.typeId === 'script.shotEditor'
 }
 
+export function isScriptShotParamsNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'script.shotParams'
+}
+
 export function isWorldExtractNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.extract'
 }

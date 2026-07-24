@@ -30,7 +30,10 @@
           <tr
             v-for="(shot, index) in visibleShots"
             :key="shot.id"
-            :class="{ active: shot.id === project.activeShotId, 'has-custom-height': hasRowHeight(shot.id) }"
+            :class="{
+              active: shot.id === project.activeShotId,
+              'has-custom-height': hasRowHeight(shot.id)
+            }"
             :style="rowStyle(shot.id)"
             @click="selectShot(shot.id)"
           >
@@ -62,23 +65,35 @@
                 rows="2"
                 :value="storyboardOf(shot).visualDescription"
                 :placeholder="t('shot.table.placeholder.visual')"
-                @change="onStoryboardChange(shot, 'visualDescription', ($event.target as HTMLTextAreaElement).value)"
+                @change="
+                  onStoryboardChange(
+                    shot,
+                    'visualDescription',
+                    ($event.target as HTMLTextAreaElement).value
+                  )
+                "
               />
             </td>
             <td :style="colStyle('shotSize')" @click.stop>
               <select
                 :value="storyboardOf(shot).shotSize"
-                @change="onStoryboardChange(shot, 'shotSize', ($event.target as HTMLSelectElement).value)"
+                @change="
+                  onStoryboardChange(shot, 'shotSize', ($event.target as HTMLSelectElement).value)
+                "
               >
                 <option value="">—</option>
-                <option v-for="opt in SHOT_SIZE_OPTIONS" :key="opt" :value="opt">{{ shotSizeLabel(opt) }}</option>
+                <option v-for="opt in SHOT_SIZE_OPTIONS" :key="opt" :value="opt">
+                  {{ shotSizeLabel(opt) }}
+                </option>
               </select>
             </td>
             <td :style="colStyle('lighting')" @click.stop>
               <input
                 :value="storyboardOf(shot).lighting"
                 :placeholder="t('shot.table.placeholder.lighting')"
-                @change="onStoryboardChange(shot, 'lighting', ($event.target as HTMLInputElement).value)"
+                @change="
+                  onStoryboardChange(shot, 'lighting', ($event.target as HTMLInputElement).value)
+                "
               />
             </td>
             <td :style="colStyle('dialogue')" @click.stop>
@@ -86,22 +101,43 @@
                 rows="2"
                 :value="storyboardOf(shot).dialogue"
                 :placeholder="t('shot.table.placeholder.dialogue')"
-                @change="onStoryboardChange(shot, 'dialogue', ($event.target as HTMLTextAreaElement).value)"
+                @change="
+                  onStoryboardChange(shot, 'dialogue', ($event.target as HTMLTextAreaElement).value)
+                "
               />
             </td>
             <td :style="colStyle('sfx')" @click.stop>
               <input
                 :value="storyboardOf(shot).soundFx"
                 :placeholder="t('shot.table.placeholder.soundFx')"
-                @change="onStoryboardChange(shot, 'soundFx', ($event.target as HTMLInputElement).value)"
+                @change="
+                  onStoryboardChange(shot, 'soundFx', ($event.target as HTMLInputElement).value)
+                "
               />
             </td>
             <td :style="colStyle('camera')" @click.stop>
               <input
                 :value="storyboardOf(shot).cameraMove"
                 :placeholder="t('shot.table.placeholder.cameraMove')"
-                @change="onStoryboardChange(shot, 'cameraMove', ($event.target as HTMLInputElement).value)"
+                @change="
+                  onStoryboardChange(shot, 'cameraMove', ($event.target as HTMLInputElement).value)
+                "
               />
+            </td>
+            <td :style="colStyle('staging')" @click.stop>
+              <select
+                class="staging-select"
+                :aria-label="t('shot.staging.title')"
+                value=""
+                @change="onStagingPresetChange(shot, $event)"
+              >
+                <option value="">{{ t('shot.staging.apply') }}…</option>
+                <optgroup v-for="group in stagingGroups" :key="group.id" :label="t(group.titleKey)">
+                  <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
+                    {{ t(preset.titleKey) }}
+                  </option>
+                </optgroup>
+              </select>
             </td>
             <td :style="colStyle('status')" @click.stop>
               <select
@@ -149,6 +185,12 @@ import {
   type ShotReviewStatus,
   type ShotStoryboard
 } from '@shared/domain'
+import {
+  SHOT_STAGING_PRESETS,
+  applyShotStagingPreset,
+  shotStagingGroupTitleKey,
+  type ShotStagingGroup
+} from '@shared/graph'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -164,6 +206,7 @@ type ColId =
   | 'dialogue'
   | 'sfx'
   | 'camera'
+  | 'staging'
   | 'status'
   | 'actions'
 
@@ -182,6 +225,7 @@ const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   dialogue: 160,
   sfx: 120,
   camera: 120,
+  staging: 150,
   status: 88,
   actions: 36
 }
@@ -196,6 +240,7 @@ const MIN_COL_WIDTHS: Record<ColId, number> = {
   dialogue: 80,
   sfx: 72,
   camera: 72,
+  staging: 96,
   status: 72,
   actions: 32
 }
@@ -207,7 +252,21 @@ const props = defineProps<{
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const draftStore = useDraftStore()
-const { t, shotSizeLabel } = useStudioI18n()
+const { t, locale, shotSizeLabel } = useStudioI18n()
+const stagingGroupOrder: readonly ShotStagingGroup[] = [
+  'cameraLanguage',
+  'bodyFacing',
+  'performance',
+  'lighting',
+  'advertising'
+]
+const stagingGroups = stagingGroupOrder
+  .map((id) => ({
+    id,
+    titleKey: shotStagingGroupTitleKey(id),
+    presets: SHOT_STAGING_PRESETS.filter((preset) => preset.group === id)
+  }))
+  .filter((group) => group.presets.length > 0)
 const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'idx', label: '#' },
   { id: 'title', label: t('shot.table.column.name') },
@@ -218,6 +277,7 @@ const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'dialogue', label: t('shot.table.column.dialogue') },
   { id: 'sfx', label: t('shot.table.column.soundFx') },
   { id: 'camera', label: t('shot.table.column.cameraMove') },
+  { id: 'staging', label: t('shot.staging.title') },
   { id: 'status', label: t('shot.table.column.status') },
   { id: 'actions', label: '' }
 ])
@@ -321,10 +381,7 @@ function onRowResizeDown(shotId: string, e: MouseEvent): void {
   const onMove = (ev: MouseEvent): void => {
     rowHeights.value = {
       ...rowHeights.value,
-      [shotId]: Math.min(
-        MAX_ROW_HEIGHT,
-        Math.max(MIN_ROW_HEIGHT, startH + (ev.clientY - startY))
-      )
+      [shotId]: Math.min(MAX_ROW_HEIGHT, Math.max(MIN_ROW_HEIGHT, startH + (ev.clientY - startY)))
     }
   }
 
@@ -345,7 +402,11 @@ function onRowResizeDown(shotId: string, e: MouseEvent): void {
   resizeCleanup = onUp
 }
 
-function colStyle(id: ColId): { width: string; minWidth: string; maxWidth: string } {
+function colStyle(id: ColId): {
+  width: string
+  minWidth: string
+  maxWidth: string
+} {
   const w = colWidths.value[id]
   const px = `${w}px`
   return { width: px, minWidth: px, maxWidth: px }
@@ -451,7 +512,22 @@ async function onStoryboardChange(
   field: keyof ShotStoryboard,
   value: string
 ): Promise<void> {
-  const storyboard: ShotStoryboard = { ...normalizeStoryboard(shot), [field]: value }
+  const storyboard: ShotStoryboard = {
+    ...normalizeStoryboard(shot),
+    [field]: value
+  }
+  const prompt = buildShotGenerationPrompt(storyboard, {
+    stylePreset: project.config?.stylePreset
+  })
+  await persistShotUpdate(shot, { storyboard, prompt })
+}
+
+async function onStagingPresetChange(shot: Shot, event: Event): Promise<void> {
+  const select = event.target as HTMLSelectElement
+  const preset = SHOT_STAGING_PRESETS.find((item) => item.id === select.value)
+  select.value = ''
+  if (!preset) return
+  const storyboard = applyShotStagingPreset(normalizeStoryboard(shot), preset, locale.value)
   const prompt = buildShotGenerationPrompt(storyboard, {
     stylePreset: project.config?.stylePreset
   })
@@ -472,9 +548,7 @@ async function onAdd(): Promise<void> {
       await selectShot(shot.id)
       return
     }
-    const shot = await trackWrite(
-      window.studio.createShot({ scriptAssetId: props.scriptAssetId })
-    )
+    const shot = await trackWrite(window.studio.createShot({ scriptAssetId: props.scriptAssetId }))
     await project.refreshShots()
     await selectShot(shot.id)
   } catch (e) {

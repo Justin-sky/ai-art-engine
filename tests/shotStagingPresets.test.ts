@@ -38,6 +38,24 @@ describe('shot staging presets', () => {
     expect(next.visualDescription).toContain('three-quarter')
   })
 
+  it('includes full-body acting, six lighting setups, and paced ad transitions', () => {
+    const ids = new Set(SHOT_STAGING_PRESETS.map((preset) => preset.id))
+    for (const id of [
+      'facing.back',
+      'performance.anxiety',
+      'lighting.rembrandt',
+      'lighting.volumetric',
+      'lighting.backlight',
+      'advertising.dissolve',
+      'advertising.matchCut',
+      'advertising.occlusion',
+      'advertising.productReveal'
+    ]) {
+      expect(ids).toContain(id)
+    }
+    expect(SHOT_STAGING_PRESETS.filter((preset) => preset.group === 'lighting')).toHaveLength(6)
+  })
+
   it('inserts preset text at the caret without clearing existing content', () => {
     const original = {
       ...createEmptyStoryboard(),

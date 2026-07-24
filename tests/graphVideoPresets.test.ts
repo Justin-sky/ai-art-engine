@@ -22,15 +22,19 @@ describe('video instruction presets', () => {
       'video.shotDetail',
       'video.heroEntrance',
       'video.performanceRealism',
+      'video.framePairContinuity',
+      'video.framePairProduct',
+      'video.framePairTransition',
       'video.transitionHard',
       'video.transitionFlash',
-      'video.transitionMotion'
+      'video.transitionMotion',
+      'video.transitionDissolve',
+      'video.transitionOcclusion',
+      'video.transitionFocus'
     ])
     for (const item of presets) {
       expect(item.body.trim().length).toBeGreaterThan(20)
-      expect(item.titleKey).toMatch(
-        /^graph\.inspector\.generate\.presets\.video\./
-      )
+      expect(item.titleKey).toMatch(/^graph\.inspector\.generate\.presets\.video\./)
     }
   })
 
@@ -65,5 +69,15 @@ describe('video instruction presets', () => {
     const result = insertInstructionPresetText('开头结尾', '预设正文', 2)
     expect(result.text).toBe('开头\n预设正文\n结尾')
     expect(result.cursor).toBe('开头\n预设正文\n'.length)
+  })
+
+  it('provides paired-frame continuity and slow transition guidance', () => {
+    const presets = listInstructionPresets('video')
+    const continuity = presets.find((item) => item.id === 'video.framePairContinuity')
+    const dissolve = presets.find((item) => item.id === 'video.transitionDissolve')
+
+    expect(continuity?.body).toContain('屏幕运动方向')
+    expect(continuity?.body).toContain('不让首尾帧直接变形互溶')
+    expect(dissolve?.body).toContain('人物五官')
   })
 })

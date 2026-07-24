@@ -534,15 +534,30 @@ export default {
         facingThreeQuarter: 'Front three-quarter',
         facingProfile: 'Pure profile',
         facingBackThreeQuarter: 'Rear three-quarter',
+        facingBack: 'Strict back view',
         performanceAnger: 'Anger: facial action',
         performanceDazed: 'Dazed: focus and body drop',
         performanceManic: 'Manic: blinking, twitch, head tilt',
         performanceRelief: 'Relief: breath and release',
+        performanceAnxiety: 'Anxiety: scanning, fingers, weight',
+        performanceGrief: 'Grief: held breath and lost strength',
+        performanceConfidence: 'Confidence: steady gaze and posture',
+        performanceSurprise: 'Surprise: freeze and recoil',
         lightingTop: 'Top light: eye-socket shadow',
         lightingSide: 'Side light: split face',
+        lightingRembrandt: 'Rembrandt: cheek triangle',
+        lightingVolumetric: 'Volumetric light beams',
+        lightingBacklight: 'Backlight: rim separation',
+        lightingPractical: 'Motivated practical light',
         adImpact: 'Impact hard cut',
         adFlash: 'Flash transition',
-        adMotion: 'Motion-match transition'
+        adMotion: 'Motion-match transition',
+        adDissolve: 'Short dissolve',
+        adMatchCut: 'Shape / color match cut',
+        adOcclusion: 'Foreground occlusion',
+        adFocus: 'Defocus reveal',
+        adJumpCut: 'Locked-camera jump cut',
+        adProductReveal: 'Hero product reveal'
       }
     },
     field: {
@@ -1932,9 +1947,15 @@ export default {
             shotDetail: 'Storyboard thinking: detail action',
             heroEntrance: 'Hero entrance',
             performanceRealism: 'Realistic character performance',
+            framePairContinuity: 'Frame pair: motion continuity',
+            framePairProduct: 'Frame pair: product reveal',
+            framePairTransition: 'Frame pair: matched transition',
             transitionHard: 'Ad transition: hard cut',
             transitionFlash: 'Ad transition: flash',
-            transitionMotion: 'Ad transition: motion match'
+            transitionMotion: 'Ad transition: motion match',
+            transitionDissolve: 'Slow transition: short dissolve',
+            transitionOcclusion: 'Transition: foreground occlusion',
+            transitionFocus: 'Slow transition: focus reveal'
           },
           lipSync: {
             talkingHead: 'Talking to camera',

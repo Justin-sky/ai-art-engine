@@ -533,15 +533,30 @@ export default {
         facingThreeQuarter: '45° 正面',
         facingProfile: '纯侧面',
         facingBackThreeQuarter: '45° 背面',
+        facingBack: '严格背面',
         performanceAnger: '愤怒：面部肌肉拆解',
         performanceDazed: '失神：焦距与身体下沉',
         performanceManic: '疯癫：眨眼、抽动与歪头',
         performanceRelief: '释然：呼吸与放松',
+        performanceAnxiety: '焦虑：扫视、手指与重心',
+        performanceGrief: '悲伤：屏息与力量流失',
+        performanceConfidence: '自信：稳定目光与肩背',
+        performanceSurprise: '惊讶：停顿与后撤',
         lightingTop: '顶光：眼窝阴影',
         lightingSide: '正侧光：半脸明暗',
+        lightingRembrandt: '伦勃朗光：脸颊三角光',
+        lightingVolumetric: '体积光：可见光束',
+        lightingBacklight: '逆光：轮廓分离',
+        lightingPractical: '有动机环境光',
         adImpact: '冲击硬切',
         adFlash: '闪白转场',
-        adMotion: '运动匹配转场'
+        adMotion: '运动匹配转场',
+        adDissolve: '短叠化：舒缓过渡',
+        adMatchCut: '形状/颜色匹配剪辑',
+        adOcclusion: '前景遮挡转场',
+        adFocus: '虚焦揭示转场',
+        adJumpCut: '原机位跳切',
+        adProductReveal: '产品英雄揭示'
       }
     },
     field: {
@@ -1923,9 +1938,15 @@ export default {
             shotDetail: '分镜思维：细节动作',
             heroEntrance: '英雄式出场',
             performanceRealism: '人物真实表演',
+            framePairContinuity: '首尾帧成对：动作连续性',
+            framePairProduct: '首尾帧成对：产品揭示',
+            framePairTransition: '首尾帧成对：匹配转场',
             transitionHard: '广告转场：硬切',
             transitionFlash: '广告转场：闪白/闪黑',
-            transitionMotion: '广告转场：运动匹配'
+            transitionMotion: '广告转场：运动匹配',
+            transitionDissolve: '慢转场：短叠化',
+            transitionOcclusion: '转场：前景遮挡',
+            transitionFocus: '慢转场：虚焦揭示'
           },
           lipSync: {
             talkingHead: '对镜头说话',

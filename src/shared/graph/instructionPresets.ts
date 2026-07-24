@@ -529,6 +529,42 @@ const VIDEO_TRANSITION_MOTION_BODY = `设计运动匹配转场。
 在速度峰值切入下一镜，并以相同方向、速度和画面重心继续运动，随后平稳减速。
 运动必须有物理惯性，避免瞬移、穿模和背景扭曲。`
 
+/** 首图负责起始状态，尾图负责结果；视频只负责一条可解释的运动路径。 */
+const VIDEO_FRAME_PAIR_CONTINUITY_BODY = `使用已连接的首帧和尾帧生成连贯镜头。
+【首帧】把首帧视为真实起始状态，不重新构图或改变人物、产品、服装与场景。
+【核心动作】只填写一个动作：[主体]从[起始姿态/位置]经过[关键动作]到达尾帧的[结果姿态/位置]。
+【镜头路径】[机位起点]以[速度曲线]沿[单一方向]移动到尾帧机位；焦点从[起始焦点]自然转移到[结束焦点]。
+【连续性】保持屏幕运动方向、光源方向、物体数量和空间轴线一致；补全中间过程，不让首尾帧直接变形互溶。
+【物理反馈】仅加入与动作有关的衣摆、发丝、阴影、反射、尘雾或水花反馈。
+禁止新增主体、镜头瞬移、身份变化、肢体融化和无动机转场。`
+
+const VIDEO_FRAME_PAIR_PRODUCT_BODY = `使用已连接的产品首帧和尾帧生成「细节到英雄镜头」。
+【起点】从首帧的材质、标识或功能结构特写开始，保留真实纹理、微划痕、凝露与受控反射。
+【揭示】镜头缓慢推进或小幅环绕，条形高光沿曲面移动并揭示结构；产品自身只做一个明确功能动作。
+【终点】自然拉远或升降至尾帧完整产品构图，产品居于视觉中心，卖点清晰，最后稳定停留。
+【一致性】产品形状、文字标识、零件数量和光源方向全程不变；避免漂浮、软化、重绘和无来源粒子。`
+
+const VIDEO_FRAME_PAIR_TRANSITION_BODY = `使用首帧和尾帧设计可剪辑的匹配转场。
+先选择唯一匹配依据：[形状 / 颜色 / 构图位置 / 运动方向 / 前景遮挡 / 有动机光源]。
+首帧中的对应元素沿[方向]逐渐占据画面，在遮满、过曝、虚焦或速度峰值时完成场景替换；
+尾帧从相同画面位置、亮度和运动方向继续，再平稳显露新主体。
+保持转场前后主体身份与各自场景稳定，不把两个场景长时间溶成一团；转场动作控制在镜头中段，首尾各留稳定剪辑余量。`
+
+const VIDEO_TRANSITION_DISSOLVE_BODY = `设计舒缓的短叠化转场。
+当前镜头结尾让主体稳定、动作幅度逐渐降低；下一镜选择相近的色调、亮度、构图重心和情绪强度。
+只在两镜的稳定区间做短叠化，不让人物五官、肢体或产品文字相互融合。
+适合回忆、时间流逝、风景与情绪段落；若场景冲击强烈，应改用硬切。`
+
+const VIDEO_TRANSITION_OCCLUSION_BODY = `设计前景遮挡转场。
+让人物、产品、车辆、墙面或其他有动机前景从[方向]靠近并完全遮满镜头；
+在画面被遮满的一瞬切换场景，下一镜由相似颜色和运动速度的遮挡物沿同方向移开。
+遮挡前后机位高度与运动惯性保持连续，禁止物体穿模或凭空出现。`
+
+const VIDEO_TRANSITION_FOCUS_BODY = `设计虚焦揭示转场。
+焦点从当前主体缓慢移开，使其变为可控光斑或大色块并充满主要画面；
+下一镜从相近颜色、亮度和轮廓的模糊状态开始，再平滑对焦到新主体。
+保持曝光稳定，不用无来源闪白；人物面部与产品文字只在完全对焦后清晰出现。`
+
 const VIDEO_PRESETS: InstructionPreset[] = [
   {
     id: 'video.firstLastFrame',
@@ -596,6 +632,21 @@ const VIDEO_PRESETS: InstructionPreset[] = [
     body: VIDEO_PERFORMANCE_BODY
   },
   {
+    id: 'video.framePairContinuity',
+    titleKey: 'graph.inspector.generate.presets.video.framePairContinuity',
+    body: VIDEO_FRAME_PAIR_CONTINUITY_BODY
+  },
+  {
+    id: 'video.framePairProduct',
+    titleKey: 'graph.inspector.generate.presets.video.framePairProduct',
+    body: VIDEO_FRAME_PAIR_PRODUCT_BODY
+  },
+  {
+    id: 'video.framePairTransition',
+    titleKey: 'graph.inspector.generate.presets.video.framePairTransition',
+    body: VIDEO_FRAME_PAIR_TRANSITION_BODY
+  },
+  {
     id: 'video.transitionHard',
     titleKey: 'graph.inspector.generate.presets.video.transitionHard',
     body: VIDEO_TRANSITION_HARD_BODY
@@ -609,6 +660,21 @@ const VIDEO_PRESETS: InstructionPreset[] = [
     id: 'video.transitionMotion',
     titleKey: 'graph.inspector.generate.presets.video.transitionMotion',
     body: VIDEO_TRANSITION_MOTION_BODY
+  },
+  {
+    id: 'video.transitionDissolve',
+    titleKey: 'graph.inspector.generate.presets.video.transitionDissolve',
+    body: VIDEO_TRANSITION_DISSOLVE_BODY
+  },
+  {
+    id: 'video.transitionOcclusion',
+    titleKey: 'graph.inspector.generate.presets.video.transitionOcclusion',
+    body: VIDEO_TRANSITION_OCCLUSION_BODY
+  },
+  {
+    id: 'video.transitionFocus',
+    titleKey: 'graph.inspector.generate.presets.video.transitionFocus',
+    body: VIDEO_TRANSITION_FOCUS_BODY
   }
 ]
 const LIP_SYNC_TALKING_HEAD_BODY = `图片1中的角色对着镜头自然说话，口型与表情严格跟随音频1。

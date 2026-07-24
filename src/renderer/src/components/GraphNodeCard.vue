@@ -353,6 +353,7 @@ import {
   isVideoFramePortId,
   isDirectorProcessingNode,
   isScriptShotEditorNode,
+  isScriptShotParamsNode,
   isScriptShotSplitNode,
   isScriptShotTableNode,
   isWorldEditorNode,
@@ -1472,6 +1473,10 @@ function onPreviewDblClick(): void {
   }
   if (isGridSplitEditorNode(props.node)) {
     emit('gridSplitOpen', props.node.id)
+    return
+  }
+  // 分镜参数：双击无效，参数在右侧 Inspector 编辑
+  if (isScriptShotParamsNode(props.node)) {
     return
   }
   if (isScriptShotTableNode(props.node)) {

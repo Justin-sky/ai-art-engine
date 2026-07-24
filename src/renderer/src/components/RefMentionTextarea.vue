@@ -283,6 +283,25 @@ textarea {
   resize: vertical;
 }
 
+textarea::-webkit-resizer {
+  background-color: var(--bg-input);
+  background-image: linear-gradient(
+    135deg,
+    transparent 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
+    transparent 62%,
+    transparent 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
+    transparent 79%,
+    transparent 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
+  );
+  border: none;
+}
+
 .mention-menu {
   position: fixed;
   z-index: 4000;
