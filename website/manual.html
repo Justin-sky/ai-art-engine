@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AIArtEngine 使用手册：工程、Studio、设置、节点图、资产库、分镜、导演台、资产包与快捷键。"
+    />
+    <title>使用手册 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到手册正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AIArtEngine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="manual.html" aria-current="page">使用手册</a>
+        <a href="index.html#download">下载</a>
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#intro">概述与准备</a></li>
+          <li><a href="#home">首页与工程</a></li>
+          <li><a href="#settings">设置</a></li>
+          <li><a href="#studio">Studio 工作台</a></li>
+          <li><a href="#assets">资产库</a></li>
+          <li><a href="#graph">节点图</a></li>
+          <li><a href="#script-shot">剧本与分镜</a></li>
+          <li><a href="#canvas">画布与世界元素</a></li>
+          <li><a href="#director">导演台</a></li>
+          <li><a href="#package">资产包 .aipackage</a></li>
+          <li><a href="#shortcuts">快捷键</a></li>
+          <li><a href="#update">关于与更新</a></li>
+          <li><a href="#workflow">推荐端到端流程</a></li>
+        </ol>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Docs · Operations</p>
+          <h1>使用手册</h1>
+          <p class="lede">
+            覆盖当前版本全部主要界面与组件的操作说明：从创建工程、配置模型，到资产、分镜、节点图与导演台。
+            文案以应用内中文界面为准。
+          </p>
+        </header>
+
+        <section id="intro">
+          <h2>1. 概述与准备</h2>
+          <p>
+            AIArtEngine 是本地 AI 短视频创作工作台。工程与素材保存在你指定的本机目录；
+            文本 / 图片 / 视频 / 声音生成通过你配置的模型提供商（如 OpenRouter、火山方舟）完成。
+          </p>
+          <h3>首次使用建议</h3>
+          <ol>
+            <li>从 <a href="index.html#download">官网下载页</a> 或 GitHub Releases 安装对应平台安装包。</li>
+            <li>启动后先打开<strong>设置</strong>，添加模型提供商并填入 API Key，拉取并勾选要用的模型。</li>
+            <li>（可选）在<strong>对象存储</strong>中配置火山引擎 TOS，便于大文件外链。</li>
+            <li>回到首页<strong>新建工程</strong>，进入 Studio 开始创作。</li>
+          </ol>
+          <div class="tip">
+            应用无传统菜单栏。顶栏 Logo 回首页；「设置」打开设置面板。关闭设置可点遮罩空白或「返回」。
+          </div>
+        </section>
+
+        <section id="home">
+          <h2>2. 首页与工程</h2>
+          <h3>新建工程</h3>
+          <ol>
+            <li>点击「新建工程」。</li>
+            <li>填写「工程名称」。</li>
+            <li>点击「浏览」选择「存储目录」。</li>
+            <li>点击「创建」后进入 Studio。</li>
+          </ol>
+          <h3>打开工程</h3>
+          <ul>
+            <li>点击「打开工程」，选择工程目录中的 <code>project.json</code>。</li>
+            <li>或在「最近工程」列表中点击对应路径。</li>
+          </ul>
+          <h3>最近工程</h3>
+          <ul>
+            <li>列表展示近期打开过的工程路径。</li>
+            <li>右侧 <strong>×</strong> 表示「从最近列表移除」——<strong>不会删除</strong>磁盘上的工程文件。</li>
+          </ul>
+          <div class="tip">
+            当前版本没有应用内「删除工程」功能。若要彻底删除，请在文件管理器中手动删除工程目录。
+          </div>
+        </section>
+
+        <section id="settings">
+          <h2>3. 设置</h2>
+          <p>在首页或 Studio 顶栏进入「设置」。修改会自动保存。</p>
+
+          <h3>3.1 通用</h3>
+          <ul>
+            <li><strong>主题</strong>：暗色 / 亮色。</li>
+            <li><strong>语言</strong>：中文 / English。</li>
+            <li><strong>自动保存</strong>：可启用，并设置间隔（秒）。</li>
+            <li><strong>关于与更新</strong>：查看版本、检查更新（见下文）。</li>
+          </ul>
+
+          <h3>3.2 模型</h3>
+          <ol>
+            <li>点击「添加模型提供商」，选择 OpenRouter、火山方舟等。</li>
+            <li>填写显示名称、Base URL、API Key（可显示/隐藏）。</li>
+            <li>启用该提供商后，点击「拉取可用模型」。</li>
+            <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
+            <li>按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>）。</li>
+            <li>设置默认生成模型与默认声音（如需要）。</li>
+          </ol>
+          <div class="tip">
+            API Key 保存在本机设置文件中（Windows 示例：
+            <code>%APPDATA%\aiartengine\aiartengine-settings.json</code>），不会上传到应用官方服务器。
+          </div>
+
+          <h3>3.3 对象存储</h3>
+          <ul>
+            <li>「添加对象存储」→ 选择火山引擎 TOS。</li>
+            <li>填写 AccessKey / SecretKey、Region、Endpoint、Bucket；公网域名可选。</li>
+          </ul>
+
+          <h3>3.4 扩展</h3>
+          <p>
+            只读列出用户数据目录 <code>plugins</code> 下的声明式扩展。当前不会执行外部任意脚本，仅展示已声明的扩展信息。
+          </p>
+        </section>
+
+        <section id="studio">
+          <h2>4. Studio 工作台</h2>
+          <p>打开工程后进入 Studio。界面为可拖拽停靠的多面板布局。</p>
+
+          <h3>4.1 顶栏</h3>
+          <ul>
+            <li>未保存时标题旁显示 <code>*</code>；用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 保存。</li>
+            <li><strong>↶ / ↷</strong>：撤销 / 重做（亦可用快捷键）。</li>
+            <li><strong>任务列表</strong>、 <strong>执行日志</strong>：查看后台任务与运行日志。</li>
+            <li>
+              <strong>布局</strong>：切换默认布局、保存当前布局、导出/导入布局
+              <code>.json</code>、删除自定义布局。
+            </li>
+          </ul>
+          <p>提示：拖动标签可停靠到不同区域；标签右键可浮动、分离到新窗口或关闭相关标签。节点执行中不可关闭关键面板。</p>
+
+          <h3>4.2 四栏面板</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>面板</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>工具</td>
+                <td>左侧窄栏，快捷新建各类资产草稿。</td>
+              </tr>
+              <tr>
+                <td>工作区</td>
+                <td>中心编辑器；空态显示推荐流程与最近资产，打开资产后为标签页。</td>
+              </tr>
+              <tr>
+                <td>资产</td>
+                <td>工程资产库浏览与管理。</td>
+              </tr>
+              <tr>
+                <td>参数</td>
+                <td>当前选中项的 Inspector 参数面板。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>4.3 左侧工具栏：新建资产</h3>
+          <p>点击图标创建草稿资产，编辑后用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 落盘。可新建：</p>
+          <ul>
+            <li>画布 · 剧本 · 分镜 · 世界元素 · 叙事单元 · 导演台 · 图片 · 视频 · 声音</li>
+          </ul>
+          <p>空工作区推荐流程：<strong>剧本 → 分镜 → 节点生成</strong>；也可快捷新建剧本、分镜、导演台，或双击最近资产打开。</p>
+        </section>
+
+        <section id="assets">
+          <h2>5. 资产库</h2>
+          <h3>浏览与筛选</h3>
+          <ul>
+            <li>标题「资产」旁可刷新；支持搜索与类型筛选。</li>
+            <li>底部滑条在列表视图与图标视图间切换。</li>
+            <li>面包屑显示路径，如 Assets &gt; …</li>
+            <li>支持框选多选；可从系统拖入图片 / 视频 / 声音 / 模型 / <code>.aipackage</code>。</li>
+          </ul>
+
+          <h3>空白或目录右键</h3>
+          <ul>
+            <li>新建各类资产、新建目录。</li>
+            <li><strong>导入资产包</strong> / <strong>导出资产包</strong>。</li>
+            <li>目录另有：重新导入、重命名、删除目录（内容上移）、删除目录及内容。</li>
+          </ul>
+
+          <h3>资产右键</h3>
+          <ul>
+            <li>打开编辑器 · 在文件管理器中显示 · 复制原始文件。</li>
+            <li>重新导入 · 导出资产包 · 重命名 · 查找引用 · 删除。</li>
+          </ul>
+
+          <h3>资产库焦点下快捷键</h3>
+          <ul>
+            <li><kbd>Delete</kbd> / <kbd>Backspace</kbd>：删除选中。</li>
+            <li><kbd>Ctrl</kbd>+<kbd>A</kbd>：全选。</li>
+            <li><kbd>Ctrl</kbd>+<kbd>C</kbd>：与复制原始文件相关操作。</li>
+          </ul>
+        </section>
+
+        <section id="graph">
+          <h2>6. 节点图</h2>
+          <p>
+            节点图是核心生成编排界面。在剧本、分镜、画布、导演台等资产中，通常通过节点连线组织「输入 → 生成 → 输出」链路。
+          </p>
+
+          <h3>6.1 添加与连线</h3>
+          <ol>
+            <li>在画布<strong>空白处右键</strong>，或按 <kbd>Space</kbd>，选择「添加节点」。</li>
+            <li>从端口拖出连线，松开后可「选择节点并连接」。</li>
+            <li>从资产库<strong>拖入</strong>资产到画布，可快速建立引用。</li>
+            <li>选中节点或边后按 <kbd>Delete</kbd> / <kbd>Backspace</kbd> 删除。</li>
+          </ol>
+
+          <h3>6.2 工具条</h3>
+          <ul>
+            <li>选择 / 平移 · 适配视图 · 网格与吸附 · 对齐 / 分布 · 自动布局。</li>
+            <li>执行 / 停止 / 加入任务。</li>
+          </ul>
+
+          <h3>6.3 执行方式</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>方式</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>工具条「执行」</td>
+                <td>有选中时执行选中节点及其上游；无选中时确认后「执行所有节点」。</td>
+              </tr>
+              <tr>
+                <td>按住 <kbd>C</kbd></td>
+                <td>打开执行环：执行当前 / 重跑 / 跳过上游 / 强制上游 / 加入任务 / 停止。</td>
+              </tr>
+              <tr>
+                <td>节点右键</td>
+                <td>执行当前 · 重新执行 · 停止。</td>
+              </tr>
+              <tr>
+                <td>任务列表</td>
+                <td>后台工作流队列；执行中一般不可对单节点随意重跑。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。</p>
+
+          <h3>6.4 节点类型一览</h3>
+
+          <h4>生成 / 资产类</h4>
+          <ul>
+            <li>图片生成 · 视频生成 · 声音生成 · 剧本生成 · 分镜 · 导演台编辑 · 画布编辑 · 模型（引用）</li>
+          </ul>
+
+          <h4>输出类</h4>
+          <ul>
+            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 分镜输出 · 叙事单元生成</li>
+          </ul>
+
+          <h4>工具类</h4>
+          <ul>
+            <li>备注 · 文本 · 选取图片 / 视频 · 选择剧本 · 提示词优化 · 图片反推提示词 · 对口型</li>
+          </ul>
+
+          <h4>图片编辑（右键菜单分组）</h4>
+          <ul>
+            <li>
+              多角度编辑 · 打光效果 · 人像质感调节 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 宫格切分
+            </li>
+          </ul>
+
+          <h4>分镜管线</h4>
+          <ul>
+            <li>分镜拆分 · 分镜表格 · 分镜编辑 · 分镜参数</li>
+          </ul>
+
+          <h4>叙事 / 世界</h4>
+          <ul>
+            <li>叙事单元拆解 / 表格 / 编辑 · 世界元素提取 / 表格 / 编辑</li>
+          </ul>
+
+          <h4>其它</h4>
+          <ul>
+            <li>图插件示例（扩展演示用）</li>
+          </ul>
+
+          <h3>6.5 典型节点工作流</h3>
+          <ol>
+            <li>
+              <strong>剧本</strong>：新建剧本 → 右侧选文本模型 → 填「生成指令」→ 执行生成节点 → 接到「剧本输出」。
+            </li>
+            <li>
+              <strong>分镜</strong>：剧本 →「分镜拆分」→「分镜表格」（运行导入 JSON）→「分镜编辑」/ 视频生成 →「分镜输出」。
+            </li>
+            <li>
+              <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 → 输出节点导出结果。
+            </li>
+          </ol>
+        </section>
+
+        <section id="script-shot">
+          <h2>7. 剧本与分镜</h2>
+
+          <h3>7.1 剧本资产</h3>
+          <p>
+            通过节点图生成与编辑剧本内容。将结果连到「剧本输出」，并在参数面板选择合适的文本模型与指令。
+            可将剧本资产拖入其他图中作为上游。
+          </p>
+
+          <h3>7.2 分镜资产</h3>
+          <ul>
+            <li>节点图提示：拖入资产、连线至输出、在右侧调参数。</li>
+            <li>
+              底栏<strong>分镜</strong>条：<strong>+</strong> 新建镜头；点击切换；拖到画布可建「分镜参数」节点；
+              <strong>×</strong> 删除镜头。
+            </li>
+            <li>
+              <strong>分镜表格</strong>：批量编辑名称、时长、画面、景别、光影、对白、音效、运镜、状态等；可开独立窗口。
+            </li>
+            <li><strong>分镜编辑</strong>：以节点图方式编排；双击拆分 / 表格 / 编辑类节点可打开对应窗口。</li>
+          </ul>
+
+          <h3>7.3 镜头参数常见字段</h3>
+          <ul>
+            <li>画面描述 · 景别 · 光影 · 对白 / 旁白 · 音效 · 运镜。</li>
+            <li>参考：首帧 / 尾帧等，支持 <code>@</code> 引用资产。</li>
+            <li>生成视频：在参数齐全且模型配置正确后执行相关生成节点。</li>
+          </ul>
+        </section>
+
+        <section id="canvas">
+          <h2>8. 画布与世界元素</h2>
+
+          <h3>8.1 画布资产</h3>
+          <ul>
+            <li>空白节点画布：右键添加节点，或从资产库拖入资产。</li>
+            <li>
+              若使用旧式分镜画布：可调网格 / 间距 / 图层；按钮「聚焦画板」或 <kbd>F</kbd>；
+              删除选中；图层显隐、锁定、上下移；通常仅拖入图片。
+            </li>
+          </ul>
+
+          <h3>8.2 世界元素 / 叙事单元</h3>
+          <ul>
+            <li>表格视图：角色 / 场景 / 道具 / 武器，或叙事相关列；支持新建与删除行。</li>
+            <li>双击对应节点：打开提取 / 拆解指令、表格或编辑窗口。</li>
+          </ul>
+        </section>
+
+        <section id="director">
+          <h2>9. 导演台</h2>
+          <p>导演台用于 3D 场景摆姿、机位与动画预览，常作为节点链路中的「导演台编辑 → 导演台输出」。</p>
+
+          <h3>9.1 从节点打开</h3>
+          <ol>
+            <li>在节点图中双击「导演台编辑」节点，打开<strong>舞台窗口</strong>。</li>
+            <li>将编辑结果连到「导演台输出」；截屏结果会出现在输出图片数组中。</li>
+          </ol>
+
+          <h3>9.2 舞台视口操作</h3>
+          <ul>
+            <li>左键选择 · 中键平移 · 右键环视。</li>
+            <li><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd>：移动 / 旋转 / 缩放工具。</li>
+          </ul>
+
+          <h3>9.3 侧栏与对象</h3>
+          <ul>
+            <li>侧栏：场景层级、Inspector、全景相关资产。</li>
+            <li>创建：创建相机 · 创建空物体 · 创建物体（Cube / Sphere 等）。</li>
+            <li>对象：删除、隐藏、显示名称、锁定。</li>
+            <li>属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）· <strong>站位</strong>（截屏）。</li>
+          </ul>
+
+          <h3>9.4 视图与全景</h3>
+          <ul>
+            <li>导演视角 / 机位切换；六向视图；重置。</li>
+            <li>移动到视图：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>；与视图对齐：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>。</li>
+            <li>全景：拖入背景图，调节缩放 / 平移 / 旋转、地面与天空色。</li>
+          </ul>
+
+          <h3>9.5 动画模式</h3>
+          <ul>
+            <li>在全景模式 / 动画模式间切换。</li>
+            <li>轨迹与关键帧：<kbd>K</kbd> 添加关键帧；<kbd>Delete</kbd> 删除关键帧；<kbd>Space</kbd> 播放 / 暂停。</li>
+            <li>可导出视频。</li>
+          </ul>
+        </section>
+
+        <section id="package">
+          <h2>10. 资产包 <code>.aipackage</code></h2>
+          <p>
+            格式标识为 <code>com.aiartengine.asset-package</code>，用于在工程间迁移素材与相关依赖。
+          </p>
+
+          <h3>导出</h3>
+          <ol>
+            <li>选中资产，或进入目标文件夹。</li>
+            <li>右键选择「导出资产包」。</li>
+            <li>在对话框中勾选目录 / 资产；可选「包含依赖」→「导出」。</li>
+          </ol>
+
+          <h3>导入</h3>
+          <ol>
+            <li>在资产库空白或根目录右键「导入资产包」，或直接拖入 <code>.aipackage</code> 文件。</li>
+            <li>勾选要导入的条目（一次处理一个包）→「导入」。</li>
+            <li>支持条目复用与重映射；脚本类资产可携带分镜快照。</li>
+          </ol>
+        </section>
+
+        <section id="shortcuts">
+          <h2>11. 快捷键</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>范围</th>
+                <th>快捷键</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>全局编辑</td>
+                <td><kbd>Ctrl</kbd>+<kbd>S</kbd></td>
+                <td>保存（草稿会先弹出「保存资产」）</td>
+              </tr>
+              <tr>
+                <td>全局</td>
+                <td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>（或 <kbd>Ctrl</kbd>+<kbd>Y</kbd>）</td>
+                <td>撤销 / 重做</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td>按住 <kbd>C</kbd></td>
+                <td>执行环</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Space</kbd></td>
+                <td>打开菜单 / 按住可平移（依上下文）</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td>
+                <td>删除节点或连线</td>
+              </tr>
+              <tr>
+                <td>节点图</td>
+                <td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>U</kbd></td>
+                <td>分组 / 取消分组</td>
+              </tr>
+              <tr>
+                <td>资产库</td>
+                <td><kbd>Delete</kbd> · <kbd>Ctrl</kbd>+<kbd>A</kbd> · <kbd>Ctrl</kbd>+<kbd>C</kbd></td>
+                <td>删除 · 全选 · 复制相关</td>
+              </tr>
+              <tr>
+                <td>导演台</td>
+                <td><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd></td>
+                <td>移动 / 旋转 / 缩放</td>
+              </tr>
+              <tr>
+                <td>导演台</td>
+                <td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td>
+                <td>移到视图 · 与视图对齐</td>
+              </tr>
+              <tr>
+                <td>导演台动画</td>
+                <td><kbd>K</kbd> · <kbd>Delete</kbd> · <kbd>Space</kbd></td>
+                <td>关键帧 · 删关键帧 · 播放/暂停</td>
+              </tr>
+              <tr>
+                <td>画布</td>
+                <td><kbd>F</kbd></td>
+                <td>聚焦画板</td>
+              </tr>
+              <tr>
+                <td>对话框</td>
+                <td><kbd>Esc</kbd></td>
+                <td>关闭常见浮窗</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            macOS 上将 <kbd>Ctrl</kbd> 理解为 <kbd>⌘ Command</kbd>（与系统习惯一致处除外）。设置面板对
+            Delete / Backspace 做了特殊处理，避免误关设置或误删模型列表项。
+          </div>
+        </section>
+
+        <section id="update">
+          <h2>12. 关于与更新</h2>
+          <p>路径：设置 → 通用 → 关于与更新。</p>
+          <ul>
+            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>。</li>
+            <li><strong>检查更新</strong>：查询 GitHub Releases；开发模式下会提示不检查更新。</li>
+            <li>状态包括：正在检查、发现新版本并下载、已是最新、下载进度、失败提示。</li>
+            <li>下载完成后可点击<strong>重启并安装</strong>。</li>
+          </ul>
+        </section>
+
+        <section id="workflow">
+          <h2>13. 推荐端到端流程</h2>
+          <ol>
+            <li>设置 → 模型（填 Key 并勾选模型）→ 可选配置 TOS。</li>
+            <li>首页新建工程 → 左栏新建「剧本」→ 执行生成 → 接到剧本输出。</li>
+            <li>新建「分镜」→ 分镜拆分 → 分镜表格 → 视频生成。</li>
+            <li>在资产库导入媒体，或导出 / 再导入 <code>.aipackage</code> 做迁移验证。</li>
+            <li>新建「导演台」→ 双击打开舞台 → 截屏 → 连到导演台输出。</li>
+            <li>设置中检查更新，保持客户端为最新版。</li>
+          </ol>
+          <p>
+            反馈与交流：QQ 群 <strong>647306826</strong> · 邮箱
+            <a href="mailto:284139554@qq.com">284139554@qq.com</a> ·
+            <a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"
+              >GitHub Issues</a
+            >。
+          </p>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AIArtEngine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+  </body>
+</html>
