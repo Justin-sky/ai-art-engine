@@ -66,12 +66,20 @@
 
     <label>
       {{ t('shot.field.lighting') }}
-      <input
+      <textarea
         ref="lightingEl"
         v-model="local.storyboard.lighting"
+        rows="3"
         @focus="activeStagingField = 'lighting'"
         @change="persist"
         :placeholder="t('shot.placeholder.lighting')"
+      />
+      <ShotStagingPresetPicker
+        field="lighting"
+        :storyboard="local.storyboard"
+        :resolve-insertion-positions="resolveStagingInsertionPositions"
+        @focusin="activeStagingField = 'lighting'"
+        @apply="applyStagingPreset"
       />
     </label>
 
@@ -96,12 +104,20 @@
 
     <label>
       {{ t('shot.field.cameraMove') }}
-      <input
+      <textarea
         ref="cameraMoveEl"
         v-model="local.storyboard.cameraMove"
+        rows="3"
         @focus="activeStagingField = 'cameraMove'"
         @change="persist"
         :placeholder="t('shot.placeholder.cameraMove')"
+      />
+      <ShotStagingPresetPicker
+        field="cameraMove"
+        :storyboard="local.storyboard"
+        :resolve-insertion-positions="resolveStagingInsertionPositions"
+        @focusin="activeStagingField = 'cameraMove'"
+        @apply="applyStagingPreset"
       />
     </label>
 
@@ -171,8 +187,8 @@ type MentionTextareaHandle = {
   setSelection: (start: number, end?: number) => void
 }
 const visualDescriptionEl = ref<MentionTextareaHandle | null>(null)
-const lightingEl = ref<HTMLInputElement | null>(null)
-const cameraMoveEl = ref<HTMLInputElement | null>(null)
+const lightingEl = ref<HTMLTextAreaElement | null>(null)
+const cameraMoveEl = ref<HTMLTextAreaElement | null>(null)
 const activeStagingField = ref<ShotStagingTextField | null>(null)
 
 const local = reactive({
@@ -305,15 +321,10 @@ async function persist(): Promise<void> {
 }
 
 function resolveStagingInsertionPositions(): Partial<Record<ShotStagingTextField, number>> {
-  switch (activeStagingField.value) {
-    case 'visualDescription':
-      return { visualDescription: visualDescriptionEl.value?.getSelection().start }
-    case 'lighting':
-      return { lighting: lightingEl.value?.selectionStart ?? local.storyboard.lighting.length }
-    case 'cameraMove':
-      return { cameraMove: cameraMoveEl.value?.selectionStart ?? local.storyboard.cameraMove.length }
-    default:
-      return {}
+  return {
+    visualDescription: visualDescriptionEl.value?.getSelection().start,
+    lighting: lightingEl.value?.selectionStart ?? local.storyboard.lighting.length,
+    cameraMove: cameraMoveEl.value?.selectionStart ?? local.storyboard.cameraMove.length
   }
 }
 

@@ -511,6 +511,7 @@ export default {
     staging: {
       title: '镜头调度',
       select: '选择镜头、表演或光影预设…',
+      selectField: '选择{field}预设…',
       apply: '套用',
       hint: '预设文本插入当前光标处，其余相关字段追加到末尾；不会清空已有内容。',
       group: {

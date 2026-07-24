@@ -1,5 +1,16 @@
 <template>
-  <div class="staging-picker">
+  <div v-if="field" class="staging-field-picker">
+    <select v-model="selectedId" :aria-label="fieldSelectLabel">
+      <option value="">{{ fieldSelectLabel }}</option>
+      <option v-for="preset in fieldPresets" :key="preset.id" :value="preset.id">
+        {{ t(preset.titleKey) }}
+      </option>
+    </select>
+    <button type="button" :disabled="!selectedPreset" @click="applySelected">
+      {{ t('shot.staging.apply') }}
+    </button>
+  </div>
+  <div v-else class="staging-picker">
     <div class="staging-title">{{ t('shot.staging.title') }}</div>
     <div class="staging-row">
       <select v-model="selectedId" :aria-label="t('shot.staging.title')">
@@ -27,6 +38,7 @@ import { computed, ref } from 'vue'
 import type { ShotStoryboard } from '@shared/domain'
 import {
   SHOT_STAGING_PRESETS,
+  applyShotStagingFieldPreset,
   applyShotStagingPreset,
   shotStagingGroupTitleKey,
   type ShotStagingGroup,
@@ -37,6 +49,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = defineProps<{
   storyboard: ShotStoryboard
+  field?: ShotStagingTextField
   resolveInsertionPositions?: () => Partial<Record<ShotStagingTextField, number>>
 }>()
 
@@ -46,6 +59,18 @@ const emit = defineEmits<{
 
 const { t, locale } = useStudioI18n()
 const selectedId = ref('')
+
+const fieldNameKey = computed(() =>
+  props.field === 'lighting' ? 'shot.field.lighting' : 'shot.field.cameraMove'
+)
+const fieldSelectLabel = computed(() =>
+  t('shot.staging.selectField', { field: t(fieldNameKey.value) })
+)
+const fieldPresets = computed(() =>
+  props.field
+    ? SHOT_STAGING_PRESETS.filter((preset) => Boolean(preset[props.field!]))
+    : []
+)
 
 const groupOrder: readonly ShotStagingGroup[] = [
   'cameraLanguage',
@@ -72,10 +97,24 @@ const selectedPreset = computed<ShotStagingPreset | undefined>(() =>
 function applySelected(): void {
   const preset = selectedPreset.value
   if (!preset) return
+  const positions = props.resolveInsertionPositions?.()
+  if (props.field) {
+    emit(
+      'apply',
+      applyShotStagingFieldPreset(
+        props.storyboard,
+        preset,
+        props.field,
+        locale.value,
+        positions?.[props.field]
+      )
+    )
+    return
+  }
   emit(
     'apply',
     applyShotStagingPreset(props.storyboard, preset, locale.value, {
-      insertAt: props.resolveInsertionPositions?.()
+      insertAt: positions
     })
   )
 }
@@ -90,6 +129,21 @@ function applySelected(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-elevated);
+}
+
+.staging-field-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.staging-field-picker select {
+  min-width: 0;
+}
+
+.staging-field-picker button {
+  white-space: nowrap;
 }
 
 .staging-title {

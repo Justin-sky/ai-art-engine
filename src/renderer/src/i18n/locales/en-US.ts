@@ -512,6 +512,7 @@ export default {
     staging: {
       title: 'Shot staging',
       select: 'Choose a camera, performance, or lighting preset…',
+      selectField: 'Choose a {field} preset…',
       apply: 'Apply',
       hint: 'Inserts at the active caret and appends other related fields without clearing existing text.',
       group: {

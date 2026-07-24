@@ -3,6 +3,7 @@
     ref="rootRef"
     class="shot-table"
     :class="{ 'resizing-col': !!resizingCol, 'resizing-row': !!resizingRow }"
+    @pointerdown="onRootPointerDown"
   >
     <div class="table-toolbar">
       <span class="label">{{ t('shot.table.title', { n: visibleShots.length }) }}</span>
@@ -31,8 +32,8 @@
             v-for="(shot, index) in visibleShots"
             :key="shot.id"
             :class="{
-              active: shot.id === project.activeShotId,
-              'has-custom-height': hasRowHeight(shot.id)
+              'has-custom-height': hasRowHeight(shot.id),
+              'row-even': index % 2 === 1
             }"
             :style="rowStyle(shot.id)"
             @click="selectShot(shot.id)"
@@ -61,18 +62,38 @@
               />
             </td>
             <td :style="colStyle('visual')" @click.stop>
-              <textarea
-                rows="2"
-                :value="storyboardOf(shot).visualDescription"
-                :placeholder="t('shot.table.placeholder.visual')"
-                @change="
-                  onStoryboardChange(
-                    shot,
-                    'visualDescription',
-                    ($event.target as HTMLTextAreaElement).value
-                  )
-                "
-              />
+              <div class="field-stack">
+                <textarea
+                  rows="1"
+                  :value="storyboardOf(shot).visualDescription"
+                  :placeholder="t('shot.table.placeholder.visual')"
+                  @input="onTextareaInput"
+                  @change="
+                    onStoryboardChange(
+                      shot,
+                      'visualDescription',
+                      ($event.target as HTMLTextAreaElement).value
+                    )
+                  "
+                />
+                <select
+                  class="staging-select"
+                  :aria-label="t('shot.staging.title')"
+                  value=""
+                  @change="onStagingPresetChange(shot, $event)"
+                >
+                  <option value="">{{ t('shot.staging.select') }}</option>
+                  <optgroup
+                    v-for="group in stagingGroups"
+                    :key="group.id"
+                    :label="t(group.titleKey)"
+                  >
+                    <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
+                      {{ t(preset.titleKey) }}
+                    </option>
+                  </optgroup>
+                </select>
+              </div>
             </td>
             <td :style="colStyle('shotSize')" @click.stop>
               <select
@@ -88,19 +109,39 @@
               </select>
             </td>
             <td :style="colStyle('lighting')" @click.stop>
-              <input
-                :value="storyboardOf(shot).lighting"
-                :placeholder="t('shot.table.placeholder.lighting')"
-                @change="
-                  onStoryboardChange(shot, 'lighting', ($event.target as HTMLInputElement).value)
-                "
-              />
+              <div class="field-stack">
+                <textarea
+                  rows="1"
+                  :value="storyboardOf(shot).lighting"
+                  :placeholder="t('shot.table.placeholder.lighting')"
+                  @input="onTextareaInput"
+                  @change="
+                    onStoryboardChange(
+                      shot,
+                      'lighting',
+                      ($event.target as HTMLTextAreaElement).value
+                    )
+                  "
+                />
+                <select
+                  class="field-preset-select"
+                  :aria-label="t('shot.staging.selectField', { field: t('shot.field.lighting') })"
+                  value=""
+                  @change="onFieldPresetChange(shot, 'lighting', $event)"
+                >
+                  <option value="">{{ t('shot.staging.selectField', { field: t('shot.field.lighting') }) }}</option>
+                  <option v-for="preset in lightingPresets" :key="preset.id" :value="preset.id">
+                    {{ t(preset.titleKey) }}
+                  </option>
+                </select>
+              </div>
             </td>
             <td :style="colStyle('dialogue')" @click.stop>
               <textarea
-                rows="2"
+                rows="1"
                 :value="storyboardOf(shot).dialogue"
                 :placeholder="t('shot.table.placeholder.dialogue')"
+                @input="onTextareaInput"
                 @change="
                   onStoryboardChange(shot, 'dialogue', ($event.target as HTMLTextAreaElement).value)
                 "
@@ -116,28 +157,32 @@
               />
             </td>
             <td :style="colStyle('camera')" @click.stop>
-              <input
-                :value="storyboardOf(shot).cameraMove"
-                :placeholder="t('shot.table.placeholder.cameraMove')"
-                @change="
-                  onStoryboardChange(shot, 'cameraMove', ($event.target as HTMLInputElement).value)
-                "
-              />
-            </td>
-            <td :style="colStyle('staging')" @click.stop>
-              <select
-                class="staging-select"
-                :aria-label="t('shot.staging.title')"
-                value=""
-                @change="onStagingPresetChange(shot, $event)"
-              >
-                <option value="">{{ t('shot.staging.apply') }}…</option>
-                <optgroup v-for="group in stagingGroups" :key="group.id" :label="t(group.titleKey)">
-                  <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
+              <div class="field-stack">
+                <textarea
+                  rows="1"
+                  :value="storyboardOf(shot).cameraMove"
+                  :placeholder="t('shot.table.placeholder.cameraMove')"
+                  @input="onTextareaInput"
+                  @change="
+                    onStoryboardChange(
+                      shot,
+                      'cameraMove',
+                      ($event.target as HTMLTextAreaElement).value
+                    )
+                  "
+                />
+                <select
+                  class="field-preset-select"
+                  :aria-label="t('shot.staging.selectField', { field: t('shot.field.cameraMove') })"
+                  value=""
+                  @change="onFieldPresetChange(shot, 'cameraMove', $event)"
+                >
+                  <option value="">{{ t('shot.staging.selectField', { field: t('shot.field.cameraMove') }) }}</option>
+                  <option v-for="preset in cameraMovePresets" :key="preset.id" :value="preset.id">
                     {{ t(preset.titleKey) }}
                   </option>
-                </optgroup>
-              </select>
+                </select>
+              </div>
             </td>
             <td :style="colStyle('status')" @click.stop>
               <select
@@ -170,7 +215,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   DEFAULT_SHOT_REVIEW_STATUS,
@@ -187,9 +232,11 @@ import {
 } from '@shared/domain'
 import {
   SHOT_STAGING_PRESETS,
+  applyShotStagingFieldPreset,
   applyShotStagingPreset,
   shotStagingGroupTitleKey,
-  type ShotStagingGroup
+  type ShotStagingGroup,
+  type ShotStagingTextField
 } from '@shared/graph'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
@@ -206,7 +253,6 @@ type ColId =
   | 'dialogue'
   | 'sfx'
   | 'camera'
-  | 'staging'
   | 'status'
   | 'actions'
 
@@ -214,18 +260,20 @@ const COL_WIDTH_KEY = 'studio.script.shotTableColWidths'
 const DEFAULT_ROW_HEIGHT = 48
 const MIN_ROW_HEIGHT = 32
 const MAX_ROW_HEIGHT = 480
+/** 约四行正文（14px × 1.8 行高）加上下内边距 */
+const MIN_TEXTAREA_HEIGHT = 122
+const MAX_TEXTAREA_HEIGHT = MAX_ROW_HEIGHT
 
 const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   idx: 36,
   title: 100,
   duration: 64,
-  visual: 200,
+  visual: 220,
   shotSize: 96,
-  lighting: 120,
+  lighting: 168,
   dialogue: 160,
   sfx: 120,
-  camera: 120,
-  staging: 150,
+  camera: 168,
   status: 88,
   actions: 36
 }
@@ -234,13 +282,12 @@ const MIN_COL_WIDTHS: Record<ColId, number> = {
   idx: 28,
   title: 56,
   duration: 48,
-  visual: 80,
+  visual: 120,
   shotSize: 72,
-  lighting: 72,
+  lighting: 110,
   dialogue: 80,
   sfx: 72,
-  camera: 72,
-  staging: 96,
+  camera: 110,
   status: 72,
   actions: 32
 }
@@ -267,6 +314,8 @@ const stagingGroups = stagingGroupOrder
     presets: SHOT_STAGING_PRESETS.filter((preset) => preset.group === id)
   }))
   .filter((group) => group.presets.length > 0)
+const lightingPresets = SHOT_STAGING_PRESETS.filter((preset) => Boolean(preset.lighting))
+const cameraMovePresets = SHOT_STAGING_PRESETS.filter((preset) => Boolean(preset.cameraMove))
 const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'idx', label: '#' },
   { id: 'title', label: t('shot.table.column.name') },
@@ -277,7 +326,6 @@ const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'dialogue', label: t('shot.table.column.dialogue') },
   { id: 'sfx', label: t('shot.table.column.soundFx') },
   { id: 'camera', label: t('shot.table.column.cameraMove') },
-  { id: 'staging', label: t('shot.staging.title') },
   { id: 'status', label: t('shot.table.column.status') },
   { id: 'actions', label: '' }
 ])
@@ -446,6 +494,57 @@ function storyboardOf(shot: Shot): ShotStoryboard {
   return normalizeStoryboard(shot)
 }
 
+function autosizeTextarea(el: HTMLTextAreaElement): void {
+  const row = el.closest('tr')
+  if (row?.classList.contains('has-custom-height')) {
+    el.style.height = ''
+    return
+  }
+  if (el.dataset.manualResize === 'true') return
+  el.style.height = '0px'
+  const next = Math.min(
+    MAX_TEXTAREA_HEIGHT,
+    Math.max(MIN_TEXTAREA_HEIGHT, el.scrollHeight)
+  )
+  el.style.height = `${next}px`
+}
+
+function autosizeAllTextareas(): void {
+  const root = rootRef.value
+  if (!root) return
+  root.querySelectorAll('textarea').forEach((node) => {
+    autosizeTextarea(node as HTMLTextAreaElement)
+  })
+}
+
+function scheduleAutosize(): void {
+  void nextTick(() => {
+    autosizeAllTextareas()
+  })
+}
+
+function onTextareaInput(event: Event): void {
+  const el = event.target
+  if (el instanceof HTMLTextAreaElement) autosizeTextarea(el)
+}
+
+function onRootPointerDown(event: PointerEvent): void {
+  const el = event.target
+  if (!(el instanceof HTMLTextAreaElement)) return
+  const rect = el.getBoundingClientRect()
+  const onResizeHandle = event.clientX >= rect.right - 20 && event.clientY >= rect.bottom - 20
+  if (!onResizeHandle) return
+
+  const startHeight = el.offsetHeight
+  const onPointerUp = (): void => {
+    window.removeEventListener('pointerup', onPointerUp)
+    if (Math.abs(el.offsetHeight - startHeight) > 1) {
+      el.dataset.manualResize = 'true'
+    }
+  }
+  window.addEventListener('pointerup', onPointerUp)
+}
+
 function reviewStatusOf(shot: Shot): ShotReviewStatus {
   return normalizeShotReviewStatus(shot.reviewStatus)
 }
@@ -520,6 +619,7 @@ async function onStoryboardChange(
     stylePreset: project.config?.stylePreset
   })
   await persistShotUpdate(shot, { storyboard, prompt })
+  scheduleAutosize()
 }
 
 async function onStagingPresetChange(shot: Shot, event: Event): Promise<void> {
@@ -532,6 +632,29 @@ async function onStagingPresetChange(shot: Shot, event: Event): Promise<void> {
     stylePreset: project.config?.stylePreset
   })
   await persistShotUpdate(shot, { storyboard, prompt })
+  scheduleAutosize()
+}
+
+async function onFieldPresetChange(
+  shot: Shot,
+  field: Extract<ShotStagingTextField, 'lighting' | 'cameraMove'>,
+  event: Event
+): Promise<void> {
+  const select = event.target as HTMLSelectElement
+  const preset = SHOT_STAGING_PRESETS.find((item) => item.id === select.value)
+  select.value = ''
+  if (!preset) return
+  const storyboard = applyShotStagingFieldPreset(
+    normalizeStoryboard(shot),
+    preset,
+    field,
+    locale.value
+  )
+  const prompt = buildShotGenerationPrompt(storyboard, {
+    stylePreset: project.config?.stylePreset
+  })
+  await persistShotUpdate(shot, { storyboard, prompt })
+  scheduleAutosize()
 }
 
 async function onAdd(): Promise<void> {
@@ -590,6 +713,10 @@ async function flushSave(): Promise<void> {
   }
 }
 
+onMounted(() => {
+  scheduleAutosize()
+})
+
 onBeforeUnmount(() => {
   resizeCleanup?.()
 })
@@ -598,7 +725,32 @@ watch(
   () => props.scriptAssetId,
   () => {
     rowHeights.value = loadRowHeights()
+    scheduleAutosize()
   }
+)
+
+watch(
+  visibleShots,
+  () => {
+    scheduleAutosize()
+  },
+  { deep: true }
+)
+
+watch(
+  colWidths,
+  () => {
+    scheduleAutosize()
+  },
+  { deep: true }
+)
+
+watch(
+  rowHeights,
+  () => {
+    scheduleAutosize()
+  },
+  { deep: true }
 )
 
 defineExpose({ flushSave })
@@ -611,6 +763,10 @@ defineExpose({ flushSave })
   height: 100%;
   min-height: 0;
   background: var(--bg-panel);
+  --shot-row-odd: var(--bg-panel);
+  --shot-row-even: var(--bg-elevated);
+  --shot-card-odd: var(--bg-input);
+  --shot-card-even: var(--bg-hover);
 }
 
 .shot-table.resizing-col {
@@ -698,9 +854,10 @@ thead th {
 
 tbody td {
   border-bottom: 1px solid var(--border);
-  padding: 4px 6px;
+  padding: 6px 8px;
   vertical-align: top;
   overflow: hidden;
+  transition: background-color 120ms ease;
 }
 
 tbody tr.has-custom-height td {
@@ -714,6 +871,15 @@ tbody tr.has-custom-height input:not([type='number']) {
   resize: none;
 }
 
+tbody tr.has-custom-height .field-stack {
+  height: 100%;
+}
+
+tbody tr.has-custom-height .field-stack textarea {
+  flex: 1;
+  min-height: 0;
+}
+
 tbody tr.has-custom-height select {
   width: 100%;
 }
@@ -722,12 +888,20 @@ tbody tr {
   cursor: pointer;
 }
 
-tbody tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+tbody tr > td {
+  background-color: var(--shot-row-odd);
 }
 
-tbody tr.active {
-  background: rgba(61, 139, 253, 0.1);
+tbody tr.row-even > td {
+  background-color: var(--shot-row-even);
+}
+
+tbody tr:hover > td {
+  background-color: color-mix(in srgb, var(--shot-row-odd) 78%, var(--accent));
+}
+
+tbody tr.row-even:hover > td {
+  background-color: color-mix(in srgb, var(--shot-row-even) 78%, var(--accent));
 }
 
 .col-idx {
@@ -772,27 +946,96 @@ select {
 }
 
 textarea {
-  min-height: 44px;
+  min-height: 122px;
+  max-height: 480px;
+  padding: 10px 11px;
+  overflow: auto;
   resize: vertical;
+  field-sizing: content;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text-muted));
+  border-radius: 7px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--shot-card-odd) 92%, white),
+    var(--shot-card-odd)
+  );
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: 0.015em;
+  text-rendering: optimizeLegibility;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+textarea:hover {
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text-muted));
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 3px 10px rgba(0, 0, 0, 0.18);
+}
+
+textarea::placeholder {
+  color: var(--text-muted);
+  line-height: inherit;
+  opacity: 0.72;
 }
 
 textarea::-webkit-resizer {
+  border: 0;
   background-color: var(--bg-input);
   background-image: linear-gradient(
     135deg,
-    transparent 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
-    transparent 62%,
-    transparent 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
-    transparent 79%,
-    transparent 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
+    transparent 48%,
+    color-mix(in srgb, var(--text-muted) 55%, transparent) 49%,
+    color-mix(in srgb, var(--text-muted) 55%, transparent) 58%,
+    transparent 59%
   );
-  border: none;
+}
+
+input,
+select {
+  background-color: var(--shot-card-odd);
+}
+
+tbody tr.row-even > td input,
+tbody tr.row-even > td select {
+  background-color: var(--shot-card-even);
+}
+
+tbody tr.row-even > td textarea {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--shot-card-even) 88%, white),
+    var(--shot-card-even)
+  );
+  border-color: color-mix(in srgb, var(--border) 50%, var(--text-muted));
+}
+
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  min-height: 0;
+}
+
+.field-preset-select,
+.staging-select {
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 .review-status {

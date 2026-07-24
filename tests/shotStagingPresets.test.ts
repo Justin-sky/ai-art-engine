@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyStoryboard } from '../src/shared/domain'
 import {
   SHOT_STAGING_PRESETS,
+  applyShotStagingFieldPreset,
   applyShotStagingPreset,
   shotStagingPresetTargetFields
 } from '../src/shared/graph'
@@ -74,5 +75,22 @@ describe('shot staging presets', () => {
     })
     expect(next.visualDescription).toMatch(/^前文严格全正面拍摄/)
     expect(next.visualDescription).toContain('后文')
+  })
+
+  it('applies a field preset without changing other storyboard fields', () => {
+    const original = {
+      ...createEmptyStoryboard(),
+      visualDescription: '保留画面',
+      lighting: '前后',
+      cameraMove: '保留运镜'
+    }
+    const preset = SHOT_STAGING_PRESETS.find((item) => item.id === 'lighting.rembrandt')
+    expect(preset).toBeDefined()
+
+    const next = applyShotStagingFieldPreset(original, preset!, 'lighting', 'zh-CN', 1)
+    expect(next.lighting).toMatch(/^前伦勃朗光/)
+    expect(next.lighting).toContain('后')
+    expect(next.visualDescription).toBe('保留画面')
+    expect(next.cameraMove).toBe('保留运镜')
   })
 })

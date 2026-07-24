@@ -479,6 +479,20 @@ export function applyShotStagingPreset(
   }
 }
 
+export function applyShotStagingFieldPreset(
+  storyboard: ShotStoryboard,
+  preset: ShotStagingPreset,
+  field: ShotStagingTextField,
+  locale?: string,
+  position?: number
+): ShotStoryboard {
+  return {
+    ...storyboard,
+    [field]: insertTextAt(storyboard[field], resolveText(preset[field], locale), position),
+    finalPrompt: ''
+  }
+}
+
 export function shotStagingPresetTargetFields(
   preset: ShotStagingPreset
 ): (keyof Pick<ShotStoryboard, 'visualDescription' | 'shotSize' | 'lighting' | 'cameraMove'>)[] {
