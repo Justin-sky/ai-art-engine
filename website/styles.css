@@ -45,6 +45,7 @@ html {
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--display);
@@ -172,6 +173,10 @@ button {
   border-color: var(--blue);
   background: #fff;
   transform: translateY(-1px);
+}
+
+.mobile-menu {
+  display: none;
 }
 
 /* —— Hero —— */
@@ -943,50 +948,149 @@ button {
   }
 }
 
-@media (max-width: 860px) {
-  .nav a:not(.nav-src) {
-    display: none;
-  }
-
-  .demo-stage {
-    grid-template-columns: 1fr;
-  }
-
+@media (max-width: 1024px) {
   .hero h1,
   .lede,
   .statement h2,
   .statement p,
   .steps p {
     white-space: normal;
+    text-wrap: balance;
+  }
+}
+
+@media (max-width: 900px) {
+  .top {
+    padding: 14px var(--pad);
+    background: rgba(245, 247, 251, 0.94);
+    box-shadow: 0 1px 0 var(--line);
+  }
+
+  .top .nav {
+    display: none;
+  }
+
+  .mobile-menu {
+    position: relative;
+    display: block;
+  }
+
+  .mobile-menu summary {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    border: 1px solid var(--line-hi);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .mobile-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-menu[open] summary {
+    border-color: var(--blue);
+    color: var(--blue-deep);
+  }
+
+  .mobile-nav {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(280px, calc(100vw - 32px));
+    display: grid;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid var(--line-hi);
+    box-shadow: 0 18px 46px rgba(21, 32, 51, 0.2);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-nav a {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    color: var(--ink-soft);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .mobile-nav a:hover,
+  .mobile-nav a:focus-visible {
+    color: var(--blue-deep);
+    background: var(--bg-soft);
+  }
+
+  .demo-stage {
+    grid-template-columns: 1fr;
   }
 
   .hero {
     min-height: auto;
     padding-top: 100px;
+    overflow: clip;
   }
 
   .coverflow {
-    --cf-w: min(78vw, 420px);
+    --cf-w: min(86vw, 420px);
+    overflow: hidden;
   }
 
   .cf-stage {
     height: clamp(240px, 58vw, 320px);
+    overflow: hidden;
+  }
+
+  .cf-card:not(.is-active) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cf-dots {
+    gap: 0;
+    margin-top: 6px;
+  }
+
+  .cf-dot,
+  .cf-dot.is-active {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .cf-dot::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    background: rgba(21, 32, 51, 0.18);
+    transition:
+      width 0.3s var(--ease),
+      background 0.25s ease;
+  }
+
+  .cf-dot.is-active::after {
+    width: 26px;
+    border-radius: 999px;
+    background: var(--blue);
   }
 
   .cf-prev {
-    left: 4px;
+    left: 8px;
   }
 
   .cf-next {
-    right: 4px;
-  }
-
-  .cf-card[data-offset='-1'] {
-    transform: translate3d(calc(-50% - 36%), -50%, -100px) rotateY(40deg) scale(0.84);
-  }
-
-  .cf-card[data-offset='1'] {
-    transform: translate3d(calc(-50% + 36%), -50%, -100px) rotateY(-40deg) scale(0.84);
+    right: 8px;
   }
 
   .dl-list a {
@@ -1009,6 +1113,56 @@ button {
   .foot-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  :root {
+    --pad: 16px;
+  }
+
+  .brand span {
+    font-size: 14px;
+  }
+
+  .hero {
+    gap: 22px;
+    padding-top: 92px;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.25rem, 12vw, 3.1rem);
+  }
+
+  .lede {
+    font-size: 0.98rem;
+  }
+
+  .cta {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .cf-stage {
+    height: clamp(220px, 66vw, 290px);
+  }
+
+  .cf-card figcaption {
+    padding: 16px;
+  }
+
+  .cf-card figcaption span {
+    display: none;
+  }
+
+  .foot-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 20px;
   }
 }
 

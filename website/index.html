@@ -42,6 +42,20 @@
           >GitHub</a
         >
       </nav>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="#top">界面</a>
+          <a href="#demo">示例</a>
+          <a href="#workflow">工作流</a>
+          <a href="#download">下载</a>
+          <a href="manual.html">使用手册</a>
+          <a href="#community">交流</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
     </header>
 
     <main id="main">
@@ -315,6 +329,10 @@
     <script>
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
       function initCoverflow(root) {
         const cards = [...root.querySelectorAll('.cf-card')]
         const dotsEl = root.querySelector('[data-cf-dots]')
@@ -355,7 +373,7 @@
         function restart() {
           if (reduceMotion) return
           clearInterval(timer)
-          timer = setInterval(() => go(index + 1), 1000)
+          timer = setInterval(() => go(index + 1), 4500)
         }
 
         prev?.addEventListener('click', () => go(index - 1))

@@ -34,6 +34,17 @@
           >GitHub</a
         >
       </nav>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="index.html#download">下载</a>
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
     </header>
 
     <div class="manual-shell">
@@ -166,7 +177,8 @@
           </p>
 
           <h3>4.2 四栏面板</h3>
-          <table>
+          <div class="table-scroll" role="region" aria-label="四栏面板说明" tabindex="0">
+            <table>
             <thead>
               <tr>
                 <th>面板</th>
@@ -191,7 +203,8 @@
                 <td>当前选中项的 Inspector 参数面板。</td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
 
           <h3>4.3 左侧工具栏：新建资产</h3>
           <p>点击图标创建草稿资产，编辑后用 <kbd>Ctrl</kbd>+<kbd>S</kbd> 落盘。可新建：</p>
@@ -257,7 +270,8 @@
           </ul>
 
           <h3>6.3 执行方式</h3>
-          <table>
+          <div class="table-scroll" role="region" aria-label="节点执行方式" tabindex="0">
+            <table>
             <thead>
               <tr>
                 <th>方式</th>
@@ -282,7 +296,8 @@
                 <td>后台工作流队列；执行中一般不可对单节点随意重跑。</td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
           <p>
             分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。
           </p>
@@ -482,7 +497,8 @@
 
         <section id="shortcuts">
           <h2>11. 快捷键</h2>
-          <table>
+          <div class="table-scroll" role="region" aria-label="快捷键表格" tabindex="0">
+            <table>
             <thead>
               <tr>
                 <th>范围</th>
@@ -555,7 +571,8 @@
                 <td>关闭常见浮窗</td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
           <div class="tip">
             macOS 上将 <kbd>Ctrl</kbd> 理解为 <kbd>⌘ Command</kbd>（与系统习惯一致处除外）。设置面板对 Delete /
             Backspace 做了特殊处理，避免误关设置或误删模型列表项。
@@ -608,5 +625,10 @@
         <span>GPL-3.0</span>
       </div>
     </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
   </body>
 </html>
