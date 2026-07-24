@@ -25,7 +25,7 @@
   </p>
 
   <p>
-    <a href="./website/index.html"><b>官网</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
     <a href="#download"><b>Download</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
