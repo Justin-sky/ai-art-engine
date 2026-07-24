@@ -74,7 +74,7 @@ describe('audio array IO', () => {
     expect(patchNode).toHaveBeenCalled()
   })
 
-  it('audio output returns kind output with voices', () => {
+  it('audio output returns kind output with voices', async () => {
     const node = baseNode({
       id: 'voice-output',
       typeId: 'output.voice',
@@ -82,7 +82,7 @@ describe('audio array IO', () => {
       params: { outputKind: 'voice' }
     })
     const patchNode = vi.fn()
-    const result = executeOutputNode({
+    const result = await executeOutputNode({
       node,
       inputs: {
         in: [

@@ -238,9 +238,9 @@ export interface GraphNodeParams {
    * 大图应物化为 relativePath，dataUrl 可为空。
    */
   generatedImages?: Array<{
-    id: string
+    id?: string
     dataUrl: string
-    createdAt: string
+    createdAt?: string
     relativePath?: string
   }>
   /**
@@ -248,10 +248,10 @@ export interface GraphNodeParams {
    * 对齐图片：有 relativePath 时 text 可为空，预览时按路径读文件。
    */
   generatedTexts?: Array<{
-    id: string
+    id?: string
     title?: string
     text: string
-    createdAt: string
+    createdAt?: string
     relativePath?: string
   }>
   /**
@@ -259,8 +259,8 @@ export interface GraphNodeParams {
    * id 通常为资产 id；有 relativePath 时预览走相对路径。
    */
   generatedVoices?: Array<{
-    id: string
-    createdAt: string
+    id?: string
+    createdAt?: string
     relativePath?: string
   }>
   /** 节点预览图（通常取 cameraShots[0].dataUrl） */
@@ -385,6 +385,8 @@ export interface GraphPersistedRunState {
   error?: string
   outputs?: Record<string, import('./execute/types').GraphValue>
 }
+
+export type { GraphValue } from './execute/types'
 
 export interface NormalizeGraphOptions {
   /** 空图时是否确保有输出节点，默认 true */

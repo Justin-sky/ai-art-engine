@@ -15,7 +15,9 @@ export interface GraphRunLogApiCall {
   kind: 'generateText' | 'generateImage' | 'generateVideo' | 'generateSpeech'
   nodeId: string
   request: {
-    prompt: string
+    prompt?: string
+    /** TTS / 声音设计输入 */
+    input?: string
     system?: string
     model?: string
     providerInstanceId?: string
@@ -28,6 +30,8 @@ export interface GraphRunLogApiCall {
     duration?: number
     generateAudio?: boolean
     inputReferenceCount?: number
+    voice?: string
+    name?: string
     /** 参考视频 TOS 上传摘要（不落完整签名参数） */
     tosUploads?: Array<{
       sourceLabel: string
@@ -39,6 +43,7 @@ export interface GraphRunLogApiCall {
   response?: {
     text?: string
     model?: string
+    voice?: string
     /** 生成图片张数（不落 data URL） */
     imageCount?: number
     assetId?: string

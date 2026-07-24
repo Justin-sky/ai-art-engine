@@ -320,7 +320,7 @@ function resolveExportImages(): GraphImageItem[] {
           : null
         const relativePath = asset?.relativePath?.trim()
         if (relativePath) {
-          pushUniqueImage({ id: source.assetId, dataUrl: '', relativePath }, items)
+          pushUniqueImage(items, { id: source.assetId, dataUrl: '', relativePath })
         }
       }
     }

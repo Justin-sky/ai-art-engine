@@ -27,7 +27,8 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   screenplay: 'Screenplay',
   script: 'Shot',
   canvas: 'Canvas',
-  world: 'World Elements'
+  world: 'World Elements',
+  narrative: 'Narrative Units'
 }
 
 export function assetTypeToGraphNodeTitle(type: AssetType, name?: string): string {

@@ -110,7 +110,7 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     text: createEmptyModalityConfig(),
     image: createEmptyModalityConfig(),
     video: createEmptyModalityConfig(),
-    voice: createEmptyModalityConfig()
+    audio: createEmptyModalityConfig()
   }
 }
 
@@ -509,11 +509,12 @@ function normalizeModalityConfig(raw?: Partial<ModalityModelConfig> | null): Mod
 function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): ProviderModalityMap {
   const empty = createEmptyModalityMap()
   if (!raw || typeof raw !== 'object') return empty
+  const legacyVoice = (raw as Partial<ProviderModalityMap & { voice?: ModalityModelConfig }>).voice
   return {
     text: normalizeModalityConfig(raw.text),
     image: normalizeModalityConfig(raw.image),
     video: normalizeModalityConfig(raw.video),
-    voice: normalizeModalityConfig(raw.audio)
+    audio: normalizeModalityConfig(raw.audio ?? legacyVoice)
   }
 }
 

@@ -141,7 +141,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
-const props = defineProps<{
+defineProps<{
   exportCanvas?: () => Promise<string | null>
   /** 节点图模式：引用由画布节点提供，隐藏列表式参考编辑器 */
   compact?: boolean

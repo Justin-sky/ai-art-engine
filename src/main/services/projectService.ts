@@ -918,10 +918,6 @@ class ProjectService {
     return folderRepository.read(this.getRoot(), folderId)
   }
 
-  private writeFolder(folder: AssetFolder): void {
-    folderRepository.write(this.getRoot(), folder)
-  }
-
   private readAsset(assetId: string): AssetInfo {
     return assetRepository.read(this.getRoot(), assetId)
   }

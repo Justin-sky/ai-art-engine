@@ -199,6 +199,7 @@ import {
   resolveShotParamsNodePrompt,
   shouldKeepInstructionMentionToken,
   type GraphNode,
+  type GraphDocument,
   type InstructionMentionSource,
   type InstructionPreset,
   type InstructionPresetKind

@@ -350,22 +350,6 @@ export function flattenTextsValues(values: GraphValue[]): GraphTextItem[] {
   return out
 }
 
-function toTextsValue(text: string, extras?: Partial<GraphTextItem>): GraphTextsValue {
-  const trimmed = text.trim()
-  if (!trimmed && !extras?.relativePath?.trim()) return { kind: 'texts', items: [] }
-  return {
-    kind: 'texts',
-    items: [
-      {
-        text: extras?.text ?? text,
-        ...(extras?.id ? { id: extras.id } : {}),
-        ...(extras?.createdAt ? { createdAt: extras.createdAt } : {}),
-        ...(extras?.relativePath?.trim() ? { relativePath: extras.relativePath.trim() } : {})
-      }
-    ]
-  }
-}
-
 /** 对齐图片 stripEmbeddedImageData：有 relativePath 时清空正文，边上只传路径 */
 function stripEmbeddedTextData(item: GraphTextItem): GraphTextItem {
   const relativePath = item.relativePath?.trim()
@@ -3920,7 +3904,9 @@ export async function executeNarrativeOutputNode(
   return { out: value }
 }
 
-export function executeOutputNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+export async function executeOutputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   if (ctx.node.typeId === 'output.narrative') {
     return executeNarrativeOutputNode(ctx)
   }

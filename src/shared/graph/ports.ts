@@ -1,4 +1,4 @@
-import { resolveNodeType, type NodeTypeDefinition } from './registry'
+import { resolveNodeType, type GraphAddScope, type NodeTypeDefinition } from './registry'
 import { isAssetRefNode, isProcessingAssetNode } from './nodeRole'
 import {
   VIDEO_FIRST_FRAME_PORT_ID,
@@ -190,6 +190,8 @@ export function findCompatibleInPort(
 }
 
 export interface GraphConnectOptions {
+  /** 图作用域（normalize 校验连线时传入） */
+  scope?: GraphAddScope
   sourcePort?: string
   targetPort?: string
   /** 直接指定端口数据类型（菜单过滤时优先用，避免重复解析） */

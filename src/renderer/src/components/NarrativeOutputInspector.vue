@@ -165,7 +165,7 @@ function persistTitle(): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
-  graphEditorHosts.updateNode(hid, current.id, { title: localTitle.value.trim() })
+  graphEditorHosts.updateNode(hid, current.id, {}, localTitle.value.trim())
   graphEditorHosts.bumpRevision()
 }
 

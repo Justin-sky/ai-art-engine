@@ -887,7 +887,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         />
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
-          :kind="item.kind"
+          :kind="item.kind === 'audio' ? 'voice' : 'video'"
           :src="displaySrc(item)"
         />
         <pre
@@ -925,7 +925,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           class="grid-player"
-          :kind="item.kind"
+          :kind="item.kind === 'audio' ? 'voice' : 'video'"
           :src="displaySrc(item)"
         />
         <div v-else-if="item.kind === 'audio'" class="audio-card">

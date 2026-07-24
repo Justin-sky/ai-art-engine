@@ -44,7 +44,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  if (!current || !TABLE_TYPE_IDS.has(current.typeId)) return null
+  if (!current || !current.typeId || !TABLE_TYPE_IDS.has(current.typeId)) return null
   return current
 })
 
@@ -56,7 +56,7 @@ const hostId = computed(() => {
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 
 const typeLabel = computed(() =>
-  node.value ? graphTypeLabel(node.value.typeId) : t('graph.inspector.node.title')
+  node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.inspector.node.title')
 )
 
 const hint = computed(() => {

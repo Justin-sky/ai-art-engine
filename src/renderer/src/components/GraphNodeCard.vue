@@ -668,7 +668,7 @@ const instructionModality = computed((): GenerateModelModality => {
     return 'image'
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
-  if (instructionKind.value === 'voice') return 'voice'
+  if (instructionKind.value === 'voice') return 'audio'
   return 'text'
 })
 
@@ -780,7 +780,7 @@ const typeIcon = computed(() => {
   if (isNarrativeOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🗣️'
   if (props.asset) return assetDisplayIcon(props.asset)
-  const t = props.node.assetType ?? props.asset?.type
+  const t = props.node.assetType
   return t ? ASSET_TYPE_ICONS[t] : '◆'
 })
 

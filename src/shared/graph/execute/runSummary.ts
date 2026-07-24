@@ -21,7 +21,7 @@ export function summarizeGraphRunOutput(
   result: Pick<GraphRunResult, 'output' | 'contribution'>
 ): GraphRunOutputSummary {
   const visual = result.contribution?.genRefs.length ?? 0
-  const audio =
+  const voice =
     result.contribution?.audioRefs.filter((item) => item.assetId).length ?? 0
   const text =
     result.output?.notes.filter((item) => item.text.trim()).length ?? 0
@@ -34,7 +34,7 @@ export function summarizeGraphRunOutput(
   const images = imageItems.filter((item) => item.dataUrl?.trim()).length
   return {
     visual,
-    audio,
+    voice,
     text,
     images,
     hasOutput: result.output != null
@@ -49,7 +49,7 @@ export function summarizeGraphRunOutput(
 export function pickGraphRunSuccessMessageKey(
   summary: GraphRunOutputSummary
 ): GraphRunSuccessMessageKey {
-  if (summary.visual + summary.audio > 0) return 'complete'
+  if (summary.visual + summary.voice > 0) return 'complete'
   if (summary.images > 0) return 'completeImages'
   if (summary.text > 0) return 'completeText'
   if (summary.hasOutput) return 'noRefs'

@@ -592,10 +592,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
         },
         resolveHostAssetName: () => {
-          if (task.target.kind !== 'asset') return undefined
+          const target = task.target
+          if (target.kind !== 'asset') return undefined
           const project = useProjectStore()
           return (
-            project.assets.find((asset) => asset.id === task.target.assetId)?.name?.trim() ||
+            project.assets.find((asset) => asset.id === target.assetId)?.name?.trim() ||
             undefined
           )
         },

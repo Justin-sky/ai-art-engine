@@ -97,7 +97,7 @@ export function distributeNodes(nodes: GraphNode[], mode: DistributeMode): void 
  */
 export function autoLayoutNodes(
   nodes: GraphNode[],
-  edges: Pick<GraphEdge, 'sourceNodeId' | 'targetNodeId'>[],
+  edges: Pick<GraphEdge, 'source' | 'target'>[],
   options?: { columnGap?: number; rowGap?: number }
 ): void {
   if (nodes.length === 0) return
@@ -113,10 +113,10 @@ export function autoLayoutNodes(
   }
 
   for (const edge of edges) {
-    if (!ids.has(edge.sourceNodeId) || !ids.has(edge.targetNodeId)) continue
-    if (edge.sourceNodeId === edge.targetNodeId) continue
-    outgoing.get(edge.sourceNodeId)!.push(edge.targetNodeId)
-    indegree.set(edge.targetNodeId, (indegree.get(edge.targetNodeId) ?? 0) + 1)
+    if (!ids.has(edge.source) || !ids.has(edge.target)) continue
+    if (edge.source === edge.target) continue
+    outgoing.get(edge.source)!.push(edge.target)
+    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1)
   }
 
   const layer = new Map<string, number>()

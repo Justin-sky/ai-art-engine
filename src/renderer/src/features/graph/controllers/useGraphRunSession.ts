@@ -68,7 +68,19 @@ export interface GraphRunSessionOptions {
       | string
       | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
     >
-  }) => Promise<{ assetId: string; relativePath: string; model: string }>
+    outputDir?: string
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    tosUploads?: Array<{
+      objectKey: string
+      url: string
+      bytes: number
+      sourceLabel: string
+      logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
+    }>
+  }>
   generateSpeech?: (input: {
     input: string
     model?: string
@@ -76,6 +88,7 @@ export interface GraphRunSessionOptions {
     voice?: string
     name?: string
     images?: string[]
+    outputDir?: string
   }) => Promise<{
     assetId?: string
     relativePath?: string
@@ -576,7 +589,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         runSucceeded.value = true
         runMessage.value = options.t(`graph.run.${key}`, {
           visual: summary.visual,
-          voice: summary.audio,
+          voice: summary.voice,
           text: summary.text,
           images: summary.images
         })

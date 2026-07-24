@@ -406,7 +406,7 @@ import { resolveGraphCard } from '../graph/cards/registry'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import { graphEditorDialogsKey } from '../features/graph/ui/graphEditorDialogsKey'
-import GraphRadialMenu from './GraphRadialMenu.vue'
+import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
 import { playFlyToGraphTasks } from '../features/graph/ui/flyToGraphTasks'
 import { useProjectStore } from '../stores/project'
@@ -587,7 +587,6 @@ import {
 } from '../features/graph/model/graphEditorHosts'
 import {
   createFreshDirectorStage,
-  findDirectorProcessingNode,
   patchGenParamsWithNodeStage,
   removeNodeStagesFromGenParams
 } from '../features/director/directorStageBinding'
@@ -1440,7 +1439,7 @@ function onEnqueueWorkflowClick(event: MouseEvent): void {
 const radialMenu = ref<{ x: number; y: number } | null>(null)
 const radialHoveredId = ref<string | null>(null)
 
-const radialMenuItems = computed(() => {
+const radialMenuItems = computed((): RadialMenuItem[] => {
   if (isRunning.value) {
     return [
       {
@@ -1451,7 +1450,7 @@ const radialMenuItems = computed(() => {
     ]
   }
   if (!toolbarSelectedNode.value) return []
-  const items = [
+  const items: RadialMenuItem[] = [
     {
       id: 'run-current',
       label: toolbarCurrentIsRerun.value
@@ -2960,40 +2959,6 @@ function writeDirectorGenParams(nextGenParams: Record<string, unknown>): void {
     }
   }
   void persistAssetRecord(assetId, { genParams: nextGenParams })
-}
-
-/** 为指定加工节点写入全新舞台；ownerNode 为 null 表示清空全部舞台。 */
-function persistDirectorStageForGraph(
-  graphJson: GraphDocument,
-  ownerNode?: GraphNode | null
-): void {
-  const assetId = props.assetId
-  const asset = graphAsset.value
-  if (!assetId || !asset || graphScope.value !== 'directorAsset') return
-
-  let nextGenParams: Record<string, unknown>
-  if (ownerNode === null) {
-    const existingIds = Object.keys(
-      ((asset.genParams as { stagesByNodeId?: Record<string, unknown> } | undefined)
-        ?.stagesByNodeId ?? {}) as Record<string, unknown>
-    )
-    // 若无 map，用图中已删前的节点无法得知；直接清空 map + 重置 stage
-    nextGenParams = removeNodeStagesFromGenParams(asset.genParams, existingIds, graphJson)
-  } else {
-    const processingNode = ownerNode ?? findDirectorProcessingNode(graphJson)
-    if (!processingNode) {
-      nextGenParams = removeNodeStagesFromGenParams(asset.genParams, [], graphJson)
-    } else {
-      nextGenParams = patchGenParamsWithNodeStage(
-        asset.genParams,
-        processingNode.id,
-        createFreshDirectorStage(processingNode)
-      )
-    }
-  }
-
-  writeDirectorGenParams({ ...nextGenParams, graphJson })
-  void window.studio.closeStageWindow(assetId)
 }
 
 function seedFreshStageForNode(node: GraphNode, graphJson: GraphDocument): void {

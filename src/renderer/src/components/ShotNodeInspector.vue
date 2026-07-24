@@ -267,6 +267,7 @@ import {
   loadGenerateModelOptions,
   parseModelKey,
   preferredModelKey,
+  type GenerateModelModality,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { useProjectStore } from '../stores/project'
@@ -286,22 +287,22 @@ import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import StyleImagePicker from './StyleImagePicker.vue'
 
 type StoredGeneratedImage = {
-  id: string
+  id?: string
   dataUrl: string
-  createdAt: string
+  createdAt?: string
   relativePath?: string
 }
 
 type StoredGeneratedText = {
-  id: string
+  id?: string
   text: string
-  createdAt: string
+  createdAt?: string
   relativePath?: string
 }
 
 type StoredGeneratedVoice = {
-  id: string
-  createdAt: string
+  id?: string
+  createdAt?: string
   relativePath?: string
 }
 
@@ -522,7 +523,7 @@ function syncRunOutputsAfterGeneratedChange(items: StoredGeneratedImage[]): void
   }
 }
 
-function removeGeneratedImage(imageId: string): void {
+function removeGeneratedImage(imageId: string | undefined): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid || !imageId) return
@@ -645,7 +646,7 @@ function syncRunOutputsAfterGeneratedTextsChange(items: StoredGeneratedText[]): 
   }
 }
 
-function removeGeneratedText(textId: string): void {
+function removeGeneratedText(textId: string | undefined): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid || !textId) return
@@ -748,7 +749,7 @@ function syncRunOutputsAfterGeneratedVoicesChange(items: StoredGeneratedVoice[])
   }
 }
 
-function removeGeneratedVoice(voiceId: string): void {
+function removeGeneratedVoice(voiceId: string | undefined): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid || !voiceId) return
@@ -781,7 +782,7 @@ const modelsHint = computed(() => {
 })
 
 async function loadModels(
-  modality: 'text' | 'image' | 'voice' | 'video',
+  modality: GenerateModelModality,
   preferredKey?: string
 ): Promise<void> {
   const { options, selectedKey } = await loadGenerateModelOptions(

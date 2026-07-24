@@ -64,7 +64,7 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const typeLabel = computed(() => graphTypeLabel('image.emotion'))
 const emptyPrompt = computed(() => t('graph.emotion.promptEmpty'))
 
-const pad = computed(() => readEmotionPadFromNode(node.value?.params))
+const pad = computed(() => readEmotionPadFromNode(node.value?.params ?? {}))
 const emotionLabel = computed(
   () => node.value?.params.emotionLabel?.trim() || getEmotionCell(pad.value).label
 )
