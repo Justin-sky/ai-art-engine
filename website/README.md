@@ -29,4 +29,12 @@ npm run site
 node website/optimize-assets.mjs
 ```
 
-浏览器打开提示的本地地址即可。推荐部署到 **GitHub Pages** 或任意静态托管。
+浏览器打开提示的本地地址即可。
+
+## 部署（GitHub Pages）
+
+仓库已配置 Actions：`.github/workflows/deploy-website.yml`。
+
+1. Settings → Pages → Source 选 **GitHub Actions**
+2. 推送到 `main`（或手动跑该 workflow）后自动发布
+3. 地址：https://justin-sky.github.io/ai-art-engine/
