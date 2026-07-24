@@ -10,6 +10,7 @@
       @click="closeMenu"
       @scroll="onTextareaScroll"
       @blur="onBlur"
+      @focus="$emit('focus')"
     />
     <!-- Teleport 到 body：画布 transform 会改变 fixed 包含块，导致节点上定位错位 -->
     <Teleport to="body">
@@ -61,6 +62,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   change: []
+  focus: []
 }>()
 
 const hintText = computed(() =>
@@ -248,7 +250,24 @@ function focus(): void {
   textareaEl.value?.focus()
 }
 
-defineExpose({ focus })
+function getSelection(): { start: number; end: number } {
+  const el = textareaEl.value
+  return {
+    start: el?.selectionStart ?? props.modelValue.length,
+    end: el?.selectionEnd ?? props.modelValue.length
+  }
+}
+
+function setSelection(start: number, end = start): void {
+  void nextTick(() => {
+    const el = textareaEl.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(start, end)
+  })
+}
+
+defineExpose({ focus, getSelection, setSelection })
 </script>
 
 <style scoped>

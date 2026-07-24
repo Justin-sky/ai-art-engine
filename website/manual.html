@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -30,11 +30,7 @@
         <a href="index.html">首页</a>
         <a href="manual.html" aria-current="page">使用手册</a>
         <a href="index.html#download">下载</a>
-        <a
-          class="nav-src"
-          href="https://github.com/Justin-sky/ai-art-engine"
-          target="_blank"
-          rel="noopener noreferrer"
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
           >GitHub</a
         >
       </nav>
@@ -73,13 +69,13 @@
         <section id="intro">
           <h2>1. 概述与准备</h2>
           <p>
-            AIArtEngine 是本地 AI 短视频创作工作台。工程与素材保存在你指定的本机目录；
-            文本 / 图片 / 视频 / 声音生成通过你配置的模型提供商（如 OpenRouter、火山方舟）完成。
+            AIArtEngine 是本地 AI 短视频创作工作台。工程与素材保存在你指定的本机目录； 文本 / 图片 / 视频 /
+            声音生成通过你配置的模型提供商（如 OpenRouter、火山方舟）完成。
           </p>
           <h3>首次使用建议</h3>
           <ol>
-            <li>从 <a href="index.html#download">官网下载页</a> 或 GitHub Releases 安装对应平台安装包。</li>
-            <li>启动后先打开<strong>设置</strong>，添加模型提供商并填入 API Key，拉取并勾选要用的模型。</li>
+            <li> 从 <a href="index.html#download">官网下载页</a> 或 GitHub Releases 安装对应平台安装包。 </li>
+            <li> 启动后先打开<strong>设置</strong>，添加模型提供商并填入 API Key，拉取并勾选要用的模型。 </li>
             <li>（可选）在<strong>对象存储</strong>中配置火山引擎 TOS，便于大文件外链。</li>
             <li>回到首页<strong>新建工程</strong>，进入工作区开始创作。</li>
           </ol>
@@ -105,11 +101,12 @@
           <h3>最近工程</h3>
           <ul>
             <li>列表展示近期打开过的工程路径。</li>
-            <li>右侧 <strong>×</strong> 表示「从最近列表移除」——<strong>不会删除</strong>磁盘上的工程文件。</li>
+            <li>
+              右侧
+              <strong>×</strong> 表示「从最近列表移除」——<strong>不会删除</strong>磁盘上的工程文件。
+            </li>
           </ul>
-          <div class="tip">
-            当前版本没有应用内「删除工程」功能。若要彻底删除，请在文件管理器中手动删除工程目录。
-          </div>
+          <div class="tip"> 当前版本没有应用内「删除工程」功能。若要彻底删除，请在文件管理器中手动删除工程目录。 </div>
         </section>
 
         <section id="settings">
@@ -130,7 +127,7 @@
             <li>填写显示名称、Base URL、API Key（可显示/隐藏）。</li>
             <li>启用该提供商后，点击「拉取可用模型」。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
-            <li>按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>）。</li>
+            <li> 按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>）。 </li>
             <li>设置默认生成模型与默认声音（如需要）。</li>
           </ol>
           <div class="tip">
@@ -146,7 +143,8 @@
 
           <h3>3.4 扩展</h3>
           <p>
-            只读列出用户数据目录 <code>plugins</code> 下的声明式扩展。当前不会执行外部任意脚本，仅展示已声明的扩展信息。
+            只读列出用户数据目录
+            <code>plugins</code> 下的声明式扩展。当前不会执行外部任意脚本，仅展示已声明的扩展信息。
           </p>
         </section>
 
@@ -160,11 +158,12 @@
             <li><strong>↶ / ↷</strong>：撤销 / 重做（亦可用快捷键）。</li>
             <li><strong>任务列表</strong>、 <strong>执行日志</strong>：查看后台任务与运行日志。</li>
             <li>
-              <strong>布局</strong>：切换默认布局、保存当前布局、导出/导入布局
-              <code>.json</code>、删除自定义布局。
+              <strong>布局</strong>：切换默认布局、保存当前布局、导出/导入布局 <code>.json</code>、删除自定义布局。
             </li>
           </ul>
-          <p>提示：拖动标签可停靠到不同区域；标签右键可浮动、分离到新窗口或关闭相关标签。节点执行中不可关闭关键面板。</p>
+          <p>
+            提示：拖动标签可停靠到不同区域；标签右键可浮动、分离到新窗口或关闭相关标签。节点执行中不可关闭关键面板。
+          </p>
 
           <h3>4.2 四栏面板</h3>
           <table>
@@ -199,7 +198,10 @@
           <ul>
             <li>画布 · 剧本 · 分镜 · 世界元素 · 叙事单元 · 导演台 · 图片 · 视频 · 声音</li>
           </ul>
-          <p>空工作区推荐流程：<strong>剧本 → 分镜 → 节点生成</strong>；也可快捷新建剧本、分镜、导演台，或双击最近资产打开。</p>
+          <p>
+            空工作区推荐流程：<strong>剧本 → 分镜 → 节点生成</strong
+            >；也可快捷新建剧本、分镜、导演台，或双击最近资产打开。
+          </p>
         </section>
 
         <section id="assets">
@@ -236,7 +238,8 @@
         <section id="graph">
           <h2>6. 节点图</h2>
           <p>
-            节点图是核心生成编排界面。在剧本、分镜、画布、导演台等资产中，通常通过节点连线组织「输入 → 生成 → 输出」链路。
+            节点图是核心生成编排界面。在剧本、分镜、画布、导演台等资产中，通常通过节点连线组织「输入 → 生成 →
+            输出」链路。
           </p>
 
           <h3>6.1 添加与连线</h3>
@@ -280,13 +283,15 @@
               </tr>
             </tbody>
           </table>
-          <p>分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。</p>
+          <p>
+            分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。
+          </p>
 
           <h3>6.4 节点类型一览</h3>
 
           <h4>生成 / 资产类</h4>
           <ul>
-            <li>图片生成 · 视频生成 · 声音生成 · 剧本生成 · 分镜 · 导演台编辑 · 画布编辑 · 模型（引用）</li>
+            <li> 图片生成 · 视频生成 · 声音生成 · 剧本生成 · 分镜 · 导演台编辑 · 画布编辑 · 模型（引用） </li>
           </ul>
 
           <h4>输出类</h4>
@@ -327,10 +332,12 @@
               <strong>剧本</strong>：新建剧本 → 右侧选文本模型 → 填「生成指令」→ 执行生成节点 → 接到「剧本输出」。
             </li>
             <li>
-              <strong>分镜</strong>：剧本 →「分镜拆分」→「分镜表格」（运行导入 JSON）→「分镜编辑」/ 视频生成 →「分镜输出」。
+              <strong>分镜</strong>：剧本 →「分镜拆分」→「分镜表格」（运行导入 JSON）→「分镜编辑」/ 视频生成
+              →「分镜输出」。
             </li>
             <li>
-              <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 → 输出节点导出结果。
+              <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 →
+              输出节点导出结果。
             </li>
           </ol>
         </section>
@@ -354,7 +361,7 @@
             <li>
               <strong>分镜表格</strong>：批量编辑名称、时长、画面、景别、光影、对白、音效、运镜、状态等；可开独立窗口。
             </li>
-            <li><strong>分镜编辑</strong>：以节点图方式编排；双击拆分 / 表格 / 编辑类节点可打开对应窗口。</li>
+            <li> <strong>分镜编辑</strong>：以节点图方式编排；双击拆分 / 表格 / 编辑类节点可打开对应窗口。 </li>
           </ul>
 
           <h3>7.3 镜头参数常见字段</h3>
@@ -363,6 +370,24 @@
             <li>参考：首帧 / 尾帧等，支持 <code>@</code> 引用资产。</li>
             <li>生成视频：在参数齐全且模型配置正确后执行相关生成节点。</li>
           </ul>
+
+          <h3>7.4 镜头调度预设与分镜思维</h3>
+          <p>
+            分镜参数面板顶部提供「镜头调度」。选择预设后点击「套用」，可自动填写相关的画面描述、景别、光影或运镜；
+            预设文本会插入当前编辑字段的光标位置，其他相关字段追加到末尾，不会清空已有内容；景别仅在为空时填写。
+          </p>
+          <ul>
+            <li> <strong>镜头语言</strong>：英雄 / 神秘出场、双人中景、过肩反打、俯视、背面、荷兰角等。 </li>
+            <li><strong>身体朝向</strong>：全正面、45° 正面、纯侧面、45° 背面。</li>
+            <li> <strong>人物表演</strong>：把愤怒、失神、疯癫、释然拆成可观察的面部肌肉与肢体动作。 </li>
+            <li><strong>打光</strong>：顶光眼窝阴影、正侧光半脸明暗。</li>
+            <li><strong>广告运镜与转场</strong>：冲击硬切、闪白、运动匹配。</li>
+          </ul>
+          <p>
+            「分镜拆分」已按可剪辑镜头序列生成：画面描述负责可生成的静态首帧，运镜负责随时间发生的运动；
+            同场景会有目的地变化景别并在关键节拍插入特写。图片和视频生成节点的指令预设中，也提供成对的 「建立镜头 /
+            细节镜头」模板，适合按<strong>先图后视频</strong>流程使用。
+          </p>
         </section>
 
         <section id="canvas">
@@ -386,7 +411,7 @@
 
         <section id="director">
           <h2>9. 导演台</h2>
-          <p>导演台用于 3D 场景摆姿、机位与动画预览，常作为节点链路中的「导演台编辑 → 导演台输出」。</p>
+          <p> 导演台用于 3D 场景摆姿、机位与动画预览，常作为节点链路中的「导演台编辑 → 导演台输出」。 </p>
 
           <h3>9.1 从节点打开</h3>
           <ol>
@@ -405,29 +430,32 @@
             <li>侧栏：场景层级、Inspector、全景相关资产。</li>
             <li>创建：创建相机 · 创建空物体 · 创建物体（Cube / Sphere 等）。</li>
             <li>对象：删除、隐藏、显示名称、锁定。</li>
-            <li>属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）· <strong>站位</strong>（截屏）。</li>
+            <li> 属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）· <strong>站位</strong>（截屏）。 </li>
           </ul>
 
           <h3>9.4 视图与全景</h3>
           <ul>
             <li>导演视角 / 机位切换；六向视图；重置。</li>
-            <li>移动到视图：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>；与视图对齐：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>。</li>
+            <li>
+              移动到视图：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>；与视图对齐：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>。
+            </li>
             <li>全景：拖入背景图，调节缩放 / 平移 / 旋转、地面与天空色。</li>
           </ul>
 
           <h3>9.5 动画模式</h3>
           <ul>
             <li>在全景模式 / 动画模式间切换。</li>
-            <li>轨迹与关键帧：<kbd>K</kbd> 添加关键帧；<kbd>Delete</kbd> 删除关键帧；<kbd>Space</kbd> 播放 / 暂停。</li>
+            <li>
+              轨迹与关键帧：<kbd>K</kbd> 添加关键帧；<kbd>Delete</kbd> 删除关键帧；<kbd>Space</kbd>
+              播放 / 暂停。
+            </li>
             <li>可导出视频。</li>
           </ul>
         </section>
 
         <section id="package">
           <h2>10. 资产包 <code>.aipackage</code></h2>
-          <p>
-            格式标识为 <code>com.aiartengine.asset-package</code>，用于在工程间迁移素材与相关依赖。
-          </p>
+          <p> 格式标识为 <code>com.aiartengine.asset-package</code>，用于在工程间迁移素材与相关依赖。 </p>
 
           <h3>导出</h3>
           <ol>
@@ -438,7 +466,7 @@
 
           <h3>导入</h3>
           <ol>
-            <li>在资产库空白或根目录右键「导入资产包」，或直接拖入 <code>.aipackage</code> 文件。</li>
+            <li> 在资产库空白或根目录右键「导入资产包」，或直接拖入 <code>.aipackage</code> 文件。 </li>
             <li>勾选要导入的条目（一次处理一个包）→「导入」。</li>
             <li>支持条目复用与重映射；脚本类资产可携带分镜快照。</li>
           </ol>
@@ -462,7 +490,10 @@
               </tr>
               <tr>
                 <td>全局</td>
-                <td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>（或 <kbd>Ctrl</kbd>+<kbd>Y</kbd>）</td>
+                <td>
+                  <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>（或
+                  <kbd>Ctrl</kbd>+<kbd>Y</kbd>）
+                </td>
                 <td>撤销 / 重做</td>
               </tr>
               <tr>
@@ -487,7 +518,7 @@
               </tr>
               <tr>
                 <td>资产库</td>
-                <td><kbd>Delete</kbd> · <kbd>Ctrl</kbd>+<kbd>A</kbd> · <kbd>Ctrl</kbd>+<kbd>C</kbd></td>
+                <td> <kbd>Delete</kbd> · <kbd>Ctrl</kbd>+<kbd>A</kbd> · <kbd>Ctrl</kbd>+<kbd>C</kbd> </td>
                 <td>删除 · 全选 · 复制相关</td>
               </tr>
               <tr>
@@ -497,7 +528,7 @@
               </tr>
               <tr>
                 <td>导演台</td>
-                <td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td>
+                <td> <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> </td>
                 <td>移到视图 · 与视图对齐</td>
               </tr>
               <tr>
@@ -518,8 +549,8 @@
             </tbody>
           </table>
           <div class="tip">
-            macOS 上将 <kbd>Ctrl</kbd> 理解为 <kbd>⌘ Command</kbd>（与系统习惯一致处除外）。设置面板对
-            Delete / Backspace 做了特殊处理，避免误关设置或误删模型列表项。
+            macOS 上将 <kbd>Ctrl</kbd> 理解为 <kbd>⌘ Command</kbd>（与系统习惯一致处除外）。设置面板对 Delete /
+            Backspace 做了特殊处理，避免误关设置或误删模型列表项。
           </div>
         </section>
 
@@ -545,8 +576,7 @@
             <li>设置中检查更新，保持客户端为最新版。</li>
           </ol>
           <p>
-            反馈与交流：QQ 群 <strong>647306826</strong> · 邮箱
-            <a href="mailto:284139554@qq.com">284139554@qq.com</a> ·
+            反馈与交流：QQ 群 <strong>647306826</strong> · 邮箱 <a href="mailto:284139554@qq.com">284139554@qq.com</a> ·
             <a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"
               >GitHub Issues</a
             >。
@@ -565,12 +595,7 @@
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
           <a href="index.html#download">下载</a>
-          <a
-            href="https://github.com/Justin-sky/ai-art-engine"
-            target="_blank"
-            rel="noopener noreferrer"
-            >GitHub</a
-          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
         <span>GPL-3.0</span>
       </div>

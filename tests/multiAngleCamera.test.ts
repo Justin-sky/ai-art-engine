@@ -24,16 +24,20 @@ describe('multiAngleCamera', () => {
       yaw: 45,
       pitch: -30,
       shotScale: 0.5,
-      prompt: 'dutch angle, tilted frame'
+      prompt: '荷兰角，画面垂直线明显倾斜，主体与环境关系失衡，心理不稳定感'
     })
     expect(byId.frontHigh).toMatchObject({ yaw: 0, pitch: 60, shotScale: 0.5 })
-    expect(byId.frontHigh.prompt).toBeUndefined()
+    expect(byId.frontHigh.prompt).toContain('俯拍')
     expect(byId.frontLow).toMatchObject({ yaw: 0, pitch: -30, shotScale: 0.5 })
-    expect(byId.frontLow.prompt).toBeUndefined()
-    expect(byId.panoramaHigh).toMatchObject({ yaw: 45, pitch: 30, shotScale: 0 })
-    expect(byId.panoramaHigh.prompt).toBeUndefined()
+    expect(byId.frontLow.prompt).toContain('仰拍')
+    expect(byId.panoramaHigh).toMatchObject({
+      yaw: 45,
+      pitch: 30,
+      shotScale: 0
+    })
+    expect(byId.panoramaHigh.prompt).toContain('空间关系')
     expect(byId.back).toMatchObject({ yaw: 180, pitch: 0, shotScale: 0.5 })
-    expect(byId.back.prompt).toBeUndefined()
+    expect(byId.back.prompt).toContain('背面')
   })
 
   it('builds camera prompts from yaw/pitch/scale only', () => {
@@ -46,9 +50,9 @@ describe('multiAngleCamera', () => {
     expect(buildMultiAnglePrompt(applyMultiAnglePreset('back', true))).toBe(
       '中景镜头，背面，平视'
     )
-    expect(buildMultiAnglePrompt(applyMultiAnglePreset('frontHigh', false))).toBe(
-      '中景镜头，正面，强俯拍'
-    )
+    expect(
+      buildMultiAnglePrompt(applyMultiAnglePreset('frontHigh', false))
+    ).toBe('中景镜头，正面，强俯拍')
   })
 
   it('splices panel prompt only when promptEnabled', () => {
@@ -97,15 +101,17 @@ describe('multiAngleCamera', () => {
     expect(patch.multiAnglePrompt).toMatch(/全景/)
   })
 
-  it('only fisheye/dutch presets provide panel prompt text', () => {
+  it('provides narrative prompt text for every cinematic preset', () => {
     expect(resolveMultiAnglePresetPanelPrompt('custom')).toBe('')
-    expect(resolveMultiAnglePresetPanelPrompt('frontHigh')).toBe('')
-    expect(resolveMultiAnglePresetPanelPrompt('frontLow')).toBe('')
-    expect(resolveMultiAnglePresetPanelPrompt('panoramaHigh')).toBe('')
-    expect(resolveMultiAnglePresetPanelPrompt('back')).toBe('')
+    expect(resolveMultiAnglePresetPanelPrompt('frontHigh')).toContain('俯拍')
+    expect(resolveMultiAnglePresetPanelPrompt('frontLow')).toContain('仰拍')
+    expect(resolveMultiAnglePresetPanelPrompt('panoramaHigh')).toContain(
+      '空间关系'
+    )
+    expect(resolveMultiAnglePresetPanelPrompt('back')).toContain('背面')
     expect(resolveMultiAnglePresetPanelPrompt('fisheye')).toBe(
       '极度特写镜头，广角镜头，边缘带有鱼眼畸变效果'
     )
-    expect(resolveMultiAnglePresetPanelPrompt('dutch')).toBe('dutch angle, tilted frame')
+    expect(resolveMultiAnglePresetPanelPrompt('dutch')).toContain('荷兰角')
   })
 })

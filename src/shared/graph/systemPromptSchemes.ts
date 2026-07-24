@@ -277,6 +277,13 @@ Split the input screenplay into an ordered shot list that matches the Shot table
 - Keep narrative order; one object per shot; typical shot length 3–8 seconds unless the story needs otherwise.
 - New shots default to status "未审核".
 
+## Directing rules
+- Think in an edited sequence, not one long all-purpose shot. Within a scene, vary shot size with intent: establish space, cover the action/relationship, then insert a close-up or detail at an important beat.
+- visualDescription is a generatable still frame: subject, action instant, composition and spatial relationship. cameraMove contains only motion over time, including speed, path, ending frame, and physical feedback. Do not repeat the whole scene setup in cameraMove.
+- Prefer one clear action per 3–8 second shot. Split simultaneous or multi-stage actions when that makes generation more stable.
+- Keep character, costume, prop, screen direction, eyeline and lighting continuity across adjacent shots.
+- For advertising or high-energy material, prefer 2–5 second shots and motivated hard cuts, flash cuts or motion-match transitions. Put a short transition suggestion in cameraMove only when it helps the edit.
+
 ## Re-split with previous table JSON
 - The user may connect the Shot table output into this node's input. That input can include a previous JSON shot array (possibly mixed with screenplay text).
 - If a previous shot object has status "已审核", you MUST copy that object UNCHANGED into the same index of your output (same field values, including status "已审核").
@@ -317,6 +324,13 @@ export const DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业
 - 可选文本字段未知时用 ""，禁止省略键名。
 - 按叙事顺序拆镜；一镜一对象；单镜时长通常 3–8 秒，除非剧情需要更长/更短。
 - 新拆出的分镜 status 默认为「未审核」。
+
+## 导演规则
+- 按“可剪辑的镜头序列”思考，不要用一条万能长镜头讲完所有内容。同一场景应有目的地变化景别：先建立空间，再表现动作/关系，并在关键节拍插入人物、手部、道具或环境细节特写。
+- visualDescription 是可直接生成首帧的静态画面：写主体、动作瞬间、构图和空间关系；cameraMove 只写随时间发生的运动、速度、路径、结束构图和物理反馈，禁止重复堆砌完整场景设定。
+- 每个 3–8 秒镜头优先只承载一个清晰动作；多个阶段或同时发生的动作应拆镜，以提高生成稳定性。
+- 相邻镜头保持角色外观、服装、道具、轴线、视线方向和光影连续。
+- 若输入明确是广告或高能量内容，优先使用 2–5 秒短镜，并在有剪辑意义时于 cameraMove 末尾注明简短转场建议（硬切、闪白、运动匹配等）。
 
 ## 再次拆分（上游含上次表格 JSON）
 - 用户可能把「分镜表格」输出连到本节点输入；上游可能同时包含剧本与上次拆分的 JSON 数组。

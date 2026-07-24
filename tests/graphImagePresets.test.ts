@@ -16,11 +16,16 @@ describe('image instruction presets', () => {
       'image.cinematicLighting',
       'image.physics3sLater',
       'image.physics5sBefore',
-      'image.panorama720'
+      'image.panorama720',
+      'image.shotEstablish',
+      'image.shotDetail',
+      'image.shotConfrontation'
     ])
     for (const item of presets) {
       expect(item.body.trim().length).toBeGreaterThan(20)
-      expect(item.titleKey).toMatch(/^graph\.inspector\.generate\.presets\.image\./)
+      expect(item.titleKey).toMatch(
+        /^graph\.inspector\.generate\.presets\.image\./
+      )
     }
   })
 })

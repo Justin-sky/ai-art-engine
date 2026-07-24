@@ -27,7 +27,7 @@ describe('lightingSetup', () => {
       rimLight: false
     })
     expect(buildLightingManualPrompt(s)).toBe(
-      '主光来自前方，白色光，中等亮度，无轮廓光'
+      '主光来自前方，面部光线均匀、五官清晰，白色光，中等亮度，无轮廓光'
     )
   })
 

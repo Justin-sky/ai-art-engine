@@ -509,6 +509,42 @@ export default {
       title: 'Shot parameters',
       empty: 'No shot selected'
     },
+    staging: {
+      title: 'Shot staging',
+      select: 'Choose a camera, performance, or lighting preset…',
+      apply: 'Apply',
+      hint: 'Inserts at the active caret and appends other related fields without clearing existing text.',
+      group: {
+        cameraLanguage: 'Camera language',
+        bodyFacing: 'Body orientation',
+        performance: 'Performance',
+        lighting: 'Lighting',
+        advertising: 'Ad camera and transitions'
+      },
+      preset: {
+        heroEntrance: 'Hero entrance',
+        mysteriousEntrance: 'Mysterious entrance',
+        storyEntrance: 'Story-driven entrance',
+        twoShot: 'Two-shot',
+        overShoulder: 'Over-the-shoulder reverse',
+        highEmotion: 'High-angle pressure',
+        backEmotion: 'Back-view isolation',
+        dutch: 'Dutch-angle imbalance',
+        facingFront: 'Full front',
+        facingThreeQuarter: 'Front three-quarter',
+        facingProfile: 'Pure profile',
+        facingBackThreeQuarter: 'Rear three-quarter',
+        performanceAnger: 'Anger: facial action',
+        performanceDazed: 'Dazed: focus and body drop',
+        performanceManic: 'Manic: blinking, twitch, head tilt',
+        performanceRelief: 'Relief: breath and release',
+        lightingTop: 'Top light: eye-socket shadow',
+        lightingSide: 'Side light: split face',
+        adImpact: 'Impact hard cut',
+        adFlash: 'Flash transition',
+        adMotion: 'Motion-match transition'
+      }
+    },
     field: {
       visual: 'Visual description',
       shotSize: 'Shot size',
@@ -1877,7 +1913,10 @@ export default {
             cinematicLighting: 'Cinematic lighting fix',
             physics3sLater: 'Predict +3s',
             physics5sBefore: 'Rewind −5s',
-            panorama720: '720 panorama'
+            panorama720: '720 panorama',
+            shotEstablish: 'Storyboard thinking: establishing frame',
+            shotDetail: 'Storyboard thinking: insert close-up',
+            shotConfrontation: 'Storyboard thinking: low-angle standoff'
           },
           video: {
             firstLastFrame: 'First & last frame',
@@ -1888,7 +1927,14 @@ export default {
             cameraFollow: 'Follow / POV',
             cameraCombo: 'Combo moves',
             textToVideo: 'Text-to-video',
-            multimodalRef: 'Multimodal reference'
+            multimodalRef: 'Multimodal reference',
+            shotEstablish: 'Storyboard thinking: establishing motion',
+            shotDetail: 'Storyboard thinking: detail action',
+            heroEntrance: 'Hero entrance',
+            performanceRealism: 'Realistic character performance',
+            transitionHard: 'Ad transition: hard cut',
+            transitionFlash: 'Ad transition: flash',
+            transitionMotion: 'Ad transition: motion match'
           },
           lipSync: {
             talkingHead: 'Talking to camera',

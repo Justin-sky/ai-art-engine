@@ -508,6 +508,42 @@ export default {
       title: '镜头参数',
       empty: '未选择分镜'
     },
+    staging: {
+      title: '镜头调度',
+      select: '选择镜头、表演或光影预设…',
+      apply: '套用',
+      hint: '预设文本插入当前光标处，其余相关字段追加到末尾；不会清空已有内容。',
+      group: {
+        cameraLanguage: '镜头语言',
+        bodyFacing: '身体朝向',
+        performance: '人物表演',
+        lighting: '打光',
+        advertising: '广告运镜与转场'
+      },
+      preset: {
+        heroEntrance: '英雄出场',
+        mysteriousEntrance: '神秘人物出场',
+        storyEntrance: '故事感出场',
+        twoShot: '双人中景',
+        overShoulder: '过肩反打',
+        highEmotion: '俯视压迫',
+        backEmotion: '背面孤独',
+        dutch: '荷兰角失衡',
+        facingFront: '全正面',
+        facingThreeQuarter: '45° 正面',
+        facingProfile: '纯侧面',
+        facingBackThreeQuarter: '45° 背面',
+        performanceAnger: '愤怒：面部肌肉拆解',
+        performanceDazed: '失神：焦距与身体下沉',
+        performanceManic: '疯癫：眨眼、抽动与歪头',
+        performanceRelief: '释然：呼吸与放松',
+        lightingTop: '顶光：眼窝阴影',
+        lightingSide: '正侧光：半脸明暗',
+        adImpact: '冲击硬切',
+        adFlash: '闪白转场',
+        adMotion: '运动匹配转场'
+      }
+    },
     field: {
       visual: '画面描述',
       shotSize: '景别',
@@ -1868,7 +1904,10 @@ export default {
             cinematicLighting: '电影级光影校正',
             physics3sLater: '画面推演-3秒后',
             physics5sBefore: '画面推演-5秒前',
-            panorama720: '720全景'
+            panorama720: '720全景',
+            shotEstablish: '分镜思维：建立镜头首帧',
+            shotDetail: '分镜思维：插入特写首帧',
+            shotConfrontation: '分镜思维：低机位对峙'
           },
           video: {
             firstLastFrame: '首尾帧万能',
@@ -1879,7 +1918,14 @@ export default {
             cameraFollow: '跟拍运镜',
             cameraCombo: '组合运镜',
             textToVideo: '文生视频',
-            multimodalRef: '全能参考'
+            multimodalRef: '全能参考',
+            shotEstablish: '分镜思维：建立镜头运动',
+            shotDetail: '分镜思维：细节动作',
+            heroEntrance: '英雄式出场',
+            performanceRealism: '人物真实表演',
+            transitionHard: '广告转场：硬切',
+            transitionFlash: '广告转场：闪白/闪黑',
+            transitionMotion: '广告转场：运动匹配'
           },
           lipSync: {
             talkingHead: '对镜头说话',

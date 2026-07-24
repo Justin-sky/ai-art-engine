@@ -24,6 +24,23 @@ export interface InstructionPreset {
   body: string
 }
 
+export function insertInstructionPresetText(
+  current: string,
+  body: string,
+  position: number
+): { text: string; cursor: number } {
+  const at = Math.max(0, Math.min(position, current.length))
+  const before = current.slice(0, at)
+  const after = current.slice(at)
+  const prefix = before && !before.endsWith('\n') ? '\n' : ''
+  const suffix = after && !after.startsWith('\n') ? '\n' : ''
+  const inserted = `${prefix}${body}${suffix}`
+  return {
+    text: `${before}${inserted}${after}`,
+    cursor: at + inserted.length
+  }
+}
+
 /**
  * 短剧创作框架
  * 提取自原稿：题材 / 核心设定 / 人物 / 亮点 / 节奏规格 / 风格 / 交付物
@@ -134,13 +151,22 @@ const OPTIMIZE_CAMERA_BODY = `你是一位专业的电影摄影师，拥有10年
 1. 详细描述运镜的整个过程，包括开始位置、移动路径、结束位置
 2. 明确说明运镜的速度和节奏，比如“缓慢匀速”、“先慢后快”、“急促”等
 3. 描述运镜过程中画面的变化，比如焦点的变化、景别的变化
-4. 语言要简洁明了，适合作为 AI 视频生成的提示词
-5. 不要有多余的废话
+4. 同时明确机位角度、人物身体朝向和观众视角；需要真实感时加入轻微手持、停顿或跟随延迟，避免不可能的漂浮运镜
+5. 区分静帧信息与运动信息：不要重复场景设定，重点写视频过程中发生的变化
+6. 语言要简洁明了，适合作为 AI 视频生成的提示词；不要有多余的废话
 
 现在请根据以下运镜需求生成描述：`
 
 /** 人物表情提示词优化 */
-const OPTIMIZE_EXPRESSION_BODY = `你是一位专业的影视表情设计师，请生成一张[人物]的[情绪]表情正面参考图的提示词，要求：真人风格，光线均匀，无遮挡，表情夸张且清晰，适合作为 AI 动画的表情参考。具体细节：[添加你想要的细节，比如“孙悟空，头戴紧箍咒，身穿行者服，愤怒的表情，双眼圆睁，咬牙切齿”]`
+const OPTIMIZE_EXPRESSION_BODY = `你是一位专业的影视表演指导。请把用户输入的抽象情绪或人物动作，改写成适合 AI 图片/视频生成的可观察表演提示词。
+要求：
+1. 禁止只写“生气、悲伤、疯癫、释然”等抽象词；必须拆解为眉眼、嘴唇、鼻翼、下颌、呼吸等具体面部动作
+2. 加入肩颈、手指、躯干、重心等至少一处肢体反应
+3. 视频场景要写出动作时序，例如“先疑惑皱眉，随后唇角紧抿”
+4. 动作克制、符合生理规律；除非用户要求，不要夸张到面部变形
+5. 只输出优化后的提示词，不解释方法
+
+现在请优化以下人物表演：`
 
 /** 特效提示词优化 */
 const OPTIMIZE_VFX_BODY = `你是一位专业的影视特效师，擅长为 AI 短剧生成符合AI工具要求的特效提示词。请根据我提供的特效需求，生成一段详细、具体的特效描述，要求包含特效的颜色、形状、大小、位置、运动方式、光影效果，语言风格符合 AI 绘画提示词的规范，不要有多余的修饰。特效需求：`
@@ -263,6 +289,27 @@ const IMAGE_PANORAMA_720_BODY = `基于当前场景图像，生成「720 全景�
 
 请直接输出 720 全景图。`
 
+/** 分镜思维：图负责定格空间、构图和光影，视频负责后续运动。 */
+const IMAGE_SHOT_ESTABLISH_BODY = `生成一张可作为视频首帧的「建立镜头」。
+【主体/场景】[填写主体、地点、时间与天气]
+【构图】远景或航拍，明确前中后景与空间关系，保留叙事性负空间
+【光影】写清主光来源、阴影落点与环境反射
+【一致性】有参考图时保持角色、产品、服装和场景一致
+只生成静态首帧，不在图片提示词中描述连续运镜；无文字、水印或 UI。`
+
+const IMAGE_SHOT_DETAIL_BODY = `生成一张可作为视频首帧的「插入特写 / 动作细节镜头」。
+【细节主体】[手部、眼睛、产品按钮、仪表、机械部件等]
+【构图】特写或大特写，焦点明确，背景适度虚化；保留动作发生前一瞬的张力
+【真实反馈】加入材质、微小磨损、反光、空气或环境痕迹，避免过度干净的 AI 质感
+只定格关键瞬间，不描述完整动作过程；无文字、水印或 UI。`
+
+const IMAGE_SHOT_CONFRONTATION_BODY = `生成一张可作为视频首帧的「低机位对峙镜头」。
+【主体】[两个角色 / 两件产品 / 主体与环境威胁]
+【构图】极低机位，中景或全景，双方形成明确的空间轴线与视觉张力
+【光影】地面反射、轮廓光或高反差侧光强化冲突
+【约束】主体身份、比例和场景逻辑稳定
+只生成静态首帧；无文字、水印或 UI。`
+
 const IMAGE_PRESETS: InstructionPreset[] = [
   {
     id: 'image.multiAngle9',
@@ -323,6 +370,21 @@ const IMAGE_PRESETS: InstructionPreset[] = [
     id: 'image.panorama720',
     titleKey: 'graph.inspector.generate.presets.image.panorama720',
     body: IMAGE_PANORAMA_720_BODY
+  },
+  {
+    id: 'image.shotEstablish',
+    titleKey: 'graph.inspector.generate.presets.image.shotEstablish',
+    body: IMAGE_SHOT_ESTABLISH_BODY
+  },
+  {
+    id: 'image.shotDetail',
+    titleKey: 'graph.inspector.generate.presets.image.shotDetail',
+    body: IMAGE_SHOT_DETAIL_BODY
+  },
+  {
+    id: 'image.shotConfrontation',
+    titleKey: 'graph.inspector.generate.presets.image.shotConfrontation',
+    body: IMAGE_SHOT_CONFRONTATION_BODY
   }
 ]
 
@@ -431,6 +493,42 @@ const VIDEO_MULTIMODAL_REF_BODY = `请基于已连接的参考素材生成视频
 【约束】尽量保持参考中的人物外观、服装与场景一致；运动自然，光影统一
 【禁项】无字幕，无水印，无多余元素；不要同时连接尾帧口与参考图`
 
+/** 与「建立镜头」图片预设成对：这里只描述动起来的部分。 */
+const VIDEO_SHOT_ESTABLISH_BODY = `基于首帧或参考图生成建立镜头。
+【运动】镜头缓慢横移或小幅升降；环境中的灯光、雨雾、树叶、人流等持续发生细微变化
+【节奏】先稳定观察，再在结尾轻微靠近叙事主体，为下一镜留出剪切点
+【约束】不重新设计场景；保持首帧构图、主体身份、光影方向与空间连续。`
+
+/** 与「插入特写」图片预设成对。 */
+const VIDEO_SHOT_DETAIL_BODY = `基于首帧或参考图，让关键细节完成一个清晰动作。
+【动作】[按下、握紧、换挡、指针攀升、眼神锁定等单一动作]
+【物理反馈】加入材质震动、反光变化、烟雾/水花/发丝等合理反馈
+【镜头】动作冲击点可有一次短促微震或快速微推，随后立即稳定
+【约束】单镜只完成一个核心动作，避免多个方向同时运动。`
+
+const VIDEO_HERO_ENTRANCE_BODY = `生成英雄式人物出场镜头。
+低机位从脚步、手部或服装细节开始，随人物进入场景缓慢上摇并推进，经中景落到面部特写。
+强轮廓逆光和空气介质保持连续；人物动作沉稳，风、尘、衣摆提供物理反馈。
+不要一开始就完全展示面部；无字幕、水印或多余人物。`
+
+const VIDEO_PERFORMANCE_BODY = `生成以人物真实表演为核心的视频。
+把[抽象情绪]拆成具体时序：先[眼眉变化]，随后[嘴唇/鼻翼/下颌动作]，再由[肩颈/手指/重心]响应。
+镜头保持克制，仅用轻微手持、停顿或微推强调情绪节点；避免僵硬笑容、面部融化、夸张抽搐。`
+
+const VIDEO_TRANSITION_HARD_BODY = `设计一个广告快节奏硬切镜头。
+当前镜头只完成一个清晰动作，并在动作最有力的瞬间切入下一镜。
+切点前保留极短停顿或冲击；下一镜用匹配的动作方向、构图位置或声音延续能量。
+不要生成溶解叠化，不要在一个镜头里塞入完整故事。`
+
+const VIDEO_TRANSITION_FLASH_BODY = `设计闪白/闪黑转场。
+让画面内有动机的光源、高光、闪光灯或遮挡快速充满画面，在峰值切换下一镜；
+下一镜从相同亮度与光线方向恢复，保持主体和空间逻辑可读，避免无来源的纯特效闪烁。`
+
+const VIDEO_TRANSITION_MOTION_BODY = `设计运动匹配转场。
+让主体或镜头快速向[左/右/上/下]扫过，形成自然运动模糊；
+在速度峰值切入下一镜，并以相同方向、速度和画面重心继续运动，随后平稳减速。
+运动必须有物理惯性，避免瞬移、穿模和背景扭曲。`
+
 const VIDEO_PRESETS: InstructionPreset[] = [
   {
     id: 'video.firstLastFrame',
@@ -476,6 +574,41 @@ const VIDEO_PRESETS: InstructionPreset[] = [
     id: 'video.multimodalRef',
     titleKey: 'graph.inspector.generate.presets.video.multimodalRef',
     body: VIDEO_MULTIMODAL_REF_BODY
+  },
+  {
+    id: 'video.shotEstablish',
+    titleKey: 'graph.inspector.generate.presets.video.shotEstablish',
+    body: VIDEO_SHOT_ESTABLISH_BODY
+  },
+  {
+    id: 'video.shotDetail',
+    titleKey: 'graph.inspector.generate.presets.video.shotDetail',
+    body: VIDEO_SHOT_DETAIL_BODY
+  },
+  {
+    id: 'video.heroEntrance',
+    titleKey: 'graph.inspector.generate.presets.video.heroEntrance',
+    body: VIDEO_HERO_ENTRANCE_BODY
+  },
+  {
+    id: 'video.performanceRealism',
+    titleKey: 'graph.inspector.generate.presets.video.performanceRealism',
+    body: VIDEO_PERFORMANCE_BODY
+  },
+  {
+    id: 'video.transitionHard',
+    titleKey: 'graph.inspector.generate.presets.video.transitionHard',
+    body: VIDEO_TRANSITION_HARD_BODY
+  },
+  {
+    id: 'video.transitionFlash',
+    titleKey: 'graph.inspector.generate.presets.video.transitionFlash',
+    body: VIDEO_TRANSITION_FLASH_BODY
+  },
+  {
+    id: 'video.transitionMotion',
+    titleKey: 'graph.inspector.generate.presets.video.transitionMotion',
+    body: VIDEO_TRANSITION_MOTION_BODY
   }
 ]
 const LIP_SYNC_TALKING_HEAD_BODY = `图片1中的角色对着镜头自然说话，口型与表情严格跟随音频1。

@@ -18,13 +18,21 @@
       <input v-model="localTitle" @change="persistTitle" />
     </label>
 
+    <ShotStagingPresetPicker
+      :storyboard="localStoryboard"
+      :resolve-insertion-positions="resolveStagingInsertionPositions"
+      @apply="applyStagingPreset"
+    />
+
     <label>
       {{ t('shot.field.visual') }}
       <RefMentionTextarea
+        ref="visualDescriptionEl"
         v-model="localStoryboard.visualDescription"
         :options="mentionOptions"
         :rows="4"
         :placeholder="t('shot.mention.hint')"
+        @focus="activeStagingField = 'visualDescription'"
         @change="persistStoryboard"
       />
     </label>
@@ -40,7 +48,9 @@
     <label>
       {{ t('shot.field.lighting') }}
       <input
+        ref="lightingEl"
         v-model="localStoryboard.lighting"
+        @focus="activeStagingField = 'lighting'"
         @change="persistStoryboard"
         :placeholder="t('shot.placeholder.lighting')"
       />
@@ -68,7 +78,9 @@
     <label>
       {{ t('shot.field.cameraMove') }}
       <input
+        ref="cameraMoveEl"
         v-model="localStoryboard.cameraMove"
+        @focus="activeStagingField = 'cameraMove'"
         @change="persistStoryboard"
         :placeholder="t('shot.placeholder.cameraMove')"
       />
@@ -83,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   SHOT_SIZE_OPTIONS,
   buildShotGenerationPrompt,
@@ -97,10 +109,12 @@ import {
   listVideoMentionContribution,
   readBoundShotIdFromNodeParams,
   readShotStoryboardFromNodeParams,
-  shotStoryboardToNodeParams
+  shotStoryboardToNodeParams,
+  type ShotStagingTextField
 } from '@shared/graph'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import RefMentionTextarea from './RefMentionTextarea.vue'
+import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -113,6 +127,14 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 
 const localTitle = ref('')
+type MentionTextareaHandle = {
+  getSelection: () => { start: number; end: number }
+  setSelection: (start: number, end?: number) => void
+}
+const visualDescriptionEl = ref<MentionTextareaHandle | null>(null)
+const lightingEl = ref<HTMLInputElement | null>(null)
+const cameraMoveEl = ref<HTMLInputElement | null>(null)
+const activeStagingField = ref<ShotStagingTextField | null>(null)
 const localStoryboard = reactive<ShotStoryboard>({
   visualDescription: '',
   shotSize: '',
@@ -183,6 +205,19 @@ const finalPromptDisplay = computed(() =>
   })
 )
 
+function resolveStagingInsertionPositions(): Partial<Record<ShotStagingTextField, number>> {
+  switch (activeStagingField.value) {
+    case 'visualDescription':
+      return { visualDescription: visualDescriptionEl.value?.getSelection().start }
+    case 'lighting':
+      return { lighting: lightingEl.value?.selectionStart ?? localStoryboard.lighting.length }
+    case 'cameraMove':
+      return { cameraMove: cameraMoveEl.value?.selectionStart ?? localStoryboard.cameraMove.length }
+    default:
+      return {}
+  }
+}
+
 watch(
   node,
   (current) => {
@@ -211,6 +246,26 @@ function persistStoryboard(): void {
     node.value.id,
     shotStoryboardToNodeParams({ ...localStoryboard })
   )
+}
+
+function applyStagingPreset(storyboard: ShotStoryboard): void {
+  const field = activeStagingField.value
+  const position = field ? resolveStagingInsertionPositions()[field] : undefined
+  const insertedLength = field
+    ? storyboard[field].length - localStoryboard[field].length
+    : 0
+  Object.assign(localStoryboard, storyboard)
+  persistStoryboard()
+  if (!field || position === undefined || insertedLength <= 0) return
+  void nextTick(() => {
+    const cursor = position + insertedLength
+    if (field === 'visualDescription') visualDescriptionEl.value?.setSelection(cursor)
+    else {
+      const el = field === 'lighting' ? lightingEl.value : cameraMoveEl.value
+      el?.focus()
+      el?.setSelectionRange(cursor, cursor)
+    }
+  })
 }
 </script>
 

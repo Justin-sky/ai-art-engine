@@ -5,12 +5,7 @@
 export type LightingViewMode = 'perspective' | 'frontal'
 
 export type LightingDirection =
-  | 'left'
-  | 'top'
-  | 'right'
-  | 'front'
-  | 'bottom'
-  | 'back'
+  'left' | 'top' | 'right' | 'front' | 'bottom' | 'back'
 
 export type LightingPresetId =
   | 'custom'
@@ -256,7 +251,8 @@ export function normalizeLightingSetup(
 }
 
 export function applyLightingPreset(id: LightingPresetId): LightingSetupState {
-  const preset = LIGHTING_PRESETS.find((p) => p.id === id) ?? LIGHTING_PRESETS[0]!
+  const preset =
+    LIGHTING_PRESETS.find((p) => p.id === id) ?? LIGHTING_PRESETS[0]!
   return normalizeLightingSetup({
     presetId: preset.id,
     yaw: preset.yaw,
@@ -284,7 +280,9 @@ export function applyLightingDirection(
   })
 }
 
-export function markLightingCustom(state: LightingSetupState): LightingSetupState {
+export function markLightingCustom(
+  state: LightingSetupState
+): LightingSetupState {
   return { ...state, presetId: 'custom' }
 }
 
@@ -323,17 +321,17 @@ function brightnessPromptZh(brightness: number): string {
 function directionPromptZh(direction: LightingDirection): string {
   switch (direction) {
     case 'left':
-      return '主光来自左侧'
+      return '正侧主光来自左侧，左脸清晰、右脸进入阴影'
     case 'right':
-      return '主光来自右侧'
+      return '正侧主光来自右侧，右脸清晰、左脸进入阴影'
     case 'top':
-      return '主光来自上方'
+      return '垂直顶光，眼窝处形成明显阴影'
     case 'bottom':
-      return '主光来自下方'
+      return '主光来自下方，面部形成反常上投阴影'
     case 'back':
-      return '主光来自后方（逆光）'
+      return '主光来自后方（逆光），轮廓与发丝被勾亮'
     default:
-      return '主光来自前方'
+      return '主光来自前方，面部光线均匀、五官清晰'
   }
 }
 

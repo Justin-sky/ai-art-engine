@@ -193,6 +193,7 @@ import {
 } from '@shared/domain'
 import {
   buildInstructionFinalPromptPreview,
+  insertInstructionPresetText,
   listVideoMentionContribution,
   resolveInstructionFinalPreviewKind,
   resolveNodeTextContent,
@@ -301,7 +302,11 @@ const presetMenuStyle = ref<Record<string, string>>({
   zIndex: '4100',
   visibility: 'hidden'
 })
-const editorRef = ref<{ focus: () => void } | null>(null)
+const editorRef = ref<{
+  focus: () => void
+  getSelection: () => { start: number; end: number }
+  setSelection: (start: number, end?: number) => void
+} | null>(null)
 const dragFromId = ref<string | null>(null)
 const dragOverId = ref<string | null>(null)
 const dragMoved = ref(false)
@@ -769,10 +774,13 @@ function onPresetMenuReposition(): void {
 }
 
 function applyPreset(item: InstructionPreset): void {
-  emit('update:modelValue', item.body)
+  const current = props.modelValue ?? ''
+  const position = editorRef.value?.getSelection().start ?? current.length
+  const inserted = insertInstructionPresetText(current, item.body, position)
+  emit('update:modelValue', inserted.text)
   emit('change')
   closeMenu()
-  editorRef.value?.focus()
+  editorRef.value?.setSelection(inserted.cursor)
 }
 
 function buildMentionSources(): InstructionMentionSource[] {

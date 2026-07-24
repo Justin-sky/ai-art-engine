@@ -59,12 +59,40 @@ export const MULTI_ANGLE_PRESETS: readonly MultiAnglePresetDef[] = [
     yaw: 45,
     pitch: -30,
     shotScale: 0.5,
-    prompt: 'dutch angle, tilted frame'
+    prompt: '荷兰角，画面垂直线明显倾斜，主体与环境关系失衡，心理不稳定感'
   },
-  { id: 'frontHigh', titleKey: 'frontHigh', yaw: 0, pitch: 60, shotScale: 0.5 },
-  { id: 'frontLow', titleKey: 'frontLow', yaw: 0, pitch: -30, shotScale: 0.5 },
-  { id: 'panoramaHigh', titleKey: 'panoramaHigh', yaw: 45, pitch: 30, shotScale: 0 },
-  { id: 'back', titleKey: 'back', yaw: 180, pitch: 0, shotScale: 0.5 }
+  {
+    id: 'frontHigh',
+    titleKey: 'frontHigh',
+    yaw: 0,
+    pitch: 60,
+    shotScale: 0.5,
+    prompt: '正面高机位俯拍，主体在环境中显得渺小，带压迫与无助感'
+  },
+  {
+    id: 'frontLow',
+    titleKey: 'frontLow',
+    yaw: 0,
+    pitch: -30,
+    shotScale: 0.5,
+    prompt: '正面低机位仰拍，强化主体力量、权威与英雄感'
+  },
+  {
+    id: 'panoramaHigh',
+    titleKey: 'panoramaHigh',
+    yaw: 45,
+    pitch: 30,
+    shotScale: 0,
+    prompt: '四分之三高机位全景，交代主体与环境的空间关系和叙事动线'
+  },
+  {
+    id: 'back',
+    titleKey: 'back',
+    yaw: 180,
+    pitch: 0,
+    shotScale: 0.5,
+    prompt: '背面视角，人物与观众共同面对未知空间，孤独、疏离或窥视感'
+  }
 ] as const
 
 export const DEFAULT_MULTI_ANGLE_CAMERA: MultiAngleCameraState = {
@@ -116,7 +144,8 @@ export function applyMultiAnglePreset(
   id: MultiAnglePresetId,
   promptEnabled?: boolean
 ): MultiAngleCameraState {
-  const preset = MULTI_ANGLE_PRESETS.find((p) => p.id === id) ?? MULTI_ANGLE_PRESETS[0]!
+  const preset =
+    MULTI_ANGLE_PRESETS.find((p) => p.id === id) ?? MULTI_ANGLE_PRESETS[0]!
   return normalizeMultiAngleCamera({
     presetId: preset.id,
     yaw: preset.yaw,
@@ -170,14 +199,20 @@ function pitchPromptZh(pitch: number): string {
 export function buildMultiAnglePrompt(state: MultiAngleCameraState): string {
   const s = normalizeMultiAngleCamera(state)
   const scale = shotScaleLabel(s.shotScale)
-  const parts: string[] = [shotScalePromptZh(scale), yawPromptZh(s.yaw), pitchPromptZh(s.pitch)]
+  const parts: string[] = [
+    shotScalePromptZh(scale),
+    yawPromptZh(s.yaw),
+    pitchPromptZh(s.pitch)
+  ]
   return parts.join('，')
 }
 
 /**
  * 点选预设时写入面板的提示词：仅返回预设自带文案；无则空（不自动填入、不打开开关）。
  */
-export function resolveMultiAnglePresetPanelPrompt(id: MultiAnglePresetId): string {
+export function resolveMultiAnglePresetPanelPrompt(
+  id: MultiAnglePresetId
+): string {
   const preset = MULTI_ANGLE_PRESETS.find((p) => p.id === id)
   return preset?.prompt?.trim() || ''
 }
