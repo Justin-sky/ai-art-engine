@@ -24,6 +24,7 @@
             type="button"
             class="seg-btn"
             :class="{ active: draft[row.field] === opt.id }"
+            :aria-pressed="draft[row.field] === opt.id"
             @click="setField(row.field, opt.id)"
           >
             {{ t(`graph.portraitTexture.options.${row.field}.${opt.titleKey}`) }}
@@ -146,23 +147,56 @@ function onClose(): void {
 }
 
 .seg-btn {
+  position: relative;
   border: 1px solid var(--border, #3a4048);
   background: var(--bg-elevated);
   color: var(--text, #e8eaed);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 8px 28px 8px 10px;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .seg-btn:hover {
   background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .seg-btn.active {
-  background: var(--bg-hover);
-  border-color: #5a6570;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent),
+    0 2px 8px color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 600;
+}
+
+.seg-btn.active::after {
+  content: '✓';
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.seg-btn:active {
+  transform: translateY(1px);
+}
+
+.seg-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
 }
 
 .editor-footer {
