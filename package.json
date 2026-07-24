@@ -1,6 +1,6 @@
 {
   "name": "aiartengine",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AIArtEngine — local AI short-video creation studio",
   "main": "./out/main/index.js",
   "author": "AIArtEngine",
