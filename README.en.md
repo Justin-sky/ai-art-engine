@@ -26,6 +26,7 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
+    <a href="#community"><b>Community</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
     <a href="./README.md"><b>中文</b></a>
@@ -123,6 +124,17 @@ git push origin v1.0.0
 
 Issues and PRs welcome. Please run `npm run typecheck && npm test` before opening a PR.  
 Track bugs on [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues).
+
+---
+
+## Community
+
+- **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **QQ group**: 647306826 (scan to join)
+
+  <img src="docs/assets/qq-group.png" alt="AIArtEngine QQ group QR code" width="220" />
+
+- **Email**: [284139554@qq.com](mailto:284139554@qq.com)
 
 ---
 

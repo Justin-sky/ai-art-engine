@@ -27,6 +27,7 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
+    <a href="#交流"><b>交流</b></a> ·
     <a href="#features"><b>Features</b></a> ·
     <a href="#quick-start"><b>Quick Start</b></a> ·
     <a href="./README.en.md"><b>English</b></a>
@@ -137,6 +138,17 @@ npm run typecheck && npm test
 ```
 
 讨论与缺陷跟踪请走 [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues)。
+
+---
+
+## 交流
+
+- **官网**：[justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **QQ 群**：647306826（扫码入群）
+
+  <img src="docs/assets/qq-group.png" alt="AIArtEngine QQ 群二维码" width="220" />
+
+- **邮箱**：[284139554@qq.com](mailto:284139554@qq.com)
 
 ---
 
