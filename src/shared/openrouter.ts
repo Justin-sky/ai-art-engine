@@ -23,33 +23,47 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
   id: ModelProviderKind
   label: string
   defaultBaseUrl: string
+  /** 控制台 / 密钥申请页，设置 UI 与手册共用 */
+  credentialsUrl: string
 }> = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
-    defaultBaseUrl: OPENROUTER_DEFAULT_BASE_URL
+    defaultBaseUrl: OPENROUTER_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://openrouter.ai/keys'
   },
   {
     id: 'volcengine-ark',
     label: '火山方舟',
-    defaultBaseUrl: VOLCENGINE_ARK_DEFAULT_BASE_URL
+    defaultBaseUrl: VOLCENGINE_ARK_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey'
   },
   {
     id: 'kling',
     label: '可灵',
-    defaultBaseUrl: KLING_DEFAULT_BASE_URL
+    defaultBaseUrl: KLING_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://app.klingai.com/cn/dev'
   },
   {
     id: 'dashscope',
     label: '通义千问',
-    defaultBaseUrl: DASHSCOPE_DEFAULT_BASE_URL
+    defaultBaseUrl: DASHSCOPE_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
   },
   {
     id: 'modelscope',
     label: '魔塔',
-    defaultBaseUrl: MODELSCOPE_DEFAULT_BASE_URL
+    defaultBaseUrl: MODELSCOPE_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://modelscope.cn/my/myaccesstoken'
   }
 ]
+
+export function modelProviderCredentialsUrl(kind: ModelProviderKind): string {
+  return (
+    MODEL_PROVIDER_KINDS.find((p) => p.id === kind)?.credentialsUrl ??
+    MODEL_PROVIDER_KINDS[0]!.credentialsUrl
+  )
+}
 
 export type ModelModality = 'text' | 'image' | 'video' | 'audio'
 

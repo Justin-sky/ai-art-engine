@@ -13,6 +13,17 @@
         {{ t('settings.models.add') }}
       </button>
     </div>
+    <p class="meta credentials-hint">
+      {{ t(`settings.models.credentialsHint.${pendingProviderKind}`) }}
+      <a
+        class="ext-link"
+        :href="modelProviderCredentialsUrl(pendingProviderKind)"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ modelProviderCredentialsUrl(pendingProviderKind) }}
+      </a>
+    </p>
 
     <p v-if="providers.length === 0" class="empty">{{ t('settings.models.emptyProviders') }}</p>
 
@@ -157,6 +168,17 @@
           </button>
         </div>
       </label>
+      <p class="meta credentials-hint">
+        {{ t(`settings.models.credentialsHint.${provider.providerKind}`) }}
+        <a
+          class="ext-link"
+          :href="modelProviderCredentialsUrl(provider.providerKind)"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ modelProviderCredentialsUrl(provider.providerKind) }}
+        </a>
+      </p>
 
       <div class="modality-tabs" role="tablist">
         <button
@@ -387,6 +409,7 @@ import {
   catalogEntryFromModel,
   createProviderInstance,
   modalityConfig,
+  modelProviderCredentialsUrl,
   syncModalityCatalogEntries,
   type CatalogModel,
   type ModelModality,
@@ -765,6 +788,21 @@ function capabilitySummary(model: CatalogModel): string {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.credentials-hint {
+  margin-top: -4px;
+}
+
+.ext-link {
+  color: #8eb6ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.ext-link:hover {
+  color: #b4ceff;
 }
 
 .toolbar {

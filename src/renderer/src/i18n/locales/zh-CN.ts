@@ -92,6 +92,13 @@ export default {
       hideApiKey: '隐藏 API Key',
       showSecretKey: '显示 Secret Key',
       hideSecretKey: '隐藏 Secret Key',
+      credentialsHint: {
+        openrouter: '获取 API Key：',
+        'volcengine-ark': '获取 API Key：',
+        kling: '获取 Access Key / Secret Key：',
+        dashscope: '获取百炼 API Key：',
+        modelscope: '获取访问令牌：'
+      },
       fetchModels: '拉取可用模型',
       testingConnection: '正在验证 API Key…',
       loading: '拉取中…',

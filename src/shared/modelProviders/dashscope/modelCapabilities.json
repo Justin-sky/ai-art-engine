@@ -1,6 +1,6 @@
 {
   "meta": {
-    "console": "https://bailian.console.aliyun.com/",
+    "console": "https://bailian.console.aliyun.com/?tab=model#/api-key",
     "docs": [
       "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
       "https://help.aliyun.com/zh/model-studio/text-to-image-api-reference"

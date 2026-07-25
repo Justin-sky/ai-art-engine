@@ -92,6 +92,13 @@ export default {
       hideApiKey: 'Hide API key',
       showSecretKey: 'Show Secret Key',
       hideSecretKey: 'Hide Secret Key',
+      credentialsHint: {
+        openrouter: 'Get API key:',
+        'volcengine-ark': 'Get API key:',
+        kling: 'Get Access Key / Secret Key:',
+        dashscope: 'Get Bailian API key:',
+        modelscope: 'Get access token:'
+      },
       fetchModels: 'Fetch models',
       testingConnection: 'Verifying API key…',
       loading: 'Loading…',
