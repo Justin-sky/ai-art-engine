@@ -8,6 +8,8 @@ export const VOLCENGINE_OPENSPEECH_CREDENTIALS_URL =
   'https://console.volcengine.com/speech/app'
 /** 可灵（Kling）国内开放平台 */
 export const KLING_DEFAULT_BASE_URL = 'https://api-beijing.klingai.com'
+/** 海螺 AI / MiniMax 国内开放平台 */
+export const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.com'
 /** 通义千问 / 万相（阿里云百炼 DashScope OpenAI 兼容） */
 export const DASHSCOPE_DEFAULT_BASE_URL =
   'https://dashscope.aliyuncs.com/compatible-mode/v1'
@@ -18,6 +20,7 @@ export type ModelProviderKind =
   | 'openrouter'
   | 'volcengine-ark'
   | 'kling'
+  | 'minimax'
   | 'dashscope'
   | 'modelscope'
 
@@ -46,6 +49,13 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     label: '可灵',
     defaultBaseUrl: KLING_DEFAULT_BASE_URL,
     credentialsUrl: 'https://app.klingai.com/cn/dev'
+  },
+  {
+    id: 'minimax',
+    label: '海螺 AI',
+    defaultBaseUrl: MINIMAX_DEFAULT_BASE_URL,
+    credentialsUrl:
+      'https://platform.minimaxi.com/user-center/basic-information/interface-key'
   },
   {
     id: 'dashscope',
@@ -102,13 +112,8 @@ export interface ModelProviderInstance {
   providerKind: ModelProviderKind
   /** 显示名，默认等于提供商名 */
   label: string
-  /** Access Key / API Key（可灵为 Access Key） */
+  /** API Key */
   apiKey: string
-  /**
-   * Secret Key（可灵 JWT 签名用；其它厂商可为空）。
-   * 设置页对可灵单独展示；持久化进 electron-store。
-   */
-  secretKey?: string
   baseUrl: string
   enabled: boolean
   /** 各模态下的模型勾选与默认项 */
@@ -129,6 +134,14 @@ export function isKlingProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'kling'
   return provider.providerKind === 'kling'
+}
+
+export function isMiniMaxProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'minimax'
+  return provider.providerKind === 'minimax'
 }
 
 export function isDashScopeProvider(
@@ -184,7 +197,7 @@ export function classifyDashScopeModelModality(model: {
   ) {
     return 'image'
   }
-  if (/t2v|i2v|video-synthesis|wan.*video|\bv2v\b/.test(text)) {
+  if (/t2v|i2v|video-synthesis|wan.*video|\bv2v\b|happyhorse|kling\/|kling-v3/.test(text)) {
     return 'video'
   }
   if (/cosyvoice|sambert|\btts\b|speech/.test(text)) {
@@ -312,7 +325,6 @@ export function createProviderInstance(
     providerKind: kind,
     label: meta.label,
     apiKey: '',
-    secretKey: '',
     baseUrl: meta.defaultBaseUrl,
     enabled: true,
     modalities: createEmptyModalityMap()
@@ -395,8 +407,6 @@ export interface ListModelsInput {
   providerInstanceId: string
   /** 未点保存时由前端直接传入，避免读到旧密钥 */
   apiKey?: string
-  /** 可灵等双密钥厂商：未保存时由前端传入 Secret Key */
-  secretKey?: string
   baseUrl?: string
   providerKind?: ModelProviderKind
 }
@@ -554,7 +564,6 @@ export function pickActiveProvider(
 ): { provider: ModelProviderInstance; modelId: string } | null {
   const candidates = providers.filter((p) => {
     if (!p.enabled || !p.apiKey.trim()) return false
-    if (isKlingProvider(p) && !(p.secretKey ?? '').trim()) return false
     return modalityConfig(p, modality).selectedModelIds.length > 0
   })
   if (!candidates.length) return null
@@ -645,6 +654,7 @@ function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): Provid
 function normalizeProviderKind(raw: unknown): ModelProviderKind {
   if (raw === 'volcengine-ark') return 'volcengine-ark'
   if (raw === 'kling') return 'kling'
+  if (raw === 'minimax' || raw === 'hailuo' || raw === '海螺') return 'minimax'
   if (raw === 'dashscope' || raw === 'qwen') return 'dashscope'
   if (raw === 'modelscope' || raw === '魔塔' || raw === '魔搭') return 'modelscope'
   return 'openrouter'
@@ -653,13 +663,11 @@ function normalizeProviderKind(raw: unknown): ModelProviderKind {
 function normalizeProviderInstance(item: Partial<ModelProviderInstance>): ModelProviderInstance {
   const kind = normalizeProviderKind(item.providerKind)
   const meta = MODEL_PROVIDER_KINDS.find((p) => p.id === kind)!
-  const secretKey = typeof item.secretKey === 'string' ? item.secretKey : ''
   return {
     id: typeof item.id === 'string' && item.id ? item.id : newLocalId(),
     providerKind: kind,
     label: typeof item.label === 'string' && item.label ? item.label : meta.label,
     apiKey: typeof item.apiKey === 'string' ? item.apiKey : '',
-    ...(secretKey || kind === 'kling' ? { secretKey } : {}),
     baseUrl:
       typeof item.baseUrl === 'string' && item.baseUrl.trim()
         ? item.baseUrl.replace(/\/$/, '')

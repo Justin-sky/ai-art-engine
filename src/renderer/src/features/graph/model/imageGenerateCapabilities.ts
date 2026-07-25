@@ -8,11 +8,13 @@ import {
   getSavedModelCatalogEntry,
   isDashScopeProvider,
   isKlingProvider,
+  isMiniMaxProvider,
   isModelScopeProvider,
   isVolcengineArkProvider
 } from '@shared/openrouter'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
@@ -41,6 +43,7 @@ async function resolveSupportedParameters(
   let catalogName: string | undefined
   let isArk = false
   let isKling = false
+  let isMiniMax = false
   let isDashScope = false
   let isModelScope = false
   try {
@@ -48,6 +51,7 @@ async function resolveSupportedParameters(
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
     isKling = isKlingProvider(provider)
+    isMiniMax = isMiniMaxProvider(provider)
     isDashScope = isDashScopeProvider(provider)
     isModelScope = isModelScopeProvider(provider)
     const saved = getSavedModelCatalogEntry(
@@ -78,6 +82,12 @@ async function resolveSupportedParameters(
 
   if (isKling) {
     const local = resolveKlingModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isMiniMax) {
+    const local = resolveMiniMaxModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }

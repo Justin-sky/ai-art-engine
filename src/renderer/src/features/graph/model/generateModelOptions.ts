@@ -25,14 +25,26 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled || !provider.apiKey.trim()) continue
-    // 可灵 JWT 需要 Secret Key；缺 SK 时不出现在图节点选项里
-    if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) continue
-    // 声音（audio）仅火山方舟 voice_design；排除 OpenRouter 等
-    if (modality === 'audio' && provider.providerKind !== 'volcengine-ark') continue
+    // 声音（audio）：火山方舟 voice_design / 海螺音色设计；排除 OpenRouter 等
+    if (
+      modality === 'audio' &&
+      provider.providerKind !== 'volcengine-ark' &&
+      provider.providerKind !== 'minimax'
+    ) {
+      continue
+    }
     // 可灵仅图片/视频
     if (provider.providerKind === 'kling' && modality !== 'image' && modality !== 'video') continue
-    // 通义千问暂不提供声音
-    if (provider.providerKind === 'dashscope' && modality === 'audio') continue
+    // 海螺 AI：文本 / 图片 / 视频 / 声音设计
+    if (
+      provider.providerKind === 'minimax' &&
+      modality !== 'text' &&
+      modality !== 'image' &&
+      modality !== 'video' &&
+      modality !== 'audio'
+    ) {
+      continue
+    }
     // 魔塔：文本 + 图片
     if (
       provider.providerKind === 'modelscope' &&
@@ -69,7 +81,6 @@ export function pickDefaultModelKey(
   if (options.length === 0) return ''
   for (const provider of providers) {
     if (!provider.enabled || !provider.apiKey.trim()) continue
-    if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) continue
     const defaultModelId = modalityConfig(provider, modality).defaultModelId
     if (defaultModelId) {
       const key = modelKey(provider.id, defaultModelId)

@@ -40,20 +40,17 @@ export function resolveActiveProvider(
 export function buildProviderSnapshot(input: {
   providerInstanceId: string
   apiKey?: string
-  secretKey?: string
   baseUrl?: string
   providerKind?: ModelProviderKind
 }): ModelProviderInstance {
   const settings = settingsService.get()
   const saved = findProviderById(settings.models.providers, input.providerInstanceId)
   const kind = input.providerKind ?? saved?.providerKind ?? 'openrouter'
-  const secretKey = input.secretKey ?? saved?.secretKey ?? ''
   return {
     id: input.providerInstanceId,
     providerKind: kind,
     label: saved?.label ?? defaultLabelForKind(kind),
     apiKey: input.apiKey ?? saved?.apiKey ?? '',
-    ...(secretKey || kind === 'kling' ? { secretKey } : {}),
     baseUrl: input.baseUrl ?? saved?.baseUrl ?? defaultBaseUrlForKind(kind),
     enabled: saved?.enabled ?? true,
     modalities: saved?.modalities ?? createEmptyModalityMap()

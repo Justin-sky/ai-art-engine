@@ -284,7 +284,6 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.MODELS_LIST, (input: ListModelsInput) =>
     openRouterClient.listModels(input.modality, input.providerInstanceId, {
       apiKey: input.apiKey,
-      secretKey: input.secretKey,
       baseUrl: input.baseUrl,
       providerKind: input.providerKind
     })

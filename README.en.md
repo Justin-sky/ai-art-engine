@@ -94,7 +94,7 @@ npm run dist:win | dist:mac | dist:linux
 |------|----------|--------------|
 | Model | OpenRouter | Text / image / video (aggregated catalog) |
 | Model | Volcengine Ark | Text / Seedream / Seedance / voice design |
-| Model | Kling | Image / video (Access Key + Secret Key · JWT) |
+| Model | Kling | Image / video (API Key) |
 | Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video |
 | Model | ModelScope | Text / text-to-image (access token) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |

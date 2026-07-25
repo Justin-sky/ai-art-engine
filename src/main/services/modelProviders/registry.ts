@@ -3,6 +3,7 @@ import type { ModelProviderAdapter } from './types'
 import { openRouterAdapter } from './openrouter/adapter'
 import { volcengineArkAdapter } from './volcengineArk/adapter'
 import { klingAdapter } from './kling/adapter'
+import { miniMaxAdapter } from './minimax/adapter'
 import { dashscopeAdapter } from './dashscope/adapter'
 import { modelScopeAdapter } from './modelscope/adapter'
 
@@ -10,6 +11,7 @@ const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   openrouter: openRouterAdapter,
   'volcengine-ark': volcengineArkAdapter,
   kling: klingAdapter,
+  minimax: miniMaxAdapter,
   dashscope: dashscopeAdapter,
   modelscope: modelScopeAdapter
 }

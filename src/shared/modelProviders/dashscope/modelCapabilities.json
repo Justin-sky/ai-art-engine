@@ -1,11 +1,13 @@
 {
   "meta": {
-    "console": "https://bailian.console.aliyun.com/?tab=model#/api-key",
+    "console": "https://bailian.console.aliyun.com/cn-beijing?tab=model#/model-market",
     "docs": [
-      "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
-      "https://help.aliyun.com/zh/model-studio/text-to-image-api-reference"
+      "https://help.aliyun.com/zh/model-studio/text-to-image-v2-api-reference",
+      "https://help.aliyun.com/zh/model-studio/use-video-generation",
+      "https://help.aliyun.com/zh/model-studio/kling-video-generation-api-reference",
+      "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope"
     ],
-    "note": "Text uses OpenAI-compatible base URL; image/video use derived /api/v1 native DashScope endpoints. Catalog mixes remote /models (text) with this static list (image/video)."
+    "note": "Aligned with Bailian docs (2026-07). Text fallback for remote /models failure. Image uses image-synthesis (Wan ≤2.5). Video uses video-synthesis: Kling on Bailian, HappyHorse (t2v/i2v/r2v/edit), Wan t2v/i2v. Excludes wan2.6/2.7 image multimodal API and US-only variants."
   },
   "models": [
     {
@@ -27,10 +29,10 @@
       "profile": "text-base"
     },
     {
-      "id": "qwen-vl-plus",
-      "name": "Qwen-VL-Plus",
+      "id": "qwen-flash",
+      "name": "Qwen-Flash",
       "modality": "text",
-      "profile": "text-vl"
+      "profile": "text-base"
     },
     {
       "id": "qwen3-max",
@@ -39,26 +41,98 @@
       "profile": "text-base"
     },
     {
-      "id": "wanx2.1-t2i-turbo",
-      "name": "Wanx 2.1 T2I Turbo",
-      "modality": "image",
-      "profile": "image-base"
+      "id": "qwen3.7-plus",
+      "name": "Qwen3.7-Plus",
+      "modality": "text",
+      "profile": "text-base"
     },
     {
-      "id": "wanx2.1-t2i-plus",
-      "name": "Wanx 2.1 T2I Plus",
+      "id": "qwen3.7-max",
+      "name": "Qwen3.7-Max",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen-vl-plus",
+      "name": "Qwen-VL-Plus",
+      "modality": "text",
+      "profile": "text-vl"
+    },
+    {
+      "id": "qwen-vl-max",
+      "name": "Qwen-VL-Max",
+      "modality": "text",
+      "profile": "text-vl"
+    },
+    {
+      "id": "wan2.5-t2i-preview",
+      "name": "Wan 2.5 T2I Preview",
       "modality": "image",
-      "profile": "image-base"
+      "profile": "image-t2i-v25"
     },
     {
       "id": "wan2.2-t2i-flash",
       "name": "Wan 2.2 T2I Flash",
       "modality": "image",
-      "profile": "image-base"
+      "profile": "image-t2i"
     },
     {
-      "id": "wan2.2-t2v-plus",
-      "name": "Wan 2.2 T2V Plus",
+      "id": "wan2.2-t2i-plus",
+      "name": "Wan 2.2 T2I Plus",
+      "modality": "image",
+      "profile": "image-t2i"
+    },
+    {
+      "id": "wanx2.1-t2i-turbo",
+      "name": "Wanx 2.1 T2I Turbo",
+      "modality": "image",
+      "profile": "image-t2i"
+    },
+    {
+      "id": "wanx2.1-t2i-plus",
+      "name": "Wanx 2.1 T2I Plus",
+      "modality": "image",
+      "profile": "image-t2i"
+    },
+    {
+      "id": "kling/kling-v3-video-generation",
+      "name": "Kling V3 Video (Bailian)",
+      "modality": "video",
+      "profile": "video-kling-bailian"
+    },
+    {
+      "id": "kling/kling-v3-omni-video-generation",
+      "name": "Kling V3 Omni Video (Bailian)",
+      "modality": "video",
+      "profile": "video-kling-omni-bailian"
+    },
+    {
+      "id": "happyhorse-1.1-t2v",
+      "name": "HappyHorse 1.1 T2V",
+      "modality": "video",
+      "profile": "video-happyhorse-t2v"
+    },
+    {
+      "id": "happyhorse-1.1-i2v",
+      "name": "HappyHorse 1.1 I2V",
+      "modality": "video",
+      "profile": "video-happyhorse-i2v"
+    },
+    {
+      "id": "happyhorse-1.1-r2v",
+      "name": "HappyHorse 1.1 R2V",
+      "modality": "video",
+      "profile": "video-happyhorse-r2v"
+    },
+    {
+      "id": "happyhorse-1.0-video-edit",
+      "name": "HappyHorse 1.0 Video Edit",
+      "modality": "video",
+      "profile": "video-happyhorse-edit"
+    },
+    {
+      "id": "wan2.7-t2v",
+      "name": "Wan 2.7 T2V",
       "modality": "video",
       "profile": "video-t2v"
     },
@@ -69,8 +143,20 @@
       "profile": "video-t2v"
     },
     {
-      "id": "wan2.2-i2v-flash",
-      "name": "Wan 2.2 I2V Flash",
+      "id": "wan2.5-t2v-preview",
+      "name": "Wan 2.5 T2V Preview",
+      "modality": "video",
+      "profile": "video-t2v-full"
+    },
+    {
+      "id": "wan2.2-t2v-plus",
+      "name": "Wan 2.2 T2V Plus",
+      "modality": "video",
+      "profile": "video-t2v-22"
+    },
+    {
+      "id": "wan2.7-i2v",
+      "name": "Wan 2.7 I2V",
       "modality": "video",
       "profile": "video-i2v"
     },
@@ -79,6 +165,30 @@
       "name": "Wan 2.6 I2V",
       "modality": "video",
       "profile": "video-i2v"
+    },
+    {
+      "id": "wan2.6-i2v-flash",
+      "name": "Wan 2.6 I2V Flash",
+      "modality": "video",
+      "profile": "video-i2v"
+    },
+    {
+      "id": "wan2.5-i2v-preview",
+      "name": "Wan 2.5 I2V Preview",
+      "modality": "video",
+      "profile": "video-i2v-full"
+    },
+    {
+      "id": "wan2.2-i2v-flash",
+      "name": "Wan 2.2 I2V Flash",
+      "modality": "video",
+      "profile": "video-i2v-22"
+    },
+    {
+      "id": "wan2.2-i2v-plus",
+      "name": "Wan 2.2 I2V Plus",
+      "modality": "video",
+      "profile": "video-i2v-22-plus"
     }
   ],
   "profiles": {
@@ -92,19 +202,13 @@
       "label": "Qwen VL",
       "capabilities": {}
     },
-    "image-base": {
+    "image-t2i": {
       "modality": "image",
-      "label": "Wanxiang Image",
+      "label": "Wanxiang T2I (≤2.2)",
       "capabilities": {
         "supported_parameters": {
           "aspect_ratio": {
-            "values": [
-              "1:1",
-              "16:9",
-              "9:16",
-              "4:3",
-              "3:4"
-            ]
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4"]
           },
           "n": {
             "min": 1,
@@ -116,77 +220,288 @@
         }
       }
     },
-    "video-t2v": {
-      "modality": "video",
-      "label": "Wanxiang T2V",
+    "image-t2i-v25": {
+      "modality": "image",
+      "label": "Wanxiang T2I 2.5",
       "capabilities": {
-        "supported_resolutions": [
-          "480P",
-          "720P",
-          "1080P"
-        ],
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 0
+          }
+        }
+      }
+    },
+    "video-kling-bailian": {
+      "modality": "video",
+      "label": "Kling V3 on Bailian",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 2 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-kling-omni-bailian": {
+      "modality": "video",
+      "label": "Kling V3 Omni on Bailian",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 2 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-happyhorse-t2v": {
+      "modality": "video",
+      "label": "HappyHorse T2V",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
         "supported_aspect_ratios": [
           "16:9",
           "9:16",
-          "1:1"
+          "1:1",
+          "4:3",
+          "3:4",
+          "4:5",
+          "5:4",
+          "9:21",
+          "21:9"
         ],
-        "supported_durations": [
-          5,
-          10
-        ],
+        "supported_durations": [5, 10],
         "supported_frame_images": [],
         "generate_audio": false,
         "max_input_images": 0,
         "max_input_videos": 0,
         "max_input_audios": 0,
         "supported_parameters": {
-          "input_references": {
-            "max": 0
-          },
-          "max_videos": {
-            "max": 0
-          },
-          "max_audios": {
-            "max": 0
-          }
+          "input_references": { "max": 0 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
         }
       }
     },
-    "video-i2v": {
+    "video-happyhorse-i2v": {
       "modality": "video",
-      "label": "Wanxiang I2V",
+      "label": "HappyHorse I2V",
       "capabilities": {
-        "supported_resolutions": [
-          "480P",
-          "720P",
-          "1080P"
-        ],
-        "supported_aspect_ratios": [
-          "16:9",
-          "9:16",
-          "1:1"
-        ],
-        "supported_durations": [
-          5,
-          10
-        ],
-        "supported_frame_images": [
-          "first_frame"
-        ],
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame"],
         "generate_audio": false,
         "max_input_images": 1,
         "max_input_videos": 0,
         "max_input_audios": 0,
         "supported_parameters": {
-          "input_references": {
-            "max": 1
-          },
-          "max_videos": {
-            "max": 0
-          },
-          "max_audios": {
-            "max": 0
-          }
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-happyhorse-r2v": {
+      "modality": "video",
+      "label": "HappyHorse R2V",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4",
+          "4:5",
+          "5:4",
+          "9:21",
+          "21:9"
+        ],
+        "supported_durations": [5, 10],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 9,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 9 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-happyhorse-edit": {
+      "modality": "video",
+      "label": "HappyHorse Video Edit",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 5,
+        "max_input_videos": 1,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 5 },
+          "max_videos": { "max": 1 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-t2v": {
+      "modality": "video",
+      "label": "Wanxiang T2V (2.6/2.7)",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 0,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 0 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-t2v-full": {
+      "modality": "video",
+      "label": "Wanxiang T2V 2.5",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 0,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 0 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-t2v-22": {
+      "modality": "video",
+      "label": "Wanxiang T2V 2.2",
+      "capabilities": {
+        "supported_resolutions": ["480P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 0,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 0 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-i2v": {
+      "modality": "video",
+      "label": "Wanxiang I2V (2.6/2.7)",
+      "capabilities": {
+        "supported_resolutions": ["720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-i2v-full": {
+      "modality": "video",
+      "label": "Wanxiang I2V 2.5",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 10],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-i2v-22": {
+      "modality": "video",
+      "label": "Wanxiang I2V 2.2 Flash",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-i2v-22-plus": {
+      "modality": "video",
+      "label": "Wanxiang I2V 2.2 Plus",
+      "capabilities": {
+        "supported_resolutions": ["480P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
         }
       }
     }

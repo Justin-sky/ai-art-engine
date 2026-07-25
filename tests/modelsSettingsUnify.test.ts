@@ -5,11 +5,13 @@ import {
   createProviderInstance,
   findProviderById,
   isKlingProvider,
+  isMiniMaxProvider,
   isVolcengineArkProvider,
   DASHSCOPE_DEFAULT_BASE_URL,
   isDashScopeProvider,
   isModelScopeProvider,
   KLING_DEFAULT_BASE_URL,
+  MINIMAX_DEFAULT_BASE_URL,
   MODELSCOPE_DEFAULT_BASE_URL,
   normalizeModelsSettings,
   pickActiveProvider,
@@ -97,7 +99,7 @@ describe('normalizeModelsSettings', () => {
     expect(next.providers[0].baseUrl).toBe(VOLCENGINE_ARK_DEFAULT_BASE_URL)
   })
 
-  it('keeps kling provider kind, secretKey and default base url', () => {
+  it('keeps kling provider kind and default base url', () => {
     const next = normalizeModelsSettings({
       providers: [
         {
@@ -105,7 +107,6 @@ describe('normalizeModelsSettings', () => {
           providerKind: 'kling',
           label: '',
           apiKey: 'ak',
-          secretKey: 'sk',
           baseUrl: '',
           enabled: true
         }
@@ -114,8 +115,26 @@ describe('normalizeModelsSettings', () => {
     expect(next.providers[0].providerKind).toBe('kling')
     expect(next.providers[0].label).toBe('可灵')
     expect(next.providers[0].baseUrl).toBe(KLING_DEFAULT_BASE_URL)
-    expect(next.providers[0].secretKey).toBe('sk')
     expect(isKlingProvider(next.providers[0])).toBe(true)
+  })
+
+  it('keeps minimax provider kind and default base url', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'mm1',
+          providerKind: 'hailuo',
+          label: '',
+          apiKey: 'mm-key',
+          baseUrl: '',
+          enabled: true
+        }
+      ]
+    })
+    expect(next.providers[0].providerKind).toBe('minimax')
+    expect(next.providers[0].label).toBe('海螺 AI')
+    expect(next.providers[0].baseUrl).toBe(MINIMAX_DEFAULT_BASE_URL)
+    expect(isMiniMaxProvider(next.providers[0])).toBe(true)
   })
 
   it('keeps dashscope provider kind and default base url', () => {
@@ -202,11 +221,10 @@ describe('pickActiveProvider', () => {
     expect(picked?.modelId).toBe('t1')
   })
 
-  it('requires secretKey for kling providers', () => {
+  it('picks kling with apiKey only', () => {
     const kling = createProviderInstance('kling', {
       id: 'k1',
-      apiKey: 'ak',
-      secretKey: '',
+      apiKey: '',
       modalities: {
         text: { selectedModelIds: [], defaultModelId: '' },
         image: { selectedModelIds: ['kling-v2'], defaultModelId: 'kling-v2' },
@@ -215,7 +233,7 @@ describe('pickActiveProvider', () => {
       }
     })
     expect(pickActiveProvider([kling], 'image')).toBeNull()
-    kling.secretKey = 'sk'
+    kling.apiKey = 'key'
     expect(pickActiveProvider([kling], 'image')?.modelId).toBe('kling-v2')
   })
 })

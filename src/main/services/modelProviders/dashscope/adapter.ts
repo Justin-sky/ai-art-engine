@@ -14,7 +14,8 @@ import type {
 } from '@shared/openrouter'
 import {
   classifyDashScopeModelModality,
-  DASHSCOPE_DEFAULT_BASE_URL
+  DASHSCOPE_DEFAULT_BASE_URL,
+  normalizeVideoInputReference
 } from '@shared/openrouter'
 import {
   listDashScopeCatalogModels,
@@ -92,6 +93,12 @@ function normalizeResolution(resolution: string | undefined): string | undefined
   if (r.includes('720')) return '720P'
   if (r.includes('480')) return '480P'
   return r
+}
+
+function modeFromResolution(resolution: string | undefined): 'std' | 'pro' {
+  const r = (resolution ?? '').toUpperCase()
+  if (r.includes('1080') || r === 'PRO') return 'pro'
+  return 'std'
 }
 
 async function pollNativeTask(
@@ -240,19 +247,82 @@ export const dashscopeAdapter: ModelProviderAdapter = {
   ): Promise<GenerateVideoJob> {
     const client = createNativeClient(provider)
     const firstFrame = input.firstFrameImageUrl?.trim()
+    const lastFrame = input.lastFrameImageUrl?.trim()
+    const refs = (input.inputReferences ?? []).map(normalizeVideoInputReference)
+    const imageRefs = refs
+      .filter((r) => r.kind === 'image_url')
+      .map((r) => r.url.trim())
+      .filter(Boolean)
+    const videoRefs = refs
+      .filter((r) => r.kind === 'video_url')
+      .map((r) => r.url.trim())
+      .filter(Boolean)
+
     const bodyInput: Record<string, unknown> = {
       prompt: input.prompt
     }
-    if (firstFrame) bodyInput.img_url = firstFrame
+    const isHappyHorse = /^happyhorse/i.test(modelId)
+    const isHappyHorseR2v = isHappyHorse && /r2v/i.test(modelId)
+    const isHappyHorseEdit = isHappyHorse && /video-edit/i.test(modelId)
+    const isBailianKling = /^kling\//i.test(modelId)
+
+    if (isHappyHorseR2v) {
+      if (!imageRefs.length) {
+        throw new Error('HappyHorse 参考生视频至少需要 1 张参考图')
+      }
+      bodyInput.media = imageRefs.slice(0, 9).map((url) => ({
+        type: 'reference_image',
+        url
+      }))
+    } else if (isHappyHorseEdit) {
+      if (!videoRefs.length) {
+        throw new Error('HappyHorse 视频编辑需要 1 段输入视频')
+      }
+      const media: Array<{ type: string; url: string }> = [
+        { type: 'video', url: videoRefs[0]! }
+      ]
+      for (const url of imageRefs.slice(0, 5)) {
+        media.push({ type: 'reference_image', url })
+      }
+      bodyInput.media = media
+    } else if (firstFrame || lastFrame) {
+      // HappyHorse i2v / 百炼可灵使用 media[]；万相系使用 img_url
+      if (isHappyHorse || isBailianKling) {
+        const media: Array<{ type: string; url: string }> = []
+        if (firstFrame) media.push({ type: 'first_frame', url: firstFrame })
+        if (lastFrame && isBailianKling) media.push({ type: 'last_frame', url: lastFrame })
+        bodyInput.media = media
+      } else if (firstFrame) {
+        bodyInput.img_url = firstFrame
+      }
+    }
 
     const parameters: Record<string, unknown> = {
-      duration: snapVideoDuration(input.duration),
       watermark: false
     }
-    const resolution = normalizeResolution(input.resolution)
-    if (resolution) parameters.resolution = resolution
-    if (input.aspectRatio?.trim()) parameters.ratio = input.aspectRatio.trim()
-    if (input.size?.includes('*')) parameters.size = input.size.trim()
+
+    if (isBailianKling) {
+      parameters.duration = snapVideoDuration(input.duration)
+      parameters.mode = modeFromResolution(input.resolution)
+      if (input.generateAudio != null) parameters.audio = Boolean(input.generateAudio)
+      // 文生视频必须传 aspect_ratio；有首帧时宽高比跟随首帧
+      if (!firstFrame && input.aspectRatio?.trim()) {
+        parameters.aspect_ratio = input.aspectRatio.trim()
+      }
+    } else if (isHappyHorseEdit) {
+      const resolution = normalizeResolution(input.resolution)
+      if (resolution) parameters.resolution = resolution
+    } else {
+      parameters.duration = snapVideoDuration(input.duration)
+      const resolution = normalizeResolution(input.resolution)
+      if (resolution) parameters.resolution = resolution
+      // HappyHorse 图生视频宽高比跟随首帧，不传 ratio；r2v 可传 ratio
+      const skipRatio = isHappyHorse && Boolean(firstFrame) && !isHappyHorseR2v
+      if (!skipRatio && input.aspectRatio?.trim()) {
+        parameters.ratio = input.aspectRatio.trim()
+      }
+      if (input.size?.includes('*')) parameters.size = input.size.trim()
+    }
 
     try {
       const { data } = await client.post<DashScopeTaskEnvelope>(

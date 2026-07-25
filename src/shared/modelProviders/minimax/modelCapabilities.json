@@ -1,0 +1,194 @@
+{
+  "meta": {
+    "console": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+    "docs": [
+      "https://platform.minimaxi.com/docs/guides/models-intro",
+      "https://platform.minimaxi.com/docs/guides/text-generation",
+      "https://platform.minimaxi.com/docs/guides/image-generation",
+      "https://platform.minimaxi.com/docs/api-reference/voice-design-design",
+      "https://platform.minimaxi.com/docs/guides/video-generation"
+    ],
+    "note": "Default Base URL: api.minimaxi.com (no /v1). Text: /v1/chat/completions. Image: /v1/image_generation. Voice design: /v1/voice_design. Video: /v1/video_generation → query → files/retrieve."
+  },
+  "models": [
+    {
+      "id": "MiniMax-M3",
+      "name": "MiniMax M3",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax M2.7",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.7-highspeed",
+      "name": "MiniMax M2.7 Highspeed",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.5",
+      "name": "MiniMax M2.5",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.5-highspeed",
+      "name": "MiniMax M2.5 Highspeed",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.1",
+      "name": "MiniMax M2.1",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2.1-highspeed",
+      "name": "MiniMax M2.1 Highspeed",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MiniMax-M2",
+      "name": "MiniMax M2",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "image-01",
+      "name": "MiniMax Image 01",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "image-01-live",
+      "name": "MiniMax Image 01 Live",
+      "modality": "image",
+      "profile": "image-live"
+    },
+    {
+      "id": "voice-design",
+      "name": "音色设计",
+      "modality": "audio",
+      "profile": "audio-voice-design"
+    },
+    {
+      "id": "MiniMax-Hailuo-2.3",
+      "name": "海螺 2.3",
+      "modality": "video",
+      "profile": "video-hailuo-23"
+    },
+    {
+      "id": "MiniMax-Hailuo-2.3-Fast",
+      "name": "海螺 2.3 Fast",
+      "modality": "video",
+      "profile": "video-hailuo-23-fast"
+    },
+    {
+      "id": "MiniMax-Hailuo-02",
+      "name": "海螺 02",
+      "modality": "video",
+      "profile": "video-hailuo-02"
+    }
+  ],
+  "profiles": {
+    "text-base": {
+      "modality": "text",
+      "label": "MiniMax Text",
+      "capabilities": {}
+    },
+    "image-base": {
+      "modality": "image",
+      "label": "MiniMax Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"]
+          },
+          "n": { "min": 1, "max": 9 },
+          "input_references": { "max": 1 }
+        }
+      }
+    },
+    "image-live": {
+      "modality": "image",
+      "label": "MiniMax Image Live",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "n": { "min": 1, "max": 9 },
+          "input_references": { "max": 1 }
+        }
+      }
+    },
+    "audio-voice-design": {
+      "modality": "audio",
+      "label": "MiniMax Voice Design",
+      "capabilities": {}
+    },
+    "video-hailuo-23": {
+      "modality": "video",
+      "label": "Hailuo 2.3",
+      "capabilities": {
+        "supported_resolutions": ["768P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [6, 10],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-hailuo-23-fast": {
+      "modality": "video",
+      "label": "Hailuo 2.3 Fast (I2V)",
+      "capabilities": {
+        "supported_resolutions": ["768P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [6, 10],
+        "supported_frame_images": ["first_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-hailuo-02": {
+      "modality": "video",
+      "label": "Hailuo 02",
+      "capabilities": {
+        "supported_resolutions": ["512P", "768P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [6, 10],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": false,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 2 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    }
+  }
+}

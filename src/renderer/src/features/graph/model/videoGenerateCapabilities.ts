@@ -10,10 +10,12 @@ import {
   getSavedModelCatalogEntry,
   isDashScopeProvider,
   isKlingProvider,
+  isMiniMaxProvider,
   isVolcengineArkProvider
 } from '@shared/openrouter'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
@@ -58,12 +60,14 @@ async function resolveVideoCapabilitiesRaw(
   let catalogName: string | undefined
   let isArk = false
   let isKling = false
+  let isMiniMax = false
   let isDashScope = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
     isKling = isKlingProvider(provider)
+    isMiniMax = isMiniMaxProvider(provider)
     isDashScope = isDashScopeProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
@@ -96,6 +100,9 @@ async function resolveVideoCapabilitiesRaw(
 
   if (isKling) {
     return resolveKlingModelCapabilities(modelId, 'video')
+  }
+  if (isMiniMax) {
+    return resolveMiniMaxModelCapabilities(modelId, 'video')
   }
   if (isDashScope) {
     return resolveDashScopeModelCapabilities(modelId, 'video')

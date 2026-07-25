@@ -79,23 +79,20 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、海螺 AI、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵需 Access Key + Secret Key；通义千问用百炼 API Key；魔塔用访问令牌（文本/文生图）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / 海螺 / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
       baseUrl: 'API Base URL',
-      accessKey: 'Access Key',
-      secretKey: 'Secret Key',
       showApiKey: '显示 API Key',
       hideApiKey: '隐藏 API Key',
-      showSecretKey: '显示 Secret Key',
-      hideSecretKey: '隐藏 Secret Key',
       credentialsHint: {
         openrouter: '获取 API Key：',
         'volcengine-ark': '获取方舟 API Key（文本 / 图片 / 视频）：',
-        kling: '获取 Access Key / Secret Key：',
+        kling: '获取 API Key：',
+        minimax: '获取 API Key：',
         dashscope: '获取百炼 API Key：',
         modelscope: '获取访问令牌：'
       },
@@ -143,9 +140,18 @@ export default {
       },
       klingModalityHint: {
         image:
-          '可灵图片生成（文生图 / 图生图），调用 /v1/images/generations。需 Access Key + Secret Key；目录为本地静态列表。',
+          '可灵图片生成（文生图 / 图生图），调用 /v1/images/generations。需 API Key；目录为本地静态列表。',
         video:
           '可灵视频生成：无首帧走文生视频 /v1/videos/text2video，有首帧走图生视频 /v1/videos/image2video。默认 Base URL 为 api-beijing.klingai.com。'
+      },
+      minimaxModalityHint: {
+        text: 'MiniMax 对话（OpenAI 兼容），请求 /v1/chat/completions。默认 Base URL 为 api.minimaxi.com（不要带 /v1；程序会自动拼接）。',
+        image:
+          'MiniMax 文生图 / 主体参考图生图，调用 /v1/image_generation（image-01 / image-01-live）。参考图走 subject_reference。',
+        video:
+          '海螺（MiniMax）视频：POST /v1/video_generation（文生 / 图生 / 首尾帧），完成后经 files/retrieve 取下载链。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
+        audio:
+          'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。'
       },
       dashscopeModalityHint: {
         text: '通义千问对话（OpenAI 兼容），默认 Base URL 为 dashscope.aliyuncs.com/compatible-mode/v1，对应 /chat/completions。',

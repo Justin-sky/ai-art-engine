@@ -79,23 +79,20 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Hailuo (MiniMax), Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, and video models. Ark Voice uses purchased speaker_ids; Kling needs Access Key + Secret Key; Qianwen uses a Bailian API Key; ModelScope uses an access token (text/image).',
+        'One credential set / Base URL per provider. Fetch text, image, and video models. Ark Voice uses purchased speaker_ids; Kling, Hailuo, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
       baseUrl: 'API Base URL',
-      accessKey: 'Access Key',
-      secretKey: 'Secret Key',
       showApiKey: 'Show API key',
       hideApiKey: 'Hide API key',
-      showSecretKey: 'Show Secret Key',
-      hideSecretKey: 'Hide Secret Key',
       credentialsHint: {
         openrouter: 'Get API key:',
         'volcengine-ark': 'Get Ark API key (text / image / video):',
-        kling: 'Get Access Key / Secret Key:',
+        kling: 'Get API key:',
+        minimax: 'Get API key:',
         dashscope: 'Get Bailian API key:',
         modelscope: 'Get access token:'
       },
@@ -143,9 +140,18 @@ export default {
       },
       klingModalityHint: {
         image:
-          'Kling image generation via /v1/images/generations. Requires Access Key + Secret Key; catalog is a local static list.',
+          'Kling image generation via /v1/images/generations. Requires an API Key; catalog is a local static list.',
         video:
           'Kling video: text-to-video (/v1/videos/text2video) without a first frame, or image-to-video (/v1/videos/image2video) with one. Default Base URL is api-beijing.klingai.com.'
+      },
+      minimaxModalityHint: {
+        text: 'MiniMax chat via OpenAI-compatible /v1/chat/completions. Default Base URL is api.minimaxi.com (omit /v1; the client appends it).',
+        image:
+          'MiniMax text-to-image / subject-reference image-to-image via /v1/image_generation (image-01 / image-01-live).',
+        video:
+          'Hailuo (MiniMax) video: POST /v1/video_generation (text / image / first-last frame), then files/retrieve for the download URL. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
+        audio:
+          'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.'
       },
       dashscopeModalityHint: {
         text: 'Qwen chat via OpenAI-compatible API. Default Base URL is dashscope.aliyuncs.com/compatible-mode/v1 (/chat/completions).',

@@ -27,7 +27,6 @@ function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInst
     providerKind: 'kling',
     label: '可灵',
     apiKey: 'ak-test',
-    secretKey: 'sk-test',
     baseUrl: 'https://api-beijing.klingai.com',
     enabled: true,
     modalities: createEmptyModalityMap(),
@@ -41,8 +40,8 @@ describe('klingAdapter', () => {
     postMock.mockReset()
   })
 
-  it('rejects missing secret key on auth', async () => {
-    await expect(klingAdapter.assertAuth(provider({ secretKey: '' }))).rejects.toThrow(/Secret Key/)
+  it('rejects missing api key on auth', async () => {
+    await expect(klingAdapter.assertAuth(provider({ apiKey: '' }))).rejects.toThrow(/API Key/)
   })
 
   it('returns static image/video catalogs', async () => {

@@ -53,9 +53,27 @@ export function resolveDashScopeModelCapabilities(
       : /t2v|i2v|video/i.test(id)
         ? 'video'
         : 'text')
-  if (mod === 'image') return profileCapabilities('image-base')
+  if (mod === 'image') return profileCapabilities('image-t2i')
   if (mod === 'video') {
-    return profileCapabilities(/i2v/i.test(id) ? 'video-i2v' : 'video-t2v')
+    if (/^kling\//i.test(id) || /kling-v3.*video/i.test(id)) {
+      return profileCapabilities(
+        /omni/i.test(id) ? 'video-kling-omni-bailian' : 'video-kling-bailian'
+      )
+    }
+    if (/happyhorse/i.test(id)) {
+      if (/video-edit/i.test(id)) return profileCapabilities('video-happyhorse-edit')
+      if (/r2v/i.test(id)) return profileCapabilities('video-happyhorse-r2v')
+      return profileCapabilities(/i2v/i.test(id) ? 'video-happyhorse-i2v' : 'video-happyhorse-t2v')
+    }
+    if (/i2v/i.test(id)) {
+      if (/2\.2/i.test(id) && /plus/i.test(id)) return profileCapabilities('video-i2v-22-plus')
+      if (/2\.2/i.test(id)) return profileCapabilities('video-i2v-22')
+      if (/2\.5/i.test(id)) return profileCapabilities('video-i2v-full')
+      return profileCapabilities('video-i2v')
+    }
+    if (/2\.2/i.test(id)) return profileCapabilities('video-t2v-22')
+    if (/2\.5/i.test(id)) return profileCapabilities('video-t2v-full')
+    return profileCapabilities('video-t2v')
   }
   return profileCapabilities('text-base')
 }

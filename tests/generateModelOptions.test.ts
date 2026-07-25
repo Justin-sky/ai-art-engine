@@ -22,21 +22,47 @@ function baseProvider(
 }
 
 describe('buildModelOptions', () => {
-  it('omits kling providers without secretKey', () => {
+  it('includes kling providers with apiKey only', () => {
     const providers = [
-      baseProvider({ id: 'k1', providerKind: 'kling', secretKey: '' }),
-      baseProvider({ id: 'k2', providerKind: 'kling', secretKey: 'sk' })
+      baseProvider({ id: 'k1', providerKind: 'kling', apiKey: '' }),
+      baseProvider({ id: 'k2', providerKind: 'kling', apiKey: 'key' })
     ]
     const options = buildModelOptions(providers, 'image')
     expect(options.map((o) => o.providerInstanceId)).toEqual(['k2'])
   })
 
-  it('pickDefaultModelKey skips kling without secretKey', () => {
+  it('pickDefaultModelKey uses first kling with apiKey', () => {
     const providers = [
-      baseProvider({ id: 'k1', providerKind: 'kling', secretKey: '' }),
-      baseProvider({ id: 'k2', providerKind: 'kling', secretKey: 'sk' })
+      baseProvider({ id: 'k1', providerKind: 'kling', apiKey: '' }),
+      baseProvider({ id: 'k2', providerKind: 'kling', apiKey: 'key' })
     ]
     const options = buildModelOptions(providers, 'image')
     expect(pickDefaultModelKey(providers, 'image', options)).toBe('k2::m1')
+  })
+
+  it('includes minimax for text, image, video and audio', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.text.selectedModelIds = ['MiniMax-M3']
+    modalities.text.defaultModelId = 'MiniMax-M3'
+    modalities.image.selectedModelIds = ['image-01']
+    modalities.image.defaultModelId = 'image-01'
+    modalities.video.selectedModelIds = ['MiniMax-Hailuo-2.3']
+    modalities.video.defaultModelId = 'MiniMax-Hailuo-2.3'
+    modalities.audio.selectedModelIds = ['voice-design']
+    modalities.audio.defaultModelId = 'voice-design'
+    const providers = [
+      baseProvider({
+        id: 'mm1',
+        providerKind: 'minimax',
+        apiKey: 'key',
+        modalities
+      })
+    ]
+    expect(buildModelOptions(providers, 'text').map((o) => o.model)).toEqual(['MiniMax-M3'])
+    expect(buildModelOptions(providers, 'image').map((o) => o.model)).toEqual(['image-01'])
+    expect(buildModelOptions(providers, 'video').map((o) => o.model)).toEqual([
+      'MiniMax-Hailuo-2.3'
+    ])
+    expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual(['voice-design'])
   })
 })

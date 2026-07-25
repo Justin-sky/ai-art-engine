@@ -2,7 +2,6 @@ import axios, { type AxiosInstance } from 'axios'
 import type { ModelProviderInstance } from '@shared/openrouter'
 import { KLING_DEFAULT_BASE_URL } from '@shared/openrouter'
 import { LONG_GENERATE_TIMEOUT_MS, trimBaseUrl } from '../http'
-import { signKlingJwt } from './jwt'
 
 export type KlingApiEnvelope<T = unknown> = {
   code?: number
@@ -13,10 +12,7 @@ export type KlingApiEnvelope<T = unknown> = {
 
 export function assertKlingCredentials(provider: ModelProviderInstance): void {
   if (!provider.apiKey.trim()) {
-    throw new Error('请先填写 Access Key')
-  }
-  if (!(provider.secretKey ?? '').trim()) {
-    throw new Error('请先填写 Secret Key')
+    throw new Error('请先填写 API Key')
   }
 }
 
@@ -26,22 +22,14 @@ export function createKlingHttpClient(
 ): AxiosInstance {
   assertKlingCredentials(provider)
   const baseURL = trimBaseUrl(provider.baseUrl || KLING_DEFAULT_BASE_URL)
-  const client = axios.create({
+  return axios.create({
     baseURL,
     timeout: timeoutMs,
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${provider.apiKey.trim()}`
     }
   })
-
-  client.interceptors.request.use((config) => {
-    const token = signKlingJwt(provider.apiKey, provider.secretKey ?? '')
-    config.headers = config.headers ?? {}
-    config.headers.Authorization = `Bearer ${token}`
-    return config
-  })
-
-  return client
 }
 
 export function createKlingLongClient(provider: ModelProviderInstance): AxiosInstance {
@@ -49,7 +37,7 @@ export function createKlingLongClient(provider: ModelProviderInstance): AxiosIns
 }
 
 export function formatKlingError(message: string): string {
-  return `${message}（请检查 Access Key / Secret Key 与 Base URL 是否正确）`
+  return `${message}（请检查 API Key 与 Base URL 是否正确）`
 }
 
 export async function readKlingHttpError(err: unknown): Promise<string> {

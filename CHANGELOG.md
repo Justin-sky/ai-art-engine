@@ -10,10 +10,14 @@
 - 对象存储：阿里云 OSS、腾讯云 COS（与火山 TOS 并列；同时仅可启用一个；设置页支持折叠）
 - 设置页与手册展示各模型 / 对象存储密钥申请链接；方舟声音页签补充豆包语音控制台说明
 
+### Changed
+
+- 可灵鉴权改为官方文档的 API Key（`Authorization: Bearer`），移除 Access Key / Secret Key JWT 签发
+- 通义千问静态模型目录按百炼文档对齐（可灵 V3 / HappyHorse 1.1 + 万相图 ≤2.5 / 视频 2.2–2.7 t2v·i2v）
+
 ### Fixed
 
 - 魔塔文生图改为异步提交（`X-ModelScope-Async-Mode`）并轮询 `/tasks/{id}`
-- 图节点模型列表对可灵要求填写 Secret Key，避免只填 AK 却仍可选
 
 ## [1.0.1] — 2026-07-24
 
