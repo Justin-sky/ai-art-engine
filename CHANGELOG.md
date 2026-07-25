@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
 
+## [Unreleased]
+
+### Added
+
+- 模型提供商：可灵（Kling）、通义千问（DashScope）、魔塔（ModelScope）
+- 对象存储：阿里云 OSS、腾讯云 COS（与火山 TOS 并列；同时仅可启用一个；设置页支持折叠）
+
 ## [1.0.1] — 2026-07-24
 
 ### Added

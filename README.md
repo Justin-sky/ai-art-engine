@@ -6,7 +6,8 @@
   <p><b>本地 AI 短视频创作工作台</b></p>
   <p>
     工程与素材都在本机 · 分镜与节点图驱动生成<br />
-    对接 OpenRouter / 火山方舟（Seedream · Seedance · 声音）
+    对接 OpenRouter · 火山方舟 · 可灵 · 通义千问 · 魔塔<br />
+    对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
   </p>
 
   <p>
@@ -108,8 +109,22 @@ npm run dist:linux  # Linux
 - **资产库** — 图片 / 视频 / 声音；AssetRef GUID；`.aipackage` 导入导出
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
 - **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数
-- **多模型** — OpenRouter、火山方舟（Seedream / Seedance / 声音设计）
+- **多模型提供商** — OpenRouter、火山方舟（Seedream / Seedance / 声音）、可灵、通义千问（DashScope）、魔塔（ModelScope）
+- **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + 声明式扩展（窗口 / Inspector / 节点 / 工具栏）
+
+### 模型与对象存储一览
+
+| 类型 | 提供商 | 能力概要 |
+|------|--------|----------|
+| 模型 | OpenRouter | 文本 / 图片 / 视频（聚合目录） |
+| 模型 | 火山方舟 | 文本 / Seedream 图 / Seedance 视频 / 声音设计 |
+| 模型 | 可灵 | 图片 / 视频（Access Key + Secret Key · JWT） |
+| 模型 | 通义千问 | 文本（兼容模式）/ 万相图 / 万相视频 |
+| 模型 | 魔塔 | 文本 / 文生图（访问令牌） |
+| 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用 |
+
+配置入口：**设置 → 模型** / **设置 → 对象存储**。
 
 ---
 
@@ -121,7 +136,7 @@ npm run dist:linux  # Linux
 
 1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包  
 2. 安装启动 → 新建工程  
-3. 设置里填写 API Key → 在分镜 / 节点图中创作  
+3. 设置里添加模型提供商并填写密钥；可选配置对象存储 → 在分镜 / 节点图中创作  
 
 **从源码**
 

@@ -6,7 +6,8 @@
   <p><b>Local AI short-video creation studio</b></p>
   <p>
     Projects stay on disk · Shot & node-graph workflows<br />
-    OpenRouter & Volcengine Ark (Seedream · Seedance · Audio)
+    OpenRouter · Volcengine Ark · Kling · Tongyi Qianwen · ModelScope<br />
+    Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
 
   <p>
@@ -83,8 +84,22 @@ npm run dist:win | dist:mac | dist:linux
 - **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
 - **Node graph** — text / image / video / audio generation  
-- **Providers** — OpenRouter, Volcengine Ark  
+- **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, Tongyi Qianwen (DashScope), ModelScope  
+- **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + declarative extensions  
+
+### Providers at a glance
+
+| Kind | Provider | Capabilities |
+|------|----------|--------------|
+| Model | OpenRouter | Text / image / video (aggregated catalog) |
+| Model | Volcengine Ark | Text / Seedream / Seedance / voice design |
+| Model | Kling | Image / video (Access Key + Secret Key · JWT) |
+| Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video |
+| Model | ModelScope | Text / text-to-image (access token) |
+| Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
+
+Configure under **Settings → Models** / **Settings → Object storage**.
 
 ---
 
@@ -96,7 +111,7 @@ npm run dist:win | dist:mac | dist:linux
 
 1. Grab a build from [Releases](https://github.com/Justin-sky/ai-art-engine/releases)  
 2. Install → create a project  
-3. Add API keys in Settings → create in shots / node graph  
+3. Add model providers (and optional object storage) in Settings → create in shots / node graph  
 
 **From source**
 

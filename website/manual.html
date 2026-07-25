@@ -90,13 +90,15 @@
           <h2>1. 概述与准备</h2>
           <p>
             AIArtEngine 是本地 AI 短视频创作工作台。工程与素材保存在你指定的本机目录； 文本 / 图片 / 视频 /
-            声音生成通过你配置的模型提供商（如 OpenRouter、火山方舟）完成。
+            声音生成通过你配置的模型提供商完成（OpenRouter、火山方舟、可灵、通义千问、魔塔等）。
           </p>
           <h3>首次使用建议</h3>
           <ol>
             <li> 从 <a href="index.html#download">官网下载页</a> 或 GitHub Releases 安装对应平台安装包。 </li>
-            <li> 启动后先打开<strong>设置</strong>，添加模型提供商并填入 API Key，拉取并勾选要用的模型。 </li>
-            <li>（可选）在<strong>对象存储</strong>中配置火山引擎 TOS，便于大文件外链。</li>
+            <li> 启动后先打开<strong>设置</strong>，添加模型提供商并填入密钥，拉取并勾选要用的模型。 </li>
+            <li>
+              （可选）在<strong>对象存储</strong>中配置火山引擎 TOS / 阿里云 OSS / 腾讯云 COS（同时仅可启用一个），便于参考视频等大文件外链。
+            </li>
             <li>回到首页<strong>新建工程</strong>，进入工作区开始创作。</li>
           </ol>
           <div class="tip">
@@ -143,12 +145,23 @@
 
           <h3>3.2 模型</h3>
           <ol>
-            <li>点击「添加模型提供商」，选择 OpenRouter、火山方舟等。</li>
-            <li>填写显示名称、Base URL、API Key（可显示/隐藏）。</li>
-            <li>启用该提供商后，点击「拉取可用模型」。</li>
+            <li>
+              点击「添加模型提供商」，可选：
+              <ul>
+                <li><strong>OpenRouter</strong>：文本 / 图片 / 视频（聚合目录，单 API Key）。</li>
+                <li><strong>火山方舟</strong>：文本 / Seedream 图 / Seedance 视频 / 声音设计（API Key）。</li>
+                <li><strong>可灵</strong>：图片 / 视频（Access Key + Secret Key，JWT 鉴权）。</li>
+                <li><strong>通义千问</strong>：文本（兼容模式）/ 万相图 / 万相视频（百炼 API Key）。</li>
+                <li><strong>魔塔</strong>：文本 / 文生图（ModelScope 访问令牌，如 <code>ms-…</code>）。</li>
+              </ul>
+            </li>
+            <li>填写显示名称、Base URL、密钥（可显示/隐藏）；可灵需同时填写 Access Key 与 Secret Key。</li>
+            <li>启用该提供商后，点击「拉取可用模型」（可灵 / 部分模态为本地静态目录）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
-            <li> 按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>）。 </li>
-            <li>设置默认生成模型与默认声音（如需要）。</li>
+            <li>
+              按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>；可灵仅图片与视频页签；魔塔仅文本与图片）。
+            </li>
+            <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>
           <div class="tip">
             API Key 保存在本机设置文件中（Windows 示例：
@@ -156,9 +169,18 @@
           </div>
 
           <h3>3.3 对象存储</h3>
+          <p>用于将本地参考视频等上传为可公网访问的 URL（私有桶时使用签名链接）。</p>
           <ul>
-            <li>「添加对象存储」→ 选择火山引擎 TOS。</li>
-            <li>填写 AccessKey / SecretKey、Region、Endpoint、Bucket；公网域名可选。</li>
+            <li>
+              「添加对象存储」→ 选择其一：
+              <ul>
+                <li><strong>火山引擎 TOS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
+                <li><strong>阿里云 OSS</strong>：AccessKey / SecretKey、Region、Endpoint、Bucket。</li>
+                <li><strong>腾讯云 COS</strong>：SecretId / SecretKey、Region、Bucket（通常为 <code>BucketName-APPID</code>）。</li>
+              </ul>
+            </li>
+            <li>公网访问域名（CDN / 自定义域名）可选；未填时使用签名 URL（约 24 小时有效）。</li>
+            <li><strong>同时只能启用一个</strong>对象存储；勾选启用会自动关闭其它项。卡片支持折叠。</li>
           </ul>
 
           <h3>3.4 扩展</h3>
@@ -602,7 +624,7 @@
         <section id="workflow">
           <h2>13. 推荐端到端流程</h2>
           <ol>
-            <li>设置 → 模型（填 Key 并勾选模型）→ 可选配置 TOS。</li>
+            <li>设置 → 模型（填密钥并勾选模型）→ 可选配置对象存储（TOS / OSS / COS，仅启用一个）。</li>
             <li>首页新建工程 → 左栏新建「剧本」→ 执行生成 → 接到剧本输出。</li>
             <li>新建「分镜」→ 分镜拆分 → 分镜表格 → 视频生成。</li>
             <li>在资产库导入媒体，或导出 / 再导入 <code>.aipackage</code> 做迁移验证。</li>
