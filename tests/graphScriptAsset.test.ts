@@ -26,7 +26,7 @@ describe('script asset graph', () => {
     expect(doc.nodes.some((n) => n.typeId === 'script.visual')).toBe(false)
     const output = doc.nodes.find((n) => n.id === VIDEO_OUTPUT_ID)
     expect(output?.params.outputKind).toBe('video')
-    expect(output?.params.inputDataType).toBe('videos')
+    expect(output?.params.inputDataType).toBe('video')
 
     const split = doc.nodes.find((n) => n.typeId === 'script.shotSplit')
     const table = doc.nodes.find((n) => n.typeId === 'script.shotTable')
@@ -102,13 +102,13 @@ describe('script asset graph', () => {
 
     expect(getNodePorts(split).map((port) => port.dataType)).toEqual(['text', 'text'])
     expect(getNodePorts(table).map((port) => port.dataType)).toEqual(['text', 'text'])
-    expect(getNodePorts(editor).map((port) => port.dataType)).toEqual(['text', 'videos'])
+    expect(getNodePorts(editor).map((port) => port.dataType)).toEqual(['text', 'video'])
     const output = createOutputGraphNode('video', { x: 800, y: 0 }, {
       id: VIDEO_OUTPUT_ID,
-      params: { outputKind: 'video', inputDataType: 'videos' }
+      params: { outputKind: 'video', inputDataType: 'video' }
     })
     expect(getNodePorts(output).map((port) => ({ id: port.id, dataType: port.dataType, direction: port.direction }))).toEqual([
-      { id: 'in', dataType: 'videos', direction: 'in' }
+      { id: 'in', dataType: 'video', direction: 'in' }
     ])
     expect(canConnectNodes(text, split)).toBe(true)
     expect(canConnectNodes(note, split)).toBe(false)

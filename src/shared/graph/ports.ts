@@ -14,7 +14,7 @@ import {
   type GraphPortDef
 } from './types'
 
-/** 同类型可连；image/images、video/videos 不互通（须严格相等） */
+/** 同类型可连（严格相等） */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   return source === target
 }
@@ -92,12 +92,6 @@ export function resolveTypeDefPorts(
   const hideInputs = node ? isAssetRefNode(node) : params?.assetRef === true
   if (hideInputs) {
     ports = ports.filter((port) => port.direction !== 'in')
-    // 视频引用节点保持单视频出口；加工节点类型定义上的 out 为 videos
-    if (typeDef.typeId === 'asset.video') {
-      ports = ports.map((port) =>
-        port.direction === 'out' ? { ...port, dataType: GraphPortType.video } : port
-      )
-    }
   }
   if (params?.inputDataType) {
     const inPorts = ports.filter((port) => port.direction === 'in')
@@ -107,52 +101,17 @@ export function resolveTypeDefPorts(
       )
     }
   }
-  // 图片生成（加工）：仅输出改为 images；引用节点仍为 image
-  const isImageGenerateProcessing =
-    typeDef.typeId === 'asset.image' &&
-    !hideInputs &&
-    (node ? isProcessingAssetNode(node) : params?.assetRef !== true)
-  if (isImageGenerateProcessing) {
-    ports = ports.map((port) =>
-      port.direction === 'out' ? { ...port, dataType: GraphPortType.images } : port
-    )
-  }
 
-  // 剧本生成（加工）：仅输出改为 texts；引用节点仍为 text
-  const isScreenplayGenerateProcessing =
-    typeDef.typeId === 'asset.screenplay' &&
-    !hideInputs &&
-    (node ? isProcessingAssetNode(node) : params?.assetRef !== true)
-  if (isScreenplayGenerateProcessing) {
-    ports = ports.map((port) =>
-      port.direction === 'out' ? { ...port, dataType: GraphPortType.texts } : port
-    )
-  }
-
-  // 视频生成（加工）：仅输出改为 videos；引用节点仍为 video
+  // 视频生成（加工）：按帧模式注入首/尾帧口
   const isVideoGenerateProcessing =
     typeDef.typeId === 'asset.video' &&
     !hideInputs &&
     (node ? isProcessingAssetNode(node) : params?.assetRef !== true)
   if (isVideoGenerateProcessing) {
-    ports = ports.map((port) =>
-      port.direction === 'out' ? { ...port, dataType: GraphPortType.videos } : port
-    )
     const mode = resolveVideoFrameMode(
       params?.generateFrameMode ?? node?.params?.generateFrameMode
     )
     ports = injectVideoFramePorts(ports, mode)
-  }
-
-  // 声音生成（加工）：仅输出改为 voices；引用节点仍为 audio
-  const isVoiceGenerateProcessing =
-    typeDef.typeId === 'asset.voice' &&
-    !hideInputs &&
-    (node ? isProcessingAssetNode(node) : params?.assetRef !== true)
-  if (isVoiceGenerateProcessing) {
-    ports = ports.map((port) =>
-      port.direction === 'out' ? { ...port, dataType: GraphPortType.voices } : port
-    )
   }
   return ports
 }

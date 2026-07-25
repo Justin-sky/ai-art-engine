@@ -110,13 +110,12 @@ describe('connect menu type filter', () => {
     expect(getNodePorts(target).filter((p) => p.direction === 'in')).toEqual([])
   })
 
-  it('typeDef helpers: motion only provides images', () => {
+  it('typeDef helpers: motion only provides image', () => {
     const motion = listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.motion')!
     expect(typeDefAcceptsDataType(motion, GraphPortType.text)).toBe(false)
     expect(typeDefAcceptsDataType(motion, GraphPortType.model)).toBe(false)
     expect(typeDefAcceptsDataType(motion, GraphPortType.image)).toBe(false)
     expect(typeDefAcceptsDataType(motion, GraphPortType.video)).toBe(false)
-    expect(typeDefProvidesDataType(motion, GraphPortType.images)).toBe(true)
-    expect(typeDefProvidesDataType(motion, GraphPortType.image)).toBe(false)
+    expect(typeDefProvidesDataType(motion, GraphPortType.image)).toBe(true)
   })
 })

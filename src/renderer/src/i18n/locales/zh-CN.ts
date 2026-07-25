@@ -1256,25 +1256,25 @@ export default {
       appMark: '选取图片',
       hint: '单击缩略图选择图片；双击缩略图打开预览窗口。默认第一张。',
       previewHint: '双击预览',
-      empty: '暂无上游图片，请先连接导演台等 images 输出并执行'
+      empty: '暂无上游图片，请先连接导演台等图片输出并执行'
     },
     selectVideo: {
       appMark: '选取视频',
       hint: '单击缩略图选择视频；双击缩略图打开预览窗口。默认第一条。',
       previewHint: '双击预览',
-      empty: '暂无上游视频，请先连接视频生成等 videos 输出并执行'
+      empty: '暂无上游视频，请先连接视频生成等节点并执行'
     },
     selectText: {
       appMark: '选择剧本',
       hint: '单击卡片选择一条剧本；双击打开记事本查看全文。默认第一条。',
       openHint: '双击打开记事本',
-      empty: '暂无上游剧本，请先连接剧本生成等 texts 输出并执行'
+      empty: '暂无上游剧本，请先连接剧本生成等节点并执行'
     },
     textsPreview: {
       appMark: '文本预览',
-      hint: '以网格预览 texts；双击卡片打开记事本查看全文。',
+      hint: '多段文本以网格预览；双击卡片打开记事本查看全文。',
       openHint: '双击打开记事本',
-      empty: '暂无文本输出，请先连接上游 texts 并执行'
+      empty: '暂无文本输出，请先连接上游文本并执行'
     },
     multiAngle: {
       appMark: '多角度编辑器',
@@ -1630,13 +1630,9 @@ export default {
       referenceImage: '参考图',
       types: {
         image: '图片',
-        images: '图片数组',
         voice: '声音',
-        voices: '声音数组',
         video: '视频',
-        videos: '视频数组',
         text: '文本',
-        texts: '文本数组',
         model: '模型'
       }
     },
@@ -1914,7 +1910,7 @@ export default {
         fov: '视场角',
         openStage: '导演台编辑',
         empty: '未选择导演台编辑节点',
-        outImages: '输出 · 图片数组',
+        outImages: '输出 · 图片',
         outImagesCount: '{n} 张',
         outImagesHint: '双击缩略图打开预览窗口',
         outImagesEmpty: '暂无站位图。在导演台中截取机位后会显示在这里'

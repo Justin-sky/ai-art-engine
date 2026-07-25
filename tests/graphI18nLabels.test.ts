@@ -38,9 +38,7 @@ describe('graph processing menu labels', () => {
   it('resolves graph.port.types.* labels', () => {
     const t = i18n.global.t
     expect(t('graph.port.types.image')).toBe('图片')
-    expect(t('graph.port.types.images')).toBe('图片数组')
     expect(t('graph.port.types.voice')).toBe('声音')
-    expect(t('graph.port.types.voices')).toBe('声音数组')
     expect(t('graph.port.types.video')).toBe('视频')
     expect(t('graph.port.types.text')).toBe('文本')
     expect(t('graph.port.types.model')).toBe('模型')

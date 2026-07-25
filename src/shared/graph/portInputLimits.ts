@@ -4,9 +4,7 @@ import { GraphPortType } from './types'
 /** 媒体输入口才显示数量上限角标（文本口不显示） */
 export const PORT_LIMIT_MEDIA_TYPES: ReadonlySet<GraphPortDataType> = new Set([
   GraphPortType.image,
-  GraphPortType.images,
   GraphPortType.video,
-  GraphPortType.videos,
   GraphPortType.voice
 ])
 
@@ -140,17 +138,17 @@ export function portLimitMaxForDataType(
 ): PortInputLimitMax | undefined {
   if (!isPortLimitMediaType(dataType)) return undefined
   if (opts.kind === 'image') {
-    if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    if (dataType === GraphPortType.image) {
       return opts.imageMax === undefined ? null : opts.imageMax
     }
     return undefined
   }
   if (opts.kind === 'video') {
     const limits = opts.videoLimits ?? UNKNOWN_VIDEO_PORT_LIMITS
-    if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    if (dataType === GraphPortType.image) {
       return limits.maxImages
     }
-    if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    if (dataType === GraphPortType.video) {
       return limits.maxVideos
     }
     if (dataType === GraphPortType.voice) return limits.maxVoices

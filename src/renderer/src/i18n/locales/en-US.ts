@@ -1261,25 +1261,25 @@ export default {
       appMark: 'Select image',
       hint: 'Click a thumbnail to select; double-click to open the preview window. Defaults to the first image.',
       previewHint: 'Double-click to preview',
-      empty: 'No upstream images yet. Connect an images output (e.g. director) and run it first.'
+      empty: 'No upstream images yet. Connect an image output (e.g. director) and run it first.'
     },
     selectVideo: {
       appMark: 'Select video',
       hint: 'Click a thumbnail to select; double-click to open the preview window. Defaults to the first video.',
       previewHint: 'Double-click to preview',
-      empty: 'No upstream videos yet. Connect a videos output (e.g. video generate) and run it first.'
+      empty: 'No upstream videos yet. Connect a video generate node and run it first.'
     },
     selectText: {
       appMark: 'Select screenplay',
       hint: 'Click a card to select one screenplay; double-click to open the notepad. Defaults to the first item.',
       openHint: 'Double-click to open notepad',
-      empty: 'No upstream screenplays yet. Connect a texts output (e.g. screenplay generate) and run it first.'
+      empty: 'No upstream screenplays yet. Connect a screenplay generate node and run it first.'
     },
     textsPreview: {
       appMark: 'Texts preview',
-      hint: 'Preview texts in a grid; double-click a card to open the notepad.',
+      hint: 'Preview multiple texts in a grid; double-click a card to open the notepad.',
       openHint: 'Double-click to open notepad',
-      empty: 'No text output yet. Connect upstream texts and run first.'
+      empty: 'No text output yet. Connect upstream text and run first.'
     },
     multiAngle: {
       appMark: 'Multi-angle editor',
@@ -1634,13 +1634,9 @@ export default {
       referenceImage: 'Reference',
       types: {
         image: 'Image',
-        images: 'Images',
         voice: 'Voice',
-        voices: 'Timbres',
         video: 'Video',
-        videos: 'Videos',
         text: 'Text',
-        texts: 'Texts',
         model: 'Model'
       }
     },

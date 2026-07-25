@@ -127,7 +127,7 @@ describe('graph policy', () => {
     )
   })
 
-  it('allows image processing to connect to image output; refs stay single-image', () => {
+  it('allows image processing and image refs to connect to image output', () => {
     const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
       id: graphOutputNodeId('image'),
       params: { outputKind: 'image' }
@@ -136,7 +136,7 @@ describe('graph policy', () => {
     const processing = createNodeFromType('asset.image', { x: 200, y: 0 })
     expect(canConnectNodes(ref, processing)).toBe(true)
     expect(canConnectNodes(processing, output)).toBe(true)
-    expect(canConnectNodes(ref, output)).toBe(false)
+    expect(canConnectNodes(ref, output)).toBe(true)
   })
 
   it('rejects model and image references connecting to director (no input ports)', () => {

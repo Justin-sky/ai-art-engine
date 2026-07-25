@@ -3921,11 +3921,11 @@ export async function executeOutputNode(
   const params: GraphNodeParams = { ...ctx.node.params, outputKind }
   // 图片数组输入（导演台 / 图片输出）：写回预览，便于节点卡与下游读取
   const acceptImages =
-    ctx.node.params.inputDataType === GraphPortType.images || outputKind === 'image'
+    ctx.node.params.inputDataType === GraphPortType.image || outputKind === 'image'
   const acceptVideos =
-    ctx.node.params.inputDataType === GraphPortType.videos || outputKind === 'video'
+    ctx.node.params.inputDataType === GraphPortType.video || outputKind === 'video'
   const acceptVoices =
-    ctx.node.params.inputDataType === GraphPortType.voices || outputKind === 'voice'
+    ctx.node.params.inputDataType === GraphPortType.voice || outputKind === 'voice'
   if (images.length && acceptImages) {
     const cameraShots = images.map((image, index) => ({
       id: image.id ?? `shot:${index}`,

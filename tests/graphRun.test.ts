@@ -604,7 +604,7 @@ describe('graph run', () => {
     const output = createOutputGraphNode('image', { x: 240, y: 0 }, {
       id: IMAGE_OUTPUT_ID,
       title: 'Director deck output',
-      params: { outputKind: 'image', inputDataType: 'images' }
+      params: { outputKind: 'image', inputDataType: 'image' }
     })
 
     const result = await runGraph(

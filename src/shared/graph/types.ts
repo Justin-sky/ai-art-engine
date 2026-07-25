@@ -122,16 +122,13 @@ export type GraphPortDirection = 'in' | 'out'
 /**
  * 端口基本数据类型（单一来源）。
  * 连线规则：同类型可连，异类型不可连。
+ * 多结果用 multiple + 运行时 items[] 表达，不再使用 texts/images 等复数类型。
  */
 export const GraphPortType = {
   image: 'image',
-  images: 'images',
   voice: 'voice',
-  voices: 'voices',
   video: 'video',
-  videos: 'videos',
   text: 'text',
-  texts: 'texts',
   model: 'model'
 } as const
 

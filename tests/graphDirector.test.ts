@@ -16,8 +16,8 @@ describe('director asset graph', () => {
     const output = doc.nodes.find((node) => node.id === IMAGE_OUTPUT_ID)
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
     expect(output?.params.outputKind).toBe('image')
-    expect(output?.params.inputDataType).toBe('images')
-    expect(getNodePorts(processing!).some((p) => p.direction === 'out' && p.dataType === 'images')).toBe(
+    expect(output?.params.inputDataType).toBe('image')
+    expect(getNodePorts(processing!).some((p) => p.direction === 'out' && p.dataType === 'image')).toBe(
       true
     )
     expect(getNodePorts(processing!).filter((p) => p.direction === 'in')).toEqual([])

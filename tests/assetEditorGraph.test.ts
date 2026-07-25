@@ -125,7 +125,7 @@ describe('asset editor graph', () => {
     expect(output?.id).toBe(TEXT_OUTPUT_ID)
     expect(output?.params.outputKind).toBe('text')
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'texts']
+      ['in', 'text']
     ])
     expect(doc.edges.some((edge) => edge.source === processing?.id && edge.target === TEXT_OUTPUT_ID)).toBe(
       true
@@ -152,10 +152,10 @@ describe('asset editor graph', () => {
     ])
     expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
-      ['out', 'texts']
+      ['out', 'text']
     ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'texts']
+      ['in', 'text']
     ])
     expect(
       doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)
@@ -207,7 +207,7 @@ describe('asset editor graph', () => {
     const outputNode = reloaded.nodes.find((node) => node.category === 'output')
     expect(outputNode?.typeId).toBe('output.text')
     expect(outputNode?.params.outputKind).toBe('text')
-    expect(outputNode?.params.inputDataType).toBe('texts')
+    expect(outputNode?.params.inputDataType).toBe('text')
     expect(outputNode?.id).toBe(TEXT_OUTPUT_ID)
     expect(
       reloaded.edges.some(
@@ -227,7 +227,7 @@ describe('asset editor graph', () => {
     expect(doc.edges.length).toBeGreaterThan(0)
   })
 
-  it('allows image processing to connect to image output; refs stay single-image', () => {
+  it('allows image processing and image refs to connect to image output', () => {
     const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
       id: IMAGE_OUTPUT_ID,
       params: { outputKind: 'image' }
@@ -239,7 +239,7 @@ describe('asset editor graph', () => {
     const processing = createNodeFromType('asset.image', { x: 200, y: 0 })
     expect(canConnectNodes(ref, processing)).toBe(true)
     expect(canConnectNodes(processing, output)).toBe(true)
-    expect(canConnectNodes(ref, output)).toBe(false)
+    expect(canConnectNodes(ref, output)).toBe(true)
   })
 
   it('migrates legacy image generate in edges to in-image', () => {
@@ -265,7 +265,7 @@ describe('asset editor graph', () => {
     expect(edge?.targetPort).toBe('in-image')
   })
 
-  it('rejects asset refs to video output; video processing connects via videos', () => {
+  it('allows same-type media refs to video output; video processing connects via video', () => {
     const doc = normalizeScopedGraph('shotWorkflow', {
       nodes: [
         createAssetGraphNode('00000000-0000-4000-8000-000000000011', 'image', 'Ref', { x: 0, y: 0 }),
@@ -286,12 +286,12 @@ describe('asset editor graph', () => {
       (node) => node.typeId === 'asset.video' && !node.assetId
     )
     expect(imageRef && output && canConnectNodes(imageRef, output)).toBe(false)
-    expect(videoRef && output && canConnectNodes(videoRef, output)).toBe(false)
+    expect(videoRef && output && canConnectNodes(videoRef, output)).toBe(true)
     expect(processing && output && canConnectNodes(processing, output)).toBe(true)
-    expect(output?.params.inputDataType).toBe('videos')
+    expect(output?.params.inputDataType).toBe('video')
     expect(
       processing &&
-        getNodePorts(processing).some((p) => p.direction === 'out' && p.dataType === 'videos')
+        getNodePorts(processing).some((p) => p.direction === 'out' && p.dataType === 'video')
     ).toBe(true)
   })
 })

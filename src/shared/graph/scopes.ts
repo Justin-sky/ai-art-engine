@@ -115,7 +115,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'video',
       title: 'Shot video output',
-      inputDataType: GraphPortType.videos
+      inputDataType: GraphPortType.video
     },
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS
   },
@@ -148,7 +148,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'text',
       title: ASSET_SCREENPLAY_OUTPUT_TITLE,
-      inputDataType: GraphPortType.texts
+      inputDataType: GraphPortType.text
     }
   },
   directorAsset: {
@@ -159,7 +159,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'image',
       title: ASSET_DIRECTOR_OUTPUT_TITLE,
-      inputDataType: GraphPortType.images
+      inputDataType: GraphPortType.image
     }
   },
   scriptAsset: {
@@ -170,7 +170,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'video',
       title: ASSET_SCRIPT_OUTPUT_TITLE,
-      inputDataType: GraphPortType.videos
+      inputDataType: GraphPortType.video
     },
     ensureSingletonTypeIds: ['script.shotSplit', 'script.shotTable', 'script.shotEditor']
   },
@@ -210,7 +210,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'text',
       title: ASSET_NARRATIVE_OUTPUT_TITLE,
-      inputDataType: GraphPortType.texts
+      inputDataType: GraphPortType.text
     }
   },
   /** 世界元素四类子画布：可添加图片加工节点等；不强制输出 */

@@ -11,16 +11,16 @@ import {
 } from '../src/shared/graph'
 
 describe('image.select node', () => {
-  it('has images in and image out ports', () => {
+  it('has image in and image out ports', () => {
     const node = createNodeFromType('image.select', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports.map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', GraphPortType.images],
+      ['in', GraphPortType.image],
       ['out', GraphPortType.image]
     ])
   })
 
-  it('connects from motion images out and to image processing in', () => {
+  it('connects from motion image out and to image processing in', () => {
     const motion = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const select = createNodeFromType('image.select', { x: 120, y: 0 })
     const imageGenerate = createNodeFromType('asset.image', { x: 240, y: 0 })

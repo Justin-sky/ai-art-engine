@@ -12,11 +12,11 @@ import {
 } from '../src/shared/graph'
 
 describe('screenplay.select node', () => {
-  it('has texts in and text out ports', () => {
+  it('has text in and text out ports', () => {
     const node = createNodeFromType('screenplay.select', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports.map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', GraphPortType.texts],
+      ['in', GraphPortType.text],
       ['out', GraphPortType.text]
     ])
   })
@@ -27,7 +27,7 @@ describe('screenplay.select node', () => {
     const narrative = createNodeFromType('narrative.split', { x: 240, y: 0 })
     expect(canConnectNodes(generate, select)).toBe(true)
     expect(canConnectNodes(select, narrative)).toBe(true)
-    expect(canConnectNodes(generate, narrative)).toBe(false)
+    expect(canConnectNodes(generate, narrative)).toBe(true)
   })
 
   it('defaults to the first text and can pick by id', () => {

@@ -11,11 +11,11 @@ import {
 } from '../src/shared/graph'
 
 describe('video.select node', () => {
-  it('has videos in and video out ports', () => {
+  it('has video in and video out ports', () => {
     const node = createNodeFromType('video.select', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports.map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', GraphPortType.videos],
+      ['in', GraphPortType.video],
       ['out', GraphPortType.video]
     ])
   })

@@ -79,7 +79,10 @@
     <div
       v-show="!previewCollapsed"
       class="preview"
-      :class="{ 'has-text': !!textPreview, 'preview-icon-only': hideCardPreview }"
+      :class="{
+        'has-text': !!textPreview || cardTextGridItems.length > 1,
+        'preview-icon-only': hideCardPreview
+      }"
       @dblclick.stop="onPreviewDblClick"
     >
       <div
@@ -93,7 +96,7 @@
 
       <template v-else>
       <img
-        v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview"
+        v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview && cardImageGridSrcs.length <= 1"
         :src="directorLivePreview"
         alt=""
         class="camera-live-preview"
@@ -101,6 +104,22 @@
         decoding="async"
         draggable="false"
       />
+
+      <div
+        v-else-if="cardImageGridSrcs.length > 1"
+        class="card-preview-grid"
+        :title="previewOpenHint"
+      >
+        <img
+          v-for="(src, index) in cardImageGridSrcs"
+          :key="`grid-img-${index}`"
+          :src="src"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+        />
+      </div>
 
       <img
         v-else-if="(isSelectImageNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
@@ -110,6 +129,18 @@
         decoding="async"
         draggable="false"
       />
+
+      <div
+        v-else-if="cardTextGridItems.length > 1"
+        class="card-text-grid"
+        :title="previewOpenHint"
+      >
+        <pre
+          v-for="(item, index) in cardTextGridItems"
+          :key="`grid-text-${index}`"
+          class="card-text-grid-item"
+        >{{ item }}</pre>
+      </div>
 
       <div v-else-if="textPreview" class="text-preview" :title="previewOpenHint">
         <pre class="text-preview-body">{{ textPreview }}</pre>
@@ -435,6 +466,7 @@ const previewPriority = computed(() => (props.selected ? 100 : 10))
 let previewLoadCancel: (() => void) | null = null
 let selectPreviewCancel: (() => void) | null = null
 let directorPreviewCancel: (() => void) | null = null
+let cardImageGridCancel: (() => void) | null = null
 
 function cancelPreviewLoads(): void {
   previewLoadCancel?.()
@@ -443,6 +475,8 @@ function cancelPreviewLoads(): void {
   selectPreviewCancel = null
   directorPreviewCancel?.()
   directorPreviewCancel = null
+  cardImageGridCancel?.()
+  cardImageGridCancel = null
 }
 
 const props = defineProps<{
@@ -621,7 +655,7 @@ function portLimitMax(port: GraphPortDef): number | null | undefined {
     imageMax: imageMaxInputReferences.value,
     videoLimits: videoPortLimits.value
   })
-  if (port.dataType === GraphPortType.image || port.dataType === GraphPortType.images) {
+  if (port.dataType === GraphPortType.image) {
     return deductReservedImageSlots(raw, styleImageSlotCount.value)
   }
   return raw
@@ -637,10 +671,7 @@ function inPortTitle(port: GraphPortDef): string {
     const max = portLimitMax(port)
     if (typeof max === 'number') {
       const styleN = styleImageSlotCount.value
-      if (
-        styleN > 0 &&
-        (port.dataType === GraphPortType.image || port.dataType === GraphPortType.images)
-      ) {
+      if (styleN > 0 && port.dataType === GraphPortType.image) {
         parts.push(t('graph.port.limitMaxAfterStyle', { n: max, style: styleN }))
       } else {
         parts.push(t('graph.port.limitMax', { n: max }))
@@ -807,7 +838,7 @@ const isDirectorOutputNode = computed(
   () =>
     props.node.category === 'output' &&
     props.node.params.outputKind === 'image' &&
-    props.node.params.inputDataType === 'images'
+    props.node.params.inputDataType === 'image'
 )
 const directorLivePreviewRaw = computed(() => {
   if (!isDirectorGenerateNode.value && !isDirectorOutputNode.value) {
@@ -908,6 +939,86 @@ watch(
   },
   { immediate: true }
 )
+
+/** 多结果图片：节点卡网格（≥2）；单张仍走原单预览路径 */
+type CardImageGridSource = { key: string; dataUrl?: string; relativePath?: string }
+const cardImageGridSources = computed((): CardImageGridSource[] => {
+  const generated = props.node.params.generatedImages ?? []
+  if (generated.length > 1) {
+    return generated.map((item, index) => ({
+      key: item.id?.trim() || `gen:${index}`,
+      dataUrl: item.dataUrl?.trim() || undefined,
+      relativePath: item.relativePath?.trim() || undefined
+    }))
+  }
+  const shots = props.node.params.cameraShots ?? []
+  if (
+    shots.length > 1 &&
+    (isDirectorGenerateNode.value || isDirectorOutputNode.value)
+  ) {
+    return shots.map((item, index) => ({
+      key: item.id?.trim() || `shot:${index}`,
+      dataUrl: item.dataUrl?.trim() || undefined,
+      relativePath: item.relativePath?.trim() || undefined
+    }))
+  }
+  return []
+})
+
+const cardImageGridSrcs = ref<string[]>([])
+watch(
+  () =>
+    [cardImageGridSources.value, previewInViewport.value, previewPriority.value] as const,
+  async ([sources, visible, priority]) => {
+    cardImageGridCancel?.()
+    cardImageGridCancel = null
+    if (!visible || sources.length <= 1) {
+      cardImageGridSrcs.value = []
+      return
+    }
+    let cancelled = false
+    cardImageGridCancel = () => {
+      cancelled = true
+    }
+    const urls: string[] = []
+    for (const item of sources) {
+      if (cancelled) return
+      if (item.dataUrl) {
+        urls.push(item.dataUrl)
+        continue
+      }
+      if (!item.relativePath) continue
+      try {
+        const { promise, cancel } = graphPreviewLoadScheduler.enqueue(priority, () =>
+          resolveAssetPreviewUrl(item.relativePath!)
+        )
+        const prevCancel = cardImageGridCancel
+        cardImageGridCancel = () => {
+          cancelled = true
+          cancel()
+          prevCancel?.()
+        }
+        const url = await promise
+        if (cancelled) return
+        if (url) urls.push(url)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      }
+    }
+    if (!cancelled) cardImageGridSrcs.value = urls
+  },
+  { immediate: true }
+)
+
+/** 多结果文本：节点卡小网格（≥2） */
+const cardTextGridItems = computed((): string[] => {
+  if (hideCardPreview.value) return []
+  const items = props.node.params.generatedTexts ?? []
+  if (items.length <= 1) return []
+  return items
+    .map((item) => (item.text?.trim() || item.title?.trim() || '').slice(0, 80))
+    .filter(Boolean)
+})
 
 /** 分镜 / 世界元素流程节点：不展示正文预览，仅显示图标+提示以便双击 */
 const hideCardPreview = computed(
@@ -1997,6 +2108,52 @@ function formatTime(sec: number): string {
   color: var(--text-muted);
   text-align: center;
   letter-spacing: 0.02em;
+}
+
+.card-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--graph-preview-bg);
+}
+
+.card-preview-grid img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+  display: block;
+  background: var(--graph-preview-bg);
+}
+
+.card-text-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 4px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--graph-text-preview-bg);
+}
+
+.card-text-grid-item {
+  margin: 0;
+  padding: 4px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', ui-monospace, monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  color: var(--graph-text-preview);
+  background: color-mix(in srgb, var(--graph-preview-bg) 55%, transparent);
+  mask-image: linear-gradient(180deg, #000 65%, transparent 100%);
 }
 
 .media-fallback {
