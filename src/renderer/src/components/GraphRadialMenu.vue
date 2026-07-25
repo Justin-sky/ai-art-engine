@@ -295,24 +295,24 @@ defineExpose({
 }
 
 .radial-dead {
-  fill: rgba(22, 26, 32, 0.92);
+  fill: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   stroke: var(--border);
   stroke-width: 1;
 }
 
 .radial-wedge {
-  fill: rgba(36, 42, 52, 0.94);
-  stroke: rgba(0, 0, 0, 0.35);
+  fill: color-mix(in srgb, var(--bg-elevated) 94%, var(--text) 6%);
+  stroke: color-mix(in srgb, var(--border) 80%, transparent);
   stroke-width: 1;
   transition: fill 0.08s ease;
 }
 
 .radial-wedge.active {
-  fill: rgba(52, 96, 160, 0.95);
+  fill: color-mix(in srgb, var(--accent) 72%, var(--bg-elevated) 28%);
 }
 
 .radial-wedge.disabled {
-  fill: rgba(28, 32, 38, 0.7);
+  fill: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
   opacity: 0.45;
 }
 
@@ -343,7 +343,7 @@ defineExpose({
   font-size: 11px;
   line-height: 1.15;
   font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 65%, transparent);
   word-break: break-all;
   overflow-wrap: anywhere;
 }

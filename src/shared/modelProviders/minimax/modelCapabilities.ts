@@ -1,4 +1,4 @@
-import type { CatalogModel, ModelModality } from '@shared/openrouter'
+import type { CatalogModel, ModelModality } from '@shared/modelProvider'
 import catalog from './modelCapabilities.json'
 
 export interface MiniMaxModelEntry {

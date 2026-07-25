@@ -12,8 +12,8 @@ import type {
   OpenRouterImageModel,
   OpenRouterTextModel,
   OpenRouterVideoModel
-} from '@shared/openrouter'
-import { isTextCatalogModel, toOpenRouterInputReferenceBody } from '@shared/openrouter'
+} from '@shared/modelProvider'
+import { isTextCatalogModel, toOpenRouterInputReferenceBody } from '@shared/modelProvider'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
   createProviderHttpClient,

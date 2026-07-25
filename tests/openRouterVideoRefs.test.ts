@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizeVideoInputReference,
   toOpenRouterInputReferenceBody
-} from '../src/shared/openrouter'
+} from '../src/shared/modelProvider'
 
 describe('toOpenRouterInputReferenceBody', () => {
   it('treats bare string as image_url', () => {

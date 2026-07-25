@@ -17,7 +17,7 @@ import type {
   ModelModality,
   ModelProviderInstance,
   ModelProviderKind
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import { createProviderHttpClient } from './http'
 import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'

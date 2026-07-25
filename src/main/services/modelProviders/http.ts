@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
-import type { ModelProviderInstance } from '@shared/openrouter'
-import { OPENROUTER_DEFAULT_BASE_URL } from '@shared/openrouter'
+import type { ModelProviderInstance } from '@shared/modelProvider'
+import { OPENROUTER_DEFAULT_BASE_URL } from '@shared/modelProvider'
 
 export function trimBaseUrl(url: string): string {
   return (url || OPENROUTER_DEFAULT_BASE_URL).replace(/\/$/, '')

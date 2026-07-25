@@ -3,7 +3,7 @@ import {
   buildModelOptions,
   pickDefaultModelKey
 } from '../src/renderer/src/features/graph/model/generateModelOptions'
-import { createEmptyModalityMap, type ModelProviderInstance } from '../src/shared/openrouter'
+import { createEmptyModalityMap, type ModelProviderInstance } from '../src/shared/modelProvider'
 
 function baseProvider(
   overrides: Partial<ModelProviderInstance> & Pick<ModelProviderInstance, 'id' | 'providerKind'>

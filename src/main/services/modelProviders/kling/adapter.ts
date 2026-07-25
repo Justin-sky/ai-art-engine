@@ -10,8 +10,8 @@ import type {
   GenerateVideoJob,
   ModelModality,
   ModelProviderInstance
-} from '@shared/openrouter'
-import { KLING_DEFAULT_BASE_URL } from '@shared/openrouter'
+} from '@shared/modelProvider'
+import { KLING_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { listKlingCatalogModels } from '@shared/modelProviders/kling/modelCapabilities'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { trimBaseUrl } from '../http'

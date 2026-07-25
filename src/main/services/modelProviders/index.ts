@@ -2,7 +2,7 @@
  * 模型供应商适配层。
  *
  * 新增厂商步骤：
- * 1. shared/openrouter.ts：MODEL_PROVIDER_KINDS 增加 kind
+ * 1. shared/modelProvider.ts：MODEL_PROVIDER_KINDS 增加 kind
  * 2. 实现 ModelProviderAdapter（参考 openrouter/ / volcengineArk/ / kling/ / minimax/ / dashscope/ / modelscope/）
  * 3. registry.ts 注册
  *

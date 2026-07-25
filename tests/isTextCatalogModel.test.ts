@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isTextCatalogModel } from '../src/shared/openrouter'
+import { isTextCatalogModel } from '../src/shared/modelProvider'
 
 describe('isTextCatalogModel', () => {
   it('keeps models without modality metadata', () => {

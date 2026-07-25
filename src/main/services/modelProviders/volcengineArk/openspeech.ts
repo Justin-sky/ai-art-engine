@@ -6,8 +6,8 @@ import type {
   GenerateSpeechInput,
   GenerateSpeechResult,
   ModelProviderInstance
-} from '@shared/openrouter'
-import { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL } from '@shared/openrouter'
+} from '@shared/modelProvider'
+import { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL } from '@shared/modelProvider'
 import { projectService } from '../../projectService'
 import { formatAuthError, readHttpError } from '../http'
 

@@ -12,7 +12,7 @@ import type {
   GenerateVideoInput,
   GenerateVideoResult,
   ListModelsInput
-} from './openrouter'
+} from './modelProvider'
 
 export const IpcChannels = {
   // Project

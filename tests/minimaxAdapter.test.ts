@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ModelProviderInstance } from '../src/shared/openrouter'
-import { createEmptyModalityMap } from '../src/shared/openrouter'
+import type { ModelProviderInstance } from '../src/shared/modelProvider'
+import { createEmptyModalityMap } from '../src/shared/modelProvider'
 
 const getMock = vi.fn()
 const postMock = vi.fn()

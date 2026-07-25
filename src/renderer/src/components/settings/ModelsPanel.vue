@@ -381,7 +381,7 @@ import {
   type ModelModality,
   type ModelProviderInstance,
   type ModelProviderKind
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
 import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'

@@ -132,7 +132,7 @@ const ASSET_META: Array<{
   {
     type: 'voice',
     label: 'Audio',
-    icon: '🗣️',
+    icon: '🔊',
     outType: GraphPortType.voice,
     addable: true,
     weight: 0.85
@@ -400,7 +400,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
   outputDef('video', 'Video output', '🎞️'),
   outputDef('image', 'Image output', '🖼️'),
-  outputDef('voice', 'Audio output', '🗣️'),
+  outputDef('voice', 'Audio output', '🔊'),
   outputDef('text', 'Text output', '📝'),
   specializedOutputDef(
     'output.director',

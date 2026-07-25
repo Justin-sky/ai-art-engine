@@ -4,7 +4,7 @@ import type {
   GenerateSpeechInput,
   GenerateSpeechResult,
   ModelProviderInstance
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import { projectService } from '../../projectService'
 import {
   assertMiniMaxBaseResp,

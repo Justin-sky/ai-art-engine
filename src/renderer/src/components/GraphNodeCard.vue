@@ -810,7 +810,7 @@ const typeIcon = computed(() => {
   if (isNarrativeEditorNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
   if (isWorldEditorNode(props.node)) return '🤺'
   if (isNarrativeOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
-  if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🗣️'
+  if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
   const t = props.node.assetType
   return t ? ASSET_TYPE_ICONS[t] : '◆'

@@ -139,7 +139,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
-import { normalizeModelsSettings } from '@shared/openrouter'
+import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import type { ExternalPluginManifest } from '@shared/ipc'
 import type { AppUpdateEvent } from '@shared/update'

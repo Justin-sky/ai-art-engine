@@ -6130,6 +6130,7 @@ defineExpose({
   text-align: left;
   border: none;
   background: transparent;
+  color: var(--text);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12px;

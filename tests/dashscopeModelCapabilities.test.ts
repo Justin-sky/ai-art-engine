@@ -3,7 +3,7 @@ import {
   listDashScopeCatalogModels,
   resolveDashScopeModelCapabilities
 } from '../src/shared/modelProviders/dashscope/modelCapabilities'
-import { classifyDashScopeModelModality } from '../src/shared/openrouter'
+import { classifyDashScopeModelModality } from '../src/shared/modelProvider'
 
 describe('dashscope modelCapabilities', () => {
   it('lists modalities separately', () => {

@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
-import type { ModelProviderInstance } from '@shared/openrouter'
-import { MINIMAX_DEFAULT_BASE_URL } from '@shared/openrouter'
+import type { ModelProviderInstance } from '@shared/modelProvider'
+import { MINIMAX_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { trimBaseUrl } from '../http'
 
 export type MiniMaxBaseResp = {

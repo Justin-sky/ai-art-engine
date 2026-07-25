@@ -16,7 +16,7 @@ import {
   normalizeModelsSettings,
   pickActiveProvider,
   VOLCENGINE_ARK_DEFAULT_BASE_URL
-} from '../src/shared/openrouter'
+} from '../src/shared/modelProvider'
 
 describe('normalizeModelsSettings', () => {
   it('normalizes providers list', () => {

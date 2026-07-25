@@ -11,7 +11,7 @@ import type {
 } from '@shared/videoJob'
 import { isVideoJobActive } from '@shared/videoJob'
 import { IpcChannels } from '@shared/ipc'
-import { findProviderById } from '@shared/openrouter'
+import { findProviderById } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
 import { videoJobRepository } from '../repositories/videoJobRepository'
 import { deleteTosUploads } from './tosUploadService'
@@ -276,7 +276,7 @@ class VideoJobService {
 
   private async completeJob(
     job: VideoJobRecord,
-    provider: import('@shared/openrouter').ModelProviderInstance,
+    provider: import('@shared/modelProvider').ModelProviderInstance,
     downloadUrl: string
   ): Promise<void> {
     const { openRouterClient } = await import('./openRouterClient')

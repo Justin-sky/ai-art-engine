@@ -10,8 +10,8 @@ import type {
   GenerateVideoJob,
   ModelModality,
   ModelProviderInstance
-} from '@shared/openrouter'
-import { MINIMAX_DEFAULT_BASE_URL } from '@shared/openrouter'
+} from '@shared/modelProvider'
+import { MINIMAX_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import {
   isMiniMaxTextCatalogId,
   listMiniMaxCatalogModels,

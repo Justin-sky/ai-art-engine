@@ -1,4 +1,4 @@
-import { DASHSCOPE_DEFAULT_BASE_URL } from '@shared/openrouter'
+import { DASHSCOPE_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { trimBaseUrl } from '../http'
 
 /**

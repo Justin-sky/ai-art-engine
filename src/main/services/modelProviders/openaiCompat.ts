@@ -6,8 +6,8 @@ import type {
   GenerateTextInput,
   GenerateTextResult,
   ModelProviderInstance
-} from '@shared/openrouter'
-import { isVolcengineArkProvider } from '@shared/openrouter'
+} from '@shared/modelProvider'
+import { isVolcengineArkProvider } from '@shared/modelProvider'
 import axios from 'axios'
 import {
   authHeaders,

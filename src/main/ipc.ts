@@ -30,7 +30,7 @@ import type {
   GenerateTextInput,
   GenerateVideoInput,
   ListModelsInput
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import { projectService } from './services/projectService'
 import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'

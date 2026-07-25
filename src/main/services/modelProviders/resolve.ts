@@ -1,10 +1,10 @@
-import type { ModelModality, ModelProviderInstance, ModelProviderKind } from '@shared/openrouter'
+import type { ModelModality, ModelProviderInstance, ModelProviderKind } from '@shared/modelProvider'
 import {
   MODEL_PROVIDER_KINDS,
   createEmptyModalityMap,
   findProviderById,
   pickActiveProvider
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import { settingsService } from '../settingsService'
 
 export function defaultBaseUrlForKind(kind: ModelProviderKind): string {

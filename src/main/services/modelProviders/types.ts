@@ -11,7 +11,7 @@ import type {
   ModelModality,
   ModelProviderInstance,
   ModelProviderKind
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 
 export type VideoPollResult = {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'

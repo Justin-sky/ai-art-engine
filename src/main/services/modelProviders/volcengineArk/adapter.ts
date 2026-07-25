@@ -9,11 +9,11 @@ import type {
   GenerateVideoInput,
   GenerateVideoJob,
   ModelProviderInstance
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   classifyVolcengineArkModelModality,
   normalizeVideoInputReference
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   isOpaqueVolcengineArkEndpointId,
   resolveVolcengineArkModelCapabilities

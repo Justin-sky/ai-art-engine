@@ -11,12 +11,12 @@ import type {
   GenerateVideoJob,
   ModelModality,
   ModelProviderInstance
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   classifyDashScopeModelModality,
   DASHSCOPE_DEFAULT_BASE_URL,
   normalizeVideoInputReference
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   listDashScopeCatalogModels,
   resolveDashScopeModelCapabilities

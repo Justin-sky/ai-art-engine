@@ -3,7 +3,7 @@ import {
   listModelScopeCatalogModels,
   resolveModelScopeModelCapabilities
 } from '../src/shared/modelProviders/modelscope/modelCapabilities'
-import { classifyModelScopeModelModality } from '../src/shared/openrouter'
+import { classifyModelScopeModelModality } from '../src/shared/modelProvider'
 
 describe('modelscope modelCapabilities', () => {
   it('lists text and image only', () => {

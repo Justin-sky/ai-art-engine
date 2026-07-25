@@ -67,7 +67,7 @@
       <span class="ref-badge">{{ t('shot.refs.badge', { n: ref.refIndex }) }}</span>
       <div class="thumb">
         <img v-if="ref.kind === 'visual' && thumbUrl(ref.assetId)" :src="thumbUrl(ref.assetId)" alt="" />
-        <span v-else-if="ref.kind === 'voice'" class="audio-icon">🗣️</span>
+        <span v-else-if="ref.kind === 'voice'" class="audio-icon">🔊</span>
         <span v-else class="badge">{{ assetTypeForId(ref.assetId) }}</span>
       </div>
       <div class="ref-fields">

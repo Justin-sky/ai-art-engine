@@ -1,4 +1,4 @@
-import type { ModelProviderKind } from '@shared/openrouter'
+import type { ModelProviderKind } from '@shared/modelProvider'
 import type { ModelProviderAdapter } from './types'
 import { openRouterAdapter } from './openrouter/adapter'
 import { volcengineArkAdapter } from './volcengineArk/adapter'

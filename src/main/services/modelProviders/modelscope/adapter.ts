@@ -11,11 +11,11 @@ import type {
   GenerateVideoJob,
   ModelModality,
   ModelProviderInstance
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   classifyModelScopeModelModality,
   MODELSCOPE_DEFAULT_BASE_URL
-} from '@shared/openrouter'
+} from '@shared/modelProvider'
 import {
   listModelScopeCatalogModels,
   resolveModelScopeModelCapabilities

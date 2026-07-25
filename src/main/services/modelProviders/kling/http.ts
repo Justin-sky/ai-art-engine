@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
-import type { ModelProviderInstance } from '@shared/openrouter'
-import { KLING_DEFAULT_BASE_URL } from '@shared/openrouter'
+import type { ModelProviderInstance } from '@shared/modelProvider'
+import { KLING_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { LONG_GENERATE_TIMEOUT_MS, trimBaseUrl } from '../http'
 
 export type KlingApiEnvelope<T = unknown> = {

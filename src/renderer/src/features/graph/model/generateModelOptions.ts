@@ -1,5 +1,5 @@
-import type { ModelModality, ModelProviderInstance } from '@shared/openrouter'
-import { modalityConfig } from '@shared/openrouter'
+import type { ModelModality, ModelProviderInstance } from '@shared/modelProvider'
+import { modalityConfig } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
   key: string

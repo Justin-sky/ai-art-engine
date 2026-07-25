@@ -1,5 +1,5 @@
-import type { GenerateVideoInput } from '@shared/openrouter'
-import { normalizeVideoInputReference } from '@shared/openrouter'
+import type { GenerateVideoInput } from '@shared/modelProvider'
+import { normalizeVideoInputReference } from '@shared/modelProvider'
 import { ensureRemoteMediaUrl, deleteTosUploads, type TosUploadResult } from '../tosUploadService'
 import { projectService } from '../projectService'
 

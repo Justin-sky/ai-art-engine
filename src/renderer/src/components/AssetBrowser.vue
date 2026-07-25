@@ -2670,12 +2670,13 @@ onBeforeUnmount(() => {
   text-align: left;
   border: none;
   background: transparent;
+  color: var(--text);
   padding: 6px 10px;
   border-radius: 4px;
 }
 
 .ctx-menu button:hover {
-  background: #2a2f36;
+  background: var(--bg-hover);
   border-color: transparent;
 }
 

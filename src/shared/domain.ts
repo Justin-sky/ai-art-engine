@@ -4,7 +4,7 @@ import { createDefaultScopedGraph } from './graph'
 import {
   createEmptyModelsSettings,
   type ModelsSettings
-} from './openrouter'
+} from './modelProvider'
 import {
   createEmptyObjectStorageSettings,
   type ObjectStorageSettings
@@ -29,7 +29,7 @@ export {
   resolveStylePresetCategory
 } from './stylePresets'
 
-export type { ModelsSettings, ModelModality, ModelProviderInstance, ModelProviderKind } from './openrouter'
+export type { ModelsSettings, ModelModality, ModelProviderInstance, ModelProviderKind } from './modelProvider'
 export type {
   ObjectStorageSettings,
   ObjectStorageProviderInstance,
@@ -44,7 +44,7 @@ export {
   createProviderInstance,
   normalizeModelsSettings,
   pickActiveProvider
-} from './openrouter'
+} from './modelProvider'
 export {
   OBJECT_STORAGE_PROVIDER_KINDS,
   VOLCENGINE_TOS_REGION_PRESETS,
@@ -506,7 +506,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
 export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   image: '🖼️',
   video: '🎞️',
-  voice: '🗣️',
+  voice: '🔊',
   motion: '🎬',
   model: '🧊',
   screenplay: '📜',
