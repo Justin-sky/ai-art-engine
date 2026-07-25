@@ -25,6 +25,8 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled || !provider.apiKey.trim()) continue
+    // 可灵 JWT 需要 Secret Key；缺 SK 时不出现在图节点选项里
+    if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) continue
     // 声音（audio）仅火山方舟 voice_design；排除 OpenRouter 等
     if (modality === 'audio' && provider.providerKind !== 'volcengine-ark') continue
     // 可灵仅图片/视频
@@ -67,6 +69,7 @@ export function pickDefaultModelKey(
   if (options.length === 0) return ''
   for (const provider of providers) {
     if (!provider.enabled || !provider.apiKey.trim()) continue
+    if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) continue
     const defaultModelId = modalityConfig(provider, modality).defaultModelId
     if (defaultModelId) {
       const key = modelKey(provider.id, defaultModelId)

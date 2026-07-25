@@ -202,6 +202,20 @@
       </div>
 
       <p class="meta">{{ modalityHintText(provider) }}</p>
+      <p
+        v-if="provider.providerKind === 'volcengine-ark' && isArkVoiceModality(provider)"
+        class="meta credentials-hint"
+      >
+        {{ t('settings.models.arkVoiceCredentialsHint') }}
+        <a
+          class="ext-link"
+          :href="VOLCENGINE_OPENSPEECH_CREDENTIALS_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ VOLCENGINE_OPENSPEECH_CREDENTIALS_URL }}
+        </a>
+      </p>
 
       <div v-if="!isArkVoiceModality(provider)" class="catalog-toolbar">
         <button
@@ -406,6 +420,7 @@ import type { AppSettings } from '@shared/domain'
 import {
   MODEL_MODALITIES,
   MODEL_PROVIDER_KINDS,
+  VOLCENGINE_OPENSPEECH_CREDENTIALS_URL,
   catalogEntryFromModel,
   createProviderInstance,
   modalityConfig,

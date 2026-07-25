@@ -7,11 +7,14 @@ import type {
   GenerateSpeechResult,
   ModelProviderInstance
 } from '@shared/openrouter'
+import { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL } from '@shared/openrouter'
 import { projectService } from '../../projectService'
 import { formatAuthError, readHttpError } from '../http'
 
 /** 豆包语音 openspeech（与方舟 ark Base URL 独立） */
 export const VOLCENGINE_OPENSPEECH_BASE_URL = 'https://openspeech.bytedance.com'
+
+export { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL }
 
 const VOICE_DESIGN_PATH = '/api/v3/tts/voice_design'
 

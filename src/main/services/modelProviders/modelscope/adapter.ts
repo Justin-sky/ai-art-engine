@@ -27,6 +27,7 @@ import {
   isAuthFailure,
   LONG_GENERATE_TIMEOUT_MS,
   readHttpError,
+  sleep,
   trimBaseUrl
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
@@ -38,6 +39,9 @@ const ASPECT_TO_SIZE: Record<string, string> = {
   '4:3': '1280x960',
   '3:4': '960x1280'
 }
+
+const IMAGE_POLL_INTERVAL_MS = 5_000
+const IMAGE_POLL_MAX_ATTEMPTS = 60
 
 function providerClient(provider: ModelProviderInstance, timeoutMs?: number) {
   return createProviderHttpClient(
@@ -52,6 +56,20 @@ function providerClient(provider: ModelProviderInstance, timeoutMs?: number) {
 function extractImageUrls(body: unknown): string[] {
   if (!body || typeof body !== 'object') return []
   const record = body as Record<string, unknown>
+
+  const fromOutput = Array.isArray(record.output_images)
+    ? (record.output_images as unknown[])
+        .map((row) => {
+          if (typeof row === 'string') return row.trim()
+          if (row && typeof row === 'object') {
+            const url = (row as { url?: string }).url
+            return typeof url === 'string' ? url.trim() : ''
+          }
+          return ''
+        })
+        .filter(Boolean)
+    : []
+  if (fromOutput.length) return fromOutput
 
   const fromImages = Array.isArray(record.images)
     ? (record.images as Array<{ url?: string; b64_json?: string }>)
@@ -76,6 +94,56 @@ function extractImageUrls(body: unknown): string[] {
     : []
 
   return fromData
+}
+
+function mapImageTaskStatus(raw: unknown): 'completed' | 'failed' | 'pending' {
+  const s = String(raw ?? '')
+    .trim()
+    .toUpperCase()
+  if (s === 'SUCCEED' || s === 'SUCCEEDED' || s === 'SUCCESS' || s === 'COMPLETED') {
+    return 'completed'
+  }
+  if (s === 'FAILED' || s === 'FAIL' || s === 'ERROR') return 'failed'
+  return 'pending'
+}
+
+function taskErrorMessage(body: Record<string, unknown>): string {
+  const error = body.error
+  if (typeof error === 'string' && error.trim()) return error
+  if (error && typeof error === 'object') {
+    const msg = (error as { message?: string }).message
+    if (typeof msg === 'string' && msg.trim()) return msg
+  }
+  const errors = body.errors
+  if (errors && typeof errors === 'object') {
+    const msg = (errors as { message?: string }).message
+    if (typeof msg === 'string' && msg.trim()) return msg
+  }
+  if (typeof body.message === 'string' && body.message.trim()) return body.message
+  return '图片生成失败'
+}
+
+async function pollImageTask(
+  provider: ModelProviderInstance,
+  taskId: string
+): Promise<string[]> {
+  const client = providerClient(provider, LONG_GENERATE_TIMEOUT_MS)
+  for (let i = 0; i < IMAGE_POLL_MAX_ATTEMPTS; i++) {
+    const { data } = await client.get<Record<string, unknown>>(`/tasks/${taskId}`, {
+      headers: { 'X-ModelScope-Task-Type': 'image_generation' }
+    })
+    const status = mapImageTaskStatus(data.task_status ?? data.status)
+    if (status === 'completed') {
+      const urls = extractImageUrls(data)
+      if (!urls.length) throw new Error('图片任务已完成但未返回图片 URL')
+      return urls
+    }
+    if (status === 'failed') {
+      throw new Error(taskErrorMessage(data))
+    }
+    await sleep(IMAGE_POLL_INTERVAL_MS)
+  }
+  throw new Error('图片生成超时：任务仍未完成')
 }
 
 export const modelScopeAdapter: ModelProviderAdapter = {
@@ -164,11 +232,26 @@ export const modelScopeAdapter: ModelProviderAdapter = {
     }
 
     try {
-      const { data } = await client.post('/images/generations', body)
-      const images = extractImageUrls(data)
-      if (!images.length) throw new Error('模型未返回图片')
+      // 多数魔塔文生图模型仅支持异步：提交 task 后再轮询 /tasks/{id}
+      const { data } = await client.post<Record<string, unknown>>('/images/generations', body, {
+        headers: { 'X-ModelScope-Async-Mode': 'true' }
+      })
+
+      const immediate = extractImageUrls(data)
+      if (immediate.length && !data.task_id) {
+        return { images: immediate, model: modelId }
+      }
+
+      const taskId = typeof data.task_id === 'string' ? data.task_id.trim() : ''
+      if (!taskId) {
+        if (immediate.length) return { images: immediate, model: modelId }
+        throw new Error(taskErrorMessage(data) || '未返回图片任务 id')
+      }
+
+      const images = await pollImageTask(provider, taskId)
       return { images, model: modelId }
     } catch (err) {
+      if (err instanceof Error && !axios.isAxiosError(err)) throw err
       throw new Error(`图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
     }
   },

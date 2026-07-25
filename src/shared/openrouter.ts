@@ -3,6 +3,9 @@
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
+/** 豆包语音控制台（声音设计 API Key / speaker_id；与方舟 Ark Key 可能不同） */
+export const VOLCENGINE_OPENSPEECH_CREDENTIALS_URL =
+  'https://console.volcengine.com/speech/app'
 /** 可灵（Kling）国内开放平台 */
 export const KLING_DEFAULT_BASE_URL = 'https://api-beijing.klingai.com'
 /** 通义千问 / 万相（阿里云百炼 DashScope OpenAI 兼容） */

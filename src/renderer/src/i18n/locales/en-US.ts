@@ -94,11 +94,13 @@ export default {
       hideSecretKey: 'Hide Secret Key',
       credentialsHint: {
         openrouter: 'Get API key:',
-        'volcengine-ark': 'Get API key:',
+        'volcengine-ark': 'Get Ark API key (text / image / video):',
         kling: 'Get Access Key / Secret Key:',
         dashscope: 'Get Bailian API key:',
         modelscope: 'Get access token:'
       },
+      arkVoiceCredentialsHint:
+        'Voice design uses Doubao openspeech — use the speech console API key (may differ from Ark) and enter a purchased speaker_id:',
       fetchModels: 'Fetch models',
       testingConnection: 'Verifying API key…',
       loading: 'Loading…',
@@ -137,7 +139,7 @@ export default {
         image: 'Seedream image models via /images/generations. Catalog filtered by endpoint name heuristics.',
         video: 'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
         audio:
-          'Doubao openspeech voice design. No model fetch — enter purchased speaker_id (e.g. S_xxx) and select it. Node instruction is used as the design prompt.'
+          'Doubao openspeech voice design (X-Api-Key). No model fetch — use the speech console API key above and enter a purchased speaker_id (e.g. S_xxx). Node instruction is used as the design prompt.'
       },
       klingModalityHint: {
         image:

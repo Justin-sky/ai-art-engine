@@ -149,7 +149,10 @@
               点击「添加模型提供商」，可选：
               <ul>
                 <li><strong>OpenRouter</strong>：文本 / 图片 / 视频（聚合目录，单 API Key）。</li>
-                <li><strong>火山方舟</strong>：文本 / Seedream 图 / Seedance 视频 / 声音设计（API Key）。</li>
+                <li>
+                  <strong>火山方舟</strong>：文本 / Seedream 图 / Seedance 视频用方舟 API Key；声音设计走豆包语音
+                  openspeech（语音控制台 API Key，可与方舟 Key 不同）+ 手填 <code>speaker_id</code>。
+                </li>
                 <li><strong>可灵</strong>：图片 / 视频（Access Key + Secret Key，JWT 鉴权）。</li>
                 <li><strong>通义千问</strong>：文本（兼容模式）/ 万相图 / 万相视频（百炼 API Key）。</li>
                 <li><strong>魔塔</strong>：文本 / 文生图（ModelScope 访问令牌，如 <code>ms-…</code>）。</li>
@@ -165,12 +168,21 @@
                   >
                 </li>
                 <li>
-                  火山方舟 API Key：
+                  火山方舟 API Key（文本 / 图片 / 视频）：
                   <a
                     href="https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey"
                     target="_blank"
                     rel="noopener noreferrer"
                     >https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey</a
+                  >
+                </li>
+                <li>
+                  豆包语音控制台（声音设计 API Key / speaker_id）：
+                  <a
+                    href="https://console.volcengine.com/speech/app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >https://console.volcengine.com/speech/app</a
                   >
                 </li>
                 <li>
@@ -203,7 +215,8 @@
             <li>启用该提供商后，点击「拉取可用模型」（可灵 / 部分模态为本地静态目录）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
-              按模态配置：文本 / 图片 / 视频 / 声音（方舟声音可手填 <code>speaker_id</code>；可灵仅图片与视频页签；魔塔仅文本与图片）。
+              按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
+              <code>speaker_id</code>；可灵仅图片与视频页签且需 Secret Key；魔塔仅文本与图片，文生图为异步任务）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>

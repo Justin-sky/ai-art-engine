@@ -24,6 +24,16 @@ vi.mock('../src/main/services/modelProviders/openaiCompat', () => ({
   }))
 }))
 
+vi.mock('../src/main/services/modelProviders/http', async () => {
+  const actual = await vi.importActual<typeof import('../src/main/services/modelProviders/http')>(
+    '../src/main/services/modelProviders/http'
+  )
+  return {
+    ...actual,
+    sleep: vi.fn(async () => undefined)
+  }
+})
+
 import { modelScopeAdapter } from '../src/main/services/modelProviders/modelscope/adapter'
 
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
@@ -58,10 +68,21 @@ describe('modelScopeAdapter', () => {
     expect(result.text).toBe('ms:hi')
   })
 
-  it('generateImage posts /images/generations', async () => {
+  it('generateImage submits async task and polls /tasks', async () => {
     postMock.mockResolvedValueOnce({
-      data: { images: [{ url: 'https://cdn.example.com/a.png' }] }
+      data: { task_id: 'task-1' }
     })
+    getMock
+      .mockResolvedValueOnce({
+        data: { task_status: 'RUNNING' }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          task_status: 'SUCCEED',
+          output_images: ['https://cdn.example.com/a.png']
+        }
+      })
+
     const result = await modelScopeAdapter.generateImage(provider(), 'MAILAND/majicflus_v1', {
       prompt: 'a cat',
       aspectRatio: '1:1'
@@ -73,6 +94,15 @@ describe('modelScopeAdapter', () => {
         model: 'MAILAND/majicflus_v1',
         prompt: 'a cat',
         size: '1024x1024'
+      }),
+      expect.objectContaining({
+        headers: { 'X-ModelScope-Async-Mode': 'true' }
+      })
+    )
+    expect(getMock).toHaveBeenCalledWith(
+      '/tasks/task-1',
+      expect.objectContaining({
+        headers: { 'X-ModelScope-Task-Type': 'image_generation' }
       })
     )
   })

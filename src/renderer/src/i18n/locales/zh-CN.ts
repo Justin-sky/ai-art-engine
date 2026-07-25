@@ -94,11 +94,13 @@ export default {
       hideSecretKey: '隐藏 Secret Key',
       credentialsHint: {
         openrouter: '获取 API Key：',
-        'volcengine-ark': '获取 API Key：',
+        'volcengine-ark': '获取方舟 API Key（文本 / 图片 / 视频）：',
         kling: '获取 Access Key / Secret Key：',
         dashscope: '获取百炼 API Key：',
         modelscope: '获取访问令牌：'
       },
+      arkVoiceCredentialsHint:
+        '声音设计走豆包语音 openspeech，请填语音控制台 API Key（可与方舟 Key 不同），并手填已购 speaker_id：',
       fetchModels: '拉取可用模型',
       testingConnection: '正在验证 API Key…',
       loading: '拉取中…',
@@ -137,7 +139,7 @@ export default {
         image: 'Seedream 等图片模型，调用 /images/generations。列表按接入点名称启发式筛选。',
         video: 'Seedance 等视频模型，调用 /contents/generations/tasks。参考图/视频需可公网访问（可用对象存储 TOS）。',
         audio:
-          '豆包语音 openspeech「声音设计」。不拉取模型目录；请手填控制台已购买的 speaker_id（如 S_xxx）并勾选。生成时用节点指令作为声音描述。'
+          '豆包语音 openspeech「声音设计」（X-Api-Key）。不拉取模型目录；请在上方使用语音控制台 API Key，并手填已购 speaker_id（如 S_xxx）。生成时用节点指令作为声音描述。'
       },
       klingModalityHint: {
         image:
