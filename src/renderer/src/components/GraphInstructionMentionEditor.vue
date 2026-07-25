@@ -125,15 +125,19 @@
         @click.stop
       >
         <div class="preset-menu-title">{{ presetMenuTitle }}</div>
-        <button
-          v-for="item in presets"
-          :key="item.id"
-          type="button"
-          class="preset-item"
-          @click="applyPreset(item)"
-        >
-          {{ t(item.titleKey) }}
-        </button>
+        <div class="preset-grid">
+          <button
+            v-for="item in presets"
+            :key="item.id"
+            type="button"
+            class="preset-card"
+            :title="t(item.titleKey)"
+            @click="applyPreset(item)"
+          >
+            <PresetVisualGlyph class="preset-glyph" :visual="visualForPreset(item)" />
+            <span class="preset-card-title">{{ t(item.titleKey) }}</span>
+          </button>
+        </div>
       </div>
     </Teleport>
 
@@ -194,15 +198,18 @@ import {
   buildInstructionFinalPromptPreview,
   insertInstructionPresetText,
   resolveInstructionFinalPreviewKind,
+  resolveInstructionVisual,
   resolveNodeTextContent,
   resolveShotParamsNodePrompt,
   shouldKeepInstructionMentionToken,
   type GraphNode,
   type InstructionMentionSource,
   type InstructionPreset,
-  type InstructionPresetKind
+  type InstructionPresetKind,
+  type PresetVisual
 } from '@shared/graph'
 import ExpandArrowsIcon from './icons/ExpandArrowsIcon.vue'
+import PresetVisualGlyph from './PresetVisualGlyph.vue'
 import GraphTextNotepadDialog, {
   type NotepadPreviewImage
 } from './GraphTextNotepadDialog.vue'
@@ -751,6 +758,10 @@ function onPresetMenuReposition(): void {
   updatePresetMenuPosition()
 }
 
+function visualForPreset(item: InstructionPreset): PresetVisual {
+  return resolveInstructionVisual(item)
+}
+
 function applyPreset(item: InstructionPreset): void {
   const current = props.modelValue ?? ''
   const position = editorRef.value?.getSelection().start ?? current.length
@@ -1204,9 +1215,8 @@ onBeforeUnmount(() => {
 .preset-menu {
   position: fixed;
   z-index: 4100;
-  min-width: 168px;
-  max-width: 240px;
-  max-height: min(320px, calc(100vh - 16px));
+  width: min(320px, calc(100vw - 16px));
+  max-height: min(360px, calc(100vh - 16px));
   overflow: auto;
   padding: 6px;
   border: 1px solid var(--border);
@@ -1222,21 +1232,45 @@ onBeforeUnmount(() => {
   letter-spacing: 0.04em;
 }
 
-.preset-item {
-  display: block;
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel, var(--bg));
   color: var(--text);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
 }
 
-.preset-item:hover {
-  background: rgba(61, 139, 253, 0.14);
+.preset-card:hover {
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.preset-glyph {
+  height: 48px;
+  min-height: 48px;
+}
+
+.preset-card-title {
+  font-size: 11px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .editor-area {

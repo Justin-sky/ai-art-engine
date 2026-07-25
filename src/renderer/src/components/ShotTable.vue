@@ -76,23 +76,11 @@
                     )
                   "
                 />
-                <select
-                  class="staging-select"
-                  :aria-label="t('shot.staging.title')"
-                  value=""
-                  @change="onStagingPresetChange(shot, $event)"
-                >
-                  <option value="">{{ t('shot.staging.select') }}</option>
-                  <optgroup
-                    v-for="group in stagingGroups"
-                    :key="group.id"
-                    :label="t(group.titleKey)"
-                  >
-                    <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
-                      {{ t(preset.titleKey) }}
-                    </option>
-                  </optgroup>
-                </select>
+                <ShotStagingPresetPicker
+                  variant="cards"
+                  :storyboard="storyboardOf(shot)"
+                  @apply="(next) => onStagingStoryboardApply(shot, next)"
+                />
               </div>
             </td>
             <td :style="colStyle('shotSize')" @click.stop>
@@ -123,17 +111,12 @@
                     )
                   "
                 />
-                <select
-                  class="field-preset-select"
-                  :aria-label="t('shot.staging.selectField', { field: t('shot.field.lighting') })"
-                  value=""
-                  @change="onFieldPresetChange(shot, 'lighting', $event)"
-                >
-                  <option value="">{{ t('shot.staging.selectField', { field: t('shot.field.lighting') }) }}</option>
-                  <option v-for="preset in lightingPresets" :key="preset.id" :value="preset.id">
-                    {{ t(preset.titleKey) }}
-                  </option>
-                </select>
+                <ShotStagingPresetPicker
+                  variant="cards"
+                  field="lighting"
+                  :storyboard="storyboardOf(shot)"
+                  @apply="(next) => onStagingStoryboardApply(shot, next)"
+                />
               </div>
             </td>
             <td :style="colStyle('dialogue')" @click.stop>
@@ -171,17 +154,12 @@
                     )
                   "
                 />
-                <select
-                  class="field-preset-select"
-                  :aria-label="t('shot.staging.selectField', { field: t('shot.field.cameraMove') })"
-                  value=""
-                  @change="onFieldPresetChange(shot, 'cameraMove', $event)"
-                >
-                  <option value="">{{ t('shot.staging.selectField', { field: t('shot.field.cameraMove') }) }}</option>
-                  <option v-for="preset in cameraMovePresets" :key="preset.id" :value="preset.id">
-                    {{ t(preset.titleKey) }}
-                  </option>
-                </select>
+                <ShotStagingPresetPicker
+                  variant="cards"
+                  field="cameraMove"
+                  :storyboard="storyboardOf(shot)"
+                  @apply="(next) => onStagingStoryboardApply(shot, next)"
+                />
               </div>
             </td>
             <td :style="colStyle('status')" @click.stop>
@@ -230,18 +208,11 @@ import {
   type ShotReviewStatus,
   type ShotStoryboard
 } from '@shared/domain'
-import {
-  SHOT_STAGING_PRESETS,
-  applyShotStagingFieldPreset,
-  applyShotStagingPreset,
-  shotStagingGroupTitleKey,
-  type ShotStagingGroup,
-  type ShotStagingTextField
-} from '@shared/graph'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 
 type ColId =
   | 'idx'
@@ -268,12 +239,12 @@ const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   idx: 36,
   title: 100,
   duration: 64,
-  visual: 220,
+  visual: 260,
   shotSize: 96,
-  lighting: 168,
+  lighting: 200,
   dialogue: 160,
   sfx: 120,
-  camera: 168,
+  camera: 200,
   status: 88,
   actions: 36
 }
@@ -299,23 +270,7 @@ const props = defineProps<{
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const draftStore = useDraftStore()
-const { t, locale, shotSizeLabel } = useStudioI18n()
-const stagingGroupOrder: readonly ShotStagingGroup[] = [
-  'cameraLanguage',
-  'bodyFacing',
-  'performance',
-  'lighting',
-  'advertising'
-]
-const stagingGroups = stagingGroupOrder
-  .map((id) => ({
-    id,
-    titleKey: shotStagingGroupTitleKey(id),
-    presets: SHOT_STAGING_PRESETS.filter((preset) => preset.group === id)
-  }))
-  .filter((group) => group.presets.length > 0)
-const lightingPresets = SHOT_STAGING_PRESETS.filter((preset) => Boolean(preset.lighting))
-const cameraMovePresets = SHOT_STAGING_PRESETS.filter((preset) => Boolean(preset.cameraMove))
+const { t, shotSizeLabel } = useStudioI18n()
 const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'idx', label: '#' },
   { id: 'title', label: t('shot.table.column.name') },
@@ -622,34 +577,7 @@ async function onStoryboardChange(
   scheduleAutosize()
 }
 
-async function onStagingPresetChange(shot: Shot, event: Event): Promise<void> {
-  const select = event.target as HTMLSelectElement
-  const preset = SHOT_STAGING_PRESETS.find((item) => item.id === select.value)
-  select.value = ''
-  if (!preset) return
-  const storyboard = applyShotStagingPreset(normalizeStoryboard(shot), preset, locale.value)
-  const prompt = buildShotGenerationPrompt(storyboard, {
-    stylePreset: project.config?.stylePreset
-  })
-  await persistShotUpdate(shot, { storyboard, prompt })
-  scheduleAutosize()
-}
-
-async function onFieldPresetChange(
-  shot: Shot,
-  field: Extract<ShotStagingTextField, 'lighting' | 'cameraMove'>,
-  event: Event
-): Promise<void> {
-  const select = event.target as HTMLSelectElement
-  const preset = SHOT_STAGING_PRESETS.find((item) => item.id === select.value)
-  select.value = ''
-  if (!preset) return
-  const storyboard = applyShotStagingFieldPreset(
-    normalizeStoryboard(shot),
-    preset,
-    field,
-    locale.value
-  )
+async function onStagingStoryboardApply(shot: Shot, storyboard: ShotStoryboard): Promise<void> {
   const prompt = buildShotGenerationPrompt(storyboard, {
     stylePreset: project.config?.stylePreset
   })
@@ -1031,10 +959,9 @@ tbody tr.row-even > td textarea::-webkit-resizer {
   min-height: 0;
 }
 
-.field-preset-select,
-.staging-select {
+.field-stack :deep(.staging-cards-anchor) {
   flex-shrink: 0;
-  font-size: 11px;
+  align-self: flex-start;
 }
 
 .review-status {

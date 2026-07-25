@@ -22,6 +22,8 @@ export interface InstructionPreset {
   titleKey: string
   /** 写入生成指令框的正文 */
   body: string
+  /** 可选；缺省时由 resolveInstructionVisual 推断 */
+  visual?: import('./presetVisual').PresetVisual
 }
 
 export function insertInstructionPresetText(

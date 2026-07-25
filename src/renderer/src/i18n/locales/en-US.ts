@@ -576,7 +576,10 @@ export default {
       select: 'Choose a camera, performance, or lighting preset…',
       selectField: 'Choose a {field} preset…',
       apply: 'Apply',
+      showPresets: 'Show presets',
+      hidePresets: 'Hide presets',
       hint: 'Inserts at the active caret and appends other related fields without clearing existing text.',
+      hintVisual: 'Click a card to apply. Glyphs are for recognition only; the written prompt text is unchanged.',
       group: {
         cameraLanguage: 'Camera language',
         bodyFacing: 'Body orientation',
@@ -1963,6 +1966,11 @@ export default {
         presets: {
           open: 'Prompt presets',
           title: 'Instruction templates',
+          visualChip: {
+            genre: 'Genre',
+            cast: 'Cast',
+            hook: 'Hook'
+          },
           titleScreenplay: 'Screenplay templates',
           titleOptimize: 'Prompt optimize templates',
           titleShotSplit: 'Shot split templates',

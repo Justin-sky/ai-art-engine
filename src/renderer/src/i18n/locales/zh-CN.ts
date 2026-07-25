@@ -575,7 +575,10 @@ export default {
       select: '选择镜头、表演或光影预设…',
       selectField: '选择{field}预设…',
       apply: '套用',
+      showPresets: '打开预设',
+      hidePresets: '收起预设',
       hint: '预设文本插入当前光标处，其余相关字段追加到末尾；不会清空已有内容。',
+      hintVisual: '点选卡片即可套用；示意仅帮助辨认，实际写入仍是提示词文本。',
       group: {
         cameraLanguage: '镜头语言',
         bodyFacing: '身体朝向',
@@ -1953,6 +1956,11 @@ export default {
         presets: {
           open: '预设提示词',
           title: '生成指令模板',
+          visualChip: {
+            genre: '题材',
+            cast: '人物',
+            hook: '钩子'
+          },
           titleScreenplay: '生成剧本模板',
           titleOptimize: '提示词优化模板',
           titleShotSplit: '分镜拆分模板',

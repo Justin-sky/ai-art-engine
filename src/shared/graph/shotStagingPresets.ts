@@ -1,4 +1,5 @@
 import type { ShotStoryboard } from '../domain'
+import type { PresetVisual } from './presetVisual'
 
 export type ShotStagingGroup =
   'cameraLanguage' | 'bodyFacing' | 'performance' | 'lighting' | 'advertising'
@@ -18,6 +19,8 @@ export interface ShotStagingPreset {
   visualDescription?: LocalizedText
   lighting?: LocalizedText
   cameraMove?: LocalizedText
+  /** 可选；缺省时由 resolveShotStagingVisual 推断 */
+  visual?: PresetVisual
 }
 
 const text = (zh: string, en: string): LocalizedText => ({ zh, en })

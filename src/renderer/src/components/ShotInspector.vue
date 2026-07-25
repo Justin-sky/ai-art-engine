@@ -36,22 +36,14 @@
       </div>
     </label>
 
-    <ShotStagingPresetPicker
-      :storyboard="local.storyboard"
-      :resolve-insertion-positions="resolveStagingInsertionPositions"
-      @apply="applyStagingPreset"
-    />
-
     <label>
       {{ t('shot.field.visual') }}
       <RefMentionTextarea
-        ref="visualDescriptionEl"
         v-model="local.storyboard.visualDescription"
         :options="mentionOptions"
         :rows="4"
         :placeholder="t('shot.mention.labelHint')"
         :hint="t('shot.mention.labelHint')"
-        @focus="activeStagingField = 'visualDescription'"
         @change="persist"
       />
     </label>
@@ -67,19 +59,10 @@
     <label>
       {{ t('shot.field.lighting') }}
       <textarea
-        ref="lightingEl"
         v-model="local.storyboard.lighting"
         rows="3"
-        @focus="activeStagingField = 'lighting'"
         @change="persist"
         :placeholder="t('shot.placeholder.lighting')"
-      />
-      <ShotStagingPresetPicker
-        field="lighting"
-        :storyboard="local.storyboard"
-        :resolve-insertion-positions="resolveStagingInsertionPositions"
-        @focusin="activeStagingField = 'lighting'"
-        @apply="applyStagingPreset"
       />
     </label>
 
@@ -105,19 +88,10 @@
     <label>
       {{ t('shot.field.cameraMove') }}
       <textarea
-        ref="cameraMoveEl"
         v-model="local.storyboard.cameraMove"
         rows="3"
-        @focus="activeStagingField = 'cameraMove'"
         @change="persist"
         :placeholder="t('shot.placeholder.cameraMove')"
-      />
-      <ShotStagingPresetPicker
-        field="cameraMove"
-        :storyboard="local.storyboard"
-        :resolve-insertion-positions="resolveStagingInsertionPositions"
-        @focusin="activeStagingField = 'cameraMove'"
-        @apply="applyStagingPreset"
       />
     </label>
 
@@ -146,10 +120,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import ShotGenRefsEditor from './ShotGenRefsEditor.vue'
 import RefMentionTextarea from './RefMentionTextarea.vue'
-import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 import {
   SHOT_SIZE_OPTIONS,
   buildShotGenerationPrompt,
@@ -166,7 +139,7 @@ import {
 } from '@shared/domain'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
-import { listVideoMentionContribution, type ShotStagingTextField } from '@shared/graph'
+import { listVideoMentionContribution } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -181,15 +154,6 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { t, shotStatusLabel: statusLabel, shotSizeLabel } = useStudioI18n()
-
-type MentionTextareaHandle = {
-  getSelection: () => { start: number; end: number }
-  setSelection: (start: number, end?: number) => void
-}
-const visualDescriptionEl = ref<MentionTextareaHandle | null>(null)
-const lightingEl = ref<HTMLTextAreaElement | null>(null)
-const cameraMoveEl = ref<HTMLTextAreaElement | null>(null)
-const activeStagingField = ref<ShotStagingTextField | null>(null)
 
 const local = reactive({
   title: '',
@@ -318,32 +282,6 @@ async function persist(): Promise<void> {
   const next = buildShotPayload()
   if (!next) return
   await project.persistShotCommand(next, 'Update shot inspector')
-}
-
-function resolveStagingInsertionPositions(): Partial<Record<ShotStagingTextField, number>> {
-  return {
-    visualDescription: visualDescriptionEl.value?.getSelection().start,
-    lighting: lightingEl.value?.selectionStart ?? local.storyboard.lighting.length,
-    cameraMove: cameraMoveEl.value?.selectionStart ?? local.storyboard.cameraMove.length
-  }
-}
-
-function applyStagingPreset(storyboard: ShotStoryboard): void {
-  const field = activeStagingField.value
-  const position = field ? resolveStagingInsertionPositions()[field] : undefined
-  const insertedLength = field ? storyboard[field].length - local.storyboard[field].length : 0
-  Object.assign(local.storyboard, storyboard)
-  void persist()
-  if (!field || position === undefined || insertedLength <= 0) return
-  void nextTick(() => {
-    const cursor = position + insertedLength
-    if (field === 'visualDescription') visualDescriptionEl.value?.setSelection(cursor)
-    else {
-      const el = field === 'lighting' ? lightingEl.value : cameraMoveEl.value
-      el?.focus()
-      el?.setSelectionRange(cursor, cursor)
-    }
-  })
 }
 
 function formatTime(iso: string): string {
