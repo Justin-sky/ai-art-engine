@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="AIArtEngine" width="120" />
+  <img src="docs/assets/logo-mark.png" alt="" width="96" />
 
-  <h1>AIArtEngine</h1>
+  <h1>AI Art Engine</h1>
 
   <p><b>本地 AI 短视频创作工作台</b></p>
   <p>
@@ -45,18 +45,27 @@
 | 渠道 | 地址 |
 |------|------|
 | **GitHub Pages**（国际） | https://justin-sky.github.io/ai-art-engine/ |
-| **腾讯云静态托管**（国内） | https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com |
+| **阿里云 OSS**（国内） | 部署后见桶自定义域名 / `publicBaseUrl` |
 
 请勿使用带 `/website/` 的地址（例如 `.../website/index.html`），会 404。
 
 本地预览 / 发布国内镜像：
 
 ```bash
-npm run site          # 本地预览 http://localhost:5174
-npm run site:deploy   # 部署 website/ 到腾讯云静态托管（首次需 tcb login）
+npm run site                 # 本地预览 http://localhost:5174
+npm run site:deploy          # 部署 website/ 到阿里云 OSS
 ```
 
-配置见根目录 `cloudbaserc.json`。
+阿里云 OSS 部署：
+
+1. 复制 `oss-website.example.json` → `oss-website.local.json`
+2. 填写 `accessKeyId` / `accessKeySecret` / `bucket` / `region`（如 `oss-cn-hangzhou`）
+3. 建议在 OSS 控制台为桶开启**公共读**与**静态页面**（首页 `index.html`），绑定**自定义域名**或 CDN，并在配置里填写 `publicBaseUrl`
+4. 执行 `npm run site:deploy`
+
+也可用环境变量：`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`OSS_BUCKET`、`OSS_REGION`、`OSS_ENDPOINT`、`OSS_PUBLIC_BASE_URL`。
+
+说明：默认桶域名访问 HTML 可能被强制下载；绑定自定义域名后浏览器可直接打开页面（国内域名需 ICP 备案）。
 
 ---
 
@@ -172,8 +181,8 @@ npm run typecheck && npm test
 
 ## 交流
 
-- **官网**：[GitHub Pages](https://justin-sky.github.io/ai-art-engine/) · [腾讯云](https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com)
-- **国内镜像**：腾讯云静态托管（环境 `ai-art-engine-d9g4us7uqeeabec58`，域名见控制台）
+- **官网**：[GitHub Pages](https://justin-sky.github.io/ai-art-engine/) · 阿里云 OSS（见 `npm run site:deploy`）
+- **国内镜像**：阿里云 OSS 静态托管（自定义域名 / `publicBaseUrl`）
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)
 - **QQ 群**：647306826（扫码入群）

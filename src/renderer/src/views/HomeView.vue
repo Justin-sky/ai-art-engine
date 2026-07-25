@@ -1,7 +1,10 @@
 <template>
   <div class="home">
     <section class="hero">
-      <img class="hero-logo" :src="logoUrl" alt="AIArtEngine" />
+      <div class="hero-brand">
+        <img class="hero-mark" :src="iconUrl" alt="" />
+        <h1 class="hero-title">AI Art Engine</h1>
+      </div>
       <p>{{ t('home.tagline') }}</p>
       <div class="actions">
         <button class="primary" @click="onCreate">{{ t('home.createProject') }}</button>
@@ -85,7 +88,7 @@ import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/project'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from '../components/StudioFloatingWindow.vue'
-import logoUrl from '../assets/logo.png'
+import iconUrl from '../assets/logo-mark.png'
 
 const { t } = useStudioI18n()
 const router = useRouter()
@@ -203,12 +206,28 @@ async function removeRecent(path: string): Promise<void> {
   text-align: center;
 }
 
-.hero-logo {
+.hero-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.hero-mark {
   display: block;
-  width: min(260px, 70vw);
-  height: auto;
-  margin: 0 auto 20px;
+  width: 96px;
+  height: 96px;
   object-fit: contain;
+}
+
+.hero-title {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(34px, 5vw, 54px);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .hero p {

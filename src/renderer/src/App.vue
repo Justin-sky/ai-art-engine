@@ -1,8 +1,9 @@
 <template>
   <div class="app-shell" :class="{ 'stage-only': isChromeLessWindow }">
     <header v-if="!isChromeLessWindow" class="topbar">
-      <button type="button" class="brand" :title="'AIArtEngine'" @click="goHome">
-        <img class="brand-logo" :src="logoUrl" alt="AIArtEngine" />
+      <button type="button" class="brand" title="AI Art Engine" @click="goHome">
+        <img class="brand-logo" :src="logoUrl" alt="" />
+        <span class="brand-name">AI Art Engine</span>
       </button>
       <div class="topbar-meta" v-if="project.isOpen">
         <span class="muted">{{ project.config?.name }}</span>
@@ -205,8 +206,17 @@ onBeforeUnmount(() => {
 .brand-logo {
   display: block;
   height: 26px;
-  width: auto;
+  width: 26px;
   object-fit: contain;
+}
+
+.brand-name {
+  margin-left: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .topbar-meta {

@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="AIArtEngine" width="120" />
+  <img src="docs/assets/logo-mark.png" alt="" width="96" />
 
-  <h1>AIArtEngine</h1>
+  <h1>AI Art Engine</h1>
 
   <p><b>Local AI short-video creation studio</b></p>
   <p>
@@ -42,14 +42,16 @@ Landing page sources live in `website/`:
 | Channel | URL |
 |---------|-----|
 | **GitHub Pages** | https://justin-sky.github.io/ai-art-engine/ |
-| **Tencent CloudBase** (CN) | https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com |
+| **Alibaba Cloud OSS** (CN) | After deploy: custom domain / `publicBaseUrl` |
 
 Do not use paths with `/website/` (e.g. `.../website/index.html`) — they 404.
 
 ```bash
-npm run site          # local preview
-npm run site:deploy   # deploy website/ to CloudBase (first time: tcb login)
+npm run site                   # local preview
+npm run site:deploy            # deploy website/ to Alibaba Cloud OSS
 ```
+
+Copy `oss-website.example.json` to `oss-website.local.json`, fill AccessKey / bucket / region (e.g. `oss-cn-hangzhou`), then run `npm run site:deploy`. Bind a custom domain for HTML preview (default OSS domains may force download; mainland domains require ICP filing).
 
 ---
 

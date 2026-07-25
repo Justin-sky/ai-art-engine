@@ -1,0 +1,10 @@
+{
+  "accessKeyId": "",
+  "accessKeySecret": "",
+  "region": "oss-cn-hangzhou",
+  "endpoint": "",
+  "bucket": "",
+  "publicBaseUrl": "",
+  "prefix": "",
+  "skipWebsite": false
+}

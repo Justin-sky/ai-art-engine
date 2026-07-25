@@ -19,7 +19,7 @@ npm run site
 
 | 路径 | 说明 |
 |------|------|
-| `assets/logo.png` / `logo-mark.png` | 品牌标识 |
+| `assets/logo-mark.png` | 品牌图标（页面使用图标 + 文字组合） |
 | `assets/banner/node-graph.webp` | 节点图 |
 | `assets/banner/storyboard.webp` | 分镜编辑 |
 | `assets/banner/director-stage.webp` | 3D 导演台 |
@@ -48,14 +48,20 @@ node website/optimize-assets.mjs
 2. 推送到 `main`（或手动跑该 workflow）后自动发布
 3. 地址：https://justin-sky.github.io/ai-art-engine/
 
-## 部署（腾讯云静态托管 · 国内）
-
-环境 ID：`ai-art-engine-d9g4us7uqeeabec58`
+## 部署（阿里云 OSS · 国内推荐）
 
 ```bash
-# 项目根目录（首次需登录腾讯云）
-npx --yes -p @cloudbase/cli tcb login
+# 1. 复制并填写密钥 / 桶信息（local 文件已 gitignore）
+cp oss-website.example.json oss-website.local.json
+
+# 2. 项目根目录上传 website/
 npm run site:deploy
 ```
 
-线上地址：https://ai-art-engine-d9g4us7uqeeabec58-1302031604.tcloudbaseapp.com
+建议在 OSS 控制台：
+
+1. 桶读写权限设为**公共读**
+2. 基础设置 → 静态页面 → 默认首页 `index.html`（脚本也会尝试自动配置）
+3. 绑定**自定义域名**或 CDN（国内需 ICP 备案），并在 `oss-website.local.json` 填写 `publicBaseUrl`
+
+也可用环境变量：`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`OSS_BUCKET`、`OSS_REGION`、`OSS_ENDPOINT`、`OSS_PUBLIC_BASE_URL`。
