@@ -81,7 +81,7 @@ export default {
       emptyProviders:
         'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Hailuo (MiniMax), Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, and video models. Ark Voice uses purchased speaker_ids; Kling, Hailuo, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, Hailuo, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',

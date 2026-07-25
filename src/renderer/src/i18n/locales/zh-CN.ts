@@ -81,7 +81,7 @@ export default {
       emptyProviders:
         '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、海螺 AI、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / 海螺 / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / 海螺 / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
