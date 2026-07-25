@@ -557,10 +557,10 @@ function onCosRegionChange(provider: ObjectStorageProviderInstance, region: stri
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 28px;
   flex-shrink: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 24px;
   line-height: 1;
   transition: transform 0.15s ease;
 }
