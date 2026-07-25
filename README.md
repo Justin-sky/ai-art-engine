@@ -27,6 +27,7 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
+    <a href="https://space.bilibili.com/3707036976024122"><b>视频教程</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
     <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"><b>Gitee</b></a> ·
@@ -197,6 +198,7 @@ npm run typecheck && npm test
 ## 交流
 
 - **官网**：[GitHub Pages](https://justin-sky.github.io/ai-art-engine/) · 阿里云 OSS（见 `npm run site:deploy`）
+- **视频教程**：[Bilibili 空间](https://space.bilibili.com/3707036976024122)
 - **国内镜像**：阿里云 OSS 静态托管（自定义域名 / `publicBaseUrl`）
 - **GitHub**：[Justin-sky/ai-art-engine](https://github.com/Justin-sky/ai-art-engine)
 - **Gitee**：[beijing_blue_whale_era_zhangjian/ai-art-engine](https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine)

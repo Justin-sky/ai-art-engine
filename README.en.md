@@ -26,6 +26,7 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
+    <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#community"><b>Community</b></a> ·
     <a href="#features"><b>Features</b></a> ·
@@ -155,6 +156,7 @@ Track bugs on [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues
 ## Community
 
 - **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **Video tutorials**: [Bilibili space](https://space.bilibili.com/3707036976024122)
 - **QQ group**: 647306826 (scan to join)
 
   <img src="docs/assets/qq-group.png" alt="AIArtEngine QQ group QR code" width="220" />
