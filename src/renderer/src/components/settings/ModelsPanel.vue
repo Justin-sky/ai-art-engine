@@ -64,7 +64,11 @@
         <input v-model="provider.baseUrl" spellcheck="false" />
       </label>
       <label>
-        API Key
+        {{
+          provider.providerKind === 'kling'
+            ? t('settings.models.accessKey')
+            : 'API Key'
+        }}
         <div class="secret-field">
           <input
             v-model="provider.apiKey"
@@ -89,6 +93,51 @@
           >
             <svg
               v-if="!revealedKeys[provider.id]"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
+              />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
+              />
+            </svg>
+          </button>
+        </div>
+      </label>
+      <label v-if="provider.providerKind === 'kling'">
+        {{ t('settings.models.secretKey') }}
+        <div class="secret-field">
+          <input
+            v-model="provider.secretKey"
+            :type="revealedSecretKeys[provider.id] ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            type="button"
+            class="reveal-btn"
+            :aria-label="
+              revealedSecretKeys[provider.id]
+                ? t('settings.models.hideSecretKey')
+                : t('settings.models.showSecretKey')
+            "
+            :title="
+              revealedSecretKeys[provider.id]
+                ? t('settings.models.hideSecretKey')
+                : t('settings.models.showSecretKey')
+            "
+            @click="toggleSecretKeyReveal(provider.id)"
+          >
+            <svg
+              v-if="!revealedSecretKeys[provider.id]"
               viewBox="0 0 24 24"
               width="16"
               height="16"
@@ -135,7 +184,10 @@
       <div v-if="!isArkVoiceModality(provider)" class="catalog-toolbar">
         <button
           type="button"
-          :disabled="loadingKey === catalogKey(provider.id, currentModality(provider)) || !provider.apiKey.trim()"
+          :disabled="
+            loadingKey === catalogKey(provider.id, currentModality(provider)) ||
+            !canFetchCatalog(provider)
+          "
           @click="refreshModels(provider, currentModality(provider))"
         >
           {{
@@ -342,6 +394,9 @@ import {
   type ModelProviderKind
 } from '@shared/openrouter'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
+import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
+import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { clearImageGenerateCapabilitiesCache } from '../../features/graph/model/imageGenerateCapabilities'
 import { clearVideoGenerateCapabilitiesCache } from '../../features/graph/model/videoGenerateCapabilities'
@@ -352,8 +407,14 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
-/** OpenRouter 不展示音频；方舟展示「声音」页签（底层仍为 audio 模态） */
+/** OpenRouter 不展示音频；方舟展示「声音」；可灵仅图片/视频；魔塔文本+图片 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
+  if (provider.providerKind === 'kling') {
+    return ['image', 'video']
+  }
+  if (provider.providerKind === 'modelscope') {
+    return ['text', 'image']
+  }
   if (provider.providerKind === 'volcengine-ark') {
     return [...MODEL_MODALITIES]
   }
@@ -406,6 +467,7 @@ const catalogErrors = reactive<Record<string, string>>({})
 const filters = reactive<Record<string, string>>({})
 const manualModelIds = reactive<Record<string, string>>({})
 const revealedKeys = reactive<Record<string, boolean>>({})
+const revealedSecretKeys = reactive<Record<string, boolean>>({})
 const activeModality = reactive<Record<string, ModelModality>>({})
 /** true = 折叠；缺省为展开 */
 const collapsedProviders = reactive<Record<string, boolean>>({})
@@ -428,8 +490,8 @@ function catalogKey(providerId: string, modality: ModelModality): string {
 
 function currentModality(provider: ModelProviderInstance): ModelModality {
   const allowed = settingsModalitiesFor(provider)
-  const mod = activeModality[provider.id] ?? 'text'
-  return allowed.includes(mod) ? mod : 'text'
+  const mod = activeModality[provider.id] ?? allowed[0] ?? 'text'
+  return allowed.includes(mod) ? mod : (allowed[0] ?? 'text')
 }
 
 function modalityHintText(provider: ModelProviderInstance): string {
@@ -437,17 +499,36 @@ function modalityHintText(provider: ModelProviderInstance): string {
   if (provider.providerKind === 'volcengine-ark') {
     return t(`settings.models.arkModalityHint.${mod}`)
   }
+  if (provider.providerKind === 'kling') {
+    return t(`settings.models.klingModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'dashscope') {
+    return t(`settings.models.dashscopeModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'modelscope') {
+    return t(`settings.models.modelscopeModalityHint.${mod}`)
+  }
   return t(`settings.models.modalityHint.${mod}`)
+}
+
+function canFetchCatalog(provider: ModelProviderInstance): boolean {
+  if (!provider.apiKey.trim()) return false
+  if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) return false
+  return true
 }
 
 function toggleKeyReveal(providerId: string): void {
   revealedKeys[providerId] = !revealedKeys[providerId]
 }
 
+function toggleSecretKeyReveal(providerId: string): void {
+  revealedSecretKeys[providerId] = !revealedSecretKeys[providerId]
+}
+
 function addProvider(): void {
   const provider = createProviderInstance(pendingProviderKind.value)
   props.models.providers.push(provider)
-  activeModality[provider.id] = 'text'
+  activeModality[provider.id] = settingsModalitiesFor(provider)[0] ?? 'text'
   collapsedProviders[provider.id] = false
 }
 
@@ -457,6 +538,7 @@ function removeProvider(id: string): void {
   delete collapsedProviders[id]
   delete activeModality[id]
   delete revealedKeys[id]
+  delete revealedSecretKeys[id]
   for (const mod of MODEL_MODALITIES) {
     const key = catalogKey(id, mod)
     delete catalogs[key]
@@ -488,6 +570,7 @@ async function refreshModels(
       modality,
       providerInstanceId: providerId,
       apiKey: latestBefore.apiKey,
+      secretKey: latestBefore.secretKey,
       baseUrl: latestBefore.baseUrl,
       providerKind: latestBefore.providerKind
     })
@@ -543,10 +626,22 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
   if (!id) return
   const list = catalogs[key] ?? (catalogs[key] = [])
   if (!list.some((m) => m.id === id)) {
-    // 方舟视频/图片：手填接入点时附带静态能力，便于一并写入设置快照
+    // 方舟 / 可灵：手填模型时附带静态能力，便于一并写入设置快照
     let capabilities: Record<string, unknown> | undefined
     if (provider.providerKind === 'volcengine-ark' && (modality === 'video' || modality === 'image')) {
       capabilities = resolveVolcengineArkModelCapabilities(id, id, modality) ?? undefined
+    } else if (provider.providerKind === 'kling' && (modality === 'video' || modality === 'image')) {
+      capabilities = resolveKlingModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'dashscope' &&
+      (modality === 'video' || modality === 'image' || modality === 'text')
+    ) {
+      capabilities = resolveDashScopeModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'modelscope' &&
+      (modality === 'image' || modality === 'text')
+    ) {
+      capabilities = resolveModelScopeModelCapabilities(id, modality) ?? undefined
     }
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }

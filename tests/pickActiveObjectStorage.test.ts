@@ -1,63 +1,72 @@
 import { describe, expect, it } from 'vitest'
-import { pickActiveObjectStorage } from '../src/shared/objectStorage'
+import {
+  createEmptyAliyunOssParams,
+  createEmptyTencentCosParams,
+  createEmptyVolcengineTosParams,
+  createObjectStorageProvider,
+  pickActiveObjectStorage
+} from '../src/shared/objectStorage'
 
 describe('pickActiveObjectStorage', () => {
   it('returns null when incomplete', () => {
-    expect(
-      pickActiveObjectStorage({
-        providers: [
-          {
-            id: '1',
-            providerKind: 'volcengine-tos',
-            label: 'TOS',
-            enabled: true,
-            tos: {
-              accessKeyId: 'ak',
-              accessKeySecret: '',
-              region: 'cn-beijing',
-              endpoint: 'https://tos-cn-beijing.volces.com',
-              bucket: 'demo',
-              publicBaseUrl: ''
-            }
-          }
-        ]
-      })
-    ).toBeNull()
+    const provider = createObjectStorageProvider('volcengine-tos', {
+      id: '1',
+      tos: {
+        ...createEmptyVolcengineTosParams(),
+        accessKeyId: 'ak',
+        accessKeySecret: '',
+        bucket: 'demo'
+      }
+    })
+    expect(pickActiveObjectStorage({ providers: [provider] })).toBeNull()
   })
 
-  it('picks first enabled complete provider', () => {
-    const picked = pickActiveObjectStorage({
-      providers: [
-        {
-          id: 'skip',
-          providerKind: 'volcengine-tos',
-          label: 'off',
-          enabled: false,
-          tos: {
-            accessKeyId: 'ak',
-            accessKeySecret: 'sk',
-            region: 'cn-beijing',
-            endpoint: 'https://tos-cn-beijing.volces.com',
-            bucket: 'demo',
-            publicBaseUrl: ''
-          }
-        },
-        {
-          id: 'ok',
-          providerKind: 'volcengine-tos',
-          label: 'TOS',
-          enabled: true,
-          tos: {
-            accessKeyId: 'ak',
-            accessKeySecret: 'sk',
-            region: 'cn-beijing',
-            endpoint: 'https://tos-cn-beijing.volces.com',
-            bucket: 'demo',
-            publicBaseUrl: ''
-          }
-        }
-      ]
+  it('picks first enabled complete TOS provider', () => {
+    const off = createObjectStorageProvider('volcengine-tos', {
+      id: 'skip',
+      enabled: false,
+      tos: {
+        ...createEmptyVolcengineTosParams(),
+        accessKeyId: 'ak',
+        accessKeySecret: 'sk',
+        bucket: 'demo'
+      }
     })
-    expect(picked?.id).toBe('ok')
+    const ok = createObjectStorageProvider('volcengine-tos', {
+      id: 'ok',
+      tos: {
+        ...createEmptyVolcengineTosParams(),
+        accessKeyId: 'ak',
+        accessKeySecret: 'sk',
+        bucket: 'demo'
+      }
+    })
+    expect(pickActiveObjectStorage({ providers: [off, ok] })?.id).toBe('ok')
+  })
+
+  it('picks aliyun-oss when ready', () => {
+    const provider = createObjectStorageProvider('aliyun-oss', {
+      id: 'oss1',
+      oss: {
+        ...createEmptyAliyunOssParams(),
+        accessKeyId: 'ak',
+        accessKeySecret: 'sk',
+        bucket: 'demo'
+      }
+    })
+    expect(pickActiveObjectStorage({ providers: [provider] })?.providerKind).toBe('aliyun-oss')
+  })
+
+  it('picks tencent-cos when ready', () => {
+    const provider = createObjectStorageProvider('tencent-cos', {
+      id: 'cos1',
+      cos: {
+        ...createEmptyTencentCosParams(),
+        secretId: 'id',
+        secretKey: 'key',
+        bucket: 'demo-1250000000'
+      }
+    })
+    expect(pickActiveObjectStorage({ providers: [provider] })?.providerKind).toBe('tencent-cos')
   })
 })

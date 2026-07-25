@@ -8,9 +8,13 @@ import {
 } from '@shared/graph'
 import {
   getSavedModelCatalogEntry,
+  isDashScopeProvider,
+  isKlingProvider,
   isVolcengineArkProvider
 } from '@shared/openrouter'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
+import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 export interface VideoGenerateCapabilitiesBundle {
@@ -53,10 +57,14 @@ async function resolveVideoCapabilitiesRaw(
 ): Promise<Record<string, unknown> | null> {
   let catalogName: string | undefined
   let isArk = false
+  let isKling = false
+  let isDashScope = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
+    isKling = isKlingProvider(provider)
+    isDashScope = isDashScopeProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -83,9 +91,15 @@ async function resolveVideoCapabilitiesRaw(
       return fromApi
     }
   } catch {
-    // 继续走本地方舟配置
+    // 继续走本地静态配置
   }
 
+  if (isKling) {
+    return resolveKlingModelCapabilities(modelId, 'video')
+  }
+  if (isDashScope) {
+    return resolveDashScopeModelCapabilities(modelId, 'video')
+  }
   if (isArk) {
     return resolveVolcengineArkModelCapabilities(modelId, catalogName, 'video')
   }

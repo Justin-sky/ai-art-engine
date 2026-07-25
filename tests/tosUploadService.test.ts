@@ -64,6 +64,21 @@ function makeProvider(
       bucket: 'demo-bucket',
       publicBaseUrl: '',
       ...tosOverrides
+    },
+    oss: {
+      accessKeyId: '',
+      accessKeySecret: '',
+      region: 'oss-cn-hangzhou',
+      endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
+      bucket: '',
+      publicBaseUrl: ''
+    },
+    cos: {
+      secretId: '',
+      secretKey: '',
+      region: 'ap-guangzhou',
+      bucket: '',
+      publicBaseUrl: ''
     }
   }
 }

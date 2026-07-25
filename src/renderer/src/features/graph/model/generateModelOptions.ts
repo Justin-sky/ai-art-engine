@@ -27,6 +27,18 @@ export function buildModelOptions(
     if (!provider.enabled || !provider.apiKey.trim()) continue
     // 声音（audio）仅火山方舟 voice_design；排除 OpenRouter 等
     if (modality === 'audio' && provider.providerKind !== 'volcengine-ark') continue
+    // 可灵仅图片/视频
+    if (provider.providerKind === 'kling' && modality !== 'image' && modality !== 'video') continue
+    // 通义千问暂不提供声音
+    if (provider.providerKind === 'dashscope' && modality === 'audio') continue
+    // 魔塔：文本 + 图片
+    if (
+      provider.providerKind === 'modelscope' &&
+      modality !== 'text' &&
+      modality !== 'image'
+    ) {
+      continue
+    }
     const sel = modalityConfig(provider, modality)
     const models =
       sel.selectedModelIds.length > 0

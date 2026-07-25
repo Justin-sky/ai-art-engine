@@ -4,7 +4,13 @@ import {
   createEmptyModelsSettings,
   createProviderInstance,
   findProviderById,
+  isKlingProvider,
   isVolcengineArkProvider,
+  DASHSCOPE_DEFAULT_BASE_URL,
+  isDashScopeProvider,
+  isModelScopeProvider,
+  KLING_DEFAULT_BASE_URL,
+  MODELSCOPE_DEFAULT_BASE_URL,
   normalizeModelsSettings,
   pickActiveProvider,
   VOLCENGINE_ARK_DEFAULT_BASE_URL
@@ -91,6 +97,65 @@ describe('normalizeModelsSettings', () => {
     expect(next.providers[0].baseUrl).toBe(VOLCENGINE_ARK_DEFAULT_BASE_URL)
   })
 
+  it('keeps kling provider kind, secretKey and default base url', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'kling1',
+          providerKind: 'kling',
+          label: '',
+          apiKey: 'ak',
+          secretKey: 'sk',
+          baseUrl: '',
+          enabled: true
+        }
+      ]
+    })
+    expect(next.providers[0].providerKind).toBe('kling')
+    expect(next.providers[0].label).toBe('可灵')
+    expect(next.providers[0].baseUrl).toBe(KLING_DEFAULT_BASE_URL)
+    expect(next.providers[0].secretKey).toBe('sk')
+    expect(isKlingProvider(next.providers[0])).toBe(true)
+  })
+
+  it('keeps dashscope provider kind and default base url', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'ds1',
+          providerKind: 'qwen',
+          label: '',
+          apiKey: 'sk-ds',
+          baseUrl: '',
+          enabled: true
+        }
+      ]
+    })
+    expect(next.providers[0].providerKind).toBe('dashscope')
+    expect(next.providers[0].label).toBe('通义千问')
+    expect(next.providers[0].baseUrl).toBe(DASHSCOPE_DEFAULT_BASE_URL)
+    expect(isDashScopeProvider(next.providers[0])).toBe(true)
+  })
+
+  it('keeps modelscope provider kind and default base url', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'ms1',
+          providerKind: '魔搭',
+          label: '',
+          apiKey: 'ms-token',
+          baseUrl: '',
+          enabled: true
+        }
+      ]
+    })
+    expect(next.providers[0].providerKind).toBe('modelscope')
+    expect(next.providers[0].label).toBe('魔塔')
+    expect(next.providers[0].baseUrl).toBe(MODELSCOPE_DEFAULT_BASE_URL)
+    expect(isModelScopeProvider(next.providers[0])).toBe(true)
+  })
+
   it('drops unknown legacy shapes', () => {
     const next = normalizeModelsSettings({
       text: [{ id: 'old', apiKey: 'sk', selectedModelIds: ['x'] }],
@@ -135,5 +200,22 @@ describe('pickActiveProvider', () => {
   it('picks modality-specific model', () => {
     const picked = pickActiveProvider([provider], 'text')
     expect(picked?.modelId).toBe('t1')
+  })
+
+  it('requires secretKey for kling providers', () => {
+    const kling = createProviderInstance('kling', {
+      id: 'k1',
+      apiKey: 'ak',
+      secretKey: '',
+      modalities: {
+        text: { selectedModelIds: [], defaultModelId: '' },
+        image: { selectedModelIds: ['kling-v2'], defaultModelId: 'kling-v2' },
+        video: { selectedModelIds: [], defaultModelId: '' },
+        audio: { selectedModelIds: [], defaultModelId: '' }
+      }
+    })
+    expect(pickActiveProvider([kling], 'image')).toBeNull()
+    kling.secretKey = 'sk'
+    expect(pickActiveProvider([kling], 'image')?.modelId).toBe('kling-v2')
   })
 })

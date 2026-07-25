@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "console": "https://modelscope.cn/my/myaccesstoken",
+    "docs": [
+      "https://modelscope.cn/docs/model-service/API-Inference/intro",
+      "https://modelscope.cn/headlines/article/795"
+    ],
+    "note": "ModelScope API-Inference OpenAI-compatible base. Text via /chat/completions; image via /images/generations. Video/speech not exposed in this adapter yet."
+  },
+  "models": [
+    {
+      "id": "Qwen/Qwen2.5-72B-Instruct",
+      "name": "Qwen2.5-72B-Instruct",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "Qwen/Qwen3-235B-A22B-Instruct",
+      "name": "Qwen3-235B-A22B-Instruct",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "Qwen/Qwen2.5-VL-72B-Instruct",
+      "name": "Qwen2.5-VL-72B-Instruct",
+      "modality": "text",
+      "profile": "text-vl"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-R1",
+      "name": "DeepSeek-R1",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V3",
+      "name": "DeepSeek-V3",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "MAILAND/majicflus_v1",
+      "name": "MajicFlus v1",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "AI-ModelScope/stable-diffusion-xl-base-1.0",
+      "name": "SDXL Base 1.0",
+      "modality": "image",
+      "profile": "image-base"
+    }
+  ],
+  "profiles": {
+    "text-base": {
+      "modality": "text",
+      "label": "LLM",
+      "capabilities": {}
+    },
+    "text-vl": {
+      "modality": "text",
+      "label": "VL",
+      "capabilities": {}
+    },
+    "image-base": {
+      "modality": "image",
+      "label": "Text2Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": [
+              "1:1",
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4"
+            ]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 0
+          }
+        }
+      }
+    }
+  }
+}

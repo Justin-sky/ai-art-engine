@@ -1,0 +1,165 @@
+{
+  "meta": {
+    "console": "https://app.klingai.com/cn/dev",
+    "docs": [
+      "https://app.klingai.com/cn/dev/document-api/apiReference/model/imageToVideo",
+      "https://docs.qingque.cn/d/home/eZQAyImcbaS0fz-8ANjXvU5ed"
+    ],
+    "note": "Kling has no remote model catalog; static list for settings UI and capabilities. Default Base URL: api-beijing.klingai.com."
+  },
+  "models": [
+    {
+      "id": "kling-v1",
+      "name": "Kling Image v1",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "kling-v1-5",
+      "name": "Kling Image v1.5",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "kling-v2",
+      "name": "Kling Image v2",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "kling-v2-1",
+      "name": "Kling Video v2.1",
+      "modality": "video",
+      "profile": "video-base"
+    },
+    {
+      "id": "kling-v2-5-turbo",
+      "name": "Kling Video v2.5 Turbo",
+      "modality": "video",
+      "profile": "video-base"
+    },
+    {
+      "id": "kling-v2-6",
+      "name": "Kling Video v2.6",
+      "modality": "video",
+      "profile": "video-audio"
+    },
+    {
+      "id": "kling-v3",
+      "name": "Kling Video v3",
+      "modality": "video",
+      "profile": "video-audio"
+    }
+  ],
+  "profiles": {
+    "image-base": {
+      "modality": "image",
+      "label": "Kling Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:3",
+              "3:4",
+              "3:2",
+              "2:3",
+              "21:9"
+            ]
+          },
+          "resolution": {
+            "values": [
+              "1k",
+              "2k"
+            ]
+          },
+          "n": {
+            "min": 1,
+            "max": 9
+          },
+          "input_references": {
+            "max": 1
+          }
+        }
+      }
+    },
+    "video-base": {
+      "modality": "video",
+      "label": "Kling Video",
+      "capabilities": {
+        "supported_resolutions": [
+          "720p",
+          "1080p"
+        ],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "supported_durations": [
+          5,
+          10
+        ],
+        "supported_frame_images": [
+          "first_frame",
+          "last_frame"
+        ],
+        "generate_audio": false,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": {
+            "max": 2
+          },
+          "max_videos": {
+            "max": 0
+          },
+          "max_audios": {
+            "max": 0
+          }
+        }
+      }
+    },
+    "video-audio": {
+      "modality": "video",
+      "label": "Kling Video (audio)",
+      "capabilities": {
+        "supported_resolutions": [
+          "720p",
+          "1080p"
+        ],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "supported_durations": [
+          5,
+          10
+        ],
+        "supported_frame_images": [
+          "first_frame",
+          "last_frame"
+        ],
+        "generate_audio": true,
+        "max_input_images": 2,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": {
+            "max": 2
+          },
+          "max_videos": {
+            "max": 0
+          },
+          "max_audios": {
+            "max": 0
+          }
+        }
+      }
+    }
+  }
+}

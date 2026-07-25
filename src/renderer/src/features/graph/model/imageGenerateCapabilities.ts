@@ -6,9 +6,15 @@ import {
 } from '@shared/graph'
 import {
   getSavedModelCatalogEntry,
+  isDashScopeProvider,
+  isKlingProvider,
+  isModelScopeProvider,
   isVolcengineArkProvider
 } from '@shared/openrouter'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
+import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
+import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 const cache = new Map<string, ImageGenerateParamCapabilities>()
@@ -34,10 +40,16 @@ async function resolveSupportedParameters(
 ): Promise<unknown> {
   let catalogName: string | undefined
   let isArk = false
+  let isKling = false
+  let isDashScope = false
+  let isModelScope = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
+    isKling = isKlingProvider(provider)
+    isDashScope = isDashScopeProvider(provider)
+    isModelScope = isModelScopeProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -61,7 +73,25 @@ async function resolveSupportedParameters(
     const fromApi = model?.capabilities?.supported_parameters
     if (fromApi && typeof fromApi === 'object') return fromApi
   } catch {
-    // 继续走本地方舟配置 / 默认能力
+    // 继续走本地静态配置 / 默认能力
+  }
+
+  if (isKling) {
+    const local = resolveKlingModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isDashScope) {
+    const local = resolveDashScopeModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isModelScope) {
+    const local = resolveModelScopeModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
   }
 
   if (isArk) {

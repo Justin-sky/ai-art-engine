@@ -2,10 +2,16 @@ import type { ModelProviderKind } from '@shared/openrouter'
 import type { ModelProviderAdapter } from './types'
 import { openRouterAdapter } from './openrouter/adapter'
 import { volcengineArkAdapter } from './volcengineArk/adapter'
+import { klingAdapter } from './kling/adapter'
+import { dashscopeAdapter } from './dashscope/adapter'
+import { modelScopeAdapter } from './modelscope/adapter'
 
 const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   openrouter: openRouterAdapter,
-  'volcengine-ark': volcengineArkAdapter
+  'volcengine-ark': volcengineArkAdapter,
+  kling: klingAdapter,
+  dashscope: dashscopeAdapter,
+  modelscope: modelScopeAdapter
 }
 
 /** 按 providerKind 取适配器；未知 kind 回退 OpenRouter */

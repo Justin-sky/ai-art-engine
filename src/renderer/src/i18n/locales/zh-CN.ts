@@ -79,15 +79,19 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter 或火山方舟，填写 API Key 后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次 API Key / Base URL；文本、图片、视频分别拉取并勾选。火山方舟声音为手填已购 speaker_id（声音设计）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵需 Access Key + Secret Key；通义千问用百炼 API Key；魔塔用访问令牌（文本/文生图）。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
       baseUrl: 'API Base URL',
+      accessKey: 'Access Key',
+      secretKey: 'Secret Key',
       showApiKey: '显示 API Key',
       hideApiKey: '隐藏 API Key',
+      showSecretKey: '显示 Secret Key',
+      hideSecretKey: '隐藏 Secret Key',
       fetchModels: '拉取可用模型',
       testingConnection: '正在验证 API Key…',
       loading: '拉取中…',
@@ -127,13 +131,34 @@ export default {
         video: 'Seedance 等视频模型，调用 /contents/generations/tasks。参考图/视频需可公网访问（可用对象存储 TOS）。',
         audio:
           '豆包语音 openspeech「声音设计」。不拉取模型目录；请手填控制台已购买的 speaker_id（如 S_xxx）并勾选。生成时用节点指令作为声音描述。'
+      },
+      klingModalityHint: {
+        image:
+          '可灵图片生成（文生图 / 图生图），调用 /v1/images/generations。需 Access Key + Secret Key；目录为本地静态列表。',
+        video:
+          '可灵视频生成：无首帧走文生视频 /v1/videos/text2video，有首帧走图生视频 /v1/videos/image2video。默认 Base URL 为 api-beijing.klingai.com。'
+      },
+      dashscopeModalityHint: {
+        text: '通义千问对话（OpenAI 兼容），默认 Base URL 为 dashscope.aliyuncs.com/compatible-mode/v1，对应 /chat/completions。',
+        image:
+          '万相文生图，异步调用 /api/v1/services/aigc/text2image/image-synthesis（由兼容 Base URL 自动推导原生地址）。',
+        video:
+          '万相文生/图生视频，异步调用 /api/v1/services/aigc/video-generation/video-synthesis；有首帧时传 img_url，请选用 i2v 模型。'
+      },
+      modelscopeModalityHint: {
+        text: '魔塔（ModelScope）API-Inference 对话，默认 Base URL 为 api-inference.modelscope.cn/v1，填写访问令牌（ms-…）。',
+        image: '魔塔文生图，调用 /v1/images/generations；模型 id 形如 org/model_name。'
       }
     },
     objectStorage: {
-      hint: '配置对象存储后可用于媒体上传与公网访问。当前支持火山引擎 TOS，后续可扩展更多厂商。',
+      hint: '配置对象存储后可用于媒体上传与公网访问。支持火山引擎 TOS、阿里云 OSS、腾讯云 COS。',
+      singleEnabledHint: '同时只能启用一个对象存储；切换启用会自动关闭其它项。',
       addProvider: '添加对象存储',
       add: '添加',
-      emptyProviders: '尚未添加对象存储。先添加「火山引擎 TOS」，再填写 AccessKey 与桶信息。',
+      collapseProvider: '收起提供商',
+      expandProvider: '展开提供商',
+      emptyProviders:
+        '尚未添加对象存储。可添加火山引擎 TOS / 阿里云 OSS / 腾讯云 COS，再填写密钥与桶信息。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -149,6 +174,28 @@ export default {
         bucket: 'Bucket 名称',
         publicBaseUrl: '公网访问域名（可选）',
         publicBaseUrlPlaceholder: '如 https://cdn.example.com 或自定义域名'
+      },
+      oss: {
+        intro:
+          '参数对应阿里云 OSS：AccessKey、Region、Endpoint、Bucket。未填公网域名时将使用签名 URL（约 24 小时有效）。',
+        region: '地域 Region',
+        customRegion: '自定义地域',
+        endpoint: 'Endpoint',
+        getCredentialsHint: '获取 AccessKey：',
+        bucket: 'Bucket 名称',
+        publicBaseUrl: '公网访问域名（可选）',
+        publicBaseUrlPlaceholder: '如 https://cdn.example.com 或绑定的自定义域名'
+      },
+      cos: {
+        intro:
+          '参数对应腾讯云 COS：SecretId、SecretKey、Region、Bucket（通常为 BucketName-APPID）。未填公网域名时将使用签名 URL。',
+        region: '地域 Region',
+        customRegion: '自定义地域',
+        getCredentialsHint: '获取 API 密钥：',
+        bucket: 'Bucket 名称',
+        bucketPlaceholder: '如 example-1250000000',
+        publicBaseUrl: '公网访问域名（可选）',
+        publicBaseUrlPlaceholder: '如 https://cdn.example.com 或默认加速域名'
       }
     },
     plugins: {

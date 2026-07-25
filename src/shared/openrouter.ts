@@ -3,8 +3,20 @@
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
+/** 可灵（Kling）国内开放平台 */
+export const KLING_DEFAULT_BASE_URL = 'https://api-beijing.klingai.com'
+/** 通义千问 / 万相（阿里云百炼 DashScope OpenAI 兼容） */
+export const DASHSCOPE_DEFAULT_BASE_URL =
+  'https://dashscope.aliyuncs.com/compatible-mode/v1'
+/** 魔塔 / 魔搭 ModelScope API-Inference（OpenAI 兼容） */
+export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1'
 
-export type ModelProviderKind = 'openrouter' | 'volcengine-ark'
+export type ModelProviderKind =
+  | 'openrouter'
+  | 'volcengine-ark'
+  | 'kling'
+  | 'dashscope'
+  | 'modelscope'
 
 /** 可扩展：新增厂商时同步实现 main/services/modelProviders 下的 Adapter，并在 registry 注册 */
 export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
@@ -21,6 +33,21 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     id: 'volcengine-ark',
     label: '火山方舟',
     defaultBaseUrl: VOLCENGINE_ARK_DEFAULT_BASE_URL
+  },
+  {
+    id: 'kling',
+    label: '可灵',
+    defaultBaseUrl: KLING_DEFAULT_BASE_URL
+  },
+  {
+    id: 'dashscope',
+    label: '通义千问',
+    defaultBaseUrl: DASHSCOPE_DEFAULT_BASE_URL
+  },
+  {
+    id: 'modelscope',
+    label: '魔塔',
+    defaultBaseUrl: MODELSCOPE_DEFAULT_BASE_URL
   }
 ]
 
@@ -58,7 +85,13 @@ export interface ModelProviderInstance {
   providerKind: ModelProviderKind
   /** 显示名，默认等于提供商名 */
   label: string
+  /** Access Key / API Key（可灵为 Access Key） */
   apiKey: string
+  /**
+   * Secret Key（可灵 JWT 签名用；其它厂商可为空）。
+   * 设置页对可灵单独展示；持久化进 electron-store。
+   */
+  secretKey?: string
   baseUrl: string
   enabled: boolean
   /** 各模态下的模型勾选与默认项 */
@@ -71,6 +104,76 @@ export function isVolcengineArkProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'volcengine-ark'
   return provider.providerKind === 'volcengine-ark'
+}
+
+export function isKlingProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'kling'
+  return provider.providerKind === 'kling'
+}
+
+export function isDashScopeProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'dashscope'
+  return provider.providerKind === 'dashscope'
+}
+
+export function isModelScopeProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'modelscope'
+  return provider.providerKind === 'modelscope'
+}
+
+/** 魔塔目录启发式：文生图 vs 文本/多模态对话 */
+export function classifyModelScopeModelModality(model: {
+  id?: string
+  name?: string
+}): ModelModality {
+  const text = `${model.id ?? ''} ${model.name ?? ''}`.toLowerCase()
+  if (
+    /flux|sdxl|stable.?diffusion|majic|t2i|text2image|image.?gen|lora|wanx|kolors|playground/.test(
+      text
+    )
+  ) {
+    return 'image'
+  }
+  if (/t2v|i2v|text2video|image2video|video.?gen/.test(text)) {
+    return 'video'
+  }
+  if (/tts|cosyvoice|speech|sambert/.test(text)) {
+    return 'audio'
+  }
+  return 'text'
+}
+
+/**
+ * 百炼目录启发式归类：万相图/视频 vs 千问文本。
+ * 未命中图/视频规则的默认归入文本。
+ */
+export function classifyDashScopeModelModality(model: {
+  id?: string
+  name?: string
+}): ModelModality {
+  const text = `${model.id ?? ''} ${model.name ?? ''}`.toLowerCase()
+  if (
+    /wanx|wan2|t2i|text2image|image-synthesis|qwen-image|flux/.test(text) &&
+    !/t2v|i2v|video/.test(text)
+  ) {
+    return 'image'
+  }
+  if (/t2v|i2v|video-synthesis|wan.*video|\bv2v\b/.test(text)) {
+    return 'video'
+  }
+  if (/cosyvoice|sambert|\btts\b|speech/.test(text)) {
+    return 'audio'
+  }
+  return 'text'
 }
 
 /**
@@ -192,6 +295,7 @@ export function createProviderInstance(
     providerKind: kind,
     label: meta.label,
     apiKey: '',
+    secretKey: '',
     baseUrl: meta.defaultBaseUrl,
     enabled: true,
     modalities: createEmptyModalityMap()
@@ -274,6 +378,8 @@ export interface ListModelsInput {
   providerInstanceId: string
   /** 未点保存时由前端直接传入，避免读到旧密钥 */
   apiKey?: string
+  /** 可灵等双密钥厂商：未保存时由前端传入 Secret Key */
+  secretKey?: string
   baseUrl?: string
   providerKind?: ModelProviderKind
 }
@@ -431,6 +537,7 @@ export function pickActiveProvider(
 ): { provider: ModelProviderInstance; modelId: string } | null {
   const candidates = providers.filter((p) => {
     if (!p.enabled || !p.apiKey.trim()) return false
+    if (isKlingProvider(p) && !(p.secretKey ?? '').trim()) return false
     return modalityConfig(p, modality).selectedModelIds.length > 0
   })
   if (!candidates.length) return null
@@ -520,17 +627,22 @@ function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): Provid
 
 function normalizeProviderKind(raw: unknown): ModelProviderKind {
   if (raw === 'volcengine-ark') return 'volcengine-ark'
+  if (raw === 'kling') return 'kling'
+  if (raw === 'dashscope' || raw === 'qwen') return 'dashscope'
+  if (raw === 'modelscope' || raw === '魔塔' || raw === '魔搭') return 'modelscope'
   return 'openrouter'
 }
 
 function normalizeProviderInstance(item: Partial<ModelProviderInstance>): ModelProviderInstance {
   const kind = normalizeProviderKind(item.providerKind)
   const meta = MODEL_PROVIDER_KINDS.find((p) => p.id === kind)!
+  const secretKey = typeof item.secretKey === 'string' ? item.secretKey : ''
   return {
     id: typeof item.id === 'string' && item.id ? item.id : newLocalId(),
     providerKind: kind,
     label: typeof item.label === 'string' && item.label ? item.label : meta.label,
     apiKey: typeof item.apiKey === 'string' ? item.apiKey : '',
+    ...(secretKey || kind === 'kling' ? { secretKey } : {}),
     baseUrl:
       typeof item.baseUrl === 'string' && item.baseUrl.trim()
         ? item.baseUrl.replace(/\/$/, '')

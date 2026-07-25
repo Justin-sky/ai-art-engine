@@ -79,15 +79,19 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter or Volcengine Ark, enter an API key, then select models per modality.',
+        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One API key / Base URL per provider. Fetch text, image, and video models. Ark Voice uses manually entered purchased speaker_ids (voice design).',
+        'One credential set / Base URL per provider. Fetch text, image, and video models. Ark Voice uses purchased speaker_ids; Kling needs Access Key + Secret Key; Qianwen uses a Bailian API Key; ModelScope uses an access token (text/image).',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
       baseUrl: 'API Base URL',
+      accessKey: 'Access Key',
+      secretKey: 'Secret Key',
       showApiKey: 'Show API key',
       hideApiKey: 'Hide API key',
+      showSecretKey: 'Show Secret Key',
+      hideSecretKey: 'Hide Secret Key',
       fetchModels: 'Fetch models',
       testingConnection: 'Verifying API key…',
       loading: 'Loading…',
@@ -127,13 +131,34 @@ export default {
         video: 'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
         audio:
           'Doubao openspeech voice design. No model fetch — enter purchased speaker_id (e.g. S_xxx) and select it. Node instruction is used as the design prompt.'
+      },
+      klingModalityHint: {
+        image:
+          'Kling image generation via /v1/images/generations. Requires Access Key + Secret Key; catalog is a local static list.',
+        video:
+          'Kling video: text-to-video (/v1/videos/text2video) without a first frame, or image-to-video (/v1/videos/image2video) with one. Default Base URL is api-beijing.klingai.com.'
+      },
+      dashscopeModalityHint: {
+        text: 'Qwen chat via OpenAI-compatible API. Default Base URL is dashscope.aliyuncs.com/compatible-mode/v1 (/chat/completions).',
+        image:
+          'Wanxiang text-to-image via async /api/v1/services/aigc/text2image/image-synthesis (native URL derived from the compatible Base URL).',
+        video:
+          'Wanxiang text/image-to-video via async /api/v1/services/aigc/video-generation/video-synthesis; with a first frame, img_url is sent — pick an i2v model.'
+      },
+      modelscopeModalityHint: {
+        text: 'ModelScope API-Inference chat. Default Base URL is api-inference.modelscope.cn/v1; use an access token (ms-…).',
+        image: 'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
       }
     },
     objectStorage: {
-      hint: 'Configure object storage for media upload and public access. Volcengine TOS is available first; more providers can be added later.',
+      hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, and Tencent Cloud COS.',
+      singleEnabledHint: 'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
       addProvider: 'Add object storage',
       add: 'Add',
-      emptyProviders: 'No providers yet. Add Volcengine TOS, then enter AccessKey and bucket details.',
+      collapseProvider: 'Collapse provider',
+      expandProvider: 'Expand provider',
+      emptyProviders:
+        'No providers yet. Add Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS, then enter credentials and bucket details.',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -149,6 +174,28 @@ export default {
         bucket: 'Bucket name',
         publicBaseUrl: 'Public base URL (optional)',
         publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or a custom domain'
+      },
+      oss: {
+        intro:
+          'Fields for Alibaba Cloud OSS: AccessKey, Region, Endpoint, Bucket. Without a public base URL, signed URLs (~24h) are used.',
+        region: 'Region',
+        customRegion: 'Custom region',
+        endpoint: 'Endpoint',
+        getCredentialsHint: 'Get AccessKey:',
+        bucket: 'Bucket name',
+        publicBaseUrl: 'Public base URL (optional)',
+        publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or a bound custom domain'
+      },
+      cos: {
+        intro:
+          'Fields for Tencent Cloud COS: SecretId, SecretKey, Region, Bucket (usually BucketName-APPID). Without a public base URL, signed URLs are used.',
+        region: 'Region',
+        customRegion: 'Custom region',
+        getCredentialsHint: 'Get API keys:',
+        bucket: 'Bucket name',
+        bucketPlaceholder: 'e.g. example-1250000000',
+        publicBaseUrl: 'Public base URL (optional)',
+        publicBaseUrlPlaceholder: 'e.g. https://cdn.example.com or the default CDN domain'
       }
     },
     plugins: {

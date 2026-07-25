@@ -1,0 +1,194 @@
+{
+  "meta": {
+    "console": "https://bailian.console.aliyun.com/",
+    "docs": [
+      "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
+      "https://help.aliyun.com/zh/model-studio/text-to-image-api-reference"
+    ],
+    "note": "Text uses OpenAI-compatible base URL; image/video use derived /api/v1 native DashScope endpoints. Catalog mixes remote /models (text) with this static list (image/video)."
+  },
+  "models": [
+    {
+      "id": "qwen-plus",
+      "name": "Qwen-Plus",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen-turbo",
+      "name": "Qwen-Turbo",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen-max",
+      "name": "Qwen-Max",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen-vl-plus",
+      "name": "Qwen-VL-Plus",
+      "modality": "text",
+      "profile": "text-vl"
+    },
+    {
+      "id": "qwen3-max",
+      "name": "Qwen3-Max",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "wanx2.1-t2i-turbo",
+      "name": "Wanx 2.1 T2I Turbo",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "wanx2.1-t2i-plus",
+      "name": "Wanx 2.1 T2I Plus",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "wan2.2-t2i-flash",
+      "name": "Wan 2.2 T2I Flash",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "wan2.2-t2v-plus",
+      "name": "Wan 2.2 T2V Plus",
+      "modality": "video",
+      "profile": "video-t2v"
+    },
+    {
+      "id": "wan2.6-t2v",
+      "name": "Wan 2.6 T2V",
+      "modality": "video",
+      "profile": "video-t2v"
+    },
+    {
+      "id": "wan2.2-i2v-flash",
+      "name": "Wan 2.2 I2V Flash",
+      "modality": "video",
+      "profile": "video-i2v"
+    },
+    {
+      "id": "wan2.6-i2v",
+      "name": "Wan 2.6 I2V",
+      "modality": "video",
+      "profile": "video-i2v"
+    }
+  ],
+  "profiles": {
+    "text-base": {
+      "modality": "text",
+      "label": "Qwen Text",
+      "capabilities": {}
+    },
+    "text-vl": {
+      "modality": "text",
+      "label": "Qwen VL",
+      "capabilities": {}
+    },
+    "image-base": {
+      "modality": "image",
+      "label": "Wanxiang Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": [
+              "1:1",
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4"
+            ]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 1
+          }
+        }
+      }
+    },
+    "video-t2v": {
+      "modality": "video",
+      "label": "Wanxiang T2V",
+      "capabilities": {
+        "supported_resolutions": [
+          "480P",
+          "720P",
+          "1080P"
+        ],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "supported_durations": [
+          5,
+          10
+        ],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 0,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": {
+            "max": 0
+          },
+          "max_videos": {
+            "max": 0
+          },
+          "max_audios": {
+            "max": 0
+          }
+        }
+      }
+    },
+    "video-i2v": {
+      "modality": "video",
+      "label": "Wanxiang I2V",
+      "capabilities": {
+        "supported_resolutions": [
+          "480P",
+          "720P",
+          "1080P"
+        ],
+        "supported_aspect_ratios": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "supported_durations": [
+          5,
+          10
+        ],
+        "supported_frame_images": [
+          "first_frame"
+        ],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": {
+            "max": 1
+          },
+          "max_videos": {
+            "max": 0
+          },
+          "max_audios": {
+            "max": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -44,6 +44,7 @@ class ModelProviderFacade {
     providerInstanceId: string,
     overrides?: {
       apiKey?: string
+      secretKey?: string
       baseUrl?: string
       providerKind?: ModelProviderKind
     }
@@ -51,10 +52,18 @@ class ModelProviderFacade {
     const provider = buildProviderSnapshot({
       providerInstanceId,
       apiKey: overrides?.apiKey,
+      secretKey: overrides?.secretKey,
       baseUrl: overrides?.baseUrl,
       providerKind: overrides?.providerKind
     })
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) {
+      throw new Error(
+        provider.providerKind === 'kling' ? '请先填写 Access Key' : '请先填写 API Key'
+      )
+    }
+    if (provider.providerKind === 'kling' && !(provider.secretKey ?? '').trim()) {
+      throw new Error('请先填写 Secret Key')
+    }
     const adapter = getProviderAdapter(provider.providerKind)
     await adapter.assertAuth(provider)
     return adapter.fetchCatalog(provider, modality)
@@ -64,12 +73,14 @@ class ModelProviderFacade {
     providerInstanceId: string
     modality?: ModelModality
     apiKey?: string
+    secretKey?: string
     baseUrl?: string
     providerKind?: ModelProviderKind
   }): Promise<{ ok: true }> {
     const provider = buildProviderSnapshot({
       providerInstanceId: input.providerInstanceId,
       apiKey: input.apiKey,
+      secretKey: input.secretKey,
       baseUrl: input.baseUrl,
       providerKind: input.providerKind
     })
