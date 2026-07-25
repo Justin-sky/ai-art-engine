@@ -48,6 +48,47 @@
   --number-spin-bg-hover: #30343a;
   --number-spin-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%239aa0a8' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
   --number-spin-icon-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%23d6dbe0' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  /* 跨主题叠色：用 --text 混合，浅/深自动反相 */
+  --wash-02: color-mix(in srgb, var(--text) 2%, transparent);
+  --wash-04: color-mix(in srgb, var(--text) 4%, transparent);
+  --wash-05: color-mix(in srgb, var(--text) 5%, transparent);
+  --wash-06: color-mix(in srgb, var(--text) 6%, transparent);
+  --wash-08: color-mix(in srgb, var(--text) 8%, transparent);
+  --wash-12: color-mix(in srgb, var(--text) 12%, transparent);
+  --wash-14: color-mix(in srgb, var(--text) 14%, transparent);
+  --wash-16: color-mix(in srgb, var(--text) 16%, transparent);
+  --wash-18: color-mix(in srgb, var(--text) 18%, transparent);
+  --wash-20: color-mix(in srgb, var(--text) 20%, transparent);
+  --wash-22: color-mix(in srgb, var(--text) 22%, transparent);
+  --wash-35: color-mix(in srgb, var(--text) 35%, transparent);
+  --wash-40: color-mix(in srgb, var(--text) 40%, transparent);
+  --wash-42: color-mix(in srgb, var(--text) 42%, transparent);
+  --wash-45: color-mix(in srgb, var(--text) 45%, transparent);
+  --wash-55: color-mix(in srgb, var(--text) 55%, transparent);
+  --wash-85: color-mix(in srgb, var(--text) 85%, transparent);
+  --wash-88: color-mix(in srgb, var(--text) 88%, transparent);
+  --resize-grip: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  /* 叠在媒体上的描边：白线 + 暗影，亮/暗图都可见 */
+  --on-media-line: #ffffff;
+  --on-media-line-shadow: rgba(0, 0, 0, 0.55);
+  --flyer-bg: color-mix(in srgb, var(--bg-elevated) 88%, var(--accent) 12%);
+  --flyer-fg: var(--accent);
+  --flyer-border: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* textarea 右下角缩放柄斜纹（背景色须与 textarea 自身 background 一致） */
+  --resizer-grip: linear-gradient(
+    135deg,
+    transparent 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
+    transparent 62%,
+    transparent 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
+    transparent 79%,
+    transparent 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
+  );
   color-scheme: dark;
 }
 
@@ -97,6 +138,44 @@
   --number-spin-bg-hover: #dfe3ea;
   --number-spin-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%235f6b7a' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
   --number-spin-icon-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath fill='%231a1d21' d='M5 2L1.5 6h7L5 2zm0 12l3.5-4h-7L5 14z'/%3E%3C/svg%3E");
+  --wash-02: color-mix(in srgb, var(--text) 2%, transparent);
+  --wash-04: color-mix(in srgb, var(--text) 4%, transparent);
+  --wash-05: color-mix(in srgb, var(--text) 5%, transparent);
+  --wash-06: color-mix(in srgb, var(--text) 6%, transparent);
+  --wash-08: color-mix(in srgb, var(--text) 8%, transparent);
+  --wash-12: color-mix(in srgb, var(--text) 12%, transparent);
+  --wash-14: color-mix(in srgb, var(--text) 14%, transparent);
+  --wash-16: color-mix(in srgb, var(--text) 16%, transparent);
+  --wash-18: color-mix(in srgb, var(--text) 18%, transparent);
+  --wash-20: color-mix(in srgb, var(--text) 20%, transparent);
+  --wash-22: color-mix(in srgb, var(--text) 22%, transparent);
+  --wash-35: color-mix(in srgb, var(--text) 35%, transparent);
+  --wash-40: color-mix(in srgb, var(--text) 40%, transparent);
+  --wash-42: color-mix(in srgb, var(--text) 42%, transparent);
+  --wash-45: color-mix(in srgb, var(--text) 45%, transparent);
+  --wash-55: color-mix(in srgb, var(--text) 55%, transparent);
+  --wash-85: color-mix(in srgb, var(--text) 85%, transparent);
+  --wash-88: color-mix(in srgb, var(--text) 88%, transparent);
+  --resize-grip: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  --on-media-line: #ffffff;
+  --on-media-line-shadow: rgba(0, 0, 0, 0.55);
+  --flyer-bg: color-mix(in srgb, var(--bg-elevated) 88%, var(--accent) 12%);
+  --flyer-fg: var(--accent);
+  --flyer-border: color-mix(in srgb, var(--accent) 45%, transparent);
+  --resizer-grip: linear-gradient(
+    135deg,
+    transparent 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
+    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
+    transparent 62%,
+    transparent 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
+    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
+    transparent 79%,
+    transparent 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
+    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
+  );
   color-scheme: light;
 }
 
@@ -261,23 +340,10 @@ textarea {
   min-height: 80px;
 }
 
-/* 暗色主题下覆盖浏览器默认白色缩放柄 */
+/* 缩放柄底色必须与上方 textarea 的 background 同源，否则浅色主题会出现白角块 */
 textarea::-webkit-resizer {
-  background-color: var(--bg-input);
-  background-image: linear-gradient(
-    135deg,
-    transparent 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
-    transparent 62%,
-    transparent 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
-    transparent 79%,
-    transparent 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
-  );
+  background-color: var(--bg);
+  background-image: var(--resizer-grip);
   border: none;
 }
 
@@ -306,16 +372,16 @@ a {
   max-width: 180px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(158, 197, 255, 0.45);
-  background: rgba(30, 40, 56, 0.96);
-  color: #9ec5ff;
+  border: 1px solid var(--flyer-border);
+  background: var(--flyer-bg);
+  color: var(--flyer-fg);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 
 [data-graph-task-anchor].graph-task-anchor-pulse {
@@ -325,14 +391,14 @@ a {
 @keyframes graph-task-anchor-pulse {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(61, 139, 253, 0.55);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
   }
   40% {
     transform: scale(1.08);
-    box-shadow: 0 0 0 8px rgba(61, 139, 253, 0);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(61, 139, 253, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
   }
 }

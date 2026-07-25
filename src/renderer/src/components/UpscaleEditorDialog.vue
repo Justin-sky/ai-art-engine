@@ -176,16 +176,16 @@ function onClose(): void {
 
 .label {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .select {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
 }
@@ -197,9 +197,9 @@ function onClose(): void {
 }
 
 .seg-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
@@ -218,7 +218,7 @@ function onClose(): void {
 .hint {
   margin: 0;
   font-size: 11px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
@@ -230,9 +230,9 @@ function onClose(): void {
 }
 
 .reset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 12px;

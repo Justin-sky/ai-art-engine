@@ -291,10 +291,16 @@ defineExpose({
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-elevated, var(--bg-panel));
+  background: var(--bg-elevated);
   color: var(--text);
   font: inherit;
   line-height: 1.55;
+}
+
+.field textarea::-webkit-resizer {
+  background-color: var(--bg-elevated);
+  background-image: var(--resizer-grip);
+  border: none;
 }
 
 .field.body textarea {

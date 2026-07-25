@@ -5721,14 +5721,14 @@ defineExpose({
   padding: 2px 8px;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-04);
   color: inherit;
   font-size: 11px;
   cursor: pointer;
 }
 
 .run-banner-log:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
 }
 
 .run-banner.ok {

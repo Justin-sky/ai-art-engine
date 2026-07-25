@@ -1909,12 +1909,12 @@ function formatTime(sec: number): string {
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .collapse-tri-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text, #e8eaed);
+  background: var(--wash-06);
+  color: var(--text);
 }
 
 /* 实心三角：展开朝下，收起朝右 */
@@ -2287,7 +2287,7 @@ function formatTime(sec: number): string {
   display: flex;
   justify-content: space-between;
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--wash-88);
   font-family: var(--mono);
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
@@ -2338,7 +2338,7 @@ function formatTime(sec: number): string {
   transform: translateY(-50%);
   font-size: 9px;
   line-height: 1;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2375,7 +2375,7 @@ function formatTime(sec: number): string {
   left: 12px;
   font-size: 9px;
   line-height: 1;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;

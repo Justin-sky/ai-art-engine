@@ -2521,7 +2521,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   overflow: hidden;
   border-radius: 4px;
-  background: var(--graph-preview-bg, rgba(0, 0, 0, 0.2));
+  background: var(--graph-preview-bg);
 }
 
 .list-icon.list-thumb img {

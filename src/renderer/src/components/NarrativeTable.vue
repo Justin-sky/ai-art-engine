@@ -345,6 +345,12 @@ select {
   padding: 4px 6px;
 }
 
+textarea::-webkit-resizer {
+  background-color: var(--bg-elevated);
+  background-image: var(--resizer-grip);
+  border: none;
+}
+
 .col-order {
   width: 56px;
 }

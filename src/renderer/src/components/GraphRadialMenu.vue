@@ -296,7 +296,7 @@ defineExpose({
 
 .radial-dead {
   fill: rgba(22, 26, 32, 0.92);
-  stroke: var(--border, #3a424e);
+  stroke: var(--border);
   stroke-width: 1;
 }
 
@@ -325,7 +325,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   opacity: 0.9;
   text-align: center;
 }
@@ -362,7 +362,7 @@ defineExpose({
 
 .radial-hint {
   font-size: 10px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   letter-spacing: 0.02em;
 }
 </style>

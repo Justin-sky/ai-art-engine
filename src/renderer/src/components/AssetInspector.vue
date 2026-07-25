@@ -990,7 +990,7 @@ async function persist(): Promise<void> {
 }
 
 .model-tab.active {
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 92%, white 8%);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, white 8%);
   color: var(--text);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
 }

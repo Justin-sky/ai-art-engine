@@ -31,7 +31,7 @@ function onDown(e: PointerEvent): void {
   padding: 0;
   border: none;
   border-radius: 0 0 6px 0;
-  background: linear-gradient(135deg, transparent 48%, rgba(255, 255, 255, 0.42) 48%);
+  background: linear-gradient(135deg, transparent 48%, var(--resize-grip) 48%);
   cursor: se-resize;
   z-index: 50;
   opacity: 0.7;

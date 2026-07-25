@@ -200,7 +200,7 @@ function onClose(): void {
 
 .preview-pane {
   position: relative;
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--graph-preview-bg);
   overflow: hidden;
@@ -242,7 +242,7 @@ function onClose(): void {
 .axis-x-min,
 .axis-x-max {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .pad-mid {
@@ -261,7 +261,7 @@ function onClose(): void {
   grid-template-rows: repeat(5, 1fr);
   place-items: center;
   background: var(--bg-elevated);
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
   box-sizing: border-box;
@@ -317,18 +317,18 @@ function onClose(): void {
 }
 
 .locate-label {
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .locate-value {
-  color: var(--text, #e8eaed);
+  color: var(--text);
   font-weight: 600;
 }
 
 .reset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 12px;

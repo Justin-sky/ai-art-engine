@@ -182,8 +182,8 @@ function openAsset(asset: AssetInfo): void {
 
 .create-btn:hover:not(:disabled),
 .create-btn:focus-visible:not(:disabled) {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--wash-04);
+  border-color: var(--wash-22);
 }
 
 .create-btn:disabled {
@@ -230,7 +230,7 @@ function openAsset(asset: AssetInfo): void {
 
 .recent-item:hover,
 .recent-item:focus-visible {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-04);
   border-color: var(--border);
 }
 

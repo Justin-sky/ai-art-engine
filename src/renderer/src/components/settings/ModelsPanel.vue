@@ -929,7 +929,7 @@ label {
 
 .reveal-btn:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wash-06);
 }
 
 .danger {
@@ -961,13 +961,13 @@ label {
 
 .mod-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-04);
 }
 
 .mod-tab.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--wash-08);
+  border-color: var(--wash-14);
 }
 
 .mod-count {

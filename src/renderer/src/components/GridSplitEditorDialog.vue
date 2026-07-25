@@ -330,7 +330,7 @@ function onClose(): void {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border, #3a4048);
+  border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
@@ -342,10 +342,10 @@ function onClose(): void {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -365,7 +365,7 @@ function onClose(): void {
   padding: 8px;
   border-radius: 10px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
@@ -375,7 +375,7 @@ function onClose(): void {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
   text-align: left;
@@ -399,7 +399,7 @@ function onClose(): void {
 
 .custom-title {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
@@ -426,12 +426,12 @@ function onClose(): void {
 .custom-hint {
   margin-top: 6px;
   font-size: 11px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .sel-count {
   font-size: 13px;
-  color: var(--text, #e8eaed);
+  color: var(--text);
 }
 
 .scale-field,
@@ -447,15 +447,15 @@ function onClose(): void {
 
 .scale-label {
   font-size: 11px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   flex: 0 0 auto;
 }
 
 .select {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 7px 8px;
   font-size: 13px;
 }
@@ -473,10 +473,10 @@ function onClose(): void {
 
 .clear-btn {
   margin-left: auto;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
@@ -493,7 +493,7 @@ function onClose(): void {
 }
 
 .stage-empty {
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -516,8 +516,8 @@ function onClose(): void {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.55) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 1px, transparent 1px);
+    linear-gradient(to right, var(--on-media-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--on-media-line) 1px, transparent 1px);
   z-index: 1;
 }
 

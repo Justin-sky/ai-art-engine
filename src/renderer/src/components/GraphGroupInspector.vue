@@ -122,7 +122,7 @@ input {
   font-size: 12px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+  background: var(--bg-elevated);
 }
 
 .stat-label {

@@ -990,7 +990,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 .create-btn:hover,
 .create-btn[aria-expanded='true'] {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wash-06);
 }
 
 .create-menu {
@@ -999,7 +999,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   padding: 4px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated, #1c1e21);
+  background: var(--bg-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
@@ -1054,7 +1054,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-input, #1a1c1f);
+  background: var(--bg-input);
   color: var(--text);
   font-size: 12px;
   flex-shrink: 0;
@@ -1085,7 +1085,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 }
 
 .row:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--wash-05);
 }
 
 .row.active {
@@ -1130,7 +1130,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
   color: var(--text);
 }
 
@@ -1178,7 +1178,7 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   padding: 0 4px;
   border-radius: 3px;
   border: 1px solid var(--accent, #5b8def);
-  background: var(--bg-input, #1a1c1f);
+  background: var(--bg-input);
   color: var(--text);
   font-size: 12px;
   outline: none;

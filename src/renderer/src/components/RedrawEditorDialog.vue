@@ -609,7 +609,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border, #3a4048);
+  border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   cursor: pointer;
   font-size: 14px;
 }
@@ -673,14 +673,14 @@ onBeforeUnmount(() => {
 }
 
 .stage-empty {
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .canvas-wrap {
   position: relative;
   flex: 0 0 auto;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px var(--wash-20);
 }
 
 .canvas-wrap-matte {
@@ -719,7 +719,7 @@ onBeforeUnmount(() => {
 
 .rect-preview {
   position: absolute;
-  border: 1px dashed rgba(255, 255, 255, 0.85);
+  border: 1px dashed var(--on-media-line);
   background: rgba(232, 72, 72, 0.22);
   pointer-events: none;
   z-index: 2;
@@ -730,17 +730,17 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px 12px;
-  border-top: 1px solid var(--border, #3a4048);
+  border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
 .prompt {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.45;
@@ -771,14 +771,14 @@ onBeforeUnmount(() => {
 
 .tool-label {
   font-size: 11px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .select {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
   max-width: 100%;

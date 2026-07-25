@@ -839,9 +839,9 @@ onBeforeUnmount(() => {
 }
 
 .preset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 12px;
@@ -875,9 +875,9 @@ onBeforeUnmount(() => {
 }
 
 .reset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 12px;
@@ -908,7 +908,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   background: var(--graph-preview-bg);
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   box-sizing: border-box;
@@ -932,7 +932,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -950,7 +950,7 @@ onBeforeUnmount(() => {
 }
 
 .orbit-btn:hover {
-  color: var(--text, #e8eaed);
+  color: var(--text);
   background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
 }
 
@@ -1005,7 +1005,7 @@ onBeforeUnmount(() => {
 
 .slider-label {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .slider {
@@ -1016,7 +1016,7 @@ onBeforeUnmount(() => {
 .slider-value {
   font-size: 12px;
   text-align: right;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1066,7 +1066,7 @@ onBeforeUnmount(() => {
   border: 1px solid #333;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   white-space: pre-wrap;
 }
 
@@ -1089,7 +1089,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   border: 1px solid #333;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   font-size: 12px;
   line-height: 1.5;
   padding: 8px 10px;
@@ -1100,7 +1100,7 @@ onBeforeUnmount(() => {
 .prompt-hint {
   margin: 0;
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 @media (max-width: 800px) {

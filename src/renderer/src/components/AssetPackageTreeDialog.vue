@@ -234,7 +234,7 @@ function onConfirm(): void {
   padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: 2px;
-  background: var(--bg-elevated, #2a2a2a);
+  background: var(--bg-elevated);
   color: var(--text);
   cursor: pointer;
 }
@@ -258,7 +258,7 @@ function onConfirm(): void {
   flex: 1 1 auto;
   min-height: 120px;
   overflow: auto;
-  background: var(--bg, #1e1e1e);
+  background: var(--bg);
   padding: 0;
 }
 
@@ -280,11 +280,11 @@ function onConfirm(): void {
 }
 
 .tree-row.alt {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--wash-02);
 }
 
 .tree-row:hover {
-  background: var(--bg-elevated, #2c2c2c);
+  background: var(--bg-elevated);
   color: var(--text);
 }
 

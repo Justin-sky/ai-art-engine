@@ -1066,7 +1066,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0;
   padding: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--wash-06);
   flex-shrink: 0;
   height: 40px;
   box-sizing: border-box;
@@ -1083,7 +1083,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 0 10px;
   box-sizing: border-box;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--wash-06);
   overflow: visible;
   z-index: 2;
 }
@@ -1117,7 +1117,7 @@ onBeforeUnmount(() => {
 
 .icon-btn:hover,
 .icon-btn.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
   color: var(--text);
 }
 
@@ -1284,20 +1284,20 @@ onBeforeUnmount(() => {
   width: 1px;
   height: 8px;
   margin-top: 4px;
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--wash-40);
   flex-shrink: 0;
 }
 
 .ruler-mark.minor .tick {
   height: 4px;
   margin-top: 8px;
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--wash-22);
 }
 
 .ruler-mark.major .tick {
   height: 8px;
   margin-top: 4px;
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--wash-45);
 }
 
 .ruler-mark .tick-label {
@@ -1354,7 +1354,7 @@ onBeforeUnmount(() => {
 .export-btn {
   width: 26px;
   height: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--wash-12);
   border-radius: 6px;
 }
 
@@ -1427,7 +1427,7 @@ onBeforeUnmount(() => {
 .collapse-btn {
   width: 26px;
   height: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--wash-12);
   border-radius: 6px;
 }
 
@@ -1441,7 +1441,7 @@ onBeforeUnmount(() => {
   width: 340px;
   flex-shrink: 0;
   overflow: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--wash-06);
 }
 
 .empty {
@@ -1451,7 +1451,7 @@ onBeforeUnmount(() => {
 }
 
 .track-block {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--wash-04);
 }
 
 .track-block.selected {
@@ -1573,7 +1573,7 @@ onBeforeUnmount(() => {
 }
 
 .skel-asset-clear:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--wash-12);
 }
 
 .skel-clip-name {
@@ -1598,7 +1598,7 @@ onBeforeUnmount(() => {
 .skel-speed input {
   width: 48px;
   height: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--wash-12);
   border-radius: 4px;
   background: #15181c;
   color: var(--text);
@@ -1628,7 +1628,7 @@ onBeforeUnmount(() => {
 }
 
 .remove-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
   color: #ff8f8f;
 }
 
@@ -1647,12 +1647,12 @@ onBeforeUnmount(() => {
   background-color: #121416;
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.05) 0,
-    rgba(255, 255, 255, 0.05) 1px,
+    var(--wash-05) 0,
+    var(--wash-05) 1px,
     transparent 1px,
     transparent var(--px-per-sec, 80px)
   );
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.14);
+  box-shadow: inset -1px 0 0 var(--wash-14);
 }
 
 .timeline-block.selected .timeline-row {
@@ -1662,7 +1662,7 @@ onBeforeUnmount(() => {
 .timeline-row {
   position: relative;
   height: 32px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--wash-04);
 }
 
 .timeline-row.kf-row {
@@ -1739,11 +1739,11 @@ onBeforeUnmount(() => {
   align-self: stretch;
   flex-shrink: 0;
   cursor: ew-resize;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--wash-18);
 }
 
 .skel-handle:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--wash-35);
 }
 
 .skel-count {

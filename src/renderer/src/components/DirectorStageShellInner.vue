@@ -422,7 +422,7 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 
 .menu-trigger:hover,
 .menu-trigger.open {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
 }
 
 .menu-dropdown {
@@ -434,7 +434,7 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-panel, #1c1e21);
+  background: var(--bg-panel);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
@@ -474,7 +474,7 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   gap: 2px;
   padding: 2px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-04);
   border: 1px solid var(--border);
 }
 
@@ -519,7 +519,7 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 
 .shots-trigger:hover,
 .shots-trigger.open {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
 }
 
 .shots-trigger-icon {
@@ -619,7 +619,7 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   position: absolute;
   z-index: 4;
   pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--wash-42);
   border-radius: 2px;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
   box-sizing: border-box;

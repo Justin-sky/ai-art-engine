@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
   padding: 10px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: var(--bg-panel, #1c1e21);
+  background: var(--bg-panel);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   box-sizing: border-box;
 }
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
 }
 
 .panel-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
   color: var(--text);
 }
 

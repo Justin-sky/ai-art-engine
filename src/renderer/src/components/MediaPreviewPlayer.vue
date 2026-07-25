@@ -286,7 +286,7 @@ function onSeekChange(event: Event): void {
   height: 24px;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--wash-16);
   background: rgba(30, 36, 44, 0.95);
   color: #8ec5ff;
   display: flex;
@@ -362,7 +362,7 @@ function onSeekChange(event: Event): void {
 .time-row {
   display: flex;
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--on-media-line);
   font-family: var(--mono);
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);

@@ -766,9 +766,9 @@ onBeforeUnmount(() => {
 }
 
 .view-tab {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 12px;
@@ -776,7 +776,7 @@ onBeforeUnmount(() => {
 }
 
 .view-tab.active {
-  color: var(--text, #e8eaed);
+  color: var(--text);
   background: var(--bg-hover);
   border-color: #6a7480;
 }
@@ -791,7 +791,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   background: var(--graph-preview-bg);
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -812,7 +812,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
@@ -828,7 +828,7 @@ onBeforeUnmount(() => {
   align-items: center;
   margin-bottom: 10px;
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .color-row {
@@ -843,7 +843,7 @@ onBeforeUnmount(() => {
   width: 36px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
@@ -858,9 +858,9 @@ onBeforeUnmount(() => {
 .dir-btn,
 .preset-btn,
 .reset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
@@ -883,7 +883,7 @@ onBeforeUnmount(() => {
   width: 40px;
   height: 22px;
   border-radius: 999px;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
   position: relative;
   cursor: pointer;
@@ -915,10 +915,10 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   resize: vertical;
   min-height: 72px;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 12px;
   font-family: inherit;
@@ -927,6 +927,12 @@ onBeforeUnmount(() => {
 
 .smart-textarea:disabled {
   opacity: 0.45;
+}
+
+.smart-textarea::-webkit-resizer {
+  background-color: var(--bg-elevated);
+  background-image: var(--resizer-grip);
+  border: none;
 }
 
 .presets {
@@ -949,7 +955,7 @@ onBeforeUnmount(() => {
 
 .slider-label {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .prompt-preview {
@@ -957,10 +963,10 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   min-height: 72px;
   overflow: auto;
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.45;

@@ -1456,7 +1456,7 @@ onBeforeUnmount(() => {
 }
 
 .object-tab.active {
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 92%, white 8%);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, white 8%);
   color: var(--text);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
 }
@@ -1585,7 +1585,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
   color: var(--text);
   font-size: 12px;
   padding: 5px 8px;
@@ -1630,7 +1630,7 @@ onBeforeUnmount(() => {
   height: 28px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
   color: var(--text);
   font-size: 12px;
   padding: 0 10px;
@@ -1639,7 +1639,7 @@ onBeforeUnmount(() => {
 
 .pose-preset-save-btn:hover:not(:disabled),
 .pose-preset-reset-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 92%, white 8%);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, white 8%);
 }
 
 .pose-asset-actions {
@@ -1658,7 +1658,7 @@ onBeforeUnmount(() => {
   padding: 8px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated, #1c2026) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
   cursor: pointer;
 }
 
@@ -1810,7 +1810,7 @@ input:not([type]) {
   padding: 0 8px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-input, #1a1c1f);
+  background: var(--bg-input);
   color: var(--text);
   font-size: 12px;
   font-variant-numeric: tabular-nums;

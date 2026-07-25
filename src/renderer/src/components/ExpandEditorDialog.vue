@@ -403,14 +403,14 @@ function onClose(): void {
 }
 
 .stage-empty {
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .canvas-frame {
   position: relative;
   flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--on-media-line);
   background: var(--bg);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
@@ -419,8 +419,8 @@ function onClose(): void {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    linear-gradient(to right, var(--wash-12) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wash-12) 1px, transparent 1px);
   background-size: calc(100% / 3) calc(100% / 3);
   pointer-events: none;
   z-index: 1;
@@ -441,7 +441,8 @@ function onClose(): void {
   width: 12px;
   height: 12px;
   margin: -6px 0 0 -6px;
-  border: 1px solid #fff;
+  border: 1px solid var(--on-media-line);
+  box-shadow: 0 0 0 1px var(--on-media-line-shadow);
   border-radius: 3px;
   background: var(--bg-elevated);
   padding: 0;
@@ -484,7 +485,7 @@ function onClose(): void {
   gap: 10px;
   align-items: flex-end;
   padding: 12px 16px;
-  border-top: 1px solid var(--border, #3a4048);
+  border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
@@ -502,23 +503,23 @@ function onClose(): void {
 
 .tool-label {
   font-size: 11px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .select {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
 }
 
 .reset-btn {
   margin-left: auto;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 8px 14px;
   font-size: 12px;

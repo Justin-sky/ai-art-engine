@@ -122,13 +122,13 @@ const outputPrompt = computed(() => {
   font-size: 12px;
   color: var(--text-muted);
   padding: 8px 10px;
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-elevated, #1a1d22);
+  background: var(--bg-elevated);
 }
 
 .label-row strong {
-  color: var(--text, #e8eaed);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -147,9 +147,9 @@ label {
   min-height: 160px;
   opacity: 0.9;
   cursor: default;
-  background: var(--bg-elevated, #1a1d22);
-  color: var(--text, #e8eaed);
-  border: 1px solid var(--border, #333);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;

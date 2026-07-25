@@ -137,7 +137,7 @@ function onClose(): void {
 
 .row-label {
   font-size: 12px;
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
 }
 
 .seg {
@@ -148,9 +148,9 @@ function onClose(): void {
 
 .seg-btn {
   position: relative;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 8px;
   padding: 8px 28px 8px 10px;
   font-size: 12px;
@@ -207,9 +207,9 @@ function onClose(): void {
 }
 
 .reset-btn {
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   background: var(--bg-hover);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 12px;

@@ -592,8 +592,20 @@ function redrawGrid(): void {
     ctx.stroke()
   }
 
-  drawLines(stepScreen, offsetX, offsetY, 'rgba(255, 255, 255, 0.05)')
-  drawLines(majorStepScreen, majorOffsetX, majorOffsetY, 'rgba(255, 255, 255, 0.12)')
+  drawLines(
+    stepScreen,
+    offsetX,
+    offsetY,
+    getComputedStyle(document.documentElement).getPropertyValue('--graph-grid-minor').trim() ||
+      'rgba(128,128,128,0.08)'
+  )
+  drawLines(
+    majorStepScreen,
+    majorOffsetX,
+    majorOffsetY,
+    getComputedStyle(document.documentElement).getPropertyValue('--graph-grid-major').trim() ||
+      'rgba(128,128,128,0.16)'
+  )
 }
 
 function hasAssetDropData(e: DragEvent): boolean {
@@ -1194,7 +1206,7 @@ defineExpose({ exportPng, flushSave, focusCenter })
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wash-08);
 }
 
 .icon-btn:disabled {

@@ -1252,7 +1252,7 @@ textarea,
   flex-direction: column;
   gap: 10px;
   padding-top: 4px;
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--border);
   margin-top: 4px;
 }
 
@@ -1263,7 +1263,7 @@ textarea,
   flex-direction: column;
   gap: 6px;
   padding-top: 10px;
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--border);
 }
 
 .audio-card .audio-thumb {

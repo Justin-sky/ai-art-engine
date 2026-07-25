@@ -50,6 +50,6 @@ const tabs = computed(() =>
 .tab.active {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+  background: var(--bg-elevated);
 }
 </style>

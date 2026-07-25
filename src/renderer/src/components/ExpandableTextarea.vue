@@ -89,20 +89,7 @@ function onDialogSave(text: string): void {
 
 .expandable-textarea textarea::-webkit-resizer {
   background-color: var(--bg-input);
-  background-image: linear-gradient(
-    135deg,
-    transparent 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
-    transparent 62%,
-    transparent 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
-    transparent 79%,
-    transparent 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
-  );
+  background-image: var(--resizer-grip);
   border: none;
 }
 

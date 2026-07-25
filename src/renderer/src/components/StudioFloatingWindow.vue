@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
   cursor: move;
   user-select: none;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated, #2a2a2a) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
 }
 
 .sfw-window-editor .sfw-titlebar {

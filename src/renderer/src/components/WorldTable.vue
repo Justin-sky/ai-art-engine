@@ -362,6 +362,16 @@ textarea:focus {
   background: var(--bg-elevated);
 }
 
+textarea::-webkit-resizer {
+  background-color: var(--bg-panel);
+  background-image: var(--resizer-grip);
+  border: none;
+}
+
+textarea:focus::-webkit-resizer {
+  background-color: var(--bg-elevated);
+}
+
 .del {
   border: none;
   background: transparent;

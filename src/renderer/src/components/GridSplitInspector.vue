@@ -202,7 +202,7 @@ function persistSystemPrompt(): void {
 
 .meta dd {
   margin: 0;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   text-align: right;
   word-break: break-all;
 }

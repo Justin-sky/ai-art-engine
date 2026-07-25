@@ -361,7 +361,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border, #3a4048);
+  border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
@@ -373,10 +373,10 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -400,7 +400,7 @@ onBeforeUnmount(() => {
   padding: 6px;
   border-radius: 10px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border, #3a4048);
+  border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
   cursor: pointer;
@@ -428,7 +428,7 @@ onBeforeUnmount(() => {
   display: inline-block;
   width: 18px;
   height: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  border: 1.5px solid var(--border);
   border-radius: 2px;
   flex: 0 0 auto;
 }
@@ -481,7 +481,7 @@ onBeforeUnmount(() => {
 }
 
 .stage-empty {
-  color: var(--text-muted, #9aa3ad);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -511,7 +511,8 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: 2;
   box-sizing: border-box;
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--on-media-line);
+  box-shadow: 0 0 0 1px var(--on-media-line-shadow);
   cursor: move;
   touch-action: none;
 }
@@ -521,8 +522,8 @@ onBeforeUnmount(() => {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.45) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 1px, transparent 1px);
+    linear-gradient(to right, var(--on-media-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--on-media-line) 1px, transparent 1px);
   background-size: calc(100% / 3) calc(100% / 3);
 }
 
@@ -541,7 +542,7 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 4px;
   margin-left: -14px;
-  background: #fff;
+  background: var(--on-media-line);
   border-radius: 2px;
   cursor: ns-resize;
 }
@@ -560,7 +561,7 @@ onBeforeUnmount(() => {
   width: 4px;
   height: 28px;
   margin-top: -14px;
-  background: #fff;
+  background: var(--on-media-line);
   border-radius: 2px;
   cursor: ew-resize;
 }
@@ -587,8 +588,8 @@ onBeforeUnmount(() => {
   top: -2px;
   cursor: nwse-resize;
   box-shadow:
-    inset 3px 0 0 #fff,
-    inset 0 3px 0 #fff;
+    inset 3px 0 0 var(--on-media-line),
+    inset 0 3px 0 var(--on-media-line);
 }
 
 .handle.ne {
@@ -596,8 +597,8 @@ onBeforeUnmount(() => {
   top: -2px;
   cursor: nesw-resize;
   box-shadow:
-    inset -3px 0 0 #fff,
-    inset 0 3px 0 #fff;
+    inset -3px 0 0 var(--on-media-line),
+    inset 0 3px 0 var(--on-media-line);
 }
 
 .handle.sw {
@@ -605,8 +606,8 @@ onBeforeUnmount(() => {
   bottom: -2px;
   cursor: nesw-resize;
   box-shadow:
-    inset 3px 0 0 #fff,
-    inset 0 -3px 0 #fff;
+    inset 3px 0 0 var(--on-media-line),
+    inset 0 -3px 0 var(--on-media-line);
 }
 
 .handle.se {
@@ -614,7 +615,7 @@ onBeforeUnmount(() => {
   bottom: -2px;
   cursor: nwse-resize;
   box-shadow:
-    inset -3px 0 0 #fff,
-    inset 0 -3px 0 #fff;
+    inset -3px 0 0 var(--on-media-line),
+    inset 0 -3px 0 var(--on-media-line);
 }
 </style>

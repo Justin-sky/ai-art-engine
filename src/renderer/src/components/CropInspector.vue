@@ -127,7 +127,7 @@ const frameLabel = computed(() => {
 
 .meta dd {
   margin: 0;
-  color: var(--text, #e8eaed);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 </style>

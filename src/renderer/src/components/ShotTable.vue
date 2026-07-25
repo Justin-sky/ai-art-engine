@@ -997,20 +997,7 @@ textarea::-webkit-resizer {
   border: none;
   /* 与文本框底色一致，避免亮色斑马纹行出现白角块 */
   background-color: var(--shot-card-odd);
-  background-image: linear-gradient(
-    135deg,
-    transparent 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 55%,
-    color-mix(in srgb, var(--text-muted) 45%, transparent) 62%,
-    transparent 62%,
-    transparent 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 72%,
-    color-mix(in srgb, var(--text-muted) 60%, transparent) 79%,
-    transparent 79%,
-    transparent 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 88%,
-    color-mix(in srgb, var(--text-muted) 75%, transparent) 100%
-  );
+  background-image: var(--resizer-grip);
 }
 
 input,
