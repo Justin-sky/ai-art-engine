@@ -1,12 +1,13 @@
 <template>
   <div class="asset-editor" :class="{ graph: supportsGraph }" v-if="asset">
     <template v-if="supportsGraph">
-      <div class="toolbar">
-        <span>{{ typeLabel }}</span>
-        <span class="spacer" />
-        <span class="hint">{{ t('asset.editor.graphHint') }}</span>
-      </div>
-      <NodeGraphEditor class="asset-graph" :asset-id="assetId" />
+    <div class="toolbar">
+      <span>{{ typeLabel }}</span>
+      <span class="spacer" />
+      <span class="hint">{{ t('asset.editor.graphHint') }}</span>
+      <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
+    </div>
+    <NodeGraphEditor class="asset-graph" :asset-id="assetId" :hide-toolbar="toolbarCollapsed" />
     </template>
 
     <template v-else>
@@ -84,6 +85,7 @@ import { useEditorDocumentSession } from '../composables/useEditorDocumentSessio
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
+import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 
@@ -97,6 +99,7 @@ const { t, assetTypeLabel } = useStudioI18n()
 const error = ref('')
 const previewUrl = ref('')
 const previewLoading = ref(false)
+const toolbarCollapsed = ref(false)
 let previewLoadToken = 0
 const { asset, isDraft } = useAssetRecord(props.assetId)
 const typeLabel = computed(() => (asset.value ? assetTypeLabel(asset.value.type) : ''))

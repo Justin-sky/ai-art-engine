@@ -7,17 +7,9 @@ import { updateService } from './services/updateService'
 import { setMainWindow, closeStageWindow } from './stageWindow'
 import { closeShotPreviewWindow } from './shotPreviewWindow'
 import {
-  closeShotEditorWindow,
-  setShotEditorMainWindow
-} from './shotEditorWindow'
-import {
   closeShotTableWindow,
   setShotTableMainWindow
 } from './shotTableWindow'
-import {
-  closeWorldEditorWindow,
-  setWorldEditorMainWindow
-} from './worldEditorWindow'
 import {
   closeWorldTableWindow,
   setWorldTableMainWindow
@@ -62,21 +54,15 @@ function createWindow(): void {
   })
 
   setMainWindow(mainWindow)
-  setShotEditorMainWindow(mainWindow)
   setShotTableMainWindow(mainWindow)
-  setWorldEditorMainWindow(mainWindow)
   setWorldTableMainWindow(mainWindow)
   mainWindow.on('closed', () => {
     setMainWindow(null)
-    setShotEditorMainWindow(null)
     setShotTableMainWindow(null)
-    setWorldEditorMainWindow(null)
     setWorldTableMainWindow(null)
     closeStageWindow()
     closeShotPreviewWindow()
-    closeShotEditorWindow()
     closeShotTableWindow()
-    closeWorldEditorWindow()
     closeWorldTableWindow()
   })
 

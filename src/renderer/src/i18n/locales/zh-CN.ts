@@ -690,7 +690,9 @@ export default {
     strip: {
       title: '分镜',
       switchHint: '拖到画布可创建分镜参数；点击切换当前镜',
-      new: '+ 新建'
+      new: '+ 新建',
+      collapse: '收起分镜条',
+      expand: '展开分镜条'
     },
     table: {
       title: '分镜表格 · {n} 镜',
@@ -747,16 +749,13 @@ export default {
   },
   script: {
     hint: {
-      graph: '分镜编辑 · 节点工作流 · 拖入资产 · 连线至输出节点 · 参数在右侧面板',
-      imageGraph: '分镜图 · 每镜独立节点图 · 默认图片生成连到图片输出 · 参数在右侧面板',
-      imageGraphEmbedded: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
-      videoGraph: '分镜视频 · 每镜独立节点图 · 默认视频生成连到视频输出 · 参数在右侧面板',
+      imageGraph: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
+      videoGraph: '每镜独立视频图 · 参数与运行使用右侧 Inspector',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图在下方展开画面图 · 双击生成分镜视频打开对应窗口'
+        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布'
     },
     dialog: {
-      shotEditor: '分镜编辑',
       shotImageEditor: '分镜图',
       shotVideoEditor: '分镜视频',
       shotTable: '分镜表格',
@@ -764,21 +763,6 @@ export default {
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'
-    },
-    shotEditorWindow: {
-      loading: '正在打开分镜编辑…',
-      missingAsset: '缺少剧本资产',
-      noProject: '主窗口未打开工程'
-    },
-    shotImageEditorWindow: {
-      loading: '正在打开分镜图…',
-      missingAsset: '缺少剧本资产',
-      noProject: '主窗口未打开工程'
-    },
-    shotVideoEditorWindow: {
-      loading: '正在打开分镜视频…',
-      missingAsset: '缺少剧本资产',
-      noProject: '主窗口未打开工程'
     },
     shotTableWindow: {
       loading: '正在打开分镜表格…',
@@ -1068,14 +1052,19 @@ export default {
   },
   world: {
     asset: {
-      hint: '双击提取编辑指令 · 双击表格打开目录 · 双击编辑打开四类画布'
+      hint: '双击提取编辑指令 · 双击表格打开目录 · 双击编辑在下方展开四类画布'
     },
     dialog: {
       close: '关闭',
-      elementTable: '世界元素表格'
+      elementTable: '世界元素表格',
+      editor: '世界元素编辑'
     },
     hint: {
-      table: '世界元素表格 · 批量编辑角色 / 场景 / 道具 / 武器'
+      table: '世界元素表格 · 批量编辑角色 / 场景 / 道具 / 武器',
+      editor: '四类元素画布 · 参数与运行使用右侧 Inspector'
+    },
+    pane: {
+      resizeSplit: '拖动调整上下画布高度'
     },
     table: {
       new: '新建',
@@ -1095,11 +1084,6 @@ export default {
       props: '道具',
       weapons: '武器'
     },
-    editorWindow: {
-      loading: '正在打开世界元素编辑…',
-      missingAsset: '缺少世界元素资产 id',
-      noProject: '未打开工程'
-    },
     tableWindow: {
       loading: '正在打开世界元素表格…',
       missingAsset: '缺少世界元素资产 id',
@@ -1111,7 +1095,9 @@ export default {
       hint: '节点工作流 · 选中后按住 C 打开执行环',
       toolMode: '画布工具',
       selectTitle: '选择（左键点选/框选）',
-      panTitle: '平移（左键拖动画布）'
+      panTitle: '平移（左键拖动画布）',
+      collapse: '收起工具栏',
+      expand: '展开工具栏'
     },
     editor: {
       loadingSource: '正在加载图片…'
@@ -1608,10 +1594,10 @@ export default {
       hint: '双击打开分镜表格'
     },
     scriptShotImageGenNode: {
-      hint: '双击打开分镜图生成'
+      hint: '双击在下方展开分镜图画布'
     },
     scriptShotVideoGenNode: {
-      hint: '双击打开分镜视频生成'
+      hint: '双击在下方展开分镜视频画布'
     },
     scriptOutputNode: {
       hint: '分镜流程最终视频输出'

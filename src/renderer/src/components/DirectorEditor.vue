@@ -4,8 +4,13 @@
       <span>{{ t('director.title') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('director.hint.graph') }}</span>
+      <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
-    <NodeGraphEditor class="director-graph" :asset-id="directorAssetId" />
+    <NodeGraphEditor
+      class="director-graph"
+      :asset-id="directorAssetId"
+      :hide-toolbar="toolbarCollapsed"
+    />
   </div>
 </template>
 
@@ -22,6 +27,7 @@ import { useProjectStore } from '../stores/project'
 import { resolveDirectorStageForNode } from '../features/director/directorStageBinding'
 import { directorPreviewKey } from '../features/director/directorPreview'
 import NodeGraphEditor from './NodeGraphEditor.vue'
+import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
 const props = defineProps<{ directorAssetId: string }>()
 
@@ -29,6 +35,7 @@ const { t } = useStudioI18n()
 const project = useProjectStore()
 const previewUrl = ref('')
 const stageWindowOpen = ref(false)
+const toolbarCollapsed = ref(false)
 
 let stopPreviewListener: (() => void) | null = null
 let stopClosedListener: (() => void) | null = null

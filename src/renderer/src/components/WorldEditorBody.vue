@@ -10,27 +10,33 @@
           :asset-id="worldAssetId"
           :world-element-kind="kind"
           scope="elementWorkflow"
+          :hide-toolbar="hideGraphToolbar"
         />
       </div>
-      <aside class="world-inspector-pane">
-        <InspectorPanel />
-      </aside>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onMounted, provide, toRef, watch } from 'vue'
 import { WORLD_ELEMENT_KINDS, type WorldElementKind } from '@shared/graph'
 import { useEditorKernel } from '../editor/kernel'
+import { worldElementKindKey } from '../features/world/worldEditor'
 import { useWorkspaceStore } from '../stores/workspace'
-import InspectorPanel from './InspectorPanel.vue'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 
-const props = defineProps<{
-  worldAssetId: string
-  activeTab: WorldElementKind
-}>()
+const props = withDefaults(
+  defineProps<{
+    worldAssetId: string
+    activeTab: WorldElementKind
+    hideGraphToolbar?: boolean
+  }>(),
+  {
+    hideGraphToolbar: false
+  }
+)
+
+provide(worldElementKindKey, toRef(props, 'activeTab'))
 
 const editor = useEditorKernel()
 const workspace = useWorkspaceStore()
@@ -87,15 +93,5 @@ defineExpose({ flushSave })
 .kind-graph {
   position: absolute;
   inset: 0;
-}
-
-.world-inspector-pane {
-  flex: none;
-  width: 300px;
-  min-width: 260px;
-  max-width: 360px;
-  border-left: 1px solid var(--border);
-  background: var(--bg-panel, var(--bg-elevated));
-  overflow: auto;
 }
 </style>

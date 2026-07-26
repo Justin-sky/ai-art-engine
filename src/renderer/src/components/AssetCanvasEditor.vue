@@ -4,16 +4,22 @@
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('canvas.asset.hint') }}</span>
+      <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
-    <NodeGraphEditor class="canvas-graph" :asset-id="canvasAssetId" />
+    <NodeGraphEditor
+      class="canvas-graph"
+      :asset-id="canvasAssetId"
+      :hide-toolbar="toolbarCollapsed"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
+import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
 const props = defineProps<{
   canvasAssetId: string
@@ -21,6 +27,7 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
+const toolbarCollapsed = ref(false)
 
 onBeforeUnmount(() => {
   workspace.consumeCanvasEditor(props.canvasAssetId)

@@ -13,12 +13,9 @@ import {
 import { flattenImagesValues, flattenVideosValues } from './execute/values'
 import type { GraphImageItem, GraphVideoItem } from './execute/types'
 import { findOutputNode } from './query'
-import { VIDEO_FIRST_FRAME_PORT_ID } from './videoGenerateParams'
 import {
-  connectShotVideoReference,
   findAllShotWorkflowVideoNodes,
-  findShotWorkflowVideoNode,
-  setVideoFrameAsset
+  findShotWorkflowVideoNode
 } from './shotVideoBridge'
 import { createAssetGraphNode } from './create'
 import { isProcessingAssetNode } from './nodeRole'
@@ -296,26 +293,21 @@ export function stringifyShotImageAggregateRows(rows: ShotImageAggregateRow[]): 
   return `${JSON.stringify(rows, null, 2)}\n`
 }
 
-/** 将分镜 genRefs 中的图片挂到视频生成节点（首张为首帧，其余为 in-image 参考） */
+/** 将分镜 genRefs 中的图片放到视频图上（仅创建引用节点，不自动连到视频生成） */
 export function materializeShotGenRefsOnVideoGraph(
   graph: GraphDocument,
-  assets: ShotVisualImageAsset[]
+  assets: ShotVisualImageAsset[],
+  options?: { near?: GraphNode | null }
 ): GraphDocument {
   if (!assets.length) return graph
-  let doc = cloneGraphDocument(graph)
-  if (!findShotWorkflowVideoNode(doc)) return doc
+  const doc = cloneGraphDocument(graph)
+  const video = findShotWorkflowVideoNode(doc)
+  const near = options?.near ?? video
+  if (!near) return doc
 
-  const [first, ...rest] = assets
-  if (first?.type === 'image') {
-    doc = setVideoFrameAsset(doc, VIDEO_FIRST_FRAME_PORT_ID, first)
-  }
-  for (const asset of rest) {
+  for (const asset of assets) {
     if (asset.type !== 'image') continue
-    doc = connectShotVideoReference(doc, asset)
-  }
-  // 仅一张时：既作首帧，也挂 in-image 参考，便于 @ 引用
-  if (assets.length === 1 && first?.type === 'image') {
-    doc = connectShotVideoReference(doc, first)
+    ensureImageRefNodeNear(doc, asset, near)
   }
   return doc
 }
@@ -381,7 +373,17 @@ function ensureEdge(
   })
 }
 
-function findOrCreateImageRefNode(
+function nextAssetRefPosition(doc: GraphDocument, near: GraphNode): { x: number; y: number } {
+  const refCount = doc.nodes.filter(
+    (node) => node.category === 'asset' && (node.params?.assetRef === true || !!node.assetId)
+  ).length
+  return {
+    x: near.position.x - 220,
+    y: near.position.y + refCount * 140
+  }
+}
+
+function ensureImageRefNodeNear(
   doc: GraphDocument,
   asset: ShotVisualImageAsset,
   near: GraphNode
@@ -390,12 +392,17 @@ function findOrCreateImageRefNode(
     (node) => node.assetId === asset.id && (node.params?.assetRef === true || !!node.assetId)
   )
   if (existing) return existing
-  const node = createAssetGraphNode(asset.id, asset.type, asset.name, {
-    x: near.position.x - 220,
-    y: near.position.y + doc.nodes.filter((n) => n.assetId === asset.id).length * 24
-  })
+  const node = createAssetGraphNode(asset.id, asset.type, asset.name, nextAssetRefPosition(doc, near))
   doc.nodes.push(node)
   return node
+}
+
+function findOrCreateImageRefNode(
+  doc: GraphDocument,
+  asset: ShotVisualImageAsset,
+  near: GraphNode
+): GraphNode {
+  return ensureImageRefNodeNear(doc, asset, near)
 }
 
 /** 将分镜 genRefs 图片挂到画面图的图片生成 in-image */
@@ -460,7 +467,7 @@ export function applyShotParamsDropMaterialization(
     doc = ensureShotParamsLinkedToImage(doc, shotParamsNode.id)
     return doc
   }
-  let doc = materializeShotGenRefsOnVideoGraph(graph, assets)
+  let doc = materializeShotGenRefsOnVideoGraph(graph, assets, { near: shotParamsNode })
   doc = ensureShotParamsLinkedToVideo(doc, shotParamsNode.id)
   return doc
 }

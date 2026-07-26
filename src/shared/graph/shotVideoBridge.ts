@@ -85,9 +85,12 @@ function findOrCreateAssetRefNode(
     (node) => node.assetId === asset.id && (node.params?.assetRef === true || !!node.assetId)
   )
   if (existing) return existing
+  const refCount = doc.nodes.filter(
+    (node) => node.category === 'asset' && (node.params?.assetRef === true || !!node.assetId)
+  ).length
   const node = createAssetGraphNode(asset.id, asset.type, asset.name, {
     x: near.position.x - 220,
-    y: near.position.y + doc.nodes.filter((n) => n.assetId === asset.id).length * 24
+    y: near.position.y + refCount * 140
   })
   doc.nodes.push(node)
   return node

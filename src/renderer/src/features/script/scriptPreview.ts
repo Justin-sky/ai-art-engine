@@ -2,7 +2,7 @@ import { inject, type InjectionKey } from 'vue'
 
 export interface ScriptPreviewApi {
   openShotImageEditor: () => void
-  /** 打开分镜视频生成窗口 */
+  /** 在剧本画布下方展开分镜视频图（与分镜图同一嵌入方式） */
   openShotEditor: () => void
   openShotTable: () => void
 }

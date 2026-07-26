@@ -296,18 +296,22 @@ describe('shot visual bridge', () => {
     expect(next.filter((r) => r.role === 'style').map((r) => r.assetId)).toEqual([IMG1, IMG2])
   })
 
-  it('materializes first image as first frame and rest as references', () => {
+  it('creates image refs without auto-connecting to video', () => {
     let graph = createDefaultScopedGraph('shotWorkflow')
     graph = materializeShotGenRefsOnVideoGraph(graph, [
       { id: IMG1, type: 'image', name: 'A' },
       { id: IMG2, type: 'image', name: 'B' }
     ])
-    expect(getVideoFrameAssetId(graph, VIDEO_FIRST_FRAME_PORT_ID)).toBe(IMG1)
     const video = findShotWorkflowVideoNode(graph)!
-    const imageSources = graph.edges
-      .filter((e) => e.target === video.id && e.targetPort === 'in-image')
-      .map((e) => graph.nodes.find((n) => n.id === e.source)?.assetId)
-    expect(imageSources).toContain(IMG2)
+    expect(getVideoFrameAssetId(graph, VIDEO_FIRST_FRAME_PORT_ID)).toBeNull()
+    expect(
+      graph.edges.some(
+        (e) => e.target === video.id && (e.targetPort === 'in-image' || e.targetPort === VIDEO_FIRST_FRAME_PORT_ID)
+      )
+    ).toBe(false)
+    const refs = graph.nodes.filter((n) => n.assetId === IMG1 || n.assetId === IMG2)
+    expect(refs).toHaveLength(2)
+    expect(refs[0]?.position.y).not.toBe(refs[1]?.position.y)
   })
 
   it('drag materialization creates image refs and links shotParams text', () => {
@@ -332,8 +336,20 @@ describe('shot visual bridge', () => {
           e.source === params.id && e.target === video.id && e.targetPort === 'in-text'
       )
     ).toBe(true)
-    expect(getVideoFrameAssetId(graph, VIDEO_FIRST_FRAME_PORT_ID)).toBe(IMG1)
-    expect(graph.nodes.some((n) => n.assetId === IMG2 && n.params.assetRef === true)).toBe(true)
+    expect(getVideoFrameAssetId(graph, VIDEO_FIRST_FRAME_PORT_ID)).toBeNull()
+    const refs = graph.nodes.filter(
+      (n) => (n.assetId === IMG1 || n.assetId === IMG2) && n.params.assetRef === true
+    )
+    expect(refs).toHaveLength(2)
+    expect(refs[0]?.position.y).not.toBe(refs[1]?.position.y)
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.target === video.id &&
+          (e.targetPort === 'in-image' || e.targetPort === VIDEO_FIRST_FRAME_PORT_ID) &&
+          refs.some((ref) => ref.id === e.source)
+      )
+    ).toBe(false)
   })
 
   it('visual drag materialization links shotParams and genRefs to asset.image', () => {

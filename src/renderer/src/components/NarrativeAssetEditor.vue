@@ -4,8 +4,14 @@
       <span>{{ t('studio.editor.narrative') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('narrative.asset.hint') }}</span>
+      <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
-    <NodeGraphEditor ref="narrativeGraphRef" class="narrative-graph" :asset-id="narrativeAssetId" />
+    <NodeGraphEditor
+      ref="narrativeGraphRef"
+      class="narrative-graph"
+      :asset-id="narrativeAssetId"
+      :hide-toolbar="toolbarCollapsed"
+    />
     <NarrativeTableDialog
       v-if="tableOpen"
       ref="tableDialogRef"
@@ -28,6 +34,7 @@ import { narrativeEditorKey } from '../features/narrative/narrativeEditor'
 import { narrativeTableKey } from '../features/narrative/narrativeTable'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
+import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import NarrativeEditorDialog from './NarrativeEditorDialog.vue'
 import NarrativeTableDialog from './NarrativeTableDialog.vue'
 
@@ -38,6 +45,7 @@ const props = defineProps<{
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
 const narrativeGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
+const toolbarCollapsed = ref(false)
 const tableDialogRef = ref<InstanceType<typeof NarrativeTableDialog> | null>(null)
 const editorDialogRef = ref<InstanceType<typeof NarrativeEditorDialog> | null>(null)
 const tableOpen = ref(false)

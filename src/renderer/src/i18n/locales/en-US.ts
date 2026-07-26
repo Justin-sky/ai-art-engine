@@ -691,7 +691,9 @@ export default {
     strip: {
       title: 'Shots',
       switchHint: 'Drag onto canvas to create shot params; click to focus a shot',
-      new: '+ New'
+      new: '+ New',
+      collapse: 'Collapse shot strip',
+      expand: 'Expand shot strip'
     },
     table: {
       title: 'Shot table · {n} shots',
@@ -749,19 +751,13 @@ export default {
   },
   script: {
     hint: {
-      graph: 'Shot editing · node workflow · drop assets · connect to output · parameters on the right',
-      imageGraph:
-        'Shot images · per-shot node graph · default image generate → image output · parameters on the right',
-      imageGraphEmbedded:
-        'Per-shot visual graph · use the right Inspector for params and run',
-      videoGraph:
-        'Shot videos · per-shot node graph · default video generate → video output · parameters on the right',
+      imageGraph: 'Per-shot visual graph · use the right Inspector for params and run',
+      videoGraph: 'Per-shot video graph · use the right Inspector for params and run',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image gen to expand the visual graph below · double-click shot video gen to open its window'
+        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below'
     },
     dialog: {
-      shotEditor: 'Shot editing',
       shotImageEditor: 'Shot images',
       shotVideoEditor: 'Shot videos',
       shotTable: 'Shot table',
@@ -769,21 +765,6 @@ export default {
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'
-    },
-    shotEditorWindow: {
-      loading: 'Opening shot editor…',
-      missingAsset: 'Missing script asset',
-      noProject: 'No project open in the main window'
-    },
-    shotImageEditorWindow: {
-      loading: 'Opening shot image editor…',
-      missingAsset: 'Missing script asset',
-      noProject: 'No project open in the main window'
-    },
-    shotVideoEditorWindow: {
-      loading: 'Opening shot video editor…',
-      missingAsset: 'Missing script asset',
-      noProject: 'No project open in the main window'
     },
     shotTableWindow: {
       loading: 'Opening shot table…',
@@ -1073,14 +1054,19 @@ export default {
   },
   world: {
     asset: {
-      hint: 'Double-click extract for instructions · table for catalog · editor for canvases'
+      hint: 'Double-click extract for instructions · table for catalog · editor expands four canvases below'
     },
     dialog: {
       close: 'Close',
-      elementTable: 'World element table'
+      elementTable: 'World element table',
+      editor: 'World element editor'
     },
     hint: {
-      table: 'World element table · edit characters / scenes / props / weapons'
+      table: 'World element table · edit characters / scenes / props / weapons',
+      editor: 'Four element canvases · use the right Inspector for params and run'
+    },
+    pane: {
+      resizeSplit: 'Drag to resize the split panes'
     },
     table: {
       new: 'New',
@@ -1100,11 +1086,6 @@ export default {
       props: 'Props',
       weapons: 'Weapons'
     },
-    editorWindow: {
-      loading: 'Opening world elements editor…',
-      missingAsset: 'Missing world asset id',
-      noProject: 'No project open'
-    },
     tableWindow: {
       loading: 'Opening world element table…',
       missingAsset: 'Missing world asset id',
@@ -1116,7 +1097,9 @@ export default {
       hint: 'Node workflow · hold C for run ring',
       toolMode: 'Canvas tools',
       selectTitle: 'Select (click / marquee)',
-      panTitle: 'Pan (drag with left button)'
+      panTitle: 'Pan (drag with left button)',
+      collapse: 'Collapse toolbar',
+      expand: 'Expand toolbar'
     },
     editor: {
       loadingSource: 'Loading image…'
@@ -1615,10 +1598,10 @@ export default {
       hint: 'Double-click to open shot table'
     },
     scriptShotImageGenNode: {
-      hint: 'Double-click to open shot image generation'
+      hint: 'Double-click to expand the shot image graph below'
     },
     scriptShotVideoGenNode: {
-      hint: 'Double-click to open shot video generation'
+      hint: 'Double-click to expand the shot video graph below'
     },
     scriptOutputNode: {
       hint: 'Final video output of the shot pipeline'

@@ -4,18 +4,20 @@
       <span>{{ t('asset.type.script') }}</span>
       <span class="spacer" />
       <span class="mode-hint">{{ t('script.hint.assetGraph') }}</span>
+      <GraphToolbarCollapseBtn v-model="scriptToolbarCollapsed" />
     </div>
 
     <div ref="splitHostEl" class="script-split">
       <NodeGraphEditor
         ref="scriptGraphRef"
         class="script-main"
-        :class="{ 'with-image-pane': imageEditorOpen }"
-        :style="imageEditorOpen ? { flexBasis: `${scriptPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
+        :class="{ 'with-shot-pane': shotPaneOpen }"
+        :style="shotPaneOpen ? { flexBasis: `${scriptPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
         :asset-id="scriptAssetId"
+        :hide-toolbar="scriptToolbarCollapsed"
       />
 
-      <template v-if="imageEditorOpen">
+      <template v-if="shotPaneKind">
         <div
           class="split-handle"
           role="separator"
@@ -24,32 +26,27 @@
           :title="t('script.pane.resizeSplit')"
           @pointerdown="onSplitPointerDown"
         />
-        <section class="shot-image-pane">
-          <header class="shot-image-pane-head">
-            <span class="shot-image-pane-title">{{ t('script.dialog.shotImageEditor') }}</span>
-            <span class="shot-image-pane-hint">{{ t('script.hint.imageGraphEmbedded') }}</span>
-            <button type="button" class="shot-image-pane-close" @click="closeShotImagePane">
+        <section class="shot-embed-pane">
+          <header class="shot-embed-pane-head">
+            <span class="shot-embed-pane-title">{{ shotPaneTitle }}</span>
+            <span class="shot-embed-pane-hint">{{ shotPaneHint }}</span>
+            <GraphToolbarCollapseBtn v-model="shotToolbarCollapsed" />
+            <button type="button" class="shot-embed-pane-close" @click="closeShotPane">
               {{ t('script.dialog.close') }}
             </button>
           </header>
           <ShotEditorBody
-            ref="imageEditorBodyRef"
-            class="shot-image-pane-body"
-            kind="image"
-            embedded
+            :key="shotPaneKind"
+            ref="shotEditorBodyRef"
+            class="shot-embed-pane-body"
+            :kind="shotPaneKind"
+            :hide-graph-toolbar="shotToolbarCollapsed"
             :script-asset-id="scriptAssetId"
           />
         </section>
       </template>
     </div>
 
-    <ShotEditorDialog
-      v-if="videoEditorOpen"
-      ref="videoEditorDialogRef"
-      kind="video"
-      :script-asset-id="scriptAssetId"
-      @close="videoEditorOpen = false"
-    />
     <ShotTableDialog
       v-if="tableOpen"
       ref="tableDialogRef"
@@ -63,8 +60,8 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import ShotEditorBody from './ShotEditorBody.vue'
-import ShotEditorDialog from './ShotEditorDialog.vue'
 import ShotTableDialog from './ShotTableDialog.vue'
+import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import { shotScriptAssetId, isDraftAssetId } from '@shared/domain'
 import { storeToRefs } from 'pinia'
 import { useDraftStore } from '../stores/drafts'
@@ -73,6 +70,8 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { scriptPreviewKey } from '../features/script/scriptPreview'
+
+type ShotPaneKind = 'image' | 'video'
 
 const props = defineProps<{
   scriptAssetId: string
@@ -84,40 +83,45 @@ provide('scriptAssetId', computed(() => props.scriptAssetId))
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const { drafts } = storeToRefs(useDraftStore())
-const imageEditorOpen = ref(false)
-const videoEditorOpen = ref(false)
+const shotPaneKind = ref<ShotPaneKind | null>(null)
 const tableOpen = ref(false)
-const imageEditorBodyRef = ref<InstanceType<typeof ShotEditorBody> | null>(null)
-const videoEditorDialogRef = ref<InstanceType<typeof ShotEditorDialog> | null>(null)
+const scriptToolbarCollapsed = ref(false)
+const shotToolbarCollapsed = ref(false)
+const shotEditorBodyRef = ref<InstanceType<typeof ShotEditorBody> | null>(null)
 const tableDialogRef = ref<InstanceType<typeof ShotTableDialog> | null>(null)
 const scriptGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const splitHostEl = ref<HTMLElement | null>(null)
+
+const shotPaneOpen = computed(() => shotPaneKind.value != null)
+const shotPaneTitle = computed(() =>
+  shotPaneKind.value === 'image'
+    ? t('script.dialog.shotImageEditor')
+    : t('script.dialog.shotVideoEditor')
+)
+const shotPaneHint = computed(() =>
+  shotPaneKind.value === 'image'
+    ? t('script.hint.imageGraph')
+    : t('script.hint.videoGraph')
+)
 
 const SCRIPT_PANE_MIN = 28
 const SCRIPT_PANE_MAX = 78
 const scriptPanePercent = ref(48)
 let splitDragging = false
 
-async function openShotImageEditor(): Promise<void> {
+async function openShotPane(kind: ShotPaneKind): Promise<void> {
   await scriptGraphRef.value?.flushSave?.()
-  imageEditorOpen.value = true
+  if (shotPaneKind.value && shotPaneKind.value !== kind) {
+    await shotEditorBodyRef.value?.flushSave()
+  }
+  shotPaneKind.value = kind
   await ensureScopedSelection('shot')
 }
 
-async function closeShotImagePane(): Promise<void> {
-  await imageEditorBodyRef.value?.flushSave()
-  imageEditorOpen.value = false
+async function closeShotPane(): Promise<void> {
+  await shotEditorBodyRef.value?.flushSave()
+  shotPaneKind.value = null
   workspace.focusProjectGlobals()
-}
-
-async function openShotVideoEditor(): Promise<void> {
-  await scriptGraphRef.value?.flushSave?.()
-  if (isDraftAssetId(props.scriptAssetId)) {
-    videoEditorOpen.value = true
-    await ensureScopedSelection('shot')
-    return
-  }
-  void window.studio.openShotEditorWindow(props.scriptAssetId, 'video')
 }
 
 async function openShotTable(): Promise<void> {
@@ -132,10 +136,10 @@ async function openShotTable(): Promise<void> {
 
 provide(scriptPreviewKey, {
   openShotImageEditor: () => {
-    void openShotImageEditor()
+    void openShotPane('image')
   },
   openShotEditor: () => {
-    void openShotVideoEditor()
+    void openShotPane('video')
   },
   openShotTable: () => {
     void openShotTable()
@@ -206,8 +210,7 @@ function updateSplitFromClientY(clientY: number): void {
 useEditorDocumentSession({
   id: () => `editor:script:${props.scriptAssetId}`,
   save: async () => {
-    await imageEditorBodyRef.value?.flushSave()
-    await videoEditorDialogRef.value?.flushSave()
+    await shotEditorBodyRef.value?.flushSave()
     await tableDialogRef.value?.flushSave()
   },
   saveOnUnmount: false
@@ -243,7 +246,8 @@ watch(
 watch(
   () => props.scriptAssetId,
   () => {
-    imageEditorOpen.value = false
+    shotPaneKind.value = null
+    shotToolbarCollapsed.value = false
   }
 )
 </script>
@@ -292,7 +296,7 @@ watch(
   min-height: 0;
 }
 
-.script-main.with-image-pane {
+.script-main.with-shot-pane {
   min-height: 120px;
 }
 
@@ -306,36 +310,37 @@ watch(
 
 .split-handle:hover,
 .split-handle:active {
-  background: var(--accent, #5b8def);
+  background: var(--accent);
 }
 
-.shot-image-pane {
+.shot-embed-pane {
   flex: 1;
   min-height: 160px;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
-  background: var(--bg-panel, var(--bg-elevated));
+  background: var(--bg-panel);
   overflow: hidden;
 }
 
-.shot-image-pane-head {
+.shot-embed-pane-head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
   flex-shrink: 0;
   font-size: 12px;
 }
 
-.shot-image-pane-title {
+.shot-embed-pane-title {
   font-weight: 600;
   color: var(--text);
   flex-shrink: 0;
 }
 
-.shot-image-pane-hint {
+.shot-embed-pane-hint {
   flex: 1;
   min-width: 0;
   color: var(--text-muted);
@@ -345,7 +350,7 @@ watch(
   font-size: 11px;
 }
 
-.shot-image-pane-close {
+.shot-embed-pane-close {
   flex-shrink: 0;
   font-size: 11px;
   padding: 2px 8px;
@@ -356,11 +361,11 @@ watch(
   cursor: pointer;
 }
 
-.shot-image-pane-close:hover {
-  border-color: var(--accent, #5b8def);
+.shot-embed-pane-close:hover {
+  border-color: var(--accent);
 }
 
-.shot-image-pane-body {
+.shot-embed-pane-body {
   flex: 1;
   min-height: 0;
 }

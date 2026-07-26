@@ -47,9 +47,20 @@ const tabs = computed(() =>
   cursor: pointer;
 }
 
-.tab.active {
+.tab:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg-elevated);
+  background: var(--bg-hover);
+}
+
+.tab.active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.tab.active:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 </style>

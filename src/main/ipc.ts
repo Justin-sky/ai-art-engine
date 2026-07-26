@@ -43,18 +43,9 @@ import { dialogService } from './services/dialogService'
 import { broadcastToAllWindows } from './broadcast'
 import { broadcastStagePreview, closeStageWindow, openStageWindow } from './stageWindow'
 import {
-  closeShotEditorWindow,
-  openShotEditorWindow
-} from './shotEditorWindow'
-import {
   closeShotTableWindow,
   openShotTableWindow
 } from './shotTableWindow'
-import {
-  closeWorldEditorWindow,
-  openWorldEditorWindow,
-  type WorldEditorTab
-} from './worldEditorWindow'
 import {
   closeWorldTableWindow,
   openWorldTableWindow
@@ -111,7 +102,6 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.PROJECT_CLOSE, () => {
     videoJobService.stopAllTimers()
-    closeShotEditorWindow()
     closeShotTableWindow()
     closeWorldTableWindow()
     projectService.closeProject()
@@ -133,26 +123,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, (dataUrl: string) => openShotPreviewWindow(dataUrl))
   handle(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW, () => closeShotPreviewWindow())
   handle(IpcChannels.SHOT_PREVIEW_GET, () => getShotPreviewPayload())
-  handle(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, (scriptAssetId: string, kind?: 'image' | 'video') =>
-    openShotEditorWindow(scriptAssetId, kind)
-  )
-  handle(
-    IpcChannels.WINDOW_CLOSE_SHOT_EDITOR,
-    (scriptAssetId?: string, kind?: 'image' | 'video') =>
-      closeShotEditorWindow(scriptAssetId, kind)
-  )
   handle(IpcChannels.WINDOW_OPEN_SHOT_TABLE, (scriptAssetId: string) =>
     openShotTableWindow(scriptAssetId)
   )
   handle(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, (scriptAssetId?: string) =>
     closeShotTableWindow(scriptAssetId)
-  )
-  handle(
-    IpcChannels.WINDOW_OPEN_WORLD_EDITOR,
-    (worldAssetId: string, tab?: WorldEditorTab) => openWorldEditorWindow(worldAssetId, tab)
-  )
-  handle(IpcChannels.WINDOW_CLOSE_WORLD_EDITOR, (worldAssetId?: string) =>
-    closeWorldEditorWindow(worldAssetId)
   )
   handle(IpcChannels.WINDOW_OPEN_WORLD_TABLE, (worldAssetId: string) =>
     openWorldTableWindow(worldAssetId)

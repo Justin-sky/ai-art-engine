@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig, Shot } from '@shared/domain'
-import type { WorldElementKind } from '@shared/graph'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -146,18 +145,10 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, dataUrl),
   closeShotPreviewWindow: () => ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW),
   getShotPreviewPayload: () => ipcRenderer.invoke(IpcChannels.SHOT_PREVIEW_GET),
-  openShotEditorWindow: (scriptAssetId: string, kind?: 'image' | 'video') =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, scriptAssetId, kind),
-  closeShotEditorWindow: (scriptAssetId?: string, kind?: 'image' | 'video') =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_EDITOR, scriptAssetId, kind),
   openShotTableWindow: (scriptAssetId: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_TABLE, scriptAssetId),
   closeShotTableWindow: (scriptAssetId?: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, scriptAssetId),
-  openWorldEditorWindow: (worldAssetId, tab) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_WORLD_EDITOR, worldAssetId, tab),
-  closeWorldEditorWindow: (worldAssetId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_WORLD_EDITOR, worldAssetId),
   openWorldTableWindow: (worldAssetId: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_WORLD_TABLE, worldAssetId),
   closeWorldTableWindow: (worldAssetId?: string) =>
@@ -199,26 +190,6 @@ const api: StudioApi = {
     ipcRenderer.on('stage:close-request', listener)
     return () => ipcRenderer.removeListener('stage:close-request', listener)
   },
-  onShotEditorClosed: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { scriptAssetId: string; kind?: 'image' | 'video' }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('shot-editor:closed', listener)
-    return () => ipcRenderer.removeListener('shot-editor:closed', listener)
-  },
-  onShotEditorCloseRequest: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { scriptAssetId: string; kind?: 'image' | 'video' }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('shot-editor:close-request', listener)
-    return () => ipcRenderer.removeListener('shot-editor:close-request', listener)
-  },
   onShotTableClosed: (callback) => {
     const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
       callback(payload)
@@ -233,20 +204,6 @@ const api: StudioApi = {
     ipcRenderer.on('shot-table:close-request', listener)
     return () => ipcRenderer.removeListener('shot-table:close-request', listener)
   },
-  onWorldEditorClosed: (callback) => {
-    const listener = (_event: unknown, payload: { worldAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('world-editor:closed', listener)
-    return () => ipcRenderer.removeListener('world-editor:closed', listener)
-  },
-  onWorldEditorCloseRequest: (callback) => {
-    const listener = (_event: unknown, payload: { worldAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('world-editor:close-request', listener)
-    return () => ipcRenderer.removeListener('world-editor:close-request', listener)
-  },
   onWorldTableClosed: (callback) => {
     const listener = (_event: unknown, payload: { worldAssetId: string }): void => {
       callback(payload)
@@ -260,16 +217,6 @@ const api: StudioApi = {
     }
     ipcRenderer.on('world-table:close-request', listener)
     return () => ipcRenderer.removeListener('world-table:close-request', listener)
-  },
-  onWorldEditorSetTab: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { tab: WorldElementKind; worldAssetId?: string }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('world-editor:set-tab', listener)
-    return () => ipcRenderer.removeListener('world-editor:set-tab', listener)
   },
   onAssetUpdated: (callback) => {
     const listener = (_event: unknown, asset: AssetInfo): void => {
