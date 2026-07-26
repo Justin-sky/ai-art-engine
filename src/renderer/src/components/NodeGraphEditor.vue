@@ -383,6 +383,42 @@
               <span class="ctx-label">{{ item.label }}</span>
               <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
             </button>
+            <div
+              v-for="nested in group.nested"
+              :key="nested.id"
+              class="ctx-submenu"
+              @pointerenter="openCtxNestedSubmenu(nested.id)"
+              @pointerleave="closeCtxNestedSubmenu(nested.id)"
+            >
+              <button
+                type="button"
+                class="ctx-submenu-trigger"
+                :class="{ open: ctxNestedSubmenu === nested.id }"
+              >
+                <span class="ctx-icon">{{ nested.icon }}</span>
+                <span class="ctx-label">{{ nested.label }}</span>
+                <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
+              </button>
+              <div
+                v-if="ctxNestedSubmenu === nested.id"
+                class="ctx-submenu-panel ctx-submenu-panel-nested"
+                :class="{
+                  'open-left': nestedSubmenuFlip.left,
+                  'open-up': nestedSubmenuFlip.up
+                }"
+              >
+                <button
+                  v-for="item in nested.items"
+                  :key="item.typeId"
+                  type="button"
+                  @click="addNodeFromMenu(item.typeId)"
+                >
+                  <span class="ctx-icon">{{ item.icon }}</span>
+                  <span class="ctx-label">{{ item.label }}</span>
+                  <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div
@@ -1074,8 +1110,10 @@ let transientPanRestoreMode: 'select' | 'pan' | null = null
 const pointerOverViewport = ref(false)
 const lastPointerClient = { x: 0, y: 0 }
 const ctxSubmenu = ref<string | null>(null)
+const ctxNestedSubmenu = ref<string | null>(null)
 const ctxMenuEl = ref<HTMLElement | null>(null)
 const submenuFlip = ref({ left: false, up: false })
+const nestedSubmenuFlip = ref({ left: false, up: false })
 type CtxMenuState = {
   x: number
   y: number
@@ -2311,40 +2349,46 @@ type AddableMenuItem = {
   portTypeLabel: string
 }
 
-type ResourceMenuGroupId =
-  | Extract<
-      AssetType,
-      | 'image'
-      | 'video'
-      | 'voice'
-      | 'screenplay'
-      | 'script'
-      | 'motion'
-      | 'canvas'
-      | 'world'
-      | 'narrative'
-    >
-  | 'imageEdit'
+type ResourceMenuGroupId = Extract<
+  AssetType,
+  | 'image'
+  | 'video'
+  | 'voice'
+  | 'screenplay'
+  | 'script'
+  | 'motion'
+  | 'canvas'
+  | 'world'
+  | 'narrative'
+>
 
-/** 右键菜单按资源类型分组；组内顺序即展示顺序 */
+type NestedMenuGroupId = 'imageEdit'
+
+/** 右键菜单按资源类型分组；组内顺序即展示顺序；nestedGroups 嵌在父分组子菜单内 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   id: ResourceMenuGroupId
   typeIds: readonly string[]
+  nestedGroups?: ReadonlyArray<{
+    id: NestedMenuGroupId
+    typeIds: readonly string[]
+  }>
 }> = [
   {
     id: 'image',
-    typeIds: ['asset.image', 'image.select', 'image.toPrompt', 'output.image']
-  },
-  {
-    id: 'imageEdit',
-    typeIds: [
-      'image.upscale',
-      'image.expand',
-      'image.redraw',
-      'image.erase',
-      'image.matte',
-      'image.crop',
-      'image.gridSplit'
+    typeIds: ['asset.image', 'image.select', 'image.toPrompt', 'output.image'],
+    nestedGroups: [
+      {
+        id: 'imageEdit',
+        typeIds: [
+          'image.upscale',
+          'image.expand',
+          'image.redraw',
+          'image.erase',
+          'image.matte',
+          'image.crop',
+          'image.gridSplit'
+        ]
+      }
     ]
   },
   {
@@ -2396,7 +2440,10 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
 ]
 
 const CONTEXT_MENU_GROUPED_TYPE_IDS = new Set(
-  CONTEXT_MENU_RESOURCE_GROUPS.flatMap((group) => group.typeIds)
+  CONTEXT_MENU_RESOURCE_GROUPS.flatMap((group) => [
+    ...group.typeIds,
+    ...(group.nestedGroups?.flatMap((nested) => nested.typeIds) ?? [])
+  ])
 )
 
 function isOutputContextMenuType(typeId: string): boolean {
@@ -2446,17 +2493,28 @@ const rootAddableMenuItems = computed(() =>
 
 const resourceAddableMenuGroups = computed(() => {
   const byTypeId = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
-  return CONTEXT_MENU_RESOURCE_GROUPS.map((group) => ({
-    id: group.id,
-    label:
-      group.id === 'imageEdit'
-        ? t('graph.context.groups.imageEdit')
-        : assetTypeLabel(group.id),
-    icon: group.id === 'imageEdit' ? '🎛️' : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
-    items: group.typeIds
+  return CONTEXT_MENU_RESOURCE_GROUPS.map((group) => {
+    const items = group.typeIds
       .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
       .filter((item): item is AddableMenuItem => item != null)
-  })).filter((group) => group.items.length > 0)
+    const nested = (group.nestedGroups ?? [])
+      .map((nestedGroup) => ({
+        id: nestedGroup.id,
+        label: t(`graph.context.groups.${nestedGroup.id}`),
+        icon: '🎛️',
+        items: nestedGroup.typeIds
+          .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
+          .filter((item): item is AddableMenuItem => item != null)
+      }))
+      .filter((nestedGroup) => nestedGroup.items.length > 0)
+    return {
+      id: group.id,
+      label: assetTypeLabel(group.id),
+      icon: ASSET_TYPE_ICONS[group.id] ?? '◇',
+      items,
+      nested
+    }
+  }).filter((group) => group.items.length > 0 || group.nested.length > 0)
 })
 
 const connectMenuPortTypeLabel = computed(() => {
@@ -2807,14 +2865,18 @@ function menuAddableNodeTypes() {
 function closeCtxMenu(): void {
   ctxMenu.value = null
   ctxSubmenu.value = null
+  ctxNestedSubmenu.value = null
   submenuFlip.value = { left: false, up: false }
+  nestedSubmenuFlip.value = { left: false, up: false }
 }
 
 async function showCtxMenu(next: CtxMenuState): Promise<void> {
   const preferredX = next.x
   const preferredY = next.y
   ctxSubmenu.value = null
+  ctxNestedSubmenu.value = null
   submenuFlip.value = { left: false, up: false }
+  nestedSubmenuFlip.value = { left: false, up: false }
   ctxMenu.value = next
   await nextTick()
   const el = ctxMenuEl.value
@@ -2827,24 +2889,55 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
 
 function openCtxSubmenu(kind: string): void {
   ctxSubmenu.value = kind
+  ctxNestedSubmenu.value = null
+  nestedSubmenuFlip.value = { left: false, up: false }
   void repositionCtxSubmenu()
 }
 
 function closeCtxSubmenu(kind: string): void {
   if (ctxSubmenu.value === kind) {
     ctxSubmenu.value = null
+    ctxNestedSubmenu.value = null
     submenuFlip.value = { left: false, up: false }
+    nestedSubmenuFlip.value = { left: false, up: false }
+  }
+}
+
+function openCtxNestedSubmenu(kind: string): void {
+  ctxNestedSubmenu.value = kind
+  void repositionCtxNestedSubmenu()
+}
+
+function closeCtxNestedSubmenu(kind: string): void {
+  if (ctxNestedSubmenu.value === kind) {
+    ctxNestedSubmenu.value = null
+    nestedSubmenuFlip.value = { left: false, up: false }
   }
 }
 
 async function repositionCtxSubmenu(): Promise<void> {
   submenuFlip.value = { left: false, up: false }
   await nextTick()
-  const panel = ctxMenuEl.value?.querySelector('.ctx-submenu-panel') as HTMLElement | null
+  const panel = ctxMenuEl.value?.querySelector(
+    '.ctx-submenu-panel:not(.ctx-submenu-panel-nested)'
+  ) as HTMLElement | null
   if (!panel || !ctxSubmenu.value) return
   const rect = panel.getBoundingClientRect()
   const margin = 8
   submenuFlip.value = {
+    left: rect.right > window.innerWidth - margin,
+    up: rect.bottom > window.innerHeight - margin
+  }
+}
+
+async function repositionCtxNestedSubmenu(): Promise<void> {
+  nestedSubmenuFlip.value = { left: false, up: false }
+  await nextTick()
+  const panel = ctxMenuEl.value?.querySelector('.ctx-submenu-panel-nested') as HTMLElement | null
+  if (!panel || !ctxNestedSubmenu.value) return
+  const rect = panel.getBoundingClientRect()
+  const margin = 8
+  nestedSubmenuFlip.value = {
     left: rect.right > window.innerWidth - margin,
     up: rect.bottom > window.innerHeight - margin
   }
