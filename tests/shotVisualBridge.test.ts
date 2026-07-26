@@ -5,6 +5,7 @@ import {
   collectVideosFromShotWorkflowGraph,
   connectShotVideoReference,
   createDefaultScopedGraph,
+  createNodeFromType,
   createShotParamsNodeForShot,
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
@@ -84,6 +85,75 @@ describe('shot visual bridge', () => {
     expect(videos[0]?.relativePath).toBe('Output/videos/a.mp4')
   })
 
+  it('prefers video output node over upstream generatedVideos', () => {
+    const doc = createDefaultScopedGraph('shotWorkflow')
+    const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
+    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
+    video.params = {
+      ...video.params,
+      generatedVideos: [
+        {
+          id: 'v-a',
+          relativePath: 'Output/videos/from-gen.mp4',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    doc.runStates = {
+      [output.id]: {
+        status: 'done',
+        outputs: {
+          out: {
+            kind: 'videos',
+            items: [{ id: 'v-out', relativePath: 'Output/videos/from-output.mp4' }]
+          }
+        }
+      }
+    }
+    const videos = collectVideosFromShotWorkflowGraph(doc)
+    expect(videos.map((item) => item.relativePath)).toEqual(['Output/videos/from-output.mp4'])
+  })
+
+  it('falls back to upstream video gens when video output is empty', () => {
+    const doc = createDefaultScopedGraph('shotWorkflow')
+    const videoA = doc.nodes.find((n) => n.typeId === 'asset.video')!
+    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
+    const videoB = createNodeFromType('asset.video', { x: 100, y: 280 }, { id: 'video-gen-b' })
+    doc.nodes.push(videoB)
+    doc.edges.push({
+      id: 'edge-vb-out',
+      source: videoB.id,
+      target: output.id,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    videoA.params = {
+      ...videoA.params,
+      generatedVideos: [
+        {
+          id: 'v-a',
+          relativePath: 'Output/videos/from-a.mp4',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    videoB.params = {
+      ...videoB.params,
+      generatedVideos: [
+        {
+          id: 'v-b',
+          relativePath: 'Output/videos/from-b.mp4',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    const videos = collectVideosFromShotWorkflowGraph(doc)
+    expect(videos.map((item) => item.relativePath).sort()).toEqual([
+      'Output/videos/from-a.mp4',
+      'Output/videos/from-b.mp4'
+    ])
+  })
+
   it('falls back to asset.image generatedImages when output is empty', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
@@ -103,7 +173,7 @@ describe('shot visual bridge', () => {
     expect(images[0]?.relativePath).toBe('Assets/shots/from-gen.png')
   })
 
-  it('prefers accumulated generatedImages over latest runStates batch', () => {
+  it('prefers image output node over upstream generatedImages', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
     const output = doc.nodes.find((n) => n.typeId === 'output.image')!
@@ -129,25 +199,90 @@ describe('shot visual bridge', () => {
         status: 'done',
         outputs: {
           out: {
-            kind: 'images',
-            items: [{ id: IMG2, dataUrl: '', relativePath: 'Assets/shots/b.png' }]
+            kind: 'output',
+            outputKind: 'image',
+            images: [{ id: IMG2, dataUrl: '', relativePath: 'Assets/shots/b.png' }]
           }
         }
-      },
-      [image.id]: {
+      }
+    }
+    const images = collectImagesFromVisualGraph(doc)
+    expect(images.map((item) => item.relativePath)).toEqual(['Assets/shots/b.png'])
+  })
+
+  it('collects merged images from image output when multiple gens are linked', () => {
+    const doc = createDefaultScopedGraph('visual')
+    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
+    const imageB = createNodeFromType('asset.image', { x: 100, y: 280 }, { id: 'image-gen-b' })
+    doc.nodes.push(imageB)
+    doc.edges.push({
+      id: 'edge-b-out',
+      source: imageB.id,
+      target: output.id,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    doc.runStates = {
+      [output.id]: {
         status: 'done',
         outputs: {
           out: {
-            kind: 'images',
-            items: [{ id: IMG2, dataUrl: '', relativePath: 'Assets/shots/b.png' }]
+            kind: 'output',
+            outputKind: 'image',
+            images: [
+              { id: IMG1, dataUrl: '', relativePath: 'Assets/shots/from-a.png' },
+              { id: IMG2, dataUrl: '', relativePath: 'Assets/shots/from-b.png' }
+            ]
           }
         }
       }
     }
     const images = collectImagesFromVisualGraph(doc)
     expect(images.map((item) => item.relativePath)).toEqual([
-      'Assets/shots/a.png',
-      'Assets/shots/b.png'
+      'Assets/shots/from-a.png',
+      'Assets/shots/from-b.png'
+    ])
+  })
+
+  it('falls back to upstream gens when image output is empty', () => {
+    const doc = createDefaultScopedGraph('visual')
+    const imageA = doc.nodes.find((n) => n.typeId === 'asset.image')!
+    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
+    const imageB = createNodeFromType('asset.image', { x: 100, y: 280 }, { id: 'image-gen-b' })
+    doc.nodes.push(imageB)
+    doc.edges.push({
+      id: 'edge-b-out',
+      source: imageB.id,
+      target: output.id,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    imageA.params = {
+      ...imageA.params,
+      generatedImages: [
+        {
+          id: IMG1,
+          dataUrl: '',
+          relativePath: 'Assets/shots/from-a.png',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    imageB.params = {
+      ...imageB.params,
+      generatedImages: [
+        {
+          id: IMG2,
+          dataUrl: '',
+          relativePath: 'Assets/shots/from-b.png',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    const images = collectImagesFromVisualGraph(doc)
+    expect(images.map((item) => item.relativePath).sort()).toEqual([
+      'Assets/shots/from-a.png',
+      'Assets/shots/from-b.png'
     ])
   })
 

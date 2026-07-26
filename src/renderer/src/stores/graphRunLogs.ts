@@ -197,7 +197,7 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
         event.message || ''
       ]
       lines.push(parts.filter(Boolean).join(' | '))
-      if (event.inputs && Object.keys(event.inputs).length) {
+      if (event.inputs != null) {
         lines.push('inputs:', JSON.stringify(event.inputs, null, 2))
       }
       if (event.outputs && Object.keys(event.outputs).length) {

@@ -234,13 +234,13 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
 export function summarizeInputPortsForLog(
   inputs: Record<string, GraphValue[]> | null | undefined
 ): Record<string, GraphRunLogPortSnapshot[]> | undefined {
-  if (!inputs) return undefined
+  if (inputs == null) return undefined
   const out: Record<string, GraphRunLogPortSnapshot[]> = {}
   for (const [portId, values] of Object.entries(inputs)) {
-    if (!values?.length) continue
-    out[portId] = values.map(summarizeGraphValueForLog)
+    // 空数组也保留，便于区分「未收到输入」与「未声明端口」
+    out[portId] = (values ?? []).map(summarizeGraphValueForLog)
   }
-  return Object.keys(out).length ? out : undefined
+  return out
 }
 
 export function summarizeOutputPortsForLog(

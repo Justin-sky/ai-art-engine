@@ -296,8 +296,18 @@ function resolveExportImages(): GraphImageItem[] {
   if (selection.kind !== 'graph.node' || !selection.hostId) return []
   const host = graphRunHosts.get(selection.hostId)
   const items: GraphImageItem[] = []
+  // 以输出节点自身为准（runStates / cameraShots / generatedImages）
   collectImagesFromValue(host?.runStates[current.id]?.outputs?.out, items)
+  if (!items.length) {
+    for (const shot of current.params.cameraShots ?? []) {
+      pushUniqueImage(items, intoAsItem(shot))
+    }
+    for (const shot of current.params.generatedImages ?? []) {
+      pushUniqueImage(items, intoAsItem(shot))
+    }
+  }
 
+  // 输出为空时再回退上游
   if (!items.length) {
     const edges = graphEditorHosts.listIncomingEdges(selection.hostId, current.id)
     for (const edge of edges) {

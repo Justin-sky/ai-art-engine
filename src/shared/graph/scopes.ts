@@ -112,6 +112,7 @@ const DEFAULT_SCOPE_DRAG_ASSETS: GraphScopeDragAssetsConfig = {
 export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDefinition> = {
   shotWorkflow: {
     id: 'shotWorkflow',
+    outputTitleI18nKey: 'graph.titles.shotOutput',
     output: {
       kind: 'video',
       title: 'Shot video output',
@@ -130,6 +131,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   visual: {
     id: 'visual',
     coerceOutput: true,
+    outputTitleI18nKey: 'graph.titles.shotVisualOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     shotCanvasField: 'visualGraphJson',
     hostIdSuffix: 'visual',

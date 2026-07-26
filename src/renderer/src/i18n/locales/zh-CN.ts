@@ -749,10 +749,11 @@ export default {
     hint: {
       graph: '分镜编辑 · 节点工作流 · 拖入资产 · 连线至输出节点 · 参数在右侧面板',
       imageGraph: '分镜图 · 每镜独立节点图 · 默认图片生成连到图片输出 · 参数在右侧面板',
+      imageGraphEmbedded: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
       videoGraph: '分镜视频 · 每镜独立节点图 · 默认视频生成连到视频输出 · 参数在右侧面板',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/视频打开对应节点图'
+        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图在下方展开画面图 · 双击生成分镜视频打开对应窗口'
     },
     dialog: {
       shotEditor: '分镜编辑',
@@ -760,6 +761,9 @@ export default {
       shotVideoEditor: '分镜视频',
       shotTable: '分镜表格',
       close: '关闭'
+    },
+    pane: {
+      resizeSplit: '拖动调整上下画布高度'
     },
     shotEditorWindow: {
       loading: '正在打开分镜编辑…',
@@ -1182,6 +1186,7 @@ export default {
       clearConfirmMessage: '确定清空全部执行日志？此操作不可恢复。',
       startWorkflow: '开始整图执行',
       startToNode: '开始执行至节点 {name}',
+      startNodeOnly: '开始执行节点 {name}',
       sessionStatus: {
         running: '执行中',
         done: '成功',
@@ -1250,6 +1255,8 @@ export default {
     fitView: '适配视图',
     layout: {
       dragHandle: '拖动布局工具条',
+      expand: '展开布局工具',
+      collapse: '收起布局工具',
       grid: '显示/隐藏背景网格',
       snap: '拖拽时吸附网格',
       snapShort: '吸附',
@@ -2126,6 +2133,11 @@ export default {
         generatedImagesHint: '每次执行会追加新图；双击预览，点 × 删除',
         generatedImagesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedImagesDelete: '删除此图',
+        generatedVideos: '已生成视频',
+        generatedVideosCount: '{n} 条',
+        generatedVideosHint: '每次执行会追加新视频；预览区可查看全部历史，点 × 可在 Inspector 删除',
+        generatedVideosEmpty: '暂无生成结果。执行本节点后会显示在这里',
+        generatedVideosDelete: '删除此视频',
         generatedTexts: '已生成剧本',
         generatedTextsCount: '{n} 份',
         generatedTextsHint: '每次执行会追加新文本并保存到输出路径；双击打开，点 × 删除',

@@ -98,6 +98,42 @@ export function syncCanonicalOutputNodeIds(
   }
 }
 
+/**
+ * 分镜图画布仅保留一个图片输出：多余节点删除，入边改挂到保留节点。
+ */
+export function collapseVisualImageOutputs(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates?: Record<string, GraphPersistedRunState>
+): void {
+  const outputs = nodes.filter((n) => n.category === 'output')
+  if (outputs.length <= 1) return
+
+  const desiredId = graphOutputNodeId('image')
+  const keep =
+    outputs.find((n) => n.id === desiredId) ??
+    outputs.find((n) => isCanonicalGraphOutputNodeId(n.id)) ??
+    outputs[0]!
+  const removeIds = new Set(outputs.filter((n) => n.id !== keep.id).map((n) => n.id))
+
+  for (const edge of edges) {
+    if (removeIds.has(edge.target)) edge.target = keep.id
+    if (removeIds.has(edge.source)) edge.source = keep.id
+  }
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    if (removeIds.has(nodes[i]!.id)) nodes.splice(i, 1)
+  }
+
+  if (runStates) {
+    for (const id of removeIds) delete runStates[id]
+  }
+
+  if (keep.id !== desiredId && !nodes.some((n) => n.id === desiredId)) {
+    renameNodeIdInGraph(nodes, edges, runStates, keep.id, desiredId)
+  }
+}
+
 function hydrateNode(raw: GraphNode): GraphNode {
   const typeId = inferNodeTypeId(raw)
   const def = resolveNodeType({ ...raw, typeId })
@@ -346,6 +382,9 @@ export function normalizeScopedGraph(
 
   if (scopeDef.coerceOutput) {
     applyScopeOutput(nodes, scope, options?.assetType)
+  }
+  if (scope === 'visual') {
+    collapseVisualImageOutputs(nodes, edges, runStates)
   }
   ensureScopeSingletons(nodes, scope)
   if (scope === 'directorAsset') {

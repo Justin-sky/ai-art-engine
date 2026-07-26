@@ -410,6 +410,28 @@ export async function materializeNodePreviewParams(
       if (changed) params.generatedImages = generated
     }
 
+    if (params.generatedVideos?.length) {
+      const generated: NonNullable<GraphNode['params']['generatedVideos']> = []
+      for (const [index, item] of params.generatedVideos.entries()) {
+        if (!isDataUrl(item.dataUrl)) {
+          generated.push(item)
+          continue
+        }
+        try {
+          const relativePath = await saveMedia({
+            dataUrl: item.dataUrl!,
+            key: `${node.id}:param-gen-video:${item.id || index}`,
+            ...(outputDir ? { outputDir } : {})
+          })
+          generated.push({ ...item, dataUrl: '', relativePath })
+          changed = true
+        } catch {
+          generated.push(item)
+        }
+      }
+      if (changed) params.generatedVideos = generated
+    }
+
     result.push(changed ? { ...node, params } : node)
   }
   return result

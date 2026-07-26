@@ -71,6 +71,74 @@ describe('text asset ref (screenplay / script)', () => {
     expect(text).toBe('仅在 generatedTexts')
   })
 
+  it('prefers text output node over upstream screenplay generatedTexts', () => {
+    const text = resolveAssetTextFromGenParams({
+      graphJson: {
+        version: 1,
+        nodes: [
+          {
+            id: 'sp',
+            typeId: 'asset.screenplay',
+            category: 'asset',
+            assetType: 'screenplay',
+            position: { x: 0, y: 0 },
+            params: {
+              text: '',
+              generatedTexts: [{ id: 't1', text: 'from gen' }]
+            }
+          },
+          {
+            id: 'text-output',
+            typeId: 'output.text',
+            category: 'output',
+            position: { x: 200, y: 0 },
+            params: { outputKind: 'text', resultText: 'from output' }
+          }
+        ],
+        edges: [{ id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }]
+      }
+    })
+    expect(text).toBe('from output')
+  })
+
+  it('collectScreenplayTextRelativePaths prefers text output paths', () => {
+    const paths = collectScreenplayTextRelativePaths({
+      version: 1,
+      nodes: [
+        {
+          id: 'sp',
+          typeId: 'asset.screenplay',
+          category: 'asset',
+          assetType: 'screenplay',
+          position: { x: 0, y: 0 },
+          params: {
+            generatedTexts: [{ id: 't1', text: '', relativePath: 'Texts/from-gen.txt' }]
+          }
+        },
+        {
+          id: 'text-output',
+          typeId: 'output.text',
+          category: 'output',
+          position: { x: 200, y: 0 },
+          params: { outputKind: 'text' }
+        }
+      ],
+      edges: [{ id: 'e1', source: 'sp', target: 'text-output', sourcePort: 'out', targetPort: 'in' }],
+      runStates: {
+        'text-output': {
+          status: 'done',
+          outputs: {
+            out: {
+              kind: 'texts',
+              items: [{ id: 't-out', text: '', relativePath: 'Texts/from-output.txt' }]
+            }
+          }
+        }
+      }
+    })
+    expect(paths).toEqual(['Texts/from-output.txt'])
+  })
+
   it('executeTextAssetRefNode loads screenplay via resolveAssetText only', async () => {
     const ctx: NodeExecuteContext = {
       node: {

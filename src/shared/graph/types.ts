@@ -250,6 +250,16 @@ export interface GraphNodeParams {
     relativePath?: string
   }>
   /**
+   * 视频生成 / 对口型节点：历次生成累计的视频（重新执行追加，可在 Inspector 删除）。
+   * 对齐图片：有 relativePath 时 dataUrl 可为空。
+   */
+  generatedVideos?: Array<{
+    id?: string
+    dataUrl?: string
+    createdAt?: string
+    relativePath?: string
+  }>
+  /**
    * 剧本生成节点：历次生成累计的文本（重新执行追加，可在 Inspector 删除）。
    * 对齐图片：有 relativePath 时 text 可为空，预览时按路径读文件。
    */

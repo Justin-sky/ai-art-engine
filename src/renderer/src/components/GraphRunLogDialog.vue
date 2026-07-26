@@ -161,12 +161,12 @@
 
               <p v-if="selectedEvent.message" class="detail-message">{{ selectedEvent.message }}</p>
 
-              <!-- 完成/失败优先展示输出；运行中展示输入 -->
+              <!-- 完成/失败优先展示输出；运行中展示输入（含空端口） -->
               <template v-if="selectedEvent.outputs && Object.keys(selectedEvent.outputs).length">
                 <label class="code-label">{{ t('graph.logs.portOutputs') }}</label>
                 <pre class="code-block">{{ formatJson(selectedEvent.outputs) }}</pre>
               </template>
-              <template v-if="selectedEvent.inputs && Object.keys(selectedEvent.inputs).length">
+              <template v-if="selectedEvent.inputs">
                 <label class="code-label">{{ t('graph.logs.portInputs') }}</label>
                 <pre class="code-block">{{ formatJson(selectedEvent.inputs) }}</pre>
               </template>
@@ -319,8 +319,7 @@ const selectedEventHasPorts = computed(() => {
   const event = selectedEvent.value
   if (!event) return false
   return (
-    (!!event.inputs && Object.keys(event.inputs).length > 0) ||
-    (!!event.outputs && Object.keys(event.outputs).length > 0)
+    event.inputs != null || (!!event.outputs && Object.keys(event.outputs).length > 0)
   )
 })
 

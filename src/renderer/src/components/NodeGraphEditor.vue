@@ -7,7 +7,7 @@
     @dragleave="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <div class="graph-toolbar">
+    <div v-if="!hideToolbar" class="graph-toolbar">
       <span class="hint">{{ t('graph.toolbar.hint') }}</span>
       <div class="tools">
         <template v-if="isRunning">
@@ -592,6 +592,7 @@ import {
   removeNodeStagesFromGenParams
 } from '../features/director/directorStageBinding'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { useGraphRunSession } from '../features/graph/controllers/useGraphRunSession'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { toPlain } from '../utils/toPlain'
@@ -605,14 +606,21 @@ const runLogsStore = useGraphRunLogsStore()
 const editor = useEditorKernel()
 /** 挂载时绑定的工程根路径；切换工程后卸载时禁止写回旧图 */
 const boundRootPath = project.rootPath
-const props = defineProps<{
-  /** 传入时作为资产级通用节点图；未传入则编辑当前分镜节点图。 */
-  assetId?: string
-  /** 显式指定画布 scope；未传入则按资产类型 / 分镜工作流解析。 */
-  scope?: GraphAddScope
-  /** 世界元素四类子画布 kind（优先于 inject） */
-  worldElementKind?: WorldElementKind
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 传入时作为资产级通用节点图；未传入则编辑当前分镜节点图。 */
+    assetId?: string
+    /** 显式指定画布 scope；未传入则按资产类型 / 分镜工作流解析。 */
+    scope?: GraphAddScope
+    /** 世界元素四类子画布 kind（优先于 inject） */
+    worldElementKind?: WorldElementKind
+    /** 嵌入底栏等场景隐藏图工具条，运行/参数走外层 Inspector */
+    hideToolbar?: boolean
+  }>(),
+  {
+    hideToolbar: false
+  }
+)
 const isAssetGraph = computed(() => !!props.assetId)
 const { asset: graphAsset } = useAssetRecord(props.assetId ?? '')
 const graphScope = computed(
@@ -1115,12 +1123,27 @@ const {
   locale: () => String(locale.value),
   hostId: () => graphHostId.value,
   runTitle: () => {
+    const shotName = project.activeShot?.title?.trim() || ''
+    if (graphScope.value === 'visual') {
+      const base = t('script.dialog.shotImageEditor')
+      return shotName ? `${base} · ${shotName}` : base
+    }
+    if (graphScope.value === 'shotWorkflow') {
+      const base = t('script.dialog.shotVideoEditor')
+      return shotName ? `${base} · ${shotName}` : base
+    }
     if (isAssetGraph.value) {
       return graphAsset.value?.name?.trim() || t('graph.logs.defaultTitle')
     }
-    const shot = project.activeShot
-    return shot?.title?.trim() || t('graph.logs.defaultTitle')
+    return shotName || t('graph.logs.defaultTitle')
   },
+  resolveNodeTitle: (node, fallbackId) =>
+    resolveGraphNodeDisplayTitle(node, {
+      scope: graphScope.value,
+      t: (key, params) => t(key, params ?? {}),
+      graphTypeLabel,
+      fallbackId
+    }),
   generateText: (input) => window.studio.generateText(input),
   generateImage: (input) => window.studio.generateImage(input),
   saveRunMedia: (input) =>
@@ -2770,7 +2793,15 @@ function fitView(): void {
 }
 
 function menuAddableNodeTypes() {
-  return listAddableNodeTypes(graphScope.value)
+  const types = listAddableNodeTypes(graphScope.value)
+  // 分镜图画布：已有图片输出时不再出现在添加菜单
+  if (
+    graphScope.value === 'visual' &&
+    graph.nodes.some((n) => n.category === 'output' && n.typeId === 'output.image')
+  ) {
+    return types.filter((d) => d.typeId !== 'output.image')
+  }
+  return types
 }
 
 function closeCtxMenu(): void {
@@ -2953,17 +2984,19 @@ function addNodeFromMenu(typeId: GraphNodeTypeId): void {
   const linkFromId = menu.linkFromNodeId
   const linkToId = menu.linkToNodeId
   const def = getNodeType(typeId)
-  /** 画布 / 分镜编辑窗口可添加多个输出，不复用 singleton */
+  /** 画布 / 分镜视频窗可添加多个输出，不复用 singleton；分镜图（visual）仅允许一个图片输出 */
   const allowMultipleOutputs =
     (graphScope.value === 'canvasAsset' ||
       graphScope.value === 'worldAsset' ||
       graphScope.value === 'elementWorkflow' ||
-      (graphScope.value === 'shotWorkflow' && typeId === 'output.video') ||
-      (graphScope.value === 'visual' && typeId === 'output.image')) &&
+      (graphScope.value === 'shotWorkflow' && typeId === 'output.video')) &&
     isOutputContextMenuType(typeId)
   const existing =
     !allowMultipleOutputs && def?.singletonId != null
-      ? graph.nodes.find((n) => n.id === def.singletonId)
+      ? (graph.nodes.find((n) => n.id === def.singletonId) ??
+        (isOutputContextMenuType(typeId)
+          ? graph.nodes.find((n) => n.category === 'output' && n.typeId === typeId)
+          : undefined))
       : undefined
 
   let node: GraphNode

@@ -1,3 +1,4 @@
+import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
 import type { GraphDocument, GraphNode } from '../types'
@@ -171,7 +172,11 @@ async function executeOneNode(
     return { ok: false, error: 'GRAPH_CANCELLED' }
   }
 
+  // 先挂上声明的入端口（可为空），再填入边上传来的值，便于日志打印空输入
   const inputs: Record<string, GraphValue[]> = {}
+  for (const port of getNodePorts(node).filter((p) => p.direction === 'in')) {
+    inputs[port.id] = []
+  }
   for (const edge of graph.edges) {
     if (edge.target !== nodeId) continue
     const sourcePorts = outputs.get(edge.source)
@@ -183,12 +188,7 @@ async function executeOneNode(
     ;(inputs[targetPort] ??= []).push(value)
   }
 
-  publish(
-    states,
-    nodeId,
-    { status: 'running', inputs: Object.keys(inputs).length ? inputs : undefined },
-    options.onNodeUpdate
-  )
+  publish(states, nodeId, { status: 'running', inputs }, options.onNodeUpdate)
 
   const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough

@@ -1,9 +1,14 @@
 <template>
-  <div class="shot-editor-body">
+  <div class="shot-editor-body" :class="{ embedded: embedded }">
     <div class="script-dialog-main">
       <div class="graph-row">
-        <NodeGraphEditor ref="graphRef" class="script-dialog-graph" :scope="graphScope" />
-        <aside class="shot-inspector-pane">
+        <NodeGraphEditor
+          ref="graphRef"
+          class="script-dialog-graph"
+          :scope="graphScope"
+          :hide-toolbar="hideToolbar"
+        />
+        <aside v-if="showInspector" class="shot-inspector-pane">
           <InspectorPanel :export-canvas="exportCanvas" />
         </aside>
       </div>
@@ -25,9 +30,14 @@ const props = withDefaults(
     scriptAssetId: string
     /** image → 每镜 visualGraphJson；video → 每镜 graphJson */
     kind?: 'image' | 'video'
+    /**
+     * 嵌入剧本画布底栏：隐藏自有 Inspector 与图工具条，共用 Studio 外层 Inspector。
+     */
+    embedded?: boolean
   }>(),
   {
-    kind: 'video'
+    kind: 'video',
+    embedded: false
   }
 )
 
@@ -37,6 +47,9 @@ const graphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const graphScope = computed<GraphAddScope>(() =>
   props.kind === 'image' ? 'visual' : 'shotWorkflow'
 )
+
+const showInspector = computed(() => !props.embedded)
+const hideToolbar = computed(() => props.embedded)
 
 function exportCanvas(): Promise<string | null> {
   return workspace.exportCanvasForActiveShot()
@@ -103,5 +116,9 @@ defineExpose({
   flex-shrink: 0;
   height: 148px;
   border-top: 1px solid var(--border);
+}
+
+.shot-editor-body.embedded .script-dialog-shots {
+  height: 120px;
 }
 </style>

@@ -16,6 +16,7 @@ import { findOutputNode } from './query'
 import { VIDEO_FIRST_FRAME_PORT_ID } from './videoGenerateParams'
 import {
   connectShotVideoReference,
+  findAllShotWorkflowVideoNodes,
   findShotWorkflowVideoNode,
   setVideoFrameAsset
 } from './shotVideoBridge'
@@ -33,18 +34,31 @@ export type ShotVisualImageAsset = {
   relativePath?: string
 }
 
-/** 从分镜画面图收集图片：优先画面生成节点的累计 generatedImages，再回退 output / runStates */
+/** 从分镜画面图收集图片：以图片输出节点为准；输出为空时再回退上游生成节点 */
 export function collectImagesFromVisualGraph(doc: GraphDocument | null | undefined): GraphImageItem[] {
   if (!doc?.nodes?.length) return []
 
-  const imageNode = findShotVisualImageNode(doc)
-  const fromGenerated = collectGeneratedImagesParam(imageNode)
-  if (fromGenerated.length) return fromGenerated
-
-  const fromOutput = collectImagesFromNode(doc, findOutputNode(doc) ?? null)
+  const output = findOutputNode(doc)
+  const fromOutput = collectImagesFromNode(doc, output)
   if (fromOutput.length) return fromOutput
 
-  return collectImagesFromNode(doc, imageNode)
+  // 输出尚未写入（只跑过生成、未跑到输出）时回退上游
+  if (output) {
+    const sourceIds = [
+      ...new Set(doc.edges.filter((edge) => edge.target === output.id).map((edge) => edge.source))
+    ]
+    const fromSources = dedupeImageItems(
+      sourceIds.flatMap((id) => {
+        const node = doc.nodes.find((n) => n.id === id) ?? null
+        return collectImagesFromNode(doc, node)
+      })
+    )
+    if (fromSources.length) return fromSources
+  }
+
+  return dedupeImageItems(
+    findAllShotVisualImageNodes(doc).flatMap((node) => collectImagesFromNode(doc, node))
+  )
 }
 
 function collectGeneratedImagesParam(node: GraphNode | null): GraphImageItem[] {
@@ -122,26 +136,86 @@ function collectImagesFromNode(
   return []
 }
 
-/** 从分镜视频图收集 output.video / runStates / 节点预览上的视频 */
+/** 从分镜视频图收集视频：以视频输出节点为准；输出为空时再回退上游生成节点 */
 export function collectVideosFromShotWorkflowGraph(
   doc: GraphDocument | null | undefined
 ): GraphVideoItem[] {
   if (!doc?.nodes?.length) return []
-  const output = findOutputNode(doc)
-  if (!output) return []
 
-  const fromRun = doc.runStates?.[output.id]?.outputs?.out
-  const fromValue = fromRun ? flattenVideosValues([fromRun]) : []
-  if (fromValue.length) {
-    return fromValue.filter((item) => item.relativePath || item.dataUrl)
+  const output = findOutputNode(doc)
+  const fromOutput = collectVideosFromNode(doc, output ?? null)
+  if (fromOutput.length) return fromOutput
+
+  if (output) {
+    const sourceIds = [
+      ...new Set(doc.edges.filter((edge) => edge.target === output.id).map((edge) => edge.source))
+    ]
+    const fromSources = dedupeVideoItems(
+      sourceIds.flatMap((id) => {
+        const node = doc.nodes.find((n) => n.id === id) ?? null
+        return collectVideosFromNode(doc, node)
+      })
+    )
+    if (fromSources.length) return fromSources
   }
 
-  const previewPath = output.params.previewRelativePath?.trim()
-  const previewData = output.params.previewDataUrl?.trim()
+  return dedupeVideoItems(
+    findAllShotWorkflowVideoNodes(doc).flatMap((node) => collectVideosFromNode(doc, node))
+  )
+}
+
+function collectGeneratedVideosParam(node: GraphNode | null): GraphVideoItem[] {
+  if (!node) return []
+  const generated = node.params.generatedVideos
+  if (!Array.isArray(generated) || !generated.length) return []
+  return dedupeVideoItems(
+    generated
+      .map((item, index) => ({
+        id: item.id ?? `video-gen:${node.id}:${index}`,
+        dataUrl: item.dataUrl,
+        createdAt: item.createdAt,
+        relativePath: item.relativePath
+      }))
+      .filter((item) => item.relativePath || item.dataUrl)
+  )
+}
+
+function dedupeVideoItems(items: GraphVideoItem[]): GraphVideoItem[] {
+  const seen = new Set<string>()
+  const out: GraphVideoItem[] = []
+  for (const item of items) {
+    const key =
+      item.relativePath?.trim() ||
+      item.id?.trim() ||
+      (item.dataUrl?.trim() ? `data:${item.dataUrl.slice(0, 64)}` : '')
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
+}
+
+function collectVideosFromNode(
+  doc: GraphDocument,
+  node: GraphNode | null
+): GraphVideoItem[] {
+  if (!node) return []
+
+  const fromGenerated = collectGeneratedVideosParam(node)
+  if (fromGenerated.length) return fromGenerated
+
+  const fromRun = doc.runStates?.[node.id]?.outputs?.out
+  const fromValue = fromRun ? flattenVideosValues([fromRun]) : []
+  if (fromValue.length) {
+    return dedupeVideoItems(fromValue.filter((item) => item.relativePath || item.dataUrl))
+  }
+
+  const previewPath = node.params.previewRelativePath?.trim()
+  const previewData = node.params.previewDataUrl?.trim()
   if (previewPath || previewData) {
     return [
       {
-        id: `video-preview:${output.id}`,
+        id: `video-preview:${node.id}`,
         dataUrl: previewData,
         relativePath: previewPath
       }
@@ -275,9 +349,12 @@ export function ensureShotParamsLinkedToVideo(
 
 /** 分镜画面图中的图片生成加工节点 */
 export function findShotVisualImageNode(doc: GraphDocument): GraphNode | null {
-  return (
-    doc.nodes.find((node) => node.typeId === 'asset.image' && isProcessingAssetNode(node)) ?? null
-  )
+  return findAllShotVisualImageNodes(doc)[0] ?? null
+}
+
+/** 分镜画面图中全部图片生成加工节点（多生成节点汇入同一输出时用） */
+export function findAllShotVisualImageNodes(doc: GraphDocument): GraphNode[] {
+  return doc.nodes.filter((node) => node.typeId === 'asset.image' && isProcessingAssetNode(node))
 }
 
 function ensureEdge(

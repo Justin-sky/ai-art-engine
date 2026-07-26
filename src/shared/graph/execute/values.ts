@@ -147,6 +147,7 @@ import type {
   GraphVoicesValue,
   GraphValue,
   GraphVideoItem,
+  GraphVideosValue,
   NodeExecuteContext
 } from './types'
 
@@ -577,6 +578,67 @@ function mergeGeneratedVoices(
   }))
 }
 
+function stripEmbeddedVideoData(item: GraphVideoItem): GraphVideoItem {
+  return {
+    ...(item.id ? { id: item.id } : {}),
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    dataUrl: item.relativePath?.trim() ? '' : item.dataUrl || '',
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }
+}
+
+function mergeGeneratedVideos(
+  ctx: NodeExecuteContext,
+  batch: GraphVideoItem[],
+  idFallbackPrefix: string
+): GraphVideoItem[] {
+  const previous = (ctx.node.params.generatedVideos ?? []).map(stripEmbeddedVideoData)
+  return [...previous, ...batch].map((item, index) => ({
+    ...stripEmbeddedVideoData(item),
+    id: item.id?.trim() || `${idFallbackPrefix}:${index}`
+  }))
+}
+
+/** 视频生成结果写入累计图库，out 与预览一致输出全部历史 */
+function persistVideoGeneration(
+  ctx: NodeExecuteContext,
+  item: GraphVideoItem,
+  notes?: string
+): GraphVideosValue {
+  const createdAt = item.createdAt ?? new Date().toISOString()
+  const stamp = formatGeneratedMediaStamp()
+  const id = item.id?.trim() || `gen-video:${stamp}`
+  const materialized: GraphVideoItem = {
+    id,
+    createdAt,
+    dataUrl: item.relativePath?.trim() ? '' : item.dataUrl || '',
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }
+  const generatedVideos = mergeGeneratedVideos(ctx, [materialized], `${stamp}:keep`).map(
+    (entry) => ({
+      id: entry.id?.trim() || id,
+      createdAt: entry.createdAt ?? createdAt,
+      dataUrl: entry.dataUrl || '',
+      ...(entry.relativePath ? { relativePath: entry.relativePath } : {})
+    })
+  )
+  const previewRelativePath = materialized.relativePath?.trim() || undefined
+  ctx.node.params = {
+    ...ctx.node.params,
+    generatedVideos,
+    ...(notes !== undefined ? { notes } : {}),
+    ...(previewRelativePath ? { previewRelativePath } : {})
+  }
+  ctx.patchNode?.({
+    params: {
+      generatedVideos,
+      ...(notes !== undefined ? { notes } : {}),
+      ...(previewRelativePath ? { previewRelativePath } : {})
+    }
+  })
+  return { kind: 'videos', items: generatedVideos }
+}
+
 function persistVoiceGeneration(
   ctx: NodeExecuteContext,
   item: GraphVoiceItem
@@ -608,7 +670,8 @@ function persistVoiceGeneration(
       ...(previewRelativePath ? { previewRelativePath } : {})
     }
   })
-  return { kind: 'voices', items: [materialized] }
+  // out 与预览一致：输出累计 generatedVoices
+  return { kind: 'voices', items: generatedVoices }
 }
 
 export function pickVideoItem(
@@ -999,23 +1062,17 @@ export async function executeVideoGenerateNode(
 
   const notes =
     [localNotes, incomingText].filter(Boolean).join('\n') || undefined
-  ctx.patchNode?.({
-    params: {
-      notes,
-      previewRelativePath: result.relativePath
-    }
-  })
 
   return {
-    out: {
-      kind: 'videos',
-      items: [
-        {
-          id: result.assetId,
-          relativePath: result.relativePath
-        }
-      ]
-    }
+    out: persistVideoGeneration(
+      ctx,
+      {
+        id: result.assetId,
+        relativePath: result.relativePath,
+        createdAt: new Date().toISOString()
+      },
+      notes
+    )
   }
 }
 
@@ -1141,23 +1198,17 @@ export async function executeLipSyncNode(
 
   const notes =
     [instructionRaw, incomingText].filter(Boolean).join('\n') || undefined
-  ctx.patchNode?.({
-    params: {
-      notes,
-      previewRelativePath: result.relativePath
-    }
-  })
 
   return {
-    out: {
-      kind: 'videos',
-      items: [
-        {
-          id: result.assetId,
-          relativePath: result.relativePath
-        }
-      ]
-    }
+    out: persistVideoGeneration(
+      ctx,
+      {
+        id: result.assetId,
+        relativePath: result.relativePath,
+        createdAt: new Date().toISOString()
+      },
+      notes
+    )
   }
 }
 
@@ -1173,7 +1224,18 @@ function executeVideoGeneratePassthrough(
   const { selected, localNotes, incomingText } = args
   const videos = flattenAssetValues(selected).filter((item) => item.assetType === 'video')
   const voices = flattenAssetValues(selected).filter((item) => item.assetType === 'voice')
+  const gallery = (ctx.node.params.generatedVideos ?? [])
+    .filter((item) => item.relativePath?.trim() || item.dataUrl?.trim())
+    .map((item) => ({
+      id: item.id,
+      dataUrl: item.dataUrl || '',
+      createdAt: item.createdAt,
+      ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+    }))
   if (!videos.length) {
+    if (gallery.length) {
+      return { out: { kind: 'videos', items: gallery } }
+    }
     const text = [localNotes, incomingText].filter(Boolean).join('\n').trim()
     const voiceNotes = voices
       .map((item) => item.title?.trim() || item.label?.trim() || item.notes?.trim() || '')
@@ -1187,19 +1249,29 @@ function executeVideoGeneratePassthrough(
 
   const notes =
     [localNotes, videos[0]!.notes, incomingText].filter(Boolean).join('\n') || undefined
+  const merged = [
+    ...gallery,
+    ...videos.map((item) => ({
+      id: item.assetId,
+      dataUrl: '',
+      ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+    }))
+  ]
   ctx.patchNode?.({
     params: {
       notes,
-      previewRelativePath: videos[0]?.relativePath?.trim() || undefined
+      previewRelativePath: videos[0]?.relativePath?.trim() || undefined,
+      generatedVideos: merged.map((item, index) => ({
+        id: item.id?.trim() || `passthrough:${index}`,
+        dataUrl: item.dataUrl || '',
+        ...(item.relativePath ? { relativePath: item.relativePath } : {})
+      }))
     }
   })
   return {
     out: {
       kind: 'videos',
-      items: videos.map((item) => ({
-        id: item.assetId,
-        relativePath: item.relativePath
-      }))
+      items: merged
     }
   }
 }
@@ -1603,7 +1675,8 @@ export async function executeImageGenerateNode(
       previewRelativePath: previewRel || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 export function normalizeLocalScreenplayText(raw: string | undefined): string {
@@ -3012,7 +3085,8 @@ export async function executeUpscaleNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3150,7 +3224,8 @@ export async function executeExpandNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3296,7 +3371,8 @@ export async function executeRedrawNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3441,7 +3517,8 @@ export async function executeEraseNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3583,7 +3660,8 @@ export async function executeMatteNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3674,7 +3752,8 @@ export async function executeCropNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**
@@ -3810,7 +3889,8 @@ export async function executeGridSplitNode(
       previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
     }
   })
-  return { out: { kind: 'images', items: materializedBatch } }
+  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
+  return { out: { kind: 'images', items: generatedImages } }
 }
 
 /**

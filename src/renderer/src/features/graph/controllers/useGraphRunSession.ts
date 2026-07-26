@@ -102,6 +102,11 @@ export interface GraphRunSessionOptions {
   hostId?: () => string
   /** 执行日志会话标题 */
   runTitle?: () => string
+  /** 执行日志中的节点展示名（含 i18n） */
+  resolveNodeTitle?: (
+    node: import('@shared/graph').GraphNode | undefined,
+    fallbackId: string
+  ) => string
   onNodePatch?: (
     nodeId: string,
     patch: { params?: Partial<GraphNodeParams>; title?: string }
@@ -526,7 +531,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     const targetNode = opts.targetNodeId
       ? graph.nodes.find((n) => n.id === opts.targetNodeId)
       : undefined
-    const targetLabel = targetNode?.title?.trim() || opts.targetNodeId || ''
+    const targetLabel = opts.targetNodeId
+      ? options.resolveNodeTitle?.(targetNode, opts.targetNodeId) ||
+        targetNode?.title?.trim() ||
+        opts.targetNodeId
+      : ''
+    const startMessage = !opts.targetNodeId
+      ? options.t('graph.logs.startWorkflow')
+      : opts.onlyTargetNode
+        ? options.t('graph.logs.startNodeOnly', { name: targetLabel })
+        : options.t('graph.logs.startToNode', { name: targetLabel })
     const logBridge = createGraphRunLogBridge({
       runId,
       title: options.runTitle?.() || options.t('graph.logs.defaultTitle'),
@@ -535,9 +549,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       graph,
       targetNodeId: opts.targetNodeId,
       resolveErrorMessage: (code) => message(code),
-      startMessage: opts.targetNodeId
-        ? options.t('graph.logs.startToNode', { name: targetLabel })
-        : options.t('graph.logs.startWorkflow')
+      resolveNodeTitle: options.resolveNodeTitle,
+      startMessage
     })
     activeLogBridge = logBridge
     try {

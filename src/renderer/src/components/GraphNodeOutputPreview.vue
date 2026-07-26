@@ -443,12 +443,35 @@ function collectFallback(into: PreviewItem[]): void {
         label: node.title
       })
     }
+  } else if (nodeMediaKind === 'video' && (node.params.generatedVideos ?? []).length) {
+    for (const [index, item] of (node.params.generatedVideos ?? []).entries()) {
+      pushLocalMediaPreview(into, item.id?.trim() || `fallback-video:${index}`, 'video', {
+        relativePath: item.relativePath,
+        dataUrl: item.dataUrl,
+        assetId: item.id,
+        label: node.title
+      })
+    }
   } else if (nodeMediaKind === 'video' || nodeMediaKind === 'audio') {
     pushLocalMediaPreview(into, `node-preview:${node.id}`, nodeMediaKind, {
       relativePath: node.params.previewRelativePath,
       assetId: node.assetId,
       label: node.title
     })
+  }
+
+  if ((node.params.generatedTexts ?? []).length) {
+    for (const [index, item] of (node.params.generatedTexts ?? []).entries()) {
+      const text = item.text?.trim() ?? ''
+      const rel = item.relativePath?.trim()
+      if (!text && !rel) continue
+      into.push({
+        key: item.id?.trim() || `fallback-text:${index}`,
+        kind: 'text',
+        text,
+        ...(rel ? { relativePath: rel } : {})
+      })
+    }
   }
 
   if (node.assetId && node.assetType) {
@@ -491,15 +514,7 @@ function collectFallback(into: PreviewItem[]): void {
 }
 
 function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
-  // 优先用上游节点本次 run 的输出（视频生成会产出 asset + relativePath）
-  const upstreamOut = graphRunHosts.get(props.hostId)?.runStates?.[source.id]?.outputs?.out
-  if (upstreamOut) {
-    const before = into.length
-    collectFromValue(upstreamOut, into)
-    if (into.length > before) return
-  }
-
-  // 生成节点：优先用 generatedImages，避免再叠一层 previewDataUrl 重复
+  // 累计图库优先于当次 runStates（out 可能只含本批）
   if ((source.params.generatedImages ?? []).length) {
     for (const [index, item] of (source.params.generatedImages ?? []).entries()) {
       const src = imageItemSrc(item)
@@ -513,6 +528,26 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
     }
     return
   }
+  if ((source.params.generatedVideos ?? []).length) {
+    for (const [index, item] of (source.params.generatedVideos ?? []).entries()) {
+      pushLocalMediaPreview(into, item.id?.trim() || `up-gen-video:${source.id}:${index}`, 'video', {
+        relativePath: item.relativePath,
+        dataUrl: item.dataUrl,
+        assetId: item.id
+      })
+    }
+    return
+  }
+
+  // 优先用上游节点本次 run 的输出（视频生成会产出 asset + relativePath）
+  const upstreamOut = graphRunHosts.get(props.hostId)?.runStates?.[source.id]?.outputs?.out
+  if (upstreamOut) {
+    const before = into.length
+    collectFromValue(upstreamOut, into)
+    if (into.length > before) return
+  }
+
+  // 生成节点：优先用 generatedTexts / voices，避免再叠一层 previewDataUrl 重复
   if ((source.params.generatedTexts ?? []).length) {
     for (const [index, item] of (source.params.generatedTexts ?? []).entries()) {
       const text = item.text?.trim() ?? ''
@@ -653,12 +688,27 @@ function appendNodeTextPreview(into: PreviewItem[]): void {
 const items = computed((): PreviewItem[] => {
   // 依赖资产列表，避免 generate 后 refreshAssets 前 resolve 失败而不再重试
   void project.assets.length
+  void graphEditorHosts.revision.value
   const list: PreviewItem[] = []
-  collectFromValue(runOut.value, list)
-  if (!list.length) {
+  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
+  const hasGallery =
+    !!(node.params.generatedImages ?? []).length ||
+    !!(node.params.generatedVideos ?? []).length ||
+    !!(node.params.generatedVoices ?? []).length ||
+    !!(node.params.generatedTexts ?? []).length ||
+    !!(node.params.cameraShots ?? []).length
+  if (hasGallery) {
     collectFallback(list)
-  } else if (isShotAggregatePreviewNode(props.node.typeId)) {
-    // 分镜图/视频汇总：out 为媒体时仍附带 params.text 聚合 JSON
+  } else {
+    collectFromValue(runOut.value, list)
+    if (!list.length) {
+      collectFallback(list)
+    } else if (isShotAggregatePreviewNode(props.node.typeId)) {
+      appendNodeTextPreview(list)
+    }
+  }
+  if (hasGallery && isShotAggregatePreviewNode(props.node.typeId)) {
     appendNodeTextPreview(list)
   }
   // 去重

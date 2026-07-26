@@ -13,7 +13,7 @@ import {
 } from '@shared/graph'
 import { useGraphRunLogsStore } from '../../../stores/graphRunLogs'
 
-function nodeTitle(node: GraphNode | undefined, fallbackId: string): string {
+function defaultNodeTitle(node: GraphNode | undefined, fallbackId: string): string {
   if (!node) return fallbackId
   const custom = node.title?.trim()
   if (custom) return custom
@@ -34,6 +34,8 @@ export interface GraphRunLogBridgeOptions {
   targetNodeId?: string
   /** 将 GRAPH_* 等错误码转为可读文案；未映射则原样返回 */
   resolveErrorMessage?: (code: string) => string
+  /** 节点展示名（含 i18n）；未传则用持久化 title / 英文 label */
+  resolveNodeTitle?: (node: GraphNode | undefined, fallbackId: string) => string
   startMessage?: string
 }
 
@@ -63,8 +65,10 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
   const inputsByNodeId = new Map<string, Record<string, GraphRunLogPortSnapshot[]>>()
   let currentRunningNodeId: string | null = options.targetNodeId ?? null
 
+  const resolveTitle = options.resolveNodeTitle ?? defaultNodeTitle
+
   const targetNodeTitle = options.targetNodeId
-    ? nodeTitle(
+    ? resolveTitle(
         options.graph.nodes.find((n) => n.id === options.targetNodeId),
         options.targetNodeId
       )
@@ -89,9 +93,11 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     const node = byId.get(nodeId)
     const now = Date.now()
     let durationMs: number | undefined
-    // 运行中只记输入；完成/失败只记输出（不把输入再挂到完成行，避免大段输入把输出顶出可视区）
+    // 运行中只记输入（含空端口）；完成/失败只记输出（不把输入再挂到完成行）
     const inputs =
-      state.status === 'running' ? summarizeInputPortsForLog(state.inputs) : undefined
+      state.status === 'running'
+        ? (summarizeInputPortsForLog(state.inputs ?? {}) ?? {})
+        : undefined
     const outputs =
       state.status === 'done' || state.status === 'error'
         ? summarizeOutputPortsForLog(state.outputs)
@@ -100,7 +106,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     if (state.status === 'running') {
       currentRunningNodeId = nodeId
       runningStartedAt.set(nodeId, now)
-      if (inputs) inputsByNodeId.set(nodeId, inputs)
+      inputsByNodeId.set(nodeId, inputs!)
     } else if (state.status === 'done' || state.status === 'error') {
       const started = runningStartedAt.get(nodeId)
       if (started != null) {
@@ -124,13 +130,13 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       hostId: options.hostId,
       mode: options.mode,
       nodeId,
-      nodeTitle: nodeTitle(node, nodeId),
+      nodeTitle: resolveTitle(node, nodeId),
       typeId: nodeTypeId(node),
       status: state.status,
       message: resolveMessage(state.error),
       errorCode: state.error,
       durationMs,
-      ...(inputs ? { inputs } : {}),
+      ...(inputs !== undefined ? { inputs } : {}),
       ...(outputs ? { outputs } : {})
     })
   }
@@ -172,7 +178,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
         hostId: options.hostId,
         mode: options.mode,
         nodeId,
-        nodeTitle: nodeTitle(node, nodeId),
+        nodeTitle: resolveTitle(node, nodeId),
         typeId: nodeTypeId(node),
         status,
         message: message ?? resolveMessage(errorCode),

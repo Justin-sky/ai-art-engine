@@ -752,11 +752,13 @@ export default {
       graph: 'Shot editing · node workflow · drop assets · connect to output · parameters on the right',
       imageGraph:
         'Shot images · per-shot node graph · default image generate → image output · parameters on the right',
+      imageGraphEmbedded:
+        'Per-shot visual graph · use the right Inspector for params and run',
       videoGraph:
         'Shot videos · per-shot node graph · default video generate → video output · parameters on the right',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to open the matching graph'
+        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image gen to expand the visual graph below · double-click shot video gen to open its window'
     },
     dialog: {
       shotEditor: 'Shot editing',
@@ -764,6 +766,9 @@ export default {
       shotVideoEditor: 'Shot videos',
       shotTable: 'Shot table',
       close: 'Close'
+    },
+    pane: {
+      resizeSplit: 'Drag to resize the upper/lower canvases'
     },
     shotEditorWindow: {
       loading: 'Opening shot editor…',
@@ -1187,6 +1192,7 @@ export default {
       clearConfirmMessage: 'Clear all execution logs? This cannot be undone.',
       startWorkflow: 'Started full workflow',
       startToNode: 'Started run to node {name}',
+      startNodeOnly: 'Started node {name}',
       sessionStatus: {
         running: 'Running',
         done: 'Succeeded',
@@ -1257,6 +1263,8 @@ export default {
     fitView: 'Fit view',
     layout: {
       dragHandle: 'Drag layout toolbar',
+      expand: 'Expand layout tools',
+      collapse: 'Collapse layout tools',
       grid: 'Show/hide background grid',
       snap: 'Snap to grid while dragging',
       snapShort: 'Snap',
@@ -2139,6 +2147,12 @@ export default {
         generatedImagesHint: 'Each run appends new images. Double-click to preview; × to delete.',
         generatedImagesEmpty: 'No generations yet. Run this node to see results here.',
         generatedImagesDelete: 'Delete this image',
+        generatedVideos: 'Generated videos',
+        generatedVideosCount: '{n}',
+        generatedVideosHint:
+          'Each run appends new videos. Preview shows full history; delete from Inspector with ×.',
+        generatedVideosEmpty: 'No generations yet. Run this node to see results here.',
+        generatedVideosDelete: 'Delete this video',
         generatedTexts: 'Generated screenplays',
         generatedTextsCount: '{n}',
         generatedTextsHint:

@@ -23,9 +23,12 @@ export type VideoFrameSlotPortId =
   | typeof VIDEO_LAST_FRAME_PORT_ID
 
 export function findShotWorkflowVideoNode(doc: GraphDocument): GraphNode | null {
-  return (
-    doc.nodes.find((node) => node.typeId === 'asset.video' && isProcessingAssetNode(node)) ?? null
-  )
+  return findAllShotWorkflowVideoNodes(doc)[0] ?? null
+}
+
+/** 分镜视频图中全部视频生成加工节点（多生成节点汇入同一输出时用） */
+export function findAllShotWorkflowVideoNodes(doc: GraphDocument): GraphNode[] {
+  return doc.nodes.filter((node) => node.typeId === 'asset.video' && isProcessingAssetNode(node))
 }
 
 export function targetPortForShotAssetType(type: AssetType): VideoRefPortId {

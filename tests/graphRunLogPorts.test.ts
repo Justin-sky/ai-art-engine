@@ -47,4 +47,18 @@ describe('summarizeGraphValueForLog', () => {
     })
     expect(outputs?.out?.videoCount).toBe(1)
   })
+
+  it('keeps empty input ports in the log snapshot', () => {
+    expect(summarizeInputPortsForLog({})).toEqual({})
+    expect(
+      summarizeInputPortsForLog({
+        'in-text': [],
+        'in-image': []
+      })
+    ).toEqual({
+      'in-text': [],
+      'in-image': []
+    })
+    expect(summarizeInputPortsForLog(undefined)).toBeUndefined()
+  })
 })

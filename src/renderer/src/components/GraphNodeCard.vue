@@ -800,9 +800,18 @@ const rolePillClass = computed(() => {
   return ''
 })
 
-const displayTitle = computed(
-  () => props.node.title?.trim() || typeLabel.value || t('graph.defaultNode')
-)
+const displayTitle = computed(() => {
+  const custom = props.node.title?.trim() ?? ''
+  if (props.node.category === 'output') {
+    const scopeDef = getGraphScopeDefinition(graphScope.value)
+    const stock = scopeDef.output.title?.trim()
+    // 持久化英文默认标题走 i18n，不当作用户自定义名
+    if (!custom || (stock && custom === stock)) {
+      return typeLabel.value || custom || t('graph.defaultNode')
+    }
+  }
+  return custom || typeLabel.value || t('graph.defaultNode')
+})
 
 const typeIcon = computed(() => {
   if (isScriptShotSplitNode(props.node)) return '✂️'
