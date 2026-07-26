@@ -1,5 +1,6 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig, Shot } from './domain'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
+import type { TimelineExportInput, TimelineExportResult } from './graph'
 import type {
   CatalogModel,
   GenerateImageInput,
@@ -134,6 +135,11 @@ export const IpcChannels = {
   WINDOW_CLOSE_SCRIPT_TIMELINE: 'window:close-script-timeline',
   WINDOW_OPEN_WORLD_TABLE: 'window:open-world-table',
   WINDOW_CLOSE_WORLD_TABLE: 'window:close-world-table',
+
+  /** 成片时间线导出 */
+  TIMELINE_EXPORT: 'timeline:export',
+  /** 主进程推送：成片导出进度 0~1 */
+  TIMELINE_EXPORT_PROGRESS: 'timeline:export-progress',
 
   /** 主进程推送：资产已写入（多窗口同步） */
   ASSET_UPDATED: 'asset:updated'
@@ -534,6 +540,12 @@ export interface StudioApi {
   onScriptTimelineCloseRequest: (
     callback: (payload: { scriptAssetId: string }) => void
   ) => () => void
+
+  /** 导出成片时间线为 MP4（需本机 ffmpeg） */
+  exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
+
+  /** 订阅成片导出进度（0~1） */
+  onTimelineExportProgress: (callback: (payload: { progress: number }) => void) => () => void
 
   /** 打开/聚焦世界元素表格独立窗口 */
   openWorldTableWindow: (worldAssetId: string) => Promise<{ ok: true }>

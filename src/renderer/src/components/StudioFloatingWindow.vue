@@ -333,7 +333,7 @@ onBeforeUnmount(() => {
 }
 
 .sfw-mask.sfw-mask-dim {
-  background: color-mix(in srgb, var(--overlay) 80%, #000 20%);
+  background: var(--overlay);
 }
 
 .sfw-window {

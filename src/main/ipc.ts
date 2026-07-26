@@ -23,6 +23,7 @@ import type {
   ImportAssetPackageInput,
   WriteAssetTextInput
 } from '@shared/ipc'
+import type { TimelineExportInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
 import type {
   GenerateImageInput,
@@ -32,6 +33,7 @@ import type {
   ListModelsInput
 } from '@shared/modelProvider'
 import { projectService } from './services/projectService'
+import { exportScriptTimeline } from './services/timelineExportService'
 import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
@@ -140,6 +142,7 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, (scriptAssetId?: string) =>
     closeScriptTimelineWindow(scriptAssetId)
   )
+  handle(IpcChannels.TIMELINE_EXPORT, (input: TimelineExportInput) => exportScriptTimeline(input))
   handle(IpcChannels.WINDOW_OPEN_WORLD_TABLE, (worldAssetId: string) =>
     openWorldTableWindow(worldAssetId)
   )

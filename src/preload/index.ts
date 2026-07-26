@@ -153,6 +153,14 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SCRIPT_TIMELINE, scriptAssetId),
   closeScriptTimelineWindow: (scriptAssetId?: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, scriptAssetId),
+  exportScriptTimeline: (input) => ipcRenderer.invoke(IpcChannels.TIMELINE_EXPORT, input),
+  onTimelineExportProgress: (callback) => {
+    const listener = (_event: unknown, payload: { progress: number }): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.TIMELINE_EXPORT_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.TIMELINE_EXPORT_PROGRESS, listener)
+  },
   openWorldTableWindow: (worldAssetId: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_WORLD_TABLE, worldAssetId),
   closeWorldTableWindow: (worldAssetId?: string) =>

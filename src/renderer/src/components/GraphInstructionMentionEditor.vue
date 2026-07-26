@@ -1170,9 +1170,9 @@ onBeforeUnmount(() => {
 
 .preset-btn:hover,
 .preset-btn[aria-expanded='true'] {
-  border-color: rgba(61, 139, 253, 0.45);
+  border-color: var(--accent-45);
   color: var(--accent);
-  background: rgba(61, 139, 253, 0.12);
+  background: var(--accent-12);
 }
 
 .preset-icon {

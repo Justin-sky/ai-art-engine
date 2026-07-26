@@ -684,7 +684,7 @@ onBeforeUnmount(() => {
 }
 
 .canvas-wrap-matte {
-  background-color: #c8c8c8;
+  background-color: var(--slider-thumb-bg);
   background-image:
     linear-gradient(45deg, #a8a8a8 25%, transparent 25%),
     linear-gradient(-45deg, #a8a8a8 25%, transparent 25%),

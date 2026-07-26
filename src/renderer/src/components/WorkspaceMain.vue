@@ -110,7 +110,7 @@ function openAsset(asset: AssetInfo): void {
   align-items: flex-start;
   justify-content: center;
   background:
-    radial-gradient(ellipse at 50% 28%, rgba(61, 139, 253, 0.07), transparent 52%),
+    radial-gradient(ellipse at 50% 28%, var(--accent-06), transparent 52%),
     var(--bg-panel);
 }
 

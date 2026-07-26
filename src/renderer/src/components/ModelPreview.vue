@@ -743,6 +743,6 @@ onBeforeUnmount(() => {
 }
 
 .overlay.error {
-  color: #e57373;
+  color: var(--danger);
 }
 </style>

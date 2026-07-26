@@ -17,6 +17,8 @@ export type ScriptTimelineClip = {
   title: string
   relativePath?: string
   assetId?: string
+  /** 字幕轨正文；无媒体时仅烧录/叠加此文本 */
+  text?: string
   /** 轨道上的起始时间（秒） */
   startSec: number
   durationSec: number
@@ -38,6 +40,31 @@ export type ScriptTimelineDocument = {
   settings?: ScriptTimelineSettings
 }
 
+/** 导出成片时传给主进程的片段 */
+export type TimelineExportClip = {
+  track: ScriptTimelineTrackKind
+  /** 工程相对路径；主进程解析为绝对路径 */
+  relativePath?: string
+  /** 可选绝对路径（调试/外部文件） */
+  absPath?: string
+  text?: string
+  title: string
+  startSec: number
+  durationSec: number
+}
+
+export type TimelineExportInput = {
+  clips: TimelineExportClip[]
+  durationSec: number
+  playbackRate?: number
+  /** 另存为默认文件名（不含路径） */
+  defaultFileName?: string
+}
+
+export type TimelineExportResult =
+  | { ok: true; filePath: string; assetId?: string; engine: 'ffmpeg' }
+  | { ok: false; canceled?: boolean; error: string }
+
 export const SCRIPT_TIMELINE_PARAM_KEY = 'scriptTimeline'
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
@@ -55,6 +82,14 @@ export function normalizePlaybackRate(value: unknown): number {
     }
   }
   return best
+}
+
+export function contentEndSecOfTimeline(clips: ScriptTimelineClip[]): number {
+  let max = 0
+  for (const clip of clips) {
+    max = Math.max(max, clip.startSec + clip.durationSec)
+  }
+  return max
 }
 
 export function readScriptTimelineFromGenParams(

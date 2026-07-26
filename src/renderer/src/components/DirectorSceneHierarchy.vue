@@ -1135,11 +1135,11 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 }
 
 .icon-btn.on {
-  color: #f0c674;
+  color: var(--warning);
 }
 
 .icon-btn.off {
-  color: #8a9099;
+  color: var(--text-muted);
 }
 
 .icon-btn :deep(svg),

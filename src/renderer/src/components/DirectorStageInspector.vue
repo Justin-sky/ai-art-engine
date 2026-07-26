@@ -1760,13 +1760,13 @@ onBeforeUnmount(() => {
 }
 
 .locked-hint {
-  background: rgba(240, 198, 116, 0.12);
-  color: #f0c674;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
 }
 
 .keyframe-hint {
-  background: rgba(79, 142, 247, 0.14);
-  color: #8bb6ff;
+  background: var(--accent-12);
+  color: var(--accent-fg);
 }
 
 .fov {

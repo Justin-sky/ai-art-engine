@@ -160,7 +160,7 @@ const axes = computed(() => {
   top: 50%;
   width: 11px;
   height: 11px;
-  background: #3d8bfd;
+  background: var(--accent);
 }
 
 .reset-btn {

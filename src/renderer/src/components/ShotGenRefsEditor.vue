@@ -564,7 +564,7 @@ function insertMention(ref: UnifiedShotRef): void {
 
 .drop-zone.drop-over {
   border-color: var(--accent);
-  background: rgba(61, 139, 253, 0.08);
+  background: var(--accent-08);
 }
 
 .ref-row {

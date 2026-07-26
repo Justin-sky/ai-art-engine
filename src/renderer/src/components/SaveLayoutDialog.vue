@@ -90,7 +90,7 @@ function onConfirm(): void {
 
 .err {
   margin: 0;
-  color: var(--danger, #e57373);
+  color: var(--danger);
   font-size: 12px;
 }
 </style>

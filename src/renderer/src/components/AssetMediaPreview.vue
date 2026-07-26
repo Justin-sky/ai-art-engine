@@ -834,7 +834,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 4px;
   margin: 0;
-  accent-color: #3d8bfd;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -858,7 +858,7 @@ onBeforeUnmount(() => {
 .media-error {
   margin: 0;
   font-size: 12px;
-  color: var(--danger, #e57373);
+  color: var(--danger);
 }
 
 .text-wrap {

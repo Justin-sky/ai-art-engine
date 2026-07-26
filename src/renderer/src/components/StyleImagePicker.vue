@@ -314,7 +314,7 @@ onBeforeUnmount(() => {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  background: #111;
+  background: var(--media-letterbox);
 }
 
 .slot-empty {
@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
 .error {
   margin: 0;
   font-size: 11px;
-  color: var(--danger, #d9534f);
+  color: var(--danger);
 }
 
 .file-input {

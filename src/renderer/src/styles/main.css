@@ -74,7 +74,30 @@
   --flyer-bg: color-mix(in srgb, var(--bg-elevated) 88%, var(--accent) 12%);
   --flyer-fg: var(--accent);
   --flyer-border: color-mix(in srgb, var(--accent) 45%, transparent);
-  /* textarea 右下角缩放柄斜纹（背景色须与 textarea 自身 background 一致） */
+  /* 主题派生色：组件勿再写死 accent/danger 蓝粉 */
+  --on-accent: #ffffff;
+  --accent-fg: color-mix(in srgb, var(--accent) 70%, #ffffff);
+  --danger-muted: color-mix(in srgb, var(--danger) 72%, #ffffff);
+  --accent-06: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-08: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-12: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-18: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-22: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-25: color-mix(in srgb, var(--accent) 25%, transparent);
+  --accent-28: color-mix(in srgb, var(--accent) 28%, transparent);
+  --accent-45: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-90: color-mix(in srgb, var(--accent) 90%, transparent);
+  --slider-thumb-bg: color-mix(in srgb, var(--text-muted) 40%, var(--bg-elevated));
+  --slider-thumb-border: color-mix(in srgb, var(--text-muted) 70%, var(--border));
+  /* 媒体 letterbox：预览区始终偏暗，不随亮色主题变白 */
+  --media-letterbox: #111111;
+  /* 导入引用媒体语义色（琥珀） */
+  --media-ref: #b89a72;
+  --media-ref-name: #b8a890;
+  --media-ref-wash: rgba(140, 110, 70, 0.18);
+  --media-ref-ring: rgba(160, 125, 80, 0.4);
+  --media-ref-ring-soft: rgba(160, 125, 80, 0.28);
+  --media-ref-mark-bg: rgba(28, 24, 18, 0.78);
   --resizer-grip: linear-gradient(
     135deg,
     transparent 55%,
@@ -241,7 +264,7 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.primary:hover:not(:disabled) {

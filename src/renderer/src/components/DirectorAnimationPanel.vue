@@ -1174,7 +1174,7 @@ onBeforeUnmount(() => {
 .orient-btn.active {
   background: rgba(91, 156, 245, 0.16);
   border-color: rgba(91, 156, 245, 0.45);
-  color: #9ec5ff;
+  color: var(--accent-fg);
 }
 
 .orient-btn {
@@ -1220,7 +1220,7 @@ onBeforeUnmount(() => {
 .axis-wrap:has(.axis-menu) .forward-axis-btn {
   border-color: rgba(91, 156, 245, 0.45);
   background: rgba(91, 156, 245, 0.12);
-  color: #9ec5ff;
+  color: var(--accent-fg);
 }
 
 .axis-menu {
@@ -1239,7 +1239,7 @@ onBeforeUnmount(() => {
 
 .axis-item.active {
   background: rgba(91, 156, 245, 0.28);
-  color: #9ec5ff;
+  color: var(--accent-fg);
 }
 
 .draw-icon {
@@ -1376,8 +1376,8 @@ onBeforeUnmount(() => {
     to right,
     #f2f2f2 0%,
     #f2f2f2 var(--zoom-fill, 33%),
-    #6a6a6a var(--zoom-fill, 33%),
-    #6a6a6a 100%
+    var(--slider-thumb-border) var(--zoom-fill, 33%),
+    var(--slider-thumb-border) 100%
   );
   outline: none;
   cursor: pointer;
@@ -1405,7 +1405,7 @@ onBeforeUnmount(() => {
 .zoom-slider::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: #6a6a6a;
+  background: var(--slider-thumb-border);
 }
 
 .zoom-slider::-moz-range-progress {
@@ -1506,7 +1506,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(91, 156, 245, 0.45);
   border-radius: 4px;
   background: transparent;
-  color: #9ec5ff;
+  color: var(--accent-fg);
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
@@ -1629,7 +1629,7 @@ onBeforeUnmount(() => {
 
 .remove-btn:hover {
   background: var(--wash-08);
-  color: #ff8f8f;
+  color: var(--danger-muted);
 }
 
 .timeline {
@@ -1637,14 +1637,14 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow: auto;
   position: relative;
-  background: #0e1012;
+  background: var(--graph-viewport-bg);
 }
 
 .timeline-inner {
   position: relative;
   min-height: 100%;
   box-sizing: border-box;
-  background-color: #121416;
+  background-color: var(--director-sky);
   background-image: repeating-linear-gradient(
     90deg,
     var(--wash-05) 0,
@@ -1779,7 +1779,7 @@ onBeforeUnmount(() => {
 
 .diamond.active {
   background: #5b9cf5;
-  border-color: #9ec5ff;
+  border-color: var(--accent-fg);
   box-shadow: 0 0 0 1px rgba(158, 197, 255, 0.35);
 }
 

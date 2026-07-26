@@ -787,7 +787,19 @@ export default {
       toStart: '回到起点',
       play: '播放',
       pause: '暂停',
-      zoomFit: '适应宽度'
+      zoomFit: '适应宽度',
+      subtitleEmpty: '拖入素材或添加字幕',
+      addSubtitle: '添加字幕',
+      editSubtitle: '编辑字幕文案',
+      subtitlePlaceholder: '字幕',
+      export: '导出成片',
+      exportHint: '优先 ffmpeg 合成 MP4；若未安装则回退为 WebM 录制',
+      exporting: '导出中 {progress}%',
+      exportDone: '成片已导出：\n{path}',
+      exportDoneFallback:
+        '未检测到 ffmpeg，已用预览录制导出 WebM：\n{path}\n\n安装 ffmpeg 并加入 PATH（或设置 FFMPEG_PATH）可导出更高质量 MP4。',
+      exportFailed: '导出失败：{error}',
+      exportEmpty: '时间线为空，无法导出'
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'

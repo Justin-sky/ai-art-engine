@@ -293,7 +293,7 @@ function onConfirm(): void {
   height: 13px;
   margin: 0 2px 0 0;
   flex-shrink: 0;
-  accent-color: #3d8bfd;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -333,7 +333,7 @@ function onConfirm(): void {
   width: 16px;
   height: 16px;
   box-sizing: border-box;
-  border: 1px solid #6a6a6a;
+  border: 1px solid var(--slider-thumb-border);
   border-radius: 1px;
   background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
 }
@@ -378,7 +378,7 @@ function onConfirm(): void {
 .err {
   margin: 0;
   font-size: 12px;
-  color: var(--danger, #e57373);
+  color: var(--danger);
   white-space: pre-wrap;
   flex-shrink: 0;
 }

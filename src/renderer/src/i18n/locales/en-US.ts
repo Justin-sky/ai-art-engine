@@ -790,7 +790,19 @@ export default {
       toStart: 'Go to start',
       play: 'Play',
       pause: 'Pause',
-      zoomFit: 'Fit'
+      zoomFit: 'Fit',
+      subtitleEmpty: 'Drop media or add a caption',
+      addSubtitle: 'Add caption',
+      editSubtitle: 'Edit caption text',
+      subtitlePlaceholder: 'Caption',
+      export: 'Export cut',
+      exportHint: 'Prefer ffmpeg MP4; falls back to WebM capture if missing',
+      exporting: 'Exporting {progress}%',
+      exportDone: 'Exported:\n{path}',
+      exportDoneFallback:
+        'ffmpeg not found — exported WebM via preview capture:\n{path}\n\nInstall ffmpeg on PATH (or set FFMPEG_PATH) for higher-quality MP4.',
+      exportFailed: 'Export failed: {error}',
+      exportEmpty: 'Timeline is empty'
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'

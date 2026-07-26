@@ -330,15 +330,15 @@ onBeforeUnmount(() => {
 }
 
 .layout-float > button:not(.drag-handle):hover:not(:disabled) {
-  border-color: rgba(61, 139, 253, 0.45);
-  color: #8ec5ff;
-  background: rgba(61, 139, 253, 0.12);
+  border-color: var(--accent-45);
+  color: var(--accent-fg);
+  background: var(--accent-12);
 }
 
 .layout-float > button.active {
-  border-color: rgba(61, 139, 253, 0.55);
-  color: #8ec5ff;
-  background: rgba(61, 139, 253, 0.18);
+  border-color: var(--accent-45);
+  color: var(--accent-fg);
+  background: var(--accent-18);
 }
 
 .layout-float > button:disabled {

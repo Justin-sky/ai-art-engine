@@ -212,7 +212,7 @@ function onSeekChange(event: Event): void {
   position: relative;
   width: 100%;
   min-width: 0;
-  background: #111;
+  background: var(--media-letterbox);
   box-sizing: border-box;
 }
 
@@ -228,7 +228,7 @@ function onSeekChange(event: Event): void {
   width: 100%;
   max-height: 240px;
   object-fit: contain;
-  background: #111;
+  background: var(--media-letterbox);
 }
 
 .media-preview-player.audio {
@@ -287,8 +287,8 @@ function onSeekChange(event: Event): void {
   flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--wash-16);
-  background: rgba(30, 36, 44, 0.95);
-  color: #8ec5ff;
+  background: var(--panel-glass);
+  color: var(--accent-fg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -299,8 +299,8 @@ function onSeekChange(event: Event): void {
 .ctrl-btn.primary {
   width: 28px;
   height: 28px;
-  color: #fff;
-  background: rgba(61, 139, 253, 0.9);
+  color: var(--on-accent);
+  background: var(--accent-90);
   border-color: transparent;
 }
 
@@ -355,7 +355,7 @@ function onSeekChange(event: Event): void {
   height: 4px;
   margin: 0;
   padding: 0;
-  accent-color: #3d8bfd;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -365,7 +365,7 @@ function onSeekChange(event: Event): void {
   color: var(--on-media-line);
   font-family: var(--mono);
   line-height: 1;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 2px var(--on-media-line-shadow);
 }
 
 .time-row.inline {
@@ -379,7 +379,7 @@ function onSeekChange(event: Event): void {
   margin: 0;
   padding: 12px;
   font-size: 12px;
-  color: #f0a0a0;
+  color: var(--danger-muted);
   text-align: center;
 }
 </style>

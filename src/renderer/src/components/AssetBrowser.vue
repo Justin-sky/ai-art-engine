@@ -2276,7 +2276,7 @@ onBeforeUnmount(() => {
   padding: 0;
   border: none;
   background: transparent;
-  accent-color: #9a9a9a;
+  accent-color: var(--text-muted);
   cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
@@ -2293,9 +2293,9 @@ onBeforeUnmount(() => {
   width: 10px;
   height: 10px;
   margin-top: -3.5px;
-  border: 1px solid #6a6a6a;
+  border: 1px solid var(--slider-thumb-border);
   border-radius: 50%;
-  background: #c8c8c8;
+  background: var(--slider-thumb-bg);
   box-shadow: none;
 }
 
@@ -2309,9 +2309,9 @@ onBeforeUnmount(() => {
 .view-size input[type='range']::-moz-range-thumb {
   width: 10px;
   height: 10px;
-  border: 1px solid #6a6a6a;
+  border: 1px solid var(--slider-thumb-border);
   border-radius: 50%;
-  background: #c8c8c8;
+  background: var(--slider-thumb-bg);
   box-shadow: none;
 }
 
@@ -2334,9 +2334,9 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: 5;
   pointer-events: none;
-  border: 1px solid rgba(100, 170, 255, 0.95);
-  background: rgba(80, 150, 255, 0.12);
-  box-shadow: 0 0 0 1px rgba(20, 40, 80, 0.35) inset;
+  border: 1px solid var(--accent-90);
+  background: var(--accent-12);
+  box-shadow: 0 0 0 1px var(--accent-45) inset;
 }
 
 .grid.list {
@@ -2368,7 +2368,7 @@ onBeforeUnmount(() => {
 }
 
 .grid.list .card.selected {
-  background: rgba(61, 139, 253, 0.22);
+  background: var(--accent-22);
   border: none;
   box-shadow: none;
 }
@@ -2399,7 +2399,7 @@ onBeforeUnmount(() => {
 .grid.drop-over {
   outline: 1px dashed var(--accent);
   outline-offset: -4px;
-  background: rgba(61, 139, 253, 0.06);
+  background: var(--accent-06);
 }
 
 .tree-row {
@@ -2426,7 +2426,7 @@ onBeforeUnmount(() => {
 }
 
 .tree-row.active {
-  background: rgba(61, 139, 253, 0.22);
+  background: var(--accent-22);
   color: var(--text);
 }
 
@@ -2435,7 +2435,7 @@ onBeforeUnmount(() => {
 }
 
 .tree-row.drop-over {
-  background: rgba(61, 139, 253, 0.28);
+  background: var(--accent-28);
   outline: 1px solid var(--accent);
 }
 
@@ -2495,13 +2495,13 @@ onBeforeUnmount(() => {
 
 .card.drop-over {
   border-color: var(--accent);
-  background: rgba(61, 139, 253, 0.18);
+  background: var(--accent-18);
 }
 
 .card.selected {
   border-color: var(--accent);
-  background: rgba(61, 139, 253, 0.18);
-  box-shadow: 0 0 0 1px rgba(61, 139, 253, 0.45);
+  background: var(--accent-18);
+  box-shadow: 0 0 0 1px var(--accent-45);
 }
 
 .list-icon {
@@ -2539,25 +2539,25 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: rgba(140, 110, 70, 0.18);
-  color: #b89a72;
+  background: var(--media-ref-wash);
+  color: var(--media-ref);
   font-size: 12px;
   opacity: 1;
-  box-shadow: inset 0 0 0 1px rgba(160, 125, 80, 0.28);
+  box-shadow: inset 0 0 0 1px var(--media-ref-ring-soft);
 }
 
 .card.is-media-ref .name {
-  color: #b8a890;
+  color: var(--media-ref-name);
 }
 
 .card.is-media-ref .badge {
-  color: #b89a72;
+  color: var(--media-ref);
   font-weight: 500;
 }
 
 .card.is-media-ref .thumb {
   position: relative;
-  box-shadow: inset 0 0 0 1px rgba(160, 125, 80, 0.4);
+  box-shadow: inset 0 0 0 1px var(--media-ref-ring);
 }
 
 .ref-mark {
@@ -2567,20 +2567,20 @@ onBeforeUnmount(() => {
   z-index: 1;
   padding: 1px 4px;
   border-radius: 0 0 4px 0;
-  background: rgba(28, 24, 18, 0.78);
-  color: #b89a72;
+  background: var(--media-ref-mark-bg);
+  color: var(--media-ref);
   font-size: 9px;
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.02em;
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(160, 125, 80, 0.25);
+  box-shadow: inset 0 0 0 1px var(--media-ref-ring-soft);
 }
 
 .thumb {
   position: relative;
   aspect-ratio: 1;
-  background: #0e0f10;
+  background: var(--graph-preview-bg);
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -2611,7 +2611,7 @@ onBeforeUnmount(() => {
 }
 
 .grid.list .card.drop-over {
-  background: rgba(61, 139, 253, 0.18);
+  background: var(--accent-18);
   outline: 1px solid var(--accent);
 }
 
@@ -2698,7 +2698,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(61, 139, 253, 0.12);
+  background: var(--accent-12);
   border: 2px dashed var(--accent);
   border-radius: 4px;
 }
@@ -2706,10 +2706,10 @@ onBeforeUnmount(() => {
 .import-panel {
   text-align: center;
   padding: 20px 28px;
-  background: rgba(14, 16, 18, 0.92);
+  background: var(--panel-glass);
   border: 1px solid var(--accent);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 32px var(--shadow);
 }
 
 .import-icon {

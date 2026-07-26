@@ -643,7 +643,7 @@ label {
 }
 
 .danger {
-  color: #f0a0a0;
+  color: var(--danger-muted);
   border-color: rgba(240, 120, 120, 0.35);
 }
 
@@ -652,7 +652,7 @@ label {
 }
 
 .ext-link {
-  color: #8eb6ff;
+  color: var(--accent-fg);
   text-decoration: underline;
   text-underline-offset: 2px;
   word-break: break-all;

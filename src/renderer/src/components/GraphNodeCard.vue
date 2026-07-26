@@ -1926,7 +1926,7 @@ function formatTime(sec: number): string {
 
 .graph-node.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 6px 20px rgba(61, 139, 253, 0.2);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 20px var(--accent-22);
 }
 
 .node-head {
@@ -1990,14 +1990,14 @@ function formatTime(sec: number): string {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(61, 139, 253, 0.18);
+  background: var(--accent-18);
   color: var(--accent);
   flex-shrink: 0;
 }
 
 .graph-node.output .type-pill {
   background: rgba(100, 180, 255, 0.22);
-  color: #8ec5ff;
+  color: var(--accent-fg);
 }
 
 .type-pill.ref {
@@ -2015,8 +2015,8 @@ function formatTime(sec: number): string {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(61, 139, 253, 0.12);
-  color: #8ec5ff;
+  background: var(--accent-12);
+  color: var(--accent-fg);
   flex-shrink: 0;
 }
 
@@ -2071,8 +2071,8 @@ function formatTime(sec: number): string {
 }
 
 .run-pill.running {
-  background: rgba(61, 139, 253, 0.22);
-  color: #8ec5ff;
+  background: var(--accent-22);
+  color: var(--accent-fg);
 }
 
 .run-pill.done {
@@ -2082,7 +2082,7 @@ function formatTime(sec: number): string {
 
 .run-pill.error {
   background: rgba(160, 50, 50, 0.3);
-  color: #f0a0a0;
+  color: var(--danger-muted);
 }
 
 .preview {
@@ -2444,7 +2444,7 @@ function formatTime(sec: number): string {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid #8ec5ff;
+  border: 2px solid var(--accent-fg);
   background: var(--graph-port-bg);
   padding: 0;
   cursor: crosshair;

@@ -168,7 +168,7 @@ defineExpose({
 
 .folder-row:hover,
 .folder-row.active {
-  background: rgba(61, 139, 253, 0.18);
+  background: var(--accent-18);
 }
 
 .err {

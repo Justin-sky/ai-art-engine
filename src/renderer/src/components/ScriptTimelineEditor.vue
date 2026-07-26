@@ -55,6 +55,7 @@
             <span class="play-glyph" aria-hidden="true" />
             <p>{{ t('script.timeline.emptyPreview') }}</p>
           </div>
+          <div v-if="activeSubtitleText" class="subtitle-overlay">{{ activeSubtitleText }}</div>
           <div class="preview-transport">
             <button type="button" class="ctrl" :title="t('script.timeline.play')" @click="togglePlay">
               <span :class="playing ? 'icon-pause' : 'icon-play'" />
@@ -128,6 +129,21 @@
             {{ t('script.timeline.zoomFit') }}
           </button>
           <span class="zoom-readout">{{ Math.round(zoomFactor * 100) }}%</span>
+          <button
+            type="button"
+            class="export-btn"
+            :disabled="exporting || !clips.length"
+            :title="t('script.timeline.exportHint')"
+            @click="exportTimeline"
+          >
+            {{
+              exporting
+                ? t('script.timeline.exporting', {
+                    progress: Math.round(exportProgress * 100)
+                  })
+                : t('script.timeline.export')
+            }}
+          </button>
         </div>
         <GraphToolbarCollapseBtn v-model="timelineCollapsed" />
       </header>
@@ -164,8 +180,7 @@
           <div
             v-for="track in tracks"
             :key="track.kind"
-            class="track-row"
-            :class="{ droppable: track.kind !== 'subtitle' }"
+            class="track-row droppable"
             @dragover.prevent="onTrackDragOver($event, track.kind)"
             @drop.prevent="onTrackDrop($event, track.kind)"
           >
@@ -176,13 +191,23 @@
                   <span class="play-glyph sm" aria-hidden="true" />
                   <span>{{ t('script.timeline.videoEmpty') }}</span>
                 </div>
-                <button type="button" class="create-hint" @click="autoPlaceAll">
-                  {{ t('script.timeline.createShots') }}
-                </button>
               </template>
               <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
                   <span class="speaker" aria-hidden="true" />
+                  <span>{{ t('script.timeline.none') }}</span>
+                </div>
+              </template>
+              <template v-else-if="track.kind === 'subtitle' && !clipsOn(track.kind).length">
+                <div class="lane-muted">
+                  <span>{{ t('script.timeline.subtitleEmpty') }}</span>
+                </div>
+                <button type="button" class="create-hint" @click="addBlankSubtitle">
+                  {{ t('script.timeline.addSubtitle') }}
+                </button>
+              </template>
+              <template v-else-if="track.kind === 'music' && !clipsOn(track.kind).length">
+                <div class="lane-muted">
                   <span>{{ t('script.timeline.none') }}</span>
                 </div>
               </template>
@@ -191,14 +216,14 @@
                 :key="clip.id"
                 type="button"
                 class="clip"
-                :class="{ active: clip.id === activeClipId }"
+                :class="{ active: clip.id === activeClipId, subtitle: clip.track === 'subtitle' }"
                 :style="clipStyle(clip)"
                 draggable="true"
                 @dragstart="onClipDragStart($event, clip)"
                 @pointerdown.stop="selectClip(clip)"
-                @dblclick.stop="seekToClip(clip)"
+                @dblclick.stop="onClipDblClick(clip)"
               >
-                <span class="clip-title">{{ clip.title }}</span>
+                <span class="clip-title">{{ clipDisplayTitle(clip) }}</span>
                 <span
                   class="clip-remove"
                   :title="t('script.timeline.removeClip')"
@@ -220,6 +245,29 @@
         </div>
       </div>
     </section>
+
+    <div v-if="subtitleEditor" class="subtitle-edit-mask" @click.self="cancelSubtitleEdit">
+      <div class="subtitle-edit-panel" role="dialog" aria-modal="true">
+        <div class="subtitle-edit-title">{{ t('script.timeline.editSubtitle') }}</div>
+        <input
+          ref="subtitleInputEl"
+          v-model="subtitleEditor.draft"
+          class="subtitle-edit-input"
+          type="text"
+          maxlength="200"
+          @keydown.enter.prevent="commitSubtitleEdit"
+          @keydown.escape.prevent="cancelSubtitleEdit"
+        />
+        <div class="subtitle-edit-actions">
+          <button type="button" class="ghost-btn" @click="cancelSubtitleEdit">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" class="export-btn" @click="commitSubtitleEdit">
+            {{ t('common.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -233,14 +281,17 @@ import {
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
   type ScriptTimelineSource,
-  type ScriptTimelineTrackKind
+  type ScriptTimelineTrackKind,
+  type TimelineExportClip
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { persistAssetRecord } from '../composables/useAssetRecord'
+import { promptAlert } from '../composables/useStudioPrompt'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
+import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
 import { toPlain } from '../utils/toPlain'
 import AssetBrowser from './AssetBrowser.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
@@ -280,9 +331,14 @@ const durationSec = ref(minLaneSec)
 const durationInputSec = ref(minLaneSec)
 const playbackRate = ref(1)
 const loopPlayback = ref(false)
+const exporting = ref(false)
+const exportProgress = ref(0)
+const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
+const subtitleInputEl = ref<HTMLInputElement | null>(null)
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let playSeq = 0
+const audioEls = new Map<string, HTMLAudioElement>()
 
 const hostId = computed(() => `asset:${props.scriptAssetId}`)
 
@@ -321,6 +377,18 @@ const laneWidth = computed(() =>
 )
 
 const needsHScroll = computed(() => laneWidth.value > viewportLanePx.value + 1)
+
+const activeSubtitleText = computed(() => {
+  for (const clip of clipsOn('subtitle')) {
+    if (
+      playheadSec.value >= clip.startSec &&
+      playheadSec.value < clip.startSec + clip.durationSec
+    ) {
+      return (clip.text || clip.title).trim()
+    }
+  }
+  return ''
+})
 
 const rulerMarks = computed(() => {
   const marks: Array<{ t: number; x: number; label: string; isEnd?: boolean }> = []
@@ -450,11 +518,15 @@ function onRateChange(): void {
 function applyPlaybackRate(): void {
   const el = previewEl.value
   if (el) el.playbackRate = playbackRate.value
+  for (const audio of audioEls.values()) {
+    audio.playbackRate = playbackRate.value
+  }
 }
 
 function seekToStart(): void {
   playheadSec.value = 0
   void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(playing.value)
 }
 
 function zoomFit(): void {
@@ -545,10 +617,13 @@ async function addSourceToTrack(
   track: ScriptTimelineTrackKind,
   startSec?: number
 ): Promise<void> {
-  const url = await resolveSrc(source)
-  const durationSec = source.durationSec && source.durationSec > 0
-    ? source.durationSec
-    : await probeDuration(url)
+  const url = track === 'subtitle' ? '' : await resolveSrc(source)
+  let durationSec = source.durationSec && source.durationSec > 0 ? source.durationSec : 0
+  if (track === 'subtitle') {
+    durationSec = durationSec > 0 ? Math.min(durationSec, 4) : 3
+  } else if (!(durationSec > 0)) {
+    durationSec = await probeDuration(url)
+  }
   const clip: ScriptTimelineClip = {
     id: newClipId(),
     track,
@@ -557,12 +632,73 @@ async function addSourceToTrack(
     relativePath: source.relativePath,
     assetId: source.assetId,
     startSec: startSec ?? nextStartOnTrack(track),
-    durationSec
+    durationSec,
+    ...(track === 'subtitle' ? { text: source.title } : {})
   }
   clips.value = [...clips.value, clip]
   activeClipId.value = clip.id
   scheduleSave()
   if (track === 'video') void showClipPreview(clip)
+}
+
+function addBlankSubtitle(): void {
+  const placeholder = t('script.timeline.subtitlePlaceholder')
+  const clip: ScriptTimelineClip = {
+    id: newClipId(),
+    track: 'subtitle',
+    sourceId: `subtitle:${Date.now()}`,
+    title: placeholder,
+    text: placeholder,
+    startSec: Math.max(0, playheadSec.value),
+    durationSec: 3
+  }
+  clips.value = [...clips.value, clip]
+  activeClipId.value = clip.id
+  scheduleSave()
+  openSubtitleEditor(clip)
+}
+
+function clipDisplayTitle(clip: ScriptTimelineClip): string {
+  if (clip.track === 'subtitle') return (clip.text || clip.title).trim() || clip.title
+  return clip.title
+}
+
+function onClipDblClick(clip: ScriptTimelineClip): void {
+  if (clip.track === 'subtitle') {
+    openSubtitleEditor(clip)
+    return
+  }
+  seekToClip(clip)
+}
+
+function openSubtitleEditor(clip: ScriptTimelineClip): void {
+  subtitleEditor.value = {
+    clipId: clip.id,
+    draft: clip.text || clip.title || ''
+  }
+  void nextTick(() => {
+    const el = subtitleInputEl.value
+    if (!el) return
+    el.focus()
+    el.select()
+  })
+}
+
+function cancelSubtitleEdit(): void {
+  subtitleEditor.value = null
+}
+
+function commitSubtitleEdit(): void {
+  const editor = subtitleEditor.value
+  if (!editor) return
+  const text = editor.draft.trim() || t('script.timeline.subtitlePlaceholder')
+  if (editor.clipId) {
+    clips.value = clips.value.map((c) =>
+      c.id === editor.clipId ? { ...c, text, title: text } : c
+    )
+  }
+  subtitleEditor.value = null
+  scheduleSave()
 }
 
 async function autoPlaceAll(): Promise<void> {
@@ -639,6 +775,7 @@ function onClipDragStart(e: DragEvent, clip: ScriptTimelineClip): void {
       relativePath: clip.relativePath,
       assetId: clip.assetId,
       durationSec: clip.durationSec,
+      text: clip.text,
       _moveClipId: clip.id
     })
   )
@@ -646,7 +783,6 @@ function onClipDragStart(e: DragEvent, clip: ScriptTimelineClip): void {
 }
 
 function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
-  if (kind === 'subtitle') return
   const asset = workspace.resolveDraggedAsset(e)
   if (asset) {
     if (!canDropAssetOnTrack(asset, kind)) return
@@ -661,6 +797,7 @@ function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
 function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): boolean {
   if (kind === 'video') return asset.type === 'video'
   if (kind === 'voice' || kind === 'music') return asset.type === 'voice'
+  if (kind === 'subtitle') return asset.type === 'video' || asset.type === 'voice'
   return false
 }
 
@@ -683,12 +820,15 @@ function dropStartFromEvent(e: DragEvent, kind: ScriptTimelineTrackKind): number
 }
 
 async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise<void> {
-  if (kind === 'subtitle') return
   const dropStart = dropStartFromEvent(e, kind)
 
   const raw = e.dataTransfer?.getData(DRAFT_MIME)
   if (raw) {
-    let payload: ScriptTimelineSource & { _moveClipId?: string; durationSec?: number }
+    let payload: ScriptTimelineSource & {
+      _moveClipId?: string
+      durationSec?: number
+      text?: string
+    }
     try {
       payload = JSON.parse(raw)
     } catch {
@@ -697,7 +837,15 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
     if (payload._moveClipId) {
       const idx = clips.value.findIndex((c) => c.id === payload._moveClipId)
       if (idx >= 0) {
-        const next = { ...clips.value[idx]!, track: kind, startSec: dropStart }
+        const prev = clips.value[idx]!
+        const next: ScriptTimelineClip = {
+          ...prev,
+          track: kind,
+          startSec: dropStart,
+          ...(kind === 'subtitle' && !prev.text
+            ? { text: prev.text || prev.title }
+            : {})
+        }
         clips.value = clips.value.map((c, i) => (i === idx ? next : c))
         scheduleSave()
         return
@@ -730,6 +878,7 @@ function onRulerPointerDown(e: PointerEvent): void {
   const rect = el.getBoundingClientRect()
   playheadSec.value = xToTime(e.clientX - rect.left)
   void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(playing.value)
 }
 
 function clipAtPlayhead(): ScriptTimelineClip | null {
@@ -740,6 +889,77 @@ function clipAtPlayhead(): ScriptTimelineClip | null {
     }
   }
   return list.find((c) => c.startSec >= playheadSec.value) ?? null
+}
+
+function stopAllAudio(): void {
+  for (const el of audioEls.values()) {
+    try {
+      el.pause()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function disposeAudioPool(): void {
+  for (const el of audioEls.values()) {
+    try {
+      el.pause()
+      el.removeAttribute('src')
+      el.load()
+    } catch {
+      /* ignore */
+    }
+  }
+  audioEls.clear()
+}
+
+async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
+  const audioClips = clips.value.filter((c) => c.track === 'voice' || c.track === 'music')
+  const alive = new Set(audioClips.map((c) => c.id))
+  for (const id of [...audioEls.keys()]) {
+    if (alive.has(id)) continue
+    const dead = audioEls.get(id)
+    if (dead) {
+      try {
+        dead.pause()
+        dead.removeAttribute('src')
+        dead.load()
+      } catch {
+        /* ignore */
+      }
+    }
+    audioEls.delete(id)
+  }
+
+  for (const clip of audioClips) {
+    let el = audioEls.get(clip.id)
+    if (!el) {
+      el = new Audio()
+      el.preload = 'auto'
+      audioEls.set(clip.id, el)
+      el.src = await resolveSrc(clip)
+    }
+    const local = playheadSec.value - clip.startSec
+    const inRange = local >= -0.05 && local < clip.durationSec
+    el.playbackRate = playbackRate.value
+    if (!inRange) {
+      if (!el.paused) el.pause()
+      continue
+    }
+    try {
+      if (Math.abs(el.currentTime - Math.max(0, local)) > 0.35) {
+        el.currentTime = Math.max(0, local)
+      }
+    } catch {
+      /* ignore */
+    }
+    if (playingNow) {
+      if (el.paused) void el.play().catch(() => undefined)
+    } else if (!el.paused) {
+      el.pause()
+    }
+  }
 }
 
 async function syncPreviewToPlayhead(): Promise<void> {
@@ -767,18 +987,38 @@ async function togglePlay(): Promise<void> {
   if (playing.value) {
     playing.value = false
     previewEl.value?.pause()
+    stopAllAudio()
     playSeq += 1
     return
   }
   playing.value = true
   const seq = ++playSeq
+  await syncAudioToPlayhead(true)
   await runSequence(seq)
 }
 
 async function runSequence(seq: number): Promise<void> {
   const list = clipsOn('video')
   if (!list.length) {
+    // 仅音频/字幕时按时间轴空播
+    const end = totalDuration.value
+    const started = performance.now()
+    const origin = playheadSec.value
+    while (seq === playSeq && playing.value) {
+      const elapsed = ((performance.now() - started) / 1000) * playbackRate.value
+      playheadSec.value = origin + elapsed
+      await syncAudioToPlayhead(true)
+      if (playheadSec.value >= end) {
+        if (loopPlayback.value) {
+          playheadSec.value = 0
+          return runSequence(seq)
+        }
+        break
+      }
+      await new Promise((r) => window.setTimeout(r, 40))
+    }
     playing.value = false
+    stopAllAudio()
     return
   }
 
@@ -825,6 +1065,7 @@ async function runSequence(seq: number): Promise<void> {
   } while (loopPlayback.value)
 
   playing.value = false
+  stopAllAudio()
 }
 
 function waitUntilClipEnd(
@@ -840,6 +1081,7 @@ function waitUntilClipEnd(
         return
       }
       playheadSec.value = clip.startSec + (el.currentTime || 0)
+      void syncAudioToPlayhead(true)
       if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
@@ -869,6 +1111,96 @@ function onPreviewLoaded(): void {
   applyPlaybackRate()
 }
 
+function resolveClipRelativePath(clip: ScriptTimelineClip): string | undefined {
+  const rel = clip.relativePath?.trim()
+  if (rel) return rel
+  if (!clip.assetId) return undefined
+  return project.assets.find((a) => a.id === clip.assetId)?.relativePath?.trim() || undefined
+}
+
+async function exportTimeline(): Promise<void> {
+  if (exporting.value || !clips.value.length) return
+  playing.value = false
+  playSeq += 1
+  previewEl.value?.pause()
+  stopAllAudio()
+  await persist()
+
+  exporting.value = true
+  exportProgress.value = 0
+  const unsub = window.studio.onTimelineExportProgress(({ progress }) => {
+    exportProgress.value = progress
+  })
+  try {
+    const exportClips: TimelineExportClip[] = clips.value.map((c) => ({
+      track: c.track,
+      relativePath: resolveClipRelativePath(c),
+      text: c.text,
+      title: c.title,
+      startSec: c.startSec,
+      durationSec: c.durationSec
+    }))
+    const defaultFileName = `cut-${Date.now()}.mp4`
+    let result = await window.studio.exportScriptTimeline({
+      clips: exportClips,
+      durationSec: totalDuration.value,
+      playbackRate: playbackRate.value,
+      defaultFileName
+    })
+
+    const needFallback =
+      !result.ok &&
+      !result.canceled &&
+      /ffmpeg|ENOENT|not found|无法启动/i.test(result.error)
+
+    if (needFallback) {
+      exportProgress.value = 0.05
+      const fb = await exportTimelineViaRecorder({
+        clips: clips.value,
+        durationSec: totalDuration.value,
+        playbackRate: playbackRate.value,
+        resolveSrc,
+        defaultFileName: defaultFileName.replace(/\.mp4$/i, '.webm'),
+        onProgress: (ratio) => {
+          exportProgress.value = ratio
+        }
+      })
+      if (fb.ok) {
+        await promptAlert({
+          title: t('script.timeline.export'),
+          message: t('script.timeline.exportDoneFallback', { path: fb.filePath })
+        })
+        return
+      }
+      if (fb.canceled) return
+      result = { ok: false, error: `${result.error}\n\n录制回退也失败：${fb.error}` }
+    }
+
+    if (result.ok) {
+      if (result.assetId) await project.refreshAssets()
+      await promptAlert({
+        title: t('script.timeline.export'),
+        message: t('script.timeline.exportDone', { path: result.filePath })
+      })
+    } else if (!result.canceled) {
+      await promptAlert({
+        title: t('script.timeline.export'),
+        message: t('script.timeline.exportFailed', { error: result.error })
+      })
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await promptAlert({
+      title: t('script.timeline.export'),
+      message: t('script.timeline.exportFailed', { error: message })
+    })
+  } finally {
+    unsub()
+    exporting.value = false
+    exportProgress.value = 0
+  }
+}
+
 onMounted(async () => {
   loadPersisted()
   await reloadSources()
@@ -882,6 +1214,8 @@ watch(
   async () => {
     playing.value = false
     playSeq += 1
+    stopAllAudio()
+    disposeAudioPool()
     loadPersisted()
     await reloadSources()
   }
@@ -916,6 +1250,7 @@ function bindTimelineViewport(): void {
 onBeforeUnmount(() => {
   playing.value = false
   playSeq += 1
+  disposeAudioPool()
   timelineViewportRo?.disconnect()
   timelineViewportRo = null
   if (saveTimer) clearTimeout(saveTimer)
@@ -927,6 +1262,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 <style scoped>
 .script-timeline {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1028,8 +1364,11 @@ defineExpose({ flushSave: persist, reloadSources })
   height: 36px;
   border-radius: 6px;
   flex-shrink: 0;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 28%, #222), #1a1f26);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 28%, var(--bg-elevated)),
+    var(--bg-input)
+  );
 }
 
 .source-meta {
@@ -1053,7 +1392,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .preview-panel {
-  background: #0b0d10;
+  background: var(--media-letterbox);
 }
 
 .preview-stage {
@@ -1084,6 +1423,25 @@ defineExpose({ flushSave: persist, reloadSources })
   text-align: center;
 }
 
+.subtitle-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  max-width: min(90%, 640px);
+  padding: 6px 12px;
+  border-radius: 6px;
+  /* 叠在预览画面上：固定暗底白字，不受亮色主题影响 */
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow: 0 1px 2px var(--on-media-line-shadow);
+  pointer-events: none;
+  z-index: 2;
+}
+
 .preview-transport {
   position: absolute;
   left: 10px;
@@ -1093,8 +1451,8 @@ defineExpose({ flushSave: persist, reloadSources })
   gap: 10px;
   padding: 4px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, #000 55%, transparent);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--on-media-line);
   font-size: 11px;
 }
 
@@ -1103,8 +1461,8 @@ defineExpose({ flushSave: persist, reloadSources })
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 80%, #fff);
-  color: #111;
+  background: var(--accent);
+  color: var(--on-accent);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -1258,6 +1616,69 @@ defineExpose({ flushSave: persist, reloadSources })
   min-width: 36px;
 }
 
+.export-btn {
+  margin-left: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.export-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.subtitle-edit-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: var(--overlay);
+}
+
+.subtitle-edit-panel {
+  width: min(420px, calc(100% - 32px));
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subtitle-edit-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.subtitle-edit-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.subtitle-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .timeline-board {
   flex: none;
   overflow: hidden;
@@ -1309,7 +1730,7 @@ defineExpose({ flushSave: persist, reloadSources })
   position: relative;
   height: 28px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 80%, #000);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, var(--bg));
   cursor: ew-resize;
   overflow: hidden;
 }
@@ -1348,12 +1769,12 @@ defineExpose({ flushSave: persist, reloadSources })
   position: relative;
   height: 52px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: color-mix(in srgb, var(--bg-panel) 92%, #000);
+  background: color-mix(in srgb, var(--bg-panel) 92%, var(--bg));
   overflow: hidden;
 }
 
 .track-row.droppable .track-lane {
-  background: color-mix(in srgb, var(--bg-panel) 85%, #1a1f26);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
 }
 
 .lane-empty,
@@ -1377,10 +1798,10 @@ defineExpose({ flushSave: persist, reloadSources })
   z-index: 1;
   font-size: 11px;
   padding: 2px 10px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: color-mix(in srgb, #000 55%, transparent);
-  color: #ddd;
+  background: var(--bg-elevated);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -1414,6 +1835,10 @@ defineExpose({ flushSave: persist, reloadSources })
   outline: 1px solid var(--accent);
 }
 
+.clip.subtitle {
+  background: color-mix(in srgb, var(--accent) 35%, var(--bg-elevated));
+}
+
 .clip-title {
   flex: 1;
   min-width: 0;
@@ -1434,7 +1859,7 @@ defineExpose({ flushSave: persist, reloadSources })
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 2px solid #3ddc84;
+  border-left: 2px solid var(--success);
   pointer-events: none;
   z-index: 2;
 }
@@ -1447,6 +1872,6 @@ defineExpose({ flushSave: persist, reloadSources })
   height: 0;
   border-style: solid;
   border-width: 8px 6px 0 6px;
-  border-color: #3ddc84 transparent transparent transparent;
+  border-color: var(--success) transparent transparent transparent;
 }
 </style>

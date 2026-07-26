@@ -5,9 +5,9 @@
     :show-close="false"
     :z-index="3200"
     :default-width="400"
-    :default-height="220"
+    :default-height="280"
     :min-width="320"
-    :min-height="180"
+    :min-height="200"
     @close="onBackdrop"
   >
     <p v-if="current" class="message">{{ current.message }}</p>

@@ -947,8 +947,8 @@ onBeforeUnmount(() => {
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: rgba(61, 139, 253, 0.25);
-  color: #9ec5ff;
+  background: var(--accent-25);
+  color: var(--accent-fg);
   font-size: 10px;
   line-height: 16px;
   text-align: center;

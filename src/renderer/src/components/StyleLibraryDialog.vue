@@ -270,7 +270,7 @@ function confirm(): void {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  background: #111;
+  background: var(--media-letterbox);
 }
 
 .caption {

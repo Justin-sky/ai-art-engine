@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: #0d0e10;
+  background: var(--media-letterbox);
   flex-shrink: 0;
 }
 
@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
   height: auto;
   aspect-ratio: 16 / 9;
   object-fit: contain;
-  background: #0d0e10;
+  background: var(--media-letterbox);
   cursor: zoom-in;
 }
 

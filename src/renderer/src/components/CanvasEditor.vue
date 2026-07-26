@@ -463,6 +463,12 @@ function getArtboardSize(): { w: number; h: number } {
   }
 }
 
+function artboardStrokeColor(): string {
+  const accent =
+    getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3d8bfd'
+  return /^#[0-9a-fA-F]{6}$/.test(accent) ? `${accent}88` : accent
+}
+
 function ensureArtboard(): void {
   if (!fabricCanvas) return
   const { w, h } = getArtboardSize()
@@ -490,7 +496,7 @@ function ensureArtboard(): void {
       width: w,
       height: h,
       fill: '#0b0c0d',
-      stroke: '#3d8bfd88',
+      stroke: artboardStrokeColor(),
       strokeWidth: 2,
       selectable: false,
       evented: false
@@ -505,7 +511,7 @@ function ensureArtboard(): void {
     width: w,
     height: h,
     fill: '#0b0c0d',
-    stroke: '#3d8bfd88',
+    stroke: artboardStrokeColor(),
     strokeWidth: 2,
     selectable: false,
     evented: false,
@@ -980,7 +986,7 @@ defineExpose({ exportPng, flushSave, focusCenter })
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #0e1012;
+  background: var(--graph-viewport-bg);
 }
 
 .canvas-toolbar {
@@ -1169,7 +1175,7 @@ defineExpose({ exportPng, flushSave, focusCenter })
 }
 
 .layer-row.active {
-  background: rgba(61, 139, 253, 0.12);
+  background: var(--accent-12);
   border-left-color: var(--accent);
 }
 

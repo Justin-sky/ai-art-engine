@@ -777,7 +777,7 @@ thead th {
 
 .col-resize:hover,
 .shot-table.resizing-col .col-resize {
-  background: rgba(61, 139, 253, 0.35);
+  background: var(--accent-28);
 }
 
 tbody td {
@@ -861,7 +861,7 @@ tbody tr.row-even:hover > td {
 
 .row-resize:hover,
 .shot-table.resizing-row .row-resize {
-  background: rgba(61, 139, 253, 0.35);
+  background: var(--accent-28);
 }
 
 input,

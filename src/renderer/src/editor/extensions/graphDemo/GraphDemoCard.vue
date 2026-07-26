@@ -205,7 +205,7 @@ function cancelEdit(): void {
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
-  border-bottom: 1px solid #3d5a8044;
+  border-bottom: 1px solid var(--accent-45);
   min-width: 0;
   flex-shrink: 0;
 }
@@ -215,14 +215,14 @@ function cancelEdit(): void {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(110, 200, 255, 0.18);
-  color: #8ed4ff;
+  background: var(--accent-18);
+  color: var(--accent-fg);
   flex-shrink: 0;
 }
 
 .title {
   font-size: 11px;
-  color: #b8d4f0;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -234,15 +234,15 @@ function cancelEdit(): void {
   min-width: 0;
   font-size: 11px;
   padding: 1px 4px;
-  border: 1px solid #6ec8ff66;
+  border: 1px solid var(--accent-45);
   border-radius: 4px;
-  background: #0e1520;
-  color: #e8f4ff;
+  background: var(--bg-input);
+  color: var(--text);
 }
 
 .title-input:focus {
   outline: none;
-  border-color: #6ec8ff;
+  border-color: var(--accent);
 }
 
 .demo-content {
@@ -259,7 +259,7 @@ function cancelEdit(): void {
   min-height: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: #d8e8f8;
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   overflow: auto;
@@ -270,10 +270,10 @@ function cancelEdit(): void {
   min-height: 0;
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #6ec8ff66;
+  border: 1px solid var(--accent-45);
   border-radius: 6px;
-  background: #0e1520;
-  color: #e8f4ff;
+  background: var(--bg-input);
+  color: var(--text);
   font-size: 12px;
   line-height: 1.45;
   resize: none;
@@ -284,7 +284,7 @@ function cancelEdit(): void {
 
 .demo-input:focus {
   outline: none;
-  border-color: #6ec8ff;
+  border-color: var(--accent);
 }
 
 :deep(.resize-handle) {
@@ -296,9 +296,9 @@ function cancelEdit(): void {
   width: 12px;
   height: 12px;
   padding: 0;
-  border: 2px solid #6ec8ff;
+  border: 2px solid var(--accent);
   border-radius: 50%;
-  background: #142030;
+  background: var(--graph-port-bg);
   cursor: crosshair;
   z-index: 30;
 }
@@ -309,7 +309,7 @@ function cancelEdit(): void {
 }
 
 .port:hover {
-  background: #8ed4ff;
-  border-color: #d8f0ff;
+  background: var(--accent-fg);
+  border-color: var(--accent-hover);
 }
 </style>

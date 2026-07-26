@@ -278,8 +278,8 @@ function onBodyDblClick(): void {
 }
 
 .run-pill.running {
-  background: rgba(61, 139, 253, 0.22);
-  color: #8ec5ff;
+  background: var(--accent-22);
+  color: var(--accent-fg);
 }
 
 .run-pill.done {
@@ -289,7 +289,7 @@ function onBodyDblClick(): void {
 
 .run-pill.error {
   background: rgba(160, 50, 50, 0.3);
-  color: #f0a0a0;
+  color: var(--danger-muted);
 }
 
 .note-content {

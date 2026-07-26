@@ -539,7 +539,7 @@ label {
 }
 
 .msg.error {
-  color: #f0a0a0;
+  color: var(--danger-muted);
 }
 
 .msg.saving {

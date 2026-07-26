@@ -110,6 +110,6 @@ async function onClose(): Promise<void> {
 }
 
 .error {
-  color: #e57373;
+  color: var(--danger);
 }
 </style>

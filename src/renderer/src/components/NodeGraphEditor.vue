@@ -5984,7 +5984,7 @@ defineExpose({
 }
 
 .run-banner.error {
-  color: #f0a0a0;
+  color: var(--danger-muted);
   background: rgba(140, 50, 50, 0.18);
 }
 
@@ -6354,7 +6354,7 @@ defineExpose({
 .ctx-port-type,
 .ctx-item-type {
   font-size: 10px;
-  color: var(--accent, #8ec5ff);
+  color: var(--accent);
   opacity: 0.9;
 }
 

@@ -318,7 +318,7 @@ textarea::-webkit-resizer {
 
 .mention-menu li:hover,
 .mention-menu li.active {
-  background: rgba(61, 139, 253, 0.12);
+  background: var(--accent-12);
 }
 
 .token {

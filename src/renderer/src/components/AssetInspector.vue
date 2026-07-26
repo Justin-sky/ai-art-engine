@@ -1160,7 +1160,7 @@ input:disabled {
 }
 
 .err {
-  color: #e57373;
+  color: var(--danger);
   font-size: 12px;
 }
 
