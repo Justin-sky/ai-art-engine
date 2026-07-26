@@ -1829,8 +1829,8 @@ export default {
       duration: '输出时长（秒）',
       speed: '播放速度',
       narrativePaths: '落地剧本',
-      narrativePathsHint: '执行后每项叙事单元会保存为独立剧本文件；双击预览全文',
-      narrativePathsEmpty: '尚未落地，请先连接上游并运行本节点',
+      narrativePathsHint: '运行「叙事单元生成」后，各单元文本会保存为独立剧本文件；双击预览全文',
+      narrativePathsEmpty: '尚未落地，请先细化各单元并运行本节点',
       narrativePathPending: '（未落盘）'
     },
     notepad: {
@@ -1923,7 +1923,7 @@ export default {
         hint: '双击打开叙事单元表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
       narrativeGen: {
-        hint: '运行本节点只收集各单元子图已有文本；批量生成请用下方按钮'
+        hint: '运行本节点收集各单元文本并落地到输出路径；批量生成请用下方按钮'
       },
       multiAngle: {
         hint: '双击节点编辑机位；此处预览文本输出（节点卡片不显示图片）',

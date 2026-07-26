@@ -58,7 +58,6 @@ import {
   executeNarrativeGenNode,
   executeNarrativeUnitGenNode,
   executeNarrativeUnitRefNode,
-  executeNarrativeOutputNode,
   executeWorldGenNode,
   executeWorldExtractNode,
   executeWorldTableNode
@@ -444,9 +443,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     '📜',
     ASSET_NARRATIVE_OUTPUT_TITLE,
     'text',
-    GraphPortType.text,
-    executeNarrativeOutputNode,
-    'studio.graph.narrativeOutput'
+    GraphPortType.text
   ),
   specializedOutputDef(
     'output.narrativeUnit',
@@ -1127,7 +1124,10 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
       { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
     ],
-    defaultParams: () => ({}),
+    defaultParams: () => ({
+      mediaOutputDir: '',
+      generatedTexts: []
+    }),
     addable: true,
     singletonId: GRAPH_NARRATIVE_GEN_NODE_ID,
     deletable: true,

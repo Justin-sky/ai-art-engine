@@ -15,7 +15,6 @@ import CropInspector from '../components/CropInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
-import NarrativeOutputInspector from '../components/NarrativeOutputInspector.vue'
 import NarrativeUnitInspector from '../components/NarrativeUnitInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotParamsInspector from '../components/ShotParamsInspector.vue'
@@ -138,11 +137,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.narrativeGen',
     component: TablePassThroughInspector,
     nodeTypeId: 'narrative.gen'
-  },
-  {
-    id: 'studio.graph.narrativeOutput',
-    component: NarrativeOutputInspector,
-    nodeTypeId: 'output.narrative'
   },
   {
     id: 'studio.graph.narrativeUnitRef',

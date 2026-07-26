@@ -373,9 +373,13 @@ function collectFallback(into: PreviewItem[]): void {
   const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
   const runState = graphRunHosts.get(props.hostId)?.runStates?.[node.id]
   void runState?.status
-  const textContent = resolveNodeTextContent(node, runState)
-  if (textContent?.text.trim()) {
-    into.push({ key: 'node-text', kind: 'text', text: textContent.text })
+  const generatedTextItems = node.params.generatedTexts ?? []
+  // 已有分条 generatedTexts 时，resultText 只是它们的汇总，再塞一遍会多出一条且与首条重复感强
+  if (!generatedTextItems.length) {
+    const textContent = resolveNodeTextContent(node, runState)
+    if (textContent?.text.trim()) {
+      into.push({ key: 'node-text', kind: 'text', text: textContent.text })
+    }
   }
 
   const nodeMediaKind = mediaKindFromNode(node)
@@ -460,8 +464,8 @@ function collectFallback(into: PreviewItem[]): void {
     })
   }
 
-  if ((node.params.generatedTexts ?? []).length) {
-    for (const [index, item] of (node.params.generatedTexts ?? []).entries()) {
+  if (generatedTextItems.length) {
+    for (const [index, item] of generatedTextItems.entries()) {
       const text = item.text?.trim() ?? ''
       const rel = item.relativePath?.trim()
       if (!text && !rel) continue
@@ -500,14 +504,14 @@ function collectFallback(into: PreviewItem[]): void {
     }
   }
 
-  // 输出节点：已有本地媒体预览时不再叠加上游，避免同一批媒体翻倍
+  // 输出节点：已有本地预览（含文本）时不再叠加上游，避免同一批翻倍
   if (node.category === 'output') {
-    const hasLocalMedia =
-      into.some((item) => item.kind !== 'text') ||
+    const hasLocalPreview =
+      into.length > 0 ||
       !!node.params.cameraShots?.length ||
       !!node.params.previewDataUrl?.trim() ||
       !!node.params.previewRelativePath?.trim()
-    if (!hasLocalMedia) {
+    if (!hasLocalPreview) {
       collectUpstreamPreview(props.hostId, node.id, into, new Set([node.id]))
     }
   }
@@ -685,6 +689,21 @@ function appendNodeTextPreview(into: PreviewItem[]): void {
   into.push({ key: 'node-text', kind: 'text', text })
 }
 
+function runOutHasTextItems(value: GraphValue | undefined): boolean {
+  if (!value) return false
+  if (value.kind === 'texts') {
+    return value.items.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())
+  }
+  if (value.kind === 'text') return !!value.text.trim()
+  if (value.kind === 'output') {
+    if (value.texts?.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())) {
+      return true
+    }
+    return value.notes.some((note) => !!note.text.trim())
+  }
+  return false
+}
+
 const items = computed((): PreviewItem[] => {
   // 依赖资产列表，避免 generate 后 refreshAssets 前 resolve 失败而不再重试
   void project.assets.length
@@ -692,13 +711,20 @@ const items = computed((): PreviewItem[] => {
   const list: PreviewItem[] = []
   const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
   // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
+  // 文本输出除外：本次 out.texts 为准，避免 resultText + generatedTexts 叠出多余项
   const hasGallery =
     !!(node.params.generatedImages ?? []).length ||
     !!(node.params.generatedVideos ?? []).length ||
     !!(node.params.generatedVoices ?? []).length ||
     !!(node.params.generatedTexts ?? []).length ||
     !!(node.params.cameraShots ?? []).length
-  if (hasGallery) {
+  const preferLiveTextOut = runOutHasTextItems(runOut.value)
+  if (preferLiveTextOut) {
+    collectFromValue(runOut.value, list)
+    if (isShotAggregatePreviewNode(props.node.typeId)) {
+      appendNodeTextPreview(list)
+    }
+  } else if (hasGallery) {
     collectFallback(list)
   } else {
     collectFromValue(runOut.value, list)
@@ -708,14 +734,21 @@ const items = computed((): PreviewItem[] => {
       appendNodeTextPreview(list)
     }
   }
-  if (hasGallery && isShotAggregatePreviewNode(props.node.typeId)) {
+  if (hasGallery && !preferLiveTextOut && isShotAggregatePreviewNode(props.node.typeId)) {
     appendNodeTextPreview(list)
   }
-  // 去重
+  // 去重：同 key，或同 relativePath / 同正文
   const seen = new Set<string>()
   return list.filter((item) => {
-    if (seen.has(item.key)) return false
+    const contentKey =
+      item.kind === 'text'
+        ? item.relativePath?.trim() ||
+          (item.text?.trim() ? `text:${item.text.trim()}` : '') ||
+          item.key
+        : item.key
+    if (seen.has(item.key) || seen.has(contentKey)) return false
     seen.add(item.key)
+    if (contentKey) seen.add(contentKey)
     return true
   })
 })

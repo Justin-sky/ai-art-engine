@@ -1834,8 +1834,8 @@ export default {
       speed: 'Playback speed',
       narrativePaths: 'Saved screenplays',
       narrativePathsHint:
-        'Each narrative unit is saved as its own screenplay file on run; double-click to preview',
-      narrativePathsEmpty: 'Nothing saved yet — connect upstream and run this node',
+        'Running Narrative unit gen saves each unit as its own screenplay file; double-click to preview',
+      narrativePathsEmpty: 'Nothing saved yet — refine units and run this node',
       narrativePathPending: '(not saved)'
     },
     notepad: {
@@ -1928,7 +1928,7 @@ export default {
         hint: 'Double-click to open the narrative unit table. Run the node to import catalog JSON and preview the out port here.'
       },
       narrativeGen: {
-        hint: 'Running this node only collects existing unit texts; use the batch button below to generate.'
+        hint: 'Running this node collects unit texts and saves them to the output path; use the batch button below to generate.'
       },
       multiAngle: {
         hint: 'Double-click the node to edit camera angles. This panel previews the text output (no image on the node card).',

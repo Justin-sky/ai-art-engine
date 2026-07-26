@@ -13,8 +13,6 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
-
     <template v-if="isGenerateScriptOutput">
       <label>
         {{ t('graph.inspector.displayName') }}
@@ -128,6 +126,8 @@
         <input v-model="localTitle" @change="persist" />
       </label>
     </template>
+
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
   </div>
 </template>
 

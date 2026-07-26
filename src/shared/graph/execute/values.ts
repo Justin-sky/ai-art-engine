@@ -2435,7 +2435,7 @@ export async function executeNarrativeTableNode(
 
 /**
  * 叙事单元生成：有上游目录 JSON 时同步到单元子图；
- * 再从各单元 narrativeUnit 子图收集「叙事输出」已有文本（不级联跑子图生成）。
+ * 再从各单元 narrativeUnit 子图收集「叙事输出」已有文本并落地到输出路径（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开细化窗口不会导入。
  */
 export async function executeNarrativeGenNode(
@@ -2451,10 +2451,53 @@ export async function executeNarrativeGenNode(
   }
 
   const collected = await ctx.collectNarrativeUnitTexts?.(ctx.signal)
+  const items = collected?.items ?? []
+  if (!items.length) {
+    const paramsPatch = {
+      generatedTexts: [] as GraphTextItem[],
+      previewRelativePath: '',
+      resultText: ''
+    }
+    ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+    ctx.patchNode?.({ params: paramsPatch })
+    return { out: { kind: 'texts', items: [] } }
+  }
+
+  const hydrated = await hydrateTextItems(items, ctx.readRunText)
+  const materialized = await materializeNarrativeUnitTextItems(ctx, hydrated)
+  if (!materialized.length) {
+    const paramsPatch = {
+      generatedTexts: [] as GraphTextItem[],
+      previewRelativePath: '',
+      resultText: ''
+    }
+    ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+    ctx.patchNode?.({ params: paramsPatch })
+    return { out: { kind: 'texts', items: [] } }
+  }
+
+  const stripped = materialized.map(stripEmbeddedTextData)
+  const previewRelativePath =
+    stripped.find((item) => item.relativePath?.trim())?.relativePath?.trim() || ''
+  const resultText = (
+    await hydrateTextItems(stripped, ctx.readRunText)
+  )
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+
+  const paramsPatch = {
+    generatedTexts: stripped,
+    previewRelativePath,
+    resultText
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+
   return {
     out: {
       kind: 'texts',
-      items: collected?.items ?? []
+      items: stripped
     }
   }
 }
@@ -4025,8 +4068,13 @@ export async function executeScreenplayOutputNode(
     .map((text) => ({ kind: 'text' as const, text }))
   const resultText = notes.map((item) => item.text).join('\n\n')
   const outputKind: GraphOutputKind = ctx.node.params.outputKind ?? 'text'
-  ctx.node.params = { ...ctx.node.params, resultText }
-  ctx.patchNode?.({ params: { resultText } })
+  // 叙事单元输出等：落地已迁至上游 gen，清空旧 generatedTexts，避免预览叠 resultText 变多
+  const paramsPatch = {
+    resultText,
+    ...(ctx.node.typeId === 'output.narrative' ? { generatedTexts: [] as GraphTextItem[] } : {})
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
   const value: GraphOutputValue = {
     kind: 'output',
     outputKind,
@@ -4064,18 +4112,12 @@ function resolveNarrativeUnitFileKey(item: GraphTextItem, index: number): string
 }
 
 /**
- * 「叙事单元输出」：将上游 texts 每一项落地为剧本（txt + screenplay 资产），写回 generatedTexts。
+ * 将叙事单元 texts 落地为剧本文件（txt），返回物化后的条目（有路径时清空 text）。
  */
-export async function executeNarrativeOutputNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const incoming = collectIncomingValues(ctx.inputs)
-  const textItems = flattenTextsValues(incoming)
-  const hydrated = await hydrateTextItems(textItems, ctx.readRunText)
-  if (!hydrated.length) {
-    throw new Error('GRAPH_PROCESS_NO_INPUT')
-  }
-
+async function materializeNarrativeUnitTextItems(
+  ctx: NodeExecuteContext,
+  hydrated: GraphTextItem[]
+): Promise<GraphTextItem[]> {
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const materialized: GraphTextItem[] = []
@@ -4088,7 +4130,6 @@ export async function executeNarrativeOutputNode(
     const fileKey = resolveNarrativeUnitFileKey(item, index)
     const title = item.title?.trim() || fileKey
 
-    // 已有旁挂路径且无需重写：保留路径（正文可已 hydrate）
     if (existingPath && !ctx.saveRunText) {
       materialized.push({
         id,
@@ -4138,7 +4179,7 @@ export async function executeNarrativeOutputNode(
         relativePath
       })
     } catch (err) {
-      console.warn('[graph] narrative output save failed', err)
+      console.warn('[graph] narrative unit text save failed', err)
       materialized.push({
         id,
         title,
@@ -4148,50 +4189,28 @@ export async function executeNarrativeOutputNode(
     }
   }
 
-  if (!materialized.length) {
-    throw new Error('GRAPH_PROCESS_NO_INPUT')
-  }
+  return materialized
+}
 
-  const previewRelativePath = materialized.find((item) => item.relativePath?.trim())
-    ?.relativePath
-  const resultText = (
-    await hydrateTextItems(materialized, ctx.readRunText)
-  )
-    .map((item) => item.text.trim())
-    .filter(Boolean)
-    .join('\n\n')
-
-  const outputKind: GraphOutputKind = 'text'
-  const paramsPatch = {
-    outputKind,
-    generatedTexts: materialized.map(stripEmbeddedTextData),
-    previewRelativePath: previewRelativePath?.trim() || '',
-    resultText
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-
-  const value: GraphOutputValue = {
-    kind: 'output',
-    outputKind,
-    items: [],
-    notes: resultText
-      ? resultText.split(/\n\n+/).map((text) => ({ kind: 'text' as const, text }))
-      : [],
-    texts: materialized.map(stripEmbeddedTextData),
-    params: { ...ctx.node.params, outputKind }
-  }
-  return { out: value }
+/**
+ * @deprecated 落地已迁至 narrative.gen；输出节点仅透传上游 texts。
+ */
+export async function executeNarrativeOutputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  return executeScreenplayOutputNode(ctx)
 }
 
 export async function executeOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  if (ctx.node.typeId === 'output.narrative') {
-    return executeNarrativeOutputNode(ctx)
-  }
   // 「剧本/文本输出」：透传为 texts，不调大模型、不收集媒体 genRefs
-  if (ctx.node.params.outputKind === 'text' || ctx.node.typeId === 'output.text') {
+  if (
+    ctx.node.params.outputKind === 'text' ||
+    ctx.node.typeId === 'output.text' ||
+    ctx.node.typeId === 'output.narrative' ||
+    ctx.node.typeId === 'output.narrativeUnit'
+  ) {
     return executeScreenplayOutputNode(ctx)
   }
 
