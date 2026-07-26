@@ -14,7 +14,7 @@ function shotPreviewWindowOptions(): BrowserWindowConstructorOptions {
     minWidth: 640,
     minHeight: 480,
     show: false,
-    title: 'AIArtEngine · 图片预览',
+    title: 'AIArtEngine · Media Preview',
     icon: resolveAppIconPath(),
     autoHideMenuBar: true,
     ...settingsService.windowChromeOptions(),

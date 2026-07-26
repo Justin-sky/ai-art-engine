@@ -264,7 +264,7 @@ export default {
       asset: '资产编辑器',
       screenplay: '剧本',
       script: '分镜',
-      canvas: '画布',
+      canvas: '剧集',
       director: '导演台',
       world: '世界元素',
       narrative: '叙事单元'
@@ -352,7 +352,7 @@ export default {
       modelPose: '姿势',
       screenplay: '剧本',
       script: '分镜',
-      canvas: '画布',
+      canvas: '剧集',
       world: '世界元素',
       narrative: '叙事单元'
     },
@@ -364,7 +364,7 @@ export default {
       model: '新建模型',
       screenplay: '新建剧本',
       script: '新建分镜',
-      canvas: '新建画布',
+      canvas: '新建剧集',
       world: '新建世界元素',
       narrative: '新建叙事单元',
       default: '新建资产'
@@ -946,7 +946,11 @@ export default {
       aspectAuto: 'Auto',
       shotsEmpty: '暂无截屏',
       shotPreviewTitle: '图片预览',
+      shotPreviewTitleVideo: '视频预览',
+      shotPreviewTitleVoice: '音频预览',
       shotPreviewEmpty: '暂无图片',
+      shotPreviewEmptyVideo: '暂无视频',
+      shotPreviewEmptyVoice: '暂无音频',
       shotPreviewExport: '导出',
       shotPreviewExporting: '导出中…',
       shotPreviewExportFailed: '导出失败：{error}',

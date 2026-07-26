@@ -264,7 +264,7 @@ export default {
       asset: 'Asset Editor',
       screenplay: 'Screenplay',
       script: 'Shot',
-      canvas: 'Canvas',
+      canvas: 'Series',
       world: 'World Elements',
       narrative: 'Narrative Units',
       director: 'Director Deck'
@@ -353,7 +353,7 @@ export default {
       modelPose: 'Pose',
       screenplay: 'Screenplay',
       script: 'Shot',
-      canvas: 'Canvas',
+      canvas: 'Series',
       world: 'World Elements',
       narrative: 'Narrative Units'
     },
@@ -365,7 +365,7 @@ export default {
       model: 'New Model',
       screenplay: 'New Screenplay',
       script: 'New Shot',
-      canvas: 'New Canvas',
+      canvas: 'New Series',
       world: 'New World Elements',
       narrative: 'New Narrative Units',
       default: 'New Asset'
@@ -949,7 +949,11 @@ export default {
       aspectAuto: 'Auto',
       shotsEmpty: 'No shots yet',
       shotPreviewTitle: 'Image preview',
+      shotPreviewTitleVideo: 'Video preview',
+      shotPreviewTitleVoice: 'Audio preview',
       shotPreviewEmpty: 'No image',
+      shotPreviewEmptyVideo: 'No video',
+      shotPreviewEmptyVoice: 'No audio',
       shotPreviewExport: 'Export',
       shotPreviewExporting: 'Exporting…',
       shotPreviewExportFailed: 'Export failed: {error}',

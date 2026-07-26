@@ -7,7 +7,7 @@
     @keydown.esc.prevent="closeWindow"
   >
     <header class="chrome">
-      <span class="title">{{ t('director.stage.shotPreviewTitle') }}</span>
+      <span class="title">{{ windowTitle }}</span>
       <div class="chrome-actions">
         <button
           v-if="mediaKind === 'image'"
@@ -26,7 +26,7 @@
     </header>
 
     <div class="viewport" @click="onBackdropClick">
-      <p v-if="!dataUrl" class="empty">{{ t('director.stage.shotPreviewEmpty') }}</p>
+      <p v-if="!dataUrl" class="empty">{{ emptyText }}</p>
       <img
         v-else-if="mediaKind === 'image'"
         :src="dataUrl"
@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
 const { t } = useStudioI18n()
@@ -82,6 +82,26 @@ let stopShotListener: (() => void) | null = null
 const imageStyle = computed(() => ({
   transform: `translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`
 }))
+
+const windowTitle = computed(() => {
+  if (mediaKind.value === 'video') return t('director.stage.shotPreviewTitleVideo')
+  if (mediaKind.value === 'voice') return t('director.stage.shotPreviewTitleVoice')
+  return t('director.stage.shotPreviewTitle')
+})
+
+const emptyText = computed(() => {
+  if (mediaKind.value === 'video') return t('director.stage.shotPreviewEmptyVideo')
+  if (mediaKind.value === 'voice') return t('director.stage.shotPreviewEmptyVoice')
+  return t('director.stage.shotPreviewEmpty')
+})
+
+watch(
+  windowTitle,
+  (title) => {
+    document.title = `AIArtEngine · ${title}`
+  },
+  { immediate: true }
+)
 
 function extensionFromMediaUrl(url: string): string {
   const trimmed = url.trim()

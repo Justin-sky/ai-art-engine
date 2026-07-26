@@ -498,7 +498,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   model: 'Model',
   screenplay: 'Screenplay',
   script: 'Shot',
-  canvas: 'Canvas',
+  canvas: 'Series',
   world: 'World Elements',
   narrative: 'Narrative Units'
 }
@@ -1726,7 +1726,7 @@ export function defaultAssetName(type: AssetType): string {
     case 'screenplay':
       return 'New Screenplay'
     case 'canvas':
-      return 'New Canvas'
+      return 'New Series'
     case 'world':
       return 'New World Elements'
     case 'narrative':
