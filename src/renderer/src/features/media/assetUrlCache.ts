@@ -37,9 +37,13 @@ export async function resolveAssetPreviewUrl(relativePath: string): Promise<stri
   if (!key) return ''
   const hit = previewUrlCache.get(key)
   if (hit) return hit
-  const url = await window.studio.getAssetPreviewUrl(key)
-  if (url) previewUrlCache.set(key, url)
-  return url
+  try {
+    const url = await window.studio.getAssetPreviewUrl(key)
+    if (url) previewUrlCache.set(key, url)
+    return url
+  } catch {
+    return ''
+  }
 }
 
 /** 通过 studio-media URL 异步读取文本文件正文（带缓存） */

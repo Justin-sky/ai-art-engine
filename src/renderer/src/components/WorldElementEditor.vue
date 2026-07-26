@@ -90,8 +90,6 @@ const editorActiveTab = ref<WorldElementKind>('characters')
 provide('worldAssetId', computed(() => props.worldAssetId))
 provide(worldElementKindKey, editorActiveTab)
 
-const MAIN_PANE_MIN = 28
-const MAIN_PANE_MAX = 78
 const mainPanePercent = ref(48)
 let splitDragging = false
 
@@ -155,7 +153,7 @@ function updateSplitFromClientY(clientY: number): void {
   const rect = host.getBoundingClientRect()
   if (rect.height <= 0) return
   const ratio = ((clientY - rect.top) / rect.height) * 100
-  mainPanePercent.value = Math.min(MAIN_PANE_MAX, Math.max(MAIN_PANE_MIN, ratio))
+  mainPanePercent.value = Math.min(100, Math.max(0, ratio))
 }
 
 useEditorDocumentSession({
@@ -228,7 +226,7 @@ onBeforeUnmount(() => {
 }
 
 .world-main.with-editor-pane {
-  min-height: 120px;
+  min-height: 0;
 }
 
 .split-handle {
@@ -246,7 +244,7 @@ onBeforeUnmount(() => {
 
 .editor-embed-pane {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);

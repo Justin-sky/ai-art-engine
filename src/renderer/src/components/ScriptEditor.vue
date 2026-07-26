@@ -104,8 +104,6 @@ const shotPaneHint = computed(() =>
     : t('script.hint.videoGraph')
 )
 
-const SCRIPT_PANE_MIN = 28
-const SCRIPT_PANE_MAX = 78
 const scriptPanePercent = ref(48)
 let splitDragging = false
 
@@ -204,7 +202,7 @@ function updateSplitFromClientY(clientY: number): void {
   const rect = host.getBoundingClientRect()
   if (rect.height <= 0) return
   const ratio = ((clientY - rect.top) / rect.height) * 100
-  scriptPanePercent.value = Math.min(SCRIPT_PANE_MAX, Math.max(SCRIPT_PANE_MIN, ratio))
+  scriptPanePercent.value = Math.min(100, Math.max(0, ratio))
 }
 
 useEditorDocumentSession({
@@ -297,7 +295,7 @@ watch(
 }
 
 .script-main.with-shot-pane {
-  min-height: 120px;
+  min-height: 0;
 }
 
 .split-handle {
@@ -315,7 +313,7 @@ watch(
 
 .shot-embed-pane {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);

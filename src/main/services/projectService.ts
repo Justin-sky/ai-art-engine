@@ -737,11 +737,12 @@ class ProjectService {
    * 预览级 URL：
    * - 图片：缩略图已就绪则返回 thumb，否则立刻返回原图并后台生成；
    * - 视频：缩略图已就绪则返回首帧 PNG；否则等待系统提取首帧后再返回（无法用视频 URL 作 img）。
+   * - 源文件缺失时返回空串（预览场景常见，避免 IPC 刷错）。
    */
   async getAssetPreviewUrl(relativePath: string): Promise<string> {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, relativePath))
-    if (!existsSync(abs)) throw new Error('文件不存在')
+    if (!existsSync(abs)) return ''
     const posix = relativePath.replace(/\\/g, '/')
     if (posix.startsWith('.aiartengine/thumbs/')) {
       return this.getAssetFileUrl(posix)
