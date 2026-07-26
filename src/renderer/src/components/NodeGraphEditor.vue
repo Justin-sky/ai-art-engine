@@ -479,6 +479,7 @@ import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
 import { collectScriptShotImages, collectScriptShotVideos } from '../features/script/shotVisualPipeline'
+import { collectWorldElementImages } from '../features/world/worldElementPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
   applyNarrativeCatalog,
@@ -1315,6 +1316,15 @@ const {
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
       shots,
+      signal
+    })
+  },
+  collectWorldElementImages: async (signal) => {
+    if (graphScope.value !== 'worldAsset') return null
+    const worldId = props.assetId
+    if (!worldId) return null
+    return collectWorldElementImages({
+      worldAssetId: worldId,
       signal
     })
   },

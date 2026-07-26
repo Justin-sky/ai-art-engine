@@ -373,6 +373,12 @@ export interface NodeExecuteContext {
     videos: GraphVideoItem[]
   } | null>
   /**
+   * 世界元素编辑：收集四类 elementWorkflow 子图已有图片（不级联跑子图生成）。
+   */
+  collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
+    images: GraphImageItem[]
+  } | null>
+  /**
    * 世界元素表格节点：把当前目录序列化为提取 JSON。
    */
   resolveWorldCatalogJson?: () => string | null
@@ -462,6 +468,7 @@ export interface GraphRunOptions {
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
   collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
   collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
+  collectWorldElementImages?: NodeExecuteContext['collectWorldElementImages']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
   resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']

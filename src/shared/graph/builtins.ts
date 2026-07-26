@@ -1256,6 +1256,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     inspector: 'none',
     card: 'media',
     contributeToGeneration: false,
+    /** 同步目录后收集四类子图已有图片；不级联跑元素生成 */
     execute: executeWorldEditorNode
   },
   {

@@ -53,6 +53,15 @@ import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
 import { applyVisualGraphGenRefsToShot } from '../features/script/shotVisualPipeline'
+import {
+  applyWorldCatalog,
+  loadWorldCatalog
+} from '../features/world/applyWorldCatalogOnOpen'
+import { collectWorldElementImages } from '../features/world/worldElementPipeline'
+import {
+  stringifyWorldElementCatalog,
+  WORLD_ELEMENT_KINDS
+} from '@shared/graph'
 
 export type GraphTaskStatus = 'pending' | 'running' | 'done' | 'error' | 'stopped'
 
@@ -629,7 +638,49 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageExpandCanvas,
         composeImageRedrawCanvas,
         composeImageCropCanvas,
-        composeImageGridCell
+        composeImageGridCell,
+        resolveWorldCatalogJson: () => {
+          if (task.target.kind !== 'asset') return null
+          const worldId = task.target.assetId
+          if (isDraftAssetId(worldId)) {
+            const draft = useDraftStore().getDraft(worldId)
+            if (draft?.type !== 'world') return null
+          } else {
+            const project = useProjectStore()
+            const asset = project.assets.find((a) => a.id === worldId)
+            if (asset?.type !== 'world') return null
+          }
+          const catalog = loadWorldCatalog(worldId)
+          const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
+          if (!total) return null
+          return stringifyWorldElementCatalog(catalog)
+        },
+        importWorldCatalogJson: async (jsonText) => {
+          if (task.target.kind !== 'asset') return
+          const worldId = task.target.assetId
+          if (isDraftAssetId(worldId)) {
+            const draft = useDraftStore().getDraft(worldId)
+            if (draft?.type !== 'world') return
+          } else {
+            const project = useProjectStore()
+            const asset = project.assets.find((a) => a.id === worldId)
+            if (asset?.type !== 'world') return
+          }
+          await applyWorldCatalog(worldId, jsonText)
+        },
+        collectWorldElementImages: async (signal) => {
+          if (task.target.kind !== 'asset') return null
+          const worldId = task.target.assetId
+          if (isDraftAssetId(worldId)) {
+            const draft = useDraftStore().getDraft(worldId)
+            if (draft?.type !== 'world') return null
+            return collectWorldElementImages({ worldAssetId: worldId, signal })
+          }
+          const project = useProjectStore()
+          const asset = project.assets.find((a) => a.id === worldId)
+          if (asset?.type !== 'world') return null
+          return collectWorldElementImages({ worldAssetId: worldId, signal })
+        }
       })
 
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {

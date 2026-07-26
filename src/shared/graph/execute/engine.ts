@@ -259,6 +259,7 @@ async function executeOneNode(
     importShotSplitTableJson: options.importShotSplitTableJson,
     collectScriptShotImages: options.collectScriptShotImages,
     collectScriptShotVideos: options.collectScriptShotVideos,
+    collectWorldElementImages: options.collectWorldElementImages,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
     importWorldCatalogJson: options.importWorldCatalogJson,
     resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,

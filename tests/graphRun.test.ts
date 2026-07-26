@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createNodeFromType,
   createOutputGraphNode,
+  createDefaultScopedGraph,
   runGraph
 } from '../src/shared/graph'
 import { graphOutputNodeId } from '../src/shared/graph/types'
@@ -688,5 +689,39 @@ describe('graph run', () => {
     expect(
       Object.values(result.states).some((s) => s.status === 'pending' || s.status === 'running')
     ).toBe(false)
+  })
+
+  it('world.editor collects element images into output instead of empty list', async () => {
+    const doc = createDefaultScopedGraph('worldAsset', 'world')
+    const editor = doc.nodes.find((node) => node.typeId === 'world.editor')
+    expect(editor).toBeTruthy()
+
+    const result = await runGraph(doc, {
+      stepDelayMs: 1,
+      collectWorldElementImages: async () => ({
+        images: [
+          {
+            id: 'el-1',
+            dataUrl: '',
+            relativePath: '.aiartengine/graph-outputs/hero.png'
+          }
+        ]
+      })
+    })
+
+    expect(result.ok, result.error).toBe(true)
+    const editorState = result.states[editor!.id]
+    expect(editorState?.status).toBe('done')
+    const out = editorState?.outputs?.out
+    expect(out?.kind).toBe('images')
+    if (out?.kind === 'images') {
+      expect(out.items).toEqual([
+        {
+          id: 'el-1',
+          dataUrl: '',
+          relativePath: '.aiartengine/graph-outputs/hero.png'
+        }
+      ])
+    }
   })
 })

@@ -151,6 +151,10 @@ export interface GraphRunSessionOptions {
   collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
     videos: import('@shared/graph').GraphVideoItem[]
   } | null>
+  /** 世界元素编辑：收集四类子图已有图片 */
+  collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
+    images: import('@shared/graph').GraphImageItem[]
+  } | null>
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
   /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
@@ -583,6 +587,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         importShotSplitTableJson: options.importShotSplitTableJson,
         collectScriptShotImages: options.collectScriptShotImages,
         collectScriptShotVideos: options.collectScriptShotVideos,
+        collectWorldElementImages: options.collectWorldElementImages,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,
         resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,

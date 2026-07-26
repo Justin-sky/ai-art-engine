@@ -2272,7 +2272,8 @@ export async function executeWorldTableNode(
 }
 
 /**
- * 世界元素编辑：有上游提取/表格 JSON 时同步到元素子图。
+ * 世界元素编辑：有上游提取/表格 JSON 时同步到元素子图；
+ * 再从四类 elementWorkflow 子图收集已有图片，输出真实 images（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeWorldEditorNode(
@@ -2285,7 +2286,31 @@ export async function executeWorldEditorNode(
     ctx.patchNode?.({ params: { text } })
     await ctx.importWorldCatalogJson?.(text)
   }
-  return { out: { kind: 'images', items: [] } }
+
+  const collected = await ctx.collectWorldElementImages?.(ctx.signal)
+  const items = collected?.images ?? []
+  if (items.length) {
+    const cameraShots = items.map((item, index) => ({
+      id: item.id ?? `world-image:${index}`,
+      dataUrl: item.dataUrl,
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      relativePath: item.relativePath
+    }))
+    ctx.node.params = {
+      ...ctx.node.params,
+      cameraShots,
+      previewRelativePath: items[0]?.relativePath,
+      previewDataUrl: items[0]?.dataUrl
+    }
+    ctx.patchNode?.({
+      params: {
+        cameraShots,
+        previewRelativePath: ctx.node.params.previewRelativePath,
+        previewDataUrl: ctx.node.params.previewDataUrl
+      }
+    })
+  }
+  return { out: { kind: 'images', items } }
 }
 
 /**
