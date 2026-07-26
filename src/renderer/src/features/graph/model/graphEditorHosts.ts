@@ -26,6 +26,8 @@ export interface BuildIncomingEdgeRefsOptions {
 export interface GraphEditorHostApi {
   getNode: (nodeId: string) => GraphNode | null
   findNode?: (predicate: (node: GraphNode) => boolean) => GraphNode | null
+  /** 当前打开图画布的实时文档（含未落盘的边 / runStates） */
+  getDocument?: () => GraphDocument
   getGroup?: (groupId: string) => GraphGroup | null
   getGroupMemberIds?: (groupId: string) => string[]
   listIncomingEdges?: (nodeId: string, portId?: string) => GraphIncomingEdgeRef[]
@@ -274,6 +276,18 @@ class GraphEditorHostRegistry {
 
   async flush(hostId: string | null | undefined): Promise<void> {
     if (hostId) await this.hosts.get(hostId)?.flush()
+  }
+
+  /** 所有已注册打开画布的实时文档（用于跨编辑器解析父图入边） */
+  listLiveDocuments(): GraphDocument[] {
+    void this.revision.value
+    const docs: GraphDocument[] = []
+    for (const api of this.hosts.values()) {
+      const doc = api.getDocument?.()
+      if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) continue
+      docs.push(doc)
+    }
+    return docs
   }
 
   reset(): void {

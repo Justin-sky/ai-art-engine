@@ -57,17 +57,19 @@ import { assetDisplayIcon, isAnimationModelAsset, type AssetInfo } from '@shared
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
+import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useProjectStore } from '../stores/project'
 
-/** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心四项） */
-const CREATE_IDS = new Set(['screenplay', 'script', 'motion'])
+/** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
+const CREATE_IDS = new Set(['screenplay', 'script', 'motion', 'canvas'])
 const RECENT_LIMIT = 8
 
 const project = useProjectStore()
 const { openAssetEditor } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
+const { createSeriesWithStarter } = useSeriesCreation()
 const { t, assetTypeLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 
@@ -90,6 +92,10 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
+    if (item.assetType === 'canvas') {
+      await createSeriesWithStarter(null)
+      return
+    }
     createDraftAndOpen(item.assetType)
   } finally {
     busyId.value = null

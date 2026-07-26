@@ -1,4 +1,4 @@
-﻿import { ensureBuiltinNodeTypes } from './builtinState'
+import { ensureBuiltinNodeTypes } from './builtinState'
 import { createOutputGraphNode } from './create'
 import { getNodeTypeOrThrow } from './registry'
 import { isProcessingAssetNode } from './nodeRole'
@@ -35,6 +35,15 @@ import {
 } from './types'
 import { syncNodeAssetRefFields } from '../assetRef'
 import { sanitizePersistedRunStates } from './runStatePersist'
+import {
+  defaultChainHeadTypeIds,
+  ensureHostInputSlotNodes,
+  isHostInputSlotEditorScope,
+  mergeHostInputSlotsWithDefaults,
+  type HostInputSlotSpec
+} from './hostInput'
+import { isAssetRefInputHostType } from './nodeRole'
+import type { AssetType } from '../domain'
 
 export {
   ASSET_DIRECTOR_OUTPUT_TITLE,
@@ -356,6 +365,8 @@ export function normalizeScopedGraph(
     assetType?: string | null
     hostAssetId?: string | null
     hasMediaFile?: boolean
+    /** 外层宿主入边展开的输入接口槽位；打开宿主编辑器时传入 */
+    parentHostInputSlots?: HostInputSlotSpec[]
   }
 ): GraphDocument {
   ensureBuiltinNodeTypes()
@@ -365,7 +376,9 @@ export function normalizeScopedGraph(
     hasMediaFile: options?.hasMediaFile
   }
   if (!raw?.nodes?.length) {
-    return createDefaultScopedGraph(scope, options?.assetType, chainOptions)
+    const created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
+    syncHostInputSlots(scope, created.nodes, created.edges, options)
+    return created
   }
 
   const doc = {
@@ -412,7 +425,38 @@ export function normalizeScopedGraph(
     ensureWorldAssetDefaultChain(nodes, edges)
   }
 
+  syncHostInputSlots(scope, nodes, edges, options)
+
   return finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
+}
+
+/**
+ * 宿主资产编辑器通用规则：有 hostAssetId 即按端口同步输入接口
+ *（父图展开优先，缺省端口保底 1 槽）。
+ */
+function syncHostInputSlots(
+  scope: GraphAddScope,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  options?: {
+    assetType?: string | null
+    hostAssetId?: string | null
+    parentHostInputSlots?: HostInputSlotSpec[]
+  }
+): void {
+  if (!isHostInputSlotEditorScope(scope)) return
+  if (!isAssetRefInputHostType(options?.assetType)) return
+  // 未打开具体宿主资产时不插槽（避免无关 workflow 规范化误建）
+  if (!options?.hostAssetId && options?.parentHostInputSlots === undefined) return
+
+  const slots = mergeHostInputSlotsWithDefaults(
+    options.assetType,
+    options.parentHostInputSlots ?? []
+  )
+  if (!slots.length) return
+  ensureHostInputSlotNodes(nodes, edges, slots, {
+    autoLinkHeadTypeIds: defaultChainHeadTypeIds(options.assetType)
+  })
 }
 
 export function normalizeGraph(
@@ -458,11 +502,16 @@ export function normalizeGraph(
 export function normalizeAssetGraph(
   raw: GraphDocument | null | undefined,
   assetType?: string | null,
-  options?: { hostAssetId?: string | null; hasMediaFile?: boolean }
+  options?: {
+    hostAssetId?: string | null
+    hasMediaFile?: boolean
+    parentHostInputSlots?: HostInputSlotSpec[]
+  }
 ): GraphDocument {
   return normalizeScopedGraph(assetTypeToGraphScope(assetType), raw, {
     assetType,
     hostAssetId: options?.hostAssetId,
-    hasMediaFile: options?.hasMediaFile
+    hasMediaFile: options?.hasMediaFile,
+    parentHostInputSlots: options?.parentHostInputSlots
   })
 }

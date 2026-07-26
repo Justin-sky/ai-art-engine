@@ -7,6 +7,7 @@ import type {
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
+  CreateSeriesWithStarterInput,
   CreateShotInput,
   SyncScriptShotsInput,
   DeleteFolderInput,
@@ -169,6 +170,9 @@ export function registerIpcHandlers(): void {
     }
   })
   handle(IpcChannels.ASSET_CREATE, (input: CreateAssetInput) => projectService.createAsset(input))
+  handle(IpcChannels.ASSET_CREATE_SERIES, (input: CreateSeriesWithStarterInput) =>
+    projectService.createSeriesWithStarter(input ?? {})
+  )
   handle(IpcChannels.ASSET_DELETE, (assetId: string) => projectService.deleteAsset(assetId))
   handle(IpcChannels.ASSET_FIND_REFERENCES, (assetIds: string[]) =>
     projectService.findAssetReferences(assetIds)

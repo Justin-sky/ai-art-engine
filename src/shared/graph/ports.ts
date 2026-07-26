@@ -14,6 +14,16 @@ import {
   type GraphPortDef
 } from './types'
 
+/** assetRef 默认藏输入口；params.assetHost 时保留 */
+function shouldHideAssetRefInputs(
+  params?: Pick<GraphNodeParams, 'assetRef' | 'assetHost'> | null,
+  node?: Pick<GraphNode, 'category' | 'params' | 'assetId'> | null
+): boolean {
+  const isRef = node ? isAssetRefNode(node) : params?.assetRef === true
+  if (!isRef) return false
+  return (node?.params ?? params)?.assetHost !== true
+}
+
 /** 同类型可连（严格相等） */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   return source === target
@@ -84,14 +94,33 @@ function injectVideoFramePorts(
 
 /** 对类型定义端口应用与 getNodePorts 相同的 inputDataType 覆盖规则 */
 export function resolveTypeDefPorts(
-  typeDef: Pick<NodeTypeDefinition, 'ports' | 'typeId'>,
-  params?: Pick<GraphNodeParams, 'inputDataType' | 'assetRef' | 'generateFrameMode'> | null,
+  typeDef: Pick<NodeTypeDefinition, 'ports' | 'typeId' | 'assetType'>,
+  params?: Pick<
+    GraphNodeParams,
+    'inputDataType' | 'assetRef' | 'assetHost' | 'generateFrameMode' | 'hostInputSlot'
+  > | null,
   node?: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null
 ): GraphPortDef[] {
   let ports = typeDef.ports ?? []
-  const hideInputs = node ? isAssetRefNode(node) : params?.assetRef === true
+  const hideInputs = shouldHideAssetRefInputs(params, node)
   if (hideInputs) {
     ports = ports.filter((port) => port.direction !== 'in')
+  }
+
+  // 输入接口槽：输出口类型跟 hostInputSlot.dataType
+  if (typeDef.typeId === 'graph.input.slot') {
+    const dataType = node?.params?.hostInputSlot?.dataType ?? params?.hostInputSlot?.dataType
+    if (dataType) {
+      ports = [
+        {
+          id: 'out',
+          direction: 'out',
+          dataType,
+          multiple: false,
+          label: 'Out'
+        }
+      ]
+    }
   }
   if (params?.inputDataType) {
     const inPorts = ports.filter((port) => port.direction === 'in')
@@ -156,7 +185,10 @@ export interface GraphConnectOptions {
   /** 直接指定端口数据类型（菜单过滤时优先用，避免重复解析） */
   dataType?: GraphPortDataType
   /** 新建节点时的 params（含 scope createParams 的 inputDataType） */
-  typeParams?: Pick<GraphNodeParams, 'inputDataType' | 'assetRef' | 'generateFrameMode'> | null
+  typeParams?: Pick<
+    GraphNodeParams,
+    'inputDataType' | 'assetRef' | 'assetHost' | 'generateFrameMode'
+  > | null
 }
 
 export function canConnectNodes(

@@ -169,7 +169,7 @@ export type GraphNodeTypeId =
   | 'prompt.optimize'
   | 'image.select'
   | 'video.select'
-  | 'screenplay.select'
+  | 'text.select'
   | 'narrative.split'
   | 'narrative.table'
   | 'narrative.gen'
@@ -188,6 +188,7 @@ export type GraphNodeTypeId =
   | 'image.crop'
   | 'image.gridSplit'
   | 'image.toPrompt'
+  | 'graph.input.slot'
   | (string & {})
 
 export type GraphInspectorKind = 'asset' | 'output' | 'note' | 'camera' | 'none'
@@ -246,6 +247,19 @@ export interface GraphNodeParams {
   inputDataType?: GraphPortDataType
   /** 拖入画布的资产引用节点：仅输出端口，在资产编辑器内修改 */
   assetRef?: boolean
+  /**
+   * 可编辑宿主拖入画布时为 true：保留类型定义上的加工输入口。
+   * 导入引用与资产自身 workflow 内的媒体自绑引用不置此标记。
+   */
+  assetHost?: boolean
+  /**
+   * 宿主编辑器内「输入接口」槽位：绑定外层宿主入端口 + 稳定下标。
+   */
+  hostInputSlot?: {
+    portId: string
+    index: number
+    dataType: GraphPortDataType
+  }
   /** 导演台 3D 相机节点参数 */
   viewer?: DirectorViewerState
   /** 导演台关闭时回传的站位截图 */

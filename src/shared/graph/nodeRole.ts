@@ -1,4 +1,28 @@
+import type { AssetType } from '../domain'
 import type { GraphNode } from './types'
+
+/**
+ * 拖入画布后应保留加工输入口的宿主资产类型。
+ * 通过节点 params.assetHost=true 生效；导入引用不置该标记。
+ */
+export const ASSET_REF_INPUT_HOST_TYPES = [
+  'screenplay',
+  'world',
+  'narrative',
+  'script',
+  'image',
+  'video',
+  'voice'
+] as const satisfies readonly AssetType[]
+
+export type AssetRefInputHostType = (typeof ASSET_REF_INPUT_HOST_TYPES)[number]
+
+export function isAssetRefInputHostType(type: unknown): type is AssetRefInputHostType {
+  return (
+    typeof type === 'string' &&
+    (ASSET_REF_INPUT_HOST_TYPES as readonly string[]).includes(type)
+  )
+}
 
 /** 绑定了工程资产的引用节点（拖入资产 / 带 assetId） */
 export function isAssetRefNode(
@@ -107,8 +131,8 @@ export function isSelectVideoNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'video.select'
 }
 
-export function isSelectScreenplayNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'screenplay.select'
+export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'text.select'
 }
 
 export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {

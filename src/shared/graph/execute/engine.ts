@@ -151,6 +151,7 @@ async function softSnapshotOutputs(
     GraphRunOptions,
     | 'resolveAssetText'
     | 'resolveAssetGenParams'
+    | 'hasAsset'
     | 'locale'
     | 'readRunText'
     | 'resolveNarrativeUnit'
@@ -169,6 +170,7 @@ async function softSnapshotOutputs(
       // 剧本/分镜引用快照必须能读正文；不调 generateText/Image/Video
       resolveAssetText: options.resolveAssetText,
       resolveAssetGenParams: options.resolveAssetGenParams,
+      hasAsset: options.hasAsset,
       readRunText: options.readRunText,
       resolveNarrativeUnit: options.resolveNarrativeUnit
     })
@@ -245,6 +247,7 @@ async function executeOneNode(
     locale: options.locale,
     signal: options.signal,
     resolveAssetGenParams: options.resolveAssetGenParams,
+    hasAsset: options.hasAsset,
     resolveAssetName: options.resolveAssetName,
     resolveHostAssetName: options.resolveHostAssetName,
     resolveAssetText: options.resolveAssetText,

@@ -1,4 +1,4 @@
-﻿import type { AssetType } from '../domain'
+import type { AssetType } from '../domain'
 import { tagAssetRef } from '../assetRef'
 import './builtins'
 import { ensureBuiltinNodeTypes } from './builtinState'
@@ -123,14 +123,18 @@ export function createAssetGraphNode(
   assetId: string,
   assetType: AssetType,
   name: string,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  options?: { assetHost?: boolean }
 ): GraphNode {
   return createNodeFromType(assetTypeToNodeTypeId(assetType), position, {
     assetId,
     assetRef: tagAssetRef(assetId),
     assetType,
     title: assetTypeToGraphNodeTitle(assetType, name),
-    params: { assetRef: true }
+    params: {
+      assetRef: true,
+      ...(options?.assetHost ? { assetHost: true } : {})
+    }
   })
 }
 

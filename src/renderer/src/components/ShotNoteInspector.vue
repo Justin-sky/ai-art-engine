@@ -1,27 +1,54 @@
 <template>
   <div class="note-inspector" v-if="node">
     <div class="head">
-      <span class="type">{{ typeLabel }}</span>
+      <span class="type" :class="isInputSlot ? `slot-${slotDataType}` : undefined">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
     <p class="hint">{{ hintText }}</p>
 
-    <label>
-      {{ t('graph.inspector.note.title') }}
-      <input v-model="localTitle" @change="persist" />
-    </label>
+    <template v-if="isInputSlot">
+      <div class="meta-row">
+        <span class="meta-label">{{ t('graph.inspector.inputInterface.dataType') }}</span>
+        <span class="meta-value type-chip" :class="`slot-${slotDataType}`">{{ dataTypeLabel }}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">{{ t('graph.inspector.inputInterface.port') }}</span>
+        <span class="meta-value mono">{{ slotBinding?.portId ?? '—' }}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">{{ t('graph.inspector.inputInterface.index') }}</span>
+        <span class="meta-value mono">{{ slotIndexDisplay }}</span>
+      </div>
 
-    <label>
-      {{ bodyLabel }}
-      <ExpandableTextarea
-        :key="`${node.id}-body`"
-        v-model="localText"
-        :title="bodyLabel"
-        :rows="8"
-        :placeholder="bodyPlaceholder"
-        @change="persist"
-      />
-    </label>
+      <label>
+        {{ t('graph.inspector.note.title') }}
+        <input v-model="localTitle" @change="persistTitleOnly" />
+      </label>
+
+      <div class="preview-block">
+        <div class="preview-label">{{ t('graph.inspector.inputInterface.preview') }}</div>
+        <pre class="preview-body">{{ previewText }}</pre>
+      </div>
+    </template>
+
+    <template v-else>
+      <label>
+        {{ t('graph.inspector.note.title') }}
+        <input v-model="localTitle" @change="persist" />
+      </label>
+
+      <label>
+        {{ bodyLabel }}
+        <ExpandableTextarea
+          :key="`${node.id}-body`"
+          v-model="localText"
+          :title="bodyLabel"
+          :rows="8"
+          :placeholder="bodyPlaceholder"
+          @change="persist"
+        />
+      </label>
+    </template>
   </div>
   <div v-else class="note-inspector empty">{{ emptyText }}</div>
 </template>
@@ -32,6 +59,11 @@ import ExpandableTextarea from './ExpandableTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import {
+  GRAPH_INPUT_SLOT_TYPE_ID,
+  readHostInputSlot,
+  type GraphPortDataType
+} from '@shared/graph'
 
 const { t } = useStudioI18n()
 const editor = useEditorKernel()
@@ -48,14 +80,19 @@ const node = computed(() => {
 })
 
 const isTextNode = computed(() => node.value?.typeId === 'play.script')
+const isInputSlot = computed(() => node.value?.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
+const slotBinding = computed(() => (node.value ? readHostInputSlot(node.value) : null))
+const slotDataType = computed<GraphPortDataType>(() => slotBinding.value?.dataType ?? 'text')
 
-const typeLabel = computed(() =>
-  isTextNode.value ? t('graph.scriptNode.title') : t('graph.note.title')
-)
+const typeLabel = computed(() => {
+  if (isInputSlot.value) return t('graph.inputInterface.badge')
+  return isTextNode.value ? t('graph.scriptNode.title') : t('graph.note.title')
+})
 
-const hintText = computed(() =>
-  isTextNode.value ? t('graph.inspector.script.hint') : t('graph.inspector.note.hint')
-)
+const hintText = computed(() => {
+  if (isInputSlot.value) return t('graph.inspector.inputInterface.hint')
+  return isTextNode.value ? t('graph.inspector.script.hint') : t('graph.inspector.note.hint')
+})
 
 const bodyLabel = computed(() =>
   isTextNode.value ? t('graph.inspector.script.body') : t('graph.inspector.note.body')
@@ -67,9 +104,29 @@ const bodyPlaceholder = computed(() =>
     : t('graph.note.placeholder')
 )
 
-const emptyText = computed(() =>
-  isTextNode.value ? t('graph.inspector.script.empty') : t('graph.inspector.note.empty')
-)
+const emptyText = computed(() => {
+  if (isInputSlot.value) return t('graph.inspector.inputInterface.empty')
+  return isTextNode.value ? t('graph.inspector.script.empty') : t('graph.inspector.note.empty')
+})
+
+const dataTypeLabel = computed(() => t(`graph.port.types.${slotDataType.value}`))
+
+const slotIndexDisplay = computed(() => {
+  const index = slotBinding.value?.index
+  return typeof index === 'number' ? String(index + 1) : '—'
+})
+
+const previewText = computed(() => {
+  const n = node.value
+  if (!n) return t('graph.inspector.inputInterface.previewEmpty')
+  const text = n.params.text?.trim()
+  if (text) return text
+  const path = n.params.previewRelativePath?.trim()
+  if (path) return path
+  const url = n.params.previewDataUrl?.trim()
+  if (url) return t('graph.inspector.inputInterface.previewEmbedded')
+  return t('graph.inspector.inputInterface.previewEmpty')
+})
 
 watch(
   node,
@@ -92,6 +149,13 @@ function persist(): void {
     { text: localText.value.trim() || fallback },
     localTitle.value
   )
+}
+
+function persistTitleOnly(): void {
+  const selection = editor.selection.current.value
+  const id = selection.kind === 'graph.node' ? selection.id : null
+  if (!id || !node.value) return
+  graphEditorHosts.updateNode(selection.hostId, id, {}, localTitle.value)
 }
 </script>
 
@@ -116,6 +180,22 @@ function persist(): void {
   color: var(--text-muted);
 }
 
+.head .type.slot-text {
+  color: #5eb0e0;
+}
+
+.head .type.slot-image {
+  color: #6bcf8e;
+}
+
+.head .type.slot-voice {
+  color: #e09a5a;
+}
+
+.head .type.slot-video {
+  color: #a78bfa;
+}
+
 .head h2 {
   margin: 4px 0 0;
   font-size: 14px;
@@ -126,6 +206,82 @@ function persist(): void {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.meta-label {
+  color: var(--text-muted);
+}
+
+.meta-value.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.type-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.type-chip.slot-text {
+  background: rgba(94, 176, 224, 0.18);
+  color: #5eb0e0;
+}
+
+.type-chip.slot-image {
+  background: rgba(107, 207, 142, 0.18);
+  color: #6bcf8e;
+}
+
+.type-chip.slot-voice {
+  background: rgba(224, 154, 90, 0.18);
+  color: #e09a5a;
+}
+
+.type-chip.slot-video {
+  background: rgba(167, 139, 250, 0.18);
+  color: #a78bfa;
+}
+
+.preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.preview-body {
+  margin: 0;
+  flex: 1;
+  min-height: 120px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
 }
 
 label {

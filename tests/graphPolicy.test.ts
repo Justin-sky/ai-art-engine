@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
 import {
   canConnectNodes,
   createAssetGraphNode,
@@ -121,7 +121,7 @@ describe('graph policy', () => {
         'narrative.table',
         'narrative.unitGen',
         'narrative.unitRef',
-        'screenplay.select',
+        'text.select',
         'script.shotImageGen',
         'script.shotVideoGen',
         'script.shotParams',

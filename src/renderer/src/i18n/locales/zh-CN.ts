@@ -1,4 +1,4 @@
-﻿/** 中文界面文案 */
+/** 中文界面文案 */
 export default {
   common: {
     browse: '浏览',
@@ -367,7 +367,10 @@ export default {
       canvas: '新建剧集',
       world: '新建世界元素',
       narrative: '新建叙事单元',
-      default: '新建资产'
+      default: '新建资产',
+      seriesNameTitle: '新建剧集',
+      seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、叙事单元与分镜，并放入剧集画布。',
+      seriesNamePlaceholder: '剧集名称'
     },
     generic: '资产',
     deleted: '（已删除）',
@@ -1344,10 +1347,10 @@ export default {
       empty: '暂无上游视频，请先连接视频生成等节点并执行'
     },
     selectText: {
-      appMark: '选择剧本',
-      hint: '单击卡片选择一条剧本；双击打开记事本查看全文。默认第一条。',
+      appMark: '选择文本',
+      hint: '单击卡片选择一条文本；双击打开记事本查看全文。默认第一条。',
       openHint: '双击打开记事本',
-      empty: '暂无上游剧本，请先连接剧本生成等节点并执行'
+      empty: '暂无上游文本，请先连接文本生成等节点并执行'
     },
     textsPreview: {
       appMark: '文本预览',
@@ -1641,6 +1644,26 @@ export default {
       title: '文本',
       placeholder: '双击编辑文本内容…'
     },
+    inputInterface: {
+      badge: '输入接口',
+      title: '输入',
+      hint: '外层宿主传入的输入槽，稳定序号，不可删除',
+      placeholder: '等待外层传入…',
+      badgeByType: {
+        text: '文本输入',
+        image: '图片输入',
+        voice: '声音输入',
+        video: '视频输入',
+        model: '模型输入'
+      },
+      placeholderByType: {
+        text: '等待外层文本…',
+        image: '等待外层图片…',
+        voice: '等待外层声音…',
+        video: '等待外层视频…',
+        model: '等待外层模型…'
+      }
+    },
     demo: {
       badge: '插件示例',
       title: '示例节点',
@@ -1683,10 +1706,18 @@ export default {
     },
     nodeRole: {
       ref: '引用',
-      generate: '生成'
+      host: '宿主',
+      generate: '生成',
+      missing: '不可用'
     },
     assetRef: {
-      hint: '资产引用 · 在左侧资产库打开编辑'
+      hint: '引用素材 · 在左侧资产库打开预览'
+    },
+    assetHost: {
+      hint: '宿主资产 · 双击打开编辑'
+    },
+    assetMissing: {
+      hint: '关联资产已删除 · 节点不可用'
     },
     generateNode: {
       hint: '生成节点 · 右侧面板调整参数',
@@ -1745,6 +1776,7 @@ export default {
       cycle: '工作流存在环路，无法执行',
       noOutput: '未找到输出节点',
       unboundAsset: '节点未绑定资产',
+      missingAsset: '关联资产已删除',
       noInput: '请填写生成指令，或连接上游输入',
       lipSyncNoVisual: '请先连接角色图片或参考视频',
       lipSyncNoAudio: '请先连接声音（语音）输入',
@@ -1807,8 +1839,8 @@ export default {
         shotVideoGen: '生成分镜视频',
         shotParams: '分镜参数'
       },
-      screenplay: {
-        select: '选择剧本'
+      text: {
+        select: '选择文本'
       },
       narrative: {
         split: '叙事单元拆解',
@@ -1903,7 +1935,8 @@ export default {
         hint: '预览在节点上；此处编辑详细参数',
         empty: '未选择节点'
       },
-      assetRef: '引用资产',
+      assetRef: '引用素材',
+      assetHost: '宿主资产',
       unselected: '未选择',
       assetTaken: '（已被其他节点使用）',
       displayName: '显示名称',
@@ -1921,11 +1954,21 @@ export default {
       revealInAssets: '在资产窗口中定位',
       current: '当前：',
       noAssets: '资产库中暂无「{type}」类型资产，请先创建或导入。',
-      note: {
+        note: {
         hint: '画布便签；双击节点可在记事本中查看与编辑',
         title: '标题',
         body: '备注内容',
         empty: '未选择备注节点'
+      },
+      inputInterface: {
+        hint: '由外层宿主入边注入；此处只读预览，双击节点不会打开记事本',
+        dataType: '数据类型',
+        port: '外层端口',
+        index: '槽位序号',
+        preview: '输入预览',
+        previewEmpty: '暂无外层传入值（父图连线或运行后会出现）',
+        previewEmbedded: '（已嵌入预览数据）',
+        empty: '未选择输入接口节点'
       },
       script: {
         hint: '文本节点；可在此编辑内容，或点击扩展在记事本中查看',

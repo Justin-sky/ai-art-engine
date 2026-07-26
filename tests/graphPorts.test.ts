@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   canConnectNodes,
   createAssetGraphNode,
@@ -29,30 +29,114 @@ describe('GraphPortType', () => {
 })
 
 describe('asset reference ports', () => {
-  const dragTypes = [
-    'screenplay',
-    'motion',
-    'image',
-    'video',
-    'voice'
-  ] as const
+  const mediaDragTypes = ['motion', 'image', 'video', 'voice'] as const
 
-  const dragGuids: Record<(typeof dragTypes)[number], string> = {
-    screenplay: '00000000-0000-4000-8000-000000000001',
+  const mediaGuids: Record<(typeof mediaDragTypes)[number], string> = {
     motion: '00000000-0000-4000-8000-000000000002',
     image: '00000000-0000-4000-8000-000000000003',
     video: '00000000-0000-4000-8000-000000000004',
     voice: '00000000-0000-4000-8000-000000000005'
   }
 
-  for (const type of dragTypes) {
-    it(`${type} drag node has only output port`, () => {
-      const node = createAssetGraphNode(dragGuids[type], type, type, { x: 0, y: 0 })
+  for (const type of mediaDragTypes) {
+    it(`${type} imported/ref drag node has only output port`, () => {
+      const node = createAssetGraphNode(mediaGuids[type], type, type, { x: 0, y: 0 })
       const ports = getNodePorts(node)
       expect(ports.every((p) => p.direction === 'out')).toBe(true)
       expect(ports.length).toBeGreaterThan(0)
     })
   }
+
+  it('image/video/voice host drag nodes keep processing inputs', () => {
+    const image = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000021',
+      'image',
+      'Image',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+    const voice = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000022',
+      'voice',
+      'Voice',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+    const video = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000023',
+      'video',
+      'Video',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+
+    expect(getNodePorts(image).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in-text:text:in',
+      'in-image:image:in',
+      'out:image:out'
+    ])
+    expect(getNodePorts(voice).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in-text:text:in',
+      'in-image:image:in',
+      'out:voice:out'
+    ])
+    expect(getNodePorts(video).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in-text:text:in',
+      'in-image:image:in',
+      'in-video:video:in',
+      'in-voice:voice:in',
+      'out:video:out'
+    ])
+  })
+
+  it('series host drag nodes keep text/image inputs', () => {
+    const screenplay = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000011',
+      'screenplay',
+      'Screenplay',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+    const world = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000012',
+      'world',
+      'World',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+    const narrative = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000013',
+      'narrative',
+      'Narrative',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+    const script = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000014',
+      'script',
+      'Shot',
+      { x: 0, y: 0 },
+      { assetHost: true }
+    )
+
+    expect(getNodePorts(screenplay).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in:text:in',
+      'out:text:out'
+    ])
+    expect(getNodePorts(world).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in:text:in',
+      'out:image:out'
+    ])
+    expect(getNodePorts(narrative).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in:text:in',
+      'out:text:out'
+    ])
+    expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+      'in-text:text:in',
+      'in-image:image:in',
+      'out:text:out'
+    ])
+  })
 })
 
 describe('port type matching', () => {

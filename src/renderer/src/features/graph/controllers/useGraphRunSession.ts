@@ -195,6 +195,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_CYCLE: 'graph.run.cycle',
       GRAPH_NO_OUTPUT: 'graph.run.noOutput',
       GRAPH_UNBOUND_ASSET: 'graph.run.unboundAsset',
+      GRAPH_MISSING_ASSET: 'graph.run.missingAsset',
       GRAPH_PROCESS_NO_INPUT: 'graph.run.noInput',
       GRAPH_LIPSYNC_NO_IMAGE: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_VISUAL: 'graph.run.lipSyncNoVisual',

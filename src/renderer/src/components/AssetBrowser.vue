@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div
     ref="rootEl"
     class="asset-browser"
@@ -369,6 +369,7 @@ import {
   normalizeFolders
 } from '@shared/folderTree'
 import { useAssetCreation } from '../composables/useAssetCreation'
+import { useSeriesCreation } from '../composables/useSeriesCreation'
 import {
   listRegisteredToolbarItems
 } from '../editor/extensions'
@@ -462,6 +463,7 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
+const { createSeriesWithStarter } = useSeriesCreation()
 const { t, assetTypeLabel, assetCreateName } = useStudioI18n()
 
 function assetIcon(asset: AssetInfo): string {
@@ -1391,7 +1393,11 @@ async function confirmNameDialog(): Promise<void> {
 async function createAssetHere(type: AssetType): Promise<void> {
   const folderId = resolveCreateParentId()
   closeMenu()
-  await createAsset(type, folderId)
+  if (type === 'canvas') {
+    await createSeriesWithStarter(folderId)
+  } else {
+    await createAsset(type, folderId)
+  }
   if (folderId !== currentFolderId.value) selectFolder(folderId)
 }
 

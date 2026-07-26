@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   createNodeFromType,
   getNodePorts,
@@ -37,7 +37,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'narrative.unitRef',
   'narrative.split',
   'narrative.table',
-  'screenplay.select',
+  'text.select',
   'script.shotImageGen',
   'script.shotVideoGen',
   'script.shotParams',

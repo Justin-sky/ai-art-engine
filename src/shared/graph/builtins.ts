@@ -1,4 +1,4 @@
-﻿import type { AssetType } from '../domain'
+import type { AssetType } from '../domain'
 import {
   bindEnsureBuiltinNodeTypes,
   builtinRegistrationState
@@ -30,12 +30,13 @@ import {
   executeNoteNode,
   executeOutputNode,
   executePlayScriptNode,
+  executeHostInputSlotNode,
   executeImageToPromptNode,
   executePromptOptimizeNode,
   executeScreenplayGenerateNode,
   executeSelectImageNode,
   executeSelectVideoNode,
-  executeSelectScreenplayNode,
+  executeSelectTextNode,
   executeMultiAngleNode,
   executeLightingNode,
   executePortraitTextureNode,
@@ -105,7 +106,7 @@ const ASSET_META: Array<{
   {
     type: 'canvas',
     label: 'Canvas',
-    icon: '🎨',
+    icon: '📺',
     outType: GraphPortType.image,
     addable: false,
     weight: 0.7
@@ -116,7 +117,8 @@ const ASSET_META: Array<{
     icon: '🤺',
     outType: GraphPortType.image,
     addable: false,
-    weight: 0.7
+    weight: 0.7,
+    processingIn: GraphPortType.text
   },
   {
     type: 'narrative',
@@ -124,7 +126,8 @@ const ASSET_META: Array<{
     icon: '📖',
     outType: GraphPortType.text,
     addable: false,
-    weight: 0.7
+    weight: 0.7,
+    processingIn: GraphPortType.text
   },
   {
     type: 'video',
@@ -214,6 +217,21 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
+/** 分镜宿主：文本（叙事）+ 图片（世界元素）输入 */
+function scriptHostPorts(): GraphPortDef[] {
+  return [
+    { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
+    {
+      id: 'in-image',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: true,
+      label: 'Image'
+    },
+    { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+  ]
+}
+
 function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
   const ports: GraphPortDef[] =
     meta.type === 'motion'
@@ -224,26 +242,28 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
           ? videoProcessingPorts()
           : meta.type === 'voice'
             ? voiceProcessingPorts()
-            : [
-              ...(meta.processingIn
-                ? [
-                    {
-                      id: 'in',
-                      direction: 'in' as const,
-                      dataType: meta.processingIn,
-                      multiple: true,
-                      label: 'In'
-                    }
-                  ]
-                : []),
-              {
-                id: 'out',
-                direction: 'out',
-                dataType: meta.outType,
-                multiple: true,
-                label: 'Out'
-              }
-            ]
+            : meta.type === 'script'
+              ? scriptHostPorts()
+              : [
+                  ...(meta.processingIn
+                    ? [
+                        {
+                          id: 'in',
+                          direction: 'in' as const,
+                          dataType: meta.processingIn,
+                          multiple: true,
+                          label: 'In'
+                        }
+                      ]
+                    : []),
+                  {
+                    id: 'out',
+                    direction: 'out',
+                    dataType: meta.outType,
+                    multiple: true,
+                    label: 'Out'
+                  }
+                ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -506,6 +526,29 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executePlayScriptNode
   },
   {
+    typeId: 'graph.input.slot',
+    category: 'note',
+    label: 'Input interface',
+    icon: '📥',
+    defaultTitle: 'Input',
+    defaultSize: { ...NOTE_SIZE },
+    sizeLimits: { ...NOTE_LIMITS },
+    ports: [
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
+    ],
+    defaultParams: () => ({}),
+    addable: false,
+    deletable: false,
+    inspector: 'note',
+    card: 'note',
+    presentation: {
+      badgeKey: 'graph.inputInterface.badge',
+      defaultTitleKey: 'graph.inputInterface.title'
+    },
+    contributeToGeneration: false,
+    execute: executeHostInputSlotNode
+  },
+  {
     typeId: 'image.select',
     category: 'note',
     label: 'Select image',
@@ -546,11 +589,11 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSelectVideoNode
   },
   {
-    typeId: 'screenplay.select',
+    typeId: 'text.select',
     category: 'note',
-    label: 'Select screenplay',
-    icon: '📜',
-    defaultTitle: 'Select screenplay',
+    label: 'Select text',
+    icon: '📝',
+    defaultTitle: 'Select text',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -566,7 +609,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     inspector: 'none',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeSelectScreenplayNode
+    execute: executeSelectTextNode
   },
   {
     typeId: 'image.multiAngle',

@@ -8,6 +8,7 @@ import type {
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
+  CreateSeriesWithStarterInput,
   ImportAssetsInput,
   ReimportAssetsInput,
   CreateShotInput,
@@ -37,6 +38,8 @@ const api: StudioApi = {
   reimportAssets: (input: ReimportAssetsInput) =>
     ipcRenderer.invoke(IpcChannels.ASSET_REIMPORT, input),
   createAsset: (input: CreateAssetInput) => ipcRenderer.invoke(IpcChannels.ASSET_CREATE, input),
+  createSeriesWithStarter: (input: CreateSeriesWithStarterInput) =>
+    ipcRenderer.invoke(IpcChannels.ASSET_CREATE_SERIES, input),
   deleteAsset: (assetId: string) => ipcRenderer.invoke(IpcChannels.ASSET_DELETE, assetId),
   findAssetReferences: (assetIds: string[]) =>
     ipcRenderer.invoke(IpcChannels.ASSET_FIND_REFERENCES, assetIds),

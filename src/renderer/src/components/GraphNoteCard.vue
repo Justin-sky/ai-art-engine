@@ -1,7 +1,10 @@
 <template>
   <div
     class="graph-note"
-    :class="{ selected }"
+    :class="[
+      { selected },
+      isInputSlot ? `input-slot slot-${slotDataType}` : null
+    ]"
     :data-node-id="node.id"
     :style="{
       left: `${node.position.x}px`,
@@ -68,7 +71,17 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
-import { getNodePorts, getNodeSize, resolveNodeType, type GraphNode, type GraphNodeRunStatus, type GraphPortDataType } from '@shared/graph'
+import {
+  getNodePorts,
+  getNodeSize,
+  GRAPH_INPUT_SLOT_TYPE_ID,
+  nodePortYRatio,
+  readHostInputSlot,
+  resolveNodeType,
+  type GraphNode,
+  type GraphNodeRunStatus,
+  type GraphPortDataType
+} from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
 const { t } = useStudioI18n()
@@ -91,22 +104,31 @@ const emit = defineEmits<{
 const nodeSize = computed(() => getNodeSize(props.node))
 const nodePorts = computed(() => getNodePorts(props.node))
 const outPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'out'))
+const isInputSlot = computed(() => props.node.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
+const slotBinding = computed(() => readHostInputSlot(props.node))
+const slotDataType = computed<GraphPortDataType>(
+  () => slotBinding.value?.dataType ?? outPorts.value[0]?.dataType ?? 'text'
+)
 
 function portTypeLabel(dataType: GraphPortDataType): string {
   return t(`graph.port.types.${dataType}`)
 }
 
 function portWrapStyle(count: number, index: number): Record<string, string> {
-  const pct = ((index + 1) / (count + 1)) * 100
+  // 与 getNodePortCenter 同源：在标题栏下方 body 区排布
+  const pct = nodePortYRatio(index, count, height.value) * 100
   return { top: `${pct}%` }
 }
 
 const width = computed(() => nodeSize.value.w)
 const height = computed(() => nodeSize.value.h)
 const presentation = computed(() => resolveNodeType(props.node)?.presentation)
-const badgeLabel = computed(() =>
-  presentation.value?.badgeKey ? t(presentation.value.badgeKey) : t('graph.note.badge')
-)
+const badgeLabel = computed(() => {
+  if (isInputSlot.value) {
+    return t(`graph.inputInterface.badgeByType.${slotDataType.value}`)
+  }
+  return presentation.value?.badgeKey ? t(presentation.value.badgeKey) : t('graph.note.badge')
+})
 const editingTitle = ref(false)
 const titleDraft = ref('')
 const titleInputEl = ref<HTMLInputElement | null>(null)
@@ -134,6 +156,13 @@ const runStatusLabel = computed(() => {
 })
 
 const displayText = computed(() => {
+  if (isInputSlot.value) {
+    const text = props.node.params.text?.trim()
+    if (text) return text
+    const path = props.node.params.previewRelativePath?.trim()
+    if (path) return path
+    return t(`graph.inputInterface.placeholderByType.${slotDataType.value}`)
+  }
   const text = props.node.params.text?.trim()
   if (text) return text
   const key = presentation.value?.textPlaceholderKey
@@ -184,14 +213,20 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
 }
 
 function onBodyDblClick(): void {
+  // 输入接口只读引用外层值，不打开记事本
+  if (isInputSlot.value) return
   emit('textOpen', props.node.id)
 }
 </script>
 
 <style scoped>
 .graph-note {
+  --slot-accent: #c9a227;
+  --slot-accent-soft: rgba(201, 162, 39, 0.2);
+  --slot-border: #5a4a28;
+  --slot-port: #8ab4d8;
   position: absolute;
-  border: 1px solid #5a4a28;
+  border: 1px solid var(--slot-border);
   border-radius: 8px;
   background: linear-gradient(
     160deg,
@@ -213,9 +248,46 @@ function onBodyDblClick(): void {
 }
 
 .graph-note.selected {
-  border-color: #c9a227;
-  box-shadow: 0 0 0 1px #c9a22788, 0 6px 18px rgba(201, 162, 39, 0.15);
+  border-color: var(--slot-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--slot-accent) 50%, transparent),
+    0 6px 18px color-mix(in srgb, var(--slot-accent) 18%, transparent);
   z-index: 18;
+}
+
+/* 输入接口：按数据类型着色（非备注黄） */
+.graph-note.input-slot.slot-text {
+  --slot-accent: #5eb0e0;
+  --slot-accent-soft: rgba(94, 176, 224, 0.22);
+  --slot-border: #3a6a88;
+  --slot-port: #5eb0e0;
+}
+
+.graph-note.input-slot.slot-image {
+  --slot-accent: #6bcf8e;
+  --slot-accent-soft: rgba(107, 207, 142, 0.22);
+  --slot-border: #3d7a55;
+  --slot-port: #6bcf8e;
+}
+
+.graph-note.input-slot.slot-voice {
+  --slot-accent: #e09a5a;
+  --slot-accent-soft: rgba(224, 154, 90, 0.22);
+  --slot-border: #8a5a30;
+  --slot-port: #e09a5a;
+}
+
+.graph-note.input-slot.slot-video {
+  --slot-accent: #a78bfa;
+  --slot-accent-soft: rgba(167, 139, 250, 0.22);
+  --slot-border: #5a4a88;
+  --slot-port: #a78bfa;
+}
+
+.graph-note.input-slot.slot-model {
+  --slot-accent: #94a3b8;
+  --slot-accent-soft: rgba(148, 163, 184, 0.22);
+  --slot-border: #4a5568;
+  --slot-port: #94a3b8;
 }
 
 .note-head {
@@ -223,7 +295,7 @@ function onBodyDblClick(): void {
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
-  border-bottom: 1px solid #5a4a2844;
+  border-bottom: 1px solid color-mix(in srgb, var(--slot-border) 40%, transparent);
   min-width: 0;
   flex-shrink: 0;
 }
@@ -233,8 +305,8 @@ function onBodyDblClick(): void {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(201, 162, 39, 0.2);
-  color: #e8c547;
+  background: var(--slot-accent-soft);
+  color: var(--slot-accent);
   flex-shrink: 0;
 }
 
@@ -252,7 +324,7 @@ function onBodyDblClick(): void {
   min-width: 0;
   font-size: 11px;
   padding: 1px 4px;
-  border: 1px solid #c9a22766;
+  border: 1px solid color-mix(in srgb, var(--slot-accent) 40%, transparent);
   border-radius: 4px;
   background: var(--graph-note-preview-bg);
   color: var(--graph-note-text);
@@ -260,7 +332,7 @@ function onBodyDblClick(): void {
 
 .title-input:focus {
   outline: none;
-  border-color: #c9a227;
+  border-color: var(--slot-accent);
 }
 
 .run-pill {
@@ -334,7 +406,7 @@ function onBodyDblClick(): void {
   left: 10px;
   font-size: 9px;
   line-height: 1;
-  color: var(--text-muted);
+  color: var(--slot-port);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
@@ -348,7 +420,7 @@ function onBodyDblClick(): void {
   width: 12px;
   height: 12px;
   padding: 0;
-  border: 2px solid #8ab4d8;
+  border: 2px solid var(--slot-port);
   border-radius: 50%;
   background: var(--graph-port-bg);
   cursor: crosshair;
@@ -357,7 +429,7 @@ function onBodyDblClick(): void {
 }
 
 .port:hover {
-  background: #5ec8ff;
-  border-color: #c8f6ff;
+  background: var(--slot-port);
+  border-color: color-mix(in srgb, var(--slot-port) 60%, white);
 }
 </style>

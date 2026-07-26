@@ -466,6 +466,7 @@ import {
   ASSET_TYPE_ICONS,
   isDraftAssetId,
   isDraftShotId,
+  isImportedMediaRefAsset,
   normalizeProjectStyleImages,
   normalizeStoryboard,
   resolveMediaOutputDir,
@@ -513,6 +514,9 @@ import {
   isNodeGroupable,
   isDirectorProcessingNode,
   isProcessingAssetNode,
+  isAssetRefNode,
+  isAssetRefInputHostType,
+  resolveHostInputSlotsForHostOpen,
   listAddableNodeTypes,
   nextGraphGroupTitle,
   normalizeAssetGraph,
@@ -868,12 +872,76 @@ function resolveShotCanvasGraphRaw(shot: Shot): GraphDocument | null | undefined
   return raw
 }
 
+function collectParentGraphsForHost(hostAssetId: string): GraphDocument[] {
+  const parents: GraphDocument[] = []
+  const seen = new WeakSet<object>()
+  const pushRaw = (raw: unknown): void => {
+    if (!raw || typeof raw !== 'object') return
+    if (seen.has(raw)) return
+    const doc = raw as GraphDocument
+    if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) return
+    if (!doc.nodes.some((n) => n.assetId === hostAssetId)) return
+    seen.add(raw)
+    parents.push(doc)
+  }
+  // 其它已打开编辑器的实时图（含未落盘连线 / runStates）优先
+  for (const live of graphEditorHosts.listLiveDocuments()) {
+    pushRaw(live)
+  }
+  for (const asset of project.assets) {
+    pushRaw(asset.genParams?.graphJson)
+  }
+  for (const draft of draftStore.drafts) {
+    pushRaw(draft.genParams?.graphJson)
+  }
+  // 当前打开的其它图画布（本实例）；须先判断 assetId，避免 setup 初始化 graph 时触达 TDZ
+  if (props.assetId !== hostAssetId && graph.nodes.some((n) => n.assetId === hostAssetId)) {
+    pushRaw(buildGraphJson())
+  }
+  return parents
+}
+
+function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
+  if (!hostAssetId) return undefined
+  // 仅主资产图画布同步输入接口；叙事单元 / 世界元素子图不参与
+  if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) {
+    return undefined
+  }
+  if (!isAssetRefInputHostType(graphAsset.value?.type)) return undefined
+  return resolveHostInputSlotsForHostOpen(
+    graphAsset.value.type,
+    collectParentGraphsForHost(hostAssetId),
+    hostAssetId,
+    {
+      resolveAssetText: (assetId) => {
+        const asset = project.assets.find((a) => a.id === assetId)
+        if (!asset) {
+          const draft = draftStore.getDraft(assetId)
+          if (!draft) return undefined
+          return resolveAssetTextFromGenParams(draft.genParams, {})
+        }
+        return resolveAssetTextFromGenParams(asset.genParams, {})
+      },
+      resolveAssetGenParams: (assetId) => {
+        if (isDraftAssetId(assetId)) {
+          return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
+        }
+        return project.assets.find((a) => a.id === assetId)?.genParams as
+          | Record<string, unknown>
+          | undefined
+      }
+    }
+  )
+}
+
 function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocument {
   const host = graphAsset.value
+  const hostAssetId = isAssetGraph.value ? props.assetId ?? host?.id ?? null : null
   return normalizeScopedGraph(graphScope.value, raw, {
     assetType: host?.type,
-    hostAssetId: isAssetGraph.value ? props.assetId ?? host?.id ?? null : null,
-    hasMediaFile: isAssetGraph.value ? !!host?.relativePath?.trim() : false
+    hostAssetId,
+    hasMediaFile: isAssetGraph.value ? !!host?.relativePath?.trim() : false,
+    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
   })
 }
 
@@ -946,9 +1014,11 @@ function readAssetGraph(): GraphDocument {
   }
   const raw = graphAsset.value?.genParams?.graphJson
   const host = graphAsset.value
+  const hostAssetId = props.assetId ?? host?.id ?? null
   return normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
-    hostAssetId: props.assetId ?? host?.id ?? null,
-    hasMediaFile: !!host?.relativePath?.trim()
+    hostAssetId,
+    hasMediaFile: !!host?.relativePath?.trim(),
+    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
   })
 }
 
@@ -1301,6 +1371,10 @@ const {
       | Record<string, unknown>
       | undefined
   },
+  hasAsset: (assetId) => {
+    if (isDraftAssetId(assetId)) return !!draftStore.getDraft(assetId)
+    return project.assets.some((asset) => asset.id === assetId)
+  },
   resolveAssetName: (assetId) => {
     if (isDraftAssetId(assetId)) {
       return draftStore.getDraft(assetId)?.name?.trim() || undefined
@@ -1491,6 +1565,16 @@ function blockNodeRunForActiveTask(): boolean {
 
 function onNodeRunToggle(nodeId: string): void {
   if (!isRunning.value && blockNodeRunForActiveTask()) return
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (
+    node &&
+    isAssetRefNode(node) &&
+    node.assetId &&
+    !project.assets.some((a) => a.id === node.assetId) &&
+    !(isDraftAssetId(node.assetId) && draftStore.getDraft(node.assetId))
+  ) {
+    return
+  }
   toggleNodeRun(nodeId)
 }
 
@@ -2483,7 +2567,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'screenplay',
-    typeIds: ['asset.screenplay', 'play.script', 'screenplay.select', 'output.text']
+    typeIds: ['asset.screenplay', 'play.script', 'text.select', 'output.text']
   },
   {
     id: 'narrative',
@@ -3347,12 +3431,31 @@ function onNodeTitleChange(nodeId: string, title: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const trimmed = title.trim()
-  if (trimmed === (node.title?.trim() ?? '')) return
+  const assetId = node.assetId?.trim()
+  const linkedAsset =
+    assetId && isAssetRefNode(node)
+      ? project.assets.find((a) => a.id === assetId)
+      : undefined
+  const prev = linkedAsset?.name?.trim() || node.title?.trim() || ''
+  if (trimmed === prev) return
+  if (linkedAsset && !trimmed) return
+
   const before = buildGraphJson()
   if (trimmed) node.title = trimmed
   else delete node.title
   scheduleSave()
   recordGraphChange('rename-node', before)
+
+  if (linkedAsset && assetId) {
+    void (async () => {
+      try {
+        await window.studio.renameAsset(assetId, trimmed)
+        await project.refreshAssets()
+      } catch {
+        // 资产改名失败时节点标题可保留，资产库仍为旧名
+      }
+    })()
+  }
 }
 
 function isSelfAssetDrop(asset: Pick<AssetInfo, 'id'>): boolean {
@@ -3690,7 +3793,9 @@ function addAssetNode(asset: AssetInfo, position: { x: number; y: number }): boo
   if (isSelfAssetDrop(asset)) return false
   if (graph.nodes.some((n) => n.category === 'asset' && n.assetId === asset.id)) return false
   const before = buildGraphJson()
-  const node = createAssetGraphNode(asset.id, asset.type, asset.name, position)
+  const node = createAssetGraphNode(asset.id, asset.type, asset.name, position, {
+    assetHost: isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
+  })
   if (asset.type === 'motion') {
     const items = resolveMotionImageItems(
       asset.genParams as Record<string, unknown> | undefined,
@@ -5725,6 +5830,7 @@ onMounted(() => {
     {
       getNode: (nodeId) => graph.nodes.find((n) => n.id === nodeId) ?? null,
       findNode: (predicate) => graph.nodes.find(predicate) ?? null,
+      getDocument: () => cloneGraphDocument(buildGraphJson()),
       getGroup: (groupId) => graph.groups?.find((group) => group.id === groupId) ?? null,
       getGroupMemberIds: (groupId) =>
         graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id),

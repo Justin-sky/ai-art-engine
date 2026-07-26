@@ -1,4 +1,4 @@
-﻿import {
+import {
   appendStyleImagesReferencePrompt,
   buildShotGenerationPrompt,
   normalizeProjectStyleImages,
@@ -14,6 +14,15 @@
 import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
 import { GraphPortType } from '../types'
 import { isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
+import { cloneGraphDocument } from '../document'
+import {
+  buildHostInputSlotSeedOutputs,
+  ensureHostInputSlotNodes,
+  mergeHostInputSlotsWithDefaults,
+  readHostInputSlot,
+  resolveHostInputSlotsFromInputs
+} from '../hostInput'
+import { findOutputNode } from '../query'
 import {
   expandInstructionMentions,
   shouldKeepInstructionMentionToken,
@@ -141,6 +150,7 @@ import type {
   GraphAssetValue,
   GraphGenerationContribution,
   GraphImageItem,
+  GraphNodeRunState,
   GraphOutputValue,
   GraphTextItem,
   GraphTextsValue,
@@ -773,6 +783,148 @@ function autoIncomingTextForInstruction(
     .join('\n\n')
 }
 
+function mapChildOutputToHostOut(
+  output: GraphOutputValue | undefined,
+  assetType: string
+): Record<string, GraphValue> | null {
+  if (!output) return null
+  if (
+    assetType === 'screenplay' ||
+    assetType === 'script' ||
+    assetType === 'narrative' ||
+    assetType === 'world'
+  ) {
+    if (output.texts?.length) {
+      return { out: { kind: 'texts', items: output.texts } }
+    }
+    if (output.notes?.length) {
+      const text = output.notes
+        .map((n) => n.text.trim())
+        .filter(Boolean)
+        .join('\n\n')
+      return { out: { kind: 'text', text } }
+    }
+  }
+  if (assetType === 'image' && output.images?.length) {
+    return { out: { kind: 'images', items: output.images } }
+  }
+  if (assetType === 'video' && output.videos?.length) {
+    return { out: { kind: 'videos', items: output.videos } }
+  }
+  if (assetType === 'voice' && output.voices?.length) {
+    return { out: { kind: 'voices', items: output.voices } }
+  }
+  return null
+}
+
+/**
+ * 宿主节点有入边时：同步内图输入接口槽，注入种子输出并嵌套跑子图。
+ * 无入边 / 无子图 / 无法映射输出时返回 null，由调用方回退旧语义。
+ */
+function executeAssetHostInnerGraph(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> | null {
+  const { node, inputs } = ctx
+  if (!node.assetId) return null
+  const hasInput = Object.values(inputs).some((arr) => (arr?.length ?? 0) > 0)
+  if (!hasInput) return null
+
+  const slots = mergeHostInputSlotsWithDefaults(
+    node.assetType,
+    resolveHostInputSlotsFromInputs(node, inputs)
+  )
+  if (!slots.length) return null
+
+  const genParams = ctx.resolveAssetGenParams?.(node.assetId)
+  const raw = genParams?.graphJson
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as GraphDocument).nodes)) {
+    return null
+  }
+
+  return (async () => {
+    const { runGraph } = await import('./engine')
+    const doc = cloneGraphDocument(raw as GraphDocument)
+    ensureHostInputSlotNodes(doc.nodes, doc.edges, slots, {
+      autoLinkHeadTypeIds: []
+    })
+
+    const seeds = buildHostInputSlotSeedOutputs(node, inputs)
+    const priorNodeStates: Record<string, GraphNodeRunState> = {}
+    for (const [id, outputs] of Object.entries(seeds)) {
+      priorNodeStates[id] = { status: 'done', outputs }
+      const slotNode = doc.nodes.find((n) => n.id === id)
+      if (!slotNode) continue
+      const out = outputs.out
+      if (out?.kind === 'text') {
+        slotNode.params = { ...slotNode.params, text: out.text }
+      }
+    }
+
+    const result = await runGraph(doc, {
+      skipCompletedNodes: true,
+      priorNodeStates,
+      signal: ctx.signal,
+      stepDelayMs: 0,
+      resolveAssetGenParams: ctx.resolveAssetGenParams,
+      hasAsset: ctx.hasAsset,
+      resolveAssetName: ctx.resolveAssetName,
+      resolveHostAssetName: ctx.resolveHostAssetName,
+      resolveAssetText: ctx.resolveAssetText,
+      resolveImageUrls: ctx.resolveImageUrls,
+      resolveStyleImageUrls: ctx.resolveStyleImageUrls,
+      resolveProjectStyleImages: ctx.resolveProjectStyleImages,
+      enrichStyleImages: ctx.enrichStyleImages,
+      resolveImageGenerateCapabilities: ctx.resolveImageGenerateCapabilities,
+      resolveVideoGenerateCapabilities: ctx.resolveVideoGenerateCapabilities,
+      resolveAssetImageUrl: ctx.resolveAssetImageUrl,
+      resolveAssetMediaUrl: ctx.resolveAssetMediaUrl,
+      generateText: ctx.generateText,
+      generateImage: ctx.generateImage,
+      generateVideo: ctx.generateVideo,
+      generateSpeech: ctx.generateSpeech,
+      saveRunMedia: ctx.saveRunMedia,
+      saveRunText: ctx.saveRunText,
+      readRunText: ctx.readRunText,
+      locale: ctx.locale
+    })
+
+    if (!result.ok) {
+      throw new Error(result.error || 'GRAPH_HOST_INNER_FAILED')
+    }
+
+    const mapped = mapChildOutputToHostOut(result.output, node.assetType ?? '')
+    if (mapped) return mapped
+
+    // 子图有输出节点状态但未归入 result.output 时再读一次
+    const outNode = findOutputNode(doc)
+    const fallbackOut = outNode ? result.states[outNode.id]?.outputs?.out : undefined
+    if (fallbackOut && fallbackOut.kind === 'output') {
+      const mapped2 = mapChildOutputToHostOut(fallbackOut, node.assetType ?? '')
+      if (mapped2) return mapped2
+    }
+    if (fallbackOut && (fallbackOut.kind === 'text' || fallbackOut.kind === 'texts')) {
+      return { out: fallbackOut }
+    }
+
+    if (node.assetType === 'screenplay' || node.assetType === 'script') {
+      return executeTextAssetRefNode(ctx)
+    }
+    return {
+      out: {
+        kind: 'asset',
+        assetId: node.assetId!,
+        assetType: node.assetType!,
+        label: node.params.label,
+        weight: node.params.weight,
+        volume: node.params.volume,
+        muted: node.params.muted,
+        notes: node.params.notes,
+        title: node.title
+      }
+    }
+  })()
+}
+
 export function executeAssetNode(
   ctx: NodeExecuteContext
 ): Record<string, GraphValue> | Promise<Record<string, GraphValue>> {
@@ -781,6 +933,13 @@ export function executeAssetNode(
   if (isAssetRefNode(node)) {
     if (!node.assetId || !node.assetType) {
       throw new Error('GRAPH_UNBOUND_ASSET')
+    }
+    if (ctx.hasAsset && !ctx.hasAsset(node.assetId)) {
+      throw new Error('GRAPH_MISSING_ASSET')
+    }
+    if (node.params.assetHost === true) {
+      const nested = executeAssetHostInnerGraph(ctx)
+      if (nested) return nested
     }
     // 剧本/分镜引用端口为 text，须输出 text（与 motion→images 同理）
     if (node.assetType === 'screenplay' || node.assetType === 'script') {
@@ -1996,6 +2155,9 @@ export async function executeTextAssetRefNode(
   if (!ctx.node.assetId || !ctx.node.assetType) {
     throw new Error('GRAPH_UNBOUND_ASSET')
   }
+  if (ctx.hasAsset && !ctx.hasAsset(ctx.node.assetId)) {
+    throw new Error('GRAPH_MISSING_ASSET')
+  }
   if (ctx.node.assetType === 'screenplay') {
     let text = (await ctx.resolveAssetText?.(ctx.node.assetId))?.trim() ?? ''
     if (!text) {
@@ -2072,6 +2234,46 @@ export function executePlayScriptNode(ctx: NodeExecuteContext): Record<string, G
   return {
     out: { kind: 'text', text }
   }
+}
+
+/** 宿主编辑器输入接口槽：输出外层注入或节点上缓存的标量值 */
+export function executeHostInputSlotNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const slot = readHostInputSlot(ctx.node)
+  const dataType = slot?.dataType ?? 'text'
+  if (dataType === 'text') {
+    return { out: { kind: 'text', text: ctx.node.params.text ?? '' } }
+  }
+  if (dataType === 'image') {
+    const path = ctx.node.params.previewRelativePath?.trim()
+    const dataUrl = ctx.node.params.previewDataUrl?.trim() ?? ''
+    return {
+      out: {
+        kind: 'image',
+        dataUrl,
+        relativePath: path || undefined
+      }
+    }
+  }
+  if (dataType === 'video') {
+    return {
+      out: {
+        kind: 'video',
+        dataUrl: ctx.node.params.previewDataUrl?.trim() || undefined,
+        relativePath: ctx.node.params.previewRelativePath?.trim() || undefined
+      }
+    }
+  }
+  if (dataType === 'voice') {
+    return {
+      out: {
+        kind: 'voices',
+        items: ctx.node.params.previewRelativePath
+          ? [{ relativePath: ctx.node.params.previewRelativePath }]
+          : []
+      }
+    }
+  }
+  return { out: { kind: 'text', text: ctx.node.params.text ?? '' } }
 }
 
 /**
@@ -2620,7 +2822,7 @@ export async function executeWorldExtractNode(
 
 /**
  * 叙事单元拆解：将上游剧本文本（text）拆成有序叙事单元 JSON。
- * 通常经由 screenplay.select 从 texts 中选出单条后再接入。
+ * 通常经由 text.select 从 texts 中选出单条后再接入。
  * 未注入 generateText 时退回指令 / 上游 / 本地文本汇总。
  * 本地若含上次拆解 JSON，合并时强制保留「已审核」行。
  */
@@ -2895,9 +3097,9 @@ export function executeSelectImageNode(ctx: NodeExecuteContext): Record<string, 
 }
 
 /**
- * 选取剧本：从 texts 数组中选出一条，输出为单个 text（落盘项会读全文）。
+ * 选取文本：从 texts 数组中选出一条，输出为单个 text（落盘项会读全文）。
  */
-export async function executeSelectScreenplayNode(
+export async function executeSelectTextNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const items = flattenTextsValues(collectIncomingValues(ctx.inputs)).filter(

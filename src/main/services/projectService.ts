@@ -33,13 +33,14 @@ import {
   type ProjectConfig,
   type Shot
 } from '@shared/domain'
-import { createDefaultScopedGraph } from '@shared/graph'
+import { createDefaultScopedGraph, buildSeriesStarterGraph } from '@shared/graph'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
+  CreateSeriesWithStarterInput,
   CreateShotInput,
   OpenProjectResult,
   SaveGraphRunMediaInput,
@@ -177,7 +178,7 @@ class ProjectService {
     this.rootPath = root
     this.config = config
 
-    const canvas = this.createAsset({ type: 'canvas', name: defaultAssetName('canvas') })
+    this.createSeriesWithStarter({ name: defaultAssetName('canvas') })
 
     const projectJson = join(root, 'project.json')
     settingsService.addRecent(projectJson)
@@ -185,7 +186,7 @@ class ProjectService {
     return {
       rootPath: root,
       config: this.getConfig(),
-      assets: [canvas],
+      assets: this.listAssets(),
       folders: [],
       shots: this.listShots()
     }
@@ -383,6 +384,58 @@ class ProjectService {
       return this.readAsset(id)
     }
     return asset
+  }
+
+  /** 创建剧集，并预置剧本 / 世界元素 / 叙事单元 / 分镜宿主节点与连线 */
+  createSeriesWithStarter(input: CreateSeriesWithStarterInput = {}): AssetInfo {
+    const parentFolderId = input.folderId ?? null
+    const seriesName = input.name?.trim() || defaultAssetName('canvas')
+    const childTypes = ['screenplay', 'world', 'narrative', 'script'] as const
+
+    const childName = (type: (typeof childTypes)[number]): string => {
+      const override = input.childNames?.[type]?.trim()
+      if (override) return override
+      return `${seriesName}${ASSET_TYPE_LABELS[type]}`
+    }
+    const childFolderName = (type: (typeof childTypes)[number]): string => {
+      const override = input.childFolderNames?.[type]?.trim()
+      if (override) return override
+      return ASSET_TYPE_LABELS[type]
+    }
+
+    /** 当前目录下按类型名找或建子目录（不建剧集名外层目录） */
+    const ensureTypeFolder = (type: (typeof childTypes)[number]): string => {
+      const name = childFolderName(type)
+      const existing = this.listFolders().find(
+        (folder) =>
+          (folder.parentId ?? null) === parentFolderId && folder.name.trim() === name
+      )
+      if (existing) return existing.id
+      return this.createFolder({ name, parentId: parentFolderId }).id
+    }
+
+    const children = {} as Record<(typeof childTypes)[number], AssetInfo>
+    for (const type of childTypes) {
+      children[type] = this.createAsset({
+        type,
+        folderId: ensureTypeFolder(type),
+        name: childName(type)
+      })
+    }
+
+    return this.createAsset({
+      type: 'canvas',
+      folderId: parentFolderId,
+      name: seriesName,
+      genParams: {
+        graphJson: buildSeriesStarterGraph({
+          screenplay: children.screenplay,
+          world: children.world,
+          narrative: children.narrative,
+          script: children.script
+        })
+      }
+    })
   }
 
   private appendShotToScript(scriptAssetId: string, shotId: string): void {

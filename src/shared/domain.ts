@@ -511,7 +511,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   model: '🧊',
   screenplay: '📜',
   script: '🎥',
-  canvas: '🎨',
+  canvas: '📺',
   world: '🤺',
   narrative: '📖'
 }

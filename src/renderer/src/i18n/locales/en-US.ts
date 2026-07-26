@@ -1,4 +1,4 @@
-﻿/** English UI messages */
+/** English UI messages */
 export default {
   common: {
     browse: 'Browse',
@@ -368,7 +368,11 @@ export default {
       canvas: 'New Series',
       world: 'New World Elements',
       narrative: 'New Narrative Units',
-      default: 'New Asset'
+      default: 'New Asset',
+      seriesNameTitle: 'New Series',
+      seriesNameMessage:
+        'Enter a series name. After confirm, a screenplay, world elements, narrative units, and shot will be created and placed on the series canvas.',
+      seriesNamePlaceholder: 'Series name'
     },
     generic: 'Asset',
     deleted: '(deleted)',
@@ -1350,10 +1354,10 @@ export default {
       empty: 'No upstream videos yet. Connect a video generate node and run it first.'
     },
     selectText: {
-      appMark: 'Select screenplay',
-      hint: 'Click a card to select one screenplay; double-click to open the notepad. Defaults to the first item.',
+      appMark: 'Select text',
+      hint: 'Click a card to select one text; double-click to open the notepad. Defaults to the first item.',
       openHint: 'Double-click to open notepad',
-      empty: 'No upstream screenplays yet. Connect a screenplay generate node and run it first.'
+      empty: 'No upstream texts yet. Connect a text generate node and run it first.'
     },
     textsPreview: {
       appMark: 'Texts preview',
@@ -1646,6 +1650,26 @@ export default {
       title: 'Text',
       placeholder: 'Double-click to edit text…'
     },
+    inputInterface: {
+      badge: 'Input',
+      title: 'Input',
+      hint: 'Stable host input slot from the outer graph; not deletable',
+      placeholder: 'Waiting for outer input…',
+      badgeByType: {
+        text: 'Text in',
+        image: 'Image in',
+        voice: 'Audio in',
+        video: 'Video in',
+        model: 'Model in'
+      },
+      placeholderByType: {
+        text: 'Waiting for outer text…',
+        image: 'Waiting for outer image…',
+        voice: 'Waiting for outer audio…',
+        video: 'Waiting for outer video…',
+        model: 'Waiting for outer model…'
+      }
+    },
     demo: {
       badge: 'Plugin demo',
       title: 'Example node',
@@ -1688,10 +1712,18 @@ export default {
     },
     nodeRole: {
       ref: 'Ref',
-      generate: 'Generate'
+      host: 'Host',
+      generate: 'Generate',
+      missing: 'Unavailable'
     },
     assetRef: {
-      hint: 'Asset reference · open from the asset library'
+      hint: 'Imported reference · preview from the asset library'
+    },
+    assetHost: {
+      hint: 'Host asset · double-click to edit'
+    },
+    assetMissing: {
+      hint: 'Linked asset deleted · node unavailable'
     },
     generateNode: {
       hint: 'Generation node · adjust parameters in the right panel',
@@ -1750,6 +1782,7 @@ export default {
       cycle: 'Workflow has a cycle and cannot run',
       noOutput: 'Output node not found',
       unboundAsset: 'Node has no bound asset',
+      missingAsset: 'Linked asset was deleted',
       noInput: 'Enter a generation instruction, or connect an upstream input',
       lipSyncNoVisual: 'Connect a character image or reference video first',
       lipSyncNoAudio: 'Connect a voice (speech) input first',
@@ -1812,8 +1845,8 @@ export default {
         shotVideoGen: 'Generate shot videos',
         shotParams: 'Shot params'
       },
-      screenplay: {
-        select: 'Select screenplay'
+      text: {
+        select: 'Select text'
       },
       narrative: {
         split: 'Narrative split',
@@ -1909,7 +1942,8 @@ export default {
         hint: 'Preview on the node; edit details here',
         empty: 'No node selected'
       },
-      assetRef: 'Referenced asset',
+      assetRef: 'Referenced media',
+      assetHost: 'Host asset',
       unselected: 'Not selected',
       assetTaken: '(already used by another node)',
       displayName: 'Display name',
@@ -1932,6 +1966,16 @@ export default {
         title: 'Title',
         body: 'Note content',
         empty: 'No note node selected'
+      },
+      inputInterface: {
+        hint: 'Injected from the outer host edges. Read-only preview here; double-click does not open Notepad.',
+        dataType: 'Data type',
+        port: 'Outer port',
+        index: 'Slot index',
+        preview: 'Input preview',
+        previewEmpty: 'No outer value yet (appears after parent wires or runs)',
+        previewEmbedded: '(Embedded preview data)',
+        empty: 'No input interface node selected'
       },
       script: {
         hint: 'Text node. Edit content here, or expand to view in Notepad.',

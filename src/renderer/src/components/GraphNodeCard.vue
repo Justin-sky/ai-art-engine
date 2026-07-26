@@ -1,10 +1,11 @@
-﻿<template>
+<template>
   <div
     class="graph-node"
     :class="{
       selected,
       output: node.category === 'output',
       'asset-ref': isAssetRef,
+      'asset-missing': isMissingLinkedAsset,
       'processing-node': isProcessingNode,
       connecting: connecting,
       'run-error': runStatus === 'error',
@@ -35,11 +36,12 @@
       >
         <span class="collapse-tri" aria-hidden="true" />
       </button>
-      <span v-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
+      <span v-if="isMissingLinkedAsset" class="type-pill missing">{{ t('graph.nodeRole.missing') }}</span>
+      <span v-else-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
       <span v-else class="type-pill">{{ typeLabel }}</span>
-      <span v-if="isAssetRef" class="kind-pill">{{ typeLabel }}</span>
+      <span v-if="isAssetRef && !isMissingLinkedAsset" class="kind-pill">{{ typeLabel }}</span>
       <input
-        v-if="editingTitle && !isAssetRef"
+        v-if="editingTitle"
         ref="titleInputEl"
         v-model="titleDraft"
         class="title-input"
@@ -52,7 +54,6 @@
       <span
         v-else
         class="title"
-        :class="{ readonly: isAssetRef }"
         :title="displayTitle"
         @dblclick.stop="startTitleEdit"
       >{{ displayTitle }}</span>
@@ -70,7 +71,7 @@
           compact
           :status="runStatus"
           :is-running="isGraphRunning"
-          :blocked="isGraphRunning"
+          :blocked="isGraphRunning || isMissingLinkedAsset"
           @toggle="emit('runToggle', node.id)"
         />
       </div>
@@ -362,6 +363,7 @@ import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenera
 import {
   ASSET_TYPE_ICONS,
   assetDisplayIcon,
+  isImportedMediaRefAsset,
   isSoundAsset,
   resolveGenerateStyleImages,
   type AssetInfo
@@ -401,7 +403,7 @@ import {
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
-  isSelectScreenplayNode,
+  isSelectTextNode,
   isMultiAngleEditorNode,
   isLightingEditorNode,
   isPortraitTextureEditorNode,
@@ -448,9 +450,11 @@ import { graphPreviewLoadScheduler } from '../features/media/previewLoadSchedule
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
+import { useWorkspaceStore } from '../stores/workspace'
 
 const { t, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
+const workspace = useWorkspaceStore()
 const graphScope = useGraphScope()
 const directorPreview = useDirectorPreview()
 const scriptPreview = useScriptPreview()
@@ -584,6 +588,14 @@ const width = computed(() => nodeSize.value.w)
 const height = computed(() => nodeSize.value.h)
 
 const isAssetRef = computed(() => isAssetRefNode(props.node))
+/** 拖入的是导入素材（引用）还是右键创建的可编辑宿主资产 */
+const isImportedRefAsset = computed(
+  () => isAssetRef.value && isImportedMediaRefAsset(props.asset ?? null)
+)
+/** 绑定了 assetId 但工程中已找不到对应资产 */
+const isMissingLinkedAsset = computed(
+  () => isAssetRef.value && !!props.node.assetId?.trim() && !props.asset
+)
 const isProcessingNode = computed(() => isProcessingAssetNode(props.node))
 const isScreenplayOutputNode = computed(
   () =>
@@ -801,18 +813,28 @@ const typeLabel = computed(() => {
 })
 
 const rolePill = computed(() => {
-  if (isAssetRef.value) return t('graph.nodeRole.ref')
+  if (isAssetRef.value) {
+    return isImportedRefAsset.value ? t('graph.nodeRole.ref') : t('graph.nodeRole.host')
+  }
   if (isProcessingNode.value) return t('graph.nodeRole.generate')
   return ''
 })
 
 const rolePillClass = computed(() => {
-  if (isAssetRef.value) return 'ref'
+  if (isAssetRef.value) return isImportedRefAsset.value ? 'ref' : 'host'
   if (isProcessingNode.value) return 'generate'
   return ''
 })
 
 const displayTitle = computed(() => {
+  if (isMissingLinkedAsset.value) {
+    const custom = props.node.title?.trim()
+    return custom ? `${custom} ${t('asset.deleted')}` : t('asset.deleted')
+  }
+  if (isAssetRef.value) {
+    const assetName = props.asset?.name?.trim()
+    if (assetName) return assetName
+  }
   const custom = props.node.title?.trim() ?? ''
   if (props.node.category === 'output') {
     const scopeDef = getGraphScopeDefinition(graphScope.value)
@@ -1125,7 +1147,7 @@ const previewHint = computed(() => {
   if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
   if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
-  if (isSelectScreenplayNode(props.node)) return t('graph.selectText.hint')
+  if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
@@ -1139,7 +1161,10 @@ const previewHint = computed(() => {
   if (isCropEditorNode(props.node)) return t('graph.crop.hint')
   if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
-  if (isAssetRef.value) return t('graph.assetRef.hint')
+  if (isMissingLinkedAsset.value) return t('graph.assetMissing.hint')
+  if (isAssetRef.value) {
+    return isImportedRefAsset.value ? t('graph.assetRef.hint') : t('graph.assetHost.hint')
+  }
   if (isProcessingNode.value) return t('graph.generateNode.hint')
   return assetName.value || typeLabel.value
 })
@@ -1147,7 +1172,7 @@ const previewHint = computed(() => {
 const previewOpenHint = computed(() => {
   if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
-  if (isSelectScreenplayNode(props.node)) return t('graph.selectText.hint')
+  if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   // 预览区已有正文时，双击优先打开记事本
   if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
     return t('graph.notepad.openHint')
@@ -1338,9 +1363,16 @@ function onPointerDown(e: PointerEvent): void {
   emit('dragStart', props.node.id, e)
 }
 
+function editableTitleDraft(): string {
+  if (isAssetRef.value) {
+    return props.asset?.name?.trim() || props.node.title?.trim() || displayTitle.value
+  }
+  return props.node.title?.trim() || displayTitle.value
+}
+
 function startTitleEdit(): void {
-  if (isAssetRef.value) return
-  titleDraft.value = props.node.title?.trim() || displayTitle.value
+  if (isMissingLinkedAsset.value) return
+  titleDraft.value = editableTitleDraft()
   editingTitle.value = true
   void nextTick(() => {
     titleInputEl.value?.focus()
@@ -1352,14 +1384,17 @@ function commitTitleEdit(): void {
   if (!editingTitle.value) return
   editingTitle.value = false
   const next = titleDraft.value.trim()
-  const prev = props.node.title?.trim() ?? ''
+  const prev = isAssetRef.value
+    ? props.asset?.name?.trim() || props.node.title?.trim() || ''
+    : (props.node.title?.trim() ?? '')
   if (next === prev) return
+  if (isAssetRef.value && !next) return
   emit('titleChange', props.node.id, next)
 }
 
 function cancelTitleEdit(): void {
   editingTitle.value = false
-  titleDraft.value = props.node.title?.trim() || displayTitle.value
+  titleDraft.value = editableTitleDraft()
 }
 
 watch(
@@ -1551,15 +1586,18 @@ function persistVideoGenerateParams(): void {
 }
 
 function onOutPortDown(portId: string, e: PointerEvent): void {
+  if (isMissingLinkedAsset.value) return
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   emit('outPortDown', props.node.id, portId, e)
 }
 
 function onInPortDown(portId: string, e: PointerEvent): void {
+  if (isMissingLinkedAsset.value) return
   emit('inPortDown', props.node.id, portId, e)
 }
 
 function onPreviewDblClick(): void {
+  if (isMissingLinkedAsset.value) return
   if (isDirectorProcessingNode(props.node)) {
     directorPreview?.openStageView(props.node.id)
     return
@@ -1572,7 +1610,7 @@ function onPreviewDblClick(): void {
     emit('selectVideoOpen', props.node.id)
     return
   }
-  if (isSelectScreenplayNode(props.node)) {
+  if (isSelectTextNode(props.node)) {
     emit('selectTextOpen', props.node.id)
     return
   }
@@ -1690,8 +1728,22 @@ function onPreviewDblClick(): void {
     emit('textOpen', props.node.id)
     return
   }
-  // 图片资产节点：双击预览原图
-  if (previewKind.value === 'image' && props.asset?.relativePath) {
+  // 宿主资产节点：双击打开对应资产编辑器
+  if (isAssetRef.value && !isImportedRefAsset.value) {
+    const assetId = props.node.assetId?.trim() || props.asset?.id
+    if (assetId) {
+      workspace.openEditorForAssetId(assetId)
+      return
+    }
+  }
+  // 引用型图片 / 音视频：双击预览
+  if (
+    isAssetRef.value &&
+    props.asset?.relativePath &&
+    (previewKind.value === 'image' ||
+      previewKind.value === 'video' ||
+      previewKind.value === 'voice')
+  ) {
     void openFullImagePreview({ relativePath: props.asset.relativePath })
   }
 }
@@ -1868,6 +1920,19 @@ function formatTime(sec: number): string {
   background: var(--graph-node-asset-bg);
 }
 
+.graph-node.asset-missing {
+  opacity: 0.55;
+  border-style: dashed;
+  border-color: var(--danger, #c45c5c);
+  background: var(--graph-node-bg);
+  filter: grayscale(0.35);
+}
+
+.graph-node.asset-missing .title {
+  cursor: default;
+  color: var(--text-muted);
+}
+
 .graph-node.processing-node {
   border-color: #3d9a6e;
   background: linear-gradient(
@@ -2001,13 +2066,23 @@ function formatTime(sec: number): string {
 }
 
 .type-pill.ref {
-  background: rgba(156, 163, 175, 0.2);
-  color: #9ca3af;
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  color: var(--text-muted);
+}
+
+.type-pill.missing {
+  background: color-mix(in srgb, var(--danger, #c45c5c) 22%, transparent);
+  color: var(--danger, #c45c5c);
+}
+
+.type-pill.host {
+  background: var(--accent-18);
+  color: var(--accent-fg);
 }
 
 .type-pill.generate {
-  background: rgba(61, 180, 120, 0.22);
-  color: #7dcea0;
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: color-mix(in srgb, var(--success) 72%, #ffffff);
 }
 
 .kind-pill {
@@ -2018,10 +2093,6 @@ function formatTime(sec: number): string {
   background: var(--accent-12);
   color: var(--accent-fg);
   flex-shrink: 0;
-}
-
-.title.readonly {
-  cursor: default;
 }
 
 .title {

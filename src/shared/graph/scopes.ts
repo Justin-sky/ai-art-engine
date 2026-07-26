@@ -218,7 +218,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       inputDataType: GraphPortType.image
     }
   },
-  /** 叙事单元资产图：拆解 → 表格 → 生成；不强制输出节点 */
+  /** 叙事单元资产图：拆解 → 表格 → 生成 → 选择文本 → 输出；不强制通用输出节点 */
   narrativeAsset: {
     id: 'narrativeAsset',
     ensureOutput: false,
@@ -528,7 +528,7 @@ export function ensureScriptAssetDefaultChain(nodes: GraphNode[], edges: GraphEd
   if (outputNode) ensureGraphEdge(edges, videoGen.id, outputNode.id, 'out', 'in')
 }
 
-/** 叙事单元资产图默认链：拆解 → 表格 → 生成 → 输出 */
+/** 叙事单元资产图默认链：拆解 → 表格 → 生成 → 选择文本 → 输出 */
 export function ensureNarrativeAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
   const split = nodes.find((node) => node.typeId === 'narrative.split')
   const table = nodes.find((node) => node.typeId === 'narrative.table')
@@ -537,7 +537,29 @@ export function ensureNarrativeAssetDefaultChain(nodes: GraphNode[], edges: Grap
   if (!split || !table || !gen) return
   ensureGraphEdge(edges, split.id, table.id, 'out', 'in')
   ensureGraphEdge(edges, table.id, gen.id, 'out', 'in')
-  if (output) ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
+
+  let select = nodes.find((node) => node.typeId === 'text.select')
+  if (!select) {
+    const x = output
+      ? Math.round((gen.position.x + output.position.x) / 2)
+      : gen.position.x + 220
+    select = createNodeFromType('text.select', { x, y: gen.position.y })
+    nodes.push(select)
+  }
+
+  // 生成 → 选择文本 → 输出；去掉直连生成→输出，避免双路径
+  if (output) {
+    for (let i = edges.length - 1; i >= 0; i -= 1) {
+      const edge = edges[i]!
+      if (edge.source === gen.id && edge.target === output.id) {
+        edges.splice(i, 1)
+      }
+    }
+    ensureGraphEdge(edges, gen.id, select.id, 'out', 'in')
+    ensureGraphEdge(edges, select.id, output.id, 'out', 'in')
+  } else {
+    ensureGraphEdge(edges, gen.id, select.id, 'out', 'in')
+  }
 }
 
 /** 分镜工作流：仅在「仅有视频输出」的遗留空图上补齐视频链；不再强制插入分镜参数 */
@@ -674,11 +696,51 @@ export function ensureAssetEditorProcessingChain(
 
   let processing = findProcessingGenerateNode(nodes, processingTypeId)
   if (!processing) {
-    processing = createNodeFromType(processingTypeId, { x: 240, y: 160 })
+    processing = createNodeFromType(
+      processingTypeId,
+      scope === 'screenplayAsset' ? { x: 400, y: 160 } : { x: 240, y: 160 }
+    )
     nodes.push(processing)
   }
 
+  // 剧本资产默认链：输入接口 → 选择文本 → 生成剧本 → 输出
+  if (scope === 'screenplayAsset') {
+    ensureScreenplayAssetSelectBridge(nodes, edges, processing)
+  }
+
   ensureLinkedToOutput(edges, processing.id, outputNode.id)
+}
+
+/**
+ * 确保「选择文本」夹在输入接口与生成剧本之间。
+ * 若生成节点入边全来自输入接口，则改接到选择文本。
+ */
+function ensureScreenplayAssetSelectBridge(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  processing: GraphNode
+): void {
+  let select = nodes.find((node) => node.typeId === 'text.select')
+  if (!select) {
+    select = createNodeFromType('text.select', { x: 220, y: 160 })
+    nodes.push(select)
+  }
+
+  const inbound = edges.filter((edge) => edge.target === processing.id)
+  const allFromInputSlots =
+    inbound.length > 0 &&
+    inbound.every((edge) => {
+      const src = nodes.find((n) => n.id === edge.source)
+      return !!src && src.typeId === 'graph.input.slot'
+    })
+
+  if (allFromInputSlots) {
+    for (const edge of inbound) {
+      edge.target = select.id
+    }
+  }
+
+  ensureGraphEdge(edges, select.id, processing.id, 'out', 'in')
 }
 
 export function createScopeSingletonNode(

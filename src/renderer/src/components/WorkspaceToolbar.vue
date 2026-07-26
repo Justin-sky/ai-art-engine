@@ -26,6 +26,7 @@ import { computed, ref } from 'vue'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
+import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 
@@ -49,6 +50,7 @@ const displayItems = computed(() =>
 
 const { createAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
+const { createSeriesWithStarter } = useSeriesCreation()
 const { t, assetTypeLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 const activeTip = ref<string | null>(null)
@@ -73,6 +75,12 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
+    if (item.assetType === 'canvas') {
+      await createSeriesWithStarter(props.folderId ?? null, {
+        openEditor: item.openOnCreate
+      })
+      return
+    }
     if (props.deferSave) {
       createDraftAndOpen(item.assetType)
       return

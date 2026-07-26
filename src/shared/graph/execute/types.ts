@@ -251,6 +251,8 @@ export interface NodeExecuteContext {
   signal?: AbortSignal
   /** 按资产 id 读取 genParams（导演台引用节点取站位图等） */
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
+  /** 资产是否仍存在于工程（引用节点执行前校验） */
+  hasAsset?: (assetId: string) => boolean
   /** 按资产 id 解析展示名（剧本生成落盘文件名等） */
   resolveAssetName?: (assetId: string) => string | undefined
   /** 当前图宿主资产名（剧本资产图内生成时优先用作文件名前缀） */
@@ -456,6 +458,7 @@ export interface GraphRunOptions {
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string
   resolveAssetGenParams?: NodeExecuteContext['resolveAssetGenParams']
+  hasAsset?: NodeExecuteContext['hasAsset']
   resolveAssetName?: NodeExecuteContext['resolveAssetName']
   resolveHostAssetName?: NodeExecuteContext['resolveHostAssetName']
   resolveAssetText?: NodeExecuteContext['resolveAssetText']

@@ -110,16 +110,16 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
-  it('creates default screenplay asset graph without narrative chain', () => {
+  it('creates default screenplay asset graph with select between input and generate', () => {
     const doc = createDefaultScopedGraph('screenplayAsset')
     const processing = doc.nodes.find((node) => node.typeId === 'asset.screenplay')
-    const select = doc.nodes.find((node) => node.typeId === 'screenplay.select')
+    const select = doc.nodes.find((node) => node.typeId === 'text.select')
     const narrative = doc.nodes.find(
       (node) => node.typeId === 'narrative.split' || node.typeId === 'screenplay.narrativeSplit'
     )
     const output = doc.nodes.find((node) => node.category === 'output')
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
-    expect(select).toBeUndefined()
+    expect(select).toBeTruthy()
     expect(narrative).toBeUndefined()
     expect(output?.typeId).toBe('output.text')
     expect(output?.id).toBe(TEXT_OUTPUT_ID)
@@ -127,20 +127,44 @@ describe('asset editor graph', () => {
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text']
     ])
+    expect(
+      doc.edges.some((edge) => edge.source === select?.id && edge.target === processing?.id)
+    ).toBe(true)
     expect(doc.edges.some((edge) => edge.source === processing?.id && edge.target === TEXT_OUTPUT_ID)).toBe(
       true
     )
   })
 
-  it('creates default narrative asset graph with split → table → editor → output chain', () => {
+  it('normalize screenplay asset links input slots to select then generate', () => {
+    const doc = normalizeScopedGraph('screenplayAsset', null, {
+      assetType: 'screenplay',
+      hostAssetId: '00000000-0000-4000-8000-000000000301'
+    })
+    const slot = doc.nodes.find((n) => n.typeId === 'graph.input.slot')
+    const select = doc.nodes.find((n) => n.typeId === 'text.select')
+    const processing = doc.nodes.find((n) => n.typeId === 'asset.screenplay')
+    expect(slot).toBeTruthy()
+    expect(select).toBeTruthy()
+    expect(processing).toBeTruthy()
+    expect(
+      doc.edges.some((e) => e.source === slot?.id && e.target === select?.id)
+    ).toBe(true)
+    expect(
+      doc.edges.some((e) => e.source === select?.id && e.target === processing?.id)
+    ).toBe(true)
+  })
+
+  it('creates default narrative asset graph with split → table → gen → select text → output', () => {
     const doc = createDefaultScopedGraph('narrativeAsset', 'narrative')
     const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
     const table = doc.nodes.find((node) => node.typeId === 'narrative.table')
     const editor = doc.nodes.find((node) => node.typeId === 'narrative.gen')
+    const select = doc.nodes.find((node) => node.typeId === 'text.select')
     const output = doc.nodes.find((node) => node.typeId === 'output.narrative')
     expect(split).toBeTruthy()
     expect(table).toBeTruthy()
     expect(editor).toBeTruthy()
+    expect(select).toBeTruthy()
     expect(output).toBeTruthy()
     expect(getNodePorts(split!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
@@ -164,14 +188,22 @@ describe('asset editor graph', () => {
       doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
     ).toBe(true)
     expect(
-      doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
+      doc.edges.some((edge) => edge.source === editor?.id && edge.target === select?.id)
     ).toBe(true)
+    expect(
+      doc.edges.some((edge) => edge.source === select?.id && edge.target === output?.id)
+    ).toBe(true)
+    expect(
+      doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
+    ).toBe(false)
     expect(canConnectNodes(split!, table!)).toBe(true)
     expect(canConnectNodes(table!, editor!)).toBe(true)
-    expect(canConnectNodes(editor!, output!)).toBe(true)
+    expect(canConnectNodes(editor!, select!)).toBe(true)
+    expect(canConnectNodes(select!, output!)).toBe(true)
     expect(isNodeDeletable(split!)).toBe(true)
     expect(isNodeDeletable(table!)).toBe(true)
     expect(isNodeDeletable(editor!)).toBe(true)
+    expect(isNodeDeletable(select!)).toBe(true)
     expect(isNodeDeletable(output!)).toBe(true)
   })
 
