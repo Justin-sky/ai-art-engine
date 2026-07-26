@@ -146,6 +146,8 @@ import {
   saveLayoutsState,
   updateActiveLayoutData,
   upsertNamedLayout,
+  healDockLayoutMissingPanelRefs,
+  stripPanelsFromDockLayout,
   type StudioLayoutPreset,
   type StudioLayoutsState
 } from '../utils/studioLayouts'
@@ -234,9 +236,14 @@ function onSaveLayoutConfirm(name: string): void {
     alert(t('studio.layout.invalid'))
     return
   }
+  const shellOnly = stripDocumentEditorPanelsFromLayoutData(data)
+  if (!isDockLayoutData(shellOnly)) {
+    alert(t('studio.layout.invalid'))
+    return
+  }
   const active = getActivePreset(layouts.value)
   try {
-    const next = upsertNamedLayout(layouts.value, name, data, {
+    const next = upsertNamedLayout(layouts.value, name, shellOnly, {
       targetId: active.id === DEFAULT_LAYOUT_ID ? null : active.id
     })
     commitLayouts(next)
@@ -256,12 +263,19 @@ async function applyLayoutById(id: string): Promise<void> {
   if (!api) return
   const preset = layouts.value.presets.find((p) => p.id === id)
   if (!preset) return
+  const previousId = layouts.value.activeId
   commitLayouts({ ...layouts.value, activeId: id })
   if (preset.id === DEFAULT_LAYOUT_ID || !preset.data) {
     resetLayout()
     return
   }
-  applyStoredLayout(api, preset.data)
+  const raw = JSON.stringify(preset.data)
+  if (!isStoredLayoutCompatible(raw)) {
+    console.error('[studio] stored layout incompatible', preset.id)
+    commitLayouts({ ...layouts.value, activeId: previousId })
+    return
+  }
+  applyStoredLayout(api, healDockLayoutMissingPanelRefs(preset.data))
 }
 
 function applyStoredLayout(api: DockviewApi, data: Record<string, unknown>): void {
@@ -310,10 +324,15 @@ async function onImportFile(event: Event): Promise<void> {
   if (!file) return
   try {
     const imported = await readLayoutFileFromInput(file)
-    const next = upsertNamedLayout(layouts.value, imported.name, imported.layout)
+    const shellOnly = stripDocumentEditorPanelsFromLayoutData(imported.layout)
+    if (!isDockLayoutData(shellOnly)) {
+      alert(t('studio.layout.invalidFile'))
+      return
+    }
+    const next = upsertNamedLayout(layouts.value, imported.name, shellOnly)
     commitLayouts(next)
     const api = dockApi.value
-    if (api) applyStoredLayout(api, imported.layout)
+    if (api) applyStoredLayout(api, shellOnly)
   } catch (e) {
     console.error('[studio] import layout failed', e)
     alert(t('studio.layout.invalidFile'))
@@ -622,16 +641,7 @@ function removeDocumentEditorPanels(api: DockviewApi): void {
 function stripDocumentEditorPanelsFromLayoutData(
   data: Record<string, unknown>
 ): Record<string, unknown> {
-  const panels = data.panels
-  if (!panels || typeof panels !== 'object' || Array.isArray(panels)) return data
-  const nextPanels: Record<string, unknown> = { ...(panels as Record<string, unknown>) }
-  let changed = false
-  for (const id of Object.keys(nextPanels)) {
-    if (!parseEditorPanelId(id)) continue
-    delete nextPanels[id]
-    changed = true
-  }
-  return changed ? { ...data, panels: nextPanels } : data
+  return stripPanelsFromDockLayout(data, (panelId) => parseEditorPanelId(panelId) != null)
 }
 
 function tryRestoreLayout(api: DockviewApi): boolean {
