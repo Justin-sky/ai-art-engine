@@ -3947,7 +3947,7 @@ function resolveNarrativeUnitFileKey(item: GraphTextItem, index: number): string
 }
 
 /**
- * 「叙事单元生成」：将上游 texts 每一项落地为剧本（txt + screenplay 资产），写回 generatedTexts。
+ * 「叙事单元输出」：将上游 texts 每一项落地为剧本（txt + screenplay 资产），写回 generatedTexts。
  */
 export async function executeNarrativeOutputNode(
   ctx: NodeExecuteContext

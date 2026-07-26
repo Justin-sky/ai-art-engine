@@ -47,8 +47,11 @@ export const ASSET_DIRECTOR_OUTPUT_TITLE = 'Director deck output'
 /** 分镜资产图输出节点默认标题（持久化；UI 映射为「分镜输出」） */
 export const ASSET_SCRIPT_OUTPUT_TITLE = 'Shot output'
 
-/** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元生成」） */
-export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative generation'
+/** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元输出」） */
+export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative output'
+
+/** 世界元素资产图输出节点默认标题（持久化；UI 映射为「世界元素输出」） */
+export const ASSET_WORLD_OUTPUT_TITLE = 'World element output'
 
 export interface GraphScopeOutputConfig {
   kind: GraphOutputKind
@@ -190,15 +193,22 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       title: 'Canvas output'
     }
   },
-  /** 世界元素资产图：提取 → 编辑；不强制输出节点 */
+  /** 世界元素资产图：提取 → 表格 → 编辑 → 输出；不强制通用输出节点 */
   worldAsset: {
     id: 'worldAsset',
     ensureOutput: false,
+    outputTitleI18nKey: 'graph.titles.worldOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    ensureSingletonTypeIds: ['world.extract', 'world.table', 'world.editor'],
+    ensureSingletonTypeIds: [
+      'world.extract',
+      'world.table',
+      'world.editor',
+      'output.world'
+    ],
     output: {
       kind: 'image',
-      title: 'World elements output'
+      title: ASSET_WORLD_OUTPUT_TITLE,
+      inputDataType: GraphPortType.image
     }
   },
   /** 叙事单元资产图：拆解 → 表格 → 编辑；不强制输出节点 */
@@ -470,14 +480,16 @@ function ensureGraphEdge(
   })
 }
 
-/** 世界元素资产图默认链：提取 → 表格 → 编辑（仅新建图时调用） */
+/** 世界元素资产图默认链：提取 → 表格 → 编辑 → 输出（仅新建图时调用） */
 export function ensureWorldAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
   const extract = nodes.find((node) => node.typeId === 'world.extract')
   const table = nodes.find((node) => node.typeId === 'world.table')
   const editor = nodes.find((node) => node.typeId === 'world.editor')
+  const output = nodes.find((node) => node.typeId === 'output.world')
   if (!extract || !table || !editor) return
   ensureGraphEdge(edges, extract.id, table.id, 'out', 'in')
   ensureGraphEdge(edges, table.id, editor.id, 'out', 'in')
+  if (output) ensureGraphEdge(edges, editor.id, output.id, 'out', 'in')
 }
 
 /** 分镜资产图默认链：拆分 → 表格 → 分镜图 / 分镜视频 → 输出（仅新建图时调用） */

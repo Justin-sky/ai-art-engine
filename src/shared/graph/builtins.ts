@@ -64,7 +64,8 @@ import {
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_NARRATIVE_OUTPUT_TITLE,
-  ASSET_SCRIPT_OUTPUT_TITLE
+  ASSET_SCRIPT_OUTPUT_TITLE,
+  ASSET_WORLD_OUTPUT_TITLE
 } from './scopes'
 import { defaultShotParamsNodeParams } from './shotParams'
 import { isAssetRefNode } from './nodeRole'
@@ -342,9 +343,9 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
   }
 }
 
-/** 导演台 / 分镜 / 叙事资产编辑窗口的专用输出（仅输入口，无输出端口） */
+/** 导演台 / 分镜 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
 function specializedOutputDef(
-  typeId: 'output.director' | 'output.script' | 'output.narrative',
+  typeId: 'output.director' | 'output.script' | 'output.narrative' | 'output.world',
   label: string,
   icon: string,
   defaultTitle: string,
@@ -387,9 +388,14 @@ function specializedOutputDef(
         ? GRAPH_OUTPUT_NODE_IDS.director
         : typeId === 'output.script'
           ? GRAPH_OUTPUT_NODE_IDS.script
-          : GRAPH_OUTPUT_NODE_IDS.narrative,
-    // 叙事 / 分镜输出允许删除；导演台输出仍锁定
-    deletable: typeId === 'output.narrative' || typeId === 'output.script',
+          : typeId === 'output.narrative'
+            ? GRAPH_OUTPUT_NODE_IDS.narrative
+            : GRAPH_OUTPUT_NODE_IDS.world,
+    // 叙事 / 分镜 / 世界元素输出允许删除；导演台输出仍锁定
+    deletable:
+      typeId === 'output.narrative' ||
+      typeId === 'output.script' ||
+      typeId === 'output.world',
     inspector: 'output',
     ...(inspectorId ? { inspectorId } : {}),
     card: 'media',
@@ -422,13 +428,21 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ),
   specializedOutputDef(
     'output.narrative',
-    'Narrative generation',
+    'Narrative output',
     '📜',
     ASSET_NARRATIVE_OUTPUT_TITLE,
     'text',
     GraphPortType.text,
     executeNarrativeOutputNode,
     'studio.graph.narrativeOutput'
+  ),
+  specializedOutputDef(
+    'output.world',
+    'World element output',
+    '🌍',
+    ASSET_WORLD_OUTPUT_TITLE,
+    'image',
+    GraphPortType.image
   ),
   {
     typeId: 'note.text',

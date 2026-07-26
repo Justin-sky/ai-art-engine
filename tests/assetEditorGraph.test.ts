@@ -175,6 +175,36 @@ describe('asset editor graph', () => {
     expect(isNodeDeletable(output!)).toBe(true)
   })
 
+  it('creates default world asset graph with extract → table → editor → output chain', () => {
+    const doc = createDefaultScopedGraph('worldAsset', 'world')
+    const extract = doc.nodes.find((node) => node.typeId === 'world.extract')
+    const table = doc.nodes.find((node) => node.typeId === 'world.table')
+    const editor = doc.nodes.find((node) => node.typeId === 'world.editor')
+    const output = doc.nodes.find((node) => node.typeId === 'output.world')
+    expect(extract).toBeTruthy()
+    expect(table).toBeTruthy()
+    expect(editor).toBeTruthy()
+    expect(output).toBeTruthy()
+    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
+      ['in', 'text'],
+      ['out', 'image']
+    ])
+    expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
+      ['in', 'image']
+    ])
+    expect(
+      doc.edges.some((edge) => edge.source === extract?.id && edge.target === table?.id)
+    ).toBe(true)
+    expect(
+      doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
+    ).toBe(true)
+    expect(
+      doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
+    ).toBe(true)
+    expect(canConnectNodes(editor!, output!)).toBe(true)
+    expect(isNodeDeletable(output!)).toBe(true)
+  })
+
   it('keeps screenplay processing node id and play.script edges across normalize reload', () => {
     const play = createNodeFromType('play.script', { x: 0, y: 0 }, { id: 'play-1' })
     const processing = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, { id: 'sp-edit-1' })

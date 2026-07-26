@@ -1705,7 +1705,8 @@ export default {
         text: '剧本输出',
         director: '导演台输出',
         script: '分镜输出',
-        narrative: '叙事单元生成'
+        narrative: '叙事单元输出',
+        world: '世界元素输出'
       },
       note: {
         text: '备注'
@@ -1776,7 +1777,8 @@ export default {
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
       scriptOutput: '分镜输出',
-      narrativeOutput: '叙事单元生成',
+      narrativeOutput: '叙事单元输出',
+      worldOutput: '世界元素输出',
       assetOutput: {
         image: '图片输出',
         video: '视频输出',

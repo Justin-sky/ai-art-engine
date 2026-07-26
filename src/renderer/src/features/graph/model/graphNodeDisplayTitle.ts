@@ -16,7 +16,8 @@ const STOCK_OUTPUT_TITLE_I18N: Record<string, string> = {
   'Screenplay output': 'graph.titles.screenplayOutput',
   'Director deck output': 'graph.titles.directorOutput',
   'Shot output': 'graph.titles.scriptOutput',
-  'Narrative generation': 'graph.titles.narrativeOutput'
+  'Narrative output': 'graph.titles.narrativeOutput',
+  'World element output': 'graph.titles.worldOutput'
 }
 
 export type GraphNodeDisplayTitleOptions = {

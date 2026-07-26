@@ -79,12 +79,14 @@ describe('graph scopes', () => {
     ])
   })
 
-  it('world scope ensures extract / table / editor singletons', () => {
+  it('world scope ensures extract / table / editor / output singletons', () => {
     const def = getGraphScopeDefinition('worldAsset')
+    expect(def.ensureOutput).toBe(false)
     expect(def.ensureSingletonTypeIds).toEqual([
       'world.extract',
       'world.table',
-      'world.editor'
+      'world.editor',
+      'output.world'
     ])
   })
 

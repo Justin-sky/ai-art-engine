@@ -396,6 +396,7 @@ import {
   isNarrativeTableNode,
   isNarrativeEditorNode,
   isNarrativeOutputNode,
+  isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
   isSelectScreenplayNode,
@@ -777,6 +778,7 @@ const typeLabel = computed(() => {
   }
   if (props.node.category === 'output') {
     if (isNarrativeOutputNode(props.node)) return t('graph.titles.narrativeOutput')
+    if (isWorldOutputNode(props.node)) return t('graph.titles.worldOutput')
     if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
     const scopeDef = getGraphScopeDefinition(graphScope.value)
     if (scopeDef.outputTitleI18nKey && props.node.params.outputKind === scopeDef.output.kind) {
@@ -822,6 +824,7 @@ const typeIcon = computed(() => {
   if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
   if (isNarrativeEditorNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
   if (isWorldEditorNode(props.node)) return '🤺'
+  if (isWorldOutputNode(props.node)) return '🌍'
   if (isNarrativeOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)

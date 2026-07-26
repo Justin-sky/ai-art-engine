@@ -53,6 +53,7 @@ const CANVAS_OUTPUT_NODE_TYPES = [
   'output.director',
   'output.script',
   'output.narrative',
+  'output.world',
   'output.text'
 ] as const
 

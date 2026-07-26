@@ -71,6 +71,10 @@ export function isNarrativeOutputNode(node: Pick<GraphNode, 'typeId'>): boolean 
   return node.typeId === 'output.narrative'
 }
 
+export function isWorldOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'output.world'
+}
+
 export function isWorldTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.table'
 }

@@ -2383,7 +2383,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'world',
-    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.editor']
+    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.editor', 'output.world']
   },
   {
     id: 'motion',

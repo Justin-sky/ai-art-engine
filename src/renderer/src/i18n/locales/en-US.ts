@@ -1709,7 +1709,8 @@ export default {
         text: 'Screenplay output',
         director: 'Director deck output',
         script: 'Shot output',
-        narrative: 'Narrative generation'
+        narrative: 'Narrative output',
+        world: 'World element output'
       },
       note: {
         text: 'Note'
@@ -1780,7 +1781,8 @@ export default {
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
       scriptOutput: 'Shot output',
-      narrativeOutput: 'Narrative generation',
+      narrativeOutput: 'Narrative output',
+      worldOutput: 'World element output',
       assetOutput: {
         image: 'Image output',
         video: 'Video output',

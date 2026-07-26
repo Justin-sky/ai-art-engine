@@ -15,6 +15,7 @@ import {
   ensureNarrativeAssetDefaultChain,
   ensureShotWorkflowDefaultChain,
   ensureVisualDefaultChain,
+  ensureWorldAssetDefaultChain,
   getGraphScopeDefinition,
   resolveScopeOutput
 } from './scopes'
@@ -229,6 +230,7 @@ function ensureScopeSingletons(nodes: GraphNode[], scope: GraphAddScope): void {
       typeId === 'world.extract' ||
       typeId === 'world.table' ||
       typeId === 'world.editor' ||
+      typeId === 'output.world' ||
       typeId === 'narrative.split' ||
       typeId === 'narrative.table' ||
       typeId === 'narrative.editor' ||
@@ -401,6 +403,9 @@ export function normalizeScopedGraph(
   }
   if (scope === 'narrativeAsset') {
     ensureNarrativeAssetDefaultChain(nodes, edges)
+  }
+  if (scope === 'worldAsset') {
+    ensureWorldAssetDefaultChain(nodes, edges)
   }
 
   return finalizeGraph(nodes, { ...doc, edges, runStates }, scope)

@@ -34,6 +34,9 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.prompt.optimize')).toBe('提示词优化')
     expect(t('graph.types.output.director')).toBe('导演台输出')
     expect(t('graph.types.output.script')).toBe('分镜输出')
+    expect(t('graph.types.output.narrative')).toBe('叙事单元输出')
+    expect(t('graph.types.output.world')).toBe('世界元素输出')
+    expect(t('graph.titles.worldOutput')).toBe('世界元素输出')
   })
 
   it('resolves graph.port.types.* labels', () => {

@@ -32,7 +32,8 @@ export const GRAPH_OUTPUT_NODE_IDS = {
   text: 'text-output',
   director: 'director-output',
   script: 'script-output',
-  narrative: 'narrative-output'
+  narrative: 'narrative-output',
+  world: 'world-output'
 } as const
 
 export type GraphOutputNodeIdKey = keyof typeof GRAPH_OUTPUT_NODE_IDS
@@ -84,6 +85,9 @@ export const GRAPH_WORLD_TABLE_NODE_ID = 'world-table'
 /** 世界元素资产图：世界元素编辑入口节点 */
 export const GRAPH_WORLD_EDITOR_NODE_ID = 'world-editor'
 
+/** 世界元素资产图：世界元素输出节点 */
+export const GRAPH_WORLD_OUTPUT_NODE_ID = GRAPH_OUTPUT_NODE_IDS.world
+
 export type GraphNodeCategory = 'asset' | 'output' | 'note'
 export type GraphOutputKind = 'video' | 'image' | 'voice' | 'text'
 
@@ -103,6 +107,7 @@ export function graphOutputNodeIdForType(
   if (typeId === 'output.director') return GRAPH_OUTPUT_NODE_IDS.director
   if (typeId === 'output.script') return GRAPH_OUTPUT_NODE_IDS.script
   if (typeId === 'output.narrative') return GRAPH_OUTPUT_NODE_IDS.narrative
+  if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
   if (typeId?.startsWith('output.')) {
     const suffix = typeId.slice('output.'.length)
     if (
@@ -155,6 +160,7 @@ export type GraphNodeTypeId =
   | 'output.director'
   | 'output.script'
   | 'output.narrative'
+  | 'output.world'
   | 'note.text'
   | 'play.script'
   | 'prompt.optimize'
