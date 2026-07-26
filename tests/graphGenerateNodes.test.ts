@@ -53,7 +53,7 @@ const CANVAS_OUTPUT_NODE_TYPES = [
   'output.video',
   'output.voice',
   'output.director',
-  'output.script',
+  'output.timeline',
   'output.narrative',
   'output.narrativeUnit',
   'output.world',

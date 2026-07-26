@@ -2492,7 +2492,10 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'narrative.split',
       'narrative.table',
       'narrative.gen',
-      'output.narrative'
+      'narrative.unitGen',
+      'narrative.unitRef',
+      'output.narrative',
+      'output.narrativeUnit'
     ]
   },
   {
@@ -2504,7 +2507,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'script.shotImageGen',
       'script.shotVideoGen',
       'script.shotParams',
-      'output.script'
+      'output.timeline'
     ]
   },
   {

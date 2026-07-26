@@ -47,6 +47,10 @@ import {
   openShotTableWindow
 } from './shotTableWindow'
 import {
+  closeScriptTimelineWindow,
+  openScriptTimelineWindow
+} from './scriptTimelineWindow'
+import {
   closeWorldTableWindow,
   openWorldTableWindow
 } from './worldTableWindow'
@@ -103,6 +107,7 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.PROJECT_CLOSE, () => {
     videoJobService.stopAllTimers()
     closeShotTableWindow()
+    closeScriptTimelineWindow()
     closeWorldTableWindow()
     projectService.closeProject()
   })
@@ -128,6 +133,12 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, (scriptAssetId?: string) =>
     closeShotTableWindow(scriptAssetId)
+  )
+  handle(IpcChannels.WINDOW_OPEN_SCRIPT_TIMELINE, (scriptAssetId: string) =>
+    openScriptTimelineWindow(scriptAssetId)
+  )
+  handle(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, (scriptAssetId?: string) =>
+    closeScriptTimelineWindow(scriptAssetId)
   )
   handle(IpcChannels.WINDOW_OPEN_WORLD_TABLE, (worldAssetId: string) =>
     openWorldTableWindow(worldAssetId)

@@ -31,7 +31,7 @@ export const GRAPH_OUTPUT_NODE_IDS = {
   voice: 'voice-output',
   text: 'text-output',
   director: 'director-output',
-  script: 'script-output',
+  timeline: 'timeline-output',
   narrative: 'narrative-output',
   narrativeUnit: 'narrative-unit-output',
   world: 'world-output'
@@ -99,14 +99,14 @@ export function graphOutputNodeId(kind: GraphOutputKind): string {
 
 /**
  * 按 typeId（优先）或 outputKind 解析规范输出节点 id。
- * `output.director` / `output.script` 使用专用 id。
+ * `output.director` / `output.timeline` 等使用专用 id。
  */
 export function graphOutputNodeIdForType(
   typeId: string | undefined,
   kind: GraphOutputKind = 'video'
 ): string {
   if (typeId === 'output.director') return GRAPH_OUTPUT_NODE_IDS.director
-  if (typeId === 'output.script') return GRAPH_OUTPUT_NODE_IDS.script
+  if (typeId === 'output.timeline') return GRAPH_OUTPUT_NODE_IDS.timeline
   if (typeId === 'output.narrative') return GRAPH_OUTPUT_NODE_IDS.narrative
   if (typeId === 'output.narrativeUnit') return GRAPH_OUTPUT_NODE_IDS.narrativeUnit
   if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
@@ -160,7 +160,7 @@ export type GraphNodeTypeId =
   | `asset.${AssetType}`
   | `output.${GraphOutputKind}`
   | 'output.director'
-  | 'output.script'
+  | 'output.timeline'
   | 'output.narrative'
   | 'output.narrativeUnit'
   | 'output.world'

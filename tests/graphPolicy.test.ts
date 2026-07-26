@@ -68,7 +68,7 @@ describe('graph policy', () => {
   it('output nodes are addable in canvasAsset and shot image/video outputs', () => {
     expect(isNodeAddableInScope('canvasAsset', 'output.video')).toBe(true)
     expect(isNodeAddableInScope('canvasAsset', 'output.director')).toBe(true)
-    expect(isNodeAddableInScope('canvasAsset', 'output.script')).toBe(true)
+    expect(isNodeAddableInScope('canvasAsset', 'output.timeline')).toBe(true)
     expect(isNodeAddableInScope('shotWorkflow', 'output.video')).toBe(true)
     expect(isNodeAddableInScope('visual', 'output.image')).toBe(true)
     expect(isNodeAddableInScope('directorAsset', 'output.image')).toBe(false)

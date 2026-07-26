@@ -45,8 +45,8 @@ export const ASSET_SCREENPLAY_OUTPUT_TITLE = 'Screenplay output'
 /** 导演台资产图输出节点默认标题（持久化；UI 映射为「导演台输出」） */
 export const ASSET_DIRECTOR_OUTPUT_TITLE = 'Director deck output'
 
-/** 分镜资产图输出节点默认标题（持久化；UI 映射为「分镜输出」） */
-export const ASSET_SCRIPT_OUTPUT_TITLE = 'Shot output'
+/** 分镜资产图「成片时间线」输出节点默认标题（持久化；UI 映射为「成片时间线」） */
+export const ASSET_TIMELINE_OUTPUT_TITLE = 'Cut timeline'
 
 /** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元输出」） */
 export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative output'
@@ -175,11 +175,12 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   scriptAsset: {
     id: 'scriptAsset',
     coerceOutput: true,
-    outputTitleI18nKey: 'graph.titles.scriptOutput',
+    outputTitleI18nKey: 'graph.titles.timelineOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
+      typeId: 'output.timeline',
       kind: 'video',
-      title: ASSET_SCRIPT_OUTPUT_TITLE,
+      title: ASSET_TIMELINE_OUTPUT_TITLE,
       inputDataType: GraphPortType.video
     },
     ensureSingletonTypeIds: [

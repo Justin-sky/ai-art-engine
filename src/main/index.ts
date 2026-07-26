@@ -11,6 +11,10 @@ import {
   setShotTableMainWindow
 } from './shotTableWindow'
 import {
+  closeScriptTimelineWindow,
+  setScriptTimelineMainWindow
+} from './scriptTimelineWindow'
+import {
   closeWorldTableWindow,
   setWorldTableMainWindow
 } from './worldTableWindow'
@@ -55,14 +59,17 @@ function createWindow(): void {
 
   setMainWindow(mainWindow)
   setShotTableMainWindow(mainWindow)
+  setScriptTimelineMainWindow(mainWindow)
   setWorldTableMainWindow(mainWindow)
   mainWindow.on('closed', () => {
     setMainWindow(null)
     setShotTableMainWindow(null)
+    setScriptTimelineMainWindow(null)
     setWorldTableMainWindow(null)
     closeStageWindow()
     closeShotPreviewWindow()
     closeShotTableWindow()
+    closeScriptTimelineWindow()
     closeWorldTableWindow()
   })
 

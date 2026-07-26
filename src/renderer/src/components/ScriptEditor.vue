@@ -11,13 +11,13 @@
       <NodeGraphEditor
         ref="scriptGraphRef"
         class="script-main"
-        :class="{ 'with-shot-pane': shotPaneOpen }"
-        :style="shotPaneOpen ? { flexBasis: `${scriptPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
+        :class="{ 'with-shot-pane': embedPaneOpen }"
+        :style="embedPaneOpen ? { flexBasis: `${scriptPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
         :asset-id="scriptAssetId"
         :hide-toolbar="scriptToolbarCollapsed"
       />
 
-      <template v-if="shotPaneKind">
+      <template v-if="embedPaneKind">
         <div
           class="split-handle"
           role="separator"
@@ -28,18 +28,18 @@
         />
         <section class="shot-embed-pane">
           <header class="shot-embed-pane-head">
-            <span class="shot-embed-pane-title">{{ shotPaneTitle }}</span>
-            <span class="shot-embed-pane-hint">{{ shotPaneHint }}</span>
+            <span class="shot-embed-pane-title">{{ embedPaneTitle }}</span>
+            <span class="shot-embed-pane-hint">{{ embedPaneHint }}</span>
             <GraphToolbarCollapseBtn v-model="shotToolbarCollapsed" />
-            <button type="button" class="shot-embed-pane-close" @click="closeShotPane">
+            <button type="button" class="shot-embed-pane-close" @click="closeEmbedPane">
               {{ t('script.dialog.close') }}
             </button>
           </header>
           <ShotEditorBody
-            :key="shotPaneKind"
+            :key="embedPaneKind"
             ref="shotEditorBodyRef"
             class="shot-embed-pane-body"
-            :kind="shotPaneKind"
+            :kind="embedPaneKind"
             :hide-graph-toolbar="shotToolbarCollapsed"
             :script-asset-id="scriptAssetId"
           />
@@ -53,6 +53,12 @@
       :script-asset-id="scriptAssetId"
       @close="tableOpen = false"
     />
+    <ScriptTimelineDialog
+      v-if="timelineOpen"
+      ref="timelineDialogRef"
+      :script-asset-id="scriptAssetId"
+      @close="timelineOpen = false"
+    />
   </div>
 </template>
 
@@ -61,6 +67,7 @@ import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import ShotEditorBody from './ShotEditorBody.vue'
 import ShotTableDialog from './ShotTableDialog.vue'
+import ScriptTimelineDialog from './ScriptTimelineDialog.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import { shotScriptAssetId, isDraftAssetId } from '@shared/domain'
 import { storeToRefs } from 'pinia'
@@ -71,7 +78,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { scriptPreviewKey } from '../features/script/scriptPreview'
 
-type ShotPaneKind = 'image' | 'video'
+type EmbedPaneKind = 'image' | 'video'
 
 const props = defineProps<{
   scriptAssetId: string
@@ -83,42 +90,42 @@ provide('scriptAssetId', computed(() => props.scriptAssetId))
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const { drafts } = storeToRefs(useDraftStore())
-const shotPaneKind = ref<ShotPaneKind | null>(null)
+const embedPaneKind = ref<EmbedPaneKind | null>(null)
 const tableOpen = ref(false)
+const timelineOpen = ref(false)
 const scriptToolbarCollapsed = ref(false)
 const shotToolbarCollapsed = ref(false)
 const shotEditorBodyRef = ref<InstanceType<typeof ShotEditorBody> | null>(null)
 const tableDialogRef = ref<InstanceType<typeof ShotTableDialog> | null>(null)
+const timelineDialogRef = ref<InstanceType<typeof ScriptTimelineDialog> | null>(null)
 const scriptGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const splitHostEl = ref<HTMLElement | null>(null)
 
-const shotPaneOpen = computed(() => shotPaneKind.value != null)
-const shotPaneTitle = computed(() =>
-  shotPaneKind.value === 'image'
+const embedPaneOpen = computed(() => embedPaneKind.value != null)
+const embedPaneTitle = computed(() =>
+  embedPaneKind.value === 'image'
     ? t('script.dialog.shotImageEditor')
     : t('script.dialog.shotVideoEditor')
 )
-const shotPaneHint = computed(() =>
-  shotPaneKind.value === 'image'
-    ? t('script.hint.imageGraph')
-    : t('script.hint.videoGraph')
+const embedPaneHint = computed(() =>
+  embedPaneKind.value === 'image' ? t('script.hint.imageGraph') : t('script.hint.videoGraph')
 )
 
 const scriptPanePercent = ref(48)
 let splitDragging = false
 
-async function openShotPane(kind: ShotPaneKind): Promise<void> {
+async function openShotPane(kind: 'image' | 'video'): Promise<void> {
   await scriptGraphRef.value?.flushSave?.()
-  if (shotPaneKind.value && shotPaneKind.value !== kind) {
+  if (embedPaneKind.value && embedPaneKind.value !== kind) {
     await shotEditorBodyRef.value?.flushSave()
   }
-  shotPaneKind.value = kind
+  embedPaneKind.value = kind
   await ensureScopedSelection('shot')
 }
 
-async function closeShotPane(): Promise<void> {
+async function closeEmbedPane(): Promise<void> {
   await shotEditorBodyRef.value?.flushSave()
-  shotPaneKind.value = null
+  embedPaneKind.value = null
   workspace.focusProjectGlobals()
 }
 
@@ -132,6 +139,15 @@ async function openShotTable(): Promise<void> {
   void window.studio.openShotTableWindow(props.scriptAssetId)
 }
 
+async function openScriptTimeline(): Promise<void> {
+  await scriptGraphRef.value?.flushSave?.()
+  if (isDraftAssetId(props.scriptAssetId)) {
+    timelineOpen.value = true
+    return
+  }
+  void window.studio.openScriptTimelineWindow(props.scriptAssetId)
+}
+
 provide(scriptPreviewKey, {
   openShotImageEditor: () => {
     void openShotPane('image')
@@ -141,6 +157,9 @@ provide(scriptPreviewKey, {
   },
   openShotTable: () => {
     void openShotTable()
+  },
+  openScriptTimeline: () => {
+    void openScriptTimeline()
   }
 })
 
@@ -210,6 +229,7 @@ useEditorDocumentSession({
   save: async () => {
     await shotEditorBodyRef.value?.flushSave()
     await tableDialogRef.value?.flushSave()
+    await timelineDialogRef.value?.flushSave()
   },
   saveOnUnmount: false
 })
@@ -244,8 +264,9 @@ watch(
 watch(
   () => props.scriptAssetId,
   () => {
-    shotPaneKind.value = null
+    embedPaneKind.value = null
     shotToolbarCollapsed.value = false
+    timelineOpen.value = false
   }
 )
 </script>

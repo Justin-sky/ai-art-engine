@@ -19,6 +19,7 @@
       <DirectorStageWindowView v-if="isStageWindow" />
       <ShotPreviewWindowView v-else-if="isShotPreviewWindow" />
       <ShotTableWindowView v-else-if="isShotTableWindow" />
+      <ScriptTimelineWindowView v-else-if="isScriptTimelineWindow" />
       <WorldTableWindowView v-else-if="isWorldTableWindow" />
       <template v-else>
         <!-- 设置打开时仍保留主界面，半透明遮罩才能透出后面内容 -->
@@ -46,6 +47,7 @@ import SettingsView from './views/SettingsView.vue'
 import DirectorStageWindowView from './views/DirectorStageWindowView.vue'
 import ShotPreviewWindowView from './views/ShotPreviewWindowView.vue'
 import ShotTableWindowView from './views/ShotTableWindowView.vue'
+import ScriptTimelineWindowView from './views/ScriptTimelineWindowView.vue'
 import WorldTableWindowView from './views/WorldTableWindowView.vue'
 import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
@@ -64,17 +66,23 @@ const isSettings = computed(() => route.name === 'settings')
 const isStageWindow = computed(() => route.name === 'stage')
 const isShotPreviewWindow = computed(() => route.name === 'shot-preview')
 const isShotTableWindow = computed(() => route.name === 'shot-table')
+const isScriptTimelineWindow = computed(() => route.name === 'script-timeline')
 const isWorldTableWindow = computed(() => route.name === 'world-table')
 const isChromeLessWindow = computed(
   () =>
     isStageWindow.value ||
     isShotPreviewWindow.value ||
     isShotTableWindow.value ||
+    isScriptTimelineWindow.value ||
     isWorldTableWindow.value
 )
 /** 分镜 / 世界元素表格独立窗仍需要任务列表 / 运行日志 / Prompt */
 const showOverlayDialogs = computed(
-  () => !isChromeLessWindow.value || isShotTableWindow.value || isWorldTableWindow.value
+  () =>
+    !isChromeLessWindow.value ||
+    isShotTableWindow.value ||
+    isScriptTimelineWindow.value ||
+    isWorldTableWindow.value
 )
 const mainView = ref<'home' | 'studio'>('home')
 let stopAssetUpdated: (() => void) | null = null

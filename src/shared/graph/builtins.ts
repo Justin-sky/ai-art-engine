@@ -65,7 +65,7 @@ import {
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_NARRATIVE_OUTPUT_TITLE,
-  ASSET_SCRIPT_OUTPUT_TITLE,
+  ASSET_TIMELINE_OUTPUT_TITLE,
   ASSET_WORLD_OUTPUT_TITLE,
   NARRATIVE_UNIT_OUTPUT_TITLE
 } from './scopes'
@@ -121,7 +121,7 @@ const ASSET_META: Array<{
   {
     type: 'narrative',
     label: 'Narrative Units',
-    icon: '🧩',
+    icon: '📖',
     outType: GraphPortType.text,
     addable: false,
     weight: 0.7
@@ -346,11 +346,11 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
   }
 }
 
-/** 导演台 / 分镜 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
+/** 导演台 / 成片时间线 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
 function specializedOutputDef(
   typeId:
     | 'output.director'
-    | 'output.script'
+    | 'output.timeline'
     | 'output.narrative'
     | 'output.narrativeUnit'
     | 'output.world',
@@ -394,18 +394,18 @@ function specializedOutputDef(
     singletonId:
       typeId === 'output.director'
         ? GRAPH_OUTPUT_NODE_IDS.director
-        : typeId === 'output.script'
-          ? GRAPH_OUTPUT_NODE_IDS.script
+        : typeId === 'output.timeline'
+          ? GRAPH_OUTPUT_NODE_IDS.timeline
           : typeId === 'output.narrative'
             ? GRAPH_OUTPUT_NODE_IDS.narrative
             : typeId === 'output.narrativeUnit'
               ? GRAPH_OUTPUT_NODE_IDS.narrativeUnit
               : GRAPH_OUTPUT_NODE_IDS.world,
-    // 叙事 / 分镜 / 世界元素输出允许删除；导演台输出仍锁定
+    // 叙事 / 成片时间线 / 世界元素输出允许删除；导演台输出仍锁定
     deletable:
       typeId === 'output.narrative' ||
       typeId === 'output.narrativeUnit' ||
-      typeId === 'output.script' ||
+      typeId === 'output.timeline' ||
       typeId === 'output.world',
     inspector: 'output',
     ...(inspectorId ? { inspectorId } : {}),
@@ -430,17 +430,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     GraphPortType.image
   ),
   specializedOutputDef(
-    'output.script',
-    'Shot output',
+    'output.timeline',
+    'Cut timeline',
     '🎥',
-    ASSET_SCRIPT_OUTPUT_TITLE,
+    ASSET_TIMELINE_OUTPUT_TITLE,
     'video',
     GraphPortType.video
   ),
   specializedOutputDef(
     'output.narrative',
     'Narrative output',
-    '📜',
+    '📖',
     ASSET_NARRATIVE_OUTPUT_TITLE,
     'text',
     GraphPortType.text
@@ -448,7 +448,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   specializedOutputDef(
     'output.narrativeUnit',
     'Narrative output',
-    '📜',
+    '📖',
     NARRATIVE_UNIT_OUTPUT_TITLE,
     'text',
     GraphPortType.text
@@ -1066,7 +1066,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'narrative.split',
     category: 'note',
     label: 'Narrative split',
-    icon: '🧩',
+    icon: '📖',
     defaultTitle: 'Narrative split',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
@@ -1116,7 +1116,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'narrative.gen',
     category: 'note',
     label: 'Narrative unit gen',
-    icon: '🧩',
+    icon: '📖',
     defaultTitle: 'Narrative unit gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
@@ -1141,7 +1141,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'narrative.unitGen',
     category: 'note',
     label: 'Narrative gen',
-    icon: '🧩',
+    icon: '📖',
     defaultTitle: 'Narrative gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },

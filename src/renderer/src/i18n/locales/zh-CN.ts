@@ -721,7 +721,7 @@ export default {
     },
     refs: {
       title: '参考',
-      hint: '写入分镜视频节点；首/尾帧不占 @',
+      hint: "写入分镜视频节点；首/尾帧不占 {'@'}",
       drop: '拖入资产到此处',
       add: '+ 添加参考',
       badge: '参考{n}',
@@ -735,7 +735,7 @@ export default {
       setFrame: '选择',
       changeFrame: '更换',
       clearFrame: '清除',
-      frameHint: '首/尾帧连到视频生成节点专用口，不占用 @ 编号。',
+      frameHint: "首/尾帧连到视频生成节点专用口，不占用 {'@'} 编号。",
       error: {
         invalidType: '请拖入图片、声音或视频资产',
         noFile: '该资产尚未关联文件',
@@ -751,21 +751,54 @@ export default {
     hint: {
       imageGraph: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
       videoGraph: '每镜独立视频图 · 参数与运行使用右侧 Inspector',
+      timeline: '预览成片 · 左侧输入视频 / 右侧资产库可拖入下方轨道',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布'
+        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布 · 双击成片时间线在新窗口打开编排'
     },
     dialog: {
       shotImageEditor: '分镜图',
       shotVideoEditor: '分镜视频',
+      timeline: '成片时间线',
       shotTable: '分镜表格',
       close: '关闭'
+    },
+    timeline: {
+      sources: '输入视频',
+      assetsPanel: '资产库',
+      refreshSources: '刷新',
+      autoPlace: '自动上轨',
+      sourcesEmpty: '暂无可用视频，请先运行上游生成分镜视频',
+      emptyPreview: '将视频拖入轨道后可在此预览',
+      videoEmpty: '还没有视频，快去生成吧~',
+      createShots: '创建分镜',
+      none: '无',
+      track: {
+        video: '视频',
+        voice: '配音',
+        subtitle: '字幕',
+        music: '音乐'
+      },
+      removeClip: '移除片段',
+      duration: '总时长',
+      durationHint: '时间线总时长（秒），不得短于素材内容',
+      rate: '速度',
+      loop: '循环',
+      toStart: '回到起点',
+      play: '播放',
+      pause: '暂停',
+      zoomFit: '适应宽度'
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'
     },
     shotTableWindow: {
       loading: '正在打开分镜表格…',
+      missingAsset: '缺少剧本资产',
+      noProject: '主窗口未打开工程'
+    },
+    timelineWindow: {
+      loading: '正在打开成片时间线…',
       missingAsset: '缺少剧本资产',
       noProject: '主窗口未打开工程'
     }
@@ -1613,8 +1646,8 @@ export default {
     scriptShotVideoGenNode: {
       hint: '双击在下方展开分镜视频画布'
     },
-    scriptOutputNode: {
-      hint: '分镜流程最终视频输出'
+    timelineOutputNode: {
+      hint: '双击在新窗口打开成片时间线'
     },
     worldTableNode: {
       hint: '双击打开世界元素表格'
@@ -1718,7 +1751,7 @@ export default {
         voice: '声音输出',
         text: '剧本输出',
         director: '导演台输出',
-        script: '分镜输出',
+        timeline: '成片时间线',
         narrative: '叙事单元输出',
         narrativeUnit: '叙事输出',
         world: '世界元素输出'
@@ -1793,7 +1826,7 @@ export default {
       shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
-      scriptOutput: '分镜输出',
+      timelineOutput: '成片时间线',
       narrativeOutput: '叙事单元输出',
       narrativeUnitOutput: '叙事输出',
       worldOutput: '世界元素输出',

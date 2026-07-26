@@ -513,7 +513,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   script: '🎥',
   canvas: '🎨',
   world: '🤺',
-  narrative: '🧩'
+  narrative: '📖'
 }
 
 /** 仅含骨骼+动画、无网格的模型资产图标（动画片段） */

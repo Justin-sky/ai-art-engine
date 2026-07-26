@@ -722,7 +722,7 @@ export default {
     },
     refs: {
       title: 'References',
-      hint: 'Writes to the shot video node; frames are not @ mentions',
+      hint: "Writes to the shot video node; frames are not {'@'} mentions",
       drop: 'Drop assets here',
       add: '+ Add reference',
       badge: 'Ref {n}',
@@ -736,7 +736,8 @@ export default {
       setFrame: 'Choose',
       changeFrame: 'Change',
       clearFrame: 'Clear',
-      frameHint: 'First/last frames connect to dedicated video-node ports and do not use @ numbers.',
+      frameHint:
+        "First/last frames connect to dedicated video-node ports and do not use {'@'} numbers.",
       error: {
         invalidType: 'Drop an image, voice, or video asset',
         noFile: 'This asset has no linked file yet',
@@ -753,21 +754,54 @@ export default {
     hint: {
       imageGraph: 'Per-shot visual graph · use the right Inspector for params and run',
       videoGraph: 'Per-shot video graph · use the right Inspector for params and run',
+      timeline: 'Preview the cut · drag from input videos or the asset library onto the tracks below',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below'
+        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below · double-click cut timeline to open the editor in a new window'
     },
     dialog: {
       shotImageEditor: 'Shot images',
       shotVideoEditor: 'Shot videos',
+      timeline: 'Timeline',
       shotTable: 'Shot table',
       close: 'Close'
+    },
+    timeline: {
+      sources: 'Input videos',
+      assetsPanel: 'Assets',
+      refreshSources: 'Refresh',
+      autoPlace: 'Auto-place',
+      sourcesEmpty: 'No videos yet — run upstream shot video generation first',
+      emptyPreview: 'Drop videos on the track to preview here',
+      videoEmpty: 'No video yet — go generate some~',
+      createShots: 'Create shots',
+      none: 'None',
+      track: {
+        video: 'Video',
+        voice: 'VO',
+        subtitle: 'Subs',
+        music: 'Music'
+      },
+      removeClip: 'Remove clip',
+      duration: 'Duration',
+      durationHint: 'Timeline length in seconds (cannot be shorter than content)',
+      rate: 'Speed',
+      loop: 'Loop',
+      toStart: 'Go to start',
+      play: 'Play',
+      pause: 'Pause',
+      zoomFit: 'Fit'
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'
     },
     shotTableWindow: {
       loading: 'Opening shot table…',
+      missingAsset: 'Missing script asset',
+      noProject: 'No project open in the main window'
+    },
+    timelineWindow: {
+      loading: 'Opening timeline…',
       missingAsset: 'Missing script asset',
       noProject: 'No project open in the main window'
     }
@@ -1617,8 +1651,8 @@ export default {
     scriptShotVideoGenNode: {
       hint: 'Double-click to expand the shot video graph below'
     },
-    scriptOutputNode: {
-      hint: 'Final video output of the shot pipeline'
+    timelineOutputNode: {
+      hint: 'Double-click to open the timeline in a new window'
     },
     worldTableNode: {
       hint: 'Double-click to open world element table'
@@ -1722,7 +1756,7 @@ export default {
         voice: 'Voice output',
         text: 'Screenplay output',
         director: 'Director deck output',
-        script: 'Shot output',
+        timeline: 'Cut timeline',
         narrative: 'Narrative output',
         narrativeUnit: 'Narrative output',
         world: 'World element output'
@@ -1797,7 +1831,7 @@ export default {
       shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
-      scriptOutput: 'Shot output',
+      timelineOutput: 'Cut timeline',
       narrativeOutput: 'Narrative output',
       narrativeUnitOutput: 'Narrative output',
       worldOutput: 'World element output',

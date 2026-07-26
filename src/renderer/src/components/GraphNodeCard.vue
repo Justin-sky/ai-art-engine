@@ -389,6 +389,7 @@ import {
   isScriptShotSplitNode,
   isScriptShotTableNode,
   isScriptShotVideoGenNode,
+  isTimelineOutputNode,
   isWorldGenNode,
   isWorldExtractNode,
   isWorldTableNode,
@@ -831,10 +832,11 @@ const typeIcon = computed(() => {
   if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
   if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
-  if (isNarrativeGenNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
+  if (isNarrativeGenNode(props.node) || isNarrativeSplitNode(props.node)) return '📖'
   if (isWorldGenNode(props.node)) return '🤺'
   if (isWorldOutputNode(props.node)) return '🌍'
-  if (isNarrativeOutputNode(props.node) || isNarrativeUnitOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
+  if (isNarrativeOutputNode(props.node) || isNarrativeUnitOutputNode(props.node)) return '📖'
+  if (isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
   const t = props.node.assetType
@@ -1109,12 +1111,8 @@ const previewHint = computed(() => {
       ? t('graph.directorNode.live')
       : t('graph.directorNode.hint')
   }
-  if (
-    graphScope.value === 'scriptAsset' &&
-    props.node.category === 'output' &&
-    props.node.params.outputKind === 'video'
-  ) {
-    return t('graph.scriptOutputNode.hint')
+  if (isTimelineOutputNode(props.node)) {
+    return t('graph.timelineOutputNode.hint')
   }
   if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
   if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
@@ -1640,6 +1638,10 @@ function onPreviewDblClick(): void {
   }
   if (isScriptShotVideoGenNode(props.node)) {
     scriptPreview?.openShotEditor()
+    return
+  }
+  if (isTimelineOutputNode(props.node)) {
+    scriptPreview?.openScriptTimeline()
     return
   }
   if (isWorldTableNode(props.node)) {

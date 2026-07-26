@@ -130,6 +130,8 @@ export const IpcChannels = {
   SHOT_PREVIEW_GET: 'shot-preview:get',
   WINDOW_OPEN_SHOT_TABLE: 'window:open-shot-table',
   WINDOW_CLOSE_SHOT_TABLE: 'window:close-shot-table',
+  WINDOW_OPEN_SCRIPT_TIMELINE: 'window:open-script-timeline',
+  WINDOW_CLOSE_SCRIPT_TIMELINE: 'window:close-script-timeline',
   WINDOW_OPEN_WORLD_TABLE: 'window:open-world-table',
   WINDOW_CLOSE_WORLD_TABLE: 'window:close-world-table',
 
@@ -514,6 +516,22 @@ export interface StudioApi {
 
   /** 订阅分镜表格窗口关闭请求（OS 关窗前先保存） */
   onShotTableCloseRequest: (
+    callback: (payload: { scriptAssetId: string }) => void
+  ) => () => void
+
+  /** 打开/聚焦成片时间线独立窗口 */
+  openScriptTimelineWindow: (scriptAssetId: string) => Promise<{ ok: true }>
+
+  /** 关闭成片时间线独立窗口；不传 id 则关闭全部 */
+  closeScriptTimelineWindow: (scriptAssetId?: string) => Promise<{ ok: true }>
+
+  /** 订阅成片时间线窗口关闭（主窗口） */
+  onScriptTimelineClosed: (
+    callback: (payload: { scriptAssetId: string }) => void
+  ) => () => void
+
+  /** 订阅成片时间线窗口关闭请求（OS 关窗前先保存） */
+  onScriptTimelineCloseRequest: (
     callback: (payload: { scriptAssetId: string }) => void
   ) => () => void
 

@@ -149,6 +149,10 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_TABLE, scriptAssetId),
   closeShotTableWindow: (scriptAssetId?: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, scriptAssetId),
+  openScriptTimelineWindow: (scriptAssetId: string) =>
+    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SCRIPT_TIMELINE, scriptAssetId),
+  closeScriptTimelineWindow: (scriptAssetId?: string) =>
+    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, scriptAssetId),
   openWorldTableWindow: (worldAssetId: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_WORLD_TABLE, worldAssetId),
   closeWorldTableWindow: (worldAssetId?: string) =>
@@ -203,6 +207,20 @@ const api: StudioApi = {
     }
     ipcRenderer.on('shot-table:close-request', listener)
     return () => ipcRenderer.removeListener('shot-table:close-request', listener)
+  },
+  onScriptTimelineClosed: (callback) => {
+    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('script-timeline:closed', listener)
+    return () => ipcRenderer.removeListener('script-timeline:closed', listener)
+  },
+  onScriptTimelineCloseRequest: (callback) => {
+    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('script-timeline:close-request', listener)
+    return () => ipcRenderer.removeListener('script-timeline:close-request', listener)
   },
   onWorldTableClosed: (callback) => {
     const listener = (_event: unknown, payload: { worldAssetId: string }): void => {

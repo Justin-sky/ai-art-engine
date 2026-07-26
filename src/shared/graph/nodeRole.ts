@@ -95,6 +95,10 @@ export function isWorldGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.gen'
 }
 
+export function isTimelineOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'output.timeline'
+}
+
 export function isSelectImageNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.select'
 }
