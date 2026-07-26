@@ -1,6 +1,8 @@
 import { inject, type InjectionKey } from 'vue'
 
 export interface ScriptPreviewApi {
+  openShotImageEditor: () => void
+  /** 打开分镜视频生成窗口 */
   openShotEditor: () => void
   openShotTable: () => void
 }

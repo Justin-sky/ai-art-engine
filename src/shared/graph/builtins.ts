@@ -6,7 +6,8 @@ import {
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import {
   GRAPH_OUTPUT_NODE_IDS,
-  GRAPH_SCRIPT_SHOT_EDITOR_NODE_ID,
+  GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
+  GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
   GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
   GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
   GRAPH_NARRATIVE_SPLIT_NODE_ID,
@@ -50,7 +51,8 @@ import {
   executeShotParamsNode,
   executeShotSplitNode,
   executeShotTableNode,
-  executeShotEditorNode,
+  executeShotImageGenNode,
+  executeShotVideoGenNode,
   executeNarrativeSplitNode,
   executeNarrativeTableNode,
   executeNarrativeEditorNode,
@@ -1123,25 +1125,53 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeShotTableNode
   },
   {
-    typeId: 'script.shotEditor',
+    typeId: 'script.shotImageGen',
     category: 'note',
-    label: 'Shot edit',
-    icon: '🎬',
-    defaultTitle: 'Shot edit',
+    label: 'Shot image gen',
+    icon: '🖼️',
+    defaultTitle: 'Shot image gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.video, multiple: true, label: 'Out' }
+      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({}),
     addable: true,
-    singletonId: GRAPH_SCRIPT_SHOT_EDITOR_NODE_ID,
+    singletonId: GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeShotEditorNode
+    execute: executeShotImageGenNode
+  },
+  {
+    typeId: 'script.shotVideoGen',
+    category: 'note',
+    label: 'Shot video gen',
+    icon: '🎬',
+    defaultTitle: 'Shot video gen',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'Text' },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Image'
+      },
+      { id: 'out', direction: 'out', dataType: GraphPortType.video, multiple: true, label: 'Out' }
+    ],
+    defaultParams: () => ({}),
+    addable: true,
+    singletonId: GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
+    deletable: true,
+    inspector: 'none',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeShotVideoGenNode
   },
   {
     typeId: 'world.extract',

@@ -36,6 +36,52 @@ describe('graphRunLogBridge', () => {
     setActivePinia(createPinia())
   })
 
+  it('records input ports on running and output ports on done', () => {
+    const graph = sampleGraph()
+    const store = useGraphRunLogsStore()
+    const bridge = createGraphRunLogBridge({
+      runId: 'run-ports',
+      title: 'Port flow',
+      mode: 'workflow',
+      graph
+    })
+
+    bridge.onNodeUpdate(IMAGE_OUTPUT_ID, {
+      status: 'running',
+      inputs: {
+        in: [{ kind: 'text', text: 'shot table json' }]
+      }
+    })
+    const running = store.sessions[0]?.events.find(
+      (e) => e.nodeId === IMAGE_OUTPUT_ID && e.status === 'running'
+    )
+    expect(running?.inputs?.in?.[0]?.kind).toBe('text')
+    expect(running?.inputs?.in?.[0]?.text).toBe('shot table json')
+
+    bridge.onNodeUpdate(IMAGE_OUTPUT_ID, {
+      status: 'done',
+      outputs: {
+        out: {
+          kind: 'images',
+          items: [{ id: 'img-1', dataUrl: 'data:image/png;base64,AAAA', relativePath: 'a.png' }]
+        }
+      },
+      // 即使引擎误带 inputs，完成行也不应再记输入
+      inputs: {
+        in: [{ kind: 'text', text: 'should-not-appear-on-done' }]
+      }
+    })
+    const done = store.sessions[0]?.events.find(
+      (e) => e.nodeId === IMAGE_OUTPUT_ID && e.status === 'done'
+    )
+    expect(done?.inputs).toBeUndefined()
+    expect(done?.outputs?.out?.kind).toBe('images')
+    expect(done?.outputs?.out?.items?.[0]?.relativePath).toBe('a.png')
+    expect(JSON.stringify(done?.outputs)).not.toContain('data:image')
+
+    bridge.endFromResult({ ok: true, order: [IMAGE_OUTPUT_ID], states: {} })
+  })
+
   it('records node durations and ends the session', () => {
     const graph = sampleGraph()
     const store = useGraphRunLogsStore()

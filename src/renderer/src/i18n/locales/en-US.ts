@@ -750,17 +750,33 @@ export default {
   script: {
     hint: {
       graph: 'Shot editing · node workflow · drop assets · connect to output · parameters on the right',
+      imageGraph:
+        'Shot images · per-shot node graph · default image generate → image output · parameters on the right',
+      videoGraph:
+        'Shot videos · per-shot node graph · default video generate → video output · parameters on the right',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot editing to open the node graph'
+        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to open the matching graph'
     },
     dialog: {
       shotEditor: 'Shot editing',
+      shotImageEditor: 'Shot images',
+      shotVideoEditor: 'Shot videos',
       shotTable: 'Shot table',
       close: 'Close'
     },
     shotEditorWindow: {
       loading: 'Opening shot editor…',
+      missingAsset: 'Missing script asset',
+      noProject: 'No project open in the main window'
+    },
+    shotImageEditorWindow: {
+      loading: 'Opening shot image editor…',
+      missingAsset: 'Missing script asset',
+      noProject: 'No project open in the main window'
+    },
+    shotVideoEditorWindow: {
+      loading: 'Opening shot video editor…',
       missingAsset: 'Missing script asset',
       noProject: 'No project open in the main window'
     },
@@ -1202,6 +1218,8 @@ export default {
       detailDuration: 'Duration',
       detailType: 'Type',
       detailError: 'Error code',
+      portInputs: 'Input ports',
+      portOutputs: 'Output ports',
       apiCall: 'API call #{n} · {kind}',
       apiRequest: 'Request',
       apiResponse: 'Response',
@@ -1210,6 +1228,10 @@ export default {
         'No API call recorded for this node (no model call, or local/passthrough execution)',
       apiEmptyPending:
         'Call in progress; select the Done or Failed status row to view request and response',
+      apiEmptyPickDone:
+        'This is an intermediate status. Select the same node’s Done or Failed row for details; model calls are usually on the upstream image/video generate node.',
+      apiEmptyPassthrough:
+        'This is an output/passthrough node and does not call the model. Check the Done row on an upstream image or video generate node.',
       apiEmptyNotNode: 'This log entry has no node API details'
     },
     play: {
@@ -1584,8 +1606,11 @@ export default {
     scriptShotTableNode: {
       hint: 'Double-click to open shot table'
     },
-    scriptShotEditorNode: {
-      hint: 'Double-click to open shot editing'
+    scriptShotImageGenNode: {
+      hint: 'Double-click to open shot image generation'
+    },
+    scriptShotVideoGenNode: {
+      hint: 'Double-click to open shot video generation'
     },
     scriptOutputNode: {
       hint: 'Final video output of the shot pipeline'
@@ -1726,7 +1751,8 @@ export default {
       script: {
         shotSplit: 'Shot split',
         shotTable: 'Shot table',
-        shotEditor: 'Shot editing',
+        shotImageGen: 'Generate shot images',
+        shotVideoGen: 'Generate shot videos',
         shotParams: 'Shot params'
       },
       screenplay: {
@@ -1759,7 +1785,7 @@ export default {
       world: 'World Elements',
       narrative: 'Narrative Units',
       shotOutput: 'Shot video output',
-      shotVisualOutput: 'Shot output',
+      shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
       scriptOutput: 'Shot output',
@@ -1836,6 +1862,7 @@ export default {
       outputPreviewCount: '{n} items',
       outputPreviewLoading: 'Loading preview…',
       outputPreviewMissing: 'Preview unavailable',
+      aggregateJson: 'Aggregate JSON',
       revealInAssets: 'Reveal in Assets',
       current: 'Current: ',
       noAssets: 'No “{type}” assets in the library. Create or import one first.',
@@ -1864,6 +1891,12 @@ export default {
       },
       shotTable: {
         hint: 'Double-click to open the shot table. Run the node to import shot JSON and preview the out port here.'
+      },
+      shotImageGen: {
+        hint: 'Run the node to collect images from each shot’s visual output, and preview the out port here.'
+      },
+      shotVideoGen: {
+        hint: 'Run the node to collect videos from each shot’s video output, and preview the out port here.'
       },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'

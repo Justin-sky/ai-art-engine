@@ -64,14 +64,16 @@ describe('graph policy', () => {
     expect(isNodeAddableInScope('scriptAsset', 'script.shotSplit')).toBe(true)
   })
 
-  it('output nodes are addable in canvasAsset and shotWorkflow video output', () => {
+  it('output nodes are addable in canvasAsset and shot image/video outputs', () => {
     expect(isNodeAddableInScope('canvasAsset', 'output.video')).toBe(true)
     expect(isNodeAddableInScope('canvasAsset', 'output.director')).toBe(true)
     expect(isNodeAddableInScope('canvasAsset', 'output.script')).toBe(true)
     expect(isNodeAddableInScope('shotWorkflow', 'output.video')).toBe(true)
+    expect(isNodeAddableInScope('visual', 'output.image')).toBe(true)
     expect(isNodeAddableInScope('directorAsset', 'output.image')).toBe(false)
     expect(isNodeAddableInScope('scriptAsset', 'output.video')).toBe(false)
     expect(isNodeAddableInScope('shotWorkflow', 'output.voice')).toBe(false)
+    expect(isNodeAddableInScope('visual', 'output.video')).toBe(false)
     expect(listAddableNodeTypes('directorAsset').some((d) => d.typeId.startsWith('output.'))).toBe(
       false
     )
@@ -79,6 +81,7 @@ describe('graph policy', () => {
       true
     )
     expect(listAddableNodeTypes('shotWorkflow').some((d) => d.typeId === 'output.video')).toBe(true)
+    expect(listAddableNodeTypes('visual').some((d) => d.typeId === 'output.image')).toBe(true)
   })
 
   it('listAddableNodeTypes follows policy', () => {
@@ -116,7 +119,8 @@ describe('graph policy', () => {
         'narrative.split',
         'narrative.table',
         'screenplay.select',
-        'script.shotEditor',
+        'script.shotImageGen',
+        'script.shotVideoGen',
         'script.shotParams',
         'script.shotSplit',
         'script.shotTable',

@@ -20,6 +20,7 @@ import {
   type GraphRunResult
 } from '@shared/graph'
 import { createGraphRunLogBridge } from '../model/graphRunLogBridge'
+import { formatProviderErrorForLog } from '../model/formatProviderErrorForLog'
 import { resolveImageGenerateCapabilitiesForRun } from '../model/imageGenerateCapabilities'
 import { resolveVideoGenerateCapabilitiesForRun } from '../model/videoGenerateCapabilities'
 import {
@@ -136,6 +137,15 @@ export interface GraphRunSessionOptions {
   resolveShotSplitTableJson?: () => string | null
   /** 分镜表格节点执行时：导入上游拆分 JSON 到分镜列表 */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
+  /** 生成分镜图：收集各镜 visual 图片输出已有结果并写回 genRefs */
+  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+    images: import('@shared/graph').GraphImageItem[]
+    aggregateJson: string
+  } | null>
+  /** 生成分镜视频：收集各镜 shotWorkflow 视频输出已有结果并写回 genRefs */
+  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+    videos: import('@shared/graph').GraphVideoItem[]
+  } | null>
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
   /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
@@ -220,8 +230,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     if (token !== runToken) return
     activeLogBridge?.onNodeUpdate(nodeId, state)
     if (state.status === 'skipped') return
+    // 输入端口仅写入执行日志，不灌入 UI runStates，避免 dataUrl 膨胀内存
+    const { inputs: _inputs, ...rest } = state
     runStates[nodeId] = {
-      ...state,
+      ...rest,
       error: state.error ? message(state.error) : undefined
     }
   }
@@ -338,12 +350,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         return value
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          const raw = err instanceof Error ? err.message : String(err)
+          const error = formatProviderErrorForLog(raw)
           activeLogBridge?.recordApiCall({
             kind: 'generateImage',
             request,
-            error: err instanceof Error ? err.message : String(err),
+            error,
             durationMs: Math.max(0, Date.now() - startedAt)
           })
+          activeLogBridge?.appendMessage(error, 'error')
+          throw new Error(error)
         }
         throw err
       }
@@ -546,6 +562,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveShotStoryboard: options.resolveShotStoryboard,
         resolveShotSplitTableJson: options.resolveShotSplitTableJson,
         importShotSplitTableJson: options.importShotSplitTableJson,
+        collectScriptShotImages: options.collectScriptShotImages,
+        collectScriptShotVideos: options.collectScriptShotVideos,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,
         resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
@@ -617,6 +635,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       return null
     } finally {
       if (token === runToken) {
+        // 把最新 runStates / 节点写回宿主图，避免只跑图未改结构时关窗丢失
+        options.commitLocal()
         isRunning.value = false
         runningTargetNodeId.value = null
         if (activeLogBridge === logBridge) activeLogBridge = null

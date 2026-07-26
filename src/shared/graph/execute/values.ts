@@ -2065,22 +2065,109 @@ export async function executeShotTableNode(
   return local ? { out: { kind: 'text', text: local } } : {}
 }
 
+async function importShotSplitFromTextInput(
+  ctx: NodeExecuteContext,
+  input: GraphValue | undefined
+): Promise<void> {
+  if (!input || input.kind !== 'text' || !input.text.trim()) return
+  const text = input.text.trim()
+  ctx.node.params = { ...ctx.node.params, text }
+  ctx.patchNode?.({ params: { text } })
+  await ctx.importShotSplitTableJson?.(text)
+}
+
 /**
- * 分镜编辑：有上游拆分/表格 JSON 时写入分镜列表。
+ * 生成分镜图：有上游拆分/表格 JSON 时写入分镜列表；
+ * 再从各镜画面图的图片输出节点收集已有结果，写回 genRefs，输出真实 images（不级联跑 visual）。
+ */
+export async function executeShotImageGenNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const first = ctx.inputs.in?.[0] ?? Object.values(ctx.inputs).flat()[0]
+  await importShotSplitFromTextInput(ctx, first)
+
+  const collected = await ctx.collectScriptShotImages?.(ctx.signal)
+  const items = collected?.images ?? []
+  if (collected?.aggregateJson?.trim()) {
+    ctx.node.params = { ...ctx.node.params, text: collected.aggregateJson.trim() }
+    ctx.patchNode?.({ params: { text: collected.aggregateJson.trim() } })
+  }
+  if (items.length) {
+    const cameraShots = items.map((item, index) => ({
+      id: item.id ?? `shot-image:${index}`,
+      dataUrl: item.dataUrl,
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      relativePath: item.relativePath
+    }))
+    ctx.node.params = {
+      ...ctx.node.params,
+      cameraShots,
+      previewRelativePath: items[0]?.relativePath,
+      previewDataUrl: items[0]?.dataUrl
+    }
+    ctx.patchNode?.({
+      params: {
+        cameraShots,
+        previewRelativePath: ctx.node.params.previewRelativePath,
+        previewDataUrl: ctx.node.params.previewDataUrl
+      }
+    })
+  }
+  return { out: { kind: 'images', items } }
+}
+
+/**
+ * 生成分镜视频：文本口导入分镜列表；图片口接收分镜图预览；
+ * 再从各镜视频图的视频输出节点收集已有结果，写回 genRefs，输出真实 videos（不级联跑 shotWorkflow）。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
+export async function executeShotVideoGenNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const textIn = ctx.inputs['in-text']?.[0] ?? ctx.inputs.in?.[0]
+  await importShotSplitFromTextInput(ctx, textIn)
+  const imageItems = flattenImagesValues(ctx.inputs['in-image'] ?? [])
+  if (imageItems.length) {
+    ctx.node.params = {
+      ...ctx.node.params,
+      cameraShots: imageItems.map((item, index) => ({
+        id: item.id ?? `shot-image:${index}`,
+        dataUrl: item.dataUrl,
+        createdAt: item.createdAt ?? new Date().toISOString(),
+        relativePath: item.relativePath
+      })),
+      previewRelativePath: imageItems[0]?.relativePath,
+      previewDataUrl: imageItems[0]?.dataUrl
+    }
+    ctx.patchNode?.({
+      params: {
+        cameraShots: ctx.node.params.cameraShots,
+        previewRelativePath: ctx.node.params.previewRelativePath,
+        previewDataUrl: ctx.node.params.previewDataUrl
+      }
+    })
+  }
+
+  const collected = await ctx.collectScriptShotVideos?.(ctx.signal)
+  const items = collected?.videos ?? []
+  if (items.length) {
+    const previewRelativePath = items[0]?.relativePath?.trim() || ctx.node.params.previewRelativePath
+    ctx.node.params = {
+      ...ctx.node.params,
+      ...(previewRelativePath ? { previewRelativePath } : {})
+    }
+    if (previewRelativePath) {
+      ctx.patchNode?.({ params: { previewRelativePath } })
+    }
+  }
+  return { out: { kind: 'videos', items } }
+}
+
+/** @deprecated 使用 {@link executeShotVideoGenNode} */
 export async function executeShotEditorNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    await ctx.importShotSplitTableJson?.(text)
-  }
-  // 与世界元素编辑 → images 对称：对外为视频数组口（条目由后续分镜工作流填充）
-  return { out: { kind: 'videos', items: [] } }
+  return executeShotVideoGenNode(ctx)
 }
 
 /**

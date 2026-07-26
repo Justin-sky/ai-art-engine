@@ -748,17 +748,31 @@ export default {
   script: {
     hint: {
       graph: '分镜编辑 · 节点工作流 · 拖入资产 · 连线至输出节点 · 参数在右侧面板',
+      imageGraph: '分镜图 · 每镜独立节点图 · 默认图片生成连到图片输出 · 参数在右侧面板',
+      videoGraph: '分镜视频 · 每镜独立节点图 · 默认视频生成连到视频输出 · 参数在右侧面板',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击分镜编辑打开节点图'
+        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/视频打开对应节点图'
     },
     dialog: {
       shotEditor: '分镜编辑',
+      shotImageEditor: '分镜图',
+      shotVideoEditor: '分镜视频',
       shotTable: '分镜表格',
       close: '关闭'
     },
     shotEditorWindow: {
       loading: '正在打开分镜编辑…',
+      missingAsset: '缺少剧本资产',
+      noProject: '主窗口未打开工程'
+    },
+    shotImageEditorWindow: {
+      loading: '正在打开分镜图…',
+      missingAsset: '缺少剧本资产',
+      noProject: '主窗口未打开工程'
+    },
+    shotVideoEditorWindow: {
+      loading: '正在打开分镜视频…',
       missingAsset: '缺少剧本资产',
       noProject: '主窗口未打开工程'
     },
@@ -1199,12 +1213,18 @@ export default {
       detailDuration: '耗时',
       detailType: '类型',
       detailError: '错误码',
+      portInputs: '输入端口',
+      portOutputs: '输出端口',
       apiCall: 'API 调用 #{n} · {kind}',
       apiRequest: '请求参数',
       apiResponse: '响应内容',
       apiResponseEmpty: '无响应内容',
       apiEmpty: '该节点本次未记录 API 请求（可能未调用模型，或为透传/本地执行）',
       apiEmptyPending: '请求进行中；完成后请点击「完成」或「失败」状态查看请求与响应',
+      apiEmptyPickDone:
+        '此为中间状态。请点击同节点的「完成」或「失败」查看详情；模型请求一般在上游图片/视频生成节点上。',
+      apiEmptyPassthrough:
+        '该节点为输出/汇总透传，本身不调用模型。请查看上游图片生成、视频生成等节点的「完成」记录。',
       apiEmptyNotNode: '当前日志条目无节点 API 详情'
     },
     play: {
@@ -1580,8 +1600,11 @@ export default {
     scriptShotTableNode: {
       hint: '双击打开分镜表格'
     },
-    scriptShotEditorNode: {
-      hint: '双击打开分镜编辑'
+    scriptShotImageGenNode: {
+      hint: '双击打开分镜图生成'
+    },
+    scriptShotVideoGenNode: {
+      hint: '双击打开分镜视频生成'
     },
     scriptOutputNode: {
       hint: '分镜流程最终视频输出'
@@ -1722,7 +1745,8 @@ export default {
       script: {
         shotSplit: '分镜拆分',
         shotTable: '分镜表格',
-        shotEditor: '分镜编辑',
+        shotImageGen: '生成分镜图',
+        shotVideoGen: '生成分镜视频',
         shotParams: '分镜参数'
       },
       screenplay: {
@@ -1755,7 +1779,7 @@ export default {
       world: '世界元素',
       narrative: '叙事单元',
       shotOutput: '分镜输出视频',
-      shotVisualOutput: '分镜输出',
+      shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
       scriptOutput: '分镜输出',
@@ -1831,6 +1855,7 @@ export default {
       outputPreviewCount: '{n} 项',
       outputPreviewLoading: '正在加载预览…',
       outputPreviewMissing: '无法加载预览',
+      aggregateJson: '聚合 JSON',
       revealInAssets: '在资产窗口中定位',
       current: '当前：',
       noAssets: '资产库中暂无「{type}」类型资产，请先创建或导入。',
@@ -1859,6 +1884,12 @@ export default {
       },
       shotTable: {
         hint: '双击打开分镜表格；运行节点导入分镜 JSON，并在此预览输出端口'
+      },
+      shotImageGen: {
+        hint: '运行节点从各镜画面输出收集图片，并在此预览输出端口'
+      },
+      shotVideoGen: {
+        hint: '运行节点从各镜视频输出收集视频，并在此预览输出端口'
       },
       worldTable: {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'

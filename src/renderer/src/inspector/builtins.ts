@@ -129,6 +129,16 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'script.shotTable'
   },
   {
+    id: 'studio.graph.shotImageGen',
+    component: TablePassThroughInspector,
+    nodeTypeId: 'script.shotImageGen'
+  },
+  {
+    id: 'studio.graph.shotVideoGen',
+    component: TablePassThroughInspector,
+    nodeTypeId: 'script.shotVideoGen'
+  },
+  {
     id: 'studio.graph.worldTable',
     component: TablePassThroughInspector,
     nodeTypeId: 'world.table'

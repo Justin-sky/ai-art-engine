@@ -35,8 +35,8 @@ export type BuiltinGraphAddScope =
 /** 内置或插件注册的画布作用域 id */
 export type GraphAddScope = BuiltinGraphAddScope | (string & {})
 
-/** 分镜画面画布输出节点默认标题（持久化；UI 映射为「分镜输出」） */
-export const SHOT_VISUAL_OUTPUT_TITLE = 'Shot output'
+/** 分镜画面画布输出节点默认标题（持久化；UI 映射为「图片输出」） */
+export const SHOT_VISUAL_OUTPUT_TITLE = 'Image output'
 
 /** 剧本资产图输出节点默认标题（持久化；UI 映射为「剧本输出」） */
 export const ASSET_SCREENPLAY_OUTPUT_TITLE = 'Screenplay output'
@@ -130,14 +130,13 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   visual: {
     id: 'visual',
     coerceOutput: true,
-    outputTitleI18nKey: 'graph.titles.shotVisualOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     shotCanvasField: 'visualGraphJson',
     hostIdSuffix: 'visual',
     output: {
       kind: 'image',
       title: SHOT_VISUAL_OUTPUT_TITLE,
-      inputDataType: GraphPortType.text
+      inputDataType: GraphPortType.image
     }
   },
   screenplayAsset: {
@@ -172,7 +171,12 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       title: ASSET_SCRIPT_OUTPUT_TITLE,
       inputDataType: GraphPortType.video
     },
-    ensureSingletonTypeIds: ['script.shotSplit', 'script.shotTable', 'script.shotEditor']
+    ensureSingletonTypeIds: [
+      'script.shotSplit',
+      'script.shotTable',
+      'script.shotImageGen',
+      'script.shotVideoGen'
+    ]
   },
   /** 空白节点画布：不强制输出节点，打开即为空图 */
   canvasAsset: {
@@ -474,16 +478,19 @@ export function ensureWorldAssetDefaultChain(nodes: GraphNode[], edges: GraphEdg
   ensureGraphEdge(edges, table.id, editor.id, 'out', 'in')
 }
 
-/** 分镜资产图默认链：拆分 → 表格 → 编辑 → 输出（仅新建图时调用） */
+/** 分镜资产图默认链：拆分 → 表格 → 分镜图 / 分镜视频 → 输出（仅新建图时调用） */
 export function ensureScriptAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
   const split = nodes.find((node) => node.typeId === 'script.shotSplit')
   const table = nodes.find((node) => node.typeId === 'script.shotTable')
-  const editor = nodes.find((node) => node.typeId === 'script.shotEditor')
+  const imageGen = nodes.find((node) => node.typeId === 'script.shotImageGen')
+  const videoGen = nodes.find((node) => node.typeId === 'script.shotVideoGen')
   const outputNode = nodes.find((node) => node.category === 'output')
-  if (!split || !table || !editor) return
+  if (!split || !table || !imageGen || !videoGen) return
   ensureGraphEdge(edges, split.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, editor.id, 'out', 'in')
-  if (outputNode) ensureGraphEdge(edges, editor.id, outputNode.id, 'out', 'in')
+  ensureGraphEdge(edges, table.id, imageGen.id, 'out', 'in')
+  ensureGraphEdge(edges, table.id, videoGen.id, 'out', 'in-text')
+  ensureGraphEdge(edges, imageGen.id, videoGen.id, 'out', 'in-image')
+  if (outputNode) ensureGraphEdge(edges, videoGen.id, outputNode.id, 'out', 'in')
 }
 
 /** 叙事单元资产图默认链：拆解 → 表格 → 编辑 → 输出 */
@@ -529,6 +536,39 @@ export function ensureShotWorkflowDefaultChain(nodes: GraphNode[], edges: GraphE
   const video = createNodeFromType('asset.video', { x: 300, y: 160 })
   nodes.push(video)
   ensureGraphEdge(edges, video.id, output.id, 'out', 'in')
+}
+
+/** 分镜画面：仅在「仅有图片输出」的遗留空图上补齐图片链 */
+export function ensureVisualDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
+  const hasImage = nodes.some((node) => node.typeId === 'asset.image' && isProcessingAssetNode(node))
+  let output = nodes.find(
+    (node) =>
+      node.category === 'output' &&
+      (node.typeId === 'output.image' || node.params.outputKind === 'image')
+  )
+  if (!output) {
+    output = createOutputGraphNode('image', { x: 520, y: 160 }, {
+      id: graphOutputNodeId('image'),
+      title: SHOT_VISUAL_OUTPUT_TITLE,
+      params: { outputKind: 'image', inputDataType: GraphPortType.image }
+    })
+    nodes.push(output)
+  }
+
+  if (hasImage) {
+    const image = nodes.find(
+      (node) => node.typeId === 'asset.image' && isProcessingAssetNode(node)
+    )!
+    ensureGraphEdge(edges, image.id, output.id, 'out', 'in')
+    return
+  }
+
+  const nonOutputCount = nodes.filter((node) => node.category !== 'output').length
+  if (nonOutputCount > 0) return
+
+  const image = createNodeFromType('asset.image', { x: 300, y: 160 })
+  nodes.push(image)
+  ensureGraphEdge(edges, image.id, output.id, 'out', 'in')
 }
 
 /** 资产编辑器：确保加工节点（或宿主媒体引用节点）存在并默认连到输出 */
@@ -610,6 +650,9 @@ export function createDefaultScopedGraph(
   if (scope === 'shotWorkflow') {
     return createDefaultShotWorkflowGraph()
   }
+  if (scope === 'visual') {
+    return createDefaultVisualGraph()
+  }
 
   const def = getGraphScopeDefinition(scope)
   const output = resolveScopeOutput(scope, assetType)
@@ -626,7 +669,10 @@ export function createDefaultScopedGraph(
 
   if (def.ensureOutput !== false) {
     nodes.push(
-      createScopeOutputNode(output, { x: scope === 'scriptAsset' ? 780 : 480, y: 160 })
+      createScopeOutputNode(output, {
+        x: scope === 'scriptAsset' ? 1000 : 480,
+        y: 160
+      })
     )
   }
 
@@ -670,6 +716,31 @@ function createDefaultShotWorkflowGraph(): GraphDocument {
   ]
   return {
     nodes: [video, output],
+    edges,
+    groups: [],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  }
+}
+
+/** 分镜画面默认图：图片生成 → 图片输出 */
+function createDefaultVisualGraph(): GraphDocument {
+  const image = createNodeFromType('asset.image', { x: 300, y: 160 })
+  const output = createOutputGraphNode('image', { x: 520, y: 160 }, {
+    id: graphOutputNodeId('image'),
+    title: SHOT_VISUAL_OUTPUT_TITLE,
+    params: { outputKind: 'image', inputDataType: GraphPortType.image }
+  })
+  const edges: GraphEdge[] = [
+    {
+      id: `edge-${crypto.randomUUID()}`,
+      source: image.id,
+      target: output.id,
+      sourcePort: 'out',
+      targetPort: 'in'
+    }
+  ]
+  return {
+    nodes: [image, output],
     edges,
     groups: [],
     viewport: { x: 0, y: 0, zoom: 1 }

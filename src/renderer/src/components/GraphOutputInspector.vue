@@ -185,10 +185,6 @@ const isVideoOutput = computed(() => {
   const kind = node.value?.params.outputKind
   return !kind || kind === 'video'
 })
-const isShotVisualOutput = computed(() => {
-  const hostId = editor.selection.current.value.hostId
-  return !!hostId?.endsWith(':visual') && node.value?.params.outputKind === 'image'
-})
 const isGenerateScriptOutput = computed(() => {
   const current = node.value
   if (!current) return false
@@ -203,7 +199,6 @@ const isDirectorOutput = computed(() => {
   return asset?.type === 'motion' && node.value?.params.outputKind === 'image'
 })
 const outputLabel = computed(() => {
-  if (isShotVisualOutput.value) return t('graph.titles.shotVisualOutput')
   if (isGenerateScriptOutput.value) return t('graph.titles.screenplayOutput')
   if (isDirectorOutput.value) return t('graph.titles.directorOutput')
   if (isVoiceOutput.value) return t('graph.titles.assetOutput.voice')

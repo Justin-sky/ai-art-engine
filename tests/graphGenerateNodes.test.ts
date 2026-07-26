@@ -36,7 +36,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'narrative.split',
   'narrative.table',
   'screenplay.select',
-  'script.shotEditor',
+  'script.shotImageGen',
+  'script.shotVideoGen',
   'script.shotParams',
   'script.shotSplit',
   'script.shotTable',
@@ -58,7 +59,6 @@ const CANVAS_OUTPUT_NODE_TYPES = [
 describe('graph canvas menu nodes', () => {
   for (const scope of [
     'workflow',
-    'visual',
     'screenplayAsset',
     'directorAsset',
     'scriptAsset'
@@ -76,6 +76,13 @@ describe('graph canvas menu nodes', () => {
       .map((def) => def.typeId)
       .sort()
     expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.video'].sort())
+  })
+
+  it('visual exposes generate nodes plus image output', () => {
+    const typeIds = listAddableNodeTypes('visual')
+      .map((def) => def.typeId)
+      .sort()
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.image'].sort())
   })
 
   it('canvasAsset exposes generate nodes plus output nodes', () => {

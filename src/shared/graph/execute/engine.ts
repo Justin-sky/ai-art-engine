@@ -171,8 +171,6 @@ async function executeOneNode(
     return { ok: false, error: 'GRAPH_CANCELLED' }
   }
 
-  publish(states, nodeId, { status: 'running' }, options.onNodeUpdate)
-
   const inputs: Record<string, GraphValue[]> = {}
   for (const edge of graph.edges) {
     if (edge.target !== nodeId) continue
@@ -184,6 +182,13 @@ async function executeOneNode(
     if (!value) continue
     ;(inputs[targetPort] ??= []).push(value)
   }
+
+  publish(
+    states,
+    nodeId,
+    { status: 'running', inputs: Object.keys(inputs).length ? inputs : undefined },
+    options.onNodeUpdate
+  )
 
   const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough
@@ -238,6 +243,8 @@ async function executeOneNode(
     resolveShotStoryboard: options.resolveShotStoryboard,
     resolveShotSplitTableJson: options.resolveShotSplitTableJson,
     importShotSplitTableJson: options.importShotSplitTableJson,
+    collectScriptShotImages: options.collectScriptShotImages,
+    collectScriptShotVideos: options.collectScriptShotVideos,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
     importWorldCatalogJson: options.importWorldCatalogJson,
     resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
@@ -257,6 +264,7 @@ async function executeOneNode(
       return { ok: false, error: 'GRAPH_CANCELLED' }
     }
     outputs.set(nodeId, result)
+    // 输入已在 running 时写入日志；完成态只带 outputs，避免详情里再刷一遍大段输入
     publish(states, nodeId, { status: 'done', outputs: result }, options.onNodeUpdate)
     return { ok: true }
   } catch (err) {

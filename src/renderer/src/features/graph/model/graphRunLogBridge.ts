@@ -1,11 +1,14 @@
 import {
   getNodeType,
   resolveNodeType,
+  summarizeInputPortsForLog,
+  summarizeOutputPortsForLog,
   type GraphDocument,
   type GraphNode,
   type GraphNodeRunState,
   type GraphRunLogApiCall,
   type GraphRunLogMode,
+  type GraphRunLogPortSnapshot,
   type GraphRunResult
 } from '@shared/graph'
 import { useGraphRunLogsStore } from '../../../stores/graphRunLogs'
@@ -51,12 +54,13 @@ export interface GraphRunLogBridge {
 }
 
 /**
- * 将 runGraph 的 onNodeUpdate 转为带时间戳 / 耗时的执行日志事件。
+ * 将 runGraph 的 onNodeUpdate 转为带时间戳 / 耗时 / 端口数据流的执行日志事件。
  */
 export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): GraphRunLogBridge {
   const store = useGraphRunLogsStore()
   const byId = new Map(options.graph.nodes.map((n) => [n.id, n]))
   const runningStartedAt = new Map<string, number>()
+  const inputsByNodeId = new Map<string, Record<string, GraphRunLogPortSnapshot[]>>()
   let currentRunningNodeId: string | null = options.targetNodeId ?? null
 
   const targetNodeTitle = options.targetNodeId
@@ -85,9 +89,18 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     const node = byId.get(nodeId)
     const now = Date.now()
     let durationMs: number | undefined
+    // 运行中只记输入；完成/失败只记输出（不把输入再挂到完成行，避免大段输入把输出顶出可视区）
+    const inputs =
+      state.status === 'running' ? summarizeInputPortsForLog(state.inputs) : undefined
+    const outputs =
+      state.status === 'done' || state.status === 'error'
+        ? summarizeOutputPortsForLog(state.outputs)
+        : undefined
+
     if (state.status === 'running') {
       currentRunningNodeId = nodeId
       runningStartedAt.set(nodeId, now)
+      if (inputs) inputsByNodeId.set(nodeId, inputs)
     } else if (state.status === 'done' || state.status === 'error') {
       const started = runningStartedAt.get(nodeId)
       if (started != null) {
@@ -95,6 +108,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
         runningStartedAt.delete(nodeId)
       }
       if (currentRunningNodeId === nodeId) currentRunningNodeId = null
+      inputsByNodeId.delete(nodeId)
     } else if (state.status === 'skipped' || state.status === 'pending') {
       // keep map as-is
     }
@@ -115,7 +129,9 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       status: state.status,
       message: resolveMessage(state.error),
       errorCode: state.error,
-      durationMs
+      durationMs,
+      ...(inputs ? { inputs } : {}),
+      ...(outputs ? { outputs } : {})
     })
   }
 
@@ -142,11 +158,40 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     })
   }
 
+  function finalizeOpenNodes(status: 'error' | 'done', message?: string, errorCode?: string): void {
+    const now = Date.now()
+    for (const [nodeId, started] of runningStartedAt) {
+      const node = byId.get(nodeId)
+      const durationMs = Math.max(0, now - started)
+      const inputs = inputsByNodeId.get(nodeId)
+      store.append({
+        runId: options.runId,
+        ts: now,
+        level: status === 'error' ? 'error' : 'info',
+        kind: 'node_status',
+        hostId: options.hostId,
+        mode: options.mode,
+        nodeId,
+        nodeTitle: nodeTitle(node, nodeId),
+        typeId: nodeTypeId(node),
+        status,
+        message: message ?? resolveMessage(errorCode),
+        errorCode,
+        durationMs,
+        ...(inputs ? { inputs } : {})
+      })
+      inputsByNodeId.delete(nodeId)
+    }
+    runningStartedAt.clear()
+    currentRunningNodeId = null
+  }
+
   function endFromResult(
     result: GraphRunResult | null,
     opts?: { aborted?: boolean; message?: string }
   ): void {
     if (opts?.aborted || result?.error === 'GRAPH_CANCELLED') {
+      finalizeOpenNodes('error', opts?.message ?? resolveMessage('GRAPH_CANCELLED'), 'GRAPH_CANCELLED')
       store.endRun({
         runId: options.runId,
         status: 'stopped',
@@ -156,6 +201,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       return
     }
     if (!result) {
+      finalizeOpenNodes('error', opts?.message ?? resolveMessage('failed'))
       store.endRun({
         runId: options.runId,
         status: 'error',
@@ -164,6 +210,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       return
     }
     if (result.ok) {
+      finalizeOpenNodes('done', opts?.message)
       store.endRun({
         runId: options.runId,
         status: 'done',
@@ -171,6 +218,11 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       })
       return
     }
+    finalizeOpenNodes(
+      'error',
+      opts?.message ?? resolveMessage(result.error),
+      result.error
+    )
     store.endRun({
       runId: options.runId,
       status: 'error',
@@ -180,6 +232,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
   }
 
   function endStopped(message?: string): void {
+    finalizeOpenNodes('error', message ?? resolveMessage('GRAPH_CANCELLED'), 'GRAPH_CANCELLED')
     store.endRun({
       runId: options.runId,
       status: 'stopped',

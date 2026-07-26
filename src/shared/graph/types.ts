@@ -48,8 +48,17 @@ export const GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID = 'script-shot-split'
 /** 分镜资产图：分镜表格节点 */
 export const GRAPH_SCRIPT_SHOT_TABLE_NODE_ID = 'script-shot-table'
 
-/** 分镜资产图：分镜编辑入口节点 */
-export const GRAPH_SCRIPT_SHOT_EDITOR_NODE_ID = 'script-shot-editor'
+/** 分镜资产图：生成分镜图入口节点 */
+export const GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID = 'script-shot-image-gen'
+
+/** 分镜资产图：生成分镜视频入口节点 */
+export const GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID = 'script-shot-video-gen'
+
+/**
+ * @deprecated 使用 {@link GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID}
+ * 旧图 `script.shotEditor` 会迁移为视频生成节点。
+ */
+export const GRAPH_SCRIPT_SHOT_EDITOR_NODE_ID = GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID
 
 /** 分镜工作流：分镜参数节点（从 Inspector 组装提示词） */
 export const GRAPH_SCRIPT_SHOT_PARAMS_NODE_ID = 'script-shot-params'

@@ -30,8 +30,17 @@ export function isScriptShotTableNode(node: Pick<GraphNode, 'typeId'>): boolean 
   return node.typeId === 'script.shotTable'
 }
 
+export function isScriptShotImageGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'script.shotImageGen'
+}
+
+export function isScriptShotVideoGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'script.shotVideoGen'
+}
+
+/** @deprecated 使用 {@link isScriptShotVideoGenNode} */
 export function isScriptShotEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotEditor'
+  return isScriptShotVideoGenNode(node) || node.typeId === 'script.shotEditor'
 }
 
 export function isScriptShotParamsNode(node: Pick<GraphNode, 'typeId'>): boolean {

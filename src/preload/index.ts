@@ -146,10 +146,10 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, dataUrl),
   closeShotPreviewWindow: () => ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW),
   getShotPreviewPayload: () => ipcRenderer.invoke(IpcChannels.SHOT_PREVIEW_GET),
-  openShotEditorWindow: (scriptAssetId: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, scriptAssetId),
-  closeShotEditorWindow: (scriptAssetId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_EDITOR, scriptAssetId),
+  openShotEditorWindow: (scriptAssetId: string, kind?: 'image' | 'video') =>
+    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, scriptAssetId, kind),
+  closeShotEditorWindow: (scriptAssetId?: string, kind?: 'image' | 'video') =>
+    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_EDITOR, scriptAssetId, kind),
   openShotTableWindow: (scriptAssetId: string) =>
     ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_TABLE, scriptAssetId),
   closeShotTableWindow: (scriptAssetId?: string) =>
@@ -200,14 +200,20 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener('stage:close-request', listener)
   },
   onShotEditorClosed: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
+    const listener = (
+      _event: unknown,
+      payload: { scriptAssetId: string; kind?: 'image' | 'video' }
+    ): void => {
       callback(payload)
     }
     ipcRenderer.on('shot-editor:closed', listener)
     return () => ipcRenderer.removeListener('shot-editor:closed', listener)
   },
   onShotEditorCloseRequest: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
+    const listener = (
+      _event: unknown,
+      payload: { scriptAssetId: string; kind?: 'image' | 'video' }
+    ): void => {
       callback(payload)
     }
     ipcRenderer.on('shot-editor:close-request', listener)

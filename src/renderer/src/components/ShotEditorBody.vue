@@ -2,7 +2,7 @@
   <div class="shot-editor-body">
     <div class="script-dialog-main">
       <div class="graph-row">
-        <NodeGraphEditor ref="graphRef" class="script-dialog-graph" scope="shotWorkflow" />
+        <NodeGraphEditor ref="graphRef" class="script-dialog-graph" :scope="graphScope" />
         <aside class="shot-inspector-pane">
           <InspectorPanel :export-canvas="exportCanvas" />
         </aside>
@@ -13,18 +13,30 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import type { GraphAddScope } from '@shared/graph'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import InspectorPanel from './InspectorPanel.vue'
 import ShotStrip from './ShotStrip.vue'
 
-const props = defineProps<{
-  scriptAssetId: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    scriptAssetId: string
+    /** image → 每镜 visualGraphJson；video → 每镜 graphJson */
+    kind?: 'image' | 'video'
+  }>(),
+  {
+    kind: 'video'
+  }
+)
 
 const workspace = useWorkspaceStore()
 const graphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
+
+const graphScope = computed<GraphAddScope>(() =>
+  props.kind === 'image' ? 'visual' : 'shotWorkflow'
+)
 
 function exportCanvas(): Promise<string | null> {
   return workspace.exportCanvasForActiveShot()
@@ -34,7 +46,7 @@ onMounted(() => {
   workspace.registerScriptGraphGetter(props.scriptAssetId, () =>
     graphRef.value?.getGraphDocument() ?? null
   )
-  workspace.focusProjectGlobals()
+  workspace.focusShot()
 })
 
 onBeforeUnmount(() => {

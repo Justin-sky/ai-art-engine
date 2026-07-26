@@ -1980,8 +1980,7 @@ export function assetAcceptsAudioRefKind(type: AssetType, kind: ShotAudioRefKind
 export function createEmptyCanvas(resolution: Resolution = DEFAULT_RESOLUTION): CanvasDocument {
   return {
     fabricJson: null,
-    /** 分镜视频工作流已上移到 script 资产 genParams.shotWorkflowGraph */
-    graphJson: null,
+    graphJson: createDefaultScopedGraph('shotWorkflow'),
     visualGraphJson: createDefaultScopedGraph('visual'),
     width: resolution.w,
     height: resolution.h

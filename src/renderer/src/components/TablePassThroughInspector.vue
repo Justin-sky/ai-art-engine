@@ -33,7 +33,13 @@ import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
-const TABLE_TYPE_IDS = new Set(['script.shotTable', 'world.table', 'narrative.table'])
+const PASS_THROUGH_TYPE_IDS = new Set([
+  'script.shotTable',
+  'script.shotImageGen',
+  'script.shotVideoGen',
+  'world.table',
+  'narrative.table'
+])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -44,7 +50,7 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  if (!current || !current.typeId || !TABLE_TYPE_IDS.has(current.typeId)) return null
+  if (!current || !current.typeId || !PASS_THROUGH_TYPE_IDS.has(current.typeId)) return null
   return current
 })
 
@@ -60,8 +66,11 @@ const typeLabel = computed(() =>
 )
 
 const hint = computed(() => {
-  if (node.value?.typeId === 'world.table') return t('graph.inspector.worldTable.hint')
-  if (node.value?.typeId === 'narrative.table') return t('graph.inspector.narrativeTable.hint')
+  const typeId = node.value?.typeId
+  if (typeId === 'world.table') return t('graph.inspector.worldTable.hint')
+  if (typeId === 'narrative.table') return t('graph.inspector.narrativeTable.hint')
+  if (typeId === 'script.shotImageGen') return t('graph.inspector.shotImageGen.hint')
+  if (typeId === 'script.shotVideoGen') return t('graph.inspector.shotVideoGen.hint')
   return t('graph.inspector.shotTable.hint')
 })
 

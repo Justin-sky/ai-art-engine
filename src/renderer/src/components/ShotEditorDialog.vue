@@ -13,42 +13,45 @@
     @close="requestClose"
   >
     <template #title>
-      <span class="app-mark">{{ t('script.dialog.shotEditor') }}</span>
+      <span class="app-mark">{{ dialogTitle }}</span>
     </template>
 
-    <ShotEditorBody ref="bodyRef" :script-asset-id="scriptAssetId" />
+    <ShotEditorBody ref="bodyRef" :script-asset-id="scriptAssetId" :kind="kind" />
 
     <template #footer>
-      <span class="statusbar">{{ t('script.hint.graph') }}</span>
+      <span class="statusbar">{{ statusHint }}</span>
     </template>
   </StudioFloatingWindow>
 
   <div v-else class="shot-editor-embed" :class="{ window: mode === 'window' }">
     <header class="titlebar" :class="{ drag: mode === 'window' }">
-      <span class="app-mark no-drag">{{ t('script.dialog.shotEditor') }}</span>
-      <span class="statusbar no-drag">{{ t('script.hint.graph') }}</span>
+      <span class="app-mark no-drag">{{ dialogTitle }}</span>
+      <span class="statusbar no-drag">{{ statusHint }}</span>
     </header>
     <ShotEditorBody
       ref="bodyRef"
       class="embed-body"
       :script-asset-id="scriptAssetId"
+      :kind="kind"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import ShotEditorBody from './ShotEditorBody.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     scriptAssetId: string
     mode?: 'modal' | 'window'
+    kind?: 'image' | 'video'
   }>(),
   {
-    mode: 'modal'
+    mode: 'modal',
+    kind: 'video'
   }
 )
 
@@ -59,6 +62,14 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 const bodyRef = ref<InstanceType<typeof ShotEditorBody> | null>(null)
 let closing = false
+
+const dialogTitle = computed(() =>
+  props.kind === 'image' ? t('script.dialog.shotImageEditor') : t('script.dialog.shotVideoEditor')
+)
+
+const statusHint = computed(() =>
+  props.kind === 'image' ? t('script.hint.imageGraph') : t('script.hint.videoGraph')
+)
 
 async function requestClose(): Promise<void> {
   if (closing) return

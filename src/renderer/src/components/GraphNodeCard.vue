@@ -384,9 +384,11 @@ import {
   isVideoFramePortId,
   isDirectorProcessingNode,
   isScriptShotEditorNode,
+  isScriptShotImageGenNode,
   isScriptShotParamsNode,
   isScriptShotSplitNode,
   isScriptShotTableNode,
+  isScriptShotVideoGenNode,
   isWorldEditorNode,
   isWorldExtractNode,
   isWorldTableNode,
@@ -758,7 +760,8 @@ const typeLabel = computed(() => {
   if (
     isScriptShotSplitNode(props.node) ||
     isScriptShotTableNode(props.node) ||
-    isScriptShotEditorNode(props.node) ||
+    isScriptShotImageGenNode(props.node) ||
+    isScriptShotVideoGenNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
     isWorldEditorNode(props.node) ||
@@ -804,7 +807,8 @@ const displayTitle = computed(
 const typeIcon = computed(() => {
   if (isScriptShotSplitNode(props.node)) return '✂️'
   if (isScriptShotTableNode(props.node)) return '📊'
-  if (isScriptShotEditorNode(props.node)) return '🎬'
+  if (isScriptShotImageGenNode(props.node)) return '🖼️'
+  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
   if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
   if (isNarrativeEditorNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
@@ -1025,7 +1029,8 @@ const hideCardPreview = computed(
   () =>
     isScriptShotSplitNode(props.node) ||
     isScriptShotTableNode(props.node) ||
-    isScriptShotEditorNode(props.node) ||
+    isScriptShotImageGenNode(props.node) ||
+    isScriptShotVideoGenNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
     isWorldEditorNode(props.node) ||
@@ -1043,7 +1048,10 @@ const scriptNodePreviewTitle = computed(() => {
     return t('graph.generateNode.instructionHint')
   }
   if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
-  if (isScriptShotEditorNode(props.node)) return t('graph.scriptShotEditorNode.hint')
+  if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
+  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) {
+    return t('graph.scriptShotVideoGenNode.hint')
+  }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
   if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
@@ -1088,7 +1096,10 @@ const previewHint = computed(() => {
     return t('graph.scriptOutputNode.hint')
   }
   if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
-  if (isScriptShotEditorNode(props.node)) return t('graph.scriptShotEditorNode.hint')
+  if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
+  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) {
+    return t('graph.scriptShotVideoGenNode.hint')
+  }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
   if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
@@ -1594,7 +1605,11 @@ function onPreviewDblClick(): void {
     scriptPreview?.openShotTable()
     return
   }
-  if (isScriptShotEditorNode(props.node)) {
+  if (isScriptShotImageGenNode(props.node)) {
+    scriptPreview?.openShotImageEditor()
+    return
+  }
+  if (isScriptShotVideoGenNode(props.node)) {
     scriptPreview?.openShotEditor()
     return
   }

@@ -18,6 +18,8 @@ export interface ShotSplitRow {
   cameraMove: string
   /** 审核状态：未审核 | 已审核 */
   status: ShotReviewStatus
+  /** 画面输出物化后的图片资产 id（生成分镜图聚合用，可选） */
+  imageAssetIds?: string[]
 }
 
 function asString(value: unknown): string {
@@ -49,6 +51,9 @@ function normalizeRow(item: unknown, index: number): ShotSplitRow | null {
   if (!item || typeof item !== 'object') return null
   const row = item as Record<string, unknown>
   const title = asString(row.title).trim() || `分镜 ${index + 1}`
+  const imageAssetIds = Array.isArray(row.imageAssetIds)
+    ? row.imageAssetIds.filter((id): id is string => typeof id === 'string' && !!id.trim())
+    : undefined
   return {
     title,
     durationSec: clampDurationSec(row.durationSec),
@@ -58,7 +63,8 @@ function normalizeRow(item: unknown, index: number): ShotSplitRow | null {
     dialogue: asString(row.dialogue).trim(),
     soundFx: asString(row.soundFx).trim(),
     cameraMove: asString(row.cameraMove).trim(),
-    status: normalizeShotReviewStatus(row.status)
+    status: normalizeShotReviewStatus(row.status),
+    ...(imageAssetIds?.length ? { imageAssetIds } : {})
   }
 }
 
@@ -95,6 +101,10 @@ export function parseShotSplitJson(raw: string | null | undefined): ShotSplitRow
 export function shotsToShotSplitRows(shots: Shot[]): ShotSplitRow[] {
   return shots.map((shot, index) => {
     const sb = shot.storyboard
+    const imageAssetIds = (shot.genRefs ?? [])
+      .filter((ref) => ref.assetId)
+      .map((ref) => ref.assetId)
+    const uniqueIds = [...new Set(imageAssetIds)]
     return {
       title: shot.title?.trim() || `分镜 ${index + 1}`,
       durationSec: clampDurationSec(shot.camera?.durationSec),
@@ -104,7 +114,8 @@ export function shotsToShotSplitRows(shots: Shot[]): ShotSplitRow[] {
       dialogue: sb?.dialogue?.trim() ?? '',
       soundFx: sb?.soundFx?.trim() ?? '',
       cameraMove: sb?.cameraMove?.trim() ?? '',
-      status: normalizeShotReviewStatus(shot.reviewStatus)
+      status: normalizeShotReviewStatus(shot.reviewStatus),
+      ...(uniqueIds.length ? { imageAssetIds: uniqueIds } : {})
     }
   })
 }

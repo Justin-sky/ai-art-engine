@@ -14,6 +14,7 @@ import {
   ensureAssetEditorProcessingChain,
   ensureNarrativeAssetDefaultChain,
   ensureShotWorkflowDefaultChain,
+  ensureVisualDefaultChain,
   getGraphScopeDefinition,
   resolveScopeOutput
 } from './scopes'
@@ -187,7 +188,8 @@ function ensureScopeSingletons(nodes: GraphNode[], scope: GraphAddScope): void {
     if (
       typeId === 'script.shotSplit' ||
       typeId === 'script.shotTable' ||
-      typeId === 'script.shotEditor' ||
+      typeId === 'script.shotImageGen' ||
+      typeId === 'script.shotVideoGen' ||
       typeId === 'world.extract' ||
       typeId === 'world.table' ||
       typeId === 'world.editor' ||
@@ -251,6 +253,34 @@ function migrateImageGenerateLegacyPorts(nodes: GraphNode[], edges: GraphEdge[])
   }
 }
 
+/** 旧「分镜编辑」入口迁移为「生成分镜视频」（文本口改为 in-text） */
+function migrateLegacyShotEditorNodes(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates?: Record<string, GraphPersistedRunState>
+): void {
+  for (const node of nodes) {
+    if (node.typeId !== 'script.shotEditor') continue
+    node.typeId = 'script.shotVideoGen'
+    if (node.title === 'Shot edit' || node.title === '分镜编辑') {
+      node.title = 'Shot video gen'
+    }
+  }
+  for (const node of nodes) {
+    if (node.typeId === 'script.shotVideoGen' && node.id === 'script-shot-editor') {
+      renameNodeIdInGraph(nodes, edges, runStates, 'script-shot-editor', 'script-shot-video-gen')
+    }
+  }
+  const videoGenIds = new Set(
+    nodes.filter((node) => node.typeId === 'script.shotVideoGen').map((node) => node.id)
+  )
+  for (const edge of edges) {
+    if (!videoGenIds.has(edge.target)) continue
+    const port = edge.targetPort ?? 'in'
+    if (port === 'in') edge.targetPort = 'in-text'
+  }
+}
+
 function finalizeGraph(
   nodes: GraphNode[],
   raw: GraphDocument,
@@ -259,6 +289,7 @@ function finalizeGraph(
   const edges = Array.isArray(raw.edges) ? raw.edges.map((e) => ({ ...e })) : []
   const runStates = raw.runStates ? { ...raw.runStates } : undefined
   syncCanonicalOutputNodeIds(nodes, edges, runStates)
+  migrateLegacyShotEditorNodes(nodes, edges, runStates)
   migrateImageGenerateLegacyPorts(nodes, edges)
   const sanitizedEdges = sanitizeEdges(nodes, edges, scope)
   return {
@@ -303,12 +334,16 @@ export function normalizeScopedGraph(
     nodes: raw.nodes.map((node) => ({ ...node }))
   }
 
+  const edges = Array.isArray(doc.edges) ? doc.edges.map((edge) => ({ ...edge })) : []
+  const runStates = doc.runStates ? { ...doc.runStates } : undefined
+  // 须在 hydrate 前改写 typeId：未注册的 script.shotEditor 会被收成 note.text
+  migrateLegacyShotEditorNodes(doc.nodes, edges, runStates)
+
   let nodes = doc.nodes.map(hydrateNode)
   if (scopeDef.persistNode) {
     nodes = nodes.filter(scopeDef.persistNode)
   }
 
-  const edges = Array.isArray(doc.edges) ? doc.edges.map((edge) => ({ ...edge })) : []
   if (scopeDef.coerceOutput) {
     applyScopeOutput(nodes, scope, options?.assetType)
   }
@@ -322,11 +357,14 @@ export function normalizeScopedGraph(
   if (scope === 'shotWorkflow') {
     ensureShotWorkflowDefaultChain(nodes, edges)
   }
+  if (scope === 'visual') {
+    ensureVisualDefaultChain(nodes, edges)
+  }
   if (scope === 'narrativeAsset') {
     ensureNarrativeAssetDefaultChain(nodes, edges)
   }
 
-  return finalizeGraph(nodes, { ...doc, edges }, scope)
+  return finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
 }
 
 export function normalizeGraph(

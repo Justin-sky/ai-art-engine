@@ -161,6 +161,16 @@
 
               <p v-if="selectedEvent.message" class="detail-message">{{ selectedEvent.message }}</p>
 
+              <!-- 完成/失败优先展示输出；运行中展示输入 -->
+              <template v-if="selectedEvent.outputs && Object.keys(selectedEvent.outputs).length">
+                <label class="code-label">{{ t('graph.logs.portOutputs') }}</label>
+                <pre class="code-block">{{ formatJson(selectedEvent.outputs) }}</pre>
+              </template>
+              <template v-if="selectedEvent.inputs && Object.keys(selectedEvent.inputs).length">
+                <label class="code-label">{{ t('graph.logs.portInputs') }}</label>
+                <pre class="code-block">{{ formatJson(selectedEvent.inputs) }}</pre>
+              </template>
+
               <template v-if="selectedApiCalls.length">
                 <div
                   v-for="(call, index) in selectedApiCalls"
@@ -181,7 +191,9 @@
                   <p v-else class="muted">{{ t('graph.logs.apiResponseEmpty') }}</p>
                 </div>
               </template>
-              <p v-else class="muted detail-empty">{{ selectedApiEmptyText }}</p>
+              <p v-else-if="!selectedEventHasPorts" class="muted detail-empty">
+                {{ selectedApiEmptyText }}
+              </p>
             </template>
             </div>
           </div>
@@ -292,24 +304,56 @@ const selectedEvent = computed((): GraphRunLogEvent | null => {
   return filteredEvents.value.find((e) => e.id === id) ?? null
 })
 
-/** API 详情只挂在节点完成/失败状态上，避免 running 与 done 重复展示同一响应 */
+/** API 详情：优先挂在完成/失败上；会话已结束时中间态也可查看同节点已记录的调用 */
 const selectedApiCalls = computed(() => {
   const session = selectedSession.value
   const event = selectedEvent.value
   if (!session || !event?.nodeId) return []
   const status = eventDisplayStatus(event)
-  if (status !== 'done' && status !== 'error') return []
+  const sessionActive = session.status === 'running'
+  if (status !== 'done' && status !== 'error' && sessionActive) return []
   return (session.apiCalls ?? []).filter((call) => call.nodeId === event.nodeId)
 })
 
+const selectedEventHasPorts = computed(() => {
+  const event = selectedEvent.value
+  if (!event) return false
+  return (
+    (!!event.inputs && Object.keys(event.inputs).length > 0) ||
+    (!!event.outputs && Object.keys(event.outputs).length > 0)
+  )
+})
+
 const selectedApiEmptyText = computed(() => {
+  const session = selectedSession.value
   const event = selectedEvent.value
   if (!event) return t('graph.logs.apiEmpty')
   if (!event.nodeId) return t('graph.logs.apiEmptyNotNode')
   const status = eventDisplayStatus(event)
-  if (status === 'pending' || status === 'running') return t('graph.logs.apiEmptyPending')
+  const sessionActive = session?.status === 'running'
+  if ((status === 'pending' || status === 'running') && sessionActive) {
+    return t('graph.logs.apiEmptyPending')
+  }
+  if ((status === 'pending' || status === 'running') && !sessionActive) {
+    return t('graph.logs.apiEmptyPickDone')
+  }
+  if (isPassthroughOutputType(event.typeId)) {
+    return t('graph.logs.apiEmptyPassthrough')
+  }
   return t('graph.logs.apiEmpty')
 })
+
+function isPassthroughOutputType(typeId: string | undefined): boolean {
+  if (!typeId) return false
+  return (
+    typeId.startsWith('output.') ||
+    typeId === 'script.shotImageGen' ||
+    typeId === 'script.shotVideoGen' ||
+    typeId === 'script.shotTable' ||
+    typeId === 'world.table' ||
+    typeId === 'narrative.table'
+  )
+}
 
 watch(
   () => selectedSession.value?.runId,
@@ -326,7 +370,18 @@ watch(
       return
     }
     if (!selectedEventId.value || !events.some((e) => e.id === selectedEventId.value)) {
-      selectedEventId.value = events[events.length - 1]?.id ?? null
+      // 优先落到会话结束或节点终态，避免默认停在「运行中」中间行
+      const preferred =
+        [...events].reverse().find((event) => {
+          const status = eventDisplayStatus(event)
+          return (
+            event.kind === 'run_end' ||
+            status === 'done' ||
+            status === 'error' ||
+            status === 'skipped'
+          )
+        }) ?? events[events.length - 1]
+      selectedEventId.value = preferred?.id ?? null
     }
   },
   { immediate: true }

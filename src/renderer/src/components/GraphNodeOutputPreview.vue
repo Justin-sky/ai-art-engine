@@ -162,6 +162,8 @@ function pushVideoLikeItem(
 }
 
 function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
+  if (node.typeId === 'script.shotImageGen') return 'image'
+  if (node.typeId === 'script.shotVideoGen') return 'video'
   if (
     node.category === 'output' &&
     (node.typeId === 'output.text' || node.params.outputKind === 'text')
@@ -633,12 +635,32 @@ function collectUpstreamPreview(
   }
 }
 
+function isShotAggregatePreviewNode(typeId: string | undefined): boolean {
+  return typeId === 'script.shotImageGen' || typeId === 'script.shotVideoGen'
+}
+
+function appendNodeTextPreview(into: PreviewItem[]): void {
+  if (into.some((item) => item.kind === 'text' && item.text?.trim())) return
+  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  const runState = graphRunHosts.get(props.hostId)?.runStates?.[node.id]
+  void runState?.status
+  const textContent = resolveNodeTextContent(node, runState)
+  const text = textContent?.text?.trim() || node.params.text?.trim() || ''
+  if (!text) return
+  into.push({ key: 'node-text', kind: 'text', text })
+}
+
 const items = computed((): PreviewItem[] => {
   // 依赖资产列表，避免 generate 后 refreshAssets 前 resolve 失败而不再重试
   void project.assets.length
   const list: PreviewItem[] = []
   collectFromValue(runOut.value, list)
-  if (!list.length) collectFallback(list)
+  if (!list.length) {
+    collectFallback(list)
+  } else if (isShotAggregatePreviewNode(props.node.typeId)) {
+    // 分镜图/视频汇总：out 为媒体时仍附带 params.text 聚合 JSON
+    appendNodeTextPreview(list)
+  }
   // 去重
   const seen = new Set<string>()
   return list.filter((item) => {
@@ -648,9 +670,15 @@ const items = computed((): PreviewItem[] => {
   })
 })
 
+const mediaItems = computed(() => items.value.filter((item) => item.kind !== 'text'))
+const textItems = computed(() => items.value.filter((item) => item.kind === 'text'))
+
 const layoutKind = computed(() => {
   const list = items.value
   if (!list.length) return 'empty'
+  const hasMedia = mediaItems.value.length > 0
+  const hasText = textItems.value.length > 0
+  if (hasMedia && hasText) return 'mixed'
   if (list.every((i) => i.kind === 'text')) {
     // 剧本生成 / 剧本输出：文本数组用网格预览；其它单段文本仍用竖向堆叠
     const preferTextGrid =
@@ -871,6 +899,76 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         :title="textOpenHint"
         @dblclick="openTextNotepad(item)"
       >{{ displayText(item) }}</pre>
+    </div>
+
+    <div v-else-if="layoutKind === 'mixed'" class="mixed-stack">
+      <div v-if="mediaItems.length === 1" class="single">
+        <template v-for="item in mediaItems" :key="item.key">
+          <img
+            v-if="item.kind === 'image' && displaySrc(item)"
+            :src="displaySrc(item)"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            class="preview-image interactive"
+            :title="imagePreviewHint"
+            @dblclick="openImageFull(item)"
+          />
+          <MediaPreviewPlayer
+            v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
+            :kind="item.kind === 'audio' ? 'voice' : 'video'"
+            :src="displaySrc(item)"
+          />
+          <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+        </template>
+      </div>
+      <div v-else class="media-grid">
+        <div
+          v-for="(item, index) in mediaItems"
+          :key="item.key"
+          class="media-card"
+          :data-kind="item.kind"
+        >
+          <button
+            v-if="revealableAssetId(item.assetId)"
+            type="button"
+            class="reveal-btn card-reveal"
+            :title="t('graph.inspector.revealInAssets')"
+            :aria-label="t('graph.inspector.revealInAssets')"
+            @click.stop="revealInAssets(item.assetId)"
+          >
+            <span class="icon-reveal" aria-hidden="true" />
+          </button>
+          <img
+            v-if="item.kind === 'image' && displaySrc(item)"
+            :src="displaySrc(item)"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            class="preview-image interactive"
+            :title="imagePreviewHint"
+            @dblclick="openImageFull(item)"
+          />
+          <MediaPreviewPlayer
+            v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
+            class="grid-player"
+            :kind="item.kind === 'audio' ? 'voice' : 'video'"
+            :src="displaySrc(item)"
+          />
+          <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+          <span class="media-index">{{ index + 1 }}</span>
+        </div>
+      </div>
+      <div class="text-stack aggregate-json">
+        <span class="aggregate-label">{{ t('graph.inspector.aggregateJson') }}</span>
+        <pre
+          v-for="item in textItems"
+          :key="item.key"
+          class="text-body interactive"
+          :title="textOpenHint"
+          @dblclick="openTextNotepad(item)"
+        >{{ displayText(item) }}</pre>
+      </div>
     </div>
 
     <div v-else-if="layoutKind === 'single'" class="single">
@@ -1171,6 +1269,27 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.mixed-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.aggregate-json {
+  gap: 6px;
+}
+
+.aggregate-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.aggregate-json .text-body {
+  max-height: 280px;
 }
 
 .text-body {

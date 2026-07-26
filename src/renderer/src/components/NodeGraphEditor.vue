@@ -442,6 +442,7 @@ import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNo
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
+import { collectScriptShotImages, collectScriptShotVideos } from '../features/script/shotVisualPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
   applyNarrativeCatalog,
@@ -503,10 +504,10 @@ import {
   shotStoryboardToNodeParams,
   createShotParamsNodeForShot,
   readShotWorkflowGraphFromGenParams,
-  withShotWorkflowGraph,
   readWorldElementGraphFromGenParams,
   withWorldElementGraph,
   readBoundShotIdFromNodeParams,
+  applyShotParamsDropMaterialization,
   type WorldElementKind,
   type GraphImageItem,
   type GraphTextItem,
@@ -622,11 +623,6 @@ const graphScope = computed(
       assetType: graphAsset.value?.type
     })
 )
-/** 分镜编辑器视频工作流：整份脚本共用一张图，切镜不换图 */
-const isSharedShotWorkflow = computed(
-  () => !isAssetGraph.value && graphScope.value === 'shotWorkflow'
-)
-const SCRIPT_WORKFLOW_CACHE_KEY = '__script_workflow__'
 const draftStore = useDraftStore()
 const shotCanvasField = computed(() => getScopeShotCanvasField(graphScope.value))
 provide('graphScope', graphScope)
@@ -776,10 +772,6 @@ function applyGraphDocument(doc: GraphDocument): void {
 }
 
 function touchGraphCache(shotId?: string | null): void {
-  if (isSharedShotWorkflow.value) {
-    graphCache.set(SCRIPT_WORKFLOW_CACHE_KEY, buildGraphJson())
-    return
-  }
   const id = shotId ?? loadedGraphShotId.value
   if (!id) return
   graphCache.set(id, buildGraphJson())
@@ -794,56 +786,22 @@ function resolveScriptHostGenParams(): Record<string, unknown> | undefined {
     | undefined
 }
 
-/** 优先 script 资产上的共享图；否则从各镜旧 graphJson 迁移 */
+/**
+ * 兼容旧工程：脚本级共享 shotWorkflowGraph。
+ * 仅在当前镜 graphJson 为空时作为初始内容拷贝，之后各自独立。
+ */
 function migrateShotWorkflowRaw(): GraphDocument | null {
-  const fromScript = readShotWorkflowGraphFromGenParams(resolveScriptHostGenParams())
-  if (fromScript?.nodes?.length) return fromScript
-  const activeId = project.activeShotId
-  const ordered = [
-    ...(activeId ? visibleShots.value.filter((s) => s.id === activeId) : []),
-    ...visibleShots.value.filter((s) => s.id !== activeId)
-  ]
-  for (const shot of ordered) {
-    const g = shot.canvas.graphJson
-    if (g?.nodes?.length) return g as GraphDocument
-  }
-  return fromScript
+  return readShotWorkflowGraphFromGenParams(resolveScriptHostGenParams())
 }
 
-function commitSharedShotWorkflow(): boolean {
-  if (project.rootPath !== boundRootPath) return false
-  const scriptId = scriptAssetIdRef.value
-  if (!scriptId) return false
-  const graphJson = buildGraphJson()
-  graphCache.set(SCRIPT_WORKFLOW_CACHE_KEY, cloneGraphDocument(graphJson))
-  const plain = toPlain(graphJson)
-  if (isDraftAssetId(scriptId)) {
-    const draft = draftStore.getDraft(scriptId)
-    draftStore.updateDraft(scriptId, {
-      genParams: withShotWorkflowGraph(draft?.genParams, plain)
-    })
-    return true
+function resolveShotCanvasGraphRaw(shot: Shot): GraphDocument | null | undefined {
+  const raw = readShotCanvasGraph(shot)
+  if (raw?.nodes?.length) return raw
+  if (graphScope.value === 'shotWorkflow') {
+    const migrated = migrateShotWorkflowRaw()
+    if (migrated?.nodes?.length) return migrated
   }
-  const asset = project.assets.find((item) => item.id === scriptId)
-  if (!asset) return false
-  void persistAssetRecord(scriptId, {
-    genParams: withShotWorkflowGraph(
-      asset.genParams as Record<string, unknown> | undefined,
-      plain
-    )
-  }).catch((error) => {
-    console.error('[NodeGraphEditor] script workflow save failed', error)
-  })
-  return true
-}
-
-function loadSharedShotWorkflow(): void {
-  loadedGraphShotId.value = null
-  const cached = graphCache.get(SCRIPT_WORKFLOW_CACHE_KEY)
-  const raw = cached ?? migrateShotWorkflowRaw()
-  const doc = cached ? cloneGraphDocument(cached) : normalizeGraphForHost(raw ?? null)
-  graphCache.set(SCRIPT_WORKFLOW_CACHE_KEY, cloneGraphDocument(doc))
-  applyGraphDocument(doc)
+  return raw
 }
 
 function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocument {
@@ -867,7 +825,7 @@ function readGraphForShot(shotId: string): GraphDocument {
   const cached = graphCache.get(shotId)
   if (cached) return cloneGraphDocument(cached)
   const shot = resolveShotById(shotId)
-  return cloneGraphDocument(normalizeGraphForHost(readShotCanvasGraph(shot!) ?? null))
+  return cloneGraphDocument(normalizeGraphForHost(resolveShotCanvasGraphRaw(shot!) ?? null))
 }
 
 function shotWithGraph(shot: Shot, graphJson: GraphDocument): Shot {
@@ -889,7 +847,6 @@ function shotWithGraph(shot: Shot, graphJson: GraphDocument): Shot {
 function commitGraphLocal(explicitShotId?: string): boolean {
   if (project.rootPath !== boundRootPath) return false
   if (isAssetGraph.value) return commitAssetGraph()
-  if (isSharedShotWorkflow.value) return commitSharedShotWorkflow()
   const shotId = explicitShotId ?? loadedGraphShotId.value
   if (!shotId) return false
   const shot = resolveShotById(shotId)
@@ -976,10 +933,6 @@ function loadGraphFromShot(): void {
     applyGraphDocument(readAssetGraph())
     return
   }
-  if (isSharedShotWorkflow.value) {
-    loadSharedShotWorkflow()
-    return
-  }
   const shotId = project.activeShotId
   if (!shotId) {
     loadedGraphShotId.value = null
@@ -998,7 +951,7 @@ function loadGraphFromShot(): void {
   ensureShotDocument(shotId)
   loadedGraphShotId.value = shotId
   const cached = graphCache.get(shotId)
-  const raw = readShotCanvasGraph(shot)
+  const raw = resolveShotCanvasGraphRaw(shot)
   const doc = cached ? cloneGraphDocument(cached) : normalizeGraphForHost(raw ?? null)
   graphCache.set(shotId, cloneGraphDocument(doc))
   applyGraphDocument(doc)
@@ -1066,9 +1019,14 @@ function resolveShotById(shotId: string): Shot | null {
   )
 }
 
-/** 分镜工作流：从指定/当前分镜填充分镜参数节点默认值 */
+/** 分镜工作流 / 画面图：从指定/当前分镜填充分镜参数节点默认值 */
 function shotParamsSeedFromActiveShot(): Partial<GraphNodeParams> | undefined {
-  if (isAssetGraph.value || graphScope.value !== 'shotWorkflow') return undefined
+  if (
+    isAssetGraph.value ||
+    (graphScope.value !== 'shotWorkflow' && graphScope.value !== 'visual')
+  ) {
+    return undefined
+  }
   const shotId = project.activeShotId
   if (!shotId) return undefined
   const shot = resolveShotById(shotId)
@@ -1151,7 +1109,7 @@ const {
 } = useGraphRunSession({
   buildGraph: buildGraphJson,
   commitLocal: () => {
-    commitGraphLocal()
+    scheduleSave()
   },
   t: (key, params) => t(key, params ?? {}),
   locale: () => String(locale.value),
@@ -1270,6 +1228,34 @@ const {
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return
     await applyShotSplitJson(scriptId, jsonText)
+  },
+  collectScriptShotImages: async (signal) => {
+    if (graphScope.value !== 'scriptAsset') return null
+    const scriptId = props.assetId ?? scriptAssetIdRef.value
+    if (!scriptId) return null
+    const shots = visibleShots.value.length
+      ? visibleShots.value
+      : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+    if (!shots.length) return { images: [], aggregateJson: '[]\n' }
+    return collectScriptShotImages({
+      scriptAssetId: scriptId,
+      shots,
+      signal
+    })
+  },
+  collectScriptShotVideos: async (signal) => {
+    if (graphScope.value !== 'scriptAsset') return null
+    const scriptId = props.assetId ?? scriptAssetIdRef.value
+    if (!scriptId) return null
+    const shots = visibleShots.value.length
+      ? visibleShots.value
+      : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+    if (!shots.length) return { videos: [] }
+    return collectScriptShotVideos({
+      scriptAssetId: scriptId,
+      shots,
+      signal
+    })
   },
   resolveWorldCatalogJson: () => {
     if (graphScope.value !== 'worldAsset') return null
@@ -2366,7 +2352,8 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'asset.script',
       'script.shotSplit',
       'script.shotTable',
-      'script.shotEditor',
+      'script.shotImageGen',
+      'script.shotVideoGen',
       'script.shotParams',
       'output.script'
     ]
@@ -2505,10 +2492,6 @@ function resolveTempEdgeWorld(): { from: { x: number; y: number }; to: { x: numb
 
 function scheduleSave(): void {
   commitGraphLocal()
-  if (isSharedShotWorkflow.value) {
-    editor.documents.markDirty(graphDocumentId.value)
-    return
-  }
   if (!isAssetGraph.value && loadedGraphShotId.value) {
     dirtyShotIds.add(loadedGraphShotId.value)
   }
@@ -2519,10 +2502,6 @@ async function flushSaveToDisk(explicitShotId?: string): Promise<void> {
   if (isAssetGraph.value) {
     commitAssetGraph()
     if (assetGraphPersist) await assetGraphPersist
-    return
-  }
-  if (isSharedShotWorkflow.value) {
-    commitSharedShotWorkflow()
     return
   }
   const shotId = explicitShotId ?? loadedGraphShotId.value
@@ -2538,14 +2517,6 @@ async function persistGraph(explicitShotId?: string): Promise<void> {
   if (isAssetGraph.value) {
     commitGraphLocal()
     await flushSaveToDisk()
-    return
-  }
-  if (isSharedShotWorkflow.value) {
-    commitSharedShotWorkflow()
-    const scriptId = scriptAssetIdRef.value
-    if (scriptId && !isDraftAssetId(scriptId)) {
-      // persistAssetRecord 已异步写盘
-    }
     return
   }
   if (explicitShotId) {
@@ -2567,21 +2538,8 @@ async function persistGraph(explicitShotId?: string): Promise<void> {
 }
 
 async function flushSave(explicitShotId?: string): Promise<void> {
-  if (explicitShotId) {
-    ensureShotDocument(explicitShotId)
-    await editor.documents.save(shotDocumentId(explicitShotId))
-    return
-  }
-  if (isAssetGraph.value || isSharedShotWorkflow.value) {
-    await editor.documents.save(graphDocumentId.value)
-    return
-  }
-  await Promise.all(
-    [...dirtyShotIds].map((shotId) => {
-      ensureShotDocument(shotId)
-      return editor.documents.save(shotDocumentId(shotId))
-    })
-  )
+  // 关窗/切镜必须强制落盘：跑图结果可能只在内存 runStates，未必触发过 markDirty
+  await persistGraph(explicitShotId)
 }
 
 function isLeftButtonPanArmed(): boolean {
@@ -3000,7 +2958,8 @@ function addNodeFromMenu(typeId: GraphNodeTypeId): void {
     (graphScope.value === 'canvasAsset' ||
       graphScope.value === 'worldAsset' ||
       graphScope.value === 'elementWorkflow' ||
-      (graphScope.value === 'shotWorkflow' && typeId === 'output.video')) &&
+      (graphScope.value === 'shotWorkflow' && typeId === 'output.video') ||
+      (graphScope.value === 'visual' && typeId === 'output.image')) &&
     isOutputContextMenuType(typeId)
   const existing =
     !allowMultipleOutputs && def?.singletonId != null
@@ -3341,10 +3300,10 @@ async function onDrop(e: DragEvent): Promise<void> {
   // 节点拖动松手时可能冒泡出带 Files 的原生 drop，直接忽略
   if (isDraggingNodes.value) return
 
-  // 0) 分镜栏拖入 → 创建绑定该镜的分镜参数节点
+  // 0) 分镜栏拖入 → 创建绑定该镜的分镜参数节点（视频图 / 画面图）
   const droppedShot = resolveDroppedShot(e)
   if (droppedShot) {
-    if (graphScope.value !== 'shotWorkflow') {
+    if (graphScope.value !== 'shotWorkflow' && graphScope.value !== 'visual') {
       showDropError(t('graph.error.unsupportedDrop'))
       return
     }
@@ -3408,15 +3367,34 @@ function resolveDroppedShot(e: DragEvent): Shot | null {
   return resolveShotById(id)
 }
 
-/** 分镜栏拖入：创建（或选中已有）绑定该镜的分镜参数节点 */
+/** 分镜栏拖入：创建（或选中已有）绑定该镜的分镜参数节点，并展开 genRefs 图片 */
 function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number }): boolean {
+  const dropTarget = graphScope.value === 'visual' ? 'image' : 'video'
+  const resolveImageAsset = (assetId: string) => {
+    const asset = project.assets.find((item) => item.id === assetId)
+    if (!asset || asset.type !== 'image') return null
+    return { id: asset.id, type: asset.type, name: asset.name, relativePath: asset.relativePath }
+  }
   const existing = graph.nodes.find(
     (n) =>
       n.typeId === 'script.shotParams' && readBoundShotIdFromNodeParams(n.params) === shot.id
   )
   if (existing) {
+    const before = buildGraphJson()
+    const materialized = applyShotParamsDropMaterialization(
+      buildGraphJson(),
+      existing,
+      shot,
+      resolveImageAsset,
+      dropTarget
+    )
+    replaceGraphDocument(graph, materialized)
     setSingleNodeSelection(existing.id)
     workspace.selectGraphNode(existing.id, graphHostId.value)
+    recordGraphChange('materialize-shot-refs', before)
+    scheduleSave()
+    requestEdgeRender()
+    graphEditorHosts.bumpRevision()
     return true
   }
   const before = buildGraphJson()
@@ -3427,6 +3405,14 @@ function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number 
       : shot.title.trim() || graphTypeLabel('script.shotParams')
   const node = createShotParamsNodeForShot(shot, position, { title })
   graph.nodes.push(node)
+  const materialized = applyShotParamsDropMaterialization(
+    buildGraphJson(),
+    node,
+    shot,
+    resolveImageAsset,
+    dropTarget
+  )
+  replaceGraphDocument(graph, materialized)
   setSingleNodeSelection(node.id)
   refreshGraphRenderWindow(true)
   if (!renderedNodeIds.value.has(node.id)) {
@@ -5398,14 +5384,19 @@ let switchQueue = Promise.resolve()
 
 function runShotSwitch(prevId: string | null | undefined, nextId: string | null | undefined): void {
   if (isAssetGraph.value) return
-  // 分镜工作流图挂在脚本上：切镜只切换镜头参数面板，不换画布
-  if (isSharedShotWorkflow.value) return
   if (prevId && prevId !== nextId) {
     commitGraphLocal(prevId)
+    dirtyShotIds.add(prevId)
+    ensureShotDocument(prevId)
+    editor.documents.markDirty(shotDocumentId(prevId))
   }
   switchQueue = switchQueue
-    .then(() => {
+    .then(async () => {
       if (project.activeShotId !== nextId) return
+      // 切镜前尽量把上一镜脏数据落盘，避免关窗前未 autosave 丢失
+      if (prevId && prevId !== nextId && dirtyShotIds.has(prevId)) {
+        await persistGraph(prevId)
+      }
       loadGraphFromShot()
       applyViewportTransform(true)
       requestPreviewVisibilityUpdate()
@@ -5454,7 +5445,7 @@ onMounted(() => {
   resizeEdgeCanvas()
   applyViewportTransform(true)
   updatePreviewVisibility()
-  if (isAssetGraph.value || isSharedShotWorkflow.value) {
+  if (isAssetGraph.value) {
     unregisterGraphDocument = editor.documents.register({
       id: graphDocumentId.value,
       parentId: scriptAssetIdRef.value
@@ -5508,10 +5499,7 @@ onMounted(() => {
         applyGraphDocument(document)
         applyViewportTransform(true)
         requestPreviewVisibilityUpdate()
-        if (isSharedShotWorkflow.value) {
-          graphCache.set(SCRIPT_WORKFLOW_CACHE_KEY, cloneGraphDocument(document))
-          commitSharedShotWorkflow()
-        } else if (shotId) {
+        if (shotId) {
           graphCache.set(shotId, cloneGraphDocument(document))
           commitGraphLocal(shotId)
         } else if (isAssetGraph.value) {

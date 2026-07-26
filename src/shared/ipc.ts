@@ -506,20 +506,26 @@ export interface StudioApi {
   /** 订阅截图预览内容更新（预览窗口） */
   onShotPreviewSet: (callback: (payload: { dataUrl: string }) => void) => () => void
 
-  /** 打开/聚焦分镜编辑独立窗口 */
-  openShotEditorWindow: (scriptAssetId: string) => Promise<{ ok: true }>
+  /** 打开/聚焦分镜图或分镜视频独立窗口；kind 默认 video */
+  openShotEditorWindow: (
+    scriptAssetId: string,
+    kind?: 'image' | 'video'
+  ) => Promise<{ ok: true }>
 
-  /** 关闭分镜编辑独立窗口；不传 id 则关闭全部 */
-  closeShotEditorWindow: (scriptAssetId?: string) => Promise<{ ok: true }>
+  /** 关闭分镜编辑独立窗口；不传 id 则关闭全部；不传 kind 则关闭该脚本下图/视频窗 */
+  closeShotEditorWindow: (
+    scriptAssetId?: string,
+    kind?: 'image' | 'video'
+  ) => Promise<{ ok: true }>
 
   /** 订阅分镜编辑窗口关闭（主窗口） */
   onShotEditorClosed: (
-    callback: (payload: { scriptAssetId: string }) => void
+    callback: (payload: { scriptAssetId: string; kind?: 'image' | 'video' }) => void
   ) => () => void
 
   /** 订阅分镜编辑窗口关闭请求（OS 关窗前先保存） */
   onShotEditorCloseRequest: (
-    callback: (payload: { scriptAssetId: string }) => void
+    callback: (payload: { scriptAssetId: string; kind?: 'image' | 'video' }) => void
   ) => () => void
 
   /** 打开/聚焦分镜表格独立窗口 */

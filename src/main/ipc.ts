@@ -133,11 +133,13 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, (dataUrl: string) => openShotPreviewWindow(dataUrl))
   handle(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW, () => closeShotPreviewWindow())
   handle(IpcChannels.SHOT_PREVIEW_GET, () => getShotPreviewPayload())
-  handle(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, (scriptAssetId: string) =>
-    openShotEditorWindow(scriptAssetId)
+  handle(IpcChannels.WINDOW_OPEN_SHOT_EDITOR, (scriptAssetId: string, kind?: 'image' | 'video') =>
+    openShotEditorWindow(scriptAssetId, kind)
   )
-  handle(IpcChannels.WINDOW_CLOSE_SHOT_EDITOR, (scriptAssetId?: string) =>
-    closeShotEditorWindow(scriptAssetId)
+  handle(
+    IpcChannels.WINDOW_CLOSE_SHOT_EDITOR,
+    (scriptAssetId?: string, kind?: 'image' | 'video') =>
+      closeShotEditorWindow(scriptAssetId, kind)
   )
   handle(IpcChannels.WINDOW_OPEN_SHOT_TABLE, (scriptAssetId: string) =>
     openShotTableWindow(scriptAssetId)

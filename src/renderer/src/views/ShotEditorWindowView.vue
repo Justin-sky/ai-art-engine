@@ -5,10 +5,11 @@
       v-else-if="ready && scriptAssetId"
       ref="editorRef"
       mode="window"
+      :kind="kind"
       :script-asset-id="scriptAssetId"
       @close="onClose"
     />
-    <p v-else class="loading">{{ t('script.shotEditorWindow.loading') }}</p>
+    <p v-else class="loading">{{ loadingText }}</p>
   </div>
 </template>
 
@@ -37,12 +38,23 @@ const scriptAssetId = computed(() => {
   return typeof raw === 'string' ? raw : ''
 })
 
+const kind = computed<'image' | 'video'>(() => {
+  const raw = route.query.kind
+  return raw === 'image' ? 'image' : 'video'
+})
+
+const loadingText = computed(() =>
+  kind.value === 'image'
+    ? t('script.shotImageEditorWindow.loading')
+    : t('script.shotVideoEditorWindow.loading')
+)
+
 provide('scriptAssetId', scriptAssetId)
 
 const ready = computed(() => bootstrapped.value && !!scriptAssetId.value)
 
 useEditorDocumentSession({
-  id: () => `editor:script:${scriptAssetId.value}`,
+  id: () => `editor:script:${kind.value}:${scriptAssetId.value}`,
   save: async () => {
     await editorRef.value?.flushSave()
   },
@@ -58,18 +70,24 @@ async function ensureScopedSelection(): Promise<void> {
   if (!(currentId && visible.some((s) => s.id === currentId))) {
     await project.selectShot(visible[0].id)
   }
-  workspace.focusProjectGlobals()
+  workspace.focusShot()
 }
 
 onMounted(async () => {
   try {
     if (!scriptAssetId.value) {
-      error.value = t('script.shotEditorWindow.missingAsset')
+      error.value =
+        kind.value === 'image'
+          ? t('script.shotImageEditorWindow.missingAsset')
+          : t('script.shotVideoEditorWindow.missingAsset')
       return
     }
     const state = await window.studio.getOpenProjectState()
     if (!state) {
-      error.value = t('script.shotEditorWindow.noProject')
+      error.value =
+        kind.value === 'image'
+          ? t('script.shotImageEditorWindow.noProject')
+          : t('script.shotVideoEditorWindow.noProject')
       return
     }
     project.loadFromResult(state)
@@ -82,6 +100,7 @@ onMounted(async () => {
 
   stopCloseRequest = window.studio.onShotEditorCloseRequest(async (payload) => {
     if (payload.scriptAssetId !== scriptAssetId.value) return
+    if (payload.kind && payload.kind !== kind.value) return
     try {
       if (editorRef.value) await editorRef.value.requestClose()
       else await onClose()
@@ -91,7 +110,7 @@ onMounted(async () => {
   })
 })
 
-watch(scriptAssetId, () => {
+watch([scriptAssetId, kind], () => {
   void ensureScopedSelection()
 })
 
@@ -107,7 +126,7 @@ async function onClose(): Promise<void> {
     window.close()
     return
   }
-  await window.studio.closeShotEditorWindow(scriptAssetId.value)
+  await window.studio.closeShotEditorWindow(scriptAssetId.value, kind.value)
 }
 </script>
 

@@ -52,6 +52,7 @@ import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
+import { applyVisualGraphGenRefsToShot } from '../features/script/shotVisualPipeline'
 
 export type GraphTaskStatus = 'pending' | 'running' | 'done' | 'error' | 'stopped'
 
@@ -294,11 +295,21 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         : null)
     if (!shot) return
 
-    const next: Shot = {
+    let next: Shot = {
       ...shot,
       canvas: {
         ...shot.canvas,
         [canvasField]: toPlain(graph)
+      }
+    }
+    if (canvasField === 'visualGraphJson') {
+      next = await applyVisualGraphGenRefsToShot(next, graph)
+      next = {
+        ...next,
+        canvas: {
+          ...next.canvas,
+          visualGraphJson: toPlain(graph)
+        }
       }
     }
     project.persistShotLocal(next)

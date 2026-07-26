@@ -360,6 +360,19 @@ export interface NodeExecuteContext {
    */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /**
+   * 生成分镜图：收集各镜 visual 图片输出节点已有结果，写回 genRefs（不级联跑画面图）。
+   */
+  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+    images: GraphImageItem[]
+    aggregateJson: string
+  } | null>
+  /**
+   * 生成分镜视频：收集各镜 shotWorkflow 视频输出节点已有结果，写回 genRefs（不级联跑视频图）。
+   */
+  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+    videos: GraphVideoItem[]
+  } | null>
+  /**
    * 世界元素表格节点：把当前目录序列化为提取 JSON。
    */
   resolveWorldCatalogJson?: () => string | null
@@ -386,6 +399,8 @@ export interface GraphNodeRunState {
   status: GraphNodeRunStatus
   error?: string
   outputs?: Record<string, GraphValue>
+  /** 开始执行时的输入端口值（供执行日志；落盘前应剥离） */
+  inputs?: Record<string, GraphValue[]>
 }
 
 export interface GraphRunOptions {
@@ -445,6 +460,8 @@ export interface GraphRunOptions {
   resolveShotStoryboard?: NodeExecuteContext['resolveShotStoryboard']
   resolveShotSplitTableJson?: NodeExecuteContext['resolveShotSplitTableJson']
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
+  collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
+  collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
   resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']

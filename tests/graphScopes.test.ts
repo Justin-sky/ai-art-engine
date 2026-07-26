@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it } from 'vitest'
 import {
   canScopeAcceptDraggedAsset,
+  createDefaultScopedGraph,
   createParamsForScope,
   getGraphScopeDefinition,
   getScopeHostIdSuffix,
@@ -11,7 +12,7 @@ import {
   resolveGraphScope,
   resolveScopeOutput
 } from '../src/shared/graph'
-import { createNodeFromType } from '../src/shared/graph'
+import { createNodeFromType, createOutputGraphNode } from '../src/shared/graph'
 
 describe('graph scopes', () => {
   it('resolves scope from editor host context', () => {
@@ -73,7 +74,8 @@ describe('graph scopes', () => {
     expect(def.ensureSingletonTypeIds).toEqual([
       'script.shotSplit',
       'script.shotTable',
-      'script.shotEditor'
+      'script.shotImageGen',
+      'script.shotVideoGen'
     ])
   })
 
@@ -123,6 +125,48 @@ describe('graph scopes', () => {
     disposeHost()
     disposeScope()
     expect(resolveGraphScope({ assetId: 'a1', assetType: 'model' })).toBe('workflow')
+  })
+
+  it('visual scope defaults to image generate connected to image output', () => {
+    const doc = createDefaultScopedGraph('visual')
+    const image = doc.nodes.find((n) => n.typeId === 'asset.image')
+    const output = doc.nodes.find((n) => n.typeId === 'output.image')
+    expect(image).toBeTruthy()
+    expect(output).toBeTruthy()
+    expect(output?.params.inputDataType).toBe('image')
+    expect(
+      doc.edges.some((edge) => edge.source === image?.id && edge.target === output?.id)
+    ).toBe(true)
+  })
+
+  it('shotWorkflow scope defaults to video generate connected to video output', () => {
+    const doc = createDefaultScopedGraph('shotWorkflow')
+    const video = doc.nodes.find((n) => n.typeId === 'asset.video')
+    const output = doc.nodes.find((n) => n.typeId === 'output.video')
+    expect(video).toBeTruthy()
+    expect(output).toBeTruthy()
+    expect(
+      doc.edges.some((edge) => edge.source === video?.id && edge.target === output?.id)
+    ).toBe(true)
+  })
+
+  it('visual scope fills image chain on empty legacy output-only graphs', () => {
+    const doc = normalizeScopedGraph('visual', {
+      nodes: [
+        createOutputGraphNode('image', { x: 520, y: 160 }, {
+          id: 'image-output',
+          params: { outputKind: 'image', inputDataType: 'image' }
+        })
+      ],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    })
+    const image = doc.nodes.find((n) => n.typeId === 'asset.image')
+    const output = doc.nodes.find((n) => n.typeId === 'output.image')
+    expect(image).toBeTruthy()
+    expect(
+      doc.edges.some((edge) => edge.source === image?.id && edge.target === output?.id)
+    ).toBe(true)
   })
 
   it('visual scope uses dedicated shot canvas field and host suffix', () => {

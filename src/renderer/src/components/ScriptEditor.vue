@@ -7,10 +7,18 @@
     </div>
     <NodeGraphEditor ref="scriptGraphRef" class="script-main" :asset-id="scriptAssetId" />
     <ShotEditorDialog
-      v-if="editorOpen"
-      ref="editorDialogRef"
+      v-if="imageEditorOpen"
+      ref="imageEditorDialogRef"
+      kind="image"
       :script-asset-id="scriptAssetId"
-      @close="editorOpen = false"
+      @close="imageEditorOpen = false"
+    />
+    <ShotEditorDialog
+      v-if="videoEditorOpen"
+      ref="videoEditorDialogRef"
+      kind="video"
+      :script-asset-id="scriptAssetId"
+      @close="videoEditorOpen = false"
     />
     <ShotTableDialog
       v-if="tableOpen"
@@ -45,20 +53,32 @@ provide('scriptAssetId', computed(() => props.scriptAssetId))
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const { drafts } = storeToRefs(useDraftStore())
-const editorOpen = ref(false)
+const imageEditorOpen = ref(false)
+const videoEditorOpen = ref(false)
 const tableOpen = ref(false)
-const editorDialogRef = ref<InstanceType<typeof ShotEditorDialog> | null>(null)
+const imageEditorDialogRef = ref<InstanceType<typeof ShotEditorDialog> | null>(null)
+const videoEditorDialogRef = ref<InstanceType<typeof ShotEditorDialog> | null>(null)
 const tableDialogRef = ref<InstanceType<typeof ShotTableDialog> | null>(null)
 const scriptGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 
-async function openShotEditor(): Promise<void> {
+async function openShotImageEditor(): Promise<void> {
   await scriptGraphRef.value?.flushSave?.()
   if (isDraftAssetId(props.scriptAssetId)) {
-    editorOpen.value = true
-    await ensureScopedSelection('project')
+    imageEditorOpen.value = true
+    await ensureScopedSelection('shot')
     return
   }
-  void window.studio.openShotEditorWindow(props.scriptAssetId)
+  void window.studio.openShotEditorWindow(props.scriptAssetId, 'image')
+}
+
+async function openShotVideoEditor(): Promise<void> {
+  await scriptGraphRef.value?.flushSave?.()
+  if (isDraftAssetId(props.scriptAssetId)) {
+    videoEditorOpen.value = true
+    await ensureScopedSelection('shot')
+    return
+  }
+  void window.studio.openShotEditorWindow(props.scriptAssetId, 'video')
 }
 
 async function openShotTable(): Promise<void> {
@@ -72,8 +92,11 @@ async function openShotTable(): Promise<void> {
 }
 
 provide(scriptPreviewKey, {
+  openShotImageEditor: () => {
+    void openShotImageEditor()
+  },
   openShotEditor: () => {
-    void openShotEditor()
+    void openShotVideoEditor()
   },
   openShotTable: () => {
     void openShotTable()
@@ -115,7 +138,8 @@ async function ensureScopedSelection(inspector: 'shot' | 'project' = 'shot'): Pr
 useEditorDocumentSession({
   id: () => `editor:script:${props.scriptAssetId}`,
   save: async () => {
-    await editorDialogRef.value?.flushSave()
+    await imageEditorDialogRef.value?.flushSave()
+    await videoEditorDialogRef.value?.flushSave()
     await tableDialogRef.value?.flushSave()
   },
   saveOnUnmount: false
