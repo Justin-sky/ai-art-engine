@@ -630,4 +630,63 @@ describe('graph run', () => {
       'data:image/png;base64,dir'
     ])
   })
+
+  it('runs independent fan-in sources in parallel then skips only downstream on failure', async () => {
+    const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+      id: 'a',
+      params: { generateInstruction: '写 A' }
+    })
+    const b = createNodeFromType('asset.screenplay', { x: 0, y: 80 }, {
+      id: 'b',
+      params: { generateInstruction: '写 B' }
+    })
+    const output = createOutputGraphNode('text', { x: 240, y: 40 }, {
+      id: TEXT_OUTPUT_ID
+    })
+    let inflight = 0
+    let maxInflight = 0
+    const result = await runGraph(
+      {
+        nodes: [a, b, output],
+        edges: [
+          {
+            id: 'e1',
+            source: 'a',
+            target: TEXT_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          },
+          {
+            id: 'e2',
+            source: 'b',
+            target: TEXT_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        generateText: async ({ prompt }) => {
+          inflight += 1
+          maxInflight = Math.max(maxInflight, inflight)
+          await new Promise((r) => setTimeout(r, 30))
+          inflight -= 1
+          if (prompt.includes('写 A')) throw new Error('provider unavailable')
+          return { text: 'ok-b', model: 'x' }
+        }
+      }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/provider unavailable/)
+    expect(maxInflight).toBeGreaterThanOrEqual(2)
+    expect(result.states.a?.status).toBe('error')
+    expect(result.states.b?.status).toBe('done')
+    expect(result.states[TEXT_OUTPUT_ID]?.status).toBe('skipped')
+    expect(
+      Object.values(result.states).some((s) => s.status === 'pending' || s.status === 'running')
+    ).toBe(false)
+  })
 })

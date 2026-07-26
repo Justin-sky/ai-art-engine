@@ -371,7 +371,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         onNodeUpdate: (nodeId, state) => {
           if (task.abort.signal.aborted) return
           logBridge.onNodeUpdate(nodeId, state)
-          if (state.status === 'skipped') return
+          if (state.status === 'skipped') {
+            // 子集外 skipped 不覆盖；本趟 pending/running 收尾为 skipped 需写回
+            const prev = task.runStates[nodeId]
+            if (prev?.status !== 'pending' && prev?.status !== 'running') return
+          }
           task.runStates[nodeId] = { ...state }
           applyRunStateToNodes(task.nodes, task.runStates)
           bump()
@@ -641,7 +645,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
 
       // 合并引擎最终 states
       for (const [id, state] of Object.entries(result.states)) {
-        if (state.status === 'skipped') continue
+        if (state.status === 'skipped') {
+          const prev = task.runStates[id]
+          if (prev?.status !== 'pending' && prev?.status !== 'running') continue
+        }
         task.runStates[id] = { ...state }
       }
       applyRunStateToNodes(task.nodes, task.runStates)

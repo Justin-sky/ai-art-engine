@@ -550,6 +550,10 @@ h2 {
   background: #5ecf8a;
 }
 
+.flow-node[data-status='skipped'] .flow-dot {
+  background: #4b5563;
+}
+
 .flow-node[data-status='error'] .flow-dot {
   background: #e07070;
 }

@@ -28,6 +28,17 @@ export function topologicalSort(
   nodeIds: Iterable<string>,
   edges: GraphEdge[]
 ): string[] | null {
+  const waves = topologicalWaves(nodeIds, edges)
+  return waves ? waves.flat() : null
+}
+
+/**
+ * Kahn 分层：同一层内节点互不依赖，可并行执行。若有环返回 null。
+ */
+export function topologicalWaves(
+  nodeIds: Iterable<string>,
+  edges: GraphEdge[]
+): string[][] | null {
   const ids = new Set(nodeIds)
   const indegree = new Map<string, number>()
   const outgoing = new Map<string, string[]>()
@@ -43,21 +54,23 @@ export function topologicalSort(
     outgoing.get(edge.source)!.push(edge.target)
   }
 
-  const queue = [...ids].filter((id) => (indegree.get(id) ?? 0) === 0).sort()
-  const order: string[] = []
+  const waves: string[][] = []
+  let ready = [...ids].filter((id) => (indegree.get(id) ?? 0) === 0).sort()
+  let placed = 0
 
-  while (queue.length) {
-    const id = queue.shift()!
-    order.push(id)
-    for (const next of outgoing.get(id) ?? []) {
-      const d = (indegree.get(next) ?? 0) - 1
-      indegree.set(next, d)
-      if (d === 0) {
-        queue.push(next)
-        queue.sort()
+  while (ready.length) {
+    waves.push(ready)
+    placed += ready.length
+    const nextReady: string[] = []
+    for (const id of ready) {
+      for (const next of outgoing.get(id) ?? []) {
+        const d = (indegree.get(next) ?? 0) - 1
+        indegree.set(next, d)
+        if (d === 0) nextReady.push(next)
       }
     }
+    ready = nextReady.sort()
   }
 
-  return order.length === ids.size ? order : null
+  return placed === ids.size ? waves : null
 }

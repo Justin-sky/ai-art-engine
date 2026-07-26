@@ -3,7 +3,7 @@ import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
 import type { GraphDocument, GraphNode } from '../types'
 import { isVideoFramePortId } from '../videoGenerateParams'
-import { collectUpstreamNodeIds, topologicalSort } from './topo'
+import { collectUpstreamNodeIds, topologicalSort, topologicalWaves } from './topo'
 import type {
   GraphNodeRunState,
   GraphOutputValue,
@@ -73,6 +73,20 @@ function markCancelled(
     const status = states[id]?.status
     if (status === 'pending' || status === 'running') {
       publish(states, id, { status: 'error', error: 'GRAPH_CANCELLED' }, onNodeUpdate)
+    }
+  }
+}
+
+/** 波次失败后，尚未执行的下游标为 skipped（同层并行节点应已跑完，不会误跳过） */
+function markRemainingSkipped(
+  states: Record<string, GraphNodeRunState>,
+  order: string[],
+  onNodeUpdate?: GraphRunOptions['onNodeUpdate']
+): void {
+  for (const id of order) {
+    const status = states[id]?.status
+    if (status === 'pending' || status === 'running') {
+      publish(states, id, emptyState('skipped'), onNodeUpdate)
     }
   }
 }
@@ -387,30 +401,36 @@ export async function runGraph(
     }
   }
 
+  // 可复用的已完成节点：先灌 outputs，再从待执行集合中剔除
   for (const nodeId of order) {
-    if (canSkipNode(nodeId)) {
-      const source = byId.get(nodeId)
-      if (source && !outputs.has(nodeId)) {
-        try {
-          const snap = await softSnapshotOutputs(
-            source,
-            options.priorNodeStates?.[nodeId],
-            options
-          )
-          outputs.set(nodeId, snap)
-          publish(
-            states,
-            nodeId,
-            { status: 'done', outputs: snap },
-            options.onNodeUpdate
-          )
-        } catch {
-          // 无法复用则继续真正执行
-        }
-      }
-      if (outputs.has(nodeId)) continue
+    if (!canSkipNode(nodeId) || outputs.has(nodeId)) continue
+    const source = byId.get(nodeId)
+    if (!source) continue
+    try {
+      const snap = await softSnapshotOutputs(
+        source,
+        options.priorNodeStates?.[nodeId],
+        options
+      )
+      outputs.set(nodeId, snap)
+      publish(states, nodeId, { status: 'done', outputs: snap }, options.onNodeUpdate)
+    } catch {
+      // 无法复用则真正执行
     }
+  }
 
+  const runIds = order.filter((id) => !(canSkipNode(id) && outputs.has(id)))
+  const waves = onlyTarget
+    ? [runIds]
+    : topologicalWaves(runIds, graph.edges)
+  if (!waves) {
+    for (const id of runIds) {
+      publish(states, id, { status: 'error', error: 'GRAPH_CYCLE' }, options.onNodeUpdate)
+    }
+    return { ok: false, order, states, error: 'GRAPH_CYCLE' }
+  }
+
+  for (const wave of waves) {
     try {
       await waitStep(stepDelayMs, options.signal)
     } catch {
@@ -423,17 +443,21 @@ export async function runGraph(
       return { ok: false, order, states, error: 'GRAPH_CANCELLED' }
     }
 
-    const step = await executeOneNode(nodeId, byId, graph, outputs, options, states)
-    if (!step.ok) {
-      if (step.error === 'GRAPH_CANCELLED') {
-        markCancelled(states, order, options.onNodeUpdate)
-      }
-      return { ok: false, order, states, error: step.error }
-    }
+    // 同层互不依赖：并行执行，再汇总到下游
+    const steps = await Promise.all(
+      wave.map((nodeId) => executeOneNode(nodeId, byId, graph, outputs, options, states))
+    )
 
-    if (options.signal?.aborted) {
+    if (options.signal?.aborted || steps.some((s) => s.error === 'GRAPH_CANCELLED')) {
       markCancelled(states, order, options.onNodeUpdate)
       return { ok: false, order, states, error: 'GRAPH_CANCELLED' }
+    }
+
+    const failed = steps.find((s) => !s.ok)
+    if (failed) {
+      // 仅跳过尚未执行的下游；同层并行节点已全部跑完
+      markRemainingSkipped(states, order, options.onNodeUpdate)
+      return { ok: false, order, states, error: failed.error }
     }
   }
 

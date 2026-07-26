@@ -234,7 +234,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
   function applyNodeUpdate(token: number, nodeId: string, state: GraphNodeRunState): void {
     if (token !== runToken) return
     activeLogBridge?.onNodeUpdate(nodeId, state)
-    if (state.status === 'skipped') return
+    if (state.status === 'skipped') {
+      // 子集外 skipped 不抹掉其它节点；本趟 pending/running → skipped 需写回
+      const prev = runStates[nodeId]
+      if (prev?.status !== 'pending' && prev?.status !== 'running') return
+      runStates[nodeId] = { status: 'skipped' }
+      return
+    }
     // 输入端口仅写入执行日志，不灌入 UI runStates，避免 dataUrl 膨胀内存
     const { inputs: _inputs, ...rest } = state
     runStates[nodeId] = {
