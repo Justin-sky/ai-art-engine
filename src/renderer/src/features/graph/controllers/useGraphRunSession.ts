@@ -136,6 +136,10 @@ export interface GraphRunSessionOptions {
     assetTypes?: Map<string, AssetType>
     stylePreset?: string
   } | null
+  /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
+  resolveNarrativeUnit?: (
+    unitId: string
+  ) => import('@shared/graph').NarrativeUnitRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 分镜表格节点：输出当前分镜列表 JSON */
@@ -154,6 +158,10 @@ export interface GraphRunSessionOptions {
   /** 世界元素编辑：收集四类子图已有图片 */
   collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
     images: import('@shared/graph').GraphImageItem[]
+  } | null>
+  /** 叙事单元生成：收集各单元子图「叙事输出」已有文本 */
+  collectNarrativeUnitTexts?: (signal?: AbortSignal) => Promise<{
+    items: import('@shared/graph').GraphTextItem[]
   } | null>
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
@@ -583,11 +591,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveHostAssetName: options.resolveHostAssetName,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveShotStoryboard: options.resolveShotStoryboard,
+        resolveNarrativeUnit: options.resolveNarrativeUnit,
         resolveShotSplitTableJson: options.resolveShotSplitTableJson,
         importShotSplitTableJson: options.importShotSplitTableJson,
         collectScriptShotImages: options.collectScriptShotImages,
         collectScriptShotVideos: options.collectScriptShotVideos,
         collectWorldElementImages: options.collectWorldElementImages,
+        collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,
         resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,

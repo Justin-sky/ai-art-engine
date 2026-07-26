@@ -85,7 +85,7 @@ describe('graph scopes', () => {
     expect(def.ensureSingletonTypeIds).toEqual([
       'world.extract',
       'world.table',
-      'world.editor',
+      'world.gen',
       'output.world'
     ])
   })
@@ -96,7 +96,7 @@ describe('graph scopes', () => {
     expect(def.ensureSingletonTypeIds).toEqual([
       'narrative.split',
       'narrative.table',
-      'narrative.editor',
+      'narrative.gen',
       'output.narrative'
     ])
   })

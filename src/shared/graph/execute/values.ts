@@ -29,6 +29,7 @@ import {
   resolveShotSplitSystemPrompt,
   resolveWorldExtractSystemPrompt,
   resolveNarrativeSplitSystemPrompt,
+  resolveNarrativeUnitGenSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveUpscaleSystemPrompt,
   resolveExpandSystemPrompt,
@@ -50,6 +51,7 @@ import {
   buildShotSplitPrompt,
   buildWorldExtractPrompt,
   buildNarrativeSplitPrompt,
+  buildNarrativeUnitGenPrompt,
   buildToPromptUserPrompt,
   buildVideoPrompt,
   buildVoicePrompt
@@ -83,10 +85,10 @@ import {
 } from '../worldElementParse'
 import {
   mergeNarrativeUnitRowsPreservingReviewed,
-  narrativeUnitRowsToTextItems,
   parseNarrativeUnitJson,
   stringifyNarrativeUnitRows
 } from '../narrativeUnitParse'
+import { formatNarrativeUnitRefText, isLegacyNarrativeUnitGenInstruction } from '../narrativeUnitParams'
 import {
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode
@@ -1694,6 +1696,7 @@ export type InstructionFinalPreviewKind =
   | 'shotSplit'
   | 'worldExtract'
   | 'narrativeSplit'
+  | 'narrativeUnitGen'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -1711,6 +1714,9 @@ export function resolveInstructionFinalPreviewKind(
     presetKind === 'narrativeSplit'
   ) {
     return 'narrativeSplit'
+  }
+  if (typeId === 'narrative.unitGen' || presetKind === 'narrativeUnitGen') {
+    return 'narrativeUnitGen'
   }
 
   const assetType = node?.assetType
@@ -1749,6 +1755,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveWorldExtractSystemPrompt(raw, locale)
     case 'narrativeSplit':
       return resolveNarrativeSplitSystemPrompt(raw, locale)
+    case 'narrativeUnitGen':
+      return resolveNarrativeUnitGenSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -1777,6 +1785,8 @@ function buildUserPromptForPreviewKind(
       return buildWorldExtractPrompt(instruction, locale)
     case 'narrativeSplit':
       return buildNarrativeSplitPrompt(instruction, locale)
+    case 'narrativeUnitGen':
+      return buildNarrativeUnitGenPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)
@@ -1797,6 +1807,7 @@ function previewKindAutoAppendsIncomingText(kind: InstructionFinalPreviewKind): 
     kind === 'shotSplit' ||
     kind === 'worldExtract' ||
     kind === 'narrativeSplit' ||
+    kind === 'narrativeUnitGen' ||
     kind === 'image' ||
     kind === 'video' ||
     kind === 'voice'
@@ -1909,6 +1920,17 @@ function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
   )
 }
 
+function fallbackNarrativeUnitRefText(
+  node: GraphNode | undefined,
+  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
+): string {
+  if (!node || node.typeId !== 'narrative.unitRef' || !resolveNarrativeUnit) return ''
+  const unitId = node.params.boundUnitId?.trim()
+  if (!unitId) return ''
+  const unit = resolveNarrativeUnit(unitId)
+  return unit ? formatNarrativeUnitRefText(unit) : ''
+}
+
 /**
  * 按入边顺序构建 `@n` 引用源，编号与 UI chips 一致；
  * 端口值缺正文时回退到源节点 params（与预览 resolveNodeTextContent 对齐）。
@@ -1920,6 +1942,7 @@ export function buildMentionSourcesForNode(input: {
   byId: Map<string, GraphNode>
   outputs: Map<string, Record<string, GraphValue>>
   mentionIndexBase?: number
+  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
 }): InstructionMentionSource[] {
   const base = Math.max(0, Math.floor(input.mentionIndexBase ?? 0))
   const incoming = input.graph.edges.filter(
@@ -1940,7 +1963,9 @@ export function buildMentionSourcesForNode(input: {
       `@${index}`
     const text = keepMentionToken
       ? ''
-      : fromValue?.text?.trim() || fallbackMentionTextFromNode(source)
+      : fromValue?.text?.trim() ||
+        fallbackMentionTextFromNode(source) ||
+        fallbackNarrativeUnitRefText(source, input.resolveNarrativeUnit)
     return { index, title, text, keepMentionToken }
   })
 }
@@ -2110,6 +2135,74 @@ export function executeShotParamsNode(ctx: NodeExecuteContext): Record<string, G
   return { out: { kind: 'text', text } }
 }
 
+/** 叙事单元细化生成：文本模型 + 指令框；规则在系统提示词 */
+export async function executeNarrativeUnitGenNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const mentionSources = resolveMentionSources(ctx)
+  let instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  // 旧版把规则写在指令窗口：视为未配置，改走系统提示词默认
+  if (isLegacyNarrativeUnitGenInstruction(instructionRaw)) {
+    instructionRaw = ''
+  }
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  let incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  // 与其它生成节点一致：无 @ 时默认拼上游；端口值缺失时回退 mentionSources（如叙事参考）
+  if (!incomingText && !instructionHasMentions(instructionRaw)) {
+    incomingText = mentionSources
+      .map((source) => source.text.trim())
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const localText = node.params.text?.trim() ?? ''
+
+  if (!ctx.generateText) {
+    const text = instruction.trim() || incomingText || localText
+    if (text && text !== localText) {
+      node.params = { ...node.params, text }
+      ctx.patchNode?.({ params: { text } })
+    }
+    return { out: { kind: 'text', text } }
+  }
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  let prompt = buildNarrativeUnitGenPrompt(instruction, ctx.locale)
+  if (incomingText) {
+    prompt = `${prompt.trim()}\n\n${incomingText}`
+  }
+
+  const result = await ctx.generateText({
+    prompt,
+    system: resolveNarrativeUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined
+  })
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const text = result.text.trim()
+  if (!text) throw new Error('模型未返回叙事细化结果')
+
+  node.params = { ...node.params, text }
+  ctx.patchNode?.({ params: { text } })
+  return { out: { kind: 'text', text } }
+}
+
+/** 叙事单元参考：输出绑定单元的目录字段文本 */
+export function executeNarrativeUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const unitId = ctx.node.params.boundUnitId?.trim()
+  if (!unitId) return {}
+  const unit = ctx.resolveNarrativeUnit?.(unitId)
+  if (!unit) return {}
+  const text = formatNarrativeUnitRefText(unit)
+  return text ? { out: { kind: 'text', text } } : {}
+}
+
 /**
  * 分镜表格：有上游文本则透传并导入分镜列表（拆分 → 表格）；
  * 否则输出当前分镜列表 JSON（表格 → 拆分，再次拆分）。
@@ -2272,11 +2365,11 @@ export async function executeWorldTableNode(
 }
 
 /**
- * 世界元素编辑：有上游提取/表格 JSON 时同步到元素子图；
+ * 世界元素生成：有上游提取/表格 JSON 时同步到元素子图；
  * 再从四类 elementWorkflow 子图收集已有图片，输出真实 images（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
-export async function executeWorldEditorNode(
+export async function executeWorldGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const first = Object.values(ctx.inputs).flat()[0]
@@ -2341,28 +2434,27 @@ export async function executeNarrativeTableNode(
 }
 
 /**
- * 叙事单元编辑：同步上游目录 JSON，输出每个单元的全文 texts 数组。
+ * 叙事单元生成：有上游目录 JSON 时同步到单元子图；
+ * 再从各单元 narrativeUnit 子图收集「叙事输出」已有文本（不级联跑子图生成）。
+ * 导入只在节点执行时发生，打开细化窗口不会导入。
  */
-export async function executeNarrativeEditorNode(
+export async function executeNarrativeGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const first = Object.values(ctx.inputs).flat()[0]
   if (first && first.kind === 'text' && first.text.trim()) {
     const text = first.text.trim()
+    // 先导入目录再 patch，减少与单元图落盘的竞态
+    await ctx.importNarrativeCatalogJson?.(text)
     ctx.node.params = { ...ctx.node.params, text }
     ctx.patchNode?.({ params: { text } })
-    await ctx.importNarrativeCatalogJson?.(text)
   }
 
-  const catalogJson =
-    ctx.resolveNarrativeCatalogJson?.()?.trim() ||
-    ctx.node.params.text?.trim() ||
-    (first && first.kind === 'text' ? first.text.trim() : '')
-  const rows = parseNarrativeUnitJson(catalogJson) ?? []
+  const collected = await ctx.collectNarrativeUnitTexts?.(ctx.signal)
   return {
     out: {
       kind: 'texts',
-      items: narrativeUnitRowsToTextItems(rows)
+      items: collected?.items ?? []
     }
   }
 }

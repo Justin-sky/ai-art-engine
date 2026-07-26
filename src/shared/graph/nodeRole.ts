@@ -63,12 +63,24 @@ export function isNarrativeTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'narrative.table'
 }
 
-export function isNarrativeEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.editor'
+export function isNarrativeGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'narrative.gen'
+}
+
+export function isNarrativeUnitGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'narrative.unitGen'
+}
+
+export function isNarrativeUnitRefNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'narrative.unitRef'
 }
 
 export function isNarrativeOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'output.narrative'
+}
+
+export function isNarrativeUnitOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'output.narrativeUnit'
 }
 
 export function isWorldOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -79,8 +91,8 @@ export function isWorldTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.table'
 }
 
-export function isWorldEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'world.editor'
+export function isWorldGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'world.gen'
 }
 
 export function isSelectImageNode(node: Pick<GraphNode, 'typeId'>): boolean {

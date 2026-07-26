@@ -188,7 +188,9 @@ const isVideoOutput = computed(() => {
 const isGenerateScriptOutput = computed(() => {
   const current = node.value
   if (!current) return false
-  if (current.typeId === 'output.narrative') return false
+  if (current.typeId === 'output.narrative' || current.typeId === 'output.narrativeUnit') {
+    return false
+  }
   return current.typeId === 'output.text' || current.params.outputKind === 'text'
 })
 const isDirectorOutput = computed(() => {
@@ -199,6 +201,8 @@ const isDirectorOutput = computed(() => {
   return asset?.type === 'motion' && node.value?.params.outputKind === 'image'
 })
 const outputLabel = computed(() => {
+  if (node.value?.typeId === 'output.narrativeUnit') return t('graph.titles.narrativeUnitOutput')
+  if (node.value?.typeId === 'output.narrative') return t('graph.titles.narrativeOutput')
   if (isGenerateScriptOutput.value) return t('graph.titles.screenplayOutput')
   if (isDirectorOutput.value) return t('graph.titles.directorOutput')
   if (isVoiceOutput.value) return t('graph.titles.assetOutput.voice')

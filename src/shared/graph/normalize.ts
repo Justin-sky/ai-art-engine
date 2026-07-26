@@ -13,6 +13,7 @@ import {
   createScopeSingletonNode,
   ensureAssetEditorProcessingChain,
   ensureNarrativeAssetDefaultChain,
+  ensureNarrativeUnitDefaultChain,
   ensureShotWorkflowDefaultChain,
   ensureVisualDefaultChain,
   ensureWorldAssetDefaultChain,
@@ -204,7 +205,7 @@ function applyScopeOutput(
   assetType?: string | null
 ): void {
   const output = resolveScopeOutput(scope, assetType)
-  const targetTypeId = `output.${output.kind}` as const
+  const targetTypeId = output.typeId ?? (`output.${output.kind}` as const)
   for (const node of nodes) {
     if (node.category !== 'output') continue
     node.params = {
@@ -229,11 +230,11 @@ function ensureScopeSingletons(nodes: GraphNode[], scope: GraphAddScope): void {
       typeId === 'script.shotVideoGen' ||
       typeId === 'world.extract' ||
       typeId === 'world.table' ||
-      typeId === 'world.editor' ||
+      typeId === 'world.gen' ||
       typeId === 'output.world' ||
       typeId === 'narrative.split' ||
       typeId === 'narrative.table' ||
-      typeId === 'narrative.editor' ||
+      typeId === 'narrative.gen' ||
       typeId === 'output.narrative'
     ) {
       continue
@@ -400,6 +401,9 @@ export function normalizeScopedGraph(
   }
   if (scope === 'visual') {
     ensureVisualDefaultChain(nodes, edges)
+  }
+  if (scope === 'narrativeUnit') {
+    ensureNarrativeUnitDefaultChain(nodes, edges)
   }
   if (scope === 'narrativeAsset') {
     ensureNarrativeAssetDefaultChain(nodes, edges)

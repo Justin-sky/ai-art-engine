@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNodeFromType } from '../src/shared/graph'
 import {
-  executeNarrativeEditorNode,
+  executeNarrativeGenNode,
   executeNarrativeTableNode
 } from '../src/shared/graph/execute/values'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
@@ -33,9 +33,18 @@ describe('narrative table / editor execute', () => {
     expect(node.params.text).toBe(text)
   })
 
-  it('editor applies upstream catalog JSON and outputs texts array', async () => {
-    const node = createNodeFromType('narrative.editor', { x: 0, y: 0 })
+  it('gen applies upstream catalog JSON and collects unit texts', async () => {
+    const node = createNodeFromType('narrative.gen', { x: 0, y: 0 })
     const importNarrativeCatalogJson = vi.fn()
+    const collectNarrativeUnitTexts = vi.fn(async () => ({
+      items: [
+        {
+          id: 'nu-2',
+          title: '高潮',
+          text: '雨停了。天台上对峙。'
+        }
+      ]
+    }))
     const text = JSON.stringify([
       {
         id: 'nu-2',
@@ -51,20 +60,28 @@ describe('narrative table / editor execute', () => {
         status: '已审核'
       }
     ])
-    const result = await executeNarrativeEditorNode(
+    const result = await executeNarrativeGenNode(
       baseCtx({
         node,
         importNarrativeCatalogJson,
+        collectNarrativeUnitTexts,
         inputs: { in: [{ kind: 'text', text }] }
       })
     )
     expect(importNarrativeCatalogJson).toHaveBeenCalledWith(text)
+    expect(collectNarrativeUnitTexts).toHaveBeenCalled()
     expect(result.out?.kind).toBe('texts')
     if (result.out?.kind === 'texts') {
       expect(result.out.items).toHaveLength(1)
       expect(result.out.items[0]?.id).toBe('nu-2')
-      expect(result.out.items[0]?.text).toContain('高潮')
-      expect(result.out.items[0]?.text).toContain('雨停了。')
+      expect(result.out.items[0]?.text).toContain('雨停了')
+      expect(result.out.items[0]?.text).not.toContain('戏剧功能')
     }
+  })
+
+  it('gen without collect returns empty texts', async () => {
+    const node = createNodeFromType('narrative.gen', { x: 0, y: 0 })
+    const result = await executeNarrativeGenNode(baseCtx({ node }))
+    expect(result.out).toEqual({ kind: 'texts', items: [] })
   })
 })

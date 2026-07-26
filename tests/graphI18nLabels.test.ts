@@ -23,7 +23,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.script.shotParams')).toBe('分镜参数')
     expect(t('graph.types.world.extract')).toBe('世界元素提取')
     expect(t('graph.types.world.table')).toBe('世界元素表格')
-    expect(t('graph.types.world.editor')).toBe('世界元素编辑')
+    expect(t('graph.types.world.gen')).toBe('世界元素生成')
     expect(t('graph.inspector.shotParams.hint')).toContain('分镜')
     expect(t('graph.inspector.generate.presets.image.multiAngle9')).toBe('多机位九宫格')
     expect(t('graph.inspector.generate.presets.image.story25')).toBe('25宫格连贯分镜')

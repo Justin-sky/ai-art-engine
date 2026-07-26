@@ -201,6 +201,8 @@ import {
   resolveInstructionVisual,
   resolveNodeTextContent,
   resolveShotParamsNodePrompt,
+  readBoundUnitIdFromNodeParams,
+  formatNarrativeUnitRefText,
   shouldKeepInstructionMentionToken,
   type GraphNode,
   type InstructionMentionSource,
@@ -216,6 +218,7 @@ import GraphTextNotepadDialog, {
 import RefMentionTextarea from './RefMentionTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
+import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import {
   enrichStyleImagesWithLibraryPrompts,
@@ -382,7 +385,20 @@ function resolveSourcePlainText(node: GraphNode): string {
       stylePreset: project.config?.stylePreset
     }).trim()
   }
+  if (node.typeId === 'narrative.unitRef') {
+    const unitId = readBoundUnitIdFromNodeParams(node.params)
+    const assetId = resolveHostNarrativeAssetId(props.hostId)
+    if (unitId && assetId) {
+      const unit = loadNarrativeCatalog(assetId).find((row) => row.id === unitId)
+      if (unit) return formatNarrativeUnitRefText(unit)
+    }
+  }
   return resolveNodeTextContent(node)?.text?.trim() ?? node.params.notes?.trim() ?? ''
+}
+
+function resolveHostNarrativeAssetId(hostId: string): string | null {
+  const match = /^asset:([^:]+)/.exec(hostId)
+  return match?.[1] ?? null
 }
 
 function sourceSnippet(node: GraphNode): string {

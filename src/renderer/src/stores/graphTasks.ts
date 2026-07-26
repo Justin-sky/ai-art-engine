@@ -52,15 +52,31 @@ import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
-import { applyVisualGraphGenRefsToShot } from '../features/script/shotVisualPipeline'
+import {
+  applyVisualGraphGenRefsToShot,
+  shotNeedsVideoCascade,
+  shotNeedsVisualCascade
+} from '../features/script/shotVisualPipeline'
 import {
   applyWorldCatalog,
   loadWorldCatalog
 } from '../features/world/applyWorldCatalogOnOpen'
 import { collectWorldElementImages } from '../features/world/worldElementPipeline'
+import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
+import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import {
   stringifyWorldElementCatalog,
-  WORLD_ELEMENT_KINDS
+  WORLD_ELEMENT_KINDS,
+  collectImagesFromVisualGraph,
+  collectTextFromNarrativeUnitGraph,
+  getScopeHostIdSuffix,
+  normalizeScopedGraph,
+  readWorldElementGraphFromGenParams,
+  readWorldElementIdFromNodeParams,
+  readNarrativeUnitGraphFromGenParams,
+  withWorldElementGraph,
+  withNarrativeUnitGraph,
+  type WorldElementKind
 } from '@shared/graph'
 
 export type GraphTaskStatus = 'pending' | 'running' | 'done' | 'error' | 'stopped'
@@ -72,6 +88,18 @@ export type GraphTaskTarget =
       shotId: string
       scope: GraphAddScope
       canvasField: ShotCanvasGraphField
+      hostId: string
+    }
+  | {
+      kind: 'world-element'
+      worldAssetId: string
+      elementKind: WorldElementKind
+      hostId: string
+    }
+  | {
+      kind: 'narrative-unit'
+      narrativeAssetId: string
+      unitId: string
       hostId: string
     }
   | {
@@ -157,6 +185,12 @@ function taskTargetKey(target: GraphTaskTarget): string {
   if (target.kind === 'asset') {
     return `asset:${target.assetId}`
   }
+  if (target.kind === 'world-element') {
+    return `world-element:${target.worldAssetId}:${target.elementKind}`
+  }
+  if (target.kind === 'narrative-unit') {
+    return `narrative-unit:${target.narrativeAssetId}:${target.unitId}`
+  }
   return `shot:${target.scriptAssetId}:${target.shotId}:${target.scope}:${target.canvasField}`
 }
 
@@ -169,6 +203,73 @@ const MAX_COMPLETED_TASKS = 100
 export type EnqueueWorkflowResult =
   | { ok: true; id: string }
   | { ok: false; reason: 'duplicate' }
+
+export type EnqueueBatchResult = {
+  enqueued: number
+  skipped: number
+  duplicates: number
+  taskIds: string[]
+}
+
+function resolveShotForScript(shotId: string, scriptAssetId: string): Shot | null {
+  const project = useProjectStore()
+  const fromProject = project.shots.find((s) => s.id === shotId)
+  if (fromProject) return fromProject
+  if (isDraftAssetId(scriptAssetId)) {
+    return useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId) ?? null
+  }
+  return null
+}
+
+function readWorldGenParams(worldAssetId: string): Record<string, unknown> {
+  if (isDraftAssetId(worldAssetId)) {
+    return { ...(useDraftStore().getDraft(worldAssetId)?.genParams ?? {}) }
+  }
+  const asset = useProjectStore().assets.find((a) => a.id === worldAssetId)
+  return { ...((asset?.genParams as Record<string, unknown> | undefined) ?? {}) }
+}
+
+function worldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
+  const hasElements = doc.nodes.some((node) => !!readWorldElementIdFromNodeParams(node.params))
+  if (!hasElements) return false
+  if (!onlyMissing) return true
+  return collectImagesFromVisualGraph(doc).length === 0
+}
+
+function narrativeUnitNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
+  if (!onlyMissing) return true
+  const collected = collectTextFromNarrativeUnitGraph(doc)
+  return !(collected?.text.trim() || collected?.relativePath?.trim())
+}
+
+function scriptShotHostId(scriptAssetId: string, scope: GraphAddScope): string {
+  const base = `script:${scriptAssetId}`
+  const suffix = getScopeHostIdSuffix(scope)
+  return suffix ? `${base}:${suffix}` : base
+}
+
+function worldElementHostId(worldAssetId: string, elementKind: WorldElementKind): string {
+  return `asset:${worldAssetId}:element:${elementKind}`
+}
+
+function narrativeUnitHostId(narrativeAssetId: string, unitId: string): string {
+  return `asset:${narrativeAssetId}:unit:${unitId}`
+}
+
+function readNarrativeGenParams(narrativeAssetId: string): Record<string, unknown> {
+  if (isDraftAssetId(narrativeAssetId)) {
+    return { ...(useDraftStore().getDraft(narrativeAssetId)?.genParams ?? {}) }
+  }
+  const asset = useProjectStore().assets.find((a) => a.id === narrativeAssetId)
+  return { ...((asset?.genParams as Record<string, unknown> | undefined) ?? {}) }
+}
+
+function taskHostAssetId(target: GraphTaskTarget): string {
+  if (target.kind === 'asset') return target.assetId
+  if (target.kind === 'world-element') return target.worldAssetId
+  if (target.kind === 'narrative-unit') return target.narrativeAssetId
+  return target.scriptAssetId
+}
 
 export const useGraphTaskStore = defineStore('graphTasks', () => {
   const activeTasks = ref<GraphTaskInternal[]>([])
@@ -269,10 +370,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       task.graph,
       task.runStates,
       {
-        hostAssetId:
-          task.target.kind === 'asset'
-            ? task.target.assetId
-            : task.target.scriptAssetId
+    hostAssetId: taskHostAssetId(task.target)
       }
     )
     // 同步内存 runStates 为物化后版本，便于后续增量重跑 / 预览
@@ -292,6 +390,24 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       const prevParams = draft?.genParams ?? asset?.genParams ?? {}
       await persistAssetRecord(assetId, {
         genParams: { ...prevParams, graphJson: toPlain(graph) }
+      })
+      return
+    }
+
+    if (task.target.kind === 'world-element') {
+      const { worldAssetId, elementKind } = task.target
+      const prevParams = readWorldGenParams(worldAssetId)
+      await persistAssetRecord(worldAssetId, {
+        genParams: withWorldElementGraph(prevParams, elementKind, toPlain(graph) as GraphDocument)
+      })
+      return
+    }
+
+    if (task.target.kind === 'narrative-unit') {
+      const { narrativeAssetId, unitId } = task.target
+      const prevParams = readNarrativeGenParams(narrativeAssetId)
+      await persistAssetRecord(narrativeAssetId, {
+        genParams: withNarrativeUnitGraph(prevParams, unitId, toPlain(graph) as GraphDocument)
       })
       return
     }
@@ -362,6 +478,160 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     return { ok: true, id }
   }
 
+  function enqueueScriptShotBatch(input: {
+    scriptAssetId: string
+    shots: Shot[]
+    kind: 'visual' | 'shotWorkflow'
+    onlyMissing?: boolean
+  }): EnqueueBatchResult {
+    const onlyMissing = input.onlyMissing !== false
+    const scope: GraphAddScope = input.kind === 'visual' ? 'visual' : 'shotWorkflow'
+    const canvasField: ShotCanvasGraphField =
+      input.kind === 'visual' ? 'visualGraphJson' : 'graphJson'
+    const hostId = scriptShotHostId(input.scriptAssetId, scope)
+    let enqueued = 0
+    let skipped = 0
+    let duplicates = 0
+    const taskIds: string[] = []
+
+    for (const shot of input.shots) {
+      const live = resolveShotForScript(shot.id, input.scriptAssetId) ?? shot
+      const needs =
+        input.kind === 'visual' ? shotNeedsVisualCascade(live) : shotNeedsVideoCascade(live)
+      if (onlyMissing && !needs) {
+        skipped += 1
+        continue
+      }
+      const raw =
+        input.kind === 'visual' ? live.canvas.visualGraphJson : live.canvas.graphJson
+      const graph = normalizeScopedGraph(scope, raw ?? null)
+      const result = enqueueWorkflow({
+        title: live.title?.trim() || shot.id,
+        graph,
+        target: {
+          kind: 'script-shot',
+          scriptAssetId: input.scriptAssetId,
+          shotId: live.id,
+          scope,
+          canvasField,
+          hostId
+        }
+      })
+      if (result.ok) {
+        enqueued += 1
+        taskIds.push(result.id)
+      } else {
+        duplicates += 1
+      }
+    }
+
+    return { enqueued, skipped, duplicates, taskIds }
+  }
+
+  function enqueueWorldElementBatch(input: {
+    worldAssetId: string
+    onlyMissing?: boolean
+  }): EnqueueBatchResult {
+    const onlyMissing = input.onlyMissing !== false
+    const genParams = readWorldGenParams(input.worldAssetId)
+    let enqueued = 0
+    let skipped = 0
+    let duplicates = 0
+    const taskIds: string[] = []
+
+    for (const elementKind of WORLD_ELEMENT_KINDS) {
+      const raw = readWorldElementGraphFromGenParams(genParams, elementKind)
+      const graph = normalizeScopedGraph('elementWorkflow', raw ?? null, {
+        assetType: 'world'
+      })
+      if (!worldKindNeedsBatch(graph, onlyMissing)) {
+        skipped += 1
+        continue
+      }
+      const result = enqueueWorkflow({
+        title: elementKind,
+        graph,
+        target: {
+          kind: 'world-element',
+          worldAssetId: input.worldAssetId,
+          elementKind,
+          hostId: worldElementHostId(input.worldAssetId, elementKind)
+        }
+      })
+      if (result.ok) {
+        enqueued += 1
+        taskIds.push(result.id)
+      } else {
+        duplicates += 1
+      }
+    }
+
+    return { enqueued, skipped, duplicates, taskIds }
+  }
+
+  function enqueueNarrativeUnitBatch(input: {
+    narrativeAssetId: string
+    onlyMissing?: boolean
+  }): EnqueueBatchResult {
+    const onlyMissing = input.onlyMissing !== false
+    const rows = loadNarrativeCatalog(input.narrativeAssetId)
+    const genParams = readNarrativeGenParams(input.narrativeAssetId)
+    let enqueued = 0
+    let skipped = 0
+    let duplicates = 0
+    const taskIds: string[] = []
+
+    for (const row of rows) {
+      const raw = readNarrativeUnitGraphFromGenParams(genParams, row.id)
+      const graph = normalizeScopedGraph('narrativeUnit', raw ?? null, {
+        assetType: 'narrative'
+      })
+      if (!narrativeUnitNeedsBatch(graph, onlyMissing)) {
+        skipped += 1
+        continue
+      }
+      const result = enqueueWorkflow({
+        title: row.title?.trim() || row.id,
+        graph,
+        target: {
+          kind: 'narrative-unit',
+          narrativeAssetId: input.narrativeAssetId,
+          unitId: row.id,
+          hostId: narrativeUnitHostId(input.narrativeAssetId, row.id)
+        }
+      })
+      if (result.ok) {
+        enqueued += 1
+        taskIds.push(result.id)
+      } else {
+        duplicates += 1
+      }
+    }
+
+    return { enqueued, skipped, duplicates, taskIds }
+  }
+
+  async function waitForTaskIds(taskIds: string[]): Promise<void> {
+    if (!taskIds.length) return
+    const pending = new Set(taskIds)
+    await new Promise<void>((resolve) => {
+      const tick = (): void => {
+        for (const id of [...pending]) {
+          const stillActive = activeTasks.value.some(
+            (t) => t.id === id && isActiveStatus(t.status)
+          )
+          if (!stillActive) pending.delete(id)
+        }
+        if (!pending.size) {
+          resolve()
+          return
+        }
+        window.setTimeout(tick, 200)
+      }
+      tick()
+    })
+  }
+
   async function runTask(task: GraphTaskInternal): Promise<void> {
     task.status = 'running'
     bump()
@@ -401,18 +671,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         saveRunMedia: (input) =>
           saveGraphRunMediaForNode({
             ...input,
-            hostAssetId:
-              task.target.kind === 'asset'
-                ? task.target.assetId
-                : task.target.scriptAssetId
+            hostAssetId: taskHostAssetId(task.target)
           }),
         saveRunText: (input) =>
           saveGraphRunTextForNode({
             ...input,
-            hostAssetId:
-              task.target.kind === 'asset'
-                ? task.target.assetId
-                : task.target.scriptAssetId
+            hostAssetId: taskHostAssetId(task.target)
           }),
         readRunText: readGraphRunText,
         generateText: async (input) => {
@@ -503,10 +767,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           try {
             const project = useProjectStore()
-            const hostAssetId =
-              task.target.kind === 'asset'
-                ? task.target.assetId
-                : task.target.scriptAssetId
+            const hostAssetId = taskHostAssetId(task.target)
             const hostAsset = hostAssetId
               ? project.assets.find((a) => a.id === hostAssetId)
               : null
@@ -566,10 +827,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           try {
             const project = useProjectStore()
-            const hostAssetId =
-              task.target.kind === 'asset'
-                ? task.target.assetId
-                : task.target.scriptAssetId
+            const hostAssetId = taskHostAssetId(task.target)
             const hostAsset = hostAssetId
               ? project.assets.find((a) => a.id === hostAssetId)
               : null
@@ -616,11 +874,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
         },
         resolveHostAssetName: () => {
-          const target = task.target
-          if (target.kind !== 'asset') return undefined
+          const hostAssetId = taskHostAssetId(task.target)
           const project = useProjectStore()
           return (
-            project.assets.find((asset) => asset.id === target.assetId)?.name?.trim() ||
+            project.assets.find((asset) => asset.id === hostAssetId)?.name?.trim() ||
+            useDraftStore().getDraft(hostAssetId)?.name?.trim() ||
             undefined
           )
         },
@@ -680,6 +938,19 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           const asset = project.assets.find((a) => a.id === worldId)
           if (asset?.type !== 'world') return null
           return collectWorldElementImages({ worldAssetId: worldId, signal })
+        },
+        collectNarrativeUnitTexts: async (signal) => {
+          if (task.target.kind !== 'asset') return null
+          const narrativeId = task.target.assetId
+          if (isDraftAssetId(narrativeId)) {
+            const draft = useDraftStore().getDraft(narrativeId)
+            if (draft?.type !== 'narrative') return null
+            return collectNarrativeUnitTexts({ narrativeAssetId: narrativeId, signal })
+          }
+          const project = useProjectStore()
+          const asset = project.assets.find((a) => a.id === narrativeId)
+          if (asset?.type !== 'narrative') return null
+          return collectNarrativeUnitTexts({ narrativeAssetId: narrativeId, signal })
         }
       })
 
@@ -758,6 +1029,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     openDialog,
     closeDialog,
     enqueueWorkflow,
+    enqueueScriptShotBatch,
+    enqueueWorldElementBatch,
+    enqueueNarrativeUnitBatch,
+    waitForTaskIds,
     removeTask,
     stopAndRemove,
     clearForProjectSwitch

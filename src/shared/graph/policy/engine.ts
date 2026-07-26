@@ -6,6 +6,8 @@ export function isNodeAddableInScope(scope: string, typeId: string): boolean {
   // 叙事 / 世界元素资产图可添加对应专用输出（通常由单例确保，此处允许手动补）
   const allowShotWorkflowVideoOutput = scope === 'shotWorkflow' && typeId === 'output.video'
   const allowVisualImageOutput = scope === 'visual' && typeId === 'output.image'
+  const allowNarrativeUnitTextOutput =
+    scope === 'narrativeUnit' && typeId === 'output.narrativeUnit'
   const allowNarrativeOutput = scope === 'narrativeAsset' && typeId === 'output.narrative'
   const allowWorldOutput = scope === 'worldAsset' && typeId === 'output.world'
   if (
@@ -14,6 +16,7 @@ export function isNodeAddableInScope(scope: string, typeId: string): boolean {
     scope !== 'elementWorkflow' &&
     !allowShotWorkflowVideoOutput &&
     !allowVisualImageOutput &&
+    !allowNarrativeUnitTextOutput &&
     !allowNarrativeOutput &&
     !allowWorldOutput
   ) {

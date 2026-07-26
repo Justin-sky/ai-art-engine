@@ -27,13 +27,14 @@ describe('graph policy', () => {
         'canvasAsset',
         'directorAsset',
         'elementWorkflow',
+        'narrativeAsset',
+        'narrativeUnit',
         'screenplayAsset',
         'scriptAsset',
         'shotWorkflow',
         'visual',
         'workflow',
-        'worldAsset',
-        'narrativeAsset'
+        'worldAsset'
       ].sort()
     )
   })
@@ -115,16 +116,18 @@ describe('graph policy', () => {
         'image.toPrompt',
         'image.upscale',
         'prompt.optimize',
-        'narrative.editor',
+        'narrative.gen',
         'narrative.split',
         'narrative.table',
+        'narrative.unitGen',
+        'narrative.unitRef',
         'screenplay.select',
         'script.shotImageGen',
         'script.shotVideoGen',
         'script.shotParams',
         'script.shotSplit',
         'script.shotTable',
-        'world.editor',
+        'world.gen',
         'world.extract',
         'world.table'
       ].sort()

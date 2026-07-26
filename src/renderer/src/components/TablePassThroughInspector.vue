@@ -14,6 +14,27 @@
       @toggle="toggleRun"
     />
 
+    <div v-if="batchKind" class="batch-block">
+      <label class="batch-option">
+        <input v-model="onlyMissing" type="checkbox" />
+        <span>{{ t('graph.inspector.shotBatch.onlyMissing') }}</span>
+      </label>
+      <label class="batch-option">
+        <input v-model="collectAfter" type="checkbox" />
+        <span>{{ t('graph.inspector.shotBatch.collectAfter') }}</span>
+      </label>
+      <button
+        type="button"
+        class="batch-btn"
+        :disabled="batchBusy || isGraphRunning"
+        @click="onBatchRun"
+      >
+        <span class="icon-batch" aria-hidden="true" />
+        <span class="batch-btn-label">{{ batchBusy ? '…' : batchButtonLabel }}</span>
+      </button>
+      <p v-if="batchMessage" class="batch-msg">{{ batchMessage }}</p>
+    </div>
+
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
     <label>
@@ -26,23 +47,34 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { isDraftAssetId, shotScriptAssetId, type Shot } from '@shared/domain'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { useGraphTaskStore } from '../stores/graphTasks'
+import { useProjectStore } from '../stores/project'
+import { useDraftStore } from '../stores/drafts'
+import { promptAlert } from '../composables/useStudioPrompt'
 
 const PASS_THROUGH_TYPE_IDS = new Set([
   'script.shotTable',
   'script.shotImageGen',
   'script.shotVideoGen',
   'world.table',
-  'narrative.table'
+  'world.gen',
+  'narrative.table',
+  'narrative.gen'
 ])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
+const taskStore = useGraphTaskStore()
+const project = useProjectStore()
+const drafts = useDraftStore()
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -68,18 +100,40 @@ const typeLabel = computed(() =>
 const hint = computed(() => {
   const typeId = node.value?.typeId
   if (typeId === 'world.table') return t('graph.inspector.worldTable.hint')
+  if (typeId === 'world.gen') return t('graph.inspector.worldGen.hint')
   if (typeId === 'narrative.table') return t('graph.inspector.narrativeTable.hint')
+  if (typeId === 'narrative.gen') return t('graph.inspector.narrativeGen.hint')
   if (typeId === 'script.shotImageGen') return t('graph.inspector.shotImageGen.hint')
   if (typeId === 'script.shotVideoGen') return t('graph.inspector.shotVideoGen.hint')
   return t('graph.inspector.shotTable.hint')
 })
 
+const batchKind = computed<'visual' | 'shotWorkflow' | 'world' | 'narrative' | null>(() => {
+  const typeId = node.value?.typeId
+  if (typeId === 'script.shotImageGen') return 'visual'
+  if (typeId === 'script.shotVideoGen') return 'shotWorkflow'
+  if (typeId === 'world.gen') return 'world'
+  if (typeId === 'narrative.gen') return 'narrative'
+  return null
+})
+
+const batchButtonLabel = computed(() => {
+  if (batchKind.value === 'world') return t('graph.inspector.shotBatch.runElements')
+  if (batchKind.value === 'narrative') return t('graph.inspector.shotBatch.runUnits')
+  return t('graph.inspector.shotBatch.runShots')
+})
+
+const onlyMissing = ref(true)
+const collectAfter = ref(false)
+const batchBusy = ref(false)
+const batchMessage = ref('')
 const localTitle = ref('')
 
 watch(
   node,
   (current) => {
     localTitle.value = current?.title || typeLabel.value
+    batchMessage.value = ''
   },
   { immediate: true }
 )
@@ -88,6 +142,119 @@ function persistTitle(): void {
   if (!node.value) return
   const selection = editor.selection.current.value
   graphEditorHosts.updateNode(selection.hostId, node.value.id, {}, localTitle.value.trim())
+}
+
+function resolveHostAssetId(): string | null {
+  const id = hostId.value
+  const assetMatch = /^asset:([^:]+)/.exec(id)
+  if (assetMatch?.[1]) return assetMatch[1]
+  return null
+}
+
+function resolveScriptShots(scriptAssetId: string): Shot[] {
+  if (isDraftAssetId(scriptAssetId)) {
+    return drafts.getDraft(scriptAssetId)?.shots ?? []
+  }
+  return project.shots.filter((s) => shotScriptAssetId(s) === scriptAssetId)
+}
+
+async function onBatchRun(): Promise<void> {
+  const kind = batchKind.value
+  const current = node.value
+  if (!kind || !current || batchBusy.value) return
+
+  batchBusy.value = true
+  batchMessage.value = ''
+  try {
+    const assetId = resolveHostAssetId()
+    if (!assetId) {
+      await promptAlert({
+        title: typeLabel.value,
+        message: t('graph.inspector.shotBatch.empty')
+      })
+      return
+    }
+
+    let result
+    if (kind === 'world') {
+      const draft = drafts.getDraft(assetId)
+      const asset = project.assets.find((a) => a.id === assetId)
+      if (draft?.type !== 'world' && asset?.type !== 'world') {
+        await promptAlert({
+          title: typeLabel.value,
+          message: t('graph.inspector.shotBatch.empty')
+        })
+        return
+      }
+      result = taskStore.enqueueWorldElementBatch({
+        worldAssetId: assetId,
+        onlyMissing: onlyMissing.value
+      })
+    } else if (kind === 'narrative') {
+      const draft = drafts.getDraft(assetId)
+      const asset = project.assets.find((a) => a.id === assetId)
+      if (draft?.type !== 'narrative' && asset?.type !== 'narrative') {
+        await promptAlert({
+          title: typeLabel.value,
+          message: t('graph.inspector.shotBatch.empty')
+        })
+        return
+      }
+      result = taskStore.enqueueNarrativeUnitBatch({
+        narrativeAssetId: assetId,
+        onlyMissing: onlyMissing.value
+      })
+    } else {
+      const draft = drafts.getDraft(assetId)
+      const asset = project.assets.find((a) => a.id === assetId)
+      if (draft?.type !== 'script' && asset?.type !== 'script') {
+        await promptAlert({
+          title: typeLabel.value,
+          message: t('graph.inspector.shotBatch.empty')
+        })
+        return
+      }
+      const shots = resolveScriptShots(assetId)
+      if (!shots.length) {
+        await promptAlert({
+          title: typeLabel.value,
+          message: t('graph.inspector.shotBatch.empty')
+        })
+        return
+      }
+      result = taskStore.enqueueScriptShotBatch({
+        scriptAssetId: assetId,
+        shots,
+        kind,
+        onlyMissing: onlyMissing.value
+      })
+    }
+
+    batchMessage.value = t('graph.inspector.shotBatch.result', {
+      enqueued: result.enqueued,
+      skipped: result.skipped,
+      duplicates: result.duplicates
+    })
+
+    if (result.enqueued > 0) {
+      taskStore.openDialog(document.querySelector<HTMLElement>('[data-graph-task-anchor]'))
+    } else if (result.skipped + result.duplicates === 0) {
+      await promptAlert({
+        title: typeLabel.value,
+        message: t('graph.inspector.shotBatch.empty')
+      })
+    }
+
+    if (collectAfter.value && result.taskIds.length) {
+      await taskStore.waitForTaskIds(result.taskIds)
+      const runHost = graphRunHosts.get(hostId.value)
+      if (runHost && current.id) {
+        await runHost.runToNode(current.id)
+      }
+    }
+  } finally {
+    batchBusy.value = false
+  }
 }
 </script>
 
@@ -138,12 +305,119 @@ label {
   color: var(--text-muted);
 }
 
-input {
+label > input:not([type='checkbox']) {
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
+}
+
+.batch-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.batch-option {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+}
+
+.batch-option > input[type='checkbox'] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+}
+
+.batch-option > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.batch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 70%, var(--bg-elevated));
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.batch-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+}
+
+.batch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.batch-btn-label {
+  line-height: 1;
+}
+
+.icon-batch {
+  position: relative;
+  width: 11px;
+  height: 10px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 1.5px;
+}
+
+.icon-batch::before,
+.icon-batch::after {
+  content: '';
+  position: absolute;
+  left: 1.5px;
+  right: 1.5px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.icon-batch::before {
+  top: 2px;
+}
+
+.icon-batch::after {
+  bottom: 2px;
+}
+
+.batch-msg {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 </style>

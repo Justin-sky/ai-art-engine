@@ -44,6 +44,8 @@ import { computed, ref, watch } from 'vue'
 import {
   DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_EN,
   DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH,
+  DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_EN,
+  DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_ZH,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH,
   DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_EN,
@@ -53,11 +55,13 @@ import {
   DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN,
   DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH,
   defaultNarrativeSplitSystemPrompt,
+  defaultNarrativeUnitGenSystemPrompt,
   defaultOptimizeSystemPrompt,
   defaultShotSplitSystemPrompt,
   defaultWorldExtractSystemPrompt,
   defaultToPromptSystemPrompt,
   resolveNarrativeSplitSystemPrompt,
+  resolveNarrativeUnitGenSystemPrompt,
   resolveOptimizeSystemPrompt,
   resolveShotSplitSystemPrompt,
   resolveWorldExtractSystemPrompt,
@@ -84,6 +88,7 @@ const TOOL_TYPE_IDS = new Set([
   'script.shotSplit',
   'world.extract',
   'narrative.split',
+  'narrative.unitGen',
   'screenplay.narrativeSplit'
 ])
 
@@ -116,6 +121,7 @@ const isNarrativeSplit = computed(
     node.value?.typeId === 'narrative.split' ||
     node.value?.typeId === 'screenplay.narrativeSplit'
 )
+const isNarrativeUnitGen = computed(() => node.value?.typeId === 'narrative.unitGen')
 
 const typeLabel = computed(() => {
   if (node.value?.typeId) return graphTypeLabel(node.value.typeId)
@@ -123,6 +129,7 @@ const typeLabel = computed(() => {
   if (isShotSplit.value) return t('graph.types.script.shotSplit')
   if (isWorldExtract.value) return t('graph.types.world.extract')
   if (isNarrativeSplit.value) return t('graph.types.narrative.split')
+  if (isNarrativeUnitGen.value) return t('graph.types.narrative.unitGen')
   return t('graph.types.prompt.optimize')
 })
 
@@ -162,6 +169,16 @@ function resolveSystemPrompt(raw: string | undefined, nextLocale: string): strin
     }
     return resolveNarrativeSplitSystemPrompt(raw, nextLocale)
   }
+  if (isNarrativeUnitGen.value) {
+    const trimmed = raw?.trim() ?? ''
+    if (
+      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN ||
+      trimmed === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH
+    ) {
+      return defaultNarrativeUnitGenSystemPrompt(nextLocale)
+    }
+    return resolveNarrativeUnitGenSystemPrompt(raw, nextLocale)
+  }
   return resolveOptimizeSystemPrompt(raw, nextLocale)
 }
 
@@ -170,6 +187,7 @@ function defaultSystemPrompt(nextLocale: string): string {
   if (isShotSplit.value) return defaultShotSplitSystemPrompt(nextLocale)
   if (isWorldExtract.value) return defaultWorldExtractSystemPrompt(nextLocale)
   if (isNarrativeSplit.value) return defaultNarrativeSplitSystemPrompt(nextLocale)
+  if (isNarrativeUnitGen.value) return defaultNarrativeUnitGenSystemPrompt(nextLocale)
   return defaultOptimizeSystemPrompt(nextLocale)
 }
 
@@ -194,6 +212,12 @@ function isDefaultSystemPrompt(value: string): boolean {
     return (
       value === DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_EN ||
       value === DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH
+    )
+  }
+  if (isNarrativeUnitGen.value) {
+    return (
+      value === DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_EN ||
+      value === DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_ZH
     )
   }
   return value === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN || value === DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH

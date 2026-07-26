@@ -113,12 +113,12 @@ describe('worldElementParse', () => {
           title: 'table'
         },
         {
-          id: 'world-editor',
-          typeId: 'world.editor',
+          id: 'world-gen',
+          typeId: 'world.gen',
           category: 'note',
           position: { x: 400, y: 0 },
           params: {},
-          title: 'editor'
+          title: 'gen'
         }
       ],
       edges: [
@@ -132,7 +132,7 @@ describe('worldElementParse', () => {
         {
           id: 'e2',
           source: 'world-table',
-          target: 'world-editor',
+          target: 'world-gen',
           sourcePort: 'out',
           targetPort: 'in'
         }

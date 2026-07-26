@@ -31,6 +31,9 @@ export const STUDIO_ASSET_IDS_DRAG_MIME = 'application/x-studio-asset-ids'
 /** 分镜栏 → 画布：拖入创建分镜参数节点 */
 export const STUDIO_SHOT_DRAG_MIME = 'application/x-studio-shot'
 export const STUDIO_SHOT_ID_DRAG_MIME = 'application/x-studio-shot-id'
+/** 叙事单元栏 → 画布：拖入创建叙事参考节点 */
+export const STUDIO_NARRATIVE_UNIT_DRAG_MIME = 'application/x-studio-narrative-unit'
+export const STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME = 'application/x-studio-narrative-unit-id'
 
 /** Workspace UI intents (selection, open editors, etc.) */
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -42,6 +45,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const openWorldEditorIds = ref<string[]>([])
   const openNarrativeEditorIds = ref<string[]>([])
   const openDirectorEditorIds = ref<string[]>([])
+  /** 叙事单元细化底栏当前选中单元 */
+  const activeNarrativeUnitId = ref<string | null>(null)
+  const activeNarrativeAssetId = ref<string | null>(null)
   const selectedAssetId = computed(() =>
     editor.selection.current.value.kind === 'asset'
       ? (editor.selection.current.value.id ?? null)
@@ -268,6 +274,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds.value = []
     openNarrativeEditorIds.value = []
     openDirectorEditorIds.value = []
+    activeNarrativeUnitId.value = null
+    activeNarrativeAssetId.value = null
     scriptCanvasExporters.value = new Map()
     scriptGraphGetters.value = new Map()
     draggingAsset.value = null
@@ -376,6 +384,27 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       shotId
         ? `document:shot:${shotId}`
         : `selection:shot:${shotId ?? 'none'}`
+    )
+  }
+
+  function selectNarrativeUnit(unitId: string | null, narrativeAssetId?: string | null): void {
+    activeNarrativeUnitId.value = unitId
+    if (narrativeAssetId !== undefined) {
+      activeNarrativeAssetId.value = narrativeAssetId
+    }
+  }
+
+  function focusNarrativeUnit(): void {
+    const unitId = activeNarrativeUnitId.value
+    editor.selection.select({
+      kind: 'narrativeUnit',
+      key: unitId ? `narrativeUnit:${unitId}` : 'narrativeUnit:none',
+      id: unitId ?? undefined
+    })
+    editor.commands.setActiveScope(
+      unitId
+        ? `document:narrativeUnit:${unitId}`
+        : 'selection:narrativeUnit:none'
     )
   }
 
@@ -495,6 +524,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds,
     openNarrativeEditorIds,
     openDirectorEditorIds,
+    activeNarrativeUnitId,
+    activeNarrativeAssetId,
     selectedAssetId,
     selectedAsset,
     inspectorFocus,
@@ -528,6 +559,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     exportCanvasForActiveShot,
     selectAsset,
     focusShot,
+    selectNarrativeUnit,
+    focusNarrativeUnit,
     focusProjectGlobals,
     focusEditorGlobals,
     focusEditorGlobalsForAsset,

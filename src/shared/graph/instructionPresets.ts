@@ -15,6 +15,7 @@ export type InstructionPresetKind =
   | 'shotSplit'
   | 'worldExtract'
   | 'narrativeSplit'
+  | 'narrativeUnitGen'
 
 export interface InstructionPreset {
   id: string
@@ -848,7 +849,9 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   optimize: OPTIMIZE_PRESETS,
   shotSplit: SHOT_SPLIT_PRESETS,
   worldExtract: WORLD_EXTRACT_PRESETS,
-  narrativeSplit: NARRATIVE_SPLIT_PRESETS
+  narrativeSplit: NARRATIVE_SPLIT_PRESETS,
+  // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
+  narrativeUnitGen: []
 }
 
 export function listInstructionPresets(kind: InstructionPresetKind): InstructionPreset[] {

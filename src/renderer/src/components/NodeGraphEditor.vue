@@ -452,7 +452,9 @@ import {
   STUDIO_ASSET_ID_DRAG_MIME,
   STUDIO_ASSET_IDS_DRAG_MIME,
   STUDIO_SHOT_DRAG_MIME,
-  STUDIO_SHOT_ID_DRAG_MIME
+  STUDIO_SHOT_ID_DRAG_MIME,
+  STUDIO_NARRATIVE_UNIT_DRAG_MIME,
+  STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
@@ -480,6 +482,7 @@ import { resolveAssetText } from '../features/media/resolveAssetText'
 import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
 import { collectScriptShotImages, collectScriptShotVideos } from '../features/script/shotVisualPipeline'
 import { collectWorldElementImages } from '../features/world/worldElementPipeline'
+import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
   applyNarrativeCatalog,
@@ -540,12 +543,17 @@ import {
   resolveMotionImageItems,
   shotStoryboardToNodeParams,
   createShotParamsNodeForShot,
+  createNarrativeUnitRefNode,
   readShotWorkflowGraphFromGenParams,
   readWorldElementGraphFromGenParams,
   withWorldElementGraph,
+  readNarrativeUnitGraphFromGenParams,
+  withNarrativeUnitGraph,
   readBoundShotIdFromNodeParams,
+  readBoundUnitIdFromNodeParams,
   applyShotParamsDropMaterialization,
   type WorldElementKind,
+  type NarrativeUnitRow,
   type GraphImageItem,
   type GraphTextItem,
   type GraphVideoItem,
@@ -651,6 +659,8 @@ const props = withDefaults(
     scope?: GraphAddScope
     /** 世界元素四类子画布 kind（优先于 inject） */
     worldElementKind?: WorldElementKind
+    /** 叙事单元细化画布：当前单元 id（与 assetId + scope=narrativeUnit 合用） */
+    narrativeUnitId?: string
     /** 嵌入底栏等场景隐藏图工具条，运行/参数走外层 Inspector */
     hideToolbar?: boolean
   }>(),
@@ -681,6 +691,12 @@ const worldElementKind = computed((): WorldElementKind | null => {
 })
 const isElementWorkflowGraph = computed(
   () => isAssetGraph.value && graphScope.value === 'elementWorkflow' && !!worldElementKind.value
+)
+const isNarrativeUnitGraph = computed(
+  () =>
+    isAssetGraph.value &&
+    graphScope.value === 'narrativeUnit' &&
+    !!props.narrativeUnitId?.trim()
 )
 
 const previewVisibleNodeIds = ref<ReadonlySet<string>>(new Set())
@@ -765,6 +781,9 @@ const graphHostId = computed(() => {
     : `script:${scriptAssetIdRef.value ?? 'unscoped'}`
   if (isElementWorkflowGraph.value && worldElementKind.value) {
     return `${base}:element:${worldElementKind.value}`
+  }
+  if (isNarrativeUnitGraph.value && props.narrativeUnitId) {
+    return `${base}:unit:${props.narrativeUnitId}`
   }
   const suffix = getScopeHostIdSuffix(graphScope.value)
   if (!props.assetId && suffix) return `${base}:${suffix}`
@@ -903,6 +922,17 @@ function commitGraphLocal(explicitShotId?: string): boolean {
 }
 
 function readAssetGraph(): GraphDocument {
+  if (isNarrativeUnitGraph.value && props.narrativeUnitId && props.assetId) {
+    const gen =
+      (isDraftAssetId(props.assetId)
+        ? draftStore.getDraft(props.assetId)?.genParams
+        : graphAsset.value?.genParams) ?? undefined
+    const raw = readNarrativeUnitGraphFromGenParams(gen, props.narrativeUnitId)
+    return normalizeScopedGraph(graphScope.value, raw, {
+      assetType: graphAsset.value?.type ?? 'narrative',
+      hostAssetId: props.assetId
+    })
+  }
   if (isElementWorkflowGraph.value && worldElementKind.value && props.assetId) {
     const gen =
       (isDraftAssetId(props.assetId)
@@ -940,6 +970,32 @@ function commitAssetGraph(): boolean {
     (isDraftAssetId(props.assetId)
       ? null
       : project.assets.find((item) => item.id === props.assetId)) ?? asset
+
+  if (isNarrativeUnitGraph.value && props.narrativeUnitId) {
+    const plain = toPlain(graphJson)
+    if (isDraftAssetId(props.assetId)) {
+      const draft = draftStore.getDraft(props.assetId)
+      // 再读一次最新 genParams，降低与 catalog 落盘的竞态丢字段
+      const latestGen = draftStore.getDraft(props.assetId)?.genParams ?? draft?.genParams
+      draftStore.updateDraft(props.assetId, {
+        genParams: withNarrativeUnitGraph(latestGen, props.narrativeUnitId, plain)
+      })
+      return true
+    }
+    const write = persistAssetRecord(props.assetId, {
+      genParams: withNarrativeUnitGraph(
+        (project.assets.find((item) => item.id === props.assetId)?.genParams as
+          | Record<string, unknown>
+          | undefined) ?? (latest.genParams as Record<string, unknown> | undefined),
+        props.narrativeUnitId,
+        plain
+      )
+    }).catch((error) => {
+      console.error('[NodeGraphEditor] narrative unit graph save failed', error)
+    })
+    trackAssetGraphPersist(write)
+    return true
+  }
 
   if (isElementWorkflowGraph.value && worldElementKind.value) {
     const plain = toPlain(graphJson)
@@ -1274,6 +1330,13 @@ const {
       stylePreset: project.config?.stylePreset
     }
   },
+  resolveNarrativeUnit: (unitId) => {
+    const id = unitId.trim()
+    if (!id) return null
+    const narrativeId = props.assetId
+    if (!narrativeId || graphScope.value !== 'narrativeUnit') return null
+    return loadNarrativeCatalog(narrativeId).find((row) => row.id === id) ?? null
+  },
   resolveShotSplitTableJson: () => {
     // 剧本资产图：表格节点输出当前分镜列表，供「表格 → 拆分」再次拆分
     if (graphScope.value !== 'scriptAsset') return null
@@ -1325,6 +1388,15 @@ const {
     if (!worldId) return null
     return collectWorldElementImages({
       worldAssetId: worldId,
+      signal
+    })
+  },
+  collectNarrativeUnitTexts: async (signal) => {
+    if (graphScope.value !== 'narrativeAsset') return null
+    const narrativeId = props.assetId
+    if (!narrativeId) return null
+    return collectNarrativeUnitTexts({
+      narrativeAssetId: narrativeId,
       signal
     })
   },
@@ -2419,7 +2491,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'asset.narrative',
       'narrative.split',
       'narrative.table',
-      'narrative.editor',
+      'narrative.gen',
       'output.narrative'
     ]
   },
@@ -2437,7 +2509,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'world',
-    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.editor', 'output.world']
+    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.gen', 'output.world']
   },
   {
     id: 'motion',
@@ -3448,6 +3520,18 @@ async function onDrop(e: DragEvent): Promise<void> {
     return
   }
 
+  // 0b) 叙事单元栏拖入 → 创建绑定该单元的参考节点
+  const droppedUnit = resolveDroppedNarrativeUnit(e)
+  if (droppedUnit) {
+    if (graphScope.value !== 'narrativeUnit') {
+      showDropError(t('graph.error.unsupportedDrop'))
+      return
+    }
+    dropError.value = ''
+    addNarrativeUnitRefNode(droppedUnit, dropPositionAt(e.clientX, e.clientY))
+    return
+  }
+
   // 1) 资产库引用优先，避免被误判成「系统文件拖入」
   const asset = workspace.resolveDraggedAsset(e)
   if (asset) {
@@ -3501,6 +3585,40 @@ function resolveDroppedShot(e: DragEvent): Shot | null {
   }
   if (!id) return null
   return resolveShotById(id)
+}
+
+function resolveDroppedNarrativeUnit(e: DragEvent): NarrativeUnitRow | null {
+  const raw = e.dataTransfer?.getData(STUDIO_NARRATIVE_UNIT_DRAG_MIME)
+  let id = e.dataTransfer?.getData(STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME) || ''
+  if (!id && raw) {
+    try {
+      const parsed = JSON.parse(raw) as { id?: string }
+      if (typeof parsed.id === 'string') id = parsed.id
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!id || !props.assetId) return null
+  return loadNarrativeCatalog(props.assetId).find((row) => row.id === id) ?? null
+}
+
+function addNarrativeUnitRefNode(unit: NarrativeUnitRow, position: { x: number; y: number }): boolean {
+  const existing = graph.nodes.find(
+    (n) =>
+      n.typeId === 'narrative.unitRef' && readBoundUnitIdFromNodeParams(n.params) === unit.id
+  )
+  if (existing) {
+    workspace.selectGraphNode(existing.id, graphHostId.value)
+    return true
+  }
+  const before = buildGraphJson()
+  const node = createNarrativeUnitRefNode(unit, position)
+  graph.nodes.push(node)
+  recordGraphChange('add-narrative-unit-ref', before)
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  workspace.selectGraphNode(node.id, graphHostId.value)
+  return true
 }
 
 /** 分镜栏拖入：创建（或选中已有）绑定该镜的分镜参数节点，并展开 genRefs 图片 */
@@ -5695,6 +5813,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (dropErrorTimer) clearTimeout(dropErrorTimer)
   if (isPanning) onPanEnd()
+  // 切单元 / 关面板会销毁画布：先停跑，避免会话悬空表现为「运行卡死」
+  stopWorkflow()
   if (viewportSaveTimer) {
     clearTimeout(viewportSaveTimer)
     viewportSaveTimer = null

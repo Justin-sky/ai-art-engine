@@ -350,6 +350,8 @@ export interface NodeExecuteContext {
     assetTypes?: Map<string, AssetType>
     stylePreset?: string
   } | null
+  /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
+  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
   /**
    * 分镜表格节点：把当前剧本分镜列表序列化为拆分 JSON，
    * 供「表格 → 拆分」再次拆分时作为上游输入。
@@ -377,6 +379,12 @@ export interface NodeExecuteContext {
    */
   collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
     images: GraphImageItem[]
+  } | null>
+  /**
+   * 叙事单元生成：收集各单元 narrativeUnit 子图「叙事输出」已有文本（不级联跑子图生成）。
+   */
+  collectNarrativeUnitTexts?: (signal?: AbortSignal) => Promise<{
+    items: GraphTextItem[]
   } | null>
   /**
    * 世界元素表格节点：把当前目录序列化为提取 JSON。
@@ -464,11 +472,13 @@ export interface GraphRunOptions {
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   resolveShotStoryboard?: NodeExecuteContext['resolveShotStoryboard']
+  resolveNarrativeUnit?: NodeExecuteContext['resolveNarrativeUnit']
   resolveShotSplitTableJson?: NodeExecuteContext['resolveShotSplitTableJson']
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
   collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
   collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
   collectWorldElementImages?: NodeExecuteContext['collectWorldElementImages']
+  collectNarrativeUnitTexts?: NodeExecuteContext['collectNarrativeUnitTexts']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
   resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']

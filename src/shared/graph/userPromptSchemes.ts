@@ -168,3 +168,23 @@ export function defaultNarrativeSplitUserPrompt(locale?: string): string {
 export function buildNarrativeSplitPrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultNarrativeSplitUserPrompt)
 }
+
+// ——— 叙事生成（单元细化） ———
+
+export const DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_EN =
+  'Deepen the upstream narrative unit along theme, story spine, and environment. Follow the system prompt strictly; output production-ready prose only (no JSON).'
+
+export const DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_ZH =
+  '请基于上游叙事单元参考，按系统提示词对主题、故事脉络与环境氛围做深度细化；仅输出生产级正文，不要 JSON。'
+
+export function defaultNarrativeUnitGenUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_EN,
+    DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_ZH
+  )
+}
+
+export function buildNarrativeUnitGenPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultNarrativeUnitGenUserPrompt)
+}

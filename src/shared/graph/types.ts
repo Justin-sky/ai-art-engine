@@ -33,6 +33,7 @@ export const GRAPH_OUTPUT_NODE_IDS = {
   director: 'director-output',
   script: 'script-output',
   narrative: 'narrative-output',
+  narrativeUnit: 'narrative-unit-output',
   world: 'world-output'
 } as const
 
@@ -71,7 +72,7 @@ export const GRAPH_NARRATIVE_SPLIT_NODE_ID = 'narrative-split'
 export const GRAPH_NARRATIVE_TABLE_NODE_ID = 'narrative-table'
 
 /** 叙事单元资产图：叙事编辑入口节点 */
-export const GRAPH_NARRATIVE_EDITOR_NODE_ID = 'narrative-editor'
+export const GRAPH_NARRATIVE_GEN_NODE_ID = 'narrative-gen'
 
 /** @deprecated 使用 {@link GRAPH_NARRATIVE_SPLIT_NODE_ID} */
 export const GRAPH_SCREENPLAY_NARRATIVE_SPLIT_NODE_ID = GRAPH_NARRATIVE_SPLIT_NODE_ID
@@ -83,7 +84,7 @@ export const GRAPH_WORLD_EXTRACT_NODE_ID = 'world-extract'
 export const GRAPH_WORLD_TABLE_NODE_ID = 'world-table'
 
 /** 世界元素资产图：世界元素编辑入口节点 */
-export const GRAPH_WORLD_EDITOR_NODE_ID = 'world-editor'
+export const GRAPH_WORLD_GEN_NODE_ID = 'world-gen'
 
 /** 世界元素资产图：世界元素输出节点 */
 export const GRAPH_WORLD_OUTPUT_NODE_ID = GRAPH_OUTPUT_NODE_IDS.world
@@ -107,6 +108,7 @@ export function graphOutputNodeIdForType(
   if (typeId === 'output.director') return GRAPH_OUTPUT_NODE_IDS.director
   if (typeId === 'output.script') return GRAPH_OUTPUT_NODE_IDS.script
   if (typeId === 'output.narrative') return GRAPH_OUTPUT_NODE_IDS.narrative
+  if (typeId === 'output.narrativeUnit') return GRAPH_OUTPUT_NODE_IDS.narrativeUnit
   if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
   if (typeId?.startsWith('output.')) {
     const suffix = typeId.slice('output.'.length)
@@ -160,6 +162,7 @@ export type GraphNodeTypeId =
   | 'output.director'
   | 'output.script'
   | 'output.narrative'
+  | 'output.narrativeUnit'
   | 'output.world'
   | 'note.text'
   | 'play.script'
@@ -169,7 +172,9 @@ export type GraphNodeTypeId =
   | 'screenplay.select'
   | 'narrative.split'
   | 'narrative.table'
-  | 'narrative.editor'
+  | 'narrative.gen'
+  | 'narrative.unitGen'
+  | 'narrative.unitRef'
   | 'image.multiAngle'
   | 'image.lighting'
   | 'image.portraitTexture'
@@ -333,6 +338,8 @@ export interface GraphNodeParams {
   shotStoryboard?: ShotStoryboard
   /** 分镜参数节点绑定的 Shot.id；拖入分镜栏时写入 */
   boundShotId?: string
+  /** 叙事单元参考节点绑定的 NarrativeUnitRow.id；拖入单元栏时写入 */
+  boundUnitId?: string
   /** 世界元素托管节点 id（四类画布同步用，勿与用户手搓节点冲突） */
   worldElementId?: string
   /** 世界元素目录审核状态（未审核 | 已审核） */

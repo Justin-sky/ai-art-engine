@@ -1015,22 +1015,36 @@ export default {
   },
   narrative: {
     asset: {
-      hint: '双击拆解编辑指令 · 双击表格打开目录 · 双击编辑浏览全文'
+      hint: '双击拆解编辑指令 · 双击表格打开目录 · 双击生成在下方展开文本细化'
     },
     dialog: {
       close: '关闭',
       table: '叙事单元表格',
-      editor: '叙事单元编辑'
+      gen: '叙事单元生成'
     },
     hint: {
       table: '叙事单元表格 · 批量编辑节拍结构与审核状态',
-      editor: '叙事单元编辑 · 左侧列表 · 右侧浏览与编辑全文'
+      gen: '上图画布细化单元 · 下栏点选 Inspector · 拖入生成参考节点'
     },
-    editor: {
-      empty: '暂无叙事单元，请先执行拆解或在表格中新建',
-      selectHint: '请从左侧选择一个叙事单元',
-      fullText: '全文',
-      fullTextPlaceholder: '对应剧本原文摘录'
+    pane: {
+      resizeSplit: '拖动调整上下区域高度'
+    },
+    strip: {
+      title: '叙事单元',
+      switchHint: '点击切换 · 拖入画布添加参考',
+      empty: '暂无叙事单元，请先拆解或在表格中新建',
+      collapse: '收起叙事单元栏',
+      expand: '展开叙事单元栏'
+    },
+    unit: {
+      inspector: {
+        type: '单元 {n}',
+        title: '叙事单元',
+        empty: '未选择叙事单元',
+        sourceExcerpt: '原文摘录',
+        emotionalBeat: '情绪节拍',
+        durationHint: '时长提示'
+      }
     },
     table: {
       new: '新建',
@@ -1052,12 +1066,12 @@ export default {
   },
   world: {
     asset: {
-      hint: '双击提取编辑指令 · 双击表格打开目录 · 双击编辑在下方展开四类画布'
+      hint: '双击提取编辑指令 · 双击表格打开目录 · 双击生成在下方展开四类画布'
     },
     dialog: {
       close: '关闭',
       elementTable: '世界元素表格',
-      editor: '世界元素编辑'
+      editor: '世界元素生成'
     },
     hint: {
       table: '世界元素表格 · 批量编辑角色 / 场景 / 道具 / 武器',
@@ -1605,14 +1619,14 @@ export default {
     worldTableNode: {
       hint: '双击打开世界元素表格'
     },
-    worldEditorNode: {
-      hint: '双击打开世界元素编辑'
+    worldGenNode: {
+      hint: '双击打开世界元素生成画布'
     },
     narrativeTableNode: {
       hint: '双击打开叙事单元表格'
     },
-    narrativeEditorNode: {
-      hint: '双击打开叙事单元编辑'
+    narrativeGenNode: {
+      hint: '双击在下方展开叙事单元文本细化'
     },
     node: {
       collapsePreview: '收起预览',
@@ -1706,6 +1720,7 @@ export default {
         director: '导演台输出',
         script: '分镜输出',
         narrative: '叙事单元输出',
+        narrativeUnit: '叙事输出',
         world: '世界元素输出'
       },
       note: {
@@ -1749,12 +1764,14 @@ export default {
       narrative: {
         split: '叙事单元拆解',
         table: '叙事单元表格',
-        editor: '叙事单元编辑'
+        gen: '叙事单元生成',
+        unitGen: '叙事生成',
+        unitRef: '叙事参考'
       },
       world: {
         extract: '世界元素提取',
         table: '世界元素表格',
-        editor: '世界元素编辑'
+        gen: '世界元素生成'
       },
       plugin: {
         example: {
@@ -1778,6 +1795,7 @@ export default {
       directorOutput: '导演台输出',
       scriptOutput: '分镜输出',
       narrativeOutput: '叙事单元输出',
+      narrativeUnitOutput: '叙事输出',
       worldOutput: '世界元素输出',
       assetOutput: {
         image: '图片输出',
@@ -1881,16 +1899,31 @@ export default {
         hint: '双击打开分镜表格；运行节点导入分镜 JSON，并在此预览输出端口'
       },
       shotImageGen: {
-        hint: '运行节点从各镜画面输出收集图片，并在此预览输出端口'
+        hint: '运行本节点只收集各镜已有画面；批量生成请用下方按钮'
       },
       shotVideoGen: {
-        hint: '运行节点从各镜视频输出收集视频，并在此预览输出端口'
+        hint: '运行本节点只收集各镜已有视频；批量生成请用下方按钮'
       },
       worldTable: {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
+      worldGen: {
+        hint: '运行本节点只收集四类子图已有图片；批量生成请用下方按钮'
+      },
+      shotBatch: {
+        runShots: '批量执行所有分镜',
+        runElements: '批量执行所有元素',
+        runUnits: '批量执行所有叙事单元',
+        onlyMissing: '仅缺结果的项',
+        collectAfter: '批跑完成后执行本节点（收集）',
+        empty: '没有可入队的项',
+        result: '已入队 {enqueued}，跳过 {skipped}，重复 {duplicates}'
+      },
       narrativeTable: {
         hint: '双击打开叙事单元表格；运行节点导入目录 JSON，并在此预览输出端口'
+      },
+      narrativeGen: {
+        hint: '运行本节点只收集各单元子图已有文本；批量生成请用下方按钮'
       },
       multiAngle: {
         hint: '双击节点编辑机位；此处预览文本输出（节点卡片不显示图片）',
@@ -1973,6 +2006,8 @@ export default {
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
         narrativeSplitInstructionPlaceholder:
           "将剧本拆解为叙事单元；可用 {'@'} 引用上方连线资源",
+        narrativeUnitGenInstructionPlaceholder:
+          "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         refsEmpty: '连接上游后可用 @ 引用；也可只在指令框中输入文本',
         disconnectRef: '断开连接',
         reorderRef: '拖动可调整引用顺序',

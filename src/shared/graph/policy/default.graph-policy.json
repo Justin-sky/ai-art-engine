@@ -28,6 +28,9 @@
     "narrativeAsset": {
       "addableNodeTypes": ["*"]
     },
+    "narrativeUnit": {
+      "addableNodeTypes": ["*"]
+    },
     "elementWorkflow": {
       "addableNodeTypes": ["*"]
     }

@@ -16,6 +16,7 @@ import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import NarrativeOutputInspector from '../components/NarrativeOutputInspector.vue'
+import NarrativeUnitInspector from '../components/NarrativeUnitInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotParamsInspector from '../components/ShotParamsInspector.vue'
 import ShotInspector from '../components/ShotInspector.vue'
@@ -25,6 +26,7 @@ import DirectorCameraInspector from '../components/DirectorCameraInspector.vue'
 import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
+import { readBoundUnitIdFromNodeParams, type GraphNode } from '@shared/graph'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -51,6 +53,15 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     props: (context) => ({
       exportCanvas: context.exportCanvas,
       compact: context.useGraphRefs
+    })
+  },
+  {
+    id: 'studio.narrativeUnit',
+    component: NarrativeUnitInspector,
+    match: (target) => target.kind === 'narrativeUnit',
+    props: (context) => ({
+      narrativeAssetId:
+        (context.target.meta?.narrativeAssetId as string | undefined) ?? undefined
     })
   },
   {
@@ -114,14 +125,35 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'narrative.split'
   },
   {
+    id: 'studio.graph.narrativeUnitGen',
+    component: PromptOptimizeInspector,
+    nodeTypeId: 'narrative.unitGen'
+  },
+  {
     id: 'studio.graph.narrativeTable',
     component: TablePassThroughInspector,
     nodeTypeId: 'narrative.table'
   },
   {
+    id: 'studio.graph.narrativeGen',
+    component: TablePassThroughInspector,
+    nodeTypeId: 'narrative.gen'
+  },
+  {
     id: 'studio.graph.narrativeOutput',
     component: NarrativeOutputInspector,
     nodeTypeId: 'output.narrative'
+  },
+  {
+    id: 'studio.graph.narrativeUnitRef',
+    component: NarrativeUnitInspector,
+    nodeTypeId: 'narrative.unitRef',
+    props: (context) => {
+      const node = context.target.subject as GraphNode | null
+      return {
+        unitId: readBoundUnitIdFromNodeParams(node?.params)
+      }
+    }
   },
   {
     id: 'studio.graph.shotTable',
@@ -142,6 +174,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.worldTable',
     component: TablePassThroughInspector,
     nodeTypeId: 'world.table'
+  },
+  {
+    id: 'studio.graph.worldGen',
+    component: TablePassThroughInspector,
+    nodeTypeId: 'world.gen'
   },
   {
     id: 'studio.graph.shotParams',

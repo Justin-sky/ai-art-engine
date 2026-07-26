@@ -1017,22 +1017,36 @@ export default {
   },
   narrative: {
     asset: {
-      hint: 'Double-click split for instructions · table for catalog · editor for full text'
+      hint: 'Double-click split for instructions · table for catalog · gen expands text refine below'
     },
     dialog: {
       close: 'Close',
       table: 'Narrative unit table',
-      editor: 'Narrative unit editor'
+      gen: 'Narrative unit gen'
     },
     hint: {
       table: 'Narrative unit table · edit beats and review status',
-      editor: 'Narrative unit editor · list on the left · full text on the right'
+      gen: 'Canvas above refines the unit · click strip for Inspector · drag to add refs'
     },
-    editor: {
+    pane: {
+      resizeSplit: 'Drag to resize the split panes'
+    },
+    strip: {
+      title: 'Narrative units',
+      switchHint: 'Click to switch · drag onto canvas for refs',
       empty: 'No narrative units yet — run split or add rows in the table',
-      selectHint: 'Select a narrative unit on the left',
-      fullText: 'Full text',
-      fullTextPlaceholder: 'Source excerpt from the screenplay'
+      collapse: 'Collapse narrative unit strip',
+      expand: 'Expand narrative unit strip'
+    },
+    unit: {
+      inspector: {
+        type: 'Unit {n}',
+        title: 'Narrative unit',
+        empty: 'No narrative unit selected',
+        sourceExcerpt: 'Source excerpt',
+        emotionalBeat: 'Emotional beat',
+        durationHint: 'Duration hint'
+      }
     },
     table: {
       new: 'New',
@@ -1054,12 +1068,12 @@ export default {
   },
   world: {
     asset: {
-      hint: 'Double-click extract for instructions · table for catalog · editor expands four canvases below'
+      hint: 'Double-click extract for instructions · table for catalog · gen expands four canvases below'
     },
     dialog: {
       close: 'Close',
       elementTable: 'World element table',
-      editor: 'World element editor'
+      editor: 'World element gen'
     },
     hint: {
       table: 'World element table · edit characters / scenes / props / weapons',
@@ -1609,14 +1623,14 @@ export default {
     worldTableNode: {
       hint: 'Double-click to open world element table'
     },
-    worldEditorNode: {
-      hint: 'Double-click to open world elements editor'
+    worldGenNode: {
+      hint: 'Double-click to open world element gen canvas'
     },
     narrativeTableNode: {
       hint: 'Double-click to open narrative unit table'
     },
-    narrativeEditorNode: {
-      hint: 'Double-click to open narrative editor'
+    narrativeGenNode: {
+      hint: 'Double-click to expand narrative unit text refine below'
     },
     node: {
       collapsePreview: 'Collapse preview',
@@ -1710,6 +1724,7 @@ export default {
         director: 'Director deck output',
         script: 'Shot output',
         narrative: 'Narrative output',
+        narrativeUnit: 'Narrative output',
         world: 'World element output'
       },
       note: {
@@ -1753,12 +1768,14 @@ export default {
       narrative: {
         split: 'Narrative split',
         table: 'Narrative table',
-        editor: 'Narrative edit'
+        gen: 'Narrative unit gen',
+        unitGen: 'Narrative gen',
+        unitRef: 'Narrative ref'
       },
       world: {
         extract: 'World extract',
         table: 'World table',
-        editor: 'World edit'
+        gen: 'World element gen'
       },
       plugin: {
         example: {
@@ -1782,6 +1799,7 @@ export default {
       directorOutput: 'Director deck output',
       scriptOutput: 'Shot output',
       narrativeOutput: 'Narrative output',
+      narrativeUnitOutput: 'Narrative output',
       worldOutput: 'World element output',
       assetOutput: {
         image: 'Image output',
@@ -1886,16 +1904,31 @@ export default {
         hint: 'Double-click to open the shot table. Run the node to import shot JSON and preview the out port here.'
       },
       shotImageGen: {
-        hint: 'Run the node to collect images from each shot’s visual output, and preview the out port here.'
+        hint: 'Running this node only collects existing shot visuals. Use the batch button below to generate.'
       },
       shotVideoGen: {
-        hint: 'Run the node to collect videos from each shot’s video output, and preview the out port here.'
+        hint: 'Running this node only collects existing shot videos. Use the batch button below to generate.'
       },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },
+      worldGen: {
+        hint: 'Running this node only collects existing element images. Use the batch button below to generate.'
+      },
+      shotBatch: {
+        runShots: 'Batch-run all shots',
+        runElements: 'Batch-run all elements',
+        runUnits: 'Batch-run all narrative units',
+        onlyMissing: 'Only missing results',
+        collectAfter: 'After batch, run this node (collect)',
+        empty: 'Nothing to enqueue',
+        result: 'Enqueued {enqueued}, skipped {skipped}, duplicates {duplicates}'
+      },
       narrativeTable: {
         hint: 'Double-click to open the narrative unit table. Run the node to import catalog JSON and preview the out port here.'
+      },
+      narrativeGen: {
+        hint: 'Running this node only collects existing unit texts; use the batch button below to generate.'
       },
       multiAngle: {
         hint: 'Double-click the node to edit camera angles. This panel previews the text output (no image on the node card).',
@@ -1983,6 +2016,8 @@ export default {
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
         narrativeSplitInstructionPlaceholder:
           "Decompose the screenplay into narrative units; use {'@'} to cite connected inputs",
+        narrativeUnitGenInstructionPlaceholder:
+          "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         refsEmpty: 'Connect upstream inputs to cite with @, or type the instruction alone',
         disconnectRef: 'Disconnect',
         reorderRef: 'Drag to reorder references',

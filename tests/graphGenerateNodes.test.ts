@@ -32,7 +32,9 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'image.toPrompt',
   'image.upscale',
   'prompt.optimize',
-  'narrative.editor',
+  'narrative.gen',
+  'narrative.unitGen',
+  'narrative.unitRef',
   'narrative.split',
   'narrative.table',
   'screenplay.select',
@@ -41,7 +43,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'script.shotParams',
   'script.shotSplit',
   'script.shotTable',
-  'world.editor',
+  'world.gen',
   'world.extract',
   'world.table'
 ] as const

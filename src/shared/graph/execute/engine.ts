@@ -149,7 +149,11 @@ async function softSnapshotOutputs(
   prior: GraphNodeRunState | undefined,
   options: Pick<
     GraphRunOptions,
-    'resolveAssetText' | 'resolveAssetGenParams' | 'locale' | 'readRunText'
+    | 'resolveAssetText'
+    | 'resolveAssetGenParams'
+    | 'locale'
+    | 'readRunText'
+    | 'resolveNarrativeUnit'
   >
 ): Promise<Record<string, GraphValue>> {
   if (hasUsablePriorOutputs(prior)) {
@@ -165,7 +169,8 @@ async function softSnapshotOutputs(
       // 剧本/分镜引用快照必须能读正文；不调 generateText/Image/Video
       resolveAssetText: options.resolveAssetText,
       resolveAssetGenParams: options.resolveAssetGenParams,
-      readRunText: options.readRunText
+      readRunText: options.readRunText,
+      resolveNarrativeUnit: options.resolveNarrativeUnit
     })
   )
 }
@@ -215,7 +220,8 @@ async function executeOneNode(
     nodeId,
     byId,
     outputs,
-    mentionIndexBase
+    mentionIndexBase,
+    resolveNarrativeUnit: options.resolveNarrativeUnit
   })
   const incomingByIndex = graph.edges
     .filter(
@@ -255,11 +261,13 @@ async function executeOneNode(
     composeImageCropCanvas: options.composeImageCropCanvas,
     composeImageGridCell: options.composeImageGridCell,
     resolveShotStoryboard: options.resolveShotStoryboard,
+    resolveNarrativeUnit: options.resolveNarrativeUnit,
     resolveShotSplitTableJson: options.resolveShotSplitTableJson,
     importShotSplitTableJson: options.importShotSplitTableJson,
     collectScriptShotImages: options.collectScriptShotImages,
     collectScriptShotVideos: options.collectScriptShotVideos,
     collectWorldElementImages: options.collectWorldElementImages,
+    collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
     importWorldCatalogJson: options.importWorldCatalogJson,
     resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,

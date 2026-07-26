@@ -691,9 +691,9 @@ describe('graph run', () => {
     ).toBe(false)
   })
 
-  it('world.editor collects element images into output instead of empty list', async () => {
+  it('world.gen collects element images into output instead of empty list', async () => {
     const doc = createDefaultScopedGraph('worldAsset', 'world')
-    const editor = doc.nodes.find((node) => node.typeId === 'world.editor')
+    const editor = doc.nodes.find((node) => node.typeId === 'world.gen')
     expect(editor).toBeTruthy()
 
     const result = await runGraph(doc, {

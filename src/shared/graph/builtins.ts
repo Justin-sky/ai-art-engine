@@ -12,8 +12,8 @@ import {
   GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
   GRAPH_NARRATIVE_SPLIT_NODE_ID,
   GRAPH_NARRATIVE_TABLE_NODE_ID,
-  GRAPH_NARRATIVE_EDITOR_NODE_ID,
-  GRAPH_WORLD_EDITOR_NODE_ID,
+  GRAPH_NARRATIVE_GEN_NODE_ID,
+  GRAPH_WORLD_GEN_NODE_ID,
   GRAPH_WORLD_EXTRACT_NODE_ID,
   GRAPH_WORLD_TABLE_NODE_ID,
   graphOutputNodeId,
@@ -55,9 +55,11 @@ import {
   executeShotVideoGenNode,
   executeNarrativeSplitNode,
   executeNarrativeTableNode,
-  executeNarrativeEditorNode,
+  executeNarrativeGenNode,
+  executeNarrativeUnitGenNode,
+  executeNarrativeUnitRefNode,
   executeNarrativeOutputNode,
-  executeWorldEditorNode,
+  executeWorldGenNode,
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
@@ -65,9 +67,11 @@ import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_NARRATIVE_OUTPUT_TITLE,
   ASSET_SCRIPT_OUTPUT_TITLE,
-  ASSET_WORLD_OUTPUT_TITLE
+  ASSET_WORLD_OUTPUT_TITLE,
+  NARRATIVE_UNIT_OUTPUT_TITLE
 } from './scopes'
 import { defaultShotParamsNodeParams } from './shotParams'
+import { defaultNarrativeUnitGenParams } from './narrativeUnitParams'
 import { isAssetRefNode } from './nodeRole'
 
 const ASSET_SIZE = { w: 168, h: 128 }
@@ -345,7 +349,12 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
 
 /** 导演台 / 分镜 / 叙事 / 世界元素资产编辑窗口的专用输出（仅输入口，无输出端口） */
 function specializedOutputDef(
-  typeId: 'output.director' | 'output.script' | 'output.narrative' | 'output.world',
+  typeId:
+    | 'output.director'
+    | 'output.script'
+    | 'output.narrative'
+    | 'output.narrativeUnit'
+    | 'output.world',
   label: string,
   icon: string,
   defaultTitle: string,
@@ -390,10 +399,13 @@ function specializedOutputDef(
           ? GRAPH_OUTPUT_NODE_IDS.script
           : typeId === 'output.narrative'
             ? GRAPH_OUTPUT_NODE_IDS.narrative
-            : GRAPH_OUTPUT_NODE_IDS.world,
+            : typeId === 'output.narrativeUnit'
+              ? GRAPH_OUTPUT_NODE_IDS.narrativeUnit
+              : GRAPH_OUTPUT_NODE_IDS.world,
     // 叙事 / 分镜 / 世界元素输出允许删除；导演台输出仍锁定
     deletable:
       typeId === 'output.narrative' ||
+      typeId === 'output.narrativeUnit' ||
       typeId === 'output.script' ||
       typeId === 'output.world',
     inspector: 'output',
@@ -435,6 +447,14 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     GraphPortType.text,
     executeNarrativeOutputNode,
     'studio.graph.narrativeOutput'
+  ),
+  specializedOutputDef(
+    'output.narrativeUnit',
+    'Narrative output',
+    '📜',
+    NARRATIVE_UNIT_OUTPUT_TITLE,
+    'text',
+    GraphPortType.text
   ),
   specializedOutputDef(
     'output.world',
@@ -1096,11 +1116,11 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeNarrativeTableNode
   },
   {
-    typeId: 'narrative.editor',
+    typeId: 'narrative.gen',
     category: 'note',
-    label: 'Narrative edit',
+    label: 'Narrative unit gen',
     icon: '🧩',
-    defaultTitle: 'Narrative edit',
+    defaultTitle: 'Narrative unit gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -1109,12 +1129,54 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ],
     defaultParams: () => ({}),
     addable: true,
-    singletonId: GRAPH_NARRATIVE_EDITOR_NODE_ID,
+    singletonId: GRAPH_NARRATIVE_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.narrativeGen',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeEditorNode
+    execute: executeNarrativeGenNode
+  },
+  {
+    typeId: 'narrative.unitGen',
+    category: 'note',
+    label: 'Narrative gen',
+    icon: '🧩',
+    defaultTitle: 'Narrative gen',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+    ],
+    defaultParams: () => defaultNarrativeUnitGenParams(),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.narrativeUnitGen',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeNarrativeUnitGenNode
+  },
+  {
+    typeId: 'narrative.unitRef',
+    category: 'note',
+    label: 'Narrative ref',
+    icon: '📎',
+    defaultTitle: 'Narrative ref',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+    ],
+    defaultParams: () => ({}),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.narrativeUnitRef',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeNarrativeUnitRefNode
   },
   {
     typeId: 'script.shotTable',
@@ -1238,11 +1300,11 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeWorldTableNode
   },
   {
-    typeId: 'world.editor',
+    typeId: 'world.gen',
     category: 'note',
-    label: 'World edit',
+    label: 'World element gen',
     icon: '🤺',
-    defaultTitle: 'World edit',
+    defaultTitle: 'World element gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -1251,13 +1313,14 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ],
     defaultParams: () => ({}),
     addable: true,
-    singletonId: GRAPH_WORLD_EDITOR_NODE_ID,
+    singletonId: GRAPH_WORLD_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.worldGen',
     card: 'media',
     contributeToGeneration: false,
     /** 同步目录后收集四类子图已有图片；不级联跑元素生成 */
-    execute: executeWorldEditorNode
+    execute: executeWorldGenNode
   },
   {
     typeId: 'script.shotParams',

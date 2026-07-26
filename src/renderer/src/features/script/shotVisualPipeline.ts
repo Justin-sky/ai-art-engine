@@ -1,6 +1,6 @@
 /**
  * 分镜图/视频管道：从各镜 visual / shotWorkflow 的输出节点收集结果 → 物化资产 → 写回 genRefs。
- * 不级联跑分镜画面/视频图中的生成节点链；需在对应分镜窗口内先行跑完。
+ * 不级联跑分镜画面/视频图中的生成节点链；需在对应分镜窗口内先行跑完，或走 Inspector 批量入队。
  */
 import {
   collectImagesFromVisualGraph,
@@ -26,6 +26,18 @@ import { toPlain } from '../../utils/toPlain'
 
 function normalizeRel(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
+/** 画面图是否尚无可用图片输出 */
+export function shotNeedsVisualCascade(shot: Shot): boolean {
+  const visual = normalizeScopedGraph('visual', shot.canvas.visualGraphJson ?? null)
+  return collectImagesFromVisualGraph(visual).length === 0
+}
+
+/** 视频图是否尚无可用视频输出 */
+export function shotNeedsVideoCascade(shot: Shot): boolean {
+  const workflow = normalizeScopedGraph('shotWorkflow', shot.canvas.graphJson ?? null)
+  return collectVideosFromShotWorkflowGraph(workflow).length === 0
 }
 
 async function ensureMediaAssetForPath(

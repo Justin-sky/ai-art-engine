@@ -4,6 +4,7 @@ import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import type { InspectorTarget } from './types'
 
 /**
@@ -121,6 +122,21 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
         kind: 'shot',
         key: shot ? `shot:${shot.id}` : 'shot:none',
         subject: shot
+      }
+    }
+
+    if (selection.kind === 'narrativeUnit') {
+      const unitId = selection.id ?? workspace.activeNarrativeUnitId
+      const assetId = workspace.activeNarrativeAssetId
+      const unit =
+        unitId && assetId
+          ? loadNarrativeCatalog(assetId).find((row) => row.id === unitId) ?? null
+          : null
+      return {
+        kind: 'narrativeUnit',
+        key: unitId ? `narrativeUnit:${unitId}` : 'narrativeUnit:none',
+        subject: unit,
+        meta: assetId ? { narrativeAssetId: assetId } : undefined
       }
     }
 

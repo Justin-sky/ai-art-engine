@@ -30,6 +30,7 @@ export type BuiltinGraphAddScope =
   | 'canvasAsset'
   | 'worldAsset'
   | 'narrativeAsset'
+  | 'narrativeUnit'
   | 'elementWorkflow'
 
 /** 内置或插件注册的画布作用域 id */
@@ -50,6 +51,9 @@ export const ASSET_SCRIPT_OUTPUT_TITLE = 'Shot output'
 /** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元输出」） */
 export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative output'
 
+/** 叙事单元细化画布输出节点默认标题（持久化；UI 映射为「叙事输出」） */
+export const NARRATIVE_UNIT_OUTPUT_TITLE = 'Narrative unit output'
+
 /** 世界元素资产图输出节点默认标题（持久化；UI 映射为「世界元素输出」） */
 export const ASSET_WORLD_OUTPUT_TITLE = 'World element output'
 
@@ -57,6 +61,8 @@ export interface GraphScopeOutputConfig {
   kind: GraphOutputKind
   title: string
   inputDataType?: GraphPortDataType
+  /** 专用输出 typeId（如 output.narrativeUnit）；缺省为 output.${kind} */
+  typeId?: GraphNodeTypeId
 }
 
 export interface GraphScopeDragAssetsConfig {
@@ -193,7 +199,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       title: 'Canvas output'
     }
   },
-  /** 世界元素资产图：提取 → 表格 → 编辑 → 输出；不强制通用输出节点 */
+  /** 世界元素资产图：提取 → 表格 → 生成 → 输出；不强制通用输出节点 */
   worldAsset: {
     id: 'worldAsset',
     ensureOutput: false,
@@ -202,7 +208,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     ensureSingletonTypeIds: [
       'world.extract',
       'world.table',
-      'world.editor',
+      'world.gen',
       'output.world'
     ],
     output: {
@@ -211,7 +217,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       inputDataType: GraphPortType.image
     }
   },
-  /** 叙事单元资产图：拆解 → 表格 → 编辑；不强制输出节点 */
+  /** 叙事单元资产图：拆解 → 表格 → 生成；不强制输出节点 */
   narrativeAsset: {
     id: 'narrativeAsset',
     ensureOutput: false,
@@ -220,12 +226,26 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     ensureSingletonTypeIds: [
       'narrative.split',
       'narrative.table',
-      'narrative.editor',
+      'narrative.gen',
       'output.narrative'
     ],
     output: {
       kind: 'text',
       title: ASSET_NARRATIVE_OUTPUT_TITLE,
+      inputDataType: GraphPortType.text
+    }
+  },
+  /** 叙事单元细化图：叙事生成（文本模型）→ 叙事输出；参考节点从底栏拖入 */
+  narrativeUnit: {
+    id: 'narrativeUnit',
+    coerceOutput: true,
+    outputTitleI18nKey: 'graph.titles.narrativeUnitOutput',
+    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
+    hostIdSuffix: 'narrative-unit',
+    output: {
+      typeId: 'output.narrativeUnit',
+      kind: 'text',
+      title: NARRATIVE_UNIT_OUTPUT_TITLE,
       inputDataType: GraphPortType.text
     }
   },
@@ -480,16 +500,16 @@ function ensureGraphEdge(
   })
 }
 
-/** 世界元素资产图默认链：提取 → 表格 → 编辑 → 输出（仅新建图时调用） */
+/** 世界元素资产图默认链：提取 → 表格 → 生成 → 输出（仅新建图时调用） */
 export function ensureWorldAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
   const extract = nodes.find((node) => node.typeId === 'world.extract')
   const table = nodes.find((node) => node.typeId === 'world.table')
-  const editor = nodes.find((node) => node.typeId === 'world.editor')
+  const gen = nodes.find((node) => node.typeId === 'world.gen')
   const output = nodes.find((node) => node.typeId === 'output.world')
-  if (!extract || !table || !editor) return
+  if (!extract || !table || !gen) return
   ensureGraphEdge(edges, extract.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, editor.id, 'out', 'in')
-  if (output) ensureGraphEdge(edges, editor.id, output.id, 'out', 'in')
+  ensureGraphEdge(edges, table.id, gen.id, 'out', 'in')
+  if (output) ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
 }
 
 /** 分镜资产图默认链：拆分 → 表格 → 分镜图 / 分镜视频 → 输出（仅新建图时调用） */
@@ -507,16 +527,16 @@ export function ensureScriptAssetDefaultChain(nodes: GraphNode[], edges: GraphEd
   if (outputNode) ensureGraphEdge(edges, videoGen.id, outputNode.id, 'out', 'in')
 }
 
-/** 叙事单元资产图默认链：拆解 → 表格 → 编辑 → 输出 */
+/** 叙事单元资产图默认链：拆解 → 表格 → 生成 → 输出 */
 export function ensureNarrativeAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
   const split = nodes.find((node) => node.typeId === 'narrative.split')
   const table = nodes.find((node) => node.typeId === 'narrative.table')
-  const editor = nodes.find((node) => node.typeId === 'narrative.editor')
+  const gen = nodes.find((node) => node.typeId === 'narrative.gen')
   const output = nodes.find((node) => node.typeId === 'output.narrative')
-  if (!split || !table || !editor) return
+  if (!split || !table || !gen) return
   ensureGraphEdge(edges, split.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, editor.id, 'out', 'in')
-  if (output) ensureGraphEdge(edges, editor.id, output.id, 'out', 'in')
+  ensureGraphEdge(edges, table.id, gen.id, 'out', 'in')
+  if (output) ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
 }
 
 /** 分镜工作流：仅在「仅有视频输出」的遗留空图上补齐视频链；不再强制插入分镜参数 */
@@ -585,6 +605,33 @@ export function ensureVisualDefaultChain(nodes: GraphNode[], edges: GraphEdge[])
   ensureGraphEdge(edges, image.id, output.id, 'out', 'in')
 }
 
+/** 叙事单元细化：仅在「仅有叙事输出」的空图上补齐生成链 */
+export function ensureNarrativeUnitDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
+  const hasGen = nodes.some((node) => node.typeId === 'narrative.unitGen')
+  let output = nodes.find((node) => node.typeId === 'output.narrativeUnit')
+  if (!output) {
+    output = createNodeFromType('output.narrativeUnit', { x: 520, y: 160 }, {
+      id: graphOutputNodeId('narrativeUnit'),
+      title: NARRATIVE_UNIT_OUTPUT_TITLE,
+      params: { outputKind: 'text', inputDataType: GraphPortType.text }
+    })
+    nodes.push(output)
+  }
+
+  if (hasGen) {
+    const gen = nodes.find((node) => node.typeId === 'narrative.unitGen')!
+    ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
+    return
+  }
+
+  const nonOutputCount = nodes.filter((node) => node.category !== 'output').length
+  if (nonOutputCount > 0) return
+
+  const gen = createNodeFromType('narrative.unitGen', { x: 300, y: 160 })
+  nodes.push(gen)
+  ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
+}
+
 /** 资产编辑器：确保加工节点（或宿主媒体引用节点）存在并默认连到输出 */
 export function ensureAssetEditorProcessingChain(
   nodes: GraphNode[],
@@ -646,6 +693,17 @@ export function createScopeOutputNode(
   output: GraphScopeOutputConfig,
   position: { x: number; y: number }
 ): GraphNode {
+  if (output.typeId) {
+    const def = getNodeTypeOrThrow(output.typeId)
+    return createNodeFromType(output.typeId, position, {
+      id: def.singletonId ?? graphOutputNodeId(output.kind),
+      title: output.title,
+      params: {
+        outputKind: output.kind,
+        ...(output.inputDataType ? { inputDataType: output.inputDataType } : {})
+      }
+    })
+  }
   return createOutputGraphNode(output.kind, position, {
     id: graphOutputNodeId(output.kind),
     title: output.title,
@@ -666,6 +724,9 @@ export function createDefaultScopedGraph(
   }
   if (scope === 'visual') {
     return createDefaultVisualGraph()
+  }
+  if (scope === 'narrativeUnit') {
+    return createDefaultNarrativeUnitGraph()
   }
 
   const def = getGraphScopeDefinition(scope)
@@ -755,6 +816,31 @@ function createDefaultVisualGraph(): GraphDocument {
   ]
   return {
     nodes: [image, output],
+    edges,
+    groups: [],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  }
+}
+
+/** 叙事单元细化默认图：叙事生成 → 叙事输出 */
+function createDefaultNarrativeUnitGraph(): GraphDocument {
+  const gen = createNodeFromType('narrative.unitGen', { x: 300, y: 160 })
+  const output = createNodeFromType('output.narrativeUnit', { x: 520, y: 160 }, {
+    id: graphOutputNodeId('narrativeUnit'),
+    title: NARRATIVE_UNIT_OUTPUT_TITLE,
+    params: { outputKind: 'text', inputDataType: GraphPortType.text }
+  })
+  const edges: GraphEdge[] = [
+    {
+      id: `edge-${crypto.randomUUID()}`,
+      source: gen.id,
+      target: output.id,
+      sourcePort: 'out',
+      targetPort: 'in'
+    }
+  ]
+  return {
+    nodes: [gen, output],
     edges,
     groups: [],
     viewport: { x: 0, y: 0, zoom: 1 }

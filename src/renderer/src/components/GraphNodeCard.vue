@@ -389,13 +389,14 @@ import {
   isScriptShotSplitNode,
   isScriptShotTableNode,
   isScriptShotVideoGenNode,
-  isWorldEditorNode,
+  isWorldGenNode,
   isWorldExtractNode,
   isWorldTableNode,
   isNarrativeSplitNode,
   isNarrativeTableNode,
-  isNarrativeEditorNode,
+  isNarrativeGenNode,
   isNarrativeOutputNode,
+  isNarrativeUnitOutputNode,
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
@@ -412,6 +413,7 @@ import {
   isMatteEditorNode,
   isCropEditorNode,
   isGridSplitEditorNode,
+  isLegacyNarrativeUnitGenInstruction,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readVideoGenerateParamsFromNode,
@@ -586,6 +588,7 @@ const isScreenplayOutputNode = computed(
   () =>
     props.node.category === 'output' &&
     !isNarrativeOutputNode(props.node) &&
+    !isNarrativeUnitOutputNode(props.node) &&
     (props.node.typeId === 'output.text' || props.node.params.outputKind === 'text')
 )
 const previewCollapsed = computed(() => props.node.params.previewCollapsed === true)
@@ -608,6 +611,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'toPrompt'
     case 'prompt.optimize':
       return 'optimize'
+    case 'narrative.unitGen':
+      return 'narrativeUnitGen'
     case 'script.shotSplit':
       return 'shotSplit'
     case 'world.extract':
@@ -732,6 +737,9 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'narrativeSplit') {
     return t('graph.inspector.generate.narrativeSplitInstructionPlaceholder')
   }
+  if (instructionKind.value === 'narrativeUnitGen') {
+    return t('graph.inspector.generate.narrativeUnitGenInstructionPlaceholder')
+  }
   // screenplay / optimize：文本向指令
   return t('graph.inspector.generate.instructionPlaceholder')
 })
@@ -765,10 +773,10 @@ const typeLabel = computed(() => {
     isScriptShotVideoGenNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
-    isWorldEditorNode(props.node) ||
+    isWorldGenNode(props.node) ||
     isNarrativeSplitNode(props.node) ||
     isNarrativeTableNode(props.node) ||
-    isNarrativeEditorNode(props.node)
+    isNarrativeGenNode(props.node)
   ) {
     return graphTypeLabel(props.node.typeId!)
   }
@@ -778,6 +786,7 @@ const typeLabel = computed(() => {
   }
   if (props.node.category === 'output') {
     if (isNarrativeOutputNode(props.node)) return t('graph.titles.narrativeOutput')
+    if (isNarrativeUnitOutputNode(props.node)) return t('graph.titles.narrativeUnitOutput')
     if (isWorldOutputNode(props.node)) return t('graph.titles.worldOutput')
     if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
     const scopeDef = getGraphScopeDefinition(graphScope.value)
@@ -822,10 +831,10 @@ const typeIcon = computed(() => {
   if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
   if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
-  if (isNarrativeEditorNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
-  if (isWorldEditorNode(props.node)) return '🤺'
+  if (isNarrativeGenNode(props.node) || isNarrativeSplitNode(props.node)) return '🧩'
+  if (isWorldGenNode(props.node)) return '🤺'
   if (isWorldOutputNode(props.node)) return '🌍'
-  if (isNarrativeOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
+  if (isNarrativeOutputNode(props.node) || isNarrativeUnitOutputNode(props.node) || isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
   const t = props.node.assetType
@@ -1045,10 +1054,10 @@ const hideCardPreview = computed(
     isScriptShotVideoGenNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
-    isWorldEditorNode(props.node) ||
+    isWorldGenNode(props.node) ||
     isNarrativeSplitNode(props.node) ||
     isNarrativeTableNode(props.node) ||
-    isNarrativeEditorNode(props.node)
+    isNarrativeGenNode(props.node)
 )
 
 const scriptNodePreviewTitle = computed(() => {
@@ -1065,9 +1074,9 @@ const scriptNodePreviewTitle = computed(() => {
     return t('graph.scriptShotVideoGenNode.hint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
-  if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
+  if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
-  if (isNarrativeEditorNode(props.node)) return t('graph.narrativeEditorNode.hint')
+  if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
   return ''
 })
 
@@ -1113,9 +1122,9 @@ const previewHint = computed(() => {
     return t('graph.scriptShotVideoGenNode.hint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
-  if (isWorldEditorNode(props.node)) return t('graph.worldEditorNode.hint')
+  if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
-  if (isNarrativeEditorNode(props.node)) return t('graph.narrativeEditorNode.hint')
+  if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
   if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
   if (isSelectScreenplayNode(props.node)) return t('graph.selectText.hint')
@@ -1369,7 +1378,11 @@ watch(
 watch(
   () => props.node.params.generateInstruction,
   (value) => {
-    const next = value ?? ''
+    const raw = value ?? ''
+    const next =
+      props.node.typeId === 'narrative.unitGen' && isLegacyNarrativeUnitGenInstruction(raw)
+        ? ''
+        : raw
     if (next !== instruction.value) instruction.value = next
   },
   { immediate: true }
@@ -1377,7 +1390,11 @@ watch(
 
 watch(instructionOpen, (open) => {
   if (open) {
-    instruction.value = props.node.params.generateInstruction ?? ''
+    const raw = props.node.params.generateInstruction ?? ''
+    instruction.value =
+      props.node.typeId === 'narrative.unitGen' && isLegacyNarrativeUnitGenInstruction(raw)
+        ? ''
+        : raw
     // 先让指令面板上屏，再拉模型列表，避免双击卡顿
     window.setTimeout(() => {
       void refreshModelOptions()
@@ -1629,7 +1646,7 @@ function onPreviewDblClick(): void {
     worldTable?.openWorldTable()
     return
   }
-  if (isWorldEditorNode(props.node)) {
+  if (isWorldGenNode(props.node)) {
     worldEditor?.openWorldEditor()
     return
   }
@@ -1637,12 +1654,17 @@ function onPreviewDblClick(): void {
     narrativeTable?.openNarrativeTable()
     return
   }
-  if (isNarrativeEditorNode(props.node)) {
+  if (isNarrativeGenNode(props.node)) {
     narrativeEditor?.openNarrativeEditor()
     return
   }
   // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
   if (instructionKind.value === 'screenplay') {
+    instructionOpen.value = !instructionOpen.value
+    return
+  }
+  // 叙事生成：双击只开关指令面板，不打开正文预览/记事本
+  if (instructionKind.value === 'narrativeUnitGen') {
     instructionOpen.value = !instructionOpen.value
     return
   }

@@ -100,9 +100,15 @@ async function persistCatalog(
     return rows.length
   }
   const text = stringifyNarrativeUnitRows(rows)
-  const graphJson = syncCatalogTextIntoGraph(readNarrativeAssetGraph(narrativeAssetId), text)
+  const previous = readNarrativeGenParams(narrativeAssetId) ?? {}
+  // 在已有 genParams 上合并，避免冲掉 narrativeUnitGraphs 等并行写入字段
+  const graphJson = syncCatalogTextIntoGraph(
+    (previous.graphJson as GraphDocument | undefined) ??
+      readNarrativeAssetGraph(narrativeAssetId),
+    text
+  )
   const genParams: Record<string, unknown> = {
-    ...(readNarrativeGenParams(narrativeAssetId) ?? {}),
+    ...previous,
     narrativeCatalog: toPlain(rows),
     [LAST_APPLIED_NARRATIVE_CATALOG_FP_KEY]: fingerprint,
     ...(graphJson ? { graphJson: toPlain(graphJson) } : {})
