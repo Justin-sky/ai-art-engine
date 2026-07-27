@@ -16,6 +16,13 @@ export function useStudioI18n() {
     return te(key) ? String(t(key)) : String(t('asset.create.default'))
   }
 
+  /** 工具栏 / 资产右键新建条目的显示名（按条目 id，支持同类型多入口） */
+  function toolbarCreateLabel(itemId: string, assetType: AssetType): string {
+    const key = `asset.create.${itemId}`
+    if (te(key)) return String(t(key))
+    return assetCreateName(assetType)
+  }
+
   function shotStatusLabel(status: ShotStatus | string): string {
     const key = `shot.status.${status}`
     return te(key) ? String(t(key)) : String(status)
@@ -61,6 +68,7 @@ export function useStudioI18n() {
     locale: localeRef,
     assetTypeLabel,
     assetCreateName,
+    toolbarCreateLabel,
     shotStatusLabel,
     shotSizeLabel,
     refRoleLabel,

@@ -474,6 +474,7 @@ import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibil
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
+import { editorDiveKey } from '../features/graph/model/editorDive'
 
 const { t, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
@@ -486,6 +487,7 @@ const worldTable = useWorldTable()
 const narrativeTable = useNarrativeTable()
 const narrativeEditor = useNarrativeEditor()
 const previewVisibility = inject(graphPreviewVisibilityKey, null)
+const editorDive = inject(editorDiveKey, null)
 
 const previewInViewport = computed(() => {
   if (!previewVisibility) return true
@@ -1843,13 +1845,13 @@ function onPreviewDblClick(): void {
     emit('textOpen', props.node.id)
     return
   }
-  // 宿主资产节点：双击打开对应资产编辑器
+  // 宿主资产节点：同面板 dive
   if (isAssetRef.value && !isImportedRefAsset.value) {
     const assetId = props.node.assetId?.trim() || props.asset?.id
-    if (assetId) {
-      workspace.openEditorForAssetId(assetId)
-      return
+    if (assetId && editorDive?.rootKey) {
+      workspace.diveIntoHost(editorDive.rootKey, assetId)
     }
+    return
   }
   // 引用型图片 / 音视频：双击预览
   if (

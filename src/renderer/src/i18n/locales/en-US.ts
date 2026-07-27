@@ -269,6 +269,11 @@ export default {
       narrative: 'Narrative Units',
       director: 'Director Deck'
     },
+    dive: {
+      up: 'Up',
+      root: 'Series',
+      sep: '/'
+    },
     tabMenu: {
       float: 'Float window',
       detach: 'Detach to new window',
@@ -366,13 +371,18 @@ export default {
       screenplay: 'New Screenplay',
       script: 'New Shot',
       canvas: 'New Series',
+      freeCanvas: 'New Free Canvas',
       world: 'New World Elements',
       narrative: 'New Narrative Units',
       default: 'New Asset',
       seriesNameTitle: 'New Series',
       seriesNameMessage:
         'Enter a series name. After confirm, a screenplay, world elements, narrative units, and shot will be created and placed on the series canvas.',
-      seriesNamePlaceholder: 'Series name'
+      seriesNamePlaceholder: 'Series name',
+      freeCanvasNameTitle: 'New Free Canvas',
+      freeCanvasNameMessage:
+        'Enter a canvas name. Creates a blank node graph where you can freely add nodes and assets.',
+      freeCanvasNamePlaceholder: 'Canvas name'
     },
     generic: 'Asset',
     deleted: '(deleted)',

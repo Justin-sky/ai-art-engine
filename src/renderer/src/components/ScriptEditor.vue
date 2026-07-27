@@ -1,20 +1,20 @@
 <template>
   <div class="script-editor">
-    <div class="script-toolbar">
+    <div v-if="!embedded && !diving" class="script-toolbar">
       <span>{{ t('asset.type.script') }}</span>
       <span class="spacer" />
       <span class="mode-hint">{{ t('script.hint.assetGraph') }}</span>
       <GraphToolbarCollapseBtn v-model="scriptToolbarCollapsed" />
     </div>
 
-    <div ref="splitHostEl" class="script-split">
+    <div v-show="!diving" ref="splitHostEl" class="script-split">
       <NodeGraphEditor
         ref="scriptGraphRef"
         class="script-main"
         :class="{ 'with-shot-pane': embedPaneOpen }"
         :style="embedPaneOpen ? { flexBasis: `${scriptPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
         :asset-id="scriptAssetId"
-        :hide-toolbar="scriptToolbarCollapsed"
+        :hide-toolbar="!embedded && scriptToolbarCollapsed"
       />
 
       <template v-if="embedPaneKind">
@@ -47,6 +47,8 @@
       </template>
     </div>
 
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+
     <ShotTableDialog
       v-if="tableOpen"
       ref="tableDialogRef"
@@ -70,6 +72,7 @@ import ShotEditorBody from './ShotEditorBody.vue'
 import ShotTableDialog from './ShotTableDialog.vue'
 import ScriptTimelineDialog from './ScriptTimelineDialog.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 import { shotScriptAssetId, isDraftAssetId } from '@shared/domain'
 import { storeToRefs } from 'pinia'
 import { useDraftStore } from '../stores/drafts'
@@ -77,6 +80,8 @@ import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
+import { useAssetRecord } from '../composables/useAssetRecord'
 import { scriptPreviewKey } from '../features/script/scriptPreview'
 import { readShotTableWorldOutputs } from '../features/script/readShotTableWorldOutputs'
 import type { WorldElementGenResult } from '@shared/graph'
@@ -85,8 +90,21 @@ type EmbedPaneKind = 'image' | 'video'
 
 const props = defineProps<{
   scriptAssetId: string
+  /** 嵌在外层 dive 内时不作为 dive 根、不 consume */
+  embedded?: boolean
 }>()
 const { t } = useStudioI18n()
+const { asset: scriptAsset } = useAssetRecord(props.scriptAssetId)
+
+const rootTitle = computed(
+  () => scriptAsset.value?.name?.trim() || t('studio.dive.root')
+)
+const { diving, diveTop } = useEditorDiveHost({
+  kind: 'script',
+  assetId: () => props.scriptAssetId,
+  rootTitle,
+  enabled: () => !props.embedded
+})
 
 provide('scriptAssetId', computed(() => props.scriptAssetId))
 
@@ -256,7 +274,7 @@ onBeforeUnmount(() => {
   onSplitPointerUp()
   stopTableClosed?.()
   stopTableClosed = null
-  workspace.consumeScriptEditor(props.scriptAssetId)
+  if (!props.embedded) workspace.consumeScriptEditor(props.scriptAssetId)
 })
 
 watch(

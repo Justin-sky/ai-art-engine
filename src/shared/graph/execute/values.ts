@@ -20,12 +20,14 @@ import { resolveInputLinkHeadTypeIds } from '../defaultGraph'
 import {
   buildHostInputSlotSeedOutputs,
   ensureHostInputSlotNodes,
+  hydrateHostInputSlotSpecs,
   mergeHostInputSlotsWithDefaults,
   readHostInputSlot,
   resolveHostInputSlotsFromInputs
 } from '../hostInput'
 import { assetTypeToGraphScope, resolveAssetProcessingTypeId } from '../scopes'
-import { findOutputNode } from '../query'
+import { findAllOutputNodes } from '../query'
+import { syncScriptNarrativeUnitChains } from '../scriptNarrativeUnitSync'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
 export { GRAPH_OUT_ALL_PORT_ID }
@@ -1180,37 +1182,17 @@ function mapChildOutputToHostOut(
 ): Record<string, GraphValue> | null {
   if (!output) return null
   if (assetType === 'script') {
-    const entitiesText =
-      typeof output.params?.videoEntitiesText === 'string'
-        ? output.params.videoEntitiesText.trim()
-        : Array.isArray(output.params?.videoEntities)
-          ? stringifyVideoEntities(
-              output.params.videoEntities as Array<{
-                id: string
-                name: string
-                videoUrls: string[]
-              }>
-            )
-          : ''
+    const entitiesText = Array.isArray(output.params?.videoEntities)
+      ? stringifyVideoEntities(
+          output.params.videoEntities as Array<{
+            id: string
+            name: string
+            videoUrls: string[]
+          }>
+        )
+      : ''
     if (entitiesText) {
       return { out: catalogValue(GraphPortType.videoEntities, entitiesText) }
-    }
-    if (output.videos?.length) {
-      // 旧子图仍出 videos 时，压成单镜实体以便接时间线
-      const entities = [
-        {
-          id: 'legacy',
-          name: 'Shot',
-          videoUrls: output.videos
-            .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
-            .filter(Boolean)
-        }
-      ].filter((item) => item.videoUrls.length)
-      if (entities.length) {
-        return {
-          out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(entities))
-        }
-      }
     }
     return null
   }
@@ -1273,8 +1255,7 @@ function mapChildOutputToHostOut(
 }
 
 /**
- * 宿主节点有入边时：同步内图输入接口槽，注入种子输出并嵌套跑子图。
- * 无入边 / 无子图 / 无法映射输出时返回 null，由调用方回退旧语义。
+ * 宿主有入边时：注入内图输入，整链交给任务列表执行（runHostInnerGraph）。
  */
 function executeAssetHostInnerGraph(
   ctx: NodeExecuteContext
@@ -1296,12 +1277,31 @@ function executeAssetHostInnerGraph(
     return null
   }
 
+  if (!ctx.runHostInnerGraph) {
+    throw new Error('GRAPH_HOST_INNER_NO_RUNNER')
+  }
+  const runInner = ctx.runHostInnerGraph
+
   return (async () => {
-    const { runGraph } = await import('./engine')
     const doc = cloneGraphDocument(raw as GraphDocument)
     const scope = assetTypeToGraphScope(node.assetType)
-    // 与 normalize 一致：把输入接口挂到模板链首（如 world.extract），否则无 @ 时提取不到宿主入边正文
-    ensureHostInputSlotNodes(doc.nodes, doc.edges, slots, {
+
+    let narrativeCatalogText: string | undefined
+    if (node.assetType === 'script') {
+      narrativeCatalogText =
+        catalogTextFromInputs(inputs['in-narrative'] ?? [], GraphPortType.narrative) || undefined
+      const units = narrativeCatalogText
+        ? parseNarrativeUnitJson(narrativeCatalogText) ?? []
+        : []
+      if (units.length) {
+        const synced = syncScriptNarrativeUnitChains(doc, units)
+        doc.nodes = synced.nodes
+        doc.edges = synced.edges
+      }
+    }
+
+    const slotsHydrated = await hydrateHostInputSlotSpecs(slots, ctx.readRunText)
+    ensureHostInputSlotNodes(doc.nodes, doc.edges, slotsHydrated, {
       autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
         scope,
         node.assetType,
@@ -1312,116 +1312,97 @@ function executeAssetHostInnerGraph(
     const seeds = buildHostInputSlotSeedOutputs(node, inputs)
     const priorNodeStates: Record<string, GraphNodeRunState> = {}
     for (const [id, outputs] of Object.entries(seeds)) {
+      const out = outputs.out
+      if (out?.kind === 'text' && !out.text.trim() && out.relativePath?.trim() && ctx.readRunText) {
+        try {
+          const text = (await ctx.readRunText(out.relativePath.trim()))?.trim() ?? ''
+          if (text) out.text = text
+        } catch {
+          // 保留路径
+        }
+      }
       priorNodeStates[id] = { status: 'done', outputs }
       const slotNode = doc.nodes.find((n) => n.id === id)
       if (!slotNode) continue
-      const out = outputs.out
       if (out?.kind === 'text') {
-        slotNode.params = { ...slotNode.params, text: out.text }
+        slotNode.params = {
+          ...slotNode.params,
+          text: out.text,
+          ...(out.relativePath ? { previewRelativePath: out.relativePath } : {})
+        }
       }
     }
 
-    const result = await runGraph(doc, {
-      skipCompletedNodes: true,
+    const hosted = await runInner({
+      hostNode: node,
+      document: doc,
       priorNodeStates,
       signal: ctx.signal,
-      stepDelayMs: 0,
-      resolveAssetGenParams: ctx.resolveAssetGenParams,
-      hasAsset: ctx.hasAsset,
-      resolveAssetName: ctx.resolveAssetName,
-      resolveHostAssetName: ctx.resolveHostAssetName,
-      resolveAssetText: ctx.resolveAssetText,
-      resolveImageUrls: ctx.resolveImageUrls,
-      resolveStyleImageUrls: ctx.resolveStyleImageUrls,
-      resolveProjectStyleImages: ctx.resolveProjectStyleImages,
-      enrichStyleImages: ctx.enrichStyleImages,
-      resolveImageGenerateCapabilities: ctx.resolveImageGenerateCapabilities,
-      resolveVideoGenerateCapabilities: ctx.resolveVideoGenerateCapabilities,
-      resolveAssetImageUrl: ctx.resolveAssetImageUrl,
-      resolveAssetMediaUrl: ctx.resolveAssetMediaUrl,
-      generateText: ctx.generateText,
-      generateImage: ctx.generateImage,
-      generateVideo: ctx.generateVideo,
-      generateSpeech: ctx.generateSpeech,
-      saveRunMedia: ctx.saveRunMedia,
-      saveRunText: ctx.saveRunText,
-      readRunText: ctx.readRunText,
-      locale: ctx.locale
+      narrativeCatalogText
     })
-
-    if (!result.ok) {
-      throw new Error(result.error || 'GRAPH_HOST_INNER_FAILED')
+    if (!hosted.ok) {
+      throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
     }
+    if (hosted.outputs) return hosted.outputs
+    const mapped = mapHostInnerStatesToOutputs(hosted.states, doc, node.assetType ?? '')
+    if (!mapped) throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
+    return mapped
+  })()
+}
 
-    const mapped = mapChildOutputToHostOut(result.output, node.assetType ?? '')
-    if (mapped) return mapped
+/** 从内图全部输出节点状态聚合宿主出口 */
+export function mapHostInnerStatesToOutputs(
+  states: Record<string, GraphNodeRunState>,
+  doc: GraphDocument,
+  assetType: string
+): Record<string, GraphValue> | null {
+  const outs = findAllOutputNodes(doc)
+  if (!outs.length) return null
 
-    // 子图有输出节点状态但未归入 result.output 时再读一次
-    const outNode = findOutputNode(doc)
-    const fallbackOut = outNode ? result.states[outNode.id]?.outputs?.out : undefined
-    if (fallbackOut && fallbackOut.kind === 'output') {
-      const mapped2 = mapChildOutputToHostOut(fallbackOut, node.assetType ?? '')
-      if (mapped2) return mapped2
-    }
-    if (fallbackOut?.kind === 'videoEntities') {
-      return { out: fallbackOut }
-    }
-    if (fallbackOut && (fallbackOut.kind === 'videos' || fallbackOut.kind === 'video')) {
-      const items =
-        fallbackOut.kind === 'videos'
-          ? fallbackOut.items
-          : [
-              {
-                id: fallbackOut.id ?? `video:${node.id}`,
-                dataUrl: fallbackOut.dataUrl,
-                relativePath: fallbackOut.relativePath
-              }
-            ]
-      const entities = [
-        {
-          id: node.assetId ?? node.id,
-          name: node.title?.trim() || 'Shot',
-          videoUrls: items
-            .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
-            .filter(Boolean)
-        }
-      ].filter((item) => item.videoUrls.length)
-      if (entities.length) {
-        return {
-          out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(entities))
-        }
+  if (assetType === 'script') {
+    const merged: Array<{ id: string; name: string; videoUrls: string[] }> = []
+    const seen = new Set<string>()
+    for (const outNode of outs) {
+      const raw = states[outNode.id]?.outputs?.out
+      const mapped = mapChildOutputToHostOut(
+        raw?.kind === 'output' ? raw : undefined,
+        'script'
+      )
+      const text =
+        mapped?.out && mapped.out.kind === 'videoEntities'
+          ? mapped.out.text
+          : raw?.kind === 'videoEntities'
+            ? raw.text
+            : ''
+      for (const entity of parseVideoEntities(text)) {
+        const key = `${entity.id}::${entity.videoUrls.join('|')}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push(entity)
       }
-    }
-    if (fallbackOut && (fallbackOut.kind === 'text' || fallbackOut.kind === 'texts')) {
-      return { out: fallbackOut }
-    }
-    if (fallbackOut?.kind === 'worldEntities') {
-      return { out: fallbackOut }
-    }
-    if (fallbackOut?.kind === 'narrative') {
-      return { out: fallbackOut }
-    }
-
-    if (node.assetType === 'script') {
-      return { out: catalogValue(GraphPortType.videoEntities, '[]') }
-    }
-    if (node.assetType === 'screenplay') {
-      return executeTextAssetRefNode(ctx)
     }
     return {
-      out: {
-        kind: 'asset',
-        assetId: node.assetId!,
-        assetType: node.assetType!,
-        label: node.params.label,
-        weight: node.params.weight,
-        volume: node.params.volume,
-        muted: node.params.muted,
-        notes: node.params.notes,
-        title: node.title
-      }
+      out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(merged))
     }
-  })()
+  }
+
+  for (const outNode of outs) {
+    const raw = states[outNode.id]?.outputs?.out
+    if (raw?.kind === 'output') {
+      const mapped = mapChildOutputToHostOut(raw, assetType)
+      if (mapped) return mapped
+    }
+    if (
+      raw &&
+      (raw.kind === 'narrative' ||
+        raw.kind === 'worldEntities' ||
+        raw.kind === 'text' ||
+        raw.kind === 'texts')
+    ) {
+      return { out: raw }
+    }
+  }
+  return null
 }
 
 export function executeAssetNode(
@@ -2746,11 +2727,32 @@ export function executePlayScriptNode(ctx: NodeExecuteContext): Record<string, G
 }
 
 /** 宿主编辑器输入接口槽：输出外层注入或节点上缓存的标量值 */
-export function executeHostInputSlotNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+export async function executeHostInputSlotNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   const slot = readHostInputSlot(ctx.node)
   const dataType = slot?.dataType ?? 'text'
   if (dataType === 'text') {
-    return { out: { kind: 'text', text: ctx.node.params.text ?? '' } }
+    let text = ctx.node.params.text ?? ''
+    const path = ctx.node.params.previewRelativePath?.trim()
+    if (!text.trim() && path && ctx.readRunText) {
+      try {
+        text = (await ctx.readRunText(path))?.trim() ?? ''
+      } catch {
+        text = ''
+      }
+      if (text) {
+        ctx.node.params = { ...ctx.node.params, text }
+        ctx.patchNode?.({ params: { text } })
+      }
+    }
+    return {
+      out: {
+        kind: 'text',
+        text,
+        ...(path ? { relativePath: path } : {})
+      }
+    }
   }
   if (dataType === 'image') {
     const path = ctx.node.params.previewRelativePath?.trim()
@@ -3062,19 +3064,8 @@ export async function executeVideoEntitiesOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const incoming = Object.values(ctx.inputs).flat()
-  let text = catalogTextFromInputs(incoming, GraphPortType.videoEntities) ?? ''
-  let items = parseVideoEntities(text)
-  // 兼容旧上游仍输出 videos / video 的情况
-  if (!items.length) {
-    const videos = flattenVideosValues(incoming)
-    const urls = videos
-      .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
-      .filter(Boolean)
-    if (urls.length) {
-      items = [{ id: 'videos', name: 'Videos', videoUrls: urls }]
-      text = stringifyVideoEntities(items)
-    }
-  }
+  const text = catalogTextFromInputs(incoming, GraphPortType.videoEntities) ?? ''
+  const items = parseVideoEntities(text)
   const paramsPatch = {
     resultText: text || '[]',
     text: text || '[]',
@@ -3090,13 +3081,6 @@ export async function executeVideoEntitiesOutputNode(
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
   return { out: catalogValue(GraphPortType.videoEntities, text || '[]') }
-}
-
-/** @deprecated 使用 {@link executeShotVideoGenNode} */
-export async function executeShotEditorNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  return executeShotVideoGenNode(ctx)
 }
 
 /**

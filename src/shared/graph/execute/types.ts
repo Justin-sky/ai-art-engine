@@ -10,7 +10,7 @@ import type { InstructionMentionSource } from '../instructionMentions'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
 import type { VideoGenerateParamCapabilities } from '../videoGenerateParams'
 import type { VideoGeneratePortLimits } from '../portInputLimits'
-import type { GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
+import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
 
 export type GraphNodeRunStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'skipped'
 
@@ -435,6 +435,28 @@ export interface NodeExecuteContext {
    * 叙事单元表格 / 编辑节点执行时：把上游拆解 JSON 写入资产 genParams。
    */
   importNarrativeCatalogJson?: (jsonText: string) => void | Promise<void>
+  /**
+   * 宿主有入边时：把已注入输入的内图整链交给任务列表执行。
+   */
+  runHostInnerGraph?: (input: HostInnerGraphRunInput) => Promise<HostInnerGraphRunResult>
+}
+
+/** 宿主内图已准备好的执行包（输入槽已注入） */
+export interface HostInnerGraphRunInput {
+  hostNode: GraphNode
+  document: GraphDocument
+  priorNodeStates: Record<string, GraphNodeRunState>
+  signal?: AbortSignal
+  /** 分镜宿主：父图注入的叙事目录 JSON，供 unitRef 解析 */
+  narrativeCatalogText?: string
+}
+
+export interface HostInnerGraphRunResult {
+  ok: boolean
+  states: Record<string, GraphNodeRunState>
+  /** 已按资产类型映射的宿主输出口 */
+  outputs?: Record<string, GraphValue>
+  error?: string
 }
 
 /** 返回 portId → 输出值 */
@@ -453,6 +475,8 @@ export interface GraphNodeRunState {
 export interface GraphRunOptions {
   /** 默认跑到输出节点；可指定任意汇点 */
   targetNodeId?: string
+  /** 多汇点：子集为各目标上游并集（优先于 targetNodeId） */
+  targetNodeIds?: string[]
   /**
    * 为 true 时只执行 targetNodeId 自身，不重跑上游；
    * 上游输出优先用 priorNodeStates，否则做无副作用快照。
@@ -517,6 +541,7 @@ export interface GraphRunOptions {
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
   resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']
   importNarrativeCatalogJson?: NodeExecuteContext['importNarrativeCatalogJson']
+  runHostInnerGraph?: NodeExecuteContext['runHostInnerGraph']
 }
 
 export interface GraphGenerationContribution {

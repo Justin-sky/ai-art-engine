@@ -6,6 +6,7 @@ import {
   getNodePorts,
   GRAPH_INPUT_SLOT_TYPE_ID,
   hostInputSlotNodeId,
+  hydrateHostInputSlotSpecs,
   isNodeDeletable,
   normalizeScopedGraph,
   resolveHostInputSlotsFromParentGraph,
@@ -291,5 +292,209 @@ describe('host input slots', () => {
       hostInputSlotNodeId('in', 1)
     ].sort())
     expect(seeds[hostInputSlotNodeId('in', 1)]?.out).toEqual({ kind: 'text', text: 'b' })
+  })
+
+  it('preserves relativePath on path-only gallery text into slots and seeds', () => {
+    const host: GraphNode = {
+      id: 'host-node',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: HOST_ID,
+      assetType: 'screenplay'
+    }
+    const gen: GraphNode = {
+      id: 'gen',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 40, y: 40 },
+      params: {
+        generatedTexts: [{ id: 't1', text: '', relativePath: 'runs/sp/a.txt' }],
+        selectedTextId: 't1'
+      }
+    }
+    const parent: GraphDocument = {
+      nodes: [gen, host],
+      edges: [
+        { id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const slots = resolveHostInputSlotsFromParentGraph(parent, HOST_ID)
+    expect(slots).toHaveLength(1)
+    expect(slots[0]?.text).toBe('')
+    expect(slots[0]?.previewRelativePath).toBe('runs/sp/a.txt')
+
+    const seeds = buildHostInputSlotSeedOutputs(host, {
+      in: [{ kind: 'text', text: '', relativePath: 'runs/sp/a.txt' }]
+    })
+    expect(seeds[hostInputSlotNodeId('in', 0)]?.out).toEqual({
+      kind: 'text',
+      text: '',
+      relativePath: 'runs/sp/a.txt'
+    })
+  })
+
+  it('hydrateHostInputSlotSpecs fills text from relativePath', async () => {
+    const slots = await hydrateHostInputSlotSpecs(
+      [{ portId: 'in', index: 0, dataType: 'text', text: '', previewRelativePath: 'x.txt' }],
+      async (path) => (path === 'x.txt' ? '外层正文' : '')
+    )
+    expect(slots[0]?.text).toBe('外层正文')
+  })
+
+  it('ignores non-host assetRef nodes when resolving parent slots', () => {
+    const innerRef: GraphNode = {
+      id: 'inner-proc',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 200, y: 80 },
+      params: { assetRef: true },
+      assetId: HOST_ID,
+      assetType: 'screenplay'
+    }
+    const note: GraphNode = {
+      id: 'note',
+      typeId: 'note.text',
+      category: 'note',
+      position: { x: 40, y: 40 },
+      params: { text: '不应作为外层' }
+    }
+    const selfGraph: GraphDocument = {
+      nodes: [note, innerRef],
+      edges: [
+        { id: 'e1', source: 'note', target: 'inner-proc', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    expect(resolveHostInputSlotsFromParentGraph(selfGraph, HOST_ID)).toEqual([])
+  })
+
+  it('soft-resolves screenplay host text into narrative input slots', () => {
+    const SP = '00000000-0000-4000-8000-000000000301'
+    const NV = '00000000-0000-4000-8000-000000000nv'
+    const screenplay: GraphNode = {
+      id: 'sp',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 80, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: SP,
+      assetType: 'screenplay'
+    }
+    const narrative: GraphNode = {
+      id: 'nv',
+      typeId: 'asset.narrative',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: NV,
+      assetType: 'narrative'
+    }
+    const parent: GraphDocument = {
+      nodes: [screenplay, narrative],
+      edges: [
+        { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const slots = resolveHostInputSlotsFromParentGraph(parent, NV, {
+      resolveAssetGenParams: (id) =>
+        id === SP
+          ? {
+              graphJson: {
+                nodes: [
+                  {
+                    id: 'slot',
+                    typeId: GRAPH_INPUT_SLOT_TYPE_ID,
+                    category: 'note',
+                    position: { x: 0, y: 0 },
+                    params: {
+                      hostInputSlot: { portId: 'in', index: 0, dataType: 'text' },
+                      text: '外层剧本文'
+                    }
+                  }
+                ],
+                edges: [],
+                viewport: { x: 0, y: 0, zoom: 1 }
+              }
+            }
+          : undefined
+    })
+    expect(slots).toHaveLength(1)
+    expect(slots[0]?.text).toBe('外层剧本文')
+  })
+
+  it('soft-resolves screenplay path-only body into narrative slot preview path', () => {
+    const SP = '00000000-0000-4000-8000-000000000sp2'
+    const NV = '00000000-0000-4000-8000-000000000nv2'
+    const screenplay: GraphNode = {
+      id: 'sp',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 80, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: SP,
+      assetType: 'screenplay'
+    }
+    const narrative: GraphNode = {
+      id: 'nv',
+      typeId: 'asset.narrative',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: NV,
+      assetType: 'narrative'
+    }
+    const parent: GraphDocument = {
+      nodes: [screenplay, narrative],
+      edges: [
+        { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const slots = resolveHostInputSlotsFromParentGraph(parent, NV, {
+      resolveAssetGenParams: (id) =>
+        id === SP
+          ? {
+              graphJson: {
+                nodes: [
+                  {
+                    id: 'gen',
+                    typeId: 'asset.screenplay',
+                    category: 'asset',
+                    position: { x: 0, y: 0 },
+                    params: {
+                      generatedTexts: [
+                        { id: 't1', text: '', relativePath: 'runs/sp/body.txt' }
+                      ],
+                      selectedTextId: 't1'
+                    }
+                  },
+                  {
+                    id: 'out',
+                    typeId: 'output.text',
+                    category: 'output',
+                    position: { x: 200, y: 0 },
+                    params: { outputKind: 'text' }
+                  }
+                ],
+                edges: [
+                  {
+                    id: 'e',
+                    source: 'gen',
+                    target: 'out',
+                    sourcePort: 'out',
+                    targetPort: 'in'
+                  }
+                ],
+                viewport: { x: 0, y: 0, zoom: 1 }
+              }
+            }
+          : undefined
+    })
+    expect(slots).toHaveLength(1)
+    expect(slots[0]?.previewRelativePath).toBe('runs/sp/body.txt')
   })
 })

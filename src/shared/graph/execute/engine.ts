@@ -137,7 +137,9 @@ function hasUsableOutputRecord(
   if (!outputs || !Object.keys(outputs).length) return false
   const out = outputs.out
   if (!out) return true
-  if (out.kind === 'text') return !!out.text.trim()
+  if (out.kind === 'text') {
+    return !!out.text.trim() || !!out.relativePath?.trim()
+  }
   if (
     out.kind === 'world' ||
     out.kind === 'worldEntities' ||
@@ -146,7 +148,7 @@ function hasUsableOutputRecord(
     out.kind === 'narrative' ||
     out.kind === 'shots'
   ) {
-    return !!out.text.trim()
+    return !!out.text.trim() || !!('relativePath' in out && out.relativePath?.trim())
   }
   if (out.kind === 'texts') {
     return out.items.some(
@@ -198,9 +200,10 @@ async function softSnapshotOutputs(
     typeId: node.typeId
   })
   if (hasUsablePriorOutputs(prior)) {
-    return gallery ? { ...prior!.outputs!, ...gallery } : prior!.outputs!
+    const merged = gallery ? { ...prior!.outputs!, ...gallery } : { ...prior!.outputs! }
+    return hydrateOutputRecordTexts(merged, options.readRunText)
   }
-  if (gallery) return gallery
+  if (gallery) return hydrateOutputRecordTexts(gallery, options.readRunText)
   const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough
   return Promise.resolve(
@@ -216,6 +219,37 @@ async function softSnapshotOutputs(
       resolveNarrativeUnit: options.resolveNarrativeUnit
     })
   )
+}
+
+/** 路径-only text / catalog 在复用 prior 时按 relativePath 补全文 */
+async function hydrateOutputRecordTexts(
+  outputs: Record<string, GraphValue>,
+  readRunText?: (relativePath: string) => Promise<string>
+): Promise<Record<string, GraphValue>> {
+  if (!readRunText) return outputs
+  const next = { ...outputs }
+  for (const [key, value] of Object.entries(next)) {
+    if (!value) continue
+    if (
+      (value.kind === 'text' ||
+        value.kind === 'world' ||
+        value.kind === 'worldEntities' ||
+        value.kind === 'shotEntities' ||
+        value.kind === 'videoEntities' ||
+        value.kind === 'narrative' ||
+        value.kind === 'shots') &&
+      !value.text.trim() &&
+      value.relativePath?.trim()
+    ) {
+      try {
+        const text = (await readRunText(value.relativePath.trim()))?.trim() ?? ''
+        if (text) next[key] = { ...value, text }
+      } catch {
+        // keep path-only
+      }
+    }
+  }
+  return next
 }
 
 async function executeOneNode(
@@ -336,6 +370,7 @@ async function executeOneNode(
     importWorldCatalogJson: options.importWorldCatalogJson,
     resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
     importNarrativeCatalogJson: options.importNarrativeCatalogJson,
+    runHostInnerGraph: options.runHostInnerGraph,
     saveRunMedia: options.saveRunMedia,
     saveRunText: options.saveRunText,
     readRunText: options.readRunText,
@@ -377,19 +412,33 @@ export async function runGraph(
     states[node.id] = emptyState('idle')
   }
 
+  const multiTargets =
+    options.targetNodeIds
+      ?.map((id) => graph.nodes.find((n) => n.id === id))
+      .filter((n): n is GraphNode => !!n) ?? []
   const target =
+    multiTargets[0] ??
     (options.targetNodeId
       ? graph.nodes.find((n) => n.id === options.targetNodeId)
-      : findOutputNode(graph)) ?? null
+      : findOutputNode(graph)) ??
+    null
 
   if (!target) {
     return { ok: false, order: [], states, error: 'GRAPH_NO_OUTPUT' }
   }
 
-  const onlyTarget = options.onlyTargetNode === true && !!options.targetNodeId
+  const onlyTarget = options.onlyTargetNode === true && !!options.targetNodeId && !multiTargets.length
   const subset = onlyTarget
     ? new Set<string>([target.id])
-    : collectUpstreamNodeIds(graph, target.id)
+    : multiTargets.length
+      ? (() => {
+          const ids = new Set<string>()
+          for (const t of multiTargets) {
+            for (const id of collectUpstreamNodeIds(graph, t.id)) ids.add(id)
+          }
+          return ids
+        })()
+      : collectUpstreamNodeIds(graph, target.id)
 
   const skipCompleted = options.skipCompletedNodes === true && !onlyTarget
   const canSkipNode = (nodeId: string): boolean =>

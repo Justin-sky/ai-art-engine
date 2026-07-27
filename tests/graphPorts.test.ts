@@ -198,8 +198,7 @@ describe('asset reference ports', () => {
 
     expect(getNodePorts(screenplay).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:text:out',
-      'out-all:texts:out'
+      'out:text:out'
     ])
     expect(getNodePorts(world).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',

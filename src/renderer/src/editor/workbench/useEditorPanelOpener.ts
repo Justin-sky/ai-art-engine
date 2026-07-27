@@ -63,6 +63,8 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     const existing = api.getPanel(panelId)
     if (existing) {
       existing.api.setActive()
+      // 已打开面板再次切入：重新注入外层输入到宿主编辑器
+      workspace.requestHostInputSlotSync(assetId)
       return
     }
     api.addPanel({

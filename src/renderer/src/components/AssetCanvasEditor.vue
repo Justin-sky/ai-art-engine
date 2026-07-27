@@ -1,25 +1,33 @@
 <template>
   <div class="asset-canvas-editor">
-    <div class="toolbar">
+    <div v-if="!diving" class="toolbar">
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('canvas.asset.hint') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
+
+    <!-- 根剧集图：dive 时用 v-show 保留 live host，便于子层解析父图入边 -->
     <NodeGraphEditor
+      v-show="!diving"
       class="canvas-graph"
       :asset-id="canvasAssetId"
       :hide-toolbar="toolbarCollapsed"
     />
+
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useAssetRecord } from '../composables/useAssetRecord'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
 const props = defineProps<{
   canvasAssetId: string
@@ -28,6 +36,17 @@ const props = defineProps<{
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
 const toolbarCollapsed = ref(false)
+const { asset: canvasAsset } = useAssetRecord(props.canvasAssetId)
+
+const rootTitle = computed(
+  () => canvasAsset.value?.name?.trim() || t('studio.dive.root')
+)
+
+const { diving, diveTop } = useEditorDiveHost({
+  kind: 'canvas',
+  assetId: () => props.canvasAssetId,
+  rootTitle
+})
 
 onBeforeUnmount(() => {
   workspace.consumeCanvasEditor(props.canvasAssetId)
@@ -69,5 +88,7 @@ onBeforeUnmount(() => {
 .canvas-graph {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 </style>

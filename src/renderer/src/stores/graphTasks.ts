@@ -3,10 +3,14 @@ import { defineStore } from 'pinia'
 import {
   cloneGraphDocument,
   collectUpstreamNodeIds,
-  findOutputNode,
+  findAllOutputNodes,
   getNodeType,
+  mapHostInnerStatesToOutputs,
+  parseNarrativeUnitJson,
   resolveNodeType,
   runGraph,
+  shotsToShotSplitRows,
+  stringifyShotSplitRows,
   topologicalSort,
   type GraphAddScope,
   type GraphDocument,
@@ -14,6 +18,8 @@ import {
   type GraphNodeParams,
   type GraphNodeRunState,
   type GraphNodeRunStatus,
+  type HostInnerGraphRunInput,
+  type HostInnerGraphRunResult,
   type ShotCanvasGraphField
 } from '@shared/graph'
 import {
@@ -54,16 +60,19 @@ import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
 import {
   applyVisualGraphGenRefsToShot,
+  collectScriptShotImages,
+  collectScriptShotVideos,
   shotNeedsVideoCascade,
   shotNeedsVisualCascade
 } from '../features/script/shotVisualPipeline'
+import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
 import {
   applyWorldCatalog,
   loadWorldCatalog
 } from '../features/world/applyWorldCatalogOnOpen'
 import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
 import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
-import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
+import { loadNarrativeCatalog, applyNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import {
   stringifyWorldElementCatalog,
   WORLD_ELEMENT_KINDS,
@@ -135,6 +144,11 @@ interface GraphTaskInternal extends GraphTask {
   /** 入队时的工程会话；切换工程后禁止写回 */
   sessionEpoch: number
   discardWriteBack?: boolean
+  /** 宿主内图：已注入输入槽的 prior */
+  priorNodeStates?: Record<string, GraphNodeRunState>
+  skipCompletedNodes?: boolean
+  /** 分镜宿主注入的叙事目录，供 unitRef */
+  narrativeCatalogText?: string
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -150,9 +164,12 @@ function nodeTitle(node: GraphNode): string {
 }
 
 function buildOrder(graph: GraphDocument): string[] {
-  const target = findOutputNode(graph)
-  if (!target) return graph.nodes.map((n) => n.id)
-  const subset = collectUpstreamNodeIds(graph, target.id)
+  const targets = findAllOutputNodes(graph)
+  if (!targets.length) return graph.nodes.map((n) => n.id)
+  const subset = new Set<string>()
+  for (const target of targets) {
+    for (const id of collectUpstreamNodeIds(graph, target.id)) subset.add(id)
+  }
   return topologicalSort(subset, graph.edges) ?? [...subset]
 }
 
@@ -448,6 +465,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     title: string
     graph: GraphDocument
     target: GraphTaskTarget
+    priorNodeStates?: Record<string, GraphNodeRunState>
+    skipCompletedNodes?: boolean
+    narrativeCatalogText?: string
   }): EnqueueWorkflowResult {
     if (hasActiveTaskForTarget(input.target)) {
       return { ok: false, reason: 'duplicate' }
@@ -469,7 +489,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       runStates: {},
       graph,
       abort,
-      sessionEpoch: useProjectStore().sessionEpoch
+      sessionEpoch: useProjectStore().sessionEpoch,
+      priorNodeStates: input.priorNodeStates,
+      skipCompletedNodes: input.skipCompletedNodes,
+      narrativeCatalogText: input.narrativeCatalogText
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -632,6 +655,93 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     })
   }
 
+  function findTaskById(taskId: string): GraphTaskInternal | undefined {
+    return (
+      activeTasks.value.find((t) => t.id === taskId) ??
+      completedTasks.value.find((t) => t.id === taskId)
+    )
+  }
+
+  /**
+   * 宿主内图：整链入队任务列表，等待完成后映射出口。
+   * 同资产已有进行中任务则等待该任务。
+   */
+  async function runHostInnerGraph(
+    input: HostInnerGraphRunInput
+  ): Promise<HostInnerGraphRunResult> {
+    const assetId = input.hostNode.assetId?.trim()
+    if (!assetId) {
+      return { ok: false, states: {}, error: 'GRAPH_UNBOUND_ASSET' }
+    }
+    const target: GraphTaskTarget = {
+      kind: 'asset',
+      assetId,
+      hostId: `asset:${assetId}`
+    }
+    const targetKey = taskTargetKey(target)
+
+    const existing = activeTasks.value.find(
+      (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === targetKey
+    )
+    let taskId = existing?.id
+
+    if (!taskId) {
+      const project = useProjectStore()
+      const title =
+        input.hostNode.title?.trim() ||
+        project.assets.find((a) => a.id === assetId)?.name?.trim() ||
+        useDraftStore().getDraft(assetId)?.name?.trim() ||
+        assetId
+      const enqueued = enqueueWorkflow({
+        title,
+        graph: input.document,
+        target,
+        priorNodeStates: input.priorNodeStates,
+        skipCompletedNodes: true,
+        narrativeCatalogText: input.narrativeCatalogText
+      })
+      if (enqueued.ok) {
+        taskId = enqueued.id
+      } else {
+        const again = activeTasks.value.find(
+          (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === targetKey
+        )
+        taskId = again?.id
+      }
+    }
+
+    if (!taskId) {
+      return { ok: false, states: {}, error: 'GRAPH_HOST_INNER_ENQUEUE_FAILED' }
+    }
+
+    const onAbort = (): void => {
+      const t = findTaskById(taskId!)
+      if (t && isActiveStatus(t.status)) t.abort.abort()
+    }
+    input.signal?.addEventListener('abort', onAbort)
+    try {
+      await waitForTaskIds([taskId])
+    } finally {
+      input.signal?.removeEventListener('abort', onAbort)
+    }
+
+    const done = findTaskById(taskId)
+    if (!done) {
+      return { ok: false, states: {}, error: 'GRAPH_HOST_INNER_MISSING_TASK' }
+    }
+    const outputs = mapHostInnerStatesToOutputs(
+      done.runStates,
+      done.graph,
+      input.hostNode.assetType ?? ''
+    )
+    return {
+      ok: done.status === 'done',
+      states: { ...done.runStates },
+      outputs: outputs ?? undefined,
+      error: done.status === 'done' ? undefined : done.message || 'GRAPH_HOST_INNER_FAILED'
+    }
+  }
+
   async function runTask(task: GraphTaskInternal): Promise<void> {
     task.status = 'running'
     bump()
@@ -647,6 +757,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       const result = await runGraph(task.graph, {
         signal: task.abort.signal,
         stepDelayMs: 100,
+        skipCompletedNodes: task.skipCompletedNodes === true,
+        priorNodeStates: task.priorNodeStates,
+        targetNodeIds: findAllOutputNodes(task.graph).map((n) => n.id),
         onNodeUpdate: (nodeId, state) => {
           if (task.abort.signal.aborted) return
           logBridge.onNodeUpdate(nodeId, state)
@@ -926,32 +1039,155 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           await applyWorldCatalog(worldId, jsonText)
         },
-        collectWorldElementOutputs: async (signal) => {
-          if (task.target.kind !== 'asset') return null
-          const worldId = task.target.assetId
-          if (isDraftAssetId(worldId)) {
-            const draft = useDraftStore().getDraft(worldId)
-            if (draft?.type !== 'world') return null
-            return collectWorldElementOutputs({ worldAssetId: worldId, signal })
-          }
-          const project = useProjectStore()
-          const asset = project.assets.find((a) => a.id === worldId)
-          if (asset?.type !== 'world') return null
-          return collectWorldElementOutputs({ worldAssetId: worldId, signal })
-        },
         collectNarrativeUnitTexts: async (signal) => {
           if (task.target.kind !== 'asset') return null
           const narrativeId = task.target.assetId
           if (isDraftAssetId(narrativeId)) {
             const draft = useDraftStore().getDraft(narrativeId)
             if (draft?.type !== 'narrative') return null
+            const batch = enqueueNarrativeUnitBatch({
+              narrativeAssetId: narrativeId,
+              onlyMissing: true
+            })
+            await waitForTaskIds(batch.taskIds)
             return collectNarrativeUnitTexts({ narrativeAssetId: narrativeId, signal })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === narrativeId)
           if (asset?.type !== 'narrative') return null
+          const batch = enqueueNarrativeUnitBatch({
+            narrativeAssetId: narrativeId,
+            onlyMissing: true
+          })
+          await waitForTaskIds(batch.taskIds)
           return collectNarrativeUnitTexts({ narrativeAssetId: narrativeId, signal })
-        }
+        },
+        resolveNarrativeUnit: (unitId) => {
+          const id = unitId.trim()
+          if (!id) return null
+          if (task.narrativeCatalogText) {
+            const rows = parseNarrativeUnitJson(task.narrativeCatalogText) ?? []
+            return rows.find((row) => row.id === id) ?? null
+          }
+          if (task.target.kind === 'asset') {
+            const assetId = task.target.assetId
+            const project = useProjectStore()
+            const asset = project.assets.find((a) => a.id === assetId)
+            const draft = useDraftStore().getDraft(assetId)
+            const type = draft?.type ?? asset?.type
+            if (type === 'narrative') {
+              return loadNarrativeCatalog(assetId).find((row) => row.id === id) ?? null
+            }
+          }
+          return null
+        },
+        resolveShotSplitTableJson: (opts) => {
+          if (task.target.kind !== 'asset') return null
+          const scriptId = task.target.assetId
+          const project = useProjectStore()
+          const draft = useDraftStore().getDraft(scriptId)
+          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
+            return null
+          }
+          const unit = opts?.narrativeUnitId?.trim()
+          const base =
+            draft?.shots ??
+            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+          const shots = unit
+            ? base.filter((s) => s.narrativeUnitId === unit)
+            : base.filter((s) => !s.narrativeUnitId?.trim())
+          if (!shots.length) return null
+          return stringifyShotSplitRows(shotsToShotSplitRows(shots))
+        },
+        importShotSplitTableJson: async (jsonText, opts) => {
+          if (task.target.kind !== 'asset') return
+          const scriptId = task.target.assetId
+          const project = useProjectStore()
+          const draft = useDraftStore().getDraft(scriptId)
+          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
+            return
+          }
+          await applyShotSplitJson(scriptId, jsonText, opts?.narrativeUnitId)
+        },
+        collectScriptShotImages: async (signal, opts) => {
+          if (task.target.kind !== 'asset') return null
+          const scriptId = task.target.assetId
+          const project = useProjectStore()
+          const draft = useDraftStore().getDraft(scriptId)
+          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
+            return null
+          }
+          const unit = opts?.narrativeUnitId?.trim()
+          const base =
+            draft?.shots ??
+            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+          const shots = unit
+            ? base.filter((s) => s.narrativeUnitId === unit)
+            : base.filter((s) => !s.narrativeUnitId?.trim())
+          if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
+          const batch = enqueueScriptShotBatch({
+            scriptAssetId: scriptId,
+            shots,
+            kind: 'visual',
+            onlyMissing: true
+          })
+          await waitForTaskIds(batch.taskIds)
+          return collectScriptShotImages({ scriptAssetId: scriptId, shots, signal })
+        },
+        collectScriptShotVideos: async (signal, opts) => {
+          if (task.target.kind !== 'asset') return null
+          const scriptId = task.target.assetId
+          const project = useProjectStore()
+          const draft = useDraftStore().getDraft(scriptId)
+          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
+            return null
+          }
+          const unit = opts?.narrativeUnitId?.trim()
+          const base =
+            draft?.shots ??
+            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+          const shots = unit
+            ? base.filter((s) => s.narrativeUnitId === unit)
+            : base.filter((s) => !s.narrativeUnitId?.trim())
+          if (!shots.length) return { videos: [], entities: [] }
+          const batch = enqueueScriptShotBatch({
+            scriptAssetId: scriptId,
+            shots,
+            kind: 'shotWorkflow',
+            onlyMissing: true
+          })
+          await waitForTaskIds(batch.taskIds)
+          return collectScriptShotVideos({ scriptAssetId: scriptId, shots, signal })
+        },
+        resolveNarrativeCatalogJson: () => {
+          if (task.target.kind !== 'asset') return null
+          const narrativeId = task.target.assetId
+          const rows = loadNarrativeCatalog(narrativeId)
+          if (!rows.length) return null
+          return JSON.stringify(rows)
+        },
+        importNarrativeCatalogJson: async (jsonText) => {
+          if (task.target.kind !== 'asset') return
+          await applyNarrativeCatalog(task.target.assetId, jsonText)
+        },
+        collectWorldElementOutputs: async (signal) => {
+          if (task.target.kind !== 'asset') return null
+          const worldId = task.target.assetId
+          if (isDraftAssetId(worldId)) {
+            const draft = useDraftStore().getDraft(worldId)
+            if (draft?.type !== 'world') return null
+            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+            await waitForTaskIds(batch.taskIds)
+            return collectWorldElementOutputs({ worldAssetId: worldId, signal })
+          }
+          const project = useProjectStore()
+          const asset = project.assets.find((a) => a.id === worldId)
+          if (asset?.type !== 'world') return null
+          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+          await waitForTaskIds(batch.taskIds)
+          return collectWorldElementOutputs({ worldAssetId: worldId, signal })
+        },
+        runHostInnerGraph
       })
 
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
@@ -1033,6 +1269,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     enqueueWorldElementBatch,
     enqueueNarrativeUnitBatch,
     waitForTaskIds,
+    runHostInnerGraph,
     removeTask,
     stopAndRemove,
     clearForProjectSwitch

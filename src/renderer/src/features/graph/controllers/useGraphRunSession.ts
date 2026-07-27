@@ -182,6 +182,8 @@ export interface GraphRunSessionOptions {
   resolveNarrativeCatalogJson?: () => string | null
   /** 叙事单元表格 / 编辑节点执行时：导入上游拆解 JSON */
   importNarrativeCatalogJson?: (jsonText: string) => void | Promise<void>
+  /** 宿主内图整链：入队任务列表 */
+  runHostInnerGraph?: import('@shared/graph').NodeExecuteContext['runHostInnerGraph']
 }
 
 export function useGraphRunSession(options: GraphRunSessionOptions) {
@@ -207,6 +209,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_NO_OUTPUT: 'graph.run.noOutput',
       GRAPH_UNBOUND_ASSET: 'graph.run.unboundAsset',
       GRAPH_MISSING_ASSET: 'graph.run.missingAsset',
+      GRAPH_HOST_INNER_NO_RUNNER: 'graph.run.failed',
+      GRAPH_HOST_INNER_FAILED: 'graph.run.failed',
+      GRAPH_HOST_INNER_NO_OUTPUT: 'graph.run.noOutput',
       GRAPH_PROCESS_NO_INPUT: 'graph.run.noInput',
       GRAPH_LIPSYNC_NO_IMAGE: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_VISUAL: 'graph.run.lipSyncNoVisual',
@@ -615,6 +620,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         importWorldCatalogJson: options.importWorldCatalogJson,
         resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
         importNarrativeCatalogJson: options.importNarrativeCatalogJson,
+        runHostInnerGraph: options.runHostInnerGraph,
         resolveImageUrls: resolveGraphImageUrls,
         resolveStyleImageUrls: resolveStyleImageUrls,
         resolveProjectStyleImages:

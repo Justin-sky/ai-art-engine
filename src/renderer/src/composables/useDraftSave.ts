@@ -26,10 +26,12 @@ export function useDraftSave() {
     workspace.openEditorForAssetId(draftId)
   }
 
-  function createDraftAndOpen(type: AssetType): string {
+  function createDraftAndOpen(type: AssetType, options?: { name?: string }): string {
     const resolution = project.config?.resolution ?? { w: 1280, h: 720 }
     const draft = drafts.createDraft(type, resolution)
-    drafts.updateDraft(draft.id, { name: assetCreateName(type) })
+    drafts.updateDraft(draft.id, {
+      name: options?.name?.trim() || assetCreateName(type)
+    })
     openDraftEditor(draft.id)
     return draft.id
   }

@@ -1,20 +1,20 @@
 <template>
   <div class="narrative-asset-editor">
-    <div class="toolbar">
+    <div v-if="!embedded && !diving" class="toolbar">
       <span>{{ t('studio.editor.narrative') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('narrative.asset.hint') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
 
-    <div ref="splitHostEl" class="narrative-split">
+    <div v-show="!diving" ref="splitHostEl" class="narrative-split">
       <NodeGraphEditor
         ref="narrativeGraphRef"
         class="narrative-main"
         :class="{ 'with-gen-pane': genPaneOpen }"
         :style="genPaneOpen ? { flexBasis: `${mainPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
         :asset-id="narrativeAssetId"
-        :hide-toolbar="toolbarCollapsed"
+        :hide-toolbar="!embedded && toolbarCollapsed"
       />
 
       <template v-if="genPaneOpen">
@@ -45,6 +45,8 @@
       </template>
     </div>
 
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+
     <NarrativeTableDialog
       v-if="tableOpen"
       ref="tableDialogRef"
@@ -58,6 +60,8 @@
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
+import { useAssetRecord } from '../composables/useAssetRecord'
 import { narrativeEditorKey } from '../features/narrative/narrativeEditor'
 import { narrativeTableKey } from '../features/narrative/narrativeTable'
 import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
@@ -66,13 +70,17 @@ import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import NarrativeUnitEditorBody from './NarrativeUnitEditorBody.vue'
 import NarrativeTableDialog from './NarrativeTableDialog.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
 const props = defineProps<{
   narrativeAssetId: string
+  /** 嵌在外层 dive 内时不作为 dive 根、不 consume */
+  embedded?: boolean
 }>()
 
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
+const { asset: narrativeAsset } = useAssetRecord(props.narrativeAssetId)
 const narrativeGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const genBodyRef = ref<InstanceType<typeof NarrativeUnitEditorBody> | null>(null)
 const tableDialogRef = ref<InstanceType<typeof NarrativeTableDialog> | null>(null)
@@ -83,6 +91,16 @@ const genPaneOpen = ref(false)
 const tableOpen = ref(false)
 const mainPanePercent = ref(48)
 let splitDragging = false
+
+const rootTitle = computed(
+  () => narrativeAsset.value?.name?.trim() || t('studio.dive.root')
+)
+const { diving, diveTop } = useEditorDiveHost({
+  kind: 'narrative',
+  assetId: () => props.narrativeAssetId,
+  rootTitle,
+  enabled: () => !props.embedded
+})
 
 provide('narrativeAssetId', computed(() => props.narrativeAssetId))
 
@@ -175,7 +193,7 @@ watch(
 
 onBeforeUnmount(() => {
   onSplitPointerUp()
-  workspace.consumeNarrativeEditor(props.narrativeAssetId)
+  if (!props.embedded) workspace.consumeNarrativeEditor(props.narrativeAssetId)
 })
 </script>
 

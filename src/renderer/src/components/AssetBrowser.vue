@@ -227,9 +227,9 @@
           v-for="item in toolbarCreateItems"
           :key="item.id"
           type="button"
-          @click="createAssetHere(item.assetType)"
+          @click="createToolbarItemHere(item)"
         >
-          {{ assetCreateName(item.assetType) }}
+          {{ toolbarCreateLabel(item.id, item.assetType) }}
         </button>
         <div class="ctx-sep" />
         <button type="button" @click="startCreateFolder">{{ t('asset.folder.new') }}</button>
@@ -368,6 +368,7 @@ import {
   folderChildren,
   normalizeFolders
 } from '@shared/folderTree'
+import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useSeriesCreation } from '../composables/useSeriesCreation'
 import {
@@ -377,7 +378,7 @@ import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore, STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { promptAlert, promptConfirm } from '../composables/useStudioPrompt'
+import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
 import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
@@ -464,7 +465,7 @@ const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
 const { createSeriesWithStarter } = useSeriesCreation()
-const { t, assetTypeLabel, assetCreateName } = useStudioI18n()
+const { t, assetTypeLabel, toolbarCreateLabel } = useStudioI18n()
 
 function assetIcon(asset: AssetInfo): string {
   return assetDisplayIcon(asset)
@@ -1390,13 +1391,30 @@ async function confirmNameDialog(): Promise<void> {
   }
 }
 
-async function createAssetHere(type: AssetType): Promise<void> {
+async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   const folderId = resolveCreateParentId()
   closeMenu()
-  if (type === 'canvas') {
+  if (item.id === 'canvas') {
     await createSeriesWithStarter(folderId)
+  } else if (item.id === 'freeCanvas') {
+    const entered = await promptText({
+      title: t('asset.create.freeCanvasNameTitle'),
+      message: t('asset.create.freeCanvasNameMessage'),
+      defaultValue: t('asset.create.freeCanvas'),
+      placeholder: t('asset.create.freeCanvasNamePlaceholder')
+    })
+    if (entered == null) return
+    const name = entered.trim()
+    if (!name) {
+      await promptAlert({
+        title: t('asset.create.freeCanvasNameTitle'),
+        message: t('validation.nameRequired')
+      })
+      return
+    }
+    await createAsset('canvas', folderId, { name })
   } else {
-    await createAsset(type, folderId)
+    await createAsset(item.assetType, folderId)
   }
   if (folderId !== currentFolderId.value) selectFolder(folderId)
 }

@@ -1,6 +1,9 @@
 import type { AssetType } from '../domain'
 import { isAssetRefInputHostType } from './nodeRole'
-import { resolveAssetTextFromGenParams } from './assetText'
+import {
+  collectScreenplayTextRelativePaths,
+  resolveAssetTextFromGenParams
+} from './assetText'
 import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent, textFromGraphValue } from './textOutput'
@@ -208,8 +211,18 @@ function slotPreviewFromValue(
   itemIndex: number
 ): Pick<HostInputSlotSpec, 'text' | 'title' | 'previewRelativePath' | 'previewDataUrl'> {
   if (!value) return {}
-  if (value.kind === 'text') return { text: value.text }
-  if (value.kind === 'narrative') return { text: value.text }
+  if (value.kind === 'text') {
+    return {
+      text: value.text,
+      previewRelativePath: value.relativePath
+    }
+  }
+  if (value.kind === 'narrative') {
+    return {
+      text: value.text,
+      previewRelativePath: value.relativePath
+    }
+  }
   if (value.kind === 'texts') {
     const item = value.items[itemIndex]
     return { text: item?.text, title: item?.title, previewRelativePath: item?.relativePath }
@@ -308,7 +321,9 @@ function slotPreviewFromValue(
 
 function graphValueHasPayload(value: GraphValue | undefined): boolean {
   if (!value) return false
-  if (value.kind === 'text') return !!value.text.trim()
+  if (value.kind === 'text') {
+    return !!value.text.trim() || !!value.relativePath?.trim()
+  }
   if (
     value.kind === 'world' ||
     value.kind === 'worldEntities' ||
@@ -317,7 +332,7 @@ function graphValueHasPayload(value: GraphValue | undefined): boolean {
     value.kind === 'narrative' ||
     value.kind === 'shots'
   ) {
-    return !!value.text.trim()
+    return !!value.text.trim() || !!value.relativePath?.trim()
   }
   if (value.kind === 'texts') return value.items.some((i) => !!i.text?.trim() || !!i.relativePath)
   if (value.kind === 'image') return !!(value.dataUrl?.trim() || value.relativePath?.trim())
@@ -389,12 +404,14 @@ function softResolveSourceOutput(
           ? { kind: 'narrative', text, relativePath: picked.relativePath.trim() }
           : { kind: 'narrative', text }
       }
-      return {
+      const galleryOut: GraphValue = {
         kind: 'text',
         text: picked?.text ?? '',
         id: picked?.id,
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
       }
+      // 图库项正文与路径皆空时继续向下软解析（params / runStates）
+      if (graphValueHasPayload(galleryOut)) return galleryOut
     }
   }
 
@@ -566,25 +583,71 @@ function softResolveSourceOutput(
         items: [{ relativePath: previewPath }]
       }
     }
-    return {
-      kind: 'image',
-      dataUrl: previewUrl ?? '',
-      relativePath: previewPath
+    // 文本类节点的 previewRelativePath 是正文旁挂路径，勿当成图片
+    const isTextLike =
+      node.assetType === 'screenplay' ||
+      node.typeId === 'asset.screenplay' ||
+      node.typeId === 'text.select' ||
+      node.typeId === 'note.text' ||
+      node.typeId === 'play.script' ||
+      node.typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
+      readHostInputSlot(node) != null
+    if (isTextLike) {
+      const localText = node.params.text?.trim() ?? ''
+      if (localText || previewPath) {
+        return {
+          kind: 'text',
+          text: localText,
+          ...(previewPath ? { relativePath: previewPath } : {})
+        }
+      }
+    } else if (
+      node.assetType === 'image' ||
+      node.typeId.includes('image') ||
+      node.typeId === 'asset.motion' ||
+      previewUrl
+    ) {
+      return {
+        kind: 'image',
+        dataUrl: previewUrl ?? '',
+        relativePath: previewPath
+      }
     }
   }
 
-  // 资产引用：读资产正文 / genParams
+  // 资产引用：读资产正文 / genParams / 旁挂路径
   if (node.assetId) {
     const fromResolver = options?.resolveAssetText?.(node.assetId)?.trim()
     if (fromResolver) return { kind: 'text', text: fromResolver }
     const gen = options?.resolveAssetGenParams?.(node.assetId)
     const fromGen = resolveAssetTextFromGenParams(gen, node.params).trim()
     if (fromGen) return { kind: 'text', text: fromGen }
+    // 剧本：内图输入接口正文（尚未生成时）+ 落盘路径
+    if (node.assetType === 'screenplay' || node.typeId === 'asset.screenplay') {
+      const fromSlots = textFromHostInputSlotsInGraph(gen?.graphJson)
+      if (fromSlots) return { kind: 'text', text: fromSlots }
+      const path = collectScreenplayTextRelativePaths(gen?.graphJson)[0]?.trim()
+      if (path) return { kind: 'text', text: '', relativePath: path }
+    }
   }
 
   const live = textFromGraphValue(fromRun)
   if (live.trim()) return fromRun
+  // fromRun 可能是路径-only text（textFromGraphValue 为空）
+  if (fromRun && graphValueHasPayload(fromRun)) return fromRun
   return fromRun
+}
+
+/** 剧本内图「输入接口」上已注入的外层正文 */
+function textFromHostInputSlotsInGraph(graphJson: unknown): string {
+  if (!graphJson || typeof graphJson !== 'object') return ''
+  const nodes = (graphJson as GraphDocument).nodes
+  if (!Array.isArray(nodes)) return ''
+  return nodes
+    .filter((n) => isHostInputSlotNode(n))
+    .map((n) => n.params.text?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 function slotPreviewScore(slots: HostInputSlotSpec[]): number {
@@ -606,9 +669,7 @@ export function resolveHostInputSlotsFromParentGraph(
   options?: ResolveHostInputSlotsOptions
 ): HostInputSlotSpec[] {
   const hostNodes = parent.nodes.filter(
-    (node) =>
-      node.assetId === hostAssetId &&
-      (node.params.assetHost === true || node.params.assetRef === true)
+    (node) => node.assetId === hostAssetId && node.params.assetHost === true
   )
   if (!hostNodes.length) return []
 
@@ -720,16 +781,16 @@ export function ensureHostInputSlotNodes(
                   ? `输入·叙事 ${slot.index + 1}`
                   : `输入 ${slot.index + 1}`)
 
+    const incomingText = slot.text?.trim() ? slot.text : undefined
+    const incomingPath = slot.previewRelativePath?.trim() || undefined
     const slotParams: GraphNodeParams = {
       hostInputSlot: {
         portId: slot.portId,
         index: slot.index,
         dataType: slot.dataType
       },
-      ...(slot.text != null ? { text: slot.text } : {}),
-      ...(slot.previewRelativePath != null
-        ? { previewRelativePath: slot.previewRelativePath }
-        : {}),
+      ...(incomingText != null ? { text: incomingText } : {}),
+      ...(incomingPath != null ? { previewRelativePath: incomingPath } : {}),
       ...(slot.previewDataUrl != null ? { previewDataUrl: slot.previewDataUrl } : {})
     }
 
@@ -745,15 +806,25 @@ export function ensureHostInputSlotNodes(
       nodes.push(node)
     } else {
       node.title = title
+      // 有非空正文才覆盖；仅路径预览时保留已有缓存正文，避免 strip 空串抹掉上次注入
+      const nextText =
+        incomingText != null
+          ? incomingText
+          : incomingPath != null
+            ? node.params.text
+            : slot.text != null
+              ? slot.text
+              : node.params.text
       node.params = {
         ...node.params,
         ...slotParams,
-        // 有外层预览时覆盖；否则保留节点上已有缓存
-        text: slot.text != null ? slot.text : node.params.text,
+        text: nextText,
         previewRelativePath:
-          slot.previewRelativePath != null
-            ? slot.previewRelativePath
-            : node.params.previewRelativePath,
+          incomingPath != null
+            ? incomingPath
+            : slot.previewRelativePath != null
+              ? slot.previewRelativePath
+              : node.params.previewRelativePath,
         previewDataUrl:
           slot.previewDataUrl != null ? slot.previewDataUrl : node.params.previewDataUrl,
         // 未显式展开过的旧节点默认折叠
@@ -882,7 +953,12 @@ export function buildHostInputSlotSeedOutputs(
         let out: GraphValue
         if (value.kind === 'texts') {
           const item = value.items[i]
-          out = { kind: 'text', text: item?.text ?? '' }
+          out = {
+            kind: 'text',
+            text: item?.text ?? '',
+            id: item?.id,
+            ...(item?.relativePath ? { relativePath: item.relativePath } : {})
+          }
         } else if (value.kind === 'text') {
           out = value
         } else if (value.kind === 'narrative') {
@@ -922,5 +998,28 @@ export function buildHostInputSlotSeedOutputs(
     }
   }
   return seeds
+}
+
+/**
+ * 按 relativePath 补全槽位正文（生成落盘后 text 常被 strip，打开/执行前需读文件）。
+ */
+export async function hydrateHostInputSlotSpecs(
+  slots: HostInputSlotSpec[],
+  readRunText?: (relativePath: string) => Promise<string>
+): Promise<HostInputSlotSpec[]> {
+  if (!slots.length || !readRunText) return slots
+  return Promise.all(
+    slots.map(async (slot) => {
+      if (slot.text?.trim()) return slot
+      const path = slot.previewRelativePath?.trim()
+      if (!path) return slot
+      try {
+        const text = (await readRunText(path))?.trim() ?? ''
+        return text ? { ...slot, text } : slot
+      } catch {
+        return slot
+      }
+    })
+  )
 }
 

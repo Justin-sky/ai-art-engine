@@ -6,11 +6,11 @@
       type="button"
       class="tool-btn"
       :disabled="busyId === item.id"
-      :aria-label="assetTypeLabel(item.assetType)"
+      :aria-label="itemLabel(item)"
       @click="onCreate(item)"
-      @mouseenter="showTip($event, assetTypeLabel(item.assetType))"
+      @mouseenter="showTip($event, itemLabel(item))"
       @mouseleave="hideTip"
-      @focus="showTip($event, assetTypeLabel(item.assetType))"
+      @focus="showTip($event, itemLabel(item))"
       @blur="hideTip"
     >
       <span class="tool-icon" aria-hidden="true">{{ item.icon }}</span>
@@ -28,6 +28,7 @@ import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
 import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { promptText, promptAlert } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 
 const props = withDefaults(
@@ -51,10 +52,14 @@ const displayItems = computed(() =>
 const { createAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { createSeriesWithStarter } = useSeriesCreation()
-const { t, assetTypeLabel } = useStudioI18n()
+const { t, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 const activeTip = ref<string | null>(null)
 const tipStyle = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+
+function itemLabel(item: ResolvedWorkspaceToolbarItem): string {
+  return toolbarCreateLabel(item.id, item.assetType)
+}
 
 function showTip(e: MouseEvent | FocusEvent, tooltip: string): void {
   const el = e.currentTarget as HTMLElement | null
@@ -71,14 +76,44 @@ function hideTip(): void {
   activeTip.value = null
 }
 
+async function createFreeCanvas(): Promise<void> {
+  const entered = await promptText({
+    title: t('asset.create.freeCanvasNameTitle'),
+    message: t('asset.create.freeCanvasNameMessage'),
+    defaultValue: t('asset.create.freeCanvas'),
+    placeholder: t('asset.create.freeCanvasNamePlaceholder')
+  })
+  if (entered == null) return
+  const name = entered.trim()
+  if (!name) {
+    await promptAlert({
+      title: t('asset.create.freeCanvasNameTitle'),
+      message: t('validation.nameRequired')
+    })
+    return
+  }
+  if (props.deferSave) {
+    createDraftAndOpen('canvas', { name })
+    return
+  }
+  await createAsset('canvas', props.folderId ?? null, {
+    openEditor: true,
+    name
+  })
+}
+
 async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
-    if (item.assetType === 'canvas') {
+    if (item.id === 'canvas') {
       await createSeriesWithStarter(props.folderId ?? null, {
         openEditor: item.openOnCreate
       })
+      return
+    }
+    if (item.id === 'freeCanvas') {
+      await createFreeCanvas()
       return
     }
     if (props.deferSave) {

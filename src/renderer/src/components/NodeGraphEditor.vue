@@ -8,7 +8,13 @@
     @drop.prevent="onDrop"
   >
     <div v-if="!hideToolbar" class="graph-toolbar">
-      <span class="hint">{{ t('graph.toolbar.hint') }}</span>
+      <EditorDiveBar
+        v-if="diveNavActive && editorDive"
+        :root-title="editorDive.rootTitle"
+        :frames="editorDive.frames"
+        @pop-to="editorDive.popTo"
+      />
+      <span v-else class="hint">{{ t('graph.toolbar.hint') }}</span>
       <div class="tools">
         <template v-if="isRunning">
           <button
@@ -456,8 +462,10 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type ComputedRef } from 'vue'
 import { resolveGraphCard } from '../graph/cards/registry'
+import { editorDiveKey } from '../features/graph/model/editorDive'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
+import EditorDiveBar from './EditorDiveBar.vue'
 import { graphEditorDialogsKey } from '../features/graph/ui/graphEditorDialogsKey'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
@@ -534,6 +542,12 @@ import {
   isAssetRefNode,
   isAssetRefInputHostType,
   resolveHostInputSlotsForHostOpen,
+  hydrateHostInputSlotSpecs,
+  hostInputSlotNodeId,
+  isHostInputSlotNode,
+  ensureHostInputSlotNodes,
+  resolveInputLinkHeadTypeIds,
+  resolveAssetProcessingTypeId,
   listAddableNodeTypes,
   nextGraphGroupTitle,
   normalizeAssetGraph,
@@ -716,6 +730,15 @@ const graphScope = computed(
 const draftStore = useDraftStore()
 const shotCanvasField = computed(() => getScopeShotCanvasField(graphScope.value))
 provide('graphScope', graphScope)
+
+const editorDive = inject(editorDiveKey, null)
+/** 仅 dive 栈顶宿主主图画布显示导航，避免叙事单元等子图重复 */
+const diveNavActive = computed(() => {
+  if (!editorDive || editorDive.frames.length === 0 || !props.assetId) return false
+  if (props.narrativeUnitId || graphScope.value === 'narrativeUnit') return false
+  const top = editorDive.frames[editorDive.frames.length - 1]
+  return props.assetId === top.assetId
+})
 
 const worldElementKindInjected = inject(worldElementKindKey, null)
 const worldElementKind = computed((): WorldElementKind | null => {
@@ -920,9 +943,12 @@ function collectParentGraphsForHost(hostAssetId: string): GraphDocument[] {
     pushRaw(live)
   }
   for (const asset of project.assets) {
+    // 宿主自身 graphJson 可能含同 assetId 的加工/引用节点，不能当作外层父图
+    if (asset.id === hostAssetId) continue
     pushRaw(asset.genParams?.graphJson)
   }
   for (const draft of draftStore.drafts) {
+    if (draft.id === hostAssetId) continue
     pushRaw(draft.genParams?.graphJson)
   }
   // 当前打开的其它图画布（本实例）；须先判断 assetId，避免 setup 初始化 graph 时触达 TDZ
@@ -1175,6 +1201,7 @@ function loadGraphFromShot(): void {
   if (isAssetGraph.value) {
     loadedGraphShotId.value = null
     applyGraphDocument(readAssetGraph())
+    void hydrateHostInputSlotTextsInGraph()
     return
   }
   const shotId = project.activeShotId
@@ -1199,6 +1226,91 @@ function loadGraphFromShot(): void {
   const doc = cached ? cloneGraphDocument(cached) : normalizeGraphForHost(raw ?? null)
   graphCache.set(shotId, cloneGraphDocument(doc))
   applyGraphDocument(doc)
+}
+
+/** 外层文本常仅有 relativePath / 旁挂文件：打开宿主后补全文到输入接口 */
+async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
+  const slots = graph.nodes.filter(isHostInputSlotNode)
+  if (!slots.length) return
+  const specs = await hydrateHostInputSlotSpecs(
+    slots.map((node) => ({
+      portId: node.params.hostInputSlot?.portId ?? 'in',
+      index: node.params.hostInputSlot?.index ?? 0,
+      dataType: node.params.hostInputSlot?.dataType ?? 'text',
+      text: node.params.text,
+      previewRelativePath: node.params.previewRelativePath
+    })),
+    readGraphRunText
+  )
+  for (const spec of specs) {
+    if (!spec.text?.trim()) continue
+    const id = hostInputSlotNodeId(spec.portId, spec.index)
+    const node = graph.nodes.find((n) => n.id === id)
+    if (!node || node.params.text?.trim()) continue
+    node.params = { ...node.params, text: spec.text }
+  }
+
+  // 仍空：从父图上游剧本资产异步读正文（剧集 screenplay → narrative 等）
+  const hostAssetId = props.assetId
+  if (!hostAssetId || !isAssetRefInputHostType(graphAsset.value?.type)) return
+  const emptySlots = graph.nodes.filter(
+    (n) =>
+      isHostInputSlotNode(n) &&
+      n.params.hostInputSlot?.dataType === 'text' &&
+      !n.params.text?.trim()
+  )
+  if (!emptySlots.length) return
+
+  for (const parent of collectParentGraphsForHost(hostAssetId)) {
+    const hostNode = parent.nodes.find(
+      (n) => n.assetId === hostAssetId && n.params.assetHost === true
+    )
+    if (!hostNode) continue
+    for (const edge of parent.edges) {
+      if (edge.target !== hostNode.id) continue
+      const targetPort = edge.targetPort ?? 'in'
+      const source = parent.nodes.find((n) => n.id === edge.source)
+      if (!source?.assetId) continue
+      if (source.assetType !== 'screenplay' && source.typeId !== 'asset.screenplay') continue
+      let text = ''
+      try {
+        text = (await resolveAssetText(source.assetId))?.trim() ?? ''
+      } catch {
+        text = ''
+      }
+      if (!text) continue
+      const slot = emptySlots.find(
+        (n) =>
+          n.params.hostInputSlot?.portId === targetPort && !n.params.text?.trim()
+      )
+      if (!slot) continue
+      slot.params = { ...slot.params, text }
+    }
+  }
+}
+
+/**
+ * 从当前父图重新解析并写入输入接口（打开 / 再次切入宿主面板时）。
+ * 不重建整张图，只同步槽位节点与预览正文。
+ */
+function syncHostInputSlotsFromParents(): void {
+  if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) return
+  const host = graphAsset.value
+  const hostAssetId = props.assetId ?? host?.id ?? null
+  if (!hostAssetId || !isAssetRefInputHostType(host?.type)) return
+  const slots = resolveParentHostInputSlots(hostAssetId)
+  if (!slots?.length) return
+  ensureHostInputSlotNodes(graph.nodes, graph.edges, slots, {
+    autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
+      graphScope.value,
+      host.type,
+      resolveAssetProcessingTypeId(graphScope.value, host.type)
+    )
+  })
+  void hydrateHostInputSlotTextsInGraph().then(() => {
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+  })
 }
 
 /** session 创建前占位；创建后接到真实导出/导入 */
@@ -1563,6 +1675,7 @@ const {
       signal
     })
   },
+  runHostInnerGraph: (input) => taskStore.runHostInnerGraph(input),
   resolveWorldCatalogJson: () => {
     if (graphScope.value !== 'worldAsset') return null
     const worldId = props.assetId
@@ -6232,6 +6345,16 @@ watch(
   }
 )
 
+/** 已打开的宿主面板再次激活（双击宿主 / 切回面板）时重新注入外层输入 */
+watch(
+  () => (props.assetId ? workspace.hostInputSlotSyncNonce[props.assetId] ?? 0 : 0),
+  (nonce, prev) => {
+    if (!nonce || nonce === prev) return
+    if (!isAssetGraph.value) return
+    syncHostInputSlotsFromParents()
+  }
+)
+
 let resizeObserver: ResizeObserver | null = null
 let unregisterGraphDocument: (() => void) | null = null
 let unregisterGraphHost: (() => void) | null = null
@@ -6490,6 +6613,14 @@ defineExpose({
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.graph-toolbar > .hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-banner {
@@ -6547,6 +6678,7 @@ defineExpose({
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .tools button {

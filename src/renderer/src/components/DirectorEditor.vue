@@ -1,21 +1,23 @@
 <template>
   <div class="director-editor">
-    <div class="toolbar">
+    <div v-if="!embedded && !diving" class="toolbar">
       <span>{{ t('director.title') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('director.hint.graph') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
     <NodeGraphEditor
+      v-show="!diving"
       class="director-graph"
       :asset-id="directorAssetId"
-      :hide-toolbar="toolbarCollapsed"
+      :hide-toolbar="!embedded && toolbarCollapsed"
     />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 import {
   createDefaultDirectorViewer,
   type DirectorViewerState
@@ -23,19 +25,36 @@ import {
 import { isDirectorProcessingNode } from '@shared/graph'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
+import { useAssetRecord } from '../composables/useAssetRecord'
 import { useProjectStore } from '../stores/project'
 import { resolveDirectorStageForNode } from '../features/director/directorStageBinding'
 import { directorPreviewKey } from '../features/director/directorPreview'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
-const props = defineProps<{ directorAssetId: string }>()
+const props = defineProps<{
+  directorAssetId: string
+  embedded?: boolean
+}>()
 
 const { t } = useStudioI18n()
 const project = useProjectStore()
+const { asset: directorAsset } = useAssetRecord(props.directorAssetId)
 const previewUrl = ref('')
 const stageWindowOpen = ref(false)
 const toolbarCollapsed = ref(false)
+
+const rootTitle = computed(
+  () => directorAsset.value?.name?.trim() || t('studio.dive.root')
+)
+const { diving, diveTop } = useEditorDiveHost({
+  kind: 'director',
+  assetId: () => props.directorAssetId,
+  rootTitle,
+  enabled: () => !props.embedded
+})
 
 let stopPreviewListener: (() => void) | null = null
 let stopClosedListener: (() => void) | null = null

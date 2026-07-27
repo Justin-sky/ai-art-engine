@@ -1,13 +1,19 @@
 <template>
   <div class="asset-editor" :class="{ graph: supportsGraph }" v-if="asset">
     <template v-if="supportsGraph">
-    <div class="toolbar">
+    <div v-if="!embedded && !diving" class="toolbar">
       <span>{{ typeLabel }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('asset.editor.graphHint') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
-    <NodeGraphEditor class="asset-graph" :asset-id="assetId" :hide-toolbar="toolbarCollapsed" />
+    <NodeGraphEditor
+      v-show="!diving"
+      class="asset-graph"
+      :asset-id="assetId"
+      :hide-toolbar="!embedded && toolbarCollapsed"
+    />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
     </template>
 
     <template v-else>
@@ -82,15 +88,19 @@ import { isDraftAssetId, isMediaFileAsset, isImportedMediaRefAsset, isSoundAsset
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 
 const props = defineProps<{
   assetId: string
+  /** 嵌在外层 dive 内 */
+  embedded?: boolean
 }>()
 
 const project = useProjectStore()
@@ -119,6 +129,19 @@ const supportsGraph = computed(
     !isImportedMediaRefAsset(asset.value) &&
     (isMediaFileAsset(asset.value.type) || isScreenplayAsset(asset.value.type))
 )
+
+const diveKind = computed(() =>
+  asset.value && isScreenplayAsset(asset.value.type) ? ('screenplay' as const) : ('asset' as const)
+)
+const rootTitle = computed(
+  () => asset.value?.name?.trim() || t('studio.dive.root')
+)
+const { diving, diveTop } = useEditorDiveHost({
+  kind: diveKind,
+  assetId: () => props.assetId,
+  rootTitle,
+  enabled: () => !props.embedded
+})
 
 onMounted(() => {
   if (supportsGraph.value) workspace.focusProjectGlobals()

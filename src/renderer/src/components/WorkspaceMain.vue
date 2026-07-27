@@ -21,7 +21,7 @@
             @click="onCreate(item)"
           >
             <span class="create-icon" aria-hidden="true">{{ item.icon }}</span>
-            <span class="create-label">{{ assetTypeLabel(item.assetType) }}</span>
+            <span class="create-label">{{ createItemLabel(item) }}</span>
           </button>
         </div>
       </section>
@@ -59,18 +59,19 @@ import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
 import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { promptAlert, promptText } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useProjectStore } from '../stores/project'
 
 /** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
-const CREATE_IDS = new Set(['screenplay', 'script', 'motion', 'canvas'])
+const CREATE_IDS = new Set(['canvas', 'freeCanvas', 'screenplay', 'script', 'motion'])
 const RECENT_LIMIT = 8
 
 const project = useProjectStore()
 const { openAssetEditor } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { createSeriesWithStarter } = useSeriesCreation()
-const { t, assetTypeLabel } = useStudioI18n()
+const { t, assetTypeLabel, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 
 const createItems = computed(() =>
@@ -88,12 +89,35 @@ function recentTypeLabel(asset: AssetInfo): string {
   return assetTypeLabel(asset.type)
 }
 
+function createItemLabel(item: ResolvedWorkspaceToolbarItem): string {
+  return toolbarCreateLabel(item.id, item.assetType)
+}
+
 async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
-    if (item.assetType === 'canvas') {
+    if (item.id === 'canvas') {
       await createSeriesWithStarter(null)
+      return
+    }
+    if (item.id === 'freeCanvas') {
+      const entered = await promptText({
+        title: t('asset.create.freeCanvasNameTitle'),
+        message: t('asset.create.freeCanvasNameMessage'),
+        defaultValue: t('asset.create.freeCanvas'),
+        placeholder: t('asset.create.freeCanvasNamePlaceholder')
+      })
+      if (entered == null) return
+      const name = entered.trim()
+      if (!name) {
+        await promptAlert({
+          title: t('asset.create.freeCanvasNameTitle'),
+          message: t('validation.nameRequired')
+        })
+        return
+      }
+      createDraftAndOpen('canvas', { name })
       return
     }
     createDraftAndOpen(item.assetType)

@@ -269,6 +269,11 @@ export default {
       world: '世界元素',
       narrative: '叙事单元'
     },
+    dive: {
+      up: '上一级',
+      root: '剧集',
+      sep: '/'
+    },
     tabMenu: {
       float: '浮动窗口',
       detach: '分离到新窗口',
@@ -365,12 +370,16 @@ export default {
       screenplay: '新建剧本',
       script: '新建分镜',
       canvas: '新建剧集',
+      freeCanvas: '新建自由画布',
       world: '新建世界元素',
       narrative: '新建叙事单元',
       default: '新建资产',
       seriesNameTitle: '新建剧集',
       seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、叙事单元与分镜，并放入剧集画布。',
-      seriesNamePlaceholder: '剧集名称'
+      seriesNamePlaceholder: '剧集名称',
+      freeCanvasNameTitle: '新建自由画布',
+      freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',
+      freeCanvasNamePlaceholder: '画布名称'
     },
     generic: '资产',
     deleted: '（已删除）',

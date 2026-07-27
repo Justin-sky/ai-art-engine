@@ -113,6 +113,14 @@ export function resolveTypeDefPorts(
     )
   }
 
+  // 剧本宿主：只要选中单条 out，不暴露图库「全部」口
+  const isScreenplayHost =
+    (typeDef.assetType === 'screenplay' || typeDef.typeId === 'asset.screenplay') &&
+    ((node?.params ?? params)?.assetHost === true)
+  if (isScreenplayHost) {
+    ports = ports.filter((port) => port.id !== GRAPH_OUT_ALL_PORT_ID)
+  }
+
   // 输入接口槽：输出口类型跟 hostInputSlot.dataType
   if (typeDef.typeId === 'graph.input.slot') {
     const dataType = node?.params?.hostInputSlot?.dataType ?? params?.hostInputSlot?.dataType

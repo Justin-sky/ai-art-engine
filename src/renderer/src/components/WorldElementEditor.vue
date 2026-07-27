@@ -1,20 +1,20 @@
 <template>
   <div class="world-element-editor">
-    <div class="toolbar">
+    <div v-if="!embedded && !diving" class="toolbar">
       <span>{{ t('studio.editor.world') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('world.asset.hint') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
 
-    <div ref="splitHostEl" class="world-split">
+    <div v-show="!diving" ref="splitHostEl" class="world-split">
       <NodeGraphEditor
         ref="worldGraphRef"
         class="world-main"
         :class="{ 'with-editor-pane': editorPaneOpen }"
         :style="editorPaneOpen ? { flexBasis: `${mainPanePercent}%`, flexGrow: 0, flexShrink: 0 } : undefined"
         :asset-id="worldAssetId"
-        :hide-toolbar="toolbarCollapsed"
+        :hide-toolbar="!embedded && toolbarCollapsed"
       />
 
       <template v-if="editorPaneOpen">
@@ -47,6 +47,8 @@
       </template>
     </div>
 
+    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+
     <WorldTableDialog
       v-if="tableOpen"
       ref="tableDialogRef"
@@ -62,6 +64,8 @@ import { isDraftAssetId } from '@shared/domain'
 import type { WorldElementKind } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
+import { useEditorDiveHost } from '../composables/useEditorDiveHost'
+import { useAssetRecord } from '../composables/useAssetRecord'
 import { applyWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import { worldEditorKey, worldElementKindKey } from '../features/world/worldEditor'
 import { worldTableKey } from '../features/world/worldTable'
@@ -71,13 +75,17 @@ import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import WorldEditorBody from './WorldEditorBody.vue'
 import WorldEditorTabs from './WorldEditorTabs.vue'
 import WorldTableDialog from './WorldTableDialog.vue'
+import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
 const props = defineProps<{
   worldAssetId: string
+  /** 嵌在外层 dive 内时不作为 dive 根、不 consume */
+  embedded?: boolean
 }>()
 
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
+const { asset: worldAsset } = useAssetRecord(props.worldAssetId)
 const worldGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const editorBodyRef = ref<InstanceType<typeof WorldEditorBody> | null>(null)
 const tableDialogRef = ref<InstanceType<typeof WorldTableDialog> | null>(null)
@@ -87,6 +95,16 @@ const editorToolbarCollapsed = ref(false)
 const editorPaneOpen = ref(false)
 const tableOpen = ref(false)
 const editorActiveTab = ref<WorldElementKind>('characters')
+
+const rootTitle = computed(
+  () => worldAsset.value?.name?.trim() || t('studio.dive.root')
+)
+const { diving, diveTop } = useEditorDiveHost({
+  kind: 'world',
+  assetId: () => props.worldAssetId,
+  rootTitle,
+  enabled: () => !props.embedded
+})
 
 provide('worldAssetId', computed(() => props.worldAssetId))
 provide(worldElementKindKey, editorActiveTab)
@@ -183,7 +201,7 @@ watch(
 
 onBeforeUnmount(() => {
   onSplitPointerUp()
-  workspace.consumeWorldEditor(props.worldAssetId)
+  if (!props.embedded) workspace.consumeWorldEditor(props.worldAssetId)
 })
 </script>
 

@@ -14,8 +14,14 @@ import {
 } from '@shared/domain'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
+import {
+  type EditorDiveFrame,
+  type EditorDiveKind
+} from '../features/graph/model/editorDive'
 import { draftToAssetInfo, useDraftStore } from './drafts'
 import { useProjectStore } from './project'
+
+export type { EditorDiveFrame, EditorDiveKind } from '../features/graph/model/editorDive'
 
 export type InspectorFocus = 'shot' | 'asset'
 
@@ -98,6 +104,101 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   /** 资产浏览器定位请求（nonce 保证重复打开同一资产也会触发） */
   const assetBrowserReveal = ref<{ assetId: string; nonce: number } | null>(null)
+
+  /**
+   * 已打开的宿主编辑器再次激活时递增，驱动内层重新注入父图输入接口预览。
+   * key = assetId，value = 单调 nonce。
+   */
+  const hostInputSlotSyncNonce = ref<Record<string, number>>({})
+
+  function requestHostInputSlotSync(assetId: string): void {
+    const id = assetId?.trim()
+    if (!id) return
+    hostInputSlotSyncNonce.value = {
+      ...hostInputSlotSyncNonce.value,
+      [id]: (hostInputSlotSyncNonce.value[id] ?? 0) + 1
+    }
+  }
+
+  /**
+   * Houdini 式 dive 栈：rootKey → 子资产帧列表。
+   * 空数组 / 缺省 = 只显示根图。
+   */
+  const editorDives = ref<Record<string, EditorDiveFrame[]>>({})
+
+  function diveStack(rootKey: string): EditorDiveFrame[] {
+    return editorDives.value[rootKey] ?? []
+  }
+
+  function resolveDiveKind(asset: AssetInfo): EditorDiveKind {
+    if (isScreenplayAsset(asset.type)) return 'screenplay'
+    if (isNarrativeAsset(asset.type)) return 'narrative'
+    if (isWorldElementAsset(asset.type)) return 'world'
+    if (isStoryboardScript(asset.type)) return 'script'
+    if (isDirectorDeck(asset.type)) return 'director'
+    if (isCanvasAsset(asset.type)) return 'canvas'
+    return 'asset'
+  }
+
+  /** 同面板 dive 进入子宿主；已在栈顶则只刷新输入接口 */
+  function diveIntoHost(rootKey: string, assetId: string): boolean {
+    const key = rootKey?.trim()
+    const id = assetId?.trim()
+    if (!key || !id) return false
+    const asset = resolveAssetById(id)
+    if (!asset) return false
+    const kind = resolveDiveKind(asset)
+    // 剧集内不再 dive 进另一张 canvas（避免套娃）
+    if (kind === 'canvas') {
+      openEditorForAssetId(id)
+      return false
+    }
+    const stack = diveStack(key)
+    const top = stack[stack.length - 1]
+    if (top?.assetId === id) {
+      requestHostInputSlotSync(id)
+      return true
+    }
+    const frame: EditorDiveFrame = {
+      assetId: id,
+      title: asset.name?.trim() || id.slice(0, 8),
+      kind
+    }
+    editorDives.value = { ...editorDives.value, [key]: [...stack, frame] }
+    requestHostInputSlotSync(id)
+    return true
+  }
+
+  /**
+   * 回退到指定帧：index=-1 回到根图；index>=0 保留 stack[0..index]。
+   */
+  function divePopTo(rootKey: string, index: number): void {
+    const key = rootKey?.trim()
+    if (!key) return
+    const stack = diveStack(key)
+    if (!stack.length) return
+    if (index >= stack.length - 1) return
+    const next = index < 0 ? [] : stack.slice(0, index + 1)
+    if (!next.length) {
+      const { [key]: _removed, ...rest } = editorDives.value
+      editorDives.value = rest
+      return
+    }
+    editorDives.value = { ...editorDives.value, [key]: next }
+    const top = next[next.length - 1]
+    if (top) requestHostInputSlotSync(top.assetId)
+  }
+
+  function diveClear(rootKey: string): void {
+    const key = rootKey?.trim()
+    if (!key || !(key in editorDives.value)) return
+    const { [key]: _removed, ...rest } = editorDives.value
+    editorDives.value = rest
+  }
+
+  function diveClearAll(): void {
+    editorDives.value = {}
+  }
 
   function resolveAssetById(assetId: string): AssetInfo | null {
     if (isDraftAssetId(assetId)) {
@@ -280,6 +381,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     scriptGraphGetters.value = new Map()
     draggingAsset.value = null
     assetBrowserReveal.value = null
+    diveClearAll()
     clearAssetSelection()
   }
 
@@ -577,6 +679,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     selectGraphNode,
     selectGraphGroup,
     assetBrowserReveal,
+    hostInputSlotSyncNonce,
+    requestHostInputSlotSync,
+    editorDives,
+    diveStack,
+    diveIntoHost,
+    divePopTo,
+    diveClear,
+    diveClearAll,
     revealAssetInBrowser
   }
 })
