@@ -5,7 +5,10 @@ import {
   createOutputGraphNode,
   createShotParamsNodeForShot,
   defaultShotParamsNodeParams,
-  ensureShotWorkflowDefaultChain,
+  ensureDefaultGraphFromTemplate,
+  resolveDefaultGraphTemplate,
+  resolveScopeOutput,
+  resolveAssetProcessingTypeId,
   executeShotParamsNode,
   getNodePorts,
   graphOutputNodeId,
@@ -104,7 +107,7 @@ describe('script.shotParams node', () => {
     expect(doc.nodes.some((node) => node.typeId === 'asset.video')).toBe(true)
   })
 
-  it('migrates legacy shot graph that only had video output', () => {
+  it('does not backfill video generate onto output-only shot graphs', () => {
     const doc = normalizeScopedGraph('shotWorkflow', {
       nodes: [
         createOutputGraphNode('video', { x: 480, y: 160 }, { id: graphOutputNodeId('video') })
@@ -112,26 +115,20 @@ describe('script.shotParams node', () => {
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    expect(doc.nodes.map((node) => node.typeId).sort()).toEqual(
-      ['asset.video', 'output.video'].sort()
-    )
-    const video = doc.nodes.find((node) => node.typeId === 'asset.video')!
-    const output = doc.nodes.find((node) => node.typeId === 'output.video')!
-    expect(doc.edges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source: video.id,
-          target: output.id
-        })
-      ])
-    )
+    expect(doc.nodes.map((node) => node.typeId)).toEqual(['output.video'])
+    expect(doc.edges).toHaveLength(0)
   })
 
-  it('ensureShotWorkflowDefaultChain is idempotent', () => {
+  it('ensureDefaultGraphFromTemplate for shotWorkflow is idempotent', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const nodes = doc.nodes.map((node) => ({ ...node }))
     const edges = doc.edges.map((edge) => ({ ...edge }))
-    ensureShotWorkflowDefaultChain(nodes, edges)
+    ensureDefaultGraphFromTemplate(nodes, edges, {
+      scope: 'shotWorkflow',
+      template: resolveDefaultGraphTemplate('shotWorkflow'),
+      output: resolveScopeOutput('shotWorkflow'),
+      processingTypeId: resolveAssetProcessingTypeId('shotWorkflow')
+    })
     expect(nodes).toHaveLength(2)
     expect(edges).toHaveLength(1)
   })

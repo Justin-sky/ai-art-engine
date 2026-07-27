@@ -312,6 +312,7 @@
       <button
         type="button"
         class="port in"
+        :class="{ 'port-square': isBatchPort(port) }"
         :data-port-id="port.id"
         :title="inPortTitle(port)"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
@@ -330,11 +331,12 @@
       <button
         type="button"
         class="port out"
+        :class="{ 'port-square': isBatchPort(port) }"
         :data-port-id="port.id"
-        :title="`${t('graph.port.outTitle')} · ${portTypeLabel(port.dataType)}`"
+        :title="outPortTitle(port)"
         @pointerdown.stop.prevent="onOutPortDown(port.id, $event)"
       />
-      <span class="port-type">{{ portTypeLabel(port.dataType) }}</span>
+      <span class="port-type">{{ outPortTypeLabel(port) }}</span>
     </div>
 
     <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
@@ -371,6 +373,7 @@ import {
 import {
   VIDEO_FIRST_FRAME_PORT_ID,
   VIDEO_LAST_FRAME_PORT_ID,
+  GRAPH_OUT_ALL_PORT_ID,
   deductReservedImageSlots,
   formatDurationRange,
   formatPortLimitBadge,
@@ -403,7 +406,9 @@ import {
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
+  isSelectVoiceNode,
   isSelectTextNode,
+  isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
   isPortraitTextureEditorNode,
@@ -512,6 +517,7 @@ const emit = defineEmits<{
   runToggle: [nodeId: string]
   selectImageOpen: [nodeId: string]
   selectVideoOpen: [nodeId: string]
+  selectVoiceOpen: [nodeId: string]
   selectTextOpen: [nodeId: string]
   multiAngleOpen: [nodeId: string]
   lightingOpen: [nodeId: string]
@@ -564,6 +570,26 @@ const hasInPort = computed(() => inPorts.value.length > 0)
 
 function portTypeLabel(dataType: GraphPortDataType): string {
   return t(`graph.port.types.${dataType}`)
+}
+
+/** Houdini 风格：复数端口（out-all / select 输入）用方形 */
+function isBatchPort(port: GraphPortDef): boolean {
+  return isPluralGraphPortDataType(port.dataType) || port.id === GRAPH_OUT_ALL_PORT_ID
+}
+
+function outPortTypeLabel(port: GraphPortDef): string {
+  if (port.id === GRAPH_OUT_ALL_PORT_ID) {
+    return t('graph.port.outAllShort')
+  }
+  return portTypeLabel(port.dataType)
+}
+
+function outPortTitle(port: GraphPortDef): string {
+  const type = portTypeLabel(port.dataType)
+  if (port.id === GRAPH_OUT_ALL_PORT_ID) {
+    return `${t('graph.port.outAllTitle')} · ${type}`
+  }
+  return `${t('graph.port.outTitle')} · ${type}`
 }
 
 function inPortTypeLabel(port: GraphPortDef): string {
@@ -1147,6 +1173,7 @@ const previewHint = computed(() => {
   if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
   if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
+  if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
@@ -1193,6 +1220,7 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     if (kind === 'text') return 'none'
   }
   if (isSelectVideoNode(props.node)) return 'video'
+  if (isSelectVoiceNode(props.node)) return 'voice'
   const t = props.node.assetType ?? props.asset?.type
   if (!t) return 'none'
   if (t === 'image') return 'image'
@@ -1608,6 +1636,10 @@ function onPreviewDblClick(): void {
   }
   if (isSelectVideoNode(props.node)) {
     emit('selectVideoOpen', props.node.id)
+    return
+  }
+  if (isSelectVoiceNode(props.node)) {
+    emit('selectVoiceOpen', props.node.id)
     return
   }
   if (isSelectTextNode(props.node)) {
@@ -2521,6 +2553,13 @@ function formatTime(sec: number): string {
   cursor: crosshair;
   pointer-events: auto;
   transform: translate(-50%, -50%);
+}
+
+/* 多值输出口（out-all）：方形，对齐 Houdini multi 口 */
+.port.port-square {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
 }
 
 .port.in {

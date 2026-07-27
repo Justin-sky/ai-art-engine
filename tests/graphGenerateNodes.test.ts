@@ -28,6 +28,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'image.redraw',
   'image.select',
   'video.select',
+  'voice.select',
   'video.lipSync',
   'image.toPrompt',
   'image.upscale',

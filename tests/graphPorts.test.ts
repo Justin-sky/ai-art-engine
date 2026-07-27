@@ -13,17 +13,23 @@ describe('GraphPortType', () => {
   it('exposes the basic port types as a single source of truth', () => {
     expect(GRAPH_PORT_DATA_TYPES).toEqual([
       GraphPortType.image,
+      GraphPortType.images,
       GraphPortType.voice,
+      GraphPortType.voices,
       GraphPortType.video,
+      GraphPortType.videos,
       GraphPortType.text,
+      GraphPortType.texts,
       GraphPortType.model
     ])
     expect(isGraphPortDataType('image')).toBe(true)
+    expect(isGraphPortDataType('images')).toBe(true)
     expect(isGraphPortDataType('video')).toBe(true)
+    expect(isGraphPortDataType('videos')).toBe(true)
     expect(isGraphPortDataType('text')).toBe(true)
+    expect(isGraphPortDataType('texts')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
-    expect(isGraphPortDataType('images')).toBe(false)
-    expect(isGraphPortDataType('texts')).toBe(false)
+    expect(isGraphPortDataType('voices')).toBe(true)
     expect(isGraphPortDataType('camera')).toBe(false)
   })
 })
@@ -73,19 +79,22 @@ describe('asset reference ports', () => {
     expect(getNodePorts(image).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
-      'out:image:out'
+      'out:image:out',
+      'out-all:images:out'
     ])
     expect(getNodePorts(voice).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
-      'out:voice:out'
+      'out:voice:out',
+      'out-all:voices:out'
     ])
     expect(getNodePorts(video).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
       'in-video:video:in',
       'in-voice:voice:in',
-      'out:video:out'
+      'out:video:out',
+      'out-all:videos:out'
     ])
   })
 
@@ -121,15 +130,18 @@ describe('asset reference ports', () => {
 
     expect(getNodePorts(screenplay).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:text:out'
+      'out:text:out',
+      'out-all:texts:out'
     ])
     expect(getNodePorts(world).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:image:out'
+      'out:image:out',
+      'out-all:images:out'
     ])
     expect(getNodePorts(narrative).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:text:out'
+      'out:text:out',
+      'out-all:texts:out'
     ])
     expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
@@ -228,9 +240,10 @@ describe('port type matching', () => {
       { x: 0, y: 0 }
     )
     const screenplayOut = createNodeFromType('output.text', { x: 200, y: 0 })
-    expect(getNodePorts(screenplay).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', GraphPortType.text],
-      ['out', GraphPortType.text]
+    expect(getNodePorts(screenplay).map((p) => [p.direction, p.id, p.dataType])).toEqual([
+      ['in', 'in', GraphPortType.text],
+      ['out', 'out', GraphPortType.text],
+      ['out', 'out-all', GraphPortType.texts]
     ])
     expect(getNodePorts(screenplayRef).map((p) => [p.direction, p.dataType])).toEqual([
       ['out', GraphPortType.text]
@@ -256,7 +269,8 @@ describe('port type matching', () => {
     expect(getNodePorts(imageGenerate).map((p) => [p.direction, p.id, p.dataType])).toEqual([
       ['in', 'in-text', GraphPortType.text],
       ['in', 'in-image', GraphPortType.image],
-      ['out', 'out', GraphPortType.image]
+      ['out', 'out', GraphPortType.image],
+      ['out', 'out-all', GraphPortType.images]
     ])
     expect(getNodePorts(imageOut).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', GraphPortType.image]
@@ -280,7 +294,8 @@ describe('port type matching', () => {
     expect(getNodePorts(audio).map((p) => [p.direction, p.id, p.dataType])).toEqual([
       ['in', 'in-text', GraphPortType.text],
       ['in', 'in-image', GraphPortType.image],
-      ['out', 'out', GraphPortType.voice]
+      ['out', 'out', GraphPortType.voice],
+      ['out', 'out-all', GraphPortType.voices]
     ])
     expect(getNodePorts(timbreRef).map((p) => [p.direction, p.dataType])).toEqual([
       ['out', GraphPortType.voice]

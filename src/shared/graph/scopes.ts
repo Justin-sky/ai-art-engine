@@ -1,17 +1,13 @@
 import type { AssetType } from '../domain'
 import { isMediaFileAsset, normalizeAssetType } from '../domain'
-import { tagAssetRef } from '../assetRef'
+import { createNodeFromType, createOutputGraphNode } from './create'
 import {
-  assetTypeToGraphNodeTitle,
-  createAssetGraphNode,
-  createNodeFromType,
-  createOutputGraphNode
-} from './create'
+  materializeDefaultGraph,
+  resolveDefaultGraphTemplate
+} from './defaultGraph'
 import { getNodeTypeOrThrow } from './registry'
-import { isProcessingAssetNode } from './nodeRole'
 import type {
   GraphDocument,
-  GraphEdge,
   GraphNode,
   GraphNodeParams,
   GraphNodeTypeId,
@@ -89,8 +85,6 @@ export interface GraphScopeDefinition {
   coerceOutput?: boolean
   /** 空图时是否自动补输出节点；默认 true */
   ensureOutput?: boolean
-  /** 加载后确保存在的单例节点 typeId */
-  ensureSingletonTypeIds?: GraphNodeTypeId[]
   /** 右键添加节点时的额外 params */
   createParams?: (typeId: GraphNodeTypeId) => Partial<GraphNodeParams> | undefined
   /** 拖入资产引用节点的规则 */
@@ -182,13 +176,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       kind: 'video',
       title: ASSET_TIMELINE_OUTPUT_TITLE,
       inputDataType: GraphPortType.video
-    },
-    ensureSingletonTypeIds: [
-      'script.shotSplit',
-      'script.shotTable',
-      'script.shotImageGen',
-      'script.shotVideoGen'
-    ]
+    }
   },
   /** 空白节点画布：不强制输出节点，打开即为空图 */
   canvasAsset: {
@@ -206,12 +194,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.worldOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    ensureSingletonTypeIds: [
-      'world.extract',
-      'world.table',
-      'world.gen',
-      'output.world'
-    ],
     output: {
       kind: 'image',
       title: ASSET_WORLD_OUTPUT_TITLE,
@@ -224,12 +206,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.narrativeOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    ensureSingletonTypeIds: [
-      'narrative.split',
-      'narrative.table',
-      'narrative.gen',
-      'output.narrative'
-    ],
     output: {
       kind: 'text',
       title: ASSET_NARRATIVE_OUTPUT_TITLE,
@@ -426,329 +402,12 @@ export function resolveAssetProcessingTypeId(
   return null
 }
 
-function findProcessingGenerateNode(nodes: GraphNode[], typeId: GraphNodeTypeId): GraphNode | undefined {
-  return nodes.find((node) => node.typeId === typeId && isProcessingAssetNode(node))
-}
-
 /** 拖入真实媒体的 image/video/audio：编辑器主节点绑定宿主，无输入口 */
 export interface AssetEditorChainOptions {
   /** 资产编辑器宿主 id */
   hostAssetId?: string | null
   /** 宿主已关联真实媒体文件（如拖入导入） */
   hasMediaFile?: boolean
-}
-
-function shouldUseHostMediaRef(
-  scope: GraphAddScope,
-  assetType?: string | null,
-  options?: AssetEditorChainOptions
-): options is AssetEditorChainOptions & { hostAssetId: string } {
-  if (scope !== 'workflow') return false
-  if (!options?.hostAssetId || !options.hasMediaFile) return false
-  return isMediaFileAsset(assetType)
-}
-
-function bindNodeToHostMedia(
-  node: GraphNode,
-  hostAssetId: string,
-  assetType: AssetType,
-  title?: string
-): void {
-  node.assetId = hostAssetId
-  node.assetRef = tagAssetRef(hostAssetId)
-  node.assetType = assetType
-  node.params = { ...node.params, assetRef: true }
-  if (title?.trim()) node.title = title.trim()
-}
-
-function ensureLinkedToOutput(
-  edges: GraphEdge[],
-  sourceId: string,
-  outputId: string
-): void {
-  const linked = edges.some((edge) => edge.target === outputId && edge.source === sourceId)
-  if (linked) return
-  edges.push({
-    id: `edge-${crypto.randomUUID()}`,
-    source: sourceId,
-    target: outputId,
-    sourcePort: 'out',
-    targetPort: 'in'
-  })
-}
-
-function ensureGraphEdge(
-  edges: GraphEdge[],
-  sourceId: string,
-  targetId: string,
-  sourcePort: string,
-  targetPort: string
-): void {
-  const linked = edges.some(
-    (edge) =>
-      edge.source === sourceId &&
-      edge.target === targetId &&
-      (edge.sourcePort ?? 'out') === sourcePort &&
-      (edge.targetPort ?? 'in') === targetPort
-  )
-  if (linked) return
-  edges.push({
-    id: `edge-${crypto.randomUUID()}`,
-    source: sourceId,
-    target: targetId,
-    sourcePort,
-    targetPort
-  })
-}
-
-/** 世界元素资产图默认链：提取 → 表格 → 生成 → 输出（仅新建图时调用） */
-export function ensureWorldAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const extract = nodes.find((node) => node.typeId === 'world.extract')
-  const table = nodes.find((node) => node.typeId === 'world.table')
-  const gen = nodes.find((node) => node.typeId === 'world.gen')
-  const output = nodes.find((node) => node.typeId === 'output.world')
-  if (!extract || !table || !gen) return
-  ensureGraphEdge(edges, extract.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, gen.id, 'out', 'in')
-  if (output) ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
-}
-
-/** 分镜资产图默认链：拆分 → 表格 → 分镜图 / 分镜视频 → 输出（仅新建图时调用） */
-export function ensureScriptAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const split = nodes.find((node) => node.typeId === 'script.shotSplit')
-  const table = nodes.find((node) => node.typeId === 'script.shotTable')
-  const imageGen = nodes.find((node) => node.typeId === 'script.shotImageGen')
-  const videoGen = nodes.find((node) => node.typeId === 'script.shotVideoGen')
-  const outputNode = nodes.find((node) => node.category === 'output')
-  if (!split || !table || !imageGen || !videoGen) return
-  ensureGraphEdge(edges, split.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, imageGen.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, videoGen.id, 'out', 'in-text')
-  ensureGraphEdge(edges, imageGen.id, videoGen.id, 'out', 'in-image')
-  if (outputNode) ensureGraphEdge(edges, videoGen.id, outputNode.id, 'out', 'in')
-}
-
-/** 叙事单元资产图默认链：拆解 → 表格 → 生成 → 选择文本 → 输出 */
-export function ensureNarrativeAssetDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const split = nodes.find((node) => node.typeId === 'narrative.split')
-  const table = nodes.find((node) => node.typeId === 'narrative.table')
-  const gen = nodes.find((node) => node.typeId === 'narrative.gen')
-  const output = nodes.find((node) => node.typeId === 'output.narrative')
-  if (!split || !table || !gen) return
-  ensureGraphEdge(edges, split.id, table.id, 'out', 'in')
-  ensureGraphEdge(edges, table.id, gen.id, 'out', 'in')
-
-  let select = nodes.find((node) => node.typeId === 'text.select')
-  if (!select) {
-    const x = output
-      ? Math.round((gen.position.x + output.position.x) / 2)
-      : gen.position.x + 220
-    select = createNodeFromType('text.select', { x, y: gen.position.y })
-    nodes.push(select)
-  }
-
-  // 生成 → 选择文本 → 输出；去掉直连生成→输出，避免双路径
-  if (output) {
-    for (let i = edges.length - 1; i >= 0; i -= 1) {
-      const edge = edges[i]!
-      if (edge.source === gen.id && edge.target === output.id) {
-        edges.splice(i, 1)
-      }
-    }
-    ensureGraphEdge(edges, gen.id, select.id, 'out', 'in')
-    ensureGraphEdge(edges, select.id, output.id, 'out', 'in')
-  } else {
-    ensureGraphEdge(edges, gen.id, select.id, 'out', 'in')
-  }
-}
-
-/** 分镜工作流：仅在「仅有视频输出」的遗留空图上补齐视频链；不再强制插入分镜参数 */
-export function ensureShotWorkflowDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const hasVideo = nodes.some((node) => node.typeId === 'asset.video' && isProcessingAssetNode(node))
-  let output = nodes.find(
-    (node) =>
-      node.category === 'output' &&
-      (node.typeId === 'output.video' || node.params.outputKind === 'video')
-  )
-  if (!output) {
-    output = createOutputGraphNode('video', { x: 520, y: 160 }, {
-      id: graphOutputNodeId('video'),
-      title: 'Shot video output'
-    })
-    nodes.push(output)
-  }
-
-  if (hasVideo) {
-    const video = nodes.find(
-      (node) => node.typeId === 'asset.video' && isProcessingAssetNode(node)
-    )!
-    ensureGraphEdge(edges, video.id, output.id, 'out', 'in')
-    return
-  }
-
-  const nonOutputCount = nodes.filter((node) => node.category !== 'output').length
-  if (nonOutputCount > 0) return
-
-  // 遗留：仅视频输出 → 补齐 视频生成 → 输出（分镜参数由用户从分镜栏拖入）
-  const video = createNodeFromType('asset.video', { x: 300, y: 160 })
-  nodes.push(video)
-  ensureGraphEdge(edges, video.id, output.id, 'out', 'in')
-}
-
-/** 分镜画面：仅在「仅有图片输出」的遗留空图上补齐图片链 */
-export function ensureVisualDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const hasImage = nodes.some((node) => node.typeId === 'asset.image' && isProcessingAssetNode(node))
-  let output = nodes.find(
-    (node) =>
-      node.category === 'output' &&
-      (node.typeId === 'output.image' || node.params.outputKind === 'image')
-  )
-  if (!output) {
-    output = createOutputGraphNode('image', { x: 520, y: 160 }, {
-      id: graphOutputNodeId('image'),
-      title: SHOT_VISUAL_OUTPUT_TITLE,
-      params: { outputKind: 'image', inputDataType: GraphPortType.image }
-    })
-    nodes.push(output)
-  }
-
-  if (hasImage) {
-    const image = nodes.find(
-      (node) => node.typeId === 'asset.image' && isProcessingAssetNode(node)
-    )!
-    ensureGraphEdge(edges, image.id, output.id, 'out', 'in')
-    return
-  }
-
-  const nonOutputCount = nodes.filter((node) => node.category !== 'output').length
-  if (nonOutputCount > 0) return
-
-  const image = createNodeFromType('asset.image', { x: 300, y: 160 })
-  nodes.push(image)
-  ensureGraphEdge(edges, image.id, output.id, 'out', 'in')
-}
-
-/** 叙事单元细化：仅在「仅有叙事输出」的空图上补齐生成链 */
-export function ensureNarrativeUnitDefaultChain(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const hasGen = nodes.some((node) => node.typeId === 'narrative.unitGen')
-  let output = nodes.find((node) => node.typeId === 'output.narrativeUnit')
-  if (!output) {
-    output = createNodeFromType('output.narrativeUnit', { x: 520, y: 160 }, {
-      id: graphOutputNodeId('narrativeUnit'),
-      title: NARRATIVE_UNIT_OUTPUT_TITLE,
-      params: { outputKind: 'text', inputDataType: GraphPortType.text }
-    })
-    nodes.push(output)
-  }
-
-  if (hasGen) {
-    const gen = nodes.find((node) => node.typeId === 'narrative.unitGen')!
-    ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
-    return
-  }
-
-  const nonOutputCount = nodes.filter((node) => node.category !== 'output').length
-  if (nonOutputCount > 0) return
-
-  const gen = createNodeFromType('narrative.unitGen', { x: 300, y: 160 })
-  nodes.push(gen)
-  ensureGraphEdge(edges, gen.id, output.id, 'out', 'in')
-}
-
-/** 资产编辑器：确保加工节点（或宿主媒体引用节点）存在并默认连到输出 */
-export function ensureAssetEditorProcessingChain(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  scope: GraphAddScope,
-  assetType?: string | null,
-  options?: AssetEditorChainOptions
-): void {
-  if (!isAssetEditorGraphScope(scope)) return
-  const processingTypeId = resolveAssetProcessingTypeId(scope, assetType)
-  if (!processingTypeId) return
-
-  const outputNode = nodes.find((node) => node.category === 'output')
-  if (!outputNode) return
-
-  if (shouldUseHostMediaRef(scope, assetType, options)) {
-    const type = normalizeAssetType(assetType!)
-    const hostAssetId = options.hostAssetId
-    const title = assetTypeToGraphNodeTitle(type)
-    let hostNode =
-      nodes.find((node) => node.typeId === processingTypeId && node.assetId === hostAssetId) ??
-      undefined
-    if (!hostNode) {
-      const processing = findProcessingGenerateNode(nodes, processingTypeId)
-      if (processing) {
-        bindNodeToHostMedia(processing, hostAssetId, type, processing.title || title)
-        hostNode = processing
-      }
-    }
-    if (!hostNode) {
-      hostNode = createAssetGraphNode(hostAssetId, type, title, { x: 240, y: 160 })
-      nodes.push(hostNode)
-    } else {
-      bindNodeToHostMedia(hostNode, hostAssetId, type, hostNode.title || title)
-    }
-    ensureLinkedToOutput(edges, hostNode.id, outputNode.id)
-    return
-  }
-
-  let processing = findProcessingGenerateNode(nodes, processingTypeId)
-  if (!processing) {
-    processing = createNodeFromType(
-      processingTypeId,
-      scope === 'screenplayAsset' ? { x: 400, y: 160 } : { x: 240, y: 160 }
-    )
-    nodes.push(processing)
-  }
-
-  // 剧本资产默认链：输入接口 → 选择文本 → 生成剧本 → 输出
-  if (scope === 'screenplayAsset') {
-    ensureScreenplayAssetSelectBridge(nodes, edges, processing)
-  }
-
-  ensureLinkedToOutput(edges, processing.id, outputNode.id)
-}
-
-/**
- * 确保「选择文本」夹在输入接口与生成剧本之间。
- * 若生成节点入边全来自输入接口，则改接到选择文本。
- */
-function ensureScreenplayAssetSelectBridge(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  processing: GraphNode
-): void {
-  let select = nodes.find((node) => node.typeId === 'text.select')
-  if (!select) {
-    select = createNodeFromType('text.select', { x: 220, y: 160 })
-    nodes.push(select)
-  }
-
-  const inbound = edges.filter((edge) => edge.target === processing.id)
-  const allFromInputSlots =
-    inbound.length > 0 &&
-    inbound.every((edge) => {
-      const src = nodes.find((n) => n.id === edge.source)
-      return !!src && src.typeId === 'graph.input.slot'
-    })
-
-  if (allFromInputSlots) {
-    for (const edge of inbound) {
-      edge.target = select.id
-    }
-  }
-
-  ensureGraphEdge(edges, select.id, processing.id, 'out', 'in')
-}
-
-export function createScopeSingletonNode(
-  typeId: GraphNodeTypeId,
-  position: { x: number; y: number }
-): GraphNode {
-  const def = getNodeTypeOrThrow(typeId)
-  return createNodeFromType(typeId, position, def.singletonId ? { id: def.singletonId } : undefined)
 }
 
 /** 按 scope 输出配置创建输出节点 */
@@ -782,130 +441,15 @@ export function createDefaultScopedGraph(
   assetType?: string | null,
   options?: AssetEditorChainOptions
 ): GraphDocument {
-  if (scope === 'shotWorkflow') {
-    return createDefaultShotWorkflowGraph()
-  }
-  if (scope === 'visual') {
-    return createDefaultVisualGraph()
-  }
-  if (scope === 'narrativeUnit') {
-    return createDefaultNarrativeUnitGraph()
-  }
-
   const def = getGraphScopeDefinition(scope)
-  const output = resolveScopeOutput(scope, assetType)
-  const nodes: GraphNode[] = []
-  const edges: GraphEdge[] = []
-
-  for (const [index, typeId] of (def.ensureSingletonTypeIds ?? []).entries()) {
-    const position =
-      scope === 'scriptAsset' || scope === 'worldAsset' || scope === 'narrativeAsset'
-        ? { x: 120 + index * 220, y: 160 }
-        : { x: 120, y: 80 + index * 160 }
-    nodes.push(createScopeSingletonNode(typeId, position))
-  }
-
-  if (def.ensureOutput !== false) {
-    nodes.push(
-      createScopeOutputNode(output, {
-        x: scope === 'scriptAsset' ? 1000 : 480,
-        y: 160
-      })
-    )
-  }
-
-  if (scope === 'scriptAsset') {
-    ensureScriptAssetDefaultChain(nodes, edges)
-  }
-
-  if (scope === 'worldAsset') {
-    ensureWorldAssetDefaultChain(nodes, edges)
-  }
-
-  if (scope === 'narrativeAsset') {
-    ensureNarrativeAssetDefaultChain(nodes, edges)
-  }
-
-  ensureAssetEditorProcessingChain(nodes, edges, scope, assetType, options)
-
-  return {
-    nodes,
-    edges,
-    groups: [],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
-}
-
-/** 分镜编辑默认图：视频生成 → 视频输出（分镜参数从分镜栏拖入） */
-function createDefaultShotWorkflowGraph(): GraphDocument {
-  const video = createNodeFromType('asset.video', { x: 300, y: 160 })
-  const output = createOutputGraphNode('video', { x: 520, y: 160 }, {
-    id: graphOutputNodeId('video'),
-    title: 'Shot video output'
+  return materializeDefaultGraph({
+    scope,
+    assetType,
+    template: resolveDefaultGraphTemplate(scope, assetType),
+    output: resolveScopeOutput(scope, assetType),
+    ensureOutput: def.ensureOutput,
+    processingTypeId: resolveAssetProcessingTypeId(scope, assetType),
+    hostAssetId: options?.hostAssetId,
+    hasMediaFile: options?.hasMediaFile
   })
-  const edges: GraphEdge[] = [
-    {
-      id: `edge-${crypto.randomUUID()}`,
-      source: video.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    }
-  ]
-  return {
-    nodes: [video, output],
-    edges,
-    groups: [],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
-}
-
-/** 分镜画面默认图：图片生成 → 图片输出 */
-function createDefaultVisualGraph(): GraphDocument {
-  const image = createNodeFromType('asset.image', { x: 300, y: 160 })
-  const output = createOutputGraphNode('image', { x: 520, y: 160 }, {
-    id: graphOutputNodeId('image'),
-    title: SHOT_VISUAL_OUTPUT_TITLE,
-    params: { outputKind: 'image', inputDataType: GraphPortType.image }
-  })
-  const edges: GraphEdge[] = [
-    {
-      id: `edge-${crypto.randomUUID()}`,
-      source: image.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    }
-  ]
-  return {
-    nodes: [image, output],
-    edges,
-    groups: [],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
-}
-
-/** 叙事单元细化默认图：叙事生成 → 叙事输出 */
-function createDefaultNarrativeUnitGraph(): GraphDocument {
-  const gen = createNodeFromType('narrative.unitGen', { x: 300, y: 160 })
-  const output = createNodeFromType('output.narrativeUnit', { x: 520, y: 160 }, {
-    id: graphOutputNodeId('narrativeUnit'),
-    title: NARRATIVE_UNIT_OUTPUT_TITLE,
-    params: { outputKind: 'text', inputDataType: GraphPortType.text }
-  })
-  const edges: GraphEdge[] = [
-    {
-      id: `edge-${crypto.randomUUID()}`,
-      source: gen.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    }
-  ]
-  return {
-    nodes: [gen, output],
-    edges,
-    groups: [],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
 }

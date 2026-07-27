@@ -68,7 +68,12 @@ export function getNodeSize(node: GraphNode): { w: number; h: number } {
   const w = node.size?.w ?? defaults.w
   const h = node.size?.h ?? defaults.h
   // 收起预览时高度压到标题栏；展开时仍用节点保存的 size.h
-  if (node.params?.previewCollapsed) {
+  // 输入接口默认折叠（仅 previewCollapsed === false 时展开）
+  const collapsed =
+    node.typeId === 'graph.input.slot'
+      ? node.params?.previewCollapsed !== false
+      : node.params?.previewCollapsed === true
+  if (collapsed) {
     return { w, h: GRAPH_NODE_COLLAPSED_HEIGHT_PX }
   }
   return { w, h }

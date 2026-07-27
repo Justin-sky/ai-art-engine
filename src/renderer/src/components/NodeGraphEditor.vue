@@ -249,6 +249,7 @@
           @texts-open="onTextsOpen"
           @select-image-open="onSelectImageOpen"
           @select-video-open="onSelectVideoOpen"
+          @select-voice-open="onSelectVoiceOpen"
           @select-text-open="onSelectTextOpen"
           @multi-angle-open="onMultiAngleOpen"
           @lighting-open="onLightingOpen"
@@ -537,12 +538,15 @@ import {
   flattenImagesValues,
   flattenTextsValues,
   flattenVideosValues,
+  flattenVoicesValues,
   imageItemKey,
   textItemKey,
   videoItemKey,
+  voiceItemKey,
   pickImageItem,
   pickTextItem,
   pickVideoItem,
+  pickVoiceItem,
   resolveAssetTextFromGenParams,
   resolveMotionImageItems,
   shotStoryboardToNodeParams,
@@ -561,6 +565,7 @@ import {
   type GraphImageItem,
   type GraphTextItem,
   type GraphVideoItem,
+  type GraphVoiceItem,
   type GraphDocument,
   type GraphNode,
   type GraphNodeParams,
@@ -2433,7 +2438,7 @@ watch(() => graph.edges, () => requestEdgeRender(), { deep: true })
 watch(selectedEdgeIds, () => requestEdgeRender())
 // 收起/展开预览会改有效节点高度（getNodeSize），需重算连线与分组框
 watch(
-  () => graph.nodes.map((node) => !!node.params.previewCollapsed).join('|'),
+  () => graph.nodes.map((node) => String(node.params.previewCollapsed)).join('|'),
   () => {
     groupLayoutRevision.value += 1
     requestEdgeRender()
@@ -2563,7 +2568,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'voice',
-    typeIds: ['asset.voice', 'output.voice']
+    typeIds: ['asset.voice', 'voice.select', 'output.voice']
   },
   {
     id: 'screenplay',
@@ -4252,9 +4257,9 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     const relativePath = item.relativePath?.trim() || ''
     // 生成图落盘后常清空 dataUrl，仅保留 relativePath
     if (!dataUrl && !relativePath) return
-    const key = item.id?.trim() || relativePath || dataUrl
-    if (seen.has(key)) return
-    seen.add(key)
+    const keys = [item.id?.trim(), relativePath, dataUrl].filter((k): k is string => !!k)
+    if (keys.some((k) => seen.has(k))) return
+    for (const k of keys) seen.add(k)
     items.push({
       ...item,
       dataUrl,
@@ -4268,7 +4273,34 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     const source = graph.nodes.find((n) => n.id === edge.source)
     if (!source) continue
 
-    const runOut = runStates[source.id]?.outputs?.out
+    const generatedImages = source.params.generatedImages ?? []
+    if (generatedImages.length) {
+      for (const [index, gen] of generatedImages.entries()) {
+        pushItem({
+          id: gen.id?.trim() || `${source.id}:generated:${index}`,
+          dataUrl: gen.dataUrl?.trim() || '',
+          createdAt: gen.createdAt,
+          ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
+        })
+      }
+      continue
+    }
+
+    const cameraShots = source.params.cameraShots ?? []
+    if (cameraShots.length) {
+      for (const shot of cameraShots) {
+        pushItem({
+          id: shot.id,
+          dataUrl: shot.dataUrl?.trim() || '',
+          createdAt: shot.createdAt,
+          ...(shot.relativePath?.trim() ? { relativePath: shot.relativePath.trim() } : {})
+        })
+      }
+      continue
+    }
+
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
     if (runOut) {
       for (const item of flattenImagesValues([runOut])) pushItem(item)
       if (runOut.kind === 'asset' && runOut.assetType === 'image' && runOut.assetId) {
@@ -4282,24 +4314,6 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
           })
         }
       }
-    }
-
-    for (const shot of source.params.cameraShots ?? []) {
-      pushItem({
-        id: shot.id,
-        dataUrl: shot.dataUrl?.trim() || '',
-        createdAt: shot.createdAt,
-        ...(shot.relativePath?.trim() ? { relativePath: shot.relativePath.trim() } : {})
-      })
-    }
-
-    for (const [index, gen] of (source.params.generatedImages ?? []).entries()) {
-      pushItem({
-        id: gen.id?.trim() || `${source.id}:generated:${index}`,
-        dataUrl: gen.dataUrl?.trim() || '',
-        createdAt: gen.createdAt,
-        ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
-      })
     }
 
     if (source.params.previewDataUrl?.trim() || source.params.previewRelativePath?.trim()) {
@@ -4398,9 +4412,10 @@ function collectSelectVideoItems(nodeId: string): GraphVideoItem[] {
     const dataUrl = item.dataUrl?.trim() || ''
     const relativePath = item.relativePath?.trim() || ''
     if (!dataUrl && !relativePath) return
-    const key = item.id?.trim() || relativePath || dataUrl
-    if (seen.has(key)) return
-    seen.add(key)
+    // id / path / dataUrl 任一命中即去重，避免 preview 与图库同文件不同 id 重复
+    const keys = [item.id?.trim(), relativePath, dataUrl].filter((k): k is string => !!k)
+    if (keys.some((k) => seen.has(k))) return
+    for (const k of keys) seen.add(k)
     items.push({
       ...item,
       ...(dataUrl ? { dataUrl } : {}),
@@ -4414,7 +4429,22 @@ function collectSelectVideoItems(nodeId: string): GraphVideoItem[] {
     const source = graph.nodes.find((n) => n.id === edge.source)
     if (!source) continue
 
-    const runOut = runStates[source.id]?.outputs?.out
+    // 与生成节点 Inspector 一致：有累计图库时只认图库，不再叠 preview / runOut
+    const gallery = source.params.generatedVideos ?? []
+    if (gallery.length) {
+      for (const [index, gen] of gallery.entries()) {
+        pushItem({
+          id: gen.id?.trim() || `${source.id}:generated:${index}`,
+          ...(gen.dataUrl?.trim() ? { dataUrl: gen.dataUrl.trim() } : {}),
+          createdAt: gen.createdAt,
+          ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
+        })
+      }
+      continue
+    }
+
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
     if (runOut) {
       for (const item of flattenVideosValues([runOut])) pushItem(item)
       if (runOut.kind === 'asset' && runOut.assetType === 'video' && runOut.assetId) {
@@ -4499,6 +4529,126 @@ function saveSelectVideo(selectedVideoId: string): void {
   closeSelectVideo()
 }
 
+const selectVoice = reactive({
+  open: false,
+  nodeId: '' as string,
+  title: '',
+  items: [] as GraphVoiceItem[],
+  selectedVoiceId: '' as string
+})
+
+function collectSelectVoiceItems(nodeId: string): GraphVoiceItem[] {
+  const items: GraphVoiceItem[] = []
+  const seen = new Set<string>()
+  const pushItem = (item: GraphVoiceItem): void => {
+    const relativePath = item.relativePath?.trim() || ''
+    if (!relativePath) return
+    const keys = [item.id?.trim(), relativePath].filter((k): k is string => !!k)
+    if (keys.some((k) => seen.has(k))) return
+    for (const k of keys) seen.add(k)
+    items.push({
+      ...item,
+      relativePath
+    })
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.target !== nodeId) continue
+    if ((edge.targetPort ?? 'in') !== 'in') continue
+    const source = graph.nodes.find((n) => n.id === edge.source)
+    if (!source) continue
+
+    const gallery = source.params.generatedVoices ?? []
+    if (gallery.length) {
+      for (const [index, gen] of gallery.entries()) {
+        pushItem({
+          id: gen.id?.trim() || `${source.id}:generated:${index}`,
+          createdAt: gen.createdAt,
+          ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
+        })
+      }
+      continue
+    }
+
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
+    if (runOut) {
+      for (const item of flattenVoicesValues([runOut])) pushItem(item)
+      if (runOut.kind === 'asset' && runOut.assetType === 'voice' && runOut.assetId) {
+        const asset = project.assets.find((item) => item.id === runOut.assetId)
+        const path = asset?.relativePath?.trim() || ''
+        if (path) {
+          pushItem({
+            id: runOut.assetId,
+            relativePath: path
+          })
+        }
+      }
+    }
+
+    if (source.params.previewRelativePath?.trim()) {
+      pushItem({
+        id: `${source.id}:preview`,
+        relativePath: source.params.previewRelativePath.trim()
+      })
+    }
+
+    if (source.assetType === 'voice' && source.assetId) {
+      const asset = project.assets.find((item) => item.id === source.assetId)
+      const path = asset?.relativePath?.trim() || ''
+      if (path) {
+        pushItem({
+          id: source.assetId,
+          relativePath: path
+        })
+      }
+    }
+  }
+  return items
+}
+
+function onSelectVoiceOpen(nodeId: string): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const items = collectSelectVoiceItems(nodeId)
+  const selected =
+    pickVoiceItem(items, node.params.selectedVoiceId) ??
+    (items[0] ? items[0] : undefined)
+  selectVoice.open = true
+  selectVoice.nodeId = nodeId
+  selectVoice.title = nodeDisplayTitle(node)
+  selectVoice.items = items
+  selectVoice.selectedVoiceId = selected
+    ? voiceItemKey(selected, Math.max(0, items.indexOf(selected)))
+    : ''
+}
+
+function closeSelectVoice(): void {
+  selectVoice.open = false
+  selectVoice.nodeId = ''
+  selectVoice.items = []
+  selectVoice.selectedVoiceId = ''
+}
+
+function saveSelectVoice(selectedVoiceId: string): void {
+  const nodeId = selectVoice.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const items = selectVoice.items
+  const picked = pickVoiceItem(items, selectedVoiceId)
+  const before = buildGraphJson()
+  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
+  node.params = {
+    ...node.params,
+    selectedVoiceId,
+    previewRelativePath
+  }
+  selectVoice.selectedVoiceId = selectedVoiceId
+  scheduleSave()
+  recordGraphChange('select-voice', before)
+  closeSelectVoice()
+}
+
 const selectText = reactive({
   open: false,
   nodeId: '' as string,
@@ -4514,9 +4664,11 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
     const text = typeof item.text === 'string' ? item.text : ''
     const relativePath = item.relativePath?.trim() || ''
     if (!text.trim() && !relativePath) return
-    const key = item.id?.trim() || relativePath || text
-    if (seen.has(key)) return
-    seen.add(key)
+    const keys = [item.id?.trim(), relativePath, text.trim() || ''].filter(
+      (k): k is string => !!k
+    )
+    if (keys.some((k) => seen.has(k))) return
+    for (const k of keys) seen.add(k)
     items.push({
       ...item,
       text,
@@ -4530,18 +4682,23 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
     const source = graph.nodes.find((n) => n.id === edge.source)
     if (!source) continue
 
-    const runOut = runStates[source.id]?.outputs?.out
-    if (runOut) {
-      for (const item of flattenTextsValues([runOut])) pushItem(item)
+    const gallery = source.params.generatedTexts ?? []
+    if (gallery.length) {
+      for (const [index, gen] of gallery.entries()) {
+        pushItem({
+          id: gen.id?.trim() || `${source.id}:generated:${index}`,
+          text: gen.text?.trim() || '',
+          createdAt: gen.createdAt,
+          ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
+        })
+      }
+      continue
     }
 
-    for (const [index, gen] of (source.params.generatedTexts ?? []).entries()) {
-      pushItem({
-        id: gen.id?.trim() || `${source.id}:generated:${index}`,
-        text: gen.text?.trim() || '',
-        createdAt: gen.createdAt,
-        ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
-      })
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
+    if (runOut) {
+      for (const item of flattenTextsValues([runOut])) pushItem(item)
     }
 
     if (source.params.text?.trim() || source.params.previewRelativePath?.trim()) {
@@ -5507,6 +5664,7 @@ provide(graphEditorDialogsKey, {
   notepad,
   selectImage,
   selectVideo,
+  selectVoice,
   selectText,
   textsPreview,
   multiAngle,
@@ -5526,6 +5684,8 @@ provide(graphEditorDialogsKey, {
   saveSelectImage,
   closeSelectVideo,
   saveSelectVideo,
+  closeSelectVoice,
+  saveSelectVoice,
   closeSelectText,
   saveSelectText,
   closeTextsPreview,

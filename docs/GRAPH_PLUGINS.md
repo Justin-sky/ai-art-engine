@@ -35,7 +35,7 @@ Scope 配置项（`GraphScopeDefinition`）：
 - `persistNode` — 加载时过滤非法节点
 - `output` — 默认/校正输出节点
 - `coerceOutput` — 是否强制校正已有输出
-- `ensureSingletonTypeIds` — 确保单例节点（如导演台相机）
+- 默认节点拓扑见 `DEFAULT_GRAPH_TEMPLATES`（`defaultGraph.ts`），不再用单例列表硬编码连线
 - `createParams` — 右键添加节点时的额外 `params`
 - `dragAssets` — 拖入资产白名单（见下文）
 - `shotCanvasField` — 分镜 `Shot.canvas` 上图 JSON 字段（默认 `graphJson`；`visual` 为 `visualGraphJson`）

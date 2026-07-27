@@ -30,6 +30,16 @@
     @save="api.saveSelectVideo"
   />
 
+  <GraphSelectVoiceDialog
+    v-if="api.selectVoice.open"
+    :open="true"
+    :title="api.selectVoice.title"
+    :items="api.selectVoice.items as never"
+    :selected-voice-id="api.selectVoice.selectedVoiceId"
+    @close="api.closeSelectVoice"
+    @save="api.saveSelectVoice"
+  />
+
   <GraphSelectTextDialog
     v-if="api.selectText.open"
     :open="true"
@@ -174,6 +184,7 @@ import { graphEditorDialogsKey } from '../features/graph/ui/graphEditorDialogsKe
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import GraphSelectImageDialog from './GraphSelectImageDialog.vue'
 import GraphSelectVideoDialog from './GraphSelectVideoDialog.vue'
+import GraphSelectVoiceDialog from './GraphSelectVoiceDialog.vue'
 import GraphSelectTextDialog from './GraphSelectTextDialog.vue'
 import GraphTextsPreviewDialog from './GraphTextsPreviewDialog.vue'
 import MultiAngleEditorDialog from './MultiAngleEditorDialog.vue'

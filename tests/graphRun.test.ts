@@ -130,6 +130,10 @@ describe('graph run', () => {
       { id: 'sp-1', text: '完整故事剧本正文', generatedCount: 1 }
     ])
     expect(result.states['sp-1']?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: '完整故事剧本正文'
+    })
+    expect(result.states['sp-1']?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
       items: [{ text: '完整故事剧本正文' }]
     })
@@ -176,6 +180,10 @@ describe('graph run', () => {
     expect(result.order).toEqual(['sp'])
     expect(calls).toBe(1)
     expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: '仅当前节点生成'
+    })
+    expect(result.states.sp?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
       items: [{ text: '仅当前节点生成' }]
     })
@@ -358,6 +366,10 @@ describe('graph run', () => {
     expect(result.ok, result.error).toBe(true)
     expect(result.states.mid?.status).toBe('done')
     expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: '新目标文本'
+    })
+    expect(result.states.sp?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
       items: [{ text: '新目标文本' }]
     })
@@ -452,6 +464,11 @@ describe('graph run', () => {
     expect(result.ok, result.error).toBe(true)
     expect(keys).toEqual(['落盘测试_1'])
     expect(result.states.sp?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: '',
+      relativePath: 'Texts/落盘测试_1.txt'
+    })
+    expect(result.states.sp?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
       items: [{ text: '', relativePath: 'Texts/落盘测试_1.txt' }]
     })
@@ -563,23 +580,40 @@ describe('graph run', () => {
 
     const first = await runGraph(doc, { stepDelayMs: 1, generateText })
     expect(first.ok, first.error).toBe(true)
+    expect(first.states.sp?.outputs?.out).toMatchObject({ kind: 'text', text: '剧本版本1' })
     // 把第一次落盘的 generatedTexts 写回节点，模拟第二次执行前的状态
-    const firstTexts =
-      first.states.sp?.outputs?.out?.kind === 'texts'
-        ? first.states.sp.outputs.out.items
-        : []
+    const firstTexts = screenplay.params.generatedTexts ?? []
+    expect(firstTexts.length).toBe(1)
     screenplay.params = {
       ...screenplay.params,
       generatedTexts: firstTexts.map((item) => ({
         id: item.id || 't1',
         text: item.text,
-        createdAt: item.createdAt
-      }))
+        createdAt: item.createdAt,
+        ...(item.relativePath ? { relativePath: item.relativePath } : {})
+      })),
+      selectedTextId: firstTexts[0]?.id || 't1'
     }
+
+    // 全量历史走 out-all；默认 out 仅为最新一条
+    doc.edges = [
+      {
+        id: 'e1',
+        source: 'sp',
+        target: TEXT_OUTPUT_ID,
+        sourcePort: 'out-all',
+        targetPort: 'in'
+      }
+    ]
 
     const second = await runGraph(doc, { stepDelayMs: 1, generateText })
     expect(second.ok, second.error).toBe(true)
+    expect(screenplay.params.selectedTextId).toBeTruthy()
     expect(second.states.sp?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: '剧本版本2'
+    })
+    expect(second.states.sp?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
       items: [{ text: '剧本版本1' }, { text: '剧本版本2' }]
     })

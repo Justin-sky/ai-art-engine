@@ -16,6 +16,7 @@ import {
   buildMentionSourcesForNode,
   contributionFromAssets,
   executePassthrough,
+  resolveGalleryOutputsFromNodeParams,
   resolveGenerateMentionIndexBase
 } from './values'
 
@@ -157,9 +158,12 @@ async function softSnapshotOutputs(
     | 'resolveNarrativeUnit'
   >
 ): Promise<Record<string, GraphValue>> {
+  // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
+  const gallery = resolveGalleryOutputsFromNodeParams(node.params)
   if (hasUsablePriorOutputs(prior)) {
-    return prior!.outputs!
+    return gallery ? { ...prior!.outputs!, ...gallery } : prior!.outputs!
   }
+  if (gallery) return gallery
   const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough
   return Promise.resolve(

@@ -1346,6 +1346,12 @@ export default {
       previewHint: '双击预览',
       empty: '暂无上游视频，请先连接视频生成等节点并执行'
     },
+    selectVoice: {
+      appMark: '选取声音',
+      hint: '单击卡片选择声音；双击打开预览。默认第一条。',
+      previewHint: '双击预览',
+      empty: '暂无上游声音，请先连接声音生成等节点并执行'
+    },
     selectText: {
       appMark: '选择文本',
       hint: '单击卡片选择一条文本；双击打开记事本查看全文。默认第一条。',
@@ -1733,6 +1739,8 @@ export default {
     },
     port: {
       outTitle: '拖出连线至输出节点',
+      outAllTitle: '拖出全部历史结果',
+      outAllShort: '全部',
       inTitle: '接入参考',
       limitMax: '最多 {n}',
       limitMaxAfterStyle: '端口最多 {n}（风格参考已占 {style}）',
@@ -1743,9 +1751,13 @@ export default {
       referenceImage: '参考图',
       types: {
         image: '图片',
+        images: '图片组',
         voice: '声音',
+        voices: '声音组',
         video: '视频',
+        videos: '视频组',
         text: '文本',
+        texts: '文本组',
         model: '模型'
       }
     },
@@ -1828,6 +1840,9 @@ export default {
       video: {
         select: '选取视频',
         lipSync: '对口型'
+      },
+      voice: {
+        select: '选取声音'
       },
       prompt: {
         optimize: '提示词优化'
@@ -1986,6 +2001,9 @@ export default {
         boundShot: '绑定分镜',
         boundShotValue: '#{n} {title}',
         unbound: '未绑定分镜'
+      },
+      select: {
+        hint: '双击节点打开选取面板；运行后可在此预览输出端口当前选中项'
       },
       shotTable: {
         hint: '双击打开分镜表格；运行节点导入分镜 JSON，并在此预览输出端口'
@@ -2245,25 +2263,31 @@ export default {
         },
         generatedImages: '已生成图片',
         generatedImagesCount: '{n} 张',
-        generatedImagesHint: '每次执行会追加新图；双击预览，点 × 删除',
+        generatedImagesHint:
+          '每次执行追加新图并自动选中最新；单击设为当前输出（out），双击预览，× 删除',
         generatedImagesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedImagesDelete: '删除此图',
         generatedVideos: '已生成视频',
         generatedVideosCount: '{n} 条',
-        generatedVideosHint: '每次执行会追加新视频；预览区可查看全部历史，点 × 可在 Inspector 删除',
+        generatedVideosHint:
+          '每次执行追加新视频并自动选中最新；单击设为当前输出（out），双击预览，× 删除',
         generatedVideosEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVideosDelete: '删除此视频',
         generatedTexts: '已生成剧本',
         generatedTextsCount: '{n} 份',
-        generatedTextsHint: '每次执行会追加新文本并保存到输出路径；双击打开，点 × 删除',
+        generatedTextsHint:
+          '每次执行追加新文本并自动选中最新；单击设为当前输出（out），双击打开，× 删除',
         generatedTextsEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedTextsDelete: '删除此文本',
         generatedTextsOpen: '双击打开记事本',
         generatedVoices: '已生成声音',
         generatedVoicesCount: '{n} 条',
-        generatedVoicesHint: '每次执行会追加新音频并保存到输出路径；点 × 删除',
+        generatedVoicesHint:
+          '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
         generatedVoicesEmpty: '暂无生成结果。执行本节点后会显示在这里',
-        generatedVoicesDelete: '删除此声音'
+        generatedVoicesDelete: '删除此声音',
+        setAsOutput: '设为当前输出',
+        selectedAsOutput: '当前输出'
       }
     }
   },

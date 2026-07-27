@@ -2,7 +2,7 @@
   <div
     class="graph-note"
     :class="[
-      { selected },
+      { selected, 'preview-collapsed': previewCollapsed },
       isInputSlot ? `input-slot slot-${slotDataType}` : null
     ]"
     :data-node-id="node.id"
@@ -16,6 +16,19 @@
     @dblclick.stop="onBodyDblClick"
   >
     <div class="note-head">
+      <button
+        v-if="isInputSlot"
+        type="button"
+        class="collapse-tri-btn"
+        :class="{ collapsed: previewCollapsed }"
+        :title="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        :aria-expanded="!previewCollapsed"
+        :aria-label="previewCollapsed ? t('graph.node.expandPreview') : t('graph.node.collapsePreview')"
+        @pointerdown.stop
+        @click.stop="togglePreviewCollapsed"
+      >
+        <span class="collapse-tri" aria-hidden="true" />
+      </button>
       <span class="type-pill">{{ badgeLabel }}</span>
       <input
         v-if="editingTitle"
@@ -44,11 +57,11 @@
       </span>
     </div>
 
-    <div class="note-content">
+    <div v-show="!previewCollapsed" class="note-content">
       <div class="note-body">{{ displayText }}</div>
     </div>
 
-    <GraphNodeResizeHandle @resize-start="onResizeStart" />
+    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
 
     <div
       v-for="(port, index) in outPorts"
@@ -83,12 +96,14 @@ import {
   type GraphPortDataType
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
 const { t } = useStudioI18n()
 
 const props = defineProps<{
   node: GraphNode
   selected: boolean
+  hostId?: string
   runStatus?: GraphNodeRunStatus
   runError?: string
 }>()
@@ -122,6 +137,18 @@ function portWrapStyle(count: number, index: number): Record<string, string> {
 
 const width = computed(() => nodeSize.value.w)
 const height = computed(() => nodeSize.value.h)
+/** 输入接口默认折叠；仅显式 false 为展开 */
+const previewCollapsed = computed(
+  () => isInputSlot.value && props.node.params.previewCollapsed !== false
+)
+
+function togglePreviewCollapsed(): void {
+  if (!props.hostId || !isInputSlot.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    previewCollapsed: !previewCollapsed.value
+  })
+}
+
 const presentation = computed(() => resolveNodeType(props.node)?.presentation)
 const badgeLabel = computed(() => {
   if (isInputSlot.value) {
@@ -298,6 +325,51 @@ function onBodyDblClick(): void {
   border-bottom: 1px solid color-mix(in srgb, var(--slot-border) 40%, transparent);
   min-width: 0;
   flex-shrink: 0;
+}
+
+.graph-note.preview-collapsed .note-head {
+  border-bottom: none;
+  border-radius: 8px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.collapse-tri-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.collapse-tri-btn:hover {
+  background: var(--wash-06);
+  color: var(--text);
+}
+
+/* 实心三角：展开朝下，收起朝右 */
+.collapse-tri {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+
+.collapse-tri-btn.collapsed .collapse-tri {
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  border-right: none;
 }
 
 .type-pill {

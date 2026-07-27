@@ -137,14 +137,19 @@ export type GraphPortDirection = 'in' | 'out'
 
 /**
  * 端口基本数据类型（单一来源）。
- * 连线规则：同类型可连，异类型不可连。
- * 多结果用 multiple + 运行时 items[] 表达，不再使用 texts/images 等复数类型。
+ * 连线规则：同类型可连，异类型不可连（复数≠单数）。
+ * 图库「全部」口与 select 输入使用 images/videos/voices/texts；
+ * 默认 `out` 与消费方使用单数类型。
  */
 export const GraphPortType = {
   image: 'image',
+  images: 'images',
   voice: 'voice',
+  voices: 'voices',
   video: 'video',
+  videos: 'videos',
   text: 'text',
+  texts: 'texts',
   model: 'model'
 } as const
 
@@ -154,6 +159,49 @@ export const GRAPH_PORT_DATA_TYPES = Object.values(GraphPortType) as GraphPortDa
 
 export function isGraphPortDataType(value: unknown): value is GraphPortDataType {
   return typeof value === 'string' && (GRAPH_PORT_DATA_TYPES as readonly string[]).includes(value)
+}
+
+const PLURAL_GRAPH_PORT_DATA_TYPES = new Set<GraphPortDataType>([
+  GraphPortType.images,
+  GraphPortType.videos,
+  GraphPortType.voices,
+  GraphPortType.texts
+])
+
+export function isPluralGraphPortDataType(dataType: GraphPortDataType): boolean {
+  return PLURAL_GRAPH_PORT_DATA_TYPES.has(dataType)
+}
+
+/** 单数 → 复数；已是复数或 model 则原样返回 */
+export function toPluralGraphPortDataType(dataType: GraphPortDataType): GraphPortDataType {
+  switch (dataType) {
+    case GraphPortType.image:
+      return GraphPortType.images
+    case GraphPortType.video:
+      return GraphPortType.videos
+    case GraphPortType.voice:
+      return GraphPortType.voices
+    case GraphPortType.text:
+      return GraphPortType.texts
+    default:
+      return dataType
+  }
+}
+
+/** 复数 → 单数；已是单数或 model 则原样返回 */
+export function toSingularGraphPortDataType(dataType: GraphPortDataType): GraphPortDataType {
+  switch (dataType) {
+    case GraphPortType.images:
+      return GraphPortType.image
+    case GraphPortType.videos:
+      return GraphPortType.video
+    case GraphPortType.voices:
+      return GraphPortType.voice
+    case GraphPortType.texts:
+      return GraphPortType.text
+    default:
+      return dataType
+  }
 }
 
 export type GraphNodeTypeId =
@@ -169,6 +217,7 @@ export type GraphNodeTypeId =
   | 'prompt.optimize'
   | 'image.select'
   | 'video.select'
+  | 'voice.select'
   | 'text.select'
   | 'narrative.split'
   | 'narrative.table'
@@ -310,12 +359,26 @@ export interface GraphNodeParams {
   previewRelativePath?: string
   /** 节点卡片收起预览区（仅保留标题栏） */
   previewCollapsed?: boolean
-  /** 选取图片节点：当前选中的图片 id（缺省取第一张） */
+  /**
+   * 当前选中的图片 id：生成节点 `out` 默认输出口 / 选取图片节点共用。
+   * 生成节点每次运行成功后强制切到最新一条。
+   */
   selectedImageId?: string
-  /** 选取视频节点：当前选中的视频 id（缺省取第一条） */
+  /**
+   * 当前选中的视频 id：生成节点 `out` / 选取视频节点共用。
+   * 生成节点每次运行成功后强制切到最新一条。
+   */
   selectedVideoId?: string
-  /** 选取剧本节点：当前选中的文本 id（缺省取第一条） */
+  /**
+   * 当前选中的文本 id：生成节点 `out` / 选取剧本节点共用。
+   * 生成节点每次运行成功后强制切到最新一条。
+   */
   selectedTextId?: string
+  /**
+   * 当前选中的声音 id：生成节点 `out` 默认输出口。
+   * 每次运行成功后强制切到最新一条。
+   */
+  selectedVoiceId?: string
   /** 多角度编辑器：机位参数 */
   multiAngleCamera?: Partial<MultiAngleCameraState>
   /** 多角度编辑器：最终提示词（机位句；promptEnabled 时含面板拼接） */

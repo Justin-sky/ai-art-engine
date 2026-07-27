@@ -14,6 +14,9 @@ import {
   type GraphPortDef
 } from './types'
 
+/** 生成/加工图库节点：全部历史输出口 id（默认自动连线仍走 `out`） */
+export const GRAPH_OUT_ALL_PORT_ID = 'out-all'
+
 /** assetRef 默认藏输入口；params.assetHost 时保留 */
 function shouldHideAssetRefInputs(
   params?: Pick<GraphNodeParams, 'assetRef' | 'assetHost'> | null,
@@ -104,7 +107,10 @@ export function resolveTypeDefPorts(
   let ports = typeDef.ports ?? []
   const hideInputs = shouldHideAssetRefInputs(params, node)
   if (hideInputs) {
-    ports = ports.filter((port) => port.direction !== 'in')
+    // 引用节点无图库：去掉加工节点的 out-all，只保留单条 out
+    ports = ports.filter(
+      (port) => port.direction !== 'in' && port.id !== GRAPH_OUT_ALL_PORT_ID
+    )
   }
 
   // 输入接口槽：输出口类型跟 hostInputSlot.dataType

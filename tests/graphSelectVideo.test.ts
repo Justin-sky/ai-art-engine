@@ -11,20 +11,21 @@ import {
 } from '../src/shared/graph'
 
 describe('video.select node', () => {
-  it('has video in and video out ports', () => {
+  it('has videos in and video out ports', () => {
     const node = createNodeFromType('video.select', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports.map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', GraphPortType.video],
+      ['in', GraphPortType.videos],
       ['out', GraphPortType.video]
     ])
   })
 
-  it('connects from video generate out and to video generate in-video', () => {
+  it('connects from video generate out-all and to video generate in-video', () => {
     const videoGenerate = createNodeFromType('asset.video', { x: 0, y: 0 })
     const select = createNodeFromType('video.select', { x: 120, y: 0 })
     const nextVideo = createNodeFromType('asset.video', { x: 240, y: 0 })
-    expect(canConnectNodes(videoGenerate, select)).toBe(true)
+    expect(canConnectNodes(videoGenerate, select, { sourcePort: 'out-all' })).toBe(true)
+    expect(canConnectNodes(videoGenerate, select, { sourcePort: 'out' })).toBe(false)
     expect(canConnectNodes(select, nextVideo, { targetPort: 'in-video' })).toBe(true)
   })
 

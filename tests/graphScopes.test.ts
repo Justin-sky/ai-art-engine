@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   canScopeAcceptDraggedAsset,
   createDefaultScopedGraph,
@@ -9,6 +9,7 @@ import {
   normalizeScopedGraph,
   registerGraphScope,
   registerGraphScopeHost,
+  resolveDefaultGraphTemplate,
   resolveGraphScope,
   resolveScopeOutput
 } from '../src/shared/graph'
@@ -64,41 +65,23 @@ describe('graph scopes', () => {
     expect(createParamsForScope('visual', 'asset.screenplay')).toBeUndefined()
   })
 
-  it('director scope uses processing chain instead of camera singleton', () => {
-    const def = getGraphScopeDefinition('directorAsset')
-    expect(def.ensureSingletonTypeIds).toBeUndefined()
-  })
-
-  it('script scope ensures launcher singletons', () => {
-    const def = getGraphScopeDefinition('scriptAsset')
-    expect(def.ensureSingletonTypeIds).toEqual([
-      'script.shotSplit',
-      'script.shotTable',
-      'script.shotImageGen',
-      'script.shotVideoGen'
+  it('director / script / world / narrative scopes resolve default graph templates', () => {
+    expect(resolveDefaultGraphTemplate('directorAsset')?.nodes.map((n) => n.key)).toEqual([
+      'gen',
+      'out'
     ])
-  })
-
-  it('world scope ensures extract / table / editor / output singletons', () => {
-    const def = getGraphScopeDefinition('worldAsset')
-    expect(def.ensureOutput).toBe(false)
-    expect(def.ensureSingletonTypeIds).toEqual([
+    expect(resolveDefaultGraphTemplate('scriptAsset')?.inputLinkTo).toBe('split')
+    expect(getGraphScopeDefinition('worldAsset').ensureOutput).toBe(false)
+    expect(resolveDefaultGraphTemplate('worldAsset')?.nodes.map((n) => n.typeId)).toEqual([
       'world.extract',
       'world.table',
       'world.gen',
       'output.world'
     ])
-  })
-
-  it('narrative scope ensures split / table / editor / output singletons', () => {
-    const def = getGraphScopeDefinition('narrativeAsset')
-    expect(def.ensureOutput).toBe(false)
-    expect(def.ensureSingletonTypeIds).toEqual([
-      'narrative.split',
-      'narrative.table',
-      'narrative.gen',
-      'output.narrative'
-    ])
+    expect(getGraphScopeDefinition('narrativeAsset').ensureOutput).toBe(false)
+    expect(resolveDefaultGraphTemplate('narrativeAsset')?.nodes.some((n) => n.typeId === 'text.select')).toBe(
+      true
+    )
   })
 
   it('allows registering custom graph scopes', () => {
@@ -152,7 +135,7 @@ describe('graph scopes', () => {
     ).toBe(true)
   })
 
-  it('visual scope fills image chain on empty legacy output-only graphs', () => {
+  it('visual scope does not backfill generate node onto output-only graphs', () => {
     const doc = normalizeScopedGraph('visual', {
       nodes: [
         createOutputGraphNode('image', { x: 520, y: 160 }, {
@@ -163,12 +146,8 @@ describe('graph scopes', () => {
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    const image = doc.nodes.find((n) => n.typeId === 'asset.image')
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')
-    expect(image).toBeTruthy()
-    expect(
-      doc.edges.some((edge) => edge.source === image?.id && edge.target === output?.id)
-    ).toBe(true)
+    expect(doc.nodes.some((n) => n.typeId === 'asset.image')).toBe(false)
+    expect(doc.nodes.some((n) => n.typeId === 'output.image')).toBe(true)
   })
 
   it('visual scope collapses multiple image outputs to one', () => {

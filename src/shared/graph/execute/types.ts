@@ -31,6 +31,9 @@ export interface GraphAssetValue {
 export interface GraphTextValue {
   kind: 'text'
   text: string
+  id?: string
+  /** 物化后的工程相对路径（生成节点选中项可只有路径、无 inline 正文） */
+  relativePath?: string
 }
 
 /**
@@ -100,6 +103,14 @@ export interface GraphVoicesValue {
   items: GraphVoiceItem[]
 }
 
+/** 单条声音（生成节点 `out` 选中项） */
+export interface GraphVoiceValue {
+  kind: 'voice'
+  id?: string
+  createdAt?: string
+  relativePath?: string
+}
+
 /** 单个视频（选取视频节点输出等） */
 export interface GraphVideoValue {
   kind: 'video'
@@ -143,6 +154,7 @@ export type GraphValue =
   | GraphImagesValue
   | GraphVideosValue
   | GraphVoicesValue
+  | GraphVoiceValue
   | GraphImageValue
   | GraphVideoValue
 

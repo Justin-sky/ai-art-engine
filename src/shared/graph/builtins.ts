@@ -18,6 +18,8 @@ import {
   GRAPH_WORLD_TABLE_NODE_ID,
   graphOutputNodeId,
   GraphPortType,
+  toPluralGraphPortDataType,
+  toSingularGraphPortDataType,
   type GraphOutputKind,
   type GraphPortDataType,
   type GraphPortDef
@@ -36,6 +38,7 @@ import {
   executeScreenplayGenerateNode,
   executeSelectImageNode,
   executeSelectVideoNode,
+  executeSelectVoiceNode,
   executeSelectTextNode,
   executeMultiAngleNode,
   executeLightingNode,
@@ -183,8 +186,16 @@ const ASSET_META: Array<{
 ]
 
 function motionProcessingPorts(): GraphPortDef[] {
+  return galleryOutPorts(GraphPortType.image)
+}
+
+/** 生成/加工图库节点：`out` 当前选中单条（默认连线）；`out-all` 全部历史（复数类型，仅连 select） */
+function galleryOutPorts(dataType: GraphPortDataType): GraphPortDef[] {
+  const singular = toSingularGraphPortDataType(dataType)
+  const plural = toPluralGraphPortDataType(singular)
   return [
-    { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+    { id: 'out', direction: 'out', dataType: singular, multiple: false, label: 'Selected' },
+    { id: 'out-all', direction: 'out', dataType: plural, multiple: true, label: 'All' }
   ]
 }
 
@@ -193,18 +204,18 @@ function imageProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
     { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
-    { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+    ...galleryOutPorts(GraphPortType.image)
   ]
 }
 
-/** 视频生成：可接文本 / 图片 / 视频 / 音频参考；输出口为 video + multiple */
+/** 视频生成：可接文本 / 图片 / 视频 / 音频参考 */
 function videoProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
     { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
     { id: 'in-video', direction: 'in', dataType: GraphPortType.video, multiple: true, label: 'Video' },
     { id: 'in-voice', direction: 'in', dataType: GraphPortType.voice, multiple: true, label: 'Audio' },
-    { id: 'out', direction: 'out', dataType: GraphPortType.video, multiple: true, label: 'Out' }
+    ...galleryOutPorts(GraphPortType.video)
   ]
 }
 
@@ -213,7 +224,7 @@ function voiceProcessingPorts(): GraphPortDef[] {
   return [
     { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
     { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
-    { id: 'out', direction: 'out', dataType: GraphPortType.voice, multiple: true, label: 'Out' }
+    ...galleryOutPorts(GraphPortType.voice)
   ]
 }
 
@@ -256,13 +267,7 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
                         }
                       ]
                     : []),
-                  {
-                    id: 'out',
-                    direction: 'out',
-                    dataType: meta.outType,
-                    multiple: true,
-                    label: 'Out'
-                  }
+                  ...galleryOutPorts(meta.outType)
                 ]
 
   const defaultViewer = {
@@ -536,7 +541,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ports: [
       { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
     ],
-    defaultParams: () => ({}),
+    defaultParams: () => ({ previewCollapsed: true }),
     addable: false,
     deletable: false,
     inspector: 'note',
@@ -557,13 +562,14 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.images, multiple: true, label: 'In' },
       { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({}),
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.select',
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectImageNode
@@ -577,16 +583,38 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.video, multiple: true, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.videos, multiple: true, label: 'In' },
       { id: 'out', direction: 'out', dataType: GraphPortType.video, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({}),
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.select',
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectVideoNode
+  },
+  {
+    typeId: 'voice.select',
+    category: 'note',
+    label: 'Select voice',
+    icon: '🔊',
+    defaultTitle: 'Select voice',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.voices, multiple: true, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.voice, multiple: true, label: 'Out' }
+    ],
+    defaultParams: () => ({}),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.select',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeSelectVoiceNode
   },
   {
     typeId: 'text.select',
@@ -597,7 +625,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.texts, multiple: true, label: 'In' },
       { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({
@@ -607,6 +635,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.select',
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectTextNode
@@ -742,7 +771,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageUpscale: {
@@ -799,13 +828,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: true,
         label: 'Text'
       },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.video,
-        multiple: true,
-        label: 'Out'
-      }
+      ...galleryOutPorts(GraphPortType.video)
     ],
     defaultParams: () => ({
       generateModel: '',
@@ -833,7 +856,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageExpand: {
@@ -868,7 +891,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageRedraw: {
@@ -902,7 +925,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageErase: {
@@ -936,7 +959,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageMatte: {
@@ -970,7 +993,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageCrop: {
@@ -1000,7 +1023,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       imageGridSplit: {
@@ -1165,7 +1188,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      { id: 'out', direction: 'out', dataType: GraphPortType.texts, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({
       mediaOutputDir: '',

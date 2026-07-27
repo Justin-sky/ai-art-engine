@@ -1,6 +1,7 @@
 import type { AssetType } from '../domain'
 import { isAssetRefInputHostType } from './nodeRole'
 import { resolveAssetTextFromGenParams } from './assetText'
+import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent, textFromGraphValue } from './textOutput'
 import type {
@@ -186,6 +187,7 @@ function expandValueToSlotCount(value: GraphValue | undefined): number {
   if (value.kind === 'images') return Math.max(1, value.items.length)
   if (value.kind === 'videos') return Math.max(1, value.items.length)
   if (value.kind === 'voices') return Math.max(1, value.items.length)
+  if (value.kind === 'voice') return 1
   if (value.kind === 'output') {
     if (value.texts?.length) return Math.max(1, value.texts.length)
     if (value.images?.length) return Math.max(1, value.images.length)
@@ -241,6 +243,12 @@ function slotPreviewFromValue(
     return {
       previewRelativePath: item?.relativePath,
       text: item?.relativePath || undefined
+    }
+  }
+  if (value.kind === 'voice') {
+    return {
+      previewRelativePath: value.relativePath,
+      text: value.relativePath || undefined
     }
   }
   if (value.kind === 'output') {
@@ -319,42 +327,152 @@ function softResolveSourceOutput(
 ): GraphValue | undefined {
   const runStates: Record<string, GraphPersistedRunState> = parent.runStates ?? {}
   const fromRun = runStates[sourceId]?.outputs?.[sourcePort] as GraphValue | undefined
-  if (graphValueHasPayload(fromRun)) return fromRun
-
   const node = parent.nodes.find((n) => n.id === sourceId)
-  if (!node) return fromRun
-
-  const runState = runStates[sourceId]
-  const content = resolveNodeTextContent(node, runState ?? null)
-  if (content?.text?.trim()) {
-    return { kind: 'text', text: content.text }
+  if (!node) {
+    return graphValueHasPayload(fromRun) ? fromRun : undefined
   }
 
+  // 图库节点：优先按 selected*Id 从 params 重算，避免缓存 out 与 Inspector 选中不一致
   const generated = node.params.generatedTexts
   if (Array.isArray(generated) && generated.length) {
-    return {
-      kind: 'texts',
-      items: generated.map((item) => ({
-        id: item.id,
-        title: item.title,
-        text: item.text ?? '',
-        relativePath: item.relativePath,
-        createdAt: item.createdAt
-      }))
+    const items = generated.map((item) => ({
+      id: item.id,
+      title: item.title,
+      text: item.text ?? '',
+      relativePath: item.relativePath,
+      createdAt: item.createdAt
+    }))
+    if (sourcePort === 'out-all') {
+      return { kind: 'texts', items }
+    }
+    if (sourcePort === 'out' || !sourcePort) {
+      const selectedId = node.params.selectedTextId?.trim()
+      const picked =
+        (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
+        items[items.length - 1]
+      return {
+        kind: 'text',
+        text: picked?.text ?? '',
+        id: picked?.id,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      }
+    }
+  }
+
+  const generatedImages = node.params.generatedImages
+  if (Array.isArray(generatedImages) && generatedImages.length) {
+    if (sourcePort === 'out-all') {
+      return {
+        kind: 'images',
+        items: generatedImages.map((item) => ({
+          id: item.id,
+          dataUrl: item.dataUrl ?? '',
+          relativePath: item.relativePath,
+          createdAt: item.createdAt
+        }))
+      }
+    }
+    if (sourcePort === 'out' || !sourcePort) {
+      const selectedId = node.params.selectedImageId?.trim()
+      const picked =
+        (selectedId ? generatedImages.find((item) => item.id === selectedId) : undefined) ||
+        generatedImages[generatedImages.length - 1]
+      return {
+        kind: 'image',
+        id: picked?.id,
+        dataUrl: picked?.dataUrl ?? '',
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      }
+    }
+  }
+
+  const generatedVideos = node.params.generatedVideos
+  if (Array.isArray(generatedVideos) && generatedVideos.length) {
+    if (sourcePort === 'out-all') {
+      return {
+        kind: 'videos',
+        items: generatedVideos.map((item) => ({
+          id: item.id,
+          dataUrl: item.dataUrl ?? '',
+          relativePath: item.relativePath,
+          createdAt: item.createdAt
+        }))
+      }
+    }
+    if (sourcePort === 'out' || !sourcePort) {
+      const selectedId = node.params.selectedVideoId?.trim()
+      const picked =
+        (selectedId ? generatedVideos.find((item) => item.id === selectedId) : undefined) ||
+        generatedVideos[generatedVideos.length - 1]
+      return {
+        kind: 'video',
+        id: picked?.id,
+        dataUrl: picked?.dataUrl ?? '',
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      }
+    }
+  }
+
+  const generatedVoices = node.params.generatedVoices
+  if (Array.isArray(generatedVoices) && generatedVoices.length) {
+    if (sourcePort === 'out-all') {
+      return {
+        kind: 'voices',
+        items: generatedVoices.map((item) => ({
+          id: item.id,
+          relativePath: item.relativePath,
+          createdAt: item.createdAt
+        }))
+      }
+    }
+    if (sourcePort === 'out' || !sourcePort) {
+      const selectedId = node.params.selectedVoiceId?.trim()
+      const picked =
+        (selectedId ? generatedVoices.find((item) => item.id === selectedId) : undefined) ||
+        generatedVoices[generatedVoices.length - 1]
+      return {
+        kind: 'voice',
+        id: picked?.id,
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      }
     }
   }
 
   const cameraShots = node.params.cameraShots
   if (Array.isArray(cameraShots) && cameraShots.length) {
-    return {
-      kind: 'images',
-      items: cameraShots.map((shot) => ({
-        id: shot.id,
-        dataUrl: shot.dataUrl ?? '',
-        relativePath: shot.relativePath,
-        createdAt: shot.createdAt
-      }))
+    const items = cameraShots.map((shot) => ({
+      id: shot.id,
+      dataUrl: shot.dataUrl ?? '',
+      relativePath: shot.relativePath,
+      createdAt: shot.createdAt
+    }))
+    if (sourcePort === 'out-all') {
+      return { kind: 'images', items }
     }
+    if (sourcePort === 'out' || !sourcePort) {
+      const selectedId = node.params.selectedImageId?.trim()
+      const picked =
+        (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
+        items[items.length - 1]
+      return {
+        kind: 'image',
+        id: picked?.id,
+        dataUrl: picked?.dataUrl ?? '',
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      }
+    }
+  }
+
+  if (graphValueHasPayload(fromRun)) return fromRun
+
+  const runState = runStates[sourceId]
+  const content = resolveNodeTextContent(node, runState ?? null)
+  if (content?.text?.trim()) {
+    return { kind: 'text', text: content.text }
   }
 
   const previewPath = node.params.previewRelativePath?.trim()
@@ -542,7 +660,7 @@ export function ensureHostInputSlotNodes(
         typeId: GRAPH_INPUT_SLOT_TYPE_ID,
         category: 'note',
         position: { x: baseX, y: baseY + slot.index * gapY },
-        params: { ...slotParams },
+        params: { ...slotParams, previewCollapsed: true },
         title
       }
       nodes.push(node)
@@ -558,7 +676,9 @@ export function ensureHostInputSlotNodes(
             ? slot.previewRelativePath
             : node.params.previewRelativePath,
         previewDataUrl:
-          slot.previewDataUrl != null ? slot.previewDataUrl : node.params.previewDataUrl
+          slot.previewDataUrl != null ? slot.previewDataUrl : node.params.previewDataUrl,
+        // 未显式展开过的旧节点默认折叠
+        previewCollapsed: node.params.previewCollapsed ?? true
       }
       // 仅当仍在默认列附近时校正 Y，避免打乱用户拖动过的位置过多；仍按 index 排 Y
       if (Math.abs(node.position.x - baseX) < 80) {
@@ -572,24 +692,46 @@ export function ensureHostInputSlotNodes(
 
   const head = nodes.find((n) => headTypeIds.includes(n.typeId))
   if (!head) return
-  const headHasIn = edges.some((e) => e.target === head.id)
-  if (headHasIn) return
 
-  // 仅当首节点尚无入边时，按 index 顺序把文本槽接到首节点
-  const textSlots = slots
-    .filter((s) => s.dataType === GraphPortType.text)
-    .slice()
-    .sort((a, b) => a.index - b.index)
-  for (const slot of textSlots) {
+  // 各输入接口接到生成/链首节点的同名入端口（in / in-text / in-image …）
+  const headInById = new Map(
+    getNodePorts(head)
+      .filter((port) => port.direction === 'in')
+      .map((port) => [port.id, port] as const)
+  )
+  const sortedSlots = slots.slice().sort((a, b) => {
+    if (a.portId === b.portId) return a.index - b.index
+    return a.portId.localeCompare(b.portId)
+  })
+  for (const slot of sortedSlots) {
+    const targetPortId = headInById.has(slot.portId)
+      ? slot.portId
+      : headInById.has('in')
+        ? 'in'
+        : undefined
+    if (!targetPortId) continue
+    const targetDef = headInById.get(targetPortId)
     const sourceId = hostInputSlotNodeId(slot.portId, slot.index)
-    const exists = edges.some((e) => e.source === sourceId && e.target === head.id)
+    const exists = edges.some(
+      (e) =>
+        e.source === sourceId &&
+        e.target === head.id &&
+        (e.targetPort ?? 'in') === targetPortId
+    )
     if (exists) continue
+    // 单值入口已被占用时不抢连；多值入口可挂多条
+    if (targetDef && targetDef.multiple === false) {
+      const portOccupied = edges.some(
+        (e) => e.target === head.id && (e.targetPort ?? 'in') === targetPortId
+      )
+      if (portOccupied) continue
+    }
     edges.push({
-      id: `edge-${sourceId}-${head.id}`,
+      id: `edge-${sourceId}-${head.id}-${targetPortId}`,
       source: sourceId,
       target: head.id,
       sourcePort: 'out',
-      targetPort: 'in'
+      targetPort: targetPortId
     })
   }
 }
@@ -657,7 +799,11 @@ export function buildHostInputSlotSeedOutputs(
           out = value
         } else if (value.kind === 'voices') {
           const item = value.items[i]
-          out = { kind: 'voices', items: item ? [item] : [] }
+          out = item
+            ? { kind: 'voice', id: item.id, relativePath: item.relativePath, createdAt: item.createdAt }
+            : { kind: 'voice' }
+        } else if (value.kind === 'voice') {
+          out = value
         } else if (value.kind === 'videos') {
           const item = value.items[i]
           out = item
@@ -681,17 +827,3 @@ export function buildHostInputSlotSeedOutputs(
   return seeds
 }
 
-export function defaultChainHeadTypeIds(assetType: string | null | undefined): string[] {
-  switch (assetType) {
-    case 'world':
-      return ['world.extract']
-    case 'narrative':
-      return ['narrative.split']
-    case 'script':
-      return ['script.shotSplit']
-    case 'screenplay':
-      return ['text.select']
-    default:
-      return []
-  }
-}

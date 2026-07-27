@@ -1,23 +1,22 @@
 import { ensureBuiltinNodeTypes } from './builtinState'
 import { createOutputGraphNode } from './create'
-import { getNodeTypeOrThrow } from './registry'
 import { isProcessingAssetNode } from './nodeRole'
 import { sanitizeGraphGroups } from './groups'
 import { canConnectNodes } from './ports'
 import { inferNodeTypeId, resolveNodeType } from './registry'
 import type { GraphAddScope } from './registry'
 import {
+  ensureDefaultGraphFromTemplate,
+  resolveDefaultGraphTemplate,
+  resolveInputLinkHeadTypeIds
+} from './defaultGraph'
+import {
   assetTypeToGraphScope,
   createDefaultScopedGraph,
   createScopeOutputNode,
-  createScopeSingletonNode,
-  ensureAssetEditorProcessingChain,
-  ensureNarrativeAssetDefaultChain,
-  ensureNarrativeUnitDefaultChain,
-  ensureShotWorkflowDefaultChain,
-  ensureVisualDefaultChain,
-  ensureWorldAssetDefaultChain,
   getGraphScopeDefinition,
+  isAssetEditorGraphScope,
+  resolveAssetProcessingTypeId,
   resolveScopeOutput
 } from './scopes'
 import type {
@@ -36,7 +35,6 @@ import {
 import { syncNodeAssetRefFields } from '../assetRef'
 import { sanitizePersistedRunStates } from './runStatePersist'
 import {
-  defaultChainHeadTypeIds,
   ensureHostInputSlotNodes,
   isHostInputSlotEditorScope,
   mergeHostInputSlotsWithDefaults,
@@ -227,37 +225,6 @@ function applyScopeOutput(
   }
 }
 
-function ensureScopeSingletons(nodes: GraphNode[], scope: GraphAddScope): void {
-  const def = getGraphScopeDefinition(scope)
-  let index = 0
-  for (const typeId of def.ensureSingletonTypeIds ?? []) {
-    // 分镜 / 世界 / 叙事链仅新建图时创建；不向旧工程补插（删除后保持）
-    if (
-      typeId === 'script.shotSplit' ||
-      typeId === 'script.shotTable' ||
-      typeId === 'script.shotImageGen' ||
-      typeId === 'script.shotVideoGen' ||
-      typeId === 'world.extract' ||
-      typeId === 'world.table' ||
-      typeId === 'world.gen' ||
-      typeId === 'output.world' ||
-      typeId === 'narrative.split' ||
-      typeId === 'narrative.table' ||
-      typeId === 'narrative.gen' ||
-      typeId === 'output.narrative'
-    ) {
-      continue
-    }
-    const singletonId = getNodeTypeOrThrow(typeId).singletonId
-    if (singletonId && nodes.some((node) => node.id === singletonId)) continue
-    if (nodes.some((node) => node.typeId === typeId && (!singletonId || node.id === singletonId))) {
-      continue
-    }
-    nodes.unshift(createScopeSingletonNode(typeId, { x: 120, y: 80 + index * 160 }))
-    index += 1
-  }
-}
-
 function ensureDirectorProcessingDefaults(nodes: GraphNode[]): void {
   for (const node of nodes) {
     if (node.typeId !== 'asset.motion' || !isProcessingAssetNode(node)) continue
@@ -402,27 +369,24 @@ export function normalizeScopedGraph(
   if (scope === 'visual') {
     collapseVisualImageOutputs(nodes, edges, runStates)
   }
-  ensureScopeSingletons(nodes, scope)
   if (scope === 'directorAsset') {
     ensureDirectorProcessingDefaults(nodes)
   }
   ensureScopeOutput(nodes, scope, options?.assetType)
 
-  ensureAssetEditorProcessingChain(nodes, edges, scope, options?.assetType, chainOptions)
-  if (scope === 'shotWorkflow') {
-    ensureShotWorkflowDefaultChain(nodes, edges)
-  }
-  if (scope === 'visual') {
-    ensureVisualDefaultChain(nodes, edges)
-  }
-  if (scope === 'narrativeUnit') {
-    ensureNarrativeUnitDefaultChain(nodes, edges)
-  }
-  if (scope === 'narrativeAsset') {
-    ensureNarrativeAssetDefaultChain(nodes, edges)
-  }
-  if (scope === 'worldAsset') {
-    ensureWorldAssetDefaultChain(nodes, edges)
+  // 仅资产编辑器在打开已有图时按模板补齐加工/输出（导入媒体宿主绑定）；
+  // 分镜/世界/叙事长链不在加载时回插已删节点。
+  if (isAssetEditorGraphScope(scope)) {
+    ensureDefaultGraphFromTemplate(nodes, edges, {
+      scope,
+      assetType: options?.assetType,
+      template: resolveDefaultGraphTemplate(scope, options?.assetType),
+      output: resolveScopeOutput(scope, options?.assetType),
+      ensureOutput: scopeDef.ensureOutput,
+      processingTypeId: resolveAssetProcessingTypeId(scope, options?.assetType),
+      hostAssetId: chainOptions.hostAssetId,
+      hasMediaFile: chainOptions.hasMediaFile
+    })
   }
 
   syncHostInputSlots(scope, nodes, edges, options)
@@ -455,7 +419,11 @@ function syncHostInputSlots(
   )
   if (!slots.length) return
   ensureHostInputSlotNodes(nodes, edges, slots, {
-    autoLinkHeadTypeIds: defaultChainHeadTypeIds(options.assetType)
+    autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
+      scope,
+      options.assetType,
+      resolveAssetProcessingTypeId(scope, options.assetType)
+    )
   })
 }
 

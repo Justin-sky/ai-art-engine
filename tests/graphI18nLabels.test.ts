@@ -30,6 +30,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.inspector.generate.presets.titleImage')).toBe('图片生成模板')
     expect(t('graph.types.image.select')).toBe('选取图片')
     expect(t('graph.types.video.select')).toBe('选取视频')
+    expect(t('graph.types.voice.select')).toBe('选取声音')
     expect(t('graph.types.image.toPrompt')).toBe('图片反推提示词')
     expect(t('graph.types.prompt.optimize')).toBe('提示词优化')
     expect(t('graph.types.output.director')).toBe('导演台输出')
@@ -43,9 +44,13 @@ describe('graph processing menu labels', () => {
   it('resolves graph.port.types.* labels', () => {
     const t = i18n.global.t
     expect(t('graph.port.types.image')).toBe('图片')
+    expect(t('graph.port.types.images')).toBe('图片组')
     expect(t('graph.port.types.voice')).toBe('声音')
+    expect(t('graph.port.types.voices')).toBe('声音组')
     expect(t('graph.port.types.video')).toBe('视频')
+    expect(t('graph.port.types.videos')).toBe('视频组')
     expect(t('graph.port.types.text')).toBe('文本')
+    expect(t('graph.port.types.texts')).toBe('文本组')
     expect(t('graph.port.types.model')).toBe('模型')
   })
 })

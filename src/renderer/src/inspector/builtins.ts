@@ -12,6 +12,7 @@ import RedrawInspector from '../components/RedrawInspector.vue'
 import EraseInspector from '../components/EraseInspector.vue'
 import MatteInspector from '../components/MatteInspector.vue'
 import CropInspector from '../components/CropInspector.vue'
+import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
@@ -233,6 +234,20 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.crop',
     component: CropInspector,
     nodeTypeId: 'image.crop'
+  },
+  {
+    id: 'studio.graph.select',
+    component: SelectNodeInspector,
+    match: (target) => {
+      if (target.kind !== 'graph.node') return false
+      const typeId = (target.subject as GraphNode | null)?.typeId
+      return (
+        typeId === 'image.select' ||
+        typeId === 'video.select' ||
+        typeId === 'voice.select' ||
+        typeId === 'text.select'
+      )
+    }
   },
   {
     id: 'studio.graph.gridSplit',

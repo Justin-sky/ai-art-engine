@@ -455,9 +455,12 @@ export function resolveHostMediaSyncSource(
   const out = runStates[outputNode.id]?.outputs?.out
   if (!out) return null
 
+  /** 全量数组时取末条有路径的项（对齐图库「最新 / 当前选中」语义） */
   const fromImages = (items: GraphImageItem[] | undefined): HostMediaSyncSource | null => {
-    for (const item of items ?? []) {
-      if (item.relativePath?.trim()) return { kind: 'relativePath', relativePath: item.relativePath }
+    const list = items ?? []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const path = list[i]?.relativePath?.trim()
+      if (path) return { kind: 'relativePath', relativePath: path }
     }
     return null
   }
@@ -470,16 +473,27 @@ export function resolveHostMediaSyncSource(
   }
   if (out.kind === 'images') return fromImages(out.items)
   if (out.kind === 'videos') {
-    for (const item of out.items) {
-      if (item.relativePath?.trim()) return { kind: 'relativePath', relativePath: item.relativePath }
+    for (let i = out.items.length - 1; i >= 0; i--) {
+      const path = out.items[i]?.relativePath?.trim()
+      if (path) return { kind: 'relativePath', relativePath: path }
     }
     return null
   }
   if (out.kind === 'voices') {
-    for (const item of out.items) {
-      if (item.relativePath?.trim()) return { kind: 'relativePath', relativePath: item.relativePath }
-      if (item.id?.trim()) return { kind: 'asset', assetId: item.id }
+    for (let i = out.items.length - 1; i >= 0; i--) {
+      const item = out.items[i]
+      if (item?.relativePath?.trim()) {
+        return { kind: 'relativePath', relativePath: item.relativePath }
+      }
+      if (item?.id?.trim()) return { kind: 'asset', assetId: item.id }
     }
+    return null
+  }
+  if (out.kind === 'voice') {
+    if (out.relativePath?.trim()) {
+      return { kind: 'relativePath', relativePath: out.relativePath }
+    }
+    if (out.id?.trim()) return { kind: 'asset', assetId: out.id }
     return null
   }
   if (out.kind === 'video') {

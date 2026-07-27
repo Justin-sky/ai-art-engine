@@ -33,6 +33,12 @@ export type GraphEditorDialogsApi = {
     items: unknown[]
     selectedVideoId: string
   }
+  selectVoice: {
+    open: boolean
+    title: string
+    items: unknown[]
+    selectedVoiceId: string
+  }
   selectText: {
     open: boolean
     title: string
@@ -122,6 +128,8 @@ export type GraphEditorDialogsApi = {
   saveSelectImage: (imageId: string) => void
   closeSelectVideo: () => void
   saveSelectVideo: (videoId: string) => void
+  closeSelectVoice: () => void
+  saveSelectVoice: (voiceId: string) => void
   closeSelectText: () => void
   saveSelectText: (textId: string) => void | Promise<void>
   closeTextsPreview: () => void

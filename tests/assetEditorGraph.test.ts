@@ -6,6 +6,7 @@ import {
   createNodeFromType,
   createOutputGraphNode,
   getNodePorts,
+  hostInputSlotNodeId,
   isAssetRefNode,
   isNodeDeletable,
   isProcessingAssetNode,
@@ -110,7 +111,7 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
-  it('creates default screenplay asset graph with select between input and generate', () => {
+  it('creates default screenplay asset graph without text.select', () => {
     const doc = createDefaultScopedGraph('screenplayAsset')
     const processing = doc.nodes.find((node) => node.typeId === 'asset.screenplay')
     const select = doc.nodes.find((node) => node.typeId === 'text.select')
@@ -119,7 +120,7 @@ describe('asset editor graph', () => {
     )
     const output = doc.nodes.find((node) => node.category === 'output')
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
-    expect(select).toBeTruthy()
+    expect(select).toBeUndefined()
     expect(narrative).toBeUndefined()
     expect(output?.typeId).toBe('output.text')
     expect(output?.id).toBe(TEXT_OUTPUT_ID)
@@ -127,15 +128,12 @@ describe('asset editor graph', () => {
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text']
     ])
-    expect(
-      doc.edges.some((edge) => edge.source === select?.id && edge.target === processing?.id)
-    ).toBe(true)
     expect(doc.edges.some((edge) => edge.source === processing?.id && edge.target === TEXT_OUTPUT_ID)).toBe(
       true
     )
   })
 
-  it('normalize screenplay asset links input slots to select then generate', () => {
+  it('normalize screenplay asset links input slots directly to generate', () => {
     const doc = normalizeScopedGraph('screenplayAsset', null, {
       assetType: 'screenplay',
       hostAssetId: '00000000-0000-4000-8000-000000000301'
@@ -144,13 +142,68 @@ describe('asset editor graph', () => {
     const select = doc.nodes.find((n) => n.typeId === 'text.select')
     const processing = doc.nodes.find((n) => n.typeId === 'asset.screenplay')
     expect(slot).toBeTruthy()
-    expect(select).toBeTruthy()
+    expect(select).toBeUndefined()
     expect(processing).toBeTruthy()
     expect(
-      doc.edges.some((e) => e.source === slot?.id && e.target === select?.id)
+      doc.edges.some((e) => e.source === slot?.id && e.target === processing?.id)
+    ).toBe(true)
+  })
+
+  it('normalize image/video/world assets link matching input slots to generate heads', () => {
+    const image = normalizeScopedGraph('workflow', null, {
+      assetType: 'image',
+      hostAssetId: '00000000-0000-4000-8000-000000000401'
+    })
+    const imageGen = image.nodes.find((n) => n.typeId === 'asset.image')
+    expect(imageGen).toBeTruthy()
+    expect(
+      image.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in-text', 0) &&
+          e.target === imageGen?.id &&
+          e.targetPort === 'in-text'
+      )
     ).toBe(true)
     expect(
-      doc.edges.some((e) => e.source === select?.id && e.target === processing?.id)
+      image.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in-image', 0) &&
+          e.target === imageGen?.id &&
+          e.targetPort === 'in-image'
+      )
+    ).toBe(true)
+
+    const video = normalizeScopedGraph('workflow', null, {
+      assetType: 'video',
+      hostAssetId: '00000000-0000-4000-8000-000000000402'
+    })
+    const videoGen = video.nodes.find((n) => n.typeId === 'asset.video')
+    expect(videoGen).toBeTruthy()
+    for (const port of ['in-text', 'in-image', 'in-video', 'in-voice'] as const) {
+      expect(
+        video.edges.some(
+          (e) =>
+            e.source === hostInputSlotNodeId(port, 0) &&
+            e.target === videoGen?.id &&
+            e.targetPort === port
+        ),
+        port
+      ).toBe(true)
+    }
+
+    const world = normalizeScopedGraph('worldAsset', null, {
+      assetType: 'world',
+      hostAssetId: '00000000-0000-4000-8000-000000000403'
+    })
+    const extract = world.nodes.find((n) => n.typeId === 'world.extract')
+    expect(extract).toBeTruthy()
+    expect(
+      world.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in', 0) &&
+          e.target === extract?.id &&
+          e.targetPort === 'in'
+      )
     ).toBe(true)
   })
 
@@ -176,7 +229,7 @@ describe('asset editor graph', () => {
     ])
     expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
-      ['out', 'text']
+      ['out', 'texts']
     ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text']

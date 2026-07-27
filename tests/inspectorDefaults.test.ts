@@ -43,4 +43,13 @@ describe('graph inspector defaults', () => {
       )
     ).toBe('studio.graph.worldTable')
   })
+
+  it('resolves select node inspector id', () => {
+    expect(
+      resolveGraphInspectorId(
+        { inspector: 'none', inspectorId: 'studio.graph.select' },
+        { category: 'note', typeId: 'image.select', params: {} }
+      )
+    ).toBe('studio.graph.select')
+  })
 })

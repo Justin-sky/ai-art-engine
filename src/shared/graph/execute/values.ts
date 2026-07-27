@@ -23,6 +23,9 @@ import {
   resolveHostInputSlotsFromInputs
 } from '../hostInput'
 import { findOutputNode } from '../query'
+import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
+
+export { GRAPH_OUT_ALL_PORT_ID }
 import {
   expandInstructionMentions,
   shouldKeepInstructionMentionToken,
@@ -223,7 +226,8 @@ async function materializeGeneratedBatch(
 
 function formatGeneratedMediaStamp(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`
+  // 含毫秒，避免同秒多次生成 id 碰撞导致选中命中首条
+  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}${p(date.getMilliseconds())}`
 }
 
 function stripEmbeddedImageData(item: GraphImageItem): GraphImageItem {
@@ -348,8 +352,12 @@ export function flattenTextsValues(values: GraphValue[]): GraphTextItem[] {
   for (const v of values) {
     if (v.kind === 'texts') {
       for (const item of v.items) pushTextItem(out, item)
-    } else if (v.kind === 'text' && v.text.trim()) {
-      out.push({ text: v.text })
+    } else if (v.kind === 'text' && (v.text.trim() || v.relativePath?.trim())) {
+      out.push({
+        text: v.text,
+        ...(v.id ? { id: v.id } : {}),
+        ...(v.relativePath?.trim() ? { relativePath: v.relativePath.trim() } : {})
+      })
     } else if (v.kind === 'output') {
       if (v.texts?.length) {
         for (const item of v.texts) pushTextItem(out, item)
@@ -467,7 +475,7 @@ async function materializeGeneratedText(
 async function persistScreenplayGeneration(
   ctx: NodeExecuteContext,
   text: string
-): Promise<GraphTextsValue> {
+): Promise<Record<string, GraphValue>> {
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const id = `gen-text:${stamp}`
@@ -478,22 +486,21 @@ async function persistScreenplayGeneration(
     createdAt: item.createdAt ?? createdAt,
     ...(item.relativePath ? { relativePath: item.relativePath } : {})
   }))
+  const selectedTextId = newestTextSelectedId(generatedTexts)
   ctx.node.params = {
     ...ctx.node.params,
     text,
-    generatedTexts
+    generatedTexts,
+    selectedTextId
   }
   ctx.patchNode?.({
     params: {
       text,
-      generatedTexts
+      generatedTexts,
+      selectedTextId
     }
   })
-  // 与节点卡 / Inspector 一致：out 输出累计 generatedTexts，供剧本输出透传全部历史
-  return {
-    kind: 'texts',
-    items: generatedTexts
-  }
+  return dualTextGalleryOutputs(generatedTexts, selectedTextId)
 }
 
 export function flattenImagesValues(values: GraphValue[]): GraphImageItem[] {
@@ -528,7 +535,7 @@ export function flattenVideosValues(values: GraphValue[]): GraphVideoItem[] {
   return out
 }
 
-/** 收集上游声音数组（voices / audio asset / output.voices） */
+/** 收集上游声音数组（voices / voice / audio asset / output.voices） */
 export function flattenVoicesValues(values: GraphValue[]): GraphVoiceItem[] {
   const out: GraphVoiceItem[] = []
   for (const v of values) {
@@ -541,6 +548,13 @@ export function flattenVoicesValues(values: GraphValue[]): GraphVoiceItem[] {
           ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
         })
       }
+    } else if (v.kind === 'voice') {
+      if (!v.id?.trim() && !v.relativePath?.trim()) continue
+      out.push({
+        ...(v.id ? { id: v.id } : {}),
+        ...(v.createdAt ? { createdAt: v.createdAt } : {}),
+        ...(v.relativePath?.trim() ? { relativePath: v.relativePath.trim() } : {})
+      })
     } else if (v.kind === 'asset' && v.assetType === 'voice') {
       out.push({
         id: v.assetId,
@@ -611,12 +625,12 @@ function mergeGeneratedVideos(
   }))
 }
 
-/** 视频生成结果写入累计图库，out 与预览一致输出全部历史 */
+/** 视频生成结果写入累计图库；强制选中最新；`out` 选中单条，`out-all` 全部历史 */
 function persistVideoGeneration(
   ctx: NodeExecuteContext,
   item: GraphVideoItem,
   notes?: string
-): GraphVideosValue {
+): Record<string, GraphValue> {
   const createdAt = item.createdAt ?? new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const id = item.id?.trim() || `gen-video:${stamp}`
@@ -634,27 +648,30 @@ function persistVideoGeneration(
       ...(entry.relativePath ? { relativePath: entry.relativePath } : {})
     })
   )
+  const selectedVideoId = newestVideoSelectedId(generatedVideos)
   const previewRelativePath = materialized.relativePath?.trim() || undefined
   ctx.node.params = {
     ...ctx.node.params,
     generatedVideos,
+    selectedVideoId,
     ...(notes !== undefined ? { notes } : {}),
     ...(previewRelativePath ? { previewRelativePath } : {})
   }
   ctx.patchNode?.({
     params: {
       generatedVideos,
+      selectedVideoId,
       ...(notes !== undefined ? { notes } : {}),
       ...(previewRelativePath ? { previewRelativePath } : {})
     }
   })
-  return { kind: 'videos', items: generatedVideos }
+  return dualVideoGalleryOutputs(generatedVideos, selectedVideoId)
 }
 
 function persistVoiceGeneration(
   ctx: NodeExecuteContext,
   item: GraphVoiceItem
-): GraphVoicesValue {
+): Record<string, GraphValue> {
   const createdAt = item.createdAt ?? new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const id = item.id?.trim() || `gen-audio:${stamp}`
@@ -670,20 +687,22 @@ function persistVoiceGeneration(
       ...(entry.relativePath ? { relativePath: entry.relativePath } : {})
     })
   )
+  const selectedVoiceId = newestVoiceSelectedId(generatedVoices)
   const previewRelativePath = materialized.relativePath?.trim() || undefined
   ctx.node.params = {
     ...ctx.node.params,
     generatedVoices,
+    selectedVoiceId,
     ...(previewRelativePath ? { previewRelativePath } : {})
   }
   ctx.patchNode?.({
     params: {
       generatedVoices,
+      selectedVoiceId,
       ...(previewRelativePath ? { previewRelativePath } : {})
     }
   })
-  // out 与预览一致：输出累计 generatedVoices
-  return { kind: 'voices', items: generatedVoices }
+  return dualVoiceGalleryOutputs(generatedVoices, selectedVoiceId)
 }
 
 export function pickVideoItem(
@@ -741,6 +760,205 @@ export function pickTextItem(
     if (byRawId) return byRawId
   }
   return items[0]
+}
+
+export function voiceItemKey(item: GraphVoiceItem, index: number): string {
+  return item.id?.trim() || item.relativePath?.trim() || `voice:${index}`
+}
+
+export function pickVoiceItem(
+  items: GraphVoiceItem[],
+  selectedVoiceId?: string | null
+): GraphVoiceItem | undefined {
+  if (!items.length) return undefined
+  if (selectedVoiceId) {
+    const byKey = items.find((item, index) => voiceItemKey(item, index) === selectedVoiceId)
+    if (byKey) return byKey
+    const byRawId = items.find((item) => item.id === selectedVoiceId)
+    if (byRawId) return byRawId
+  }
+  return items[0]
+}
+
+/** 生成图库双输出口：`out` 选中单条，`out-all` 全部历史 */
+function dualImageGalleryOutputs(items: GraphImageItem[], selectedImageId: string): Record<string, GraphValue> {
+  const picked = pickImageItem(items, selectedImageId)
+  return {
+    out: {
+      kind: 'image',
+      id: picked?.id,
+      dataUrl: picked?.dataUrl || '',
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'images', items }
+  }
+}
+
+function dualVideoGalleryOutputs(items: GraphVideoItem[], selectedVideoId: string): Record<string, GraphValue> {
+  const picked = pickVideoItem(items, selectedVideoId)
+  return {
+    out: {
+      kind: 'video',
+      id: picked?.id,
+      dataUrl: picked?.dataUrl || '',
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'videos', items }
+  }
+}
+
+function dualVoiceGalleryOutputs(items: GraphVoiceItem[], selectedVoiceId: string): Record<string, GraphValue> {
+  const picked = pickVoiceItem(items, selectedVoiceId)
+  return {
+    out: {
+      kind: 'voice',
+      id: picked?.id,
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'voices', items }
+  }
+}
+
+function dualTextGalleryOutputs(items: GraphTextItem[], selectedTextId: string): Record<string, GraphValue> {
+  const picked = pickTextItem(items, selectedTextId)
+  return {
+    out: {
+      kind: 'text',
+      text: picked?.text ?? '',
+      id: picked?.id,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
+  }
+}
+
+function newestImageSelectedId(items: GraphImageItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return imageItemKey(items[index]!, index)
+}
+
+function newestVideoSelectedId(items: GraphVideoItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return videoItemKey(items[index]!, index)
+}
+
+function newestVoiceSelectedId(items: GraphVoiceItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return voiceItemKey(items[index]!, index)
+}
+
+function newestTextSelectedId(items: GraphTextItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return textItemKey(items[index]!, index)
+}
+
+/**
+ * 按节点参数中的累计图库 + selected*Id 重算 `out` / `out-all`。
+ * 用于 soft-resolve / soft-snapshot：避免缓存 outputs.out 与当前选中不一致。
+ */
+export function resolveGalleryOutputsFromNodeParams(
+  params: GraphNodeParams | undefined | null
+): Record<string, GraphValue> | null {
+  if (!params) return null
+
+  const generatedImages = params.generatedImages
+  if (Array.isArray(generatedImages) && generatedImages.length) {
+    const items: GraphImageItem[] = generatedImages.map((item) => ({
+      id: item.id,
+      dataUrl: item.dataUrl ?? '',
+      relativePath: item.relativePath,
+      createdAt: item.createdAt
+    }))
+    const selectedId =
+      params.selectedImageId?.trim() || newestImageSelectedId(items)
+    return dualImageGalleryOutputs(items, selectedId)
+  }
+
+  const generatedVideos = params.generatedVideos
+  if (Array.isArray(generatedVideos) && generatedVideos.length) {
+    const items: GraphVideoItem[] = generatedVideos.map((item) => ({
+      id: item.id,
+      dataUrl: item.dataUrl ?? '',
+      relativePath: item.relativePath,
+      createdAt: item.createdAt
+    }))
+    const selectedId =
+      params.selectedVideoId?.trim() || newestVideoSelectedId(items)
+    return dualVideoGalleryOutputs(items, selectedId)
+  }
+
+  const generatedVoices = params.generatedVoices
+  if (Array.isArray(generatedVoices) && generatedVoices.length) {
+    const items: GraphVoiceItem[] = generatedVoices.map((item) => ({
+      id: item.id,
+      relativePath: item.relativePath,
+      createdAt: item.createdAt
+    }))
+    const selectedId =
+      params.selectedVoiceId?.trim() || newestVoiceSelectedId(items)
+    return dualVoiceGalleryOutputs(items, selectedId)
+  }
+
+  const generatedTexts = params.generatedTexts
+  if (Array.isArray(generatedTexts) && generatedTexts.length) {
+    const items: GraphTextItem[] = generatedTexts.map((item) => ({
+      id: item.id,
+      title: item.title,
+      text: item.text ?? '',
+      relativePath: item.relativePath,
+      createdAt: item.createdAt
+    }))
+    const selectedId =
+      params.selectedTextId?.trim() || newestTextSelectedId(items)
+    return dualTextGalleryOutputs(items, selectedId)
+  }
+
+  const cameraShots = params.cameraShots
+  if (Array.isArray(cameraShots) && cameraShots.length) {
+    const items: GraphImageItem[] = cameraShots.map((shot) => ({
+      id: shot.id,
+      dataUrl: shot.dataUrl ?? '',
+      relativePath: shot.relativePath,
+      createdAt: shot.createdAt
+    }))
+    const selectedId =
+      params.selectedImageId?.trim() || newestImageSelectedId(items)
+    return dualImageGalleryOutputs(items, selectedId)
+  }
+
+  return null
+}
+
+/**
+ * 写入累计图片图库，强制选中最新一条，返回双输出口。
+ */
+function commitGeneratedImages(
+  ctx: NodeExecuteContext,
+  generatedImages: GraphImageItem[],
+  previewRelativePath?: string,
+  extraParams?: Record<string, unknown>
+): Record<string, GraphValue> {
+  const selectedImageId = newestImageSelectedId(generatedImages)
+  const params = {
+    generatedImages,
+    selectedImageId,
+    previewDataUrl: undefined as string | undefined,
+    previewRelativePath: previewRelativePath || '',
+    ...extraParams
+  }
+  ctx.node.params = {
+    ...ctx.node.params,
+    ...params
+  }
+  ctx.patchNode?.({ params })
+  return dualImageGalleryOutputs(generatedImages, selectedImageId)
 }
 
 /** 合并所有输入端口上的值（多输入口节点） */
@@ -1099,13 +1317,11 @@ export async function executeVoiceGenerateNode(
     ctx.patchNode?.({ params: { notes } })
   }
 
-  return {
-    out: persistVoiceGeneration(ctx, {
-      id: result.assetId,
-      createdAt: new Date().toISOString(),
-      relativePath: result.relativePath
-    })
-  }
+  return persistVoiceGeneration(ctx, {
+    id: result.assetId,
+    createdAt: new Date().toISOString(),
+    relativePath: result.relativePath
+  })
 }
 
 /** 视频生成：无 API 时透传上游；有 API 时调用视频模型并输出资产 */
@@ -1224,17 +1440,15 @@ export async function executeVideoGenerateNode(
   const notes =
     [localNotes, incomingText].filter(Boolean).join('\n') || undefined
 
-  return {
-    out: persistVideoGeneration(
-      ctx,
-      {
-        id: result.assetId,
-        relativePath: result.relativePath,
-        createdAt: new Date().toISOString()
-      },
-      notes
-    )
-  }
+  return persistVideoGeneration(
+    ctx,
+    {
+      id: result.assetId,
+      relativePath: result.relativePath,
+      createdAt: new Date().toISOString()
+    },
+    notes
+  )
 }
 
 /**
@@ -1360,17 +1574,15 @@ export async function executeLipSyncNode(
   const notes =
     [instructionRaw, incomingText].filter(Boolean).join('\n') || undefined
 
-  return {
-    out: persistVideoGeneration(
-      ctx,
-      {
-        id: result.assetId,
-        relativePath: result.relativePath,
-        createdAt: new Date().toISOString()
-      },
-      notes
-    )
-  }
+  return persistVideoGeneration(
+    ctx,
+    {
+      id: result.assetId,
+      relativePath: result.relativePath,
+      createdAt: new Date().toISOString()
+    },
+    notes
+  )
 }
 
 function executeVideoGeneratePassthrough(
@@ -1395,7 +1607,9 @@ function executeVideoGeneratePassthrough(
     }))
   if (!videos.length) {
     if (gallery.length) {
-      return { out: { kind: 'videos', items: gallery } }
+      const selectedVideoId =
+        ctx.node.params.selectedVideoId?.trim() || newestVideoSelectedId(gallery)
+      return dualVideoGalleryOutputs(gallery, selectedVideoId)
     }
     const text = [localNotes, incomingText].filter(Boolean).join('\n').trim()
     const voiceNotes = voices
@@ -1418,23 +1632,27 @@ function executeVideoGeneratePassthrough(
       ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
     }))
   ]
+  const generatedVideos = merged.map((item, index) => ({
+    id: item.id?.trim() || `passthrough:${index}`,
+    dataUrl: item.dataUrl || '',
+    ...(item.relativePath ? { relativePath: item.relativePath } : {})
+  }))
+  const selectedVideoId = newestVideoSelectedId(generatedVideos)
   ctx.patchNode?.({
     params: {
       notes,
       previewRelativePath: videos[0]?.relativePath?.trim() || undefined,
-      generatedVideos: merged.map((item, index) => ({
-        id: item.id?.trim() || `passthrough:${index}`,
-        dataUrl: item.dataUrl || '',
-        ...(item.relativePath ? { relativePath: item.relativePath } : {})
-      }))
+      generatedVideos,
+      selectedVideoId
     }
   })
-  return {
-    out: {
-      kind: 'videos',
-      items: merged
-    }
+  ctx.node.params = {
+    ...ctx.node.params,
+    generatedVideos,
+    selectedVideoId,
+    ...(notes !== undefined ? { notes } : {})
   }
+  return dualVideoGalleryOutputs(generatedVideos, selectedVideoId)
 }
 
 type VideoRefKind = 'image_url' | 'video_url' | 'audio_url'
@@ -1719,10 +1937,17 @@ export async function executeImageGenerateNode(
       if (!instructionRaw.trim() && !incomingText.trim()) {
         throw new Error('GRAPH_PROCESS_NO_INPUT')
       }
-      return { out: { kind: 'images', items: [] } }
+      return dualImageGalleryOutputs([], '')
     }
     patchImageGeneratePreview(ctx, sourceItems)
-    return { out: { kind: 'images', items: sourceItems } }
+    return commitGeneratedImages(
+      ctx,
+      sourceItems.map((item, index) => ({
+        ...item,
+        id: item.id?.trim() || `source:${index}`
+      })),
+      sourceItems[0]?.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -1826,18 +2051,11 @@ export async function executeImageGenerateNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  const previewRel = materializedBatch[0]?.relativePath?.trim()
-  node.params = { ...node.params, generatedImages }
-  ctx.patchNode?.({
-    params: {
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: previewRel || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim()
+  )
 }
 
 export function normalizeLocalScreenplayText(raw: string | undefined): string {
@@ -2194,8 +2412,8 @@ export async function executeScreenplayGenerateNode(
   if (!ctx.generateText) {
     const localText = normalizeLocalScreenplayText(node.params.text)
     const text = instruction.trim() || incomingText || localText
-    if (!text.trim()) return { out: { kind: 'texts', items: [] } }
-    return { out: await persistScreenplayGeneration(ctx, text) }
+    if (!text.trim()) return dualTextGalleryOutputs([], '')
+    return await persistScreenplayGeneration(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -2219,7 +2437,7 @@ export async function executeScreenplayGenerateNode(
   const text = result.text.trim()
   if (!text) throw new Error('模型未返回剧本文本')
 
-  return { out: await persistScreenplayGeneration(ctx, text) }
+  return await persistScreenplayGeneration(ctx, text)
 }
 
 export function executeNoteNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
@@ -3027,9 +3245,10 @@ export function executeCamera3dNode(ctx: NodeExecuteContext): Record<string, Gra
   } else if (!items.length && ctx.node.params.previewRelativePath) {
     items.push({ dataUrl: '', relativePath: ctx.node.params.previewRelativePath })
   }
-  return {
-    out: { kind: 'images', items }
-  }
+  const selectedImageId =
+    ctx.node.params.selectedImageId?.trim() ||
+    (items[0] ? imageItemKey(items[0], 0) : '')
+  return dualImageGalleryOutputs(items, selectedImageId)
 }
 
 /** 画布上拖入的导演台资产引用：从资产 stage/graph 读取站位图，输出 images */
@@ -3051,9 +3270,10 @@ export function executeMotionAssetRefNode(ctx: NodeExecuteContext): Record<strin
       }
     })
   }
-  return {
-    out: { kind: 'images', items }
-  }
+  const selectedImageId =
+    ctx.node.params.selectedImageId?.trim() ||
+    (items[0] ? imageItemKey(items[0], 0) : '')
+  return dualImageGalleryOutputs(items, selectedImageId)
 }
 
 /** 选取图片：从图片数组中选出一张，输出为单张 image */
@@ -3164,6 +3384,40 @@ export function executeSelectVideoNode(ctx: NodeExecuteContext): Record<string, 
       kind: 'video',
       id: selectedVideoId,
       ...(picked.dataUrl ? { dataUrl: picked.dataUrl } : {}),
+      createdAt: picked.createdAt,
+      ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+    }
+  }
+}
+
+/** 选取声音：从声音数组中选出一条，输出为单个 voice */
+export function executeSelectVoiceNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const items = flattenVoicesValues(collectIncomingValues(ctx.inputs)).filter(
+    (item) => typeof item.relativePath === 'string' && item.relativePath.length > 0
+  )
+  const picked = pickVoiceItem(items, ctx.node.params.selectedVoiceId)
+  const selectedVoiceId = picked
+    ? voiceItemKey(picked, Math.max(0, items.indexOf(picked)))
+    : undefined
+  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
+  ctx.node.params = {
+    ...ctx.node.params,
+    ...(selectedVoiceId ? { selectedVoiceId } : {}),
+    previewRelativePath
+  }
+  ctx.patchNode?.({
+    params: {
+      selectedVoiceId,
+      previewRelativePath
+    }
+  })
+  if (!picked) {
+    return { out: { kind: 'voice' } }
+  }
+  return {
+    out: {
+      kind: 'voice',
+      id: selectedVoiceId,
       createdAt: picked.createdAt,
       ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
     }
@@ -3364,7 +3618,11 @@ export async function executeUpscaleNode(
         previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : undefined
       }
     })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -3433,22 +3691,12 @@ export async function executeUpscaleNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageUpscale: upscale,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageUpscale: upscale,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageUpscale: upscale }
+  )
 }
 
 /**
@@ -3482,7 +3730,11 @@ export async function executeExpandNode(
         previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : undefined
       }
     })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -3572,22 +3824,12 @@ export async function executeExpandNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageExpand: expand,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageExpand: expand,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageExpand: expand }
+  )
 }
 
 /**
@@ -3621,7 +3863,11 @@ export async function executeRedrawNode(
         previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : undefined
       }
     })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -3719,22 +3965,12 @@ export async function executeRedrawNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageRedraw: redraw,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageRedraw: redraw,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageRedraw: redraw }
+  )
 }
 
 /**
@@ -3768,7 +4004,11 @@ export async function executeEraseNode(
         previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : undefined
       }
     })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -3865,22 +4105,12 @@ export async function executeEraseNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageErase: erase,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageErase: erase,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageErase: erase }
+  )
 }
 
 /**
@@ -3914,7 +4144,11 @@ export async function executeMatteNode(
         previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : undefined
       }
     })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   if (ctx.signal?.aborted) {
@@ -4008,22 +4242,12 @@ export async function executeMatteNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageMatte: matte,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageMatte: matte,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageMatte: matte }
+  )
 }
 
 /**
@@ -4073,7 +4297,11 @@ export async function executeCropNode(
     const picked = sourceItems[0]!
     ctx.node.params = { ...ctx.node.params, imageCrop: crop }
     ctx.patchNode?.({ params: { imageCrop: crop } })
-    return { out: { kind: 'images', items: [picked] } }
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
   }
 
   const composed = await ctx.composeImageCropCanvas({
@@ -4100,22 +4328,12 @@ export async function executeCropNode(
     throw new Error('图片落盘失败')
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `crop:${ctx.node.id}:${stamp}:keep`)
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageCrop: crop,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageCrop: crop,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageCrop: crop }
+  )
 }
 
 /**
@@ -4237,22 +4455,12 @@ export async function executeGridSplitNode(
     materializedBatch,
     `grid:${ctx.node.id}:${stamp}:keep`
   )
-
-  ctx.node.params = {
-    ...ctx.node.params,
-    imageGridSplit: grid,
-    generatedImages
-  }
-  ctx.patchNode?.({
-    params: {
-      imageGridSplit: grid,
-      generatedImages,
-      previewDataUrl: undefined,
-      previewRelativePath: materializedBatch[0]?.relativePath?.trim() || ''
-    }
-  })
-  // out 与预览一致：输出累计 generatedImages（含历史批次），而非仅本次新图
-  return { out: { kind: 'images', items: generatedImages } }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    { imageGridSplit: grid }
+  )
 }
 
 /**

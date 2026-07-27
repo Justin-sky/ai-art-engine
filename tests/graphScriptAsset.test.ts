@@ -9,6 +9,7 @@ import {
   normalizeScopedGraph
 } from '../src/shared/graph'
 import {
+  GRAPH_OUTPUT_NODE_IDS,
   GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
   GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
   GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
@@ -16,6 +17,7 @@ import {
   graphOutputNodeId
 } from '../src/shared/graph/types'
 
+const TIMELINE_OUTPUT_ID = GRAPH_OUTPUT_NODE_IDS.timeline
 const VIDEO_OUTPUT_ID = graphOutputNodeId('video')
 
 describe('script asset graph', () => {
@@ -26,7 +28,8 @@ describe('script asset graph', () => {
     expect(doc.nodes.some((n) => n.id === GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID)).toBe(true)
     expect(doc.nodes.some((n) => n.id === GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID)).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'script.visual')).toBe(false)
-    const output = doc.nodes.find((n) => n.id === VIDEO_OUTPUT_ID)
+    const output = doc.nodes.find((n) => n.id === TIMELINE_OUTPUT_ID)
+    expect(output?.typeId).toBe('output.timeline')
     expect(output?.params.outputKind).toBe('video')
     expect(output?.params.inputDataType).toBe('video')
 

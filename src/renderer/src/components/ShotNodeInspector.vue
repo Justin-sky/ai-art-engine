@@ -82,7 +82,7 @@
     </template>
 
     <GraphNodeOutputPreview
-      v-if="node && hostId && !isImage && !isScreenplay && !isVoice"
+      v-if="node && hostId && !isImage && !isScreenplay && !isVoice && !isVideo"
       :node="node"
       :host-id="hostId"
     />
@@ -107,11 +107,13 @@
           v-for="(shot, index) in generatedImages"
           :key="shot.id || `index:${index}`"
           class="shot-card"
+          :class="{ selected: isSelectedImage(shot.id || `index:${index}`) }"
         >
           <button
             type="button"
             class="shot-thumb"
-            :title="t('graph.selectImage.previewHint')"
+            :title="t('graph.inspector.generate.setAsOutput')"
+            @click="selectGeneratedImage(shot.id || `index:${index}`)"
             @dblclick="openGeneratedPreview(shot.id || `index:${index}`)"
           >
             <img
@@ -156,11 +158,13 @@
           v-for="(item, index) in generatedTexts"
           :key="item.id || `index:${index}`"
           class="text-card"
+          :class="{ selected: isSelectedText(item.id || `index:${index}`) }"
         >
           <button
             type="button"
             class="text-thumb"
-            :title="t('graph.inspector.generate.generatedTextsOpen')"
+            :title="t('graph.inspector.generate.setAsOutput')"
+            @click="selectGeneratedText(item.id || `index:${index}`)"
             @dblclick="openGeneratedText(item.id || `index:${index}`)"
           >
             <pre class="text-snippet">{{ resolvedGeneratedText[item.id || `index:${index}`] || '…' }}</pre>
@@ -198,22 +202,83 @@
           v-for="(item, index) in generatedVoices"
           :key="item.id || `index:${index}`"
           class="shot-card audio-card"
+          :class="{ selected: isSelectedVoice(item.id || `index:${index}`) }"
         >
-          <div class="audio-thumb">
+          <button
+            type="button"
+            class="audio-thumb audio-thumb-btn"
+            :title="t('graph.inspector.generate.setAsOutput')"
+            @click="selectGeneratedVoice(item.id || `index:${index}`)"
+          >
             <audio
               v-if="resolvedGeneratedVoiceSrc[item.id || `index:${index}`]"
               :src="resolvedGeneratedVoiceSrc[item.id || `index:${index}`]"
               controls
               preload="metadata"
+              @click.stop
             />
             <span v-else class="shot-loading">…</span>
             <span class="shot-index">{{ index + 1 }}</span>
-          </div>
+          </button>
           <button
             type="button"
             class="shot-delete"
             :title="t('graph.inspector.generate.generatedVoicesDelete')"
             @click.stop="removeGeneratedVoice(item.id)"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section
+      v-if="isVideo"
+      class="generated-videos"
+      :aria-label="t('graph.inspector.generate.generatedVideos')"
+    >
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.generate.generatedVideos') }}</span>
+        <span v-if="generatedVideos.length" class="section-count">
+          {{ t('graph.inspector.generate.generatedVideosCount', { n: generatedVideos.length }) }}
+        </span>
+      </div>
+      <p class="section-hint">{{ t('graph.inspector.generate.generatedVideosHint') }}</p>
+      <div v-if="!generatedVideos.length" class="empty-shots">
+        {{ t('graph.inspector.generate.generatedVideosEmpty') }}
+      </div>
+      <div v-else class="shot-grid">
+        <div
+          v-for="(item, index) in generatedVideos"
+          :key="item.id || `index:${index}`"
+          class="shot-card video-card"
+          :class="{ selected: isSelectedVideo(item.id || `index:${index}`) }"
+        >
+          <button
+            type="button"
+            class="video-thumb video-thumb-btn"
+            :title="t('graph.inspector.generate.setAsOutput')"
+            @click="selectGeneratedVideo(item.id || `index:${index}`)"
+            @dblclick="openGeneratedVideoPreview(item.id || `index:${index}`)"
+          >
+            <video
+              v-if="resolvedGeneratedVideoSrc[item.id || `index:${index}`]"
+              :src="resolvedGeneratedVideoSrc[item.id || `index:${index}`]"
+              muted
+              playsinline
+              preload="metadata"
+              :title="t('graph.selectVideo.previewHint')"
+              @click.stop
+              @dblclick.stop="openGeneratedVideoPreview(item.id || `index:${index}`)"
+            />
+            <span v-else class="shot-loading">…</span>
+            <span class="shot-index">{{ index + 1 }}</span>
+          </button>
+          <button
+            type="button"
+            class="shot-delete"
+            :title="t('graph.inspector.generate.generatedVideosDelete')"
+            @click.stop="removeGeneratedVideo(item.id)"
           >
             ×
           </button>
@@ -302,6 +367,13 @@ type StoredGeneratedText = {
 
 type StoredGeneratedVoice = {
   id?: string
+  createdAt?: string
+  relativePath?: string
+}
+
+type StoredGeneratedVideo = {
+  id?: string
+  dataUrl?: string
   createdAt?: string
   relativePath?: string
 }
@@ -497,20 +569,64 @@ onBeforeUnmount(() => {
   resolveGeneratedToken += 1
 })
 
-function syncRunOutputsAfterGeneratedChange(items: StoredGeneratedImage[]): void {
+function isSelectedImage(key: string): boolean {
+  const current = node.value
+  if (!current) return false
+  const selected = current.params.selectedImageId?.trim()
+  if (selected) return selected === key || selected === current.params.generatedImages?.find((i) => i.id === key)?.id
+  const list = generatedImages.value
+  const last = list[list.length - 1]
+  return Boolean(last && (last.id || '') === key)
+}
+
+function selectGeneratedImage(key: string): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const list = generatedImages.value
+  const index = list.findIndex((item, i) => (item.id || `index:${i}`) === key)
+  const shot = index >= 0 ? list[index] : undefined
+  if (!shot?.id) return
+  // 先同步 runStates.out，再 updateNode→scheduleSave，避免落盘仍是旧 out
+  syncRunOutputsAfterGeneratedChange(list, shot.id)
+  graphEditorHosts.updateNode(hid, current.id, {
+    selectedImageId: shot.id,
+    previewDataUrl: shot.dataUrl?.trim() ? shot.dataUrl : '',
+    previewRelativePath: shot.relativePath?.trim() ? shot.relativePath : ''
+  })
+  graphEditorHosts.bumpRevision()
+}
+
+function syncRunOutputsAfterGeneratedChange(
+  items: StoredGeneratedImage[],
+  selectedImageId?: string
+): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
   const host = graphRunHosts.get(hid)
   if (!host) return
-  const prev = host.runStates[current.id]
-  if (!prev) return
+  const prev = host.runStates[current.id] ?? { status: 'done' as const }
+  const selectedId =
+    selectedImageId?.trim() ||
+    current.params.selectedImageId?.trim() ||
+    items[items.length - 1]?.id ||
+    ''
+  const picked =
+    items.find((item) => item.id === selectedId) || items[items.length - 1]
   host.runStates[current.id] = {
     ...prev,
     status: prev.status === 'idle' ? 'done' : prev.status,
     outputs: {
       ...(prev.outputs ?? {}),
       out: {
+        kind: 'image',
+        id: picked?.id,
+        dataUrl: picked?.dataUrl || '',
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      },
+      'out-all': {
         kind: 'images',
         items: items.map((item) => ({
           id: item.id,
@@ -529,14 +645,19 @@ function removeGeneratedImage(imageId: string | undefined): void {
   if (!current || !hid || !imageId) return
   const removed = (current.params.generatedImages ?? []).find((item) => item.id === imageId)
   const next = (current.params.generatedImages ?? []).filter((item) => item.id !== imageId)
-  const first = next[0]
+  const nextSelected =
+    current.params.selectedImageId === imageId
+      ? next[next.length - 1]?.id || ''
+      : current.params.selectedImageId || next[next.length - 1]?.id || ''
+  const selected = next.find((item) => item.id === nextSelected) || next[next.length - 1]
+  syncRunOutputsAfterGeneratedChange(next, nextSelected)
   graphEditorHosts.updateNode(hid, current.id, {
     generatedImages: next,
-    previewDataUrl: first?.dataUrl?.trim() ? first.dataUrl : '',
-    previewRelativePath: first?.relativePath?.trim() ? first.relativePath : ''
+    selectedImageId: nextSelected,
+    previewDataUrl: selected?.dataUrl?.trim() ? selected.dataUrl : '',
+    previewRelativePath: selected?.relativePath?.trim() ? selected.relativePath : ''
   })
   graphEditorHosts.bumpRevision()
-  syncRunOutputsAfterGeneratedChange(next)
 
   const relativePath = removed?.relativePath?.trim()
   if (relativePath) {
@@ -620,20 +741,59 @@ onBeforeUnmount(() => {
   resolveGeneratedTextToken += 1
 })
 
-function syncRunOutputsAfterGeneratedTextsChange(items: StoredGeneratedText[]): void {
+function isSelectedText(key: string): boolean {
+  const current = node.value
+  if (!current) return false
+  const selected = current.params.selectedTextId?.trim()
+  if (selected) return selected === key
+  const list = generatedTexts.value
+  const last = list[list.length - 1]
+  return Boolean(last && (last.id || '') === key)
+}
+
+function selectGeneratedText(key: string): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const list = generatedTexts.value
+  const item = list.find((entry, i) => (entry.id || `index:${i}`) === key)
+  if (!item?.id) return
+  syncRunOutputsAfterGeneratedTextsChange(list, item.id)
+  graphEditorHosts.updateNode(hid, current.id, {
+    selectedTextId: item.id,
+    text: item.text?.trim() ? item.text : current.params.text
+  })
+  graphEditorHosts.bumpRevision()
+}
+
+function syncRunOutputsAfterGeneratedTextsChange(
+  items: StoredGeneratedText[],
+  selectedTextId?: string
+): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
   const host = graphRunHosts.get(hid)
   if (!host) return
-  const prev = host.runStates[current.id]
-  if (!prev) return
+  const prev = host.runStates[current.id] ?? { status: 'done' as const }
+  const selectedId =
+    selectedTextId?.trim() ||
+    current.params.selectedTextId?.trim() ||
+    items[items.length - 1]?.id ||
+    ''
+  const picked = items.find((item) => item.id === selectedId) || items[items.length - 1]
   host.runStates[current.id] = {
     ...prev,
     status: prev.status === 'idle' ? 'done' : prev.status,
     outputs: {
       ...(prev.outputs ?? {}),
       out: {
+        kind: 'text',
+        text: picked?.text ?? '',
+        id: picked?.id,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      },
+      'out-all': {
         kind: 'texts',
         items: items.map((item) => ({
           id: item.id,
@@ -652,9 +812,15 @@ function removeGeneratedText(textId: string | undefined): void {
   if (!current || !hid || !textId) return
   const removed = (current.params.generatedTexts ?? []).find((item) => item.id === textId)
   const next = (current.params.generatedTexts ?? []).filter((item) => item.id !== textId)
-  const latest = next[next.length - 1]
+  const nextSelected =
+    current.params.selectedTextId === textId
+      ? next[next.length - 1]?.id || ''
+      : current.params.selectedTextId || next[next.length - 1]?.id || ''
+  const latest = next.find((item) => item.id === nextSelected) || next[next.length - 1]
+  syncRunOutputsAfterGeneratedTextsChange(next, nextSelected)
   graphEditorHosts.updateNode(hid, current.id, {
     generatedTexts: next,
+    selectedTextId: nextSelected,
     text: latest?.text?.trim()
       ? latest.text
       : next.length
@@ -662,7 +828,6 @@ function removeGeneratedText(textId: string | undefined): void {
         : ''
   })
   graphEditorHosts.bumpRevision()
-  syncRunOutputsAfterGeneratedTextsChange(next)
 
   const relativePath = removed?.relativePath?.trim()
   if (relativePath) {
@@ -724,20 +889,59 @@ onBeforeUnmount(() => {
   resolveGeneratedVoiceToken += 1
 })
 
-function syncRunOutputsAfterGeneratedVoicesChange(items: StoredGeneratedVoice[]): void {
+function isSelectedVoice(key: string): boolean {
+  const current = node.value
+  if (!current) return false
+  const selected = current.params.selectedVoiceId?.trim()
+  if (selected) return selected === key
+  const list = generatedVoices.value
+  const last = list[list.length - 1]
+  return Boolean(last && (last.id || '') === key)
+}
+
+function selectGeneratedVoice(key: string): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const list = generatedVoices.value
+  const item = list.find((entry, i) => (entry.id || `index:${i}`) === key)
+  if (!item?.id) return
+  syncRunOutputsAfterGeneratedVoicesChange(list, item.id)
+  graphEditorHosts.updateNode(hid, current.id, {
+    selectedVoiceId: item.id,
+    previewRelativePath: item.relativePath?.trim() ? item.relativePath : ''
+  })
+  graphEditorHosts.bumpRevision()
+}
+
+function syncRunOutputsAfterGeneratedVoicesChange(
+  items: StoredGeneratedVoice[],
+  selectedVoiceId?: string
+): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
   const host = graphRunHosts.get(hid)
   if (!host) return
-  const prev = host.runStates[current.id]
-  if (!prev) return
+  const prev = host.runStates[current.id] ?? { status: 'done' as const }
+  const selectedId =
+    selectedVoiceId?.trim() ||
+    current.params.selectedVoiceId?.trim() ||
+    items[items.length - 1]?.id ||
+    ''
+  const picked = items.find((item) => item.id === selectedId) || items[items.length - 1]
   host.runStates[current.id] = {
     ...prev,
     status: prev.status === 'idle' ? 'done' : prev.status,
     outputs: {
       ...(prev.outputs ?? {}),
       out: {
+        kind: 'voice',
+        id: picked?.id,
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      },
+      'out-all': {
         kind: 'voices',
         items: items.map((item) => ({
           id: item.id,
@@ -755,19 +959,180 @@ function removeGeneratedVoice(voiceId: string | undefined): void {
   if (!current || !hid || !voiceId) return
   const removed = (current.params.generatedVoices ?? []).find((item) => item.id === voiceId)
   const next = (current.params.generatedVoices ?? []).filter((item) => item.id !== voiceId)
-  const first = next[0]
+  const nextSelected =
+    current.params.selectedVoiceId === voiceId
+      ? next[next.length - 1]?.id || ''
+      : current.params.selectedVoiceId || next[next.length - 1]?.id || ''
+  const selected = next.find((item) => item.id === nextSelected) || next[next.length - 1]
+  syncRunOutputsAfterGeneratedVoicesChange(next, nextSelected)
   graphEditorHosts.updateNode(hid, current.id, {
     generatedVoices: next,
-    previewRelativePath: first?.relativePath?.trim() ? first.relativePath : ''
+    selectedVoiceId: nextSelected,
+    previewRelativePath: selected?.relativePath?.trim() ? selected.relativePath : ''
   })
   graphEditorHosts.bumpRevision()
-  syncRunOutputsAfterGeneratedVoicesChange(next)
 
   const relativePath = removed?.relativePath?.trim()
   if (relativePath) {
     invalidateAssetUrlCache(relativePath)
     void window.studio.deleteGraphRunMedia(relativePath).catch((err) => {
       console.warn('[ShotNodeInspector] delete graph audio failed', relativePath, err)
+    })
+  }
+}
+
+const generatedVideos = computed((): StoredGeneratedVideo[] => {
+  const current = node.value
+  if (!current || !isVideo.value) return []
+  return (current.params.generatedVideos ?? []).filter(
+    (item) => item.relativePath?.trim() || item.dataUrl?.trim()
+  )
+})
+
+const resolvedGeneratedVideoSrc = ref<Record<string, string>>({})
+let resolveGeneratedVideoToken = 0
+
+async function resolveGeneratedVideoPreviews(): Promise<void> {
+  const token = ++resolveGeneratedVideoToken
+  const next: Record<string, string> = {}
+  await Promise.all(
+    generatedVideos.value.map(async (item, index) => {
+      const key = item.id || `index:${index}`
+      const dataUrl = item.dataUrl?.trim()
+      if (dataUrl) {
+        next[key] = dataUrl
+        return
+      }
+      const relativePath = item.relativePath?.trim()
+      if (!relativePath) return
+      try {
+        next[key] = await window.studio.getAssetFileUrl(relativePath)
+      } catch {
+        /* skip */
+      }
+    })
+  )
+  if (token !== resolveGeneratedVideoToken) return
+  resolvedGeneratedVideoSrc.value = next
+}
+
+watch(generatedVideos, () => void resolveGeneratedVideoPreviews(), {
+  immediate: true,
+  deep: true
+})
+
+onBeforeUnmount(() => {
+  resolveGeneratedVideoToken += 1
+})
+
+function isSelectedVideo(key: string): boolean {
+  const current = node.value
+  if (!current) return false
+  const selected = current.params.selectedVideoId?.trim()
+  if (selected) return selected === key
+  const list = generatedVideos.value
+  const last = list[list.length - 1]
+  return Boolean(last && (last.id || '') === key)
+}
+
+function selectGeneratedVideo(key: string): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const list = generatedVideos.value
+  const item = list.find((entry, i) => (entry.id || `index:${i}`) === key)
+  if (!item?.id) return
+  syncRunOutputsAfterGeneratedVideosChange(list, item.id)
+  graphEditorHosts.updateNode(hid, current.id, {
+    selectedVideoId: item.id,
+    previewDataUrl: item.dataUrl?.trim() ? item.dataUrl : '',
+    previewRelativePath: item.relativePath?.trim() ? item.relativePath : ''
+  })
+  graphEditorHosts.bumpRevision()
+}
+
+async function openGeneratedVideoPreview(key: string): Promise<void> {
+  const list = generatedVideos.value
+  const index = list.findIndex((item, i) => (item.id || `index:${i}`) === key)
+  const item = index >= 0 ? list[index] : undefined
+  if (item) {
+    await openFullImagePreview({
+      dataUrl: item.dataUrl,
+      relativePath: item.relativePath
+    })
+    return
+  }
+  const url = resolvedGeneratedVideoSrc.value[key]?.trim()
+  if (!url) return
+  await openFullImagePreview({ dataUrl: url })
+}
+
+function syncRunOutputsAfterGeneratedVideosChange(
+  items: StoredGeneratedVideo[],
+  selectedVideoId?: string
+): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const host = graphRunHosts.get(hid)
+  if (!host) return
+  const prev = host.runStates[current.id] ?? { status: 'done' as const }
+  const selectedId =
+    selectedVideoId?.trim() ||
+    current.params.selectedVideoId?.trim() ||
+    items[items.length - 1]?.id ||
+    ''
+  const picked = items.find((item) => item.id === selectedId) || items[items.length - 1]
+  host.runStates[current.id] = {
+    ...prev,
+    status: prev.status === 'idle' ? 'done' : prev.status,
+    outputs: {
+      ...(prev.outputs ?? {}),
+      out: {
+        kind: 'video',
+        id: picked?.id,
+        dataUrl: picked?.dataUrl || '',
+        createdAt: picked?.createdAt,
+        ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+      },
+      'out-all': {
+        kind: 'videos',
+        items: items.map((item) => ({
+          id: item.id,
+          dataUrl: item.dataUrl || '',
+          createdAt: item.createdAt,
+          ...(item.relativePath ? { relativePath: item.relativePath } : {})
+        }))
+      }
+    }
+  }
+}
+
+function removeGeneratedVideo(videoId: string | undefined): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid || !videoId) return
+  const removed = (current.params.generatedVideos ?? []).find((item) => item.id === videoId)
+  const next = (current.params.generatedVideos ?? []).filter((item) => item.id !== videoId)
+  const nextSelected =
+    current.params.selectedVideoId === videoId
+      ? next[next.length - 1]?.id || ''
+      : current.params.selectedVideoId || next[next.length - 1]?.id || ''
+  const selected = next.find((item) => item.id === nextSelected) || next[next.length - 1]
+  syncRunOutputsAfterGeneratedVideosChange(next, nextSelected)
+  graphEditorHosts.updateNode(hid, current.id, {
+    generatedVideos: next,
+    selectedVideoId: nextSelected,
+    previewDataUrl: selected?.dataUrl?.trim() ? selected.dataUrl : '',
+    previewRelativePath: selected?.relativePath?.trim() ? selected.relativePath : ''
+  })
+  graphEditorHosts.bumpRevision()
+
+  const relativePath = removed?.relativePath?.trim()
+  if (relativePath) {
+    invalidateAssetUrlCache(relativePath)
+    void window.studio.deleteGraphRunMedia(relativePath).catch((err) => {
+      console.warn('[ShotNodeInspector] delete graph video failed', relativePath, err)
     })
   }
 }
@@ -1360,12 +1725,43 @@ textarea,
   gap: 8px;
 }
 
-.shot-card {
+.shot-card,
+.text-card {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.shot-card.selected,
+.text-card.selected {
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 75%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #5a8cff) 45%, transparent);
+}
+
+.audio-thumb-btn,
+.video-thumb-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.video-thumb-btn {
+  aspect-ratio: 16 / 9;
+  position: relative;
+}
+
+.video-thumb-btn video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
 }
 
 .shot-thumb {

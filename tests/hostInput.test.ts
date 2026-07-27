@@ -113,6 +113,58 @@ describe('host input slots', () => {
     expect(slots.map((s) => s.text)).toEqual(['来自外层 A', '来自外层 B'])
   })
 
+  it('soft-resolves gallery selectedTextId over stale runStates.out', () => {
+    const host: GraphNode = {
+      id: 'host-node',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: HOST_ID,
+      assetType: 'screenplay',
+      title: '剧本'
+    }
+    const gen: GraphNode = {
+      id: 'gen',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 40, y: 40 },
+      params: {
+        generatedTexts: [
+          { id: 'a', text: '旧稿' },
+          { id: 'b', text: '新选中' }
+        ],
+        selectedTextId: 'b'
+      },
+      title: '生成'
+    }
+    const parent: GraphDocument = {
+      nodes: [gen, host],
+      edges: [
+        { id: 'e1', source: 'gen', target: host.id, sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      runStates: {
+        gen: {
+          status: 'done',
+          outputs: {
+            out: { kind: 'text', text: '旧稿', id: 'a' },
+            'out-all': {
+              kind: 'texts',
+              items: [
+                { id: 'a', text: '旧稿' },
+                { id: 'b', text: '新选中' }
+              ]
+            }
+          }
+        }
+      }
+    }
+    const slots = resolveHostInputSlotsFromParentGraph(parent, HOST_ID)
+    expect(slots).toHaveLength(1)
+    expect(slots[0]?.text).toBe('新选中')
+  })
+
   it('ensure is idempotent and keeps stable ids', () => {
     const nodes: GraphNode[] = []
     const edges: GraphDocument['edges'] = []

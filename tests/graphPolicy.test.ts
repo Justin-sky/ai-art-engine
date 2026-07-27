@@ -112,6 +112,7 @@ describe('graph policy', () => {
         'image.redraw',
         'image.select',
         'video.select',
+        'voice.select',
         'video.lipSync',
         'image.toPrompt',
         'image.upscale',

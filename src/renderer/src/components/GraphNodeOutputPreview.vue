@@ -164,6 +164,10 @@ function pushVideoLikeItem(
 function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   if (node.typeId === 'script.shotImageGen') return 'image'
   if (node.typeId === 'script.shotVideoGen') return 'video'
+  if (node.typeId === 'image.select') return 'image'
+  if (node.typeId === 'video.select') return 'video'
+  if (node.typeId === 'voice.select') return 'audio'
+  if (node.typeId === 'text.select') return 'text'
   if (
     node.category === 'output' &&
     (node.typeId === 'output.text' || node.params.outputKind === 'text')
@@ -777,6 +781,168 @@ const layoutKind = computed(() => {
 
 const hasPreview = computed(() => items.value.length > 0)
 
+const canSelectGalleryOutput = computed(() => {
+  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  return (
+    !!(node.params.generatedImages ?? []).length ||
+    !!(node.params.generatedVideos ?? []).length ||
+    !!(node.params.generatedVoices ?? []).length ||
+    !!(node.params.generatedTexts ?? []).length
+  )
+})
+
+function isSelectedPreview(item: PreviewItem): boolean {
+  if (!canSelectGalleryOutput.value) return false
+  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  const id = item.key.trim()
+  if (!id) return false
+  if (item.kind === 'image') {
+    const selected = node.params.selectedImageId?.trim()
+    if (selected) return selected === id
+    const list = node.params.generatedImages ?? []
+    return list[list.length - 1]?.id === id
+  }
+  if (item.kind === 'video') {
+    const selected = node.params.selectedVideoId?.trim()
+    if (selected) return selected === id
+    const list = node.params.generatedVideos ?? []
+    return list[list.length - 1]?.id === id
+  }
+  if (item.kind === 'audio') {
+    const selected = node.params.selectedVoiceId?.trim()
+    if (selected) return selected === id
+    const list = node.params.generatedVoices ?? []
+    return list[list.length - 1]?.id === id
+  }
+  if (item.kind === 'text') {
+    const selected = node.params.selectedTextId?.trim()
+    if (selected) return selected === id
+    const list = node.params.generatedTexts ?? []
+    return list[list.length - 1]?.id === id
+  }
+  return false
+}
+
+function selectAsCurrentOutput(item: PreviewItem): void {
+  if (!canSelectGalleryOutput.value) return
+  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  const id = item.key.trim()
+  if (!id || id.startsWith('fallback-') || id.startsWith('bound') || id.startsWith('node-')) {
+    return
+  }
+  const host = graphRunHosts.get(props.hostId)
+  if (!host) return
+  const prev = host.runStates[node.id] ?? { status: 'done' as const }
+
+  if (item.kind === 'image') {
+    const list = node.params.generatedImages ?? []
+    const picked = list.find((entry) => entry.id === id)
+    if (!picked?.id) return
+    host.runStates[node.id] = {
+      ...prev,
+      status: prev.status === 'idle' ? 'done' : prev.status,
+      outputs: {
+        ...(prev.outputs ?? {}),
+        out: {
+          kind: 'image',
+          id: picked.id,
+          dataUrl: picked.dataUrl || '',
+          createdAt: picked.createdAt,
+          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+        },
+        'out-all': { kind: 'images', items: list }
+      }
+    }
+    graphEditorHosts.updateNode(props.hostId, node.id, {
+      selectedImageId: picked.id,
+      previewDataUrl: picked.dataUrl?.trim() ? picked.dataUrl : '',
+      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
+    })
+    graphEditorHosts.bumpRevision()
+    return
+  }
+
+  if (item.kind === 'video') {
+    const list = node.params.generatedVideos ?? []
+    const picked = list.find((entry) => entry.id === id)
+    if (!picked?.id) return
+    host.runStates[node.id] = {
+      ...prev,
+      status: prev.status === 'idle' ? 'done' : prev.status,
+      outputs: {
+        ...(prev.outputs ?? {}),
+        out: {
+          kind: 'video',
+          id: picked.id,
+          dataUrl: picked.dataUrl || '',
+          createdAt: picked.createdAt,
+          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+        },
+        'out-all': { kind: 'videos', items: list }
+      }
+    }
+    graphEditorHosts.updateNode(props.hostId, node.id, {
+      selectedVideoId: picked.id,
+      previewDataUrl: picked.dataUrl?.trim() ? picked.dataUrl : '',
+      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
+    })
+    graphEditorHosts.bumpRevision()
+    return
+  }
+
+  if (item.kind === 'audio') {
+    const list = node.params.generatedVoices ?? []
+    const picked = list.find((entry) => entry.id === id)
+    if (!picked?.id) return
+    host.runStates[node.id] = {
+      ...prev,
+      status: prev.status === 'idle' ? 'done' : prev.status,
+      outputs: {
+        ...(prev.outputs ?? {}),
+        out: {
+          kind: 'voice',
+          id: picked.id,
+          createdAt: picked.createdAt,
+          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+        },
+        'out-all': { kind: 'voices', items: list }
+      }
+    }
+    graphEditorHosts.updateNode(props.hostId, node.id, {
+      selectedVoiceId: picked.id,
+      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
+    })
+    graphEditorHosts.bumpRevision()
+    return
+  }
+
+  if (item.kind === 'text') {
+    const list = node.params.generatedTexts ?? []
+    const picked = list.find((entry) => entry.id === id)
+    if (!picked?.id) return
+    host.runStates[node.id] = {
+      ...prev,
+      status: prev.status === 'idle' ? 'done' : prev.status,
+      outputs: {
+        ...(prev.outputs ?? {}),
+        out: {
+          kind: 'text',
+          text: picked.text ?? '',
+          id: picked.id,
+          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+        },
+        'out-all': { kind: 'texts', items: list }
+      }
+    }
+    graphEditorHosts.updateNode(props.hostId, node.id, {
+      selectedTextId: picked.id,
+      text: picked.text?.trim() ? picked.text : node.params.text,
+      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
+    })
+    graphEditorHosts.bumpRevision()
+  }
+}
+
 const primaryRevealAssetId = computed(() => {
   for (const item of items.value) {
     const id = revealableAssetId(item.assetId)
@@ -1010,7 +1176,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           v-for="(item, index) in mediaItems"
           :key="item.key"
           class="media-card"
+          :class="{ selected: isSelectedPreview(item), selectable: canSelectGalleryOutput }"
           :data-kind="item.kind"
+          :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
+          @click="selectAsCurrentOutput(item)"
         >
           <button
             v-if="revealableAssetId(item.assetId)"
@@ -1030,7 +1199,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             decoding="async"
             class="preview-image interactive"
             :title="imagePreviewHint"
-            @dblclick="openImageFull(item)"
+            @dblclick.stop="openImageFull(item)"
           />
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
@@ -1082,7 +1251,15 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
     </div>
 
     <div v-else class="media-grid">
-      <div v-for="(item, index) in items" :key="item.key" class="media-card" :data-kind="item.kind">
+      <div
+        v-for="(item, index) in items"
+        :key="item.key"
+        class="media-card"
+        :class="{ selected: isSelectedPreview(item), selectable: canSelectGalleryOutput }"
+        :data-kind="item.kind"
+        :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
+        @click="selectAsCurrentOutput(item)"
+      >
         <button
           v-if="revealableAssetId(item.assetId)"
           type="button"
@@ -1101,7 +1278,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           decoding="async"
           class="preview-image interactive"
           :title="imagePreviewHint"
-          @dblclick="openImageFull(item)"
+          @dblclick.stop="openImageFull(item)"
         />
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
@@ -1117,7 +1294,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           v-else-if="item.kind === 'text'"
           class="text-body compact interactive"
           :title="textOpenHint"
-          @dblclick="openTextNotepad(item)"
+          @dblclick.stop="openTextNotepad(item)"
         >{{ displayText(item) }}</pre>
         <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
         <span class="media-index">{{ index + 1 }}</span>
@@ -1279,6 +1456,15 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.media-card.selectable {
+  cursor: pointer;
+}
+
+.media-card.selected {
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 75%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #5a8cff) 45%, transparent);
 }
 
 .media-card img {

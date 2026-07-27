@@ -1353,6 +1353,12 @@ export default {
       previewHint: 'Double-click to preview',
       empty: 'No upstream videos yet. Connect a video generate node and run it first.'
     },
+    selectVoice: {
+      appMark: 'Select voice',
+      hint: 'Click a card to select; double-click to open the preview. Defaults to the first voice.',
+      previewHint: 'Double-click to preview',
+      empty: 'No upstream voices yet. Connect a voice generate node and run it first.'
+    },
     selectText: {
       appMark: 'Select text',
       hint: 'Click a card to select one text; double-click to open the notepad. Defaults to the first item.',
@@ -1739,6 +1745,8 @@ export default {
     },
     port: {
       outTitle: 'Drag to connect to output',
+      outAllTitle: 'Drag full history output',
+      outAllShort: 'All',
       inTitle: 'Accept references',
       limitMax: 'Up to {n}',
       limitMaxAfterStyle: 'Port up to {n} ({style} reserved by style refs)',
@@ -1749,9 +1757,13 @@ export default {
       referenceImage: 'Reference',
       types: {
         image: 'Image',
+        images: 'Images',
         voice: 'Voice',
+        voices: 'Voices',
         video: 'Video',
+        videos: 'Videos',
         text: 'Text',
+        texts: 'Texts',
         model: 'Model'
       }
     },
@@ -1834,6 +1846,9 @@ export default {
       video: {
         select: 'Select video',
         lipSync: 'Lip sync'
+      },
+      voice: {
+        select: 'Select voice'
       },
       prompt: {
         optimize: 'Prompt optimize'
@@ -1993,6 +2008,9 @@ export default {
         boundShot: 'Bound shot',
         boundShotValue: '#{n} {title}',
         unbound: 'No shot bound'
+      },
+      select: {
+        hint: 'Double-click the node to open the picker. After running, preview the selected out port here.'
       },
       shotTable: {
         hint: 'Double-click to open the shot table. Run the node to import shot JSON and preview the out port here.'
@@ -2258,28 +2276,31 @@ export default {
         },
         generatedImages: 'Generated images',
         generatedImagesCount: '{n}',
-        generatedImagesHint: 'Each run appends new images. Double-click to preview; × to delete.',
+        generatedImagesHint:
+          'Each run appends images and selects the newest. Click to set as current out; double-click to preview; × to delete.',
         generatedImagesEmpty: 'No generations yet. Run this node to see results here.',
         generatedImagesDelete: 'Delete this image',
         generatedVideos: 'Generated videos',
         generatedVideosCount: '{n}',
         generatedVideosHint:
-          'Each run appends new videos. Preview shows full history; delete from Inspector with ×.',
+          'Each run appends videos and selects the newest. Click to set as current out; double-click to preview; × to delete.',
         generatedVideosEmpty: 'No generations yet. Run this node to see results here.',
         generatedVideosDelete: 'Delete this video',
         generatedTexts: 'Generated screenplays',
         generatedTextsCount: '{n}',
         generatedTextsHint:
-          'Each run appends text and saves it to the output path. Double-click to open; × to delete.',
+          'Each run appends text and selects the newest. Click to set as current out; double-click to open; × to delete.',
         generatedTextsEmpty: 'No generations yet. Run this node to see results here.',
         generatedTextsDelete: 'Delete this text',
         generatedTextsOpen: 'Double-click to open notepad',
         generatedVoices: 'Generated voices',
         generatedVoicesCount: '{n}',
         generatedVoicesHint:
-          'Each run appends new audio saved to the output path. Use × to delete.',
+          'Each run appends audio and selects the newest. Click to set as current out; × to delete.',
         generatedVoicesEmpty: 'No generations yet. Run this node to see results here.',
-        generatedVoicesDelete: 'Delete this voice'
+        generatedVoicesDelete: 'Delete this voice',
+        setAsOutput: 'Set as current output',
+        selectedAsOutput: 'Current output'
       }
     }
   },

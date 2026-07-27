@@ -131,6 +131,10 @@ export function isSelectVideoNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'video.select'
 }
 
+export function isSelectVoiceNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'voice.select'
+}
+
 export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'text.select'
 }
