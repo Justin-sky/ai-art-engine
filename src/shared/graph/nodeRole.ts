@@ -40,6 +40,36 @@ export function isProcessingAssetNode(
   return node.category === 'asset' && !isAssetRefNode(node)
 }
 
+/** 支持锁定上次输出的生成/重生成节点（有图库或可复用上次输出） */
+export function supportsGenerateLock(
+  node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
+): boolean {
+  if (isProcessingAssetNode(node)) return true
+  switch (node.typeId) {
+    case 'video.lipSync':
+    case 'image.multiAngle':
+    case 'image.lighting':
+    case 'image.portraitTexture':
+    case 'image.emotion':
+    case 'image.upscale':
+    case 'image.expand':
+    case 'image.redraw':
+    case 'image.erase':
+    case 'image.matte':
+    case 'image.crop':
+    case 'image.gridSplit':
+      return true
+    default:
+      return false
+  }
+}
+
+export function isGenerateLocked(
+  node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
+): boolean {
+  return supportsGenerateLock(node) && node.params.locked === true
+}
+
 export function isDirectorProcessingNode(
   node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
 ): boolean {

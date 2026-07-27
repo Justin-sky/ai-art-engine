@@ -7,6 +7,7 @@
       'asset-ref': isAssetRef,
       'asset-missing': isMissingLinkedAsset,
       'processing-node': isProcessingNode,
+      'lock-node': isLocked,
       connecting: connecting,
       'run-error': runStatus === 'error',
       'run-running': runStatus === 'running',
@@ -37,6 +38,7 @@
         <span class="collapse-tri" aria-hidden="true" />
       </button>
       <span v-if="isMissingLinkedAsset" class="type-pill missing">{{ t('graph.nodeRole.missing') }}</span>
+      <span v-else-if="isLocked" class="type-pill lock">{{ t('graph.nodeRole.lock') }}</span>
       <span v-else-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
       <span v-else class="type-pill">{{ typeLabel }}</span>
       <span v-if="isAssetRef && !isMissingLinkedAsset" class="kind-pill">{{ typeLabel }}</span>
@@ -58,6 +60,24 @@
         @dblclick.stop="startTitleEdit"
       >{{ displayTitle }}</span>
       <div class="head-actions">
+        <button
+          v-if="canLock"
+          type="button"
+          class="lock-btn"
+          :class="{ active: isLocked }"
+          :title="isLocked ? t('graph.node.disableLock') : t('graph.node.enableLock')"
+          :aria-pressed="isLocked"
+          :aria-label="isLocked ? t('graph.node.disableLock') : t('graph.node.enableLock')"
+          @pointerdown.stop
+          @click.stop="toggleLock"
+        >
+          <svg class="lock-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 1.75A2.75 2.75 0 0 0 5.25 4.5V6H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 6h-.75V4.5A2.75 2.75 0 0 0 8 1.75zm1.25 4.25h-2.5V4.5a1.25 1.25 0 1 1 2.5 0v1.5zM8 9.25a.9.9 0 0 1 .45 1.68V12h-.9v-1.07A.9.9 0 0 1 8 9.25z"
+            />
+          </svg>
+        </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
           class="run-pill"
@@ -385,7 +405,9 @@ import {
   imageGenerateParamsToNodePatch,
   isNodeTextCapable,
   isAssetRefNode,
+  isGenerateLocked,
   isProcessingAssetNode,
+  supportsGenerateLock,
   isVideoFramePortId,
   isDirectorProcessingNode,
   isScriptShotEditorNode,
@@ -623,6 +645,8 @@ const isMissingLinkedAsset = computed(
   () => isAssetRef.value && !!props.node.assetId?.trim() && !props.asset
 )
 const isProcessingNode = computed(() => isProcessingAssetNode(props.node))
+const canLock = computed(() => supportsGenerateLock(props.node))
+const isLocked = computed(() => isGenerateLocked(props.node))
 const isScreenplayOutputNode = computed(
   () =>
     props.node.category === 'output' &&
@@ -636,6 +660,13 @@ function togglePreviewCollapsed(): void {
   if (!props.hostId) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, {
     previewCollapsed: !previewCollapsed.value
+  })
+}
+
+function toggleLock(): void {
+  if (!props.hostId || !canLock.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    locked: !isLocked.value
   })
 }
 
@@ -1974,6 +2005,16 @@ function formatTime(sec: number): string {
   );
 }
 
+.graph-node.lock-node {
+  border-color: #8a7a4a;
+  opacity: 0.82;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, #c4a35a 18%, var(--graph-node-bg)) 0%,
+    var(--graph-node-bg) 55%
+  );
+}
+
 .graph-node.connecting {
   border-color: var(--warning);
 }
@@ -2117,6 +2158,11 @@ function formatTime(sec: number): string {
   color: color-mix(in srgb, var(--success) 72%, #ffffff);
 }
 
+.type-pill.lock {
+  background: color-mix(in srgb, #c4a35a 28%, transparent);
+  color: #d4b86a;
+}
+
 .kind-pill {
   font-size: 9px;
   font-weight: 700;
@@ -2157,6 +2203,39 @@ function formatTime(sec: number): string {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.lock-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, #c4a35a 45%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: #b8a060;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lock-btn:hover {
+  background: color-mix(in srgb, #c4a35a 18%, transparent);
+  color: #d4b86a;
+}
+
+.lock-btn.active {
+  background: color-mix(in srgb, #c4a35a 32%, transparent);
+  border-color: #c4a35a;
+  color: #e6cf8a;
+}
+
+.lock-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .run-pill {

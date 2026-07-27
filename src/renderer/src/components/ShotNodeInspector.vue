@@ -20,6 +20,20 @@
       <input v-model="localTitle" @change="persist" />
     </label>
 
+    <div class="lock-field">
+      <label class="lock-option">
+        <input
+          type="checkbox"
+          :checked="locked"
+          @change="onLockChange(($event.target as HTMLInputElement).checked)"
+        />
+        <span>
+          <span class="lock-option-title">{{ t('graph.inspector.generate.lock') }}</span>
+          <span class="field-hint">{{ t('graph.inspector.generate.lockHint') }}</span>
+        </span>
+      </label>
+    </div>
+
     <label v-if="isImage || isVideo || isScreenplay || isVoice">
       {{ t('graph.inspector.generate.mediaOutputDir') }}
       <div class="path-row">
@@ -32,22 +46,20 @@
     </label>
 
     <section v-if="isImage || isVideo" class="style-section">
-      <div class="style-toolbar">
-        <div class="style-toolbar-heading">
-          <span class="style-toolbar-title">{{ t('project.globals.stylePreset') }}</span>
-          <span class="style-toolbar-count">
-            {{ displayedStyleImages.length }}/{{ styleImageMax }}
-          </span>
-        </div>
-        <label class="style-global-check">
-          <input
-            type="checkbox"
-            :checked="useGlobalStyle"
-            @change="onUseGlobalStyleChange(($event.target as HTMLInputElement).checked)"
-          />
-          <span>{{ t('stylePicker.useGlobal') }}</span>
-        </label>
+      <div class="style-toolbar-heading">
+        <span class="style-toolbar-title">{{ t('project.globals.stylePreset') }}</span>
+        <span class="style-toolbar-count">
+          {{ displayedStyleImages.length }}/{{ styleImageMax }}
+        </span>
       </div>
+      <label class="style-global-check">
+        <input
+          type="checkbox"
+          :checked="useGlobalStyle"
+          @change="onUseGlobalStyleChange(($event.target as HTMLInputElement).checked)"
+        />
+        <span>{{ t('stylePicker.useGlobal') }}</span>
+      </label>
       <p class="style-toolbar-hint">
         {{
           useGlobalStyle ? t('stylePicker.readonlyHint') : t('project.globals.styleImagesHint')
@@ -470,6 +482,14 @@ const hasGenerateConfig = computed(
     isVoice.value ||
     isVideo.value
 )
+const locked = computed(() => node.value?.params.locked === true)
+
+function onLockChange(checked: boolean): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  graphEditorHosts.updateNode(hid, current.id, { locked: checked })
+}
 
 const hostAssetDirs = computed(() =>
   assetMediaHostDirs(resolveNodeOwnerAsset(), project.folders)
@@ -1489,14 +1509,6 @@ function onStyleImagesChange(images: ProjectStyleImage[]): void {
   background: var(--bg-elevated);
 }
 
-.style-toolbar {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 .style-toolbar-heading {
   display: flex;
   flex-direction: row;
@@ -1519,22 +1531,80 @@ function onStyleImagesChange(images: ProjectStyleImage[]): void {
 }
 
 label.style-global-check {
-  display: inline-flex;
+  display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
-  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   cursor: pointer;
   font-size: 12px;
   color: var(--text);
-  white-space: nowrap;
+  line-height: 1.35;
   user-select: none;
 }
 
 label.style-global-check input[type='checkbox'] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+}
+
+label.style-global-check > span {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+}
+
+.lock-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.lock-option {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
-  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.35;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lock-option > input[type='checkbox'] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+}
+
+.lock-option > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lock-option-title {
+  color: var(--text);
 }
 
 .style-toolbar-hint {

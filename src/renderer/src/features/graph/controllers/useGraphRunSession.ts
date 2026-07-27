@@ -200,7 +200,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_LIPSYNC_NO_IMAGE: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_VISUAL: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_AUDIO: 'graph.run.lipSyncNoAudio',
-      GRAPH_REDRAW_NO_MASK: 'graph.run.noMask'
+      GRAPH_REDRAW_NO_MASK: 'graph.run.noMask',
+      GRAPH_LOCK_NO_CACHE: 'graph.run.lockNoCache'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])

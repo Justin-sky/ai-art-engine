@@ -1714,12 +1714,15 @@ export default {
     },
     node: {
       collapsePreview: 'Collapse preview',
-      expandPreview: 'Expand preview'
+      expandPreview: 'Expand preview',
+      enableLock: 'Lock: skip generation and keep the last result',
+      disableLock: 'Unlock: the next run will regenerate'
     },
     nodeRole: {
       ref: 'Ref',
       host: 'Host',
       generate: 'Generate',
+      lock: 'Locked',
       missing: 'Unavailable'
     },
     assetRef: {
@@ -1798,7 +1801,9 @@ export default {
       noInput: 'Enter a generation instruction, or connect an upstream input',
       lipSyncNoVisual: 'Connect a character image or reference video first',
       lipSyncNoAudio: 'Connect a voice (speech) input first',
-      noMask: 'Paint a mask in the redraw editor first'
+      noMask: 'Paint a mask in the redraw editor first',
+      lockNoCache:
+        'Node is locked, but there is no reusable last result; generate once successfully, or unlock'
     },
     types: {
       asset: {
@@ -2100,6 +2105,9 @@ export default {
       },
       generate: {
         hint: 'Connect upstream references, then adjust generation parameters for this type here.',
+        lock: 'Lock output',
+        lockHint:
+          'When enabled, this node skips the model call and outputs the currently selected gallery item from the last run',
         mediaOutputDir: 'Output path',
         mediaOutputDirHint:
           "Relative to project root; defaults to '<assetName>/Images', '<assetName>/Videos', '<assetName>/Texts', or '<assetName>/Voices' under the node owner asset folder",

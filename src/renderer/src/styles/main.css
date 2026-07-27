@@ -287,6 +287,21 @@ select {
   width: 100%;
 }
 
+/* checkbox / radio 不能沿用文本框的 width/padding/border */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 14px;
+  height: 14px;
+  max-width: 14px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  flex: none;
+}
+
 /* range 不能沿用上面的 padding/border，否则滑块左右到不了头 */
 input[type='range'] {
   -webkit-appearance: none;

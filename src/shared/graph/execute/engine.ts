@@ -1,3 +1,4 @@
+import { isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
@@ -129,9 +130,10 @@ function waitStep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** 缓存 outputs 是否含有可用正文/媒体（空 text 视为无效，需重新快照） */
-function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
-  const outputs = prior?.outputs
+/** 输出表是否含有可用正文/媒体（空 text 视为无效） */
+function hasUsableOutputRecord(
+  outputs: Record<string, GraphValue> | undefined | null
+): boolean {
   if (!outputs || !Object.keys(outputs).length) return false
   const out = outputs.out
   if (!out) return true
@@ -142,6 +144,27 @@ function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
     )
   }
   return true
+}
+
+/** 缓存 outputs 是否含有可用正文/媒体（空 text 视为无效，需重新快照） */
+function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
+  return hasUsableOutputRecord(prior?.outputs)
+}
+
+/**
+ * 锁定：优先图库（尊重当前 selected*），否则复用 prior runStates。
+ * 不调用节点 execute，避免无缓存时误触发生成。
+ */
+function resolveLockedOutputs(
+  node: GraphNode,
+  prior: GraphNodeRunState | undefined
+): Record<string, GraphValue> | null {
+  const gallery = resolveGalleryOutputsFromNodeParams(node.params)
+  if (gallery && hasUsableOutputRecord(gallery)) {
+    return hasUsablePriorOutputs(prior) ? { ...prior!.outputs!, ...gallery } : gallery
+  }
+  if (hasUsablePriorOutputs(prior)) return prior!.outputs!
+  return null
 }
 
 /** 单节点执行时：用缓存 outputs，或对上游做无 generate* 快照（仍解析资产正文） */
@@ -197,6 +220,28 @@ async function executeOneNode(
     return { ok: false, error: 'GRAPH_CANCELLED' }
   }
 
+  const def = resolveNodeType(node)
+
+  // 生成节点锁定：不 cook，直接复用图库 / 上次输出
+  if (isGenerateLocked(node)) {
+    const locked = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId])
+    if (!locked) {
+      publish(
+        states,
+        nodeId,
+        { status: 'error', error: 'GRAPH_LOCK_NO_CACHE' },
+        options.onNodeUpdate
+      )
+      return {
+        ok: false,
+        error: `${def?.label ?? node.title ?? nodeId}: GRAPH_LOCK_NO_CACHE`
+      }
+    }
+    outputs.set(nodeId, locked)
+    publish(states, nodeId, { status: 'done', outputs: locked }, options.onNodeUpdate)
+    return { ok: true }
+  }
+
   // 先挂上声明的入端口（可为空），再填入边上传来的值，便于日志打印空输入
   const inputs: Record<string, GraphValue[]> = {}
   for (const port of getNodePorts(node).filter((p) => p.direction === 'in')) {
@@ -214,8 +259,6 @@ async function executeOneNode(
   }
 
   publish(states, nodeId, { status: 'running', inputs }, options.onNodeUpdate)
-
-  const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough
   const mentionIndexBase = resolveGenerateMentionIndexBase(
     node,

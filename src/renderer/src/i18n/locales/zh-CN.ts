@@ -1708,12 +1708,15 @@ export default {
     },
     node: {
       collapsePreview: '收起预览',
-      expandPreview: '展开预览'
+      expandPreview: '展开预览',
+      enableLock: '锁定：跳过生成，保留上次结果',
+      disableLock: '解锁：下次运行将重新生成'
     },
     nodeRole: {
       ref: '引用',
       host: '宿主',
       generate: '生成',
+      lock: '锁定',
       missing: '不可用'
     },
     assetRef: {
@@ -1792,7 +1795,8 @@ export default {
       noInput: '请填写生成指令，或连接上游输入',
       lipSyncNoVisual: '请先连接角色图片或参考视频',
       lipSyncNoAudio: '请先连接声音（语音）输入',
-      noMask: '请先在重绘编辑器中涂抹蒙版'
+      noMask: '请先在重绘编辑器中涂抹蒙版',
+      lockNoCache: '已锁定，但没有可复用的上次结果；请先成功生成一次，或解锁'
     },
     types: {
       asset: {
@@ -2089,6 +2093,8 @@ export default {
       },
       generate: {
         hint: '连接上游参考后，在此调整该类型的生成参数',
+        lock: '锁定输出',
+        lockHint: '开启后本节点不再调用模型，直接输出图库中当前选中的上次结果',
         mediaOutputDir: '输出路径',
         mediaOutputDirHint:
           '相对工程根；默认取该节点所在资产目录下的「资产名/Images」「资产名/Videos」「资产名/Texts」或「资产名/Voices」',
