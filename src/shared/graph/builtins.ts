@@ -6,10 +6,6 @@ import {
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import {
   GRAPH_OUTPUT_NODE_IDS,
-  GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
-  GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
-  GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
-  GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
   GRAPH_NARRATIVE_SPLIT_NODE_ID,
   GRAPH_NARRATIVE_TABLE_NODE_ID,
   GRAPH_NARRATIVE_GEN_NODE_ID,
@@ -63,6 +59,9 @@ import {
   executeNarrativeUnitGenNode,
   executeNarrativeUnitRefNode,
   executeWorldGenNode,
+  executeWorldEntitiesOutputNode,
+  executeNarrativeCatalogOutputNode,
+  executeVideoEntitiesOutputNode,
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
@@ -118,7 +117,7 @@ const ASSET_META: Array<{
     type: 'world',
     label: 'World Elements',
     icon: '🤺',
-    outType: GraphPortType.image,
+    outType: GraphPortType.worldEntities,
     addable: false,
     weight: 0.7,
     processingIn: GraphPortType.text
@@ -179,7 +178,8 @@ const ASSET_META: Array<{
     type: 'script',
     label: 'Shot',
     icon: '🎥',
-    outType: GraphPortType.text,
+    // 宿主出口为视频实体表（接成片时间线）
+    outType: GraphPortType.videoEntities,
     addable: true,
     weight: 0.85
   }
@@ -228,18 +228,58 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
-/** 分镜宿主：文本（叙事）+ 图片（世界元素）输入 */
+/** 分镜宿主：叙事单元目录 + 世界元素实体入；出口为视频实体 */
 function scriptHostPorts(): GraphPortDef[] {
   return [
-    { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
     {
-      id: 'in-image',
+      id: 'in-narrative',
       direction: 'in',
-      dataType: GraphPortType.image,
+      dataType: GraphPortType.narrative,
       multiple: true,
-      label: 'Image'
+      label: 'Narrative'
     },
-    { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+    {
+      id: 'in-worldEntities',
+      direction: 'in',
+      dataType: GraphPortType.worldEntities,
+      multiple: true,
+      label: 'World'
+    },
+    {
+      id: 'out',
+      direction: 'out',
+      dataType: GraphPortType.videoEntities,
+      multiple: false,
+      label: 'Out'
+    }
+  ]
+}
+
+/** 世界元素宿主：剧本文本入；出口为世界元素实体 */
+function worldHostPorts(): GraphPortDef[] {
+  return [
+    { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+    {
+      id: 'out',
+      direction: 'out',
+      dataType: GraphPortType.worldEntities,
+      multiple: true,
+      label: 'Out'
+    }
+  ]
+}
+
+/** 叙事单元宿主：剧本文本入；出口为叙事目录（世界实体绑定在分镜层） */
+function narrativeHostPorts(): GraphPortDef[] {
+  return [
+    { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+    {
+      id: 'out',
+      direction: 'out',
+      dataType: GraphPortType.narrative,
+      multiple: true,
+      label: 'Out'
+    }
   ]
 }
 
@@ -255,20 +295,24 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
             ? voiceProcessingPorts()
             : meta.type === 'script'
               ? scriptHostPorts()
-              : [
-                  ...(meta.processingIn
-                    ? [
-                        {
-                          id: 'in',
-                          direction: 'in' as const,
-                          dataType: meta.processingIn,
-                          multiple: true,
-                          label: 'In'
-                        }
-                      ]
-                    : []),
-                  ...galleryOutPorts(meta.outType)
-                ]
+              : meta.type === 'world'
+                ? worldHostPorts()
+                : meta.type === 'narrative'
+                  ? narrativeHostPorts()
+                  : [
+                      ...(meta.processingIn
+                        ? [
+                            {
+                              id: 'in',
+                              direction: 'in' as const,
+                              dataType: meta.processingIn,
+                              multiple: true,
+                              label: 'In'
+                            }
+                          ]
+                        : []),
+                      ...galleryOutPorts(meta.outType)
+                    ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -460,7 +504,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     '🎥',
     ASSET_TIMELINE_OUTPUT_TITLE,
     'video',
-    GraphPortType.video
+    GraphPortType.videoEntities,
+    executeVideoEntitiesOutputNode
   ),
   specializedOutputDef(
     'output.narrative',
@@ -468,7 +513,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     '📖',
     ASSET_NARRATIVE_OUTPUT_TITLE,
     'text',
-    GraphPortType.text
+    GraphPortType.narrative,
+    executeNarrativeCatalogOutputNode
   ),
   specializedOutputDef(
     'output.narrativeUnit',
@@ -483,8 +529,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     'World element output',
     '🌍',
     ASSET_WORLD_OUTPUT_TITLE,
-    'image',
-    GraphPortType.image
+    'text',
+    GraphPortType.worldEntities,
+    executeWorldEntitiesOutputNode
   ),
   {
     typeId: 'note.text',
@@ -1110,7 +1157,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      { id: 'out', direction: 'out', dataType: GraphPortType.shots, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({
       text: '',
@@ -1120,7 +1167,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: ''
     }),
     addable: true,
-    singletonId: GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.shotSplit',
@@ -1138,10 +1184,25 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.narrative,
+        multiple: false,
+        label: 'Selected'
+      },
+      {
+        id: 'out-all',
+        direction: 'out',
+        dataType: GraphPortType.texts,
+        multiple: true,
+        label: 'All'
+      }
     ],
     defaultParams: () => ({
       text: '',
+      generatedTexts: [],
+      selectedTextId: '',
       generateInstruction: '',
       generateSystemPrompt: '',
       generateModel: '',
@@ -1165,8 +1226,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.narrative, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({ text: '' }),
     addable: true,
@@ -1187,14 +1248,28 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.texts, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Selected'
+      },
+      {
+        id: 'out-all',
+        direction: 'out',
+        dataType: GraphPortType.texts,
+        multiple: true,
+        label: 'All'
+      }
     ],
     defaultParams: () => ({
       mediaOutputDir: '',
-      generatedTexts: []
+      generatedTexts: [],
+      selectedTextId: ''
     }),
-    addable: true,
+    addable: false,
     singletonId: GRAPH_NARRATIVE_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
@@ -1253,12 +1328,18 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'In' },
+      {
+        id: 'in-worldEntities',
+        direction: 'in',
+        dataType: GraphPortType.worldEntities,
+        multiple: true,
+        label: 'World'
+      },
+      { id: 'out', direction: 'out', dataType: GraphPortType.shots, multiple: true, label: 'Out' }
     ],
-    defaultParams: () => ({ text: '' }),
+    defaultParams: () => ({ text: '', worldElementOutputs: [] }),
     addable: true,
-    singletonId: GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.shotTable',
@@ -1275,12 +1356,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'In' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.shotEntities,
+        multiple: true,
+        label: 'Out'
+      }
     ],
     defaultParams: () => ({}),
     addable: true,
-    singletonId: GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
     card: 'media',
@@ -1296,19 +1382,24 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'Text' },
+      { id: 'in-text', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'Shots' },
       {
-        id: 'in-image',
+        id: 'in-entities',
         direction: 'in',
-        dataType: GraphPortType.image,
+        dataType: GraphPortType.shotEntities,
         multiple: true,
-        label: 'Image'
+        label: 'Entities'
       },
-      { id: 'out', direction: 'out', dataType: GraphPortType.video, multiple: true, label: 'Out' }
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.videoEntities,
+        multiple: false,
+        label: 'Out'
+      }
     ],
     defaultParams: () => ({}),
     addable: true,
-    singletonId: GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
     card: 'media',
@@ -1325,10 +1416,25 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.world,
+        multiple: false,
+        label: 'Selected'
+      },
+      {
+        id: 'out-all',
+        direction: 'out',
+        dataType: GraphPortType.texts,
+        multiple: true,
+        label: 'All'
+      }
     ],
     defaultParams: () => ({
       text: '',
+      generatedTexts: [],
+      selectedTextId: '',
       generateInstruction: '',
       generateSystemPrompt: '',
       generateModel: '',
@@ -1352,8 +1458,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.world, multiple: false, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.world, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({ text: '' }),
     addable: true,
@@ -1374,10 +1480,19 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.world, multiple: false, label: 'In' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.worldEntities,
+        multiple: true,
+        label: 'Out'
+      }
     ],
-    defaultParams: () => ({}),
+    defaultParams: () => ({
+      worldElementOutputs: [],
+      text: ''
+    }),
     addable: true,
     singletonId: GRAPH_WORLD_GEN_NODE_ID,
     deletable: true,
@@ -1385,7 +1500,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     inspectorId: 'studio.graph.worldGen',
     card: 'media',
     contributeToGeneration: false,
-    /** 同步目录后收集四类子图已有图片；不级联跑元素生成 */
+    /** 同步目录后收集四类子图已完成输出节点实体；不级联跑元素生成 */
     execute: executeWorldGenNode
   },
   {

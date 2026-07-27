@@ -3,7 +3,9 @@ import {
   extractWorldCatalogJsonText,
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
+  parseWorldElementGenResults,
   stringifyWorldElementCatalog,
+  stringifyWorldElementGenResults,
   type GraphDocument,
   type WorldElementCatalog
 } from '../src/shared/graph'
@@ -141,5 +143,19 @@ describe('worldElementParse', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     expect(extractWorldCatalogJsonText(doc)).toContain('characters')
+  })
+
+  it('round-trips world element gen results', () => {
+    const text = stringifyWorldElementGenResults([
+      { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' },
+      { type: '武器', name: '剑', imageUrl: 'Assets/w.png' }
+    ])
+    expect(parseWorldElementGenResults(text)).toEqual([
+      { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' },
+      { type: '武器', name: '剑', imageUrl: 'Assets/w.png' }
+    ])
+    expect(parseWorldElementGenResults(`[{"type":"character","name":"X","imageUrl":"p.png"}]`)).toEqual([
+      { type: '角色', name: 'X', imageUrl: 'p.png' }
+    ])
   })
 })

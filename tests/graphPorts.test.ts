@@ -20,6 +20,12 @@ describe('GraphPortType', () => {
       GraphPortType.videos,
       GraphPortType.text,
       GraphPortType.texts,
+      GraphPortType.world,
+      GraphPortType.worldEntities,
+      GraphPortType.shotEntities,
+      GraphPortType.videoEntities,
+      GraphPortType.narrative,
+      GraphPortType.shots,
       GraphPortType.model
     ])
     expect(isGraphPortDataType('image')).toBe(true)
@@ -28,9 +34,71 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('videos')).toBe(true)
     expect(isGraphPortDataType('text')).toBe(true)
     expect(isGraphPortDataType('texts')).toBe(true)
+    expect(isGraphPortDataType('world')).toBe(true)
+    expect(isGraphPortDataType('worldEntities')).toBe(true)
+    expect(isGraphPortDataType('shotEntities')).toBe(true)
+    expect(isGraphPortDataType('videoEntities')).toBe(true)
+    expect(isGraphPortDataType('narrative')).toBe(true)
+    expect(isGraphPortDataType('shots')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
     expect(isGraphPortDataType('voices')).toBe(true)
     expect(isGraphPortDataType('camera')).toBe(false)
+  })
+})
+
+describe('catalog port types', () => {
+  it('world / narrative / shots chain connect within domain only', () => {
+    const extract = createNodeFromType('world.extract', { x: 0, y: 0 })
+    const worldTable = createNodeFromType('world.table', { x: 100, y: 0 })
+    const worldGen = createNodeFromType('world.gen', { x: 200, y: 0 })
+    const split = createNodeFromType('narrative.split', { x: 0, y: 80 })
+    const narrativeTable = createNodeFromType('narrative.table', { x: 100, y: 80 })
+    const shotSplit = createNodeFromType('script.shotSplit', { x: 0, y: 160 })
+    const shotTable = createNodeFromType('script.shotTable', { x: 100, y: 160 })
+    const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
+
+    expect(canConnectNodes(extract, worldTable)).toBe(true)
+    expect(canConnectNodes(worldTable, worldGen)).toBe(true)
+    const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
+    expect(canConnectNodes(worldGen, worldOutput)).toBe(true)
+    expect(
+      canConnectNodes(worldGen, createNodeFromType('asset.screenplay', { x: 400, y: 0 }))
+    ).toBe(false)
+    expect(canConnectNodes(split, narrativeTable)).toBe(true)
+    expect(canConnectNodes(shotSplit, shotTable)).toBe(true)
+
+    // 历史口 out-all 为 texts，不可直接进 world.table / narrative.table
+    expect(
+      canConnectNodes(extract, worldTable, { sourcePort: 'out-all', targetPort: 'in' })
+    ).toBe(false)
+    expect(
+      canConnectNodes(split, narrativeTable, { sourcePort: 'out-all', targetPort: 'in' })
+    ).toBe(false)
+    const textSelect = createNodeFromType('text.select', { x: 300, y: 0 })
+    expect(
+      canConnectNodes(extract, textSelect, { sourcePort: 'out-all', targetPort: 'in' })
+    ).toBe(true)
+    expect(
+      canConnectNodes(split, textSelect, { sourcePort: 'out-all', targetPort: 'in' })
+    ).toBe(true)
+
+    expect(canConnectNodes(extract, narrativeTable)).toBe(false)
+    expect(canConnectNodes(split, worldTable)).toBe(false)
+    expect(canConnectNodes(shotSplit, worldTable)).toBe(false)
+    expect(canConnectNodes(extract, screenplay)).toBe(false)
+    expect(canConnectNodes(worldTable, screenplay)).toBe(false)
+    expect(canConnectNodes(screenplay, worldTable)).toBe(false)
+    expect(canConnectNodes(screenplay, extract)).toBe(true)
+
+    const imageGen = createNodeFromType('script.shotImageGen', { x: 200, y: 160 })
+    const videoGen = createNodeFromType('script.shotVideoGen', { x: 300, y: 160 })
+    expect(
+      canConnectNodes(imageGen, videoGen, { sourcePort: 'out', targetPort: 'in-entities' })
+    ).toBe(true)
+    expect(canConnectNodes(imageGen, shotTable)).toBe(false)
+    expect(canConnectNodes(imageGen, createNodeFromType('output.image', { x: 400, y: 160 }))).toBe(
+      false
+    )
   })
 })
 
@@ -135,18 +203,16 @@ describe('asset reference ports', () => {
     ])
     expect(getNodePorts(world).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:image:out',
-      'out-all:images:out'
+      'out:worldEntities:out'
     ])
     expect(getNodePorts(narrative).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:text:out',
-      'out-all:texts:out'
+      'out:narrative:out'
     ])
     expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
-      'in-text:text:in',
-      'in-image:image:in',
-      'out:text:out'
+      'in-narrative:narrative:in',
+      'in-worldEntities:worldEntities:in',
+      'out:videoEntities:out'
     ])
   })
 })

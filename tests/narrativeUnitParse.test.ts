@@ -26,7 +26,9 @@ describe('narrativeUnitParse', () => {
           summary: '登场',
           dramaticFunction: '建置',
           characters: ['林晓'],
-          location: '街道',
+          scenes: ['街道'],
+          props: ['雨伞'],
+          weapons: [],
           sourceExcerpt: '雨夜。',
           status: '未审核'
         }
@@ -35,6 +37,9 @@ describe('narrativeUnitParse', () => {
     const full = formatNarrativeUnitFullText(rows[0]!)
     expect(full).toContain('1. 开场')
     expect(full).toContain('雨夜。')
+    expect(full).toContain('角色：林晓')
+    expect(full).toContain('场景：街道')
+    expect(full).toContain('道具：雨伞')
     expect(narrativeUnitRowsToTextItems(rows)).toEqual([
       { id: 'nu-1', title: '开场', text: full }
     ])
@@ -49,7 +54,9 @@ describe('narrativeUnitParse', () => {
           summary: '主角登场',
           dramaticFunction: '建置',
           characters: ['林晓'],
-          location: '雨夜街道',
+          scenes: ['雨夜街道'],
+          props: [],
+          weapons: [],
           sourceExcerpt: '林晓撑伞走进巷口',
           emotionalBeat: '不安',
           durationHint: '中'
@@ -61,13 +68,14 @@ describe('narrativeUnitParse', () => {
       title: '开场',
       order: 1,
       dramaticFunction: '建置',
-      characters: ['林晓'],
+      characters: [{ name: '林晓' }],
+      scenes: [{ name: '雨夜街道' }],
       status: '未审核'
     })
     expect(rows?.[0]?.id).toBeTruthy()
   })
 
-  it('accepts comma-separated characters and chinese aliases', () => {
+  it('accepts comma-separated refs and chinese aliases', () => {
     const rows = parseNarrativeUnitJson(
       JSON.stringify([
         {
@@ -76,7 +84,9 @@ describe('narrativeUnitParse', () => {
           摘要: '两人冲突升级',
           戏剧功能: '冲突',
           角色: '林晓，阿哲',
-          地点: '天台',
+          场景: '天台',
+          道具: '信件',
+          武器: '短刀',
           原文: '……',
           情绪: '紧张',
           时长: '短',
@@ -87,10 +97,55 @@ describe('narrativeUnitParse', () => {
     expect(rows?.[0]).toMatchObject({
       title: '对峙',
       order: 2,
-      characters: ['林晓', '阿哲'],
-      location: '天台',
+      characters: [{ name: '林晓' }, { name: '阿哲' }],
+      scenes: [{ name: '天台' }],
+      props: [{ name: '信件' }],
+      weapons: [{ name: '短刀' }],
       status: '已审核'
     })
+  })
+
+  it('round-trips bound imageUrl and type on world refs', () => {
+    const text = stringifyNarrativeUnitRows([
+      {
+        id: 'nu-bind',
+        title: '绑定',
+        order: 1,
+        summary: '',
+        dramaticFunction: '建置',
+        characters: [{ name: '林晓', imageUrl: 'Images/lin.png', type: '角色' }],
+        scenes: [{ name: '天台', imageUrl: 'Images/roof.png', type: '场景' }],
+        props: [],
+        weapons: [],
+        sourceExcerpt: '',
+        emotionalBeat: '',
+        durationHint: '',
+        status: '未审核'
+      }
+    ])
+    const rows = parseNarrativeUnitJson(text)
+    expect(rows?.[0]?.characters).toEqual([
+      { name: '林晓', imageUrl: 'Images/lin.png', type: '角色' }
+    ])
+    expect(rows?.[0]?.scenes).toEqual([
+      { name: '天台', imageUrl: 'Images/roof.png', type: '场景' }
+    ])
+  })
+
+  it('does not map legacy location field', () => {
+    const rows = parseNarrativeUnitJson(
+      JSON.stringify([
+        {
+          title: '旧',
+          order: 1,
+          characters: ['A'],
+          location: '旧地点',
+          status: '未审核'
+        }
+      ])
+    )
+    expect(rows?.[0]?.scenes).toEqual([])
+    expect((rows?.[0] as { location?: unknown } | undefined)?.location).toBeUndefined()
   })
 
   it('recovers array from trailing prose', () => {
@@ -108,7 +163,9 @@ describe('narrativeUnitParse', () => {
           summary: 'keep',
           dramaticFunction: '建置',
           characters: [],
-          location: '',
+          scenes: [],
+          props: [],
+          weapons: [],
           sourceExcerpt: '',
           emotionalBeat: '',
           durationHint: '',
@@ -121,7 +178,9 @@ describe('narrativeUnitParse', () => {
           summary: 'old',
           dramaticFunction: '过渡',
           characters: [],
-          location: '',
+          scenes: [],
+          props: [],
+          weapons: [],
           sourceExcerpt: '',
           emotionalBeat: '',
           durationHint: '',
@@ -137,8 +196,10 @@ describe('narrativeUnitParse', () => {
           order: 1,
           summary: 'changed',
           dramaticFunction: '冲突',
-          characters: ['X'],
-          location: 'L',
+          characters: [{ name: 'X' }],
+          scenes: [{ name: 'L' }],
+          props: [],
+          weapons: [],
           sourceExcerpt: '',
           emotionalBeat: '',
           durationHint: '',
@@ -151,7 +212,9 @@ describe('narrativeUnitParse', () => {
           summary: 'new',
           dramaticFunction: '转折',
           characters: [],
-          location: '',
+          scenes: [],
+          props: [],
+          weapons: [],
           sourceExcerpt: '',
           emotionalBeat: '',
           durationHint: '',

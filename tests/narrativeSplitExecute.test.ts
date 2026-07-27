@@ -26,7 +26,9 @@ describe('executeNarrativeSplitNode', () => {
           summary: '登场',
           dramaticFunction: '建置',
           characters: ['林晓'],
-          location: '街道',
+          scenes: ['街道'],
+          props: [],
+          weapons: [],
           sourceExcerpt: '……',
           emotionalBeat: '平静',
           durationHint: '中',
@@ -49,18 +51,58 @@ describe('executeNarrativeSplitNode', () => {
     )
 
     expect(generateText).toHaveBeenCalled()
-    expect(result.out.kind).toBe('text')
-    if (result.out.kind === 'text') {
+    expect(result.out.kind).toBe('narrative')
+    if (result.out.kind === 'narrative') {
       const rows = parseNarrativeUnitJson(result.out.text)
       expect(rows?.[0]?.title).toBe('开场')
     }
+    expect(result['out-all']?.kind).toBe('texts')
     expect(node.params.text).toContain('开场')
+    expect(node.params.generatedTexts?.length).toBeGreaterThan(0)
+    expect(node.params.selectedTextId).toBeTruthy()
     expect(patchNode).toHaveBeenCalled()
   })
 
-  it('falls back to upstream text without generateText', async () => {
+  it('keeps catalog JSON inline in gallery even after saveRunText', async () => {
+    const catalog = JSON.stringify([
+      {
+        id: 'nu-1',
+        title: '开场',
+        order: 1,
+        status: '未审核'
+      }
+    ])
     const node = createNodeFromType('narrative.split', { x: 0, y: 0 })
-    node.params.generateInstruction = '拆解指令'
+    const result = await executeNarrativeSplitNode(
+      baseCtx({
+        node,
+        generateText: vi.fn(async () => ({ text: catalog, model: 'mock' })),
+        saveRunText: vi.fn(async () => 'Texts/narrative_split_1.txt'),
+        patchNode: vi.fn(),
+        inputs: {
+          in: [{ kind: 'text', text: '林晓走在雨夜街道上。' }]
+        }
+      })
+    )
+    expect(result.out.kind).toBe('narrative')
+    if (result.out.kind === 'narrative') {
+      expect(result.out.text).toContain('开场')
+    }
+    const galleryText = node.params.generatedTexts?.[0]?.text ?? ''
+    expect(galleryText).toContain('开场')
+    expect(node.params.generatedTexts?.[0]?.relativePath).toBe('Texts/narrative_split_1.txt')
+  })
+
+  it('without generateText outputs local catalog, not upstream screenplay', async () => {
+    const catalog = '[{"id":"nu-1","title":"本地","order":1,"status":"未审核"}]'
+    const node = createNodeFromType('narrative.split', { x: 0, y: 0 }, {
+      params: {
+        text: catalog,
+        generatedTexts: [{ id: 'local', text: catalog }],
+        selectedTextId: 'local',
+        generateInstruction: '拆解指令'
+      }
+    })
     const result = await executeNarrativeSplitNode(
       baseCtx({
         node,
@@ -69,7 +111,11 @@ describe('executeNarrativeSplitNode', () => {
         }
       })
     )
-    expect(result.out).toEqual({ kind: 'text', text: '上游剧本' })
+    expect(result.out).toEqual({
+      kind: 'narrative',
+      text: catalog
+    })
+    expect(result['out-all']?.kind).toBe('texts')
   })
 
   it('throws when generateText has no upstream screenplay text', async () => {

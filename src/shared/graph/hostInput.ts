@@ -4,6 +4,10 @@ import { resolveAssetTextFromGenParams } from './assetText'
 import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent, textFromGraphValue } from './textOutput'
+import {
+  stringifyWorldElementGenResults,
+  type WorldElementGenResult
+} from './worldElementParse'
 import type {
   GraphDocument,
   GraphEdge,
@@ -60,7 +64,9 @@ export function readHostInputSlot(
     dataType !== GraphPortType.image &&
     dataType !== GraphPortType.video &&
     dataType !== GraphPortType.voice &&
-    dataType !== GraphPortType.model
+    dataType !== GraphPortType.model &&
+    dataType !== GraphPortType.worldEntities &&
+    dataType !== GraphPortType.narrative
   ) {
     return null
   }
@@ -80,13 +86,12 @@ export function listHostInputPortDefs(assetType: AssetType): Array<{
   switch (assetType) {
     case 'screenplay':
     case 'world':
+      return [{ id: 'in', dataType: GraphPortType.text }]
     case 'narrative':
       return [{ id: 'in', dataType: GraphPortType.text }]
     case 'script':
-      return [
-        { id: 'in-text', dataType: GraphPortType.text },
-        { id: 'in-image', dataType: GraphPortType.image }
-      ]
+      // 叙事目录由 sync 物化为 unitRef 链，编辑图内不建 in-narrative 输入槽
+      return [{ id: 'in-worldEntities', dataType: GraphPortType.worldEntities }]
     case 'image':
     case 'voice':
       return [
@@ -204,6 +209,7 @@ function slotPreviewFromValue(
 ): Pick<HostInputSlotSpec, 'text' | 'title' | 'previewRelativePath' | 'previewDataUrl'> {
   if (!value) return {}
   if (value.kind === 'text') return { text: value.text }
+  if (value.kind === 'narrative') return { text: value.text }
   if (value.kind === 'texts') {
     const item = value.items[itemIndex]
     return { text: item?.text, title: item?.title, previewRelativePath: item?.relativePath }
@@ -284,6 +290,16 @@ function slotPreviewFromValue(
       }
     }
   }
+  if (
+    value.kind === 'world' ||
+    value.kind === 'worldEntities' ||
+    value.kind === 'shotEntities' ||
+    value.kind === 'videoEntities' ||
+    value.kind === 'narrative' ||
+    value.kind === 'shots'
+  ) {
+    return { text: value.text }
+  }
   if (value.kind === 'asset') {
     return { text: value.notes || value.title || undefined }
   }
@@ -293,6 +309,16 @@ function slotPreviewFromValue(
 function graphValueHasPayload(value: GraphValue | undefined): boolean {
   if (!value) return false
   if (value.kind === 'text') return !!value.text.trim()
+  if (
+    value.kind === 'world' ||
+    value.kind === 'worldEntities' ||
+    value.kind === 'shotEntities' ||
+    value.kind === 'videoEntities' ||
+    value.kind === 'narrative' ||
+    value.kind === 'shots'
+  ) {
+    return !!value.text.trim()
+  }
   if (value.kind === 'texts') return value.items.some((i) => !!i.text?.trim() || !!i.relativePath)
   if (value.kind === 'image') return !!(value.dataUrl?.trim() || value.relativePath?.trim())
   if (value.kind === 'images') {
@@ -350,6 +376,19 @@ function softResolveSourceOutput(
       const picked =
         (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
         items[items.length - 1]
+      // 世界元素提取 / 叙事单元拆解：选中项输出目录口（与 table 相连）
+      if (node.typeId === 'world.extract') {
+        const text = picked?.text ?? ''
+        return picked?.relativePath?.trim()
+          ? { kind: 'world', text, relativePath: picked.relativePath.trim() }
+          : { kind: 'world', text }
+      }
+      if (node.typeId === 'narrative.split') {
+        const text = picked?.text ?? ''
+        return picked?.relativePath?.trim()
+          ? { kind: 'narrative', text, relativePath: picked.relativePath.trim() }
+          : { kind: 'narrative', text }
+      }
       return {
         kind: 'text',
         text: picked?.text ?? '',
@@ -464,6 +503,42 @@ function softResolveSourceOutput(
         createdAt: picked?.createdAt,
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
       }
+    }
+  }
+
+  // 世界元素宿主 / 生成：优先实体目录 JSON
+  if (
+    (node.typeId === 'world.gen' || node.assetType === 'world' || node.typeId === 'asset.world') &&
+    (sourcePort === 'out' || !sourcePort)
+  ) {
+    const fromParams = Array.isArray(node.params.worldElementOutputs)
+      ? (node.params.worldElementOutputs as WorldElementGenResult[])
+      : []
+    if (fromParams.length) {
+      const text = stringifyWorldElementGenResults(
+        fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
+      )
+      if (text.trim()) return { kind: 'worldEntities', text }
+    }
+    const local = node.params.text?.trim() || node.params.resultText?.trim() || ''
+    if (local && (local.startsWith('[') || local.startsWith('{'))) {
+      return { kind: 'worldEntities', text: local }
+    }
+  }
+
+  // 叙事宿主：读 genParams.narrativeCatalog
+  if (
+    (node.assetType === 'narrative' || node.typeId === 'asset.narrative') &&
+    (sourcePort === 'out' || !sourcePort) &&
+    node.assetId
+  ) {
+    const gen = options?.resolveAssetGenParams?.(node.assetId)
+    const raw = gen?.narrativeCatalog
+    if (typeof raw === 'string' && raw.trim()) {
+      return { kind: 'narrative', text: raw }
+    }
+    if (Array.isArray(raw) && raw.length) {
+      return { kind: 'narrative', text: JSON.stringify(raw) }
     }
   }
 
@@ -639,7 +714,11 @@ export function ensureHostInputSlotNodes(
             ? `输入·视频 ${slot.index + 1}`
             : slot.dataType === GraphPortType.voice
               ? `输入·声音 ${slot.index + 1}`
-              : `输入 ${slot.index + 1}`)
+              : slot.dataType === GraphPortType.worldEntities
+                ? `输入·世界元素 ${slot.index + 1}`
+                : slot.dataType === GraphPortType.narrative
+                  ? `输入·叙事 ${slot.index + 1}`
+                  : `输入 ${slot.index + 1}`)
 
     const slotParams: GraphNodeParams = {
       hostInputSlot: {
@@ -690,46 +769,62 @@ export function ensureHostInputSlotNodes(
   const headTypeIds = options?.autoLinkHeadTypeIds ?? []
   if (!headTypeIds.length || !slots.length) return
 
-  const head = nodes.find((n) => headTypeIds.includes(n.typeId))
-  if (!head) return
+  const heads = nodes.filter((n) => headTypeIds.includes(n.typeId))
+  if (!heads.length) return
 
-  // 各输入接口接到生成/链首节点的同名入端口（in / in-text / in-image …）
-  const headInById = new Map(
-    getNodePorts(head)
-      .filter((port) => port.direction === 'in')
-      .map((port) => [port.id, port] as const)
-  )
   const sortedSlots = slots.slice().sort((a, b) => {
     if (a.portId === b.portId) return a.index - b.index
     return a.portId.localeCompare(b.portId)
   })
   for (const slot of sortedSlots) {
-    const targetPortId = headInById.has(slot.portId)
-      ? slot.portId
-      : headInById.has('in')
-        ? 'in'
-        : undefined
-    if (!targetPortId) continue
-    const targetDef = headInById.get(targetPortId)
+    // 优先同名口；否则仅在数据类型一致时回落到 in（避免 worldEntities 误进 text）
+    let targetHead: GraphNode | undefined
+    let targetPortId: string | undefined
+    for (const head of heads) {
+      const headInById = new Map(
+        getNodePorts(head)
+          .filter((port) => port.direction === 'in')
+          .map((port) => [port.id, port] as const)
+      )
+      if (headInById.has(slot.portId)) {
+        targetHead = head
+        targetPortId = slot.portId
+        break
+      }
+    }
+    if (!targetHead || !targetPortId) {
+      for (const head of heads) {
+        const inDef = getNodePorts(head).find((port) => port.direction === 'in' && port.id === 'in')
+        if (inDef?.dataType === slot.dataType) {
+          targetHead = head
+          targetPortId = 'in'
+          break
+        }
+      }
+    }
+    if (!targetHead || !targetPortId) continue
+    const targetDef = getNodePorts(targetHead).find(
+      (port) => port.direction === 'in' && port.id === targetPortId
+    )
     const sourceId = hostInputSlotNodeId(slot.portId, slot.index)
     const exists = edges.some(
       (e) =>
         e.source === sourceId &&
-        e.target === head.id &&
+        e.target === targetHead!.id &&
         (e.targetPort ?? 'in') === targetPortId
     )
     if (exists) continue
     // 单值入口已被占用时不抢连；多值入口可挂多条
     if (targetDef && targetDef.multiple === false) {
       const portOccupied = edges.some(
-        (e) => e.target === head.id && (e.targetPort ?? 'in') === targetPortId
+        (e) => e.target === targetHead!.id && (e.targetPort ?? 'in') === targetPortId
       )
       if (portOccupied) continue
     }
     edges.push({
-      id: `edge-${sourceId}-${head.id}-${targetPortId}`,
+      id: `edge-${sourceId}-${targetHead.id}-${targetPortId}`,
       source: sourceId,
-      target: head.id,
+      target: targetHead.id,
       sourcePort: 'out',
       targetPort: targetPortId
     })
@@ -789,6 +884,8 @@ export function buildHostInputSlotSeedOutputs(
           const item = value.items[i]
           out = { kind: 'text', text: item?.text ?? '' }
         } else if (value.kind === 'text') {
+          out = value
+        } else if (value.kind === 'narrative') {
           out = value
         } else if (value.kind === 'images') {
           const item = value.items[i]

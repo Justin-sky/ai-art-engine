@@ -692,7 +692,7 @@ export default {
     },
     strip: {
       title: '分镜',
-      switchHint: '拖到画布可创建分镜参数；点击切换当前镜',
+      switchHint: '点击分镜自动创建参数，并将分镜图连到生成节点；也可拖到画布',
       new: '+ 新建',
       collapse: '收起分镜条',
       expand: '展开分镜条'
@@ -705,6 +705,10 @@ export default {
       column: {
         name: '名称',
         duration: '时长',
+        characters: '角色',
+        scenes: '场景',
+        props: '道具',
+        weapons: '武器',
         visual: '画面描述',
         shotSize: '景别',
         lighting: '光影',
@@ -712,6 +716,12 @@ export default {
         soundFx: '音效',
         cameraMove: '运镜',
         status: '状态'
+      },
+      bind: {
+        title: '绑定世界元素',
+        action: '绑定',
+        add: '添加名称',
+        empty: '请先执行分镜表格节点以同步世界元素实体'
       },
       placeholder: {
         name: '分镜名称',
@@ -757,7 +767,7 @@ export default {
       timeline: '预览成片 · 左侧输入视频 / 右侧资产库可拖入下方轨道',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布 · 双击成片时间线在新窗口打开编排'
+        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布；成片时间线在剧集画布中双击打开'
     },
     dialog: {
       shotImageEditor: '分镜图',
@@ -1067,7 +1077,7 @@ export default {
   },
   narrative: {
     asset: {
-      hint: '双击拆解编辑指令 · 双击表格打开目录 · 双击生成在下方展开文本细化'
+      hint: '双击拆解编辑指令 · 双击表格打开目录 · 双击输出在下方展开文本细化'
     },
     dialog: {
       close: '关闭',
@@ -1108,8 +1118,16 @@ export default {
         summary: '摘要',
         dramaticFunction: '戏剧功能',
         characters: '角色',
-        location: '地点',
+        scenes: '场景',
+        props: '道具',
+        weapons: '武器',
         status: '状态'
+      },
+      bind: {
+        title: '绑定世界元素',
+        action: '绑定',
+        add: '添加名称',
+        empty: '请先执行叙事表格节点以同步世界元素实体'
       },
       placeholder: {
         summary: '一句话概括本单元'
@@ -1660,14 +1678,16 @@ export default {
         image: '图片输入',
         voice: '声音输入',
         video: '视频输入',
-        model: '模型输入'
+        model: '模型输入',
+        worldEntities: '世界元素实体'
       },
       placeholderByType: {
         text: '等待外层文本…',
         image: '等待外层图片…',
         voice: '等待外层声音…',
         video: '等待外层视频…',
-        model: '等待外层模型…'
+        model: '等待外层模型…',
+        worldEntities: '等待外层世界元素实体…'
       }
     },
     demo: {
@@ -1761,6 +1781,12 @@ export default {
         videos: '视频组',
         text: '文本',
         texts: '文本组',
+        world: '世界元素',
+        worldEntities: '世界元素实体',
+        shotEntities: '分镜实体',
+        videoEntities: '视频实体',
+        narrative: '叙事单元',
+        shots: '分镜',
         model: '模型'
       }
     },
@@ -1796,7 +1822,8 @@ export default {
       lipSyncNoVisual: '请先连接角色图片或参考视频',
       lipSyncNoAudio: '请先连接声音（语音）输入',
       noMask: '请先在重绘编辑器中涂抹蒙版',
-      lockNoCache: '已锁定，但没有可复用的上次结果；请先成功生成一次，或解锁'
+      lockNoCache: '已锁定，但没有可复用的上次结果；请先成功生成一次，或解锁',
+      dismissHint: '点击关闭提示'
     },
     types: {
       asset: {
@@ -1818,7 +1845,7 @@ export default {
         timeline: '成片时间线',
         narrative: '叙事单元输出',
         narrativeUnit: '叙事输出',
-        world: '世界元素输出'
+        world: '世界元素实体输出'
       },
       note: {
         text: '备注'
@@ -1889,14 +1916,14 @@ export default {
       canvas: '画布',
       world: '世界元素',
       narrative: '叙事单元',
-      shotOutput: '分镜输出视频',
+      shotOutput: '分镜输出',
       shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
       timelineOutput: '成片时间线',
       narrativeOutput: '叙事单元输出',
       narrativeUnitOutput: '叙事输出',
-      worldOutput: '世界元素输出',
+      worldOutput: '世界元素实体输出',
       assetOutput: {
         image: '图片输出',
         video: '视频输出',

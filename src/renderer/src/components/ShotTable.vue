@@ -61,6 +61,64 @@
                 @change="onDurationChange(shot, Number(($event.target as HTMLInputElement).value))"
               />
             </td>
+            <td
+              v-for="field in REF_FIELDS"
+              :key="field"
+              :style="colStyle(field)"
+              class="col-refs"
+              @click.stop
+            >
+              <div class="ref-list">
+                <div
+                  v-for="(refItem, index) in storyboardOf(shot)[field]"
+                  :key="`${shot.id}-${field}-${index}`"
+                  class="ref-chip"
+                >
+                  <img
+                    v-if="chipThumb(refItem)"
+                    class="ref-thumb"
+                    :src="chipThumb(refItem)"
+                    :alt="refItem.name"
+                  />
+                  <input
+                    class="ref-name"
+                    :value="refItem.name"
+                    @change="
+                      onRefNameChange(
+                        shot,
+                        field,
+                        index,
+                        ($event.target as HTMLInputElement).value
+                      )
+                    "
+                  />
+                  <button
+                    type="button"
+                    class="ref-bind"
+                    :title="t('shot.table.bind.action')"
+                    @click="openBind(shot.id, field, index)"
+                  >
+                    {{ t('shot.table.bind.action') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="ref-remove"
+                    :title="t('common.delete')"
+                    @click="removeRef(shot, field, index)"
+                  >
+                    ×
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="ref-add"
+                  :title="t('shot.table.bind.add')"
+                  @click="addRef(shot, field)"
+                >
+                  +
+                </button>
+              </div>
+            </td>
             <td :style="colStyle('visual')" @click.stop>
               <div class="field-stack">
                 <textarea
@@ -189,6 +247,14 @@
         </tbody>
       </table>
     </div>
+
+    <NarrativeWorldBindPicker
+      v-if="bindTarget"
+      :items="worldElementOutputs"
+      :focus-type="bindFocusType"
+      @select="onBindSelect"
+      @close="bindTarget = null"
+    />
   </div>
 </template>
 
@@ -206,18 +272,27 @@ import {
   shotScriptAssetId,
   type Shot,
   type ShotReviewStatus,
-  type ShotStoryboard
+  type ShotStoryboard,
+  type WorldEntityKindLabel,
+  type WorldEntityRef
 } from '@shared/domain'
+import type { WorldElementGenResult } from '@shared/graph'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import NarrativeWorldBindPicker from './NarrativeWorldBindPicker.vue'
 import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 
 type ColId =
   | 'idx'
   | 'title'
   | 'duration'
+  | 'characters'
+  | 'scenes'
+  | 'props'
+  | 'weapons'
   | 'visual'
   | 'shotSize'
   | 'lighting'
@@ -226,6 +301,16 @@ type ColId =
   | 'camera'
   | 'status'
   | 'actions'
+
+const REF_FIELDS = ['characters', 'scenes', 'props', 'weapons'] as const
+type RefField = (typeof REF_FIELDS)[number]
+
+const FIELD_TYPE: Record<RefField, WorldEntityKindLabel> = {
+  characters: '角色',
+  scenes: '场景',
+  props: '道具',
+  weapons: '武器'
+}
 
 const COL_WIDTH_KEY = 'studio.script.shotTableColWidths'
 const DEFAULT_ROW_HEIGHT = 48
@@ -239,6 +324,10 @@ const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   idx: 36,
   title: 100,
   duration: 64,
+  characters: 148,
+  scenes: 148,
+  props: 148,
+  weapons: 148,
   visual: 260,
   shotSize: 96,
   lighting: 200,
@@ -253,6 +342,10 @@ const MIN_COL_WIDTHS: Record<ColId, number> = {
   idx: 28,
   title: 56,
   duration: 48,
+  characters: 120,
+  scenes: 120,
+  props: 120,
+  weapons: 120,
   visual: 120,
   shotSize: 72,
   lighting: 110,
@@ -263,9 +356,15 @@ const MIN_COL_WIDTHS: Record<ColId, number> = {
   actions: 32
 }
 
-const props = defineProps<{
-  scriptAssetId: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    scriptAssetId: string
+    worldElementOutputs?: WorldElementGenResult[]
+  }>(),
+  {
+    worldElementOutputs: () => []
+  }
+)
 
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
@@ -275,6 +374,10 @@ const columns = computed<{ id: ColId; label: string }[]>(() => [
   { id: 'idx', label: '#' },
   { id: 'title', label: t('shot.table.column.name') },
   { id: 'duration', label: t('shot.table.column.duration') },
+  { id: 'characters', label: t('shot.table.column.characters') },
+  { id: 'scenes', label: t('shot.table.column.scenes') },
+  { id: 'props', label: t('shot.table.column.props') },
+  { id: 'weapons', label: t('shot.table.column.weapons') },
   { id: 'visual', label: t('shot.table.column.visual') },
   { id: 'shotSize', label: t('shot.table.column.shotSize') },
   { id: 'lighting', label: t('shot.table.column.lighting') },
@@ -287,6 +390,12 @@ const columns = computed<{ id: ColId; label: string }[]>(() => [
 const { drafts } = storeToRefs(draftStore)
 const rootRef = ref<HTMLElement | null>(null)
 const error = ref('')
+const bindTarget = ref<{ shotId: string; field: RefField; index: number } | null>(null)
+const chipThumbs = ref<Record<string, string>>({})
+let chipToken = 0
+const bindFocusType = computed(() =>
+  bindTarget.value ? FIELD_TYPE[bindTarget.value.field] : undefined
+)
 const resizingCol = ref<ColId | null>(null)
 const resizingRow = ref<string | null>(null)
 const colWidths = ref<Record<ColId, number>>(loadColWidths())
@@ -559,6 +668,112 @@ async function onDurationChange(shot: Shot, durationSec: number): Promise<void> 
   await persistShotUpdate(shot, {
     camera: { ...shot.camera, durationSec: sec }
   })
+}
+
+
+function refKey(refItem: WorldEntityRef, fallback = ''): string {
+  return `${refItem.name}|${refItem.imageUrl ?? ''}|${fallback}`
+}
+
+function chipThumb(refItem: WorldEntityRef): string {
+  const url = refItem.imageUrl?.trim() || ''
+  if (!url) return ''
+  if (url.startsWith('data:') || url.startsWith('blob:') || /^https?:/i.test(url)) return url
+  return chipThumbs.value[refKey(refItem)] || ''
+}
+
+async function refreshChipThumbs(): Promise<void> {
+  const token = ++chipToken
+  const next: Record<string, string> = {}
+  const pending: Array<Promise<void>> = []
+  for (const shot of visibleShots.value) {
+    const sb = normalizeStoryboard(shot)
+    for (const field of REF_FIELDS) {
+      sb[field].forEach((refItem, index) => {
+        const url = refItem.imageUrl?.trim() || ''
+        if (!url || url.startsWith('data:') || url.startsWith('blob:') || /^https?:/i.test(url)) {
+          return
+        }
+        pending.push(
+          (async () => {
+            try {
+              const resolved = await resolveAssetPreviewUrl(url)
+              if (token !== chipToken) return
+              next[refKey(refItem, `${shot.id}:${field}:${index}`)] = resolved
+              next[refKey(refItem)] = resolved
+            } catch {
+              /* ignore */
+            }
+          })()
+        )
+      })
+    }
+  }
+  await Promise.all(pending)
+  if (token === chipToken) chipThumbs.value = next
+}
+
+watch(
+  visibleShots,
+  () => {
+    void refreshChipThumbs()
+  },
+  { deep: true }
+)
+
+async function persistStoryboard(shot: Shot, storyboard: ShotStoryboard): Promise<void> {
+  const prompt = buildShotGenerationPrompt(storyboard, {
+    stylePreset: project.config?.stylePreset
+  })
+  await persistShotUpdate(shot, { storyboard, prompt })
+}
+
+async function onRefNameChange(
+  shot: Shot,
+  field: RefField,
+  index: number,
+  value: string
+): Promise<void> {
+  const storyboard = normalizeStoryboard(shot)
+  const trimmed = value.trim()
+  const current = storyboard[field][index]
+  if (!current || trimmed === current.name) return
+  if (!trimmed) storyboard[field].splice(index, 1)
+  else storyboard[field][index] = { ...current, name: trimmed }
+  await persistStoryboard(shot, storyboard)
+}
+
+async function addRef(shot: Shot, field: RefField): Promise<void> {
+  const storyboard = normalizeStoryboard(shot)
+  storyboard[field].push({ name: '', type: FIELD_TYPE[field] })
+  await persistStoryboard(shot, storyboard)
+}
+
+async function removeRef(shot: Shot, field: RefField, index: number): Promise<void> {
+  const storyboard = normalizeStoryboard(shot)
+  storyboard[field].splice(index, 1)
+  await persistStoryboard(shot, storyboard)
+}
+
+function openBind(shotId: string, field: RefField, index: number): void {
+  bindTarget.value = { shotId, field, index }
+}
+
+async function onBindSelect(selected: WorldEntityRef): Promise<void> {
+  const target = bindTarget.value
+  bindTarget.value = null
+  if (!target) return
+  const shot = visibleShots.value.find((item) => item.id === target.shotId)
+  if (!shot) return
+  const storyboard = normalizeStoryboard(shot)
+  const current = storyboard[target.field][target.index]
+  if (!current) return
+  storyboard[target.field][target.index] = {
+    name: selected.name,
+    imageUrl: selected.imageUrl,
+    type: selected.type ?? FIELD_TYPE[target.field]
+  }
+  await persistStoryboard(shot, storyboard)
 }
 
 async function onStoryboardChange(
@@ -989,5 +1204,65 @@ tbody tr.row-even > td textarea::-webkit-resizer {
 
 .del:disabled {
   opacity: 0.25;
+}
+
+.ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ref-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ref-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.ref-name {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+}
+
+.ref-bind {
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ref-add,
+.ref-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ref-add {
+  align-self: flex-start;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+
+.ref-remove {
+  font-size: 16px;
 }
 </style>

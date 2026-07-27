@@ -10,6 +10,7 @@ import {
 import {
   flattenImagesValues,
   resolveNodeTextContent,
+  stringifyVideoEntities,
   type GraphNode,
   type GraphValue
 } from '@shared/graph'
@@ -228,6 +229,22 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     into.push({ key: `text:${value.text.slice(0, 32)}`, kind: 'text', text: value.text })
     return
   }
+  if (
+    (value.kind === 'world' ||
+      value.kind === 'worldEntities' ||
+      value.kind === 'shotEntities' ||
+      value.kind === 'videoEntities' ||
+      value.kind === 'narrative' ||
+      value.kind === 'shots') &&
+    value.text.trim()
+  ) {
+    into.push({
+      key: `${value.kind}:${value.text.slice(0, 32)}`,
+      kind: 'text',
+      text: value.text
+    })
+    return
+  }
   if (value.kind === 'texts') {
     for (const [index, item] of value.items.entries()) {
       const text = item.text?.trim() ?? ''
@@ -370,6 +387,33 @@ function pushLocalMediaPreview(
   }
 }
 
+/** 视频实体口：Inspector 只展示 JSON，不展开视频预览 */
+function isVideoEntitiesJsonPreviewNode(node: GraphNode): boolean {
+  return (
+    node.typeId === 'script.shotVideoGen' ||
+    node.typeId === 'output.timeline' ||
+    node.params.inputDataType === 'videoEntities'
+  )
+}
+
+function pushVideoEntitiesJsonPreview(into: PreviewItem[], node: GraphNode): boolean {
+  const fromResult =
+    (typeof node.params.resultText === 'string' && node.params.resultText.trim()) ||
+    (typeof node.params.text === 'string' && node.params.text.trim()) ||
+    ''
+  if (fromResult) {
+    into.push({ key: 'video-entities-json', kind: 'text', text: fromResult })
+    return true
+  }
+  const entities = node.params.videoEntities
+  if (Array.isArray(entities) && entities.length) {
+    const text = stringifyVideoEntities(entities)
+    into.push({ key: 'video-entities-json', kind: 'text', text })
+    return true
+  }
+  return false
+}
+
 function collectFallback(into: PreviewItem[]): void {
   void graphEditorHosts.revision.value
   void project.assets.length
@@ -387,8 +431,15 @@ function collectFallback(into: PreviewItem[]): void {
   }
 
   const nodeMediaKind = mediaKindFromNode(node)
+  const jsonVideoEntities = isVideoEntitiesJsonPreviewNode(node)
+  if (jsonVideoEntities) {
+    pushVideoEntitiesJsonPreview(into, node)
+    return
+  }
+  // 分镜视频节点的 cameraShots 曾被误写入分镜图，不能当图片图库
   const hasImageGallery =
-    !!(node.params.generatedImages ?? []).length || !!(node.params.cameraShots ?? []).length
+    !!(node.params.generatedImages ?? []).length ||
+    (node.typeId !== 'script.shotVideoGen' && !!(node.params.cameraShots ?? []).length)
 
   if (hasImageGallery || nodeMediaKind === 'image' || nodeMediaKind == null) {
     const imageItems = flattenImagesValues(
@@ -406,7 +457,7 @@ function collectFallback(into: PreviewItem[]): void {
                 }))
             }
           ]
-        : node.params.cameraShots?.length
+        : !isShotVideoGen && node.params.cameraShots?.length
           ? [
               {
                 kind: 'images' as const,
@@ -469,9 +520,23 @@ function collectFallback(into: PreviewItem[]): void {
   }
 
   if (generatedTextItems.length) {
+    const catalogFallback =
+      node.typeId === 'world.extract' || node.typeId === 'narrative.split'
+        ? node.params.text?.trim() || ''
+        : ''
+    const selectedTextId = node.params.selectedTextId?.trim() || ''
     for (const [index, item] of generatedTextItems.entries()) {
-      const text = item.text?.trim() ?? ''
       const rel = item.relativePath?.trim()
+      let text = item.text?.trim() ?? ''
+      // 历史数据曾被 strip 掉正文：选中项用 params.text 回填，保证 Inspector 立刻有预览
+      if (
+        !text &&
+        catalogFallback &&
+        (item.id?.trim() === selectedTextId ||
+          (!selectedTextId && index === generatedTextItems.length - 1))
+      ) {
+        text = catalogFallback
+      }
       if (!text && !rel) continue
       into.push({
         key: item.id?.trim() || `fallback-text:${index}`,
@@ -480,6 +545,16 @@ function collectFallback(into: PreviewItem[]): void {
         ...(rel ? { relativePath: rel } : {})
       })
     }
+  } else if (
+    (node.typeId === 'world.extract' || node.typeId === 'narrative.split') &&
+    node.params.text?.trim()
+  ) {
+    // 尚无图库时仍展示当前目录 JSON
+    into.push({
+      key: 'catalog-text',
+      kind: 'text',
+      text: node.params.text.trim()
+    })
   }
 
   if (node.assetId && node.assetType) {
@@ -508,16 +583,9 @@ function collectFallback(into: PreviewItem[]): void {
     }
   }
 
-  // 输出节点：已有本地预览（含文本）时不再叠加上游，避免同一批翻倍
-  if (node.category === 'output') {
-    const hasLocalPreview =
-      into.length > 0 ||
-      !!node.params.cameraShots?.length ||
-      !!node.params.previewDataUrl?.trim() ||
-      !!node.params.previewRelativePath?.trim()
-    if (!hasLocalPreview) {
-      collectUpstreamPreview(props.hostId, node.id, into, new Set([node.id]))
-    }
+  // 输出节点：已有可展示项时不再叠加上游
+  if (node.category === 'output' && into.length === 0) {
+    collectUpstreamPreview(props.hostId, node.id, into, new Set([node.id]))
   }
 }
 
@@ -535,6 +603,9 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
       })
     }
     return
+  }
+  if (isVideoEntitiesJsonPreviewNode(source)) {
+    if (pushVideoEntitiesJsonPreview(into, source)) return
   }
   if ((source.params.generatedVideos ?? []).length) {
     for (const [index, item] of (source.params.generatedVideos ?? []).entries()) {
@@ -699,6 +770,16 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
     return value.items.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())
   }
   if (value.kind === 'text') return !!value.text.trim()
+  if (
+    value.kind === 'world' ||
+    value.kind === 'worldEntities' ||
+    value.kind === 'shotEntities' ||
+    value.kind === 'videoEntities' ||
+    value.kind === 'narrative' ||
+    value.kind === 'shots'
+  ) {
+    return !!value.text.trim()
+  }
   if (value.kind === 'output') {
     if (value.texts?.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())) {
       return true
@@ -714,32 +795,44 @@ const items = computed((): PreviewItem[] => {
   void graphEditorHosts.revision.value
   const list: PreviewItem[] = []
   const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
-  // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
-  // 文本输出除外：本次 out.texts 为准，避免 resultText + generatedTexts 叠出多余项
-  const hasGallery =
-    !!(node.params.generatedImages ?? []).length ||
-    !!(node.params.generatedVideos ?? []).length ||
-    !!(node.params.generatedVoices ?? []).length ||
-    !!(node.params.generatedTexts ?? []).length ||
-    !!(node.params.cameraShots ?? []).length
-  const preferLiveTextOut = runOutHasTextItems(runOut.value)
-  if (preferLiveTextOut) {
-    collectFromValue(runOut.value, list)
-    if (isShotAggregatePreviewNode(props.node.typeId)) {
-      appendNodeTextPreview(list)
+  // 视频实体口：只展示 JSON，不走视频图库
+  if (isVideoEntitiesJsonPreviewNode(node)) {
+    if (runOutHasTextItems(runOut.value)) {
+      collectFromValue(runOut.value, list)
     }
-  } else if (hasGallery) {
-    collectFallback(list)
-  } else {
-    collectFromValue(runOut.value, list)
     if (!list.length) {
+      pushVideoEntitiesJsonPreview(list, node)
+    }
+  } else {
+    // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
+    // 有 generatedTexts 时走图库（支持选中 out）；无图库时再用本次 out.texts / 单条文本
+    const hasTextGallery = !!(node.params.generatedTexts ?? []).length
+    const hasGallery =
+      !!(node.params.generatedImages ?? []).length ||
+      !!(node.params.generatedVideos ?? []).length ||
+      !!(node.params.generatedVoices ?? []).length ||
+      hasTextGallery ||
+      (node.typeId !== 'script.shotVideoGen' && !!(node.params.cameraShots ?? []).length)
+    // 目录口（world/narrative）与 Selected text 只是当前选中，不能盖掉图库多版本
+    const preferLiveTextOut = !hasTextGallery && runOutHasTextItems(runOut.value)
+    if (preferLiveTextOut) {
+      collectFromValue(runOut.value, list)
+      if (isShotAggregatePreviewNode(props.node.typeId)) {
+        appendNodeTextPreview(list)
+      }
+    } else if (hasGallery) {
       collectFallback(list)
-    } else if (isShotAggregatePreviewNode(props.node.typeId)) {
+    } else {
+      collectFromValue(runOut.value, list)
+      if (!list.length) {
+        collectFallback(list)
+      } else if (isShotAggregatePreviewNode(props.node.typeId)) {
+        appendNodeTextPreview(list)
+      }
+    }
+    if (hasGallery && !preferLiveTextOut && isShotAggregatePreviewNode(props.node.typeId)) {
       appendNodeTextPreview(list)
     }
-  }
-  if (hasGallery && !preferLiveTextOut && isShotAggregatePreviewNode(props.node.typeId)) {
-    appendNodeTextPreview(list)
   }
   // 去重：同 key，或同 relativePath / 同正文
   const seen = new Set<string>()
@@ -767,11 +860,14 @@ const layoutKind = computed(() => {
   const hasText = textItems.value.length > 0
   if (hasMedia && hasText) return 'mixed'
   if (list.every((i) => i.kind === 'text')) {
-    // 剧本生成 / 剧本输出：文本数组用网格预览；其它单段文本仍用竖向堆叠
+    // 剧本 / 目录拆解等带文本图库：用网格预览以便点选；其它单段文本仍用竖向堆叠
     const preferTextGrid =
       props.node.typeId === 'output.text' ||
       props.node.params.outputKind === 'text' ||
       (props.node.typeId === 'asset.screenplay' && props.node.params.assetRef !== true) ||
+      props.node.typeId === 'world.extract' ||
+      props.node.typeId === 'narrative.split' ||
+      props.node.typeId === 'narrative.gen' ||
       list.length > 1
     return preferTextGrid ? 'grid' : 'text'
   }
@@ -920,23 +1016,38 @@ function selectAsCurrentOutput(item: PreviewItem): void {
     const list = node.params.generatedTexts ?? []
     const picked = list.find((entry) => entry.id === id)
     if (!picked?.id) return
+    const body = picked.text ?? ''
+    const outValue =
+      node.typeId === 'world.extract'
+        ? {
+            kind: 'world' as const,
+            text: body,
+            ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+          }
+        : node.typeId === 'narrative.split'
+          ? {
+              kind: 'narrative' as const,
+              text: body,
+              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+            }
+          : {
+              kind: 'text' as const,
+              text: body,
+              id: picked.id,
+              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+            }
     host.runStates[node.id] = {
       ...prev,
       status: prev.status === 'idle' ? 'done' : prev.status,
       outputs: {
         ...(prev.outputs ?? {}),
-        out: {
-          kind: 'text',
-          text: picked.text ?? '',
-          id: picked.id,
-          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-        },
+        out: outValue,
         'out-all': { kind: 'texts', items: list }
       }
     }
     graphEditorHosts.updateNode(props.hostId, node.id, {
       selectedTextId: picked.id,
-      text: picked.text?.trim() ? picked.text : node.params.text,
+      text: body.trim() ? body : node.params.text,
       previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
     })
     graphEditorHosts.bumpRevision()

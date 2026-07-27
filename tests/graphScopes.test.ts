@@ -150,7 +150,7 @@ describe('graph scopes', () => {
     expect(doc.nodes.some((n) => n.typeId === 'output.image')).toBe(true)
   })
 
-  it('visual scope collapses multiple image outputs to one', () => {
+  it('visual scope keeps multiple image outputs', () => {
     const a = createOutputGraphNode('image', { x: 400, y: 100 }, {
       id: 'node-out-a',
       params: { outputKind: 'image', inputDataType: 'image' }
@@ -169,10 +169,9 @@ describe('graph scopes', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     })
     const outputs = doc.nodes.filter((n) => n.category === 'output')
-    expect(outputs).toHaveLength(1)
-    expect(outputs[0]?.id).toBe('image-output')
-    expect(outputs[0]?.typeId).toBe('output.image')
-    expect(doc.edges.every((e) => e.target === 'image-output' || e.source === 'img-1')).toBe(true)
+    expect(outputs).toHaveLength(2)
+    expect(outputs.map((n) => n.id).sort()).toEqual(['image-output', 'node-out-a'])
+    expect(doc.edges.some((e) => e.source === 'img-1' && e.target === 'node-out-a')).toBe(true)
     expect(doc.edges.some((e) => e.source === 'img-1' && e.target === 'image-output')).toBe(true)
   })
 

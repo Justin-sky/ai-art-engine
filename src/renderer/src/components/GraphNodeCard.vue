@@ -71,12 +71,7 @@
           @pointerdown.stop
           @click.stop="toggleLock"
         >
-          <svg class="lock-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M8 1.75A2.75 2.75 0 0 0 5.25 4.5V6H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 6h-.75V4.5A2.75 2.75 0 0 0 8 1.75zm1.25 4.25h-2.5V4.5a1.25 1.25 0 1 1 2.5 0v1.5zM8 9.25a.9.9 0 0 1 .45 1.68V12h-.9v-1.07A.9.9 0 0 1 8 9.25z"
-            />
-          </svg>
+          <LockIcon :locked="isLocked" :size="12" />
         </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
@@ -332,7 +327,7 @@
       <button
         type="button"
         class="port in"
-        :class="{ 'port-square': isBatchPort(port) }"
+        :class="[portDataTypeClass(port), { 'port-square': isBatchPort(port) }]"
         :data-port-id="port.id"
         :title="inPortTitle(port)"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
@@ -351,7 +346,7 @@
       <button
         type="button"
         class="port out"
-        :class="{ 'port-square': isBatchPort(port) }"
+        :class="[portDataTypeClass(port), { 'port-square': isBatchPort(port) }]"
         :data-port-id="port.id"
         :title="outPortTitle(port)"
         @pointerdown.stop.prevent="onOutPortDown(port.id, $event)"
@@ -367,6 +362,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
+import LockIcon from './icons/LockIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
@@ -552,6 +548,7 @@ const emit = defineEmits<{
   matteOpen: [nodeId: string]
   cropOpen: [nodeId: string]
   gridSplitOpen: [nodeId: string]
+  timelineOpen: [nodeId: string]
 }>()
 
 const audioEl = ref<HTMLAudioElement | null>(null)
@@ -597,6 +594,25 @@ function portTypeLabel(dataType: GraphPortDataType): string {
 /** Houdini 风格：复数端口（out-all / select 输入）用方形 */
 function isBatchPort(port: GraphPortDef): boolean {
   return isPluralGraphPortDataType(port.dataType) || port.id === GRAPH_OUT_ALL_PORT_ID
+}
+
+function portDataTypeClass(port: GraphPortDef): string {
+  switch (port.dataType) {
+    case GraphPortType.world:
+      return 'port-world'
+    case GraphPortType.worldEntities:
+      return 'port-world-entities'
+    case GraphPortType.shotEntities:
+      return 'port-shot-entities'
+    case GraphPortType.videoEntities:
+      return 'port-video-entities'
+    case GraphPortType.narrative:
+      return 'port-narrative'
+    case GraphPortType.shots:
+      return 'port-shots'
+    default:
+      return ''
+  }
 }
 
 function outPortTypeLabel(port: GraphPortDef): string {
@@ -1004,6 +1020,11 @@ watch(
       props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]?.dataUrl,
       props.node.params.generatedImages?.[props.node.params.generatedImages.length - 1]
         ?.relativePath,
+      props.node.typeId === 'world.gen'
+        ? props.node.params.worldElementOutputs?.[
+            (props.node.params.worldElementOutputs?.length ?? 1) - 1
+          ]?.imageUrl
+        : '',
       isSelectImageNode(props.node) ||
         isUpscaleEditorNode(props.node) ||
         isExpandEditorNode(props.node) ||
@@ -1015,19 +1036,35 @@ watch(
       previewInViewport.value,
       previewPriority.value
     ] as const,
-  async ([dataUrl, relativePath, genDataUrl, genRel, showPreview, visible, priority]) => {
+  async ([
+    dataUrl,
+    relativePath,
+    genDataUrl,
+    genRel,
+    worldImageUrl,
+    showPreview,
+    visible,
+    priority
+  ]) => {
     selectPreviewCancel?.()
     selectPreviewCancel = null
     if (!showPreview || !visible) {
       selectImagePreview.value = ''
       return
     }
-    const resolvedData = dataUrl?.trim() || genDataUrl?.trim()
+    const worldUrl = worldImageUrl?.trim() || ''
+    const resolvedData =
+      dataUrl?.trim() ||
+      genDataUrl?.trim() ||
+      (worldUrl.startsWith('data:') ? worldUrl : '')
     if (resolvedData) {
       selectImagePreview.value = resolvedData
       return
     }
-    const path = relativePath?.trim() || genRel?.trim()
+    const path =
+      relativePath?.trim() ||
+      genRel?.trim() ||
+      (worldUrl && !worldUrl.startsWith('data:') ? worldUrl : '')
     if (!path) {
       selectImagePreview.value = ''
       return
@@ -1049,6 +1086,17 @@ watch(
 /** 多结果图片：节点卡网格（≥2）；单张仍走原单预览路径 */
 type CardImageGridSource = { key: string; dataUrl?: string; relativePath?: string }
 const cardImageGridSources = computed((): CardImageGridSource[] => {
+  const worldOutputs = props.node.params.worldElementOutputs ?? []
+  if (props.node.typeId === 'world.gen' && worldOutputs.length > 1) {
+    return worldOutputs.map((item, index) => {
+      const url = item.imageUrl?.trim() || ''
+      return {
+        key: `${item.type}:${item.name}:${index}`,
+        dataUrl: url.startsWith('data:') ? url : undefined,
+        relativePath: url && !url.startsWith('data:') ? url : undefined
+      }
+    })
+  }
   const generated = props.node.params.generatedImages ?? []
   if (generated.length > 1) {
     return generated.map((item, index) => ({
@@ -1742,7 +1790,11 @@ function onPreviewDblClick(): void {
     return
   }
   if (isTimelineOutputNode(props.node)) {
-    scriptPreview?.openScriptTimeline()
+    if (scriptPreview) {
+      scriptPreview.openScriptTimeline()
+      return
+    }
+    emit('timelineOpen', props.node.id)
     return
   }
   if (isWorldTableNode(props.node)) {
@@ -1757,7 +1809,7 @@ function onPreviewDblClick(): void {
     narrativeTable?.openNarrativeTable()
     return
   }
-  if (isNarrativeGenNode(props.node)) {
+  if (isNarrativeGenNode(props.node) || isNarrativeOutputNode(props.node)) {
     narrativeEditor?.openNarrativeEditor()
     return
   }
@@ -2068,6 +2120,9 @@ function formatTime(sec: number): string {
 }
 
 .node-head {
+  position: relative;
+  /* 高于 port-wrap(30)，避免右侧输出口标签盖住执行/锁定按钮 */
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2130,7 +2185,12 @@ function formatTime(sec: number): string {
   border-radius: 4px;
   background: var(--accent-18);
   color: var(--accent);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 4.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .graph-node.output .type-pill {
@@ -2174,6 +2234,8 @@ function formatTime(sec: number): string {
 }
 
 .title {
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2203,6 +2265,8 @@ function formatTime(sec: number): string {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .lock-btn {
@@ -2230,12 +2294,6 @@ function formatTime(sec: number): string {
   background: color-mix(in srgb, #c4a35a 32%, transparent);
   border-color: #c4a35a;
   color: #e6cf8a;
-}
-
-.lock-icon {
-  width: 12px;
-  height: 12px;
-  display: block;
 }
 
 .run-pill {
@@ -2644,6 +2702,36 @@ function formatTime(sec: number): string {
 .port.in {
   border-color: #ffb347;
   background: var(--graph-port-in-bg);
+}
+
+.port.port-world {
+  border-color: #6bcb8a;
+  background: color-mix(in srgb, #6bcb8a 28%, var(--graph-port-bg));
+}
+
+.port.port-world-entities {
+  border-color: #4fd1a5;
+  background: color-mix(in srgb, #4fd1a5 28%, var(--graph-port-bg));
+}
+
+.port.port-shot-entities {
+  border-color: #e0a060;
+  background: color-mix(in srgb, #e0a060 28%, var(--graph-port-bg));
+}
+
+.port.port-video-entities {
+  border-color: #c77dff;
+  background: color-mix(in srgb, #c77dff 28%, var(--graph-port-bg));
+}
+
+.port.port-narrative {
+  border-color: #7eb6ff;
+  background: color-mix(in srgb, #7eb6ff 28%, var(--graph-port-bg));
+}
+
+.port.port-shots {
+  border-color: #d4a574;
+  background: color-mix(in srgb, #d4a574 28%, var(--graph-port-bg));
 }
 
 .port:hover {

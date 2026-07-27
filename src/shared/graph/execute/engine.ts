@@ -138,6 +138,16 @@ function hasUsableOutputRecord(
   const out = outputs.out
   if (!out) return true
   if (out.kind === 'text') return !!out.text.trim()
+  if (
+    out.kind === 'world' ||
+    out.kind === 'worldEntities' ||
+    out.kind === 'shotEntities' ||
+    out.kind === 'videoEntities' ||
+    out.kind === 'narrative' ||
+    out.kind === 'shots'
+  ) {
+    return !!out.text.trim()
+  }
   if (out.kind === 'texts') {
     return out.items.some(
       (item) => !!item.text.trim() || !!item.relativePath?.trim()
@@ -159,7 +169,9 @@ function resolveLockedOutputs(
   node: GraphNode,
   prior: GraphNodeRunState | undefined
 ): Record<string, GraphValue> | null {
-  const gallery = resolveGalleryOutputsFromNodeParams(node.params)
+  const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
+    typeId: node.typeId
+  })
   if (gallery && hasUsableOutputRecord(gallery)) {
     return hasUsablePriorOutputs(prior) ? { ...prior!.outputs!, ...gallery } : gallery
   }
@@ -182,7 +194,9 @@ async function softSnapshotOutputs(
   >
 ): Promise<Record<string, GraphValue>> {
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
-  const gallery = resolveGalleryOutputsFromNodeParams(node.params)
+  const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
+    typeId: node.typeId
+  })
   if (hasUsablePriorOutputs(prior)) {
     return gallery ? { ...prior!.outputs!, ...gallery } : prior!.outputs!
   }
@@ -316,7 +330,7 @@ async function executeOneNode(
     importShotSplitTableJson: options.importShotSplitTableJson,
     collectScriptShotImages: options.collectScriptShotImages,
     collectScriptShotVideos: options.collectScriptShotVideos,
-    collectWorldElementImages: options.collectWorldElementImages,
+    collectWorldElementOutputs: options.collectWorldElementOutputs,
     collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
     importWorldCatalogJson: options.importWorldCatalogJson,

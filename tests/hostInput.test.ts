@@ -190,8 +190,7 @@ describe('host input slots', () => {
   it('opens host with default one slot per port when no parent edges', () => {
     const slots = resolveHostInputSlotsForHostOpen('script', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
-      'in-text:0:text',
-      'in-image:0:image'
+      'in-worldEntities:0:worldEntities'
     ])
   })
 
@@ -233,9 +232,15 @@ describe('host input slots', () => {
       ],
       HOST_ID
     )
-    // in-text 有父边；in-image 无边仍保底 1 槽
-    expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual(['in-text:0', 'in-image:0'])
-    expect(slots[0]?.text).toBe('叙事')
+    // script 编辑图仅世界槽；叙事不再建输入槽
+    expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual(['in-worldEntities:0'])
+  })
+
+  it('opens narrative host with text slot only', () => {
+    const slots = resolveHostInputSlotsForHostOpen('narrative', [], HOST_ID)
+    expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
+      'in:0:text'
+    ])
   })
 
   it('normalizeScopedGraph always creates default slots for host open', () => {

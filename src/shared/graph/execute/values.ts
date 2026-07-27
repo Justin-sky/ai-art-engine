@@ -13,8 +13,10 @@ import {
 } from '../../domain'
 import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
 import { GraphPortType } from '../types'
+import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
 import { isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
+import { resolveInputLinkHeadTypeIds } from '../defaultGraph'
 import {
   buildHostInputSlotSeedOutputs,
   ensureHostInputSlotNodes,
@@ -22,6 +24,7 @@ import {
   readHostInputSlot,
   resolveHostInputSlotsFromInputs
 } from '../hostInput'
+import { assetTypeToGraphScope, resolveAssetProcessingTypeId } from '../scopes'
 import { findOutputNode } from '../query'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
@@ -85,6 +88,8 @@ import {
 import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
 import { resolveMotionImageItems } from '../motionShots'
 import { readShotStoryboardFromNodeParams } from '../shotParams'
+import { parseShotEntities, stringifyShotEntities } from '../shotEntitiesParse'
+import { parseVideoEntities, stringifyVideoEntities } from '../videoEntitiesParse'
 import {
   mergeShotSplitRowsPreservingReviewed,
   parseShotSplitJson,
@@ -93,7 +98,10 @@ import {
 import {
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
-  stringifyWorldElementCatalog
+  parseWorldElementGenResults,
+  stringifyWorldElementCatalog,
+  stringifyWorldElementGenResults,
+  type WorldElementGenResult
 } from '../worldElementParse'
 import {
   mergeNarrativeUnitRowsPreservingReviewed,
@@ -835,6 +843,127 @@ function dualTextGalleryOutputs(items: GraphTextItem[], selectedTextId: string):
   }
 }
 
+/** 世界元素提取图库：`out` 为选中目录（world），`out-all` 为历史 texts */
+function dualWorldCatalogOutputs(
+  items: GraphTextItem[],
+  selectedTextId: string
+): Record<string, GraphValue> {
+  const picked = pickTextItem(items, selectedTextId)
+  const text = picked?.text ?? ''
+  return {
+    out: catalogValue(GraphPortType.world, text, picked?.relativePath),
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
+  }
+}
+
+/** 叙事单元拆解图库：`out` 为选中目录（narrative），`out-all` 为历史 texts */
+function dualNarrativeCatalogOutputs(
+  items: GraphTextItem[],
+  selectedTextId: string
+): Record<string, GraphValue> {
+  const picked = pickTextItem(items, selectedTextId)
+  const text = picked?.text ?? ''
+  return {
+    out: catalogValue(GraphPortType.narrative, text, picked?.relativePath),
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
+  }
+}
+
+/**
+ * 目录拆解/提取图库合并：必须保留 JSON 正文。
+ * 不可走 mergeGeneratedTexts（落盘后会 strip 掉 text，导致预览/out/锁定全空）。
+ */
+function mergeCatalogGeneratedTexts(
+  ctx: NodeExecuteContext,
+  batch: GraphTextItem[],
+  idFallbackPrefix: string
+): GraphTextItem[] {
+  const previous = (ctx.node.params.generatedTexts ?? []).map((item) => ({
+    id: item.id,
+    text: item.text ?? '',
+    createdAt: item.createdAt,
+    ...(item.title?.trim() ? { title: item.title.trim() } : {}),
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }))
+  return [...previous, ...batch].map((item, index) => ({
+    id: item.id?.trim() || `${idFallbackPrefix}:${index}`,
+    text: item.text ?? '',
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    ...(item.title?.trim() ? { title: item.title.trim() } : {}),
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }))
+}
+
+async function persistCatalogTextGeneration(
+  ctx: NodeExecuteContext,
+  text: string,
+  options: {
+    idPrefix: string
+    fileKeyPrefix: string
+    dualOutputs: (
+      items: GraphTextItem[],
+      selectedTextId: string
+    ) => Record<string, GraphValue>
+  }
+): Promise<Record<string, GraphValue>> {
+  const createdAt = new Date().toISOString()
+  const stamp = formatGeneratedMediaStamp()
+  const id = `${options.idPrefix}:${stamp}`
+  // 目录 JSON 保留正文，便于预览 / 锁定 / table 下游直接使用（不依赖再读盘）
+  let item: GraphTextItem = { id, text, createdAt }
+  if (ctx.saveRunText && text.trim()) {
+    try {
+      const relativePath = await ctx.saveRunText({
+        content: text,
+        key: `${options.fileKeyPrefix}_${(ctx.node.params.generatedTexts?.length ?? 0) + 1}`,
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
+        node: ctx.node
+      })
+      if (relativePath?.trim()) item = { ...item, relativePath: relativePath.trim() }
+    } catch (err) {
+      console.warn(`[graph] materialize ${options.idPrefix} text failed`, err)
+    }
+  }
+  const generatedTexts = mergeCatalogGeneratedTexts(ctx, [item], `${stamp}:keep`)
+  const selectedTextId = newestTextSelectedId(generatedTexts)
+  ctx.node.params = {
+    ...ctx.node.params,
+    text,
+    generatedTexts,
+    selectedTextId
+  }
+  ctx.patchNode?.({
+    params: {
+      text,
+      generatedTexts,
+      selectedTextId
+    }
+  })
+  return options.dualOutputs(generatedTexts, selectedTextId)
+}
+
+async function persistWorldExtractGeneration(
+  ctx: NodeExecuteContext,
+  text: string
+): Promise<Record<string, GraphValue>> {
+  return persistCatalogTextGeneration(ctx, text, {
+    idPrefix: 'world-extract',
+    fileKeyPrefix: 'world_extract',
+    dualOutputs: dualWorldCatalogOutputs
+  })
+}
+
+async function persistNarrativeSplitGeneration(
+  ctx: NodeExecuteContext,
+  text: string
+): Promise<Record<string, GraphValue>> {
+  return persistCatalogTextGeneration(ctx, text, {
+    idPrefix: 'narrative-split',
+    fileKeyPrefix: 'narrative_split',
+    dualOutputs: dualNarrativeCatalogOutputs
+  })
+}
+
 function newestImageSelectedId(items: GraphImageItem[]): string {
   if (!items.length) return ''
   const index = items.length - 1
@@ -862,11 +991,39 @@ function newestTextSelectedId(items: GraphTextItem[]): string {
 /**
  * 按节点参数中的累计图库 + selected*Id 重算 `out` / `out-all`。
  * 用于 soft-resolve / soft-snapshot：避免缓存 outputs.out 与当前选中不一致。
+ * `typeId`：世界元素提取等需把 `out` 组装成目录 kind，而非普通 text。
  */
 export function resolveGalleryOutputsFromNodeParams(
-  params: GraphNodeParams | undefined | null
+  params: GraphNodeParams | undefined | null,
+  options?: { typeId?: string | null }
 ): Record<string, GraphValue> | null {
   if (!params) return null
+
+  if (options?.typeId === 'world.gen') {
+    const fromParams = Array.isArray(params.worldElementOutputs)
+      ? (params.worldElementOutputs as WorldElementGenResult[])
+      : []
+    const results =
+      fromParams.length > 0
+        ? fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
+        : parseWorldElementGenResults(params.text)
+    if (!results.length) return null
+    return {
+      out: catalogValue(GraphPortType.worldEntities, stringifyWorldElementGenResults(results))
+    }
+  }
+
+  if (options?.typeId === 'script.shotImageGen') {
+    const fromParams = Array.isArray(params.shotEntities) ? params.shotEntities : []
+    const results =
+      fromParams.length > 0
+        ? fromParams.filter((item) => item?.id && item?.name && item?.imageUrls?.length)
+        : parseShotEntities(params.text)
+    if (!results.length) return null
+    return {
+      out: catalogValue(GraphPortType.shotEntities, stringifyShotEntities(results))
+    }
+  }
 
   const generatedImages = params.generatedImages
   if (Array.isArray(generatedImages) && generatedImages.length) {
@@ -917,6 +1074,12 @@ export function resolveGalleryOutputsFromNodeParams(
     }))
     const selectedId =
       params.selectedTextId?.trim() || newestTextSelectedId(items)
+    if (options?.typeId === 'world.extract') {
+      return dualWorldCatalogOutputs(items, selectedId)
+    }
+    if (options?.typeId === 'narrative.split') {
+      return dualNarrativeCatalogOutputs(items, selectedId)
+    }
     return dualTextGalleryOutputs(items, selectedId)
   }
 
@@ -989,14 +1152,24 @@ export function selectIncomingValuesForInstruction(
   return selectByMentionIndexes(instructionRaw, resolveIncomingByIndex(ctx))
 }
 
-/** 无 `@` 时拼接全部上游正文；有 `@` 时不自动拼接（只靠展开后的指令） */
+/**
+ * 无 `@` 时拼接全部上游正文；端口值为空时回退 mentionSources（含输入接口槽）。
+ * 有 `@` 时不自动拼接（只靠展开后的指令）。
+ */
 function autoIncomingTextForInstruction(
   instructionRaw: string,
-  values: GraphValue[]
+  values: GraphValue[],
+  mentionSources?: InstructionMentionSource[]
 ): string {
   if (instructionHasMentions(instructionRaw)) return ''
-  return flattenTextValues(values)
+  const fromPorts = flattenTextValues(values)
     .map((item) => item.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  if (fromPorts) return fromPorts
+  if (!mentionSources?.length) return ''
+  return mentionSources
+    .map((source) => source.text.trim())
     .filter(Boolean)
     .join('\n\n')
 }
@@ -1006,12 +1179,76 @@ function mapChildOutputToHostOut(
   assetType: string
 ): Record<string, GraphValue> | null {
   if (!output) return null
-  if (
-    assetType === 'screenplay' ||
-    assetType === 'script' ||
-    assetType === 'narrative' ||
-    assetType === 'world'
-  ) {
+  if (assetType === 'script') {
+    const entitiesText =
+      typeof output.params?.videoEntitiesText === 'string'
+        ? output.params.videoEntitiesText.trim()
+        : Array.isArray(output.params?.videoEntities)
+          ? stringifyVideoEntities(
+              output.params.videoEntities as Array<{
+                id: string
+                name: string
+                videoUrls: string[]
+              }>
+            )
+          : ''
+    if (entitiesText) {
+      return { out: catalogValue(GraphPortType.videoEntities, entitiesText) }
+    }
+    if (output.videos?.length) {
+      // 旧子图仍出 videos 时，压成单镜实体以便接时间线
+      const entities = [
+        {
+          id: 'legacy',
+          name: 'Shot',
+          videoUrls: output.videos
+            .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
+            .filter(Boolean)
+        }
+      ].filter((item) => item.videoUrls.length)
+      if (entities.length) {
+        return {
+          out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(entities))
+        }
+      }
+    }
+    return null
+  }
+  if (assetType === 'world') {
+    const fromParams = Array.isArray(output.params?.worldElementOutputs)
+      ? (output.params.worldElementOutputs as WorldElementGenResult[])
+      : []
+    const entitiesText =
+      (typeof output.params?.resultText === 'string' && output.params.resultText.trim()) ||
+      (fromParams.length
+        ? stringifyWorldElementGenResults(
+            fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
+          )
+        : '') ||
+      (typeof output.params?.text === 'string' && output.params.text.trim()) ||
+      ''
+    if (entitiesText) {
+      return { out: catalogValue(GraphPortType.worldEntities, entitiesText) }
+    }
+    return null
+  }
+  if (assetType === 'narrative') {
+    const catalog =
+      (typeof output.params?.resultText === 'string' && output.params.resultText.trim()) ||
+      (typeof output.params?.text === 'string' && output.params.text.trim()) ||
+      (output.notes?.length
+        ? output.notes
+            .map((n) => n.text.trim())
+            .filter(Boolean)
+            .join('\n\n')
+        : '') ||
+      ''
+    if (catalog) {
+      return { out: catalogValue(GraphPortType.narrative, catalog) }
+    }
+    return null
+  }
+  if (assetType === 'screenplay') {
     if (output.texts?.length) {
       return { out: { kind: 'texts', items: output.texts } }
     }
@@ -1062,8 +1299,14 @@ function executeAssetHostInnerGraph(
   return (async () => {
     const { runGraph } = await import('./engine')
     const doc = cloneGraphDocument(raw as GraphDocument)
+    const scope = assetTypeToGraphScope(node.assetType)
+    // 与 normalize 一致：把输入接口挂到模板链首（如 world.extract），否则无 @ 时提取不到宿主入边正文
     ensureHostInputSlotNodes(doc.nodes, doc.edges, slots, {
-      autoLinkHeadTypeIds: []
+      autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
+        scope,
+        node.assetType,
+        resolveAssetProcessingTypeId(scope, node.assetType)
+      )
     })
 
     const seeds = buildHostInputSlotSeedOutputs(node, inputs)
@@ -1120,11 +1363,49 @@ function executeAssetHostInnerGraph(
       const mapped2 = mapChildOutputToHostOut(fallbackOut, node.assetType ?? '')
       if (mapped2) return mapped2
     }
+    if (fallbackOut?.kind === 'videoEntities') {
+      return { out: fallbackOut }
+    }
+    if (fallbackOut && (fallbackOut.kind === 'videos' || fallbackOut.kind === 'video')) {
+      const items =
+        fallbackOut.kind === 'videos'
+          ? fallbackOut.items
+          : [
+              {
+                id: fallbackOut.id ?? `video:${node.id}`,
+                dataUrl: fallbackOut.dataUrl,
+                relativePath: fallbackOut.relativePath
+              }
+            ]
+      const entities = [
+        {
+          id: node.assetId ?? node.id,
+          name: node.title?.trim() || 'Shot',
+          videoUrls: items
+            .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
+            .filter(Boolean)
+        }
+      ].filter((item) => item.videoUrls.length)
+      if (entities.length) {
+        return {
+          out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(entities))
+        }
+      }
+    }
     if (fallbackOut && (fallbackOut.kind === 'text' || fallbackOut.kind === 'texts')) {
       return { out: fallbackOut }
     }
+    if (fallbackOut?.kind === 'worldEntities') {
+      return { out: fallbackOut }
+    }
+    if (fallbackOut?.kind === 'narrative') {
+      return { out: fallbackOut }
+    }
 
-    if (node.assetType === 'screenplay' || node.assetType === 'script') {
+    if (node.assetType === 'script') {
+      return { out: catalogValue(GraphPortType.videoEntities, '[]') }
+    }
+    if (node.assetType === 'screenplay') {
       return executeTextAssetRefNode(ctx)
     }
     return {
@@ -1158,8 +1439,11 @@ export function executeAssetNode(
     if (node.params.assetHost === true) {
       const nested = executeAssetHostInnerGraph(ctx)
       if (nested) return nested
+      if (node.assetType === 'script') {
+        return { out: catalogValue(GraphPortType.videoEntities, '[]') }
+      }
     }
-    // 剧本/分镜引用端口为 text，须输出 text（与 motion→images 同理）
+    // 剧本引用端口为 text；分镜非宿主引用仍可读正文
     if (node.assetType === 'screenplay' || node.assetType === 'script') {
       return executeTextAssetRefNode(ctx)
     }
@@ -1199,10 +1483,15 @@ export function executeAssetNode(
 
   // 其它加工：按 @ 筛选上游；无连接时允许仅指令文本（输出 text 供下游 notes）
   const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const localNotes =
-    expandInstructionMentions(instructionRaw, resolveMentionSources(ctx)) || undefined
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+    expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const items = flattenAssetValues(selected)
   if (!items.length) {
     const text = [localNotes, incomingText].filter(Boolean).join('\n').trim()
@@ -1231,10 +1520,15 @@ export async function executeVoiceGenerateNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const localNotes =
-    expandInstructionMentions(instructionRaw, resolveMentionSources(ctx)) || undefined
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+    expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const sourceImages = await collectIncomingImageItems(ctx)
 
   if (!ctx.generateSpeech) {
@@ -1265,7 +1559,6 @@ export async function executeVoiceGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const mentionSources = resolveMentionSources(ctx)
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   let userPrompt = buildVoicePrompt(instruction, ctx.locale)
   if (incomingText) {
@@ -1330,10 +1623,15 @@ export async function executeVideoGenerateNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const localNotes =
-    expandInstructionMentions(instructionRaw, resolveMentionSources(ctx)) || undefined
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+    expandInstructionMentions(instructionRaw, mentionSources) || undefined
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
 
   if (!ctx.generateVideo) {
     return executeVideoGeneratePassthrough(ctx, {
@@ -1348,7 +1646,6 @@ export async function executeVideoGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const mentionSources = resolveMentionSources(ctx)
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   let userPrompt = buildVideoPrompt(instruction, ctx.locale)
   if (incomingText) {
@@ -1500,12 +1797,15 @@ export async function executeLipSyncNode(
 
   const visualKind = videoUrl ? 'video' : 'image'
   const instructionRaw = node.params.generateInstruction?.trim() || ''
-  const textValues = ctx.inputs['in-text'] ?? []
-  const incomingText = textValues
-    .map((v) => (v.kind === 'text' ? v.text?.trim() : ''))
-    .filter(Boolean)
-    .join('\n')
-  let userPrompt = buildLipSyncPrompt(instructionRaw, ctx.locale, visualKind)
+  const mentionSources = resolveMentionSources(ctx)
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
+  let userPrompt = buildLipSyncPrompt(instruction, ctx.locale, visualKind)
   if (incomingText) {
     userPrompt = userPrompt.trim()
       ? `${userPrompt.trim()}\n\n${incomingText}`
@@ -1572,7 +1872,7 @@ export async function executeLipSyncNode(
   }
 
   const notes =
-    [instructionRaw, incomingText].filter(Boolean).join('\n') || undefined
+    [instruction, incomingText].filter(Boolean).join('\n') || undefined
 
   return persistVideoGeneration(
     ctx,
@@ -1927,9 +2227,14 @@ export async function executeImageGenerateNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  const mentionSources = resolveMentionSources(ctx)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const sourceItems = await collectImageGenerateSourceItems(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
 
   if (!ctx.generateImage) {
     if (!sourceItems.length) {
@@ -1954,7 +2259,6 @@ export async function executeImageGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const mentionSources = resolveMentionSources(ctx)
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   let userPrompt = buildImagePrompt(instruction, ctx.locale)
   if (incomingText) {
@@ -2177,20 +2481,6 @@ function previewSectionLabels(locale?: string): { system: string; user: string }
   return { system: '系统提示词', user: '用户提示词' }
 }
 
-function previewKindAutoAppendsIncomingText(kind: InstructionFinalPreviewKind): boolean {
-  return (
-    kind === 'screenplay' ||
-    kind === 'optimize' ||
-    kind === 'shotSplit' ||
-    kind === 'worldExtract' ||
-    kind === 'narrativeSplit' ||
-    kind === 'narrativeUnitGen' ||
-    kind === 'image' ||
-    kind === 'video' ||
-    kind === 'voice'
-  )
-}
-
 /** 按节点类型拼接最终提示词预览（展开 @ + 对应系统提示词；无 @ 时拼上游正文，与执行一致） */
 export function buildInstructionFinalPromptPreview(input: {
   kind: InstructionFinalPreviewKind
@@ -2204,11 +2494,8 @@ export function buildInstructionFinalPromptPreview(input: {
 }): string {
   const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
   let userPrompt = buildUserPromptForPreviewKind(input.kind, instruction, input.locale)
-  // 与 execute*GenerateNode：先 build*Prompt(指令)，再无 @ 时追加上游正文
-  if (
-    previewKindAutoAppendsIncomingText(input.kind) &&
-    !instructionHasMentions(input.instructionRaw)
-  ) {
+  // 所有指令框：先 build*Prompt(指令)，再无 @ 时追加上游 / 输入接口正文
+  if (!instructionHasMentions(input.instructionRaw)) {
     const auto = input.sources
       .map((source) => source.text.trim())
       .filter(Boolean)
@@ -2407,7 +2694,11 @@ export async function executeScreenplayGenerateNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
 
   if (!ctx.generateText) {
     const localText = normalizeLocalScreenplayText(node.params.text)
@@ -2506,7 +2797,11 @@ export async function executePromptOptimizeNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
 
   if (!ctx.generateText) {
@@ -2568,14 +2863,11 @@ export async function executeNarrativeUnitGenNode(
   }
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  let incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
-  // 与其它生成节点一致：无 @ 时默认拼上游；端口值缺失时回退 mentionSources（如叙事参考）
-  if (!incomingText && !instructionHasMentions(instructionRaw)) {
-    incomingText = mentionSources
-      .map((source) => source.text.trim())
-      .filter(Boolean)
-      .join('\n\n')
-  }
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
 
   if (!ctx.generateText) {
@@ -2624,59 +2916,89 @@ export function executeNarrativeUnitRefNode(ctx: NodeExecuteContext): Record<str
 }
 
 /**
- * 分镜表格：有上游文本则透传并导入分镜列表（拆分 → 表格）；
- * 否则输出当前分镜列表 JSON（表格 → 拆分，再次拆分）。
+ * 分镜表格：有上游分镜目录则透传并导入（拆分 → 表格）；
+ * 否则输出当前分镜列表 JSON。
  * 导入只在节点执行时发生，打开表格窗口不会导入。
  */
 export async function executeShotTableNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    await ctx.importShotSplitTableJson?.(text)
-    return { out: { kind: 'text', text } }
+  const fromWorld = catalogTextFromInputs(
+    ctx.inputs['in-worldEntities'] ?? [],
+    GraphPortType.worldEntities
+  )
+  if (fromWorld) {
+    const worldElementOutputs = parseWorldElementGenResults(fromWorld)
+    ctx.node.params = {
+      ...ctx.node.params,
+      worldElementOutputs
+    }
+    ctx.patchNode?.({
+      params: {
+        worldElementOutputs
+      }
+    })
   }
 
-  const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
+  const unitOpts = (): { narrativeUnitId?: string } | undefined => {
+    const id = ctx.node.params.boundUnitId?.trim()
+    return id ? { narrativeUnitId: id } : undefined
+  }
+
+  const fromIn = catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.shots)
+  if (fromIn) {
+    ctx.node.params = { ...ctx.node.params, text: fromIn }
+    ctx.patchNode?.({ params: { text: fromIn } })
+    await ctx.importShotSplitTableJson?.(fromIn, unitOpts())
+    return { out: catalogValue(GraphPortType.shots, fromIn) }
+  }
+
+  const fromShots = ctx.resolveShotSplitTableJson?.(unitOpts())?.trim()
   if (fromShots) {
     ctx.node.params = { ...ctx.node.params, text: fromShots }
     ctx.patchNode?.({ params: { text: fromShots } })
-    return { out: { kind: 'text', text: fromShots } }
+    return { out: catalogValue(GraphPortType.shots, fromShots) }
   }
 
   const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: { kind: 'text', text: local } } : {}
+  return local ? { out: catalogValue(GraphPortType.shots, local) } : {}
 }
 
-async function importShotSplitFromTextInput(
+async function importShotSplitFromCatalogInput(
   ctx: NodeExecuteContext,
   input: GraphValue | undefined
 ): Promise<void> {
-  if (!input || input.kind !== 'text' || !input.text.trim()) return
-  const text = input.text.trim()
+  const text = catalogTextFromValue(input, GraphPortType.shots)
+  if (!text) return
   ctx.node.params = { ...ctx.node.params, text }
   ctx.patchNode?.({ params: { text } })
-  await ctx.importShotSplitTableJson?.(text)
+  await ctx.importShotSplitTableJson?.(text, {
+    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
+  })
 }
 
 /**
  * 生成分镜图：有上游拆分/表格 JSON 时写入分镜列表；
- * 再从各镜画面图的图片输出节点收集已有结果，写回 genRefs，输出真实 images（不级联跑 visual）。
+ * 再从各镜画面图的图片输出节点收集已有结果，写回 genRefs，输出 shotEntities（不级联跑 visual）。
  */
 export async function executeShotImageGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const first = ctx.inputs.in?.[0] ?? Object.values(ctx.inputs).flat()[0]
-  await importShotSplitFromTextInput(ctx, first)
+  await importShotSplitFromCatalogInput(ctx, first)
 
-  const collected = await ctx.collectScriptShotImages?.(ctx.signal)
+  const collected = await ctx.collectScriptShotImages?.(ctx.signal, {
+    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
+  })
   const items = collected?.images ?? []
+  const entities = collected?.entities ?? []
+  const entitiesText = stringifyShotEntities(entities)
+  const paramsPatch: Record<string, unknown> = {
+    text: entitiesText,
+    shotEntities: entities
+  }
   if (collected?.aggregateJson?.trim()) {
-    ctx.node.params = { ...ctx.node.params, text: collected.aggregateJson.trim() }
-    ctx.patchNode?.({ params: { text: collected.aggregateJson.trim() } })
+    paramsPatch.aggregateJson = collected.aggregateJson.trim()
   }
   if (items.length) {
     const cameraShots = items.map((item, index) => ({
@@ -2685,68 +3007,89 @@ export async function executeShotImageGenNode(
       createdAt: item.createdAt ?? new Date().toISOString(),
       relativePath: item.relativePath
     }))
-    ctx.node.params = {
-      ...ctx.node.params,
-      cameraShots,
-      previewRelativePath: items[0]?.relativePath,
-      previewDataUrl: items[0]?.dataUrl
-    }
-    ctx.patchNode?.({
-      params: {
-        cameraShots,
-        previewRelativePath: ctx.node.params.previewRelativePath,
-        previewDataUrl: ctx.node.params.previewDataUrl
-      }
-    })
+    paramsPatch.cameraShots = cameraShots
+    paramsPatch.previewRelativePath = items[0]?.relativePath
+    paramsPatch.previewDataUrl = items[0]?.dataUrl
   }
-  return { out: { kind: 'images', items } }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+  return { out: catalogValue(GraphPortType.shotEntities, entitiesText) }
 }
 
 /**
- * 生成分镜视频：文本口导入分镜列表；图片口接收分镜图预览；
- * 再从各镜视频图的视频输出节点收集已有结果，写回 genRefs，输出真实 videos（不级联跑 shotWorkflow）。
+ * 生成分镜视频：文本口导入分镜列表；实体口接收分镜图实体表；
+ * 再从各镜子图全部已完成视频生成节点收集结果，写回 genRefs，输出 videoEntities。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeShotVideoGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const textIn = ctx.inputs['in-text']?.[0] ?? ctx.inputs.in?.[0]
-  await importShotSplitFromTextInput(ctx, textIn)
-  const imageItems = flattenImagesValues(ctx.inputs['in-image'] ?? [])
-  if (imageItems.length) {
-    ctx.node.params = {
-      ...ctx.node.params,
-      cameraShots: imageItems.map((item, index) => ({
-        id: item.id ?? `shot-image:${index}`,
-        dataUrl: item.dataUrl,
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        relativePath: item.relativePath
-      })),
-      previewRelativePath: imageItems[0]?.relativePath,
-      previewDataUrl: imageItems[0]?.dataUrl
-    }
-    ctx.patchNode?.({
-      params: {
-        cameraShots: ctx.node.params.cameraShots,
-        previewRelativePath: ctx.node.params.previewRelativePath,
-        previewDataUrl: ctx.node.params.previewDataUrl
-      }
-    })
+  await importShotSplitFromCatalogInput(ctx, textIn)
+  const shotEntitiesText = catalogTextFromInputs(
+    [...(ctx.inputs['in-entities'] ?? []), ...(ctx.inputs['in-image'] ?? [])],
+    GraphPortType.shotEntities
+  )
+  const shotEntities = parseShotEntities(shotEntitiesText)
+  if (shotEntities.length) {
+    // 仅缓存分镜图实体，不写入 cameraShots（避免 Inspector 当成图片预览）
+    ctx.node.params = { ...ctx.node.params, shotEntities }
+    ctx.patchNode?.({ params: { shotEntities } })
   }
 
-  const collected = await ctx.collectScriptShotVideos?.(ctx.signal)
-  const items = collected?.videos ?? []
-  if (items.length) {
-    const previewRelativePath = items[0]?.relativePath?.trim() || ctx.node.params.previewRelativePath
-    ctx.node.params = {
-      ...ctx.node.params,
-      ...(previewRelativePath ? { previewRelativePath } : {})
-    }
-    if (previewRelativePath) {
-      ctx.patchNode?.({ params: { previewRelativePath } })
+  const collected = await ctx.collectScriptShotVideos?.(ctx.signal, {
+    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
+  })
+  const videoEntities = collected?.entities ?? []
+  const videoEntitiesText = stringifyVideoEntities(videoEntities)
+  const paramsPatch: Record<string, unknown> = {
+    videoEntities,
+    text: videoEntitiesText,
+    resultText: videoEntitiesText,
+    // 视频实体口只展示 JSON，不写视频图库/媒体预览
+    generatedVideos: [],
+    cameraShots: [],
+    previewDataUrl: '',
+    previewRelativePath: ''
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+  return { out: catalogValue(GraphPortType.videoEntities, videoEntitiesText) }
+}
+
+/** 视频实体输出 / 成片时间线：透传 videoEntities 目录 JSON */
+export async function executeVideoEntitiesOutputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const incoming = Object.values(ctx.inputs).flat()
+  let text = catalogTextFromInputs(incoming, GraphPortType.videoEntities) ?? ''
+  let items = parseVideoEntities(text)
+  // 兼容旧上游仍输出 videos / video 的情况
+  if (!items.length) {
+    const videos = flattenVideosValues(incoming)
+    const urls = videos
+      .map((item) => item.relativePath?.trim() || item.dataUrl?.trim() || '')
+      .filter(Boolean)
+    if (urls.length) {
+      items = [{ id: 'videos', name: 'Videos', videoUrls: urls }]
+      text = stringifyVideoEntities(items)
     }
   }
-  return { out: { kind: 'videos', items } }
+  const paramsPatch = {
+    resultText: text || '[]',
+    text: text || '[]',
+    videoEntities: items,
+    // 视频实体口只展示 JSON，不写视频图库/媒体预览路径
+    generatedVideos: [] as [],
+    cameraShots: [] as [],
+    previewDataUrl: '',
+    previewRelativePath: '',
+    outputKind: (ctx.node.params.outputKind ?? 'video') as GraphOutputKind,
+    inputDataType: GraphPortType.videoEntities
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+  return { out: catalogValue(GraphPortType.videoEntities, text || '[]') }
 }
 
 /** @deprecated 使用 {@link executeShotVideoGenNode} */
@@ -2757,117 +3100,157 @@ export async function executeShotEditorNode(
 }
 
 /**
- * 世界元素表格：有上游文本则透传并导入目录（提取 → 表格）；
- * 否则输出当前目录 JSON（表格 → 提取再次加工）。
+ * 世界元素表格：有上游世界目录则透传并导入（提取 → 表格）；
+ * 否则输出当前目录 JSON。
  * 导入只在节点执行时发生，打开表格窗口不会导入。
  */
 export async function executeWorldTableNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    await ctx.importWorldCatalogJson?.(text)
-    return { out: { kind: 'text', text } }
+  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.world)
+  if (fromIn) {
+    ctx.node.params = { ...ctx.node.params, text: fromIn }
+    ctx.patchNode?.({ params: { text: fromIn } })
+    await ctx.importWorldCatalogJson?.(fromIn)
+    return { out: catalogValue(GraphPortType.world, fromIn) }
   }
 
   const fromCatalog = ctx.resolveWorldCatalogJson?.()?.trim()
   if (fromCatalog) {
     ctx.node.params = { ...ctx.node.params, text: fromCatalog }
     ctx.patchNode?.({ params: { text: fromCatalog } })
-    return { out: { kind: 'text', text: fromCatalog } }
+    return { out: catalogValue(GraphPortType.world, fromCatalog) }
   }
 
   const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: { kind: 'text', text: local } } : {}
+  return local ? { out: catalogValue(GraphPortType.world, local) } : {}
 }
 
 /**
- * 世界元素生成：有上游提取/表格 JSON 时同步到元素子图；
- * 再从四类 elementWorkflow 子图收集已有图片，输出真实 images（不级联跑子图生成）。
+ * 世界元素生成：有上游提取/表格目录时同步到元素子图；
+ * 再从四类 elementWorkflow 子图的已完成输出节点收集实体 JSON（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeWorldGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    await ctx.importWorldCatalogJson?.(text)
+  const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.world)
+  if (fromIn) {
+    await ctx.importWorldCatalogJson?.(fromIn)
   }
 
-  const collected = await ctx.collectWorldElementImages?.(ctx.signal)
-  const items = collected?.images ?? []
-  if (items.length) {
-    const cameraShots = items.map((item, index) => ({
-      id: item.id ?? `world-image:${index}`,
-      dataUrl: item.dataUrl,
-      createdAt: item.createdAt ?? new Date().toISOString(),
-      relativePath: item.relativePath
+  const collected = await ctx.collectWorldElementOutputs?.(ctx.signal)
+  const items: WorldElementGenResult[] = (collected?.items ?? [])
+    .map((item) => ({
+      type: item.type as WorldElementGenResult['type'],
+      name: String(item.name ?? '').trim(),
+      imageUrl: String(item.imageUrl ?? '').trim()
     }))
-    ctx.node.params = {
-      ...ctx.node.params,
-      cameraShots,
-      previewRelativePath: items[0]?.relativePath,
-      previewDataUrl: items[0]?.dataUrl
-    }
-    ctx.patchNode?.({
-      params: {
-        cameraShots,
-        previewRelativePath: ctx.node.params.previewRelativePath,
-        previewDataUrl: ctx.node.params.previewDataUrl
-      }
-    })
+    .filter((item) => item.type && item.name && item.imageUrl)
+
+  const text = stringifyWorldElementGenResults(items)
+  const params = {
+    worldElementOutputs: items,
+    text
   }
-  return { out: { kind: 'images', items } }
+  ctx.node.params = { ...ctx.node.params, ...params }
+  ctx.patchNode?.({ params })
+  return { out: catalogValue(GraphPortType.worldEntities, text) }
+}
+
+/** 世界元素实体输出：透传 worldEntities 目录 JSON */
+export async function executeWorldEntitiesOutputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const fromIn = catalogTextFromInputs(
+    Object.values(ctx.inputs).flat(),
+    GraphPortType.worldEntities
+  )
+  const text = fromIn ?? ''
+  const items = parseWorldElementGenResults(text)
+  const paramsPatch = {
+    resultText: text,
+    worldElementOutputs: items,
+    outputKind: (ctx.node.params.outputKind ?? 'text') as GraphOutputKind,
+    inputDataType: GraphPortType.worldEntities
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+  return text
+    ? { out: catalogValue(GraphPortType.worldEntities, text) }
+    : { out: catalogValue(GraphPortType.worldEntities, '[]') }
+}
+
+/** 叙事单元输出：透传 narrative 目录 JSON */
+export async function executeNarrativeCatalogOutputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const fromIn = catalogTextFromInputs(
+    Object.values(ctx.inputs).flat(),
+    GraphPortType.narrative
+  )
+  const text = fromIn ?? ''
+  const paramsPatch = {
+    resultText: text,
+    text,
+    generatedTexts: [] as GraphTextItem[],
+    outputKind: (ctx.node.params.outputKind ?? 'text') as GraphOutputKind,
+    inputDataType: GraphPortType.narrative
+  }
+  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+  return {
+    out: catalogValue(GraphPortType.narrative, text || '[]')
+  }
 }
 
 /**
- * 叙事单元表格：有上游文本则透传并导入目录；
- * 否则输出当前目录 JSON（表格 → 拆解再次加工）。
+ * 叙事单元表格：有上游叙事目录则透传并导入；
+ * 可同时接收世界元素实体（写入 params，供表格引用）；
+ * 否则输出当前目录 JSON。
  */
 export async function executeNarrativeTableNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    await ctx.importNarrativeCatalogJson?.(text)
-    return { out: { kind: 'text', text } }
+  const fromIn = catalogTextFromInputs(
+    ctx.inputs.in ?? Object.values(ctx.inputs).flat(),
+    GraphPortType.narrative
+  )
+  if (fromIn) {
+    ctx.node.params = { ...ctx.node.params, text: fromIn }
+    ctx.patchNode?.({ params: { text: fromIn } })
+    await ctx.importNarrativeCatalogJson?.(fromIn)
+    return { out: catalogValue(GraphPortType.narrative, fromIn) }
   }
 
   const fromCatalog = ctx.resolveNarrativeCatalogJson?.()?.trim()
   if (fromCatalog) {
     ctx.node.params = { ...ctx.node.params, text: fromCatalog }
     ctx.patchNode?.({ params: { text: fromCatalog } })
-    return { out: { kind: 'text', text: fromCatalog } }
+    return { out: catalogValue(GraphPortType.narrative, fromCatalog) }
   }
 
   const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: { kind: 'text', text: local } } : {}
+  return local ? { out: catalogValue(GraphPortType.narrative, local) } : {}
 }
 
 /**
- * 叙事单元生成：有上游目录 JSON 时同步到单元子图；
+ * 叙事单元生成：有上游叙事目录时同步到单元子图；
  * 再从各单元 narrativeUnit 子图收集「叙事输出」已有文本并落地到输出路径（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开细化窗口不会导入。
  */
 export async function executeNarrativeGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = Object.values(ctx.inputs).flat()[0]
-  if (first && first.kind === 'text' && first.text.trim()) {
-    const text = first.text.trim()
+  const fromIn = catalogTextFromInputs(
+    Object.values(ctx.inputs).flat(),
+    GraphPortType.narrative
+  )
+  if (fromIn) {
     // 先导入目录再 patch，减少与单元图落盘的竞态
-    await ctx.importNarrativeCatalogJson?.(text)
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
+    await ctx.importNarrativeCatalogJson?.(fromIn)
+    ctx.node.params = { ...ctx.node.params, text: fromIn }
+    ctx.patchNode?.({ params: { text: fromIn } })
   }
 
   const collected = await ctx.collectNarrativeUnitTexts?.(ctx.signal)
@@ -2875,12 +3258,13 @@ export async function executeNarrativeGenNode(
   if (!items.length) {
     const paramsPatch = {
       generatedTexts: [] as GraphTextItem[],
+      selectedTextId: '',
       previewRelativePath: '',
       resultText: ''
     }
     ctx.node.params = { ...ctx.node.params, ...paramsPatch }
     ctx.patchNode?.({ params: paramsPatch })
-    return { out: { kind: 'texts', items: [] } }
+    return dualTextGalleryOutputs([], '')
   }
 
   const hydrated = await hydrateTextItems(items, ctx.readRunText)
@@ -2888,15 +3272,17 @@ export async function executeNarrativeGenNode(
   if (!materialized.length) {
     const paramsPatch = {
       generatedTexts: [] as GraphTextItem[],
+      selectedTextId: '',
       previewRelativePath: '',
       resultText: ''
     }
     ctx.node.params = { ...ctx.node.params, ...paramsPatch }
     ctx.patchNode?.({ params: paramsPatch })
-    return { out: { kind: 'texts', items: [] } }
+    return dualTextGalleryOutputs([], '')
   }
 
   const stripped = materialized.map(stripEmbeddedTextData)
+  const selectedTextId = newestTextSelectedId(stripped)
   const previewRelativePath =
     stripped.find((item) => item.relativePath?.trim())?.relativePath?.trim() || ''
   const resultText = (
@@ -2908,24 +3294,20 @@ export async function executeNarrativeGenNode(
 
   const paramsPatch = {
     generatedTexts: stripped,
+    selectedTextId,
     previewRelativePath,
     resultText
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
 
-  return {
-    out: {
-      kind: 'texts',
-      items: stripped
-    }
-  }
+  return dualTextGalleryOutputs(stripped, selectedTextId)
 }
 
 /**
- * 分镜拆分：将上游剧本文本按生成指令拆成有序分镜列表。
- * 未注入 generateText 时退回指令 / 上游 / 本地文本汇总。
- * 上游若含上次拆分 JSON（如表格 → 拆分），合并时强制保留「已审核」行。
+ * 分镜拆分：将上游剧本文本按生成指令拆成有序分镜目录。
+ * 未注入 generateText 时退回本地已有目录（不把剧本文当目录输出）。
+ * 合并「已审核」行时只读本地 params 中的上次目录。
  */
 export async function executeShotSplitNode(
   ctx: NodeExecuteContext
@@ -2935,17 +3317,21 @@ export async function executeShotSplitNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
-  const previousRows = parseShotSplitJson(incomingText)
+  const previousRows = parseShotSplitJson(localText)
 
   if (!ctx.generateText) {
-    const text = instruction.trim() || incomingText || localText
+    const text = localText || instruction.trim()
     if (text && text !== localText) {
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
     }
-    return { out: { kind: 'text', text } }
+    return text ? { out: catalogValue(GraphPortType.shots, text) } : {}
   }
 
   if (ctx.signal?.aborted) {
@@ -2977,13 +3363,13 @@ export async function executeShotSplitNode(
 
   node.params = { ...node.params, text }
   ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return { out: catalogValue(GraphPortType.shots, text) }
 }
 
 /**
- * 世界元素提取：将上游文本拆成角色/场景/道具/武器 JSON 目录。
- * 未注入 generateText 时退回指令 / 上游 / 本地文本汇总。
- * 上游若含上次目录 JSON（如表格 → 提取），合并时强制保留「已审核」项。
+ * 世界元素提取：将上游剧本文本拆成角色/场景/道具/武器目录。
+ * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
+ * 合并「已审核」项时只读本地 params 中的上次目录。
  */
 export async function executeWorldExtractNode(
   ctx: NodeExecuteContext
@@ -2993,17 +3379,32 @@ export async function executeWorldExtractNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(instructionRaw, selected)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
-  const previousCatalog = parseWorldElementCatalog(incomingText) ?? parseWorldElementCatalog(localText)
+  const previousCatalog = parseWorldElementCatalog(localText)
 
   if (!ctx.generateText) {
-    const text = instruction.trim() || incomingText || localText
-    if (text && text !== localText) {
+    const text = localText || instruction.trim()
+    if (!text.trim()) {
+      const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
+        typeId: node.typeId
+      })
+      return gallery ?? dualWorldCatalogOutputs([], '')
+    }
+    if ((node.params.generatedTexts ?? []).length) {
+      // 无模型：复用已有图库选中，仅同步 text
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
+      return (
+        resolveGalleryOutputsFromNodeParams(node.params, { typeId: node.typeId }) ??
+        dualWorldCatalogOutputs([], '')
+      )
     }
-    return { out: { kind: 'text', text } }
+    return persistWorldExtractGeneration(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3033,24 +3434,27 @@ export async function executeWorldExtractNode(
     text = stringifyWorldElementCatalog(merged)
   }
 
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return persistWorldExtractGeneration(ctx, text)
 }
 
 /**
  * 叙事单元拆解：将上游剧本文本（text）拆成有序叙事单元 JSON。
+ * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
  * 通常经由 text.select 从 texts 中选出单条后再接入。
- * 未注入 generateText 时退回指令 / 上游 / 本地文本汇总。
  * 本地若含上次拆解 JSON，合并时强制保留「已审核」行。
  */
 /** 收集叙事拆解可用的上游剧本文本（含 texts.relativePath 落盘正文） */
 async function resolveNarrativeSplitSourceText(
   ctx: NodeExecuteContext,
-  instructionRaw: string
+  instructionRaw: string,
+  mentionSources?: InstructionMentionSource[]
 ): Promise<string> {
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  let text = autoIncomingTextForInstruction(instructionRaw, selected).trim()
+  let text = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  ).trim()
   if (text) return text
 
   // 上游仅有落盘路径、或软快照曾给出空 text 时，按路径 / 资产再读一遍
@@ -3085,19 +3489,32 @@ export async function executeNarrativeSplitNode(
   const mentionSources = resolveMentionSources(ctx)
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const incomingText = await resolveNarrativeSplitSourceText(ctx, instructionRaw)
+  const incomingText = await resolveNarrativeSplitSourceText(
+    ctx,
+    instructionRaw,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
-  const previousRows =
-    parseNarrativeUnitJson(incomingText) ?? parseNarrativeUnitJson(localText)
+  const previousRows = parseNarrativeUnitJson(localText)
 
   if (!ctx.generateText) {
-    // 无模型时优先透传上游剧本，避免空指令盖掉输入
-    const text = incomingText || instruction.trim() || localText
-    if (text && text !== localText) {
+    // 无模型时只输出本地已有目录，不把上游剧本文冒充目录
+    const text = localText || instruction.trim()
+    if (!text.trim()) {
+      const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
+        typeId: node.typeId
+      })
+      return gallery ?? dualNarrativeCatalogOutputs([], '')
+    }
+    if ((node.params.generatedTexts ?? []).length) {
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
+      return (
+        resolveGalleryOutputsFromNodeParams(node.params, { typeId: node.typeId }) ??
+        dualNarrativeCatalogOutputs([], '')
+      )
     }
-    return { out: { kind: 'text', text } }
+    return persistNarrativeSplitGeneration(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3134,9 +3551,7 @@ export async function executeNarrativeSplitNode(
     text = stringifyNarrativeUnitRows(merged)
   }
 
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return persistNarrativeSplitGeneration(ctx, text)
 }
 
 async function collectImageUrlsForPrompt(
@@ -3181,6 +3596,11 @@ export async function executeImageToPromptNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
   const localText = node.params.text?.trim() ?? ''
   const hints = flattenAssetValues(selected)
     .map((asset) => [asset.title, asset.label, asset.notes].filter(Boolean).join(' · '))
@@ -3188,7 +3608,7 @@ export async function executeImageToPromptNode(
     .join('\n')
 
   if (!ctx.generateText) {
-    const text = instruction.trim() || localText || hints
+    const text = instruction.trim() || incomingText || localText || hints
     if (text && text !== localText) {
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
@@ -3206,7 +3626,10 @@ export async function executeImageToPromptNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
 
-  const prompt = buildToPromptUserPrompt(instruction, ctx.locale)
+  let prompt = buildToPromptUserPrompt(instruction, ctx.locale)
+  if (incomingText) {
+    prompt = `${prompt.trim()}\n\n${incomingText}`
+  }
   const result = await ctx.generateText({
     prompt,
     system: resolveToPromptSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
@@ -4603,7 +5026,7 @@ async function materializeNarrativeUnitTextItems(
 }
 
 /**
- * @deprecated 落地已迁至 narrative.gen；输出节点仅透传上游 texts。
+ * 叙事单元细化画布输出：透传上游 texts（资产主链已改为 table → output.narrative）。
  */
 export async function executeNarrativeOutputNode(
   ctx: NodeExecuteContext
@@ -4622,6 +5045,14 @@ export async function executeOutputNode(
     ctx.node.typeId === 'output.narrativeUnit'
   ) {
     return executeScreenplayOutputNode(ctx)
+  }
+
+  // 分镜输出 / 成片时间线：透传视频实体目录
+  if (
+    ctx.node.params.inputDataType === GraphPortType.videoEntities ||
+    ctx.node.typeId === 'output.timeline'
+  ) {
+    return executeVideoEntitiesOutputNode(ctx)
   }
 
   const incoming = collectIncomingValues(ctx.inputs)

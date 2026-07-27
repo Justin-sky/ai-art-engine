@@ -26,11 +26,11 @@ describe('narrative table / editor execute', () => {
       baseCtx({
         node,
         importNarrativeCatalogJson,
-        inputs: { in: [{ kind: 'text', text }] }
+        inputs: { in: [{ kind: 'narrative', text }] }
       })
     )
     expect(importNarrativeCatalogJson).toHaveBeenCalledWith(text)
-    expect(result.out).toEqual({ kind: 'text', text })
+    expect(result.out).toEqual({ kind: 'narrative', text })
     expect(node.params.text).toBe(text)
   })
 
@@ -61,7 +61,9 @@ describe('narrative table / editor execute', () => {
         summary: '对峙',
         dramaticFunction: '高潮',
         characters: ['林晓'],
-        location: '天台',
+        scenes: ['天台'],
+        props: [],
+        weapons: [],
         sourceExcerpt: '雨停了。',
         emotionalBeat: '决绝',
         durationHint: '短',
@@ -75,7 +77,7 @@ describe('narrative table / editor execute', () => {
         collectNarrativeUnitTexts,
         saveRunText,
         patchNode,
-        inputs: { in: [{ kind: 'text', text }] }
+        inputs: { in: [{ kind: 'narrative', text }] }
       })
     )
     expect(importNarrativeCatalogJson).toHaveBeenCalledWith(text)
@@ -83,14 +85,16 @@ describe('narrative table / editor execute', () => {
     expect(saveRunText).toHaveBeenCalledTimes(2)
     expect(saveRunText).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: '高潮' }))
     expect(saveRunText).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: '冲突升级' }))
-    expect(result.out?.kind).toBe('texts')
-    if (result.out?.kind === 'texts') {
-      expect(result.out.items).toHaveLength(2)
-      expect(result.out.items[0]?.id).toBe('nu-2')
-      expect(result.out.items[0]?.relativePath).toMatch(/Texts\/.+\.txt/)
-      expect(result.out.items[0]?.text).toBe('')
+    expect(result.out?.kind).toBe('text')
+    expect(result['out-all']?.kind).toBe('texts')
+    if (result['out-all']?.kind === 'texts') {
+      expect(result['out-all'].items).toHaveLength(2)
+      expect(result['out-all'].items[0]?.id).toBe('nu-2')
+      expect(result['out-all'].items[0]?.relativePath).toMatch(/Texts\/.+\.txt/)
+      expect(result['out-all'].items[0]?.text).toBe('')
     }
     expect(node.params.generatedTexts).toHaveLength(2)
+    expect(node.params.selectedTextId).toBeTruthy()
     expect(patchNode).toHaveBeenCalled()
   })
 
@@ -112,7 +116,8 @@ describe('narrative table / editor execute', () => {
   it('gen without collect returns empty texts', async () => {
     const node = createNodeFromType('narrative.gen', { x: 0, y: 0 })
     const result = await executeNarrativeGenNode(baseCtx({ node }))
-    expect(result.out).toEqual({ kind: 'texts', items: [] })
+    expect(result.out).toEqual({ kind: 'text', text: '' })
+    expect(result['out-all']).toEqual({ kind: 'texts', items: [] })
     expect(node.params.generatedTexts).toEqual([])
   })
 

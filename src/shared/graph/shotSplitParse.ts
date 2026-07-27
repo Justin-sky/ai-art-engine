@@ -1,8 +1,10 @@
 import {
   DEFAULT_SHOT_REVIEW_STATUS,
+  asWorldRefList,
   normalizeShotReviewStatus,
   type Shot,
-  type ShotReviewStatus
+  type ShotReviewStatus,
+  type WorldEntityRef
 } from '../domain'
 import type { GraphDocument } from './types'
 
@@ -20,6 +22,10 @@ export interface ShotSplitRow {
   status: ShotReviewStatus
   /** 画面输出物化后的图片资产 id（生成分镜图聚合用，可选） */
   imageAssetIds?: string[]
+  characters: WorldEntityRef[]
+  scenes: WorldEntityRef[]
+  props: WorldEntityRef[]
+  weapons: WorldEntityRef[]
 }
 
 function asString(value: unknown): string {
@@ -64,6 +70,10 @@ function normalizeRow(item: unknown, index: number): ShotSplitRow | null {
     soundFx: asString(row.soundFx).trim(),
     cameraMove: asString(row.cameraMove).trim(),
     status: normalizeShotReviewStatus(row.status),
+    characters: asWorldRefList(row.characters ?? row['角色']),
+    scenes: asWorldRefList(row.scenes ?? row['场景']),
+    props: asWorldRefList(row.props ?? row['道具']),
+    weapons: asWorldRefList(row.weapons ?? row['武器']),
     ...(imageAssetIds?.length ? { imageAssetIds } : {})
   }
 }
@@ -115,6 +125,10 @@ export function shotsToShotSplitRows(shots: Shot[]): ShotSplitRow[] {
       soundFx: sb?.soundFx?.trim() ?? '',
       cameraMove: sb?.cameraMove?.trim() ?? '',
       status: normalizeShotReviewStatus(shot.reviewStatus),
+      characters: asWorldRefList(sb?.characters),
+      scenes: asWorldRefList(sb?.scenes),
+      props: asWorldRefList(sb?.props),
+      weapons: asWorldRefList(sb?.weapons),
       ...(uniqueIds.length ? { imageAssetIds: uniqueIds } : {})
     }
   })
@@ -156,12 +170,12 @@ export function mergeShotSplitRowsPreservingReviewed(
   return result
 }
 
-function nodeTextPayload(doc: GraphDocument, nodeId: string): string | null {
+function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
   const node = doc.nodes.find((item) => item.id === nodeId)
   const fromParams = node?.params?.text?.trim()
   if (fromParams) return fromParams
   const out = doc.runStates?.[nodeId]?.outputs?.out
-  if (out && typeof out === 'object' && out.kind === 'text' && typeof out.text === 'string') {
+  if (out && typeof out === 'object' && out.kind === 'shots' && typeof out.text === 'string') {
     const live = out.text.trim()
     if (live) return live
   }
@@ -177,14 +191,14 @@ export function extractShotSplitJsonText(doc: GraphDocument | null | undefined):
     for (const edge of doc.edges) {
       if (edge.target !== table.id) continue
       if ((edge.targetPort ?? 'in') !== 'in') continue
-      const text = nodeTextPayload(doc, edge.source)
+      const text = nodeCatalogPayload(doc, edge.source)
       if (text) return text
     }
-    // 表格节点自身缓存（再次拆分：表格 → 拆分 时也会写回）
-    const own = nodeTextPayload(doc, table.id)
+    // 表格节点自身缓存
+    const own = nodeCatalogPayload(doc, table.id)
     if (own) return own
   }
 
   const split = doc.nodes.find((node) => node.typeId === 'script.shotSplit')
-  return (split && nodeTextPayload(doc, split.id)) || null
+  return (split && nodeCatalogPayload(doc, split.id)) || null
 }

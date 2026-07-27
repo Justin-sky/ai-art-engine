@@ -1,16 +1,20 @@
 /**
- * 世界元素图管道：从四类 elementWorkflow 子图收集已有图片输出。
+ * 世界元素图管道：从四类 elementWorkflow 子图的已完成输出节点收集实体结果。
  * 不级联跑元素子图中的生成节点；需在世界编辑侧栏内先行跑完。
  */
 import {
-  collectImagesFromVisualGraph,
+  collectImagesFromCompletedOutputNode,
+  isVisualOutputNodeComplete,
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
   withWorldElementGraph,
+  WORLD_ELEMENT_KIND_TO_TYPE,
   WORLD_ELEMENT_KINDS,
   type GraphDocument,
   type GraphImageItem,
+  type GraphNode,
+  type WorldElementGenResult,
   type WorldElementKind
 } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
@@ -126,35 +130,41 @@ async function ensureImageAssetForItem(
   return ensureMediaAssetForPath(relativePath, name)
 }
 
-function nodeTitleForImage(
-  doc: GraphDocument,
-  item: GraphImageItem,
-  kind: WorldElementKind,
-  index: number
-): string {
-  if (item.id?.trim()) {
-    const byElement = doc.nodes.find(
-      (node) => readWorldElementIdFromNodeParams(node.params) === item.id
-    )
-    if (byElement?.title?.trim()) return byElement.title.trim()
-    const byNode = doc.nodes.find((node) => node.id === item.id)
-    if (byNode?.title?.trim()) return byNode.title.trim()
-  }
-  return `${kind} · ${index + 1}`
+function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
+  return doc.nodes.filter(
+    (node) => node.category === 'output' || node.typeId === 'output.image'
+  )
 }
 
-export type CollectWorldElementImagesResult = {
-  images: GraphImageItem[]
+function resolveElementName(doc: GraphDocument, output: GraphNode, fallback: string): string {
+  const elementId = readWorldElementIdFromNodeParams(output.params)
+  if (elementId) {
+    const titled = doc.nodes.find(
+      (node) =>
+        readWorldElementIdFromNodeParams(node.params) === elementId && !!node.title?.trim()
+    )
+    if (titled?.title?.trim()) return titled.title.trim()
+  }
+  if (output.title?.trim()) return output.title.trim()
+  return fallback
+}
+
+function imageUrlFromItem(item: GraphImageItem): string {
+  return item.relativePath?.trim() || item.dataUrl?.trim() || ''
+}
+
+export type CollectWorldElementOutputsResult = {
+  items: WorldElementGenResult[]
 }
 
 /**
- * 从世界资产四类 elementWorkflow 子图收集已有图片（不级联跑生成）。
+ * 从世界资产四类 elementWorkflow 子图收集已完成输出节点的实体结果（不级联跑生成）。
  */
-export async function collectWorldElementImages(input: {
+export async function collectWorldElementOutputs(input: {
   worldAssetId: string
   signal?: AbortSignal
-}): Promise<CollectWorldElementImagesResult> {
-  const allImages: GraphImageItem[] = []
+}): Promise<CollectWorldElementOutputsResult> {
+  const items: WorldElementGenResult[] = []
   let genParams = { ...(readWorldGenParams(input.worldAssetId) ?? {}) }
   let dirty = false
 
@@ -164,24 +174,23 @@ export async function collectWorldElementImages(input: {
     const doc = normalizeScopedGraph('elementWorkflow', raw ?? null, {
       assetType: 'world'
     })
-    const images = collectImagesFromVisualGraph(doc)
-    if (!images.length) continue
+    const outputs = listImageOutputNodes(doc)
+    const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]
 
-    for (let i = 0; i < images.length; i++) {
+    for (let i = 0; i < outputs.length; i++) {
       assertNotAborted(input.signal)
-      const item = images[i]!
-      const name = nodeTitleForImage(doc, item, kind, i)
-      const asset = await ensureImageAssetForItem(item, name)
-      if (asset) {
-        allImages.push({
-          ...item,
-          id: asset.id,
-          relativePath: asset.relativePath ?? item.relativePath,
-          dataUrl: item.dataUrl || ''
-        })
-      } else {
-        allImages.push(item)
-      }
+      const output = outputs[i]!
+      if (!isVisualOutputNodeComplete(doc, output.id)) continue
+      const images = collectImagesFromCompletedOutputNode(doc, output)
+      if (!images.length) continue
+
+      const name = resolveElementName(doc, output, `${type} · ${i + 1}`)
+      // 每个输出节点取一张主图（首条可用）
+      const primary = images[0]!
+      const asset = await ensureImageAssetForItem(primary, name)
+      const imageUrl = asset?.relativePath?.trim() || imageUrlFromItem(primary)
+      if (!imageUrl) continue
+      items.push({ type, name: asset?.name?.trim() || name, imageUrl })
     }
 
     genParams = withWorldElementGraph(genParams, kind, toPlain(doc) as GraphDocument)
@@ -192,5 +201,5 @@ export async function collectWorldElementImages(input: {
     await writeWorldGenParams(input.worldAssetId, genParams)
   }
 
-  return { images: allImages }
+  return { items }
 }

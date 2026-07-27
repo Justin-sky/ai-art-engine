@@ -140,6 +140,7 @@ export type GraphPortDirection = 'in' | 'out'
  * 连线规则：同类型可连，异类型不可连（复数≠单数）。
  * 图库「全部」口与 select 输入使用 images/videos/voices/texts；
  * 默认 `out` 与消费方使用单数类型。
+ * world / worldEntities / shotEntities / videoEntities / narrative / shots 为目录 JSON 专用口，不可与 text 互通。
  */
 export const GraphPortType = {
   image: 'image',
@@ -150,8 +151,42 @@ export const GraphPortType = {
   videos: 'videos',
   text: 'text',
   texts: 'texts',
+  world: 'world',
+  /** 世界元素生成结果实体表（type/name/imageUrl），与目录口 world 区分 */
+  worldEntities: 'worldEntities',
+  /** 分镜图生成结果实体表（id/name/imageUrls），与目录口 shots 区分 */
+  shotEntities: 'shotEntities',
+  /** 分镜视频生成结果实体表（id/name/videoUrls），与单视频口 video 区分 */
+  videoEntities: 'videoEntities',
+  narrative: 'narrative',
+  shots: 'shots',
   model: 'model'
 } as const
+
+/** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
+export type GraphCatalogKind =
+  | typeof GraphPortType.world
+  | typeof GraphPortType.worldEntities
+  | typeof GraphPortType.shotEntities
+  | typeof GraphPortType.videoEntities
+  | typeof GraphPortType.narrative
+  | typeof GraphPortType.shots
+
+export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
+  GraphPortType.world,
+  GraphPortType.worldEntities,
+  GraphPortType.shotEntities,
+  GraphPortType.videoEntities,
+  GraphPortType.narrative,
+  GraphPortType.shots
+]
+
+export function isGraphCatalogKind(value: unknown): value is GraphCatalogKind {
+  return (
+    typeof value === 'string' &&
+    (GRAPH_CATALOG_KINDS as readonly string[]).includes(value)
+  )
+}
 
 export type GraphPortDataType = (typeof GraphPortType)[keyof typeof GraphPortType]
 
@@ -322,6 +357,27 @@ export interface GraphNodeParams {
     dataUrl: string
     createdAt?: string
     relativePath?: string
+  }>
+  /**
+   * 世界元素生成节点：从子窗口已完成输出节点收集的实体结果
+   *（type / name / imageUrl）。
+   */
+  worldElementOutputs?: Array<{
+    type: string
+    name: string
+    imageUrl: string
+  }>
+  /** 分镜图生成：实体表 { id, name, imageUrls } */
+  shotEntities?: Array<{
+    id: string
+    name: string
+    imageUrls: string[]
+  }>
+  /** 分镜视频生成 / 分镜输出 / 成片时间线：实体表 { id, name, videoUrls } */
+  videoEntities?: Array<{
+    id: string
+    name: string
+    videoUrls: string[]
   }>
   /**
    * 视频生成 / 对口型节点：历次生成累计的视频（重新执行追加，可在 Inspector 删除）。

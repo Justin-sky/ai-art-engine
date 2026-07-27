@@ -46,6 +46,10 @@ export function supportsGenerateLock(
 ): boolean {
   if (isProcessingAssetNode(node)) return true
   switch (node.typeId) {
+    case 'world.extract':
+    case 'world.gen':
+    case 'narrative.split':
+    case 'narrative.gen':
     case 'video.lipSync':
     case 'image.multiAngle':
     case 'image.lighting':

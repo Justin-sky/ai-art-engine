@@ -3,6 +3,7 @@ import {
   applyShotParamsDropMaterialization,
   collectImagesFromVisualGraph,
   collectVideosFromShotWorkflowGraph,
+  collectVideosFromVideoGenNodes,
   connectShotVideoReference,
   createDefaultScopedGraph,
   createNodeFromType,
@@ -10,9 +11,14 @@ import {
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
   getVideoFrameAssetId,
+  listImageAssetsFromShotEntity,
   mergeVisualOutputGenRefs,
   materializeShotGenRefsOnVideoGraph,
+  parseShotEntities,
+  parseVideoEntities,
   shotToImageAggregateRow,
+  stringifyShotEntities,
+  stringifyVideoEntities,
   VIDEO_FIRST_FRAME_PORT_ID
 } from '../src/shared/graph'
 import { createEmptyShot, type Shot } from '../src/shared/domain'
@@ -85,7 +91,7 @@ describe('shot visual bridge', () => {
     expect(videos[0]?.relativePath).toBe('Output/videos/a.mp4')
   })
 
-  it('prefers video output node over upstream generatedVideos', () => {
+  it('prefers done video gen nodes over video output', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
     const output = doc.nodes.find((n) => n.typeId === 'output.video')!
@@ -100,6 +106,7 @@ describe('shot visual bridge', () => {
       ]
     }
     doc.runStates = {
+      [video.id]: { status: 'done', outputs: {} },
       [output.id]: {
         status: 'done',
         outputs: {
@@ -111,10 +118,10 @@ describe('shot visual bridge', () => {
       }
     }
     const videos = collectVideosFromShotWorkflowGraph(doc)
-    expect(videos.map((item) => item.relativePath)).toEqual(['Output/videos/from-output.mp4'])
+    expect(videos.map((item) => item.relativePath)).toEqual(['Output/videos/from-gen.mp4'])
   })
 
-  it('falls back to upstream video gens when video output is empty', () => {
+  it('collects all done video gen nodes', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const videoA = doc.nodes.find((n) => n.typeId === 'asset.video')!
     const output = doc.nodes.find((n) => n.typeId === 'output.video')!
@@ -147,16 +154,52 @@ describe('shot visual bridge', () => {
         }
       ]
     }
-    const videos = collectVideosFromShotWorkflowGraph(doc)
+    doc.runStates = {
+      [videoA.id]: { status: 'done', outputs: {} },
+      [videoB.id]: { status: 'done', outputs: {} }
+    }
+    const videos = collectVideosFromVideoGenNodes(doc)
     expect(videos.map((item) => item.relativePath).sort()).toEqual([
       'Output/videos/from-a.mp4',
       'Output/videos/from-b.mp4'
     ])
   })
 
-  it('falls back to asset.image generatedImages when output is empty', () => {
+  it('falls back to output when video gens are not done', () => {
+    const doc = createDefaultScopedGraph('shotWorkflow')
+    const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
+    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
+    video.params = {
+      ...video.params,
+      generatedVideos: [
+        {
+          id: 'v-a',
+          relativePath: 'Output/videos/from-gen.mp4',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+    doc.runStates = {
+      [output.id]: {
+        status: 'done',
+        outputs: {
+          out: {
+            kind: 'videos',
+            items: [{ id: 'v-out', relativePath: 'Output/videos/from-output.mp4' }]
+          }
+        }
+      }
+    }
+    expect(collectVideosFromVideoGenNodes(doc)).toEqual([])
+    expect(collectVideosFromShotWorkflowGraph(doc).map((item) => item.relativePath)).toEqual([
+      'Output/videos/from-output.mp4'
+    ])
+  })
+
+  it('skips incomplete output nodes and does not fall back to upstream gens', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
+    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
     image.params = {
       ...image.params,
       generatedImages: [
@@ -168,32 +211,18 @@ describe('shot visual bridge', () => {
         }
       ]
     }
-    const images = collectImagesFromVisualGraph(doc)
-    expect(images).toHaveLength(1)
-    expect(images[0]?.relativePath).toBe('Assets/shots/from-gen.png')
+    doc.runStates = {
+      [output.id]: {
+        status: 'running',
+        outputs: {}
+      }
+    }
+    expect(collectImagesFromVisualGraph(doc)).toEqual([])
   })
 
-  it('prefers image output node over upstream generatedImages', () => {
+  it('collects only done image output node results', () => {
     const doc = createDefaultScopedGraph('visual')
-    const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
     const output = doc.nodes.find((n) => n.typeId === 'output.image')!
-    image.params = {
-      ...image.params,
-      generatedImages: [
-        {
-          id: IMG1,
-          dataUrl: '',
-          relativePath: 'Assets/shots/a.png',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: IMG2,
-          dataUrl: '',
-          relativePath: 'Assets/shots/b.png',
-          createdAt: new Date().toISOString()
-        }
-      ]
-    }
     doc.runStates = {
       [output.id]: {
         status: 'done',
@@ -208,6 +237,43 @@ describe('shot visual bridge', () => {
     }
     const images = collectImagesFromVisualGraph(doc)
     expect(images.map((item) => item.relativePath)).toEqual(['Assets/shots/b.png'])
+  })
+
+  it('collects images from multiple done image output nodes', () => {
+    const doc = createDefaultScopedGraph('visual')
+    const outputA = doc.nodes.find((n) => n.typeId === 'output.image')!
+    const outputB = createNodeFromType('output.image', { x: 480, y: 280 }, {
+      id: 'node-out-b',
+      params: { outputKind: 'image', inputDataType: 'image' }
+    })
+    doc.nodes.push(outputB)
+    doc.runStates = {
+      [outputA.id]: {
+        status: 'done',
+        outputs: {
+          out: {
+            kind: 'output',
+            outputKind: 'image',
+            images: [{ id: IMG1, dataUrl: '', relativePath: 'Assets/shots/from-a.png' }]
+          }
+        }
+      },
+      [outputB.id]: {
+        status: 'done',
+        outputs: {
+          out: {
+            kind: 'output',
+            outputKind: 'image',
+            images: [{ id: IMG2, dataUrl: '', relativePath: 'Assets/shots/from-b.png' }]
+          }
+        }
+      }
+    }
+    const images = collectImagesFromVisualGraph(doc)
+    expect(images.map((item) => item.relativePath).sort()).toEqual([
+      'Assets/shots/from-a.png',
+      'Assets/shots/from-b.png'
+    ])
   })
 
   it('collects merged images from image output when multiple gens are linked', () => {
@@ -244,7 +310,7 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('falls back to upstream gens when image output is empty', () => {
+  it('returns empty when image output is not done even if upstream gens have images', () => {
     const doc = createDefaultScopedGraph('visual')
     const imageA = doc.nodes.find((n) => n.typeId === 'asset.image')!
     const output = doc.nodes.find((n) => n.typeId === 'output.image')!
@@ -279,11 +345,7 @@ describe('shot visual bridge', () => {
         }
       ]
     }
-    const images = collectImagesFromVisualGraph(doc)
-    expect(images.map((item) => item.relativePath).sort()).toEqual([
-      'Assets/shots/from-a.png',
-      'Assets/shots/from-b.png'
-    ])
+    expect(collectImagesFromVisualGraph(doc)).toEqual([])
   })
 
   it('merges visual output assets into style genRefs', () => {
@@ -296,7 +358,7 @@ describe('shot visual bridge', () => {
     expect(next.filter((r) => r.role === 'style').map((r) => r.assetId)).toEqual([IMG1, IMG2])
   })
 
-  it('creates image refs without auto-connecting to video', () => {
+  it('creates image refs and connects them to video in-image', () => {
     let graph = createDefaultScopedGraph('shotWorkflow')
     graph = materializeShotGenRefsOnVideoGraph(graph, [
       { id: IMG1, type: 'image', name: 'A' },
@@ -304,17 +366,16 @@ describe('shot visual bridge', () => {
     ])
     const video = findShotWorkflowVideoNode(graph)!
     expect(getVideoFrameAssetId(graph, VIDEO_FIRST_FRAME_PORT_ID)).toBeNull()
-    expect(
-      graph.edges.some(
-        (e) => e.target === video.id && (e.targetPort === 'in-image' || e.targetPort === VIDEO_FIRST_FRAME_PORT_ID)
-      )
-    ).toBe(false)
     const refs = graph.nodes.filter((n) => n.assetId === IMG1 || n.assetId === IMG2)
     expect(refs).toHaveLength(2)
     expect(refs[0]?.position.y).not.toBe(refs[1]?.position.y)
+    const imageSources = graph.edges
+      .filter((e) => e.target === video.id && e.targetPort === 'in-image')
+      .map((e) => graph.nodes.find((n) => n.id === e.source)?.assetId)
+    expect(imageSources).toEqual(expect.arrayContaining([IMG1, IMG2]))
   })
 
-  it('drag materialization creates image refs and links shotParams text', () => {
+  it('drag materialization creates image refs, links shotParams text and video in-image', () => {
     const shot = shotWithId('shot-1', {
       genRefs: [
         { role: 'style', assetId: IMG1, refIndex: 1 },
@@ -342,14 +403,41 @@ describe('shot visual bridge', () => {
     )
     expect(refs).toHaveLength(2)
     expect(refs[0]?.position.y).not.toBe(refs[1]?.position.y)
-    expect(
-      graph.edges.some(
-        (e) =>
-          e.target === video.id &&
-          (e.targetPort === 'in-image' || e.targetPort === VIDEO_FIRST_FRAME_PORT_ID) &&
-          refs.some((ref) => ref.id === e.source)
-      )
-    ).toBe(false)
+    const imageSources = graph.edges
+      .filter((e) => e.target === video.id && e.targetPort === 'in-image')
+      .map((e) => graph.nodes.find((n) => n.id === e.source)?.assetId)
+    expect(imageSources).toEqual(expect.arrayContaining([IMG1, IMG2]))
+  })
+
+  it('listImageAssetsFromShotEntity prefers style genRefs then entity urls', () => {
+    const shot = shotWithId('shot-entity-1', {
+      genRefs: [
+        { role: 'character', assetId: KEEP, refIndex: 1 },
+        { role: 'style', assetId: IMG1, refIndex: 2 }
+      ]
+    })
+    const fromStyle = listImageAssetsFromShotEntity(shot, (id) => ({
+      id,
+      type: 'image',
+      name: id
+    }))
+    expect(fromStyle.map((a) => a.id)).toEqual([IMG1])
+
+    const shotNoStyle = shotWithId('shot-entity-2', {
+      genRefs: [{ role: 'character', assetId: KEEP, refIndex: 1 }]
+    })
+    const fromUrls = listImageAssetsFromShotEntity(
+      shotNoStyle,
+      (id) => ({ id, type: 'image', name: id }),
+      {
+        entityImageUrls: ['Assets/shots/from-entity.png'],
+        resolveAssetByRelativePath: (path) =>
+          path === 'Assets/shots/from-entity.png'
+            ? { id: IMG2, type: 'image', name: 'E', relativePath: path }
+            : null
+      }
+    )
+    expect(fromUrls.map((a) => a.id)).toEqual([IMG2])
   })
 
   it('visual drag materialization links shotParams and genRefs to asset.image', () => {
@@ -406,5 +494,32 @@ describe('connectShotVideoReference still works', () => {
       graph.edges.some((e) => e.target === video.id && e.targetPort === 'in-image')
     ).toBe(true)
     expect(graph.nodes.some((n) => n.assetId === IMG1)).toBe(true)
+  })
+})
+
+describe('shot entities catalog', () => {
+  it('round-trips shot entity results', () => {
+    const text = stringifyShotEntities([
+      { id: 's1', name: '镜A', imageUrls: ['Assets/a.png', 'Assets/b.png'] }
+    ])
+    expect(parseShotEntities(text)).toEqual([
+      { id: 's1', name: '镜A', imageUrls: ['Assets/a.png', 'Assets/b.png'] }
+    ])
+    expect(parseShotEntities('[{"id":"x","name":"Y","imageUrls":[]}]')).toEqual([])
+  })
+})
+
+describe('video entities catalog', () => {
+  it('round-trips video entity results', () => {
+    const text = stringifyVideoEntities([
+      { id: 's1', name: '镜A', videoUrls: ['Output/a.mp4', 'Output/b.mp4'] }
+    ])
+    expect(parseVideoEntities(text)).toEqual([
+      { id: 's1', name: '镜A', videoUrls: ['Output/a.mp4', 'Output/b.mp4'] }
+    ])
+    expect(parseVideoEntities('[{"id":"x","name":"Y","videos":["Output/c.mp4"]}]')).toEqual([
+      { id: 'x', name: 'Y', videoUrls: ['Output/c.mp4'] }
+    ])
+    expect(parseVideoEntities('[{"id":"x","name":"Y","videoUrls":[]}]')).toEqual([])
   })
 })

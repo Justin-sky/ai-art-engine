@@ -49,6 +49,10 @@ function cloneGraphValue(value: GraphValue): GraphValue {
       return { ...value }
     case 'text':
       return { ...value }
+    case 'world':
+    case 'narrative':
+    case 'shots':
+      return { ...value }
     case 'texts':
       return {
         kind: 'texts',

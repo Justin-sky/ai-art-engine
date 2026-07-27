@@ -41,7 +41,11 @@ export function isEmptyShotStoryboard(storyboard: ShotStoryboard): boolean {
     storyboard.dialogue.trim() ||
     storyboard.soundFx.trim() ||
     storyboard.cameraMove.trim() ||
-    storyboard.finalPrompt.trim()
+    storyboard.finalPrompt.trim() ||
+    storyboard.characters.length ||
+    storyboard.scenes.length ||
+    storyboard.props.length ||
+    storyboard.weapons.length
   )
 }
 

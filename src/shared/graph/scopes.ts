@@ -41,8 +41,11 @@ export const ASSET_SCREENPLAY_OUTPUT_TITLE = 'Screenplay output'
 /** 导演台资产图输出节点默认标题（持久化；UI 映射为「导演台输出」） */
 export const ASSET_DIRECTOR_OUTPUT_TITLE = 'Director deck output'
 
-/** 分镜资产图「成片时间线」输出节点默认标题（持久化；UI 映射为「成片时间线」） */
+/** 成片时间线输出节点默认标题（持久化；UI 映射为「成片时间线」；挂在剧集画布） */
 export const ASSET_TIMELINE_OUTPUT_TITLE = 'Cut timeline'
+
+/** 分镜资产图「分镜输出」默认标题（持久化；UI 映射为「分镜输出」） */
+export const ASSET_SCRIPT_SHOT_OUTPUT_TITLE = 'Shot video output'
 
 /** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元输出」） */
 export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative output'
@@ -169,13 +172,13 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   scriptAsset: {
     id: 'scriptAsset',
     coerceOutput: true,
-    outputTitleI18nKey: 'graph.titles.timelineOutput',
+    outputTitleI18nKey: 'graph.titles.shotOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
-      typeId: 'output.timeline',
+      typeId: 'output.video',
       kind: 'video',
-      title: ASSET_TIMELINE_OUTPUT_TITLE,
-      inputDataType: GraphPortType.video
+      title: ASSET_SCRIPT_SHOT_OUTPUT_TITLE,
+      inputDataType: GraphPortType.videoEntities
     }
   },
   /** 空白节点画布：不强制输出节点，打开即为空图 */
@@ -195,9 +198,10 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     outputTitleI18nKey: 'graph.titles.worldOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
-      kind: 'image',
+      kind: 'text',
       title: ASSET_WORLD_OUTPUT_TITLE,
-      inputDataType: GraphPortType.image
+      typeId: 'output.world',
+      inputDataType: GraphPortType.worldEntities
     }
   },
   /** 叙事单元资产图：拆解 → 表格 → 生成 → 选择文本 → 输出；不强制通用输出节点 */
@@ -209,7 +213,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     output: {
       kind: 'text',
       title: ASSET_NARRATIVE_OUTPUT_TITLE,
-      inputDataType: GraphPortType.text
+      inputDataType: GraphPortType.narrative
     }
   },
   /** 叙事单元细化图：叙事生成（文本模型）→ 叙事输出；参考节点从底栏拖入 */

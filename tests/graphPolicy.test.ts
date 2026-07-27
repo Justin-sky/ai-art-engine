@@ -72,7 +72,8 @@ describe('graph policy', () => {
     expect(isNodeAddableInScope('shotWorkflow', 'output.video')).toBe(true)
     expect(isNodeAddableInScope('visual', 'output.image')).toBe(true)
     expect(isNodeAddableInScope('directorAsset', 'output.image')).toBe(false)
-    expect(isNodeAddableInScope('scriptAsset', 'output.video')).toBe(false)
+    expect(isNodeAddableInScope('scriptAsset', 'output.video')).toBe(true)
+    expect(isNodeAddableInScope('scriptAsset', 'output.timeline')).toBe(false)
     expect(isNodeAddableInScope('shotWorkflow', 'output.voice')).toBe(false)
     expect(isNodeAddableInScope('visual', 'output.video')).toBe(false)
     expect(listAddableNodeTypes('directorAsset').some((d) => d.typeId.startsWith('output.'))).toBe(
@@ -117,7 +118,6 @@ describe('graph policy', () => {
         'image.toPrompt',
         'image.upscale',
         'prompt.optimize',
-        'narrative.gen',
         'narrative.split',
         'narrative.table',
         'narrative.unitGen',

@@ -53,14 +53,24 @@ export function readBoundUnitIdFromNodeParams(
   return id || undefined
 }
 
+function worldRefNames(refs: NarrativeUnitRow['characters']): string {
+  return refs.map((ref) => ref.name.trim()).filter(Boolean).join('、')
+}
+
 /** 参考节点输出：单元目录字段拼成可读文本 */
 export function formatNarrativeUnitRefText(unit: NarrativeUnitRow): string {
   const lines: string[] = []
   const title = unit.title.trim() || 'Untitled'
   lines.push(`#${unit.order} ${title}`)
   if (unit.dramaticFunction.trim()) lines.push(`戏剧功能：${unit.dramaticFunction.trim()}`)
-  if (unit.location.trim()) lines.push(`地点：${unit.location.trim()}`)
-  if (unit.characters.length) lines.push(`角色：${unit.characters.join('、')}`)
+  const characters = worldRefNames(unit.characters)
+  if (characters) lines.push(`角色：${characters}`)
+  const scenes = worldRefNames(unit.scenes)
+  if (scenes) lines.push(`场景：${scenes}`)
+  const props = worldRefNames(unit.props)
+  if (props) lines.push(`道具：${props}`)
+  const weapons = worldRefNames(unit.weapons)
+  if (weapons) lines.push(`武器：${weapons}`)
   if (unit.emotionalBeat.trim()) lines.push(`情绪节拍：${unit.emotionalBeat.trim()}`)
   if (unit.summary.trim()) lines.push(`摘要：${unit.summary.trim()}`)
   if (unit.sourceExcerpt.trim()) lines.push(`原文摘录：${unit.sourceExcerpt.trim()}`)

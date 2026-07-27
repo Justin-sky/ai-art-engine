@@ -207,12 +207,12 @@ export function mergeWorldCatalogPreservingReviewed(
   return result
 }
 
-function nodeTextPayload(doc: GraphDocument, nodeId: string): string | null {
+function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
   const node = doc.nodes.find((item) => item.id === nodeId)
   const fromParams = node?.params?.text?.trim()
   if (fromParams) return fromParams
   const out = doc.runStates?.[nodeId]?.outputs?.out
-  if (out && typeof out === 'object' && out.kind === 'text' && typeof out.text === 'string') {
+  if (out && typeof out === 'object' && out.kind === 'world' && typeof out.text === 'string') {
     const live = out.text.trim()
     if (live) return live
   }
@@ -236,6 +236,53 @@ export function stringifyWorldElementCatalog(catalog: WorldElementCatalog): stri
   return JSON.stringify(payload, null, 2)
 }
 
+/** 世界元素生成结果实体 type（中文标签） */
+export type WorldElementOutputType = '角色' | '场景' | '道具' | '武器'
+
+export const WORLD_ELEMENT_KIND_TO_TYPE: Record<WorldElementKind, WorldElementOutputType> = {
+  characters: '角色',
+  scenes: '场景',
+  props: '道具',
+  weapons: '武器'
+}
+
+export interface WorldElementGenResult {
+  type: WorldElementOutputType
+  name: string
+  imageUrl: string
+}
+
+export function stringifyWorldElementGenResults(results: WorldElementGenResult[]): string {
+  return JSON.stringify(results, null, 2)
+}
+
+export function parseWorldElementGenResults(raw: string | undefined | null): WorldElementGenResult[] {
+  if (!raw?.trim()) return []
+  try {
+    const parsed = JSON.parse(stripWorldJsonCodeFence(raw)) as unknown
+    if (!Array.isArray(parsed)) return []
+    const out: WorldElementGenResult[] = []
+    for (const row of parsed) {
+      if (!row || typeof row !== 'object') continue
+      const item = row as Record<string, unknown>
+      const typeRaw = asString(item.type).trim()
+      const kind = KIND_ALIASES[typeRaw]
+      const type = kind ? WORLD_ELEMENT_KIND_TO_TYPE[kind] : null
+      if (!type) continue
+      const name = asString(item.name).trim()
+      const imageUrl =
+        asString(item.imageUrl).trim() ||
+        asString(item.image_url).trim() ||
+        asString(item.url).trim()
+      if (!name || !imageUrl) continue
+      out.push({ type, name, imageUrl })
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 /** 从世界元素资产图取出连到「世界元素表格」的上游文本，否则表格自身 / 提取节点正文 */
 export function extractWorldCatalogJsonText(doc: GraphDocument | null | undefined): string | null {
   if (!doc?.nodes?.length) return null
@@ -245,13 +292,13 @@ export function extractWorldCatalogJsonText(doc: GraphDocument | null | undefine
     for (const edge of doc.edges) {
       if (edge.target !== table.id) continue
       if ((edge.targetPort ?? 'in') !== 'in') continue
-      const text = nodeTextPayload(doc, edge.source)
+      const text = nodeCatalogPayload(doc, edge.source)
       if (text) return text
     }
-    const own = nodeTextPayload(doc, table.id)
+    const own = nodeCatalogPayload(doc, table.id)
     if (own) return own
   }
 
   const extract = doc.nodes.find((node) => node.typeId === 'world.extract')
-  return (extract && nodeTextPayload(doc, extract.id)) || null
+  return (extract && nodeCatalogPayload(doc, extract.id)) || null
 }

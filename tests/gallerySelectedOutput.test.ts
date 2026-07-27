@@ -25,6 +25,60 @@ describe('gallery selected output', () => {
     })
   })
 
+  it('resolveGalleryOutputsFromNodeParams maps world.extract selected to world out', () => {
+    const outs = resolveGalleryOutputsFromNodeParams(
+      {
+        generatedTexts: [
+          { id: 'a', text: '{"characters":[]}' },
+          { id: 'b', text: '{"characters":[{"name":"B"}]}' }
+        ],
+        selectedTextId: 'b'
+      },
+      { typeId: 'world.extract' }
+    )
+    expect(outs?.out).toMatchObject({
+      kind: 'world',
+      text: '{"characters":[{"name":"B"}]}'
+    })
+    expect(outs?.['out-all']?.kind).toBe('texts')
+  })
+
+  it('resolveGalleryOutputsFromNodeParams maps narrative.split selected to narrative out', () => {
+    const outs = resolveGalleryOutputsFromNodeParams(
+      {
+        generatedTexts: [
+          { id: 'a', text: '[]' },
+          { id: 'b', text: '[{"id":"nu-1","title":"B"}]' }
+        ],
+        selectedTextId: 'b'
+      },
+      { typeId: 'narrative.split' }
+    )
+    expect(outs?.out).toMatchObject({
+      kind: 'narrative',
+      text: '[{"id":"nu-1","title":"B"}]'
+    })
+    expect(outs?.['out-all']?.kind).toBe('texts')
+  })
+
+  it('resolveGalleryOutputsFromNodeParams maps world.gen entities to worldEntities out', () => {
+    const outs = resolveGalleryOutputsFromNodeParams(
+      {
+        worldElementOutputs: [
+          { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' }
+        ]
+      },
+      { typeId: 'world.gen' }
+    )
+    expect(outs?.out?.kind).toBe('worldEntities')
+    if (outs?.out?.kind === 'worldEntities') {
+      expect(JSON.parse(outs.out.text)).toEqual([
+        { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' }
+      ])
+    }
+    expect(outs?.['out-all']).toBeUndefined()
+  })
+
   it('onlyTarget soft-snapshot overlays selected over stale prior out', async () => {
     const imageGen = createNodeFromType('asset.image', { x: 0, y: 0 }, {
       params: {

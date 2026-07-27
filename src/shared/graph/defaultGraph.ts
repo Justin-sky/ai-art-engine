@@ -18,12 +18,14 @@ import type {
   GraphOutputKind,
   GraphPortDataType
 } from './types'
-import { graphOutputNodeId, GraphPortType } from './types'
+import { graphOutputNodeId, GraphPortType, GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID, GRAPH_SCRIPT_SHOT_TABLE_NODE_ID, GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID, GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID } from './types'
 
 /** 默认图节点：固定 typeId，或按角色解析（加工 / 作用域输出） */
 export interface DefaultGraphNodeSpec {
   key: string
   typeId?: GraphNodeTypeId
+  /** 可选稳定 id（空态默认链等）；缺省走类型 singletonId 或随机 */
+  id?: string
   /** processing / scopeOutput 由 materialize 上下文解析 */
   role?: 'processing' | 'scopeOutput'
   x: number
@@ -43,7 +45,7 @@ export interface DefaultGraphTemplate {
   nodes: DefaultGraphNodeSpec[]
   edges: DefaultGraphEdgeSpec[]
   /** 宿主输入接口自动挂到该 key 对应节点 */
-  inputLinkTo?: string
+  inputLinkTo?: string | string[]
 }
 
 export type DefaultGraphTemplateResolver = (ctx: {
@@ -147,20 +149,51 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
   },
   scriptAsset: {
     nodes: [
-      { key: 'split', typeId: 'script.shotSplit', x: 120, y: 160 },
-      { key: 'table', typeId: 'script.shotTable', x: 340, y: 160 },
-      { key: 'imageGen', typeId: 'script.shotImageGen', x: 560, y: 160 },
-      { key: 'videoGen', typeId: 'script.shotVideoGen', x: 780, y: 160 },
-      { key: 'out', role: 'scopeOutput', x: 1000, y: 160 }
+      {
+        key: 'split',
+        typeId: 'script.shotSplit',
+        id: GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
+        x: 120,
+        y: 160
+      },
+      {
+        key: 'table',
+        typeId: 'script.shotTable',
+        id: GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
+        x: 340,
+        y: 160
+      },
+      {
+        key: 'imageGen',
+        typeId: 'script.shotImageGen',
+        id: GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
+        x: 560,
+        y: 160
+      },
+      {
+        key: 'videoGen',
+        typeId: 'script.shotVideoGen',
+        id: GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
+        x: 780,
+        y: 160
+      },
+      {
+        key: 'out',
+        typeId: 'output.video',
+        x: 1000,
+        y: 160,
+        title: 'Shot video output',
+        params: { outputKind: 'video', inputDataType: GraphPortType.videoEntities }
+      }
     ],
     edges: [
       { from: 'split', to: 'table', fromPort: 'out', toPort: 'in' },
       { from: 'table', to: 'imageGen', fromPort: 'out', toPort: 'in' },
       { from: 'table', to: 'videoGen', fromPort: 'out', toPort: 'in-text' },
-      { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-image' },
+      { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-entities' },
       { from: 'videoGen', to: 'out', fromPort: 'out', toPort: 'in' }
     ],
-    inputLinkTo: 'split'
+    inputLinkTo: 'table'
   },
   worldAsset: {
     nodes: [
@@ -173,7 +206,7 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
         x: 780,
         y: 160,
         title: 'World element output',
-        params: { outputKind: 'image', inputDataType: GraphPortType.image }
+        params: { outputKind: 'text', inputDataType: GraphPortType.worldEntities }
       }
     ],
     edges: [
@@ -187,22 +220,18 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
     nodes: [
       { key: 'split', typeId: 'narrative.split', x: 120, y: 160 },
       { key: 'table', typeId: 'narrative.table', x: 340, y: 160 },
-      { key: 'gen', typeId: 'narrative.gen', x: 560, y: 160 },
-      { key: 'select', typeId: 'text.select', x: 780, y: 160 },
       {
         key: 'out',
         typeId: 'output.narrative',
-        x: 1000,
+        x: 560,
         y: 160,
         title: 'Narrative output',
-        params: { outputKind: 'text', inputDataType: GraphPortType.text }
+        params: { outputKind: 'text', inputDataType: GraphPortType.narrative }
       }
     ],
     edges: [
       { from: 'split', to: 'table', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'gen', fromPort: 'out', toPort: 'in' },
-      { from: 'gen', to: 'select', fromPort: 'out', toPort: 'in' },
-      { from: 'select', to: 'out', fromPort: 'out', toPort: 'in' }
+      { from: 'table', to: 'out', fromPort: 'out', toPort: 'in' }
     ],
     inputLinkTo: 'split'
   }
@@ -275,7 +304,7 @@ function createTemplateNode(
   const node = createNodeFromType(
     typeId,
     position,
-    typeDef.singletonId ? { id: typeDef.singletonId } : undefined
+    spec.id || typeDef.singletonId ? { id: spec.id ?? typeDef.singletonId } : undefined
   )
   if (spec.title) node.title = spec.title
   if (spec.params) node.params = { ...node.params, ...spec.params }
@@ -460,9 +489,20 @@ export function resolveInputLinkHeadTypeIds(
 ): string[] {
   const template = resolveDefaultGraphTemplate(scope, assetType)
   if (!template?.inputLinkTo) return []
-  const spec = template.nodes.find((n) => n.key === template.inputLinkTo)
-  if (!spec) return []
-  if (spec.typeId) return [spec.typeId]
-  if (spec.role === 'processing' && processingTypeId) return [processingTypeId]
-  return []
+  const keys = Array.isArray(template.inputLinkTo)
+    ? template.inputLinkTo
+    : [template.inputLinkTo]
+  const typeIds: string[] = []
+  for (const key of keys) {
+    const spec = template.nodes.find((n) => n.key === key)
+    if (!spec) continue
+    if (spec.typeId) {
+      typeIds.push(spec.typeId)
+      continue
+    }
+    if (spec.role === 'processing' && processingTypeId) {
+      typeIds.push(processingTypeId)
+    }
+  }
+  return typeIds
 }

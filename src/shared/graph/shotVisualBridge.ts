@@ -31,30 +31,65 @@ export type ShotVisualImageAsset = {
   relativePath?: string
 }
 
-/** 从分镜画面图收集图片：以图片输出节点为准；输出为空时再回退上游生成节点 */
-export function collectImagesFromVisualGraph(doc: GraphDocument | null | undefined): GraphImageItem[] {
-  if (!doc?.nodes?.length) return []
+function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
+  const outputs = doc.nodes.filter(
+    (node) => node.category === 'output' || node.typeId === 'output.image'
+  )
+  if (outputs.length) return outputs
+  const single = findOutputNode(doc)
+  return single ? [single] : []
+}
 
-  const output = findOutputNode(doc)
-  const fromOutput = collectImagesFromNode(doc, output)
-  if (fromOutput.length) return fromOutput
+/** 输出节点是否已跑完（仅 done 可收集；pending/running/idle/error/skipped 均跳过） */
+export function isVisualOutputNodeComplete(
+  doc: GraphDocument,
+  outputNodeId: string
+): boolean {
+  return doc.runStates?.[outputNodeId]?.status === 'done'
+}
 
-  // 输出尚未写入（只跑过生成、未跑到输出）时回退上游
-  if (output) {
-    const sourceIds = [
-      ...new Set(doc.edges.filter((edge) => edge.target === output.id).map((edge) => edge.source))
-    ]
-    const fromSources = dedupeImageItems(
-      sourceIds.flatMap((id) => {
-        const node = doc.nodes.find((n) => n.id === id) ?? null
-        return collectImagesFromNode(doc, node)
-      })
-    )
-    if (fromSources.length) return fromSources
+/**
+ * 从已完成的输出节点取图（runStates / cameraShots / 节点自身 generatedImages）。
+ * 不回退上游生成节点。
+ */
+export function collectImagesFromCompletedOutputNode(
+  doc: GraphDocument,
+  output: GraphNode
+): GraphImageItem[] {
+  if (!isVisualOutputNodeComplete(doc, output.id)) return []
+
+  const fromRun = doc.runStates?.[output.id]?.outputs?.out
+  const fromValue = fromRun ? flattenImagesValues([fromRun]) : []
+  if (fromValue.length) {
+    return dedupeImageItems(fromValue.filter((item) => item.relativePath || item.dataUrl))
   }
 
+  const shots = output.params.cameraShots
+  if (Array.isArray(shots) && shots.length) {
+    return dedupeImageItems(
+      shots
+        .map((shot, index) => ({
+          id: shot.id ?? `visual:${output.id}:${index}`,
+          dataUrl: shot.dataUrl ?? '',
+          createdAt: shot.createdAt,
+          relativePath: shot.relativePath
+        }))
+        .filter((item) => item.relativePath || item.dataUrl)
+    )
+  }
+
+  return collectGeneratedImagesParam(output)
+}
+
+/**
+ * 从分镜/元素图收集图片：只收全部输出节点中 status===done 且有可用图的结果；
+ * 未完成输出跳过，不回退上游生成节点。
+ */
+export function collectImagesFromVisualGraph(doc: GraphDocument | null | undefined): GraphImageItem[] {
+  if (!doc?.nodes?.length) return []
+  const outputs = listImageOutputNodes(doc)
   return dedupeImageItems(
-    findAllShotVisualImageNodes(doc).flatMap((node) => collectImagesFromNode(doc, node))
+    outputs.flatMap((output) => collectImagesFromCompletedOutputNode(doc, output))
   )
 }
 
@@ -89,55 +124,35 @@ function dedupeImageItems(items: GraphImageItem[]): GraphImageItem[] {
   return out
 }
 
-function collectImagesFromNode(
-  doc: GraphDocument,
-  node: GraphNode | null
-): GraphImageItem[] {
-  if (!node) return []
-
-  // 生成节点：累计历史优先于当次 runStates（out 仅含本批）
-  const fromGenerated = collectGeneratedImagesParam(node)
-  if (fromGenerated.length) return fromGenerated
-
-  const fromRun = doc.runStates?.[node.id]?.outputs?.out
-  const fromValue = fromRun ? flattenImagesValues([fromRun]) : []
-  if (fromValue.length) {
-    return dedupeImageItems(fromValue.filter((item) => item.relativePath || item.dataUrl))
-  }
-
-  const shots = node.params.cameraShots
-  if (Array.isArray(shots) && shots.length) {
-    return dedupeImageItems(
-      shots
-        .map((shot, index) => ({
-          id: shot.id ?? `visual:${node.id}:${index}`,
-          dataUrl: shot.dataUrl ?? '',
-          createdAt: shot.createdAt,
-          relativePath: shot.relativePath
-        }))
-        .filter((item) => item.relativePath || item.dataUrl)
-    )
-  }
-
-  const previewPath = node.params.previewRelativePath?.trim()
-  const previewData = node.params.previewDataUrl?.trim()
-  if (previewPath || previewData) {
-    return [
-      {
-        id: `visual-preview:${node.id}`,
-        dataUrl: previewData ?? '',
-        relativePath: previewPath
-      }
-    ]
-  }
-  return []
+/** 视频生成节点是否已跑完（仅 done 可收集） */
+export function isVideoGenNodeComplete(doc: GraphDocument, nodeId: string): boolean {
+  return doc.runStates?.[nodeId]?.status === 'done'
 }
 
-/** 从分镜视频图收集视频：以视频输出节点为准；输出为空时再回退上游生成节点 */
+/**
+ * 从分镜视频图收集全部视频生成节点（asset.video processing）中
+ * status===done 且有可用视频的结果。
+ */
+export function collectVideosFromVideoGenNodes(
+  doc: GraphDocument | null | undefined
+): GraphVideoItem[] {
+  if (!doc?.nodes?.length) return []
+  return dedupeVideoItems(
+    findAllShotWorkflowVideoNodes(doc).flatMap((node) => {
+      if (!isVideoGenNodeComplete(doc, node.id)) return []
+      return collectVideosFromNode(doc, node)
+    })
+  )
+}
+
+/** 从分镜视频图收集视频：优先全部已完成视频生成节点；否则回退输出节点链路 */
 export function collectVideosFromShotWorkflowGraph(
   doc: GraphDocument | null | undefined
 ): GraphVideoItem[] {
   if (!doc?.nodes?.length) return []
+
+  const fromGens = collectVideosFromVideoGenNodes(doc)
+  if (fromGens.length) return fromGens
 
   const output = findOutputNode(doc)
   const fromOutput = collectVideosFromNode(doc, output ?? null)
@@ -156,9 +171,7 @@ export function collectVideosFromShotWorkflowGraph(
     if (fromSources.length) return fromSources
   }
 
-  return dedupeVideoItems(
-    findAllShotWorkflowVideoNodes(doc).flatMap((node) => collectVideosFromNode(doc, node))
-  )
+  return []
 }
 
 function collectGeneratedVideosParam(node: GraphNode | null): GraphVideoItem[] {
@@ -293,7 +306,7 @@ export function stringifyShotImageAggregateRows(rows: ShotImageAggregateRow[]): 
   return `${JSON.stringify(rows, null, 2)}\n`
 }
 
-/** 将分镜 genRefs 中的图片放到视频图上（仅创建引用节点，不自动连到视频生成） */
+/** 将分镜实体/ genRefs 图片放到视频图上，并连到视频生成参考图口 in-image */
 export function materializeShotGenRefsOnVideoGraph(
   graph: GraphDocument,
   assets: ShotVisualImageAsset[],
@@ -302,12 +315,13 @@ export function materializeShotGenRefsOnVideoGraph(
   if (!assets.length) return graph
   const doc = cloneGraphDocument(graph)
   const video = findShotWorkflowVideoNode(doc)
+  if (!video) return doc
   const near = options?.near ?? video
-  if (!near) return doc
 
   for (const asset of assets) {
     if (asset.type !== 'image') continue
-    ensureImageRefNodeNear(doc, asset, near)
+    const source = ensureImageRefNodeNear(doc, asset, near)
+    ensureEdge(doc.edges, source.id, video.id, 'in-image')
   }
   return doc
 }
@@ -451,22 +465,65 @@ export function listImageAssetsFromShotGenRefs(
   return out
 }
 
+/**
+ * 分镜实体对应的画面图资产：优先 style genRefs（分镜图收集写回），
+ * 否则按实体 imageUrls 经 relativePath 解析。
+ */
+export function listImageAssetsFromShotEntity(
+  shot: Pick<Shot, 'id' | 'genRefs' | 'audioRefs'>,
+  resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
+  options?: {
+    entityImageUrls?: string[]
+    resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+  }
+): ShotVisualImageAsset[] {
+  const seen = new Set<string>()
+  const out: ShotVisualImageAsset[] = []
+  for (const ref of normalizeGenRefs(shot)) {
+    if (ref.role !== 'style') continue
+    if (seen.has(ref.assetId)) continue
+    const asset = resolveAsset(ref.assetId)
+    if (!asset || asset.type !== 'image') continue
+    seen.add(ref.assetId)
+    out.push(asset)
+  }
+  if (out.length) return out
+
+  const urls = options?.entityImageUrls ?? []
+  const byPath = options?.resolveAssetByRelativePath
+  if (!urls.length || !byPath) return out
+  for (const raw of urls) {
+    const path = raw.trim()
+    if (!path || path.startsWith('data:')) continue
+    const asset = byPath(path)
+    if (!asset || asset.type !== 'image' || seen.has(asset.id)) continue
+    seen.add(asset.id)
+    out.push(asset)
+  }
+  return out
+}
+
 export type ShotParamsDropTarget = 'video' | 'image'
 
 /** 拖入分镜参数后：建参数节点旁的引用拓扑（返回新图；调用方负责替换） */
 export function applyShotParamsDropMaterialization(
   graph: GraphDocument,
   shotParamsNode: GraphNode,
-  shot: Pick<Shot, 'genRefs' | 'audioRefs'>,
+  shot: Pick<Shot, 'id' | 'genRefs' | 'audioRefs'>,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
-  target: ShotParamsDropTarget = 'video'
+  target: ShotParamsDropTarget = 'video',
+  options?: {
+    entityImageUrls?: string[]
+    resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+  }
 ): GraphDocument {
-  const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
   if (target === 'image') {
+    const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
     let doc = materializeShotGenRefsOnImageGraph(graph, assets)
     doc = ensureShotParamsLinkedToImage(doc, shotParamsNode.id)
     return doc
   }
+  const assets = listImageAssetsFromShotEntity(shot, resolveAsset, options)
   let doc = materializeShotGenRefsOnVideoGraph(graph, assets, { near: shotParamsNode })
   doc = ensureShotParamsLinkedToVideo(doc, shotParamsNode.id)
   return doc

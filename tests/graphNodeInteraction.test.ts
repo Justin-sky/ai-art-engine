@@ -8,17 +8,15 @@ import type { GraphDocument } from '../src/shared/graph'
 
 type PointerHandler = (event: PointerEvent) => void
 
-function makeGraph(): GraphDocument {
+function makeGraph(nodeCount = 1): GraphDocument {
   return {
-    nodes: [
-      {
-        id: 'n1',
-        category: 'asset',
-        typeId: 'asset.image',
-        position: { x: 10, y: 20 },
-        params: {}
-      }
-    ],
+    nodes: Array.from({ length: nodeCount }, (_, index) => ({
+      id: `n${index + 1}`,
+      category: 'asset' as const,
+      typeId: 'asset.image',
+      position: { x: 10 + index * 40, y: 20 + index * 10 },
+      params: {}
+    })),
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 }
   }
@@ -155,6 +153,80 @@ describe('useGraphNodeInteraction drag threshold', () => {
     expect(recordChange).toHaveBeenCalledWith('move-node', expect.anything())
     expect(scheduleSave).toHaveBeenCalled()
     expect(graph.nodes[0]?.position.x).toBeGreaterThan(10)
+    dispose()
+  })
+
+  it('drags all selected nodes together and syncs multi-select as null', () => {
+    const graph = makeGraph(3)
+    const selectedNodeIds = ref(new Set(['n1', 'n2', 'n3']))
+    const selectedEdgeIds = ref(new Set<string>())
+    const selectNode = vi.fn()
+    const starts = graph.nodes.map((node) => ({ ...node.position }))
+
+    const { onNodeDragStart, dispose } = useGraphNodeInteraction({
+      graph,
+      selectedNodeIds,
+      selectedEdgeIds,
+      selectNode,
+      buildSnapshot: () => structuredClone(graph),
+      scheduleSave: () => undefined,
+      recordChange: () => undefined
+    })
+
+    onNodeDragStart(
+      'n2',
+      {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100
+      } as PointerEvent
+    )
+    expect(selectNode).toHaveBeenCalledWith(null)
+    expect(selectedNodeIds.value).toEqual(new Set(['n1', 'n2', 'n3']))
+
+    fire('pointermove', {
+      pointerId: 1,
+      clientX: 100 + NODE_DRAG_THRESHOLD_PX + 10,
+      clientY: 100 + 6
+    })
+
+    for (let i = 0; i < graph.nodes.length; i += 1) {
+      expect(graph.nodes[i]?.position.x).toBe(starts[i]!.x + NODE_DRAG_THRESHOLD_PX + 10)
+      expect(graph.nodes[i]?.position.y).toBe(starts[i]!.y + 6)
+    }
+    expect(selectedNodeIds.value.size).toBe(3)
+    dispose()
+  })
+
+  it('keeps multi-select when pointerdown hits an already selected node', () => {
+    const graph = makeGraph(2)
+    const selectedNodeIds = ref(new Set(['n1', 'n2']))
+    const selectedEdgeIds = ref(new Set<string>())
+    const selectNode = vi.fn()
+
+    const { onNodeDragStart, dispose } = useGraphNodeInteraction({
+      graph,
+      selectedNodeIds,
+      selectedEdgeIds,
+      selectNode,
+      buildSnapshot: () => structuredClone(graph),
+      scheduleSave: () => undefined,
+      recordChange: () => undefined
+    })
+
+    onNodeDragStart(
+      'n1',
+      {
+        button: 0,
+        pointerId: 1,
+        clientX: 50,
+        clientY: 50
+      } as PointerEvent
+    )
+
+    expect(selectedNodeIds.value).toEqual(new Set(['n1', 'n2']))
+    expect(selectNode).toHaveBeenCalledWith(null)
     dispose()
   })
 })

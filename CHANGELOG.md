@@ -6,6 +6,7 @@
 
 ### Added
 
+- 目录端口专用类型 `world` / `narrative` / `shots`（显示为世界元素 / 叙事单元 / 分镜）：结构化 JSON 不再占用 `text`，避免误连
 - 生成类节点锁定：开启后跳过模型调用，直接复用图库/上次输出（节点卡锁图标与 Inspector）
 - 模型提供商：可灵（Kling）、海螺 AI（MiniMax）、通义千问（DashScope）、魔塔（ModelScope）
 - 对象存储：阿里云 OSS、腾讯云 COS（与火山 TOS 并列；同时仅可启用一个；设置页支持折叠）

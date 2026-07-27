@@ -16,7 +16,12 @@
       <span class="app-mark">{{ t('script.dialog.shotTable') }}</span>
     </template>
 
-    <ShotTable ref="tableRef" class="shot-table-body" :script-asset-id="scriptAssetId" />
+    <ShotTable
+      ref="tableRef"
+      class="shot-table-body"
+      :script-asset-id="scriptAssetId"
+      :world-element-outputs="worldElementOutputs"
+    />
 
     <template #footer>
       <span class="statusbar">{{ t('script.hint.table') }}</span>
@@ -28,12 +33,18 @@
       <span class="app-mark no-drag">{{ t('script.dialog.shotTable') }}</span>
       <span class="statusbar no-drag">{{ t('script.hint.table') }}</span>
     </header>
-    <ShotTable ref="tableRef" class="shot-table-body embed-body" :script-asset-id="scriptAssetId" />
+    <ShotTable
+      ref="tableRef"
+      class="shot-table-body embed-body"
+      :script-asset-id="scriptAssetId"
+      :world-element-outputs="worldElementOutputs"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { WorldElementGenResult } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import ShotTable from './ShotTable.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -42,9 +53,11 @@ withDefaults(
   defineProps<{
     scriptAssetId: string
     mode?: 'modal' | 'window'
+    worldElementOutputs?: WorldElementGenResult[]
   }>(),
   {
-    mode: 'modal'
+    mode: 'modal',
+    worldElementOutputs: () => []
   }
 )
 

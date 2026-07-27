@@ -127,18 +127,33 @@
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
-    <div v-if="runMessage" class="run-banner" :class="{ error: runFailed, ok: runSucceeded }">
+    <div
+      v-if="runMessage"
+      class="run-banner"
+      :class="{ error: runFailed, ok: runSucceeded }"
+      role="status"
+      :title="t('graph.run.dismissHint')"
+      @click="dismissRunBanner"
+    >
       <span class="run-banner-text">{{ runMessage }}</span>
       <button
         v-if="lastLogRunId"
         type="button"
         class="run-banner-log"
-        @click="openRunLog(lastLogRunId)"
+        @click.stop="openRunLog(lastLogRunId)"
       >
         {{ t('graph.logs.viewLog') }}
       </button>
     </div>
-    <div v-if="dropError" class="run-banner error">{{ dropError }}</div>
+    <div
+      v-if="dropError"
+      class="run-banner error"
+      role="status"
+      :title="t('graph.run.dismissHint')"
+      @click="dismissDropError"
+    >
+      {{ dropError }}
+    </div>
 
     <GraphLayoutFloatingBar
       v-model:snap-enabled="snapToGridEnabled"
@@ -262,6 +277,7 @@
           @matte-open="onMatteOpen"
           @crop-open="onCropOpen"
           @grid-split-open="onGridSplitOpen"
+          @timeline-open="onTimelineOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -483,7 +499,7 @@ import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
 import { collectScriptShotImages, collectScriptShotVideos } from '../features/script/shotVisualPipeline'
-import { collectWorldElementImages } from '../features/world/worldElementPipeline'
+import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
 import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
@@ -559,7 +575,17 @@ import {
   withNarrativeUnitGraph,
   readBoundShotIdFromNodeParams,
   readBoundUnitIdFromNodeParams,
+  resolveNarrativeUnitsForScriptHost,
+  syncScriptNarrativeUnitChains,
   applyShotParamsDropMaterialization,
+  ensureShotParamsLinkedToImage,
+  ensureShotParamsLinkedToVideo,
+  findShotVisualImageNode,
+  findShotWorkflowVideoNode,
+  listImageAssetsFromShotEntity,
+  materializeShotGenRefsOnVideoGraph,
+  parseShotEntities,
+  isTimelineOutputNode,
   type WorldElementKind,
   type NarrativeUnitRow,
   type GraphImageItem,
@@ -1020,11 +1046,53 @@ function readAssetGraph(): GraphDocument {
   const raw = graphAsset.value?.genParams?.graphJson
   const host = graphAsset.value
   const hostAssetId = props.assetId ?? host?.id ?? null
-  return normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
+  let doc = normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
     hostAssetId,
     hasMediaFile: !!host?.relativePath?.trim(),
     parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
   })
+  if (graphScope.value === 'scriptAsset' && hostAssetId) {
+    const beforeKey = doc.nodes
+      .map((n) => n.id)
+      .sort()
+      .join('|')
+    const units = resolveNarrativeUnitsForScriptHost(
+      collectParentGraphsForHost(hostAssetId),
+      hostAssetId,
+      {
+        resolveAssetGenParams: (assetId) => {
+          if (isDraftAssetId(assetId)) {
+            return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
+          }
+          return project.assets.find((a) => a.id === assetId)?.genParams as
+            | Record<string, unknown>
+            | undefined
+        }
+      }
+    )
+    scriptNarrativeCatalog.value = units
+    doc = syncScriptNarrativeUnitChains(doc, units)
+    // 再挂世界输入槽（sync 可能新增 table）
+    doc = normalizeScopedGraph(graphScope.value, doc, {
+      assetType: host?.type,
+      hostAssetId,
+      parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
+    })
+    const afterKey = doc.nodes
+      .map((n) => n.id)
+      .sort()
+      .join('|')
+    if (beforeKey !== afterKey && props.assetId) {
+      const graphJson = cloneGraphDocument(doc)
+      const write = persistAssetRecord(props.assetId, {
+        genParams: { ...(host?.genParams ?? {}), graphJson }
+      }).catch((error) => {
+        console.error('[NodeGraphEditor] script narrative chain sync save failed', error)
+      })
+      trackAssetGraphPersist(write)
+    }
+  }
+  return doc
 }
 
 /** 资产图最近一次落盘 Promise；flushSave 需 await，避免关窗丢写 */
@@ -1259,6 +1327,8 @@ type CtxMenuState = {
 }
 const ctxMenu = ref<CtxMenuState | null>(null)
 const loadedGraphShotId = ref<string | null>(null)
+/** 分镜资产图：从上游叙事解析出的单元目录（供 unitRef 执行） */
+const scriptNarrativeCatalog = ref<NarrativeUnitRow[]>([])
 /** 每镜节点图内存缓存，避免快速切换时把错误画布写入其他分镜 */
 const graphCache = new Map<string, GraphDocument>()
 /** 编辑器打开时的正式版本；未保存关闭时用于回滚内存。 */
@@ -1412,48 +1482,62 @@ const {
   resolveNarrativeUnit: (unitId) => {
     const id = unitId.trim()
     if (!id) return null
+    if (graphScope.value === 'scriptAsset') {
+      return scriptNarrativeCatalog.value.find((row) => row.id === id) ?? null
+    }
     const narrativeId = props.assetId
     if (!narrativeId || graphScope.value !== 'narrativeUnit') return null
     return loadNarrativeCatalog(narrativeId).find((row) => row.id === id) ?? null
   },
-  resolveShotSplitTableJson: () => {
-    // 剧本资产图：表格节点输出当前分镜列表，供「表格 → 拆分」再次拆分
+  resolveShotSplitTableJson: (opts) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const shots = visibleShots.value.length
+    const unit = opts?.narrativeUnitId?.trim()
+    const base = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+    const shots = unit
+      ? base.filter((s) => s.narrativeUnitId === unit)
+      : base.filter((s) => !s.narrativeUnitId?.trim())
     if (!shots.length) return null
     return stringifyShotSplitRows(shotsToShotSplitRows(shots))
   },
-  importShotSplitTableJson: async (jsonText) => {
+  importShotSplitTableJson: async (jsonText, opts) => {
     if (graphScope.value !== 'scriptAsset') return
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return
-    await applyShotSplitJson(scriptId, jsonText)
+    await applyShotSplitJson(scriptId, jsonText, opts?.narrativeUnitId)
   },
-  collectScriptShotImages: async (signal) => {
+  collectScriptShotImages: async (signal, opts) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const shots = visibleShots.value.length
+    const unit = opts?.narrativeUnitId?.trim()
+    const base = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-    if (!shots.length) return { images: [], aggregateJson: '[]\n' }
+    const shots = unit
+      ? base.filter((s) => s.narrativeUnitId === unit)
+      : base.filter((s) => !s.narrativeUnitId?.trim())
+    if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
     return collectScriptShotImages({
       scriptAssetId: scriptId,
       shots,
       signal
     })
   },
-  collectScriptShotVideos: async (signal) => {
+  collectScriptShotVideos: async (signal, opts) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const shots = visibleShots.value.length
+    const unit = opts?.narrativeUnitId?.trim()
+    const base = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
+    const shots = unit
+      ? base.filter((s) => s.narrativeUnitId === unit)
+      : base.filter((s) => !s.narrativeUnitId?.trim())
     if (!shots.length) return { videos: [] }
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
@@ -1461,11 +1545,11 @@ const {
       signal
     })
   },
-  collectWorldElementImages: async (signal) => {
+  collectWorldElementOutputs: async (signal) => {
     if (graphScope.value !== 'worldAsset') return null
     const worldId = props.assetId
     if (!worldId) return null
-    return collectWorldElementImages({
+    return collectWorldElementOutputs({
       worldAssetId: worldId,
       signal
     })
@@ -2191,12 +2275,13 @@ watch(
   () => [workspace.selectedGraphNodeId, workspace.selectedGraphHostId] as const,
   ([id, hostId]) => {
     const nextId = hostId === graphHostId.value ? id : null
+    // null = 多选/清空，本地 selectedNodeIds 由框选或拖动起始自行维护
     if (!nextId) return
     selectedGroupId.value = null
-    if (selectedNodeIds.value.size !== 1 || !selectedNodeIds.value.has(nextId)) {
-      selectedNodeIds.value = new Set([nextId])
-      selectedEdgeIds.value = new Set()
-    }
+    // 已是该节点的单选则跳过；多选时不应再被 workspace 单 id 压扁（交互层会传 null）
+    if (selectedNodeIds.value.size === 1 && selectedNodeIds.value.has(nextId)) return
+    selectedNodeIds.value = new Set([nextId])
+    selectedEdgeIds.value = new Set()
   }
 )
 
@@ -2564,7 +2649,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'video',
-    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'output.video']
+    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'output.video', 'output.timeline']
   },
   {
     id: 'voice',
@@ -2596,7 +2681,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'script.shotImageGen',
       'script.shotVideoGen',
       'script.shotParams',
-      'output.timeline'
+      'output.video'
     ]
   },
   {
@@ -3025,15 +3110,7 @@ function fitView(): void {
 }
 
 function menuAddableNodeTypes() {
-  const types = listAddableNodeTypes(graphScope.value)
-  // 分镜图画布：已有图片输出时不再出现在添加菜单
-  if (
-    graphScope.value === 'visual' &&
-    graph.nodes.some((n) => n.category === 'output' && n.typeId === 'output.image')
-  ) {
-    return types.filter((d) => d.typeId !== 'output.image')
-  }
-  return types
+  return listAddableNodeTypes(graphScope.value)
 }
 
 function closeCtxMenu(): void {
@@ -3251,11 +3328,12 @@ function addNodeFromMenu(typeId: GraphNodeTypeId): void {
   const linkFromId = menu.linkFromNodeId
   const linkToId = menu.linkToNodeId
   const def = getNodeType(typeId)
-  /** 画布 / 分镜视频窗可添加多个输出，不复用 singleton；分镜图（visual）仅允许一个图片输出 */
+  /** 画布 / 分镜图 / 分镜视频窗等可添加多个输出，不复用 singleton */
   const allowMultipleOutputs =
     (graphScope.value === 'canvasAsset' ||
       graphScope.value === 'worldAsset' ||
       graphScope.value === 'elementWorkflow' ||
+      (graphScope.value === 'visual' && typeId === 'output.image') ||
       (graphScope.value === 'shotWorkflow' && typeId === 'output.video')) &&
     isOutputContextMenuType(typeId)
   const existing =
@@ -3474,6 +3552,20 @@ function showDropError(message: string): void {
     dropError.value = ''
     dropErrorTimer = null
   }, 3000)
+}
+
+function dismissDropError(): void {
+  dropError.value = ''
+  if (dropErrorTimer) {
+    clearTimeout(dropErrorTimer)
+    dropErrorTimer = null
+  }
+}
+
+function dismissRunBanner(): void {
+  runMessage.value = ''
+  runFailed.value = false
+  runSucceeded.value = false
 }
 
 function setNodeAsset(
@@ -3732,14 +3824,86 @@ function addNarrativeUnitRefNode(unit: NarrativeUnitRow, position: { x: number; 
   return true
 }
 
-/** 分镜栏拖入：创建（或选中已有）绑定该镜的分镜参数节点，并展开 genRefs 图片 */
-function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number }): boolean {
-  const dropTarget = graphScope.value === 'visual' ? 'image' : 'video'
-  const resolveImageAsset = (assetId: string) => {
-    const asset = project.assets.find((item) => item.id === assetId)
-    if (!asset || asset.type !== 'image') return null
-    return { id: asset.id, type: asset.type, name: asset.name, relativePath: asset.relativePath }
+function resolveImageAssetById(assetId: string) {
+  const asset = project.assets.find((item) => item.id === assetId)
+  if (!asset || asset.type !== 'image') return null
+  return {
+    id: asset.id,
+    type: asset.type as 'image',
+    name: asset.name,
+    relativePath: asset.relativePath
   }
+}
+
+function resolveImageAssetByRelativePath(relativePath: string) {
+  const path = relativePath.trim().replace(/\\/g, '/')
+  if (!path) return null
+  const asset = project.assets.find(
+    (item) =>
+      item.type === 'image' && (item.relativePath ?? '').trim().replace(/\\/g, '/') === path
+  )
+  if (!asset) return null
+  return {
+    id: asset.id,
+    type: asset.type as 'image',
+    name: asset.name,
+    relativePath: asset.relativePath
+  }
+}
+
+/** 从剧本图 shotImageGen / shotVideoGen 节点 params 取当前镜的实体 imageUrls */
+function resolveShotEntityImageUrls(shotId: string): string[] {
+  const docs: GraphDocument[] = []
+  const seen = new WeakSet<object>()
+  const pushRaw = (raw: unknown): void => {
+    if (!raw || typeof raw !== 'object' || seen.has(raw)) return
+    const doc = raw as GraphDocument
+    if (!Array.isArray(doc.nodes)) return
+    seen.add(raw)
+    docs.push(doc)
+  }
+  for (const live of graphEditorHosts.listLiveDocuments()) pushRaw(live)
+  const scriptId = scriptAssetIdRef.value
+  if (scriptId) {
+    if (isDraftAssetId(scriptId)) pushRaw(draftStore.getDraft(scriptId)?.genParams?.graphJson)
+    else pushRaw(project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson)
+  }
+
+  for (const doc of docs) {
+    for (const node of doc.nodes) {
+      if (node.typeId !== 'script.shotImageGen' && node.typeId !== 'script.shotVideoGen') continue
+      const fromParams = Array.isArray(node.params?.shotEntities)
+        ? node.params.shotEntities
+        : null
+      const entities = fromParams
+        ? parseShotEntities(JSON.stringify(fromParams))
+        : parseShotEntities(
+            typeof node.params?.shotEntitiesText === 'string'
+              ? node.params.shotEntitiesText
+              : null
+          )
+      const match = entities.find((item) => item.id === shotId)
+      if (match?.imageUrls.length) return match.imageUrls
+    }
+  }
+  return []
+}
+
+function shotEntityMaterializeOptions(shot: Shot) {
+  return {
+    entityImageUrls: resolveShotEntityImageUrls(shot.id),
+    resolveAssetByRelativePath: resolveImageAssetByRelativePath
+  }
+}
+
+/** 分镜栏拖入 / 切镜自动确保：创建（或选中已有）绑定该镜的分镜参数节点，并展开 genRefs 图片 */
+function addShotParamsNodeFromShot(
+  shot: Shot,
+  position: { x: number; y: number },
+  options?: { select?: boolean }
+): boolean {
+  const select = options?.select !== false
+  const dropTarget = graphScope.value === 'visual' ? 'image' : 'video'
   const existing = graph.nodes.find(
     (n) =>
       n.typeId === 'script.shotParams' && readBoundShotIdFromNodeParams(n.params) === shot.id
@@ -3750,12 +3914,15 @@ function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number 
       buildGraphJson(),
       existing,
       shot,
-      resolveImageAsset,
-      dropTarget
+      resolveImageAssetById,
+      dropTarget,
+      dropTarget === 'video' ? shotEntityMaterializeOptions(shot) : undefined
     )
     replaceGraphDocument(graph, materialized)
-    setSingleNodeSelection(existing.id)
-    workspace.selectGraphNode(existing.id, graphHostId.value)
+    if (select) {
+      setSingleNodeSelection(existing.id)
+      workspace.selectGraphNode(existing.id, graphHostId.value)
+    }
     recordGraphChange('materialize-shot-refs', before)
     scheduleSave()
     requestEdgeRender()
@@ -3774,11 +3941,15 @@ function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number 
     buildGraphJson(),
     node,
     shot,
-    resolveImageAsset,
-    dropTarget
+    resolveImageAssetById,
+    dropTarget,
+    dropTarget === 'video' ? shotEntityMaterializeOptions(shot) : undefined
   )
   replaceGraphDocument(graph, materialized)
-  setSingleNodeSelection(node.id)
+  if (select) {
+    setSingleNodeSelection(node.id)
+    workspace.selectGraphNode(node.id, graphHostId.value)
+  }
   refreshGraphRenderWindow(true)
   if (!renderedNodeIds.value.has(node.id)) {
     const next = new Set(renderedNodeIds.value)
@@ -3789,9 +3960,99 @@ function addShotParamsNodeFromShot(shot: Shot, position: { x: number; y: number 
   requestEdgeRender()
   recordGraphChange('add-shot-params', before)
   scheduleSave()
-  workspace.selectGraphNode(node.id, graphHostId.value)
   graphEditorHosts.bumpRevision()
   return true
+}
+
+/**
+ * 分镜视频窗：按分镜实体创建图片引用并连到视频生成参考图口 in-image
+ */
+function ensureShotEntityImagesForActiveVideoCanvas(shot: Shot): void {
+  if (graphScope.value !== 'shotWorkflow') return
+  const assets = listImageAssetsFromShotEntity(shot, resolveImageAssetById, {
+    entityImageUrls: resolveShotEntityImageUrls(shot.id),
+    resolveAssetByRelativePath: resolveImageAssetByRelativePath
+  })
+  if (!assets.length) return
+  const before = buildGraphJson()
+  const video = findShotWorkflowVideoNode(before)
+  if (!video) return
+  const already = assets.every((asset) => {
+    const source = before.nodes.find(
+      (n) => n.assetId === asset.id && (n.params?.assetRef === true || !!n.assetId)
+    )
+    if (!source) return false
+    return before.edges.some(
+      (edge) =>
+        edge.source === source.id &&
+        edge.target === video.id &&
+        (edge.targetPort ?? 'in') === 'in-image'
+    )
+  })
+  if (already) return
+  const next = materializeShotGenRefsOnVideoGraph(before, assets)
+  replaceGraphDocument(graph, next)
+  recordGraphChange('materialize-shot-entity-images', before)
+  scheduleSave()
+  requestEdgeRender()
+  graphEditorHosts.bumpRevision()
+}
+
+/**
+ * 分镜图 / 分镜视频窗：当前镜自动确保
+ * 「分镜参数 → 图片/视频生成 in-text」；视频窗另将分镜实体图连到参考图口
+ */
+function ensureShotParamsForActiveShotCanvas(): void {
+  const scope = graphScope.value
+  if (scope !== 'visual' && scope !== 'shotWorkflow') return
+  const shotId = project.activeShotId
+  if (!shotId) return
+  const shot = resolveShotById(shotId)
+  if (!shot) return
+
+  const existing = graph.nodes.find(
+    (n) =>
+      n.typeId === 'script.shotParams' && readBoundShotIdFromNodeParams(n.params) === shot.id
+  )
+  const doc = buildGraphJson()
+  const targetNode =
+    scope === 'visual' ? findShotVisualImageNode(doc) : findShotWorkflowVideoNode(doc)
+  const position = targetNode
+    ? { x: targetNode.position.x - 220, y: targetNode.position.y }
+    : { x: 80, y: 160 }
+
+  if (!existing) {
+    addShotParamsNodeFromShot(shot, position, { select: true })
+    return
+  }
+
+  if (!targetNode) return
+  const alreadyLinked = graph.edges.some(
+    (edge) =>
+      edge.source === existing.id &&
+      edge.target === targetNode.id &&
+      (edge.sourcePort ?? 'out') === 'out' &&
+      (edge.targetPort ?? 'in') === 'in-text'
+  )
+  if (!alreadyLinked) {
+    const before = buildGraphJson()
+    const linked =
+      scope === 'visual'
+        ? ensureShotParamsLinkedToImage(before, existing.id)
+        : ensureShotParamsLinkedToVideo(before, existing.id)
+    replaceGraphDocument(graph, linked)
+    recordGraphChange('link-shot-params', before)
+  }
+
+  if (scope === 'shotWorkflow') {
+    ensureShotEntityImagesForActiveVideoCanvas(shot)
+  }
+
+  setSingleNodeSelection(existing.id)
+  workspace.selectGraphNode(existing.id, graphHostId.value)
+  scheduleSave()
+  requestEdgeRender()
+  graphEditorHosts.bumpRevision()
 }
 
 function addAssetNode(asset: AssetInfo, position: { x: number; y: number }): boolean {
@@ -3856,7 +4117,10 @@ const graphNodeInteraction = useGraphNodeInteraction({
   graph,
   selectedNodeIds,
   selectedEdgeIds,
-  selectNode: (nodeId) => workspace.selectGraphNode(nodeId, graphHostId.value),
+  selectNode: (nodeId) => {
+    selectedGroupId.value = null
+    workspace.selectGraphNode(nodeId, graphHostId.value)
+  },
   buildSnapshot: buildGraphJson,
   scheduleSave,
   recordChange: recordGraphChange,
@@ -4499,6 +4763,20 @@ function onSelectVideoOpen(nodeId: string): void {
   selectVideo.selectedVideoId = selected
     ? videoItemKey(selected, Math.max(0, items.indexOf(selected)))
     : ''
+}
+
+/** 画布上双击成片时间线：从上游分镜宿主打开时间线窗口 */
+function onTimelineOpen(nodeId: string): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node || !isTimelineOutputNode(node)) return
+  const upstreamScript = graph.edges
+    .filter((edge) => edge.target === nodeId)
+    .map((edge) => graph.nodes.find((n) => n.id === edge.source))
+    .find((src) => src?.assetType === 'script' && !!src.assetId)
+  const fallbackScript = graph.nodes.find((n) => n.assetType === 'script' && !!n.assetId)
+  const scriptId = upstreamScript?.assetId ?? fallbackScript?.assetId
+  if (!scriptId || isDraftAssetId(scriptId)) return
+  void window.studio.openScriptTimelineWindow(scriptId)
 }
 
 function closeSelectVideo(): void {
@@ -5923,6 +6201,7 @@ function runShotSwitch(prevId: string | null | undefined, nextId: string | null 
       applyViewportTransform(true)
       requestPreviewVisibilityUpdate()
       clearSelection()
+      ensureShotParamsForActiveShotCanvas()
     })
     .catch((err) => {
       console.error('[NodeGraphEditor] switch shot failed', err)
@@ -5930,6 +6209,7 @@ function runShotSwitch(prevId: string | null | undefined, nextId: string | null 
         loadGraphFromShot()
         applyViewportTransform(true)
         requestPreviewVisibilityUpdate()
+        ensureShotParamsForActiveShotCanvas()
       }
     })
 }
@@ -5963,6 +6243,7 @@ onMounted(() => {
     nodeTypeRevision.value += 1
   })
   loadGraphFromShot()
+  ensureShotParamsForActiveShotCanvas()
   syncLiveViewportFromGraph()
   resizeEdgeCanvas()
   applyViewportTransform(true)
@@ -6222,6 +6503,7 @@ defineExpose({
   border-bottom: 1px solid var(--border);
   background: var(--graph-run-banner-bg);
   color: var(--text-muted);
+  cursor: pointer;
 }
 
 .run-banner-text {

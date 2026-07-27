@@ -28,7 +28,8 @@ export interface GraphNodeInteractionOptions {
   graph: GraphDocument
   selectedNodeIds: Ref<Set<string>>
   selectedEdgeIds: Ref<Set<string>>
-  selectNode: (nodeId: string) => void
+  /** 同步到 workspace：单选传节点 id，多选传 null（避免 Inspector 桥接把本地多选压成单选） */
+  selectNode: (nodeId: string | null) => void
   buildSnapshot: () => GraphDocument
   scheduleSave: () => void
   recordChange: (label: string, before: GraphDocument) => void
@@ -146,6 +147,16 @@ export function useGraphNodeInteraction(options: GraphNodeInteractionOptions) {
     options.onNodesDragStart?.([...dragNodeIds])
   }
 
+  function syncWorkspaceNodeSelection(selection: Set<string>): void {
+    if (selection.size === 1) {
+      const onlyId = selection.values().next().value
+      options.selectNode(onlyId ?? null)
+      return
+    }
+    // 多选时清空 workspace 单节点，防止 selectedGraphNodeId watch 把 Set 压成单选
+    options.selectNode(null)
+  }
+
   function onNodeDragStart(
     nodeId: string,
     event: PointerEvent,
@@ -154,7 +165,7 @@ export function useGraphNodeInteraction(options: GraphNodeInteractionOptions) {
     if (event.button !== 0) return
     const moveWholeGroup = dragOptions?.moveWholeGroup === true
     // 单击/双击：仅更新选中，不立刻 snapshot / 进入 dragging
-    options.selectedNodeIds.value = moveWholeGroup
+    const nextSelection = moveWholeGroup
       ? (() => {
           const draggedNode = options.graph.nodes.find((item) => item.id === nodeId)
           return draggedNode?.groupId
@@ -166,8 +177,9 @@ export function useGraphNodeInteraction(options: GraphNodeInteractionOptions) {
             : new Set([nodeId])
         })()
       : resolveSelectionForDrag(nodeId, options.selectedNodeIds.value, event)
+    options.selectedNodeIds.value = nextSelection
     options.selectedEdgeIds.value = new Set()
-    options.selectNode(nodeId)
+    syncWorkspaceNodeSelection(nextSelection)
 
     pendingNodeId = nodeId
     pendingMoveWholeGroup = moveWholeGroup

@@ -13,8 +13,10 @@
             <th class="col-title">{{ t('narrative.table.column.title') }}</th>
             <th class="col-summary">{{ t('narrative.table.column.summary') }}</th>
             <th class="col-function">{{ t('narrative.table.column.dramaticFunction') }}</th>
-            <th class="col-chars">{{ t('narrative.table.column.characters') }}</th>
-            <th class="col-location">{{ t('narrative.table.column.location') }}</th>
+            <th class="col-refs">{{ t('narrative.table.column.characters') }}</th>
+            <th class="col-refs">{{ t('narrative.table.column.scenes') }}</th>
+            <th class="col-refs">{{ t('narrative.table.column.props') }}</th>
+            <th class="col-refs">{{ t('narrative.table.column.weapons') }}</th>
             <th class="col-status">{{ t('narrative.table.column.status') }}</th>
             <th class="col-actions" />
           </tr>
@@ -55,17 +57,43 @@
                 </option>
               </select>
             </td>
-            <td class="col-chars" @click.stop>
-              <input
-                :value="row.characters.join('、')"
-                @change="onCharactersChange(row.id, ($event.target as HTMLInputElement).value)"
-              />
-            </td>
-            <td class="col-location" @click.stop>
-              <input
-                :value="row.location"
-                @change="onLocationChange(row.id, ($event.target as HTMLInputElement).value)"
-              />
+            <td v-for="field in REF_FIELDS" :key="field" class="col-refs" @click.stop>
+              <div class="ref-list">
+                <div
+                  v-for="(refItem, index) in row[field]"
+                  :key="`${field}-${index}`"
+                  class="ref-chip"
+                >
+                  <input
+                    class="ref-name"
+                    :value="refItem.name"
+                    @change="
+                      onRefNameChange(
+                        row.id,
+                        field,
+                        index,
+                        ($event.target as HTMLInputElement).value
+                      )
+                    "
+                  />
+                  <button
+                    type="button"
+                    class="ref-remove"
+                    :title="t('common.delete')"
+                    @click="removeRef(row.id, field, index)"
+                  >
+                    ×
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="ref-add"
+                  :title="t('narrative.table.bind.add')"
+                  @click="addRef(row.id, field)"
+                >
+                  +
+                </button>
+              </div>
             </td>
             <td class="col-status" @click.stop>
               <select
@@ -106,7 +134,8 @@ import {
 } from '@shared/domain'
 import {
   stableNarrativeUnitId,
-  type NarrativeUnitRow
+  type NarrativeUnitRow,
+  type NarrativeWorldRef
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
@@ -115,6 +144,15 @@ import {
 } from '../features/narrative/applyNarrativeCatalogOnOpen'
 
 const DRAMATIC_FUNCTIONS = ['建置', '冲突', '转折', '高潮', '收束', '过渡'] as const
+const REF_FIELDS = ['characters', 'scenes', 'props', 'weapons'] as const
+type RefField = (typeof REF_FIELDS)[number]
+
+const FIELD_TYPE: Record<RefField, NarrativeWorldRef['type']> = {
+  characters: '角色',
+  scenes: '场景',
+  props: '道具',
+  weapons: '武器'
+}
 
 const props = defineProps<{
   narrativeAssetId: string
@@ -199,22 +237,31 @@ function onFunctionChange(id: string, value: string): void {
   schedulePersist()
 }
 
-function onCharactersChange(id: string, value: string): void {
+function onRefNameChange(id: string, field: RefField, index: number, value: string): void {
   const row = findRow(id)
   if (!row) return
-  const next = value
-    .split(/[,，;；、]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-  if (next.join('\0') === row.characters.join('\0')) return
-  row.characters = next
+  const trimmed = value.trim()
+  const current = row[field][index]
+  if (!current || trimmed === current.name) return
+  if (!trimmed) {
+    row[field].splice(index, 1)
+  } else {
+    row[field][index] = { name: trimmed, type: FIELD_TYPE[field] }
+  }
   schedulePersist()
 }
 
-function onLocationChange(id: string, location: string): void {
+function addRef(id: string, field: RefField): void {
   const row = findRow(id)
-  if (!row || location === row.location) return
-  row.location = location
+  if (!row) return
+  row[field].push({ name: '', type: FIELD_TYPE[field] })
+  schedulePersist()
+}
+
+function removeRef(id: string, field: RefField, index: number): void {
+  const row = findRow(id)
+  if (!row) return
+  row[field].splice(index, 1)
   schedulePersist()
 }
 
@@ -236,7 +283,9 @@ function onAdd(): void {
     summary: '',
     dramaticFunction: '建置',
     characters: [],
-    location: '',
+    scenes: [],
+    props: [],
+    weapons: [],
     sourceExcerpt: '',
     emotionalBeat: '',
     durationHint: '中',
@@ -261,7 +310,13 @@ async function flushSave(): Promise<void> {
 }
 
 onMounted(() => {
-  rows.value = loadNarrativeCatalog(props.narrativeAssetId).map((row) => ({ ...row }))
+  rows.value = loadNarrativeCatalog(props.narrativeAssetId).map((row) => ({
+    ...row,
+    characters: row.characters.map((item) => ({ ...item, imageUrl: undefined })),
+    scenes: row.scenes.map((item) => ({ ...item, imageUrl: undefined })),
+    props: row.props.map((item) => ({ ...item, imageUrl: undefined })),
+    weapons: row.weapons.map((item) => ({ ...item, imageUrl: undefined }))
+  }))
 })
 
 onBeforeUnmount(() => {
@@ -363,9 +418,9 @@ textarea::-webkit-resizer {
   width: 88px;
 }
 
-.col-chars,
-.col-location {
-  width: 110px;
+.col-refs {
+  width: 120px;
+  min-width: 100px;
 }
 
 .col-status {
@@ -376,11 +431,45 @@ textarea::-webkit-resizer {
   width: 36px;
 }
 
+.ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ref-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ref-name {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+}
+
+.ref-add,
+.ref-remove,
 .del {
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ref-add {
+  align-self: flex-start;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+
+.ref-remove,
+.del {
   font-size: 16px;
 }
 

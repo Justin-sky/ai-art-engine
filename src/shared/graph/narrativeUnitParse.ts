@@ -1,10 +1,16 @@
 import {
   DEFAULT_SHOT_REVIEW_STATUS,
+  asWorldRefList,
   normalizeShotReviewStatus,
-  type ShotReviewStatus
+  type ShotReviewStatus,
+  type WorldEntityRef
 } from '../domain'
 import { stripJsonCodeFence } from './shotSplitParse'
 import type { GraphDocument } from './types'
+
+/** 叙事单元中的世界元素引用（通常仅有 name；绑定在分镜层完成） */
+export type NarrativeWorldRef = WorldEntityRef
+export { asWorldRefList }
 
 /** 剧本叙事单元（介于完整剧本与分镜之间） */
 export interface NarrativeUnitRow {
@@ -15,8 +21,10 @@ export interface NarrativeUnitRow {
   summary: string
   /** 建置 / 冲突 / 转折 / 高潮 / 收束 等 */
   dramaticFunction: string
-  characters: string[]
-  location: string
+  characters: NarrativeWorldRef[]
+  scenes: NarrativeWorldRef[]
+  props: NarrativeWorldRef[]
+  weapons: NarrativeWorldRef[]
   /** 对应原文摘录 */
   sourceExcerpt: string
   emotionalBeat: string
@@ -25,24 +33,23 @@ export interface NarrativeUnitRow {
   status: ShotReviewStatus
 }
 
+
+function serializeWorldRef(ref: NarrativeWorldRef): NarrativeWorldRef {
+  return {
+    name: ref.name,
+    ...(ref.imageUrl?.trim() ? { imageUrl: ref.imageUrl.trim() } : {}),
+    ...(ref.type ? { type: ref.type } : {})
+  }
+}
+
+function worldRefNames(refs: NarrativeWorldRef[]): string {
+  return refs.map((ref) => ref.name.trim()).filter(Boolean).join('、')
+}
+
 function asString(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   return ''
-}
-
-function asStringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => asString(item).trim())
-      .filter(Boolean)
-  }
-  const raw = asString(value).trim()
-  if (!raw) return []
-  return raw
-    .split(/[,，;；、]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
 }
 
 function clampOrder(value: unknown, fallback: number): number {
@@ -90,12 +97,10 @@ function normalizeRow(item: unknown, index: number): NarrativeUnitRow | null {
     asString(row.dramaticFunction).trim() ||
     asString(row.function).trim() ||
     asString(row['戏剧功能']).trim()
-  const characters = asStringList(row.characters ?? row['角色'])
-  const location =
-    asString(row.location).trim() ||
-    asString(row.scene).trim() ||
-    asString(row['地点']).trim() ||
-    asString(row['场景']).trim()
+  const characters = asWorldRefList(row.characters ?? row['角色'])
+  const scenes = asWorldRefList(row.scenes ?? row['场景'])
+  const props = asWorldRefList(row.props ?? row['道具'])
+  const weapons = asWorldRefList(row.weapons ?? row['武器'])
   const sourceExcerpt =
     asString(row.sourceExcerpt).trim() ||
     asString(row.sourceSpan).trim() ||
@@ -120,7 +125,9 @@ function normalizeRow(item: unknown, index: number): NarrativeUnitRow | null {
     summary,
     dramaticFunction,
     characters,
-    location,
+    scenes,
+    props,
+    weapons,
     sourceExcerpt,
     emotionalBeat,
     durationHint,
@@ -169,8 +176,10 @@ export function stringifyNarrativeUnitRows(rows: NarrativeUnitRow[]): string {
       order: row.order,
       summary: row.summary,
       dramaticFunction: row.dramaticFunction,
-      characters: row.characters,
-      location: row.location,
+      characters: row.characters.map(serializeWorldRef),
+      scenes: row.scenes.map(serializeWorldRef),
+      props: row.props.map(serializeWorldRef),
+      weapons: row.weapons.map(serializeWorldRef),
       sourceExcerpt: row.sourceExcerpt,
       emotionalBeat: row.emotionalBeat,
       durationHint: row.durationHint,
@@ -185,8 +194,14 @@ export function stringifyNarrativeUnitRows(rows: NarrativeUnitRow[]): string {
 export function formatNarrativeUnitFullText(row: NarrativeUnitRow): string {
   const lines: string[] = [`${row.order}. ${row.title}`.trim()]
   if (row.dramaticFunction.trim()) lines.push(`戏剧功能：${row.dramaticFunction.trim()}`)
-  if (row.characters.length) lines.push(`角色：${row.characters.join('、')}`)
-  if (row.location.trim()) lines.push(`地点：${row.location.trim()}`)
+  const characters = worldRefNames(row.characters)
+  if (characters) lines.push(`角色：${characters}`)
+  const scenes = worldRefNames(row.scenes)
+  if (scenes) lines.push(`场景：${scenes}`)
+  const props = worldRefNames(row.props)
+  if (props) lines.push(`道具：${props}`)
+  const weapons = worldRefNames(row.weapons)
+  if (weapons) lines.push(`武器：${weapons}`)
   if (row.emotionalBeat.trim()) lines.push(`情绪：${row.emotionalBeat.trim()}`)
   if (row.durationHint.trim()) lines.push(`时长：${row.durationHint.trim()}`)
   if (row.summary.trim()) {
@@ -250,12 +265,17 @@ export function mergeNarrativeUnitRowsPreservingReviewed(
   return result
 }
 
-function nodeTextPayload(doc: GraphDocument, nodeId: string): string | null {
+function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
   const node = doc.nodes.find((item) => item.id === nodeId)
   const fromParams = node?.params?.text?.trim()
   if (fromParams) return fromParams
   const out = doc.runStates?.[nodeId]?.outputs?.out
-  if (out && typeof out === 'object' && out.kind === 'text' && typeof out.text === 'string') {
+  if (
+    out &&
+    typeof out === 'object' &&
+    out.kind === 'narrative' &&
+    typeof out.text === 'string'
+  ) {
     const live = out.text.trim()
     if (live) return live
   }
@@ -273,15 +293,15 @@ export function extractNarrativeUnitJsonText(
     for (const edge of doc.edges) {
       if (edge.target !== table.id) continue
       if ((edge.targetPort ?? 'in') !== 'in') continue
-      const text = nodeTextPayload(doc, edge.source)
+      const text = nodeCatalogPayload(doc, edge.source)
       if (text) return text
     }
-    const own = nodeTextPayload(doc, table.id)
+    const own = nodeCatalogPayload(doc, table.id)
     if (own) return own
   }
 
   const split = doc.nodes.find(
     (node) => node.typeId === 'narrative.split' || node.typeId === 'screenplay.narrativeSplit'
   )
-  return (split && nodeTextPayload(doc, split.id)) || null
+  return (split && nodeCatalogPayload(doc, split.id)) || null
 }

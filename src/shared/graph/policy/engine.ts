@@ -10,6 +10,7 @@ export function isNodeAddableInScope(scope: string, typeId: string): boolean {
     scope === 'narrativeUnit' && typeId === 'output.narrativeUnit'
   const allowNarrativeOutput = scope === 'narrativeAsset' && typeId === 'output.narrative'
   const allowWorldOutput = scope === 'worldAsset' && typeId === 'output.world'
+  const allowScriptShotOutput = scope === 'scriptAsset' && typeId === 'output.video'
   if (
     typeId.startsWith('output.') &&
     scope !== 'canvasAsset' &&
@@ -18,7 +19,8 @@ export function isNodeAddableInScope(scope: string, typeId: string): boolean {
     !allowVisualImageOutput &&
     !allowNarrativeUnitTextOutput &&
     !allowNarrativeOutput &&
-    !allowWorldOutput
+    !allowWorldOutput &&
+    !allowScriptShotOutput
   ) {
     return false
   }

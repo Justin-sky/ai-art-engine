@@ -37,28 +37,50 @@ function readScriptGraph(scriptAssetId: string): GraphDocument | null {
   return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
 }
 
-function orderedScriptShots(scriptAssetId: string): Shot[] {
+function orderedScriptShots(
+  scriptAssetId: string,
+  narrativeUnitId?: string | null
+): Shot[] {
   const project = useProjectStore()
+  let all: Shot[] = []
   if (isDraftAssetId(scriptAssetId)) {
-    return [...(useDraftStore().getDraft(scriptAssetId)?.shots ?? [])]
-  }
-  const asset = project.assets.find((item) => item.id === scriptAssetId)
-  const ids = Array.isArray(asset?.genParams?.shotIds)
-    ? asset.genParams.shotIds.map(String)
-    : []
-  const byId = new Map(
-    project.shots.filter((s) => shotScriptAssetId(s) === scriptAssetId).map((s) => [s.id, s])
-  )
-  const ordered: Shot[] = []
-  for (const id of ids) {
-    const shot = byId.get(id)
-    if (shot) {
-      ordered.push(shot)
-      byId.delete(id)
+    all = [...(useDraftStore().getDraft(scriptAssetId)?.shots ?? [])]
+  } else {
+    const asset = project.assets.find((item) => item.id === scriptAssetId)
+    const ids = Array.isArray(asset?.genParams?.shotIds)
+      ? asset.genParams.shotIds.map(String)
+      : []
+    const byId = new Map(
+      project.shots.filter((s) => shotScriptAssetId(s) === scriptAssetId).map((s) => [s.id, s])
+    )
+    const ordered: Shot[] = []
+    for (const id of ids) {
+      const shot = byId.get(id)
+      if (shot) {
+        ordered.push(shot)
+        byId.delete(id)
+      }
     }
+    for (const shot of byId.values()) ordered.push(shot)
+    all = ordered
   }
-  for (const shot of byId.values()) ordered.push(shot)
-  return ordered
+  const unit = narrativeUnitId?.trim()
+  if (!unit) {
+    return all.filter((s) => !s.narrativeUnitId?.trim())
+  }
+  return all.filter((s) => s.narrativeUnitId === unit)
+}
+
+function otherScriptShots(scriptAssetId: string, narrativeUnitId?: string | null): Shot[] {
+  const project = useProjectStore()
+  const all = isDraftAssetId(scriptAssetId)
+    ? [...(useDraftStore().getDraft(scriptAssetId)?.shots ?? [])]
+    : project.shots.filter((s) => shotScriptAssetId(s) === scriptAssetId)
+  const unit = narrativeUnitId?.trim()
+  if (!unit) {
+    return all.filter((s) => !!s.narrativeUnitId?.trim())
+  }
+  return all.filter((s) => s.narrativeUnitId !== unit)
 }
 
 function storyboardFromRow(row: ShotSplitRow): ShotStoryboard {
@@ -69,7 +91,11 @@ function storyboardFromRow(row: ShotSplitRow): ShotStoryboard {
     lighting: row.lighting,
     dialogue: row.dialogue,
     soundFx: row.soundFx,
-    cameraMove: row.cameraMove
+    cameraMove: row.cameraMove,
+    characters: [...(row.characters ?? [])],
+    scenes: [...(row.scenes ?? [])],
+    props: [...(row.props ?? [])],
+    weapons: [...(row.weapons ?? [])]
   }
 }
 
@@ -96,19 +122,22 @@ function buildNextShotsFromRows(
   scriptAssetId: string,
   rows: ShotSplitRow[],
   existing: Shot[],
-  resolution: { w: number; h: number }
+  resolution: { w: number; h: number },
+  narrativeUnitId?: string | null
 ): Shot[] {
   const draft = isDraftAssetId(scriptAssetId)
+  const unit = narrativeUnitId?.trim() || undefined
   const nextShots: Shot[] = []
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!
     const base = existing[i]
     if (base && isReviewedShot(base)) {
-      nextShots.push(base)
+      nextShots.push(unit ? { ...base, narrativeUnitId: unit } : base)
       continue
     }
     if (base) {
-      nextShots.push(mergeShotWithRow(base, row))
+      const merged = mergeShotWithRow(base, row)
+      nextShots.push(unit ? { ...merged, narrativeUnitId: unit } : merged)
       continue
     }
     const createdAt = new Date().toISOString()
@@ -116,6 +145,7 @@ function buildNextShotsFromRows(
       ...createEmptyShot(row.title, resolution),
       id: draft ? createDraftShotId() : crypto.randomUUID(),
       scriptAssetId,
+      ...(unit ? { narrativeUnitId: unit } : {}),
       reviewStatus: DEFAULT_SHOT_REVIEW_STATUS,
       createdAt,
       updatedAt: createdAt
@@ -124,7 +154,9 @@ function buildNextShotsFromRows(
   }
   for (let i = rows.length; i < existing.length; i++) {
     const shot = existing[i]
-    if (shot && isReviewedShot(shot)) nextShots.push(shot)
+    if (shot && isReviewedShot(shot)) {
+      nextShots.push(unit ? { ...shot, narrativeUnitId: unit } : shot)
+    }
   }
   return nextShots
 }
@@ -137,15 +169,22 @@ export function shotSplitRowsFingerprint(rows: ShotSplitRow[]): string {
   return stringifyShotSplitRows(rows)
 }
 
-function readLastAppliedFingerprint(scriptAssetId: string): string | null {
+function fingerprintKey(narrativeUnitId?: string | null): string {
+  const unit = narrativeUnitId?.trim()
+  return unit ? `${LAST_APPLIED_SHOT_SPLIT_FP_KEY}:${unit}` : LAST_APPLIED_SHOT_SPLIT_FP_KEY
+}
+
+function readLastAppliedFingerprint(
+  scriptAssetId: string,
+  narrativeUnitId?: string | null
+): string | null {
+  const key = fingerprintKey(narrativeUnitId)
   const project = useProjectStore()
   if (isDraftAssetId(scriptAssetId)) {
-    const raw = useDraftStore().getDraft(scriptAssetId)?.genParams?.[LAST_APPLIED_SHOT_SPLIT_FP_KEY]
+    const raw = useDraftStore().getDraft(scriptAssetId)?.genParams?.[key]
     return typeof raw === 'string' && raw ? raw : null
   }
-  const raw = project.assets.find((item) => item.id === scriptAssetId)?.genParams?.[
-    LAST_APPLIED_SHOT_SPLIT_FP_KEY
-  ]
+  const raw = project.assets.find((item) => item.id === scriptAssetId)?.genParams?.[key]
   return typeof raw === 'string' && raw ? raw : null
 }
 
@@ -165,16 +204,21 @@ export function shouldApplyShotSplitImport(opts: {
   return 'apply'
 }
 
-async function markShotSplitApplied(scriptAssetId: string, fingerprint: string): Promise<void> {
+async function markShotSplitApplied(
+  scriptAssetId: string,
+  fingerprint: string,
+  narrativeUnitId?: string | null
+): Promise<void> {
   const project = useProjectStore()
   const draftStore = useDraftStore()
+  const key = fingerprintKey(narrativeUnitId)
   if (isDraftAssetId(scriptAssetId)) {
     const draft = draftStore.getDraft(scriptAssetId)
     if (!draft) return
     draftStore.updateDraft(scriptAssetId, {
       genParams: {
         ...(draft.genParams ?? {}),
-        [LAST_APPLIED_SHOT_SPLIT_FP_KEY]: fingerprint
+        [key]: fingerprint
       }
     })
     return
@@ -186,7 +230,7 @@ async function markShotSplitApplied(scriptAssetId: string, fingerprint: string):
       ...asset,
       genParams: {
         ...asset.genParams,
-        [LAST_APPLIED_SHOT_SPLIT_FP_KEY]: fingerprint
+        [key]: fingerprint
       },
       updatedAt: new Date().toISOString()
     })
@@ -198,10 +242,12 @@ async function markShotSplitApplied(scriptAssetId: string, fingerprint: string):
  * 将分镜拆分 JSON 写入该剧本的分镜列表。
  * 仅应在「分镜表格」节点执行时调用；打开表格窗口不再导入。
  * @param jsonText 上游拆分文本；缺省时从资产图提取
+ * @param narrativeUnitId 非空时只更新该叙事单元下的分镜
  */
 export async function applyShotSplitJson(
   scriptAssetId: string,
-  jsonText?: string | null
+  jsonText?: string | null,
+  narrativeUnitId?: string | null
 ): Promise<number> {
   const project = useProjectStore()
   const draftStore = useDraftStore()
@@ -210,21 +256,28 @@ export async function applyShotSplitJson(
   if (!rows?.length) return 0
 
   const fingerprint = shotSplitRowsFingerprint(rows)
-  const existing = orderedScriptShots(scriptAssetId)
+  const existing = orderedScriptShots(scriptAssetId, narrativeUnitId)
   const decision = shouldApplyShotSplitImport({
     fingerprint,
-    lastApplied: readLastAppliedFingerprint(scriptAssetId),
+    lastApplied: readLastAppliedFingerprint(scriptAssetId, narrativeUnitId),
     contentUnchanged: sameSplitContent(existing, rows)
   })
 
   if (decision === 'skip') return 0
   if (decision === 'mark-only') {
-    await markShotSplitApplied(scriptAssetId, fingerprint)
+    await markShotSplitApplied(scriptAssetId, fingerprint, narrativeUnitId)
     return 0
   }
 
   const resolution = project.config?.resolution ?? { w: 1280, h: 720 }
-  const nextShots = buildNextShotsFromRows(scriptAssetId, rows, existing, resolution)
+  const unitShots = buildNextShotsFromRows(
+    scriptAssetId,
+    rows,
+    existing,
+    resolution,
+    narrativeUnitId
+  )
+  const nextShots = [...otherScriptShots(scriptAssetId, narrativeUnitId), ...unitShots]
 
   if (isDraftAssetId(scriptAssetId)) {
     const draft = draftStore.getDraft(scriptAssetId)
@@ -233,14 +286,14 @@ export async function applyShotSplitJson(
       shots: nextShots.map((s) => toPlain(s)),
       genParams: {
         ...(draft.genParams ?? {}),
-        [LAST_APPLIED_SHOT_SPLIT_FP_KEY]: fingerprint
+        [fingerprintKey(narrativeUnitId)]: fingerprint
       }
     })
     project.shots = [
       ...project.shots.filter((s) => shotScriptAssetId(s) !== scriptAssetId),
       ...nextShots
     ]
-    return nextShots.length
+    return unitShots.length
   }
 
   const written = await window.studio.syncScriptShots({
@@ -259,12 +312,16 @@ export async function applyShotSplitJson(
         genParams: {
           ...asset.genParams,
           shotIds: written.map((s) => s.id),
-          [LAST_APPLIED_SHOT_SPLIT_FP_KEY]: fingerprint
+          [fingerprintKey(narrativeUnitId)]: fingerprint
         },
         updatedAt: new Date().toISOString()
       })
     )
     project.patchAssets([updated])
   }
-  return written.length
+  return written.filter((s) =>
+    narrativeUnitId?.trim()
+      ? s.narrativeUnitId === narrativeUnitId.trim()
+      : !s.narrativeUnitId?.trim()
+  ).length
 }

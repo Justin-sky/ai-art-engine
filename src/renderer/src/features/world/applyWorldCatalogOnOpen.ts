@@ -1,20 +1,17 @@
 import { isDraftAssetId, normalizeShotReviewStatus } from '@shared/domain'
 import {
-  createNodeFromType,
   emptyWorldElementCatalog,
   extractWorldCatalogJsonText,
   mergeWorldCatalogPreservingReviewed,
-  normalizeScopedGraph,
   parseWorldElementCatalog,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
   stringifyWorldElementCatalog,
+  syncWorldElementKindGraph,
   withWorldElementGraph,
   WORLD_ELEMENT_KINDS,
   type GraphDocument,
-  type GraphNode,
   type WorldElementCatalog,
-  type WorldElementItem,
   type WorldElementKind
 } from '@shared/graph'
 import { toPlain } from '../../utils/toPlain'
@@ -46,85 +43,26 @@ function readWorldGenParams(worldAssetId: string): Record<string, unknown> | und
     | undefined
 }
 
-function syncKindGraph(
-  existing: GraphDocument | null | undefined,
-  items: WorldElementItem[]
-): GraphDocument {
-  const doc = normalizeScopedGraph('elementWorkflow', existing ?? null, {
-    assetType: 'world'
-  })
-  const managed = new Map<string, GraphNode>()
-  for (const node of doc.nodes) {
-    const id = readWorldElementIdFromNodeParams(node.params)
-    if (id) managed.set(id, node)
-  }
-
-  const keepIds = new Set(items.map((item) => item.id))
-  const nextNodes: GraphNode[] = doc.nodes.filter((node) => {
-    const id = readWorldElementIdFromNodeParams(node.params)
-    if (!id) return true
-    return keepIds.has(id)
-  })
-
-  let col = 0
-  let row = 0
-  const COLS = 3
-  const GAP_X = 200
-  const GAP_Y = 160
-  const ORIGIN_X = 80
-  const ORIGIN_Y = 80
-
-  for (const item of items) {
-    const found = managed.get(item.id)
-    if (found) {
-      const idx = nextNodes.findIndex((n) => n.id === found.id)
-      if (idx >= 0) {
-        nextNodes[idx] = {
-          ...nextNodes[idx]!,
-          title: item.name,
-          params: {
-            ...nextNodes[idx]!.params,
-            worldElementId: item.id,
-            generateInstruction: item.prompt,
-            reviewStatus: normalizeShotReviewStatus(item.status)
-          }
-        }
-      }
-      continue
-    }
-    const position = {
-      x: ORIGIN_X + col * GAP_X,
-      y: ORIGIN_Y + row * GAP_Y
-    }
-    col += 1
-    if (col >= COLS) {
-      col = 0
-      row += 1
-    }
-    nextNodes.push(
-      createNodeFromType('asset.image', position, {
-        title: item.name,
-        params: {
-          worldElementId: item.id,
-          generateInstruction: item.prompt,
-          reviewStatus: normalizeShotReviewStatus(item.status)
-        }
-      })
+function graphTopologyKey(doc: GraphDocument | null | undefined): string {
+  if (!doc) return ''
+  const nodes = doc.nodes
+    .map((node) => {
+      const elementId = readWorldElementIdFromNodeParams(node.params) ?? ''
+      return `${node.id}:${node.typeId}:${elementId}:${node.title ?? ''}`
+    })
+    .sort()
+    .join('|')
+  const edges = doc.edges
+    .map(
+      (edge) =>
+        `${edge.source}:${edge.sourcePort ?? 'out'}->${edge.target}:${edge.targetPort ?? 'in'}`
     )
-  }
-
-  return {
-    ...doc,
-    nodes: nextNodes
-  }
+    .sort()
+    .join('|')
+  return `${nodes}#${edges}`
 }
 
-function readLastAppliedFingerprint(worldAssetId: string): string | null {
-  const raw = readWorldGenParams(worldAssetId)?.[LAST_APPLIED_WORLD_CATALOG_FP_KEY]
-  return typeof raw === 'string' && raw ? raw : null
-}
-
-/** 从四类子图还原可编辑目录 */
+/** 从四类子图还原可编辑目录（按 worldElementId 聚合，避免 script/gen/out 重复） */
 export function catalogFromWorldGenParams(
   genParams?: Record<string, unknown> | null
 ): WorldElementCatalog {
@@ -132,16 +70,34 @@ export function catalogFromWorldGenParams(
   for (const kind of WORLD_ELEMENT_KINDS) {
     const doc = readWorldElementGraphFromGenParams(genParams, kind)
     if (!doc?.nodes?.length) continue
+    const byId = new Map<
+      string,
+      { id: string; name: string; prompt: string; status: ReturnType<typeof normalizeShotReviewStatus> }
+    >()
     for (const node of doc.nodes) {
       const id = readWorldElementIdFromNodeParams(node.params)
       if (!id) continue
-      catalog[kind].push({
+      const prev = byId.get(id) ?? {
         id,
-        name: node.title?.trim() || id,
-        prompt: node.params.generateInstruction?.trim() || '',
-        status: normalizeShotReviewStatus(node.params.reviewStatus)
-      })
+        name: id,
+        prompt: '',
+        status: normalizeShotReviewStatus(undefined)
+      }
+      if (node.typeId === 'play.script') {
+        prev.prompt = node.params.text?.trim() || ''
+        if (node.title?.trim()) prev.name = node.title.trim()
+      } else if (node.typeId === 'asset.image') {
+        if (node.title?.trim()) prev.name = node.title.trim()
+        prev.status = normalizeShotReviewStatus(node.params.reviewStatus)
+      } else if (node.typeId === 'output.image') {
+        if (!prev.name || prev.name === id) {
+          const title = node.title?.trim()
+          if (title) prev.name = title
+        }
+      }
+      byId.set(id, prev)
     }
+    catalog[kind].push(...byId.values())
   }
   return catalog
 }
@@ -168,29 +124,43 @@ async function writeWorldGenParams(
   await persistAssetRecord(worldAssetId, { genParams })
 }
 
+function readLastAppliedFingerprint(worldAssetId: string): string | null {
+  const raw = readWorldGenParams(worldAssetId)?.[LAST_APPLIED_WORLD_CATALOG_FP_KEY]
+  return typeof raw === 'string' && raw ? raw : null
+}
+
 async function persistCatalog(
   worldAssetId: string,
   catalog: WorldElementCatalog,
   fingerprint: string
 ): Promise<number> {
-  if (readLastAppliedFingerprint(worldAssetId) === fingerprint) {
-    return WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
-  }
   let genParams = { ...(readWorldGenParams(worldAssetId) ?? {}) }
+  let changed = false
+
   for (const kind of WORLD_ELEMENT_KINDS) {
     const prev = readWorldElementGraphFromGenParams(genParams, kind)
-    const next = syncKindGraph(prev, catalog[kind])
-    genParams = withWorldElementGraph(genParams, kind, toPlain(next) as GraphDocument)
+    const next = syncWorldElementKindGraph(prev, catalog[kind])
+    if (graphTopologyKey(prev) !== graphTopologyKey(next)) {
+      genParams = withWorldElementGraph(genParams, kind, toPlain(next) as GraphDocument)
+      changed = true
+    }
   }
-  genParams = {
-    ...genParams,
-    [LAST_APPLIED_WORLD_CATALOG_FP_KEY]: fingerprint
+
+  if (readLastAppliedFingerprint(worldAssetId) !== fingerprint) {
+    genParams = {
+      ...genParams,
+      [LAST_APPLIED_WORLD_CATALOG_FP_KEY]: fingerprint
+    }
+    changed = true
   }
-  await writeWorldGenParams(worldAssetId, genParams)
+
+  if (changed) {
+    await writeWorldGenParams(worldAssetId, genParams)
+  }
   return WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
 }
 
-/** 表格编辑落盘：同步目录到四类子图；指纹未变则跳过写盘 */
+/** 表格编辑落盘：同步目录到四类子图（补齐图片生成 + 图片输出）；拓扑未变则跳过写盘 */
 export async function saveWorldCatalog(
   worldAssetId: string,
   catalog: WorldElementCatalog
@@ -199,8 +169,9 @@ export async function saveWorldCatalog(
 }
 
 /**
- * 将世界元素目录 JSON 同步到四类 elementWorkflow 图。
- * 仅应在「世界元素表格 / 编辑」节点执行时调用；打开窗口不再导入。
+ * 将世界元素目录 JSON 同步到四类 elementWorkflow 图
+ *（为每条目录创建/更新图片生成节点，并接到共享图片输出）。
+ * 在表格/生成节点执行、以及打开世界元素生成侧栏时调用。
  */
 export async function applyWorldCatalog(
   worldAssetId: string,
@@ -215,8 +186,6 @@ export async function applyWorldCatalog(
     mergeWorldCatalogPreservingReviewed(existing, parsed) ?? parsed
 
   const fingerprint = stringifyWorldElementCatalog(catalog)
-  if (readLastAppliedFingerprint(worldAssetId) === fingerprint) return 0
-
   return persistCatalog(worldAssetId, catalog, fingerprint)
 }
 

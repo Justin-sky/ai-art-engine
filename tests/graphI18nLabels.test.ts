@@ -36,9 +36,11 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.output.director')).toBe('导演台输出')
     expect(t('graph.types.output.timeline')).toBe('成片时间线')
     expect(t('graph.titles.timelineOutput')).toBe('成片时间线')
+    expect(t('graph.titles.shotOutput')).toBe('分镜输出')
+    expect(t('graph.port.types.videoEntities')).toBe('视频实体')
     expect(t('graph.types.output.narrative')).toBe('叙事单元输出')
-    expect(t('graph.types.output.world')).toBe('世界元素输出')
-    expect(t('graph.titles.worldOutput')).toBe('世界元素输出')
+    expect(t('graph.types.output.world')).toBe('世界元素实体输出')
+    expect(t('graph.titles.worldOutput')).toBe('世界元素实体输出')
   })
 
   it('resolves graph.port.types.* labels', () => {
@@ -51,6 +53,9 @@ describe('graph processing menu labels', () => {
     expect(t('graph.port.types.videos')).toBe('视频组')
     expect(t('graph.port.types.text')).toBe('文本')
     expect(t('graph.port.types.texts')).toBe('文本组')
+    expect(t('graph.port.types.world')).toBe('世界元素')
+    expect(t('graph.port.types.worldEntities')).toBe('世界元素实体')
+    expect(t('graph.port.types.shotEntities')).toBe('分镜实体')
     expect(t('graph.port.types.model')).toBe('模型')
   })
 })

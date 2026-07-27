@@ -207,7 +207,7 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
-  it('creates default narrative asset graph with split → table → gen → select text → output', () => {
+  it('creates default narrative asset graph with split → table → output (no gen)', () => {
     const doc = createDefaultScopedGraph('narrativeAsset', 'narrative')
     const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
     const table = doc.nodes.find((node) => node.typeId === 'narrative.table')
@@ -216,48 +216,106 @@ describe('asset editor graph', () => {
     const output = doc.nodes.find((node) => node.typeId === 'output.narrative')
     expect(split).toBeTruthy()
     expect(table).toBeTruthy()
-    expect(editor).toBeTruthy()
-    expect(select).toBeTruthy()
+    expect(editor).toBeUndefined()
+    expect(select).toBeUndefined()
     expect(output).toBeTruthy()
     expect(getNodePorts(split!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
-      ['out', 'text']
-    ])
-    expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text'],
-      ['out', 'text']
-    ])
-    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text'],
+      ['out', 'narrative'],
       ['out', 'texts']
     ])
+    expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
+      ['in', 'narrative'],
+      ['out', 'narrative']
+    ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'text']
+      ['in', 'narrative']
     ])
     expect(
       doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)
     ).toBe(true)
     expect(
+      doc.edges.some((edge) => edge.source === table?.id && edge.target === output?.id)
+    ).toBe(true)
+    expect(
       doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === editor?.id && edge.target === select?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === select?.id && edge.target === output?.id)
-    ).toBe(true)
-    expect(
-      doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
     ).toBe(false)
     expect(canConnectNodes(split!, table!)).toBe(true)
-    expect(canConnectNodes(table!, editor!)).toBe(true)
-    expect(canConnectNodes(editor!, select!)).toBe(true)
-    expect(canConnectNodes(select!, output!)).toBe(true)
+    expect(canConnectNodes(table!, output!)).toBe(true)
     expect(isNodeDeletable(split!)).toBe(true)
     expect(isNodeDeletable(table!)).toBe(true)
-    expect(isNodeDeletable(editor!)).toBe(true)
-    expect(isNodeDeletable(select!)).toBe(true)
     expect(isNodeDeletable(output!)).toBe(true)
+  })
+
+  it('narrative asset host links text slot to narrative.split', () => {
+    const doc = normalizeScopedGraph('narrativeAsset', null, {
+      assetType: 'narrative',
+      hostAssetId: '00000000-0000-4000-8000-000000000601'
+    })
+    const table = doc.nodes.find((node) => node.typeId === 'narrative.table')
+    const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
+    expect(table).toBeTruthy()
+    expect(split).toBeTruthy()
+    expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(false)
+    expect(
+      doc.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in', 0) &&
+          e.target === split?.id &&
+          e.targetPort === 'in'
+      )
+    ).toBe(true)
+    expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-worldEntities', 0))).toBe(
+      false
+    )
+  })
+
+  it('script asset host links worldEntities slot to script.shotTable', () => {
+    const doc = normalizeScopedGraph('scriptAsset', null, {
+      assetType: 'script',
+      hostAssetId: '00000000-0000-4000-8000-000000000701'
+    })
+    const table = doc.nodes.find((node) => node.typeId === 'script.shotTable')
+    const split = doc.nodes.find((node) => node.typeId === 'script.shotSplit')
+    expect(table).toBeTruthy()
+    expect(split).toBeTruthy()
+    expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(true)
+    expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-text', 0))).toBe(false)
+    expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-narrative', 0))).toBe(false)
+    expect(
+      doc.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in-worldEntities', 0) &&
+          e.target === table?.id &&
+          e.targetPort === 'in-worldEntities'
+      )
+    ).toBe(true)
+  })
+
+  it('migrates legacy narrative.gen → text.select edge from out to out-all', () => {
+    const gen = createNodeFromType('narrative.gen', { x: 0, y: 0 }, { id: 'gen' })
+    const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
+    const doc = normalizeScopedGraph('narrativeAsset', {
+      nodes: [gen, select],
+      edges: [
+        {
+          id: 'e1',
+          source: 'gen',
+          target: 'select',
+          sourcePort: 'out',
+          targetPort: 'in'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }, { assetType: 'narrative' })
+    expect(
+      doc.edges.some(
+        (edge) =>
+          edge.source === 'gen' &&
+          edge.target === 'select' &&
+          edge.sourcePort === 'out-all'
+      )
+    ).toBe(true)
   })
 
   it('creates default world asset graph with extract → table → editor → output chain', () => {
@@ -270,12 +328,21 @@ describe('asset editor graph', () => {
     expect(table).toBeTruthy()
     expect(editor).toBeTruthy()
     expect(output).toBeTruthy()
-    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
+    expect(getNodePorts(extract!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
-      ['out', 'image']
+      ['out', 'world'],
+      ['out', 'texts']
+    ])
+    expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
+      ['in', 'world'],
+      ['out', 'world']
+    ])
+    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
+      ['in', 'world'],
+      ['out', 'worldEntities']
     ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'image']
+      ['in', 'worldEntities']
     ])
     expect(
       doc.edges.some((edge) => edge.source === extract?.id && edge.target === table?.id)

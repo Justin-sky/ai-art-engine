@@ -98,7 +98,7 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
-const { t } = useStudioI18n()
+const { t, te } = useStudioI18n()
 
 const props = defineProps<{
   node: GraphNode
@@ -152,7 +152,11 @@ function togglePreviewCollapsed(): void {
 const presentation = computed(() => resolveNodeType(props.node)?.presentation)
 const badgeLabel = computed(() => {
   if (isInputSlot.value) {
-    return t(`graph.inputInterface.badgeByType.${slotDataType.value}`)
+    const byType = `graph.inputInterface.badgeByType.${slotDataType.value}`
+    if (te(byType)) return t(byType)
+    const portType = `graph.port.types.${slotDataType.value}`
+    if (te(portType)) return t(portType)
+    return t('graph.inputInterface.badge')
   }
   return presentation.value?.badgeKey ? t(presentation.value.badgeKey) : t('graph.note.badge')
 })
@@ -188,7 +192,9 @@ const displayText = computed(() => {
     if (text) return text
     const path = props.node.params.previewRelativePath?.trim()
     if (path) return path
-    return t(`graph.inputInterface.placeholderByType.${slotDataType.value}`)
+    const byType = `graph.inputInterface.placeholderByType.${slotDataType.value}`
+    if (te(byType)) return t(byType)
+    return t('graph.inputInterface.placeholder')
   }
   const text = props.node.params.text?.trim()
   if (text) return text

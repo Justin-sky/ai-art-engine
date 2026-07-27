@@ -139,6 +139,73 @@ export const SHOT_SIZE_OPTIONS = [
 
 export type ShotSizeOption = (typeof SHOT_SIZE_OPTIONS)[number]
 
+/** 世界元素引用（分镜绑定 / 叙事名称列表共用） */
+export type WorldEntityKindLabel = '角色' | '场景' | '道具' | '武器'
+
+export interface WorldEntityRef {
+  name: string
+  imageUrl?: string
+  type?: WorldEntityKindLabel
+}
+
+
+function asWorldEntityString(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return ''
+}
+
+function asWorldEntityKind(value: unknown): WorldEntityKindLabel | undefined {
+  const raw = asWorldEntityString(value).trim()
+  if (raw === '角色' || raw === '场景' || raw === '道具' || raw === '武器') {
+    return raw
+  }
+  return undefined
+}
+
+function normalizeWorldEntityRef(item: unknown): WorldEntityRef | null {
+  if (typeof item === 'string') {
+    const name = item.trim()
+    return name ? { name } : null
+  }
+  if (!item || typeof item !== 'object') return null
+  const row = item as Record<string, unknown>
+  const name =
+    asWorldEntityString(row.name).trim() || asWorldEntityString(row['名称']).trim()
+  if (!name) return null
+  const imageUrl =
+    asWorldEntityString(row.imageUrl).trim() ||
+    asWorldEntityString(row.image_url).trim() ||
+    asWorldEntityString(row.url).trim() ||
+    undefined
+  const type = asWorldEntityKind(row.type ?? row['类型'])
+  return {
+    name,
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(type ? { type } : {})
+  }
+}
+
+/** 数组或逗号串 → WorldEntityRef[] */
+export function asWorldRefList(value: unknown): WorldEntityRef[] {
+  if (Array.isArray(value)) {
+    const out: WorldEntityRef[] = []
+    for (const item of value) {
+      const ref = normalizeWorldEntityRef(item)
+      if (ref) out.push(ref)
+    }
+    return out
+  }
+  const raw = asWorldEntityString(value).trim()
+  if (!raw) return []
+  return raw
+    .split(/[,，;；、]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((name) => ({ name }))
+}
+
+
 /** 分镜参数（右侧参数面板） */
 export interface ShotStoryboard {
   /** 画面描述 */
@@ -155,6 +222,11 @@ export interface ShotStoryboard {
   cameraMove: string
   /** 最终提示词（生成后填充） */
   finalPrompt: string
+  /** 本镜绑定的世界元素 */
+  characters: WorldEntityRef[]
+  scenes: WorldEntityRef[]
+  props: WorldEntityRef[]
+  weapons: WorldEntityRef[]
 }
 
 export type ShotGenRefRole = 'background' | 'character' | 'firstFrame' | 'style' | 'motion'
@@ -454,6 +526,8 @@ export interface Shot {
   audioRefs?: ShotAudioRef[]
   /** Owning 脚本 asset id */
   scriptAssetId?: string
+  /** 所属叙事单元 id（多链分镜下隔离分镜列表） */
+  narrativeUnitId?: string
   thumbnailPath?: string
   createdAt: string
   updatedAt: string
@@ -1792,14 +1866,44 @@ export function createEmptyStoryboard(): ShotStoryboard {
     dialogue: '',
     soundFx: '',
     cameraMove: '',
-    finalPrompt: ''
+    finalPrompt: '',
+    characters: [],
+    scenes: [],
+    props: [],
+    weapons: []
   }
+}
+
+function cloneWorldEntityRefs(refs: WorldEntityRef[] | undefined | null): WorldEntityRef[] {
+  if (!Array.isArray(refs)) return []
+  return refs
+    .map((item) => {
+      const name = typeof item?.name === 'string' ? item.name.trim() : ''
+      if (!name) return null
+      const imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl.trim() : ''
+      const type = item.type
+      return {
+        name,
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(type === '角色' || type === '场景' || type === '道具' || type === '武器'
+          ? { type }
+          : {})
+      } satisfies WorldEntityRef
+    })
+    .filter((item): item is WorldEntityRef => item != null)
 }
 
 export function normalizeStoryboard(shot: Pick<Shot, 'prompt' | 'storyboard' | 'camera'>): ShotStoryboard {
   const base = createEmptyStoryboard()
   if (shot.storyboard) {
-    return { ...base, ...shot.storyboard }
+    return {
+      ...base,
+      ...shot.storyboard,
+      characters: cloneWorldEntityRefs(shot.storyboard.characters),
+      scenes: cloneWorldEntityRefs(shot.storyboard.scenes),
+      props: cloneWorldEntityRefs(shot.storyboard.props),
+      weapons: cloneWorldEntityRefs(shot.storyboard.weapons)
+    }
   }
   return {
     ...base,
@@ -1824,6 +1928,14 @@ export function buildShotGenerationPrompt(
   if (storyboard.dialogue.trim()) parts.push(`对白：${storyboard.dialogue.trim()}`)
   if (storyboard.soundFx.trim()) parts.push(`音效：${storyboard.soundFx.trim()}`)
   if (storyboard.cameraMove.trim()) parts.push(`运镜：${storyboard.cameraMove.trim()}`)
+  const charNames = storyboard.characters.map((r) => r.name).filter(Boolean).join('、')
+  if (charNames) parts.push(`角色：${charNames}`)
+  const sceneNames = storyboard.scenes.map((r) => r.name).filter(Boolean).join('、')
+  if (sceneNames) parts.push(`场景：${sceneNames}`)
+  const propNames = storyboard.props.map((r) => r.name).filter(Boolean).join('、')
+  if (propNames) parts.push(`道具：${propNames}`)
+  const weaponNames = storyboard.weapons.map((r) => r.name).filter(Boolean).join('、')
+  if (weaponNames) parts.push(`武器：${weaponNames}`)
   const style = options?.stylePreset?.trim()
   if (style) parts.push(`画面风格：${style}`)
 

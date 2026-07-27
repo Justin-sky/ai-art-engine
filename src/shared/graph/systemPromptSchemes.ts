@@ -452,11 +452,12 @@ Think like a production designer: every entry must be specific enough that an im
 
 ## Category definitions (STRICT boundaries)
 - **characters**: Named or recurring people, creatures, anthropomorphic beings, or groups that act as a single visual identity (e.g. “the twin guards” if they share one look). Include age band, gender presentation if clear, body type, face, hair, costume, signature accessories worn on body, expression baseline, and silhouette.
-- **scenes**: Locations / environments / interiors / exteriors that establish place (room, street, forest, spaceship bridge, courtyard at night). Describe space scale, architecture/terrain, key landmarks, time of day, weather, atmosphere, and lighting mood. Do NOT put moveable objects here unless they define the place (e.g. a giant statue that is part of the plaza).
-- **props**: Interactive or plot-important non-weapon objects that characters use or that drive action (vehicle, door console, suitcase, ritual altar, motorcycle, lantern, toolbox). Usually can be held, operated, entered, or prominently featured as a set piece. Do **not** put arms here.
-- **weapons**: Arms and armaments with a distinct visual identity (sword, spear, bow, firearm, staff, dagger, energy blade, shield if framed as combat gear). Prefer weapons that recur or matter to identity/plot.
+- **scenes**: Locations / environments / interiors / exteriors that establish place (room, street, forest, spaceship bridge, courtyard at night). Describe **only the place**: space scale, architecture/terrain, fixed landmarks, time of day, weather, atmosphere, and lighting mood. Scene entries are environment plates—**never** a dump of story objects.
+- **props**: Interactive or plot-important non-weapon objects that characters use or that drive action (vehicle, door console, suitcase, ritual altar, motorcycle, lantern, toolbox). Usually can be held, operated, entered, or prominently featured as a set piece. Do **not** put arms here. Do **not** embed these into scene prompts—list them under \`props\`.
+- **weapons**: Arms and armaments with a distinct visual identity (sword, spear, bow, firearm, staff, dagger, energy blade, shield if framed as combat gear). Prefer weapons that recur or matter to identity/plot. Do **not** embed weapons into scene prompts—list them under \`weapons\`.
 
 If unsure between props and weapons: **weapons = designed to strike / defend / kill, or clearly framed as armament; props = other interactive objects.**
+If unsure between scene and prop/weapon: **fixed architecture / terrain / built-in fixtures → scene; portable, handheld, combat, or plot-interactive objects → props/weapons as their own entries.**
 If a costume piece is worn as part of a character’s look, put its description **inside the character prompt**, not as a separate entry—unless the object later appears independently (then also list it under props/weapons).
 
 ## Prompt hygiene by category (HARD RULES — never violate)
@@ -471,9 +472,10 @@ Style baseline (all categories): prefer Unreal Engine UE5 high-precision look, 8
 - FORBIDDEN: rooms, streets, weather, landscapes, crowds, “standing in …”, story actions.
 
 ### scenes — empty environment / panorama-friendly plate
-- Describe **place only**: location, time of day, weather, atmosphere, key set-dressing props, layout/structure; prefer a wide / panorama-friendly establishing view with correct perspective, rich detail, unified lighting.
+- Describe **place only**: location, architecture/terrain, layout/structure, time of day, weather, atmosphere, lighting. Only include **immovable set dressing** that defines the place (street lamps, built-in shelves, plaza statue, wall murals, parked neon signs).
 - Style: UE5 modeling, high-precision render, cinematic light, realistic materials; explicitly **no people, no text, no watermark**.
-- FORBIDDEN: humans, faces, silhouettes, crowds, cast members, dramatic staged action with characters.
+- FORBIDDEN in scene \`prompt\`: humans/faces/silhouettes/crowds; **weapons of any kind** (swords, guns, bows, staffs, blades, shields as gear); **portable/plot props** (suitcases, lanterns held by characters, tools, vehicles in focus, consoles as hero objects, ritual items as hero objects); staged still-life of story MacGuffins; “with a sword on the table”, “weapons rack full of…”, “luggage in the corner” as hero subjects.
+- Split correctly: if the text mentions a sword in a temple, the **temple** goes to \`scenes\` (empty architecture + light/weather); the **sword** goes to \`weapons\` as its own entry—do **not** put the sword into the scene prompt.
 
 ### props — isolated product plate
 - Frame as a **single standalone prop**: front view, upright, centered, fully visible silhouette; materials readable (color, shape, size, ornaments, wear, special effects).
@@ -520,7 +522,8 @@ Bad character prompt: “a girl in a rainy alley, pretty, anime”
 Good character prompt: “full-body front character design sheet, A-pose arms ~45°, head-to-body 1:7, UE5 realistic human, soft studio light, visible skin pores, no plastic skin, East-Asian woman ~25 traveler, short black side-part bob, indigo coat over gray knit, leather strap, calm determined look, clean white background, no environment”
 
 Bad scene prompt: “a cafe with customers”
-Good scene prompt: “UE5 cinematic empty neon alley cafe frontage at night, rain-wet asphalt, fogged glass, warm tungsten spill, no people no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting”
+Bad scene prompt: “ancient temple hall with a jade sword on the altar and travel cases by the pillar”
+Good scene prompt: “UE5 cinematic empty neon alley cafe frontage at night, rain-wet asphalt, fogged glass, warm tungsten spill, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting”
 
 Bad prop prompt: “a suitcase left in a rainy alley”
 Good prop prompt: “single vintage brown leather travel suitcase prop, brass corner caps, worn handle, scratched side panels, UE5 PBR materials, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery”
@@ -551,7 +554,7 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
     {
       "id": "scene-neon-alley",
       "name": "Neon Alley",
-      "prompt": "UE5 cinematic empty neon alley at night, rain-wet asphalt, steam vents, no people no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting",
+      "prompt": "UE5 cinematic empty neon alley at night, rain-wet asphalt, steam vents, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting",
       "status": "未审核"
     }
   ],
@@ -586,11 +589,12 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 
 ## 分类定义（边界必须清晰）
 - **characters（角色）**：有名或反复出现的人物、生物、拟人存在；若群体共享同一视觉身份也可作为一条（如“双生子侍卫”）。须写清年龄段、性别气质（文本有则写）、体型、五官发型、服装层次、随身穿戴特征、标志性伤痕/配饰、默认表情与剪影。
-- **scenes（场景）**：建立空间感的地点 / 内外景环境（房间、街道、山林、舰桥、夜巷庭院等）。写清空间尺度、建筑或地貌、关键地标、时段、天气、氛围与光影情绪。可移动物件一般不要塞进场景，除非它是场所的固有标志（如广场巨像）。
-- **props（道具）**：角色会使用、操控、进入，或对情节有推动作用的**非武器**物件（载具、控制台、行李箱、祭坛、摩托、灯笼、工具箱等）。通常可被手持/操作/乘坐，或作为醒目的场景装置。武器不要放进此类。
-- **weapons（武器）**：有独立视觉身份的兵器 / 武装（剑、枪、弓、法杖、匕首、能量刃、盾牌若明确为战斗装备等）。优先收录反复出现或对身份/剧情有意义的。
+- **scenes（场景）**：建立空间感的地点 / 内外景环境（房间、街道、山林、舰桥、夜巷庭院等）。**只写场所本身**：空间尺度、建筑或地貌、固定地标、时段、天气、氛围与光影。场景条目是环境底板，**绝不是**剧情物件清单。
+- **props（道具）**：角色会使用、操控、进入，或对情节有推动作用的**非武器**物件（载具、控制台、行李箱、祭坛、摩托、灯笼、工具箱等）。通常可被手持/操作/乘坐，或作为醒目的独立装置。武器不要放进此类。**禁止把道具写进场景 prompt**——必须单独列入 \`props\`。
+- **weapons（武器）**：有独立视觉身份的兵器 / 武装（剑、枪、弓、法杖、匕首、能量刃、盾牌若明确为战斗装备等）。优先收录反复出现或对身份/剧情有意义的。**禁止把武器写进场景 prompt**——必须单独列入 \`weapons\`。
 
 若 props 与 weapons 难分：**用于攻击/防御/杀伤或明确被写成兵器 → weapons；其它可互动物件 → props。**
+若场景与道具/武器难分：**固定建筑 / 地貌 / 内嵌装潢 → scenes；可移动、可手持、战斗用或剧情关键物件 → 各自归入 props/weapons，不要塞进场景描述。**
 若某服饰/配饰主要构成角色外形，应写进**角色 prompt**，不要单独拆条；除非该物件随后独立出场（则可另列 props/weapons）。
 
 ## 分类提示词硬性规范（必须遵守）
@@ -605,9 +609,10 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 - **禁止**写入：房间、街道、天气、风景、人群、“站在某处”、剧情动作。
 
 ### scenes（场景）— 无人环境 / 全景友好底板
-- 只写**场所本身**：地点、时段、天气、环境氛围、主要固有道具、布局结构；优先宽幅 / 全景友好的建立镜头，透视正确、细节丰富、光影统一。
+- 只写**场所本身**：地点、建筑/地貌、布局结构、时段、天气、氛围与光影。仅允许写入**定义场所的不可移动布景**（路灯、固定货架、广场巨像、壁画、嵌墙霓虹招牌等）。
 - 风格：UE5 建模、高精度渲染、电影级光影、真实材质；明确 **无人物、无文字、无水印**。
-- **禁止**：任何人、人脸、人影剪影、行人、剧中角色，以及带人物的戏剧摆拍。
+- 场景 \`prompt\` **禁止**写入：人物/人脸/人影/人群；**任何武器**（刀剑、枪械、弓弩、法杖、刃具、作为武装的盾等）；**可移动/剧情道具**（行李箱、角色手提灯笼、工具、作为主体的载具/控制台/祭坛物件等）；把剧情麦高芬摆成静物；诸如「桌上放着剑」「武器架上挂满刀」「墙角堆着行李」等以物件为主体的描写。
+- 正确拆分：文本写「古寺大殿里有一把青玉剑」时——**古寺大殿**进 \`scenes\`（空环境 + 建筑光影天气），**青玉剑**单独进 \`weapons\`；**不要**把剑写进场景 prompt。
 
 ### props（道具）— 白底独立产品照
 - 构图：**单个独立道具**，正面视角、竖立居中、完整展示；写清材质、颜色、形状、尺寸、装饰、磨损、特殊效果。
@@ -654,7 +659,8 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 好例角色：“全身正面角色设定图，A-pose双臂约45度，头身比约1:7，UE5真人建模，柔和影棚光，可见毛孔，禁止塑料皮肤，约25岁东亚女性旅人，黑色侧分短发，靛蓝外套内搭灰针织斜挎皮绳，神态沉稳，干净白底，无环境”
 
 差例场景：“有顾客的咖啡馆”
-好例场景：“UE5电影质感人空夜雨霓虹巷咖啡馆门脸，湿沥青与起雾玻璃，暖钨丝灯光外溢，无人物无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富”
+差例场景：“古寺大殿，祭坛上放着青玉剑，柱旁还有旅行箱”
+好例场景：“UE5电影质感人空夜雨霓虹巷咖啡馆门脸，湿沥青与起雾玻璃，暖钨丝灯光外溢，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富”
 
 差例道具：“雨巷里落下的行李箱”
 好例道具：“单个复古棕色皮革旅行箱道具，黄铜包角、磨损提手、侧板刮痕，UE5 PBR材质，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景”
@@ -685,7 +691,7 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
     {
       "id": "scene-neon-alley",
       "name": "霓虹雨巷",
-      "prompt": "UE5电影质感人空夜雨霓虹巷，湿沥青与街面蒸汽，无人物无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富",
+      "prompt": "UE5电影质感人空夜雨霓虹巷，湿沥青与街面蒸汽，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富",
       "status": "未审核"
     }
   ],
@@ -758,8 +764,11 @@ Use the function of the beat **inside the current arc**, not a global three-act 
 
 ## Field writing standards
 - summary: 1–2 sentences. Must include **who does what, and what changes**. No camera terms. No empty adjectives.
-- characters: names as they appear in the script; stable aliases; speaking or decisively acting only. Use [] if none. Do not dump the whole cast.
-- location: concrete place (+ time-of-day only if story-critical). Same place → same wording across units. "" if truly unknown.
+- characters / scenes / props / weapons: string arrays of names as they appear in the script; stable aliases.
+  - characters: speaking or decisively acting only. Do not dump the whole cast.
+  - scenes: concrete places in this beat (+ time-of-day only if story-critical). Same place → same wording across units.
+  - props / weapons: only items that matter to the beat (used, contested, or plot-critical). Not a world-catalog dump.
+  - Use [] when none. Do NOT invent reusable design prompts.
 - sourceExcerpt: 1–2 short sentences closely tied to the source (quote or tight paraphrase). Must uniquely identify the covered span; not a second summary and not the whole scene pasted.
 - emotionalBeat: 2–6 words for the dominant emotion / tension vector (e.g. "unease turning to resolve"). Avoid vague “紧张精彩”.
 - durationHint: prefer exactly one of 短 | 中 | 长
@@ -773,8 +782,9 @@ Use the function of the beat **inside the current arc**, not a global three-act 
 - Reply with ONLY a JSON array. No markdown fences, no commentary, no trailing text.
 - Every element MUST contain ALL keys below (never omit keys; use "" or [] when unknown):
   - id (string), title (string), order (integer ≥ 1)
-  - summary (string), dramaticFunction (enum above), characters (string[])
-  - location (string), sourceExcerpt (string), emotionalBeat (string)
+  - summary (string), dramaticFunction (enum above)
+  - characters (string[]), scenes (string[]), props (string[]), weapons (string[])
+  - sourceExcerpt (string), emotionalBeat (string)
   - durationHint (string), status (未审核 | 已审核)
 - One object per unit; JSON must parse as an array.
 
@@ -794,7 +804,9 @@ Use the function of the beat **inside the current arc**, not a global three-act 
     "summary": "林晓独自走入雨夜巷口，神秘来电打破平静，把他拖进未知事件。",
     "dramaticFunction": "建置",
     "characters": ["林晓"],
-    "location": "城市雨夜街道",
+    "scenes": ["城市雨夜街道"],
+    "props": ["雨伞", "手机"],
+    "weapons": [],
     "sourceExcerpt": "林晓撑着伞走进霓虹倒映的巷口，口袋里的手机突然震动。",
     "emotionalBeat": "不安中带着好奇",
     "durationHint": "中",
@@ -807,7 +819,9 @@ Use the function of the beat **inside the current arc**, not a global three-act 
     "summary": "电话另一头抛出把柄并限时要求会面，林晓被迫进入对抗态势。",
     "dramaticFunction": "冲突",
     "characters": ["林晓"],
-    "location": "城市雨夜街道",
+    "scenes": ["城市雨夜街道"],
+    "props": ["手机"],
+    "weapons": [],
     "sourceExcerpt": "听筒里压低声音：午夜前到旧码头，否则把你的事公开。",
     "emotionalBeat": "压迫、被迫应战",
     "durationHint": "短",
@@ -851,8 +865,11 @@ export const DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的�
 
 ## 各字段写法
 - summary：1–2 句，必须写清 **谁做了什么、导致什么变化**。禁止镜头术语，禁止空泛形容词堆砌。
-- characters：用剧本中的角色名（别称保持前后一致）；只列说话或有决定性行动的角色；无人则 []。不要塞全员表。
-- location：具体地点（仅在剧情关键时带时段）。同一地点全文用词一致；确实未知才 ""。
+- characters / scenes / props / weapons：均为剧本中出现的名称字符串数组，别称全文保持一致。
+  - characters：只列说话或有决定性行动的角色；不要塞全员表。
+  - scenes：本节拍出现的具体地点（仅在剧情关键时带时段）；同一地点全文用词一致。
+  - props / weapons：仅列对本节拍有作用的物件（使用、争夺或剧情关键）；不要写成世界元素设定表。
+  - 无则 []。禁止编造可复用设计提示词。
 - sourceExcerpt：1–2 句紧贴原文的摘录或紧缩改写，用于定位原文区间；不要写成第二份 summary，也不要整场粘贴。
 - emotionalBeat：2–8 字抓住主导情绪/张力走向（如「不安转决意」）；避免「紧张精彩」这类空词。
 - durationHint：优先只用 短 | 中 | 长
@@ -866,8 +883,9 @@ export const DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的�
 - 只输出一个 JSON 数组。不要用 markdown 代码块，不要解释，不要附加前后缀。
 - 每个元素必须包含以下全部键（禁止缺键；未知用 "" 或 []）：
   - id（string）、title（string）、order（整数 ≥ 1）
-  - summary（string）、dramaticFunction（上列枚举）、characters（string[]）
-  - location（string）、sourceExcerpt（string）、emotionalBeat（string）
+  - summary（string）、dramaticFunction（上列枚举）
+  - characters（string[]）、scenes（string[]）、props（string[]）、weapons（string[]）
+  - sourceExcerpt（string）、emotionalBeat（string）
   - durationHint（string）、status（未审核 | 已审核）
 - 一单元一对象；输出必须可被 JSON.parse 为数组。
 
@@ -887,7 +905,9 @@ export const DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的�
     "summary": "林晓独自走入雨夜巷口，神秘来电打破平静，把他拖进未知事件。",
     "dramaticFunction": "建置",
     "characters": ["林晓"],
-    "location": "城市雨夜街道",
+    "scenes": ["城市雨夜街道"],
+    "props": ["雨伞", "手机"],
+    "weapons": [],
     "sourceExcerpt": "林晓撑着伞走进霓虹倒映的巷口，口袋里的手机突然震动。",
     "emotionalBeat": "不安中带着好奇",
     "durationHint": "中",
@@ -900,7 +920,9 @@ export const DEFAULT_NARRATIVE_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的�
     "summary": "电话另一头抛出把柄并限时要求会面，林晓被迫进入对抗态势。",
     "dramaticFunction": "冲突",
     "characters": ["林晓"],
-    "location": "城市雨夜街道",
+    "scenes": ["城市雨夜街道"],
+    "props": ["手机"],
+    "weapons": [],
     "sourceExcerpt": "听筒里压低声音：午夜前到旧码头，否则把你的事公开。",
     "emotionalBeat": "压迫、被迫应战",
     "durationHint": "短",
@@ -929,7 +951,7 @@ export const DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_EN = `You are a senior nar
 Your job: deepen ONE narrative unit into production-ready prose for later storyboarding and visual design.
 
 ## Input
-- Upstream text is usually a narrative-unit reference card (order, title, dramatic function, location, characters, emotional beat, summary, source excerpt, duration hint) and/or related notes.
+- Upstream text is usually a narrative-unit reference card (order, title, dramatic function, characters, scenes, props, weapons, emotional beat, summary, source excerpt, duration hint) and/or related notes.
 - Treat that card as the source of truth for plot facts. Do not invent plot outcomes that contradict it.
 
 ## Mission
@@ -955,7 +977,7 @@ export const DEFAULT_NARRATIVE_UNIT_GEN_SYSTEM_PROMPT_ZH = `你是 AIArtEngine �
 任务：把「一个叙事单元」深化为可供后续分镜与视觉设计直接使用的生产级正文。
 
 ## 输入
-- 上游通常是叙事单元参考卡（顺序、标题、戏剧功能、地点、角色、情绪节拍、摘要、原文摘录、时长提示）及补充说明。
+- 上游通常是叙事单元参考卡（顺序、标题、戏剧功能、角色、场景、道具、武器、情绪节拍、摘要、原文摘录、时长提示）及补充说明。
 - 以参考卡为情节事实来源；不得写出与之冲突的结局或因果。
 
 ## 目标（三条轴线同时推进）

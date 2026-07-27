@@ -143,21 +143,32 @@ export interface GraphRunSessionOptions {
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 分镜表格节点：输出当前分镜列表 JSON */
-  resolveShotSplitTableJson?: () => string | null
+  resolveShotSplitTableJson?: (opts?: { narrativeUnitId?: string }) => string | null
   /** 分镜表格节点执行时：导入上游拆分 JSON 到分镜列表 */
-  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
+  importShotSplitTableJson?: (
+    jsonText: string,
+    opts?: { narrativeUnitId?: string }
+  ) => void | Promise<void>
   /** 生成分镜图：收集各镜 visual 图片输出已有结果并写回 genRefs */
-  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotImages?: (
+    signal?: AbortSignal,
+    opts?: { narrativeUnitId?: string }
+  ) => Promise<{
     images: import('@shared/graph').GraphImageItem[]
     aggregateJson: string
+    entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
-  /** 生成分镜视频：收集各镜 shotWorkflow 视频输出已有结果并写回 genRefs */
-  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+  /** 生成分镜视频：收集各镜子图视频生成节点已有结果并写回 genRefs */
+  collectScriptShotVideos?: (
+    signal?: AbortSignal,
+    opts?: { narrativeUnitId?: string }
+  ) => Promise<{
     videos: import('@shared/graph').GraphVideoItem[]
+    entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>
-  /** 世界元素编辑：收集四类子图已有图片 */
-  collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
-    images: import('@shared/graph').GraphImageItem[]
+  /** 世界元素编辑：收集四类子图已完成输出节点实体 */
+  collectWorldElementOutputs?: (signal?: AbortSignal) => Promise<{
+    items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
   /** 叙事单元生成：收集各单元子图「叙事输出」已有文本 */
   collectNarrativeUnitTexts?: (signal?: AbortSignal) => Promise<{
@@ -598,7 +609,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         importShotSplitTableJson: options.importShotSplitTableJson,
         collectScriptShotImages: options.collectScriptShotImages,
         collectScriptShotVideos: options.collectScriptShotVideos,
-        collectWorldElementImages: options.collectWorldElementImages,
+        collectWorldElementOutputs: options.collectWorldElementOutputs,
         collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,

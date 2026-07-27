@@ -140,6 +140,12 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
       const body = value.text ?? ''
       return { kind: 'text', ...truncateText(body) }
     }
+    case 'world':
+    case 'narrative':
+    case 'shots': {
+      const body = value.text ?? ''
+      return { kind: value.kind, ...truncateText(body) }
+    }
     case 'texts': {
       const joined = value.items.map((item) => item.text ?? '').join('\n---\n')
       return {

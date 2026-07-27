@@ -61,7 +61,7 @@ import {
   applyWorldCatalog,
   loadWorldCatalog
 } from '../features/world/applyWorldCatalogOnOpen'
-import { collectWorldElementImages } from '../features/world/worldElementPipeline'
+import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
 import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
 import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import {
@@ -926,18 +926,18 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           await applyWorldCatalog(worldId, jsonText)
         },
-        collectWorldElementImages: async (signal) => {
+        collectWorldElementOutputs: async (signal) => {
           if (task.target.kind !== 'asset') return null
           const worldId = task.target.assetId
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
             if (draft?.type !== 'world') return null
-            return collectWorldElementImages({ worldAssetId: worldId, signal })
+            return collectWorldElementOutputs({ worldAssetId: worldId, signal })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === worldId)
           if (asset?.type !== 'world') return null
-          return collectWorldElementImages({ worldAssetId: worldId, signal })
+          return collectWorldElementOutputs({ worldAssetId: worldId, signal })
         },
         collectNarrativeUnitTexts: async (signal) => {
           if (task.target.kind !== 'asset') return null

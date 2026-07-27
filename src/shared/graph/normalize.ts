@@ -28,6 +28,7 @@ import type {
   NormalizeGraphOptions
 } from './types'
 import {
+  GraphPortType,
   graphOutputNodeId,
   graphOutputNodeIdForType,
   isCanonicalGraphOutputNodeId
@@ -104,42 +105,6 @@ export function syncCanonicalOutputNodeIds(
     const desired = graphOutputNodeIdForType(node.typeId, kind)
     if (node.id === desired) continue
     renameNodeIdInGraph(nodes, edges, runStates, node.id, desired)
-  }
-}
-
-/**
- * 分镜图画布仅保留一个图片输出：多余节点删除，入边改挂到保留节点。
- */
-export function collapseVisualImageOutputs(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  runStates?: Record<string, GraphPersistedRunState>
-): void {
-  const outputs = nodes.filter((n) => n.category === 'output')
-  if (outputs.length <= 1) return
-
-  const desiredId = graphOutputNodeId('image')
-  const keep =
-    outputs.find((n) => n.id === desiredId) ??
-    outputs.find((n) => isCanonicalGraphOutputNodeId(n.id)) ??
-    outputs[0]!
-  const removeIds = new Set(outputs.filter((n) => n.id !== keep.id).map((n) => n.id))
-
-  for (const edge of edges) {
-    if (removeIds.has(edge.target)) edge.target = keep.id
-    if (removeIds.has(edge.source)) edge.source = keep.id
-  }
-
-  for (let i = nodes.length - 1; i >= 0; i -= 1) {
-    if (removeIds.has(nodes[i]!.id)) nodes.splice(i, 1)
-  }
-
-  if (runStates) {
-    for (const id of removeIds) delete runStates[id]
-  }
-
-  if (keep.id !== desiredId && !nodes.some((n) => n.id === desiredId)) {
-    renameNodeIdInGraph(nodes, edges, runStates, keep.id, desiredId)
   }
 }
 
@@ -251,6 +216,39 @@ function ensureScopeOutput(nodes: GraphNode[], scope: GraphAddScope, assetType?:
   nodes.push(createScopeOutputNode(output, { x: 480, y: 160 }))
 }
 
+/** 世界元素输出：强制入端口为 worldEntities（旧图可能仍是 image） */
+function migrateWorldOutputEntities(nodes: GraphNode[]): void {
+  for (const node of nodes) {
+    if (node.typeId !== 'output.world') continue
+    node.params = {
+      ...node.params,
+      outputKind: 'text',
+      inputDataType: GraphPortType.worldEntities
+    }
+  }
+}
+
+/** 分镜输出 / 成片时间线：入端口迁为 videoEntities（旧图可能仍是 video） */
+function migrateVideoEntitiesInputs(nodes: GraphNode[], scope: GraphAddScope): void {
+  for (const node of nodes) {
+    if (node.typeId === 'output.timeline') {
+      node.params = {
+        ...node.params,
+        outputKind: 'video',
+        inputDataType: GraphPortType.videoEntities
+      }
+      continue
+    }
+    if (scope === 'scriptAsset' && node.typeId === 'output.video') {
+      node.params = {
+        ...node.params,
+        outputKind: 'video',
+        inputDataType: GraphPortType.videoEntities
+      }
+    }
+  }
+}
+
 function migrateImageGenerateLegacyPorts(nodes: GraphNode[], edges: GraphEdge[]): void {
   const imageProcessingIds = new Set(
     nodes
@@ -265,6 +263,66 @@ function migrateImageGenerateLegacyPorts(nodes: GraphNode[], edges: GraphEdge[])
     if (!imageProcessingIds.has(edge.target)) continue
     const port = edge.targetPort ?? 'in'
     if (port === 'in') edge.targetPort = 'in-image'
+  }
+}
+
+/** 叙事单元生成：旧 out 整包 texts → 现 Selected text；连到 text.select 时迁到 out-all */
+function migrateNarrativeGenDualPorts(nodes: GraphNode[], edges: GraphEdge[]): void {
+  const genIds = new Set(nodes.filter((node) => node.typeId === 'narrative.gen').map((node) => node.id))
+  const selectIds = new Set(
+    nodes.filter((node) => node.typeId === 'text.select').map((node) => node.id)
+  )
+  for (const edge of edges) {
+    if (!genIds.has(edge.source) || !selectIds.has(edge.target)) continue
+    const sourcePort = edge.sourcePort ?? 'out'
+    if (sourcePort === 'out') edge.sourcePort = 'out-all'
+  }
+}
+
+/**
+ * 剧集链：旧 world → script.in-image / narrative.in-worldEntities 迁为 script.in-worldEntities；
+ * 并丢掉指向分镜宿主 in-image 的残留边。
+ */
+function migrateSeriesWorldEntitiesToScript(nodes: GraphNode[], edges: GraphEdge[]): void {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const scriptHosts = nodes.filter(
+    (node) =>
+      node.assetType === 'script' &&
+      (node.params.assetHost === true || node.params.assetRef === true)
+  )
+  const narrativeHosts = nodes.filter(
+    (node) =>
+      node.assetType === 'narrative' &&
+      (node.params.assetHost === true || node.params.assetRef === true)
+  )
+  for (const edge of edges) {
+    const target = byId.get(edge.target)
+    if (!target) continue
+    const port = edge.targetPort ?? 'in'
+    const source = byId.get(edge.source)
+    const fromWorld =
+      !!source &&
+      (source.assetType === 'world' || source.typeId === 'asset.world' || source.typeId === 'world.gen')
+    if (!fromWorld) continue
+
+    // 旧：world → script.in-image / narrative.in-worldEntities → 统一到 script.in-worldEntities
+    const toScriptImage =
+      port === 'in-image' && (target.assetType === 'script' || target.typeId === 'asset.script')
+    const toNarrativeWorld =
+      port === 'in-worldEntities' &&
+      (target.assetType === 'narrative' || target.typeId === 'asset.narrative')
+    if (!toScriptImage && !toNarrativeWorld) continue
+
+    if (scriptHosts.length === 1) {
+      edge.target = scriptHosts[0]!.id
+      edge.targetPort = 'in-worldEntities'
+      continue
+    }
+    if (toScriptImage && narrativeHosts.length === 1) {
+      // 无分镜宿主时的旧回退：保留叙事口，避免丢边
+      edge.target = narrativeHosts[0]!.id
+      edge.targetPort = 'in-worldEntities'
+    }
   }
 }
 
@@ -289,10 +347,17 @@ function migrateLegacyShotEditorNodes(
   const videoGenIds = new Set(
     nodes.filter((node) => node.typeId === 'script.shotVideoGen').map((node) => node.id)
   )
+  const imageGenIds = new Set(
+    nodes.filter((node) => node.typeId === 'script.shotImageGen').map((node) => node.id)
+  )
   for (const edge of edges) {
     if (!videoGenIds.has(edge.target)) continue
     const port = edge.targetPort ?? 'in'
     if (port === 'in') edge.targetPort = 'in-text'
+    // 分镜图 → 分镜视频：旧 in-image 迁为分镜实体口
+    if (port === 'in-image' && imageGenIds.has(edge.source)) {
+      edge.targetPort = 'in-entities'
+    }
   }
 }
 
@@ -306,6 +371,10 @@ function finalizeGraph(
   syncCanonicalOutputNodeIds(nodes, edges, runStates)
   migrateLegacyShotEditorNodes(nodes, edges, runStates)
   migrateImageGenerateLegacyPorts(nodes, edges)
+  migrateNarrativeGenDualPorts(nodes, edges)
+  migrateSeriesWorldEntitiesToScript(nodes, edges)
+  migrateWorldOutputEntities(nodes)
+  migrateVideoEntitiesInputs(nodes, scope)
   const sanitizedEdges = sanitizeEdges(nodes, edges, scope)
   return {
     nodes,
@@ -365,9 +434,6 @@ export function normalizeScopedGraph(
 
   if (scopeDef.coerceOutput) {
     applyScopeOutput(nodes, scope, options?.assetType)
-  }
-  if (scope === 'visual') {
-    collapseVisualImageOutputs(nodes, edges, runStates)
   }
   if (scope === 'directorAsset') {
     ensureDirectorProcessingDefaults(nodes)

@@ -51,6 +51,7 @@
       v-if="tableOpen"
       ref="tableDialogRef"
       :script-asset-id="scriptAssetId"
+      :world-element-outputs="tableWorldOutputs"
       @close="tableOpen = false"
     />
     <ScriptTimelineDialog
@@ -77,6 +78,8 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { scriptPreviewKey } from '../features/script/scriptPreview'
+import { readShotTableWorldOutputs } from '../features/script/readShotTableWorldOutputs'
+import type { WorldElementGenResult } from '@shared/graph'
 
 type EmbedPaneKind = 'image' | 'video'
 
@@ -92,6 +95,7 @@ const workspace = useWorkspaceStore()
 const { drafts } = storeToRefs(useDraftStore())
 const embedPaneKind = ref<EmbedPaneKind | null>(null)
 const tableOpen = ref(false)
+const tableWorldOutputs = ref<WorldElementGenResult[]>([])
 const timelineOpen = ref(false)
 const scriptToolbarCollapsed = ref(false)
 const shotToolbarCollapsed = ref(false)
@@ -131,6 +135,7 @@ async function closeEmbedPane(): Promise<void> {
 
 async function openShotTable(): Promise<void> {
   await scriptGraphRef.value?.flushSave?.()
+  tableWorldOutputs.value = readShotTableWorldOutputs(props.scriptAssetId)
   if (isDraftAssetId(props.scriptAssetId)) {
     tableOpen.value = true
     await ensureScopedSelection('shot')

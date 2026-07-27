@@ -41,15 +41,34 @@
     </label>
 
     <label>
-      {{ t('narrative.table.column.location') }}
-      <input v-model="local.location" @change="persist" />
+      {{ t('narrative.table.column.characters') }}
+      <input
+        :value="namesOf(local.characters)"
+        @change="onRefsChange('characters', ($event.target as HTMLInputElement).value)"
+      />
     </label>
 
     <label>
-      {{ t('narrative.table.column.characters') }}
+      {{ t('narrative.table.column.scenes') }}
       <input
-        :value="local.characters.join('、')"
-        @change="onCharactersChange(($event.target as HTMLInputElement).value)"
+        :value="namesOf(local.scenes)"
+        @change="onRefsChange('scenes', ($event.target as HTMLInputElement).value)"
+      />
+    </label>
+
+    <label>
+      {{ t('narrative.table.column.props') }}
+      <input
+        :value="namesOf(local.props)"
+        @change="onRefsChange('props', ($event.target as HTMLInputElement).value)"
+      />
+    </label>
+
+    <label>
+      {{ t('narrative.table.column.weapons') }}
+      <input
+        :value="namesOf(local.weapons)"
+        @change="onRefsChange('weapons', ($event.target as HTMLInputElement).value)"
       />
     </label>
 
@@ -93,9 +112,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import {
+  asWorldRefList,
   readBoundUnitIdFromNodeParams,
   type GraphNode,
-  type NarrativeUnitRow
+  type NarrativeUnitRow,
+  type NarrativeWorldRef
 } from '@shared/graph'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -106,6 +127,8 @@ import {
 } from '../features/narrative/applyNarrativeCatalogOnOpen'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { useWorkspaceStore } from '../stores/workspace'
+
+type RefField = 'characters' | 'scenes' | 'props' | 'weapons'
 
 const props = defineProps<{
   narrativeAssetId?: string
@@ -152,8 +175,10 @@ const local = reactive({
   order: 1,
   title: '',
   dramaticFunction: '',
-  location: '',
-  characters: [] as string[],
+  characters: [] as NarrativeWorldRef[],
+  scenes: [] as NarrativeWorldRef[],
+  props: [] as NarrativeWorldRef[],
+  weapons: [] as NarrativeWorldRef[],
   summary: '',
   sourceExcerpt: '',
   emotionalBeat: '',
@@ -163,6 +188,14 @@ const local = reactive({
 
 const localNodeTitle = ref('')
 
+function namesOf(refs: NarrativeWorldRef[]): string {
+  return refs.map((item) => item.name).filter(Boolean).join('、')
+}
+
+function cloneRefs(refs: NarrativeWorldRef[]): NarrativeWorldRef[] {
+  return refs.map((item) => ({ ...item }))
+}
+
 watch(
   unit,
   (next) => {
@@ -170,8 +203,10 @@ watch(
     local.order = next.order
     local.title = next.title
     local.dramaticFunction = next.dramaticFunction
-    local.location = next.location
-    local.characters = [...next.characters]
+    local.characters = cloneRefs(next.characters)
+    local.scenes = cloneRefs(next.scenes)
+    local.props = cloneRefs(next.props)
+    local.weapons = cloneRefs(next.weapons)
     local.summary = next.summary
     local.sourceExcerpt = next.sourceExcerpt
     local.emotionalBeat = next.emotionalBeat
@@ -191,11 +226,13 @@ watch(
   { immediate: true }
 )
 
-function onCharactersChange(raw: string): void {
-  local.characters = raw
-    .split(/[,，;；、]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+function onRefsChange(field: RefField, raw: string): void {
+  const previous = local[field]
+  const next = asWorldRefList(raw).map((ref) => {
+    const matched = previous.find((item) => item.name === ref.name)
+    return matched ? { ...matched } : ref
+  })
+  local[field] = next
   void persist()
 }
 
@@ -220,8 +257,10 @@ async function persist(): Promise<void> {
           order,
           title: local.title,
           dramaticFunction: local.dramaticFunction,
-          location: local.location,
-          characters: [...local.characters],
+          characters: cloneRefs(local.characters),
+          scenes: cloneRefs(local.scenes),
+          props: cloneRefs(local.props),
+          weapons: cloneRefs(local.weapons),
           summary: local.summary,
           sourceExcerpt: local.sourceExcerpt,
           emotionalBeat: local.emotionalBeat,

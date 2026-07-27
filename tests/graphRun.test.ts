@@ -239,7 +239,9 @@ describe('graph run', () => {
                 summary: '登场',
                 dramaticFunction: '建置',
                 characters: [],
-                location: '',
+                scenes: [],
+                props: [],
+                weapons: [],
                 sourceExcerpt: '',
                 emotionalBeat: '',
                 durationHint: '',
@@ -300,7 +302,9 @@ describe('graph run', () => {
                 summary: '登场',
                 dramaticFunction: '建置',
                 characters: ['林晓'],
-                location: '街道',
+                scenes: ['街道'],
+                props: [],
+                weapons: [],
                 sourceExcerpt: '……',
                 emotionalBeat: '平静',
                 durationHint: '中',
@@ -316,7 +320,7 @@ describe('graph run', () => {
     expect(result.ok, result.error).toBe(true)
     expect(promptSeen).toContain('雨夜开场剧本正文')
     expect(result.states.split?.outputs?.out).toMatchObject({
-      kind: 'text'
+      kind: 'narrative'
     })
   })
 
@@ -725,19 +729,19 @@ describe('graph run', () => {
     ).toBe(false)
   })
 
-  it('world.gen collects element images into output instead of empty list', async () => {
+  it('world.gen collects element entities into worldEntities output', async () => {
     const doc = createDefaultScopedGraph('worldAsset', 'world')
     const editor = doc.nodes.find((node) => node.typeId === 'world.gen')
     expect(editor).toBeTruthy()
 
     const result = await runGraph(doc, {
       stepDelayMs: 1,
-      collectWorldElementImages: async () => ({
-        images: [
+      collectWorldElementOutputs: async () => ({
+        items: [
           {
-            id: 'el-1',
-            dataUrl: '',
-            relativePath: '.aiartengine/graph-outputs/hero.png'
+            type: '角色',
+            name: 'Hero',
+            imageUrl: '.aiartengine/graph-outputs/hero.png'
           }
         ]
       })
@@ -747,15 +751,17 @@ describe('graph run', () => {
     const editorState = result.states[editor!.id]
     expect(editorState?.status).toBe('done')
     const out = editorState?.outputs?.out
-    expect(out?.kind).toBe('images')
-    if (out?.kind === 'images') {
-      expect(out.items).toEqual([
+    expect(out?.kind).toBe('worldEntities')
+    if (out?.kind === 'worldEntities') {
+      const parsed = JSON.parse(out.text) as Array<{ type: string; name: string; imageUrl: string }>
+      expect(parsed).toEqual([
         {
-          id: 'el-1',
-          dataUrl: '',
-          relativePath: '.aiartengine/graph-outputs/hero.png'
+          type: '角色',
+          name: 'Hero',
+          imageUrl: '.aiartengine/graph-outputs/hero.png'
         }
       ])
     }
+    expect(editorState?.outputs?.['out-all']).toBeUndefined()
   })
 })

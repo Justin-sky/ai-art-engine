@@ -62,6 +62,7 @@ import { isDraftAssetId } from '@shared/domain'
 import type { WorldElementKind } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
+import { applyWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import { worldEditorKey, worldElementKindKey } from '../features/world/worldEditor'
 import { worldTableKey } from '../features/world/worldTable'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -95,6 +96,12 @@ let splitDragging = false
 
 async function openEditorPane(tab: WorldElementKind = 'characters'): Promise<void> {
   await worldGraphRef.value?.flushSave?.()
+  // 按主图提取/表格目录物化四类子图：图片生成 + 图片输出（侧栏打开前写入 genParams）
+  try {
+    await applyWorldCatalog(props.worldAssetId)
+  } catch (error) {
+    console.warn('[world] applyWorldCatalog on open failed', error)
+  }
   editorActiveTab.value = tab
   editorPaneOpen.value = true
   workspace.focusProjectGlobals()

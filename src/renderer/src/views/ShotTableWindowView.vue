@@ -6,6 +6,7 @@
       ref="tableRef"
       mode="window"
       :script-asset-id="scriptAssetId"
+      :world-element-outputs="tableWorldOutputs"
       @close="onClose"
     />
     <p v-else class="loading">{{ t('script.shotTableWindow.loading') }}</p>
@@ -20,6 +21,8 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
+import type { WorldElementGenResult } from '@shared/graph'
+import { readShotTableWorldOutputs } from '../features/script/readShotTableWorldOutputs'
 import ShotTableDialog from '../components/ShotTableDialog.vue'
 
 const { t } = useStudioI18n()
@@ -28,6 +31,7 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const error = ref('')
 const bootstrapped = ref(false)
+const tableWorldOutputs = ref<WorldElementGenResult[]>([])
 const tableRef = ref<InstanceType<typeof ShotTableDialog> | null>(null)
 let stopCloseRequest: (() => void) | null = null
 let closingWindow = false
@@ -40,6 +44,14 @@ const scriptAssetId = computed(() => {
 provide('scriptAssetId', scriptAssetId)
 
 const ready = computed(() => bootstrapped.value && !!scriptAssetId.value)
+
+watch(
+  () => [ready.value, scriptAssetId.value] as const,
+  ([isReady, id]) => {
+    tableWorldOutputs.value = isReady && id ? readShotTableWorldOutputs(id) : []
+  },
+  { immediate: true }
+)
 
 useEditorDocumentSession({
   id: () => `editor:script-table:${scriptAssetId.value}`,

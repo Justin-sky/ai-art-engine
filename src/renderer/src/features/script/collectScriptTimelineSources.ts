@@ -1,13 +1,15 @@
 /**
- * 从剧本资产图「成片时间线」节点上游收集可编排视频素材。
+ * 从剧本资产图「分镜输出 / 成片时间线」上游收集可编排视频素材。
  */
 import { isDraftAssetId, shotScriptAssetId } from '@shared/domain'
 import {
   GRAPH_OUTPUT_NODE_IDS,
   flattenVideosValues,
+  parseVideoEntities,
   type GraphDocument,
   type GraphVideoItem,
-  type ScriptTimelineSource
+  type ScriptTimelineSource,
+  type VideoEntityResult
 } from '@shared/graph'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
@@ -33,7 +35,9 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
     ? project.assets.find((a) => a.id === assetId)
     : relativePath
       ? project.assets.find(
-          (a) => a.type === 'video' && a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
+          (a) =>
+            a.type === 'video' &&
+            a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
         )
       : undefined
   return {
@@ -45,14 +49,68 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
   }
 }
 
+function urlToSource(
+  url: string,
+  index: number,
+  shotName?: string
+): ScriptTimelineSource | null {
+  const trimmed = url.trim()
+  if (!trimmed || trimmed.startsWith('data:')) return null
+  const project = useProjectStore()
+  const asset = project.assets.find(
+    (a) =>
+      a.type === 'video' && a.relativePath?.replace(/\\/g, '/') === trimmed.replace(/\\/g, '/')
+  )
+  return {
+    id: asset?.id || trimmed || `video:${index}`,
+    title: asset?.name?.trim() || shotName?.trim() || `视频 ${index + 1}`,
+    relativePath: trimmed,
+    assetId: asset?.id,
+    durationSec: undefined
+  }
+}
+
+function entitiesToSources(entities: VideoEntityResult[]): ScriptTimelineSource[] {
+  const sources: ScriptTimelineSource[] = []
+  const seen = new Set<string>()
+  for (const entity of entities) {
+    for (const url of entity.videoUrls) {
+      const src = urlToSource(url, sources.length, entity.name)
+      if (!src || seen.has(src.id)) continue
+      seen.add(src.id)
+      sources.push(src)
+    }
+  }
+  return sources
+}
+
+function readVideoEntitiesFromValue(value: unknown): VideoEntityResult[] {
+  if (!value || typeof value !== 'object') return []
+  const v = value as { kind?: string; text?: string }
+  if (v.kind === 'videoEntities' && typeof v.text === 'string') {
+    return parseVideoEntities(v.text)
+  }
+  return []
+}
+
 function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimelineSource[] {
   const output =
+    doc.nodes.find((n) => n.id === GRAPH_OUTPUT_NODE_IDS.video) ||
+    doc.nodes.find((n) => n.typeId === 'output.video') ||
     doc.nodes.find((n) => n.id === GRAPH_OUTPUT_NODE_IDS.timeline) ||
     doc.nodes.find((n) => n.typeId === 'output.timeline') ||
     doc.nodes.find((n) => n.category === 'output')
   if (!output) return []
 
   const runOut = graphRunHosts.get(hostId)?.runStates?.[output.id]?.outputs?.out
+  const fromEntities = readVideoEntitiesFromValue(runOut)
+  if (fromEntities.length) return entitiesToSources(fromEntities)
+
+  const fromParams = Array.isArray(output.params?.videoEntities)
+    ? parseVideoEntities(JSON.stringify(output.params.videoEntities))
+    : []
+  if (fromParams.length) return entitiesToSources(fromParams)
+
   const fromRun = runOut ? flattenVideosValues([runOut]) : []
   if (fromRun.length) {
     return fromRun
@@ -68,6 +126,15 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
     const sourceNode = doc.nodes.find((n) => n.id === edge.source)
     if (!sourceNode) continue
     const upstreamOut = graphRunHosts.get(hostId)?.runStates?.[sourceNode.id]?.outputs?.out
+    const upstreamEntities = readVideoEntitiesFromValue(upstreamOut)
+    if (upstreamEntities.length) {
+      for (const src of entitiesToSources(upstreamEntities)) {
+        if (seen.has(src.id)) continue
+        seen.add(src.id)
+        sources.push(src)
+      }
+      continue
+    }
     const videos = upstreamOut ? flattenVideosValues([upstreamOut]) : []
     for (const [i, item] of videos.entries()) {
       const src = videoItemToSource(item, sources.length + i)
@@ -111,6 +178,7 @@ export async function collectScriptTimelineSources(input: {
     scriptAssetId: input.scriptAssetId,
     shots
   })
+  if (collected.entities.length) return entitiesToSources(collected.entities)
   return collected.videos
     .map((item, i) => videoItemToSource(item, i))
     .filter((item): item is ScriptTimelineSource => !!item)

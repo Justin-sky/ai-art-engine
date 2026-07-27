@@ -694,7 +694,7 @@ export default {
     },
     strip: {
       title: 'Shots',
-      switchHint: 'Drag onto canvas to create shot params; click to focus a shot',
+      switchHint: 'Click a shot to create params and link shot images to the generator; or drag onto canvas',
       new: '+ New',
       collapse: 'Collapse shot strip',
       expand: 'Expand shot strip'
@@ -707,6 +707,10 @@ export default {
       column: {
         name: 'Name',
         duration: 'Duration',
+        characters: 'Characters',
+        scenes: 'Scenes',
+        props: 'Props',
+        weapons: 'Weapons',
         visual: 'Visual',
         shotSize: 'Size',
         lighting: 'Lighting',
@@ -714,6 +718,12 @@ export default {
         soundFx: 'SFX',
         cameraMove: 'Camera',
         status: 'Status'
+      },
+      bind: {
+        title: 'Bind world entity',
+        action: 'Bind',
+        add: 'Add name',
+        empty: 'Run the shot table node first to sync world entities'
       },
       placeholder: {
         name: 'Shot name',
@@ -761,7 +771,7 @@ export default {
       timeline: 'Preview the cut · drag from input videos or the asset library onto the tracks below',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below · double-click cut timeline to open the editor in a new window'
+        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below; open cut timeline from the series canvas'
     },
     dialog: {
       shotImageEditor: 'Shot images',
@@ -1071,7 +1081,7 @@ export default {
   },
   narrative: {
     asset: {
-      hint: 'Double-click split for instructions · table for catalog · gen expands text refine below'
+      hint: 'Double-click split for instructions · table for catalog · output expands unit refinement below'
     },
     dialog: {
       close: 'Close',
@@ -1112,8 +1122,16 @@ export default {
         summary: 'Summary',
         dramaticFunction: 'Dramatic function',
         characters: 'Characters',
-        location: 'Location',
+        scenes: 'Scenes',
+        props: 'Props',
+        weapons: 'Weapons',
         status: 'Status'
+      },
+      bind: {
+        title: 'Bind world entity',
+        action: 'Bind',
+        add: 'Add name',
+        empty: 'Run the narrative table node first to sync world entities'
       },
       placeholder: {
         summary: 'One-line summary of this unit'
@@ -1666,14 +1684,16 @@ export default {
         image: 'Image in',
         voice: 'Audio in',
         video: 'Video in',
-        model: 'Model in'
+        model: 'Model in',
+        worldEntities: 'World entities'
       },
       placeholderByType: {
         text: 'Waiting for outer text…',
         image: 'Waiting for outer image…',
         voice: 'Waiting for outer audio…',
         video: 'Waiting for outer video…',
-        model: 'Waiting for outer model…'
+        model: 'Waiting for outer model…',
+        worldEntities: 'Waiting for outer world entities…'
       }
     },
     demo: {
@@ -1767,6 +1787,12 @@ export default {
         videos: 'Videos',
         text: 'Text',
         texts: 'Texts',
+        world: 'World element',
+        worldEntities: 'World entities',
+        shotEntities: 'Shot entities',
+        videoEntities: 'Video entities',
+        narrative: 'Narrative unit',
+        shots: 'Shot',
         model: 'Model'
       }
     },
@@ -1803,7 +1829,8 @@ export default {
       lipSyncNoAudio: 'Connect a voice (speech) input first',
       noMask: 'Paint a mask in the redraw editor first',
       lockNoCache:
-        'Node is locked, but there is no reusable last result; generate once successfully, or unlock'
+        'Node is locked, but there is no reusable last result; generate once successfully, or unlock',
+      dismissHint: 'Click to dismiss'
     },
     types: {
       asset: {
@@ -1825,7 +1852,7 @@ export default {
         timeline: 'Cut timeline',
         narrative: 'Narrative output',
         narrativeUnit: 'Narrative output',
-        world: 'World element output'
+        world: 'World entities output'
       },
       note: {
         text: 'Note'
@@ -1896,14 +1923,14 @@ export default {
       canvas: 'Canvas',
       world: 'World Elements',
       narrative: 'Narrative Units',
-      shotOutput: 'Shot video output',
+      shotOutput: 'Shot output',
       shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
       timelineOutput: 'Cut timeline',
       narrativeOutput: 'Narrative output',
       narrativeUnitOutput: 'Narrative output',
-      worldOutput: 'World element output',
+      worldOutput: 'World entities output',
       assetOutput: {
         image: 'Image output',
         video: 'Video output',

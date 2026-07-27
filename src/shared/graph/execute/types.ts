@@ -36,6 +36,13 @@ export interface GraphTextValue {
   relativePath?: string
 }
 
+/** 世界目录 / 世界·分镜·视频实体 / 叙事 / 分镜目录 JSON（端口 dataType 与 kind 同名） */
+export interface GraphCatalogValue {
+  kind: 'world' | 'worldEntities' | 'shotEntities' | 'videoEntities' | 'narrative' | 'shots'
+  text: string
+  relativePath?: string
+}
+
 /**
  * 文本数组条目（剧本生成等）。
  * 对齐图片：有 `relativePath` 时边上以路径为主，`text` 可为空（预览/执行时再读文件）。
@@ -149,6 +156,7 @@ export type GraphValue =
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue
+  | GraphCatalogValue
   | GraphOutputValue
   | GraphCameraValue
   | GraphImagesValue
@@ -370,29 +378,40 @@ export interface NodeExecuteContext {
    * 分镜表格节点：把当前剧本分镜列表序列化为拆分 JSON，
    * 供「表格 → 拆分」再次拆分时作为上游输入。
    */
-  resolveShotSplitTableJson?: () => string | null
+  resolveShotSplitTableJson?: (opts?: { narrativeUnitId?: string }) => string | null
   /**
    * 分镜表格 / 分镜编辑节点执行时：把上游拆分 JSON 写入剧本分镜列表。
    */
-  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
+  importShotSplitTableJson?: (
+    jsonText: string,
+    opts?: { narrativeUnitId?: string }
+  ) => void | Promise<void>
   /**
    * 生成分镜图：收集各镜 visual 图片输出节点已有结果，写回 genRefs（不级联跑画面图）。
    */
-  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotImages?: (
+    signal?: AbortSignal,
+    opts?: { narrativeUnitId?: string }
+  ) => Promise<{
     images: GraphImageItem[]
     aggregateJson: string
+    entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
   /**
-   * 生成分镜视频：收集各镜 shotWorkflow 视频输出节点已有结果，写回 genRefs（不级联跑视频图）。
+   * 生成分镜视频：收集各镜子图全部视频生成节点已有结果，写回 genRefs，返回 videoEntities。
    */
-  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotVideos?: (
+    signal?: AbortSignal,
+    opts?: { narrativeUnitId?: string }
+  ) => Promise<{
     videos: GraphVideoItem[]
+    entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>
   /**
-   * 世界元素编辑：收集四类 elementWorkflow 子图已有图片（不级联跑子图生成）。
+   * 世界元素编辑：收集四类 elementWorkflow 子图已完成输出节点实体（不级联跑子图生成）。
    */
-  collectWorldElementImages?: (signal?: AbortSignal) => Promise<{
-    images: GraphImageItem[]
+  collectWorldElementOutputs?: (signal?: AbortSignal) => Promise<{
+    items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
   /**
    * 叙事单元生成：收集各单元 narrativeUnit 子图「叙事输出」已有文本（不级联跑子图生成）。
@@ -492,7 +511,7 @@ export interface GraphRunOptions {
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
   collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
   collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
-  collectWorldElementImages?: NodeExecuteContext['collectWorldElementImages']
+  collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
   collectNarrativeUnitTexts?: NodeExecuteContext['collectNarrativeUnitTexts']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']

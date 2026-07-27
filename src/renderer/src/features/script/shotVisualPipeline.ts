@@ -4,15 +4,19 @@
  */
 import {
   collectImagesFromVisualGraph,
-  collectVideosFromShotWorkflowGraph,
+  collectVideosFromVideoGenNodes,
+  imageUrlFromGraphImageItem,
   mergeVideoOutputGenRefs,
   mergeVisualOutputGenRefs,
   normalizeScopedGraph,
   shotToImageAggregateRow,
   stringifyShotImageAggregateRows,
+  videoUrlFromGraphVideoItem,
   type GraphDocument,
   type GraphImageItem,
-  type GraphVideoItem
+  type GraphVideoItem,
+  type ShotEntityResult,
+  type VideoEntityResult
 } from '@shared/graph'
 import {
   isDraftAssetId,
@@ -146,10 +150,12 @@ function assertNotAborted(signal?: AbortSignal): void {
 export type CollectScriptShotImagesResult = {
   images: GraphImageItem[]
   aggregateJson: string
+  entities: ShotEntityResult[]
 }
 
 export type CollectScriptShotVideosResult = {
   videos: GraphVideoItem[]
+  entities: VideoEntityResult[]
 }
 
 /** 将已跑完的 visual 图输出写回该镜 genRefs / 缩略图（不重新跑图） */
@@ -186,6 +192,7 @@ export async function collectScriptShotImages(input: {
 }): Promise<CollectScriptShotImagesResult> {
   const allImages: GraphImageItem[] = []
   const aggregateShots: Shot[] = []
+  const entities: ShotEntityResult[] = []
 
   for (const shot of input.shots) {
     assertNotAborted(input.signal)
@@ -194,19 +201,25 @@ export async function collectScriptShotImages(input: {
     const images = collectImagesFromVisualGraph(visual)
 
     const assetIds: string[] = []
+    const imageUrls: string[] = []
     for (let i = 0; i < images.length; i++) {
       const item = images[i]!
       const asset = await ensureImageAssetForItem(item, `${live.title || 'Shot'} · ${i + 1}`)
       if (asset) {
         assetIds.push(asset.id)
-        allImages.push({
+        const nextItem: GraphImageItem = {
           ...item,
           id: asset.id,
           relativePath: asset.relativePath ?? item.relativePath,
           dataUrl: item.dataUrl || ''
-        })
+        }
+        allImages.push(nextItem)
+        const url = imageUrlFromGraphImageItem(nextItem)
+        if (url) imageUrls.push(url)
       } else {
         allImages.push(item)
+        const url = imageUrlFromGraphImageItem(item)
+        if (url) imageUrls.push(url)
       }
     }
 
@@ -227,18 +240,26 @@ export async function collectScriptShotImages(input: {
     }
     await persistShotRecord(next)
     aggregateShots.push(next)
+    if (imageUrls.length) {
+      entities.push({
+        id: next.id,
+        name: next.title?.trim() || `分镜 ${entities.length + 1}`,
+        imageUrls
+      })
+    }
   }
 
   const rows = aggregateShots.map((shot, index) => shotToImageAggregateRow(shot, index))
   return {
     images: allImages,
-    aggregateJson: stringifyShotImageAggregateRows(rows)
+    aggregateJson: stringifyShotImageAggregateRows(rows),
+    entities
   }
 }
 
 /**
- * 对脚本下可见分镜：只从各镜视频图的视频输出节点收集已有结果，
- * 写回 genRefs（motion），返回聚合 videos（不级联执行 shotWorkflow 节点链）。
+ * 对脚本下可见分镜：从各镜子图全部已完成视频生成节点收集结果，
+ * 写回 genRefs（motion），返回聚合 videos + videoEntities（不级联执行 shotWorkflow）。
  */
 export async function collectScriptShotVideos(input: {
   scriptAssetId: string
@@ -246,31 +267,40 @@ export async function collectScriptShotVideos(input: {
   signal?: AbortSignal
 }): Promise<CollectScriptShotVideosResult> {
   const allVideos: GraphVideoItem[] = []
+  const entities: VideoEntityResult[] = []
 
   for (const shot of input.shots) {
     assertNotAborted(input.signal)
     const live = resolveShotRecord(shot.id, input.scriptAssetId) ?? shot
     const workflow = normalizeScopedGraph('shotWorkflow', live.canvas.graphJson ?? null)
-    const videos = collectVideosFromShotWorkflowGraph(workflow)
+    const videos = collectVideosFromVideoGenNodes(workflow)
 
     const assetIds: string[] = []
+    const videoUrls: string[] = []
     for (let i = 0; i < videos.length; i++) {
       const item = videos[i]!
       const rel = item.relativePath?.trim()
       if (!rel) {
         allVideos.push(item)
+        const url = videoUrlFromGraphVideoItem(item)
+        if (url) videoUrls.push(url)
         continue
       }
       const asset = await ensureMediaAssetForPath(rel, `${live.title || 'Shot'} · ${i + 1}`, 'video')
       if (asset) {
         assetIds.push(asset.id)
-        allVideos.push({
+        const nextItem: GraphVideoItem = {
           ...item,
           id: asset.id,
           relativePath: asset.relativePath
-        })
+        }
+        allVideos.push(nextItem)
+        const url = videoUrlFromGraphVideoItem(nextItem)
+        if (url) videoUrls.push(url)
       } else {
         allVideos.push(item)
+        const url = videoUrlFromGraphVideoItem(item)
+        if (url) videoUrls.push(url)
       }
     }
 
@@ -283,7 +313,14 @@ export async function collectScriptShotVideos(input: {
       }
     }
     await persistShotRecord(next)
+    if (videoUrls.length) {
+      entities.push({
+        id: next.id,
+        name: next.title?.trim() || `分镜 ${entities.length + 1}`,
+        videoUrls
+      })
+    }
   }
 
-  return { videos: allVideos }
+  return { videos: allVideos, entities }
 }

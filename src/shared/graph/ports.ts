@@ -27,7 +27,7 @@ function shouldHideAssetRefInputs(
   return (node?.params ?? params)?.assetHost !== true
 }
 
-/** 同类型可连（严格相等） */
+/** 同类型可连 */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   return source === target
 }
