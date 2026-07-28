@@ -253,9 +253,19 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     }
     return
   }
-  if (value.kind === 'text' && value.text.trim()) {
-    into.push({ key: `text:${value.text.slice(0, 32)}`, kind: 'text', text: value.text })
-    return
+  if (value.kind === 'text') {
+    // 落盘后正文不再内联，仅有 relativePath 时也是一条有效产物
+    const rel = value.relativePath?.trim()
+    const text = value.text.trim()
+    if (text || rel) {
+      into.push({
+        key: value.id?.trim() || rel || `text:${text.slice(0, 32)}`,
+        kind: 'text',
+        text: value.text,
+        ...(rel ? { relativePath: rel } : {})
+      })
+      return
+    }
   }
   if (
     (value.kind === 'world' ||
@@ -799,7 +809,7 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
   if (value.kind === 'texts') {
     return value.items.some((item) => !!item.text?.trim() || !!item.relativePath?.trim())
   }
-  if (value.kind === 'text') return !!value.text.trim()
+  if (value.kind === 'text') return !!value.text.trim() || !!value.relativePath?.trim()
   if (
     value.kind === 'world' ||
     value.kind === 'worldEntities' ||
