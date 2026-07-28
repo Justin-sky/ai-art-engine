@@ -20,26 +20,17 @@ import type {
 } from '../types'
 import { GraphPortType } from '../types'
 import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
-import { isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
+import { isAssetRefNode, isAssetRefInputHostType, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
-import { resolveInputLinkHeadTypeIds } from '../defaultGraph'
-import {
-  buildHostInputSlotSeedOutputs,
-  ensureHostInputSlotNodes,
-  hydrateHostInputSlotSpecs,
-  mergeHostInputSlotsWithDefaults,
-  readHostInputSlot,
-  resolveHostInputSlotsFromInputs
-} from '../hostInput'
+import { readHostInputSlot } from '../hostInput'
 import {
   boundaryInputNodeId,
   boundaryOutputNodeId,
-  isBoundaryInputNode,
   isBoundaryOutputNode,
   resolveNodeHostInterface,
   type HostInterfaceDocument
 } from '../hostInterface'
-import { assetTypeToGraphScope, resolveAssetProcessingTypeId } from '../scopes'
+import { ensureBoundaryProxyNodes } from '../ensureBoundary'
 import { findAllOutputNodes } from '../query'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
@@ -1270,16 +1261,17 @@ function mapChildOutputToHostOut(
 export const MAX_HOST_COOK_DEPTH = 8
 
 /**
- * 宿主有入边时：注入内图输入，整链交给任务列表执行（runHostInnerGraph）。
+ * 宿主实例：注入内图 boundary 输入，整链交给任务列表执行（runHostInnerGraph）。
+ * 可宿主类型统一 HDA：零输入也可 cook；优先 boundary 映射出口。
  */
 function executeAssetHostInnerGraph(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> | null {
   const { node, inputs } = ctx
   if (!node.assetId) return null
-  const hasInput = Object.values(inputs).some((arr) => (arr?.length ?? 0) > 0)
-  // 通用宿主允许纯生成子图（零输入、有输出）；旧业务宿主维持“有入边才运行内图”的语义。
-  if (!hasInput && node.assetType !== 'subgraph') return null
+  if (!isAssetRefInputHostType(node.assetType) && node.params?.assetHost !== true) {
+    return null
+  }
 
   const cookStack = ctx.cookAssetIdStack ?? []
   if (cookStack.includes(node.assetId)) {
@@ -1301,106 +1293,25 @@ function executeAssetHostInnerGraph(
   const runInner = ctx.runHostInnerGraph
   const nextStack = [...cookStack, node.assetId]
   const iface = resolveNodeHostInterface(node)
-  const useBoundary =
-    node.assetType === 'subgraph' ||
-    (raw as GraphDocument).nodes.some(
-      (n) => isBoundaryInputNode(n) || isBoundaryOutputNode(n)
-    )
-
-  if (useBoundary) {
-    return (async () => {
-      const doc = cloneGraphDocument(raw as GraphDocument)
-      const priorNodeStates: Record<string, GraphNodeRunState> = {}
-      for (const port of iface.inputs) {
-        const id = boundaryInputNodeId(port.id)
-        const values = inputs[port.id] ?? []
-        const out = mergeHostInputValues(values, port.dataType)
-        if (!out) continue
-        priorNodeStates[id] = { status: 'done', outputs: { out } }
-        const bNode = doc.nodes.find((n) => n.id === id)
-        if (bNode && (out.kind === 'text' || out.kind === 'texts')) {
-          const text =
-            out.kind === 'text'
-              ? out.text
-              : out.items.map((item) => item.text).filter(Boolean).join('\n')
-          bNode.params = { ...bNode.params, text }
-        }
-      }
-
-      const hosted = await runInner({
-        hostNode: node,
-        document: doc,
-        priorNodeStates,
-        signal: ctx.signal,
-        cookAssetIdStack: nextStack
-      })
-      if (!hosted.ok) {
-        throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
-      }
-      if (hosted.outputs) return hosted.outputs
-      const mapped = mapHostBoundaryStatesToOutputs(hosted.states, doc, iface)
-      if (!mapped || !Object.keys(mapped).length) {
-        throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
-      }
-      return mapped
-    })()
-  }
-
-  const slots = mergeHostInputSlotsWithDefaults(
-    node.assetType,
-    resolveHostInputSlotsFromInputs(node, inputs)
-  )
-  if (!slots.length) return null
 
   return (async () => {
-    const doc = cloneGraphDocument(raw as GraphDocument)
-    const scope = assetTypeToGraphScope(node.assetType)
-
-    const slotsHydrated = await hydrateHostInputSlotSpecs(slots, ctx.readRunText)
-    ensureHostInputSlotNodes(doc.nodes, doc.edges, slotsHydrated, {
-      autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
-        scope,
-        node.assetType,
-        resolveAssetProcessingTypeId(scope, node.assetType)
-      )
-    })
-
-    const seeds = buildHostInputSlotSeedOutputs(node, inputs)
+    let doc = cloneGraphDocument(raw as GraphDocument)
+    // 新资产创建时已带 boundary；运行时再幂等补齐，避免缺 proxy
+    doc = ensureBoundaryProxyNodes(doc, iface)
     const priorNodeStates: Record<string, GraphNodeRunState> = {}
-    for (const [id, outputs] of Object.entries(seeds)) {
-      const out = outputs.out
-      if (
-        out &&
-        'text' in out &&
-        typeof out.text === 'string' &&
-        !out.text.trim() &&
-        'relativePath' in out &&
-        typeof out.relativePath === 'string' &&
-        out.relativePath.trim() &&
-        ctx.readRunText
-      ) {
-        try {
-          const text = (await ctx.readRunText(out.relativePath.trim()))?.trim() ?? ''
-          if (text) out.text = text
-        } catch {
-          // 保留路径
-        }
-      }
-      priorNodeStates[id] = { status: 'done', outputs }
-      const slotNode = doc.nodes.find((n) => n.id === id)
-      if (!slotNode) continue
-      if (
-        out &&
-        (out.kind === 'text' ||
-          out.kind === 'narrative' ||
-          out.kind === 'narrativeEntity' ||
-          out.kind === 'worldEntities')
-      ) {
-        slotNode.params = {
-          ...slotNode.params,
-          text: out.text,
-          ...(out.relativePath ? { previewRelativePath: out.relativePath } : {})
-        }
+    for (const port of iface.inputs) {
+      const id = boundaryInputNodeId(port.id)
+      const values = inputs[port.id] ?? []
+      const out = mergeHostInputValues(values, port.dataType)
+      if (!out) continue
+      priorNodeStates[id] = { status: 'done', outputs: { out } }
+      const bNode = doc.nodes.find((n) => n.id === id)
+      if (bNode && (out.kind === 'text' || out.kind === 'texts')) {
+        const text =
+          out.kind === 'text'
+            ? out.text
+            : out.items.map((item) => item.text).filter(Boolean).join('\n')
+        bNode.params = { ...bNode.params, text }
       }
     }
 
@@ -1415,9 +1326,18 @@ function executeAssetHostInnerGraph(
       throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
     }
     if (hosted.outputs) return hosted.outputs
-    const mapped = mapHostInnerStatesToOutputs(hosted.states, doc, node.assetType ?? '')
-    if (!mapped) throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
-    return mapped
+    const mapped = mapHostBoundaryStatesToOutputs(hosted.states, doc, iface)
+    if (mapped && Object.keys(mapped).length) return mapped
+    // 过渡回退：内图尚无接到 boundary 出口时，按类型聚合输出节点
+    const fallback = mapHostInnerStatesToOutputs(
+      hosted.states,
+      doc,
+      node.assetType ?? 'subgraph'
+    )
+    if (!fallback || !Object.keys(fallback).length) {
+      throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
+    }
+    return fallback
   })()
 }
 

@@ -47,6 +47,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import {
   cloneHostInterface,
   ensureBoundaryProxyNodes,
+  isAssetRefInputHostType,
   pruneEdgesForHostInterface,
   readHostSchemaVersion,
   resolveNodeHostInterface,
@@ -77,8 +78,8 @@ const node = computed((): GraphNode | null => {
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
   if (!current) return null
-  if (current.assetType !== 'subgraph') return null
-  if (current.params?.assetHost !== true && !current.params?.hostInterfaceSnapshot) return null
+  if (current.params?.assetHost !== true) return null
+  if (!isAssetRefInputHostType(current.assetType)) return null
   return current
 })
 
@@ -139,11 +140,34 @@ watch(
 
 watch([inputs, outputs], () => syncLiveSnapshot(), { deep: true })
 
-function persistTitle(): void {
+async function persistTitle(): Promise<void> {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
-  graphEditorHosts.updateNode(hid, current.id, {}, displayName.value.trim() || current.title)
+  const trimmed = displayName.value.trim()
+  const assetId = current.assetId?.trim()
+  const linked = assetId ? project.assets.find((a) => a.id === assetId) : undefined
+  const prev = linked?.name?.trim() || current.title?.trim() || ''
+  if (!trimmed || trimmed === prev) {
+    displayName.value = prev
+    return
+  }
+  // 节点标题与宿主资产名/旁挂元数据文件名一并更新
+  graphEditorHosts.updateNode(hid, current.id, {}, trimmed)
+  if (!assetId || !linked) return
+  try {
+    await window.studio.renameAsset(assetId, trimmed)
+    await project.refreshAssets()
+    for (const entry of graphEditorHosts.listLiveEntries()) {
+      for (const n of entry.document.nodes) {
+        if (n.assetId !== assetId || n.id === current.id) continue
+        if (n.params?.assetHost !== true && !n.params?.hostInterfaceSnapshot) continue
+        graphEditorHosts.updateNode(entry.hostId, n.id, {}, trimmed)
+      }
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 async function applyInterface(): Promise<void> {

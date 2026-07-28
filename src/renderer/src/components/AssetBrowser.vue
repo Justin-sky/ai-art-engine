@@ -54,6 +54,7 @@
           :class="{ active: isTreeRowActive(row), 'drop-over': isTreeRowDropOver(row) }"
           :style="{ paddingLeft: `${4 + row.depth * 14}px` }"
           @click="selectFolder(folderIdFromTreeRow(row.id))"
+          @dblclick.stop="onTreeRowDblClick(row.id)"
           @contextmenu.prevent.stop="onTreeRowContextMenu($event, row.id)"
           @dragover.prevent="onFolderDragOver($event, folderIdFromTreeRow(row.id))"
           @dragleave="onFolderDragLeave(folderIdFromTreeRow(row.id))"
@@ -124,9 +125,12 @@
             v-for="folder in visibleFolders"
             :key="folder.id"
             class="card folder"
-            :class="{ 'drop-over': dropTargetId === folder.id }"
-            @click="selectFolder(folder.id)"
-            @dblclick="selectFolder(folder.id)"
+            :class="{
+              selected: isFolderSelected(folder.id),
+              'drop-over': dropTargetId === folder.id
+            }"
+            @click.stop="onFolderClick(folder.id, $event)"
+            @dblclick.stop="onFolderDblClick(folder.id)"
             @contextmenu.prevent.stop="onFolderContextMenu($event, folder.id)"
             @dragover.prevent.stop="onFolderDragOver($event, folder.id)"
             @dragleave.stop="onFolderDragLeave(folder.id)"
@@ -414,8 +418,6 @@ const props = withDefaults(
   { embedded: false }
 )
 
-const toolbarCreateItems = computed(() => listRegisteredToolbarItems({ assetMenu: true }))
-
 const ROOT_DROP = '__root__'
 const CURRENT_DROP = '__current__'
 const ASSET_MOVE_MIME = STUDIO_ASSET_ID_DRAG_MIME
@@ -465,7 +467,14 @@ const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
 const { createSeriesWithStarter } = useSeriesCreation()
-const { t, assetTypeLabel, toolbarCreateLabel } = useStudioI18n()
+const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
+
+/** 右键新建项：按显示名 Unity NaturalCompare（与资产目录一致） */
+const toolbarCreateItems = computed(() =>
+  listRegisteredToolbarItems({ assetMenu: true }).slice().sort((a, b) =>
+    compareNames(toolbarCreateLabel(a.id, a.assetType), toolbarCreateLabel(b.id, b.assetType))
+  )
+)
 
 function assetIcon(asset: AssetInfo): string {
   return assetDisplayIcon(asset)
@@ -674,7 +683,11 @@ async function onPackageDialogConfirm(payload: {
 const splitEl = ref<HTMLElement | null>(null)
 const gridEl = ref<HTMLElement | null>(null)
 const selectedAssetIds = ref<Set<string>>(new Set())
+/** 右侧列表区目录选中（对齐 Unity Project：单击选中目录，不进入） */
+const selectedFolderIds = ref<Set<string>>(new Set())
 const anchorAssetId = ref<string | null>(null)
+/** Shift 范围选择的锚点目录（仅列表区子目录） */
+const anchorFolderId = ref<string | null>(null)
 const selectionBox = ref<{ x: number; y: number; w: number; h: number } | null>(null)
 const dropTargetId = ref<string | null>(null)
 const draggingAssetIds = ref<string[]>([])
@@ -846,6 +859,7 @@ watch(
 
 watch(currentFolderId, () => {
   clearAssetSelectionLocal()
+  clearFolderSelectionLocal()
 })
 
 watch(
@@ -853,6 +867,7 @@ watch(
   () => {
     currentFolderId.value = null
     clearAssetSelectionLocal()
+    clearFolderSelectionLocal()
     query.value = ''
   }
 )
@@ -944,19 +959,32 @@ async function showCtxMenu(next: CtxMenu): Promise<void> {
   }
 }
 
-function selectFolder(id: string | null): void {
+function selectFolder(id: string | null, opts?: { expandTarget?: boolean }): void {
   currentFolderId.value = id
+  // 导航后列表区目录选中清空（树负责当前路径高亮）
+  selectedFolderIds.value = new Set()
+  anchorFolderId.value = null
   const next = { ...expandedMap.value, [ASSETS_ROOT_TREE_KEY]: true }
   if (id) {
     const byId = new Map(normalizedFolders.value.map((f) => [f.id, f]))
-    let cursor: string | null = id
+    // 只展开祖先，保证选中项在树中可见；自身是否展开由双击 / 三角标控制
+    let cursor: string | null = byId.get(id)?.parentId ?? null
     while (cursor) {
       next[cursor] = true
       cursor = byId.get(cursor)?.parentId ?? null
     }
+    if (opts?.expandTarget) next[id] = true
   }
   expandedMap.value = next
   closeMenu()
+}
+
+function onTreeRowDblClick(rowId: string): void {
+  if (rowId === ASSETS_ROOT_TREE_KEY) {
+    toggleExpanded(ASSETS_ROOT_TREE_KEY)
+    return
+  }
+  toggleExpanded(rowId)
 }
 
 async function revealAssetInBrowser(assetId: string): Promise<void> {
@@ -1024,6 +1052,12 @@ function onTreePaneClick(e: MouseEvent): void {
 }
 
 function onFolderContextMenu(e: MouseEvent, folderId: string): void {
+  // 右键未选中目录时先选中它（对齐 Unity）
+  if (!selectedFolderIds.value.has(folderId)) {
+    clearAssetSelectionLocal()
+    selectedFolderIds.value = new Set([folderId])
+    anchorFolderId.value = folderId
+  }
   void showCtxMenu({ kind: 'folder', x: e.clientX, y: e.clientY, targetId: folderId })
 }
 
@@ -1037,6 +1071,10 @@ function onTreeRowContextMenu(e: MouseEvent, rowId: string): void {
 
 function isAssetSelected(assetId: string): boolean {
   return selectedAssetIds.value.has(assetId)
+}
+
+function isFolderSelected(folderId: string): boolean {
+  return selectedFolderIds.value.has(folderId)
 }
 
 function syncWorkspaceSelection(): void {
@@ -1054,9 +1092,16 @@ function syncWorkspaceSelection(): void {
   }
 }
 
+function clearFolderSelectionLocal(): void {
+  selectedFolderIds.value = new Set()
+  anchorFolderId.value = null
+}
+
 function setAssetSelection(ids: string[], options?: { syncWorkspace?: boolean }): void {
   selectedAssetIds.value = new Set(ids)
   anchorAssetId.value = ids[ids.length - 1] ?? null
+  // 选中资产时清掉列表区目录选中（与 Unity Selection 互斥）
+  if (ids.length > 0) clearFolderSelectionLocal()
   if (options?.syncWorkspace !== false) syncWorkspaceSelection()
 }
 
@@ -1064,6 +1109,48 @@ function clearAssetSelectionLocal(): void {
   selectedAssetIds.value = new Set()
   anchorAssetId.value = null
   workspace.clearAssetSelection()
+}
+
+/**
+ * Unity Project 右侧列表：单击目录 → 选中目录并清掉资产多选；不进入。
+ * Ctrl/Cmd 切换；Shift 按可见子目录范围选择。
+ */
+function onFolderClick(folderId: string, e: MouseEvent): void {
+  const list = visibleFolders.value.map((f) => f.id)
+  if (e.shiftKey && anchorFolderId.value) {
+    const start = list.indexOf(anchorFolderId.value)
+    const end = list.indexOf(folderId)
+    if (start >= 0 && end >= 0) {
+      const [lo, hi] = start < end ? [start, end] : [end, start]
+      const range = list.slice(lo, hi + 1)
+      clearAssetSelectionLocal()
+      if (e.ctrlKey || e.metaKey) {
+        const next = new Set(selectedFolderIds.value)
+        for (const id of range) next.add(id)
+        selectedFolderIds.value = next
+      } else {
+        selectedFolderIds.value = new Set(range)
+      }
+      return
+    }
+  }
+  if (e.ctrlKey || e.metaKey) {
+    clearAssetSelectionLocal()
+    const next = new Set(selectedFolderIds.value)
+    if (next.has(folderId)) next.delete(folderId)
+    else next.add(folderId)
+    selectedFolderIds.value = next
+    anchorFolderId.value = folderId
+    return
+  }
+  clearAssetSelectionLocal()
+  selectedFolderIds.value = new Set([folderId])
+  anchorFolderId.value = folderId
+}
+
+/** Unity：双击目录 → 进入该目录 */
+function onFolderDblClick(folderId: string): void {
+  selectFolder(folderId, { expandTarget: true })
 }
 
 function markSkipAssetClickSync(): void {
@@ -1158,6 +1245,7 @@ function onGridPointerDown(e: PointerEvent): void {
     selectionBox.value = null
     if (!box || (box.w < 4 && box.h < 4)) {
       // 空白单击只清浏览器高亮，不改 Inspector
+      clearFolderSelectionLocal()
       setAssetSelection([], { syncWorkspace: false })
       return
     }
@@ -1304,9 +1392,16 @@ function copyContextMenuOriginalFiles(): void {
 async function openNameDialog(dialog: NameDialog): Promise<void> {
   closeMenu()
   nameDialog.value = dialog
-  await nextTick()
-  nameInputEl.value?.focus()
-  nameInputEl.value?.select()
+  // StudioFloatingWindow 双 rAF 后才挂 body，nextTick 时 input 可能尚未存在
+  for (let i = 0; i < 12; i++) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await nextTick()
+    const el = nameInputEl.value
+    if (!el) continue
+    el.focus()
+    el.select()
+    return
+  }
 }
 
 function closeNameDialog(): void {
@@ -1392,30 +1487,55 @@ async function confirmNameDialog(): Promise<void> {
   }
 }
 
+/** 右键新建资产：统一弹出命名框；取消返回 null */
+async function promptCreateAssetName(options: {
+  title: string
+  message?: string
+  defaultValue: string
+  placeholder?: string
+}): Promise<string | null> {
+  const entered = await promptText({
+    title: options.title,
+    message: options.message ?? t('asset.create.nameMessage'),
+    defaultValue: options.defaultValue,
+    placeholder: options.placeholder ?? t('asset.create.namePlaceholder')
+  })
+  if (entered == null) return null
+  const name = entered.trim()
+  if (!name) {
+    await promptAlert({
+      title: options.title,
+      message: t('validation.nameRequired')
+    })
+    return null
+  }
+  return name
+}
+
 async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   const folderId = resolveCreateParentId()
   closeMenu()
   if (item.id === 'canvas') {
+    // 剧集创建内部已弹命名框
     await createSeriesWithStarter(folderId)
   } else if (item.id === 'freeCanvas') {
-    const entered = await promptText({
+    const name = await promptCreateAssetName({
       title: t('asset.create.freeCanvasNameTitle'),
       message: t('asset.create.freeCanvasNameMessage'),
       defaultValue: t('asset.create.freeCanvas'),
       placeholder: t('asset.create.freeCanvasNamePlaceholder')
     })
-    if (entered == null) return
-    const name = entered.trim()
-    if (!name) {
-      await promptAlert({
-        title: t('asset.create.freeCanvasNameTitle'),
-        message: t('validation.nameRequired')
-      })
-      return
-    }
+    if (!name) return
     await createAsset('canvas', folderId, { name })
   } else {
-    await createAsset(item.assetType, folderId)
+    const title = toolbarCreateLabel(item.id, item.assetType)
+    const name = await promptCreateAssetName({
+      title,
+      defaultValue: assetCreateName(item.assetType),
+      placeholder: assetTypeLabel(item.assetType)
+    })
+    if (!name) return
+    await createAsset(item.assetType, folderId, { name })
   }
   if (folderId !== currentFolderId.value) selectFolder(folderId)
 }

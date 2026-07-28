@@ -381,7 +381,9 @@ export default {
       seriesNamePlaceholder: '剧集名称',
       freeCanvasNameTitle: '新建自由画布',
       freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',
-      freeCanvasNamePlaceholder: '画布名称'
+      freeCanvasNamePlaceholder: '画布名称',
+      nameMessage: '请输入资产名称。',
+      namePlaceholder: '资产名称'
     },
     generic: '资产',
     deleted: '（已删除）',
@@ -1778,8 +1780,8 @@ export default {
     node: {
       collapsePreview: '收起预览',
       expandPreview: '展开预览',
-      enableLock: '锁定：跳过生成，保留上次结果',
-      disableLock: '解锁：下次运行将重新生成'
+      enableLock: '锁定：跳过执行，保留上次结果',
+      disableLock: '解锁：下次运行将重新执行'
     },
     nodeRole: {
       ref: '引用',

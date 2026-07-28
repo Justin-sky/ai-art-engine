@@ -2,7 +2,11 @@
   <div
     class="graph-note"
     :class="[
-      { selected, 'preview-collapsed': previewCollapsed },
+      {
+        selected,
+        'preview-collapsed': previewCollapsed,
+        'lock-node': isLocked
+      },
       isInputSlot ? `input-slot slot-${slotDataType}` : null
     ]"
     :data-node-id="node.id"
@@ -29,7 +33,8 @@
       >
         <span class="collapse-tri" aria-hidden="true" />
       </button>
-      <span class="type-pill">{{ badgeLabel }}</span>
+      <span v-if="isLocked" class="type-pill lock">{{ t('graph.nodeRole.lock') }}</span>
+      <span v-else class="type-pill">{{ badgeLabel }}</span>
       <input
         v-if="editingTitle"
         ref="titleInputEl"
@@ -47,14 +52,29 @@
         :title="displayTitle"
         @dblclick.stop="startTitleEdit"
       >{{ displayTitle }}</span>
-      <span
-        v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
-        class="run-pill"
-        :class="runStatus"
-        :title="runError || runStatusLabel"
-      >
-        {{ runStatusLabel }}
-      </span>
+      <div class="head-actions">
+        <button
+          v-if="canLock"
+          type="button"
+          class="lock-btn"
+          :class="{ active: isLocked }"
+          :title="isLocked ? t('graph.node.disableLock') : t('graph.node.enableLock')"
+          :aria-pressed="isLocked"
+          :aria-label="isLocked ? t('graph.node.disableLock') : t('graph.node.enableLock')"
+          @pointerdown.stop
+          @click.stop="toggleLock"
+        >
+          <LockIcon :locked="isLocked" :size="12" />
+        </button>
+        <span
+          v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
+          class="run-pill"
+          :class="runStatus"
+          :title="runError || runStatusLabel"
+        >
+          {{ runStatusLabel }}
+        </span>
+      </div>
     </div>
 
     <div v-show="!previewCollapsed" class="note-content">
@@ -99,13 +119,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
+import LockIcon from './icons/LockIcon.vue'
 import {
   getNodePorts,
   getNodeSize,
   GRAPH_INPUT_SLOT_TYPE_ID,
+  isGenerateLocked,
   nodePortYRatio,
   readHostInputSlot,
   resolveNodeType,
+  supportsGenerateLock,
   type GraphNode,
   type GraphNodeRunStatus,
   type GraphPortDataType
@@ -137,6 +160,8 @@ const nodePorts = computed(() => getNodePorts(props.node))
 const inPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'in'))
 const outPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'out'))
 const isInputSlot = computed(() => props.node.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
+const canLock = computed(() => supportsGenerateLock(props.node))
+const isLocked = computed(() => isGenerateLocked(props.node))
 const slotBinding = computed(() => readHostInputSlot(props.node))
 const slotDataType = computed<GraphPortDataType>(
   () => slotBinding.value?.dataType ?? outPorts.value[0]?.dataType ?? 'text'
@@ -163,6 +188,13 @@ function togglePreviewCollapsed(): void {
   if (!props.hostId || !isInputSlot.value) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, {
     previewCollapsed: !previewCollapsed.value
+  })
+}
+
+function toggleLock(): void {
+  if (!props.hostId || !canLock.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    locked: !isLocked.value
   })
 }
 
@@ -409,6 +441,50 @@ function onBodyDblClick(): void {
   flex-shrink: 0;
 }
 
+.type-pill.lock {
+  background: color-mix(in srgb, #c4a35a 28%, transparent);
+  color: #e6cf8a;
+}
+
+.graph-note.lock-node {
+  border-color: color-mix(in srgb, #c4a35a 55%, var(--slot-border));
+}
+
+.head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.lock-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, #c4a35a 45%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: #b8a060;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lock-btn:hover {
+  background: color-mix(in srgb, #c4a35a 18%, transparent);
+  color: #d4b86a;
+}
+
+.lock-btn.active {
+  background: color-mix(in srgb, #c4a35a 32%, transparent);
+  border-color: #c4a35a;
+  color: #e6cf8a;
+}
+
 .title {
   font-size: 11px;
   color: var(--graph-note-text);
@@ -416,6 +492,7 @@ function onBodyDblClick(): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: text;
+  min-width: 0;
 }
 
 .title-input {
@@ -435,7 +512,6 @@ function onBodyDblClick(): void {
 }
 
 .run-pill {
-  margin-left: auto;
   flex-shrink: 0;
   font-size: 9px;
   font-weight: 700;

@@ -98,16 +98,10 @@ export function listHostInputPortDefs(assetType: AssetType): Array<{
 
 /**
  * 打开即同步「输入接口」的宿主资产编辑器 scope。
- * 子图（shotWorkflow / visual / narrativeUnit / elementWorkflow）不参与。
+ * HDA 统一后宿主内图改用 boundary proxy，不再自动插入 graph.input.slot。
  */
-export function isHostInputSlotEditorScope(scope: GraphAddScope): boolean {
-  return (
-    scope === 'screenplayAsset' ||
-    scope === 'scriptAsset' ||
-    scope === 'worldAsset' ||
-    scope === 'narrativeAsset' ||
-    scope === 'workflow'
-  )
+export function isHostInputSlotEditorScope(_scope: GraphAddScope): boolean {
+  return false
 }
 
 /** 通用保底：每个宿主入端口至少 1 个空槽（index=0） */

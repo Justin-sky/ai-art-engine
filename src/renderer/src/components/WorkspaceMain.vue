@@ -71,7 +71,7 @@ const project = useProjectStore()
 const { openAssetEditor } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { createSeriesWithStarter } = useSeriesCreation()
-const { t, assetTypeLabel, toolbarCreateLabel } = useStudioI18n()
+const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 
 const createItems = computed(() =>
@@ -93,6 +93,30 @@ function createItemLabel(item: ResolvedWorkspaceToolbarItem): string {
   return toolbarCreateLabel(item.id, item.assetType)
 }
 
+async function promptCreateName(options: {
+  title: string
+  message?: string
+  defaultValue: string
+  placeholder?: string
+}): Promise<string | null> {
+  const entered = await promptText({
+    title: options.title,
+    message: options.message ?? t('asset.create.nameMessage'),
+    defaultValue: options.defaultValue,
+    placeholder: options.placeholder ?? t('asset.create.namePlaceholder')
+  })
+  if (entered == null) return null
+  const name = entered.trim()
+  if (!name) {
+    await promptAlert({
+      title: options.title,
+      message: t('validation.nameRequired')
+    })
+    return null
+  }
+  return name
+}
+
 async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
@@ -102,25 +126,24 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
       return
     }
     if (item.id === 'freeCanvas') {
-      const entered = await promptText({
+      const name = await promptCreateName({
         title: t('asset.create.freeCanvasNameTitle'),
         message: t('asset.create.freeCanvasNameMessage'),
         defaultValue: t('asset.create.freeCanvas'),
         placeholder: t('asset.create.freeCanvasNamePlaceholder')
       })
-      if (entered == null) return
-      const name = entered.trim()
-      if (!name) {
-        await promptAlert({
-          title: t('asset.create.freeCanvasNameTitle'),
-          message: t('validation.nameRequired')
-        })
-        return
-      }
+      if (!name) return
       createDraftAndOpen('canvas', { name })
       return
     }
-    createDraftAndOpen(item.assetType)
+    const title = toolbarCreateLabel(item.id, item.assetType)
+    const name = await promptCreateName({
+      title,
+      defaultValue: assetCreateName(item.assetType),
+      placeholder: assetTypeLabel(item.assetType)
+    })
+    if (!name) return
+    createDraftAndOpen(item.assetType, { name })
   } finally {
     busyId.value = null
   }

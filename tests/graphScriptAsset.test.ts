@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  boundaryOutputNodeId,
   canConnectNodes,
   createDefaultScopedGraph,
   createNodeFromType,
@@ -19,7 +20,7 @@ import {
 const VIDEO_OUTPUT_ID = graphOutputNodeId('video')
 
 describe('script asset graph', () => {
-  it('creates default launcher nodes and shot video output', () => {
+  it('creates default launcher nodes and wires video gen to boundary output', () => {
     const doc = createDefaultScopedGraph('scriptAsset', 'script')
     expect(doc.nodes.some((n) => n.id === GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID)).toBe(true)
     expect(doc.nodes.some((n) => n.id === GRAPH_SCRIPT_SHOT_TABLE_NODE_ID)).toBe(true)
@@ -27,11 +28,10 @@ describe('script asset graph', () => {
     expect(doc.nodes.some((n) => n.id === GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID)).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'script.visual')).toBe(false)
     expect(doc.nodes.some((n) => n.typeId === 'output.timeline')).toBe(false)
-    const output = doc.nodes.find((n) => n.id === VIDEO_OUTPUT_ID || n.typeId === 'output.video')
-    expect(output?.typeId).toBe('output.video')
-    expect(output?.params.outputKind).toBe('video')
-    expect(output?.params.inputDataType).toBe('videoEntities')
-    expect(output?.title).toBe('Shot video output')
+    const output = doc.nodes.find((n) => n.id === boundaryOutputNodeId('out'))
+    expect(output?.typeId).toBe('graph.boundary.output')
+    expect(output?.params.hostBoundaryPort?.dataType).toBe('videoEntities')
+    expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
 
     const split = doc.nodes.find((n) => n.typeId === 'script.shotSplit')
     const table = doc.nodes.find((n) => n.typeId === 'script.shotTable')
@@ -82,13 +82,13 @@ describe('script asset graph', () => {
     expect(typeIds).toContain('play.script')
   })
 
-  it('script host open has worldEntities and narrativeEntity input slots', () => {
+  it('script host open has worldEntities and narrativeEntity boundary inputs', () => {
     const doc = normalizeScopedGraph('scriptAsset', null, {
       assetType: 'script',
       hostAssetId: '00000000-0000-4000-8000-000000000501'
     })
-    const slots = doc.nodes.filter((n) => n.typeId === 'graph.input.slot')
-    expect(slots.map((n) => n.params.hostInputSlot?.portId).sort()).toEqual([
+    const boundaries = doc.nodes.filter((n) => n.typeId === 'graph.boundary.input')
+    expect(boundaries.map((n) => n.params.hostBoundaryPort?.portId).sort()).toEqual([
       'in-narrativeEntity',
       'in-worldEntities'
     ])
@@ -101,7 +101,8 @@ describe('script asset graph', () => {
     expect(doc.nodes.some((n) => n.typeId === 'script.shotImageGen')).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'script.shotVideoGen')).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'script.visual')).toBe(false)
-    expect(doc.nodes.some((n) => n.category === 'output')).toBe(true)
+    expect(doc.nodes.some((n) => n.category === 'output')).toBe(false)
+    expect(doc.nodes.some((n) => n.typeId === 'graph.boundary.output')).toBe(true)
   })
 
   it('does not migrate unknown shotEditor typeId', () => {

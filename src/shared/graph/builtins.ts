@@ -436,9 +436,9 @@ function outputDef(kind: GraphOutputKind, label: string, icon: string): NodeType
       muted: false,
       loop: kind === 'voice' || kind === 'video'
     }),
-    addable: true,
+    addable: false,
     singletonId: graphOutputNodeId(kind),
-    deletable: false,
+    deletable: true,
     inspector: 'output',
     card: 'media',
     contributeToGeneration: false,
@@ -490,7 +490,7 @@ function specializedOutputDef(
       muted: false,
       loop: kind === 'voice' || kind === 'video'
     }),
-    addable: true,
+    addable: false,
     singletonId:
       typeId === 'output.director'
         ? GRAPH_OUTPUT_NODE_IDS.director
@@ -501,12 +501,8 @@ function specializedOutputDef(
             : typeId === 'output.narrativeUnit'
               ? GRAPH_OUTPUT_NODE_IDS.narrativeUnit
               : GRAPH_OUTPUT_NODE_IDS.world,
-    // 叙事 / 成片时间线 / 世界元素输出允许删除；导演台输出仍锁定
-    deletable:
-      typeId === 'output.narrative' ||
-      typeId === 'output.narrativeUnit' ||
-      typeId === 'output.timeline' ||
-      typeId === 'output.world',
+    // classic 输出已从菜单移除；残留节点允许删除
+    deletable: true,
     inspector: 'output',
     ...(inspectorId ? { inspectorId } : {}),
     card: 'media',

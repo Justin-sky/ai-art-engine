@@ -65,25 +65,26 @@ describe('graph policy', () => {
     expect(isNodeAddableInScope('scriptAsset', 'script.shotSplit')).toBe(true)
   })
 
-  it('output nodes are addable in canvasAsset and shot image/video outputs', () => {
-    expect(isNodeAddableInScope('canvasAsset', 'output.video')).toBe(true)
-    expect(isNodeAddableInScope('canvasAsset', 'output.director')).toBe(true)
-    expect(isNodeAddableInScope('canvasAsset', 'output.timeline')).toBe(true)
-    expect(isNodeAddableInScope('shotWorkflow', 'output.video')).toBe(true)
-    expect(isNodeAddableInScope('visual', 'output.image')).toBe(true)
-    expect(isNodeAddableInScope('directorAsset', 'output.image')).toBe(false)
-    expect(isNodeAddableInScope('scriptAsset', 'output.video')).toBe(true)
-    expect(isNodeAddableInScope('scriptAsset', 'output.timeline')).toBe(false)
-    expect(isNodeAddableInScope('shotWorkflow', 'output.voice')).toBe(false)
-    expect(isNodeAddableInScope('visual', 'output.video')).toBe(false)
-    expect(listAddableNodeTypes('directorAsset').some((d) => d.typeId.startsWith('output.'))).toBe(
-      false
-    )
-    expect(listAddableNodeTypes('canvasAsset').some((d) => d.typeId === 'output.director')).toBe(
-      true
-    )
-    expect(listAddableNodeTypes('shotWorkflow').some((d) => d.typeId === 'output.video')).toBe(true)
-    expect(listAddableNodeTypes('visual').some((d) => d.typeId === 'output.image')).toBe(true)
+  it('rejects every output node in every builtin scope and menu', () => {
+    for (const scope of Object.keys(getGraphPolicy().scopes)) {
+      for (const typeId of [
+        'output.image',
+        'output.video',
+        'output.voice',
+        'output.text',
+        'output.director',
+        'output.timeline',
+        'output.narrative',
+        'output.narrativeUnit',
+        'output.world'
+      ]) {
+        expect(isNodeAddableInScope(scope, typeId), `${scope}: ${typeId}`).toBe(false)
+      }
+      expect(
+        listAddableNodeTypes(scope).some((definition) => definition.typeId.startsWith('output.')),
+        scope
+      ).toBe(false)
+    }
   })
 
   it('listAddableNodeTypes follows policy', () => {
@@ -99,7 +100,6 @@ describe('graph policy', () => {
         'asset.video',
         'asset.voice',
         'note.text',
-        'output.video',
         'play.script',
         'image.crop',
         'image.emotion',

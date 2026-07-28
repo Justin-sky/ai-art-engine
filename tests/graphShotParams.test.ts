@@ -79,26 +79,13 @@ describe('script.shotParams node', () => {
     expect(node.title).toBe('镜A')
   })
 
-  it('shotWorkflow default graph wires video → video-output without shotParams', () => {
+  it('shotWorkflow default graph contains video without output or shotParams', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const typeIds = doc.nodes.map((node) => node.typeId)
     expect(typeIds).not.toContain('script.shotParams')
     expect(typeIds).toContain('asset.video')
-    expect(typeIds).toContain('output.video')
-
-    const video = doc.nodes.find((node) => node.typeId === 'asset.video')!
-    const output = doc.nodes.find((node) => node.typeId === 'output.video')!
-
-    expect(doc.edges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source: video.id,
-          target: output.id,
-          sourcePort: 'out',
-          targetPort: 'in'
-        })
-      ])
-    )
+    expect(typeIds.some((typeId) => typeId.startsWith('output.'))).toBe(false)
+    expect(doc.edges).toHaveLength(0)
   })
 
   it('empty shotWorkflow normalize uses the default video chain', () => {
@@ -107,7 +94,7 @@ describe('script.shotParams node', () => {
     expect(doc.nodes.some((node) => node.typeId === 'asset.video')).toBe(true)
   })
 
-  it('does not backfill video generate onto output-only shot graphs', () => {
+  it('strips output-only shot graphs without backfilling video generate', () => {
     const doc = normalizeScopedGraph('shotWorkflow', {
       nodes: [
         createOutputGraphNode('video', { x: 480, y: 160 }, { id: graphOutputNodeId('video') })
@@ -115,7 +102,7 @@ describe('script.shotParams node', () => {
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    expect(doc.nodes.map((node) => node.typeId)).toEqual(['output.video'])
+    expect(doc.nodes).toHaveLength(0)
     expect(doc.edges).toHaveLength(0)
   })
 
@@ -129,8 +116,8 @@ describe('script.shotParams node', () => {
       output: resolveScopeOutput('shotWorkflow'),
       processingTypeId: resolveAssetProcessingTypeId('shotWorkflow')
     })
-    expect(nodes).toHaveLength(2)
-    expect(edges).toHaveLength(1)
+    expect(nodes).toHaveLength(1)
+    expect(edges).toHaveLength(0)
   })
 
   it('does not recreate shotParams after user deleted it', () => {

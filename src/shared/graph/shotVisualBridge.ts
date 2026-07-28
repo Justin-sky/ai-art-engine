@@ -37,6 +37,14 @@ function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
     (node) => node.category === 'output' || node.typeId === 'output.image'
   )
   if (outputs.length) return outputs
+  // 无 classic output：从图片生成/加工节点收集
+  const gens = doc.nodes.filter(
+    (node) =>
+      node.typeId === 'asset.image' ||
+      (node.typeId?.startsWith('image.') ?? false) ||
+      (node.category === 'asset' && node.assetType === 'image')
+  )
+  if (gens.length) return gens
   const single = findOutputNode(doc)
   return single ? [single] : []
 }

@@ -1,15 +1,74 @@
 /**
- * 确保内图含有与 hostInterface 对应的 boundary proxy 节点（幂等）。
+ * 确保内图含有与 hostInterface 对应的 boundary proxy 节点（幂等），
+ * 并把悬空业务链出口接到主 boundary.output。
  */
 import {
   boundaryInputNodeId,
   boundaryOutputNodeId,
   GRAPH_BOUNDARY_INPUT_TYPE_ID,
   GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+  isBoundaryProxyNode,
   type HostInterfaceDocument
 } from './hostInterface'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
-import { canConnectNodes } from './ports'
+import { canConnectNodes, getNodePorts } from './ports'
+
+function pushEdge(
+  edges: GraphEdge[],
+  sourceId: string,
+  targetId: string,
+  sourcePort: string,
+  targetPort: string
+): void {
+  const linked = edges.some(
+    (edge) =>
+      edge.source === sourceId &&
+      edge.target === targetId &&
+      (edge.sourcePort ?? 'out') === sourcePort &&
+      (edge.targetPort ?? 'in') === targetPort
+  )
+  if (linked) return
+  edges.push({
+    id: `edge-${crypto.randomUUID()}`,
+    source: sourceId,
+    target: targetId,
+    sourcePort,
+    targetPort
+  })
+}
+
+/** 将无出边的业务节点接到主 boundary.output（新建默认图无 classic output 时使用） */
+export function wireDanglingOutsToPrimaryBoundary(
+  document: GraphDocument,
+  iface: HostInterfaceDocument
+): GraphDocument {
+  const primary = iface.outputs[0]
+  if (!primary) return document
+  const boutId = boundaryOutputNodeId(primary.id)
+  const bout = document.nodes.find((n) => n.id === boutId)
+  if (!bout) return document
+
+  const edges = document.edges.map((edge) => ({ ...edge }))
+  if (edges.some((edge) => edge.target === boutId)) {
+    return { ...document, edges }
+  }
+
+  const candidates = document.nodes
+    .filter((node) => {
+      if (isBoundaryProxyNode(node) || node.category === 'output') return false
+      const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
+      if (!hasOut) return false
+      if (edges.some((edge) => edge.source === node.id)) return false
+      return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
+    })
+    .sort((a, b) => b.position.x - a.position.x || a.position.y - b.position.y)
+
+  const source = candidates[0]
+  if (source) {
+    pushEdge(edges, source.id, boutId, 'out', 'in')
+  }
+  return { ...document, edges }
+}
 
 export function ensureBoundaryProxyNodes(
   document: GraphDocument,
@@ -123,9 +182,12 @@ export function ensureBoundaryProxyNodes(
     })
   })
 
-  return {
-    ...document,
-    nodes: nextNodes,
-    edges: nextEdges
-  }
+  return wireDanglingOutsToPrimaryBoundary(
+    {
+      ...document,
+      nodes: nextNodes,
+      edges: nextEdges
+    },
+    iface
+  )
 }

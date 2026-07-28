@@ -11,7 +11,7 @@ import { graphOutputNodeId } from '../src/shared/graph/types'
 const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
 
 describe('generate node lock', () => {
-  it('supportsGenerateLock covers processing assets and image editors', () => {
+  it('supportsGenerateLock covers all nodes except graph I/O', () => {
     const image = createNodeFromType('asset.image', { x: 0, y: 0 })
     const select = createNodeFromType('image.select', { x: 0, y: 0 })
     const lipSync = createNodeFromType('video.lipSync', { x: 0, y: 0 })
@@ -20,18 +20,34 @@ describe('generate node lock', () => {
     const worldGen = createNodeFromType('world.gen', { x: 0, y: 0 })
     const narrativeSplit = createNodeFromType('narrative.split', { x: 0, y: 0 })
     const narrativeGen = createNodeFromType('narrative.gen', { x: 0, y: 0 })
+    const note = createNodeFromType('note.text', { x: 0, y: 0 })
+    const host = createNodeFromType('asset.image', { x: 0, y: 0 }, {
+      assetId: '00000000-0000-4000-8000-0000000000a1',
+      params: { assetRef: true, assetHost: true, assetType: 'image' }
+    })
+    const output = createOutputGraphNode('image', { x: 0, y: 0 })
+    const boundaryIn = createNodeFromType('graph.boundary.input', { x: 0, y: 0 })
+    const boundaryOut = createNodeFromType('graph.boundary.output', { x: 0, y: 0 })
+    const inputSlot = createNodeFromType('graph.input.slot', { x: 0, y: 0 })
     expect(supportsGenerateLock(image)).toBe(true)
+    expect(supportsGenerateLock(select)).toBe(true)
     expect(supportsGenerateLock(lipSync)).toBe(true)
     expect(supportsGenerateLock(multiAngle)).toBe(true)
     expect(supportsGenerateLock(worldExtract)).toBe(true)
     expect(supportsGenerateLock(worldGen)).toBe(true)
     expect(supportsGenerateLock(narrativeSplit)).toBe(true)
     expect(supportsGenerateLock(narrativeGen)).toBe(true)
-    expect(supportsGenerateLock(select)).toBe(false)
+    expect(supportsGenerateLock(note)).toBe(true)
+    expect(supportsGenerateLock(host)).toBe(true)
+    expect(supportsGenerateLock(output)).toBe(false)
+    expect(supportsGenerateLock(boundaryIn)).toBe(false)
+    expect(supportsGenerateLock(boundaryOut)).toBe(false)
+    expect(supportsGenerateLock(inputSlot)).toBe(false)
     expect(isGenerateLocked({ ...image, params: { locked: true } })).toBe(true)
-    expect(isGenerateLocked({ ...worldExtract, params: { locked: true } })).toBe(true)
-    expect(isGenerateLocked({ ...narrativeSplit, params: { locked: true } })).toBe(true)
-    expect(isGenerateLocked({ ...select, params: { locked: true } })).toBe(false)
+    expect(isGenerateLocked({ ...host, params: { ...host.params, locked: true } })).toBe(true)
+    expect(isGenerateLocked({ ...select, params: { locked: true } })).toBe(true)
+    expect(isGenerateLocked({ ...output, params: { locked: true } })).toBe(false)
+    expect(isGenerateLocked({ ...boundaryIn, params: { locked: true } })).toBe(false)
   })
 
   it('narrative.split lock reuses catalog gallery without calling generateText', async () => {

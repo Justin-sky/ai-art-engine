@@ -60,9 +60,16 @@ watch(
       return
     }
     textValue.value = state.defaultValue ?? ''
-    await nextTick()
-    inputEl.value?.focus()
-    inputEl.value?.select()
+    // StudioFloatingWindow 双 rAF 后才挂 body，需等到 input 真正出现
+    for (let i = 0; i < 12; i++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      await nextTick()
+      const el = inputEl.value
+      if (!el) continue
+      el.focus()
+      el.select()
+      return
+    }
   },
   { immediate: true }
 )

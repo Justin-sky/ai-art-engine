@@ -4,8 +4,7 @@ import { tagAssetRef } from '../assetRef'
 import {
   assetTypeToGraphNodeTitle,
   createAssetGraphNode,
-  createNodeFromType,
-  createOutputGraphNode
+  createNodeFromType
 } from './create'
 import { getNodeTypeOrThrow } from './registry'
 import { isProcessingAssetNode } from './nodeRole'
@@ -18,7 +17,12 @@ import type {
   GraphOutputKind,
   GraphPortDataType
 } from './types'
-import { graphOutputNodeId, GraphPortType, GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID, GRAPH_SCRIPT_SHOT_TABLE_NODE_ID, GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID, GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID } from './types'
+import {
+  GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
+  GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
+  GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
+  GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID
+} from './types'
 
 /** 默认图节点：固定 typeId，或按角色解析（加工 / 作用域输出） */
 export interface DefaultGraphNodeSpec {
@@ -75,77 +79,38 @@ function mediaProcessingTemplate(assetType: string | null | undefined): DefaultG
   const type = assetType ? normalizeAssetType(assetType) : null
   if (!type || !isMediaFileAsset(type)) return null
   return {
-    nodes: [
-      { key: 'gen', role: 'processing', x: 240, y: 160 },
-      { key: 'out', role: 'scopeOutput', x: 480, y: 160 }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }],
+    nodes: [{ key: 'gen', role: 'processing', x: 240, y: 160 }],
+    edges: [],
     inputLinkTo: 'gen'
   }
 }
 
-/** 各作用域默认图模板（新建图唯一来源） */
+/** 各作用域默认图模板（新建图唯一来源；出口由 HDA boundary 承担，不再插入 classic output.*） */
 export const DEFAULT_GRAPH_TEMPLATES: Record<
   string,
   DefaultGraphTemplate | DefaultGraphTemplateResolver
 > = {
   workflow: ({ assetType }) => mediaProcessingTemplate(assetType),
   screenplayAsset: {
-    nodes: [
-      { key: 'gen', typeId: 'asset.screenplay', x: 240, y: 160 },
-      { key: 'out', role: 'scopeOutput', x: 480, y: 160 }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }],
+    nodes: [{ key: 'gen', typeId: 'asset.screenplay', x: 240, y: 160 }],
+    edges: [],
     inputLinkTo: 'gen'
   },
   directorAsset: {
-    nodes: [
-      { key: 'gen', typeId: 'asset.motion', x: 240, y: 160 },
-      { key: 'out', role: 'scopeOutput', x: 480, y: 160 }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }]
+    nodes: [{ key: 'gen', typeId: 'asset.motion', x: 240, y: 160 }],
+    edges: []
   },
   shotWorkflow: {
-    nodes: [
-      { key: 'gen', typeId: 'asset.video', x: 300, y: 160 },
-      {
-        key: 'out',
-        typeId: 'output.video',
-        x: 520,
-        y: 160,
-        title: 'Shot video output',
-        params: { outputKind: 'video', inputDataType: GraphPortType.video }
-      }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }]
+    nodes: [{ key: 'gen', typeId: 'asset.video', x: 300, y: 160 }],
+    edges: []
   },
   visual: {
-    nodes: [
-      { key: 'gen', typeId: 'asset.image', x: 300, y: 160 },
-      {
-        key: 'out',
-        typeId: 'output.image',
-        x: 520,
-        y: 160,
-        title: 'Image output',
-        params: { outputKind: 'image', inputDataType: GraphPortType.image }
-      }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }]
+    nodes: [{ key: 'gen', typeId: 'asset.image', x: 300, y: 160 }],
+    edges: []
   },
   narrativeUnit: {
-    nodes: [
-      { key: 'gen', typeId: 'narrative.unitGen', x: 300, y: 160 },
-      {
-        key: 'out',
-        typeId: 'output.narrativeUnit',
-        x: 520,
-        y: 160,
-        title: 'Narrative unit output',
-        params: { outputKind: 'text', inputDataType: GraphPortType.text }
-      }
-    ],
-    edges: [{ from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }]
+    nodes: [{ key: 'gen', typeId: 'narrative.unitGen', x: 300, y: 160 }],
+    edges: []
   },
   scriptAsset: {
     nodes: [
@@ -176,22 +141,13 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
         id: GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
         x: 780,
         y: 160
-      },
-      {
-        key: 'out',
-        typeId: 'output.video',
-        x: 1000,
-        y: 160,
-        title: 'Shot video output',
-        params: { outputKind: 'video', inputDataType: GraphPortType.videoEntities }
       }
     ],
     edges: [
       { from: 'split', to: 'table', fromPort: 'out', toPort: 'in' },
       { from: 'table', to: 'imageGen', fromPort: 'out', toPort: 'in' },
       { from: 'table', to: 'videoGen', fromPort: 'out', toPort: 'in-text' },
-      { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-entities' },
-      { from: 'videoGen', to: 'out', fromPort: 'out', toPort: 'in' }
+      { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-entities' }
     ],
     inputLinkTo: ['split', 'table']
   },
@@ -199,40 +155,20 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
     nodes: [
       { key: 'extract', typeId: 'world.extract', x: 120, y: 160 },
       { key: 'table', typeId: 'world.table', x: 340, y: 160 },
-      { key: 'gen', typeId: 'world.gen', x: 560, y: 160 },
-      {
-        key: 'out',
-        typeId: 'output.world',
-        x: 780,
-        y: 160,
-        title: 'World element output',
-        params: { outputKind: 'text', inputDataType: GraphPortType.worldEntities }
-      }
+      { key: 'gen', typeId: 'world.gen', x: 560, y: 160 }
     ],
     edges: [
       { from: 'extract', to: 'table', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'gen', fromPort: 'out', toPort: 'in' },
-      { from: 'gen', to: 'out', fromPort: 'out', toPort: 'in' }
+      { from: 'table', to: 'gen', fromPort: 'out', toPort: 'in' }
     ],
     inputLinkTo: 'extract'
   },
   narrativeAsset: {
     nodes: [
       { key: 'split', typeId: 'narrative.split', x: 120, y: 160 },
-      { key: 'table', typeId: 'narrative.table', x: 340, y: 160 },
-      {
-        key: 'out',
-        typeId: 'output.narrative',
-        x: 560,
-        y: 160,
-        title: 'Narrative output',
-        params: { outputKind: 'text', inputDataType: GraphPortType.narrative }
-      }
+      { key: 'table', typeId: 'narrative.table', x: 340, y: 160 }
     ],
-    edges: [
-      { from: 'split', to: 'table', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'out', fromPort: 'out', toPort: 'in' }
-    ],
+    edges: [{ from: 'split', to: 'table', fromPort: 'out', toPort: 'in' }],
     inputLinkTo: 'split'
   }
 }
@@ -253,53 +189,17 @@ function resolveNodeTypeId(
 ): GraphNodeTypeId | null {
   if (spec.typeId) return spec.typeId
   if (spec.role === 'processing') return ctx.processingTypeId ?? null
-  if (spec.role === 'scopeOutput') {
-    return ctx.output.typeId ?? (`output.${ctx.output.kind}` as GraphNodeTypeId)
-  }
+  // classic scopeOutput 已废弃，模板中不应再出现
+  if (spec.role === 'scopeOutput') return null
   return null
-}
-
-function createScopeOutputNodeLocal(
-  output: DefaultGraphOutputConfig,
-  position: { x: number; y: number },
-  overrides?: { title?: string; params?: Partial<GraphNodeParams> }
-): GraphNode {
-  if (output.typeId) {
-    const def = getNodeTypeOrThrow(output.typeId)
-    return createNodeFromType(output.typeId, position, {
-      id: def.singletonId ?? graphOutputNodeId(output.kind),
-      title: overrides?.title ?? output.title,
-      params: {
-        outputKind: output.kind,
-        ...(output.inputDataType ? { inputDataType: output.inputDataType } : {}),
-        ...overrides?.params
-      }
-    })
-  }
-  return createOutputGraphNode(output.kind, position, {
-    id: graphOutputNodeId(output.kind),
-    title: overrides?.title ?? output.title,
-    params: {
-      outputKind: output.kind,
-      ...(output.inputDataType ? { inputDataType: output.inputDataType } : {}),
-      ...overrides?.params
-    }
-  })
 }
 
 function createTemplateNode(
   spec: DefaultGraphNodeSpec,
   typeId: GraphNodeTypeId,
-  ctx: MaterializeDefaultGraphContext
+  _ctx: MaterializeDefaultGraphContext
 ): GraphNode {
   const position = { x: spec.x, y: spec.y }
-  if (spec.role === 'scopeOutput') {
-    return createScopeOutputNodeLocal(ctx.output, position, {
-      title: spec.title,
-      params: spec.params
-    })
-  }
-
   const typeDef = getNodeTypeOrThrow(typeId)
   const node = createNodeFromType(
     typeId,
@@ -362,9 +262,6 @@ export function materializeDefaultGraph(ctx: MaterializeDefaultGraphContext): Gr
   const template = ctx.template
 
   if (!template) {
-    if (ctx.ensureOutput !== false) {
-      nodes.push(createScopeOutputNodeLocal(ctx.output, { x: 480, y: 160 }))
-    }
     return { nodes, edges, groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
   }
 
@@ -400,19 +297,14 @@ export function materializeDefaultGraph(ctx: MaterializeDefaultGraphContext): Gr
   return { nodes, edges, groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
 }
 
-/** 打开已有图：按模板补齐缺失关键节点与边 */
+/** 打开已有图：按模板补齐缺失关键节点与边（不再补 classic output.*） */
 export function ensureDefaultGraphFromTemplate(
   nodes: GraphNode[],
   edges: GraphEdge[],
   ctx: MaterializeDefaultGraphContext
 ): void {
   const template = ctx.template
-  if (!template) {
-    if (ctx.ensureOutput !== false && !nodes.some((n) => n.category === 'output')) {
-      nodes.push(createScopeOutputNodeLocal(ctx.output, { x: 480, y: 160 }))
-    }
-    return
-  }
+  if (!template) return
 
   if (shouldUseHostMediaRef(ctx)) {
     ensureHostMediaRefGraph(nodes, edges, ctx)
@@ -422,15 +314,11 @@ export function ensureDefaultGraphFromTemplate(
   const keyToId = new Map<string, string>()
   for (const spec of template.nodes) {
     const typeId = resolveNodeTypeId(spec, ctx)
-    if (!typeId) continue
-    let node =
-      spec.role === 'scopeOutput' || typeId.startsWith('output.')
-        ? nodes.find((n) => n.category === 'output')
-        : nodes.find(
-            (n) =>
-              n.typeId === typeId &&
-              (spec.role !== 'processing' || isProcessingAssetNode(n))
-          )
+    if (!typeId || typeId.startsWith('output.')) continue
+    let node = nodes.find(
+      (n) =>
+        n.typeId === typeId && (spec.role !== 'processing' || isProcessingAssetNode(n))
+    )
     if (!node) {
       node = createTemplateNode(spec, typeId, ctx)
       nodes.push(node)
@@ -448,16 +336,11 @@ export function ensureDefaultGraphFromTemplate(
 
 function ensureHostMediaRefGraph(
   nodes: GraphNode[],
-  edges: GraphEdge[],
+  _edges: GraphEdge[],
   ctx: MaterializeDefaultGraphContext
 ): void {
   const processingTypeId = ctx.processingTypeId
   if (!processingTypeId || !ctx.hostAssetId) return
-  let outputNode = nodes.find((n) => n.category === 'output')
-  if (!outputNode) {
-    outputNode = createScopeOutputNodeLocal(ctx.output, { x: 480, y: 160 })
-    nodes.push(outputNode)
-  }
   const type = normalizeAssetType(ctx.assetType!)
   const title = assetTypeToGraphNodeTitle(type)
   let hostNode =
@@ -478,7 +361,6 @@ function ensureHostMediaRefGraph(
   } else {
     bindNodeToHostMedia(hostNode, ctx.hostAssetId, type, hostNode.title || title)
   }
-  pushEdge(edges, hostNode.id, outputNode.id, 'out', 'in')
 }
 
 /** 输入接口自动连接的链首 typeId（来自模板 inputLinkTo） */

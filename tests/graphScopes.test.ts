@@ -41,10 +41,10 @@ describe('graph scopes', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     })
     const typeIds = doc.nodes.map((node) => node.typeId).sort()
-    expect(typeIds).toEqual(['asset.image', 'asset.screenplay', 'output.image', 'play.script'])
+    expect(typeIds).toEqual(['asset.image', 'asset.screenplay', 'play.script'])
   })
 
-  it('shot workflow does not coerce existing output kind', () => {
+  it('shot workflow strips existing classic outputs', () => {
     const doc = normalizeScopedGraph('shotWorkflow', {
       nodes: [
         createNodeFromType('output.image', { x: 0, y: 0 }, {
@@ -54,8 +54,8 @@ describe('graph scopes', () => {
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    const imageOutput = doc.nodes.find((node) => node.typeId === 'output.image')
-    expect(imageOutput?.params.outputKind).toBe('image')
+    expect(doc.nodes).toHaveLength(0)
+    expect(doc.edges).toHaveLength(0)
   })
 
   it('create params for screenplay processing outside visual scope', () => {
@@ -67,21 +67,19 @@ describe('graph scopes', () => {
 
   it('director / script / world / narrative scopes resolve default graph templates', () => {
     expect(resolveDefaultGraphTemplate('directorAsset')?.nodes.map((n) => n.key)).toEqual([
-      'gen',
-      'out'
+      'gen'
     ])
     expect(resolveDefaultGraphTemplate('scriptAsset')?.inputLinkTo).toEqual(['split', 'table'])
     expect(getGraphScopeDefinition('worldAsset').ensureOutput).toBe(false)
     expect(resolveDefaultGraphTemplate('worldAsset')?.nodes.map((n) => n.typeId)).toEqual([
       'world.extract',
       'world.table',
-      'world.gen',
-      'output.world'
+      'world.gen'
     ])
     expect(getGraphScopeDefinition('narrativeAsset').ensureOutput).toBe(false)
     expect(
       resolveDefaultGraphTemplate('narrativeAsset')?.nodes.map((n) => n.typeId)
-    ).toEqual(['narrative.split', 'narrative.table', 'output.narrative'])
+    ).toEqual(['narrative.split', 'narrative.table'])
   })
 
   it('allows registering custom graph scopes', () => {
@@ -112,30 +110,23 @@ describe('graph scopes', () => {
     expect(resolveGraphScope({ assetId: 'a1', assetType: 'model' })).toBe('workflow')
   })
 
-  it('visual scope defaults to image generate connected to image output', () => {
+  it('visual scope defaults to image generate without classic output', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')
     expect(image).toBeTruthy()
-    expect(output).toBeTruthy()
-    expect(output?.params.inputDataType).toBe('image')
-    expect(
-      doc.edges.some((edge) => edge.source === image?.id && edge.target === output?.id)
-    ).toBe(true)
+    expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
+    expect(doc.edges).toHaveLength(0)
   })
 
-  it('shotWorkflow scope defaults to video generate connected to video output', () => {
+  it('shotWorkflow scope defaults to video generate without classic output', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')
-    const output = doc.nodes.find((n) => n.typeId === 'output.video')
     expect(video).toBeTruthy()
-    expect(output).toBeTruthy()
-    expect(
-      doc.edges.some((edge) => edge.source === video?.id && edge.target === output?.id)
-    ).toBe(true)
+    expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
+    expect(doc.edges).toHaveLength(0)
   })
 
-  it('visual scope does not backfill generate node onto output-only graphs', () => {
+  it('visual scope strips output-only graphs without backfilling generate nodes', () => {
     const doc = normalizeScopedGraph('visual', {
       nodes: [
         createOutputGraphNode('image', { x: 520, y: 160 }, {
@@ -147,10 +138,10 @@ describe('graph scopes', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     })
     expect(doc.nodes.some((n) => n.typeId === 'asset.image')).toBe(false)
-    expect(doc.nodes.some((n) => n.typeId === 'output.image')).toBe(true)
+    expect(doc.nodes).toHaveLength(0)
   })
 
-  it('visual scope keeps multiple image outputs', () => {
+  it('visual scope strips multiple image outputs and their edges', () => {
     const a = createOutputGraphNode('image', { x: 400, y: 100 }, {
       id: 'node-out-a',
       params: { outputKind: 'image', inputDataType: 'image' }
@@ -168,11 +159,8 @@ describe('graph scopes', () => {
       ],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    const outputs = doc.nodes.filter((n) => n.category === 'output')
-    expect(outputs).toHaveLength(2)
-    expect(outputs.map((n) => n.id).sort()).toEqual(['image-output', 'node-out-a'])
-    expect(doc.edges.some((e) => e.source === 'img-1' && e.target === 'node-out-a')).toBe(true)
-    expect(doc.edges.some((e) => e.source === 'img-1' && e.target === 'image-output')).toBe(true)
+    expect(doc.nodes.map((node) => node.id)).toEqual(['img-1'])
+    expect(doc.edges).toHaveLength(0)
   })
 
   it('visual scope uses dedicated shot canvas field and host suffix', () => {

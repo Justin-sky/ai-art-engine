@@ -247,17 +247,19 @@ describe('host input slots', () => {
     ])
   })
 
-  it('normalizeScopedGraph always creates default slots for host open', () => {
+  it('normalizeScopedGraph creates boundary inputs for host open (HDA, no slots)', () => {
     const doc = normalizeScopedGraph('screenplayAsset', null, {
       assetType: 'screenplay',
       hostAssetId: HOST_ID
     })
     const slots = doc.nodes.filter((n) => n.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
-    expect(slots).toHaveLength(1)
-    expect(slots[0]?.id).toBe(hostInputSlotNodeId('in', 0))
+    expect(slots).toHaveLength(0)
+    const boundaries = doc.nodes.filter((n) => n.typeId === 'graph.boundary.input')
+    expect(boundaries).toHaveLength(1)
+    expect(boundaries[0]?.params.hostBoundaryPort?.portId).toBe('in')
   })
 
-  it('normalizeScopedGraph syncs slots from parentHostInputSlots', () => {
+  it('normalizeScopedGraph ignores parentHostInputSlots (HDA uses boundary)', () => {
     const doc = normalizeScopedGraph('screenplayAsset', null, {
       assetType: 'screenplay',
       hostAssetId: HOST_ID,
@@ -267,9 +269,8 @@ describe('host input slots', () => {
       ]
     })
     const slots = doc.nodes.filter((n) => n.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
-    expect(slots).toHaveLength(2)
-    expect(slots[0]?.id).toBe(hostInputSlotNodeId('in', 0))
-    expect(slots[0]?.params.text).toBe('hello')
+    expect(slots).toHaveLength(0)
+    expect(doc.nodes.filter((n) => n.typeId === 'graph.boundary.input')).toHaveLength(1)
   })
 
   it('buildHostInputSlotSeedOutputs expands texts into seed outs', () => {

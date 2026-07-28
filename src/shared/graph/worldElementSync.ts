@@ -1,8 +1,8 @@
 /**
  * 将世界元素目录条目同步到 elementWorkflow 子图：
- * 每条：play.script（输入参数）→ asset.image → output.image
+ * 每条：play.script（输入参数）→ asset.image（结果从 gen 节点 runStates 收集）
  */
-import { createNodeFromType, createOutputGraphNode } from './create'
+import { createNodeFromType } from './create'
 import { normalizeScopedGraph } from './normalize'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
 import { normalizeShotReviewStatus } from '../domain'
@@ -15,14 +15,9 @@ const PAIR_GAP_Y = 160
 const ORIGIN_X = 80
 const ORIGIN_Y = 80
 const GEN_DX = 200
-const OUT_DX = 400
 
 function worldElementScriptNodeId(elementId: string): string {
   return `world-el-script:${elementId}`
-}
-
-function worldElementOutputNodeId(elementId: string): string {
-  return `world-el-out:${elementId}`
 }
 
 function ensureEdge(
@@ -52,7 +47,6 @@ function ensureEdge(
 function chainPosition(index: number): {
   script: { x: number; y: number }
   gen: { x: number; y: number }
-  out: { x: number; y: number }
 } {
   const col = index % COLS
   const row = Math.floor(index / COLS)
@@ -62,8 +56,7 @@ function chainPosition(index: number): {
   }
   return {
     script,
-    gen: { x: script.x + GEN_DX, y: script.y },
-    out: { x: script.x + OUT_DX, y: script.y }
+    gen: { x: script.x + GEN_DX, y: script.y }
   }
 }
 
@@ -81,7 +74,7 @@ function upsertManagedNode(
   nextNodes.push(create())
 }
 
-/** 按目录条目物化 elementWorkflow：script → image gen → image out */
+/** 按目录条目物化 elementWorkflow：script → image gen */
 export function syncWorldElementKindGraph(
   existing: GraphDocument | null | undefined,
   items: WorldElementItem[]
@@ -92,13 +85,11 @@ export function syncWorldElementKindGraph(
 
   const managedScripts = new Map<string, GraphNode>()
   const managedGens = new Map<string, GraphNode>()
-  const managedOuts = new Map<string, GraphNode>()
   for (const node of doc.nodes) {
     const id = readWorldElementIdFromNodeParams(node.params)
     if (!id) continue
     if (node.typeId === 'play.script') managedScripts.set(id, node)
     else if (node.typeId === 'asset.image') managedGens.set(id, node)
-    else if (node.typeId === 'output.image') managedOuts.set(id, node)
   }
 
   const keepIds = new Set(items.map((item) => item.id))
@@ -114,7 +105,6 @@ export function syncWorldElementKindGraph(
     const pos = chainPosition(index)
     const foundScript = managedScripts.get(item.id)
     const foundGen = managedGens.get(item.id)
-    const foundOut = managedOuts.get(item.id)
 
     upsertManagedNode(
       nextNodes,
@@ -164,26 +154,6 @@ export function syncWorldElementKindGraph(
         }
       })
     )
-
-    upsertManagedNode(
-      nextNodes,
-      foundOut,
-      () =>
-        createOutputGraphNode('image', pos.out, {
-          id: worldElementOutputNodeId(item.id),
-          title: item.name,
-          params: { worldElementId: item.id }
-        }),
-      (node) => ({
-        ...node,
-        title: item.name,
-        position: pos.out,
-        params: {
-          ...node.params,
-          worldElementId: item.id
-        }
-      })
-    )
   }
 
   const nextIds = new Set(nextNodes.map((node) => node.id))
@@ -198,9 +168,7 @@ export function syncWorldElementKindGraph(
     if (!source || !target) return false
     const sid = readWorldElementIdFromNodeParams(source.params)
     const tid = readWorldElementIdFromNodeParams(target.params)
-    const managedLink =
-      (source.typeId === 'play.script' && target.typeId === 'asset.image') ||
-      (source.typeId === 'asset.image' && target.typeId === 'output.image')
+    const managedLink = source.typeId === 'play.script' && target.typeId === 'asset.image'
     if (managedLink) return !!sid && sid === tid
     return true
   })
@@ -216,16 +184,8 @@ export function syncWorldElementKindGraph(
         n.typeId === 'asset.image' &&
         readWorldElementIdFromNodeParams(n.params) === item.id
     )
-    const out = nextNodes.find(
-      (n) =>
-        n.typeId === 'output.image' &&
-        readWorldElementIdFromNodeParams(n.params) === item.id
-    )
     if (script && gen) {
       ensureEdge(cleanedEdges, script.id, gen.id, 'out', 'in-text')
-    }
-    if (gen && out) {
-      ensureEdge(cleanedEdges, gen.id, out.id, 'out', 'in')
     }
   }
 

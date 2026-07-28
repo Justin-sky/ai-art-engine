@@ -6,6 +6,9 @@ import {
   resolveDefaultGraphTemplate
 } from './defaultGraph'
 import { getNodeTypeOrThrow } from './registry'
+import { ensureBoundaryProxyNodes } from './ensureBoundary'
+import { defaultHostInterfaceForAssetType } from './hostInterface'
+import { isAssetRefInputHostType } from './nodeRole'
 import type {
   GraphDocument,
   GraphNode,
@@ -119,6 +122,7 @@ const DEFAULT_SCOPE_DRAG_ASSETS: GraphScopeDragAssetsConfig = {
 export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDefinition> = {
   shotWorkflow: {
     id: 'shotWorkflow',
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.shotOutput',
     output: {
       kind: 'video',
@@ -130,14 +134,14 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   workflow: {
     id: 'workflow',
     output: { kind: 'video', title: ASSET_OUTPUT_TITLES.video },
-    coerceOutput: true,
+    ensureOutput: false,
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     createParams: (typeId) =>
       typeId === 'asset.screenplay' ? { inputDataType: GraphPortType.text } : undefined
   },
   visual: {
     id: 'visual',
-    coerceOutput: true,
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.shotVisualOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     shotCanvasField: 'visualGraphJson',
@@ -150,7 +154,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   },
   screenplayAsset: {
     id: 'screenplayAsset',
-    coerceOutput: true,
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.screenplayOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
@@ -161,7 +165,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   },
   directorAsset: {
     id: 'directorAsset',
-    coerceOutput: true,
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.directorOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
@@ -172,7 +176,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   },
   scriptAsset: {
     id: 'scriptAsset',
-    coerceOutput: true,
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.shotOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
@@ -220,7 +224,7 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
   /** 叙事单元细化图：叙事生成（文本模型）→ 叙事输出；参考节点从底栏拖入 */
   narrativeUnit: {
     id: 'narrativeUnit',
-    coerceOutput: true,
+    ensureOutput: false,
     outputTitleI18nKey: 'graph.titles.narrativeUnitOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     hostIdSuffix: 'narrative-unit',
@@ -459,7 +463,7 @@ export function createDefaultScopedGraph(
   options?: AssetEditorChainOptions
 ): GraphDocument {
   const def = getGraphScopeDefinition(scope)
-  return materializeDefaultGraph({
+  const document = materializeDefaultGraph({
     scope,
     assetType,
     template: resolveDefaultGraphTemplate(scope, assetType),
@@ -469,4 +473,7 @@ export function createDefaultScopedGraph(
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   })
+  return isAssetRefInputHostType(assetType)
+    ? ensureBoundaryProxyNodes(document, defaultHostInterfaceForAssetType(assetType))
+    : document
 }

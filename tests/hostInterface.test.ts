@@ -12,6 +12,7 @@ import {
   pruneEdgesForHostInterface,
   sanitizeHostInterface,
   defaultHostInterfaceForAssetType,
+  ensureBoundaryProxyNodes,
   readHostInterfaceFromGenParams,
   type GraphDocument
 } from '../src/shared/graph'
@@ -285,5 +286,61 @@ describe('boundary output mapping', () => {
       'out-0': { kind: 'text', text: 'A' },
       'out-1': { kind: 'text', text: 'B' }
     })
+  })
+})
+
+describe('hostable assets as HDA', () => {
+  const hostable = [
+    'image',
+    'video',
+    'voice',
+    'screenplay',
+    'world',
+    'narrative',
+    'script',
+    'subgraph'
+  ] as const
+
+  it('default hostInterface + ensureBoundary for every hostable type', () => {
+    for (const type of hostable) {
+      const iface = defaultHostInterfaceForAssetType(type)
+      expect(iface.outputs.length, type).toBeGreaterThan(0)
+      const empty: GraphDocument = {
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+      const withBoundary = ensureBoundaryProxyNodes(empty, iface)
+      expect(
+        withBoundary.nodes.filter((n) => n.typeId === 'graph.boundary.input').length,
+        type
+      ).toBe(iface.inputs.length)
+      expect(
+        withBoundary.nodes.filter((n) => n.typeId === 'graph.boundary.output').length,
+        type
+      ).toBe(iface.outputs.length)
+    }
+  })
+
+  it('host instance ports follow editable hostInterfaceSnapshot for image/script', () => {
+    for (const type of ['image', 'script'] as const) {
+      const iface = defaultHostInterfaceForAssetType(type)
+      const node = createAssetGraphNode(HOST_C, type, 'Host', { x: 0, y: 0 }, {
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: 1,
+          inputs: [
+            ...iface.inputs,
+            { id: 'extra-in', label: 'Extra', dataType: 'text', multiple: true }
+          ],
+          outputs: iface.outputs
+        }
+      })
+      const inIds = getNodePorts(node)
+        .filter((p) => p.direction === 'in')
+        .map((p) => p.id)
+      expect(inIds).toContain('extra-in')
+      expect(inIds.length).toBe(iface.inputs.length + 1)
+    }
   })
 })

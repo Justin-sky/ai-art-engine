@@ -49,18 +49,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'world.table'
 ] as const
 
-const CANVAS_OUTPUT_NODE_TYPES = [
-  'output.image',
-  'output.video',
-  'output.voice',
-  'output.director',
-  'output.timeline',
-  'output.narrative',
-  'output.narrativeUnit',
-  'output.world',
-  'output.text'
-] as const
-
 describe('graph canvas menu nodes', () => {
   for (const scope of ['workflow', 'screenplayAsset', 'directorAsset'] as const) {
     it(`${scope} exposes every addable node type except outputs`, () => {
@@ -71,39 +59,39 @@ describe('graph canvas menu nodes', () => {
     })
   }
 
-  it('scriptAsset exposes generate nodes plus shot video output', () => {
+  it('scriptAsset exposes generate nodes without outputs', () => {
     const typeIds = listAddableNodeTypes('scriptAsset')
       .map((def) => def.typeId)
       .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.video'].sort())
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
   })
 
-  it('shotWorkflow exposes generate nodes plus video output', () => {
+  it('shotWorkflow exposes generate nodes without outputs', () => {
     const typeIds = listAddableNodeTypes('shotWorkflow')
       .map((def) => def.typeId)
       .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.video'].sort())
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
   })
 
-  it('visual exposes generate nodes plus image output', () => {
+  it('visual exposes generate nodes without outputs', () => {
     const typeIds = listAddableNodeTypes('visual')
       .map((def) => def.typeId)
       .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.image'].sort())
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
   })
 
-  it('canvasAsset exposes generate nodes plus output nodes', () => {
+  it('canvasAsset exposes generate nodes without outputs', () => {
     const typeIds = listAddableNodeTypes('canvasAsset')
       .map((def) => def.typeId)
       .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, ...CANVAS_OUTPUT_NODE_TYPES].sort())
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
   })
 
-  it('extra canvas output nodes are deletable while fixed scope output is not', () => {
+  it('classic output nodes are deletable', () => {
     const fixed = createNodeFromType('output.image', { x: 0, y: 0 }, { id: graphOutputNodeId('image') })
     const extraA = createNodeFromType('output.video', { x: 40, y: 0 }, { id: 'node-out-a' })
     const extraB = createNodeFromType('output.director', { x: 80, y: 0 }, { id: 'node-out-b' })
-    expect(isNodeDeletable(fixed)).toBe(false)
+    expect(isNodeDeletable(fixed)).toBe(true)
     expect(isNodeDeletable(extraA)).toBe(true)
     expect(isNodeDeletable(extraB)).toBe(true)
     expect(extraA.id).not.toBe(extraB.id)

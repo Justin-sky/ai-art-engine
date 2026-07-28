@@ -427,7 +427,7 @@ export interface GraphNodeParams {
   /** 节点卡片收起预览区（仅保留标题栏） */
   previewCollapsed?: boolean
   /**
-   * 生成类节点锁定：开启后跳过 API 执行，直接复用图库/上次 runStates 输出。
+   * 节点锁定（输入/输出除外）：开启后跳过执行，直接复用图库/上次 runStates 输出。
    * 无可用缓存时运行报错，不静默成功。
    */
   locked?: boolean

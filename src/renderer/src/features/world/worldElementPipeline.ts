@@ -130,8 +130,14 @@ async function ensureImageAssetForItem(
 }
 
 function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
-  return doc.nodes.filter(
+  const outputs = doc.nodes.filter(
     (node) => node.category === 'output' || node.typeId === 'output.image'
+  )
+  if (outputs.length) return outputs
+  return doc.nodes.filter(
+    (node) =>
+      node.typeId === 'asset.image' ||
+      (node.category === 'asset' && node.assetType === 'image')
   )
 }
 

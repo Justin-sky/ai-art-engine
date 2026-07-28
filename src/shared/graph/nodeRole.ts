@@ -41,32 +41,27 @@ export function isProcessingAssetNode(
   return node.category === 'asset' && !isAssetRefNode(node)
 }
 
-/** 支持锁定上次输出的生成/重生成节点（有图库或可复用上次输出） */
-export function supportsGenerateLock(
-  node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
-): boolean {
-  if (isProcessingAssetNode(node)) return true
+/**
+ * 图输入/输出节点：不提供锁定（boundary / slot / category=output）。
+ * 其余节点（含宿主资产）均可锁定并复用上次输出。
+ */
+export function isGraphIoNode(node: Pick<GraphNode, 'typeId' | 'category'>): boolean {
+  if (node.category === 'output') return true
   switch (node.typeId) {
-    case 'world.extract':
-    case 'world.gen':
-    case 'narrative.split':
-    case 'narrative.gen':
-    case 'video.lipSync':
-    case 'image.multiAngle':
-    case 'image.lighting':
-    case 'image.portraitTexture':
-    case 'image.emotion':
-    case 'image.upscale':
-    case 'image.expand':
-    case 'image.redraw':
-    case 'image.erase':
-    case 'image.matte':
-    case 'image.crop':
-    case 'image.gridSplit':
+    case 'graph.input.slot':
+    case 'graph.boundary.input':
+    case 'graph.boundary.output':
       return true
     default:
       return false
   }
+}
+
+/** 除输入/输出外均可锁定上次输出（有图库或可复用 prior runStates） */
+export function supportsGenerateLock(
+  node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
+): boolean {
+  return !isGraphIoNode(node)
 }
 
 export function isGenerateLocked(

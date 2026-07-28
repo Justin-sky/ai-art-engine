@@ -1,5 +1,4 @@
 import { ensureBuiltinNodeTypes } from './builtinState'
-import { createOutputGraphNode } from './create'
 import { isProcessingAssetNode } from './nodeRole'
 import { sanitizeGraphGroups } from './groups'
 import { canConnectNodes } from './ports'
@@ -13,7 +12,6 @@ import {
 import {
   assetTypeToGraphScope,
   createDefaultScopedGraph,
-  createScopeOutputNode,
   getGraphScopeDefinition,
   isAssetEditorGraphScope,
   resolveAssetProcessingTypeId,
@@ -28,7 +26,6 @@ import type {
   NormalizeGraphOptions
 } from './types'
 import {
-  graphOutputNodeId,
   graphOutputNodeIdForType,
   isCanonicalGraphOutputNodeId
 } from './types'
@@ -41,6 +38,8 @@ import {
   type HostInputSlotSpec
 } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
+import { defaultHostInterfaceForAssetType } from './hostInterface'
+import { ensureBoundaryProxyNodes } from './ensureBoundary'
 
 export {
   ASSET_DIRECTOR_OUTPUT_TITLE,
@@ -48,21 +47,9 @@ export {
   SHOT_VISUAL_OUTPUT_TITLE
 } from './scopes'
 
-export function createDefaultGraph(options?: NormalizeGraphOptions): GraphDocument {
-  ensureBuiltinNodeTypes()
-  const kind: GraphOutputKind = options?.outputKind ?? 'video'
-  const title = options?.outputTitle ?? (kind === 'video' ? 'Shot video output' : undefined)
-  return {
-    nodes: [
-      createOutputGraphNode(kind, { x: 480, y: 160 }, {
-        id: options?.outputNodeId ?? graphOutputNodeId(kind),
-        title
-      })
-    ],
-    edges: [],
-    groups: [],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
+export function createDefaultGraph(_options?: NormalizeGraphOptions): GraphDocument {
+  // 分镜默认图：仅加工链，不再插入 classic output.*
+  return createDefaultScopedGraph('shotWorkflow')
 }
 
 function renameNodeIdInGraph(
@@ -169,23 +156,30 @@ function sanitizeEdges(
   return next
 }
 
-function applyScopeOutput(
-  nodes: GraphNode[],
+/** 去掉 classic output.*（不兼容旧工程；出口改由 boundary 承担）。剧集 canvas 保留 timeline。 */
+function stripClassicOutputNodes(
   scope: GraphAddScope,
-  assetType?: string | null
-): void {
-  const output = resolveScopeOutput(scope, assetType)
-  const targetTypeId = output.typeId ?? (`output.${output.kind}` as const)
-  for (const node of nodes) {
-    if (node.category !== 'output') continue
-    node.params = {
-      ...node.params,
-      outputKind: output.kind,
-      ...(output.inputDataType ? { inputDataType: output.inputDataType } : {})
-    }
-    node.typeId = targetTypeId
-    if (output.title) node.title = output.title
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates?: Record<string, GraphPersistedRunState>
+): { nodes: GraphNode[]; edges: GraphEdge[]; runStates?: Record<string, GraphPersistedRunState> } {
+  if (scope === 'canvasAsset') {
+    return { nodes, edges, runStates }
   }
+  const removed = new Set(
+    nodes
+      .filter((n) => n.category === 'output' || (n.typeId?.startsWith('output.') ?? false))
+      .map((n) => n.id)
+  )
+  if (!removed.size) return { nodes, edges, runStates }
+  const nextNodes = nodes.filter((n) => !removed.has(n.id))
+  const nextEdges = edges.filter((e) => !removed.has(e.source) && !removed.has(e.target))
+  let nextStates = runStates
+  if (runStates) {
+    nextStates = { ...runStates }
+    for (const id of removed) delete nextStates[id]
+  }
+  return { nodes: nextNodes, edges: nextEdges, runStates: nextStates }
 }
 
 function ensureDirectorProcessingDefaults(nodes: GraphNode[]): void {
@@ -205,15 +199,6 @@ function ensureDirectorProcessingDefaults(nodes: GraphNode[]): void {
   }
 }
 
-function ensureScopeOutput(nodes: GraphNode[], scope: GraphAddScope, assetType?: string | null): void {
-  const scopeDef = getGraphScopeDefinition(scope)
-  if (scopeDef.ensureOutput === false) return
-  const output = resolveScopeOutput(scope, assetType)
-  const hasOutput = nodes.some((node) => node.category === 'output')
-  if (hasOutput) return
-  nodes.push(createScopeOutputNode(output, { x: 480, y: 160 }))
-}
-
 function finalizeGraph(
   nodes: GraphNode[],
   raw: GraphDocument,
@@ -221,21 +206,22 @@ function finalizeGraph(
 ): GraphDocument {
   const edges = Array.isArray(raw.edges) ? raw.edges.map((e) => ({ ...e })) : []
   const runStates = raw.runStates ? { ...raw.runStates } : undefined
-  syncCanonicalOutputNodeIds(nodes, edges, runStates)
-  const sanitizedEdges = sanitizeEdges(nodes, edges, scope)
+  const stripped = stripClassicOutputNodes(scope, nodes, edges, runStates)
+  syncCanonicalOutputNodeIds(stripped.nodes, stripped.edges, stripped.runStates)
+  const sanitizedEdges = sanitizeEdges(stripped.nodes, stripped.edges, scope)
   return {
-    nodes,
+    nodes: stripped.nodes,
     edges: sanitizedEdges,
     groups: sanitizeGraphGroups({
-      nodes,
+      nodes: stripped.nodes,
       edges: sanitizedEdges,
       groups: raw.groups,
       viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 }
     }),
     viewport: raw.viewport ?? { x: 0, y: 0, zoom: 1 },
     runStates: sanitizePersistedRunStates(
-      runStates,
-      nodes.map((node) => node.id)
+      stripped.runStates,
+      stripped.nodes.map((node) => node.id)
     )
   }
 }
@@ -259,8 +245,16 @@ export function normalizeScopedGraph(
     hasMediaFile: options?.hasMediaFile
   }
   if (!raw?.nodes?.length) {
-    const created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
-    syncHostInputSlots(scope, created.nodes, created.edges, options)
+    let created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
+    // HDA：可宿主类型默认图补 boundary（不再插 graph.input.slot）
+    if (isAssetRefInputHostType(options?.assetType)) {
+      created = ensureBoundaryProxyNodes(
+        created,
+        defaultHostInterfaceForAssetType(options.assetType)
+      )
+    } else {
+      syncHostInputSlots(scope, created.nodes, created.edges, options)
+    }
     return created
   }
 
@@ -277,15 +271,11 @@ export function normalizeScopedGraph(
     nodes = nodes.filter(scopeDef.persistNode)
   }
 
-  if (scopeDef.coerceOutput) {
-    applyScopeOutput(nodes, scope, options?.assetType)
-  }
   if (scope === 'directorAsset') {
     ensureDirectorProcessingDefaults(nodes)
   }
-  ensureScopeOutput(nodes, scope, options?.assetType)
 
-  // 仅资产编辑器在打开已有图时按模板补齐加工/输出（导入媒体宿主绑定）；
+  // 仅资产编辑器在打开已有图时按模板补齐加工节点（导入媒体宿主绑定）；
   // 分镜/世界/叙事长链不在加载时回插已删节点。
   if (isAssetEditorGraphScope(scope)) {
     ensureDefaultGraphFromTemplate(nodes, edges, {
@@ -293,7 +283,7 @@ export function normalizeScopedGraph(
       assetType: options?.assetType,
       template: resolveDefaultGraphTemplate(scope, options?.assetType),
       output: resolveScopeOutput(scope, options?.assetType),
-      ensureOutput: scopeDef.ensureOutput,
+      ensureOutput: false,
       processingTypeId: resolveAssetProcessingTypeId(scope, options?.assetType),
       hostAssetId: chainOptions.hostAssetId,
       hasMediaFile: chainOptions.hasMediaFile
@@ -302,7 +292,14 @@ export function normalizeScopedGraph(
 
   syncHostInputSlots(scope, nodes, edges, options)
 
-  return finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
+  let result = finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
+  if (isAssetRefInputHostType(options?.assetType)) {
+    result = ensureBoundaryProxyNodes(
+      result,
+      defaultHostInterfaceForAssetType(options.assetType)
+    )
+  }
+  return result
 }
 
 /**
@@ -340,12 +337,11 @@ function syncHostInputSlots(
 
 export function normalizeGraph(
   raw: GraphDocument | null | undefined,
-  options?: NormalizeGraphOptions
+  _options?: NormalizeGraphOptions
 ): GraphDocument {
   ensureBuiltinNodeTypes()
-  const ensureOutput = options?.ensureOutput !== false
   if (!raw?.nodes?.length) {
-    return createDefaultGraph(options)
+    return createDefaultGraph()
   }
 
   const doc = {
@@ -354,26 +350,6 @@ export function normalizeGraph(
   }
 
   const hydrated = doc.nodes.map(hydrateNode)
-  const hasOutput = hydrated.some((n) => n.category === 'output')
-  const kind = options?.outputKind ?? 'video'
-  if (ensureOutput && !hasOutput) {
-    hydrated.push(
-      createOutputGraphNode(kind, { x: 480, y: 160 }, {
-        id: options?.outputNodeId ?? graphOutputNodeId(kind),
-        title: options?.outputTitle ?? 'Shot video output'
-      })
-    )
-  }
-
-  if (options?.outputKind) {
-    for (const node of hydrated) {
-      if (node.category !== 'output') continue
-      node.params = { ...node.params, outputKind: options.outputKind }
-      node.typeId = `output.${options.outputKind}`
-      if (options.outputTitle) node.title = options.outputTitle
-    }
-  }
-
   return finalizeGraph(hydrated, doc, 'shotWorkflow')
 }
 

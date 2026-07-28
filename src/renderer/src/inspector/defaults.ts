@@ -1,5 +1,5 @@
 import type { GraphInspectorKind, GraphNode, NodeTypeDefinition } from '@shared/graph'
-import { isAssetRefNode } from '@shared/graph'
+import { isAssetRefInputHostType, isAssetRefNode } from '@shared/graph'
 
 /** 内置检查器 id，与 inspector/builtins 保持一致 */
 export const DEFAULT_GRAPH_INSPECTOR_IDS: Partial<Record<GraphInspectorKind, string>> = {
@@ -8,10 +8,13 @@ export const DEFAULT_GRAPH_INSPECTOR_IDS: Partial<Record<GraphInspectorKind, str
   camera: 'studio.graph.camera'
 }
 
-function isSubgraphHostNode(
+function isHostableHostNode(
   node: Pick<GraphNode, 'assetType' | 'params'>
 ): boolean {
-  return node.assetType === 'subgraph' && node.params?.assetHost === true
+  return (
+    node.params?.assetHost === true &&
+    isAssetRefInputHostType(node.assetType)
+  )
 }
 
 export function resolveGraphInspectorId(
@@ -19,7 +22,7 @@ export function resolveGraphInspectorId(
   node: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'assetType'>
 ): string | undefined {
   if (typeDef.inspectorId) return typeDef.inspectorId
-  if (isSubgraphHostNode(node)) return 'studio.graph.host'
+  if (isHostableHostNode(node)) return 'studio.graph.host'
   if (typeDef.inspector === 'asset') {
     return isAssetRefNode(node) ? 'studio.graph.assetRef' : 'studio.graph.asset'
   }

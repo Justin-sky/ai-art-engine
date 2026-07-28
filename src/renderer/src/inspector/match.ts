@@ -1,8 +1,12 @@
-import { isAssetRefNode, type GraphNode } from '@shared/graph'
+import { isAssetRefInputHostType, isAssetRefNode, type GraphNode } from '@shared/graph'
 import type { InspectorDefinition, InspectorTarget } from './types'
 
-function isSubgraphHostNode(node: GraphNode): boolean {
-  return node.assetType === 'subgraph' && node.params?.assetHost === true
+/** 可宿主资产的宿主实例（HDA）：走 GraphHostInspector */
+function isHostableHostNode(node: GraphNode): boolean {
+  return (
+    node.params?.assetHost === true &&
+    isAssetRefInputHostType(node.assetType)
+  )
 }
 
 export function matchesInspectorTarget(
@@ -23,7 +27,7 @@ export function matchesInspectorTarget(
     if (definition.nodeAssetRef === true && !isAssetRefNode(node)) return false
     if (definition.nodeAssetRef === false && isAssetRefNode(node)) return false
     // 宿主实例只走 GraphHostInspector，不叠 AssetInspector 资产参数
-    if (definition.nodeAssetRef === true && isSubgraphHostNode(node)) return false
+    if (definition.nodeAssetRef === true && isHostableHostNode(node)) return false
     return true
   }
   return definition.match?.(target) === true

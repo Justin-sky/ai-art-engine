@@ -270,7 +270,7 @@ async function executeOneNode(
 
   const def = resolveNodeType(node)
 
-  // 生成节点锁定：不 cook，直接复用图库 / 上次输出
+  // 节点锁定：不 cook，直接复用图库 / 上次输出
   if (isGenerateLocked(node)) {
     const locked = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId])
     if (!locked) {

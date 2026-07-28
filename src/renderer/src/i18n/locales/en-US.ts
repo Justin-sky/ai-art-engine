@@ -384,7 +384,9 @@ export default {
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
         'Enter a canvas name. Creates a blank node graph where you can freely add nodes and assets.',
-      freeCanvasNamePlaceholder: 'Canvas name'
+      freeCanvasNamePlaceholder: 'Canvas name',
+      nameMessage: 'Enter a name for the new asset.',
+      namePlaceholder: 'Asset name'
     },
     generic: 'Asset',
     deleted: '(deleted)',
@@ -1786,8 +1788,8 @@ export default {
     node: {
       collapsePreview: 'Collapse preview',
       expandPreview: 'Expand preview',
-      enableLock: 'Lock: skip generation and keep the last result',
-      disableLock: 'Unlock: the next run will regenerate'
+      enableLock: 'Lock: skip execution and keep the last result',
+      disableLock: 'Unlock: the next run will re-execute'
     },
     nodeRole: {
       ref: 'Ref',

@@ -511,6 +511,7 @@ import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
 import { worldElementKindKey } from '../features/world/worldEditor'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
+import { compareNames } from '@shared/folderTree'
 import { useScopedScriptShots } from '../composables/useScopedScriptShots'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import {
@@ -917,10 +918,11 @@ const scopedActiveShot = computed(() => {
   return resolveShotById(id)
 })
 
-function syncSubgraphHostSnapshots(doc: GraphDocument): GraphDocument {
+function syncHostInterfaceSnapshots(doc: GraphDocument): GraphDocument {
   let next = cloneGraphDocument(doc)
   for (const node of next.nodes) {
-    if (node.assetType !== 'subgraph' || node.params.assetHost !== true || !node.assetId) continue
+    if (node.params.assetHost !== true || !node.assetId) continue
+    if (!isAssetRefInputHostType(node.assetType)) continue
     const asset = project.assets.find((item) => item.id === node.assetId)
     if (!asset) continue
     const genParams = asset.genParams as Record<string, unknown> | undefined
@@ -943,7 +945,7 @@ function syncSubgraphHostSnapshots(doc: GraphDocument): GraphDocument {
 }
 
 function applyGraphDocument(doc: GraphDocument): void {
-  const synced = syncSubgraphHostSnapshots(doc)
+  const synced = syncHostInterfaceSnapshots(doc)
   replaceGraphDocument(graph, synced)
   runStateBridge.importFromDocument(synced)
   syncLiveViewportFromGraph()
@@ -2849,7 +2851,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
 }> = [
   {
     id: 'image',
-    typeIds: ['asset.image', 'image.select', 'image.toPrompt', 'output.image'],
+    typeIds: ['asset.image', 'image.select', 'image.toPrompt'],
     nestedGroups: [
       {
         id: 'imageEdit',
@@ -2867,27 +2869,26 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'video',
-    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'output.video', 'output.timeline']
+    typeIds: ['asset.video', 'video.lipSync', 'video.select']
   },
   {
     id: 'voice',
-    typeIds: ['asset.voice', 'voice.select', 'output.voice']
+    typeIds: ['asset.voice', 'voice.select']
   },
   {
     id: 'screenplay',
-    typeIds: ['asset.screenplay', 'play.script', 'text.select', 'output.text']
+    typeIds: ['asset.screenplay', 'play.script', 'text.select']
   },
   {
     id: 'narrative',
     typeIds: [
       'asset.narrative',
+      'narrative.select',
       'narrative.split',
       'narrative.table',
       'narrative.gen',
       'narrative.unitGen',
-      'narrative.unitRef',
-      'output.narrative',
-      'output.narrativeUnit'
+      'narrative.unitRef'
     ]
   },
   {
@@ -2898,17 +2899,16 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'script.shotTable',
       'script.shotImageGen',
       'script.shotVideoGen',
-      'script.shotParams',
-      'output.video'
+      'script.shotParams'
     ]
   },
   {
     id: 'world',
-    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.gen', 'output.world']
+    typeIds: ['asset.world', 'world.extract', 'world.table', 'world.gen']
   },
   {
     id: 'motion',
-    typeIds: ['asset.motion', 'output.director']
+    typeIds: ['asset.motion']
   },
   {
     id: 'canvas',
@@ -2965,7 +2965,10 @@ const addableMenuItems = computed((): AddableMenuItem[] => {
 
 /** 未归入资源类型的节点（备注、提示词优化等）留在根菜单 */
 const rootAddableMenuItems = computed(() =>
-  addableMenuItems.value.filter((item) => !CONTEXT_MENU_GROUPED_TYPE_IDS.has(item.typeId))
+  addableMenuItems.value
+    .filter((item) => !CONTEXT_MENU_GROUPED_TYPE_IDS.has(item.typeId))
+    .slice()
+    .sort((a, b) => compareNames(a.label, b.label))
 )
 
 const resourceAddableMenuGroups = computed(() => {
@@ -2974,6 +2977,7 @@ const resourceAddableMenuGroups = computed(() => {
     const items = group.typeIds
       .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
       .filter((item): item is AddableMenuItem => item != null)
+      .sort((a, b) => compareNames(a.label, b.label))
     const nested = (group.nestedGroups ?? [])
       .map((nestedGroup) => ({
         id: nestedGroup.id,
@@ -2982,8 +2986,10 @@ const resourceAddableMenuGroups = computed(() => {
         items: nestedGroup.typeIds
           .map((typeId) => byTypeId.get(typeId as GraphNodeTypeId))
           .filter((item): item is AddableMenuItem => item != null)
+          .sort((a, b) => compareNames(a.label, b.label))
       }))
       .filter((nestedGroup) => nestedGroup.items.length > 0)
+      .sort((a, b) => compareNames(a.label, b.label))
     return {
       id: group.id,
       label: assetTypeLabel(group.id),
@@ -2991,7 +2997,9 @@ const resourceAddableMenuGroups = computed(() => {
       items,
       nested
     }
-  }).filter((group) => group.items.length > 0 || group.nested.length > 0)
+  })
+    .filter((group) => group.items.length > 0 || group.nested.length > 0)
+    .sort((a, b) => compareNames(a.label, b.label))
 })
 
 const connectMenuPortTypeLabel = computed(() => {
@@ -3547,19 +3555,10 @@ function addNodeFromMenu(typeId: GraphNodeTypeId): void {
   const linkToId = menu.linkToNodeId
   const def = getNodeType(typeId)
   /** 画布 / 分镜图 / 分镜视频窗等可添加多个输出，不复用 singleton */
-  const allowMultipleOutputs =
-    (graphScope.value === 'canvasAsset' ||
-      graphScope.value === 'worldAsset' ||
-      graphScope.value === 'elementWorkflow' ||
-      (graphScope.value === 'visual' && typeId === 'output.image') ||
-      (graphScope.value === 'shotWorkflow' && typeId === 'output.video')) &&
-    isOutputContextMenuType(typeId)
+  const allowMultipleOutputs = false
   const existing =
     !allowMultipleOutputs && def?.singletonId != null
-      ? (graph.nodes.find((n) => n.id === def.singletonId) ??
-        (isOutputContextMenuType(typeId)
-          ? graph.nodes.find((n) => n.category === 'output' && n.typeId === typeId)
-          : undefined))
+      ? graph.nodes.find((n) => n.id === def.singletonId)
       : undefined
 
   let node: GraphNode

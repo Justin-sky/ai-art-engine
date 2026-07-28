@@ -41,9 +41,9 @@ function shotWithId(id: string, patch?: Partial<Shot>): Shot {
 }
 
 describe('shot visual bridge', () => {
-  it('collects images from visual runStates output', () => {
+  it('collects images from visual asset.image runStates', () => {
     const doc = createDefaultScopedGraph('visual')
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
+    const output = doc.nodes.find((n) => n.typeId === 'asset.image')!
     doc.runStates = {
       [output.id]: {
         status: 'done',
@@ -67,9 +67,9 @@ describe('shot visual bridge', () => {
     expect(images[0]?.relativePath).toBe('Assets/shots/a.png')
   })
 
-  it('collects videos from shotWorkflow runStates output', () => {
+  it('collects videos from shotWorkflow asset.video runStates', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
-    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
+    const output = doc.nodes.find((n) => n.typeId === 'asset.video')!
     doc.runStates = {
       [output.id]: {
         status: 'done',
@@ -91,10 +91,9 @@ describe('shot visual bridge', () => {
     expect(videos[0]?.relativePath).toBe('Output/videos/a.mp4')
   })
 
-  it('prefers done video gen nodes over video output', () => {
+  it('prefers generatedVideos params over runStates output', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
-    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
     video.params = {
       ...video.params,
       generatedVideos: [
@@ -106,8 +105,7 @@ describe('shot visual bridge', () => {
       ]
     }
     doc.runStates = {
-      [video.id]: { status: 'done', outputs: {} },
-      [output.id]: {
+      [video.id]: {
         status: 'done',
         outputs: {
           out: {
@@ -124,16 +122,8 @@ describe('shot visual bridge', () => {
   it('collects all done video gen nodes', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const videoA = doc.nodes.find((n) => n.typeId === 'asset.video')!
-    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
     const videoB = createNodeFromType('asset.video', { x: 100, y: 280 }, { id: 'video-gen-b' })
     doc.nodes.push(videoB)
-    doc.edges.push({
-      id: 'edge-vb-out',
-      source: videoB.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    })
     videoA.params = {
       ...videoA.params,
       generatedVideos: [
@@ -165,22 +155,11 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('falls back to output when video gens are not done', () => {
+  it('falls back to asset.video runStates when generatedVideos are absent', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
-    const output = doc.nodes.find((n) => n.typeId === 'output.video')!
-    video.params = {
-      ...video.params,
-      generatedVideos: [
-        {
-          id: 'v-a',
-          relativePath: 'Output/videos/from-gen.mp4',
-          createdAt: new Date().toISOString()
-        }
-      ]
-    }
     doc.runStates = {
-      [output.id]: {
+      [video.id]: {
         status: 'done',
         outputs: {
           out: {
@@ -190,16 +169,17 @@ describe('shot visual bridge', () => {
         }
       }
     }
-    expect(collectVideosFromVideoGenNodes(doc)).toEqual([])
+    expect(collectVideosFromVideoGenNodes(doc).map((item) => item.relativePath)).toEqual([
+      'Output/videos/from-output.mp4'
+    ])
     expect(collectVideosFromShotWorkflowGraph(doc).map((item) => item.relativePath)).toEqual([
       'Output/videos/from-output.mp4'
     ])
   })
 
-  it('skips incomplete output nodes and does not fall back to upstream gens', () => {
+  it('skips incomplete image result nodes', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
     image.params = {
       ...image.params,
       generatedImages: [
@@ -212,7 +192,7 @@ describe('shot visual bridge', () => {
       ]
     }
     doc.runStates = {
-      [output.id]: {
+      [image.id]: {
         status: 'running',
         outputs: {}
       }
@@ -220,9 +200,9 @@ describe('shot visual bridge', () => {
     expect(collectImagesFromVisualGraph(doc)).toEqual([])
   })
 
-  it('collects only done image output node results', () => {
+  it('collects only done image result node runStates', () => {
     const doc = createDefaultScopedGraph('visual')
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
+    const output = doc.nodes.find((n) => n.typeId === 'asset.image')!
     doc.runStates = {
       [output.id]: {
         status: 'done',
@@ -239,12 +219,11 @@ describe('shot visual bridge', () => {
     expect(images.map((item) => item.relativePath)).toEqual(['Assets/shots/b.png'])
   })
 
-  it('collects images from multiple done image output nodes', () => {
+  it('collects images from multiple done asset.image nodes', () => {
     const doc = createDefaultScopedGraph('visual')
-    const outputA = doc.nodes.find((n) => n.typeId === 'output.image')!
-    const outputB = createNodeFromType('output.image', { x: 480, y: 280 }, {
-      id: 'node-out-b',
-      params: { outputKind: 'image', inputDataType: 'image' }
+    const outputA = doc.nodes.find((n) => n.typeId === 'asset.image')!
+    const outputB = createNodeFromType('asset.image', { x: 480, y: 280 }, {
+      id: 'image-gen-b'
     })
     doc.nodes.push(outputB)
     doc.runStates = {
@@ -276,18 +255,9 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('collects merged images from image output when multiple gens are linked', () => {
+  it('collects merged images from an asset.image runState', () => {
     const doc = createDefaultScopedGraph('visual')
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
-    const imageB = createNodeFromType('asset.image', { x: 100, y: 280 }, { id: 'image-gen-b' })
-    doc.nodes.push(imageB)
-    doc.edges.push({
-      id: 'edge-b-out',
-      source: imageB.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    })
+    const output = doc.nodes.find((n) => n.typeId === 'asset.image')!
     doc.runStates = {
       [output.id]: {
         status: 'done',
@@ -310,19 +280,11 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('returns empty when image output is not done even if upstream gens have images', () => {
+  it('returns empty when asset.image nodes are not done even with generated images', () => {
     const doc = createDefaultScopedGraph('visual')
     const imageA = doc.nodes.find((n) => n.typeId === 'asset.image')!
-    const output = doc.nodes.find((n) => n.typeId === 'output.image')!
     const imageB = createNodeFromType('asset.image', { x: 100, y: 280 }, { id: 'image-gen-b' })
     doc.nodes.push(imageB)
-    doc.edges.push({
-      id: 'edge-b-out',
-      source: imageB.id,
-      target: output.id,
-      sourcePort: 'out',
-      targetPort: 'in'
-    })
     imageA.params = {
       ...imageA.params,
       generatedImages: [

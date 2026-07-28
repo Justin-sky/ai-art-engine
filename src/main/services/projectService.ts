@@ -38,7 +38,10 @@ import {
   buildSeriesStarterGraph,
   defaultHostInterfaceForAssetType,
   ensureBoundaryProxyNodes,
-  HOST_INTERFACE_SCHEMA_VERSION
+  HOST_INTERFACE_SCHEMA_VERSION,
+  isAssetRefInputHostType,
+  sanitizeHostInterface,
+  type GraphDocument
 } from '@shared/graph'
 import type {
   AttachAssetFileInput,
@@ -111,6 +114,29 @@ import { copyFilePathsToClipboard } from './clipboardFileCopy'
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+/** 可宿主资产：写入 hostInterface + schemaVersion，并为内图确保 boundary proxy */
+function finalizeHostableAssetGenParams(
+  type: AssetType,
+  genParams: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!isAssetRefInputHostType(type)) return genParams
+  const base = { ...(genParams ?? {}) }
+  const rawIface = base.hostInterface
+  let iface = sanitizeHostInterface(rawIface)
+  if (!iface.inputs.length && !iface.outputs.length) {
+    iface = defaultHostInterfaceForAssetType(type)
+  }
+  const graphJson = base.graphJson
+  if (graphJson && typeof graphJson === 'object' && Array.isArray((graphJson as GraphDocument).nodes)) {
+    base.graphJson = ensureBoundaryProxyNodes(graphJson as GraphDocument, iface)
+  }
+  base.hostInterface = iface
+  if (typeof base.schemaVersion !== 'number' || !Number.isFinite(base.schemaVersion)) {
+    base.schemaVersion = HOST_INTERFACE_SCHEMA_VERSION
+  }
+  return base
 }
 
 function assertInsideProject(root: string, target: string): string {
@@ -368,15 +394,9 @@ class ProjectService {
       }
     }
     if (input.type === 'subgraph' && !asset.genParams?.graphJson) {
-      const hostInterface = defaultHostInterfaceForAssetType('subgraph')
       asset.genParams = {
         ...(asset.genParams ?? {}),
-        graphJson: ensureBoundaryProxyNodes(
-          createDefaultScopedGraph('subgraphAsset', 'subgraph'),
-          hostInterface
-        ),
-        hostInterface,
-        schemaVersion: HOST_INTERFACE_SCHEMA_VERSION
+        graphJson: createDefaultScopedGraph('subgraphAsset', 'subgraph')
       }
     }
     if (input.type === 'motion' && !asset.genParams?.stage) {
@@ -395,6 +415,10 @@ class ProjectService {
           graphJson: createDefaultScopedGraph('screenplayAsset', 'screenplay')
         }
       }
+    }
+    // 可宿主类型统一 HDA：hostInterface + boundary 内图
+    if (isAssetRefInputHostType(input.type)) {
+      asset.genParams = finalizeHostableAssetGenParams(input.type, asset.genParams)
     }
     this.writeAsset(asset)
     if (input.type === 'script' && !input.skipScriptBootstrap) {

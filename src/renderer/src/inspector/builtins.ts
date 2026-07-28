@@ -27,7 +27,7 @@ import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
-import { readBoundUnitIdFromNodeParams, type GraphNode } from '@shared/graph'
+import { readBoundUnitIdFromNodeParams, isAssetRefInputHostType, type GraphNode } from '@shared/graph'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -91,7 +91,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     match: (target) => {
       if (target.kind !== 'graph.node') return false
       const node = target.subject as GraphNode | null
-      return !!node && node.assetType === 'subgraph' && node.params?.assetHost === true
+      return (
+        !!node &&
+        node.params?.assetHost === true &&
+        isAssetRefInputHostType(node.assetType)
+      )
     }
   },
   {

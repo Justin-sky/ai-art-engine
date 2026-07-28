@@ -14,17 +14,15 @@ import {
 } from '../src/shared/graph'
 
 describe('narrativeUnit scope', () => {
-  it('default graph is unitGen → narrativeUnit output', () => {
+  it('default graph contains unitGen without classic output', () => {
     ensureBuiltinNodeTypes()
     const doc = createDefaultScopedGraph('narrativeUnit')
     const types = doc.nodes.map((n) => n.typeId).sort()
-    expect(types).toEqual(['narrative.unitGen', 'output.narrativeUnit'])
-    expect(doc.edges).toHaveLength(1)
-    expect(doc.edges[0].sourcePort).toBe('out')
-    expect(doc.edges[0].targetPort).toBe('in')
+    expect(types).toEqual(['narrative.unitGen'])
+    expect(doc.edges).toHaveLength(0)
   })
 
-  it('empty graph normalize fills default chain', () => {
+  it('empty graph normalize fills default generator', () => {
     ensureBuiltinNodeTypes()
     const doc = normalizeScopedGraph('narrativeUnit', {
       nodes: [],
@@ -33,13 +31,13 @@ describe('narrativeUnit scope', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     })
     expect(doc.nodes.some((n) => n.typeId === 'narrative.unitGen')).toBe(true)
-    expect(doc.nodes.some((n) => n.typeId === 'output.narrativeUnit')).toBe(true)
+    expect(doc.nodes.some((n) => n.category === 'output')).toBe(false)
   })
 
-  it('allows unitGen / unitRef / narrativeUnit output in narrativeUnit scope', () => {
+  it('allows unit nodes but rejects every output in narrativeUnit scope', () => {
     expect(isNodeAddableInScope('narrativeUnit', 'narrative.unitGen')).toBe(true)
     expect(isNodeAddableInScope('narrativeUnit', 'narrative.unitRef')).toBe(true)
-    expect(isNodeAddableInScope('narrativeUnit', 'output.narrativeUnit')).toBe(true)
+    expect(isNodeAddableInScope('narrativeUnit', 'output.narrativeUnit')).toBe(false)
     expect(isNodeAddableInScope('narrativeUnit', 'output.text')).toBe(false)
     expect(isNodeAddableInScope('narrativeUnit', 'output.narrative')).toBe(false)
   })
@@ -78,13 +76,13 @@ describe('narrativeUnit scope', () => {
     expect(formatNarrativeUnitRefText(unit)).toContain('开场')
   })
 
-  it('collects text from narrativeUnit output resultText', () => {
+  it('collects resultText from narrativeUnit generator', () => {
     ensureBuiltinNodeTypes()
     const doc = createDefaultScopedGraph('narrativeUnit')
-    const output = doc.nodes.find((n) => n.typeId === 'output.narrativeUnit')
-    expect(output).toBeTruthy()
-    if (!output) return
-    output.params = { ...output.params, resultText: '细化后的单元正文' }
+    const gen = doc.nodes.find((n) => n.typeId === 'narrative.unitGen')
+    expect(gen).toBeTruthy()
+    if (!gen) return
+    gen.params = { ...gen.params, resultText: '细化后的单元正文' }
     const item = collectTextFromNarrativeUnitGraph(doc)
     expect(item?.text).toBe('细化后的单元正文')
   })
