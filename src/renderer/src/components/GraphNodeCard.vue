@@ -406,7 +406,6 @@ import {
   supportsGenerateLock,
   isVideoFramePortId,
   isDirectorProcessingNode,
-  isScriptShotEditorNode,
   isScriptShotImageGenNode,
   isScriptShotParamsNode,
   isScriptShotSplitNode,
@@ -426,6 +425,7 @@ import {
   isSelectVideoNode,
   isSelectVoiceNode,
   isSelectTextNode,
+  isSelectNarrativeNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
@@ -439,7 +439,6 @@ import {
   isMatteEditorNode,
   isCropEditorNode,
   isGridSplitEditorNode,
-  isLegacyNarrativeUnitGenInstruction,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readVideoGenerateParamsFromNode,
@@ -926,7 +925,7 @@ const typeIcon = computed(() => {
   if (isScriptShotSplitNode(props.node)) return '✂️'
   if (isScriptShotTableNode(props.node)) return '📊'
   if (isScriptShotImageGenNode(props.node)) return '🖼️'
-  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) return '🎬'
+  if (isScriptShotVideoGenNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
   if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
   if (isNarrativeGenNode(props.node) || isNarrativeSplitNode(props.node)) return '📖'
@@ -1201,7 +1200,7 @@ const scriptNodePreviewTitle = computed(() => {
   }
   if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
   if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
-  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) {
+  if (isScriptShotVideoGenNode(props.node)) {
     return t('graph.scriptShotVideoGenNode.hint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
@@ -1245,7 +1244,7 @@ const previewHint = computed(() => {
   }
   if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
   if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
-  if (isScriptShotVideoGenNode(props.node) || isScriptShotEditorNode(props.node)) {
+  if (isScriptShotVideoGenNode(props.node)) {
     return t('graph.scriptShotVideoGenNode.hint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
@@ -1256,6 +1255,7 @@ const previewHint = computed(() => {
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
+  if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
@@ -1281,6 +1281,7 @@ const previewOpenHint = computed(() => {
   if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
+  if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
   // 预览区已有正文时，双击优先打开记事本
   if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
     return t('graph.notepad.openHint')
@@ -1520,11 +1521,7 @@ watch(
 watch(
   () => props.node.params.generateInstruction,
   (value) => {
-    const raw = value ?? ''
-    const next =
-      props.node.typeId === 'narrative.unitGen' && isLegacyNarrativeUnitGenInstruction(raw)
-        ? ''
-        : raw
+    const next = value ?? ''
     if (next !== instruction.value) instruction.value = next
   },
   { immediate: true }
@@ -1532,11 +1529,7 @@ watch(
 
 watch(instructionOpen, (open) => {
   if (open) {
-    const raw = props.node.params.generateInstruction ?? ''
-    instruction.value =
-      props.node.typeId === 'narrative.unitGen' && isLegacyNarrativeUnitGenInstruction(raw)
-        ? ''
-        : raw
+    instruction.value = props.node.params.generateInstruction ?? ''
     // 先让指令面板上屏，再拉模型列表，避免双击卡顿
     window.setTimeout(() => {
       void refreshModelOptions()
@@ -1723,7 +1716,7 @@ function onPreviewDblClick(): void {
     emit('selectVoiceOpen', props.node.id)
     return
   }
-  if (isSelectTextNode(props.node)) {
+  if (isSelectTextNode(props.node) || isSelectNarrativeNode(props.node)) {
     emit('selectTextOpen', props.node.id)
     return
   }
@@ -1845,11 +1838,20 @@ function onPreviewDblClick(): void {
     emit('textOpen', props.node.id)
     return
   }
-  // 宿主资产节点：同面板 dive
+  // 宿主资产节点：同面板 dive（先 flush 当前图，子层才能解析到最新入边/runStates）
   if (isAssetRef.value && !isImportedRefAsset.value) {
     const assetId = props.node.assetId?.trim() || props.asset?.id
     if (assetId && editorDive?.rootKey) {
-      workspace.diveIntoHost(editorDive.rootKey, assetId)
+      void (async () => {
+        if (props.hostId) {
+          try {
+            await graphEditorHosts.flush(props.hostId)
+          } catch (err) {
+            console.error('[GraphNodeCard] flush before dive failed', err)
+          }
+        }
+        workspace.diveIntoHost(editorDive.rootKey, assetId)
+      })()
     }
     return
   }

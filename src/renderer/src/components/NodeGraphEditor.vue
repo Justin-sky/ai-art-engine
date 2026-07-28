@@ -582,15 +582,12 @@ import {
   shotStoryboardToNodeParams,
   createShotParamsNodeForShot,
   createNarrativeUnitRefNode,
-  readShotWorkflowGraphFromGenParams,
   readWorldElementGraphFromGenParams,
   withWorldElementGraph,
   readNarrativeUnitGraphFromGenParams,
   withNarrativeUnitGraph,
   readBoundShotIdFromNodeParams,
   readBoundUnitIdFromNodeParams,
-  resolveNarrativeUnitsForScriptHost,
-  syncScriptNarrativeUnitChains,
   applyShotParamsDropMaterialization,
   ensureShotParamsLinkedToImage,
   ensureShotParamsLinkedToVideo,
@@ -643,6 +640,10 @@ import {
   stringifyShotSplitRows,
   stringifyWorldElementCatalog,
   stringifyNarrativeUnitRows,
+  stringifyNarrativeEntity,
+  parseNarrativeUnitJson,
+  catalogTextFromValue,
+  GraphPortType,
   WORLD_ELEMENT_KINDS
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -899,31 +900,8 @@ function touchGraphCache(shotId?: string | null): void {
   graphCache.set(id, buildGraphJson())
 }
 
-function resolveScriptHostGenParams(): Record<string, unknown> | undefined {
-  const scriptId = scriptAssetIdRef.value
-  if (!scriptId) return undefined
-  if (isDraftAssetId(scriptId)) return draftStore.getDraft(scriptId)?.genParams
-  return project.assets.find((item) => item.id === scriptId)?.genParams as
-    | Record<string, unknown>
-    | undefined
-}
-
-/**
- * 兼容旧工程：脚本级共享 shotWorkflowGraph。
- * 仅在当前镜 graphJson 为空时作为初始内容拷贝，之后各自独立。
- */
-function migrateShotWorkflowRaw(): GraphDocument | null {
-  return readShotWorkflowGraphFromGenParams(resolveScriptHostGenParams())
-}
-
 function resolveShotCanvasGraphRaw(shot: Shot): GraphDocument | null | undefined {
-  const raw = readShotCanvasGraph(shot)
-  if (raw?.nodes?.length) return raw
-  if (graphScope.value === 'shotWorkflow') {
-    const migrated = migrateShotWorkflowRaw()
-    if (migrated?.nodes?.length) return migrated
-  }
-  return raw
+  return readShotCanvasGraph(shot)
 }
 
 function collectParentGraphsForHost(hostAssetId: string): GraphDocument[] {
@@ -986,7 +964,9 @@ function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
         return project.assets.find((a) => a.id === assetId)?.genParams as
           | Record<string, unknown>
           | undefined
-      }
+      },
+      resolveLiveAssetGraph: (assetId) =>
+        graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
     }
   )
 }
@@ -1072,53 +1052,11 @@ function readAssetGraph(): GraphDocument {
   const raw = graphAsset.value?.genParams?.graphJson
   const host = graphAsset.value
   const hostAssetId = props.assetId ?? host?.id ?? null
-  let doc = normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
+  return normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
     hostAssetId,
     hasMediaFile: !!host?.relativePath?.trim(),
     parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
   })
-  if (graphScope.value === 'scriptAsset' && hostAssetId) {
-    const beforeKey = doc.nodes
-      .map((n) => n.id)
-      .sort()
-      .join('|')
-    const units = resolveNarrativeUnitsForScriptHost(
-      collectParentGraphsForHost(hostAssetId),
-      hostAssetId,
-      {
-        resolveAssetGenParams: (assetId) => {
-          if (isDraftAssetId(assetId)) {
-            return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
-          }
-          return project.assets.find((a) => a.id === assetId)?.genParams as
-            | Record<string, unknown>
-            | undefined
-        }
-      }
-    )
-    scriptNarrativeCatalog.value = units
-    doc = syncScriptNarrativeUnitChains(doc, units)
-    // 再挂世界输入槽（sync 可能新增 table）
-    doc = normalizeScopedGraph(graphScope.value, doc, {
-      assetType: host?.type,
-      hostAssetId,
-      parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
-    })
-    const afterKey = doc.nodes
-      .map((n) => n.id)
-      .sort()
-      .join('|')
-    if (beforeKey !== afterKey && props.assetId) {
-      const graphJson = cloneGraphDocument(doc)
-      const write = persistAssetRecord(props.assetId, {
-        genParams: { ...(host?.genParams ?? {}), graphJson }
-      }).catch((error) => {
-        console.error('[NodeGraphEditor] script narrative chain sync save failed', error)
-      })
-      trackAssetGraphPersist(write)
-    }
-  }
-  return doc
 }
 
 /** 资产图最近一次落盘 Promise；flushSave 需 await，避免关窗丢写 */
@@ -1228,10 +1166,31 @@ function loadGraphFromShot(): void {
   applyGraphDocument(doc)
 }
 
+/** 把已解析的槽位正文写回图中空输入接口（不覆盖已有非空正文） */
+function applyHostInputSlotTexts(
+  specs: Array<{ portId: string; index: number; text?: string; previewRelativePath?: string }>
+): void {
+  for (const spec of specs) {
+    if (!spec.text?.trim()) continue
+    const id = hostInputSlotNodeId(spec.portId, spec.index)
+    const node = graph.nodes.find((n) => n.id === id)
+    if (!node || node.params.text?.trim()) continue
+    node.params = {
+      ...node.params,
+      text: spec.text,
+      ...(spec.previewRelativePath?.trim()
+        ? { previewRelativePath: spec.previewRelativePath.trim() }
+        : {})
+    }
+  }
+}
+
 /** 外层文本常仅有 relativePath / 旁挂文件：打开宿主后补全文到输入接口 */
 async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
   const slots = graph.nodes.filter(isHostInputSlotNode)
   if (!slots.length) return
+
+  // 1) 路径旁挂 → 读文件
   const specs = await hydrateHostInputSlotSpecs(
     slots.map((node) => ({
       portId: node.params.hostInputSlot?.portId ?? 'in',
@@ -1242,49 +1201,58 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
     })),
     readGraphRunText
   )
-  for (const spec of specs) {
-    if (!spec.text?.trim()) continue
-    const id = hostInputSlotNodeId(spec.portId, spec.index)
-    const node = graph.nodes.find((n) => n.id === id)
-    if (!node || node.params.text?.trim()) continue
-    node.params = { ...node.params, text: spec.text }
-  }
+  applyHostInputSlotTexts(specs)
 
-  // 仍空：从父图上游剧本资产异步读正文（剧集 screenplay → narrative 等）
+  // 2) 再软解析一次（含 live 源资产内图），补目录口 / 同步正文
   const hostAssetId = props.assetId
   if (!hostAssetId || !isAssetRefInputHostType(graphAsset.value?.type)) return
-  const emptySlots = graph.nodes.filter(
+  const refreshed = resolveParentHostInputSlots(hostAssetId)
+  if (refreshed?.length) {
+    applyHostInputSlotTexts(refreshed)
+  }
+
+  // 3) 文本口仍空：按父图入边异步读上游资产正文（剧本 sidecar 等）
+  const emptyTextSlots = graph.nodes.filter(
     (n) =>
       isHostInputSlotNode(n) &&
       n.params.hostInputSlot?.dataType === 'text' &&
       !n.params.text?.trim()
   )
-  if (!emptySlots.length) return
+  if (!emptyTextSlots.length) return
 
   for (const parent of collectParentGraphsForHost(hostAssetId)) {
     const hostNode = parent.nodes.find(
       (n) => n.assetId === hostAssetId && n.params.assetHost === true
     )
     if (!hostNode) continue
-    for (const edge of parent.edges) {
-      if (edge.target !== hostNode.id) continue
+    const edges = parent.edges
+      .filter((edge) => edge.target === hostNode.id)
+      .slice()
+      .sort((a, b) => parent.edges.indexOf(a) - parent.edges.indexOf(b))
+    const filledIndexByPort = new Map<string, number>()
+    for (const edge of edges) {
       const targetPort = edge.targetPort ?? 'in'
       const source = parent.nodes.find((n) => n.id === edge.source)
-      if (!source?.assetId) continue
-      if (source.assetType !== 'screenplay' && source.typeId !== 'asset.screenplay') continue
-      let text = ''
-      try {
-        text = (await resolveAssetText(source.assetId))?.trim() ?? ''
-      } catch {
-        text = ''
+      if (!source) continue
+      let text = source.params.text?.trim() || source.params.resultText?.trim() || ''
+      if (!text && source.assetId) {
+        try {
+          text = (await resolveAssetText(source.assetId))?.trim() ?? ''
+        } catch {
+          text = ''
+        }
       }
       if (!text) continue
-      const slot = emptySlots.find(
+      const nextIndex = filledIndexByPort.get(targetPort) ?? 0
+      const slot = emptyTextSlots.find(
         (n) =>
-          n.params.hostInputSlot?.portId === targetPort && !n.params.text?.trim()
+          n.params.hostInputSlot?.portId === targetPort &&
+          (n.params.hostInputSlot?.index ?? 0) === nextIndex &&
+          !n.params.text?.trim()
       )
       if (!slot) continue
       slot.params = { ...slot.params, text }
+      filledIndexByPort.set(targetPort, nextIndex + 1)
     }
   }
 }
@@ -1439,8 +1407,6 @@ type CtxMenuState = {
 }
 const ctxMenu = ref<CtxMenuState | null>(null)
 const loadedGraphShotId = ref<string | null>(null)
-/** 分镜资产图：从上游叙事解析出的单元目录（供 unitRef 执行） */
-const scriptNarrativeCatalog = ref<NarrativeUnitRow[]>([])
 /** 每镜节点图内存缓存，避免快速切换时把错误画布写入其他分镜 */
 const graphCache = new Map<string, GraphDocument>()
 /** 编辑器打开时的正式版本；未保存关闭时用于回滚内存。 */
@@ -1594,44 +1560,33 @@ const {
   resolveNarrativeUnit: (unitId) => {
     const id = unitId.trim()
     if (!id) return null
-    if (graphScope.value === 'scriptAsset') {
-      return scriptNarrativeCatalog.value.find((row) => row.id === id) ?? null
-    }
     const narrativeId = props.assetId
     if (!narrativeId || graphScope.value !== 'narrativeUnit') return null
     return loadNarrativeCatalog(narrativeId).find((row) => row.id === id) ?? null
   },
-  resolveShotSplitTableJson: (opts) => {
+  resolveShotSplitTableJson: () => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const unit = opts?.narrativeUnitId?.trim()
-    const base = visibleShots.value.length
+    const shots = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-    const shots = unit
-      ? base.filter((s) => s.narrativeUnitId === unit)
-      : base.filter((s) => !s.narrativeUnitId?.trim())
     if (!shots.length) return null
     return stringifyShotSplitRows(shotsToShotSplitRows(shots))
   },
-  importShotSplitTableJson: async (jsonText, opts) => {
+  importShotSplitTableJson: async (jsonText) => {
     if (graphScope.value !== 'scriptAsset') return
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return
-    await applyShotSplitJson(scriptId, jsonText, opts?.narrativeUnitId)
+    await applyShotSplitJson(scriptId, jsonText)
   },
-  collectScriptShotImages: async (signal, opts) => {
+  collectScriptShotImages: async (signal) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const unit = opts?.narrativeUnitId?.trim()
-    const base = visibleShots.value.length
+    const shots = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-    const shots = unit
-      ? base.filter((s) => s.narrativeUnitId === unit)
-      : base.filter((s) => !s.narrativeUnitId?.trim())
     if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
     return collectScriptShotImages({
       scriptAssetId: scriptId,
@@ -1639,17 +1594,13 @@ const {
       signal
     })
   },
-  collectScriptShotVideos: async (signal, opts) => {
+  collectScriptShotVideos: async (signal) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
-    const unit = opts?.narrativeUnitId?.trim()
-    const base = visibleShots.value.length
+    const shots = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-    const shots = unit
-      ? base.filter((s) => s.narrativeUnitId === unit)
-      : base.filter((s) => !s.narrativeUnitId?.trim())
     if (!shots.length) return { videos: [] }
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
@@ -5105,16 +5056,53 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
   return items
 }
 
+function collectSelectNarrativeItems(nodeId: string): GraphTextItem[] {
+  const items: GraphTextItem[] = []
+  const seen = new Set<string>()
+  const pushRow = (row: NarrativeUnitRow): void => {
+    if (!row.id || seen.has(row.id)) return
+    seen.add(row.id)
+    items.push({
+      id: row.id,
+      title: `#${row.order} ${row.title}`.trim(),
+      text: stringifyNarrativeEntity(row)
+    })
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.target !== nodeId) continue
+    if ((edge.targetPort ?? 'in') !== 'in') continue
+    const source = graph.nodes.find((n) => n.id === edge.source)
+    if (!source) continue
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
+    const catalog =
+      catalogTextFromValue(runOut, GraphPortType.narrative) ||
+      source.params.text?.trim() ||
+      ''
+    for (const row of parseNarrativeUnitJson(catalog) ?? []) pushRow(row)
+    if (source.assetId && (source.assetType === 'narrative' || source.typeId === 'asset.narrative')) {
+      for (const row of loadNarrativeCatalog(source.assetId)) pushRow(row)
+    }
+  }
+  return items
+}
+
 function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const items = collectSelectTextItems(nodeId)
+  const isNarrative = node.typeId === 'narrative.select'
+  const items = isNarrative ? collectSelectNarrativeItems(nodeId) : collectSelectTextItems(nodeId)
+  const selectedId = isNarrative
+    ? node.params.selectedUnitId?.trim() || ''
+    : node.params.selectedTextId?.trim() || ''
   const selected =
-    pickTextItem(items, node.params.selectedTextId) ??
-    (items[0] ? items[0] : undefined)
+    pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
   selectText.open = true
   selectText.nodeId = nodeId
-  selectText.title = nodeDisplayTitle(node)
+  selectText.title = isNarrative
+    ? t('graph.selectNarrative.appMark')
+    : nodeDisplayTitle(node)
   selectText.items = items
   selectText.selectedTextId = selected
     ? textItemKey(selected, Math.max(0, items.indexOf(selected)))
@@ -5135,6 +5123,20 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
   const items = selectText.items
   const picked = pickTextItem(items, selectedTextId)
   const before = buildGraphJson()
+  if (node.typeId === 'narrative.select') {
+    const unitId = picked?.id?.trim() || selectedTextId
+    const text = picked?.text?.trim() || ''
+    node.params = {
+      ...node.params,
+      selectedUnitId: unitId,
+      text
+    }
+    selectText.selectedTextId = selectedTextId
+    scheduleSave()
+    recordGraphChange('select-narrative', before)
+    closeSelectText()
+    return
+  }
   let text = picked?.text?.trim() || ''
   const previewRelativePath = picked?.relativePath?.trim() || undefined
   if (!text && previewRelativePath) {
@@ -6352,7 +6354,8 @@ watch(
     if (!nonce || nonce === prev) return
     if (!isAssetGraph.value) return
     syncHostInputSlotsFromParents()
-  }
+  },
+  { immediate: true }
 )
 
 let resizeObserver: ResizeObserver | null = null

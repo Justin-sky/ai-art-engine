@@ -186,7 +186,9 @@ export function findCompatibleInPort(
   const inPorts = getNodePorts(target).filter((p) => p.direction === 'in')
   if (preferredPortId) {
     const preferred = inPorts.find((p) => p.id === preferredPortId)
-    if (preferred && portsCompatible(outDataType, preferred.dataType)) return preferred
+    // 指定了口 id 时严格匹配，避免非法口边被 sanitize 误放行
+    if (!preferred || !portsCompatible(outDataType, preferred.dataType)) return undefined
+    return preferred
   }
   return inPorts.find((p) => portsCompatible(outDataType, p.dataType))
 }

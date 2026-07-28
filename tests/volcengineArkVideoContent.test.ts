@@ -119,13 +119,13 @@ describe('buildVolcengineArkVideoContent', () => {
     })
   })
 
-  it('normalizes legacy 图n to 图片n', () => {
+  it('leaves bare 图n untouched', () => {
     const content = buildVolcengineArkVideoContent({
       prompt: '图1中的角色跟随音频1'
     })
     expect(content[0]).toEqual({
       type: 'text',
-      text: '图片1中的角色跟随音频1'
+      text: '图1中的角色跟随音频1'
     })
   })
 })

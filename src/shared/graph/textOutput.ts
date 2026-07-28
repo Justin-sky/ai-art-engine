@@ -46,7 +46,6 @@ export function textFromGraphValue(value: GraphValue | undefined): string {
 function isTextToolNode(node: GraphNode): boolean {
   return (
     node.typeId === 'narrative.split' ||
-    node.typeId === 'screenplay.narrativeSplit' ||
     node.typeId === 'script.shotSplit' ||
     node.typeId === 'world.extract' ||
     node.typeId === 'prompt.optimize' ||

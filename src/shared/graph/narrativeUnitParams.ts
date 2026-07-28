@@ -90,23 +90,6 @@ export function createNarrativeUnitRefNode(
   })
 }
 
-/**
- * 旧版默认「生成指令」正文（曾写在指令窗口）。
- * 现已迁入系统提示词；执行/Inspector 遇到此文案视为未配置指令。
- */
-export const LEGACY_NARRATIVE_UNIT_GEN_INSTRUCTION = `基于上游叙事单元参考，对该单元的主题、故事脉络与环境氛围做深度细化。
-要求：
-1. 保留角色关系与戏剧功能，不改写既定结局走向；
-2. 补足场景空间、时代感、物件与氛围细节，便于后续分镜与视觉；
-3. 输出条理清晰的中文细化正文（可含小标题），不要输出 JSON。`
-
-/** @deprecated 使用 LEGACY_NARRATIVE_UNIT_GEN_INSTRUCTION；新节点指令窗口默认为空 */
-export const DEFAULT_NARRATIVE_UNIT_GEN_INSTRUCTION = LEGACY_NARRATIVE_UNIT_GEN_INSTRUCTION
-
-export function isLegacyNarrativeUnitGenInstruction(raw: string | undefined | null): boolean {
-  return (raw?.trim() ?? '') === LEGACY_NARRATIVE_UNIT_GEN_INSTRUCTION.trim()
-}
-
 /** 叙事生成节点默认参数：规则在系统提示词，指令窗口留给临时焦点 */
 export function defaultNarrativeUnitGenParams(): Pick<
   GraphNodeParams,

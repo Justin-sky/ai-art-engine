@@ -13,11 +13,11 @@ import { pathToFileURL } from 'url'
 import { randomBytes, randomUUID } from 'crypto'
 import {
   DEFAULT_RESOLUTION,
-  ASSET_TYPE_LABELS,
   ASSET_IMAGE_OUTPUT_KIND_DIR,
   ASSET_TEXT_OUTPUT_KIND_DIR,
   createEmptyShot,
   createDefaultDirectorStage,
+  assetTypeLabel,
   defaultAssetName,
   isImportableFileRefAssetType,
   isPoseModelAsset,
@@ -178,7 +178,7 @@ class ProjectService {
     this.rootPath = root
     this.config = config
 
-    this.createSeriesWithStarter({ name: defaultAssetName('canvas') })
+    this.createSeriesWithStarter({ name: defaultAssetName('canvas', settingsService.get().language) })
 
     const projectJson = join(root, 'project.json')
     settingsService.addRecent(projectJson)
@@ -319,7 +319,7 @@ class ProjectService {
 
     const id = randomUUID()
     const ts = nowIso()
-    const baseName = input.name?.trim() || defaultAssetName(input.type)
+    const baseName = input.name?.trim() || defaultAssetName(input.type, settingsService.get().language)
     const siblingNames = this.listAssets()
       .filter((a) => (a.folderId ?? null) === folderId)
       .map((a) => a.name)
@@ -389,18 +389,19 @@ class ProjectService {
   /** 创建剧集，并预置剧本 / 世界元素 / 叙事单元 / 分镜宿主节点与连线 */
   createSeriesWithStarter(input: CreateSeriesWithStarterInput = {}): AssetInfo {
     const parentFolderId = input.folderId ?? null
-    const seriesName = input.name?.trim() || defaultAssetName('canvas')
+    const language = settingsService.get().language
+    const seriesName = input.name?.trim() || defaultAssetName('canvas', language)
     const childTypes = ['screenplay', 'world', 'narrative', 'script'] as const
 
     const childName = (type: (typeof childTypes)[number]): string => {
       const override = input.childNames?.[type]?.trim()
       if (override) return override
-      return `${seriesName}${ASSET_TYPE_LABELS[type]}`
+      return `${seriesName}${assetTypeLabel(type, language)}`
     }
     const childFolderName = (type: (typeof childTypes)[number]): string => {
       const override = input.childFolderNames?.[type]?.trim()
       if (override) return override
-      return ASSET_TYPE_LABELS[type]
+      return assetTypeLabel(type, language)
     }
 
     /** 当前目录下按类型名找或建子目录（不建剧集名外层目录） */
@@ -509,7 +510,7 @@ class ProjectService {
     const detected = detectAssetType(input.filePath)
 
     if (!isAttachCompatible(asset.type, detected, input.filePath)) {
-      throw new Error(`文件类型与资产类型不匹配（需要 ${ASSET_TYPE_LABELS[asset.type]}）`)
+      throw new Error(`文件类型与资产类型不匹配（需要 ${assetTypeLabel(asset.type, settingsService.get().language)}）`)
     }
 
     const previous = { ...asset, genParams: asset.genParams ? { ...asset.genParams } : undefined }

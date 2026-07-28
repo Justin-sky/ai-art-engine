@@ -4,9 +4,10 @@
  * 磁盘/开放 JSON 推荐形态：
  *   { "$type": "AssetRef", "guid": "<uuid>" }
  *
- * 读取时同时识别：
- * - 已知引用字段上的裸 UUID 字符串
+ * 深度遍历（collect / remap）识别：
+ * - TaggedAssetRef：{ $type: "AssetRef", guid }
  * - { guid: string }（无 $type，且 guid 像 UUID）
+ * - 已知域字段上的 UUID 字符串（assetId 等内存主字段，非任意裸 GUID）
  *
  * 内存侧多数 API 仍可用 string；读写时用 readAssetGuid / tagAssetRef 转换。
  */
@@ -24,10 +25,10 @@ export interface TaggedAssetRef extends AssetRef {
 }
 
 /**
- * 历史裸字符串引用字段名（深度遍历时：该 key 的 string 值视为资产 GUID）。
+ * 已知资产 GUID 字段名（深度遍历时：该 key 的 string 值视为资产 GUID）。
  * 不含 shotId / selectedImageId / folderId 等非资产身份字段。
  */
-export const LEGACY_ASSET_REF_KEYS = new Set([
+export const ASSET_GUID_FIELD_KEYS = new Set([
   'assetId',
   'scriptAssetId',
   'modelAssetId',
@@ -88,8 +89,8 @@ function lookupRemap(map: RemapAssetGuidMap, guid: string): string {
 }
 
 /**
- * 收集值树中全部资产 GUID（tagged + 已知字段名上的裸字符串）。
- * 不会把普通文本 / @N / selectedImageId 等当成引用。
+ * 收集值树中全部资产 GUID（TaggedAssetRef / { guid } / 已知域字段上的 UUID）。
+ * 不会把普通文本 / 任意裸 GUID / @N / selectedImageId 等当成引用。
  */
 export function collectAssetGuids(value: unknown): string[] {
   const found = new Set<string>()
@@ -100,7 +101,7 @@ export function collectAssetGuids(value: unknown): string[] {
 function walkCollect(value: unknown, found: Set<string>, parentKey: string | null): void {
   if (value == null) return
   if (typeof value === 'string') {
-    if (parentKey && LEGACY_ASSET_REF_KEYS.has(parentKey) && isAssetGuid(value)) {
+    if (parentKey && ASSET_GUID_FIELD_KEYS.has(parentKey) && isAssetGuid(value)) {
       found.add(value.trim())
     }
     return
@@ -120,7 +121,8 @@ function walkCollect(value: unknown, found: Set<string>, parentKey: string | nul
 }
 
 /**
- * 深拷贝并重映射资产 GUID。只改 tagged / 已知引用字段上的 GUID，不改普通字符串。
+ * 深拷贝并重映射资产 GUID。
+ * 只改 TaggedAssetRef / { guid } / 已知域字段上的 UUID，不改普通字符串。
  */
 export function remapAssetGuids<T>(value: T, map: RemapAssetGuidMap): T {
   return walkRemap(value, map, null) as T
@@ -129,7 +131,7 @@ export function remapAssetGuids<T>(value: T, map: RemapAssetGuidMap): T {
 function walkRemap(value: unknown, map: RemapAssetGuidMap, parentKey: string | null): unknown {
   if (value == null) return value
   if (typeof value === 'string') {
-    if (parentKey && LEGACY_ASSET_REF_KEYS.has(parentKey) && isAssetGuid(value)) {
+    if (parentKey && ASSET_GUID_FIELD_KEYS.has(parentKey) && isAssetGuid(value)) {
       return lookupRemap(map, value.trim())
     }
     return value
@@ -164,37 +166,6 @@ function walkRemap(value: unknown, map: RemapAssetGuidMap, parentKey: string | n
     if (mapped !== child) changed = true
   }
   return changed ? next : value
-}
-
-/**
- * 将已知字段上的裸 GUID 字符串升级为 TaggedAssetRef（深拷贝）。
- * 用于导出前规范化，使包内引用形态统一。
- */
-export function upgradeLegacyAssetRefs<T>(value: T): T {
-  return walkUpgrade(value, null) as T
-}
-
-function walkUpgrade(value: unknown, parentKey: string | null): unknown {
-  if (value == null) return value
-  if (typeof value === 'string') {
-    if (parentKey && LEGACY_ASSET_REF_KEYS.has(parentKey) && isAssetGuid(value)) {
-      return tagAssetRef(value)
-    }
-    return value
-  }
-  if (typeof value !== 'object') return value
-  if (isTaggedAssetRef(value)) return value
-  if (isAssetRef(value) && !Array.isArray(value)) {
-    return tagAssetRef(value.guid)
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => walkUpgrade(item, parentKey))
-  }
-  const next: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    next[key] = walkUpgrade(child, key)
-  }
-  return next
 }
 
 /** 同步 Graph 节点上的 assetId ↔ assetRef（内存 hydrate） */

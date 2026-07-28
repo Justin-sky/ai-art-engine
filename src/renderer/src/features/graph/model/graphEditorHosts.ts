@@ -290,6 +290,22 @@ class GraphEditorHostRegistry {
     return docs
   }
 
+  /** 按 hostId 取实时文档（如 `asset:${assetId}`） */
+  getDocument(hostId: string | null | undefined): GraphDocument | null {
+    void this.revision.value
+    if (!hostId) return null
+    const doc = this.hosts.get(hostId)?.getDocument?.()
+    if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) return null
+    return doc
+  }
+
+  /** 主资产图画布的实时文档（不含 element/unit 后缀宿主） */
+  getLiveAssetDocument(assetId: string | null | undefined): GraphDocument | null {
+    const id = assetId?.trim()
+    if (!id) return null
+    return this.getDocument(`asset:${id}`)
+  }
+
   reset(): void {
     this.hosts.clear()
     this.bumpRevision()

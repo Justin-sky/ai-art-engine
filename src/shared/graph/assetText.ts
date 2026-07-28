@@ -16,10 +16,6 @@ function findAllScreenplayProcessingNodes(graphJson: unknown): GraphNode[] {
   )
 }
 
-function findScreenplayProcessingNode(graphJson: unknown): GraphNode | null {
-  return findAllScreenplayProcessingNodes(graphJson)[0] ?? null
-}
-
 function isTextOutputNode(node: GraphNode): boolean {
   return (
     node.category === 'output' &&
@@ -158,11 +154,6 @@ function textFromGraphNodes(graphJson: unknown): string {
     .filter(Boolean)
     .join('\n\n')
   if (fromProcessing) return fromProcessing
-
-  // 兼容旧图：无明确文本输出时仍读第一个加工节点
-  const processing = findScreenplayProcessingNode(graphJson)
-  const legacy = textFromNode(doc, processing)
-  if (legacy) return legacy
 
   const noteParts = nodes
     .filter((node) => node.typeId === 'play.script' || node.typeId === 'note.text')

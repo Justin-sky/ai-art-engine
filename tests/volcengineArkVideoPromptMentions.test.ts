@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  normalizeVolcengineArkVideoImageLabels,
-  rewriteAtMentionsForVolcengineArkVideoPrompt
-} from '../src/shared/modelProviders/volcengineArk/videoPromptMentions'
+import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '../src/shared/modelProviders/volcengineArk/videoPromptMentions'
 
 describe('rewriteAtMentionsForVolcengineArkVideoPrompt', () => {
   it('maps mixed @n to 图片/视频/音频 by kind', () => {
@@ -28,10 +25,8 @@ describe('rewriteAtMentionsForVolcengineArkVideoPrompt', () => {
   it('falls back to 图片n when refs are empty', () => {
     expect(rewriteAtMentionsForVolcengineArkVideoPrompt('参考@2')).toBe('参考图片2')
   })
-})
 
-describe('normalizeVolcengineArkVideoImageLabels', () => {
-  it('upgrades 图n without touching 图片n', () => {
-    expect(normalizeVolcengineArkVideoImageLabels('图1与图片2')).toBe('图片1与图片2')
+  it('leaves bare 图n untouched', () => {
+    expect(rewriteAtMentionsForVolcengineArkVideoPrompt('图1与图片2')).toBe('图1与图片2')
   })
 })

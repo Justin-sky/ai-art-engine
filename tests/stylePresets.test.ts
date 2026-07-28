@@ -3,7 +3,6 @@ import {
   DEFAULT_STYLE_IMAGE_WEIGHT,
   MAX_STYLE_IMAGES,
   appendStyleImagesReferencePrompt,
-  appendStyleImagesToPrompt,
   buildStyleImagesReferencePrompt,
   clampStyleImageWeight,
   normalizeProjectStyleImages,
@@ -125,16 +124,6 @@ describe('appendStyleImagesReferencePrompt', () => {
         { id: '1', name: '水彩', libraryId: 'watercolor', weight: 0.8 }
       ])
     ).toContain('一只猫\n\n参考@1「水彩」画风，强度0.8')
-  })
-})
-
-describe('appendStyleImagesToPrompt', () => {
-  it('delegates to reference prompt format', () => {
-    const text = appendStyleImagesToPrompt('一只猫', [
-      { id: '1', name: '水彩', libraryId: 'watercolor', weight: 0.8 }
-    ])
-    expect(text).toContain('参考@1「水彩」画风，强度0.8')
-    expect(text).not.toContain('画面风格：水彩')
   })
 })
 

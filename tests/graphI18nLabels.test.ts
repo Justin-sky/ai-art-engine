@@ -41,6 +41,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.output.narrative')).toBe('叙事单元输出')
     expect(t('graph.types.output.world')).toBe('世界元素实体输出')
     expect(t('graph.titles.worldOutput')).toBe('世界元素实体输出')
+    expect(t('graph.types.narrative.select')).toBe('选择叙事单元')
   })
 
   it('resolves graph.port.types.* labels', () => {
@@ -56,6 +57,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.port.types.world')).toBe('世界元素')
     expect(t('graph.port.types.worldEntities')).toBe('世界元素实体')
     expect(t('graph.port.types.shotEntities')).toBe('分镜实体')
+    expect(t('graph.port.types.narrativeEntity')).toBe('叙事实体')
     expect(t('graph.port.types.model')).toBe('模型')
   })
 })

@@ -35,6 +35,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'prompt.optimize',
   'narrative.unitGen',
   'narrative.unitRef',
+  'narrative.select',
   'narrative.split',
   'narrative.table',
   'text.select',

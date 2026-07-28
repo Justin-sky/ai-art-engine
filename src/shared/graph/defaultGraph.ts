@@ -193,7 +193,7 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
       { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-entities' },
       { from: 'videoGen', to: 'out', fromPort: 'out', toPort: 'in' }
     ],
-    inputLinkTo: 'table'
+    inputLinkTo: ['split', 'table']
   },
   worldAsset: {
     nodes: [

@@ -116,7 +116,7 @@ describe('asset editor graph', () => {
     const processing = doc.nodes.find((node) => node.typeId === 'asset.screenplay')
     const select = doc.nodes.find((node) => node.typeId === 'text.select')
     const narrative = doc.nodes.find(
-      (node) => node.typeId === 'narrative.split' || node.typeId === 'screenplay.narrativeSplit'
+      (node) => node.typeId === 'narrative.split'
     )
     const output = doc.nodes.find((node) => node.category === 'output')
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
@@ -270,7 +270,7 @@ describe('asset editor graph', () => {
     )
   })
 
-  it('script asset host links worldEntities slot to script.shotTable', () => {
+  it('script asset host links narrativeEntity→shotSplit and worldEntities→shotTable', () => {
     const doc = normalizeScopedGraph('scriptAsset', null, {
       assetType: 'script',
       hostAssetId: '00000000-0000-4000-8000-000000000701'
@@ -280,8 +280,18 @@ describe('asset editor graph', () => {
     expect(table).toBeTruthy()
     expect(split).toBeTruthy()
     expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(true)
+    expect(getNodePorts(split!).find((p) => p.id === 'in')?.dataType).toBe('narrativeEntity')
     expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-text', 0))).toBe(false)
     expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-narrative', 0))).toBe(false)
+    expect(doc.nodes.some((n) => n.id === hostInputSlotNodeId('in-narrativeEntity', 0))).toBe(true)
+    expect(
+      doc.edges.some(
+        (e) =>
+          e.source === hostInputSlotNodeId('in-narrativeEntity', 0) &&
+          e.target === split?.id &&
+          e.targetPort === 'in'
+      )
+    ).toBe(true)
     expect(
       doc.edges.some(
         (e) =>
@@ -292,7 +302,7 @@ describe('asset editor graph', () => {
     ).toBe(true)
   })
 
-  it('migrates legacy narrative.gen → text.select edge from out to out-all', () => {
+  it('drops narrative.gen → text.select edge on incompatible out port', () => {
     const gen = createNodeFromType('narrative.gen', { x: 0, y: 0 }, { id: 'gen' })
     const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
     const doc = normalizeScopedGraph('narrativeAsset', {
@@ -309,13 +319,8 @@ describe('asset editor graph', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     }, { assetType: 'narrative' })
     expect(
-      doc.edges.some(
-        (edge) =>
-          edge.source === 'gen' &&
-          edge.target === 'select' &&
-          edge.sourcePort === 'out-all'
-      )
-    ).toBe(true)
+      doc.edges.some((edge) => edge.source === 'gen' && edge.target === 'select')
+    ).toBe(false)
   })
 
   it('creates default world asset graph with extract → table → editor → output chain', () => {
@@ -424,7 +429,7 @@ describe('asset editor graph', () => {
     expect(canConnectNodes(ref, output)).toBe(true)
   })
 
-  it('migrates legacy image generate in edges to in-image', () => {
+  it('drops image generate edges targeting removed in port', () => {
     const ref = createAssetGraphNode('00000000-0000-4000-8000-000000000401', 'image', 'Ref', {
       x: 0,
       y: 0
@@ -443,8 +448,15 @@ describe('asset editor graph', () => {
       ],
       viewport: { x: 0, y: 0, zoom: 1 }
     }, { assetType: 'image' })
-    const edge = doc.edges.find((item) => item.source === ref.id && item.target === processing.id)
-    expect(edge?.targetPort).toBe('in-image')
+    // 不再把 in 迁成 in-image；非法口边被丢弃（合法 in-image 边需显式写出）
+    expect(
+      doc.edges.some(
+        (item) =>
+          item.source === ref.id &&
+          item.target === processing.id &&
+          (item.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(false)
   })
 
   it('allows same-type media refs to video output; video processing connects via video', () => {

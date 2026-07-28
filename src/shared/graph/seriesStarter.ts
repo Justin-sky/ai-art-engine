@@ -35,7 +35,7 @@ function ensureGraphEdge(
   })
 }
 
-/** 剧集画布起步图：剧本 → 世界/叙事（实体入叙事）→ 分镜 → 成片时间线 */
+/** 剧集画布起步图：剧本 → 世界/叙事 → 选单元 → 分镜 → 成片时间线 */
 export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocument {
   ensureBuiltinNodeTypes()
   const screenplay = createAssetGraphNode(
@@ -56,13 +56,14 @@ export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocum
     x: 420,
     y: 360
   }, { assetHost: true })
+  const narrativeSelect = createNodeFromType('narrative.select', { x: 620, y: 80 })
   const script = createAssetGraphNode(assets.script.id, 'script', assets.script.name, {
-    x: 760,
+    x: 860,
     y: 220
   }, { assetHost: true })
   const timeline = createNodeFromType(
     'output.timeline',
-    { x: 1100, y: 220 },
+    { x: 1140, y: 220 },
     { id: GRAPH_OUTPUT_NODE_IDS.timeline }
   )
 
@@ -70,11 +71,12 @@ export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocum
   ensureGraphEdge(edges, screenplay.id, narrative.id, 'out', 'in')
   ensureGraphEdge(edges, screenplay.id, world.id, 'out', 'in')
   ensureGraphEdge(edges, world.id, script.id, 'out', 'in-worldEntities')
-  ensureGraphEdge(edges, narrative.id, script.id, 'out', 'in-narrative')
+  ensureGraphEdge(edges, narrative.id, narrativeSelect.id, 'out', 'in')
+  ensureGraphEdge(edges, narrativeSelect.id, script.id, 'out', 'in-narrativeEntity')
   ensureGraphEdge(edges, script.id, timeline.id, 'out', 'in')
 
   return {
-    nodes: [screenplay, narrative, world, script, timeline],
+    nodes: [screenplay, narrative, world, narrativeSelect, script, timeline],
     edges,
     groups: [],
     viewport: { x: 0, y: 0, zoom: 1 }

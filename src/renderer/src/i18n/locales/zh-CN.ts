@@ -1385,6 +1385,11 @@ export default {
       openHint: '双击打开记事本',
       empty: '暂无上游文本，请先连接文本生成等节点并执行'
     },
+    selectNarrative: {
+      appMark: '选择叙事单元',
+      hint: '双击从上游叙事目录中选出一个单元；默认第一项。',
+      empty: '暂无上游叙事单元，请先连接叙事资产并执行'
+    },
     textsPreview: {
       appMark: '文本预览',
       hint: '多段文本以网格预览；双击卡片打开记事本查看全文。',
@@ -1795,6 +1800,7 @@ export default {
         shotEntities: '分镜实体',
         videoEntities: '视频实体',
         narrative: '叙事单元',
+        narrativeEntity: '叙事实体',
         shots: '分镜',
         model: '模型'
       }
@@ -1898,6 +1904,7 @@ export default {
         select: '选择文本'
       },
       narrative: {
+        select: '选择叙事单元',
         split: '叙事单元拆解',
         table: '叙事单元表格',
         gen: '叙事单元生成',

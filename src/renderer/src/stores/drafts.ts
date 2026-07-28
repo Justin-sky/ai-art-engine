@@ -80,7 +80,7 @@ export function draftToAssetInfo(draft: DraftAssetRecord): AssetInfo {
   return {
     id: draft.id,
     type: normalizeAssetType(draft.type),
-    name: draft.name || defaultAssetName(normalizeAssetType(draft.type)),
+    name: draft.name || defaultAssetName(normalizeAssetType(draft.type), String(i18n.global.locale.value)),
     relativePath: draft.relativePath,
     folderId: draft.folderId,
     thumbnailPath: draft.thumbnailPath,

@@ -169,6 +169,7 @@ function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'
+  if (node.typeId === 'narrative.select') return 'text'
   if (
     node.category === 'output' &&
     (node.typeId === 'output.text' || node.params.outputKind === 'text')

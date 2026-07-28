@@ -180,18 +180,8 @@ export function defaultVideoSystemPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_VIDEO_SYSTEM_PROMPT_EN, DEFAULT_VIDEO_SYSTEM_PROMPT_ZH)
 }
 
-/** 旧版一句式默认；存盘节点若仍是这两句，解析时升级为当前默认方案 */
-const LEGACY_VIDEO_SYSTEM_PROMPTS = new Set([
-  'You are a professional video editor and director. Produce clear shot plans, motion cues, and pacing notes that match the requested style and story beats.',
-  '你是一名专业视频剪辑与导演。请产出清晰的镜头规划、运动提示与节奏说明，匹配所需风格与剧情节拍。'
-])
-
 export function resolveVideoSystemPrompt(raw: string | undefined, locale?: string): string {
-  const trimmed = raw?.trim() ?? ''
-  if (!trimmed || LEGACY_VIDEO_SYSTEM_PROMPTS.has(trimmed)) {
-    return defaultVideoSystemPrompt(locale)
-  }
-  return trimmed
+  return resolveOrDefault(raw, locale, defaultVideoSystemPrompt)
 }
 
 // ——— 提示词优化 ———

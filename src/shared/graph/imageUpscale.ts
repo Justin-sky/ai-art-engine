@@ -6,7 +6,7 @@ export type UpscaleVariantId = 'general' | 'portrait' | 'landscape'
 export type UpscaleScale = 2 | 4 | 6
 
 export interface ImageUpscaleState {
-  /** @deprecated 仅保留兼容旧图；一律按图片模型执行 */
+  /** 历史字段；执行路径一律走图片模型 */
   engineId?: 'imageApi'
   variantId: UpscaleVariantId
   scale: UpscaleScale

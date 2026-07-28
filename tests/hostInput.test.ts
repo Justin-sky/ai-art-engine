@@ -191,7 +191,8 @@ describe('host input slots', () => {
   it('opens host with default one slot per port when no parent edges', () => {
     const slots = resolveHostInputSlotsForHostOpen('script', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
-      'in-worldEntities:0:worldEntities'
+      'in-worldEntities:0:worldEntities',
+      'in-narrativeEntity:0:narrativeEntity'
     ])
   })
 
@@ -233,8 +234,10 @@ describe('host input slots', () => {
       ],
       HOST_ID
     )
-    // script 编辑图仅世界槽；叙事不再建输入槽
-    expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual(['in-worldEntities:0'])
+    expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual([
+      'in-worldEntities:0',
+      'in-narrativeEntity:0'
+    ])
   })
 
   it('opens narrative host with text slot only', () => {
@@ -369,6 +372,66 @@ describe('host input slots', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     }
     expect(resolveHostInputSlotsFromParentGraph(selfGraph, HOST_ID)).toEqual([])
+  })
+
+  it('soft-resolves live screenplay graph into world input slots', () => {
+    const SP = '00000000-0000-4000-8000-000000000401'
+    const WD = '00000000-0000-4000-8000-000000000wd'
+    const screenplay: GraphNode = {
+      id: 'sp',
+      typeId: 'asset.screenplay',
+      category: 'asset',
+      position: { x: 80, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: SP,
+      assetType: 'screenplay'
+    }
+    const world: GraphNode = {
+      id: 'wd',
+      typeId: 'asset.world',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: { assetHost: true, assetRef: true },
+      assetId: WD,
+      assetType: 'world'
+    }
+    const parent: GraphDocument = {
+      nodes: [screenplay, world],
+      edges: [
+        { id: 'e1', source: 'sp', target: 'wd', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const liveScreenplay: GraphDocument = {
+      nodes: [
+        {
+          id: 'out',
+          typeId: 'output.text',
+          category: 'output',
+          position: { x: 200, y: 0 },
+          params: { outputKind: 'text', resultText: 'live 剧本文' }
+        }
+      ],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const slots = resolveHostInputSlotsFromParentGraph(parent, WD, {
+      resolveLiveAssetGraph: (id) => (id === SP ? liveScreenplay : undefined)
+    })
+    expect(slots).toHaveLength(1)
+    expect(slots[0]?.text).toBe('live 剧本文')
+  })
+
+  it('does not wipe slot text when soft-resolve returns empty runState', () => {
+    const nodes: GraphNode[] = []
+    const edges: GraphDocument['edges'] = []
+    ensureHostInputSlotNodes(nodes, edges, [
+      { portId: 'in', index: 0, dataType: 'text', text: '已有正文' }
+    ])
+    ensureHostInputSlotNodes(nodes, edges, [
+      { portId: 'in', index: 0, dataType: 'text', text: '' }
+    ])
+    expect(nodes[0]?.params.text).toBe('已有正文')
   })
 
   it('soft-resolves screenplay host text into narrative input slots', () => {

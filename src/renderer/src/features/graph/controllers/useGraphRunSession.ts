@@ -143,26 +143,17 @@ export interface GraphRunSessionOptions {
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 分镜表格节点：输出当前分镜列表 JSON */
-  resolveShotSplitTableJson?: (opts?: { narrativeUnitId?: string }) => string | null
+  resolveShotSplitTableJson?: () => string | null
   /** 分镜表格节点执行时：导入上游拆分 JSON 到分镜列表 */
-  importShotSplitTableJson?: (
-    jsonText: string,
-    opts?: { narrativeUnitId?: string }
-  ) => void | Promise<void>
+  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /** 生成分镜图：收集各镜 visual 图片输出已有结果并写回 genRefs */
-  collectScriptShotImages?: (
-    signal?: AbortSignal,
-    opts?: { narrativeUnitId?: string }
-  ) => Promise<{
+  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
     images: import('@shared/graph').GraphImageItem[]
     aggregateJson: string
     entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
   /** 生成分镜视频：收集各镜子图视频生成节点已有结果并写回 genRefs */
-  collectScriptShotVideos?: (
-    signal?: AbortSignal,
-    opts?: { narrativeUnitId?: string }
-  ) => Promise<{
+  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
     videos: import('@shared/graph').GraphVideoItem[]
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>

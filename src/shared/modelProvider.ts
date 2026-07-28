@@ -330,7 +330,7 @@ export function createProviderInstance(
     modalities: createEmptyModalityMap()
   }
   if (!overrides) return base
-  return normalizeProviderInstance({ ...base, ...overrides })
+  return normalizeProviderInstance({ ...base, ...overrides }) ?? base
 }
 
 /** 目录中的通用模型条目（UI 列表用） */
@@ -454,7 +454,7 @@ export interface VideoInputReference {
   url: string
 }
 
-/** 字符串视为 image_url（兼容旧调用） */
+/** 字符串视为 image_url */
 export type GenerateVideoInputReference = string | VideoInputReference
 
 export interface GenerateVideoInput {
@@ -588,9 +588,9 @@ export function normalizeModelsSettings(raw?: unknown): ModelsSettings {
   const providers = (raw as { providers?: unknown }).providers
   if (!Array.isArray(providers)) return createEmptyModelsSettings()
   return {
-    providers: providers.map((item) =>
-      normalizeProviderInstance((item ?? {}) as Partial<ModelProviderInstance>)
-    )
+    providers: providers
+      .map((item) => normalizeProviderInstance((item ?? {}) as Partial<ModelProviderInstance>))
+      .filter((item): item is ModelProviderInstance => item != null)
   }
 }
 
@@ -642,26 +642,24 @@ function normalizeModalityConfig(raw?: Partial<ModalityModelConfig> | null): Mod
 function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): ProviderModalityMap {
   const empty = createEmptyModalityMap()
   if (!raw || typeof raw !== 'object') return empty
-  const legacyVoice = (raw as Partial<ProviderModalityMap & { voice?: ModalityModelConfig }>).voice
   return {
     text: normalizeModalityConfig(raw.text),
     image: normalizeModalityConfig(raw.image),
     video: normalizeModalityConfig(raw.video),
-    audio: normalizeModalityConfig(raw.audio ?? legacyVoice)
+    audio: normalizeModalityConfig(raw.audio)
   }
 }
 
-function normalizeProviderKind(raw: unknown): ModelProviderKind {
-  if (raw === 'volcengine-ark') return 'volcengine-ark'
-  if (raw === 'kling') return 'kling'
-  if (raw === 'minimax' || raw === 'hailuo' || raw === '海螺') return 'minimax'
-  if (raw === 'dashscope' || raw === 'qwen') return 'dashscope'
-  if (raw === 'modelscope' || raw === '魔塔' || raw === '魔搭') return 'modelscope'
-  return 'openrouter'
+function normalizeProviderKind(raw: unknown): ModelProviderKind | null {
+  if (typeof raw !== 'string') return null
+  return MODEL_PROVIDER_KINDS.some((p) => p.id === raw) ? (raw as ModelProviderKind) : null
 }
 
-function normalizeProviderInstance(item: Partial<ModelProviderInstance>): ModelProviderInstance {
+function normalizeProviderInstance(
+  item: Partial<ModelProviderInstance>
+): ModelProviderInstance | null {
   const kind = normalizeProviderKind(item.providerKind)
+  if (!kind) return null
   const meta = MODEL_PROVIDER_KINDS.find((p) => p.id === kind)!
   return {
     id: typeof item.id === 'string' && item.id ? item.id : newLocalId(),

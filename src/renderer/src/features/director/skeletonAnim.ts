@@ -31,26 +31,6 @@ export function skeletonSegmentLocalTime(
   return { active: true, time: local }
 }
 
-/**
- * @deprecated 使用 skeletonSegmentLocalTime；保留给旧单 clip 轨兼容
- */
-export function skeletonLocalTime(
-  globalTime: number,
-  track: Pick<DirectorAnimTrack, 'start' | 'end' | 'skeletonSpeed' | 'skeletonLoop'>,
-  clipDuration: number
-): SkeletonSeekResult {
-  return skeletonSegmentLocalTime(
-    globalTime,
-    {
-      start: track.start,
-      end: track.end,
-      speed: track.skeletonSpeed,
-      loop: track.skeletonLoop
-    },
-    clipDuration
-  )
-}
-
 /** 在全局时间点上找到当前应播放的骨骼片段（后写优先：取覆盖该时刻的最后一段） */
 export function findActiveSkeletonSegment(
   track: DirectorAnimTrack,

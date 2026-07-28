@@ -44,7 +44,7 @@ describe('audio array IO', () => {
     ])
   })
 
-  it('generateSpeech result becomes voices and appends generatedVoices', async () => {
+  it('generateSpeech result becomes selected voice and appends generatedVoices', async () => {
     const node = baseNode({
       params: { generateInstruction: '温柔女声' }
     })
@@ -62,6 +62,11 @@ describe('audio array IO', () => {
     }
     const result = await executeVoiceGenerateNode(ctx)
     expect(result.out).toMatchObject({
+      kind: 'voice',
+      id: 'voice-1',
+      relativePath: 'Assets/Voice/Audio/voice.mp3'
+    })
+    expect(result['out-all']).toMatchObject({
       kind: 'voices',
       items: [{ id: 'voice-1', relativePath: 'Assets/Voice/Audio/voice.mp3' }]
     })

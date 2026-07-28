@@ -560,12 +560,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return obj.kind !== 'empty'
   }
 
-  function syncActiveViewerMirror(): void {
-    const active = activeCameraState()
-    stage.value.activeCameraId = active.id
-    stage.value.viewer = { ...active.viewer }
-  }
-
   const hierarchyItems = computed(() => {
     const items: {
       id: string
@@ -746,7 +740,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       return
     }
     updateCamera(selected.id, { viewer: next })
-    if (stage.value.activeCameraId === selected.id) syncActiveViewerMirror()
     if (viewMode.value === 'camera') applyCameraView()
     syncShotVisuals()
     previewRevision.value += 1
@@ -1897,7 +1890,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     applyAllBonePoses()
     syncShotVisuals()
     if (viewMode.value === 'camera') applyCameraView()
-    else if (stage.value.activeCameraId) syncActiveViewerMirror()
     previewRevision.value += 1
   }
 
@@ -2905,12 +2897,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const sorted = [...nextClips].sort((a, b) => a.start - b.start)
     anim.tracks[idx] = {
       ...track,
-      skeletonClips: sorted,
-      // ???? clip ???????? migrate ??
-      skeletonClip: undefined,
-      skeletonAssetId: undefined,
-      skeletonSpeed: undefined,
-      skeletonLoop: undefined
+      skeletonClips: sorted
     }
     if (
       animSelectedSkeletonClipId.value &&
@@ -3057,56 +3044,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     animSelectedTrackId.value = trackId
     animSelectedSkeletonClipId.value = firstAddedId
     return true
-  }
-
-  /** @deprecated ????Inspector????????? */
-  function setAnimTrackSkeleton(
-    trackId: string,
-    opts: {
-      clip?: string | null
-      speed?: number
-      loop?: boolean
-      assetId?: string | null
-    }
-  ): void {
-    const track = ensureAnimation().tracks.find((t) => t.id === trackId)
-    if (!track || track.targetKind !== 'object') return
-    const clips = directorTrackSkeletonClips(track)
-    const selected =
-      clips.find((item) => item.id === animSelectedSkeletonClipId.value) ?? clips[0]
-    if (!selected) {
-      if (opts.clip && opts.clip.trim()) {
-        const placed = placeSkeletonSegmentRange(
-          [],
-          track.start,
-          Math.max(0.5, track.end - track.start),
-          ensureAnimation().duration
-        )
-        if (!placed) return
-        patchTrackSkeletonClips(trackId, [
-          {
-            id: `skel:${crypto.randomUUID()}`,
-            clip: opts.clip.trim(),
-            start: placed.start,
-            end: placed.end,
-            ...(opts.assetId?.trim() ? { assetId: opts.assetId.trim() } : {}),
-            ...(opts.speed != null ? { speed: opts.speed } : {}),
-            ...(opts.loop === false ? { loop: false } : {})
-          }
-        ])
-      }
-      return
-    }
-    if (opts.clip === null || opts.clip === '') {
-      removeSkeletonClipSegment(trackId, selected.id)
-      return
-    }
-    updateSkeletonClipSegment(trackId, selected.id, {
-      clip: opts.clip,
-      speed: opts.speed,
-      loop: opts.loop,
-      assetId: opts.assetId
-    })
   }
 
   function clearAnimTrackSkeletonAsset(trackId: string): void {
@@ -3421,14 +3358,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         viz.camera.quaternion.copy(viz.root.quaternion)
         viz.helper.update()
       }
-      if (stage.value.activeCameraId === track.targetId) {
-        stage.value.viewer = { ...viewer }
-        if (viewMode.value === 'camera' && camera) {
-          camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
-          camera.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
-          camera.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
-          camera.lookAt(viewer.target.x, viewer.target.y, viewer.target.z)
-        }
+      if (stage.value.activeCameraId === track.targetId && viewMode.value === 'camera' && camera) {
+        camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
+        camera.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, 'XYZ')
+        camera.scale.set(sample.scale.x, sample.scale.y, sample.scale.z)
+        camera.lookAt(viewer.target.x, viewer.target.y, viewer.target.z)
       }
     }
   }
@@ -4047,8 +3981,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function hasStoredStageViewer(raw: unknown): boolean {
-    return !!raw && typeof raw === 'object' && !!(raw as Record<string, unknown>).viewer
+  function hasStoredCameraViewer(raw: unknown): boolean {
+    if (!raw || typeof raw !== 'object') return false
+    const cameras = (raw as Record<string, unknown>).cameras
+    if (!Array.isArray(cameras)) return false
+    return cameras.some(
+      (cam) => !!cam && typeof cam === 'object' && !!(cam as Record<string, unknown>).viewer
+    )
   }
 
   function directorStagePatch() {
@@ -4062,7 +4001,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       selectedObjectId: selectionKind.value === 'object' ? selectedObjectId.value : null,
       cameras: listCameras(),
       activeCameraId: stage.value.activeCameraId,
-      viewer: activeCameraState().viewer,
       gridVisible: stage.value.gridVisible !== false,
       gridOpacity: clampGridOpacity(stage.value.gridOpacity ?? DEFAULT_GRID_OPACITY),
       gridOffsetY: stage.value.gridOffsetY ?? DEFAULT_GRID_OFFSET_Y,
@@ -4091,11 +4029,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const nodeId = boundProcessingNodeId()
     const previousFingerprint = appliedStageFingerprint
     const stored =
-      (nodeId &&
-        (patch.genParams as { stagesByNodeId?: Record<string, unknown> }).stagesByNodeId?.[
-          nodeId
-        ]) ||
-      patch.genParams.stage
+      nodeId &&
+      (patch.genParams as { stagesByNodeId?: Record<string, unknown> }).stagesByNodeId?.[nodeId]
     appliedStageFingerprint = fingerprintStage(stored)
     try {
       skipAssetWatch = true
@@ -4238,7 +4173,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           z: viz.root.position.z + forward.z * lookDist
         }
       } })
-      if (stage.value.activeCameraId === id) syncActiveViewerMirror()
       viz.root.scale.set(1, 1, 1)
       viz.helper.update()
       previewRevision.value += 1
@@ -4579,7 +4513,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     stage.value.cameras = [...cameras, camera]
     ensureShotCameraVisual(camera)
     selectCamera(id)
-    syncActiveViewerMirror()
     schedulePersist()
     requestRender()
     return id
@@ -4712,7 +4645,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       disposeShotCameraVisual(id)
       if (wasActive) stage.value.activeCameraId = cameras[0].id
       if (wasSelected) selectCamera(stage.value.activeCameraId ?? cameras[0].id)
-      syncActiveViewerMirror()
       previewRevision.value += 1
       requestRender()
       schedulePersist()
@@ -4942,7 +4874,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     selectedCameraId.value = id
     selectionKind.value = 'camera'
     stage.value.activeCameraId = id
-    syncActiveViewerMirror()
     if (viewMode.value === 'camera') applyCameraView()
     applySelectionToScene()
     syncShotVisuals()
@@ -5166,7 +5097,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         target: { x: target.x, y: target.y, z: target.z }
       }
     })
-    if (stage.value.activeCameraId === id) syncActiveViewerMirror()
     return true
   }
 
@@ -5280,7 +5210,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const active = activeCameraState()
     if (active.locked) return
     updateCamera(active.id, { viewer: createDefaultDirectorViewer() })
-    syncActiveViewerMirror()
     syncShotVisuals()
     previewRevision.value += 1
     requestRender()
@@ -6384,12 +6313,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const keepKind = selectionKind.value
       stage.value = resolved
       const storedForNode = nodeId ? map[nodeId] : undefined
-      if (!hasStoredStageViewer(storedForNode ?? a.genParams?.stage)) {
+      if (!hasStoredCameraViewer(storedForNode)) {
         const graphViewer = directorProcessingNode()?.params.viewer
         if (graphViewer) {
           const active = activeCameraState()
           updateCamera(active.id, { viewer: graphViewer })
-          syncActiveViewerMirror()
         }
       }
       linkedPanoramaId.value = stage.value.linkedPanoramaAssetId ?? null
@@ -6441,12 +6369,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const nodeId = boundProcessingNodeId()
     const map = readStagesByNodeId(asset.value?.genParams, asset.value?.genParams?.graphJson)
     const stored = nodeId ? map[nodeId] : undefined
-    if (!hasStoredStageViewer(stored ?? asset.value?.genParams?.stage)) {
+    if (!hasStoredCameraViewer(stored)) {
       const graphViewer = directorProcessingNode()?.params.viewer
       if (graphViewer) {
         const active = activeCameraState()
         updateCamera(active.id, { viewer: graphViewer })
-        syncActiveViewerMirror()
       }
     }
     initThree()
@@ -6585,7 +6512,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setAnimTrackRange,
     setAnimTrackOrientToPath,
     setAnimTrackPathForwardAxis,
-    setAnimTrackSkeleton,
     applyAnimationAssetToAnimTrack,
     clearAnimTrackSkeletonAsset,
     selectSkeletonClipSegment,

@@ -40,11 +40,6 @@ export const DEFAULT_LIP_SYNC_VIDEO_USER_PROMPT_EN =
 export const DEFAULT_LIP_SYNC_VIDEO_USER_PROMPT_ZH =
   '保持视频1中的角色形象、运镜与动作，让角色口型严格跟随音频1说话。尽量保留原视频场景与节奏，无字幕无水印。'
 
-/** @deprecated 使用 DEFAULT_LIP_SYNC_IMAGE_USER_PROMPT_* */
-export const DEFAULT_LIP_SYNC_USER_PROMPT_EN = DEFAULT_LIP_SYNC_IMAGE_USER_PROMPT_EN
-/** @deprecated 使用 DEFAULT_LIP_SYNC_IMAGE_USER_PROMPT_* */
-export const DEFAULT_LIP_SYNC_USER_PROMPT_ZH = DEFAULT_LIP_SYNC_IMAGE_USER_PROMPT_ZH
-
 export function defaultLipSyncSystemPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_LIP_SYNC_SYSTEM_PROMPT_EN, DEFAULT_LIP_SYNC_SYSTEM_PROMPT_ZH)
 }

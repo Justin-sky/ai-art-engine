@@ -9,12 +9,11 @@ import {
   findActiveSkeletonSegment,
   placeSkeletonSegmentRange,
   skeletonClipLabel,
-  skeletonLocalTime,
   skeletonSegmentLocalTime
 } from '../src/renderer/src/features/director/skeletonAnim'
 
 describe('director skeleton animation', () => {
-  it('migrates legacy skeletonClip into skeletonClips', () => {
+  it('ignores legacy skeletonClip fields without skeletonClips', () => {
     const anim = readDirectorAnimation({
       duration: 8,
       loop: true,
@@ -36,17 +35,8 @@ describe('director skeleton animation', () => {
       ]
     })
     expect(anim.tracks).toHaveLength(1)
-    expect(anim.tracks[0].skeletonClips).toEqual([
-      {
-        id: 'skel:t1:legacy',
-        clip: 'Walk',
-        assetId: 'anim-asset-1',
-        start: 0,
-        end: 5,
-        speed: 1.5,
-        loop: false
-      }
-    ])
+    expect(anim.tracks[0].skeletonClips).toBeUndefined()
+    expect(directorTrackSkeletonClips(anim.tracks[0])).toEqual([])
   })
 
   it('keeps multi skeletonClips segments', () => {
@@ -144,12 +134,6 @@ describe('director skeleton animation', () => {
     expect(
       skeletonSegmentLocalTime(3, { start: 1, end: 10, speed: 2, loop: true }, 1.5)
     ).toEqual({ active: true, time: 1 })
-  })
-
-  it('skeletonLocalTime still works for legacy callers', () => {
-    expect(
-      skeletonLocalTime(0.5, { start: 1, end: 3, skeletonSpeed: 1, skeletonLoop: true }, 2)
-    ).toEqual({ active: false })
   })
 
   it('skeletonClipLabel shortens Mixamo pipe paths', () => {

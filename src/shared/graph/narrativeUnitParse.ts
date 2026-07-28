@@ -190,6 +190,51 @@ export function stringifyNarrativeUnitRows(rows: NarrativeUnitRow[]): string {
   )
 }
 
+/** 单个叙事实体 JSON（对象；亦接受单元素数组） */
+export function parseNarrativeEntityJson(
+  raw: string | null | undefined
+): NarrativeUnitRow | null {
+  if (!raw?.trim()) return null
+  const text = stripJsonCodeFence(raw)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    const arr = parseNarrativeUnitJson(text)
+    return arr?.[0] ?? null
+  }
+  if (Array.isArray(parsed)) {
+    const rows = parseNarrativeUnitJson(JSON.stringify(parsed))
+    return rows?.[0] ?? null
+  }
+  if (parsed && typeof parsed === 'object') {
+    return normalizeRow(parsed, 0)
+  }
+  return null
+}
+
+export function stringifyNarrativeEntity(row: NarrativeUnitRow): string {
+  return JSON.stringify(
+    {
+      id: row.id,
+      title: row.title,
+      order: row.order,
+      summary: row.summary,
+      dramaticFunction: row.dramaticFunction,
+      characters: row.characters.map(serializeWorldRef),
+      scenes: row.scenes.map(serializeWorldRef),
+      props: row.props.map(serializeWorldRef),
+      weapons: row.weapons.map(serializeWorldRef),
+      sourceExcerpt: row.sourceExcerpt,
+      emotionalBeat: row.emotionalBeat,
+      durationHint: row.durationHint,
+      status: normalizeShotReviewStatus(row.status)
+    },
+    null,
+    2
+  )
+}
+
 /** 叙事单元全文（列表详情 / texts 输出口） */
 export function formatNarrativeUnitFullText(row: NarrativeUnitRow): string {
   const lines: string[] = [`${row.order}. ${row.title}`.trim()]
@@ -300,8 +345,6 @@ export function extractNarrativeUnitJsonText(
     if (own) return own
   }
 
-  const split = doc.nodes.find(
-    (node) => node.typeId === 'narrative.split' || node.typeId === 'screenplay.narrativeSplit'
-  )
+  const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
   return (split && nodeCatalogPayload(doc, split.id)) || null
 }

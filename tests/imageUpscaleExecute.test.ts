@@ -46,7 +46,8 @@ describe('executeUpscaleNode input', () => {
     expect(generateImage.mock.calls[0]?.[0]?.inputReferences).toEqual([
       'data:image/png;base64,src'
     ])
-    expect(out.out?.kind).toBe('images')
+    expect(out.out?.kind).toBe('image')
+    expect(out['out-all']?.kind).toBe('images')
   })
 
   it('accepts upstream images values', async () => {

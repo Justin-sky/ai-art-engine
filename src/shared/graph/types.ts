@@ -18,12 +18,6 @@ import type { ImageMatteState } from './imageMatte'
 import type { ImageCropState } from './imageCrop'
 import type { ImageGridSplitState } from './imageGridSplit'
 
-/**
- * 历史统一输出节点 id（分镜时代遗留）。
- * 加载时由 normalize 迁移为 {@link graphOutputNodeId} / 专用输出 id。
- */
-export const LEGACY_GRAPH_OUTPUT_NODE_ID = 'shot-output'
-
 /** 按输出类型的规范单例 id */
 export const GRAPH_OUTPUT_NODE_IDS = {
   image: 'image-output',
@@ -39,11 +33,6 @@ export const GRAPH_OUTPUT_NODE_IDS = {
 
 export type GraphOutputNodeIdKey = keyof typeof GRAPH_OUTPUT_NODE_IDS
 
-/**
- * @deprecated 请用 {@link graphOutputNodeId}；默认指向视频输出以兼容旧分镜工作流引用。
- */
-export const GRAPH_OUTPUT_NODE_ID = GRAPH_OUTPUT_NODE_IDS.video
-
 /** 分镜资产图：分镜拆分节点 */
 export const GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID = 'script-shot-split'
 
@@ -56,12 +45,6 @@ export const GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID = 'script-shot-image-gen'
 /** 分镜资产图：生成分镜视频入口节点 */
 export const GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID = 'script-shot-video-gen'
 
-/**
- * @deprecated 使用 {@link GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID}
- * 旧图 `script.shotEditor` 会迁移为视频生成节点。
- */
-export const GRAPH_SCRIPT_SHOT_EDITOR_NODE_ID = GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID
-
 /** 分镜工作流：分镜参数节点（从 Inspector 组装提示词） */
 export const GRAPH_SCRIPT_SHOT_PARAMS_NODE_ID = 'script-shot-params'
 
@@ -73,9 +56,6 @@ export const GRAPH_NARRATIVE_TABLE_NODE_ID = 'narrative-table'
 
 /** 叙事单元资产图：叙事编辑入口节点 */
 export const GRAPH_NARRATIVE_GEN_NODE_ID = 'narrative-gen'
-
-/** @deprecated 使用 {@link GRAPH_NARRATIVE_SPLIT_NODE_ID} */
-export const GRAPH_SCREENPLAY_NARRATIVE_SPLIT_NODE_ID = GRAPH_NARRATIVE_SPLIT_NODE_ID
 
 /** 世界元素资产图：世界元素提取节点 */
 export const GRAPH_WORLD_EXTRACT_NODE_ID = 'world-extract'
@@ -124,12 +104,9 @@ export function graphOutputNodeIdForType(
   return graphOutputNodeId(kind)
 }
 
-const CANONICAL_OUTPUT_NODE_IDS = new Set<string>([
-  LEGACY_GRAPH_OUTPUT_NODE_ID,
-  ...Object.values(GRAPH_OUTPUT_NODE_IDS)
-])
+const CANONICAL_OUTPUT_NODE_IDS = new Set<string>(Object.values(GRAPH_OUTPUT_NODE_IDS))
 
-/** 是否为规范 / 遗留的输出单例 id（不含画布上额外添加的随机 id） */
+/** 是否为规范输出单例 id（不含画布上额外添加的随机 id） */
 export function isCanonicalGraphOutputNodeId(id: string): boolean {
   return CANONICAL_OUTPUT_NODE_IDS.has(id)
 }
@@ -140,7 +117,7 @@ export type GraphPortDirection = 'in' | 'out'
  * 连线规则：同类型可连，异类型不可连（复数≠单数）。
  * 图库「全部」口与 select 输入使用 images/videos/voices/texts；
  * 默认 `out` 与消费方使用单数类型。
- * world / worldEntities / shotEntities / videoEntities / narrative / shots 为目录 JSON 专用口，不可与 text 互通。
+ * world / worldEntities / shotEntities / videoEntities / narrative / narrativeEntity / shots 为目录 JSON 专用口，不可与 text 互通。
  */
 export const GraphPortType = {
   image: 'image',
@@ -159,6 +136,8 @@ export const GraphPortType = {
   /** 分镜视频生成结果实体表（id/name/videoUrls），与单视频口 video 区分 */
   videoEntities: 'videoEntities',
   narrative: 'narrative',
+  /** 单个叙事单元实体（一行 JSON），与目录口 narrative 区分 */
+  narrativeEntity: 'narrativeEntity',
   shots: 'shots',
   model: 'model'
 } as const
@@ -170,6 +149,7 @@ export type GraphCatalogKind =
   | typeof GraphPortType.shotEntities
   | typeof GraphPortType.videoEntities
   | typeof GraphPortType.narrative
+  | typeof GraphPortType.narrativeEntity
   | typeof GraphPortType.shots
 
 export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
@@ -178,6 +158,7 @@ export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
   GraphPortType.shotEntities,
   GraphPortType.videoEntities,
   GraphPortType.narrative,
+  GraphPortType.narrativeEntity,
   GraphPortType.shots
 ]
 
@@ -254,6 +235,7 @@ export type GraphNodeTypeId =
   | 'video.select'
   | 'voice.select'
   | 'text.select'
+  | 'narrative.select'
   | 'narrative.split'
   | 'narrative.table'
   | 'narrative.gen'
@@ -435,6 +417,8 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedTextId?: string
+  /** 选择叙事单元节点：当前选中的 NarrativeUnitRow.id */
+  selectedUnitId?: string
   /**
    * 当前选中的声音 id：生成节点 `out` 默认输出口。
    * 每次运行成功后强制切到最新一条。
@@ -504,7 +488,7 @@ export interface GraphNode {
   typeId?: GraphNodeTypeId
   category: GraphNodeCategory
   /**
-   * 工程资产 GUID（内存主字段，兼容旧图）。
+   * 工程资产 GUID（内存主字段）。
    * 落盘时可同时写 `assetRef`（TaggedAssetRef）；hydrate 时二者会同步。
    */
   assetId?: string

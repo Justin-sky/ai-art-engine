@@ -14,7 +14,7 @@ const IDS = {
 } as const
 
 describe('buildSeriesStarterGraph', () => {
-  it('places host nodes and wires screenplay → narrative/world → script → timeline', () => {
+  it('places host nodes and wires screenplay → narrative/world → select → script → timeline', () => {
     const graph = buildSeriesStarterGraph({
       screenplay: { id: IDS.screenplay, name: 'Screenplay', type: 'screenplay' },
       world: { id: IDS.world, name: 'World', type: 'world' },
@@ -22,8 +22,8 @@ describe('buildSeriesStarterGraph', () => {
       script: { id: IDS.script, name: 'Shot', type: 'script' }
     })
 
-    expect(graph.nodes).toHaveLength(5)
-    expect(graph.edges).toHaveLength(5)
+    expect(graph.nodes).toHaveLength(6)
+    expect(graph.edges).toHaveLength(6)
 
     const byAsset = Object.fromEntries(
       graph.nodes.filter((n) => n.assetId).map((n) => [n.assetId, n])
@@ -32,15 +32,20 @@ describe('buildSeriesStarterGraph', () => {
     const narrative = byAsset[IDS.narrative]!
     const world = byAsset[IDS.world]!
     const script = byAsset[IDS.script]!
+    const select = graph.nodes.find((n) => n.typeId === 'narrative.select')!
     const timeline = graph.nodes.find((n) => n.id === GRAPH_OUTPUT_NODE_IDS.timeline)
 
     expect(timeline?.typeId).toBe('output.timeline')
+    expect(select).toBeTruthy()
     expect(canConnectNodes(screenplay, narrative, { targetPort: 'in' })).toBe(true)
     expect(canConnectNodes(screenplay, world, { targetPort: 'in' })).toBe(true)
     expect(
       canConnectNodes(world, script, { targetPort: 'in-worldEntities' })
     ).toBe(true)
-    expect(canConnectNodes(narrative, script, { targetPort: 'in-narrative' })).toBe(true)
+    expect(canConnectNodes(narrative, select, { targetPort: 'in' })).toBe(true)
+    expect(
+      canConnectNodes(select, script, { targetPort: 'in-narrativeEntity' })
+    ).toBe(true)
     expect(canConnectNodes(script, timeline!, { targetPort: 'in' })).toBe(true)
 
     const edgeKeys = graph.edges
@@ -48,7 +53,8 @@ describe('buildSeriesStarterGraph', () => {
       .sort()
     expect(edgeKeys).toEqual(
       [
-        `${narrative.id}->${script.id}:out->in-narrative`,
+        `${narrative.id}->${select.id}:out->in`,
+        `${select.id}->${script.id}:out->in-narrativeEntity`,
         `${screenplay.id}->${narrative.id}:out->in`,
         `${screenplay.id}->${world.id}:out->in`,
         `${script.id}->${timeline!.id}:out->in`,
@@ -67,7 +73,8 @@ describe('buildSeriesStarterGraph', () => {
     const script = graph.nodes.find((n) => n.assetId === IDS.script)!
     const world = graph.nodes.find((n) => n.assetId === IDS.world)!
     const narrative = graph.nodes.find((n) => n.assetId === IDS.narrative)!
-    expect(getNodePorts(script).some((p) => p.id === 'in-narrative')).toBe(true)
+    expect(getNodePorts(script).some((p) => p.id === 'in-narrativeEntity')).toBe(true)
+    expect(getNodePorts(script).some((p) => p.id === 'in-narrative')).toBe(false)
     expect(getNodePorts(script).some((p) => p.id === 'in-image')).toBe(false)
     expect(getNodePorts(script).find((p) => p.id === 'out')?.dataType).toBe('videoEntities')
     expect(getNodePorts(world).find((p) => p.id === 'out')?.dataType).toBe('worldEntities')

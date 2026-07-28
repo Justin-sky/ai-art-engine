@@ -31,15 +31,6 @@ export function listDirectorProcessingNodes(graphJson: unknown): GraphNode[] {
   return nodes.filter((node) => isDirectorProcessingNode(node))
 }
 
-export function readStageOwnerNodeId(
-  genParams: Record<string, unknown> | undefined
-): string | null {
-  const raw = genParams?.stage
-  if (!raw || typeof raw !== 'object') return null
-  const id = (raw as Record<string, unknown>).ownerProcessingNodeId
-  return typeof id === 'string' && id.trim() ? id.trim() : null
-}
-
 /** 当前图内编辑节点与已保存舞台的绑定是否仍有效。 */
 export function shouldResetDirectorStage(
   boundOwnerId: string | null,
@@ -62,8 +53,7 @@ function seedStageFromProcessingNode(
   )
   return {
     ...stage,
-    cameras,
-    viewer: { ...viewer }
+    cameras
   }
 }
 
@@ -78,10 +68,10 @@ function normalizeStoredStage(raw: unknown): DirectorStageState | null {
   return readDirectorStage({ stage: raw })
 }
 
-/** 读取各导演台编辑节点的独立场景表（含从旧版 genParams.stage 迁移）。 */
+/** 读取各导演台编辑节点的独立场景表（只认 stagesByNodeId）。 */
 export function readStagesByNodeId(
   genParams: Record<string, unknown> | undefined,
-  graphJson?: unknown
+  _graphJson?: unknown
 ): Record<string, DirectorStageState> {
   const result: Record<string, DirectorStageState> = {}
   const rawMap = genParams?.[DIRECTOR_STAGES_BY_NODE_KEY]
@@ -93,20 +83,6 @@ export function readStagesByNodeId(
       result[nodeId] = stage
     }
   }
-
-  // 旧版单 stage：挂到 owner 或图中第一个加工节点
-  if (Object.keys(result).length === 0 && genParams?.stage) {
-    const legacy = readDirectorStage(genParams)
-    const owner =
-      (typeof legacy.ownerProcessingNodeId === 'string' && legacy.ownerProcessingNodeId) ||
-      findDirectorProcessingNode(graphJson)?.id ||
-      null
-    if (owner) {
-      legacy.ownerProcessingNodeId = owner
-      result[owner] = legacy
-    }
-  }
-
   return result
 }
 
@@ -126,29 +102,10 @@ export function resolveDirectorStageForNode(
     return existing
   }
 
-  // 兼容：仅有旧 stage 且 owner 匹配 / 未标 owner
-  if (genParams?.stage) {
-    const legacy = readDirectorStage(genParams)
-    const owner = readStageOwnerNodeId(genParams)
-    if (!owner || owner === nodeId) {
-      legacy.ownerProcessingNodeId = nodeId
-      return legacy
-    }
-  }
-
   return createFreshDirectorStage(node)
 }
 
-/** @deprecated 使用 resolveDirectorStageForNode；保留给旧调用方 */
-export function resolveDirectorStageFromAsset(
-  genParams: Record<string, unknown> | undefined,
-  graphJson: unknown
-): DirectorStageState {
-  const processingNode = findDirectorProcessingNode(graphJson)
-  return resolveDirectorStageForNode(genParams, graphJson, processingNode?.id ?? null)
-}
-
-/** 写入某一节点的舞台，并同步镜像到 genParams.stage（兼容旧读取路径）。 */
+/** 写入某一节点的舞台到 genParams.stagesByNodeId。 */
 export function patchGenParamsWithNodeStage(
   genParams: Record<string, unknown> | undefined,
   nodeId: string,
@@ -163,14 +120,14 @@ export function patchGenParamsWithNodeStage(
       : {}
   const nextStage = { ...stage, ownerProcessingNodeId: nodeId }
   prevMap[nodeId] = nextStage
+  const { stage: _legacyStage, ...rest } = base
   return {
-    ...base,
-    [DIRECTOR_STAGES_BY_NODE_KEY]: prevMap,
-    stage: nextStage
+    ...rest,
+    [DIRECTOR_STAGES_BY_NODE_KEY]: prevMap
   }
 }
 
-/** 删除若干节点对应的舞台；若删光则清空 stage 镜像。 */
+/** 删除若干节点对应的舞台。 */
 export function removeNodeStagesFromGenParams(
   genParams: Record<string, unknown> | undefined,
   nodeIds: string[],
@@ -185,28 +142,10 @@ export function removeNodeStagesFromGenParams(
     serializable[id] = { ...stage, ownerProcessingNodeId: id }
   }
 
-  const remainingIds = Object.keys(serializable)
-  if (!remainingIds.length) {
-    const { [DIRECTOR_STAGES_BY_NODE_KEY]: _removed, stage: _stage, ...rest } = base
-    return {
-      ...rest,
-      [DIRECTOR_STAGES_BY_NODE_KEY]: {},
-      stage: createDefaultDirectorStage()
-    }
-  }
-
-  const mirrorId =
-    (typeof base.stage === 'object' &&
-      base.stage &&
-      typeof (base.stage as DirectorStageState).ownerProcessingNodeId === 'string' &&
-      remainingIds.includes((base.stage as DirectorStageState).ownerProcessingNodeId!))
-      ? (base.stage as DirectorStageState).ownerProcessingNodeId!
-      : remainingIds[0]
-
+  const { stage: _legacyStage, ...rest } = base
   return {
-    ...base,
-    [DIRECTOR_STAGES_BY_NODE_KEY]: serializable,
-    stage: serializable[mirrorId!]
+    ...rest,
+    [DIRECTOR_STAGES_BY_NODE_KEY]: serializable
   }
 }
 

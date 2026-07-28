@@ -147,8 +147,6 @@ interface GraphTaskInternal extends GraphTask {
   /** 宿主内图：已注入输入槽的 prior */
   priorNodeStates?: Record<string, GraphNodeRunState>
   skipCompletedNodes?: boolean
-  /** 分镜宿主注入的叙事目录，供 unitRef */
-  narrativeCatalogText?: string
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -467,7 +465,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     target: GraphTaskTarget
     priorNodeStates?: Record<string, GraphNodeRunState>
     skipCompletedNodes?: boolean
-    narrativeCatalogText?: string
   }): EnqueueWorkflowResult {
     if (hasActiveTaskForTarget(input.target)) {
       return { ok: false, reason: 'duplicate' }
@@ -491,8 +488,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       abort,
       sessionEpoch: useProjectStore().sessionEpoch,
       priorNodeStates: input.priorNodeStates,
-      skipCompletedNodes: input.skipCompletedNodes,
-      narrativeCatalogText: input.narrativeCatalogText
+      skipCompletedNodes: input.skipCompletedNodes
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -697,8 +693,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         graph: input.document,
         target,
         priorNodeStates: input.priorNodeStates,
-        skipCompletedNodes: true,
-        narrativeCatalogText: input.narrativeCatalogText
+        skipCompletedNodes: true
       })
       if (enqueued.ok) {
         taskId = enqueued.id
@@ -1065,10 +1060,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         resolveNarrativeUnit: (unitId) => {
           const id = unitId.trim()
           if (!id) return null
-          if (task.narrativeCatalogText) {
-            const rows = parseNarrativeUnitJson(task.narrativeCatalogText) ?? []
-            return rows.find((row) => row.id === id) ?? null
-          }
           if (task.target.kind === 'asset') {
             const assetId = task.target.assetId
             const project = useProjectStore()
@@ -1081,7 +1072,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           return null
         },
-        resolveShotSplitTableJson: (opts) => {
+        resolveShotSplitTableJson: () => {
           if (task.target.kind !== 'asset') return null
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1089,17 +1080,13 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
             return null
           }
-          const unit = opts?.narrativeUnitId?.trim()
-          const base =
+          const shots =
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          const shots = unit
-            ? base.filter((s) => s.narrativeUnitId === unit)
-            : base.filter((s) => !s.narrativeUnitId?.trim())
           if (!shots.length) return null
           return stringifyShotSplitRows(shotsToShotSplitRows(shots))
         },
-        importShotSplitTableJson: async (jsonText, opts) => {
+        importShotSplitTableJson: async (jsonText) => {
           if (task.target.kind !== 'asset') return
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1107,9 +1094,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
             return
           }
-          await applyShotSplitJson(scriptId, jsonText, opts?.narrativeUnitId)
+          await applyShotSplitJson(scriptId, jsonText)
         },
-        collectScriptShotImages: async (signal, opts) => {
+        collectScriptShotImages: async (signal) => {
           if (task.target.kind !== 'asset') return null
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1117,13 +1104,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
             return null
           }
-          const unit = opts?.narrativeUnitId?.trim()
-          const base =
+          const shots =
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          const shots = unit
-            ? base.filter((s) => s.narrativeUnitId === unit)
-            : base.filter((s) => !s.narrativeUnitId?.trim())
           if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
           const batch = enqueueScriptShotBatch({
             scriptAssetId: scriptId,
@@ -1134,7 +1117,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           await waitForTaskIds(batch.taskIds)
           return collectScriptShotImages({ scriptAssetId: scriptId, shots, signal })
         },
-        collectScriptShotVideos: async (signal, opts) => {
+        collectScriptShotVideos: async (signal) => {
           if (task.target.kind !== 'asset') return null
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1142,13 +1125,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
             return null
           }
-          const unit = opts?.narrativeUnitId?.trim()
-          const base =
+          const shots =
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          const shots = unit
-            ? base.filter((s) => s.narrativeUnitId === unit)
-            : base.filter((s) => !s.narrativeUnitId?.trim())
           if (!shots.length) return { videos: [], entities: [] }
           const batch = enqueueScriptShotBatch({
             scriptAssetId: scriptId,

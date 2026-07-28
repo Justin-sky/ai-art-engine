@@ -24,12 +24,6 @@ function labelFor(kind: VolcengineArkVideoMentionKind, index: number): string {
   return `图片${index}`
 }
 
-/** 将遗留「图n」规范为官方「图片n」（不改已是「图片n」的写法）。 */
-export function normalizeVolcengineArkVideoImageLabels(prompt: string): string {
-  if (!prompt) return prompt
-  return prompt.replace(/(?<!片)图(\d+)/g, '图片$1')
-}
-
 /**
  * 按 input_references 顺序（与执行侧 @n 一致）把 `@n` 改成 Seedance 官方指代。
  * `hasFirstFrame` / `hasLastFrame` 会占用「图片」序号前缀。
@@ -66,14 +60,12 @@ export function rewriteAtMentionsForVolcengineArkVideoPrompt(
     }
   })
 
-  const withMentions = prompt.replace(/(^|[^\w@])@(\d+)\b/g, (full, prefix: string, num: string) => {
+  return prompt.replace(/(^|[^\w@])@(\d+)\b/g, (full, prefix: string, num: string) => {
     const index = Number(num)
     const mapped = byMention.get(index)
     if (mapped) return `${prefix}${mapped}`
-    // 无参考列表时：按图片序号兜底（比旧的「图n」更贴近 Seedance）
+    // 无参考列表时：按图片序号兜底
     if (!refs.length) return `${prefix}图片${num}`
     return full
   })
-
-  return normalizeVolcengineArkVideoImageLabels(withMentions)
 }

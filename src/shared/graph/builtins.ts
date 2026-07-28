@@ -36,6 +36,7 @@ import {
   executeSelectVideoNode,
   executeSelectVoiceNode,
   executeSelectTextNode,
+  executeSelectNarrativeNode,
   executeMultiAngleNode,
   executeLightingNode,
   executePortraitTextureNode,
@@ -228,22 +229,22 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
-/** 分镜宿主：叙事单元目录 + 世界元素实体入；出口为视频实体 */
+/** 分镜宿主：世界元素实体 + 单叙事实体入；出口为视频实体 */
 function scriptHostPorts(): GraphPortDef[] {
   return [
-    {
-      id: 'in-narrative',
-      direction: 'in',
-      dataType: GraphPortType.narrative,
-      multiple: true,
-      label: 'Narrative'
-    },
     {
       id: 'in-worldEntities',
       direction: 'in',
       dataType: GraphPortType.worldEntities,
       multiple: true,
       label: 'World'
+    },
+    {
+      id: 'in-narrativeEntity',
+      direction: 'in',
+      dataType: GraphPortType.narrativeEntity,
+      multiple: true,
+      label: 'Narrative'
     },
     {
       id: 'out',
@@ -686,6 +687,36 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectTextNode
+  },
+  {
+    typeId: 'narrative.select',
+    category: 'note',
+    label: 'Select narrative unit',
+    icon: '📖',
+    defaultTitle: 'Select narrative unit',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.narrativeEntity,
+        multiple: true,
+        label: 'Out'
+      }
+    ],
+    defaultParams: () => ({
+      text: '',
+      selectedUnitId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.select',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeSelectNarrativeNode
   },
   {
     typeId: 'image.multiAngle',
@@ -1156,7 +1187,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.narrativeEntity,
+        multiple: true,
+        label: 'In'
+      },
       { id: 'out', direction: 'out', dataType: GraphPortType.shots, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({

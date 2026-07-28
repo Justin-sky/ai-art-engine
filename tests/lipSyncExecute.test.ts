@@ -22,11 +22,11 @@ function baseCtx(
 }
 
 describe('video.lipSync node', () => {
-  it('registers ports for image/video + audio + text → videos', () => {
+  it('registers ports for image/video + audio + text → video (+ out-all)', () => {
     const node = createNodeFromType('video.lipSync', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports.map((p) => p.id).sort()).toEqual(
-      ['in-image', 'in-text', 'in-voice', 'in-video', 'out'].sort()
+      ['in-image', 'in-text', 'in-voice', 'in-video', 'out', 'out-all'].sort()
     )
     expect(node.params.generateAudio).toBe(true)
     expect(node.params.generateFrameMode).toBe('none')
@@ -111,7 +111,12 @@ describe('video.lipSync node', () => {
     expect(arg.generateAudio).toBe(true)
     expect(String(arg.prompt)).toContain('图片1')
     expect(String(arg.prompt)).toContain('音频1')
-    expect(out.out).toEqual({
+    expect(out.out).toMatchObject({
+      kind: 'video',
+      id: 'v1',
+      relativePath: 'Assets/out.mp4'
+    })
+    expect(out['out-all']).toMatchObject({
       kind: 'videos',
       items: [{ id: 'v1', relativePath: 'Assets/out.mp4' }]
     })

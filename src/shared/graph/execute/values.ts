@@ -27,7 +27,6 @@ import {
 } from '../hostInput'
 import { assetTypeToGraphScope, resolveAssetProcessingTypeId } from '../scopes'
 import { findAllOutputNodes } from '../query'
-import { syncScriptNarrativeUnitChains } from '../scriptNarrativeUnitSync'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
 export { GRAPH_OUT_ALL_PORT_ID }
@@ -107,10 +106,12 @@ import {
 } from '../worldElementParse'
 import {
   mergeNarrativeUnitRowsPreservingReviewed,
+  parseNarrativeEntityJson,
   parseNarrativeUnitJson,
+  stringifyNarrativeEntity,
   stringifyNarrativeUnitRows
 } from '../narrativeUnitParse'
-import { formatNarrativeUnitRefText, isLegacyNarrativeUnitGenInstruction } from '../narrativeUnitParams'
+import { formatNarrativeUnitRefText } from '../narrativeUnitParams'
 import {
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode
@@ -1286,20 +1287,6 @@ function executeAssetHostInnerGraph(
     const doc = cloneGraphDocument(raw as GraphDocument)
     const scope = assetTypeToGraphScope(node.assetType)
 
-    let narrativeCatalogText: string | undefined
-    if (node.assetType === 'script') {
-      narrativeCatalogText =
-        catalogTextFromInputs(inputs['in-narrative'] ?? [], GraphPortType.narrative) || undefined
-      const units = narrativeCatalogText
-        ? parseNarrativeUnitJson(narrativeCatalogText) ?? []
-        : []
-      if (units.length) {
-        const synced = syncScriptNarrativeUnitChains(doc, units)
-        doc.nodes = synced.nodes
-        doc.edges = synced.edges
-      }
-    }
-
     const slotsHydrated = await hydrateHostInputSlotSpecs(slots, ctx.readRunText)
     ensureHostInputSlotNodes(doc.nodes, doc.edges, slotsHydrated, {
       autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
@@ -1313,7 +1300,16 @@ function executeAssetHostInnerGraph(
     const priorNodeStates: Record<string, GraphNodeRunState> = {}
     for (const [id, outputs] of Object.entries(seeds)) {
       const out = outputs.out
-      if (out?.kind === 'text' && !out.text.trim() && out.relativePath?.trim() && ctx.readRunText) {
+      if (
+        out &&
+        'text' in out &&
+        typeof out.text === 'string' &&
+        !out.text.trim() &&
+        'relativePath' in out &&
+        typeof out.relativePath === 'string' &&
+        out.relativePath.trim() &&
+        ctx.readRunText
+      ) {
         try {
           const text = (await ctx.readRunText(out.relativePath.trim()))?.trim() ?? ''
           if (text) out.text = text
@@ -1324,7 +1320,13 @@ function executeAssetHostInnerGraph(
       priorNodeStates[id] = { status: 'done', outputs }
       const slotNode = doc.nodes.find((n) => n.id === id)
       if (!slotNode) continue
-      if (out?.kind === 'text') {
+      if (
+        out &&
+        (out.kind === 'text' ||
+          out.kind === 'narrative' ||
+          out.kind === 'narrativeEntity' ||
+          out.kind === 'worldEntities')
+      ) {
         slotNode.params = {
           ...slotNode.params,
           text: out.text,
@@ -1337,8 +1339,7 @@ function executeAssetHostInnerGraph(
       hostNode: node,
       document: doc,
       priorNodeStates,
-      signal: ctx.signal,
-      narrativeCatalogText
+      signal: ctx.signal
     })
     if (!hosted.ok) {
       throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
@@ -2370,11 +2371,7 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
   if (typeId === 'script.shotSplit' || presetKind === 'shotSplit') return 'shotSplit'
   if (typeId === 'world.extract' || presetKind === 'worldExtract') return 'worldExtract'
-  if (
-    typeId === 'narrative.split' ||
-    typeId === 'screenplay.narrativeSplit' ||
-    presetKind === 'narrativeSplit'
-  ) {
+  if (typeId === 'narrative.split' || presetKind === 'narrativeSplit') {
     return 'narrativeSplit'
   }
   if (typeId === 'narrative.unitGen' || presetKind === 'narrativeUnitGen') {
@@ -2495,17 +2492,6 @@ export function buildInstructionFinalPromptPreview(input: {
   const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)
   const labels = previewSectionLabels(input.locale)
   return `【${labels.system}】\n${system}\n\n【${labels.user}】\n${userPrompt}`
-}
-
-/** @deprecated 使用 buildInstructionFinalPromptPreview({ kind: 'screenplay', ... }) */
-export function buildScreenplayFinalPromptPreview(input: {
-  instructionRaw: string
-  sources: InstructionMentionSource[]
-  systemPrompt?: string
-  includeSystem?: boolean
-  locale?: string
-}): string {
-  return buildInstructionFinalPromptPreview({ ...input, kind: 'screenplay' })
 }
 
 function graphValueToMentionSource(value: GraphValue, index: number): InstructionMentionSource {
@@ -2784,6 +2770,17 @@ export async function executeHostInputSlotNode(
       }
     }
   }
+  if (
+    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.narrative ||
+    dataType === GraphPortType.worldEntities
+  ) {
+    const text = ctx.node.params.text ?? ''
+    const path = ctx.node.params.previewRelativePath?.trim()
+    return {
+      out: catalogValue(dataType, text, path)
+    }
+  }
   return { out: { kind: 'text', text: ctx.node.params.text ?? '' } }
 }
 
@@ -2858,11 +2855,7 @@ export async function executeNarrativeUnitGenNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const mentionSources = resolveMentionSources(ctx)
-  let instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  // 旧版把规则写在指令窗口：视为未配置，改走系统提示词默认
-  if (isLegacyNarrativeUnitGenInstruction(instructionRaw)) {
-    instructionRaw = ''
-  }
+  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const incomingText = autoIncomingTextForInstruction(
@@ -2942,20 +2935,15 @@ export async function executeShotTableNode(
     })
   }
 
-  const unitOpts = (): { narrativeUnitId?: string } | undefined => {
-    const id = ctx.node.params.boundUnitId?.trim()
-    return id ? { narrativeUnitId: id } : undefined
-  }
-
   const fromIn = catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.shots)
   if (fromIn) {
     ctx.node.params = { ...ctx.node.params, text: fromIn }
     ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importShotSplitTableJson?.(fromIn, unitOpts())
+    await ctx.importShotSplitTableJson?.(fromIn)
     return { out: catalogValue(GraphPortType.shots, fromIn) }
   }
 
-  const fromShots = ctx.resolveShotSplitTableJson?.(unitOpts())?.trim()
+  const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
   if (fromShots) {
     ctx.node.params = { ...ctx.node.params, text: fromShots }
     ctx.patchNode?.({ params: { text: fromShots } })
@@ -2974,9 +2962,7 @@ async function importShotSplitFromCatalogInput(
   if (!text) return
   ctx.node.params = { ...ctx.node.params, text }
   ctx.patchNode?.({ params: { text } })
-  await ctx.importShotSplitTableJson?.(text, {
-    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
-  })
+  await ctx.importShotSplitTableJson?.(text)
 }
 
 /**
@@ -2989,9 +2975,7 @@ export async function executeShotImageGenNode(
   const first = ctx.inputs.in?.[0] ?? Object.values(ctx.inputs).flat()[0]
   await importShotSplitFromCatalogInput(ctx, first)
 
-  const collected = await ctx.collectScriptShotImages?.(ctx.signal, {
-    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
-  })
+  const collected = await ctx.collectScriptShotImages?.(ctx.signal)
   const items = collected?.images ?? []
   const entities = collected?.entities ?? []
   const entitiesText = stringifyShotEntities(entities)
@@ -3039,9 +3023,7 @@ export async function executeShotVideoGenNode(
     ctx.patchNode?.({ params: { shotEntities } })
   }
 
-  const collected = await ctx.collectScriptShotVideos?.(ctx.signal, {
-    narrativeUnitId: ctx.node.params.boundUnitId?.trim() || undefined
-  })
+  const collected = await ctx.collectScriptShotVideos?.(ctx.signal)
   const videoEntities = collected?.entities ?? []
   const videoEntitiesText = stringifyVideoEntities(videoEntities)
   const paramsPatch: Record<string, unknown> = {
@@ -3301,11 +3283,14 @@ export async function executeShotSplitNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(
-    instructionRaw,
-    selected,
-    mentionSources
-  )
+  const entityText =
+    catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.narrativeEntity) ||
+    ''
+  const entity = parseNarrativeEntityJson(entityText)
+  const entityPrompt = entity ? formatNarrativeUnitRefText(entity) : ''
+  const incomingText =
+    entityPrompt ||
+    autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
   const localText = node.params.text?.trim() ?? ''
   const previousRows = parseShotSplitJson(localText)
 
@@ -3755,6 +3740,40 @@ export async function executeSelectTextNode(
     }
   })
   return { out: { kind: 'text', text } }
+}
+
+/**
+ * 选择叙事单元：从 narrative 目录中选出一行，输出 narrativeEntity。
+ */
+export function executeSelectNarrativeNode(
+  ctx: NodeExecuteContext
+): Record<string, GraphValue> {
+  const catalogText =
+    catalogTextFromInputs(collectIncomingValues(ctx.inputs), GraphPortType.narrative) ||
+    ctx.node.params.text?.trim() ||
+    ''
+  const rows = parseNarrativeUnitJson(catalogText) ?? []
+  const selectedId = ctx.node.params.selectedUnitId?.trim()
+  const picked =
+    (selectedId ? rows.find((row) => row.id === selectedId) : undefined) ?? rows[0]
+  if (!picked) {
+    ctx.node.params = { ...ctx.node.params, text: '', selectedUnitId: '' }
+    ctx.patchNode?.({ params: { text: '', selectedUnitId: '' } })
+    return {}
+  }
+  const text = stringifyNarrativeEntity(picked)
+  ctx.node.params = {
+    ...ctx.node.params,
+    selectedUnitId: picked.id,
+    text
+  }
+  ctx.patchNode?.({
+    params: {
+      selectedUnitId: picked.id,
+      text
+    }
+  })
+  return { out: catalogValue(GraphPortType.narrativeEntity, text) }
 }
 
 /** 选取视频：从视频数组中选出一条，输出为单个 video */

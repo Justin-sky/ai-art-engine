@@ -23,7 +23,7 @@ function videoNode(overrides?: Partial<GraphNode>): GraphNode {
 }
 
 describe('executeVideoGenerateNode API', () => {
-  it('calls generateVideo and returns videos array output', async () => {
+  it('calls generateVideo and returns selected video output', async () => {
     const generateVideo = vi.fn(async () => ({
       assetId: 'asset-video-1',
       relativePath: 'assets/gen.mp4',
@@ -42,6 +42,11 @@ describe('executeVideoGenerateNode API', () => {
     expect(generateVideo.mock.calls[0]![0].duration).toBe(5)
     expect(generateVideo.mock.calls[0]![0].aspectRatio).toBe('16:9')
     expect(out.out).toMatchObject({
+      kind: 'video',
+      id: 'asset-video-1',
+      relativePath: 'assets/gen.mp4'
+    })
+    expect(out['out-all']).toMatchObject({
       kind: 'videos',
       items: [{ id: 'asset-video-1', relativePath: 'assets/gen.mp4' }]
     })

@@ -1,6 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest'
 import {
-  LEGACY_GRAPH_OUTPUT_NODE_ID,
   createOutputGraphNode,
   graphOutputNodeId,
   normalizeScopedGraph,
@@ -15,13 +14,13 @@ describe('graph output node ids', () => {
     expect(createOutputGraphNode('image', { x: 0, y: 0 }).id).toBe('image-output')
   })
 
-  it('migrates legacy shot-output to image-output on normalize', () => {
+  it('does not migrate non-canonical shot-output id on normalize', () => {
     const doc = normalizeScopedGraph(
       'workflow',
       {
         nodes: [
           {
-            id: LEGACY_GRAPH_OUTPUT_NODE_ID,
+            id: 'shot-output',
             category: 'output',
             typeId: 'output.image',
             position: { x: 0, y: 0 },
@@ -31,18 +30,17 @@ describe('graph output node ids', () => {
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
         runStates: {
-          [LEGACY_GRAPH_OUTPUT_NODE_ID]: { status: 'done' }
+          'shot-output': { status: 'done' }
         }
       },
       { assetType: 'image' }
     )
-    expect(doc.nodes.some((n) => n.id === 'image-output')).toBe(true)
-    expect(doc.nodes.some((n) => n.id === LEGACY_GRAPH_OUTPUT_NODE_ID)).toBe(false)
-    expect(doc.runStates?.['image-output']?.status).toBe('done')
-    expect(doc.runStates?.[LEGACY_GRAPH_OUTPUT_NODE_ID]).toBeUndefined()
+    // 非规范 id 不改写；workflow 仍可能 ensure 规范输出
+    expect(doc.nodes.some((n) => n.id === 'shot-output')).toBe(true)
+    expect(doc.runStates?.['shot-output']?.status).toBe('done')
   })
 
-  it('syncCanonicalOutputNodeIds remaps edges', () => {
+  it('syncCanonicalOutputNodeIds remaps mismatched canonical ids', () => {
     const nodes = [
       {
         id: 'n1',
@@ -52,7 +50,7 @@ describe('graph output node ids', () => {
         params: {}
       },
       {
-        id: LEGACY_GRAPH_OUTPUT_NODE_ID,
+        id: 'video-output',
         category: 'output' as const,
         typeId: 'output.image',
         position: { x: 100, y: 0 },
@@ -63,7 +61,7 @@ describe('graph output node ids', () => {
       {
         id: 'e1',
         source: 'n1',
-        target: LEGACY_GRAPH_OUTPUT_NODE_ID,
+        target: 'video-output',
         sourcePort: 'out',
         targetPort: 'in'
       }

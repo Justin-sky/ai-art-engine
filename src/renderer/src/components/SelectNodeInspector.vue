@@ -30,6 +30,7 @@
 import { computed, ref, watch } from 'vue'
 import {
   isSelectImageNode,
+  isSelectNarrativeNode,
   isSelectTextNode,
   isSelectVideoNode,
   isSelectVoiceNode,
@@ -46,7 +47,8 @@ const SELECT_TYPE_IDS = new Set([
   'image.select',
   'video.select',
   'voice.select',
-  'text.select'
+  'text.select',
+  'narrative.select'
 ])
 
 const { t, graphTypeLabel } = useStudioI18n()
@@ -80,6 +82,7 @@ const hint = computed(() => {
   if (isSelectVideoNode(current)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(current)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(current)) return t('graph.selectText.hint')
+  if (isSelectNarrativeNode(current)) return t('graph.selectNarrative.hint')
   return t('graph.inspector.select.hint')
 })
 

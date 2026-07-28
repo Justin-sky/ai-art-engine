@@ -82,13 +82,16 @@ describe('script asset graph', () => {
     expect(typeIds).toContain('play.script')
   })
 
-  it('script host open has only worldEntities input slot', () => {
+  it('script host open has worldEntities and narrativeEntity input slots', () => {
     const doc = normalizeScopedGraph('scriptAsset', null, {
       assetType: 'script',
       hostAssetId: '00000000-0000-4000-8000-000000000501'
     })
     const slots = doc.nodes.filter((n) => n.typeId === 'graph.input.slot')
-    expect(slots.map((n) => n.params.hostInputSlot?.portId).sort()).toEqual(['in-worldEntities'])
+    expect(slots.map((n) => n.params.hostInputSlot?.portId).sort()).toEqual([
+      'in-narrativeEntity',
+      'in-worldEntities'
+    ])
   })
 
   it('normalizes empty script asset graph', () => {
@@ -101,7 +104,7 @@ describe('script asset graph', () => {
     expect(doc.nodes.some((n) => n.category === 'output')).toBe(true)
   })
 
-  it('migrates legacy shotEditor to shotVideoGen without inserting image gen', () => {
+  it('does not migrate unknown shotEditor typeId', () => {
     const split = createNodeFromType('script.shotSplit', { x: 120, y: 160 }, {
       id: GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID
     })
@@ -140,22 +143,14 @@ describe('script asset graph', () => {
       },
       { assetType: 'script' }
     )
-    expect(doc.nodes.some((n) => n.typeId === 'script.shotTable')).toBe(false)
-    expect(doc.nodes.some((n) => n.typeId === 'script.shotImageGen')).toBe(false)
     expect(doc.nodes.some((n) => n.typeId === 'script.shotEditor')).toBe(false)
-    const videoGen = doc.nodes.find((n) => n.typeId === 'script.shotVideoGen')
-    expect(videoGen?.id).toBe(GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID)
+    expect(doc.nodes.some((n) => n.typeId === 'script.shotVideoGen')).toBe(false)
     expect(
-      doc.edges.some(
-        (edge) =>
-          edge.source === split.id &&
-          edge.target === videoGen?.id &&
-          edge.targetPort === 'in-text'
-      )
-    ).toBe(true)
+      doc.edges.some((edge) => edge.source === split.id && edge.target === editor.id)
+    ).toBe(false)
   })
 
-  it('migrates legacy imageGen → videoGen in-image edge to in-entities', () => {
+  it('drops illegal imageGen → videoGen in-image edges', () => {
     const imageGen = createNodeFromType('script.shotImageGen', { x: 0, y: 0 }, {
       id: 'script-shot-image-gen'
     })
@@ -185,28 +180,24 @@ describe('script asset graph', () => {
         (edge) =>
           edge.source === imageGen.id &&
           edge.target === videoGen.id &&
-          edge.targetPort === 'in-entities'
-      )
-    ).toBe(true)
-    expect(
-      doc.edges.some(
-        (edge) =>
-          edge.source === imageGen.id &&
-          edge.target === videoGen.id &&
           edge.targetPort === 'in-image'
       )
     ).toBe(false)
   })
 
   it('only accepts the intended chain port types', () => {
-    const text = createNodeFromType('play.script', { x: 0, y: 0 })
+    const select = createNodeFromType('narrative.select', { x: 0, y: 0 })
+    const text = createNodeFromType('play.script', { x: 0, y: 40 })
     const split = createNodeFromType('script.shotSplit', { x: 200, y: 0 })
     const table = createNodeFromType('script.shotTable', { x: 400, y: 0 })
     const imageGen = createNodeFromType('script.shotImageGen', { x: 600, y: 0 })
     const videoGen = createNodeFromType('script.shotVideoGen', { x: 800, y: 0 })
     const note = createNodeFromType('note.text', { x: 0, y: 100 })
 
-    expect(getNodePorts(split).map((port) => port.dataType)).toEqual(['text', 'shots'])
+    expect(getNodePorts(split).map((port) => port.dataType)).toEqual([
+      'narrativeEntity',
+      'shots'
+    ])
     expect(getNodePorts(table).map((port) => port.dataType)).toEqual([
       'shots',
       'worldEntities',
@@ -227,7 +218,8 @@ describe('script asset graph', () => {
     expect(getNodePorts(output).map((port) => ({ id: port.id, dataType: port.dataType, direction: port.direction }))).toEqual([
       { id: 'in', dataType: 'videoEntities', direction: 'in' }
     ])
-    expect(canConnectNodes(text, split)).toBe(true)
+    expect(canConnectNodes(select, split)).toBe(true)
+    expect(canConnectNodes(text, split)).toBe(false)
     expect(canConnectNodes(note, split)).toBe(false)
     expect(canConnectNodes(split, table)).toBe(true)
     expect(canConnectNodes(table, imageGen)).toBe(true)

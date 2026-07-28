@@ -10,13 +10,14 @@
 { "$type": "AssetRef", "guid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }
 ```
 
-兼容：
+同时识别：
 
-- 已知字段名上的裸 UUID 字符串（如 `assetId`、`modelAssetId`）
+- 已知域字段上的 UUID 字符串（如 `assetId`、`modelAssetId`）
 - `{ "guid": "<uuid>" }`（仅含 guid 一键）
 
-字段名白名单见 `LEGACY_ASSET_REF_KEYS`（`src/shared/assetRef.ts`）。  
-**不会**把 `shotIds`、`selectedImageId`、`folderId`、普通文本里的 UUID 当成引用。
+字段名白名单见 `ASSET_GUID_FIELD_KEYS`（`src/shared/assetRef.ts`）。  
+**不会**把 `shotIds`、`selectedImageId`、`folderId`、普通文本里的 UUID 当成引用。  
+不做裸字段 → TaggedAssetRef 的自动升级。
 
 ## API
 
@@ -25,7 +26,6 @@
 | `tagAssetRef` / `readAssetGuid` | 构造与读取 |
 | `collectAssetGuids` | 收集值树中全部资产 GUID |
 | `remapAssetGuids` | 按映射表重写引用 |
-| `upgradeLegacyAssetRefs` | 裸字符串 → TaggedAssetRef（规范化） |
 | `syncNodeAssetRefFields` | Graph 节点 `assetId` ↔ `assetRef` 同步 |
 
 ## Graph

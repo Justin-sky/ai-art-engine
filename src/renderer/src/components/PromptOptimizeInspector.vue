@@ -88,8 +88,7 @@ const TOOL_TYPE_IDS = new Set([
   'script.shotSplit',
   'world.extract',
   'narrative.split',
-  'narrative.unitGen',
-  'screenplay.narrativeSplit'
+  'narrative.unitGen'
 ])
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
@@ -116,11 +115,7 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const isToPrompt = computed(() => node.value?.typeId === 'image.toPrompt')
 const isShotSplit = computed(() => node.value?.typeId === 'script.shotSplit')
 const isWorldExtract = computed(() => node.value?.typeId === 'world.extract')
-const isNarrativeSplit = computed(
-  () =>
-    node.value?.typeId === 'narrative.split' ||
-    node.value?.typeId === 'screenplay.narrativeSplit'
-)
+const isNarrativeSplit = computed(() => node.value?.typeId === 'narrative.split')
 const isNarrativeUnitGen = computed(() => node.value?.typeId === 'narrative.unitGen')
 
 const typeLabel = computed(() => {

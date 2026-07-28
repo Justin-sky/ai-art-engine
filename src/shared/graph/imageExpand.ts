@@ -20,14 +20,6 @@ export interface ImageExpandState {
   count: number
 }
 
-/** @deprecated 旧锚点字段，读入时迁移为 expand* */
-export type LegacyExpandAnchor = {
-  anchorX?: number
-  anchorY?: number
-  anchorW?: number
-  anchorH?: number
-}
-
 /** 默认：上方与右侧各扩半幅原图（约 3×3 中占左下 2×2） */
 export const DEFAULT_IMAGE_EXPAND: ImageExpandState = {
   expandLeft: 0,
@@ -71,23 +63,6 @@ export function normalizeExpandMargin(value: unknown): number {
   return clamp(n, 0, MAX_EXPAND)
 }
 
-/** 旧锚点 → 相对原图扩展边距 */
-export function anchorsToExpandMargins(raw: LegacyExpandAnchor): Pick<
-  ImageExpandState,
-  'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'
-> {
-  const w = clamp(Number(raw.anchorW), 0.05, 1)
-  const h = clamp(Number(raw.anchorH), 0.05, 1)
-  const x = clamp(Number(raw.anchorX), 0, 1)
-  const y = clamp(Number(raw.anchorY), 0, 1)
-  return {
-    expandLeft: normalizeExpandMargin(x / w),
-    expandRight: normalizeExpandMargin((1 - x - w) / w),
-    expandTop: normalizeExpandMargin(y / h),
-    expandBottom: normalizeExpandMargin((1 - y - h) / h)
-  }
-}
-
 /** 扩展边距 → 画布归一化锚点（供预览百分比布局） */
 export function expandMarginsToAnchors(
   state: Pick<
@@ -122,15 +97,6 @@ export function normalizeExpandMargins(
   }
 }
 
-function hasLegacyAnchors(raw: Record<string, unknown>): boolean {
-  return (
-    raw.anchorW != null ||
-    raw.anchorH != null ||
-    raw.anchorX != null ||
-    raw.anchorY != null
-  )
-}
-
 function hasExpandMargins(raw: Record<string, unknown>): boolean {
   return (
     raw.expandLeft != null ||
@@ -140,22 +106,11 @@ function hasExpandMargins(raw: Record<string, unknown>): boolean {
   )
 }
 
-export function normalizeImageExpand(
-  raw?: Partial<ImageExpandState & LegacyExpandAnchor> | null
-): ImageExpandState {
-  const base = { ...(raw ?? {}) } as Partial<ImageExpandState & LegacyExpandAnchor> &
-    Record<string, unknown>
-  let margins: Pick<
-    ImageExpandState,
-    'expandLeft' | 'expandRight' | 'expandTop' | 'expandBottom'
-  >
-  if (hasExpandMargins(base)) {
-    margins = normalizeExpandMargins(base)
-  } else if (hasLegacyAnchors(base)) {
-    margins = anchorsToExpandMargins(base)
-  } else {
-    margins = normalizeExpandMargins(DEFAULT_IMAGE_EXPAND)
-  }
+export function normalizeImageExpand(raw?: Partial<ImageExpandState> | null): ImageExpandState {
+  const base = { ...(raw ?? {}) } as Partial<ImageExpandState> & Record<string, unknown>
+  const margins = hasExpandMargins(base)
+    ? normalizeExpandMargins(base)
+    : normalizeExpandMargins(DEFAULT_IMAGE_EXPAND)
   return {
     ...margins,
     aspectId: normalizeExpandAspectId(base.aspectId),
@@ -263,7 +218,7 @@ export function buildExpandPrompt(state: ImageExpandState): string {
 }
 
 export function readImageExpandFromNode(params: {
-  imageExpand?: Partial<ImageExpandState & LegacyExpandAnchor>
+  imageExpand?: Partial<ImageExpandState>
 }): ImageExpandState {
   return normalizeImageExpand(params.imageExpand)
 }

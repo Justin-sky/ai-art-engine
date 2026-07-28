@@ -22,7 +22,6 @@ export {
   styleImagesToStrengthText,
   buildStyleImagesReferencePrompt,
   appendStyleImagesReferencePrompt,
-  appendStyleImagesToPrompt,
   resolveGenerateStyleImages,
   resolveStyleMentionReserveCount,
   portMentionIndex,
@@ -315,12 +314,6 @@ export const ASSET_VIDEO_OUTPUT_KIND_DIR = 'Videos'
 export const ASSET_TEXT_OUTPUT_KIND_DIR = 'Texts'
 /** 相对宿主资产目录的声音音频子目录名 */
 export const ASSET_VOICE_OUTPUT_KIND_DIR = 'Voices'
-/** @deprecated 旧默认子路径；新逻辑用宿主资产名 + KIND_DIR */
-export const ASSET_IMAGE_OUTPUT_SUBDIR = 'Output/Images'
-/** @deprecated 旧默认子路径；新逻辑用宿主资产名 + KIND_DIR */
-export const ASSET_VIDEO_OUTPUT_SUBDIR = 'Output/Videos'
-/** 历史图片输出目录（删除时仍允许） */
-export const LEGACY_IMAGE_OUTPUT_DIR = '.aiartengine/graph-outputs'
 
 /** 规范化工程相对目录：去首尾斜杠、统一 `/`；空串视为未设置 */
 export function normalizeProjectRelativeDir(dir?: string | null): string {
@@ -380,38 +373,6 @@ export function resolveMediaOutputDir(input: {
           ? ASSET_VOICE_OUTPUT_KIND_DIR
           : ASSET_IMAGE_OUTPUT_KIND_DIR
   return `${base}/${assetName}/${kindDir}`
-}
-
-/** @deprecated 工程级图片输出目录；新逻辑用 resolveMediaOutputDir */
-export function resolveImageOutputDir(config?: Pick<ProjectConfig, 'imageOutputDir'> | null): string {
-  return normalizeProjectRelativeDir(config?.imageOutputDir) || DEFAULT_IMAGE_OUTPUT_DIR
-}
-
-/** @deprecated 工程级视频输出目录；新逻辑用 resolveMediaOutputDir */
-export function resolveVideoOutputDir(config?: Pick<ProjectConfig, 'videoOutputDir'> | null): string {
-  return normalizeProjectRelativeDir(config?.videoOutputDir) || DEFAULT_VIDEO_OUTPUT_DIR
-}
-
-/** 判断相对路径是否落在可管理的图片输出目录（含历史默认目录） */
-export function isManagedImageOutputPath(
-  relativePath: string,
-  config?: Pick<ProjectConfig, 'imageOutputDir'> | null,
-  extraDirs?: Array<string | null | undefined>
-): boolean {
-  const posix = relativePath.replace(/\\/g, '/').trim()
-  if (!posix) return false
-  const roots = new Set(
-    [
-      resolveImageOutputDir(config),
-      DEFAULT_IMAGE_OUTPUT_DIR,
-      LEGACY_IMAGE_OUTPUT_DIR,
-      'Assets',
-      ...(extraDirs ?? [])
-    ]
-      .map((d) => normalizeProjectRelativeDir(d))
-      .filter(Boolean)
-  )
-  return [...roots].some((dir) => posix === dir || posix.startsWith(`${dir}/`))
 }
 
 /**
@@ -526,8 +487,6 @@ export interface Shot {
   audioRefs?: ShotAudioRef[]
   /** Owning 脚本 asset id */
   scriptAssetId?: string
-  /** 所属叙事单元 id（多链分镜下隔离分镜列表） */
-  narrativeUnitId?: string
   thumbnailPath?: string
   createdAt: string
   updatedAt: string
@@ -575,6 +534,30 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   canvas: 'Series',
   world: 'World Elements',
   narrative: 'Narrative Units'
+}
+
+/** 中文资产类型名（落盘默认名 / 主进程命名用） */
+export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
+  image: '图片',
+  video: '视频',
+  voice: '声音',
+  motion: '导演台',
+  model: '模型',
+  screenplay: '剧本',
+  script: '分镜',
+  canvas: '剧集',
+  world: '世界元素',
+  narrative: '叙事单元'
+}
+
+export function isEnglishLanguage(language?: string | null): boolean {
+  const raw = typeof language === 'string' ? language.trim().toLowerCase() : ''
+  return raw === 'en-us' || raw.startsWith('en')
+}
+
+/** 按界面语言取资产类型显示名 */
+export function assetTypeLabel(type: AssetType, language?: string | null): string {
+  return (isEnglishLanguage(language) ? ASSET_TYPE_LABELS : ASSET_TYPE_LABELS_ZH)[type]
 }
 
 export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
@@ -715,6 +698,7 @@ export function isDirectorDeck(type: AssetType): boolean {
 
 /** Default name when creating a director deck asset */
 export const DEFAULT_DIRECTOR_DECK_NAME = 'New Director Deck'
+export const DEFAULT_DIRECTOR_DECK_NAME_ZH = '新建导演台'
 
 export type StagePrimitive = 'box' | 'capsule' | 'cylinder' | 'sphere' | 'plane' | 'quad'
 export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty'
@@ -860,18 +844,7 @@ export interface DirectorStageState {
   linkedPanoramaAssetId?: string | null
   transformMode: TransformMode
   selectedObjectId?: string | null
-  /**
-   * 当前活动机位的 viewer 镜像（兼容图节点 / 旧数据）。
-   * 权威数据在 cameras[activeCameraId].viewer。
-   */
-  viewer?: DirectorViewerState
-  /** @deprecated 迁移用；请使用 cameras */
-  cameraVisible?: boolean
-  /** @deprecated 迁移用；请使用 cameras */
-  cameraLocked?: boolean
-  /** @deprecated 迁移用；请使用 cameras */
-  cameraName?: string
-  /** 全景中的全部机位 */
+  /** 全景中的全部机位；viewer 权威在 cameras[activeCameraId].viewer */
   cameras?: DirectorCameraState[]
   /** 活动机位：相机视图 / 截屏 / 图节点输出 */
   activeCameraId?: string | null
@@ -967,7 +940,7 @@ export function fitDirectorAspectFrame(
   }
 }
 
-/** 默认首个机位的稳定 id（兼容旧工程） */
+/** 默认首个机位的稳定 id */
 export const DIRECTOR_CAMERA_HIERARCHY_ID = '__stage_camera__'
 /** 全景全局参数（Hierarchy 点空白时选中，不作为列表行） */
 export const DIRECTOR_SCENE_HIERARCHY_ID = '__stage_scene__'
@@ -1134,19 +1107,6 @@ export interface DirectorAnimTrack {
   pathForwardAxis?: DirectorPathForwardAxis
   /** 时间轴上的骨骼动画片段（可多段、可调长度） */
   skeletonClips?: DirectorSkeletonClipSegment[]
-  /**
-   * @deprecated 迁移用；请使用 skeletonClips
-   * GLB 内嵌 clip 名；空/缺省 = 不播骨骼
-   */
-  skeletonClip?: string | null
-  /**
-   * @deprecated 迁移用；请使用 skeletonClips[].assetId
-   */
-  skeletonAssetId?: string | null
-  /** @deprecated 迁移用 */
-  skeletonSpeed?: number
-  /** @deprecated 迁移用 */
-  skeletonLoop?: boolean
 }
 
 export interface DirectorAnimationState {
@@ -1287,39 +1247,12 @@ function normalizeDirectorAnimTrack(raw: unknown): DirectorAnimTrack | null {
     ]
   }
 
-  let skeletonClips = Array.isArray(o.skeletonClips)
+  const skeletonClips = Array.isArray(o.skeletonClips)
     ? o.skeletonClips
         .map((item) => normalizeDirectorSkeletonClipSegment(item))
         .filter((item): item is DirectorSkeletonClipSegment => !!item)
         .sort((a, b) => a.start - b.start)
     : []
-
-  // 兼容旧单 clip 字段 → 一段 skeletonClips
-  if (!skeletonClips.length) {
-    const skeletonClipRaw =
-      typeof o.skeletonClip === 'string' ? o.skeletonClip.trim() : ''
-    if (skeletonClipRaw) {
-      const skeletonAssetIdRaw =
-        typeof o.skeletonAssetId === 'string' ? o.skeletonAssetId.trim() : ''
-      const skeletonSpeed =
-        typeof o.skeletonSpeed === 'number' &&
-        Number.isFinite(o.skeletonSpeed) &&
-        o.skeletonSpeed > 0
-          ? o.skeletonSpeed
-          : undefined
-      skeletonClips = [
-        {
-          id: `skel:${o.id}:legacy`,
-          clip: skeletonClipRaw,
-          start,
-          end,
-          ...(skeletonAssetIdRaw ? { assetId: skeletonAssetIdRaw } : {}),
-          ...(skeletonSpeed != null ? { speed: skeletonSpeed } : {}),
-          ...(o.skeletonLoop === false ? { loop: false } : {})
-        }
-      ]
-    }
-  }
 
   return {
     id: o.id,
@@ -1344,32 +1277,15 @@ export function directorAnimTrackHasContent(track: DirectorAnimTrack): boolean {
   if ((track.keyframes?.length ?? 0) >= 1) return true
   if (track.path && track.path.points.length >= 2) return true
   if ((track.skeletonClips?.length ?? 0) > 0) return true
-  if (typeof track.skeletonClip === 'string' && track.skeletonClip.trim()) return true
   return false
 }
 
-/** 轨上有效的骨骼片段列表（已按 start 排序） */
+/** 轨上有效的骨骼片段列表（已按 start 排序）；缺 skeletonClips 则空 */
 export function directorTrackSkeletonClips(
-  track: Pick<DirectorAnimTrack, 'skeletonClips' | 'skeletonClip' | 'skeletonAssetId' | 'skeletonSpeed' | 'skeletonLoop' | 'start' | 'end' | 'id'>
+  track: Pick<DirectorAnimTrack, 'skeletonClips'>
 ): DirectorSkeletonClipSegment[] {
-  if (track.skeletonClips?.length) {
-    return [...track.skeletonClips].sort((a, b) => a.start - b.start)
-  }
-  const clip = track.skeletonClip?.trim()
-  if (!clip) return []
-  return [
-    {
-      id: `skel:${track.id}:legacy`,
-      clip,
-      start: track.start,
-      end: track.end,
-      ...(track.skeletonAssetId?.trim() ? { assetId: track.skeletonAssetId.trim() } : {}),
-      ...(typeof track.skeletonSpeed === 'number' && track.skeletonSpeed > 0
-        ? { speed: track.skeletonSpeed }
-        : {}),
-      ...(track.skeletonLoop === false ? { loop: false } : {})
-    }
-  ]
+  if (!track.skeletonClips?.length) return []
+  return [...track.skeletonClips].sort((a, b) => a.start - b.start)
 }
 
 export function readDirectorAnimation(raw: unknown): DirectorAnimationState {
@@ -1497,7 +1413,6 @@ export function createDefaultDirectorStage(): DirectorStageState {
     linkedPanoramaAssetId: null,
     transformMode: 'translate',
     selectedObjectId: null,
-    viewer: { ...camera.viewer },
     cameras: [camera],
     activeCameraId: camera.id,
     gridVisible: DEFAULT_GRID_VISIBLE,
@@ -1535,13 +1450,9 @@ function normalizeDirectorCamera(raw: unknown, index: number): DirectorCameraSta
   }
 }
 
-/** 从 cameras / 旧单机位字段解析机位列表与活动 id */
+/** 从 cameras[] 解析机位列表与活动 id；缺省则默认单机位 */
 export function resolveDirectorCameras(stage: {
   cameras?: unknown
-  viewer?: unknown
-  cameraName?: unknown
-  cameraVisible?: unknown
-  cameraLocked?: unknown
   activeCameraId?: unknown
 }): { cameras: DirectorCameraState[]; activeCameraId: string } {
   const fromArray = Array.isArray(stage.cameras)
@@ -1549,21 +1460,7 @@ export function resolveDirectorCameras(stage: {
         .map((item, index) => normalizeDirectorCamera(item, index))
         .filter((item): item is DirectorCameraState => !!item)
     : []
-  const cameras =
-    fromArray.length > 0
-      ? fromArray
-      : [
-          {
-            id: DIRECTOR_CAMERA_HIERARCHY_ID,
-            name:
-              typeof stage.cameraName === 'string' && stage.cameraName.trim()
-                ? stage.cameraName.trim()
-                : 'Camera 1',
-            visible: stage.cameraVisible === false ? false : true,
-            locked: stage.cameraLocked === true,
-            viewer: readDirectorViewer(stage.viewer)
-          }
-        ]
+  const cameras = fromArray.length > 0 ? fromArray : [createDefaultDirectorCamera()]
   const activeCameraId =
     typeof stage.activeCameraId === 'string' &&
     cameras.some((c) => c.id === stage.activeCameraId)
@@ -1588,7 +1485,6 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
         .filter((o): o is StageObjectState => !!o)
     : []
   const { cameras, activeCameraId } = resolveDirectorCameras(s)
-  const active = cameras.find((c) => c.id === activeCameraId) ?? cameras[0]
   return {
     linkedPanoramaAssetId:
       typeof s.linkedPanoramaAssetId === 'string'
@@ -1599,7 +1495,6 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
     transformMode:
       s.transformMode === 'rotate' || s.transformMode === 'scale' ? s.transformMode : 'translate',
     selectedObjectId: typeof s.selectedObjectId === 'string' ? s.selectedObjectId : null,
-    viewer: { ...active.viewer },
     cameras,
     activeCameraId,
     gridVisible: s.gridVisible === false ? false : true,
@@ -1791,24 +1686,25 @@ export function shotScriptAssetId(shot: Pick<Shot, 'scriptAssetId'>): string | u
   return shot.scriptAssetId
 }
 
-/** Default display name when creating a new asset without an explicit name */
-export function defaultAssetName(type: AssetType): string {
-  const label = ASSET_TYPE_LABELS[type]
+/** 新建资产未显式命名时的默认显示名（随 language；默认 zh-CN） */
+export function defaultAssetName(type: AssetType, language?: string | null): string {
+  const en = isEnglishLanguage(language)
+  const label = assetTypeLabel(type, language)
   switch (type) {
     case 'script':
-      return 'New Shot'
+      return en ? 'New Shot' : '新建分镜'
     case 'screenplay':
-      return 'New Screenplay'
+      return en ? 'New Screenplay' : '新建剧本'
     case 'canvas':
-      return 'New Series'
+      return en ? 'New Series' : '新建剧集'
     case 'world':
-      return 'New World Elements'
+      return en ? 'New World Elements' : '新建世界元素'
     case 'narrative':
-      return 'New Narrative Units'
+      return en ? 'New Narrative Units' : '新建叙事单元'
     case 'motion':
-      return DEFAULT_DIRECTOR_DECK_NAME
+      return en ? DEFAULT_DIRECTOR_DECK_NAME : DEFAULT_DIRECTOR_DECK_NAME_ZH
     default:
-      return label ? `New ${label}` : 'New Asset'
+      return en ? (label ? `New ${label}` : 'New Asset') : label ? `新建${label}` : '新建资产'
   }
 }
 

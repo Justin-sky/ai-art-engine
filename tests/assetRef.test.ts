@@ -5,8 +5,7 @@ import {
   readAssetGuid,
   remapAssetGuids,
   syncNodeAssetRefFields,
-  tagAssetRef,
-  upgradeLegacyAssetRefs
+  tagAssetRef
 } from '../src/shared/assetRef'
 import { createAssetGraphNode } from '../src/shared/graph/create'
 import { normalizeGraph } from '../src/shared/graph/normalize'
@@ -24,7 +23,7 @@ describe('assetRef', () => {
     expect(readAssetGuid({ guid: A })).toBe(A)
   })
 
-  it('collects tagged refs and legacy key strings', () => {
+  it('collects TaggedAssetRef / { guid } / known domain GUID fields', () => {
     const doc = {
       prompt: `see ${A} in text`,
       selectedImageId: A,
@@ -33,7 +32,8 @@ describe('assetRef', () => {
         linkedPanoramaAssetId: B,
         objects: [{ modelAssetId: C }]
       },
-      nested: { ref: tagAssetRef(A) }
+      nested: { ref: tagAssetRef(A) },
+      plain: { guid: B }
     }
     const guids = collectAssetGuids(doc).sort()
     expect(guids).toEqual([A, B, C].sort())
@@ -50,29 +50,21 @@ describe('assetRef', () => {
     ).toEqual([])
   })
 
-  it('remaps only asset ref sites', () => {
+  it('remaps TaggedAssetRef / { guid } / known domain GUID fields', () => {
     const map = new Map([[A, B]])
     const input = {
       notes: A,
       selectedImageId: A,
       genRefs: [{ assetId: A }],
-      node: { assetRef: tagAssetRef(A) }
+      node: { assetRef: tagAssetRef(A) },
+      plain: { guid: A }
     }
     const out = remapAssetGuids(input, map)
     expect(out.notes).toBe(A)
     expect(out.selectedImageId).toBe(A)
     expect(out.genRefs[0].assetId).toBe(B)
     expect(out.node.assetRef.guid).toBe(B)
-  })
-
-  it('upgrades legacy bare GUID fields to TaggedAssetRef', () => {
-    const legacy = {
-      genRefs: [{ assetId: A }],
-      modelAssetId: B
-    }
-    const upgraded = upgradeLegacyAssetRefs(legacy)
-    expect(upgraded.genRefs[0].assetId).toEqual(tagAssetRef(A))
-    expect(upgraded.modelAssetId).toEqual(tagAssetRef(B))
+    expect(out.plain.guid).toBe(B)
   })
 
   it('syncNodeAssetRefFields hydrates from either side', () => {

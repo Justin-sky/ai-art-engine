@@ -33,7 +33,7 @@ describe('normalizeModelsSettings', () => {
             text: { selectedModelIds: ['a'], defaultModelId: 'a' },
             image: { selectedModelIds: [], defaultModelId: '' },
             video: { selectedModelIds: [], defaultModelId: '' },
-            voice: { selectedModelIds: [], defaultModelId: '' }
+            audio: { selectedModelIds: [], defaultModelId: '' }
           }
         }
       ]
@@ -123,7 +123,7 @@ describe('normalizeModelsSettings', () => {
       providers: [
         {
           id: 'mm1',
-          providerKind: 'hailuo',
+          providerKind: 'minimax',
           label: '',
           apiKey: 'mm-key',
           baseUrl: '',
@@ -142,7 +142,7 @@ describe('normalizeModelsSettings', () => {
       providers: [
         {
           id: 'ds1',
-          providerKind: 'qwen',
+          providerKind: 'dashscope',
           label: '',
           apiKey: 'sk-ds',
           baseUrl: '',
@@ -161,7 +161,7 @@ describe('normalizeModelsSettings', () => {
       providers: [
         {
           id: 'ms1',
-          providerKind: '魔搭',
+          providerKind: 'modelscope',
           label: '',
           apiKey: 'ms-token',
           baseUrl: '',
@@ -173,6 +173,36 @@ describe('normalizeModelsSettings', () => {
     expect(next.providers[0].label).toBe('魔塔')
     expect(next.providers[0].baseUrl).toBe(MODELSCOPE_DEFAULT_BASE_URL)
     expect(isModelScopeProvider(next.providers[0])).toBe(true)
+  })
+
+  it('drops unknown provider kinds and does not map aliases', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        { id: 'a', providerKind: 'hailuo', apiKey: 'x' },
+        { id: 'b', providerKind: 'qwen', apiKey: 'x' },
+        { id: 'c', providerKind: '魔搭', apiKey: 'x' },
+        { id: 'd', providerKind: 'minimax', apiKey: 'mm' }
+      ]
+    })
+    expect(next.providers).toHaveLength(1)
+    expect(next.providers[0].id).toBe('d')
+    expect(next.providers[0].providerKind).toBe('minimax')
+  })
+
+  it('does not migrate modalities.voice into audio', () => {
+    const next = normalizeModelsSettings({
+      providers: [
+        {
+          id: 'p1',
+          providerKind: 'openrouter',
+          apiKey: 'sk',
+          modalities: {
+            voice: { selectedModelIds: ['old-voice'], defaultModelId: 'old-voice' }
+          } as never
+        }
+      ]
+    })
+    expect(next.providers[0].modalities.audio.selectedModelIds).toEqual([])
   })
 
   it('drops unknown legacy shapes', () => {
@@ -208,7 +238,7 @@ describe('pickActiveProvider', () => {
       text: { selectedModelIds: ['t1'], defaultModelId: 't1' },
       image: { selectedModelIds: ['i1'], defaultModelId: 'i1' },
       video: { selectedModelIds: [], defaultModelId: '' },
-      voice: { selectedModelIds: [], defaultModelId: '' }
+      audio: { selectedModelIds: [], defaultModelId: '' }
     }
   })
 

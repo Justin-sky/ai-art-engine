@@ -185,6 +185,30 @@
   --flyer-bg: color-mix(in srgb, var(--bg-elevated) 88%, var(--accent) 12%);
   --flyer-fg: var(--accent);
   --flyer-border: color-mix(in srgb, var(--accent) 45%, transparent);
+  /* 主题派生色：与 dark 对齐声明；浅色下强调色与正文需偏深以保证对比 */
+  --on-accent: #ffffff;
+  --accent-fg: color-mix(in srgb, var(--accent) 78%, #0f172a);
+  --danger-muted: color-mix(in srgb, var(--danger) 78%, #1a1d21);
+  --accent-06: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-08: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-12: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-18: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-22: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-25: color-mix(in srgb, var(--accent) 25%, transparent);
+  --accent-28: color-mix(in srgb, var(--accent) 28%, transparent);
+  --accent-45: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-90: color-mix(in srgb, var(--accent) 90%, transparent);
+  --slider-thumb-bg: color-mix(in srgb, var(--text-muted) 28%, var(--bg-panel));
+  --slider-thumb-border: color-mix(in srgb, var(--text-muted) 55%, var(--border));
+  /* 媒体 letterbox：预览区始终偏暗，不随亮色主题变白 */
+  --media-letterbox: #111111;
+  /* 导入引用媒体语义色（琥珀，浅底上略加深） */
+  --media-ref: #8a7048;
+  --media-ref-name: #7a6850;
+  --media-ref-wash: rgba(140, 110, 70, 0.14);
+  --media-ref-ring: rgba(140, 110, 70, 0.42);
+  --media-ref-ring-soft: rgba(140, 110, 70, 0.28);
+  --media-ref-mark-bg: rgba(255, 248, 235, 0.92);
   --resizer-grip: linear-gradient(
     135deg,
     transparent 55%,

@@ -378,21 +378,15 @@ export interface NodeExecuteContext {
    * 分镜表格节点：把当前剧本分镜列表序列化为拆分 JSON，
    * 供「表格 → 拆分」再次拆分时作为上游输入。
    */
-  resolveShotSplitTableJson?: (opts?: { narrativeUnitId?: string }) => string | null
+  resolveShotSplitTableJson?: () => string | null
   /**
    * 分镜表格 / 分镜编辑节点执行时：把上游拆分 JSON 写入剧本分镜列表。
    */
-  importShotSplitTableJson?: (
-    jsonText: string,
-    opts?: { narrativeUnitId?: string }
-  ) => void | Promise<void>
+  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /**
    * 生成分镜图：收集各镜 visual 图片输出节点已有结果，写回 genRefs（不级联跑画面图）。
    */
-  collectScriptShotImages?: (
-    signal?: AbortSignal,
-    opts?: { narrativeUnitId?: string }
-  ) => Promise<{
+  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
     images: GraphImageItem[]
     aggregateJson: string
     entities: Array<{ id: string; name: string; imageUrls: string[] }>
@@ -400,10 +394,7 @@ export interface NodeExecuteContext {
   /**
    * 生成分镜视频：收集各镜子图全部视频生成节点已有结果，写回 genRefs，返回 videoEntities。
    */
-  collectScriptShotVideos?: (
-    signal?: AbortSignal,
-    opts?: { narrativeUnitId?: string }
-  ) => Promise<{
+  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
     videos: GraphVideoItem[]
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>
@@ -447,8 +438,6 @@ export interface HostInnerGraphRunInput {
   document: GraphDocument
   priorNodeStates: Record<string, GraphNodeRunState>
   signal?: AbortSignal
-  /** 分镜宿主：父图注入的叙事目录 JSON，供 unitRef 解析 */
-  narrativeCatalogText?: string
 }
 
 export interface HostInnerGraphRunResult {

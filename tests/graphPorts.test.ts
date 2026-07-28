@@ -25,6 +25,7 @@ describe('GraphPortType', () => {
       GraphPortType.shotEntities,
       GraphPortType.videoEntities,
       GraphPortType.narrative,
+      GraphPortType.narrativeEntity,
       GraphPortType.shots,
       GraphPortType.model
     ])
@@ -39,6 +40,7 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('shotEntities')).toBe(true)
     expect(isGraphPortDataType('videoEntities')).toBe(true)
     expect(isGraphPortDataType('narrative')).toBe(true)
+    expect(isGraphPortDataType('narrativeEntity')).toBe(true)
     expect(isGraphPortDataType('shots')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
     expect(isGraphPortDataType('voices')).toBe(true)
@@ -56,7 +58,9 @@ describe('catalog port types', () => {
     const shotSplit = createNodeFromType('script.shotSplit', { x: 0, y: 160 })
     const shotTable = createNodeFromType('script.shotTable', { x: 100, y: 160 })
     const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
+    const narrativeSelect = createNodeFromType('narrative.select', { x: 0, y: 120 })
 
+    expect(getNodePorts(shotSplit).find((p) => p.id === 'in')?.dataType).toBe('narrativeEntity')
     expect(canConnectNodes(extract, worldTable)).toBe(true)
     expect(canConnectNodes(worldTable, worldGen)).toBe(true)
     const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
@@ -65,6 +69,8 @@ describe('catalog port types', () => {
       canConnectNodes(worldGen, createNodeFromType('asset.screenplay', { x: 400, y: 0 }))
     ).toBe(false)
     expect(canConnectNodes(split, narrativeTable)).toBe(true)
+    expect(canConnectNodes(narrativeTable, narrativeSelect)).toBe(true)
+    expect(canConnectNodes(narrativeSelect, shotSplit)).toBe(true)
     expect(canConnectNodes(shotSplit, shotTable)).toBe(true)
 
     // 历史口 out-all 为 texts，不可直接进 world.table / narrative.table
@@ -209,8 +215,8 @@ describe('asset reference ports', () => {
       'out:narrative:out'
     ])
     expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
-      'in-narrative:narrative:in',
       'in-worldEntities:worldEntities:in',
+      'in-narrativeEntity:narrativeEntity:in',
       'out:videoEntities:out'
     ])
   })

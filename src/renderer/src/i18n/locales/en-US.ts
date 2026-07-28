@@ -1393,6 +1393,11 @@ export default {
       openHint: 'Double-click to open notepad',
       empty: 'No upstream texts yet. Connect a text generate node and run it first.'
     },
+    selectNarrative: {
+      appMark: 'Select narrative unit',
+      hint: 'Double-click to pick one unit from the upstream narrative catalog. Defaults to the first item.',
+      empty: 'No upstream narrative units yet. Connect a narrative asset and run it first.'
+    },
     textsPreview: {
       appMark: 'Texts preview',
       hint: 'Preview multiple texts in a grid; double-click a card to open the notepad.',
@@ -1802,6 +1807,7 @@ export default {
         shotEntities: 'Shot entities',
         videoEntities: 'Video entities',
         narrative: 'Narrative unit',
+        narrativeEntity: 'Narrative entity',
         shots: 'Shot',
         model: 'Model'
       }
@@ -1906,6 +1912,7 @@ export default {
         select: 'Select text'
       },
       narrative: {
+        select: 'Select narrative unit',
         split: 'Narrative split',
         table: 'Narrative table',
         gen: 'Narrative unit gen',

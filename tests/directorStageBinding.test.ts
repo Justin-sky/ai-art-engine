@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultDirectorStage } from '../src/shared/domain'
+import { createDefaultDirectorStage, getActiveDirectorCamera } from '../src/shared/domain'
 import { createNodeFromType } from '../src/shared/graph'
 import {
   createFreshDirectorStage,
@@ -7,7 +7,6 @@ import {
   readStagesByNodeId,
   removeNodeStagesFromGenParams,
   resolveDirectorStageForNode,
-  resolveDirectorStageFromAsset,
   shouldResetDirectorStage
 } from '../src/renderer/src/features/director/directorStageBinding'
 
@@ -37,6 +36,7 @@ describe('directorStageBinding', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     }
 
+    expect(genParams.stage).toBeUndefined()
     const resolvedA = resolveDirectorStageForNode(genParams, graphJson, nodeA.id)
     const resolvedB = resolveDirectorStageForNode(genParams, graphJson, nodeB.id)
     expect(resolvedA.objects).toHaveLength(1)
@@ -45,7 +45,7 @@ describe('directorStageBinding', () => {
     expect(resolvedB.ownerProcessingNodeId).toBe(nodeB.id)
   })
 
-  it('migrates legacy single stage into node map', () => {
+  it('ignores legacy single stage without stagesByNodeId', () => {
     const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const stage = createDefaultDirectorStage()
     stage.objects = [
@@ -62,9 +62,9 @@ describe('directorStageBinding', () => {
     const genParams = { stage }
     const graphJson = { nodes: [node], edges: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
     const map = readStagesByNodeId(genParams, graphJson)
-    expect(map[node.id]?.objects).toHaveLength(1)
-    const resolved = resolveDirectorStageFromAsset(genParams, graphJson)
-    expect(resolved.objects).toHaveLength(1)
+    expect(map[node.id]).toBeUndefined()
+    const resolved = resolveDirectorStageForNode(genParams, graphJson, node.id)
+    expect(resolved.objects).toHaveLength(0)
     expect(resolved.ownerProcessingNodeId).toBe(node.id)
   })
 
@@ -77,6 +77,7 @@ describe('directorStageBinding', () => {
     const map = readStagesByNodeId(next)
     expect(map[nodeA.id]).toBeUndefined()
     expect(map[nodeB.id]).toBeTruthy()
+    expect(next.stage).toBeUndefined()
   })
 
   it('resets stage when owner node id no longer exists in graph', () => {
@@ -96,6 +97,7 @@ describe('directorStageBinding', () => {
     }
     const stage = createFreshDirectorStage(node)
     expect(stage.ownerProcessingNodeId).toBe(node.id)
-    expect(stage.viewer?.fov).toBe(55)
+    expect(getActiveDirectorCamera(stage).viewer.fov).toBe(55)
+    expect(stage).not.toHaveProperty('viewer')
   })
 })

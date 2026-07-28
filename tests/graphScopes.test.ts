@@ -70,7 +70,7 @@ describe('graph scopes', () => {
       'gen',
       'out'
     ])
-    expect(resolveDefaultGraphTemplate('scriptAsset')?.inputLinkTo).toBe('split')
+    expect(resolveDefaultGraphTemplate('scriptAsset')?.inputLinkTo).toEqual(['split', 'table'])
     expect(getGraphScopeDefinition('worldAsset').ensureOutput).toBe(false)
     expect(resolveDefaultGraphTemplate('worldAsset')?.nodes.map((n) => n.typeId)).toEqual([
       'world.extract',
@@ -79,9 +79,9 @@ describe('graph scopes', () => {
       'output.world'
     ])
     expect(getGraphScopeDefinition('narrativeAsset').ensureOutput).toBe(false)
-    expect(resolveDefaultGraphTemplate('narrativeAsset')?.nodes.some((n) => n.typeId === 'text.select')).toBe(
-      true
-    )
+    expect(
+      resolveDefaultGraphTemplate('narrativeAsset')?.nodes.map((n) => n.typeId)
+    ).toEqual(['narrative.split', 'narrative.table', 'output.narrative'])
   })
 
   it('allows registering custom graph scopes', () => {

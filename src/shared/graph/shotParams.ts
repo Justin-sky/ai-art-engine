@@ -5,11 +5,8 @@ import {
   type Shot,
   type ShotStoryboard
 } from '../domain'
-import type { GraphDocument, GraphNode, GraphNodeParams } from './types'
+import type { GraphNode, GraphNodeParams } from './types'
 import { createNodeFromType } from './create'
-
-/** script 资产 genParams 中存放分镜工作流图的键 */
-export const SHOT_WORKFLOW_GRAPH_PARAM_KEY = 'shotWorkflowGraph'
 
 /** 分镜参数节点默认 params（右键添加 / 新建节点） */
 export function defaultShotParamsNodeParams(): Pick<GraphNodeParams, 'shotStoryboard'> {
@@ -71,26 +68,6 @@ export function createShotParamsNodeForShot(
       boundShotId: shot.id
     }
   })
-}
-
-/** 从 script 资产 genParams 读取分镜工作流图 */
-export function readShotWorkflowGraphFromGenParams(
-  genParams?: Record<string, unknown> | null
-): GraphDocument | null {
-  const raw = genParams?.[SHOT_WORKFLOW_GRAPH_PARAM_KEY]
-  if (!raw || typeof raw !== 'object') return null
-  return raw as GraphDocument
-}
-
-/** 写入分镜工作流图到 genParams */
-export function withShotWorkflowGraph(
-  genParams: Record<string, unknown> | null | undefined,
-  graph: GraphDocument
-): Record<string, unknown> {
-  return {
-    ...(genParams ?? {}),
-    [SHOT_WORKFLOW_GRAPH_PARAM_KEY]: graph
-  }
 }
 
 /** 分镜参数节点在图未执行时的可读正文（与 executeShotParamsNode 输出一致） */

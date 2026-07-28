@@ -192,17 +192,6 @@ export function appendStyleImagesReferencePrompt(
 }
 
 /**
- * @deprecated 使用 appendStyleImagesReferencePrompt（@n + 参考强度）。
- * 保留供旧数据/展示兼容。
- */
-export function appendStyleImagesToPrompt(
-  prompt: string,
-  images?: ProjectStyleImage[] | null
-): string {
-  return appendStyleImagesReferencePrompt(prompt, images)
-}
-
-/**
  * 解析生成节点实际使用的风格图。
  * - useGlobal !== false（默认用全局）：取工程全局风格
  * - useGlobal === false：取节点本地风格；未配置则为空（不追加）

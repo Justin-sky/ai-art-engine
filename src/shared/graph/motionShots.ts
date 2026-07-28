@@ -26,18 +26,17 @@ function readStageRawForNode(
   genParams: Record<string, unknown> | null | undefined,
   nodeId: string | null
 ): unknown {
-  if (!genParams) return null
+  if (!genParams || !nodeId) return null
   const map = genParams[STAGES_BY_NODE_KEY]
-  if (nodeId && map && typeof map === 'object' && !Array.isArray(map)) {
-    const raw = (map as Record<string, unknown>)[nodeId]
-    if (raw) return raw
+  if (map && typeof map === 'object' && !Array.isArray(map)) {
+    return (map as Record<string, unknown>)[nodeId] ?? null
   }
-  return genParams.stage
+  return null
 }
 
 /**
  * 解析导演台资产/节点上的站位图列表。
- * 优先节点 params，其次该节点独立场景 / genParams.stage，再次资产图内加工节点。
+ * 优先节点 params，其次该节点 stagesByNodeId 场景，再次资产图内加工节点。
  */
 export function resolveMotionImageItems(
   genParams?: Record<string, unknown> | null,
@@ -51,7 +50,7 @@ export function resolveMotionImageItems(
   const nodeId = processingNodeId ?? processing?.id ?? null
   const stageRaw = readStageRawForNode(genParams, nodeId)
   const fromStage = shotsToImageItems(
-    readDirectorStage(stageRaw ? { stage: stageRaw } : (genParams ?? undefined)).cameraShots ?? []
+    stageRaw ? readDirectorStage({ stage: stageRaw }).cameraShots ?? [] : []
   )
   if (fromStage.length) return fromStage
 

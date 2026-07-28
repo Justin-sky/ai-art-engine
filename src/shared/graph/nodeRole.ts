@@ -96,21 +96,12 @@ export function isScriptShotVideoGenNode(node: Pick<GraphNode, 'typeId'>): boole
   return node.typeId === 'script.shotVideoGen'
 }
 
-/** @deprecated 使用 {@link isScriptShotVideoGenNode} */
-export function isScriptShotEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return isScriptShotVideoGenNode(node) || node.typeId === 'script.shotEditor'
-}
-
 export function isScriptShotParamsNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'script.shotParams'
 }
 
 export function isWorldExtractNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.extract'
-}
-
-export function isScreenplayNarrativeSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.split' || node.typeId === 'screenplay.narrativeSplit'
 }
 
 export function isNarrativeSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -171,6 +162,10 @@ export function isSelectVoiceNode(node: Pick<GraphNode, 'typeId'>): boolean {
 
 export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'text.select'
+}
+
+export function isSelectNarrativeNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'narrative.select'
 }
 
 export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
