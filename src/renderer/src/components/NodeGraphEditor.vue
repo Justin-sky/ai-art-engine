@@ -566,12 +566,14 @@ import {
   isNodeGroupable,
   isDirectorProcessingNode,
   isProcessingAssetNode,
+  isAssetHostNode,
   isAssetRefNode,
   isAssetRefInputHostType,
   encapsulateSelection,
   cloneHostInterface,
   pruneEdgesForHostInterface,
   readHostInterfaceFromGenParams,
+  type HostInterfaceDocument,
   readHostSchemaVersion,
   HOST_INTERFACE_SCHEMA_VERSION,
   resolveHostInputSlotsForHostOpen,
@@ -680,6 +682,7 @@ import {
   stringifyNarrativeEntity,
   parseNarrativeUnitJson,
   catalogTextFromValue,
+  isGraphOutputTerminalNode,
   GraphPortType,
   WORLD_ELEMENT_KINDS
 } from '@shared/graph'
@@ -1012,12 +1015,14 @@ function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
       return resolveAssetTextFromGenParams(asset.genParams, {})
     },
     resolveAssetGenParams: (assetId) => {
-      if (isDraftAssetId(assetId)) {
-        return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
-      }
-      return project.assets.find((a) => a.id === assetId)?.genParams as
-        | Record<string, unknown>
-        | undefined
+      const live = graphEditorHosts.getLiveAssetDocument(assetId)
+      const base = isDraftAssetId(assetId)
+        ? (draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
+        : (project.assets.find((a) => a.id === assetId)?.genParams as
+            | Record<string, unknown>
+            | undefined)
+      if (live) return { ...(base ?? {}), graphJson: live }
+      return base
     },
     resolveLiveAssetGraph: (assetId) =>
       graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
@@ -1057,6 +1062,16 @@ function syncBoundaryInputsFromParents(): boolean {
   return applyBoundaryInputValues(graph.nodes, values)
 }
 
+/** 当前宿主资产已保存的端口接口；缺失时回落到类型默认模板 */
+function resolveHostInterfaceForGraph(): HostInterfaceDocument | null {
+  const host = graphAsset.value
+  if (!host || !isAssetRefInputHostType(host.type)) return null
+  return readHostInterfaceFromGenParams(
+    host.genParams as Record<string, unknown> | undefined,
+    host.type
+  )
+}
+
 function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocument {
   const host = graphAsset.value
   const hostAssetId = isAssetGraph.value ? props.assetId ?? host?.id ?? null : null
@@ -1064,7 +1079,8 @@ function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocu
     assetType: host?.type,
     hostAssetId,
     hasMediaFile: isAssetGraph.value ? !!host?.relativePath?.trim() : false,
-    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
+    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId),
+    hostInterface: resolveHostInterfaceForGraph()
   })
 }
 
@@ -1141,7 +1157,8 @@ function readAssetGraph(): GraphDocument {
   return normalizeAssetGraph(raw as GraphDocument | null | undefined, host?.type, {
     hostAssetId,
     hasMediaFile: !!host?.relativePath?.trim(),
-    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId)
+    parentHostInputSlots: resolveParentHostInputSlots(hostAssetId),
+    hostInterface: resolveHostInterfaceForGraph()
   })
 }
 
@@ -1308,9 +1325,7 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
   if (!emptyTextSlots.length) return
 
   for (const parent of collectParentGraphsForHost(hostAssetId)) {
-    const hostNode = parent.nodes.find(
-      (n) => n.assetId === hostAssetId && n.params.assetHost === true
-    )
+    const hostNode = parent.nodes.find((n) => n.assetId === hostAssetId && isAssetHostNode(n))
     if (!hostNode) continue
     const edges = parent.edges
       .filter((edge) => edge.target === hostNode.id)
@@ -1615,12 +1630,16 @@ const {
     return value
   },
   resolveAssetGenParams: (assetId) => {
-    if (isDraftAssetId(assetId)) {
-      return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
+    const live = graphEditorHosts.getLiveAssetDocument(assetId)
+    const base = isDraftAssetId(assetId)
+      ? (draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
+      : (project.assets.find((asset) => asset.id === assetId)?.genParams as
+          | Record<string, unknown>
+          | undefined)
+    if (live) {
+      return { ...(base ?? {}), graphJson: live }
     }
-    return project.assets.find((asset) => asset.id === assetId)?.genParams as
-      | Record<string, unknown>
-      | undefined
+    return base
   },
   hasAsset: (assetId) => {
     if (isDraftAssetId(assetId)) return !!draftStore.getDraft(assetId)
@@ -1855,9 +1874,10 @@ const toolbarSelectedNode = computed(() => {
   return graph.nodes.find((n) => n.id === id) ?? null
 })
 
-const toolbarSelectedIsOutput = computed(
-  () => toolbarSelectedNode.value?.category === 'output'
-)
+const toolbarSelectedIsOutput = computed(() => {
+  const node = toolbarSelectedNode.value
+  return !!node && isGraphOutputTerminalNode(node)
+})
 
 const toolbarCurrentNodeLabel = computed(() => {
   const id = toolbarSelectedNodeId.value

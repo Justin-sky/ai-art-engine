@@ -681,10 +681,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       kind: 'asset',
       assetId,
       hostId: `asset:${assetId}`,
-      instanceKey:
-        input.hostNode.assetType === 'subgraph'
-          ? `${input.hostNode.id}:${crypto.randomUUID()}`
-          : undefined
+      // 每次宿主 cook 独立实例：避免与 dive 入队的定义工作流、或其它实例抢同一 target
+      instanceKey: `${input.hostNode.id}:${crypto.randomUUID()}`
     }
     const targetKey = taskTargetKey(target)
 
@@ -692,6 +690,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === targetKey
     )
     let taskId = existing?.id
+    let justEnqueued = false
 
     if (!taskId) {
       const project = useProjectStore()
@@ -710,6 +709,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       })
       if (enqueued.ok) {
         taskId = enqueued.id
+        justEnqueued = true
       } else {
         const again = activeTasks.value.find(
           (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === targetKey
@@ -720,6 +720,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
 
     if (!taskId) {
       return { ok: false, states: {}, error: 'GRAPH_HOST_INNER_ENQUEUE_FAILED' }
+    }
+
+    if (justEnqueued) {
+      openDialog(document.querySelector<HTMLElement>('[data-graph-task-anchor]'))
     }
 
     const onAbort = (): void => {
@@ -998,10 +1002,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
         },
         resolveAssetGenParams: (assetId) => {
+          const live = graphEditorHosts.getLiveAssetDocument(assetId)
           const project = useProjectStore()
-          return project.assets.find((asset) => asset.id === assetId)?.genParams as
-            | Record<string, unknown>
-            | undefined
+          const base = isDraftAssetId(assetId)
+            ? (useDraftStore().getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
+            : (project.assets.find((asset) => asset.id === assetId)?.genParams as
+                | Record<string, unknown>
+                | undefined)
+          if (live) {
+            return { ...(base ?? {}), graphJson: live }
+          }
+          return base
         },
         resolveAssetName: (assetId) => {
           const project = useProjectStore()

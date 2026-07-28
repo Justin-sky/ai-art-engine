@@ -1881,6 +1881,8 @@ export default {
       noOutput: 'Output node not found',
       unboundAsset: 'Node has no bound asset',
       missingAsset: 'Linked asset was deleted',
+      hostNoGraph: 'Host asset has no runnable inner graph',
+      hostEnqueueFailed: 'Failed to enqueue the host inner graph',
       noInput: 'Enter a generation instruction, or connect an upstream input',
       lipSyncNoVisual: 'Connect a character image or reference video first',
       lipSyncNoAudio: 'Connect a voice (speech) input first',

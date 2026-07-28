@@ -83,8 +83,10 @@ describe('narrative table / editor execute', () => {
     expect(importNarrativeCatalogJson).toHaveBeenCalledWith(text)
     expect(collectNarrativeUnitTexts).toHaveBeenCalled()
     expect(saveRunText).toHaveBeenCalledTimes(2)
-    expect(saveRunText).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: '高潮' }))
-    expect(saveRunText).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: '冲突升级' }))
+    // 文件名 = {资产名}_{单元标题}_{时间戳}[_{序号}]；无宿主名时资产段回落 Generated
+    const keys = saveRunText.mock.calls.map((call) => call[0].key as string)
+    expect(keys[0]).toMatch(/^Generated_高潮_\d{8}-\d{9}_1$/)
+    expect(keys[1]).toMatch(/^Generated_冲突升级_\d{8}-\d{9}_2$/)
     expect(result.out?.kind).toBe('text')
     expect(result['out-all']?.kind).toBe('texts')
     if (result['out-all']?.kind === 'texts') {
@@ -110,7 +112,9 @@ describe('narrative table / editor execute', () => {
         })
       })
     )
-    expect(saveRunText).toHaveBeenCalledWith(expect.objectContaining({ key: '雨夜对峙' }))
+    // 无 title 时取首行去掉序号前缀作为单元名；单条不带序号后缀
+    expect(saveRunText).toHaveBeenCalledTimes(1)
+    expect(saveRunText.mock.calls[0]?.[0].key).toMatch(/^Generated_雨夜对峙_\d{8}-\d{9}$/)
   })
 
   it('gen without collect returns empty texts', async () => {

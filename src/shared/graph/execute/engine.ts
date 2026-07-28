@@ -16,6 +16,7 @@ import type {
 import {
   buildMentionSourcesForNode,
   contributionFromAssets,
+  executeAssetHostInnerGraph,
   executePassthrough,
   resolveGalleryOutputsFromNodeParams,
   resolveGenerateMentionIndexBase
@@ -381,7 +382,13 @@ async function executeOneNode(
   }
 
   try {
-    const result = await withAbort(Promise.resolve(execute(ctx)), options.signal)
+    // 宿主 cook 属节点角色而非节点类型：必须先于类型专用 execute，
+    // 否则 asset.screenplay 这类走专用函数的宿主会被当引用透传，内图永不入队。
+    const hostCook = executeAssetHostInnerGraph(ctx)
+    const result = await withAbort(
+      hostCook ?? Promise.resolve(execute(ctx)),
+      options.signal
+    )
     if (options.signal?.aborted) {
       publish(states, nodeId, { status: 'error', error: 'GRAPH_CANCELLED' }, options.onNodeUpdate)
       return { ok: false, error: 'GRAPH_CANCELLED' }

@@ -403,10 +403,11 @@ export function buildGeneratedMediaFileKey(input: {
   return base
 }
 
-/** 生成媒体文件名用时间戳（含毫秒） */
+/** 生成媒体文件名用时间戳（含毫秒），固定宽度 yyyyMMdd-HHmmssSSS */
 export function formatGeneratedMediaStamp(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}${p(date.getMilliseconds())}`
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}${ms}`
 }
 
 /**

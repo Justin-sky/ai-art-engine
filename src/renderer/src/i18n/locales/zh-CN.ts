@@ -1873,6 +1873,8 @@ export default {
       noOutput: '未找到输出节点',
       unboundAsset: '节点未绑定资产',
       missingAsset: '关联资产已删除',
+      hostNoGraph: '宿主资产没有可执行的内图',
+      hostEnqueueFailed: '宿主内图未能加入任务列表',
       noInput: '请填写生成指令，或连接上游输入',
       lipSyncNoVisual: '请先连接角色图片或参考视频',
       lipSyncNoAudio: '请先连接声音（语音）输入',

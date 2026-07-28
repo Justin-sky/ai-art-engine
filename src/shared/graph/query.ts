@@ -2,6 +2,20 @@ import type { GraphDocument, GraphNode } from './types'
 import { isCanonicalGraphOutputNodeId } from './types'
 import { isBoundaryOutputNode } from './hostInterface'
 
+/**
+ * 是否可作为执行终端：classic output.* / 规范输出 id / boundary.output。
+ * HDA 统一后内图只剩 boundary 出口，UI 与执行层必须共用这一判定。
+ */
+export function isGraphOutputTerminalNode(
+  node: Pick<GraphNode, 'id' | 'typeId' | 'category'>
+): boolean {
+  return (
+    node.category === 'output' ||
+    isCanonicalGraphOutputNodeId(node.id) ||
+    isBoundaryOutputNode(node)
+  )
+}
+
 export function findOutputNode(graph: GraphDocument): GraphNode | undefined {
   return (
     graph.nodes.find((n) => n.category === 'output') ??

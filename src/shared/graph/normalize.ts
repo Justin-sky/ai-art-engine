@@ -38,7 +38,10 @@ import {
   type HostInputSlotSpec
 } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
-import { defaultHostInterfaceForAssetType } from './hostInterface'
+import {
+  defaultHostInterfaceForAssetType,
+  type HostInterfaceDocument
+} from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 
 export {
@@ -236,6 +239,11 @@ export function normalizeScopedGraph(
     hasMediaFile?: boolean
     /** 外层宿主入边展开的输入接口槽位；打开宿主编辑器时传入 */
     parentHostInputSlots?: HostInputSlotSpec[]
+    /**
+     * 该宿主资产已保存的接口（genParams.hostInterface）。
+     * 必须传入，否则封装出的自定义端口会被默认模板剪掉。
+     */
+    hostInterface?: HostInterfaceDocument | null
   }
 ): GraphDocument {
   ensureBuiltinNodeTypes()
@@ -244,14 +252,13 @@ export function normalizeScopedGraph(
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   }
+  const hostInterface = (): HostInterfaceDocument =>
+    options?.hostInterface ?? defaultHostInterfaceForAssetType(options?.assetType)
   if (!raw?.nodes?.length) {
     let created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
     // HDA：可宿主类型默认图补 boundary（不再插 graph.input.slot）
     if (isAssetRefInputHostType(options?.assetType)) {
-      created = ensureBoundaryProxyNodes(
-        created,
-        defaultHostInterfaceForAssetType(options.assetType)
-      )
+      created = ensureBoundaryProxyNodes(created, hostInterface())
     } else {
       syncHostInputSlots(scope, created.nodes, created.edges, options)
     }
@@ -294,10 +301,7 @@ export function normalizeScopedGraph(
 
   let result = finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
   if (isAssetRefInputHostType(options?.assetType)) {
-    result = ensureBoundaryProxyNodes(
-      result,
-      defaultHostInterfaceForAssetType(options.assetType)
-    )
+    result = ensureBoundaryProxyNodes(result, hostInterface())
   }
   return result
 }
@@ -361,12 +365,14 @@ export function normalizeAssetGraph(
     hostAssetId?: string | null
     hasMediaFile?: boolean
     parentHostInputSlots?: HostInputSlotSpec[]
+    hostInterface?: HostInterfaceDocument | null
   }
 ): GraphDocument {
   return normalizeScopedGraph(assetTypeToGraphScope(assetType), raw, {
     assetType,
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile,
-    parentHostInputSlots: options?.parentHostInputSlots
+    parentHostInputSlots: options?.parentHostInputSlots,
+    hostInterface: options?.hostInterface
   })
 }

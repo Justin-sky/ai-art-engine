@@ -26,7 +26,7 @@ import {
   toSingularGraphPortDataType
 } from '../types'
 import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
-import { isAssetRefNode, isAssetRefInputHostType, isProcessingAssetNode } from '../nodeRole'
+import { isAssetHostNode, isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
 import { mergeHostInputValues, readHostInputSlot } from '../hostInput'
 import {
@@ -1266,14 +1266,26 @@ export const MAX_HOST_COOK_DEPTH = 8
 /**
  * 宿主实例：注入内图 boundary 输入，整链交给任务列表执行（runHostInnerGraph）。
  * 可宿主类型统一 HDA：零输入也可 cook；优先 boundary 映射出口。
+ * 缺内图时抛 GRAPH_HOST_INNER_NO_GRAPH，禁止静默回退成资产引用。
  */
-function executeAssetHostInnerGraph(
+export function executeAssetHostInnerGraph(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> | null {
   const { node, inputs } = ctx
   if (!node.assetId) return null
-  if (!isAssetRefInputHostType(node.assetType) && node.params?.assetHost !== true) {
-    return null
+  // 非宿主（导入素材等普通引用）交回引用路径。
+  // 不以「资产有 graphJson」兜底：素材资产自身也带生成图，会把引用误当宿主重跑。
+  if (!isAssetHostNode(node)) return null
+
+  const genParams = ctx.resolveAssetGenParams?.(node.assetId)
+  const raw = genParams?.graphJson
+  const innerDoc =
+    !!raw && typeof raw === 'object' && Array.isArray((raw as GraphDocument).nodes)
+      ? (raw as GraphDocument)
+      : null
+  if (!innerDoc) {
+    // 宿主必须有内图；静默回退成引用会让外层「跑完了」却不入队
+    throw new Error('GRAPH_HOST_INNER_NO_GRAPH')
   }
 
   const cookStack = ctx.cookAssetIdStack ?? []
@@ -1284,12 +1296,6 @@ function executeAssetHostInnerGraph(
     throw new Error('GRAPH_HOST_MAX_DEPTH')
   }
 
-  const genParams = ctx.resolveAssetGenParams?.(node.assetId)
-  const raw = genParams?.graphJson
-  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as GraphDocument).nodes)) {
-    return null
-  }
-
   if (!ctx.runHostInnerGraph) {
     throw new Error('GRAPH_HOST_INNER_NO_RUNNER')
   }
@@ -1298,7 +1304,7 @@ function executeAssetHostInnerGraph(
   const iface = resolveNodeHostInterface(node)
 
   return (async () => {
-    let doc = cloneGraphDocument(raw as GraphDocument)
+    let doc = cloneGraphDocument(innerDoc)
     // 新资产创建时已带 boundary；运行时再幂等补齐，避免缺 proxy
     doc = ensureBoundaryProxyNodes(doc, iface)
     const priorNodeStates: Record<string, GraphNodeRunState> = {}
@@ -1432,13 +1438,10 @@ export function executeAssetNode(
     if (ctx.hasAsset && !ctx.hasAsset(node.assetId)) {
       throw new Error('GRAPH_MISSING_ASSET')
     }
-    if (node.params.assetHost === true) {
-      const nested = executeAssetHostInnerGraph(ctx)
-      if (nested) return nested
-      if (node.assetType === 'script') {
-        return { out: catalogValue(GraphPortType.videoEntities, '[]') }
-      }
-    }
+    // 宿主实例：内图整链入队。返回 null 表示确非宿主（无内图的普通引用），
+    // 缺内图 / 无 runner 由内部抛错，禁止静默当引用透传
+    const nested = executeAssetHostInnerGraph(ctx)
+    if (nested) return nested
     // 剧本引用端口为 text；分镜非宿主引用仍可读正文
     if (node.assetType === 'screenplay' || node.assetType === 'script') {
       return executeTextAssetRefNode(ctx)

@@ -34,6 +34,19 @@ export function isAssetRefNode(
   )
 }
 
+/**
+ * 宿主实例节点（HDA）。
+ * params.assetHost 是显式标记，但存量数据 / 重建节点可能缺失；
+ * 带 hostInterfaceSnapshot 说明端口已按宿主接口生成，同样按宿主处理。
+ */
+export function isAssetHostNode(
+  node: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'assetType'>
+): boolean {
+  if (!isAssetRefNode(node)) return false
+  if (!isAssetRefInputHostType(node.assetType)) return false
+  return node.params.assetHost === true || !!node.params.hostInterfaceSnapshot
+}
+
 /** 未绑定资产的加工节点（右侧可编辑参数） */
 export function isProcessingAssetNode(
   node: Pick<GraphNode, 'category' | 'params' | 'assetId'>

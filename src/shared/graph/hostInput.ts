@@ -1,5 +1,5 @@
 import type { AssetType } from '../domain'
-import { isAssetRefInputHostType } from './nodeRole'
+import { isAssetHostNode, isAssetRefInputHostType } from './nodeRole'
 import {
   collectScreenplayTextRelativePaths,
   resolveAssetTextFromGenParams
@@ -711,7 +711,7 @@ export function resolveHostInputSlotsFromParentGraph(
   options?: ResolveHostInputSlotsOptions
 ): HostInputSlotSpec[] {
   const hostNodes = parent.nodes.filter(
-    (node) => node.assetId === hostAssetId && node.params.assetHost === true
+    (node) => node.assetId === hostAssetId && isAssetHostNode(node)
   )
   if (!hostNodes.length) return []
 
@@ -1032,7 +1032,7 @@ export function resolveBoundaryInputValuesFromParentGraph(
   options?: ResolveHostInputSlotsOptions
 ): Record<string, GraphValue> {
   const hostNode = parent.nodes.find(
-    (node) => node.assetId === hostAssetId && node.params.assetHost === true
+    (node) => node.assetId === hostAssetId && isAssetHostNode(node)
   )
   if (!hostNode) return {}
   const iface = resolveNodeHostInterface(hostNode)
