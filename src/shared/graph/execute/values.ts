@@ -1,6 +1,8 @@
 import {
   appendStyleImagesReferencePrompt,
+  buildGeneratedMediaFileKey,
   buildShotGenerationPrompt,
+  formatGeneratedMediaStamp,
   normalizeProjectStyleImages,
   portMentionIndex,
   resolveGenerateStyleImages,
@@ -193,7 +195,6 @@ async function materializeGeneratedBatch(
       ...(item.relativePath ? { relativePath: item.relativePath } : {})
     }))
   }
-  const nodeName = (ctx.node.title || ctx.node.typeId || 'generate').trim() || 'generate'
   const stamp = formatGeneratedMediaStamp()
   const next: GraphImageItem[] = []
   let lastError: unknown = null
@@ -209,8 +210,12 @@ async function materializeGeneratedBatch(
     }
     const raw = item.dataUrl?.trim()
     if (!raw) continue
-    const key =
-      batch.length > 1 ? `${nodeName}_${stamp}_${index + 1}` : `${nodeName}_${stamp}`
+    const key = buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: ctx.node.title || ctx.node.typeId || 'generate',
+      stamp,
+      index: batch.length > 1 ? index + 1 : null
+    })
     try {
       const relativePath = await ctx.saveRunMedia({
         dataUrl: raw,
@@ -235,12 +240,6 @@ async function materializeGeneratedBatch(
     throw new Error(detail.includes('图片落盘失败') ? detail : `图片落盘失败: ${detail}`)
   }
   return next
-}
-
-function formatGeneratedMediaStamp(date = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, '0')
-  // 含毫秒，避免同秒多次生成 id 碰撞导致选中命中首条
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}${p(date.getMilliseconds())}`
 }
 
 function stripEmbeddedImageData(item: GraphImageItem): GraphImageItem {
@@ -445,21 +444,17 @@ function extractScreenplayTitleFromText(text: string): string | undefined {
   return name
 }
 
-/** 剧本生成落盘名：剧本名_生成次数（优先正文剧本名） */
+/** 剧本生成落盘名：{宿主/剧本名}_{节点名}_{时间戳} */
 function resolveScreenplayGenerationFileKey(ctx: NodeExecuteContext, text?: string): string {
   const fromText = text ? extractScreenplayTitleFromText(text) : undefined
   const host = ctx.resolveHostAssetName?.()?.trim()
   const boundId = ctx.node.assetId?.trim()
   const bound = boundId ? ctx.resolveAssetName?.(boundId)?.trim() : undefined
-  const title = ctx.node.title?.trim()
-  const raw = fromText || host || bound || title || 'screenplay'
-  const stem =
-    raw
-      .replace(/[^\w\u4e00-\u9fff.-]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 48) || 'screenplay'
-  const count = (ctx.node.params.generatedTexts?.length ?? 0) + 1
-  return `${stem}_${count}`
+  return buildGeneratedMediaFileKey({
+    hostAssetName: fromText || host || bound || 'screenplay',
+    nodeTitle: ctx.node.title || ctx.node.typeId || 'screenplay',
+    stamp: formatGeneratedMediaStamp()
+  })
 }
 
 async function materializeGeneratedText(
@@ -920,7 +915,11 @@ async function persistCatalogTextGeneration(
     try {
       const relativePath = await ctx.saveRunText({
         content: text,
-        key: `${options.fileKeyPrefix}_${(ctx.node.params.generatedTexts?.length ?? 0) + 1}`,
+        key: buildGeneratedMediaFileKey({
+          hostAssetName: ctx.resolveHostAssetName?.(),
+          nodeTitle: options.fileKeyPrefix || ctx.node.title || ctx.node.typeId || 'text',
+          stamp: formatGeneratedMediaStamp()
+        }),
         outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
         node: ctx.node
       })
@@ -1660,7 +1659,11 @@ export async function executeVoiceGenerateNode(
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
     voice: speechVoice || undefined,
-    name: node.title?.trim() || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'voice',
+      stamp: formatGeneratedMediaStamp()
+    }),
     images: images.length ? images : undefined,
     outputDir: node.params.mediaOutputDir?.trim() || undefined
   })
@@ -1795,7 +1798,12 @@ export async function executeVideoGenerateNode(
     firstFrameImageUrl: useFirstFrame,
     lastFrameImageUrl: useLastFrame,
     inputReferences: apiRefs.length ? apiRefs : undefined,
-    outputDir: node.params.mediaOutputDir?.trim() || undefined
+    outputDir: node.params.mediaOutputDir?.trim() || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'video',
+      stamp: formatGeneratedMediaStamp()
+    })
   })
 
   if (ctx.signal?.aborted) {
@@ -1932,7 +1940,12 @@ export async function executeLipSyncNode(
     aspectRatio: genParams.aspectRatio,
     generateAudio: paramsPatch.generateAudio !== false,
     inputReferences,
-    outputDir: node.params.mediaOutputDir?.trim() || undefined
+    outputDir: node.params.mediaOutputDir?.trim() || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'lipSync',
+      stamp: formatGeneratedMediaStamp()
+    })
   })
 
   if (ctx.signal?.aborted) {
@@ -5069,19 +5082,28 @@ function sanitizeNarrativeOutputKeyPart(raw: string, fallback: string): string {
   return cleaned || fallback
 }
 
-/** 落盘文件名：优先条目 title，其次全文首行「序号. 标题」 */
-function resolveNarrativeUnitFileKey(item: GraphTextItem, index: number): string {
+/** 落盘文件名：{宿主}_{叙事标题}_{时间戳}[_{序号}] */
+function resolveNarrativeUnitFileKey(
+  ctx: NodeExecuteContext,
+  item: GraphTextItem,
+  index: number,
+  stamp: string,
+  total: number
+): string {
   const fromTitle = item.title?.trim()
-  if (fromTitle) {
-    return sanitizeNarrativeOutputKeyPart(fromTitle, `叙事单元${index + 1}`)
-  }
   const firstLine = item.text?.split(/\r?\n/, 1)[0]?.trim() ?? ''
   const numbered = firstLine.match(/^\d+\.\s*(.+)$/)
   const fromLine = (numbered?.[1] ?? firstLine).trim()
-  if (fromLine) {
-    return sanitizeNarrativeOutputKeyPart(fromLine, `叙事单元${index + 1}`)
-  }
-  return sanitizeNarrativeOutputKeyPart(item.id?.trim() || '', `叙事单元${index + 1}`)
+  const unitTitle = sanitizeNarrativeOutputKeyPart(
+    fromTitle || fromLine || item.id?.trim() || '',
+    `叙事单元${index + 1}`
+  )
+  return buildGeneratedMediaFileKey({
+    hostAssetName: ctx.resolveHostAssetName?.(),
+    nodeTitle: unitTitle,
+    stamp,
+    index: total > 1 ? index + 1 : null
+  })
 }
 
 /**
@@ -5100,7 +5122,7 @@ async function materializeNarrativeUnitTextItems(
     const text = item.text?.trim() ?? ''
     const existingPath = item.relativePath?.trim()
     const id = item.id?.trim() || `nu-out:${stamp}:${index}`
-    const fileKey = resolveNarrativeUnitFileKey(item, index)
+    const fileKey = resolveNarrativeUnitFileKey(ctx, item, index, stamp, hydrated.length)
     const title = item.title?.trim() || fileKey
 
     if (existingPath && !ctx.saveRunText) {

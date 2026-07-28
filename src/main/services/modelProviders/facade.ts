@@ -152,7 +152,7 @@ class ModelProviderFacade {
    * 结束后删除 TOS 临时对象。关软件后可由 videoJobService.resumePending 续取结果。
    */
   async generateVideo(
-    input: GenerateVideoInput & { name?: string }
+    input: GenerateVideoInput
   ): Promise<GenerateVideoResult> {
     if (!projectService.isOpen()) throw new Error('未打开工程')
 

@@ -20,17 +20,6 @@
       <input v-model="localTitle" @change="persistTitle" />
     </label>
 
-    <label>
-      {{ t('graph.inspector.generate.mediaOutputDir') }}
-      <div class="path-row">
-        <input :value="mediaOutputDirDisplay" readonly :title="mediaOutputDirDisplay" />
-        <button type="button" class="btn" @click="pickMediaOutputDir">
-          {{ t('common.browse') }}
-        </button>
-      </div>
-      <span class="field-hint">{{ t('graph.inspector.generate.mediaOutputDirHint') }}</span>
-    </label>
-
     <section class="gen-config">
       <label>
         {{ t('graph.inspector.generate.systemPrompt') }}
@@ -60,11 +49,6 @@ import {
   defaultLipSyncSystemPrompt,
   resolveLipSyncSystemPrompt
 } from '@shared/graph'
-import {
-  normalizeProjectRelativeDir,
-  resolveMediaOutputDir,
-  toProjectRelativeDir
-} from '@shared/domain'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
@@ -77,11 +61,9 @@ import {
   preferredModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
-import { useProjectStore } from '../stores/project'
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
-const project = useProjectStore()
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -107,13 +89,6 @@ const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
 const loadedNodeId = ref<string | null>(null)
 const loadedHostId = ref<string | null>(null)
-
-const mediaOutputDirDisplay = computed(() =>
-  resolveMediaOutputDir({
-    mediaOutputDir: node.value?.params.mediaOutputDir,
-    kind: 'video'
-  })
-)
 
 async function loadModels(preferredKey?: string): Promise<void> {
   const { options, selectedKey } = await loadGenerateModelOptions(
@@ -186,22 +161,6 @@ function persistGenerateConfig(): void {
   })
 }
 
-async function pickMediaOutputDir(): Promise<void> {
-  const current = node.value
-  const hid = hostId.value
-  if (!current || !hid) return
-  const root = project.rootPath
-  if (!root) return
-  const abs = await window.studio.selectDirectory()
-  if (!abs) return
-  const relative = toProjectRelativeDir(abs, root)
-  const normalized = normalizeProjectRelativeDir(relative)
-  if (relative === null || !normalized) {
-    window.alert(t('graph.inspector.generate.pathOutsideProject'))
-    return
-  }
-  graphEditorHosts.updateNode(hid, current.id, { mediaOutputDir: normalized })
-}
 </script>
 
 <style scoped>

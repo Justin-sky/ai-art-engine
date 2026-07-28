@@ -474,8 +474,10 @@ export interface GenerateVideoInput {
    * 参考资源：图片全模型可用；video_url / audio_url 目前主要 Seedance 2.0 生效。
    */
   inputReferences?: GenerateVideoInputReference[]
-  /** 视频主落盘目录（相对工程根）；缺省 Assets/{宿主名}/Videos */
+  /** 视频主落盘目录（相对工程根）；缺省 Cache/Videos */
   outputDir?: string
+  /** 落盘文件名 stem（含宿主/节点/时间戳） */
+  name?: string
 }
 
 export interface GenerateVideoResult {

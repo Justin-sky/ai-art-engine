@@ -250,6 +250,8 @@ export interface NodeExecuteContext {
     >
     /** 视频副本输出目录（相对工程根） */
     outputDir?: string
+    /** 落盘文件名 stem */
+    name?: string
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
    * 可选：调用设置中的语音合成；未注入时声音节点退回上游透传 / 文本。

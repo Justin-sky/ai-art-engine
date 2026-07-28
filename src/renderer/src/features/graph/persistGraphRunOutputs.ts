@@ -34,6 +34,7 @@ function resolveNodeImageOutputDir(
   const dirs = bound ? assetMediaHostDirs(bound, project.folders) : host
   return resolveMediaOutputDir({
     mediaOutputDir: node?.params.mediaOutputDir,
+    cacheOutputDir: project.config?.cacheOutputDir,
     hostRelativePath: dirs.hostRelativePath,
     hostFolderDir: dirs.hostFolderDir,
     hostAssetName: dirs.hostAssetName,

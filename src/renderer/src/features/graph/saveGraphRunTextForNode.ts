@@ -28,6 +28,7 @@ export async function saveGraphRunTextForNode(input: {
   const dirs = assetMediaHostDirs(host, project.folders)
   const outputDir = resolveMediaOutputDir({
     mediaOutputDir: input.outputDir ?? input.node.params.mediaOutputDir,
+    cacheOutputDir: project.config?.cacheOutputDir,
     hostRelativePath: dirs.hostRelativePath,
     hostFolderDir: dirs.hostFolderDir,
     hostAssetName: dirs.hostAssetName,
@@ -38,6 +39,8 @@ export async function saveGraphRunTextForNode(input: {
     key: input.key,
     outputDir
   })
-  await project.scheduleRefreshLibrary()
+  if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+    await project.scheduleRefreshLibrary()
+  }
   return relativePath
 }

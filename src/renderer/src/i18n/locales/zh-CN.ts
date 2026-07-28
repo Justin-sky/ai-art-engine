@@ -315,6 +315,9 @@ export default {
       stylePreset: '画面风格',
       stylePresetPlaceholder: '画风、色调、材质、镜头气质…',
       styleImagesHint: '最多 4 张风格参考图（计入图片输入口数量），可从默认库选择或上传自定义图片',
+      cacheOutputDir: '生成缓存根目录',
+      cacheOutputDirHint:
+        '相对工程根；生成结果默认写入 Cache/Images、Cache/Videos、Cache/Texts、Cache/Voices，不自动登记进资产库',
       empty: '未打开工程'
     }
   },
@@ -2095,31 +2098,22 @@ export default {
         hint: '双击打开分镜表格；运行节点导入分镜 JSON，并在此预览输出端口'
       },
       shotImageGen: {
-        hint: '运行本节点只收集各镜已有画面；批量生成请用下方按钮'
+        hint: '运行本节点收集各镜已有画面'
       },
       shotVideoGen: {
-        hint: '运行本节点只收集各镜已有视频；批量生成请用下方按钮'
+        hint: '运行本节点收集各镜已有视频'
       },
       worldTable: {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
       worldGen: {
-        hint: '运行本节点只收集四类子图已有图片；批量生成请用下方按钮'
-      },
-      shotBatch: {
-        runShots: '批量执行所有分镜',
-        runElements: '批量执行所有元素',
-        runUnits: '批量执行所有叙事单元',
-        onlyMissing: '仅缺结果的项',
-        collectAfter: '批跑完成后执行本节点（收集）',
-        empty: '没有可入队的项',
-        result: '已入队 {enqueued}，跳过 {skipped}，重复 {duplicates}'
+        hint: '运行本节点收集四类子图已有图片'
       },
       narrativeTable: {
         hint: '双击打开叙事单元表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
       narrativeGen: {
-        hint: '运行本节点收集各单元文本并落地到输出路径；批量生成请用下方按钮'
+        hint: '运行本节点收集各单元文本并落地到输出路径'
       },
       multiAngle: {
         hint: '双击节点编辑机位；此处预览文本输出（节点卡片不显示图片）',
@@ -2179,7 +2173,7 @@ export default {
         lockHint: '开启后本节点不再调用模型，直接输出图库中当前选中的上次结果',
         mediaOutputDir: '输出路径',
         mediaOutputDirHint:
-          '相对工程根；默认取该节点所在资产目录下的「资产名/Images」「资产名/Videos」「资产名/Texts」或「资产名/Voices」',
+          '相对工程根；默认写入工程缓存根下的 Images / Videos / Texts / Voices（见全局参数），不自动进资产库',
         pathOutsideProject: '只能选择工程目录内的文件夹',
         screenplayBody: '剧本文本',
         model: '文本模型',

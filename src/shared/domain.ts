@@ -290,11 +290,16 @@ export interface ProjectConfig {
    */
   styleImages?: ProjectStyleImage[]
   /**
-   * 图片输出目录（相对工程根）。缺省见 DEFAULT_IMAGE_OUTPUT_DIR。
+   * 生成缓存根目录（相对工程根）。缺省见 DEFAULT_CACHE_OUTPUT_DIR。
+   * 实际落盘为 `{cacheOutputDir}/{Images|Videos|Texts|Voices}`。
+   */
+  cacheOutputDir?: string
+  /**
+   * @deprecated 已收敛为 cacheOutputDir；保留以兼容旧工程 JSON
    */
   imageOutputDir?: string
   /**
-   * 视频输出目录（相对工程根）。缺省见 DEFAULT_VIDEO_OUTPUT_DIR。
+   * @deprecated 已收敛为 cacheOutputDir；保留以兼容旧工程 JSON
    */
   videoOutputDir?: string
   createdAt: string
@@ -303,17 +308,19 @@ export interface ProjectConfig {
   shotIds: string[]
 }
 
-/** 图执行图片产物默认目录（相对工程根；历史/工程级回退） */
+/** 工程级生成缓存根目录（相对工程根） */
+export const DEFAULT_CACHE_OUTPUT_DIR = 'Cache'
+/** @deprecated 历史默认；新代码请用 DEFAULT_CACHE_OUTPUT_DIR */
 export const DEFAULT_IMAGE_OUTPUT_DIR = 'Output/images'
-/** 生成视频副本默认目录（相对工程根；历史/工程级回退） */
+/** @deprecated 历史默认；新代码请用 DEFAULT_CACHE_OUTPUT_DIR */
 export const DEFAULT_VIDEO_OUTPUT_DIR = 'Output/videos'
-/** 相对宿主资产目录的图片子目录名 */
+/** Cache / 历史资产目录下的图片子目录名 */
 export const ASSET_IMAGE_OUTPUT_KIND_DIR = 'Images'
-/** 相对宿主资产目录的视频子目录名 */
+/** Cache / 历史资产目录下的视频子目录名 */
 export const ASSET_VIDEO_OUTPUT_KIND_DIR = 'Videos'
-/** 相对宿主资产目录的剧本文本子目录名 */
+/** Cache / 历史资产目录下的剧本文本子目录名 */
 export const ASSET_TEXT_OUTPUT_KIND_DIR = 'Texts'
-/** 相对宿主资产目录的声音音频子目录名 */
+/** Cache / 历史资产目录下的声音音频子目录名 */
 export const ASSET_VOICE_OUTPUT_KIND_DIR = 'Voices'
 
 /** 规范化工程相对目录：去首尾斜杠、统一 `/`；空串视为未设置 */
@@ -344,36 +351,84 @@ export function sanitizeAssetOutputDirName(name?: string | null): string {
   return s
 }
 
+/** 解析工程配置的缓存根（空则 DEFAULT_CACHE_OUTPUT_DIR） */
+export function resolveCacheOutputRoot(cacheOutputDir?: string | null): string {
+  return normalizeProjectRelativeDir(cacheOutputDir) || DEFAULT_CACHE_OUTPUT_DIR
+}
+
+/** 媒体种类对应的 Cache 子目录名 */
+export function mediaOutputKindDir(kind: 'image' | 'video' | 'text' | 'voice'): string {
+  if (kind === 'video') return ASSET_VIDEO_OUTPUT_KIND_DIR
+  if (kind === 'text') return ASSET_TEXT_OUTPUT_KIND_DIR
+  if (kind === 'voice') return ASSET_VOICE_OUTPUT_KIND_DIR
+  return ASSET_IMAGE_OUTPUT_KIND_DIR
+}
+
+/** 相对路径是否落在工程缓存根下（不进资产库） */
+export function isUnderCacheOutputDir(
+  relativePathOrDir?: string | null,
+  cacheOutputDir?: string | null
+): boolean {
+  const root = resolveCacheOutputRoot(cacheOutputDir)
+  const posix = normalizeProjectRelativeDir(relativePathOrDir)
+  if (!posix) return false
+  return posix === root || posix.startsWith(`${root}/`)
+}
+
+/** 相对路径是否落在 Assets/ 资产库树下 */
+export function isUnderAssetLibraryDir(relativePathOrDir?: string | null): boolean {
+  const posix = normalizeProjectRelativeDir(relativePathOrDir)
+  return posix === 'Assets' || posix.startsWith('Assets/')
+}
+
+/**
+ * 生成落盘文件名 stem：`{资产名}_{节点名}_{YYYYMMDD-HHMMSSmmm}[_{序号}]`
+ */
+export function buildGeneratedMediaFileKey(input: {
+  hostAssetName?: string | null
+  nodeTitle?: string | null
+  /** 缺省为当前时刻戳 */
+  stamp?: string | null
+  /** 多张时的 1-based 序号 */
+  index?: number | null
+}): string {
+  const asset = sanitizeAssetOutputDirName(input.hostAssetName)
+  const node = sanitizeAssetOutputDirName(input.nodeTitle || 'generate')
+  const stamp = (input.stamp ?? '').trim() || formatGeneratedMediaStamp()
+  const base = `${asset}_${node}_${stamp}`
+  const index = input.index
+  if (typeof index === 'number' && Number.isFinite(index) && index > 0) {
+    return `${base}_${Math.floor(index)}`
+  }
+  return base
+}
+
+/** 生成媒体文件名用时间戳（含毫秒） */
+export function formatGeneratedMediaStamp(date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}${p(date.getMilliseconds())}`
+}
+
 /**
  * 解析媒体输出目录：
- * 节点显式配置 > {资产文件夹}/{宿主资产名}/Images|Videos|Texts|Voices。
+ * 节点显式 mediaOutputDir > `{cacheOutputDir|Cache}/{Images|Videos|Texts|Voices}`。
+ * host* 参数仅保留兼容旧调用方，默认路径不再按资产目录铺开。
  */
 export function resolveMediaOutputDir(input: {
   mediaOutputDir?: string | null
-  /** 资产媒体相对路径（仅在无 folder 信息时取其父目录） */
+  /** 工程配置的缓存根；缺省 Cache */
+  cacheOutputDir?: string | null
+  /** @deprecated 默认路径不再使用 */
   hostRelativePath?: string | null
-  /** 资产所在文件夹相对路径，如 Assets 或 Assets/Characters */
+  /** @deprecated 默认路径不再使用 */
   hostFolderDir?: string | null
-  /** 生成节点宿主资产显示名 */
+  /** @deprecated 默认路径不再使用；文件名仍可带宿主名 */
   hostAssetName?: string | null
   kind: 'image' | 'video' | 'text' | 'voice'
 }): string {
   const explicit = normalizeProjectRelativeDir(input.mediaOutputDir)
   if (explicit) return explicit
-  const base =
-    normalizeProjectRelativeDir(input.hostFolderDir) ||
-    dirnameProjectRelative(input.hostRelativePath) ||
-    'Assets'
-  const assetName = sanitizeAssetOutputDirName(input.hostAssetName)
-  const kindDir =
-    input.kind === 'video'
-      ? ASSET_VIDEO_OUTPUT_KIND_DIR
-      : input.kind === 'text'
-        ? ASSET_TEXT_OUTPUT_KIND_DIR
-        : input.kind === 'voice'
-          ? ASSET_VOICE_OUTPUT_KIND_DIR
-          : ASSET_IMAGE_OUTPUT_KIND_DIR
-  return `${base}/${assetName}/${kindDir}`
+  return `${resolveCacheOutputRoot(input.cacheOutputDir)}/${mediaOutputKindDir(input.kind)}`
 }
 
 /**

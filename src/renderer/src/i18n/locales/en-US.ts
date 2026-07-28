@@ -316,6 +316,9 @@ export default {
       stylePresetPlaceholder: 'Art style, palette, materials, camera mood…',
       styleImagesHint:
         'Up to 4 style references (count toward image input slots) — library or upload',
+      cacheOutputDir: 'Generation cache root',
+      cacheOutputDirHint:
+        'Relative to project root; outputs default to Cache/Images, Cache/Videos, Cache/Texts, Cache/Voices and are not auto-registered in the asset library',
       empty: 'No project open'
     }
   },
@@ -2105,31 +2108,22 @@ export default {
         hint: 'Double-click to open the shot table. Run the node to import shot JSON and preview the out port here.'
       },
       shotImageGen: {
-        hint: 'Running this node only collects existing shot visuals. Use the batch button below to generate.'
+        hint: 'Running this node collects existing shot visuals.'
       },
       shotVideoGen: {
-        hint: 'Running this node only collects existing shot videos. Use the batch button below to generate.'
+        hint: 'Running this node collects existing shot videos.'
       },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },
       worldGen: {
-        hint: 'Running this node only collects existing element images. Use the batch button below to generate.'
-      },
-      shotBatch: {
-        runShots: 'Batch-run all shots',
-        runElements: 'Batch-run all elements',
-        runUnits: 'Batch-run all narrative units',
-        onlyMissing: 'Only missing results',
-        collectAfter: 'After batch, run this node (collect)',
-        empty: 'Nothing to enqueue',
-        result: 'Enqueued {enqueued}, skipped {skipped}, duplicates {duplicates}'
+        hint: 'Running this node collects existing element images.'
       },
       narrativeTable: {
         hint: 'Double-click to open the narrative unit table. Run the node to import catalog JSON and preview the out port here.'
       },
       narrativeGen: {
-        hint: 'Running this node collects unit texts and saves them to the output path; use the batch button below to generate.'
+        hint: 'Running this node collects unit texts and saves them to the output path.'
       },
       multiAngle: {
         hint: 'Double-click the node to edit camera angles. This panel previews the text output (no image on the node card).',
@@ -2194,7 +2188,7 @@ export default {
           'When enabled, this node skips the model call and outputs the currently selected gallery item from the last run',
         mediaOutputDir: 'Output path',
         mediaOutputDirHint:
-          "Relative to project root; defaults to '<assetName>/Images', '<assetName>/Videos', '<assetName>/Texts', or '<assetName>/Voices' under the node owner asset folder",
+          'Relative to project root; defaults to Images / Videos / Texts / Voices under the project cache root (see Global parameters); not auto-registered in the asset library',
         pathOutsideProject: 'Please choose a folder inside the project directory',
         screenplayBody: 'Screenplay text',
         model: 'Text model',

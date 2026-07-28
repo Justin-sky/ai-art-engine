@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import type { AssetInfo } from '@shared/domain'
-import { resolveMediaOutputDir } from '@shared/domain'
+import { isUnderCacheOutputDir, resolveMediaOutputDir } from '@shared/domain'
 import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import type {
   VideoJobGraphBinding,
@@ -48,6 +48,9 @@ function resolveJobVideoOutputDir(job: VideoJobRecord): string {
   const dirs = assetMediaHostDirs(hostAsset, projectService.listFolders())
   return resolveMediaOutputDir({
     mediaOutputDir: job.outputDir,
+    cacheOutputDir: projectService.isOpen()
+      ? projectService.getConfig().cacheOutputDir
+      : undefined,
     hostRelativePath: dirs.hostRelativePath,
     hostFolderDir: dirs.hostFolderDir,
     hostAssetName: dirs.hostAssetName,
@@ -286,12 +289,13 @@ class VideoJobService {
     const dest = join(tmpDir, 'output.mp4')
     await openRouterClient.downloadVideoToFile(provider, downloadUrl, dest)
 
+    const outputDir = resolveJobVideoOutputDir(job)
     const asset = projectService.attachExternalGeneratedFile({
       type: 'video',
       sourceFilePath: dest,
       name: job.name ?? `生成视频 ${new Date().toLocaleString()}`,
       prompt: job.prompt,
-      outputDir: resolveJobVideoOutputDir(job)
+      outputDir
     })
     this.bestEffortPatchGraph(job, asset)
 
@@ -307,7 +311,10 @@ class VideoJobService {
     await this.cleanupTos(job)
     this.finishWaiters(next)
     this.emitUpdated(next)
-    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    // Cache/ 产物不进资产库，避免把内存 AssetInfo 广播进库
+    if (!isUnderCacheOutputDir(outputDir, projectService.getConfig().cacheOutputDir)) {
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    }
     videoJobRepository.pruneTerminal(root)
   }
 

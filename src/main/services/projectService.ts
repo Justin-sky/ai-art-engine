@@ -22,7 +22,10 @@ import {
   isImportableFileRefAssetType,
   isPoseModelAsset,
   isScreenplayAsset,
+  isUnderAssetLibraryDir,
+  isUnderCacheOutputDir,
   normalizeProjectRelativeDir,
+  resolveCacheOutputRoot,
   resolveUniqueAssetName,
   resolveMediaOutputDir,
   withImportedMediaRefParams,
@@ -1205,8 +1208,8 @@ class ProjectService {
   }
 
   /**
-   * 将图执行产物写入指定输出目录（默认 `Assets/{资产名}/Images/`），
-   * 并在 Assets/ 下登记旁挂 `.asset.json`，返回工程相对路径。
+   * 将图执行产物写入指定输出目录（默认 `Cache/Images/`）。
+   * 落在 Assets/ 下时登记旁挂 `.asset.json`；Cache/ 下仅写文件不进资产库。
    * `dataUrl` 可为 data: 或 http(s)（主进程下载，避免渲染进程 CORS）。
    */
   async saveGraphRunMedia(
@@ -1227,12 +1230,15 @@ class ProjectService {
     else if (mime.includes('ogg')) ext = '.ogg'
 
     const safeStem = normalizePathSegment(input.key || 'generate')
+    const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
     const outDir =
       normalizeProjectRelativeDir(input.outputDir) ||
-      `Assets/Generated/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
+      `${cacheRoot}/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
-    if (outDir === 'Assets' || outDir.startsWith('Assets/')) {
+    const underLibrary = isUnderAssetLibraryDir(outDir)
+    const underCache = isUnderCacheOutputDir(outDir, this.config?.cacheOutputDir)
+    if (underLibrary && !underCache) {
       ensureAssetRelativeFolderChain(root, outDir)
     }
     const fileName = uniqueFileName(dirAbs, `${safeStem}${ext}`)
@@ -1242,7 +1248,7 @@ class ProjectService {
 
     const assetType = assetTypeFromMime(mime)
     let asset: AssetInfo | null = null
-    if (assetType && (outDir === 'Assets' || outDir.startsWith('Assets/'))) {
+    if (assetType && underLibrary && !underCache) {
       asset = this.registerExistingMediaAsAsset({
         relativePath,
         type: assetType,
@@ -1257,8 +1263,8 @@ class ProjectService {
   }
 
   /**
-   * 将图执行剧本正文写入指定输出目录（默认 `Assets/{资产名}/Texts/`），
-   * 并在 Assets/ 下登记旁挂 `.asset.json`，返回工程相对路径。
+   * 将图执行剧本正文写入指定输出目录（默认 `Cache/Texts/`）。
+   * Assets/ 下登记旁挂；Cache/ 下仅写文件。
    */
   async saveGraphRunText(
     input: SaveGraphRunTextInput
@@ -1266,12 +1272,15 @@ class ProjectService {
     const root = this.getRoot()
     const content = input.content ?? ''
     const safeStem = normalizePathSegment(input.key || 'screenplay')
+    const cacheRoot = resolveCacheOutputRoot(this.config?.cacheOutputDir)
     const outDir =
       normalizeProjectRelativeDir(input.outputDir) ||
-      `Assets/Generated/${ASSET_TEXT_OUTPUT_KIND_DIR}`
+      `${cacheRoot}/${ASSET_TEXT_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
-    if (outDir === 'Assets' || outDir.startsWith('Assets/')) {
+    const underLibrary = isUnderAssetLibraryDir(outDir)
+    const underCache = isUnderCacheOutputDir(outDir, this.config?.cacheOutputDir)
+    if (underLibrary && !underCache) {
       ensureAssetRelativeFolderChain(root, outDir)
     }
     const fileName = uniqueFileName(dirAbs, `${safeStem}.txt`)
@@ -1280,7 +1289,7 @@ class ProjectService {
     writeFileSync(abs, content, 'utf-8')
 
     let asset: AssetInfo | null = null
-    if (outDir === 'Assets' || outDir.startsWith('Assets/')) {
+    if (underLibrary && !underCache) {
       asset = this.registerExistingMediaAsAsset({
         relativePath,
         type: 'screenplay',
@@ -1403,9 +1412,8 @@ class ProjectService {
   }
 
   /**
-   * 将外部生成的文件登记为工程资产。
-   * 主文件写入 `outputDir`（缺省：视频 → Assets/{name}/Videos，其它 → Assets/），
-   * 与图片 `saveGraphRunMedia` 一致，不再双写根目录副本。
+   * 将外部生成的文件写入工程：默认视频/语音 → Cache/{Videos|Voices}，其它 → Assets/。
+   * Cache/ 下只落盘、返回内存 AssetInfo（不写 `.asset.json`）；Assets/ 下登记进库。
    */
   attachExternalGeneratedFile(params: {
     type: AssetType
@@ -1421,24 +1429,19 @@ class ProjectService {
     const root = this.getRoot()
     const ext = extname(params.sourceFilePath) || (params.type === 'video' ? '.mp4' : '.png')
     const explicitDir = normalizeProjectRelativeDir(params.outputDir)
+    const cacheRoot = this.config?.cacheOutputDir
     const destDirRel =
       explicitDir ||
       (params.type === 'video'
-        ? resolveMediaOutputDir({
-            hostFolderDir: 'Assets',
-            hostAssetName: params.name,
-            kind: 'video'
-          })
+        ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'video' })
         : params.type === 'voice'
-          ? resolveMediaOutputDir({
-              hostFolderDir: 'Assets',
-              hostAssetName: params.name,
-              kind: 'voice'
-            })
+          ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'voice' })
           : 'Assets')
     const dirAbs = assertInsideProject(root, join(root, destDirRel))
     mkdirSync(dirAbs, { recursive: true })
-    if (destDirRel === 'Assets' || destDirRel.startsWith('Assets/')) {
+    const underLibrary = isUnderAssetLibraryDir(destDirRel)
+    const underCache = isUnderCacheOutputDir(destDirRel, cacheRoot)
+    if (underLibrary && !underCache) {
       ensureAssetRelativeFolderChain(root, destDirRel)
     }
 
@@ -1449,6 +1452,21 @@ class ProjectService {
     const destAbs = join(dirAbs, fileName)
     copyFileSync(params.sourceFilePath, destAbs)
     const relativePath = toPosix(relative(root, destAbs))
+    if (underCache) {
+      const ts = nowIso()
+      return {
+        id: randomUUID(),
+        type: params.type,
+        name: params.name,
+        relativePath,
+        folderId: null,
+        prompt: params.prompt,
+        sourceShotId: params.sourceShotId,
+        version: 1,
+        createdAt: ts,
+        updatedAt: ts
+      }
+    }
     return this.registerExistingMediaAsAsset({
       relativePath,
       type: params.type,

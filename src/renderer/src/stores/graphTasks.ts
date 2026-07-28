@@ -902,13 +902,16 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             const dirs = assetMediaHostDirs(hostAsset, project.folders)
             const outputDir = resolveMediaOutputDir({
               mediaOutputDir: input.outputDir,
+              cacheOutputDir: project.config?.cacheOutputDir,
               hostRelativePath: dirs.hostRelativePath,
               hostFolderDir: dirs.hostFolderDir,
               hostAssetName: dirs.hostAssetName,
               kind: 'video'
             })
             const value = await window.studio.generateVideo({ ...input, outputDir })
-            await project.scheduleRefreshLibrary()
+            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+              await project.scheduleRefreshLibrary()
+            }
             if (value.tosUploads?.length) {
               request.tosUploads = value.tosUploads.map((item) => ({
                 sourceLabel: item.sourceLabel,
@@ -962,13 +965,16 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             const dirs = assetMediaHostDirs(hostAsset, project.folders)
             const outputDir = resolveMediaOutputDir({
               mediaOutputDir: input.outputDir,
+              cacheOutputDir: project.config?.cacheOutputDir,
               hostRelativePath: dirs.hostRelativePath,
               hostFolderDir: dirs.hostFolderDir,
               hostAssetName: dirs.hostAssetName,
               kind: 'voice'
             })
             const value = await window.studio.generateSpeech({ ...input, outputDir })
-            await project.refreshAssets()
+            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+              await project.refreshAssets()
+            }
             logBridge.recordApiCall({
               kind: 'generateSpeech',
               request,

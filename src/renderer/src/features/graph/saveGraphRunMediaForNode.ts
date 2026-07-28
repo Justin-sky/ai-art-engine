@@ -28,6 +28,7 @@ export async function saveGraphRunMediaForNode(input: {
   const dirs = assetMediaHostDirs(host, project.folders)
   const outputDir = resolveMediaOutputDir({
     mediaOutputDir: input.outputDir ?? input.node.params.mediaOutputDir,
+    cacheOutputDir: project.config?.cacheOutputDir,
     hostRelativePath: dirs.hostRelativePath,
     hostFolderDir: dirs.hostFolderDir,
     hostAssetName: dirs.hostAssetName,
@@ -39,7 +40,9 @@ export async function saveGraphRunMediaForNode(input: {
     key: input.key,
     outputDir
   })
-  // 落盘并写入 .asset.json；合并刷新资产库（批量生图只刷一次）
-  await project.scheduleRefreshLibrary()
+  // Cache/ 不进资产库；显式写到 Assets/ 时仍刷新
+  if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+    await project.scheduleRefreshLibrary()
+  }
   return relativePath
 }

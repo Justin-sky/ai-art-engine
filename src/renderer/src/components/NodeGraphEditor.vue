@@ -1548,14 +1548,17 @@ const {
     const dirs = assetMediaHostDirs(hostAsset ?? null, project.folders)
     const outputDir = resolveMediaOutputDir({
       mediaOutputDir: input.outputDir,
+      cacheOutputDir: project.config?.cacheOutputDir,
       hostRelativePath: dirs.hostRelativePath,
       hostFolderDir: dirs.hostFolderDir,
       hostAssetName: dirs.hostAssetName,
       kind: 'video'
     })
     const value = await window.studio.generateVideo({ ...input, outputDir })
-    // 生成成功后刷新资产库
-    await project.scheduleRefreshLibrary()
+    // Cache/ 默认不进资产库；仅显式写到 Assets/ 时刷新
+    if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+      await project.scheduleRefreshLibrary()
+    }
     return value
   },
   generateSpeech: async (input) => {
@@ -1567,13 +1570,16 @@ const {
     const dirs = assetMediaHostDirs(hostAsset ?? null, project.folders)
     const outputDir = resolveMediaOutputDir({
       mediaOutputDir: input.outputDir,
+      cacheOutputDir: project.config?.cacheOutputDir,
       hostRelativePath: dirs.hostRelativePath,
       hostFolderDir: dirs.hostFolderDir,
       hostAssetName: dirs.hostAssetName,
       kind: 'voice'
     })
     const value = await window.studio.generateSpeech({ ...input, outputDir })
-    await project.refreshAssets()
+    if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
     return value
   },
   resolveAssetGenParams: (assetId) => {

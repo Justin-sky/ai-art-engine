@@ -34,17 +34,6 @@
       </label>
     </div>
 
-    <label v-if="isImage || isVideo || isScreenplay || isVoice">
-      {{ t('graph.inspector.generate.mediaOutputDir') }}
-      <div class="path-row">
-        <input :value="mediaOutputDirDisplay" readonly :title="mediaOutputDirDisplay" />
-        <button type="button" class="btn" @click="pickMediaOutputDir">
-          {{ t('common.browse') }}
-        </button>
-      </div>
-      <span class="field-hint">{{ t('graph.inspector.generate.mediaOutputDirHint') }}</span>
-    </label>
-
     <section v-if="isImage || isVideo" class="style-section">
       <div class="style-toolbar-heading">
         <span class="style-toolbar-title">{{ t('project.globals.stylePreset') }}</span>
@@ -354,13 +343,9 @@ import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import {
   MAX_STYLE_IMAGES,
   createStyleImageId,
-  normalizeProjectRelativeDir,
   normalizeProjectStyleImages,
-  resolveMediaOutputDir,
-  toProjectRelativeDir,
   type ProjectStyleImage
 } from '@shared/domain'
-import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import StyleImagePicker from './StyleImagePicker.vue'
 
 type StoredGeneratedImage = {
@@ -489,62 +474,6 @@ function onLockChange(checked: boolean): void {
   const hid = hostId.value
   if (!current || !hid) return
   graphEditorHosts.updateNode(hid, current.id, { locked: checked })
-}
-
-const hostAssetDirs = computed(() =>
-  assetMediaHostDirs(resolveNodeOwnerAsset(), project.folders)
-)
-
-/** 节点所在资产：优先节点绑定 assetId，否则图宿主（asset:/script:） */
-function resolveNodeOwnerAsset() {
-  const current = node.value
-  if (current?.assetId) {
-    const byNode = project.assets.find((a) => a.id === current.assetId)
-    if (byNode) return byNode
-  }
-  const hid = hostId.value
-  if (hid.startsWith('asset:')) {
-    const id = hid.slice('asset:'.length).split(':')[0]
-    return project.assets.find((a) => a.id === id) ?? null
-  }
-  if (hid.startsWith('script:')) {
-    const id = hid.slice('script:'.length).split(':')[0]
-    return project.assets.find((a) => a.id === id) ?? null
-  }
-  return null
-}
-
-const mediaOutputDirDisplay = computed(() =>
-  resolveMediaOutputDir({
-    mediaOutputDir: node.value?.params.mediaOutputDir,
-    hostRelativePath: hostAssetDirs.value.hostRelativePath,
-    hostFolderDir: hostAssetDirs.value.hostFolderDir,
-    hostAssetName: hostAssetDirs.value.hostAssetName,
-    kind: isVideo.value
-      ? 'video'
-      : isScreenplay.value
-        ? 'text'
-        : isVoice.value
-          ? 'voice'
-          : 'image'
-  })
-)
-
-async function pickMediaOutputDir(): Promise<void> {
-  const current = node.value
-  const hid = hostId.value
-  if (!current || !hid) return
-  const root = project.rootPath
-  if (!root) return
-  const abs = await window.studio.selectDirectory()
-  if (!abs) return
-  const relative = toProjectRelativeDir(abs, root)
-  const normalized = normalizeProjectRelativeDir(relative)
-  if (relative === null || !normalized) {
-    window.alert(t('graph.inspector.generate.pathOutsideProject'))
-    return
-  }
-  graphEditorHosts.updateNode(hid, current.id, { mediaOutputDir: normalized })
 }
 
 const generatedImages = computed((): StoredGeneratedImage[] => {

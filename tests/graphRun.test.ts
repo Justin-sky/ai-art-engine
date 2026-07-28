@@ -466,24 +466,26 @@ describe('graph run', () => {
       }
     )
     expect(result.ok, result.error).toBe(true)
-    expect(keys).toEqual(['落盘测试_1'])
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toMatch(/^落盘测试_雨夜_\d{8}-\d{9}$/)
+    const relativePath = `Texts/${keys[0]}.txt`
     expect(result.states.sp?.outputs?.out).toMatchObject({
       kind: 'text',
       text: '',
-      relativePath: 'Texts/落盘测试_1.txt'
+      relativePath
     })
     expect(result.states.sp?.outputs?.['out-all']).toMatchObject({
       kind: 'texts',
-      items: [{ text: '', relativePath: 'Texts/落盘测试_1.txt' }]
+      items: [{ text: '', relativePath }]
     })
     expect(result.states[TEXT_OUTPUT_ID]?.outputs?.out).toMatchObject({
       kind: 'output',
-      texts: [{ text: '', relativePath: 'Texts/落盘测试_1.txt' }],
+      texts: [{ text: '', relativePath }],
       notes: [{ kind: 'text', text: '剧本名：落盘测试\n\n落盘剧本正文' }]
     })
     expect(screenplay.params.generatedTexts?.[0]).toMatchObject({
       text: '',
-      relativePath: 'Texts/落盘测试_1.txt'
+      relativePath
     })
     // 节点本地编辑仍保留最近一次全文
     expect(screenplay.params.text).toBe('剧本名：落盘测试\n\n落盘剧本正文')
@@ -520,7 +522,8 @@ describe('graph run', () => {
       }
     )
     expect(result.ok, result.error).toBe(true)
-    expect(keys).toEqual(['雨夜剧本_2'])
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toMatch(/^雨夜剧本_节点标题_\d{8}-\d{9}$/)
   })
 
   it('screenplay generate file key prefers title line from generated text', async () => {
@@ -552,7 +555,8 @@ describe('graph run', () => {
       }
     )
     expect(result.ok, result.error).toBe(true)
-    expect(keys).toEqual(['潮汐_1'])
+    expect(keys).toHaveLength(1)
+    expect(keys[0]).toMatch(/^潮汐_节点标题_\d{8}-\d{9}$/)
   })
 
   it('screenplay output receives accumulated generatedTexts after multiple runs', async () => {
