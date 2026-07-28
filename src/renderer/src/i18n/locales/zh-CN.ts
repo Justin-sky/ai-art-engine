@@ -2074,6 +2074,14 @@ export default {
         previewEmbedded: '（已嵌入预览数据）',
         empty: '未选择输入接口节点'
       },
+      boundary: {
+        hintInput: '宿主边界输入；按端口类型预览外层注入的当前值，不再编辑备注正文',
+        hintOutput: '宿主边界输出；按端口类型预览传入本口的当前值，不再编辑备注正文',
+        dataType: '数据类型',
+        port: '端口',
+        preview: '端口预览',
+        empty: '未选择边界节点'
+      },
       script: {
         hint: '文本节点；可在此编辑内容，或点击扩展在记事本中查看',
         body: '内容',

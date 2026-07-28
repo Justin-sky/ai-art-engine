@@ -575,7 +575,11 @@ import {
   readHostSchemaVersion,
   HOST_INTERFACE_SCHEMA_VERSION,
   resolveHostInputSlotsForHostOpen,
+  resolveBoundaryInputValuesFromParents,
+  applyBoundaryInputValues,
+  isBoundaryInputNode,
   hydrateHostInputSlotSpecs,
+  type ResolveHostInputSlotsOptions,
   hostInputSlotNodeId,
   isHostInputSlotNode,
   ensureHostInputSlotNodes,
@@ -996,6 +1000,30 @@ function collectParentGraphsForHost(hostAssetId: string): GraphDocument[] {
   return parents
 }
 
+function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
+  return {
+    resolveAssetText: (assetId) => {
+      const asset = project.assets.find((a) => a.id === assetId)
+      if (!asset) {
+        const draft = draftStore.getDraft(assetId)
+        if (!draft) return undefined
+        return resolveAssetTextFromGenParams(draft.genParams, {})
+      }
+      return resolveAssetTextFromGenParams(asset.genParams, {})
+    },
+    resolveAssetGenParams: (assetId) => {
+      if (isDraftAssetId(assetId)) {
+        return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
+      }
+      return project.assets.find((a) => a.id === assetId)?.genParams as
+        | Record<string, unknown>
+        | undefined
+    },
+    resolveLiveAssetGraph: (assetId) =>
+      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+  }
+}
+
 function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
   if (!hostAssetId) return undefined
   // 仅主资产图画布同步输入接口；叙事单元 / 世界元素子图不参与
@@ -1007,28 +1035,26 @@ function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
     graphAsset.value.type,
     collectParentGraphsForHost(hostAssetId),
     hostAssetId,
-    {
-      resolveAssetText: (assetId) => {
-        const asset = project.assets.find((a) => a.id === assetId)
-        if (!asset) {
-          const draft = draftStore.getDraft(assetId)
-          if (!draft) return undefined
-          return resolveAssetTextFromGenParams(draft.genParams, {})
-        }
-        return resolveAssetTextFromGenParams(asset.genParams, {})
-      },
-      resolveAssetGenParams: (assetId) => {
-        if (isDraftAssetId(assetId)) {
-          return draftStore.getDraft(assetId)?.genParams as Record<string, unknown> | undefined
-        }
-        return project.assets.find((a) => a.id === assetId)?.genParams as
-          | Record<string, unknown>
-          | undefined
-      },
-      resolveLiveAssetGraph: (assetId) =>
-        graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
-    }
+    hostInputResolveOptions()
   )
+}
+
+/**
+ * dive / 切入内图时把父图入端口的值注入 boundary 输入节点。
+ * 内图单独执行时 boundary 输入只读自身 params，故必须落到节点上。
+ */
+function syncBoundaryInputsFromParents(): boolean {
+  if (!isAssetGraph.value) return false
+  const hostAssetId = props.assetId ?? graphAsset.value?.id ?? null
+  if (!hostAssetId) return false
+  if (!graph.nodes.some((node) => isBoundaryInputNode(node))) return false
+  const values = resolveBoundaryInputValuesFromParents(
+    collectParentGraphsForHost(hostAssetId),
+    hostAssetId,
+    hostInputResolveOptions()
+  )
+  if (!Object.keys(values).length) return false
+  return applyBoundaryInputValues(graph.nodes, values)
 }
 
 function normalizeGraphForHost(raw: GraphDocument | null | undefined): GraphDocument {
@@ -1199,6 +1225,7 @@ function loadGraphFromShot(): void {
   if (isAssetGraph.value) {
     loadedGraphShotId.value = null
     applyGraphDocument(readAssetGraph())
+    if (syncBoundaryInputsFromParents()) scheduleSave()
     void hydrateHostInputSlotTextsInGraph()
     return
   }
@@ -1325,7 +1352,12 @@ function syncHostInputSlotsFromParents(): void {
   if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) return
   const host = graphAsset.value
   const hostAssetId = props.assetId ?? host?.id ?? null
-  if (!hostAssetId || !isAssetRefInputHostType(host?.type)) return
+  if (!hostAssetId) return
+  if (syncBoundaryInputsFromParents()) {
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+  }
+  if (!isAssetRefInputHostType(host?.type)) return
   const slots = resolveParentHostInputSlots(hostAssetId)
   if (!slots?.length) return
   ensureHostInputSlotNodes(graph.nodes, graph.edges, slots, {

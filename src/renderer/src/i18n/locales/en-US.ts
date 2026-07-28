@@ -2084,6 +2084,16 @@ export default {
         previewEmbedded: '(Embedded preview data)',
         empty: 'No input interface node selected'
       },
+      boundary: {
+        hintInput:
+          'Host boundary input. Preview the injected value by port type; notes body is not editable here.',
+        hintOutput:
+          'Host boundary output. Preview the value fed into this port by type; notes body is not editable here.',
+        dataType: 'Data type',
+        port: 'Port',
+        preview: 'Port preview',
+        empty: 'No boundary node selected'
+      },
       script: {
         hint: 'Text node. Edit content here, or expand to view in Notepad.',
         body: 'Content',

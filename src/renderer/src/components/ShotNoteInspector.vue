@@ -1,12 +1,33 @@
 <template>
   <div class="note-inspector" v-if="node">
     <div class="head">
-      <span class="type" :class="isInputSlot ? `slot-${slotDataType}` : undefined">{{ typeLabel }}</span>
+      <span class="type" :class="typeToneClass">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
     <p class="hint">{{ hintText }}</p>
 
-    <template v-if="isInputSlot">
+    <template v-if="isBoundary">
+      <div class="meta-row">
+        <span class="meta-label">{{ t('graph.inspector.boundary.dataType') }}</span>
+        <span class="meta-value type-chip" :class="typeToneClass">{{ dataTypeLabel }}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">{{ t('graph.inspector.boundary.port') }}</span>
+        <span class="meta-value mono">{{ boundaryPortId }}</span>
+      </div>
+
+      <label>
+        {{ t('graph.inspector.note.title') }}
+        <input v-model="localTitle" @change="persistTitleOnly" />
+      </label>
+
+      <section class="preview-section">
+        <div class="preview-label">{{ t('graph.inspector.boundary.preview') }}</div>
+        <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+      </section>
+    </template>
+
+    <template v-else-if="isInputSlot">
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.inputInterface.dataType') }}</span>
         <span class="meta-value type-chip" :class="`slot-${slotDataType}`">{{ dataTypeLabel }}</span>
@@ -56,11 +77,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
+import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
   GRAPH_INPUT_SLOT_TYPE_ID,
+  GraphPortType,
+  isBoundaryInputNode,
+  isBoundaryOutputNode,
+  isBoundaryProxyNode,
   readHostInputSlot,
   type GraphPortDataType
 } from '@shared/graph'
@@ -72,6 +98,7 @@ const localTitle = ref('')
 const localText = ref('')
 
 const node = computed(() => {
+  void graphEditorHosts.revision.value
   const selection = editor.selection.current.value
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
@@ -79,17 +106,43 @@ const node = computed(() => {
   return n?.category === 'note' ? n : null
 })
 
+const hostId = computed(() => {
+  const selection = editor.selection.current.value
+  return selection.kind === 'graph.node' ? selection.hostId ?? '' : ''
+})
+
 const isTextNode = computed(() => node.value?.typeId === 'play.script')
 const isInputSlot = computed(() => node.value?.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
+const isBoundary = computed(() => !!node.value && isBoundaryProxyNode(node.value))
+const isBoundaryInput = computed(() => !!node.value && isBoundaryInputNode(node.value))
+const isBoundaryOutput = computed(() => !!node.value && isBoundaryOutputNode(node.value))
+
 const slotBinding = computed(() => (node.value ? readHostInputSlot(node.value) : null))
+const boundaryPort = computed(() => node.value?.params.hostBoundaryPort ?? null)
+
 const slotDataType = computed<GraphPortDataType>(() => slotBinding.value?.dataType ?? 'text')
+const boundaryDataType = computed<GraphPortDataType>(
+  () => boundaryPort.value?.dataType ?? GraphPortType.text
+)
+
+const previewToneType = computed(() => {
+  if (isBoundary.value) return previewToneFromPort(boundaryDataType.value)
+  if (isInputSlot.value) return previewToneFromPort(slotDataType.value)
+  return 'text'
+})
+
+const typeToneClass = computed(() => `slot-${previewToneType.value}`)
 
 const typeLabel = computed(() => {
+  if (isBoundaryInput.value) return t('graph.boundaryInput.badge')
+  if (isBoundaryOutput.value) return t('graph.boundaryOutput.badge')
   if (isInputSlot.value) return t('graph.inputInterface.badge')
   return isTextNode.value ? t('graph.scriptNode.title') : t('graph.note.title')
 })
 
 const hintText = computed(() => {
+  if (isBoundaryInput.value) return t('graph.inspector.boundary.hintInput')
+  if (isBoundaryOutput.value) return t('graph.inspector.boundary.hintOutput')
   if (isInputSlot.value) return t('graph.inspector.inputInterface.hint')
   return isTextNode.value ? t('graph.inspector.script.hint') : t('graph.inspector.note.hint')
 })
@@ -105,11 +158,17 @@ const bodyPlaceholder = computed(() =>
 )
 
 const emptyText = computed(() => {
+  if (isBoundary.value) return t('graph.inspector.boundary.empty')
   if (isInputSlot.value) return t('graph.inspector.inputInterface.empty')
   return isTextNode.value ? t('graph.inspector.script.empty') : t('graph.inspector.note.empty')
 })
 
-const dataTypeLabel = computed(() => t(`graph.port.types.${slotDataType.value}`))
+const dataTypeLabel = computed(() => {
+  const type = isBoundary.value ? boundaryDataType.value : slotDataType.value
+  return t(`graph.port.types.${type}`)
+})
+
+const boundaryPortId = computed(() => boundaryPort.value?.portId?.trim() || '—')
 
 const slotIndexDisplay = computed(() => {
   const index = slotBinding.value?.index
@@ -127,6 +186,13 @@ const previewText = computed(() => {
   if (url) return t('graph.inspector.inputInterface.previewEmbedded')
   return t('graph.inspector.inputInterface.previewEmpty')
 })
+
+function previewToneFromPort(dataType: GraphPortDataType): 'text' | 'image' | 'voice' | 'video' {
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) return 'image'
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) return 'video'
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) return 'voice'
+  return 'text'
+}
 
 watch(
   node,
@@ -253,6 +319,7 @@ function persistTitleOnly(): void {
   color: #a78bfa;
 }
 
+.preview-section,
 .preview-block {
   display: flex;
   flex-direction: column;

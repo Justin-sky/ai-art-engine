@@ -19,9 +19,17 @@ import type {
   GraphPersistedRunState,
   GraphPortDataType
 } from './types'
-import { GraphPortType } from './types'
+import { GraphPortType, isGraphPortDataType } from './types'
 import type { GraphValue } from './execute/types'
-import { defaultHostInterfaceForAssetType } from './hostInterface'
+import {
+  boundaryInputNodeId,
+  defaultHostInterfaceForAssetType,
+  isBoundaryInputNode,
+  resolveNodeHostInterface,
+  type HostInterfaceDocument
+} from './hostInterface'
+import { catalogValue } from './catalogValue'
+import type { GraphCatalogKind } from './types'
 
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
@@ -65,18 +73,8 @@ export function readHostInputSlot(
   const index = typeof raw.index === 'number' && Number.isFinite(raw.index) ? raw.index : -1
   const dataType = raw.dataType
   if (!portId || index < 0) return null
-  if (
-    dataType !== GraphPortType.text &&
-    dataType !== GraphPortType.image &&
-    dataType !== GraphPortType.video &&
-    dataType !== GraphPortType.voice &&
-    dataType !== GraphPortType.model &&
-    dataType !== GraphPortType.worldEntities &&
-    dataType !== GraphPortType.narrative &&
-    dataType !== GraphPortType.narrativeEntity
-  ) {
-    return null
-  }
+  // boundary proxy 端口可为任意合法类型（含 images / texts 等复数口）
+  if (!isGraphPortDataType(dataType)) return null
   return { portId, index, dataType }
 }
 
@@ -946,6 +944,182 @@ export function ensureHostInputSlotNodes(
       targetPort: targetPortId
     })
   }
+}
+
+/** 同一入端口的多条入边合并成一个值（按端口数据类型聚合） */
+export function mergeHostInputValues(
+  values: GraphValue[],
+  dataType: string
+): GraphValue | null {
+  if (!values.length) return null
+  if (values.length === 1) return values[0]!
+  if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'texts') return v.items
+      if (v.kind === 'text') return [{ text: v.text, relativePath: v.relativePath }]
+      return []
+    })
+    return { kind: 'texts', items }
+  }
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'images') return v.items
+      if (v.kind === 'image') {
+        return [{ dataUrl: v.dataUrl ?? '', relativePath: v.relativePath }]
+      }
+      return []
+    })
+    return { kind: 'images', items }
+  }
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    const items = values.flatMap((value) => {
+      if (value.kind === 'videos') return value.items
+      if (value.kind === 'video') {
+        return [{
+          dataUrl: value.dataUrl ?? '',
+          relativePath: value.relativePath,
+          id: value.id
+        }]
+      }
+      return []
+    })
+    return { kind: 'videos', items }
+  }
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+    const items = values.flatMap((value) => {
+      if (value.kind === 'voices') return value.items
+      if (value.kind === 'voice') {
+        return [{
+          relativePath: value.relativePath,
+          id: value.id,
+          createdAt: value.createdAt
+        }]
+      }
+      return []
+    })
+    return { kind: 'voices', items }
+  }
+  if (
+    dataType === GraphPortType.world ||
+    dataType === GraphPortType.worldEntities ||
+    dataType === GraphPortType.shotEntities ||
+    dataType === GraphPortType.videoEntities ||
+    dataType === GraphPortType.narrative ||
+    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.shots
+  ) {
+    const payloads = values.flatMap((value) => {
+      if (value.kind !== dataType) return []
+      try {
+        const parsed = JSON.parse(value.text)
+        return Array.isArray(parsed) ? parsed : [parsed]
+      } catch {
+        return value.text.trim() ? [value.text] : []
+      }
+    })
+    return catalogValue(dataType as GraphCatalogKind, JSON.stringify(payloads))
+  }
+  return values[0]!
+}
+
+/**
+ * 从一张父图解析宿主实例各入端口的当前值（boundary proxy 用）。
+ * 与执行期 executeAssetHostInnerGraph 的注入口径一致：按端口合并所有入边。
+ */
+export function resolveBoundaryInputValuesFromParentGraph(
+  parent: GraphDocument,
+  hostAssetId: string,
+  options?: ResolveHostInputSlotsOptions
+): Record<string, GraphValue> {
+  const hostNode = parent.nodes.find(
+    (node) => node.assetId === hostAssetId && node.params.assetHost === true
+  )
+  if (!hostNode) return {}
+  const iface = resolveNodeHostInterface(hostNode)
+  const result: Record<string, GraphValue> = {}
+
+  for (const port of iface.inputs) {
+    const edges = parent.edges
+      .filter((edge) => edge.target === hostNode.id && (edge.targetPort ?? 'in') === port.id)
+      .slice()
+      .sort((a, b) => parent.edges.indexOf(a) - parent.edges.indexOf(b))
+    if (!edges.length) continue
+    const values = edges
+      .map((edge) => softResolveSourceOutput(parent, edge.source, edge.sourcePort ?? 'out', options))
+      .filter((value): value is GraphValue => graphValueHasPayload(value))
+    const merged = mergeHostInputValues(values, port.dataType)
+    if (merged) result[port.id] = merged
+  }
+  return result
+}
+
+/** 在多份父图中解析边界输入值；取覆盖端口最多的一份 */
+export function resolveBoundaryInputValuesFromParents(
+  parents: GraphDocument[],
+  hostAssetId: string,
+  options?: ResolveHostInputSlotsOptions
+): Record<string, GraphValue> {
+  let best: Record<string, GraphValue> = {}
+  for (const parent of parents) {
+    const values = resolveBoundaryInputValuesFromParentGraph(parent, hostAssetId, options)
+    if (Object.keys(values).length > Object.keys(best).length) best = values
+  }
+  return best
+}
+
+/**
+ * 将父图入端口值写回内图 boundary 输入节点 params（正文 / 预览路径）。
+ * 内图独立打开（dive）时执行仍走节点缓存，因此必须落到 params。
+ * @returns 是否有节点被更新
+ */
+export function applyBoundaryInputValues(
+  nodes: GraphNode[],
+  valuesByPort: Record<string, GraphValue>,
+  iface?: HostInterfaceDocument
+): boolean {
+  let changed = false
+  for (const [portId, value] of Object.entries(valuesByPort)) {
+    const id = boundaryInputNodeId(portId)
+    const node =
+      nodes.find((n) => n.id === id) ??
+      nodes.find(
+        (n) => isBoundaryInputNode(n) && n.params.hostBoundaryPort?.portId === portId
+      )
+    if (!node) continue
+    const dataType =
+      node.params.hostBoundaryPort?.dataType ??
+      iface?.inputs.find((port) => port.id === portId)?.dataType ??
+      GraphPortType.text
+    const preview = slotPreviewFromValue(value, 0)
+    const nextText =
+      dataType === GraphPortType.text || dataType === GraphPortType.texts
+        ? textFromBoundaryValue(value) || preview.text
+        : preview.text
+    const nextParams: GraphNodeParams = { ...node.params }
+    if (nextText?.trim()) nextParams.text = nextText
+    if (preview.previewRelativePath?.trim()) {
+      nextParams.previewRelativePath = preview.previewRelativePath.trim()
+    }
+    if (preview.previewDataUrl?.trim()) nextParams.previewDataUrl = preview.previewDataUrl
+    if (
+      nextParams.text !== node.params.text ||
+      nextParams.previewRelativePath !== node.params.previewRelativePath ||
+      nextParams.previewDataUrl !== node.params.previewDataUrl
+    ) {
+      node.params = nextParams
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** 多值文本合并成一段正文，避免只注入首项 */
+function textFromBoundaryValue(value: GraphValue): string {
+  if (value.kind === 'text') return value.text
+  if (value.kind === 'texts') {
+    return value.items.map((item) => item.text ?? '').filter(Boolean).join('\n')
+  }
+  return ''
 }
 
 /** 从宿主实时入端口值展开槽位（父图执行时用） */

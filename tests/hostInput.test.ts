@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyBoundaryInputValues,
+  boundaryInputNodeId,
   buildHostInputSlotSeedOutputs,
   createNodeFromType,
   ensureHostInputSlotNodes,
@@ -9,6 +11,8 @@ import {
   hydrateHostInputSlotSpecs,
   isNodeDeletable,
   normalizeScopedGraph,
+  resolveBoundaryInputValuesFromParentGraph,
+  resolveBoundaryInputValuesFromParents,
   resolveHostInputSlotsFromParentGraph,
   resolveHostInputSlotsForHostOpen,
   type GraphDocument,
@@ -560,5 +564,127 @@ describe('host input slots', () => {
     })
     expect(slots).toHaveLength(1)
     expect(slots[0]?.previewRelativePath).toBe('runs/sp/body.txt')
+  })
+})
+
+describe('boundary input injection from parent graph', () => {
+  function subgraphParent(): GraphDocument {
+    const host: GraphNode = {
+      id: 'host-node',
+      typeId: 'asset.subgraph',
+      category: 'asset',
+      position: { x: 400, y: 80 },
+      params: {
+        assetHost: true,
+        assetRef: true,
+        hostInterfaceSnapshot: {
+          version: 1,
+          inputs: [
+            { id: 'in-text', label: '文本输入', dataType: 'text', multiple: true },
+            { id: 'in-image', label: '图片输入', dataType: 'image', multiple: true }
+          ],
+          outputs: [{ id: 'out', label: '文本输出', dataType: 'text', multiple: false }]
+        }
+      },
+      assetId: HOST_ID,
+      assetType: 'subgraph',
+      title: '子图'
+    }
+    return {
+      nodes: [
+        {
+          id: SRC_A,
+          typeId: 'note.text',
+          category: 'note',
+          position: { x: 0, y: 0 },
+          params: { text: '外层正文' }
+        },
+        {
+          id: SRC_B,
+          typeId: 'asset.image',
+          category: 'asset',
+          position: { x: 0, y: 160 },
+          params: {
+            generatedImages: [{ dataUrl: 'data:image/png;base64,AAA', relativePath: 'Cache/Images/a.png' }]
+          }
+        },
+        host
+      ],
+      edges: [
+        { id: 'e1', source: SRC_A, target: host.id, sourcePort: 'out', targetPort: 'in-text' },
+        { id: 'e2', source: SRC_B, target: host.id, sourcePort: 'out', targetPort: 'in-image' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  }
+
+  function boundaryInputNodes(): GraphNode[] {
+    return [
+      {
+        id: boundaryInputNodeId('in-text'),
+        typeId: 'graph.boundary.input',
+        category: 'note',
+        position: { x: 0, y: 0 },
+        params: { hostBoundaryPort: { portId: 'in-text', dataType: 'text' } }
+      },
+      {
+        id: boundaryInputNodeId('in-image'),
+        typeId: 'graph.boundary.input',
+        category: 'note',
+        position: { x: 0, y: 120 },
+        params: { hostBoundaryPort: { portId: 'in-image', dataType: 'image' } }
+      }
+    ]
+  }
+
+  it('resolves per-port values from the parent graph', () => {
+    const values = resolveBoundaryInputValuesFromParentGraph(subgraphParent(), HOST_ID)
+    expect(values['in-text']).toEqual(expect.objectContaining({ kind: 'text', text: '外层正文' }))
+    expect(values['in-image']).toEqual(
+      expect.objectContaining({ kind: 'image', relativePath: 'Cache/Images/a.png' })
+    )
+  })
+
+  it('writes resolved values into boundary input node params', () => {
+    const nodes = boundaryInputNodes()
+    const values = resolveBoundaryInputValuesFromParents([subgraphParent()], HOST_ID)
+    expect(applyBoundaryInputValues(nodes, values)).toBe(true)
+    expect(nodes[0]?.params.text).toBe('外层正文')
+    expect(nodes[1]?.params.previewRelativePath).toBe('Cache/Images/a.png')
+    expect(nodes[1]?.params.previewDataUrl).toBe('data:image/png;base64,AAA')
+    // 幂等：同样的值不再产生变更
+    expect(applyBoundaryInputValues(nodes, values)).toBe(false)
+  })
+
+  it('merges multiple text edges into one boundary input body', () => {
+    const parent = subgraphParent()
+    parent.nodes.push({
+      id: 'src-c',
+      typeId: 'note.text',
+      category: 'note',
+      position: { x: 0, y: 320 },
+      params: { text: '第二段' }
+    })
+    parent.edges.push({
+      id: 'e3',
+      source: 'src-c',
+      target: 'host-node',
+      sourcePort: 'out',
+      targetPort: 'in-text'
+    })
+    const nodes = boundaryInputNodes()
+    applyBoundaryInputValues(nodes, resolveBoundaryInputValuesFromParentGraph(parent, HOST_ID))
+    expect(nodes[0]?.params.text).toBe('外层正文\n第二段')
+  })
+
+  it('keeps existing params when the parent port has no value', () => {
+    const nodes = boundaryInputNodes()
+    nodes[0]!.params.text = '内图手填'
+    const parent = subgraphParent()
+    parent.edges = []
+    const values = resolveBoundaryInputValuesFromParentGraph(parent, HOST_ID)
+    expect(values).toEqual({})
+    expect(applyBoundaryInputValues(nodes, values)).toBe(false)
+    expect(nodes[0]?.params.text).toBe('内图手填')
   })
 })

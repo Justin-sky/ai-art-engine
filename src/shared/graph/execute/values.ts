@@ -14,17 +14,21 @@ import {
   type AssetType
 } from '../../domain'
 import type {
-  GraphCatalogKind,
   GraphDocument,
   GraphNode,
   GraphNodeParams,
   GraphOutputKind
 } from '../types'
-import { GraphPortType } from '../types'
+import {
+  GraphPortType,
+  isGraphCatalogKind,
+  isPluralGraphPortDataType,
+  toSingularGraphPortDataType
+} from '../types'
 import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
 import { isAssetRefNode, isAssetRefInputHostType, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
-import { readHostInputSlot } from '../hostInput'
+import { mergeHostInputValues, readHostInputSlot } from '../hostInput'
 import {
   boundaryInputNodeId,
   boundaryOutputNodeId,
@@ -1338,81 +1342,6 @@ function executeAssetHostInnerGraph(
     }
     return fallback
   })()
-}
-
-function mergeHostInputValues(
-  values: GraphValue[],
-  dataType: string
-): GraphValue | null {
-  if (!values.length) return null
-  if (values.length === 1) return values[0]!
-  if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
-    const items = values.flatMap((v) => {
-      if (v.kind === 'texts') return v.items
-      if (v.kind === 'text') return [{ text: v.text, relativePath: v.relativePath }]
-      return []
-    })
-    return { kind: 'texts', items }
-  }
-  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
-    const items = values.flatMap((v) => {
-      if (v.kind === 'images') return v.items
-      if (v.kind === 'image') {
-        return [{ dataUrl: v.dataUrl ?? '', relativePath: v.relativePath }]
-      }
-      return []
-    })
-    return { kind: 'images', items }
-  }
-  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
-    const items = values.flatMap((value) => {
-      if (value.kind === 'videos') return value.items
-      if (value.kind === 'video') {
-        return [{
-          dataUrl: value.dataUrl ?? '',
-          relativePath: value.relativePath,
-          id: value.id
-        }]
-      }
-      return []
-    })
-    return { kind: 'videos', items }
-  }
-  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
-    const items = values.flatMap((value) => {
-      if (value.kind === 'voices') return value.items
-      if (value.kind === 'voice') {
-        return [{
-          relativePath: value.relativePath,
-          id: value.id,
-          createdAt: value.createdAt
-        }]
-      }
-      return []
-    })
-    return { kind: 'voices', items }
-  }
-  if (
-    dataType === GraphPortType.world ||
-    dataType === GraphPortType.worldEntities ||
-    dataType === GraphPortType.shotEntities ||
-    dataType === GraphPortType.videoEntities ||
-    dataType === GraphPortType.narrative ||
-    dataType === GraphPortType.narrativeEntity ||
-    dataType === GraphPortType.shots
-  ) {
-    const payloads = values.flatMap((value) => {
-      if (value.kind !== dataType) return []
-      try {
-        const parsed = JSON.parse(value.text)
-        return Array.isArray(parsed) ? parsed : [parsed]
-      } catch {
-        return value.text.trim() ? [value.text] : []
-      }
-    })
-    return catalogValue(dataType as GraphCatalogKind, JSON.stringify(payloads))
-  }
-  return values[0]!
 }
 
 /** 从 boundary.output 节点状态映射到宿主多出口 */
@@ -2816,8 +2745,10 @@ export async function executeHostInputSlotNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const slot = readHostInputSlot(ctx.node)
-  const dataType = slot?.dataType ?? 'text'
-  if (dataType === 'text') {
+  const portType = slot?.dataType ?? GraphPortType.text
+  const dataType = toSingularGraphPortDataType(portType)
+  const plural = isPluralGraphPortDataType(portType)
+  if (dataType === GraphPortType.text) {
     let text = ctx.node.params.text ?? ''
     const path = ctx.node.params.previewRelativePath?.trim()
     if (!text.trim() && path && ctx.readRunText) {
@@ -2831,6 +2762,14 @@ export async function executeHostInputSlotNode(
         ctx.patchNode?.({ params: { text } })
       }
     }
+    if (plural) {
+      return {
+        out: {
+          kind: 'texts',
+          items: text.trim() || path ? [{ text, ...(path ? { relativePath: path } : {}) }] : []
+        }
+      }
+    }
     return {
       out: {
         kind: 'text',
@@ -2839,9 +2778,17 @@ export async function executeHostInputSlotNode(
       }
     }
   }
-  if (dataType === 'image') {
+  if (dataType === GraphPortType.image) {
     const path = ctx.node.params.previewRelativePath?.trim()
     const dataUrl = ctx.node.params.previewDataUrl?.trim() ?? ''
+    if (plural) {
+      return {
+        out: {
+          kind: 'images',
+          items: dataUrl || path ? [{ dataUrl, relativePath: path }] : []
+        }
+      }
+    }
     return {
       out: {
         kind: 'image',
@@ -2850,16 +2797,26 @@ export async function executeHostInputSlotNode(
       }
     }
   }
-  if (dataType === 'video') {
+  if (dataType === GraphPortType.video) {
+    const path = ctx.node.params.previewRelativePath?.trim()
+    const dataUrl = ctx.node.params.previewDataUrl?.trim()
+    if (plural) {
+      return {
+        out: {
+          kind: 'videos',
+          items: dataUrl || path ? [{ dataUrl: dataUrl ?? '', relativePath: path }] : []
+        }
+      }
+    }
     return {
       out: {
         kind: 'video',
-        dataUrl: ctx.node.params.previewDataUrl?.trim() || undefined,
-        relativePath: ctx.node.params.previewRelativePath?.trim() || undefined
+        dataUrl: dataUrl || undefined,
+        relativePath: path || undefined
       }
     }
   }
-  if (dataType === 'voice') {
+  if (dataType === GraphPortType.voice) {
     return {
       out: {
         kind: 'voices',
@@ -2869,11 +2826,7 @@ export async function executeHostInputSlotNode(
       }
     }
   }
-  if (
-    dataType === GraphPortType.narrativeEntity ||
-    dataType === GraphPortType.narrative ||
-    dataType === GraphPortType.worldEntities
-  ) {
+  if (isGraphCatalogKind(dataType)) {
     const text = ctx.node.params.text ?? ''
     const path = ctx.node.params.previewRelativePath?.trim()
     return {

@@ -162,7 +162,34 @@ function pushVideoLikeItem(
   })
 }
 
+function mediaKindFromBoundaryPort(node: GraphNode): PreviewMediaKind | null {
+  if (node.typeId !== 'graph.boundary.input' && node.typeId !== 'graph.boundary.output') {
+    return null
+  }
+  const dataType = node.params.hostBoundaryPort?.dataType
+  if (dataType === 'image' || dataType === 'images') return 'image'
+  if (dataType === 'video' || dataType === 'videos') return 'video'
+  if (dataType === 'voice' || dataType === 'voices') return 'audio'
+  if (
+    dataType === 'text' ||
+    dataType === 'texts' ||
+    dataType === 'world' ||
+    dataType === 'worldEntities' ||
+    dataType === 'shotEntities' ||
+    dataType === 'videoEntities' ||
+    dataType === 'narrative' ||
+    dataType === 'narrativeEntity' ||
+    dataType === 'shots' ||
+    dataType === 'model'
+  ) {
+    return 'text'
+  }
+  return 'text'
+}
+
 function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
+  const boundaryKind = mediaKindFromBoundaryPort(node)
+  if (boundaryKind) return boundaryKind
   if (node.typeId === 'script.shotImageGen') return 'image'
   if (node.typeId === 'script.shotVideoGen') return 'video'
   if (node.typeId === 'image.select') return 'image'
@@ -584,8 +611,10 @@ function collectFallback(into: PreviewItem[]): void {
     }
   }
 
-  // 输出节点：已有可展示项时不再叠加上游
-  if (node.category === 'output' && into.length === 0) {
+  // 输出 / 边界输出：无本地预览时叠加上游，便于 Inspector 按类型即时预览
+  const canUpstream =
+    node.category === 'output' || node.typeId === 'graph.boundary.output'
+  if (canUpstream && into.length === 0) {
     collectUpstreamPreview(props.hostId, node.id, into, new Set([node.id]))
   }
 }
