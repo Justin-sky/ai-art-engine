@@ -3,7 +3,8 @@ import { isMediaFileAsset, normalizeAssetType } from '../domain'
 import { createNodeFromType, createOutputGraphNode } from './create'
 import {
   materializeDefaultGraph,
-  resolveDefaultGraphTemplate
+  resolveDefaultGraphTemplate,
+  resolveInputLinkHeadTypeIds
 } from './defaultGraph'
 import { getNodeTypeOrThrow } from './registry'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
@@ -463,17 +464,20 @@ export function createDefaultScopedGraph(
   options?: AssetEditorChainOptions
 ): GraphDocument {
   const def = getGraphScopeDefinition(scope)
+  const processingTypeId = resolveAssetProcessingTypeId(scope, assetType)
   const document = materializeDefaultGraph({
     scope,
     assetType,
     template: resolveDefaultGraphTemplate(scope, assetType),
     output: resolveScopeOutput(scope, assetType),
     ensureOutput: def.ensureOutput,
-    processingTypeId: resolveAssetProcessingTypeId(scope, assetType),
+    processingTypeId,
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   })
-  return isAssetRefInputHostType(assetType)
-    ? ensureBoundaryProxyNodes(document, defaultHostInterfaceForAssetType(assetType))
-    : document
+  if (!isAssetRefInputHostType(assetType)) return document
+  // 新建宿主内图：boundary 入/出口一并按模板 inputLinkTo 接到链首
+  return ensureBoundaryProxyNodes(document, defaultHostInterfaceForAssetType(assetType), {
+    autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(scope, assetType, processingTypeId)
+  })
 }

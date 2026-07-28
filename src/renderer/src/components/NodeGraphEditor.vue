@@ -582,7 +582,6 @@ import {
   isBoundaryInputNode,
   hydrateHostInputSlotSpecs,
   type ResolveHostInputSlotsOptions,
-  hostInputSlotNodeId,
   isHostInputSlotNode,
   ensureHostInputSlotNodes,
   resolveInputLinkHeadTypeIds,
@@ -1270,59 +1269,106 @@ function loadGraphFromShot(): void {
   applyGraphDocument(doc)
 }
 
+interface HostInputCarrier {
+  node: GraphNode
+  portId: string
+  index: number
+  dataType: GraphPortDataType
+}
+
+/**
+ * 承载宿主入端口值的节点：HDA 的 boundary 输入，以及存量 graph.input.slot。
+ * boundary 每端口一个节点，无 index 概念，统一按 index 0 参与槽位匹配。
+ */
+function hostInputCarriers(): HostInputCarrier[] {
+  const carriers: HostInputCarrier[] = []
+  for (const node of graph.nodes) {
+    if (isBoundaryInputNode(node)) {
+      carriers.push({
+        node,
+        portId: node.params.hostBoundaryPort?.portId ?? 'in',
+        index: 0,
+        dataType: node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
+      })
+      continue
+    }
+    if (isHostInputSlotNode(node)) {
+      carriers.push({
+        node,
+        portId: node.params.hostInputSlot?.portId ?? 'in',
+        index: node.params.hostInputSlot?.index ?? 0,
+        dataType: node.params.hostInputSlot?.dataType ?? GraphPortType.text
+      })
+    }
+  }
+  return carriers
+}
+
 /** 把已解析的槽位正文写回图中空输入接口（不覆盖已有非空正文） */
 function applyHostInputSlotTexts(
   specs: Array<{ portId: string; index: number; text?: string; previewRelativePath?: string }>
-): void {
+): boolean {
+  const carriers = hostInputCarriers()
+  let changed = false
   for (const spec of specs) {
     if (!spec.text?.trim()) continue
-    const id = hostInputSlotNodeId(spec.portId, spec.index)
-    const node = graph.nodes.find((n) => n.id === id)
-    if (!node || node.params.text?.trim()) continue
-    node.params = {
-      ...node.params,
+    const carrier = carriers.find((c) => c.portId === spec.portId && c.index === spec.index)
+    if (!carrier || carrier.node.params.text?.trim()) continue
+    carrier.node.params = {
+      ...carrier.node.params,
       text: spec.text,
       ...(spec.previewRelativePath?.trim()
         ? { previewRelativePath: spec.previewRelativePath.trim() }
         : {})
     }
+    changed = true
   }
+  return changed
 }
 
 /** 外层文本常仅有 relativePath / 旁挂文件：打开宿主后补全文到输入接口 */
 async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
-  const slots = graph.nodes.filter(isHostInputSlotNode)
-  if (!slots.length) return
+  const carriers = hostInputCarriers()
+  if (!carriers.length) return
+  let changed = false
+  const finish = (): void => {
+    if (!changed) return
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+  }
 
   // 1) 路径旁挂 → 读文件
   const specs = await hydrateHostInputSlotSpecs(
-    slots.map((node) => ({
-      portId: node.params.hostInputSlot?.portId ?? 'in',
-      index: node.params.hostInputSlot?.index ?? 0,
-      dataType: node.params.hostInputSlot?.dataType ?? 'text',
-      text: node.params.text,
-      previewRelativePath: node.params.previewRelativePath
+    carriers.map((carrier) => ({
+      portId: carrier.portId,
+      index: carrier.index,
+      dataType: carrier.dataType,
+      text: carrier.node.params.text,
+      previewRelativePath: carrier.node.params.previewRelativePath
     })),
     readGraphRunText
   )
-  applyHostInputSlotTexts(specs)
+  changed = applyHostInputSlotTexts(specs) || changed
 
   // 2) 再软解析一次（含 live 源资产内图），补目录口 / 同步正文
   const hostAssetId = props.assetId
-  if (!hostAssetId || !isAssetRefInputHostType(graphAsset.value?.type)) return
+  if (!hostAssetId || !isAssetRefInputHostType(graphAsset.value?.type)) {
+    finish()
+    return
+  }
   const refreshed = resolveParentHostInputSlots(hostAssetId)
   if (refreshed?.length) {
-    applyHostInputSlotTexts(refreshed)
+    changed = applyHostInputSlotTexts(refreshed) || changed
   }
 
   // 3) 文本口仍空：按父图入边异步读上游资产正文（剧本 sidecar 等）
-  const emptyTextSlots = graph.nodes.filter(
-    (n) =>
-      isHostInputSlotNode(n) &&
-      n.params.hostInputSlot?.dataType === 'text' &&
-      !n.params.text?.trim()
+  const emptyTextSlots = hostInputCarriers().filter(
+    (carrier) => carrier.dataType === GraphPortType.text && !carrier.node.params.text?.trim()
   )
-  if (!emptyTextSlots.length) return
+  if (!emptyTextSlots.length) {
+    finish()
+    return
+  }
 
   for (const parent of collectParentGraphsForHost(hostAssetId)) {
     const hostNode = parent.nodes.find((n) => n.assetId === hostAssetId && isAssetHostNode(n))
@@ -1346,17 +1392,19 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
       }
       if (!text) continue
       const nextIndex = filledIndexByPort.get(targetPort) ?? 0
-      const slot = emptyTextSlots.find(
-        (n) =>
-          n.params.hostInputSlot?.portId === targetPort &&
-          (n.params.hostInputSlot?.index ?? 0) === nextIndex &&
-          !n.params.text?.trim()
+      const carrier = emptyTextSlots.find(
+        (item) =>
+          item.portId === targetPort &&
+          item.index === nextIndex &&
+          !item.node.params.text?.trim()
       )
-      if (!slot) continue
-      slot.params = { ...slot.params, text }
+      if (!carrier) continue
+      carrier.node.params = { ...carrier.node.params, text }
+      changed = true
       filledIndexByPort.set(targetPort, nextIndex + 1)
     }
   }
+  finish()
 }
 
 /**

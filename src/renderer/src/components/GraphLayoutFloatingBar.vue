@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="barEl"
     class="layout-float"
     :class="{ collapsed: !expanded }"
     :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
@@ -144,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import type { AlignMode, DistributeMode } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
@@ -196,6 +197,15 @@ function loadExpanded(): boolean {
 
 const pos = reactive(loadPos())
 const expanded = ref(loadExpanded())
+const barEl = ref<HTMLElement | null>(null)
+
+function persistPos(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: pos.x, y: pos.y }))
+  } catch {
+    /* ignore */
+  }
+}
 
 function persistExpanded(): void {
   try {
@@ -208,6 +218,8 @@ function persistExpanded(): void {
 function toggleExpanded(): void {
   expanded.value = !expanded.value
   persistExpanded()
+  // 展开/折叠改变宽度，可能顶出右边界
+  void nextTick(() => clampIntoView(true))
 }
 
 let drag: { startX: number; startY: number; originX: number; originY: number } | null = null
@@ -222,6 +234,23 @@ function clampToParent(x: number, y: number, el: HTMLElement): { x: number; y: n
     x: Math.min(maxX, Math.max(pad, x)),
     y: Math.min(maxY, Math.max(pad, y))
   }
+}
+
+/**
+ * 恢复的旧坐标或容器变小都可能把工具栏顶出可视区域，
+ * 挂载与容器尺寸变化时都要夹回，否则用户以为工具栏消失了。
+ */
+function clampIntoView(persist = false): void {
+  const el = barEl.value
+  const parent = el?.offsetParent as HTMLElement | null
+  if (!el || !parent) return
+  // 容器尚未布局（隐藏的面板）时尺寸为 0，此时夹取会把坐标压成 pad 并覆盖用户位置
+  if (!parent.clientWidth || !parent.clientHeight) return
+  const next = clampToParent(pos.x, pos.y, el)
+  if (next.x === pos.x && next.y === pos.y) return
+  pos.x = next.x
+  pos.y = next.y
+  if (persist) persistPos()
 }
 
 function onDragStart(event: PointerEvent): void {
@@ -251,11 +280,7 @@ function onDragStart(event: PointerEvent): void {
 
   const onUp = (): void => {
     drag = null
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: pos.x, y: pos.y }))
-    } catch {
-      /* ignore */
-    }
+    persistPos()
     handle.removeEventListener('pointermove', onMove)
     handle.removeEventListener('pointerup', onUp)
     handle.removeEventListener('pointercancel', onUp)
@@ -266,8 +291,20 @@ function onDragStart(event: PointerEvent): void {
   handle.addEventListener('pointercancel', onUp)
 }
 
+let boundsObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  clampIntoView(true)
+  const parent = barEl.value?.offsetParent as HTMLElement | null
+  if (!parent || typeof ResizeObserver === 'undefined') return
+  boundsObserver = new ResizeObserver(() => clampIntoView())
+  boundsObserver.observe(parent)
+})
+
 onBeforeUnmount(() => {
   drag = null
+  boundsObserver?.disconnect()
+  boundsObserver = null
 })
 </script>
 

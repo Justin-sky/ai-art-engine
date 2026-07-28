@@ -1,6 +1,7 @@
 /**
  * 确保内图含有与 hostInterface 对应的 boundary proxy 节点（幂等），
- * 并把悬空业务链出口接到主 boundary.output。
+ * 并把悬空业务链出口接到主 boundary.output；
+ * 新建时可按 autoLinkHeadTypeIds 把 boundary.input 接到链首。
  */
 import {
   boundaryInputNodeId,
@@ -70,9 +71,77 @@ export function wireDanglingOutsToPrimaryBoundary(
   return { ...document, edges }
 }
 
+/**
+ * 按模板 inputLinkTo 对应的链首 typeId，把各 boundary.input 接到兼容入口。
+ * 优先同名口；否则落同类型 `in`；已有占用的单值口不抢连。
+ */
+export function wireBoundaryInputsToHeads(
+  document: GraphDocument,
+  iface: HostInterfaceDocument,
+  headTypeIds: string[]
+): GraphDocument {
+  if (!iface.inputs.length || !headTypeIds.length) return document
+  const heads = document.nodes.filter((n) => !!n.typeId && headTypeIds.includes(n.typeId))
+  if (!heads.length) return document
+
+  const edges = document.edges.map((edge) => ({ ...edge }))
+  for (const port of iface.inputs) {
+    const sourceId = boundaryInputNodeId(port.id)
+    const source = document.nodes.find((n) => n.id === sourceId)
+    if (!source) continue
+
+    let targetHead: GraphNode | undefined
+    let targetPortId: string | undefined
+    for (const head of heads) {
+      const headInById = new Map(
+        getNodePorts(head)
+          .filter((p) => p.direction === 'in')
+          .map((p) => [p.id, p] as const)
+      )
+      const sameId = headInById.get(port.id)
+      if (sameId && canConnectNodes(source, head, { sourcePort: 'out', targetPort: port.id })) {
+        targetHead = head
+        targetPortId = port.id
+        break
+      }
+    }
+    if (!targetHead || !targetPortId) {
+      for (const head of heads) {
+        if (canConnectNodes(source, head, { sourcePort: 'out', targetPort: 'in' })) {
+          targetHead = head
+          targetPortId = 'in'
+          break
+        }
+      }
+    }
+    if (!targetHead || !targetPortId) continue
+
+    const exists = edges.some(
+      (e) =>
+        e.source === sourceId &&
+        e.target === targetHead!.id &&
+        (e.targetPort ?? 'in') === targetPortId
+    )
+    if (exists) continue
+
+    const targetDef = getNodePorts(targetHead).find(
+      (p) => p.direction === 'in' && p.id === targetPortId
+    )
+    if (targetDef && targetDef.multiple === false) {
+      const occupied = edges.some(
+        (e) => e.target === targetHead!.id && (e.targetPort ?? 'in') === targetPortId
+      )
+      if (occupied) continue
+    }
+    pushEdge(edges, sourceId, targetHead.id, 'out', targetPortId)
+  }
+  return { ...document, edges }
+}
+
 export function ensureBoundaryProxyNodes(
   document: GraphDocument,
-  iface: HostInterfaceDocument
+  iface: HostInterfaceDocument,
+  options?: { autoLinkHeadTypeIds?: string[] }
 ): GraphDocument {
   const nodes: GraphNode[] = document.nodes.map((node) => ({
     ...node,
@@ -182,12 +251,15 @@ export function ensureBoundaryProxyNodes(
     })
   })
 
-  return wireDanglingOutsToPrimaryBoundary(
-    {
-      ...document,
-      nodes: nextNodes,
-      edges: nextEdges
-    },
-    iface
-  )
+  let next: GraphDocument = {
+    ...document,
+    nodes: nextNodes,
+    edges: nextEdges
+  }
+  next = wireDanglingOutsToPrimaryBoundary(next, iface)
+  const headTypeIds = options?.autoLinkHeadTypeIds ?? []
+  if (headTypeIds.length) {
+    next = wireBoundaryInputsToHeads(next, iface, headTypeIds)
+  }
+  return next
 }

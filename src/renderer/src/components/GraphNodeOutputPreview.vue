@@ -595,6 +595,14 @@ function collectFallback(into: PreviewItem[]): void {
     })
   }
 
+  // 落盘后的文本产物只留旁挂路径（如剧本经边界输入注入），无内联正文时按路径读取
+  if (nodeMediaKind === 'text' && !into.some((item) => item.kind === 'text')) {
+    const rel = node.params.previewRelativePath?.trim()
+    if (rel && isTextFilePath(rel)) {
+      into.push({ key: `node-text-path:${node.id}`, kind: 'text', relativePath: rel })
+    }
+  }
+
   if (node.assetId && node.assetType) {
     const kind = assetPreviewKind(node.assetType)
     if (kind === 'text') {

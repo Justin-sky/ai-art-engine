@@ -37,12 +37,15 @@ import {
   type Shot
 } from '@shared/domain'
 import {
+  assetTypeToGraphScope,
   createDefaultScopedGraph,
   buildSeriesStarterGraph,
   defaultHostInterfaceForAssetType,
   ensureBoundaryProxyNodes,
   HOST_INTERFACE_SCHEMA_VERSION,
   isAssetRefInputHostType,
+  resolveAssetProcessingTypeId,
+  resolveInputLinkHeadTypeIds,
   sanitizeHostInterface,
   type GraphDocument
 } from '@shared/graph'
@@ -133,7 +136,14 @@ function finalizeHostableAssetGenParams(
   }
   const graphJson = base.graphJson
   if (graphJson && typeof graphJson === 'object' && Array.isArray((graphJson as GraphDocument).nodes)) {
-    base.graphJson = ensureBoundaryProxyNodes(graphJson as GraphDocument, iface)
+    const scope = assetTypeToGraphScope(type)
+    base.graphJson = ensureBoundaryProxyNodes(graphJson as GraphDocument, iface, {
+      autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
+        scope,
+        type,
+        resolveAssetProcessingTypeId(scope, type)
+      )
+    })
   }
   base.hostInterface = iface
   if (typeof base.schemaVersion !== 'number' || !Number.isFinite(base.schemaVersion)) {
