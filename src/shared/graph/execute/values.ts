@@ -3017,13 +3017,13 @@ export function executeNarrativeUnitRefNode(ctx: NodeExecuteContext): Record<str
 }
 
 /**
- * 分镜表格：有上游分镜目录则透传并导入（拆分 → 表格）；
- * 否则输出当前分镜列表 JSON。
- * 导入只在节点执行时发生，打开表格窗口不会导入。
+ * 分镜表格：优先输出当前分镜列表（含表格内绑定的角色/场景/道具/武器），
+ * 尚无分镜时才透传上游拆分 JSON。只产出输出值，不写分镜列表；
+ * 导入发生在双击打开表格时。
  */
-export async function executeShotTableNode(
+export function executeShotTableNode(
   ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
+): Record<string, GraphValue> {
   const fromWorld = catalogTextFromInputs(
     ctx.inputs['in-worldEntities'] ?? [],
     GraphPortType.worldEntities
@@ -3041,19 +3041,19 @@ export async function executeShotTableNode(
     })
   }
 
+  // 已有分镜列表时以其为准（含绑定实体），避免上游拆分透传丢掉表格绑定
+  const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
+  if (fromShots && parseShotSplitJson(fromShots)?.length) {
+    ctx.node.params = { ...ctx.node.params, text: fromShots }
+    ctx.patchNode?.({ params: { text: fromShots } })
+    return { out: catalogValue(GraphPortType.shots, fromShots) }
+  }
+
   const fromIn = catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.shots)
   if (fromIn) {
     ctx.node.params = { ...ctx.node.params, text: fromIn }
     ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importShotSplitTableJson?.(fromIn)
     return { out: catalogValue(GraphPortType.shots, fromIn) }
-  }
-
-  const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
-  if (fromShots) {
-    ctx.node.params = { ...ctx.node.params, text: fromShots }
-    ctx.patchNode?.({ params: { text: fromShots } })
-    return { out: catalogValue(GraphPortType.shots, fromShots) }
   }
 
   const local = ctx.node.params.text?.trim() ?? ''
@@ -3200,7 +3200,8 @@ export async function executeWorldTableNode(
 
 /**
  * 世界元素生成：有上游提取/表格目录时同步到元素子图；
- * 再从四类 elementWorkflow 子图的已完成输出节点收集实体 JSON（不级联跑子图生成）。
+ * 再通过 ctx.collectWorldElementOutputs 跑齐四类 elementWorkflow 生成链，
+ * 从边界输出汇集 `{ type, name, imageUrl }` 实体 JSON。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeWorldGenNode(

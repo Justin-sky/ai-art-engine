@@ -63,6 +63,7 @@ import {
   applyVisualGraphGenRefsToShot,
   collectScriptShotImages,
   collectScriptShotVideos,
+  materializeBoundEntityRefsOnScriptShots,
   shotNeedsVideoCascade,
   shotNeedsVisualCascade
 } from '../features/script/shotVisualPipeline'
@@ -83,6 +84,7 @@ import {
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
+  inferElementWorkflowHostInterface,
   readNarrativeUnitGraphFromGenParams,
   withWorldElementGraph,
   withNarrativeUnitGraph,
@@ -151,6 +153,8 @@ interface GraphTaskInternal extends GraphTask {
   priorNodeStates?: Record<string, GraphNodeRunState>
   skipCompletedNodes?: boolean
   cookAssetIdStack?: string[]
+  /** 指定汇点；缺省时跑图内全部输出节点 */
+  targetNodeIds?: string[]
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -165,8 +169,16 @@ function nodeTitle(node: GraphNode): string {
   return def?.label ?? node.typeId ?? node.id
 }
 
-function buildOrder(graph: GraphDocument): string[] {
-  const targets = findAllOutputNodes(graph)
+function resolveTaskTargets(graph: GraphDocument, targetNodeIds?: string[]): GraphNode[] {
+  const explicit =
+    targetNodeIds
+      ?.map((id) => graph.nodes.find((node) => node.id === id))
+      .filter((node): node is GraphNode => !!node) ?? []
+  return explicit.length ? explicit : findAllOutputNodes(graph)
+}
+
+function buildOrder(graph: GraphDocument, targetNodeIds?: string[]): string[] {
+  const targets = resolveTaskTargets(graph, targetNodeIds)
   if (!targets.length) return graph.nodes.map((n) => n.id)
   const subset = new Set<string>()
   for (const target of targets) {
@@ -472,13 +484,16 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     priorNodeStates?: Record<string, GraphNodeRunState>
     skipCompletedNodes?: boolean
     cookAssetIdStack?: string[]
+    /** 只跑这些汇点的上游并集（如侧栏图内选中的单条链） */
+    targetNodeIds?: string[]
   }): EnqueueWorkflowResult {
     if (hasActiveTaskForTarget(input.target)) {
       return { ok: false, reason: 'duplicate' }
     }
 
     const graph = cloneGraphDocument(input.graph)
-    const order = buildOrder(graph)
+    const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
+    const order = buildOrder(graph, targetNodeIds)
     const abort = new AbortController()
     const id = `graph-task-${crypto.randomUUID()}`
     const task: GraphTaskInternal = reactive({
@@ -496,7 +511,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       sessionEpoch: useProjectStore().sessionEpoch,
       priorNodeStates: input.priorNodeStates,
       skipCompletedNodes: input.skipCompletedNodes,
-      cookAssetIdStack: input.cookAssetIdStack
+      cookAssetIdStack: input.cookAssetIdStack,
+      targetNodeIds
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -569,7 +585,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     for (const elementKind of WORLD_ELEMENT_KINDS) {
       const raw = readWorldElementGraphFromGenParams(genParams, elementKind)
       const graph = normalizeScopedGraph('elementWorkflow', raw ?? null, {
-        assetType: 'world'
+        assetType: 'world',
+        hostInterface: inferElementWorkflowHostInterface(raw)
       })
       if (!worldKindNeedsBatch(graph, onlyMissing)) {
         skipped += 1
@@ -778,7 +795,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         skipCompletedNodes: task.skipCompletedNodes === true,
         priorNodeStates: task.priorNodeStates,
         cookAssetIdStack: task.cookAssetIdStack,
-        targetNodeIds: findAllOutputNodes(task.graph).map((n) => n.id),
+        targetNodeIds: resolveTaskTargets(task.graph, task.targetNodeIds).map((n) => n.id),
         onNodeUpdate: (nodeId, state) => {
           if (task.abort.signal.aborted) return
           logBridge.onNodeUpdate(nodeId, state)
@@ -1145,6 +1162,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
           if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
+          await materializeBoundEntityRefsOnScriptShots({
+            scriptAssetId: scriptId,
+            shots,
+            kind: 'visual',
+            signal
+          })
           const batch = enqueueScriptShotBatch({
             scriptAssetId: scriptId,
             shots,
@@ -1166,6 +1189,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
           if (!shots.length) return { videos: [], entities: [] }
+          await materializeBoundEntityRefsOnScriptShots({
+            scriptAssetId: scriptId,
+            shots,
+            kind: 'shotWorkflow',
+            signal
+          })
           const batch = enqueueScriptShotBatch({
             scriptAssetId: scriptId,
             shots,
@@ -1192,14 +1221,14 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
             if (draft?.type !== 'world') return null
-            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: false })
             await waitForTaskIds(batch.taskIds)
             return collectWorldElementOutputs({ worldAssetId: worldId, signal })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === worldId)
           if (asset?.type !== 'world') return null
-          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: false })
           await waitForTaskIds(batch.taskIds)
           return collectWorldElementOutputs({ worldAssetId: worldId, signal })
         },

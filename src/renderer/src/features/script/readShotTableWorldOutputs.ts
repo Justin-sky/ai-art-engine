@@ -1,5 +1,9 @@
 import { isDraftAssetId } from '@shared/domain'
-import type { GraphDocument, WorldElementGenResult } from '@shared/graph'
+import {
+  extractShotTableWorldEntities,
+  type GraphDocument,
+  type WorldElementGenResult
+} from '@shared/graph'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
@@ -15,39 +19,17 @@ function readPersistedScriptGraph(scriptAssetId: string): GraphDocument | null {
   return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
 }
 
-function worldOutputsFromNodeParams(params: unknown): WorldElementGenResult[] {
-  if (!params || typeof params !== 'object') return []
-  const raw = (params as { worldElementOutputs?: unknown }).worldElementOutputs
-  if (!Array.isArray(raw)) return []
-  return raw.filter((item): item is WorldElementGenResult => {
-    if (!item || typeof item !== 'object') return false
-    const row = item as Record<string, unknown>
-    return (
-      typeof row.type === 'string' &&
-      typeof row.name === 'string' &&
-      typeof row.imageUrl === 'string' &&
-      Boolean(row.name.trim() && row.imageUrl.trim())
-    )
-  })
-}
-
 /**
- * 打开分镜表格时读取 `script.shotTable` 已同步的世界元素实体。
- * 优先 live 画布节点 params，否则回退资产 graphJson。
+ * 打开分镜表格时读取可绑定的世界元素实体。
+ * 优先 live 画布，否则回退资产 graphJson；两者都含表格节点缓存与
+ * in-worldEntities 上游产物，未运行表格节点时也能绑定。
  */
 export function readShotTableWorldOutputs(scriptAssetId: string): WorldElementGenResult[] {
   const id = scriptAssetId.trim()
   if (!id) return []
 
-  const liveHostId = `asset:${id}`
-  const liveNode = graphEditorHosts.findNode(
-    liveHostId,
-    (node) => node.typeId === 'script.shotTable'
-  )
-  const fromLive = worldOutputsFromNodeParams(liveNode?.params)
+  const fromLive = extractShotTableWorldEntities(graphEditorHosts.getDocument(`asset:${id}`))
   if (fromLive.length) return fromLive
 
-  const doc = readPersistedScriptGraph(id)
-  const table = doc?.nodes?.find((node) => node.typeId === 'script.shotTable')
-  return worldOutputsFromNodeParams(table?.params)
+  return extractShotTableWorldEntities(readPersistedScriptGraph(id))
 }

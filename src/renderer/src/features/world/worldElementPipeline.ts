@@ -1,9 +1,12 @@
 /**
- * 世界元素图管道：从四类 elementWorkflow 子图的已完成输出节点收集实体结果。
- * 不级联跑元素子图中的生成节点；需在世界编辑侧栏内先行跑完。
+ * 世界元素图管道：先跑四类 elementWorkflow 子图的全部生成链，
+ * 再从边界输出节点收集 `{ type, name, imageUrl }` 实体结果。
  */
 import {
   collectImagesFromCompletedOutputNode,
+  hostInterfaceForElementWorkflow,
+  inferElementWorkflowHostInterface,
+  isBoundaryOutputNode,
   isVisualOutputNodeComplete,
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
@@ -16,6 +19,7 @@ import {
   type GraphNode,
   type WorldElementGenResult
 } from '@shared/graph'
+import { GraphPortType } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { useDraftStore } from '../../stores/drafts'
@@ -130,6 +134,14 @@ async function ensureImageAssetForItem(
 }
 
 function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
+  const boundaryOuts = doc.nodes.filter(
+    (node) =>
+      isBoundaryOutputNode(node) &&
+      (node.params.hostBoundaryPort?.dataType === GraphPortType.image ||
+        node.params.hostBoundaryPort?.dataType === GraphPortType.images ||
+        !node.params.hostBoundaryPort?.dataType)
+  )
+  if (boundaryOuts.length) return boundaryOuts
   const outputs = doc.nodes.filter(
     (node) => node.category === 'output' || node.typeId === 'output.image'
   )
@@ -158,12 +170,30 @@ function imageUrlFromItem(item: GraphImageItem): string {
   return item.relativePath?.trim() || item.dataUrl?.trim() || ''
 }
 
+function normalizeElementWorkflowDoc(raw: GraphDocument | null): GraphDocument {
+  const items = raw?.nodes
+    .map((node) => {
+      const id = readWorldElementIdFromNodeParams(node.params)
+      if (!id || node.typeId !== 'asset.image') return null
+      return { id, name: node.title?.trim() || id }
+    })
+    .filter((item): item is { id: string; name: string } => !!item)
+  const iface = items?.length
+    ? hostInterfaceForElementWorkflow(items)
+    : inferElementWorkflowHostInterface(raw)
+  return normalizeScopedGraph('elementWorkflow', raw ?? null, {
+    assetType: 'world',
+    hostInterface: iface
+  })
+}
+
 export type CollectWorldElementOutputsResult = {
   items: WorldElementGenResult[]
 }
 
 /**
- * 从世界资产四类 elementWorkflow 子图收集已完成输出节点的实体结果（不级联跑生成）。
+ * 从世界资产四类 elementWorkflow 子图收集已完成边界输出的实体结果。
+ * 调用方应先 enqueue 并跑完生成链（见 NodeGraphEditor / graphTasks）。
  */
 export async function collectWorldElementOutputs(input: {
   worldAssetId: string
@@ -176,9 +206,7 @@ export async function collectWorldElementOutputs(input: {
   for (const kind of WORLD_ELEMENT_KINDS) {
     assertNotAborted(input.signal)
     const raw = readWorldElementGraphFromGenParams(genParams, kind)
-    const doc = normalizeScopedGraph('elementWorkflow', raw ?? null, {
-      assetType: 'world'
-    })
+    const doc = normalizeElementWorkflowDoc(raw)
     const outputs = listImageOutputNodes(doc)
     const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]
 

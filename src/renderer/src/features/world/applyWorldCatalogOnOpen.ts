@@ -170,7 +170,7 @@ export async function saveWorldCatalog(
 
 /**
  * 将世界元素目录 JSON 同步到四类 elementWorkflow 图
- *（为每条目录创建/更新图片生成节点，并接到共享图片输出）。
+ *（为每条目录创建/更新：play.script → asset.image → boundary.output）。
  * 在表格/生成节点执行、以及打开世界元素生成侧栏时调用。
  */
 export async function applyWorldCatalog(

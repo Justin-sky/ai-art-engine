@@ -70,11 +70,19 @@ export function isGraphIoNode(node: Pick<GraphNode, 'typeId' | 'category'>): boo
   }
 }
 
-/** 除输入/输出外均可锁定上次输出（有图库或可复用 prior runStates） */
+/**
+ * 目录表格节点：只把上游目录透传并存进 params.text，不调用生成，
+ * 也没有 generated* 图库可复用；锁定它只会让整条链取不到缓存而失败。
+ */
+export function isCatalogTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return isWorldTableNode(node) || isNarrativeTableNode(node) || isScriptShotTableNode(node)
+}
+
+/** 除输入/输出与目录表格外均可锁定上次输出（有图库或可复用 prior runStates） */
 export function supportsGenerateLock(
   node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
 ): boolean {
-  return !isGraphIoNode(node)
+  return !isGraphIoNode(node) && !isCatalogTableNode(node)
 }
 
 export function isGenerateLocked(

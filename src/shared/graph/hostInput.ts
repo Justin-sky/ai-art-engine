@@ -344,6 +344,33 @@ function softResolveSourceOutput(
     return graphValueHasPayload(fromRun) ? fromRun : undefined
   }
 
+  // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体
+  if (
+    (node.typeId === 'world.gen' || node.assetType === 'world' || node.typeId === 'asset.world') &&
+    (sourcePort === 'out' || !sourcePort)
+  ) {
+    const fromParams = Array.isArray(node.params.worldElementOutputs)
+      ? (node.params.worldElementOutputs as WorldElementGenResult[])
+      : []
+    if (fromParams.length) {
+      // 打开时预览允许尚无 imageUrl 的实体行
+      const text = stringifyWorldElementGenResults(
+        fromParams.filter((item) => item?.type && item?.name)
+      )
+      if (text.trim()) return { kind: 'worldEntities', text }
+    }
+    const local = worldEntitiesText(node.params.text) || worldEntitiesText(node.params.resultText)
+    if (local) return { kind: 'worldEntities', text: local }
+    if (node.assetId) {
+      const liveDoc = options?.resolveLiveAssetGraph?.(node.assetId)
+      const gen = options?.resolveAssetGenParams?.(node.assetId)
+      for (const graphJson of [liveDoc, gen?.graphJson]) {
+        const fromInner = textFromWorldEntitiesInGraph(graphJson)
+        if (fromInner) return { kind: 'worldEntities', text: fromInner }
+      }
+    }
+  }
+
   // 图库节点：优先按 selected*Id 从 params 重算，避免缓存 out 与 Inspector 选中不一致
   const generated = node.params.generatedTexts
   if (Array.isArray(generated) && generated.length) {
@@ -494,35 +521,6 @@ function softResolveSourceOutput(
     }
   }
 
-  // 世界元素宿主 / 生成：优先实体目录 JSON（含 live 内图）
-  if (
-    (node.typeId === 'world.gen' || node.assetType === 'world' || node.typeId === 'asset.world') &&
-    (sourcePort === 'out' || !sourcePort)
-  ) {
-    const fromParams = Array.isArray(node.params.worldElementOutputs)
-      ? (node.params.worldElementOutputs as WorldElementGenResult[])
-      : []
-    if (fromParams.length) {
-      // 打开时预览允许尚无 imageUrl 的实体行
-      const text = stringifyWorldElementGenResults(
-        fromParams.filter((item) => item?.type && item?.name)
-      )
-      if (text.trim()) return { kind: 'worldEntities', text }
-    }
-    const local = node.params.text?.trim() || node.params.resultText?.trim() || ''
-    if (local && (local.startsWith('[') || local.startsWith('{'))) {
-      return { kind: 'worldEntities', text: local }
-    }
-    if (node.assetId) {
-      const liveDoc = options?.resolveLiveAssetGraph?.(node.assetId)
-      const gen = options?.resolveAssetGenParams?.(node.assetId)
-      for (const graphJson of [liveDoc, gen?.graphJson]) {
-        const fromInner = textFromWorldEntitiesInGraph(graphJson)
-        if (fromInner) return { kind: 'worldEntities', text: fromInner }
-      }
-    }
-  }
-
   // 叙事宿主：live 内图 / genParams.narrativeCatalog
   if (
     (node.assetType === 'narrative' || node.typeId === 'asset.narrative') &&
@@ -640,26 +638,49 @@ function softResolveSourceOutput(
 }
 
 /** 从世界元素内图表格 / 输出节点取实体目录 JSON */
+/**
+ * 仅接受世界元素实体数组文本。
+ * 世界目录（`{"characters":[…]}`，带 prompt 无图）不是实体，不能冒充。
+ */
+function worldEntitiesText(raw: string | undefined | null): string {
+  const text = raw?.trim() ?? ''
+  if (!text.startsWith('[')) return ''
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (!Array.isArray(parsed)) return ''
+    const hasEntity = parsed.some((row) => {
+      if (!row || typeof row !== 'object') return false
+      const item = row as Record<string, unknown>
+      return typeof item.type === 'string' && typeof item.name === 'string' && !!item.name.trim()
+    })
+    return hasEntity ? text : ''
+  } catch {
+    return ''
+  }
+}
+
 function textFromWorldEntitiesInGraph(graphJson: unknown): string {
   if (!graphJson || typeof graphJson !== 'object') return ''
   const nodes = (graphJson as GraphDocument).nodes
   if (!Array.isArray(nodes)) return ''
+  // 实体缓存优先，避免按节点顺序先命中目录节点（world.table 在 world.gen 之前）
   for (const node of nodes) {
-    if (node.typeId === 'world.table' || node.typeId === 'world.gen' || node.typeId === 'output.world') {
-      const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
-      if (text && (text.startsWith('[') || text.startsWith('{'))) return text
-    }
     const outputs = Array.isArray(node.params.worldElementOutputs)
       ? (node.params.worldElementOutputs as WorldElementGenResult[])
       : []
-    if (outputs.length) {
-      const text = stringifyWorldElementGenResults(
-        outputs.filter((item) => item?.type && item?.name)
-      )
-      if (text.trim()) return text
-    }
+    if (!outputs.length) continue
+    const text = stringifyWorldElementGenResults(
+      outputs.filter((item) => item?.type && item?.name)
+    )
+    if (text.trim()) return text
   }
-  return textFromHostInputSlotsInGraph(graphJson)
+  for (const node of nodes) {
+    if (node.typeId !== 'world.gen' && node.typeId !== 'output.world') continue
+    const text =
+      worldEntitiesText(node.params.text) || worldEntitiesText(node.params.resultText)
+    if (text) return text
+  }
+  return ''
 }
 
 /** 从叙事内图表格 / 输出取目录 JSON */
@@ -1109,6 +1130,20 @@ export function applyBoundaryInputValues(
       node.params = nextParams
       changed = true
     }
+  }
+  // 旧图脏值：实体入口曾被写入世界目录（带 prompt 的对象），清掉以免绑定读到错数据
+  for (const node of nodes) {
+    if (!isBoundaryInputNode(node)) continue
+    const portId = node.params.hostBoundaryPort?.portId
+    const dataType =
+      node.params.hostBoundaryPort?.dataType ??
+      (portId ? iface?.inputs.find((port) => port.id === portId)?.dataType : undefined)
+    if (dataType !== GraphPortType.worldEntities) continue
+    if (!node.params.text?.trim() || worldEntitiesText(node.params.text)) continue
+    const nextParams: GraphNodeParams = { ...node.params }
+    delete nextParams.text
+    node.params = nextParams
+    changed = true
   }
   return changed
 }

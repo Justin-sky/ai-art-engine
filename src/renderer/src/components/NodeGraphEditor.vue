@@ -533,7 +533,11 @@ import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNo
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
-import { collectScriptShotImages, collectScriptShotVideos } from '../features/script/shotVisualPipeline'
+import {
+  collectScriptShotImages,
+  collectScriptShotVideos,
+  materializeBoundEntityRefsOnScriptShots
+} from '../features/script/shotVisualPipeline'
 import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
 import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
@@ -621,6 +625,7 @@ import {
   createShotParamsNodeForShot,
   createNarrativeUnitRefNode,
   readWorldElementGraphFromGenParams,
+  inferElementWorkflowHostInterface,
   withWorldElementGraph,
   readNarrativeUnitGraphFromGenParams,
   withNarrativeUnitGraph,
@@ -631,8 +636,8 @@ import {
   ensureShotParamsLinkedToVideo,
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
-  listImageAssetsFromShotEntity,
-  materializeShotGenRefsOnVideoGraph,
+  listImageAssetsForShotReferences,
+  materializeShotBoundEntityRefsOnGraph,
   parseShotEntities,
   isTimelineOutputNode,
   type WorldElementKind,
@@ -1147,7 +1152,8 @@ function readAssetGraph(): GraphDocument {
     const raw = readWorldElementGraphFromGenParams(gen, worldElementKind.value)
     return normalizeScopedGraph(graphScope.value, raw, {
       assetType: graphAsset.value?.type ?? 'world',
-      hostAssetId: props.assetId
+      hostAssetId: props.assetId,
+      hostInterface: inferElementWorkflowHostInterface(raw)
     })
   }
   const raw = graphAsset.value?.genParams?.graphJson
@@ -1753,6 +1759,19 @@ const {
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
     if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
+    await materializeBoundEntityRefsOnScriptShots({
+      scriptAssetId: scriptId,
+      shots,
+      kind: 'visual',
+      signal
+    })
+    const batch = taskStore.enqueueScriptShotBatch({
+      scriptAssetId: scriptId,
+      shots,
+      kind: 'visual',
+      onlyMissing: true
+    })
+    await taskStore.waitForTaskIds(batch.taskIds)
     return collectScriptShotImages({
       scriptAssetId: scriptId,
       shots,
@@ -1767,6 +1786,19 @@ const {
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
     if (!shots.length) return { videos: [], entities: [] }
+    await materializeBoundEntityRefsOnScriptShots({
+      scriptAssetId: scriptId,
+      shots,
+      kind: 'shotWorkflow',
+      signal
+    })
+    const batch = taskStore.enqueueScriptShotBatch({
+      scriptAssetId: scriptId,
+      shots,
+      kind: 'shotWorkflow',
+      onlyMissing: true
+    })
+    await taskStore.waitForTaskIds(batch.taskIds)
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
       shots,
@@ -1777,6 +1809,12 @@ const {
     if (graphScope.value !== 'worldAsset') return null
     const worldId = props.assetId
     if (!worldId) return null
+    // 先跑齐四类元素子图的全部生成链，再收集边界输出
+    const batch = taskStore.enqueueWorldElementBatch({
+      worldAssetId: worldId,
+      onlyMissing: false
+    })
+    await taskStore.waitForTaskIds(batch.taskIds)
     return collectWorldElementOutputs({
       worldAssetId: worldId,
       signal
@@ -1851,6 +1889,23 @@ importRunStatesSnapshot(
 function currentGraphTaskTarget(): GraphTaskTarget | null {
   if (isAssetGraph.value) {
     if (!props.assetId) return null
+    // 侧栏子图各自落在 genParams 的子字段，不能按整资产主图写回
+    if (isElementWorkflowGraph.value && worldElementKind.value) {
+      return {
+        kind: 'world-element',
+        worldAssetId: props.assetId,
+        elementKind: worldElementKind.value,
+        hostId: graphHostId.value
+      }
+    }
+    if (isNarrativeUnitGraph.value && props.narrativeUnitId?.trim()) {
+      return {
+        kind: 'narrative-unit',
+        narrativeAssetId: props.assetId,
+        unitId: props.narrativeUnitId.trim(),
+        hostId: graphHostId.value
+      }
+    }
     return {
       kind: 'asset',
       assetId: props.assetId,
@@ -2100,13 +2155,28 @@ async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
   const graphDoc = buildGraphJson()
   const target = currentGraphTaskTarget()
   if (!target) return
-  const title =
+  // 图内可能有多条互不相干的输出链（如世界元素每项一条），只跑选中汇点的上游
+  const selectedOutput = graphDoc.nodes.find(
+    (node) => node.id === toolbarSelectedNodeId.value && isGraphOutputTerminalNode(node)
+  )
+  const outputCount = graphDoc.nodes.filter((node) => isGraphOutputTerminalNode(node)).length
+  const baseTitle =
     target.kind === 'asset'
       ? graphAsset.value?.name || t('graph.play.confirmAllTitle')
       : target.kind === 'script-shot'
         ? resolveShotById(target.shotId)?.title || t('graph.play.confirmAllTitle')
         : t('graph.play.confirmAllTitle')
-  const result = taskStore.enqueueWorkflow({ title, graph: graphDoc, target })
+  const branchLabel =
+    selectedOutput && outputCount > 1
+      ? selectedOutput.title?.trim() || selectedOutput.params.hostBoundaryPort?.portId?.trim() || ''
+      : ''
+  const title = branchLabel ? `${baseTitle} · ${branchLabel}` : baseTitle
+  const result = taskStore.enqueueWorkflow({
+    title,
+    graph: graphDoc,
+    target,
+    targetNodeIds: selectedOutput ? [selectedOutput.id] : undefined
+  })
   if (!result.ok) {
     void promptAlert({
       title: t('graph.tasks.duplicateTitle'),
@@ -4158,12 +4228,16 @@ function resolveImageAssetById(assetId: string) {
   }
 }
 
+function normalizeAssetRelativePath(raw: string): string {
+  return raw.trim().replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
 function resolveImageAssetByRelativePath(relativePath: string) {
-  const path = relativePath.trim().replace(/\\/g, '/')
+  const path = normalizeAssetRelativePath(relativePath)
   if (!path) return null
   const asset = project.assets.find(
     (item) =>
-      item.type === 'image' && (item.relativePath ?? '').trim().replace(/\\/g, '/') === path
+      item.type === 'image' && normalizeAssetRelativePath(item.relativePath ?? '') === path
   )
   if (!asset) return null
   return {
@@ -4237,7 +4311,7 @@ function addShotParamsNodeFromShot(
       shot,
       resolveImageAssetById,
       dropTarget,
-      dropTarget === 'video' ? shotEntityMaterializeOptions(shot) : undefined
+      shotEntityMaterializeOptions(shot)
     )
     replaceGraphDocument(graph, materialized)
     if (select) {
@@ -4264,7 +4338,7 @@ function addShotParamsNodeFromShot(
     shot,
     resolveImageAssetById,
     dropTarget,
-    dropTarget === 'video' ? shotEntityMaterializeOptions(shot) : undefined
+    shotEntityMaterializeOptions(shot)
   )
   replaceGraphDocument(graph, materialized)
   if (select) {
@@ -4286,34 +4360,24 @@ function addShotParamsNodeFromShot(
 }
 
 /**
- * 分镜视频窗：按分镜实体创建图片引用并连到视频生成参考图口 in-image
+ * 分镜图 / 分镜视频窗：按绑定实体与 genRefs 创建图片引用并连到生成节点 in-image
  */
-function ensureShotEntityImagesForActiveVideoCanvas(shot: Shot): void {
-  if (graphScope.value !== 'shotWorkflow') return
-  const assets = listImageAssetsFromShotEntity(shot, resolveImageAssetById, {
-    entityImageUrls: resolveShotEntityImageUrls(shot.id),
-    resolveAssetByRelativePath: resolveImageAssetByRelativePath
-  })
-  if (!assets.length) return
+function ensureShotBoundEntityImagesForActiveCanvas(shot: Shot): void {
+  const scope = graphScope.value
+  if (scope !== 'visual' && scope !== 'shotWorkflow') return
+  const target = scope === 'visual' ? 'image' : 'video'
   const before = buildGraphJson()
-  const video = findShotWorkflowVideoNode(before)
-  if (!video) return
-  const already = assets.every((asset) => {
-    const source = before.nodes.find(
-      (n) => n.assetId === asset.id && (n.params?.assetRef === true || !!n.assetId)
-    )
-    if (!source) return false
-    return before.edges.some(
-      (edge) =>
-        edge.source === source.id &&
-        edge.target === video.id &&
-        (edge.targetPort ?? 'in') === 'in-image'
-    )
-  })
-  if (already) return
-  const next = materializeShotGenRefsOnVideoGraph(before, assets)
+  const next = materializeShotBoundEntityRefsOnGraph(
+    before,
+    shot,
+    target,
+    resolveImageAssetById,
+    shotEntityMaterializeOptions(shot)
+  )
+  if (JSON.stringify(next) === JSON.stringify(before)) return
   replaceGraphDocument(graph, next)
-  recordGraphChange('materialize-shot-entity-images', before)
+  recordGraphChange('materialize-shot-bound-entity-images', before)
+  refreshGraphRenderWindow(true)
   scheduleSave()
   requestEdgeRender()
   graphEditorHosts.bumpRevision()
@@ -4321,7 +4385,7 @@ function ensureShotEntityImagesForActiveVideoCanvas(shot: Shot): void {
 
 /**
  * 分镜图 / 分镜视频窗：当前镜自动确保
- * 「分镜参数 → 图片/视频生成 in-text」；视频窗另将分镜实体图连到参考图口
+ * 「分镜参数 → 图片/视频生成 in-text」；并物化绑定实体图片引用
  */
 function ensureShotParamsForActiveShotCanvas(): void {
   const scope = graphScope.value
@@ -4344,6 +4408,7 @@ function ensureShotParamsForActiveShotCanvas(): void {
 
   if (!existing) {
     addShotParamsNodeFromShot(shot, position, { select: true })
+    ensureShotBoundEntityImagesForActiveCanvas(shot)
     return
   }
 
@@ -4365,9 +4430,7 @@ function ensureShotParamsForActiveShotCanvas(): void {
     recordGraphChange('link-shot-params', before)
   }
 
-  if (scope === 'shotWorkflow') {
-    ensureShotEntityImagesForActiveVideoCanvas(shot)
-  }
+  ensureShotBoundEntityImagesForActiveCanvas(shot)
 
   setSingleNodeSelection(existing.id)
   workspace.selectGraphNode(existing.id, graphHostId.value)

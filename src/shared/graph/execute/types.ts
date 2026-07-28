@@ -388,7 +388,8 @@ export interface NodeExecuteContext {
    */
   resolveShotSplitTableJson?: () => string | null
   /**
-   * 分镜表格 / 分镜编辑节点执行时：把上游拆分 JSON 写入剧本分镜列表。
+   * 生成分镜图 / 视频节点执行时：把上游拆分 JSON 写入剧本分镜列表。
+   * 分镜表格节点不再导入，改为双击打开表格时导入。
    */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /**

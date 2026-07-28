@@ -745,8 +745,11 @@ async function onRefNameChange(
 
 async function addRef(shot: Shot, field: RefField): Promise<void> {
   const storyboard = normalizeStoryboard(shot)
+  const index = storyboard[field].length
   storyboard[field].push({ name: '', type: FIELD_TYPE[field] })
+  // 先落盘再开面板，取消绑定时留下空行供手输名称
   await persistStoryboard(shot, storyboard)
+  openBind(shot.id, field, index)
 }
 
 async function removeRef(shot: Shot, field: RefField, index: number): Promise<void> {
@@ -766,13 +769,15 @@ async function onBindSelect(selected: WorldEntityRef): Promise<void> {
   const shot = visibleShots.value.find((item) => item.id === target.shotId)
   if (!shot) return
   const storyboard = normalizeStoryboard(shot)
-  const current = storyboard[target.field][target.index]
-  if (!current) return
-  storyboard[target.field][target.index] = {
+  const list = storyboard[target.field]
+  const next = {
     name: selected.name,
     imageUrl: selected.imageUrl,
     type: selected.type ?? FIELD_TYPE[target.field]
   }
+  // 目标行可能因写入未同步而缺失，此时按新增处理，避免静默丢弃选择
+  if (target.index >= 0 && target.index < list.length) list[target.index] = next
+  else list.push(next)
   await persistStoryboard(shot, storyboard)
 }
 

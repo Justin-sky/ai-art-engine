@@ -15,12 +15,19 @@ import { flattenImagesValues, flattenVideosValues } from './execute/values'
 import type { GraphImageItem, GraphVideoItem } from './execute/types'
 import { findOutputNode } from './query'
 import {
+  boundaryInputNodeId,
+  GRAPH_BOUNDARY_INPUT_TYPE_ID,
+  isBoundaryInputNode,
+  isBoundaryOutputNode
+} from './hostInterface'
+import {
   findAllShotWorkflowVideoNodes,
   findShotWorkflowVideoNode
 } from './shotVideoBridge'
-import { createAssetGraphNode } from './create'
+import { createAssetGraphNode, createNodeFromType } from './create'
 import { isProcessingAssetNode } from './nodeRole'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
+import { GraphPortType } from './types'
 import type { AssetType } from '../domain'
 import { cloneGraphDocument } from './document'
 import type { ShotSplitRow } from './shotSplitParse'
@@ -33,6 +40,14 @@ export type ShotVisualImageAsset = {
 }
 
 function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
+  const boundaryOuts = doc.nodes.filter(
+    (node) =>
+      isBoundaryOutputNode(node) &&
+      (node.params.hostBoundaryPort?.dataType === GraphPortType.image ||
+        node.params.hostBoundaryPort?.dataType === GraphPortType.images ||
+        !node.params.hostBoundaryPort?.dataType)
+  )
+  if (boundaryOuts.length) return boundaryOuts
   const outputs = doc.nodes.filter(
     (node) => node.category === 'output' || node.typeId === 'output.image'
   )
@@ -401,13 +416,9 @@ function ensureEdge(
 }
 
 function nextAssetRefPosition(doc: GraphDocument, near: GraphNode): { x: number; y: number } {
-  const refCount = doc.nodes.filter(
-    (node) => node.category === 'asset' && (node.params?.assetRef === true || !!node.assetId)
-  ).length
-  return {
-    x: near.position.x - 220,
-    y: near.position.y + refCount * 140
-  }
+  const x = near.position.x - 220
+  const stacked = doc.nodes.filter((node) => Math.abs(node.position.x - x) < 1).length
+  return { x, y: near.position.y + stacked * 140 }
 }
 
 function ensureImageRefNodeNear(
@@ -478,12 +489,106 @@ export function listImageAssetsFromShotGenRefs(
   return out
 }
 
+/** 分镜 storyboard 绑定的一张实体图 */
+export interface ShotBoundEntityImage {
+  name: string
+  relativePath: string
+}
+
+/** 分镜 storyboard 绑定的角色/场景/道具/武器图（按路径去重） */
+export function collectStoryboardBindingImages(
+  shot: Pick<Shot, 'storyboard'>
+): ShotBoundEntityImage[] {
+  const sb = shot.storyboard
+  if (!sb) return []
+  const lists = [sb.characters, sb.scenes, sb.props, sb.weapons]
+  const seen = new Set<string>()
+  const out: ShotBoundEntityImage[] = []
+  for (const list of lists) {
+    for (const ref of asWorldRefList(list)) {
+      const url = (ref.imageUrl ?? '').trim().replace(/\\/g, '/')
+      if (!url || url.startsWith('data:') || seen.has(url)) continue
+      seen.add(url)
+      out.push({ name: ref.name?.trim() || url, relativePath: url })
+    }
+  }
+  return out
+}
+
+/** 分镜 storyboard 绑定角色/场景/道具/武器上的 imageUrl（去重） */
+export function collectStoryboardBindingImageUrls(
+  shot: Pick<Shot, 'storyboard'>
+): string[] {
+  return collectStoryboardBindingImages(shot).map((item) => item.relativePath)
+}
+
+/** 将 storyboard 绑定 imageUrl 解析为图片资产（按 relativePath） */
+export function listImageAssetsFromStoryboardBindings(
+  shot: Pick<Shot, 'storyboard'>,
+  resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+): ShotVisualImageAsset[] {
+  if (!resolveAssetByRelativePath) return []
+  const seen = new Set<string>()
+  const out: ShotVisualImageAsset[] = []
+  for (const raw of collectStoryboardBindingImageUrls(shot)) {
+    const asset = resolveAssetByRelativePath(raw)
+    if (!asset || asset.type !== 'image' || seen.has(asset.id)) continue
+    seen.add(asset.id)
+    out.push(asset)
+  }
+  return out
+}
+
+function pushUniqueAssets(
+  into: ShotVisualImageAsset[],
+  seen: Set<string>,
+  assets: ShotVisualImageAsset[]
+): void {
+  for (const asset of assets) {
+    if (asset.type !== 'image' || seen.has(asset.id)) continue
+    seen.add(asset.id)
+    into.push(asset)
+  }
+}
+
+/**
+ * 分镜参考图资产：storyboard 绑定图 + genRefs（+ 可选实体 URL）。
+ * 生成分镜图/视频前用其物化图片引用节点。
+ */
+export function listImageAssetsForShotReferences(
+  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'>,
+  resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
+  options?: {
+    entityImageUrls?: string[]
+    resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+  }
+): ShotVisualImageAsset[] {
+  const seen = new Set<string>()
+  const out: ShotVisualImageAsset[] = []
+  pushUniqueAssets(out, seen, listImageAssetsFromStoryboardBindings(shot, options?.resolveAssetByRelativePath))
+
+  const byPath = options?.resolveAssetByRelativePath
+  if (byPath) {
+    for (const raw of options?.entityImageUrls ?? []) {
+      const path = raw.trim().replace(/\\/g, '/')
+      if (!path || path.startsWith('data:')) continue
+      const asset = byPath(path)
+      if (!asset || asset.type !== 'image' || seen.has(asset.id)) continue
+      seen.add(asset.id)
+      out.push(asset)
+    }
+  }
+
+  pushUniqueAssets(out, seen, listImageAssetsFromShotGenRefs(shot, resolveAsset))
+  return out
+}
+
 /**
  * 分镜实体对应的画面图资产：优先 style genRefs（分镜图收集写回），
- * 否则按实体 imageUrls 经 relativePath 解析。
+ * 否则按 storyboard 绑定 / 实体 imageUrls 经 relativePath 解析。
  */
 export function listImageAssetsFromShotEntity(
-  shot: Pick<Shot, 'id' | 'genRefs' | 'audioRefs'>,
+  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'>,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
   options?: {
     entityImageUrls?: string[]
@@ -502,11 +607,13 @@ export function listImageAssetsFromShotEntity(
   }
   if (out.length) return out
 
+  pushUniqueAssets(out, seen, listImageAssetsFromStoryboardBindings(shot, options?.resolveAssetByRelativePath))
+
   const urls = options?.entityImageUrls ?? []
   const byPath = options?.resolveAssetByRelativePath
   if (!urls.length || !byPath) return out
   for (const raw of urls) {
-    const path = raw.trim()
+    const path = raw.trim().replace(/\\/g, '/')
     if (!path || path.startsWith('data:')) continue
     const asset = byPath(path)
     if (!asset || asset.type !== 'image' || seen.has(asset.id)) continue
@@ -516,13 +623,96 @@ export function listImageAssetsFromShotEntity(
   return out
 }
 
+/** 绑定图路径 → 稳定的 boundary 端口 id（避开中文路径导致的 id 冲突） */
+function boundImagePortId(relativePath: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < relativePath.length; i++) {
+    hash ^= relativePath.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `bound-img-${(hash >>> 0).toString(36)}`
+}
+
+/**
+ * storyboard 绑定图：用子图同款边界输入节点（image），携带 previewRelativePath。
+ * Cache/ 下的图不进资产库，也不应伪装成图片生成节点。
+ */
+function ensureBoundImageInputNode(
+  doc: GraphDocument,
+  item: ShotBoundEntityImage,
+  near: GraphNode
+): GraphNode {
+  const existing = doc.nodes.find(
+    (node) =>
+      isBoundaryInputNode(node) &&
+      node.params.hostBoundaryPort?.dataType === GraphPortType.image &&
+      node.params.previewRelativePath === item.relativePath
+  )
+  if (existing) {
+    if (existing.title !== item.name) existing.title = item.name
+    return existing
+  }
+  const portId = boundImagePortId(item.relativePath)
+  const node = createNodeFromType(GRAPH_BOUNDARY_INPUT_TYPE_ID, nextAssetRefPosition(doc, near), {
+    id: boundaryInputNodeId(portId),
+    title: item.name,
+    params: {
+      previewCollapsed: true,
+      previewRelativePath: item.relativePath,
+      hostBoundaryPort: {
+        portId,
+        dataType: GraphPortType.image,
+        multiple: false
+      }
+    }
+  })
+  doc.nodes.push(node)
+  return node
+}
+
+/**
+ * 在分镜画面/视频子图上为绑定实体创建图片输入节点并接到生成节点 in-image。
+ * 绑定图一律用 graph.boundary.input（image）；genRefs 仍可建资产引用。
+ * 不依赖分镜参数节点（批量跑图前也可调用）。
+ */
+export function materializeShotBoundEntityRefsOnGraph(
+  graph: GraphDocument,
+  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'>,
+  target: ShotParamsDropTarget,
+  resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
+  _options?: {
+    entityImageUrls?: string[]
+    resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+  }
+): GraphDocument {
+  const bound = collectStoryboardBindingImages(shot)
+  const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
+  if (!bound.length && !assets.length) return graph
+
+  const doc = cloneGraphDocument(graph)
+  const gen =
+    target === 'image' ? findShotVisualImageNode(doc) : findShotWorkflowVideoNode(doc)
+  if (!gen) return graph
+
+  for (const item of bound) {
+    const source = ensureBoundImageInputNode(doc, item, gen)
+    ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+  }
+  for (const asset of assets) {
+    if (asset.type !== 'image') continue
+    const source = ensureImageRefNodeNear(doc, asset, gen)
+    ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+  }
+  return doc
+}
+
 export type ShotParamsDropTarget = 'video' | 'image'
 
 /** 拖入分镜参数后：建参数节点旁的引用拓扑（返回新图；调用方负责替换） */
 export function applyShotParamsDropMaterialization(
   graph: GraphDocument,
   shotParamsNode: GraphNode,
-  shot: Pick<Shot, 'id' | 'genRefs' | 'audioRefs'>,
+  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'>,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
   target: ShotParamsDropTarget = 'video',
   options?: {
@@ -530,14 +720,18 @@ export function applyShotParamsDropMaterialization(
     resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
   }
 ): GraphDocument {
-  if (target === 'image') {
-    const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
-    let doc = materializeShotGenRefsOnImageGraph(graph, assets)
-    doc = ensureShotParamsLinkedToImage(doc, shotParamsNode.id)
-    return doc
+  let doc = materializeShotBoundEntityRefsOnGraph(graph, shot, target, resolveAsset, options)
+  // 视频窗还可补上 shotEntities 输出图（style genRefs 优先逻辑在 listImageAssetsFromShotEntity）
+  if (target === 'video') {
+    const entityAssets = listImageAssetsFromShotEntity(shot, resolveAsset, options)
+    if (entityAssets.length) {
+      doc = materializeShotGenRefsOnVideoGraph(doc, entityAssets, { near: shotParamsNode })
+    }
   }
-  const assets = listImageAssetsFromShotEntity(shot, resolveAsset, options)
-  let doc = materializeShotGenRefsOnVideoGraph(graph, assets, { near: shotParamsNode })
-  doc = ensureShotParamsLinkedToVideo(doc, shotParamsNode.id)
+  if (target === 'image') {
+    doc = ensureShotParamsLinkedToImage(doc, shotParamsNode.id)
+  } else {
+    doc = ensureShotParamsLinkedToVideo(doc, shotParamsNode.id)
+  }
   return doc
 }

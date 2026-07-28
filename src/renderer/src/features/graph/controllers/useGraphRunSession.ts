@@ -146,7 +146,7 @@ export interface GraphRunSessionOptions {
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 分镜表格节点：输出当前分镜列表 JSON */
   resolveShotSplitTableJson?: () => string | null
-  /** 分镜表格节点执行时：导入上游拆分 JSON 到分镜列表 */
+  /** 生成分镜图 / 视频节点执行时：导入上游拆分 JSON 到分镜列表 */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /** 生成分镜图：收集各镜 visual 图片输出已有结果并写回 genRefs */
   collectScriptShotImages?: (signal?: AbortSignal) => Promise<{

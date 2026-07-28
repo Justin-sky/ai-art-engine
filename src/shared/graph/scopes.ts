@@ -8,7 +8,10 @@ import {
 } from './defaultGraph'
 import { getNodeTypeOrThrow } from './registry'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
-import { defaultHostInterfaceForAssetType } from './hostInterface'
+import {
+  defaultHostInterfaceForAssetType,
+  HOST_INTERFACE_FORMAT_VERSION
+} from './hostInterface'
 import { isAssetRefInputHostType } from './nodeRole'
 import type {
   GraphDocument,
@@ -476,6 +479,14 @@ export function createDefaultScopedGraph(
     hasMediaFile: options?.hasMediaFile
   })
   if (!isAssetRefInputHostType(assetType)) return document
+  // 元素子图：无边界输入；边界输出由 syncWorldElementKindGraph 按目录物化
+  if (scope === 'elementWorkflow') {
+    return ensureBoundaryProxyNodes(document, {
+      version: HOST_INTERFACE_FORMAT_VERSION,
+      inputs: [],
+      outputs: []
+    })
+  }
   // 新建宿主内图：boundary 入/出口一并按模板 inputLinkTo 接到链首
   return ensureBoundaryProxyNodes(document, defaultHostInterfaceForAssetType(assetType), {
     autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(scope, assetType, processingTypeId)

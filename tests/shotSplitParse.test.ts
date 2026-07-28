@@ -192,7 +192,11 @@ describe('shotSplitParse', () => {
           dialogue: '',
           soundFx: '',
           cameraMove: '',
-          finalPrompt: ''
+          finalPrompt: '',
+          characters: [{ name: '老人', type: '角色', imageUrl: 'a.png' }],
+          scenes: [{ name: '公园', type: '场景' }],
+          props: [{ name: '旧书', type: '道具' }],
+          weapons: []
         }
       }
     ] as Shot[]
@@ -200,8 +204,12 @@ describe('shotSplitParse', () => {
     expect(rows[0]).toMatchObject({
       title: 'S1',
       status: '已审核',
-      visualDescription: 'v'
+      visualDescription: 'v',
+      characters: [{ name: '老人', type: '角色', imageUrl: 'a.png' }],
+      scenes: [{ name: '公园', type: '场景' }],
+      props: [{ name: '旧书', type: '道具' }]
     })
     expect(stringifyShotSplitRows(rows)).toContain('"status": "已审核"')
+    expect(stringifyShotSplitRows(rows)).toContain('"name": "老人"')
   })
 })

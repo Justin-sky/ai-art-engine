@@ -43,6 +43,7 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
+import { inferElementWorkflowHostInterface } from './worldElementParams'
 
 export {
   ASSET_DIRECTOR_OUTPUT_TITLE,
@@ -252,12 +253,21 @@ export function normalizeScopedGraph(
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   }
-  const hostInterface = (): HostInterfaceDocument =>
-    options?.hostInterface ?? defaultHostInterfaceForAssetType(options?.assetType)
+  const hostInterface = (): HostInterfaceDocument => {
+    if (options?.hostInterface) return options.hostInterface
+    // elementWorkflow 不能用 world 宿主默认接口（text 入 / worldEntities 出），
+    // 否则会注入错误的边界输入，并剪掉元素图的 image 边界输出。
+    if (scope === 'elementWorkflow') {
+      return inferElementWorkflowHostInterface(raw)
+    }
+    return defaultHostInterfaceForAssetType(options?.assetType)
+  }
   if (!raw?.nodes?.length) {
     let created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
     // HDA：可宿主类型默认图补 boundary（不再插 graph.input.slot）
-    if (isAssetRefInputHostType(options?.assetType)) {
+    if (scope === 'elementWorkflow') {
+      created = ensureBoundaryProxyNodes(created, hostInterface())
+    } else if (isAssetRefInputHostType(options?.assetType)) {
       created = ensureBoundaryProxyNodes(created, hostInterface())
     } else {
       syncHostInputSlots(scope, created.nodes, created.edges, options)
@@ -300,7 +310,7 @@ export function normalizeScopedGraph(
   syncHostInputSlots(scope, nodes, edges, options)
 
   let result = finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
-  if (isAssetRefInputHostType(options?.assetType)) {
+  if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
     result = ensureBoundaryProxyNodes(result, hostInterface())
   }
   return result

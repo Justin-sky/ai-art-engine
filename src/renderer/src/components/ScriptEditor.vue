@@ -84,6 +84,7 @@ import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useAssetRecord } from '../composables/useAssetRecord'
 import { scriptPreviewKey } from '../features/script/scriptPreview'
 import { readShotTableWorldOutputs } from '../features/script/readShotTableWorldOutputs'
+import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
 import type { WorldElementGenResult } from '@shared/graph'
 
 type EmbedPaneKind = 'image' | 'video'
@@ -153,6 +154,13 @@ async function closeEmbedPane(): Promise<void> {
 
 async function openShotTable(): Promise<void> {
   await scriptGraphRef.value?.flushSave?.()
+  // 打开即按上游拆分填充分镜列表（表格节点执行只产出输出）；
+  // 导入失败不应挡住表格，独立窗口还要等写盘完成才能读到新分镜
+  try {
+    await applyShotSplitJson(props.scriptAssetId)
+  } catch {
+    /* 保留已有分镜列表 */
+  }
   tableWorldOutputs.value = readShotTableWorldOutputs(props.scriptAssetId)
   if (isDraftAssetId(props.scriptAssetId)) {
     tableOpen.value = true

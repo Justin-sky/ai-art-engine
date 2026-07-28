@@ -739,8 +739,8 @@ export default {
       bind: {
         title: 'Bind world entity',
         action: 'Bind',
-        add: 'Add name',
-        empty: 'Run the shot table node first to sync world entities'
+        add: 'Add and bind',
+        empty: 'No world entities to bind yet. Generate images in the world element graph first.'
       },
       placeholder: {
         name: 'Shot name',
@@ -2117,7 +2117,7 @@ export default {
         hint: 'Double-click the node to open the picker. After running, preview the selected out port here.'
       },
       shotTable: {
-        hint: 'Double-click to open the shot table. Run the node to import shot JSON and preview the out port here.'
+        hint: 'Double-click to open the shot table and fill it from the upstream split. Running outputs the current shot list, including bound characters / scenes / props / weapons.'
       },
       shotImageGen: {
         hint: 'Running this node collects existing shot visuals.'

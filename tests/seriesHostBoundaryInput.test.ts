@@ -130,4 +130,57 @@ describe('剧集起步图：世界元素宿主的边界输入取值', () => {
     expect(node.params.text).toBe(catalog)
     expect(node.params.previewRelativePath ?? '').toBe('')
   })
+
+  /**
+   * 世界内图里目录节点（world.table）排在生成节点（world.gen）之前，
+   * 按节点顺序取值会把带 prompt 的世界目录当成实体注入分镜宿主。
+   */
+  it('世界宿主未跑完时按内图实体注入，不用世界目录冒充', () => {
+    const parent = seriesParent()
+    const catalog = JSON.stringify({
+      characters: [{ id: 'c1', name: '老人', prompt: '全身正面角色设定图', status: '未审核' }]
+    })
+    const entities = JSON.stringify([
+      { type: '角色', name: '老人', imageUrl: 'Cache/Images/old-man.png' }
+    ])
+    const worldInner = createDefaultScopedGraph('worldAsset', 'world')
+    const table = worldInner.nodes.find((n) => n.typeId === 'world.table')!
+    const gen = worldInner.nodes.find((n) => n.typeId === 'world.gen')!
+    table.params = { ...table.params, text: catalog }
+    gen.params = { ...gen.params, text: entities }
+
+    const values = resolveBoundaryInputValuesFromParentGraph(parent, SCRIPT, {
+      resolveAssetGenParams: (assetId) =>
+        assetId === WORLD ? { graphJson: worldInner } : undefined
+    })
+    expect(values['in-worldEntities']).toEqual({ kind: 'worldEntities', text: entities })
+  })
+
+  it('世界内图只有目录时不注入 worldEntities', () => {
+    const parent = seriesParent()
+    const worldInner = createDefaultScopedGraph('worldAsset', 'world')
+    const table = worldInner.nodes.find((n) => n.typeId === 'world.table')!
+    table.params = {
+      ...table.params,
+      text: JSON.stringify({ props: [{ id: 'p1', name: '旧书', prompt: '单个旧书道具' }] })
+    }
+
+    const values = resolveBoundaryInputValuesFromParentGraph(parent, SCRIPT, {
+      resolveAssetGenParams: (assetId) =>
+        assetId === WORLD ? { graphJson: worldInner } : undefined
+    })
+    expect(values['in-worldEntities']).toBeUndefined()
+  })
+
+  it('实体入口里遗留的世界目录会被清掉', () => {
+    const inner = createDefaultScopedGraph('scriptAsset', 'script')
+    const node = inner.nodes.find((n) => n.id === boundaryInputNodeId('in-worldEntities'))!
+    node.params = {
+      ...node.params,
+      text: JSON.stringify({ characters: [{ id: 'c1', name: '老人', prompt: 'A-pose' }] })
+    }
+
+    expect(applyBoundaryInputValues(inner.nodes, {})).toBe(true)
+    expect(node.params.text ?? '').toBe('')
+  })
 })

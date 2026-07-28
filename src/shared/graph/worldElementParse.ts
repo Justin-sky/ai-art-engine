@@ -3,7 +3,7 @@ import {
   normalizeShotReviewStatus,
   type ShotReviewStatus
 } from '../domain'
-import type { GraphDocument } from './types'
+import type { GraphDocument, GraphNodeParams } from './types'
 
 /** 世界元素四类 */
 export type WorldElementKind = 'characters' | 'scenes' | 'props' | 'weapons'
@@ -246,6 +246,13 @@ export const WORLD_ELEMENT_KIND_TO_TYPE: Record<WorldElementKind, WorldElementOu
   weapons: '武器'
 }
 
+const WORLD_ELEMENT_OUTPUT_TYPES: readonly WorldElementOutputType[] = [
+  '角色',
+  '场景',
+  '道具',
+  '武器'
+] as const
+
 export interface WorldElementGenResult {
   type: WorldElementOutputType
   name: string
@@ -281,6 +288,77 @@ export function parseWorldElementGenResults(raw: string | undefined | null): Wor
   } catch {
     return []
   }
+}
+
+/** 节点 params 上缓存的世界元素实体（分镜表格运行后写入） */
+export function worldElementOutputsFromParams(
+  params: GraphNodeParams | undefined | null
+): WorldElementGenResult[] {
+  const raw = params?.worldElementOutputs
+  if (!Array.isArray(raw)) return []
+  const out: WorldElementGenResult[] = []
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const item = row as Record<string, unknown>
+    const type = asString(item.type).trim()
+    const name = asString(item.name).trim()
+    const imageUrl = asString(item.imageUrl).trim()
+    if (!name || !imageUrl) continue
+    if (!WORLD_ELEMENT_OUTPUT_TYPES.includes(type as WorldElementOutputType)) continue
+    out.push({ type: type as WorldElementOutputType, name, imageUrl })
+  }
+  return out
+}
+
+/** 世界实体节点产物：params 正文优先，其次本次运行输出 */
+function nodeWorldEntitiesPayload(doc: GraphDocument, nodeId: string): string | null {
+  const node = doc.nodes.find((item) => item.id === nodeId)
+  const fromParams = node?.params?.text?.trim()
+  if (fromParams) return fromParams
+  const out = doc.runStates?.[nodeId]?.outputs?.out
+  if (
+    out &&
+    typeof out === 'object' &&
+    out.kind === 'worldEntities' &&
+    typeof out.text === 'string'
+  ) {
+    const live = out.text.trim()
+    if (live) return live
+  }
+  return null
+}
+
+/**
+ * 分镜表格可绑定的世界元素实体：先用表格节点自身缓存，
+ * 再沿 in-worldEntities 入边取上游产物，使未运行表格节点时也能绑定。
+ */
+export function extractShotTableWorldEntities(
+  doc: GraphDocument | null | undefined
+): WorldElementGenResult[] {
+  if (!doc?.nodes?.length) return []
+  const table = doc.nodes.find((node) => node.typeId === 'script.shotTable')
+  if (!table) return []
+
+  const results: WorldElementGenResult[] = []
+  const seen = new Set<string>()
+  const push = (items: WorldElementGenResult[]): void => {
+    for (const item of items) {
+      const key = `${item.type}:${item.name}:${item.imageUrl}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      results.push(item)
+    }
+  }
+
+  push(worldElementOutputsFromParams(table.params))
+  for (const edge of doc.edges ?? []) {
+    if (edge.target !== table.id) continue
+    if (edge.targetPort !== 'in-worldEntities') continue
+    const source = doc.nodes.find((node) => node.id === edge.source)
+    if (source) push(worldElementOutputsFromParams(source.params))
+    push(parseWorldElementGenResults(nodeWorldEntitiesPayload(doc, edge.source)))
+  }
+  return results
 }
 
 /** 从世界元素资产图取出连到「世界元素表格」的上游文本，否则表格自身 / 提取节点正文 */

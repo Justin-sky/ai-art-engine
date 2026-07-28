@@ -14,8 +14,10 @@ import {
   listImageAssetsFromShotEntity,
   mergeVisualOutputGenRefs,
   materializeShotGenRefsOnVideoGraph,
+  materializeShotBoundEntityRefsOnGraph,
   parseShotEntities,
   parseVideoEntities,
+  runGraph,
   shotToImageAggregateRow,
   stringifyShotEntities,
   stringifyVideoEntities,
@@ -430,6 +432,169 @@ describe('shot visual bridge', () => {
       .filter((e) => e.target === image.id && e.targetPort === 'in-image')
       .map((e) => graph.nodes.find((n) => n.id === e.source)?.assetId)
     expect(imageSources).toEqual(expect.arrayContaining([IMG1, IMG2]))
+  })
+
+  it('materializes storyboard binding images onto visual graph', () => {
+    const shot = shotWithId('shot-bind-visual', {
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [{ name: '老人', type: '角色', imageUrl: 'Assets/chars/old-man.png' }],
+        scenes: [{ name: '公园', type: '场景', imageUrl: 'Assets/scenes/park.png' }],
+        props: [{ name: '旧书', type: '道具', imageUrl: 'Assets/props/book.png' }],
+        weapons: []
+      }
+    })
+    const assetsByPath: Record<string, { id: string; type: 'image'; name: string; relativePath: string }> = {
+      'Assets/chars/old-man.png': {
+        id: IMG1,
+        type: 'image',
+        name: '老人',
+        relativePath: 'Assets/chars/old-man.png'
+      },
+      'Assets/scenes/park.png': {
+        id: IMG2,
+        type: 'image',
+        name: '公园',
+        relativePath: 'Assets/scenes/park.png'
+      },
+      'Assets/props/book.png': {
+        id: KEEP,
+        type: 'image',
+        name: '旧书',
+        relativePath: 'Assets/props/book.png'
+      }
+    }
+    let graph = createDefaultScopedGraph('visual')
+    graph = materializeShotBoundEntityRefsOnGraph(
+      graph,
+      shot,
+      'image',
+      () => null,
+      { resolveAssetByRelativePath: (path) => assetsByPath[path] ?? null }
+    )
+    const image = findShotVisualImageNode(graph)!
+    const refs = graph.edges
+      .filter((e) => e.target === image.id && e.targetPort === 'in-image')
+      .map((e) => graph.nodes.find((n) => n.id === e.source))
+    expect(refs).toHaveLength(3)
+    expect(refs.every((n) => n?.typeId === 'graph.boundary.input')).toBe(true)
+    expect(refs.map((n) => n?.title).sort()).toEqual(['公园', '旧书', '老人'])
+    expect(refs.map((n) => n?.params.previewRelativePath).sort()).toEqual([
+      'Assets/chars/old-man.png',
+      'Assets/props/book.png',
+      'Assets/scenes/park.png'
+    ])
+  })
+
+  it('materializes cache-only binding images as boundary image inputs', async () => {
+    const rel = 'Cache/Images/新建剧集世界元素_年轻女子_20260728-183159584.png'
+    const shot = shotWithId('shot-bind-cache', {
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [{ name: '年轻女子', type: '角色', imageUrl: rel }],
+        scenes: [],
+        props: [],
+        weapons: []
+      }
+    })
+    let graph = createDefaultScopedGraph('visual')
+    graph = materializeShotBoundEntityRefsOnGraph(graph, shot, 'image', () => null, {
+      resolveAssetByRelativePath: () => null
+    })
+    const image = findShotVisualImageNode(graph)!
+    const ref = graph.nodes.find(
+      (n) =>
+        n.typeId === 'graph.boundary.input' &&
+        n.params.hostBoundaryPort?.dataType === 'image' &&
+        n.params.previewRelativePath === rel
+    )
+    expect(ref, 'boundary image input').toBeDefined()
+    expect(ref!.title).toBe('年轻女子')
+    expect(
+      graph.edges.some(
+        (e) => e.source === ref!.id && e.target === image.id && e.targetPort === 'in-image'
+      )
+    ).toBe(true)
+
+    // 再次物化不重复建节点
+    const again = materializeShotBoundEntityRefsOnGraph(graph, shot, 'image', () => null, {
+      resolveAssetByRelativePath: () => null
+    })
+    expect(
+      again.nodes.filter((n) => n.params.previewRelativePath === rel)
+    ).toHaveLength(1)
+
+    // 边界输入执行时直接输出该图路径
+    const result = await runGraph(
+      { nodes: [ref!], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      {
+        stepDelayMs: 1,
+        targetNodeId: ref!.id
+      }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(result.states[ref!.id]?.outputs?.out).toMatchObject({
+      kind: 'image',
+      relativePath: rel
+    })
+  })
+
+  it('materializes storyboard binding images onto video graph', () => {
+    const shot = shotWithId('shot-bind-video', {
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [{ name: '女子', type: '角色', imageUrl: 'Assets/chars/woman.png' }],
+        scenes: [],
+        props: [],
+        weapons: []
+      }
+    })
+    let graph = createDefaultScopedGraph('shotWorkflow')
+    graph = materializeShotBoundEntityRefsOnGraph(
+      graph,
+      shot,
+      'video',
+      () => null,
+      {
+        resolveAssetByRelativePath: (path) =>
+          path === 'Assets/chars/woman.png'
+            ? { id: IMG1, type: 'image', name: '女子', relativePath: path }
+            : null
+      }
+    )
+    const video = findShotWorkflowVideoNode(graph)!
+    const source = graph.nodes.find(
+      (n) =>
+        n.typeId === 'graph.boundary.input' &&
+        n.params.previewRelativePath === 'Assets/chars/woman.png'
+    )
+    expect(source?.title).toBe('女子')
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.source === source?.id &&
+          e.target === video.id &&
+          e.targetPort === 'in-image'
+      )
+    ).toBe(true)
   })
 
   it('aggregate row includes imageAssetIds from genRefs', () => {

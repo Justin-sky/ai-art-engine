@@ -29,6 +29,9 @@ describe('generate node lock', () => {
     const boundaryIn = createNodeFromType('graph.boundary.input', { x: 0, y: 0 })
     const boundaryOut = createNodeFromType('graph.boundary.output', { x: 0, y: 0 })
     const inputSlot = createNodeFromType('graph.input.slot', { x: 0, y: 0 })
+    const worldTable = createNodeFromType('world.table', { x: 0, y: 0 })
+    const narrativeTable = createNodeFromType('narrative.table', { x: 0, y: 0 })
+    const shotTable = createNodeFromType('script.shotTable', { x: 0, y: 0 })
     expect(supportsGenerateLock(image)).toBe(true)
     expect(supportsGenerateLock(select)).toBe(true)
     expect(supportsGenerateLock(lipSync)).toBe(true)
@@ -43,11 +46,42 @@ describe('generate node lock', () => {
     expect(supportsGenerateLock(boundaryIn)).toBe(false)
     expect(supportsGenerateLock(boundaryOut)).toBe(false)
     expect(supportsGenerateLock(inputSlot)).toBe(false)
+    // 目录表格只透传，无图库可复用，锁定必然取不到缓存
+    expect(supportsGenerateLock(worldTable)).toBe(false)
+    expect(supportsGenerateLock(narrativeTable)).toBe(false)
+    expect(supportsGenerateLock(shotTable)).toBe(false)
     expect(isGenerateLocked({ ...image, params: { locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...host, params: { ...host.params, locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...select, params: { locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...output, params: { locked: true } })).toBe(false)
     expect(isGenerateLocked({ ...boundaryIn, params: { locked: true } })).toBe(false)
+    expect(isGenerateLocked({ ...worldTable, params: { locked: true } })).toBe(false)
+  })
+
+  it('legacy locked world.table still passes the catalog through', async () => {
+    const table = createNodeFromType('world.table', { x: 0, y: 0 }, {
+      id: 'table',
+      params: { locked: true, text: '{"characters":[{"name":"A"}]}' }
+    })
+
+    const result = await runGraph(
+      {
+        nodes: [table],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'table'
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.states.table?.status).toBe('done')
+    expect(result.states.table?.outputs?.out).toMatchObject({
+      kind: 'world',
+      text: '{"characters":[{"name":"A"}]}'
+    })
   })
 
   it('narrative.split lock reuses catalog gallery without calling generateText', async () => {

@@ -7,6 +7,7 @@ import {
   collectVideosFromShotWorkflowGraph,
   collectVideosFromVideoGenNodes,
   imageUrlFromGraphImageItem,
+  materializeShotBoundEntityRefsOnGraph,
   mergeVideoOutputGenRefs,
   mergeVisualOutputGenRefs,
   normalizeScopedGraph,
@@ -17,6 +18,7 @@ import {
   type GraphImageItem,
   type GraphVideoItem,
   type ShotEntityResult,
+  type ShotVisualImageAsset,
   type VideoEntityResult
 } from '@shared/graph'
 import {
@@ -138,6 +140,79 @@ async function persistShotRecord(shot: Shot): Promise<void> {
   if (ownerId && isDraftAssetId(ownerId)) return
   if (isDraftShotId(shot.id)) return
   await project.persistShot(shot)
+}
+
+function resolveImageAssetById(assetId: string): ShotVisualImageAsset | null {
+  const asset = useProjectStore().assets.find((item) => item.id === assetId)
+  if (!asset || asset.type !== 'image') return null
+  return {
+    id: asset.id,
+    type: 'image',
+    name: asset.name,
+    relativePath: asset.relativePath
+  }
+}
+
+function resolveImageAssetByRelativePath(relativePath: string): ShotVisualImageAsset | null {
+  const key = normalizeRel(relativePath)
+  if (!key) return null
+  const asset = useProjectStore().assets.find(
+    (item) =>
+      item.type === 'image' &&
+      !!item.relativePath &&
+      normalizeRel(item.relativePath) === key
+  )
+  if (!asset) return null
+  return {
+    id: asset.id,
+    type: 'image',
+    name: asset.name,
+    relativePath: asset.relativePath
+  }
+}
+
+/**
+ * 跑分镜图/视频前：在各镜子图上按 storyboard 绑定的角色/场景/道具/武器
+ * 创建图片引用节点并接到生成节点 in-image。
+ */
+export async function materializeBoundEntityRefsOnScriptShots(input: {
+  scriptAssetId: string
+  shots: Shot[]
+  kind: 'visual' | 'shotWorkflow'
+  signal?: AbortSignal
+}): Promise<void> {
+  const target = input.kind === 'visual' ? 'image' : 'video'
+  for (const shot of input.shots) {
+    assertNotAborted(input.signal)
+    const live = resolveShotRecord(shot.id, input.scriptAssetId) ?? shot
+
+    const raw =
+      input.kind === 'visual' ? live.canvas.visualGraphJson : live.canvas.graphJson
+    const before = normalizeScopedGraph(
+      input.kind === 'visual' ? 'visual' : 'shotWorkflow',
+      raw ?? null
+    )
+    const next = materializeShotBoundEntityRefsOnGraph(
+      before,
+      live,
+      target,
+      resolveImageAssetById,
+      { resolveAssetByRelativePath: resolveImageAssetByRelativePath }
+    )
+    if (JSON.stringify(next) === JSON.stringify(before)) continue
+
+    const patched: Shot = {
+      ...live,
+      canvas: {
+        ...live.canvas,
+        ...(input.kind === 'visual'
+          ? { visualGraphJson: toPlain(next) as GraphDocument }
+          : { graphJson: toPlain(next) as GraphDocument })
+      },
+      updatedAt: new Date().toISOString()
+    }
+    await persistShotRecord(patched)
+  }
 }
 
 function assertNotAborted(signal?: AbortSignal): void {

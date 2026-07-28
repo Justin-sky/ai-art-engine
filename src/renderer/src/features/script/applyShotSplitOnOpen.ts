@@ -154,7 +154,7 @@ function readLastAppliedFingerprint(scriptAssetId: string): string | null {
 }
 
 /**
- * 执行表格节点导入时是否写回分镜列表。
+ * 打开分镜表格导入时是否写回分镜列表。
  * - skip：该拆分已导入过，保留用户表格编辑
  * - mark-only：分镜已与 JSON 一致，只记指纹
  * - apply：拆分结果有更新，需要导入
@@ -201,7 +201,7 @@ async function markShotSplitApplied(scriptAssetId: string, fingerprint: string):
 
 /**
  * 将分镜拆分 JSON 写入该剧本的分镜列表。
- * 仅应在「分镜表格」节点执行时调用；打开表格窗口不再导入。
+ * 双击打开分镜表格时调用；表格节点执行只产出输出、不写分镜列表。
  * @param jsonText 上游拆分文本；缺省时从资产图提取
  */
 export async function applyShotSplitJson(
