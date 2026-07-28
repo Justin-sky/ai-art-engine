@@ -458,7 +458,7 @@ function collectFallback(into: PreviewItem[]): void {
                 }))
             }
           ]
-        : !isShotVideoGen && node.params.cameraShots?.length
+        : node.typeId !== 'script.shotVideoGen' && node.params.cameraShots?.length
           ? [
               {
                 kind: 'images' as const,

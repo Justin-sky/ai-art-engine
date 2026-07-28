@@ -1172,8 +1172,9 @@ async function exportTimeline(): Promise<void> {
         })
         return
       }
-      if (fb.canceled) return
-      result = { ok: false, error: `${result.error}\n\n录制回退也失败：${fb.error}` }
+      const prevError = result.ok ? 'export failed' : result.error
+      const fbError = fb.ok ? 'fallback failed' : fb.error
+      result = { ok: false, error: `${prevError}\n\n录制回退也失败：${fbError}` }
     }
 
     if (result.ok) {

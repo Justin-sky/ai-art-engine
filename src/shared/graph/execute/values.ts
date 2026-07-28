@@ -11,7 +11,13 @@ import {
   type ShotGenRefRole,
   type AssetType
 } from '../../domain'
-import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
+import type {
+  GraphCatalogKind,
+  GraphDocument,
+  GraphNode,
+  GraphNodeParams,
+  GraphOutputKind
+} from '../types'
 import { GraphPortType } from '../types'
 import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
 import { isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
@@ -25,6 +31,14 @@ import {
   readHostInputSlot,
   resolveHostInputSlotsFromInputs
 } from '../hostInput'
+import {
+  boundaryInputNodeId,
+  boundaryOutputNodeId,
+  isBoundaryInputNode,
+  isBoundaryOutputNode,
+  resolveNodeHostInterface,
+  type HostInterfaceDocument
+} from '../hostInterface'
 import { assetTypeToGraphScope, resolveAssetProcessingTypeId } from '../scopes'
 import { findAllOutputNodes } from '../query'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
@@ -167,13 +181,10 @@ import type {
   GraphNodeRunState,
   GraphOutputValue,
   GraphTextItem,
-  GraphTextsValue,
   GraphTextValue,
   GraphVoiceItem,
-  GraphVoicesValue,
   GraphValue,
   GraphVideoItem,
-  GraphVideosValue,
   NodeExecuteContext
 } from './types'
 
@@ -1255,6 +1266,9 @@ function mapChildOutputToHostOut(
   return null
 }
 
+/** 宿主内图最大嵌套深度（防 A→B→A） */
+export const MAX_HOST_COOK_DEPTH = 8
+
 /**
  * 宿主有入边时：注入内图输入，整链交给任务列表执行（runHostInnerGraph）。
  */
@@ -1264,13 +1278,16 @@ function executeAssetHostInnerGraph(
   const { node, inputs } = ctx
   if (!node.assetId) return null
   const hasInput = Object.values(inputs).some((arr) => (arr?.length ?? 0) > 0)
-  if (!hasInput) return null
+  // 通用宿主允许纯生成子图（零输入、有输出）；旧业务宿主维持“有入边才运行内图”的语义。
+  if (!hasInput && node.assetType !== 'subgraph') return null
 
-  const slots = mergeHostInputSlotsWithDefaults(
-    node.assetType,
-    resolveHostInputSlotsFromInputs(node, inputs)
-  )
-  if (!slots.length) return null
+  const cookStack = ctx.cookAssetIdStack ?? []
+  if (cookStack.includes(node.assetId)) {
+    throw new Error('GRAPH_HOST_RECURSION')
+  }
+  if (cookStack.length >= MAX_HOST_COOK_DEPTH) {
+    throw new Error('GRAPH_HOST_MAX_DEPTH')
+  }
 
   const genParams = ctx.resolveAssetGenParams?.(node.assetId)
   const raw = genParams?.graphJson
@@ -1282,6 +1299,58 @@ function executeAssetHostInnerGraph(
     throw new Error('GRAPH_HOST_INNER_NO_RUNNER')
   }
   const runInner = ctx.runHostInnerGraph
+  const nextStack = [...cookStack, node.assetId]
+  const iface = resolveNodeHostInterface(node)
+  const useBoundary =
+    node.assetType === 'subgraph' ||
+    (raw as GraphDocument).nodes.some(
+      (n) => isBoundaryInputNode(n) || isBoundaryOutputNode(n)
+    )
+
+  if (useBoundary) {
+    return (async () => {
+      const doc = cloneGraphDocument(raw as GraphDocument)
+      const priorNodeStates: Record<string, GraphNodeRunState> = {}
+      for (const port of iface.inputs) {
+        const id = boundaryInputNodeId(port.id)
+        const values = inputs[port.id] ?? []
+        const out = mergeHostInputValues(values, port.dataType)
+        if (!out) continue
+        priorNodeStates[id] = { status: 'done', outputs: { out } }
+        const bNode = doc.nodes.find((n) => n.id === id)
+        if (bNode && (out.kind === 'text' || out.kind === 'texts')) {
+          const text =
+            out.kind === 'text'
+              ? out.text
+              : out.items.map((item) => item.text).filter(Boolean).join('\n')
+          bNode.params = { ...bNode.params, text }
+        }
+      }
+
+      const hosted = await runInner({
+        hostNode: node,
+        document: doc,
+        priorNodeStates,
+        signal: ctx.signal,
+        cookAssetIdStack: nextStack
+      })
+      if (!hosted.ok) {
+        throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
+      }
+      if (hosted.outputs) return hosted.outputs
+      const mapped = mapHostBoundaryStatesToOutputs(hosted.states, doc, iface)
+      if (!mapped || !Object.keys(mapped).length) {
+        throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
+      }
+      return mapped
+    })()
+  }
+
+  const slots = mergeHostInputSlotsWithDefaults(
+    node.assetType,
+    resolveHostInputSlotsFromInputs(node, inputs)
+  )
+  if (!slots.length) return null
 
   return (async () => {
     const doc = cloneGraphDocument(raw as GraphDocument)
@@ -1339,7 +1408,8 @@ function executeAssetHostInnerGraph(
       hostNode: node,
       document: doc,
       priorNodeStates,
-      signal: ctx.signal
+      signal: ctx.signal,
+      cookAssetIdStack: nextStack
     })
     if (!hosted.ok) {
       throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
@@ -1349,6 +1419,102 @@ function executeAssetHostInnerGraph(
     if (!mapped) throw new Error('GRAPH_HOST_INNER_NO_OUTPUT')
     return mapped
   })()
+}
+
+function mergeHostInputValues(
+  values: GraphValue[],
+  dataType: string
+): GraphValue | null {
+  if (!values.length) return null
+  if (values.length === 1) return values[0]!
+  if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'texts') return v.items
+      if (v.kind === 'text') return [{ text: v.text, relativePath: v.relativePath }]
+      return []
+    })
+    return { kind: 'texts', items }
+  }
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'images') return v.items
+      if (v.kind === 'image') {
+        return [{ dataUrl: v.dataUrl ?? '', relativePath: v.relativePath }]
+      }
+      return []
+    })
+    return { kind: 'images', items }
+  }
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    const items = values.flatMap((value) => {
+      if (value.kind === 'videos') return value.items
+      if (value.kind === 'video') {
+        return [{
+          dataUrl: value.dataUrl ?? '',
+          relativePath: value.relativePath,
+          id: value.id
+        }]
+      }
+      return []
+    })
+    return { kind: 'videos', items }
+  }
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+    const items = values.flatMap((value) => {
+      if (value.kind === 'voices') return value.items
+      if (value.kind === 'voice') {
+        return [{
+          relativePath: value.relativePath,
+          id: value.id,
+          createdAt: value.createdAt
+        }]
+      }
+      return []
+    })
+    return { kind: 'voices', items }
+  }
+  if (
+    dataType === GraphPortType.world ||
+    dataType === GraphPortType.worldEntities ||
+    dataType === GraphPortType.shotEntities ||
+    dataType === GraphPortType.videoEntities ||
+    dataType === GraphPortType.narrative ||
+    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.shots
+  ) {
+    const payloads = values.flatMap((value) => {
+      if (value.kind !== dataType) return []
+      try {
+        const parsed = JSON.parse(value.text)
+        return Array.isArray(parsed) ? parsed : [parsed]
+      } catch {
+        return value.text.trim() ? [value.text] : []
+      }
+    })
+    return catalogValue(dataType as GraphCatalogKind, JSON.stringify(payloads))
+  }
+  return values[0]!
+}
+
+/** 从 boundary.output 节点状态映射到宿主多出口 */
+export function mapHostBoundaryStatesToOutputs(
+  states: Record<string, GraphNodeRunState>,
+  doc: GraphDocument,
+  iface: HostInterfaceDocument
+): Record<string, GraphValue> | null {
+  const result: Record<string, GraphValue> = {}
+  for (const port of iface.outputs) {
+    const id = boundaryOutputNodeId(port.id)
+    const node = doc.nodes.find((n) => n.id === id) ??
+      doc.nodes.find(
+        (n) =>
+          isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === port.id
+      )
+    if (!node) continue
+    const out = states[node.id]?.outputs?.out
+    if (out) result[port.id] = out
+  }
+  return Object.keys(result).length ? result : null
 }
 
 /** 从内图全部输出节点状态聚合宿主出口 */
@@ -2782,6 +2948,57 @@ export async function executeHostInputSlotNode(
     }
   }
   return { out: { kind: 'text', text: ctx.node.params.text ?? '' } }
+}
+
+/** 宿主边界输入：优先用 prior seed（引擎 skip），否则读 params 缓存 */
+export async function executeBoundaryInputNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  return executeHostInputSlotNode({
+    ...ctx,
+    node: {
+      ...ctx.node,
+      typeId: 'graph.input.slot',
+      params: {
+        ...ctx.node.params,
+        hostInputSlot: {
+          portId: ctx.node.params.hostBoundaryPort?.portId ?? 'in',
+          index: 0,
+          dataType: ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
+        }
+      }
+    }
+  })
+}
+
+/** 宿主边界输出：透传第一个输入到 out */
+export function executeBoundaryOutputNode(
+  ctx: NodeExecuteContext
+): Record<string, GraphValue> {
+  const first = (ctx.inputs.in ?? Object.values(ctx.inputs).flat())[0]
+  if (first) return { out: first }
+  const dataType = ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
+  if (
+    dataType === GraphPortType.narrative ||
+    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.worldEntities ||
+    dataType === GraphPortType.shotEntities ||
+    dataType === GraphPortType.videoEntities ||
+    dataType === GraphPortType.world ||
+    dataType === GraphPortType.shots
+  ) {
+    return { out: catalogValue(dataType, '') }
+  }
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    return { out: { kind: 'images', items: [] } }
+  }
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    return { out: { kind: 'videos', items: [] } }
+  }
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+    return { out: { kind: 'voices', items: [] } }
+  }
+  return { out: { kind: 'text', text: '' } }
 }
 
 /**

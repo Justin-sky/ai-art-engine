@@ -736,6 +736,7 @@ function onSplitterDown(e: MouseEvent): void {
 
 const filterTypes: AssetType[] = [
   'canvas',
+  'subgraph',
   'world',
   'narrative',
   'script',

@@ -12,7 +12,8 @@ export const ASSET_REF_INPUT_HOST_TYPES = [
   'script',
   'image',
   'video',
-  'voice'
+  'voice',
+  'subgraph'
 ] as const satisfies readonly AssetType[]
 
 export type AssetRefInputHostType = (typeof ASSET_REF_INPUT_HOST_TYPES)[number]

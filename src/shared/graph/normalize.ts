@@ -41,7 +41,6 @@ import {
   type HostInputSlotSpec
 } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
-import type { AssetType } from '../domain'
 
 export {
   ASSET_DIRECTOR_OUTPUT_TITLE,

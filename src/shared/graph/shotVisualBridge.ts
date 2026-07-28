@@ -3,6 +3,7 @@
  * 纯图文档与 genRefs 变换；资产创建与跑图由渲染层完成。
  */
 import {
+  asWorldRefList,
   normalizeGenRefs,
   normalizeShotReviewStatus,
   reindexAllShotRefs,
@@ -298,6 +299,10 @@ export function shotToImageAggregateRow(shot: Shot, index: number): ShotImageAgg
     soundFx: sb?.soundFx?.trim() ?? '',
     cameraMove: sb?.cameraMove?.trim() ?? '',
     status: normalizeShotReviewStatus(shot.reviewStatus),
+    characters: asWorldRefList(sb?.characters),
+    scenes: asWorldRefList(sb?.scenes),
+    props: asWorldRefList(sb?.props),
+    weapons: asWorldRefList(sb?.weapons),
     imageAssetIds: shotGenRefImageAssetIds(shot)
   }
 }

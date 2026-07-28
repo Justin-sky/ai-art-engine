@@ -371,6 +371,7 @@ async function executeOneNode(
     resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
     importNarrativeCatalogJson: options.importNarrativeCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,
+    cookAssetIdStack: options.cookAssetIdStack,
     saveRunMedia: options.saveRunMedia,
     saveRunText: options.saveRunText,
     readRunText: options.readRunText,
@@ -570,13 +571,16 @@ export async function runGraph(
       wave.map((nodeId) => executeOneNode(nodeId, byId, graph, outputs, options, states))
     )
 
-    if (options.signal?.aborted || steps.some((s) => s.error === 'GRAPH_CANCELLED')) {
+    if (
+      options.signal?.aborted ||
+      steps.some((s) => !s.ok && s.error === 'GRAPH_CANCELLED')
+    ) {
       markCancelled(states, order, options.onNodeUpdate)
       return { ok: false, order, states, error: 'GRAPH_CANCELLED' }
     }
 
     const failed = steps.find((s) => !s.ok)
-    if (failed) {
+    if (failed && !failed.ok) {
       // 仅跳过尚未执行的下游；同层并行节点已全部跑完
       markRemainingSkipped(states, order, options.onNodeUpdate)
       return { ok: false, order, states, error: failed.error }

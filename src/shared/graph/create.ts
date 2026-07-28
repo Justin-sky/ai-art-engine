@@ -28,7 +28,8 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   script: 'Shot',
   canvas: 'Canvas',
   world: 'World Elements',
-  narrative: 'Narrative Units'
+  narrative: 'Narrative Units',
+  subgraph: 'Host Asset'
 }
 
 export function assetTypeToGraphNodeTitle(type: AssetType, name?: string): string {
@@ -68,9 +69,11 @@ export function getNodeSize(node: GraphNode): { w: number; h: number } {
   const w = node.size?.w ?? defaults.w
   const h = node.size?.h ?? defaults.h
   // 收起预览时高度压到标题栏；展开时仍用节点保存的 size.h
-  // 输入接口默认折叠（仅 previewCollapsed === false 时展开）
+  // 输入接口 / boundary 默认折叠（仅 previewCollapsed === false 时展开）
   const collapsed =
-    node.typeId === 'graph.input.slot'
+    node.typeId === 'graph.input.slot' ||
+    node.typeId === 'graph.boundary.input' ||
+    node.typeId === 'graph.boundary.output'
       ? node.params?.previewCollapsed !== false
       : node.params?.previewCollapsed === true
   if (collapsed) {
@@ -129,7 +132,11 @@ export function createAssetGraphNode(
   assetType: AssetType,
   name: string,
   position: { x: number; y: number },
-  options?: { assetHost?: boolean }
+  options?: {
+    assetHost?: boolean
+    hostInterfaceSnapshot?: GraphNode['params']['hostInterfaceSnapshot']
+    hostSchemaVersion?: number
+  }
 ): GraphNode {
   return createNodeFromType(assetTypeToNodeTypeId(assetType), position, {
     assetId,
@@ -138,7 +145,13 @@ export function createAssetGraphNode(
     title: assetTypeToGraphNodeTitle(assetType, name),
     params: {
       assetRef: true,
-      ...(options?.assetHost ? { assetHost: true } : {})
+      ...(options?.assetHost ? { assetHost: true } : {}),
+      ...(options?.hostInterfaceSnapshot
+        ? { hostInterfaceSnapshot: options.hostInterfaceSnapshot }
+        : {}),
+      ...(typeof options?.hostSchemaVersion === 'number'
+        ? { hostSchemaVersion: options.hostSchemaVersion }
+        : {})
     }
   })
 }

@@ -28,6 +28,7 @@ export type BuiltinGraphAddScope =
   | 'narrativeAsset'
   | 'narrativeUnit'
   | 'elementWorkflow'
+  | 'subgraphAsset'
 
 /** 内置或插件注册的画布作用域 id */
 export type GraphAddScope = BuiltinGraphAddScope | (string & {})
@@ -239,6 +240,17 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       kind: 'image',
       title: 'Element output'
     }
+  },
+  /** 通用宿主资产内图：不强制输出；由 boundary proxy 定义接口 */
+  subgraphAsset: {
+    id: 'subgraphAsset',
+    ensureOutput: false,
+    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
+    output: {
+      kind: 'text',
+      title: 'Host output',
+      inputDataType: GraphPortType.text
+    }
   }
 }
 
@@ -293,7 +305,8 @@ const BUILTIN_SCOPE_HOST_BINDINGS: GraphScopeHostBinding[] = [
   { assetType: 'script', scope: 'scriptAsset', priority: 100 },
   { assetType: 'canvas', scope: 'canvasAsset', priority: 100 },
   { assetType: 'world', scope: 'worldAsset', priority: 100 },
-  { assetType: 'narrative', scope: 'narrativeAsset', priority: 100 }
+  { assetType: 'narrative', scope: 'narrativeAsset', priority: 100 },
+  { assetType: 'subgraph', scope: 'subgraphAsset', priority: 100 }
 ]
 
 const customScopeHostBindings: GraphScopeHostBinding[] = []

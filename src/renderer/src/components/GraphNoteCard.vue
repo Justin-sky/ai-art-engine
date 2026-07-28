@@ -64,6 +64,21 @@
     <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
 
     <div
+      v-for="(port, index) in inPorts"
+      :key="`in-${port.id}`"
+      class="port-wrap in"
+      :style="portWrapStyle(inPorts.length, index)"
+    >
+      <span class="port-type">{{ portTypeLabel(port.dataType) }}</span>
+      <button
+        type="button"
+        class="port in"
+        :data-port-id="port.id"
+        :title="`${t('graph.port.inTitle')} · ${portTypeLabel(port.dataType)}`"
+        @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
+      />
+    </div>
+    <div
       v-for="(port, index) in outPorts"
       :key="`out-${port.id}`"
       class="port-wrap out"
@@ -114,10 +129,12 @@ const emit = defineEmits<{
   titleChange: [nodeId: string, title: string]
   resizeStart: [nodeId: string, event: PointerEvent]
   outPortDown: [nodeId: string, portId: string, event: PointerEvent]
+  inPortDown: [nodeId: string, portId: string, event: PointerEvent]
 }>()
 
 const nodeSize = computed(() => getNodeSize(props.node))
 const nodePorts = computed(() => getNodePorts(props.node))
+const inPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'in'))
 const outPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'out'))
 const isInputSlot = computed(() => props.node.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
 const slotBinding = computed(() => readHostInputSlot(props.node))
@@ -243,6 +260,10 @@ function onResizeStart(e: PointerEvent): void {
 
 function onOutPortDown(portId: string, e: PointerEvent): void {
   emit('outPortDown', props.node.id, portId, e)
+}
+
+function onInPortDown(portId: string, e: PointerEvent): void {
+  emit('inPortDown', props.node.id, portId, e)
 }
 
 function onBodyDblClick(): void {
@@ -474,14 +495,31 @@ function onBodyDblClick(): void {
   pointer-events: none;
 }
 
+.port-wrap.in {
+  left: 0;
+}
+
 .port-wrap.out {
   right: 0;
 }
 
-.port-type {
+.port-wrap.out .port-type {
   position: absolute;
   top: 0;
   left: 10px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--slot-port);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  transform: translateY(-50%);
+}
+
+.port-wrap.in .port-type {
+  position: absolute;
+  top: 0;
+  right: 10px;
   font-size: 9px;
   line-height: 1;
   color: var(--slot-port);
@@ -506,8 +544,18 @@ function onBodyDblClick(): void {
   transform: translate(-50%, -50%);
 }
 
+.port.in {
+  border-color: #ffb347;
+  background: var(--graph-port-in-bg, var(--graph-port-bg));
+}
+
 .port:hover {
   background: var(--slot-port);
   border-color: color-mix(in srgb, var(--slot-port) 60%, white);
+}
+
+.port.in:hover {
+  background: #ffb347;
+  border-color: color-mix(in srgb, #ffb347 60%, white);
 }
 </style>

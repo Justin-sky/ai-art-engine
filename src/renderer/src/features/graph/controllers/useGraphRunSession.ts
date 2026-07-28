@@ -125,6 +125,8 @@ export interface GraphRunSessionOptions {
   }) => Promise<string>
   readRunText?: (relativePath: string) => Promise<string>
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
+  /** 资产是否仍存在（含草稿）；缺失引用节点执行时短路） */
+  hasAsset?: (assetId: string) => boolean
   resolveAssetName?: (assetId: string) => string | undefined
   resolveHostAssetName?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
@@ -596,6 +598,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateSpeech: wrapGenerateSpeech(token, signal),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
+        hasAsset: options.hasAsset,
         resolveAssetName: options.resolveAssetName,
         resolveHostAssetName: options.resolveHostAssetName,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,

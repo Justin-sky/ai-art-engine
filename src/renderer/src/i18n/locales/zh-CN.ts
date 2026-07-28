@@ -359,7 +359,8 @@ export default {
       script: '分镜',
       canvas: '剧集',
       world: '世界元素',
-      narrative: '叙事单元'
+      narrative: '叙事单元',
+      subgraph: '宿主资产'
     },
     create: {
       image: '新建图片',
@@ -373,6 +374,7 @@ export default {
       freeCanvas: '新建自由画布',
       world: '新建世界元素',
       narrative: '新建叙事单元',
+      subgraph: '新建宿主资产',
       default: '新建资产',
       seriesNameTitle: '新建剧集',
       seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、叙事单元与分镜，并放入剧集画布。',
@@ -1704,6 +1706,39 @@ export default {
         worldEntities: '等待外层世界元素实体…'
       }
     },
+    boundaryInput: {
+      badge: '边界输入',
+      title: '输入'
+    },
+    boundaryOutput: {
+      badge: '边界输出',
+      title: '输出'
+    },
+    hostInterface: {
+      encapsulate: '封装为宿主资产',
+      encapsulateAction: '封装资产',
+      encapsulateFailed: '封装失败，请重试。',
+      defaultName: '宿主资产',
+      nameTitle: '创建宿主资产',
+      nameMessage: '请输入可复用宿主资产的名称。',
+      saveMessage: '选择保存目录并输入宿主资产名称。',
+      namePlaceholder: '宿主资产名称',
+      inspectorHint: '编辑宿主输入/输出端口定义。保存后更新资产定义与当前实例快照。',
+      inputs: '输入端口',
+      outputs: '输出端口',
+      addPort: '添加端口',
+      emptyPorts: '暂无端口',
+      collapsePorts: '收起端口',
+      expandPorts: '展开端口',
+      reorderHint: '拖动左侧手柄可调整端口顺序，节点上会同步变化。',
+      reorderHandle: '拖动调整顺序',
+      portId: '端口 ID',
+      portLabel: '显示名',
+      dataType: '数据类型',
+      multiple: '允许多连',
+      apply: '应用接口',
+      saving: '保存中…'
+    },
     demo: {
       badge: '插件示例',
       title: '示例节点',
@@ -1849,7 +1884,8 @@ export default {
         motion: '导演台编辑',
         model: '模型',
         screenplay: '剧本生成',
-        script: '分镜'
+        script: '分镜',
+        subgraph: '宿主资产'
       },
       output: {
         video: '视频输出',
@@ -1932,6 +1968,7 @@ export default {
       canvas: '画布',
       world: '世界元素',
       narrative: '叙事单元',
+      subgraph: '宿主资产',
       shotOutput: '分镜输出',
       shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',

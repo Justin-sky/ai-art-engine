@@ -290,6 +290,18 @@ class GraphEditorHostRegistry {
     return docs
   }
 
+  /** 所有已注册画布及其 hostId；用于定义资产接口变更后同步全部打开实例。 */
+  listLiveEntries(): Array<{ hostId: string; document: GraphDocument }> {
+    void this.revision.value
+    const entries: Array<{ hostId: string; document: GraphDocument }> = []
+    for (const [hostId, api] of this.hosts) {
+      const document = api.getDocument?.()
+      if (!document || !Array.isArray(document.nodes) || !Array.isArray(document.edges)) continue
+      entries.push({ hostId, document })
+    }
+    return entries
+  }
+
   /** 按 hostId 取实时文档（如 `asset:${assetId}`） */
   getDocument(hostId: string | null | undefined): GraphDocument | null {
     void this.revision.value

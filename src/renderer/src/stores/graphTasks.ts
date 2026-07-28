@@ -6,7 +6,8 @@ import {
   findAllOutputNodes,
   getNodeType,
   mapHostInnerStatesToOutputs,
-  parseNarrativeUnitJson,
+  mapHostBoundaryStatesToOutputs,
+  resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
   shotsToShotSplitRows,
@@ -115,6 +116,8 @@ export type GraphTaskTarget =
       kind: 'asset'
       assetId: string
       hostId: string
+      /** 通用宿主每次 cook 独立，避免同定义的不同实例错误复用输入与输出 */
+      instanceKey?: string
     }
 
 export interface GraphTaskNodeSnapshot {
@@ -147,6 +150,7 @@ interface GraphTaskInternal extends GraphTask {
   /** 宿主内图：已注入输入槽的 prior */
   priorNodeStates?: Record<string, GraphNodeRunState>
   skipCompletedNodes?: boolean
+  cookAssetIdStack?: string[]
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -198,7 +202,9 @@ function applyRunStateToNodes(
 
 function taskTargetKey(target: GraphTaskTarget): string {
   if (target.kind === 'asset') {
-    return `asset:${target.assetId}`
+    return target.instanceKey
+      ? `asset:${target.assetId}:instance:${target.instanceKey}`
+      : `asset:${target.assetId}`
   }
   if (target.kind === 'world-element') {
     return `world-element:${target.worldAssetId}:${target.elementKind}`
@@ -465,6 +471,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     target: GraphTaskTarget
     priorNodeStates?: Record<string, GraphNodeRunState>
     skipCompletedNodes?: boolean
+    cookAssetIdStack?: string[]
   }): EnqueueWorkflowResult {
     if (hasActiveTaskForTarget(input.target)) {
       return { ok: false, reason: 'duplicate' }
@@ -488,7 +495,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       abort,
       sessionEpoch: useProjectStore().sessionEpoch,
       priorNodeStates: input.priorNodeStates,
-      skipCompletedNodes: input.skipCompletedNodes
+      skipCompletedNodes: input.skipCompletedNodes,
+      cookAssetIdStack: input.cookAssetIdStack
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -672,7 +680,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     const target: GraphTaskTarget = {
       kind: 'asset',
       assetId,
-      hostId: `asset:${assetId}`
+      hostId: `asset:${assetId}`,
+      instanceKey:
+        input.hostNode.assetType === 'subgraph'
+          ? `${input.hostNode.id}:${crypto.randomUUID()}`
+          : undefined
     }
     const targetKey = taskTargetKey(target)
 
@@ -693,7 +705,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         graph: input.document,
         target,
         priorNodeStates: input.priorNodeStates,
-        skipCompletedNodes: true
+        skipCompletedNodes: true,
+        cookAssetIdStack: input.cookAssetIdStack
       })
       if (enqueued.ok) {
         taskId = enqueued.id
@@ -724,11 +737,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     if (!done) {
       return { ok: false, states: {}, error: 'GRAPH_HOST_INNER_MISSING_TASK' }
     }
-    const outputs = mapHostInnerStatesToOutputs(
-      done.runStates,
-      done.graph,
-      input.hostNode.assetType ?? ''
-    )
+    const outputs =
+      mapHostBoundaryStatesToOutputs(
+        done.runStates,
+        done.graph,
+        resolveNodeHostInterface(input.hostNode)
+      ) ??
+      mapHostInnerStatesToOutputs(
+        done.runStates,
+        done.graph,
+        input.hostNode.assetType ?? ''
+      )
     return {
       ok: done.status === 'done',
       states: { ...done.runStates },
@@ -754,6 +773,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         stepDelayMs: 100,
         skipCompletedNodes: task.skipCompletedNodes === true,
         priorNodeStates: task.priorNodeStates,
+        cookAssetIdStack: task.cookAssetIdStack,
         targetNodeIds: findAllOutputNodes(task.graph).map((n) => n.id),
         onNodeUpdate: (nodeId, state) => {
           if (task.abort.signal.aborted) return

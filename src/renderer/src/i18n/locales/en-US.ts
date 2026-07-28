@@ -360,7 +360,8 @@ export default {
       script: 'Shot',
       canvas: 'Series',
       world: 'World Elements',
-      narrative: 'Narrative Units'
+      narrative: 'Narrative Units',
+      subgraph: 'Host Asset'
     },
     create: {
       image: 'New Image',
@@ -374,6 +375,7 @@ export default {
       freeCanvas: 'New Free Canvas',
       world: 'New World Elements',
       narrative: 'New Narrative Units',
+      subgraph: 'New Host Asset',
       default: 'New Asset',
       seriesNameTitle: 'New Series',
       seriesNameMessage:
@@ -1711,6 +1713,40 @@ export default {
         worldEntities: 'Waiting for outer world entities…'
       }
     },
+    boundaryInput: {
+      badge: 'Boundary in',
+      title: 'Input'
+    },
+    boundaryOutput: {
+      badge: 'Boundary out',
+      title: 'Output'
+    },
+    hostInterface: {
+      encapsulate: 'Encapsulate as host asset',
+      encapsulateAction: 'Encapsulate asset',
+      encapsulateFailed: 'Encapsulation failed. Please try again.',
+      defaultName: 'Host Asset',
+      nameTitle: 'Create host asset',
+      nameMessage: 'Enter a name for the reusable host asset.',
+      saveMessage: 'Choose a folder and enter a name for the host asset.',
+      namePlaceholder: 'Host asset name',
+      inspectorHint:
+        'Edit host input/output port definitions. Saving updates the asset definition and this instance snapshot.',
+      inputs: 'Inputs',
+      outputs: 'Outputs',
+      addPort: 'Add port',
+      emptyPorts: 'No ports yet',
+      collapsePorts: 'Collapse ports',
+      expandPorts: 'Expand ports',
+      reorderHint: 'Drag the handle to reorder ports; the node updates live.',
+      reorderHandle: 'Drag to reorder',
+      portId: 'Port ID',
+      portLabel: 'Label',
+      dataType: 'Data type',
+      multiple: 'Allow multiple',
+      apply: 'Apply interface',
+      saving: 'Saving…'
+    },
     demo: {
       badge: 'Plugin demo',
       title: 'Example node',
@@ -1857,7 +1893,8 @@ export default {
         motion: 'Director deck edit',
         model: 'Model',
         screenplay: 'Screenplay generation',
-        script: 'Shot'
+        script: 'Shot',
+        subgraph: 'Host asset'
       },
       output: {
         video: 'Video output',
@@ -1940,6 +1977,7 @@ export default {
       canvas: 'Canvas',
       world: 'World Elements',
       narrative: 'Narrative Units',
+      subgraph: 'Host Asset',
       shotOutput: 'Shot output',
       shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',

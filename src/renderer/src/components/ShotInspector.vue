@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import ShotGenRefsEditor from './ShotGenRefsEditor.vue'
 import RefMentionTextarea from './RefMentionTextarea.vue'
 import {

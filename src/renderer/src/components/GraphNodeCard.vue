@@ -24,6 +24,27 @@
     @pointerdown.stop="onPointerDown"
     @dragstart.prevent
   >
+    <div class="node-title">
+      <input
+        v-if="editingTitle"
+        ref="titleInputEl"
+        v-model="titleDraft"
+        class="title-input"
+        :size="Math.max(12, titleDraft.length)"
+        @pointerdown.stop
+        @dblclick.stop
+        @blur="commitTitleEdit"
+        @keydown.enter.prevent="commitTitleEdit"
+        @keydown.esc.prevent="cancelTitleEdit"
+      />
+      <span
+        v-else
+        class="title"
+        :title="displayTitle"
+        @dblclick.stop="startTitleEdit"
+      >{{ displayTitle }}</span>
+    </div>
+
     <div class="node-head">
       <button
         type="button"
@@ -42,23 +63,6 @@
       <span v-else-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
       <span v-else class="type-pill">{{ typeLabel }}</span>
       <span v-if="isAssetRef && !isMissingLinkedAsset" class="kind-pill">{{ typeLabel }}</span>
-      <input
-        v-if="editingTitle"
-        ref="titleInputEl"
-        v-model="titleDraft"
-        class="title-input"
-        @pointerdown.stop
-        @dblclick.stop
-        @blur="commitTitleEdit"
-        @keydown.enter.prevent="commitTitleEdit"
-        @keydown.esc.prevent="cancelTitleEdit"
-      />
-      <span
-        v-else
-        class="title"
-        :title="displayTitle"
-        @dblclick.stop="startTitleEdit"
-      >{{ displayTitle }}</span>
       <div class="head-actions">
         <button
           v-if="canLock"
@@ -474,8 +478,9 @@ import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { editorDiveKey } from '../features/graph/model/editorDive'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 
-const { t, assetTypeLabel, graphTypeLabel } = useStudioI18n()
+const { t, te, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const graphScope = useGraphScope()
@@ -853,34 +858,31 @@ const showVideoGenerateParams = computed(
 )
 
 const typeLabel = computed(() => {
-  if (
-    isScriptShotSplitNode(props.node) ||
-    isScriptShotTableNode(props.node) ||
-    isScriptShotImageGenNode(props.node) ||
-    isScriptShotVideoGenNode(props.node) ||
-    isWorldExtractNode(props.node) ||
-    isWorldTableNode(props.node) ||
-    isWorldGenNode(props.node) ||
-    isNarrativeSplitNode(props.node) ||
-    isNarrativeTableNode(props.node) ||
-    isNarrativeGenNode(props.node)
-  ) {
-    return graphTypeLabel(props.node.typeId!)
-  }
-  // 生成节点 + 图片反推提示词 / 提示词优化等带指令面板的工具节点
-  if (props.node.typeId && (isProcessingNode.value || instructionKind.value)) {
-    return graphTypeLabel(props.node.typeId)
+  if (isAssetRef.value) {
+    const assetType = props.node.assetType ?? props.asset?.type
+    return assetType ? assetTypeLabel(assetType) : t('asset.generic')
   }
   if (props.node.category === 'output') {
+    if (isTimelineOutputNode(props.node)) return t('graph.titles.timelineOutput')
     if (isNarrativeOutputNode(props.node)) return t('graph.titles.narrativeOutput')
     if (isNarrativeUnitOutputNode(props.node)) return t('graph.titles.narrativeUnitOutput')
     if (isWorldOutputNode(props.node)) return t('graph.titles.worldOutput')
     if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
+    if (props.node.typeId && te(`graph.types.${props.node.typeId}`)) {
+      return graphTypeLabel(props.node.typeId)
+    }
     const scopeDef = getGraphScopeDefinition(graphScope.value)
     if (scopeDef.outputTitleI18nKey && props.node.params.outputKind === scopeDef.output.kind) {
       return t(scopeDef.outputTitleI18nKey)
     }
     return t(`graph.titles.assetOutput.${props.node.params.outputKind ?? 'video'}`)
+  }
+  // 内置 typeId（选择节点 / 工具节点 / 分镜流程等）优先走 graph.types.*
+  if (props.node.typeId && te(`graph.types.${props.node.typeId}`)) {
+    return graphTypeLabel(props.node.typeId)
+  }
+  if (props.node.typeId && (isProcessingNode.value || instructionKind.value)) {
+    return graphTypeLabel(props.node.typeId)
   }
   const assetType = props.node.assetType ?? props.asset?.type
   return assetType ? assetTypeLabel(assetType) : t('asset.generic')
@@ -909,16 +911,13 @@ const displayTitle = computed(() => {
     const assetName = props.asset?.name?.trim()
     if (assetName) return assetName
   }
-  const custom = props.node.title?.trim() ?? ''
-  if (props.node.category === 'output') {
-    const scopeDef = getGraphScopeDefinition(graphScope.value)
-    const stock = scopeDef.output.title?.trim()
-    // 持久化英文默认标题走 i18n，不当作用户自定义名
-    if (!custom || (stock && custom === stock)) {
-      return typeLabel.value || custom || t('graph.defaultNode')
-    }
-  }
-  return custom || typeLabel.value || t('graph.defaultNode')
+  // 英文 defaultTitle / 内置输出标题走 i18n，与任务日志 resolveGraphNodeDisplayTitle 一致
+  return resolveGraphNodeDisplayTitle(props.node, {
+    scope: graphScope.value,
+    t,
+    graphTypeLabel,
+    fallbackId: t('graph.defaultNode')
+  })
 })
 
 const typeIcon = computed(() => {
@@ -2123,6 +2122,18 @@ function formatTime(sec: number): string {
   box-shadow: 0 0 0 1px var(--accent), 0 6px 20px var(--accent-22);
 }
 
+.node-title {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  max-width: none;
+}
+
 .node-head {
   position: relative;
   /* 高于 port-wrap(30)，避免右侧输出口标签盖住执行/锁定按钮 */
@@ -2238,18 +2249,21 @@ function formatTime(sec: number): string {
 }
 
 .title {
-  flex: 1;
-  min-width: 0;
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
   white-space: nowrap;
   cursor: text;
+  text-shadow:
+    0 1px 2px var(--graph-node-bg),
+    0 0 5px var(--graph-node-bg);
 }
 
 .title-input {
-  flex: 1;
-  min-width: 0;
+  min-width: 12em;
+  width: auto;
   font-size: 11px;
   padding: 1px 4px;
   border: 1px solid #5a8fd466;

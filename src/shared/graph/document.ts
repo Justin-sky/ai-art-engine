@@ -1,25 +1,33 @@
-import type { GraphDocument, GraphNodeParams } from './types'
+import type { GraphDocument, GraphNode, GraphNodeParams } from './types'
 import { copyDocumentRunStates } from './runStatePersist'
 
-function cloneNodeParams(params: GraphNodeParams | undefined): GraphNodeParams {
-  const source = params ?? {}
+function clonePlain<T>(value: T): T {
   try {
-    return structuredClone(source)
+    return structuredClone(value)
   } catch {
     // Vue reactive Proxy 等不可 structuredClone 时回退 JSON
-    return JSON.parse(JSON.stringify(source)) as GraphNodeParams
+    return JSON.parse(JSON.stringify(value)) as T
+  }
+}
+
+function cloneNodeParams(params: GraphNodeParams | undefined): GraphNodeParams {
+  return clonePlain(params ?? {})
+}
+
+function cloneGraphNode(node: GraphNode): GraphNode {
+  return {
+    ...node,
+    position: { ...node.position },
+    size: node.size ? { ...node.size } : undefined,
+    // assetRef / params 均可能是 Vue Proxy，需深拷贝后再走 IPC
+    assetRef: node.assetRef ? clonePlain(node.assetRef) : undefined,
+    params: cloneNodeParams(node.params)
   }
 }
 
 export function cloneGraphDocument(document: GraphDocument): GraphDocument {
   return {
-    nodes: document.nodes.map((node) => ({
-      ...node,
-      position: { ...node.position },
-      size: node.size ? { ...node.size } : undefined,
-      // params 内数组/对象需深拷贝，避免与 live 图共享 generatedImages 等引用
-      params: cloneNodeParams(node.params)
-    })),
+    nodes: document.nodes.map((node) => cloneGraphNode(node)),
     edges: document.edges.map((edge) => ({ ...edge })),
     groups: (document.groups ?? []).map((group) => ({ ...group })),
     viewport: { ...document.viewport },

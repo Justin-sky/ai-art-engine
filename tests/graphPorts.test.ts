@@ -153,22 +153,19 @@ describe('asset reference ports', () => {
     expect(getNodePorts(image).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
-      'out:image:out',
-      'out-all:images:out'
+      'out:image:out'
     ])
     expect(getNodePorts(voice).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
-      'out:voice:out',
-      'out-all:voices:out'
+      'out:voice:out'
     ])
     expect(getNodePorts(video).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-text:text:in',
       'in-image:image:in',
       'in-video:video:in',
       'in-voice:voice:in',
-      'out:video:out',
-      'out-all:videos:out'
+      'out:video:out'
     ])
   })
 

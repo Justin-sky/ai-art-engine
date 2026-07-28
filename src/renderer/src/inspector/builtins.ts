@@ -24,6 +24,7 @@ import ShotNodeInspector from '../components/ShotNodeInspector.vue'
 import ShotNoteInspector from '../components/ShotNoteInspector.vue'
 import DirectorCameraInspector from '../components/DirectorCameraInspector.vue'
 import DirectorStageInspector from '../components/DirectorStageInspector.vue'
+import GraphHostInspector from '../components/GraphHostInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
 import { readBoundUnitIdFromNodeParams, type GraphNode } from '@shared/graph'
@@ -82,6 +83,16 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     component: AssetInspector,
     nodeInspectorKind: 'asset',
     nodeAssetRef: true
+  },
+  {
+    id: 'studio.graph.host',
+    order: 4,
+    component: GraphHostInspector,
+    match: (target) => {
+      if (target.kind !== 'graph.node') return false
+      const node = target.subject as GraphNode | null
+      return !!node && node.assetType === 'subgraph' && node.params?.assetHost === true
+    }
   },
   {
     id: 'studio.graph.asset',

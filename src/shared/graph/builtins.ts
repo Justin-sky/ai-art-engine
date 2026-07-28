@@ -29,6 +29,8 @@ import {
   executeOutputNode,
   executePlayScriptNode,
   executeHostInputSlotNode,
+  executeBoundaryInputNode,
+  executeBoundaryOutputNode,
   executeImageToPromptNode,
   executePromptOptimizeNode,
   executeScreenplayGenerateNode,
@@ -183,6 +185,15 @@ const ASSET_META: Array<{
     outType: GraphPortType.videoEntities,
     addable: true,
     weight: 0.85
+  },
+  {
+    type: 'subgraph',
+    label: 'Host Asset',
+    icon: '📦',
+    outType: GraphPortType.text,
+    addable: false,
+    weight: 0.7,
+    processingIn: GraphPortType.text
   }
 ]
 
@@ -285,35 +296,53 @@ function narrativeHostPorts(): GraphPortDef[] {
 }
 
 function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
+  // subgraph 宿主端口由 getNodePorts → hostInterface 动态提供；typeDef 仅作加工/回退
   const ports: GraphPortDef[] =
-    meta.type === 'motion'
-      ? motionProcessingPorts()
-      : meta.type === 'image'
-        ? imageProcessingPorts()
-        : meta.type === 'video'
-          ? videoProcessingPorts()
-          : meta.type === 'voice'
-            ? voiceProcessingPorts()
-            : meta.type === 'script'
-              ? scriptHostPorts()
-              : meta.type === 'world'
-                ? worldHostPorts()
-                : meta.type === 'narrative'
-                  ? narrativeHostPorts()
-                  : [
-                      ...(meta.processingIn
-                        ? [
-                            {
-                              id: 'in',
-                              direction: 'in' as const,
-                              dataType: meta.processingIn,
-                              multiple: true,
-                              label: 'In'
-                            }
-                          ]
-                        : []),
-                      ...galleryOutPorts(meta.outType)
-                    ]
+    meta.type === 'subgraph'
+      ? [
+          {
+            id: 'in',
+            direction: 'in',
+            dataType: GraphPortType.text,
+            multiple: true,
+            label: 'In'
+          },
+          {
+            id: 'out',
+            direction: 'out',
+            dataType: GraphPortType.text,
+            multiple: false,
+            label: 'Out'
+          }
+        ]
+      : meta.type === 'motion'
+        ? motionProcessingPorts()
+        : meta.type === 'image'
+          ? imageProcessingPorts()
+          : meta.type === 'video'
+            ? videoProcessingPorts()
+            : meta.type === 'voice'
+              ? voiceProcessingPorts()
+              : meta.type === 'script'
+                ? scriptHostPorts()
+                : meta.type === 'world'
+                  ? worldHostPorts()
+                  : meta.type === 'narrative'
+                    ? narrativeHostPorts()
+                    : [
+                        ...(meta.processingIn
+                          ? [
+                              {
+                                id: 'in',
+                                direction: 'in' as const,
+                                dataType: meta.processingIn,
+                                multiple: true,
+                                label: 'In'
+                              }
+                            ]
+                          : []),
+                        ...galleryOutPorts(meta.outType)
+                      ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -353,8 +382,9 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
     assetType: meta.type,
     deletable: true,
     inspector: meta.type === 'motion' ? 'camera' : 'asset',
+    inspectorId: meta.type === 'subgraph' ? 'studio.graph.host' : undefined,
     card: 'media',
-    contributeToGeneration: meta.type !== 'motion',
+    contributeToGeneration: meta.type !== 'motion' && meta.type !== 'subgraph',
     execute:
       meta.type === 'motion'
         ? (ctx: NodeExecuteContext) =>
@@ -600,6 +630,52 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     },
     contributeToGeneration: false,
     execute: executeHostInputSlotNode
+  },
+  {
+    typeId: 'graph.boundary.input',
+    category: 'note',
+    label: 'Boundary input',
+    icon: '⬚',
+    defaultTitle: 'Input',
+    defaultSize: { ...NOTE_SIZE },
+    sizeLimits: { ...NOTE_LIMITS },
+    ports: [
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
+    ],
+    defaultParams: () => ({ previewCollapsed: true }),
+    addable: false,
+    deletable: false,
+    inspector: 'note',
+    card: 'note',
+    presentation: {
+      badgeKey: 'graph.boundaryInput.badge',
+      defaultTitleKey: 'graph.boundaryInput.title'
+    },
+    contributeToGeneration: false,
+    execute: executeBoundaryInputNode
+  },
+  {
+    typeId: 'graph.boundary.output',
+    category: 'note',
+    label: 'Boundary output',
+    icon: '⧉',
+    defaultTitle: 'Output',
+    defaultSize: { ...NOTE_SIZE },
+    sizeLimits: { ...NOTE_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' }
+    ],
+    defaultParams: () => ({ previewCollapsed: true }),
+    addable: false,
+    deletable: false,
+    inspector: 'note',
+    card: 'note',
+    presentation: {
+      badgeKey: 'graph.boundaryOutput.badge',
+      defaultTitleKey: 'graph.boundaryOutput.title'
+    },
+    contributeToGeneration: false,
+    execute: executeBoundaryOutputNode
   },
   {
     typeId: 'image.select',

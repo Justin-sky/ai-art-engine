@@ -64,6 +64,7 @@ export type AssetType =
   | 'canvas'
   | 'world'
   | 'narrative'
+  | 'subgraph'
 
 /** 将任意字符串收窄为 AssetType */
 export function normalizeAssetType(type: string): AssetType {
@@ -533,7 +534,8 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   script: 'Shot',
   canvas: 'Series',
   world: 'World Elements',
-  narrative: 'Narrative Units'
+  narrative: 'Narrative Units',
+  subgraph: 'Host Asset'
 }
 
 /** 中文资产类型名（落盘默认名 / 主进程命名用） */
@@ -547,7 +549,8 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   script: '分镜',
   canvas: '剧集',
   world: '世界元素',
-  narrative: '叙事单元'
+  narrative: '叙事单元',
+  subgraph: '宿主资产'
 }
 
 export function isEnglishLanguage(language?: string | null): boolean {
@@ -570,7 +573,8 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   script: '🎥',
   canvas: '📺',
   world: '🤺',
-  narrative: '📖'
+  narrative: '📖',
+  subgraph: '📦'
 }
 
 /** 仅含骨骼+动画、无网格的模型资产图标（动画片段） */
@@ -682,6 +686,11 @@ export const CREATABLE_ASSET_TYPES: AssetType[] = [
 
 export function isCanvasAsset(type: AssetType): boolean {
   return type === 'canvas'
+}
+
+/** Houdini HDA 风格通用宿主资产（可 dive / 动态端口 / 内图 cook） */
+export function isSubgraphAsset(type: AssetType | string): boolean {
+  return normalizeAssetType(type) === 'subgraph'
 }
 
 export function isWorldElementAsset(type: AssetType | string): boolean {
@@ -1703,6 +1712,8 @@ export function defaultAssetName(type: AssetType, language?: string | null): str
       return en ? 'New Narrative Units' : '新建叙事单元'
     case 'motion':
       return en ? DEFAULT_DIRECTOR_DECK_NAME : DEFAULT_DIRECTOR_DECK_NAME_ZH
+    case 'subgraph':
+      return en ? 'New Host Asset' : '新建宿主资产'
     default:
       return en ? (label ? `New ${label}` : 'New Asset') : label ? `新建${label}` : '新建资产'
   }

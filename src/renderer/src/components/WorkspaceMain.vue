@@ -64,7 +64,7 @@ import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useProjectStore } from '../stores/project'
 
 /** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
-const CREATE_IDS = new Set(['canvas', 'freeCanvas', 'screenplay', 'script', 'motion'])
+const CREATE_IDS = new Set(['canvas', 'freeCanvas', 'subgraph', 'screenplay', 'script', 'motion'])
 const RECENT_LIMIT = 8
 
 const project = useProjectStore()

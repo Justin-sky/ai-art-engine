@@ -226,7 +226,7 @@ function updatePresetMenuPosition(): void {
 }
 
 async function openPresetMenu(): Promise<void> {
-  if (!menuPresets.value.length && !props.value.length) return
+  if (!menuPresets.value.length) return
   presetMenuStyle.value = {
     position: 'fixed',
     top: '-9999px',

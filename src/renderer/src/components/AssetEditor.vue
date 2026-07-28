@@ -84,7 +84,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { isDraftAssetId, isMediaFileAsset, isImportedMediaRefAsset, isSoundAsset, isScreenplayAsset, type AssetType } from '@shared/domain'
+import { isDraftAssetId, isMediaFileAsset, isImportedMediaRefAsset, isSoundAsset, isScreenplayAsset, isSubgraphAsset, type AssetType } from '@shared/domain'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
@@ -127,7 +127,9 @@ const supportsGraph = computed(
   () =>
     !!asset.value &&
     !isImportedMediaRefAsset(asset.value) &&
-    (isMediaFileAsset(asset.value.type) || isScreenplayAsset(asset.value.type))
+    (isMediaFileAsset(asset.value.type) ||
+      isScreenplayAsset(asset.value.type) ||
+      isSubgraphAsset(asset.value.type))
 )
 
 const diveKind = computed(() =>

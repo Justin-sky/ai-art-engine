@@ -130,6 +130,14 @@
         >
           {{ t('graph.group.ungroup') }}
         </button>
+        <button
+          v-if="canEncapsulateSelection"
+          type="button"
+          :title="t('graph.hostInterface.encapsulate')"
+          @click="encapsulateSelectedAsHost"
+        >
+          {{ t('graph.hostInterface.encapsulateAction') }}
+        </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
@@ -353,6 +361,13 @@
         >
           {{ t('graph.group.ungroup') }}
         </button>
+        <button
+          v-if="canEncapsulateSelection"
+          type="button"
+          @click="encapsulateSelectedAsHost(); closeCtxMenu()"
+        >
+          {{ t('graph.hostInterface.encapsulate') }}
+        </button>
       </template>
       <template v-else>
         <div class="ctx-title">
@@ -456,6 +471,16 @@
 
     <!-- Dialog 隔离到子层，避免 open 时整张节点图跟着 patch -->
     <NodeGraphEditorDialogLayer />
+    <SaveAssetDialog
+      ref="encapsulateSaveDialogRef"
+      :open="encapsulateSaveOpen"
+      :default-name="encapsulateSaveDefaultName"
+      :default-folder-id="encapsulateSaveDefaultFolderId"
+      :title="t('graph.hostInterface.nameTitle')"
+      :subtitle="t('graph.hostInterface.saveMessage')"
+      @confirm="onEncapsulateSaveConfirm"
+      @cancel="closeEncapsulateSaveDialog"
+    />
   </div>
 </template>
 
@@ -466,6 +491,7 @@ import { editorDiveKey } from '../features/graph/model/editorDive'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 import { graphEditorDialogsKey } from '../features/graph/ui/graphEditorDialogsKey'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
@@ -541,6 +567,12 @@ import {
   isProcessingAssetNode,
   isAssetRefNode,
   isAssetRefInputHostType,
+  encapsulateSelection,
+  cloneHostInterface,
+  pruneEdgesForHostInterface,
+  readHostInterfaceFromGenParams,
+  readHostSchemaVersion,
+  HOST_INTERFACE_SCHEMA_VERSION,
   resolveHostInputSlotsForHostOpen,
   hydrateHostInputSlotSpecs,
   hostInputSlotNodeId,
@@ -885,9 +917,35 @@ const scopedActiveShot = computed(() => {
   return resolveShotById(id)
 })
 
+function syncSubgraphHostSnapshots(doc: GraphDocument): GraphDocument {
+  let next = cloneGraphDocument(doc)
+  for (const node of next.nodes) {
+    if (node.assetType !== 'subgraph' || node.params.assetHost !== true || !node.assetId) continue
+    const asset = project.assets.find((item) => item.id === node.assetId)
+    if (!asset) continue
+    const genParams = asset.genParams as Record<string, unknown> | undefined
+    const schemaVersion = readHostSchemaVersion(genParams)
+    if (
+      node.params.hostSchemaVersion === schemaVersion &&
+      node.params.hostInterfaceSnapshot
+    ) {
+      continue
+    }
+    const iface = readHostInterfaceFromGenParams(genParams, asset.type)
+    node.params = {
+      ...node.params,
+      hostInterfaceSnapshot: cloneHostInterface(iface),
+      hostSchemaVersion: schemaVersion
+    }
+    next = pruneEdgesForHostInterface(next, node.id, iface)
+  }
+  return next
+}
+
 function applyGraphDocument(doc: GraphDocument): void {
-  replaceGraphDocument(graph, doc)
-  runStateBridge.importFromDocument(doc)
+  const synced = syncSubgraphHostSnapshots(doc)
+  replaceGraphDocument(graph, synced)
+  runStateBridge.importFromDocument(synced)
   syncLiveViewportFromGraph()
   // 图整体替换（加载/撤销/重做/外部应用）后重算可见集合并重绘边
   refreshGraphRenderWindow(true)
@@ -1601,7 +1659,7 @@ const {
     const shots = visibleShots.value.length
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-    if (!shots.length) return { videos: [] }
+    if (!shots.length) return { videos: [], entities: [] }
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
       shots,
@@ -1937,7 +1995,9 @@ async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
   const title =
     target.kind === 'asset'
       ? graphAsset.value?.name || t('graph.play.confirmAllTitle')
-      : resolveShotById(target.shotId)?.title || t('graph.play.confirmAllTitle')
+      : target.kind === 'script-shot'
+        ? resolveShotById(target.shotId)?.title || t('graph.play.confirmAllTitle')
+        : t('graph.play.confirmAllTitle')
   const result = taskStore.enqueueWorkflow({ title, graph: graphDoc, target })
   if (!result.ok) {
     void promptAlert({
@@ -2478,6 +2538,100 @@ function ungroupSelectedNodes(): void {
   pruneGraphGroups()
   scheduleSave()
   recordGraphChange('ungroup-nodes', before)
+}
+
+const canEncapsulateSelection = computed(
+  () => selectedNodeIds.value.size >= 1 && !isElementWorkflowGraph.value
+)
+
+const encapsulateSaveOpen = ref(false)
+const encapsulateSaveDefaultName = ref('')
+const encapsulateSaveDefaultFolderId = ref<string | null>(null)
+const encapsulateSaveDialogRef = ref<{
+  setSaving: (value: boolean) => void
+  setError: (message: string) => void
+} | null>(null)
+const encapsulatePendingNodeIds = ref<string[] | null>(null)
+const encapsulateSaving = ref(false)
+
+function closeEncapsulateSaveDialog(): void {
+  if (encapsulateSaving.value) return
+  encapsulateSaveOpen.value = false
+  encapsulatePendingNodeIds.value = null
+}
+
+function encapsulateSelectedAsHost(): void {
+  if (!canEncapsulateSelection.value || encapsulateSaving.value) return
+  const ids = [...selectedNodeIds.value]
+  encapsulatePendingNodeIds.value = ids
+  encapsulateSaveDefaultName.value = `${t('graph.hostInterface.defaultName')} ${ids.length}`
+  encapsulateSaveDefaultFolderId.value = graphAsset.value?.folderId ?? null
+  encapsulateSaveOpen.value = true
+}
+
+async function onEncapsulateSaveConfirm(payload: {
+  name: string
+  folderId: string | null
+}): Promise<void> {
+  const ids = encapsulatePendingNodeIds.value
+  if (!ids?.length || encapsulateSaving.value) return
+  const before = buildGraphJson()
+  let createdAssetId = ''
+  encapsulateSaving.value = true
+  encapsulateSaveDialogRef.value?.setSaving(true)
+  try {
+    const created = await window.studio.createAsset({
+      type: 'subgraph',
+      name: payload.name,
+      folderId: payload.folderId,
+      genParams: {
+        schemaVersion: HOST_INTERFACE_SCHEMA_VERSION
+      }
+    })
+    createdAssetId = created.id
+    const result = encapsulateSelection(before, {
+      selectedNodeIds: ids,
+      hostAssetId: created.id,
+      hostAssetName: created.name
+    })
+    // IPC 不能传 Vue Proxy；toPlain 剥离响应式后再写回定义资产
+    await window.studio.updateAsset(
+      toPlain({
+        ...created,
+        genParams: {
+          ...(created.genParams ?? {}),
+          graphJson: result.innerDocument,
+          hostInterface: result.hostInterface,
+          schemaVersion: HOST_INTERFACE_SCHEMA_VERSION
+        }
+      })
+    )
+    await project.refreshAssets()
+    replaceGraphDocument(graph, toPlain(result.parentDocument))
+    setSingleNodeSelection(result.hostNodeId)
+    workspace.selectGraphNode(result.hostNodeId, graphHostId.value)
+    scheduleSave()
+    recordGraphChange('encapsulate-host', before)
+    requestEdgeRender()
+    graphEditorHosts.bumpRevision()
+    encapsulateSaveOpen.value = false
+    encapsulatePendingNodeIds.value = null
+  } catch (err) {
+    if (createdAssetId) {
+      try {
+        await window.studio.deleteAsset(createdAssetId)
+        await project.refreshAssets()
+      } catch (cleanupError) {
+        console.error('[NodeGraphEditor] cleanup failed host asset', cleanupError)
+      }
+    }
+    console.error('[NodeGraphEditor] encapsulate failed', err)
+    encapsulateSaveDialogRef.value?.setError(
+      err instanceof Error ? err.message : t('graph.hostInterface.encapsulateFailed')
+    )
+  } finally {
+    encapsulateSaving.value = false
+  }
 }
 
 const editingGroupId = ref<string | null>(null)
@@ -3942,9 +4096,7 @@ function resolveShotEntityImageUrls(shotId: string): string[] {
       const entities = fromParams
         ? parseShotEntities(JSON.stringify(fromParams))
         : parseShotEntities(
-            typeof node.params?.shotEntitiesText === 'string'
-              ? node.params.shotEntitiesText
-              : null
+            typeof node.params?.text === 'string' ? node.params.text : null
           )
       const match = entities.find((item) => item.id === shotId)
       if (match?.imageUrls.length) return match.imageUrls
@@ -4124,7 +4276,18 @@ function addAssetNode(asset: AssetInfo, position: { x: number; y: number }): boo
   if (graph.nodes.some((n) => n.category === 'asset' && n.assetId === asset.id)) return false
   const before = buildGraphJson()
   const node = createAssetGraphNode(asset.id, asset.type, asset.name, position, {
-    assetHost: isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
+    assetHost: isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset),
+    hostInterfaceSnapshot:
+      isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
+        ? readHostInterfaceFromGenParams(
+            asset.genParams as Record<string, unknown> | undefined,
+            asset.type
+          )
+        : undefined,
+    hostSchemaVersion:
+      isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
+        ? readHostSchemaVersion(asset.genParams as Record<string, unknown> | undefined)
+        : undefined
   })
   if (asset.type === 'motion') {
     const items = resolveMotionImageItems(

@@ -33,7 +33,13 @@ import {
   type ProjectConfig,
   type Shot
 } from '@shared/domain'
-import { createDefaultScopedGraph, buildSeriesStarterGraph } from '@shared/graph'
+import {
+  createDefaultScopedGraph,
+  buildSeriesStarterGraph,
+  defaultHostInterfaceForAssetType,
+  ensureBoundaryProxyNodes,
+  HOST_INTERFACE_SCHEMA_VERSION
+} from '@shared/graph'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -359,6 +365,18 @@ class ProjectService {
       asset.genParams = {
         ...(asset.genParams ?? {}),
         graphJson: createDefaultScopedGraph('narrativeAsset', 'narrative')
+      }
+    }
+    if (input.type === 'subgraph' && !asset.genParams?.graphJson) {
+      const hostInterface = defaultHostInterfaceForAssetType('subgraph')
+      asset.genParams = {
+        ...(asset.genParams ?? {}),
+        graphJson: ensureBoundaryProxyNodes(
+          createDefaultScopedGraph('subgraphAsset', 'subgraph'),
+          hostInterface
+        ),
+        hostInterface,
+        schemaVersion: HOST_INTERFACE_SCHEMA_VERSION
       }
     }
     if (input.type === 'motion' && !asset.genParams?.stage) {

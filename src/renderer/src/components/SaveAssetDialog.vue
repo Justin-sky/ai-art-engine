@@ -1,8 +1,8 @@
 <template>
   <StudioFloatingWindow
     :open="open"
-    :title="t('dialog.saveAsset.title')"
-    :subtitle="t('dialog.saveAsset.subtitle')"
+    :title="dialogTitle"
+    :subtitle="dialogSubtitle"
     :show-close="false"
     :z-index="2000"
     :default-width="400"
@@ -68,6 +68,8 @@ const props = defineProps<{
   open: boolean
   defaultName: string
   defaultFolderId?: string | null
+  title?: string
+  subtitle?: string
 }>()
 
 const emit = defineEmits<{
@@ -83,6 +85,8 @@ const error = ref('')
 const saving = ref(false)
 const nameInputEl = ref<HTMLInputElement | null>(null)
 
+const dialogTitle = computed(() => props.title?.trim() || t('dialog.saveAsset.title'))
+const dialogSubtitle = computed(() => props.subtitle?.trim() || t('dialog.saveAsset.subtitle'))
 const flatFolders = computed(() => buildFlatFolderTree(project.folders))
 
 watch(

@@ -90,6 +90,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   SHOT_SIZE_OPTIONS,
   buildShotGenerationPrompt,
+  createEmptyStoryboard,
   listRefMentionOptions,
   normalizeAudioRefs,
   normalizeGenRefs,
@@ -116,15 +117,7 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 
 const localTitle = ref('')
-const localStoryboard = reactive<ShotStoryboard>({
-  visualDescription: '',
-  shotSize: '',
-  lighting: '',
-  dialogue: '',
-  soundFx: '',
-  cameraMove: '',
-  finalPrompt: ''
-})
+const localStoryboard = reactive<ShotStoryboard>(createEmptyStoryboard())
 
 const node = computed(() => {
   const selection = editor.selection.current.value

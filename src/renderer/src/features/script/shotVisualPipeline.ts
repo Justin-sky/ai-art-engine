@@ -4,6 +4,7 @@
  */
 import {
   collectImagesFromVisualGraph,
+  collectVideosFromShotWorkflowGraph,
   collectVideosFromVideoGenNodes,
   imageUrlFromGraphImageItem,
   mergeVideoOutputGenRefs,

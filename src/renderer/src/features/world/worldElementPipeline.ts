@@ -14,8 +14,7 @@ import {
   type GraphDocument,
   type GraphImageItem,
   type GraphNode,
-  type WorldElementGenResult,
-  type WorldElementKind
+  type WorldElementGenResult
 } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
 import { persistAssetRecord } from '../../composables/useAssetRecord'

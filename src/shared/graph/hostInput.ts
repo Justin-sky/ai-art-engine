@@ -6,7 +6,7 @@ import {
 } from './assetText'
 import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
-import { resolveNodeTextContent, textFromGraphValue } from './textOutput'
+import { resolveNodeTextContent } from './textOutput'
 import {
   stringifyWorldElementGenResults,
   type WorldElementGenResult
@@ -21,6 +21,7 @@ import type {
 } from './types'
 import { GraphPortType } from './types'
 import type { GraphValue } from './execute/types'
+import { defaultHostInterfaceForAssetType } from './hostInterface'
 
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
@@ -83,39 +84,16 @@ export function isHostInputSlotNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === GRAPH_INPUT_SLOT_TYPE_ID
 }
 
-/** 宿主资产类型 → 外层入端口列表（与 builtins 宿主口一致，避免循环依赖探测节点） */
+/** 宿主资产类型 → 外层入端口列表（统一自 hostInterface 默认模板） */
 export function listHostInputPortDefs(assetType: AssetType): Array<{
   id: string
   dataType: GraphPortDataType
 }> {
   if (!isAssetRefInputHostType(assetType)) return []
-  switch (assetType) {
-    case 'screenplay':
-    case 'world':
-      return [{ id: 'in', dataType: GraphPortType.text }]
-    case 'narrative':
-      return [{ id: 'in', dataType: GraphPortType.text }]
-    case 'script':
-      return [
-        { id: 'in-worldEntities', dataType: GraphPortType.worldEntities },
-        { id: 'in-narrativeEntity', dataType: GraphPortType.narrativeEntity }
-      ]
-    case 'image':
-    case 'voice':
-      return [
-        { id: 'in-text', dataType: GraphPortType.text },
-        { id: 'in-image', dataType: GraphPortType.image }
-      ]
-    case 'video':
-      return [
-        { id: 'in-text', dataType: GraphPortType.text },
-        { id: 'in-image', dataType: GraphPortType.image },
-        { id: 'in-video', dataType: GraphPortType.video },
-        { id: 'in-voice', dataType: GraphPortType.voice }
-      ]
-    default:
-      return []
-  }
+  return defaultHostInterfaceForAssetType(assetType).inputs.map((port) => ({
+    id: port.id,
+    dataType: port.dataType
+  }))
 }
 
 /**
@@ -217,12 +195,6 @@ function slotPreviewFromValue(
 ): Pick<HostInputSlotSpec, 'text' | 'title' | 'previewRelativePath' | 'previewDataUrl'> {
   if (!value) return {}
   if (value.kind === 'text') {
-    return {
-      text: value.text,
-      previewRelativePath: value.relativePath
-    }
-  }
-  if (value.kind === 'narrative' || value.kind === 'narrativeEntity') {
     return {
       text: value.text,
       previewRelativePath: value.relativePath
@@ -597,14 +569,15 @@ function softResolveSourceOutput(
   const previewPath = node.params.previewRelativePath?.trim()
   const previewUrl = node.params.previewDataUrl?.trim()
   if (previewPath || previewUrl) {
-    if (node.assetType === 'video' || node.typeId.includes('video')) {
+    const typeId = node.typeId ?? ''
+    if (node.assetType === 'video' || typeId.includes('video')) {
       return {
         kind: 'video',
         dataUrl: previewUrl,
         relativePath: previewPath
       }
     }
-    if (node.assetType === 'voice' || node.typeId.includes('voice')) {
+    if (node.assetType === 'voice' || typeId.includes('voice')) {
       return {
         kind: 'voices',
         items: [{ relativePath: previewPath }]
@@ -613,11 +586,11 @@ function softResolveSourceOutput(
     // 文本类节点的 previewRelativePath 是正文旁挂路径，勿当成图片
     const isTextLike =
       node.assetType === 'screenplay' ||
-      node.typeId === 'asset.screenplay' ||
-      node.typeId === 'text.select' ||
-      node.typeId === 'note.text' ||
-      node.typeId === 'play.script' ||
-      node.typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
+      typeId === 'asset.screenplay' ||
+      typeId === 'text.select' ||
+      typeId === 'note.text' ||
+      typeId === 'play.script' ||
+      typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
       readHostInputSlot(node) != null
     if (isTextLike) {
       const localText = node.params.text?.trim() ?? ''
@@ -630,8 +603,8 @@ function softResolveSourceOutput(
       }
     } else if (
       node.assetType === 'image' ||
-      node.typeId.includes('image') ||
-      node.typeId === 'asset.motion' ||
+      typeId.includes('image') ||
+      typeId === 'asset.motion' ||
       previewUrl
     ) {
       return {
@@ -919,7 +892,7 @@ export function ensureHostInputSlotNodes(
   const headTypeIds = options?.autoLinkHeadTypeIds ?? []
   if (!headTypeIds.length || !slots.length) return
 
-  const heads = nodes.filter((n) => headTypeIds.includes(n.typeId))
+  const heads = nodes.filter((n) => !!n.typeId && headTypeIds.includes(n.typeId))
   if (!heads.length) return
 
   const sortedSlots = slots.slice().sort((a, b) => {

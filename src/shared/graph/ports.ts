@@ -1,10 +1,16 @@
 import { resolveNodeType, type GraphAddScope, type NodeTypeDefinition } from './registry'
-import { isAssetRefNode, isProcessingAssetNode } from './nodeRole'
+import { isAssetRefInputHostType, isAssetRefNode, isProcessingAssetNode } from './nodeRole'
 import {
   VIDEO_FIRST_FRAME_PORT_ID,
   VIDEO_LAST_FRAME_PORT_ID,
   type VideoFrameMode
 } from './videoGenerateParams'
+import {
+  GRAPH_BOUNDARY_INPUT_TYPE_ID,
+  GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+  hostInterfaceToPortDefs,
+  resolveNodeHostInterface
+} from './hostInterface'
 import {
   GraphPortType,
   type GraphEdge,
@@ -100,7 +106,12 @@ export function resolveTypeDefPorts(
   typeDef: Pick<NodeTypeDefinition, 'ports' | 'typeId' | 'assetType'>,
   params?: Pick<
     GraphNodeParams,
-    'inputDataType' | 'assetRef' | 'assetHost' | 'generateFrameMode' | 'hostInputSlot'
+    | 'inputDataType'
+    | 'assetRef'
+    | 'assetHost'
+    | 'generateFrameMode'
+    | 'hostInputSlot'
+    | 'hostBoundaryPort'
   > | null,
   node?: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null
 ): GraphPortDef[] {
@@ -136,6 +147,36 @@ export function resolveTypeDefPorts(
       ]
     }
   }
+
+  // boundary proxy：按 hostBoundaryPort 暴露单口
+  if (typeDef.typeId === GRAPH_BOUNDARY_INPUT_TYPE_ID) {
+    const bp = node?.params?.hostBoundaryPort ?? params?.hostBoundaryPort
+    if (bp?.dataType) {
+      ports = [
+        {
+          id: 'out',
+          direction: 'out',
+          dataType: bp.dataType,
+          multiple: false,
+          label: 'Out'
+        }
+      ]
+    }
+  }
+  if (typeDef.typeId === GRAPH_BOUNDARY_OUTPUT_TYPE_ID) {
+    const bp = node?.params?.hostBoundaryPort ?? params?.hostBoundaryPort
+    if (bp?.dataType) {
+      ports = [
+        {
+          id: 'in',
+          direction: 'in',
+          dataType: bp.dataType,
+          multiple: bp.multiple === true,
+          label: 'In'
+        }
+      ]
+    }
+  }
   if (params?.inputDataType) {
     const inPorts = ports.filter((port) => port.direction === 'in')
     if (inPorts.length === 1) {
@@ -162,6 +203,22 @@ export function resolveTypeDefPorts(
 export function getNodePorts(node: GraphNode): GraphPortDef[] {
   const typeDef = resolveNodeType(node)
   if (!typeDef) return []
+
+  // 宿主实例：端口一律来自 hostInterfaceSnapshot / 类型默认模板
+  const useHostIface =
+    !!node.params?.hostInterfaceSnapshot ||
+    (node.params?.assetHost === true &&
+      isAssetRefNode(node) &&
+      isAssetRefInputHostType(node.assetType))
+
+  if (useHostIface) {
+    let ports = hostInterfaceToPortDefs(resolveNodeHostInterface(node))
+    if (shouldHideAssetRefInputs(node.params, node)) {
+      ports = ports.filter((port) => port.direction !== 'in')
+    }
+    return ports
+  }
+
   return resolveTypeDefPorts(typeDef, node.params, node)
 }
 

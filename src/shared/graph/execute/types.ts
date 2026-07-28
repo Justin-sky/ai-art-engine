@@ -10,7 +10,13 @@ import type { InstructionMentionSource } from '../instructionMentions'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
 import type { VideoGenerateParamCapabilities } from '../videoGenerateParams'
 import type { VideoGeneratePortLimits } from '../portInputLimits'
-import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
+import type {
+  GraphCatalogKind,
+  GraphDocument,
+  GraphNode,
+  GraphNodeParams,
+  GraphOutputKind
+} from '../types'
 
 export type GraphNodeRunStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'skipped'
 
@@ -38,7 +44,7 @@ export interface GraphTextValue {
 
 /** 世界目录 / 世界·分镜·视频实体 / 叙事 / 分镜目录 JSON（端口 dataType 与 kind 同名） */
 export interface GraphCatalogValue {
-  kind: 'world' | 'worldEntities' | 'shotEntities' | 'videoEntities' | 'narrative' | 'shots'
+  kind: GraphCatalogKind
   text: string
   relativePath?: string
 }
@@ -430,6 +436,8 @@ export interface NodeExecuteContext {
    * 宿主有入边时：把已注入输入的内图整链交给任务列表执行。
    */
   runHostInnerGraph?: (input: HostInnerGraphRunInput) => Promise<HostInnerGraphRunResult>
+  /** 当前宿主 cook 栈（assetId），防递归 */
+  cookAssetIdStack?: string[]
 }
 
 /** 宿主内图已准备好的执行包（输入槽已注入） */
@@ -438,6 +446,8 @@ export interface HostInnerGraphRunInput {
   document: GraphDocument
   priorNodeStates: Record<string, GraphNodeRunState>
   signal?: AbortSignal
+  /** 当前 cook 栈（含祖先宿主 assetId），用于防递归 */
+  cookAssetIdStack?: string[]
 }
 
 export interface HostInnerGraphRunResult {
@@ -531,6 +541,7 @@ export interface GraphRunOptions {
   resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']
   importNarrativeCatalogJson?: NodeExecuteContext['importNarrativeCatalogJson']
   runHostInnerGraph?: NodeExecuteContext['runHostInnerGraph']
+  cookAssetIdStack?: string[]
 }
 
 export interface GraphGenerationContribution {

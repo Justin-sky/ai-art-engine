@@ -326,6 +326,35 @@ export interface GraphNodeParams {
     index: number
     dataType: GraphPortDataType
   }
+  /**
+   * 宿主实例端口快照（定义修改后由 renderer 同步）。
+   * shared 层无法查项目资产，故实例必须自带 snapshot 供 getNodePorts 使用。
+   */
+  hostInterfaceSnapshot?: {
+    version: number
+    inputs: Array<{
+      id: string
+      label: string
+      dataType: GraphPortDataType
+      multiple?: boolean
+    }>
+    outputs: Array<{
+      id: string
+      label: string
+      dataType: GraphPortDataType
+      multiple?: boolean
+    }>
+  }
+  /** 当前实例已同步的定义接口代数 */
+  hostSchemaVersion?: number
+  /**
+   * boundary proxy：绑定宿主接口上的端口 id。
+   */
+  hostBoundaryPort?: {
+    portId: string
+    dataType: GraphPortDataType
+    multiple?: boolean
+  }
   /** 导演台 3D 相机节点参数 */
   viewer?: DirectorViewerState
   /** 导演台关闭时回传的站位截图 */
