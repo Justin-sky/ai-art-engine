@@ -43,13 +43,45 @@
         </button>
       </div>
     </section>
+
+    <section class="out-images" :aria-label="t('graph.inspector.camera.outActions')">
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.camera.outActions') }}</span>
+        <span v-if="outActions.length" class="section-count">
+          {{ t('graph.inspector.camera.outActionsCount', { n: outActions.length }) }}
+        </span>
+      </div>
+      <p class="section-hint">{{ t('graph.inspector.camera.outActionsHint') }}</p>
+      <div v-if="!outActions.length" class="empty-shots">
+        {{ t('graph.inspector.camera.outActionsEmpty') }}
+      </div>
+      <div v-else class="shot-grid">
+        <button
+          v-for="(clip, index) in outActions"
+          :key="clip.id || `action:${index}`"
+          type="button"
+          class="shot-card"
+          :title="t('graph.inspector.camera.outActionsHint')"
+          @dblclick="openActionPreview(clip)"
+        >
+          <video
+            v-if="actionSrc[clip.id || `action:${index}`]"
+            :src="actionSrc[clip.id || `action:${index}`]"
+            muted
+            playsinline
+            preload="metadata"
+          />
+          <span class="shot-index">{{ index + 1 }}</span>
+        </button>
+      </div>
+    </section>
   </div>
   <div v-else class="camera-inspector empty">{{ t('graph.inspector.camera.empty') }}</div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { resolveNodeType, type GraphImageItem } from '@shared/graph'
+import { resolveNodeType, type GraphImageItem, type GraphVideoItem } from '@shared/graph'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
@@ -65,6 +97,7 @@ const workspace = useWorkspaceStore()
 const localTitle = ref('')
 const shotBlobCache = new Map<string, { dataUrl: string; blobUrl: string }>()
 const shotBlobSrc = ref<Record<string, string>>({})
+const actionSrc = ref<Record<string, string>>({})
 
 const graphSelection = computed(() => {
   const selection = editor.selection.current.value
@@ -80,13 +113,15 @@ const node = computed(() => {
   return n
 })
 
-/** 输出端口 images：优先运行态，其次节点上的站位图 / 预览图 */
+/** 输出端口 out-shots：优先运行态，其次节点上的站位图 / 预览图 */
 const outImages = computed<GraphImageItem[]>(() => {
   const current = node.value
   const selection = graphSelection.value
   if (!current || !selection) return []
 
-  const runOut = graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.out
+  const runOut =
+    graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-shots'] ??
+    graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-all']
   if (runOut?.kind === 'images') {
     const live = runOut.items.filter(
       (item) => item.dataUrl?.trim() || item.relativePath?.trim()
@@ -110,6 +145,31 @@ const outImages = computed<GraphImageItem[]>(() => {
     return [{ dataUrl: previewUrl || '', relativePath: previewRel }]
   }
   return []
+})
+
+/** 输出端口 out-actions：运行态或节点 cameraVideos */
+const outActions = computed<GraphVideoItem[]>(() => {
+  const current = node.value
+  const selection = graphSelection.value
+  if (!current || !selection) return []
+
+  const runOut =
+    graphRunHosts.get(selection.hostId)?.runStates[current.id]?.outputs?.['out-actions']
+  if (runOut?.kind === 'videos') {
+    const live = runOut.items.filter(
+      (item) => item.dataUrl?.trim() || item.relativePath?.trim()
+    )
+    if (live.length) return live
+  }
+
+  return (current.params.cameraVideos ?? [])
+    .filter((video) => video.dataUrl?.trim() || video.relativePath?.trim())
+    .map((video) => ({
+      id: video.id,
+      dataUrl: video.dataUrl || '',
+      createdAt: video.createdAt,
+      relativePath: video.relativePath
+    }))
 })
 
 watch(
@@ -174,12 +234,35 @@ async function syncShotBlobUrls(): Promise<void> {
   shotBlobSrc.value = next
 }
 
+async function syncActionSrc(): Promise<void> {
+  const clips = outActions.value
+  const next: Record<string, string> = {}
+  await Promise.all(
+    clips.map(async (clip, index) => {
+      const id = clip.id || `action:${index}`
+      const relativePath = clip.relativePath?.trim()
+      if (relativePath) {
+        try {
+          next[id] = await window.studio.getAssetFileUrl(relativePath)
+          return
+        } catch {
+          /* fall through */
+        }
+      }
+      if (clip.dataUrl?.trim()) next[id] = clip.dataUrl
+    })
+  )
+  actionSrc.value = next
+}
+
 watch(outImages, () => void syncShotBlobUrls(), { immediate: true, deep: true })
+watch(outActions, () => void syncActionSrc(), { immediate: true, deep: true })
 
 onBeforeUnmount(() => {
   for (const entry of shotBlobCache.values()) URL.revokeObjectURL(entry.blobUrl)
   shotBlobCache.clear()
   shotBlobSrc.value = {}
+  actionSrc.value = {}
 })
 
 function persist(): void {
@@ -210,6 +293,13 @@ function openShotPreview(shot: GraphImageItem): void {
   void openFullImagePreview({
     dataUrl: shot.dataUrl,
     relativePath: shot.relativePath
+  })
+}
+
+function openActionPreview(clip: GraphVideoItem): void {
+  void openFullImagePreview({
+    dataUrl: clip.dataUrl,
+    relativePath: clip.relativePath
   })
 }
 </script>
@@ -328,12 +418,14 @@ label {
   border-color: var(--accent);
 }
 
-.shot-card img {
+.shot-card img,
+.shot-card video {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: contain;
   background: var(--graph-preview-bg);
+  pointer-events: none;
 }
 
 .shot-index {

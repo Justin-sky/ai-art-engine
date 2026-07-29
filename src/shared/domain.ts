@@ -894,6 +894,16 @@ export interface DirectorCameraShot {
   relativePath?: string
 }
 
+/** 导演台动画录制（动作） */
+export interface DirectorCameraVideo {
+  id: string
+  createdAt: string
+  /** 录制落盘后的工程相对路径（通常 Cache/Videos） */
+  relativePath?: string
+  /** 可选内嵌；有 relativePath 时可为空 */
+  dataUrl?: string
+}
+
 /** 导演台机位（可多台） */
 export interface DirectorCameraState {
   id: string
@@ -921,8 +931,10 @@ export interface DirectorStageState {
   gridOffsetY?: number
   /** 地面网格密度（固定为 Unity 默认：密度 8 = 1 单位小格） */
   gridDensity?: number
-  /** 机位截屏历史 */
+  /** 机位截屏历史（站位） */
   cameraShots?: DirectorCameraShot[]
+  /** 动画录制历史（动作） */
+  cameraVideos?: DirectorCameraVideo[]
   /** 视口画幅比例；默认 auto（跟随视口） */
   aspectRatio?: DirectorAspectRatio
   /** 全景内容根：缩放% / 平移 / 旋转 */
@@ -1485,6 +1497,7 @@ export function createDefaultDirectorStage(): DirectorStageState {
     gridOffsetY: DEFAULT_GRID_OFFSET_Y,
     gridDensity: DEFAULT_GRID_DENSITY,
     cameraShots: [],
+    cameraVideos: [],
     aspectRatio: 'auto',
     world: createDefaultDirectorSceneWorld(),
     skyColor: DEFAULT_DIRECTOR_SKY_COLOR,
@@ -1577,6 +1590,11 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
           .map((shot) => normalizeCameraShot(shot))
           .filter((shot): shot is DirectorCameraShot => !!shot)
       : [],
+    cameraVideos: Array.isArray(s.cameraVideos)
+      ? s.cameraVideos
+          .map((video) => normalizeCameraVideo(video))
+          .filter((video): video is DirectorCameraVideo => !!video)
+      : [],
     aspectRatio: normalizeDirectorAspectRatio(s.aspectRatio),
     world: readDirectorSceneWorld(s.world),
     skyColor: normalizeDirectorSkyColor(s.skyColor),
@@ -1598,11 +1616,36 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
 function normalizeCameraShot(raw: unknown): DirectorCameraShot | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  if (typeof o.id !== 'string' || typeof o.dataUrl !== 'string') return null
+  if (typeof o.id !== 'string' || !o.id.trim()) return null
+  const dataUrl = typeof o.dataUrl === 'string' ? o.dataUrl : ''
+  const relativePath =
+    typeof o.relativePath === 'string' && o.relativePath.trim()
+      ? o.relativePath.trim()
+      : undefined
+  if (!dataUrl && !relativePath) return null
   return {
-    id: o.id,
-    dataUrl: o.dataUrl,
-    createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString()
+    id: o.id.trim(),
+    dataUrl,
+    createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString(),
+    ...(relativePath ? { relativePath } : {})
+  }
+}
+
+function normalizeCameraVideo(raw: unknown): DirectorCameraVideo | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.id !== 'string' || !o.id.trim()) return null
+  const dataUrl = typeof o.dataUrl === 'string' && o.dataUrl.trim() ? o.dataUrl : undefined
+  const relativePath =
+    typeof o.relativePath === 'string' && o.relativePath.trim()
+      ? o.relativePath.trim()
+      : undefined
+  if (!dataUrl && !relativePath) return null
+  return {
+    id: o.id.trim(),
+    createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString(),
+    ...(dataUrl ? { dataUrl } : {}),
+    ...(relativePath ? { relativePath } : {})
   }
 }
 

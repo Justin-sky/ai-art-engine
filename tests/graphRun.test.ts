@@ -644,6 +644,7 @@ describe('graph run', () => {
         ]
       }
     })
+    const select = createNodeFromType('image.select', { x: 120, y: 0 }, { id: 'pick' })
     const output = createOutputGraphNode('image', { x: 240, y: 0 }, {
       id: IMAGE_OUTPUT_ID,
       title: 'Director deck output',
@@ -652,11 +653,18 @@ describe('graph run', () => {
 
     const result = await runGraph(
       {
-        nodes: [motion, output],
+        nodes: [motion, select, output],
         edges: [
           {
             id: 'e1',
             source: 'motion',
+            target: 'pick',
+            sourcePort: 'out-shots',
+            targetPort: 'in'
+          },
+          {
+            id: 'e2',
+            source: 'pick',
             target: IMAGE_OUTPUT_ID,
             sourcePort: 'out',
             targetPort: 'in'

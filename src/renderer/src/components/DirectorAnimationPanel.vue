@@ -450,8 +450,9 @@ const ICON_PATH =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 17c4-1 6-7 10-10"/></svg>'
 const ICON_ORIENT =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 10.2v4.3"/><path d="M5.8 12.2h4.4"/><path d="M6.6 16.8 8 14.5l1.4 2.3"/><path d="M12 12c2.2-0.4 4.8-0.2 7.2 1.6"/><path d="M16.8 11.2 19.4 13.6 16.6 15"/></svg>'
+/** 红色圆点录制样式 */
 const ICON_EXPORT =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg>'
+  '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="#e53935"/></svg>'
 const ICON_KEY =
   '<svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><path d="M6 1.2 10.8 6 6 10.8 1.2 6Z"/></svg>'
 
@@ -1358,9 +1359,17 @@ onBeforeUnmount(() => {
   border-radius: 6px;
 }
 
+.export-btn :deep(svg) {
+  display: block;
+}
+
 .export-btn.busy {
   opacity: 0.55;
   cursor: wait;
+}
+
+.export-btn.busy :deep(circle) {
+  fill: #c62828;
 }
 
 .zoom-slider {

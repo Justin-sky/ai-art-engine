@@ -102,7 +102,7 @@ import {
   type VideoGenerateParamCapabilities
 } from '../videoGenerateParams'
 import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
-import { resolveMotionImageItems } from '../motionShots'
+import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
 import { readShotStoryboardFromNodeParams } from '../shotParams'
 import { parseShotEntities, stringifyShotEntities } from '../shotEntitiesParse'
 import { parseVideoEntities, stringifyVideoEntities } from '../videoEntitiesParse'
@@ -3761,35 +3761,56 @@ export function executeCamera3dNode(ctx: NodeExecuteContext): Record<string, Gra
   } else if (!items.length && ctx.node.params.previewRelativePath) {
     items.push({ dataUrl: '', relativePath: ctx.node.params.previewRelativePath })
   }
-  const selectedImageId =
-    ctx.node.params.selectedImageId?.trim() ||
-    (items[0] ? imageItemKey(items[0], 0) : '')
-  return dualImageGalleryOutputs(items, selectedImageId)
+  const videos = ctx.node.params.cameraVideos ?? []
+  const videoItems: GraphVideoItem[] = videos
+    .filter(
+      (video) =>
+        (typeof video.dataUrl === 'string' && video.dataUrl.length > 0) ||
+        (typeof video.relativePath === 'string' && video.relativePath.length > 0)
+    )
+    .map((video) => ({
+      id: video.id,
+      dataUrl: video.dataUrl || '',
+      createdAt: video.createdAt,
+      ...(video.relativePath ? { relativePath: video.relativePath } : {})
+    }))
+  return {
+    'out-shots': { kind: 'images', items },
+    'out-actions': { kind: 'videos', items: videoItems }
+  }
 }
 
-/** 画布上拖入的导演台资产引用：从资产 stage/graph 读取站位图，输出 images */
+/** 画布上拖入的导演台资产引用：从资产 stage/graph 读取站位/动作 */
 export function executeMotionAssetRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const genParams = ctx.node.assetId
     ? ctx.resolveAssetGenParams?.(ctx.node.assetId)
     : undefined
   const items = resolveMotionImageItems(genParams, ctx.node.params, ctx.node.id)
-  if (items.length) {
+  const videoItems = resolveMotionVideoItems(genParams, ctx.node.params, ctx.node.id)
+  if (items.length || videoItems.length) {
     const cameraShots = items.map((image, index) => ({
       id: image.id ?? `shot:${index}`,
       dataUrl: image.dataUrl,
-      createdAt: image.createdAt ?? new Date().toISOString()
+      createdAt: image.createdAt ?? new Date().toISOString(),
+      ...(image.relativePath ? { relativePath: image.relativePath } : {})
+    }))
+    const cameraVideos = videoItems.map((video, index) => ({
+      id: video.id ?? `action:${index}`,
+      dataUrl: video.dataUrl,
+      createdAt: video.createdAt ?? new Date().toISOString(),
+      ...(video.relativePath ? { relativePath: video.relativePath } : {})
     }))
     ctx.patchNode?.({
       params: {
-        cameraShots,
-        previewDataUrl: cameraShots[0]?.dataUrl
+        ...(cameraShots.length ? { cameraShots, previewDataUrl: cameraShots[0]?.dataUrl } : {}),
+        ...(cameraVideos.length ? { cameraVideos } : {})
       }
     })
   }
-  const selectedImageId =
-    ctx.node.params.selectedImageId?.trim() ||
-    (items[0] ? imageItemKey(items[0], 0) : '')
-  return dualImageGalleryOutputs(items, selectedImageId)
+  return {
+    'out-shots': { kind: 'images', items },
+    'out-actions': { kind: 'videos', items: videoItems }
+  }
 }
 
 /** 选取图片：从图片数组中选出一张，输出为单张 image */

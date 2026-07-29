@@ -523,7 +523,7 @@ function softResolveSourceOutput(
       relativePath: shot.relativePath,
       createdAt: shot.createdAt
     }))
-    if (sourcePort === 'out-all') {
+    if (sourcePort === 'out-shots' || sourcePort === 'out-all') {
       return { kind: 'images', items }
     }
     if (sourcePort === 'out' || !sourcePort) {
@@ -538,6 +538,19 @@ function softResolveSourceOutput(
         createdAt: picked?.createdAt,
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
       }
+    }
+  }
+
+  const cameraVideos = node.params.cameraVideos
+  if (Array.isArray(cameraVideos) && cameraVideos.length) {
+    const items = cameraVideos.map((video) => ({
+      id: video.id,
+      dataUrl: video.dataUrl ?? '',
+      relativePath: video.relativePath,
+      createdAt: video.createdAt
+    }))
+    if (sourcePort === 'out-actions') {
+      return { kind: 'videos', items }
     }
   }
 

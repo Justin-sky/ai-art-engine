@@ -12,9 +12,11 @@ describe('director asset graph', () => {
     const processing = doc.nodes.find((node) => node.typeId === 'asset.motion')
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(getNodePorts(processing!).some((p) => p.direction === 'out' && p.dataType === 'image')).toBe(
-      true
-    )
+    const outPorts = getNodePorts(processing!).filter((p) => p.direction === 'out')
+    expect(outPorts.map((p) => [p.id, p.dataType])).toEqual([
+      ['out-shots', 'images'],
+      ['out-actions', 'videos']
+    ])
     expect(getNodePorts(processing!).filter((p) => p.direction === 'in')).toEqual([])
     expect(doc.edges).toHaveLength(0)
   })

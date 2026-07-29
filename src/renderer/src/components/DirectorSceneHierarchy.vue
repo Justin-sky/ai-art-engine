@@ -1,5 +1,5 @@
 <template>
-  <aside ref="rootEl" class="hierarchy">
+  <aside ref="rootEl" class="hierarchy" :style="{ width: `${paneWidth}px` }">
     <div class="hierarchy-head">
       <div class="hierarchy-title">{{ t('director.stage.scenePanel') }}</div>
       <div class="create-wrap">
@@ -160,6 +160,12 @@
         </button>
       </template>
     </div>
+    <div
+      class="hierarchy-splitter"
+      :class="{ dragging: splitterDragging }"
+      :title="t('director.stage.resizePanel')"
+      @mousedown.prevent="onSplitterDown"
+    />
   </aside>
 </template>
 
@@ -178,6 +184,23 @@ import {
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
 const scene = inject(directorStageSceneKey)!
+
+const PANE_WIDTH_KEY = 'studio.director.hierarchyWidth'
+const DEFAULT_PANE_WIDTH = 300
+const PANE_MIN_WIDTH = 200
+const PANE_MAX_RATIO = 0.55
+
+function clampPaneWidth(n: number, maxWidth = Infinity): number {
+  if (!Number.isFinite(n)) return DEFAULT_PANE_WIDTH
+  return Math.round(Math.min(maxWidth, Math.max(PANE_MIN_WIDTH, n)))
+}
+
+function readPaneMaxWidth(): number {
+  const total = rootEl.value?.parentElement?.clientWidth ?? 0
+  if (total <= 0) return 560
+  return Math.max(PANE_MIN_WIDTH + 120, Math.round(total * PANE_MAX_RATIO))
+}
+
 const query = ref('')
 const draggingId = ref<string | null>(null)
 const dropTargetId = ref<string | null>(null)
@@ -187,6 +210,41 @@ const menuX = ref(0)
 const menuY = ref(0)
 const contextItemId = ref<string | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
+const paneWidth = ref(
+  clampPaneWidth(Number(localStorage.getItem(PANE_WIDTH_KEY) || DEFAULT_PANE_WIDTH))
+)
+const splitterDragging = ref(false)
+let splitterMove: ((ev: MouseEvent) => void) | null = null
+let splitterUp: (() => void) | null = null
+
+function persistPaneWidth(): void {
+  localStorage.setItem(PANE_WIDTH_KEY, String(paneWidth.value))
+}
+
+function endSplitterDrag(): void {
+  if (splitterMove) window.removeEventListener('mousemove', splitterMove)
+  if (splitterUp) window.removeEventListener('mouseup', splitterUp)
+  splitterMove = null
+  splitterUp = null
+  if (splitterDragging.value) {
+    splitterDragging.value = false
+    persistPaneWidth()
+  }
+}
+
+function onSplitterDown(e: MouseEvent): void {
+  if (e.button !== 0) return
+  endSplitterDrag()
+  splitterDragging.value = true
+  const startX = e.clientX
+  const startWidth = paneWidth.value
+  splitterMove = (ev: MouseEvent) => {
+    paneWidth.value = clampPaneWidth(startWidth + (ev.clientX - startX), readPaneMaxWidth())
+  }
+  splitterUp = () => endSplitterDrag()
+  window.addEventListener('mousemove', splitterMove)
+  window.addEventListener('mouseup', splitterUp)
+}
 const menuEl = ref<HTMLElement | null>(null)
 const editingId = ref<string | null>(null)
 const editName = ref('')
@@ -468,6 +526,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearRenameTimer()
+  endSplitterDrag()
   document.removeEventListener('pointerdown', onDocumentPointerDown)
   window.removeEventListener('keydown', onHierarchyKeyDown)
 })
@@ -708,13 +767,29 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 300px;
-  min-width: 240px;
+  min-width: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.hierarchy-splitter {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 4;
+  touch-action: none;
+  background: transparent;
+}
+
+.hierarchy-splitter:hover,
+.hierarchy-splitter.dragging {
+  background: var(--accent);
 }
 
 .hierarchy-head {

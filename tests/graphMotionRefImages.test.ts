@@ -49,15 +49,13 @@ describe('motion asset ref images', () => {
           : undefined
     }
     const result = executeMotionAssetRefNode(ctx)
-    expect(result.out.kind).toBe('image')
-    if (result.out.kind !== 'image') return
-    expect(result.out).toMatchObject({
-      id: 'shot-a',
-      dataUrl: 'data:image/png;base64,xyz'
-    })
-    expect(result['out-all']).toMatchObject({
+    expect(result['out-shots']).toMatchObject({
       kind: 'images',
       items: [{ id: 'shot-a', dataUrl: 'data:image/png;base64,xyz' }]
+    })
+    expect(result['out-actions']).toMatchObject({
+      kind: 'videos',
+      items: []
     })
   })
 })

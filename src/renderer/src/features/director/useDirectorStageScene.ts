@@ -55,6 +55,8 @@ import {
   type DirectorAspectRatio,
   type DirectorCameraState,
   type DirectorCameraShot,
+  type DirectorCameraVideo,
+  buildGeneratedMediaFileKey,
   type DirectorSceneWorld,
   type DirectorStageState,
   type DirectorViewMode,
@@ -142,6 +144,8 @@ export type DirectorSelectionKind = 'object' | 'camera' | 'scene' | 'panorama' |
 
 /** ????????????? / ???? */
 export type DirectorStageEditMode = 'scene' | 'animation'
+
+export type DirectorMediaGalleryTab = 'shots' | 'actions'
 
 export interface UseDirectorStageSceneOptions {
   directorAssetId: string
@@ -680,6 +684,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     params: Partial<{
       viewer: DirectorViewerState
       cameraShots: DirectorCameraShot[]
+      cameraVideos: DirectorCameraVideo[]
       previewDataUrl: string
     }>
   ): void {
@@ -688,10 +693,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     graphEditorHosts.updateNode(graphHostId.value, node.id, params)
   }
 
+  const mediaGallerySignal = ref<{ seq: number; tab: DirectorMediaGalleryTab }>({
+    seq: 0,
+    tab: 'shots'
+  })
+
+  function openMediaGallery(tab: DirectorMediaGalleryTab = 'shots'): void {
+    mediaGallerySignal.value = {
+      seq: mediaGallerySignal.value.seq + 1,
+      tab
+    }
+  }
+
   function syncCameraNodeFromStage(previewOverride?: string | null): void {
     const node = directorProcessingNode()
     if (!node) return
     const shots = [...(stage.value.cameraShots ?? [])]
+    const videos = [...(stage.value.cameraVideos ?? [])]
     const preview =
       previewOverride ||
       shots[0]?.dataUrl ||
@@ -700,6 +718,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     updateDirectorProcessingNode({
       viewer: activeCameraState().viewer,
       cameraShots: shots,
+      cameraVideos: videos,
       ...(preview ? { previewDataUrl: preview } : {})
     })
   }
@@ -1029,7 +1048,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function removeCameraShot(id: string): void {
     stage.value.cameraShots = (stage.value.cameraShots ?? []).filter((s) => s.id !== id)
+    syncCameraNodeFromStage()
     schedulePersist()
+  }
+
+  function removeCameraVideo(id: string): void {
+    stage.value.cameraVideos = (stage.value.cameraVideos ?? []).filter((v) => v.id !== id)
+    syncCameraNodeFromStage()
+    schedulePersist()
+  }
+
+  async function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read video blob'))
+      reader.readAsDataURL(blob)
+    })
   }
 
   function themeDirectorSkyHex(): string {
@@ -3874,17 +3909,36 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       else requestRender()
     }
 
-    const blob = new Blob(chunks, { type: 'video/webm' })
-    if (!blob.size) throw new Error('??????')
-    const data = new Uint8Array(await blob.arrayBuffer())
-    return window.studio.saveBinaryFile({
-      data,
-      defaultPath: 'director-animation.webm',
-      filters: [
-        { name: 'WebM Video', extensions: ['webm'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
+    const blob = new Blob(chunks, { type: mimeType.includes('webm') ? 'video/webm' : 'video/webm' })
+    if (!blob.size) throw new Error('Empty recording')
+    const dataUrl = await blobToDataUrl(blob)
+    const node = directorProcessingNode()
+    if (!node) throw new Error('Director processing node not found')
+    const hostAsset = asset.value
+    const key = buildGeneratedMediaFileKey({
+      hostAssetName: hostAsset?.name,
+      nodeTitle: node.title || 'director-action',
+      stamp: new Date().toISOString().replace(/[:.]/g, '-')
     })
+    const { saveGraphRunMediaForNode } = await import('../graph/saveGraphRunMediaForNode')
+    const relativePath = await saveGraphRunMediaForNode({
+      dataUrl,
+      key,
+      node,
+      hostAssetId: options.directorAssetId,
+      kind: 'video'
+    })
+    const video: DirectorCameraVideo = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      relativePath
+    }
+    const list = [...(stage.value.cameraVideos ?? []), video].slice(-24)
+    stage.value.cameraVideos = list
+    syncCameraNodeFromStage()
+    schedulePersist()
+    openMediaGallery('actions')
+    return relativePath
   }
 
   function requestRender(holdMs = 250): void {
@@ -4006,6 +4060,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       gridOffsetY: stage.value.gridOffsetY ?? DEFAULT_GRID_OFFSET_Y,
       gridDensity: DEFAULT_GRID_DENSITY,
       cameraShots: stage.value.cameraShots ?? [],
+      cameraVideos: stage.value.cameraVideos ?? [],
       aspectRatio: normalizeDirectorAspectRatio(stage.value.aspectRatio),
       world: readDirectorSceneWorld(stage.value.world),
       // 存跟随哨兵/自定义色，不要写主题解析后的颜色（否则浅色主题会锁死 #e8eaee）
@@ -6475,6 +6530,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setViewOrientation,
     takeCameraShot,
     removeCameraShot,
+    removeCameraVideo,
+    mediaGallerySignal,
+    openMediaGallery,
     renderCameraPreviewToCanvas,
     getSharedScene,
     renderSceneWithoutGizmos,

@@ -197,8 +197,24 @@ const ASSET_META: Array<{
   }
 ]
 
+/** 导演台编辑：站位（images）与动作（videos），均为方形复数口 */
 function motionProcessingPorts(): GraphPortDef[] {
-  return galleryOutPorts(GraphPortType.image)
+  return [
+    {
+      id: 'out-shots',
+      direction: 'out',
+      dataType: GraphPortType.images,
+      multiple: true,
+      label: '站位'
+    },
+    {
+      id: 'out-actions',
+      direction: 'out',
+      dataType: GraphPortType.videos,
+      multiple: true,
+      label: '动作'
+    }
+  ]
 }
 
 /** 生成/加工图库节点：`out` 当前选中单条（默认连线）；`out-all` 全部历史（复数类型，仅连 select） */

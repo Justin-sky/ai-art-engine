@@ -2,6 +2,7 @@ import type { TaggedAssetRef } from '../assetRef'
 import type {
   AssetType,
   DirectorCameraShot,
+  DirectorCameraVideo,
   DirectorViewerState,
   ProjectStyleImage,
   ShotStoryboard
@@ -359,6 +360,8 @@ export interface GraphNodeParams {
   viewer?: DirectorViewerState
   /** 导演台关闭时回传的站位截图 */
   cameraShots?: DirectorCameraShot[]
+  /** 导演台关闭时回传的动作录制视频 */
+  cameraVideos?: DirectorCameraVideo[]
   /**
    * 图片生成节点：历次生成累计的图片（重新执行追加，可在 Inspector 删除）。
    * 大图应物化为 relativePath，dataUrl 可为空。

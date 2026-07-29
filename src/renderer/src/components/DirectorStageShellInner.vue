@@ -85,7 +85,7 @@
             <span v-if="shotCount" class="shots-count">{{ shotCount }}</span>
           </button>
           <div v-if="shotsPanelOpen" class="shots-dropdown">
-            <DirectorCameraShotsPanel @close="closeShotsPanel" />
+            <DirectorCameraShotsPanel :initial-tab="shotsPanelTab" @close="closeShotsPanel" />
           </div>
         </div>
         <button
@@ -150,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { fitDirectorAspectFrame, isPoseModelAsset } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -164,6 +164,7 @@ import {
 import DirectorSceneHierarchy from './DirectorSceneHierarchy.vue'
 import DirectorViewportToolbar from './DirectorViewportToolbar.vue'
 import DirectorViewOrientationGizmo from './DirectorViewOrientationGizmo.vue'
+import type { DirectorMediaGalleryTab } from '../features/director/useDirectorStageScene'
 import DirectorCameraShotsPanel from './DirectorCameraShotsPanel.vue'
 import DirectorAnimationPanel from './DirectorAnimationPanel.vue'
 
@@ -190,6 +191,7 @@ const viewportAssetDragOver = ref(false)
 const viewMenuOpen = ref(false)
 const viewMenuEl = ref<HTMLElement | null>(null)
 const shotsPanelOpen = ref(false)
+const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
 let resizeObserver: ResizeObserver | null = null
 
 const hasSelection = computed(
@@ -197,7 +199,10 @@ const hasSelection = computed(
     (scene.selectionKind.value === 'object' && !!scene.selectedObjectId.value) ||
     (scene.selectionKind.value === 'camera' && !!scene.selectedCameraId.value)
 )
-const shotCount = computed(() => scene.stage.value.cameraShots?.length ?? 0)
+const shotCount = computed(
+  () =>
+    (scene.stage.value.cameraShots?.length ?? 0) + (scene.stage.value.cameraVideos?.length ?? 0)
+)
 
 const aspectFrameStyle = computed(() => {
   const frame = fitDirectorAspectFrame(
@@ -231,10 +236,18 @@ function closeShotsPanel(): void {
   shotsPanelOpen.value = false
 }
 
-function openShotsPanel(): void {
+function openShotsPanel(tab: DirectorMediaGalleryTab = 'shots'): void {
   closeViewMenu()
+  shotsPanelTab.value = tab
   shotsPanelOpen.value = true
 }
+
+watch(
+  () => scene.mediaGallerySignal.value.seq,
+  () => {
+    openShotsPanel(scene.mediaGallerySignal.value.tab)
+  }
+)
 
 function runMoveToView(): void {
   closeViewMenu()
@@ -288,7 +301,7 @@ onBeforeUnmount(() => {
 
 function onCapture(): void {
   scene.takeCameraShot()
-  openShotsPanel()
+  openShotsPanel('shots')
 }
 
 function isStudioAssetDrag(event: DragEvent): boolean {

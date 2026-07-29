@@ -1,17 +1,41 @@
-import { readDirectorStage, type DirectorCameraShot } from '../domain'
+import {
+  readDirectorStage,
+  type DirectorCameraShot,
+  type DirectorCameraVideo
+} from '../domain'
 import { isDirectorProcessingNode } from './nodeRole'
-import type { GraphImageItem } from './execute/types'
+import type { GraphImageItem, GraphVideoItem } from './execute/types'
 import type { GraphDocument, GraphNodeParams } from './types'
 
 const STAGES_BY_NODE_KEY = 'stagesByNodeId'
 
 function shotsToImageItems(shots: DirectorCameraShot[]): GraphImageItem[] {
   return shots
-    .filter((shot) => typeof shot.dataUrl === 'string' && shot.dataUrl.length > 0)
+    .filter(
+      (shot) =>
+        (typeof shot.dataUrl === 'string' && shot.dataUrl.length > 0) ||
+        (typeof shot.relativePath === 'string' && shot.relativePath.length > 0)
+    )
     .map((shot) => ({
       id: shot.id,
-      dataUrl: shot.dataUrl,
-      createdAt: shot.createdAt
+      dataUrl: shot.dataUrl || '',
+      createdAt: shot.createdAt,
+      ...(shot.relativePath ? { relativePath: shot.relativePath } : {})
+    }))
+}
+
+function videosToVideoItems(videos: DirectorCameraVideo[]): GraphVideoItem[] {
+  return videos
+    .filter(
+      (video) =>
+        (typeof video.dataUrl === 'string' && video.dataUrl.length > 0) ||
+        (typeof video.relativePath === 'string' && video.relativePath.length > 0)
+    )
+    .map((video) => ({
+      id: video.id,
+      dataUrl: video.dataUrl || '',
+      createdAt: video.createdAt,
+      ...(video.relativePath ? { relativePath: video.relativePath } : {})
     }))
 }
 
@@ -64,4 +88,24 @@ export function resolveMotionImageItems(
     return [{ dataUrl: nodeParams.previewDataUrl }]
   }
   return []
+}
+
+/** 解析导演台资产/节点上的动作视频列表 */
+export function resolveMotionVideoItems(
+  genParams?: Record<string, unknown> | null,
+  nodeParams?: Pick<GraphNodeParams, 'cameraVideos'> | null,
+  processingNodeId?: string | null
+): GraphVideoItem[] {
+  const fromNode = videosToVideoItems(nodeParams?.cameraVideos ?? [])
+  if (fromNode.length) return fromNode
+
+  const processing = findMotionProcessingNode(genParams?.graphJson)
+  const nodeId = processingNodeId ?? processing?.id ?? null
+  const stageRaw = readStageRawForNode(genParams, nodeId)
+  const fromStage = videosToVideoItems(
+    stageRaw ? readDirectorStage({ stage: stageRaw }).cameraVideos ?? [] : []
+  )
+  if (fromStage.length) return fromStage
+
+  return videosToVideoItems(processing?.params.cameraVideos ?? [])
 }

@@ -121,6 +121,17 @@ function hydrateNode(raw: GraphNode): GraphNode {
   return synced
 }
 
+/** 旧 motion 口 out / out-all → 站位复数口 out-shots */
+function remapLegacyMotionSourcePort(source: GraphNode, sourcePort?: string): string {
+  const isMotion =
+    source.typeId === 'asset.motion' ||
+    source.assetType === 'motion' ||
+    resolveNodeType(source)?.assetType === 'motion'
+  if (!isMotion) return sourcePort ?? 'out'
+  if (!sourcePort || sourcePort === 'out' || sourcePort === 'out-all') return 'out-shots'
+  return sourcePort
+}
+
 function sanitizeEdges(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -133,21 +144,22 @@ function sanitizeEdges(
     const source = byId.get(edge.source)
     const target = byId.get(edge.target)
     if (!source || !target) continue
+    const sourcePort = remapLegacyMotionSourcePort(source, edge.sourcePort)
     if (!canConnectNodes(source, target, {
       scope,
-      sourcePort: edge.sourcePort,
+      sourcePort,
       targetPort: edge.targetPort
     })) {
       continue
     }
-    const key = `${edge.source}:${edge.sourcePort ?? 'out'}->${edge.target}:${edge.targetPort ?? 'in'}`
+    const key = `${edge.source}:${sourcePort}->${edge.target}:${edge.targetPort ?? 'in'}`
     if (seen.has(key)) continue
     seen.add(key)
     next.push({
       id: edge.id || `edge-${crypto.randomUUID()}`,
       source: edge.source,
       target: edge.target,
-      sourcePort: edge.sourcePort ?? 'out',
+      sourcePort,
       targetPort: edge.targetPort ?? 'in'
     })
   }

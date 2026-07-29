@@ -22,6 +22,7 @@ export async function saveGraphRunMediaForNode(input: {
   outputDir?: string
   node: GraphNode
   hostAssetId?: string | null
+  kind?: 'image' | 'video' | 'text' | 'voice'
 }): Promise<string> {
   const project = useProjectStore()
   const host = resolveNodeOwnerAsset(input.node, input.hostAssetId)
@@ -32,7 +33,7 @@ export async function saveGraphRunMediaForNode(input: {
     hostRelativePath: dirs.hostRelativePath,
     hostFolderDir: dirs.hostFolderDir,
     hostAssetName: dirs.hostAssetName,
-    kind: 'image'
+    kind: input.kind ?? 'image'
   })
   // data: / http(s) 均交给主进程解析；勿在渲染进程 fetch（易被 CORS 拦下）
   const relativePath = await window.studio.saveGraphRunMedia({
