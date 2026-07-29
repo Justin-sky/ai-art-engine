@@ -316,11 +316,14 @@ describe('theme CSS contract (main.css)', () => {
     const css = read(MAIN_CSS).replace(/\r\n/g, '\n')
     const controlRule =
       css.match(/input,\ntextarea,\nselect \{\n  background: var\(--bg\);[\s\S]*?\n\}/)?.[0] ?? ''
+    const textareaRule = css.match(/^textarea \{\n[\s\S]*?\n\}/m)?.[0] ?? ''
     const resizerRule = css.match(/textarea::-webkit-resizer\s*\{[\s\S]*?\}/)?.[0] ?? ''
     expect(controlRule.length).toBeGreaterThan(0)
     expect(controlRule).toMatch(/background:\s*var\(--bg\)/)
-    // 缩放柄必须同源，禁止再用 --bg-input（浅色主题白角块）
-    expect(resizerRule).toMatch(/background-color:\s*var\(--bg\)/)
+    // 缩放柄与 textarea 同源走 --textarea-bg（默认 var(--bg)），禁止再用 --bg-input（浅色主题白角块）
+    expect(textareaRule).toMatch(/--textarea-bg:\s*var\(--bg\)/)
+    expect(textareaRule).toMatch(/background:\s*var\(--textarea-bg\)/)
+    expect(resizerRule).toMatch(/background-color:\s*var\(--textarea-bg\)/)
     expect(resizerRule).not.toMatch(/background-color:\s*var\(--bg-input\)/)
     expect(resizerRule).toMatch(/background-image:\s*var\(--resizer-grip\)/)
   })
