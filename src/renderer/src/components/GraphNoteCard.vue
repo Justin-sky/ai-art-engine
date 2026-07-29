@@ -579,30 +579,27 @@ function onBodyDblClick(): void {
   right: 0;
 }
 
+.port-wrap.in .port-type,
 .port-wrap.out .port-type {
   position: absolute;
+  left: 0;
   top: 0;
-  left: 10px;
   font-size: 9px;
   line-height: 1;
   color: var(--slot-port);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
-  transform: translateY(-50%);
 }
 
 .port-wrap.in .port-type {
-  position: absolute;
-  top: 0;
-  right: 10px;
-  font-size: 9px;
-  line-height: 1;
-  color: var(--slot-port);
-  white-space: nowrap;
-  pointer-events: none;
-  user-select: none;
-  transform: translateY(-50%);
+  transform: translate(calc(-100% - 8px), calc(-100% - 4px));
+  text-align: right;
+}
+
+.port-wrap.out .port-type {
+  transform: translate(8px, calc(-100% - 4px));
+  text-align: left;
 }
 
 .port {

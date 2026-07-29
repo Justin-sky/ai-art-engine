@@ -227,8 +227,96 @@ function taskTargetKey(target: GraphTaskTarget): string {
   return `shot:${target.scriptAssetId}:${target.shotId}:${target.scope}:${target.canvasField}`
 }
 
+function sameTargetNodeIds(a?: string[], b?: string[]): boolean {
+  const left = a?.length ? [...a].sort() : null
+  const right = b?.length ? [...b].sort() : null
+  if (!left && !right) return true
+  if (!left || !right || left.length !== right.length) return false
+  return left.every((id, i) => id === right[i])
+}
+
 function isActiveStatus(status: GraphTaskStatus): boolean {
   return status === 'pending' || status === 'running'
+}
+
+/** 同一画布可并行多条输出链；整图任务或相同汇点集合视为冲突 */
+export function conflictsWithActiveWorkflow(
+  target: GraphTaskTarget,
+  targetNodeIds: string[] | undefined,
+  active: Array<{ status: GraphTaskStatus; target: GraphTaskTarget; targetNodeIds?: string[] }>
+): boolean {
+  const key = taskTargetKey(target)
+  const incomingFull = !targetNodeIds?.length
+  return active.some((t) => {
+    if (!isActiveStatus(t.status)) return false
+    if (taskTargetKey(t.target) !== key) return false
+    const existingFull = !t.targetNodeIds?.length
+    if (incomingFull || existingFull) return true
+    return sameTargetNodeIds(t.targetNodeIds, targetNodeIds)
+  })
+}
+
+function asGraphDocument(raw: unknown): GraphDocument | null {
+  if (!raw || typeof raw !== 'object') return null
+  const doc = raw as GraphDocument
+  if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) return null
+  return cloneGraphDocument(doc)
+}
+
+function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | null {
+  const project = useProjectStore()
+  if (target.kind === 'asset') {
+    const draft = useDraftStore().getDraft(target.assetId)
+    const asset = project.assets.find((a) => a.id === target.assetId)
+    return asGraphDocument(
+      (draft?.genParams as Record<string, unknown> | undefined)?.graphJson ??
+        (asset?.genParams as Record<string, unknown> | undefined)?.graphJson
+    )
+  }
+  if (target.kind === 'world-element') {
+    const raw = readWorldElementGraphFromGenParams(
+      readWorldGenParams(target.worldAssetId),
+      target.elementKind
+    )
+    return asGraphDocument(raw)
+  }
+  if (target.kind === 'narrative-unit') {
+    const raw = readNarrativeUnitGraphFromGenParams(
+      readNarrativeGenParams(target.narrativeAssetId),
+      target.unitId
+    )
+    return asGraphDocument(raw)
+  }
+  const shot =
+    project.shots.find((s) => s.id === target.shotId) ??
+    (isDraftAssetId(target.scriptAssetId)
+      ? useDraftStore().getDraft(target.scriptAssetId)?.shots?.find((s) => s.id === target.shotId)
+      : null)
+  if (!shot) return null
+  return asGraphDocument(shot.canvas[target.canvasField])
+}
+
+/** 把子集任务跑过的节点合并进最新底图，避免并行写回互相覆盖 */
+function mergeSubsetGraphIntoBase(
+  base: GraphDocument,
+  subset: GraphDocument,
+  nodeIds: Iterable<string>,
+  subsetRunStates: Record<string, GraphNodeRunState>
+): GraphDocument {
+  const ids = new Set(nodeIds)
+  const fromSubset = new Map(subset.nodes.map((node) => [node.id, node]))
+  const merged = cloneGraphDocument(base)
+  merged.nodes = merged.nodes.map((node) => {
+    if (!ids.has(node.id)) return node
+    const patched = fromSubset.get(node.id)
+    return patched ? (toPlain(patched) as GraphNode) : node
+  })
+  merged.runStates = { ...(merged.runStates ?? {}) }
+  for (const id of ids) {
+    const state = subsetRunStates[id]
+    if (state) merged.runStates[id] = { ...state }
+  }
+  return merged
 }
 
 const MAX_COMPLETED_TASKS = 100
@@ -310,6 +398,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
   const dialogOpen = ref(false)
   const dialogAnchor = shallowRef<HTMLElement | null>(null)
   const tick = ref(0)
+  /** 同画布并行写回串行化，避免后完成的任务整图覆盖先完成的结果 */
+  const writeBackChains = new Map<string, Promise<void>>()
 
   const tasks = computed(() => {
     void tick.value
@@ -330,7 +420,22 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
 
   function hasActiveTaskForTarget(target: GraphTaskTarget): boolean {
     const key = taskTargetKey(target)
-    return activeTasks.value.some((t) => taskTargetKey(t.target) === key)
+    return activeTasks.value.some(
+      (t) => isActiveStatus(t.status) && taskTargetKey(t.target) === key
+    )
+  }
+
+  async function runWriteBackExclusive(targetKey: string, work: () => Promise<void>): Promise<void> {
+    const prev = writeBackChains.get(targetKey) ?? Promise.resolve()
+    const curr = prev.catch(() => undefined).then(work)
+    writeBackChains.set(
+      targetKey,
+      curr.then(
+        () => undefined,
+        () => undefined
+      )
+    )
+    await curr
   }
 
   function moveToCompleted(task: GraphTaskInternal): void {
@@ -399,82 +504,101 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     const project = useProjectStore()
     if (task.sessionEpoch !== project.sessionEpoch) return
 
-    const { document: graph, materializedStates } = await prepareGraphDocumentForPersist(
-      task.graph,
-      task.runStates,
-      {
-    hostAssetId: taskHostAssetId(task.target)
+    await runWriteBackExclusive(taskTargetKey(task.target), async () => {
+      if (task.discardWriteBack) return
+      if (task.sessionEpoch !== useProjectStore().sessionEpoch) return
+
+      const { document: prepared, materializedStates } = await prepareGraphDocumentForPersist(
+        task.graph,
+        task.runStates,
+        {
+          hostAssetId: taskHostAssetId(task.target)
+        }
+      )
+      // 同步内存 runStates 为物化后版本，便于后续增量重跑 / 预览
+      for (const key of Object.keys(task.runStates)) delete task.runStates[key]
+      Object.assign(task.runStates, materializedStates)
+      task.graph = prepared
+
+      const isSubset = !!task.targetNodeIds?.length
+      const graph = isSubset
+        ? mergeSubsetGraphIntoBase(
+            cloneGraphDocument(
+              graphEditorHosts.getDocument(task.target.hostId) ??
+                readPersistedGraphForTarget(task.target) ??
+                prepared
+            ),
+            prepared,
+            task.order,
+            materializedStates
+          )
+        : prepared
+
+      // 实时编辑器若仍打开，先同步 UI（含已物化 outputs）
+      graphEditorHosts.applyExternalGraph(task.target.hostId, graph)
+
+      if (task.target.kind === 'asset') {
+        const assetId = task.target.assetId
+        const drafts = useDraftStore()
+        const draft = drafts.getDraft(assetId)
+        const asset = project.assets.find((a) => a.id === assetId)
+        if (!draft && !asset) return
+        const prevParams = draft?.genParams ?? asset?.genParams ?? {}
+        await persistAssetRecord(assetId, {
+          genParams: { ...prevParams, graphJson: toPlain(graph) }
+        })
+        return
       }
-    )
-    // 同步内存 runStates 为物化后版本，便于后续增量重跑 / 预览
-    for (const key of Object.keys(task.runStates)) delete task.runStates[key]
-    Object.assign(task.runStates, materializedStates)
-    task.graph = graph
 
-    // 实时编辑器若仍打开，先同步 UI（含已物化 outputs）
-    graphEditorHosts.applyExternalGraph(task.target.hostId, graph)
-
-    if (task.target.kind === 'asset') {
-      const assetId = task.target.assetId
-      const drafts = useDraftStore()
-      const draft = drafts.getDraft(assetId)
-      const asset = project.assets.find((a) => a.id === assetId)
-      if (!draft && !asset) return
-      const prevParams = draft?.genParams ?? asset?.genParams ?? {}
-      await persistAssetRecord(assetId, {
-        genParams: { ...prevParams, graphJson: toPlain(graph) }
-      })
-      return
-    }
-
-    if (task.target.kind === 'world-element') {
-      const { worldAssetId, elementKind } = task.target
-      const prevParams = readWorldGenParams(worldAssetId)
-      await persistAssetRecord(worldAssetId, {
-        genParams: withWorldElementGraph(prevParams, elementKind, toPlain(graph) as GraphDocument)
-      })
-      return
-    }
-
-    if (task.target.kind === 'narrative-unit') {
-      const { narrativeAssetId, unitId } = task.target
-      const prevParams = readNarrativeGenParams(narrativeAssetId)
-      await persistAssetRecord(narrativeAssetId, {
-        genParams: withNarrativeUnitGraph(prevParams, unitId, toPlain(graph) as GraphDocument)
-      })
-      return
-    }
-
-    const { shotId, canvasField, scriptAssetId } = task.target
-    const shot =
-      project.shots.find((s) => s.id === shotId) ??
-      (isDraftAssetId(scriptAssetId)
-        ? useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId)
-        : null)
-    if (!shot) return
-
-    let next: Shot = {
-      ...shot,
-      canvas: {
-        ...shot.canvas,
-        [canvasField]: toPlain(graph)
+      if (task.target.kind === 'world-element') {
+        const { worldAssetId, elementKind } = task.target
+        const prevParams = readWorldGenParams(worldAssetId)
+        await persistAssetRecord(worldAssetId, {
+          genParams: withWorldElementGraph(prevParams, elementKind, toPlain(graph) as GraphDocument)
+        })
+        return
       }
-    }
-    if (canvasField === 'visualGraphJson') {
-      next = await applyVisualGraphGenRefsToShot(next, graph)
-      next = {
-        ...next,
+
+      if (task.target.kind === 'narrative-unit') {
+        const { narrativeAssetId, unitId } = task.target
+        const prevParams = readNarrativeGenParams(narrativeAssetId)
+        await persistAssetRecord(narrativeAssetId, {
+          genParams: withNarrativeUnitGraph(prevParams, unitId, toPlain(graph) as GraphDocument)
+        })
+        return
+      }
+
+      const { shotId, canvasField, scriptAssetId } = task.target
+      const shot =
+        project.shots.find((s) => s.id === shotId) ??
+        (isDraftAssetId(scriptAssetId)
+          ? useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId)
+          : null)
+      if (!shot) return
+
+      let next: Shot = {
+        ...shot,
         canvas: {
-          ...next.canvas,
-          visualGraphJson: toPlain(graph)
+          ...shot.canvas,
+          [canvasField]: toPlain(graph)
         }
       }
-    }
-    project.persistShotLocal(next)
-    const ownerId = shotScriptAssetId(next)
-    if (ownerId && isDraftAssetId(ownerId)) return
-    if (isDraftShotId(next.id)) return
-    await project.persistShot(next)
+      if (canvasField === 'visualGraphJson') {
+        next = await applyVisualGraphGenRefsToShot(next, graph)
+        next = {
+          ...next,
+          canvas: {
+            ...next.canvas,
+            visualGraphJson: toPlain(graph)
+          }
+        }
+      }
+      project.persistShotLocal(next)
+      const ownerId = shotScriptAssetId(next)
+      if (ownerId && isDraftAssetId(ownerId)) return
+      if (isDraftShotId(next.id)) return
+      await project.persistShot(next)
+    })
   }
 
   function enqueueWorkflow(input: {
@@ -487,12 +611,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     /** 只跑这些汇点的上游并集（如侧栏图内选中的单条链） */
     targetNodeIds?: string[]
   }): EnqueueWorkflowResult {
-    if (hasActiveTaskForTarget(input.target)) {
+    const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
+    if (conflictsWithActiveWorkflow(input.target, targetNodeIds, activeTasks.value)) {
       return { ok: false, reason: 'duplicate' }
     }
 
     const graph = cloneGraphDocument(input.graph)
-    const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
     const order = buildOrder(graph, targetNodeIds)
     const abort = new AbortController()
     const id = `graph-task-${crypto.randomUUID()}`

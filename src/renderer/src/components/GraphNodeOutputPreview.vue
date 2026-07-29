@@ -1612,10 +1612,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   border-radius: 8px;
   overflow: hidden;
   background: var(--graph-preview-bg);
-  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .media-card.selectable {
@@ -1629,8 +1629,9 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 
 .media-card img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  max-height: 240px;
+  object-fit: contain;
   display: block;
   background: var(--graph-preview-bg);
 }
@@ -1660,7 +1661,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   width: 100%;
   height: 100%;
   max-height: none;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .media-card :deep(.media-preview-player.audio) {
