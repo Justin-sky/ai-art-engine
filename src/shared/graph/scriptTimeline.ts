@@ -207,10 +207,6 @@ export function normalizeScriptTimelineSource(
   return next
 }
 
-function isSource(item: unknown): item is ScriptTimelineSource {
-  return normalizeScriptTimelineSource(item as Partial<ScriptTimelineSource>) != null
-}
-
 function isClip(item: unknown): item is ScriptTimelineClip {
   if (!item || typeof item !== 'object') return false
   const row = item as ScriptTimelineClip
