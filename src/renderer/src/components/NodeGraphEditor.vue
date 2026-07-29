@@ -580,8 +580,6 @@ import {
   hydrateHostInputSlotSpecs,
   type ResolveHostInputSlotsOptions,
   isHostInputSlotNode,
-  ensureHostInputSlotNodes,
-  resolveInputLinkHeadTypeIds,
   resolveAssetProcessingTypeId,
   listAddableNodeTypes,
   nextGraphGroupTitle,
@@ -1405,28 +1403,18 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
 }
 
 /**
- * 从当前父图重新解析并写入输入接口（打开 / 再次切入宿主面板时）。
- * 不重建整张图，只同步槽位节点与预览正文。
+ * 打开 / 再次切入宿主面板：只同步 boundary 入端口值与预览正文。
+ * HDA 不再创建 classic graph.input.slot（「文本输入/图片输入」）。
  */
 function syncHostInputSlotsFromParents(): void {
   if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) return
-  const host = graphAsset.value
-  const hostAssetId = props.assetId ?? host?.id ?? null
+  const hostAssetId = props.assetId ?? graphAsset.value?.id ?? null
   if (!hostAssetId) return
-  if (syncBoundaryInputsFromParents()) {
+  const boundaryChanged = syncBoundaryInputsFromParents()
+  if (boundaryChanged) {
     scheduleSave()
     graphEditorHosts.bumpRevision()
   }
-  if (!isAssetRefInputHostType(host?.type)) return
-  const slots = resolveParentHostInputSlots(hostAssetId)
-  if (!slots?.length) return
-  ensureHostInputSlotNodes(graph.nodes, graph.edges, slots, {
-    autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
-      graphScope.value,
-      host.type,
-      resolveAssetProcessingTypeId(graphScope.value, host.type)
-    )
-  })
   void hydrateHostInputSlotTextsInGraph().then(() => {
     scheduleSave()
     graphEditorHosts.bumpRevision()

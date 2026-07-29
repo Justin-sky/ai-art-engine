@@ -82,6 +82,26 @@ export function isHostInputSlotNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === GRAPH_INPUT_SLOT_TYPE_ID
 }
 
+/**
+ * HDA 内图只保留 boundary 入/出口；剥离存量 classic `graph.input.slot` 及其连线。
+ */
+export function stripHostInputSlotNodes(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  runStates?: Record<string, GraphPersistedRunState>
+): { nodes: GraphNode[]; edges: GraphEdge[]; runStates?: Record<string, GraphPersistedRunState> } {
+  const removed = new Set(nodes.filter((n) => isHostInputSlotNode(n)).map((n) => n.id))
+  if (!removed.size) return { nodes, edges, runStates }
+  const nextNodes = nodes.filter((n) => !removed.has(n.id))
+  const nextEdges = edges.filter((e) => !removed.has(e.source) && !removed.has(e.target))
+  let nextStates = runStates
+  if (runStates) {
+    nextStates = { ...runStates }
+    for (const id of removed) delete nextStates[id]
+  }
+  return { nodes: nextNodes, edges: nextEdges, runStates: nextStates }
+}
+
 /** 宿主资产类型 → 外层入端口列表（统一自 hostInterface 默认模板） */
 export function listHostInputPortDefs(assetType: AssetType): Array<{
   id: string

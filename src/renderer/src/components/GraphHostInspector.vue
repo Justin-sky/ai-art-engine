@@ -109,7 +109,98 @@ function buildDraftInterface(): HostInterfaceDocument {
   })
 }
 
-/** 编辑中即时写入实例快照，节点端口顺序/标签立刻跟随；落盘仍需「应用接口」 */
+function hostPortIdsRemoved(
+  previous: HostInterfaceDocument,
+  next: HostInterfaceDocument
+): boolean {
+  const nextIn = new Set(next.inputs.map((p) => p.id))
+  const nextOut = new Set(next.outputs.map((p) => p.id))
+  if (previous.inputs.some((p) => !nextIn.has(p.id))) return true
+  if (previous.outputs.some((p) => !nextOut.has(p.id))) return true
+  return false
+}
+
+function cloneGraphDocument(doc: GraphDocument): GraphDocument {
+  return {
+    ...doc,
+    nodes: doc.nodes.map((n) => ({ ...n, params: { ...n.params } })),
+    edges: [...doc.edges],
+    groups: doc.groups?.map((g) => ({ ...g })),
+    viewport: doc.viewport ? { ...doc.viewport } : { x: 0, y: 0, zoom: 1 }
+  }
+}
+
+/**
+ * 将接口写入资产定义：同步内图 boundary（含删除多余端口）、落盘，
+ * 并更新所有打开图中该宿主实例的快照与外层边。
+ */
+async function commitHostInterface(iface: HostInterfaceDocument): Promise<void> {
+  const current = node.value
+  const hid = hostId.value
+  if (!current?.assetId || !hid) return
+  saving.value = true
+  error.value = ''
+  try {
+    const asset = project.assets.find((a) => a.id === current.assetId)
+    const prevGen = asset?.genParams ?? {}
+    const nextSchemaVersion = readHostSchemaVersion(prevGen) + 1
+    const liveInner = graphEditorHosts.getLiveAssetDocument(current.assetId)
+    const storedInner = prevGen.graphJson as GraphDocument | undefined
+    const baseInner = liveInner ?? storedInner
+    const nextInner = baseInner
+      ? ensureBoundaryProxyNodes(cloneGraphDocument(baseInner), iface)
+      : ensureBoundaryProxyNodes(
+          { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+          iface
+        )
+    await persistAssetRecord(current.assetId, {
+      genParams: {
+        ...prevGen,
+        graphJson: nextInner,
+        hostInterface: cloneHostInterface(iface),
+        schemaVersion: nextSchemaVersion
+      }
+    })
+    await project.refreshAssets()
+
+    // 定义内图若正在 dive/独立编辑，先同步 boundary，避免其后续自动保存覆盖刚写入的接口。
+    if (graphEditorHosts.getDocument(`asset:${current.assetId}`)) {
+      graphEditorHosts.applyExternalGraph(`asset:${current.assetId}`, nextInner)
+    }
+
+    let updatedCurrent = false
+    for (const entry of graphEditorHosts.listLiveEntries()) {
+      const doc = entry.document
+      let next = cloneGraphDocument(doc)
+      let changed = false
+      for (const n of next.nodes) {
+        if (n.assetId !== current.assetId) continue
+        n.params = {
+          ...n.params,
+          hostInterfaceSnapshot: cloneHostInterface(iface),
+          hostSchemaVersion: nextSchemaVersion
+        }
+        next = pruneEdgesForHostInterface(next, n.id, iface)
+        changed = true
+      }
+      if (!changed) continue
+      graphEditorHosts.applyExternalGraph(entry.hostId, next)
+      if (entry.hostId === hid) updatedCurrent = true
+    }
+    if (!updatedCurrent) {
+      graphEditorHosts.updateNode(hid, current.id, {
+        hostInterfaceSnapshot: cloneHostInterface(iface),
+        hostSchemaVersion: nextSchemaVersion
+      })
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    saving.value = false
+  }
+}
+
+/** 编辑中即时写入实例快照；删除端口时同步去掉内图对应 boundary */
 function syncLiveSnapshot(): void {
   const current = node.value
   const hid = hostId.value
@@ -120,6 +211,9 @@ function syncLiveSnapshot(): void {
   graphEditorHosts.updateNode(hid, current.id, {
     hostInterfaceSnapshot: cloneHostInterface(iface)
   })
+  if (hostPortIdsRemoved(prev, iface)) {
+    void commitHostInterface(iface)
+  }
 }
 
 watch(
@@ -171,79 +265,7 @@ async function persistTitle(): Promise<void> {
 }
 
 async function applyInterface(): Promise<void> {
-  const current = node.value
-  const hid = hostId.value
-  if (!current?.assetId || !hid) return
-  saving.value = true
-  error.value = ''
-  try {
-    const iface = buildDraftInterface()
-    const asset = project.assets.find((a) => a.id === current.assetId)
-    const prevGen = asset?.genParams ?? {}
-    const nextSchemaVersion = readHostSchemaVersion(prevGen) + 1
-    const prevGraph = prevGen.graphJson as GraphDocument | undefined
-    const nextInner = prevGraph
-      ? ensureBoundaryProxyNodes(
-          {
-            ...prevGraph,
-            nodes: prevGraph.nodes?.map((n) => ({ ...n })) ?? [],
-            edges: [...(prevGraph.edges ?? [])]
-          },
-          iface
-        )
-      : ensureBoundaryProxyNodes(
-          { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
-          iface
-        )
-    await persistAssetRecord(current.assetId, {
-      genParams: {
-        ...prevGen,
-        graphJson: nextInner,
-        hostInterface: cloneHostInterface(iface),
-        schemaVersion: nextSchemaVersion
-      }
-    })
-    await project.refreshAssets()
-
-    // 定义内图若正在 dive/独立编辑，先同步 boundary，避免其后续自动保存覆盖刚写入的接口。
-    if (graphEditorHosts.getDocument(`asset:${current.assetId}`)) {
-      graphEditorHosts.applyExternalGraph(`asset:${current.assetId}`, nextInner)
-    }
-
-    let updatedCurrent = false
-    for (const entry of graphEditorHosts.listLiveEntries()) {
-      const doc = entry.document
-      let next = {
-        ...doc,
-        nodes: doc.nodes.map((n) => ({ ...n, params: { ...n.params } })),
-        edges: [...doc.edges]
-      }
-      let changed = false
-      for (const n of next.nodes) {
-        if (n.assetId !== current.assetId) continue
-        n.params = {
-          ...n.params,
-          hostInterfaceSnapshot: cloneHostInterface(iface),
-          hostSchemaVersion: nextSchemaVersion
-        }
-        next = pruneEdgesForHostInterface(next, n.id, iface)
-        changed = true
-      }
-      if (!changed) continue
-      graphEditorHosts.applyExternalGraph(entry.hostId, next)
-      if (entry.hostId === hid) updatedCurrent = true
-    }
-    if (!updatedCurrent) {
-      graphEditorHosts.updateNode(hid, current.id, {
-        hostInterfaceSnapshot: cloneHostInterface(iface),
-        hostSchemaVersion: nextSchemaVersion
-      })
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    saving.value = false
-  }
+  await commitHostInterface(buildDraftInterface())
 }
 </script>
 

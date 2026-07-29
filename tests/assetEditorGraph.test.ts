@@ -149,6 +149,40 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
   })
 
+  it('normalize strips classic graph.input.slot and keeps only boundary ports', () => {
+    const polluted = normalizeScopedGraph('workflow', null, {
+      assetType: 'image',
+      hostAssetId: '00000000-0000-4000-8000-000000000411'
+    })
+    const processing = polluted.nodes.find((n) => n.typeId === 'asset.image')!
+    polluted.nodes.push({
+      id: 'graph-input-in-text-0',
+      typeId: 'graph.input.slot',
+      category: 'note',
+      position: { x: 0, y: 0 },
+      title: '输入·文本 1',
+      params: {
+        hostInputSlot: { portId: 'in-text', index: 0, dataType: 'text' },
+        text: 'legacy'
+      }
+    })
+    polluted.edges.push({
+      id: 'e-legacy-slot',
+      source: 'graph-input-in-text-0',
+      target: processing.id,
+      sourcePort: 'out',
+      targetPort: 'in-text'
+    })
+    const cleaned = normalizeScopedGraph('workflow', polluted, {
+      assetType: 'image',
+      hostAssetId: '00000000-0000-4000-8000-000000000411'
+    })
+    expect(cleaned.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
+    expect(cleaned.edges.some((e) => e.id === 'e-legacy-slot')).toBe(false)
+    expect(cleaned.nodes.some((n) => n.id === boundaryInputNodeId('in-text'))).toBe(true)
+    expect(cleaned.nodes.some((n) => n.id === boundaryInputNodeId('in-image'))).toBe(true)
+  })
+
   it('normalize image/video/world assets create matching boundary inputs (HDA)', () => {
     const image = normalizeScopedGraph('workflow', null, {
       assetType: 'image',

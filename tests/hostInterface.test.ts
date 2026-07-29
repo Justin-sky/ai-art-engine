@@ -13,6 +13,8 @@ import {
   sanitizeHostInterface,
   defaultHostInterfaceForAssetType,
   ensureBoundaryProxyNodes,
+  boundaryInputNodeId,
+  boundaryOutputNodeId,
   readHostInterfaceFromGenParams,
   type GraphDocument
 } from '../src/shared/graph'
@@ -342,5 +344,45 @@ describe('hostable assets as HDA', () => {
       expect(inIds).toContain('extra-in')
       expect(inIds.length).toBe(iface.inputs.length + 1)
     }
+  })
+
+  it('ensureBoundaryProxyNodes drops boundary nodes for removed ports', () => {
+    const iface = {
+      version: HOST_INTERFACE_FORMAT_VERSION,
+      inputs: [
+        { id: 'in', label: 'In', dataType: 'text' as const, multiple: true },
+        { id: 'extra-in', label: 'Extra', dataType: 'text' as const, multiple: true }
+      ],
+      outputs: [
+        { id: 'out', label: 'Out', dataType: 'text' as const, multiple: false },
+        { id: 'extra-out', label: 'Extra Out', dataType: 'text' as const, multiple: false }
+      ]
+    }
+    const withExtra = ensureBoundaryProxyNodes(
+      { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      iface
+    )
+    expect(withExtra.nodes.some((n) => n.id === boundaryInputNodeId('extra-in'))).toBe(true)
+    expect(withExtra.nodes.some((n) => n.id === boundaryOutputNodeId('extra-out'))).toBe(true)
+
+    const trimmed = {
+      version: HOST_INTERFACE_FORMAT_VERSION,
+      inputs: [{ id: 'in', label: 'In', dataType: 'text' as const, multiple: true }],
+      outputs: [{ id: 'out', label: 'Out', dataType: 'text' as const, multiple: false }]
+    }
+    const after = ensureBoundaryProxyNodes(withExtra, trimmed)
+    expect(after.nodes.some((n) => n.id === boundaryInputNodeId('extra-in'))).toBe(false)
+    expect(after.nodes.some((n) => n.id === boundaryOutputNodeId('extra-out'))).toBe(false)
+    expect(after.nodes.some((n) => n.id === boundaryInputNodeId('in'))).toBe(true)
+    expect(after.nodes.some((n) => n.id === boundaryOutputNodeId('out'))).toBe(true)
+    expect(
+      after.edges.every(
+        (e) =>
+          e.source !== boundaryInputNodeId('extra-in') &&
+          e.target !== boundaryInputNodeId('extra-in') &&
+          e.source !== boundaryOutputNodeId('extra-out') &&
+          e.target !== boundaryOutputNodeId('extra-out')
+      )
+    ).toBe(true)
   })
 })

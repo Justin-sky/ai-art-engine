@@ -6,8 +6,7 @@ import { inferNodeTypeId, resolveNodeType } from './registry'
 import type { GraphAddScope } from './registry'
 import {
   ensureDefaultGraphFromTemplate,
-  resolveDefaultGraphTemplate,
-  resolveInputLinkHeadTypeIds
+  resolveDefaultGraphTemplate
 } from './defaultGraph'
 import {
   assetTypeToGraphScope,
@@ -31,12 +30,7 @@ import {
 } from './types'
 import { syncNodeAssetRefFields } from '../assetRef'
 import { sanitizePersistedRunStates } from './runStatePersist'
-import {
-  ensureHostInputSlotNodes,
-  isHostInputSlotEditorScope,
-  mergeHostInputSlotsWithDefaults,
-  type HostInputSlotSpec
-} from './hostInput'
+import { stripHostInputSlotNodes, type HostInputSlotSpec } from './hostInput'
 import { isAssetRefInputHostType } from './nodeRole'
 import {
   defaultHostInterfaceForAssetType,
@@ -264,13 +258,9 @@ export function normalizeScopedGraph(
   }
   if (!raw?.nodes?.length) {
     let created = createDefaultScopedGraph(scope, options?.assetType, chainOptions)
-    // HDA：可宿主类型默认图补 boundary（不再插 graph.input.slot）
-    if (scope === 'elementWorkflow') {
+    // HDA：可宿主类型默认图只补 boundary 入/出口
+    if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
       created = ensureBoundaryProxyNodes(created, hostInterface())
-    } else if (isAssetRefInputHostType(options?.assetType)) {
-      created = ensureBoundaryProxyNodes(created, hostInterface())
-    } else {
-      syncHostInputSlots(scope, created.nodes, created.edges, options)
     }
     return created
   }
@@ -307,46 +297,21 @@ export function normalizeScopedGraph(
     })
   }
 
-  syncHostInputSlots(scope, nodes, edges, options)
+  let workingEdges = edges
+  let workingStates = runStates
+  // HDA：去掉 classic「文本输入/图片输入」槽，只保留 boundary
+  if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
+    const strippedSlots = stripHostInputSlotNodes(nodes, workingEdges, workingStates)
+    nodes = strippedSlots.nodes
+    workingEdges = strippedSlots.edges
+    workingStates = strippedSlots.runStates
+  }
 
-  let result = finalizeGraph(nodes, { ...doc, edges, runStates }, scope)
+  let result = finalizeGraph(nodes, { ...doc, edges: workingEdges, runStates: workingStates }, scope)
   if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
     result = ensureBoundaryProxyNodes(result, hostInterface())
   }
   return result
-}
-
-/**
- * 宿主资产编辑器通用规则：有 hostAssetId 即按端口同步输入接口
- *（父图展开优先，缺省端口保底 1 槽）。
- */
-function syncHostInputSlots(
-  scope: GraphAddScope,
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  options?: {
-    assetType?: string | null
-    hostAssetId?: string | null
-    parentHostInputSlots?: HostInputSlotSpec[]
-  }
-): void {
-  if (!isHostInputSlotEditorScope(scope)) return
-  if (!isAssetRefInputHostType(options?.assetType)) return
-  // 未打开具体宿主资产时不插槽（避免无关 workflow 规范化误建）
-  if (!options?.hostAssetId && options?.parentHostInputSlots === undefined) return
-
-  const slots = mergeHostInputSlotsWithDefaults(
-    options.assetType,
-    options.parentHostInputSlots ?? []
-  )
-  if (!slots.length) return
-  ensureHostInputSlotNodes(nodes, edges, slots, {
-    autoLinkHeadTypeIds: resolveInputLinkHeadTypeIds(
-      scope,
-      options.assetType,
-      resolveAssetProcessingTypeId(scope, options.assetType)
-    )
-  })
 }
 
 export function normalizeGraph(
