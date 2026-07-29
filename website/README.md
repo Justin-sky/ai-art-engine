@@ -12,7 +12,7 @@ npm run site
 | 路径 | 说明 |
 |------|------|
 | `index.html` | 官网首页 |
-| `manual.html` | 使用手册（全组件操作说明） |
+| `manual.html` | 使用手册（含成片时间线、导演台站位/动作等 2.0 alpha 说明） |
 | `manual.css` | 手册页样式 |
 
 ## 资源目录

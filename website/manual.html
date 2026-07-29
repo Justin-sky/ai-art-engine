@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="AIArtEngine 使用手册：工程、工作室、设置、节点图、资产库、分镜、导演台、资产包与快捷键。"
+      content="AIArtEngine 使用手册：工程、工作区、设置、节点图、资产库、分镜、成片时间线、导演台、资产包与快捷键。"
     />
     <title>使用手册 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -79,6 +79,7 @@
           <li><a href="#assets">资产库</a></li>
           <li><a href="#graph">节点图</a></li>
           <li><a href="#script-shot">剧本与分镜</a></li>
+          <li><a href="#timeline">成片时间线</a></li>
           <li><a href="#canvas">画布与世界元素</a></li>
           <li><a href="#director">导演台</a></li>
           <li><a href="#package">资产包 .aipackage</a></li>
@@ -93,7 +94,7 @@
           <p class="eyebrow">Docs · Operations</p>
           <h1>使用手册</h1>
           <p class="lede">
-            覆盖当前版本全部主要界面与组件的操作说明：从创建工程、配置模型，到资产、分镜、节点图与导演台。
+            覆盖当前版本（含 <strong>2.0.0-alpha</strong>）全部主要界面与组件的操作说明：从创建工程、配置模型，到资产、分镜、成片时间线、节点图与导演台。
             文案以应用内中文界面为准。
           </p>
         </header>
@@ -410,8 +411,23 @@
           <p>
             图片 / 视频 / 声音 / 剧本等<strong>图库生成节点</strong>有两个输出口：
             <code>out</code>（当前选中的单条，默认自动连线）与
-            <code>out-all</code>（全部历史）。每次执行成功会自动选中最新一条；在右侧 Inspector
+            <code>out-all</code>（全部历史，方形端口）。每次执行成功会自动选中最新一条；在右侧 Inspector
             中单击历史项可改设当前 <code>out</code>。
+          </p>
+          <p>
+            <strong>导演台编辑</strong>节点使用两个方形输出口：
+            <code>out-shots</code>（站位图，<code>images</code>）与
+            <code>out-actions</code>（动作视频，<code>videos</code>）。旧连线
+            <code>out</code> / <code>out-all</code> 会在加载时迁移到 <code>out-shots</code>。
+          </p>
+          <p>
+            结构化目录类端口使用专用类型 <code>world</code> / <code>narrative</code> /
+            <code>shots</code>（界面显示为世界元素 / 叙事单元 / 分镜），勿与普通
+            <code>text</code> 混连。
+          </p>
+          <p>
+            生成类节点支持<strong>锁定</strong>：开启后跳过模型调用，直接复用图库或上次输出（节点卡锁图标与
+            Inspector 可切换）。
           </p>
 
           <h3>6.2 工具条</h3>
@@ -475,6 +491,10 @@
             <li>
               多角度编辑 · 打光效果 · 人像质感调节 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 宫格切分
             </li>
+            <li>
+              精修 / 图片编辑在 Dive 中操作；选项与提示词会<strong>实时写回</strong>节点
+              <code>params</code>，Inspector 同步可见。预览走弹窗，不占用 Dive 工具位。
+            </li>
           </ul>
 
           <h4>分镜管线</h4>
@@ -504,6 +524,9 @@
             <li>
               <strong>图片 / 视频</strong>：上游参考连入生成口 → 提示词中用 <code>@</code> 引用 → 执行 →
               输出节点导出结果。
+            </li>
+            <li>
+              <strong>成片</strong>：分镜 / 视频节点输出 → 打开剧本资产的成片时间线 → 拖入轨道拼装与导出。
             </li>
           </ol>
         </section>
@@ -564,10 +587,59 @@
           </p>
         </section>
 
-        <section id="canvas">
-          <h2>8. 画布与世界元素</h2>
+        <section id="timeline">
+          <h2>8. 成片时间线</h2>
+          <p>
+            成片时间线用于把分镜 / 导入素材拼成一条可预览、可导出的时间轴，通常挂在<strong>剧本资产</strong>上打开。
+          </p>
 
-          <h3>8.1 画布资产</h3>
+          <h3>8.1 打开与布局</h3>
+          <ul>
+            <li>在剧本相关流程中打开成片时间线编辑器（左：素材列表 · 中：预览 · 下：多轨时间线）。</li>
+            <li>轨道常见类型：视频 · 配音 · 字幕 · 音乐。</li>
+          </ul>
+
+          <h3>8.2 左侧素材</h3>
+          <ul>
+            <li>
+              <strong>节点输入</strong>：从上游节点收集的视频 / 声音，不可从列表删除（删轨道片段不影响列表）。
+            </li>
+            <li>
+              <strong>导入素材</strong>：从资产库或系统文件拖入时间线后出现在此；可删除，并同步清掉轨道上对应片段。
+            </li>
+            <li>
+              在导入区<strong>右键</strong>可新建分组；将导入项拖入分组或拖回「未分组」。分组会随时间线文档保存。
+            </li>
+            <li>视频素材图标使用<strong>首帧缩略图</strong>；声音素材显示通用声音图标。</li>
+          </ul>
+
+          <h3>8.3 上轨与编排</h3>
+          <ul>
+            <li>从列表拖到轨道放置；声音误拖到视频轨时会智能落到配音轨。</li>
+            <li>轨道上的片段可用指针<strong>左右拖动</strong>改时间，也可拖到其他轨道。</li>
+            <li>双击片段可预览 / 定位；字幕轨支持编辑文案。</li>
+          </ul>
+
+          <h3>8.4 播放</h3>
+          <ul>
+            <li>
+              <strong>中间预览区播放</strong>：只播放当前选中的视频或声音片段（未选中媒体片段时按钮禁用）。
+            </li>
+            <li>
+              <strong>下方时间线工具栏播放</strong>：按整条时间线联播（视频序列 + 声音轨），并受速度 / 循环设置影响。
+            </li>
+          </ul>
+
+          <h3>8.5 导出</h3>
+          <p>
+            时间线工具栏提供导出成片。需本机可用 ffmpeg（或回退预览录制）；导出进度与结果路径会提示在界面中。
+          </p>
+        </section>
+
+        <section id="canvas">
+          <h2>9. 画布与世界元素</h2>
+
+          <h3>9.1 画布资产</h3>
           <ul>
             <li>空白节点画布：右键添加节点，或从资产库拖入资产。</li>
             <li>
@@ -576,7 +648,7 @@
             </li>
           </ul>
 
-          <h3>8.2 世界元素 / 叙事单元</h3>
+          <h3>9.2 世界元素 / 叙事单元</h3>
           <ul>
             <li>表格视图：角色 / 场景 / 道具 / 武器，或叙事相关列；支持新建与删除行。</li>
             <li>双击对应节点：打开提取 / 拆解指令、表格或编辑窗口。</li>
@@ -584,30 +656,51 @@
         </section>
 
         <section id="director">
-          <h2>9. 导演台</h2>
-          <p> 导演台用于 3D 场景摆姿、机位与动画预览，常作为节点链路中的「导演台编辑 → 导演台输出」。 </p>
+          <h2>10. 导演台</h2>
+          <p>
+            导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
+            下游生成」。编辑节点提供两个<strong>方形</strong>输出口：站位图与动作视频。
+          </p>
 
-          <h3>9.1 从节点打开</h3>
+          <h3>10.1 从节点打开</h3>
           <ol>
             <li>在节点图中双击「导演台编辑」节点，打开<strong>舞台窗口</strong>。</li>
-            <li>将编辑结果连到「导演台输出」；截屏结果会出现在输出图片数组中。</li>
+            <li>
+              关闭舞台或同步后，结果写入节点：
+              <code>out-shots</code>（站位截图，<code>images</code>）与
+              <code>out-actions</code>（动作录制，<code>videos</code>）。
+            </li>
+            <li>在节点 Inspector 中可预览站位缩略图与动作视频（双击进入媒体预览）。</li>
           </ol>
 
-          <h3>9.2 舞台视口操作</h3>
+          <h3>10.2 舞台视口操作</h3>
           <ul>
             <li>左键选择 · 中键平移 · 右键环视。</li>
             <li><kbd>Q</kbd> / <kbd>R</kbd> / <kbd>S</kbd>：移动 / 旋转 / 缩放工具。</li>
           </ul>
 
-          <h3>9.3 侧栏与对象</h3>
+          <h3>10.3 侧栏与对象</h3>
           <ul>
-            <li>侧栏：场景层级、Inspector、全景相关资产。</li>
-            <li>创建：创建相机 · 创建空物体 · 创建物体（Cube / Sphere 等）。</li>
-            <li>对象：删除、隐藏、显示名称、锁定。</li>
-            <li> 属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）· <strong>站位</strong>（截屏）。 </li>
+            <li>
+              左侧场景列表：层级、搜索、创建相机 / 空物体 / 基本体；拖动右缘可<strong>调整列表宽度</strong>（会记住本地设置）。
+            </li>
+            <li>对象：删除、隐藏、显示名称、锁定；支持拖拽改父子关系。</li>
+            <li>属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）。</li>
           </ul>
 
-          <h3>9.4 视图与全景</h3>
+          <h3>10.4 站位和动作</h3>
+          <p>标题栏「站位和动作」打开面板，内含两个分类：</p>
+          <ul>
+            <li>
+              <strong>站位</strong>：视口截屏历史。用工具栏相机按钮截取；双击缩略图可预览。
+            </li>
+            <li>
+              <strong>动作</strong>：动画模式录制的视频历史。录制成功后自动写入工程
+              <code>Cache/Videos/</code>（无需另选目录），并打开动作分类。
+            </li>
+          </ul>
+
+          <h3>10.5 视图与全景</h3>
           <ul>
             <li>导演视角 / 机位切换；六向视图；重置。</li>
             <li>
@@ -616,19 +709,21 @@
             <li>全景：拖入背景图，调节缩放 / 平移 / 旋转、地面与天空色。</li>
           </ul>
 
-          <h3>9.5 动画模式</h3>
+          <h3>10.6 动画模式与录制</h3>
           <ul>
-            <li>在全景模式 / 动画模式间切换。</li>
+            <li>在场景模式 / 动画模式间切换。</li>
             <li>
               轨迹与关键帧：<kbd>K</kbd> 添加关键帧；<kbd>Delete</kbd> 删除关键帧；<kbd>Space</kbd>
               播放 / 暂停。
             </li>
-            <li>可导出视频。</li>
+            <li>
+              动画面板红色圆点按钮为<strong>录制动作</strong>：按当前动画内容录成 WebM，自动保存到缓存目录并进入「动作」列表。
+            </li>
           </ul>
         </section>
 
         <section id="package">
-          <h2>10. 资产包 <code>.aipackage</code></h2>
+          <h2>11. 资产包 <code>.aipackage</code></h2>
           <p> 格式标识为 <code>com.aiartengine.asset-package</code>，用于在工程间迁移素材与相关依赖。 </p>
 
           <h3>导出</h3>
@@ -647,7 +742,7 @@
         </section>
 
         <section id="shortcuts">
-          <h2>11. 快捷键</h2>
+          <h2>12. 快捷键</h2>
           <div class="table-scroll" role="region" aria-label="快捷键表格" tabindex="0">
             <table>
             <thead>
@@ -731,10 +826,10 @@
         </section>
 
         <section id="update">
-          <h2>12. 关于与更新</h2>
+          <h2>13. 关于与更新</h2>
           <p>路径：设置 → 通用 → 关于与更新。</p>
           <ul>
-            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>。</li>
+            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（预发布如 <code>2.0.0-alpha.0</code> 会标为 prerelease）。</li>
             <li><strong>检查更新</strong>：查询 GitHub Releases；开发模式下会提示不检查更新。</li>
             <li>状态包括：正在检查、发现新版本并下载、已是最新、下载进度、失败提示。</li>
             <li>下载完成后可点击<strong>重启并安装</strong>。</li>
@@ -742,13 +837,17 @@
         </section>
 
         <section id="workflow">
-          <h2>13. 推荐端到端流程</h2>
+          <h2>14. 推荐端到端流程</h2>
           <ol>
             <li>设置 → 模型（填密钥并勾选模型）→ 可选配置对象存储（TOS / OSS / COS，仅启用一个）。</li>
             <li>首页新建工程 → 左栏新建「剧本」→ 执行生成 → 接到剧本输出。</li>
             <li>新建「分镜」→ 分镜拆分 → 分镜表格 → 视频生成。</li>
+            <li>打开<strong>成片时间线</strong>：拖入节点输出或导入素材 → 编排轨道 → 预览 / 导出成片。</li>
+            <li>
+              新建「导演台」→ 双击打开舞台 → 截取站位 / 录制动作 → 从方形口
+              <code>out-shots</code> / <code>out-actions</code> 接到下游。
+            </li>
             <li>在资产库导入媒体，或导出 / 再导入 <code>.aipackage</code> 做迁移验证。</li>
-            <li>新建「导演台」→ 双击打开舞台 → 截屏 → 连到导演台输出。</li>
             <li>设置中检查更新，保持客户端为最新版。</li>
           </ol>
           <p>

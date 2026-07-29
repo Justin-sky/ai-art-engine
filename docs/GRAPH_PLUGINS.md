@@ -56,7 +56,7 @@ Scope 配置项（`GraphScopeDefinition`）：
 1. 源节点有输出端口、目标节点有输入端口
 2. **两端 `dataType` 严格相等**（见 `GraphPortType`：`image` / `images` / `voice` / `voices` / `video` / `videos` / `text` / `texts` / `world` / `narrative` / `shots` / `model`）。目录 JSON 使用 `world` / `narrative` / `shots`，不可与 `text` 互通。
 
-端口上会显示类型名。需要接多种上游的节点应声明多个输入口（如导演台编辑：`in-text` / `in-model` / `in-image`）。
+端口上会显示类型名。需要接多种上游的节点应声明多个输入口（如导演台编辑：`in-text` / `in-model` / `in-image`）。导演台编辑另有方形输出口 `out-shots`（`images`，站位截图）与 `out-actions`（`videos`，动作录制）。
 
 内置 scope 的 `addableNodeTypes` 均为 `["*"]`。插件可通过 manifest 的 `graphPolicy` 合并可添加节点白名单；卸载扩展时覆盖层自动移除。
 

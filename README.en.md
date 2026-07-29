@@ -15,7 +15,7 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-1.0.1-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-2.0.0--alpha.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -84,7 +84,9 @@ npm run dist:win | dist:mac | dist:linux
 - **Local projects** — create / open / recent; JSON + media on disk  
 - **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
-- **Node graph** — text / image / video / audio generation  
+- **Node graph** — text / image / video / audio generation; generation lock; dual gallery outputs  
+- **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`  
+- **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
 - **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, Hailuo / MiniMax, Tongyi Qianwen (DashScope), ModelScope  
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + declarative extensions  
@@ -138,8 +140,8 @@ npm run typecheck && npm test
 - **Release**: bump `package.json` + CHANGELOG, commit, then tag and push:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v2.0.0-alpha.0
+git push origin v2.0.0-alpha.0
 ```
 
   CI verifies the tag (without `v`) matches `package.json`, then builds and publishes a [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases) (including `latest.yml` for auto-update).

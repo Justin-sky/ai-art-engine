@@ -16,7 +16,7 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-1.0.1-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-2.0.0--alpha.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -109,7 +109,9 @@ npm run dist:linux  # Linux
 - **本地工程** — 新建 / 打开 / 最近列表，JSON + 媒体目录落盘，数据不出本机
 - **资产库** — 图片 / 视频 / 声音；AssetRef GUID；`.aipackage` 导入导出
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
-- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数
+- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口
+- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`
+- **成片时间线** — 素材分组与上轨编排；预览播选中 / 时间线整轨联播；导出成片
 - **多模型提供商** — OpenRouter、火山方舟（Seedream / Seedance / 声音）、可灵、海螺 AI（MiniMax）、通义千问（DashScope）、魔塔（ModelScope）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + 声明式扩展（窗口 / Inspector / 节点 / 工具栏）
@@ -174,8 +176,8 @@ npm run pack                    # 未封装目录，便于自测
 - **发版**：先改 `package.json` 与 CHANGELOG，提交后打 tag 并推送，例如：
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v2.0.0-alpha.0
+git push origin v2.0.0-alpha.0
 ```
 
   CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
