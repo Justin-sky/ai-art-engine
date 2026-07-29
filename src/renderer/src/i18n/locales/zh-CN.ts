@@ -781,7 +781,7 @@ export default {
     hint: {
       imageGraph: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
       videoGraph: '每镜独立视频图 · 参数与运行使用右侧 Inspector',
-      timeline: '预览成片 · 左侧输入视频或外层资产库可拖入下方轨道',
+      timeline: '预览成片 · 左侧输入视频、资产库或系统视频/音频文件可拖入下方轨道',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
         '双击分镜拆分进入指令编辑 · 双击分镜表格进入表格 · 双击生成分镜图/分镜视频进入对应画布；成片时间线双击进入；面包屑返回上一级'
@@ -794,12 +794,32 @@ export default {
       close: '关闭'
     },
     timeline: {
-      sources: '输入视频',
-      refreshSources: '刷新',
+      sources: '素材库',
+      refreshSources: '刷新输入',
       autoPlace: '自动上轨',
-      sourcesEmpty: '暂无可用视频，请先运行上游生成分镜视频',
+      sourceGroup: {
+        input: '节点输入',
+        imported: '导入素材',
+        importedTag: '导入'
+      },
+      importedEmpty: '拖入视频/声音到轨道后会出现在这里；也可右键创建分组',
+      createGroup: '新建分组',
+      renameGroup: '重命名分组',
+      deleteGroup: '删除分组',
+      deleteGroupConfirm: '删除分组「{name}」？组内素材会回到未分组。',
+      groupNamePrompt: '输入分组名称',
+      groupNamePlaceholder: '分组名称',
+      groupNameDefault: '分组 {n}',
+      groupEmpty: '将素材拖到此处',
+      ungrouped: '未分组',
+      removeSource: '移除导入素材，并删除轨道上对应片段',
+      sourcesEmpty: '暂无素材：可从资产库/系统文件拖入视频或声音，或先运行上游生成分镜视频',
       emptyPreview: '将视频拖入轨道后可在此预览',
-      videoEmpty: '还没有视频，快去生成吧~',
+      videoEmpty: '拖入视频到此处（资产库或系统文件），或先运行上游生成',
+      voiceEmpty: '拖入声音到此处（资产库或音频文件）',
+      musicEmpty: '拖入音乐/音频到此处（资产库或音频文件）',
+      dropUnsupported: '仅支持拖入视频或声音文件',
+      importFailed: '导入失败：{error}',
       createShots: '创建分镜',
       none: '无',
       track: {
@@ -816,6 +836,8 @@ export default {
       toStart: '回到起点',
       play: '播放',
       pause: '暂停',
+      playSelected: '播放选中片段',
+      playTimeline: '播放整条时间线',
       zoomFit: '适应宽度',
       subtitleEmpty: '拖入素材或添加字幕',
       addSubtitle: '添加字幕',

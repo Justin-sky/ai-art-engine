@@ -786,7 +786,7 @@ export default {
     hint: {
       imageGraph: 'Per-shot visual graph · use the right Inspector for params and run',
       videoGraph: 'Per-shot video graph · use the right Inspector for params and run',
-      timeline: 'Preview the cut · drag from input videos or the studio asset panel onto the tracks below',
+      timeline: 'Preview the cut · drag input videos, or asset-library / system video and audio files onto the tracks below',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
         'Double-click shot split to edit instruction · double-click shot table to enter the table · double-click shot image/video gen to dive into the matching graph; double-click cut timeline to enter it; use breadcrumbs to go back'
@@ -799,12 +799,33 @@ export default {
       close: 'Close'
     },
     timeline: {
-      sources: 'Input videos',
-      refreshSources: 'Refresh',
+      sources: 'Media library',
+      refreshSources: 'Refresh inputs',
       autoPlace: 'Auto-place',
-      sourcesEmpty: 'No videos yet — run upstream shot video generation first',
+      sourceGroup: {
+        input: 'Node inputs',
+        imported: 'Imported',
+        importedTag: 'Import'
+      },
+      importedEmpty: 'Dropped videos/audio appear here; right-click to create a group',
+      createGroup: 'New group',
+      renameGroup: 'Rename group',
+      deleteGroup: 'Delete group',
+      deleteGroupConfirm: 'Delete group "{name}"? Items move back to Ungrouped.',
+      groupNamePrompt: 'Enter a group name',
+      groupNamePlaceholder: 'Group name',
+      groupNameDefault: 'Group {n}',
+      groupEmpty: 'Drop items here',
+      ungrouped: 'Ungrouped',
+      removeSource: 'Remove from list and matching clips on tracks',
+      sourcesEmpty:
+        'No media yet — drop videos or audio from the asset library / files, or run upstream shot video generation',
       emptyPreview: 'Drop videos on the track to preview here',
-      videoEmpty: 'No video yet — go generate some~',
+      videoEmpty: 'Drop videos here (asset library or files), or generate upstream first',
+      voiceEmpty: 'Drop voice audio here (asset library or audio files)',
+      musicEmpty: 'Drop music/audio here (asset library or audio files)',
+      dropUnsupported: 'Only video or audio files can be dropped',
+      importFailed: 'Import failed: {error}',
       createShots: 'Create shots',
       none: 'None',
       track: {
@@ -821,6 +842,8 @@ export default {
       toStart: 'Go to start',
       play: 'Play',
       pause: 'Pause',
+      playSelected: 'Play selected clip',
+      playTimeline: 'Play full timeline',
       zoomFit: 'Fit',
       subtitleEmpty: 'Drop media or add a caption',
       addSubtitle: 'Add caption',

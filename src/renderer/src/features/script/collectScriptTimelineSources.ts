@@ -157,6 +157,14 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
   return sources
 }
 
+function asInputSources(list: ScriptTimelineSource[]): ScriptTimelineSource[] {
+  return list.map((src) => ({
+    ...src,
+    origin: 'input' as const,
+    mediaKind: src.mediaKind === 'voice' ? ('voice' as const) : ('video' as const)
+  }))
+}
+
 export async function collectScriptTimelineSources(input: {
   scriptAssetId: string
   hostId?: string
@@ -165,7 +173,7 @@ export async function collectScriptTimelineSources(input: {
   const doc = readScriptGraph(input.scriptAssetId)
   if (doc) {
     const fromGraph = collectFromValueVideos(doc, hostId)
-    if (fromGraph.length) return fromGraph
+    if (fromGraph.length) return asInputSources(fromGraph)
   }
 
   // 回退：收集各镜 shotWorkflow 已有视频
@@ -178,8 +186,10 @@ export async function collectScriptTimelineSources(input: {
     scriptAssetId: input.scriptAssetId,
     shots
   })
-  if (collected.entities.length) return entitiesToSources(collected.entities)
-  return collected.videos
-    .map((item, i) => videoItemToSource(item, i))
-    .filter((item): item is ScriptTimelineSource => !!item)
+  if (collected.entities.length) return asInputSources(entitiesToSources(collected.entities))
+  return asInputSources(
+    collected.videos
+      .map((item, i) => videoItemToSource(item, i))
+      .filter((item): item is ScriptTimelineSource => !!item)
+  )
 }

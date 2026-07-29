@@ -1,6 +1,17 @@
 /** 成片时间线：存于剧本资产 genParams.scriptTimeline */
 export type ScriptTimelineTrackKind = 'video' | 'voice' | 'subtitle' | 'music'
 
+/** 左侧素材来源：节点上游收集 vs 资产库/系统文件拖入 */
+export type ScriptTimelineSourceOrigin = 'input' | 'imported'
+
+/** 左侧素材媒体类型（决定双击默认上哪条轨） */
+export type ScriptTimelineSourceMediaKind = 'video' | 'voice'
+
+export type ScriptTimelineSourceGroup = {
+  id: string
+  title: string
+}
+
 export type ScriptTimelineSource = {
   id: string
   title: string
@@ -8,6 +19,12 @@ export type ScriptTimelineSource = {
   assetId?: string
   /** 元数据时长（秒）；未知时由预览探测补齐 */
   durationSec?: number
+  /** 缺省按 input 兼容旧数据；拖入素材写 imported */
+  origin?: ScriptTimelineSourceOrigin
+  /** 缺省按 video 兼容旧数据 */
+  mediaKind?: ScriptTimelineSourceMediaKind
+  /** 仅 imported：所属分组；空/缺省=未分组 */
+  groupId?: string | null
 }
 
 export type ScriptTimelineClip = {
@@ -37,6 +54,8 @@ export type ScriptTimelineDocument = {
   clips: ScriptTimelineClip[]
   /** 最近一次从输出节点收集到的素材（便于关闭后再开） */
   sources?: ScriptTimelineSource[]
+  /** 导入素材的自定义分组 */
+  sourceGroups?: ScriptTimelineSourceGroup[]
   settings?: ScriptTimelineSettings
 }
 
@@ -100,7 +119,16 @@ export function readScriptTimelineFromGenParams(
   const doc = raw as ScriptTimelineDocument
   return {
     clips: Array.isArray(doc.clips) ? doc.clips.filter(isClip) : [],
-    sources: Array.isArray(doc.sources) ? doc.sources.filter(isSource) : [],
+    sources: Array.isArray(doc.sources)
+      ? doc.sources
+          .map((item) => normalizeScriptTimelineSource(item))
+          .filter((item): item is ScriptTimelineSource => !!item)
+      : [],
+    sourceGroups: Array.isArray(doc.sourceGroups)
+      ? doc.sourceGroups
+          .map((item) => normalizeScriptTimelineSourceGroup(item))
+          .filter((item): item is ScriptTimelineSourceGroup => !!item)
+      : [],
     settings: sanitizeSettings(doc.settings)
   }
 }
@@ -110,11 +138,15 @@ export function withScriptTimeline(
   timeline: ScriptTimelineDocument
 ): Record<string, unknown> {
   const settings = sanitizeSettings(timeline.settings)
+  const sourceGroups = (timeline.sourceGroups ?? [])
+    .map((item) => normalizeScriptTimelineSourceGroup(item))
+    .filter((item): item is ScriptTimelineSourceGroup => !!item)
   return {
     ...(genParams ?? {}),
     [SCRIPT_TIMELINE_PARAM_KEY]: {
       clips: timeline.clips,
       ...(timeline.sources?.length ? { sources: timeline.sources } : {}),
+      ...(sourceGroups.length ? { sourceGroups } : {}),
       ...(settings ? { settings } : {})
     }
   }
@@ -134,10 +166,49 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   return Object.keys(next).length ? next : undefined
 }
 
+export function normalizeScriptTimelineSourceGroup(
+  raw: Partial<ScriptTimelineSourceGroup> | null | undefined
+): ScriptTimelineSourceGroup | null {
+  if (!raw || typeof raw.id !== 'string' || !raw.id.trim()) return null
+  if (typeof raw.title !== 'string' || !raw.title.trim()) return null
+  return { id: raw.id.trim(), title: raw.title.trim() }
+}
+
+export function normalizeScriptTimelineSource(
+  raw: Partial<ScriptTimelineSource> | null | undefined
+): ScriptTimelineSource | null {
+  if (!raw || typeof raw.id !== 'string' || typeof raw.title !== 'string') return null
+  const origin: ScriptTimelineSourceOrigin =
+    raw.origin === 'imported' ? 'imported' : 'input'
+  const mediaKind: ScriptTimelineSourceMediaKind =
+    raw.mediaKind === 'voice' ? 'voice' : 'video'
+  const next: ScriptTimelineSource = {
+    id: raw.id,
+    title: raw.title,
+    origin,
+    mediaKind
+  }
+  if (typeof raw.relativePath === 'string' && raw.relativePath.trim()) {
+    next.relativePath = raw.relativePath.trim()
+  }
+  if (typeof raw.assetId === 'string' && raw.assetId.trim()) {
+    next.assetId = raw.assetId.trim()
+  }
+  if (typeof raw.durationSec === 'number' && Number.isFinite(raw.durationSec) && raw.durationSec > 0) {
+    next.durationSec = raw.durationSec
+  }
+  if (origin === 'imported') {
+    if (typeof raw.groupId === 'string' && raw.groupId.trim()) {
+      next.groupId = raw.groupId.trim()
+    } else if (raw.groupId === null) {
+      next.groupId = null
+    }
+  }
+  return next
+}
+
 function isSource(item: unknown): item is ScriptTimelineSource {
-  if (!item || typeof item !== 'object') return false
-  const row = item as ScriptTimelineSource
-  return typeof row.id === 'string' && typeof row.title === 'string'
+  return normalizeScriptTimelineSource(item as Partial<ScriptTimelineSource>) != null
 }
 
 function isClip(item: unknown): item is ScriptTimelineClip {

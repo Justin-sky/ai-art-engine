@@ -11,29 +11,197 @@
             <button
               type="button"
               class="ghost-btn"
-              :disabled="!sources.length"
+              :disabled="!videoSources.length"
               @click="autoPlaceAll"
             >
               {{ t('script.timeline.autoPlace') }}
             </button>
           </div>
         </div>
-        <div v-if="!sources.length" class="panel-empty">{{ t('script.timeline.sourcesEmpty') }}</div>
-        <div v-else class="source-list">
-          <button
-            v-for="src in sources"
-            :key="src.id"
-            type="button"
-            class="source-card"
-            draggable="true"
-            @dragstart="onSourceDragStart($event, src)"
-            @dblclick="addSourceToTrack(src, 'video')"
+        <div
+          class="source-list"
+          @contextmenu.prevent="onImportedPanelContextMenu"
+        >
+          <section v-if="inputSources.length" class="source-group">
+            <div class="source-group-head">
+              <span>{{ t('script.timeline.sourceGroup.input') }}</span>
+              <span class="source-group-count">{{ inputSources.length }}</span>
+            </div>
+            <div
+              v-for="src in inputSources"
+              :key="`in-${src.id}`"
+              class="source-card origin-input"
+              draggable="true"
+              @dragstart="onSourceDragStart($event, src)"
+              @dblclick="onSourceActivate(src)"
+            >
+              <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                  voiceSourceIcon
+                }}</span>
+              </span>
+              <span class="source-meta">
+                <span class="source-name">{{ src.title }}</span>
+                <span class="source-tags">
+                  <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
+                  <span v-if="src.durationSec" class="source-dur">{{ formatTime(src.durationSec) }}</span>
+                </span>
+              </span>
+            </div>
+          </section>
+
+          <section
+            class="source-group imported-panel"
+            @contextmenu.prevent="onImportedPanelContextMenu"
+            @dragover.prevent="onImportedRootDragOver"
+            @drop.prevent="onImportedRootDrop"
           >
-            <span class="source-thumb" aria-hidden="true" />
-            <span class="source-meta">
-              <span class="source-name">{{ src.title }}</span>
-              <span v-if="src.durationSec" class="source-dur">{{ formatTime(src.durationSec) }}</span>
-            </span>
+            <div class="source-group-head">
+              <span>{{ t('script.timeline.sourceGroup.imported') }}</span>
+              <span class="source-group-count">{{ importedSources.length }}</span>
+            </div>
+
+            <div
+              v-for="group in sourceGroups"
+              :key="group.id"
+              class="source-folder"
+              :class="{
+                collapsed: collapsedGroupIds.has(group.id),
+                'drag-over': dropGroupId === group.id
+              }"
+              @contextmenu.prevent.stop="onGroupContextMenu($event, group.id)"
+              @dragover.prevent.stop="onGroupDragOver($event, group.id)"
+              @dragleave="onGroupDragLeave($event, group.id)"
+              @drop.prevent.stop="onGroupDrop($event, group.id)"
+            >
+              <button type="button" class="folder-head" @click="toggleGroupCollapsed(group.id)">
+                <span class="folder-chevron" aria-hidden="true">{{
+                  collapsedGroupIds.has(group.id) ? '▸' : '▾'
+                }}</span>
+                <span class="folder-title">{{ group.title }}</span>
+                <span class="source-group-count">{{ sourcesInGroup(group.id).length }}</span>
+              </button>
+              <div v-show="!collapsedGroupIds.has(group.id)" class="folder-body">
+                <div
+                  v-for="src in sourcesInGroup(group.id)"
+                  :key="`im-${src.id}`"
+                  class="source-card origin-imported"
+                  draggable="true"
+                  @dragstart="onSourceDragStart($event, src)"
+                  @dblclick="onSourceActivate(src)"
+                >
+                  <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                    <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                    <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                      voiceSourceIcon
+                    }}</span>
+                  </span>
+                  <span class="source-meta">
+                    <span class="source-name">{{ src.title }}</span>
+                    <span class="source-tags">
+                      <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
+                      <span v-if="src.durationSec" class="source-dur">{{
+                        formatTime(src.durationSec)
+                      }}</span>
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    class="source-remove"
+                    :title="t('script.timeline.removeSource')"
+                    @pointerdown.stop
+                    @click.stop="removeSource(src.id)"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div v-if="!sourcesInGroup(group.id).length" class="folder-empty">
+                  {{ t('script.timeline.groupEmpty') }}
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="ungrouped-zone"
+              :class="{ 'drag-over': dropGroupId === '' }"
+              @contextmenu.prevent="onImportedPanelContextMenu"
+              @dragover.prevent.stop="onGroupDragOver($event, '')"
+              @dragleave="onGroupDragLeave($event, '')"
+              @drop.prevent.stop="onGroupDrop($event, '')"
+            >
+              <div v-if="sourceGroups.length && ungroupedImportedSources.length" class="ungrouped-label">
+                {{ t('script.timeline.ungrouped') }}
+              </div>
+              <div
+                v-for="src in ungroupedImportedSources"
+                :key="`im-${src.id}`"
+                class="source-card origin-imported"
+                draggable="true"
+                @dragstart="onSourceDragStart($event, src)"
+                @dblclick="onSourceActivate(src)"
+              >
+                <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                  <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                  <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                    voiceSourceIcon
+                  }}</span>
+                </span>
+                <span class="source-meta">
+                  <span class="source-name">{{ src.title }}</span>
+                  <span class="source-tags">
+                    <span class="source-tag imported">{{
+                      t('script.timeline.sourceGroup.importedTag')
+                    }}</span>
+                    <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
+                    <span v-if="src.durationSec" class="source-dur">{{
+                      formatTime(src.durationSec)
+                    }}</span>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  class="source-remove"
+                  :title="t('script.timeline.removeSource')"
+                  @pointerdown.stop
+                  @click.stop="removeSource(src.id)"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                v-if="!importedSources.length && !sourceGroups.length"
+                class="panel-empty subtle"
+              >
+                {{
+                  inputSources.length
+                    ? t('script.timeline.importedEmpty')
+                    : t('script.timeline.sourcesEmpty')
+                }}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div
+          v-if="sourceCtx"
+          class="source-ctx-menu"
+          :style="{ left: `${sourceCtx.x}px`, top: `${sourceCtx.y}px` }"
+          @pointerdown.stop
+        >
+          <button type="button" @click="createImportedGroup">
+            {{ t('script.timeline.createGroup') }}
+          </button>
+          <button v-if="sourceCtx.groupId" type="button" @click="renameImportedGroup">
+            {{ t('script.timeline.renameGroup') }}
+          </button>
+          <button
+            v-if="sourceCtx.groupId"
+            type="button"
+            class="danger"
+            @click="deleteImportedGroup"
+          >
+            {{ t('script.timeline.deleteGroup') }}
           </button>
         </div>
       </aside>
@@ -57,8 +225,18 @@
           </div>
           <div v-if="activeSubtitleText" class="subtitle-overlay">{{ activeSubtitleText }}</div>
           <div class="preview-transport">
-            <button type="button" class="ctrl" :title="t('script.timeline.play')" @click="togglePlay">
-              <span :class="playing ? 'icon-pause' : 'icon-play'" />
+            <button
+              type="button"
+              class="preview-play-btn"
+              :title="
+                playing && playMode === 'solo'
+                  ? t('script.timeline.pause')
+                  : t('script.timeline.playSelected')
+              "
+              :disabled="!selectedPlayableClip"
+              @click="togglePreviewPlay"
+            >
+              <span :class="playing && playMode === 'solo' ? 'pause' : 'triangle'" />
             </button>
             <span class="time">{{ formatTime(playheadSec) }} / {{ formatTime(totalDuration) }}</span>
           </div>
@@ -106,10 +284,14 @@
           <button
             type="button"
             class="ghost-btn"
-            :title="playing ? t('script.timeline.pause') : t('script.timeline.play')"
-            @click="togglePlay"
+            :title="
+              playing && playMode === 'timeline'
+                ? t('script.timeline.pause')
+                : t('script.timeline.playTimeline')
+            "
+            @click="toggleTimelinePlay"
           >
-            {{ playing ? '⏸' : '▶' }}
+            {{ playing && playMode === 'timeline' ? '⏸' : '▶' }}
           </button>
           <button
             type="button"
@@ -172,7 +354,11 @@
             v-for="track in tracks"
             :key="track.kind"
             class="track-row droppable"
+            :data-track-kind="track.kind"
+            :class="{ 'drag-over': dragOverTrack === track.kind }"
+            @dragenter.prevent="onTrackDragOver($event, track.kind)"
             @dragover.prevent="onTrackDragOver($event, track.kind)"
+            @dragleave="onTrackDragLeave($event, track.kind)"
             @drop.prevent="onTrackDrop($event, track.kind)"
           >
             <div class="track-label">{{ track.label }}</div>
@@ -186,7 +372,7 @@
               <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
                   <span class="speaker" aria-hidden="true" />
-                  <span>{{ t('script.timeline.none') }}</span>
+                  <span>{{ t('script.timeline.voiceEmpty') }}</span>
                 </div>
               </template>
               <template v-else-if="track.kind === 'subtitle' && !clipsOn(track.kind).length">
@@ -199,7 +385,7 @@
               </template>
               <template v-else-if="track.kind === 'music' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
-                  <span>{{ t('script.timeline.none') }}</span>
+                  <span>{{ t('script.timeline.musicEmpty') }}</span>
                 </div>
               </template>
               <button
@@ -207,17 +393,20 @@
                 :key="clip.id"
                 type="button"
                 class="clip"
-                :class="{ active: clip.id === activeClipId, subtitle: clip.track === 'subtitle' }"
+                :class="{
+                  active: clip.id === activeClipId,
+                  subtitle: clip.track === 'subtitle',
+                  dragging: clipDrag?.clipId === clip.id
+                }"
                 :style="clipStyle(clip)"
-                draggable="true"
-                @dragstart="onClipDragStart($event, clip)"
-                @pointerdown.stop="selectClip(clip)"
+                @pointerdown.stop="onClipPointerDown($event, clip)"
                 @dblclick.stop="onClipDblClick(clip)"
               >
                 <span class="clip-title">{{ clipDisplayTitle(clip) }}</span>
                 <span
                   class="clip-remove"
                   :title="t('script.timeline.removeClip')"
+                  @pointerdown.stop
                   @click.stop="removeClip(clip.id)"
                 >
                   ×
@@ -264,23 +453,34 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { isDraftAssetId, type AssetInfo } from '@shared/domain'
+import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   normalizePlaybackRate,
+  normalizeScriptTimelineSource,
+  normalizeScriptTimelineSourceGroup,
   readScriptTimelineFromGenParams,
   withScriptTimeline,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
   type ScriptTimelineSource,
+  type ScriptTimelineSourceGroup,
+  type ScriptTimelineSourceMediaKind,
   type ScriptTimelineTrackKind,
   type TimelineExportClip
 } from '@shared/graph'
+import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { persistAssetRecord } from '../composables/useAssetRecord'
-import { promptAlert } from '../composables/useStudioPrompt'
+import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
+import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
-import { useWorkspaceStore } from '../stores/workspace'
+import {
+  STUDIO_ASSET_DRAG_MIME,
+  STUDIO_ASSET_ID_DRAG_MIME,
+  STUDIO_ASSET_IDS_DRAG_MIME,
+  useWorkspaceStore
+} from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
 import { toPlain } from '../utils/toPlain'
@@ -296,6 +496,8 @@ const drafts = useDraftStore()
 const workspace = useWorkspaceStore()
 
 const DRAFT_MIME = 'application/x-aiart-timeline-source'
+/** 导入列表内整理分组用（与上轨 MIME 并存） */
+const SOURCE_MOVE_MIME = 'application/x-aiart-timeline-source-id'
 const TRACK_LABEL_W = 72
 const PX_PER_SEC_MAX = 160
 const PX_PER_SEC_MIN = 4
@@ -305,10 +507,20 @@ const minLaneSec = 12
 const PLAYBACK_RATE_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const sources = ref<ScriptTimelineSource[]>([])
+const sourceGroups = ref<ScriptTimelineSourceGroup[]>([])
 const clips = ref<ScriptTimelineClip[]>([])
 const sourcesBusy = ref(false)
+/** 视频素材首帧预览 URL（与资产库列表同源） */
+const sourceThumbUrls = ref<Record<string, string>>({})
+const sourceThumbPathById = new Map<string, string>()
+const voiceSourceIcon = ASSET_TYPE_ICONS.voice
+const collapsedGroupIds = ref<Set<string>>(new Set())
+const dropGroupId = ref<string | null>(null)
+const sourceCtx = ref<{ x: number; y: number; groupId: string | null } | null>(null)
 const playheadSec = ref(0)
 const playing = ref(false)
+/** timeline=整轨联播；solo=仅预览区播选中片段 */
+const playMode = ref<'timeline' | 'solo' | null>(null)
 const activeClipId = ref<string | null>(null)
 const previewSrc = ref('')
 const previewEl = ref<HTMLVideoElement | null>(null)
@@ -325,6 +537,15 @@ const exporting = ref(false)
 const exportProgress = ref(0)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
 const subtitleInputEl = ref<HTMLInputElement | null>(null)
+/** 当前可放置高亮的轨道 */
+const dragOverTrack = ref<ScriptTimelineTrackKind | null>(null)
+/** 轨道片段指针拖拽（自由挪动时间 / 换轨） */
+const clipDrag = ref<{
+  clipId: string
+  pointerId: number
+  grabOffsetSec: number
+  moved: boolean
+} | null>(null)
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let playSeq = 0
@@ -338,6 +559,322 @@ const tracks = computed(() => [
   { kind: 'subtitle' as const, label: t('script.timeline.track.subtitle') },
   { kind: 'music' as const, label: t('script.timeline.track.music') }
 ])
+
+const inputSources = computed(() =>
+  sources.value.filter((s) => (s.origin ?? 'input') === 'input')
+)
+const importedSources = computed(() =>
+  sources.value.filter((s) => s.origin === 'imported')
+)
+const ungroupedImportedSources = computed(() =>
+  importedSources.value.filter((s) => !s.groupId || !sourceGroups.value.some((g) => g.id === s.groupId))
+)
+const videoSources = computed(() =>
+  sources.value.filter((s) => (s.mediaKind ?? 'video') === 'video')
+)
+
+const selectedPlayableClip = computed(() => {
+  const clip = clips.value.find((c) => c.id === activeClipId.value)
+  if (!clip) return null
+  if (clip.track === 'video' || clip.track === 'voice' || clip.track === 'music') return clip
+  return null
+})
+
+function sourcesInGroup(groupId: string): ScriptTimelineSource[] {
+  return importedSources.value.filter((s) => s.groupId === groupId)
+}
+
+function toggleGroupCollapsed(groupId: string): void {
+  const next = new Set(collapsedGroupIds.value)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  collapsedGroupIds.value = next
+}
+
+function closeSourceCtx(): void {
+  sourceCtx.value = null
+}
+
+function onImportedPanelContextMenu(e: MouseEvent): void {
+  sourceCtx.value = { x: e.clientX, y: e.clientY, groupId: null }
+}
+
+function onGroupContextMenu(e: MouseEvent, groupId: string): void {
+  sourceCtx.value = { x: e.clientX, y: e.clientY, groupId }
+}
+
+function isImportedSourceDrag(e: DragEvent): boolean {
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  // 仅导入项带 SOURCE_MOVE_MIME；节点输入只有 DRAFT_MIME，不应高亮分组
+  return types.includes(SOURCE_MOVE_MIME)
+}
+
+function onImportedRootDragOver(e: DragEvent): void {
+  if (!isImportedSourceDrag(e)) return
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+}
+
+function onImportedRootDrop(e: DragEvent): void {
+  // 落到面板空白处：移出分组
+  void moveImportedSourceToGroup(e, null)
+}
+
+function onGroupDragOver(e: DragEvent, groupId: string): void {
+  if (!isImportedSourceDrag(e)) return
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dropGroupId.value = groupId
+}
+
+function onGroupDragLeave(e: DragEvent, groupId: string): void {
+  const related = e.relatedTarget as Node | null
+  const el = e.currentTarget as HTMLElement | null
+  if (related && el?.contains(related)) return
+  if (dropGroupId.value === groupId) dropGroupId.value = null
+}
+
+function onGroupDrop(e: DragEvent, groupId: string): void {
+  dropGroupId.value = null
+  void moveImportedSourceToGroup(e, groupId || null)
+}
+
+async function moveImportedSourceToGroup(
+  e: DragEvent,
+  groupId: string | null
+): Promise<void> {
+  const id =
+    e.dataTransfer?.getData(SOURCE_MOVE_MIME) ||
+    (() => {
+      const raw = e.dataTransfer?.getData(DRAFT_MIME)
+      if (!raw) return ''
+      try {
+        const parsed = JSON.parse(raw) as { id?: string }
+        return typeof parsed.id === 'string' ? parsed.id : ''
+      } catch {
+        return ''
+      }
+    })()
+  if (!id) return
+  const src = sources.value.find((s) => s.id === id)
+  if (!src || src.origin !== 'imported') return
+  const nextGroupId =
+    groupId && sourceGroups.value.some((g) => g.id === groupId) ? groupId : null
+  if ((src.groupId ?? null) === nextGroupId) return
+  sources.value = sources.value.map((s) =>
+    s.id === id ? { ...s, groupId: nextGroupId } : s
+  )
+  scheduleSave()
+}
+
+async function createImportedGroup(): Promise<void> {
+  closeSourceCtx()
+  const name = await promptText({
+    title: t('script.timeline.createGroup'),
+    message: t('script.timeline.groupNamePrompt'),
+    defaultValue: t('script.timeline.groupNameDefault', {
+      n: sourceGroups.value.length + 1
+    }),
+    placeholder: t('script.timeline.groupNamePlaceholder')
+  })
+  if (name == null) return
+  const title = name.trim() || t('script.timeline.groupNameDefault', {
+    n: sourceGroups.value.length + 1
+  })
+  const group: ScriptTimelineSourceGroup = {
+    id: `sg:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 6)}`,
+    title
+  }
+  sourceGroups.value = [...sourceGroups.value, group]
+  scheduleSave()
+}
+
+async function renameImportedGroup(): Promise<void> {
+  const groupId = sourceCtx.value?.groupId
+  closeSourceCtx()
+  const group = sourceGroups.value.find((g) => g.id === groupId)
+  if (!group) return
+  const name = await promptText({
+    title: t('script.timeline.renameGroup'),
+    message: t('script.timeline.groupNamePrompt'),
+    defaultValue: group.title,
+    placeholder: t('script.timeline.groupNamePlaceholder')
+  })
+  if (name == null) return
+  const title = name.trim()
+  if (!title) return
+  sourceGroups.value = sourceGroups.value.map((g) =>
+    g.id === group.id ? { ...g, title } : g
+  )
+  scheduleSave()
+}
+
+async function deleteImportedGroup(): Promise<void> {
+  const groupId = sourceCtx.value?.groupId
+  closeSourceCtx()
+  if (!groupId) return
+  const group = sourceGroups.value.find((g) => g.id === groupId)
+  if (!group) return
+  const ok = await promptConfirm({
+    title: t('script.timeline.deleteGroup'),
+    message: t('script.timeline.deleteGroupConfirm', { name: group.title })
+  })
+  if (!ok) return
+  sourceGroups.value = sourceGroups.value.filter((g) => g.id !== groupId)
+  sources.value = sources.value.map((s) =>
+    s.origin === 'imported' && s.groupId === groupId ? { ...s, groupId: null } : s
+  )
+  const collapsed = new Set(collapsedGroupIds.value)
+  collapsed.delete(groupId)
+  collapsedGroupIds.value = collapsed
+  scheduleSave()
+}
+
+function sourceMediaKind(src: ScriptTimelineSource): ScriptTimelineSourceMediaKind {
+  return src.mediaKind === 'voice' ? 'voice' : 'video'
+}
+
+function sourceMediaLabel(src: ScriptTimelineSource): string {
+  return sourceMediaKind(src) === 'voice'
+    ? t('script.timeline.track.voice')
+    : t('script.timeline.track.video')
+}
+
+function sourceThumbClass(src: ScriptTimelineSource): string {
+  return sourceMediaKind(src) === 'voice' ? 'voice' : 'video'
+}
+
+function sourceRelativePath(source: {
+  relativePath?: string
+  assetId?: string
+}): string {
+  return (
+    source.relativePath?.trim() ||
+    (source.assetId
+      ? project.assets.find((a) => a.id === source.assetId)?.relativePath?.trim()
+      : '') ||
+    ''
+  )
+}
+
+async function loadSourceThumb(src: ScriptTimelineSource): Promise<void> {
+  if (sourceMediaKind(src) === 'voice') return
+  const rel = sourceRelativePath(src)
+  if (!rel) return
+  if (sourceThumbPathById.get(src.id) === rel && sourceThumbUrls.value[src.id]) return
+  try {
+    const url = await resolveAssetPreviewUrl(rel)
+    if (!url) return
+    sourceThumbPathById.set(src.id, rel)
+    sourceThumbUrls.value = { ...sourceThumbUrls.value, [src.id]: url }
+  } catch {
+    /* 首帧提取失败时保留类型占位色 */
+  }
+}
+
+async function refreshSourceThumbs(): Promise<void> {
+  const alive = new Set(sources.value.map((s) => s.id))
+  for (const id of [...sourceThumbPathById.keys()]) {
+    if (alive.has(id)) continue
+    sourceThumbPathById.delete(id)
+    if (sourceThumbUrls.value[id]) {
+      const next = { ...sourceThumbUrls.value }
+      delete next[id]
+      sourceThumbUrls.value = next
+    }
+  }
+  for (const src of sources.value) {
+    const rel = sourceRelativePath(src)
+    if (sourceThumbPathById.get(src.id) && sourceThumbPathById.get(src.id) !== rel) {
+      sourceThumbPathById.delete(src.id)
+      if (sourceThumbUrls.value[src.id]) {
+        const next = { ...sourceThumbUrls.value }
+        delete next[src.id]
+        sourceThumbUrls.value = next
+      }
+    }
+    await loadSourceThumb(src)
+  }
+}
+
+function defaultTrackForSource(src: ScriptTimelineSource): ScriptTimelineTrackKind {
+  return sourceMediaKind(src) === 'voice' ? 'voice' : 'video'
+}
+
+function onSourceActivate(src: ScriptTimelineSource): void {
+  void addSourceToTrack(src, defaultTrackForSource(src))
+}
+
+function sourceIdentityKey(src: Pick<ScriptTimelineSource, 'id' | 'assetId' | 'relativePath'>): string {
+  const assetId = src.assetId?.trim()
+  if (assetId) return `asset:${assetId}`
+  const rel = src.relativePath?.trim().replace(/\\/g, '/')
+  if (rel) return `path:${rel}`
+  return `id:${src.id}`
+}
+
+function upsertImportedSource(
+  source: ScriptTimelineSource,
+  mediaKind: ScriptTimelineSourceMediaKind,
+  durationSec?: number
+): void {
+  const normalized = normalizeScriptTimelineSource({
+    ...source,
+    origin: 'imported',
+    mediaKind,
+    ...(durationSec && durationSec > 0 ? { durationSec } : {})
+  })
+  if (!normalized) return
+  const key = sourceIdentityKey(normalized)
+  const idx = sources.value.findIndex((s) => sourceIdentityKey(s) === key)
+  if (idx >= 0) {
+    const prev = sources.value[idx]!
+    sources.value = sources.value.map((s, i) =>
+      i === idx
+        ? {
+            ...prev,
+            ...normalized,
+            // 刷新节点输入时不应把已有导入项盖成 input；这里强制 imported
+            origin: 'imported',
+            groupId: prev.groupId ?? null,
+            durationSec: normalized.durationSec ?? prev.durationSec
+          }
+        : s
+    )
+  } else {
+    sources.value = [...sources.value, { ...normalized, groupId: null }]
+  }
+}
+
+function removeSource(id: string): void {
+  const src = sources.value.find((s) => s.id === id)
+  // 节点输入不可删；仅「导入素材」可从列表移除并同步清轨道
+  if (!src || src.origin !== 'imported') return
+  sources.value = sources.value.filter((s) => s.id !== id)
+  const key = sourceIdentityKey(src)
+  const removedClipIds = new Set<string>()
+  clips.value = clips.value.filter((clip) => {
+    const sameSource =
+      clip.sourceId === src.id ||
+      sourceIdentityKey({
+        id: clip.sourceId,
+        assetId: clip.assetId,
+        relativePath: clip.relativePath
+      }) === key
+    if (sameSource) removedClipIds.add(clip.id)
+    return !sameSource
+  })
+  if (activeClipId.value && removedClipIds.has(activeClipId.value)) {
+    activeClipId.value = null
+    previewSrc.value = ''
+  }
+  scheduleSave()
+}
+
+function patchSourceDuration(sourceId: string, durationSec: number): void {
+  if (!(durationSec > 0)) return
+  sources.value = sources.value.map((s) =>
+    s.id === sourceId && !(s.durationSec && s.durationSec > 0) ? { ...s, durationSec } : s
+  )
+}
 
 const contentEndSec = computed(() => {
   let max = 0
@@ -449,7 +986,23 @@ function readGenParams(): Record<string, unknown> {
 function loadPersisted(): void {
   const doc = readScriptTimelineFromGenParams(readGenParams())
   clips.value = doc.clips.map((c) => ({ ...c }))
-  if (doc.sources?.length) sources.value = doc.sources.map((s) => ({ ...s }))
+  if (doc.sources?.length) {
+    sources.value = doc.sources
+      .map((s) => normalizeScriptTimelineSource(s))
+      .filter((s): s is ScriptTimelineSource => !!s)
+  } else {
+    sources.value = []
+  }
+  sourceGroups.value = (doc.sourceGroups ?? [])
+    .map((g) => normalizeScriptTimelineSourceGroup(g))
+    .filter((g): g is ScriptTimelineSourceGroup => !!g)
+  // 清理指向已删分组的引用
+  const groupIds = new Set(sourceGroups.value.map((g) => g.id))
+  sources.value = sources.value.map((s) =>
+    s.origin === 'imported' && s.groupId && !groupIds.has(s.groupId)
+      ? { ...s, groupId: null }
+      : s
+  )
   const settings = doc.settings
   const content = contentEndSec.value
   const nextDuration = Math.max(
@@ -474,6 +1027,7 @@ async function persist(): Promise<void> {
   const doc: ScriptTimelineDocument = {
     clips: toPlain(clips.value) as ScriptTimelineClip[],
     sources: toPlain(sources.value) as ScriptTimelineSource[],
+    sourceGroups: toPlain(sourceGroups.value) as ScriptTimelineSourceGroup[],
     settings: {
       durationSec: durationSec.value,
       playbackRate: playbackRate.value,
@@ -546,12 +1100,7 @@ async function resolveSrc(source: {
   relativePath?: string
   assetId?: string
 }): Promise<string> {
-  const rel =
-    source.relativePath?.trim() ||
-    (source.assetId
-      ? project.assets.find((a) => a.id === source.assetId)?.relativePath?.trim()
-      : '') ||
-    ''
+  const rel = sourceRelativePath(source)
   if (!rel) return ''
   try {
     return (await window.studio.getAssetFileUrl(rel)) || ''
@@ -560,10 +1109,10 @@ async function resolveSrc(source: {
   }
 }
 
-async function probeDuration(src: string): Promise<number> {
+async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): Promise<number> {
   if (!src) return 3
   return new Promise((resolve) => {
-    const el = document.createElement('video')
+    const el = media === 'audio' ? document.createElement('audio') : document.createElement('video')
     el.preload = 'metadata'
     el.src = src
     const done = (sec: number) => {
@@ -580,11 +1129,38 @@ async function probeDuration(src: string): Promise<number> {
 async function reloadSources(): Promise<void> {
   sourcesBusy.value = true
   try {
-    const next = await collectScriptTimelineSources({
+    const collected = await collectScriptTimelineSources({
       scriptAssetId: props.scriptAssetId,
       hostId: hostId.value
     })
-    sources.value = next
+    const inputNext = collected
+      .map((s) =>
+        normalizeScriptTimelineSource({
+          ...s,
+          origin: 'input',
+          mediaKind: s.mediaKind === 'voice' ? 'voice' : 'video'
+        })
+      )
+      .filter((s): s is ScriptTimelineSource => !!s)
+    const inputKeys = new Set(inputNext.map((s) => sourceIdentityKey(s)))
+    // 刷新只更新「节点输入」；拖入的导入素材保留，且不被同路径输入覆盖
+    const preservedImported = sources.value
+      .filter((s) => {
+        if (s.origin === 'imported') return !inputKeys.has(sourceIdentityKey(s))
+        // 旧数据无 origin：不在本次输入集合里的视为导入项保留
+        if (s.origin == null) return !inputKeys.has(sourceIdentityKey(s))
+        return false
+      })
+      .map(
+        (s) =>
+          normalizeScriptTimelineSource({
+            ...s,
+            origin: 'imported',
+            mediaKind: s.mediaKind === 'voice' ? 'voice' : 'video'
+          })!
+      )
+      .filter(Boolean)
+    sources.value = [...inputNext, ...preservedImported]
     scheduleSave()
   } finally {
     sourcesBusy.value = false
@@ -612,7 +1188,8 @@ async function addSourceToTrack(
   if (track === 'subtitle') {
     durationSec = durationSec > 0 ? Math.min(durationSec, 4) : 3
   } else if (!(durationSec > 0)) {
-    durationSec = await probeDuration(url)
+    const media = track === 'voice' || track === 'music' ? 'audio' : 'video'
+    durationSec = await probeDuration(url, media)
   }
   const clip: ScriptTimelineClip = {
     id: newClipId(),
@@ -627,6 +1204,7 @@ async function addSourceToTrack(
   }
   clips.value = [...clips.value, clip]
   activeClipId.value = clip.id
+  patchSourceDuration(source.id, durationSec)
   scheduleSave()
   if (track === 'video') void showClipPreview(clip)
 }
@@ -692,15 +1270,15 @@ function commitSubtitleEdit(): void {
 }
 
 async function autoPlaceAll(): Promise<void> {
-  if (!sources.value.length) await reloadSources()
-  if (!sources.value.length) return
+  if (!videoSources.value.length) await reloadSources()
+  const videos = videoSources.value
+  if (!videos.length) return
   clips.value = clips.value.filter((c) => c.track !== 'video')
   let cursor = 0
-  for (const src of sources.value) {
+  for (const src of videos) {
     const url = await resolveSrc(src)
-    const durationSec = src.durationSec && src.durationSec > 0
-      ? src.durationSec
-      : await probeDuration(url)
+    const durationSec =
+      src.durationSec && src.durationSec > 0 ? src.durationSec : await probeDuration(url, 'video')
     clips.value.push({
       id: newClipId(),
       track: 'video',
@@ -711,6 +1289,7 @@ async function autoPlaceAll(): Promise<void> {
       startSec: cursor,
       durationSec
     })
+    patchSourceDuration(src.id, durationSec)
     cursor += durationSec
   }
   clips.value = [...clips.value]
@@ -753,35 +1332,117 @@ async function showClipPreview(clip: ScriptTimelineClip): Promise<void> {
 
 function onSourceDragStart(e: DragEvent, source: ScriptTimelineSource): void {
   e.dataTransfer?.setData(DRAFT_MIME, JSON.stringify(source))
-  e.dataTransfer!.effectAllowed = 'copy'
+  if (source.origin === 'imported') {
+    e.dataTransfer?.setData(SOURCE_MOVE_MIME, source.id)
+    e.dataTransfer!.effectAllowed = 'copyMove'
+  } else {
+    e.dataTransfer!.effectAllowed = 'copy'
+  }
 }
 
-function onClipDragStart(e: DragEvent, clip: ScriptTimelineClip): void {
-  e.dataTransfer?.setData(
-    DRAFT_MIME,
-    JSON.stringify({
-      id: clip.sourceId,
-      title: clip.title,
-      relativePath: clip.relativePath,
-      assetId: clip.assetId,
-      durationSec: clip.durationSec,
-      text: clip.text,
-      _moveClipId: clip.id
-    })
+function trackKindAtClientY(clientY: number): ScriptTimelineTrackKind | null {
+  const board = timelineBoardEl.value
+  if (!board) return null
+  const rows = board.querySelectorAll<HTMLElement>('.track-row[data-track-kind]')
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect()
+    if (clientY < rect.top || clientY > rect.bottom) continue
+    const kind = row.dataset.trackKind
+    if (
+      kind === 'video' ||
+      kind === 'voice' ||
+      kind === 'subtitle' ||
+      kind === 'music'
+    ) {
+      return kind
+    }
+  }
+  return null
+}
+
+function laneRectForTrack(kind: ScriptTimelineTrackKind): DOMRect | null {
+  const lane = timelineBoardEl.value?.querySelector(
+    `.track-row[data-track-kind="${kind}"] .track-lane`
+  ) as HTMLElement | null
+  return lane?.getBoundingClientRect() ?? null
+}
+
+function bindClipDragListeners(): void {
+  window.addEventListener('pointermove', onClipPointerMove)
+  window.addEventListener('pointerup', onClipPointerUp)
+  window.addEventListener('pointercancel', onClipPointerUp)
+}
+
+function unbindClipDragListeners(): void {
+  window.removeEventListener('pointermove', onClipPointerMove)
+  window.removeEventListener('pointerup', onClipPointerUp)
+  window.removeEventListener('pointercancel', onClipPointerUp)
+}
+
+function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
+  if (e.button !== 0) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.clip-remove')) return
+  selectClip(clip)
+  const rect = laneRectForTrack(clip.track)
+  const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
+  // 换轨会重挂载 DOM，监听挂在 window 上以免丢掉拖拽
+  unbindClipDragListeners()
+  clipDrag.value = {
+    clipId: clip.id,
+    pointerId: e.pointerId,
+    grabOffsetSec: timeAtPointer - clip.startSec,
+    moved: false
+  }
+  bindClipDragListeners()
+  e.preventDefault()
+}
+
+function onClipPointerMove(e: PointerEvent): void {
+  const session = clipDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const clip = clips.value.find((c) => c.id === session.clipId)
+  if (!clip) return
+  const kind = trackKindAtClientY(e.clientY) ?? clip.track
+  const rect = laneRectForTrack(kind)
+  if (!rect) return
+  const startSec = Math.max(0, xToTime(e.clientX - rect.left) - session.grabOffsetSec)
+  if (Math.abs(startSec - clip.startSec) < 0.001 && kind === clip.track) return
+  session.moved = true
+  clips.value = clips.value.map((c) =>
+    c.id === session.clipId
+      ? {
+          ...c,
+          track: kind,
+          startSec,
+          ...(kind === 'subtitle' && !c.text ? { text: c.text || c.title } : {})
+        }
+      : c
   )
-  e.dataTransfer!.effectAllowed = 'move'
 }
 
-function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
-  const asset = workspace.resolveDraggedAsset(e)
-  if (asset) {
-    if (!canDropAssetOnTrack(asset, kind)) return
-    e.dataTransfer!.dropEffect = 'copy'
-    return
-  }
-  if (e.dataTransfer?.types.includes(DRAFT_MIME)) {
-    e.dataTransfer!.dropEffect = 'copy'
-  }
+function onClipPointerUp(e: PointerEvent): void {
+  const session = clipDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  clipDrag.value = null
+  unbindClipDragListeners()
+  if (session.moved) scheduleSave()
+}
+
+function isStudioAssetDrag(e: DragEvent): boolean {
+  if (workspace.draggingAsset) return true
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  return (
+    types.includes(STUDIO_ASSET_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_ID_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_IDS_DRAG_MIME)
+  )
+}
+
+function hasExternalFiles(e: DragEvent): boolean {
+  if (isStudioAssetDrag(e)) return false
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  return types.includes('Files')
 }
 
 function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): boolean {
@@ -789,6 +1450,63 @@ function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): b
   if (kind === 'voice' || kind === 'music') return asset.type === 'voice'
   if (kind === 'subtitle') return asset.type === 'video' || asset.type === 'voice'
   return false
+}
+
+/** 拖到不匹配轨道时自动改送到合适轨道（如声音拖到视频轨 → 配音轨） */
+function resolveTargetTrack(
+  asset: AssetInfo,
+  requested: ScriptTimelineTrackKind
+): ScriptTimelineTrackKind | null {
+  if (canDropAssetOnTrack(asset, requested)) return requested
+  if (asset.type === 'voice') return requested === 'music' ? 'music' : 'voice'
+  if (asset.type === 'video') return requested === 'subtitle' ? 'subtitle' : 'video'
+  return null
+}
+
+function canAcceptExternalFilesOnTrack(kind: ScriptTimelineTrackKind): boolean {
+  return kind === 'video' || kind === 'voice' || kind === 'music' || kind === 'subtitle'
+}
+
+function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
+  if (!e.dataTransfer) return
+
+  if (e.dataTransfer.types.includes(DRAFT_MIME)) {
+    // 素材上轨为 copy；若仍有 move 会话则配合 effectAllowed，避免 copy/move 不匹配导致无法放下
+    const allowed = e.dataTransfer.effectAllowed
+    e.dataTransfer.dropEffect =
+      allowed === 'move' || allowed === 'linkMove' ? 'move' : 'copy'
+    dragOverTrack.value = kind
+    return
+  }
+
+  if (isStudioAssetDrag(e)) {
+    const asset = workspace.resolveDraggedAsset(e)
+    if (asset && !resolveTargetTrack(asset, kind)) {
+      e.dataTransfer.dropEffect = 'none'
+      dragOverTrack.value = null
+      return
+    }
+    // dragover 阶段 Chromium 常读不到自定义 MIME；未解析到资产时仍放行，drop 时再校验
+    e.dataTransfer.dropEffect = 'copy'
+    dragOverTrack.value = kind
+    return
+  }
+
+  if (hasExternalFiles(e) && canAcceptExternalFilesOnTrack(kind)) {
+    e.dataTransfer.dropEffect = 'copy'
+    dragOverTrack.value = kind
+    return
+  }
+
+  e.dataTransfer.dropEffect = 'none'
+  dragOverTrack.value = null
+}
+
+function onTrackDragLeave(e: DragEvent, kind: ScriptTimelineTrackKind): void {
+  const related = e.relatedTarget as Node | null
+  const row = e.currentTarget as HTMLElement | null
+  if (related && row?.contains(related)) return
+  if (dragOverTrack.value === kind) dragOverTrack.value = null
 }
 
 function assetToSource(asset: AssetInfo): ScriptTimelineSource | null {
@@ -809,7 +1527,120 @@ function dropStartFromEvent(e: DragEvent, kind: ScriptTimelineTrackKind): number
   return rect ? Math.max(0, xToTime(e.clientX - rect.left)) : nextStartOnTrack(kind)
 }
 
+function resolveDroppedAssets(e: DragEvent): AssetInfo[] {
+  const idsRaw = e.dataTransfer?.getData(STUDIO_ASSET_IDS_DRAG_MIME)
+  if (idsRaw) {
+    try {
+      const parsed = JSON.parse(idsRaw) as unknown
+      if (Array.isArray(parsed)) {
+        const list = parsed
+          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          .map((id) => project.assets.find((a) => a.id === id) ?? null)
+          .filter((a): a is AssetInfo => !!a)
+        if (list.length) return list
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const one = workspace.resolveDraggedAsset(e)
+  return one ? [one] : []
+}
+
+function getDroppedFilePaths(e: DragEvent): string[] {
+  const list = e.dataTransfer?.files
+  if (!list?.length) return []
+  const paths: string[] = []
+  for (let i = 0; i < list.length; i++) {
+    const path = window.studio.getPathForFile(list[i]!)
+    if (path) paths.push(path)
+  }
+  return paths
+}
+
+function filterImportableMediaPaths(paths: string[]): string[] {
+  return paths.filter((path) => {
+    if (!isImportablePath(path)) return false
+    try {
+      const type = detectImportAssetType(path)
+      return type === 'video' || type === 'voice'
+    } catch {
+      return false
+    }
+  })
+}
+
+async function appendAssetsToTrack(
+  assets: AssetInfo[],
+  requestedKind: ScriptTimelineTrackKind,
+  dropStart: number
+): Promise<number> {
+  const cursors = new Map<ScriptTimelineTrackKind, number>()
+  let placed = 0
+  for (const asset of assets) {
+    const track = resolveTargetTrack(asset, requestedKind)
+    if (!track) continue
+    const source = assetToSource(asset)
+    if (!source) continue
+    const mediaKind: ScriptTimelineSourceMediaKind =
+      asset.type === 'voice' ? 'voice' : 'video'
+    // 先写入左侧「导入」列表；从轨道删除片段不会移除列表项
+    upsertImportedSource(source, mediaKind)
+    const listed = sources.value.find((s) => sourceIdentityKey(s) === sourceIdentityKey(source)) ?? {
+      ...source,
+      origin: 'imported' as const,
+      mediaKind
+    }
+    const start = cursors.has(track)
+      ? cursors.get(track)!
+      : track === requestedKind
+        ? dropStart
+        : nextStartOnTrack(track)
+    await addSourceToTrack(listed, track, start)
+    placed += 1
+    const last = clips.value[clips.value.length - 1]
+    if (last) {
+      cursors.set(track, last.startSec + last.durationSec)
+      upsertImportedSource(listed, mediaKind, last.durationSec)
+    }
+  }
+  return placed
+}
+
+async function importDroppedFilesOntoTrack(
+  paths: string[],
+  kind: ScriptTimelineTrackKind,
+  dropStart: number
+): Promise<void> {
+  const accepted = filterImportableMediaPaths(paths)
+  if (!accepted.length) {
+    await promptAlert(t('script.timeline.dropUnsupported'))
+    return
+  }
+  try {
+    const result = await window.studio.importAssets({ filePaths: accepted })
+    project.patchAssets(result.imported)
+    if (!result.imported.length) {
+      const detail =
+        result.skipped.map((s) => s.reason).join('; ') || t('script.timeline.dropUnsupported')
+      await promptAlert(t('script.timeline.importFailed', { error: detail }))
+      return
+    }
+    const placed = await appendAssetsToTrack(result.imported, kind, dropStart)
+    if (!placed) {
+      await promptAlert(t('script.timeline.dropUnsupported'))
+    }
+  } catch (err) {
+    await promptAlert(
+      t('script.timeline.importFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    )
+  }
+}
+
 async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise<void> {
+  dragOverTrack.value = null
   const dropStart = dropStartFromEvent(e, kind)
 
   const raw = e.dataTransfer?.getData(DRAFT_MIME)
@@ -855,12 +1686,24 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
     return
   }
 
-  const asset = workspace.resolveDraggedAsset(e)
-  if (!asset || !canDropAssetOnTrack(asset, kind)) return
-  const source = assetToSource(asset)
-  if (!source) return
-  await addSourceToTrack(source, kind, dropStart)
-  workspace.setDraggingAsset(null)
+  const assets = resolveDroppedAssets(e)
+  if (assets.length) {
+    const placed = await appendAssetsToTrack(assets, kind, dropStart)
+    workspace.setDraggingAsset(null)
+    if (!placed) await promptAlert(t('script.timeline.dropUnsupported'))
+    return
+  }
+
+  // 资产库拖放但未能解析：静默忽略，避免误报系统文件错误
+  if (isStudioAssetDrag(e)) {
+    workspace.setDraggingAsset(null)
+    return
+  }
+
+  const paths = getDroppedFilePaths(e)
+  if (paths.length) {
+    await importDroppedFilesOntoTrack(paths, kind, dropStart)
+  }
 }
 
 function onRulerPointerDown(e: PointerEvent): void {
@@ -973,18 +1816,119 @@ async function syncPreviewToPlayhead(): Promise<void> {
   }
 }
 
-async function togglePlay(): Promise<void> {
-  if (playing.value) {
-    playing.value = false
-    previewEl.value?.pause()
-    stopAllAudio()
-    playSeq += 1
+function stopPlayback(): void {
+  playing.value = false
+  playMode.value = null
+  playSeq += 1
+  previewEl.value?.pause()
+  stopAllAudio()
+}
+
+/** 时间线工具栏：整轨联播（视频序列 + 声音轨） */
+async function toggleTimelinePlay(): Promise<void> {
+  if (playing.value && playMode.value === 'timeline') {
+    stopPlayback()
     return
   }
+  stopPlayback()
+  playMode.value = 'timeline'
   playing.value = true
   const seq = ++playSeq
   await syncAudioToPlayhead(true)
   await runSequence(seq)
+}
+
+/** 预览区：只播放当前选中的视频/声音片段 */
+async function togglePreviewPlay(): Promise<void> {
+  if (playing.value && playMode.value === 'solo') {
+    stopPlayback()
+    return
+  }
+  const clip = selectedPlayableClip.value
+  if (!clip) return
+  stopPlayback()
+  playMode.value = 'solo'
+  playing.value = true
+  const seq = ++playSeq
+  await runSoloClip(clip, seq)
+}
+
+async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void> {
+  do {
+    if (seq !== playSeq || !playing.value || playMode.value !== 'solo') return
+    activeClipId.value = clip.id
+    playheadSec.value = clip.startSec
+    stopAllAudio()
+
+    if (clip.track === 'video') {
+      previewSrc.value = await resolveSrc(clip)
+      await Promise.resolve()
+      const el = previewEl.value
+      if (!el) break
+      try {
+        applyPlaybackRate()
+        el.currentTime = 0
+        await el.play()
+      } catch {
+        break
+      }
+      await waitUntilClipEnd(el, clip, seq, { syncAudio: false })
+    } else {
+      // 声音：用独立 audio，不带动其他轨
+      previewSrc.value = ''
+      let el = audioEls.get(clip.id)
+      if (!el) {
+        el = new Audio()
+        el.preload = 'auto'
+        audioEls.set(clip.id, el)
+      }
+      el.src = await resolveSrc(clip)
+      el.playbackRate = playbackRate.value
+      try {
+        el.currentTime = 0
+        await el.play()
+      } catch {
+        break
+      }
+      await waitUntilAudioClipEnd(el, clip, seq)
+    }
+
+    if (!loopPlayback.value || seq !== playSeq || !playing.value || playMode.value !== 'solo') break
+  } while (loopPlayback.value)
+
+  if (seq === playSeq) {
+    playing.value = false
+    playMode.value = null
+    stopAllAudio()
+    previewEl.value?.pause()
+  }
+}
+
+function waitUntilAudioClipEnd(
+  el: HTMLAudioElement,
+  clip: ScriptTimelineClip,
+  seq: number
+): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (seq !== playSeq || !playing.value || playMode.value !== 'solo') {
+        cleanup()
+        resolve()
+        return
+      }
+      playheadSec.value = clip.startSec + (el.currentTime || 0)
+      if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
+        cleanup()
+        resolve()
+      }
+    }
+    const cleanup = () => {
+      el.removeEventListener('timeupdate', tick)
+      el.removeEventListener('ended', tick)
+    }
+    el.addEventListener('timeupdate', tick)
+    el.addEventListener('ended', tick)
+  })
 }
 
 async function runSequence(seq: number): Promise<void> {
@@ -1008,6 +1952,7 @@ async function runSequence(seq: number): Promise<void> {
       await new Promise((r) => window.setTimeout(r, 40))
     }
     playing.value = false
+    playMode.value = null
     stopAllAudio()
     return
   }
@@ -1054,15 +1999,20 @@ async function runSequence(seq: number): Promise<void> {
     playheadSec.value = 0
   } while (loopPlayback.value)
 
-  playing.value = false
-  stopAllAudio()
+  if (seq === playSeq) {
+    playing.value = false
+    playMode.value = null
+    stopAllAudio()
+  }
 }
 
 function waitUntilClipEnd(
   el: HTMLVideoElement,
   clip: ScriptTimelineClip,
-  seq: number
+  seq: number,
+  options?: { syncAudio?: boolean }
 ): Promise<void> {
+  const syncAudio = options?.syncAudio !== false
   return new Promise((resolve) => {
     const tick = () => {
       if (seq !== playSeq || !playing.value) {
@@ -1071,7 +2021,7 @@ function waitUntilClipEnd(
         return
       }
       playheadSec.value = clip.startSec + (el.currentTime || 0)
-      void syncAudioToPlayhead(true)
+      if (syncAudio) void syncAudioToPlayhead(true)
       if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
@@ -1091,9 +2041,12 @@ function onPreviewEnded(): void {
 }
 
 function onPreviewTimeUpdate(): void {
+  if (!playing.value) return
+  // solo 声音由 audio 回调推进
+  if (playMode.value === 'solo' && selectedPlayableClip.value?.track !== 'video') return
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   const el = previewEl.value
-  if (!clip || !el || !playing.value) return
+  if (!clip || !el) return
   playheadSec.value = clip.startSec + (el.currentTime || 0)
 }
 
@@ -1110,10 +2063,7 @@ function resolveClipRelativePath(clip: ScriptTimelineClip): string | undefined {
 
 async function exportTimeline(): Promise<void> {
   if (exporting.value || !clips.value.length) return
-  playing.value = false
-  playSeq += 1
-  previewEl.value?.pause()
-  stopAllAudio()
+  stopPlayback()
   await persist()
 
   exporting.value = true
@@ -1192,24 +2142,45 @@ async function exportTimeline(): Promise<void> {
   }
 }
 
+function onDocPointerDownForSourceCtx(e: PointerEvent): void {
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.source-ctx-menu')) return
+  closeSourceCtx()
+}
+
 onMounted(async () => {
   loadPersisted()
   await reloadSources()
   const first = clipsOn('video')[0]
   if (first) void showClipPreview(first)
   bindTimelineViewport()
+  window.addEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
 })
 
 watch(
   () => props.scriptAssetId,
   async () => {
-    playing.value = false
-    playSeq += 1
-    stopAllAudio()
+    stopPlayback()
     disposeAudioPool()
+    sourceThumbUrls.value = {}
+    sourceThumbPathById.clear()
     loadPersisted()
     await reloadSources()
   }
+)
+
+watch(
+  () =>
+    sources.value
+      .map(
+        (s) =>
+          `${s.id}:${s.relativePath ?? ''}:${s.assetId ?? ''}:${s.mediaKind ?? ''}`
+      )
+      .join('|'),
+  () => {
+    void refreshSourceThumbs()
+  },
+  { immediate: true }
 )
 
 watch(timelineCollapsed, async (collapsed) => {
@@ -1239,11 +2210,14 @@ function bindTimelineViewport(): void {
 }
 
 onBeforeUnmount(() => {
-  playing.value = false
-  playSeq += 1
+  stopPlayback()
   disposeAudioPool()
   timelineViewportRo?.disconnect()
   timelineViewportRo = null
+  unbindClipDragListeners()
+  clipDrag.value = null
+  window.removeEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
+  closeSourceCtx()
   if (saveTimer) clearTimeout(saveTimer)
   void persist()
 })
@@ -1317,10 +2291,160 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 8px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.source-group {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
+.imported-panel {
+  flex: 1;
+  min-height: 120px;
+  padding-bottom: 4px;
+}
+
+.source-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.source-folder {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-elevated));
+  overflow: hidden;
+}
+
+.source-folder.drag-over,
+.ungrouped-zone.drag-over {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.folder-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.folder-head:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.folder-chevron {
+  width: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.folder-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.folder-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 6px 8px;
+}
+
+.folder-empty {
+  padding: 6px 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ungrouped-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 64px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 2px;
+}
+
+.ungrouped-label {
+  padding: 2px 2px 0;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.panel-empty.subtle {
+  padding: 10px 4px;
+  font-size: 11px;
+}
+
+.source-ctx-menu {
+  position: fixed;
+  z-index: 4000;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.source-ctx-menu button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.source-ctx-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.source-ctx-menu button.danger {
+  color: var(--danger);
+}
+
+.source-group-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-muted);
+}
+
 .source-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1332,6 +2456,12 @@ defineExpose({ flushSave: persist, reloadSources })
   color: var(--text);
   cursor: grab;
   text-align: left;
+  box-sizing: border-box;
+}
+
+.source-card.origin-imported {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+  background: color-mix(in srgb, var(--success) 6%, var(--bg-panel));
 }
 
 .source-card:active {
@@ -1342,16 +2472,64 @@ defineExpose({ flushSave: persist, reloadSources })
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
+.source-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.source-remove:hover {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
+}
+
 .source-thumb {
   width: 36px;
   height: 36px;
   border-radius: 6px;
   flex-shrink: 0;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--accent) 28%, var(--bg-elevated)),
     var(--bg-input)
   );
+}
+
+.source-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.source-thumb.voice {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warning) 32%, var(--bg-elevated)),
+    var(--bg-input)
+  );
+}
+
+.source-thumb-glyph {
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
 }
 
 .source-meta {
@@ -1360,6 +2538,26 @@ defineExpose({ flushSave: persist, reloadSources })
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.source-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.source-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.source-tag.imported {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
 }
 
 .source-name {
@@ -1435,37 +2633,45 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 4px 8px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.55);
-  color: var(--on-media-line);
+  color: #fff;
   font-size: 11px;
 }
 
-.ctrl {
+.preview-play-btn {
   width: 28px;
   height: 28px;
+  flex-shrink: 0;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: var(--accent);
-  color: var(--on-accent);
+  color: #fff;
   cursor: pointer;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.icon-play {
+.preview-play-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.preview-play-btn .triangle {
   width: 0;
   height: 0;
+  margin-left: 2px;
   border-style: solid;
   border-width: 5px 0 5px 8px;
   border-color: transparent transparent transparent currentColor;
-  margin-left: 2px;
 }
 
-.icon-pause {
-  width: 10px;
+.preview-play-btn .pause {
+  width: 8px;
   height: 10px;
-  background:
-    linear-gradient(currentColor, currentColor) left/3px 100% no-repeat,
-    linear-gradient(currentColor, currentColor) right/3px 100% no-repeat;
+  box-sizing: border-box;
+  border-left: 2.5px solid currentColor;
+  border-right: 2.5px solid currentColor;
 }
 
 .play-glyph {
@@ -1754,6 +2960,11 @@ defineExpose({ flushSave: persist, reloadSources })
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
 }
 
+.track-row.drag-over .track-lane {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 .lane-empty,
 .lane-muted {
   position: absolute;
@@ -1806,6 +3017,14 @@ defineExpose({ flushSave: persist, reloadSources })
   cursor: grab;
   overflow: hidden;
   z-index: 1;
+  touch-action: none;
+  user-select: none;
+}
+
+.clip.dragging {
+  cursor: grabbing;
+  z-index: 4;
+  opacity: 0.92;
 }
 
 .clip.active {
