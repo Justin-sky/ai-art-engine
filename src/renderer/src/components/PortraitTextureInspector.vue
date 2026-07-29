@@ -14,29 +14,47 @@
       @toggle="toggleRun"
     />
 
+    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+
+    <label>
+      {{ t('graph.inspector.generate.systemPrompt') }}
+      <ExpandableTextarea
+        :key="`sys-${node.id}`"
+        v-model="systemPrompt"
+        :title="t('graph.inspector.generate.systemPrompt')"
+        :rows="5"
+        :placeholder="t('graph.inspector.generate.systemPromptPlaceholder')"
+        @change="persistSystemPrompt"
+      />
+    </label>
+
     <label>
       {{ t('graph.portraitTexture.outputPrompt') }}
-      <textarea class="prompt-view" :value="outputPrompt || emptyPrompt" rows="8" readonly />
+      <textarea class="prompt-view" :value="outputPrompt || emptyPrompt" rows="6" readonly />
     </label>
   </div>
   <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
+  DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN,
+  DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH,
+  defaultPortraitTextureSystemPrompt,
   readPortraitTextureFromNode,
   resolvePortraitTextureOutputPrompt,
-  textFromGraphValue
+  resolvePortraitTextureSystemPrompt
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
+import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
+import ExpandableTextarea from './ExpandableTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const { t, graphTypeLabel } = useStudioI18n()
+const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 
 const node = computed(() => {
@@ -57,18 +75,63 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 
 const typeLabel = computed(() => graphTypeLabel('image.portraitTexture'))
 const emptyPrompt = computed(() => t('graph.portraitTexture.promptEmpty'))
+const systemPrompt = ref('')
+const loadedNodeId = ref<string | null>(null)
+const loadedHostId = ref<string | null>(null)
 
 const outputPrompt = computed(() => {
   const current = node.value
   if (!current) return ''
-  const live = textFromGraphValue(
-    graphRunHosts.get(hostId.value)?.runStates?.[current.id]?.outputs?.out
-  )
-  if (live.trim()) return live.trim()
-  const cached = current.params.portraitTexturePrompt?.trim()
-  if (cached) return cached
+  // 始终按当前质感选项重算，编辑面板实时写回时 Inspector 同步刷新
   return resolvePortraitTextureOutputPrompt(readPortraitTextureFromNode(current.params))
 })
+
+function loadSystemPrompt(current: NonNullable<typeof node.value>): void {
+  loadedNodeId.value = current.id
+  loadedHostId.value = hostId.value
+  systemPrompt.value = resolvePortraitTextureSystemPrompt(
+    current.params.generateSystemPrompt,
+    String(locale.value)
+  )
+}
+
+watch(
+  node,
+  (current) => {
+    if (!current) {
+      systemPrompt.value = ''
+      loadedNodeId.value = null
+      loadedHostId.value = null
+      return
+    }
+    const sameNode = current.id === loadedNodeId.value && hostId.value === loadedHostId.value
+    if (!sameNode) loadSystemPrompt(current)
+  },
+  { immediate: true }
+)
+
+watch(locale, (next) => {
+  if (!node.value) return
+  const cur = systemPrompt.value.trim()
+  if (!cur || isDefaultSystemPrompt(cur)) {
+    systemPrompt.value = defaultPortraitTextureSystemPrompt(String(next))
+  }
+})
+
+function isDefaultSystemPrompt(value: string): boolean {
+  return (
+    value === DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN ||
+    value === DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH
+  )
+}
+
+function persistSystemPrompt(): void {
+  if (!node.value) return
+  const selection = editor.selection.current.value
+  graphEditorHosts.updateNode(selection.hostId, node.value.id, {
+    generateSystemPrompt: systemPrompt.value
+  })
+}
 </script>
 
 <style scoped>
@@ -110,13 +173,10 @@ label {
   gap: 4px;
   font-size: 12px;
   color: var(--text-muted);
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
 .prompt-view {
-  flex: 1 1 auto;
-  min-height: 160px;
+  min-height: 120px;
   opacity: 0.9;
   cursor: default;
   background: var(--bg-elevated);

@@ -1372,6 +1372,7 @@ export default {
       noCompatibleNodes: 'No compatible nodes for this port type',
       selection: 'Selection',
       groups: {
+        imageRefine: 'Image refine',
         imageEdit: 'Image edit'
       }
     },
@@ -1412,7 +1413,7 @@ export default {
     },
     multiAngle: {
       appMark: 'Multi-angle editor',
-      hint: 'Double-click to open the multi-angle editor',
+      hint: 'Double-click to edit camera and model; run the node to generate',
       yaw: 'Orbit',
       pitch: 'Pitch',
       shotScale: 'Shot scale',
@@ -1440,7 +1441,7 @@ export default {
     },
     lighting: {
       appMark: 'Lighting effects',
-      hint: 'Double-click to open the lighting editor',
+      hint: 'Double-click to edit lighting and model; run the node to generate',
       perspective: 'Perspective',
       frontal: 'Front',
       global: 'Global',
@@ -1476,7 +1477,7 @@ export default {
     },
     portraitTexture: {
       appMark: 'Portrait texture',
-      hint: 'Double-click to open portrait texture adjustment',
+      hint: 'Double-click to adjust texture and model; run the node to generate',
       outputPrompt: 'Final prompt',
       promptEmpty: '(Built from current texture options)',
       resetParams: 'Reset parameters',
@@ -1517,7 +1518,7 @@ export default {
     },
     emotion: {
       appMark: 'Emotion pad',
-      hint: 'Double-click to open emotion adjustment',
+      hint: 'Double-click to adjust emotion and model; run the node to generate',
       previewEmpty: 'Connect an image input for preview',
       locate: 'Emotion locate',
       outputPrompt: 'Final prompt',
@@ -2140,18 +2141,18 @@ export default {
         hint: 'Running this node collects unit texts and saves them to the output path.'
       },
       multiAngle: {
-        hint: 'Double-click the node to edit camera angles. This panel previews the text output (no image on the node card).',
+        hint: 'Double-click to edit camera and model. Run to generate an image; this panel shows the gallery and prompt.',
         spliceOn: 'On',
         spliceOff: 'Off'
       },
       lighting: {
-        hint: 'Double-click the node to edit lighting. This panel previews the final lighting prompt.'
+        hint: 'Double-click to edit lighting and model. Run to generate an image; this panel shows the gallery and prompt.'
       },
       portraitTexture: {
-        hint: 'Double-click the node to adjust portrait texture. This panel previews the final prompt.'
+        hint: 'Double-click to adjust texture and model. Run to generate an image; this panel shows the gallery and prompt.'
       },
       emotion: {
-        hint: 'Double-click the node to adjust emotion. This panel previews the final prompt.'
+        hint: 'Double-click to adjust emotion and model. Run to generate an image; this panel shows the gallery and prompt.'
       },
       upscale: {
         hint: 'Double-click the node to edit options. This panel shows the system prompt and the merged upscale prompt.',

@@ -285,8 +285,7 @@ textarea {
 }
 
 textarea::-webkit-resizer {
-  /* 与全局 textarea background: var(--bg) 对齐，勿用 --bg-input（浅色会出白角） */
-  background-color: var(--bg);
+  background-color: var(--textarea-bg);
   background-image: var(--resizer-grip);
   border: none;
 }

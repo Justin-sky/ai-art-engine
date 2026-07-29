@@ -800,7 +800,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       text: '',
@@ -811,13 +811,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         shotScale: 0.5,
         promptEnabled: false
       },
-      multiAnglePrompt: ''
+      multiAnglePrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.multiAngle',
     card: 'media',
+    assetType: 'image',
     contributeToGeneration: false,
     execute: executeMultiAngleNode
   },
@@ -831,7 +835,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       lightingSetup: {
@@ -846,13 +850,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         smartMode: true,
         smartPrompt: ''
       },
-      lightingPrompt: ''
+      lightingPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.lighting',
     card: 'media',
+    assetType: 'image',
     contributeToGeneration: false,
     execute: executeLightingNode
   },
@@ -866,7 +874,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       portraitTexture: {
@@ -876,13 +884,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         texture: 'natural',
         sharpness: 'standard'
       },
-      portraitTexturePrompt: ''
+      portraitTexturePrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.portraitTexture',
     card: 'media',
+    assetType: 'image',
     contributeToGeneration: false,
     execute: executePortraitTextureNode
   },
@@ -896,18 +908,22 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
       emotionPad: { gridX: 2, gridY: 2 },
       emotionLabel: '',
-      emotionPrompt: ''
+      emotionPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.emotion',
     card: 'media',
+    assetType: 'image',
     contributeToGeneration: false,
     execute: executeEmotionNode
   },

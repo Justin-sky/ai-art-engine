@@ -1334,6 +1334,8 @@ onBeforeUnmount(() => {
   padding: 0;
   border: none !important;
   border-radius: 0;
+  /* 透明底，缩放柄跟外层 instruction 面板同色 */
+  --textarea-bg: var(--bg-panel);
   background: transparent !important;
   box-shadow: none !important;
   outline: none;
@@ -1355,7 +1357,7 @@ onBeforeUnmount(() => {
 }
 
 .instruction-input :deep(textarea::-webkit-resizer) {
-  background-color: var(--bg-panel);
+  background-color: var(--textarea-bg);
   background-image: var(--resizer-grip);
   border: none;
 }

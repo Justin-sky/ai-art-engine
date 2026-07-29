@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   CROP_ASPECT_PRESETS,
   cropTargetAspect,
@@ -93,6 +93,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  update: [payload: CropEditorSavePayload]
   save: [payload: CropEditorSavePayload]
 }>()
 
@@ -104,6 +105,8 @@ const stageEl = ref<HTMLElement | null>(null)
 const sourceNatural = reactive({ w: 1, h: 1 })
 const display = reactive({ w: 320, h: 320 })
 const aspectMenuOpen = ref(false)
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 const sourceAspect = computed(() => sourceNatural.w / Math.max(1, sourceNatural.h))
 
@@ -209,19 +212,51 @@ function selectAspect(id: string): void {
   aspectMenuOpen.value = false
 }
 
+function buildSavePayload(): CropEditorSavePayload {
+  return imageCropToNodePatch(normalizeImageCrop(draft))
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () => [props.open, props.setup, props.sourceUrl] as const,
-  async ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     aspectMenuOpen.value = false
     Object.assign(draft, normalizeImageCrop(props.setup))
-    if (props.sourceUrl) {
+    if (draft.aspectId !== 'custom' && CROP_ASPECT_PRESETS.includes(draft.aspectId as never)) {
+      applyAspectToDraft(draft.aspectId)
+    }
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
+  },
+  { immediate: true }
+)
+
+watch(draft, () => emitPreview(), { deep: true })
+
+watch(
+  () => [props.open, props.sourceUrl] as const,
+  async ([open, sourceUrl]) => {
+    if (!open) return
+    if (sourceUrl) {
       try {
         const img = new Image()
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve()
           img.onerror = () => reject()
-          img.src = props.sourceUrl!
+          img.src = sourceUrl
         })
         sourceNatural.w = img.naturalWidth || 1
         sourceNatural.h = img.naturalHeight || 1
@@ -235,7 +270,7 @@ watch(
       applyAspectToDraft(draft.aspectId)
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
 type DragMode =
@@ -326,10 +361,6 @@ function onPointerUp(): void {
   drag = null
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
-}
-
-function buildSavePayload(): CropEditorSavePayload {
-  return imageCropToNodePatch(normalizeImageCrop(draft))
 }
 
 function save(): void {

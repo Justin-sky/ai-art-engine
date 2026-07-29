@@ -64,6 +64,10 @@ import {
   resolveEraseSystemPrompt,
   resolveMatteSystemPrompt,
   resolveGridSplitSystemPrompt,
+  resolveMultiAngleSystemPrompt,
+  resolveLightingSystemPrompt,
+  resolvePortraitTextureSystemPrompt,
+  resolveEmotionSystemPrompt,
   resolveVideoSystemPrompt,
   resolveVoiceSystemPrompt
 } from '../systemPromptSchemes'
@@ -3970,163 +3974,194 @@ export function executeSelectVoiceNode(ctx: NodeExecuteContext): Record<string, 
 }
 
 /**
- * 多角度编辑：参考图仅用于编辑器预览，不输出图片；
- * 始终按机位输出提示词；promptEnabled 时再拼接面板/上游文本。
+ * 多角度 / 打光 / 人像质感 / 情绪：以上游图为参考，用编辑器拼出的提示词调用图片 API，输出图库。
  */
-export function executeMultiAngleNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const imageInputs = [
-    ...(ctx.inputs.in ?? []),
-    ...(ctx.inputs['in-image'] ?? [])
-  ]
-  const items = flattenImagesValues(
-    imageInputs.length ? imageInputs : collectIncomingValues(ctx.inputs)
-  ).filter(
-    (item) =>
-      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
-      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
-  )
-  const picked = items[0]
-  const camera = readMultiAngleCameraFromNode(ctx.node.params)
-  const panelPrompt = ctx.node.params.text?.trim() || ''
-  const patch = multiAngleCameraToNodePatch(camera, panelPrompt)
-  const previewDataUrl = picked?.dataUrl?.trim() ? picked.dataUrl : undefined
-  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
-  ctx.node.params = {
-    ...ctx.node.params,
-    ...patch,
-    previewDataUrl,
-    previewRelativePath
+async function executePromptImageEditNode(
+  ctx: NodeExecuteContext,
+  options: {
+    stampPrefix: string
+    userPrompt: string
+    systemPrompt: string
+    extraParams: Record<string, unknown>
+    emptyResultError: string
   }
-  ctx.patchNode?.({
-    params: {
-      ...patch,
-      previewDataUrl,
-      previewRelativePath
+): Promise<Record<string, GraphValue>> {
+  const sourceItems = await collectIncomingImageItems(ctx)
+  if (!sourceItems.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  const userPrompt = options.userPrompt.trim()
+  if (!userPrompt) {
+    throw new Error('GRAPH_PROCESS_EMPTY_PROMPT')
+  }
+  // /images 无独立 system 字段，拼入 prompt
+  const system = options.systemPrompt.trim()
+  const prompt = system ? `${system}\n\n${userPrompt}` : userPrompt
+
+  if (!ctx.generateImage) {
+    const picked = sourceItems[0]!
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim(),
+      options.extraParams
+    )
+  }
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  let inputReferences: string[] = []
+  if (ctx.resolveImageUrls) {
+    inputReferences = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).filter(Boolean)
+  } else {
+    const dataUrl = sourceItems[0]?.dataUrl?.trim()
+    if (dataUrl) inputReferences = [dataUrl]
+  }
+  if (!inputReferences.length && ctx.resolveAssetImageUrl) {
+    for (const value of [
+      ...(ctx.inputs.in ?? []),
+      ...(ctx.inputs['in-image'] ?? []),
+      ...collectIncomingValues(ctx.inputs)
+    ]) {
+      if (value.kind !== 'asset' || value.assetType !== 'image') continue
+      const url = await ctx.resolveAssetImageUrl(value.assetId)
+      if (url) {
+        inputReferences = [url]
+        break
+      }
     }
+  }
+  if (!inputReferences.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  const result = await ctx.generateImage({
+    prompt,
+    model: ctx.node.params.generateModel || undefined,
+    providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
+    quality: 'high',
+    n: 1,
+    inputReferences
   })
 
-  return {
-    out: { kind: 'text', text: patch.multiAnglePrompt }
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
   }
+
+  const createdAt = new Date().toISOString()
+  const stamp = Date.now()
+  const batch: GraphImageItem[] = []
+  for (const [index, url] of (result.images ?? []).entries()) {
+    const dataUrl = typeof url === 'string' ? url.trim() : ''
+    if (!dataUrl) continue
+    batch.push({
+      id: `${options.stampPrefix}:${ctx.node.id}:${stamp}:${index}`,
+      dataUrl,
+      createdAt
+    })
+  }
+  if (!batch.length) {
+    throw new Error(options.emptyResultError)
+  }
+
+  const stampKey = `${options.stampPrefix}:${ctx.node.id}:${stamp}`
+  const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
+  if (!materializedBatch.length) {
+    throw new Error('图片落盘失败')
+  }
+  const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    options.extraParams
+  )
 }
 
 /**
- * 打光效果：参考图仅用于编辑器预览；输出最终打光提示词。
+ * 多角度编辑：参考图 + 机位提示词调用图片模型，输出结果图库。
  */
-export function executeLightingNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const imageInputs = [
-    ...(ctx.inputs.in ?? []),
-    ...(ctx.inputs['in-image'] ?? [])
-  ]
-  const items = flattenImagesValues(
-    imageInputs.length ? imageInputs : collectIncomingValues(ctx.inputs)
-  ).filter(
-    (item) =>
-      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
-      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
-  )
-  const picked = items[0]
+export async function executeMultiAngleNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const camera = readMultiAngleCameraFromNode(ctx.node.params)
+  const panelPrompt = ctx.node.params.text?.trim() || ''
+  const patch = multiAngleCameraToNodePatch(camera, panelPrompt)
+  return executePromptImageEditNode(ctx, {
+    stampPrefix: 'multiAngle',
+    userPrompt: patch.multiAnglePrompt,
+    systemPrompt: resolveMultiAngleSystemPrompt(
+      ctx.node.params.generateSystemPrompt,
+      ctx.locale
+    ),
+    extraParams: patch,
+    emptyResultError: '模型未返回多角度图片'
+  })
+}
+
+/**
+ * 打光效果：参考图 + 打光提示词调用图片模型，输出结果图库。
+ */
+export async function executeLightingNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   const setup = readLightingSetupFromNode(ctx.node.params)
   const lightingPrompt = resolveLightingOutputPrompt(setup)
   const patch = {
     lightingSetup: setup,
     lightingPrompt
   }
-  const previewDataUrl = picked?.dataUrl?.trim() ? picked.dataUrl : undefined
-  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
-  ctx.node.params = {
-    ...ctx.node.params,
-    ...patch,
-    previewDataUrl,
-    previewRelativePath
-  }
-  ctx.patchNode?.({
-    params: {
-      ...patch,
-      previewDataUrl,
-      previewRelativePath
-    }
+  return executePromptImageEditNode(ctx, {
+    stampPrefix: 'lighting',
+    userPrompt: lightingPrompt,
+    systemPrompt: resolveLightingSystemPrompt(
+      ctx.node.params.generateSystemPrompt,
+      ctx.locale
+    ),
+    extraParams: patch,
+    emptyResultError: '模型未返回打光图片'
   })
-
-  return {
-    out: { kind: 'text', text: lightingPrompt }
-  }
 }
 
 /**
- * 人像质感调节：参考图仅预览；输出质感提示词。
+ * 人像质感调节：参考图 + 质感提示词调用图片模型，输出结果图库。
  */
-export function executePortraitTextureNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const imageInputs = [
-    ...(ctx.inputs.in ?? []),
-    ...(ctx.inputs['in-image'] ?? [])
-  ]
-  const items = flattenImagesValues(
-    imageInputs.length ? imageInputs : collectIncomingValues(ctx.inputs)
-  ).filter(
-    (item) =>
-      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
-      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
-  )
-  const picked = items[0]
+export async function executePortraitTextureNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   const patch = portraitTextureToNodePatch(readPortraitTextureFromNode(ctx.node.params))
-  const previewDataUrl = picked?.dataUrl?.trim() ? picked.dataUrl : undefined
-  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
-  ctx.node.params = {
-    ...ctx.node.params,
-    ...patch,
-    previewDataUrl,
-    previewRelativePath
-  }
-  ctx.patchNode?.({
-    params: {
-      ...patch,
-      previewDataUrl,
-      previewRelativePath
-    }
+  return executePromptImageEditNode(ctx, {
+    stampPrefix: 'portraitTexture',
+    userPrompt: patch.portraitTexturePrompt,
+    systemPrompt: resolvePortraitTextureSystemPrompt(
+      ctx.node.params.generateSystemPrompt,
+      ctx.locale
+    ),
+    extraParams: patch,
+    emptyResultError: '模型未返回人像质感图片'
   })
-
-  return {
-    out: { kind: 'text', text: patch.portraitTexturePrompt }
-  }
 }
 
 /**
- * 情绪调节：参考图仅预览；输出情绪定位提示词。
+ * 情绪调节：参考图 + 情绪提示词调用图片模型，输出结果图库。
  */
-export function executeEmotionNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const imageInputs = [
-    ...(ctx.inputs.in ?? []),
-    ...(ctx.inputs['in-image'] ?? [])
-  ]
-  const items = flattenImagesValues(
-    imageInputs.length ? imageInputs : collectIncomingValues(ctx.inputs)
-  ).filter(
-    (item) =>
-      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
-      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
-  )
-  const picked = items[0]
+export async function executeEmotionNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
   const patch = emotionPadToNodePatch(readEmotionPadFromNode(ctx.node.params))
-  const previewDataUrl = picked?.dataUrl?.trim() ? picked.dataUrl : undefined
-  const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
-  ctx.node.params = {
-    ...ctx.node.params,
-    ...patch,
-    previewDataUrl,
-    previewRelativePath
-  }
-  ctx.patchNode?.({
-    params: {
-      ...patch,
-      previewDataUrl,
-      previewRelativePath
-    }
+  return executePromptImageEditNode(ctx, {
+    stampPrefix: 'emotion',
+    userPrompt: patch.emotionPrompt,
+    systemPrompt: resolveEmotionSystemPrompt(
+      ctx.node.params.generateSystemPrompt,
+      ctx.locale
+    ),
+    extraParams: patch,
+    emptyResultError: '模型未返回情绪图片'
   })
-
-  return {
-    out: { kind: 'text', text: patch.emotionPrompt }
-  }
 }
 
 /**

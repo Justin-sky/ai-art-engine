@@ -142,7 +142,7 @@
       </div>
 
       <img
-        v-else-if="(isSelectImageNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
+        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
         :src="selectImagePreview"
         alt=""
         loading="lazy"
@@ -1003,6 +1003,10 @@ watch(
           ]?.imageUrl
         : '',
       isSelectImageNode(props.node) ||
+        isMultiAngleEditorNode(props.node) ||
+        isLightingEditorNode(props.node) ||
+        isPortraitTextureEditorNode(props.node) ||
+        isEmotionEditorNode(props.node) ||
         isUpscaleEditorNode(props.node) ||
         isExpandEditorNode(props.node) ||
         isRedrawEditorNode(props.node) ||
@@ -1188,14 +1192,6 @@ const scriptNodePreviewTitle = computed(() => {
 
 /** 节点上展示的文本输出（执行结果或已保存正文）；有内容才覆盖媒体预览 */
 const textPreview = computed(() => {
-  // 多角度 / 打光：输出在 Inspector 预览，节点卡片不展示正文/图片
-  if (
-    isMultiAngleEditorNode(props.node) ||
-    isLightingEditorNode(props.node) ||
-    isPortraitTextureEditorNode(props.node) ||
-    isEmotionEditorNode(props.node)
-  )
-    return ''
   // 剧本 / 分镜引用：不展示正文预览（图标 + 引用提示）
   if (
     isAssetRef.value &&

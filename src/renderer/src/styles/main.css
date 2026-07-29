@@ -397,16 +397,33 @@ input[type='range']:focus {
   outline: none;
 }
 
+/*
+ * 文本框缩放柄底色与 surface 同源。
+ * 覆盖 textarea 背景时请同步设置 --textarea-bg，否则右下角会出现色块。
+ */
 textarea {
+  --textarea-bg: var(--bg);
+  background: var(--textarea-bg);
   resize: vertical;
   min-height: 80px;
 }
 
-/* 缩放柄底色必须与上方 textarea 的 background 同源，否则浅色主题会出现白角块 */
 textarea::-webkit-resizer {
-  background-color: var(--bg);
+  background-color: var(--textarea-bg);
   background-image: var(--resizer-grip);
   border: none;
+}
+
+/* 面板内常见抬升底文本框 */
+textarea.prompt-view,
+textarea.panel-textarea,
+textarea.smart-textarea,
+textarea.final-prompt {
+  --textarea-bg: var(--bg-elevated);
+}
+
+textarea.prompt-input {
+  --textarea-bg: var(--bg-panel);
 }
 
 a {

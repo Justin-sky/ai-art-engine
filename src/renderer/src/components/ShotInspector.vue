@@ -374,7 +374,8 @@ label {
 .final-prompt {
   opacity: 0.85;
   cursor: default;
-  background: var(--bg-elevated);
+  --textarea-bg: var(--bg-elevated);
+  background: var(--textarea-bg);
 }
 
 .history h3 {

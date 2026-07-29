@@ -152,6 +152,13 @@
       </div>
 
       <div class="editor-footer">
+        <ImageGenerateModelField
+          ref="modelFieldEl"
+          :open="open"
+          :generate-model="generateModel"
+          :generate-provider-instance-id="generateProviderInstanceId"
+          @change="onModelChange"
+        />
         <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.lighting.resetParams') }}
         </button>
@@ -181,6 +188,7 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { themePreference } from '../editor/preferences'
+import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 function cssColor(name: string, fallback: string): string {
@@ -200,11 +208,19 @@ const props = defineProps<{
   open: boolean
   previewUrl?: string | null
   setup?: Partial<LightingSetupState> | null
+  generateModel?: string
+  generateProviderInstanceId?: string
 }>()
+
+export type LightingEditorSavePayload = ReturnType<typeof lightingSetupToNodePatch> & {
+  generateModel: string
+  generateProviderInstanceId: string
+}
 
 const emit = defineEmits<{
   close: []
-  save: [payload: ReturnType<typeof lightingSetupToNodePatch>]
+  update: [payload: LightingEditorSavePayload]
+  save: [payload: LightingEditorSavePayload]
 }>()
 
 const { t } = useStudioI18n()
@@ -216,6 +232,13 @@ const draft = reactive<LightingSetupState>(normalizeLightingSetup())
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spherePaneEl = ref<HTMLElement | null>(null)
 const previewImage = ref<HTMLImageElement | null>(null)
+const modelFieldEl = ref<{
+  currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
+} | null>(null)
+const modelDraft = reactive({
+  generateModel: '',
+  generateProviderInstanceId: ''
+})
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null
 let raf = 0
 let previewLoadToken = 0
@@ -226,8 +249,20 @@ const outputPromptText = computed(() => resolveLightingOutputPrompt(draft))
 const dirty = computed(() => {
   const a = normalizeLightingSetup(props.setup)
   const b = normalizeLightingSetup(draft)
-  return JSON.stringify(a) !== JSON.stringify(b)
+  const setupDirty = JSON.stringify(a) !== JSON.stringify(b)
+  const modelDirty =
+    modelDraft.generateModel !== (props.generateModel ?? '') ||
+    modelDraft.generateProviderInstanceId !== (props.generateProviderInstanceId ?? '')
+  return setupDirty || modelDirty
 })
+
+function onModelChange(payload: {
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  modelDraft.generateModel = payload.generateModel
+  modelDraft.generateProviderInstanceId = payload.generateProviderInstanceId
+}
 
 /** StudioFloatingWindow 延迟两帧挂 body，等内容挂上后再初始化 canvas */
 function afterFloatingBodyReady(run: () => void): void {
@@ -258,15 +293,47 @@ function initPreviewSurface(): void {
   scheduleDraw()
 }
 
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSavePayload(): LightingEditorSavePayload {
+  const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
+  return {
+    ...lightingSetupToNodePatch(normalizeLightingSetup(draft)),
+    generateModel: model.generateModel,
+    generateProviderInstanceId: model.generateProviderInstanceId
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () => [props.open, props.setup] as const,
-  ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeLightingSetup(props.setup))
+    modelDraft.generateModel = props.generateModel ?? ''
+    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
     afterFloatingBodyReady(initPreviewSurface)
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(modelDraft, () => emitPreview(), { deep: true })
 
 watch(
   () => [props.open, props.previewUrl] as const,
@@ -687,7 +754,7 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 function save(): void {
-  emit('save', lightingSetupToNodePatch(normalizeLightingSetup(draft)))
+  emit('save', buildSavePayload())
 }
 
 function onClose(): void {
@@ -917,7 +984,8 @@ onBeforeUnmount(() => {
   min-height: 72px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-elevated);
+  --textarea-bg: var(--bg-elevated);
+  background: var(--textarea-bg);
   color: var(--text);
   padding: 8px 10px;
   font-size: 12px;
@@ -927,12 +995,6 @@ onBeforeUnmount(() => {
 
 .smart-textarea:disabled {
   opacity: 0.45;
-}
-
-.smart-textarea::-webkit-resizer {
-  background-color: var(--bg-elevated);
-  background-image: var(--resizer-grip);
-  border: none;
 }
 
 .presets {
@@ -975,7 +1037,9 @@ onBeforeUnmount(() => {
 
 .editor-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   padding-top: 10px;
 }

@@ -55,20 +55,28 @@ export type GraphEditorDialogsApi = {
     previewUrl: string
     panelPrompt: string
     camera: MultiAngleCameraState | null
+    generateModel: string
+    generateProviderInstanceId: string
   }
   lighting: {
     open: boolean
     previewUrl: string
     setup: LightingSetupState | null
+    generateModel: string
+    generateProviderInstanceId: string
   }
   portraitTexture: {
     open: boolean
     setup: PortraitTextureState | null
+    generateModel: string
+    generateProviderInstanceId: string
   }
   emotion: {
     open: boolean
     previewUrl: string
     setup: EmotionPadState | null
+    generateModel: string
+    generateProviderInstanceId: string
   }
   upscale: {
     open: boolean
@@ -134,26 +142,37 @@ export type GraphEditorDialogsApi = {
   saveSelectText: (textId: string) => void | Promise<void>
   closeTextsPreview: () => void
   closeMultiAngle: () => void
+  previewMultiAngle: (payload: unknown) => void
   saveMultiAngle: (payload: unknown) => void
   closeLighting: () => void
+  previewLighting: (payload: unknown) => void
   saveLighting: (payload: unknown) => void
   closePortraitTexture: () => void
+  previewPortraitTexture: (payload: unknown) => void
   savePortraitTexture: (payload: unknown) => void
   closeEmotion: () => void
+  previewEmotion: (payload: unknown) => void
   saveEmotion: (payload: unknown) => void
   closeUpscale: () => void
+  previewUpscale: (payload: unknown) => void
   saveUpscale: (payload: unknown) => void
   closeExpand: () => void
+  previewExpand: (payload: unknown) => void
   saveExpand: (payload: unknown) => void
   closeRedraw: () => void
+  previewRedraw: (payload: unknown) => void
   saveRedraw: (payload: unknown) => void
   closeErase: () => void
+  previewErase: (payload: unknown) => void
   saveErase: (payload: unknown) => void
   closeMatte: () => void
+  previewMatte: (payload: unknown) => void
   saveMatte: (payload: unknown) => void
   closeCrop: () => void
+  previewCrop: (payload: unknown) => void
   saveCrop: (payload: unknown) => void
   closeGridSplit: () => void
+  previewGridSplit: (payload: unknown) => void
   saveGridSplit: (payload: unknown) => void
 }
 

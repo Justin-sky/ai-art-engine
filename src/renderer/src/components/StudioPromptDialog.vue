@@ -107,7 +107,8 @@ function onBackdrop(): void {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-panel);
+  --textarea-bg: var(--bg-panel);
+  background: var(--textarea-bg);
   color: var(--text);
   font-size: 13px;
 }

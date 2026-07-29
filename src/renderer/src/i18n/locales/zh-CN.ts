@@ -1364,6 +1364,7 @@ export default {
       noCompatibleNodes: '没有可连接的同类型节点',
       selection: '选中项',
       groups: {
+        imageRefine: '图片精修',
         imageEdit: '图片编辑'
       }
     },
@@ -1404,7 +1405,7 @@ export default {
     },
     multiAngle: {
       appMark: '多角度编辑器',
-      hint: '双击打开多角度编辑器',
+      hint: '双击编辑机位与模型；运行节点以生成结果',
       yaw: '水平环绕',
       pitch: '垂直俯仰',
       shotScale: '景别缩放',
@@ -1432,7 +1433,7 @@ export default {
     },
     lighting: {
       appMark: '打光效果',
-      hint: '双击打开打光效果编辑器',
+      hint: '双击编辑打光与模型；运行节点以生成结果',
       perspective: '透视',
       frontal: '正面',
       global: '全局',
@@ -1468,7 +1469,7 @@ export default {
     },
     portraitTexture: {
       appMark: '人像质感调节',
-      hint: '双击打开人像质感调节',
+      hint: '双击调节质感与模型；运行节点以生成结果',
       outputPrompt: '最终提示词',
       promptEmpty: '（根据当前质感选项生成）',
       resetParams: '重置参数',
@@ -1509,7 +1510,7 @@ export default {
     },
     emotion: {
       appMark: '情绪调节',
-      hint: '双击打开情绪调节',
+      hint: '双击调节情绪与模型；运行节点以生成结果',
       previewEmpty: '接入图片输入后可在此预览',
       locate: '情绪定位',
       outputPrompt: '最终提示词',
@@ -2128,18 +2129,18 @@ export default {
         hint: '运行本节点收集各单元文本并落地到输出路径'
       },
       multiAngle: {
-        hint: '双击节点编辑机位；此处预览文本输出（节点卡片不显示图片）',
+        hint: '双击节点编辑机位与模型；运行后输出结果图，此处可预览图库与提示词',
         spliceOn: '开',
         spliceOff: '关'
       },
       lighting: {
-        hint: '双击节点编辑打光；此处预览最终打光提示词'
+        hint: '双击节点编辑打光与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       portraitTexture: {
-        hint: '双击节点调节人像质感；此处预览最终提示词'
+        hint: '双击节点调节质感与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       emotion: {
-        hint: '双击节点调节情绪；此处预览最终提示词'
+        hint: '双击节点调节情绪与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       upscale: {
         hint: '双击节点编辑参数；此处预览系统提示词与由编辑选项合并的提示词',

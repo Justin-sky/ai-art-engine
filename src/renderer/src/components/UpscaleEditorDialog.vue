@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_IMAGE_UPSCALE,
   UPSCALE_SCALES,
@@ -79,6 +79,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  update: [payload: UpscaleEditorSavePayload]
   save: [payload: UpscaleEditorSavePayload]
 }>()
 
@@ -89,6 +90,8 @@ const scales = UPSCALE_SCALES
 const draft = reactive<ImageUpscaleState>(normalizeImageUpscale())
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectionKey = ref('')
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 const selectionOptions = computed(() => {
   const models = modelOptions.value.map((opt) => ({ key: opt.key, label: opt.label }))
@@ -105,16 +108,43 @@ const dirty = computed(() => {
   return selectionKey.value !== setupKey || a.scale !== b.scale
 })
 
+function buildSavePayload(): UpscaleEditorSavePayload {
+  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
+  return {
+    ...imageUpscaleToNodePatch(normalizeImageUpscale(draft)),
+    generateModel: opt?.model ?? '',
+    generateProviderInstanceId: opt?.providerInstanceId ?? ''
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () => [props.open, props.setup, props.generateModel, props.generateProviderInstanceId] as const,
-  ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeImageUpscale(props.setup))
-    // 不挡窗口首帧
-    void reloadSelection()
+    void reloadSelection().finally(() => {
+      void nextTick(() => {
+        hydrating.value = false
+        emitPreview()
+      })
+    })
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(selectionKey, () => emitPreview())
 
 async function reloadSelection(): Promise<void> {
   const preferred = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
@@ -137,15 +167,6 @@ async function resetParams(): Promise<void> {
   const { options, selectedKey } = await loadGenerateModelOptions('image')
   modelOptions.value = options
   selectionKey.value = selectedKey || options[0]?.key || ''
-}
-
-function buildSavePayload(): UpscaleEditorSavePayload {
-  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
-  return {
-    ...imageUpscaleToNodePatch(normalizeImageUpscale(draft)),
-    generateModel: opt?.model ?? '',
-    generateProviderInstanceId: opt?.providerInstanceId ?? ''
-  }
 }
 
 function save(): void {

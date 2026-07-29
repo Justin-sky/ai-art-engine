@@ -2995,7 +2995,7 @@ type ResourceMenuGroupId = Extract<
   | 'narrative'
 >
 
-type NestedMenuGroupId = 'imageEdit'
+type NestedMenuGroupId = 'imageRefine' | 'imageEdit'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序；nestedGroups 嵌在父分组子菜单内 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
@@ -3010,6 +3010,15 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     id: 'image',
     typeIds: ['asset.image', 'image.select', 'image.toPrompt'],
     nestedGroups: [
+      {
+        id: 'imageRefine',
+        typeIds: [
+          'image.multiAngle',
+          'image.lighting',
+          'image.emotion',
+          'image.portraitTexture'
+        ]
+      },
       {
         id: 'imageEdit',
         typeIds: [
@@ -5539,7 +5548,9 @@ const multiAngle = reactive({
   nodeId: '' as string,
   previewUrl: '' as string,
   panelPrompt: '' as string,
-  camera: null as MultiAngleCameraState | null
+  camera: null as MultiAngleCameraState | null,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string
 })
 
 async function resolveAssetFileUrl(relativePath?: string | null): Promise<string> {
@@ -5631,6 +5642,8 @@ async function onMultiAngleOpen(nodeId: string): Promise<void> {
   multiAngle.nodeId = nodeId
   multiAngle.camera = readMultiAngleCameraFromNode(node.params)
   multiAngle.panelPrompt = node.params.text ?? ''
+  multiAngle.generateModel = node.params.generateModel ?? ''
+  multiAngle.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   multiAngle.previewUrl = ''
   multiAngle.open = true
   await fillEditorSourceUrl(
@@ -5648,40 +5661,48 @@ function closeMultiAngle(): void {
   multiAngle.previewUrl = ''
   multiAngle.panelPrompt = ''
   multiAngle.camera = null
+  multiAngle.generateModel = ''
+  multiAngle.generateProviderInstanceId = ''
 }
 
-function saveMultiAngle(
-  payload: ReturnType<typeof multiAngleCameraToNodePatch> & { text: string }
+function applyMultiAngleParams(
+  payload: ReturnType<typeof multiAngleCameraToNodePatch> & {
+    text: string
+    generateModel: string
+    generateProviderInstanceId: string
+  },
+  options?: { refreshUpstreamPreview?: boolean }
 ): void {
   const nodeId = multiAngle.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
-  const { text, ...cameraPatch } = payload
+  const { text, generateModel, generateProviderInstanceId, ...cameraPatch } = payload
 
   let previewDataUrl = node.params.previewDataUrl
   let previewRelativePath = node.params.previewRelativePath
-  for (const edge of graph.edges) {
-    if (edge.target !== nodeId) continue
-    if ((edge.targetPort ?? 'in') !== 'in') continue
-    const source = graph.nodes.find((n) => n.id === edge.source)
-    if (!source) continue
-    if (source.params.previewDataUrl?.trim()) {
-      previewDataUrl = source.params.previewDataUrl
-    }
-    if (source.params.previewRelativePath?.trim()) {
-      previewRelativePath = source.params.previewRelativePath
-    }
-    if (source.assetType === 'image' && source.assetId) {
-      const asset = project.assets.find((item) => item.id === source.assetId)
-      const path = asset?.thumbnailPath || asset?.relativePath
-      if (path?.trim()) previewRelativePath = path
-    }
-    const runOut = runStates[source.id]?.outputs?.out
-    if (runOut) {
-      const item = flattenImagesValues([runOut])[0]
-      if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
-      if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+  if (options?.refreshUpstreamPreview) {
+    for (const edge of graph.edges) {
+      if (edge.target !== nodeId) continue
+      if ((edge.targetPort ?? 'in') !== 'in') continue
+      const source = graph.nodes.find((n) => n.id === edge.source)
+      if (!source) continue
+      if (source.params.previewDataUrl?.trim()) {
+        previewDataUrl = source.params.previewDataUrl
+      }
+      if (source.params.previewRelativePath?.trim()) {
+        previewRelativePath = source.params.previewRelativePath
+      }
+      if (source.assetType === 'image' && source.assetId) {
+        const asset = project.assets.find((item) => item.id === source.assetId)
+        const path = asset?.thumbnailPath || asset?.relativePath
+        if (path?.trim()) previewRelativePath = path
+      }
+      const runOut = runStates[source.id]?.outputs?.out
+      if (runOut) {
+        const item = flattenImagesValues([runOut])[0]
+        if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
+        if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+      }
     }
   }
 
@@ -5689,12 +5710,41 @@ function saveMultiAngle(
     ...node.params,
     ...cameraPatch,
     text,
+    generateModel,
+    generateProviderInstanceId,
     previewDataUrl,
     previewRelativePath
   }
-  multiAngle.camera = payload.multiAngleCamera
-  multiAngle.panelPrompt = text
   scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function previewMultiAngle(
+  payload: ReturnType<typeof multiAngleCameraToNodePatch> & {
+    text: string
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  applyMultiAngleParams(payload)
+}
+
+function saveMultiAngle(
+  payload: ReturnType<typeof multiAngleCameraToNodePatch> & {
+    text: string
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  const nodeId = multiAngle.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  applyMultiAngleParams(payload, { refreshUpstreamPreview: true })
+  multiAngle.camera = payload.multiAngleCamera
+  multiAngle.panelPrompt = payload.text
+  multiAngle.generateModel = payload.generateModel
+  multiAngle.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('multi-angle', before)
   closeMultiAngle()
 }
@@ -5703,7 +5753,9 @@ const lighting = reactive({
   open: false,
   nodeId: '' as string,
   previewUrl: '' as string,
-  setup: null as LightingSetupState | null
+  setup: null as LightingSetupState | null,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string
 })
 
 async function onLightingOpen(nodeId: string): Promise<void> {
@@ -5711,6 +5763,8 @@ async function onLightingOpen(nodeId: string): Promise<void> {
   if (!node) return
   lighting.nodeId = nodeId
   lighting.setup = readLightingSetupFromNode(node.params)
+  lighting.generateModel = node.params.generateModel ?? ''
+  lighting.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   lighting.previewUrl = ''
   lighting.open = true
   await fillEditorSourceUrl(
@@ -5727,48 +5781,85 @@ function closeLighting(): void {
   lighting.nodeId = ''
   lighting.previewUrl = ''
   lighting.setup = null
+  lighting.generateModel = ''
+  lighting.generateProviderInstanceId = ''
 }
 
-function saveLighting(payload: ReturnType<typeof lightingSetupToNodePatch>): void {
+function applyLightingParams(
+  payload: ReturnType<typeof lightingSetupToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  },
+  options?: { refreshUpstreamPreview?: boolean }
+): void {
   const nodeId = lighting.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
+  const { generateModel, generateProviderInstanceId, ...setupPatch } = payload
 
   let previewDataUrl = node.params.previewDataUrl
   let previewRelativePath = node.params.previewRelativePath
-  for (const edge of graph.edges) {
-    if (edge.target !== nodeId) continue
-    if ((edge.targetPort ?? 'in') !== 'in') continue
-    const source = graph.nodes.find((n) => n.id === edge.source)
-    if (!source) continue
-    if (source.params.previewDataUrl?.trim()) {
-      previewDataUrl = source.params.previewDataUrl
-    }
-    if (source.params.previewRelativePath?.trim()) {
-      previewRelativePath = source.params.previewRelativePath
-    }
-    if (source.assetType === 'image' && source.assetId) {
-      const asset = project.assets.find((item) => item.id === source.assetId)
-      const path = asset?.thumbnailPath || asset?.relativePath
-      if (path?.trim()) previewRelativePath = path
-    }
-    const runOut = runStates[source.id]?.outputs?.out
-    if (runOut) {
-      const item = flattenImagesValues([runOut])[0]
-      if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
-      if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+  if (options?.refreshUpstreamPreview) {
+    for (const edge of graph.edges) {
+      if (edge.target !== nodeId) continue
+      if ((edge.targetPort ?? 'in') !== 'in') continue
+      const source = graph.nodes.find((n) => n.id === edge.source)
+      if (!source) continue
+      if (source.params.previewDataUrl?.trim()) {
+        previewDataUrl = source.params.previewDataUrl
+      }
+      if (source.params.previewRelativePath?.trim()) {
+        previewRelativePath = source.params.previewRelativePath
+      }
+      if (source.assetType === 'image' && source.assetId) {
+        const asset = project.assets.find((item) => item.id === source.assetId)
+        const path = asset?.thumbnailPath || asset?.relativePath
+        if (path?.trim()) previewRelativePath = path
+      }
+      const runOut = runStates[source.id]?.outputs?.out
+      if (runOut) {
+        const item = flattenImagesValues([runOut])[0]
+        if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
+        if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+      }
     }
   }
 
   node.params = {
     ...node.params,
-    ...payload,
+    ...setupPatch,
+    generateModel,
+    generateProviderInstanceId,
     previewDataUrl,
     previewRelativePath
   }
-  lighting.setup = payload.lightingSetup
   scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function previewLighting(
+  payload: ReturnType<typeof lightingSetupToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  applyLightingParams(payload)
+}
+
+function saveLighting(
+  payload: ReturnType<typeof lightingSetupToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  const nodeId = lighting.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  applyLightingParams(payload, { refreshUpstreamPreview: true })
+  lighting.setup = payload.lightingSetup
+  lighting.generateModel = payload.generateModel
+  lighting.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('lighting', before)
   closeLighting()
 }
@@ -5776,7 +5867,9 @@ function saveLighting(payload: ReturnType<typeof lightingSetupToNodePatch>): voi
 const portraitTexture = reactive({
   open: false,
   nodeId: '' as string,
-  setup: null as PortraitTextureState | null
+  setup: null as PortraitTextureState | null,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string
 })
 
 function onPortraitTextureOpen(nodeId: string): void {
@@ -5784,6 +5877,8 @@ function onPortraitTextureOpen(nodeId: string): void {
   if (!node) return
   portraitTexture.nodeId = nodeId
   portraitTexture.setup = readPortraitTextureFromNode(node.params)
+  portraitTexture.generateModel = node.params.generateModel ?? ''
+  portraitTexture.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   portraitTexture.open = true
 }
 
@@ -5791,21 +5886,53 @@ function closePortraitTexture(): void {
   portraitTexture.open = false
   portraitTexture.nodeId = ''
   portraitTexture.setup = null
+  portraitTexture.generateModel = ''
+  portraitTexture.generateProviderInstanceId = ''
+}
+
+function applyPortraitTextureParams(
+  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  const nodeId = portraitTexture.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const { generateModel, generateProviderInstanceId, ...setupPatch } = payload
+  node.params = {
+    ...node.params,
+    ...setupPatch,
+    generateModel,
+    generateProviderInstanceId
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function previewPortraitTexture(
+  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  applyPortraitTextureParams(payload)
 }
 
 function savePortraitTexture(
-  payload: ReturnType<typeof portraitTextureToNodePatch>
+  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
 ): void {
   const nodeId = portraitTexture.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const before = buildGraphJson()
-  node.params = {
-    ...node.params,
-    ...payload
-  }
+  applyPortraitTextureParams(payload)
   portraitTexture.setup = payload.portraitTexture
-  scheduleSave()
+  portraitTexture.generateModel = payload.generateModel
+  portraitTexture.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('portrait-texture', before)
   closePortraitTexture()
 }
@@ -5814,7 +5941,9 @@ const emotion = reactive({
   open: false,
   nodeId: '' as string,
   previewUrl: '' as string,
-  setup: null as EmotionPadState | null
+  setup: null as EmotionPadState | null,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string
 })
 
 async function onEmotionOpen(nodeId: string): Promise<void> {
@@ -5822,6 +5951,8 @@ async function onEmotionOpen(nodeId: string): Promise<void> {
   if (!node) return
   emotion.nodeId = nodeId
   emotion.setup = readEmotionPadFromNode(node.params)
+  emotion.generateModel = node.params.generateModel ?? ''
+  emotion.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   emotion.previewUrl = ''
   emotion.open = true
   await fillEditorSourceUrl(
@@ -5838,48 +5969,85 @@ function closeEmotion(): void {
   emotion.nodeId = ''
   emotion.previewUrl = ''
   emotion.setup = null
+  emotion.generateModel = ''
+  emotion.generateProviderInstanceId = ''
 }
 
-function saveEmotion(payload: ReturnType<typeof emotionPadToNodePatch>): void {
+function applyEmotionParams(
+  payload: ReturnType<typeof emotionPadToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  },
+  options?: { refreshUpstreamPreview?: boolean }
+): void {
   const nodeId = emotion.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
+  const { generateModel, generateProviderInstanceId, ...emotionPatch } = payload
 
   let previewDataUrl = node.params.previewDataUrl
   let previewRelativePath = node.params.previewRelativePath
-  for (const edge of graph.edges) {
-    if (edge.target !== nodeId) continue
-    if ((edge.targetPort ?? 'in') !== 'in') continue
-    const source = graph.nodes.find((n) => n.id === edge.source)
-    if (!source) continue
-    if (source.params.previewDataUrl?.trim()) {
-      previewDataUrl = source.params.previewDataUrl
-    }
-    if (source.params.previewRelativePath?.trim()) {
-      previewRelativePath = source.params.previewRelativePath
-    }
-    if (source.assetType === 'image' && source.assetId) {
-      const asset = project.assets.find((item) => item.id === source.assetId)
-      const path = asset?.thumbnailPath || asset?.relativePath
-      if (path?.trim()) previewRelativePath = path
-    }
-    const runOut = runStates[source.id]?.outputs?.out
-    if (runOut) {
-      const item = flattenImagesValues([runOut])[0]
-      if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
-      if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+  if (options?.refreshUpstreamPreview) {
+    for (const edge of graph.edges) {
+      if (edge.target !== nodeId) continue
+      if ((edge.targetPort ?? 'in') !== 'in') continue
+      const source = graph.nodes.find((n) => n.id === edge.source)
+      if (!source) continue
+      if (source.params.previewDataUrl?.trim()) {
+        previewDataUrl = source.params.previewDataUrl
+      }
+      if (source.params.previewRelativePath?.trim()) {
+        previewRelativePath = source.params.previewRelativePath
+      }
+      if (source.assetType === 'image' && source.assetId) {
+        const asset = project.assets.find((item) => item.id === source.assetId)
+        const path = asset?.thumbnailPath || asset?.relativePath
+        if (path?.trim()) previewRelativePath = path
+      }
+      const runOut = runStates[source.id]?.outputs?.out
+      if (runOut) {
+        const item = flattenImagesValues([runOut])[0]
+        if (item?.dataUrl?.trim()) previewDataUrl = item.dataUrl
+        if (item?.relativePath?.trim()) previewRelativePath = item.relativePath
+      }
     }
   }
 
   node.params = {
     ...node.params,
-    ...payload,
+    ...emotionPatch,
+    generateModel,
+    generateProviderInstanceId,
     previewDataUrl,
     previewRelativePath
   }
-  emotion.setup = payload.emotionPad
   scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function previewEmotion(
+  payload: ReturnType<typeof emotionPadToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  applyEmotionParams(payload)
+}
+
+function saveEmotion(
+  payload: ReturnType<typeof emotionPadToNodePatch> & {
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+): void {
+  const nodeId = emotion.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  applyEmotionParams(payload, { refreshUpstreamPreview: true })
+  emotion.setup = payload.emotionPad
+  emotion.generateModel = payload.generateModel
+  emotion.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('emotion', before)
   closeEmotion()
 }
@@ -5910,6 +6078,18 @@ function closeUpscale(): void {
   upscale.generateProviderInstanceId = ''
 }
 
+function previewUpscale(payload: {
+  imageUpscale: ImageUpscaleState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  const node = graph.nodes.find((n) => n.id === upscale.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function saveUpscale(payload: {
   imageUpscale: ImageUpscaleState
   generateModel: string
@@ -5927,6 +6107,7 @@ function saveUpscale(payload: {
   upscale.generateModel = payload.generateModel
   upscale.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('upscale', before)
   closeUpscale()
 }
@@ -5972,6 +6153,18 @@ function closeExpand(): void {
   expand.generateProviderInstanceId = ''
 }
 
+function previewExpand(payload: {
+  imageExpand: ImageExpandState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  const node = graph.nodes.find((n) => n.id === expand.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function saveExpand(payload: {
   imageExpand: ImageExpandState
   generateModel: string
@@ -5989,6 +6182,7 @@ function saveExpand(payload: {
   expand.generateModel = payload.generateModel
   expand.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('expand', before)
   closeExpand()
 }
@@ -6034,6 +6228,26 @@ function closeRedraw(): void {
   redraw.generateProviderInstanceId = ''
 }
 
+function previewRedraw(payload: {
+  imageRedraw?: ImageRedrawState
+  imageErase?: ImageEraseState
+  imageMatte?: ImageMatteState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  if (!payload.imageRedraw) return
+  const node = graph.nodes.find((n) => n.id === redraw.nodeId)
+  if (!node) return
+  node.params = {
+    ...node.params,
+    imageRedraw: payload.imageRedraw,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function applyRedrawPayload(payload: {
   imageRedraw: ImageRedrawState
   generateModel: string
@@ -6051,6 +6265,7 @@ function applyRedrawPayload(payload: {
   redraw.generateModel = payload.generateModel
   redraw.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('redraw', before)
   return nodeId
 }
@@ -6114,6 +6329,26 @@ function closeErase(): void {
   erase.generateProviderInstanceId = ''
 }
 
+function previewErase(payload: {
+  imageErase?: ImageEraseState
+  imageRedraw?: ImageRedrawState
+  imageMatte?: ImageMatteState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  if (!payload.imageErase) return
+  const node = graph.nodes.find((n) => n.id === erase.nodeId)
+  if (!node) return
+  node.params = {
+    ...node.params,
+    imageErase: payload.imageErase,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function applyErasePayload(payload: {
   imageErase: ImageEraseState
   generateModel: string
@@ -6131,6 +6366,7 @@ function applyErasePayload(payload: {
   erase.generateModel = payload.generateModel
   erase.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('erase', before)
   return nodeId
 }
@@ -6195,6 +6431,26 @@ function closeMatte(): void {
   matte.generateProviderInstanceId = ''
 }
 
+function previewMatte(payload: {
+  imageErase?: ImageEraseState
+  imageRedraw?: ImageRedrawState
+  imageMatte?: ImageMatteState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  if (!payload.imageMatte) return
+  const node = graph.nodes.find((n) => n.id === matte.nodeId)
+  if (!node) return
+  node.params = {
+    ...node.params,
+    imageMatte: payload.imageMatte,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function applyMattePayload(payload: {
   imageMatte: ImageMatteState
   generateModel: string
@@ -6212,6 +6468,7 @@ function applyMattePayload(payload: {
   matte.generateModel = payload.generateModel
   matte.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('matte', before)
   return nodeId
 }
@@ -6270,6 +6527,14 @@ function closeCrop(): void {
   crop.sourceLoading = false
 }
 
+function previewCrop(payload: { imageCrop: ImageCropState }): void {
+  const node = graph.nodes.find((n) => n.id === crop.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function saveCrop(payload: { imageCrop: ImageCropState }): void {
   const nodeId = crop.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
@@ -6281,6 +6546,7 @@ function saveCrop(payload: { imageCrop: ImageCropState }): void {
   }
   crop.setup = payload.imageCrop
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('crop', before)
   closeCrop()
 }
@@ -6326,6 +6592,18 @@ function closeGridSplit(): void {
   gridSplit.generateProviderInstanceId = ''
 }
 
+function previewGridSplit(payload: {
+  imageGridSplit: ImageGridSplitState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  const node = graph.nodes.find((n) => n.id === gridSplit.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
 function saveGridSplit(payload: {
   imageGridSplit: ImageGridSplitState
   generateModel: string
@@ -6343,6 +6621,7 @@ function saveGridSplit(payload: {
   gridSplit.generateModel = payload.generateModel
   gridSplit.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
+  graphEditorHosts.bumpRevision()
   recordGraphChange('gridSplit', before)
   closeGridSplit()
 }
@@ -6378,26 +6657,37 @@ const graphDialogsApi = {
   saveSelectText,
   closeTextsPreview,
   closeMultiAngle,
+  previewMultiAngle,
   saveMultiAngle,
   closeLighting,
+  previewLighting,
   saveLighting,
   closePortraitTexture,
+  previewPortraitTexture,
   savePortraitTexture,
   closeEmotion,
+  previewEmotion,
   saveEmotion,
   closeUpscale,
+  previewUpscale,
   saveUpscale,
   closeExpand,
+  previewExpand,
   saveExpand,
   closeRedraw,
+  previewRedraw,
   saveRedraw,
   closeErase,
+  previewErase,
   saveErase,
   closeMatte,
+  previewMatte,
   saveMatte,
   closeCrop,
+  previewCrop,
   saveCrop,
   closeGridSplit,
+  previewGridSplit,
   saveGridSplit
 } as GraphEditorDialogsApi
 

@@ -207,6 +207,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   close: []
+  update: [payload: RedrawEditorSavePayload]
   save: [payload: RedrawEditorSavePayload]
 }>()
 
@@ -229,6 +230,8 @@ const selectionKey = ref('')
 const aspectOptions = ref<string[]>([])
 const resolutionOptions = ref<string[]>([...REDRAW_FALLBACK_RESOLUTIONS])
 const countOptions = ref<number[]>([...REDRAW_FALLBACK_COUNTS])
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 /** 黑白蒙版（白=重绘） */
 let maskCanvas: HTMLCanvasElement | null = null
@@ -382,22 +385,63 @@ async function loadMaskFromDataUrl(url: string): Promise<void> {
   }
 }
 
+function buildSavePayload(): RedrawEditorSavePayload {
+  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
+  const state = snapshotState()
+  Object.assign(draft, state)
+  const modelFields = {
+    generateModel: opt?.model ?? '',
+    generateProviderInstanceId: opt?.providerInstanceId ?? ''
+  }
+  if (props.mode === 'erase') {
+    return { ...imageEraseToNodePatch(state), ...modelFields }
+  }
+  if (props.mode === 'matte') {
+    return { ...imageMatteToNodePatch(state), ...modelFields }
+  }
+  return { ...imageRedrawToNodePatch(state), ...modelFields }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () =>
-    [props.open, props.setup, props.sourceUrl, props.generateModel, props.generateProviderInstanceId] as const,
-  async ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeImageRedraw(props.setup))
     tool.value = 'brush'
-    // 模型列表不挡首屏；无源图时跳过 fit/mask，等 sourceUrl 到位再算
-    void reloadModelsAndCaps()
-    if (!props.sourceUrl) return
+    void reloadModelsAndCaps().finally(() => {
+      void nextTick(() => {
+        hydrating.value = false
+        emitPreview()
+      })
+    })
+  },
+  { immediate: true }
+)
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(selectionKey, () => emitPreview())
+
+watch(
+  () => [props.open, props.sourceUrl] as const,
+  async ([open, sourceUrl]) => {
+    if (!open || !sourceUrl) return
     try {
       const img = new Image()
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve()
         img.onerror = () => reject()
-        img.src = props.sourceUrl!
+        img.src = sourceUrl
       })
       sourceNatural.w = img.naturalWidth || 1
       sourceNatural.h = img.naturalHeight || 1
@@ -409,7 +453,7 @@ watch(
     await nextTick()
     if (draft.maskDataUrl) await loadMaskFromDataUrl(draft.maskDataUrl)
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
 async function reloadModelsAndCaps(): Promise<void> {
@@ -542,6 +586,7 @@ function onPaintPointerUp(ev: PointerEvent): void {
   lastPt = null
   window.removeEventListener('pointermove', onPaintPointerMove)
   window.removeEventListener('pointerup', onPaintPointerUp)
+  emitPreview()
 }
 
 function undo(): void {
@@ -551,6 +596,7 @@ function undo(): void {
   maskCtx.putImageData(prev, 0, 0)
   syncHistoryFlags()
   refreshOverlay()
+  emitPreview()
 }
 
 function redo(): void {
@@ -560,23 +606,7 @@ function redo(): void {
   maskCtx.putImageData(next, 0, 0)
   syncHistoryFlags()
   refreshOverlay()
-}
-
-function buildSavePayload(): RedrawEditorSavePayload {
-  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
-  const state = snapshotState()
-  Object.assign(draft, state)
-  const modelFields = {
-    generateModel: opt?.model ?? '',
-    generateProviderInstanceId: opt?.providerInstanceId ?? ''
-  }
-  if (props.mode === 'erase') {
-    return { ...imageEraseToNodePatch(state), ...modelFields }
-  }
-  if (props.mode === 'matte') {
-    return { ...imageMatteToNodePatch(state), ...modelFields }
-  }
-  return { ...imageRedrawToNodePatch(state), ...modelFields }
+  emitPreview()
 }
 
 function save(): void {
@@ -739,7 +769,8 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-elevated);
+  --textarea-bg: var(--bg-elevated);
+  background: var(--textarea-bg);
   color: var(--text);
   padding: 10px 12px;
   font-size: 13px;

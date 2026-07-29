@@ -33,6 +33,13 @@
       </div>
 
       <div class="editor-footer">
+        <ImageGenerateModelField
+          ref="modelFieldEl"
+          :open="open"
+          :generate-model="generateModel"
+          :generate-provider-instance-id="generateProviderInstanceId"
+          @change="onModelChange"
+        />
         <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.portraitTexture.resetParams') }}
         </button>
@@ -42,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_PORTRAIT_TEXTURE,
   PORTRAIT_TEXTURE_FIELDS,
@@ -52,16 +59,25 @@ import {
   type PortraitTextureState
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 const props = defineProps<{
   open: boolean
   setup?: Partial<PortraitTextureState> | null
+  generateModel?: string
+  generateProviderInstanceId?: string
 }>()
+
+export type PortraitTextureEditorSavePayload = ReturnType<typeof portraitTextureToNodePatch> & {
+  generateModel: string
+  generateProviderInstanceId: string
+}
 
 const emit = defineEmits<{
   close: []
-  save: [payload: ReturnType<typeof portraitTextureToNodePatch>]
+  update: [payload: PortraitTextureEditorSavePayload]
+  save: [payload: PortraitTextureEditorSavePayload]
 }>()
 
 const { t } = useStudioI18n()
@@ -69,21 +85,71 @@ const windowTitle = computed(() => t('graph.portraitTexture.appMark'))
 const fields = PORTRAIT_TEXTURE_FIELDS
 
 const draft = reactive<PortraitTextureState>(normalizePortraitTexture())
+const modelFieldEl = ref<{
+  currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
+} | null>(null)
+const modelDraft = reactive({
+  generateModel: '',
+  generateProviderInstanceId: ''
+})
 
 const dirty = computed(() => {
   const a = normalizePortraitTexture(props.setup)
   const b = normalizePortraitTexture(draft)
-  return JSON.stringify(a) !== JSON.stringify(b)
+  const modelDirty =
+    modelDraft.generateModel !== (props.generateModel ?? '') ||
+    modelDraft.generateProviderInstanceId !== (props.generateProviderInstanceId ?? '')
+  return JSON.stringify(a) !== JSON.stringify(b) || modelDirty
 })
 
+function onModelChange(payload: {
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  modelDraft.generateModel = payload.generateModel
+  modelDraft.generateProviderInstanceId = payload.generateProviderInstanceId
+}
+
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSavePayload(): PortraitTextureEditorSavePayload {
+  const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
+  return {
+    ...portraitTextureToNodePatch(normalizePortraitTexture(draft)),
+    generateModel: model.generateModel,
+    generateProviderInstanceId: model.generateProviderInstanceId
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () => [props.open, props.setup] as const,
-  ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizePortraitTexture(props.setup))
+    modelDraft.generateModel = props.generateModel ?? ''
+    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(modelDraft, () => emitPreview(), { deep: true })
 
 function setField(field: PortraitTextureField, id: string): void {
   switch (field) {
@@ -110,7 +176,7 @@ function resetParams(): void {
 }
 
 function save(): void {
-  emit('save', portraitTextureToNodePatch(normalizePortraitTexture(draft)))
+  emit('save', buildSavePayload())
 }
 
 function onClose(): void {
@@ -201,7 +267,9 @@ function onClose(): void {
 
 .editor-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: auto;
   padding-top: 8px;
 }

@@ -1094,6 +1094,7 @@ select {
 }
 
 textarea {
+  --textarea-bg: var(--shot-card-odd);
   min-height: 122px;
   max-height: 480px;
   padding: 10px 11px;
@@ -1143,8 +1144,7 @@ textarea::placeholder {
 
 textarea::-webkit-resizer {
   border: none;
-  /* 与文本框底色一致，避免亮色斑马纹行出现白角块 */
-  background-color: var(--shot-card-odd);
+  background-color: var(--textarea-bg);
   background-image: var(--resizer-grip);
 }
 
@@ -1159,16 +1159,13 @@ tbody tr.row-even > td select {
 }
 
 tbody tr.row-even > td textarea {
+  --textarea-bg: var(--shot-card-even);
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--shot-card-even) 88%, white),
     var(--shot-card-even)
   );
   border-color: color-mix(in srgb, var(--border) 50%, var(--text-muted));
-}
-
-tbody tr.row-even > td textarea::-webkit-resizer {
-  background-color: var(--shot-card-even);
 }
 
 .field-stack {

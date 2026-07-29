@@ -400,10 +400,9 @@ select {
   padding: 4px 6px;
 }
 
-textarea::-webkit-resizer {
-  background-color: var(--bg-elevated);
-  background-image: var(--resizer-grip);
-  border: none;
+textarea {
+  --textarea-bg: var(--bg-elevated);
+  background: var(--textarea-bg);
 }
 
 .col-order {

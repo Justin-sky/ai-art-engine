@@ -316,6 +316,101 @@ export function resolveGridSplitSystemPrompt(raw: string | undefined, locale?: s
   return resolveOrDefault(raw, locale, defaultGridSplitSystemPrompt)
 }
 
+// ——— 多角度精修 ———
+
+export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_EN = `You are a professional multi-view image synthesis specialist for AIArtEngine.
+Regenerate the reference subject from the requested camera angle / shot scale while preserving identity, wardrobe, materials, and scene continuity.
+Keep proportions anatomically correct; match the original lighting color temperature unless the user prompt asks otherwise.
+Do not invent unrelated characters, props, or style shifts. Prefer photoreal consistency with the reference.`
+
+export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业多视角图像合成专家。
+请按用户指定的机位 / 景别重新生成参考主体，同时严格保持身份、服饰、材质与场景连续性。
+人体比例与透视须正确；除非用户提示另有要求，应延续原图色温与整体光感。
+禁止凭空添加无关人物、道具或风格漂移；优先与参考图保持写实一致性。`
+
+export function defaultMultiAngleSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_EN,
+    DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveMultiAngleSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultMultiAngleSystemPrompt)
+}
+
+// ——— 打光精修 ———
+
+export const DEFAULT_LIGHTING_SYSTEM_PROMPT_EN = `You are a professional cinematic lighting director and image relighting specialist for AIArtEngine.
+Relight the reference image according to the lighting brief: key direction, intensity, color, and optional rim light.
+Preserve subject identity, pose, costume, and composition. Rebuild shadows, speculars, and ambient occlusion so they respond naturally to the new light.
+Avoid flat overlays or simple color filters; produce physically plausible light transport. Do not change the story content of the scene.`
+
+export const DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业电影布光导演与图像重打光专家。
+请按打光说明（主光方向、强度、色温/颜色、可选轮廓光）对参考图重新布光。
+严格保持主体身份、姿势、服饰与构图；阴影、高光与环境遮蔽须随新光源自然重建。
+禁止简单叠色滤镜或平面贴光；追求物理可信的光影传递，不要改写场景叙事内容。`
+
+export function defaultLightingSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_LIGHTING_SYSTEM_PROMPT_EN,
+    DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveLightingSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultLightingSystemPrompt)
+}
+
+// ——— 人像质感精修 ———
+
+export const DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN = `You are a professional portrait finishing and skin-texture specialist for AIArtEngine.
+Refine person-scene integration, light-shadow blend, skin finish, micro-texture, and sharpness per the user options.
+Keep facial identity, bone structure, hairstyle, and wardrobe unchanged. Avoid plastic skin, over-smoothing, or beauty-filter artifacts.
+Edges, pores, and fabric weave should remain believable at the chosen sharpness level.`
+
+export const DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业人像精修与肤质质感专家。
+请按用户选项调节人景融合、光影融合、皮肤质感、微纹理与锐度。
+保持面部身份、骨相、发型与服饰不变；避免塑料感、过度磨皮或美颜滤镜伪影。
+在所选锐度下，边缘、毛孔与织物纹理须保持可信。`
+
+export function defaultPortraitTextureSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN,
+    DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolvePortraitTextureSystemPrompt(
+  raw: string | undefined,
+  locale?: string
+): string {
+  return resolveOrDefault(raw, locale, defaultPortraitTextureSystemPrompt)
+}
+
+// ——— 情绪精修 ———
+
+export const DEFAULT_EMOTION_SYSTEM_PROMPT_EN = `You are a professional performance-direction and facial-expression specialist for AIArtEngine.
+Adjust the subject’s micro-expressions, gaze, brow/eye/mouth tension, and subtle body language to match the requested emotional locate.
+Preserve identity, age, ethnicity, hairstyle, costume, and camera framing. Do not swap the person or restyle the image.
+Keep the change believable and cinematic; avoid exaggerated anime faces or comic caricature unless the reference already has that style.`
+
+export const DEFAULT_EMOTION_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业表演指导与面部情绪调节专家。
+请按指定情绪定位调整微表情、眼神、眉眼口部张力与轻微肢体语言。
+保持身份、年龄感、种族特征、发型、服饰与取景不变；禁止换人、改妆造或整体换风格。
+情绪变化须可信、电影感；除非参考图本身是该风格，避免夸张二次元脸或漫画式变形。`
+
+export function defaultEmotionSystemPrompt(locale?: string): string {
+  return pickByLocale(locale, DEFAULT_EMOTION_SYSTEM_PROMPT_EN, DEFAULT_EMOTION_SYSTEM_PROMPT_ZH)
+}
+
+export function resolveEmotionSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultEmotionSystemPrompt)
+}
+
 // ——— 分镜拆分 ———
 // 输出字段对齐分镜表格 / ShotStoryboard，便于直接写入表格。
 

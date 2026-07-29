@@ -5,8 +5,8 @@
     :z-index="1200"
     :default-width="960"
     :default-height="580"
-    :min-width="760"
-    :min-height="480"
+    :min-width="640"
+    :min-height="420"
     body-class="pad-none"
     @close="onClose"
   >
@@ -25,27 +25,29 @@
     </div>
 
     <div class="body">
-      <div ref="spherePaneEl" class="sphere-pane">
-        <button type="button" class="orbit-btn up" :title="t('graph.multiAngle.pitchUp')" @click="nudgePitch(5)">
-          <span class="orbit-chevron">&gt;</span>
-        </button>
-        <button type="button" class="orbit-btn down" :title="t('graph.multiAngle.pitchDown')" @click="nudgePitch(-5)">
-          <span class="orbit-chevron">&gt;</span>
-        </button>
-        <button type="button" class="orbit-btn left" :title="t('graph.multiAngle.yawLeft')" @click="nudgeYaw(-15)">
-          <span class="orbit-chevron">&lt;</span>
-        </button>
-        <button type="button" class="orbit-btn right" :title="t('graph.multiAngle.yawRight')" @click="nudgeYaw(15)">
-          <span class="orbit-chevron">&gt;</span>
-        </button>
-        <canvas
-          ref="canvasEl"
-          class="sphere-canvas"
-          @pointerdown="onSpherePointerDown"
-          @pointermove="onSpherePointerMove"
-          @pointerup="onSpherePointerUp"
-          @pointercancel="onSpherePointerUp"
-        />
+      <div class="sphere-col">
+        <div ref="spherePaneEl" class="sphere-pane">
+          <button type="button" class="orbit-btn up" :title="t('graph.multiAngle.pitchUp')" @click="nudgePitch(5)">
+            <span class="orbit-chevron">&gt;</span>
+          </button>
+          <button type="button" class="orbit-btn down" :title="t('graph.multiAngle.pitchDown')" @click="nudgePitch(-5)">
+            <span class="orbit-chevron">&gt;</span>
+          </button>
+          <button type="button" class="orbit-btn left" :title="t('graph.multiAngle.yawLeft')" @click="nudgeYaw(-15)">
+            <span class="orbit-chevron">&lt;</span>
+          </button>
+          <button type="button" class="orbit-btn right" :title="t('graph.multiAngle.yawRight')" @click="nudgeYaw(15)">
+            <span class="orbit-chevron">&gt;</span>
+          </button>
+          <canvas
+            ref="canvasEl"
+            class="sphere-canvas"
+            @pointerdown="onSpherePointerDown"
+            @pointermove="onSpherePointerMove"
+            @pointerup="onSpherePointerUp"
+            @pointercancel="onSpherePointerUp"
+          />
+        </div>
       </div>
 
       <div class="controls">
@@ -132,6 +134,13 @@
     </div>
 
     <div class="editor-footer">
+      <ImageGenerateModelField
+        ref="modelFieldEl"
+        :open="open"
+        :generate-model="generateModel"
+        :generate-provider-instance-id="generateProviderInstanceId"
+        @change="onModelChange"
+      />
       <button type="button" class="reset-btn" @click="resetParams">
         {{ t('graph.multiAngle.resetParams') }}
       </button>
@@ -163,6 +172,7 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { themePreference } from '../editor/preferences'
+import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 function cssColor(name: string, fallback: string): string {
@@ -184,15 +194,20 @@ const props = defineProps<{
   previewUrl?: string | null
   camera?: Partial<MultiAngleCameraState> | null
   panelPrompt?: string | null
+  generateModel?: string
+  generateProviderInstanceId?: string
 }>()
+
+export type MultiAngleEditorSavePayload = ReturnType<typeof multiAngleCameraToNodePatch> & {
+  text: string
+  generateModel: string
+  generateProviderInstanceId: string
+}
 
 const emit = defineEmits<{
   close: []
-  save: [
-    payload: ReturnType<typeof multiAngleCameraToNodePatch> & {
-      text: string
-    }
-  ]
+  update: [payload: MultiAngleEditorSavePayload]
+  save: [payload: MultiAngleEditorSavePayload]
 }>()
 
 const { t } = useStudioI18n()
@@ -210,6 +225,13 @@ const panelDraft = ref('')
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spherePaneEl = ref<HTMLElement | null>(null)
 const previewImage = ref<HTMLImageElement | null>(null)
+const modelFieldEl = ref<{
+  currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
+} | null>(null)
+const modelDraft = reactive({
+  generateModel: '',
+  generateProviderInstanceId: ''
+})
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null
 let raf = 0
 let previewLoadToken = 0
@@ -224,8 +246,12 @@ const outputPromptText = computed(() =>
 const dirty = computed(() => {
   const a = normalizeMultiAngleCamera(props.camera)
   const panelChanged = panelDraft.value !== (props.panelPrompt ?? '')
+  const modelDirty =
+    modelDraft.generateModel !== (props.generateModel ?? '') ||
+    modelDraft.generateProviderInstanceId !== (props.generateProviderInstanceId ?? '')
   return (
     panelChanged ||
+    modelDirty ||
     a.presetId !== draft.presetId ||
     a.yaw !== draft.yaw ||
     a.pitch !== draft.pitch ||
@@ -233,6 +259,41 @@ const dirty = computed(() => {
     a.promptEnabled !== draft.promptEnabled
   )
 })
+
+function onModelChange(payload: {
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  modelDraft.generateModel = payload.generateModel
+  modelDraft.generateProviderInstanceId = payload.generateProviderInstanceId
+}
+
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSavePayload(): MultiAngleEditorSavePayload {
+  const patch = multiAngleCameraToNodePatch(
+    normalizeMultiAngleCamera(draft),
+    panelDraft.value
+  )
+  const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
+  return {
+    ...patch,
+    text: panelDraft.value,
+    generateModel: model.generateModel,
+    generateProviderInstanceId: model.generateProviderInstanceId
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
 
 /** StudioFloatingWindow 延迟两帧挂 body，等内容挂上后再初始化 canvas */
 function afterFloatingBodyReady(run: () => void): void {
@@ -253,15 +314,26 @@ function initPreviewSurface(): void {
 }
 
 watch(
-  () => [props.open, props.camera, props.panelPrompt] as const,
-  ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeMultiAngleCamera(props.camera))
     panelDraft.value = props.panelPrompt ?? ''
+    modelDraft.generateModel = props.generateModel ?? ''
+    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
     afterFloatingBodyReady(initPreviewSurface)
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(panelDraft, () => emitPreview())
+watch(modelDraft, () => emitPreview(), { deep: true })
 
 watch(
   () => [props.open, props.previewUrl] as const,
@@ -395,13 +467,15 @@ function onSpherePointerUp(e: PointerEvent): void {
 
 function resizeCanvas(): void {
   const canvas = canvasEl.value
-  if (!canvas) return
-  const parent = canvas.parentElement
-  if (!parent) return
-  const size = Math.min(parent.clientWidth, parent.clientHeight)
+  const pane = spherePaneEl.value ?? canvas?.parentElement
+  if (!canvas || !pane) return
+  const size = Math.max(1, Math.floor(Math.min(pane.clientWidth, pane.clientHeight)))
   const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  canvas.width = Math.max(1, Math.floor(size * dpr))
-  canvas.height = Math.max(1, Math.floor(size * dpr))
+  const pixel = Math.max(1, Math.floor(size * dpr))
+  if (canvas.width !== pixel || canvas.height !== pixel) {
+    canvas.width = pixel
+    canvas.height = pixel
+  }
   canvas.style.width = `${size}px`
   canvas.style.height = `${size}px`
 }
@@ -770,11 +844,7 @@ function drawSphere(): void {
 }
 
 function save(): void {
-  const patch = multiAngleCameraToNodePatch(
-    normalizeMultiAngleCamera(draft),
-    panelDraft.value
-  )
-  emit('save', { ...patch, text: panelDraft.value })
+  emit('save', buildSavePayload())
 }
 
 function onClose(): void {
@@ -858,6 +928,8 @@ onBeforeUnmount(() => {
 }
 
 .editor-root {
+  container-type: size;
+  container-name: multi-angle-editor;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -869,7 +941,9 @@ onBeforeUnmount(() => {
 
 .editor-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   padding-top: 10px;
 }
@@ -889,21 +963,29 @@ onBeforeUnmount(() => {
 }
 
 .body {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1.15fr);
+  gap: 18px;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 18px;
   align-items: stretch;
+}
+
+.sphere-col {
+  container-type: size;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .sphere-pane {
   position: relative;
-  flex: 0 0 auto;
-  aspect-ratio: 1 / 1;
-  height: 100%;
-  width: auto;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
   max-width: 100%;
-  align-self: stretch;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -916,6 +998,8 @@ onBeforeUnmount(() => {
 
 .sphere-canvas {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
   cursor: grab;
   touch-action: none;
 }
@@ -990,8 +1074,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  flex: 1 1 0;
-  min-width: 280px;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding-top: 4px;
 }
@@ -1088,7 +1172,8 @@ onBeforeUnmount(() => {
   min-height: 64px;
   border-radius: 8px;
   border: 1px solid #333;
-  background: var(--bg-elevated);
+  --textarea-bg: var(--bg-elevated);
+  background: var(--textarea-bg);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -1103,20 +1188,16 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
-@media (max-width: 800px) {
+@container multi-angle-editor (max-width: 720px) {
   .body {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .sphere-pane {
-    width: min(100%, 360px);
+  .sphere-col {
     height: auto;
-    max-height: none;
-    align-self: center;
-  }
-
-  .controls {
-    min-width: 0;
+    max-height: min(380px, 48cqh);
+    min-height: 200px;
   }
 }
 </style>

@@ -64,7 +64,10 @@
       :preview-url="api.multiAngle.previewUrl"
       :camera="api.multiAngle.camera"
       :panel-prompt="api.multiAngle.panelPrompt"
+      :generate-model="api.multiAngle.generateModel"
+      :generate-provider-instance-id="api.multiAngle.generateProviderInstanceId"
       @close="onClose(api.closeMultiAngle)"
+      @update="api.previewMultiAngle as never"
       @save="api.saveMultiAngle as never"
     />
 
@@ -73,7 +76,10 @@
       :open="true"
       :preview-url="api.lighting.previewUrl"
       :setup="api.lighting.setup"
+      :generate-model="api.lighting.generateModel"
+      :generate-provider-instance-id="api.lighting.generateProviderInstanceId"
       @close="onClose(api.closeLighting)"
+      @update="api.previewLighting as never"
       @save="api.saveLighting as never"
     />
 
@@ -81,7 +87,10 @@
       v-else-if="viewId === 'node.portraitTexture' && api.portraitTexture.open"
       :open="true"
       :setup="api.portraitTexture.setup"
+      :generate-model="api.portraitTexture.generateModel"
+      :generate-provider-instance-id="api.portraitTexture.generateProviderInstanceId"
       @close="onClose(api.closePortraitTexture)"
+      @update="api.previewPortraitTexture as never"
       @save="api.savePortraitTexture as never"
     />
 
@@ -90,7 +99,10 @@
       :open="true"
       :preview-url="api.emotion.previewUrl"
       :setup="api.emotion.setup"
+      :generate-model="api.emotion.generateModel"
+      :generate-provider-instance-id="api.emotion.generateProviderInstanceId"
       @close="onClose(api.closeEmotion)"
+      @update="api.previewEmotion as never"
       @save="api.saveEmotion as never"
     />
 
@@ -101,6 +113,7 @@
       :generate-model="api.upscale.generateModel"
       :generate-provider-instance-id="api.upscale.generateProviderInstanceId"
       @close="onClose(api.closeUpscale)"
+      @update="api.previewUpscale as never"
       @save="api.saveUpscale as never"
     />
 
@@ -113,6 +126,7 @@
       :generate-model="api.expand.generateModel"
       :generate-provider-instance-id="api.expand.generateProviderInstanceId"
       @close="onClose(api.closeExpand)"
+      @update="api.previewExpand as never"
       @save="api.saveExpand as never"
     />
 
@@ -126,6 +140,7 @@
       :generate-model="api.redraw.generateModel"
       :generate-provider-instance-id="api.redraw.generateProviderInstanceId"
       @close="onClose(api.closeRedraw)"
+      @update="api.previewRedraw as never"
       @save="api.saveRedraw as never"
     />
 
@@ -139,6 +154,7 @@
       :generate-model="api.erase.generateModel"
       :generate-provider-instance-id="api.erase.generateProviderInstanceId"
       @close="onClose(api.closeErase)"
+      @update="api.previewErase as never"
       @save="api.saveErase as never"
     />
 
@@ -152,6 +168,7 @@
       :generate-model="api.matte.generateModel"
       :generate-provider-instance-id="api.matte.generateProviderInstanceId"
       @close="onClose(api.closeMatte)"
+      @update="api.previewMatte as never"
       @save="api.saveMatte as never"
     />
 
@@ -162,6 +179,7 @@
       :source-url="api.crop.sourceUrl"
       :source-loading="api.crop.sourceLoading"
       @close="onClose(api.closeCrop)"
+      @update="api.previewCrop as never"
       @save="api.saveCrop as never"
     />
 
@@ -174,6 +192,7 @@
       :generate-model="api.gridSplit.generateModel"
       :generate-provider-instance-id="api.gridSplit.generateProviderInstanceId"
       @close="onClose(api.closeGridSplit)"
+      @update="api.previewGridSplit as never"
       @save="api.saveGridSplit as never"
     />
 

@@ -83,14 +83,9 @@ function onDialogSave(text: string): void {
   box-sizing: border-box;
   padding: 6px 28px 6px 8px;
   resize: vertical;
-  background: var(--bg-input);
+  --textarea-bg: var(--bg-input);
+  background: var(--textarea-bg);
   color: var(--text);
-}
-
-.expandable-textarea textarea::-webkit-resizer {
-  background-color: var(--bg-input);
-  background-image: var(--resizer-grip);
-  border: none;
 }
 
 .expand-btn {

@@ -355,6 +355,10 @@ textarea {
   resize: vertical;
 }
 
+textarea {
+  --textarea-bg: var(--bg-panel);
+}
+
 input:focus,
 textarea:focus {
   outline: none;
@@ -362,14 +366,8 @@ textarea:focus {
   background: var(--bg-elevated);
 }
 
-textarea::-webkit-resizer {
-  background-color: var(--bg-panel);
-  background-image: var(--resizer-grip);
-  border: none;
-}
-
-textarea:focus::-webkit-resizer {
-  background-color: var(--bg-elevated);
+textarea:focus {
+  --textarea-bg: var(--bg-elevated);
 }
 
 .del {

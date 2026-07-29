@@ -60,6 +60,13 @@
           <span class="locate-label">{{ t('graph.emotion.locate') }}</span>
           <strong class="locate-value">{{ currentLabel }}</strong>
         </div>
+        <ImageGenerateModelField
+          ref="modelFieldEl"
+          :open="open"
+          :generate-model="generateModel"
+          :generate-provider-instance-id="generateProviderInstanceId"
+          @change="onModelChange"
+        />
         <button type="button" class="reset-btn" @click="resetParams">
           {{ t('graph.emotion.resetParams') }}
         </button>
@@ -69,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_EMOTION_PAD,
   EMOTION_GRID,
@@ -82,6 +89,7 @@ import {
   type EmotionPadState
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 /** 预切好的 5×5 小图：每格已向内缩 6px，并去掉深色背景 */
@@ -100,17 +108,32 @@ const props = defineProps<{
   open: boolean
   previewUrl?: string | null
   setup?: Partial<EmotionPadState> | null
+  generateModel?: string
+  generateProviderInstanceId?: string
 }>()
+
+export type EmotionEditorSavePayload = ReturnType<typeof emotionPadToNodePatch> & {
+  generateModel: string
+  generateProviderInstanceId: string
+}
 
 const emit = defineEmits<{
   close: []
-  save: [payload: ReturnType<typeof emotionPadToNodePatch>]
+  update: [payload: EmotionEditorSavePayload]
+  save: [payload: EmotionEditorSavePayload]
 }>()
 
 const { t } = useStudioI18n()
 const windowTitle = computed(() => t('graph.emotion.appMark'))
 
 const draft = reactive<EmotionPadState>(normalizeEmotionPad())
+const modelFieldEl = ref<{
+  currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
+} | null>(null)
+const modelDraft = reactive({
+  generateModel: '',
+  generateProviderInstanceId: ''
+})
 
 const cells = computed(() => {
   const list: Array<{ x: EmotionGridIndex; y: EmotionGridIndex; label: string }> = []
@@ -135,17 +158,60 @@ const emotionPreviewUrl = computed(
 const dirty = computed(() => {
   const a = normalizeEmotionPad(props.setup)
   const b = normalizeEmotionPad(draft)
-  return a.gridX !== b.gridX || a.gridY !== b.gridY
+  const modelDirty =
+    modelDraft.generateModel !== (props.generateModel ?? '') ||
+    modelDraft.generateProviderInstanceId !== (props.generateProviderInstanceId ?? '')
+  return a.gridX !== b.gridX || a.gridY !== b.gridY || modelDirty
 })
 
+function onModelChange(payload: {
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  modelDraft.generateModel = payload.generateModel
+  modelDraft.generateProviderInstanceId = payload.generateProviderInstanceId
+}
+
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSavePayload(): EmotionEditorSavePayload {
+  const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
+  return {
+    ...emotionPadToNodePatch(normalizeEmotionPad(draft)),
+    generateModel: model.generateModel,
+    generateProviderInstanceId: model.generateProviderInstanceId
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () => [props.open, props.setup] as const,
-  ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeEmotionPad(props.setup))
+    modelDraft.generateModel = props.generateModel ?? ''
+    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(modelDraft, () => emitPreview(), { deep: true })
 
 function selectCell(x: EmotionGridIndex, y: EmotionGridIndex): void {
   draft.gridX = x
@@ -170,7 +236,7 @@ function onPadPointer(e: PointerEvent): void {
 }
 
 function save(): void {
-  emit('save', emotionPadToNodePatch(normalizeEmotionPad(draft)))
+  emit('save', buildSavePayload())
 }
 
 function onClose(): void {

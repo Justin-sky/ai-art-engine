@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   DEFAULT_IMAGE_EXPAND,
   EXPAND_FALLBACK_COUNTS,
@@ -121,6 +121,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  update: [payload: ExpandEditorSavePayload]
   save: [payload: ExpandEditorSavePayload]
 }>()
 
@@ -137,6 +138,8 @@ const selectionKey = ref('')
 const aspectOptions = ref<string[]>([])
 const resolutionOptions = ref<string[]>([...EXPAND_FALLBACK_RESOLUTIONS])
 const countOptions = ref<number[]>([...EXPAND_FALLBACK_COUNTS])
+const hydrating = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 const dirty = computed(() => {
   const a = normalizeImageExpand(props.setup)
@@ -200,20 +203,54 @@ function fitSourceDisplay(): void {
   sourceDisplay.h = Math.max(80, Math.round(h))
 }
 
+function buildSavePayload(): ExpandEditorSavePayload {
+  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
+  return {
+    ...imageExpandToNodePatch(normalizeImageExpand(draft)),
+    generateModel: opt?.model ?? '',
+    generateProviderInstanceId: opt?.providerInstanceId ?? ''
+  }
+}
+
+function emitPreview(): void {
+  if (!props.open || hydrating.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (!props.open || hydrating.value) return
+    emit('update', buildSavePayload())
+  }, 48)
+}
+
 watch(
-  () =>
-    [props.open, props.setup, props.sourceUrl, props.generateModel, props.generateProviderInstanceId] as const,
-  async ([open]) => {
+  () => props.open,
+  (open) => {
     if (!open) return
+    hydrating.value = true
     Object.assign(draft, normalizeImageExpand(props.setup))
-    void reloadModelsAndCaps()
-    if (!props.sourceUrl) return
+    void reloadModelsAndCaps().finally(() => {
+      void nextTick(() => {
+        hydrating.value = false
+        emitPreview()
+      })
+    })
+  },
+  { immediate: true }
+)
+
+watch(draft, () => emitPreview(), { deep: true })
+watch(selectionKey, () => emitPreview())
+
+watch(
+  () => [props.open, props.sourceUrl] as const,
+  async ([open, sourceUrl]) => {
+    if (!open || !sourceUrl) return
     try {
       const img = new Image()
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve()
         img.onerror = () => reject()
-        img.src = props.sourceUrl!
+        img.src = sourceUrl
       })
       sourceNatural.w = img.naturalWidth || 1
       sourceNatural.h = img.naturalHeight || 1
@@ -223,7 +260,7 @@ watch(
     }
     fitSourceDisplay()
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
 async function reloadModelsAndCaps(): Promise<void> {
@@ -361,15 +398,6 @@ function onPointerUp(): void {
   drag = null
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
-}
-
-function buildSavePayload(): ExpandEditorSavePayload {
-  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
-  return {
-    ...imageExpandToNodePatch(normalizeImageExpand(draft)),
-    generateModel: opt?.model ?? '',
-    generateProviderInstanceId: opt?.providerInstanceId ?? ''
-  }
 }
 
 function save(): void {
