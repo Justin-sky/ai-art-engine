@@ -1865,7 +1865,10 @@ export default {
     },
     preview: {
       audioError: 'Cannot play audio',
-      videoError: 'Video codec not supported'
+      videoError: 'Video codec not supported',
+      imageTitle: 'Image preview',
+      videoTitle: 'Video preview',
+      audioTitle: 'Audio preview'
     },
     run: {
       stopped: 'Stopped',

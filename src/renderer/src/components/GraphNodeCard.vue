@@ -532,6 +532,8 @@ const emit = defineEmits<{
   selectVideoOpen: [nodeId: string]
   selectVoiceOpen: [nodeId: string]
   selectTextOpen: [nodeId: string]
+  textsOpen: [nodeId: string]
+  textOpen: [nodeId: string]
 }>()
 
 const audioEl = ref<HTMLAudioElement | null>(null)
@@ -1731,7 +1733,7 @@ function onPreviewDblClick(): void {
       return
     }
     if (isScreenplayOutputNode.value) {
-      await diveNodeTool('node.textsPreview', title)
+      emit('textsOpen', props.node.id)
       return
     }
     if (isMultiAngleEditorNode(props.node)) {
@@ -1829,14 +1831,14 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
-    // 预览区已有正文：双击打开记事本，避免误开空的生成指令
+    // 预览区已有正文：双击打开记事本弹窗，避免误开空的生成指令
     if (
       textPreview.value &&
       !isAssetRef.value &&
       !isScreenplayOutputNode.value &&
       isNodeTextCapable(props.node)
     ) {
-      await diveNodeTool('node.notepad', title)
+      emit('textOpen', props.node.id)
       return
     }
     // 加工 / 工具节点：双击展开 / 收起生成指令
@@ -1844,9 +1846,9 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
-    // 有文本输出 / 剧本文档的节点：双击打开记事本（引用节点除外）
+    // 有文本输出 / 剧本文档的节点：双击打开记事本弹窗（引用节点除外）
     if (!isAssetRef.value && isNodeTextCapable(props.node)) {
-      await diveNodeTool('node.notepad', title)
+      emit('textOpen', props.node.id)
       return
     }
 

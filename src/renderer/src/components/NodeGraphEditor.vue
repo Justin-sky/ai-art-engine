@@ -278,6 +278,8 @@
           @select-video-open="onSelectVideoOpen"
           @select-voice-open="onSelectVoiceOpen"
           @select-text-open="onSelectTextOpen"
+          @texts-open="onTextsOpen"
+          @text-open="onTextOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -6345,7 +6347,7 @@ function saveGridSplit(payload: {
   closeGridSplit()
 }
 
-/** Dialog 状态：选取器用 DialogLayer；其余工具可走 dive。open 不进入本组件模板 */
+/** Dialog：选取器 + 文本预览；图片/视频预览走全局 MediaPreviewDialog；图片编辑等仅 Dive */
 const graphDialogsApi = {
   notepad,
   selectImage,

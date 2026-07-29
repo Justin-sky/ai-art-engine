@@ -1251,21 +1251,6 @@ function openTextNotepad(item: PreviewItem | string | undefined): void {
         ? item
         : ''
       : displayText(item)
-  const rootKey = workspace.activeDiveRootKey?.trim()
-  if (rootKey) {
-    workspace.diveIntoView(
-      rootKey,
-      {
-        viewId: 'media.preview',
-        mediaKind: 'text',
-        url: text,
-        text,
-        title: notepadTitle.value
-      },
-      notepadTitle.value
-    )
-    return
-  }
   notepadText.value = text
   notepadOpen.value = true
 }

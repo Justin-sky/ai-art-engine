@@ -26,6 +26,7 @@
     <StudioPromptDialog />
     <GraphTaskListDialog />
     <GraphRunLogDialog />
+    <MediaPreviewDialog />
   </div>
 </template>
 
@@ -40,6 +41,7 @@ import SettingsView from './views/SettingsView.vue'
 import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
 import GraphRunLogDialog from './components/GraphRunLogDialog.vue'
+import MediaPreviewDialog from './components/MediaPreviewDialog.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'
 import logoUrl from './assets/logo-mark.png'

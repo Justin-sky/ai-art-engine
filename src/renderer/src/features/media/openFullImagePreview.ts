@@ -1,4 +1,4 @@
-import { useWorkspaceStore } from '../../stores/workspace'
+import { openMediaPreviewDialog } from './mediaPreviewDialog'
 
 function detectMediaKind(url: string, relativePath?: string | null): 'image' | 'video' | 'audio' {
   const path = `${relativePath || ''} ${url}`.toLowerCase()
@@ -10,7 +10,7 @@ function detectMediaKind(url: string, relativePath?: string | null): 'image' | '
 }
 
 /**
- * Inspector / 列表缩略图双击：进入统一 dive 媒体预览。
+ * Inspector / 列表缩略图双击：浮动弹窗预览（不进 Dive 面包屑）。
  * 优先 relativePath（getAssetFileUrl → studio-media 原图），否则 dataUrl。
  */
 export async function openFullImagePreview(source: {
@@ -18,8 +18,6 @@ export async function openFullImagePreview(source: {
   relativePath?: string | null
   title?: string | null
 }): Promise<void> {
-  const workspace = useWorkspaceStore()
-  const rootKey = workspace.activeDiveRootKey?.trim()
   const relativePath = source.relativePath?.trim() || ''
   let url = source.dataUrl?.trim() || ''
 
@@ -34,32 +32,12 @@ export async function openFullImagePreview(source: {
   if (!url && !relativePath) return
 
   const mediaKind = detectMediaKind(url || relativePath, relativePath)
-  if (rootKey) {
-    workspace.diveIntoView(
-      rootKey,
-      {
-        viewId: 'media.preview',
-        mediaKind,
-        url: url || relativePath,
-        relativePath: relativePath || undefined,
-        title: source.title?.trim() || undefined
-      },
-      source.title?.trim() || undefined
-    )
-    return
-  }
-
-  // 无活跃 dive 根时仍尽量解析 URL，供调试；正式预览依赖编辑器 dive
-  if (!url && relativePath) {
-    try {
-      url = (await window.studio.getAssetFileUrl(relativePath)) || ''
-    } catch {
-      /* ignore */
-    }
-  }
-  if (url) {
-    console.warn('[openFullImagePreview] no active dive root; preview skipped')
-  }
+  openMediaPreviewDialog({
+    mediaKind,
+    url: url || relativePath,
+    relativePath: relativePath || undefined,
+    title: source.title?.trim() || undefined
+  })
 }
 
 /** 资产管理：导入引用类图/声/视双击预览（剧本 txt 不走此窗） */

@@ -1857,7 +1857,10 @@ export default {
     },
     preview: {
       audioError: '声音无法播放',
-      videoError: '视频编码不受支持'
+      videoError: '视频编码不受支持',
+      imageTitle: '图片预览',
+      videoTitle: '视频预览',
+      audioTitle: '声音预览'
     },
     run: {
       stopped: '已停止',
