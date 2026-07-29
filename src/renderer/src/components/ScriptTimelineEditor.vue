@@ -1614,7 +1614,10 @@ async function importDroppedFilesOntoTrack(
 ): Promise<void> {
   const accepted = filterImportableMediaPaths(paths)
   if (!accepted.length) {
-    await promptAlert(t('script.timeline.dropUnsupported'))
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.dropUnsupported')
+    })
     return
   }
   try {
@@ -1623,19 +1626,26 @@ async function importDroppedFilesOntoTrack(
     if (!result.imported.length) {
       const detail =
         result.skipped.map((s) => s.reason).join('; ') || t('script.timeline.dropUnsupported')
-      await promptAlert(t('script.timeline.importFailed', { error: detail }))
+      await promptAlert({
+        title: t('script.dialog.timeline'),
+        message: t('script.timeline.importFailed', { error: detail })
+      })
       return
     }
     const placed = await appendAssetsToTrack(result.imported, kind, dropStart)
     if (!placed) {
-      await promptAlert(t('script.timeline.dropUnsupported'))
+      await promptAlert({
+        title: t('script.dialog.timeline'),
+        message: t('script.timeline.dropUnsupported')
+      })
     }
   } catch (err) {
-    await promptAlert(
-      t('script.timeline.importFailed', {
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.importFailed', {
         error: err instanceof Error ? err.message : String(err)
       })
-    )
+    })
   }
 }
 
@@ -1690,7 +1700,12 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
   if (assets.length) {
     const placed = await appendAssetsToTrack(assets, kind, dropStart)
     workspace.setDraggingAsset(null)
-    if (!placed) await promptAlert(t('script.timeline.dropUnsupported'))
+    if (!placed) {
+      await promptAlert({
+        title: t('script.dialog.timeline'),
+        message: t('script.timeline.dropUnsupported')
+      })
+    }
     return
   }
 

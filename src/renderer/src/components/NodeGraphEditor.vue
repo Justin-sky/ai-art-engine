@@ -582,7 +582,6 @@ import {
   hydrateHostInputSlotSpecs,
   type ResolveHostInputSlotsOptions,
   isHostInputSlotNode,
-  resolveAssetProcessingTypeId,
   listAddableNodeTypes,
   nextGraphGroupTitle,
   normalizeAssetGraph,
