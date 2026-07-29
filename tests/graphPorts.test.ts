@@ -60,7 +60,7 @@ describe('catalog port types', () => {
     const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
     const narrativeSelect = createNodeFromType('narrative.select', { x: 0, y: 120 })
 
-    expect(getNodePorts(shotSplit).find((p) => p.id === 'in')?.dataType).toBe('narrativeEntity')
+    expect(getNodePorts(shotSplit).find((p) => p.id === 'in')?.dataType).toBe('text')
     expect(canConnectNodes(extract, worldTable)).toBe(true)
     expect(canConnectNodes(worldTable, worldGen)).toBe(true)
     const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
@@ -213,7 +213,7 @@ describe('asset reference ports', () => {
     ])
     expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-worldEntities:worldEntities:in',
-      'in-narrativeEntity:narrativeEntity:in',
+      'in-narrativeEntity:text:in',
       'out:videoEntities:out'
     ])
   })

@@ -4,6 +4,7 @@ import {
   createAssetGraphNode,
   createNodeFromType,
   executeSelectNarrativeNode,
+  formatNarrativeUnitRefText,
   getNodePorts,
   GraphPortType,
   stringifyNarrativeUnitRows,
@@ -30,11 +31,11 @@ function unit(id: string, order: number, title: string): NarrativeUnitRow {
 }
 
 describe('narrative.select node', () => {
-  it('has narrative in and narrativeEntity out', () => {
+  it('has narrative in and text out', () => {
     const node = createNodeFromType('narrative.select', { x: 0, y: 0 })
     expect(getNodePorts(node).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', GraphPortType.narrative],
-      ['out', GraphPortType.narrativeEntity]
+      ['out', GraphPortType.text]
     ])
   })
 
@@ -54,7 +55,7 @@ describe('narrative.select node', () => {
     expect(canConnectNodes(select, script, { targetPort: 'in-narrativeEntity' })).toBe(true)
   })
 
-  it('picks selected unit as narrativeEntity', () => {
+  it('picks selected unit as text', () => {
     const rows = [unit('u1', 1, '开场'), unit('u2', 2, '冲突')]
     const node = createNodeFromType('narrative.select', { x: 0, y: 0 }, {
       params: { selectedUnitId: 'u2' }
@@ -70,8 +71,11 @@ describe('narrative.select node', () => {
       }
     }
     const result = executeSelectNarrativeNode(ctx)
-    expect(result.out?.kind).toBe(GraphPortType.narrativeEntity)
-    expect(result.out && 'text' in result.out ? result.out.text : '').toContain('"id": "u2"')
+    expect(result.out?.kind).toBe(GraphPortType.text)
+    expect(result.out && 'text' in result.out ? result.out.text : '').toBe(
+      formatNarrativeUnitRefText(rows[1]!)
+    )
+    expect(result.out && 'text' in result.out ? result.out.text : '').not.toContain('"id"')
     expect(patched[0]).toMatchObject({ selectedUnitId: 'u2' })
   })
 
@@ -85,8 +89,11 @@ describe('narrative.select node', () => {
       }
     }
     const result = executeSelectNarrativeNode(ctx)
-    expect(result.out?.kind).toBe(GraphPortType.narrativeEntity)
+    expect(result.out?.kind).toBe(GraphPortType.text)
     expect(node.params.selectedUnitId).toBe('u1')
-    expect(result.out && 'text' in result.out ? result.out.text : '').toContain('"id": "u1"')
+    expect(result.out && 'text' in result.out ? result.out.text : '').toBe(
+      formatNarrativeUnitRefText(rows[0]!)
+    )
+    expect(result.out && 'text' in result.out ? result.out.text : '').toContain('#1 开场')
   })
 })

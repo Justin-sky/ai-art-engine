@@ -1,5 +1,13 @@
 <template>
   <div class="asset-canvas-editor">
+    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
+      <EditorDiveBar
+        :root-title="diveContext.rootTitle"
+        :frames="diveContext.frames"
+        @pop-to="diveContext.popTo"
+      />
+    </div>
+
     <div v-if="!diving" class="toolbar">
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
@@ -24,9 +32,11 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useAssetRecord } from '../composables/useAssetRecord'
 import { useEditorDiveHost } from '../composables/useEditorDiveHost'
+import { isEditorDiveViewFrame } from '../features/graph/model/editorDive'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
+import EditorDiveBar from './EditorDiveBar.vue'
 import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
 const props = defineProps<{
@@ -42,11 +52,16 @@ const rootTitle = computed(
   () => canvasAsset.value?.name?.trim() || t('studio.dive.root')
 )
 
-const { diving, diveTop } = useEditorDiveHost({
+const { diving, diveTop, diveContext } = useEditorDiveHost({
   kind: 'canvas',
   assetId: () => props.canvasAssetId,
   rootTitle
 })
+
+/** 视图帧（表格/预览/工具）由壳层显示面包屑；资产帧放在子图工具栏 */
+const showDiveShellBar = computed(
+  () => diving.value && isEditorDiveViewFrame(diveTop.value)
+)
 
 onBeforeUnmount(() => {
   workspace.consumeCanvasEditor(props.canvasAssetId)
@@ -61,6 +76,15 @@ onBeforeUnmount(() => {
   min-height: 0;
   background: var(--bg-panel);
   position: relative;
+}
+
+.dive-shell-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 
 .toolbar {

@@ -50,16 +50,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { resolveNodeType, type GraphImageItem } from '@shared/graph'
-import { useDirectorPreview } from '../features/director/directorPreview'
+import { parseGraphHostContext } from '@shared/editorGlobals'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
+import { useWorkspaceStore } from '../stores/workspace'
 
 const { t } = useStudioI18n()
 const editor = useEditorKernel()
-const preview = useDirectorPreview()
+const workspace = useWorkspaceStore()
 
 const localTitle = ref('')
 const shotBlobCache = new Map<string, { dataUrl: string; blobUrl: string }>()
@@ -189,7 +190,20 @@ function persist(): void {
 }
 
 function openStage(): void {
-  preview?.openStageView(node.value?.id)
+  const selection = graphSelection.value
+  const current = node.value
+  const rootKey = workspace.activeDiveRootKey?.trim()
+  const directorAssetId = selection ? parseGraphHostContext(selection.hostId).id?.trim() : ''
+  if (!rootKey || !directorAssetId || !current) return
+  workspace.diveIntoView(
+    rootKey,
+    {
+      viewId: 'director.stage',
+      directorAssetId,
+      processingNodeId: current.id
+    },
+    current.title?.trim() || t('graph.types.asset.motion')
+  )
 }
 
 function openShotPreview(shot: GraphImageItem): void {

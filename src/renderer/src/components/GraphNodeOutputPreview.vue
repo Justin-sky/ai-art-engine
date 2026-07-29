@@ -1245,12 +1245,28 @@ const notepadTitle = computed(() => {
 const textOpenHint = computed(() => t('graph.notepad.openHint'))
 
 function openTextNotepad(item: PreviewItem | string | undefined): void {
-  if (typeof item === 'string' || item == null) {
-    notepadText.value = item?.trim() ? item : ''
-    notepadOpen.value = true
+  const text =
+    typeof item === 'string' || item == null
+      ? item?.trim()
+        ? item
+        : ''
+      : displayText(item)
+  const rootKey = workspace.activeDiveRootKey?.trim()
+  if (rootKey) {
+    workspace.diveIntoView(
+      rootKey,
+      {
+        viewId: 'media.preview',
+        mediaKind: 'text',
+        url: text,
+        text,
+        title: notepadTitle.value
+      },
+      notepadTitle.value
+    )
     return
   }
-  notepadText.value = displayText(item)
+  notepadText.value = text
   notepadOpen.value = true
 }
 

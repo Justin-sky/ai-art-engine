@@ -542,10 +542,10 @@ function softResolveSourceOutput(
     if (fromPersisted) return { kind: 'narrative', text: fromPersisted }
   }
 
-  // 选择叙事单元：params.text 为单行实体 JSON
+  // 选择叙事单元：params.text 为可读普通文本
   if (node.typeId === 'narrative.select' && (sourcePort === 'out' || !sourcePort)) {
     const text = node.params.text?.trim() || ''
-    if (text) return { kind: 'narrativeEntity', text }
+    if (text) return { kind: 'text', text }
   }
 
   if (graphValueHasPayload(fromRun)) return fromRun
@@ -1153,6 +1153,10 @@ function textFromBoundaryValue(value: GraphValue): string {
   if (value.kind === 'text') return value.text
   if (value.kind === 'texts') {
     return value.items.map((item) => item.text ?? '').filter(Boolean).join('\n')
+  }
+  // 兼容历史叙事实体口输出
+  if (value.kind === 'narrativeEntity' || value.kind === 'narrative') {
+    return value.text
   }
   return ''
 }

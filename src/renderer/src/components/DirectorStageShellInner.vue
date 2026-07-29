@@ -138,7 +138,6 @@
           @reset-view="scene.resetViewer"
         />
       </div>
-      <DirectorStageSidePanel />
     </div>
 
     <DirectorAnimationPanel v-if="scene.stageEditMode.value === 'animation'" />
@@ -163,7 +162,6 @@ import {
   useWorkspaceStore
 } from '../stores/workspace'
 import DirectorSceneHierarchy from './DirectorSceneHierarchy.vue'
-import DirectorStageSidePanel from './DirectorStageSidePanel.vue'
 import DirectorViewportToolbar from './DirectorViewportToolbar.vue'
 import DirectorViewOrientationGizmo from './DirectorViewOrientationGizmo.vue'
 import DirectorCameraShotsPanel from './DirectorCameraShotsPanel.vue'

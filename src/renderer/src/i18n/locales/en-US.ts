@@ -272,7 +272,8 @@ export default {
     dive: {
       up: 'Up',
       root: 'Series',
-      sep: '/'
+      sep: '/',
+      toolMissing: 'Tool unavailable'
     },
     tabMenu: {
       float: 'Float window',
@@ -785,10 +786,10 @@ export default {
     hint: {
       imageGraph: 'Per-shot visual graph · use the right Inspector for params and run',
       videoGraph: 'Per-shot video graph · use the right Inspector for params and run',
-      timeline: 'Preview the cut · drag from input videos or the asset library onto the tracks below',
+      timeline: 'Preview the cut · drag from input videos or the studio asset panel onto the tracks below',
       table: 'Shot table · bulk edit all shots',
       assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to open the table · double-click shot image/video gen to expand the matching graph below; open cut timeline from the series canvas'
+        'Double-click shot split to edit instruction · double-click shot table to enter the table · double-click shot image/video gen to dive into the matching graph; double-click cut timeline to enter it; use breadcrumbs to go back'
     },
     dialog: {
       shotImageEditor: 'Shot images',
@@ -799,7 +800,6 @@ export default {
     },
     timeline: {
       sources: 'Input videos',
-      assetsPanel: 'Assets',
       refreshSources: 'Refresh',
       autoPlace: 'Auto-place',
       sourcesEmpty: 'No videos yet — run upstream shot video generation first',
@@ -883,7 +883,6 @@ export default {
       scenePanel: 'Panorama',
       searchPlaceholder: 'Search…',
       hierarchyEmpty: 'No objects',
-      resizeHierarchySplit: 'Drag to resize hierarchy and assets',
       sideTab: {
         scene: 'Scene',
         inspector: 'Inspector'
@@ -1098,7 +1097,7 @@ export default {
   },
   narrative: {
     asset: {
-      hint: 'Double-click split for instructions · table for catalog · output expands unit refinement below'
+      hint: 'Double-click split for instructions · table for catalog · output opens unit refinement; use breadcrumbs to go back'
     },
     dialog: {
       close: 'Close',
@@ -1157,7 +1156,7 @@ export default {
   },
   world: {
     asset: {
-      hint: 'Double-click extract for instructions · table for catalog · gen expands four canvases below'
+      hint: 'Double-click extract for instructions · table for catalog · gen opens world editor; use breadcrumbs to go back'
     },
     dialog: {
       close: 'Close',
@@ -1378,13 +1377,13 @@ export default {
     },
     selectImage: {
       appMark: 'Select image',
-      hint: 'Click a thumbnail to select; double-click to open the preview window. Defaults to the first image.',
+      hint: 'Click a thumbnail to select; double-click a thumbnail to open preview. Defaults to the first image.',
       previewHint: 'Double-click to preview',
       empty: 'No upstream images yet. Connect an image output (e.g. director) and run it first.'
     },
     selectVideo: {
       appMark: 'Select video',
-      hint: 'Click a thumbnail to select; double-click to open the preview window. Defaults to the first video.',
+      hint: 'Click a thumbnail to select; double-click a thumbnail to open preview. Defaults to the first video.',
       previewHint: 'Double-click to preview',
       empty: 'No upstream videos yet. Connect a video generate node and run it first.'
     },
@@ -1768,13 +1767,13 @@ export default {
       hint: 'Double-click to open shot table'
     },
     scriptShotImageGenNode: {
-      hint: 'Double-click to expand the shot image graph below'
+      hint: 'Double-click to enter shot image graph editing'
     },
     scriptShotVideoGenNode: {
-      hint: 'Double-click to expand the shot video graph below'
+      hint: 'Double-click to enter shot video graph editing'
     },
     timelineOutputNode: {
-      hint: 'Double-click to open the timeline in a new window'
+      hint: 'Double-click to enter the timeline editor'
     },
     worldTableNode: {
       hint: 'Double-click to open world element table'
@@ -1786,7 +1785,7 @@ export default {
       hint: 'Double-click to open narrative unit table'
     },
     narrativeGenNode: {
-      hint: 'Double-click to expand narrative unit text refine below'
+      hint: 'Double-click to enter narrative unit text refinement'
     },
     node: {
       collapsePreview: 'Collapse preview',
@@ -2153,7 +2152,7 @@ export default {
       },
       upscale: {
         hint: 'Double-click the node to edit options. This panel shows the system prompt and the merged upscale prompt.',
-        previewHint: 'Double-click a thumbnail to open the preview window.',
+        previewHint: 'Double-click a thumbnail to enter media preview.',
         previewEmpty: 'No upscaled images yet. Connect an input and run the node.'
       },
       lipSync: {
@@ -2190,7 +2189,7 @@ export default {
         empty: 'No director deck edit node selected',
         outImages: 'Output · Images',
         outImagesCount: '{n}',
-        outImagesHint: 'Double-click a thumbnail to open the preview window',
+        outImagesHint: 'Double-click a thumbnail to enter media preview',
         outImagesEmpty: 'No camera shots yet. Capture shots in the director stage to see them here'
       },
       generate: {

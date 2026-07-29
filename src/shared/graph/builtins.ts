@@ -240,7 +240,7 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
-/** 分镜宿主：世界元素实体 + 单叙事实体入；出口为视频实体 */
+/** 分镜宿主：世界元素实体 + 叙事文本入；出口为视频实体 */
 function scriptHostPorts(): GraphPortDef[] {
   return [
     {
@@ -253,7 +253,7 @@ function scriptHostPorts(): GraphPortDef[] {
     {
       id: 'in-narrativeEntity',
       direction: 'in',
-      dataType: GraphPortType.narrativeEntity,
+      dataType: GraphPortType.text,
       multiple: true,
       label: 'Narrative'
     },
@@ -773,7 +773,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       {
         id: 'out',
         direction: 'out',
-        dataType: GraphPortType.narrativeEntity,
+        dataType: GraphPortType.text,
         multiple: true,
         label: 'Out'
       }
@@ -1262,7 +1262,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       {
         id: 'in',
         direction: 'in',
-        dataType: GraphPortType.narrativeEntity,
+        dataType: GraphPortType.text,
         multiple: true,
         label: 'In'
       },

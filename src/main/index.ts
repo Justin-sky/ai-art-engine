@@ -4,20 +4,6 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
-import { setMainWindow, closeStageWindow } from './stageWindow'
-import { closeShotPreviewWindow } from './shotPreviewWindow'
-import {
-  closeShotTableWindow,
-  setShotTableMainWindow
-} from './shotTableWindow'
-import {
-  closeScriptTimelineWindow,
-  setScriptTimelineMainWindow
-} from './scriptTimelineWindow'
-import {
-  closeWorldTableWindow,
-  setWorldTableMainWindow
-} from './worldTableWindow'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
 import { resolveAppIconPath } from './appIcon'
 
@@ -55,22 +41,6 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     }
-  })
-
-  setMainWindow(mainWindow)
-  setShotTableMainWindow(mainWindow)
-  setScriptTimelineMainWindow(mainWindow)
-  setWorldTableMainWindow(mainWindow)
-  mainWindow.on('closed', () => {
-    setMainWindow(null)
-    setShotTableMainWindow(null)
-    setScriptTimelineMainWindow(null)
-    setWorldTableMainWindow(null)
-    closeStageWindow()
-    closeShotPreviewWindow()
-    closeShotTableWindow()
-    closeScriptTimelineWindow()
-    closeWorldTableWindow()
   })
 
   mainWindow.on('ready-to-show', () => {

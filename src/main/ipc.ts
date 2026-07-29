@@ -44,24 +44,6 @@ import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
 import { dialogService } from './services/dialogService'
 import { broadcastToAllWindows } from './broadcast'
-import { broadcastStagePreview, closeStageWindow, openStageWindow } from './stageWindow'
-import {
-  closeShotTableWindow,
-  openShotTableWindow
-} from './shotTableWindow'
-import {
-  closeScriptTimelineWindow,
-  openScriptTimelineWindow
-} from './scriptTimelineWindow'
-import {
-  closeWorldTableWindow,
-  openWorldTableWindow
-} from './worldTableWindow'
-import {
-  closeShotPreviewWindow,
-  getShotPreviewPayload,
-  openShotPreviewWindow
-} from './shotPreviewWindow'
 
 function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void {
   ipcMain.handle(channel, async (_event, ...args) => {
@@ -109,47 +91,10 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.PROJECT_CLOSE, () => {
     videoJobService.stopAllTimers()
-    closeShotTableWindow()
-    closeScriptTimelineWindow()
-    closeWorldTableWindow()
     projectService.closeProject()
   })
-  handle(IpcChannels.PROJECT_GET_STATE, () => projectService.getOpenProjectState())
 
-  handle(IpcChannels.WINDOW_OPEN_STAGE, (directorAssetId: string, processingNodeId?: string) =>
-    openStageWindow(directorAssetId, processingNodeId)
-  )
-  handle(IpcChannels.WINDOW_CLOSE_STAGE, (directorAssetId?: string, processingNodeId?: string) =>
-    closeStageWindow(directorAssetId, processingNodeId)
-  )
-  handle(
-    IpcChannels.STAGE_SEND_PREVIEW,
-    (directorAssetId: string, previewUrl: string, processingNodeId?: string) => {
-      broadcastStagePreview(directorAssetId, previewUrl, processingNodeId)
-    }
-  )
-  handle(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, (dataUrl: string) => openShotPreviewWindow(dataUrl))
-  handle(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW, () => closeShotPreviewWindow())
-  handle(IpcChannels.SHOT_PREVIEW_GET, () => getShotPreviewPayload())
-  handle(IpcChannels.WINDOW_OPEN_SHOT_TABLE, (scriptAssetId: string) =>
-    openShotTableWindow(scriptAssetId)
-  )
-  handle(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, (scriptAssetId?: string) =>
-    closeShotTableWindow(scriptAssetId)
-  )
-  handle(IpcChannels.WINDOW_OPEN_SCRIPT_TIMELINE, (scriptAssetId: string) =>
-    openScriptTimelineWindow(scriptAssetId)
-  )
-  handle(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, (scriptAssetId?: string) =>
-    closeScriptTimelineWindow(scriptAssetId)
-  )
   handle(IpcChannels.TIMELINE_EXPORT, (input: TimelineExportInput) => exportScriptTimeline(input))
-  handle(IpcChannels.WINDOW_OPEN_WORLD_TABLE, (worldAssetId: string) =>
-    openWorldTableWindow(worldAssetId)
-  )
-  handle(IpcChannels.WINDOW_CLOSE_WORLD_TABLE, (worldAssetId?: string) =>
-    closeWorldTableWindow(worldAssetId)
-  )
 
   handle(IpcChannels.ASSET_LIST, () => projectService.listAssets())
   handle(IpcChannels.ASSET_IMPORT, (input: ImportAssetsInput) =>

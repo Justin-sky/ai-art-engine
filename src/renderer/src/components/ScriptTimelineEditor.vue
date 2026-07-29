@@ -64,15 +64,6 @@
           </div>
         </div>
       </section>
-
-      <aside class="panel assets-panel">
-        <div class="panel-head">
-          <span class="panel-title">{{ t('script.timeline.assetsPanel') }}</span>
-        </div>
-        <div class="assets-embed">
-          <AssetBrowser embedded />
-        </div>
-      </aside>
     </div>
 
     <section class="timeline-dock" :class="{ collapsed: timelineCollapsed }">
@@ -293,7 +284,6 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
 import { toPlain } from '../utils/toPlain'
-import AssetBrowser from './AssetBrowser.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
 const props = defineProps<{
@@ -1275,7 +1265,7 @@ defineExpose({ flushSave: persist, reloadSources })
   flex: 1;
   min-height: 120px;
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr) minmax(220px, 300px);
+  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr);
 }
 
 .panel {
@@ -1286,17 +1276,9 @@ defineExpose({ flushSave: persist, reloadSources })
   overflow: hidden;
 }
 
-.sources-panel,
-.assets-panel {
-  background: var(--bg-elevated);
-}
-
 .sources-panel {
+  background: var(--bg-elevated);
   border-right: 1px solid var(--border);
-}
-
-.assets-panel {
-  border-left: 1px solid var(--border);
 }
 
 .panel-head {
@@ -1529,12 +1511,6 @@ defineExpose({ flushSave: persist, reloadSources })
 .ghost-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.assets-embed {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .timeline-dock {

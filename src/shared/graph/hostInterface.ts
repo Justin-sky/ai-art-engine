@@ -96,6 +96,14 @@ export function sanitizeHostInterface(raw: unknown): HostInterfaceDocument {
     outputs.push(port)
   }
 
+  // 分镜宿主叙事口：历史 narrativeEntity → text（端口 id 保持，兼容已有连线）
+  for (let i = 0; i < inputs.length; i++) {
+    const port = inputs[i]!
+    if (port.id === 'in-narrativeEntity' && port.dataType === GraphPortType.narrativeEntity) {
+      inputs[i] = { ...port, dataType: GraphPortType.text }
+    }
+  }
+
   return { version, inputs, outputs }
 }
 
@@ -201,7 +209,7 @@ export function defaultHostInterfaceForAssetType(
           {
             id: 'in-narrativeEntity',
             label: 'Narrative',
-            dataType: GraphPortType.narrativeEntity,
+            dataType: GraphPortType.text,
             multiple: true
           }
         ],

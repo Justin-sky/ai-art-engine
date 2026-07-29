@@ -272,7 +272,8 @@ export default {
     dive: {
       up: '上一级',
       root: '剧集',
-      sep: '/'
+      sep: '/',
+      toolMissing: '工具不可用'
     },
     tabMenu: {
       float: '浮动窗口',
@@ -780,10 +781,10 @@ export default {
     hint: {
       imageGraph: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
       videoGraph: '每镜独立视频图 · 参数与运行使用右侧 Inspector',
-      timeline: '预览成片 · 左侧输入视频 / 右侧资产库可拖入下方轨道',
+      timeline: '预览成片 · 左侧输入视频或外层资产库可拖入下方轨道',
       table: '分镜表格 · 批量编辑全部分镜',
       assetGraph:
-        '双击分镜拆分编辑生成指令 · 双击分镜表格打开表格 · 双击生成分镜图/分镜视频在下方展开对应画布；成片时间线在剧集画布中双击打开'
+        '双击分镜拆分进入指令编辑 · 双击分镜表格进入表格 · 双击生成分镜图/分镜视频进入对应画布；成片时间线双击进入；面包屑返回上一级'
     },
     dialog: {
       shotImageEditor: '分镜图',
@@ -794,7 +795,6 @@ export default {
     },
     timeline: {
       sources: '输入视频',
-      assetsPanel: '资产库',
       refreshSources: '刷新',
       autoPlace: '自动上轨',
       sourcesEmpty: '暂无可用视频，请先运行上游生成分镜视频',
@@ -878,7 +878,6 @@ export default {
       scenePanel: '全景',
       searchPlaceholder: '请输入搜索内容',
       hierarchyEmpty: '暂无对象',
-      resizeHierarchySplit: '拖动调整层级与资产分界',
       sideTab: {
         scene: '场景',
         inspector: 'Inspector'
@@ -1093,7 +1092,7 @@ export default {
   },
   narrative: {
     asset: {
-      hint: '双击拆解编辑指令 · 双击表格打开目录 · 双击输出在下方展开文本细化'
+      hint: '双击拆解进入指令编辑 · 双击表格进入目录 · 双击输出进入文本细化；面包屑返回'
     },
     dialog: {
       close: '关闭',
@@ -1152,7 +1151,7 @@ export default {
   },
   world: {
     asset: {
-      hint: '双击提取编辑指令 · 双击表格打开目录 · 双击生成在下方展开四类画布'
+      hint: '双击提取进入指令编辑 · 双击表格进入目录 · 双击生成进入世界编辑；面包屑返回'
     },
     dialog: {
       close: '关闭',
@@ -1370,13 +1369,13 @@ export default {
     },
     selectImage: {
       appMark: '选取图片',
-      hint: '单击缩略图选择图片；双击缩略图打开预览窗口。默认第一张。',
+      hint: '单击缩略图选择图片；双击缩略图打开预览。默认第一张。',
       previewHint: '双击预览',
       empty: '暂无上游图片，请先连接导演台等图片输出并执行'
     },
     selectVideo: {
       appMark: '选取视频',
-      hint: '单击缩略图选择视频；双击缩略图打开预览窗口。默认第一条。',
+      hint: '单击缩略图选择视频；双击缩略图打开预览。默认第一条。',
       previewHint: '双击预览',
       empty: '暂无上游视频，请先连接视频生成等节点并执行'
     },
@@ -1760,13 +1759,13 @@ export default {
       hint: '双击打开分镜表格'
     },
     scriptShotImageGenNode: {
-      hint: '双击在下方展开分镜图画布'
+      hint: '双击进入分镜图画布编辑'
     },
     scriptShotVideoGenNode: {
-      hint: '双击在下方展开分镜视频画布'
+      hint: '双击进入分镜视频画布编辑'
     },
     timelineOutputNode: {
-      hint: '双击在新窗口打开成片时间线'
+      hint: '双击进入成片时间线编辑'
     },
     worldTableNode: {
       hint: '双击打开世界元素表格'
@@ -1778,7 +1777,7 @@ export default {
       hint: '双击打开叙事单元表格'
     },
     narrativeGenNode: {
-      hint: '双击在下方展开叙事单元文本细化'
+      hint: '双击进入叙事单元文本细化'
     },
     node: {
       collapsePreview: '收起预览',
@@ -2141,7 +2140,7 @@ export default {
       },
       upscale: {
         hint: '双击节点编辑参数；此处预览系统提示词与由编辑选项合并的提示词',
-        previewHint: '双击缩略图打开预览窗口',
+        previewHint: '双击缩略图进入媒体预览',
         previewEmpty: '暂无放大结果，请连接输入图并运行节点'
       },
       lipSync: {
@@ -2174,7 +2173,7 @@ export default {
         empty: '未选择导演台编辑节点',
         outImages: '输出 · 图片',
         outImagesCount: '{n} 张',
-        outImagesHint: '双击缩略图打开预览窗口',
+        outImagesHint: '双击缩略图进入媒体预览',
         outImagesEmpty: '暂无站位图。在导演台中截取机位后会显示在这里'
       },
       generate: {

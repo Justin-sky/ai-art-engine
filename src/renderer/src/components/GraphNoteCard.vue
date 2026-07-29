@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, inject, nextTick, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import LockIcon from './icons/LockIcon.vue'
 import {
@@ -135,8 +135,10 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { editorDiveKey } from '../features/graph/model/editorDive'
 
 const { t, te } = useStudioI18n()
+const editorDive = inject(editorDiveKey, null)
 
 const props = defineProps<{
   node: GraphNode
@@ -148,7 +150,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   dragStart: [nodeId: string, event: PointerEvent]
-  textOpen: [nodeId: string]
   titleChange: [nodeId: string, title: string]
   resizeStart: [nodeId: string, event: PointerEvent]
   outPortDown: [nodeId: string, portId: string, event: PointerEvent]
@@ -301,7 +302,19 @@ function onInPortDown(portId: string, e: PointerEvent): void {
 function onBodyDblClick(): void {
   // 输入接口只读引用外层值，不打开记事本
   if (isInputSlot.value) return
-  emit('textOpen', props.node.id)
+  const hostId = props.hostId?.trim()
+  if (!hostId || !editorDive?.rootKey) return
+  void (async () => {
+    try {
+      await graphEditorHosts.flush(hostId)
+    } catch (err) {
+      console.error('[GraphNoteCard] flush before dive failed', err)
+    }
+    await editorDive.diveView(
+      { viewId: 'node.notepad', hostId, nodeId: props.node.id },
+      displayTitle.value
+    )
+  })()
 }
 </script>
 

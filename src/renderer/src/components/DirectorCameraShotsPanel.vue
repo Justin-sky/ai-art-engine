@@ -31,6 +31,7 @@
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
+import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 const emit = defineEmits<{
   close: []
@@ -79,7 +80,7 @@ function syncShotBlobUrls(): void {
 }
 
 function openShotPreview(url: string): void {
-  void window.studio.openShotPreviewWindow(url)
+  void openFullImagePreview({ dataUrl: url })
 }
 
 watch(

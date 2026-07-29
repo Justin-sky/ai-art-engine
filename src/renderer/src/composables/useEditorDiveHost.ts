@@ -1,10 +1,21 @@
-import { computed, onBeforeUnmount, provide, reactive, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  provide,
+  reactive,
+  toValue,
+  watch,
+  type MaybeRefOrGetter
+} from 'vue'
 import {
   editorDiveKey,
   editorDiveRootKey,
+  isEditorDiveAssetFrame,
   type EditorDiveFrame,
-  type EditorDiveKind
+  type EditorDiveKind,
+  type EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
+import { editorDiveFlush } from '../features/graph/model/editorDiveFlush'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -28,26 +39,41 @@ export function useEditorDiveHost(options: {
   const diveTop = computed(() => diveFrames.value[diveFrames.value.length - 1] ?? null)
 
   if (!enabled) {
-    return { diving, diveTop }
+    return { diving, diveTop, diveRootKey, diveFrames, diveContext: null }
   }
 
-  async function flushDiveTop(): Promise<void> {
+  async function flushTop(): Promise<void> {
     const top = diveTop.value
     if (!top) return
-    try {
-      await graphEditorHosts.flush(`asset:${top.assetId}`)
-    } catch (err) {
-      console.error('[EditorDive] flush failed', err)
+    await editorDiveFlush.flush(top.key)
+    if (isEditorDiveAssetFrame(top)) {
+      try {
+        await graphEditorHosts.flush(`asset:${top.assetId}`)
+      } catch (err) {
+        console.error('[EditorDive] asset flush failed', err)
+      }
     }
+  }
+
+  async function diveAsset(assetId: string): Promise<boolean> {
+    await flushTop()
+    return workspace.diveIntoAsset(diveRootKey.value, assetId)
+  }
+
+  async function diveView(meta: EditorDiveViewMeta, title?: string): Promise<boolean> {
+    await flushTop()
+    return workspace.diveIntoView(diveRootKey.value, meta, title)
   }
 
   const diveContext = reactive({
     rootKey: diveRootKey.value,
     rootTitle: toValue(options.rootTitle),
     frames: [] as EditorDiveFrame[],
+    diveAsset: (assetId: string) => diveAsset(assetId),
+    diveView: (meta: EditorDiveViewMeta, title?: string) => diveView(meta, title),
     popTo: (index: number) => {
       void (async () => {
-        await flushDiveTop()
+        await flushTop()
         workspace.divePopTo(diveRootKey.value, index)
       })()
     }
@@ -72,9 +98,20 @@ export function useEditorDiveHost(options: {
   )
   provide(editorDiveKey, diveContext)
 
+  watch(
+    diveRootKey,
+    (key) => {
+      workspace.setActiveDiveRootKey(key)
+    },
+    { immediate: true }
+  )
+
   onBeforeUnmount(() => {
+    if (workspace.activeDiveRootKey === diveRootKey.value) {
+      workspace.setActiveDiveRootKey(null)
+    }
     workspace.diveClear(diveRootKey.value)
   })
 
-  return { diving, diveTop }
+  return { diving, diveTop, diveRootKey, diveFrames, diveContext }
 }

@@ -196,7 +196,7 @@ describe('host input slots', () => {
     const slots = resolveHostInputSlotsForHostOpen('script', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
       'in-worldEntities:0:worldEntities',
-      'in-narrativeEntity:0:narrativeEntity'
+      'in-narrativeEntity:0:text'
     ])
   })
 

@@ -517,6 +517,7 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { vNumberScrub } from '../directives/numberScrub'
 import { themePreference } from '../editor/preferences'
+import { resolveDirectorStageScene } from '../features/director/activeDirectorStageScene'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import { useProjectStore } from '../stores/project'
 import {
@@ -529,14 +530,18 @@ import SaveAssetDialog from './SaveAssetDialog.vue'
 
 withDefaults(
   defineProps<{
-    /** ????????????????*/
+    /** Dock 外层 Inspector 时为 true（压缩边距） */
     embedded?: boolean
   }>(),
   { embedded: false }
 )
 
 const { t } = useStudioI18n()
-const scene = inject(directorStageSceneKey)!
+const resolvedScene = resolveDirectorStageScene(inject(directorStageSceneKey, null))
+if (!resolvedScene) {
+  throw new Error('DirectorStageInspector requires an active director stage scene')
+}
+const scene = resolvedScene
 const workspace = useWorkspaceStore()
 const project = useProjectStore()
 const previewCanvas = ref<HTMLCanvasElement | null>(null)

@@ -9,7 +9,7 @@
           {{ rootTitle || t('studio.dive.root') }}
         </button>
       </li>
-      <li v-for="(frame, index) in frames" :key="`${frame.assetId}:${index}`" class="dive-crumb-item">
+      <li v-for="(frame, index) in frames" :key="frame.key" class="dive-crumb-item">
         <span class="dive-sep" aria-hidden="true">{{ t('studio.dive.sep') }}</span>
         <button
           type="button"

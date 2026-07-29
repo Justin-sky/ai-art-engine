@@ -461,13 +461,8 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphScope } from '../composables/useGraphScope'
-import { useDirectorPreview } from '../features/director/directorPreview'
-import { useScriptPreview } from '../features/script/scriptPreview'
-import { useWorldEditor } from '../features/world/worldEditor'
-import { useWorldTable } from '../features/world/worldTable'
-import { useNarrativeEditor } from '../features/narrative/narrativeEditor'
-import { useNarrativeTable } from '../features/narrative/narrativeTable'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
+import { parseGraphHostContext } from '@shared/editorGlobals'
 import {
   resolveAssetFileUrl,
   resolveAssetPreviewUrl
@@ -476,22 +471,18 @@ import { graphPreviewLoadScheduler } from '../features/media/previewLoadSchedule
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
-import { useWorkspaceStore } from '../stores/workspace'
-import { editorDiveKey } from '../features/graph/model/editorDive'
+import {
+  editorDiveKey,
+  type EditorDiveViewMeta
+} from '../features/graph/model/editorDive'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 
 const { t, te, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
-const workspace = useWorkspaceStore()
 const graphScope = useGraphScope()
-const directorPreview = useDirectorPreview()
-const scriptPreview = useScriptPreview()
-const worldEditor = useWorldEditor()
-const worldTable = useWorldTable()
-const narrativeTable = useNarrativeTable()
-const narrativeEditor = useNarrativeEditor()
 const previewVisibility = inject(graphPreviewVisibilityKey, null)
 const editorDive = inject(editorDiveKey, null)
+const hostAssetId = computed(() => parseGraphHostContext(props.hostId).id?.trim() || '')
 
 const previewInViewport = computed(() => {
   if (!previewVisibility) return true
@@ -534,8 +525,6 @@ const emit = defineEmits<{
   dragStart: [nodeId: string, event: PointerEvent]
   outPortDown: [nodeId: string, portId: string, event: PointerEvent]
   inPortDown: [nodeId: string, portId: string, event: PointerEvent]
-  textOpen: [nodeId: string]
-  textsOpen: [nodeId: string]
   resizeStart: [nodeId: string, event: PointerEvent]
   titleChange: [nodeId: string, title: string]
   runToggle: [nodeId: string]
@@ -543,18 +532,6 @@ const emit = defineEmits<{
   selectVideoOpen: [nodeId: string]
   selectVoiceOpen: [nodeId: string]
   selectTextOpen: [nodeId: string]
-  multiAngleOpen: [nodeId: string]
-  lightingOpen: [nodeId: string]
-  portraitTextureOpen: [nodeId: string]
-  emotionOpen: [nodeId: string]
-  upscaleOpen: [nodeId: string]
-  expandOpen: [nodeId: string]
-  redrawOpen: [nodeId: string]
-  eraseOpen: [nodeId: string]
-  matteOpen: [nodeId: string]
-  cropOpen: [nodeId: string]
-  gridSplitOpen: [nodeId: string]
-  timelineOpen: [nodeId: string]
 }>()
 
 const audioEl = ref<HTMLAudioElement | null>(null)
@@ -795,7 +772,6 @@ function inPortTitle(port: GraphPortDef): string {
 }
 
 const instructionModality = computed((): GenerateModelModality => {
-  // 图片反推走文本多模态（vision），其余媒体生成用对应模态
   if (instructionKind.value === 'image') {
     return 'image'
   }
@@ -832,7 +808,6 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'narrativeUnitGen') {
     return t('graph.inspector.generate.narrativeUnitGenInstructionPlaceholder')
   }
-  // screenplay / optimize：文本向指令
   return t('graph.inspector.generate.instructionPlaceholder')
 })
 
@@ -1529,7 +1504,6 @@ watch(
 watch(instructionOpen, (open) => {
   if (open) {
     instruction.value = props.node.params.generateInstruction ?? ''
-    // 先让指令面板上屏，再拉模型列表，避免双击卡顿
     window.setTimeout(() => {
       void refreshModelOptions()
     }, 0)
@@ -1670,7 +1644,6 @@ function persistVideoGenerateParams(): void {
     props.node.id,
     videoGenerateParamsToNodePatch(videoGenerateParams.value)
   )
-  // 收窄帧模式时去掉失效的首/尾帧入边
   for (const edge of graphEditorHosts.listIncomingEdges(props.hostId, props.node.id)) {
     const port = edge.targetPort
     if (!isVideoFramePortId(port)) continue
@@ -1682,7 +1655,6 @@ function persistVideoGenerateParams(): void {
       graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
     }
   }
-  // 动态端口依赖 generateFrameMode，通知 Inspector / 指令条刷新
   graphEditorHosts.bumpRevision()
 }
 
@@ -1697,151 +1669,191 @@ function onInPortDown(portId: string, e: PointerEvent): void {
   emit('inPortDown', props.node.id, portId, e)
 }
 
+async function diveView(meta: EditorDiveViewMeta, title?: string): Promise<boolean> {
+  if (!editorDive?.rootKey) return false
+  if (props.hostId) {
+    try {
+      await graphEditorHosts.flush(props.hostId)
+    } catch (err) {
+      console.error('[GraphNodeCard] flush before dive failed', err)
+    }
+  }
+  await editorDive.diveView(meta, title)
+  return true
+}
+
+async function diveNodeTool(
+  viewId: Extract<EditorDiveViewMeta, { hostId: string }>['viewId'],
+  title?: string,
+  mode?: string
+): Promise<boolean> {
+  const hostId = props.hostId?.trim()
+  if (!hostId) return false
+  return diveView(
+    { viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) },
+    title
+  )
+}
+
 function onPreviewDblClick(): void {
   if (isMissingLinkedAsset.value) return
-  if (isDirectorProcessingNode(props.node)) {
-    directorPreview?.openStageView(props.node.id)
-    return
-  }
-  if (isSelectImageNode(props.node)) {
-    emit('selectImageOpen', props.node.id)
-    return
-  }
-  if (isSelectVideoNode(props.node)) {
-    emit('selectVideoOpen', props.node.id)
-    return
-  }
-  if (isSelectVoiceNode(props.node)) {
-    emit('selectVoiceOpen', props.node.id)
-    return
-  }
-  if (isSelectTextNode(props.node) || isSelectNarrativeNode(props.node)) {
-    emit('selectTextOpen', props.node.id)
-    return
-  }
-  if (isScreenplayOutputNode.value) {
-    emit('textsOpen', props.node.id)
-    return
-  }
-  if (isMultiAngleEditorNode(props.node)) {
-    emit('multiAngleOpen', props.node.id)
-    return
-  }
-  if (isLightingEditorNode(props.node)) {
-    emit('lightingOpen', props.node.id)
-    return
-  }
-  if (isPortraitTextureEditorNode(props.node)) {
-    emit('portraitTextureOpen', props.node.id)
-    return
-  }
-  if (isEmotionEditorNode(props.node)) {
-    emit('emotionOpen', props.node.id)
-    return
-  }
-  if (isUpscaleEditorNode(props.node)) {
-    emit('upscaleOpen', props.node.id)
-    return
-  }
-  if (isExpandEditorNode(props.node)) {
-    emit('expandOpen', props.node.id)
-    return
-  }
-  if (isRedrawEditorNode(props.node)) {
-    emit('redrawOpen', props.node.id)
-    return
-  }
-  if (isEraseEditorNode(props.node)) {
-    emit('eraseOpen', props.node.id)
-    return
-  }
-  if (isMatteEditorNode(props.node)) {
-    emit('matteOpen', props.node.id)
-    return
-  }
-  if (isCropEditorNode(props.node)) {
-    emit('cropOpen', props.node.id)
-    return
-  }
-  if (isGridSplitEditorNode(props.node)) {
-    emit('gridSplitOpen', props.node.id)
-    return
-  }
-  // 分镜参数：双击无效，参数在右侧 Inspector 编辑
-  if (isScriptShotParamsNode(props.node)) {
-    return
-  }
-  if (isScriptShotTableNode(props.node)) {
-    scriptPreview?.openShotTable()
-    return
-  }
-  if (isScriptShotImageGenNode(props.node)) {
-    scriptPreview?.openShotImageEditor()
-    return
-  }
-  if (isScriptShotVideoGenNode(props.node)) {
-    scriptPreview?.openShotEditor()
-    return
-  }
-  if (isTimelineOutputNode(props.node)) {
-    if (scriptPreview) {
-      scriptPreview.openScriptTimeline()
+  void (async () => {
+    const title = displayTitle.value
+
+    if (isDirectorProcessingNode(props.node)) {
+      const directorAssetId = hostAssetId.value
+      if (!directorAssetId) return
+      await diveView(
+        {
+          viewId: 'director.stage',
+          directorAssetId,
+          processingNodeId: props.node.id
+        },
+        title
+      )
       return
     }
-    emit('timelineOpen', props.node.id)
-    return
-  }
-  if (isWorldTableNode(props.node)) {
-    worldTable?.openWorldTable()
-    return
-  }
-  if (isWorldGenNode(props.node)) {
-    worldEditor?.openWorldEditor()
-    return
-  }
-  if (isNarrativeTableNode(props.node)) {
-    narrativeTable?.openNarrativeTable()
-    return
-  }
-  if (isNarrativeGenNode(props.node) || isNarrativeOutputNode(props.node)) {
-    narrativeEditor?.openNarrativeEditor()
-    return
-  }
-  // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
-  if (instructionKind.value === 'screenplay') {
-    instructionOpen.value = !instructionOpen.value
-    return
-  }
-  // 叙事生成：双击只开关指令面板，不打开正文预览/记事本
-  if (instructionKind.value === 'narrativeUnitGen') {
-    instructionOpen.value = !instructionOpen.value
-    return
-  }
-  // 预览区已有正文（提取 JSON / 优化结果等）：双击打开记事本，避免误开空的生成指令
-  if (
-    textPreview.value &&
-    !isAssetRef.value &&
-    !isScreenplayOutputNode.value &&
-    isNodeTextCapable(props.node)
-  ) {
-    emit('textOpen', props.node.id)
-    return
-  }
-  // 加工 / 工具节点：双击展开 / 收起生成指令（含分镜拆分、图片反推提示词、提示词优化）
-  if (instructionKind.value) {
-    instructionOpen.value = !instructionOpen.value
-    return
-  }
-  // 有文本输出 / 剧本文档的节点：双击打开记事本（引用节点除外）
-  if (!isAssetRef.value && isNodeTextCapable(props.node)) {
-    emit('textOpen', props.node.id)
-    return
-  }
-  // 宿主资产节点：同面板 dive（先 flush 当前图，子层才能解析到最新入边/runStates）
-  if (isAssetRef.value && !isImportedRefAsset.value) {
-    const assetId = props.node.assetId?.trim() || props.asset?.id
-    if (assetId && editorDive?.rootKey) {
-      void (async () => {
+
+    if (isSelectImageNode(props.node)) {
+      emit('selectImageOpen', props.node.id)
+      return
+    }
+    if (isSelectVideoNode(props.node)) {
+      emit('selectVideoOpen', props.node.id)
+      return
+    }
+    if (isSelectVoiceNode(props.node)) {
+      emit('selectVoiceOpen', props.node.id)
+      return
+    }
+    if (isSelectTextNode(props.node) || isSelectNarrativeNode(props.node)) {
+      emit('selectTextOpen', props.node.id)
+      return
+    }
+    if (isScreenplayOutputNode.value) {
+      await diveNodeTool('node.textsPreview', title)
+      return
+    }
+    if (isMultiAngleEditorNode(props.node)) {
+      await diveNodeTool('node.multiAngle', title)
+      return
+    }
+    if (isLightingEditorNode(props.node)) {
+      await diveNodeTool('node.lighting', title)
+      return
+    }
+    if (isPortraitTextureEditorNode(props.node)) {
+      await diveNodeTool('node.portraitTexture', title)
+      return
+    }
+    if (isEmotionEditorNode(props.node)) {
+      await diveNodeTool('node.emotion', title)
+      return
+    }
+    if (isUpscaleEditorNode(props.node)) {
+      await diveNodeTool('node.upscale', title)
+      return
+    }
+    if (isExpandEditorNode(props.node)) {
+      await diveNodeTool('node.expand', title)
+      return
+    }
+    if (isRedrawEditorNode(props.node)) {
+      await diveNodeTool('node.redraw', title)
+      return
+    }
+    if (isEraseEditorNode(props.node)) {
+      await diveNodeTool('node.erase', title)
+      return
+    }
+    if (isMatteEditorNode(props.node)) {
+      await diveNodeTool('node.matte', title)
+      return
+    }
+    if (isCropEditorNode(props.node)) {
+      await diveNodeTool('node.crop', title)
+      return
+    }
+    if (isGridSplitEditorNode(props.node)) {
+      await diveNodeTool('node.gridSplit', title)
+      return
+    }
+    // 分镜参数：双击无效，参数在右侧 Inspector 编辑
+    if (isScriptShotParamsNode(props.node)) return
+
+    const scriptAssetId = hostAssetId.value
+    if (isScriptShotTableNode(props.node) && scriptAssetId) {
+      await diveView({ viewId: 'script.shotTable', scriptAssetId }, title)
+      return
+    }
+    if (isScriptShotImageGenNode(props.node) && scriptAssetId) {
+      await diveView({ viewId: 'script.shotImage', scriptAssetId }, title)
+      return
+    }
+    if (isScriptShotVideoGenNode(props.node) && scriptAssetId) {
+      await diveView({ viewId: 'script.shotVideo', scriptAssetId }, title)
+      return
+    }
+    if (isTimelineOutputNode(props.node) && scriptAssetId) {
+      await diveView({ viewId: 'script.timeline', scriptAssetId }, title)
+      return
+    }
+
+    const worldAssetId = hostAssetId.value
+    if (isWorldTableNode(props.node) && worldAssetId) {
+      await diveView({ viewId: 'world.table', worldAssetId }, title)
+      return
+    }
+    if (isWorldGenNode(props.node) && worldAssetId) {
+      await diveView({ viewId: 'world.editor', worldAssetId }, title)
+      return
+    }
+
+    const narrativeAssetId = hostAssetId.value
+    if (isNarrativeTableNode(props.node) && narrativeAssetId) {
+      await diveView({ viewId: 'narrative.table', narrativeAssetId }, title)
+      return
+    }
+    if ((isNarrativeGenNode(props.node) || isNarrativeOutputNode(props.node)) && narrativeAssetId) {
+      await diveView({ viewId: 'narrative.gen', narrativeAssetId }, title)
+      return
+    }
+
+    // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
+    if (instructionKind.value === 'screenplay') {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+    // 叙事生成：双击只开关指令面板，不打开正文预览/记事本
+    if (instructionKind.value === 'narrativeUnitGen') {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+    // 预览区已有正文：双击打开记事本，避免误开空的生成指令
+    if (
+      textPreview.value &&
+      !isAssetRef.value &&
+      !isScreenplayOutputNode.value &&
+      isNodeTextCapable(props.node)
+    ) {
+      await diveNodeTool('node.notepad', title)
+      return
+    }
+    // 加工 / 工具节点：双击展开 / 收起生成指令
+    if (instructionKind.value) {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+    // 有文本输出 / 剧本文档的节点：双击打开记事本（引用节点除外）
+    if (!isAssetRef.value && isNodeTextCapable(props.node)) {
+      await diveNodeTool('node.notepad', title)
+      return
+    }
+
+    // 宿主资产节点：同面板 dive
+    if (isAssetRef.value && !isImportedRefAsset.value) {
+      const assetId = props.node.assetId?.trim() || props.asset?.id
+      if (assetId && editorDive?.rootKey) {
         if (props.hostId) {
           try {
             await graphEditorHosts.flush(props.hostId)
@@ -1849,21 +1861,25 @@ function onPreviewDblClick(): void {
             console.error('[GraphNodeCard] flush before dive failed', err)
           }
         }
-        workspace.diveIntoHost(editorDive.rootKey, assetId)
-      })()
+        await editorDive.diveAsset(assetId)
+      }
+      return
     }
-    return
-  }
-  // 引用型图片 / 音视频：双击预览
-  if (
-    isAssetRef.value &&
-    props.asset?.relativePath &&
-    (previewKind.value === 'image' ||
-      previewKind.value === 'video' ||
-      previewKind.value === 'voice')
-  ) {
-    void openFullImagePreview({ relativePath: props.asset.relativePath })
-  }
+
+    // 引用型图片 / 音视频：双击预览
+    if (
+      isAssetRef.value &&
+      props.asset?.relativePath &&
+      (previewKind.value === 'image' ||
+        previewKind.value === 'video' ||
+        previewKind.value === 'voice')
+    ) {
+      await openFullImagePreview({
+        relativePath: props.asset.relativePath,
+        title: props.asset.name
+      })
+    }
+  })()
 }
 
 function onResizeStart(e: PointerEvent): void {

@@ -148,10 +148,3 @@ export function removeNodeStagesFromGenParams(
     [DIRECTOR_STAGES_BY_NODE_KEY]: serializable
   }
 }
-
-export function stageWindowKey(
-  directorAssetId: string,
-  processingNodeId?: string | null
-): string {
-  return processingNodeId ? `${directorAssetId}::${processingNodeId}` : directorAssetId
-}

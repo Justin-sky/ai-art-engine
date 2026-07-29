@@ -21,7 +21,7 @@
 import { onMounted, provide, toRef, watch } from 'vue'
 import { WORLD_ELEMENT_KINDS, type WorldElementKind } from '@shared/graph'
 import { useEditorKernel } from '../editor/kernel'
-import { worldElementKindKey } from '../features/world/worldEditor'
+import { worldElementKindKey } from '../features/world/worldElementKindKey'
 import { useWorkspaceStore } from '../stores/workspace'
 import NodeGraphEditor from './NodeGraphEditor.vue'
 

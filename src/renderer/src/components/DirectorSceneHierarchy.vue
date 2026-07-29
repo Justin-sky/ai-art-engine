@@ -1,161 +1,124 @@
 <template>
   <aside ref="rootEl" class="hierarchy">
-    <div class="hierarchy-top" :style="{ height: `${topPaneHeight}px` }">
-      <div class="hierarchy-head">
-        <div class="hierarchy-title">{{ t('director.stage.scenePanel') }}</div>
-        <div class="create-wrap">
+    <div class="hierarchy-head">
+      <div class="hierarchy-title">{{ t('director.stage.scenePanel') }}</div>
+      <div class="create-wrap">
+        <button
+          type="button"
+          class="create-btn"
+          :title="t('director.stage.createMenu')"
+          :aria-expanded="menuOpen && menuMode === 'dropdown'"
+          @click.stop="toggleDropdownMenu"
+        >
+          <span class="create-plus" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+    <input
+      v-model="query"
+      class="search"
+      type="search"
+      :placeholder="t('director.stage.searchPlaceholder')"
+    />
+    <ul
+      class="list"
+      @click="onListClick"
+      @dragover.prevent="onListDragOver"
+      @drop.prevent="onDropRoot"
+      @contextmenu="onListContextMenu"
+    >
+      <li
+        v-for="item in filtered"
+        :key="item.id"
+        class="row"
+        :class="{
+          active: isSelected(item.id),
+          locked: item.locked,
+          hidden: !item.visible,
+          'drop-target': dropTargetId === item.id,
+          renaming: editingId === item.id
+        }"
+        :style="{ paddingLeft: `${8 + item.depth * 14}px` }"
+        :draggable="
+          item.kind !== 'camera' &&
+          item.kind !== 'panorama' &&
+          editingId !== item.id &&
+          selectedIds.length <= 1
+        "
+        @click="onRowClick(item, $event)"
+        @dblclick="onRowDblClick(item)"
+        @contextmenu="onRowContextMenu(item, $event)"
+        @dragstart="onDragStart(item.id, $event)"
+        @dragend="onDragEnd"
+        @dragover.prevent="onRowDragOver(item.id, $event)"
+        @dragleave="onRowDragLeave(item.id)"
+        @drop.prevent="onDropRow(item.id, $event)"
+      >
+        <template v-if="item.kind !== 'panorama'">
           <button
             type="button"
-            class="create-btn"
-            :title="t('director.stage.createMenu')"
-            :aria-expanded="menuOpen && menuMode === 'dropdown'"
-            @click.stop="toggleDropdownMenu"
-          >
-            <span class="create-plus" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      <input
-        v-model="query"
-        class="search"
-        type="search"
-        :placeholder="t('director.stage.searchPlaceholder')"
-      />
-      <ul
-        class="list"
-        @click="onListClick"
-        @dragover.prevent="onListDragOver"
-        @drop.prevent="onDropRoot"
-        @contextmenu="onListContextMenu"
-      >
-        <li
-          v-for="item in filtered"
-          :key="item.id"
-          class="row"
-          :class="{
-            active: isSelected(item.id),
-            locked: item.locked,
-            hidden: !item.visible,
-            'drop-target': dropTargetId === item.id,
-            renaming: editingId === item.id
-          }"
-          :style="{ paddingLeft: `${8 + item.depth * 14}px` }"
-          :draggable="
-            item.kind !== 'camera' &&
-            item.kind !== 'panorama' &&
-            editingId !== item.id &&
-            selectedIds.length <= 1
-          "
-          @click="onRowClick(item, $event)"
-          @dblclick="onRowDblClick(item)"
-          @contextmenu="onRowContextMenu(item, $event)"
-          @dragstart="onDragStart(item.id, $event)"
-          @dragend="onDragEnd"
-          @dragover.prevent="onRowDragOver(item.id, $event)"
-          @dragleave="onRowDragLeave(item.id)"
-          @drop.prevent="onDropRow(item.id, $event)"
-        >
-          <template v-if="item.kind !== 'panorama'">
-            <button
-              type="button"
-              class="icon-btn"
-              :class="{ off: !item.visible }"
-              :title="item.visible ? t('director.stage.hideObject') : t('director.stage.showObject')"
-              @click.stop="toggleVisible(item)"
-              @dblclick.stop
-            >
-              <span v-html="item.visible ? EYE_ICON : EYE_OFF_ICON" />
-            </button>
-
-            <button
-              type="button"
-              class="icon-btn"
-              :class="{ on: item.locked }"
-              :title="item.locked ? t('director.stage.unlockObject') : t('director.stage.lockObject')"
-              @click.stop="toggleLocked(item)"
-              @dblclick.stop
-            >
-              <span v-html="item.locked ? LOCK_ICON : UNLOCK_ICON" />
-            </button>
-
-            <button
-              v-if="item.kind !== 'camera'"
-              type="button"
-              class="icon-btn"
-              :class="{ off: !item.nameVisible }"
-              :title="
-                item.nameVisible
-                  ? t('director.stage.hideObjectName')
-                  : t('director.stage.showObjectName')
-              "
-              @click.stop="toggleNameVisible(item)"
-              @dblclick.stop
-            >
-              <span v-html="item.nameVisible ? NAME_ICON : NAME_OFF_ICON" />
-            </button>
-          </template>
-
-          <span
-            class="kind"
-            v-html="
-              item.kind === 'camera'
-                ? CAMERA_ICON
-                : item.kind === 'panorama'
-                  ? PANORAMA_ICON
-                  : CUBE_ICON
-            "
-          />
-          <input
-            v-if="editingId === item.id"
-            v-model="editName"
-            class="rename-input"
-            type="text"
-            @click.stop
+            class="icon-btn"
+            :class="{ off: !item.visible }"
+            :title="item.visible ? t('director.stage.hideObject') : t('director.stage.showObject')"
+            @click.stop="toggleVisible(item)"
             @dblclick.stop
-            @keydown.enter.prevent="commitRename"
-            @keydown.escape.prevent="cancelRename"
-            @blur="commitRename"
-          />
-          <span v-else class="name">{{ item.name }}</span>
-        </li>
-        <li v-if="filtered.length === 0" class="empty">{{ t('director.stage.hierarchyEmpty') }}</li>
-      </ul>
-    </div>
+          >
+            <span v-html="item.visible ? EYE_ICON : EYE_OFF_ICON" />
+          </button>
 
-    <div
-      class="v-splitter"
-      :class="{ dragging: isVSplitterDragging }"
-      :title="t('director.stage.resizeHierarchySplit')"
-      @mousedown.prevent="onVSplitterDown"
-    />
+          <button
+            type="button"
+            class="icon-btn"
+            :class="{ on: item.locked }"
+            :title="item.locked ? t('director.stage.unlockObject') : t('director.stage.lockObject')"
+            @click.stop="toggleLocked(item)"
+            @dblclick.stop
+          >
+            <span v-html="item.locked ? LOCK_ICON : UNLOCK_ICON" />
+          </button>
 
-    <div class="hierarchy-bottom">
-      <div class="side-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          class="side-tab"
-          :class="{ active: bottomTab === 'assets' }"
-          :aria-selected="bottomTab === 'assets'"
-          @click="bottomTab = 'assets'"
-        >
-          {{ t('studio.panel.assets') }}
-        </button>
-        <button
-          type="button"
-          class="side-tab-action"
-          :disabled="refreshingAssets || !project.isOpen"
-          :title="t('asset.browser.refreshTitle')"
-          :aria-label="t('asset.browser.refresh')"
-          @click="onRefreshAssets"
-        >
-          <RefreshIcon :size="13" :spinning="refreshingAssets" />
-        </button>
-      </div>
-      <div v-show="bottomTab === 'assets'" class="assets-embed" role="tabpanel">
-        <AssetBrowser embedded />
-      </div>
-    </div>
+          <button
+            v-if="item.kind !== 'camera'"
+            type="button"
+            class="icon-btn"
+            :class="{ off: !item.nameVisible }"
+            :title="
+              item.nameVisible
+                ? t('director.stage.hideObjectName')
+                : t('director.stage.showObjectName')
+            "
+            @click.stop="toggleNameVisible(item)"
+            @dblclick.stop
+          >
+            <span v-html="item.nameVisible ? NAME_ICON : NAME_OFF_ICON" />
+          </button>
+        </template>
+
+        <span
+          class="kind"
+          v-html="
+            item.kind === 'camera'
+              ? CAMERA_ICON
+              : item.kind === 'panorama'
+                ? PANORAMA_ICON
+                : CUBE_ICON
+          "
+        />
+        <input
+          v-if="editingId === item.id"
+          v-model="editName"
+          class="rename-input"
+          type="text"
+          @click.stop
+          @dblclick.stop
+          @keydown.enter.prevent="commitRename"
+          @keydown.escape.prevent="cancelRename"
+          @blur="commitRename"
+        />
+        <span v-else class="name">{{ item.name }}</span>
+      </li>
+      <li v-if="filtered.length === 0" class="empty">{{ t('director.stage.hierarchyEmpty') }}</li>
+    </ul>
 
     <div
       v-if="menuOpen"
@@ -205,9 +168,6 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import { DIRECTOR_PANORAMA_HIERARCHY_ID, type StagePrimitive } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
-import AssetBrowser from './AssetBrowser.vue'
-import RefreshIcon from './icons/RefreshIcon.vue'
-import { useProjectStore } from '../stores/project'
 import {
   STUDIO_ASSET_DRAG_MIME,
   STUDIO_ASSET_ID_DRAG_MIME,
@@ -217,18 +177,6 @@ import {
 
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
-const project = useProjectStore()
-const refreshingAssets = ref(false)
-
-async function onRefreshAssets(): Promise<void> {
-  if (refreshingAssets.value || !project.isOpen) return
-  refreshingAssets.value = true
-  try {
-    await project.refreshLibrary()
-  } finally {
-    refreshingAssets.value = false
-  }
-}
 const scene = inject(directorStageSceneKey)!
 const query = ref('')
 const draggingId = ref<string | null>(null)
@@ -250,58 +198,6 @@ let renameCommitted = false
 /** 已选中项再单击后，稍候进入重命名（与双击聚焦区分）。 */
 const RENAME_CLICK_DELAY_MS = 480
 let renameTimer: ReturnType<typeof setTimeout> | null = null
-
-const BOTTOM_TAB_KEY = 'studio.director.hierarchyBottomTab'
-const TOP_PANE_HEIGHT_KEY = 'studio.director.hierarchyTopHeight'
-const TOP_PANE_MIN = 140
-const BOTTOM_PANE_MIN = 160
-const TOP_PANE_DEFAULT = 280
-
-const bottomTab = ref<'assets'>('assets')
-const topPaneHeight = ref(readTopPaneHeight())
-const isVSplitterDragging = ref(false)
-
-function readTopPaneHeight(): number {
-  const raw = Number(localStorage.getItem(TOP_PANE_HEIGHT_KEY))
-  if (!Number.isFinite(raw)) return TOP_PANE_DEFAULT
-  return Math.max(TOP_PANE_MIN, Math.round(raw))
-}
-
-function clampTopPaneHeight(next: number, totalHeight: number): number {
-  const maxTop = Math.max(TOP_PANE_MIN, totalHeight - BOTTOM_PANE_MIN - 5)
-  return Math.min(maxTop, Math.max(TOP_PANE_MIN, Math.round(next)))
-}
-
-function persistTopPaneHeight(): void {
-  localStorage.setItem(TOP_PANE_HEIGHT_KEY, String(topPaneHeight.value))
-}
-
-function onVSplitterDown(e: MouseEvent): void {
-  if (e.button !== 0 || !rootEl.value) return
-  isVSplitterDragging.value = true
-  const startY = e.clientY
-  const startHeight = topPaneHeight.value
-  const totalHeight = rootEl.value.clientHeight
-
-  const onMove = (ev: MouseEvent): void => {
-    const delta = ev.clientY - startY
-    topPaneHeight.value = clampTopPaneHeight(startHeight + delta, totalHeight)
-  }
-
-  const onUp = (): void => {
-    isVSplitterDragging.value = false
-    persistTopPaneHeight()
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
-}
-
-watch(bottomTab, (tab) => {
-  localStorage.setItem(BOTTOM_TAB_KEY, tab)
-})
 
 const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
   { primitive: 'box', labelKey: 'director.stage.primitive.cube' },
@@ -568,11 +464,6 @@ onMounted(() => {
   const id = scenePrimaryId()
   selectedIds.value = id ? [id] : []
   anchorId.value = id
-  const saved = localStorage.getItem(BOTTOM_TAB_KEY)
-  if (saved === 'assets') bottomTab.value = 'assets'
-  if (rootEl.value) {
-    topPaneHeight.value = clampTopPaneHeight(topPaneHeight.value, rootEl.value.clientHeight)
-  }
 })
 
 onBeforeUnmount(() => {
@@ -822,106 +713,6 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.hierarchy-top {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.hierarchy-bottom {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg);
-}
-
-.v-splitter {
-  flex-shrink: 0;
-  height: 5px;
-  margin: -2px 0;
-  cursor: row-resize;
-  background: var(--border);
-  position: relative;
-  z-index: 2;
-  touch-action: none;
-}
-
-.v-splitter:hover,
-.v-splitter.dragging {
-  background: var(--accent);
-}
-
-.side-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
-  padding: 0 4px;
-}
-
-.side-tab-action {
-  appearance: none;
-  margin-left: auto;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 4px;
-  cursor: pointer;
-  line-height: 0;
-}
-
-.side-tab-action:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--bg-elevated, var(--bg));
-  color: var(--text);
-}
-
-.side-tab-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.side-tab {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 10px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.side-tab:hover {
-  color: var(--text);
-}
-
-.side-tab.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.assets-embed {
-  flex: 1;
   min-height: 0;
   overflow: hidden;
 }

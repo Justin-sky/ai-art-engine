@@ -139,23 +139,6 @@ const api: StudioApi = {
   saveBinaryFilesToDirectory: (input) =>
     ipcRenderer.invoke(IpcChannels.DIALOG_SAVE_BINARY_FILES_TO_DIRECTORY, input),
 
-  getOpenProjectState: () => ipcRenderer.invoke(IpcChannels.PROJECT_GET_STATE),
-  openStageWindow: (directorAssetId: string, processingNodeId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_STAGE, directorAssetId, processingNodeId),
-  closeStageWindow: (directorAssetId?: string, processingNodeId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_STAGE, directorAssetId, processingNodeId),
-  openShotPreviewWindow: (dataUrl: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_PREVIEW, dataUrl),
-  closeShotPreviewWindow: () => ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_PREVIEW),
-  getShotPreviewPayload: () => ipcRenderer.invoke(IpcChannels.SHOT_PREVIEW_GET),
-  openShotTableWindow: (scriptAssetId: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SHOT_TABLE, scriptAssetId),
-  closeShotTableWindow: (scriptAssetId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SHOT_TABLE, scriptAssetId),
-  openScriptTimelineWindow: (scriptAssetId: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_SCRIPT_TIMELINE, scriptAssetId),
-  closeScriptTimelineWindow: (scriptAssetId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_SCRIPT_TIMELINE, scriptAssetId),
   exportScriptTimeline: (input) => ipcRenderer.invoke(IpcChannels.TIMELINE_EXPORT, input),
   onTimelineExportProgress: (callback) => {
     const listener = (_event: unknown, payload: { progress: number }): void => {
@@ -163,89 +146,6 @@ const api: StudioApi = {
     }
     ipcRenderer.on(IpcChannels.TIMELINE_EXPORT_PROGRESS, listener)
     return () => ipcRenderer.removeListener(IpcChannels.TIMELINE_EXPORT_PROGRESS, listener)
-  },
-  openWorldTableWindow: (worldAssetId: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_OPEN_WORLD_TABLE, worldAssetId),
-  closeWorldTableWindow: (worldAssetId?: string) =>
-    ipcRenderer.invoke(IpcChannels.WINDOW_CLOSE_WORLD_TABLE, worldAssetId),
-  sendStagePreview: (directorAssetId: string, previewUrl: string, processingNodeId?: string) =>
-    ipcRenderer.invoke(
-      IpcChannels.STAGE_SEND_PREVIEW,
-      directorAssetId,
-      previewUrl,
-      processingNodeId
-    ),
-  onStagePreview: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { directorAssetId: string; previewUrl: string; processingNodeId?: string | null }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('stage:preview', listener)
-    return () => ipcRenderer.removeListener('stage:preview', listener)
-  },
-  onStageClosed: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { directorAssetId: string; processingNodeId?: string | null }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('stage:closed', listener)
-    return () => ipcRenderer.removeListener('stage:closed', listener)
-  },
-  onStageCloseRequest: (callback) => {
-    const listener = (
-      _event: unknown,
-      payload: { directorAssetId: string; processingNodeId?: string | null }
-    ): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('stage:close-request', listener)
-    return () => ipcRenderer.removeListener('stage:close-request', listener)
-  },
-  onShotTableClosed: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('shot-table:closed', listener)
-    return () => ipcRenderer.removeListener('shot-table:closed', listener)
-  },
-  onShotTableCloseRequest: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('shot-table:close-request', listener)
-    return () => ipcRenderer.removeListener('shot-table:close-request', listener)
-  },
-  onScriptTimelineClosed: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('script-timeline:closed', listener)
-    return () => ipcRenderer.removeListener('script-timeline:closed', listener)
-  },
-  onScriptTimelineCloseRequest: (callback) => {
-    const listener = (_event: unknown, payload: { scriptAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('script-timeline:close-request', listener)
-    return () => ipcRenderer.removeListener('script-timeline:close-request', listener)
-  },
-  onWorldTableClosed: (callback) => {
-    const listener = (_event: unknown, payload: { worldAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('world-table:closed', listener)
-    return () => ipcRenderer.removeListener('world-table:closed', listener)
-  },
-  onWorldTableCloseRequest: (callback) => {
-    const listener = (_event: unknown, payload: { worldAssetId: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('world-table:close-request', listener)
-    return () => ipcRenderer.removeListener('world-table:close-request', listener)
   },
   onAssetUpdated: (callback) => {
     const listener = (_event: unknown, asset: AssetInfo): void => {
@@ -264,14 +164,6 @@ const api: StudioApi = {
     ipcRenderer.on(IpcChannels.VIDEO_JOB_UPDATED, listener)
     return () => ipcRenderer.removeListener(IpcChannels.VIDEO_JOB_UPDATED, listener)
   },
-  onShotPreviewSet: (callback) => {
-    const listener = (_event: unknown, payload: { dataUrl: string }): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('shot-preview:set', listener)
-    return () => ipcRenderer.removeListener('shot-preview:set', listener)
-  },
-
   /** Electron 35+ 拖放文件需通过 webUtils 获取本地路径 */
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }

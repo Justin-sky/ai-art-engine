@@ -44,7 +44,7 @@ import { isDraftAssetId } from '@shared/domain'
 import { useScopedScriptShots } from '../composables/useScopedScriptShots'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
-import { useWorkspaceStore, STUDIO_SHOT_DRAG_MIME, STUDIO_SHOT_ID_DRAG_MIME } from '../stores/workspace'
+import { STUDIO_SHOT_DRAG_MIME, STUDIO_SHOT_ID_DRAG_MIME } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import type { Shot } from '@shared/domain'
 
@@ -53,7 +53,6 @@ const props = defineProps<{
 }>()
 
 const project = useProjectStore()
-const workspace = useWorkspaceStore()
 const draftStore = useDraftStore()
 const { t, shotStatusLabel: statusLabel } = useStudioI18n()
 const error = ref('')
@@ -95,18 +94,23 @@ watch(
   { immediate: true, deep: true }
 )
 
+const emit = defineEmits<{
+  /** 再点当前镜：由宿主选中分镜参数节点，统一 Inspector */
+  requestShotParamsInspector: []
+}>()
+
 async function selectShot(id: string): Promise<void> {
   if (!id) return
   if (id === project.activeShotId) {
-    workspace.focusShot()
+    emit('requestShotParamsInspector')
     return
   }
   const shot = visibleShots.value.find((s) => s.id === id)
   if (shot && !project.shots.some((s) => s.id === id)) {
     await project.persistShot(shot)
   }
+  // 切镜后 NodeGraphEditor 会 ensure 并选中 shotParams，勿再 focusShot（会闪 ShotInspector）
   await project.selectShot(id)
-  workspace.focusShot()
 }
 
 async function onAdd(): Promise<void> {

@@ -4701,6 +4701,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       selectedObjectId.value = null
       selectionKind.value = null
       applySelectionToScene()
+      syncEditorStageSelection()
     } else {
       applySelectionToScene()
     }
@@ -4811,9 +4812,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
       selectedObjectId.value = null
       selectionKind.value = null
+      syncEditorStageSelection()
     }
     transform?.detach()
     clearSelectionHelper()
+  }
+
+  function isEditorStageSelection(): boolean {
+    const kind = editor.selection.current.value.kind
+    return (
+      kind === 'stage.object' ||
+      kind === 'stage.camera' ||
+      kind === 'stage.scene' ||
+      kind === 'stage.panorama'
+    )
   }
 
   function syncEditorStageSelection(): void {
@@ -4849,6 +4861,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       })
       return
     }
+    if (isEditorStageSelection()) editor.selection.clear()
   }
 
   function selectObject(id: string | null): void {
@@ -5431,6 +5444,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     ) {
       selectedObjectId.value = null
       selectionKind.value = null
+      syncEditorStageSelection()
     }
     applySelectionToScene()
     if (stageEditMode.value === 'animation') {

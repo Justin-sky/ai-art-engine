@@ -245,7 +245,7 @@ describe('asset editor graph', () => {
     expect(table).toBeTruthy()
     expect(split).toBeTruthy()
     expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(true)
-    expect(getNodePorts(split!).find((p) => p.id === 'in')?.dataType).toBe('narrativeEntity')
+    expect(getNodePorts(split!).find((p) => p.id === 'in')?.dataType).toBe('text')
     expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-narrativeEntity'))).toBe(true)
     expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-worldEntities'))).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)

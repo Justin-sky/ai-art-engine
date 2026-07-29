@@ -196,7 +196,7 @@ describe('script asset graph', () => {
     const note = createNodeFromType('note.text', { x: 0, y: 100 })
 
     expect(getNodePorts(split).map((port) => port.dataType)).toEqual([
-      'narrativeEntity',
+      'text',
       'shots'
     ])
     expect(getNodePorts(table).map((port) => port.dataType)).toEqual([
@@ -220,7 +220,7 @@ describe('script asset graph', () => {
       { id: 'in', dataType: 'videoEntities', direction: 'in' }
     ])
     expect(canConnectNodes(select, split)).toBe(true)
-    expect(canConnectNodes(text, split)).toBe(false)
+    expect(canConnectNodes(text, split)).toBe(true)
     expect(canConnectNodes(note, split)).toBe(false)
     expect(canConnectNodes(split, table)).toBe(true)
     expect(canConnectNodes(table, imageGen)).toBe(true)

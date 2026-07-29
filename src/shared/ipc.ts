@@ -122,21 +122,6 @@ export const IpcChannels = {
   /** 选择目录后批量写入多个二进制文件 */
   DIALOG_SAVE_BINARY_FILES_TO_DIRECTORY: 'dialog:save-binary-files-to-directory',
 
-  // Independent stage window
-  PROJECT_GET_STATE: 'project:get-state',
-  WINDOW_OPEN_STAGE: 'window:open-stage',
-  WINDOW_CLOSE_STAGE: 'window:close-stage',
-  STAGE_SEND_PREVIEW: 'stage:send-preview',
-  WINDOW_OPEN_SHOT_PREVIEW: 'window:open-shot-preview',
-  WINDOW_CLOSE_SHOT_PREVIEW: 'window:close-shot-preview',
-  SHOT_PREVIEW_GET: 'shot-preview:get',
-  WINDOW_OPEN_SHOT_TABLE: 'window:open-shot-table',
-  WINDOW_CLOSE_SHOT_TABLE: 'window:close-shot-table',
-  WINDOW_OPEN_SCRIPT_TIMELINE: 'window:open-script-timeline',
-  WINDOW_CLOSE_SCRIPT_TIMELINE: 'window:close-script-timeline',
-  WINDOW_OPEN_WORLD_TABLE: 'window:open-world-table',
-  WINDOW_CLOSE_WORLD_TABLE: 'window:close-world-table',
-
   /** 成片时间线导出 */
   TIMELINE_EXPORT: 'timeline:export',
   /** 主进程推送：成片导出进度 0~1 */
@@ -458,52 +443,11 @@ export interface StudioApi {
     input: SaveBinaryFilesToDirectoryInput
   ) => Promise<SaveBinaryFilesToDirectoryResult | null>
 
-  /** 读取主进程当前已打开工程快照（独立窗口用） */
-  getOpenProjectState: () => Promise<OpenProjectResult | null>
+  /** 导出成片时间线为 MP4（需本机 ffmpeg） */
+  exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
 
-  /** 打开/聚焦导演台舞台独立窗口（可指定加工节点以打开独立场景） */
-  openStageWindow: (
-    directorAssetId: string,
-    processingNodeId?: string
-  ) => Promise<{ ok: true }>
-
-  /** 关闭舞台独立窗口；不传 id 则关闭全部；传资产 id 不传节点则关闭该资产全部舞台窗 */
-  closeStageWindow: (
-    directorAssetId?: string,
-    processingNodeId?: string
-  ) => Promise<{ ok: true }>
-
-  /** 舞台窗口把预览图回传给主窗口 */
-  sendStagePreview: (
-    directorAssetId: string,
-    previewUrl: string,
-    processingNodeId?: string
-  ) => Promise<void>
-
-  /** 订阅舞台预览更新（主窗口） */
-  onStagePreview: (
-    callback: (payload: {
-      directorAssetId: string
-      previewUrl: string
-      processingNodeId?: string | null
-    }) => void
-  ) => () => void
-
-  /** 订阅舞台窗口关闭（主窗口） */
-  onStageClosed: (
-    callback: (payload: {
-      directorAssetId: string
-      processingNodeId?: string | null
-    }) => void
-  ) => () => void
-
-  /** 订阅舞台窗口关闭请求（舞台窗口：OS 关窗前先保存） */
-  onStageCloseRequest: (
-    callback: (payload: {
-      directorAssetId: string
-      processingNodeId?: string | null
-    }) => void
-  ) => () => void
+  /** 订阅成片导出进度（0~1） */
+  onTimelineExportProgress: (callback: (payload: { progress: number }) => void) => () => void
 
   /** 订阅资产落盘更新（多窗口同步内存中的 assets） */
   onAssetUpdated: (callback: (asset: AssetInfo) => void) => () => void
@@ -511,72 +455,6 @@ export interface StudioApi {
   /** 订阅持久化视频任务状态 */
   onVideoJobUpdated: (
     callback: (job: import('./videoJob').VideoJobRecord) => void
-  ) => () => void
-
-  /** 打开/聚焦截图预览独立窗口 */
-  openShotPreviewWindow: (dataUrl: string) => Promise<{ ok: true }>
-
-  /** 关闭截图预览独立窗口 */
-  closeShotPreviewWindow: () => Promise<{ ok: true }>
-
-  /** 截图预览窗口读取当前待显示图片 */
-  getShotPreviewPayload: () => Promise<{ dataUrl: string } | null>
-
-  /** 订阅截图预览内容更新（预览窗口） */
-  onShotPreviewSet: (callback: (payload: { dataUrl: string }) => void) => () => void
-
-  /** 打开/聚焦分镜表格独立窗口 */
-  openShotTableWindow: (scriptAssetId: string) => Promise<{ ok: true }>
-
-  /** 关闭分镜表格独立窗口；不传 id 则关闭全部 */
-  closeShotTableWindow: (scriptAssetId?: string) => Promise<{ ok: true }>
-
-  /** 订阅分镜表格窗口关闭（主窗口） */
-  onShotTableClosed: (
-    callback: (payload: { scriptAssetId: string }) => void
-  ) => () => void
-
-  /** 订阅分镜表格窗口关闭请求（OS 关窗前先保存） */
-  onShotTableCloseRequest: (
-    callback: (payload: { scriptAssetId: string }) => void
-  ) => () => void
-
-  /** 打开/聚焦成片时间线独立窗口 */
-  openScriptTimelineWindow: (scriptAssetId: string) => Promise<{ ok: true }>
-
-  /** 关闭成片时间线独立窗口；不传 id 则关闭全部 */
-  closeScriptTimelineWindow: (scriptAssetId?: string) => Promise<{ ok: true }>
-
-  /** 订阅成片时间线窗口关闭（主窗口） */
-  onScriptTimelineClosed: (
-    callback: (payload: { scriptAssetId: string }) => void
-  ) => () => void
-
-  /** 订阅成片时间线窗口关闭请求（OS 关窗前先保存） */
-  onScriptTimelineCloseRequest: (
-    callback: (payload: { scriptAssetId: string }) => void
-  ) => () => void
-
-  /** 导出成片时间线为 MP4（需本机 ffmpeg） */
-  exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
-
-  /** 订阅成片导出进度（0~1） */
-  onTimelineExportProgress: (callback: (payload: { progress: number }) => void) => () => void
-
-  /** 打开/聚焦世界元素表格独立窗口 */
-  openWorldTableWindow: (worldAssetId: string) => Promise<{ ok: true }>
-
-  /** 关闭世界元素表格独立窗口；不传 id 则关闭全部 */
-  closeWorldTableWindow: (worldAssetId?: string) => Promise<{ ok: true }>
-
-  /** 订阅世界元素表格窗口关闭（主窗口） */
-  onWorldTableClosed: (
-    callback: (payload: { worldAssetId: string }) => void
-  ) => () => void
-
-  /** 订阅世界元素表格窗口关闭请求（OS 关窗前先保存） */
-  onWorldTableCloseRequest: (
-    callback: (payload: { worldAssetId: string }) => void
   ) => () => void
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */

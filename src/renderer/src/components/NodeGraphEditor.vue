@@ -274,24 +274,10 @@
           @title-change="onNodeTitleChange"
           @out-port-down="onOutPortDown"
           @in-port-down="onInPortDown"
-          @text-open="onTextOpen"
-          @texts-open="onTextsOpen"
           @select-image-open="onSelectImageOpen"
           @select-video-open="onSelectVideoOpen"
           @select-voice-open="onSelectVoiceOpen"
           @select-text-open="onSelectTextOpen"
-          @multi-angle-open="onMultiAngleOpen"
-          @lighting-open="onLightingOpen"
-          @portrait-texture-open="onPortraitTextureOpen"
-          @emotion-open="onEmotionOpen"
-          @upscale-open="onUpscaleOpen"
-          @expand-open="onExpandOpen"
-          @redraw-open="onRedrawOpen"
-          @erase-open="onEraseOpen"
-          @matte-open="onMatteOpen"
-          @crop-open="onCropOpen"
-          @grid-split-open="onGridSplitOpen"
-          @timeline-open="onTimelineOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -469,7 +455,7 @@
       </div>
     </Teleport>
 
-    <!-- Dialog 隔离到子层，避免 open 时整张节点图跟着 patch -->
+    <!-- 选取器等 Dialog：独立渲染层，避免 open 时整图重渲 -->
     <NodeGraphEditorDialogLayer />
     <SaveAssetDialog
       ref="encapsulateSaveDialogRef"
@@ -487,12 +473,19 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type ComputedRef } from 'vue'
 import { resolveGraphCard } from '../graph/cards/registry'
-import { editorDiveKey } from '../features/graph/model/editorDive'
-import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
+import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
-import { graphEditorDialogsKey } from '../features/graph/ui/graphEditorDialogsKey'
+import {
+  editorDiveKey,
+  isEditorDiveAssetFrame
+} from '../features/graph/model/editorDive'
+import {
+  graphEditorDialogsKey,
+  type GraphEditorDialogsApi
+} from '../features/graph/ui/graphEditorDialogsKey'
+import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
 import { playFlyToGraphTasks } from '../features/graph/ui/flyToGraphTasks'
@@ -509,7 +502,7 @@ import {
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
-import { worldElementKindKey } from '../features/world/worldEditor'
+import { worldElementKindKey } from '../features/world/worldElementKindKey'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { compareNames } from '@shared/folderTree'
 import { useScopedScriptShots } from '../composables/useScopedScriptShots'
@@ -636,10 +629,8 @@ import {
   ensureShotParamsLinkedToVideo,
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
-  listImageAssetsForShotReferences,
   materializeShotBoundEntityRefsOnGraph,
   parseShotEntities,
-  isTimelineOutputNode,
   type WorldElementKind,
   type NarrativeUnitRow,
   type GraphImageItem,
@@ -683,7 +674,7 @@ import {
   stringifyShotSplitRows,
   stringifyWorldElementCatalog,
   stringifyNarrativeUnitRows,
-  stringifyNarrativeEntity,
+  formatNarrativeUnitRefText,
   parseNarrativeUnitJson,
   catalogTextFromValue,
   isGraphOutputTerminalNode,
@@ -777,12 +768,12 @@ const shotCanvasField = computed(() => getScopeShotCanvasField(graphScope.value)
 provide('graphScope', graphScope)
 
 const editorDive = inject(editorDiveKey, null)
-/** 仅 dive 栈顶宿主主图画布显示导航，避免叙事单元等子图重复 */
+/** 资产 dive 栈顶宿主图画布显示面包屑；视图帧由编辑器壳层显示 */
 const diveNavActive = computed(() => {
   if (!editorDive || editorDive.frames.length === 0 || !props.assetId) return false
   if (props.narrativeUnitId || graphScope.value === 'narrativeUnit') return false
   const top = editorDive.frames[editorDive.frames.length - 1]
-  return props.assetId === top.assetId
+  return isEditorDiveAssetFrame(top) && props.assetId === top.assetId
 })
 
 const worldElementKindInjected = inject(worldElementKindKey, null)
@@ -3718,9 +3709,6 @@ function removeStagesForNodeIds(nodeIds: string[], graphJson: GraphDocument): vo
   if (!asset || !props.assetId || graphScope.value !== 'directorAsset' || !nodeIds.length) return
   const nextGenParams = removeNodeStagesFromGenParams(asset.genParams, nodeIds, graphJson)
   writeDirectorGenParams({ ...nextGenParams, graphJson })
-  for (const id of nodeIds) {
-    void window.studio.closeStageWindow(props.assetId!, id)
-  }
 }
 
 function addNodeFromMenu(typeId: GraphNodeTypeId): void {
@@ -5160,20 +5148,6 @@ function onSelectVideoOpen(nodeId: string): void {
     : ''
 }
 
-/** 画布上双击成片时间线：从上游分镜宿主打开时间线窗口 */
-function onTimelineOpen(nodeId: string): void {
-  const node = graph.nodes.find((n) => n.id === nodeId)
-  if (!node || !isTimelineOutputNode(node)) return
-  const upstreamScript = graph.edges
-    .filter((edge) => edge.target === nodeId)
-    .map((edge) => graph.nodes.find((n) => n.id === edge.source))
-    .find((src) => src?.assetType === 'script' && !!src.assetId)
-  const fallbackScript = graph.nodes.find((n) => n.assetType === 'script' && !!n.assetId)
-  const scriptId = upstreamScript?.assetId ?? fallbackScript?.assetId
-  if (!scriptId || isDraftAssetId(scriptId)) return
-  void window.studio.openScriptTimelineWindow(scriptId)
-}
-
 function closeSelectVideo(): void {
   selectVideo.open = false
   selectVideo.nodeId = ''
@@ -5396,7 +5370,7 @@ function collectSelectNarrativeItems(nodeId: string): GraphTextItem[] {
     items.push({
       id: row.id,
       title: `#${row.order} ${row.title}`.trim(),
-      text: stringifyNarrativeEntity(row)
+      text: formatNarrativeUnitRefText(row)
     })
   }
 
@@ -6383,8 +6357,8 @@ function saveGridSplit(payload: {
   closeGridSplit()
 }
 
-// Dialog 状态/回调提供给独立渲染层；父模板不读这些字段，open 时不重渲节点图
-provide(graphEditorDialogsKey, {
+/** Dialog 状态：选取器用 DialogLayer；其余工具可走 dive。open 不进入本组件模板 */
+const graphDialogsApi = {
   notepad,
   selectImage,
   selectVideo,
@@ -6435,7 +6409,9 @@ provide(graphEditorDialogsKey, {
   saveCrop,
   closeGridSplit,
   saveGridSplit
-} as never)
+} as GraphEditorDialogsApi
+
+provide(graphEditorDialogsKey, graphDialogsApi)
 
 /** 非 ref：避免起手/松手时 Vue 重渲染整棵节点树 */
 let isPanning = false
@@ -6694,6 +6670,33 @@ let unregisterGraphDocument: (() => void) | null = null
 let unregisterGraphHost: (() => void) | null = null
 let unregisterGraphRunHost: (() => void) | null = null
 let unregisterNodeTypes: (() => void) | null = null
+let unregisterNodeTools: (() => void) | null = null
+
+function registerNodeToolHost(): void {
+  unregisterNodeTools?.()
+  unregisterNodeTools = graphEditorNodeTools.register(graphHostId.value, {
+    api: graphDialogsApi,
+    openers: {
+      'node.notepad': (nodeId) => onTextOpen(nodeId),
+      'node.textsPreview': (nodeId) => onTextsOpen(nodeId),
+      'node.selectImage': (nodeId) => onSelectImageOpen(nodeId),
+      'node.selectVideo': (nodeId) => onSelectVideoOpen(nodeId),
+      'node.selectVoice': (nodeId) => onSelectVoiceOpen(nodeId),
+      'node.selectText': (nodeId) => onSelectTextOpen(nodeId),
+      'node.multiAngle': (nodeId) => onMultiAngleOpen(nodeId),
+      'node.lighting': (nodeId) => onLightingOpen(nodeId),
+      'node.portraitTexture': (nodeId) => onPortraitTextureOpen(nodeId),
+      'node.emotion': (nodeId) => onEmotionOpen(nodeId),
+      'node.upscale': (nodeId) => onUpscaleOpen(nodeId),
+      'node.expand': (nodeId) => onExpandOpen(nodeId),
+      'node.redraw': (nodeId) => onRedrawOpen(nodeId),
+      'node.erase': (nodeId) => onEraseOpen(nodeId),
+      'node.matte': (nodeId) => onMatteOpen(nodeId),
+      'node.crop': (nodeId) => onCropOpen(nodeId),
+      'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId)
+    }
+  })
+}
 
 onMounted(() => {
   unregisterNodeTypes = onNodeTypeRegistryChanged(() => {
@@ -6723,6 +6726,7 @@ onMounted(() => {
     requestPreviewVisibilityUpdate()
   })
   if (viewportEl.value) resizeObserver.observe(viewportEl.value)
+  registerNodeToolHost()
   unregisterGraphHost = graphEditorHosts.register(
     graphHostId.value,
     {
@@ -6857,6 +6861,8 @@ onBeforeUnmount(() => {
   if (workspace.selectedGraphHostId === graphHostId.value) {
     workspace.selectGraphNode(null, graphHostId.value)
   }
+  unregisterNodeTools?.()
+  unregisterNodeTools = null
   unregisterGraphHost?.()
   unregisterGraphHost = null
   unregisterGraphRunHost?.()
@@ -6916,6 +6922,11 @@ function getGraphDocument(): GraphDocument {
   return buildGraphJson()
 }
 
+/** 分镜图/视频：选中当前镜的分镜参数节点（与分镜条点击共用） */
+function focusActiveShotParams(): void {
+  ensureShotParamsForActiveShotCanvas()
+}
+
 defineExpose({
   exportPng,
   flushSave,
@@ -6923,7 +6934,8 @@ defineExpose({
   runWorkflow,
   runToNode: guardedRunToNode,
   stopWorkflow,
-  lastRunResult
+  lastRunResult,
+  focusActiveShotParams
 })
 </script>
 

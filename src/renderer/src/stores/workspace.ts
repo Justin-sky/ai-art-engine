@@ -15,13 +15,22 @@ import {
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
 import {
+  editorDiveAssetFrameKey,
+  editorDiveViewFrameKey,
+  isEditorDiveAssetFrame,
   type EditorDiveFrame,
-  type EditorDiveKind
+  type EditorDiveKind,
+  type EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
 import { draftToAssetInfo, useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 
-export type { EditorDiveFrame, EditorDiveKind } from '../features/graph/model/editorDive'
+export type {
+  EditorDiveFrame,
+  EditorDiveKind,
+  EditorDiveViewId,
+  EditorDiveViewMeta
+} from '../features/graph/model/editorDive'
 
 export type InspectorFocus = 'shot' | 'asset'
 
@@ -121,10 +130,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   /**
-   * Houdini 式 dive 栈：rootKey → 子资产帧列表。
+   * Houdini 式 dive 栈：rootKey → 资产帧 / 逻辑视图帧。
    * 空数组 / 缺省 = 只显示根图。
    */
   const editorDives = ref<Record<string, EditorDiveFrame[]>>({})
+  /** 当前焦点编辑器 dive 根（媒体预览等无 inject 场景） */
+  const activeDiveRootKey = ref<string | null>(null)
+
+  function setActiveDiveRootKey(rootKey: string | null): void {
+    activeDiveRootKey.value = rootKey?.trim() || null
+  }
 
   function diveStack(rootKey: string): EditorDiveFrame[] {
     return editorDives.value[rootKey] ?? []
@@ -140,33 +155,80 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return 'asset'
   }
 
+  function defaultViewTitle(meta: EditorDiveViewMeta): string {
+    switch (meta.viewId) {
+      case 'script.shotImage':
+        return 'Shot image'
+      case 'script.shotVideo':
+        return 'Shot video'
+      case 'script.shotTable':
+        return 'Shot table'
+      case 'script.timeline':
+        return 'Timeline'
+      case 'world.editor':
+        return 'World editor'
+      case 'world.table':
+        return 'World table'
+      case 'narrative.gen':
+        return 'Narrative units'
+      case 'narrative.table':
+        return 'Narrative table'
+      case 'director.stage':
+        return 'Director stage'
+      case 'media.preview':
+        return meta.title?.trim() || 'Preview'
+      default:
+        return meta.viewId
+    }
+  }
+
+  function pushDiveFrame(rootKey: string, frame: EditorDiveFrame): boolean {
+    const key = rootKey?.trim()
+    if (!key || !frame.key) return false
+    const stack = diveStack(key)
+    const top = stack[stack.length - 1]
+    if (top?.key === frame.key) {
+      if (isEditorDiveAssetFrame(frame)) requestHostInputSlotSync(frame.assetId)
+      return true
+    }
+    editorDives.value = { ...editorDives.value, [key]: [...stack, frame] }
+    if (isEditorDiveAssetFrame(frame)) requestHostInputSlotSync(frame.assetId)
+    return true
+  }
+
   /** 同面板 dive 进入子宿主；已在栈顶则只刷新输入接口 */
-  function diveIntoHost(rootKey: string, assetId: string): boolean {
+  function diveIntoAsset(rootKey: string, assetId: string): boolean {
     const key = rootKey?.trim()
     const id = assetId?.trim()
     if (!key || !id) return false
     const asset = resolveAssetById(id)
     if (!asset) return false
     const kind = resolveDiveKind(asset)
-    // 剧集内不再 dive 进另一张 canvas（避免套娃）
-    if (kind === 'canvas') {
-      openEditorForAssetId(id)
-      return false
-    }
-    const stack = diveStack(key)
-    const top = stack[stack.length - 1]
-    if (top?.assetId === id) {
-      requestHostInputSlotSync(id)
-      return true
-    }
-    const frame: EditorDiveFrame = {
+    return pushDiveFrame(key, {
+      type: 'asset',
+      key: editorDiveAssetFrameKey(kind, id),
       assetId: id,
-      title: asset.name?.trim() || id.slice(0, 8),
-      kind
-    }
-    editorDives.value = { ...editorDives.value, [key]: [...stack, frame] }
-    requestHostInputSlotSync(id)
-    return true
+      kind,
+      title: asset.name?.trim() || id.slice(0, 8)
+    })
+  }
+
+  /** 同面板 dive 进入逻辑视图 */
+  function diveIntoView(
+    rootKey: string,
+    meta: EditorDiveViewMeta,
+    title?: string
+  ): boolean {
+    const key = rootKey?.trim()
+    if (!key) return false
+    const frameKey = editorDiveViewFrameKey(key, meta)
+    return pushDiveFrame(key, {
+      type: 'view',
+      key: frameKey,
+      viewId: meta.viewId,
+      title: title?.trim() || defaultViewTitle(meta),
+      meta
+    })
   }
 
   /**
@@ -186,7 +248,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     editorDives.value = { ...editorDives.value, [key]: next }
     const top = next[next.length - 1]
-    if (top) requestHostInputSlotSync(top.assetId)
+    if (isEditorDiveAssetFrame(top)) requestHostInputSlotSync(top.assetId)
   }
 
   function diveClear(rootKey: string): void {
@@ -682,8 +744,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     hostInputSlotSyncNonce,
     requestHostInputSlotSync,
     editorDives,
+    activeDiveRootKey,
+    setActiveDiveRootKey,
     diveStack,
-    diveIntoHost,
+    diveIntoAsset,
+    diveIntoView,
     divePopTo,
     diveClear,
     diveClearAll,

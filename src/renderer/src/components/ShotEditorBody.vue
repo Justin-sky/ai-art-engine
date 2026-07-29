@@ -36,6 +36,7 @@
           v-show="shotsExpanded"
           class="script-dialog-shots"
           :script-asset-id="scriptAssetId"
+          @request-shot-params-inspector="focusShotParamsInspector"
         />
       </div>
     </div>
@@ -73,11 +74,15 @@ const graphScope = computed<GraphAddScope>(() =>
   props.kind === 'image' ? 'visual' : 'shotWorkflow'
 )
 
+function focusShotParamsInspector(): void {
+  graphRef.value?.focusActiveShotParams()
+}
+
 onMounted(() => {
   workspace.registerScriptGraphGetter(props.scriptAssetId, () =>
     graphRef.value?.getGraphDocument() ?? null
   )
-  workspace.focusShot()
+  // Inspector 由 NodeGraphEditor.ensureShotParamsForActiveShotCanvas 统一到 ShotParamsInspector
 })
 
 onBeforeUnmount(() => {
@@ -86,7 +91,8 @@ onBeforeUnmount(() => {
 })
 
 defineExpose({
-  flushSave: () => graphRef.value?.flushSave()
+  flushSave: () => graphRef.value?.flushSave(),
+  focusShotParamsInspector
 })
 </script>
 

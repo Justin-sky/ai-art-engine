@@ -1,7 +1,33 @@
 <template>
-  <Teleport to="body">
+  <div v-if="open && embedded" class="sfw-embedded" :class="{ 'sfw-window-editor': variant === 'editor' }" :aria-label="ariaLabel">
+    <header v-if="showTitlebar" class="sfw-titlebar sfw-titlebar-embedded">
+      <div class="sfw-title">
+        <slot name="title">
+          <h3>{{ title }}</h3>
+        </slot>
+      </div>
+      <div class="sfw-title-actions">
+        <slot name="title-actions" />
+      </div>
+    </header>
+
+    <div v-if="showTitlebar && ($slots.subtitle || subtitle)" class="sfw-subtitle">
+      <slot name="subtitle">
+        <p>{{ subtitle }}</p>
+      </slot>
+    </div>
+
+    <div class="sfw-body" :class="bodyClass">
+      <slot v-if="bodyReady" />
+    </div>
+
+    <footer v-if="$slots.footer" class="sfw-footer">
+      <slot name="footer" />
+    </footer>
+  </div>
+
+  <Teleport v-else-if="open" to="body">
     <div
-      v-if="open"
       class="sfw-mask"
       :class="{ 'sfw-mask-dim': variant === 'editor' }"
       :style="{ zIndex }"
@@ -64,7 +90,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { editorDiveEmbeddedKey } from '../features/graph/ui/editorDiveEmbeddedKey'
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -86,6 +113,8 @@ const props = withDefaults(
     bodyClass?: string
     /** editor：深色遮罩 + 大圆角，用于分镜/全景等大编辑窗 */
     variant?: 'default' | 'editor'
+    /** Dive 内嵌铺满；未传时也可由 editorDiveEmbeddedKey 注入 */
+    embedded?: boolean
   }>(),
   {
     title: '',
@@ -101,13 +130,17 @@ const props = withDefaults(
     minWidth: 320,
     minHeight: 240,
     bodyClass: '',
-    variant: 'default'
+    variant: 'default',
+    embedded: undefined
   }
 )
 
 const emit = defineEmits<{
   close: []
 }>()
+
+const diveEmbedded = inject(editorDiveEmbeddedKey, false)
+const embedded = computed(() => props.embedded ?? diveEmbedded)
 
 const resizeHandles: ResizeHandle[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 
@@ -177,6 +210,10 @@ watch(
       // immediate 首次（wasVisible === undefined）无需清理
       if (wasVisible) stopPointerOps()
       window.removeEventListener('keydown', onDocKeyDown, true)
+      return
+    }
+    if (embedded.value) {
+      bodyReady.value = true
       return
     }
     placeWindow()
@@ -323,6 +360,22 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.sfw-embedded {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.sfw-titlebar-embedded {
+  cursor: default;
+}
+
 .sfw-mask {
   position: fixed;
   inset: 0;

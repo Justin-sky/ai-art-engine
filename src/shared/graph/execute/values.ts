@@ -119,7 +119,6 @@ import {
   mergeNarrativeUnitRowsPreservingReviewed,
   parseNarrativeEntityJson,
   parseNarrativeUnitJson,
-  stringifyNarrativeEntity,
   stringifyNarrativeUnitRows
 } from '../narrativeUnitParse'
 import { formatNarrativeUnitRefText } from '../narrativeUnitParams'
@@ -3390,13 +3389,27 @@ export async function executeShotSplitNode(
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incoming = ctx.inputs.in ?? Object.values(ctx.inputs).flat()
   const entityText =
-    catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.narrativeEntity) ||
+    catalogTextFromInputs(incoming, GraphPortType.narrativeEntity) ||
+    incoming.reduce<string>((found, value) => {
+      if (found) return found
+      if (value.kind === 'text' && value.text.trim()) return value.text.trim()
+      if (value.kind === 'texts') {
+        for (const item of value.items) {
+          const body = item.text?.trim()
+          if (body) return body
+        }
+      }
+      return ''
+    }, '') ||
     ''
   const entity = parseNarrativeEntityJson(entityText)
   const entityPrompt = entity ? formatNarrativeUnitRefText(entity) : ''
+  // 上游可能已是普通文本（如 narrative.select），JSON 解析失败时直接用正文
   const incomingText =
     entityPrompt ||
+    entityText ||
     autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
   const localText = node.params.text?.trim() ?? ''
   const previousRows = parseShotSplitJson(localText)
@@ -3850,14 +3863,13 @@ export async function executeSelectTextNode(
 }
 
 /**
- * 选择叙事单元：从 narrative 目录中选出一行，输出 narrativeEntity。
+ * 选择叙事单元：从 narrative 目录中选出一行，输出可读普通文本。
  */
 export function executeSelectNarrativeNode(
   ctx: NodeExecuteContext
 ): Record<string, GraphValue> {
   const catalogText =
     catalogTextFromInputs(collectIncomingValues(ctx.inputs), GraphPortType.narrative) ||
-    ctx.node.params.text?.trim() ||
     ''
   const rows = parseNarrativeUnitJson(catalogText) ?? []
   const selectedId = ctx.node.params.selectedUnitId?.trim()
@@ -3868,7 +3880,7 @@ export function executeSelectNarrativeNode(
     ctx.patchNode?.({ params: { text: '', selectedUnitId: '' } })
     return {}
   }
-  const text = stringifyNarrativeEntity(picked)
+  const text = formatNarrativeUnitRefText(picked)
   ctx.node.params = {
     ...ctx.node.params,
     selectedUnitId: picked.id,
@@ -3880,7 +3892,7 @@ export function executeSelectNarrativeNode(
       text
     }
   })
-  return { out: catalogValue(GraphPortType.narrativeEntity, text) }
+  return { out: { kind: 'text', text } }
 }
 
 /** 选取视频：从视频数组中选出一条，输出为单个 video */
