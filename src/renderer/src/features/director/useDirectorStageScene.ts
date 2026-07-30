@@ -97,7 +97,9 @@ import {
 import {
   retargetClipToCharacter,
   collectPoseEditBoneNames,
-  collectSkinningBones
+  collectPoseEditBones,
+  collectSkinningBones,
+  findNearestPoseBoneParent
 } from './skeletonRetarget'
 import {
   detectDefaultIkChains,
@@ -227,7 +229,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const poseTmpQuat = new THREE.Quaternion()
   const poseTmpVec3 = new THREE.Vector3()
   /** 'fk' ????'ik' ????????*/
-  const poseEditMode = ref<'fk' | 'ik'>('fk')
+  const poseEditMode = ref<'fk' | 'ik' | 'ai'>('fk')
   const selectedIkChainId = ref<IkChainSlot | null>(null)
   let ikTarget: THREE.Object3D | null = null
   let ikTargetGeom: THREE.SphereGeometry | null = null
@@ -257,6 +259,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   let savedBeforeUnmount = false
   let appliedStageFingerprint: string | null = null
   let selectionHelper: THREE.BoxHelper | null = null
+  const SELECTION_BOUNDS_STORAGE_KEY = 'director.stage.selectionBoundsVisible'
+  const selectionBoundsVisible = ref(readSelectionBoundsVisiblePref())
   /** ???????? + ?????????????????*/
   type ShotViz = {
     root: THREE.Group
@@ -2300,6 +2304,31 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return collectPoseEditBoneNames(mesh)
   }
 
+  /** 可编辑骨骼层级（含父骨名与当前度数偏移），供 AI 姿势提示词使用 */
+  function listObjectBoneHierarchy(objectId: string): {
+    name: string
+    parent: string | null
+    rotationDeg: StageVec3
+  }[] {
+    void previewRevision.value
+    const mesh = objectMeshes.get(objectId)
+    if (!mesh) return []
+    const bones = collectPoseEditBones(mesh)
+    const boneSet = new Set(bones)
+    return bones
+      .map((bone) => {
+        const name = bone.name?.trim()
+        if (!name) return null
+        const parent = findNearestPoseBoneParent(bone, boneSet)
+        return {
+          name,
+          parent: parent?.name?.trim() || null,
+          rotationDeg: getObjectBonePoseDeg(objectId, name)
+        }
+      })
+      .filter((row): row is { name: string; parent: string | null; rotationDeg: StageVec3 } => !!row)
+  }
+
   function getObjectBonePoseDeg(objectId: string, boneName: string): StageVec3 {
     const obj = stage.value.objects.find((item) => item.id === objectId)
     const pose = obj?.bonePose?.[boneName]
@@ -2472,13 +2501,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return ensureIkChains(objectId).find((c) => c.id === id) ?? null
   }
 
-  function setPoseEditMode(mode: 'fk' | 'ik'): void {
+  function setPoseEditMode(mode: 'fk' | 'ik' | 'ai'): void {
     if (poseEditMode.value === mode) return
     poseEditMode.value = mode
     if (mode === 'fk') {
       selectedIkChainId.value = null
       if (ikTarget) ikTarget.visible = false
-    } else {
+    } else if (mode === 'ik') {
       selectedPoseBone.value = null
       poseSkeletonOverlay?.setSelectedBone(null)
       const objectId = poseSkeletonOverlay?.getTargetObjectId()
@@ -2486,6 +2515,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         const chains = ensureIkChains(objectId)
         if (!selectedIkChainId.value && chains[0]) selectedIkChainId.value = chains[0].id
       }
+    } else {
+      // AI：不挂 FK/IK gizmo
+      selectedIkChainId.value = null
+      selectedPoseBone.value = null
+      poseSkeletonOverlay?.setSelectedBone(null)
+      if (ikTarget) ikTarget.visible = false
     }
     syncPoseBoneGizmo()
     requestRender()
@@ -2578,18 +2613,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     poseSkeletonOverlay?.update()
   }
 
-  /** ??IK ?????? links ?? bind ??????cache + bonePose */
-  function bakeIkChainPose(persist: boolean): void {
-    const objectId = poseSkeletonOverlay?.getTargetObjectId()
-    const chain = getSelectedIkChain()
-    if (!objectId || !chain) return
+  /** 把当前骨骼局部旋转相对 bind 烘焙进 bonePose */
+  function bakeNamedBonesPose(objectId: string, boneNames: string[], persist: boolean): void {
     const idx = stage.value.objects.findIndex((item) => item.id === objectId)
     if (idx < 0) return
     const obj = stage.value.objects[idx]
     if (obj.locked) return
 
     const nextPose = { ...(obj.bonePose ?? {}) }
-    for (const name of chain.links) {
+    for (const name of boneNames) {
       const bone = findSkinningBone(objectId, name)
       const bindQuat = bindPoseSnapshots.get(objectId)?.get(name)?.quaternion
       if (!bone || !bindQuat) continue
@@ -2614,6 +2646,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     schedulePersist()
     poseSkeletonOverlay?.update()
     requestRender()
+  }
+
+  /** ??IK ?????? links ?? bind ??????cache + bonePose */
+  function bakeIkChainPose(persist: boolean): void {
+    const objectId = poseSkeletonOverlay?.getTargetObjectId()
+    const chain = getSelectedIkChain()
+    if (!objectId || !chain) return
+    bakeNamedBonesPose(objectId, chain.links, persist)
   }
 
   function detachPoseBoneGizmo(): void {
@@ -2695,7 +2735,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (ikTarget) ikTarget.visible = false
       return
     }
-    if (!isPoseEditActive()) {
+    if (!isPoseEditActive() || poseEditMode.value === 'ai') {
       detachPoseBoneGizmo()
       if (ikTarget) ikTarget.visible = false
       return
@@ -2785,15 +2825,46 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (idx < 0) return
     const obj = stage.value.objects[idx]
     if (obj.locked) return
+    const cleaned = cloneBonePoseMap(bonePose)
     stage.value.objects = stage.value.objects.map((item, i) =>
-      i === idx ? { ...item, bonePose } : item
+      i === idx ? { ...item, bonePose: cleaned } : item
     )
-    syncBonePoseOffsetCacheFromEuler(objectId, bonePose)
+    syncBonePoseOffsetCacheFromEuler(objectId, cleaned)
     refreshObjectSkeletonPose(objectId)
     syncPoseBoneGizmo()
     previewRevision.value += 1
     requestRender()
     schedulePersist()
+  }
+
+  /**
+   * 应用 AI / 外部生成的骨骼姿势（弧度）。
+   * replace：整图替换；merge：写入列出的骨，零旋转删除该骨偏移。
+   */
+  function applyObjectBonePoseMap(
+    objectId: string,
+    bonePose: Record<string, StageVec3>,
+    mode: 'replace' | 'merge' = 'replace'
+  ): void {
+    const obj = stage.value.objects.find((item) => item.id === objectId)
+    if (!obj || obj.locked) return
+    if (mode === 'replace') {
+      const next: Record<string, StageVec3> = {}
+      for (const [name, rot] of Object.entries(bonePose)) {
+        if (!rot) continue
+        if (rot.x === 0 && rot.y === 0 && rot.z === 0) continue
+        next[name] = { x: rot.x, y: rot.y, z: rot.z }
+      }
+      patchObjectBonePose(objectId, Object.keys(next).length ? next : undefined)
+      return
+    }
+    const next = { ...(obj.bonePose ?? {}) }
+    for (const [name, rot] of Object.entries(bonePose)) {
+      if (!rot) continue
+      if (rot.x === 0 && rot.y === 0 && rot.z === 0) delete next[name]
+      else next[name] = { x: rot.x, y: rot.y, z: rot.z }
+    }
+    patchObjectBonePose(objectId, Object.keys(next).length ? next : undefined)
   }
 
   function listObjectPosePresets(objectId: string): DirectorPosePreset[] {
@@ -4126,6 +4197,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
+  function readSelectionBoundsVisiblePref(): boolean {
+    try {
+      return localStorage.getItem(SELECTION_BOUNDS_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  }
+
   function clearSelectionHelper(): void {
     if (selectionHelper && scene) {
       scene.remove(selectionHelper)
@@ -4136,10 +4215,27 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function updateSelectionHelper(mesh: THREE.Object3D | null): void {
     clearSelectionHelper()
-    if (!mesh || !scene) return
+    if (!mesh || !scene || !selectionBoundsVisible.value) return
     selectionHelper = new THREE.BoxHelper(mesh, 0x5b9cf5)
     selectionHelper.renderOrder = 10
     scene.add(selectionHelper)
+  }
+
+  function setSelectionBoundsVisible(visible: boolean): void {
+    const next = !!visible
+    if (selectionBoundsVisible.value === next) return
+    selectionBoundsVisible.value = next
+    try {
+      localStorage.setItem(SELECTION_BOUNDS_STORAGE_KEY, next ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+    applySelectionToScene()
+    requestRender()
+  }
+
+  function toggleSelectionBoundsVisible(): void {
+    setSelectionBoundsVisible(!selectionBoundsVisible.value)
   }
 
   function disposeLabel(label: CSS2DObject): void {
@@ -6539,10 +6635,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     getMainRenderer,
     schedulePersist,
     setPoseSkeletonVisible,
+    selectionBoundsVisible,
+    setSelectionBoundsVisible,
+    toggleSelectionBoundsVisible,
     objectSupportsPose,
     listObjectBones,
+    listObjectBoneHierarchy,
     getObjectBonePoseDeg,
     setObjectBonePoseDeg,
+    patchObjectBonePose,
+    applyObjectBonePoseMap,
     setSelectedPoseBone,
     selectedPoseBone,
     poseEditMode,

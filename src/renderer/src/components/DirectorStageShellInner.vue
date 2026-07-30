@@ -122,11 +122,13 @@
           :transform-mode="scene.transformMode.value"
           :aspect-ratio="scene.aspectRatio.value"
           :stage-edit-mode="scene.stageEditMode.value"
+          :selection-bounds-visible="scene.selectionBoundsVisible.value"
           @set-mode="scene.setMode"
           @set-stage-edit-mode="scene.setStageEditMode"
           @reset-view="scene.resetViewer"
           @capture="onCapture"
           @set-aspect-ratio="scene.setAspectRatio"
+          @toggle-selection-bounds="scene.toggleSelectionBoundsVisible"
         />
         <div
           v-if="scene.aspectRatio.value !== 'auto'"

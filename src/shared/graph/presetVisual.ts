@@ -183,6 +183,17 @@ export function resolveInstructionVisual(input: {
   if (id.includes('cameraCombo')) return { kind: 'camera', camera: 'combo' }
   if (id.includes('textToVideo')) return { kind: 'icon', icon: '✦' }
   if (id.includes('multimodal')) return { kind: 'icon', icon: '⧉' }
+  if (id.includes('poseStandingFront')) return { kind: 'facing', facing: 'front', shotSize: 'mediumClose' }
+  if (id.includes('poseThreeQuarter')) return { kind: 'facing', facing: 'threeQuarter', shotSize: 'mediumClose' }
+  if (id.includes('poseProfile')) return { kind: 'facing', facing: 'profile', shotSize: 'close' }
+  if (id.includes('poseBack')) return { kind: 'facing', facing: 'back', shotSize: 'medium' }
+  if (id.includes('poseLookBack')) return { kind: 'facing', facing: 'backThreeQuarter', shotSize: 'mediumClose' }
+  if (id.includes('poseWalk') || id.includes('poseRun')) {
+    return { kind: 'camera', camera: 'follow', shotSize: 'medium' }
+  }
+  if (id.includes('poseSit') || id.includes('poseHandsOnHips')) {
+    return { kind: 'shotSize', shotSize: 'mediumClose', camera: 'static' }
+  }
 
   if (id.startsWith('screenplay.')) {
     return {

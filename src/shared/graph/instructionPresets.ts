@@ -518,6 +518,62 @@ const VIDEO_PERFORMANCE_BODY = `生成以人物真实表演为核心的视频。
 把[抽象情绪]拆成具体时序：先[眼眉变化]，随后[嘴唇/鼻翼/下颌动作]，再由[肩颈/手指/重心]响应。
 镜头保持克制，仅用轻微手持、停顿或微推强调情绪节点；避免僵硬笑容、面部融化、夸张抽搐。`
 
+/** —— 常用姿势（身体朝向 / 基础动作）—— */
+
+const VIDEO_POSE_STANDING_FRONT_BODY = `生成人物常用姿势：严格全正面站立。
+【姿势】[主体] 正对镜头站立，双脚自然开立，重心稳定；双臂自然下垂或在画面下方做细微有动机的手势。
+【表情】眼神看向镜头，面部情绪直接可读：[情绪]。
+【景别】半身至中景；镜头稳定或极轻微推近。
+【约束】保持人物比例与服装细节清晰；无多余人物；无字幕、水印与 UI。`
+
+const VIDEO_POSE_THREE_QUARTER_BODY = `生成人物常用姿势：45度（三分之四侧面）站立。
+【姿势】[主体] 身体朝向约45度，兼顾面部表情与身体立体感；加入视线扫动、手指动作或重心微调。
+【表情】[情绪] 清晰可读，避免面部被过度遮挡。
+【景别】半身景；镜头稳定或缓慢环绕小幅弧线。
+【约束】保持外观一致；动作自然；无字幕、水印与 UI。`
+
+const VIDEO_POSE_PROFILE_BODY = `生成人物常用姿势：纯侧面站立/半身。
+【姿势】[主体] 呈清晰侧影轮廓，视线专注于画外[目标]而非镜头；肩线、下颌与鼻梁轮廓分明。
+【表演】用呼吸起伏、指尖动作或轻微重心变化传递[情绪]。
+【景别】特写至半身；镜头稳定旁观。
+【约束】避免正脸露出；无字幕、水印与 UI。`
+
+const VIDEO_POSE_BACK_BODY = `生成人物常用姿势：严格背面站立。
+【姿势】[主体] 背对镜头，与观众共同望向[场景/目标]；用肩线、头部偏转、手部动作与重心变化传递[情绪]。
+【节奏】可在结尾轻微转头露出侧脸轮廓，但不提前露出正脸。
+【景别】中远景至中景；镜头缓慢推进或横移。
+【约束】人物身份与服装从背面仍可辨认；无字幕、水印与 UI。`
+
+const VIDEO_POSE_WALK_BODY = `生成人物常用姿势：自然走路。
+【姿势】[主体] 以自然步态向前行走，手臂随步伐摆动，重心在左右脚间切换；发丝与衣摆有轻微惯性。
+【方向】朝[画内方向]行走；视线看向前进方向或短暂扫向镜头。
+【镜头】侧跟或斜跟，保持半身至中景构图稳定。
+【约束】步幅真实、无脚底滑动；无字幕、水印与 UI。`
+
+const VIDEO_POSE_SIT_BODY = `生成人物常用姿势：坐姿。
+【姿势】[主体] 坐在[椅子/台阶/地面]上，躯干端正或略前倾；双手放在[膝上/扶手/交握]，双脚自然落地或交叠。
+【表演】加入一次重心微调、整理衣角或抬眼看向[目标]。
+【景别】半身至中景；镜头稳定或轻微下摇到坐姿全貌后回。
+【约束】坐姿比例协调，无穿模；无字幕、水印与 UI。`
+
+const VIDEO_POSE_LOOK_BACK_BODY = `生成人物常用姿势：回眸。
+【姿势】[主体] 先面向画外[目标]，随后肩颈带动头部回看镜头或回看追赶者；发丝与衣领随转动有惯性。
+【表情】回眸瞬间给出[情绪]（惊讶/警惕/柔和等），眼神清晰。
+【景别】半身景；回眸瞬间可短促微推后稳定。
+【约束】转动过程连续，无跳切感；无字幕、水印与 UI。`
+
+const VIDEO_POSE_HANDS_ON_HIPS_BODY = `生成人物常用姿势：双手叉腰自信站立。
+【姿势】[主体] 正面或微侧对镜头站立，双手叉腰，肘部外展，胸部打开，重心落在双脚。
+【表演】下巴微抬，目光坚定看向镜头或[目标]；可有一次深呼吸或衣摆被风轻吹。
+【景别】中景至半身；镜头稳定或缓慢上摇强调气场。
+【约束】姿态有力但不僵硬；无字幕、水印与 UI。`
+
+const VIDEO_POSE_RUN_BODY = `生成人物常用姿势：跑步。
+【姿势】[主体] 向前奔跑，膝盖抬起、摆臂有力，重心前倾；呼吸与步伐节奏匹配。
+【环境】[场景] 中有合理动态反馈（尘土、衣摆、发丝）。
+【镜头】跟拍或斜侧跟，保持半身至中景；允许轻微手持晃动增强速度感。
+【约束】脚步落地真实，避免漂浮感；无字幕、水印与 UI。`
+
 const VIDEO_TRANSITION_HARD_BODY = `设计一个广告快节奏硬切镜头。
 当前镜头只完成一个清晰动作，并在动作最有力的瞬间切入下一镜。
 切点前保留极短停顿或冲击；下一镜用匹配的动作方向、构图位置或声音延续能量。
@@ -633,6 +689,60 @@ const VIDEO_PRESETS: InstructionPreset[] = [
     id: 'video.performanceRealism',
     titleKey: 'graph.inspector.generate.presets.video.performanceRealism',
     body: VIDEO_PERFORMANCE_BODY
+  },
+  {
+    id: 'video.poseStandingFront',
+    titleKey: 'graph.inspector.generate.presets.video.poseStandingFront',
+    body: VIDEO_POSE_STANDING_FRONT_BODY,
+    visual: { kind: 'facing', facing: 'front', shotSize: 'mediumClose' }
+  },
+  {
+    id: 'video.poseThreeQuarter',
+    titleKey: 'graph.inspector.generate.presets.video.poseThreeQuarter',
+    body: VIDEO_POSE_THREE_QUARTER_BODY,
+    visual: { kind: 'facing', facing: 'threeQuarter', shotSize: 'mediumClose' }
+  },
+  {
+    id: 'video.poseProfile',
+    titleKey: 'graph.inspector.generate.presets.video.poseProfile',
+    body: VIDEO_POSE_PROFILE_BODY,
+    visual: { kind: 'facing', facing: 'profile', shotSize: 'close' }
+  },
+  {
+    id: 'video.poseBack',
+    titleKey: 'graph.inspector.generate.presets.video.poseBack',
+    body: VIDEO_POSE_BACK_BODY,
+    visual: { kind: 'facing', facing: 'back', shotSize: 'medium' }
+  },
+  {
+    id: 'video.poseWalk',
+    titleKey: 'graph.inspector.generate.presets.video.poseWalk',
+    body: VIDEO_POSE_WALK_BODY,
+    visual: { kind: 'camera', camera: 'follow', shotSize: 'medium' }
+  },
+  {
+    id: 'video.poseSit',
+    titleKey: 'graph.inspector.generate.presets.video.poseSit',
+    body: VIDEO_POSE_SIT_BODY,
+    visual: { kind: 'shotSize', shotSize: 'mediumClose', camera: 'static' }
+  },
+  {
+    id: 'video.poseLookBack',
+    titleKey: 'graph.inspector.generate.presets.video.poseLookBack',
+    body: VIDEO_POSE_LOOK_BACK_BODY,
+    visual: { kind: 'facing', facing: 'backThreeQuarter', shotSize: 'mediumClose' }
+  },
+  {
+    id: 'video.poseHandsOnHips',
+    titleKey: 'graph.inspector.generate.presets.video.poseHandsOnHips',
+    body: VIDEO_POSE_HANDS_ON_HIPS_BODY,
+    visual: { kind: 'facing', facing: 'front', shotSize: 'medium' }
+  },
+  {
+    id: 'video.poseRun',
+    titleKey: 'graph.inspector.generate.presets.video.poseRun',
+    body: VIDEO_POSE_RUN_BODY,
+    visual: { kind: 'camera', camera: 'follow', shotSize: 'medium' }
   },
   {
     id: 'video.framePairContinuity',

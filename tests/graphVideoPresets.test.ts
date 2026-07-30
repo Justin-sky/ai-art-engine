@@ -22,6 +22,15 @@ describe('video instruction presets', () => {
       'video.shotDetail',
       'video.heroEntrance',
       'video.performanceRealism',
+      'video.poseStandingFront',
+      'video.poseThreeQuarter',
+      'video.poseProfile',
+      'video.poseBack',
+      'video.poseWalk',
+      'video.poseSit',
+      'video.poseLookBack',
+      'video.poseHandsOnHips',
+      'video.poseRun',
       'video.framePairContinuity',
       'video.framePairProduct',
       'video.framePairTransition',
@@ -35,6 +44,25 @@ describe('video instruction presets', () => {
     for (const item of presets) {
       expect(item.body.trim().length).toBeGreaterThan(20)
       expect(item.titleKey).toMatch(/^graph\.inspector\.generate\.presets\.video\./)
+    }
+  })
+
+  it('common pose presets describe body orientation or locomotion', () => {
+    const poseIds = [
+      'video.poseStandingFront',
+      'video.poseThreeQuarter',
+      'video.poseProfile',
+      'video.poseBack',
+      'video.poseWalk',
+      'video.poseSit',
+      'video.poseLookBack',
+      'video.poseHandsOnHips',
+      'video.poseRun'
+    ] as const
+    for (const id of poseIds) {
+      const preset = getInstructionPreset('video', id)
+      expect(preset?.body).toContain('姿势')
+      expect(preset?.body.trim().length).toBeGreaterThan(40)
     }
   })
 

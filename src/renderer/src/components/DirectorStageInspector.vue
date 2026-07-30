@@ -207,8 +207,74 @@
             >
               {{ t('director.stage.poseModeIk') }}
             </button>
+            <button
+              type="button"
+              class="pose-mode-tab"
+              :class="{ active: poseEditMode === 'ai' }"
+              role="tab"
+              :aria-selected="poseEditMode === 'ai'"
+              @click="setPoseEditMode('ai')"
+            >
+              {{ t('director.stage.poseModeAi') }}
+            </button>
           </div>
-          <template v-if="poseEditMode === 'ik'">
+          <template v-if="poseEditMode === 'ai'">
+            <p class="pose-hint">{{ t('director.stage.poseAiHint') }}</p>
+            <label class="pose-ai-field">
+              {{ t('director.stage.poseAiModel') }}
+              <select v-model="aiPoseModelKey" :disabled="obj.locked || aiPoseBusy">
+                <option value="" disabled>
+                  {{
+                    aiPoseModelOptions.length
+                      ? t('director.stage.poseAiModelPick')
+                      : t('director.stage.poseAiModelEmpty')
+                  }}
+                </option>
+                <option v-for="opt in aiPoseModelOptions" :key="opt.key" :value="opt.key">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
+            <div class="section-label">{{ t('director.stage.poseAiPresets') }}</div>
+            <div class="pose-ai-presets" role="list">
+              <button
+                v-for="preset in aiPosePresets"
+                :key="preset.id"
+                type="button"
+                class="pose-ai-preset-chip"
+                :class="{ active: activeAiPosePresetId === preset.id }"
+                :disabled="obj.locked || aiPoseBusy"
+                :title="resolveAiPosePresetInstruction(preset, locale)"
+                role="listitem"
+                @click="onApplyAiPosePreset(preset)"
+              >
+                {{ t(preset.labelKey) }}
+              </button>
+            </div>
+            <label class="pose-ai-field">
+              {{ t('director.stage.poseAiInstruction') }}
+              <textarea
+                v-model="aiPoseInstruction"
+                rows="4"
+                class="panel-textarea"
+                :disabled="obj.locked || aiPoseBusy"
+                :placeholder="t('director.stage.poseAiInstructionPlaceholder')"
+                @input="activeAiPosePresetId = null"
+              />
+            </label>
+            <div class="pose-ai-actions">
+              <button
+                type="button"
+                class="pose-ai-generate-btn"
+                :disabled="obj.locked || aiPoseBusy || !canGenerateAiPose"
+                @click="onGenerateAiPose"
+              >
+                {{ aiPoseBusy ? t('director.stage.poseAiGenerating') : t('director.stage.poseAiGenerate') }}
+              </button>
+            </div>
+            <p v-if="aiPoseStatus" class="pose-hint">{{ aiPoseStatus }}</p>
+          </template>
+          <template v-else-if="poseEditMode === 'ik'">
             <p class="pose-hint">{{ t('director.stage.poseIkHint') }}</p>
             <p class="pose-hint">{{ t('director.stage.poseIkManualHint') }}</p>
             <div class="pose-ik-list">
@@ -517,8 +583,26 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { vNumberScrub } from '../directives/numberScrub'
 import { themePreference } from '../editor/preferences'
+import {
+  buildAiPoseSystemPrompt,
+  buildAiPoseUserPrompt,
+  mapAiPoseDegreesToBonePose,
+  parseAiPoseFunctionCall
+} from '../features/director/aiPoseParse'
+import {
+  AI_POSE_INSTRUCTION_PRESETS,
+  matchAiPosePresetId,
+  resolveAiPosePresetInstruction,
+  type AiPoseInstructionPreset
+} from '../features/director/aiPosePresets'
 import { resolveDirectorStageScene } from '../features/director/activeDirectorStageScene'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
+import {
+  loadGenerateModelOptions,
+  parseModelKey,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
+import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useProjectStore } from '../stores/project'
 import {
   STUDIO_ASSET_DRAG_MIME,
@@ -536,7 +620,7 @@ withDefaults(
   { embedded: false }
 )
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const resolvedScene = resolveDirectorStageScene(inject(directorStageSceneKey, null))
 if (!resolvedScene) {
   throw new Error('DirectorStageInspector requires an active director stage scene')
@@ -544,6 +628,17 @@ if (!resolvedScene) {
 const scene = resolvedScene
 const workspace = useWorkspaceStore()
 const project = useProjectStore()
+const runLogs = useGraphRunLogsStore()
+
+const AI_POSE_MODEL_STORAGE_KEY = 'director.aiPose.modelKey'
+const AI_POSE_LOG_NODE_ID = 'director.aiPose'
+const aiPoseInstruction = ref('')
+const aiPoseModelKey = ref('')
+const aiPoseModelOptions = ref<GenerateModelOption[]>([])
+const aiPoseBusy = ref(false)
+const aiPoseStatus = ref('')
+const aiPosePresets = AI_POSE_INSTRUCTION_PRESETS
+const activeAiPosePresetId = ref<string | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const panoramaDragOver = ref(false)
 
@@ -611,6 +706,12 @@ const poseBoneNames = computed(() => {
   if (!id || !showPoseTab.value) return [] as string[]
   return scene.listObjectBones(id)
 })
+const canGenerateAiPose = computed(
+  () =>
+    !!aiPoseModelKey.value &&
+    !!aiPoseInstruction.value.trim() &&
+    poseBoneNames.value.length > 0
+)
 const selectedPoseBone = computed(() => scene.selectedPoseBone.value)
 const poseEditMode = computed(() => scene.poseEditMode.value)
 const selectedIkChainId = computed(() => scene.selectedIkChainId.value)
@@ -670,8 +771,212 @@ function onPoseBoneSelect(bone: string): void {
   scene.setSelectedPoseBone(scene.selectedPoseBone.value === bone ? null : bone)
 }
 
-function setPoseEditMode(mode: 'fk' | 'ik'): void {
+async function refreshAiPoseModels(): Promise<void> {
+  let preferred = ''
+  try {
+    preferred = localStorage.getItem(AI_POSE_MODEL_STORAGE_KEY) ?? ''
+  } catch {
+    preferred = ''
+  }
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    'text',
+    preferred,
+    aiPoseModelKey.value || undefined
+  )
+  aiPoseModelOptions.value = options
+  aiPoseModelKey.value = selectedKey
+}
+
+function onApplyAiPosePreset(preset: AiPoseInstructionPreset): void {
+  if (obj.value?.locked || aiPoseBusy.value) return
+  aiPoseInstruction.value = resolveAiPosePresetInstruction(preset, locale.value)
+  activeAiPosePresetId.value = preset.id
+  aiPoseStatus.value = ''
+}
+
+function setPoseEditMode(mode: 'fk' | 'ik' | 'ai'): void {
   scene.setPoseEditMode(mode)
+  if (mode === 'ai') {
+    aiPoseStatus.value = ''
+    void refreshAiPoseModels()
+  }
+}
+
+async function onGenerateAiPose(): Promise<void> {
+  const id = obj.value?.id
+  if (!id || obj.value?.locked || aiPoseBusy.value || !canGenerateAiPose.value) return
+  const hierarchy = scene.listObjectBoneHierarchy(id)
+  if (!hierarchy.length) {
+    aiPoseStatus.value = t('director.stage.poseBonesEmpty')
+    return
+  }
+
+  const objectName = obj.value?.name?.trim() || id
+  const presetId =
+    activeAiPosePresetId.value ?? matchAiPosePresetId(aiPoseInstruction.value, locale.value)
+  const presetLabel = presetId ? t(`director.stage.poseAiPreset.${presetId}`) : ''
+  const runId = `ai-pose-${crypto.randomUUID()}`
+  const logTitle = presetLabel
+    ? t('director.stage.poseAiLog.titlePreset', { name: presetLabel })
+    : t('director.stage.poseAiLog.title')
+
+  aiPoseBusy.value = true
+  aiPoseStatus.value = t('director.stage.poseAiGenerating')
+  activePoseAssetId.value = null
+
+  runLogs.beginRun({
+    runId,
+    title: logTitle,
+    mode: 'task',
+    targetNodeId: AI_POSE_LOG_NODE_ID,
+    targetNodeTitle: objectName,
+    message: t('director.stage.poseAiLog.start', {
+      object: objectName,
+      bones: hierarchy.length
+    })
+  })
+
+  const logMessage = (message: string, level: 'info' | 'warn' | 'error' = 'info'): void => {
+    runLogs.append({
+      runId,
+      level,
+      kind: 'run_message',
+      mode: 'task',
+      nodeId: AI_POSE_LOG_NODE_ID,
+      nodeTitle: objectName,
+      message,
+      status: level === 'error' ? 'error' : 'done'
+    })
+  }
+
+  try {
+    // 与「重置姿势」按钮相同：先清零再生成，避免叠在旧姿势上
+    onResetBonePose()
+    logMessage(t('director.stage.poseAiLog.reset'))
+
+    logMessage(
+      t('director.stage.poseAiLog.instruction', {
+        text: aiPoseInstruction.value.trim()
+      })
+    )
+
+    const parsedKey = parseModelKey(aiPoseModelKey.value)
+    if (!parsedKey) {
+      const msg = t('director.stage.poseAiModelEmpty')
+      aiPoseStatus.value = msg
+      logMessage(msg, 'error')
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
+    }
+
+    try {
+      localStorage.setItem(AI_POSE_MODEL_STORAGE_KEY, aiPoseModelKey.value)
+    } catch {
+      /* ignore */
+    }
+
+    const system = buildAiPoseSystemPrompt(locale.value)
+    const prompt = buildAiPoseUserPrompt({
+      instruction: aiPoseInstruction.value,
+      bones: hierarchy
+    })
+    logMessage(
+      t('director.stage.poseAiLog.llmStart', {
+        model: parsedKey.model
+      })
+    )
+
+    const apiStarted = Date.now()
+    try {
+      const result = await window.studio.generateText({
+        providerInstanceId: parsedKey.providerInstanceId,
+        model: parsedKey.model,
+        system,
+        prompt
+      })
+      runLogs.appendApiCall(runId, {
+        kind: 'generateText',
+        nodeId: AI_POSE_LOG_NODE_ID,
+        durationMs: Math.max(0, Date.now() - apiStarted),
+        request: {
+          prompt,
+          system,
+          model: parsedKey.model,
+          providerInstanceId: parsedKey.providerInstanceId
+        },
+        response: {
+          text: result.text,
+          model: result.model
+        }
+      })
+      logMessage(
+        t('director.stage.poseAiLog.llmDone', {
+          chars: result.text.length,
+          model: result.model || parsedKey.model
+        })
+      )
+
+      const call = parseAiPoseFunctionCall(result.text)
+      if (!call) {
+        const msg = t('director.stage.poseAiParseFailed')
+        aiPoseStatus.value = msg
+        logMessage(msg, 'error')
+        logMessage(t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }), 'warn')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+        return
+      }
+      const mapped = mapAiPoseDegreesToBonePose(
+        call.arguments.bones,
+        hierarchy.map((b) => b.name)
+      )
+      logMessage(
+        t('director.stage.poseAiLog.parsed', {
+          matched: mapped.matched,
+          total: mapped.total,
+          mode: call.arguments.mode
+        })
+      )
+      if (!mapped.matched) {
+        const msg = t('director.stage.poseAiNoMatch')
+        aiPoseStatus.value = msg
+        logMessage(msg, 'error')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+        return
+      }
+      scene.applyObjectBonePoseMap(id, mapped.bonePose, call.arguments.mode)
+      syncPoseDegCache()
+      const msg = t('director.stage.poseAiApplied', {
+        matched: mapped.matched,
+        total: mapped.total
+      })
+      aiPoseStatus.value = msg
+      logMessage(msg)
+      runLogs.endRun({ runId, status: 'done', message: msg })
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      runLogs.appendApiCall(runId, {
+        kind: 'generateText',
+        nodeId: AI_POSE_LOG_NODE_ID,
+        durationMs: Math.max(0, Date.now() - apiStarted),
+        request: {
+          prompt,
+          system,
+          model: parsedKey.model,
+          providerInstanceId: parsedKey.providerInstanceId
+        },
+        error
+      })
+      throw err
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    const msg = t('director.stage.poseAiFailed', { error })
+    aiPoseStatus.value = msg
+    logMessage(msg, 'error')
+    runLogs.endRun({ runId, status: 'error', message: msg })
+  } finally {
+    aiPoseBusy.value = false
+  }
 }
 
 function onSelectIkChain(id: (typeof ikTargetSlots.value)[number]['id']): void {
@@ -1497,6 +1802,78 @@ onBeforeUnmount(() => {
 }
 
 .pose-mode-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pose-ai-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.pose-ai-preset-chip {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.pose-ai-preset-chip:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+.pose-ai-preset-chip.active {
+  color: var(--text);
+  border-color: var(--accent, #3b82f6);
+  background: color-mix(in srgb, var(--accent, #3b82f6) 16%, transparent);
+}
+
+.pose-ai-preset-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pose-ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pose-ai-field select,
+.pose-ai-field textarea {
+  width: 100%;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.pose-ai-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pose-ai-generate-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--accent, #3b82f6);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pose-ai-generate-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

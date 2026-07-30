@@ -24,11 +24,74 @@ type ChatMessage = { role: string; content: unknown }
 type ChatCompletionResponse = {
   choices?: Array<{
     message?: {
-      content?: string | null
+      content?: string | Array<{ type?: string; text?: string; content?: string }> | null
       reasoning_content?: string | null
+      reasoning?: string | null
+      refusal?: string | null
+      tool_calls?: Array<{
+        function?: { name?: string; arguments?: string | Record<string, unknown> }
+      }>
     }
+    /** 少数兼容实现把正文放在 choice.text */
+    text?: string | null
   }>
   model?: string
+}
+
+const EMPTY_CHAT_TEXT_HINT =
+  '模型未返回文本内容。可能原因：思考模型只产出了内部推理字段、响应走了 tool_calls、或 choices 为空。请换普通 chat 文本模型重试，并确认接入点支持 /chat/completions。'
+
+function normalizeMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content.trim()
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part
+      if (!part || typeof part !== 'object') return ''
+      const row = part as { text?: unknown; content?: unknown }
+      if (typeof row.text === 'string') return row.text
+      if (typeof row.content === 'string') return row.content
+      return ''
+    })
+    .join('')
+    .trim()
+}
+
+/** 从 chat/completions 响应提取可展示/可解析的文本（供测试与生成共用） */
+export function extractChatCompletionText(data: ChatCompletionResponse): string {
+  const choice = data.choices?.[0]
+  const message = choice?.message
+  const fromContent = normalizeMessageContent(message?.content)
+  if (fromContent) return fromContent
+
+  if (typeof choice?.text === 'string' && choice.text.trim()) return choice.text.trim()
+
+  const reasoning =
+    (typeof message?.reasoning_content === 'string' && message.reasoning_content.trim()) ||
+    (typeof message?.reasoning === 'string' && message.reasoning.trim()) ||
+    ''
+  if (reasoning) return reasoning
+
+  // 部分模型只回 tool_calls；序列化为 JSON，供 AI 姿势等解析器使用
+  const toolCall = message?.tool_calls?.[0]?.function
+  if (toolCall?.name?.trim()) {
+    let args: unknown = toolCall.arguments
+    if (typeof args === 'string') {
+      const trimmed = args.trim()
+      try {
+        args = JSON.parse(trimmed)
+      } catch {
+        args = trimmed
+      }
+    }
+    return JSON.stringify({ name: toolCall.name.trim(), arguments: args ?? {} })
+  }
+
+  if (typeof message?.refusal === 'string' && message.refusal.trim()) {
+    throw new Error(`模型拒绝回答：${message.refusal.trim()}`)
+  }
+
+  return ''
 }
 
 export type GenerateTextRequestOptions = {
@@ -57,14 +120,6 @@ function buildChatMessages(input: GenerateTextInput): ChatMessage[] {
     messages.push({ role: 'user', content: input.prompt })
   }
   return messages
-}
-
-function extractChatText(data: ChatCompletionResponse): string {
-  const message = data.choices?.[0]?.message
-  const content = message?.content?.trim() ?? ''
-  if (content) return content
-  // 部分方舟思考模型可能把正文放在 reasoning_content
-  return message?.reasoning_content?.trim() ?? ''
 }
 
 function isRetryableTextError(err: unknown): boolean {
@@ -161,8 +216,8 @@ export async function generateOpenAiCompatibleText(
         body,
         { headers: authHeaders(provider.apiKey) }
       )
-      const text = extractChatText(data)
-      if (!text) throw new Error('模型未返回文本内容')
+      const text = extractChatCompletionText(data)
+      if (!text) throw new Error(EMPTY_CHAT_TEXT_HINT)
       return { text, model: data.model ?? modelId }
     } catch (err) {
       lastError = err
@@ -180,8 +235,8 @@ export async function generateOpenAiCompatibleText(
             { model: modelId, messages },
             { headers: authHeaders(provider.apiKey) }
           )
-          const text = extractChatText(data)
-          if (!text) throw new Error('模型未返回文本内容')
+          const text = extractChatCompletionText(data)
+          if (!text) throw new Error(EMPTY_CHAT_TEXT_HINT)
           return { text, model: data.model ?? modelId }
         } catch (retryErr) {
           lastError = retryErr

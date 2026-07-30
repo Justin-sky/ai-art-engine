@@ -80,6 +80,17 @@
       <button
         type="button"
         class="tool-btn"
+        :class="{ active: selectionBoundsVisible }"
+        :title="t('director.stage.selectionBounds')"
+        :aria-label="t('director.stage.selectionBounds')"
+        :aria-pressed="selectionBoundsVisible"
+        @click="onToggleSelectionBounds"
+      >
+        <span class="tool-icon" v-html="BOUNDS_ICON" />
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
         :title="t('director.stage.captureShot')"
         :aria-label="t('director.stage.captureShot')"
         @click="onCapture"
@@ -102,6 +113,7 @@ const props = defineProps<{
   transformMode: TransformMode
   aspectRatio: DirectorAspectRatio
   stageEditMode: DirectorStageEditMode
+  selectionBoundsVisible: boolean
 }>()
 
 const emit = defineEmits<{
@@ -110,6 +122,7 @@ const emit = defineEmits<{
   resetView: []
   capture: []
   setAspectRatio: [ratio: DirectorAspectRatio]
+  toggleSelectionBounds: []
 }>()
 
 const { t } = useStudioI18n()
@@ -123,6 +136,8 @@ const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const SCENE_MODE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>`
 
 const ANIM_MODE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7"/><path d="M12 6V4.5"/><path d="M10.5 4h3"/><path d="M7.2 7.2l-1.1-1.1"/><path d="M12 13l3.2 2.4"/></svg>`
+
+const BOUNDS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>`
 
 const activeRatioIcon = computed(
   () =>
@@ -149,6 +164,10 @@ function onReset(): void {
 function onCapture(): void {
   ratioMenuOpen.value = false
   emit('capture')
+}
+function onToggleSelectionBounds(): void {
+  ratioMenuOpen.value = false
+  emit('toggleSelectionBounds')
 }
 function toggleRatioMenu(): void {
   ratioMenuOpen.value = !ratioMenuOpen.value
