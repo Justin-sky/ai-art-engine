@@ -16,6 +16,7 @@ import {
   resolveBoundaryInputValuesFromParents,
   resolveHostInputSlotsFromParentGraph,
   resolveHostInputSlotsForHostOpen,
+  softResolveBoundaryInputParams,
   softResolveBoundaryOutputValue,
   softResolveSourceOutput,
   type GraphDocument,
@@ -689,6 +690,38 @@ describe('boundary input injection from parent graph', () => {
     expect(values).toEqual({})
     expect(applyBoundaryInputValues(nodes, values)).toBe(false)
     expect(nodes[0]?.params.text).toBe('内图手填')
+  })
+
+  it('soft-resolves boundary.input image from previewRelativePath', () => {
+    const node: GraphNode = {
+      id: boundaryInputNodeId('in-image'),
+      typeId: 'graph.boundary.input',
+      category: 'note',
+      position: { x: 0, y: 0 },
+      params: {
+        hostBoundaryPort: { portId: 'in-image', dataType: 'image' },
+        previewRelativePath: 'Cache/Images/from-parent.png'
+      }
+    }
+    expect(softResolveBoundaryInputParams(node)).toEqual({
+      kind: 'image',
+      dataUrl: '',
+      relativePath: 'Cache/Images/from-parent.png'
+    })
+    expect(
+      softResolveSourceOutput(
+        {
+          nodes: [node],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 }
+        },
+        node.id,
+        'out'
+      )
+    ).toMatchObject({
+      kind: 'image',
+      relativePath: 'Cache/Images/from-parent.png'
+    })
   })
 })
 

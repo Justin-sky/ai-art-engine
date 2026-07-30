@@ -6,11 +6,13 @@ import {
   collectImagesFromVisualGraph,
   collectVideosFromShotWorkflowGraph,
   collectVideosFromVideoGenNodes,
+  entityImageUrlsByShotId,
   imageUrlFromGraphImageItem,
   materializeShotBoundEntityRefsOnGraph,
   mergeVideoOutputGenRefs,
   mergeVisualOutputGenRefs,
   normalizeScopedGraph,
+  resolveShotEntityImageUrlsFromGraphs,
   shotToImageAggregateRow,
   stringifyShotImageAggregateRows,
   videoUrlFromGraphVideoItem,
@@ -171,8 +173,28 @@ function resolveImageAssetByRelativePath(relativePath: string): ShotVisualImageA
   }
 }
 
+function readScriptGraphDocs(scriptAssetId: string): GraphDocument[] {
+  const docs: GraphDocument[] = []
+  const seen = new WeakSet<object>()
+  const pushRaw = (raw: unknown): void => {
+    if (!raw || typeof raw !== 'object' || seen.has(raw)) return
+    const doc = raw as GraphDocument
+    if (!Array.isArray(doc.nodes)) return
+    seen.add(raw)
+    docs.push(doc)
+  }
+  if (isDraftAssetId(scriptAssetId)) {
+    pushRaw(useDraftStore().getDraft(scriptAssetId)?.genParams?.graphJson)
+  } else {
+    pushRaw(
+      useProjectStore().assets.find((a) => a.id === scriptAssetId)?.genParams?.graphJson
+    )
+  }
+  return docs
+}
+
 /**
- * 跑分镜图/视频前：在各镜子图上按 storyboard 绑定的角色/场景/道具/武器
+ * 跑分镜图/视频前：在各镜子图上按 storyboard / 上层 shotEntities
  * 创建图片引用节点并接到生成节点 in-image。
  */
 export async function materializeBoundEntityRefsOnScriptShots(input: {
@@ -180,8 +202,12 @@ export async function materializeBoundEntityRefsOnScriptShots(input: {
   shots: Shot[]
   kind: 'visual' | 'shotWorkflow'
   signal?: AbortSignal
+  /** 执行时刚解析的实体表（优先于剧本图落盘缓存） */
+  shotEntities?: ShotEntityResult[]
 }): Promise<void> {
   const target = input.kind === 'visual' ? 'image' : 'video'
+  const fromLiveEntities = entityImageUrlsByShotId(input.shotEntities)
+  const scriptDocs = readScriptGraphDocs(input.scriptAssetId)
   for (const shot of input.shots) {
     assertNotAborted(input.signal)
     const live = resolveShotRecord(shot.id, input.scriptAssetId) ?? shot
@@ -192,12 +218,18 @@ export async function materializeBoundEntityRefsOnScriptShots(input: {
       input.kind === 'visual' ? 'visual' : 'shotWorkflow',
       raw ?? null
     )
+    const entityImageUrls =
+      fromLiveEntities[live.id] ??
+      resolveShotEntityImageUrlsFromGraphs(scriptDocs, live.id)
     const next = materializeShotBoundEntityRefsOnGraph(
       before,
       live,
       target,
       resolveImageAssetById,
-      { resolveAssetByRelativePath: resolveImageAssetByRelativePath }
+      {
+        resolveAssetByRelativePath: resolveImageAssetByRelativePath,
+        entityImageUrls
+      }
     )
     if (JSON.stringify(next) === JSON.stringify(before)) continue
 

@@ -26,7 +26,7 @@ import {
   findShotWorkflowVideoNode
 } from './shotVideoBridge'
 import { createAssetGraphNode, createNodeFromType } from './create'
-import { isProcessingAssetNode } from './nodeRole'
+import { isGenerateLocked, isProcessingAssetNode } from './nodeRole'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
 import { GraphPortType } from './types'
 import type { AssetType } from '../domain'
@@ -137,6 +137,56 @@ export function collectImagesFromCompletedOutputNode(
 ): GraphImageItem[] {
   if (!isVisualOutputNodeComplete(doc, output.id)) return []
   return collectImagesFromOutputNodeLoose(doc, output)
+}
+
+/** 视觉图中的图片出口节点（优先 boundary.output / 宿主输出端口） */
+export function listVisualOutputNodes(doc: GraphDocument): GraphNode[] {
+  return listImageOutputNodes(doc)
+}
+
+/** 边界出口的直接图片上游（elementWorkflow: asset.image → boundary.output） */
+function resolveDirectImageGenUpstream(
+  doc: GraphDocument,
+  output: GraphNode
+): GraphNode | null {
+  for (const edge of doc.edges) {
+    if (edge.target !== output.id) continue
+    const source = doc.nodes.find((node) => node.id === edge.source)
+    if (!source) continue
+    if (
+      source.typeId === 'asset.image' ||
+      (source.typeId?.startsWith('image.') ?? false) ||
+      (source.category === 'asset' && source.assetType === 'image')
+    ) {
+      return source
+    }
+  }
+  return null
+}
+
+/** 尚未可 soft-collect 的出口节点 id */
+export function listIncompleteVisualOutputNodeIds(doc: GraphDocument): string[] {
+  return listImageOutputNodes(doc)
+    .filter((node) => !isVisualOutputNodeComplete(doc, node.id))
+    .map((node) => node.id)
+}
+
+/**
+ * 世界元素批跑需要 cook 的出口：
+ * - 缺图 → 入队生成
+ * - 有图且上游生成未锁定 → 入队重新 cook
+ * - 有图且上游生成已锁定 → 跳过，collect 时 soft-resolve
+ */
+export function listVisualOutputNodeIdsNeedingCook(doc: GraphDocument): string[] {
+  return listImageOutputNodes(doc)
+    .filter((output) => {
+      const complete = isVisualOutputNodeComplete(doc, output.id)
+      const gen = resolveDirectImageGenUpstream(doc, output)
+      if (!complete) return true
+      if (!gen) return false
+      return !isGenerateLocked(gen)
+    })
+    .map((node) => node.id)
 }
 
 /**
@@ -263,6 +313,13 @@ function dedupeVideoItems(items: GraphVideoItem[]): GraphVideoItem[] {
   return out
 }
 
+/** 路径是否像视频文件（避免把边界上误写入的 jpg 预览当成已有视频） */
+function looksLikeVideoPath(path: string | undefined | null): boolean {
+  const p = path?.trim() ?? ''
+  if (!p) return false
+  return /\.(mp4|webm|mov|mkv|avi|m4v)(\?|#|$)/i.test(p)
+}
+
 function collectVideosFromNode(
   doc: GraphDocument,
   node: GraphNode | null
@@ -275,17 +332,23 @@ function collectVideosFromNode(
   const fromRun = doc.runStates?.[node.id]?.outputs?.out
   const fromValue = fromRun ? flattenVideosValues([fromRun]) : []
   if (fromValue.length) {
-    return dedupeVideoItems(fromValue.filter((item) => item.relativePath || item.dataUrl))
+    return dedupeVideoItems(
+      fromValue.filter(
+        (item) =>
+          !!(item.dataUrl?.trim() || looksLikeVideoPath(item.relativePath))
+      )
+    )
   }
 
   const previewPath = node.params.previewRelativePath?.trim()
   const previewData = node.params.previewDataUrl?.trim()
-  if (previewPath || previewData) {
+  // 仅承认视频扩展名 / data:video；图片路径不得冒充已完成视频（否则批跑 onlyMissing 会跳过入队）
+  if (looksLikeVideoPath(previewPath) || !!previewData?.startsWith('data:video')) {
     return [
       {
         id: `video-preview:${node.id}`,
         dataUrl: previewData,
-        relativePath: previewPath
+        relativePath: looksLikeVideoPath(previewPath) ? previewPath : undefined
       }
     ]
   }
@@ -709,17 +772,84 @@ function ensureBoundImageInputNode(
  * 绑定图一律用 graph.boundary.input（image）；genRefs 仍可建资产引用。
  * 不依赖分镜参数节点（批量跑图前也可调用）。
  */
+function boundImagesFromEntityUrls(entityImageUrls?: string[]): ShotBoundEntityImage[] {
+  const seen = new Set<string>()
+  const out: ShotBoundEntityImage[] = []
+  for (const raw of entityImageUrls ?? []) {
+    const path = raw.trim().replace(/\\/g, '/')
+    if (!path || path.startsWith('data:') || seen.has(path)) continue
+    seen.add(path)
+    const name = path.split('/').filter(Boolean).pop() || path
+    out.push({ name, relativePath: path })
+  }
+  return out
+}
+
+/**
+ * 分镜成片图：与 ShotStrip 同源（thumbnailPath），再补 style genRefs。
+ * 视频图边界输入应优先用这套，而不是世界元素绑定旧场景图。
+ */
+export function collectShotVisualBoundImages(
+  shot: Pick<Shot, 'title' | 'thumbnailPath' | 'genRefs'>,
+  resolveAsset: (assetId: string) => ShotVisualImageAsset | null
+): ShotBoundEntityImage[] {
+  const seen = new Set<string>()
+  const out: ShotBoundEntityImage[] = []
+  const push = (path: string, name: string): void => {
+    const normalized = path.trim().replace(/\\/g, '/')
+    if (!normalized || normalized.startsWith('data:') || seen.has(normalized)) return
+    seen.add(normalized)
+    out.push({ name: name.trim() || normalized, relativePath: normalized })
+  }
+  const thumb = shot.thumbnailPath?.trim()
+  if (thumb) push(thumb, shot.title?.trim() || 'Shot')
+  for (const ref of normalizeGenRefs(shot)) {
+    if (ref.role !== 'style') continue
+    const asset = resolveAsset(ref.assetId)
+    const path = asset?.relativePath?.trim()
+    if (path) push(path, asset?.name?.trim() || shot.title?.trim() || 'Shot')
+  }
+  return out
+}
+
+/** 去掉不再属于当前绑定集合的 bound-img 边界输入（上层实体更新后避免残留旧图） */
+function pruneStaleBoundImageInputs(doc: GraphDocument, keepPaths: Set<string>): void {
+  const removeIds = new Set<string>()
+  for (const node of doc.nodes) {
+    if (!isBoundaryInputNode(node)) continue
+    const portId = node.params.hostBoundaryPort?.portId?.trim() ?? ''
+    if (!portId.startsWith('bound-img-')) continue
+    const path = node.params.previewRelativePath?.trim().replace(/\\/g, '/') ?? ''
+    if (path && keepPaths.has(path)) continue
+    removeIds.add(node.id)
+  }
+  if (!removeIds.size) return
+  doc.nodes = doc.nodes.filter((node) => !removeIds.has(node.id))
+  doc.edges = doc.edges.filter(
+    (edge) => !removeIds.has(edge.source) && !removeIds.has(edge.target)
+  )
+}
+
 export function materializeShotBoundEntityRefsOnGraph(
   graph: GraphDocument,
-  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'>,
+  shot: Pick<Shot, 'id' | 'title' | 'storyboard' | 'genRefs' | 'audioRefs' | 'thumbnailPath'>,
   target: ShotParamsDropTarget,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
-  _options?: {
+  options?: {
     entityImageUrls?: string[]
     resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
   }
 ): GraphDocument {
-  const bound = collectStoryboardBindingImages(shot)
+  const fromStoryboard = collectStoryboardBindingImages(shot)
+  const fromUpper = boundImagesFromEntityUrls(options?.entityImageUrls)
+  // 视频图：优先分镜条同款成片（thumbnail / style），避免世界元素旧绑定盖住最新分镜图
+  const fromShotVisual =
+    target === 'video' ? collectShotVisualBoundImages(shot, resolveAsset) : []
+  const bound = fromShotVisual.length
+    ? fromShotVisual
+    : fromUpper.length
+      ? fromUpper
+      : fromStoryboard
   const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
   if (!bound.length && !assets.length) return graph
 
@@ -727,6 +857,13 @@ export function materializeShotBoundEntityRefsOnGraph(
   const gen =
     target === 'image' ? findShotVisualImageNode(doc) : findShotWorkflowVideoNode(doc)
   if (!gen) return graph
+
+  if (fromShotVisual.length || fromUpper.length) {
+    pruneStaleBoundImageInputs(
+      doc,
+      new Set(bound.map((item) => item.relativePath.replace(/\\/g, '/')))
+    )
+  }
 
   for (const item of bound) {
     const source = ensureBoundImageInputNode(doc, item, gen)

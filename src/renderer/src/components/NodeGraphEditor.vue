@@ -628,8 +628,10 @@ import {
   ensureShotParamsLinkedToVideo,
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
+  listImageAssetsFromShotEntity,
   materializeShotBoundEntityRefsOnGraph,
-  parseShotEntities,
+  materializeShotGenRefsOnVideoGraph,
+  resolveShotEntityImageUrlsFromGraphs,
   type WorldElementKind,
   type NarrativeUnitRow,
   type GraphImageItem,
@@ -1759,7 +1761,7 @@ const {
       signal
     })
   },
-  collectScriptShotVideos: async (signal) => {
+  collectScriptShotVideos: async (signal, options) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
@@ -1771,7 +1773,8 @@ const {
       scriptAssetId: scriptId,
       shots,
       kind: 'shotWorkflow',
-      signal
+      signal,
+      shotEntities: options?.shotEntities
     })
     const batch = taskStore.enqueueScriptShotBatch({
       scriptAssetId: scriptId,
@@ -2140,7 +2143,13 @@ async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
   commitGraphLocal()
   const graphDoc = buildGraphJson()
   const target = currentGraphTaskTarget()
-  if (!target) return
+  if (!target) {
+    void promptAlert({
+      title: t('graph.tasks.enqueueFailedTitle'),
+      message: t('graph.tasks.enqueueFailedNoTarget')
+    })
+    return
+  }
   // 图内可能有多条互不相干的输出链（如世界元素每项一条），只跑选中汇点的上游
   const selectedOutput = graphDoc.nodes.find(
     (node) => node.id === toolbarSelectedNodeId.value && isGraphOutputTerminalNode(node)
@@ -4240,7 +4249,7 @@ function resolveImageAssetByRelativePath(relativePath: string) {
   }
 }
 
-/** 从剧本图 shotImageGen / shotVideoGen 节点 params 取当前镜的实体 imageUrls */
+/** 从剧本图取当前镜实体 imageUrls：优先 shotImageGen，避免 shotVideoGen 旧缓存 */
 function resolveShotEntityImageUrls(shotId: string): string[] {
   const docs: GraphDocument[] = []
   const seen = new WeakSet<object>()
@@ -4257,23 +4266,7 @@ function resolveShotEntityImageUrls(shotId: string): string[] {
     if (isDraftAssetId(scriptId)) pushRaw(draftStore.getDraft(scriptId)?.genParams?.graphJson)
     else pushRaw(project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson)
   }
-
-  for (const doc of docs) {
-    for (const node of doc.nodes) {
-      if (node.typeId !== 'script.shotImageGen' && node.typeId !== 'script.shotVideoGen') continue
-      const fromParams = Array.isArray(node.params?.shotEntities)
-        ? node.params.shotEntities
-        : null
-      const entities = fromParams
-        ? parseShotEntities(JSON.stringify(fromParams))
-        : parseShotEntities(
-            typeof node.params?.text === 'string' ? node.params.text : null
-          )
-      const match = entities.find((item) => item.id === shotId)
-      if (match?.imageUrls.length) return match.imageUrls
-    }
-  }
-  return []
+  return resolveShotEntityImageUrlsFromGraphs(docs, shotId)
 }
 
 function shotEntityMaterializeOptions(shot: Shot) {
@@ -4359,13 +4352,29 @@ function ensureShotBoundEntityImagesForActiveCanvas(shot: Shot): void {
   if (scope !== 'visual' && scope !== 'shotWorkflow') return
   const target = scope === 'visual' ? 'image' : 'video'
   const before = buildGraphJson()
-  const next = materializeShotBoundEntityRefsOnGraph(
+  const options = shotEntityMaterializeOptions(shot)
+  let next = materializeShotBoundEntityRefsOnGraph(
     before,
     shot,
     target,
     resolveImageAssetById,
-    shotEntityMaterializeOptions(shot)
+    options
   )
+  // 分镜视频：上层 shotEntities 还可补资产引用（style genRefs 优先逻辑在 listImageAssetsFromShotEntity）
+  if (target === 'video') {
+    const entityAssets = listImageAssetsFromShotEntity(shot, resolveImageAssetById, options)
+    if (entityAssets.length) {
+      const near =
+        next.nodes.find(
+          (n) =>
+            n.typeId === 'script.shotParams' &&
+            readBoundShotIdFromNodeParams(n.params) === shot.id
+        ) ?? findShotWorkflowVideoNode(next)
+      if (near) {
+        next = materializeShotGenRefsOnVideoGraph(next, entityAssets, { near })
+      }
+    }
+  }
   if (JSON.stringify(next) === JSON.stringify(before)) return
   replaceGraphDocument(graph, next)
   recordGraphChange('materialize-shot-bound-entity-images', before)
@@ -4404,7 +4413,11 @@ function ensureShotParamsForActiveShotCanvas(): void {
     return
   }
 
-  if (!targetNode) return
+  // 无生成节点时仍尝试物化边界输入（上层实体图）；有生成节点再接线
+  if (!targetNode) {
+    ensureShotBoundEntityImagesForActiveCanvas(shot)
+    return
+  }
   const alreadyLinked = graph.edges.some(
     (edge) =>
       edge.source === existing.id &&

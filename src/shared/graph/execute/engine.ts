@@ -166,12 +166,14 @@ function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
 }
 
 /**
- * 锁定：优先图库（尊重当前 selected*），否则复用 prior runStates。
+ * 锁定：优先图库（尊重当前 selected*），否则复用 prior runStates，
+ * 再 soft-resolve params / 预览（如 play.script 的 text）。
  * 不调用节点 execute，避免无缓存时误触发生成。
  */
 function resolveLockedOutputs(
   node: GraphNode,
-  prior: GraphNodeRunState | undefined
+  prior: GraphNodeRunState | undefined,
+  graph?: GraphDocument
 ): Record<string, GraphValue> | null {
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
     typeId: node.typeId
@@ -180,6 +182,12 @@ function resolveLockedOutputs(
     return hasUsablePriorOutputs(prior) ? { ...prior!.outputs!, ...gallery } : gallery
   }
   if (hasUsablePriorOutputs(prior)) return prior!.outputs!
+  if (graph) {
+    const soft = softResolveSourceOutput(graph, node.id, 'out')
+    if (graphValueHasPayload(soft) && soft) {
+      return { out: soft }
+    }
+  }
   return null
 }
 
@@ -309,9 +317,9 @@ async function executeOneNode(
 
   const def = resolveNodeType(node)
 
-  // 节点锁定：不 cook，直接复用图库 / 上次输出
+  // 节点锁定：不 cook，直接复用图库 / 上次输出 / soft params
   if (isGenerateLocked(node)) {
-    const locked = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId])
+    const locked = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId], graph)
     if (!locked) {
       publish(
         states,

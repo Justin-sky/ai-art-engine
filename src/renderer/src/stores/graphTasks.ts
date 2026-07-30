@@ -78,9 +78,9 @@ import { loadNarrativeCatalog, applyNarrativeCatalog } from '../features/narrati
 import {
   stringifyWorldElementCatalog,
   WORLD_ELEMENT_KINDS,
-  collectImagesFromVisualGraph,
   collectTextFromNarrativeUnitGraph,
   getScopeHostIdSuffix,
+  listVisualOutputNodeIdsNeedingCook,
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
@@ -227,6 +227,21 @@ function taskTargetKey(target: GraphTaskTarget): string {
   return `shot:${target.scriptAssetId}:${target.shotId}:${target.scope}:${target.canvasField}`
 }
 
+/**
+ * 写回互斥键：可并行烹调的子目标若共用同一 genParams 袋，必须串行写盘，
+ * 否则后完成者用旧快照 merge 会冲掉先完成 kind/unit 的 runStates。
+ * （与 taskTargetKey 分离：任务冲突仍按细粒度目标判断。）
+ */
+export function writeBackExclusiveKey(target: GraphTaskTarget): string {
+  if (target.kind === 'world-element') {
+    return `world-element:${target.worldAssetId}`
+  }
+  if (target.kind === 'narrative-unit') {
+    return `narrative-unit:${target.narrativeAssetId}`
+  }
+  return taskTargetKey(target)
+}
+
 function sameTargetNodeIds(a?: string[], b?: string[]): boolean {
   const left = a?.length ? [...a].sort() : null
   const right = b?.length ? [...b].sort() : null
@@ -354,7 +369,8 @@ function worldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean 
   const hasElements = doc.nodes.some((node) => !!readWorldElementIdFromNodeParams(node.params))
   if (!hasElements) return false
   if (!onlyMissing) return true
-  return collectImagesFromVisualGraph(doc).length === 0
+  // 缺图补跑；有图但未锁定则重新 cook；锁定有图跳过
+  return listVisualOutputNodeIdsNeedingCook(doc).length > 0
 }
 
 function narrativeUnitNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
@@ -504,7 +520,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     const project = useProjectStore()
     if (task.sessionEpoch !== project.sessionEpoch) return
 
-    await runWriteBackExclusive(taskTargetKey(task.target), async () => {
+    await runWriteBackExclusive(writeBackExclusiveKey(task.target), async () => {
       if (task.discardWriteBack) return
       if (task.sessionEpoch !== useProjectStore().sessionEpoch) return
 
@@ -716,6 +732,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         skipped += 1
         continue
       }
+      const cookIds = listVisualOutputNodeIdsNeedingCook(graph)
+      const priorNodeStates = graph.runStates
+        ? ({ ...graph.runStates } as Record<string, GraphNodeRunState>)
+        : undefined
       const result = enqueueWorkflow({
         title: elementKind,
         graph,
@@ -724,7 +744,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           worldAssetId: input.worldAssetId,
           elementKind,
           hostId: worldElementHostId(input.worldAssetId, elementKind)
-        }
+        },
+        // 缺图补跑 + 未锁定有图重烹；锁定有图不入队，collect 时 soft 进实体列表
+        // skipCompletedNodes=false：未锁定节点即使 prior=done 也要重新 cook
+        targetNodeIds: onlyMissing && cookIds.length ? cookIds : undefined,
+        priorNodeStates,
+        skipCompletedNodes: false
       })
       if (result.ok) {
         enqueued += 1
@@ -1304,7 +1329,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           await waitForTaskIds(batch.taskIds)
           return collectScriptShotImages({ scriptAssetId: scriptId, shots, signal })
         },
-        collectScriptShotVideos: async (signal) => {
+        collectScriptShotVideos: async (signal, options) => {
           if (task.target.kind !== 'asset') return null
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1320,7 +1345,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             scriptAssetId: scriptId,
             shots,
             kind: 'shotWorkflow',
-            signal
+            signal,
+            shotEntities: options?.shotEntities
           })
           const batch = enqueueScriptShotBatch({
             scriptAssetId: scriptId,
@@ -1348,14 +1374,15 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
             if (draft?.type !== 'world') return null
-            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: false })
+            // 锁定有图：soft-collect；缺图补跑；未锁定有图：重新 cook 后再进实体列表
+            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
             await waitForTaskIds(batch.taskIds)
             return collectWorldElementOutputs({ worldAssetId: worldId, signal })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === worldId)
           if (asset?.type !== 'world') return null
-          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: false })
+          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
           await waitForTaskIds(batch.taskIds)
           return collectWorldElementOutputs({ worldAssetId: worldId, signal })
         },

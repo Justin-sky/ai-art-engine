@@ -10,7 +10,8 @@ import { getNodeTypeOrThrow } from './registry'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 import {
   defaultHostInterfaceForAssetType,
-  HOST_INTERFACE_FORMAT_VERSION
+  HOST_INTERFACE_FORMAT_VERSION,
+  type HostInterfaceDocument
 } from './hostInterface'
 import { isAssetRefInputHostType } from './nodeRole'
 import type {
@@ -461,6 +462,49 @@ export function createScopeOutputNode(
   })
 }
 
+/** 分镜画面 / 分镜视频：每镜默认一个边界输出（无固定边界输入；绑定实体可动态加 input） */
+export function hostInterfaceForShotScope(
+  scope: 'visual' | 'shotWorkflow'
+): HostInterfaceDocument {
+  if (scope === 'visual') {
+    return {
+      version: HOST_INTERFACE_FORMAT_VERSION,
+      inputs: [],
+      outputs: [
+        {
+          id: 'out',
+          label: SHOT_VISUAL_OUTPUT_TITLE,
+          dataType: GraphPortType.image,
+          multiple: false
+        }
+      ]
+    }
+  }
+  return {
+    version: HOST_INTERFACE_FORMAT_VERSION,
+    inputs: [],
+    outputs: [
+      {
+        id: 'out',
+        label: ASSET_SCRIPT_SHOT_OUTPUT_TITLE,
+        dataType: GraphPortType.video,
+        multiple: false
+      }
+    ]
+  }
+}
+
+/** 确保分镜子图有主边界输出，并把悬空 gen 接到该出口；保留绑定用 boundary.input */
+export function ensureShotScopeBoundaryOutput(
+  document: GraphDocument,
+  scope: 'visual' | 'shotWorkflow'
+): GraphDocument {
+  if (!document.nodes.length) return document
+  return ensureBoundaryProxyNodes(document, hostInterfaceForShotScope(scope), {
+    preserveUnlistedBoundaryNodes: true
+  })
+}
+
 export function createDefaultScopedGraph(
   scope: GraphAddScope,
   assetType?: string | null,
@@ -478,6 +522,10 @@ export function createDefaultScopedGraph(
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   })
+  // 分镜图 / 分镜视频：默认补边界输出并接线
+  if (scope === 'visual' || scope === 'shotWorkflow') {
+    return ensureShotScopeBoundaryOutput(document, scope)
+  }
   if (!isAssetRefInputHostType(assetType)) return document
   // 元素子图：无边界输入；边界输出由 syncWorldElementKindGraph 按目录物化
   if (scope === 'elementWorkflow') {

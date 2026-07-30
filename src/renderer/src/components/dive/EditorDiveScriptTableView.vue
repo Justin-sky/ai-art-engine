@@ -39,7 +39,8 @@ onMounted(async () => {
     /* 保留已有分镜 */
   }
   worldElementOutputs.value = readShotTableWorldOutputs(props.scriptAssetId)
-  workspace.focusShot()
+  // 与脚本/世界编辑器一致：打开时显示工程全局参数；点某一行仍会 focusShot
+  workspace.focusProjectGlobals()
 })
 </script>
 

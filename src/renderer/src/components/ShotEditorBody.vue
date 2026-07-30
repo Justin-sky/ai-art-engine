@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, provide, ref } from 'vue'
 import type { GraphAddScope } from '@shared/graph'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -69,6 +69,12 @@ const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
 const graphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const shotsExpanded = ref(true)
+
+// Dive 子树内也提供 scriptAssetId，保证 NodeGraphEditor 入队能解析 script-shot target
+provide(
+  'scriptAssetId',
+  computed(() => props.scriptAssetId)
+)
 
 const graphScope = computed<GraphAddScope>(() =>
   props.kind === 'image' ? 'visual' : 'shotWorkflow'

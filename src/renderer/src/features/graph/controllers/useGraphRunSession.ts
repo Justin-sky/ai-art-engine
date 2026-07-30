@@ -156,7 +156,12 @@ export interface GraphRunSessionOptions {
     entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
   /** 生成分镜视频：收集各镜子图视频生成节点已有结果并写回 genRefs */
-  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotVideos?: (
+    signal?: AbortSignal,
+    options?: {
+      shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
+    }
+  ) => Promise<{
     videos: import('@shared/graph').GraphVideoItem[]
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>

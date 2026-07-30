@@ -93,6 +93,16 @@ describe('shot visual bridge', () => {
     expect(videos[0]?.relativePath).toBe('Output/videos/a.mp4')
   })
 
+  it('does not treat image preview on video boundary as completed video', () => {
+    const doc = createDefaultScopedGraph('shotWorkflow')
+    const bout = doc.nodes.find((n) => n.typeId === 'graph.boundary.output')!
+    bout.params = {
+      ...bout.params,
+      previewRelativePath: 'Cache/Images/shot-thumb.jpg'
+    }
+    expect(collectVideosFromShotWorkflowGraph(doc)).toEqual([])
+  })
+
   it('prefers generatedVideos params over runStates output', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')!
@@ -179,7 +189,19 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('skips incomplete image result nodes', () => {
+  it('skips incomplete boundary when upstream has no usable image', () => {
+    const doc = createDefaultScopedGraph('visual')
+    const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
+    doc.runStates = {
+      [image.id]: {
+        status: 'running',
+        outputs: {}
+      }
+    }
+    expect(collectImagesFromVisualGraph(doc)).toEqual([])
+  })
+
+  it('soft-collects boundary from upstream gallery even when gen is still running', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')!
     image.params = {
@@ -191,7 +213,8 @@ describe('shot visual bridge', () => {
           relativePath: 'Assets/shots/from-gen.png',
           createdAt: new Date().toISOString()
         }
-      ]
+      ],
+      selectedImageId: IMG1
     }
     doc.runStates = {
       [image.id]: {
@@ -199,10 +222,12 @@ describe('shot visual bridge', () => {
         outputs: {}
       }
     }
-    expect(collectImagesFromVisualGraph(doc)).toEqual([])
+    expect(collectImagesFromVisualGraph(doc).map((item) => item.relativePath)).toEqual([
+      'Assets/shots/from-gen.png'
+    ])
   })
 
-  it('collects only done image result node runStates', () => {
+  it('collects only done image result node runStates via boundary', () => {
     const doc = createDefaultScopedGraph('visual')
     const output = doc.nodes.find((n) => n.typeId === 'asset.image')!
     doc.runStates = {
@@ -221,43 +246,7 @@ describe('shot visual bridge', () => {
     expect(images.map((item) => item.relativePath)).toEqual(['Assets/shots/b.png'])
   })
 
-  it('collects images from multiple done asset.image nodes', () => {
-    const doc = createDefaultScopedGraph('visual')
-    const outputA = doc.nodes.find((n) => n.typeId === 'asset.image')!
-    const outputB = createNodeFromType('asset.image', { x: 480, y: 280 }, {
-      id: 'image-gen-b'
-    })
-    doc.nodes.push(outputB)
-    doc.runStates = {
-      [outputA.id]: {
-        status: 'done',
-        outputs: {
-          out: {
-            kind: 'output',
-            outputKind: 'image',
-            images: [{ id: IMG1, dataUrl: '', relativePath: 'Assets/shots/from-a.png' }]
-          }
-        }
-      },
-      [outputB.id]: {
-        status: 'done',
-        outputs: {
-          out: {
-            kind: 'output',
-            outputKind: 'image',
-            images: [{ id: IMG2, dataUrl: '', relativePath: 'Assets/shots/from-b.png' }]
-          }
-        }
-      }
-    }
-    const images = collectImagesFromVisualGraph(doc)
-    expect(images.map((item) => item.relativePath).sort()).toEqual([
-      'Assets/shots/from-a.png',
-      'Assets/shots/from-b.png'
-    ])
-  })
-
-  it('collects merged images from an asset.image runState', () => {
+  it('collects merged images from an asset.image runState via boundary', () => {
     const doc = createDefaultScopedGraph('visual')
     const output = doc.nodes.find((n) => n.typeId === 'asset.image')!
     doc.runStates = {
@@ -282,11 +271,9 @@ describe('shot visual bridge', () => {
     ])
   })
 
-  it('returns empty when asset.image nodes are not done even with generated images', () => {
+  it('soft-collects primary boundary upstream gallery without requiring runStates done', () => {
     const doc = createDefaultScopedGraph('visual')
     const imageA = doc.nodes.find((n) => n.typeId === 'asset.image')!
-    const imageB = createNodeFromType('asset.image', { x: 100, y: 280 }, { id: 'image-gen-b' })
-    doc.nodes.push(imageB)
     imageA.params = {
       ...imageA.params,
       generatedImages: [
@@ -296,20 +283,12 @@ describe('shot visual bridge', () => {
           relativePath: 'Assets/shots/from-a.png',
           createdAt: new Date().toISOString()
         }
-      ]
+      ],
+      selectedImageId: IMG1
     }
-    imageB.params = {
-      ...imageB.params,
-      generatedImages: [
-        {
-          id: IMG2,
-          dataUrl: '',
-          relativePath: 'Assets/shots/from-b.png',
-          createdAt: new Date().toISOString()
-        }
-      ]
-    }
-    expect(collectImagesFromVisualGraph(doc)).toEqual([])
+    expect(collectImagesFromVisualGraph(doc).map((item) => item.relativePath)).toEqual([
+      'Assets/shots/from-a.png'
+    ])
   })
 
   it('merges visual output assets into style genRefs', () => {
@@ -595,6 +574,82 @@ describe('shot visual bridge', () => {
           e.targetPort === 'in-image'
       )
     ).toBe(true)
+  })
+
+  it('video boundary inputs prefer shot thumbnail (strip preview) over world bindings', () => {
+    const shot = shotWithId('shot-thumb-first', {
+      title: '客厅建置',
+      thumbnailPath: 'Cache/Images/shot-final-with-person.jpg',
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [],
+        scenes: [
+          {
+            name: '老旧公寓客厅',
+            type: '场景',
+            imageUrl: 'Cache/Images/world-empty-room.jpg'
+          }
+        ],
+        props: [],
+        weapons: []
+      }
+    })
+    let graph = createDefaultScopedGraph('shotWorkflow')
+    graph = materializeShotBoundEntityRefsOnGraph(graph, shot, 'video', () => null, {
+      entityImageUrls: ['Cache/Images/world-empty-room.jpg']
+    })
+    const paths = graph.nodes
+      .filter((n) => n.typeId === 'graph.boundary.input')
+      .map((n) => n.params.previewRelativePath)
+    expect(paths).toEqual(['Cache/Images/shot-final-with-person.jpg'])
+    expect(
+      graph.nodes.some((n) => n.params.previewRelativePath === 'Cache/Images/world-empty-room.jpg')
+    ).toBe(false)
+    const video = findShotWorkflowVideoNode(graph)!
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.target === video.id &&
+          e.targetPort === 'in-image' &&
+          graph.nodes.some(
+            (n) =>
+              n.id === e.source &&
+              n.params.previewRelativePath === 'Cache/Images/shot-final-with-person.jpg'
+          )
+      )
+    ).toBe(true)
+  })
+
+  it('video falls back to upper shotEntities when shot has no thumbnail/style', () => {
+    const shot = shotWithId('shot-upper-entities', {
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [{ name: '旧图', type: '角色', imageUrl: 'Assets/chars/old.png' }],
+        scenes: [],
+        props: [],
+        weapons: []
+      }
+    })
+    let graph = createDefaultScopedGraph('shotWorkflow')
+    graph = materializeShotBoundEntityRefsOnGraph(graph, shot, 'video', () => null, {
+      entityImageUrls: ['Cache/Images/from-shot-image-gen.png']
+    })
+    const paths = graph.nodes
+      .filter((n) => n.typeId === 'graph.boundary.input')
+      .map((n) => n.params.previewRelativePath)
+    expect(paths).toEqual(['Cache/Images/from-shot-image-gen.png'])
   })
 
   it('aggregate row includes imageAssetIds from genRefs', () => {

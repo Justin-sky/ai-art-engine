@@ -11,6 +11,7 @@ import {
 import {
   assetTypeToGraphScope,
   createDefaultScopedGraph,
+  ensureShotScopeBoundaryOutput,
   getGraphScopeDefinition,
   isAssetEditorGraphScope,
   resolveAssetProcessingTypeId,
@@ -274,6 +275,7 @@ export function normalizeScopedGraph(
     if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
       created = ensureBoundaryProxyNodes(created, hostInterface())
     }
+    // createDefaultScopedGraph 已为 visual/shotWorkflow 补边界输出
     return created
   }
 
@@ -322,6 +324,10 @@ export function normalizeScopedGraph(
   let result = finalizeGraph(nodes, { ...doc, edges: workingEdges, runStates: workingStates }, scope)
   if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
     result = ensureBoundaryProxyNodes(result, hostInterface())
+  }
+  // 旧分镜图缺边界输出时补齐（保留绑定用 boundary.input）
+  if (scope === 'visual' || scope === 'shotWorkflow') {
+    result = ensureShotScopeBoundaryOutput(result, scope)
   }
   return result
 }

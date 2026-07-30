@@ -3203,7 +3203,10 @@ export async function executeShotVideoGenNode(
     ctx.patchNode?.({ params: { shotEntities } })
   }
 
-  const collected = await ctx.collectScriptShotVideos?.(ctx.signal)
+  // 把刚解析的实体表传给收集管线，避免物化边界输入时读到 shotVideoGen 旧缓存 / 旧 storyboard
+  const collected = await ctx.collectScriptShotVideos?.(ctx.signal, {
+    shotEntities: shotEntities.length ? shotEntities : undefined
+  })
   const videoEntities = collected?.entities ?? []
   const videoEntitiesText = stringifyVideoEntities(videoEntities)
   const paramsPatch: Record<string, unknown> = {

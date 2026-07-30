@@ -403,7 +403,13 @@ export interface NodeExecuteContext {
   /**
    * 生成分镜视频：收集各镜子图全部视频生成节点已有结果，写回 genRefs，返回 videoEntities。
    */
-  collectScriptShotVideos?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotVideos?: (
+    signal?: AbortSignal,
+    options?: {
+      /** 刚从 in-entities 解析的最新分镜实体表；物化边界输入时优先于落盘缓存 */
+      shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
+    }
+  ) => Promise<{
     videos: GraphVideoItem[]
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>

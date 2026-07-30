@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  boundaryInputNodeId,
   canScopeAcceptDraggedAsset,
   createDefaultScopedGraph,
   createParamsForScope,
@@ -41,7 +42,12 @@ describe('graph scopes', () => {
       viewport: { x: 0, y: 0, zoom: 1 }
     })
     const typeIds = doc.nodes.map((node) => node.typeId).sort()
-    expect(typeIds).toEqual(['asset.image', 'asset.screenplay', 'play.script'])
+    expect(typeIds).toEqual([
+      'asset.image',
+      'asset.screenplay',
+      'graph.boundary.output',
+      'play.script'
+    ])
   })
 
   it('shot workflow strips existing classic outputs', () => {
@@ -110,20 +116,122 @@ describe('graph scopes', () => {
     expect(resolveGraphScope({ assetId: 'a1', assetType: 'model' })).toBe('workflow')
   })
 
-  it('visual scope defaults to image generate without classic output', () => {
+  it('visual scope defaults to image generate with boundary output', () => {
     const doc = createDefaultScopedGraph('visual')
     const image = doc.nodes.find((n) => n.typeId === 'asset.image')
+    const bout = doc.nodes.find((n) => n.typeId === 'graph.boundary.output')
     expect(image).toBeTruthy()
+    expect(bout).toBeTruthy()
+    expect(bout?.params.hostBoundaryPort).toMatchObject({
+      portId: 'out',
+      dataType: 'image'
+    })
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(doc.edges).toHaveLength(0)
+    expect(
+      doc.edges.some(
+        (e) => e.source === image!.id && e.target === bout!.id && (e.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
   })
 
-  it('shotWorkflow scope defaults to video generate without classic output', () => {
+  it('shotWorkflow scope defaults to video generate with boundary output', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const video = doc.nodes.find((n) => n.typeId === 'asset.video')
+    const bout = doc.nodes.find((n) => n.typeId === 'graph.boundary.output')
     expect(video).toBeTruthy()
+    expect(bout).toBeTruthy()
+    expect(bout?.params.hostBoundaryPort).toMatchObject({
+      portId: 'out',
+      dataType: 'video'
+    })
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
-    expect(doc.edges).toHaveLength(0)
+    expect(
+      doc.edges.some(
+        (e) => e.source === video!.id && e.target === bout!.id && (e.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
+  })
+
+  it('shotWorkflow wires video to primary boundary even when video already feeds a side boundary', () => {
+    const video = createNodeFromType('asset.video', { x: 300, y: 160 }, { id: 'vid-1' })
+    const sideOut = {
+      id: 'graph-boundary-out-side',
+      typeId: 'graph.boundary.output' as const,
+      category: 'note' as const,
+      position: { x: 520, y: 200 },
+      title: 'Side',
+      params: {
+        hostBoundaryPort: { portId: 'side', dataType: 'video' as const, multiple: false }
+      }
+    }
+    const doc = normalizeScopedGraph('shotWorkflow', {
+      nodes: [video, sideOut],
+      edges: [
+        {
+          id: 'e-side',
+          source: 'vid-1',
+          target: sideOut.id,
+          sourcePort: 'out',
+          targetPort: 'in'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    })
+    const bout = doc.nodes.find((n) => n.id === 'graph-boundary-out-out')
+    expect(bout).toBeTruthy()
+    expect(
+      doc.edges.some(
+        (e) => e.source === 'vid-1' && e.target === bout!.id && (e.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
+    // 旁路边界保留
+    expect(doc.edges.some((e) => e.source === 'vid-1' && e.target === sideOut.id)).toBe(true)
+  })
+
+  it('normalizeScopedGraph backfills shot boundary output without dropping bound inputs', () => {
+    const boundIn = boundaryInputNodeId('bind-park')
+    const doc = normalizeScopedGraph('visual', {
+      nodes: [
+        {
+          id: 'img',
+          typeId: 'asset.image',
+          category: 'asset',
+          assetType: 'image',
+          position: { x: 300, y: 160 },
+          params: {}
+        },
+        {
+          id: boundIn,
+          typeId: 'graph.boundary.input',
+          category: 'note',
+          position: { x: 40, y: 40 },
+          title: '公园',
+          params: {
+            hostBoundaryPort: { portId: 'bind-park', dataType: 'image', multiple: false },
+            previewRelativePath: 'Assets/scenes/park.png'
+          }
+        }
+      ],
+      edges: [
+        {
+          id: 'e-bind',
+          source: boundIn,
+          target: 'img',
+          sourcePort: 'out',
+          targetPort: 'in-image'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    })
+    expect(doc.nodes.some((n) => n.id === boundIn)).toBe(true)
+    const bout = doc.nodes.find((n) => n.typeId === 'graph.boundary.output')
+    expect(bout).toBeTruthy()
+    expect(
+      doc.edges.some((e) => e.source === 'img' && e.target === bout!.id)
+    ).toBe(true)
+    expect(
+      doc.edges.some((e) => e.source === boundIn && e.target === 'img')
+    ).toBe(true)
   })
 
   it('visual scope strips output-only graphs without backfilling generate nodes', () => {
@@ -159,8 +267,15 @@ describe('graph scopes', () => {
       ],
       viewport: { x: 0, y: 0, zoom: 1 }
     })
-    expect(doc.nodes.map((node) => node.id)).toEqual(['img-1'])
-    expect(doc.edges).toHaveLength(0)
+    expect(doc.nodes.map((node) => node.id).sort()).toEqual([
+      'graph-boundary-out-out',
+      'img-1'
+    ])
+    expect(
+      doc.edges.some(
+        (e) => e.source === 'img-1' && e.target === 'graph-boundary-out-out'
+      )
+    ).toBe(true)
   })
 
   it('visual scope uses dedicated shot canvas field and host suffix', () => {

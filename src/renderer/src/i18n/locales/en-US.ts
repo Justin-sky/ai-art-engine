@@ -1308,6 +1308,9 @@ export default {
       duplicateTitle: 'Already in queue',
       duplicateMessage:
         'This output branch is already running in the task list. Wait for it to finish or stop it first. Different boundary outputs can run in parallel.',
+      enqueueFailedTitle: 'Cannot enqueue',
+      enqueueFailedNoTarget:
+        'Cannot resolve a task target for this canvas (missing shot or script context). Open shot video from the script and try again.',
       nodeRunBlockedTitle: 'Cannot run node',
       nodeRunBlockedMessage: 'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
       status: {

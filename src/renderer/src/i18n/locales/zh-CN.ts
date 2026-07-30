@@ -1299,6 +1299,8 @@ export default {
       stopConfirmMessage: '确定停止该工作流？停止后将移至「已完成」页签。',
       duplicateTitle: '无法重复添加',
       duplicateMessage: '同一输出分支已在任务列表中执行，请等待完成或停止后再试。不同边界输出可同时加入并行执行。',
+      enqueueFailedTitle: '无法加入任务',
+      enqueueFailedNoTarget: '当前画布无法确定任务目标（缺少分镜或剧本上下文），请从剧本进入分镜视频后再试。',
       nodeRunBlockedTitle: '无法执行节点',
       nodeRunBlockedMessage: '该工作流正在任务列表中执行，完成或停止前不能单独执行节点或执行上游节点。',
       status: {

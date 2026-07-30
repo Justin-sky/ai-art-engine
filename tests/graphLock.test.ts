@@ -296,6 +296,68 @@ describe('generate node lock', () => {
     })
   })
 
+  it('locked play.script reuses params.text without GRAPH_LOCK_NO_CACHE', async () => {
+    const script = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      id: 'script',
+      params: { locked: true, text: 'a locked prompt' }
+    })
+    const image = createNodeFromType('asset.image', { x: 200, y: 0 }, {
+      id: 'img',
+      params: {
+        locked: true,
+        generatedImages: [{ id: 'a', dataUrl: 'data:a', relativePath: 'Cache/Images/a.png' }],
+        selectedImageId: 'a'
+      }
+    })
+    const output = createOutputGraphNode('image', { x: 400, y: 0 }, {
+      id: IMAGE_OUTPUT_ID
+    })
+    let generateCalls = 0
+
+    const result = await runGraph(
+      {
+        nodes: [script, image, output],
+        edges: [
+          {
+            id: 'e1',
+            source: 'script',
+            target: 'img',
+            sourcePort: 'out',
+            targetPort: 'in-text'
+          },
+          {
+            id: 'e2',
+            source: 'img',
+            target: IMAGE_OUTPUT_ID,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        generateImage: async () => {
+          generateCalls += 1
+          return { images: [{ dataUrl: 'data:new' }], model: 'm' }
+        }
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(generateCalls).toBe(0)
+    expect(result.states.script?.status).toBe('done')
+    expect(result.states.script?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: 'a locked prompt'
+    })
+    expect(result.states.img?.outputs?.out).toMatchObject({
+      kind: 'image',
+      id: 'a',
+      relativePath: 'Cache/Images/a.png'
+    })
+  })
+
   it('lock without cache fails with GRAPH_LOCK_NO_CACHE', async () => {
     const image = createNodeFromType('asset.image', { x: 0, y: 0 }, {
       id: 'img',

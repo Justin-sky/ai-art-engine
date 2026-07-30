@@ -12,6 +12,7 @@ import {
   type WorldElementGenResult
 } from './worldElementParse'
 import type {
+  GraphCatalogKind,
   GraphDocument,
   GraphEdge,
   GraphNode,
@@ -19,7 +20,7 @@ import type {
   GraphPersistedRunState,
   GraphPortDataType
 } from './types'
-import { GraphPortType, isGraphPortDataType } from './types'
+import { GraphPortType, isGraphCatalogKind, isGraphPortDataType } from './types'
 import type { GraphValue } from './execute/types'
 import {
   boundaryInputNodeId,
@@ -31,7 +32,6 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
-import type { GraphCatalogKind } from './types'
 
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
@@ -355,6 +355,117 @@ export function graphValueHasPayload(value: GraphValue | undefined): boolean {
  * 边界输出：按入边顺序软解析第一个有载荷的上游口（与 executeBoundaryOutputNode 口径一致）。
  * 优先本节点已有 runStates.out，否则 walk 直接上游（不 deep walk 整条链）。
  */
+/** 边界输入：从 params 按 hostBoundaryPort.dataType 还原载荷（外层注入 / 分镜绑定图） */
+export function softResolveBoundaryInputParams(node: GraphNode): GraphValue | undefined {
+  if (!isBoundaryInputNode(node)) return undefined
+  const dataType = node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
+  const path = node.params.previewRelativePath?.trim()
+  const dataUrl = node.params.previewDataUrl?.trim() ?? ''
+  const text = node.params.text?.trim() ?? ''
+
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    if (!path && !dataUrl) return undefined
+    if (dataType === GraphPortType.images) {
+      return { kind: 'images', items: [{ dataUrl, ...(path ? { relativePath: path } : {}) }] }
+    }
+    return {
+      kind: 'image',
+      dataUrl,
+      ...(path ? { relativePath: path } : {})
+    }
+  }
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    if (!path && !dataUrl) return undefined
+    if (dataType === GraphPortType.videos) {
+      return {
+        kind: 'videos',
+        items: [{ dataUrl: dataUrl || '', ...(path ? { relativePath: path } : {}) }]
+      }
+    }
+    return {
+      kind: 'video',
+      ...(dataUrl ? { dataUrl } : {}),
+      ...(path ? { relativePath: path } : {})
+    }
+  }
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+    if (!path) return undefined
+    return { kind: 'voices', items: [{ relativePath: path }] }
+  }
+  if (isGraphCatalogKind(dataType)) {
+    if (!text && !path) return undefined
+    return catalogValue(dataType, text, path)
+  }
+  if (!text && !path) return undefined
+  if (dataType === GraphPortType.texts) {
+    return {
+      kind: 'texts',
+      items: [{ text, ...(path ? { relativePath: path } : {}) }]
+    }
+  }
+  return {
+    kind: 'text',
+    text,
+    ...(path ? { relativePath: path } : {})
+  }
+}
+
+function looksLikeVideoRelativePath(path: string | undefined | null): boolean {
+  const p = path?.trim() ?? ''
+  if (!p) return false
+  return /\.(mp4|webm|mov|mkv|avi|m4v)(\?|#|$)/i.test(p)
+}
+
+function videoPayloadIsReal(value: GraphValue): boolean {
+  if (value.kind === 'video') {
+    const data = value.dataUrl?.trim() ?? ''
+    if (data.startsWith('data:video')) return true
+    return looksLikeVideoRelativePath(value.relativePath) || (!!data && !value.relativePath?.trim())
+  }
+  if (value.kind === 'videos') {
+    return value.items.some((item) => {
+      const data = item.dataUrl?.trim() ?? ''
+      if (data.startsWith('data:video')) return true
+      return looksLikeVideoRelativePath(item.relativePath) || (!!data && !item.relativePath?.trim())
+    })
+  }
+  return false
+}
+
+function graphValueMatchesBoundaryPort(
+  value: GraphValue | undefined,
+  dataType: GraphPortDataType | undefined
+): boolean {
+  if (!graphValueHasPayload(value) || !value) return false
+  if (!dataType) return true
+  // classic output.* 聚合口：按内嵌媒体判断
+  if (value.kind === 'output') {
+    if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+      return !!value.images?.some((i) => !!(i.relativePath?.trim() || i.dataUrl?.trim()))
+    }
+    if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+      return !!value.videos?.some(
+        (i) =>
+          looksLikeVideoRelativePath(i.relativePath) ||
+          !!i.dataUrl?.trim()?.startsWith('data:video')
+      )
+    }
+    return false
+  }
+  const kindOk =
+    value.kind === dataType ||
+    (dataType === GraphPortType.image && value.kind === 'images') ||
+    (dataType === GraphPortType.images && value.kind === 'image') ||
+    (dataType === GraphPortType.video && value.kind === 'videos') ||
+    (dataType === GraphPortType.videos && value.kind === 'video')
+  if (!kindOk) return false
+  // 视频口拒绝 jpg 等误标成 video 的预览路径（否则边界软透传会写假预览，批跑以为已完成）
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    return videoPayloadIsReal(value)
+  }
+  return true
+}
+
 export function softResolveBoundaryOutputValue(
   doc: GraphDocument,
   boundaryNodeId: string,
@@ -368,8 +479,9 @@ export function softResolveBoundaryOutputValue(
     )
   if (!node || !isBoundaryOutputNode(node)) return undefined
 
+  const portType = node.params.hostBoundaryPort?.dataType
   const selfOut = doc.runStates?.[node.id]?.outputs?.out as GraphValue | undefined
-  if (graphValueHasPayload(selfOut)) return selfOut
+  if (graphValueMatchesBoundaryPort(selfOut, portType)) return selfOut
 
   const incoming = doc.edges.filter((edge) => edge.target === node.id)
   for (const edge of incoming) {
@@ -379,7 +491,7 @@ export function softResolveBoundaryOutputValue(
       edge.sourcePort ?? 'out',
       options
     )
-    if (graphValueHasPayload(value)) return value
+    if (graphValueMatchesBoundaryPort(value, portType)) return value
   }
   return undefined
 }
@@ -432,6 +544,14 @@ export function softResolveSourceOutput(
   // 边界输出本身：透传上游软值（不 deep walk）
   if (isBoundaryOutputNode(node) && (sourcePort === 'out' || !sourcePort)) {
     return softResolveBoundaryOutputValue(parent, node.id, options)
+  }
+
+  // 边界输入：按端口类型读节点上缓存的外层/绑定注入（对齐 executeBoundaryInputNode）
+  if (isBoundaryInputNode(node) && (sourcePort === 'out' || !sourcePort)) {
+    const fromBoundaryIn = softResolveBoundaryInputParams(node)
+    if (graphValueHasPayload(fromBoundaryIn)) return fromBoundaryIn
+    if (graphValueHasPayload(fromRun)) return fromRun
+    return undefined
   }
 
   // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体
@@ -663,47 +783,55 @@ export function softResolveSourceOutput(
   const previewUrl = node.params.previewDataUrl?.trim()
   if (previewPath || previewUrl) {
     const typeId = node.typeId ?? ''
-    if (node.assetType === 'video' || typeId.includes('video')) {
-      return {
-        kind: 'video',
-        dataUrl: previewUrl,
-        relativePath: previewPath
+    const isVideoNode = node.assetType === 'video' || typeId.includes('video')
+    if (isVideoNode) {
+      // 首帧/参考图常写在 previewRelativePath，不得当成已生成视频
+      if (
+        looksLikeVideoRelativePath(previewPath) ||
+        !!previewUrl?.startsWith('data:video')
+      ) {
+        return {
+          kind: 'video',
+          dataUrl: previewUrl,
+          relativePath: looksLikeVideoRelativePath(previewPath) ? previewPath : undefined
+        }
       }
-    }
-    if (node.assetType === 'voice' || typeId.includes('voice')) {
+      // 视频节点上的图片预览到此为止，勿落入下方 image 分支
+    } else if (node.assetType === 'voice' || typeId.includes('voice')) {
       return {
         kind: 'voices',
         items: [{ relativePath: previewPath }]
       }
-    }
-    // 文本类节点的 previewRelativePath 是正文旁挂路径，勿当成图片
-    const isTextLike =
-      node.assetType === 'screenplay' ||
-      typeId === 'asset.screenplay' ||
-      typeId === 'text.select' ||
-      typeId === 'note.text' ||
-      typeId === 'play.script' ||
-      typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
-      readHostInputSlot(node) != null
-    if (isTextLike) {
-      const localText = node.params.text?.trim() ?? ''
-      if (localText || previewPath) {
-        return {
-          kind: 'text',
-          text: localText,
-          ...(previewPath ? { relativePath: previewPath } : {})
+    } else {
+      // 文本类节点的 previewRelativePath 是正文旁挂路径，勿当成图片
+      const isTextLike =
+        node.assetType === 'screenplay' ||
+        typeId === 'asset.screenplay' ||
+        typeId === 'text.select' ||
+        typeId === 'note.text' ||
+        typeId === 'play.script' ||
+        typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
+        readHostInputSlot(node) != null
+      if (isTextLike) {
+        const localText = node.params.text?.trim() ?? ''
+        if (localText || previewPath) {
+          return {
+            kind: 'text',
+            text: localText,
+            ...(previewPath ? { relativePath: previewPath } : {})
+          }
         }
-      }
-    } else if (
-      node.assetType === 'image' ||
-      typeId.includes('image') ||
-      typeId === 'asset.motion' ||
-      previewUrl
-    ) {
-      return {
-        kind: 'image',
-        dataUrl: previewUrl ?? '',
-        relativePath: previewPath
+      } else if (
+        node.assetType === 'image' ||
+        typeId.includes('image') ||
+        typeId === 'asset.motion' ||
+        previewUrl
+      ) {
+        return {
+          kind: 'image',
+          dataUrl: previewUrl ?? '',
+          relativePath: previewPath
+        }
       }
     }
   }

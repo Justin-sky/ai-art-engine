@@ -6,8 +6,8 @@ import {
   collectImagesFromCompletedOutputNode,
   hostInterfaceForElementWorkflow,
   inferElementWorkflowHostInterface,
-  isBoundaryOutputNode,
   isVisualOutputNodeComplete,
+  listVisualOutputNodes,
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
@@ -18,7 +18,6 @@ import {
   type GraphNode,
   type WorldElementGenResult
 } from '@shared/graph'
-import { GraphPortType } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { useDraftStore } from '../../stores/drafts'
@@ -120,26 +119,6 @@ async function ensureImageAssetForItem(
   return ensureMediaAssetForPath(relativePath, name)
 }
 
-function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
-  const boundaryOuts = doc.nodes.filter(
-    (node) =>
-      isBoundaryOutputNode(node) &&
-      (node.params.hostBoundaryPort?.dataType === GraphPortType.image ||
-        node.params.hostBoundaryPort?.dataType === GraphPortType.images ||
-        !node.params.hostBoundaryPort?.dataType)
-  )
-  if (boundaryOuts.length) return boundaryOuts
-  const outputs = doc.nodes.filter(
-    (node) => node.category === 'output' || node.typeId === 'output.image'
-  )
-  if (outputs.length) return outputs
-  return doc.nodes.filter(
-    (node) =>
-      node.typeId === 'asset.image' ||
-      (node.category === 'asset' && node.assetType === 'image')
-  )
-}
-
 function resolveElementName(doc: GraphDocument, output: GraphNode, fallback: string): string {
   const elementId = readWorldElementIdFromNodeParams(output.params)
   if (elementId) {
@@ -200,12 +179,14 @@ export async function collectWorldElementOutputs(input: {
   signal?: AbortSignal
 }): Promise<CollectWorldElementOutputsResult> {
   const items: WorldElementGenResult[] = []
-  const genParams = readWorldGenParams(input.worldAssetId)
 
   for (const kind of WORLD_ELEMENT_KINDS) {
     assertNotAborted(input.signal)
+    // 每类单独读盘：四类写回串行完成后也能拿到最新 runStates
+    const genParams = readWorldGenParams(input.worldAssetId)
     const doc = readElementWorkflowDoc(input.worldAssetId, kind, genParams)
-    const outputs = listImageOutputNodes(doc)
+    // 按子图边界输出端口收集（锁定生成节点经 soft-resolve 直接出图）
+    const outputs = listVisualOutputNodes(doc)
     const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]
 
     for (let i = 0; i < outputs.length; i++) {

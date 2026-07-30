@@ -139,6 +139,8 @@ import {
   nodePortYRatio,
   readHostInputSlot,
   resolveNodeType,
+  isBoundaryInputNode,
+  softResolveBoundaryInputParams,
   softResolveBoundaryOutputValue,
   supportsGenerateLock,
   type GraphDocument,
@@ -227,6 +229,10 @@ const boundaryImagePath = computed(() => {
   if (local) return local
   const fromRun = mediaPathFromValue(props.runState?.outputs?.out as GraphValue | undefined)
   if (fromRun) return fromRun
+  // 边界输入：读 params 注入；边界输出：soft 上游
+  if (isBoundaryInputNode(props.node)) {
+    return mediaPathFromValue(softResolveBoundaryInputParams(props.node))
+  }
   if (!props.hostId) return ''
   const base = graphEditorHosts.getDocument(props.hostId)
   if (!base) return ''

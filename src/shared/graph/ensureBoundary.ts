@@ -38,7 +38,12 @@ function pushEdge(
   })
 }
 
-/** 将无出边的业务节点接到主 boundary.output（新建默认图无 classic output 时使用） */
+/**
+ * 将业务链接到主 boundary.output（新建默认图无 classic output 时使用）。
+ * 优先无出边节点；若主边界仍悬空，再接兼容的加工/生成节点（即便它已有其它出边）。
+ * 避免旧图拆掉 classic output 后、视频节点仍连着旁路节点时边界永远无入边，
+ * 导致选中边界输出入队只跑空透传、生成链进不了任务。
+ */
 export function wireDanglingOutsToPrimaryBoundary(
   document: GraphDocument,
   iface: HostInterfaceDocument
@@ -54,17 +59,44 @@ export function wireDanglingOutsToPrimaryBoundary(
     return { ...document, edges }
   }
 
-  const candidates = document.nodes
-    .filter((node) => {
-      if (isBoundaryProxyNode(node) || node.category === 'output') return false
-      const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
-      if (!hasOut) return false
-      if (edges.some((edge) => edge.source === node.id)) return false
-      return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
-    })
-    .sort((a, b) => b.position.x - a.position.x || a.position.y - b.position.y)
+  const connectable = (node: GraphNode): boolean => {
+    if (isBoundaryProxyNode(node) || node.category === 'output') return false
+    const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
+    if (!hasOut) return false
+    return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
+  }
 
-  const source = candidates[0]
+  const byRightmost = (a: GraphNode, b: GraphNode): number =>
+    b.position.x - a.position.x || a.position.y - b.position.y
+
+  const dangling = document.nodes.filter(
+    (node) => connectable(node) && !edges.some((edge) => edge.source === node.id)
+  )
+  dangling.sort(byRightmost)
+
+  let source = dangling[0]
+  if (!source) {
+    // 主边界仍悬空：从已有出边的加工节点再拉一条到主边界（多出口）
+    const preferredType =
+      primary.dataType === 'video'
+        ? 'asset.video'
+        : primary.dataType === 'image'
+          ? 'asset.image'
+          : null
+    const fallback = document.nodes
+      .filter((node) => {
+        if (!connectable(node)) return false
+        // 只接加工 gen，避免 video.select 等中间节点抢连
+        if (preferredType) return node.typeId === preferredType
+        return (
+          (node.category === 'asset' && node.assetType === primary.dataType) ||
+          node.typeId === `asset.${primary.dataType}`
+        )
+      })
+      .sort(byRightmost)
+    source = fallback[0]
+  }
+
   if (source) {
     pushEdge(edges, source.id, boutId, 'out', 'in')
   }
@@ -141,7 +173,14 @@ export function wireBoundaryInputsToHeads(
 export function ensureBoundaryProxyNodes(
   document: GraphDocument,
   iface: HostInterfaceDocument,
-  options?: { autoLinkHeadTypeIds?: string[] }
+  options?: {
+    autoLinkHeadTypeIds?: string[]
+    /**
+     * 为 true 时只补齐/更新 iface 中的 boundary，不删除图上其它 boundary
+     *（分镜绑定实体会动态建 boundary.input，不能按空 inputs 剪掉）。
+     */
+    preserveUnlistedBoundaryNodes?: boolean
+  }
 ): GraphDocument {
   const nodes: GraphNode[] = document.nodes.map((node) => ({
     ...node,
@@ -224,7 +263,7 @@ export function ensureBoundaryProxyNodes(
     yOut += 80
   }
 
-  // 去掉接口中已删除的 boundary 节点及其边
+  // 去掉接口中已删除的 boundary 节点及其边（分镜等场景可保留未列出的绑定输入）
   const keepIds = new Set([
     ...iface.inputs.map((p) => boundaryInputNodeId(p.id)),
     ...iface.outputs.map((p) => boundaryOutputNodeId(p.id))
@@ -236,6 +275,7 @@ export function ensureBoundaryProxyNodes(
     ) {
       return true
     }
+    if (options?.preserveUnlistedBoundaryNodes) return true
     return keepIds.has(n.id)
   })
   const nodeIds = new Set(nextNodes.map((n) => n.id))

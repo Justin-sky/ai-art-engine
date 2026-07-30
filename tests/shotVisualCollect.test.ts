@@ -3,6 +3,7 @@ import {
   boundaryOutputNodeId,
   collectImagesFromCompletedOutputNode,
   isVisualOutputNodeComplete,
+  listVisualOutputNodeIdsNeedingCook,
   type GraphDocument
 } from '../src/shared/graph'
 
@@ -81,5 +82,17 @@ describe('collectImagesFromCompletedOutputNode', () => {
     expect(collectImagesFromCompletedOutputNode(graph, graph.nodes[1]!)).toEqual([
       expect.objectContaining({ relativePath: 'Cache/Images/preview.png' })
     ])
+  })
+
+  it('needs cook: unlocked with images re-cooks; locked with images skips', () => {
+    const graph = doc()
+    // 有图未锁定 → 重新 cook
+    expect(listVisualOutputNodeIdsNeedingCook(graph)).toEqual([boutId])
+    graph.nodes[0]!.params.locked = true
+    // 有图已锁定 → soft-collect，不入队
+    expect(listVisualOutputNodeIdsNeedingCook(graph)).toEqual([])
+    graph.nodes[0]!.params.generatedImages = []
+    // 缺图（即便锁定）→ 仍需入队
+    expect(listVisualOutputNodeIdsNeedingCook(graph)).toEqual([boutId])
   })
 })
