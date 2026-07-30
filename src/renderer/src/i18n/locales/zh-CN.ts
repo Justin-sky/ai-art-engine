@@ -2328,6 +2328,7 @@ export default {
             hooks: '强化结尾钩子'
           },
           image: {
+            styleTransfer: '风格迁移',
             multiAngle9: '多机位九宫格',
             story4: '剧情推演四宫格',
             faceTurnaround: '角色脸部三视图',

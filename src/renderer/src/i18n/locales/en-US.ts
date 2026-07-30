@@ -2350,6 +2350,7 @@ export default {
             hooks: 'Strengthen ending hooks'
           },
           image: {
+            styleTransfer: 'Style transfer',
             multiAngle9: 'Multi-angle 9-grid',
             story4: 'Storyboard 4-grid',
             faceTurnaround: 'Character face turnaround',

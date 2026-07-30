@@ -159,6 +159,7 @@ export function resolveInstructionVisual(input: {
   const id = input.id
 
   if (id.includes('multiAngle9')) return { kind: 'grid', grid: { cols: 3, rows: 3 } }
+  if (id.includes('styleTransfer')) return { kind: 'icon', icon: '🎨' }
   if (id.includes('story4')) return { kind: 'grid', grid: { cols: 2, rows: 2 } }
   if (id.includes('story25')) return { kind: 'grid', grid: { cols: 5, rows: 5 } }
   if (id.includes('Turnaround') || id.includes('turnaround')) {

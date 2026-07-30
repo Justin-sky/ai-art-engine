@@ -324,7 +324,29 @@ const IMAGE_SHOT_CONFRONTATION_BODY = `生成一张可作为视频首帧的「�
 【约束】主体身份、比例和场景逻辑稳定
 只生成静态首帧；无文字、水印或 UI。`
 
+/**
+ * 风格迁移：优先用风格芯片占 @1..，内容图连入口占后续 @；
+ * 也可用两张连线参考（先内容后风格）。
+ */
+const IMAGE_STYLE_TRANSFER_BODY = `【风格迁移】保留内容构图与主体，只换画风。
+
+【用法（二选一）】
+A. 推荐：把目标风格图加入本节点/工程「风格参考」（指令条「风格」芯片，占 @1…，强度建议 0.6–0.85）；把内容图连到图片输入口，并在下方用 @ 引用内容图（通常是风格之后的第一个编号）。
+B. 备选：依次连接「内容图 → 风格图」两张参考，用 @1 指内容、@2 指风格（未使用风格芯片时）。
+
+【硬约束】
+- 严格保留内容图的主体身份、姿态、构图与空间关系
+- 只迁移风格参考的画风、色彩、笔触/材质与光影气质
+- 禁止换人、大改构图、新增剧情元素；禁止字幕与水印
+
+请输出一张完成风格迁移后的图像。`
+
 const IMAGE_PRESETS: InstructionPreset[] = [
+  {
+    id: 'image.styleTransfer',
+    titleKey: 'graph.inspector.generate.presets.image.styleTransfer',
+    body: IMAGE_STYLE_TRANSFER_BODY
+  },
   {
     id: 'image.multiAngle9',
     titleKey: 'graph.inspector.generate.presets.image.multiAngle9',
