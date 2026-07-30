@@ -4,6 +4,8 @@
     :class="[
       {
         selected,
+        connecting,
+        'link-mode': linkMode,
         'preview-collapsed': previewCollapsed,
         'lock-node': isLocked
       },
@@ -33,8 +35,6 @@
       >
         <span class="collapse-tri" aria-hidden="true" />
       </button>
-      <span v-if="isLocked" class="type-pill lock">{{ t('graph.nodeRole.lock') }}</span>
-      <span v-else class="type-pill">{{ badgeLabel }}</span>
       <input
         v-if="editingTitle"
         ref="titleInputEl"
@@ -92,6 +92,13 @@
 
     <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
 
+    <span
+      v-if="!previewCollapsed"
+      class="type-badge"
+      :class="typeBadgeClass"
+      :title="typeBadgeTitle"
+    >{{ typeBadgeIcon }}</span>
+
     <div
       v-for="(port, index) in inPorts"
       :key="`in-${port.id}`"
@@ -135,11 +142,12 @@ import {
   GRAPH_INPUT_SLOT_TYPE_ID,
   graphValueHasPayload,
   isBoundaryProxyNode,
+  isBoundaryInputNode,
+  isBoundaryOutputNode,
   isGenerateLocked,
   nodePortYRatio,
   readHostInputSlot,
   resolveNodeType,
-  isBoundaryInputNode,
   softResolveBoundaryInputParams,
   softResolveBoundaryOutputValue,
   supportsGenerateLock,
@@ -161,6 +169,9 @@ const { t, te } = useStudioI18n()
 const props = defineProps<{
   node: GraphNode
   selected: boolean
+  connecting?: boolean
+  /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
+  linkMode?: boolean
   hostId?: string
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -202,7 +213,7 @@ function portTypeLabel(dataType: GraphPortDataType): string {
 }
 
 function portWrapStyle(count: number, index: number): Record<string, string> {
-  // 与 getNodePortCenter 同源：在标题栏下方 body 区排布
+  // 与 getNodePortCenter 同源：在包含标题栏的整张卡片内均匀排布
   const pct = nodePortYRatio(index, count, height.value) * 100
   return { top: `${pct}%` }
 }
@@ -318,6 +329,24 @@ const badgeLabel = computed(() => {
   }
   return presentation.value?.badgeKey ? t(presentation.value.badgeKey) : t('graph.note.badge')
 })
+
+const typeBadgeIcon = computed(() => {
+  const icon = resolveNodeType(props.node)?.icon?.trim()
+  if (icon) return icon
+  if (isBoundary.value) return isBoundaryInputNode(props.node) ? '⬚' : '⧉'
+  if (isInputSlot.value) return '📥'
+  return '📝'
+})
+
+const typeBadgeClass = computed(() => {
+  if (isBoundaryInputNode(props.node)) return 'role-boundary-in'
+  if (isBoundaryOutputNode(props.node)) return 'role-boundary-out'
+  if (isInputSlot.value) return 'role-slot'
+  return 'role-note'
+})
+
+const typeBadgeTitle = computed(() => badgeLabel.value)
+
 const editingTitle = ref(false)
 const titleDraft = ref('')
 const titleInputEl = ref<HTMLInputElement | null>(null)
@@ -455,6 +484,11 @@ function onBodyDblClick(): void {
   z-index: 18;
 }
 
+.graph-note.connecting {
+  border-color: var(--warning, #e6a23c);
+  z-index: 18;
+}
+
 /* 输入接口：按数据类型着色（非备注黄） */
 .graph-note.input-slot.slot-text {
   --slot-accent: #5eb0e0;
@@ -495,7 +529,7 @@ function onBodyDblClick(): void {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--slot-border) 40%, transparent);
   min-width: 0;
   flex-shrink: 0;
@@ -508,20 +542,22 @@ function onBodyDblClick(): void {
   box-sizing: border-box;
 }
 
+/* 折叠三角：与锁定按钮同尺寸 */
 .collapse-tri-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 20px;
   padding: 0;
   margin: 0;
-  border: none;
-  border-radius: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 90%, transparent);
+  line-height: 0;
 }
 
 .collapse-tri-btn:hover {
@@ -534,31 +570,55 @@ function onBodyDblClick(): void {
   display: block;
   width: 0;
   height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid currentColor;
 }
 
 .collapse-tri-btn.collapsed .collapse-tri {
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 7px solid currentColor;
   border-right: none;
 }
 
-.type-pill {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--slot-accent-soft);
+/* 状态/类型图标：节点左下角 */
+.type-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--graph-note-bg-to, #1a1a1a) 82%, transparent);
   color: var(--slot-accent);
-  flex-shrink: 0;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--slot-border) 70%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+  user-select: none;
 }
 
-.type-pill.lock {
-  background: color-mix(in srgb, #c4a35a 28%, transparent);
-  color: #e6cf8a;
+.type-badge.role-boundary-in {
+  background: color-mix(in srgb, #ffb347 30%, var(--graph-note-bg-to, #1a1a1a));
+  border-color: color-mix(in srgb, #ffb347 45%, transparent);
+}
+
+.type-badge.role-boundary-out {
+  background: color-mix(in srgb, #64b4ff 28%, var(--graph-note-bg-to, #1a1a1a));
+  border-color: color-mix(in srgb, #64b4ff 42%, transparent);
+}
+
+.type-badge.role-slot {
+  background: color-mix(in srgb, #5eb0e0 28%, var(--graph-note-bg-to, #1a1a1a));
+  border-color: color-mix(in srgb, #5eb0e0 42%, transparent);
 }
 
 .graph-note.lock-node {
@@ -698,6 +758,15 @@ function onBodyDblClick(): void {
   height: 0;
   z-index: 30;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.graph-note:hover .port-wrap,
+.graph-note.selected .port-wrap,
+.graph-note.connecting .port-wrap,
+.graph-note.link-mode .port-wrap {
+  opacity: 1;
 }
 
 .port-wrap.in {
@@ -742,8 +811,24 @@ function onBodyDblClick(): void {
   border-radius: 50%;
   background: var(--graph-port-bg);
   cursor: crosshair;
-  pointer-events: auto;
+  pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.graph-note:hover .port-wrap .port,
+.graph-note.selected .port-wrap .port,
+.graph-note.connecting .port-wrap .port,
+.graph-note.link-mode .port-wrap .port {
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .port-wrap {
+    opacity: 1;
+  }
+  .port-wrap .port {
+    pointer-events: auto;
+  }
 }
 
 .port.in {

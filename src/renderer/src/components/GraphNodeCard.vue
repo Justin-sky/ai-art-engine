@@ -9,6 +9,7 @@
       'processing-node': isProcessingNode,
       'lock-node': isLocked,
       connecting: connecting,
+      'link-mode': linkMode,
       'run-error': runStatus === 'error',
       'run-running': runStatus === 'running',
       'instruction-open': instructionOpen,
@@ -58,11 +59,6 @@
       >
         <span class="collapse-tri" aria-hidden="true" />
       </button>
-      <span v-if="isMissingLinkedAsset" class="type-pill missing">{{ t('graph.nodeRole.missing') }}</span>
-      <span v-else-if="isLocked" class="type-pill lock">{{ t('graph.nodeRole.lock') }}</span>
-      <span v-else-if="rolePill" class="type-pill" :class="rolePillClass">{{ rolePill }}</span>
-      <span v-else class="type-pill">{{ typeLabel }}</span>
-      <span v-if="isAssetRef && !isMissingLinkedAsset" class="kind-pill">{{ typeLabel }}</span>
       <div class="head-actions">
         <button
           v-if="canLock"
@@ -359,6 +355,13 @@
     </div>
 
     <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
+
+    <span
+      v-if="!previewCollapsed"
+      class="type-badge"
+      :class="typeBadgeClass"
+      :title="typeBadgeTitle"
+    >{{ typeBadgeIcon }}</span>
   </div>
 </template>
 
@@ -447,6 +450,7 @@ import {
   readImageGenerateParamsFromNode,
   readVideoGenerateParamsFromNode,
   resolveNodeTextContent,
+  resolveNodeType,
   shouldShowPortLimitBadge as shouldShowPortLimitBadgeShared,
   videoGenerateParamsToNodePatch,
   type GraphNode,
@@ -513,6 +517,8 @@ const props = defineProps<{
   node: GraphNode
   selected: boolean
   connecting?: boolean
+  /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
+  linkMode?: boolean
   asset?: AssetInfo | null
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -629,7 +635,7 @@ function inPortTypeLabel(port: GraphPortDef): string {
 }
 
 function portWrapStyle(count: number, index: number): Record<string, string> {
-  // 与 getNodePortCenter 同源：在标题栏下方 body 区排布，避免盖住标题
+  // 与 getNodePortCenter 同源：在包含标题栏的整张卡片内均匀排布
   const pct = nodePortYRatio(index, count, height.value) * 100
   return { top: `${pct}%` }
 }
@@ -866,17 +872,32 @@ const typeLabel = computed(() => {
 })
 
 const rolePill = computed(() => {
+  if (isMissingLinkedAsset.value) return t('graph.nodeRole.missing')
   if (isAssetRef.value) {
     return isImportedRefAsset.value ? t('graph.nodeRole.ref') : t('graph.nodeRole.host')
   }
   if (isProcessingNode.value) return t('graph.nodeRole.generate')
+  if (props.node.category === 'output') return t('graph.nodeRole.output')
   return ''
 })
 
-const rolePillClass = computed(() => {
-  if (isAssetRef.value) return isImportedRefAsset.value ? 'ref' : 'host'
-  if (isProcessingNode.value) return 'generate'
-  return ''
+/** 类型色块：用颜色区分角色，图标表示类型（锁定由标题栏锁按钮表示，不改图标） */
+const typeBadgeClass = computed(() => {
+  if (isMissingLinkedAsset.value) return 'role-missing'
+  if (isAssetRef.value) return isImportedRefAsset.value ? 'role-ref' : 'role-host'
+  if (isProcessingNode.value) return 'role-generate'
+  if (props.node.category === 'output') return 'role-output'
+  return 'role-default'
+})
+
+const typeBadgeIcon = computed(() => {
+  if (isMissingLinkedAsset.value) return '!'
+  return typeIcon.value
+})
+
+const typeBadgeTitle = computed(() => {
+  const role = rolePill.value
+  return role ? `${role} · ${typeLabel.value}` : typeLabel.value
 })
 
 const displayTitle = computed(() => {
@@ -911,8 +932,10 @@ const typeIcon = computed(() => {
   if (isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
-  const t = props.node.assetType
-  return t ? ASSET_TYPE_ICONS[t] : '◆'
+  const assetType = props.node.assetType
+  if (assetType) return ASSET_TYPE_ICONS[assetType]
+  const defIcon = resolveNodeType(props.node)?.icon?.trim()
+  return defIcon || '◆'
 })
 
 const runStatusLabel = computed(() => {
@@ -2161,7 +2184,7 @@ function formatTime(sec: number): string {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   min-width: 0;
   border-radius: 10px 10px 0 0;
@@ -2175,20 +2198,22 @@ function formatTime(sec: number): string {
   box-sizing: border-box;
 }
 
+/* 折叠三角：与锁定按钮同尺寸 */
 .collapse-tri-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 20px;
   padding: 0;
   margin: 0;
-  border: none;
-  border-radius: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 90%, transparent);
+  line-height: 0;
 }
 
 .collapse-tri-btn:hover {
@@ -2201,71 +2226,70 @@ function formatTime(sec: number): string {
   display: block;
   width: 0;
   height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid currentColor;
 }
 
 .collapse-tri-btn.collapsed .collapse-tri {
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 7px solid currentColor;
   border-right: none;
 }
 
-.type-pill {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--accent-18);
+/* 状态/类型图标：节点左下角 */
+.type-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--graph-node-bg, var(--bg-elevated)) 82%, transparent);
   color: var(--accent);
-  flex-shrink: 1;
-  min-width: 0;
-  max-width: 4.5em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+  user-select: none;
 }
 
-.graph-node.output .type-pill {
-  background: rgba(100, 180, 255, 0.22);
-  color: var(--accent-fg);
+.type-badge.role-generate {
+  background: color-mix(in srgb, var(--accent) 28%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent-fg, var(--accent));
 }
 
-.type-pill.ref {
-  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+.type-badge.role-host {
+  background: color-mix(in srgb, #5b9fd4 30%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, #5b9fd4 45%, transparent);
+}
+
+.type-badge.role-ref {
+  background: color-mix(in srgb, var(--text-muted) 22%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
   color: var(--text-muted);
 }
 
-.type-pill.missing {
-  background: color-mix(in srgb, var(--danger, #c45c5c) 22%, transparent);
+.type-badge.role-output {
+  background: color-mix(in srgb, #64b4ff 28%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, #64b4ff 42%, transparent);
+}
+
+.type-badge.role-missing {
+  background: color-mix(in srgb, var(--danger, #c45c5c) 28%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, var(--danger, #c45c5c) 45%, transparent);
   color: var(--danger, #c45c5c);
-}
-
-.type-pill.host {
-  background: var(--accent-18);
-  color: var(--accent-fg);
-}
-
-.type-pill.generate {
-  background: color-mix(in srgb, var(--success) 22%, transparent);
-  color: color-mix(in srgb, var(--success) 72%, #ffffff);
-}
-
-.type-pill.lock {
-  background: color-mix(in srgb, #c4a35a 28%, transparent);
-  color: #d4b86a;
-}
-
-.kind-pill {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--accent-12);
-  color: var(--accent-fg);
-  flex-shrink: 0;
+  font-weight: 800;
+  font-size: 12px;
 }
 
 .title {
@@ -2649,6 +2673,16 @@ function formatTime(sec: number): string {
   height: 0;
   z-index: 30;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* 悬停 / 选中 / 本节点连线 / 画布拖线中：显示端口 */
+.graph-node:hover .port-wrap,
+.graph-node.selected .port-wrap,
+.graph-node.connecting .port-wrap,
+.graph-node.link-mode .port-wrap {
+  opacity: 1;
 }
 
 .port-wrap.in {
@@ -2721,8 +2755,25 @@ function formatTime(sec: number): string {
   background: var(--graph-port-bg);
   padding: 0;
   cursor: crosshair;
-  pointer-events: auto;
+  pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.graph-node:hover .port-wrap .port,
+.graph-node.selected .port-wrap .port,
+.graph-node.connecting .port-wrap .port,
+.graph-node.link-mode .port-wrap .port {
+  pointer-events: auto;
+}
+
+/* 触控无悬停：始终显示端口 */
+@media (hover: none) {
+  .port-wrap {
+    opacity: 1;
+  }
+  .port-wrap .port {
+    pointer-events: auto;
+  }
 }
 
 /* 多值输出口（out-all）：方形，对齐 Houdini multi 口 */

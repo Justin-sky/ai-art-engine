@@ -1427,6 +1427,8 @@ export default {
       expand: 'Expand layout tools',
       collapse: 'Collapse layout tools',
       grid: 'Show/hide background grid',
+      collapseAllNodes: 'Collapse all nodes',
+      expandAllNodes: 'Expand all nodes',
       snap: 'Snap to grid while dragging',
       snapShort: 'Snap',
       alignLeft: 'Align left',
@@ -1874,6 +1876,7 @@ export default {
       ref: 'Ref',
       host: 'Host',
       generate: 'Generate',
+      output: 'Output',
       lock: 'Locked',
       missing: 'Unavailable'
     },

@@ -176,6 +176,8 @@
       @align="applyAlign"
       @distribute="applyDistribute"
       @auto-layout="applyAutoLayout"
+      @collapse-all-previews="setAllNodePreviewsCollapsed(true)"
+      @expand-all-previews="setAllNodePreviewsCollapsed(false)"
     />
 
     <GraphRadialMenu
@@ -263,6 +265,7 @@
           :node="node"
           :selected="isNodeSelected(node.id)"
           :connecting="linkingFrom === node.id || linkingTo === node.id"
+          :link-mode="!!(linkingFrom || linkingTo)"
           :asset="assetFor(node)"
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"
@@ -3488,6 +3491,22 @@ function applyDistribute(mode: DistributeMode): void {
 
 function applyAutoLayout(): void {
   applyLayoutMutation('auto-layout', (nodes) => autoLayoutNodes(nodes, graph.edges))
+}
+
+/** 折叠 / 展开全部节点预览 */
+function setAllNodePreviewsCollapsed(collapsed: boolean): void {
+  if (graph.nodes.length === 0) return
+  const before = buildGraphJson()
+  let changed = false
+  for (const node of graph.nodes) {
+    if (node.params.previewCollapsed === collapsed) continue
+    node.params = { ...node.params, previewCollapsed: collapsed }
+    changed = true
+  }
+  if (!changed) return
+  scheduleSave()
+  recordGraphChange(collapsed ? 'collapse-all-previews' : 'expand-all-previews', before)
+  requestEdgeRender()
 }
 
 function fitView(): void {

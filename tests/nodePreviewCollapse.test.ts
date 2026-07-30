@@ -33,4 +33,9 @@ describe('graph node preview collapse', () => {
       expect(y).toBeLessThan(0.9)
     }
   })
+
+  it('distributes expanded ports across the full card including header', () => {
+    expect(nodePortYRatio(0, 2, 180)).toBeCloseTo(1 / 3)
+    expect(nodePortYRatio(1, 2, 180)).toBeCloseTo(2 / 3)
+  })
 })

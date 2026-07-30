@@ -54,8 +54,8 @@ export function getNodeDefaultSize(categoryOrType: GraphNodeCategory | GraphNode
 }
 
 /**
- * 节点标题栏约占高度（与 GraphNodeCard `.node-head` 一致）。
- * 端口纵向排布从标题栏下方开始，避免盖住标题。
+ * 节点标题栏约占高度（与 GraphNodeCard `.node-head` / 收起高度相关）。
+ * 端口纵向排布按整卡高度（含标题栏）均匀分布，不再从标题栏下方起算。
  */
 export const GRAPH_NODE_HEAD_HEIGHT_PX = 30
 
@@ -173,9 +173,9 @@ export function createOutputGraphNode(
 }
 
 /**
- * 端口纵向比例（相对节点总高）：在标题栏下方的 body 区内均匀分布。
+ * 端口纵向比例（相对节点总高）：在包含标题栏的整张卡片内均匀分布。
  * 与 GraphNodeCard `portWrapStyle` 使用同一公式，保证连线锚点对齐。
- * 收起（高度接近标题栏）时改为在整卡高度内留边分布。
+ * 收起（高度接近标题栏）时在整卡高度内额外留边。
  */
 export function nodePortYRatio(
   portIndex: number,
@@ -189,8 +189,7 @@ export function nodePortYRatio(
     const pad = 0.18
     return pad + (1 - 2 * pad) * frac
   }
-  const headInset = Math.min(GRAPH_NODE_HEAD_HEIGHT_PX / h, 0.42)
-  return headInset + (1 - headInset) * frac
+  return frac
 }
 
 export function getNodePortCenter(

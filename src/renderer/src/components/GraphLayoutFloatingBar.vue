@@ -56,6 +56,46 @@
 
       <button
         type="button"
+        class="icon-btn"
+        :title="t('graph.layout.collapseAllNodes')"
+        :aria-label="t('graph.layout.collapseAllNodes')"
+        @click="emit('collapse-all-previews')"
+      >
+        <!-- 折叠全部：双上折箭头 -->
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3.5 8.5 8 4l4.5 4.5M3.5 12.5 8 8l4.5 4.5"
+          />
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        class="icon-btn"
+        :title="t('graph.layout.expandAllNodes')"
+        :aria-label="t('graph.layout.expandAllNodes')"
+        @click="emit('expand-all-previews')"
+      >
+        <!-- 展开全部：双下折箭头 -->
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3.5 3.5 8 8l4.5-4.5M3.5 7.5 8 12l4.5-4.5"
+          />
+        </svg>
+      </button>
+
+      <button
+        type="button"
         :class="{ active: snapEnabled }"
         :title="t('graph.layout.snap')"
         @click="emit('update:snapEnabled', !snapEnabled)"
@@ -166,6 +206,8 @@ const emit = defineEmits<{
   align: [mode: AlignMode]
   distribute: [mode: DistributeMode]
   'auto-layout': []
+  'collapse-all-previews': []
+  'expand-all-previews': []
 }>()
 
 const { t } = useStudioI18n()

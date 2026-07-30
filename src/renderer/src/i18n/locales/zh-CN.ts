@@ -1415,6 +1415,8 @@ export default {
       expand: '展开布局工具',
       collapse: '收起布局工具',
       grid: '显示/隐藏背景网格',
+      collapseAllNodes: '折叠全部节点',
+      expandAllNodes: '展开全部节点',
       snap: '拖拽时吸附网格',
       snapShort: '吸附',
       alignLeft: '左对齐',
@@ -1862,6 +1864,7 @@ export default {
       ref: '引用',
       host: '宿主',
       generate: '生成',
+      output: '输出',
       lock: '锁定',
       missing: '不可用'
     },
