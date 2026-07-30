@@ -779,16 +779,19 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     return { enqueued, skipped, duplicates, taskIds }
   }
 
+  /**
+   * 等到任务离开 active 列表（writeBack + moveToCompleted 之后）。
+   * 不能仅看 status===done：status 会在 writeBack 之前就置 done，过早返回会导致
+   * collectWorldElementOutputs 读到旧 worldElementGraphs 并回写冲掉刚烹好的结果。
+   */
   async function waitForTaskIds(taskIds: string[]): Promise<void> {
     if (!taskIds.length) return
     const pending = new Set(taskIds)
     await new Promise<void>((resolve) => {
       const tick = (): void => {
         for (const id of [...pending]) {
-          const stillActive = activeTasks.value.some(
-            (t) => t.id === id && isActiveStatus(t.status)
-          )
-          if (!stillActive) pending.delete(id)
+          const stillInFlight = activeTasks.value.some((t) => t.id === id)
+          if (!stillInFlight) pending.delete(id)
         }
         if (!pending.size) {
           resolve()

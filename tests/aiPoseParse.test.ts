@@ -53,9 +53,11 @@ describe('aiPoseParse', () => {
     const zh = buildAiPoseSystemPrompt('zh-CN')
     expect(zh).toContain('apply_bone_pose')
     expect(zh).toContain('局部欧拉')
+    expect(zh).toContain('动画软件')
     expect(zh).not.toContain('构图流程')
     const en = buildAiPoseSystemPrompt('en-US')
     expect(en).toContain('function-call')
+    expect(en).toContain('animation software')
     expect(en).not.toContain('Construction order')
   })
 

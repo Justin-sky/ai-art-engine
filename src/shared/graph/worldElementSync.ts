@@ -226,7 +226,7 @@ export function syncWorldElementKindGraph(
         position: pos.boundary,
         params: {
           ...node.params,
-          previewCollapsed: true,
+          // 保留已有折叠态 / 预览路径，勿每次同步压回折叠
           worldElementId: item.id,
           hostBoundaryPort: {
             portId: boundaryPortId,
@@ -260,7 +260,6 @@ export function syncWorldElementKindGraph(
       position: pos.boundary,
       params: {
         ...node.params,
-        previewCollapsed: true,
         worldElementId: item.id,
         hostBoundaryPort: {
           portId: boundaryPortId,

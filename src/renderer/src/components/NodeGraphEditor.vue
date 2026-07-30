@@ -676,6 +676,7 @@ import {
   formatNarrativeUnitRefText,
   parseNarrativeUnitJson,
   catalogTextFromValue,
+  isBoundaryOutputNode,
   isGraphOutputTerminalNode,
   GraphPortType,
   WORLD_ELEMENT_KINDS
@@ -1933,11 +1934,16 @@ function onNodeRunToggle(nodeId: string): void {
 
 async function guardedRunToNode(nodeId: string) {
   if (blockNodeRunForActiveTask()) return null
+  // 边界输出：只软透传上游缓存，不重跑生成链
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (node && isBoundaryOutputNode(node)) return runNodeOnly(nodeId)
   return runToNode(nodeId)
 }
 
 async function guardedRunToNodeSkippingDone(nodeId: string) {
   if (blockNodeRunForActiveTask()) return null
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (node && isBoundaryOutputNode(node)) return runNodeOnly(nodeId)
   return runToNodeSkippingDone(nodeId)
 }
 

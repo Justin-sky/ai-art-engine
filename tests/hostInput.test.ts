@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyBoundaryInputValues,
   boundaryInputNodeId,
+  boundaryOutputNodeId,
   buildHostInputSlotSeedOutputs,
   createNodeFromType,
   ensureHostInputSlotNodes,
@@ -15,6 +16,8 @@ import {
   resolveBoundaryInputValuesFromParents,
   resolveHostInputSlotsFromParentGraph,
   resolveHostInputSlotsForHostOpen,
+  softResolveBoundaryOutputValue,
+  softResolveSourceOutput,
   type GraphDocument,
   type GraphNode
 } from '../src/shared/graph'
@@ -686,5 +689,111 @@ describe('boundary input injection from parent graph', () => {
     expect(values).toEqual({})
     expect(applyBoundaryInputValues(nodes, values)).toBe(false)
     expect(nodes[0]?.params.text).toBe('内图手填')
+  })
+})
+
+describe('boundary output soft-resolve', () => {
+  it('reads selected gallery item from direct upstream without runStates', () => {
+    const boutId = boundaryOutputNodeId('out')
+    const doc: GraphDocument = {
+      nodes: [
+        {
+          id: 'gen',
+          typeId: 'asset.image',
+          category: 'asset',
+          position: { x: 0, y: 0 },
+          params: {
+            generatedImages: [
+              { id: 'img-old', dataUrl: 'data:image/png;base64,OLD', relativePath: 'Cache/Images/old.png' },
+              { id: 'img-new', dataUrl: 'data:image/png;base64,NEW', relativePath: 'Cache/Images/new.png' }
+            ],
+            selectedImageId: 'img-new'
+          }
+        },
+        {
+          id: boutId,
+          typeId: 'graph.boundary.output',
+          category: 'note',
+          position: { x: 200, y: 0 },
+          params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
+        }
+      ],
+      edges: [
+        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const value = softResolveBoundaryOutputValue(doc, boutId)
+    expect(value).toEqual(
+      expect.objectContaining({
+        kind: 'image',
+        id: 'img-new',
+        relativePath: 'Cache/Images/new.png'
+      })
+    )
+  })
+
+  it('digs host output into inner boundary.output upstream', () => {
+    const boutId = boundaryOutputNodeId('out')
+    const inner: GraphDocument = {
+      nodes: [
+        {
+          id: 'gen',
+          typeId: 'asset.image',
+          category: 'asset',
+          position: { x: 0, y: 0 },
+          params: {
+            generatedImages: [
+              { id: 'inner-img', dataUrl: 'data:image/png;base64,IN', relativePath: 'Cache/Images/inner.png' }
+            ],
+            selectedImageId: 'inner-img'
+          }
+        },
+        {
+          id: boutId,
+          typeId: 'graph.boundary.output',
+          category: 'note',
+          position: { x: 200, y: 0 },
+          params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
+        }
+      ],
+      edges: [
+        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const parent: GraphDocument = {
+      nodes: [
+        {
+          id: 'host-node',
+          typeId: 'asset.subgraph',
+          category: 'asset',
+          position: { x: 0, y: 0 },
+          assetId: HOST_ID,
+          assetType: 'subgraph',
+          params: {
+            assetHost: true,
+            assetRef: true,
+            hostInterfaceSnapshot: {
+              version: 1,
+              inputs: [],
+              outputs: [{ id: 'out', label: 'Out', dataType: 'image', multiple: false }]
+            }
+          }
+        }
+      ],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const value = softResolveSourceOutput(parent, 'host-node', 'out', {
+      resolveLiveAssetGraph: (id) => (id === HOST_ID ? inner : undefined)
+    })
+    expect(value).toEqual(
+      expect.objectContaining({
+        kind: 'image',
+        id: 'inner-img',
+        relativePath: 'Cache/Images/inner.png'
+      })
+    )
   })
 })

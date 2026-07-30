@@ -9,6 +9,7 @@ import type {
 import {
   exportPersistedRunStates,
   importPersistedRunStates,
+  isBoundaryOutputNode,
   pickGraphRunSuccessMessageKey,
   runGraph,
   summarizeGraphRunOutput,
@@ -699,6 +700,12 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
 
   /** 当前节点 + 上游（全部重跑） */
   async function runToNode(nodeId: string): Promise<GraphRunResult | null> {
+    const graph = options.buildGraph()
+    const node = graph.nodes.find((n) => n.id === nodeId)
+    // 边界输出：只软透传上游，不重跑生成
+    if (node && isBoundaryOutputNode(node)) {
+      return runNodeOnly(nodeId)
+    }
     return executeRun({
       targetNodeId: nodeId,
       clearAll: false,
@@ -708,6 +715,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
 
   /** 当前节点 + 上游（跳过已成功节点；目标始终执行） */
   async function runToNodeSkippingDone(nodeId: string): Promise<GraphRunResult | null> {
+    const graph = options.buildGraph()
+    const node = graph.nodes.find((n) => n.id === nodeId)
+    if (node && isBoundaryOutputNode(node)) {
+      return runNodeOnly(nodeId)
+    }
     return executeRun({
       targetNodeId: nodeId,
       clearAll: false,

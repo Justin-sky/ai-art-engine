@@ -13,6 +13,7 @@ import {
 } from '../domain'
 import { flattenImagesValues, flattenVideosValues } from './execute/values'
 import type { GraphImageItem, GraphVideoItem } from './execute/types'
+import { graphValueHasPayload, softResolveBoundaryOutputValue } from './hostInput'
 import { findOutputNode } from './query'
 import {
   boundaryInputNodeId,
@@ -64,28 +65,50 @@ function listImageOutputNodes(doc: GraphDocument): GraphNode[] {
   return single ? [single] : []
 }
 
-/** 输出节点是否已跑完（仅 done 可收集；pending/running/idle/error/skipped 均跳过） */
+/** 输出节点是否已跑完，或边界输出已有可 soft-resolve 的图像载荷 */
 export function isVisualOutputNodeComplete(
   doc: GraphDocument,
   outputNodeId: string
 ): boolean {
-  return doc.runStates?.[outputNodeId]?.status === 'done'
+  if (doc.runStates?.[outputNodeId]?.status === 'done') return true
+  const node = doc.nodes.find((n) => n.id === outputNodeId)
+  if (!node || !isBoundaryOutputNode(node)) return false
+  // 落盘竞态 / 仅有 preview 时：有有效图像也视为可收集
+  return collectImagesFromOutputNodeLoose(doc, node).length > 0
 }
 
-/**
- * 从已完成的输出节点取图（runStates / cameraShots / 节点自身 generatedImages）。
- * 不回退上游生成节点。
- */
-export function collectImagesFromCompletedOutputNode(
+function collectImagesFromOutputNodeLoose(
   doc: GraphDocument,
   output: GraphNode
 ): GraphImageItem[] {
-  if (!isVisualOutputNodeComplete(doc, output.id)) return []
-
   const fromRun = doc.runStates?.[output.id]?.outputs?.out
   const fromValue = fromRun ? flattenImagesValues([fromRun]) : []
   if (fromValue.length) {
     return dedupeImageItems(fromValue.filter((item) => item.relativePath || item.dataUrl))
+  }
+
+  const previewRel = output.params.previewRelativePath?.trim()
+  const previewData = output.params.previewDataUrl?.trim()
+  if (previewRel || previewData) {
+    return [
+      {
+        id: `preview:${output.id}`,
+        dataUrl: previewData || '',
+        relativePath: previewRel
+      }
+    ]
+  }
+
+  if (isBoundaryOutputNode(output)) {
+    const soft = softResolveBoundaryOutputValue(doc, output.id)
+    if (graphValueHasPayload(soft) && soft) {
+      const fromSoft = flattenImagesValues([soft])
+      if (fromSoft.length) {
+        return dedupeImageItems(
+          fromSoft.filter((item) => item.relativePath || item.dataUrl)
+        )
+      }
+    }
   }
 
   const shots = output.params.cameraShots
@@ -103,6 +126,17 @@ export function collectImagesFromCompletedOutputNode(
   }
 
   return collectGeneratedImagesParam(output)
+}
+
+/**
+ * 从已完成的输出节点取图（runStates / preview / soft-resolve / cameraShots / generatedImages）。
+ */
+export function collectImagesFromCompletedOutputNode(
+  doc: GraphDocument,
+  output: GraphNode
+): GraphImageItem[] {
+  if (!isVisualOutputNodeComplete(doc, output.id)) return []
+  return collectImagesFromOutputNodeLoose(doc, output)
 }
 
 /**

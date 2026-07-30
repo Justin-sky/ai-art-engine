@@ -289,6 +289,58 @@ describe('boundary output mapping', () => {
       'out-1': { kind: 'text', text: 'B' }
     })
   })
+
+  it('soft-falls back to upstream gallery when boundary states are empty', () => {
+    const boutId = boundaryOutputNodeId('out')
+    const iface = {
+      version: 1,
+      inputs: [],
+      outputs: [{ id: 'out', label: 'Out', dataType: 'image' as const, multiple: false }]
+    }
+    const doc: GraphDocument = {
+      nodes: [
+        {
+          id: 'gen',
+          typeId: 'asset.image',
+          category: 'asset',
+          position: { x: 0, y: 0 },
+          params: {
+            generatedImages: [
+              {
+                id: 'g1',
+                dataUrl: 'data:image/png;base64,GG',
+                relativePath: 'Cache/Images/g1.png'
+              }
+            ],
+            selectedImageId: 'g1'
+          }
+        },
+        {
+          id: boutId,
+          typeId: 'graph.boundary.output',
+          category: 'note',
+          position: { x: 200, y: 0 },
+          params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
+        }
+      ],
+      edges: [
+        { id: 'e1', source: 'gen', target: boutId, sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const mapped = mapHostBoundaryStatesToOutputs(
+      { [boutId]: { status: 'idle' } },
+      doc,
+      iface
+    )
+    expect(mapped?.out).toEqual(
+      expect.objectContaining({
+        kind: 'image',
+        id: 'g1',
+        relativePath: 'Cache/Images/g1.png'
+      })
+    )
+  })
 })
 
 describe('hostable assets as HDA', () => {

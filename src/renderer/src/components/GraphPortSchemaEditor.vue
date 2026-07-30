@@ -127,7 +127,7 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 
 const dataTypes = Object.values(GraphPortType) as GraphPortDataType[]
-const collapsed = ref(false)
+const collapsed = ref(true)
 const dragFromIndex = ref<number | null>(null)
 const dropIndex = ref<number | null>(null)
 

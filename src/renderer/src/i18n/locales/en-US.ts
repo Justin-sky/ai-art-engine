@@ -950,7 +950,7 @@ export default {
       poseModeIk: 'IK Drag',
       poseModeAi: 'AI Pose',
       poseAiHint:
-        'Describe a pose in natural language (walk, jump, wave). A text model generates bone rotations for the selected character.',
+        'Describe a pose in natural language (walk, jump, wave). A text model generates bone rotations for the selected character. If OpenRouter openai/* returns Terms of Service, allow the upstream provider at openrouter.ai/settings/privacy, or switch to a non-OpenAI / local-region text model.',
       poseAiModel: 'Text model',
       poseAiModelPick: 'Select a model…',
       poseAiModelEmpty: 'Enable and select a text model in Settings first',
@@ -2172,6 +2172,7 @@ export default {
         dataType: 'Data type',
         port: 'Port',
         preview: 'Port preview',
+        previewEmpty: 'No preview yet (connect upstream and generate)',
         empty: 'No boundary node selected'
       },
       script: {

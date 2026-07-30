@@ -1361,12 +1361,18 @@ watch(
     const kind = previewKind.value
     const ownRel = props.asset?.relativePath?.trim() || ''
     const previewRel = props.node.params.previewRelativePath?.trim() || ''
+    const selectedId = props.node.params.selectedImageId?.trim()
+    const gallery = props.node.params.generatedImages ?? []
+    const galleryPick =
+      (selectedId ? gallery.find((item) => item.id?.trim() === selectedId) : undefined) ||
+      gallery[gallery.length - 1]
+    const galleryRel = galleryPick?.relativePath?.trim() || ''
     // 音视频只接受可播放扩展名，避免把首帧 PNG / 缩略图塞进 <video>
-    let path = ownRel || previewRel
+    let path = ownRel || previewRel || galleryRel
     if (kind === 'video') {
-      path = [ownRel, previewRel].find((p) => p && isVideoFilePath(p)) || ''
+      path = [ownRel, previewRel, galleryRel].find((p) => p && isVideoFilePath(p)) || ''
     } else if (kind === 'voice') {
-      path = [ownRel, previewRel].find((p) => p && isAudioFilePath(p)) || ''
+      path = [ownRel, previewRel, galleryRel].find((p) => p && isAudioFilePath(p)) || ''
     }
     const mode = kind === 'video' || kind === 'voice' ? 'full' : 'preview'
     // 图片始终用原图路径走 preview API（内部 ensure thumb）；音视频用原文件

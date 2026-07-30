@@ -116,8 +116,8 @@ export const AI_POSE_INSTRUCTION_PRESETS: readonly AiPoseInstructionPreset[] = [
     id: 'fightGuard',
     labelKey: 'director.stage.poseAiPreset.fightGuard',
     instruction: text(
-      '格斗戒备架：左脚在前右脚在后，膝微屈；双手抬至下颌前方护脸，肘内收；躯干侧对前方，重心居中可移动，目光注视对方。',
-      'Fighting guard: left foot forward, right back, soft knees; both hands up guarding the jaw, elbows in; torso bladed to the front, mobile center of mass, eyes on the opponent.'
+      '运动训练戒备站姿：左脚在前右脚在后，膝微屈；双手抬至下颌前方护面，肘内收；躯干略侧对前方，重心居中可移动，目光平视前方。',
+      'Athletic ready stance: left foot forward, right back, soft knees; both hands up near the jaw for guard, elbows in; torso slightly bladed forward, mobile center of mass, looking ahead.'
     )
   },
   {

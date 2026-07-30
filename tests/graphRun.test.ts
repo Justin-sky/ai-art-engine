@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  boundaryOutputNodeId,
   createNodeFromType,
   createOutputGraphNode,
   createDefaultScopedGraph,
@@ -187,6 +188,66 @@ describe('graph run', () => {
       kind: 'texts',
       items: [{ text: '仅当前节点生成' }]
     })
+  })
+
+  it('onlyTargetNode soft-passthroughs boundary.output from upstream gallery without generateImage', async () => {
+    const boutId = boundaryOutputNodeId('out')
+    const gen = createNodeFromType('asset.image', { x: 0, y: 0 }, {
+      id: 'gen',
+      params: {
+        generatedImages: [
+          {
+            id: 'pick',
+            dataUrl: 'data:image/png;base64,PICK',
+            relativePath: 'Cache/Images/pick.png'
+          }
+        ],
+        selectedImageId: 'pick'
+      }
+    })
+    const boundary = createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
+      id: boutId,
+      params: { hostBoundaryPort: { portId: 'out', dataType: 'image' } }
+    })
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,SHOULD_NOT'],
+      model: 'm'
+    }))
+
+    const result = await runGraph(
+      {
+        nodes: [gen, boundary],
+        edges: [
+          {
+            id: 'e1',
+            source: 'gen',
+            target: boutId,
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: boutId,
+        onlyTargetNode: true,
+        preserveOutsideSubset: true,
+        generateImage
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(result.order).toEqual([boutId])
+    expect(generateImage).not.toHaveBeenCalled()
+    expect(result.states[boutId]?.outputs?.out).toMatchObject({
+      kind: 'image',
+      id: 'pick',
+      relativePath: 'Cache/Images/pick.png'
+    })
+    // 画布备注卡依赖边界节点 params 上的预览路径
+    expect(boundary.params.previewRelativePath).toBe('Cache/Images/pick.png')
+    expect(boundary.params.previewCollapsed).toBe(false)
   })
 
   it('onlyTargetNode ignores empty prior text and re-resolves screenplay ref', async () => {

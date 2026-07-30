@@ -1,8 +1,9 @@
+import { graphValueHasPayload, softResolveSourceOutput } from '../hostInput'
 import { isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
-import type { GraphDocument, GraphNode } from '../types'
+import type { GraphDocument, GraphNode, GraphPersistedRunState } from '../types'
 import { isVideoFramePortId } from '../videoGenerateParams'
 import { collectUpstreamNodeIds, topologicalSort, topologicalWaves } from './topo'
 import type {
@@ -194,7 +195,12 @@ async function softSnapshotOutputs(
     | 'locale'
     | 'readRunText'
     | 'resolveNarrativeUnit'
-  >
+  >,
+  softCtx?: {
+    graph: GraphDocument
+    sourcePort: string
+    priorNodeStates?: Record<string, GraphNodeRunState>
+  }
 ): Promise<Record<string, GraphValue>> {
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
@@ -205,6 +211,38 @@ async function softSnapshotOutputs(
     return hydrateOutputRecordTexts(merged, options.readRunText)
   }
   if (gallery) return hydrateOutputRecordTexts(gallery, options.readRunText)
+
+  // 与 hostInput.softResolveSourceOutput 同源：有载荷则不再空 inputs execute（避免空跑生成）
+  if (softCtx) {
+    const priorAsPersisted: Record<string, GraphPersistedRunState> = {
+      ...(softCtx.graph.runStates ?? {})
+    }
+    for (const [id, state] of Object.entries(softCtx.priorNodeStates ?? {})) {
+      priorAsPersisted[id] = state
+    }
+    const softDoc: GraphDocument = { ...softCtx.graph, runStates: priorAsPersisted }
+    const softVal = softResolveSourceOutput(
+      softDoc,
+      node.id,
+      softCtx.sourcePort,
+      { resolveAssetGenParams: options.resolveAssetGenParams }
+    )
+    if (graphValueHasPayload(softVal)) {
+      // 资产引用正文常依赖异步 resolveAssetText；勿用 params 占位正文短路
+      const deferAsyncAssetText =
+        !!node.assetId &&
+        !!options.resolveAssetText &&
+        (softVal!.kind === 'text' || softVal!.kind === 'texts')
+      if (!deferAsyncAssetText) {
+        const port = softCtx.sourcePort || 'out'
+        return hydrateOutputRecordTexts(
+          { [port]: softVal!, out: softVal! },
+          options.readRunText
+        )
+      }
+    }
+  }
+
   const def = resolveNodeType(node)
   const execute = def?.execute ?? executePassthrough
   return Promise.resolve(
@@ -495,13 +533,19 @@ export async function runGraph(
       if (outputs.has(edge.source)) continue
       const source = byId.get(edge.source)
       if (!source) continue
+      const sourcePort = edge.sourcePort ?? 'out'
       try {
         const snap = await softSnapshotOutputs(
           source,
           options.priorNodeStates?.[edge.source],
-          options
+          options,
+          {
+            graph,
+            sourcePort,
+            priorNodeStates: options.priorNodeStates
+          }
         )
-        const out = snap.out
+        const out = snap[sourcePort] ?? snap.out
         const emptyText =
           (out?.kind === 'text' && !out.text.trim()) ||
           (out?.kind === 'texts' &&

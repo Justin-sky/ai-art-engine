@@ -9,8 +9,12 @@ import {
 } from '@shared/import'
 import {
   flattenImagesValues,
+  graphValueHasPayload,
+  isBoundaryOutputNode,
   resolveNodeTextContent,
+  softResolveBoundaryOutputValue,
   stringifyVideoEntities,
+  type GraphDocument,
   type GraphNode,
   type GraphValue
 } from '@shared/graph'
@@ -629,12 +633,33 @@ function collectFallback(into: PreviewItem[]): void {
     }
   }
 
-  // 输出 / 边界输出：无本地预览时叠加上游，便于 Inspector 按类型即时预览
-  const canUpstream =
-    node.category === 'output' || node.typeId === 'graph.boundary.output'
-  if (canUpstream && into.length === 0) {
+  // classic 输出：无本地预览时 deep walk 上游；边界输出改走 softResolve（见 items）
+  if (node.category === 'output' && into.length === 0) {
     collectUpstreamPreview(props.hostId, node.id, into, new Set([node.id]))
   }
+}
+
+/** 边界输出：拼实时文档 + live runStates，软解析直接上游 */
+function softResolveBoundaryPreview(node: GraphNode): GraphValue | undefined {
+  void graphEditorHosts.revision.value
+  const base = graphEditorHosts.getDocument(props.hostId)
+  if (!base) return undefined
+  const liveStates = graphRunHosts.get(props.hostId)?.runStates
+  const doc: GraphDocument = liveStates
+    ? { ...base, runStates: { ...(base.runStates ?? {}), ...liveStates } }
+    : base
+  return softResolveBoundaryOutputValue(doc, node.id, {
+    resolveAssetText: (assetId) => {
+      const asset = project.assets.find((a) => a.id === assetId)
+      return typeof asset?.prompt === 'string' ? asset.prompt : undefined
+    },
+    resolveAssetGenParams: (assetId) => {
+      const asset = project.assets.find((a) => a.id === assetId)
+      return asset?.genParams as Record<string, unknown> | undefined
+    },
+    resolveLiveAssetGraph: (assetId) =>
+      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+  })
 }
 
 function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
@@ -843,8 +868,16 @@ const items = computed((): PreviewItem[] => {
   void graphEditorHosts.revision.value
   const list: PreviewItem[] = []
   const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
-  // 视频实体口：只展示 JSON，不走视频图库
-  if (isVideoEntitiesJsonPreviewNode(node)) {
+  // 边界输出：有效本地 runOut 优先，否则 soft-resolve 直接上游（不 deep walk）
+  if (isBoundaryOutputNode(node)) {
+    if (graphValueHasPayload(runOut.value)) {
+      collectFromValue(runOut.value, list)
+    }
+    if (!list.length) {
+      collectFromValue(softResolveBoundaryPreview(node), list)
+    }
+  } else if (isVideoEntitiesJsonPreviewNode(node)) {
+    // 视频实体口：只展示 JSON，不走视频图库
     if (runOutHasTextItems(runOut.value)) {
       collectFromValue(runOut.value, list)
     }

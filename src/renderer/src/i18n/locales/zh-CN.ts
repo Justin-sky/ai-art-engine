@@ -943,7 +943,8 @@ export default {
       poseModeFk: 'FK 旋转',
       poseModeIk: 'IK 拖拽',
       poseModeAi: 'AI 姿势',
-      poseAiHint: '用自然语言描述姿势（如走路、跳跃、挥手），由文本模型生成骨骼旋转并应用到当前角色。',
+      poseAiHint:
+        '用自然语言描述姿势（如走路、跳跃、挥手），由文本模型生成骨骼旋转并应用到当前角色。若 OpenRouter 的 openai/* 报 Terms of Service，请到 openrouter.ai/settings/privacy 放行上游，或换非 OpenAI / 国内文本模型。',
       poseAiModel: '文本模型',
       poseAiModelPick: '选择模型…',
       poseAiModelEmpty: '请先在设置中启用并勾选文本模型',
@@ -2156,6 +2157,7 @@ export default {
         dataType: '数据类型',
         port: '端口',
         preview: '端口预览',
+        previewEmpty: '暂无预览（连接上游并生成后显示）',
         empty: '未选择边界节点'
       },
       script: {

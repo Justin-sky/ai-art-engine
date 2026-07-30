@@ -11,7 +11,6 @@ import {
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
-  withWorldElementGraph,
   WORLD_ELEMENT_KIND_TO_TYPE,
   WORLD_ELEMENT_KINDS,
   type GraphDocument,
@@ -21,10 +20,9 @@ import {
 } from '@shared/graph'
 import { GraphPortType } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
-import { persistAssetRecord } from '../../composables/useAssetRecord'
+import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
-import { toPlain } from '../../utils/toPlain'
 
 function normalizeRel(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '')
@@ -45,17 +43,6 @@ function readWorldGenParams(worldAssetId: string): Record<string, unknown> | und
   return useProjectStore().assets.find((item) => item.id === worldAssetId)?.genParams as
     | Record<string, unknown>
     | undefined
-}
-
-async function writeWorldGenParams(
-  worldAssetId: string,
-  genParams: Record<string, unknown>
-): Promise<void> {
-  if (isDraftAssetId(worldAssetId)) {
-    useDraftStore().updateDraft(worldAssetId, { genParams })
-    return
-  }
-  await persistAssetRecord(worldAssetId, { genParams })
 }
 
 async function ensureMediaAssetForPath(
@@ -191,22 +178,33 @@ export type CollectWorldElementOutputsResult = {
   items: WorldElementGenResult[]
 }
 
+function readElementWorkflowDoc(
+  worldAssetId: string,
+  kind: (typeof WORLD_ELEMENT_KINDS)[number],
+  genParams: Record<string, unknown> | undefined
+): GraphDocument {
+  // 打开中的 element 画布优先（含刚 writeBack 的 runStates / preview）
+  const live = graphEditorHosts.getDocument(`asset:${worldAssetId}:element:${kind}`)
+  if (live) return normalizeElementWorkflowDoc(live)
+  const raw = readWorldElementGraphFromGenParams(genParams, kind)
+  return normalizeElementWorkflowDoc(raw)
+}
+
 /**
  * 从世界资产四类 elementWorkflow 子图收集已完成边界输出的实体结果。
- * 调用方应先 enqueue 并跑完生成链（见 NodeGraphEditor / graphTasks）。
+ * 调用方应先 enqueue 并等 writeBack 完成（见 graphTasks.waitForTaskIds）。
+ * 只收集实体列表，不回写 worldElementGraphs（避免用旧快照冲掉刚烹好的子图）。
  */
 export async function collectWorldElementOutputs(input: {
   worldAssetId: string
   signal?: AbortSignal
 }): Promise<CollectWorldElementOutputsResult> {
   const items: WorldElementGenResult[] = []
-  let genParams = { ...(readWorldGenParams(input.worldAssetId) ?? {}) }
-  let dirty = false
+  const genParams = readWorldGenParams(input.worldAssetId)
 
   for (const kind of WORLD_ELEMENT_KINDS) {
     assertNotAborted(input.signal)
-    const raw = readWorldElementGraphFromGenParams(genParams, kind)
-    const doc = normalizeElementWorkflowDoc(raw)
+    const doc = readElementWorkflowDoc(input.worldAssetId, kind, genParams)
     const outputs = listImageOutputNodes(doc)
     const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]
 
@@ -225,13 +223,6 @@ export async function collectWorldElementOutputs(input: {
       if (!imageUrl) continue
       items.push({ type, name: asset?.name?.trim() || name, imageUrl })
     }
-
-    genParams = withWorldElementGraph(genParams, kind, toPlain(doc) as GraphDocument)
-    dirty = true
-  }
-
-  if (dirty) {
-    await writeWorldGenParams(input.worldAssetId, genParams)
   }
 
   return { items }

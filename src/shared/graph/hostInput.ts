@@ -23,8 +23,10 @@ import { GraphPortType, isGraphPortDataType } from './types'
 import type { GraphValue } from './execute/types'
 import {
   boundaryInputNodeId,
+  boundaryOutputNodeId,
   defaultHostInterfaceForAssetType,
   isBoundaryInputNode,
+  isBoundaryOutputNode,
   resolveNodeHostInterface,
   type HostInterfaceDocument
 } from './hostInterface'
@@ -309,7 +311,7 @@ function slotPreviewFromValue(
   return {}
 }
 
-function graphValueHasPayload(value: GraphValue | undefined): boolean {
+export function graphValueHasPayload(value: GraphValue | undefined): boolean {
   if (!value) return false
   if (value.kind === 'text') {
     return !!value.text.trim() || !!value.relativePath?.trim()
@@ -335,6 +337,7 @@ function graphValueHasPayload(value: GraphValue | undefined): boolean {
     return value.items.some((i) => !!(i.dataUrl?.trim() || i.relativePath?.trim()))
   }
   if (value.kind === 'voices') return value.items.some((i) => !!i.relativePath?.trim())
+  if (value.kind === 'voice') return !!(value.relativePath?.trim() || value.id?.trim())
   if (value.kind === 'output') {
     return !!(
       value.texts?.length ||
@@ -349,9 +352,71 @@ function graphValueHasPayload(value: GraphValue | undefined): boolean {
 }
 
 /**
+ * 边界输出：按入边顺序软解析第一个有载荷的上游口（与 executeBoundaryOutputNode 口径一致）。
+ * 优先本节点已有 runStates.out，否则 walk 直接上游（不 deep walk 整条链）。
+ */
+export function softResolveBoundaryOutputValue(
+  doc: GraphDocument,
+  boundaryNodeId: string,
+  options?: ResolveHostInputSlotsOptions
+): GraphValue | undefined {
+  const node =
+    doc.nodes.find((n) => n.id === boundaryNodeId) ??
+    doc.nodes.find(
+      (n) =>
+        isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === boundaryNodeId
+    )
+  if (!node || !isBoundaryOutputNode(node)) return undefined
+
+  const selfOut = doc.runStates?.[node.id]?.outputs?.out as GraphValue | undefined
+  if (graphValueHasPayload(selfOut)) return selfOut
+
+  const incoming = doc.edges.filter((edge) => edge.target === node.id)
+  for (const edge of incoming) {
+    const value = softResolveSourceOutput(
+      doc,
+      edge.source,
+      edge.sourcePort ?? 'out',
+      options
+    )
+    if (graphValueHasPayload(value)) return value
+  }
+  return undefined
+}
+
+/** 宿主实例：按出口 port dig 内图 boundary.output 的上游软值 */
+function softResolveHostBoundaryOutput(
+  node: GraphNode,
+  sourcePort: string,
+  options?: ResolveHostInputSlotsOptions
+): GraphValue | undefined {
+  if (!isAssetHostNode(node) || !node.assetId) return undefined
+  const iface = resolveNodeHostInterface(node)
+  const portId = sourcePort?.trim() || 'out'
+  const port =
+    iface.outputs.find((p) => p.id === portId) ??
+    (portId === 'out' ? iface.outputs[0] : undefined)
+  if (!port) return undefined
+
+  const liveDoc = options?.resolveLiveAssetGraph?.(node.assetId)
+  const gen = options?.resolveAssetGenParams?.(node.assetId)
+  const graphJson =
+    liveDoc ??
+    (!!gen?.graphJson &&
+    typeof gen.graphJson === 'object' &&
+    Array.isArray((gen.graphJson as GraphDocument).nodes)
+      ? (gen.graphJson as GraphDocument)
+      : undefined)
+  if (!graphJson) return undefined
+
+  const boundaryId = boundaryOutputNodeId(port.id)
+  return softResolveBoundaryOutputValue(graphJson, boundaryId, options)
+}
+
+/**
  * 从 runStates 或源节点参数软解析输出口值（父图未跑完也能拿到正文）。
  */
-function softResolveSourceOutput(
+export function softResolveSourceOutput(
   parent: GraphDocument,
   sourceId: string,
   sourcePort: string,
@@ -362,6 +427,11 @@ function softResolveSourceOutput(
   const node = parent.nodes.find((n) => n.id === sourceId)
   if (!node) {
     return graphValueHasPayload(fromRun) ? fromRun : undefined
+  }
+
+  // 边界输出本身：透传上游软值（不 deep walk）
+  if (isBoundaryOutputNode(node) && (sourcePort === 'out' || !sourcePort)) {
+    return softResolveBoundaryOutputValue(parent, node.id, options)
   }
 
   // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体
@@ -636,6 +706,12 @@ function softResolveSourceOutput(
         relativePath: previewPath
       }
     }
+  }
+
+  // 宿主出口：dig 内图 boundary.output 上游（未 cook 也能读到图库/缓存）
+  if (isAssetHostNode(node)) {
+    const fromHostBoundary = softResolveHostBoundaryOutput(node, sourcePort, options)
+    if (graphValueHasPayload(fromHostBoundary)) return fromHostBoundary
   }
 
   // 资产引用：live 内图 → 同步正文 → genParams → 旁挂路径

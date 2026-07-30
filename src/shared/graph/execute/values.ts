@@ -28,7 +28,12 @@ import {
 import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
 import { isAssetHostNode, isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
-import { mergeHostInputValues, readHostInputSlot } from '../hostInput'
+import {
+  graphValueHasPayload,
+  mergeHostInputValues,
+  readHostInputSlot,
+  softResolveBoundaryOutputValue
+} from '../hostInput'
 import {
   boundaryInputNodeId,
   boundaryOutputNodeId,
@@ -1360,6 +1365,11 @@ export function mapHostBoundaryStatesToOutputs(
   iface: HostInterfaceDocument
 ): Record<string, GraphValue> | null {
   const result: Record<string, GraphValue> = {}
+  // soft-resolve 可读持久化 runStates + 上游图库；合并本次 states 优先
+  const softDoc: GraphDocument = {
+    ...doc,
+    runStates: { ...(doc.runStates ?? {}), ...states }
+  }
   for (const port of iface.outputs) {
     const id = boundaryOutputNodeId(port.id)
     const node = doc.nodes.find((n) => n.id === id) ??
@@ -1369,7 +1379,12 @@ export function mapHostBoundaryStatesToOutputs(
       )
     if (!node) continue
     const out = states[node.id]?.outputs?.out
-    if (out) result[port.id] = out
+    if (graphValueHasPayload(out)) {
+      result[port.id] = out!
+      continue
+    }
+    const soft = softResolveBoundaryOutputValue(softDoc, node.id)
+    if (graphValueHasPayload(soft)) result[port.id] = soft!
   }
   return Object.keys(result).length ? result : null
 }
@@ -2863,12 +2878,68 @@ export async function executeBoundaryInputNode(
   })
 }
 
+/** 边界输出透传后，把媒体路径写到节点 params，供画布备注卡预览 */
+function patchBoundaryOutputPreview(ctx: NodeExecuteContext, value: GraphValue): void {
+  const apply = (params: {
+    previewRelativePath: string
+    previewDataUrl?: string
+    previewCollapsed: false
+  }): void => {
+    ctx.node.params = { ...ctx.node.params, ...params }
+    ctx.patchNode?.({ params })
+  }
+  if (value.kind === 'image') {
+    const rel = value.relativePath?.trim()
+    if (!rel && !value.dataUrl?.trim()) return
+    apply({
+      previewRelativePath: rel || '',
+      previewDataUrl: rel ? undefined : value.dataUrl,
+      previewCollapsed: false
+    })
+    return
+  }
+  if (value.kind === 'images') {
+    const item = value.items.find((i) => i.relativePath?.trim() || i.dataUrl?.trim())
+    if (!item) return
+    const rel = item.relativePath?.trim()
+    apply({
+      previewRelativePath: rel || '',
+      previewDataUrl: rel ? undefined : item.dataUrl,
+      previewCollapsed: false
+    })
+    return
+  }
+  if (value.kind === 'video') {
+    const rel = value.relativePath?.trim()
+    if (!rel && !value.dataUrl?.trim()) return
+    apply({
+      previewRelativePath: rel || '',
+      previewDataUrl: rel ? undefined : value.dataUrl,
+      previewCollapsed: false
+    })
+    return
+  }
+  if (value.kind === 'videos') {
+    const item = value.items.find((i) => i.relativePath?.trim() || i.dataUrl?.trim())
+    if (!item) return
+    const rel = item.relativePath?.trim()
+    apply({
+      previewRelativePath: rel || '',
+      previewDataUrl: rel ? undefined : item.dataUrl,
+      previewCollapsed: false
+    })
+  }
+}
+
 /** 宿主边界输出：透传第一个输入到 out */
 export function executeBoundaryOutputNode(
   ctx: NodeExecuteContext
 ): Record<string, GraphValue> {
   const first = (ctx.inputs.in ?? Object.values(ctx.inputs).flat())[0]
-  if (first) return { out: first }
+  if (first) {
+    patchBoundaryOutputPreview(ctx, first)
+    return { out: first }
+  }
   const dataType = ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
   if (
     dataType === GraphPortType.narrative ||

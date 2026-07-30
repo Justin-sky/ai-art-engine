@@ -21,7 +21,7 @@
   >
     <div class="note-head">
       <button
-        v-if="isInputSlot"
+        v-if="isInputSlot || isBoundary"
         type="button"
         class="collapse-tri-btn"
         :class="{ collapsed: previewCollapsed }"
@@ -77,8 +77,17 @@
       </div>
     </div>
 
-    <div v-show="!previewCollapsed" class="note-content">
-      <div class="note-body">{{ displayText }}</div>
+    <div v-show="!previewCollapsed" class="note-content" :class="{ 'has-media': !!mediaPreviewUrl }">
+      <img
+        v-if="mediaPreviewUrl"
+        :src="mediaPreviewUrl"
+        alt=""
+        class="note-media-preview"
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      />
+      <div v-else class="note-body">{{ displayText }}</div>
     </div>
 
     <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
@@ -117,24 +126,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import LockIcon from './icons/LockIcon.vue'
 import {
   getNodePorts,
   getNodeSize,
   GRAPH_INPUT_SLOT_TYPE_ID,
+  graphValueHasPayload,
+  isBoundaryProxyNode,
   isGenerateLocked,
   nodePortYRatio,
   readHostInputSlot,
   resolveNodeType,
+  softResolveBoundaryOutputValue,
   supportsGenerateLock,
+  type GraphDocument,
   type GraphNode,
+  type GraphNodeRunState,
   type GraphNodeRunStatus,
-  type GraphPortDataType
+  type GraphPortDataType,
+  type GraphValue
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import { graphPreviewLoadScheduler } from '../features/media/previewLoadScheduler'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
 const { t, te } = useStudioI18n()
 
@@ -144,6 +162,7 @@ const props = defineProps<{
   hostId?: string
   runStatus?: GraphNodeRunStatus
   runError?: string
+  runState?: GraphNodeRunState
 }>()
 
 const emit = defineEmits<{
@@ -160,11 +179,20 @@ const nodePorts = computed(() => getNodePorts(props.node))
 const inPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'in'))
 const outPorts = computed(() => nodePorts.value.filter((p) => p.direction === 'out'))
 const isInputSlot = computed(() => props.node.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
+const isBoundary = computed(() => isBoundaryProxyNode(props.node))
 const canLock = computed(() => supportsGenerateLock(props.node))
 const isLocked = computed(() => isGenerateLocked(props.node))
 const slotBinding = computed(() => readHostInputSlot(props.node))
 const slotDataType = computed<GraphPortDataType>(
   () => slotBinding.value?.dataType ?? outPorts.value[0]?.dataType ?? 'text'
+)
+const boundaryDataType = computed(
+  () => props.node.params.hostBoundaryPort?.dataType ?? 'text'
+)
+const isImageBoundary = computed(
+  () =>
+    isBoundary.value &&
+    (boundaryDataType.value === 'image' || boundaryDataType.value === 'images')
 )
 
 function portTypeLabel(dataType: GraphPortDataType): string {
@@ -179,17 +207,92 @@ function portWrapStyle(count: number, index: number): Record<string, string> {
 
 const width = computed(() => nodeSize.value.w)
 const height = computed(() => nodeSize.value.h)
-/** 输入接口默认折叠；仅显式 false 为展开 */
-const previewCollapsed = computed(
-  () => isInputSlot.value && props.node.params.previewCollapsed !== false
-)
+
+function mediaPathFromValue(value: GraphValue | undefined): string {
+  if (!value) return ''
+  if (value.kind === 'image') return value.relativePath?.trim() || ''
+  if (value.kind === 'images') {
+    const item = value.items.find((i) => i.relativePath?.trim())
+    return item?.relativePath?.trim() || ''
+  }
+  return ''
+}
+
+const boundaryImagePath = computed(() => {
+  if (!isImageBoundary.value) return ''
+  void graphEditorHosts.revision.value
+  void props.runState?.status
+  void props.runState?.outputs?.out
+  const local = props.node.params.previewRelativePath?.trim()
+  if (local) return local
+  const fromRun = mediaPathFromValue(props.runState?.outputs?.out as GraphValue | undefined)
+  if (fromRun) return fromRun
+  if (!props.hostId) return ''
+  const base = graphEditorHosts.getDocument(props.hostId)
+  if (!base) return ''
+  const liveStates = graphRunHosts.get(props.hostId)?.runStates
+  const doc: GraphDocument = liveStates
+    ? { ...base, runStates: { ...(base.runStates ?? {}), ...liveStates } }
+    : base
+  const soft = softResolveBoundaryOutputValue(doc, props.node.id)
+  return graphValueHasPayload(soft) ? mediaPathFromValue(soft) : ''
+})
+
+/**
+ * 输入接口：默认折叠。
+ * 图片边界输出：有可预览图时默认展开；用户折叠后保留折叠。
+ */
+const previewCollapsed = computed(() => {
+  if (isImageBoundary.value) {
+    if (!boundaryImagePath.value) return true
+    const hasLocalPreview = !!props.node.params.previewRelativePath?.trim()
+    return hasLocalPreview && props.node.params.previewCollapsed === true
+  }
+  if (isInputSlot.value || isBoundary.value) {
+    return props.node.params.previewCollapsed !== false
+  }
+  return false
+})
 
 function togglePreviewCollapsed(): void {
-  if (!props.hostId || !isInputSlot.value) return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, {
-    previewCollapsed: !previewCollapsed.value
-  })
+  if (!props.hostId || (!isInputSlot.value && !isBoundary.value)) return
+  const nextCollapsed = !previewCollapsed.value
+  const patch: Record<string, unknown> = { previewCollapsed: nextCollapsed }
+  // 折叠/展开时把 soft-resolve 到的路径落盘，便于记住折叠态
+  if (isImageBoundary.value && boundaryImagePath.value) {
+    patch.previewRelativePath = boundaryImagePath.value
+  }
+  graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
 }
+
+const mediaPreviewUrl = ref('')
+let mediaPreviewCancel: (() => void) | null = null
+watch(
+  () => [boundaryImagePath.value, previewCollapsed.value] as const,
+  async ([path, collapsed]) => {
+    mediaPreviewCancel?.()
+    mediaPreviewCancel = null
+    if (collapsed || !path) {
+      mediaPreviewUrl.value = ''
+      return
+    }
+    const { promise, cancel } = graphPreviewLoadScheduler.enqueue(0, () =>
+      resolveAssetPreviewUrl(path)
+    )
+    mediaPreviewCancel = cancel
+    try {
+      mediaPreviewUrl.value = await promise
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      mediaPreviewUrl.value = ''
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  mediaPreviewCancel?.()
+  mediaPreviewCancel = null
+})
 
 function toggleLock(): void {
   if (!props.hostId || !canLock.value) return
@@ -245,6 +348,12 @@ const displayText = computed(() => {
     if (te(byType)) return t(byType)
     return t('graph.inputInterface.placeholder')
   }
+  if (isImageBoundary.value) {
+    return boundaryImagePath.value || t('graph.inspector.boundary.previewEmpty')
+  }
+  if (isBoundary.value) {
+    return t('graph.inspector.boundary.previewEmpty')
+  }
   const text = props.node.params.text?.trim()
   if (text) return text
   const key = presentation.value?.textPlaceholderKey
@@ -299,8 +408,8 @@ function onInPortDown(portId: string, e: PointerEvent): void {
 }
 
 function onBodyDblClick(): void {
-  // 输入接口只读引用外层值，不打开记事本
-  if (isInputSlot.value) return
+  // 输入接口 / 边界代理只读，不打开记事本
+  if (isInputSlot.value || isBoundary.value) return
   emit('textOpen', props.node.id)
 }
 </script>
@@ -546,6 +655,20 @@ function onBodyDblClick(): void {
   display: flex;
   overflow: hidden;
   border-radius: 0 0 8px 8px;
+}
+
+.note-content.has-media {
+  padding: 0;
+  background: #0a0a0c;
+}
+
+.note-media-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
 }
 
 .note-body {

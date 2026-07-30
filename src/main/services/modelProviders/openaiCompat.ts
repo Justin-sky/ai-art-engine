@@ -152,6 +152,28 @@ function extractRequestId(message: string): string | null {
   return match?.[1] ?? null
 }
 
+/** OpenRouter / 上游 ToS、隐私策略拒绝时的可操作说明（供测试与错误格式化共用） */
+export function explainProviderTosDenial(raw: string, baseUrl?: string): string | null {
+  if (
+    !/prohibited due to a violation of provider terms of service/i.test(raw) &&
+    !(/terms of service/i.test(raw) && /forbidden|403/i.test(raw))
+  ) {
+    return null
+  }
+  if (/openrouter\.ai/i.test(baseUrl || '')) {
+    return (
+      'OpenRouter 拒绝了该请求（provider Terms of Service / 数据策略）。' +
+      '常见原因：隐私设置未允许该上游供应商（如 OpenAI），或账号对 openai/* 路由受限。' +
+      '请到 https://openrouter.ai/settings/privacy 调整 Provider 与数据策略后重试；' +
+      '也可改用非 OpenAI 文本模型，或换用方舟 / 通义等国内文本接入点。'
+    )
+  }
+  return (
+    '上游模型提供商拒绝了该请求（Terms of Service / 内容或路由策略）。' +
+    '请换一个文本模型重试，或检查该提供商控制台的隐私、区域与模型访问权限。'
+  )
+}
+
 async function formatTextGenerateFailure(
   err: unknown,
   provider: ModelProviderInstance
@@ -168,6 +190,9 @@ async function formatTextGenerateFailure(
     ? (err.response?.data as { error?: { code?: string } } | undefined)
     : undefined
   const code = data?.error?.code ? String(data.error.code) : ''
+
+  const tosHint = explainProviderTosDenial(raw, provider.baseUrl)
+  if (tosHint) return tosHint
 
   if (
     status === 500 ||

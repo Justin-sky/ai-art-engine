@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { extractChatCompletionText } from '../src/main/services/modelProviders/openaiCompat'
+import {
+  explainProviderTosDenial,
+  extractChatCompletionText
+} from '../src/main/services/modelProviders/openaiCompat'
 
 describe('extractChatCompletionText', () => {
   it('reads plain string content', () => {
@@ -57,5 +60,20 @@ describe('extractChatCompletionText', () => {
       name: 'apply_bone_pose',
       arguments: { bones: { Hips: { x: 0, y: 1, z: 0 } } }
     })
+  })
+})
+
+describe('explainProviderTosDenial', () => {
+  it('points OpenRouter users to privacy settings', () => {
+    const msg = explainProviderTosDenial(
+      'The request is prohibited due to a violation of provider Terms Of Service.',
+      'https://openrouter.ai/api/v1'
+    )
+    expect(msg).toContain('openrouter.ai/settings/privacy')
+    expect(msg).toContain('openai/*')
+  })
+
+  it('returns null for unrelated errors', () => {
+    expect(explainProviderTosDenial('rate limit exceeded', 'https://openrouter.ai/api/v1')).toBeNull()
   })
 })
