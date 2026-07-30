@@ -2653,24 +2653,36 @@ function formatTime(sec: number): string {
   right: 0;
 }
 
-/* 输入口：类型在端口左侧（节点外），数量在右侧（节点内） */
-.port-wrap.in .port-type {
+/* 端口名：端口上方，且整体在节点边框外 */
+.port-wrap.in .port-type,
+.port-wrap.out .port-type {
   position: absolute;
+  left: 0;
   top: 0;
-  right: 12px;
-  transform: translateY(-50%);
   font-size: 9px;
   line-height: 1;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 52px;
+  max-width: 64px;
   pointer-events: none;
   user-select: none;
+}
+
+.port-wrap.in .port-type {
+  /* 左边框外、端口上方 */
+  transform: translate(calc(-100% - 10px), calc(-100% - 6px));
   text-align: right;
 }
 
+.port-wrap.out .port-type {
+  /* 右边框外、端口上方 */
+  transform: translate(10px, calc(-100% - 6px));
+  text-align: left;
+}
+
+/* 输入口数量徽标仍在端口右侧（节点内） */
 .port-wrap.in .port-limit {
   position: absolute;
   top: 0;
@@ -2690,23 +2702,6 @@ function formatTime(sec: number): string {
   pointer-events: none;
   user-select: none;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-}
-
-.port-wrap.out .port-type {
-  position: absolute;
-  top: 0;
-  left: 12px;
-  font-size: 9px;
-  line-height: 1;
-  color: var(--text-muted);
-  white-space: nowrap;
-  pointer-events: none;
-  user-select: none;
-  max-width: 52px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transform: translateY(-50%);
-  text-align: left;
 }
 
 .port {

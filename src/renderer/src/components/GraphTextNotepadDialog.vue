@@ -54,7 +54,9 @@
         class="editor"
         spellcheck="false"
         :readonly="!editable"
+        :style="{ fontSize: `${fontSize}px` }"
         :placeholder="editable ? t('graph.notepad.placeholder') : t('graph.notepad.emptyReadonly')"
+        :title="t('graph.notepad.fontZoomHint')"
         @keydown.ctrl.s.prevent="onSaveShortcut"
         @keydown.meta.s.prevent="onSaveShortcut"
       />
@@ -100,6 +102,11 @@ const emit = defineEmits<{
   save: [text: string]
 }>()
 
+const FONT_SIZE_KEY = 'ai-art-engine.notepad.fontSize'
+const FONT_SIZE_DEFAULT = 13
+const FONT_SIZE_MIN = 10
+const FONT_SIZE_MAX = 36
+
 const { t } = useStudioI18n()
 const draft = ref('')
 const baseline = ref('')
@@ -108,6 +115,55 @@ const editorEl = ref<HTMLTextAreaElement | null>(null)
 const copiedFlash = ref(false)
 const tokenCount = ref(0)
 let tokenTimer: ReturnType<typeof setTimeout> | null = null
+
+function clampFontSize(value: number): number {
+  if (!Number.isFinite(value)) return FONT_SIZE_DEFAULT
+  return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(value)))
+}
+
+function readStoredFontSize(): number {
+  try {
+    return clampFontSize(Number(localStorage.getItem(FONT_SIZE_KEY) || FONT_SIZE_DEFAULT))
+  } catch {
+    return FONT_SIZE_DEFAULT
+  }
+}
+
+const fontSize = ref(readStoredFontSize())
+
+function setFontSize(next: number): void {
+  const clamped = clampFontSize(next)
+  if (clamped === fontSize.value) return
+  fontSize.value = clamped
+  try {
+    localStorage.setItem(FONT_SIZE_KEY, String(clamped))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+/** Ctrl/Cmd + 滚轮缩放编辑区字体（须非 passive 才能阻止浏览器缩放） */
+function onEditorWheel(e: WheelEvent): void {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const step = e.deltaY < 0 ? 1 : -1
+  setFontSize(fontSize.value + step)
+}
+
+let wheelTarget: HTMLTextAreaElement | null = null
+
+function bindEditorWheel(): void {
+  unbindEditorWheel()
+  const el = editorEl.value
+  if (!el) return
+  wheelTarget = el
+  el.addEventListener('wheel', onEditorWheel, { passive: false })
+}
+
+function unbindEditorWheel(): void {
+  wheelTarget?.removeEventListener('wheel', onEditorWheel)
+  wheelTarget = null
+}
 
 const editable = computed(() => props.editable !== false)
 const images = computed(() => props.images.filter((item) => Boolean(item.url?.trim())))
@@ -127,11 +183,14 @@ const statusLeft = computed(() => {
 })
 
 const statusRight = computed(() =>
-  t('graph.notepad.stats', {
-    lines: lineCount.value,
-    chars: charCount.value,
-    tokens: tokenCount.value
-  })
+  [
+    t('graph.notepad.fontSize', { size: fontSize.value }),
+    t('graph.notepad.stats', {
+      lines: lineCount.value,
+      chars: charCount.value,
+      tokens: tokenCount.value
+    })
+  ].join(' · ')
 )
 
 function scheduleTokenCount(text: string): void {
@@ -150,6 +209,7 @@ watch(
 
 onBeforeUnmount(() => {
   if (tokenTimer) clearTimeout(tokenTimer)
+  unbindEditorWheel()
 })
 
 function syncDraftFromProps(): void {
@@ -162,13 +222,17 @@ function syncDraftFromProps(): void {
 watch(
   () => props.open,
   async (visible) => {
-    if (!visible) return
+    if (!visible) {
+      unbindEditorWheel()
+      return
+    }
     syncDraftFromProps()
     await nextTick()
     // StudioFloatingWindow 会延迟两帧再挂 body slot，再等一帧聚焦
     await nextTick()
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        bindEditorWheel()
         editorEl.value?.focus()
         editorEl.value?.setSelectionRange(0, 0)
       })
@@ -345,7 +409,7 @@ defineExpose({
   background: var(--bg-input);
   color: var(--text);
   font-family: 'Cascadia Code', 'Consolas', 'SF Mono', ui-monospace, monospace;
-  font-size: 13px;
+  font-size: 13px; /* 实际字号由 :style fontSize 覆盖，可 Ctrl/Cmd+滚轮缩放 */
   line-height: 1.55;
   outline: none;
   box-sizing: border-box;

@@ -1297,7 +1297,7 @@ export default {
       stopConfirmTitle: '停止任务',
       stopConfirmMessage: '确定停止该工作流？停止后将移至「已完成」页签。',
       duplicateTitle: '无法重复添加',
-      duplicateMessage: '该工作流已在任务列表中执行，请等待完成或停止后再试。',
+      duplicateMessage: '同一输出分支已在任务列表中执行，请等待完成或停止后再试。不同边界输出可同时加入并行执行。',
       nodeRunBlockedTitle: '无法执行节点',
       nodeRunBlockedMessage: '该工作流正在任务列表中执行，完成或停止前不能单独执行节点或执行上游节点。',
       status: {
@@ -2104,6 +2104,8 @@ export default {
       unsaved: '未保存',
       saved: '已保存',
       stats: '{lines} 行 · {chars} 字符 · {tokens} tokens',
+      fontSize: '{size}px',
+      fontZoomHint: 'Ctrl + 滚轮缩放字体',
       openHint: '双击查看 / 编辑',
       imageBatch: '参考图片'
     },

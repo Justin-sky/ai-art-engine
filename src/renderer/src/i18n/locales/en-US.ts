@@ -1306,7 +1306,8 @@ export default {
       stopConfirmTitle: 'Stop task',
       stopConfirmMessage: 'Stop this workflow? It will be moved to the Completed tab.',
       duplicateTitle: 'Already in queue',
-      duplicateMessage: 'This workflow is already running in the task list. Wait for it to finish or stop it first.',
+      duplicateMessage:
+        'This output branch is already running in the task list. Wait for it to finish or stop it first. Different boundary outputs can run in parallel.',
       nodeRunBlockedTitle: 'Cannot run node',
       nodeRunBlockedMessage: 'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
       status: {
@@ -2117,6 +2118,8 @@ export default {
       unsaved: 'Unsaved',
       saved: 'Saved',
       stats: '{lines} lines · {chars} chars · {tokens} tokens',
+      fontSize: '{size}px',
+      fontZoomHint: 'Ctrl + scroll to zoom font',
       openHint: 'Double-click to view / edit',
       imageBatch: 'Reference images'
     },
