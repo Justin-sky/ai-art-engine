@@ -120,14 +120,29 @@
         v-if="menuOpen && presets.length"
         ref="presetMenuEl"
         class="preset-menu"
+        :class="{ 'has-tabs': presetTabs.length > 1 }"
         :style="presetMenuStyle"
         @mousedown.stop
         @click.stop
       >
         <div class="preset-menu-title">{{ presetMenuTitle }}</div>
+        <div v-if="presetTabs.length > 1" class="preset-tabs" role="tablist">
+          <button
+            v-for="tab in presetTabs"
+            :key="tab"
+            type="button"
+            class="preset-tab"
+            role="tab"
+            :class="{ active: activePresetTab === tab }"
+            :aria-selected="activePresetTab === tab"
+            @click="activePresetTab = tab"
+          >
+            {{ presetTabLabel(tab) }}
+          </button>
+        </div>
         <div class="preset-grid">
           <button
-            v-for="item in presets"
+            v-for="item in visiblePresets"
             :key="item.id"
             type="button"
             class="preset-card"
@@ -208,6 +223,7 @@ import {
   type InstructionMentionSource,
   type InstructionPreset,
   type InstructionPresetKind,
+  type InstructionPresetTab,
   type PresetVisual
 } from '@shared/graph'
 import ExpandArrowsIcon from './icons/ExpandArrowsIcon.vue'
@@ -332,24 +348,36 @@ const dragGhostStyle = computed(() => ({
 
 /** 预设按需动态加载，避免首次打开指令面板时同步解析大段模板 */
 const presets = ref<InstructionPreset[]>([])
+const presetTabs = ref<InstructionPresetTab[]>([])
+const activePresetTab = ref<InstructionPresetTab>('general')
 let presetsLoadedKind: InstructionPresetKind | null = null
 
 async function ensurePresetsLoaded(): Promise<void> {
   const kind = props.presetKind
   if (!kind) {
     presets.value = []
+    presetTabs.value = []
     presetsLoadedKind = null
     return
   }
-  if (presetsLoadedKind === kind && presets.value.length) return
+  if (presetsLoadedKind === kind) return
   const mod = await import('@shared/graph/instructionPresets')
   presets.value = mod.listInstructionPresets(kind)
+  presetTabs.value = mod.listInstructionPresetTabs(kind)
+  activePresetTab.value = presetTabs.value[0] ?? 'general'
   presetsLoadedKind = kind
 }
+
+const visiblePresets = computed(() => {
+  if (presetTabs.value.length <= 1) return presets.value
+  const tab = activePresetTab.value
+  return presets.value.filter((item) => (item.tab ?? 'general') === tab)
+})
 
 const presetMenuTitle = computed(() => {
   if (props.presetKind === 'screenplay') return t('graph.inspector.generate.presets.titleScreenplay')
   if (props.presetKind === 'optimize') return t('graph.inspector.generate.presets.titleOptimize')
+  if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
   if (props.presetKind === 'shotSplit') return t('graph.inspector.generate.presets.titleShotSplit')
   if (props.presetKind === 'worldExtract') return t('graph.inspector.generate.presets.titleWorldExtract')
   if (props.presetKind === 'narrativeSplit') {
@@ -360,6 +388,12 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
   return t('graph.inspector.generate.presets.title')
 })
+
+function presetTabLabel(tab: InstructionPresetTab): string {
+  if (tab === 'game') return t('graph.inspector.generate.presets.tabGame')
+  if (tab === 'film') return t('graph.inspector.generate.presets.tabFilm')
+  return t('graph.inspector.generate.presets.tabGeneral')
+}
 
 function sourceTitle(node: GraphNode): string {
   const custom = node.title?.trim()
@@ -743,6 +777,9 @@ function updatePresetMenuPosition(): void {
 async function openPresetMenu(): Promise<void> {
   await ensurePresetsLoaded()
   if (!presets.value.length) return
+  if (presetTabs.value.length) {
+    activePresetTab.value = presetTabs.value[0] ?? 'general'
+  }
   presetMenuStyle.value = {
     position: 'fixed',
     top: '-9999px',
@@ -890,6 +927,14 @@ watch(menuOpen, (open) => {
     window.removeEventListener('scroll', onPresetMenuReposition, true)
     window.removeEventListener('resize', onPresetMenuReposition)
   }
+})
+
+watch(activePresetTab, () => {
+  if (!menuOpen.value) return
+  void nextTick(() => {
+    updatePresetMenuPosition()
+    requestAnimationFrame(() => updatePresetMenuPosition())
+  })
 })
 
 onMounted(() => {
@@ -1241,11 +1286,46 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 28px var(--shadow);
 }
 
+.preset-menu.has-tabs {
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+}
+
 .preset-menu-title {
   padding: 4px 8px 6px;
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0.04em;
+}
+
+.preset-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px 8px;
+}
+
+.preset-tab {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel, var(--bg));
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.preset-tab:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.preset-tab.active {
+  border-color: var(--accent-45);
+  color: var(--accent-fg);
+  background: var(--accent-18);
 }
 
 .preset-grid {

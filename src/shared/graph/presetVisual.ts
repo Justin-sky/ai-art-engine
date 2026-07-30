@@ -214,7 +214,16 @@ export function resolveInstructionVisual(input: {
   if (id.startsWith('narrative.') || id.includes('narrative')) {
     return { kind: 'chips', chips: ['节', '拍', '钩'] }
   }
-  if (id.includes('optimize') || id.includes('toPrompt')) {
+  if (id.includes('toPrompt.game')) {
+    return { kind: 'icon', icon: '🎮' }
+  }
+  if (id.includes('toPrompt.film')) {
+    return { kind: 'icon', icon: '🎬' }
+  }
+  if (id.includes('toPrompt')) {
+    return { kind: 'icon', icon: '🔎' }
+  }
+  if (id.includes('optimize')) {
     return { kind: 'icon', icon: '✎' }
   }
   if (id.includes('lipSync')) return { kind: 'icon', icon: '👄' }

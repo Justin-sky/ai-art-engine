@@ -2339,6 +2339,10 @@ export default {
           titleImage: 'Image generation templates',
           titleVideo: 'Video generation templates',
           titleLipSync: 'Lip sync templates',
+          titleToPrompt: 'Image reverse-prompt templates',
+          tabGeneral: 'General',
+          tabGame: 'Game',
+          tabFilm: 'Film',
           screenplay: {
             create: 'Short-drama framework',
             twists: 'Add payoffs & twists',
@@ -2407,6 +2411,24 @@ export default {
             camera: 'Camera move prompt',
             expression: 'Expression reference prompt',
             vfx: 'VFX prompt'
+          },
+          toPrompt: {
+            structured: 'Full structured caption',
+            subject: 'Subject-focused',
+            style: 'Style & medium',
+            light: 'Composition & lighting',
+            gameCharacter: 'Character sheet',
+            gameScene: 'Scene concept',
+            gameUi: 'UI / icon',
+            gameProp: 'Prop / weapon',
+            gameUa: 'UA still',
+            gameVfx: 'Skill VFX frame',
+            filmEstablish: 'Establishing shot',
+            filmCloseup: 'Performance close-up',
+            filmLight: 'Lighting & grade',
+            filmStoryboard: 'Storyboard frame',
+            filmCostume: 'Costume / makeup',
+            filmCamera: 'Camera language'
           },
           shotSplit: {
             create: 'Split screenplay into shots',

@@ -2317,6 +2317,10 @@ export default {
           titleImage: '图片生成模板',
           titleVideo: '视频生成模板',
           titleLipSync: '对口型模板',
+          titleToPrompt: '图片反推模板',
+          tabGeneral: '通用',
+          tabGame: '游戏',
+          tabFilm: '影视',
           screenplay: {
             create: '短剧创作框架',
             twists: '增加爽点和反转',
@@ -2385,6 +2389,24 @@ export default {
             camera: '运镜提示词优化',
             expression: '人物表情提示词优化',
             vfx: '特效提示词优化'
+          },
+          toPrompt: {
+            structured: '结构化全量反推',
+            subject: '主体特写反推',
+            style: '风格媒介反推',
+            light: '构图光影反推',
+            gameCharacter: '角色设定图',
+            gameScene: '场景概念图',
+            gameUi: 'UI / 图标',
+            gameProp: '道具 / 武器',
+            gameUa: '买量静帧',
+            gameVfx: '技能特效帧',
+            filmEstablish: '建立镜头 / 空镜',
+            filmCloseup: '人物特写表演',
+            filmLight: '光影调色',
+            filmStoryboard: '分镜画面',
+            filmCostume: '服化道造型',
+            filmCamera: '镜头语言'
           },
           shotSplit: {
             create: '剧本拆分为分镜',

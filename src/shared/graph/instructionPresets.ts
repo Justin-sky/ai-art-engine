@@ -17,12 +17,23 @@ export type InstructionPresetKind =
   | 'narrativeSplit'
   | 'narrativeUnitGen'
 
+/** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
+export type InstructionPresetTab = 'general' | 'game' | 'film'
+
+export const INSTRUCTION_PRESET_TAB_ORDER: readonly InstructionPresetTab[] = [
+  'general',
+  'game',
+  'film'
+] as const
+
 export interface InstructionPreset {
   id: string
   /** i18n 标题 key */
   titleKey: string
   /** 写入生成指令框的正文 */
   body: string
+  /** 可选页签；有多页签时菜单显示筛选 */
+  tab?: InstructionPresetTab
   /** 可选；缺省时由 resolveInstructionVisual 推断 */
   visual?: import('./presetVisual').PresetVisual
 }
@@ -821,7 +832,234 @@ const LIP_SYNC_PRESETS: InstructionPreset[] = [
 ]
 
 const VOICE_PRESETS: InstructionPreset[] = []
-const TO_PROMPT_PRESETS: InstructionPreset[] = []
+
+/** ——— 图片反推提示词：通用 ——— */
+const TO_PROMPT_GENERAL_STRUCTURED_BODY = `请根据图片输出可复用的结构化中文生图提示词，按下列段落书写（不要解释过程）：
+1. 主体：身份/物种、年龄感、服饰、姿态、表情、关键道具
+2. 环境：场景类型、时间、天气、前景/中景/背景层次
+3. 构图：景别、机位高低、视角、主体在画面中的位置
+4. 光影：主光方向与质感、对比、氛围色
+5. 风格：媒介（写实/插画/3D 等）、画质关键词、色彩倾向
+6. 细节：材质、纹理、必须保留的辨识点
+禁止编造图中不存在的重要物体；不确定处用「疑似」标注。`
+
+const TO_PROMPT_GENERAL_SUBJECT_BODY = `聚焦主体反推提示词：
+- 精确描述主体外形、服饰层次、材质与配饰
+- 姿态、手势、眼神与情绪
+- 与主体直接接触的道具
+- 忽略无关背景杂讯，仅用一句交代环境即可
+输出为可直接用于文生图的中文提示词，分短句，逗号分隔。`
+
+const TO_PROMPT_GENERAL_STYLE_BODY = `侧重风格反推：
+- 媒介与技法（摄影/油画/二次元/赛博/像素等）
+- 色彩体系、对比度、颗粒/笔触感
+- 时代感或艺术流派关键词
+- 画面完成度与渲染级别（如胶片、UE5、手绘线稿）
+主体与场景各用 1–2 句概括，重点给出可复用的风格词库（中文）。`
+
+const TO_PROMPT_GENERAL_LIGHT_BODY = `侧重构图与光影反推：
+- 景别、构图法则（三分/中心/引导线等）
+- 镜头感：焦距印象、景深、畸变
+- 主光/辅光/轮廓光、色温、阴影软硬
+- 氛围关键词（清晨、霓虹、烛光等）
+输出中文提示词，光影与构图词占比不少于一半。`
+
+/** ——— 图片反推提示词：游戏 ——— */
+const TO_PROMPT_GAME_CHARACTER_BODY = `按游戏角色设定图标准反推中文提示词：
+- 全身或半身设定观感；姿态尽量可读（如 A-pose / 展示型站姿）
+- 发型、五官、体型、服装分层、配色与标志性配件
+- 材质：布料/金属/皮革/能量特效等
+- 风格：手游立绘 / 次世代写实 / 卡通风 等（从图判断）
+- 背景尽量简化或纯色；不要把剧情场景写进角色设定
+禁止过度美颜表述；保留可辨识特征。`
+
+const TO_PROMPT_GAME_SCENE_BODY = `按游戏场景概念图反推：
+- 场景类型（城镇/副本/野外/室内功能区）
+- 空间层次、可行走暗示、地标与氛围
+- 时代与美术风格（古风/科幻/卡通等）
+- 光照与天气对玩法氛围的影响
+- 空场景优先：少写或不写具体 NPC 剧情动作
+输出可直接用于场景概念生成的中文提示词。`
+
+const TO_PROMPT_GAME_UI_BODY = `按游戏 UI / 图标资产反推：
+- 资产类型：图标 / 按钮 / 弹窗框 / Banner / HUD 元件（从图判断）
+- 形状、描边、内发光、材质质感、角标与装饰
+- 清晰可读性、对称与安全边距印象
+- 风格：扁平 / 半写实 / 卡通描边 / 科技面板 等
+- 背景：透明感或纯色底；避免复杂实景
+输出中文提示词，强调「可切片、可复用」的设计语言。`
+
+const TO_PROMPT_GAME_PROP_BODY = `按游戏道具 / 武器 / 物品图标反推：
+- 物品品类与用途暗示
+- 外形轮廓、部件结构、材质与磨损/附魔特效
+- 展示角度（四分之三 / 正面 Orthographic 感）
+- 纯色或简洁背景；不要写环境故事
+输出适合道具设定或商店图标的中文提示词。`
+
+const TO_PROMPT_GAME_UA_BODY = `按游戏买量静帧 / 广告主视觉反推：
+- 钩子冲突：谁在对抗什么、情绪爆点
+- 角色辨识点 + 夸张表情/动作
+- 利益点或玩法卖点的视觉化（升级、抽卡、对战等，仅写图中可见）
+- 强对比光影、高饱和或强明暗、适合竖版/横版的构图重心
+- CTA 区域若存在（按钮、文案板）单独描述样式，勿臆造文案内容
+输出可复用的买量静帧中文提示词。`
+
+const TO_PROMPT_GAME_VFX_BODY = `按游戏技能 / 特效关键帧反推：
+- 特效类型（斩击/爆炸/治疗/增益光环等）
+- 形状语言、粒子、拖尾、冲击波
+- 主色与能量感、与角色/武器的附着关系
+- 透明通道与叠加感（Additive 印象）
+- 背景尽量弱化，突出特效可读性
+输出适合特效概念或关键帧生成的中文提示词。`
+
+/** ——— 图片反推提示词：影视 ——— */
+const TO_PROMPT_FILM_ESTABLISH_BODY = `按影视建立镜头 / 空镜标准反推：
+- 景别与空间关系（远景/全景为主）
+- 环境叙事：地点、时间、天气、时代感
+- 构图与引导线、地标或视觉锚点
+- 电影感光影与色彩调性（青橙、低对比、胶片等）
+- 尽量少写对白情节，侧重「一场戏从哪里开始」
+输出中文电影级画面提示词。`
+
+const TO_PROMPT_FILM_CLOSEUP_BODY = `按影视人物特写 / 表演镜头反推：
+- 景别（大特写/特写/近景）与焦点落点
+- 表情、眼神、微表情与情绪张力
+- 肤质、妆造、发型、服装领口细节
+- 眼神光、伦勃朗/蝴蝶光等布光印象
+- 浅景深与焦外
+输出适合角色表演参考的中文提示词。`
+
+const TO_PROMPT_FILM_LIGHT_BODY = `按影视光影与调色反推：
+- 主光方向、硬软光、轮廓光与环境光比
+- 色温与色彩剧本（冷暖分区、互补色）
+- 烟雾/丁达尔/雨夜反光等大气光学
+- 整体 look：好莱坞、独立电影、港片、日剧等（从图判断）
+主体与场景各一句，光影词为主，输出中文提示词。`
+
+const TO_PROMPT_FILM_STORYBOARD_BODY = `按分镜画 / 场次画反推：
+- 镜头功能（建立/主观/正反打/插入）
+- 景别、机位、轴线关系暗示
+- 角色站位与动作箭头感（若有）
+- 画面信息优先级：先叙事后装饰
+- 风格：线稿分镜 / 彩色概念分镜（从图判断）
+输出可继续改镜的中文分镜描述提示词。`
+
+const TO_PROMPT_FILM_COSTUME_BODY = `按造型 / 服装 / 美术设定反推：
+- 服装廓形、层次、面料与时代/世界观
+- 妆发与角色身份符号
+- 道具与随身物件的叙事功能
+- 材质特写级描述，背景从简
+输出适合服化道参考的中文提示词。`
+
+const TO_PROMPT_FILM_CAMERA_BODY = `按镜头语言反推（服务后续视频/分镜）：
+- 景别、机位高度、俯仰、是否广角/长焦感
+- 运动暗示：固定/微移/推拉/环绕（仅写图中可感）
+- 构图重心与负空间
+- 焦点与景深策略
+- 电影术语关键词（中文）
+输出偏「可执行镜头说明」的中文提示词。`
+
+const TO_PROMPT_PRESETS: InstructionPreset[] = [
+  // 通用
+  {
+    id: 'toPrompt.general.structured',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.structured',
+    tab: 'general',
+    body: TO_PROMPT_GENERAL_STRUCTURED_BODY
+  },
+  {
+    id: 'toPrompt.general.subject',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.subject',
+    tab: 'general',
+    body: TO_PROMPT_GENERAL_SUBJECT_BODY
+  },
+  {
+    id: 'toPrompt.general.style',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.style',
+    tab: 'general',
+    body: TO_PROMPT_GENERAL_STYLE_BODY
+  },
+  {
+    id: 'toPrompt.general.light',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.light',
+    tab: 'general',
+    body: TO_PROMPT_GENERAL_LIGHT_BODY
+  },
+  // 游戏
+  {
+    id: 'toPrompt.game.character',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameCharacter',
+    tab: 'game',
+    body: TO_PROMPT_GAME_CHARACTER_BODY
+  },
+  {
+    id: 'toPrompt.game.scene',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameScene',
+    tab: 'game',
+    body: TO_PROMPT_GAME_SCENE_BODY
+  },
+  {
+    id: 'toPrompt.game.ui',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameUi',
+    tab: 'game',
+    body: TO_PROMPT_GAME_UI_BODY
+  },
+  {
+    id: 'toPrompt.game.prop',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameProp',
+    tab: 'game',
+    body: TO_PROMPT_GAME_PROP_BODY
+  },
+  {
+    id: 'toPrompt.game.ua',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameUa',
+    tab: 'game',
+    body: TO_PROMPT_GAME_UA_BODY
+  },
+  {
+    id: 'toPrompt.game.vfx',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.gameVfx',
+    tab: 'game',
+    body: TO_PROMPT_GAME_VFX_BODY
+  },
+  // 影视
+  {
+    id: 'toPrompt.film.establish',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmEstablish',
+    tab: 'film',
+    body: TO_PROMPT_FILM_ESTABLISH_BODY
+  },
+  {
+    id: 'toPrompt.film.closeup',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmCloseup',
+    tab: 'film',
+    body: TO_PROMPT_FILM_CLOSEUP_BODY
+  },
+  {
+    id: 'toPrompt.film.light',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmLight',
+    tab: 'film',
+    body: TO_PROMPT_FILM_LIGHT_BODY
+  },
+  {
+    id: 'toPrompt.film.storyboard',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmStoryboard',
+    tab: 'film',
+    body: TO_PROMPT_FILM_STORYBOARD_BODY
+  },
+  {
+    id: 'toPrompt.film.costume',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmCostume',
+    tab: 'film',
+    body: TO_PROMPT_FILM_COSTUME_BODY
+  },
+  {
+    id: 'toPrompt.film.camera',
+    titleKey: 'graph.inspector.generate.presets.toPrompt.filmCamera',
+    tab: 'film',
+    body: TO_PROMPT_FILM_CAMERA_BODY
+  }
+]
 const OPTIMIZE_PRESETS: InstructionPreset[] = [
   {
     id: 'optimize.character',
@@ -973,4 +1211,22 @@ export function getInstructionPreset(
   id: string
 ): InstructionPreset | undefined {
   return listInstructionPresets(kind).find((item) => item.id === id)
+}
+
+/** 该 kind 下实际出现的页签（按固定顺序）；少于 2 个则 UI 不显示页签栏 */
+export function listInstructionPresetTabs(kind: InstructionPresetKind): InstructionPresetTab[] {
+  const present = new Set<InstructionPresetTab>()
+  for (const item of listInstructionPresets(kind)) {
+    if (item.tab) present.add(item.tab)
+  }
+  return INSTRUCTION_PRESET_TAB_ORDER.filter((tab) => present.has(tab))
+}
+
+export function listInstructionPresetsByTab(
+  kind: InstructionPresetKind,
+  tab: InstructionPresetTab | null
+): InstructionPreset[] {
+  const all = listInstructionPresets(kind)
+  if (!tab) return all
+  return all.filter((item) => (item.tab ?? 'general') === tab)
 }
