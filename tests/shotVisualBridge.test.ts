@@ -13,9 +13,11 @@ import {
   getVideoFrameAssetId,
   listImageAssetsFromShotEntity,
   mergeVisualOutputGenRefs,
+  isShotEntitiesSelectNode,
   materializeShotGenRefsOnVideoGraph,
   materializeShotBoundEntityRefsOnGraph,
   parseShotEntities,
+  GraphPortType,
   parseVideoEntities,
   runGraph,
   shotToImageAggregateRow,
@@ -576,7 +578,7 @@ describe('shot visual bridge', () => {
     ).toBe(true)
   })
 
-  it('video boundary inputs prefer shot thumbnail (strip preview) over world bindings', () => {
+  it('video boundary inputs include shot thumbnail and entity bindings', () => {
     const shot = shotWithId('shot-thumb-first', {
       title: '客厅建置',
       thumbnailPath: 'Cache/Images/shot-final-with-person.jpg',
@@ -607,10 +609,10 @@ describe('shot visual bridge', () => {
     const paths = graph.nodes
       .filter((n) => n.typeId === 'graph.boundary.input')
       .map((n) => n.params.previewRelativePath)
-    expect(paths).toEqual(['Cache/Images/shot-final-with-person.jpg'])
-    expect(
-      graph.nodes.some((n) => n.params.previewRelativePath === 'Cache/Images/world-empty-room.jpg')
-    ).toBe(false)
+    expect(paths).toEqual([
+      'Cache/Images/shot-final-with-person.jpg',
+      'Cache/Images/world-empty-room.jpg'
+    ])
     const video = findShotWorkflowVideoNode(graph)!
     expect(
       graph.edges.some(
@@ -624,9 +626,21 @@ describe('shot visual bridge', () => {
           )
       )
     ).toBe(true)
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.target === video.id &&
+          e.targetPort === 'in-image' &&
+          graph.nodes.some(
+            (n) =>
+              n.id === e.source &&
+              n.params.previewRelativePath === 'Cache/Images/world-empty-room.jpg'
+          )
+      )
+    ).toBe(true)
   })
 
-  it('video falls back to upper shotEntities when shot has no thumbnail/style', () => {
+  it('video merges upper shotEntities with storyboard bindings when no thumbnail/style', () => {
     const shot = shotWithId('shot-upper-entities', {
       storyboard: {
         visualDescription: '',
@@ -649,7 +663,90 @@ describe('shot visual bridge', () => {
     const paths = graph.nodes
       .filter((n) => n.typeId === 'graph.boundary.input')
       .map((n) => n.params.previewRelativePath)
-    expect(paths).toEqual(['Cache/Images/from-shot-image-gen.png'])
+      .sort()
+    expect(paths).toEqual([
+      'Assets/chars/old.png',
+      'Cache/Images/from-shot-image-gen.png'
+    ])
+  })
+
+  it('video dual-path: shotEntities catalog + select, current-shot images wire to video', () => {
+    const shot = shotWithId('shot-a', {
+      title: '镜1',
+      thumbnailPath: 'Cache/Images/shot-thumb.jpg',
+      storyboard: {
+        visualDescription: '',
+        shotSize: '',
+        lighting: '',
+        dialogue: '',
+        soundFx: '',
+        cameraMove: '',
+        finalPrompt: '',
+        characters: [{ name: '角色甲', type: '角色', imageUrl: 'Cache/Images/char-a.png' }],
+        scenes: [],
+        props: [],
+        weapons: []
+      }
+    })
+    let graph = createDefaultScopedGraph('shotWorkflow')
+    graph = materializeShotBoundEntityRefsOnGraph(graph, shot, 'video', () => null, {
+      shotEntitiesCatalog: [
+        { id: 'shot-a', name: '镜A', imageUrls: ['Cache/Images/ent-a.png'] },
+        { id: 'shot-b', name: '镜B', imageUrls: ['Cache/Images/ent-b.png'] }
+      ],
+      wireShotEntitiesToSelect: true,
+      selectNodeTitle: '选择分镜实体',
+      entityImageUrls: ['Cache/Images/ent-a.png']
+    })
+    const video = findShotWorkflowVideoNode(graph)!
+    const catalogBounds = graph.nodes.filter(
+      (n) =>
+        n.typeId === 'graph.boundary.input' &&
+        n.params.hostBoundaryPort?.dataType === GraphPortType.shotEntities
+    )
+    expect(catalogBounds).toHaveLength(1)
+    expect(catalogBounds[0]?.title).toBe('分镜实体')
+    expect(parseShotEntities(catalogBounds[0]?.params.text)).toHaveLength(2)
+    const picker = graph.nodes.find((n) => isShotEntitiesSelectNode(n))
+    expect(picker?.title).toBe('选择分镜实体')
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.source === catalogBounds[0]?.id &&
+          e.target === picker?.id &&
+          (e.targetPort ?? 'in') === 'in'
+      )
+    ).toBe(true)
+    expect(
+      graph.edges.some(
+        (e) =>
+          e.source === catalogBounds[0]?.id &&
+          e.target === video.id &&
+          e.targetPort === 'in-image'
+      )
+    ).toBe(false)
+    expect(graph.edges.some((e) => e.source === picker?.id && e.target === video.id)).toBe(false)
+
+    const boundImage = graph.nodes.find(
+      (n) =>
+        n.typeId === 'graph.boundary.input' &&
+        n.params.hostBoundaryPort?.dataType === GraphPortType.image &&
+        n.params.previewRelativePath === 'Cache/Images/ent-a.png'
+    )
+    const thumb = graph.nodes.find(
+      (n) => n.params.previewRelativePath === 'Cache/Images/shot-thumb.jpg'
+    )
+    expect(boundImage).toBeDefined()
+    expect(
+      graph.edges.some(
+        (e) => e.source === boundImage?.id && e.target === video.id && e.targetPort === 'in-image'
+      )
+    ).toBe(true)
+    expect(
+      graph.edges.some(
+        (e) => e.source === thumb?.id && e.target === video.id && e.targetPort === 'in-image'
+      )
+    ).toBe(true)
   })
 
   it('aggregate row includes imageAssetIds from genRefs', () => {

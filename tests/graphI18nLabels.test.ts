@@ -42,6 +42,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.output.world')).toBe('世界元素实体输出')
     expect(t('graph.titles.worldOutput')).toBe('世界元素实体输出')
     expect(t('graph.types.narrative.select')).toBe('选择叙事单元')
+    expect(t('graph.types.shotEntities.select')).toBe('选择分镜实体')
   })
 
   it('resolves graph.port.types.* labels', () => {

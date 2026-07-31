@@ -93,3 +93,64 @@ export function entityImageUrlsByShotId(
   }
   return out
 }
+
+/** 从剧本图取整表分镜实体（优先 shotImageGen） */
+export function resolveAllShotEntitiesFromGraphs(
+  docs: Array<GraphDocument | null | undefined>
+): ShotEntityResult[] {
+  const preferTypeIds = ['script.shotImageGen', 'script.shotVideoGen'] as const
+  for (const typeId of preferTypeIds) {
+    for (const doc of docs) {
+      if (!doc?.nodes?.length) continue
+      for (const node of doc.nodes) {
+        if (node.typeId !== typeId) continue
+        const entities = shotEntitiesFromNode(node, doc)
+        if (entities.length) return entities
+      }
+    }
+  }
+  return []
+}
+
+/**
+ * 整表分镜实体 → 绑定图列表（去重路径；名称用实体名，多图加序号）。
+ * @deprecated 视频子图改走 shotEntities 目录边界；保留供其它调用方
+ */
+export function collectAllShotEntityBoundImagesFromGraphs(
+  docs: Array<GraphDocument | null | undefined>
+): Array<{ name: string; relativePath: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ name: string; relativePath: string }> = []
+  for (const entity of resolveAllShotEntitiesFromGraphs(docs)) {
+    const urls = entity.imageUrls
+      .map((u) => u.trim().replace(/\\/g, '/'))
+      .filter((u) => u && !u.startsWith('data:'))
+    urls.forEach((path, index) => {
+      if (seen.has(path)) return
+      seen.add(path)
+      const base = entity.name.trim() || entity.id
+      const name = urls.length > 1 ? `${base} #${index + 1}` : base
+      out.push({ name, relativePath: path })
+    })
+  }
+  return out
+}
+
+/** 合并多段分镜实体目录（按 id 去重，后者覆盖） */
+export function mergeShotEntityResults(
+  ...lists: Array<ShotEntityResult[] | undefined | null>
+): ShotEntityResult[] {
+  const byId = new Map<string, ShotEntityResult>()
+  for (const list of lists) {
+    for (const item of list ?? []) {
+      const id = item.id?.trim()
+      if (!id || !item.imageUrls?.length) continue
+      byId.set(id, {
+        id,
+        name: item.name.trim() || id,
+        imageUrls: item.imageUrls.map((u) => u.trim().replace(/\\/g, '/')).filter(Boolean)
+      })
+    }
+  }
+  return [...byId.values()]
+}

@@ -237,6 +237,7 @@ export type GraphNodeTypeId =
   | 'voice.select'
   | 'text.select'
   | 'narrative.select'
+  | 'shotEntities.select'
   | 'narrative.split'
   | 'narrative.table'
   | 'narrative.gen'
@@ -439,6 +440,10 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedImageId?: string
+  /** @deprecated 已改用 shotEntities.select */
+  shotEntityPicker?: boolean
+  /** 选择分镜实体节点：当前选中的 ShotEntityResult.id */
+  selectedShotEntityId?: string
   /**
    * 当前选中的视频 id：生成节点 `out` / 选取视频节点共用。
    * 生成节点每次运行成功后强制切到最新一条。

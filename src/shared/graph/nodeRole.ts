@@ -185,6 +185,10 @@ export function isSelectNarrativeNode(node: Pick<GraphNode, 'typeId'>): boolean 
   return node.typeId === 'narrative.select'
 }
 
+export function isSelectShotEntitiesNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'shotEntities.select'
+}
+
 export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.multiAngle'
 }

@@ -51,5 +51,11 @@ describe('graph inspector defaults', () => {
         { category: 'note', typeId: 'image.select', params: {} }
       )
     ).toBe('studio.graph.select')
+    expect(
+      resolveGraphInspectorId(
+        { inspector: 'none', inspectorId: 'studio.graph.select' },
+        { category: 'note', typeId: 'shotEntities.select', params: {} }
+      )
+    ).toBe('studio.graph.select')
   })
 })

@@ -138,7 +138,7 @@
       </div>
 
       <img
-        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
+        v-else-if="(isSelectImageNode(node) || isSelectShotEntitiesNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
         :src="selectImagePreview"
         alt=""
         loading="lazy"
@@ -433,6 +433,7 @@ import {
   isSelectVoiceNode,
   isSelectTextNode,
   isSelectNarrativeNode,
+  isSelectShotEntitiesNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
@@ -881,9 +882,36 @@ const rolePill = computed(() => {
   return ''
 })
 
+/** 可双击 dive 进入内图的宿主资产节点（非导入引用） */
+const canDiveIntoHost = computed(
+  () => isAssetRef.value && !isImportedRefAsset.value && !isMissingLinkedAsset.value
+)
+
+/**
+ * 可双击进入子图/子编辑器的工作流节点（分镜画面/视频、世界/叙事表等）。
+ * 与宿主 📦 区分：用叠层图标表示内含子图。
+ */
+const canDiveIntoSubgraph = computed(() => {
+  const n = props.node
+  return (
+    isScriptShotImageGenNode(n) ||
+    isScriptShotVideoGenNode(n) ||
+    isScriptShotTableNode(n) ||
+    isTimelineOutputNode(n) ||
+    isWorldTableNode(n) ||
+    isWorldGenNode(n) ||
+    isNarrativeTableNode(n) ||
+    isNarrativeGenNode(n) ||
+    isNarrativeOutputNode(n) ||
+    isDirectorProcessingNode(n)
+  )
+})
+
 /** 类型色块：用颜色区分角色，图标表示类型（锁定由标题栏锁按钮表示，不改图标） */
 const typeBadgeClass = computed(() => {
   if (isMissingLinkedAsset.value) return 'role-missing'
+  if (canDiveIntoHost.value) return 'role-host'
+  if (canDiveIntoSubgraph.value) return 'role-subgraph'
   if (isAssetRef.value) return isImportedRefAsset.value ? 'role-ref' : 'role-host'
   if (isProcessingNode.value) return 'role-generate'
   if (props.node.category === 'output') return 'role-output'
@@ -892,10 +920,21 @@ const typeBadgeClass = computed(() => {
 
 const typeBadgeIcon = computed(() => {
   if (isMissingLinkedAsset.value) return '!'
+  // 宿主节点：package；分镜图/视频等：叠层表示内含子图
+  if (canDiveIntoHost.value) return '📦'
+  if (canDiveIntoSubgraph.value) return '⧉'
   return typeIcon.value
 })
 
 const typeBadgeTitle = computed(() => {
+  if (canDiveIntoHost.value) {
+    const role = t('graph.nodeRole.host')
+    return `${role} · ${typeLabel.value} · ${t('graph.assetHost.hint')}`
+  }
+  if (canDiveIntoSubgraph.value) {
+    const role = t('graph.nodeRole.subgraph')
+    return `${role} · ${typeLabel.value} · ${t('graph.subgraphDive.hint')}`
+  }
   const role = rolePill.value
   return role ? `${role} · ${typeLabel.value}` : typeLabel.value
 })
@@ -1026,6 +1065,7 @@ watch(
           ]?.imageUrl
         : '',
       isSelectImageNode(props.node) ||
+        isSelectShotEntitiesNode(props.node) ||
         isMultiAngleEditorNode(props.node) ||
         isLightingEditorNode(props.node) ||
         isPortraitTextureEditorNode(props.node) ||
@@ -1251,6 +1291,7 @@ const previewHint = computed(() => {
   if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
+  if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
@@ -1277,8 +1318,14 @@ const previewOpenHint = computed(() => {
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
+  if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   // 预览区已有正文时，双击优先打开记事本
-  if (textPreview.value && !isAssetRef.value && isNodeTextCapable(props.node)) {
+  if (
+    textPreview.value &&
+    !isAssetRef.value &&
+    !isSelectShotEntitiesNode(props.node) &&
+    isNodeTextCapable(props.node)
+  ) {
     return t('graph.notepad.openHint')
   }
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
@@ -1741,7 +1788,7 @@ function onPreviewDblClick(): void {
       return
     }
 
-    if (isSelectImageNode(props.node)) {
+    if (isSelectImageNode(props.node) || isSelectShotEntitiesNode(props.node)) {
       emit('selectImageOpen', props.node.id)
       return
     }
@@ -2271,6 +2318,12 @@ function formatTime(sec: number): string {
 .type-badge.role-host {
   background: color-mix(in srgb, #5b9fd4 30%, var(--graph-node-bg, #1a1a1a));
   border-color: color-mix(in srgb, #5b9fd4 45%, transparent);
+}
+
+.type-badge.role-subgraph {
+  background: color-mix(in srgb, #7b8cff 28%, var(--graph-node-bg, #1a1a1a));
+  border-color: color-mix(in srgb, #7b8cff 45%, transparent);
+  color: #c5ccff;
 }
 
 .type-badge.role-ref {

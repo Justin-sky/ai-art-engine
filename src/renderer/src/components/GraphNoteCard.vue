@@ -52,6 +52,16 @@
         :title="displayTitle"
         @dblclick.stop="startTitleEdit"
       >{{ displayTitle }}</span>
+      <img
+        v-if="previewCollapsed && isImageBoundary && mediaPreviewUrl"
+        :src="mediaPreviewUrl"
+        alt=""
+        class="head-thumb"
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+        :title="displayTitle"
+      />
       <div class="head-actions">
         <button
           v-if="canLock"
@@ -205,7 +215,11 @@ const boundaryDataType = computed(
 const isImageBoundary = computed(
   () =>
     isBoundary.value &&
-    (boundaryDataType.value === 'image' || boundaryDataType.value === 'images')
+    (boundaryDataType.value === 'image' ||
+      boundaryDataType.value === 'images' ||
+      // 分镜实体边界：有首图路径时也显示缩略图
+      (boundaryDataType.value === 'shotEntities' &&
+        !!props.node.params.previewRelativePath?.trim()))
 )
 
 function portTypeLabel(dataType: GraphPortDataType): string {
@@ -228,6 +242,7 @@ function mediaPathFromValue(value: GraphValue | undefined): string {
     const item = value.items.find((i) => i.relativePath?.trim())
     return item?.relativePath?.trim() || ''
   }
+  if (value.kind === 'shotEntities') return value.relativePath?.trim() || ''
   return ''
 }
 
@@ -285,11 +300,12 @@ function togglePreviewCollapsed(): void {
 const mediaPreviewUrl = ref('')
 let mediaPreviewCancel: (() => void) | null = null
 watch(
-  () => [boundaryImagePath.value, previewCollapsed.value] as const,
-  async ([path, collapsed]) => {
+  () => [boundaryImagePath.value, previewCollapsed.value, isImageBoundary.value] as const,
+  async ([path, collapsed, imageBoundary]) => {
     mediaPreviewCancel?.()
     mediaPreviewCancel = null
-    if (collapsed || !path) {
+    // 折叠态仍加载缩略图：标题栏 head-thumb / 指令引用条同源路径
+    if (!path || (collapsed && !imageBoundary)) {
       mediaPreviewUrl.value = ''
       return
     }
@@ -668,6 +684,18 @@ function onBodyDblClick(): void {
   white-space: nowrap;
   cursor: text;
   min-width: 0;
+  flex: 1;
+}
+
+.head-thumb {
+  flex-shrink: 0;
+  width: 28px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--slot-border) 50%, transparent);
+  background: var(--graph-note-preview-bg);
+  pointer-events: none;
 }
 
 .title-input {

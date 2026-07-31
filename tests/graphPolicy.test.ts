@@ -119,6 +119,7 @@ describe('graph policy', () => {
         'image.upscale',
         'prompt.optimize',
         'narrative.select',
+        'shotEntities.select',
         'narrative.split',
         'narrative.table',
         'narrative.unitGen',

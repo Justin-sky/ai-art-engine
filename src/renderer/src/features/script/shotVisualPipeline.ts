@@ -12,6 +12,7 @@ import {
   mergeVideoOutputGenRefs,
   mergeVisualOutputGenRefs,
   normalizeScopedGraph,
+  resolveAllShotEntitiesFromGraphs,
   resolveShotEntityImageUrlsFromGraphs,
   shotToImageAggregateRow,
   stringifyShotImageAggregateRows,
@@ -194,8 +195,8 @@ function readScriptGraphDocs(scriptAssetId: string): GraphDocument[] {
 }
 
 /**
- * 跑分镜图/视频前：在各镜子图上按 storyboard / 上层 shotEntities
- * 创建图片引用节点并接到生成节点 in-image。
+ * 跑分镜图/视频前：在各镜子图上物化绑定实体边界。
+ * 分镜图接到图片生成；分镜视频为整表 shotEntities + 选择节点，当前镜绑定图接到视频生成。
  */
 export async function materializeBoundEntityRefsOnScriptShots(input: {
   scriptAssetId: string
@@ -208,6 +209,12 @@ export async function materializeBoundEntityRefsOnScriptShots(input: {
   const target = input.kind === 'visual' ? 'image' : 'video'
   const fromLiveEntities = entityImageUrlsByShotId(input.shotEntities)
   const scriptDocs = readScriptGraphDocs(input.scriptAssetId)
+  const catalog =
+    input.kind === 'shotWorkflow'
+      ? input.shotEntities?.length
+        ? input.shotEntities
+        : resolveAllShotEntitiesFromGraphs(scriptDocs)
+      : []
   for (const shot of input.shots) {
     assertNotAborted(input.signal)
     const live = resolveShotRecord(shot.id, input.scriptAssetId) ?? shot
@@ -221,16 +228,31 @@ export async function materializeBoundEntityRefsOnScriptShots(input: {
     const entityImageUrls =
       fromLiveEntities[live.id] ??
       resolveShotEntityImageUrlsFromGraphs(scriptDocs, live.id)
-    const next = materializeShotBoundEntityRefsOnGraph(
-      before,
-      live,
-      target,
-      resolveImageAssetById,
-      {
-        resolveAssetByRelativePath: resolveImageAssetByRelativePath,
-        entityImageUrls
-      }
-    )
+    const next =
+      input.kind === 'shotWorkflow'
+        ? materializeShotBoundEntityRefsOnGraph(
+            before,
+            live,
+            target,
+            resolveImageAssetById,
+            {
+              resolveAssetByRelativePath: resolveImageAssetByRelativePath,
+              shotEntitiesCatalog: catalog,
+              wireShotEntitiesToSelect: true,
+              selectNodeTitle: '选择分镜实体',
+              entityImageUrls
+            }
+          )
+        : materializeShotBoundEntityRefsOnGraph(
+            before,
+            live,
+            target,
+            resolveImageAssetById,
+            {
+              resolveAssetByRelativePath: resolveImageAssetByRelativePath,
+              entityImageUrls
+            }
+          )
     if (JSON.stringify(next) === JSON.stringify(before)) continue
 
     const patched: Shot = {

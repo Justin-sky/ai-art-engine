@@ -1422,6 +1422,7 @@ export default {
       cancel: 'Cancel link'
     },
     fitView: 'Fit view',
+    shotEntityPicker: 'Select shot entity',
     layout: {
       dragHandle: 'Drag layout toolbar',
       expand: 'Expand layout tools',
@@ -1482,6 +1483,11 @@ export default {
       appMark: 'Select narrative unit',
       hint: 'Double-click to pick one unit from the upstream narrative catalog. Defaults to the first item.',
       empty: 'No upstream narrative units yet. Connect a narrative asset and run it first.'
+    },
+    selectShotEntities: {
+      appMark: 'Select shot entity',
+      hint: 'Double-click to pick one shot entity from upstream. Not wired to video generate by default; connect manually if needed.',
+      empty: 'No upstream shot entities'
     },
     textsPreview: {
       appMark: 'Texts preview',
@@ -1875,6 +1881,7 @@ export default {
     nodeRole: {
       ref: 'Ref',
       host: 'Host',
+      subgraph: 'Subgraph',
       generate: 'Generate',
       output: 'Output',
       lock: 'Locked',
@@ -1885,6 +1892,9 @@ export default {
     },
     assetHost: {
       hint: 'Host asset · double-click to edit'
+    },
+    subgraphDive: {
+      hint: 'Contains subgraph · double-click to enter'
     },
     assetMissing: {
       hint: 'Linked asset deleted · node unavailable'
@@ -2036,6 +2046,9 @@ export default {
       },
       text: {
         select: 'Select text'
+      },
+      shotEntities: {
+        select: 'Select shot entity'
       },
       narrative: {
         select: 'Select narrative unit',

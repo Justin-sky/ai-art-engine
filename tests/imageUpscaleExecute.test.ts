@@ -76,8 +76,11 @@ describe('executeUpscaleNode input', () => {
 })
 
 describe('portsCompatible image family', () => {
-  it('requires exact match on singular port types', () => {
+  it('allows singular into matching plural, rejects cross family', () => {
     expect(portsCompatible(GraphPortType.image, GraphPortType.image)).toBe(true)
+    expect(portsCompatible(GraphPortType.image, GraphPortType.images)).toBe(true)
+    expect(portsCompatible(GraphPortType.video, GraphPortType.videos)).toBe(true)
+    expect(portsCompatible(GraphPortType.images, GraphPortType.image)).toBe(false)
     expect(portsCompatible(GraphPortType.image, GraphPortType.video)).toBe(false)
     expect(portsCompatible(GraphPortType.image, GraphPortType.text)).toBe(false)
   })

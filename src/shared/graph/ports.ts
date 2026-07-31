@@ -13,6 +13,8 @@ import {
 } from './hostInterface'
 import {
   GraphPortType,
+  isPluralGraphPortDataType,
+  toSingularGraphPortDataType,
   type GraphEdge,
   type GraphNode,
   type GraphNodeParams,
@@ -35,7 +37,15 @@ function shouldHideAssetRefInputs(
 
 /** 同类型可连 */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
-  return source === target
+  if (source === target) return true
+  // 单数可接入对应复数口（多张 image 边界 → image.select 的 images）
+  const plural: Partial<Record<GraphPortDataType, GraphPortDataType>> = {
+    [GraphPortType.image]: GraphPortType.images,
+    [GraphPortType.video]: GraphPortType.videos,
+    [GraphPortType.voice]: GraphPortType.voices,
+    [GraphPortType.text]: GraphPortType.texts
+  }
+  return plural[source] === target
 }
 
 function resolveVideoFrameMode(raw: unknown): VideoFrameMode {
@@ -273,7 +283,17 @@ export function canConnectNodes(
   const outPort = findOutPort(source, options.sourcePort)
   if (!outPort) return false
   const inPort = findCompatibleInPort(target, outPort.dataType, options.targetPort)
-  return !!inPort
+  if (!inPort) return false
+  // 生成/加工节点默认单数 `out` 不进 select 复数口（须用 out-all）；边界 image→images 仍允许
+  if (
+    outPort.id === 'out' &&
+    isProcessingAssetNode(source) &&
+    isPluralGraphPortDataType(inPort.dataType) &&
+    toSingularGraphPortDataType(inPort.dataType) === outPort.dataType
+  ) {
+    return false
+  }
+  return true
 }
 
 type NodeTypeConnectMeta = Pick<NodeTypeDefinition, 'ports' | 'typeId' | 'category' | 'assetType'>

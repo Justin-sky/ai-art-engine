@@ -32,6 +32,11 @@ import { GraphPortType } from './types'
 import type { AssetType } from '../domain'
 import { cloneGraphDocument } from './document'
 import type { ShotSplitRow } from './shotSplitParse'
+import {
+  parseShotEntities,
+  stringifyShotEntities,
+  type ShotEntityResult
+} from './shotEntitiesParse'
 
 export type ShotVisualImageAsset = {
   id: string
@@ -787,7 +792,7 @@ function boundImagesFromEntityUrls(entityImageUrls?: string[]): ShotBoundEntityI
 
 /**
  * 分镜成片图：与 ShotStrip 同源（thumbnailPath），再补 style genRefs。
- * 视频图边界输入应优先用这套，而不是世界元素绑定旧场景图。
+ * 视频图边界输入应包含这套，并与角色/场景等实体边界并存。
  */
 export function collectShotVisualBoundImages(
   shot: Pick<Shot, 'title' | 'thumbnailPath' | 'genRefs'>,
@@ -812,6 +817,23 @@ export function collectShotVisualBoundImages(
   return out
 }
 
+/** 按 relativePath 去重合并绑定图（保留先出现的名称） */
+function mergeBoundEntityImages(
+  ...lists: ShotBoundEntityImage[][]
+): ShotBoundEntityImage[] {
+  const seen = new Set<string>()
+  const out: ShotBoundEntityImage[] = []
+  for (const list of lists) {
+    for (const item of list) {
+      const path = item.relativePath.trim().replace(/\\/g, '/')
+      if (!path || path.startsWith('data:') || seen.has(path)) continue
+      seen.add(path)
+      out.push({ name: item.name.trim() || path, relativePath: path })
+    }
+  }
+  return out
+}
+
 /** 去掉不再属于当前绑定集合的 bound-img 边界输入（上层实体更新后避免残留旧图） */
 function pruneStaleBoundImageInputs(doc: GraphDocument, keepPaths: Set<string>): void {
   const removeIds = new Set<string>()
@@ -830,35 +852,218 @@ function pruneStaleBoundImageInputs(doc: GraphDocument, keepPaths: Set<string>):
   )
 }
 
+/** @deprecated 旧版 image.select 标记；物化时会清理 */
+export const SHOT_ENTITY_PICKER_PARAM = 'shotEntityPicker'
+
+export function isShotEntityPickerNode(node: Pick<GraphNode, 'typeId' | 'params'>): boolean {
+  return node.typeId === 'image.select' && node.params?.[SHOT_ENTITY_PICKER_PARAM] === true
+}
+
+export function isShotEntitiesSelectNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'shotEntities.select'
+}
+
+/** 整表分镜实体数组边界：固定单端口 id */
+export const SHOT_ENTITIES_CATALOG_PORT_ID = 'bound-shot-ent-all'
+
+/** 去掉旧的「每实体一条」分镜实体边界，只保留整表边界 */
+function pruneStaleShotEntityCatalogInputs(doc: GraphDocument, keepAll: boolean): void {
+  const removeIds = new Set<string>()
+  for (const node of doc.nodes) {
+    if (!isBoundaryInputNode(node)) continue
+    const portId = node.params.hostBoundaryPort?.portId?.trim() ?? ''
+    const dataType = node.params.hostBoundaryPort?.dataType
+    const isShotEntBound =
+      portId.startsWith('bound-shot-ent-') || dataType === GraphPortType.shotEntities
+    if (!isShotEntBound) continue
+    if (keepAll && portId === SHOT_ENTITIES_CATALOG_PORT_ID) continue
+    removeIds.add(node.id)
+  }
+  if (!removeIds.size) return
+  doc.nodes = doc.nodes.filter((node) => !removeIds.has(node.id))
+  doc.edges = doc.edges.filter(
+    (edge) => !removeIds.has(edge.source) && !removeIds.has(edge.target)
+  )
+}
+
+/** 确保唯一的整表分镜实体边界输入（shotEntities 数组） */
+function ensureShotEntitiesCatalogInputNode(
+  doc: GraphDocument,
+  catalog: ShotEntityResult[],
+  near: GraphNode,
+  options?: { title?: string }
+): GraphNode {
+  const portId = SHOT_ENTITIES_CATALOG_PORT_ID
+  const nodeId = boundaryInputNodeId(portId)
+  const previewRelativePath =
+    catalog[0]?.imageUrls[0]?.trim().replace(/\\/g, '/') || undefined
+  const text = stringifyShotEntities(catalog)
+  const title = options?.title?.trim() || '分镜实体'
+  const existing = doc.nodes.find(
+    (node) =>
+      node.id === nodeId ||
+      (isBoundaryInputNode(node) && node.params.hostBoundaryPort?.portId === portId)
+  )
+  if (existing) {
+    existing.title = title
+    existing.params = {
+      ...existing.params,
+      text,
+      previewRelativePath,
+      previewCollapsed: existing.params.previewCollapsed ?? true,
+      hostBoundaryPort: {
+        portId,
+        dataType: GraphPortType.shotEntities,
+        multiple: false
+      }
+    }
+    return existing
+  }
+  const node = createNodeFromType(GRAPH_BOUNDARY_INPUT_TYPE_ID, nextAssetRefPosition(doc, near), {
+    id: nodeId,
+    title,
+    params: {
+      text,
+      previewCollapsed: true,
+      previewRelativePath,
+      hostBoundaryPort: {
+        portId,
+        dataType: GraphPortType.shotEntities,
+        multiple: false
+      }
+    }
+  })
+  doc.nodes.push(node)
+  return node
+}
+
+/** 确保选择分镜实体节点，并把整表 shotEntities 边界接到其 in（不接到视频生成） */
+export function ensureShotEntitiesSelectOnGraph(
+  graph: GraphDocument,
+  catalogSourceNodeId: string,
+  options?: { near?: GraphNode | null; title?: string }
+): GraphDocument {
+  const doc = cloneGraphDocument(graph)
+  const near =
+    options?.near ??
+    findShotWorkflowVideoNode(doc) ??
+    doc.nodes[0]
+  if (!near) return doc
+
+  // 清理旧版 image.select 伪选择节点
+  for (const legacy of doc.nodes.filter((n) => isShotEntityPickerNode(n))) {
+    doc.nodes = doc.nodes.filter((n) => n.id !== legacy.id)
+    doc.edges = doc.edges.filter((e) => e.source !== legacy.id && e.target !== legacy.id)
+  }
+
+  let picker = doc.nodes.find((node) => isShotEntitiesSelectNode(node))
+  if (!picker) {
+    picker = createNodeFromType('shotEntities.select', {
+      x: near.position.x - 220,
+      y: near.position.y + 160
+    }, {
+      title: options?.title?.trim() || 'Select shot entity'
+    })
+    doc.nodes.push(picker)
+  } else if (options?.title?.trim() && picker.title !== options.title.trim()) {
+    picker.title = options.title.trim()
+  }
+
+  const pickerId = picker.id
+  doc.edges = doc.edges.filter((edge) => {
+    if (edge.target !== pickerId || (edge.targetPort ?? 'in') !== 'in') return true
+    return edge.source === catalogSourceNodeId
+  })
+  if (doc.nodes.some((n) => n.id === catalogSourceNodeId)) {
+    ensureEdge(doc.edges, catalogSourceNodeId, pickerId, 'in')
+  }
+
+  // 默认选中首个实体并写入图片预览，便于 Inspector 立刻显示输出
+  const catalogNode = doc.nodes.find((n) => n.id === catalogSourceNodeId)
+  const catalog = parseShotEntities(catalogNode?.params.text)
+  if (catalog.length) {
+    const selectedId = picker.params.selectedShotEntityId?.trim()
+    const picked =
+      (selectedId ? catalog.find((row) => row.id === selectedId) : undefined) ?? catalog[0]
+    if (picked) {
+      const previewRelativePath = picked.imageUrls[0]?.trim().replace(/\\/g, '/') || undefined
+      picker.params = {
+        ...picker.params,
+        selectedShotEntityId: picked.id,
+        text: stringifyShotEntities([picked]),
+        previewRelativePath,
+        previewDataUrl: undefined
+      }
+    }
+  }
+  return doc
+}
+
+function removeShotEntitiesSelect(doc: GraphDocument): void {
+  const pickers = doc.nodes.filter(
+    (node) => isShotEntitiesSelectNode(node) || isShotEntityPickerNode(node)
+  )
+  if (!pickers.length) return
+  const ids = new Set(pickers.map((n) => n.id))
+  doc.nodes = doc.nodes.filter((node) => !ids.has(node.id))
+  doc.edges = doc.edges.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target))
+}
+
 export function materializeShotBoundEntityRefsOnGraph(
   graph: GraphDocument,
   shot: Pick<Shot, 'id' | 'title' | 'storyboard' | 'genRefs' | 'audioRefs' | 'thumbnailPath'>,
   target: ShotParamsDropTarget,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
   options?: {
+    /** 当前镜实体图 URL（接到生成节点的 image 边界） */
     entityImageUrls?: string[]
+    /** @deprecated 改用 shotEntitiesCatalog */
+    entityBoundImages?: ShotBoundEntityImage[]
+    /** 整表分镜实体 → shotEntities 类型边界 + 选择节点 */
+    shotEntitiesCatalog?: ShotEntityResult[]
     resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+    /** video 是否合并 thumbnail/style；默认 true */
+    includeShotVisualBoundImages?: boolean
+    /** 当前镜绑定图是否接到生成节点 in-image；默认 true */
+    wireBoundImagesToGenerate?: boolean
+    /** 是否物化整表分镜实体边界并接到 shotEntities.select（默认 false） */
+    wireShotEntitiesToSelect?: boolean
+    /** @deprecated 改用 wireShotEntitiesToSelect */
+    wireBoundImagesToSelect?: boolean
+    selectNodeTitle?: string
   }
 ): GraphDocument {
+  const wireCatalogSelect =
+    options?.wireShotEntitiesToSelect === true || options?.wireBoundImagesToSelect === true
+  const catalog = options?.shotEntitiesCatalog ?? []
+
   const fromStoryboard = collectStoryboardBindingImages(shot)
   const fromUpper = boundImagesFromEntityUrls(options?.entityImageUrls)
-  // 视频图：优先分镜条同款成片（thumbnail / style），避免世界元素旧绑定盖住最新分镜图
-  const fromShotVisual =
-    target === 'video' ? collectShotVisualBoundImages(shot, resolveAsset) : []
-  const bound = fromShotVisual.length
-    ? fromShotVisual
-    : fromUpper.length
-      ? fromUpper
-      : fromStoryboard
+  // 当前镜绑定图：storyboard + 当前镜实体图合并（不再把整表展平为 image）
+  const fromCurrentShot = mergeBoundEntityImages(fromUpper, fromStoryboard)
+  const includeVisual =
+    target === 'video' && options?.includeShotVisualBoundImages !== false
+  const fromShotVisual = includeVisual ? collectShotVisualBoundImages(shot, resolveAsset) : []
+  const bound =
+    target === 'video'
+      ? mergeBoundEntityImages(fromShotVisual, fromCurrentShot)
+      : options?.entityBoundImages?.length
+        ? mergeBoundEntityImages(options.entityBoundImages)
+        : fromUpper.length
+          ? fromUpper
+          : fromStoryboard
   const assets = listImageAssetsFromShotGenRefs(shot, resolveAsset)
-  if (!bound.length && !assets.length) return graph
+  const wireGen = options?.wireBoundImagesToGenerate !== false
+  if (!bound.length && !assets.length && !(wireCatalogSelect && catalog.length)) {
+    return graph
+  }
 
-  const doc = cloneGraphDocument(graph)
+  let doc = cloneGraphDocument(graph)
   const gen =
     target === 'image' ? findShotVisualImageNode(doc) : findShotWorkflowVideoNode(doc)
   if (!gen) return graph
 
-  if (fromShotVisual.length || fromUpper.length) {
+  if (fromShotVisual.length || fromCurrentShot.length || options?.entityBoundImages?.length) {
     pruneStaleBoundImageInputs(
       doc,
       new Set(bound.map((item) => item.relativePath.replace(/\\/g, '/')))
@@ -867,13 +1072,52 @@ export function materializeShotBoundEntityRefsOnGraph(
 
   for (const item of bound) {
     const source = ensureBoundImageInputNode(doc, item, gen)
-    ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+    if (wireGen) {
+      ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+    } else {
+      doc.edges = doc.edges.filter(
+        (edge) =>
+          !(
+            edge.source === source.id &&
+            edge.target === gen.id &&
+            (edge.targetPort ?? 'in') === 'in-image'
+          )
+      )
+    }
   }
   for (const asset of assets) {
     if (asset.type !== 'image') continue
     const source = ensureImageRefNodeNear(doc, asset, gen)
-    ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+    if (wireGen) {
+      ensureEdge(doc.edges, source.id, gen.id, 'in-image')
+    }
   }
+
+  if (wireCatalogSelect && target === 'video') {
+    const validCatalog = catalog.filter((e) => e.id.trim() && e.imageUrls.length)
+    pruneStaleShotEntityCatalogInputs(doc, validCatalog.length > 0)
+    if (validCatalog.length) {
+      const source = ensureShotEntitiesCatalogInputNode(doc, validCatalog, gen, {
+        title: '分镜实体'
+      })
+      // 目录边界默认不接到视频生成
+      doc.edges = doc.edges.filter(
+        (edge) =>
+          !(
+            edge.source === source.id &&
+            edge.target === gen.id &&
+            (edge.targetPort ?? 'in') === 'in-image'
+          )
+      )
+      doc = ensureShotEntitiesSelectOnGraph(doc, source.id, {
+        near: gen,
+        title: options?.selectNodeTitle
+      })
+    } else {
+      removeShotEntitiesSelect(doc)
+    }
+  }
+
   return doc
 }
 
@@ -888,12 +1132,21 @@ export function applyShotParamsDropMaterialization(
   target: ShotParamsDropTarget = 'video',
   options?: {
     entityImageUrls?: string[]
+    entityBoundImages?: ShotBoundEntityImage[]
+    shotEntitiesCatalog?: ShotEntityResult[]
     resolveAssetByRelativePath?: (relativePath: string) => ShotVisualImageAsset | null
+    includeShotVisualBoundImages?: boolean
+    wireBoundImagesToGenerate?: boolean
+    wireShotEntitiesToSelect?: boolean
+    wireBoundImagesToSelect?: boolean
+    selectNodeTitle?: string
   }
 ): GraphDocument {
   let doc = materializeShotBoundEntityRefsOnGraph(graph, shot, target, resolveAsset, options)
-  // 视频窗还可补上 shotEntities 输出图（style genRefs 优先逻辑在 listImageAssetsFromShotEntity）
-  if (target === 'video') {
+  // 视频窗还可补资产引用；已有目录选择 / 当前镜 image 边界时不再重复自动接
+  const hasCatalogSelect =
+    options?.wireShotEntitiesToSelect === true || options?.wireBoundImagesToSelect === true
+  if (target === 'video' && !hasCatalogSelect) {
     const entityAssets = listImageAssetsFromShotEntity(shot, resolveAsset, options)
     if (entityAssets.length) {
       doc = materializeShotGenRefsOnVideoGraph(doc, entityAssets, { near: shotParamsNode })

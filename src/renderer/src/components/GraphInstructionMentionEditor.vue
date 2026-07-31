@@ -219,7 +219,10 @@ import {
   readBoundUnitIdFromNodeParams,
   formatNarrativeUnitRefText,
   shouldKeepInstructionMentionToken,
+  softResolveBoundaryInputParams,
+  isBoundaryInputNode,
   type GraphNode,
+  type GraphValue,
   type InstructionMentionSource,
   type InstructionPreset,
   type InstructionPresetKind,
@@ -446,19 +449,84 @@ function sourceSnippet(node: GraphNode): string {
   return ''
 }
 
+/** 从 GraphValue 取可预览相对路径 */
+function mediaPathFromValue(value: GraphValue | undefined): string {
+  if (!value) return ''
+  if (value.kind === 'image' || value.kind === 'video') {
+    return value.relativePath?.trim().replace(/\\/g, '/') || ''
+  }
+  if (value.kind === 'images' || value.kind === 'videos') {
+    const item = value.items.find((i) => i.relativePath?.trim())
+    return item?.relativePath?.trim().replace(/\\/g, '/') || ''
+  }
+  return ''
+}
+
+/** data: 预览（边界/图库内嵌） */
+function resolveSourcePreviewDataUrl(source: GraphNode): string {
+  const direct = source.params.previewDataUrl?.trim()
+  if (direct?.startsWith('data:')) return direct
+  const images = source.params.generatedImages
+  if (!Array.isArray(images) || !images.length) return ''
+  const selectedId = source.params.selectedImageId?.trim()
+  const item =
+    (selectedId ? images.find((row) => row.id === selectedId) : undefined) ||
+    images[images.length - 1]
+  const dataUrl = item?.dataUrl?.trim()
+  return dataUrl?.startsWith('data:') ? dataUrl : ''
+}
+
+/**
+ * 引用芯片缩略图路径：资产 relativePath、边界 previewRelativePath、图库落盘路径。
+ * Cache/ 下的分镜实体边界通常没有 assetId，必须读 previewRelativePath。
+ */
+function resolveSourcePreviewPath(source: GraphNode): string {
+  const previewRel = source.params.previewRelativePath?.trim().replace(/\\/g, '/')
+  if (previewRel) return previewRel
+  const images = source.params.generatedImages
+  if (Array.isArray(images) && images.length) {
+    const selectedId = source.params.selectedImageId?.trim()
+    const item =
+      (selectedId ? images.find((row) => row.id === selectedId) : undefined) ||
+      images[images.length - 1]
+    const path = item?.relativePath?.trim().replace(/\\/g, '/')
+    if (path) return path
+  }
+  if (isBoundaryInputNode(source)) {
+    return mediaPathFromValue(softResolveBoundaryInputParams(source))
+  }
+  return ''
+}
+
+/** thumbUrls 缓存键：优先 assetId，否则用预览相对路径 */
+function sourceThumbCacheKey(source: GraphNode | null): string {
+  if (!source) return ''
+  const assetId = source.assetId?.trim()
+  if (assetId) return `asset:${assetId}`
+  const path = resolveSourcePreviewPath(source)
+  return path ? `path:${path}` : ''
+}
+
+function lookupThumbUrl(source: GraphNode | null): string {
+  if (!source) return ''
+  const dataUrl = resolveSourcePreviewDataUrl(source)
+  if (dataUrl) return dataUrl
+  const key = sourceThumbCacheKey(source)
+  return key ? thumbUrls.value[key] ?? '' : ''
+}
+
 function toRefChip(
   edge: { edgeId: string; sourceNodeId: string; index: number },
   source: GraphNode | null
 ): RefChip {
   const title = source ? sourceTitle(source) : edge.sourceNodeId.slice(0, 8)
-  const assetId = source?.assetId
   return {
     edgeId: edge.edgeId,
     sourceNodeId: edge.sourceNodeId,
     index: edge.index,
     title,
     icon: source ? sourceIcon(source) : '📄',
-    thumbUrl: assetId ? thumbUrls.value[assetId] ?? '' : '',
+    thumbUrl: lookupThumbUrl(source),
     snippet: source ? sourceSnippet(source) : ''
   }
 }
@@ -534,7 +602,6 @@ const frameChips = computed((): FrameChip[] => {
     .map((edge) => {
       const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
       const title = source ? sourceTitle(source) : edge.sourceNodeId.slice(0, 8)
-      const assetId = source?.assetId
       const roleLabel =
         edge.targetPort === VIDEO_LAST_FRAME_PORT_ID
           ? t('graph.port.lastFrame')
@@ -546,7 +613,7 @@ const frameChips = computed((): FrameChip[] => {
         roleLabel,
         title: `${roleLabel} · ${title}`,
         icon: source ? sourceIcon(source) : '📄',
-        thumbUrl: assetId ? thumbUrls.value[assetId] ?? '' : ''
+        thumbUrl: lookupThumbUrl(source)
       }
     })
 })
@@ -564,14 +631,28 @@ watch(
   async ([mentions, frames]) => {
     for (const chip of [...mentions, ...frames]) {
       const source = graphEditorHosts.getNode(props.hostId, chip.sourceNodeId)
-      const assetId = source?.assetId
-      if (!assetId || thumbUrls.value[assetId]) continue
-      const asset = project.assets.find((item) => item.id === assetId)
-      if (!asset) continue
-      const path = asset.relativePath?.trim()
-      if (!path || asset.type !== 'image') continue
+      if (!source) continue
+      // data: 已在 lookupThumbUrl 同步返回，无需异步缓存
+      if (resolveSourcePreviewDataUrl(source)) continue
+      const key = sourceThumbCacheKey(source)
+      if (!key || thumbUrls.value[key]) continue
+
+      let path = ''
+      const assetId = source.assetId?.trim()
+      if (assetId) {
+        const asset = project.assets.find((item) => item.id === assetId)
+        if (asset && (asset.type === 'image' || asset.type === 'video')) {
+          path =
+            asset.type === 'image'
+              ? asset.relativePath?.trim() || ''
+              : asset.thumbnailPath?.trim() || asset.relativePath?.trim() || ''
+        }
+      }
+      // 分镜画面/视频实体边界常无 assetId，或资产表缺失时仍可读 previewRelativePath
+      if (!path) path = resolveSourcePreviewPath(source)
+      if (!path) continue
       try {
-        thumbUrls.value[assetId] = await resolveAssetPreviewUrl(path)
+        thumbUrls.value[key] = await resolveAssetPreviewUrl(path)
       } catch {
         /* ignore */
       }

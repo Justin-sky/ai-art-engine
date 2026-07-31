@@ -109,7 +109,12 @@ import {
 import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
 import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
 import { readShotStoryboardFromNodeParams } from '../shotParams'
-import { parseShotEntities, stringifyShotEntities } from '../shotEntitiesParse'
+import {
+  mergeShotEntityResults,
+  parseShotEntities,
+  stringifyShotEntities,
+  type ShotEntityResult
+} from '../shotEntitiesParse'
 import { parseVideoEntities, stringifyVideoEntities } from '../videoEntitiesParse'
 import {
   mergeShotSplitRowsPreservingReviewed,
@@ -3992,6 +3997,71 @@ export function executeSelectNarrativeNode(
     }
   })
   return { out: { kind: 'text', text } }
+}
+
+function collectShotEntitiesFromInputs(inputs: Record<string, GraphValue[]>): ShotEntityResult[] {
+  const lists: ShotEntityResult[][] = []
+  for (const value of collectIncomingValues(inputs)) {
+    const text = catalogTextFromValue(value, GraphPortType.shotEntities)
+    if (text) lists.push(parseShotEntities(text))
+  }
+  return mergeShotEntityResults(...lists)
+}
+
+/**
+ * 选择分镜实体：从多条 shotEntities 入边合并目录，选出一行，输出首图 image。
+ * 默认不自动接到视频生成；用户手动连线。
+ */
+export function executeSelectShotEntitiesNode(
+  ctx: NodeExecuteContext
+): Record<string, GraphValue> {
+  const rows = collectShotEntitiesFromInputs(ctx.inputs)
+  const selectedId = ctx.node.params.selectedShotEntityId?.trim()
+  const picked =
+    (selectedId ? rows.find((row) => row.id === selectedId) : undefined) ?? rows[0]
+  if (!picked) {
+    ctx.node.params = {
+      ...ctx.node.params,
+      text: '',
+      selectedShotEntityId: '',
+      previewRelativePath: undefined,
+      previewDataUrl: undefined
+    }
+    ctx.patchNode?.({
+      params: {
+        text: '',
+        selectedShotEntityId: '',
+        previewRelativePath: undefined,
+        previewDataUrl: undefined
+      }
+    })
+    return { out: { kind: 'image', dataUrl: '' } }
+  }
+  const previewRelativePath = picked.imageUrls[0]?.trim() || undefined
+  const text = stringifyShotEntities([picked])
+  ctx.node.params = {
+    ...ctx.node.params,
+    selectedShotEntityId: picked.id,
+    text,
+    previewRelativePath,
+    previewDataUrl: undefined
+  }
+  ctx.patchNode?.({
+    params: {
+      selectedShotEntityId: picked.id,
+      text,
+      previewRelativePath,
+      previewDataUrl: undefined
+    }
+  })
+  return {
+    out: {
+      kind: 'image',
+      id: picked.id,
+      dataUrl: '',
+      relativePath: previewRelativePath
+    }
+  }
 }
 
 /** 选取视频：从视频数组中选出一条，输出为单个 video */

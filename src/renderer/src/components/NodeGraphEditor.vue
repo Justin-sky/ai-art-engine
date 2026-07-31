@@ -631,10 +631,11 @@ import {
   ensureShotParamsLinkedToVideo,
   findShotVisualImageNode,
   findShotWorkflowVideoNode,
-  listImageAssetsFromShotEntity,
   materializeShotBoundEntityRefsOnGraph,
-  materializeShotGenRefsOnVideoGraph,
+  parseShotEntities,
+  resolveAllShotEntitiesFromGraphs,
   resolveShotEntityImageUrlsFromGraphs,
+  stringifyShotEntities,
   type WorldElementKind,
   type NarrativeUnitRow,
   type GraphImageItem,
@@ -4268,8 +4269,8 @@ function resolveImageAssetByRelativePath(relativePath: string) {
   }
 }
 
-/** 从剧本图取当前镜实体 imageUrls：优先 shotImageGen，避免 shotVideoGen 旧缓存 */
-function resolveShotEntityImageUrls(shotId: string): string[] {
+/** 收集剧本相关图文档（live + 剧本资产 graphJson） */
+function listScriptGraphDocuments(): GraphDocument[] {
   const docs: GraphDocument[] = []
   const seen = new WeakSet<object>()
   const pushRaw = (raw: unknown): void => {
@@ -4285,12 +4286,28 @@ function resolveShotEntityImageUrls(shotId: string): string[] {
     if (isDraftAssetId(scriptId)) pushRaw(draftStore.getDraft(scriptId)?.genParams?.graphJson)
     else pushRaw(project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson)
   }
-  return resolveShotEntityImageUrlsFromGraphs(docs, shotId)
+  return docs
+}
+
+/** 从剧本图取当前镜实体 imageUrls：优先 shotImageGen，避免 shotVideoGen 旧缓存 */
+function resolveShotEntityImageUrls(shotId: string): string[] {
+  return resolveShotEntityImageUrlsFromGraphs(listScriptGraphDocuments(), shotId)
 }
 
 function shotEntityMaterializeOptions(shot: Shot) {
+  const docs = listScriptGraphDocuments()
+  // 分镜视频：整表 shotEntities 边界 + 选择节点；当前镜绑定图接到视频生成
+  if (graphScope.value === 'shotWorkflow') {
+    return {
+      shotEntitiesCatalog: resolveAllShotEntitiesFromGraphs(docs),
+      wireShotEntitiesToSelect: true,
+      selectNodeTitle: t('graph.shotEntityPicker'),
+      entityImageUrls: resolveShotEntityImageUrlsFromGraphs(docs, shot.id),
+      resolveAssetByRelativePath: resolveImageAssetByRelativePath
+    }
+  }
   return {
-    entityImageUrls: resolveShotEntityImageUrls(shot.id),
+    entityImageUrls: resolveShotEntityImageUrlsFromGraphs(docs, shot.id),
     resolveAssetByRelativePath: resolveImageAssetByRelativePath
   }
 }
@@ -4364,7 +4381,8 @@ function addShotParamsNodeFromShot(
 }
 
 /**
- * 分镜图 / 分镜视频窗：按绑定实体与 genRefs 创建图片引用并连到生成节点 in-image
+ * 分镜图：绑定实体接到图片生成 in-image。
+ * 分镜视频：整表分镜实体边界 +「选择分镜实体」，默认不接到视频生成（成片缩略图仍可接）。
  */
 function ensureShotBoundEntityImagesForActiveCanvas(shot: Shot): void {
   const scope = graphScope.value
@@ -4372,28 +4390,13 @@ function ensureShotBoundEntityImagesForActiveCanvas(shot: Shot): void {
   const target = scope === 'visual' ? 'image' : 'video'
   const before = buildGraphJson()
   const options = shotEntityMaterializeOptions(shot)
-  let next = materializeShotBoundEntityRefsOnGraph(
+  const next = materializeShotBoundEntityRefsOnGraph(
     before,
     shot,
     target,
     resolveImageAssetById,
     options
   )
-  // 分镜视频：上层 shotEntities 还可补资产引用（style genRefs 优先逻辑在 listImageAssetsFromShotEntity）
-  if (target === 'video') {
-    const entityAssets = listImageAssetsFromShotEntity(shot, resolveImageAssetById, options)
-    if (entityAssets.length) {
-      const near =
-        next.nodes.find(
-          (n) =>
-            n.typeId === 'script.shotParams' &&
-            readBoundShotIdFromNodeParams(n.params) === shot.id
-        ) ?? findShotWorkflowVideoNode(next)
-      if (near) {
-        next = materializeShotGenRefsOnVideoGraph(next, entityAssets, { near })
-      }
-    }
-  }
   if (JSON.stringify(next) === JSON.stringify(before)) return
   replaceGraphDocument(graph, next)
   recordGraphChange('materialize-shot-bound-entity-images', before)
@@ -4932,7 +4935,40 @@ const selectImage = reactive({
   selectedImageId: '' as string
 })
 
+function collectSelectShotEntityImageItems(nodeId: string): GraphImageItem[] {
+  const items: GraphImageItem[] = []
+  const seen = new Set<string>()
+  for (const edge of graph.edges) {
+    if (edge.target !== nodeId) continue
+    if ((edge.targetPort ?? 'in') !== 'in') continue
+    const source = graph.nodes.find((n) => n.id === edge.source)
+    if (!source) continue
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
+    const catalog =
+      catalogTextFromValue(runOut, GraphPortType.shotEntities) ||
+      source.params.text?.trim() ||
+      ''
+    for (const row of parseShotEntities(catalog)) {
+      const path = row.imageUrls[0]?.trim()
+      if (!row.id || !path || seen.has(row.id)) continue
+      seen.add(row.id)
+      items.push({
+        id: row.id,
+        dataUrl: '',
+        relativePath: path
+      })
+    }
+  }
+  return items
+}
+
 function collectSelectImageItems(nodeId: string): GraphImageItem[] {
+  const selectNode = graph.nodes.find((n) => n.id === nodeId)
+  if (selectNode?.typeId === 'shotEntities.select') {
+    return collectSelectShotEntityImageItems(nodeId)
+  }
+
   const items: GraphImageItem[] = []
   const seen = new Set<string>()
   const pushItem = (item: GraphImageItem): void => {
@@ -5040,12 +5076,18 @@ function onSelectImageOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const items = collectSelectImageItems(nodeId)
+  const selectedKey =
+    node.typeId === 'shotEntities.select'
+      ? node.params.selectedShotEntityId?.trim() || ''
+      : node.params.selectedImageId?.trim() || ''
   const selected =
-    pickImageItem(items, node.params.selectedImageId) ??
-    (items[0] ? items[0] : undefined)
+    pickImageItem(items, selectedKey) ?? (items[0] ? items[0] : undefined)
   selectImage.open = true
   selectImage.nodeId = nodeId
-  selectImage.title = nodeDisplayTitle(node)
+  selectImage.title =
+    node.typeId === 'shotEntities.select'
+      ? t('graph.selectShotEntities.appMark')
+      : nodeDisplayTitle(node)
   selectImage.items = items
   selectImage.selectedImageId = selected
     ? imageItemKey(selected, Math.max(0, items.indexOf(selected)))
@@ -5068,6 +5110,27 @@ function saveSelectImage(selectedImageId: string): void {
   const before = buildGraphJson()
   const previewDataUrl = picked?.dataUrl?.trim() ? picked.dataUrl : undefined
   const previewRelativePath = picked?.relativePath?.trim() ? picked.relativePath : undefined
+  if (node.typeId === 'shotEntities.select') {
+    const entityId = picked?.id?.trim() || selectedImageId
+    const catalogText =
+      graph.edges
+        .filter((e) => e.target === nodeId && (e.targetPort ?? 'in') === 'in')
+        .map((e) => graph.nodes.find((n) => n.id === e.source)?.params.text?.trim())
+        .find((t) => !!t) ?? ''
+    const row = parseShotEntities(catalogText).find((item) => item.id === entityId)
+    node.params = {
+      ...node.params,
+      selectedShotEntityId: entityId,
+      text: row ? stringifyShotEntities([row]) : '',
+      previewDataUrl: undefined,
+      previewRelativePath: row?.imageUrls[0]?.trim() || previewRelativePath
+    }
+    selectImage.selectedImageId = selectedImageId
+    scheduleSave()
+    recordGraphChange('select-shot-entity', before)
+    closeSelectImage()
+    return
+  }
   node.params = {
     ...node.params,
     selectedImageId,
@@ -5429,21 +5492,58 @@ function collectSelectNarrativeItems(nodeId: string): GraphTextItem[] {
   return items
 }
 
+function collectSelectShotEntityItems(nodeId: string): GraphTextItem[] {
+  const items: GraphTextItem[] = []
+  const seen = new Set<string>()
+  for (const edge of graph.edges) {
+    if (edge.target !== nodeId) continue
+    if ((edge.targetPort ?? 'in') !== 'in') continue
+    const source = graph.nodes.find((n) => n.id === edge.source)
+    if (!source) continue
+    const sourcePort = edge.sourcePort ?? 'out'
+    const runOut = runStates[source.id]?.outputs?.[sourcePort]
+    const catalog =
+      catalogTextFromValue(runOut, GraphPortType.shotEntities) ||
+      source.params.text?.trim() ||
+      ''
+    for (const row of parseShotEntities(catalog)) {
+      if (!row.id || seen.has(row.id)) continue
+      seen.add(row.id)
+      items.push({
+        id: row.id,
+        title: row.name,
+        text: stringifyShotEntities([row]),
+        relativePath: row.imageUrls[0]
+      })
+    }
+  }
+  return items
+}
+
 function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const isNarrative = node.typeId === 'narrative.select'
-  const items = isNarrative ? collectSelectNarrativeItems(nodeId) : collectSelectTextItems(nodeId)
+  const isShotEntity = node.typeId === 'shotEntities.select'
+  const items = isNarrative
+    ? collectSelectNarrativeItems(nodeId)
+    : isShotEntity
+      ? collectSelectShotEntityItems(nodeId)
+      : collectSelectTextItems(nodeId)
   const selectedId = isNarrative
     ? node.params.selectedUnitId?.trim() || ''
-    : node.params.selectedTextId?.trim() || ''
+    : isShotEntity
+      ? node.params.selectedShotEntityId?.trim() || ''
+      : node.params.selectedTextId?.trim() || ''
   const selected =
     pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
   selectText.open = true
   selectText.nodeId = nodeId
   selectText.title = isNarrative
     ? t('graph.selectNarrative.appMark')
-    : nodeDisplayTitle(node)
+    : isShotEntity
+      ? t('graph.selectShotEntities.appMark')
+      : nodeDisplayTitle(node)
   selectText.items = items
   selectText.selectedTextId = selected
     ? textItemKey(selected, Math.max(0, items.indexOf(selected)))
@@ -5475,6 +5575,23 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
     selectText.selectedTextId = selectedTextId
     scheduleSave()
     recordGraphChange('select-narrative', before)
+    closeSelectText()
+    return
+  }
+  if (node.typeId === 'shotEntities.select') {
+    const entityId = picked?.id?.trim() || selectedTextId
+    const text = picked?.text?.trim() || ''
+    const previewRelativePath = picked?.relativePath?.trim() || undefined
+    node.params = {
+      ...node.params,
+      selectedShotEntityId: entityId,
+      text,
+      previewRelativePath,
+      previewDataUrl: undefined
+    }
+    selectText.selectedTextId = selectedTextId
+    scheduleSave()
+    recordGraphChange('select-shot-entity', before)
     closeSelectText()
     return
   }

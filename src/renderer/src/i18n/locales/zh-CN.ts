@@ -1410,6 +1410,7 @@ export default {
       cancel: '取消连线'
     },
     fitView: '适配视图',
+    shotEntityPicker: '选择分镜实体',
     layout: {
       dragHandle: '拖动布局工具条',
       expand: '展开布局工具',
@@ -1470,6 +1471,11 @@ export default {
       appMark: '选择叙事单元',
       hint: '双击从上游叙事目录中选出一个单元；默认第一项。',
       empty: '暂无上游叙事单元，请先连接叙事资产并执行'
+    },
+    selectShotEntities: {
+      appMark: '选择分镜实体',
+      hint: '双击从上游分镜实体中选出一个；默认不接到视频生成，需要时请手动连线。',
+      empty: '暂无上游分镜实体'
     },
     textsPreview: {
       appMark: '文本预览',
@@ -1863,6 +1869,7 @@ export default {
     nodeRole: {
       ref: '引用',
       host: '宿主',
+      subgraph: '子图',
       generate: '生成',
       output: '输出',
       lock: '锁定',
@@ -1873,6 +1880,9 @@ export default {
     },
     assetHost: {
       hint: '宿主资产 · 双击打开编辑'
+    },
+    subgraphDive: {
+      hint: '内含子图 · 双击进入'
     },
     assetMissing: {
       hint: '关联资产已删除 · 节点不可用'
@@ -2023,6 +2033,9 @@ export default {
       },
       text: {
         select: '选择文本'
+      },
+      shotEntities: {
+        select: '选择分镜实体'
       },
       narrative: {
         select: '选择叙事单元',

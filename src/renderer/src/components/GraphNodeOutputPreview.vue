@@ -197,6 +197,7 @@ function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   if (node.typeId === 'script.shotImageGen') return 'image'
   if (node.typeId === 'script.shotVideoGen') return 'video'
   if (node.typeId === 'image.select') return 'image'
+  if (node.typeId === 'shotEntities.select') return 'image'
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'

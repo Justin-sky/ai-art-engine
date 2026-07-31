@@ -771,6 +771,12 @@ export function softResolveSourceOutput(
     if (text) return { kind: 'text', text }
   }
 
+  // 选择分镜实体：输出选中实体首图
+  if (node.typeId === 'shotEntities.select' && (sourcePort === 'out' || !sourcePort)) {
+    const path = node.params.previewRelativePath?.trim()
+    if (path) return { kind: 'image', dataUrl: '', relativePath: path }
+  }
+
   if (graphValueHasPayload(fromRun)) return fromRun
 
   const runState = runStates[sourceId]

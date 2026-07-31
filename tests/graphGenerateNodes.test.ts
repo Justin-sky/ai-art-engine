@@ -36,6 +36,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'narrative.unitGen',
   'narrative.unitRef',
   'narrative.select',
+  'shotEntities.select',
   'narrative.split',
   'narrative.table',
   'text.select',

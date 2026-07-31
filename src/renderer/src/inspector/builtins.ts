@@ -261,7 +261,8 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
         typeId === 'video.select' ||
         typeId === 'voice.select' ||
         typeId === 'text.select' ||
-        typeId === 'narrative.select'
+        typeId === 'narrative.select' ||
+        typeId === 'shotEntities.select'
       )
     }
   },

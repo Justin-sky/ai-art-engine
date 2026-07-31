@@ -39,6 +39,7 @@ import {
   executeSelectVoiceNode,
   executeSelectTextNode,
   executeSelectNarrativeNode,
+  executeSelectShotEntitiesNode,
   executeMultiAngleNode,
   executeLightingNode,
   executePortraitTextureNode,
@@ -805,6 +806,42 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectNarrativeNode
+  },
+  {
+    typeId: 'shotEntities.select',
+    category: 'note',
+    label: 'Select shot entity',
+    icon: '🎞️',
+    defaultTitle: 'Select shot entity',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.shotEntities,
+        multiple: false,
+        label: 'In'
+      },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Out'
+      }
+    ],
+    defaultParams: () => ({
+      text: '',
+      selectedShotEntityId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.select',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeSelectShotEntitiesNode
   },
   {
     typeId: 'image.multiAngle',
