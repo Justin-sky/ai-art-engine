@@ -72,16 +72,19 @@
         @change="onImportFile"
       />
     </div>
-    <DockviewVue
-      class="studio-dock"
-      :theme="dockTheme"
-      :components="dockComponents"
-      :tab-components="dockTabComponents"
-      default-tab-component="editorTab"
-      :get-tab-context-menu-items="getTabContextMenuItems"
-      floating-group-bounds="boundedWithinViewport"
-      @ready="onReady"
-    />
+    <div class="studio-main">
+      <DockviewVue
+        class="studio-dock"
+        :theme="dockTheme"
+        :components="dockComponents"
+        :tab-components="dockTabComponents"
+        default-tab-component="editorTab"
+        :get-tab-context-menu-items="getTabContextMenuItems"
+        floating-group-bounds="boundedWithinViewport"
+        @ready="onReady"
+      />
+      <StudioSideToolBar :dock-api="dockApi" />
+    </div>
     <SaveAssetDialog
       :open="saveDialogOpen"
       :default-name="saveDefaultName"
@@ -122,6 +125,7 @@ import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
 import SaveLayoutDialog from '../components/SaveLayoutDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
+import StudioSideToolBar from '../components/StudioSideToolBar.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   createEditorWindowComponents,
@@ -134,6 +138,10 @@ import { useEditorPanelOpener } from '../editor/workbench/useEditorPanelOpener'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
 import { parseEditorPanelId } from '../editor/workbench/editorPanelIcon'
 import {
+  handleSidePanelLayoutMaybeStacked,
+  handleSidePanelMoved,
+  noteSidePanelWillStackDrop,
+  registerSidePanelDockApi,
   registerSidePanelSizeProvider,
   sidePanelCollapsed,
   sidePanelInitialWidth,
@@ -211,6 +219,9 @@ const canDeleteActive = computed(() => {
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let layoutDisposable: { dispose: () => void } | null = null
 let removeDisposable: { dispose: () => void } | null = null
+let moveDisposable: { dispose: () => void } | null = null
+let dropDisposable: { dispose: () => void } | null = null
+let willDropDisposable: { dispose: () => void } | null = null
 /** Suppress ensureCorePanels / persist while rebuilding layout */
 let layoutMutating = false
 
@@ -709,8 +720,12 @@ function tryRestoreLayout(api: DockviewApi): boolean {
 function onReady(event: DockviewReadyEvent): void {
   const api = event.api
   dockApi.value = api
+  registerSidePanelDockApi(api)
   layoutDisposable?.dispose()
   removeDisposable?.dispose()
+  moveDisposable?.dispose()
+  dropDisposable?.dispose()
+  willDropDisposable?.dispose()
 
   try {
     if (!tryRestoreLayout(api)) {
@@ -728,6 +743,19 @@ function onReady(event: DockviewReadyEvent): void {
 
   layoutDisposable = api.onDidLayoutChange(() => {
     persistLayout(api)
+    handleSidePanelLayoutMaybeStacked(api)
+  })
+  willDropDisposable = api.onWillDrop((event) => {
+    noteSidePanelWillStackDrop(api, String(event.position), event.group)
+  })
+  dropDisposable = api.onDidDrop((event) => {
+    noteSidePanelWillStackDrop(api, String(event.position), event.group)
+    const movedId = event.getData()?.panelId
+    if (typeof movedId === 'string' && movedId) handleSidePanelMoved(api, movedId)
+    else handleSidePanelLayoutMaybeStacked(api)
+  })
+  moveDisposable = api.onDidMovePanel((event) => {
+    handleSidePanelMoved(api, event.panel.id)
   })
   removeDisposable = api.onDidRemovePanel((panel) => {
     if (panel.id.startsWith('asset-editor-')) {
@@ -910,12 +938,19 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   registerSidePanelSizeProvider(null)
+  registerSidePanelDockApi(null)
   window.removeEventListener('keydown', onGlobalKeyDown)
   if (saveTimer) clearTimeout(saveTimer)
   layoutDisposable?.dispose()
   removeDisposable?.dispose()
+  moveDisposable?.dispose()
+  dropDisposable?.dispose()
+  willDropDisposable?.dispose()
   layoutDisposable = null
   removeDisposable = null
+  moveDisposable = null
+  dropDisposable = null
+  willDropDisposable = null
   dockApi.value = null
 })
 </script>
@@ -1000,10 +1035,17 @@ onBeforeUnmount(() => {
   color: #7dcea0;
 }
 
+.studio-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
 .studio-dock {
   flex: 1;
   min-height: 0;
-  width: 100%;
+  min-width: 0;
 }
 
 .studio-dock :deep(.panel-fill) {
@@ -1133,20 +1175,8 @@ onBeforeUnmount(() => {
   border-right: none;
 }
 
-.studio-dock :deep(.dv-groupview.studio-side-collapsed .dv-content-container) {
-  display: none;
-}
-
-.studio-dock :deep(.dv-groupview.studio-side-collapsed .dv-tabs-and-actions-container) {
-  border-bottom: none;
-}
-
-.studio-dock :deep(.editor-tab.is-side-collapsed) {
-  padding: 0 2px;
-  justify-content: center;
-}
-
-.studio-dock :deep(.editor-tab.is-side-collapsed .editor-tab-collapse) {
-  visibility: visible;
+/* Visibility is handled by dockview setVisible; keep a marker class for debugging only. */
+.studio-dock :deep(.dv-groupview.studio-side-collapsed) {
+  border: none;
 }
 </style>
