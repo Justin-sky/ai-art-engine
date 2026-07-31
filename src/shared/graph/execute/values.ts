@@ -3149,7 +3149,9 @@ export function executeShotTableNode(
     const mergedText = stringifyShotSplitRows(mergedRows)
     // 合并未增加绑定时原样透传，避免无谓改写 JSON 字段顺序
     const text =
-      mergedText === stringifyShotSplitRows(fromShotsRows) ? fromShots : mergedText
+      mergedText === stringifyShotSplitRows(fromShotsRows)
+        ? (fromShots ?? mergedText)
+        : mergedText
     ctx.node.params = { ...ctx.node.params, text }
     ctx.patchNode?.({ params: { text } })
     return { out: catalogValue(GraphPortType.shots, text) }

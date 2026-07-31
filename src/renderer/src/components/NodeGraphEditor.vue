@@ -4364,11 +4364,6 @@ function syncShotParamsNodeBindingOutputs(
   syncShotParamsAllBindingImages(node, resolveAllShotBindingImagesForScript())
 }
 
-/** 从剧本图取当前镜实体 imageUrls：优先 shotImageGen，避免 shotVideoGen 旧缓存 */
-function resolveShotEntityImageUrls(shotId: string): string[] {
-  return resolveShotEntityImageUrlsFromGraphs(listScriptGraphDocuments(), shotId)
-}
-
 function shotEntityMaterializeOptions(shot: Shot) {
   const docs = listScriptGraphDocuments()
   // 分镜视频：整表 shotEntities 边界 + 选择节点；当前镜绑定图接到视频生成

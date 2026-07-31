@@ -795,7 +795,7 @@ function boundImagesFromEntityUrls(entityImageUrls?: string[]): ShotBoundEntityI
  * 视频图边界输入应包含这套，并与角色/场景等实体边界并存。
  */
 export function collectShotVisualBoundImages(
-  shot: Pick<Shot, 'title' | 'thumbnailPath' | 'genRefs'>,
+  shot: Pick<Shot, 'genRefs'> & Partial<Pick<Shot, 'title' | 'thumbnailPath'>>,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null
 ): ShotBoundEntityImage[] {
   const seen = new Set<string>()
@@ -1011,7 +1011,7 @@ function removeShotEntitiesSelect(doc: GraphDocument): void {
 
 export function materializeShotBoundEntityRefsOnGraph(
   graph: GraphDocument,
-  shot: Pick<Shot, 'id' | 'title' | 'storyboard' | 'genRefs' | 'audioRefs' | 'thumbnailPath'>,
+  shot: Pick<Shot, 'id' | 'storyboard' | 'genRefs' | 'audioRefs'> & Partial<Pick<Shot, 'title' | 'thumbnailPath'>>,
   target: ShotParamsDropTarget,
   resolveAsset: (assetId: string) => ShotVisualImageAsset | null,
   options?: {

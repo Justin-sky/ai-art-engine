@@ -327,7 +327,10 @@ export function normalizeScopedGraph(
   }
   // 旧分镜图缺边界输出时补齐（保留绑定用 boundary.input）
   if (scope === 'visual' || scope === 'shotWorkflow') {
-    result = ensureShotScopeBoundaryOutput(result, scope)
+    result = ensureShotScopeBoundaryOutput(
+      result,
+      scope === 'visual' ? 'visual' : 'shotWorkflow'
+    )
   }
   return result
 }

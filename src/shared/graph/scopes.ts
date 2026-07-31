@@ -524,7 +524,10 @@ export function createDefaultScopedGraph(
   })
   // 分镜图 / 分镜视频：默认补边界输出并接线
   if (scope === 'visual' || scope === 'shotWorkflow') {
-    return ensureShotScopeBoundaryOutput(document, scope)
+    return ensureShotScopeBoundaryOutput(
+      document,
+      scope === 'visual' ? 'visual' : 'shotWorkflow'
+    )
   }
   if (!isAssetRefInputHostType(assetType)) return document
   // 元素子图：无边界输入；边界输出由 syncWorldElementKindGraph 按目录物化

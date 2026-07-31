@@ -1899,7 +1899,7 @@ function cloneWorldEntityRefs(refs: WorldEntityRef[] | undefined | null): WorldE
     .filter((item): item is WorldEntityRef => item != null)
 }
 
-export function normalizeStoryboard(shot: Pick<Shot, 'prompt' | 'storyboard' | 'camera'>): ShotStoryboard {
+export function normalizeStoryboard(shot: Pick<Shot, 'storyboard'> & Partial<Pick<Shot, 'prompt' | 'camera'>>): ShotStoryboard {
   const base = createEmptyStoryboard()
   if (shot.storyboard) {
     return {
