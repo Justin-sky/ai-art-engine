@@ -143,12 +143,13 @@ import {
   noteSidePanelWillStackDrop,
   registerSidePanelDockApi,
   registerSidePanelSizeProvider,
+  rememberedExpandedSideWidth,
   sidePanelCollapsed,
   sidePanelInitialWidth,
   syncSidePanelCollapseState,
   type SidePanelId
 } from '../editor/workbench/sidePanelCollapse'
-import { promptAlert } from '../composables/useStudioPrompt'
+import { promptAlert, promptConfirm } from '../composables/useStudioPrompt'
 import {
   DEFAULT_LAYOUT_ID,
   buildLayoutFile,
@@ -162,6 +163,7 @@ import {
   updateActiveLayoutData,
   upsertNamedLayout,
   healDockLayoutMissingPanelRefs,
+  sanitizeSidePanelCollapseFromLayoutData,
   stripPanelsFromDockLayout,
   type StudioLayoutPreset,
   type StudioLayoutsState
@@ -246,6 +248,14 @@ function openSaveLayoutDialog(): void {
   saveLayoutOpen.value = true
 }
 
+function sanitizeShellLayoutData(data: Record<string, unknown>): Record<string, unknown> {
+  const shellOnly = stripDocumentEditorPanelsFromLayoutData(data)
+  return sanitizeSidePanelCollapseFromLayoutData(shellOnly, {
+    minSide: DEFAULT_LAYOUT_RATIO.minSide,
+    fallbackWidth: (id) => rememberedExpandedSideWidth(id, sidePanelSizeOptions(id))
+  })
+}
+
 function onSaveLayoutConfirm(name: string): void {
   const api = dockApi.value
   if (!api) return
@@ -254,7 +264,7 @@ function onSaveLayoutConfirm(name: string): void {
     alert(t('studio.layout.invalid'))
     return
   }
-  const shellOnly = stripDocumentEditorPanelsFromLayoutData(data)
+  const shellOnly = sanitizeShellLayoutData(data)
   if (!isDockLayoutData(shellOnly)) {
     alert(t('studio.layout.invalid'))
     return
@@ -293,7 +303,13 @@ async function applyLayoutById(id: string): Promise<void> {
     commitLayouts({ ...layouts.value, activeId: previousId })
     return
   }
-  applyStoredLayout(api, healDockLayoutMissingPanelRefs(preset.data))
+  applyStoredLayout(
+    api,
+    sanitizeSidePanelCollapseFromLayoutData(healDockLayoutMissingPanelRefs(preset.data), {
+      minSide: DEFAULT_LAYOUT_RATIO.minSide,
+      fallbackWidth: (id) => rememberedExpandedSideWidth(id, sidePanelSizeOptions(id))
+    })
+  )
 }
 
 function applyStoredLayout(api: DockviewApi, data: Record<string, unknown>): void {
@@ -302,7 +318,6 @@ function applyStoredLayout(api: DockviewApi, data: Record<string, unknown>): voi
     api.clear()
     api.fromJSON(data as unknown as Parameters<DockviewApi['fromJSON']>[0])
     removeDocumentEditorPanels(api)
-    ensureCorePanels(api)
     applyCorePanelTitles(api)
     configureWorkspaceToolsPanel(api)
   } catch (err) {
@@ -316,6 +331,10 @@ function applyStoredLayout(api: DockviewApi, data: Record<string, unknown>): voi
   } finally {
     layoutMutating = false
   }
+  // ensureCorePanels 在 layoutMutating 时会直接 return；恢复后补核心面板与侧栏收起态
+  ensureCorePanels(api)
+  applyCorePanelTitles(api)
+  applySidePanelCollapseSync(api)
 }
 
 function exportActiveLayout(): void {
@@ -328,7 +347,7 @@ function exportActiveLayout(): void {
   }
   const active = getActivePreset(layouts.value)
   const name = active.id === DEFAULT_LAYOUT_ID ? t('studio.layout.default') : active.name
-  downloadLayoutFile(buildLayoutFile(name, stripDocumentEditorPanelsFromLayoutData(data)))
+  downloadLayoutFile(buildLayoutFile(name, sanitizeShellLayoutData(data)))
 }
 
 function triggerImportLayout(): void {
@@ -342,7 +361,7 @@ async function onImportFile(event: Event): Promise<void> {
   if (!file) return
   try {
     const imported = await readLayoutFileFromInput(file)
-    const shellOnly = stripDocumentEditorPanelsFromLayoutData(imported.layout)
+    const shellOnly = sanitizeShellLayoutData(imported.layout)
     if (!isDockLayoutData(shellOnly)) {
       alert(t('studio.layout.invalidFile'))
       return
@@ -357,10 +376,15 @@ async function onImportFile(event: Event): Promise<void> {
   }
 }
 
-function removeActiveLayout(): void {
+async function removeActiveLayout(): Promise<void> {
   const active = getActivePreset(layouts.value)
   if (active.id === DEFAULT_LAYOUT_ID) return
-  if (!confirm(t('studio.layout.deleteConfirm', { name: active.name }))) return
+  const ok = await promptConfirm({
+    title: t('studio.layout.deleteConfirmTitle'),
+    message: t('studio.layout.deleteConfirm', { name: active.name }),
+    confirmLabel: t('common.delete')
+  })
+  if (!ok) return
   const next = deleteLayout(layouts.value, active.id)
   commitLayouts(next)
   void applyLayoutById(next.activeId)
@@ -500,6 +524,7 @@ function applyDefaultLayoutSizes(api: DockviewApi): void {
   const { assets, inspector } = defaultSideWidths()
   // Dockview 会从左侧相邻组腾出空间；先设右侧参数栏，再设资产栏，
   // 避免参数栏的第二次 resize 把资产栏重新压窄。
+  // 默认布局强制用比例宽度（已 clamp 到 maxSide），不用侧栏记忆宽度。
   if (!sidePanelCollapsed.inspector) {
     api.getPanel('inspector')?.api.setSize({ width: inspector })
   }
@@ -543,7 +568,10 @@ function addDefaultPanels(api: DockviewApi): void {
     tabComponent: 'lockedTab'
   })
   addWorkspaceToolsPanel(api, CENTER_PANEL_ID)
-  const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide)
+  // 默认布局不用记忆宽度，避免历史过大的参数区把工作区压没
+  const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide, {
+    useRememberedWidth: false
+  })
   api.addPanel({
     id: 'assets',
     component: 'assets',
@@ -553,7 +581,9 @@ function addDefaultPanels(api: DockviewApi): void {
     minimumWidth: assetsInit.minimumWidth,
     ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
   })
-  const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide)
+  const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide, {
+    useRememberedWidth: false
+  })
   api.addPanel({
     id: 'inspector',
     component: 'inspector',
@@ -666,8 +696,8 @@ function persistLayout(api: DockviewApi): void {
     try {
       const data = api.toJSON() as unknown
       if (!isDockLayoutData(data)) return
-      // 布局只固化壳层面板；文档编辑器 tab 在恢复/切换工程时剥离
-      const shellOnly = stripDocumentEditorPanelsFromLayoutData(data)
+      // 布局只固化壳层展开几何；侧栏收起偏好走 localStorage，不写进 dock JSON
+      const shellOnly = sanitizeShellLayoutData(data)
       const next = updateActiveLayoutData(layouts.value, shellOnly)
       if (next !== layouts.value) commitLayouts(next)
     } catch {
@@ -697,10 +727,14 @@ function tryRestoreLayout(api: DockviewApi): boolean {
 
   for (const data of candidates) {
     if (!isDockLayoutData(data)) continue
-    const raw = JSON.stringify(data)
+    const healed = sanitizeSidePanelCollapseFromLayoutData(healDockLayoutMissingPanelRefs(data), {
+      minSide: DEFAULT_LAYOUT_RATIO.minSide,
+      fallbackWidth: (id) => rememberedExpandedSideWidth(id, sidePanelSizeOptions(id))
+    })
+    const raw = JSON.stringify(healed)
     if (!isStoredLayoutCompatible(raw)) continue
     try {
-      api.fromJSON(data as unknown as Parameters<DockviewApi['fromJSON']>[0])
+      api.fromJSON(healed as unknown as Parameters<DockviewApi['fromJSON']>[0])
       removeDocumentEditorPanels(api)
       ensureCorePanels(api)
       applyCorePanelTitles(api)

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { stripPanelsFromDockLayout } from '../src/renderer/src/utils/studioLayouts'
+import {
+  sanitizeSidePanelCollapseFromLayoutData,
+  stripPanelsFromDockLayout
+} from '../src/renderer/src/utils/studioLayouts'
 
 describe('stripPanelsFromDockLayout', () => {
   it('removes panel entries and matching grid views so fromJSON stays valid', () => {
@@ -135,5 +138,75 @@ describe('stripPanelsFromDockLayout', () => {
       .root.data[0]
     expect(leaf.data.views).toEqual(['workspace'])
     expect(leaf.data.activeView).toBe('workspace')
+  })
+})
+
+describe('sanitizeSidePanelCollapseFromLayoutData', () => {
+  it('strips collapsed runtime constraints and restores hidden side leaves', () => {
+    const data = {
+      grid: {
+        root: {
+          type: 'branch',
+          data: [
+            {
+              type: 'leaf',
+              data: { id: 'g-workspace', views: ['workspace'], activeView: 'workspace' },
+              size: 900
+            },
+            {
+              type: 'leaf',
+              data: { id: 'g-assets', views: ['assets'], activeView: 'assets' },
+              size: 0,
+              visible: false
+            },
+            {
+              type: 'leaf',
+              data: { id: 'g-inspector', views: ['inspector'], activeView: 'inspector' },
+              size: 360,
+              visible: false
+            }
+          ],
+          size: 1
+        },
+        width: 1400,
+        height: 800,
+        orientation: 'HORIZONTAL'
+      },
+      panels: {
+        workspace: { id: 'workspace', contentComponent: 'workspace' },
+        assets: {
+          id: 'assets',
+          contentComponent: 'assets',
+          minimumWidth: 0,
+          maximumWidth: 0
+        },
+        inspector: {
+          id: 'inspector',
+          contentComponent: 'inspector',
+          minimumWidth: 0,
+          maximumWidth: 0
+        }
+      }
+    }
+
+    const next = sanitizeSidePanelCollapseFromLayoutData(data, {
+      minSide: 300,
+      fallbackWidth: (id) => (id === 'assets' ? 320 : 340)
+    })
+
+    expect(next.panels).toMatchObject({
+      assets: { minimumWidth: 300 },
+      inspector: { minimumWidth: 300 }
+    })
+    expect((next.panels as { assets: { maximumWidth?: number } }).assets.maximumWidth).toBeUndefined()
+    expect(
+      (next.panels as { inspector: { maximumWidth?: number } }).inspector.maximumWidth
+    ).toBeUndefined()
+
+    const leaves = (next.grid as { root: { data: Array<Record<string, unknown>> } }).root.data
+    expect(leaves[1]).toMatchObject({ size: 320 })
+    expect(leaves[1]).not.toHaveProperty('visible')
+    expect(leaves[2]).toMatchObject({ size: 360 })
+    expect(leaves[2]).not.toHaveProperty('visible')
   })
 })

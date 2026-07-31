@@ -245,6 +245,7 @@ type GridNode = {
   type?: unknown
   data?: unknown
   size?: unknown
+  visible?: unknown
 }
 
 function isGridNode(value: unknown): value is GridNode {
@@ -359,6 +360,103 @@ export function stripPanelsFromDockLayout(
   }
 
   return healDockLayoutMissingPanelRefs(next)
+}
+
+const SIDE_PANEL_LAYOUT_IDS = new Set(['assets', 'inspector'])
+
+function leafHasSidePanel(group: Record<string, unknown>): boolean {
+  const views = group.views
+  if (!Array.isArray(views)) return false
+  return views.some((id) => typeof id === 'string' && SIDE_PANEL_LAYOUT_IDS.has(id))
+}
+
+function healSidePanelLeafNode(
+  node: GridNode,
+  fallbackWidth: (id: string) => number
+): GridNode {
+  if (node.type === 'leaf') {
+    if (!isRecord(node.data) || !leafHasSidePanel(node.data)) return node
+    const next: GridNode = { ...node }
+    if (node.visible === false) {
+      delete next.visible
+    }
+    const size = typeof node.size === 'number' ? node.size : 0
+    if (!(size > 16)) {
+      const views = Array.isArray(node.data.views) ? node.data.views : []
+      const sideId = views.find(
+        (id): id is string => typeof id === 'string' && SIDE_PANEL_LAYOUT_IDS.has(id)
+      )
+      const fallback = sideId ? fallbackWidth(sideId) : 0
+      if (fallback > 16) next.size = fallback
+    }
+    return next
+  }
+  if (!Array.isArray(node.data)) return node
+  return {
+    ...node,
+    data: node.data.map((child) =>
+      isGridNode(child) ? healSidePanelLeafNode(child, fallbackWidth) : child
+    )
+  }
+}
+
+/**
+ * 布局 JSON 只保留侧栏「展开几何」：收起态（visible:false / maxWidth:0）由运行时
+ * localStorage 偏好叠加。避免保存/重开后把收起运行时态当成布局几何还原成灰洞。
+ */
+export function sanitizeSidePanelCollapseFromLayoutData(
+  data: Record<string, unknown>,
+  options?: {
+    minSide?: number
+    fallbackWidth?: (id: 'assets' | 'inspector') => number
+  }
+): Record<string, unknown> {
+  if (!isDockLayoutData(data)) return data
+  const minSide = options?.minSide ?? 300
+  const fallbackWidth =
+    options?.fallbackWidth ??
+    ((_id: 'assets' | 'inspector') => minSide)
+
+  let changed = false
+  const panels = data.panels
+  let nextPanels = panels
+  if (isRecord(panels)) {
+    nextPanels = { ...panels }
+    for (const id of SIDE_PANEL_LAYOUT_IDS) {
+      const panel = nextPanels[id]
+      if (!isRecord(panel)) continue
+      const maxW = panel.maximumWidth
+      const minW = panel.minimumWidth
+      const needsHeal =
+        maxW === 0 ||
+        (typeof maxW === 'number' && maxW > 0 && maxW <= 8) ||
+        minW === 0 ||
+        (typeof minW === 'number' && minW > 0 && minW <= 8)
+      if (!needsHeal) continue
+      const healed = { ...panel, minimumWidth: minSide }
+      delete healed.maximumWidth
+      nextPanels[id] = healed
+      changed = true
+    }
+  }
+
+  const resolveFallback = (id: string): number => {
+    if (id === 'assets' || id === 'inspector') return fallbackWidth(id)
+    return minSide
+  }
+
+  let nextGrid = data.grid
+  if (isRecord(data.grid) && isGridNode(data.grid.root)) {
+    const before = JSON.stringify(data.grid.root)
+    const healedRoot = healSidePanelLeafNode(data.grid.root, resolveFallback)
+    if (JSON.stringify(healedRoot) !== before) {
+      nextGrid = { ...data.grid, root: healedRoot }
+      changed = true
+    }
+  }
+
+  if (!changed) return data
+  return { ...data, panels: nextPanels, grid: nextGrid }
 }
 
 /**

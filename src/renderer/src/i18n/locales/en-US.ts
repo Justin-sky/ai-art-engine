@@ -240,6 +240,7 @@ export default {
       export: 'Export',
       import: 'Import',
       delete: 'Delete',
+      deleteConfirmTitle: 'Delete layout',
       deleteConfirm: 'Delete layout "{name}"?',
       saveTitle: 'Save layout',
       saveHint: 'Name the current window layout. Matching names will be overwritten.',

@@ -31,7 +31,10 @@ function readStoredWidth(id: SidePanelId): number {
 
 function writeStoredWidth(id: SidePanelId, width: number): void {
   if (!(width > 16)) return
-  const rounded = Math.round(width)
+  const opts = resolveSidePanelSizeOptions(id)
+  const rounded = Math.round(
+    Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, width))
+  )
   lastExpandedWidth[id] = rounded
   try {
     localStorage.setItem(`${WIDTH_STORAGE_PREFIX}${id}`, String(rounded))
@@ -106,11 +109,19 @@ function writeSideCollapsedPreference(id: SidePanelId, collapsed: boolean): void
   }
 }
 
-/** Only clamp to minSide when restoring a remembered width (allow wider than default maxSide). */
+/** 记忆宽度上限：可略宽于默认 maxSide，但不让单侧吃掉大半窗口（否则工作区被压没）。 */
+function maxRememberedSideWidth(opts: SidePanelSizeOptions): number {
+  const viewport =
+    typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
+  return Math.max(opts.maxSide, Math.round(viewport * 0.35))
+}
+
 function resolveExpandedWidth(id: SidePanelId, opts: SidePanelSizeOptions): number {
   const remembered = lastExpandedWidth[id] || readStoredWidth(id)
   if (remembered > 16) {
-    return Math.round(Math.max(opts.minSide, remembered))
+    return Math.round(
+      Math.min(maxRememberedSideWidth(opts), Math.max(opts.minSide, remembered))
+    )
   }
   return Math.round(Math.min(opts.maxSide, Math.max(opts.minSide, opts.defaultWidth)))
 }
@@ -403,9 +414,11 @@ function applyCollapsedState(
     syncCollapsedClass(api, true)
     return
   }
-  setSidePanelGroupVisible(api, true)
+  // 必须先放开 min/max，再 setVisible：dockview 会按「当前」约束钳位缓存尺寸，
+  // 若仍是 maximumWidth=0，先显示会把宽度永久钳成 0（灰洞）。
   const minSide = opts?.minSide ?? 300
   applyWidthConstraints(api, panel, minSide, undefined)
+  setSidePanelGroupVisible(api, true)
   syncCollapsedClass(api, false)
 }
 
@@ -493,11 +506,11 @@ export function setSidePanelCollapsed(
     return
   }
 
-  // 先放开 panel 字段并显示，再 move，避免新 group 继承收起态
-  patchPanelWidthConstraints(target, opts.minSide, undefined)
-  setSidePanelGroupVisible(api, true)
+  // 先放开约束并显示，再 move，避免新 group 继承收起态
   sidePanelCollapsed[id] = false
   writeSideCollapsedPreference(id, false)
+  const liveBeforeMove = resolvePanel(api, target)
+  applyCollapsedState(api, liveBeforeMove, false, opts)
   if (dock) placeSidePanel(dock, id, true)
 
   const width = resolveExpandedWidth(id, opts)
@@ -561,16 +574,33 @@ export function syncSidePanelCollapseState(
     } else {
       if (width > 16) writeStoredWidth(id, width)
       sidePanelCollapsed[id] = false
-      applyCollapsedState(panel.api, panel, false, optsFor(id))
+      writeSideCollapsedPreference(id, false)
+      const opts = optsFor(id)
+      applyCollapsedState(panel.api, panel, false, opts)
+      // 仅在宽度已被收起态钳成 0/异常时拉回；正常展开尺寸保持 dockview 现状
+      if (width <= 16) {
+        const nextWidth = resolveExpandedWidth(id, opts)
+        panel.api.setSize({ width: nextWidth })
+        writeStoredWidth(id, nextWidth)
+      }
     }
   }
   attachExpandedWidthWatchers(dock)
 }
 
+/** 展开宽度记忆（忽略当前是否收起），供布局 JSON 清洗 fallback */
+export function rememberedExpandedSideWidth(
+  id: SidePanelId,
+  opts?: SidePanelSizeOptions
+): number {
+  return resolveExpandedWidth(id, opts ?? resolveSidePanelSizeOptions(id))
+}
+
 export function sidePanelInitialWidth(
   id: SidePanelId,
   expandedWidth: number,
-  minSide: number
+  minSide: number,
+  options?: { useRememberedWidth?: boolean; maxSide?: number }
 ): { initialWidth: number; minimumWidth: number; maximumWidth?: number } {
   if (readSideCollapsedPreference(id) || sidePanelCollapsed[id]) {
     return {
@@ -579,9 +609,25 @@ export function sidePanelInitialWidth(
       maximumWidth: SIDE_COLLAPSE_WIDTH
     }
   }
+  // 工厂默认布局忽略记忆宽度，避免历史过大参数区把工作区压没
+  if (options?.useRememberedWidth === false) {
+    return {
+      initialWidth: expandedWidth,
+      minimumWidth: minSide
+    }
+  }
   const remembered = lastExpandedWidth[id] || readStoredWidth(id)
+  if (!(remembered > 16)) {
+    return { initialWidth: expandedWidth, minimumWidth: minSide }
+  }
+  const opts = {
+    ...resolveSidePanelSizeOptions(id),
+    ...(options?.maxSide != null ? { maxSide: options.maxSide } : {})
+  }
   return {
-    initialWidth: remembered > 16 ? Math.max(minSide, remembered) : expandedWidth,
+    initialWidth: Math.round(
+      Math.min(maxRememberedSideWidth(opts), Math.max(minSide, remembered))
+    ),
     minimumWidth: minSide
   }
 }
