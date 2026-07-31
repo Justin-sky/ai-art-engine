@@ -133,6 +133,13 @@ import { usePanelTitles } from '../editor/workbench/usePanelTitles'
 import { useEditorPanelOpener } from '../editor/workbench/useEditorPanelOpener'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
 import { parseEditorPanelId } from '../editor/workbench/editorPanelIcon'
+import {
+  registerSidePanelSizeProvider,
+  sidePanelCollapsed,
+  sidePanelInitialWidth,
+  syncSidePanelCollapseState,
+  type SidePanelId
+} from '../editor/workbench/sidePanelCollapse'
 import { promptAlert } from '../composables/useStudioPrompt'
 import {
   DEFAULT_LAYOUT_ID,
@@ -446,6 +453,19 @@ function defaultSideWidths(totalWidth = readDockWidth()): { assets: number; insp
   return { assets: side, inspector: side }
 }
 
+function sidePanelSizeOptions(id: SidePanelId) {
+  const widths = defaultSideWidths()
+  return {
+    minSide: DEFAULT_LAYOUT_RATIO.minSide,
+    maxSide: DEFAULT_LAYOUT_RATIO.maxSide,
+    defaultWidth: widths[id]
+  }
+}
+
+function applySidePanelCollapseSync(api: DockviewApi): void {
+  syncSidePanelCollapseState(api, sidePanelSizeOptions)
+}
+
 function corePanelTitles(): Record<(typeof PANEL_IDS)[number], string> {
   return {
     'workspace-tools': t('studio.panel.tools'),
@@ -465,11 +485,16 @@ function applyCorePanelTitles(api: DockviewApi): void {
 }
 
 function applyDefaultLayoutSizes(api: DockviewApi): void {
+  applySidePanelCollapseSync(api)
   const { assets, inspector } = defaultSideWidths()
   // Dockview 会从左侧相邻组腾出空间；先设右侧参数栏，再设资产栏，
   // 避免参数栏的第二次 resize 把资产栏重新压窄。
-  api.getPanel('inspector')?.api.setSize({ width: inspector })
-  api.getPanel('assets')?.api.setSize({ width: assets })
+  if (!sidePanelCollapsed.inspector) {
+    api.getPanel('inspector')?.api.setSize({ width: inspector })
+  }
+  if (!sidePanelCollapsed.assets) {
+    api.getPanel('assets')?.api.setSize({ width: assets })
+  }
 }
 
 function centerReferenceId(api: DockviewApi): string {
@@ -507,21 +532,25 @@ function addDefaultPanels(api: DockviewApi): void {
     tabComponent: 'lockedTab'
   })
   addWorkspaceToolsPanel(api, CENTER_PANEL_ID)
+  const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide)
   api.addPanel({
     id: 'assets',
     component: 'assets',
     title: t('studio.panel.assets'),
     position: { referencePanel: CENTER_PANEL_ID, direction: 'right' },
-    initialWidth: assets,
-    minimumWidth: DEFAULT_LAYOUT_RATIO.minSide
+    initialWidth: assetsInit.initialWidth,
+    minimumWidth: assetsInit.minimumWidth,
+    ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
   })
+  const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide)
   api.addPanel({
     id: 'inspector',
     component: 'inspector',
     title: t('studio.panel.inspector'),
     position: { referencePanel: 'assets', direction: 'right' },
-    initialWidth: inspector,
-    minimumWidth: DEFAULT_LAYOUT_RATIO.minSide
+    initialWidth: inspectorInit.initialWidth,
+    minimumWidth: inspectorInit.minimumWidth,
+    ...(inspectorInit.maximumWidth != null ? { maximumWidth: inspectorInit.maximumWidth } : {})
   })
   api.getPanel(CENTER_PANEL_ID)?.api.setActive()
 }
@@ -571,27 +600,33 @@ function ensureCorePanels(api: DockviewApi): void {
   const { assets, inspector } = defaultSideWidths()
 
   if (!api.getPanel('assets')) {
+    const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide)
     api.addPanel({
       id: 'assets',
       component: 'assets',
       title: titleMap.assets,
       position: { referencePanel: centerId, direction: 'right' },
-      initialWidth: assets,
-      minimumWidth: DEFAULT_LAYOUT_RATIO.minSide
+      initialWidth: assetsInit.initialWidth,
+      minimumWidth: assetsInit.minimumWidth,
+      ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
     })
   }
 
   if (!api.getPanel('inspector')) {
     const assetsRef = api.getPanel('assets')?.id ?? centerId
+    const inspectorInit = sidePanelInitialWidth('inspector', inspector, DEFAULT_LAYOUT_RATIO.minSide)
     api.addPanel({
       id: 'inspector',
       component: 'inspector',
       title: titleMap.inspector,
       position: { referencePanel: assetsRef, direction: 'right' },
-      initialWidth: inspector,
-      minimumWidth: DEFAULT_LAYOUT_RATIO.minSide
+      initialWidth: inspectorInit.initialWidth,
+      minimumWidth: inspectorInit.minimumWidth,
+      ...(inspectorInit.maximumWidth != null ? { maximumWidth: inspectorInit.maximumWidth } : {})
     })
   }
+
+  applySidePanelCollapseSync(api)
 }
 
 function isStoredLayoutCompatible(raw: string): boolean {
@@ -658,6 +693,7 @@ function tryRestoreLayout(api: DockviewApi): boolean {
       removeDocumentEditorPanels(api)
       ensureCorePanels(api)
       applyCorePanelTitles(api)
+      applySidePanelCollapseSync(api)
       if (api.panels.length === 0) {
         api.clear()
         continue
@@ -682,6 +718,7 @@ function onReady(event: DockviewReadyEvent): void {
     } else {
       configureWorkspaceToolsPanel(api)
       applyCorePanelTitles(api)
+      applySidePanelCollapseSync(api)
     }
   } catch (err) {
     console.error('[studio] layout init failed', err)
@@ -867,10 +904,12 @@ function getTabContextMenuItems(params: GetTabContextMenuItemsParams) {
 }
 
 onMounted(() => {
+  registerSidePanelSizeProvider(sidePanelSizeOptions)
   window.addEventListener('keydown', onGlobalKeyDown)
 })
 
 onBeforeUnmount(() => {
+  registerSidePanelSizeProvider(null)
   window.removeEventListener('keydown', onGlobalKeyDown)
   if (saveTimer) clearTimeout(saveTimer)
   layoutDisposable?.dispose()
@@ -1092,5 +1131,22 @@ onBeforeUnmount(() => {
 .studio-dock :deep(.workspace-tools-shell .workspace-toolbar) {
   height: 100%;
   border-right: none;
+}
+
+.studio-dock :deep(.dv-groupview.studio-side-collapsed .dv-content-container) {
+  display: none;
+}
+
+.studio-dock :deep(.dv-groupview.studio-side-collapsed .dv-tabs-and-actions-container) {
+  border-bottom: none;
+}
+
+.studio-dock :deep(.editor-tab.is-side-collapsed) {
+  padding: 0 2px;
+  justify-content: center;
+}
+
+.studio-dock :deep(.editor-tab.is-side-collapsed .editor-tab-collapse) {
+  visibility: visible;
 }
 </style>

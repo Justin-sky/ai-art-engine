@@ -253,7 +253,9 @@ export default {
       workspace: '工作区',
       tools: '工具',
       assets: '资产',
-      inspector: '参数'
+      inspector: '参数',
+      collapse: '收起到右侧',
+      expand: '展开'
     },
     inspector: {
       unsupported: '当前对象没有可用的检查器',

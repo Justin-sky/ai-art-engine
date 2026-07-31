@@ -1,9 +1,35 @@
 <template>
-  <div class="dv-default-tab editor-tab">
-    <span v-if="icon" class="editor-tab-icon" aria-hidden="true">{{ icon }}</span>
-    <span class="dv-default-tab-content editor-tab-content">{{ title }}</span>
+  <div
+    class="dv-default-tab editor-tab"
+    :class="{ 'is-side-collapsed': sideCollapsed, 'has-side-collapse': showSideCollapse }"
+  >
+    <span v-if="icon && !sideCollapsed" class="editor-tab-icon" aria-hidden="true">{{ icon }}</span>
+    <span v-if="!sideCollapsed" class="dv-default-tab-content editor-tab-content">{{ title }}</span>
+    <button
+      v-if="showSideCollapse"
+      type="button"
+      class="editor-tab-collapse"
+      :title="sideCollapsed ? t('studio.panel.expand') : t('studio.panel.collapse')"
+      :aria-label="sideCollapsed ? t('studio.panel.expand') : t('studio.panel.collapse')"
+      :aria-expanded="!sideCollapsed"
+      @pointerdown.stop.prevent
+      @click.stop.prevent="onToggleSideCollapse"
+    >
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+        <path
+          v-if="sideCollapsed"
+          fill="currentColor"
+          d="M9.8 3.2 5 8l4.8 4.8.9-.9L6.8 8 10.7 4.1z"
+        />
+        <path
+          v-else
+          fill="currentColor"
+          d="M6.2 3.2 11 8l-4.8 4.8-.9-.9L9.2 8 5.3 4.1z"
+        />
+      </svg>
+    </button>
     <div
-      v-if="showClose"
+      v-if="showClose && !sideCollapsed"
       class="dv-default-tab-action"
       role="button"
       :aria-label="t('studio.tabMenu.close')"
@@ -24,6 +50,12 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { DockviewPanelApi } from 'dockview-vue'
 import { isClosableDockTab, resolveEditorPanelIcon } from '../editor/workbench/editorPanelIcon'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
+import {
+  isSidePanelId,
+  resolveSidePanelSizeOptions,
+  sidePanelCollapsed,
+  toggleSidePanelCollapsed
+} from '../editor/workbench/sidePanelCollapse'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert } from '../composables/useStudioPrompt'
 
@@ -85,6 +117,17 @@ const icon = computed(() => resolveEditorPanelIcon(panelId.value))
 const showClose = computed(() =>
   isClosableDockTab(panelId.value, readTabApi()?.tabComponent)
 )
+const showSideCollapse = computed(() => isSidePanelId(panelId.value))
+const sideCollapsed = computed(() => {
+  const id = panelId.value
+  return isSidePanelId(id) ? sidePanelCollapsed[id] : false
+})
+
+function onToggleSideCollapse(): void {
+  const api = readTabApi()
+  if (!api || !isSidePanelId(api.id)) return
+  toggleSidePanelCollapsed(api, resolveSidePanelSizeOptions(api.id))
+}
 
 async function onClose(): Promise<void> {
   const api = readTabApi()
@@ -99,3 +142,46 @@ async function onClose(): Promise<void> {
   api.close()
 }
 </script>
+
+<style scoped>
+.editor-tab.has-side-collapse:not(.is-side-collapsed) {
+  padding-right: 34px;
+}
+
+.editor-tab-collapse {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.editor-tab-collapse:hover {
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.editor-tab.is-side-collapsed {
+  justify-content: center;
+  padding: 0 2px;
+  gap: 0;
+}
+
+.editor-tab.is-side-collapsed .editor-tab-collapse {
+  position: static;
+  transform: none;
+}
+</style>

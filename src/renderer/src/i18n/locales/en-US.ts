@@ -253,7 +253,9 @@ export default {
       workspace: 'Workspace',
       tools: 'Tools',
       assets: 'Assets',
-      inspector: 'Inspector'
+      inspector: 'Inspector',
+      collapse: 'Collapse to the right',
+      expand: 'Expand'
     },
     inspector: {
       unsupported: 'No inspector is available for the selected object',
