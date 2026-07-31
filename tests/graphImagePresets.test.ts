@@ -5,6 +5,7 @@ describe('image instruction presets', () => {
   it('exposes the requested image generation presets', () => {
     const presets = listInstructionPresets('image')
     expect(presets.map((item) => item.id)).toEqual([
+      'image.styleTransfer',
       'image.multiAngle9',
       'image.story4',
       'image.faceTurnaround',

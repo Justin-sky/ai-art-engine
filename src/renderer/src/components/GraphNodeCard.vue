@@ -2310,35 +2310,35 @@ function formatTime(sec: number): string {
 }
 
 .type-badge.role-generate {
-  background: color-mix(in srgb, var(--accent) 28%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, var(--accent) 28%, var(--graph-node-bg));
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--accent-fg, var(--accent));
 }
 
 .type-badge.role-host {
-  background: color-mix(in srgb, #5b9fd4 30%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, #5b9fd4 30%, var(--graph-node-bg));
   border-color: color-mix(in srgb, #5b9fd4 45%, transparent);
 }
 
 .type-badge.role-subgraph {
-  background: color-mix(in srgb, #7b8cff 28%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, #7b8cff 28%, var(--graph-node-bg));
   border-color: color-mix(in srgb, #7b8cff 45%, transparent);
   color: #c5ccff;
 }
 
 .type-badge.role-ref {
-  background: color-mix(in srgb, var(--text-muted) 22%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, var(--text-muted) 22%, var(--graph-node-bg));
   border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
   color: var(--text-muted);
 }
 
 .type-badge.role-output {
-  background: color-mix(in srgb, #64b4ff 28%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, #64b4ff 28%, var(--graph-node-bg));
   border-color: color-mix(in srgb, #64b4ff 42%, transparent);
 }
 
 .type-badge.role-missing {
-  background: color-mix(in srgb, var(--danger, #c45c5c) 28%, var(--graph-node-bg, #1a1a1a));
+  background: color-mix(in srgb, var(--danger, #c45c5c) 28%, var(--graph-node-bg));
   border-color: color-mix(in srgb, var(--danger, #c45c5c) 45%, transparent);
   color: var(--danger, #c45c5c);
   font-weight: 800;

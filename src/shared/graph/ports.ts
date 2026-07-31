@@ -284,12 +284,12 @@ export function canConnectNodes(
   if (!outPort) return false
   const inPort = findCompatibleInPort(target, outPort.dataType, options.targetPort)
   if (!inPort) return false
-  // 生成/加工节点默认单数 `out` 不进 select 复数口（须用 out-all）；边界 image→images 仍允许
+  // 图库节点默认单数 `out` 不进 select 复数口（须用 out-all）；边界等无 out-all 的 image→images 仍允许
   if (
     outPort.id === 'out' &&
-    isProcessingAssetNode(source) &&
     isPluralGraphPortDataType(inPort.dataType) &&
-    toSingularGraphPortDataType(inPort.dataType) === outPort.dataType
+    toSingularGraphPortDataType(inPort.dataType) === outPort.dataType &&
+    getNodePorts(source).some((port) => port.id === GRAPH_OUT_ALL_PORT_ID)
   ) {
     return false
   }
