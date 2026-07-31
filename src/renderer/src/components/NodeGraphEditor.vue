@@ -618,6 +618,7 @@ import {
   resolveMotionImageItems,
   shotStoryboardToNodeParams,
   createShotParamsNodeForShot,
+  syncShotParamsBindingsFromShot,
   createNarrativeUnitRefNode,
   readWorldElementGraphFromGenParams,
   inferElementWorkflowHostInterface,
@@ -675,8 +676,14 @@ import {
   readImageCropFromNode,
   readImageGridSplitFromNode,
   listVideoMentionContribution,
+  collectAllShotBindingImages,
+  extractShotTableCachedJsonText,
+  mergeShotSplitRowsWithCachedBindings,
+  mergeStoryboardBindings,
+  resolveShotTableBindingStoryboard,
   shotsToShotSplitRows,
   stringifyShotSplitRows,
+  syncShotParamsAllBindingImages,
   stringifyWorldElementCatalog,
   stringifyNarrativeUnitRows,
   formatNarrativeUnitRefText,
@@ -1026,7 +1033,15 @@ function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
       return base
     },
     resolveLiveAssetGraph: (assetId) =>
-      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
+    resolveShotStoryboard: (boundShotId) => {
+      const shotId = boundShotId?.trim() || project.activeShotId
+      if (!shotId) return null
+      const shot = resolveShotById(shotId)
+      if (!shot) return null
+      return { storyboard: resolveMergedShotStoryboard(shot) }
+    },
+    resolveAllShotBindingImages: () => resolveAllShotBindingImagesForScript()
   }
 }
 
@@ -1504,7 +1519,7 @@ function shotParamsSeedFromActiveShot(): Partial<GraphNodeParams> | undefined {
   const shot = resolveShotById(shotId)
   if (!shot) return undefined
   return {
-    ...shotStoryboardToNodeParams(normalizeStoryboard(shot)),
+    ...shotStoryboardToNodeParams(resolveMergedShotStoryboard(shot)),
     boundShotId: shot.id
   }
 }
@@ -1707,13 +1722,17 @@ const {
     const live = buildGraphJson()
     const fromVideo = listVideoMentionContribution(live)
     return {
-      storyboard: normalizeStoryboard(shot),
+      storyboard: resolveMergedShotStoryboard(shot),
       genRefs: fromVideo.genRefs.length ? fromVideo.genRefs : shot.genRefs,
       audioRefs: fromVideo.audioRefs.length ? fromVideo.audioRefs : shot.audioRefs,
       assetNames: new Map(project.assets.map((asset) => [asset.id, asset.name])),
       assetTypes: new Map(project.assets.map((asset) => [asset.id, asset.type])),
       stylePreset: project.config?.stylePreset
     }
+  },
+  resolveAllShotBindingImages: () => {
+    if (isAssetGraph.value) return null
+    return resolveAllShotBindingImagesForScript()
   },
   resolveNarrativeUnit: (unitId) => {
     const id = unitId.trim()
@@ -1730,7 +1749,9 @@ const {
       ? visibleShots.value
       : project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
     if (!shots.length) return null
-    return stringifyShotSplitRows(shotsToShotSplitRows(shots))
+    const liveRows = shotsToShotSplitRows(shots)
+    const cached = extractShotTableCachedJsonText(buildGraphJson())
+    return stringifyShotSplitRows(mergeShotSplitRowsWithCachedBindings(liveRows, cached))
   },
   importShotSplitTableJson: async (jsonText) => {
     if (graphScope.value !== 'scriptAsset') return
@@ -4289,6 +4310,60 @@ function listScriptGraphDocuments(): GraphDocument[] {
   return docs
 }
 
+/** 当前剧本分镜顺序 id（用于表格行按索引对齐） */
+function orderedScriptShotIdsForBindings(): string[] {
+  return (visibleShots.value.length
+    ? visibleShots.value
+    : project.shots.filter((s) => {
+        const scriptId = scriptAssetIdRef.value
+        return scriptId ? shotScriptAssetId(s) === scriptId : true
+      })
+  ).map((s) => s.id)
+}
+
+/** 表格 params 中比 Shot 更完整的绑定图（test9：表有场景图、Shot.storyboard 为空） */
+function resolveShotTableBindingOverlay(shot: Shot): ReturnType<typeof resolveShotTableBindingStoryboard> {
+  return resolveShotTableBindingStoryboard(
+    listScriptGraphDocuments(),
+    shot,
+    orderedScriptShotIdsForBindings()
+  )
+}
+
+/** Shot + 分镜表格缓存合并后的 storyboard（供分镜参数文案 / 单镜合并回落） */
+function resolveMergedShotStoryboard(shot: Shot) {
+  return mergeStoryboardBindings(normalizeStoryboard(shot), resolveShotTableBindingOverlay(shot))
+}
+
+/** 剧本下全部镜头绑定图（表格缓存补齐 imageUrl） */
+function resolveAllShotBindingImagesForScript() {
+  const scriptId = scriptAssetIdRef.value
+  const shots = visibleShots.value.length
+    ? visibleShots.value
+    : project.shots.filter((s) => (scriptId ? shotScriptAssetId(s) === scriptId : true))
+  let tableText: string | null = null
+  let bestScore = -1
+  for (const doc of listScriptGraphDocuments()) {
+    const text = extractShotTableCachedJsonText(doc)
+    if (!text) continue
+    const score = (text.match(/"imageUrl"\s*:/g) ?? []).length
+    if (score > bestScore) {
+      bestScore = score
+      tableText = text
+    }
+  }
+  return collectAllShotBindingImages({ shots, tableText })
+}
+
+/** 回写分镜参数节点：单镜文案绑定 + 全镜图片组缓存（不运行即可 soft 输出） */
+function syncShotParamsNodeBindingOutputs(
+  node: { params: GraphNodeParams },
+  shot: Shot
+): void {
+  syncShotParamsBindingsFromShot(node, shot, resolveShotTableBindingOverlay(shot))
+  syncShotParamsAllBindingImages(node, resolveAllShotBindingImagesForScript())
+}
+
 /** 从剧本图取当前镜实体 imageUrls：优先 shotImageGen，避免 shotVideoGen 旧缓存 */
 function resolveShotEntityImageUrls(shotId: string): string[] {
   return resolveShotEntityImageUrlsFromGraphs(listScriptGraphDocuments(), shotId)
@@ -4352,6 +4427,7 @@ function addShotParamsNodeFromShot(
       ? `#${index + 1} ${shot.title}`.trim()
       : shot.title.trim() || graphTypeLabel('script.shotParams')
   const node = createShotParamsNodeForShot(shot, position, { title })
+  syncShotParamsNodeBindingOutputs(node, shot)
   graph.nodes.push(node)
   const materialized = applyShotParamsDropMaterialization(
     buildGraphJson(),
@@ -4433,6 +4509,17 @@ function ensureShotParamsForActiveShotCanvas(): void {
     addShotParamsNodeFromShot(shot, position, { select: true })
     ensureShotBoundEntityImagesForActiveCanvas(shot)
     return
+  }
+
+  // 切镜 / 复用已有节点：回写单镜文案绑定 + 全镜图片组缓存（不运行即可 soft 输出）
+  {
+    const before = buildGraphJson()
+    syncShotParamsNodeBindingOutputs(existing, shot)
+    if (JSON.stringify(buildGraphJson()) !== JSON.stringify(before)) {
+      recordGraphChange('sync-shot-params-bindings', before)
+      scheduleSave()
+      graphEditorHosts.bumpRevision()
+    }
   }
 
   // 无生成节点时仍尝试物化边界输入（上层实体图）；有生成节点再接线

@@ -722,6 +722,8 @@ export default {
       new: '+ New',
       resizeCol: 'Drag to resize column',
       resizeRow: 'Drag to resize row',
+      zoomHint: 'Ctrl + scroll to zoom; click percent to reset',
+      zoom: 'Zoom {n}%',
       column: {
         name: 'Name',
         duration: 'Duration',
@@ -2206,7 +2208,7 @@ export default {
         empty: 'No group selected'
       },
       shotParams: {
-        hint: 'Drag shots from the strip to create params nodes; connect several to one video node text port.',
+        hint: 'Drag shots from the strip to create params nodes; text out is the active shot prompt, images out are bound character/scene/prop/weapon images from all shots (no run needed).',
         boundShot: 'Bound shot',
         boundShotValue: '#{n} {title}',
         unbound: 'No shot bound'

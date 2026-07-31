@@ -32,6 +32,11 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
+import {
+  resolveShotParamsBindingImageItems,
+  SHOT_PARAMS_IMAGES_PORT_ID,
+  type ShotParamsBindingImage
+} from './shotParams'
 
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
@@ -57,6 +62,12 @@ export interface ResolveHostInputSlotsOptions {
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
   /** 已打开的源资产内图（优先于落盘 genParams.graphJson） */
   resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
+  /** 分镜参数绑定图：按 boundShotId 取 live storyboard */
+  resolveShotStoryboard?: (boundShotId?: string) => {
+    storyboard: import('../domain').ShotStoryboard
+  } | null
+  /** 分镜参数 out-images：全部镜头绑定图（不运行即可 soft 输出） */
+  resolveAllShotBindingImages?: () => ShotParamsBindingImage[] | null
 }
 
 /** 稳定节点 id：再打开不换号、不乱序 */
@@ -775,6 +786,20 @@ export function softResolveSourceOutput(
   if (node.typeId === 'shotEntities.select' && (sourcePort === 'out' || !sourcePort)) {
     const path = node.params.previewRelativePath?.trim()
     if (path) return { kind: 'image', dataUrl: '', relativePath: path }
+  }
+
+  // 分镜参数：全部镜头绑定图口（不依赖 runStates，未运行也可输出）
+  if (node.typeId === 'script.shotParams' && sourcePort === SHOT_PARAMS_IMAGES_PORT_ID) {
+    const items = resolveShotParamsBindingImageItems({
+      node,
+      resolveAllShotBindingImages: options?.resolveAllShotBindingImages,
+      resolveShotStoryboard: options?.resolveShotStoryboard
+    }).map((item) => ({
+      id: item.id,
+      dataUrl: '',
+      relativePath: item.relativePath
+    }))
+    return { kind: 'images', items }
   }
 
   if (graphValueHasPayload(fromRun)) return fromRun

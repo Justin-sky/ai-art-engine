@@ -380,6 +380,12 @@ export interface NodeExecuteContext {
     assetTypes?: Map<string, AssetType>
     stylePreset?: string
   } | null
+  /** 分镜参数 out-images：剧本下全部镜头的绑定图 */
+  resolveAllShotBindingImages?: () => Array<{
+    id: string
+    name: string
+    relativePath: string
+  }> | null
   /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
   resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
   /**
@@ -538,6 +544,7 @@ export interface GraphRunOptions {
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   resolveShotStoryboard?: NodeExecuteContext['resolveShotStoryboard']
+  resolveAllShotBindingImages?: NodeExecuteContext['resolveAllShotBindingImages']
   resolveNarrativeUnit?: NodeExecuteContext['resolveNarrativeUnit']
   resolveShotSplitTableJson?: NodeExecuteContext['resolveShotSplitTableJson']
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']

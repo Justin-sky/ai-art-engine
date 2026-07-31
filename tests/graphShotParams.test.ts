@@ -9,21 +9,27 @@ import {
   resolveDefaultGraphTemplate,
   resolveScopeOutput,
   resolveAssetProcessingTypeId,
+  collectAllShotBindingImages,
   executeShotParamsNode,
   getNodePorts,
   graphOutputNodeId,
   isNodeDeletable,
   normalizeScopedGraph,
-  shotStoryboardToNodeParams
+  resolveShotParamsBindingImageItems,
+  shotStoryboardToNodeParams,
+  softResolveSourceOutput,
+  syncShotParamsBindingsFromShot,
+  SHOT_PARAMS_IMAGES_PORT_ID
 } from '../src/shared/graph'
 import { createEmptyShot, createEmptyStoryboard } from '../src/shared/domain'
 
 describe('script.shotParams node', () => {
-  it('exposes a text output port only and is not a fixed singleton', () => {
+  it('exposes text and binding-images output ports and is not a fixed singleton', () => {
     const node = createNodeFromType('script.shotParams', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     expect(ports).toEqual([
-      expect.objectContaining({ id: 'out', direction: 'out', dataType: 'text' })
+      expect.objectContaining({ id: 'out', direction: 'out', dataType: 'text' }),
+      expect.objectContaining({ id: 'out-images', direction: 'out', dataType: 'images' })
     ])
     expect(node.id).toMatch(/^node-/)
     expect(node.params.shotStoryboard).toEqual(createEmptyStoryboard())
@@ -44,6 +50,169 @@ describe('script.shotParams node', () => {
       kind: 'text',
       text: '雨夜街道；景别：中景；光影：霓虹'
     })
+    expect(result['out-images']).toEqual({ kind: 'images', items: [] })
+  })
+
+  it('outputs all storyboard binding images on out-images', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      params: shotStoryboardToNodeParams({
+        ...createEmptyStoryboard(),
+        characters: [{ name: '角色甲', type: '角色', imageUrl: 'Cache/chars/a.png' }],
+        scenes: [{ name: '客厅', type: '场景', imageUrl: 'Cache/scenes/room.png' }],
+        props: [{ name: '旧书', type: '道具', imageUrl: 'Cache/props/book.png' }],
+        weapons: [{ name: '剑', type: '武器', imageUrl: 'Cache/weapons/sword.png' }]
+      })
+    })
+    const result = executeShotParamsNode({ node, inputs: {} })
+    expect(result['out-images']).toEqual({
+      kind: 'images',
+      items: [
+        { id: 'Cache/chars/a.png', dataUrl: '', relativePath: 'Cache/chars/a.png' },
+        { id: 'Cache/scenes/room.png', dataUrl: '', relativePath: 'Cache/scenes/room.png' },
+        { id: 'Cache/props/book.png', dataUrl: '', relativePath: 'Cache/props/book.png' },
+        { id: 'Cache/weapons/sword.png', dataUrl: '', relativePath: 'Cache/weapons/sword.png' }
+      ]
+    })
+  })
+
+  it('sync keeps richer table bindings when live shot lists are empty', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      params: shotStoryboardToNodeParams(createEmptyStoryboard())
+    })
+    syncShotParamsBindingsFromShot(
+      node,
+      {
+        storyboard: createEmptyStoryboard(),
+        prompt: '',
+        camera: { motion: 'static', durationSec: 5 }
+      } as never,
+      {
+        ...createEmptyStoryboard(),
+        scenes: [{ name: '客厅', type: '场景', imageUrl: 'Cache/scenes/room.png' }]
+      }
+    )
+    expect(node.params.shotStoryboard?.scenes).toEqual([
+      { name: '客厅', type: '场景', imageUrl: 'Cache/scenes/room.png' }
+    ])
+  })
+
+  it('merges live shot bindings when node params lack imageUrls', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      params: {
+        ...shotStoryboardToNodeParams({
+          ...createEmptyStoryboard(),
+          characters: [{ name: '角色甲', type: '角色' }]
+        }),
+        boundShotId: 'shot-1'
+      }
+    })
+    const result = executeShotParamsNode({
+      node,
+      inputs: {},
+      resolveShotStoryboard: () => ({
+        storyboard: {
+          ...createEmptyStoryboard(),
+          characters: [{ name: '角色甲', type: '角色', imageUrl: 'Cache/chars/live.png' }],
+          scenes: [{ name: '客厅', type: '场景', imageUrl: 'Cache/scenes/live.png' }]
+        }
+      })
+    })
+    expect(result['out-images']).toEqual({
+      kind: 'images',
+      items: [
+        { id: 'Cache/chars/live.png', dataUrl: '', relativePath: 'Cache/chars/live.png' },
+        { id: 'Cache/scenes/live.png', dataUrl: '', relativePath: 'Cache/scenes/live.png' }
+      ]
+    })
+  })
+
+  it('out-images prefers all-shot binding images over the bound shot only', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      params: {
+        ...shotStoryboardToNodeParams({
+          ...createEmptyStoryboard(),
+          scenes: [{ name: '本镜', type: '场景', imageUrl: 'Cache/scenes/current.png' }]
+        }),
+        boundShotId: 'shot-1'
+      }
+    })
+    const result = executeShotParamsNode({
+      node,
+      inputs: {},
+      resolveAllShotBindingImages: () => [
+        { id: 'Cache/scenes/a.png', name: 'A', relativePath: 'Cache/scenes/a.png' },
+        { id: 'Cache/scenes/b.png', name: 'B', relativePath: 'Cache/scenes/b.png' }
+      ]
+    })
+    expect(result['out-images']).toEqual({
+      kind: 'images',
+      items: [
+        { id: 'Cache/scenes/a.png', dataUrl: '', relativePath: 'Cache/scenes/a.png' },
+        { id: 'Cache/scenes/b.png', dataUrl: '', relativePath: 'Cache/scenes/b.png' }
+      ]
+    })
+  })
+
+  it('soft-resolves all-shot binding images without running the node', () => {
+    const node = createNodeFromType('script.shotParams', { x: 0, y: 0 }, {
+      id: 'params-1',
+      params: shotStoryboardToNodeParams(createEmptyStoryboard())
+    })
+    const doc = {
+      nodes: [node],
+      edges: [],
+      groups: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const value = softResolveSourceOutput(doc, 'params-1', SHOT_PARAMS_IMAGES_PORT_ID, {
+      resolveAllShotBindingImages: () => [
+        { id: 'Cache/chars/all.png', name: '全剧', relativePath: 'Cache/chars/all.png' }
+      ]
+    })
+    expect(value).toEqual({
+      kind: 'images',
+      items: [{ id: 'Cache/chars/all.png', dataUrl: '', relativePath: 'Cache/chars/all.png' }]
+    })
+  })
+
+  it('collectAllShotBindingImages merges every shot and table cache', () => {
+    const images = collectAllShotBindingImages({
+      shots: [
+        {
+          id: 's1',
+          title: 'A',
+          storyboard: {
+            ...createEmptyStoryboard(),
+            characters: [{ name: '甲', type: '角色', imageUrl: 'Cache/a.png' }]
+          }
+        },
+        {
+          id: 's2',
+          title: 'B',
+          storyboard: {
+            ...createEmptyStoryboard(),
+            scenes: [{ name: '厅', type: '场景', imageUrl: 'Cache/b.png' }]
+          }
+        }
+      ],
+      tableText: JSON.stringify([
+        { title: 'A', scenes: [] },
+        {
+          title: 'B',
+          scenes: [{ name: '厅', type: '场景', imageUrl: 'Cache/b-table.png' }]
+        }
+      ])
+    })
+    expect(images.map((item) => item.relativePath).sort()).toEqual([
+      'Cache/a.png',
+      'Cache/b.png'
+    ])
+    expect(
+      resolveShotParamsBindingImageItems({
+        node: { params: { shotParamsAllBindingImages: images } },
+        resolveAllShotBindingImages: () => null
+      }).length
+    ).toBe(2)
   })
 
   it('does not expand legacy @n text in storyboard fields', () => {
@@ -84,8 +253,9 @@ describe('script.shotParams node', () => {
     const typeIds = doc.nodes.map((node) => node.typeId)
     expect(typeIds).not.toContain('script.shotParams')
     expect(typeIds).toContain('asset.video')
+    expect(typeIds).toContain('graph.boundary.output')
     expect(typeIds.some((typeId) => typeId.startsWith('output.'))).toBe(false)
-    expect(doc.edges).toHaveLength(0)
+    expect(doc.edges.length).toBeGreaterThanOrEqual(1)
   })
 
   it('empty shotWorkflow normalize uses the default video chain', () => {
@@ -110,14 +280,18 @@ describe('script.shotParams node', () => {
     const doc = createDefaultScopedGraph('shotWorkflow')
     const nodes = doc.nodes.map((node) => ({ ...node }))
     const edges = doc.edges.map((edge) => ({ ...edge }))
+    const nodeCount = nodes.length
+    const edgeCount = edges.length
     ensureDefaultGraphFromTemplate(nodes, edges, {
       scope: 'shotWorkflow',
       template: resolveDefaultGraphTemplate('shotWorkflow'),
       output: resolveScopeOutput('shotWorkflow'),
       processingTypeId: resolveAssetProcessingTypeId('shotWorkflow')
     })
-    expect(nodes).toHaveLength(1)
-    expect(edges).toHaveLength(0)
+    expect(nodes).toHaveLength(nodeCount)
+    expect(edges).toHaveLength(edgeCount)
+    expect(nodes.some((node) => node.typeId === 'asset.video')).toBe(true)
+    expect(nodes.some((node) => node.typeId === 'script.shotParams')).toBe(false)
   })
 
   it('does not recreate shotParams after user deleted it', () => {

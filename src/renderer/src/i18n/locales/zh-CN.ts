@@ -719,6 +719,8 @@ export default {
       new: '+ 新建',
       resizeCol: '拖拽调整列宽',
       resizeRow: '拖拽调整行高',
+      zoomHint: 'Ctrl + 滚轮缩放表格；点击百分比复位',
+      zoom: '缩放 {n}%',
       column: {
         name: '名称',
         duration: '时长',
@@ -2190,7 +2192,7 @@ export default {
         empty: '未选择分组'
       },
       shotParams: {
-        hint: '从分镜栏拖入创建；可将多个分镜参数接到同一视频生成节点的文本口。',
+        hint: '从分镜栏拖入创建；文本口输出当前镜提示词，图片口输出全部镜头的角色/场景/道具/武器绑定图（无需运行）。',
         boundShot: '绑定分镜',
         boundShotValue: '#{n} {title}',
         unbound: '未绑定分镜'

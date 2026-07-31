@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractShotSplitJsonText,
+  extractShotTableCachedJsonText,
   mergeShotSplitRowsPreservingReviewed,
+  mergeShotSplitRowsWithCachedBindings,
+  mergeStoryboardBindings,
   parseShotSplitJson,
+  resolveShotTableBindingStoryboard,
   shotsToShotSplitRows,
   stripJsonCodeFence,
   stringifyShotSplitRows
 } from '../src/shared/graph/shotSplitParse'
 import type { GraphDocument } from '../src/shared/graph/types'
-import type { Shot } from '../src/shared/domain'
+import { createEmptyStoryboard, type Shot } from '../src/shared/domain'
 
 describe('shotSplitParse', () => {
   it('strips markdown fences', () => {
@@ -211,5 +215,145 @@ describe('shotSplitParse', () => {
     })
     expect(stringifyShotSplitRows(rows)).toContain('"status": "已审核"')
     expect(stringifyShotSplitRows(rows)).toContain('"name": "老人"')
+  })
+
+  it('merges table-cached binding images into live shot rows', () => {
+    const live = parseShotSplitJson(
+      JSON.stringify([
+        {
+          title: '客厅建置',
+          durationSec: 3,
+          visualDescription: '黄昏',
+          characters: [],
+          scenes: [],
+          props: [],
+          weapons: []
+        }
+      ])
+    )!
+    const cached = JSON.stringify([
+      {
+        title: '客厅建置',
+        durationSec: 3,
+        visualDescription: '黄昏',
+        characters: [],
+        scenes: [
+          {
+            name: '老旧公寓客厅',
+            type: '场景',
+            imageUrl: 'Cache/Images/living.jpg'
+          }
+        ],
+        props: [],
+        weapons: []
+      }
+    ])
+    const merged = mergeShotSplitRowsWithCachedBindings(live, cached)
+    expect(merged[0]?.scenes).toEqual([
+      {
+        name: '老旧公寓客厅',
+        type: '场景',
+        imageUrl: 'Cache/Images/living.jpg'
+      }
+    ])
+  })
+
+  it('prefers table node cache over upstream split for bindings', () => {
+    const doc = {
+      nodes: [
+        {
+          id: 'split',
+          typeId: 'script.shotSplit',
+          category: 'note',
+          position: { x: 0, y: 0 },
+          params: {
+            text: JSON.stringify([
+              {
+                title: 'Living room setup',
+                scenes: []
+              }
+            ])
+          }
+        },
+        {
+          id: 'table',
+          typeId: 'script.shotTable',
+          category: 'note',
+          position: { x: 200, y: 0 },
+          params: {
+            text: JSON.stringify([
+              {
+                title: 'Living room setup',
+                scenes: [
+                  {
+                    name: 'Old apartment living room',
+                    type: '\u573a\u666f',
+                    imageUrl: 'Cache/Images/living.jpg'
+                  }
+                ]
+              }
+            ])
+          }
+        }
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'split',
+          target: 'table',
+          sourcePort: 'out',
+          targetPort: 'in'
+        }
+      ],
+      groups: []
+    } as GraphDocument
+    expect(extractShotSplitJsonText(doc)).not.toContain('Cache/Images/living.jpg')
+    expect(extractShotTableCachedJsonText(doc)).toContain('Cache/Images/living.jpg')
+    const sb = resolveShotTableBindingStoryboard(
+      [doc],
+      { id: 'shot-1', title: 'Living room setup' },
+      ['shot-1']
+    )
+    expect(sb?.scenes?.[0]?.imageUrl).toBe('Cache/Images/living.jpg')
+  })
+
+  it('resolves binding storyboard from script.shotTable params when Shot is empty', () => {
+    const title = 'Living room setup'
+    const sceneName = 'Old apartment living room'
+    const doc = {
+      nodes: [
+        {
+          id: 'table',
+          typeId: 'script.shotTable',
+          params: {
+            text: JSON.stringify([
+              {
+                title,
+                scenes: [
+                  {
+                    name: sceneName,
+                    type: '\u573a\u666f',
+                    imageUrl: 'Cache/Images/room.jpg'
+                  }
+                ]
+              }
+            ])
+          }
+        }
+      ],
+      edges: [],
+      groups: []
+    }
+    const sb = resolveShotTableBindingStoryboard(
+      [doc as never],
+      { id: 'shot-1', title },
+      ['shot-1']
+    )
+    expect(sb?.scenes).toEqual([
+      { name: sceneName, type: '\u573a\u666f', imageUrl: 'Cache/Images/room.jpg' }
+    ])
+    expect(
+      mergeStoryboardBindings(createEmptyStoryboard(), sb).scenes[0]?.imageUrl
+    ).toBe('Cache/Images/room.jpg')
   })
 })

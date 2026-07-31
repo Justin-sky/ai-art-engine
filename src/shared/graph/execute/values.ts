@@ -108,7 +108,11 @@ import {
 } from '../videoGenerateParams'
 import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
 import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
-import { readShotStoryboardFromNodeParams } from '../shotParams'
+import {
+  readShotStoryboardFromNodeParams,
+  resolveShotParamsBindingImageItems,
+  SHOT_PARAMS_IMAGES_PORT_ID
+} from '../shotParams'
 import {
   mergeShotEntityResults,
   parseShotEntities,
@@ -118,6 +122,7 @@ import {
 import { parseVideoEntities, stringifyVideoEntities } from '../videoEntitiesParse'
 import {
   mergeShotSplitRowsPreservingReviewed,
+  mergeShotSplitRowsWithCachedBindings,
   parseShotSplitJson,
   stringifyShotSplitRows
 } from '../shotSplitParse'
@@ -3024,14 +3029,27 @@ export async function executePromptOptimizeNode(
   return { out: { kind: 'text', text } }
 }
 
-/** 分镜参数：从节点 params 组装提示词文本输出 */
+/** 分镜参数：提示词文本 + 全部镜头绑定图（角色/场景/道具/武器） */
 export function executeShotParamsNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const storyboard = readShotStoryboardFromNodeParams(ctx.node.params)
   const refs = ctx.resolveShotStoryboard?.(ctx.node.params.boundShotId)
   const text = buildShotGenerationPrompt(storyboard, {
     stylePreset: refs?.stylePreset
   })
-  return { out: { kind: 'text', text } }
+  // 图片组：剧本下全部镜头绑定图（不限当前选中镜）；无 resolver 时回落节点缓存/单镜
+  const items = resolveShotParamsBindingImageItems({
+    node: ctx.node,
+    resolveAllShotBindingImages: ctx.resolveAllShotBindingImages,
+    resolveShotStoryboard: ctx.resolveShotStoryboard
+  }).map((item) => ({
+    id: item.id,
+    dataUrl: '',
+    relativePath: item.relativePath
+  }))
+  return {
+    out: { kind: 'text', text },
+    [SHOT_PARAMS_IMAGES_PORT_ID]: { kind: 'images', items }
+  }
 }
 
 /** 叙事单元细化生成：文本模型 + 指令框；规则在系统提示词 */
@@ -3120,12 +3138,21 @@ export function executeShotTableNode(
     })
   }
 
-  // 已有分镜列表时以其为准（含绑定实体），避免上游拆分透传丢掉表格绑定
+  // 已有分镜列表时以其为准；再与表格缓存合并绑定图，避免 Shot 空绑定时冲掉 params.text
   const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
-  if (fromShots && parseShotSplitJson(fromShots)?.length) {
-    ctx.node.params = { ...ctx.node.params, text: fromShots }
-    ctx.patchNode?.({ params: { text: fromShots } })
-    return { out: catalogValue(GraphPortType.shots, fromShots) }
+  const fromShotsRows = fromShots ? parseShotSplitJson(fromShots) : null
+  if (fromShotsRows?.length) {
+    const mergedRows = mergeShotSplitRowsWithCachedBindings(
+      fromShotsRows,
+      ctx.node.params.text
+    )
+    const mergedText = stringifyShotSplitRows(mergedRows)
+    // 合并未增加绑定时原样透传，避免无谓改写 JSON 字段顺序
+    const text =
+      mergedText === stringifyShotSplitRows(fromShotsRows) ? fromShots : mergedText
+    ctx.node.params = { ...ctx.node.params, text }
+    ctx.patchNode?.({ params: { text } })
+    return { out: catalogValue(GraphPortType.shots, text) }
   }
 
   const fromIn = catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.shots)

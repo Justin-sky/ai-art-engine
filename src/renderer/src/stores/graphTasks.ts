@@ -10,6 +10,8 @@ import {
   resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
+  extractShotTableCachedJsonText,
+  mergeShotSplitRowsWithCachedBindings,
   shotsToShotSplitRows,
   stringifyShotSplitRows,
   topologicalSort,
@@ -1290,7 +1292,16 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             draft?.shots ??
             project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
           if (!shots.length) return null
-          return stringifyShotSplitRows(shotsToShotSplitRows(shots))
+          const liveRows = shotsToShotSplitRows(shots)
+          const cached =
+            extractShotTableCachedJsonText(
+              graphEditorHosts.getLiveAssetDocument(scriptId) ??
+                ((draft?.genParams?.graphJson ??
+                  project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson) as
+                  | GraphDocument
+                  | undefined)
+            ) ?? null
+          return stringifyShotSplitRows(mergeShotSplitRowsWithCachedBindings(liveRows, cached))
         },
         importShotSplitTableJson: async (jsonText) => {
           if (task.target.kind !== 'asset') return

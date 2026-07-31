@@ -139,6 +139,12 @@ export interface GraphRunSessionOptions {
     assetTypes?: Map<string, AssetType>
     stylePreset?: string
   } | null
+  /** 分镜参数 out-images：全部镜头绑定图 */
+  resolveAllShotBindingImages?: () => Array<{
+    id: string
+    name: string
+    relativePath: string
+  }> | null
   /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
   resolveNarrativeUnit?: (
     unitId: string
@@ -611,6 +617,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveHostAssetName: options.resolveHostAssetName,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveShotStoryboard: options.resolveShotStoryboard,
+        resolveAllShotBindingImages: options.resolveAllShotBindingImages,
         resolveNarrativeUnit: options.resolveNarrativeUnit,
         resolveShotSplitTableJson: options.resolveShotSplitTableJson,
         importShotSplitTableJson: options.importShotSplitTableJson,

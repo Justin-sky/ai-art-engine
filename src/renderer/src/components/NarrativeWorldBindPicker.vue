@@ -37,7 +37,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { NarrativeWorldRef, WorldElementGenResult, WorldElementOutputType } from '@shared/graph'
-import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import {
+  resolveAssetFileUrl,
+  resolveAssetPreviewUrl
+} from '../features/media/assetUrlCache'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = withDefaults(
@@ -103,7 +106,7 @@ watch(
   () => props.items,
   async (items) => {
     const token = ++thumbToken
-    const next: Record<string, string> = {}
+    const patch: Record<string, string> = {}
     await Promise.all(
       items.map(async (item) => {
         const url = item.imageUrl?.trim() || ''
@@ -111,15 +114,17 @@ watch(
           return
         }
         try {
-          const resolved = await resolveAssetPreviewUrl(url)
-          if (token !== thumbToken) return
-          next[itemKey(item)] = resolved
+          let resolved = await resolveAssetPreviewUrl(url)
+          if (!resolved) resolved = await resolveAssetFileUrl(url)
+          if (token !== thumbToken || !resolved) return
+          patch[itemKey(item)] = resolved
         } catch {
           /* ignore broken preview */
         }
       })
     )
-    if (token === thumbToken) thumbUrls.value = next
+    if (token !== thumbToken || !Object.keys(patch).length) return
+    thumbUrls.value = { ...thumbUrls.value, ...patch }
   },
   { immediate: true }
 )

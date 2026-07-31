@@ -1,5 +1,6 @@
 import { graphValueHasPayload, softResolveSourceOutput } from '../hostInput'
 import { isGenerateLocked } from '../nodeRole'
+import { SHOT_PARAMS_IMAGES_PORT_ID } from '../shotParams'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
@@ -203,6 +204,8 @@ async function softSnapshotOutputs(
     | 'locale'
     | 'readRunText'
     | 'resolveNarrativeUnit'
+    | 'resolveShotStoryboard'
+    | 'resolveAllShotBindingImages'
   >,
   softCtx?: {
     graph: GraphDocument
@@ -210,12 +213,41 @@ async function softSnapshotOutputs(
     priorNodeStates?: Record<string, GraphNodeRunState>
   }
 ): Promise<Record<string, GraphValue>> {
+  const softResolveOpts = {
+    resolveAssetGenParams: options.resolveAssetGenParams,
+    resolveShotStoryboard: options.resolveShotStoryboard,
+    resolveAllShotBindingImages: options.resolveAllShotBindingImages
+  }
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
     typeId: node.typeId
   })
   if (hasUsablePriorOutputs(prior)) {
     const merged = gallery ? { ...prior!.outputs!, ...gallery } : { ...prior!.outputs! }
+    // 分镜参数：prior 常有文本但 out-images 为空/过期；用全镜绑定图补齐
+    if (
+      softCtx &&
+      node.typeId === 'script.shotParams' &&
+      (softCtx.sourcePort === SHOT_PARAMS_IMAGES_PORT_ID ||
+        !graphValueHasPayload(merged[SHOT_PARAMS_IMAGES_PORT_ID]))
+    ) {
+      const priorAsPersisted: Record<string, GraphPersistedRunState> = {
+        ...(softCtx.graph.runStates ?? {})
+      }
+      for (const [id, state] of Object.entries(softCtx.priorNodeStates ?? {})) {
+        priorAsPersisted[id] = state
+      }
+      const softDoc: GraphDocument = { ...softCtx.graph, runStates: priorAsPersisted }
+      const softImages = softResolveSourceOutput(
+        softDoc,
+        node.id,
+        SHOT_PARAMS_IMAGES_PORT_ID,
+        softResolveOpts
+      )
+      if (graphValueHasPayload(softImages) && softImages) {
+        merged[SHOT_PARAMS_IMAGES_PORT_ID] = softImages
+      }
+    }
     return hydrateOutputRecordTexts(merged, options.readRunText)
   }
   if (gallery) return hydrateOutputRecordTexts(gallery, options.readRunText)
@@ -233,7 +265,7 @@ async function softSnapshotOutputs(
       softDoc,
       node.id,
       softCtx.sourcePort,
-      { resolveAssetGenParams: options.resolveAssetGenParams }
+      softResolveOpts
     )
     if (graphValueHasPayload(softVal)) {
       // 资产引用正文常依赖异步 resolveAssetText；勿用 params 占位正文短路
@@ -243,10 +275,23 @@ async function softSnapshotOutputs(
         (softVal!.kind === 'text' || softVal!.kind === 'texts')
       if (!deferAsyncAssetText) {
         const port = softCtx.sourcePort || 'out'
-        return hydrateOutputRecordTexts(
-          { [port]: softVal!, out: softVal! },
-          options.readRunText
-        )
+        const record: Record<string, GraphValue> = { [port]: softVal!, out: softVal! }
+        // 软解析文本口时一并补齐绑定图口
+        if (
+          node.typeId === 'script.shotParams' &&
+          port !== SHOT_PARAMS_IMAGES_PORT_ID
+        ) {
+          const softImages = softResolveSourceOutput(
+            softDoc,
+            node.id,
+            SHOT_PARAMS_IMAGES_PORT_ID,
+            softResolveOpts
+          )
+          if (graphValueHasPayload(softImages) && softImages) {
+            record[SHOT_PARAMS_IMAGES_PORT_ID] = softImages
+          }
+        }
+        return hydrateOutputRecordTexts(record, options.readRunText)
       }
     }
   }
@@ -263,7 +308,9 @@ async function softSnapshotOutputs(
       resolveAssetGenParams: options.resolveAssetGenParams,
       hasAsset: options.hasAsset,
       readRunText: options.readRunText,
-      resolveNarrativeUnit: options.resolveNarrativeUnit
+      resolveNarrativeUnit: options.resolveNarrativeUnit,
+      resolveShotStoryboard: options.resolveShotStoryboard,
+      resolveAllShotBindingImages: options.resolveAllShotBindingImages
     })
   )
 }
@@ -406,6 +453,7 @@ async function executeOneNode(
     composeImageCropCanvas: options.composeImageCropCanvas,
     composeImageGridCell: options.composeImageGridCell,
     resolveShotStoryboard: options.resolveShotStoryboard,
+    resolveAllShotBindingImages: options.resolveAllShotBindingImages,
     resolveNarrativeUnit: options.resolveNarrativeUnit,
     resolveShotSplitTableJson: options.resolveShotSplitTableJson,
     importShotSplitTableJson: options.importShotSplitTableJson,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { isDraftAssetId, type AssetInfo, type AssetType } from '@shared/domain'
+import { isDraftAssetId, shotScriptAssetId, type AssetInfo, type AssetType } from '@shared/domain'
 import {
   isAudioFilePath,
   isImageFilePath,
@@ -8,12 +8,17 @@ import {
   isVideoFilePath
 } from '@shared/import'
 import {
+  collectAllShotBindingImages,
+  extractShotTableCachedJsonText,
   flattenImagesValues,
   graphValueHasPayload,
   isBoundaryOutputNode,
+  readShotParamsAllBindingImages,
   resolveNodeTextContent,
   softResolveBoundaryOutputValue,
+  softResolveSourceOutput,
   stringifyVideoEntities,
+  SHOT_PARAMS_IMAGES_PORT_ID,
   type GraphDocument,
   type GraphNode,
   type GraphValue
@@ -659,11 +664,63 @@ function softResolveBoundaryPreview(node: GraphNode): GraphValue | undefined {
       return asset?.genParams as Record<string, unknown> | undefined
     },
     resolveLiveAssetGraph: (assetId) =>
-      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
+      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
+    resolveAllShotBindingImages: () => resolvePreviewAllShotBindingImages()
   })
 }
 
+/** 预览用：剧本全部镜头绑定图（含表格缓存） */
+function resolvePreviewAllShotBindingImages() {
+  const shots = project.shots
+  let tableText: string | null = null
+  for (const shot of shots) {
+    const scriptId = shotScriptAssetId(shot)
+    if (!scriptId) continue
+    const doc =
+      graphEditorHosts.getLiveAssetDocument(scriptId) ??
+      (project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson as
+        | GraphDocument
+        | undefined)
+    const text = extractShotTableCachedJsonText(doc)
+    if (text) {
+      tableText = text
+      break
+    }
+  }
+  return collectAllShotBindingImages({ shots, tableText })
+}
+
 function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
+  // 分镜参数：未运行也输出全部镜头绑定图
+  if (source.typeId === 'script.shotParams') {
+    const hostDoc = graphEditorHosts.getDocument(props.hostId)
+    const soft = hostDoc
+      ? softResolveSourceOutput(hostDoc, source.id, SHOT_PARAMS_IMAGES_PORT_ID, {
+          resolveAllShotBindingImages: () => resolvePreviewAllShotBindingImages()
+        })
+      : undefined
+    const fromSoft =
+      soft?.kind === 'images'
+        ? soft.items
+        : readShotParamsAllBindingImages(source.params).map((item) => ({
+            id: item.id,
+            dataUrl: '',
+            relativePath: item.relativePath
+          }))
+    let added = 0
+    for (const [index, item] of fromSoft.entries()) {
+      const path = item.relativePath?.trim()
+      if (!path) continue
+      pushLocalMediaPreview(
+        into,
+        item.id?.trim() || `shot-params-img:${source.id}:${index}`,
+        'image',
+        { relativePath: path }
+      )
+      added += 1
+    }
+    if (added) return
+  }
   // 累计图库优先于当次 runStates（out 可能只含本批）
   if ((source.params.generatedImages ?? []).length) {
     for (const [index, item] of (source.params.generatedImages ?? []).entries()) {

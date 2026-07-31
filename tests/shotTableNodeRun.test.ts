@@ -100,4 +100,76 @@ describe('script.shotTable run', () => {
     expect(table.params.text).toContain('"name": "公园黄昏"')
     expect(table.params.text).toContain('"name": "旧书"')
   })
+
+  it('keeps table-cached binding images when live shots have empty bindings', async () => {
+    const emptyLive = JSON.stringify(
+      [
+        {
+          title: '客厅建置',
+          durationSec: 3,
+          visualDescription: '黄昏',
+          shotSize: '',
+          lighting: '',
+          dialogue: '',
+          soundFx: '',
+          cameraMove: '',
+          status: '未审核',
+          characters: [],
+          scenes: [],
+          props: [],
+          weapons: []
+        }
+      ],
+      null,
+      2
+    )
+    const table = createNodeFromType('script.shotTable', { x: 200, y: 0 }, {
+      id: 'table',
+      params: {
+        text: JSON.stringify(
+          [
+            {
+              title: '客厅建置',
+              durationSec: 3,
+              visualDescription: '黄昏',
+              characters: [],
+              scenes: [
+                {
+                  name: '老旧公寓客厅',
+                  type: '场景',
+                  imageUrl: 'Cache/Images/living.jpg'
+                }
+              ],
+              props: [],
+              weapons: []
+            }
+          ],
+          null,
+          2
+        )
+      }
+    })
+
+    const result = await runGraph(
+      {
+        nodes: [table],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeId: 'table',
+        resolveShotSplitTableJson: () => emptyLive
+      }
+    )
+
+    expect(result.ok, result.error).toBe(true)
+    expect(table.params.text).toContain('Cache/Images/living.jpg')
+    expect(result.states.table?.outputs?.out).toMatchObject({
+      kind: 'shots'
+    })
+    expect(String((result.states.table?.outputs?.out as { text?: string })?.text ?? '')).toContain(
+      'Cache/Images/living.jpg'
+    )
+  })
 })

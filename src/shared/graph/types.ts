@@ -495,6 +495,11 @@ export interface GraphNodeParams {
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 分镜参数节点：与 Shot Inspector 同构的分镜字段 */
   shotStoryboard?: ShotStoryboard
+  /**
+   * 分镜参数 out-images 软输出缓存：剧本下全部镜头的绑定图（角色/场景/道具/武器）。
+   * 不运行节点即可被 softResolve 读出。
+   */
+  shotParamsAllBindingImages?: Array<{ id: string; name: string; relativePath: string }>
   /** 分镜参数节点绑定的 Shot.id；拖入分镜栏时写入 */
   boundShotId?: string
   /** 叙事单元参考节点绑定的 NarrativeUnitRow.id；拖入单元栏时写入 */

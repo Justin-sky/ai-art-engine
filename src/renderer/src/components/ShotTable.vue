@@ -3,14 +3,28 @@
     ref="rootRef"
     class="shot-table"
     :class="{ 'resizing-col': !!resizingCol, 'resizing-row': !!resizingRow }"
+    :style="{ '--shot-table-zoom': String(tableZoom) }"
     @pointerdown="onRootPointerDown"
   >
     <div class="table-toolbar">
       <span class="label">{{ t('shot.table.title', { n: visibleShots.length }) }}</span>
-      <button type="button" @click="onAdd">{{ t('shot.table.new') }}</button>
+      <div class="toolbar-right">
+        <div class="zoom-controls" :title="t('shot.table.zoomHint')">
+          <button type="button" class="zoom-btn" :disabled="tableZoom <= ZOOM_MIN" @click="nudgeZoom(-1)">
+            −
+          </button>
+          <button type="button" class="zoom-value" @click="resetZoom">
+            {{ zoomPercentLabel }}
+          </button>
+          <button type="button" class="zoom-btn" :disabled="tableZoom >= ZOOM_MAX" @click="nudgeZoom(1)">
+            +
+          </button>
+        </div>
+        <button type="button" @click="onAdd">{{ t('shot.table.new') }}</button>
+      </div>
     </div>
     <p v-if="error" class="table-error">{{ error }}</p>
-    <div class="table-scroll">
+    <div ref="scrollRef" class="table-scroll">
       <table>
         <colgroup>
           <col v-for="col in columns" :key="col.id" :style="colStyle(col.id)" />
@@ -22,7 +36,7 @@
               <span
                 class="col-resize"
                 :title="t('shot.table.resizeCol')"
-                @mousedown.prevent="onColResizeDown(col.id, $event)"
+                @pointerdown.stop.prevent="onColResizeDown(col.id, $event)"
               />
             </th>
           </tr>
@@ -79,6 +93,12 @@
                     class="ref-thumb"
                     :src="chipThumb(refItem)"
                     :alt="refItem.name"
+                  />
+                  <span
+                    v-else-if="hasBindImage(refItem)"
+                    class="ref-thumb ref-thumb-pending"
+                    :title="refItem.name"
+                    aria-hidden="true"
                   />
                   <input
                     class="ref-name"
@@ -281,7 +301,10 @@ import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import {
+  resolveAssetFileUrl,
+  resolveAssetPreviewUrl
+} from '../features/media/assetUrlCache'
 import NarrativeWorldBindPicker from './NarrativeWorldBindPicker.vue'
 import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 
@@ -313,12 +336,17 @@ const FIELD_TYPE: Record<RefField, WorldEntityKindLabel> = {
 }
 
 const COL_WIDTH_KEY = 'studio.script.shotTableColWidths'
+const TABLE_ZOOM_KEY = 'studio.script.shotTableZoom'
 const DEFAULT_ROW_HEIGHT = 48
 const MIN_ROW_HEIGHT = 32
 const MAX_ROW_HEIGHT = 480
 /** 约四行正文（14px × 1.8 行高）加上下内边距 */
 const MIN_TEXTAREA_HEIGHT = 122
 const MAX_TEXTAREA_HEIGHT = MAX_ROW_HEIGHT
+const ZOOM_MIN = 0.7
+const ZOOM_MAX = 1.8
+const ZOOM_STEP = 0.1
+const ZOOM_DEFAULT = 1
 
 const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   idx: 36,
@@ -389,6 +417,7 @@ const columns = computed<{ id: ColId; label: string }[]>(() => [
 ])
 const { drafts } = storeToRefs(draftStore)
 const rootRef = ref<HTMLElement | null>(null)
+const scrollRef = ref<HTMLElement | null>(null)
 const error = ref('')
 const bindTarget = ref<{ shotId: string; field: RefField; index: number } | null>(null)
 const chipThumbs = ref<Record<string, string>>({})
@@ -400,8 +429,11 @@ const resizingCol = ref<ColId | null>(null)
 const resizingRow = ref<string | null>(null)
 const colWidths = ref<Record<ColId, number>>(loadColWidths())
 const rowHeights = ref<Record<string, number>>(loadRowHeights())
+const tableZoom = ref(loadTableZoom())
+const zoomPercentLabel = computed(() => `${Math.round(tableZoom.value * 100)}%`)
 
 let resizeCleanup: (() => void) | null = null
+let wheelTarget: HTMLElement | null = null
 const pendingWrites = new Set<Promise<unknown>>()
 
 function trackWrite<T>(promise: Promise<T>): Promise<T> {
@@ -448,6 +480,68 @@ function persistColWidths(): void {
   }
 }
 
+function clampTableZoom(value: number): number {
+  const stepped = Math.round(value / ZOOM_STEP) * ZOOM_STEP
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(stepped.toFixed(2))))
+}
+
+function loadTableZoom(): number {
+  try {
+    const raw = localStorage.getItem(TABLE_ZOOM_KEY)
+    if (!raw) return ZOOM_DEFAULT
+    const n = Number(raw)
+    if (!Number.isFinite(n)) return ZOOM_DEFAULT
+    return clampTableZoom(n)
+  } catch {
+    return ZOOM_DEFAULT
+  }
+}
+
+function persistTableZoom(): void {
+  try {
+    localStorage.setItem(TABLE_ZOOM_KEY, String(tableZoom.value))
+  } catch {
+    // ignore
+  }
+}
+
+function setTableZoom(next: number): void {
+  const clamped = clampTableZoom(next)
+  if (clamped === tableZoom.value) return
+  tableZoom.value = clamped
+  persistTableZoom()
+  scheduleAutosize()
+}
+
+function nudgeZoom(dir: -1 | 1): void {
+  setTableZoom(tableZoom.value + dir * ZOOM_STEP)
+}
+
+function resetZoom(): void {
+  setTableZoom(ZOOM_DEFAULT)
+}
+
+/** Ctrl/Cmd + 滚轮缩放表格（非 passive，避免触发浏览器页面缩放） */
+function onTableWheel(e: WheelEvent): void {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const dir: -1 | 1 = e.deltaY < 0 ? 1 : -1
+  setTableZoom(tableZoom.value + dir * ZOOM_STEP)
+}
+
+function bindTableWheel(): void {
+  unbindTableWheel()
+  const el = scrollRef.value
+  if (!el) return
+  wheelTarget = el
+  el.addEventListener('wheel', onTableWheel, { passive: false })
+}
+
+function unbindTableWheel(): void {
+  wheelTarget?.removeEventListener('wheel', onTableWheel)
+  wheelTarget = null
+}
+
 function loadRowHeights(): Record<string, number> {
   try {
     const raw = localStorage.getItem(rowHeightsKey())
@@ -480,7 +574,7 @@ function hasRowHeight(shotId: string): boolean {
 function rowStyle(shotId: string): { height?: string } {
   const h = rowHeights.value[shotId]
   if (!h) return {}
-  return { height: `${h}px` }
+  return { height: `${Math.round(h * tableZoom.value)}px` }
 }
 
 function onRowResizeDown(shotId: string, e: MouseEvent): void {
@@ -488,12 +582,16 @@ function onRowResizeDown(shotId: string, e: MouseEvent): void {
   resizingRow.value = shotId
   const row = (e.currentTarget as HTMLElement).closest('tr')
   const startY = e.clientY
-  const startH = rowHeights.value[shotId] ?? row?.offsetHeight ?? DEFAULT_ROW_HEIGHT
+  const zoom = tableZoom.value || 1
+  const startH =
+    rowHeights.value[shotId] ??
+    Math.round((row?.offsetHeight ?? DEFAULT_ROW_HEIGHT) / zoom)
 
   const onMove = (ev: MouseEvent): void => {
+    const delta = (ev.clientY - startY) / zoom
     rowHeights.value = {
       ...rowHeights.value,
-      [shotId]: Math.min(MAX_ROW_HEIGHT, Math.max(MIN_ROW_HEIGHT, startH + (ev.clientY - startY)))
+      [shotId]: Math.min(MAX_ROW_HEIGHT, Math.max(MIN_ROW_HEIGHT, Math.round(startH + delta)))
     }
   }
 
@@ -519,27 +617,39 @@ function colStyle(id: ColId): {
   minWidth: string
   maxWidth: string
 } {
-  const w = colWidths.value[id]
+  const w = Math.round(colWidths.value[id] * tableZoom.value)
   const px = `${w}px`
   return { width: px, minWidth: px, maxWidth: px }
 }
 
-function onColResizeDown(id: ColId, e: MouseEvent): void {
+function onColResizeDown(id: ColId, e: PointerEvent): void {
+  if (e.button !== 0) return
   resizeCleanup?.()
   resizingCol.value = id
   const startX = e.clientX
+  // 逻辑列宽（未乘 zoom），拖动时按屏幕像素 / zoom 回写
   const startW = colWidths.value[id]
+  const zoom = tableZoom.value || 1
+  const handle = e.currentTarget as HTMLElement | null
+  handle?.setPointerCapture?.(e.pointerId)
 
-  const onMove = (ev: MouseEvent): void => {
+  const onMove = (ev: PointerEvent): void => {
+    const delta = (ev.clientX - startX) / zoom
     colWidths.value = {
       ...colWidths.value,
-      [id]: Math.max(MIN_COL_WIDTHS[id], startW + (ev.clientX - startX))
+      [id]: Math.max(MIN_COL_WIDTHS[id], Math.round(startW + delta))
     }
   }
 
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
+  const onUp = (ev?: PointerEvent): void => {
+    if (ev && handle?.hasPointerCapture?.(ev.pointerId)) {
+      handle.releasePointerCapture(ev.pointerId)
+    }
+    handle?.removeEventListener('pointermove', onMove)
+    handle?.removeEventListener('pointerup', onUp)
+    handle?.removeEventListener('pointercancel', onUp)
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
     resizingCol.value = null
@@ -549,9 +659,15 @@ function onColResizeDown(id: ColId, e: MouseEvent): void {
 
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
-  resizeCleanup = onUp
+  if (handle) {
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+  } else {
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  resizeCleanup = () => onUp()
 }
 
 function storyboardOf(shot: Shot): ShotStoryboard {
@@ -671,46 +787,78 @@ async function onDurationChange(shot: Shot, durationSec: number): Promise<void> 
 }
 
 
-function refKey(refItem: WorldEntityRef, fallback = ''): string {
-  return `${refItem.name}|${refItem.imageUrl ?? ''}|${fallback}`
+function isDirectThumbUrl(url: string): boolean {
+  return url.startsWith('data:') || url.startsWith('blob:') || /^https?:/i.test(url)
+}
+
+function thumbCacheKey(imageUrl: string): string {
+  return imageUrl.trim().replace(/\\/g, '/')
+}
+
+function hasBindImage(refItem: WorldEntityRef): boolean {
+  return !!refItem.imageUrl?.trim()
 }
 
 function chipThumb(refItem: WorldEntityRef): string {
   const url = refItem.imageUrl?.trim() || ''
   if (!url) return ''
-  if (url.startsWith('data:') || url.startsWith('blob:') || /^https?:/i.test(url)) return url
-  return chipThumbs.value[refKey(refItem)] || ''
+  if (isDirectThumbUrl(url)) return url
+  return chipThumbs.value[thumbCacheKey(url)] || ''
+}
+
+async function resolveChipThumbUrl(relativePath: string): Promise<string> {
+  const key = thumbCacheKey(relativePath)
+  if (!key) return ''
+  try {
+    const preview = await resolveAssetPreviewUrl(key)
+    if (preview) return preview
+  } catch {
+    /* fall through to file url */
+  }
+  try {
+    return (await resolveAssetFileUrl(key)) || ''
+  } catch {
+    return ''
+  }
+}
+
+async function ensureChipThumb(imageUrl: string | undefined | null): Promise<void> {
+  const url = imageUrl?.trim() || ''
+  if (!url || isDirectThumbUrl(url)) return
+  const key = thumbCacheKey(url)
+  if (chipThumbs.value[key]) return
+  const resolved = await resolveChipThumbUrl(key)
+  if (!resolved) return
+  chipThumbs.value = { ...chipThumbs.value, [key]: resolved }
 }
 
 async function refreshChipThumbs(): Promise<void> {
   const token = ++chipToken
-  const next: Record<string, string> = {}
-  const pending: Array<Promise<void>> = []
+  const urls = new Set<string>()
   for (const shot of visibleShots.value) {
     const sb = normalizeStoryboard(shot)
     for (const field of REF_FIELDS) {
-      sb[field].forEach((refItem, index) => {
+      for (const refItem of sb[field]) {
         const url = refItem.imageUrl?.trim() || ''
-        if (!url || url.startsWith('data:') || url.startsWith('blob:') || /^https?:/i.test(url)) {
-          return
-        }
-        pending.push(
-          (async () => {
-            try {
-              const resolved = await resolveAssetPreviewUrl(url)
-              if (token !== chipToken) return
-              next[refKey(refItem, `${shot.id}:${field}:${index}`)] = resolved
-              next[refKey(refItem)] = resolved
-            } catch {
-              /* ignore */
-            }
-          })()
-        )
-      })
+        if (!url || isDirectThumbUrl(url)) continue
+        urls.add(thumbCacheKey(url))
+      }
     }
   }
-  await Promise.all(pending)
-  if (token === chipToken) chipThumbs.value = next
+  const patch: Record<string, string> = {}
+  await Promise.all(
+    [...urls].map(async (url) => {
+      try {
+        const resolved = await resolveChipThumbUrl(url)
+        if (token !== chipToken || !resolved) return
+        patch[url] = resolved
+      } catch {
+        /* ignore broken preview */
+      }
+    })
+  )
+  if (token !== chipToken || !Object.keys(patch).length) return
+  chipThumbs.value = { ...chipThumbs.value, ...patch }
 }
 
 watch(
@@ -718,7 +866,7 @@ watch(
   () => {
     void refreshChipThumbs()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 
 async function persistStoryboard(shot: Shot, storyboard: ShotStoryboard): Promise<void> {
@@ -778,7 +926,10 @@ async function onBindSelect(selected: WorldEntityRef): Promise<void> {
   // 目标行可能因写入未同步而缺失，此时按新增处理，避免静默丢弃选择
   if (target.index >= 0 && target.index < list.length) list[target.index] = next
   else list.push(next)
+  // 绑定后立刻解析缩略图，不等待整表 refresh
+  void ensureChipThumb(next.imageUrl)
   await persistStoryboard(shot, storyboard)
+  void ensureChipThumb(next.imageUrl)
 }
 
 async function onStoryboardChange(
@@ -861,12 +1012,15 @@ async function flushSave(): Promise<void> {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   scheduleAutosize()
+  await nextTick()
+  bindTableWheel()
 })
 
 onBeforeUnmount(() => {
   resizeCleanup?.()
+  unbindTableWheel()
 })
 
 watch(
@@ -935,6 +1089,51 @@ defineExpose({ flushSave })
   flex-shrink: 0;
 }
 
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px;
+  background: var(--bg-elevated);
+}
+
+.zoom-btn,
+.zoom-value {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.zoom-btn:hover:not(:disabled),
+.zoom-value:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.zoom-value {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .label {
   font-size: 12px;
   color: var(--text-muted);
@@ -959,7 +1158,7 @@ table {
   min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: calc(12px * var(--shot-table-zoom, 1));
 }
 
 thead th {
@@ -972,12 +1171,13 @@ thead th {
   text-align: left;
   font-weight: 600;
   color: var(--text-muted);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .col-label {
   display: block;
-  padding: 6px 10px 6px 8px;
+  padding: calc(6px * var(--shot-table-zoom, 1)) calc(10px * var(--shot-table-zoom, 1))
+    calc(6px * var(--shot-table-zoom, 1)) calc(8px * var(--shot-table-zoom, 1));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -987,12 +1187,29 @@ thead th {
 .col-resize {
   position: absolute;
   top: 0;
-  right: 0;
-  width: 8px;
+  right: -4px;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
   touch-action: none;
   z-index: 3;
+}
+
+.col-resize::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: transparent;
+}
+
+.col-resize:hover::after,
+.shot-table.resizing-col .col-resize::after {
+  background: var(--accent);
 }
 
 .col-resize:hover,
@@ -1002,7 +1219,7 @@ thead th {
 
 tbody td {
   border-bottom: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: calc(6px * var(--shot-table-zoom, 1)) calc(8px * var(--shot-table-zoom, 1));
   vertical-align: top;
   overflow: hidden;
   transition: background-color 120ms ease;
@@ -1227,6 +1444,13 @@ tbody tr.row-even > td textarea {
   object-fit: cover;
   flex-shrink: 0;
   background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.ref-thumb-pending {
+  display: inline-block;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, var(--border));
 }
 
 .ref-name {
