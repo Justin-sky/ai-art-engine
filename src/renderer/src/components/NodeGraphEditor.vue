@@ -229,12 +229,23 @@
     <GraphLayoutFloatingBar
       v-model:snap-enabled="snapToGridEnabled"
       v-model:grid-visible="gridVisible"
+      v-model:minimap-visible="minimapVisible"
       :selected-count="selectedLayoutNodes.length"
       @align="applyAlign"
       @distribute="applyDistribute"
       @auto-layout="applyAutoLayout"
       @collapse-all-previews="setAllNodePreviewsCollapsed(true)"
       @expand-all-previews="setAllNodePreviewsCollapsed(false)"
+    />
+
+    <GraphMinimap
+      v-if="minimapVisible"
+      :nodes="graph.nodes"
+      :viewport="graph.viewport"
+      :host-width="viewportHostSize.w"
+      :host-height="viewportHostSize.h"
+      :selected-node-ids="selectedNodeIds"
+      @pan-to="panViewportToWorldCenter"
     />
 
     <GraphRadialMenu
@@ -536,6 +547,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type ComputedRef } from 'vue'
 import { resolveGraphCard } from '../graph/cards/registry'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
+import GraphMinimap from './GraphMinimap.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
@@ -1586,6 +1598,16 @@ function shotParamsSeedFromActiveShot(): Partial<GraphNodeParams> | undefined {
 
 const rootEl = ref<HTMLElement | null>(null)
 const viewportEl = ref<HTMLElement | null>(null)
+const viewportHostSize = ref({ w: 0, h: 0 })
+
+function syncViewportHostSize(): void {
+  const host = viewportEl.value
+  if (!host) return
+  const w = host.clientWidth
+  const h = host.clientHeight
+  if (viewportHostSize.value.w === w && viewportHostSize.value.h === h) return
+  viewportHostSize.value = { w, h }
+}
 const gridMinorEl = ref<HTMLElement | null>(null)
 const gridMajorEl = ref<HTMLElement | null>(null)
 const graph = reactive<GraphDocument>(normalizeGraphForHost(null))
@@ -2715,6 +2737,16 @@ watch(gridVisible, (visible) => {
   }
 })
 
+const MINIMAP_VISIBLE_KEY = 'aiartengine.graph.minimapVisible'
+const minimapVisible = ref(localStorage.getItem(MINIMAP_VISIBLE_KEY) !== '0')
+watch(minimapVisible, (visible) => {
+  try {
+    localStorage.setItem(MINIMAP_VISIBLE_KEY, visible ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+})
+
 const EDGE_PATH_STYLE_KEY = 'aiartengine.graph.edgePathStyle'
 const edgePathStyle = ref<GraphEdgePathStyle>(
   parseGraphEdgePathStyle(localStorage.getItem(EDGE_PATH_STYLE_KEY))
@@ -3504,9 +3536,12 @@ function screenToWorld(clientX: number, clientY: number): { x: number; y: number
   return clientToGraphWorld(clientX, clientY, rect, liveViewport)
 }
 
-const GRAPH_ZOOM_MIN = 0.35
-const GRAPH_ZOOM_MAX = 2
+/** 画布缩放范围（相对旧版再扩大 2 倍：原 0.35～2 → 0.175～4） */
+const GRAPH_ZOOM_MIN = 0.175
+const GRAPH_ZOOM_MAX = 4
 const GRAPH_ZOOM_SENSITIVITY = 0.999
+/** 适配视图时略收一点上限，避免贴边过近 */
+const GRAPH_FIT_ZOOM_MAX = 3.2
 let viewportSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 function getWheelViewportRect(host: HTMLElement): { left: number; top: number; height: number } {
@@ -3626,7 +3661,10 @@ function fitView(): void {
     const pad = 56
     const zoomX = (host.clientWidth - pad * 2) / bounds.w
     const zoomY = (host.clientHeight - pad * 2) / bounds.h
-    const zoom = Math.min(1.6, Math.max(0.35, Math.min(zoomX, zoomY)))
+    const zoom = Math.min(
+      GRAPH_FIT_ZOOM_MAX,
+      Math.max(GRAPH_ZOOM_MIN, Math.min(zoomX, zoomY))
+    )
     graph.viewport.zoom = zoom
     graph.viewport.x = host.clientWidth / 2 - (bounds.x + bounds.w / 2) * zoom
     graph.viewport.y = host.clientHeight / 2 - (bounds.y + bounds.h / 2) * zoom
@@ -3635,6 +3673,17 @@ function fitView(): void {
   applyViewportTransform(true)
   requestPreviewVisibilityUpdate()
   scheduleSave()
+}
+
+/** 小地图：将指定世界坐标置于视口中心（保持当前缩放） */
+function panViewportToWorldCenter(worldX: number, worldY: number): void {
+  const host = viewportEl.value
+  if (!host) return
+  beginViewportGesture()
+  liveViewport.x = host.clientWidth / 2 - worldX * liveViewport.zoom
+  liveViewport.y = host.clientHeight / 2 - worldY * liveViewport.zoom
+  applyViewportTransform(true)
+  scheduleViewportGestureIdle()
 }
 
 function menuAddableNodeTypes() {
@@ -7317,12 +7366,16 @@ onMounted(() => {
     })
   }
   resizeObserver = new ResizeObserver(() => {
+    syncViewportHostSize()
     refreshGraphRenderWindow(true)
     resizeEdgeCanvas()
     renderEdgesNow()
     requestPreviewVisibilityUpdate()
   })
-  if (viewportEl.value) resizeObserver.observe(viewportEl.value)
+  if (viewportEl.value) {
+    syncViewportHostSize()
+    resizeObserver.observe(viewportEl.value)
+  }
   registerNodeToolHost()
   unregisterGraphHost = graphEditorHosts.register(
     graphHostId.value,
@@ -7399,7 +7452,11 @@ onMounted(() => {
     (e) => {
       const target = e.target as HTMLElement | null
       // 顶栏/浮动工具条上的点击不进平移，避免切工具时误拖画布
-      if (target?.closest('.graph-toolbar, .layout-float, .ctx-menu, .radial-menu, .run-banner')) {
+      if (
+        target?.closest(
+          '.graph-toolbar, .layout-float, .graph-minimap, .ctx-menu, .radial-menu, .run-banner'
+        )
+      ) {
         return
       }
       if (e.button === 1 || (isLeftButtonPanArmed() && e.button === 0)) {

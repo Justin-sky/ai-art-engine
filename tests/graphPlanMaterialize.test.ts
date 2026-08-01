@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyDefaultGenerateModels,
+  ensureBoundaryProxyNodes,
   getAiWorkflowPresetPlan,
   inferHostInterfaceFromGraph,
   materializeGraphPlan,
   parseGraphPlanJson,
   type GraphPlan
 } from '../src/shared/graph'
+import { boundaryOutputNodeId } from '../src/shared/graph/hostInterface'
 
 describe('graphPlan materialize', () => {
   it('parses fenced JSON GraphPlan', () => {
@@ -140,5 +142,66 @@ describe('graphPlan materialize', () => {
     const iface = inferHostInterfaceFromGraph(result.document!)
     expect(iface.outputs.some((p) => p.dataType === 'video')).toBe(true)
     expect(iface.outputs.some((p) => p.dataType === 'text')).toBe(false)
+  })
+
+  it('infers one image host output per parallel image sink (character sheet)', () => {
+    const result = materializeGraphPlan(
+      {
+        title: '角色设定',
+        nodes: [
+          { key: 'bio', typeId: 'play.script', title: '人设描述' },
+          {
+            key: 'front',
+            typeId: 'asset.image',
+            title: '正面立绘',
+            params: { generateInstruction: '正面' }
+          },
+          {
+            key: 'side',
+            typeId: 'asset.image',
+            title: '侧面立绘',
+            params: { generateInstruction: '侧面' }
+          },
+          {
+            key: 'expr',
+            typeId: 'asset.image',
+            title: '表情变体',
+            params: { generateInstruction: '表情' }
+          },
+          { key: 'note', typeId: 'note.text', title: '设定备注' }
+        ],
+        edges: [
+          { from: 'bio', to: 'front' },
+          { from: 'bio', to: 'side' },
+          { from: 'bio', to: 'expr' }
+        ]
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok).toBe(true)
+    const iface = inferHostInterfaceFromGraph(result.document!)
+    const imageOuts = iface.outputs.filter((p) => p.dataType === 'image')
+    expect(imageOuts).toHaveLength(3)
+    expect(imageOuts.map((p) => p.label)).toEqual(['正面立绘', '侧面立绘', '表情变体'])
+    // 备注便签不暴露为宿主出口
+    expect(iface.outputs.some((p) => p.label === '设定备注')).toBe(false)
+
+    const wired = ensureBoundaryProxyNodes(result.document!, iface)
+    const boutIds = imageOuts.map((p) => boundaryOutputNodeId(p.id))
+    expect(boutIds.every((id) => wired.nodes.some((n) => n.id === id))).toBe(true)
+    // 三个立绘各接到一个边界输出，互不挤在同一口
+    const imageGens = wired.nodes.filter((n) => n.typeId === 'asset.image')
+    expect(imageGens).toHaveLength(3)
+    for (const gen of imageGens) {
+      const toBout = wired.edges.filter(
+        (e) => e.source === gen.id && boutIds.includes(e.target)
+      )
+      expect(toBout).toHaveLength(1)
+    }
+    expect(
+      new Set(
+        wired.edges.filter((e) => boutIds.includes(e.target)).map((e) => e.target)
+      ).size
+    ).toBe(3)
   })
 })

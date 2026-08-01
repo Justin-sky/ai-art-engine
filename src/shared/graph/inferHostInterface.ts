@@ -67,24 +67,29 @@ export function inferHostInterfaceFromGraph(document: GraphDocument): HostInterf
   const businessIds = new Set(business.map((n) => n.id))
 
   const sinks = business
-    .filter(
-      (n) => !document.edges.some((e) => e.source === n.id && businessIds.has(e.target))
-    )
+    .filter((n) => {
+      // 备注便签不当作宿主出口
+      if (n.typeId === 'note.text') return false
+      return !document.edges.some((e) => e.source === n.id && businessIds.has(e.target))
+    })
     .sort(
       (a, b) =>
-        (b.position?.x ?? 0) - (a.position?.x ?? 0) ||
-        (a.position?.y ?? 0) - (b.position?.y ?? 0)
+        (a.position?.y ?? 0) - (b.position?.y ?? 0) ||
+        (b.position?.x ?? 0) - (a.position?.x ?? 0)
     )
 
+  // 每个汇节点各建一个出口（同类型不去重：三路立绘 → 三个图片输出）
   const outputs: HostBoundaryPort[] = []
-  const seenOut = new Set<string>()
+  const outTypeOrdinal = new Map<string, number>()
   for (const sink of sinks) {
     const dataType = pickPrimaryOutType(sink)
-    if (!dataType || seenOut.has(dataType)) continue
-    seenOut.add(dataType)
+    if (!dataType) continue
+    const next = (outTypeOrdinal.get(dataType) ?? 0) + 1
+    outTypeOrdinal.set(dataType, next)
+    const title = typeof sink.title === 'string' ? sink.title.trim() : ''
     outputs.push({
       id: outputs.length === 0 ? 'out' : `out-${outputs.length}`,
-      label: hostBoundaryPortLabel(dataType, 'out', seenOut.size),
+      label: title || hostBoundaryPortLabel(dataType, 'out', next),
       dataType,
       multiple: false
     })

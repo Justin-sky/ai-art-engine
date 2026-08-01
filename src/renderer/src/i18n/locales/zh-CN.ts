@@ -1507,12 +1507,17 @@ export default {
       cycleTitle: '连线样式：{style}（点击切换）'
     },
     fitView: '适配视图',
+    minimap: {
+      title: '节点小地图（点击或拖拽定位）',
+      empty: '暂无节点'
+    },
     shotEntityPicker: '选择分镜实体',
     layout: {
       dragHandle: '拖动布局工具条',
       expand: '展开布局工具',
       collapse: '收起布局工具',
       grid: '显示/隐藏背景网格',
+      minimap: '显示/隐藏小地图',
       collapseAllNodes: '折叠全部节点',
       expandAllNodes: '展开全部节点',
       snap: '拖拽时吸附网格',

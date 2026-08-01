@@ -1520,12 +1520,17 @@ export default {
       cycleTitle: 'Edge style: {style} (click to switch)'
     },
     fitView: 'Fit view',
+    minimap: {
+      title: 'Node minimap (click or drag to navigate)',
+      empty: 'No nodes'
+    },
     shotEntityPicker: 'Select shot entity',
     layout: {
       dragHandle: 'Drag layout toolbar',
       expand: 'Expand layout tools',
       collapse: 'Collapse layout tools',
       grid: 'Show/hide background grid',
+      minimap: 'Show/hide minimap',
       collapseAllNodes: 'Collapse all nodes',
       expandAllNodes: 'Expand all nodes',
       snap: 'Snap to grid while dragging',

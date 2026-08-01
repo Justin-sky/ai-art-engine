@@ -39,68 +39,102 @@ function pushEdge(
 }
 
 /**
- * 将业务链接到主 boundary.output（新建默认图无 classic output 时使用）。
- * 优先无出边节点；若主边界仍悬空，再接兼容的加工/生成节点（即便它已有其它出边）。
- * 避免旧图拆掉 classic output 后、视频节点仍连着旁路节点时边界永远无入边，
- * 导致选中边界输出入队只跑空透传、生成链进不了任务。
+ * 将各悬空业务链出口 1:1 接到对应 boundary.output。
+ * 优先无出边汇节点；某出口仍悬空时，再从兼容的加工节点补一条（即便它已有其它出边）。
+ * 避免旧图拆掉 classic output 后边界永远无入边，导致选中边界输出入队只跑空透传。
  */
+export function wireDanglingOutsToBoundaryOutputs(
+  document: GraphDocument,
+  iface: HostInterfaceDocument
+): GraphDocument {
+  if (!iface.outputs.length) return document
+
+  const nodes = document.nodes.map((node) => ({
+    ...node,
+    params: { ...node.params },
+    position: { ...node.position },
+    size: node.size ? { ...node.size } : undefined
+  }))
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const edges = document.edges.map((edge) => ({ ...edge }))
+  const usedSources = new Set<string>()
+
+  const byTopThenRight = (a: GraphNode, b: GraphNode): number =>
+    a.position.y - b.position.y || b.position.x - a.position.x
+
+  for (const port of iface.outputs) {
+    const boutId = boundaryOutputNodeId(port.id)
+    const bout = byId.get(boutId)
+    if (!bout) continue
+    if (edges.some((edge) => edge.target === boutId)) continue
+
+    const connectable = (node: GraphNode): boolean => {
+      if (isBoundaryProxyNode(node) || node.category === 'output') return false
+      if (node.typeId === 'note.text') return false
+      const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
+      if (!hasOut) return false
+      return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
+    }
+
+    const preferredType =
+      port.dataType === 'video'
+        ? 'asset.video'
+        : port.dataType === 'image'
+          ? 'asset.image'
+          : port.dataType === 'voice' || port.dataType === 'audio'
+            ? 'asset.voice'
+            : null
+
+    const dangling = nodes
+      .filter(
+        (node) =>
+          connectable(node) &&
+          !usedSources.has(node.id) &&
+          !edges.some((edge) => edge.source === node.id)
+      )
+      .sort(byTopThenRight)
+
+    let source =
+      dangling.find((n) => {
+        const title = n.title?.trim()
+        return title && title === port.label
+      }) ??
+      dangling.find((n) => (preferredType ? n.typeId === preferredType : true)) ??
+      dangling[0]
+
+    if (!source) {
+      const fallback = nodes
+        .filter((node) => {
+          if (!connectable(node) || usedSources.has(node.id)) return false
+          if (preferredType) return node.typeId === preferredType
+          return (
+            (node.category === 'asset' && node.assetType === port.dataType) ||
+            node.typeId === `asset.${port.dataType}`
+          )
+        })
+        .sort(byTopThenRight)
+      source = fallback[0]
+    }
+
+    if (!source) continue
+    pushEdge(edges, source.id, boutId, 'out', 'in')
+    usedSources.add(source.id)
+    // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对
+    bout.position = {
+      x: Math.max(bout.position.x, source.position.x + 280),
+      y: source.position.y
+    }
+  }
+
+  return { ...document, nodes, edges }
+}
+
+/** @deprecated 使用 wireDanglingOutsToBoundaryOutputs */
 export function wireDanglingOutsToPrimaryBoundary(
   document: GraphDocument,
   iface: HostInterfaceDocument
 ): GraphDocument {
-  const primary = iface.outputs[0]
-  if (!primary) return document
-  const boutId = boundaryOutputNodeId(primary.id)
-  const bout = document.nodes.find((n) => n.id === boutId)
-  if (!bout) return document
-
-  const edges = document.edges.map((edge) => ({ ...edge }))
-  if (edges.some((edge) => edge.target === boutId)) {
-    return { ...document, edges }
-  }
-
-  const connectable = (node: GraphNode): boolean => {
-    if (isBoundaryProxyNode(node) || node.category === 'output') return false
-    const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
-    if (!hasOut) return false
-    return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
-  }
-
-  const byRightmost = (a: GraphNode, b: GraphNode): number =>
-    b.position.x - a.position.x || a.position.y - b.position.y
-
-  const dangling = document.nodes.filter(
-    (node) => connectable(node) && !edges.some((edge) => edge.source === node.id)
-  )
-  dangling.sort(byRightmost)
-
-  let source = dangling[0]
-  if (!source) {
-    // 主边界仍悬空：从已有出边的加工节点再拉一条到主边界（多出口）
-    const preferredType =
-      primary.dataType === 'video'
-        ? 'asset.video'
-        : primary.dataType === 'image'
-          ? 'asset.image'
-          : null
-    const fallback = document.nodes
-      .filter((node) => {
-        if (!connectable(node)) return false
-        // 只接加工 gen，避免 video.select 等中间节点抢连
-        if (preferredType) return node.typeId === preferredType
-        return (
-          (node.category === 'asset' && node.assetType === primary.dataType) ||
-          node.typeId === `asset.${primary.dataType}`
-        )
-      })
-      .sort(byRightmost)
-    source = fallback[0]
-  }
-
-  if (source) {
-    pushEdge(edges, source.id, boutId, 'out', 'in')
-  }
-  return { ...document, edges }
+  return wireDanglingOutsToBoundaryOutputs(document, iface)
 }
 
 /**
@@ -296,7 +330,7 @@ export function ensureBoundaryProxyNodes(
     nodes: nextNodes,
     edges: nextEdges
   }
-  next = wireDanglingOutsToPrimaryBoundary(next, iface)
+  next = wireDanglingOutsToBoundaryOutputs(next, iface)
   const headTypeIds = options?.autoLinkHeadTypeIds ?? []
   if (headTypeIds.length) {
     next = wireBoundaryInputsToHeads(next, iface, headTypeIds)
