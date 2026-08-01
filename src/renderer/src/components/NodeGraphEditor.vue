@@ -2277,7 +2277,10 @@ async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
     title,
     graph: graphDoc,
     target,
-    targetNodeIds: selectedOutput ? [selectedOutput.id] : undefined
+    targetNodeIds: selectedOutput ? [selectedOutput.id] : undefined,
+    // 多条输出链并行入队时复用已完成的共同上游，避免重复 cook
+    priorNodeStates: graphDoc.runStates,
+    skipCompletedNodes: true
   })
   if (!result.ok) {
     void promptAlert({
