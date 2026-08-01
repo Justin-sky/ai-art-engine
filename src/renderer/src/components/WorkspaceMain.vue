@@ -20,7 +20,9 @@
             :disabled="busyId === item.id"
             @click="onCreate(item)"
           >
-            <span class="create-icon" aria-hidden="true">{{ item.icon }}</span>
+            <span class="create-icon" aria-hidden="true">
+              <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="18" />
+            </span>
             <span class="create-label">{{ createItemLabel(item) }}</span>
           </button>
         </div>
@@ -62,6 +64,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert, promptText } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useProjectStore } from '../stores/project'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 /** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
 const CREATE_IDS = new Set(['canvas', 'freeCanvas', 'subgraph', 'screenplay', 'script', 'motion'])

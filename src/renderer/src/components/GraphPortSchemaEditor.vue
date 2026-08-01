@@ -53,8 +53,19 @@
       </button>
       <div class="port-fields">
         <label>
-          {{ t('graph.hostInterface.portId') }}
-          <input :value="port.id" disabled />
+          {{ t('graph.hostInterface.portType') }}
+          <select
+            :value="port.dataType"
+            @change="
+              patch(index, {
+                dataType: ($event.target as HTMLSelectElement).value as GraphPortDataType
+              })
+            "
+          >
+            <option v-for="dt in dataTypes" :key="dt" :value="dt">
+              {{ t(`graph.port.types.${dt}`) }}
+            </option>
+          </select>
         </label>
         <label>
           {{ t('graph.hostInterface.portLabel') }}
@@ -62,25 +73,6 @@
             :value="port.label"
             @change="patch(index, { label: ($event.target as HTMLInputElement).value.trim() || port.id })"
           />
-        </label>
-        <label>
-          {{ t('graph.hostInterface.dataType') }}
-          <select
-            :value="port.dataType"
-            @change="patch(index, { dataType: ($event.target as HTMLSelectElement).value as GraphPortDataType })"
-          >
-            <option v-for="dt in dataTypes" :key="dt" :value="dt">
-              {{ t(`graph.port.types.${dt}`) }}
-            </option>
-          </select>
-        </label>
-        <label class="check">
-          <input
-            type="checkbox"
-            :checked="port.multiple === true || (direction === 'in' && port.multiple !== false)"
-            @change="patch(index, { multiple: ($event.target as HTMLInputElement).checked })"
-          />
-          {{ t('graph.hostInterface.multiple') }}
         </label>
         <button
           type="button"
@@ -114,11 +106,16 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 
-const props = defineProps<{
-  title: string
-  direction: 'in' | 'out'
-  modelValue: HostBoundaryPort[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    direction: 'in' | 'out'
+    modelValue: HostBoundaryPort[]
+    /** 默认是否折叠 */
+    defaultCollapsed?: boolean
+  }>(),
+  { defaultCollapsed: true }
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: HostBoundaryPort[]]
@@ -127,7 +124,7 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 
 const dataTypes = Object.values(GraphPortType) as GraphPortDataType[]
-const collapsed = ref(true)
+const collapsed = ref(props.defaultCollapsed)
 const dragFromIndex = ref<number | null>(null)
 const dropIndex = ref<number | null>(null)
 
@@ -147,7 +144,7 @@ function typeOrdinal(dataType: GraphPortDataType, beforeIndex?: number): number 
 function patch(index: number, partial: Partial<HostBoundaryPort>): void {
   const next = props.modelValue.map((port, i) => {
     if (i !== index) return port
-    const merged = { ...port, ...partial }
+    const merged: HostBoundaryPort = { ...port, ...partial }
     if (partial.dataType && partial.dataType !== port.dataType) {
       const sameTypeBefore = props.modelValue
         .slice(0, index)
@@ -299,27 +296,32 @@ function onDragEnd(): void {
   font-size: 11px;
   opacity: 0.7;
 }
-.add-btn,
-.remove {
-  font-size: 12px;
-}
 .add-btn {
+  font-size: 12px;
   padding: 2px 8px;
 }
 .remove {
   grid-column: 1 / -1;
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 10px;
+  gap: 4px;
+  width: auto;
+  margin: 2px 0 0;
+  padding: 3px 10px;
   border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--bg-elevated);
   color: var(--danger);
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
+}
+.remove svg {
+  width: 12px;
+  height: 12px;
 }
 .remove:hover {
   background: color-mix(in srgb, var(--danger) 14%, var(--bg-elevated));
@@ -377,11 +379,6 @@ function onDragEnd(): void {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
-}
-.port-fields label.check {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
 }
 .port-fields input,
 .port-fields select {

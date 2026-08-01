@@ -43,6 +43,26 @@ describe('hostInterface sanitize', () => {
     expect(doc.outputs).toHaveLength(1)
   })
 
+  it('preserves port description, notes, and file path', () => {
+    const doc = sanitizeHostInterface({
+      version: 1,
+      inputs: [
+        {
+          id: 'in',
+          label: 'In',
+          dataType: 'text',
+          description: '入口说明',
+          notes: '备注',
+          fileRelativePath: 'docs\\ports\\in.md'
+        }
+      ],
+      outputs: []
+    })
+    expect(doc.inputs[0]?.description).toBe('入口说明')
+    expect(doc.inputs[0]?.notes).toBe('备注')
+    expect(doc.inputs[0]?.fileRelativePath).toBe('docs/ports/in.md')
+  })
+
   it('reads from genParams with assetType fallback', () => {
     const fromParams = readHostInterfaceFromGenParams({
       hostInterface: {

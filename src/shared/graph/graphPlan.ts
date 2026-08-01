@@ -131,7 +131,7 @@ export function buildGraphPlanPreview(plan: GraphPlan): GraphPlanPreview {
   }
 }
 
-export function buildGraphPlanCatalog(scope: GraphAddScope = 'canvasAsset'): GraphPlanCatalogEntry[] {
+export function buildGraphPlanCatalog(scope: GraphAddScope = 'subgraphAsset'): GraphPlanCatalogEntry[] {
   return listAddableNodeTypes(scope)
     .filter((def) => def.typeId !== 'graph.boundary.input' && def.typeId !== 'graph.boundary.output')
     .map((def) => ({
@@ -255,7 +255,7 @@ export function materializeGraphPlan(
   plan: GraphPlan,
   options: MaterializeGraphPlanOptions = {}
 ): MaterializeGraphPlanResult {
-  const scope = options.scope ?? 'canvasAsset'
+  const scope = options.scope ?? 'subgraphAsset'
   const warnings: string[] = []
   const addable = new Map(
     listAddableNodeTypes(scope).map((def) => [def.typeId, def] as const)
@@ -341,7 +341,7 @@ export function materializeGraphPlan(
       viewport: { x: 0, y: 0, zoom: 1 }
     },
     {
-      assetType: options.assetType ?? 'canvas',
+      assetType: options.assetType ?? 'subgraph',
       hostAssetId: options.hostAssetId
     }
   )

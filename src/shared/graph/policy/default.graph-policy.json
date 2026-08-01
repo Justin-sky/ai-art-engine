@@ -22,6 +22,9 @@
     "canvasAsset": {
       "addableNodeTypes": ["*"]
     },
+    "subgraphAsset": {
+      "addableNodeTypes": ["*"]
+    },
     "worldAsset": {
       "addableNodeTypes": ["*"]
     },

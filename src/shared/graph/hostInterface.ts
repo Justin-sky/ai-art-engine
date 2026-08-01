@@ -14,9 +14,16 @@ export const HOST_INTERFACE_SCHEMA_VERSION = 1
 export interface HostBoundaryPort {
   id: string
   label: string
+  /** 对接数据类型（连线兼容） */
   dataType: GraphPortDataType
   /** 是否允许多条入边；输出侧通常 false */
   multiple?: boolean
+  /** 端口说明（文档 / tooltip） */
+  description?: string
+  /** 作者备注 */
+  notes?: string
+  /** 旁挂文件（工程相对路径） */
+  fileRelativePath?: string
 }
 
 /** 持久化于资产 genParams.hostInterface */
@@ -59,7 +66,18 @@ export function sanitizeHostBoundaryPort(
   const label = sanitizeLabel(obj.label, direction === 'in' ? 'In' : 'Out')
   const multiple =
     typeof obj.multiple === 'boolean' ? obj.multiple : direction === 'in'
-  return { id, label, dataType, multiple }
+  const description =
+    typeof obj.description === 'string' ? obj.description.trim() : ''
+  const notes = typeof obj.notes === 'string' ? obj.notes.trim() : ''
+  const fileRelativePath =
+    typeof obj.fileRelativePath === 'string'
+      ? obj.fileRelativePath.trim().replace(/\\/g, '/')
+      : ''
+  const port: HostBoundaryPort = { id, label, dataType, multiple }
+  if (description) port.description = description
+  if (notes) port.notes = notes
+  if (fileRelativePath) port.fileRelativePath = fileRelativePath
+  return port
 }
 
 /** 规范化完整宿主接口；非法项丢弃，id 去重 */

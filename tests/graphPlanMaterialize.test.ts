@@ -30,8 +30,8 @@ describe('graphPlan materialize', () => {
       ]
     }
     const result = materializeGraphPlan(plan, {
-      scope: 'canvasAsset',
-      assetType: 'canvas'
+      scope: 'subgraphAsset',
+      assetType: 'subgraph'
     })
     expect(result.ok, result.error).toBe(true)
     expect(result.document).toBeTruthy()
@@ -55,7 +55,10 @@ describe('graphPlan materialize', () => {
         { from: 'a', to: 'b', fromPort: 'out', toPort: 'in' }
       ]
     }
-    const result = materializeGraphPlan(plan, { scope: 'canvasAsset', assetType: 'canvas' })
+    const result = materializeGraphPlan(plan, {
+      scope: 'subgraphAsset',
+      assetType: 'subgraph'
+    })
     expect(result.ok).toBe(true)
     expect(result.warnings.some((w) => w.includes('not.a.real.type'))).toBe(true)
     expect(result.warnings.some((w) => w.includes('不存在的节点'))).toBe(true)
@@ -65,7 +68,7 @@ describe('graphPlan materialize', () => {
   it('fails when no usable nodes remain', () => {
     const result = materializeGraphPlan(
       { nodes: [{ key: 'x', typeId: 'totally.fake' }], edges: [] },
-      { scope: 'canvasAsset' }
+      { scope: 'subgraphAsset' }
     )
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/没有可用节点/)
@@ -108,8 +111,8 @@ describe('graphPlan materialize', () => {
       const plan = getAiWorkflowPresetPlan(id)
       expect(plan, id).toBeTruthy()
       const result = materializeGraphPlan(plan!, {
-        scope: 'canvasAsset',
-        assetType: 'canvas'
+        scope: 'subgraphAsset',
+        assetType: 'subgraph'
       })
       expect(result.ok, `${id}: ${result.error}`).toBe(true)
       expect(result.document!.nodes.length).toBeGreaterThanOrEqual(plan!.nodes.length)

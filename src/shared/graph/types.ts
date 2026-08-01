@@ -339,12 +339,18 @@ export interface GraphNodeParams {
       label: string
       dataType: GraphPortDataType
       multiple?: boolean
+      description?: string
+      notes?: string
+      fileRelativePath?: string
     }>
     outputs: Array<{
       id: string
       label: string
       dataType: GraphPortDataType
       multiple?: boolean
+      description?: string
+      notes?: string
+      fileRelativePath?: string
     }>
   }
   /** 当前实例已同步的定义接口代数 */

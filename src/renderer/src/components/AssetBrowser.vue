@@ -233,26 +233,49 @@
           type="button"
           @click="createToolbarItemHere(item)"
         >
-          {{ toolbarCreateLabel(item.id, item.assetType) }}
+          <span class="ctx-icon" aria-hidden="true">
+            <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="14" />
+          </span>
+          <span class="ctx-label">{{ toolbarCreateLabel(item.id, item.assetType) }}</span>
         </button>
         <div class="ctx-sep" />
-        <button type="button" @click="startCreateFolder">{{ t('asset.folder.new') }}</button>
-        <button type="button" @click="onImportPackageMenu">{{ t('asset.browser.importPackage') }}</button>
+        <button type="button" @click="startCreateFolder">
+          <span class="ctx-icon" aria-hidden="true">📁</span>
+          <span class="ctx-label">{{ t('asset.folder.new') }}</span>
+        </button>
+        <button type="button" @click="onImportPackageMenu">
+          <span class="ctx-icon" aria-hidden="true">📥</span>
+          <span class="ctx-label">{{ t('asset.browser.importPackage') }}</span>
+        </button>
         <template v-if="menu.kind === 'folder'">
           <div class="ctx-sep" />
-          <button type="button" @click="onReimportFolder">{{ t('asset.browser.context.reimport') }}</button>
-          <button type="button" @click="onExportFolderPackage">{{ t('asset.browser.exportPackage') }}</button>
-          <button type="button" @click="startRenameFolder">{{ t('asset.folder.rename') }}</button>
+          <button type="button" @click="onReimportFolder">
+            <span class="ctx-icon" aria-hidden="true">🔄</span>
+            <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
+          </button>
+          <button type="button" @click="onExportFolderPackage">
+            <span class="ctx-icon" aria-hidden="true">📤</span>
+            <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+          </button>
+          <button type="button" @click="startRenameFolder">
+            <span class="ctx-icon" aria-hidden="true">✏️</span>
+            <span class="ctx-label">{{ t('asset.folder.rename') }}</span>
+          </button>
           <button type="button" class="danger" @click="deleteFolderTarget('hoist')">
-            {{ t('asset.folder.delete') }}
+            <span class="ctx-icon" aria-hidden="true">🗑️</span>
+            <span class="ctx-label">{{ t('asset.folder.delete') }}</span>
           </button>
           <button type="button" class="danger" @click="deleteFolderTarget('deleteContents')">
-            {{ t('asset.folder.deleteWithContents') }}
+            <span class="ctx-icon" aria-hidden="true">💥</span>
+            <span class="ctx-label">{{ t('asset.folder.deleteWithContents') }}</span>
           </button>
         </template>
         <template v-else-if="menu.kind === 'blank' || menu.kind === 'tree-root'">
           <div class="ctx-sep" />
-          <button type="button" @click="onExportLibraryPackage">{{ t('asset.browser.exportPackage') }}</button>
+          <button type="button" @click="onExportLibraryPackage">
+            <span class="ctx-icon" aria-hidden="true">📤</span>
+            <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+          </button>
         </template>
       </template>
       <template v-else-if="menu.kind === 'asset'">
@@ -261,38 +284,48 @@
           type="button"
           @click="openEditor(menu.targetId!)"
         >
-          {{ t('asset.browser.context.openEditor') }}
+          <span class="ctx-icon" aria-hidden="true">📝</span>
+          <span class="ctx-label">{{ t('asset.browser.context.openEditor') }}</span>
         </button>
         <button
           v-if="contextMenuAssetCount === 1 && contextMenuCanRevealInFolder"
           type="button"
           @click="showContextAssetInFolder"
         >
-          {{ t('asset.browser.context.showInFolder') }}
+          <span class="ctx-icon" aria-hidden="true">📂</span>
+          <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
         </button>
         <button type="button" @click="copyContextMenuOriginalFiles">
-          {{ t('asset.browser.context.copyOriginal') }}
+          <span class="ctx-icon" aria-hidden="true">📄</span>
+          <span class="ctx-label">{{ t('asset.browser.context.copyOriginal') }}</span>
         </button>
         <button type="button" @click="onReimportSelectedAssets">
-          {{ t('asset.browser.context.reimport') }}
+          <span class="ctx-icon" aria-hidden="true">🔄</span>
+          <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
         </button>
-        <button type="button" @click="onExportSelectedPackage">{{ t('asset.browser.exportPackage') }}</button>
+        <button type="button" @click="onExportSelectedPackage">
+          <span class="ctx-icon" aria-hidden="true">📤</span>
+          <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+        </button>
         <button
           v-if="contextMenuAssetCount === 1"
           type="button"
           @click="startRenameAsset"
         >
-          {{ t('asset.browser.context.rename') }}
+          <span class="ctx-icon" aria-hidden="true">✏️</span>
+          <span class="ctx-label">{{ t('asset.browser.context.rename') }}</span>
         </button>
         <button type="button" @click="findContextMenuReferences">
-          {{ t('asset.browser.context.findReferences') }}
+          <span class="ctx-icon" aria-hidden="true">🔗</span>
+          <span class="ctx-label">{{ t('asset.browser.context.findReferences') }}</span>
         </button>
         <button type="button" class="danger" @click="deleteContextMenuAssets">
-          {{
+          <span class="ctx-icon" aria-hidden="true">🗑️</span>
+          <span class="ctx-label">{{
             contextMenuAssetCount > 1
               ? t('asset.browser.context.deleteSelected', { count: contextMenuAssetCount })
               : t('asset.browser.context.delete')
-          }}
+          }}</span>
         </button>
       </template>
       </div>
@@ -397,6 +430,7 @@ import RefreshIcon from './icons/RefreshIcon.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import AssetPackageTreeDialog from './AssetPackageTreeDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import {
   summarizeReferenceSites,
   type AssetReferenceHit,
@@ -2812,6 +2846,9 @@ onBeforeUnmount(() => {
 }
 
 .ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   border: none;
   background: transparent;
@@ -2827,6 +2864,22 @@ onBeforeUnmount(() => {
 
 .ctx-menu button.danger {
   color: var(--danger);
+}
+
+.ctx-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ctx-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .ctx-sep {

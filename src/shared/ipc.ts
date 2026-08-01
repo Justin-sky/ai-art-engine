@@ -70,7 +70,7 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
-  /** AI 自由构图：自然语言 → 新建 canvas 工作流（规划+落盘） */
+  /** AI 自由构图：自然语言 → 新建 subgraph 宿主工作流（规划+落盘） */
   GEN_AI_WORKFLOW: 'gen:ai-workflow',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
@@ -247,7 +247,7 @@ export interface CommitAiWorkflowResult {
   error?: string
 }
 
-/** AI 自由构图：规划并立即新建 canvas 工作流 */
+/** AI 自由构图：规划并立即新建 subgraph 宿主工作流 */
 export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
   folderId?: string | null
 }
@@ -480,7 +480,7 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
-  /** AI 自由构图：根据自然语言新建 canvas 工作流资产 */
+  /** AI 自由构图：根据自然语言新建 subgraph 宿主资产 */
   generateAiWorkflow: (input: GenerateAiWorkflowInput) => Promise<GenerateAiWorkflowResult>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>

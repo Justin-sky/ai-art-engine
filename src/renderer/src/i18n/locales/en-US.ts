@@ -23,7 +23,7 @@ export default {
   aiWorkflow: {
     title: 'One-Click Workflow',
     shortAction: 'One-Click Workflow',
-    subtitle: 'Preview a template topology, or let AI customize, then create a canvas',
+    subtitle: 'Preview a template topology, or let AI customize, then create a reusable host asset',
     presetsLabel: 'Presets',
     textModelLabel: 'Text model (AI plan)',
     imageModelLabel: 'Default image model',
@@ -33,7 +33,7 @@ export default {
     promptLabel: 'Workflow description',
     promptPlaceholder:
       'e.g. Create a game UA video workflow with script, key art, and video generation…',
-    hint: 'Preview the node graph, then create. Templates preview instantly; AI planning needs a text model. Ctrl/⌘ + Enter = AI preview.',
+    hint: 'Creates a host asset (drop onto a canvas and edit I/O). Preview first; templates are instant, AI planning needs a text model. Ctrl/⌘ + Enter = AI preview.',
     previewLabel: 'Preview',
     previewMeta: '{nodes} nodes · {edges} edges',
     previewSeed: 'Preview template',
@@ -305,11 +305,15 @@ export default {
     },
     layout: {
       select: 'Layout',
+      menu: 'Layout',
+      menuAria: 'Window layout',
       default: 'Default',
-      save: 'Save layout',
+      save: 'Save Layout',
       export: 'Export',
       import: 'Import',
-      delete: 'Delete',
+      fromFile: 'Load Layout from File…',
+      toFile: 'Save Layout to File…',
+      delete: 'Delete Layout',
       deleteConfirmTitle: 'Delete layout',
       deleteConfirm: 'Delete layout "{name}"?',
       saveTitle: 'Save layout',
@@ -1896,6 +1900,8 @@ export default {
       namePlaceholder: 'Host asset name',
       inspectorHint:
         'Edit host input/output port definitions. Saving updates the asset definition and this instance snapshot.',
+      assetInspectorHint:
+        'Edit this host asset’s input/output ports. Apply to write the asset and sync open canvas instances.',
       inputs: 'Inputs',
       outputs: 'Outputs',
       addPort: 'Add port',
@@ -1905,8 +1911,9 @@ export default {
       reorderHint: 'Drag the handle to reorder ports; the node updates live.',
       reorderHandle: 'Drag to reorder',
       portId: 'Port ID',
+      portType: 'Port type',
       portLabel: 'Label',
-      dataType: 'Data type',
+      dataType: 'Port type',
       multiple: 'Allow multiple',
       apply: 'Apply interface',
       saving: 'Saving…'

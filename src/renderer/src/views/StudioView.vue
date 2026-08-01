@@ -55,24 +55,86 @@
         {{ t('studio.toolbar.logs') }}
         <span v-if="runLogsStore.activeRunId" class="tasks-badge live">·</span>
       </button>
-      <label class="layout-field">
-        <span class="layout-label">{{ t('studio.layout.select') }}</span>
-        <select :value="layouts.activeId" @change="onLayoutSelect">
-          <option v-for="preset in layouts.presets" :key="preset.id" :value="preset.id">
-            {{ presetLabel(preset) }}
-          </option>
-        </select>
-      </label>
-      <button type="button" @click="openSaveLayoutDialog">{{ t('studio.layout.save') }}</button>
-      <button type="button" @click="exportActiveLayout">{{ t('studio.layout.export') }}</button>
-      <button type="button" @click="triggerImportLayout">{{ t('studio.layout.import') }}</button>
-      <button
-        v-if="canDeleteActive"
-        type="button"
-        @click="removeActiveLayout"
-      >
-        {{ t('studio.layout.delete') }}
-      </button>
+      <div class="layout-menu">
+        <button
+          ref="layoutMenuBtnEl"
+          type="button"
+          class="layout-menu-btn"
+          :aria-expanded="layoutMenuOpen"
+          :aria-haspopup="true"
+          :title="t('studio.layout.menuAria')"
+          :aria-label="t('studio.layout.menuAria')"
+          @click="toggleLayoutMenu"
+        >
+          {{ t('studio.layout.menu') }}
+          <span class="layout-caret" aria-hidden="true">▾</span>
+        </button>
+        <Teleport to="body">
+          <div
+            v-if="layoutMenuOpen"
+            ref="layoutMenuEl"
+            class="layout-menu-panel"
+            :style="layoutMenuStyle"
+            role="menu"
+            @mousedown.stop
+            @click.stop
+          >
+            <button
+              v-for="preset in layouts.presets"
+              :key="preset.id"
+              type="button"
+              class="layout-menu-item"
+              role="menuitemradio"
+              :aria-checked="preset.id === layouts.activeId"
+              @click="onLayoutMenuSelect(preset.id)"
+            >
+              <span class="layout-check" aria-hidden="true">{{
+                preset.id === layouts.activeId ? '✓' : ''
+              }}</span>
+              <span class="layout-item-label">{{ presetLabel(preset) }}</span>
+            </button>
+            <div class="layout-menu-sep" role="separator" />
+            <button
+              type="button"
+              class="layout-menu-item"
+              role="menuitem"
+              @click="onLayoutMenuAction(openSaveLayoutDialog)"
+            >
+              <span class="layout-check" aria-hidden="true" />
+              <span class="layout-item-label">{{ t('studio.layout.save') }}…</span>
+            </button>
+            <button
+              type="button"
+              class="layout-menu-item"
+              role="menuitem"
+              :disabled="!canDeleteActive"
+              @click="onLayoutMenuAction(removeActiveLayout)"
+            >
+              <span class="layout-check" aria-hidden="true" />
+              <span class="layout-item-label">{{ t('studio.layout.delete') }}</span>
+            </button>
+            <div class="layout-menu-sep" role="separator" />
+            <button
+              type="button"
+              class="layout-menu-item"
+              role="menuitem"
+              @click="onLayoutMenuAction(triggerImportLayout)"
+            >
+              <span class="layout-check" aria-hidden="true" />
+              <span class="layout-item-label">{{ t('studio.layout.fromFile') }}</span>
+            </button>
+            <button
+              type="button"
+              class="layout-menu-item"
+              role="menuitem"
+              @click="onLayoutMenuAction(exportActiveLayout)"
+            >
+              <span class="layout-check" aria-hidden="true" />
+              <span class="layout-item-label">{{ t('studio.layout.toFile') }}</span>
+            </button>
+          </div>
+        </Teleport>
+      </div>
       <input
         ref="importInputEl"
         type="file"
@@ -138,7 +200,18 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'StudioView' })
-import { computed, defineComponent, h, markRaw, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import {
+  computed,
+  defineComponent,
+  h,
+  markRaw,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from 'vue'
 import { useRouter } from 'vue-router'
 import { DockviewVue, themeDark, themeLight } from 'dockview-vue'
 import { themePreference } from '../editor/preferences'
@@ -164,6 +237,7 @@ import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
 import { useAiCreateWorkflow } from '../composables/useAiCreateWorkflow'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
   createEditorWindowComponents,
   executeEditorCommand,
@@ -274,11 +348,63 @@ const layouts = ref<StudioLayoutsState>(loadLayoutsState('Default'))
 const saveLayoutOpen = ref(false)
 const saveLayoutDefaultName = ref('')
 const importInputEl = ref<HTMLInputElement | null>(null)
+const layoutMenuOpen = ref(false)
+const layoutMenuBtnEl = ref<HTMLButtonElement | null>(null)
+const layoutMenuEl = ref<HTMLElement | null>(null)
+const layoutMenuPos = ref({ x: 0, y: 0 })
+
+const layoutMenuStyle = computed(() => ({
+  left: `${layoutMenuPos.value.x}px`,
+  top: `${layoutMenuPos.value.y}px`
+}))
 
 const canDeleteActive = computed(() => {
   const active = getActivePreset(layouts.value)
   return active.id !== DEFAULT_LAYOUT_ID && !active.builtIn
 })
+
+function closeLayoutMenu(): void {
+  layoutMenuOpen.value = false
+}
+
+async function openLayoutMenu(): Promise<void> {
+  const btn = layoutMenuBtnEl.value
+  if (!btn) return
+  const rect = btn.getBoundingClientRect()
+  layoutMenuOpen.value = true
+  layoutMenuPos.value = { x: rect.left, y: rect.bottom + 4 }
+  await nextTick()
+  const panel = layoutMenuEl.value
+  if (!panel) return
+  layoutMenuPos.value = placeFixedMenu(panel, rect.left, rect.bottom + 4)
+}
+
+function toggleLayoutMenu(): void {
+  if (layoutMenuOpen.value) {
+    closeLayoutMenu()
+    return
+  }
+  void openLayoutMenu()
+}
+
+function onLayoutMenuSelect(id: string): void {
+  closeLayoutMenu()
+  void applyLayoutById(id)
+}
+
+function onLayoutMenuAction(action: () => void): void {
+  closeLayoutMenu()
+  action()
+}
+
+function onLayoutMenuOutside(event: MouseEvent): void {
+  if (!layoutMenuOpen.value) return
+  const target = event.target as Node | null
+  if (!target) return
+  if (layoutMenuBtnEl.value?.contains(target)) return
+  if (layoutMenuEl.value?.contains(target)) return
+  closeLayoutMenu()
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let layoutDisposable: { dispose: () => void } | null = null
@@ -341,11 +467,6 @@ function onSaveLayoutConfirm(name: string): void {
   } catch {
     alert(t('validation.nameRequired'))
   }
-}
-
-function onLayoutSelect(event: Event): void {
-  const id = (event.target as HTMLSelectElement).value
-  void applyLayoutById(id)
 }
 
 async function applyLayoutById(id: string): Promise<void> {
@@ -1027,15 +1148,25 @@ function getTabContextMenuItems(params: GetTabContextMenuItemsParams) {
   return items
 }
 
+function onLayoutMenuKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && layoutMenuOpen.value) {
+    closeLayoutMenu()
+  }
+}
+
 onMounted(() => {
   registerSidePanelSizeProvider(sidePanelSizeOptions)
   window.addEventListener('keydown', onGlobalKeyDown)
+  window.addEventListener('mousedown', onLayoutMenuOutside, true)
+  window.addEventListener('keydown', onLayoutMenuKeydown)
 })
 
 onBeforeUnmount(() => {
   registerSidePanelSizeProvider(null)
   registerSidePanelDockApi(null)
   window.removeEventListener('keydown', onGlobalKeyDown)
+  window.removeEventListener('mousedown', onLayoutMenuOutside, true)
+  window.removeEventListener('keydown', onLayoutMenuKeydown)
   if (saveTimer) clearTimeout(saveTimer)
   layoutDisposable?.dispose()
   removeDisposable?.dispose()
@@ -1087,21 +1218,84 @@ onBeforeUnmount(() => {
   margin-right: auto;
 }
 
-.layout-field {
+.layout-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.layout-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layout-caret {
+  font-size: 10px;
+  opacity: 0.75;
+  line-height: 1;
+}
+
+.layout-menu-panel {
+  position: fixed;
+  z-index: 4200;
+  min-width: 200px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.layout-menu-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
   font-size: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.layout-field select {
-  min-width: 140px;
-  max-width: 220px;
+.layout-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
-.layout-label {
+.layout-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.layout-check {
+  flex: 0 0 14px;
+  width: 14px;
+  text-align: center;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.layout-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.layout-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 
 .tasks-btn {

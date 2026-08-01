@@ -24,7 +24,7 @@ export interface WorkspaceToolbarItem {
 /** 默认顺序：剧集 → 自由画布 → 宿主资产 → 剧本 → 分镜 → 世界元素 → 叙事 → 导演台 → 图片 → 视频 → 声音 */
 export const WORKSPACE_TOOLBAR_ITEMS: WorkspaceToolbarItem[] = [
   { id: 'canvas', assetType: 'canvas', openOnCreate: true },
-  { id: 'freeCanvas', assetType: 'canvas', icon: '⬜', openOnCreate: true },
+  { id: 'freeCanvas', assetType: 'canvas', icon: 'free-canvas', openOnCreate: true },
   { id: 'subgraph', assetType: 'subgraph', openOnCreate: true },
   { id: 'screenplay', assetType: 'screenplay', openOnCreate: true },
   { id: 'script', assetType: 'script', openOnCreate: true },

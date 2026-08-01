@@ -57,7 +57,7 @@ export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
 export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
 
 function catalogPromptBlock(): string {
-  const catalog = buildGraphPlanCatalog('canvasAsset')
+  const catalog = buildGraphPlanCatalog('subgraphAsset')
   const lines = catalog.map((entry) => {
     const ports = entry.ports
       .map((p) => `${p.direction}:${p.id}:${p.dataType}`)
@@ -111,8 +111,8 @@ function withMediaDefaults(plan: GraphPlan, input: GraphPlanMediaModelDefaults):
 
 function tryMaterialize(plan: GraphPlan) {
   return materializeGraphPlan(plan, {
-    scope: 'canvasAsset',
-    assetType: 'canvas'
+    scope: 'subgraphAsset',
+    assetType: 'subgraph'
   })
 }
 
@@ -252,7 +252,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
 }
 
 /**
- * 确认后的 GraphPlan → 新建 canvas 资产
+ * 确认后的 GraphPlan → 新建 subgraph 宿主资产
  */
 export async function commitAiWorkflow(
   input: CommitAiWorkflowInput
@@ -278,7 +278,7 @@ export async function commitAiWorkflow(
   let asset: AssetInfo
   try {
     asset = projectService.createAsset({
-      type: 'canvas',
+      type: 'subgraph',
       folderId: input.folderId ?? null,
       name: title,
       genParams: {
