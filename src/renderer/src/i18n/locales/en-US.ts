@@ -149,7 +149,7 @@ export default {
         image:
           'MiniMax text-to-image / subject-reference image-to-image via /v1/image_generation (image-01 / image-01-live).',
         video:
-          'Hailuo (MiniMax) video: POST /v1/video_generation (text / image / first-last frame), then files/retrieve for the download URL. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
+          'Hailuo (MiniMax) video: H3 uses V2 (POST /v2/video_generation, multimodal content, 2K, 4–15s); Hailuo 2.3/02 still use V1. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
         audio:
           'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.'
       },

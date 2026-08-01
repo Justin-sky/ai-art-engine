@@ -149,7 +149,7 @@ export default {
         image:
           'MiniMax 文生图 / 主体参考图生图，调用 /v1/image_generation（image-01 / image-01-live）。参考图走 subject_reference。',
         video:
-          '海螺（MiniMax）视频：POST /v1/video_generation（文生 / 图生 / 首尾帧），完成后经 files/retrieve 取下载链。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
+          '海螺（MiniMax）视频：H3 走 V2（POST /v2/video_generation，多模态 content，2K，时长 4–15s）；Hailuo 2.3/02 仍走 V1。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
         audio:
           'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。'
       },

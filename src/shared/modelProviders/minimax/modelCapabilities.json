@@ -6,9 +6,11 @@
       "https://platform.minimaxi.com/docs/guides/text-generation",
       "https://platform.minimaxi.com/docs/guides/image-generation",
       "https://platform.minimaxi.com/docs/api-reference/voice-design-design",
-      "https://platform.minimaxi.com/docs/guides/video-generation"
+      "https://platform.minimaxi.com/docs/guides/video-generation",
+      "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
+      "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-query"
     ],
-    "note": "Default Base URL: api.minimaxi.com (no /v1). Text: /v1/chat/completions. Image: /v1/image_generation. Voice design: /v1/voice_design. Video: /v1/video_generation → query → files/retrieve."
+    "note": "Default Base URL: api.minimaxi.com (no /v1). Text: /v1/chat/completions. Image: /v1/image_generation. Voice design: /v1/voice_design. Video V1 (Hailuo): /v1/video_generation → query → files/retrieve. Video V2 (H3): POST /v2/video_generation → GET /v2/query/video_generation/{task_id}."
   },
   "models": [
     {
@@ -78,6 +80,12 @@
       "profile": "audio-voice-design"
     },
     {
+      "id": "MiniMax-H3",
+      "name": "海螺 H3",
+      "modality": "video",
+      "profile": "video-h3"
+    },
+    {
       "id": "MiniMax-Hailuo-2.3",
       "name": "海螺 2.3",
       "modality": "video",
@@ -132,6 +140,25 @@
       "modality": "audio",
       "label": "MiniMax Voice Design",
       "capabilities": {}
+    },
+    "video-h3": {
+      "modality": "video",
+      "label": "Hailuo H3 (V2)",
+      "capabilities": {
+        "supported_resolutions": ["2K"],
+        "supported_aspect_ratios": ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+        "supported_durations": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": false,
+        "max_input_images": 9,
+        "max_input_videos": 3,
+        "max_input_audios": 3,
+        "supported_parameters": {
+          "input_references": { "max": 9 },
+          "max_videos": { "max": 3 },
+          "max_audios": { "max": 3 }
+        }
+      }
     },
     "video-hailuo-23": {
       "modality": "video",
