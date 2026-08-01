@@ -244,7 +244,7 @@
           <span class="ctx-label">{{ t('asset.folder.new') }}</span>
         </button>
         <button type="button" @click="onImportPackageMenu">
-          <span class="ctx-icon" aria-hidden="true">📥</span>
+          <span class="ctx-icon" aria-hidden="true">⬇️</span>
           <span class="ctx-label">{{ t('asset.browser.importPackage') }}</span>
         </button>
         <template v-if="menu.kind === 'folder'">
@@ -254,7 +254,7 @@
             <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
           </button>
           <button type="button" @click="onExportFolderPackage">
-            <span class="ctx-icon" aria-hidden="true">📤</span>
+            <span class="ctx-icon" aria-hidden="true">⬆️</span>
             <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
           </button>
           <button type="button" @click="startRenameFolder">
@@ -273,7 +273,7 @@
         <template v-else-if="menu.kind === 'blank' || menu.kind === 'tree-root'">
           <div class="ctx-sep" />
           <button type="button" @click="onExportLibraryPackage">
-            <span class="ctx-icon" aria-hidden="true">📤</span>
+            <span class="ctx-icon" aria-hidden="true">⬆️</span>
             <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
           </button>
         </template>
@@ -304,7 +304,7 @@
           <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
         </button>
         <button type="button" @click="onExportSelectedPackage">
-          <span class="ctx-icon" aria-hidden="true">📤</span>
+          <span class="ctx-icon" aria-hidden="true">⬆️</span>
           <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
         </button>
         <button

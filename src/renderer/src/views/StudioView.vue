@@ -192,8 +192,18 @@
       @select-preset="applyAiWorkflowPreset"
       @plan-seed="void planAiWorkflowPreview('seed')"
       @plan-ai="void planAiWorkflowPreview('ai')"
-      @commit="void commitAiWorkflow(null)"
+      @commit="requestAiWorkflowCommit()"
       @close="closeAiWorkflowDialog()"
+    />
+    <SaveAssetDialog
+      :open="aiWorkflowSaveDialogOpen"
+      :default-name="aiWorkflowSaveDefaultName"
+      :default-folder-id="aiWorkflowSaveDefaultFolderId"
+      :title="t('aiWorkflow.saveTitle')"
+      :subtitle="t('aiWorkflow.saveSubtitle')"
+      :z-index="2750"
+      @confirm="void confirmAiWorkflowCommit($event)"
+      @cancel="closeAiWorkflowSaveDialog()"
     />
   </div>
 </template>
@@ -327,7 +337,12 @@ const {
   openDialog: openAiWorkflowDialog,
   closeDialog: closeAiWorkflowDialog,
   planPreview: planAiWorkflowPreview,
-  commit: commitAiWorkflow
+  requestCommit: requestAiWorkflowCommit,
+  closeSaveDialog: closeAiWorkflowSaveDialog,
+  confirmCommit: confirmAiWorkflowCommit,
+  saveDialogOpen: aiWorkflowSaveDialogOpen,
+  saveDefaultName: aiWorkflowSaveDefaultName,
+  saveDefaultFolderId: aiWorkflowSaveDefaultFolderId
 } = useAiCreateWorkflow()
 const tasksBtnEl = ref<HTMLButtonElement | null>(null)
 const { commitDraft, activeDraftId, defaultSaveName } = useDraftSave()

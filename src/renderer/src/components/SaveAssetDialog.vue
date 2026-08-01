@@ -4,7 +4,7 @@
     :title="dialogTitle"
     :subtitle="dialogSubtitle"
     :show-close="false"
-    :z-index="2000"
+    :z-index="zIndex"
     :default-width="400"
     :default-height="480"
     @close="onCancel"
@@ -64,13 +64,17 @@ import { useProjectStore } from '../stores/project'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
-const props = defineProps<{
-  open: boolean
-  defaultName: string
-  defaultFolderId?: string | null
-  title?: string
-  subtitle?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    defaultName: string
+    defaultFolderId?: string | null
+    title?: string
+    subtitle?: string
+    zIndex?: number
+  }>(),
+  { zIndex: 2000 }
+)
 
 const emit = defineEmits<{
   confirm: [payload: { name: string; folderId: string | null }]
@@ -115,7 +119,7 @@ function onConfirm(): void {
     error.value = t('validation.nameRequired')
     return
   }
-  saving.value = true
+  // 由调用方通过 setSaving 控制忙碌态（异步落盘期间防重复提交）
   emit('confirm', { name: trimmed, folderId: folderId.value })
 }
 

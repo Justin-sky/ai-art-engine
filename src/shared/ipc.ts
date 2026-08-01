@@ -233,6 +233,8 @@ export interface PlanAiWorkflowResult {
 export interface CommitAiWorkflowInput {
   plan: NonNullable<PlanAiWorkflowResult['plan']>
   folderId?: string | null
+  /** 资产显示名；缺省用计划 title */
+  name?: string
   imageModel?: string
   imageProviderInstanceId?: string
   videoModel?: string

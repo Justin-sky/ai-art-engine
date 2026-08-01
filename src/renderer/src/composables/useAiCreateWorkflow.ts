@@ -62,6 +62,9 @@ export function useAiCreateWorkflow() {
   const pendingPlan = shallowRef<GraphPlan | null>(null)
   const preview = ref<AiWorkflowPreview | null>(null)
   const previewWarnings = ref<string[]>([])
+  const saveDialogOpen = ref(false)
+  const saveDefaultName = ref('')
+  const saveDefaultFolderId = ref<string | null>(null)
 
   async function loadModelOptions(): Promise<void> {
     const [text, image, video] = await Promise.all([
@@ -129,13 +132,14 @@ export function useAiCreateWorkflow() {
     draftPrompt.value = initialPrompt
     selectedPresetId.value = null
     error.value = ''
+    saveDialogOpen.value = false
     clearPreview()
     dialogOpen.value = true
     void loadModelOptions()
   }
 
   function closeDialog(): void {
-    if (generating.value || committing.value) return
+    if (generating.value || committing.value || saveDialogOpen.value) return
     dialogOpen.value = false
     error.value = ''
     clearPreview()
@@ -214,13 +218,46 @@ export function useAiCreateWorkflow() {
     }
   }
 
-  async function commit(folderId: string | null): Promise<boolean> {
+  /** 创建前先弹出保存路径/名称对话框 */
+  function requestCommit(): boolean {
     if (!pendingPlan.value) {
       error.value = t('aiWorkflow.needPreview')
       return false
     }
     if (!project.isOpen) {
       error.value = t('aiWorkflow.needProject')
+      return false
+    }
+    error.value = ''
+    saveDefaultName.value =
+      preview.value?.title?.trim() ||
+      pendingPlan.value.title?.trim() ||
+      t('aiWorkflow.defaultName')
+    saveDefaultFolderId.value = null
+    saveDialogOpen.value = true
+    return true
+  }
+
+  function closeSaveDialog(): void {
+    if (committing.value) return
+    saveDialogOpen.value = false
+  }
+
+  async function confirmCommit(payload: {
+    name: string
+    folderId: string | null
+  }): Promise<boolean> {
+    if (!pendingPlan.value) {
+      error.value = t('aiWorkflow.needPreview')
+      return false
+    }
+    if (!project.isOpen) {
+      error.value = t('aiWorkflow.needProject')
+      return false
+    }
+    const name = payload.name.trim()
+    if (!name) {
+      error.value = t('validation.nameRequired')
       return false
     }
     committing.value = true
@@ -230,7 +267,8 @@ export function useAiCreateWorkflow() {
       const result = await window.studio.commitAiWorkflow(
         toPlain({
           plan: pendingPlan.value,
-          folderId,
+          folderId: payload.folderId,
+          name,
           ...mediaModelPayload()
         })
       )
@@ -238,6 +276,7 @@ export function useAiCreateWorkflow() {
         error.value = result.error || t('aiWorkflow.failed')
         return false
       }
+      saveDialogOpen.value = false
       await project.refreshAssets()
       const asset = project.assets.find((item) => item.id === result.assetId)
       if (asset) openAssetEditor(asset)
@@ -277,6 +316,9 @@ export function useAiCreateWorkflow() {
     pendingPlan,
     preview,
     previewWarnings,
+    saveDialogOpen,
+    saveDefaultName,
+    saveDefaultFolderId,
     presetIds: AI_WORKFLOW_PRESET_IDS,
     applyPreset,
     setTextModelKey,
@@ -285,6 +327,8 @@ export function useAiCreateWorkflow() {
     openDialog,
     closeDialog,
     planPreview,
-    commit
+    requestCommit,
+    closeSaveDialog,
+    confirmCommit
   }
 }

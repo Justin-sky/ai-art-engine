@@ -5,6 +5,7 @@ import {
   cloneGraphPlan,
   getAiWorkflowPresetPlan,
   hasAiWorkflowPresetPlan,
+  inferHostInterfaceFromGraph,
   materializeGraphPlan,
   parseGraphPlanJson,
   type GraphPlan,
@@ -39,6 +40,8 @@ export interface PlanAiWorkflowResult {
 export interface CommitAiWorkflowInput extends GraphPlanMediaModelDefaults {
   plan: GraphPlan
   folderId?: string | null
+  /** 资产显示名；缺省用计划 title */
+  name?: string
 }
 
 export interface CommitAiWorkflowResult {
@@ -274,7 +277,11 @@ export async function commitAiWorkflow(
     }
   }
 
-  const title = materialized.title || 'AI Workflow'
+  const title =
+    (typeof input.name === 'string' && input.name.trim()) ||
+    materialized.title ||
+    'AI Workflow'
+  const hostInterface = inferHostInterfaceFromGraph(materialized.document)
   let asset: AssetInfo
   try {
     asset = projectService.createAsset({
@@ -282,7 +289,8 @@ export async function commitAiWorkflow(
       folderId: input.folderId ?? null,
       name: title,
       genParams: {
-        graphJson: toPlainDocument(materialized.document)
+        graphJson: toPlainDocument(materialized.document),
+        hostInterface: toPlainDocument(hostInterface)
       }
     })
   } catch (err) {

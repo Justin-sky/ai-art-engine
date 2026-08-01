@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyDefaultGenerateModels,
   getAiWorkflowPresetPlan,
+  inferHostInterfaceFromGraph,
   materializeGraphPlan,
   parseGraphPlanJson,
   type GraphPlan
@@ -117,5 +118,27 @@ describe('graphPlan materialize', () => {
       expect(result.ok, `${id}: ${result.error}`).toBe(true)
       expect(result.document!.nodes.length).toBeGreaterThanOrEqual(plan!.nodes.length)
     }
+  })
+
+  it('infers video host output for script → image → video chain', () => {
+    const result = materializeGraphPlan(
+      {
+        title: 'UA',
+        nodes: [
+          { key: 'script', typeId: 'play.script' },
+          { key: 'img', typeId: 'asset.image' },
+          { key: 'vid', typeId: 'asset.video' }
+        ],
+        edges: [
+          { from: 'script', to: 'img' },
+          { from: 'img', to: 'vid' }
+        ]
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok).toBe(true)
+    const iface = inferHostInterfaceFromGraph(result.document!)
+    expect(iface.outputs.some((p) => p.dataType === 'video')).toBe(true)
+    expect(iface.outputs.some((p) => p.dataType === 'text')).toBe(false)
   })
 })
