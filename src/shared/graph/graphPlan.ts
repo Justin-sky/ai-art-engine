@@ -57,8 +57,12 @@ export interface GraphPlanCatalogEntry {
 const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'text',
   'generateInstruction',
+  'generateSystemPrompt',
+  'generateModel',
+  'generateProviderInstanceId',
   'generateAspectRatio',
   'generateResolution',
+  'generateQuality',
   'generateDuration',
   'generateCount',
   'generateFrameMode',
@@ -67,6 +71,65 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'label',
   'inputDataType'
 ])
+
+export interface GraphPlanMediaModelDefaults {
+  imageModel?: string
+  imageProviderInstanceId?: string
+  videoModel?: string
+  videoProviderInstanceId?: string
+}
+
+export interface GraphPlanPreview {
+  title: string
+  nodes: Array<{ key: string; typeId: string; title: string }>
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>
+}
+
+/** 将默认图/视频模型写入计划中尚未指定模型的生成节点 */
+export function applyDefaultGenerateModels(
+  plan: GraphPlan,
+  defaults: GraphPlanMediaModelDefaults
+): GraphPlan {
+  const nodes = plan.nodes.map((node) => {
+    const params = { ...(node.params ?? {}) }
+    if (node.typeId === 'asset.image') {
+      if (defaults.imageModel && !params.generateModel) {
+        params.generateModel = defaults.imageModel
+      }
+      if (defaults.imageProviderInstanceId && !params.generateProviderInstanceId) {
+        params.generateProviderInstanceId = defaults.imageProviderInstanceId
+      }
+    } else if (node.typeId === 'asset.video') {
+      if (defaults.videoModel && !params.generateModel) {
+        params.generateModel = defaults.videoModel
+      }
+      if (defaults.videoProviderInstanceId && !params.generateProviderInstanceId) {
+        params.generateProviderInstanceId = defaults.videoProviderInstanceId
+      }
+    } else {
+      return node
+    }
+    return { ...node, params }
+  })
+  return { ...plan, nodes }
+}
+
+export function buildGraphPlanPreview(plan: GraphPlan): GraphPlanPreview {
+  return {
+    title: plan.title?.trim() || 'AI Workflow',
+    nodes: plan.nodes.map((n) => ({
+      key: n.key,
+      typeId: n.typeId,
+      title: (n.title?.trim() || n.key).trim()
+    })),
+    edges: plan.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+      fromPort: e.fromPort,
+      toPort: e.toPort
+    }))
+  }
+}
 
 export function buildGraphPlanCatalog(scope: GraphAddScope = 'canvasAsset'): GraphPlanCatalogEntry[] {
   return listAddableNodeTypes(scope)

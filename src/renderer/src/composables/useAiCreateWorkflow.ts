@@ -1,7 +1,12 @@
-import { ref } from 'vue'
+import { shallowRef, ref } from 'vue'
+import type { GraphPlan } from '@shared/graph'
 import {
+  AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
   AI_WORKFLOW_PRESET_IDS,
+  AI_WORKFLOW_VIDEO_MODEL_KEY,
+  getAiWorkflowPresetPlan,
+  hasAiWorkflowPresetPlan,
   type AiWorkflowPresetId
 } from '../features/aiWorkflow/presets'
 import {
@@ -9,10 +14,33 @@ import {
   parseModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
+import { toPlain } from '../utils/toPlain'
 import { useProjectStore } from '../stores/project'
 import { useAssetCreation } from './useAssetCreation'
 import { promptAlert } from './useStudioPrompt'
 import { useStudioI18n } from './useStudioI18n'
+
+export interface AiWorkflowPreview {
+  title: string
+  nodes: Array<{ key: string; typeId: string; title: string }>
+  edges: Array<{ from: string; to: string }>
+}
+
+function readStoredKey(storageKey: string): string {
+  try {
+    return localStorage.getItem(storageKey) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeStoredKey(storageKey: string, value: string): void {
+  try {
+    if (value) localStorage.setItem(storageKey, value)
+  } catch {
+    /* ignore */
+  }
+}
 
 export function useAiCreateWorkflow() {
   const project = useProjectStore()
@@ -20,35 +48,65 @@ export function useAiCreateWorkflow() {
   const { t } = useStudioI18n()
   const dialogOpen = ref(false)
   const generating = ref(false)
+  const committing = ref(false)
   const error = ref('')
   const draftPrompt = ref('')
   const selectedPresetId = ref<AiWorkflowPresetId | null>(null)
-  const modelOptions = ref<GenerateModelOption[]>([])
-  const modelKey = ref('')
+  const textModelOptions = ref<GenerateModelOption[]>([])
+  const imageModelOptions = ref<GenerateModelOption[]>([])
+  const videoModelOptions = ref<GenerateModelOption[]>([])
+  const textModelKey = ref('')
+  const imageModelKey = ref('')
+  const videoModelKey = ref('')
+  /** shallow：避免 Vue Proxy 经 IPC structuredClone 失败 */
+  const pendingPlan = shallowRef<GraphPlan | null>(null)
+  const preview = ref<AiWorkflowPreview | null>(null)
+  const previewWarnings = ref<string[]>([])
 
   async function loadModelOptions(): Promise<void> {
-    let preferred = ''
-    try {
-      preferred = localStorage.getItem(AI_WORKFLOW_MODEL_KEY) || ''
-    } catch {
-      preferred = ''
-    }
-    const loaded = await loadGenerateModelOptions('text', preferred || undefined)
-    modelOptions.value = loaded.options
-    modelKey.value = loaded.selectedKey
+    const [text, image, video] = await Promise.all([
+      loadGenerateModelOptions('text', readStoredKey(AI_WORKFLOW_MODEL_KEY) || undefined),
+      loadGenerateModelOptions('image', readStoredKey(AI_WORKFLOW_IMAGE_MODEL_KEY) || undefined),
+      loadGenerateModelOptions('video', readStoredKey(AI_WORKFLOW_VIDEO_MODEL_KEY) || undefined)
+    ])
+    textModelOptions.value = text.options
+    textModelKey.value = text.selectedKey
+    imageModelOptions.value = image.options
+    imageModelKey.value = image.selectedKey
+    videoModelOptions.value = video.options
+    videoModelKey.value = video.selectedKey
   }
 
-  function persistModelKey(key: string): void {
-    modelKey.value = key
-    try {
-      if (key) localStorage.setItem(AI_WORKFLOW_MODEL_KEY, key)
-    } catch {
-      /* ignore */
-    }
+  function persistModelKeys(): void {
+    writeStoredKey(AI_WORKFLOW_MODEL_KEY, textModelKey.value)
+    writeStoredKey(AI_WORKFLOW_IMAGE_MODEL_KEY, imageModelKey.value)
+    writeStoredKey(AI_WORKFLOW_VIDEO_MODEL_KEY, videoModelKey.value)
+  }
+
+  function setTextModelKey(key: string): void {
+    textModelKey.value = key
+    writeStoredKey(AI_WORKFLOW_MODEL_KEY, key)
+  }
+
+  function setImageModelKey(key: string): void {
+    imageModelKey.value = key
+    writeStoredKey(AI_WORKFLOW_IMAGE_MODEL_KEY, key)
+  }
+
+  function setVideoModelKey(key: string): void {
+    videoModelKey.value = key
+    writeStoredKey(AI_WORKFLOW_VIDEO_MODEL_KEY, key)
+  }
+
+  function clearPreview(): void {
+    pendingPlan.value = null
+    preview.value = null
+    previewWarnings.value = []
   }
 
   function applyPreset(id: AiWorkflowPresetId): void {
     selectedPresetId.value = id
+    clearPreview()
     if (id === 'custom') {
       draftPrompt.value = ''
       return
@@ -56,45 +114,126 @@ export function useAiCreateWorkflow() {
     draftPrompt.value = t(`aiWorkflow.presets.${id}.prompt`)
   }
 
+  function mediaModelPayload() {
+    const image = parseModelKey(imageModelKey.value)
+    const video = parseModelKey(videoModelKey.value)
+    return {
+      imageModel: image?.model,
+      imageProviderInstanceId: image?.providerInstanceId,
+      videoModel: video?.model,
+      videoProviderInstanceId: video?.providerInstanceId
+    }
+  }
+
   function openDialog(initialPrompt = ''): void {
     draftPrompt.value = initialPrompt
     selectedPresetId.value = null
     error.value = ''
+    clearPreview()
     dialogOpen.value = true
     void loadModelOptions()
   }
 
   function closeDialog(): void {
-    if (generating.value) return
+    if (generating.value || committing.value) return
     dialogOpen.value = false
     error.value = ''
+    clearPreview()
   }
 
-  async function generate(folderId: string | null): Promise<boolean> {
+  async function planPreview(mode: 'ai' | 'seed'): Promise<boolean> {
+    if (!project.isOpen) {
+      error.value = t('aiWorkflow.needProject')
+      return false
+    }
     const prompt = draftPrompt.value.trim()
-    if (!prompt) {
-      error.value = t('aiWorkflow.emptyPrompt')
+    const presetId = selectedPresetId.value
+    const hasSeed = presetId != null && hasAiWorkflowPresetPlan(presetId)
+
+    if (mode === 'seed') {
+      if (!hasSeed) {
+        error.value = t('aiWorkflow.needPresetForSeed')
+        return false
+      }
+    } else {
+      if (!prompt && !hasSeed) {
+        error.value = t('aiWorkflow.emptyPrompt')
+        return false
+      }
+      if (!parseModelKey(textModelKey.value)) {
+        error.value = t('aiWorkflow.needModel')
+        return false
+      }
+    }
+
+    generating.value = true
+    error.value = ''
+    clearPreview()
+    try {
+      persistModelKeys()
+      const text = parseModelKey(textModelKey.value)
+      const seedPlan = hasSeed && presetId ? getAiWorkflowPresetPlan(presetId) : null
+      const result = await window.studio.planAiWorkflow(
+        toPlain({
+          prompt,
+          presetId: hasSeed && presetId ? presetId : undefined,
+          seedPlan: seedPlan ?? undefined,
+          useSeedOnly: mode === 'seed',
+          model: text?.model,
+          providerInstanceId: text?.providerInstanceId,
+          ...mediaModelPayload()
+        })
+      )
+      if (!result.ok || !result.plan) {
+        error.value = result.error || t('aiWorkflow.planFailed')
+        return false
+      }
+      pendingPlan.value = toPlain(result.plan as GraphPlan)
+      preview.value = result.preview
+        ? {
+            title: result.preview.title,
+            nodes: result.preview.nodes,
+            edges: result.preview.edges.map((e) => ({ from: e.from, to: e.to }))
+          }
+        : {
+            title: result.title || 'AI Workflow',
+            nodes: (result.plan.nodes || []).map((n) => ({
+              key: n.key,
+              typeId: n.typeId,
+              title: n.title || n.key
+            })),
+            edges: (result.plan.edges || []).map((e) => ({ from: e.from, to: e.to }))
+          }
+      previewWarnings.value = result.warnings || []
+      return true
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      return false
+    } finally {
+      generating.value = false
+    }
+  }
+
+  async function commit(folderId: string | null): Promise<boolean> {
+    if (!pendingPlan.value) {
+      error.value = t('aiWorkflow.needPreview')
       return false
     }
     if (!project.isOpen) {
       error.value = t('aiWorkflow.needProject')
       return false
     }
-    const parsed = parseModelKey(modelKey.value)
-    if (!parsed) {
-      error.value = t('aiWorkflow.needModel')
-      return false
-    }
-    generating.value = true
+    committing.value = true
     error.value = ''
     try {
-      persistModelKey(modelKey.value)
-      const result = await window.studio.generateAiWorkflow({
-        prompt,
-        folderId,
-        model: parsed.model,
-        providerInstanceId: parsed.providerInstanceId
-      })
+      persistModelKeys()
+      const result = await window.studio.commitAiWorkflow(
+        toPlain({
+          plan: pendingPlan.value,
+          folderId,
+          ...mediaModelPayload()
+        })
+      )
       if (!result.ok || !result.assetId) {
         error.value = result.error || t('aiWorkflow.failed')
         return false
@@ -105,10 +244,12 @@ export function useAiCreateWorkflow() {
       dialogOpen.value = false
       draftPrompt.value = ''
       selectedPresetId.value = null
-      if (result.warnings.length) {
+      clearPreview()
+      const warnings = [...previewWarnings.value, ...result.warnings]
+      if (warnings.length) {
         void promptAlert({
           title: t('aiWorkflow.createdWithWarnings'),
-          message: result.warnings.slice(0, 8).join('\n')
+          message: warnings.slice(0, 8).join('\n')
         })
       }
       return true
@@ -116,23 +257,34 @@ export function useAiCreateWorkflow() {
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {
-      generating.value = false
+      committing.value = false
     }
   }
 
   return {
     dialogOpen,
     generating,
+    committing,
     error,
     draftPrompt,
     selectedPresetId,
-    modelOptions,
-    modelKey,
+    textModelOptions,
+    imageModelOptions,
+    videoModelOptions,
+    textModelKey,
+    imageModelKey,
+    videoModelKey,
+    pendingPlan,
+    preview,
+    previewWarnings,
     presetIds: AI_WORKFLOW_PRESET_IDS,
     applyPreset,
-    persistModelKey,
+    setTextModelKey,
+    setImageModelKey,
+    setVideoModelKey,
     openDialog,
     closeDialog,
-    generate
+    planPreview,
+    commit
   }
 }

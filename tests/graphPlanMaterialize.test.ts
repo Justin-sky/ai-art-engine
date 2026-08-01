@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyDefaultGenerateModels,
+  getAiWorkflowPresetPlan,
   materializeGraphPlan,
   parseGraphPlanJson,
   type GraphPlan
@@ -67,5 +69,50 @@ describe('graphPlan materialize', () => {
     )
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/没有可用节点/)
+  })
+
+  it('applies default image/video models only when missing', () => {
+    const plan: GraphPlan = {
+      nodes: [
+        {
+          key: 'img',
+          typeId: 'asset.image',
+          params: { generateModel: 'keep-me' }
+        },
+        { key: 'vid', typeId: 'asset.video' },
+        { key: 'txt', typeId: 'play.script' }
+      ],
+      edges: []
+    }
+    const next = applyDefaultGenerateModels(plan, {
+      imageModel: 'img-default',
+      imageProviderInstanceId: 'prov-img',
+      videoModel: 'vid-default',
+      videoProviderInstanceId: 'prov-vid'
+    })
+    expect(next.nodes[0]?.params?.generateModel).toBe('keep-me')
+    expect(next.nodes[0]?.params?.generateProviderInstanceId).toBe('prov-img')
+    expect(next.nodes[1]?.params?.generateModel).toBe('vid-default')
+    expect(next.nodes[1]?.params?.generateProviderInstanceId).toBe('prov-vid')
+    expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
+  })
+
+  it('materializes every curated preset seed plan', () => {
+    for (const id of [
+      'gameUaVideo',
+      'characterSheet',
+      'storyboardVideo',
+      'productAd',
+      'shortDrama'
+    ] as const) {
+      const plan = getAiWorkflowPresetPlan(id)
+      expect(plan, id).toBeTruthy()
+      const result = materializeGraphPlan(plan!, {
+        scope: 'canvasAsset',
+        assetType: 'canvas'
+      })
+      expect(result.ok, `${id}: ${result.error}`).toBe(true)
+      expect(result.document!.nodes.length).toBeGreaterThanOrEqual(plan!.nodes.length)
+    }
   })
 })

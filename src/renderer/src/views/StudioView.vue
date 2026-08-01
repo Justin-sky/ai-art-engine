@@ -110,17 +110,28 @@
     <AiCreateWorkflowDialog
       :open="aiWorkflowDialogOpen"
       :generating="aiWorkflowGenerating"
+      :committing="aiWorkflowCommitting"
       :error="aiWorkflowError"
       :prompt="aiWorkflowDraftPrompt"
-      :model-key="aiWorkflowModelKey"
-      :model-options="aiWorkflowModelOptions"
+      :text-model-key="aiWorkflowTextModelKey"
+      :image-model-key="aiWorkflowImageModelKey"
+      :video-model-key="aiWorkflowVideoModelKey"
+      :text-model-options="aiWorkflowTextModelOptions"
+      :image-model-options="aiWorkflowImageModelOptions"
+      :video-model-options="aiWorkflowVideoModelOptions"
       :preset-ids="aiWorkflowPresetIds"
       :selected-preset-id="aiWorkflowSelectedPresetId"
+      :preview="aiWorkflowPreview"
+      :preview-warnings="aiWorkflowPreviewWarnings"
       @update:prompt="aiWorkflowDraftPrompt = $event"
-      @update:model-key="persistAiWorkflowModelKey($event)"
+      @update:text-model-key="setAiWorkflowTextModelKey"
+      @update:image-model-key="setAiWorkflowImageModelKey"
+      @update:video-model-key="setAiWorkflowVideoModelKey"
       @select-preset="applyAiWorkflowPreset"
+      @plan-seed="void planAiWorkflowPreview('seed')"
+      @plan-ai="void planAiWorkflowPreview('ai')"
+      @commit="void commitAiWorkflow(null)"
       @close="closeAiWorkflowDialog()"
-      @generate="void generateAiWorkflow(null)"
     />
   </div>
 </template>
@@ -222,17 +233,27 @@ const runLogsStore = useGraphRunLogsStore()
 const {
   dialogOpen: aiWorkflowDialogOpen,
   generating: aiWorkflowGenerating,
+  committing: aiWorkflowCommitting,
   error: aiWorkflowError,
   draftPrompt: aiWorkflowDraftPrompt,
   selectedPresetId: aiWorkflowSelectedPresetId,
-  modelOptions: aiWorkflowModelOptions,
-  modelKey: aiWorkflowModelKey,
+  textModelOptions: aiWorkflowTextModelOptions,
+  imageModelOptions: aiWorkflowImageModelOptions,
+  videoModelOptions: aiWorkflowVideoModelOptions,
+  textModelKey: aiWorkflowTextModelKey,
+  imageModelKey: aiWorkflowImageModelKey,
+  videoModelKey: aiWorkflowVideoModelKey,
+  preview: aiWorkflowPreview,
+  previewWarnings: aiWorkflowPreviewWarnings,
   presetIds: aiWorkflowPresetIds,
   applyPreset: applyAiWorkflowPreset,
-  persistModelKey: persistAiWorkflowModelKey,
+  setTextModelKey: setAiWorkflowTextModelKey,
+  setImageModelKey: setAiWorkflowImageModelKey,
+  setVideoModelKey: setAiWorkflowVideoModelKey,
   openDialog: openAiWorkflowDialog,
   closeDialog: closeAiWorkflowDialog,
-  generate: generateAiWorkflow
+  planPreview: planAiWorkflowPreview,
+  commit: commitAiWorkflow
 } = useAiCreateWorkflow()
 const tasksBtnEl = ref<HTMLButtonElement | null>(null)
 const { commitDraft, activeDraftId, defaultSaveName } = useDraftSave()

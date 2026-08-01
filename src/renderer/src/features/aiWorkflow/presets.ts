@@ -1,13 +1,10 @@
-/** 一键工作流预设模板（文案走 i18n `aiWorkflow.presets.<id>.*`） */
-export const AI_WORKFLOW_PRESET_IDS = [
-  'gameUaVideo',
-  'characterSheet',
-  'storyboardVideo',
-  'productAd',
-  'shortDrama',
-  'custom'
-] as const
-
-export type AiWorkflowPresetId = (typeof AI_WORKFLOW_PRESET_IDS)[number]
+export {
+  AI_WORKFLOW_PRESET_IDS,
+  getAiWorkflowPresetPlan,
+  hasAiWorkflowPresetPlan,
+  type AiWorkflowPresetId
+} from '@shared/graph'
 
 export const AI_WORKFLOW_MODEL_KEY = 'ai-art-engine.aiWorkflow.modelKey'
+export const AI_WORKFLOW_IMAGE_MODEL_KEY = 'ai-art-engine.aiWorkflow.imageModelKey'
+export const AI_WORKFLOW_VIDEO_MODEL_KEY = 'ai-art-engine.aiWorkflow.videoModelKey'

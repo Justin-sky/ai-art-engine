@@ -70,8 +70,12 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
-  /** AI 自由构图：自然语言 → 新建 canvas 工作流 */
+  /** AI 自由构图：自然语言 → 新建 canvas 工作流（规划+落盘） */
   GEN_AI_WORKFLOW: 'gen:ai-workflow',
+  /** AI 自由构图：仅规划预览，不落盘 */
+  GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
+  /** AI 自由构图：确认 GraphPlan 后落盘 */
+  GEN_AI_WORKFLOW_COMMIT: 'gen:ai-workflow-commit',
   /** 持久化视频任务列表 */
   VIDEO_JOB_LIST: 'video-job:list',
   VIDEO_JOB_GET: 'video-job:get',
@@ -182,21 +186,73 @@ export interface CreateAssetInput {
   skipScriptBootstrap?: boolean
 }
 
-/** AI 自由构图：自然语言生成并新建 canvas 工作流 */
-export interface GenerateAiWorkflowInput {
+/** AI 自由构图：规划输入（可含图/视频默认模型与预设骨架） */
+export interface PlanAiWorkflowInput {
   prompt: string
-  folderId?: string | null
   model?: string
   providerInstanceId?: string
+  imageModel?: string
+  imageProviderInstanceId?: string
+  videoModel?: string
+  videoProviderInstanceId?: string
+  presetId?: string
+  /** true：只用预设固化拓扑，不调用文本模型 */
+  useSeedOnly?: boolean
+  seedPlan?: {
+    title?: string
+    nodes: Array<{
+      key: string
+      typeId: string
+      title?: string
+      params?: Record<string, unknown>
+    }>
+    edges: Array<{
+      from: string
+      to: string
+      fromPort?: string
+      toPort?: string
+    }>
+  }
 }
 
-export interface GenerateAiWorkflowResult {
+export interface GraphPlanPreviewDto {
+  title: string
+  nodes: Array<{ key: string; typeId: string; title: string }>
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>
+}
+
+export interface PlanAiWorkflowResult {
+  ok: boolean
+  plan?: PlanAiWorkflowInput['seedPlan'] & { title?: string }
+  title?: string
+  preview?: GraphPlanPreviewDto
+  warnings: string[]
+  error?: string
+}
+
+export interface CommitAiWorkflowInput {
+  plan: NonNullable<PlanAiWorkflowResult['plan']>
+  folderId?: string | null
+  imageModel?: string
+  imageProviderInstanceId?: string
+  videoModel?: string
+  videoProviderInstanceId?: string
+}
+
+export interface CommitAiWorkflowResult {
   ok: boolean
   assetId?: string
   title?: string
   warnings: string[]
   error?: string
 }
+
+/** AI 自由构图：规划并立即新建 canvas 工作流 */
+export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
+  folderId?: string | null
+}
+
+export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
 
 export interface CreateSeriesWithStarterInput {
   name?: string
@@ -426,6 +482,10 @@ export interface StudioApi {
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   /** AI 自由构图：根据自然语言新建 canvas 工作流资产 */
   generateAiWorkflow: (input: GenerateAiWorkflowInput) => Promise<GenerateAiWorkflowResult>
+  /** AI 自由构图：仅规划预览 */
+  planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
+  /** AI 自由构图：确认计划后落盘 */
+  commitAiWorkflow: (input: CommitAiWorkflowInput) => Promise<CommitAiWorkflowResult>
   listVideoJobs: () => Promise<import('./videoJob').VideoJobRecord[]>
   getVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   cancelVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>

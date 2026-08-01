@@ -23,7 +23,9 @@ import type {
   ExportAssetPackageInput,
   ImportAssetPackageInput,
   WriteAssetTextInput,
-  GenerateAiWorkflowInput
+  GenerateAiWorkflowInput,
+  PlanAiWorkflowInput,
+  CommitAiWorkflowInput
 } from '@shared/ipc'
 import type { TimelineExportInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
@@ -40,7 +42,11 @@ import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { openRouterClient, toMediaUrl } from './services/openRouterClient'
-import { generateAiWorkflow } from './services/graphPlanService'
+import {
+  commitAiWorkflow,
+  generateAiWorkflow,
+  planAiWorkflow
+} from './services/graphPlanService'
 import { uploadProjectMediaToTos } from './services/tosUploadService'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
@@ -209,6 +215,15 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => openRouterClient.generateText(input))
   handle(IpcChannels.GEN_AI_WORKFLOW, async (input: GenerateAiWorkflowInput) => {
     const result = await generateAiWorkflow(input)
+    if (result.ok && result.assetId) {
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    }
+    return result
+  })
+  handle(IpcChannels.GEN_AI_WORKFLOW_PLAN, (input: PlanAiWorkflowInput) => planAiWorkflow(input))
+  handle(IpcChannels.GEN_AI_WORKFLOW_COMMIT, async (input: CommitAiWorkflowInput) => {
+    const result = await commitAiWorkflow(input)
     if (result.ok && result.assetId) {
       const asset = projectService.listAssets().find((item) => item.id === result.assetId)
       if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
