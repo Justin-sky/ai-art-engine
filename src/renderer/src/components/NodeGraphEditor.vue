@@ -79,6 +79,63 @@
         <button type="button" :class="{ active: linkingFrom || linkingTo }" @click="cancelLink">
           {{ linkingFrom || linkingTo ? t('graph.link.cancel') : t('graph.link.start') }}
         </button>
+        <button
+          type="button"
+          class="edge-style-btn"
+          :title="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
+          :aria-label="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
+          @click="cycleEdgePathStyle"
+        >
+          <svg
+            v-if="edgePathStyle === 'curve'"
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              d="M2 12 C6 12 6 4 14 4"
+            />
+          </svg>
+          <svg
+            v-else-if="edgePathStyle === 'orthogonal'"
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M2 12 H8 V4 H14"
+            />
+          </svg>
+          <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-dasharray="2.5 2"
+              d="M2 12 C6 12 6 4 14 4"
+            />
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              d="M3.5 3.5 L12.5 12.5"
+            />
+          </svg>
+          <span class="edge-style-label">{{ t(`graph.edgeStyle.${edgePathStyle}`) }}</span>
+        </button>
         <span class="tool-mode-group" role="group" :aria-label="t('graph.toolbar.toolMode')">
           <button
             type="button"
@@ -714,8 +771,11 @@ import {
   computeTempEdgeScreen,
   drawGraphEdges,
   hitTestEdges,
+  nextGraphEdgePathStyle,
+  parseGraphEdgePathStyle,
   type EdgeColors,
-  type EdgeScreenGeometry
+  type EdgeScreenGeometry,
+  type GraphEdgePathStyle
 } from '../graph/edgeCanvas'
 import { applyGraphGridStyle } from '../graph/gridCanvas'
 import { useGraphNodeInteraction } from '../graph/useGraphNodeInteraction'
@@ -2466,7 +2526,9 @@ function collectEdgeGeometry(): EdgeScreenGeometry[] {
     const source = nodeById.get(edge.source)
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
-    geoms.push(computeEdgeScreenGeometry(edge, source, target, liveViewport))
+    geoms.push(
+      computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value)
+    )
   }
   return geoms
 }
@@ -2486,7 +2548,7 @@ function renderEdgesNow(): void {
 
   const tempWorld = resolveTempEdgeWorld()
   const tempScreen = tempWorld
-    ? computeTempEdgeScreen(tempWorld.from, tempWorld.to, liveViewport)
+    ? computeTempEdgeScreen(tempWorld.from, tempWorld.to, liveViewport, edgePathStyle.value)
     : null
 
   const flowIds =
@@ -2503,7 +2565,8 @@ function renderEdgesNow(): void {
     flowEdgeIds: flowIds,
     flowTimeMs: performance.now(),
     reduceEffects: viewportGesturing,
-    colors: resolveEdgeColors()
+    colors: resolveEdgeColors(),
+    pathStyle: edgePathStyle.value
   })
 
   // 记录基准视口并把平移 transform 归零：位图已按当前视口绘制
@@ -2651,6 +2714,23 @@ watch(gridVisible, (visible) => {
     /* ignore */
   }
 })
+
+const EDGE_PATH_STYLE_KEY = 'aiartengine.graph.edgePathStyle'
+const edgePathStyle = ref<GraphEdgePathStyle>(
+  parseGraphEdgePathStyle(localStorage.getItem(EDGE_PATH_STYLE_KEY))
+)
+watch(edgePathStyle, (style) => {
+  try {
+    localStorage.setItem(EDGE_PATH_STYLE_KEY, style)
+  } catch {
+    /* ignore */
+  }
+  requestEdgeRender()
+})
+
+function cycleEdgePathStyle(): void {
+  edgePathStyle.value = nextGraphEdgePathStyle(edgePathStyle.value)
+}
 
 const selectedLayoutNodes = computed(() =>
   graph.nodes.filter((node) => selectedNodeIds.value.has(node.id))
@@ -3386,7 +3466,7 @@ function onViewportPointerDown(e: PointerEvent): void {
       return
     }
     const worldRect = viewportBoxToWorldRect(box, graph.viewport)
-    const { nodeIds, edgeIds } = collectMarqueeHits(graph, worldRect)
+    const { nodeIds, edgeIds } = collectMarqueeHits(graph, worldRect, edgePathStyle.value)
     if (nodeIds.length === 0 && edgeIds.length === 0) {
       clearSelection()
       return
@@ -3414,6 +3494,7 @@ function hitTestEdgeAt(clientX: number, clientY: number): string | null {
   const px = clientX - rect.left
   const py = clientY - rect.top
   const tolerance = Math.max(6, 7 * liveViewport.zoom)
+  if (edgePathStyle.value === 'hidden') return null
   return hitTestEdges(lastEdgeGeometry, px, py, tolerance)
 }
 
@@ -7546,6 +7627,18 @@ defineExpose({
 .tools button {
   font-size: 11px;
   padding: 3px 8px;
+}
+
+.tools .edge-style-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+}
+
+.tools .edge-style-btn .edge-style-label {
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .tools .play-control {

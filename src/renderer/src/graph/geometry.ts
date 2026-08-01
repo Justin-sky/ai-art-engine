@@ -46,13 +46,47 @@ export function getNodeWorldBounds(node: GraphNode): GraphRect {
 export function getEdgeWorldBounds(
   edge: GraphEdge,
   nodes: GraphNode[],
-  padding = 8
+  padding = 8,
+  pathStyle: 'curve' | 'orthogonal' | 'hidden' = 'curve'
 ): GraphRect | null {
+  if (pathStyle === 'hidden') return null
   const source = nodes.find((node) => node.id === edge.source)
   const target = nodes.find((node) => node.id === edge.target)
   if (!source || !target) return null
   const start = getNodePortCenter(source, 'right', edge.sourcePort)
   const end = getNodePortCenter(target, 'left', edge.targetPort)
+  if (pathStyle === 'orthogonal') {
+    // 与 edgeCanvas.computeOrthogonalWorldPoints 同逻辑（避免循环依赖，内联一份）
+    const stub = Math.max(40, Math.min(80, Math.abs(end.x - start.x) * 0.25))
+    const outX = start.x + stub
+    const inX = end.x - stub
+    let pts: Array<{ x: number; y: number }>
+    if (outX <= inX) {
+      const midX = (start.x + end.x) / 2
+      pts =
+        Math.abs(start.y - end.y) < 0.5
+          ? [start, end]
+          : [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
+    } else {
+      const midY = (start.y + end.y) / 2
+      pts = [
+        start,
+        { x: outX, y: start.y },
+        { x: outX, y: midY },
+        { x: inX, y: midY },
+        { x: inX, y: end.y },
+        end
+      ]
+    }
+    const xs = pts.map((p) => p.x)
+    const ys = pts.map((p) => p.y)
+    return {
+      left: Math.min(...xs) - padding,
+      top: Math.min(...ys) - padding,
+      right: Math.max(...xs) + padding,
+      bottom: Math.max(...ys) + padding
+    }
+  }
   const dx = Math.max(60, Math.abs(end.x - start.x) * 0.5)
   const xs = [start.x, start.x + dx, end.x - dx, end.x]
   const ys = [start.y, start.y, end.y, end.y]
@@ -66,17 +100,21 @@ export function getEdgeWorldBounds(
 
 export function collectMarqueeHits(
   graph: { nodes: GraphNode[]; edges: GraphEdge[] },
-  worldRect: GraphRect
+  worldRect: GraphRect,
+  edgePathStyle: 'curve' | 'orthogonal' | 'hidden' = 'curve'
 ): { nodeIds: string[]; edgeIds: string[] } {
   const nodeIds = graph.nodes
     .filter((node) => rectsIntersect(getNodeWorldBounds(node), worldRect))
     .map((node) => node.id)
-  const edgeIds = graph.edges
-    .filter((edge) => {
-      const bounds = getEdgeWorldBounds(edge, graph.nodes)
-      return bounds ? rectsIntersect(bounds, worldRect) : false
-    })
-    .map((edge) => edge.id)
+  const edgeIds =
+    edgePathStyle === 'hidden'
+      ? []
+      : graph.edges
+          .filter((edge) => {
+            const bounds = getEdgeWorldBounds(edge, graph.nodes, 8, edgePathStyle)
+            return bounds ? rectsIntersect(bounds, worldRect) : false
+          })
+          .map((edge) => edge.id)
   return { nodeIds, edgeIds }
 }
 

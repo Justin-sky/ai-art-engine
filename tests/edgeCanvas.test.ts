@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   bezierPointAt,
+  computeOrthogonalWorldPoints,
   computeTempEdgeScreen,
   hitTestEdges,
+  nextGraphEdgePathStyle,
+  parseGraphEdgePathStyle,
   type EdgeScreenGeometry
 } from '../src/renderer/src/graph/edgeCanvas'
 
@@ -11,13 +14,49 @@ function makeEdge(
   sx: number,
   sy: number,
   ex: number,
-  ey: number
+  ey: number,
+  pathStyle: 'curve' | 'orthogonal' = 'curve'
 ): EdgeScreenGeometry {
   const dx = Math.max(60, Math.abs(ex - sx) * 0.5)
+  if (pathStyle === 'orthogonal') {
+    const midX = (sx + ex) / 2
+    const points =
+      Math.abs(sy - ey) < 0.5
+        ? [
+            { x: sx, y: sy },
+            { x: ex, y: ey }
+          ]
+        : [
+            { x: sx, y: sy },
+            { x: midX, y: sy },
+            { x: midX, y: ey },
+            { x: ex, y: ey }
+          ]
+    return {
+      id,
+      source: `${id}-src`,
+      target: `${id}-dst`,
+      pathStyle,
+      points,
+      sx,
+      sy,
+      c1x: points[1]?.x ?? sx,
+      c1y: points[1]?.y ?? sy,
+      c2x: points[points.length - 2]?.x ?? ex,
+      c2y: points[points.length - 2]?.y ?? ey,
+      ex,
+      ey
+    }
+  }
   return {
     id,
     source: `${id}-src`,
     target: `${id}-dst`,
+    pathStyle: 'curve',
+    points: [
+      { x: sx, y: sy },
+      { x: ex, y: ey }
+    ],
     sx,
     sy,
     c1x: sx + dx,
@@ -28,6 +67,46 @@ function makeEdge(
     ey
   }
 }
+
+describe('parseGraphEdgePathStyle / nextGraphEdgePathStyle', () => {
+  it('parses known styles and defaults to curve', () => {
+    expect(parseGraphEdgePathStyle('orthogonal')).toBe('orthogonal')
+    expect(parseGraphEdgePathStyle('hidden')).toBe('hidden')
+    expect(parseGraphEdgePathStyle('straight')).toBe('orthogonal')
+    expect(parseGraphEdgePathStyle('nope')).toBe('curve')
+  })
+
+  it('cycles curve → orthogonal → hidden → curve', () => {
+    expect(nextGraphEdgePathStyle('curve')).toBe('orthogonal')
+    expect(nextGraphEdgePathStyle('orthogonal')).toBe('hidden')
+    expect(nextGraphEdgePathStyle('hidden')).toBe('curve')
+  })
+})
+
+describe('computeOrthogonalWorldPoints', () => {
+  it('uses a mid-X elbow when target is to the right', () => {
+    const pts = computeOrthogonalWorldPoints({ x: 0, y: 0 }, { x: 200, y: 80 })
+    expect(pts).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 80 },
+      { x: 200, y: 80 }
+    ])
+  })
+
+  it('routes around when target is to the left', () => {
+    const pts = computeOrthogonalWorldPoints({ x: 200, y: 0 }, { x: 0, y: 80 })
+    expect(pts.length).toBeGreaterThanOrEqual(4)
+    expect(pts[0]).toEqual({ x: 200, y: 0 })
+    expect(pts[pts.length - 1]).toEqual({ x: 0, y: 80 })
+    // 水平/垂直段
+    for (let i = 1; i < pts.length; i += 1) {
+      const a = pts[i - 1]!
+      const b = pts[i]!
+      expect(a.x === b.x || a.y === b.y).toBe(true)
+    }
+  })
+})
 
 describe('computeTempEdgeScreen', () => {
   it('maps world coordinates to screen using viewport transform', () => {
@@ -46,6 +125,19 @@ describe('computeTempEdgeScreen', () => {
     expect(temp.c2y).toBe(temp.ey)
     expect(temp.c1x).toBeGreaterThan(temp.sx)
     expect(temp.c2x).toBeLessThan(temp.ex)
+  })
+
+  it('builds orthogonal screen polyline', () => {
+    const temp = computeTempEdgeScreen(
+      { x: 0, y: 0 },
+      { x: 200, y: 80 },
+      { x: 0, y: 0, zoom: 1 },
+      'orthogonal'
+    )
+    expect(temp.pathStyle).toBe('orthogonal')
+    expect(temp.points.length).toBe(4)
+    expect(temp.points[0]).toEqual({ x: 0, y: 0 })
+    expect(temp.points[3]).toEqual({ x: 200, y: 80 })
   })
 })
 
@@ -92,5 +184,12 @@ describe('hitTestEdges', () => {
   it('respects a larger tolerance for zoomed-in curves', () => {
     expect(hitTestEdges([horizontal], 200, 110, 6)).toBeNull()
     expect(hitTestEdges([horizontal], 200, 110, 14)).toBe('h')
+  })
+
+  it('hits orthogonal elbows on the vertical segment', () => {
+    const ortho = makeEdge('o', 0, 0, 200, 80, 'orthogonal')
+    // mid-X = 100，竖直段 x=100, y 0→80
+    expect(hitTestEdges([ortho], 100, 40, 6)).toBe('o')
+    expect(hitTestEdges([ortho], 140, 40, 6)).toBeNull()
   })
 })

@@ -1500,6 +1500,12 @@ export default {
       start: '连线',
       cancel: '取消连线'
     },
+    edgeStyle: {
+      curve: '曲线',
+      orthogonal: '直接',
+      hidden: '不显示',
+      cycleTitle: '连线样式：{style}（点击切换）'
+    },
     fitView: '适配视图',
     shotEntityPicker: '选择分镜实体',
     layout: {

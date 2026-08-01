@@ -1513,6 +1513,12 @@ export default {
       start: 'Link',
       cancel: 'Cancel link'
     },
+    edgeStyle: {
+      curve: 'Curve',
+      orthogonal: 'Orthogonal',
+      hidden: 'Hidden',
+      cycleTitle: 'Edge style: {style} (click to switch)'
+    },
     fitView: 'Fit view',
     shotEntityPicker: 'Select shot entity',
     layout: {
