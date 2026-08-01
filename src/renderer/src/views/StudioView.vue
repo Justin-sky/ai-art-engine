@@ -697,6 +697,11 @@ function sidePanelSizeOptions(id: SidePanelId) {
 
 function applySidePanelCollapseSync(api: DockviewApi): void {
   syncSidePanelCollapseState(api, sidePanelSizeOptions)
+  // 布局 fromJSON / moveTo 后尺寸可能下一帧才稳定，再同步一次去掉灰洞
+  requestAnimationFrame(() => {
+    if (dockApi.value !== api) return
+    syncSidePanelCollapseState(api, sidePanelSizeOptions)
+  })
 }
 
 function corePanelTitles(): Record<(typeof PANEL_IDS)[number], string> {
@@ -1480,8 +1485,14 @@ onBeforeUnmount(() => {
   border-right: none;
 }
 
-/* Visibility is handled by dockview setVisible; keep a marker class for debugging only. */
+/* setVisible 是主路径；若组仍残留在布局里，用 CSS 压掉 0 宽灰条 */
 .studio-dock :deep(.dv-groupview.studio-side-collapsed) {
-  border: none;
+  border: none !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

@@ -419,11 +419,11 @@ export function sanitizeSidePanelCollapseFromLayoutData(
 
   let changed = false
   const panels = data.panels
-  let nextPanels = panels
+  let nextPanels: Record<string, unknown> | unknown = panels
   if (isRecord(panels)) {
-    nextPanels = { ...panels }
+    const healedPanels: Record<string, unknown> = { ...panels }
     for (const id of SIDE_PANEL_LAYOUT_IDS) {
-      const panel = nextPanels[id]
+      const panel = healedPanels[id]
       if (!isRecord(panel)) continue
       const maxW = panel.maximumWidth
       const minW = panel.minimumWidth
@@ -433,11 +433,12 @@ export function sanitizeSidePanelCollapseFromLayoutData(
         minW === 0 ||
         (typeof minW === 'number' && minW > 0 && minW <= 8)
       if (!needsHeal) continue
-      const healed = { ...panel, minimumWidth: minSide }
+      const healed: Record<string, unknown> = { ...panel, minimumWidth: minSide }
       delete healed.maximumWidth
-      nextPanels[id] = healed
+      healedPanels[id] = healed
       changed = true
     }
+    nextPanels = healedPanels
   }
 
   const resolveFallback = (id: string): number => {

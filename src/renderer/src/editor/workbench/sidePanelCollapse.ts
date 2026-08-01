@@ -408,8 +408,11 @@ function applyCollapsedState(
   opts?: SidePanelSizeOptions
 ): void {
   if (collapsed) {
+    // 先隐藏再钳 0 宽：若先 setSize(0) 仍可见，会在资产/参数旁留下灰条
+    setSidePanelGroupVisible(api, false)
     applyWidthConstraints(api, panel, SIDE_COLLAPSE_WIDTH, SIDE_COLLAPSE_WIDTH)
     api.setSize({ width: SIDE_COLLAPSE_WIDTH })
+    // moveTo 后 dockview 偶发重新显示组；再藏一次
     setSidePanelGroupVisible(api, false)
     syncCollapsedClass(api, true)
     return
@@ -486,6 +489,16 @@ function placeSidePanel(dock: DockviewApi, id: SidePanelId, expanding: boolean):
   }
 }
 
+/** moveTo 之后再断言一次收起隐藏，避免 0 宽组重新入局形成灰洞 */
+function reassertCollapsedHidden(dock: DockviewApi): void {
+  for (const id of SIDE_PANEL_IDS) {
+    if (!sidePanelCollapsed[id]) continue
+    const panel = dock.getPanel(id)
+    if (!panel) continue
+    applyCollapsedState(panel.api, panel, true)
+  }
+}
+
 export function setSidePanelCollapsed(
   api: DockviewPanelApi,
   collapsed: boolean,
@@ -503,6 +516,7 @@ export function setSidePanelCollapsed(
     writeSideCollapsedPreference(id, true)
     if (dock) placeSidePanel(dock, id, false)
     applyCollapsedState(api, resolvePanel(api, target), true)
+    if (dock) reassertCollapsedHidden(dock)
     return
   }
 
@@ -531,7 +545,11 @@ export function setSidePanelCollapsed(
     }
   }
 
-  if (dock) attachExpandedWidthWatchers(dock)
+  // 展开一侧时另一侧可能被 moveTo 带出；再藏一次收起侧，去掉灰洞
+  if (dock) {
+    reassertCollapsedHidden(dock)
+    attachExpandedWidthWatchers(dock)
+  }
 }
 
 export function toggleSidePanelCollapsed(
@@ -571,14 +589,19 @@ export function syncSidePanelCollapseState(
       sidePanelCollapsed[id] = true
       writeSideCollapsedPreference(id, true)
       applyCollapsedState(panel.api, panel, true)
+      // 双保险：收起后若仍可见，会留下灰条/灰洞
+      setSidePanelGroupVisible(panel.api, false)
     } else {
       if (width > 16) writeStoredWidth(id, width)
       sidePanelCollapsed[id] = false
       writeSideCollapsedPreference(id, false)
       const opts = optsFor(id)
+      // 先放开约束再显示，避免 maxWidth=0 把展开宽度永久钳成灰洞
       applyCollapsedState(panel.api, panel, false, opts)
+      setSidePanelGroupVisible(panel.api, true)
       // 仅在宽度已被收起态钳成 0/异常时拉回；正常展开尺寸保持 dockview 现状
-      if (width <= 16) {
+      const liveW = readPanelWidth(panel.api)
+      if (liveW <= 16) {
         const nextWidth = resolveExpandedWidth(id, opts)
         panel.api.setSize({ width: nextWidth })
         writeStoredWidth(id, nextWidth)
