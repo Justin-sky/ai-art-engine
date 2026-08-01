@@ -28,6 +28,24 @@ export interface PlanAiWorkflowInput extends GraphPlanMediaModelDefaults {
   seedPlan?: GraphPlan
 }
 
+/** AI 规划时的模型调用明细（写入执行日志） */
+export interface PlanAiWorkflowApiCall {
+  model: string
+  request: {
+    prompt?: string
+    system?: string
+    model?: string
+    providerInstanceId?: string
+  }
+  response?: {
+    text?: string
+    model?: string
+  }
+  error?: string
+  startedAt: number
+  durationMs: number
+}
+
 export interface PlanAiWorkflowResult {
   ok: boolean
   plan?: GraphPlan
@@ -35,6 +53,8 @@ export interface PlanAiWorkflowResult {
   preview?: GraphPlanPreview
   warnings: string[]
   error?: string
+  /** 本次规划发起的模型调用（含重试）；模板直出时为空 */
+  apiCalls?: PlanAiWorkflowApiCall[]
 }
 
 export interface CommitAiWorkflowInput extends GraphPlanMediaModelDefaults {
@@ -133,15 +153,56 @@ function needsRepair(
 async function requestPlan(
   userPrompt: string,
   system: string,
-  input: PlanAiWorkflowInput
+  input: PlanAiWorkflowInput,
+  apiCalls: PlanAiWorkflowApiCall[]
 ): Promise<string> {
-  const result = await openRouterClient.generateText({
+  const model = input.model?.trim() || ''
+  if (!model) {
+    throw new Error('请选择文本模型')
+  }
+  const startedAt = Date.now()
+  const request = {
     prompt: userPrompt,
     system,
-    model: input.model,
+    model,
     providerInstanceId: input.providerInstanceId
-  })
-  return result.text
+  }
+  let recorded = false
+  try {
+    const result = await openRouterClient.generateText({
+      prompt: userPrompt,
+      system,
+      model,
+      providerInstanceId: input.providerInstanceId
+    })
+    const text = result.text?.trim() || ''
+    const endedAt = Date.now()
+    apiCalls.push({
+      model: result.model || model,
+      request,
+      response: text ? { text, model: result.model || model } : undefined,
+      error: text ? undefined : '模型未返回有效内容',
+      startedAt,
+      durationMs: Math.max(0, endedAt - startedAt)
+    })
+    recorded = true
+    if (!text) {
+      throw new Error('模型未返回有效内容')
+    }
+    return text
+  } catch (err) {
+    if (!recorded) {
+      const endedAt = Date.now()
+      apiCalls.push({
+        model,
+        request,
+        error: err instanceof Error ? err.message : String(err),
+        startedAt,
+        durationMs: Math.max(0, endedAt - startedAt)
+      })
+    }
+    throw err
+  }
 }
 
 /**
@@ -150,10 +211,11 @@ async function requestPlan(
 export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAiWorkflowResult> {
   const prompt = input.prompt?.trim() || ''
   const seed = resolveSeedPlan(input)
+  const apiCalls: PlanAiWorkflowApiCall[] = []
 
   if (input.useSeedOnly) {
     if (!seed) {
-      return { ok: false, warnings: [], error: '当前预设没有固化模板' }
+      return { ok: false, warnings: [], error: '当前预设没有固化模板', apiCalls }
     }
     const plan = withMediaDefaults(seed, input)
     const materialized = tryMaterialize(plan)
@@ -161,7 +223,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       return {
         ok: false,
         warnings: materialized.warnings,
-        error: materialized.error || '模板无法物化'
+        error: materialized.error || '模板无法物化',
+        apiCalls
       }
     }
     return {
@@ -169,12 +232,13 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       plan,
       title: materialized.title,
       preview: buildGraphPlanPreview(plan),
-      warnings: materialized.warnings
+      warnings: materialized.warnings,
+      apiCalls
     }
   }
 
   if (!prompt && !seed) {
-    return { ok: false, warnings: [], error: '请输入工作流描述或选择预设模板' }
+    return { ok: false, warnings: [], error: '请输入工作流描述或选择预设模板', apiCalls }
   }
 
   const system = buildSystemPrompt(seed)
@@ -184,12 +248,13 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
 
   let planText = ''
   try {
-    planText = await requestPlan(userPrompt, system, input)
+    planText = await requestPlan(userPrompt, system, input, apiCalls)
   } catch (err) {
     return {
       ok: false,
       warnings: [],
-      error: err instanceof Error ? err.message : String(err)
+      error: err instanceof Error ? err.message : String(err),
+      apiCalls
     }
   }
 
@@ -202,14 +267,16 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       planText = await requestPlan(
         `${userPrompt}\n\n上次输出无法解析：${parseError}\n请只输出合法 JSON GraphPlan。`,
         system,
-        input
+        input,
+        apiCalls
       )
       plan = parseGraphPlanJson(planText)
     } catch (err2) {
       return {
         ok: false,
         warnings: [],
-        error: err2 instanceof Error ? err2.message : String(err2)
+        error: err2 instanceof Error ? err2.message : String(err2),
+        apiCalls
       }
     }
   }
@@ -223,7 +290,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       planText = await requestPlan(
         `${userPrompt}\n\n上次计划存在问题：${materialized.error || '结构需修正'}\n警告：${warnings.join('；') || '无'}\n请修正 typeId 与连线后重新输出完整 GraphPlan JSON。`,
         system,
-        input
+        input,
+        apiCalls
       )
       plan = withMediaDefaults(parseGraphPlanJson(planText), input)
       materialized = tryMaterialize(plan)
@@ -232,7 +300,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       return {
         ok: false,
         warnings,
-        error: err instanceof Error ? err.message : String(err)
+        error: err instanceof Error ? err.message : String(err),
+        apiCalls
       }
     }
   }
@@ -241,7 +310,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
     return {
       ok: false,
       warnings,
-      error: materialized.error || '无法物化工作流'
+      error: materialized.error || '无法物化工作流',
+      apiCalls
     }
   }
 
@@ -250,7 +320,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
     plan,
     title: materialized.title,
     preview: buildGraphPlanPreview(plan),
-    warnings
+    warnings,
+    apiCalls
   }
 }
 

@@ -221,6 +221,24 @@ export interface GraphPlanPreviewDto {
   edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>
 }
 
+/** AI 规划时的模型调用明细（写入执行日志） */
+export interface PlanAiWorkflowApiCall {
+  model: string
+  request: {
+    prompt?: string
+    system?: string
+    model?: string
+    providerInstanceId?: string
+  }
+  response?: {
+    text?: string
+    model?: string
+  }
+  error?: string
+  startedAt: number
+  durationMs: number
+}
+
 export interface PlanAiWorkflowResult {
   ok: boolean
   plan?: PlanAiWorkflowInput['seedPlan'] & { title?: string }
@@ -228,6 +246,8 @@ export interface PlanAiWorkflowResult {
   preview?: GraphPlanPreviewDto
   warnings: string[]
   error?: string
+  /** 本次规划发起的模型调用（含重试）；模板直出时为空 */
+  apiCalls?: PlanAiWorkflowApiCall[]
 }
 
 export interface CommitAiWorkflowInput {

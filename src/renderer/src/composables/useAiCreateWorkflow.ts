@@ -15,10 +15,13 @@ import {
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { toPlain } from '../utils/toPlain'
+import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useProjectStore } from '../stores/project'
 import { useAssetCreation } from './useAssetCreation'
 import { promptAlert } from './useStudioPrompt'
 import { useStudioI18n } from './useStudioI18n'
+
+const AI_WORKFLOW_PLAN_LOG_NODE_ID = 'aiWorkflow.plan'
 
 export interface AiWorkflowPreview {
   title: string
@@ -44,6 +47,7 @@ function writeStoredKey(storageKey: string, value: string): void {
 
 export function useAiCreateWorkflow() {
   const project = useProjectStore()
+  const runLogs = useGraphRunLogsStore()
   const { openAssetEditor } = useAssetCreation()
   const { t } = useStudioI18n()
   const dialogOpen = ref(false)
@@ -173,6 +177,42 @@ export function useAiCreateWorkflow() {
     generating.value = true
     error.value = ''
     clearPreview()
+
+    const logAiCalls = mode === 'ai'
+    const runId = logAiCalls ? `ai-workflow-plan-${crypto.randomUUID()}` : null
+    const logTitle =
+      hasSeed && presetId
+        ? t('aiWorkflow.planLog.titlePreset', {
+            name: t(`aiWorkflow.presets.${presetId}.title`)
+          })
+        : t('aiWorkflow.planLog.title')
+    const nodeTitle = t('aiWorkflow.title')
+
+    if (runId) {
+      runLogs.beginRun({
+        runId,
+        title: logTitle,
+        mode: 'task',
+        targetNodeId: AI_WORKFLOW_PLAN_LOG_NODE_ID,
+        targetNodeTitle: nodeTitle,
+        message: t('aiWorkflow.planLog.start')
+      })
+    }
+
+    const logMessage = (message: string, level: 'info' | 'warn' | 'error' = 'info'): void => {
+      if (!runId) return
+      runLogs.append({
+        runId,
+        level,
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: AI_WORKFLOW_PLAN_LOG_NODE_ID,
+        nodeTitle,
+        message,
+        status: level === 'error' ? 'error' : 'done'
+      })
+    }
+
     try {
       persistModelKeys()
       const text = parseModelKey(textModelKey.value)
@@ -188,8 +228,55 @@ export function useAiCreateWorkflow() {
           ...mediaModelPayload()
         })
       )
+
+      const apiCalls = result.apiCalls ?? []
+      for (let i = 0; i < apiCalls.length; i++) {
+        const call = apiCalls[i]
+        if (!runId || !call) continue
+        logMessage(
+          t('aiWorkflow.planLog.llmStart', {
+            model: call.model || text?.model || '—',
+            n: i + 1
+          })
+        )
+        runLogs.appendApiCall(runId, {
+          kind: 'generateText',
+          nodeId: AI_WORKFLOW_PLAN_LOG_NODE_ID,
+          durationMs: call.durationMs,
+          ts: call.startedAt,
+          request: {
+            prompt: call.request.prompt,
+            system: call.request.system,
+            model: call.request.model || call.model,
+            providerInstanceId: call.request.providerInstanceId
+          },
+          response: call.response
+            ? {
+                text: call.response.text,
+                model: call.response.model || call.model
+              }
+            : undefined,
+          error: call.error
+        })
+        if (call.error) {
+          logMessage(t('aiWorkflow.planLog.llmError', { error: call.error }), 'error')
+        } else {
+          logMessage(
+            t('aiWorkflow.planLog.llmDone', {
+              chars: call.response?.text?.length ?? 0,
+              model: call.response?.model || call.model
+            })
+          )
+        }
+      }
+
       if (!result.ok || !result.plan) {
-        error.value = result.error || t('aiWorkflow.planFailed')
+        const msg = result.error || t('aiWorkflow.planFailed')
+        error.value = msg
+        if (runId) {
+          logMessage(t('aiWorkflow.planLog.failed', { error: msg }), 'error')
+          runLogs.endRun({ runId, status: 'error', message: msg })
+        }
         return false
       }
       pendingPlan.value = toPlain(result.plan as GraphPlan)
@@ -209,9 +296,22 @@ export function useAiCreateWorkflow() {
             edges: (result.plan.edges || []).map((e) => ({ from: e.from, to: e.to }))
           }
       previewWarnings.value = result.warnings || []
+      if (runId) {
+        const doneMsg = t('aiWorkflow.planLog.done', {
+          nodes: preview.value.nodes.length,
+          edges: preview.value.edges.length
+        })
+        logMessage(doneMsg)
+        runLogs.endRun({ runId, status: 'done', message: doneMsg })
+      }
       return true
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : String(err)
+      error.value = msg
+      if (runId) {
+        logMessage(t('aiWorkflow.planLog.failed', { error: msg }), 'error')
+        runLogs.endRun({ runId, status: 'error', message: msg })
+      }
       return false
     } finally {
       generating.value = false

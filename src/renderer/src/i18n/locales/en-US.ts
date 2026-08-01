@@ -54,6 +54,16 @@ export default {
     planFailed: 'Failed to plan workflow',
     failed: 'Failed to generate workflow',
     createdWithWarnings: 'Created (some nodes/edges were skipped)',
+    planLog: {
+      title: 'AI workflow preview',
+      titlePreset: 'AI workflow preview · {name}',
+      start: 'Start planning workflow',
+      llmStart: 'Calling text model: {model} (attempt {n})',
+      llmDone: 'Model reply received: {chars} chars ({model})',
+      llmError: 'Model call failed: {error}',
+      done: 'Plan ready: {nodes} nodes · {edges} edges',
+      failed: 'Planning failed: {error}'
+    },
     presets: {
       gameUaVideo: {
         title: 'Game UA',

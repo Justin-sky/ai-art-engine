@@ -53,6 +53,16 @@ export default {
     planFailed: '规划工作流失败',
     failed: '生成工作流失败',
     createdWithWarnings: '已创建（部分节点/连线已跳过）',
+    planLog: {
+      title: 'AI 生成预览',
+      titlePreset: 'AI 生成预览 · {name}',
+      start: '开始规划工作流',
+      llmStart: '调用文本模型：{model}（第 {n} 次）',
+      llmDone: '模型返回完成：{chars} 字符（{model}）',
+      llmError: '模型调用失败：{error}',
+      done: '规划完成：{nodes} 节点 · {edges} 连线',
+      failed: '规划失败：{error}'
+    },
     presets: {
       gameUaVideo: {
         title: '游戏买量',
