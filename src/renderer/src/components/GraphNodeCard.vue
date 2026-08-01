@@ -2478,7 +2478,8 @@ function formatTime(sec: number): string {
 .camera-live-preview {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* 任意比例均完整显示，留白用预览底色 letterbox */
+  object-fit: contain;
 }
 
 .text-preview {
@@ -2530,7 +2531,7 @@ function formatTime(sec: number): string {
   width: 100%;
   height: 100%;
   min-height: 0;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   background: var(--graph-preview-bg);
 }
