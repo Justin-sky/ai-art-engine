@@ -259,12 +259,15 @@ import { useEditorPanelOpener } from '../editor/workbench/useEditorPanelOpener'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
 import { parseEditorPanelId } from '../editor/workbench/editorPanelIcon'
 import {
+  clearDockviewDropOverlays,
+  configureSidePanelStackDropTargets,
   handleSidePanelLayoutMaybeStacked,
   handleSidePanelMoved,
   noteSidePanelWillStackDrop,
   registerSidePanelDockApi,
   registerSidePanelSizeProvider,
   rememberedExpandedSideWidth,
+  shouldPreventSidePanelOverlay,
   sidePanelCollapsed,
   sidePanelInitialWidth,
   syncSidePanelCollapseState,
@@ -427,6 +430,7 @@ let removeDisposable: { dispose: () => void } | null = null
 let moveDisposable: { dispose: () => void } | null = null
 let dropDisposable: { dispose: () => void } | null = null
 let willDropDisposable: { dispose: () => void } | null = null
+let willShowOverlayDisposable: { dispose: () => void } | null = null
 /** Suppress ensureCorePanels / persist while rebuilding layout */
 let layoutMutating = false
 
@@ -963,6 +967,7 @@ function onReady(event: DockviewReadyEvent): void {
   moveDisposable?.dispose()
   dropDisposable?.dispose()
   willDropDisposable?.dispose()
+  willShowOverlayDisposable?.dispose()
 
   try {
     if (!tryRestoreLayout(api)) {
@@ -981,11 +986,23 @@ function onReady(event: DockviewReadyEvent): void {
   layoutDisposable = api.onDidLayoutChange(() => {
     persistLayout(api)
     handleSidePanelLayoutMaybeStacked(api)
+    // location 变更会重置 drop zones，需维持上下 1/2 激活区
+    configureSidePanelStackDropTargets(api)
+  })
+  willShowOverlayDisposable = api.onWillShowOverlay((event) => {
+    if (shouldPreventSidePanelOverlay(event)) {
+      event.preventDefault()
+    }
   })
   willDropDisposable = api.onWillDrop((event) => {
+    if (shouldPreventSidePanelOverlay(event)) {
+      event.preventDefault()
+      return
+    }
     noteSidePanelWillStackDrop(api, String(event.position), event.group)
   })
   dropDisposable = api.onDidDrop((event) => {
+    clearDockviewDropOverlays(document.querySelector('.studio-dock'))
     noteSidePanelWillStackDrop(api, String(event.position), event.group)
     const movedId = event.getData()?.panelId
     if (typeof movedId === 'string' && movedId) handleSidePanelMoved(api, movedId)
@@ -1193,11 +1210,13 @@ onBeforeUnmount(() => {
   moveDisposable?.dispose()
   dropDisposable?.dispose()
   willDropDisposable?.dispose()
+  willShowOverlayDisposable?.dispose()
   layoutDisposable = null
   removeDisposable = null
   moveDisposable = null
   dropDisposable = null
   willDropDisposable = null
+  willShowOverlayDisposable = null
   dockApi.value = null
 })
 </script>
@@ -1494,5 +1513,10 @@ onBeforeUnmount(() => {
   overflow: hidden !important;
   opacity: 0;
   pointer-events: none;
+}
+
+/* 拖放结束后偶发残留的锚点容器不应再挡交互 */
+.studio-dock :deep(.dv-drop-target-container:empty) {
+  display: none !important;
 }
 </style>

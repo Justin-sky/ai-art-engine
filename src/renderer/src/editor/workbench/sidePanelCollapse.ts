@@ -316,6 +316,106 @@ export function noteSidePanelWillStackDrop(
   armStackNormalizeWindow()
 }
 
+function groupHasSidePanel(
+  group: { panels?: ReadonlyArray<{ id: string }> } | undefined
+): boolean {
+  return !!group?.panels?.some((panel) => isSidePanelId(panel.id))
+}
+
+/**
+ * 侧栏互拖时禁止 left/right/center 半屏 drop 预览：先悬停半屏再丢到对方下方
+ * 时，dockview 锚点 overlay / 列宽容易留下灰框。仅允许上下叠放。
+ * 拖到工作区/文档等非侧栏目标时一律不显示预览。
+ */
+export function shouldPreventSidePanelOverlay(event: {
+  position: string
+  kind?: string
+  group?: { panels?: ReadonlyArray<{ id: string }> }
+  getData: () => { panelId?: string | null } | undefined
+}): boolean {
+  const panelId = event.getData()?.panelId
+  if (!panelId || !isSidePanelId(panelId)) return false
+
+  if (event.kind === 'edge') return true
+  if (!groupHasSidePanel(event.group)) return true
+
+  return event.position !== 'top' && event.position !== 'bottom'
+}
+
+/** 清理未卸掉的 drop 锚点容器，避免拖放结束后半透明灰框残留 */
+export function clearDockviewDropOverlays(root?: ParentNode | null): void {
+  const host = root ?? (typeof document !== 'undefined' ? document : null)
+  if (!host) return
+  host.querySelectorAll('.dv-drop-target-container').forEach((el) => el.remove())
+  host.querySelectorAll('.dv-drop-target').forEach((el) => {
+    el.classList.remove('dv-drop-target')
+  })
+}
+
+/** 侧栏上下叠放：上/下各半屏即可出预览（dockview 默认约 20%） */
+const SIDE_PANEL_STACK_OVERLAY = {
+  activationSize: { type: 'percentage' as const, value: 50 },
+  size: { type: 'percentage' as const, value: 50 }
+}
+
+const SIDE_PANEL_STACK_ZONES = ['top', 'bottom'] as const
+
+type DropTargetLike = {
+  setTargetZones: (zones: string[]) => void
+  setOverlayModel: (model: {
+    activationSize?: { type: 'percentage' | 'pixels'; value: number }
+    size?: { type: 'percentage' | 'pixels'; value: number }
+  }) => void
+}
+
+function groupContentDropTargets(group: {
+  model?: unknown
+}): DropTargetLike[] {
+  const model = group.model as
+    | {
+        contentDropTarget?: DropTargetLike
+        contentContainer?: {
+          dropTarget?: DropTargetLike
+          pointerDropTarget?: DropTargetLike
+        }
+      }
+    | undefined
+  if (!model) return []
+  const fromContainer = model.contentContainer
+  if (fromContainer) {
+    return [fromContainer.dropTarget, fromContainer.pointerDropTarget].filter(
+      (target): target is DropTargetLike =>
+        !!target &&
+        typeof target.setTargetZones === 'function' &&
+        typeof target.setOverlayModel === 'function'
+    )
+  }
+  if (
+    model.contentDropTarget &&
+    typeof model.contentDropTarget.setTargetZones === 'function' &&
+    typeof model.contentDropTarget.setOverlayModel === 'function'
+  ) {
+    return [model.contentDropTarget]
+  }
+  return []
+}
+
+/**
+ * 资产/参数组仅接受上下落点，并把激活区扩到 50%。
+ * dockview 在 group location 变更时会重置 zones，故布局/拖放后需再调用。
+ */
+export function configureSidePanelStackDropTargets(dock: DockviewApi): void {
+  for (const id of SIDE_PANEL_IDS) {
+    const panel = dock.getPanel(id)
+    const group = panel?.group
+    if (!group) continue
+    for (const target of groupContentDropTargets(group)) {
+      target.setTargetZones([...SIDE_PANEL_STACK_ZONES])
+      target.setOverlayModel(SIDE_PANEL_STACK_OVERLAY)
+    }
+  }
+}
+
 /**
  * After dragging assets/inspector above/below each other, dockview often sizes the
  * new column to (assets + inspector). Snap the column to the drop-target panel's
@@ -323,6 +423,10 @@ export function noteSidePanelWillStackDrop(
  */
 export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
   if (!isSidePanelId(movedId)) return
+  clearDockviewDropOverlays(
+    typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+  )
+  configureSidePanelStackDropTargets(dock)
   const targetId = otherSidePanelId(movedId)
   const columnWidth =
     pendingStackColumnWidth > 16
@@ -330,6 +434,15 @@ export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
       : readSoloWidth(targetId)
   armStackNormalizeWindow()
   scheduleStackedColumnNormalize(dock, columnWidth)
+  // 叠放后偶发留下窄列灰洞；下一帧再压一次列宽并清 overlay
+  requestAnimationFrame(() => {
+    clearDockviewDropOverlays(
+      typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+    )
+    configureSidePanelStackDropTargets(dock)
+    scheduleStackedColumnNormalize(dock, columnWidth)
+    reassertCollapsedHidden(dock)
+  })
 }
 
 /** Layout churn after DnD — keep correcting until the summed width is gone. */
@@ -609,6 +722,7 @@ export function syncSidePanelCollapseState(
     }
   }
   attachExpandedWidthWatchers(dock)
+  configureSidePanelStackDropTargets(dock)
 }
 
 /** 展开宽度记忆（忽略当前是否收起），供布局 JSON 清洗 fallback */
