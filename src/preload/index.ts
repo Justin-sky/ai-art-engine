@@ -92,6 +92,7 @@ const api: StudioApi = {
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),
   generateVideo: (input) => ipcRenderer.invoke(IpcChannels.GEN_VIDEO, input),
   generateSpeech: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPEECH, input),
+  generateAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW, input),
   listVideoJobs: () => ipcRenderer.invoke(IpcChannels.VIDEO_JOB_LIST),
   getVideoJob: (localJobId) => ipcRenderer.invoke(IpcChannels.VIDEO_JOB_GET, localJobId),
   cancelVideoJob: (localJobId) => ipcRenderer.invoke(IpcChannels.VIDEO_JOB_CANCEL, localJobId),

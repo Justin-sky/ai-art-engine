@@ -17,7 +17,63 @@ export default {
     unnamed: '未命名',
     pleaseSelect: '请选择',
     second: '秒',
-    open: '打开'
+    open: '打开',
+    close: '关闭'
+  },
+  aiWorkflow: {
+    title: '一键工作流',
+    shortAction: '一键工作流',
+    subtitle: '选模板或自述需求，自动新建画布并生成节点图',
+    presetsLabel: '预设模板',
+    modelLabel: '文本模型',
+    modelEmpty: '未配置文本模型',
+    promptLabel: '工作流描述',
+    promptPlaceholder: '例如：帮我创建一个生成游戏买量视频的工作流，包含剧本、分镜图和视频生成…',
+    hint: '将新建一张自由画布资产并打开；Ctrl/⌘ + Enter 生成。需已配置文本模型。',
+    generate: '生成工作流',
+    generating: '生成中…',
+    emptyPrompt: '请先填写工作流描述',
+    needProject: '请先打开工程',
+    needModel: '请先选择可用的文本模型',
+    failed: '生成工作流失败',
+    createdWithWarnings: '已创建（部分节点/连线已跳过）',
+    presets: {
+      gameUaVideo: {
+        title: '游戏买量',
+        desc: '剧本 → 分镜图 → 视频',
+        prompt:
+          '帮我创建一个游戏买量短视频工作流：先用文本节点写卖点与旁白脚本，再生成关键角色/场景分镜图，最后用图生视频产出 15 秒左右竖屏广告片段。节点之间用合理连线串联，预留人工改稿口。'
+      },
+      characterSheet: {
+        title: '角色设定',
+        desc: '人设文案 + 多视角立绘',
+        prompt:
+          '创建一个角色设定工作流：文本节点输出角色人设与外观描述，再分别生成正面/侧面/三视图或表情变体立绘，并预留一张参考图上传节点以便锁定画风。'
+      },
+      storyboardVideo: {
+        title: '分镜出片',
+        desc: '分镜图串成视频',
+        prompt:
+          '创建一个分镜到成片的工作流：输入剧本或镜头列表，拆成若干分镜图生成节点，再对关键镜头做图生视频，最后用备注节点标明剪辑合成顺序。'
+      },
+      productAd: {
+        title: '产品广告',
+        desc: '卖点文案 + 产品图 + 短视频',
+        prompt:
+          '创建一个产品广告工作流：文本节点提炼卖点文案，图片节点生成产品主视觉与场景图，再生成一段带产品特写的短视频；预留产品参考图上传。'
+      },
+      shortDrama: {
+        title: '短剧分镜',
+        desc: '多场戏分镜与对白',
+        prompt:
+          '创建一个短剧分镜工作流：文本节点按场次输出对白与镜头说明，每个场次对应分镜图生成，并为高潮场次增加视频生成节点；布局按场次从左到右排列。'
+      },
+      custom: {
+        title: '自定义',
+        desc: '清空描述后自行填写',
+        prompt: ''
+      }
+    }
   },
   app: {
     nav: {

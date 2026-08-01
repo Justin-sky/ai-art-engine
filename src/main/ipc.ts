@@ -22,7 +22,8 @@ import type {
   SaveGraphRunTextInput,
   ExportAssetPackageInput,
   ImportAssetPackageInput,
-  WriteAssetTextInput
+  WriteAssetTextInput,
+  GenerateAiWorkflowInput
 } from '@shared/ipc'
 import type { TimelineExportInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
@@ -39,6 +40,7 @@ import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { openRouterClient, toMediaUrl } from './services/openRouterClient'
+import { generateAiWorkflow } from './services/graphPlanService'
 import { uploadProjectMediaToTos } from './services/tosUploadService'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
@@ -205,6 +207,14 @@ export function registerIpcHandlers(): void {
   )
 
   handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => openRouterClient.generateText(input))
+  handle(IpcChannels.GEN_AI_WORKFLOW, async (input: GenerateAiWorkflowInput) => {
+    const result = await generateAiWorkflow(input)
+    if (result.ok && result.assetId) {
+      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    }
+    return result
+  })
   // 图节点执行需要 images 内容；落盘资产请走 generateImageAsset 专用路径
   handle(IpcChannels.GEN_IMAGE, (input: GenerateImageInput) =>
     openRouterClient.generateImage(input)

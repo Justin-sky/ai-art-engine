@@ -23,6 +23,15 @@
         ↷
       </button>
       <button
+        type="button"
+        class="tasks-btn"
+        :title="t('aiWorkflow.title')"
+        :aria-label="t('aiWorkflow.title')"
+        @click="openAiWorkflowDialog()"
+      >
+        {{ t('aiWorkflow.shortAction') }}
+      </button>
+      <button
         ref="tasksBtnEl"
         type="button"
         class="tasks-btn"
@@ -98,6 +107,21 @@
       @confirm="onSaveLayoutConfirm"
       @cancel="closeSaveLayoutDialog"
     />
+    <AiCreateWorkflowDialog
+      :open="aiWorkflowDialogOpen"
+      :generating="aiWorkflowGenerating"
+      :error="aiWorkflowError"
+      :prompt="aiWorkflowDraftPrompt"
+      :model-key="aiWorkflowModelKey"
+      :model-options="aiWorkflowModelOptions"
+      :preset-ids="aiWorkflowPresetIds"
+      :selected-preset-id="aiWorkflowSelectedPresetId"
+      @update:prompt="aiWorkflowDraftPrompt = $event"
+      @update:model-key="persistAiWorkflowModelKey($event)"
+      @select-preset="applyAiWorkflowPreset"
+      @close="closeAiWorkflowDialog()"
+      @generate="void generateAiWorkflow(null)"
+    />
   </div>
 </template>
 
@@ -124,8 +148,10 @@ import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
 import SaveLayoutDialog from '../components/SaveLayoutDialog.vue'
+import AiCreateWorkflowDialog from '../components/AiCreateWorkflowDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
+import { useAiCreateWorkflow } from '../composables/useAiCreateWorkflow'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   createEditorWindowComponents,
@@ -193,6 +219,21 @@ const drafts = useDraftStore()
 const editor = useEditorKernel()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
+const {
+  dialogOpen: aiWorkflowDialogOpen,
+  generating: aiWorkflowGenerating,
+  error: aiWorkflowError,
+  draftPrompt: aiWorkflowDraftPrompt,
+  selectedPresetId: aiWorkflowSelectedPresetId,
+  modelOptions: aiWorkflowModelOptions,
+  modelKey: aiWorkflowModelKey,
+  presetIds: aiWorkflowPresetIds,
+  applyPreset: applyAiWorkflowPreset,
+  persistModelKey: persistAiWorkflowModelKey,
+  openDialog: openAiWorkflowDialog,
+  closeDialog: closeAiWorkflowDialog,
+  generate: generateAiWorkflow
+} = useAiCreateWorkflow()
 const tasksBtnEl = ref<HTMLButtonElement | null>(null)
 const { commitDraft, activeDraftId, defaultSaveName } = useDraftSave()
 const dockApi = shallowRef<DockviewApi | null>(null)

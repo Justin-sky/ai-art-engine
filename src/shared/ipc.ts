@@ -70,6 +70,8 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
+  /** AI 自由构图：自然语言 → 新建 canvas 工作流 */
+  GEN_AI_WORKFLOW: 'gen:ai-workflow',
   /** 持久化视频任务列表 */
   VIDEO_JOB_LIST: 'video-job:list',
   VIDEO_JOB_GET: 'video-job:get',
@@ -178,6 +180,22 @@ export interface CreateAssetInput {
   genParams?: Record<string, unknown>
   /** 脚本资产：为 true 时不自动创建首个分镜（由草稿保存流程写入） */
   skipScriptBootstrap?: boolean
+}
+
+/** AI 自由构图：自然语言生成并新建 canvas 工作流 */
+export interface GenerateAiWorkflowInput {
+  prompt: string
+  folderId?: string | null
+  model?: string
+  providerInstanceId?: string
+}
+
+export interface GenerateAiWorkflowResult {
+  ok: boolean
+  assetId?: string
+  title?: string
+  warnings: string[]
+  error?: string
 }
 
 export interface CreateSeriesWithStarterInput {
@@ -406,6 +424,8 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
+  /** AI 自由构图：根据自然语言新建 canvas 工作流资产 */
+  generateAiWorkflow: (input: GenerateAiWorkflowInput) => Promise<GenerateAiWorkflowResult>
   listVideoJobs: () => Promise<import('./videoJob').VideoJobRecord[]>
   getVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   cancelVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>

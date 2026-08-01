@@ -17,7 +17,64 @@ export default {
     unnamed: 'Untitled',
     pleaseSelect: 'Select…',
     second: 's',
-    open: 'Open'
+    open: 'Open',
+    close: 'Close'
+  },
+  aiWorkflow: {
+    title: 'One-Click Workflow',
+    shortAction: 'One-Click Workflow',
+    subtitle: 'Pick a template or describe a goal; a new canvas graph will be created',
+    presetsLabel: 'Presets',
+    modelLabel: 'Text model',
+    modelEmpty: 'No text model configured',
+    promptLabel: 'Workflow description',
+    promptPlaceholder:
+      'e.g. Create a game UA video workflow with script, key art, and video generation…',
+    hint: 'Creates a free canvas asset and opens it. Ctrl/⌘ + Enter to generate. A text model must be configured.',
+    generate: 'Generate workflow',
+    generating: 'Generating…',
+    emptyPrompt: 'Enter a workflow description first',
+    needProject: 'Open a project first',
+    needModel: 'Select an available text model first',
+    failed: 'Failed to generate workflow',
+    createdWithWarnings: 'Created (some nodes/edges were skipped)',
+    presets: {
+      gameUaVideo: {
+        title: 'Game UA',
+        desc: 'Script → keyframes → video',
+        prompt:
+          'Create a game UA short-video workflow: text nodes for pitch and VO script, image nodes for character/scene keyframes, then image-to-video for a ~15s vertical ad. Wire nodes in a sensible chain and leave room for human edits.'
+      },
+      characterSheet: {
+        title: 'Character sheet',
+        desc: 'Bio + multi-angle art',
+        prompt:
+          'Create a character-sheet workflow: text for bio and look description, then image nodes for front/side/turnaround or expression variants, plus an upload node for style reference.'
+      },
+      storyboardVideo: {
+        title: 'Storyboard to film',
+        desc: 'Shots to video',
+        prompt:
+          'Create a storyboard-to-film workflow: start from a script or shot list, generate several storyboard frames, image-to-video for key shots, and a note node for edit order.'
+      },
+      productAd: {
+        title: 'Product ad',
+        desc: 'Copy + hero art + short video',
+        prompt:
+          'Create a product-ad workflow: text for selling points, image nodes for hero/product scenes, then a short video with product close-ups; include a product reference upload.'
+      },
+      shortDrama: {
+        title: 'Short drama',
+        desc: 'Multi-scene boards & dialogue',
+        prompt:
+          'Create a short-drama storyboard workflow: text nodes per scene for dialogue and shot notes, storyboard images per scene, video nodes for climax scenes; lay out left-to-right by scene.'
+      },
+      custom: {
+        title: 'Custom',
+        desc: 'Clear and write your own',
+        prompt: ''
+      }
+    }
   },
   app: {
     nav: {
