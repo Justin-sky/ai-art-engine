@@ -336,6 +336,17 @@ export function hitTestEdges(
   return bestId
 }
 
+/** 命中边后判断更靠近哪一端（用于拖线改接） */
+export function nearerEdgeEndpoint(
+  geom: EdgeScreenGeometry,
+  px: number,
+  py: number
+): 'source' | 'target' {
+  const ds = Math.hypot(px - geom.sx, py - geom.sy)
+  const dt = Math.hypot(px - geom.ex, py - geom.ey)
+  return ds <= dt ? 'source' : 'target'
+}
+
 function traceEdge(ctx: CanvasRenderingContext2D, g: EdgeScreenGeometry | TempEdgeScreen): void {
   ctx.beginPath()
   if (g.pathStyle === 'orthogonal' && g.points.length >= 2) {
@@ -352,7 +363,7 @@ function traceEdge(ctx: CanvasRenderingContext2D, g: EdgeScreenGeometry | TempEd
 export function drawGraphEdges(
   ctx: CanvasRenderingContext2D,
   geoms: EdgeScreenGeometry[],
-  tempEdge: TempEdgeScreen | null,
+  tempEdge: TempEdgeScreen | TempEdgeScreen[] | null,
   opts: DrawEdgesOptions
 ): void {
   const { dpr, width, height, offsetX, offsetY, zoom, selectedEdgeIds, flowEdgeIds, colors, reduceEffects } =
@@ -438,13 +449,16 @@ export function drawGraphEdges(
     ctx.lineDashOffset = 0
   }
 
-  // 3) 临时连线（拖拽建边）——隐藏样式下仍显示，便于对准端口
-  if (tempEdge) {
-    traceEdge(ctx, tempEdge)
+  // 3) 临时连线（拖拽建边 / 批量改接）——隐藏样式下仍显示，便于对准端口
+  const tempList = !tempEdge ? [] : Array.isArray(tempEdge) ? tempEdge : [tempEdge]
+  if (tempList.length > 0) {
     ctx.lineWidth = 2 * zoom
     ctx.setLineDash([6 * zoom, 4 * zoom])
     ctx.strokeStyle = colors.temp
-    ctx.stroke()
+    for (const te of tempList) {
+      traceEdge(ctx, te)
+      ctx.stroke()
+    }
     ctx.setLineDash([])
   }
 }
