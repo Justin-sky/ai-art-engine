@@ -23,7 +23,6 @@ import { generateOpenAiCompatibleText } from '../openaiCompat'
 import {
   assertMiniMaxBaseResp,
   createMiniMaxHttpClient,
-  formatMiniMaxError,
   readMiniMaxHttpError,
   type MiniMaxBaseResp
 } from './http'
@@ -237,7 +236,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const { data } = await client.get<{ base_resp?: MiniMaxBaseResp }>('/v1/models')
       assertMiniMaxBaseResp(data?.base_resp, '连接测试')
     } catch (err) {
-      throw new Error(`连接测试失败：${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+      throw new Error(`连接测试失败：${await readMiniMaxHttpError(err)}`)
     }
   },
 
@@ -320,7 +319,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       return { images, model: modelId }
     } catch (err) {
       if (err instanceof Error && /未返回图片|图片生成失败/.test(err.message)) throw err
-      throw new Error(`图片生成失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+      throw new Error(`图片生成失败: ${await readMiniMaxHttpError(err)}`)
     }
   },
 
@@ -354,8 +353,10 @@ export const miniMaxAdapter: ModelProviderAdapter = {
           model: modelId
         }
       } catch (err) {
-        if (err instanceof Error && /海螺 H3|提示词不能为空/.test(err.message)) throw err
-        throw new Error(`提交视频生成失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+        if (err instanceof Error && /海螺 H3|提示词不能为空|提交视频生成失败/.test(err.message)) {
+          throw err
+        }
+        throw new Error(`提交视频生成失败: ${await readMiniMaxHttpError(err)}`)
       }
     }
 
@@ -397,8 +398,10 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      if (err instanceof Error && /海螺|首尾帧|图生视频/.test(err.message)) throw err
-      throw new Error(`提交视频生成失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+      if (err instanceof Error && /海螺|首尾帧|图生视频|提交视频生成失败/.test(err.message)) {
+        throw err
+      }
+      throw new Error(`提交视频生成失败: ${await readMiniMaxHttpError(err)}`)
     }
   },
 
@@ -437,7 +440,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         return { status, progress, error, downloadUrl }
       } catch (err) {
         if (err instanceof Error && err.message.includes('下载地址')) throw err
-        throw new Error(`轮询视频任务失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+        throw new Error(`轮询视频任务失败: ${await readMiniMaxHttpError(err)}`)
       }
     }
 
@@ -469,7 +472,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       return { status, progress, error, downloadUrl }
     } catch (err) {
       if (err instanceof Error && err.message.includes('file_id')) throw err
-      throw new Error(`轮询视频任务失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+      throw new Error(`轮询视频任务失败: ${await readMiniMaxHttpError(err)}`)
     }
   },
 

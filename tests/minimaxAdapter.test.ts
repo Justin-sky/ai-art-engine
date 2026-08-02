@@ -34,7 +34,7 @@ function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInst
   return {
     id: 'mm-1',
     providerKind: 'minimax',
-    label: '海螺 AI',
+    label: 'MinMax',
     apiKey: 'mm-test',
     baseUrl: 'https://api.minimaxi.com',
     enabled: true,

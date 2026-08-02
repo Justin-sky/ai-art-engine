@@ -161,9 +161,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、海螺 AI、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、MinMax、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / 海螺 / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MinMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -231,7 +231,7 @@ export default {
         image:
           'MiniMax 文生图 / 主体参考图生图，调用 /v1/image_generation（image-01 / image-01-live）。参考图走 subject_reference。',
         video:
-          '海螺（MiniMax）视频：H3 走 V2（POST /v2/video_generation，多模态 content，2K，时长 4–15s）；Hailuo 2.3/02 仍走 V1。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
+          'MinMax 视频：H3 走 V2（POST /v2/video_generation，多模态 content，2K，时长 4–15s）；Hailuo 2.3/02 仍走 V1。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
         audio:
           'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。'
       },

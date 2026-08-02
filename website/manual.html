@@ -110,7 +110,7 @@
           <h2>1. 概述与准备</h2>
           <p>
             AIArtEngine 是本地 AI 短视频创作工作台。工程与素材保存在你指定的本机目录；文本 / 图片 / 视频 /
-            声音生成通过你配置的模型提供商完成（OpenRouter、火山方舟、可灵、海螺 AI、通义千问、魔塔等）。
+            声音生成通过你配置的模型提供商完成（OpenRouter、火山方舟、可灵、MinMax、通义千问、魔塔等）。
             可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
           </p>
           <h3>首次使用建议</h3>
@@ -176,7 +176,7 @@
                 </li>
                 <li><strong>可灵</strong>：图片 / 视频（API Key）。</li>
                 <li>
-                  <strong>海螺 AI（MiniMax）</strong>：文本 / 图片 / 海螺视频 / 音色设计（同一 API Key；默认 Base URL
+                  <strong>MinMax</strong>：文本 / 图片 / 视频 / 音色设计（同一 API Key；默认 Base URL
                   <code>https://api.minimaxi.com</code>）。
                 </li>
                 <li><strong>通义千问</strong>：文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等，百炼 API Key）。</li>
@@ -217,7 +217,7 @@
                   >
                 </li>
                 <li>
-                  海螺 AI / MiniMax 接口密钥：
+                  MinMax 接口密钥：
                   <a
                     href="https://platform.minimaxi.com/user-center/basic-information/interface-key"
                     target="_blank"
@@ -246,11 +246,11 @@
               </ul>
             </li>
             <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
-            <li>启用该提供商后，点击「拉取可用模型」（可灵 / 海螺部分模态 / 百炼图视频等为本地静态目录）。</li>
+            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MinMax 部分模态 / 百炼图视频等为本地静态目录）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
               按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
-              <code>speaker_id</code>；可灵仅图片与视频页签；海螺支持文本 / 图片 / 视频 / 音色设计；魔塔仅文本与图片，文生图为异步任务）。
+              <code>speaker_id</code>；可灵仅图片与视频页签；MinMax 支持文本 / 图片 / 视频 / 音色设计；魔塔仅文本与图片，文生图为异步任务）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>

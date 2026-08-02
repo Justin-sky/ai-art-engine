@@ -6,7 +6,7 @@
   <p><b>Local AI short-video creation studio</b></p>
   <p>
     Projects stay on disk · Shot & node-graph workflows<br />
-    OpenRouter · Volcengine Ark · Kling · Hailuo (MiniMax) · Tongyi Qianwen · ModelScope<br />
+    OpenRouter · Volcengine Ark · Kling · MinMax · Tongyi Qianwen · ModelScope<br />
     Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
 
@@ -90,7 +90,7 @@ npm run dist:win | dist:mac | dist:linux
 - **Host assets** — boundary ports outside, full graph inside via Dive  
 - **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`  
 - **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
-- **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, Hailuo / MiniMax, Tongyi Qianwen (DashScope), ModelScope  
+- **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, MinMax, Tongyi Qianwen (DashScope), ModelScope  
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + declarative extensions  
 
@@ -101,7 +101,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | OpenRouter | Text / image / video (aggregated catalog) |
 | Model | Volcengine Ark | Text / Seedream / Seedance / voice design |
 | Model | Kling | Image / video (API Key) |
-| Model | Hailuo (MiniMax) | Text / image / Hailuo video / voice design |
+| Model | MinMax | Text / image / video / voice design |
 | Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video (incl. HappyHorse) |
 | Model | ModelScope | Text / text-to-image (access token) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |

@@ -107,7 +107,7 @@
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    >{{ typeBadgeIcon }}</span>
+    ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14" /></span>
 
     <div
       v-for="(port, index) in inPorts"
@@ -146,6 +146,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import LockIcon from './icons/LockIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import {
   getNodePorts,
   getNodeSize,

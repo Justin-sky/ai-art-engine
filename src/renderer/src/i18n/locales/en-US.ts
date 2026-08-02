@@ -162,9 +162,9 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Hailuo (MiniMax), Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, MinMax, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, Hailuo, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MinMax, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -232,7 +232,7 @@ export default {
         image:
           'MiniMax text-to-image / subject-reference image-to-image via /v1/image_generation (image-01 / image-01-live).',
         video:
-          'Hailuo (MiniMax) video: H3 uses V2 (POST /v2/video_generation, multimodal content, 2K, 4–15s); Hailuo 2.3/02 still use V1. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
+          'MinMax video: H3 uses V2 (POST /v2/video_generation, multimodal content, 2K, 4–15s); Hailuo 2.3/02 still use V1. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
         audio:
           'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.'
       },
