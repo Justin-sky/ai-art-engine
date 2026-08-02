@@ -100,12 +100,27 @@ function formatBytes(n: number): string {
 
 /* ---------- Volcengine TOS ---------- */
 
+/** TOS SDK 的 endpoint 必须是主机名；带 https:// 时预签名会变成 bucket.https://… */
+function tosEndpointHost(endpoint: string): string {
+  return endpoint.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '')
+}
+
+/** 识别因 endpoint 带协议而产生的非法主机名（如 aae-test.https） */
+function isMalformedVirtualHostUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return /\.https?$/i.test(host) || /https?:/i.test(host)
+  } catch {
+    return true
+  }
+}
+
 function createTosClient(tos: VolcengineTosParams): TosClient {
   return new TosClient({
     accessKeyId: tos.accessKeyId.trim(),
     accessKeySecret: tos.accessKeySecret.trim(),
     region: tos.region.trim(),
-    endpoint: tos.endpoint.trim().replace(/\/$/, '')
+    endpoint: tosEndpointHost(tos.endpoint)
   })
 }
 
@@ -115,7 +130,10 @@ function resolveTosPublicUrl(
   objectKey: string
 ): string {
   const custom = tos.publicBaseUrl?.trim().replace(/\/$/, '')
-  if (custom) return `${custom}/${objectKey}`
+  if (custom) {
+    const base = /^https?:\/\//i.test(custom) ? custom : `https://${custom}`
+    return `${base.replace(/\/$/, '')}/${objectKey}`
+  }
 
   const signed = client.getPreSignedUrl({
     bucket: tos.bucket.trim(),
@@ -123,12 +141,12 @@ function resolveTosPublicUrl(
     method: 'GET',
     expires: 60 * 60 * 24
   })
-  if (typeof signed === 'string' && signed.trim()) return signed.trim()
+  if (typeof signed === 'string' && signed.trim() && !isMalformedVirtualHostUrl(signed)) {
+    return signed.trim()
+  }
 
-  const endpointHost = tos.endpoint
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/$/, '')
+  const endpointHost = tosEndpointHost(tos.endpoint)
+  if (!endpointHost) throw new Error('对象存储 TOS endpoint 无效')
   return `https://${tos.bucket.trim()}.${endpointHost}/${objectKey}`
 }
 
