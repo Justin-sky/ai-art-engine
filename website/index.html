@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="AIArtEngine — 本地 AI 短视频创作工作台。分镜、节点图、导演台与成片时间线驱动创作；对接 OpenRouter、火山方舟、可灵、海螺 AI、通义千问、魔塔；对象存储支持火山 TOS / 阿里云 OSS / 腾讯云 COS。开源 · GPL-3.0。"
+      content="AIArtEngine — 本地 AI 短视频创作工作台。一键工作流、宿主资产、分镜、节点图、导演台与成片时间线；对接 OpenRouter、火山方舟、可灵、海螺 AI、通义千问、魔塔；对象存储支持火山 TOS / 阿里云 OSS / 腾讯云 COS。开源 · GPL-3.0。"
     />
     <title>AIArtEngine — 本地 AI 短视频创作工作台</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/" />
@@ -16,7 +16,7 @@
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260724-3" />
+    <link rel="stylesheet" href="styles.css?v=20260802-1" />
   </head>
   <body>
     <div class="scroll-progress" aria-hidden="true"><i></i></div>
@@ -227,19 +227,29 @@
           <li class="reveal">
             <span class="n">01</span>
             <div>
+              <h3>一键工作流</h3>
+              <p>
+                选预设或用一句话描述需求，预览拓扑后创建可复用宿主资产；拖入画布即可接线运行。详见
+                <a href="manual.html#ai-workflow">使用手册 §6</a>。
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.05s">
+            <span class="n">02</span>
+            <div>
               <h3>资产入库</h3>
               <p>图片、视频、音色以 GUID 引用，支持素材包导入导出。</p>
             </div>
           </li>
-          <li class="reveal" style="--d: 0.06s">
-            <span class="n">02</span>
+          <li class="reveal" style="--d: 0.1s">
+            <span class="n">03</span>
             <div>
               <h3>分镜编排</h3>
               <p>镜头参数与构图画布并排，把叙事节奏落到画面。</p>
             </div>
           </li>
-          <li class="reveal" style="--d: 0.12s">
-            <span class="n">03</span>
+          <li class="reveal" style="--d: 0.15s">
+            <span class="n">04</span>
             <div>
               <h3>节点生成</h3>
               <p>
@@ -247,15 +257,15 @@
               </p>
             </div>
           </li>
-          <li class="reveal" style="--d: 0.18s">
-            <span class="n">04</span>
+          <li class="reveal" style="--d: 0.2s">
+            <span class="n">05</span>
             <div>
               <h3>导演台</h3>
               <p>3D 摆姿与机位；截取站位图、录制动作视频，经方形口接到下游生成。</p>
             </div>
           </li>
-          <li class="reveal" style="--d: 0.24s">
-            <span class="n">05</span>
+          <li class="reveal" style="--d: 0.25s">
+            <span class="n">06</span>
             <div>
               <h3>成片时间线</h3>
               <p>导入与节点素材上轨编排，预览选中片段或整轨联播，导出成片。</p>

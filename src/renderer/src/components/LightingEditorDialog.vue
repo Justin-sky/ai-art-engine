@@ -826,6 +826,11 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.preview-col {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
 .view-tabs {
   display: flex;
   gap: 6px;
@@ -850,12 +855,14 @@ onBeforeUnmount(() => {
 
 .sphere-pane {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  align-self: flex-start;
+  width: 100%;
   min-height: 220px;
   aspect-ratio: 1 / 1;
   max-height: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: var(--graph-preview-bg);
   border: 1px solid var(--border);

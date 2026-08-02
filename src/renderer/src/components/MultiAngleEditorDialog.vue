@@ -974,7 +974,7 @@ onBeforeUnmount(() => {
 .sphere-col {
   container-type: size;
   display: grid;
-  place-items: center;
+  place-items: start center;
   min-width: 0;
   min-height: 0;
   height: 100%;
