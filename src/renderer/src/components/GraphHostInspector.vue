@@ -221,7 +221,10 @@ watch(
   async (current) => {
     if (!current) return
     hydrating.value = true
-    displayName.value = current.title ?? ''
+    const assetName = current.assetId
+      ? project.assets.find((a) => a.id === current.assetId)?.name?.trim() || ''
+      : ''
+    displayName.value = current.title?.trim() || assetName
     const iface = resolveNodeHostInterface(current)
     inputs.value = iface.inputs.map((p) => ({ ...p }))
     outputs.value = iface.outputs.map((p) => ({ ...p }))
@@ -234,34 +237,27 @@ watch(
 
 watch([inputs, outputs], () => syncLiveSnapshot(), { deep: true })
 
-async function persistTitle(): Promise<void> {
+function persistTitle(): void {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
   const trimmed = displayName.value.trim()
-  const assetId = current.assetId?.trim()
-  const linked = assetId ? project.assets.find((a) => a.id === assetId) : undefined
-  const prev = linked?.name?.trim() || current.title?.trim() || ''
-  if (!trimmed || trimmed === prev) {
+  const assetName = current.assetId
+    ? project.assets.find((a) => a.id === current.assetId)?.name?.trim() || ''
+    : ''
+  const prev = current.title?.trim() || assetName
+  if (trimmed === prev) {
     displayName.value = prev
     return
   }
-  // 节点标题与宿主资产名/旁挂元数据文件名一并更新
-  graphEditorHosts.updateNode(hid, current.id, {}, trimmed)
-  if (!assetId || !linked) return
-  try {
-    await window.studio.renameAsset(assetId, trimmed)
-    await project.refreshAssets()
-    for (const entry of graphEditorHosts.listLiveEntries()) {
-      for (const n of entry.document.nodes) {
-        if (n.assetId !== assetId || n.id === current.id) continue
-        if (n.params?.assetHost !== true && !n.params?.hostInterfaceSnapshot) continue
-        graphEditorHosts.updateNode(entry.hostId, n.id, {}, trimmed)
-      }
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
+  // 仅改画布节点显示名，不改资产库原名；清空则回退显示资产名
+  graphEditorHosts.updateNode(
+    hid,
+    current.id,
+    {},
+    !trimmed || trimmed === assetName ? '' : trimmed
+  )
+  displayName.value = trimmed || assetName
 }
 
 async function applyInterface(): Promise<void> {

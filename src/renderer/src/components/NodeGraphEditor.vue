@@ -4227,26 +4227,15 @@ function onNodeTitleChange(nodeId: string, title: string): void {
     assetId && isAssetRefNode(node)
       ? project.assets.find((a) => a.id === assetId)
       : undefined
-  const prev = linkedAsset?.name?.trim() || node.title?.trim() || ''
+  // 画布节点显示名与资产库原名解耦；改资产名请走资产浏览器
+  const prev = node.title?.trim() || linkedAsset?.name?.trim() || ''
   if (trimmed === prev) return
-  if (linkedAsset && !trimmed) return
 
   const before = buildGraphJson()
   if (trimmed) node.title = trimmed
   else delete node.title
   scheduleSave()
   recordGraphChange('rename-node', before)
-
-  if (linkedAsset && assetId) {
-    void (async () => {
-      try {
-        await window.studio.renameAsset(assetId, trimmed)
-        await project.refreshAssets()
-      } catch {
-        // 资产改名失败时节点标题可保留，资产库仍为旧名
-      }
-    })()
-  }
 }
 
 function isSelfAssetDrop(asset: Pick<AssetInfo, 'id'>): boolean {

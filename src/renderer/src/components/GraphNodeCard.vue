@@ -945,7 +945,10 @@ const displayTitle = computed(() => {
     const custom = props.node.title?.trim()
     return custom ? `${custom} ${t('asset.deleted')}` : t('asset.deleted')
   }
+  // 资产引用/宿主：节点自定义标题优先，未设置时回退资产库原名（互不改写）
   if (isAssetRef.value) {
+    const custom = props.node.title?.trim()
+    if (custom) return custom
     const assetName = props.asset?.name?.trim()
     if (assetName) return assetName
   }
@@ -1524,7 +1527,7 @@ function onPointerDown(e: PointerEvent): void {
 
 function editableTitleDraft(): string {
   if (isAssetRef.value) {
-    return props.asset?.name?.trim() || props.node.title?.trim() || displayTitle.value
+    return props.node.title?.trim() || props.asset?.name?.trim() || displayTitle.value
   }
   return props.node.title?.trim() || displayTitle.value
 }
@@ -1544,10 +1547,9 @@ function commitTitleEdit(): void {
   editingTitle.value = false
   const next = titleDraft.value.trim()
   const prev = isAssetRef.value
-    ? props.asset?.name?.trim() || props.node.title?.trim() || ''
+    ? props.node.title?.trim() || props.asset?.name?.trim() || ''
     : (props.node.title?.trim() ?? '')
   if (next === prev) return
-  if (isAssetRef.value && !next) return
   emit('titleChange', props.node.id, next)
 }
 
