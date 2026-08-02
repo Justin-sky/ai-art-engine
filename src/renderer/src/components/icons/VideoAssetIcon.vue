@@ -8,6 +8,7 @@ const props = withDefaults(
   { size: 18 }
 )
 
+/** 相对传入 size 再放大，贴齐 emoji（🔊）视觉占位 */
 const px = computed(() => {
   const n = typeof props.size === 'number' ? props.size : Number.parseFloat(String(props.size))
   const base = Number.isFinite(n) && n > 0 ? n : 18
@@ -16,36 +17,25 @@ const px = computed(() => {
 </script>
 
 <template>
-  <!-- 左上裁切角（两端十字）+ 右下四角星；略放大以贴齐 emoji -->
+  <!-- Windows 风格：紫色圆角方块 + 白色播放三角 -->
   <svg
-    class="free-canvas-icon"
+    class="video-asset-icon"
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
     :width="px"
     :height="px"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.65"
-    stroke-linecap="square"
     aria-hidden="true"
     focusable="false"
   >
-    <path d="M5.5 1.8v3.6M3.7 3.6h3.6" />
-    <path d="M16.2 1.8v3.6M14.4 3.6h3.6" />
-    <path d="M5.5 3.6v11.2M5.5 3.6h10.7" />
-    <path
-      fill="currentColor"
-      stroke="none"
-      d="M15.2 13.6 17.4 10.4l2.2 3.2 3.2 2.2-3.2 2.2-2.2 3.2-2.2-3.2-3.2-2.2z"
-    />
+    <rect x="0" y="0" width="24" height="24" rx="6" fill="#8B5CF6" />
+    <path d="M8.6 6.6v10.8L18 12 8.6 6.6z" fill="#fff" />
   </svg>
 </template>
 
 <style scoped>
-.free-canvas-icon {
+.video-asset-icon {
   display: block;
   flex: none;
-  color: var(--text, currentColor);
   pointer-events: none;
 }
 </style>

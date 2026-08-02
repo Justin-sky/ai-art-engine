@@ -1,17 +1,26 @@
 <template>
   <FreeCanvasIcon v-if="isFreeCanvas" :size="size" />
-  <span v-else class="emoji-icon" aria-hidden="true">{{ icon }}</span>
+  <VideoAssetIcon v-else-if="isVideo" :size="size" />
+  <span
+    v-else
+    class="emoji-icon"
+    :class="{ 'emoji-icon-lg': isEnlargedEmoji }"
+    :style="emojiStyle"
+    aria-hidden="true"
+    >{{ icon }}</span
+  >
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FREE_CANVAS_ICON } from '@shared/domain'
+import { ASSET_TYPE_ICONS, FREE_CANVAS_ICON, VIDEO_ASSET_ICON } from '@shared/domain'
 import FreeCanvasIcon from './icons/FreeCanvasIcon.vue'
+import VideoAssetIcon from './icons/VideoAssetIcon.vue'
 
 const props = withDefaults(
   defineProps<{
     icon?: string
-    /** 工具栏条目 id；freeCanvas 优先走专用 SVG */
+    /** 工具栏条目 id；freeCanvas / video 优先走专用 SVG */
     itemId?: string
     size?: number | string
   }>(),
@@ -19,10 +28,32 @@ const props = withDefaults(
 )
 
 const FREE_CANVAS_ICON_KEYS = new Set([FREE_CANVAS_ICON, `icon:${FREE_CANVAS_ICON}`, '⬜'])
+const VIDEO_ICON_KEYS = new Set([VIDEO_ASSET_ICON, `icon:${VIDEO_ASSET_ICON}`, '🎞️'])
+const MOTION_ICON_KEYS = new Set([ASSET_TYPE_ICONS.motion, '🎬'])
+const WORLD_ICON_KEYS = new Set([ASSET_TYPE_ICONS.world, '🤺'])
 
 const isFreeCanvas = computed(
   () => props.itemId === 'freeCanvas' || FREE_CANVAS_ICON_KEYS.has(props.icon || '')
 )
+
+const isVideo = computed(
+  () => props.itemId === 'video' || VIDEO_ICON_KEYS.has(props.icon || '')
+)
+
+const isEnlargedEmoji = computed(
+  () =>
+    props.itemId === 'motion' ||
+    props.itemId === 'world' ||
+    MOTION_ICON_KEYS.has(props.icon || '') ||
+    WORLD_ICON_KEYS.has(props.icon || '')
+)
+
+const emojiStyle = computed(() => {
+  if (!isEnlargedEmoji.value) return undefined
+  const n = typeof props.size === 'number' ? props.size : Number.parseFloat(String(props.size))
+  const base = Number.isFinite(n) && n > 0 ? n : 18
+  return { fontSize: `${Math.round(base * 1.2 * 10) / 10}px` }
+})
 </script>
 
 <style scoped>
@@ -31,5 +62,10 @@ const isFreeCanvas = computed(
   align-items: center;
   justify-content: center;
   line-height: 1;
+}
+
+.emoji-icon-lg {
+  transform: scale(1.08);
+  transform-origin: center;
 }
 </style>

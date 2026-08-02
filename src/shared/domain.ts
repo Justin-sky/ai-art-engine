@@ -619,9 +619,12 @@ export function assetTypeLabel(type: AssetType, language?: string | null): strin
   return (isEnglishLanguage(language) ? ASSET_TYPE_LABELS : ASSET_TYPE_LABELS_ZH)[type]
 }
 
+/** 视频资产图标 key（由 WorkspaceItemIcon / VideoAssetIcon 渲染，Windows 紫底三角） */
+export const VIDEO_ASSET_ICON = 'video-file'
+
 export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   image: '🖼️',
-  video: '🎞️',
+  video: VIDEO_ASSET_ICON,
   voice: '🔊',
   motion: '🎬',
   model: '🧊',

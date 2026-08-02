@@ -20,6 +20,7 @@ import {
 } from '../features/media/assetUrlCache'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 const props = defineProps<{
   asset: AssetInfo
@@ -419,7 +420,9 @@ onBeforeUnmount(() => {
 
     <div v-else-if="kind === 'voice'" class="av-wrap audio">
       <div class="audio-stage">
-        <span class="audio-icon" aria-hidden="true">{{ typeIcon }}</span>
+        <span class="audio-icon" aria-hidden="true">
+          <WorkspaceItemIcon :icon="typeIcon" :size="28" />
+        </span>
         <audio
           v-if="previewUrl"
           ref="audioEl"

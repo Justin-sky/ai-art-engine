@@ -45,7 +45,9 @@
           aria-haspopup="listbox"
           @click.stop="toggleTypeFilterMenu"
         >
-          <span class="type-filter-icon" aria-hidden="true">{{ typeFilterIcon }}</span>
+          <span class="type-filter-icon" aria-hidden="true">
+            <WorkspaceItemIcon :icon="typeFilterIcon" :size="14" />
+          </span>
           <span class="type-filter-label">{{ typeFilterShortLabel }}</span>
           <span class="type-filter-caret" aria-hidden="true">▾</span>
         </button>
@@ -74,7 +76,9 @@
             :class="{ selected: typeFilter === type }"
             @click="selectTypeFilter(type)"
           >
-            <span class="type-filter-item-icon" aria-hidden="true">{{ ASSET_TYPE_ICONS[type] }}</span>
+            <span class="type-filter-item-icon" aria-hidden="true">
+              <WorkspaceItemIcon :icon="ASSET_TYPE_ICONS[type]" :size="14" />
+            </span>
             <span>{{ assetTypeLabel(type) }}</span>
           </button>
         </div>
@@ -857,9 +861,8 @@ const filterTypes: AssetType[] = [
 ]
 
 function filterTypeOptionLabel(type: AssetType | 'all'): string {
-  if (type === 'all') return `🔍 ${t('common.all')}`
-  const icon = ASSET_TYPE_ICONS[type] ?? '•'
-  return `${icon} ${assetTypeLabel(type)}`
+  if (type === 'all') return t('common.all')
+  return assetTypeLabel(type)
 }
 
 const typeFilterIcon = computed(() =>

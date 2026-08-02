@@ -442,7 +442,7 @@
           type="button"
           @click="addNodeFromMenu(item.typeId)"
         >
-          <span class="ctx-icon">{{ item.icon }}</span>
+          <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
           <span class="ctx-label">{{ item.label }}</span>
           <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
         </button>
@@ -459,7 +459,7 @@
             :class="{ open: ctxSubmenu === group.id, pinned: ctxSubmenuPinned && ctxSubmenu === group.id }"
             @click="toggleCtxSubmenu(group.id)"
           >
-            <span class="ctx-icon">{{ group.icon }}</span>
+            <span class="ctx-icon"><WorkspaceItemIcon :icon="group.icon" :size="14" /></span>
             <span class="ctx-label">{{ group.label }}</span>
             <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
           </button>
@@ -477,7 +477,7 @@
               type="button"
               @click="addNodeFromMenu(item.typeId)"
             >
-              <span class="ctx-icon">{{ item.icon }}</span>
+              <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
               <span class="ctx-label">{{ item.label }}</span>
               <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
             </button>
@@ -497,7 +497,7 @@
                 }"
                 @click="toggleCtxNestedSubmenu(nested.id)"
               >
-                <span class="ctx-icon">{{ nested.icon }}</span>
+                <span class="ctx-icon"><WorkspaceItemIcon :icon="nested.icon" :size="14" /></span>
                 <span class="ctx-label">{{ nested.label }}</span>
                 <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
               </button>
@@ -515,7 +515,7 @@
                   type="button"
                   @click="addNodeFromMenu(item.typeId)"
                 >
-                  <span class="ctx-icon">{{ item.icon }}</span>
+                  <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
                   <span class="ctx-label">{{ item.label }}</span>
                   <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
                 </button>
@@ -567,6 +567,7 @@ import {
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import { playFlyToGraphTasks } from '../features/graph/ui/flyToGraphTasks'
 import { useProjectStore } from '../stores/project'
 import {

@@ -1,4 +1,7 @@
 import type { AssetType } from '../domain'
+
+/** 与 domain.VIDEO_ASSET_ICON 同值；勿从 domain 导入（domain→graph→builtins 循环会 TDZ） */
+const VIDEO_ASSET_ICON = 'video-file'
 import {
   bindEnsureBuiltinNodeTypes,
   builtinRegistrationState
@@ -138,7 +141,7 @@ const ASSET_META: Array<{
   {
     type: 'video',
     label: 'Video',
-    icon: '🎞️',
+    icon: VIDEO_ASSET_ICON,
     outType: GraphPortType.video,
     addable: true,
     weight: 0.85
@@ -530,7 +533,7 @@ function specializedOutputDef(
 
 export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
-  outputDef('video', 'Video output', '🎞️'),
+  outputDef('video', 'Video output', VIDEO_ASSET_ICON),
   outputDef('image', 'Image output', '🖼️'),
   outputDef('voice', 'Audio output', '🔊'),
   outputDef('text', 'Text output', '📝'),
@@ -811,7 +814,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'shotEntities.select',
     category: 'note',
     label: 'Select shot entity',
-    icon: '🎞️',
+    icon: VIDEO_ASSET_ICON,
     defaultTitle: 'Select shot entity',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },

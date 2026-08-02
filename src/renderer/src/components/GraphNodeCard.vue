@@ -106,7 +106,7 @@
         class="media-fallback preview-icon-fallback"
         :title="scriptNodePreviewTitle"
       >
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ scriptNodePreviewTitle }}</span>
       </div>
 
@@ -193,7 +193,7 @@
       />
 
       <div v-else-if="previewKind === 'voice'" class="media-fallback audio">
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span v-if="!showMediaTransport || !previewUrl || mediaError" class="hint">{{
           previewHint
         }}</span>
@@ -215,7 +215,7 @@
       </div>
 
       <div v-else class="media-fallback">
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ previewHint }}</span>
       </div>
 
@@ -370,6 +370,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import LockIcon from './icons/LockIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
