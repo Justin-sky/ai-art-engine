@@ -32,6 +32,7 @@ describe('graph policy', () => {
         'screenplayAsset',
         'scriptAsset',
         'shotWorkflow',
+        'subgraphAsset',
         'visual',
         'workflow',
         'worldAsset'
