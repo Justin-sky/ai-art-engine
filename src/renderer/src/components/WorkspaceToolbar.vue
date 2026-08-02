@@ -96,12 +96,13 @@ async function createFreeCanvas(): Promise<void> {
     return
   }
   if (props.deferSave) {
-    createDraftAndOpen('canvas', { name })
+    createDraftAndOpen('canvas', { name, genParams: { canvasKind: 'free' } })
     return
   }
   await createAsset('canvas', props.folderId ?? null, {
     openEditor: true,
-    name
+    name,
+    genParams: { canvasKind: 'free' }
   })
 }
 

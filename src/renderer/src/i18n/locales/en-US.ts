@@ -453,6 +453,7 @@ export default {
       screenplay: 'Screenplay',
       script: 'Shot',
       canvas: 'Series',
+      freeCanvas: 'Free Canvas',
       world: 'World Elements',
       narrative: 'Narrative Units',
       subgraph: 'Host Asset'
@@ -520,6 +521,8 @@ export default {
       resizeFolderPane: 'Drag to resize folder pane',
       viewSizeHint: 'Display size (minimum shows names only)',
       dropHint: 'Drop images, videos, voice, or .aipackage files here to import',
+      searchEmpty: 'No matching assets or folders',
+      clearSearch: 'Clear search',
       dropRelease: 'Release to import',
       context: {
         openEditor: 'Open editor',

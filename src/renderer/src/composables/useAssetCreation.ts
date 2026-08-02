@@ -15,12 +15,13 @@ export function useAssetCreation() {
   async function createAsset(
     type: AssetType,
     folderId: string | null = null,
-    options?: { openEditor?: boolean; name?: string }
+    options?: { openEditor?: boolean; name?: string; genParams?: Record<string, unknown> }
   ): Promise<AssetInfo> {
     const asset = await window.studio.createAsset({
       type,
       folderId,
-      name: options?.name ?? assetCreateName(type)
+      name: options?.name ?? assetCreateName(type),
+      ...(options?.genParams ? { genParams: options.genParams } : {})
     })
     await project.refreshAssets()
     if (isStoryboardScript(type)) {

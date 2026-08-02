@@ -39,7 +39,9 @@
               class="recent-item"
               @click="openAsset(asset)"
             >
-              <span class="recent-icon" aria-hidden="true">{{ assetDisplayIcon(asset) }}</span>
+              <span class="recent-icon" aria-hidden="true">
+                <WorkspaceItemIcon :icon="assetDisplayIcon(asset)" :size="18" />
+              </span>
               <span class="recent-meta">
                 <span class="recent-name">{{ asset.name }}</span>
                 <span class="recent-type">{{ recentTypeLabel(asset) }}</span>
@@ -55,7 +57,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { assetDisplayIcon, isAnimationModelAsset, type AssetInfo } from '@shared/domain'
+import {
+  assetDisplayIcon,
+  isAnimationModelAsset,
+  isFreeCanvasAsset,
+  type AssetInfo
+} from '@shared/domain'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
@@ -89,6 +96,7 @@ const recentAssets = computed(() => {
 
 function recentTypeLabel(asset: AssetInfo): string {
   if (isAnimationModelAsset(asset)) return t('asset.type.modelAnimation')
+  if (isFreeCanvasAsset(asset)) return t('asset.type.freeCanvas')
   return assetTypeLabel(asset.type)
 }
 
@@ -136,7 +144,7 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
         placeholder: t('asset.create.freeCanvasNamePlaceholder')
       })
       if (!name) return
-      createDraftAndOpen('canvas', { name })
+      createDraftAndOpen('canvas', { name, genParams: { canvasKind: 'free' } })
       return
     }
     const title = toolbarCreateLabel(item.id, item.assetType)

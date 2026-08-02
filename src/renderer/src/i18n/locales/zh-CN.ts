@@ -451,6 +451,7 @@ export default {
       screenplay: '剧本',
       script: '分镜',
       canvas: '剧集',
+      freeCanvas: '自由画布',
       world: '世界元素',
       narrative: '叙事单元',
       subgraph: '宿主资产'
@@ -516,6 +517,8 @@ export default {
       resizeFolderPane: '拖动调整目录宽度',
       viewSizeHint: '显示大小（最小仅名称）',
       dropHint: '将图片、视频、声音或 .aipackage 拖入此处导入',
+      searchEmpty: '未找到匹配的资产或文件夹',
+      clearSearch: '清空搜索',
       dropRelease: '松开以导入',
       context: {
         openEditor: '打开编辑器',

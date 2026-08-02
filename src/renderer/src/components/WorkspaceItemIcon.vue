@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { FREE_CANVAS_ICON } from '@shared/domain'
 import FreeCanvasIcon from './icons/FreeCanvasIcon.vue'
 
 const props = withDefaults(
@@ -17,7 +18,7 @@ const props = withDefaults(
   { size: 18 }
 )
 
-const FREE_CANVAS_ICON_KEYS = new Set(['free-canvas', 'icon:free-canvas', '⬜'])
+const FREE_CANVAS_ICON_KEYS = new Set([FREE_CANVAS_ICON, `icon:${FREE_CANVAS_ICON}`, '⬜'])
 
 const isFreeCanvas = computed(
   () => props.itemId === 'freeCanvas' || FREE_CANVAS_ICON_KEYS.has(props.icon || '')

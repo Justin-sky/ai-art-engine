@@ -388,10 +388,17 @@ class ProjectService {
         graphJson: createDefaultScopedGraph('scriptAsset', 'script')
       }
     }
-    if (input.type === 'canvas' && !asset.genParams?.graphJson) {
-      asset.genParams = {
-        ...(asset.genParams ?? {}),
-        graphJson: createDefaultScopedGraph('canvasAsset', 'canvas')
+    if (input.type === 'canvas') {
+      if (!asset.genParams?.graphJson) {
+        asset.genParams = {
+          ...(asset.genParams ?? {}),
+          graphJson: createDefaultScopedGraph('canvasAsset', 'canvas')
+        }
+      }
+      // 未显式标记时：空白 createAsset 视为自由画布；剧集起步会写入 canvasKind: 'series'
+      const kind = asset.genParams?.canvasKind
+      if (kind !== 'free' && kind !== 'series') {
+        asset.genParams = { ...(asset.genParams ?? {}), canvasKind: 'free' }
       }
     }
     if (input.type === 'world' && !asset.genParams?.graphJson) {
@@ -484,6 +491,7 @@ class ProjectService {
       folderId: parentFolderId,
       name: seriesName,
       genParams: {
+        canvasKind: 'series',
         graphJson: buildSeriesStarterGraph({
           screenplay: children.screenplay,
           world: children.world,
