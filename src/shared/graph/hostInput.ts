@@ -322,7 +322,7 @@ function slotPreviewFromValue(
   return {}
 }
 
-export function graphValueHasPayload(value: GraphValue | undefined): boolean {
+export function graphValueHasPayload(value: GraphValue | undefined): value is GraphValue {
   if (!value) return false
   if (value.kind === 'text') {
     return !!value.text.trim() || !!value.relativePath?.trim()

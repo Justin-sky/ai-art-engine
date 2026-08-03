@@ -81,7 +81,7 @@ export function wireDanglingOutsToBoundaryOutputs(
         ? 'asset.video'
         : port.dataType === 'image'
           ? 'asset.image'
-          : port.dataType === 'voice' || port.dataType === 'audio'
+          : port.dataType === 'voice'
             ? 'asset.voice'
             : null
 
