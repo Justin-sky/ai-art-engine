@@ -399,19 +399,23 @@ export interface NodeExecuteContext {
    */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
   /**
-   * 生成分镜图：收集各镜 visual 图片输出节点已有结果，写回 genRefs（不级联跑画面图）。
+   * 生成分镜图：收集各镜 visual 图片输出；`cookBatch` 为 true 时先入队批跑画面子图。
    */
-  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+  collectScriptShotImages?: (
+    signal?: AbortSignal,
+    options?: { cookBatch?: boolean }
+  ) => Promise<{
     images: GraphImageItem[]
     aggregateJson: string
     entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
   /**
-   * 生成分镜视频：收集各镜子图全部视频生成节点已有结果，写回 genRefs，返回 videoEntities。
+   * 生成分镜视频：收集各镜子图视频结果；`cookBatch` 为 true 时先入队批跑 shotWorkflow。
    */
   collectScriptShotVideos?: (
     signal?: AbortSignal,
     options?: {
+      cookBatch?: boolean
       /** 刚从 in-entities 解析的最新分镜实体表；物化边界输入时优先于落盘缓存 */
       shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
     }
@@ -420,9 +424,12 @@ export interface NodeExecuteContext {
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>
   /**
-   * 世界元素编辑：收集四类 elementWorkflow 子图已完成输出节点实体（不级联跑子图生成）。
+   * 世界元素编辑：收集四类 elementWorkflow 已完成输出；`cookBatch` 为 true 时先入队批跑。
    */
-  collectWorldElementOutputs?: (signal?: AbortSignal) => Promise<{
+  collectWorldElementOutputs?: (
+    signal?: AbortSignal,
+    options?: { cookBatch?: boolean }
+  ) => Promise<{
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
   /**
@@ -458,6 +465,11 @@ export interface NodeExecuteContext {
    * 未设置时由 runner 默认 true；Cook 子图路径会设为 false。
    */
   hostInnerSkipCompleted?: boolean
+  /**
+   * 批量子图编排节点（世界元素 / 分镜图 / 分镜视频）是否入队 cook。
+   * 与 cookHostInnerGraph 同默认：onlyTarget 时 false，其余 true。
+   */
+  cookBatchSubgraphs?: boolean
 }
 
 /** 宿主内图已准备好的执行包（输入槽已注入） */
@@ -522,8 +534,8 @@ export interface GraphRunOptions {
    */
   skipCompletedNodes?: boolean
   /**
-   * 是否 cook 宿主内图。
-   * 默认：`onlyTargetNode` 时为 false（复用缓存，避免误点父节点重跑子图），
+   * 是否 cook 嵌套子图（宿主内图 + 世界元素/分镜图/分镜视频批量子图）。
+   * 默认：`onlyTargetNode` 时为 false（复用缓存 / 只收集已有结果），
    * 其余运行为 true。圆形菜单「Cook 子图」显式传 true。
    */
   cookHostInnerGraph?: boolean

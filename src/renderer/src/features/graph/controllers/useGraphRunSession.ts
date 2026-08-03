@@ -155,24 +155,31 @@ export interface GraphRunSessionOptions {
   resolveShotSplitTableJson?: () => string | null
   /** 生成分镜图 / 视频节点执行时：导入上游拆分 JSON 到分镜列表 */
   importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
-  /** 生成分镜图：收集各镜 visual 图片输出已有结果并写回 genRefs */
-  collectScriptShotImages?: (signal?: AbortSignal) => Promise<{
+  /** 生成分镜图：收集各镜 visual 结果；cookBatch 时入队批跑画面子图 */
+  collectScriptShotImages?: (
+    signal?: AbortSignal,
+    options?: { cookBatch?: boolean }
+  ) => Promise<{
     images: import('@shared/graph').GraphImageItem[]
     aggregateJson: string
     entities: Array<{ id: string; name: string; imageUrls: string[] }>
   } | null>
-  /** 生成分镜视频：收集各镜子图视频生成节点已有结果并写回 genRefs */
+  /** 生成分镜视频：收集各镜子图视频结果；cookBatch 时入队批跑 shotWorkflow */
   collectScriptShotVideos?: (
     signal?: AbortSignal,
     options?: {
+      cookBatch?: boolean
       shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
     }
   ) => Promise<{
     videos: import('@shared/graph').GraphVideoItem[]
     entities: Array<{ id: string; name: string; videoUrls: string[] }>
   } | null>
-  /** 世界元素编辑：收集四类子图已完成输出节点实体 */
-  collectWorldElementOutputs?: (signal?: AbortSignal) => Promise<{
+  /** 世界元素编辑：收集四类子图输出；cookBatch 时入队批跑元素子图 */
+  collectWorldElementOutputs?: (
+    signal?: AbortSignal,
+    options?: { cookBatch?: boolean }
+  ) => Promise<{
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
   /** 叙事单元生成：收集各单元子图「叙事输出」已有文本 */
@@ -754,7 +761,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     })
   }
 
-  /** 仅 cook 当前宿主内图（圆形菜单「Cook 子图」） */
+  /** 仅 cook 当前节点嵌套子图（宿主内图 / 批量子图编排；圆形菜单「Cook 子图」） */
   async function runHostCook(nodeId: string): Promise<GraphRunResult | null> {
     return executeRun({
       targetNodeId: nodeId,

@@ -1681,7 +1681,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     inspectorId: 'studio.graph.worldGen',
     card: 'media',
     contributeToGeneration: false,
-    /** 同步目录后收集四类子图已完成输出节点实体；不级联跑元素生成 */
+    /** 同步目录后收集实体；批跑元素子图由 cookBatchSubgraphs / Cook 子图控制 */
     execute: executeWorldGenNode
   },
   {

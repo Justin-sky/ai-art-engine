@@ -1438,7 +1438,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           await applyShotSplitJson(scriptId, jsonText)
         },
-        collectScriptShotImages: async (signal) => {
+        collectScriptShotImages: async (signal, options) => {
           if (task.target.kind !== 'asset') return null
           const scriptId = task.target.assetId
           const project = useProjectStore()
@@ -1456,13 +1456,15 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             kind: 'visual',
             signal
           })
-          const batch = enqueueScriptShotBatch({
-            scriptAssetId: scriptId,
-            shots,
-            kind: 'visual',
-            onlyMissing: true
-          })
-          await waitForTaskIds(batch.taskIds)
+          if (options?.cookBatch) {
+            const batch = enqueueScriptShotBatch({
+              scriptAssetId: scriptId,
+              shots,
+              kind: 'visual',
+              onlyMissing: true
+            })
+            await waitForTaskIds(batch.taskIds)
+          }
           return collectScriptShotImages({ scriptAssetId: scriptId, shots, signal })
         },
         collectScriptShotVideos: async (signal, options) => {
@@ -1484,13 +1486,15 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             signal,
             shotEntities: options?.shotEntities
           })
-          const batch = enqueueScriptShotBatch({
-            scriptAssetId: scriptId,
-            shots,
-            kind: 'shotWorkflow',
-            onlyMissing: true
-          })
-          await waitForTaskIds(batch.taskIds)
+          if (options?.cookBatch) {
+            const batch = enqueueScriptShotBatch({
+              scriptAssetId: scriptId,
+              shots,
+              kind: 'shotWorkflow',
+              onlyMissing: true
+            })
+            await waitForTaskIds(batch.taskIds)
+          }
           return collectScriptShotVideos({ scriptAssetId: scriptId, shots, signal })
         },
         resolveNarrativeCatalogJson: () => {
@@ -1504,22 +1508,26 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (task.target.kind !== 'asset') return
           await applyNarrativeCatalog(task.target.assetId, jsonText)
         },
-        collectWorldElementOutputs: async (signal) => {
+        collectWorldElementOutputs: async (signal, options) => {
           if (task.target.kind !== 'asset') return null
           const worldId = task.target.assetId
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
             if (draft?.type !== 'world') return null
-            // 锁定有图：soft-collect；缺图补跑；未锁定有图：重新 cook 后再进实体列表
-            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
-            await waitForTaskIds(batch.taskIds)
+            // Cook / 整链：缺图补跑后再收集；执行当前只收集已有结果
+            if (options?.cookBatch) {
+              const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+              await waitForTaskIds(batch.taskIds)
+            }
             return collectWorldElementOutputs({ worldAssetId: worldId, signal })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === worldId)
           if (asset?.type !== 'world') return null
-          const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
-          await waitForTaskIds(batch.taskIds)
+          if (options?.cookBatch) {
+            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+            await waitForTaskIds(batch.taskIds)
+          }
           return collectWorldElementOutputs({ worldAssetId: worldId, signal })
         },
         runHostInnerGraph

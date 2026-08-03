@@ -171,7 +171,7 @@ function readElementWorkflowDoc(
 
 /**
  * 从世界资产四类 elementWorkflow 子图收集已完成边界输出的实体结果。
- * 调用方应先 enqueue 并等 writeBack 完成（见 graphTasks.waitForTaskIds）。
+ * Cook / 整链时调用方应先 enqueue 并等 writeBack（见 cookBatch）；执行当前可直接收集。
  * 只收集实体列表，不回写 worldElementGraphs（避免用旧快照冲掉刚烹好的子图）。
  */
 export async function collectWorldElementOutputs(input: {

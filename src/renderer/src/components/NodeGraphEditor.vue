@@ -644,6 +644,7 @@ import {
   isDirectorProcessingNode,
   isProcessingAssetNode,
   isAssetHostNode,
+  isBatchSubgraphCookNode,
   isAssetRefNode,
   isAssetRefInputHostType,
   encapsulateSelection,
@@ -1858,7 +1859,7 @@ const {
     if (!scriptId) return
     await applyShotSplitJson(scriptId, jsonText)
   },
-  collectScriptShotImages: async (signal) => {
+  collectScriptShotImages: async (signal, options) => {
     if (graphScope.value !== 'scriptAsset') return null
     const scriptId = props.assetId ?? scriptAssetIdRef.value
     if (!scriptId) return null
@@ -1872,13 +1873,15 @@ const {
       kind: 'visual',
       signal
     })
-    const batch = taskStore.enqueueScriptShotBatch({
-      scriptAssetId: scriptId,
-      shots,
-      kind: 'visual',
-      onlyMissing: true
-    })
-    await taskStore.waitForTaskIds(batch.taskIds)
+    if (options?.cookBatch) {
+      const batch = taskStore.enqueueScriptShotBatch({
+        scriptAssetId: scriptId,
+        shots,
+        kind: 'visual',
+        onlyMissing: true
+      })
+      await taskStore.waitForTaskIds(batch.taskIds)
+    }
     return collectScriptShotImages({
       scriptAssetId: scriptId,
       shots,
@@ -1900,29 +1903,33 @@ const {
       signal,
       shotEntities: options?.shotEntities
     })
-    const batch = taskStore.enqueueScriptShotBatch({
-      scriptAssetId: scriptId,
-      shots,
-      kind: 'shotWorkflow',
-      onlyMissing: true
-    })
-    await taskStore.waitForTaskIds(batch.taskIds)
+    if (options?.cookBatch) {
+      const batch = taskStore.enqueueScriptShotBatch({
+        scriptAssetId: scriptId,
+        shots,
+        kind: 'shotWorkflow',
+        onlyMissing: true
+      })
+      await taskStore.waitForTaskIds(batch.taskIds)
+    }
     return collectScriptShotVideos({
       scriptAssetId: scriptId,
       shots,
       signal
     })
   },
-  collectWorldElementOutputs: async (signal) => {
+  collectWorldElementOutputs: async (signal, options) => {
     if (graphScope.value !== 'worldAsset') return null
     const worldId = props.assetId
     if (!worldId) return null
-    // 先跑齐四类元素子图的全部生成链，再收集边界输出
-    const batch = taskStore.enqueueWorldElementBatch({
-      worldAssetId: worldId,
-      onlyMissing: false
-    })
-    await taskStore.waitForTaskIds(batch.taskIds)
+    // Cook 子图 / 整链：先跑齐四类元素子图，再收集；执行当前只收集已有结果
+    if (options?.cookBatch) {
+      const batch = taskStore.enqueueWorldElementBatch({
+        worldAssetId: worldId,
+        onlyMissing: false
+      })
+      await taskStore.waitForTaskIds(batch.taskIds)
+    }
     return collectWorldElementOutputs({
       worldAssetId: worldId,
       signal
@@ -2164,8 +2171,12 @@ const radialMenuItems = computed((): RadialMenuItem[] => {
       icon: (toolbarCurrentIsRerun.value ? 'replay' : 'play') as 'replay' | 'play'
     }
   ]
-  // 宿主：显式 Cook 子图；节点卡「执行当前」默认只复用缓存
-  if (toolbarSelectedNode.value && isAssetHostNode(toolbarSelectedNode.value)) {
+  // 宿主 / 批量子图编排：显式 Cook 子图；「执行当前」默认不入队嵌套子图
+  if (
+    toolbarSelectedNode.value &&
+    (isAssetHostNode(toolbarSelectedNode.value) ||
+      isBatchSubgraphCookNode(toolbarSelectedNode.value))
+  ) {
     items.push({
       id: 'cook-host',
       label: t('graph.radial.cookSubgraph'),

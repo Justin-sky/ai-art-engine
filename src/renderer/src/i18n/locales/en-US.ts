@@ -2330,16 +2330,16 @@ export default {
         hint: 'Double-click to open the shot table and fill it from the upstream split. Running outputs the current shot list, including bound characters / scenes / props / weapons.'
       },
       shotImageGen: {
-        hint: 'Running this node collects existing shot visuals.'
+        hint: 'Run current collects existing shot visuals; use radial Cook subgraph to batch-run visual graphs.'
       },
       shotVideoGen: {
-        hint: 'Running this node collects existing shot videos.'
+        hint: 'Run current collects existing shot videos; use radial Cook subgraph to batch-run shot workflows.'
       },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },
       worldGen: {
-        hint: 'Running this node collects existing element images.'
+        hint: 'Run current collects existing element images; use radial Cook subgraph to batch-run element graphs.'
       },
       narrativeTable: {
         hint: 'Double-click to open the narrative unit table. Run the node to import catalog JSON and preview the out port here.'

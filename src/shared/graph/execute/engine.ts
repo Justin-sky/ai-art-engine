@@ -467,6 +467,8 @@ async function executeOneNode(
     importNarrativeCatalogJson: options.importNarrativeCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,
     cookAssetIdStack: options.cookAssetIdStack,
+    // onlyTarget 默认不批跑嵌套子图；Cook 子图 / 上游链运行允许
+    cookBatchSubgraphs: options.cookHostInnerGraph ?? options.onlyTargetNode !== true,
     // 显式 Cook 子图：内图整链重跑，不跳过空/过期 done
     hostInnerSkipCompleted:
       options.hostInnerSkipCompleted ??

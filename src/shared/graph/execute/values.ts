@@ -3182,7 +3182,8 @@ async function importShotSplitFromCatalogInput(
 
 /**
  * 生成分镜图：有上游拆分/表格 JSON 时写入分镜列表；
- * 再从各镜画面图的图片输出节点收集已有结果，写回 genRefs，输出 shotEntities（不级联跑 visual）。
+ * 再收集各镜 visual 结果写回 genRefs，输出 shotEntities。
+ * 是否入队批跑画面子图由 ctx.cookBatchSubgraphs 决定（Cook 子图 / 整链为 true）。
  */
 export async function executeShotImageGenNode(
   ctx: NodeExecuteContext
@@ -3190,7 +3191,9 @@ export async function executeShotImageGenNode(
   const first = ctx.inputs.in?.[0] ?? Object.values(ctx.inputs).flat()[0]
   await importShotSplitFromCatalogInput(ctx, first)
 
-  const collected = await ctx.collectScriptShotImages?.(ctx.signal)
+  const collected = await ctx.collectScriptShotImages?.(ctx.signal, {
+    cookBatch: ctx.cookBatchSubgraphs === true
+  })
   const items = collected?.images ?? []
   const entities = collected?.entities ?? []
   const entitiesText = stringifyShotEntities(entities)
@@ -3219,7 +3222,8 @@ export async function executeShotImageGenNode(
 
 /**
  * 生成分镜视频：文本口导入分镜列表；实体口接收分镜图实体表；
- * 再从各镜子图全部已完成视频生成节点收集结果，写回 genRefs，输出 videoEntities。
+ * 再收集各镜子图视频结果写回 genRefs，输出 videoEntities。
+ * 是否入队批跑 shotWorkflow 由 ctx.cookBatchSubgraphs 决定。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeShotVideoGenNode(
@@ -3240,6 +3244,7 @@ export async function executeShotVideoGenNode(
 
   // 把刚解析的实体表传给收集管线，避免物化边界输入时读到 shotVideoGen 旧缓存 / 旧 storyboard
   const collected = await ctx.collectScriptShotVideos?.(ctx.signal, {
+    cookBatch: ctx.cookBatchSubgraphs === true,
     shotEntities: shotEntities.length ? shotEntities : undefined
   })
   const videoEntities = collected?.entities ?? []
@@ -3312,8 +3317,8 @@ export async function executeWorldTableNode(
 
 /**
  * 世界元素生成：有上游提取/表格目录时同步到元素子图；
- * 再通过 ctx.collectWorldElementOutputs 跑齐四类 elementWorkflow 生成链，
- * 从边界输出汇集 `{ type, name, imageUrl }` 实体 JSON。
+ * 再通过 ctx.collectWorldElementOutputs 汇集四类 elementWorkflow 边界输出实体。
+ * 是否入队批跑元素子图由 ctx.cookBatchSubgraphs 决定（Cook 子图 / 整链为 true）。
  * 导入只在节点执行时发生，打开编辑窗口不会导入。
  */
 export async function executeWorldGenNode(
@@ -3324,7 +3329,9 @@ export async function executeWorldGenNode(
     await ctx.importWorldCatalogJson?.(fromIn)
   }
 
-  const collected = await ctx.collectWorldElementOutputs?.(ctx.signal)
+  const collected = await ctx.collectWorldElementOutputs?.(ctx.signal, {
+    cookBatch: ctx.cookBatchSubgraphs === true
+  })
   const items: WorldElementGenResult[] = (collected?.items ?? [])
     .map((item) => ({
       type: item.type as WorldElementGenResult['type'],

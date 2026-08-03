@@ -161,6 +161,18 @@ export function isWorldGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.gen'
 }
 
+/**
+ * 批量子图编排节点：执行时可能入队多份子图（元素 / 分镜画面 / 分镜视频）。
+ * 「执行当前」默认只收集已有结果；圆形菜单「Cook 子图」才入队批跑。
+ */
+export function isBatchSubgraphCookNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return (
+    isWorldGenNode(node) ||
+    isScriptShotImageGenNode(node) ||
+    isScriptShotVideoGenNode(node)
+  )
+}
+
 export function isTimelineOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'output.timeline'
 }

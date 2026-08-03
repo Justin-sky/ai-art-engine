@@ -903,4 +903,95 @@ describe('graph run', () => {
     }
     expect(editorState?.outputs?.['out-all']).toBeUndefined()
   })
+
+  it('batch cook nodes: onlyTarget skips cookBatch; Cook / chain enables it', async () => {
+    const worldDoc = createDefaultScopedGraph('worldAsset', 'world')
+    const worldGen = worldDoc.nodes.find((node) => node.typeId === 'world.gen')
+    expect(worldGen).toBeTruthy()
+    const worldCalls: Array<boolean | undefined> = []
+    const worldCollect = async (
+      _signal?: AbortSignal,
+      options?: { cookBatch?: boolean }
+    ) => {
+      worldCalls.push(options?.cookBatch)
+      return { items: [] }
+    }
+
+    await runGraph(worldDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: worldGen!.id,
+      collectWorldElementOutputs: worldCollect
+    })
+    expect(worldCalls.at(-1)).toBe(false)
+
+    await runGraph(worldDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: worldGen!.id,
+      cookHostInnerGraph: true,
+      collectWorldElementOutputs: worldCollect
+    })
+    expect(worldCalls.at(-1)).toBe(true)
+
+    await runGraph(worldDoc, {
+      stepDelayMs: 1,
+      targetNodeId: worldGen!.id,
+      collectWorldElementOutputs: worldCollect
+    })
+    expect(worldCalls.at(-1)).toBe(true)
+
+    const scriptDoc = createDefaultScopedGraph('scriptAsset', 'script')
+    const imageGen = scriptDoc.nodes.find((node) => node.typeId === 'script.shotImageGen')
+    const videoGen = scriptDoc.nodes.find((node) => node.typeId === 'script.shotVideoGen')
+    expect(imageGen && videoGen).toBeTruthy()
+    const imageCalls: Array<boolean | undefined> = []
+    const videoCalls: Array<boolean | undefined> = []
+
+    await runGraph(scriptDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: imageGen!.id,
+      collectScriptShotImages: async (_signal, options) => {
+        imageCalls.push(options?.cookBatch)
+        return { images: [], aggregateJson: '[]\n', entities: [] }
+      }
+    })
+    expect(imageCalls.at(-1)).toBe(false)
+
+    await runGraph(scriptDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: imageGen!.id,
+      cookHostInnerGraph: true,
+      collectScriptShotImages: async (_signal, options) => {
+        imageCalls.push(options?.cookBatch)
+        return { images: [], aggregateJson: '[]\n', entities: [] }
+      }
+    })
+    expect(imageCalls.at(-1)).toBe(true)
+
+    await runGraph(scriptDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: videoGen!.id,
+      collectScriptShotVideos: async (_signal, options) => {
+        videoCalls.push(options?.cookBatch)
+        return { videos: [], entities: [] }
+      }
+    })
+    expect(videoCalls.at(-1)).toBe(false)
+
+    await runGraph(scriptDoc, {
+      stepDelayMs: 1,
+      onlyTargetNode: true,
+      targetNodeId: videoGen!.id,
+      cookHostInnerGraph: true,
+      collectScriptShotVideos: async (_signal, options) => {
+        videoCalls.push(options?.cookBatch)
+        return { videos: [], entities: [] }
+      }
+    })
+    expect(videoCalls.at(-1)).toBe(true)
+  })
 })
