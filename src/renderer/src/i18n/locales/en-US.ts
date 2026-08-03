@@ -1557,6 +1557,12 @@ export default {
       addAndConnect: 'Add node and connect',
       noCompatibleNodes: 'No compatible nodes for this port type',
       selection: 'Selection',
+      copy: 'Copy',
+      paste: 'Paste',
+      copyEmpty: 'Select nodes to copy first',
+      copyNone: 'No copyable nodes in the selection (singletons / canonical outputs are skipped)',
+      pasteEmpty: 'Clipboard has no pasteable nodes',
+      pasteSkippedHost: 'Skipped {n} host node(s) (host assets must be unique on the canvas)',
       groups: {
         imageRefine: 'Image refine',
         imageEdit: 'Image edit'
@@ -2015,7 +2021,7 @@ export default {
     },
     error: {
       selfAssetDrop: 'Cannot drop this asset into its own workflow — that would create a circular dependency',
-      alreadyOnGraph: 'This asset is already on the canvas',
+      alreadyOnGraph: 'This host asset is already on the canvas',
       unsupportedDrop: 'This canvas does not accept this asset type',
       dropPathFailed: 'Could not read dropped file paths. Import into the library first.',
       importFailed: 'Import failed: {detail}',

@@ -1544,6 +1544,12 @@ export default {
       addAndConnect: '选择节点并连接',
       noCompatibleNodes: '没有可连接的同类型节点',
       selection: '选中项',
+      copy: '复制',
+      paste: '粘贴',
+      copyEmpty: '请先选中要复制的节点',
+      copyNone: '选中项中没有可复制的节点（单例/规范输出不可复制）',
+      pasteEmpty: '剪贴板中没有可粘贴的节点',
+      pasteSkippedHost: '已跳过 {n} 个宿主节点（同资产宿主画布唯一）',
       groups: {
         imageRefine: '图片精修',
         imageEdit: '图片编辑'
@@ -2002,7 +2008,7 @@ export default {
     },
     error: {
       selfAssetDrop: '不能将当前资产拖入自身工作流，以免循环依赖',
-      alreadyOnGraph: '该资产已在画布上',
+      alreadyOnGraph: '该宿主资产已在画布上',
       unsupportedDrop: '当前画布不支持此类型资产',
       dropPathFailed: '无法读取拖入的文件路径，请先导入到资产库',
       importFailed: '导入失败：{detail}',

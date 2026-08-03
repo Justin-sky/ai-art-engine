@@ -427,6 +427,17 @@
         >
           {{ t('graph.hostInterface.encapsulate') }}
         </button>
+        <div
+          v-if="canGroupSelection || canUngroupSelection || canEncapsulateSelection"
+          class="ctx-sep"
+          aria-hidden="true"
+        />
+        <button type="button" :disabled="!canCopySelection" @click="copySelectedNodes(); closeCtxMenu()">
+          {{ t('graph.context.copy') }}
+        </button>
+        <button type="button" :disabled="!canPasteClipboard" @click="void pasteClipboardNodes(); closeCtxMenu()">
+          {{ t('graph.context.paste') }}
+        </button>
       </template>
       <template v-else>
         <div class="ctx-title">
@@ -627,6 +638,12 @@ import {
   findOutPort,
   canScopeAcceptDraggedAsset,
   cloneGraphDocument,
+  buildGraphClipboardPayload,
+  applyGraphClipboardPayload,
+  serializeGraphClipboardPayload,
+  parseGraphClipboardPayload,
+  GRAPH_CLIPBOARD_PASTE_OFFSET,
+  type GraphClipboardPayload,
   createAssetGraphNode,
   createParamsForScope,
   createGraphGroupId,
@@ -810,6 +827,11 @@ import {
   buildIncomingEdgeRefs,
   reorderIncomingEdgesByIds
 } from '../features/graph/model/graphEditorHosts'
+import {
+  bumpGraphPasteGeneration,
+  getMemoryGraphClipboard,
+  setMemoryGraphClipboard
+} from '../features/graph/model/graphClipboardMemory'
 import {
   createFreshDirectorStage,
   patchGenParamsWithNodeStage,
@@ -2904,6 +2926,16 @@ const canEncapsulateSelection = computed(
   () => selectedNodeIds.value.size >= 1 && !isElementWorkflowGraph.value
 )
 
+/** 复制后递增，驱动粘贴按钮可用性 */
+const graphClipboardEpoch = ref(0)
+const canCopySelection = computed(() =>
+  graph.nodes.some((node) => selectedNodeIds.value.has(node.id) && isNodeDeletable(node))
+)
+const canPasteClipboard = computed(() => {
+  void graphClipboardEpoch.value
+  return !!getMemoryGraphClipboard()
+})
+
 const encapsulateSaveOpen = ref(false)
 const encapsulateSaveDefaultName = ref('')
 const encapsulateSaveDefaultFolderId = ref<string | null>(null)
@@ -4305,10 +4337,13 @@ function setNodeAsset(
   if (!node || node.category !== 'asset') return
   if (asset && isSelfAssetDrop({ id: asset.assetId })) return
   if (asset) {
-    const taken = graph.nodes.some(
-      (n) => n.id !== nodeId && n.category === 'asset' && n.assetId === asset.assetId
-    )
-    if (taken) return
+    // 宿主实例画布唯一；普通引用可与其它节点共享同一 assetId
+    if (isAssetHostNode(node)) {
+      const takenByHost = graph.nodes.some(
+        (n) => n.id !== nodeId && n.assetId === asset.assetId && isAssetHostNode(n)
+      )
+      if (takenByHost) return
+    }
     const before = buildGraphJson()
     node.assetId = asset.assetId
     node.assetType = asset.assetType
@@ -4478,8 +4513,8 @@ async function onDrop(e: DragEvent): Promise<void> {
       return
     }
     dropError.value = ''
-    const added = addAssetNode(asset, dropPositionAt(e.clientX, e.clientY))
-    if (!added) {
+    const result = addAssetNode(asset, dropPositionAt(e.clientX, e.clientY))
+    if (result === 'rejected') {
       showDropError(t('graph.error.alreadyOnGraph'))
     }
     workspace.setDraggingAsset(null)
@@ -4842,23 +4877,42 @@ function ensureShotParamsForActiveShotCanvas(): void {
   graphEditorHosts.bumpRevision()
 }
 
-function addAssetNode(asset: AssetInfo, position: { x: number; y: number }): boolean {
-  if (isSelfAssetDrop(asset)) return false
-  if (graph.nodes.some((n) => n.category === 'asset' && n.assetId === asset.id)) return false
+/** 拖入后是否应建成宿主实例（与 createAssetGraphNode 的 assetHost 条件一致） */
+function wouldDropAsAssetHost(asset: AssetInfo): boolean {
+  return isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
+}
+
+/**
+ * 拖入资产节点。
+ * - 普通引用：允许同一资产多次拖入，生成多个图中引用节点
+ * - 宿主实例：画布唯一；已存在则选中已有节点
+ */
+function addAssetNode(
+  asset: AssetInfo,
+  position: { x: number; y: number }
+): 'created' | 'focused' | 'rejected' {
+  if (isSelfAssetDrop(asset)) return 'rejected'
+  const asHost = wouldDropAsAssetHost(asset)
+  if (asHost) {
+    const existing = graph.nodes.find((n) => n.assetId === asset.id && isAssetHostNode(n))
+    if (existing) {
+      setSingleNodeSelection(existing.id)
+      workspace.selectGraphNode(existing.id, graphHostId.value)
+      return 'focused'
+    }
+  }
   const before = buildGraphJson()
   const node = createAssetGraphNode(asset.id, asset.type, asset.name, position, {
-    assetHost: isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset),
-    hostInterfaceSnapshot:
-      isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
-        ? readHostInterfaceFromGenParams(
-            asset.genParams as Record<string, unknown> | undefined,
-            asset.type
-          )
-        : undefined,
-    hostSchemaVersion:
-      isAssetRefInputHostType(asset.type) && !isImportedMediaRefAsset(asset)
-        ? readHostSchemaVersion(asset.genParams as Record<string, unknown> | undefined)
-        : undefined
+    assetHost: asHost,
+    hostInterfaceSnapshot: asHost
+      ? readHostInterfaceFromGenParams(
+          asset.genParams as Record<string, unknown> | undefined,
+          asset.type
+        )
+      : undefined,
+    hostSchemaVersion: asHost
+      ? readHostSchemaVersion(asset.genParams as Record<string, unknown> | undefined)
+      : undefined
   })
   if (asset.type === 'motion') {
     const items = resolveMotionImageItems(
@@ -4908,7 +4962,7 @@ function addAssetNode(asset: AssetInfo, position: { x: number; y: number }): boo
   requestEdgeRender()
   scheduleSave()
   recordGraphChange('add-asset-node', before)
-  return true
+  return 'created'
 }
 
 const graphNodeInteraction = useGraphNodeInteraction({
@@ -7475,6 +7529,20 @@ function onKeyDown(e: KeyboardEvent): void {
     if (canUngroupSelection.value) ungroupSelectedNodes()
     return
   }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'c') {
+    if (isEditableKeyTarget(e.target)) return
+    if (!pointerOverViewport.value && workspace.selectedGraphHostId !== graphHostId.value) return
+    e.preventDefault()
+    copySelectedNodes()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'v') {
+    if (isEditableKeyTarget(e.target)) return
+    if (!pointerOverViewport.value && workspace.selectedGraphHostId !== graphHostId.value) return
+    e.preventDefault()
+    void pasteClipboardNodes()
+    return
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (isEditableKeyTarget(e.target)) return
     if (selectedEdgeIds.value.size > 0) {
@@ -7531,6 +7599,74 @@ function deleteSelectedNodes(): void {
     editor.documents.markDirty(activeDocumentId())
   } else {
     scheduleSave()
+  }
+}
+
+function copySelectedNodes(): void {
+  if (selectedNodeIds.value.size === 0) {
+    showDropError(t('graph.context.copyEmpty'))
+    return
+  }
+  const { payload } = buildGraphClipboardPayload(buildGraphJson(), selectedNodeIds.value)
+  if (!payload) {
+    showDropError(t('graph.context.copyNone'))
+    return
+  }
+  setMemoryGraphClipboard(payload)
+  graphClipboardEpoch.value += 1
+  void navigator.clipboard?.writeText?.(serializeGraphClipboardPayload(payload)).catch(() => {
+    /* 无权限时仅保留内存剪贴板 */
+  })
+}
+
+async function resolvePastePayload(): Promise<GraphClipboardPayload | null> {
+  const memory = getMemoryGraphClipboard()
+  if (memory) return memory
+  try {
+    const text = await navigator.clipboard?.readText?.()
+    if (!text) return null
+    const parsed = parseGraphClipboardPayload(text)
+    if (parsed) {
+      setMemoryGraphClipboard(parsed)
+      graphClipboardEpoch.value += 1
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+async function pasteClipboardNodes(): Promise<void> {
+  const payload = await resolvePastePayload()
+  if (!payload) {
+    showDropError(t('graph.context.pasteEmpty'))
+    return
+  }
+  const generation = bumpGraphPasteGeneration()
+  const offset = {
+    x: GRAPH_CLIPBOARD_PASTE_OFFSET * generation,
+    y: GRAPH_CLIPBOARD_PASTE_OFFSET * generation
+  }
+  const before = buildGraphJson()
+  const result = applyGraphClipboardPayload(before, payload, { offset })
+  if (!result.pastedNodeIds.length) {
+    if (result.skippedHostCount > 0) {
+      showDropError(t('graph.context.pasteSkippedHost', { n: result.skippedHostCount }))
+    } else {
+      showDropError(t('graph.context.pasteEmpty'))
+    }
+    return
+  }
+  replaceGraphDocument(graph, result.document)
+  setMarqueeSelection(result.pastedNodeIds, [])
+  refreshGraphRenderWindow(true)
+  requestPreviewVisibilityUpdate()
+  requestEdgeRender()
+  scheduleSave()
+  recordGraphChange('paste-nodes', before)
+  graphEditorHosts.bumpRevision()
+  if (result.skippedHostCount > 0) {
+    showDropError(t('graph.context.pasteSkippedHost', { n: result.skippedHostCount }))
   }
 }
 
@@ -8363,10 +8499,15 @@ defineExpose({
   box-sizing: border-box;
 }
 
-.ctx-menu button:hover,
+.ctx-menu button:hover:not(:disabled),
 .ctx-submenu-trigger.open {
   background: var(--bg-hover);
   border-color: transparent;
+}
+
+.ctx-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .ctx-submenu-trigger.pinned {

@@ -581,8 +581,12 @@ const showSkeletonOverlay = computed(
     modelTab.value === 'skeleton' ||
     (isAnimationOnlyModel.value && modelTab.value === 'animation')
 )
+/** 宿主资产才编辑端口；导入引用（mediaRole=reference）只作图中引用，不暴露接口编辑 */
 const showHostInterface = computed(
-  () => !!asset.value && isAssetRefInputHostType(asset.value.type)
+  () =>
+    !!asset.value &&
+    isAssetRefInputHostType(asset.value.type) &&
+    !isImportedMediaRefAsset(asset.value)
 )
 const showMediaPath = computed(
   () =>
