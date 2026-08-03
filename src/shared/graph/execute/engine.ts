@@ -467,6 +467,12 @@ async function executeOneNode(
     importNarrativeCatalogJson: options.importNarrativeCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,
     cookAssetIdStack: options.cookAssetIdStack,
+    // 显式 Cook 子图：内图整链重跑，不跳过空/过期 done
+    hostInnerSkipCompleted:
+      options.hostInnerSkipCompleted ??
+      (options.onlyTargetNode === true && options.cookHostInnerGraph === true
+        ? false
+        : undefined),
     saveRunMedia: options.saveRunMedia,
     saveRunText: options.saveRunText,
     readRunText: options.readRunText,
@@ -573,7 +579,9 @@ export async function runGraph(
   const canSkipNode = (nodeId: string): boolean =>
     skipCompleted &&
     !forceRunIds.has(nodeId) &&
-    options.priorNodeStates?.[nodeId]?.status === 'done'
+    options.priorNodeStates?.[nodeId]?.status === 'done' &&
+    // 空 done（如边界透传空目录）不可 skip，否则 Cook 会「成功」但出口为空
+    hasUsablePriorOutputs(options.priorNodeStates?.[nodeId])
 
   for (const id of subset) {
     if (canSkipNode(id)) {
@@ -629,11 +637,19 @@ export async function runGraph(
           }
         )
         const out = snap[sourcePort] ?? snap.out
+        const isPlaceholderText = (text: string): boolean => {
+          const t = text.trim()
+          return !t || t === '…' || t === '...'
+        }
         const emptyText =
-          (out?.kind === 'text' && !out.text.trim()) ||
+          (out?.kind === 'text' && isPlaceholderText(out.text)) ||
           (out?.kind === 'texts' &&
-            !out.items.some((item) => !!item.text.trim() || !!item.relativePath?.trim()))
-        // 软快照正文为空时，再直接按资产 id 读一次（覆盖空 prior / 解析失败）
+            !out.items.some(
+              (item) =>
+                (!!item.text.trim() && !isPlaceholderText(item.text)) ||
+                !!item.relativePath?.trim()
+            ))
+        // 软快照正文为空/占位「…」时，再按资产 id 读正文（Cook 子图上游剧本常见）
         if (emptyText && source.assetId && options.resolveAssetText) {
           const text = (await options.resolveAssetText(source.assetId))?.trim() ?? ''
           if (text) {

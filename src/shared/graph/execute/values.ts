@@ -1347,7 +1347,8 @@ export function executeAssetHostInnerGraph(
       document: doc,
       priorNodeStates,
       signal: ctx.signal,
-      cookAssetIdStack: nextStack
+      cookAssetIdStack: nextStack,
+      skipCompletedNodes: ctx.hostInnerSkipCompleted
     })
     if (!hosted.ok) {
       throw new Error(hosted.error || 'GRAPH_HOST_INNER_FAILED')
@@ -1442,7 +1443,7 @@ export function mapHostInnerStatesToOutputs(
       if (mapped) return mapped
     }
     if (
-      raw &&
+      graphValueHasPayload(raw) &&
       (raw.kind === 'narrative' ||
         raw.kind === 'worldEntities' ||
         raw.kind === 'text' ||

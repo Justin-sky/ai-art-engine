@@ -453,6 +453,11 @@ export interface NodeExecuteContext {
   runHostInnerGraph?: (input: HostInnerGraphRunInput) => Promise<HostInnerGraphRunResult>
   /** 当前宿主 cook 栈（assetId），防递归 */
   cookAssetIdStack?: string[]
+  /**
+   * 传给 runHostInnerGraph 的 skipCompletedNodes。
+   * 未设置时由 runner 默认 true；Cook 子图路径会设为 false。
+   */
+  hostInnerSkipCompleted?: boolean
 }
 
 /** 宿主内图已准备好的执行包（输入槽已注入） */
@@ -463,6 +468,11 @@ export interface HostInnerGraphRunInput {
   signal?: AbortSignal
   /** 当前 cook 栈（含祖先宿主 assetId），用于防递归 */
   cookAssetIdStack?: string[]
+  /**
+   * 内图是否跳过已成功节点。默认 true。
+   * 圆形菜单「Cook 子图」应传 false，避免复用空/过期 done 导致出口为空。
+   */
+  skipCompletedNodes?: boolean
 }
 
 export interface HostInnerGraphRunResult {
@@ -517,6 +527,8 @@ export interface GraphRunOptions {
    * 其余运行为 true。圆形菜单「Cook 子图」显式传 true。
    */
   cookHostInnerGraph?: boolean
+  /** 覆盖内图 skipCompletedNodes；未设时见 NodeExecuteContext.hostInnerSkipCompleted */
+  hostInnerSkipCompleted?: boolean
   onNodeUpdate?: (nodeId: string, state: GraphNodeRunState) => void
   /** 将参数写回宿主图文档（克隆图执行时需要） */
   onNodePatch?: (

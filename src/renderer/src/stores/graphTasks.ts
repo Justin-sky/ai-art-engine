@@ -924,7 +924,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         graph: input.document,
         target,
         priorNodeStates: input.priorNodeStates,
-        skipCompletedNodes: true,
+        // Cook 子图显式传 false；其它宿主链默认跳过已完成
+        skipCompletedNodes: input.skipCompletedNodes !== false,
         cookAssetIdStack: input.cookAssetIdStack
       })
       if (enqueued.ok) {
