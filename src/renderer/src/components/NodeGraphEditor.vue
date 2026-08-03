@@ -1590,6 +1590,7 @@ const {
   runToNode,
   runToNodeSkippingDone,
   runNodeOnly,
+  runHostCook,
   stopWorkflow,
   toggleNodeRun,
   nodeStatus,
@@ -1980,6 +1981,11 @@ async function guardedRunNodeOnly(nodeId: string) {
   return runNodeOnly(nodeId)
 }
 
+async function guardedRunHostCook(nodeId: string) {
+  if (blockNodeRunForActiveTask()) return null
+  return runHostCook(nodeId)
+}
+
 const toolbarSelectedNodeId = computed(() => {
   if (workspace.selectedGraphHostId !== graphHostId.value) return null
   return workspace.selectedGraphNodeId
@@ -2058,7 +2064,17 @@ const radialMenuItems = computed((): RadialMenuItem[] => {
         ? t('graph.radial.rerunCurrent')
         : t('graph.radial.runCurrent'),
       icon: (toolbarCurrentIsRerun.value ? 'replay' : 'play') as 'replay' | 'play'
-    },
+    }
+  ]
+  // 宿主：显式 Cook 子图；节点卡「执行当前」默认只复用缓存
+  if (toolbarSelectedNode.value && isAssetHostNode(toolbarSelectedNode.value)) {
+    items.push({
+      id: 'cook-host',
+      label: t('graph.radial.cookSubgraph'),
+      icon: 'cook' as const
+    })
+  }
+  items.push(
     {
       id: 'run-skip',
       label: t('graph.radial.runSkip'),
@@ -2069,7 +2085,7 @@ const radialMenuItems = computed((): RadialMenuItem[] => {
       label: t('graph.radial.runForce'),
       icon: 'rewind' as const
     }
-  ]
+  )
   if (toolbarSelectedIsOutput.value) {
     items.push({
       id: 'enqueue',
@@ -2131,6 +2147,11 @@ function onRadialPick(id: string): void {
   }
   if (id === 'run-current') {
     onToolbarRunCurrent()
+    return
+  }
+  if (id === 'cook-host') {
+    const nodeId = toolbarSelectedNodeId.value
+    if (nodeId) void guardedRunHostCook(nodeId)
     return
   }
   if (id === 'run-skip') {

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
 
-export type RadialIconKind = 'play' | 'replay' | 'forward' | 'rewind' | 'queue' | 'stop'
+export type RadialIconKind = 'play' | 'replay' | 'forward' | 'rewind' | 'queue' | 'stop' | 'cook'
 
 export type RadialMenuItem = {
   id: string

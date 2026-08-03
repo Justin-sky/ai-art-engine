@@ -1,5 +1,5 @@
 import { graphValueHasPayload, softResolveSourceOutput } from '../hostInput'
-import { isGenerateLocked } from '../nodeRole'
+import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
 import { SHOT_PARAMS_IMAGES_PORT_ID } from '../shotParams'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
@@ -476,9 +476,32 @@ async function executeOneNode(
   }
 
   try {
+    // onlyTarget 默认不 cook 内图（防误点父节点）；Cook 子图 / 上游链运行显式允许。
+    const shouldCookHostInner =
+      options.cookHostInnerGraph ?? options.onlyTargetNode !== true
+    if (isAssetHostNode(node) && !shouldCookHostInner) {
+      const reused = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId], graph)
+      if (!reused) {
+        publish(
+          states,
+          nodeId,
+          { status: 'error', error: 'GRAPH_HOST_NO_CACHE_COOK' },
+          options.onNodeUpdate
+        )
+        return {
+          ok: false,
+          error: `${def?.label ?? node.title ?? nodeId}: GRAPH_HOST_NO_CACHE_COOK`
+        }
+      }
+      const hydrated = await hydrateOutputRecordTexts(reused, options.readRunText)
+      outputs.set(nodeId, hydrated)
+      publish(states, nodeId, { status: 'done', outputs: hydrated }, options.onNodeUpdate)
+      return { ok: true }
+    }
+
     // 宿主 cook 属节点角色而非节点类型：必须先于类型专用 execute，
     // 否则 asset.screenplay 这类走专用函数的宿主会被当引用透传，内图永不入队。
-    const hostCook = executeAssetHostInnerGraph(ctx)
+    const hostCook = shouldCookHostInner ? executeAssetHostInnerGraph(ctx) : null
     const result = await withAbort(
       hostCook ?? Promise.resolve(execute(ctx)),
       options.signal

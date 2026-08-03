@@ -224,7 +224,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_LIPSYNC_NO_VISUAL: 'graph.run.lipSyncNoVisual',
       GRAPH_LIPSYNC_NO_AUDIO: 'graph.run.lipSyncNoAudio',
       GRAPH_REDRAW_NO_MASK: 'graph.run.noMask',
-      GRAPH_LOCK_NO_CACHE: 'graph.run.lockNoCache'
+      GRAPH_LOCK_NO_CACHE: 'graph.run.lockNoCache',
+      GRAPH_HOST_NO_CACHE_COOK: 'graph.run.hostNoCacheCook'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])
@@ -556,6 +557,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     preserveOutsideSubset: boolean
     onlyTargetNode?: boolean
     skipCompletedNodes?: boolean
+    cookHostInnerGraph?: boolean
   }): Promise<GraphRunResult | null> {
     if (isRunning.value) return null
     options.commitLocal()
@@ -603,6 +605,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         targetNodeId: opts.targetNodeId,
         onlyTargetNode: opts.onlyTargetNode,
         skipCompletedNodes: opts.skipCompletedNodes,
+        cookHostInnerGraph: opts.cookHostInnerGraph,
         priorNodeStates: { ...runStates },
         preserveOutsideSubset: opts.preserveOutsideSubset,
         onNodeUpdate: (nodeId, state) => applyNodeUpdate(token, nodeId, state),
@@ -740,13 +743,25 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     })
   }
 
-  /** 仅当前节点（节点按钮 / Inspector） */
+  /** 仅当前节点（节点按钮 / Inspector）；宿主默认不 cook 内图 */
   async function runNodeOnly(nodeId: string): Promise<GraphRunResult | null> {
     return executeRun({
       targetNodeId: nodeId,
       clearAll: false,
       preserveOutsideSubset: true,
-      onlyTargetNode: true
+      onlyTargetNode: true,
+      cookHostInnerGraph: false
+    })
+  }
+
+  /** 仅 cook 当前宿主内图（圆形菜单「Cook 子图」） */
+  async function runHostCook(nodeId: string): Promise<GraphRunResult | null> {
+    return executeRun({
+      targetNodeId: nodeId,
+      clearAll: false,
+      preserveOutsideSubset: true,
+      onlyTargetNode: true,
+      cookHostInnerGraph: true
     })
   }
 
@@ -808,6 +823,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     runToNode,
     runToNodeSkippingDone,
     runNodeOnly,
+    runHostCook,
     stopWorkflow,
     togglePlayStop,
     toggleNodeRun,

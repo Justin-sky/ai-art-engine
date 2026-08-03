@@ -139,9 +139,47 @@ describe('host node cook enqueues inner graph', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('calls runHostInnerGraph when running only the host node', async () => {
+  it('does not cook host inner graph on onlyTargetNode by default', async () => {
+    const runHostInnerGraph = makeRunner()
+    const result = await runGraph(parentDocument(), {
+      stepDelayMs: 1,
+      targetNodeId: 'host-node',
+      onlyTargetNode: true,
+      hasAsset: () => true,
+      resolveAssetGenParams: () => ({ graphJson: innerDocument() }),
+      priorNodeStates: {
+        'host-node': {
+          status: 'done',
+          outputs: { out: { kind: 'text', text: 'cached-host' } }
+        }
+      },
+      runHostInnerGraph
+    })
+    expect(runHostInnerGraph).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+    expect(result.states['host-node']?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: 'cached-host'
+    })
+  })
+
+  it('cooks host inner graph when cookHostInnerGraph is true', async () => {
     const runHostInnerGraph = makeRunner()
     await runGraph(parentDocument(), {
+      stepDelayMs: 1,
+      targetNodeId: 'host-node',
+      onlyTargetNode: true,
+      cookHostInnerGraph: true,
+      hasAsset: () => true,
+      resolveAssetGenParams: () => ({ graphJson: innerDocument() }),
+      runHostInnerGraph
+    })
+    expect(runHostInnerGraph).toHaveBeenCalledTimes(1)
+  })
+
+  it('errors when onlyTarget host has no cache to reuse', async () => {
+    const runHostInnerGraph = makeRunner()
+    const result = await runGraph(parentDocument(), {
       stepDelayMs: 1,
       targetNodeId: 'host-node',
       onlyTargetNode: true,
@@ -149,7 +187,9 @@ describe('host node cook enqueues inner graph', () => {
       resolveAssetGenParams: () => ({ graphJson: innerDocument() }),
       runHostInnerGraph
     })
-    expect(runHostInnerGraph).toHaveBeenCalledTimes(1)
+    expect(runHostInnerGraph).not.toHaveBeenCalled()
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('GRAPH_HOST_NO_CACHE_COOK')
   })
 
   it('passes the outer input value into the boundary input seed', async () => {
@@ -256,6 +296,7 @@ describe('host node cook enqueues inner graph', () => {
       stepDelayMs: 1,
       targetNodeId: 'host-node',
       onlyTargetNode: true,
+      cookHostInnerGraph: true,
       hasAsset: () => true,
       resolveAssetText,
       resolveAssetGenParams: () => ({ graphJson: innerDocument() }),

@@ -1280,6 +1280,7 @@ export default {
       hint: 'C',
       runCurrent: '执行当前',
       rerunCurrent: '重跑当前',
+      cookSubgraph: 'Cook 子图',
       runSkip: '跳过上游',
       runForce: '强制上游',
       enqueue: '加入任务',
@@ -1973,6 +1974,7 @@ export default {
       lipSyncNoAudio: '请先连接声音（语音）输入',
       noMask: '请先在重绘编辑器中涂抹蒙版',
       lockNoCache: '已锁定，但没有可复用的上次结果；请先成功生成一次，或解锁',
+      hostNoCacheCook: '没有可复用的宿主输出；请用圆形菜单「Cook 子图」执行内图',
       dismissHint: '点击关闭提示'
     },
     types: {

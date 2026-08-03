@@ -511,6 +511,12 @@ export interface GraphRunOptions {
    * 目标节点始终执行。
    */
   skipCompletedNodes?: boolean
+  /**
+   * 是否 cook 宿主内图。
+   * 默认：`onlyTargetNode` 时为 false（复用缓存，避免误点父节点重跑子图），
+   * 其余运行为 true。圆形菜单「Cook 子图」显式传 true。
+   */
+  cookHostInnerGraph?: boolean
   onNodeUpdate?: (nodeId: string, state: GraphNodeRunState) => void
   /** 将参数写回宿主图文档（克隆图执行时需要） */
   onNodePatch?: (

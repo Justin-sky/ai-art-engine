@@ -1287,6 +1287,7 @@ export default {
       hint: 'C',
       runCurrent: 'Run',
       rerunCurrent: 'Re-run',
+      cookSubgraph: 'Cook subgraph',
       runSkip: 'Skip done',
       runForce: 'Force upstream',
       enqueue: 'Queue',
@@ -1986,6 +1987,8 @@ export default {
       noMask: 'Paint a mask in the redraw editor first',
       lockNoCache:
         'Node is locked, but there is no reusable last result; generate once successfully, or unlock',
+      hostNoCacheCook:
+        'No reusable host output; use the radial menu “Cook subgraph” to run the inner graph',
       dismissHint: 'Click to dismiss'
     },
     types: {

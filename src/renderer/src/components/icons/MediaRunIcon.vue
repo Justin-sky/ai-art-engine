@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
  * 媒体播放控件风格图标，用于节点图执行工具栏。
- * play / replay / forward(跳过已执行) / rewind(强制重跑上游) / queue / stop
+ * play / replay / forward(跳过已执行) / rewind(强制重跑上游) / queue / stop / cook(宿主内图)
  */
 withDefaults(
   defineProps<{
-    kind: 'play' | 'replay' | 'forward' | 'rewind' | 'queue' | 'stop'
+    kind: 'play' | 'replay' | 'forward' | 'rewind' | 'queue' | 'stop' | 'cook'
     size?: number | string
   }>(),
   {
@@ -59,6 +59,12 @@ withDefaults(
         stroke-linecap="round"
       />
       <path d="M15 9.5v9l7.5-4.5z" />
+    </g>
+
+    <!-- 层叠：Cook 宿主子图 -->
+    <g v-else-if="kind === 'cook'">
+      <rect x="5" y="9" width="12" height="9" rx="1.5" opacity="0.45" />
+      <rect x="7" y="6" width="12" height="9" rx="1.5" />
     </g>
   </svg>
 </template>
