@@ -16,7 +16,7 @@ import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
-import NarrativeUnitInspector from '../components/NarrativeUnitInspector.vue'
+import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotParamsInspector from '../components/ShotParamsInspector.vue'
 import ShotInspector from '../components/ShotInspector.vue'
@@ -27,7 +27,7 @@ import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
-import { readBoundUnitIdFromNodeParams, isAssetRefInputHostType, type GraphNode } from '@shared/graph'
+import { readBoundBeatIdFromNodeParams, isAssetRefInputHostType, type GraphNode } from '@shared/graph'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -57,12 +57,12 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     })
   },
   {
-    id: 'studio.narrativeUnit',
-    component: NarrativeUnitInspector,
-    match: (target) => target.kind === 'narrativeUnit',
+    id: 'studio.beatUnit',
+    component: BeatInspector,
+    match: (target) => target.kind === 'beatUnit',
     props: (context) => ({
-      narrativeAssetId:
-        (context.target.meta?.narrativeAssetId as string | undefined) ?? undefined
+      beatAssetId:
+        (context.target.meta?.beatAssetId as string | undefined) ?? undefined
     })
   },
   {
@@ -135,33 +135,33 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'world.extract'
   },
   {
-    id: 'studio.graph.narrativeSplit',
+    id: 'studio.graph.beatSplit',
     component: PromptOptimizeInspector,
-    nodeTypeId: 'narrative.split'
+    nodeTypeId: 'beat.split'
   },
   {
-    id: 'studio.graph.narrativeUnitGen',
+    id: 'studio.graph.beatUnitGen',
     component: PromptOptimizeInspector,
-    nodeTypeId: 'narrative.unitGen'
+    nodeTypeId: 'beat.unitGen'
   },
   {
-    id: 'studio.graph.narrativeTable',
+    id: 'studio.graph.beatTable',
     component: TablePassThroughInspector,
-    nodeTypeId: 'narrative.table'
+    nodeTypeId: 'beat.table'
   },
   {
-    id: 'studio.graph.narrativeGen',
+    id: 'studio.graph.beatGen',
     component: TablePassThroughInspector,
-    nodeTypeId: 'narrative.gen'
+    nodeTypeId: 'beat.gen'
   },
   {
-    id: 'studio.graph.narrativeUnitRef',
-    component: NarrativeUnitInspector,
-    nodeTypeId: 'narrative.unitRef',
+    id: 'studio.graph.beatUnitRef',
+    component: BeatInspector,
+    nodeTypeId: 'beat.unitRef',
     props: (context) => {
       const node = context.target.subject as GraphNode | null
       return {
-        unitId: readBoundUnitIdFromNodeParams(node?.params)
+        beatId: readBoundBeatIdFromNodeParams(node?.params)
       }
     }
   },
@@ -261,7 +261,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
         typeId === 'video.select' ||
         typeId === 'voice.select' ||
         typeId === 'text.select' ||
-        typeId === 'narrative.select' ||
+        typeId === 'beat.select' ||
         typeId === 'shotEntities.select'
       )
     }

@@ -101,7 +101,7 @@ describe('multiAngleCamera', () => {
     expect(patch.multiAnglePrompt).toMatch(/全景/)
   })
 
-  it('provides narrative prompt text for every cinematic preset', () => {
+  it('provides beat prompt text for every cinematic preset', () => {
     expect(resolveMultiAnglePresetPanelPrompt('custom')).toBe('')
     expect(resolveMultiAnglePresetPanelPrompt('frontHigh')).toContain('俯拍')
     expect(resolveMultiAnglePresetPanelPrompt('frontLow')).toContain('仰拍')

@@ -200,7 +200,7 @@ describe('host input slots', () => {
     const slots = resolveHostInputSlotsForHostOpen('script', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
       'in-worldEntities:0:worldEntities',
-      'in-narrativeEntity:0:text'
+      'in-beat:0:text'
     ])
   })
 
@@ -244,12 +244,12 @@ describe('host input slots', () => {
     )
     expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual([
       'in-worldEntities:0',
-      'in-narrativeEntity:0'
+      'in-beat:0'
     ])
   })
 
-  it('opens narrative host with text slot only', () => {
-    const slots = resolveHostInputSlotsForHostOpen('narrative', [], HOST_ID)
+  it('opens beat host with text slot only', () => {
+    const slots = resolveHostInputSlotsForHostOpen('beat', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
       'in:0:text'
     ])
@@ -443,7 +443,7 @@ describe('host input slots', () => {
     expect(nodes[0]?.params.text).toBe('已有正文')
   })
 
-  it('soft-resolves screenplay host text into narrative input slots', () => {
+  it('soft-resolves screenplay host text into beat input slots', () => {
     const SP = '00000000-0000-4000-8000-000000000301'
     const NV = '00000000-0000-4000-8000-000000000nv'
     const screenplay: GraphNode = {
@@ -455,17 +455,17 @@ describe('host input slots', () => {
       assetId: SP,
       assetType: 'screenplay'
     }
-    const narrative: GraphNode = {
+    const beat: GraphNode = {
       id: 'nv',
-      typeId: 'asset.narrative',
+      typeId: 'asset.beat',
       category: 'asset',
       position: { x: 400, y: 80 },
       params: { assetHost: true, assetRef: true },
       assetId: NV,
-      assetType: 'narrative'
+      assetType: 'beat'
     }
     const parent: GraphDocument = {
-      nodes: [screenplay, narrative],
+      nodes: [screenplay, beat],
       edges: [
         { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
       ],
@@ -498,7 +498,7 @@ describe('host input slots', () => {
     expect(slots[0]?.text).toBe('外层剧本文')
   })
 
-  it('soft-resolves screenplay path-only body into narrative slot preview path', () => {
+  it('soft-resolves screenplay path-only body into beat slot preview path', () => {
     const SP = '00000000-0000-4000-8000-000000000sp2'
     const NV = '00000000-0000-4000-8000-000000000nv2'
     const screenplay: GraphNode = {
@@ -510,17 +510,17 @@ describe('host input slots', () => {
       assetId: SP,
       assetType: 'screenplay'
     }
-    const narrative: GraphNode = {
+    const beat: GraphNode = {
       id: 'nv',
-      typeId: 'asset.narrative',
+      typeId: 'asset.beat',
       category: 'asset',
       position: { x: 400, y: 80 },
       params: { assetHost: true, assetRef: true },
       assetId: NV,
-      assetType: 'narrative'
+      assetType: 'beat'
     }
     const parent: GraphDocument = {
-      nodes: [screenplay, narrative],
+      nodes: [screenplay, beat],
       edges: [
         { id: 'e1', source: 'sp', target: 'nv', sourcePort: 'out', targetPort: 'in' }
       ],

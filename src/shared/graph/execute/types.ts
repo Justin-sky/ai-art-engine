@@ -55,7 +55,7 @@ export interface GraphCatalogValue {
  */
 export interface GraphTextItem {
   id?: string
-  /** 展示名 / 落盘文件名（如叙事单元 title） */
+  /** 展示名 / 落盘文件名（如场 title） */
   title?: string
   text: string
   createdAt?: string
@@ -279,6 +279,8 @@ export interface NodeExecuteContext {
   signal?: AbortSignal
   /** 按资产 id 读取 genParams（导演台引用节点取站位图等） */
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
+  /** 打开中的资产内图（优先于落盘 graphJson，供 soft dig） */
+  resolveLiveAssetGraph?: (assetId: string) => import('../types').GraphDocument | undefined
   /** 资产是否仍存在于工程（引用节点执行前校验） */
   hasAsset?: (assetId: string) => boolean
   /** 按资产 id 解析展示名（剧本生成落盘文件名等） */
@@ -386,8 +388,8 @@ export interface NodeExecuteContext {
     name: string
     relativePath: string
   }> | null
-  /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
-  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
+  /** 场参考节点：按 boundBeatId 解析目录行 */
+  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
   /**
    * 分镜表格节点：把当前剧本分镜列表序列化为拆分 JSON，
    * 供「表格 → 拆分」再次拆分时作为上游输入。
@@ -433,9 +435,9 @@ export interface NodeExecuteContext {
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
   /**
-   * 叙事单元生成：收集各单元 narrativeUnit 子图「叙事输出」已有文本（不级联跑子图生成）。
+   * 场生成：收集各单元 beatUnit 子图「场输出」已有文本（不级联跑子图生成）。
    */
-  collectNarrativeUnitTexts?: (signal?: AbortSignal) => Promise<{
+  collectBeatUnitTexts?: (signal?: AbortSignal) => Promise<{
     items: GraphTextItem[]
   } | null>
   /**
@@ -447,13 +449,13 @@ export interface NodeExecuteContext {
    */
   importWorldCatalogJson?: (jsonText: string) => void | Promise<void>
   /**
-   * 叙事单元表格节点：把当前目录序列化为拆解 JSON。
+   * 场表格节点：把当前目录序列化为拆解 JSON。
    */
-  resolveNarrativeCatalogJson?: () => string | null
+  resolveBeatCatalogJson?: () => string | null
   /**
-   * 叙事单元表格 / 编辑节点执行时：把上游拆解 JSON 写入资产 genParams。
+   * 场表格 / 编辑节点执行时：把上游拆解 JSON 写入资产 genParams。
    */
-  importNarrativeCatalogJson?: (jsonText: string) => void | Promise<void>
+  importBeatCatalogJson?: (jsonText: string) => void | Promise<void>
   /**
    * 宿主有入边时：把已注入输入的内图整链交给任务列表执行。
    */
@@ -557,6 +559,7 @@ export interface GraphRunOptions {
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string
   resolveAssetGenParams?: NodeExecuteContext['resolveAssetGenParams']
+  resolveLiveAssetGraph?: NodeExecuteContext['resolveLiveAssetGraph']
   hasAsset?: NodeExecuteContext['hasAsset']
   resolveAssetName?: NodeExecuteContext['resolveAssetName']
   resolveHostAssetName?: NodeExecuteContext['resolveHostAssetName']
@@ -575,17 +578,17 @@ export interface GraphRunOptions {
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   resolveShotStoryboard?: NodeExecuteContext['resolveShotStoryboard']
   resolveAllShotBindingImages?: NodeExecuteContext['resolveAllShotBindingImages']
-  resolveNarrativeUnit?: NodeExecuteContext['resolveNarrativeUnit']
+  resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   resolveShotSplitTableJson?: NodeExecuteContext['resolveShotSplitTableJson']
   importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
   collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
   collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
-  collectNarrativeUnitTexts?: NodeExecuteContext['collectNarrativeUnitTexts']
+  collectBeatUnitTexts?: NodeExecuteContext['collectBeatUnitTexts']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']
-  resolveNarrativeCatalogJson?: NodeExecuteContext['resolveNarrativeCatalogJson']
-  importNarrativeCatalogJson?: NodeExecuteContext['importNarrativeCatalogJson']
+  resolveBeatCatalogJson?: NodeExecuteContext['resolveBeatCatalogJson']
+  importBeatCatalogJson?: NodeExecuteContext['importBeatCatalogJson']
   runHostInnerGraph?: NodeExecuteContext['runHostInnerGraph']
   cookAssetIdStack?: string[]
 }

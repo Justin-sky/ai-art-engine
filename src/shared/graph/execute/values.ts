@@ -60,8 +60,8 @@ import {
   resolveScreenplaySystemPrompt,
   resolveShotSplitSystemPrompt,
   resolveWorldExtractSystemPrompt,
-  resolveNarrativeSplitSystemPrompt,
-  resolveNarrativeUnitGenSystemPrompt,
+  resolveBeatSplitSystemPrompt,
+  resolveBeatUnitGenSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveUpscaleSystemPrompt,
   resolveExpandSystemPrompt,
@@ -86,8 +86,8 @@ import {
   buildScreenplayPrompt,
   buildShotSplitPrompt,
   buildWorldExtractPrompt,
-  buildNarrativeSplitPrompt,
-  buildNarrativeUnitGenPrompt,
+  buildBeatSplitPrompt,
+  buildBeatUnitGenPrompt,
   buildToPromptUserPrompt,
   buildVideoPrompt,
   buildVoicePrompt
@@ -135,12 +135,12 @@ import {
   type WorldElementGenResult
 } from '../worldElementParse'
 import {
-  mergeNarrativeUnitRowsPreservingReviewed,
-  parseNarrativeEntityJson,
-  parseNarrativeUnitJson,
-  stringifyNarrativeUnitRows
-} from '../narrativeUnitParse'
-import { formatNarrativeUnitRefText } from '../narrativeUnitParams'
+  mergeBeatRowsPreservingReviewed,
+  parseBeatEntityJson,
+  parseBeatJson,
+  stringifyBeatRows
+} from '../beatParse'
+import { formatBeatRefText } from '../beatParams'
 import {
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode
@@ -878,15 +878,15 @@ function dualWorldCatalogOutputs(
   }
 }
 
-/** 叙事单元拆解图库：`out` 为选中目录（narrative），`out-all` 为历史 texts */
-function dualNarrativeCatalogOutputs(
+/** 场拆解图库：`out` 为选中目录（beat），`out-all` 为历史 texts */
+function dualBeatCatalogOutputs(
   items: GraphTextItem[],
   selectedTextId: string
 ): Record<string, GraphValue> {
   const picked = pickTextItem(items, selectedTextId)
   const text = picked?.text ?? ''
   return {
-    out: catalogValue(GraphPortType.narrative, text, picked?.relativePath),
+    out: catalogValue(GraphPortType.beat, text, picked?.relativePath),
     [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
   }
 }
@@ -979,14 +979,14 @@ async function persistWorldExtractGeneration(
   })
 }
 
-async function persistNarrativeSplitGeneration(
+async function persistBeatSplitGeneration(
   ctx: NodeExecuteContext,
   text: string
 ): Promise<Record<string, GraphValue>> {
   return persistCatalogTextGeneration(ctx, text, {
-    idPrefix: 'narrative-split',
-    fileKeyPrefix: 'narrative_split',
-    dualOutputs: dualNarrativeCatalogOutputs
+    idPrefix: 'beat-split',
+    fileKeyPrefix: 'beat_split',
+    dualOutputs: dualBeatCatalogOutputs
   })
 }
 
@@ -1103,8 +1103,8 @@ export function resolveGalleryOutputsFromNodeParams(
     if (options?.typeId === 'world.extract') {
       return dualWorldCatalogOutputs(items, selectedId)
     }
-    if (options?.typeId === 'narrative.split') {
-      return dualNarrativeCatalogOutputs(items, selectedId)
+    if (options?.typeId === 'beat.split') {
+      return dualBeatCatalogOutputs(items, selectedId)
     }
     return dualTextGalleryOutputs(items, selectedId)
   }
@@ -1238,7 +1238,7 @@ function mapChildOutputToHostOut(
     }
     return null
   }
-  if (assetType === 'narrative') {
+  if (assetType === 'beat') {
     const catalog =
       (typeof output.params?.resultText === 'string' && output.params.resultText.trim()) ||
       (typeof output.params?.text === 'string' && output.params.text.trim()) ||
@@ -1250,7 +1250,7 @@ function mapChildOutputToHostOut(
         : '') ||
       ''
     if (catalog) {
-      return { out: catalogValue(GraphPortType.narrative, catalog) }
+      return { out: catalogValue(GraphPortType.beat, catalog) }
     }
     return null
   }
@@ -1444,7 +1444,7 @@ export function mapHostInnerStatesToOutputs(
     }
     if (
       graphValueHasPayload(raw) &&
-      (raw.kind === 'narrative' ||
+      (raw.kind === 'beat' ||
         raw.kind === 'worldEntities' ||
         raw.kind === 'text' ||
         raw.kind === 'texts')
@@ -2418,8 +2418,8 @@ export type InstructionFinalPreviewKind =
   | 'toPrompt'
   | 'shotSplit'
   | 'worldExtract'
-  | 'narrativeSplit'
-  | 'narrativeUnitGen'
+  | 'beatSplit'
+  | 'beatUnitGen'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -2431,11 +2431,11 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
   if (typeId === 'script.shotSplit' || presetKind === 'shotSplit') return 'shotSplit'
   if (typeId === 'world.extract' || presetKind === 'worldExtract') return 'worldExtract'
-  if (typeId === 'narrative.split' || presetKind === 'narrativeSplit') {
-    return 'narrativeSplit'
+  if (typeId === 'beat.split' || presetKind === 'beatSplit') {
+    return 'beatSplit'
   }
-  if (typeId === 'narrative.unitGen' || presetKind === 'narrativeUnitGen') {
-    return 'narrativeUnitGen'
+  if (typeId === 'beat.unitGen' || presetKind === 'beatUnitGen') {
+    return 'beatUnitGen'
   }
 
   const assetType = node?.assetType
@@ -2472,10 +2472,10 @@ function resolveSystemPromptForPreviewKind(
       return resolveShotSplitSystemPrompt(raw, locale)
     case 'worldExtract':
       return resolveWorldExtractSystemPrompt(raw, locale)
-    case 'narrativeSplit':
-      return resolveNarrativeSplitSystemPrompt(raw, locale)
-    case 'narrativeUnitGen':
-      return resolveNarrativeUnitGenSystemPrompt(raw, locale)
+    case 'beatSplit':
+      return resolveBeatSplitSystemPrompt(raw, locale)
+    case 'beatUnitGen':
+      return resolveBeatUnitGenSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -2502,10 +2502,10 @@ function buildUserPromptForPreviewKind(
       return buildShotSplitPrompt(instruction, locale)
     case 'worldExtract':
       return buildWorldExtractPrompt(instruction, locale)
-    case 'narrativeSplit':
-      return buildNarrativeSplitPrompt(instruction, locale)
-    case 'narrativeUnitGen':
-      return buildNarrativeUnitGenPrompt(instruction, locale)
+    case 'beatSplit':
+      return buildBeatSplitPrompt(instruction, locale)
+    case 'beatUnitGen':
+      return buildBeatUnitGenPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)
@@ -2611,15 +2611,15 @@ function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
   )
 }
 
-function fallbackNarrativeUnitRefText(
+function fallbackBeatUnitRefText(
   node: GraphNode | undefined,
-  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
+  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
 ): string {
-  if (!node || node.typeId !== 'narrative.unitRef' || !resolveNarrativeUnit) return ''
-  const unitId = node.params.boundUnitId?.trim()
-  if (!unitId) return ''
-  const unit = resolveNarrativeUnit(unitId)
-  return unit ? formatNarrativeUnitRefText(unit) : ''
+  if (!node || node.typeId !== 'beat.unitRef' || !resolveBeatUnit) return ''
+  const beatId = node.params.boundBeatId?.trim()
+  if (!beatId) return ''
+  const unit = resolveBeatUnit(beatId)
+  return unit ? formatBeatRefText(unit) : ''
 }
 
 /**
@@ -2633,7 +2633,7 @@ export function buildMentionSourcesForNode(input: {
   byId: Map<string, GraphNode>
   outputs: Map<string, Record<string, GraphValue>>
   mentionIndexBase?: number
-  resolveNarrativeUnit?: (unitId: string) => import('../narrativeUnitParse').NarrativeUnitRow | null
+  resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
 }): InstructionMentionSource[] {
   const base = Math.max(0, Math.floor(input.mentionIndexBase ?? 0))
   const incoming = input.graph.edges.filter(
@@ -2656,7 +2656,7 @@ export function buildMentionSourcesForNode(input: {
       ? ''
       : fromValue?.text?.trim() ||
         fallbackMentionTextFromNode(source) ||
-        fallbackNarrativeUnitRefText(source, input.resolveNarrativeUnit)
+        fallbackBeatUnitRefText(source, input.resolveBeatUnit)
     return { index, title, text, keepMentionToken }
   })
 }
@@ -2953,8 +2953,7 @@ export function executeBoundaryOutputNode(
   }
   const dataType = ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
   if (
-    dataType === GraphPortType.narrative ||
-    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.beat ||
     dataType === GraphPortType.worldEntities ||
     dataType === GraphPortType.shotEntities ||
     dataType === GraphPortType.videoEntities ||
@@ -3053,8 +3052,8 @@ export function executeShotParamsNode(ctx: NodeExecuteContext): Record<string, G
   }
 }
 
-/** 叙事单元细化生成：文本模型 + 指令框；规则在系统提示词 */
-export async function executeNarrativeUnitGenNode(
+/** 场细化生成：文本模型 + 指令框；规则在系统提示词 */
+export async function executeBeatUnitGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
@@ -3082,14 +3081,14 @@ export async function executeNarrativeUnitGenNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  let prompt = buildNarrativeUnitGenPrompt(instruction, ctx.locale)
+  let prompt = buildBeatUnitGenPrompt(instruction, ctx.locale)
   if (incomingText) {
     prompt = `${prompt.trim()}\n\n${incomingText}`
   }
 
   const result = await ctx.generateText({
     prompt,
-    system: resolveNarrativeUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    system: resolveBeatUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined
   })
@@ -3104,13 +3103,13 @@ export async function executeNarrativeUnitGenNode(
   return { out: { kind: 'text', text } }
 }
 
-/** 叙事单元参考：输出绑定单元的目录字段文本 */
-export function executeNarrativeUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const unitId = ctx.node.params.boundUnitId?.trim()
-  if (!unitId) return {}
-  const unit = ctx.resolveNarrativeUnit?.(unitId)
+/** 场参考：输出绑定单元的目录字段文本 */
+export function executeBeatUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const beatId = ctx.node.params.boundBeatId?.trim()
+  if (!beatId) return {}
+  const unit = ctx.resolveBeatUnit?.(beatId)
   if (!unit) return {}
-  const text = formatNarrativeUnitRefText(unit)
+  const text = formatBeatRefText(unit)
   return text ? { out: { kind: 'text', text } } : {}
 }
 
@@ -3373,13 +3372,13 @@ export async function executeWorldEntitiesOutputNode(
     : { out: catalogValue(GraphPortType.worldEntities, '[]') }
 }
 
-/** 叙事单元输出：透传 narrative 目录 JSON */
-export async function executeNarrativeCatalogOutputNode(
+/** 场输出：透传 beat 目录 JSON */
+export async function executeBeatCatalogOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const fromIn = catalogTextFromInputs(
     Object.values(ctx.inputs).flat(),
-    GraphPortType.narrative
+    GraphPortType.beat
   )
   const text = fromIn ?? ''
   const paramsPatch = {
@@ -3387,65 +3386,65 @@ export async function executeNarrativeCatalogOutputNode(
     text,
     generatedTexts: [] as GraphTextItem[],
     outputKind: (ctx.node.params.outputKind ?? 'text') as GraphOutputKind,
-    inputDataType: GraphPortType.narrative
+    inputDataType: GraphPortType.beat
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
   return {
-    out: catalogValue(GraphPortType.narrative, text || '[]')
+    out: catalogValue(GraphPortType.beat, text || '[]')
   }
 }
 
 /**
- * 叙事单元表格：有上游叙事目录则透传并导入；
+ * 场表格：有上游场目录则透传并导入；
  * 可同时接收世界元素实体（写入 params，供表格引用）；
  * 否则输出当前目录 JSON。
  */
-export async function executeNarrativeTableNode(
+export async function executeBeatTableNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const fromIn = catalogTextFromInputs(
     ctx.inputs.in ?? Object.values(ctx.inputs).flat(),
-    GraphPortType.narrative
+    GraphPortType.beat
   )
   if (fromIn) {
     ctx.node.params = { ...ctx.node.params, text: fromIn }
     ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importNarrativeCatalogJson?.(fromIn)
-    return { out: catalogValue(GraphPortType.narrative, fromIn) }
+    await ctx.importBeatCatalogJson?.(fromIn)
+    return { out: catalogValue(GraphPortType.beat, fromIn) }
   }
 
-  const fromCatalog = ctx.resolveNarrativeCatalogJson?.()?.trim()
+  const fromCatalog = ctx.resolveBeatCatalogJson?.()?.trim()
   if (fromCatalog) {
     ctx.node.params = { ...ctx.node.params, text: fromCatalog }
     ctx.patchNode?.({ params: { text: fromCatalog } })
-    return { out: catalogValue(GraphPortType.narrative, fromCatalog) }
+    return { out: catalogValue(GraphPortType.beat, fromCatalog) }
   }
 
   const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: catalogValue(GraphPortType.narrative, local) } : {}
+  return local ? { out: catalogValue(GraphPortType.beat, local) } : {}
 }
 
 /**
- * 叙事单元生成：有上游叙事目录时同步到单元子图；
- * 再从各单元 narrativeUnit 子图收集「叙事输出」已有文本并落地到输出路径（不级联跑子图生成）。
+ * 场生成：有上游场目录时同步到单元子图；
+ * 再从各单元 beatUnit 子图收集「场输出」已有文本并落地到输出路径（不级联跑子图生成）。
  * 导入只在节点执行时发生，打开细化窗口不会导入。
  */
-export async function executeNarrativeGenNode(
+export async function executeBeatGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const fromIn = catalogTextFromInputs(
     Object.values(ctx.inputs).flat(),
-    GraphPortType.narrative
+    GraphPortType.beat
   )
   if (fromIn) {
     // 先导入目录再 patch，减少与单元图落盘的竞态
-    await ctx.importNarrativeCatalogJson?.(fromIn)
+    await ctx.importBeatCatalogJson?.(fromIn)
     ctx.node.params = { ...ctx.node.params, text: fromIn }
     ctx.patchNode?.({ params: { text: fromIn } })
   }
 
-  const collected = await ctx.collectNarrativeUnitTexts?.(ctx.signal)
+  const collected = await ctx.collectBeatUnitTexts?.(ctx.signal)
   const items = collected?.items ?? []
   if (!items.length) {
     const paramsPatch = {
@@ -3460,7 +3459,7 @@ export async function executeNarrativeGenNode(
   }
 
   const hydrated = await hydrateTextItems(items, ctx.readRunText)
-  const materialized = await materializeNarrativeUnitTextItems(ctx, hydrated)
+  const materialized = await materializeBeatUnitTextItems(ctx, hydrated)
   if (!materialized.length) {
     const paramsPatch = {
       generatedTexts: [] as GraphTextItem[],
@@ -3511,7 +3510,6 @@ export async function executeShotSplitNode(
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const incoming = ctx.inputs.in ?? Object.values(ctx.inputs).flat()
   const entityText =
-    catalogTextFromInputs(incoming, GraphPortType.narrativeEntity) ||
     incoming.reduce<string>((found, value) => {
       if (found) return found
       if (value.kind === 'text' && value.text.trim()) return value.text.trim()
@@ -3524,9 +3522,9 @@ export async function executeShotSplitNode(
       return ''
     }, '') ||
     ''
-  const entity = parseNarrativeEntityJson(entityText)
-  const entityPrompt = entity ? formatNarrativeUnitRefText(entity) : ''
-  // 上游可能已是普通文本（如 narrative.select），JSON 解析失败时直接用正文
+  const entity = parseBeatEntityJson(entityText)
+  const entityPrompt = entity ? formatBeatRefText(entity) : ''
+  // 上游可能已是普通文本（如 beat.select），JSON 解析失败时直接用正文
   const incomingText =
     entityPrompt ||
     entityText ||
@@ -3647,13 +3645,13 @@ export async function executeWorldExtractNode(
 }
 
 /**
- * 叙事单元拆解：将上游剧本文本（text）拆成有序叙事单元 JSON。
+ * 场拆解：将上游剧本文本（text）拆成有序场 JSON。
  * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
  * 通常经由 text.select 从 texts 中选出单条后再接入。
  * 本地若含上次拆解 JSON，合并时强制保留「已审核」行。
  */
-/** 收集叙事拆解可用的上游剧本文本（含 texts.relativePath 落盘正文） */
-async function resolveNarrativeSplitSourceText(
+/** 收集场拆解可用的上游剧本文本（含 texts.relativePath 落盘正文） */
+async function resolveBeatSplitSourceText(
   ctx: NodeExecuteContext,
   instructionRaw: string,
   mentionSources?: InstructionMentionSource[]
@@ -3691,20 +3689,20 @@ async function resolveNarrativeSplitSourceText(
   return ''
 }
 
-export async function executeNarrativeSplitNode(
+export async function executeBeatSplitNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const mentionSources = resolveMentionSources(ctx)
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const incomingText = await resolveNarrativeSplitSourceText(
+  const incomingText = await resolveBeatSplitSourceText(
     ctx,
     instructionRaw,
     mentionSources
   )
   const localText = node.params.text?.trim() ?? ''
-  const previousRows = parseNarrativeUnitJson(localText)
+  const previousRows = parseBeatJson(localText)
 
   if (!ctx.generateText) {
     // 无模型时只输出本地已有目录，不把上游剧本文冒充目录
@@ -3713,17 +3711,17 @@ export async function executeNarrativeSplitNode(
       const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
         typeId: node.typeId
       })
-      return gallery ?? dualNarrativeCatalogOutputs([], '')
+      return gallery ?? dualBeatCatalogOutputs([], '')
     }
     if ((node.params.generatedTexts ?? []).length) {
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
       return (
         resolveGalleryOutputsFromNodeParams(node.params, { typeId: node.typeId }) ??
-        dualNarrativeCatalogOutputs([], '')
+        dualBeatCatalogOutputs([], '')
       )
     }
-    return persistNarrativeSplitGeneration(ctx, text)
+    return persistBeatSplitGeneration(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3737,14 +3735,14 @@ export async function executeNarrativeSplitNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
 
-  let prompt = buildNarrativeSplitPrompt(instruction, ctx.locale)
+  let prompt = buildBeatSplitPrompt(instruction, ctx.locale)
   if (incomingText.trim()) {
     prompt = `${prompt.trim()}\n\n${incomingText}`
   }
 
   const result = await ctx.generateText({
     prompt,
-    system: resolveNarrativeSplitSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    system: resolveBeatSplitSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined
   })
@@ -3752,15 +3750,15 @@ export async function executeNarrativeSplitNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   let text = result.text.trim()
-  if (!text) throw new Error('模型未返回叙事单元拆解结果')
+  if (!text) throw new Error('模型未返回场拆解结果')
 
-  const nextRows = parseNarrativeUnitJson(text)
-  const merged = mergeNarrativeUnitRowsPreservingReviewed(previousRows, nextRows)
+  const nextRows = parseBeatJson(text)
+  const merged = mergeBeatRowsPreservingReviewed(previousRows, nextRows)
   if (merged?.length) {
-    text = stringifyNarrativeUnitRows(merged)
+    text = stringifyBeatRows(merged)
   }
 
-  return persistNarrativeSplitGeneration(ctx, text)
+  return persistBeatSplitGeneration(ctx, text)
 }
 
 async function collectImageUrlsForPrompt(
@@ -4004,32 +4002,53 @@ export async function executeSelectTextNode(
 }
 
 /**
- * 选择叙事单元：从 narrative 目录中选出一行，输出可读普通文本。
+ * 从入边取场目录 JSON。
+ * soft 快照偶发把上游目录解析成 text，此时若正文可 parse 为场行则同样接受。
  */
-export function executeSelectNarrativeNode(
+function beatCatalogTextFromIncoming(inputs: Record<string, GraphValue[]>): string {
+  const values = collectIncomingValues(inputs)
+  const fromBeat = catalogTextFromInputs(values, GraphPortType.beat)
+  if (fromBeat) return fromBeat
+  for (const value of values) {
+    if (value?.kind !== 'text') continue
+    const text = value.text?.trim() ?? ''
+    if (!text) continue
+    const rows = parseBeatJson(text)
+    if (rows?.length) return text
+  }
+  return ''
+}
+
+/**
+ * 选择场：从 beat 目录中选出一行，输出可读普通文本。
+ */
+export function executeSelectBeatNode(
   ctx: NodeExecuteContext
 ): Record<string, GraphValue> {
-  const catalogText =
-    catalogTextFromInputs(collectIncomingValues(ctx.inputs), GraphPortType.narrative) ||
-    ''
-  const rows = parseNarrativeUnitJson(catalogText) ?? []
-  const selectedId = ctx.node.params.selectedUnitId?.trim()
+  const catalogText = beatCatalogTextFromIncoming(ctx.inputs)
+  const rows = parseBeatJson(catalogText) ?? []
+  const selectedId = ctx.node.params.selectedBeatId?.trim()
   const picked =
     (selectedId ? rows.find((row) => row.id === selectedId) : undefined) ?? rows[0]
   if (!picked) {
-    ctx.node.params = { ...ctx.node.params, text: '', selectedUnitId: '' }
-    ctx.patchNode?.({ params: { text: '', selectedUnitId: '' } })
+    // 上游瞬时软快照失败时保留已有结果，避免「执行当前」把预览清空
+    const existing = ctx.node.params.text?.trim() ?? ''
+    if (existing) {
+      return { out: { kind: 'text', text: existing } }
+    }
+    ctx.node.params = { ...ctx.node.params, text: '', selectedBeatId: '' }
+    ctx.patchNode?.({ params: { text: '', selectedBeatId: '' } })
     return {}
   }
-  const text = formatNarrativeUnitRefText(picked)
+  const text = formatBeatRefText(picked)
   ctx.node.params = {
     ...ctx.node.params,
-    selectedUnitId: picked.id,
+    selectedBeatId: picked.id,
     text
   }
   ctx.patchNode?.({
     params: {
-      selectedUnitId: picked.id,
+      selectedBeatId: picked.id,
       text
     }
   })
@@ -5260,10 +5279,10 @@ export async function executeScreenplayOutputNode(
     .map((text) => ({ kind: 'text' as const, text }))
   const resultText = notes.map((item) => item.text).join('\n\n')
   const outputKind: GraphOutputKind = ctx.node.params.outputKind ?? 'text'
-  // 叙事单元输出等：落地已迁至上游 gen，清空旧 generatedTexts，避免预览叠 resultText 变多
+  // 场输出等：落地已迁至上游 gen，清空旧 generatedTexts，避免预览叠 resultText 变多
   const paramsPatch = {
     resultText,
-    ...(ctx.node.typeId === 'output.narrative' ? { generatedTexts: [] as GraphTextItem[] } : {})
+    ...(ctx.node.typeId === 'output.beat' ? { generatedTexts: [] as GraphTextItem[] } : {})
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
@@ -5279,7 +5298,7 @@ export async function executeScreenplayOutputNode(
   return { out: value }
 }
 
-function sanitizeNarrativeOutputKeyPart(raw: string, fallback: string): string {
+function sanitizeBeatOutputKeyPart(raw: string, fallback: string): string {
   const cleaned = raw
     .trim()
     .replace(/[^\w\u4e00-\u9fff.-]+/g, '_')
@@ -5288,8 +5307,8 @@ function sanitizeNarrativeOutputKeyPart(raw: string, fallback: string): string {
   return cleaned || fallback
 }
 
-/** 落盘文件名：{宿主}_{叙事标题}_{时间戳}[_{序号}] */
-function resolveNarrativeUnitFileKey(
+/** 落盘文件名：{宿主}_{场标题}_{时间戳}[_{序号}] */
+function resolveBeatUnitFileKey(
   ctx: NodeExecuteContext,
   item: GraphTextItem,
   index: number,
@@ -5300,9 +5319,9 @@ function resolveNarrativeUnitFileKey(
   const firstLine = item.text?.split(/\r?\n/, 1)[0]?.trim() ?? ''
   const numbered = firstLine.match(/^\d+\.\s*(.+)$/)
   const fromLine = (numbered?.[1] ?? firstLine).trim()
-  const unitTitle = sanitizeNarrativeOutputKeyPart(
+  const unitTitle = sanitizeBeatOutputKeyPart(
     fromTitle || fromLine || item.id?.trim() || '',
-    `叙事单元${index + 1}`
+    `场${index + 1}`
   )
   return buildGeneratedMediaFileKey({
     hostAssetName: ctx.resolveHostAssetName?.(),
@@ -5313,9 +5332,9 @@ function resolveNarrativeUnitFileKey(
 }
 
 /**
- * 将叙事单元 texts 落地为剧本文件（txt），返回物化后的条目（有路径时清空 text）。
+ * 将场 texts 落地为剧本文件（txt），返回物化后的条目（有路径时清空 text）。
  */
-async function materializeNarrativeUnitTextItems(
+async function materializeBeatUnitTextItems(
   ctx: NodeExecuteContext,
   hydrated: GraphTextItem[]
 ): Promise<GraphTextItem[]> {
@@ -5328,7 +5347,7 @@ async function materializeNarrativeUnitTextItems(
     const text = item.text?.trim() ?? ''
     const existingPath = item.relativePath?.trim()
     const id = item.id?.trim() || `nu-out:${stamp}:${index}`
-    const fileKey = resolveNarrativeUnitFileKey(ctx, item, index, stamp, hydrated.length)
+    const fileKey = resolveBeatUnitFileKey(ctx, item, index, stamp, hydrated.length)
     const title = item.title?.trim() || fileKey
 
     if (existingPath && !ctx.saveRunText) {
@@ -5380,7 +5399,7 @@ async function materializeNarrativeUnitTextItems(
         relativePath
       })
     } catch (err) {
-      console.warn('[graph] narrative unit text save failed', err)
+      console.warn('[graph] beat unit text save failed', err)
       materialized.push({
         id,
         title,
@@ -5394,9 +5413,9 @@ async function materializeNarrativeUnitTextItems(
 }
 
 /**
- * 叙事单元细化画布输出：透传上游 texts（资产主链已改为 table → output.narrative）。
+ * 场细化画布输出：透传上游 texts（资产主链已改为 table → output.beat）。
  */
-export async function executeNarrativeOutputNode(
+export async function executeBeatOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   return executeScreenplayOutputNode(ctx)
@@ -5409,8 +5428,8 @@ export async function executeOutputNode(
   if (
     ctx.node.params.outputKind === 'text' ||
     ctx.node.typeId === 'output.text' ||
-    ctx.node.typeId === 'output.narrative' ||
-    ctx.node.typeId === 'output.narrativeUnit'
+    ctx.node.typeId === 'output.beat' ||
+    ctx.node.typeId === 'output.beatUnit'
   ) {
     return executeScreenplayOutputNode(ctx)
   }

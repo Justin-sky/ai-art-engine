@@ -4,7 +4,7 @@ import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
+import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import type { InspectorTarget } from './types'
 
 /**
@@ -125,18 +125,18 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
       }
     }
 
-    if (selection.kind === 'narrativeUnit') {
-      const unitId = selection.id ?? workspace.activeNarrativeUnitId
-      const assetId = workspace.activeNarrativeAssetId
+    if (selection.kind === 'beatUnit') {
+      const beatId = selection.id ?? workspace.activeBeatId
+      const assetId = workspace.activeBeatAssetId
       const unit =
-        unitId && assetId
-          ? loadNarrativeCatalog(assetId).find((row) => row.id === unitId) ?? null
+        beatId && assetId
+          ? loadBeatCatalog(assetId).find((row) => row.id === beatId) ?? null
           : null
       return {
-        kind: 'narrativeUnit',
-        key: unitId ? `narrativeUnit:${unitId}` : 'narrativeUnit:none',
+        kind: 'beatUnit',
+        key: beatId ? `beatUnit:${beatId}` : 'beatUnit:none',
         subject: unit,
-        meta: assetId ? { narrativeAssetId: assetId } : undefined
+        meta: assetId ? { beatAssetId: assetId } : undefined
       }
     }
 

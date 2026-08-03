@@ -1,9 +1,9 @@
 <template>
   <div class="dive-view">
-    <NarrativeUnitEditorBody
+    <BeatEditorBody
       ref="bodyRef"
       class="body"
-      :narrative-asset-id="narrativeAssetId"
+      :beat-asset-id="beatAssetId"
     />
   </div>
 </template>
@@ -12,16 +12,16 @@
 import { onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
-import { loadNarrativeCatalog } from '../../features/narrative/applyNarrativeCatalogOnOpen'
-import NarrativeUnitEditorBody from '../NarrativeUnitEditorBody.vue'
+import { loadBeatCatalog } from '../../features/beat/applyBeatCatalogOnOpen'
+import BeatEditorBody from '../BeatEditorBody.vue'
 
 const props = defineProps<{
   frameKey: string
-  narrativeAssetId: string
+  beatAssetId: string
 }>()
 
 const workspace = useWorkspaceStore()
-const bodyRef = ref<InstanceType<typeof NarrativeUnitEditorBody> | null>(null)
+const bodyRef = ref<InstanceType<typeof BeatEditorBody> | null>(null)
 
 useEditorDiveFrameFlush(
   () => props.frameKey,
@@ -29,19 +29,19 @@ useEditorDiveFrameFlush(
 )
 
 onMounted(async () => {
-  const rows = [...loadNarrativeCatalog(props.narrativeAssetId)].sort(
+  const rows = [...loadBeatCatalog(props.beatAssetId)].sort(
     (a, b) => a.order - b.order || a.title.localeCompare(b.title)
   )
   if (rows.length) {
-    const current = workspace.activeNarrativeUnitId
+    const current = workspace.activeBeatId
     const keep = current && rows.some((row) => row.id === current) ? current : rows[0].id
-    workspace.selectNarrativeUnit(keep, props.narrativeAssetId)
+    workspace.selectBeatUnit(keep, props.beatAssetId)
   } else {
-    workspace.selectNarrativeUnit(null, props.narrativeAssetId)
+    workspace.selectBeatUnit(null, props.beatAssetId)
   }
   await Promise.resolve()
   bodyRef.value?.reloadStrip?.()
-  workspace.focusNarrativeUnit()
+  workspace.focusBeatUnit()
 })
 </script>
 

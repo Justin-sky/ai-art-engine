@@ -14,8 +14,8 @@ export type InstructionPresetKind =
   | 'optimize'
   | 'shotSplit'
   | 'worldExtract'
-  | 'narrativeSplit'
-  | 'narrativeUnitGen'
+  | 'beatSplit'
+  | 'beatUnitGen'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
 export type InstructionPresetTab = 'general' | 'game' | 'film'
@@ -1176,36 +1176,36 @@ const WORLD_EXTRACT_PRESETS: InstructionPreset[] = [
   }
 ]
 
-const NARRATIVE_SPLIT_CREATE_BODY = `请将下列剧本拆解为叙事单元，并严格按系统提示词规定的 JSON 数组格式输出。
+const BEAT_SPLIT_CREATE_BODY = `请将下列剧本拆解为场，并严格按系统提示词规定的 JSON 数组格式输出。
 硬性要求：
-1. 粒度是场/节拍（一个单元≈后续多镜），禁止景别/运镜/构图。
-2. 按故事顺序覆盖全文；同目标、同地点、同情绪的连续微动作合并；遇换场、时间跳跃、不可逆揭露、冲突升级、抉择、情绪转向再拆。
-3. summary 写清「谁做了什么→什么变化」；sourceExcerpt 紧贴原文定位，不要写成第二份摘要。
-4. dramaticFunction 只能是 建置|冲突|转折|高潮|收束|过渡；durationHint 优先 短|中|长；新建 status=未审核。
+1. 粒度是场/节拍（一个场可对应后续多镜），禁止景别/运镜/构图。
+2. 按故事顺序覆盖全文；在时间、地点、目标、冲突、动作或氛围发生有意义变化时拆分。
+3. 每场尽量填齐六要素：time（时间）、location（空间与地点）、characters（角色）、action（核心动作与事件）、conflict（动机/冲突/目标）、atmosphere（氛围/光影/声音）；另填 durationHint、locations 地点绑定、sourceExcerpt。
+4. id 使用 beat- 前缀；durationHint 优先 短|中|长；新建 status=未审核。
 5. 只输出 JSON。
 
 剧本内容：`
 
-const NARRATIVE_SPLIT_REFINE_BODY = `请优化下列叙事单元列表，并严格按系统提示词规定的 JSON 数组格式重新输出（字段集合不变）。
+const BEAT_SPLIT_REFINE_BODY = `请优化下列场列表，并严格按系统提示词规定的 JSON 数组格式重新输出（字段集合不变）。
 硬性要求：
-1. 合并过碎单元、拆分过长或功能混杂的单元；戏剧功能判定更准确。
-2. 强化 summary / emotionalBeat / sourceExcerpt 的信息密度与可定位性；地点与角色名前后一致。
+1. 合并过碎的场，拆分时间、地点、目标、冲突或动作混杂的场。
+2. 强化 time / location / action / conflict / atmosphere / sourceExcerpt 的信息密度与可定位性；地点与角色名前后一致。
 3. 禁止改成镜头语言；禁止编造原文没有的情节。
-4. status 为「已审核」的单元必须原样保留、不得修改。
+4. status 为「已审核」的场必须原样保留、不得修改。
 5. 只输出 JSON。
 
-叙事单元内容：`
+场内容：`
 
-const NARRATIVE_SPLIT_PRESETS: InstructionPreset[] = [
+const BEAT_SPLIT_PRESETS: InstructionPreset[] = [
   {
-    id: 'narrativeSplit.create',
-    titleKey: 'graph.inspector.generate.presets.narrativeSplit.create',
-    body: NARRATIVE_SPLIT_CREATE_BODY
+    id: 'beatSplit.create',
+    titleKey: 'graph.inspector.generate.presets.beatSplit.create',
+    body: BEAT_SPLIT_CREATE_BODY
   },
   {
-    id: 'narrativeSplit.refine',
-    titleKey: 'graph.inspector.generate.presets.narrativeSplit.refine',
-    body: NARRATIVE_SPLIT_REFINE_BODY
+    id: 'beatSplit.refine',
+    titleKey: 'graph.inspector.generate.presets.beatSplit.refine',
+    body: BEAT_SPLIT_REFINE_BODY
   }
 ]
 
@@ -1219,9 +1219,9 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   optimize: OPTIMIZE_PRESETS,
   shotSplit: SHOT_SPLIT_PRESETS,
   worldExtract: WORLD_EXTRACT_PRESETS,
-  narrativeSplit: NARRATIVE_SPLIT_PRESETS,
+  beatSplit: BEAT_SPLIT_PRESETS,
   // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
-  narrativeUnitGen: []
+  beatUnitGen: []
 }
 
 export function listInstructionPresets(kind: InstructionPresetKind): InstructionPreset[] {

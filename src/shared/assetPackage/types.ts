@@ -150,7 +150,7 @@ export const AIPACKAGE_ASSET_TYPES: ReadonlySet<AssetType> = new Set([
   'script',
   'canvas',
   'world',
-  'narrative',
+  'beat',
   'screenplay',
   'motion'
 ])

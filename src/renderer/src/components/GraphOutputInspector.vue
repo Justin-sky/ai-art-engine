@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div v-if="node" class="output-inspector">
     <div class="head">
       <span class="type">{{ outputLabel }}</span>
@@ -188,7 +188,7 @@ const isVideoOutput = computed(() => {
 const isGenerateScriptOutput = computed(() => {
   const current = node.value
   if (!current) return false
-  if (current.typeId === 'output.narrative' || current.typeId === 'output.narrativeUnit') {
+  if (current.typeId === 'output.beat' || current.typeId === 'output.beatUnit') {
     return false
   }
   return current.typeId === 'output.text' || current.params.outputKind === 'text'
@@ -201,8 +201,8 @@ const isDirectorOutput = computed(() => {
   return asset?.type === 'motion' && node.value?.params.outputKind === 'image'
 })
 const outputLabel = computed(() => {
-  if (node.value?.typeId === 'output.narrativeUnit') return t('graph.titles.narrativeUnitOutput')
-  if (node.value?.typeId === 'output.narrative') return t('graph.titles.narrativeOutput')
+  if (node.value?.typeId === 'output.beatUnit') return t('graph.titles.beatUnitOutput')
+  if (node.value?.typeId === 'output.beat') return t('graph.titles.beatOutput')
   if (isGenerateScriptOutput.value) return t('graph.titles.screenplayOutput')
   if (isDirectorOutput.value) return t('graph.titles.directorOutput')
   if (isVoiceOutput.value) return t('graph.titles.assetOutput.voice')

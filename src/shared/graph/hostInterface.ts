@@ -114,14 +114,6 @@ export function sanitizeHostInterface(raw: unknown): HostInterfaceDocument {
     outputs.push(port)
   }
 
-  // 分镜宿主叙事口：历史 narrativeEntity → text（端口 id 保持，兼容已有连线）
-  for (let i = 0; i < inputs.length; i++) {
-    const port = inputs[i]!
-    if (port.id === 'in-narrativeEntity' && port.dataType === GraphPortType.narrativeEntity) {
-      inputs[i] = { ...port, dataType: GraphPortType.text }
-    }
-  }
-
   return { version, inputs, outputs }
 }
 
@@ -147,8 +139,7 @@ const PORT_DATA_TYPE_LABELS: Record<string, string> = {
   [GraphPortType.worldEntities]: '世界元素实体',
   [GraphPortType.shotEntities]: '分镜实体',
   [GraphPortType.videoEntities]: '视频实体',
-  [GraphPortType.narrative]: '叙事单元',
-  [GraphPortType.narrativeEntity]: '叙事实体',
+  [GraphPortType.beat]: '场',
   [GraphPortType.shots]: '分镜',
   [GraphPortType.model]: '模型'
 }
@@ -199,7 +190,7 @@ export function defaultHostInterfaceForAssetType(
           }
         ]
       }
-    case 'narrative':
+    case 'beat':
       return {
         version: HOST_INTERFACE_FORMAT_VERSION,
         inputs: [
@@ -209,7 +200,7 @@ export function defaultHostInterfaceForAssetType(
           {
             id: 'out',
             label: 'Out',
-            dataType: GraphPortType.narrative,
+            dataType: GraphPortType.beat,
             multiple: true
           }
         ]
@@ -225,8 +216,8 @@ export function defaultHostInterfaceForAssetType(
             multiple: true
           },
           {
-            id: 'in-narrativeEntity',
-            label: 'Narrative',
+            id: 'in-beat',
+            label: 'Beat',
             dataType: GraphPortType.text,
             multiple: true
           }

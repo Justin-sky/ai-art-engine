@@ -50,7 +50,7 @@ function cloneGraphValue(value: GraphValue): GraphValue {
     case 'text':
       return { ...value }
     case 'world':
-    case 'narrative':
+    case 'beat':
     case 'shots':
       return { ...value }
     case 'texts':

@@ -18,8 +18,8 @@ describe('generate node lock', () => {
     const multiAngle = createNodeFromType('image.multiAngle', { x: 0, y: 0 })
     const worldExtract = createNodeFromType('world.extract', { x: 0, y: 0 })
     const worldGen = createNodeFromType('world.gen', { x: 0, y: 0 })
-    const narrativeSplit = createNodeFromType('narrative.split', { x: 0, y: 0 })
-    const narrativeGen = createNodeFromType('narrative.gen', { x: 0, y: 0 })
+    const beatSplit = createNodeFromType('beat.split', { x: 0, y: 0 })
+    const beatGen = createNodeFromType('beat.gen', { x: 0, y: 0 })
     const note = createNodeFromType('note.text', { x: 0, y: 0 })
     const host = createNodeFromType('asset.image', { x: 0, y: 0 }, {
       assetId: '00000000-0000-4000-8000-0000000000a1',
@@ -30,7 +30,7 @@ describe('generate node lock', () => {
     const boundaryOut = createNodeFromType('graph.boundary.output', { x: 0, y: 0 })
     const inputSlot = createNodeFromType('graph.input.slot', { x: 0, y: 0 })
     const worldTable = createNodeFromType('world.table', { x: 0, y: 0 })
-    const narrativeTable = createNodeFromType('narrative.table', { x: 0, y: 0 })
+    const beatTable = createNodeFromType('beat.table', { x: 0, y: 0 })
     const shotTable = createNodeFromType('script.shotTable', { x: 0, y: 0 })
     expect(supportsGenerateLock(image)).toBe(true)
     expect(supportsGenerateLock(select)).toBe(true)
@@ -38,8 +38,8 @@ describe('generate node lock', () => {
     expect(supportsGenerateLock(multiAngle)).toBe(true)
     expect(supportsGenerateLock(worldExtract)).toBe(true)
     expect(supportsGenerateLock(worldGen)).toBe(true)
-    expect(supportsGenerateLock(narrativeSplit)).toBe(true)
-    expect(supportsGenerateLock(narrativeGen)).toBe(true)
+    expect(supportsGenerateLock(beatSplit)).toBe(true)
+    expect(supportsGenerateLock(beatGen)).toBe(true)
     expect(supportsGenerateLock(note)).toBe(true)
     expect(supportsGenerateLock(host)).toBe(true)
     expect(supportsGenerateLock(output)).toBe(false)
@@ -48,7 +48,7 @@ describe('generate node lock', () => {
     expect(supportsGenerateLock(inputSlot)).toBe(false)
     // 目录表格只透传，无图库可复用，锁定必然取不到缓存
     expect(supportsGenerateLock(worldTable)).toBe(false)
-    expect(supportsGenerateLock(narrativeTable)).toBe(false)
+    expect(supportsGenerateLock(beatTable)).toBe(false)
     expect(supportsGenerateLock(shotTable)).toBe(false)
     expect(isGenerateLocked({ ...image, params: { locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...host, params: { ...host.params, locked: true } })).toBe(true)
@@ -84,8 +84,8 @@ describe('generate node lock', () => {
     })
   })
 
-  it('narrative.split lock reuses catalog gallery without calling generateText', async () => {
-    const split = createNodeFromType('narrative.split', { x: 0, y: 0 }, {
+  it('beat.split lock reuses catalog gallery without calling generateText', async () => {
+    const split = createNodeFromType('beat.split', { x: 0, y: 0 }, {
       id: 'split',
       params: {
         locked: true,
@@ -119,14 +119,14 @@ describe('generate node lock', () => {
     expect(result.ok, result.error).toBe(true)
     expect(generateCalls).toBe(0)
     expect(result.states.split?.outputs?.out).toMatchObject({
-      kind: 'narrative',
+      kind: 'beat',
       text: '[{"id":"nu-1","title":"A"}]'
     })
     expect(result.states.split?.outputs?.['out-all']?.kind).toBe('texts')
   })
 
-  it('narrative.gen lock reuses generatedTexts without collecting', async () => {
-    const gen = createNodeFromType('narrative.gen', { x: 0, y: 0 }, {
+  it('beat.gen lock reuses generatedTexts without collecting', async () => {
+    const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, {
       id: 'gen',
       params: {
         locked: true,
@@ -149,7 +149,7 @@ describe('generate node lock', () => {
         stepDelayMs: 1,
         targetNodeId: 'gen',
         onlyTargetNode: true,
-        collectNarrativeUnitTexts: async () => {
+        collectBeatUnitTexts: async () => {
           collectCalls += 1
           return { items: [{ id: 'new', text: '新', title: 'NEW' }] }
         }

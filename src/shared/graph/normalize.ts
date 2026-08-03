@@ -297,7 +297,7 @@ export function normalizeScopedGraph(
   }
 
   // 仅资产编辑器在打开已有图时按模板补齐加工节点（导入媒体宿主绑定）；
-  // 分镜/世界/叙事长链不在加载时回插已删节点。
+  // 分镜/世界/场长链不在加载时回插已删节点。
   if (isAssetEditorGraphScope(scope)) {
     ensureDefaultGraphFromTemplate(nodes, edges, {
       scope,

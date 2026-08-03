@@ -186,8 +186,7 @@ function mediaKindFromBoundaryPort(node: GraphNode): PreviewMediaKind | null {
     dataType === 'worldEntities' ||
     dataType === 'shotEntities' ||
     dataType === 'videoEntities' ||
-    dataType === 'narrative' ||
-    dataType === 'narrativeEntity' ||
+    dataType === 'beat' ||
     dataType === 'shots' ||
     dataType === 'model'
   ) {
@@ -206,7 +205,7 @@ function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'
-  if (node.typeId === 'narrative.select') return 'text'
+  if (node.typeId === 'beat.select') return 'text'
   if (
     node.category === 'output' &&
     (node.typeId === 'output.text' || node.params.outputKind === 'text')
@@ -282,7 +281,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
       value.kind === 'worldEntities' ||
       value.kind === 'shotEntities' ||
       value.kind === 'videoEntities' ||
-      value.kind === 'narrative' ||
+      value.kind === 'beat' ||
       value.kind === 'shots') &&
     value.text.trim()
   ) {
@@ -569,7 +568,7 @@ function collectFallback(into: PreviewItem[]): void {
 
   if (generatedTextItems.length) {
     const catalogFallback =
-      node.typeId === 'world.extract' || node.typeId === 'narrative.split'
+      node.typeId === 'world.extract' || node.typeId === 'beat.split'
         ? node.params.text?.trim() || ''
         : ''
     const selectedTextId = node.params.selectedTextId?.trim() || ''
@@ -594,7 +593,7 @@ function collectFallback(into: PreviewItem[]): void {
       })
     }
   } else if (
-    (node.typeId === 'world.extract' || node.typeId === 'narrative.split') &&
+    (node.typeId === 'world.extract' || node.typeId === 'beat.split') &&
     node.params.text?.trim()
   ) {
     // 尚无图库时仍展示当前目录 JSON
@@ -906,7 +905,7 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
     value.kind === 'worldEntities' ||
     value.kind === 'shotEntities' ||
     value.kind === 'videoEntities' ||
-    value.kind === 'narrative' ||
+    value.kind === 'beat' ||
     value.kind === 'shots'
   ) {
     return !!value.text.trim()
@@ -952,7 +951,7 @@ const items = computed((): PreviewItem[] => {
       !!(node.params.generatedVoices ?? []).length ||
       hasTextGallery ||
       (node.typeId !== 'script.shotVideoGen' && !!(node.params.cameraShots ?? []).length)
-    // 目录口（world/narrative）与 Selected text 只是当前选中，不能盖掉图库多版本
+    // 目录口（world/beat）与 Selected text 只是当前选中，不能盖掉图库多版本
     const preferLiveTextOut = !hasTextGallery && runOutHasTextItems(runOut.value)
     if (preferLiveTextOut) {
       collectFromValue(runOut.value, list)
@@ -1005,8 +1004,8 @@ const layoutKind = computed(() => {
       props.node.params.outputKind === 'text' ||
       (props.node.typeId === 'asset.screenplay' && props.node.params.assetRef !== true) ||
       props.node.typeId === 'world.extract' ||
-      props.node.typeId === 'narrative.split' ||
-      props.node.typeId === 'narrative.gen' ||
+      props.node.typeId === 'beat.split' ||
+      props.node.typeId === 'beat.gen' ||
       list.length > 1
     return preferTextGrid ? 'grid' : 'text'
   }
@@ -1163,9 +1162,9 @@ function selectAsCurrentOutput(item: PreviewItem): void {
             text: body,
             ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
           }
-        : node.typeId === 'narrative.split'
+        : node.typeId === 'beat.split'
           ? {
-              kind: 'narrative' as const,
+              kind: 'beat' as const,
               text: body,
               ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
             }

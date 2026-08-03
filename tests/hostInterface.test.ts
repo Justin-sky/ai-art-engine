@@ -77,7 +77,7 @@ describe('hostInterface sanitize', () => {
     const fallback = readHostInterfaceFromGenParams({}, 'script')
     expect(fallback.inputs.map((p) => p.id)).toEqual([
       'in-worldEntities',
-      'in-narrativeEntity'
+      'in-beat'
     ])
   })
 
@@ -370,7 +370,7 @@ describe('hostable assets as HDA', () => {
     'voice',
     'screenplay',
     'world',
-    'narrative',
+    'beat',
     'script',
     'subgraph'
   ] as const

@@ -40,11 +40,11 @@ describe('createDefaultScopedGraph boundary input wiring', () => {
     expect(hasEdge(graph, bin, extract.id, 'in')).toBe(true)
   })
 
-  it('wires narrative boundary in → split chain head', () => {
-    const graph = createDefaultScopedGraph('narrativeAsset', 'narrative')
-    const iface = defaultHostInterfaceForAssetType('narrative')
+  it('wires beat boundary in → split chain head', () => {
+    const graph = createDefaultScopedGraph('beatAsset', 'beat')
+    const iface = defaultHostInterfaceForAssetType('beat')
     const bin = boundaryInputNodeId(iface.inputs[0]!.id)
-    const split = graph.nodes.find((n) => n.typeId === 'narrative.split')!
+    const split = graph.nodes.find((n) => n.typeId === 'beat.split')!
     expect(hasEdge(graph, bin, split.id, 'in')).toBe(true)
   })
 
@@ -52,14 +52,14 @@ describe('createDefaultScopedGraph boundary input wiring', () => {
     const graph = createDefaultScopedGraph('scriptAsset', 'script')
     const iface = defaultHostInterfaceForAssetType('script')
     const worldIn = boundaryInputNodeId('in-worldEntities')
-    const narrativeIn = boundaryInputNodeId('in-narrativeEntity')
+    const beatIn = boundaryInputNodeId('in-beat')
     const split = graph.nodes.find((n) => n.typeId === 'script.shotSplit')!
     const table = graph.nodes.find((n) => n.typeId === 'script.shotTable')!
-    // narrativeEntity → shotSplit.in；worldEntities → shotTable.in-worldEntities
-    expect(hasEdge(graph, narrativeIn, split.id, 'in')).toBe(true)
+    // beat → shotSplit.in；worldEntities → shotTable.in-worldEntities
+    expect(hasEdge(graph, beatIn, split.id, 'in')).toBe(true)
     expect(hasEdge(graph, worldIn, table.id, 'in-worldEntities')).toBe(true)
     expect(iface.inputs.map((p) => p.id).sort()).toEqual(
-      ['in-narrativeEntity', 'in-worldEntities'].sort()
+      ['in-beat', 'in-worldEntities'].sort()
     )
   })
 })

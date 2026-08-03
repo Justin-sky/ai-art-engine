@@ -8,7 +8,7 @@ export type EditorDiveKind =
   | 'script'
   | 'canvas'
   | 'world'
-  | 'narrative'
+  | 'beat'
   | 'director'
 
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
@@ -19,8 +19,8 @@ export type EditorDiveViewId =
   | 'script.timeline'
   | 'world.editor'
   | 'world.table'
-  | 'narrative.gen'
-  | 'narrative.table'
+  | 'beat.gen'
+  | 'beat.table'
   | 'director.stage'
   | 'node.notepad'
   | 'node.textsPreview'
@@ -71,8 +71,8 @@ export type EditorDiveViewMeta =
   | { viewId: 'script.timeline'; scriptAssetId: string }
   | { viewId: 'world.editor'; worldAssetId: string; tab?: WorldElementKind }
   | { viewId: 'world.table'; worldAssetId: string }
-  | { viewId: 'narrative.gen'; narrativeAssetId: string }
-  | { viewId: 'narrative.table'; narrativeAssetId: string }
+  | { viewId: 'beat.gen'; beatAssetId: string }
+  | { viewId: 'beat.table'; beatAssetId: string }
   | {
       viewId: 'director.stage'
       directorAssetId: string
@@ -131,7 +131,7 @@ const ROOT_KEY_PREFIX: Record<EditorDiveKind, string> = {
   script: 'script-editor-',
   canvas: 'canvas-editor-',
   world: 'world-editor-',
-  narrative: 'narrative-editor-',
+  beat: 'beat-editor-',
   director: 'director-editor-'
 }
 
@@ -156,9 +156,9 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}`
     case 'world.editor':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}:${meta.tab ?? 'characters'}`
-    case 'narrative.table':
-    case 'narrative.gen':
-      return `${root}/view:${meta.viewId}:${meta.narrativeAssetId}`
+    case 'beat.table':
+    case 'beat.gen':
+      return `${root}/view:${meta.viewId}:${meta.beatAssetId}`
     case 'director.stage':
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'media.preview':

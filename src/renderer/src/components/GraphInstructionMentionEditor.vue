@@ -216,8 +216,8 @@ import {
   resolveInstructionVisual,
   resolveNodeTextContent,
   resolveShotParamsNodePrompt,
-  readBoundUnitIdFromNodeParams,
-  formatNarrativeUnitRefText,
+  readBoundBeatIdFromNodeParams,
+  formatBeatRefText,
   shouldKeepInstructionMentionToken,
   softResolveBoundaryInputParams,
   isBoundaryInputNode,
@@ -238,7 +238,7 @@ import GraphTextNotepadDialog, {
 import RefMentionTextarea from './RefMentionTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
-import { loadNarrativeCatalog } from '../features/narrative/applyNarrativeCatalogOnOpen'
+import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import {
   enrichStyleImagesWithLibraryPrompts,
@@ -384,8 +384,8 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
   if (props.presetKind === 'shotSplit') return t('graph.inspector.generate.presets.titleShotSplit')
   if (props.presetKind === 'worldExtract') return t('graph.inspector.generate.presets.titleWorldExtract')
-  if (props.presetKind === 'narrativeSplit') {
-    return t('graph.inspector.generate.presets.titleNarrativeSplit')
+  if (props.presetKind === 'beatSplit') {
+    return t('graph.inspector.generate.presets.titleBeatSplit')
   }
   if (props.presetKind === 'image') return t('graph.inspector.generate.presets.titleImage')
   if (props.presetKind === 'video') return t('graph.inspector.generate.presets.titleVideo')
@@ -423,18 +423,18 @@ function resolveSourcePlainText(node: GraphNode): string {
       stylePreset: project.config?.stylePreset
     }).trim()
   }
-  if (node.typeId === 'narrative.unitRef') {
-    const unitId = readBoundUnitIdFromNodeParams(node.params)
-    const assetId = resolveHostNarrativeAssetId(props.hostId)
-    if (unitId && assetId) {
-      const unit = loadNarrativeCatalog(assetId).find((row) => row.id === unitId)
-      if (unit) return formatNarrativeUnitRefText(unit)
+  if (node.typeId === 'beat.unitRef') {
+    const beatId = readBoundBeatIdFromNodeParams(node.params)
+    const assetId = resolveHostBeatAssetId(props.hostId)
+    if (beatId && assetId) {
+      const unit = loadBeatCatalog(assetId).find((row) => row.id === beatId)
+      if (unit) return formatBeatRefText(unit)
     }
   }
   return resolveNodeTextContent(node)?.text?.trim() ?? node.params.notes?.trim() ?? ''
 }
 
-function resolveHostNarrativeAssetId(hostId: string): string | null {
+function resolveHostBeatAssetId(hostId: string): string | null {
   const match = /^asset:([^:]+)/.exec(hostId)
   return match?.[1] ?? null
 }

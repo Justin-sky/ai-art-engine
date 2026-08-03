@@ -69,8 +69,8 @@ function emptyDraft(type: AssetType, resolution: Resolution): DraftAssetRecord {
   if (type === 'world') {
     draft.genParams = { graphJson: createDefaultScopedGraph('worldAsset', 'world') }
   }
-  if (type === 'narrative') {
-    draft.genParams = { graphJson: createDefaultScopedGraph('narrativeAsset', 'narrative') }
+  if (type === 'beat') {
+    draft.genParams = { graphJson: createDefaultScopedGraph('beatAsset', 'beat') }
   }
   if (type === 'motion') {
     draft.genParams = { stage: createDefaultDirectorStage() }

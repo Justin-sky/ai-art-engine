@@ -29,7 +29,7 @@ export const WORKSPACE_TOOLBAR_ITEMS: WorkspaceToolbarItem[] = [
   { id: 'screenplay', assetType: 'screenplay', openOnCreate: true },
   { id: 'script', assetType: 'script', openOnCreate: true },
   { id: 'world', assetType: 'world', openOnCreate: true },
-  { id: 'narrative', assetType: 'narrative', openOnCreate: true },
+  { id: 'beat', assetType: 'beat', openOnCreate: true },
   { id: 'motion', assetType: 'motion', openOnCreate: true },
   { id: 'image', assetType: 'image', openOnCreate: true },
   { id: 'video', assetType: 'video', openOnCreate: true },

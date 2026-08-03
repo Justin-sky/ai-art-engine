@@ -7,7 +7,7 @@ import { GRAPH_OUTPUT_NODE_IDS } from './types'
 export interface SeriesStarterAssets {
   screenplay: Pick<AssetInfo, 'id' | 'name' | 'type'>
   world: Pick<AssetInfo, 'id' | 'name' | 'type'>
-  narrative: Pick<AssetInfo, 'id' | 'name' | 'type'>
+  beat: Pick<AssetInfo, 'id' | 'name' | 'type'>
   script: Pick<AssetInfo, 'id' | 'name' | 'type'>
 }
 
@@ -35,7 +35,7 @@ function ensureGraphEdge(
   })
 }
 
-/** 剧集画布起步图：剧本 → 世界/叙事 → 选单元 → 分镜 → 成片时间线 */
+/** 剧集画布起步图：剧本 → 世界/场 → 选单元 → 分镜 → 成片时间线 */
 export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocument {
   ensureBuiltinNodeTypes()
   const screenplay = createAssetGraphNode(
@@ -45,10 +45,10 @@ export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocum
     { x: 80, y: 220 },
     { assetHost: true }
   )
-  const narrative = createAssetGraphNode(
-    assets.narrative.id,
-    'narrative',
-    assets.narrative.name,
+  const beat = createAssetGraphNode(
+    assets.beat.id,
+    'beat',
+    assets.beat.name,
     { x: 420, y: 80 },
     { assetHost: true }
   )
@@ -56,7 +56,7 @@ export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocum
     x: 420,
     y: 360
   }, { assetHost: true })
-  const narrativeSelect = createNodeFromType('narrative.select', { x: 620, y: 80 })
+  const beatSelect = createNodeFromType('beat.select', { x: 620, y: 80 })
   const script = createAssetGraphNode(assets.script.id, 'script', assets.script.name, {
     x: 860,
     y: 220
@@ -68,15 +68,15 @@ export function buildSeriesStarterGraph(assets: SeriesStarterAssets): GraphDocum
   )
 
   const edges: GraphEdge[] = []
-  ensureGraphEdge(edges, screenplay.id, narrative.id, 'out', 'in')
+  ensureGraphEdge(edges, screenplay.id, beat.id, 'out', 'in')
   ensureGraphEdge(edges, screenplay.id, world.id, 'out', 'in')
   ensureGraphEdge(edges, world.id, script.id, 'out', 'in-worldEntities')
-  ensureGraphEdge(edges, narrative.id, narrativeSelect.id, 'out', 'in')
-  ensureGraphEdge(edges, narrativeSelect.id, script.id, 'out', 'in-narrativeEntity')
+  ensureGraphEdge(edges, beat.id, beatSelect.id, 'out', 'in')
+  ensureGraphEdge(edges, beatSelect.id, script.id, 'out', 'in-beat')
   ensureGraphEdge(edges, script.id, timeline.id, 'out', 'in')
 
   return {
-    nodes: [screenplay, narrative, world, narrativeSelect, script, timeline],
+    nodes: [screenplay, beat, world, beatSelect, script, timeline],
     edges,
     groups: [],
     viewport: { x: 0, y: 0, zoom: 1 }

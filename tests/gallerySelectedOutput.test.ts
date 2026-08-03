@@ -43,7 +43,7 @@ describe('gallery selected output', () => {
     expect(outs?.['out-all']?.kind).toBe('texts')
   })
 
-  it('resolveGalleryOutputsFromNodeParams maps narrative.split selected to narrative out', () => {
+  it('resolveGalleryOutputsFromNodeParams maps beat.split selected to beat out', () => {
     const outs = resolveGalleryOutputsFromNodeParams(
       {
         generatedTexts: [
@@ -52,10 +52,10 @@ describe('gallery selected output', () => {
         ],
         selectedTextId: 'b'
       },
-      { typeId: 'narrative.split' }
+      { typeId: 'beat.split' }
     )
     expect(outs?.out).toMatchObject({
-      kind: 'narrative',
+      kind: 'beat',
       text: '[{"id":"nu-1","title":"B"}]'
     })
     expect(outs?.['out-all']?.kind).toBe('texts')

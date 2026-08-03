@@ -33,8 +33,8 @@ export type BuiltinGraphAddScope =
   | 'scriptAsset'
   | 'canvasAsset'
   | 'worldAsset'
-  | 'narrativeAsset'
-  | 'narrativeUnit'
+  | 'beatAsset'
+  | 'beatUnit'
   | 'elementWorkflow'
   | 'subgraphAsset'
 
@@ -56,11 +56,11 @@ export const ASSET_TIMELINE_OUTPUT_TITLE = 'Cut timeline'
 /** 分镜资产图「分镜输出」默认标题（持久化；UI 映射为「分镜输出」） */
 export const ASSET_SCRIPT_SHOT_OUTPUT_TITLE = 'Shot video output'
 
-/** 叙事单元资产图输出节点默认标题（持久化；UI 映射为「叙事单元输出」） */
-export const ASSET_NARRATIVE_OUTPUT_TITLE = 'Narrative output'
+/** 场资产图输出节点默认标题（持久化；UI 映射为「场输出」） */
+export const ASSET_BEAT_OUTPUT_TITLE = 'Beat output'
 
-/** 叙事单元细化画布输出节点默认标题（持久化；UI 映射为「叙事输出」） */
-export const NARRATIVE_UNIT_OUTPUT_TITLE = 'Narrative unit output'
+/** 场细化画布输出节点默认标题（持久化；UI 映射为「场输出」） */
+export const BEAT_UNIT_OUTPUT_TITLE = 'Beat unit output'
 
 /** 世界元素资产图输出节点默认标题（持久化；UI 映射为「世界元素输出」） */
 export const ASSET_WORLD_OUTPUT_TITLE = 'World element output'
@@ -69,7 +69,7 @@ export interface GraphScopeOutputConfig {
   kind: GraphOutputKind
   title: string
   inputDataType?: GraphPortDataType
-  /** 专用输出 typeId（如 output.narrativeUnit）；缺省为 output.${kind} */
+  /** 专用输出 typeId（如 output.beatUnit）；缺省为 output.${kind} */
   typeId?: GraphNodeTypeId
 }
 
@@ -214,29 +214,29 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       inputDataType: GraphPortType.worldEntities
     }
   },
-  /** 叙事单元资产图：拆解 → 表格 → 生成 → 选择文本 → 输出；不强制通用输出节点 */
-  narrativeAsset: {
-    id: 'narrativeAsset',
+  /** 场资产图：拆解 → 表格 → 生成 → 选择文本 → 输出；不强制通用输出节点 */
+  beatAsset: {
+    id: 'beatAsset',
     ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.narrativeOutput',
+    outputTitleI18nKey: 'graph.titles.beatOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     output: {
       kind: 'text',
-      title: ASSET_NARRATIVE_OUTPUT_TITLE,
-      inputDataType: GraphPortType.narrative
+      title: ASSET_BEAT_OUTPUT_TITLE,
+      inputDataType: GraphPortType.beat
     }
   },
-  /** 叙事单元细化图：叙事生成（文本模型）→ 叙事输出；参考节点从底栏拖入 */
-  narrativeUnit: {
-    id: 'narrativeUnit',
+  /** 场细化图：场生成（文本模型）→ 场输出；参考节点从底栏拖入 */
+  beatUnit: {
+    id: 'beatUnit',
     ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.narrativeUnitOutput',
+    outputTitleI18nKey: 'graph.titles.beatUnitOutput',
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    hostIdSuffix: 'narrative-unit',
+    hostIdSuffix: 'beat-unit',
     output: {
-      typeId: 'output.narrativeUnit',
+      typeId: 'output.beatUnit',
       kind: 'text',
-      title: NARRATIVE_UNIT_OUTPUT_TITLE,
+      title: BEAT_UNIT_OUTPUT_TITLE,
       inputDataType: GraphPortType.text
     }
   },
@@ -314,7 +314,7 @@ const BUILTIN_SCOPE_HOST_BINDINGS: GraphScopeHostBinding[] = [
   { assetType: 'script', scope: 'scriptAsset', priority: 100 },
   { assetType: 'canvas', scope: 'canvasAsset', priority: 100 },
   { assetType: 'world', scope: 'worldAsset', priority: 100 },
-  { assetType: 'narrative', scope: 'narrativeAsset', priority: 100 },
+  { assetType: 'beat', scope: 'beatAsset', priority: 100 },
   { assetType: 'subgraph', scope: 'subgraphAsset', priority: 100 }
 ]
 

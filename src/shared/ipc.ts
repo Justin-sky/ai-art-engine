@@ -281,11 +281,11 @@ export interface CreateSeriesWithStarterInput {
   folderId?: string | null
   /** 子资产名称；缺省为「剧集名 + ASSET_TYPE_LABELS」 */
   childNames?: Partial<
-    Record<'screenplay' | 'world' | 'narrative' | 'script', string>
+    Record<'screenplay' | 'world' | 'beat' | 'script', string>
   >
   /** 子资产所在目录名（按类型）；缺省为 ASSET_TYPE_LABELS */
   childFolderNames?: Partial<
-    Record<'screenplay' | 'world' | 'narrative' | 'script', string>
+    Record<'screenplay' | 'world' | 'beat' | 'script', string>
   >
 }
 
@@ -438,7 +438,7 @@ export interface StudioApi {
   /** 重新导入：从工程磁盘上的媒体文件刷新资产元数据与缓存（类似 Unity Reimport） */
   reimportAssets: (input: ReimportAssetsInput) => Promise<ReimportAssetsResult>
   createAsset: (input: CreateAssetInput) => Promise<AssetInfo>
-  /** 创建剧集并预置剧本/世界/叙事/分镜宿主节点与连线 */
+  /** 创建剧集并预置剧本/世界/场/分镜宿主节点与连线 */
   createSeriesWithStarter: (input: CreateSeriesWithStarterInput) => Promise<AssetInfo>
   deleteAsset: (assetId: string) => Promise<void>
   renameAsset: (assetId: string, name: string) => Promise<AssetInfo>

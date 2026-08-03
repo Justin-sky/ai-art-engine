@@ -28,7 +28,7 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   script: 'Shot',
   canvas: 'Canvas',
   world: 'World Elements',
-  narrative: 'Narrative Units',
+  beat: 'Beat Units',
   subgraph: 'Host Asset'
 }
 
@@ -217,7 +217,7 @@ export function getNodePortCenter(
 export function isNodeDeletable(node: GraphNode): boolean {
   ensureBuiltinNodeTypes()
   const def = resolveNodeType(node)
-  // 显式可删优先于单例 / 规范输出（如叙事单元链）
+  // 显式可删优先于单例 / 规范输出（如场链）
   if (def?.deletable === true) return true
   // 规范输出单例不可删；画布上额外添加的输出节点可删
   const canonicalId = graphOutputNodeIdForType(

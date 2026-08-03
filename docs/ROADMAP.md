@@ -12,7 +12,7 @@
 - [x] 成片时间线 MVP：素材分组、上轨拖动、预览选中 / 整轨联播、导出成片
 - [x] 导演台站位与动作双分类；录制写入 `Cache/Videos`
 - [x] 导演台编辑节点方形口 `out-shots` / `out-actions` 与 Inspector 预览
-- [x] 目录端口专用类型 `world` / `narrative` / `shots`
+- [x] 目录端口专用类型 `world` / `beat` / `shots`
 - [x] 生成类节点锁定；图库双输出口 `out` / `out-all`
 - [x] 可灵 / MinMax / 通义千问 / 魔塔模型提供商
 - [x] 阿里云 OSS / 腾讯云 COS 对象存储（与火山 TOS 互斥启用）
@@ -30,7 +30,7 @@
 - [x] 工程新建 / 打开 / 最近列表
 - [x] 资产导入、浏览、旁挂 meta 与 `.aipackage`
 - [x] 分镜栏 + 参数 / 构图
-- [x] 节点图（生成、拆解、世界元素、叙事单元等）
+- [x] 节点图（生成、拆解、世界元素、场等）
 - [x] OpenRouter / 火山方舟模型对接
 - [x] 导演台（Three.js 站位与姿势）
 - [x] dockview 布局、Undo / Redo、扩展清单

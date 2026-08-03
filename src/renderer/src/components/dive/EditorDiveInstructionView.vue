@@ -44,14 +44,14 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'toPrompt'
     case 'prompt.optimize':
       return 'optimize'
-    case 'narrative.unitGen':
-      return 'narrativeUnitGen'
+    case 'beat.unitGen':
+      return 'beatUnitGen'
     case 'script.shotSplit':
       return 'shotSplit'
     case 'world.extract':
       return 'worldExtract'
-    case 'narrative.split':
-      return 'narrativeSplit'
+    case 'beat.split':
+      return 'beatSplit'
     case 'asset.screenplay':
       return 'screenplay'
     case 'asset.image':

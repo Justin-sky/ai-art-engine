@@ -268,7 +268,7 @@
       </table>
     </div>
 
-    <NarrativeWorldBindPicker
+    <BeatWorldBindPicker
       v-if="bindTarget"
       :items="worldElementOutputs"
       :focus-type="bindFocusType"
@@ -305,7 +305,7 @@ import {
   resolveAssetFileUrl,
   resolveAssetPreviewUrl
 } from '../features/media/assetUrlCache'
-import NarrativeWorldBindPicker from './NarrativeWorldBindPicker.vue'
+import BeatWorldBindPicker from './BeatWorldBindPicker.vue'
 import ShotStagingPresetPicker from './ShotStagingPresetPicker.vue'
 
 type ColId =

@@ -356,7 +356,7 @@ export default {
       script: 'Shot',
       canvas: 'Series',
       world: 'World Elements',
-      narrative: 'Narrative Units',
+      beat: 'Beat Units',
       director: 'Director Deck'
     },
     dive: {
@@ -455,7 +455,7 @@ export default {
       canvas: 'Series',
       freeCanvas: 'Free Canvas',
       world: 'World Elements',
-      narrative: 'Narrative Units',
+      beat: 'Beat Units',
       subgraph: 'Host Asset'
     },
     create: {
@@ -469,12 +469,12 @@ export default {
       canvas: 'New Series',
       freeCanvas: 'New Free Canvas',
       world: 'New World Elements',
-      narrative: 'New Narrative Units',
+      beat: 'New Beat Units',
       subgraph: 'New Host Asset',
       default: 'New Asset',
       seriesNameTitle: 'New Series',
       seriesNameMessage:
-        'Enter a series name. After confirm, a screenplay, world elements, narrative units, and shot will be created and placed on the series canvas.',
+        'Enter a series name. After confirm, a screenplay, world elements, beat units, and shot will be created and placed on the series canvas.',
       seriesNamePlaceholder: 'Series name',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
@@ -1262,62 +1262,62 @@ export default {
       noFile: 'This image has no linked file yet'
     }
   },
-  narrative: {
+  beat: {
     asset: {
       hint: 'Double-click split for instructions · table for catalog · output opens unit refinement; use breadcrumbs to go back'
     },
     dialog: {
       close: 'Close',
-      table: 'Narrative unit table',
-      gen: 'Narrative unit gen'
+      table: 'Beat unit table',
+      gen: 'Beat unit gen'
     },
     hint: {
-      table: 'Narrative unit table · edit beats and review status',
+      table: 'Beat unit table · edit beats and review status',
       gen: 'Canvas above refines the unit · click strip for Inspector · drag to add refs'
     },
     pane: {
       resizeSplit: 'Drag to resize the split panes'
     },
     strip: {
-      title: 'Narrative units',
+      title: 'Beat units',
       switchHint: 'Click to switch · drag onto canvas for refs',
-      empty: 'No narrative units yet — run split or add rows in the table',
-      collapse: 'Collapse narrative unit strip',
-      expand: 'Expand narrative unit strip'
+      empty: 'No beat units yet — run split or add rows in the table',
+      collapse: 'Collapse beat unit strip',
+      expand: 'Expand beat unit strip'
     },
     unit: {
       inspector: {
-        type: 'Unit {n}',
-        title: 'Narrative unit',
-        empty: 'No narrative unit selected',
-        sourceExcerpt: 'Source excerpt',
-        emotionalBeat: 'Emotional beat',
-        durationHint: 'Duration hint'
+        type: 'Beat {n}',
+        title: 'Beat',
+        empty: 'No beat selected',
+        sourceExcerpt: 'Source excerpt'
       }
     },
     table: {
       new: 'New',
       empty: 'No entries yet — add one or run split first',
-      unit: 'Narrative unit',
+      unit: 'Beat',
       column: {
         order: 'Order',
         title: 'Title',
-        summary: 'Summary',
-        dramaticFunction: 'Dramatic function',
+        time: 'Time',
+        durationHint: 'Duration',
+        location: 'Space and location',
+        locations: 'Location bindings',
         characters: 'Characters',
-        scenes: 'Scenes',
+        action: 'Core action',
+        conflict: 'Conflict and goal',
+        atmosphere: 'Atmosphere and sound',
         props: 'Props',
         weapons: 'Weapons',
+        sourceExcerpt: 'Source excerpt',
         status: 'Status'
       },
       bind: {
         title: 'Bind world entity',
         action: 'Bind',
         add: 'Add name',
-        empty: 'Run the narrative table node first to sync world entities'
-      },
-      placeholder: {
-        summary: 'One-line summary of this unit'
+        empty: 'Run the beat table node first to sync world entities'
       }
     }
   },
@@ -1592,10 +1592,10 @@ export default {
       openHint: 'Double-click to open notepad',
       empty: 'No upstream texts yet. Connect a text generate node and run it first.'
     },
-    selectNarrative: {
-      appMark: 'Select narrative unit',
-      hint: 'Double-click to pick one unit from the upstream narrative catalog. Defaults to the first item.',
-      empty: 'No upstream narrative units yet. Connect a narrative asset and run it first.'
+    selectBeat: {
+      appMark: 'Select beat unit',
+      hint: 'Double-click to pick one unit from the upstream beat catalog. Defaults to the first item.',
+      empty: 'No upstream beat units yet. Connect a beat asset and run it first.'
     },
     selectShotEntities: {
       appMark: 'Select shot entity',
@@ -1982,11 +1982,11 @@ export default {
     worldGenNode: {
       hint: 'Double-click to open world element gen canvas'
     },
-    narrativeTableNode: {
-      hint: 'Double-click to open narrative unit table'
+    beatTableNode: {
+      hint: 'Double-click to open beat unit table'
     },
-    narrativeGenNode: {
-      hint: 'Double-click to enter narrative unit text refinement'
+    beatGenNode: {
+      hint: 'Double-click to enter beat unit text refinement'
     },
     node: {
       collapsePreview: 'Collapse preview',
@@ -2052,8 +2052,7 @@ export default {
         worldEntities: 'World entities',
         shotEntities: 'Shot entities',
         videoEntities: 'Video entities',
-        narrative: 'Narrative unit',
-        narrativeEntity: 'Narrative entity',
+        beat: 'Beat',
         shots: 'Shot',
         model: 'Model'
       }
@@ -2120,8 +2119,8 @@ export default {
         text: 'Screenplay output',
         director: 'Director deck output',
         timeline: 'Cut timeline',
-        narrative: 'Narrative output',
-        narrativeUnit: 'Narrative output',
+        beat: 'Beat output',
+        beatUnit: 'Beat output',
         world: 'World entities output'
       },
       note: {
@@ -2168,13 +2167,13 @@ export default {
       shotEntities: {
         select: 'Select shot entity'
       },
-      narrative: {
-        select: 'Select narrative unit',
-        split: 'Narrative split',
-        table: 'Narrative table',
-        gen: 'Narrative unit gen',
-        unitGen: 'Narrative gen',
-        unitRef: 'Narrative ref'
+      beat: {
+        select: 'Select beat unit',
+        split: 'Beat split',
+        table: 'Beat table',
+        gen: 'Beat unit gen',
+        unitGen: 'Beat gen',
+        unitRef: 'Beat ref'
       },
       world: {
         extract: 'World extract',
@@ -2196,15 +2195,15 @@ export default {
       script: 'Shot',
       canvas: 'Canvas',
       world: 'World Elements',
-      narrative: 'Narrative Units',
+      beat: 'Beat Units',
       subgraph: 'Host Asset',
       shotOutput: 'Shot output',
       shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
       timelineOutput: 'Cut timeline',
-      narrativeOutput: 'Narrative output',
-      narrativeUnitOutput: 'Narrative output',
+      beatOutput: 'Beat output',
+      beatUnitOutput: 'Beat output',
       worldOutput: 'World entities output',
       assetOutput: {
         image: 'Image output',
@@ -2237,11 +2236,11 @@ export default {
       loop: 'Loop playback',
       duration: 'Duration (seconds)',
       speed: 'Playback speed',
-      narrativePaths: 'Saved screenplays',
-      narrativePathsHint:
-        'Running Narrative unit gen saves each unit as its own screenplay file; double-click to preview',
-      narrativePathsEmpty: 'Nothing saved yet — refine units and run this node',
-      narrativePathPending: '(not saved)'
+      beatPaths: 'Saved screenplays',
+      beatPathsHint:
+        'Running Beat unit gen saves each unit as its own screenplay file; double-click to preview',
+      beatPathsEmpty: 'Nothing saved yet — refine units and run this node',
+      beatPathPending: '(not saved)'
     },
     notepad: {
       appMark: 'Notepad',
@@ -2347,10 +2346,10 @@ export default {
       worldGen: {
         hint: 'Run current collects existing element images; use radial Cook subgraph to batch-run element graphs.'
       },
-      narrativeTable: {
-        hint: 'Double-click to open the narrative unit table. Run the node to import catalog JSON and preview the out port here.'
+      beatTable: {
+        hint: 'Double-click to open the beat unit table. Run the node to import catalog JSON and preview the out port here.'
       },
-      narrativeGen: {
+      beatGen: {
         hint: 'Running this node collects unit texts and saves them to the output path.'
       },
       multiAngle: {
@@ -2444,9 +2443,9 @@ export default {
           "Split the screenplay into a shot list; use {'@'} to cite connected inputs",
         worldExtractInstructionPlaceholder:
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
-        narrativeSplitInstructionPlaceholder:
-          "Decompose the screenplay into narrative units; use {'@'} to cite connected inputs",
-        narrativeUnitGenInstructionPlaceholder:
+        beatSplitInstructionPlaceholder:
+          "Decompose the screenplay into beat units; use {'@'} to cite connected inputs",
+        beatUnitGenInstructionPlaceholder:
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         refsEmpty: 'Connect upstream inputs to cite with @, or type the instruction alone',
         disconnectRef: 'Disconnect',
@@ -2466,7 +2465,7 @@ export default {
           titleOptimize: 'Prompt optimize templates',
           titleShotSplit: 'Shot split templates',
           titleWorldExtract: 'World extract templates',
-          titleNarrativeSplit: 'Narrative split templates',
+          titleBeatSplit: 'Beat split templates',
           titleImage: 'Image generation templates',
           titleVideo: 'Video generation templates',
           titleLipSync: 'Lip sync templates',
@@ -2570,9 +2569,9 @@ export default {
             create: 'Extract world elements',
             refine: 'Refine element catalog'
           },
-          narrativeSplit: {
-            create: 'Split into narrative units',
-            refine: 'Refine narrative structure'
+          beatSplit: {
+            create: 'Split into beat units',
+            refine: 'Refine beat structure'
           }
         },
         instructionExpand: 'Open instruction editor',

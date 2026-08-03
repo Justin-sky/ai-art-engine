@@ -40,6 +40,15 @@ import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
 export interface GraphRunSessionOptions {
   buildGraph: () => GraphDocument
   commitLocal: () => void
+  /**
+   * 跑图落盘后回调（含成功 / 失败 / 中止）。
+   * 用于 dive 内执行后把 boundary 出口抬到父图宿主 runStates。
+   */
+  afterRunCommit?: (info: {
+    graph: GraphDocument
+    runStates: Record<string, GraphNodeRunState>
+    result: GraphRunResult | null
+  }) => void | Promise<void>
   t: (key: string, params?: Record<string, unknown>) => string
   generateText?: (input: {
     prompt: string
@@ -126,6 +135,7 @@ export interface GraphRunSessionOptions {
   }) => Promise<string>
   readRunText?: (relativePath: string) => Promise<string>
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
+  resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
   /** 资产是否仍存在（含草稿）；缺失引用节点执行时短路） */
   hasAsset?: (assetId: string) => boolean
   resolveAssetName?: (assetId: string) => string | undefined
@@ -145,10 +155,10 @@ export interface GraphRunSessionOptions {
     name: string
     relativePath: string
   }> | null
-  /** 叙事单元参考节点：按 boundUnitId 解析目录行 */
-  resolveNarrativeUnit?: (
-    unitId: string
-  ) => import('@shared/graph').NarrativeUnitRow | null
+  /** 场参考节点：按 boundBeatId 解析目录行 */
+  resolveBeatUnit?: (
+    beatId: string
+  ) => import('@shared/graph').BeatRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
   /** 分镜表格节点：输出当前分镜列表 JSON */
@@ -182,18 +192,18 @@ export interface GraphRunSessionOptions {
   ) => Promise<{
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
-  /** 叙事单元生成：收集各单元子图「叙事输出」已有文本 */
-  collectNarrativeUnitTexts?: (signal?: AbortSignal) => Promise<{
+  /** 场生成：收集各单元子图「场输出」已有文本 */
+  collectBeatUnitTexts?: (signal?: AbortSignal) => Promise<{
     items: import('@shared/graph').GraphTextItem[]
   } | null>
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
   /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
   importWorldCatalogJson?: (jsonText: string) => void | Promise<void>
-  /** 叙事单元表格节点：输出当前目录 JSON */
-  resolveNarrativeCatalogJson?: () => string | null
-  /** 叙事单元表格 / 编辑节点执行时：导入上游拆解 JSON */
-  importNarrativeCatalogJson?: (jsonText: string) => void | Promise<void>
+  /** 场表格节点：输出当前目录 JSON */
+  resolveBeatCatalogJson?: () => string | null
+  /** 场表格 / 编辑节点执行时：导入上游拆解 JSON */
+  importBeatCatalogJson?: (jsonText: string) => void | Promise<void>
   /** 宿主内图整链：入队任务列表 */
   runHostInnerGraph?: import('@shared/graph').NodeExecuteContext['runHostInnerGraph']
 }
@@ -622,23 +632,24 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateSpeech: wrapGenerateSpeech(token, signal),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
+        resolveLiveAssetGraph: options.resolveLiveAssetGraph,
         hasAsset: options.hasAsset,
         resolveAssetName: options.resolveAssetName,
         resolveHostAssetName: options.resolveHostAssetName,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveShotStoryboard: options.resolveShotStoryboard,
         resolveAllShotBindingImages: options.resolveAllShotBindingImages,
-        resolveNarrativeUnit: options.resolveNarrativeUnit,
+        resolveBeatUnit: options.resolveBeatUnit,
         resolveShotSplitTableJson: options.resolveShotSplitTableJson,
         importShotSplitTableJson: options.importShotSplitTableJson,
         collectScriptShotImages: options.collectScriptShotImages,
         collectScriptShotVideos: options.collectScriptShotVideos,
         collectWorldElementOutputs: options.collectWorldElementOutputs,
-        collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
+        collectBeatUnitTexts: options.collectBeatUnitTexts,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,
-        resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
-        importNarrativeCatalogJson: options.importNarrativeCatalogJson,
+        resolveBeatCatalogJson: options.resolveBeatCatalogJson,
+        importBeatCatalogJson: options.importBeatCatalogJson,
         runHostInnerGraph: options.runHostInnerGraph,
         resolveImageUrls: resolveGraphImageUrls,
         resolveStyleImageUrls: resolveStyleImageUrls,
@@ -709,6 +720,14 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       if (token === runToken) {
         // 把最新 runStates / 节点写回宿主图，避免只跑图未改结构时关窗丢失
         options.commitLocal()
+        const settledGraph = options.buildGraph()
+        void Promise.resolve(
+          options.afterRunCommit?.({
+            graph: settledGraph,
+            runStates: { ...runStates },
+            result: lastRunResult.value
+          })
+        ).catch(() => undefined)
         isRunning.value = false
         runningTargetNodeId.value = null
         if (activeLogBridge === logBridge) activeLogBridge = null

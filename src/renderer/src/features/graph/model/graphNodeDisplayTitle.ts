@@ -16,8 +16,8 @@ const STOCK_OUTPUT_TITLE_I18N: Record<string, string> = {
   'Screenplay output': 'graph.titles.screenplayOutput',
   'Director deck output': 'graph.titles.directorOutput',
   'Cut timeline': 'graph.titles.timelineOutput',
-  'Narrative output': 'graph.titles.narrativeOutput',
-  'Narrative unit output': 'graph.titles.narrativeUnitOutput',
+  'Beat output': 'graph.titles.beatOutput',
+  'Beat unit output': 'graph.titles.beatUnitOutput',
   'World element output': 'graph.titles.worldOutput'
 }
 

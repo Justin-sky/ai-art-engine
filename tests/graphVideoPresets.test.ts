@@ -118,7 +118,7 @@ describe('video instruction presets', () => {
       'optimize',
       'shotSplit',
       'worldExtract',
-      'narrativeSplit'
+      'beatSplit'
     ] as const
     for (const kind of kinds) {
       for (const preset of listInstructionPresets(kind)) {

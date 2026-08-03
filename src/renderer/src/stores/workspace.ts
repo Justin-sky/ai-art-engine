@@ -9,7 +9,7 @@ import {
   isScreenplayAsset,
   isStoryboardScript,
   isWorldElementAsset,
-  isNarrativeAsset,
+  isBeatAsset,
   type AssetInfo
 } from '@shared/domain'
 import { parseGraphHostContext } from '@shared/editorGlobals'
@@ -46,9 +46,9 @@ export const STUDIO_ASSET_IDS_DRAG_MIME = 'application/x-studio-asset-ids'
 /** 分镜栏 → 画布：拖入创建分镜参数节点 */
 export const STUDIO_SHOT_DRAG_MIME = 'application/x-studio-shot'
 export const STUDIO_SHOT_ID_DRAG_MIME = 'application/x-studio-shot-id'
-/** 叙事单元栏 → 画布：拖入创建叙事参考节点 */
-export const STUDIO_NARRATIVE_UNIT_DRAG_MIME = 'application/x-studio-narrative-unit'
-export const STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME = 'application/x-studio-narrative-unit-id'
+/** 场栏 → 画布：拖入创建场参考节点 */
+export const STUDIO_BEAT_UNIT_DRAG_MIME = 'application/x-studio-beat-unit'
+export const STUDIO_BEAT_UNIT_ID_DRAG_MIME = 'application/x-studio-beat-unit-id'
 
 /** Workspace UI intents (selection, open editors, etc.) */
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -58,11 +58,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const openScriptEditorIds = ref<string[]>([])
   const openCanvasEditorIds = ref<string[]>([])
   const openWorldEditorIds = ref<string[]>([])
-  const openNarrativeEditorIds = ref<string[]>([])
+  const openBeatEditorIds = ref<string[]>([])
   const openDirectorEditorIds = ref<string[]>([])
-  /** 叙事单元细化底栏当前选中单元 */
-  const activeNarrativeUnitId = ref<string | null>(null)
-  const activeNarrativeAssetId = ref<string | null>(null)
+  /** 场细化底栏当前选中单元 */
+  const activeBeatId = ref<string | null>(null)
+  const activeBeatAssetId = ref<string | null>(null)
   const selectedAssetId = computed(() =>
     editor.selection.current.value.kind === 'asset'
       ? (editor.selection.current.value.id ?? null)
@@ -147,7 +147,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function resolveDiveKind(asset: AssetInfo): EditorDiveKind {
     if (isScreenplayAsset(asset.type)) return 'screenplay'
-    if (isNarrativeAsset(asset.type)) return 'narrative'
+    if (isBeatAsset(asset.type)) return 'beat'
     if (isWorldElementAsset(asset.type)) return 'world'
     if (isStoryboardScript(asset.type)) return 'script'
     if (isDirectorDeck(asset.type)) return 'director'
@@ -169,10 +169,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return 'World editor'
       case 'world.table':
         return 'World table'
-      case 'narrative.gen':
-        return 'Narrative units'
-      case 'narrative.table':
-        return 'Narrative table'
+      case 'beat.gen':
+        return 'Beat units'
+      case 'beat.table':
+        return 'Beat table'
       case 'director.stage':
         return 'Director stage'
       case 'media.preview':
@@ -307,8 +307,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       openCanvasEditor(assetId)
     } else if (isWorldElementAsset(asset.type)) {
       openWorldEditor(assetId)
-    } else if (isNarrativeAsset(asset.type)) {
-      openNarrativeEditor(assetId)
+    } else if (isBeatAsset(asset.type)) {
+      openBeatEditor(assetId)
     } else if (isDirectorDeck(asset.type)) {
       openDirectorEditor(assetId)
     } else if (isScreenplayAsset(asset.type)) {
@@ -345,9 +345,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     focusEditorGlobalsForAsset(worldAssetId)
   }
 
-  function openNarrativeEditor(narrativeAssetId: string): void {
-    openNarrativeEditorIds.value = bumpOpenId(openNarrativeEditorIds.value, narrativeAssetId)
-    focusEditorGlobalsForAsset(narrativeAssetId)
+  function openBeatEditor(beatAssetId: string): void {
+    openBeatEditorIds.value = bumpOpenId(openBeatEditorIds.value, beatAssetId)
+    focusEditorGlobalsForAsset(beatAssetId)
   }
 
   function openDirectorEditor(directorAssetId: string): void {
@@ -400,9 +400,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     clearInspectorForClosedEditor(worldAssetId)
   }
 
-  function consumeNarrativeEditor(narrativeAssetId: string): void {
-    openNarrativeEditorIds.value = openNarrativeEditorIds.value.filter((id) => id !== narrativeAssetId)
-    clearInspectorForClosedEditor(narrativeAssetId)
+  function consumeBeatEditor(beatAssetId: string): void {
+    openBeatEditorIds.value = openBeatEditorIds.value.filter((id) => id !== beatAssetId)
+    clearInspectorForClosedEditor(beatAssetId)
   }
 
   function consumeDirectorEditor(directorAssetId: string): void {
@@ -424,7 +424,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     consumeScriptEditor(assetId)
     consumeCanvasEditor(assetId)
     consumeWorldEditor(assetId)
-    consumeNarrativeEditor(assetId)
+    consumeBeatEditor(assetId)
     consumeDirectorEditor(assetId)
   }
 
@@ -435,10 +435,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openScriptEditorIds.value = []
     openCanvasEditorIds.value = []
     openWorldEditorIds.value = []
-    openNarrativeEditorIds.value = []
+    openBeatEditorIds.value = []
     openDirectorEditorIds.value = []
-    activeNarrativeUnitId.value = null
-    activeNarrativeAssetId.value = null
+    activeBeatId.value = null
+    activeBeatAssetId.value = null
     scriptCanvasExporters.value = new Map()
     scriptGraphGetters.value = new Map()
     draggingAsset.value = null
@@ -551,24 +551,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     )
   }
 
-  function selectNarrativeUnit(unitId: string | null, narrativeAssetId?: string | null): void {
-    activeNarrativeUnitId.value = unitId
-    if (narrativeAssetId !== undefined) {
-      activeNarrativeAssetId.value = narrativeAssetId
+  function selectBeatUnit(beatId: string | null, beatAssetId?: string | null): void {
+    activeBeatId.value = beatId
+    if (beatAssetId !== undefined) {
+      activeBeatAssetId.value = beatAssetId
     }
   }
 
-  function focusNarrativeUnit(): void {
-    const unitId = activeNarrativeUnitId.value
+  function focusBeatUnit(): void {
+    const beatId = activeBeatId.value
     editor.selection.select({
-      kind: 'narrativeUnit',
-      key: unitId ? `narrativeUnit:${unitId}` : 'narrativeUnit:none',
-      id: unitId ?? undefined
+      kind: 'beatUnit',
+      key: beatId ? `beatUnit:${beatId}` : 'beatUnit:none',
+      id: beatId ?? undefined
     })
     editor.commands.setActiveScope(
-      unitId
-        ? `document:narrativeUnit:${unitId}`
-        : 'selection:narrativeUnit:none'
+      beatId
+        ? `document:beatUnit:${beatId}`
+        : 'selection:beatUnit:none'
     )
   }
 
@@ -686,10 +686,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openScriptEditorIds,
     openCanvasEditorIds,
     openWorldEditorIds,
-    openNarrativeEditorIds,
+    openBeatEditorIds,
     openDirectorEditorIds,
-    activeNarrativeUnitId,
-    activeNarrativeAssetId,
+    activeBeatId,
+    activeBeatAssetId,
     selectedAssetId,
     selectedAsset,
     inspectorFocus,
@@ -700,14 +700,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openScriptEditor,
     openCanvasEditor,
     openWorldEditor,
-    openNarrativeEditor,
+    openBeatEditor,
     openDirectorEditor,
     consumeAssetEditor,
     consumeScreenplayEditor,
     consumeScriptEditor,
     consumeCanvasEditor,
     consumeWorldEditor,
-    consumeNarrativeEditor,
+    consumeBeatEditor,
     consumeDirectorEditor,
     consumeEditorsForAsset,
     resetSession,
@@ -723,8 +723,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     exportCanvasForActiveShot,
     selectAsset,
     focusShot,
-    selectNarrativeUnit,
-    focusNarrativeUnit,
+    selectBeatUnit,
+    focusBeatUnit,
     focusProjectGlobals,
     focusEditorGlobals,
     focusEditorGlobalsForAsset,

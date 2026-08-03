@@ -141,7 +141,7 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
       return { kind: 'text', ...truncateText(body) }
     }
     case 'world':
-    case 'narrative':
+    case 'beat':
     case 'shots': {
       const body = value.text ?? ''
       return { kind: value.kind, ...truncateText(body) }

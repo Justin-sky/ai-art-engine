@@ -1,9 +1,9 @@
 <template>
   <div class="dive-view">
-    <NarrativeTable
+    <BeatTable
       ref="tableRef"
       class="table-body"
-      :narrative-asset-id="narrativeAssetId"
+      :beat-asset-id="beatAssetId"
     />
   </div>
 </template>
@@ -11,14 +11,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
-import NarrativeTable from '../NarrativeTable.vue'
+import BeatTable from '../BeatTable.vue'
 
 const props = defineProps<{
   frameKey: string
-  narrativeAssetId: string
+  beatAssetId: string
 }>()
 
-const tableRef = ref<InstanceType<typeof NarrativeTable> | null>(null)
+const tableRef = ref<InstanceType<typeof BeatTable> | null>(null)
 
 useEditorDiveFrameFlush(
   () => props.frameKey,

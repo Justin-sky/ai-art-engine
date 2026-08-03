@@ -588,8 +588,8 @@ import {
   STUDIO_ASSET_IDS_DRAG_MIME,
   STUDIO_SHOT_DRAG_MIME,
   STUDIO_SHOT_ID_DRAG_MIME,
-  STUDIO_NARRATIVE_UNIT_DRAG_MIME,
-  STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME
+  STUDIO_BEAT_UNIT_DRAG_MIME,
+  STUDIO_BEAT_UNIT_ID_DRAG_MIME
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
@@ -623,12 +623,12 @@ import {
   materializeBoundEntityRefsOnScriptShots
 } from '../features/script/shotVisualPipeline'
 import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
-import { collectNarrativeUnitTexts } from '../features/narrative/narrativeUnitPipeline'
+import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
-  applyNarrativeCatalog,
-  loadNarrativeCatalog
-} from '../features/narrative/applyNarrativeCatalogOnOpen'
+  applyBeatCatalog,
+  loadBeatCatalog
+} from '../features/beat/applyBeatCatalogOnOpen'
 import {
   canConnectFromNodeType,
   canConnectNodes,
@@ -712,14 +712,14 @@ import {
   shotStoryboardToNodeParams,
   createShotParamsNodeForShot,
   syncShotParamsBindingsFromShot,
-  createNarrativeUnitRefNode,
+  createBeatRefNode,
   readWorldElementGraphFromGenParams,
   inferElementWorkflowHostInterface,
   withWorldElementGraph,
-  readNarrativeUnitGraphFromGenParams,
-  withNarrativeUnitGraph,
+  readBeatGraphFromGenParams,
+  withBeatGraph,
   readBoundShotIdFromNodeParams,
-  readBoundUnitIdFromNodeParams,
+  readBoundBeatIdFromNodeParams,
   applyShotParamsDropMaterialization,
   ensureShotParamsLinkedToImage,
   ensureShotParamsLinkedToVideo,
@@ -731,7 +731,7 @@ import {
   resolveShotEntityImageUrlsFromGraphs,
   stringifyShotEntities,
   type WorldElementKind,
-  type NarrativeUnitRow,
+  type BeatRow,
   type GraphImageItem,
   type GraphTextItem,
   type GraphVideoItem,
@@ -779,9 +779,9 @@ import {
   stringifyShotSplitRows,
   syncShotParamsAllBindingImages,
   stringifyWorldElementCatalog,
-  stringifyNarrativeUnitRows,
-  formatNarrativeUnitRefText,
-  parseNarrativeUnitJson,
+  stringifyBeatRows,
+  formatBeatRefText,
+  parseBeatJson,
   catalogTextFromValue,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
@@ -838,6 +838,7 @@ import {
   removeNodeStagesFromGenParams
 } from '../features/director/directorStageBinding'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { useGraphRunSession } from '../features/graph/controllers/useGraphRunSession'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
@@ -860,8 +861,8 @@ const props = withDefaults(
     scope?: GraphAddScope
     /** 世界元素四类子画布 kind（优先于 inject） */
     worldElementKind?: WorldElementKind
-    /** 叙事单元细化画布：当前单元 id（与 assetId + scope=narrativeUnit 合用） */
-    narrativeUnitId?: string
+    /** 场细化画布：当前单元 id（与 assetId + scope=beatUnit 合用） */
+    beatId?: string
     /** 嵌入底栏等场景隐藏图工具条，运行/参数走外层 Inspector */
     hideToolbar?: boolean
   }>(),
@@ -887,7 +888,7 @@ const editorDive = inject(editorDiveKey, null)
 /** 资产 dive 栈顶宿主图画布显示面包屑；视图帧由编辑器壳层显示 */
 const diveNavActive = computed(() => {
   if (!editorDive || editorDive.frames.length === 0 || !props.assetId) return false
-  if (props.narrativeUnitId || graphScope.value === 'narrativeUnit') return false
+  if (props.beatId || graphScope.value === 'beatUnit') return false
   const top = editorDive.frames[editorDive.frames.length - 1]
   return isEditorDiveAssetFrame(top) && props.assetId === top.assetId
 })
@@ -902,11 +903,11 @@ const worldElementKind = computed((): WorldElementKind | null => {
 const isElementWorkflowGraph = computed(
   () => isAssetGraph.value && graphScope.value === 'elementWorkflow' && !!worldElementKind.value
 )
-const isNarrativeUnitGraph = computed(
+const isBeatUnitGraph = computed(
   () =>
     isAssetGraph.value &&
-    graphScope.value === 'narrativeUnit' &&
-    !!props.narrativeUnitId?.trim()
+    graphScope.value === 'beatUnit' &&
+    !!props.beatId?.trim()
 )
 
 const previewVisibleNodeIds = ref<ReadonlySet<string>>(new Set())
@@ -992,8 +993,8 @@ const graphHostId = computed(() => {
   if (isElementWorkflowGraph.value && worldElementKind.value) {
     return `${base}:element:${worldElementKind.value}`
   }
-  if (isNarrativeUnitGraph.value && props.narrativeUnitId) {
-    return `${base}:unit:${props.narrativeUnitId}`
+  if (isBeatUnitGraph.value && props.beatId) {
+    return `${base}:unit:${props.beatId}`
   }
   const suffix = getScopeHostIdSuffix(graphScope.value)
   if (!props.assetId && suffix) return `${base}:${suffix}`
@@ -1150,8 +1151,8 @@ function hostInputResolveOptions(): ResolveHostInputSlotsOptions {
 
 function resolveParentHostInputSlots(hostAssetId: string | null | undefined) {
   if (!hostAssetId) return undefined
-  // 仅主资产图画布同步输入接口；叙事单元 / 世界元素子图不参与
-  if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) {
+  // 仅主资产图画布同步输入接口；场 / 世界元素子图不参与
+  if (!isAssetGraph.value || isBeatUnitGraph.value || isElementWorkflowGraph.value) {
     return undefined
   }
   if (!isAssetRefInputHostType(graphAsset.value?.type)) return undefined
@@ -1248,14 +1249,14 @@ function commitGraphLocal(explicitShotId?: string): boolean {
 }
 
 function readAssetGraph(): GraphDocument {
-  if (isNarrativeUnitGraph.value && props.narrativeUnitId && props.assetId) {
+  if (isBeatUnitGraph.value && props.beatId && props.assetId) {
     const gen =
       (isDraftAssetId(props.assetId)
         ? draftStore.getDraft(props.assetId)?.genParams
         : graphAsset.value?.genParams) ?? undefined
-    const raw = readNarrativeUnitGraphFromGenParams(gen, props.narrativeUnitId)
+    const raw = readBeatGraphFromGenParams(gen, props.beatId)
     return normalizeScopedGraph(graphScope.value, raw, {
-      assetType: graphAsset.value?.type ?? 'narrative',
+      assetType: graphAsset.value?.type ?? 'beat',
       hostAssetId: props.assetId
     })
   }
@@ -1301,27 +1302,27 @@ function commitAssetGraph(): boolean {
       ? null
       : project.assets.find((item) => item.id === props.assetId)) ?? asset
 
-  if (isNarrativeUnitGraph.value && props.narrativeUnitId) {
+  if (isBeatUnitGraph.value && props.beatId) {
     const plain = toPlain(graphJson)
     if (isDraftAssetId(props.assetId)) {
       const draft = draftStore.getDraft(props.assetId)
       // 再读一次最新 genParams，降低与 catalog 落盘的竞态丢字段
       const latestGen = draftStore.getDraft(props.assetId)?.genParams ?? draft?.genParams
       draftStore.updateDraft(props.assetId, {
-        genParams: withNarrativeUnitGraph(latestGen, props.narrativeUnitId, plain)
+        genParams: withBeatGraph(latestGen, props.beatId, plain)
       })
       return true
     }
     const write = persistAssetRecord(props.assetId, {
-      genParams: withNarrativeUnitGraph(
+      genParams: withBeatGraph(
         (project.assets.find((item) => item.id === props.assetId)?.genParams as
           | Record<string, unknown>
           | undefined) ?? (latest.genParams as Record<string, unknown> | undefined),
-        props.narrativeUnitId,
+        props.beatId,
         plain
       )
     }).catch((error) => {
-      console.error('[NodeGraphEditor] narrative unit graph save failed', error)
+      console.error('[NodeGraphEditor] beat unit graph save failed', error)
     })
     trackAssetGraphPersist(write)
     return true
@@ -1533,7 +1534,7 @@ async function hydrateHostInputSlotTextsInGraph(): Promise<void> {
  * HDA 不再创建 classic graph.input.slot（「文本输入/图片输入」）。
  */
 function syncHostInputSlotsFromParents(): void {
-  if (!isAssetGraph.value || isNarrativeUnitGraph.value || isElementWorkflowGraph.value) return
+  if (!isAssetGraph.value || isBeatUnitGraph.value || isElementWorkflowGraph.value) return
   const hostAssetId = props.assetId ?? graphAsset.value?.id ?? null
   if (!hostAssetId) return
   const boundaryChanged = syncBoundaryInputsFromParents()
@@ -1722,6 +1723,13 @@ const {
   commitLocal: () => {
     scheduleSave()
   },
+  afterRunCommit: async ({ graph: settled, runStates: settledStates }) => {
+    // 仅资产主图 dive：内层直接跑出口时抬升到父宿主（与 Cook 子图写回对齐）
+    if (!isAssetGraph.value || isBeatUnitGraph.value || isElementWorkflowGraph.value) return
+    const assetId = props.assetId?.trim()
+    if (!assetId) return
+    await liftHostOutputsFromInnerGraph(assetId, settled, settledStates)
+  },
   t: (key, params) => t(key, params ?? {}),
   locale: () => String(locale.value),
   hostId: () => graphHostId.value,
@@ -1819,6 +1827,8 @@ const {
     }
     return base
   },
+  resolveLiveAssetGraph: (assetId) =>
+    graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
   hasAsset: (assetId) => {
     if (isDraftAssetId(assetId)) return !!draftStore.getDraft(assetId)
     return project.assets.some((asset) => asset.id === assetId)
@@ -1856,12 +1866,12 @@ const {
     if (isAssetGraph.value) return null
     return resolveAllShotBindingImagesForScript()
   },
-  resolveNarrativeUnit: (unitId) => {
-    const id = unitId.trim()
+  resolveBeatUnit: (beatId) => {
+    const id = beatId.trim()
     if (!id) return null
-    const narrativeId = props.assetId
-    if (!narrativeId || graphScope.value !== 'narrativeUnit') return null
-    return loadNarrativeCatalog(narrativeId).find((row) => row.id === id) ?? null
+    const beatAssetId = props.assetId
+    if (!beatAssetId || graphScope.value !== 'beatUnit') return null
+    return loadBeatCatalog(beatAssetId).find((row) => row.id === id) ?? null
   },
   resolveShotSplitTableJson: () => {
     if (graphScope.value !== 'scriptAsset') return null
@@ -1957,12 +1967,12 @@ const {
       signal
     })
   },
-  collectNarrativeUnitTexts: async (signal) => {
-    if (graphScope.value !== 'narrativeAsset') return null
-    const narrativeId = props.assetId
-    if (!narrativeId) return null
-    return collectNarrativeUnitTexts({
-      narrativeAssetId: narrativeId,
+  collectBeatUnitTexts: async (signal) => {
+    if (graphScope.value !== 'beatAsset') return null
+    const beatId = props.assetId
+    if (!beatId) return null
+    return collectBeatUnitTexts({
+      beatAssetId: beatId,
       signal
     })
   },
@@ -1982,19 +1992,19 @@ const {
     if (!worldId) return
     await applyWorldCatalog(worldId, jsonText)
   },
-  resolveNarrativeCatalogJson: () => {
-    if (graphScope.value !== 'narrativeAsset') return null
-    const narrativeId = props.assetId
-    if (!narrativeId) return null
-    const rows = loadNarrativeCatalog(narrativeId)
+  resolveBeatCatalogJson: () => {
+    if (graphScope.value !== 'beatAsset') return null
+    const beatId = props.assetId
+    if (!beatId) return null
+    const rows = loadBeatCatalog(beatId)
     if (!rows.length) return null
-    return stringifyNarrativeUnitRows(rows)
+    return stringifyBeatRows(rows)
   },
-  importNarrativeCatalogJson: async (jsonText) => {
-    if (graphScope.value !== 'narrativeAsset') return
-    const narrativeId = props.assetId
-    if (!narrativeId) return
-    await applyNarrativeCatalog(narrativeId, jsonText)
+  importBeatCatalogJson: async (jsonText) => {
+    if (graphScope.value !== 'beatAsset') return
+    const beatId = props.assetId
+    if (!beatId) return
+    await applyBeatCatalog(beatId, jsonText)
   },
   onNodePatch: (nodeId, patch) => {
     const live = graph.nodes.find((n) => n.id === nodeId)
@@ -2003,7 +2013,7 @@ const {
       live.params = { ...live.params, ...patch.params }
     }
     if (patch.title !== undefined) live.title = patch.title
-    // 通知 Inspector 输出预览等订阅方刷新（如 narrative.split 写回 params.text）
+    // 通知 Inspector 输出预览等订阅方刷新（如 beat.split 写回 params.text）
     graphEditorHosts.bumpRevision()
     scheduleSave()
   }
@@ -2035,11 +2045,11 @@ function currentGraphTaskTarget(): GraphTaskTarget | null {
         hostId: graphHostId.value
       }
     }
-    if (isNarrativeUnitGraph.value && props.narrativeUnitId?.trim()) {
+    if (isBeatUnitGraph.value && props.beatId?.trim()) {
       return {
-        kind: 'narrative-unit',
-        narrativeAssetId: props.assetId,
-        unitId: props.narrativeUnitId.trim(),
+        kind: 'beat-unit',
+        beatAssetId: props.assetId,
+        beatId: props.beatId.trim(),
         hostId: graphHostId.value
       }
     }
@@ -3230,7 +3240,7 @@ type ResourceMenuGroupId = Extract<
   | 'motion'
   | 'canvas'
   | 'world'
-  | 'narrative'
+  | 'beat'
 >
 
 type NestedMenuGroupId = 'imageRefine' | 'imageEdit'
@@ -3284,15 +3294,15 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['asset.screenplay', 'play.script', 'text.select']
   },
   {
-    id: 'narrative',
+    id: 'beat',
     typeIds: [
-      'asset.narrative',
-      'narrative.select',
-      'narrative.split',
-      'narrative.table',
-      'narrative.gen',
-      'narrative.unitGen',
-      'narrative.unitRef'
+      'asset.beat',
+      'beat.select',
+      'beat.split',
+      'beat.table',
+      'beat.gen',
+      'beat.unitGen',
+      'beat.unitRef'
     ]
   },
   {
@@ -4487,15 +4497,15 @@ async function onDrop(e: DragEvent): Promise<void> {
     return
   }
 
-  // 0b) 叙事单元栏拖入 → 创建绑定该单元的参考节点
-  const droppedUnit = resolveDroppedNarrativeUnit(e)
+  // 0b) 场栏拖入 → 创建绑定该单元的参考节点
+  const droppedUnit = resolveDroppedBeatUnit(e)
   if (droppedUnit) {
-    if (graphScope.value !== 'narrativeUnit') {
+    if (graphScope.value !== 'beatUnit') {
       showDropError(t('graph.error.unsupportedDrop'))
       return
     }
     dropError.value = ''
-    addNarrativeUnitRefNode(droppedUnit, dropPositionAt(e.clientX, e.clientY))
+    addBeatUnitRefNode(droppedUnit, dropPositionAt(e.clientX, e.clientY))
     return
   }
 
@@ -4554,9 +4564,9 @@ function resolveDroppedShot(e: DragEvent): Shot | null {
   return resolveShotById(id)
 }
 
-function resolveDroppedNarrativeUnit(e: DragEvent): NarrativeUnitRow | null {
-  const raw = e.dataTransfer?.getData(STUDIO_NARRATIVE_UNIT_DRAG_MIME)
-  let id = e.dataTransfer?.getData(STUDIO_NARRATIVE_UNIT_ID_DRAG_MIME) || ''
+function resolveDroppedBeatUnit(e: DragEvent): BeatRow | null {
+  const raw = e.dataTransfer?.getData(STUDIO_BEAT_UNIT_DRAG_MIME)
+  let id = e.dataTransfer?.getData(STUDIO_BEAT_UNIT_ID_DRAG_MIME) || ''
   if (!id && raw) {
     try {
       const parsed = JSON.parse(raw) as { id?: string }
@@ -4566,22 +4576,22 @@ function resolveDroppedNarrativeUnit(e: DragEvent): NarrativeUnitRow | null {
     }
   }
   if (!id || !props.assetId) return null
-  return loadNarrativeCatalog(props.assetId).find((row) => row.id === id) ?? null
+  return loadBeatCatalog(props.assetId).find((row) => row.id === id) ?? null
 }
 
-function addNarrativeUnitRefNode(unit: NarrativeUnitRow, position: { x: number; y: number }): boolean {
+function addBeatUnitRefNode(unit: BeatRow, position: { x: number; y: number }): boolean {
   const existing = graph.nodes.find(
     (n) =>
-      n.typeId === 'narrative.unitRef' && readBoundUnitIdFromNodeParams(n.params) === unit.id
+      n.typeId === 'beat.unitRef' && readBoundBeatIdFromNodeParams(n.params) === unit.id
   )
   if (existing) {
     workspace.selectGraphNode(existing.id, graphHostId.value)
     return true
   }
   const before = buildGraphJson()
-  const node = createNarrativeUnitRefNode(unit, position)
+  const node = createBeatRefNode(unit, position)
   graph.nodes.push(node)
-  recordGraphChange('add-narrative-unit-ref', before)
+  recordGraphChange('add-beat-unit-ref', before)
   scheduleSave()
   graphEditorHosts.bumpRevision()
   workspace.selectGraphNode(node.id, graphHostId.value)
@@ -6012,16 +6022,16 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
   return items
 }
 
-function collectSelectNarrativeItems(nodeId: string): GraphTextItem[] {
+function collectSelectBeatItems(nodeId: string): GraphTextItem[] {
   const items: GraphTextItem[] = []
   const seen = new Set<string>()
-  const pushRow = (row: NarrativeUnitRow): void => {
+  const pushRow = (row: BeatRow): void => {
     if (!row.id || seen.has(row.id)) return
     seen.add(row.id)
     items.push({
       id: row.id,
       title: `#${row.order} ${row.title}`.trim(),
-      text: formatNarrativeUnitRefText(row)
+      text: formatBeatRefText(row)
     })
   }
 
@@ -6033,12 +6043,12 @@ function collectSelectNarrativeItems(nodeId: string): GraphTextItem[] {
     const sourcePort = edge.sourcePort ?? 'out'
     const runOut = runStates[source.id]?.outputs?.[sourcePort]
     const catalog =
-      catalogTextFromValue(runOut, GraphPortType.narrative) ||
+      catalogTextFromValue(runOut, GraphPortType.beat) ||
       source.params.text?.trim() ||
       ''
-    for (const row of parseNarrativeUnitJson(catalog) ?? []) pushRow(row)
-    if (source.assetId && (source.assetType === 'narrative' || source.typeId === 'asset.narrative')) {
-      for (const row of loadNarrativeCatalog(source.assetId)) pushRow(row)
+    for (const row of parseBeatJson(catalog) ?? []) pushRow(row)
+    if (source.assetId && (source.assetType === 'beat' || source.typeId === 'asset.beat')) {
+      for (const row of loadBeatCatalog(source.assetId)) pushRow(row)
     }
   }
   return items
@@ -6075,15 +6085,15 @@ function collectSelectShotEntityItems(nodeId: string): GraphTextItem[] {
 function onSelectTextOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const isNarrative = node.typeId === 'narrative.select'
+  const isBeat = node.typeId === 'beat.select'
   const isShotEntity = node.typeId === 'shotEntities.select'
-  const items = isNarrative
-    ? collectSelectNarrativeItems(nodeId)
+  const items = isBeat
+    ? collectSelectBeatItems(nodeId)
     : isShotEntity
       ? collectSelectShotEntityItems(nodeId)
       : collectSelectTextItems(nodeId)
-  const selectedId = isNarrative
-    ? node.params.selectedUnitId?.trim() || ''
+  const selectedId = isBeat
+    ? node.params.selectedBeatId?.trim() || ''
     : isShotEntity
       ? node.params.selectedShotEntityId?.trim() || ''
       : node.params.selectedTextId?.trim() || ''
@@ -6091,8 +6101,8 @@ function onSelectTextOpen(nodeId: string): void {
     pickTextItem(items, selectedId) ?? (items[0] ? items[0] : undefined)
   selectText.open = true
   selectText.nodeId = nodeId
-  selectText.title = isNarrative
-    ? t('graph.selectNarrative.appMark')
+  selectText.title = isBeat
+    ? t('graph.selectBeat.appMark')
     : isShotEntity
       ? t('graph.selectShotEntities.appMark')
       : nodeDisplayTitle(node)
@@ -6116,17 +6126,17 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
   const items = selectText.items
   const picked = pickTextItem(items, selectedTextId)
   const before = buildGraphJson()
-  if (node.typeId === 'narrative.select') {
-    const unitId = picked?.id?.trim() || selectedTextId
+  if (node.typeId === 'beat.select') {
+    const beatId = picked?.id?.trim() || selectedTextId
     const text = picked?.text?.trim() || ''
     node.params = {
       ...node.params,
-      selectedUnitId: unitId,
+      selectedBeatId: beatId,
       text
     }
     selectText.selectedTextId = selectedTextId
     scheduleSave()
-    recordGraphChange('select-narrative', before)
+    recordGraphChange('select-beat', before)
     closeSelectText()
     return
   }

@@ -149,42 +149,42 @@ export function buildWorldExtractPrompt(instruction: string, locale?: string): s
   return buildOrDefault(instruction, locale, defaultWorldExtractUserPrompt)
 }
 
-// ——— 叙事单元拆解 ———
+// ——— 场拆解 ———
 
-export const DEFAULT_NARRATIVE_SPLIT_USER_PROMPT_EN =
-  'Decompose the screenplay into narrative units and output ONLY the JSON array required by the system prompt. Rules of thumb: scene/beat level (not shots); cover the whole story in order; merge same-goal micro-actions; split on reveals/escalations/decisions; pick one dramaticFunction from 建置|冲突|转折|高潮|收束|过渡; keep 已审核 units unchanged.'
+export const DEFAULT_BEAT_SPLIT_USER_PROMPT_EN =
+  'Decompose the screenplay into beats and output ONLY the JSON array required by the system prompt. Work at scene/beat level, cover the whole story in order, use beat- ids, fill the new time/location/action/conflict/atmosphere fields, and keep 已审核 beats unchanged.'
 
-export const DEFAULT_NARRATIVE_SPLIT_USER_PROMPT_ZH =
-  '请将剧本拆解为叙事单元，并仅输出系统提示词要求的 JSON 数组。要点：场/节拍级（非镜头）；按序覆盖全文；同目标微动作合并；遇揭露/升级/抉择再拆；dramaticFunction 只选 建置|冲突|转折|高潮|收束|过渡；已审核单元原样保留。'
+export const DEFAULT_BEAT_SPLIT_USER_PROMPT_ZH =
+  '请将剧本拆解为场，并仅输出系统提示词要求的 JSON 数组。按故事顺序覆盖全文，使用 beat- id，完整填写时间、地点、核心动作、冲突与目标、氛围与声音等新字段；已审核场原样保留。'
 
-export function defaultNarrativeSplitUserPrompt(locale?: string): string {
+export function defaultBeatSplitUserPrompt(locale?: string): string {
   return pickByLocale(
     locale,
-    DEFAULT_NARRATIVE_SPLIT_USER_PROMPT_EN,
-    DEFAULT_NARRATIVE_SPLIT_USER_PROMPT_ZH
+    DEFAULT_BEAT_SPLIT_USER_PROMPT_EN,
+    DEFAULT_BEAT_SPLIT_USER_PROMPT_ZH
   )
 }
 
-export function buildNarrativeSplitPrompt(instruction: string, locale?: string): string {
-  return buildOrDefault(instruction, locale, defaultNarrativeSplitUserPrompt)
+export function buildBeatSplitPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultBeatSplitUserPrompt)
 }
 
-// ——— 叙事生成（单元细化） ———
+// ——— 场生成（单元细化） ———
 
-export const DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_EN =
-  'Deepen the upstream narrative unit along theme, story spine, and environment. Follow the system prompt strictly; output production-ready prose only (no JSON).'
+export const DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_EN =
+  'Deepen the upstream beat unit along theme, story spine, and environment. Follow the system prompt strictly; output production-ready prose only (no JSON).'
 
-export const DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_ZH =
-  '请基于上游叙事单元参考，按系统提示词对主题、故事脉络与环境氛围做深度细化；仅输出生产级正文，不要 JSON。'
+export const DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_ZH =
+  '请基于上游场参考，按系统提示词对主题、故事脉络与环境氛围做深度细化；仅输出生产级正文，不要 JSON。'
 
-export function defaultNarrativeUnitGenUserPrompt(locale?: string): string {
+export function defaultBeatUnitGenUserPrompt(locale?: string): string {
   return pickByLocale(
     locale,
-    DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_EN,
-    DEFAULT_NARRATIVE_UNIT_GEN_USER_PROMPT_ZH
+    DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_EN,
+    DEFAULT_BEAT_UNIT_GEN_USER_PROMPT_ZH
   )
 }
 
-export function buildNarrativeUnitGenPrompt(instruction: string, locale?: string): string {
-  return buildOrDefault(instruction, locale, defaultNarrativeUnitGenUserPrompt)
+export function buildBeatUnitGenPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultBeatUnitGenUserPrompt)
 }

@@ -71,7 +71,7 @@ describe('graph scopes', () => {
     expect(createParamsForScope('visual', 'asset.screenplay')).toBeUndefined()
   })
 
-  it('director / script / world / narrative scopes resolve default graph templates', () => {
+  it('director / script / world / beat scopes resolve default graph templates', () => {
     expect(resolveDefaultGraphTemplate('directorAsset')?.nodes.map((n) => n.key)).toEqual([
       'gen'
     ])
@@ -82,10 +82,10 @@ describe('graph scopes', () => {
       'world.table',
       'world.gen'
     ])
-    expect(getGraphScopeDefinition('narrativeAsset').ensureOutput).toBe(false)
+    expect(getGraphScopeDefinition('beatAsset').ensureOutput).toBe(false)
     expect(
-      resolveDefaultGraphTemplate('narrativeAsset')?.nodes.map((n) => n.typeId)
-    ).toEqual(['narrative.split', 'narrative.table'])
+      resolveDefaultGraphTemplate('beatAsset')?.nodes.map((n) => n.typeId)
+    ).toEqual(['beat.split', 'beat.table'])
   })
 
   it('allows registering custom graph scopes', () => {

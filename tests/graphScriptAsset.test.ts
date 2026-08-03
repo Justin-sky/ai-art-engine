@@ -82,14 +82,14 @@ describe('script asset graph', () => {
     expect(typeIds).toContain('play.script')
   })
 
-  it('script host open has worldEntities and narrativeEntity boundary inputs', () => {
+  it('script host open has worldEntities and beat boundary inputs', () => {
     const doc = normalizeScopedGraph('scriptAsset', null, {
       assetType: 'script',
       hostAssetId: '00000000-0000-4000-8000-000000000501'
     })
     const boundaries = doc.nodes.filter((n) => n.typeId === 'graph.boundary.input')
     expect(boundaries.map((n) => n.params.hostBoundaryPort?.portId).sort()).toEqual([
-      'in-narrativeEntity',
+      'in-beat',
       'in-worldEntities'
     ])
   })
@@ -187,7 +187,7 @@ describe('script asset graph', () => {
   })
 
   it('only accepts the intended chain port types', () => {
-    const select = createNodeFromType('narrative.select', { x: 0, y: 0 })
+    const select = createNodeFromType('beat.select', { x: 0, y: 0 })
     const text = createNodeFromType('play.script', { x: 0, y: 40 })
     const split = createNodeFromType('script.shotSplit', { x: 200, y: 0 })
     const table = createNodeFromType('script.shotTable', { x: 400, y: 0 })

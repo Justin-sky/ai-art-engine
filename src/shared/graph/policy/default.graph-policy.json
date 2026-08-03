@@ -28,10 +28,10 @@
     "worldAsset": {
       "addableNodeTypes": ["*"]
     },
-    "narrativeAsset": {
+    "beatAsset": {
       "addableNodeTypes": ["*"]
     },
-    "narrativeUnit": {
+    "beatUnit": {
       "addableNodeTypes": ["*"]
     },
     "elementWorkflow": {

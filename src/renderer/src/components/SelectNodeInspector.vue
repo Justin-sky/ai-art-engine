@@ -30,7 +30,7 @@
 import { computed, ref, watch } from 'vue'
 import {
   isSelectImageNode,
-  isSelectNarrativeNode,
+  isSelectBeatNode,
   isSelectShotEntitiesNode,
   isSelectTextNode,
   isSelectVideoNode,
@@ -49,7 +49,7 @@ const SELECT_TYPE_IDS = new Set([
   'video.select',
   'voice.select',
   'text.select',
-  'narrative.select',
+  'beat.select',
   'shotEntities.select'
 ])
 
@@ -84,7 +84,7 @@ const hint = computed(() => {
   if (isSelectVideoNode(current)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(current)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(current)) return t('graph.selectText.hint')
-  if (isSelectNarrativeNode(current)) return t('graph.selectNarrative.hint')
+  if (isSelectBeatNode(current)) return t('graph.selectBeat.hint')
   if (isSelectShotEntitiesNode(current)) return t('graph.selectShotEntities.hint')
   return t('graph.inspector.select.hint')
 })

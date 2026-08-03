@@ -31,7 +31,7 @@ const OUT_TYPE_PRIORITY: GraphPortDataType[] = [
   GraphPortType.videoEntities,
   GraphPortType.shotEntities,
   GraphPortType.worldEntities,
-  GraphPortType.narrative,
+  GraphPortType.beat,
   GraphPortType.model
 ]
 

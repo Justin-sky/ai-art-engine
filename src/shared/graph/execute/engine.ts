@@ -148,7 +148,7 @@ function hasUsableOutputRecord(
     out.kind === 'worldEntities' ||
     out.kind === 'shotEntities' ||
     out.kind === 'videoEntities' ||
-    out.kind === 'narrative' ||
+    out.kind === 'beat' ||
     out.kind === 'shots'
   ) {
     return !!out.text.trim() || !!('relativePath' in out && out.relativePath?.trim())
@@ -200,10 +200,11 @@ async function softSnapshotOutputs(
     GraphRunOptions,
     | 'resolveAssetText'
     | 'resolveAssetGenParams'
+    | 'resolveLiveAssetGraph'
     | 'hasAsset'
     | 'locale'
     | 'readRunText'
-    | 'resolveNarrativeUnit'
+    | 'resolveBeatUnit'
     | 'resolveShotStoryboard'
     | 'resolveAllShotBindingImages'
   >,
@@ -215,6 +216,8 @@ async function softSnapshotOutputs(
 ): Promise<Record<string, GraphValue>> {
   const softResolveOpts = {
     resolveAssetGenParams: options.resolveAssetGenParams,
+    // 选择场等 onlyTarget 软快照需 dig 打开中的宿主内图
+    resolveLiveAssetGraph: options.resolveLiveAssetGraph,
     resolveShotStoryboard: options.resolveShotStoryboard,
     resolveAllShotBindingImages: options.resolveAllShotBindingImages
   }
@@ -308,7 +311,7 @@ async function softSnapshotOutputs(
       resolveAssetGenParams: options.resolveAssetGenParams,
       hasAsset: options.hasAsset,
       readRunText: options.readRunText,
-      resolveNarrativeUnit: options.resolveNarrativeUnit,
+      resolveBeatUnit: options.resolveBeatUnit,
       resolveShotStoryboard: options.resolveShotStoryboard,
       resolveAllShotBindingImages: options.resolveAllShotBindingImages
     })
@@ -330,7 +333,7 @@ async function hydrateOutputRecordTexts(
         value.kind === 'worldEntities' ||
         value.kind === 'shotEntities' ||
         value.kind === 'videoEntities' ||
-        value.kind === 'narrative' ||
+        value.kind === 'beat' ||
         value.kind === 'shots') &&
       !value.text.trim() &&
       value.relativePath?.trim()
@@ -412,7 +415,7 @@ async function executeOneNode(
     byId,
     outputs,
     mentionIndexBase,
-    resolveNarrativeUnit: options.resolveNarrativeUnit
+    resolveBeatUnit: options.resolveBeatUnit
   })
   const incomingByIndex = graph.edges
     .filter(
@@ -454,17 +457,17 @@ async function executeOneNode(
     composeImageGridCell: options.composeImageGridCell,
     resolveShotStoryboard: options.resolveShotStoryboard,
     resolveAllShotBindingImages: options.resolveAllShotBindingImages,
-    resolveNarrativeUnit: options.resolveNarrativeUnit,
+    resolveBeatUnit: options.resolveBeatUnit,
     resolveShotSplitTableJson: options.resolveShotSplitTableJson,
     importShotSplitTableJson: options.importShotSplitTableJson,
     collectScriptShotImages: options.collectScriptShotImages,
     collectScriptShotVideos: options.collectScriptShotVideos,
     collectWorldElementOutputs: options.collectWorldElementOutputs,
-    collectNarrativeUnitTexts: options.collectNarrativeUnitTexts,
+    collectBeatUnitTexts: options.collectBeatUnitTexts,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
     importWorldCatalogJson: options.importWorldCatalogJson,
-    resolveNarrativeCatalogJson: options.resolveNarrativeCatalogJson,
-    importNarrativeCatalogJson: options.importNarrativeCatalogJson,
+    resolveBeatCatalogJson: options.resolveBeatCatalogJson,
+    importBeatCatalogJson: options.importBeatCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,
     cookAssetIdStack: options.cookAssetIdStack,
     // onlyTarget 默认不批跑嵌套子图；Cook 子图 / 上游链运行允许

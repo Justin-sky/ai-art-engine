@@ -1,23 +1,28 @@
 <template>
-  <div ref="rootRef" class="narrative-table">
+  <div ref="rootRef" class="beat-table">
     <div class="table-toolbar">
       <span class="count">{{ rows.length }}</span>
-      <button type="button" @click="onAdd">{{ t('narrative.table.new') }}</button>
+      <button type="button" @click="onAdd">{{ t('beat.table.new') }}</button>
     </div>
     <p v-if="error" class="table-error">{{ error }}</p>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th class="col-order">{{ t('narrative.table.column.order') }}</th>
-            <th class="col-title">{{ t('narrative.table.column.title') }}</th>
-            <th class="col-summary">{{ t('narrative.table.column.summary') }}</th>
-            <th class="col-function">{{ t('narrative.table.column.dramaticFunction') }}</th>
-            <th class="col-refs">{{ t('narrative.table.column.characters') }}</th>
-            <th class="col-refs">{{ t('narrative.table.column.scenes') }}</th>
-            <th class="col-refs">{{ t('narrative.table.column.props') }}</th>
-            <th class="col-refs">{{ t('narrative.table.column.weapons') }}</th>
-            <th class="col-status">{{ t('narrative.table.column.status') }}</th>
+            <th class="col-order">{{ t('beat.table.column.order') }}</th>
+            <th class="col-title">{{ t('beat.table.column.title') }}</th>
+            <th class="col-text">{{ t('beat.table.column.time') }}</th>
+            <th class="col-text">{{ t('beat.table.column.durationHint') }}</th>
+            <th class="col-text">{{ t('beat.table.column.location') }}</th>
+            <th class="col-refs">{{ t('beat.table.column.locations') }}</th>
+            <th class="col-refs">{{ t('beat.table.column.characters') }}</th>
+            <th class="col-long">{{ t('beat.table.column.action') }}</th>
+            <th class="col-long">{{ t('beat.table.column.conflict') }}</th>
+            <th class="col-long">{{ t('beat.table.column.atmosphere') }}</th>
+            <th class="col-refs">{{ t('beat.table.column.props') }}</th>
+            <th class="col-refs">{{ t('beat.table.column.weapons') }}</th>
+            <th class="col-long">{{ t('beat.table.column.sourceExcerpt') }}</th>
+            <th class="col-status">{{ t('beat.table.column.status') }}</th>
             <th class="col-actions" />
           </tr>
         </thead>
@@ -37,27 +42,21 @@
                 @change="onTitleChange(row.id, ($event.target as HTMLInputElement).value)"
               />
             </td>
-            <td class="col-summary" @click.stop>
+            <td
+              v-for="field in LEAD_TEXT_FIELDS"
+              :key="field"
+              class="col-text"
+              @click.stop
+            >
               <textarea
                 rows="2"
-                :value="row.summary"
-                :placeholder="t('narrative.table.placeholder.summary')"
-                @change="onSummaryChange(row.id, ($event.target as HTMLTextAreaElement).value)"
+                :value="row[field]"
+                @change="
+                  onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)
+                "
               />
             </td>
-            <td class="col-function" @click.stop>
-              <select
-                :value="row.dramaticFunction"
-                @change="
-                  onFunctionChange(row.id, ($event.target as HTMLSelectElement).value)
-                "
-              >
-                <option v-for="opt in DRAMATIC_FUNCTIONS" :key="opt" :value="opt">
-                  {{ opt }}
-                </option>
-              </select>
-            </td>
-            <td v-for="field in REF_FIELDS" :key="field" class="col-refs" @click.stop>
+            <td v-for="field in REF_FIELDS.slice(0, 2)" :key="field" class="col-refs" @click.stop>
               <div class="ref-list">
                 <div
                   v-for="(refItem, index) in row[field]"
@@ -88,12 +87,72 @@
                 <button
                   type="button"
                   class="ref-add"
-                  :title="t('narrative.table.bind.add')"
+                  :title="t('beat.table.bind.add')"
                   @click="addRef(row.id, field)"
                 >
                   +
                 </button>
               </div>
+            </td>
+            <td v-for="field in CORE_TEXT_FIELDS" :key="field" class="col-long" @click.stop>
+              <textarea
+                rows="2"
+                :value="row[field]"
+                @change="
+                  onTextChange(row.id, field, ($event.target as HTMLTextAreaElement).value)
+                "
+              />
+            </td>
+            <td v-for="field in REF_FIELDS.slice(2)" :key="field" class="col-refs" @click.stop>
+              <div class="ref-list">
+                <div
+                  v-for="(refItem, index) in row[field]"
+                  :key="`${field}-${index}`"
+                  class="ref-chip"
+                >
+                  <input
+                    class="ref-name"
+                    :value="refItem.name"
+                    @change="
+                      onRefNameChange(
+                        row.id,
+                        field,
+                        index,
+                        ($event.target as HTMLInputElement).value
+                      )
+                    "
+                  />
+                  <button
+                    type="button"
+                    class="ref-remove"
+                    :title="t('common.delete')"
+                    @click="removeRef(row.id, field, index)"
+                  >
+                    ×
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="ref-add"
+                  :title="t('beat.table.bind.add')"
+                  @click="addRef(row.id, field)"
+                >
+                  +
+                </button>
+              </div>
+            </td>
+            <td class="col-long" @click.stop>
+              <textarea
+                rows="2"
+                :value="row.sourceExcerpt"
+                @change="
+                  onTextChange(
+                    row.id,
+                    'sourceExcerpt',
+                    ($event.target as HTMLTextAreaElement).value
+                  )
+                "
+              />
             </td>
             <td class="col-status" @click.stop>
               <select
@@ -120,7 +179,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="!rows.length" class="empty">{{ t('narrative.table.empty') }}</p>
+      <p v-if="!rows.length" class="empty">{{ t('beat.table.empty') }}</p>
     </div>
   </div>
 </template>
@@ -133,35 +192,40 @@ import {
   SHOT_REVIEW_STATUS_OPTIONS
 } from '@shared/domain'
 import {
-  stableNarrativeUnitId,
-  type NarrativeUnitRow,
-  type NarrativeWorldRef
+  stableBeatId,
+  type BeatRow,
+  type BeatWorldRef
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
-  loadNarrativeCatalog,
-  saveNarrativeCatalog
-} from '../features/narrative/applyNarrativeCatalogOnOpen'
+  loadBeatCatalog,
+  saveBeatCatalog
+} from '../features/beat/applyBeatCatalogOnOpen'
 
-const DRAMATIC_FUNCTIONS = ['建置', '冲突', '转折', '高潮', '收束', '过渡'] as const
-const REF_FIELDS = ['characters', 'scenes', 'props', 'weapons'] as const
+const LEAD_TEXT_FIELDS = ['time', 'durationHint', 'location'] as const
+const CORE_TEXT_FIELDS = ['action', 'conflict', 'atmosphere'] as const
+const REF_FIELDS = ['locations', 'characters', 'props', 'weapons'] as const
 type RefField = (typeof REF_FIELDS)[number]
+type TextField =
+  | (typeof LEAD_TEXT_FIELDS)[number]
+  | (typeof CORE_TEXT_FIELDS)[number]
+  | 'sourceExcerpt'
 
-const FIELD_TYPE: Record<RefField, NarrativeWorldRef['type']> = {
+const FIELD_TYPE: Record<RefField, BeatWorldRef['type']> = {
+  locations: '场景',
   characters: '角色',
-  scenes: '场景',
   props: '道具',
   weapons: '武器'
 }
 
 const props = defineProps<{
-  narrativeAssetId: string
+  beatAssetId: string
 }>()
 
 const { t } = useStudioI18n()
 const rootRef = ref<HTMLElement | null>(null)
 const error = ref('')
-const rows = ref<NarrativeUnitRow[]>([])
+const rows = ref<BeatRow[]>([])
 
 const PERSIST_DEBOUNCE_MS = 280
 const pendingWrites = new Set<Promise<unknown>>()
@@ -186,7 +250,7 @@ async function persistNow(): Promise<void> {
   dirty = false
   error.value = ''
   try {
-    await trackWrite(saveNarrativeCatalog(props.narrativeAssetId, rows.value.map((r) => ({ ...r }))))
+    await trackWrite(saveBeatCatalog(props.beatAssetId, rows.value.map((r) => ({ ...r }))))
   } catch (e) {
     dirty = true
     error.value = e instanceof Error ? e.message : String(e)
@@ -202,7 +266,7 @@ function schedulePersist(): void {
   }, PERSIST_DEBOUNCE_MS)
 }
 
-function findRow(id: string): NarrativeUnitRow | undefined {
+function findRow(id: string): BeatRow | undefined {
   return rows.value.find((row) => row.id === id)
 }
 
@@ -223,17 +287,10 @@ function onTitleChange(id: string, title: string): void {
   schedulePersist()
 }
 
-function onSummaryChange(id: string, summary: string): void {
+function onTextChange(id: string, field: TextField, value: string): void {
   const row = findRow(id)
-  if (!row || summary === row.summary) return
-  row.summary = summary
-  schedulePersist()
-}
-
-function onFunctionChange(id: string, value: string): void {
-  const row = findRow(id)
-  if (!row || value === row.dramaticFunction) return
-  row.dramaticFunction = value
+  if (!row || value === row[field]) return
+  row[field] = value
   schedulePersist()
 }
 
@@ -275,20 +332,22 @@ function onStatusChange(id: string, value: string): void {
 
 function onAdd(): void {
   const order = rows.value.length + 1
-  const title = `${t('narrative.table.unit')} ${order}`
+  const title = `${t('beat.table.unit')} ${order}`
   rows.value.push({
-    id: stableNarrativeUnitId(title, order),
+    id: stableBeatId(title, order),
     title,
     order,
-    summary: '',
-    dramaticFunction: '建置',
+    time: '',
+    durationHint: '',
+    location: '',
+    locations: [],
     characters: [],
-    scenes: [],
+    action: '',
+    conflict: '',
+    atmosphere: '',
     props: [],
     weapons: [],
     sourceExcerpt: '',
-    emotionalBeat: '',
-    durationHint: '中',
     status: DEFAULT_SHOT_REVIEW_STATUS
   })
   schedulePersist()
@@ -310,10 +369,10 @@ async function flushSave(): Promise<void> {
 }
 
 onMounted(() => {
-  rows.value = loadNarrativeCatalog(props.narrativeAssetId).map((row) => ({
+  rows.value = loadBeatCatalog(props.beatAssetId).map((row) => ({
     ...row,
+    locations: row.locations.map((item) => ({ ...item, imageUrl: undefined })),
     characters: row.characters.map((item) => ({ ...item, imageUrl: undefined })),
-    scenes: row.scenes.map((item) => ({ ...item, imageUrl: undefined })),
     props: row.props.map((item) => ({ ...item, imageUrl: undefined })),
     weapons: row.weapons.map((item) => ({ ...item, imageUrl: undefined }))
   }))
@@ -327,7 +386,7 @@ defineExpose({ flushSave })
 </script>
 
 <style scoped>
-.narrative-table {
+.beat-table {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -413,8 +472,14 @@ textarea {
   width: 120px;
 }
 
-.col-function {
-  width: 88px;
+.col-text {
+  width: 104px;
+  min-width: 90px;
+}
+
+.col-long {
+  width: 180px;
+  min-width: 150px;
 }
 
 .col-refs {

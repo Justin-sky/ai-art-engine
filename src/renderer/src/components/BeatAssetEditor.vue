@@ -1,5 +1,5 @@
 <template>
-  <div class="narrative-asset-editor">
+  <div class="beat-asset-editor">
     <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
       <EditorDiveBar
         :root-title="diveContext.rootTitle"
@@ -9,17 +9,17 @@
     </div>
 
     <div v-if="!embedded && !diving" class="toolbar">
-      <span>{{ t('studio.editor.narrative') }}</span>
+      <span>{{ t('studio.editor.beat') }}</span>
       <span class="spacer" />
-      <span class="hint">{{ t('narrative.asset.hint') }}</span>
+      <span class="hint">{{ t('beat.asset.hint') }}</span>
       <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
     </div>
 
     <NodeGraphEditor
       v-show="!diving"
-      ref="narrativeGraphRef"
-      class="narrative-main"
-      :asset-id="narrativeAssetId"
+      ref="beatGraphRef"
+      class="beat-main"
+      :asset-id="beatAssetId"
       :hide-toolbar="!embedded && toolbarCollapsed"
     />
 
@@ -42,23 +42,23 @@ import EditorDiveBar from './EditorDiveBar.vue'
 import EditorDiveChildHost from './EditorDiveChildHost.vue'
 
 const props = defineProps<{
-  narrativeAssetId: string
+  beatAssetId: string
   /** 嵌在外层 dive 内时不作为 dive 根、不 consume */
   embedded?: boolean
 }>()
 
 const { t } = useStudioI18n()
 const workspace = useWorkspaceStore()
-const { asset: narrativeAsset } = useAssetRecord(props.narrativeAssetId)
-const narrativeGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
+const { asset: beatAsset } = useAssetRecord(props.beatAssetId)
+const beatGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)
 const toolbarCollapsed = ref(false)
 
 const rootTitle = computed(
-  () => narrativeAsset.value?.name?.trim() || t('studio.dive.root')
+  () => beatAsset.value?.name?.trim() || t('studio.dive.root')
 )
 const { diving, diveTop, diveContext } = useEditorDiveHost({
-  kind: 'narrative',
-  assetId: () => props.narrativeAssetId,
+  kind: 'beat',
+  assetId: () => props.beatAssetId,
   rootTitle,
   enabled: () => !props.embedded
 })
@@ -66,25 +66,25 @@ const showDiveShellBar = computed(
   () => !props.embedded && diving.value && isEditorDiveViewFrame(diveTop.value)
 )
 
-provide('narrativeAssetId', computed(() => props.narrativeAssetId))
+provide('beatAssetId', computed(() => props.beatAssetId))
 
 useEditorDocumentSession({
-  id: () => `editor:narrative:${props.narrativeAssetId}`,
+  id: () => `editor:beat:${props.beatAssetId}`,
   save: async () => {
     const top = diveTop.value
     if (top) await editorDiveFlush.flush(top.key)
-    await narrativeGraphRef.value?.flushSave?.()
+    await beatGraphRef.value?.flushSave?.()
   },
   saveOnUnmount: false
 })
 
 onBeforeUnmount(() => {
-  if (!props.embedded) workspace.consumeNarrativeEditor(props.narrativeAssetId)
+  if (!props.embedded) workspace.consumeBeatEditor(props.beatAssetId)
 })
 </script>
 
 <style scoped>
-.narrative-asset-editor {
+.beat-asset-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
-.narrative-main {
+.beat-main {
   flex: 1;
   min-height: 0;
 }

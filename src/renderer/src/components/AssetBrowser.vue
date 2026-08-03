@@ -850,7 +850,7 @@ const filterTypes: AssetType[] = [
   'canvas',
   'subgraph',
   'world',
-  'narrative',
+  'beat',
   'script',
   'screenplay',
   'image',

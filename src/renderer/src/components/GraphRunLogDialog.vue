@@ -350,7 +350,7 @@ function isPassthroughOutputType(typeId: string | undefined): boolean {
     typeId === 'script.shotVideoGen' ||
     typeId === 'script.shotTable' ||
     typeId === 'world.table' ||
-    typeId === 'narrative.table'
+    typeId === 'beat.table'
   )
 }
 

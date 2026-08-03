@@ -108,8 +108,8 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
     nodes: [{ key: 'gen', typeId: 'asset.image', x: 300, y: 160 }],
     edges: []
   },
-  narrativeUnit: {
-    nodes: [{ key: 'gen', typeId: 'narrative.unitGen', x: 300, y: 160 }],
+  beatUnit: {
+    nodes: [{ key: 'gen', typeId: 'beat.unitGen', x: 300, y: 160 }],
     edges: []
   },
   scriptAsset: {
@@ -163,10 +163,10 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
     ],
     inputLinkTo: 'extract'
   },
-  narrativeAsset: {
+  beatAsset: {
     nodes: [
-      { key: 'split', typeId: 'narrative.split', x: 120, y: 160 },
-      { key: 'table', typeId: 'narrative.table', x: 340, y: 160 }
+      { key: 'split', typeId: 'beat.split', x: 120, y: 160 },
+      { key: 'table', typeId: 'beat.table', x: 340, y: 160 }
     ],
     edges: [{ from: 'split', to: 'table', fromPort: 'out', toPort: 'in' }],
     inputLinkTo: 'split'

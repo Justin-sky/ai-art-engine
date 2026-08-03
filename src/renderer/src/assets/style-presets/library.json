@@ -19,7 +19,7 @@
       "nameEn": "Cinematic",
       "image": "character-02-cinematic.webp",
       "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
-      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, beat framing, avoid flat passport-photo lighting."
     },
     {
       "id": "character-commercial-product",
@@ -318,7 +318,7 @@
       "nameEn": "Cinematic",
       "image": "02-cinematic.webp",
       "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
-      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting.",
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, beat framing, avoid flat passport-photo lighting.",
       "category": "scene"
     },
     {
@@ -619,7 +619,7 @@
       "nameEn": "Cinematic",
       "image": "prop-02-cinematic.webp",
       "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
-      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, beat framing, avoid flat passport-photo lighting."
     },
     {
       "id": "prop-commercial-product",
@@ -919,7 +919,7 @@
       "nameEn": "Cinematic",
       "image": "weapon-02-cinematic.webp",
       "prompt": "电影感：电影布光与色彩分级，高动态对比，戏剧性明暗分割，浅景深与镜头感，胶片般色调与氛围，构图具叙事张力，避免平光证件照感。",
-      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, narrative framing, avoid flat passport-photo lighting."
+      "promptEn": "Cinematic: film lighting and color grade, high dynamic contrast, dramatic chiaroscuro, shallow depth of field and lens language, filmic mood, beat framing, avoid flat passport-photo lighting."
     },
     {
       "id": "weapon-commercial-product",

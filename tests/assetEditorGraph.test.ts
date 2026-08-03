@@ -117,13 +117,13 @@ describe('asset editor graph', () => {
     const doc = createDefaultScopedGraph('screenplayAsset', 'screenplay')
     const processing = doc.nodes.find((node) => node.typeId === 'asset.screenplay')
     const select = doc.nodes.find((node) => node.typeId === 'text.select')
-    const narrative = doc.nodes.find(
-      (node) => node.typeId === 'narrative.split'
+    const beat = doc.nodes.find(
+      (node) => node.typeId === 'beat.split'
     )
     const output = doc.nodes.find((node) => node.id === BOUNDARY_OUTPUT_ID)
     expect(processing && isProcessingAssetNode(processing)).toBe(true)
     expect(select).toBeUndefined()
-    expect(narrative).toBeUndefined()
+    expect(beat).toBeUndefined()
     expect(output?.typeId).toBe('graph.boundary.output')
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
@@ -213,11 +213,11 @@ describe('asset editor graph', () => {
     expect(world.nodes.some((n) => n.id === boundaryInputNodeId('in'))).toBe(true)
   })
 
-  it('creates default narrative asset graph with split → table → boundary (no gen)', () => {
-    const doc = createDefaultScopedGraph('narrativeAsset', 'narrative')
-    const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
-    const table = doc.nodes.find((node) => node.typeId === 'narrative.table')
-    const editor = doc.nodes.find((node) => node.typeId === 'narrative.gen')
+  it('creates default beat asset graph with split → table → boundary (no gen)', () => {
+    const doc = createDefaultScopedGraph('beatAsset', 'beat')
+    const split = doc.nodes.find((node) => node.typeId === 'beat.split')
+    const table = doc.nodes.find((node) => node.typeId === 'beat.table')
+    const editor = doc.nodes.find((node) => node.typeId === 'beat.gen')
     const select = doc.nodes.find((node) => node.typeId === 'text.select')
     const output = doc.nodes.find((node) => node.id === BOUNDARY_OUTPUT_ID)
     expect(split).toBeTruthy()
@@ -229,15 +229,15 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((node) => node.category === 'output')).toBe(false)
     expect(getNodePorts(split!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'text'],
-      ['out', 'narrative'],
+      ['out', 'beat'],
       ['out', 'texts']
     ])
     expect(getNodePorts(table!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'narrative'],
-      ['out', 'narrative']
+      ['in', 'beat'],
+      ['out', 'beat']
     ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'narrative']
+      ['in', 'beat']
     ])
     expect(
       doc.edges.some((edge) => edge.source === split?.id && edge.target === table?.id)
@@ -255,13 +255,13 @@ describe('asset editor graph', () => {
     expect(isNodeDeletable(output!)).toBe(false)
   })
 
-  it('narrative asset host creates text boundary input (HDA)', () => {
-    const doc = normalizeScopedGraph('narrativeAsset', null, {
-      assetType: 'narrative',
+  it('beat asset host creates text boundary input (HDA)', () => {
+    const doc = normalizeScopedGraph('beatAsset', null, {
+      assetType: 'beat',
       hostAssetId: '00000000-0000-4000-8000-000000000601'
     })
-    const table = doc.nodes.find((node) => node.typeId === 'narrative.table')
-    const split = doc.nodes.find((node) => node.typeId === 'narrative.split')
+    const table = doc.nodes.find((node) => node.typeId === 'beat.table')
+    const split = doc.nodes.find((node) => node.typeId === 'beat.split')
     expect(table).toBeTruthy()
     expect(split).toBeTruthy()
     expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(false)
@@ -269,7 +269,7 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
   })
 
-  it('script asset host creates narrativeEntity and worldEntities boundary inputs (HDA)', () => {
+  it('script asset host creates beat and worldEntities boundary inputs (HDA)', () => {
     const doc = normalizeScopedGraph('scriptAsset', null, {
       assetType: 'script',
       hostAssetId: '00000000-0000-4000-8000-000000000701'
@@ -280,15 +280,15 @@ describe('asset editor graph', () => {
     expect(split).toBeTruthy()
     expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(true)
     expect(getNodePorts(split!).find((p) => p.id === 'in')?.dataType).toBe('text')
-    expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-narrativeEntity'))).toBe(true)
+    expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-beat'))).toBe(true)
     expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-worldEntities'))).toBe(true)
     expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
   })
 
-  it('drops narrative.gen → text.select edge on incompatible out port', () => {
-    const gen = createNodeFromType('narrative.gen', { x: 0, y: 0 }, { id: 'gen' })
+  it('drops beat.gen → text.select edge on incompatible out port', () => {
+    const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, { id: 'gen' })
     const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
-    const doc = normalizeScopedGraph('narrativeAsset', {
+    const doc = normalizeScopedGraph('beatAsset', {
       nodes: [gen, select],
       edges: [
         {
@@ -300,7 +300,7 @@ describe('asset editor graph', () => {
         }
       ],
       viewport: { x: 0, y: 0, zoom: 1 }
-    }, { assetType: 'narrative' })
+    }, { assetType: 'beat' })
     expect(
       doc.edges.some((edge) => edge.source === 'gen' && edge.target === 'select')
     ).toBe(false)

@@ -54,7 +54,7 @@ Scope 配置项（`GraphScopeDefinition`）：
 连线规则与策略无关：
 
 1. 源节点有输出端口、目标节点有输入端口
-2. **两端 `dataType` 严格相等**（见 `GraphPortType`：`image` / `images` / `voice` / `voices` / `video` / `videos` / `text` / `texts` / `world` / `narrative` / `shots` / `model`）。目录 JSON 使用 `world` / `narrative` / `shots`，不可与 `text` 互通。
+2. **两端 `dataType` 严格相等**（见 `GraphPortType`：`image` / `images` / `voice` / `voices` / `video` / `videos` / `text` / `texts` / `world` / `beat` / `shots` / `model`）。目录 JSON 使用 `world` / `beat` / `shots`，不可与 `text` 互通。
 
 端口上会显示类型名。需要接多种上游的节点应声明多个输入口（如导演台编辑：`in-text` / `in-model` / `in-image`）。导演台编辑另有方形输出口 `out-shots`（`images`，站位截图）与 `out-actions`（`videos`，动作录制）。
 
@@ -162,7 +162,7 @@ dragAssets: {
 ## 连线
 
 1. 源节点须有输出端口、目标节点须有输入端口（结构检查，`getNodePorts`）
-2. **两端端口 `dataType` 严格相等**（无通配；目录 JSON 为 `world` / `narrative` / `shots`）
+2. **两端端口 `dataType` 严格相等**（无通配；目录 JSON 为 `world` / `beat` / `shots`）
 
 API：`canConnectNodes(source, target, { sourcePort?, targetPort? })`。多输入口时需指定 `targetPort`（或由 `findCompatibleInPort` 按类型自动匹配）。
 

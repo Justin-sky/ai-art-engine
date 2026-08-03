@@ -258,7 +258,7 @@ describe('graph run', () => {
       assetType: 'screenplay',
       params: { assetRef: true }
     })
-    const split = createNodeFromType('narrative.split', { x: 200, y: 0 }, {
+    const split = createNodeFromType('beat.split', { x: 200, y: 0 }, {
       id: 'split'
     })
     let promptSeen = ''
@@ -319,7 +319,7 @@ describe('graph run', () => {
     expect(promptSeen).toContain('缓存为空后重读正文')
   })
 
-  it('onlyTargetNode soft-snapshots screenplay asset ref text into narrative.split', async () => {
+  it('onlyTargetNode soft-snapshots screenplay asset ref text into beat.split', async () => {
     const assetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     const ref = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
       id: 'ref',
@@ -327,7 +327,7 @@ describe('graph run', () => {
       assetType: 'screenplay',
       params: { assetRef: true }
     })
-    const split = createNodeFromType('narrative.split', { x: 200, y: 0 }, {
+    const split = createNodeFromType('beat.split', { x: 200, y: 0 }, {
       id: 'split'
     })
     let promptSeen = ''
@@ -381,7 +381,7 @@ describe('graph run', () => {
     expect(result.ok, result.error).toBe(true)
     expect(promptSeen).toContain('雨夜开场剧本正文')
     expect(result.states.split?.outputs?.out).toMatchObject({
-      kind: 'narrative'
+      kind: 'beat'
     })
   })
 

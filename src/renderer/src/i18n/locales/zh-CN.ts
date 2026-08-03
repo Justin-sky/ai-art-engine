@@ -356,7 +356,7 @@ export default {
       canvas: '剧集',
       director: '导演台',
       world: '世界元素',
-      narrative: '叙事单元'
+      beat: '场'
     },
     dive: {
       up: '上一级',
@@ -453,7 +453,7 @@ export default {
       canvas: '剧集',
       freeCanvas: '自由画布',
       world: '世界元素',
-      narrative: '叙事单元',
+      beat: '场',
       subgraph: '宿主资产'
     },
     create: {
@@ -467,11 +467,11 @@ export default {
       canvas: '新建剧集',
       freeCanvas: '新建自由画布',
       world: '新建世界元素',
-      narrative: '新建叙事单元',
+      beat: '新建场',
       subgraph: '新建宿主资产',
       default: '新建资产',
       seriesNameTitle: '新建剧集',
-      seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、叙事单元与分镜，并放入剧集画布。',
+      seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、场与分镜，并放入剧集画布。',
       seriesNamePlaceholder: '剧集名称',
       freeCanvasNameTitle: '新建自由画布',
       freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',
@@ -1254,62 +1254,62 @@ export default {
       noFile: '该图片尚未关联文件'
     }
   },
-  narrative: {
+  beat: {
     asset: {
       hint: '双击拆解进入指令编辑 · 双击表格进入目录 · 双击输出进入文本细化；面包屑返回'
     },
     dialog: {
       close: '关闭',
-      table: '叙事单元表格',
-      gen: '叙事单元生成'
+      table: '场表格',
+      gen: '场生成'
     },
     hint: {
-      table: '叙事单元表格 · 批量编辑节拍结构与审核状态',
+      table: '场表格 · 批量编辑节拍结构与审核状态',
       gen: '上图画布细化单元 · 下栏点选 Inspector · 拖入生成参考节点'
     },
     pane: {
       resizeSplit: '拖动调整上下区域高度'
     },
     strip: {
-      title: '叙事单元',
+      title: '场',
       switchHint: '点击切换 · 拖入画布添加参考',
-      empty: '暂无叙事单元，请先拆解或在表格中新建',
-      collapse: '收起叙事单元栏',
-      expand: '展开叙事单元栏'
+      empty: '暂无场，请先拆解或在表格中新建',
+      collapse: '收起场栏',
+      expand: '展开场栏'
     },
     unit: {
       inspector: {
-        type: '单元 {n}',
-        title: '叙事单元',
-        empty: '未选择叙事单元',
-        sourceExcerpt: '原文摘录',
-        emotionalBeat: '情绪节拍',
-        durationHint: '时长提示'
+        type: '场 {n}',
+        title: '场',
+        empty: '未选择场',
+        sourceExcerpt: '原文'
       }
     },
     table: {
       new: '新建',
       empty: '暂无条目，点击新建或先执行拆解',
-      unit: '叙事单元',
+      unit: '场',
       column: {
         order: '顺序',
         title: '标题',
-        summary: '摘要',
-        dramaticFunction: '戏剧功能',
+        time: '时间',
+        durationHint: '时长',
+        location: '空间与地点',
+        locations: '地点绑定',
         characters: '角色',
-        scenes: '场景',
+        action: '核心动作',
+        conflict: '冲突与目标',
+        atmosphere: '氛围与声音',
         props: '道具',
         weapons: '武器',
+        sourceExcerpt: '原文',
         status: '状态'
       },
       bind: {
         title: '绑定世界元素',
         action: '绑定',
         add: '添加名称',
-        empty: '请先执行叙事表格节点以同步世界元素实体'
-      },
-      placeholder: {
-        summary: '一句话概括本单元'
+        empty: '请先执行场表格节点以同步世界元素实体'
       }
     }
   },
@@ -1579,10 +1579,10 @@ export default {
       openHint: '双击打开记事本',
       empty: '暂无上游文本，请先连接文本生成等节点并执行'
     },
-    selectNarrative: {
-      appMark: '选择叙事单元',
-      hint: '双击从上游叙事目录中选出一个单元；默认第一项。',
-      empty: '暂无上游叙事单元，请先连接叙事资产并执行'
+    selectBeat: {
+      appMark: '选择场',
+      hint: '双击从上游场目录中选出一个单元；默认第一项。',
+      empty: '暂无上游场，请先连接场资产并执行'
     },
     selectShotEntities: {
       appMark: '选择分镜实体',
@@ -1969,11 +1969,11 @@ export default {
     worldGenNode: {
       hint: '双击打开世界元素生成画布'
     },
-    narrativeTableNode: {
-      hint: '双击打开叙事单元表格'
+    beatTableNode: {
+      hint: '双击打开场表格'
     },
-    narrativeGenNode: {
-      hint: '双击进入叙事单元文本细化'
+    beatGenNode: {
+      hint: '双击进入场文本细化'
     },
     node: {
       collapsePreview: '收起预览',
@@ -2039,8 +2039,7 @@ export default {
         worldEntities: '世界元素实体',
         shotEntities: '分镜实体',
         videoEntities: '视频实体',
-        narrative: '叙事单元',
-        narrativeEntity: '叙事实体',
+        beat: '场',
         shots: '分镜',
         model: '模型'
       }
@@ -2105,8 +2104,8 @@ export default {
         text: '剧本输出',
         director: '导演台输出',
         timeline: '成片时间线',
-        narrative: '叙事单元输出',
-        narrativeUnit: '叙事输出',
+        beat: '场输出',
+        beatUnit: '场输出',
         world: '世界元素实体输出'
       },
       note: {
@@ -2153,13 +2152,13 @@ export default {
       shotEntities: {
         select: '选择分镜实体'
       },
-      narrative: {
-        select: '选择叙事单元',
-        split: '叙事单元拆解',
-        table: '叙事单元表格',
-        gen: '叙事单元生成',
-        unitGen: '叙事生成',
-        unitRef: '叙事参考'
+      beat: {
+        select: '选择场',
+        split: '场拆解',
+        table: '场表格',
+        gen: '场生成',
+        unitGen: '场生成',
+        unitRef: '场参考'
       },
       world: {
         extract: '世界元素提取',
@@ -2181,15 +2180,15 @@ export default {
       script: '分镜',
       canvas: '画布',
       world: '世界元素',
-      narrative: '叙事单元',
+      beat: '场',
       subgraph: '宿主资产',
       shotOutput: '分镜输出',
       shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
       timelineOutput: '成片时间线',
-      narrativeOutput: '叙事单元输出',
-      narrativeUnitOutput: '叙事输出',
+      beatOutput: '场输出',
+      beatUnitOutput: '场输出',
       worldOutput: '世界元素实体输出',
       assetOutput: {
         image: '图片输出',
@@ -2222,10 +2221,10 @@ export default {
       loop: '循环播放',
       duration: '输出时长（秒）',
       speed: '播放速度',
-      narrativePaths: '落地剧本',
-      narrativePathsHint: '运行「叙事单元生成」后，各单元文本会保存为独立剧本文件；双击预览全文',
-      narrativePathsEmpty: '尚未落地，请先细化各单元并运行本节点',
-      narrativePathPending: '（未落盘）'
+      beatPaths: '落地剧本',
+      beatPathsHint: '运行「场生成」后，各单元文本会保存为独立剧本文件；双击预览全文',
+      beatPathsEmpty: '尚未落地，请先细化各单元并运行本节点',
+      beatPathPending: '（未落盘）'
     },
     notepad: {
       appMark: '记事本',
@@ -2329,10 +2328,10 @@ export default {
       worldGen: {
         hint: '执行当前只收集四类子图已有图片；圆形菜单「Cook 子图」才批跑元素子图'
       },
-      narrativeTable: {
-        hint: '双击打开叙事单元表格；运行节点导入目录 JSON，并在此预览输出端口'
+      beatTable: {
+        hint: '双击打开场表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
-      narrativeGen: {
+      beatGen: {
         hint: '运行本节点收集各单元文本并落地到输出路径'
       },
       multiAngle: {
@@ -2420,9 +2419,9 @@ export default {
           "将剧本拆分为分镜列表；可用 {'@'} 引用上方连线资源",
         worldExtractInstructionPlaceholder:
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
-        narrativeSplitInstructionPlaceholder:
-          "将剧本拆解为叙事单元；可用 {'@'} 引用上方连线资源",
-        narrativeUnitGenInstructionPlaceholder:
+        beatSplitInstructionPlaceholder:
+          "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
+        beatUnitGenInstructionPlaceholder:
           "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         refsEmpty: '连接上游后可用 @ 引用；也可只在指令框中输入文本',
         disconnectRef: '断开连接',
@@ -2442,7 +2441,7 @@ export default {
           titleOptimize: '提示词优化模板',
           titleShotSplit: '分镜拆分模板',
           titleWorldExtract: '世界元素提取模板',
-          titleNarrativeSplit: '叙事单元拆解模板',
+          titleBeatSplit: '场拆解模板',
           titleImage: '图片生成模板',
           titleVideo: '视频生成模板',
           titleLipSync: '对口型模板',
@@ -2546,9 +2545,9 @@ export default {
             create: '提取世界元素',
             refine: '优化元素目录'
           },
-          narrativeSplit: {
-            create: '剧本拆解为叙事单元',
-            refine: '优化叙事单元结构'
+          beatSplit: {
+            create: '剧本拆解为场',
+            refine: '优化场结构'
           }
         },
         instructionExpand: '打开生成指令编辑窗',

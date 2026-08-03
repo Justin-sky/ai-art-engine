@@ -8,7 +8,7 @@ import type { GraphNode } from './types'
 export const ASSET_REF_INPUT_HOST_TYPES = [
   'screenplay',
   'world',
-  'narrative',
+  'beat',
   'script',
   'image',
   'video',
@@ -75,7 +75,7 @@ export function isGraphIoNode(node: Pick<GraphNode, 'typeId' | 'category'>): boo
  * 也没有 generated* 图库可复用；锁定它只会让整条链取不到缓存而失败。
  */
 export function isCatalogTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return isWorldTableNode(node) || isNarrativeTableNode(node) || isScriptShotTableNode(node)
+  return isWorldTableNode(node) || isBeatTableNode(node) || isScriptShotTableNode(node)
 }
 
 /** 除输入/输出与目录表格外均可锁定上次输出（有图库或可复用 prior runStates） */
@@ -121,32 +121,32 @@ export function isWorldExtractNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.extract'
 }
 
-export function isNarrativeSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.split'
+export function isBeatSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.split'
 }
 
-export function isNarrativeTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.table'
+export function isBeatTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.table'
 }
 
-export function isNarrativeGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.gen'
+export function isBeatGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.gen'
 }
 
-export function isNarrativeUnitGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.unitGen'
+export function isBeatUnitGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.unitGen'
 }
 
-export function isNarrativeUnitRefNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.unitRef'
+export function isBeatUnitRefNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.unitRef'
 }
 
-export function isNarrativeOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'output.narrative'
+export function isBeatOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'output.beat'
 }
 
-export function isNarrativeUnitOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'output.narrativeUnit'
+export function isBeatUnitOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'output.beatUnit'
 }
 
 export function isWorldOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -193,8 +193,8 @@ export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'text.select'
 }
 
-export function isSelectNarrativeNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'narrative.select'
+export function isSelectBeatNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'beat.select'
 }
 
 export function isSelectShotEntitiesNode(node: Pick<GraphNode, 'typeId'>): boolean {

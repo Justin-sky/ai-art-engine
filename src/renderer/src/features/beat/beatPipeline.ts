@@ -1,18 +1,18 @@
 /**
- * 叙事单元图管道：从各单元 narrativeUnit 子图收集「叙事输出」文本。
+ * 场图管道：从各单元 beatUnit 子图收集「场输出」文本。
  * 不级联跑单元子图中的生成节点；需在底栏细化侧先行跑完。
  */
 import { isDraftAssetId } from '@shared/domain'
 import {
-  collectTextFromNarrativeUnitGraph,
+  collectTextFromBeatGraph,
   normalizeScopedGraph,
-  readNarrativeUnitGraphFromGenParams,
+  readBeatGraphFromGenParams,
   type GraphTextItem
 } from '@shared/graph'
 import { readGraphRunText } from '../graph/readGraphRunText'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
-import { loadNarrativeCatalog } from './applyNarrativeCatalogOnOpen'
+import { loadBeatCatalog } from './applyBeatCatalogOnOpen'
 
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -22,13 +22,13 @@ function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
-function readNarrativeGenParams(
-  narrativeAssetId: string
+function readBeatGenParams(
+  beatAssetId: string
 ): Record<string, unknown> | undefined {
-  if (isDraftAssetId(narrativeAssetId)) {
-    return useDraftStore().getDraft(narrativeAssetId)?.genParams
+  if (isDraftAssetId(beatAssetId)) {
+    return useDraftStore().getDraft(beatAssetId)?.genParams
   }
-  return useProjectStore().assets.find((item) => item.id === narrativeAssetId)?.genParams as
+  return useProjectStore().assets.find((item) => item.id === beatAssetId)?.genParams as
     | Record<string, unknown>
     | undefined
 }
@@ -41,28 +41,28 @@ async function hydrateTextItem(item: GraphTextItem): Promise<GraphTextItem> {
   return text ? { ...item, text } : item
 }
 
-export type CollectNarrativeUnitTextsResult = {
+export type CollectBeatUnitTextsResult = {
   items: GraphTextItem[]
 }
 
 /**
  * 按目录顺序收集各单元细化图已有文本输出（不级联跑生成）。
  */
-export async function collectNarrativeUnitTexts(input: {
-  narrativeAssetId: string
+export async function collectBeatUnitTexts(input: {
+  beatAssetId: string
   signal?: AbortSignal
-}): Promise<CollectNarrativeUnitTextsResult> {
-  const rows = loadNarrativeCatalog(input.narrativeAssetId)
-  const genParams = readNarrativeGenParams(input.narrativeAssetId) ?? {}
+}): Promise<CollectBeatUnitTextsResult> {
+  const rows = loadBeatCatalog(input.beatAssetId)
+  const genParams = readBeatGenParams(input.beatAssetId) ?? {}
   const items: GraphTextItem[] = []
 
   for (const row of rows) {
     assertNotAborted(input.signal)
-    const raw = readNarrativeUnitGraphFromGenParams(genParams, row.id)
-    const doc = normalizeScopedGraph('narrativeUnit', raw ?? null, {
-      assetType: 'narrative'
+    const raw = readBeatGraphFromGenParams(genParams, row.id)
+    const doc = normalizeScopedGraph('beatUnit', raw ?? null, {
+      assetType: 'beat'
     })
-    const collected = collectTextFromNarrativeUnitGraph(doc)
+    const collected = collectTextFromBeatGraph(doc)
     if (!collected) continue
 
     const hydrated = await hydrateTextItem(collected)

@@ -423,17 +423,17 @@ import {
   isWorldGenNode,
   isWorldExtractNode,
   isWorldTableNode,
-  isNarrativeSplitNode,
-  isNarrativeTableNode,
-  isNarrativeGenNode,
-  isNarrativeOutputNode,
-  isNarrativeUnitOutputNode,
+  isBeatSplitNode,
+  isBeatTableNode,
+  isBeatGenNode,
+  isBeatOutputNode,
+  isBeatUnitOutputNode,
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
   isSelectVoiceNode,
   isSelectTextNode,
-  isSelectNarrativeNode,
+  isSelectBeatNode,
   isSelectShotEntitiesNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
@@ -599,8 +599,8 @@ function portDataTypeClass(port: GraphPortDef): string {
       return 'port-shot-entities'
     case GraphPortType.videoEntities:
       return 'port-video-entities'
-    case GraphPortType.narrative:
-      return 'port-narrative'
+    case GraphPortType.beat:
+      return 'port-beat'
     case GraphPortType.shots:
       return 'port-shots'
     default:
@@ -659,8 +659,8 @@ const isLocked = computed(() => isGenerateLocked(props.node))
 const isScreenplayOutputNode = computed(
   () =>
     props.node.category === 'output' &&
-    !isNarrativeOutputNode(props.node) &&
-    !isNarrativeUnitOutputNode(props.node) &&
+    !isBeatOutputNode(props.node) &&
+    !isBeatUnitOutputNode(props.node) &&
     (props.node.typeId === 'output.text' || props.node.params.outputKind === 'text')
 )
 const previewCollapsed = computed(() => props.node.params.previewCollapsed === true)
@@ -690,14 +690,14 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'toPrompt'
     case 'prompt.optimize':
       return 'optimize'
-    case 'narrative.unitGen':
-      return 'narrativeUnitGen'
+    case 'beat.unitGen':
+      return 'beatUnitGen'
     case 'script.shotSplit':
       return 'shotSplit'
     case 'world.extract':
       return 'worldExtract'
-    case 'narrative.split':
-      return 'narrativeSplit'
+    case 'beat.split':
+      return 'beatSplit'
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.image':
@@ -812,11 +812,11 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'worldExtract') {
     return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
   }
-  if (instructionKind.value === 'narrativeSplit') {
-    return t('graph.inspector.generate.narrativeSplitInstructionPlaceholder')
+  if (instructionKind.value === 'beatSplit') {
+    return t('graph.inspector.generate.beatSplitInstructionPlaceholder')
   }
-  if (instructionKind.value === 'narrativeUnitGen') {
-    return t('graph.inspector.generate.narrativeUnitGenInstructionPlaceholder')
+  if (instructionKind.value === 'beatUnitGen') {
+    return t('graph.inspector.generate.beatUnitGenInstructionPlaceholder')
   }
   return t('graph.inspector.generate.instructionPlaceholder')
 })
@@ -849,8 +849,8 @@ const typeLabel = computed(() => {
   }
   if (props.node.category === 'output') {
     if (isTimelineOutputNode(props.node)) return t('graph.titles.timelineOutput')
-    if (isNarrativeOutputNode(props.node)) return t('graph.titles.narrativeOutput')
-    if (isNarrativeUnitOutputNode(props.node)) return t('graph.titles.narrativeUnitOutput')
+    if (isBeatOutputNode(props.node)) return t('graph.titles.beatOutput')
+    if (isBeatUnitOutputNode(props.node)) return t('graph.titles.beatUnitOutput')
     if (isWorldOutputNode(props.node)) return t('graph.titles.worldOutput')
     if (isScreenplayOutputNode.value) return t('graph.titles.screenplayOutput')
     if (props.node.typeId && te(`graph.types.${props.node.typeId}`)) {
@@ -889,7 +889,7 @@ const canDiveIntoHost = computed(
 )
 
 /**
- * 可双击进入子图/子编辑器的工作流节点（分镜画面/视频、世界/叙事表等）。
+ * 可双击进入子图/子编辑器的工作流节点（分镜画面/视频、世界/场表等）。
  * 与宿主 📦 区分：用叠层图标表示内含子图。
  */
 const canDiveIntoSubgraph = computed(() => {
@@ -901,9 +901,9 @@ const canDiveIntoSubgraph = computed(() => {
     isTimelineOutputNode(n) ||
     isWorldTableNode(n) ||
     isWorldGenNode(n) ||
-    isNarrativeTableNode(n) ||
-    isNarrativeGenNode(n) ||
-    isNarrativeOutputNode(n) ||
+    isBeatTableNode(n) ||
+    isBeatGenNode(n) ||
+    isBeatOutputNode(n) ||
     isDirectorProcessingNode(n)
   )
 })
@@ -967,11 +967,11 @@ const typeIcon = computed(() => {
   if (isScriptShotImageGenNode(props.node)) return '🖼️'
   if (isScriptShotVideoGenNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
-  if (isWorldTableNode(props.node) || isNarrativeTableNode(props.node)) return '📋'
-  if (isNarrativeGenNode(props.node) || isNarrativeSplitNode(props.node)) return '📖'
+  if (isWorldTableNode(props.node) || isBeatTableNode(props.node)) return '📋'
+  if (isBeatGenNode(props.node) || isBeatSplitNode(props.node)) return '📖'
   if (isWorldGenNode(props.node)) return '🤺'
   if (isWorldOutputNode(props.node)) return '🌍'
-  if (isNarrativeOutputNode(props.node) || isNarrativeUnitOutputNode(props.node)) return '📖'
+  if (isBeatOutputNode(props.node) || isBeatUnitOutputNode(props.node)) return '📖'
   if (isScreenplayOutputNode.value) return '📜'
   if (props.node.category === 'output' && props.node.params.outputKind === 'voice') return '🔊'
   if (props.asset) return assetDisplayIcon(props.asset)
@@ -1232,16 +1232,16 @@ const hideCardPreview = computed(
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
     isWorldGenNode(props.node) ||
-    isNarrativeSplitNode(props.node) ||
-    isNarrativeTableNode(props.node) ||
-    isNarrativeGenNode(props.node)
+    isBeatSplitNode(props.node) ||
+    isBeatTableNode(props.node) ||
+    isBeatGenNode(props.node)
 )
 
 const scriptNodePreviewTitle = computed(() => {
   if (
     isScriptShotSplitNode(props.node) ||
     isWorldExtractNode(props.node) ||
-    isNarrativeSplitNode(props.node)
+    isBeatSplitNode(props.node)
   ) {
     return t('graph.generateNode.instructionHint')
   }
@@ -1252,8 +1252,8 @@ const scriptNodePreviewTitle = computed(() => {
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
-  if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
-  if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
+  if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
+  if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
   return ''
 })
 
@@ -1288,13 +1288,13 @@ const previewHint = computed(() => {
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
-  if (isNarrativeTableNode(props.node)) return t('graph.narrativeTableNode.hint')
-  if (isNarrativeGenNode(props.node)) return t('graph.narrativeGenNode.hint')
+  if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
+  if (isBeatGenNode(props.node)) return t('graph.beatGenNode.hint')
   if (isSelectImageNode(props.node)) return t('graph.selectImage.hint')
   if (isSelectVideoNode(props.node)) return t('graph.selectVideo.hint')
   if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
-  if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
+  if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
   if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
@@ -1321,7 +1321,7 @@ const previewOpenHint = computed(() => {
   if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
-  if (isSelectNarrativeNode(props.node)) return t('graph.selectNarrative.hint')
+  if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
   if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   // 预览区已有正文时，双击优先打开记事本
   if (
@@ -1803,7 +1803,7 @@ function onPreviewDblClick(): void {
       emit('selectVoiceOpen', props.node.id)
       return
     }
-    if (isSelectTextNode(props.node) || isSelectNarrativeNode(props.node)) {
+    if (isSelectTextNode(props.node) || isSelectBeatNode(props.node)) {
       emit('selectTextOpen', props.node.id)
       return
     }
@@ -1886,13 +1886,13 @@ function onPreviewDblClick(): void {
       return
     }
 
-    const narrativeAssetId = hostAssetId.value
-    if (isNarrativeTableNode(props.node) && narrativeAssetId) {
-      await diveView({ viewId: 'narrative.table', narrativeAssetId }, title)
+    const beatAssetId = hostAssetId.value
+    if (isBeatTableNode(props.node) && beatAssetId) {
+      await diveView({ viewId: 'beat.table', beatAssetId }, title)
       return
     }
-    if ((isNarrativeGenNode(props.node) || isNarrativeOutputNode(props.node)) && narrativeAssetId) {
-      await diveView({ viewId: 'narrative.gen', narrativeAssetId }, title)
+    if ((isBeatGenNode(props.node) || isBeatOutputNode(props.node)) && beatAssetId) {
+      await diveView({ viewId: 'beat.gen', beatAssetId }, title)
       return
     }
 
@@ -1901,8 +1901,8 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
-    // 叙事生成：双击只开关指令面板，不打开正文预览/记事本
-    if (instructionKind.value === 'narrativeUnitGen') {
+    // 场生成：双击只开关指令面板，不打开正文预览/记事本
+    if (instructionKind.value === 'beatUnitGen') {
       instructionOpen.value = !instructionOpen.value
       return
     }
@@ -2868,7 +2868,7 @@ function formatTime(sec: number): string {
   background: color-mix(in srgb, #c77dff 28%, var(--graph-port-bg));
 }
 
-.port.port-narrative {
+.port.port-beat {
   border-color: #7eb6ff;
   background: color-mix(in srgb, #7eb6ff 28%, var(--graph-port-bg));
 }

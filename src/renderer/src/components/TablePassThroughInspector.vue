@@ -14,17 +14,17 @@
       @toggle="toggleRun"
     />
 
-    <template v-if="isNarrativeGen">
-      <section class="generated-texts" :aria-label="t('graph.output.narrativePaths')">
+    <template v-if="isBeatGen">
+      <section class="generated-texts" :aria-label="t('graph.output.beatPaths')">
         <div class="section-head">
-          <span class="section-title">{{ t('graph.output.narrativePaths') }}</span>
+          <span class="section-title">{{ t('graph.output.beatPaths') }}</span>
           <span v-if="generatedTexts.length" class="section-count">
             {{ t('graph.inspector.generate.generatedTextsCount', { n: generatedTexts.length }) }}
           </span>
         </div>
-        <p class="section-hint">{{ t('graph.output.narrativePathsHint') }}</p>
+        <p class="section-hint">{{ t('graph.output.beatPathsHint') }}</p>
         <div v-if="!generatedTexts.length" class="empty">
-          {{ t('graph.output.narrativePathsEmpty') }}
+          {{ t('graph.output.beatPathsEmpty') }}
         </div>
         <ul v-else class="path-list">
           <li v-for="(item, index) in generatedTexts" :key="item.id || `index:${index}`">
@@ -37,7 +37,7 @@
               <span class="path-index">{{ index + 1 }}</span>
               <div class="path-main">
                 <code class="path-line">{{
-                  item.relativePath || t('graph.output.narrativePathPending')
+                  item.relativePath || t('graph.output.beatPathPending')
                 }}</code>
                 <pre class="path-preview">{{
                   resolvedGeneratedText[item.id || `index:${index}`] || '…'
@@ -90,8 +90,8 @@ const PASS_THROUGH_TYPE_IDS = new Set([
   'script.shotVideoGen',
   'world.table',
   'world.gen',
-  'narrative.table',
-  'narrative.gen'
+  'beat.table',
+  'beat.gen'
 ])
 
 const { t, graphTypeLabel } = useStudioI18n()
@@ -114,7 +114,7 @@ const hostId = computed(() => {
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 
-const isNarrativeGen = computed(() => node.value?.typeId === 'narrative.gen')
+const isBeatGen = computed(() => node.value?.typeId === 'beat.gen')
 
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.inspector.node.title')
@@ -124,8 +124,8 @@ const hint = computed(() => {
   const typeId = node.value?.typeId
   if (typeId === 'world.table') return t('graph.inspector.worldTable.hint')
   if (typeId === 'world.gen') return t('graph.inspector.worldGen.hint')
-  if (typeId === 'narrative.table') return t('graph.inspector.narrativeTable.hint')
-  if (typeId === 'narrative.gen') return t('graph.inspector.narrativeGen.hint')
+  if (typeId === 'beat.table') return t('graph.inspector.beatTable.hint')
+  if (typeId === 'beat.gen') return t('graph.inspector.beatGen.hint')
   if (typeId === 'script.shotImageGen') return t('graph.inspector.shotImageGen.hint')
   if (typeId === 'script.shotVideoGen') return t('graph.inspector.shotVideoGen.hint')
   return t('graph.inspector.shotTable.hint')
@@ -141,7 +141,7 @@ let resolveToken = 0
 const generatedTexts = computed((): StoredGeneratedText[] => {
   void graphEditorHosts.revision.value
   const current = node.value
-  if (!current || !isNarrativeGen.value) return []
+  if (!current || !isBeatGen.value) return []
   return (current.params.generatedTexts ?? []).filter(
     (item) => item.id && (item.text?.trim() || item.relativePath?.trim())
   )
@@ -208,7 +208,7 @@ async function openGeneratedText(key: string): Promise<void> {
   const item = index >= 0 ? list[index] : undefined
   if (!item) return
   const body = await loadGeneratedTextBody(item)
-  textNotepadTitle.value = item.relativePath?.trim() || t('graph.output.narrativePaths')
+  textNotepadTitle.value = item.relativePath?.trim() || t('graph.output.beatPaths')
   textNotepadBody.value = body
   textNotepadOpen.value = true
 }

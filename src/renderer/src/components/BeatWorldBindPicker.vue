@@ -1,9 +1,9 @@
 <template>
   <div class="bind-picker-overlay" @click.self="emit('close')">
-    <div class="bind-picker" role="dialog" :aria-label="t('narrative.table.bind.title')">
+    <div class="bind-picker" role="dialog" :aria-label="t('beat.table.bind.title')">
       <header class="bind-head">
-        <strong>{{ t('narrative.table.bind.title') }}</strong>
-        <button type="button" class="close" :title="t('narrative.dialog.close')" @click="emit('close')">
+        <strong>{{ t('beat.table.bind.title') }}</strong>
+        <button type="button" class="close" :title="t('beat.dialog.close')" @click="emit('close')">
           ×
         </button>
       </header>
@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import type { NarrativeWorldRef, WorldElementGenResult, WorldElementOutputType } from '@shared/graph'
+import type { BeatWorldRef, WorldElementGenResult, WorldElementOutputType } from '@shared/graph'
 import {
   resolveAssetFileUrl,
   resolveAssetPreviewUrl
@@ -56,7 +56,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  select: [ref: NarrativeWorldRef]
+  select: [ref: BeatWorldRef]
   close: []
 }>()
 
@@ -78,12 +78,12 @@ const groups = computed(() => {
     type,
     label:
       type === '角色'
-        ? t('narrative.table.column.characters')
+        ? t('beat.table.column.characters')
         : type === '场景'
-          ? t('narrative.table.column.scenes')
+          ? t('beat.table.column.locations')
           : type === '道具'
-            ? t('narrative.table.column.props')
-            : t('narrative.table.column.weapons'),
+            ? t('beat.table.column.props')
+            : t('beat.table.column.weapons'),
     items: props.items.filter((item) => item.type === type)
   }))
 })

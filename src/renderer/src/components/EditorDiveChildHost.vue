@@ -12,10 +12,10 @@
       :asset-id="assetFrame.assetId"
       embedded
     />
-    <NarrativeAssetEditor
-      v-else-if="assetFrame && assetFrame.kind === 'narrative'"
+    <BeatAssetEditor
+      v-else-if="assetFrame && assetFrame.kind === 'beat'"
       :key="assetFrame.assetId"
-      :narrative-asset-id="assetFrame.assetId"
+      :beat-asset-id="assetFrame.assetId"
       embedded
     />
     <WorldElementEditor
@@ -50,7 +50,7 @@ import {
 
 /** 异步加载，避免与各主编辑器互相静态引用形成环 */
 const AssetEditor = defineAsyncComponent(() => import('./AssetEditor.vue'))
-const NarrativeAssetEditor = defineAsyncComponent(() => import('./NarrativeAssetEditor.vue'))
+const BeatAssetEditor = defineAsyncComponent(() => import('./BeatAssetEditor.vue'))
 const WorldElementEditor = defineAsyncComponent(() => import('./WorldElementEditor.vue'))
 const ScriptEditor = defineAsyncComponent(() => import('./ScriptEditor.vue'))
 const DirectorEditor = defineAsyncComponent(() => import('./DirectorEditor.vue'))
@@ -62,8 +62,8 @@ const viewRegistry: Record<string, Component> = {
   'script.timeline': defineAsyncComponent(() => import('./dive/EditorDiveScriptTimelineView.vue')),
   'world.editor': defineAsyncComponent(() => import('./dive/EditorDiveWorldEditorView.vue')),
   'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
-  'narrative.gen': defineAsyncComponent(() => import('./dive/EditorDiveNarrativeGenView.vue')),
-  'narrative.table': defineAsyncComponent(() => import('./dive/EditorDiveNarrativeTableView.vue')),
+  'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
+  'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
   'node.instruction': defineAsyncComponent(() => import('./dive/EditorDiveInstructionView.vue')),
@@ -118,9 +118,9 @@ const viewBindings = computed(() => {
       return { ...base, worldAssetId: meta.worldAssetId, tab: meta.tab }
     case 'world.table':
       return { ...base, worldAssetId: meta.worldAssetId }
-    case 'narrative.gen':
-    case 'narrative.table':
-      return { ...base, narrativeAssetId: meta.narrativeAssetId }
+    case 'beat.gen':
+    case 'beat.table':
+      return { ...base, beatAssetId: meta.beatAssetId }
     case 'director.stage':
       return {
         ...base,
@@ -159,7 +159,7 @@ const viewBindings = computed(() => {
 }
 
 .editor-dive-child > :deep(.asset-editor),
-.editor-dive-child > :deep(.narrative-asset-editor),
+.editor-dive-child > :deep(.beat-asset-editor),
 .editor-dive-child > :deep(.world-element-editor),
 .editor-dive-child > :deep(.script-editor),
 .editor-dive-child > :deep(.director-editor),

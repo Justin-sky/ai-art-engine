@@ -212,7 +212,7 @@ export function resolveInstructionVisual(input: {
   if (id.startsWith('world.') || id.includes('worldExtract')) {
     return { kind: 'chips', chips: ['角', '景', '道'] }
   }
-  if (id.startsWith('narrative.') || id.includes('narrative')) {
+  if (id.startsWith('beat.') || id.includes('beat')) {
     return { kind: 'chips', chips: ['节', '拍', '钩'] }
   }
   if (id.includes('toPrompt.game')) {

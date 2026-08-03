@@ -30,18 +30,18 @@ describe('writeBackExclusiveKey', () => {
 
   it('串行化同一叙事资产下各单元写回', () => {
     const a: GraphTaskTarget = {
-      kind: 'narrative-unit',
-      narrativeAssetId: 'nar-1',
-      unitId: 'u1',
+      kind: 'beat-unit',
+      beatAssetId: 'nar-1',
+      beatId: 'u1',
       hostId: 'h1'
     }
     const b: GraphTaskTarget = {
-      kind: 'narrative-unit',
-      narrativeAssetId: 'nar-1',
-      unitId: 'u2',
+      kind: 'beat-unit',
+      beatAssetId: 'nar-1',
+      beatId: 'u2',
       hostId: 'h2'
     }
-    expect(writeBackExclusiveKey(a)).toBe('narrative-unit:nar-1')
+    expect(writeBackExclusiveKey(a)).toBe('beat-unit:nar-1')
     expect(writeBackExclusiveKey(a)).toBe(writeBackExclusiveKey(b))
   })
 })

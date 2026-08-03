@@ -407,10 +407,10 @@ class ProjectService {
         graphJson: createDefaultScopedGraph('worldAsset', 'world')
       }
     }
-    if (input.type === 'narrative' && !asset.genParams?.graphJson) {
+    if (input.type === 'beat' && !asset.genParams?.graphJson) {
       asset.genParams = {
         ...(asset.genParams ?? {}),
-        graphJson: createDefaultScopedGraph('narrativeAsset', 'narrative')
+        graphJson: createDefaultScopedGraph('beatAsset', 'beat')
       }
     }
     if (input.type === 'subgraph' && !asset.genParams?.graphJson) {
@@ -448,12 +448,12 @@ class ProjectService {
     return asset
   }
 
-  /** 创建剧集，并预置剧本 / 世界元素 / 叙事单元 / 分镜宿主节点与连线 */
+  /** 创建剧集，并预置剧本 / 世界元素 / 场 / 分镜宿主节点与连线 */
   createSeriesWithStarter(input: CreateSeriesWithStarterInput = {}): AssetInfo {
     const parentFolderId = input.folderId ?? null
     const language = settingsService.get().language
     const seriesName = input.name?.trim() || defaultAssetName('canvas', language)
-    const childTypes = ['screenplay', 'world', 'narrative', 'script'] as const
+    const childTypes = ['screenplay', 'world', 'beat', 'script'] as const
 
     const childName = (type: (typeof childTypes)[number]): string => {
       const override = input.childNames?.[type]?.trim()
@@ -495,7 +495,7 @@ class ProjectService {
         graphJson: buildSeriesStarterGraph({
           screenplay: children.screenplay,
           world: children.world,
-          narrative: children.narrative,
+          beat: children.beat,
           script: children.script
         })
       }

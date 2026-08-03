@@ -9,9 +9,9 @@ import {
 import { registerNodeType, type NodeTypeDefinition } from './registry'
 import {
   GRAPH_OUTPUT_NODE_IDS,
-  GRAPH_NARRATIVE_SPLIT_NODE_ID,
-  GRAPH_NARRATIVE_TABLE_NODE_ID,
-  GRAPH_NARRATIVE_GEN_NODE_ID,
+  GRAPH_BEAT_SPLIT_NODE_ID,
+  GRAPH_BEAT_TABLE_NODE_ID,
+  GRAPH_BEAT_GEN_NODE_ID,
   GRAPH_WORLD_GEN_NODE_ID,
   GRAPH_WORLD_EXTRACT_NODE_ID,
   GRAPH_WORLD_TABLE_NODE_ID,
@@ -41,7 +41,7 @@ import {
   executeSelectVideoNode,
   executeSelectVoiceNode,
   executeSelectTextNode,
-  executeSelectNarrativeNode,
+  executeSelectBeatNode,
   executeSelectShotEntitiesNode,
   executeMultiAngleNode,
   executeLightingNode,
@@ -60,27 +60,27 @@ import {
   executeShotTableNode,
   executeShotImageGenNode,
   executeShotVideoGenNode,
-  executeNarrativeSplitNode,
-  executeNarrativeTableNode,
-  executeNarrativeGenNode,
-  executeNarrativeUnitGenNode,
-  executeNarrativeUnitRefNode,
+  executeBeatSplitNode,
+  executeBeatTableNode,
+  executeBeatGenNode,
+  executeBeatUnitGenNode,
+  executeBeatUnitRefNode,
   executeWorldGenNode,
   executeWorldEntitiesOutputNode,
-  executeNarrativeCatalogOutputNode,
+  executeBeatCatalogOutputNode,
   executeVideoEntitiesOutputNode,
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
-  ASSET_NARRATIVE_OUTPUT_TITLE,
+  ASSET_BEAT_OUTPUT_TITLE,
   ASSET_TIMELINE_OUTPUT_TITLE,
   ASSET_WORLD_OUTPUT_TITLE,
-  NARRATIVE_UNIT_OUTPUT_TITLE
+  BEAT_UNIT_OUTPUT_TITLE
 } from './scopes'
 import { defaultShotParamsNodeParams } from './shotParams'
-import { defaultNarrativeUnitGenParams } from './narrativeUnitParams'
+import { defaultBeatUnitGenParams } from './beatParams'
 import { isAssetRefNode } from './nodeRole'
 
 const ASSET_SIZE = { w: 168, h: 128 }
@@ -130,8 +130,8 @@ const ASSET_META: Array<{
     processingIn: GraphPortType.text
   },
   {
-    type: 'narrative',
-    label: 'Narrative Units',
+    type: 'beat',
+    label: 'Beat Units',
     icon: '📖',
     outType: GraphPortType.text,
     addable: false,
@@ -271,11 +271,11 @@ function scriptHostPorts(): GraphPortDef[] {
       label: 'World'
     },
     {
-      id: 'in-narrativeEntity',
+      id: 'in-beat',
       direction: 'in',
       dataType: GraphPortType.text,
       multiple: true,
-      label: 'Narrative'
+      label: 'Beat'
     },
     {
       id: 'out',
@@ -301,14 +301,14 @@ function worldHostPorts(): GraphPortDef[] {
   ]
 }
 
-/** 叙事单元宿主：剧本文本入；出口为叙事目录（世界实体绑定在分镜层） */
-function narrativeHostPorts(): GraphPortDef[] {
+/** 场宿主：剧本文本入；出口为场目录（世界实体绑定在分镜层） */
+function beatHostPorts(): GraphPortDef[] {
   return [
     { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
     {
       id: 'out',
       direction: 'out',
-      dataType: GraphPortType.narrative,
+      dataType: GraphPortType.beat,
       multiple: true,
       label: 'Out'
     }
@@ -347,8 +347,8 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
                 ? scriptHostPorts()
                 : meta.type === 'world'
                   ? worldHostPorts()
-                  : meta.type === 'narrative'
-                    ? narrativeHostPorts()
+                  : meta.type === 'beat'
+                    ? beatHostPorts()
                     : [
                         ...(meta.processingIn
                           ? [
@@ -471,8 +471,8 @@ function specializedOutputDef(
   typeId:
     | 'output.director'
     | 'output.timeline'
-    | 'output.narrative'
-    | 'output.narrativeUnit'
+    | 'output.beat'
+    | 'output.beatUnit'
     | 'output.world',
   label: string,
   icon: string,
@@ -516,10 +516,10 @@ function specializedOutputDef(
         ? GRAPH_OUTPUT_NODE_IDS.director
         : typeId === 'output.timeline'
           ? GRAPH_OUTPUT_NODE_IDS.timeline
-          : typeId === 'output.narrative'
-            ? GRAPH_OUTPUT_NODE_IDS.narrative
-            : typeId === 'output.narrativeUnit'
-              ? GRAPH_OUTPUT_NODE_IDS.narrativeUnit
+          : typeId === 'output.beat'
+            ? GRAPH_OUTPUT_NODE_IDS.beat
+            : typeId === 'output.beatUnit'
+              ? GRAPH_OUTPUT_NODE_IDS.beatUnit
               : GRAPH_OUTPUT_NODE_IDS.world,
     // classic 输出已从菜单移除；残留节点允许删除
     deletable: true,
@@ -555,19 +555,19 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     executeVideoEntitiesOutputNode
   ),
   specializedOutputDef(
-    'output.narrative',
-    'Narrative output',
+    'output.beat',
+    'Beat output',
     '📖',
-    ASSET_NARRATIVE_OUTPUT_TITLE,
+    ASSET_BEAT_OUTPUT_TITLE,
     'text',
-    GraphPortType.narrative,
-    executeNarrativeCatalogOutputNode
+    GraphPortType.beat,
+    executeBeatCatalogOutputNode
   ),
   specializedOutputDef(
-    'output.narrativeUnit',
-    'Narrative output',
+    'output.beatUnit',
+    'Beat output',
     '📖',
-    NARRATIVE_UNIT_OUTPUT_TITLE,
+    BEAT_UNIT_OUTPUT_TITLE,
     'text',
     GraphPortType.text
   ),
@@ -781,15 +781,15 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeSelectTextNode
   },
   {
-    typeId: 'narrative.select',
+    typeId: 'beat.select',
     category: 'note',
-    label: 'Select narrative unit',
+    label: 'Select beat unit',
     icon: '📖',
-    defaultTitle: 'Select narrative unit',
+    defaultTitle: 'Select beat unit',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
       {
         id: 'out',
         direction: 'out',
@@ -800,7 +800,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ],
     defaultParams: () => ({
       text: '',
-      selectedUnitId: ''
+      selectedBeatId: ''
     }),
     addable: true,
     deletable: true,
@@ -808,7 +808,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     inspectorId: 'studio.graph.select',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeSelectNarrativeNode
+    execute: executeSelectBeatNode
   },
   {
     typeId: 'shotEntities.select',
@@ -1356,11 +1356,11 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeShotSplitNode
   },
   {
-    typeId: 'narrative.split',
+    typeId: 'beat.split',
     category: 'note',
-    label: 'Narrative split',
+    label: 'Beat split',
     icon: '📖',
-    defaultTitle: 'Narrative split',
+    defaultTitle: 'Beat split',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -1368,7 +1368,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       {
         id: 'out',
         direction: 'out',
-        dataType: GraphPortType.narrative,
+        dataType: GraphPortType.beat,
         multiple: false,
         label: 'Selected'
       },
@@ -1390,46 +1390,46 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: ''
     }),
     addable: true,
-    singletonId: GRAPH_NARRATIVE_SPLIT_NODE_ID,
+    singletonId: GRAPH_BEAT_SPLIT_NODE_ID,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.narrativeSplit',
+    inspectorId: 'studio.graph.beatSplit',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeSplitNode
+    execute: executeBeatSplitNode
   },
   {
-    typeId: 'narrative.table',
+    typeId: 'beat.table',
     category: 'note',
-    label: 'Narrative table',
+    label: 'Beat table',
     icon: '📋',
-    defaultTitle: 'Narrative table',
+    defaultTitle: 'Beat table',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.narrative, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.beat, multiple: true, label: 'Out' }
     ],
     defaultParams: () => ({ text: '' }),
     addable: true,
-    singletonId: GRAPH_NARRATIVE_TABLE_NODE_ID,
+    singletonId: GRAPH_BEAT_TABLE_NODE_ID,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.narrativeTable',
+    inspectorId: 'studio.graph.beatTable',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeTableNode
+    execute: executeBeatTableNode
   },
   {
-    typeId: 'narrative.gen',
+    typeId: 'beat.gen',
     category: 'note',
-    label: 'Narrative unit gen',
+    label: 'Beat unit gen',
     icon: '📖',
-    defaultTitle: 'Narrative unit gen',
+    defaultTitle: 'Beat unit gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.narrative, multiple: false, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.beat, multiple: false, label: 'In' },
       {
         id: 'out',
         direction: 'out',
@@ -1451,41 +1451,41 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       selectedTextId: ''
     }),
     addable: false,
-    singletonId: GRAPH_NARRATIVE_GEN_NODE_ID,
+    singletonId: GRAPH_BEAT_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.narrativeGen',
+    inspectorId: 'studio.graph.beatGen',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeGenNode
+    execute: executeBeatGenNode
   },
   {
-    typeId: 'narrative.unitGen',
+    typeId: 'beat.unitGen',
     category: 'note',
-    label: 'Narrative gen',
+    label: 'Beat gen',
     icon: '📖',
-    defaultTitle: 'Narrative gen',
+    defaultTitle: 'Beat gen',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
       { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
     ],
-    defaultParams: () => defaultNarrativeUnitGenParams(),
+    defaultParams: () => defaultBeatUnitGenParams(),
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.narrativeUnitGen',
+    inspectorId: 'studio.graph.beatUnitGen',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeUnitGenNode
+    execute: executeBeatUnitGenNode
   },
   {
-    typeId: 'narrative.unitRef',
+    typeId: 'beat.unitRef',
     category: 'note',
-    label: 'Narrative ref',
+    label: 'Beat ref',
     icon: '📎',
-    defaultTitle: 'Narrative ref',
+    defaultTitle: 'Beat ref',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -1495,10 +1495,10 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.narrativeUnitRef',
+    inspectorId: 'studio.graph.beatUnitRef',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeNarrativeUnitRefNode
+    execute: executeBeatUnitRefNode
   },
   {
     typeId: 'script.shotTable',

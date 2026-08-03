@@ -310,8 +310,7 @@ function slotPreviewFromValue(
     value.kind === 'worldEntities' ||
     value.kind === 'shotEntities' ||
     value.kind === 'videoEntities' ||
-    value.kind === 'narrative' ||
-    value.kind === 'narrativeEntity' ||
+    value.kind === 'beat' ||
     value.kind === 'shots'
   ) {
     return { text: value.text }
@@ -332,8 +331,7 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
     value.kind === 'worldEntities' ||
     value.kind === 'shotEntities' ||
     value.kind === 'videoEntities' ||
-    value.kind === 'narrative' ||
-    value.kind === 'narrativeEntity' ||
+    value.kind === 'beat' ||
     value.kind === 'shots'
   ) {
     return !!value.text.trim() || !!value.relativePath?.trim()
@@ -565,6 +563,16 @@ export function softResolveSourceOutput(
     return undefined
   }
 
+  // 场表格 / 场输出：目录 JSON 必须保持 beat kind（勿经 resolveNodeTextContent 变成 text）
+  if (
+    (node.typeId === 'beat.table' || node.typeId === 'output.beat') &&
+    (sourcePort === 'out' || !sourcePort)
+  ) {
+    const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
+    if (text) return { kind: 'beat', text }
+    if (graphValueHasPayload(fromRun) && fromRun?.kind === 'beat') return fromRun
+  }
+
   // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体
   if (
     (node.typeId === 'world.gen' || node.assetType === 'world' || node.typeId === 'asset.world') &&
@@ -610,18 +618,18 @@ export function softResolveSourceOutput(
       const picked =
         (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
         items[items.length - 1]
-      // 世界元素提取 / 叙事单元拆解：选中项输出目录口（与 table 相连）
+      // 世界元素提取 / 场拆解：选中项输出目录口（与 table 相连）
       if (node.typeId === 'world.extract') {
         const text = picked?.text ?? ''
         return picked?.relativePath?.trim()
           ? { kind: 'world', text, relativePath: picked.relativePath.trim() }
           : { kind: 'world', text }
       }
-      if (node.typeId === 'narrative.split') {
+      if (node.typeId === 'beat.split') {
         const text = picked?.text ?? ''
         return picked?.relativePath?.trim()
-          ? { kind: 'narrative', text, relativePath: picked.relativePath.trim() }
-          : { kind: 'narrative', text }
+          ? { kind: 'beat', text, relativePath: picked.relativePath.trim() }
+          : { kind: 'beat', text }
       }
       const galleryOut: GraphValue = {
         kind: 'text',
@@ -755,29 +763,29 @@ export function softResolveSourceOutput(
     }
   }
 
-  // 叙事宿主：live 内图 / genParams.narrativeCatalog
+  // 场宿主：live 内图 / genParams.beatCatalog
   if (
-    (node.assetType === 'narrative' || node.typeId === 'asset.narrative') &&
+    (node.assetType === 'beat' || node.typeId === 'asset.beat') &&
     (sourcePort === 'out' || !sourcePort) &&
     node.assetId
   ) {
     const liveDoc = options?.resolveLiveAssetGraph?.(node.assetId)
-    const fromLive = textFromNarrativeCatalogInGraph(liveDoc)
-    if (fromLive) return { kind: 'narrative', text: fromLive }
+    const fromLive = textFromBeatCatalogInGraph(liveDoc)
+    if (fromLive) return { kind: 'beat', text: fromLive }
     const gen = options?.resolveAssetGenParams?.(node.assetId)
-    const raw = gen?.narrativeCatalog
+    const raw = gen?.beatCatalog
     if (typeof raw === 'string' && raw.trim()) {
-      return { kind: 'narrative', text: raw }
+      return { kind: 'beat', text: raw }
     }
     if (Array.isArray(raw) && raw.length) {
-      return { kind: 'narrative', text: JSON.stringify(raw) }
+      return { kind: 'beat', text: JSON.stringify(raw) }
     }
-    const fromPersisted = textFromNarrativeCatalogInGraph(gen?.graphJson)
-    if (fromPersisted) return { kind: 'narrative', text: fromPersisted }
+    const fromPersisted = textFromBeatCatalogInGraph(gen?.graphJson)
+    if (fromPersisted) return { kind: 'beat', text: fromPersisted }
   }
 
-  // 选择叙事单元：params.text 为可读普通文本
-  if (node.typeId === 'narrative.select' && (sourcePort === 'out' || !sourcePort)) {
+  // 选择场：params.text 为可读普通文本
+  if (node.typeId === 'beat.select' && (sourcePort === 'out' || !sourcePort)) {
     const text = node.params.text?.trim() || ''
     if (text) return { kind: 'text', text }
   }
@@ -952,15 +960,15 @@ function textFromWorldEntitiesInGraph(graphJson: unknown): string {
 }
 
 /** 从叙事内图表格 / 输出取目录 JSON */
-function textFromNarrativeCatalogInGraph(graphJson: unknown): string {
+function textFromBeatCatalogInGraph(graphJson: unknown): string {
   if (!graphJson || typeof graphJson !== 'object') return ''
   const nodes = (graphJson as GraphDocument).nodes
   if (!Array.isArray(nodes)) return ''
   for (const node of nodes) {
     if (
-      node.typeId === 'narrative.table' ||
-      node.typeId === 'narrative.split' ||
-      node.typeId === 'output.narrative'
+      node.typeId === 'beat.table' ||
+      node.typeId === 'beat.split' ||
+      node.typeId === 'output.beat'
     ) {
       const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
       if (text && (text.startsWith('[') || text.startsWith('{'))) return text
@@ -1108,11 +1116,9 @@ export function ensureHostInputSlotNodes(
               ? `输入·声音 ${slot.index + 1}`
               : slot.dataType === GraphPortType.worldEntities
                 ? `输入·世界元素 ${slot.index + 1}`
-                : slot.dataType === GraphPortType.narrativeEntity
-                  ? `输入·叙事实体 ${slot.index + 1}`
-                  : slot.dataType === GraphPortType.narrative
-                    ? `输入·叙事 ${slot.index + 1}`
-                    : `输入 ${slot.index + 1}`)
+                : slot.dataType === GraphPortType.beat
+                  ? `输入·场 ${slot.index + 1}`
+                  : `输入 ${slot.index + 1}`)
 
     const incomingText = slot.text?.trim() ? slot.text : undefined
     const incomingPath = slot.previewRelativePath?.trim() || undefined
@@ -1293,8 +1299,7 @@ export function mergeHostInputValues(
     dataType === GraphPortType.worldEntities ||
     dataType === GraphPortType.shotEntities ||
     dataType === GraphPortType.videoEntities ||
-    dataType === GraphPortType.narrative ||
-    dataType === GraphPortType.narrativeEntity ||
+    dataType === GraphPortType.beat ||
     dataType === GraphPortType.shots
   ) {
     const payloads = values.flatMap((value) => {
@@ -1422,8 +1427,7 @@ function textFromBoundaryValue(value: GraphValue): string {
   if (value.kind === 'texts') {
     return value.items.map((item) => item.text ?? '').filter(Boolean).join('\n')
   }
-  // 兼容历史叙事实体口输出
-  if (value.kind === 'narrativeEntity' || value.kind === 'narrative') {
+  if (value.kind === 'beat') {
     return value.text
   }
   return ''
@@ -1488,7 +1492,7 @@ export function buildHostInputSlotSeedOutputs(
           }
         } else if (value.kind === 'text') {
           out = value
-        } else if (value.kind === 'narrative' || value.kind === 'narrativeEntity') {
+        } else if (value.kind === 'beat') {
           out = value
         } else if (value.kind === 'images') {
           const item = value.items[i]

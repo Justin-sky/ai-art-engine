@@ -9,7 +9,7 @@ import DirectorEditor from '../../components/DirectorEditor.vue'
 import InspectorPanel from '../../components/InspectorPanel.vue'
 import ScriptEditor from '../../components/ScriptEditor.vue'
 import WorldElementEditor from '../../components/WorldElementEditor.vue'
-import NarrativeAssetEditor from '../../components/NarrativeAssetEditor.vue'
+import BeatAssetEditor from '../../components/BeatAssetEditor.vue'
 import WorkspaceMain from '../../components/WorkspaceMain.vue'
 import WorkspaceToolbar from '../../components/WorkspaceToolbar.vue'
 import { BUILTIN_INSPECTORS } from '../../inspector/builtins'
@@ -99,10 +99,10 @@ const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
       )
   },
   {
-    id: 'narrativeEditor',
+    id: 'beatEditor',
     createComponent: () =>
-      panel('DockNarrativeEditor', (params) =>
-        h(NarrativeAssetEditor, { narrativeAssetId: readParam(params, 'narrativeAssetId') })
+      panel('DockBeatEditor', (params) =>
+        h(BeatAssetEditor, { beatAssetId: readParam(params, 'beatAssetId') })
       )
   },
   {

@@ -27,8 +27,8 @@ export const GRAPH_OUTPUT_NODE_IDS = {
   text: 'text-output',
   director: 'director-output',
   timeline: 'timeline-output',
-  narrative: 'narrative-output',
-  narrativeUnit: 'narrative-unit-output',
+  beat: 'beat-output',
+  beatUnit: 'beat-unit-output',
   world: 'world-output'
 } as const
 
@@ -49,14 +49,14 @@ export const GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID = 'script-shot-video-gen'
 /** 分镜工作流：分镜参数节点（从 Inspector 组装提示词） */
 export const GRAPH_SCRIPT_SHOT_PARAMS_NODE_ID = 'script-shot-params'
 
-/** 叙事单元资产图：叙事拆解节点 */
-export const GRAPH_NARRATIVE_SPLIT_NODE_ID = 'narrative-split'
+/** 场资产图：场拆解节点 */
+export const GRAPH_BEAT_SPLIT_NODE_ID = 'beat-split'
 
-/** 叙事单元资产图：叙事表格节点 */
-export const GRAPH_NARRATIVE_TABLE_NODE_ID = 'narrative-table'
+/** 场资产图：场表格节点 */
+export const GRAPH_BEAT_TABLE_NODE_ID = 'beat-table'
 
-/** 叙事单元资产图：叙事编辑入口节点 */
-export const GRAPH_NARRATIVE_GEN_NODE_ID = 'narrative-gen'
+/** 场资产图：叙事编辑入口节点 */
+export const GRAPH_BEAT_GEN_NODE_ID = 'beat-gen'
 
 /** 世界元素资产图：世界元素提取节点 */
 export const GRAPH_WORLD_EXTRACT_NODE_ID = 'world-extract'
@@ -88,8 +88,8 @@ export function graphOutputNodeIdForType(
 ): string {
   if (typeId === 'output.director') return GRAPH_OUTPUT_NODE_IDS.director
   if (typeId === 'output.timeline') return GRAPH_OUTPUT_NODE_IDS.timeline
-  if (typeId === 'output.narrative') return GRAPH_OUTPUT_NODE_IDS.narrative
-  if (typeId === 'output.narrativeUnit') return GRAPH_OUTPUT_NODE_IDS.narrativeUnit
+  if (typeId === 'output.beat') return GRAPH_OUTPUT_NODE_IDS.beat
+  if (typeId === 'output.beatUnit') return GRAPH_OUTPUT_NODE_IDS.beatUnit
   if (typeId === 'output.world') return GRAPH_OUTPUT_NODE_IDS.world
   if (typeId?.startsWith('output.')) {
     const suffix = typeId.slice('output.'.length)
@@ -118,7 +118,7 @@ export type GraphPortDirection = 'in' | 'out'
  * 连线规则：同类型可连，异类型不可连（复数≠单数）。
  * 图库「全部」口与 select 输入使用 images/videos/voices/texts；
  * 默认 `out` 与消费方使用单数类型。
- * world / worldEntities / shotEntities / videoEntities / narrative / narrativeEntity / shots 为目录 JSON 专用口，不可与 text 互通。
+ * world / worldEntities / shotEntities / videoEntities / beat / shots 为目录 JSON 专用口，不可与 text 互通。
  */
 export const GraphPortType = {
   image: 'image',
@@ -136,9 +136,7 @@ export const GraphPortType = {
   shotEntities: 'shotEntities',
   /** 分镜视频生成结果实体表（id/name/videoUrls），与单视频口 video 区分 */
   videoEntities: 'videoEntities',
-  narrative: 'narrative',
-  /** 单个叙事单元实体（一行 JSON），与目录口 narrative 区分 */
-  narrativeEntity: 'narrativeEntity',
+  beat: 'beat',
   shots: 'shots',
   model: 'model'
 } as const
@@ -149,8 +147,7 @@ export type GraphCatalogKind =
   | typeof GraphPortType.worldEntities
   | typeof GraphPortType.shotEntities
   | typeof GraphPortType.videoEntities
-  | typeof GraphPortType.narrative
-  | typeof GraphPortType.narrativeEntity
+  | typeof GraphPortType.beat
   | typeof GraphPortType.shots
 
 export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
@@ -158,8 +155,7 @@ export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
   GraphPortType.worldEntities,
   GraphPortType.shotEntities,
   GraphPortType.videoEntities,
-  GraphPortType.narrative,
-  GraphPortType.narrativeEntity,
+  GraphPortType.beat,
   GraphPortType.shots
 ]
 
@@ -226,8 +222,8 @@ export type GraphNodeTypeId =
   | `output.${GraphOutputKind}`
   | 'output.director'
   | 'output.timeline'
-  | 'output.narrative'
-  | 'output.narrativeUnit'
+  | 'output.beat'
+  | 'output.beatUnit'
   | 'output.world'
   | 'note.text'
   | 'play.script'
@@ -236,13 +232,13 @@ export type GraphNodeTypeId =
   | 'video.select'
   | 'voice.select'
   | 'text.select'
-  | 'narrative.select'
+  | 'beat.select'
   | 'shotEntities.select'
-  | 'narrative.split'
-  | 'narrative.table'
-  | 'narrative.gen'
-  | 'narrative.unitGen'
-  | 'narrative.unitRef'
+  | 'beat.split'
+  | 'beat.table'
+  | 'beat.gen'
+  | 'beat.unitGen'
+  | 'beat.unitRef'
   | 'image.multiAngle'
   | 'image.lighting'
   | 'image.portraitTexture'
@@ -460,8 +456,8 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedTextId?: string
-  /** 选择叙事单元节点：当前选中的 NarrativeUnitRow.id */
-  selectedUnitId?: string
+  /** 选择场节点：当前选中的 BeatRow.id */
+  selectedBeatId?: string
   /**
    * 当前选中的声音 id：生成节点 `out` 默认输出口。
    * 每次运行成功后强制切到最新一条。
@@ -508,8 +504,8 @@ export interface GraphNodeParams {
   shotParamsAllBindingImages?: Array<{ id: string; name: string; relativePath: string }>
   /** 分镜参数节点绑定的 Shot.id；拖入分镜栏时写入 */
   boundShotId?: string
-  /** 叙事单元参考节点绑定的 NarrativeUnitRow.id；拖入单元栏时写入 */
-  boundUnitId?: string
+  /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */
+  boundBeatId?: string
   /** 世界元素托管节点 id（四类画布同步用，勿与用户手搓节点冲突） */
   worldElementId?: string
   /** 世界元素目录审核状态（未审核 | 已审核） */

@@ -24,8 +24,7 @@ describe('GraphPortType', () => {
       GraphPortType.worldEntities,
       GraphPortType.shotEntities,
       GraphPortType.videoEntities,
-      GraphPortType.narrative,
-      GraphPortType.narrativeEntity,
+      GraphPortType.beat,
       GraphPortType.shots,
       GraphPortType.model
     ])
@@ -39,8 +38,7 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('worldEntities')).toBe(true)
     expect(isGraphPortDataType('shotEntities')).toBe(true)
     expect(isGraphPortDataType('videoEntities')).toBe(true)
-    expect(isGraphPortDataType('narrative')).toBe(true)
-    expect(isGraphPortDataType('narrativeEntity')).toBe(true)
+    expect(isGraphPortDataType('beat')).toBe(true)
     expect(isGraphPortDataType('shots')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
     expect(isGraphPortDataType('voices')).toBe(true)
@@ -49,16 +47,16 @@ describe('GraphPortType', () => {
 })
 
 describe('catalog port types', () => {
-  it('world / narrative / shots chain connect within domain only', () => {
+  it('world / beat / shots chain connect within domain only', () => {
     const extract = createNodeFromType('world.extract', { x: 0, y: 0 })
     const worldTable = createNodeFromType('world.table', { x: 100, y: 0 })
     const worldGen = createNodeFromType('world.gen', { x: 200, y: 0 })
-    const split = createNodeFromType('narrative.split', { x: 0, y: 80 })
-    const narrativeTable = createNodeFromType('narrative.table', { x: 100, y: 80 })
+    const split = createNodeFromType('beat.split', { x: 0, y: 80 })
+    const beatTable = createNodeFromType('beat.table', { x: 100, y: 80 })
     const shotSplit = createNodeFromType('script.shotSplit', { x: 0, y: 160 })
     const shotTable = createNodeFromType('script.shotTable', { x: 100, y: 160 })
     const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
-    const narrativeSelect = createNodeFromType('narrative.select', { x: 0, y: 120 })
+    const beatSelect = createNodeFromType('beat.select', { x: 0, y: 120 })
 
     expect(getNodePorts(shotSplit).find((p) => p.id === 'in')?.dataType).toBe('text')
     expect(canConnectNodes(extract, worldTable)).toBe(true)
@@ -68,17 +66,17 @@ describe('catalog port types', () => {
     expect(
       canConnectNodes(worldGen, createNodeFromType('asset.screenplay', { x: 400, y: 0 }))
     ).toBe(false)
-    expect(canConnectNodes(split, narrativeTable)).toBe(true)
-    expect(canConnectNodes(narrativeTable, narrativeSelect)).toBe(true)
-    expect(canConnectNodes(narrativeSelect, shotSplit)).toBe(true)
+    expect(canConnectNodes(split, beatTable)).toBe(true)
+    expect(canConnectNodes(beatTable, beatSelect)).toBe(true)
+    expect(canConnectNodes(beatSelect, shotSplit)).toBe(true)
     expect(canConnectNodes(shotSplit, shotTable)).toBe(true)
 
-    // 历史口 out-all 为 texts，不可直接进 world.table / narrative.table
+    // 历史口 out-all 为 texts，不可直接进 world.table / beat.table
     expect(
       canConnectNodes(extract, worldTable, { sourcePort: 'out-all', targetPort: 'in' })
     ).toBe(false)
     expect(
-      canConnectNodes(split, narrativeTable, { sourcePort: 'out-all', targetPort: 'in' })
+      canConnectNodes(split, beatTable, { sourcePort: 'out-all', targetPort: 'in' })
     ).toBe(false)
     const textSelect = createNodeFromType('text.select', { x: 300, y: 0 })
     expect(
@@ -88,7 +86,7 @@ describe('catalog port types', () => {
       canConnectNodes(split, textSelect, { sourcePort: 'out-all', targetPort: 'in' })
     ).toBe(true)
 
-    expect(canConnectNodes(extract, narrativeTable)).toBe(false)
+    expect(canConnectNodes(extract, beatTable)).toBe(false)
     expect(canConnectNodes(split, worldTable)).toBe(false)
     expect(canConnectNodes(shotSplit, worldTable)).toBe(false)
     expect(canConnectNodes(extract, screenplay)).toBe(false)
@@ -184,10 +182,10 @@ describe('asset reference ports', () => {
       { x: 0, y: 0 },
       { assetHost: true }
     )
-    const narrative = createAssetGraphNode(
+    const beat = createAssetGraphNode(
       '00000000-0000-4000-8000-000000000013',
-      'narrative',
-      'Narrative',
+      'beat',
+      'Beat',
       { x: 0, y: 0 },
       { assetHost: true }
     )
@@ -207,13 +205,13 @@ describe('asset reference ports', () => {
       'in:text:in',
       'out:worldEntities:out'
     ])
-    expect(getNodePorts(narrative).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
+    expect(getNodePorts(beat).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
-      'out:narrative:out'
+      'out:beat:out'
     ])
     expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in-worldEntities:worldEntities:in',
-      'in-narrativeEntity:text:in',
+      'in-beat:text:in',
       'out:videoEntities:out'
     ])
   })

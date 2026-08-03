@@ -12,7 +12,7 @@ export type EditorPanelKind =
   | 'script'
   | 'canvas'
   | 'world'
-  | 'narrative'
+  | 'beat'
   | 'director'
 
 export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
@@ -52,7 +52,7 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
         return [`editor:script:${assetId}`, `graph:script:${assetId}`]
       case 'canvas':
       case 'world':
-      case 'narrative':
+      case 'beat':
       case 'director':
         return [`asset:${assetId}`, `graph:asset:${assetId}`]
     }
@@ -82,7 +82,7 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
         ['script-editor-', 'script'],
         ['canvas-editor-', 'canvas'],
         ['world-editor-', 'world'],
-        ['narrative-editor-', 'narrative'],
+        ['beat-editor-', 'beat'],
         ['director-editor-', 'director']
       ]
       const match = definitions.find(([prefix]) => panel.id.startsWith(prefix))

@@ -40,10 +40,10 @@ const PANEL_DEFINITIONS = {
     component: 'worldEditor',
     param: 'worldAssetId'
   },
-  narrative: {
-    panelPrefix: 'narrative-editor-',
-    component: 'narrativeEditor',
-    param: 'narrativeAssetId'
+  beat: {
+    panelPrefix: 'beat-editor-',
+    component: 'beatEditor',
+    param: 'beatAssetId'
   },
   director: {
     panelPrefix: 'director-editor-',
@@ -87,7 +87,7 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
       ['script', workspace.openScriptEditorIds],
       ['canvas', workspace.openCanvasEditorIds],
       ['world', workspace.openWorldEditorIds],
-      ['narrative', workspace.openNarrativeEditorIds],
+      ['beat', workspace.openBeatEditorIds],
       ['director', workspace.openDirectorEditorIds]
     ]
     for (const [kind, ids] of groups) {
@@ -116,9 +116,9 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     const id = ids.at(-1)
     if (id) open('world', id)
   })
-  watch(() => workspace.openNarrativeEditorIds.slice(), (ids) => {
+  watch(() => workspace.openBeatEditorIds.slice(), (ids) => {
     const id = ids.at(-1)
-    if (id) open('narrative', id)
+    if (id) open('beat', id)
   })
   watch(() => workspace.openDirectorEditorIds.slice(), (ids) => {
     const id = ids.at(-1)

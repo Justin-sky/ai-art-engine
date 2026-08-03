@@ -16,7 +16,7 @@ function seriesParent(): ReturnType<typeof buildSeriesStarterGraph> {
   return buildSeriesStarterGraph({
     screenplay: { id: SP, name: 'SP', type: 'screenplay' },
     world: { id: WORLD, name: 'WORLD', type: 'world' },
-    narrative: { id: NAR, name: 'NAR', type: 'narrative' },
+    beat: { id: NAR, name: 'NAR', type: 'beat' },
     script: { id: SCRIPT, name: 'SCRIPT', type: 'script' }
   })
 }
@@ -102,7 +102,7 @@ describe('剧集起步图：世界元素宿主的边界输入取值', () => {
     const values = resolveBoundaryInputValuesFromParentGraph(parent, NAR)
     expect(values.in).toEqual({ kind: 'text', text: '', relativePath: rel })
 
-    const inner = createDefaultScopedGraph('narrativeAsset', 'narrative')
+    const inner = createDefaultScopedGraph('beatAsset', 'beat')
     expect(applyBoundaryInputValues(inner.nodes, values)).toBe(true)
     const node = inner.nodes.find((n) => n.id === boundaryInputNodeId('in'))!
     expect(node.params.previewRelativePath).toBe(rel)
@@ -110,7 +110,7 @@ describe('剧集起步图：世界元素宿主的边界输入取值', () => {
   })
 
   /**
-   * 目录类入口（worldEntities / narrativeEntity）的值始终带内联 JSON，
+   * 目录类入口（worldEntities / beat）的值始终带内联 JSON，
    * 不存在只有落盘路径的形态，因此分镜宿主一直能注入 params.text。
    */
   it('分镜宿主的目录类入口注入内联 JSON', () => {

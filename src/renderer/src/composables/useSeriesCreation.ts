@@ -35,13 +35,13 @@ export function useSeriesCreation() {
     const childNames = {
       screenplay: `${name}${assetTypeLabel('screenplay')}`,
       world: `${name}${assetTypeLabel('world')}`,
-      narrative: `${name}${assetTypeLabel('narrative')}`,
+      beat: `${name}${assetTypeLabel('beat')}`,
       script: `${name}${assetTypeLabel('script')}`
     }
     const childFolderNames = {
       screenplay: assetTypeLabel('screenplay'),
       world: assetTypeLabel('world'),
-      narrative: assetTypeLabel('narrative'),
+      beat: assetTypeLabel('beat'),
       script: assetTypeLabel('script')
     }
 

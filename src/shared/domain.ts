@@ -63,7 +63,7 @@ export type AssetType =
   | 'script'
   | 'canvas'
   | 'world'
-  | 'narrative'
+  | 'beat'
   | 'subgraph'
 
 /** 将任意字符串收窄为 AssetType */
@@ -590,7 +590,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   script: 'Shot',
   canvas: 'Series',
   world: 'World Elements',
-  narrative: 'Narrative Units',
+  beat: 'Beat Units',
   subgraph: 'Host Asset'
 }
 
@@ -605,7 +605,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   script: '分镜',
   canvas: '剧集',
   world: '世界元素',
-  narrative: '叙事单元',
+  beat: '场',
   subgraph: '宿主资产'
 }
 
@@ -632,7 +632,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   script: '🎥',
   canvas: '📺',
   world: '🤺',
-  narrative: '📖',
+  beat: '📖',
   subgraph: '📦'
 }
 
@@ -793,8 +793,8 @@ export function isWorldElementAsset(type: AssetType | string): boolean {
   return normalizeAssetType(type) === 'world'
 }
 
-export function isNarrativeAsset(type: AssetType | string): boolean {
-  return normalizeAssetType(type) === 'narrative'
+export function isBeatAsset(type: AssetType | string): boolean {
+  return normalizeAssetType(type) === 'beat'
 }
 
 export function isDirectorDeck(type: AssetType): boolean {
@@ -1847,8 +1847,8 @@ export function defaultAssetName(type: AssetType, language?: string | null): str
       return en ? 'New Series' : '新建剧集'
     case 'world':
       return en ? 'New World Elements' : '新建世界元素'
-    case 'narrative':
-      return en ? 'New Narrative Units' : '新建叙事单元'
+    case 'beat':
+      return en ? 'New Beat Units' : '新建场'
     case 'motion':
       return en ? DEFAULT_DIRECTOR_DECK_NAME : DEFAULT_DIRECTOR_DECK_NAME_ZH
     case 'subgraph':
