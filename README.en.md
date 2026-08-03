@@ -3,9 +3,9 @@
 
   <h1>AI Art Engine</h1>
 
-  <p><b>Local AI short-video creation studio</b></p>
+  <p><b>Professional AI creation tool · short drama · ads · film</b></p>
   <p>
-    Projects stay on disk · Shot & node-graph workflows<br />
+    Local-first projects · Shot & node-graph workflows<br />
     OpenRouter · Volcengine Ark · Kling · MinMax · Tongyi Qianwen · ModelScope<br />
     Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
@@ -80,7 +80,7 @@ npm run dist:win | dist:mac | dist:linux
 
 ## Features
 
-**AIArtEngine** is a local-first desktop studio for AI short video: assets, shots, and a node graph in one workbench — your API keys, your files.
+**AIArtEngine** is a professional AI creation tool for short drama, ads, and film: assets, shots, and a node graph in one desktop app — local-first projects, your API keys, your files.
 
 - **Local projects** — create / open / recent; JSON + media on disk  
 - **One-click workflow** — preset or AI-planned topology → reusable host asset (boundary I/O + Dive)  
