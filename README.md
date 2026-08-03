@@ -16,7 +16,7 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-2.0.0--alpha.0-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-2.0.1-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -182,8 +182,8 @@ npm run pack                    # 未封装目录，便于自测
 - **发版**：先改 `package.json` 与 CHANGELOG，提交后打 tag 并推送，例如：
 
 ```bash
-git tag v2.0.0-alpha.0
-git push origin v2.0.0-alpha.0
+git tag v2.0.1
+git push origin v2.0.1
 ```
 
   CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
