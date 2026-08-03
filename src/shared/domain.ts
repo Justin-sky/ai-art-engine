@@ -619,9 +619,12 @@ export function assetTypeLabel(type: AssetType, language?: string | null): strin
   return (isEnglishLanguage(language) ? ASSET_TYPE_LABELS : ASSET_TYPE_LABELS_ZH)[type]
 }
 
+/** 视频资产图标 key（由 WorkspaceItemIcon / VideoAssetIcon 渲染，Windows 紫底三角） */
+export const VIDEO_ASSET_ICON = 'video-file'
+
 export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   image: '🖼️',
-  video: '🎞️',
+  video: VIDEO_ASSET_ICON,
   voice: '🔊',
   motion: '🎬',
   model: '🧊',
@@ -637,6 +640,42 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
 export const MODEL_ANIMATION_ICON = '🏃'
 /** 姿势资产图标 */
 export const MODEL_POSE_ICON = '🧍'
+/** 自由画布图标 key（由 WorkspaceItemIcon / FreeCanvasIcon 渲染） */
+export const FREE_CANVAS_ICON = 'free-canvas'
+
+/** 画布资产子类：自由节点画布 / 剧集起步画布 */
+export type CanvasAssetKind = 'free' | 'series'
+
+export function readCanvasAssetKind(
+  gen?: Record<string, unknown> | null
+): CanvasAssetKind | null {
+  if (gen?.canvasKind === 'free' || gen?.canvasKind === 'series') return gen.canvasKind
+  return null
+}
+
+/** 无 canvasKind 时：含成片时间线输出节点的视为剧集起步图 */
+function canvasGraphLooksLikeSeries(gen?: Record<string, unknown> | null): boolean {
+  const raw = gen?.graphJson
+  if (!raw || typeof raw !== 'object') return false
+  const nodes = (raw as { nodes?: unknown }).nodes
+  if (!Array.isArray(nodes)) return false
+  return nodes.some((node) => {
+    if (!node || typeof node !== 'object') return false
+    const n = node as { id?: unknown; typeId?: unknown }
+    return n.typeId === 'output.timeline' || n.id === 'timeline-output'
+  })
+}
+
+/** 空白节点画布（非剧集起步） */
+export function isFreeCanvasAsset(
+  asset: Pick<AssetInfo, 'type' | 'genParams'> | null | undefined
+): boolean {
+  if (!asset || asset.type !== 'canvas') return false
+  const kind = readCanvasAssetKind(asset.genParams)
+  if (kind === 'free') return true
+  if (kind === 'series') return false
+  return !canvasGraphLooksLikeSeries(asset.genParams)
+}
 
 /** 模型资产子类：完整模型 / 仅动画片段 / 姿势 */
 export type ModelAssetKind = 'model' | 'animation' | 'pose'
@@ -722,13 +761,14 @@ export function buildPoseAssetGenParams(
   }
 }
 
-/** 资产库/面板展示用图标（动画模型用片段图标） */
+/** 资产库/面板展示用图标（动画模型用片段图标；自由画布用专用 key） */
 export function assetDisplayIcon(
   asset: Pick<AssetInfo, 'type' | 'genParams'> | null | undefined
 ): string {
   if (!asset) return '•'
   if (isAnimationModelAsset(asset)) return MODEL_ANIMATION_ICON
   if (isPoseModelAsset(asset)) return MODEL_POSE_ICON
+  if (isFreeCanvasAsset(asset)) return FREE_CANVAS_ICON
   return ASSET_TYPE_ICONS[asset.type] ?? '•'
 }
 

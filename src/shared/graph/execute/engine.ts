@@ -566,9 +566,13 @@ export async function runGraph(
       : collectUpstreamNodeIds(graph, target.id)
 
   const skipCompleted = options.skipCompletedNodes === true && !onlyTarget
+  /** 所有汇点都必须执行；仅复用其上游 done 节点 */
+  const forceRunIds = new Set(
+    multiTargets.length ? multiTargets.map((node) => node.id) : [target.id]
+  )
   const canSkipNode = (nodeId: string): boolean =>
     skipCompleted &&
-    nodeId !== target.id &&
+    !forceRunIds.has(nodeId) &&
     options.priorNodeStates?.[nodeId]?.status === 'done'
 
   for (const id of subset) {

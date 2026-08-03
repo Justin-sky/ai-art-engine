@@ -273,6 +273,55 @@ export function conflictsWithActiveWorkflow(
   })
 }
 
+/** 合并各来源中 status=done 的节点态，供跨任务 skipCompletedNodes 复用 */
+export function mergeDoneRunStates(
+  ...sources: Array<Record<string, GraphNodeRunState> | undefined | null>
+): Record<string, GraphNodeRunState> {
+  const out: Record<string, GraphNodeRunState> = {}
+  for (const src of sources) {
+    if (!src) continue
+    for (const [id, state] of Object.entries(src)) {
+      if (state?.status === 'done') out[id] = { ...state }
+    }
+  }
+  return out
+}
+
+/** 更早入队的任务优先烹调共同上游；同刻按 id 稳定打破平局 */
+export function isOlderGraphTaskPeer(
+  task: { id: string; createdAt: number },
+  other: { id: string; createdAt: number }
+): boolean {
+  if (other.createdAt !== task.createdAt) return other.createdAt < task.createdAt
+  return other.id < task.id
+}
+
+export function listSharedNodeIds(orderA: string[], orderB: string[]): string[] {
+  if (!orderA.length || !orderB.length) return []
+  const set = new Set(orderA)
+  return orderB.filter((id) => set.has(id))
+}
+
+/**
+ * 更早的并行任务是否仍在烹调与本任务重叠的上游节点。
+ * done/skipped/error 视为该节点已结束，后到任务可据此 skip 或自行重试。
+ */
+export function peerBlocksSharedUpstream(
+  peer: {
+    status: GraphTaskStatus
+    order: string[]
+    runStates: Record<string, { status?: string } | undefined>
+  },
+  sharedNodeIds: readonly string[]
+): boolean {
+  if (!isActiveStatus(peer.status) || !sharedNodeIds.length) return false
+  for (const id of sharedNodeIds) {
+    const st = peer.runStates[id]?.status
+    if (st !== 'done' && st !== 'skipped' && st !== 'error') return true
+  }
+  return false
+}
+
 function asGraphDocument(raw: unknown): GraphDocument | null {
   if (!raw || typeof raw !== 'object') return null
   const doc = raw as GraphDocument
@@ -931,6 +980,70 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     }
   }
 
+  function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'))
+        return
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, ms)
+      const onAbort = (): void => {
+        clearTimeout(timer)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
+
+  /** 从同画布其它任务 / 落盘 / 实时编辑器收集已完成节点，供 skip 复用 */
+  function collectMergedDonePriors(task: GraphTaskInternal): Record<string, GraphNodeRunState> {
+    const key = taskTargetKey(task.target)
+    const sources: Array<Record<string, GraphNodeRunState> | undefined | null> = [
+      task.priorNodeStates
+    ]
+    for (const other of activeTasks.value) {
+      if (other.id === task.id) continue
+      if (taskTargetKey(other.target) !== key) continue
+      sources.push(other.runStates)
+    }
+    for (const other of completedTasks.value) {
+      if (taskTargetKey(other.target) !== key) continue
+      sources.push(other.runStates)
+    }
+    sources.push(readPersistedGraphForTarget(task.target)?.runStates)
+    sources.push(graphEditorHosts.getDocument(task.target.hostId)?.runStates)
+    return mergeDoneRunStates(...sources)
+  }
+
+  /**
+   * 后到任务等待更早任务把重叠上游烹完，再 skip；避免两条链同时 cook 共同节点。
+   * 无重叠或本任务未开 skip 时立即返回。
+   */
+  async function waitForOlderSharedUpstreamPeers(task: GraphTaskInternal): Promise<void> {
+    if (task.skipCompletedNodes !== true) return
+    const key = taskTargetKey(task.target)
+    while (!task.abort.signal.aborted) {
+      const blockers = activeTasks.value.filter((other) => {
+        if (other.id === task.id) return false
+        if (!isOlderGraphTaskPeer(task, other)) return false
+        if (taskTargetKey(other.target) !== key) return false
+        const shared = listSharedNodeIds(task.order, other.order)
+        return peerBlocksSharedUpstream(other, shared)
+      })
+      if (!blockers.length) return
+      task.message = 'waiting_shared_upstream'
+      bump()
+      try {
+        await sleep(48, task.abort.signal)
+      } catch {
+        return
+      }
+    }
+  }
+
   async function runTask(task: GraphTaskInternal): Promise<void> {
     task.status = 'running'
     bump()
@@ -943,6 +1056,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       startMessage: 'task'
     })
     try {
+      await waitForOlderSharedUpstreamPeers(task)
+      if (task.abort.signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      if (task.skipCompletedNodes === true) {
+        task.priorNodeStates = collectMergedDonePriors(task)
+      }
+      if (task.message === 'waiting_shared_upstream') {
+        task.message = ''
+        bump()
+      }
       const result = await runGraph(task.graph, {
         signal: task.abort.signal,
         stepDelayMs: 100,

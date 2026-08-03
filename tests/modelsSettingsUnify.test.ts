@@ -132,7 +132,7 @@ describe('normalizeModelsSettings', () => {
       ]
     })
     expect(next.providers[0].providerKind).toBe('minimax')
-    expect(next.providers[0].label).toBe('海螺 AI')
+    expect(next.providers[0].label).toBe('MinMax')
     expect(next.providers[0].baseUrl).toBe(MINIMAX_DEFAULT_BASE_URL)
     expect(isMiniMaxProvider(next.providers[0])).toBe(true)
   })

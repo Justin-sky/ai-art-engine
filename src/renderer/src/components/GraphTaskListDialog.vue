@@ -93,7 +93,9 @@
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span class="flow-icon" aria-hidden="true">{{ node.icon }}</span>
+                      <span class="flow-icon" aria-hidden="true"
+                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
+                      /></span>
                       <span class="flow-dot" aria-hidden="true" />
                     </span>
                     <span
@@ -162,7 +164,9 @@
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span class="flow-icon" aria-hidden="true">{{ node.icon }}</span>
+                      <span class="flow-icon" aria-hidden="true"
+                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
+                      /></span>
                       <span class="flow-dot" aria-hidden="true" />
                     </span>
                     <span
@@ -199,6 +203,7 @@ import type { GraphNodeRunStatus } from '@shared/graph'
 import type { VideoJobRecord, VideoJobStatus } from '@shared/videoJob'
 import { isVideoJobActive } from '@shared/videoJob'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 type TaskTab = 'active' | 'completed'
 

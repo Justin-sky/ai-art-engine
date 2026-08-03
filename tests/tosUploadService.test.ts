@@ -10,11 +10,15 @@ const tosMocks = vi.hoisted(() => ({
   deleteObject: vi.fn().mockResolvedValue(undefined),
   getPreSignedUrl: vi
     .fn()
-    .mockReturnValue('https://signed.example/aiartengine/video-refs/obj.mp4')
+    .mockReturnValue('https://signed.example/aiartengine/video-refs/obj.mp4'),
+  ctorArgs: [] as Array<Record<string, unknown>>
 }))
 
 vi.mock('@volcengine/tos-sdk', () => ({
   TosClient: class {
+    constructor(opts: Record<string, unknown>) {
+      tosMocks.ctorArgs.push(opts)
+    }
     putObjectFromFile = tosMocks.putObjectFromFile
     putObject = tosMocks.putObject
     deleteObject = tosMocks.deleteObject
@@ -89,6 +93,7 @@ describe('tosUploadService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    tosMocks.ctorArgs.length = 0
     tosMocks.putObjectFromFile.mockResolvedValue(undefined)
     tosMocks.putObject.mockResolvedValue(undefined)
     tosMocks.deleteObject.mockResolvedValue(undefined)
@@ -127,6 +132,7 @@ describe('tosUploadService', () => {
     it('uploads local file and returns signed url when publicBaseUrl is empty', async () => {
       const result = await uploadLocalFileToTos(sampleFile, { sourceLabel: 'ref.mp4' })
 
+      expect(tosMocks.ctorArgs[0]?.endpoint).toBe('tos-cn-beijing.volces.com')
       expect(tosMocks.putObjectFromFile).toHaveBeenCalledTimes(1)
       const arg = tosMocks.putObjectFromFile.mock.calls[0][0]
       expect(arg.bucket).toBe('demo-bucket')
@@ -147,6 +153,22 @@ describe('tosUploadService', () => {
       expect(result.sourceLabel).toBe('ref.mp4')
       expect(result.logs.some((l) => l.level === 'info' && /开始上传/.test(l.message))).toBe(true)
       expect(result.logs.some((l) => l.level === 'info' && /上传完成/.test(l.message))).toBe(true)
+    })
+
+    it('rejects malformed signed urls from endpoint-with-scheme and falls back', async () => {
+      tosMocks.getPreSignedUrl.mockReturnValue(
+        'https://aae-test.https://tos-cn-beijing.volces.com/k.mp4?sig=1'
+      )
+      serviceMocks.getSettings.mockReturnValue({
+        objectStorage: {
+          providers: [makeProvider({ bucket: 'aae-test' })]
+        }
+      })
+
+      const result = await uploadLocalFileToTos(sampleFile)
+
+      expect(tosMocks.ctorArgs[0]?.endpoint).toBe('tos-cn-beijing.volces.com')
+      expect(result.url).toBe(`https://aae-test.tos-cn-beijing.volces.com/${result.objectKey}`)
     })
 
     it('uses publicBaseUrl when configured', async () => {

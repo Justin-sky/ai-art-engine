@@ -17,7 +17,89 @@ export default {
     unnamed: '未命名',
     pleaseSelect: '请选择',
     second: '秒',
-    open: '打开'
+    open: '打开',
+    close: '关闭'
+  },
+  aiWorkflow: {
+    title: '一键工作流',
+    shortAction: '一键工作流',
+    subtitle: '选模板预览拓扑，或 AI 定制后确认创建可复用宿主资产',
+    presetsLabel: '预设模板',
+    textModelLabel: '文本模型（AI 规划）',
+    imageModelLabel: '图片默认模型',
+    videoModelLabel: '视频默认模型',
+    modelLabel: '文本模型',
+    modelEmpty: '未配置',
+    promptLabel: '工作流描述',
+    promptPlaceholder: '例如：帮我创建一个生成游戏买量视频的工作流，包含剧本、分镜图和视频生成…',
+    hint: '将创建宿主资产（可拖入画布并编辑 I/O）。先预览再创建；模板可直接预览，AI 规划需文本模型。Ctrl/⌘ + Enter = AI 预览。',
+    previewLabel: '预览',
+    previewMeta: '{nodes} 节点 · {edges} 连线',
+    previewSeed: '预览模板',
+    previewAi: 'AI 生成预览',
+    planning: '规划中…',
+    create: '创建工作流',
+    creating: '创建中…',
+    saveTitle: '保存工作流',
+    saveSubtitle: '选择保存目录并输入名称',
+    defaultName: '一键工作流',
+    generate: '生成工作流',
+    generating: '生成中…',
+    emptyPrompt: '请先填写工作流描述或选择预设',
+    needProject: '请先打开工程',
+    needModel: '请先选择可用的文本模型',
+    needPresetForSeed: '请先选择带固化拓扑的预设模板',
+    needPreview: '请先生成预览再创建',
+    planFailed: '规划工作流失败',
+    failed: '生成工作流失败',
+    createdWithWarnings: '已创建（部分节点/连线已跳过）',
+    planLog: {
+      title: 'AI 生成预览',
+      titlePreset: 'AI 生成预览 · {name}',
+      start: '开始规划工作流',
+      llmStart: '调用文本模型：{model}（第 {n} 次）',
+      llmDone: '模型返回完成：{chars} 字符（{model}）',
+      llmError: '模型调用失败：{error}',
+      done: '规划完成：{nodes} 节点 · {edges} 连线',
+      failed: '规划失败：{error}'
+    },
+    presets: {
+      gameUaVideo: {
+        title: '游戏买量',
+        desc: '剧本 → 分镜图 → 视频',
+        prompt:
+          '帮我创建一个游戏买量短视频工作流：先用文本节点写卖点与旁白脚本，再生成关键角色/场景分镜图，最后用图生视频产出 15 秒左右竖屏广告片段。节点之间用合理连线串联，预留人工改稿口。'
+      },
+      characterSheet: {
+        title: '角色设定',
+        desc: '人设文案 + 多视角立绘',
+        prompt:
+          '创建一个角色设定工作流：文本节点输出角色人设与外观描述，再分别生成正面/侧面/三视图或表情变体立绘，并预留一张参考图上传节点以便锁定画风。'
+      },
+      storyboardVideo: {
+        title: '分镜出片',
+        desc: '分镜图串成视频',
+        prompt:
+          '创建一个分镜到成片的工作流：输入剧本或镜头列表，拆成若干分镜图生成节点，再对关键镜头做图生视频，最后用备注节点标明剪辑合成顺序。'
+      },
+      productAd: {
+        title: '产品广告',
+        desc: '卖点文案 + 产品图 + 短视频',
+        prompt:
+          '创建一个产品广告工作流：文本节点提炼卖点文案，图片节点生成产品主视觉与场景图，再生成一段带产品特写的短视频；预留产品参考图上传。'
+      },
+      shortDrama: {
+        title: '短剧分镜',
+        desc: '多场戏分镜与对白',
+        prompt:
+          '创建一个短剧分镜工作流：文本节点按场次输出对白与镜头说明，每个场次对应分镜图生成，并为高潮场次增加视频生成节点；布局按场次从左到右排列。'
+      },
+      custom: {
+        title: '自定义',
+        desc: '清空描述后自行填写',
+        prompt: ''
+      }
+    }
   },
   app: {
     nav: {
@@ -79,9 +161,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、海螺 AI、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、MinMax、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / 海螺 / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MinMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -149,7 +231,7 @@ export default {
         image:
           'MiniMax 文生图 / 主体参考图生图，调用 /v1/image_generation（image-01 / image-01-live）。参考图走 subject_reference。',
         video:
-          '海螺（MiniMax）视频：POST /v1/video_generation（文生 / 图生 / 首尾帧），完成后经 files/retrieve 取下载链。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
+          'MinMax 视频：H3 走 V2（POST /v2/video_generation，多模态 content，2K，时长 4–15s）；Hailuo 2.3/02 仍走 V1。默认 Base URL 为 api.minimaxi.com；视频目录为本地静态列表。',
         audio:
           'MiniMax 音色设计：POST /v1/voice_design。节点指令作为音色描述，返回 voice_id 与试听音频；目录为本地「音色设计」项。'
       },
@@ -235,11 +317,15 @@ export default {
     },
     layout: {
       select: '布局',
+      menu: '布局',
+      menuAria: '窗口布局',
       default: '默认布局',
       save: '保存布局',
       export: '导出',
       import: '导入',
-      delete: '删除',
+      fromFile: '从文件加载…',
+      toFile: '导出到文件…',
+      delete: '删除布局',
       deleteConfirmTitle: '删除布局',
       deleteConfirm: '确定删除布局「{name}」？',
       saveTitle: '保存布局',
@@ -365,6 +451,7 @@ export default {
       screenplay: '剧本',
       script: '分镜',
       canvas: '剧集',
+      freeCanvas: '自由画布',
       world: '世界元素',
       narrative: '叙事单元',
       subgraph: '宿主资产'
@@ -430,6 +517,8 @@ export default {
       resizeFolderPane: '拖动调整目录宽度',
       viewSizeHint: '显示大小（最小仅名称）',
       dropHint: '将图片、视频、声音或 .aipackage 拖入此处导入',
+      searchEmpty: '未找到匹配的资产或文件夹',
+      clearSearch: '清空搜索',
       dropRelease: '松开以导入',
       context: {
         openEditor: '打开编辑器',
@@ -1415,13 +1504,24 @@ export default {
       start: '连线',
       cancel: '取消连线'
     },
+    edgeStyle: {
+      curve: '曲线',
+      orthogonal: '直接',
+      hidden: '不显示',
+      cycleTitle: '连线样式：{style}（点击切换）'
+    },
     fitView: '适配视图',
+    minimap: {
+      title: '节点小地图（点击或拖拽定位）',
+      empty: '暂无节点'
+    },
     shotEntityPicker: '选择分镜实体',
     layout: {
       dragHandle: '拖动布局工具条',
       expand: '展开布局工具',
       collapse: '收起布局工具',
       grid: '显示/隐藏背景网格',
+      minimap: '显示/隐藏小地图',
       collapseAllNodes: '折叠全部节点',
       expandAllNodes: '展开全部节点',
       snap: '拖拽时吸附网格',
@@ -1815,6 +1915,8 @@ export default {
       saveMessage: '选择保存目录并输入宿主资产名称。',
       namePlaceholder: '宿主资产名称',
       inspectorHint: '编辑宿主输入/输出端口定义。保存后更新资产定义与当前实例快照。',
+      assetInspectorHint:
+        '在此编辑该宿主资产的输入/输出端口。点击「应用接口」后写入资产并同步已打开的画布实例。',
       inputs: '输入端口',
       outputs: '输出端口',
       addPort: '添加端口',
@@ -1824,8 +1926,9 @@ export default {
       reorderHint: '拖动左侧手柄可调整端口顺序，节点上会同步变化。',
       reorderHandle: '拖动调整顺序',
       portId: '端口 ID',
+      portType: '端口类型',
       portLabel: '显示名',
-      dataType: '数据类型',
+      dataType: '端口类型',
       multiple: '允许多连',
       apply: '应用接口',
       saving: '保存中…'

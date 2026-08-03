@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AIArtEngine 教程：在自由画布上搭建视频生成节点，接入参考视频、首尾帧与对象存储。"
+    />
+    <title>自由画布：视频生成与参考视频 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260802-2" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html" aria-current="page">视频生成指南</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >视频教程</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html" aria-current="page">视频生成指南</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#prep">准备</a></li>
+          <li><a href="#create-canvas">新建自由画布</a></li>
+          <li><a href="#add-nodes">搭视频生成链路</a></li>
+          <li><a href="#ref-video">参考视频怎么接</a></li>
+          <li><a href="#frames">首尾帧与指令</a></li>
+          <li><a href="#run">执行与查看结果</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html">← 返回完整手册</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Free Canvas</p>
+          <h1>自由画布：视频生成与参考视频</h1>
+          <p class="lede">
+            从新建「自由画布」开始，在空白节点图上搭一条最小可用的视频生成链路：文生视频、图生视频，以及把本地参考视频接到模型。
+            适合第一次在画布上跑通视频，而不走完整分镜管线。
+          </p>
+        </header>
+
+        <section id="prep">
+          <h2>1. 准备</h2>
+          <ol>
+            <li>
+              <strong>模型</strong>：设置 → 模型 → 添加并启用提供商（如火山方舟、可灵、MinMax、OpenRouter 等）→
+              在<strong>视频</strong>页签勾选要用的模型，并设好默认视频模型。
+            </li>
+            <li>
+              <strong>对象存储（使用参考视频时必配）</strong>：设置 → 对象存储 → 添加火山 TOS / 阿里云 OSS /
+              腾讯云 COS 之一并启用。本地参考视频会先上传为公网可访问 URL（私有桶一般为签名链接），模型才能拉取。
+            </li>
+            <li>确认提供商账户有余额；余额不足时提交会直接失败（例如 MinMax <code>1008</code>）。</li>
+          </ol>
+          <div class="tip">
+            只做「纯文生视频」、不接本地参考视频时，可以暂不配对象存储。一旦把工程内视频或导入视频连到视频口，就需要已启用的对象存储。
+          </div>
+        </section>
+
+        <section id="create-canvas">
+          <h2>2. 新建自由画布</h2>
+          <ol>
+            <li>打开工程后，在工作台工具栏或资产库中<strong>新建自由画布</strong>。</li>
+            <li>
+              若已有「自由画布」，再次新建会得到「自由画布 2」「自由画布 3」……名称仅作资产库区分；你也可以在资产库里改资产名。
+            </li>
+            <li>双击该自由画布资产，进入空白<strong>节点图</strong>（宿主内图）。</li>
+          </ol>
+          <div class="tip">
+            在画布上改节点标题，只会改当前图上的显示名，<strong>不会</strong>改资产库里的原名。改库内原名请在资产浏览器中操作。
+          </div>
+        </section>
+
+        <section id="add-nodes">
+          <h2>3. 搭一条最小视频链路</h2>
+          <p>在自由画布节点图空白处右键（或按空格打开菜单），按下面顺序添加并连线：</p>
+          <ol>
+            <li>
+              添加<strong>视频生成</strong>节点（加工节点）。在节点下方或 Inspector 中选择视频模型，填写生成指令（提示词）。
+            </li>
+            <li>
+              （可选）添加<strong>文本</strong> / 备注，或上游「提示词优化」，把文本口连到视频生成的
+              <strong>Text</strong> 输入口。
+            </li>
+            <li>
+              （可选）添加<strong>选取视频</strong>，或从资产库<strong>拖入视频资产</strong>作为宿主/引用节点，把视频输出口连到视频生成的
+              <strong>Video</strong> 输入口（参考视频）。
+            </li>
+            <li>
+              （可选）用图片节点或资产连到<strong>图片 / 首帧 / 尾帧</strong>口（视模型与帧模式而定，见下一节）。
+            </li>
+            <li>添加<strong>视频输出</strong>节点，把视频生成的输出接到输出节点，便于预览与导出。</li>
+          </ol>
+          <p>示意（文生 + 参考视频）：</p>
+          <pre
+            style="
+              margin: 0;
+              padding: 14px 16px;
+              border-radius: 10px;
+              background: var(--bg-soft);
+              border: 1px solid var(--line);
+              font-size: 13px;
+              line-height: 1.5;
+              overflow-x: auto;
+            "
+          >[文本 / 指令] ──► [视频生成] ──► [视频输出]
+                              ▲
+[选取视频 / 视频资产] ─────────┘  （Video 口 = 参考视频）</pre>
+        </section>
+
+        <section id="ref-video">
+          <h2>4. 参考视频怎么接</h2>
+          <p>
+            视频生成节点的 <strong>Video</strong> 输入口用于「参考视频」：模型可借鉴运动、运镜、人物动作或场景节奏（具体能力因提供商与模型而异）。
+          </p>
+          <ul>
+            <li>
+              <strong>来源</strong>：资产库导入的视频、选取视频节点、上游已生成的视频、或其它宿主的视频输出。
+            </li>
+            <li>
+              <strong>上传</strong>：执行时若参考仍是本地路径 / data URL，程序会经当前启用的对象存储上传，再把
+              URL 交给模型 API。
+            </li>
+            <li>
+              <strong>清理</strong>：任务结束后，临时上传的参考对象一般会尝试删除，避免桶里堆积测试文件。
+            </li>
+            <li>
+              <strong>多参考</strong>：Video 口支持多连线时，可同时挂多段参考（以模型实际支持为准）。
+            </li>
+          </ul>
+          <div class="tip">
+            对象存储的 Endpoint 请使用控制台提供的完整地址（可带 <code>https://</code>）。应用会正确处理协议；若曾出现
+            <code>ENOTFOUND …https</code> 一类错误，请升级到含 TOS 预签名修复的版本后重试。
+          </div>
+        </section>
+
+        <section id="frames">
+          <h2>5. 首尾帧与指令</h2>
+          <ul>
+            <li>
+              在视频生成节点参数中选择<strong>帧模式</strong>：
+              <ul>
+                <li><strong>无</strong>：不强制首尾帧（纯文生或仅参考视频/图）。</li>
+                <li><strong>首帧</strong>：出现首帧图片口，适合图生视频、定格开场。</li>
+                <li><strong>首尾帧</strong>：同时约束开头与结尾画面（需模型支持，如部分 Hailuo / 可灵能力）。</li>
+              </ul>
+            </li>
+            <li>
+              指令里可用 <code>@</code> 引用已连接的上游媒体（与图片生成一致），描述运动、镜头与节奏。
+            </li>
+            <li>
+              时长、分辨率、是否生成音频等选项取决于当前模型能力目录；不支持的选项会被忽略或禁用。
+            </li>
+          </ul>
+        </section>
+
+        <section id="run">
+          <h2>6. 执行与查看结果</h2>
+          <ol>
+            <li>选中视频生成或视频输出节点 → 工具条「执行」，或按住 <kbd>C</kbd> 打开执行环。</li>
+            <li>
+              也可对输出节点「加入任务」，在任务列表里看后台进度；多条链路共用的上游只会 cook 一次。
+            </li>
+            <li>
+              成功后在节点预览区播放：左侧为<strong>回到开头</strong>，中间进度条，右侧为<strong>播放 / 暂停</strong>。
+            </li>
+            <li>需要成片拼装时，把结果接到剧本资产的<strong>成片时间线</strong>，或导出媒体文件。</li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>7. 常见问题</h2>
+          <div class="table-scroll" role="region" aria-label="常见问题" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>现象</th>
+                  <th>处理</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>提示未配置对象存储</td>
+                  <td>设置 → 对象存储中启用 TOS / OSS / COS 之一，并填好密钥与桶。</td>
+                </tr>
+                <tr>
+                  <td><code>insufficient balance (1008)</code></td>
+                  <td>提供商账户余额不足，去对应控制台充值（不是 API Key 填错）。</td>
+                </tr>
+                <tr>
+                  <td><code>ENOTFOUND …https</code></td>
+                  <td>多为 TOS 预签名主机名拼错；请使用较新版本客户端后重试。</td>
+                </tr>
+                <tr>
+                  <td>改了节点名，资产库名字也变了</td>
+                  <td>新版本画布改名不再改资产原名；请更新客户端。改库内名请用资产浏览器。</td>
+                </tr>
+                <tr>
+                  <td>有参考视频但不生效</td>
+                  <td>确认已连到 Video 口、模型支持视频参考，并查看运行日志中的上传摘要。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            完整界面说明见
+            <a href="manual.html">使用手册</a>
+            ；模型与对象存储细节见手册第 3 章。
+          </p>
+        </section>
+      </article>
+    </div>
+
+    <footer class="site-foot">
+      <p>
+        <a href="manual.html">使用手册</a>
+        ·
+        <a href="index.html">官网首页</a>
+        · QQ 群 647306826
+      </p>
+    </footer>
+  </body>
+</html>

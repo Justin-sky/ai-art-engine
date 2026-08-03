@@ -9,7 +9,6 @@ import { projectService } from '../../projectService'
 import {
   assertMiniMaxBaseResp,
   createMiniMaxHttpClient,
-  formatMiniMaxError,
   readMiniMaxHttpError,
   type MiniMaxBaseResp
 } from './http'
@@ -108,6 +107,6 @@ export async function generateMiniMaxVoiceDesign(
     return persistSpeechBuffer(buf, input, voiceId)
   } catch (err) {
     if (err instanceof Error && /音色设计|请提供/.test(err.message)) throw err
-    throw new Error(`音色设计失败: ${formatMiniMaxError(await readMiniMaxHttpError(err))}`)
+    throw new Error(`音色设计失败: ${await readMiniMaxHttpError(err)}`)
   }
 }

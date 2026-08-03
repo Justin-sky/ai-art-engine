@@ -48,7 +48,7 @@ export function resolveMiniMaxModelCapabilities(
 
   const mod =
     modality ??
-    (/hailuo|t2v|i2v/i.test(id)
+    (/hailuo|t2v|i2v|MiniMax-H\d/i.test(id)
       ? 'video'
       : /image-/i.test(id)
         ? 'image'
@@ -61,6 +61,7 @@ export function resolveMiniMaxModelCapabilities(
   if (mod === 'image') {
     return profileCapabilities(/live/i.test(id) ? 'image-live' : 'image-base')
   }
+  if (/MiniMax-H\d/i.test(id)) return profileCapabilities('video-h3')
   if (/hailuo-02/i.test(id)) return profileCapabilities('video-hailuo-02')
   if (/fast/i.test(id)) return profileCapabilities('video-hailuo-23-fast')
   return profileCapabilities('video-hailuo-23')
@@ -85,6 +86,6 @@ export function listMiniMaxCatalogModels(modality: ModelModality): CatalogModel[
 export function isMiniMaxTextCatalogId(modelId: string): boolean {
   const id = modelId.trim()
   if (!id) return false
-  if (/hailuo|speech|tts|image-|music-|voice|T2V|I2V|S2V/i.test(id)) return false
+  if (/hailuo|speech|tts|image-|music-|voice|T2V|I2V|S2V|MiniMax-H\d/i.test(id)) return false
   return /^MiniMax-M/i.test(id) || /abab|minimax/i.test(id)
 }

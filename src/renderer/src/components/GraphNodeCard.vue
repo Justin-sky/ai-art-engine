@@ -106,7 +106,7 @@
         class="media-fallback preview-icon-fallback"
         :title="scriptNodePreviewTitle"
       >
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ scriptNodePreviewTitle }}</span>
       </div>
 
@@ -193,7 +193,7 @@
       />
 
       <div v-else-if="previewKind === 'voice'" class="media-fallback audio">
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span v-if="!showMediaTransport || !previewUrl || mediaError" class="hint">{{
           previewHint
         }}</span>
@@ -215,7 +215,7 @@
       </div>
 
       <div v-else class="media-fallback">
-        <span class="icon">{{ typeIcon }}</span>
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ previewHint }}</span>
       </div>
 
@@ -226,10 +226,28 @@
         @click.stop
         @wheel.stop
       >
-        <div class="transport-actions">
+        <div class="time-row inline">
+          <span>{{ formatTime(currentTime) }}</span>
+          <span>/</span>
+          <span>{{ formatTime(duration) }}</span>
+        </div>
+        <div class="transport-row">
           <button type="button" class="ctrl-btn" :title="t('graph.media.restart')" @click="seekToStart">
             <span class="icon-restart" />
           </button>
+          <div class="progress-wrap">
+            <input
+              ref="progressInput"
+              class="progress"
+              type="range"
+              min="0"
+              max="1000"
+              step="1"
+              :value="progressValue"
+              @input="onSeekInput"
+              @change="onSeekChange"
+            />
+          </div>
           <button
             type="button"
             class="ctrl-btn primary"
@@ -238,24 +256,6 @@
           >
             <span :class="{ pause: mediaPlaying, triangle: !mediaPlaying }" />
           </button>
-          <div class="time-row inline">
-            <span>{{ formatTime(currentTime) }}</span>
-            <span>/</span>
-            <span>{{ formatTime(duration) }}</span>
-          </div>
-        </div>
-        <div class="progress-wrap">
-          <input
-            ref="progressInput"
-            class="progress"
-            type="range"
-            min="0"
-            max="1000"
-            step="1"
-            :value="progressValue"
-            @input="onSeekInput"
-            @change="onSeekChange"
-          />
         </div>
       </div>
 
@@ -361,7 +361,7 @@
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    >{{ typeBadgeIcon }}</span>
+    ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14" /></span>
   </div>
 </template>
 
@@ -370,6 +370,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import LockIcon from './icons/LockIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
@@ -944,7 +945,10 @@ const displayTitle = computed(() => {
     const custom = props.node.title?.trim()
     return custom ? `${custom} ${t('asset.deleted')}` : t('asset.deleted')
   }
+  // 资产引用/宿主：节点自定义标题优先，未设置时回退资产库原名（互不改写）
   if (isAssetRef.value) {
+    const custom = props.node.title?.trim()
+    if (custom) return custom
     const assetName = props.asset?.name?.trim()
     if (assetName) return assetName
   }
@@ -1523,7 +1527,7 @@ function onPointerDown(e: PointerEvent): void {
 
 function editableTitleDraft(): string {
   if (isAssetRef.value) {
-    return props.asset?.name?.trim() || props.node.title?.trim() || displayTitle.value
+    return props.node.title?.trim() || props.asset?.name?.trim() || displayTitle.value
   }
   return props.node.title?.trim() || displayTitle.value
 }
@@ -1543,10 +1547,9 @@ function commitTitleEdit(): void {
   editingTitle.value = false
   const next = titleDraft.value.trim()
   const prev = isAssetRef.value
-    ? props.asset?.name?.trim() || props.node.title?.trim() || ''
+    ? props.node.title?.trim() || props.asset?.name?.trim() || ''
     : (props.node.title?.trim() ?? '')
   if (next === prev) return
-  if (isAssetRef.value && !next) return
   emit('titleChange', props.node.id, next)
 }
 
@@ -2478,7 +2481,8 @@ function formatTime(sec: number): string {
 .camera-live-preview {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* 任意比例均完整显示，留白用预览底色 letterbox */
+  object-fit: contain;
 }
 
 .text-preview {
@@ -2530,7 +2534,7 @@ function formatTime(sec: number): string {
   width: 100%;
   height: 100%;
   min-height: 0;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   background: var(--graph-preview-bg);
 }
@@ -2579,7 +2583,7 @@ function formatTime(sec: number): string {
 
 .media-fallback.audio {
   gap: 6px;
-  padding-bottom: 52px;
+  padding-bottom: 36px;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -2587,16 +2591,17 @@ function formatTime(sec: number): string {
 }
 
 .transport {
+  /* 左侧避开 type-badge（left 6 + 20），右侧避开缩放手柄 */
   position: absolute;
-  left: 50%;
-  bottom: 4px;
-  transform: translateX(-50%);
-  width: calc(100% - 16px);
+  left: 30px;
+  right: 14px;
+  bottom: 3px;
+  width: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 7px 7px;
+  gap: 2px;
+  padding: 2px 2px 3px;
   border-radius: 8px;
   background: transparent;
   border: 0;
@@ -2604,16 +2609,17 @@ function formatTime(sec: number): string {
   z-index: 5;
 }
 
-.transport-actions {
+.transport-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
+  width: 100%;
 }
 
 .ctrl-btn {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--border);
@@ -2627,8 +2633,8 @@ function formatTime(sec: number): string {
 }
 
 .ctrl-btn.primary {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   color: #fff;
   background: var(--accent);
   border-color: transparent;
@@ -2637,23 +2643,23 @@ function formatTime(sec: number): string {
 .ctrl-btn .triangle {
   width: 0;
   height: 0;
-  margin-left: 2px;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 8px solid currentColor;
+  margin-left: 1px;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 5px solid currentColor;
 }
 
 .ctrl-btn .pause {
-  width: 8px;
-  height: 12px;
-  border-left: 2px solid currentColor;
-  border-right: 2px solid currentColor;
+  width: 5px;
+  height: 8px;
+  border-left: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
 }
 
 .ctrl-btn .icon-restart {
-  width: 10px;
-  height: 10px;
-  border: 2px solid currentColor;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
   border-left-color: transparent;
   position: relative;
@@ -2662,18 +2668,18 @@ function formatTime(sec: number): string {
 .ctrl-btn .icon-restart::after {
   content: '';
   position: absolute;
-  top: -3px;
-  left: 4px;
+  top: -2px;
+  left: 2.5px;
   width: 0;
   height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
+  border-top: 2.5px solid transparent;
+  border-bottom: 2.5px solid transparent;
+  border-left: 3.5px solid currentColor;
   transform: rotate(-35deg);
 }
 
 .progress-wrap {
-  width: 100%;
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -2682,7 +2688,7 @@ function formatTime(sec: number): string {
 
 .progress {
   width: 100%;
-  height: 4px;
+  height: 3px;
   margin: 0;
   padding: 0;
   accent-color: var(--accent);
@@ -2692,7 +2698,7 @@ function formatTime(sec: number): string {
 .time-row {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 8px;
   color: var(--wash-88);
   font-family: var(--mono);
   line-height: 1;
@@ -2700,11 +2706,12 @@ function formatTime(sec: number): string {
 }
 
 .time-row.inline {
-  margin-left: auto;
   justify-content: flex-end;
   gap: 3px;
   white-space: nowrap;
   opacity: 0.95;
+  align-self: flex-end;
+  padding-right: 2px;
 }
 
 .media-error {

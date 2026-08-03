@@ -35,6 +35,27 @@
       </svg>
     </button>
 
+    <!-- 收起态也保留：切换小地图 -->
+    <button
+      type="button"
+      class="icon-btn"
+      :class="{ active: minimapVisible }"
+      :title="t('graph.layout.minimap')"
+      :aria-label="t('graph.layout.minimap')"
+      :aria-pressed="minimapVisible"
+      @click="emit('update:minimapVisible', !minimapVisible)"
+    >
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.25"
+          d="M2.5 2.5h11v11h-11zM9.5 9.5h3.5v3.5H9.5z"
+        />
+        <path fill="currentColor" opacity="0.45" d="M3.2 4.2h2.2v1.6H3.2zm3.4 2.4h1.8v2.2H6.6z" />
+      </svg>
+    </button>
+
     <template v-if="expanded">
       <button
         type="button"
@@ -196,6 +217,7 @@ const props = defineProps<{
   selectedCount: number
   snapEnabled: boolean
   gridVisible: boolean
+  minimapVisible: boolean
   /** 相对 node-graph 容器的初始/约束区域 */
   boundsPad?: number
 }>()
@@ -203,6 +225,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:snapEnabled': [value: boolean]
   'update:gridVisible': [value: boolean]
+  'update:minimapVisible': [value: boolean]
   align: [mode: AlignMode]
   distribute: [mode: DistributeMode]
   'auto-layout': []

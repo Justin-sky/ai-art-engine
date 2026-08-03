@@ -1,6 +1,8 @@
 <template>
   <div class="dv-default-tab editor-tab">
-    <span v-if="icon" class="editor-tab-icon" aria-hidden="true">{{ icon }}</span>
+    <span v-if="icon" class="editor-tab-icon" aria-hidden="true">
+      <WorkspaceItemIcon :icon="icon" :size="14" />
+    </span>
     <span class="dv-default-tab-content editor-tab-content">{{ title }}</span>
     <div
       v-if="showClose"
@@ -26,6 +28,7 @@ import { isClosableDockTab, resolveEditorPanelIcon } from '../editor/workbench/e
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert } from '../composables/useStudioPrompt'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 type TabParams = {
   api?: DockviewPanelApi

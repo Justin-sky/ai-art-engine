@@ -14,7 +14,7 @@
 - [x] 导演台编辑节点方形口 `out-shots` / `out-actions` 与 Inspector 预览
 - [x] 目录端口专用类型 `world` / `narrative` / `shots`
 - [x] 生成类节点锁定；图库双输出口 `out` / `out-all`
-- [x] 可灵 / 海螺 AI（MiniMax）/ 通义千问 / 魔塔模型提供商
+- [x] 可灵 / MinMax / 通义千问 / 魔塔模型提供商
 - [x] 阿里云 OSS / 腾讯云 COS 对象存储（与火山 TOS 互斥启用）
 
 ## 1.0.1（已发布）

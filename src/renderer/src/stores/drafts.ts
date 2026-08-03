@@ -61,7 +61,10 @@ function emptyDraft(type: AssetType, resolution: Resolution): DraftAssetRecord {
     ]
   }
   if (type === 'canvas') {
-    draft.genParams = { graphJson: createDefaultScopedGraph('canvasAsset', 'canvas') }
+    draft.genParams = {
+      canvasKind: 'free',
+      graphJson: createDefaultScopedGraph('canvasAsset', 'canvas')
+    }
   }
   if (type === 'world') {
     draft.genParams = { graphJson: createDefaultScopedGraph('worldAsset', 'world') }

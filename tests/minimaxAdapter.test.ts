@@ -25,13 +25,16 @@ vi.mock('../src/main/services/projectService', () => ({
   }
 }))
 
-import { miniMaxAdapter } from '../src/main/services/modelProviders/minimax/adapter'
+import {
+  buildMiniMaxV2VideoContent,
+  miniMaxAdapter
+} from '../src/main/services/modelProviders/minimax/adapter'
 
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
   return {
     id: 'mm-1',
     providerKind: 'minimax',
-    label: '海螺 AI',
+    label: 'MinMax',
     apiKey: 'mm-test',
     baseUrl: 'https://api.minimaxi.com',
     enabled: true,
@@ -52,6 +55,7 @@ describe('miniMaxAdapter', () => {
 
   it('returns static video/image/audio catalogs and text fallback', async () => {
     const videos = await miniMaxAdapter.fetchCatalog(provider(), 'video')
+    expect(videos.some((m) => m.id === 'MiniMax-H3')).toBe(true)
     expect(videos.some((m) => m.id === 'MiniMax-Hailuo-2.3')).toBe(true)
     expect(videos.some((m) => m.id === 'MiniMax-Hailuo-02')).toBe(true)
 
@@ -262,5 +266,122 @@ describe('miniMaxAdapter', () => {
     })
     expect(result.status).toBe('in_progress')
     expect(result.downloadUrl).toBeUndefined()
+  })
+
+  it('submits MiniMax-H3 via V2 content API', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { task_id: 'h3-1' }
+    })
+    const job = await miniMaxAdapter.submitVideo(provider(), 'MiniMax-H3', {
+      prompt: 'a boy plays basketball by the sea',
+      duration: 5,
+      resolution: '2K',
+      aspectRatio: '16:9'
+    })
+    expect(job.jobId).toBe('h3-1')
+    expect(job.pollingUrl).toContain('/v2/query/video_generation/h3-1')
+    expect(postMock).toHaveBeenCalledWith(
+      '/v2/video_generation',
+      expect.objectContaining({
+        model: 'MiniMax-H3',
+        resolution: '2K',
+        duration: 5,
+        ratio: '16:9',
+        aigc_watermark: false,
+        content: [{ type: 'text', text: 'a boy plays basketball by the sea' }]
+      })
+    )
+  })
+
+  it('submits MiniMax-H3 image-to-video with first/last frame roles', async () => {
+    postMock.mockResolvedValueOnce({ data: { task_id: 'h3-2' } })
+    await miniMaxAdapter.submitVideo(provider(), 'MiniMax-H3', {
+      prompt: 'pull focus',
+      firstFrameImageUrl: 'https://example.com/a.png',
+      lastFrameImageUrl: 'https://example.com/b.png',
+      duration: 8,
+      resolution: '2K',
+      aspectRatio: '9:16'
+    })
+    expect(postMock).toHaveBeenCalledWith(
+      '/v2/video_generation',
+      expect.objectContaining({
+        ratio: 'adaptive',
+        duration: 8,
+        content: [
+          { type: 'text', text: 'pull focus' },
+          {
+            type: 'image_url',
+            image_url: { url: 'https://example.com/a.png' },
+            role: 'first_frame'
+          },
+          {
+            type: 'image_url',
+            image_url: { url: 'https://example.com/b.png' },
+            role: 'last_frame'
+          }
+        ]
+      })
+    )
+  })
+
+  it('submits MiniMax-H3 multimodal reference video', async () => {
+    postMock.mockResolvedValueOnce({ data: { task_id: 'h3-3' } })
+    await miniMaxAdapter.submitVideo(provider(), 'MiniMax-H3', {
+      prompt: 'follow the wind',
+      duration: 5,
+      inputReferences: [
+        { kind: 'video_url', url: 'https://example.com/ref.mp4' },
+        { kind: 'audio_url', url: 'https://example.com/ref.mp3' }
+      ]
+    })
+    expect(postMock).toHaveBeenCalledWith(
+      '/v2/video_generation',
+      expect.objectContaining({
+        ratio: 'adaptive',
+        content: [
+          { type: 'text', text: 'follow the wind' },
+          {
+            type: 'video_url',
+            video_url: { url: 'https://example.com/ref.mp4' },
+            role: 'reference_video'
+          },
+          {
+            type: 'audio_url',
+            audio_url: { url: 'https://example.com/ref.mp3' },
+            role: 'reference_audio'
+          }
+        ]
+      })
+    )
+  })
+
+  it('polls MiniMax V2 success with direct content url', async () => {
+    getMock.mockResolvedValueOnce({
+      data: {
+        task: {
+          id: 'h3-1',
+          status: 'succeeded',
+          content: { url: 'https://cdn.example.com/h3.mp4' }
+        }
+      }
+    })
+    const result = await miniMaxAdapter.pollVideo(provider(), {
+      jobId: 'h3-1',
+      pollingUrl: 'https://api.minimaxi.com/v2/query/video_generation/h3-1'
+    })
+    expect(result.status).toBe('completed')
+    expect(result.downloadUrl).toBe('https://cdn.example.com/h3.mp4')
+    expect(getMock).toHaveBeenCalledWith('/v2/query/video_generation/h3-1')
+  })
+
+  it('buildMiniMaxV2VideoContent rejects frame + reference video mix', () => {
+    expect(() =>
+      buildMiniMaxV2VideoContent({
+        prompt: 'x',
+        firstFrameImageUrl: 'https://example.com/a.png',
+        inputReferences: [{ kind: 'video_url', url: 'https://example.com/r.mp4' }]
+      })
+    ).toThrow(/不可混用/)
   })
 })

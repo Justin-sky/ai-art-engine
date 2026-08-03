@@ -385,6 +385,72 @@ describe('graph run', () => {
     })
   })
 
+  it('skipCompletedNodes never skips any multi-target sink', async () => {
+    const shared = createNodeFromType('play.script', { x: 0, y: 0 }, {
+      id: 'shared',
+      params: { text: '共同上游' }
+    })
+    const outA = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, {
+      id: 'out-a',
+      params: { text: '', generateInstruction: 'A' }
+    })
+    const outB = createNodeFromType('asset.screenplay', { x: 200, y: 80 }, {
+      id: 'out-b',
+      params: { text: '', generateInstruction: 'B' }
+    })
+    const called: string[] = []
+    const result = await runGraph(
+      {
+        nodes: [shared, outA, outB],
+        edges: [
+          {
+            id: 'e1',
+            source: 'shared',
+            target: 'out-a',
+            sourcePort: 'out',
+            targetPort: 'in'
+          },
+          {
+            id: 'e2',
+            source: 'shared',
+            target: 'out-b',
+            sourcePort: 'out',
+            targetPort: 'in'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      },
+      {
+        stepDelayMs: 1,
+        targetNodeIds: ['out-a', 'out-b'],
+        skipCompletedNodes: true,
+        priorNodeStates: {
+          shared: {
+            status: 'done',
+            outputs: { out: { kind: 'text', text: '共同上游' } }
+          },
+          'out-a': {
+            status: 'done',
+            outputs: { out: { kind: 'text', text: '旧A' } }
+          },
+          'out-b': {
+            status: 'done',
+            outputs: { out: { kind: 'text', text: '旧B' } }
+          }
+        },
+        generateText: async ({ prompt }) => {
+          called.push(prompt)
+          return { text: `新:${prompt}`, model: 'm' }
+        }
+      }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(result.states.shared?.status).toBe('done')
+    expect(called.length).toBe(2)
+    expect(result.states['out-a']?.outputs?.out).toMatchObject({ kind: 'text' })
+    expect(result.states['out-b']?.outputs?.out).toMatchObject({ kind: 'text' })
+  })
+
   it('skipCompletedNodes reuses done upstream and still runs the target', async () => {
     const mid = createNodeFromType('play.script', { x: 120, y: 0 }, {
       id: 'mid',

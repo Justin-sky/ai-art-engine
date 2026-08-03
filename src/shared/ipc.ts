@@ -70,6 +70,12 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
+  /** AI 自由构图：自然语言 → 新建 subgraph 宿主工作流（规划+落盘） */
+  GEN_AI_WORKFLOW: 'gen:ai-workflow',
+  /** AI 自由构图：仅规划预览，不落盘 */
+  GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
+  /** AI 自由构图：确认 GraphPlan 后落盘 */
+  GEN_AI_WORKFLOW_COMMIT: 'gen:ai-workflow-commit',
   /** 持久化视频任务列表 */
   VIDEO_JOB_LIST: 'video-job:list',
   VIDEO_JOB_GET: 'video-job:get',
@@ -179,6 +185,96 @@ export interface CreateAssetInput {
   /** 脚本资产：为 true 时不自动创建首个分镜（由草稿保存流程写入） */
   skipScriptBootstrap?: boolean
 }
+
+/** AI 自由构图：规划输入（可含图/视频默认模型与预设骨架） */
+export interface PlanAiWorkflowInput {
+  prompt: string
+  model?: string
+  providerInstanceId?: string
+  imageModel?: string
+  imageProviderInstanceId?: string
+  videoModel?: string
+  videoProviderInstanceId?: string
+  presetId?: string
+  /** true：只用预设固化拓扑，不调用文本模型 */
+  useSeedOnly?: boolean
+  seedPlan?: {
+    title?: string
+    nodes: Array<{
+      key: string
+      typeId: string
+      title?: string
+      params?: Record<string, unknown>
+    }>
+    edges: Array<{
+      from: string
+      to: string
+      fromPort?: string
+      toPort?: string
+    }>
+  }
+}
+
+export interface GraphPlanPreviewDto {
+  title: string
+  nodes: Array<{ key: string; typeId: string; title: string }>
+  edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>
+}
+
+/** AI 规划时的模型调用明细（写入执行日志） */
+export interface PlanAiWorkflowApiCall {
+  model: string
+  request: {
+    prompt?: string
+    system?: string
+    model?: string
+    providerInstanceId?: string
+  }
+  response?: {
+    text?: string
+    model?: string
+  }
+  error?: string
+  startedAt: number
+  durationMs: number
+}
+
+export interface PlanAiWorkflowResult {
+  ok: boolean
+  plan?: PlanAiWorkflowInput['seedPlan'] & { title?: string }
+  title?: string
+  preview?: GraphPlanPreviewDto
+  warnings: string[]
+  error?: string
+  /** 本次规划发起的模型调用（含重试）；模板直出时为空 */
+  apiCalls?: PlanAiWorkflowApiCall[]
+}
+
+export interface CommitAiWorkflowInput {
+  plan: NonNullable<PlanAiWorkflowResult['plan']>
+  folderId?: string | null
+  /** 资产显示名；缺省用计划 title */
+  name?: string
+  imageModel?: string
+  imageProviderInstanceId?: string
+  videoModel?: string
+  videoProviderInstanceId?: string
+}
+
+export interface CommitAiWorkflowResult {
+  ok: boolean
+  assetId?: string
+  title?: string
+  warnings: string[]
+  error?: string
+}
+
+/** AI 自由构图：规划并立即新建 subgraph 宿主工作流 */
+export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
+  folderId?: string | null
+}
+
+export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
 
 export interface CreateSeriesWithStarterInput {
   name?: string
@@ -406,6 +502,12 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
+  /** AI 自由构图：根据自然语言新建 subgraph 宿主资产 */
+  generateAiWorkflow: (input: GenerateAiWorkflowInput) => Promise<GenerateAiWorkflowResult>
+  /** AI 自由构图：仅规划预览 */
+  planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
+  /** AI 自由构图：确认计划后落盘 */
+  commitAiWorkflow: (input: CommitAiWorkflowInput) => Promise<CommitAiWorkflowResult>
   listVideoJobs: () => Promise<import('./videoJob').VideoJobRecord[]>
   getVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   cancelVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>

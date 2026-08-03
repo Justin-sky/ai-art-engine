@@ -397,7 +397,7 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
-/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；海螺仅视频；魔塔文本+图片 */
+/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MinMax 文本/图片/视频/音色；魔塔文本+图片 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
   if (provider.providerKind === 'kling') {
     return ['image', 'video']

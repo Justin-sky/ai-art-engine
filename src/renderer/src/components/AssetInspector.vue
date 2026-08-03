@@ -13,7 +13,7 @@
       <input v-model="local.name" @change="persist" />
     </label>
 
-    <label>
+    <label v-if="!showHostInterface">
       {{ t('asset.field.type') }}
       <input :value="typeLabel" disabled />
     </label>
@@ -262,6 +262,8 @@
       <textarea v-model="local.notes" rows="3" @change="persist" :placeholder="t('asset.field.notesPlaceholder')" />
     </label>
 
+    <AssetHostInterfacePanel v-if="showHostInterface" :asset="asset" />
+
     <p v-if="error" class="err">{{ error }}</p>
     <p class="meta">ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}</p>
   </div>
@@ -288,7 +290,7 @@ import {
   type StageVec3
 } from '@shared/domain'
 import type { GraphNode, GraphValue } from '@shared/graph'
-import { resolveAssetPreviewMediaPath } from '@shared/graph'
+import { isAssetRefInputHostType, resolveAssetPreviewMediaPath } from '@shared/graph'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -299,6 +301,7 @@ import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import ModelPreview from './ModelPreview.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import AssetMediaPreview from './AssetMediaPreview.vue'
+import AssetHostInterfacePanel from './AssetHostInterfacePanel.vue'
 import type { ModelSceneDefaults } from '../features/director/modelSceneDefaults'
 
 const project = useProjectStore()
@@ -578,8 +581,12 @@ const showSkeletonOverlay = computed(
     modelTab.value === 'skeleton' ||
     (isAnimationOnlyModel.value && modelTab.value === 'animation')
 )
+const showHostInterface = computed(
+  () => !!asset.value && isAssetRefInputHostType(asset.value.type)
+)
 const showMediaPath = computed(
   () =>
+    !showHostInterface.value &&
     !(asset.value && isStoryboardScript(asset.value.type)) &&
     !(asset.value && isDirectorDeck(asset.value.type)) &&
     asset.value?.type !== 'model'
@@ -588,12 +595,14 @@ const showMediaPath = computed(
 const showContentPrompt = computed(
   () =>
     !!asset.value &&
+    !showHostInterface.value &&
     !isMediaFileAsset(asset.value.type) &&
     !isImportedMediaRefAsset(asset.value)
 )
 const showAssetNotes = computed(
   () =>
     !!asset.value &&
+    !showHostInterface.value &&
     asset.value.type !== 'model' &&
     !isMediaFileAsset(asset.value.type) &&
     !isImportedMediaRefAsset(asset.value)

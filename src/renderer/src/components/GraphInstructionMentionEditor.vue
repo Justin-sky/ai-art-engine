@@ -32,7 +32,7 @@
           <div class="ref-thumb" :title="chip.title">
             <span class="ref-role">{{ chip.roleLabel }}</span>
             <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
-            <span v-else class="ref-fallback">{{ chip.icon }}</span>
+            <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="chip.icon" :size="16" /></span>
           </div>
           <button
             type="button"
@@ -67,7 +67,7 @@
           >
             <span class="ref-index">{{ chip.index }}</span>
             <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
-            <span v-else class="ref-fallback">{{ chip.icon }}</span>
+            <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="chip.icon" :size="16" /></span>
           </button>
           <button
             type="button"
@@ -165,7 +165,7 @@
       >
         <span class="ref-index">{{ dragGhost.index }}</span>
         <img v-if="dragGhost.thumbUrl" :src="dragGhost.thumbUrl" alt="" draggable="false" />
-        <span v-else class="ref-fallback">{{ dragGhost.icon }}</span>
+        <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="dragGhost.icon" :size="16" /></span>
       </div>
     </Teleport>
 
@@ -230,6 +230,7 @@ import {
   type PresetVisual
 } from '@shared/graph'
 import ExpandArrowsIcon from './icons/ExpandArrowsIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import PresetVisualGlyph from './PresetVisualGlyph.vue'
 import GraphTextNotepadDialog, {
   type NotepadPreviewImage

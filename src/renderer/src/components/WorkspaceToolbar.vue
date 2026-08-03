@@ -13,7 +13,9 @@
       @focus="showTip($event, itemLabel(item))"
       @blur="hideTip"
     >
-      <span class="tool-icon" aria-hidden="true">{{ item.icon }}</span>
+      <span class="tool-icon" aria-hidden="true">
+        <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="16" />
+      </span>
     </button>
     <Teleport to="body">
       <div v-if="activeTip" class="tool-tip-floating" :style="tipStyle">{{ activeTip }}</div>
@@ -30,6 +32,7 @@ import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptText, promptAlert } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -93,12 +96,13 @@ async function createFreeCanvas(): Promise<void> {
     return
   }
   if (props.deferSave) {
-    createDraftAndOpen('canvas', { name })
+    createDraftAndOpen('canvas', { name, genParams: { canvasKind: 'free' } })
     return
   }
   await createAsset('canvas', props.folderId ?? null, {
     openEditor: true,
-    name
+    name,
+    genParams: { canvasKind: 'free' }
   })
 }
 

@@ -17,7 +17,90 @@ export default {
     unnamed: 'Untitled',
     pleaseSelect: 'Select…',
     second: 's',
-    open: 'Open'
+    open: 'Open',
+    close: 'Close'
+  },
+  aiWorkflow: {
+    title: 'One-Click Workflow',
+    shortAction: 'One-Click Workflow',
+    subtitle: 'Preview a template topology, or let AI customize, then create a reusable host asset',
+    presetsLabel: 'Presets',
+    textModelLabel: 'Text model (AI plan)',
+    imageModelLabel: 'Default image model',
+    videoModelLabel: 'Default video model',
+    modelLabel: 'Text model',
+    modelEmpty: 'Not configured',
+    promptLabel: 'Workflow description',
+    promptPlaceholder:
+      'e.g. Create a game UA video workflow with script, key art, and video generation…',
+    hint: 'Creates a host asset (drop onto a canvas and edit I/O). Preview first; templates are instant, AI planning needs a text model. Ctrl/⌘ + Enter = AI preview.',
+    previewLabel: 'Preview',
+    previewMeta: '{nodes} nodes · {edges} edges',
+    previewSeed: 'Preview template',
+    previewAi: 'AI preview',
+    planning: 'Planning…',
+    create: 'Create workflow',
+    creating: 'Creating…',
+    saveTitle: 'Save workflow',
+    saveSubtitle: 'Choose a folder and enter a name',
+    defaultName: 'One-Click Workflow',
+    generate: 'Generate workflow',
+    generating: 'Generating…',
+    emptyPrompt: 'Enter a description or pick a preset first',
+    needProject: 'Open a project first',
+    needModel: 'Select an available text model first',
+    needPresetForSeed: 'Pick a preset that has a fixed topology',
+    needPreview: 'Generate a preview before creating',
+    planFailed: 'Failed to plan workflow',
+    failed: 'Failed to generate workflow',
+    createdWithWarnings: 'Created (some nodes/edges were skipped)',
+    planLog: {
+      title: 'AI workflow preview',
+      titlePreset: 'AI workflow preview · {name}',
+      start: 'Start planning workflow',
+      llmStart: 'Calling text model: {model} (attempt {n})',
+      llmDone: 'Model reply received: {chars} chars ({model})',
+      llmError: 'Model call failed: {error}',
+      done: 'Plan ready: {nodes} nodes · {edges} edges',
+      failed: 'Planning failed: {error}'
+    },
+    presets: {
+      gameUaVideo: {
+        title: 'Game UA',
+        desc: 'Script → keyframes → video',
+        prompt:
+          'Create a game UA short-video workflow: text nodes for pitch and VO script, image nodes for character/scene keyframes, then image-to-video for a ~15s vertical ad. Wire nodes in a sensible chain and leave room for human edits.'
+      },
+      characterSheet: {
+        title: 'Character sheet',
+        desc: 'Bio + multi-angle art',
+        prompt:
+          'Create a character-sheet workflow: text for bio and look description, then image nodes for front/side/turnaround or expression variants, plus an upload node for style reference.'
+      },
+      storyboardVideo: {
+        title: 'Storyboard to film',
+        desc: 'Shots to video',
+        prompt:
+          'Create a storyboard-to-film workflow: start from a script or shot list, generate several storyboard frames, image-to-video for key shots, and a note node for edit order.'
+      },
+      productAd: {
+        title: 'Product ad',
+        desc: 'Copy + hero art + short video',
+        prompt:
+          'Create a product-ad workflow: text for selling points, image nodes for hero/product scenes, then a short video with product close-ups; include a product reference upload.'
+      },
+      shortDrama: {
+        title: 'Short drama',
+        desc: 'Multi-scene boards & dialogue',
+        prompt:
+          'Create a short-drama storyboard workflow: text nodes per scene for dialogue and shot notes, storyboard images per scene, video nodes for climax scenes; lay out left-to-right by scene.'
+      },
+      custom: {
+        title: 'Custom',
+        desc: 'Clear and write your own',
+        prompt: ''
+      }
+    }
   },
   app: {
     nav: {
@@ -79,9 +162,9 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, Hailuo (MiniMax), Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, MinMax, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, Hailuo, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MinMax, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -149,7 +232,7 @@ export default {
         image:
           'MiniMax text-to-image / subject-reference image-to-image via /v1/image_generation (image-01 / image-01-live).',
         video:
-          'Hailuo (MiniMax) video: POST /v1/video_generation (text / image / first-last frame), then files/retrieve for the download URL. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
+          'MinMax video: H3 uses V2 (POST /v2/video_generation, multimodal content, 2K, 4–15s); Hailuo 2.3/02 still use V1. Default Base URL is api.minimaxi.com; video catalog is a local static list.',
         audio:
           'MiniMax voice design via POST /v1/voice_design. Node instruction is the voice prompt; returns voice_id and preview audio. Catalog lists a local Voice Design entry.'
       },
@@ -235,11 +318,15 @@ export default {
     },
     layout: {
       select: 'Layout',
+      menu: 'Layout',
+      menuAria: 'Window layout',
       default: 'Default',
-      save: 'Save layout',
+      save: 'Save Layout',
       export: 'Export',
       import: 'Import',
-      delete: 'Delete',
+      fromFile: 'Load Layout from File…',
+      toFile: 'Save Layout to File…',
+      delete: 'Delete Layout',
       deleteConfirmTitle: 'Delete layout',
       deleteConfirm: 'Delete layout "{name}"?',
       saveTitle: 'Save layout',
@@ -366,6 +453,7 @@ export default {
       screenplay: 'Screenplay',
       script: 'Shot',
       canvas: 'Series',
+      freeCanvas: 'Free Canvas',
       world: 'World Elements',
       narrative: 'Narrative Units',
       subgraph: 'Host Asset'
@@ -433,6 +521,8 @@ export default {
       resizeFolderPane: 'Drag to resize folder pane',
       viewSizeHint: 'Display size (minimum shows names only)',
       dropHint: 'Drop images, videos, voice, or .aipackage files here to import',
+      searchEmpty: 'No matching assets or folders',
+      clearSearch: 'Clear search',
       dropRelease: 'Release to import',
       context: {
         openEditor: 'Open editor',
@@ -1427,13 +1517,24 @@ export default {
       start: 'Link',
       cancel: 'Cancel link'
     },
+    edgeStyle: {
+      curve: 'Curve',
+      orthogonal: 'Orthogonal',
+      hidden: 'Hidden',
+      cycleTitle: 'Edge style: {style} (click to switch)'
+    },
     fitView: 'Fit view',
+    minimap: {
+      title: 'Node minimap (click or drag to navigate)',
+      empty: 'No nodes'
+    },
     shotEntityPicker: 'Select shot entity',
     layout: {
       dragHandle: 'Drag layout toolbar',
       expand: 'Expand layout tools',
       collapse: 'Collapse layout tools',
       grid: 'Show/hide background grid',
+      minimap: 'Show/hide minimap',
       collapseAllNodes: 'Collapse all nodes',
       expandAllNodes: 'Expand all nodes',
       snap: 'Snap to grid while dragging',
@@ -1827,6 +1928,8 @@ export default {
       namePlaceholder: 'Host asset name',
       inspectorHint:
         'Edit host input/output port definitions. Saving updates the asset definition and this instance snapshot.',
+      assetInspectorHint:
+        'Edit this host asset’s input/output ports. Apply to write the asset and sync open canvas instances.',
       inputs: 'Inputs',
       outputs: 'Outputs',
       addPort: 'Add port',
@@ -1836,8 +1939,9 @@ export default {
       reorderHint: 'Drag the handle to reorder ports; the node updates live.',
       reorderHandle: 'Drag to reorder',
       portId: 'Port ID',
+      portType: 'Port type',
       portLabel: 'Label',
-      dataType: 'Data type',
+      dataType: 'Port type',
       multiple: 'Allow multiple',
       apply: 'Apply interface',
       saving: 'Saving…'

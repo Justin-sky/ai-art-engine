@@ -76,8 +76,65 @@
             </span>
           </button>
         </template>
-        <button type="button" :class="{ active: linkingFrom || linkingTo }" @click="cancelLink">
-          {{ linkingFrom || linkingTo ? t('graph.link.cancel') : t('graph.link.start') }}
+        <button type="button" :class="{ active: linkingFrom || linkingTo || rewireSession }" @click="cancelLink">
+          {{ linkingFrom || linkingTo || rewireSession ? t('graph.link.cancel') : t('graph.link.start') }}
+        </button>
+        <button
+          type="button"
+          class="edge-style-btn"
+          :title="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
+          :aria-label="t('graph.edgeStyle.cycleTitle', { style: t(`graph.edgeStyle.${edgePathStyle}`) })"
+          @click="cycleEdgePathStyle"
+        >
+          <svg
+            v-if="edgePathStyle === 'curve'"
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              d="M2 12 C6 12 6 4 14 4"
+            />
+          </svg>
+          <svg
+            v-else-if="edgePathStyle === 'orthogonal'"
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M2 12 H8 V4 H14"
+            />
+          </svg>
+          <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-dasharray="2.5 2"
+              d="M2 12 C6 12 6 4 14 4"
+            />
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              d="M3.5 3.5 L12.5 12.5"
+            />
+          </svg>
+          <span class="edge-style-label">{{ t(`graph.edgeStyle.${edgePathStyle}`) }}</span>
         </button>
         <span class="tool-mode-group" role="group" :aria-label="t('graph.toolbar.toolMode')">
           <button
@@ -172,12 +229,23 @@
     <GraphLayoutFloatingBar
       v-model:snap-enabled="snapToGridEnabled"
       v-model:grid-visible="gridVisible"
+      v-model:minimap-visible="minimapVisible"
       :selected-count="selectedLayoutNodes.length"
       @align="applyAlign"
       @distribute="applyDistribute"
       @auto-layout="applyAutoLayout"
       @collapse-all-previews="setAllNodePreviewsCollapsed(true)"
       @expand-all-previews="setAllNodePreviewsCollapsed(false)"
+    />
+
+    <GraphMinimap
+      v-if="minimapVisible"
+      :nodes="graph.nodes"
+      :viewport="graph.viewport"
+      :host-width="viewportHostSize.w"
+      :host-height="viewportHostSize.h"
+      :selected-node-ids="selectedNodeIds"
+      @pan-to="panViewportToWorldCenter"
     />
 
     <GraphRadialMenu
@@ -264,8 +332,8 @@
           :is="card.component"
           :node="node"
           :selected="isNodeSelected(node.id)"
-          :connecting="linkingFrom === node.id || linkingTo === node.id"
-          :link-mode="!!(linkingFrom || linkingTo)"
+          :connecting="isLinkHighlightNode(node.id)"
+          :link-mode="!!(linkingFrom || linkingTo || rewireSession)"
           :asset="assetFor(node)"
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"
@@ -374,7 +442,7 @@
           type="button"
           @click="addNodeFromMenu(item.typeId)"
         >
-          <span class="ctx-icon">{{ item.icon }}</span>
+          <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
           <span class="ctx-label">{{ item.label }}</span>
           <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
         </button>
@@ -388,9 +456,10 @@
           <button
             type="button"
             class="ctx-submenu-trigger"
-            :class="{ open: ctxSubmenu === group.id }"
+            :class="{ open: ctxSubmenu === group.id, pinned: ctxSubmenuPinned && ctxSubmenu === group.id }"
+            @click="toggleCtxSubmenu(group.id)"
           >
-            <span class="ctx-icon">{{ group.icon }}</span>
+            <span class="ctx-icon"><WorkspaceItemIcon :icon="group.icon" :size="14" /></span>
             <span class="ctx-label">{{ group.label }}</span>
             <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
           </button>
@@ -408,7 +477,7 @@
               type="button"
               @click="addNodeFromMenu(item.typeId)"
             >
-              <span class="ctx-icon">{{ item.icon }}</span>
+              <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
               <span class="ctx-label">{{ item.label }}</span>
               <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
             </button>
@@ -422,9 +491,13 @@
               <button
                 type="button"
                 class="ctx-submenu-trigger"
-                :class="{ open: ctxNestedSubmenu === nested.id }"
+                :class="{
+                  open: ctxNestedSubmenu === nested.id,
+                  pinned: ctxNestedSubmenuPinned && ctxNestedSubmenu === nested.id
+                }"
+                @click="toggleCtxNestedSubmenu(nested.id)"
               >
-                <span class="ctx-icon">{{ nested.icon }}</span>
+                <span class="ctx-icon"><WorkspaceItemIcon :icon="nested.icon" :size="14" /></span>
                 <span class="ctx-label">{{ nested.label }}</span>
                 <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
               </button>
@@ -442,7 +515,7 @@
                   type="button"
                   @click="addNodeFromMenu(item.typeId)"
                 >
-                  <span class="ctx-icon">{{ item.icon }}</span>
+                  <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
                   <span class="ctx-label">{{ item.label }}</span>
                   <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
                 </button>
@@ -479,6 +552,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch, type ComputedRef } from 'vue'
 import { resolveGraphCard } from '../graph/cards/registry'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
+import GraphMinimap from './GraphMinimap.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
@@ -493,6 +567,7 @@ import {
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import GraphRadialMenu, { type RadialMenuItem } from './GraphRadialMenu.vue'
 import MediaRunIcon from './icons/MediaRunIcon.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import { playFlyToGraphTasks } from '../features/graph/ui/flyToGraphTasks'
 import { useProjectStore } from '../stores/project'
 import {
@@ -644,6 +719,7 @@ import {
   type GraphVideoItem,
   type GraphVoiceItem,
   type GraphDocument,
+  type GraphEdge,
   type GraphNode,
   type GraphNodeParams,
   type GraphNodeTextField,
@@ -714,8 +790,12 @@ import {
   computeTempEdgeScreen,
   drawGraphEdges,
   hitTestEdges,
+  nearerEdgeEndpoint,
+  nextGraphEdgePathStyle,
+  parseGraphEdgePathStyle,
   type EdgeColors,
-  type EdgeScreenGeometry
+  type EdgeScreenGeometry,
+  type GraphEdgePathStyle
 } from '../graph/edgeCanvas'
 import { applyGraphGridStyle } from '../graph/gridCanvas'
 import { useGraphNodeInteraction } from '../graph/useGraphNodeInteraction'
@@ -1526,6 +1606,16 @@ function shotParamsSeedFromActiveShot(): Partial<GraphNodeParams> | undefined {
 
 const rootEl = ref<HTMLElement | null>(null)
 const viewportEl = ref<HTMLElement | null>(null)
+const viewportHostSize = ref({ w: 0, h: 0 })
+
+function syncViewportHostSize(): void {
+  const host = viewportEl.value
+  if (!host) return
+  const w = host.clientWidth
+  const h = host.clientHeight
+  if (viewportHostSize.value.w === w && viewportHostSize.value.h === h) return
+  viewportHostSize.value = { w, h }
+}
 const gridMinorEl = ref<HTMLElement | null>(null)
 const gridMajorEl = ref<HTMLElement | null>(null)
 const graph = reactive<GraphDocument>(normalizeGraphForHost(null))
@@ -1540,6 +1630,11 @@ const linkingFromPort = ref<string | null>(null)
 const linkingTo = ref<string | null>(null)
 const linkingToPort = ref<string | null>(null)
 const tempEdgeEnd = ref<{ x: number; y: number } | null>(null)
+/** 批量拖线改接：固定端列表 + 正在拖动的一端 */
+const rewireSession = ref<{
+  movingEnd: 'source' | 'target'
+  fixed: Array<{ nodeId: string; portId: string }>
+} | null>(null)
 const dropOver = ref(false)
 const dropError = ref('')
 let dropErrorTimer: ReturnType<typeof setTimeout> | null = null
@@ -1554,6 +1649,9 @@ const pointerOverViewport = ref(false)
 const lastPointerClient = { x: 0, y: 0 }
 const ctxSubmenu = ref<string | null>(null)
 const ctxNestedSubmenu = ref<string | null>(null)
+/** 点击分组后固定子菜单，pointerleave 不再收起（拉线添加与右键同一套） */
+const ctxSubmenuPinned = ref(false)
+const ctxNestedSubmenuPinned = ref(false)
 const ctxMenuEl = ref<HTMLElement | null>(null)
 const submenuFlip = ref({ left: false, up: false })
 const nestedSubmenuFlip = ref({ left: false, up: false })
@@ -2216,7 +2314,10 @@ async function enqueueWorkflowTask(fromEl?: HTMLElement | null): Promise<void> {
     title,
     graph: graphDoc,
     target,
-    targetNodeIds: selectedOutput ? [selectedOutput.id] : undefined
+    targetNodeIds: selectedOutput ? [selectedOutput.id] : undefined,
+    // 多条输出链并行入队时复用已完成的共同上游，避免重复 cook
+    priorNodeStates: graphDoc.runStates,
+    skipCompletedNodes: true
   })
   if (!result.ok) {
     void promptAlert({
@@ -2487,7 +2588,9 @@ function collectEdgeGeometry(): EdgeScreenGeometry[] {
     const source = nodeById.get(edge.source)
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
-    geoms.push(computeEdgeScreenGeometry(edge, source, target, liveViewport))
+    geoms.push(
+      computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value)
+    )
   }
   return geoms
 }
@@ -2505,15 +2608,14 @@ function renderEdgesNow(): void {
   lastEdgeGeometry = geoms
   const dpr = Math.max(1, window.devicePixelRatio || 1)
 
-  const tempWorld = resolveTempEdgeWorld()
-  const tempScreen = tempWorld
-    ? computeTempEdgeScreen(tempWorld.from, tempWorld.to, liveViewport)
-    : null
+  const tempScreens = resolveTempEdgeWorlds().map((tempWorld) =>
+    computeTempEdgeScreen(tempWorld.from, tempWorld.to, liveViewport, edgePathStyle.value)
+  )
 
   const flowIds =
     !viewportGesturing && hasOutgoingFlow.value ? selectedNodeIds.value : new Set<string>()
 
-  drawGraphEdges(ctx, geoms, tempScreen, {
+  drawGraphEdges(ctx, geoms, tempScreens.length > 0 ? tempScreens : null, {
     dpr,
     width: edgeCanvasCssW,
     height: edgeCanvasCssH,
@@ -2524,7 +2626,8 @@ function renderEdgesNow(): void {
     flowEdgeIds: flowIds,
     flowTimeMs: performance.now(),
     reduceEffects: viewportGesturing,
-    colors: resolveEdgeColors()
+    colors: resolveEdgeColors(),
+    pathStyle: edgePathStyle.value
   })
 
   // 记录基准视口并把平移 transform 归零：位图已按当前视口绘制
@@ -2672,6 +2775,33 @@ watch(gridVisible, (visible) => {
     /* ignore */
   }
 })
+
+const MINIMAP_VISIBLE_KEY = 'aiartengine.graph.minimapVisible'
+const minimapVisible = ref(localStorage.getItem(MINIMAP_VISIBLE_KEY) !== '0')
+watch(minimapVisible, (visible) => {
+  try {
+    localStorage.setItem(MINIMAP_VISIBLE_KEY, visible ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+})
+
+const EDGE_PATH_STYLE_KEY = 'aiartengine.graph.edgePathStyle'
+const edgePathStyle = ref<GraphEdgePathStyle>(
+  parseGraphEdgePathStyle(localStorage.getItem(EDGE_PATH_STYLE_KEY))
+)
+watch(edgePathStyle, (style) => {
+  try {
+    localStorage.setItem(EDGE_PATH_STYLE_KEY, style)
+  } catch {
+    /* ignore */
+  }
+  requestEdgeRender()
+})
+
+function cycleEdgePathStyle(): void {
+  edgePathStyle.value = nextGraphEdgePathStyle(edgePathStyle.value)
+}
 
 const selectedLayoutNodes = computed(() =>
   graph.nodes.filter((node) => selectedNodeIds.value.has(node.id))
@@ -3002,6 +3132,12 @@ function setSingleEdgeSelection(edgeId: string): void {
   workspace.selectGraphNode(null, graphHostId.value)
 }
 
+function isLinkHighlightNode(nodeId: string): boolean {
+  if (linkingFrom.value === nodeId || linkingTo.value === nodeId) return true
+  const session = rewireSession.value
+  return !!session?.fixed.some((fixed) => fixed.nodeId === nodeId)
+}
+
 function setMarqueeSelection(nodeIds: string[], edgeIds: string[]): void {
   selectedNodeIds.value = new Set(nodeIds)
   selectedEdgeIds.value = new Set(edgeIds)
@@ -3024,8 +3160,7 @@ const renderedGraphCards = computed(() =>
       return (
         renderedNodeIds.value.has(node.id) ||
         selectedNodeIds.value.has(node.id) ||
-        linkingFrom.value === node.id ||
-        linkingTo.value === node.id
+        isLinkHighlightNode(node.id)
       )
     })
     .map((node) => {
@@ -3263,23 +3398,43 @@ function assetFor(node: GraphNode): AssetInfo | null {
   return project.assets.find((a) => a.id === node.assetId) ?? null
 }
 
-/** 临时连线（拖拽建边）在世界坐标下的两端；供 Canvas 直接绘制 */
-function resolveTempEdgeWorld(): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
+/** 临时连线（拖拽建边 / 批量改接）在世界坐标下的两端；供 Canvas 直接绘制 */
+function resolveTempEdgeWorlds(): Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> {
   const end = tempEdgeEnd.value
-  if (!end) return null
+  if (!end) return []
+  const session = rewireSession.value
+  if (session) {
+    const out: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
+    for (const fixed of session.fixed) {
+      const node = graph.nodes.find((n) => n.id === fixed.nodeId)
+      if (!node) continue
+      if (session.movingEnd === 'target') {
+        out.push({
+          from: getNodePortCenter(node, 'right', fixed.portId),
+          to: end
+        })
+      } else {
+        out.push({
+          from: end,
+          to: getNodePortCenter(node, 'left', fixed.portId)
+        })
+      }
+    }
+    return out
+  }
   if (linkingFrom.value) {
     const node = graph.nodes.find((n) => n.id === linkingFrom.value)
-    if (!node) return null
+    if (!node) return []
     const start = getNodePortCenter(node, 'right', linkingFromPort.value ?? undefined)
-    return { from: start, to: end }
+    return [{ from: start, to: end }]
   }
   if (linkingTo.value) {
     const node = graph.nodes.find((n) => n.id === linkingTo.value)
-    if (!node) return null
+    if (!node) return []
     const dst = getNodePortCenter(node, 'left', linkingToPort.value ?? undefined)
-    return { from: end, to: dst }
+    return [{ from: end, to: dst }]
   }
-  return null
+  return []
 }
 
 function scheduleSave(): void {
@@ -3407,7 +3562,7 @@ function onViewportPointerDown(e: PointerEvent): void {
       return
     }
     const worldRect = viewportBoxToWorldRect(box, graph.viewport)
-    const { nodeIds, edgeIds } = collectMarqueeHits(graph, worldRect)
+    const { nodeIds, edgeIds } = collectMarqueeHits(graph, worldRect, edgePathStyle.value)
     if (nodeIds.length === 0 && edgeIds.length === 0) {
       clearSelection()
       return
@@ -3421,10 +3576,65 @@ function onViewportPointerDown(e: PointerEvent): void {
   window.addEventListener('pointercancel', onUp)
 }
 
+/** 拖线改接：超过该像素位移后摘起连线（点击仅选中） */
+const EDGE_REWIRE_DRAG_PX = 5
+
 function onEdgePointerDown(edgeId: string, e: PointerEvent): void {
   if (e.button !== 0) return
-  setSingleEdgeSelection(edgeId)
   cancelLink()
+
+  // Shift / Ctrl / ⌘：加减选；点中已选中的边则保留多选以便批量拖线
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    const next = new Set(selectedEdgeIds.value)
+    if (next.has(edgeId)) next.delete(edgeId)
+    else next.add(edgeId)
+    selectedEdgeIds.value = next
+    selectedNodeIds.value = new Set()
+    selectedGroupId.value = null
+    workspace.selectGraphNode(null, graphHostId.value)
+    if (!next.has(edgeId)) return
+  } else if (!selectedEdgeIds.value.has(edgeId)) {
+    setSingleEdgeSelection(edgeId)
+  } else {
+    selectedNodeIds.value = new Set()
+    selectedGroupId.value = null
+    workspace.selectGraphNode(null, graphHostId.value)
+  }
+
+  const edge = graph.edges.find((item) => item.id === edgeId)
+  if (!edge) return
+  const host = viewportEl.value
+  if (!host) return
+  const rect = host.getBoundingClientRect()
+  const geom = lastEdgeGeometry.find((g) => g.id === edgeId)
+  const movingEnd: 'source' | 'target' = geom
+    ? nearerEdgeEndpoint(geom, e.clientX - rect.left, e.clientY - rect.top)
+    : 'target'
+  const batch = graph.edges.filter((item) => selectedEdgeIds.value.has(item.id))
+  const edgesToRewire = batch.length > 0 ? batch : [edge]
+  const startX = e.clientX
+  const startY = e.clientY
+  let started = false
+
+  const onMove = (ev: PointerEvent): void => {
+    if (started) return
+    if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < EDGE_REWIRE_DRAG_PX) return
+    started = true
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+    beginEdgesRewire(edgesToRewire, movingEnd, ev)
+  }
+
+  const onUp = (): void => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+  }
+
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
 }
 
 /** 屏幕坐标下命中最近的边，容差随缩放放大以匹配原 14px 命中带 */
@@ -3435,6 +3645,7 @@ function hitTestEdgeAt(clientX: number, clientY: number): string | null {
   const px = clientX - rect.left
   const py = clientY - rect.top
   const tolerance = Math.max(6, 7 * liveViewport.zoom)
+  if (edgePathStyle.value === 'hidden') return null
   return hitTestEdges(lastEdgeGeometry, px, py, tolerance)
 }
 
@@ -3444,9 +3655,12 @@ function screenToWorld(clientX: number, clientY: number): { x: number; y: number
   return clientToGraphWorld(clientX, clientY, rect, liveViewport)
 }
 
-const GRAPH_ZOOM_MIN = 0.35
-const GRAPH_ZOOM_MAX = 2
+/** 画布缩放范围（相对旧版再扩大 2 倍：原 0.35～2 → 0.175～4） */
+const GRAPH_ZOOM_MIN = 0.175
+const GRAPH_ZOOM_MAX = 4
 const GRAPH_ZOOM_SENSITIVITY = 0.999
+/** 适配视图时略收一点上限，避免贴边过近 */
+const GRAPH_FIT_ZOOM_MAX = 3.2
 let viewportSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 function getWheelViewportRect(host: HTMLElement): { left: number; top: number; height: number } {
@@ -3566,7 +3780,10 @@ function fitView(): void {
     const pad = 56
     const zoomX = (host.clientWidth - pad * 2) / bounds.w
     const zoomY = (host.clientHeight - pad * 2) / bounds.h
-    const zoom = Math.min(1.6, Math.max(0.35, Math.min(zoomX, zoomY)))
+    const zoom = Math.min(
+      GRAPH_FIT_ZOOM_MAX,
+      Math.max(GRAPH_ZOOM_MIN, Math.min(zoomX, zoomY))
+    )
     graph.viewport.zoom = zoom
     graph.viewport.x = host.clientWidth / 2 - (bounds.x + bounds.w / 2) * zoom
     graph.viewport.y = host.clientHeight / 2 - (bounds.y + bounds.h / 2) * zoom
@@ -3577,6 +3794,17 @@ function fitView(): void {
   scheduleSave()
 }
 
+/** 小地图：将指定世界坐标置于视口中心（保持当前缩放） */
+function panViewportToWorldCenter(worldX: number, worldY: number): void {
+  const host = viewportEl.value
+  if (!host) return
+  beginViewportGesture()
+  liveViewport.x = host.clientWidth / 2 - worldX * liveViewport.zoom
+  liveViewport.y = host.clientHeight / 2 - worldY * liveViewport.zoom
+  applyViewportTransform(true)
+  scheduleViewportGestureIdle()
+}
+
 function menuAddableNodeTypes() {
   return listAddableNodeTypes(graphScope.value)
 }
@@ -3585,6 +3813,8 @@ function closeCtxMenu(): void {
   ctxMenu.value = null
   ctxSubmenu.value = null
   ctxNestedSubmenu.value = null
+  ctxSubmenuPinned.value = false
+  ctxNestedSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
   nestedSubmenuFlip.value = { left: false, up: false }
 }
@@ -3594,6 +3824,8 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
   const preferredY = next.y
   ctxSubmenu.value = null
   ctxNestedSubmenu.value = null
+  ctxSubmenuPinned.value = false
+  ctxNestedSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
   nestedSubmenuFlip.value = { left: false, up: false }
   ctxMenu.value = next
@@ -3607,6 +3839,28 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
 }
 
 function openCtxSubmenu(kind: string): void {
+  // 已固定时悬停其他分组不抢开，避免误关已点开的面板
+  if (ctxSubmenuPinned.value && ctxSubmenu.value && ctxSubmenu.value !== kind) return
+  ctxSubmenu.value = kind
+  ctxNestedSubmenu.value = null
+  ctxNestedSubmenuPinned.value = false
+  nestedSubmenuFlip.value = { left: false, up: false }
+  void repositionCtxSubmenu()
+}
+
+/** 点击分组：固定展开；再点同一分组则收起 */
+function toggleCtxSubmenu(kind: string): void {
+  if (ctxSubmenu.value === kind && ctxSubmenuPinned.value) {
+    ctxSubmenu.value = null
+    ctxSubmenuPinned.value = false
+    ctxNestedSubmenu.value = null
+    ctxNestedSubmenuPinned.value = false
+    submenuFlip.value = { left: false, up: false }
+    nestedSubmenuFlip.value = { left: false, up: false }
+    return
+  }
+  ctxSubmenuPinned.value = true
+  ctxNestedSubmenuPinned.value = false
   ctxSubmenu.value = kind
   ctxNestedSubmenu.value = null
   nestedSubmenuFlip.value = { left: false, up: false }
@@ -3614,20 +3868,38 @@ function openCtxSubmenu(kind: string): void {
 }
 
 function closeCtxSubmenu(kind: string): void {
+  if (ctxSubmenuPinned.value) return
   if (ctxSubmenu.value === kind) {
     ctxSubmenu.value = null
     ctxNestedSubmenu.value = null
+    ctxNestedSubmenuPinned.value = false
     submenuFlip.value = { left: false, up: false }
     nestedSubmenuFlip.value = { left: false, up: false }
   }
 }
 
 function openCtxNestedSubmenu(kind: string): void {
+  if (ctxNestedSubmenuPinned.value && ctxNestedSubmenu.value && ctxNestedSubmenu.value !== kind) {
+    return
+  }
+  ctxNestedSubmenu.value = kind
+  void repositionCtxNestedSubmenu()
+}
+
+function toggleCtxNestedSubmenu(kind: string): void {
+  if (ctxNestedSubmenu.value === kind && ctxNestedSubmenuPinned.value) {
+    ctxNestedSubmenu.value = null
+    ctxNestedSubmenuPinned.value = false
+    nestedSubmenuFlip.value = { left: false, up: false }
+    return
+  }
+  ctxNestedSubmenuPinned.value = true
   ctxNestedSubmenu.value = kind
   void repositionCtxNestedSubmenu()
 }
 
 function closeCtxNestedSubmenu(kind: string): void {
+  if (ctxNestedSubmenuPinned.value) return
   if (ctxNestedSubmenu.value === kind) {
     ctxNestedSubmenu.value = null
     nestedSubmenuFlip.value = { left: false, up: false }
@@ -3693,6 +3965,7 @@ function scheduleEdgeHoverUpdate(e: PointerEvent): void {
     isDraggingNodes.value ||
     linkingFrom.value ||
     linkingTo.value ||
+    rewireSession.value ||
     selectionBox.value ||
     (e.target as HTMLElement).closest('.graph-node, .graph-note, .port, .graph-group-label')
   ) {
@@ -3975,26 +4248,15 @@ function onNodeTitleChange(nodeId: string, title: string): void {
     assetId && isAssetRefNode(node)
       ? project.assets.find((a) => a.id === assetId)
       : undefined
-  const prev = linkedAsset?.name?.trim() || node.title?.trim() || ''
+  // 画布节点显示名与资产库原名解耦；改资产名请走资产浏览器
+  const prev = node.title?.trim() || linkedAsset?.name?.trim() || ''
   if (trimmed === prev) return
-  if (linkedAsset && !trimmed) return
 
   const before = buildGraphJson()
   if (trimmed) node.title = trimmed
   else delete node.title
   scheduleSave()
   recordGraphChange('rename-node', before)
-
-  if (linkedAsset && assetId) {
-    void (async () => {
-      try {
-        await window.studio.renameAsset(assetId, trimmed)
-        await project.refreshAssets()
-      } catch {
-        // 资产改名失败时节点标题可保留，资产库仍为旧名
-      }
-    })()
-  }
 }
 
 function isSelfAssetDrop(asset: Pick<AssetInfo, 'id'>): boolean {
@@ -4840,6 +5102,34 @@ function onInPortDown(nodeId: string, portId: string, e: PointerEvent): void {
     return
   }
 
+  // 已有入边时：拖动输入口 = 摘起该口全部入边改接（可一次拖多条）
+  const incoming = graph.edges.filter(
+    (edge) => edge.target === nodeId && (edge.targetPort ?? 'in') === portId
+  )
+  if (incoming.length > 0) {
+    const startX = e.clientX
+    const startY = e.clientY
+    let started = false
+    const onMove = (ev: PointerEvent): void => {
+      if (started) return
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < EDGE_REWIRE_DRAG_PX) return
+      started = true
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      beginEdgesRewire(incoming, 'target', ev)
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return
+  }
+
   linkingTo.value = nodeId
   linkingToPort.value = portId
   const node = graph.nodes.find((n) => n.id === nodeId)
@@ -4895,29 +5185,119 @@ function onInPortDown(nodeId: string, portId: string, e: PointerEvent): void {
   window.addEventListener('pointercancel', onUp)
 }
 
+/**
+ * 摘起一条或多条已有连线的同一端，拖到兼容端口批量改接；落空则全部断开。
+ * movingEnd=target：固定各源端，改接到同一输入口；movingEnd=source：固定各目标端，改接到同一输出口。
+ */
+function beginEdgesRewire(
+  edges: GraphEdge[],
+  movingEnd: 'source' | 'target',
+  e: PointerEvent
+): void {
+  const unique = new Map<string, GraphEdge>()
+  for (const edge of edges) {
+    if (graph.edges.some((item) => item.id === edge.id)) unique.set(edge.id, edge)
+  }
+  if (unique.size === 0) return
+  const batch = [...unique.values()]
+  const before = buildGraphJson()
+  const removeIds = new Set(batch.map((edge) => edge.id))
+  graph.edges = graph.edges.filter((item) => !removeIds.has(item.id))
+  if ([...removeIds].some((id) => selectedEdgeIds.value.has(id))) {
+    selectedEdgeIds.value = new Set(
+      [...selectedEdgeIds.value].filter((id) => !removeIds.has(id))
+    )
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+
+  rewireSession.value = {
+    movingEnd,
+    fixed: batch.map((edge) =>
+      movingEnd === 'target'
+        ? { nodeId: edge.source, portId: edge.sourcePort ?? 'out' }
+        : { nodeId: edge.target, portId: edge.targetPort ?? 'in' }
+    )
+  }
+  linkingFrom.value = null
+  linkingFromPort.value = null
+  linkingTo.value = null
+  linkingToPort.value = null
+
+  const update = (ev: PointerEvent): void => {
+    tempEdgeEnd.value = screenToWorld(ev.clientX, ev.clientY)
+    requestEdgeRender()
+  }
+  update(e)
+
+  const finish = (ev: PointerEvent): void => {
+    window.removeEventListener('pointermove', update)
+    window.removeEventListener('pointerup', finish)
+    window.removeEventListener('pointercancel', finish)
+    const session = rewireSession.value
+    let okCount = 0
+    if (session) {
+      if (session.movingEnd === 'target') {
+        const targetHit = findLinkTarget(ev.clientX, ev.clientY)
+        if (targetHit) {
+          for (const fixed of session.fixed) {
+            if (
+              connectNodes(fixed.nodeId, targetHit.nodeId, fixed.portId, targetHit.portId, {
+                skipHistory: true
+              })
+            ) {
+              okCount += 1
+            }
+          }
+        }
+      } else {
+        const sourceHit = findLinkSource(ev.clientX, ev.clientY)
+        if (sourceHit) {
+          for (const fixed of session.fixed) {
+            if (
+              connectNodes(sourceHit.nodeId, fixed.nodeId, sourceHit.portId, fixed.portId, {
+                skipHistory: true
+              })
+            ) {
+              okCount += 1
+            }
+          }
+        }
+      }
+    }
+    cancelLink()
+    recordGraphChange(okCount > 0 ? 'rewire-edge' : 'disconnect-edge', before)
+  }
+
+  window.addEventListener('pointermove', update)
+  window.addEventListener('pointerup', finish)
+  window.addEventListener('pointercancel', finish)
+}
+
 function connectNodes(
   sourceId: string,
   targetId: string,
   sourcePortId?: string,
-  targetPortId?: string
-): void {
-  if (sourceId === targetId) return
+  targetPortId?: string,
+  options?: { skipHistory?: boolean }
+): boolean {
+  if (sourceId === targetId) return false
   const source = graph.nodes.find((n) => n.id === sourceId)
   const target = graph.nodes.find((n) => n.id === targetId)
-  if (!source || !target) return
+  if (!source || !target) return false
   const outPort = findOutPort(source, sourcePortId)
-  if (!outPort) return
+  if (!outPort) return false
   const inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
-  if (!inPort) return
+  if (!inPort) return false
   if (
     !canConnectNodes(source, target, {
       sourcePort: outPort.id,
       targetPort: inPort.id
     })
   ) {
-    return
+    return false
   }
-  const before = buildGraphJson()
+  const before = options?.skipHistory ? null : buildGraphJson()
   graph.edges = graph.edges.filter(
     (e) =>
       !(
@@ -4935,8 +5315,11 @@ function connectNodes(
     targetPort: inPort.id
   })
   scheduleSave()
-  recordGraphChange('connect-nodes', before)
+  if (before) {
+    recordGraphChange('connect-nodes', before)
+  }
   graphEditorHosts.bumpRevision()
+  return true
 }
 
 function removeGraphEdge(edgeId: string): void {
@@ -4968,6 +5351,7 @@ function cancelLink(): void {
   linkingFromPort.value = null
   linkingTo.value = null
   linkingToPort.value = null
+  rewireSession.value = null
   tempEdgeEnd.value = null
   requestEdgeRender()
 }
@@ -7257,12 +7641,16 @@ onMounted(() => {
     })
   }
   resizeObserver = new ResizeObserver(() => {
+    syncViewportHostSize()
     refreshGraphRenderWindow(true)
     resizeEdgeCanvas()
     renderEdgesNow()
     requestPreviewVisibilityUpdate()
   })
-  if (viewportEl.value) resizeObserver.observe(viewportEl.value)
+  if (viewportEl.value) {
+    syncViewportHostSize()
+    resizeObserver.observe(viewportEl.value)
+  }
   registerNodeToolHost()
   unregisterGraphHost = graphEditorHosts.register(
     graphHostId.value,
@@ -7339,7 +7727,11 @@ onMounted(() => {
     (e) => {
       const target = e.target as HTMLElement | null
       // 顶栏/浮动工具条上的点击不进平移，避免切工具时误拖画布
-      if (target?.closest('.graph-toolbar, .layout-float, .ctx-menu, .radial-menu, .run-banner')) {
+      if (
+        target?.closest(
+          '.graph-toolbar, .layout-float, .graph-minimap, .ctx-menu, .radial-menu, .run-banner'
+        )
+      ) {
         return
       }
       if (e.button === 1 || (isLeftButtonPanArmed() && e.button === 0)) {
@@ -7567,6 +7959,18 @@ defineExpose({
 .tools button {
   font-size: 11px;
   padding: 3px 8px;
+}
+
+.tools .edge-style-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+}
+
+.tools .edge-style-btn .edge-style-label {
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .tools .play-control {
@@ -7954,6 +8358,10 @@ defineExpose({
   border-color: transparent;
 }
 
+.ctx-submenu-trigger.pinned {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-hover));
+}
+
 .ctx-submenu {
   position: relative;
 }
@@ -7972,7 +8380,7 @@ defineExpose({
 
 .ctx-submenu-panel {
   position: absolute;
-  left: calc(100% + 2px);
+  left: 100%;
   top: -4px;
   min-width: 168px;
   background: var(--bg-elevated);
@@ -7986,9 +8394,24 @@ defineExpose({
   z-index: 4001;
 }
 
+/* 桥接主菜单与子面板空隙，悬停移入时不易误关 */
+.ctx-submenu-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  left: -10px;
+}
+
 .ctx-submenu-panel.open-left {
   left: auto;
-  right: calc(100% + 2px);
+  right: 100%;
+}
+
+.ctx-submenu-panel.open-left::before {
+  left: auto;
+  right: -10px;
 }
 
 .ctx-submenu-panel.open-up {

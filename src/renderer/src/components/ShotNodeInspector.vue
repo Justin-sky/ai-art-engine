@@ -1759,7 +1759,7 @@ textarea,
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   background: #000;
 }
 
@@ -1768,7 +1768,7 @@ textarea,
   width: 100%;
   padding: 0;
   border: none;
-  background: transparent;
+  background: var(--graph-preview-bg, var(--bg-elevated));
   cursor: zoom-in;
   aspect-ratio: 1;
 }
@@ -1777,7 +1777,7 @@ textarea,
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .shot-loading {

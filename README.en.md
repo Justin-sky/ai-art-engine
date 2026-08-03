@@ -6,7 +6,7 @@
   <p><b>Local AI short-video creation studio</b></p>
   <p>
     Projects stay on disk · Shot & node-graph workflows<br />
-    OpenRouter · Volcengine Ark · Kling · Hailuo (MiniMax) · Tongyi Qianwen · ModelScope<br />
+    OpenRouter · Volcengine Ark · Kling · MinMax · Tongyi Qianwen · ModelScope<br />
     Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
 
@@ -26,6 +26,7 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>Manual</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#community"><b>Community</b></a> ·
@@ -82,12 +83,14 @@ npm run dist:win | dist:mac | dist:linux
 **AIArtEngine** is a local-first desktop studio for AI short video: assets, shots, and a node graph in one workbench — your API keys, your files.
 
 - **Local projects** — create / open / recent; JSON + media on disk  
+- **One-click workflow** — preset or AI-planned topology → reusable host asset (boundary I/O + Dive)  
 - **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
-- **Node graph** — text / image / video / audio generation; generation lock; dual gallery outputs  
+- **Node graph** — generation nodes; dual gallery outputs; edge styles / minimap; task queue reuses shared upstream  
+- **Host assets** — boundary ports outside, full graph inside via Dive  
 - **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`  
 - **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
-- **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, Hailuo / MiniMax, Tongyi Qianwen (DashScope), ModelScope  
+- **Model providers** — OpenRouter, Volcengine Ark (Seedream / Seedance / voice), Kling, MinMax, Tongyi Qianwen (DashScope), ModelScope  
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + declarative extensions  
 
@@ -98,7 +101,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | OpenRouter | Text / image / video (aggregated catalog) |
 | Model | Volcengine Ark | Text / Seedream / Seedance / voice design |
 | Model | Kling | Image / video (API Key) |
-| Model | Hailuo (MiniMax) | Text / image / Hailuo video / voice design |
+| Model | MinMax | Text / image / video / voice design |
 | Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video (incl. HappyHorse) |
 | Model | ModelScope | Text / text-to-image (access token) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
@@ -115,7 +118,10 @@ Configure under **Settings → Models** / **Settings → Object storage**.
 
 1. Grab a build from [Releases](https://github.com/Justin-sky/ai-art-engine/releases)  
 2. Install → create a project  
-3. Add model providers (and optional object storage) in Settings → create in shots / node graph  
+3. Add model providers (and optional object storage) in Settings  
+4. Use toolbar **One-click workflow**, or build chains in shots / node graph  
+
+Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (source: `website/manual.html`).
 
 **From source**
 

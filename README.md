@@ -6,7 +6,7 @@
   <p><b>本地 AI 短视频创作工作台</b></p>
   <p>
     工程与素材都在本机 · 分镜与节点图驱动生成<br />
-    对接 OpenRouter · 火山方舟 · 可灵 · 海螺 AI · 通义千问 · 魔塔<br />
+    对接 OpenRouter · 火山方舟 · 可灵 · MinMax · 通义千问 · 魔塔<br />
     对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
   </p>
 
@@ -27,6 +27,7 @@
 
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>使用手册</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>视频教程</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
@@ -109,10 +110,12 @@ npm run dist:linux  # Linux
 - **本地工程** — 新建 / 打开 / 最近列表，JSON + 媒体目录落盘，数据不出本机
 - **资产库** — 图片 / 视频 / 声音；AssetRef GUID；`.aipackage` 导入导出
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
-- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口
+- **一键工作流** — 预设模板或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
+- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口；连线样式 / 小地图；任务队列复用共同上游
+- **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
 - **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`
 - **成片时间线** — 素材分组与上轨编排；预览播选中 / 时间线整轨联播；导出成片
-- **多模型提供商** — OpenRouter、火山方舟（Seedream / Seedance / 声音）、可灵、海螺 AI（MiniMax）、通义千问（DashScope）、魔塔（ModelScope）
+- **多模型提供商** — OpenRouter、火山方舟（Seedream / Seedance / 声音）、可灵、MinMax、通义千问（DashScope）、魔塔（ModelScope）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + 声明式扩展（窗口 / Inspector / 节点 / 工具栏）
 
@@ -123,7 +126,7 @@ npm run dist:linux  # Linux
 | 模型 | OpenRouter | 文本 / 图片 / 视频（聚合目录） |
 | 模型 | 火山方舟 | 文本 / Seedream 图 / Seedance 视频 / 声音设计 |
 | 模型 | 可灵 | 图片 / 视频（API Key） |
-| 模型 | 海螺 AI（MiniMax） | 文本 / 图片 / 海螺视频 / 音色设计 |
+| 模型 | MinMax | 文本 / 图片 / 视频 / 音色设计 |
 | 模型 | 通义千问 | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等） |
 | 模型 | 魔塔 | 文本 / 文生图（访问令牌） |
 | 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用 |
@@ -140,7 +143,10 @@ npm run dist:linux  # Linux
 
 1. 从 [Releases](https://github.com/Justin-sky/ai-art-engine/releases) 下载对应平台包  
 2. 安装启动 → 新建工程  
-3. 设置里添加模型提供商并填写密钥；可选配置对象存储 → 在分镜 / 节点图中创作  
+3. 设置里添加模型提供商并填写密钥；可选配置对象存储  
+4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路  
+
+完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。
 
 **从源码**
 

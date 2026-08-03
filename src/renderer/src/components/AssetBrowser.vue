@@ -10,34 +10,90 @@
     @dragleave="onBrowserDragLeave"
     @drop.prevent="onBrowserDrop"
   >
-    <div v-if="!embedded" class="toolbar">
-      <span class="title">{{ t('asset.browser.title') }}</span>
-      <span class="import-hint">
-        {{
-          selectedAssetCount > 0
-            ? t('asset.browser.selectedCount', { count: selectedAssetCount })
-            : t('asset.browser.refreshHint')
-        }}
-      </span>
-      <div class="toolbar-actions">
+    <div class="filters">
+      <div
+        ref="searchFieldEl"
+        class="search-field"
+        :class="{ focused: searchFocused, open: typeFilterOpen }"
+      >
+        <input
+          ref="searchInputEl"
+          v-model="query"
+          class="search-input"
+          :placeholder="t('common.search')"
+          @focus="searchFocused = true"
+          @blur="searchFocused = false"
+          @keydown.escape.stop="clearSearch"
+        />
+        <button
+          v-if="query.trim()"
+          type="button"
+          class="search-clear-btn"
+          :title="t('asset.browser.clearSearch')"
+          :aria-label="t('asset.browser.clearSearch')"
+          @mousedown.prevent
+          @click.stop="clearSearch"
+        >
+          ×
+        </button>
         <button
           type="button"
-          :disabled="refreshing || !project.isOpen"
-          :title="t('asset.browser.refreshTitle')"
-          :aria-label="t('asset.browser.refresh')"
-          @click="onRefresh"
+          class="type-filter-btn"
+          :class="{ active: typeFilter !== 'all' }"
+          :title="filterTypeOptionLabel(typeFilter as AssetType | 'all')"
+          :aria-expanded="typeFilterOpen"
+          aria-haspopup="listbox"
+          @click.stop="toggleTypeFilterMenu"
         >
-          <RefreshIcon :size="14" :spinning="refreshing" />
+          <span class="type-filter-icon" aria-hidden="true">
+            <WorkspaceItemIcon :icon="typeFilterIcon" :size="14" />
+          </span>
+          <span class="type-filter-label">{{ typeFilterShortLabel }}</span>
+          <span class="type-filter-caret" aria-hidden="true">▾</span>
         </button>
+        <div
+          v-if="typeFilterOpen"
+          class="type-filter-menu"
+          role="listbox"
+          @mousedown.prevent
+        >
+          <button
+            type="button"
+            role="option"
+            class="type-filter-item"
+            :class="{ selected: typeFilter === 'all' }"
+            @click="selectTypeFilter('all')"
+          >
+            <span class="type-filter-item-icon" aria-hidden="true">🔍</span>
+            <span>{{ t('common.all') }}</span>
+          </button>
+          <button
+            v-for="type in filterTypes"
+            :key="type"
+            type="button"
+            role="option"
+            class="type-filter-item"
+            :class="{ selected: typeFilter === type }"
+            @click="selectTypeFilter(type)"
+          >
+            <span class="type-filter-item-icon" aria-hidden="true">
+              <WorkspaceItemIcon :icon="ASSET_TYPE_ICONS[type]" :size="14" />
+            </span>
+            <span>{{ assetTypeLabel(type) }}</span>
+          </button>
+        </div>
       </div>
-    </div>
-
-    <div class="filters">
-      <input v-model="query" :placeholder="t('common.search')" />
-      <select v-model="typeFilter">
-        <option value="all">{{ t('common.all') }}</option>
-        <option v-for="type in filterTypes" :key="type" :value="type">{{ assetTypeLabel(type) }}</option>
-      </select>
+      <button
+        v-if="!embedded"
+        type="button"
+        class="refresh-btn"
+        :disabled="refreshing || !project.isOpen"
+        :title="t('asset.browser.refreshTitle')"
+        :aria-label="t('asset.browser.refresh')"
+        @click="onRefresh"
+      >
+        <RefreshIcon :size="14" :spinning="refreshing" />
+      </button>
     </div>
 
     <div ref="splitEl" class="split">
@@ -159,7 +215,7 @@
             @dragend="onDragEnd"
             @dblclick="onAssetDblClick(asset.id)"
             @contextmenu.prevent.stop="onAssetContextMenu($event, asset.id)"
-            :title="asset.name"
+            :title="assetItemTitle(asset)"
           >
             <div v-if="showThumbs" class="thumb">
               <img v-if="thumbUrls[asset.id]" :src="thumbUrls[asset.id]" alt="" />
@@ -181,20 +237,22 @@
               v-else
               class="list-icon"
               :title="assetLabel(asset)"
-            >{{ assetIcon(asset) }}</span>
+            >
+              <WorkspaceItemIcon :icon="assetIcon(asset)" :size="16" />
+            </span>
             <div class="name">{{ asset.name }}</div>
             <button type="button" class="del" @click.stop="deleteAssets([asset.id])" :title="t('common.delete')">×</button>
           </div>
 
           <p v-if="!visibleFolders.length && !visibleAssets.length" class="empty">
-            {{ t('asset.browser.dropHint') }}
+            {{ isSearching ? t('asset.browser.searchEmpty') : t('asset.browser.dropHint') }}
           </p>
         </div>
       </section>
     </div>
 
     <footer class="bottom-bar" :class="{ compact: embedded }">
-      <div v-if="!embedded" class="status-bar" :title="footerPath">{{ footerPath }}</div>
+      <div v-if="!embedded" class="status-bar" :title="footerStatusTitle">{{ footerStatusText }}</div>
       <label class="view-size" :title="t('asset.browser.viewSizeHint')">
         <span class="view-size-label">{{ viewSize === 0 ? t('asset.browser.viewList') : t('asset.browser.viewIcon') }}</span>
         <input
@@ -233,26 +291,49 @@
           type="button"
           @click="createToolbarItemHere(item)"
         >
-          {{ toolbarCreateLabel(item.id, item.assetType) }}
+          <span class="ctx-icon" aria-hidden="true">
+            <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="14" />
+          </span>
+          <span class="ctx-label">{{ toolbarCreateLabel(item.id, item.assetType) }}</span>
         </button>
         <div class="ctx-sep" />
-        <button type="button" @click="startCreateFolder">{{ t('asset.folder.new') }}</button>
-        <button type="button" @click="onImportPackageMenu">{{ t('asset.browser.importPackage') }}</button>
+        <button type="button" @click="startCreateFolder">
+          <span class="ctx-icon" aria-hidden="true">📁</span>
+          <span class="ctx-label">{{ t('asset.folder.new') }}</span>
+        </button>
+        <button type="button" @click="onImportPackageMenu">
+          <span class="ctx-icon" aria-hidden="true">⬇️</span>
+          <span class="ctx-label">{{ t('asset.browser.importPackage') }}</span>
+        </button>
         <template v-if="menu.kind === 'folder'">
           <div class="ctx-sep" />
-          <button type="button" @click="onReimportFolder">{{ t('asset.browser.context.reimport') }}</button>
-          <button type="button" @click="onExportFolderPackage">{{ t('asset.browser.exportPackage') }}</button>
-          <button type="button" @click="startRenameFolder">{{ t('asset.folder.rename') }}</button>
+          <button type="button" @click="onReimportFolder">
+            <span class="ctx-icon" aria-hidden="true">🔄</span>
+            <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
+          </button>
+          <button type="button" @click="onExportFolderPackage">
+            <span class="ctx-icon" aria-hidden="true">⬆️</span>
+            <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+          </button>
+          <button type="button" @click="startRenameFolder">
+            <span class="ctx-icon" aria-hidden="true">✏️</span>
+            <span class="ctx-label">{{ t('asset.folder.rename') }}</span>
+          </button>
           <button type="button" class="danger" @click="deleteFolderTarget('hoist')">
-            {{ t('asset.folder.delete') }}
+            <span class="ctx-icon" aria-hidden="true">🗑️</span>
+            <span class="ctx-label">{{ t('asset.folder.delete') }}</span>
           </button>
           <button type="button" class="danger" @click="deleteFolderTarget('deleteContents')">
-            {{ t('asset.folder.deleteWithContents') }}
+            <span class="ctx-icon" aria-hidden="true">💥</span>
+            <span class="ctx-label">{{ t('asset.folder.deleteWithContents') }}</span>
           </button>
         </template>
         <template v-else-if="menu.kind === 'blank' || menu.kind === 'tree-root'">
           <div class="ctx-sep" />
-          <button type="button" @click="onExportLibraryPackage">{{ t('asset.browser.exportPackage') }}</button>
+          <button type="button" @click="onExportLibraryPackage">
+            <span class="ctx-icon" aria-hidden="true">⬆️</span>
+            <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+          </button>
         </template>
       </template>
       <template v-else-if="menu.kind === 'asset'">
@@ -261,38 +342,48 @@
           type="button"
           @click="openEditor(menu.targetId!)"
         >
-          {{ t('asset.browser.context.openEditor') }}
+          <span class="ctx-icon" aria-hidden="true">📝</span>
+          <span class="ctx-label">{{ t('asset.browser.context.openEditor') }}</span>
         </button>
         <button
           v-if="contextMenuAssetCount === 1 && contextMenuCanRevealInFolder"
           type="button"
           @click="showContextAssetInFolder"
         >
-          {{ t('asset.browser.context.showInFolder') }}
+          <span class="ctx-icon" aria-hidden="true">📂</span>
+          <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
         </button>
         <button type="button" @click="copyContextMenuOriginalFiles">
-          {{ t('asset.browser.context.copyOriginal') }}
+          <span class="ctx-icon" aria-hidden="true">📄</span>
+          <span class="ctx-label">{{ t('asset.browser.context.copyOriginal') }}</span>
         </button>
         <button type="button" @click="onReimportSelectedAssets">
-          {{ t('asset.browser.context.reimport') }}
+          <span class="ctx-icon" aria-hidden="true">🔄</span>
+          <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
         </button>
-        <button type="button" @click="onExportSelectedPackage">{{ t('asset.browser.exportPackage') }}</button>
+        <button type="button" @click="onExportSelectedPackage">
+          <span class="ctx-icon" aria-hidden="true">⬆️</span>
+          <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
+        </button>
         <button
           v-if="contextMenuAssetCount === 1"
           type="button"
           @click="startRenameAsset"
         >
-          {{ t('asset.browser.context.rename') }}
+          <span class="ctx-icon" aria-hidden="true">✏️</span>
+          <span class="ctx-label">{{ t('asset.browser.context.rename') }}</span>
         </button>
         <button type="button" @click="findContextMenuReferences">
-          {{ t('asset.browser.context.findReferences') }}
+          <span class="ctx-icon" aria-hidden="true">🔗</span>
+          <span class="ctx-label">{{ t('asset.browser.context.findReferences') }}</span>
         </button>
         <button type="button" class="danger" @click="deleteContextMenuAssets">
-          {{
+          <span class="ctx-icon" aria-hidden="true">🗑️</span>
+          <span class="ctx-label">{{
             contextMenuAssetCount > 1
               ? t('asset.browser.context.deleteSelected', { count: contextMenuAssetCount })
               : t('asset.browser.context.delete')
-          }}
+          }}</span>
         </button>
       </template>
       </div>
@@ -355,9 +446,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
+  ASSET_TYPE_ICONS,
   assetDisplayIcon,
   isAnimationModelAsset,
   isDraftAssetId,
+  isFreeCanvasAsset,
   isImportedMediaRefAsset,
   isPoseModelAsset,
   isScreenplayAsset,
@@ -397,6 +490,7 @@ import RefreshIcon from './icons/RefreshIcon.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import AssetPackageTreeDialog from './AssetPackageTreeDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import {
   summarizeReferenceSites,
   type AssetReferenceHit,
@@ -483,6 +577,7 @@ function assetIcon(asset: AssetInfo): string {
 function assetLabel(asset: AssetInfo): string {
   if (isAnimationModelAsset(asset)) return t('asset.type.modelAnimation')
   if (isPoseModelAsset(asset)) return t('asset.type.modelPose')
+  if (isFreeCanvasAsset(asset)) return t('asset.type.freeCanvas')
   if (isImportedMediaRefAsset(asset)) {
     if (asset.type === 'image') return t('asset.type.imageRef')
     if (asset.type === 'video') return t('asset.type.videoRef')
@@ -494,7 +589,11 @@ function assetLabel(asset: AssetInfo): string {
 
 const query = ref('')
 const refreshing = ref(false)
-const typeFilter = ref('all')
+const typeFilter = ref<AssetType | 'all'>('all')
+const typeFilterOpen = ref(false)
+const searchFocused = ref(false)
+const searchFieldEl = ref<HTMLElement | null>(null)
+const searchInputEl = ref<HTMLInputElement | null>(null)
 const currentFolderId = ref<string | null>(null)
 /** folderId -> expanded; default true */
 const expandedMap = ref<Record<string, boolean>>({})
@@ -761,6 +860,35 @@ const filterTypes: AssetType[] = [
   'model'
 ]
 
+function filterTypeOptionLabel(type: AssetType | 'all'): string {
+  if (type === 'all') return t('common.all')
+  return assetTypeLabel(type)
+}
+
+const typeFilterIcon = computed(() =>
+  typeFilter.value === 'all' ? '🔍' : (ASSET_TYPE_ICONS[typeFilter.value] ?? '•')
+)
+
+const typeFilterShortLabel = computed(() =>
+  typeFilter.value === 'all' ? t('common.all') : assetTypeLabel(typeFilter.value)
+)
+
+function toggleTypeFilterMenu(): void {
+  typeFilterOpen.value = !typeFilterOpen.value
+}
+
+function selectTypeFilter(type: AssetType | 'all'): void {
+  typeFilter.value = type
+  typeFilterOpen.value = false
+}
+
+function clearSearch(): void {
+  if (!query.value && !typeFilterOpen.value) return
+  query.value = ''
+  typeFilterOpen.value = false
+  void nextTick(() => searchInputEl.value?.focus())
+}
+
 const normalizedFolders = computed(() => normalizeFolders(project.folders))
 
 const visibleTreeRows = computed(() =>
@@ -796,6 +924,20 @@ const footerPath = computed(() => {
   return segments.join('/')
 })
 
+const footerStatusText = computed(() => {
+  if (selectedAssetCount.value > 0) {
+    return `${t('asset.browser.selectedCount', { count: selectedAssetCount.value })} · ${footerPath.value}`
+  }
+  return footerPath.value
+})
+
+const footerStatusTitle = computed(() => {
+  if (selectedAssetCount.value > 0) {
+    return `${t('asset.browser.selectedCount', { count: selectedAssetCount.value })}\n${footerPath.value}`
+  }
+  return footerPath.value
+})
+
 const importTargetLabel = computed(() => {
   const root = t('asset.browser.assetsRoot')
   const target = dropTargetId.value
@@ -809,18 +951,55 @@ const importTargetLabel = computed(() => {
   return folder ? `${root} / ${folder.name}` : root
 })
 
-const visibleFolders = computed(() => folderChildren(project.folders, currentFolderId.value))
+/** 搜索框有内容时：全库检索（不限当前目录），与 Unity Project 搜索一致 */
+const isSearching = computed(() => query.value.trim().length > 0)
+
+const searchQuery = computed(() => query.value.trim().toLowerCase())
+
+const visibleFolders = computed(() => {
+  if (isSearching.value) {
+    const q = searchQuery.value
+    return project.folders
+      .filter((folder) => folder.name.toLowerCase().includes(q))
+      .slice()
+      .sort((a, b) => compareNames(a.name, b.name))
+  }
+  return folderChildren(project.folders, currentFolderId.value)
+})
 
 const visibleAssets = computed(() => {
+  const q = searchQuery.value
+  const searching = isSearching.value
   return project.assets
     .filter((a) => {
-      if ((a.folderId ?? null) !== currentFolderId.value) return false
+      if (!searching && (a.folderId ?? null) !== currentFolderId.value) return false
       if (typeFilter.value !== 'all' && a.type !== typeFilter.value) return false
-      if (query.value && !a.name.toLowerCase().includes(query.value.toLowerCase())) return false
+      if (searching && !a.name.toLowerCase().includes(q)) return false
       return true
     })
     .sort((a, b) => compareNames(a.name, b.name))
 })
+
+function folderPathLabel(folderId: string | null | undefined): string {
+  const root = t('asset.browser.assetsRoot')
+  if (!folderId) return root
+  const parts: string[] = []
+  let id: string | null = folderId
+  const guard = new Set<string>()
+  while (id && !guard.has(id)) {
+    guard.add(id)
+    const folder = normalizedFolders.value.find((item) => item.id === id)
+    if (!folder) break
+    parts.unshift(folder.name)
+    id = folder.parentId ?? null
+  }
+  return parts.length ? `${root}/${parts.join('/')}` : root
+}
+
+function assetItemTitle(asset: AssetInfo): string {
+  if (!isSearching.value) return asset.name
+  return `${asset.name}\n${folderPathLabel(asset.folderId)}`
+}
 
 const selectedAssetCount = computed(() => selectedAssetIds.value.size)
 
@@ -1526,7 +1705,7 @@ async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promis
       placeholder: t('asset.create.freeCanvasNamePlaceholder')
     })
     if (!name) return
-    await createAsset('canvas', folderId, { name })
+    await createAsset('canvas', folderId, { name, genParams: { canvasKind: 'free' } })
   } else {
     const title = toolbarCreateLabel(item.id, item.assetType)
     const name = await promptCreateAssetName({
@@ -2160,6 +2339,11 @@ const pointerInside = ref(false)
 
 function onKeyDown(e: KeyboardEvent): void {
   if (nameDialog.value) return
+  if (e.key === 'Escape' && typeFilterOpen.value) {
+    e.preventDefault()
+    typeFilterOpen.value = false
+    return
+  }
   if (!pointerInside.value) return
   const tag = (e.target as HTMLElement)?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
@@ -2184,6 +2368,9 @@ function onKeyDown(e: KeyboardEvent): void {
 function onGlobalPointerDown(e: MouseEvent): void {
   if (nameDialog.value) return
   const target = e.target as HTMLElement | null
+  if (typeFilterOpen.value) {
+    if (!target?.closest('.search-field')) typeFilterOpen.value = false
+  }
   if (target?.closest('.ctx-menu')) return
   closeMenu()
 }
@@ -2228,59 +2415,169 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.title {
-  font-weight: 600;
-}
-
-.import-hint {
-  flex: 1;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.toolbar-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  line-height: 0;
-}
-
 .filters {
   display: flex;
+  align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.filters input {
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  height: 24px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: visible;
+}
+
+.search-field.focused,
+.search-field.open {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.search-input {
   flex: 1;
   min-width: 0;
   width: auto;
+  height: 100%;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 6px !important;
+  font-size: 12px;
+  line-height: 1.2;
+  box-shadow: none !important;
+  outline: none;
 }
 
-.filters select {
-  width: auto;
+.search-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  min-width: 88px;
+  width: 18px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-clear-btn:hover {
+  color: var(--text);
+}
+
+.type-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 42%;
+  height: 100%;
+  margin: 0;
+  padding: 0 6px 0 5px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.type-filter-btn:hover,
+.type-filter-btn.active {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.type-filter-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.type-filter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-filter-caret {
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.75;
+}
+
+.type-filter-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  right: 0;
+  z-index: 40;
+  min-width: 148px;
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.type-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.type-filter-item:hover,
+.type-filter-item.selected {
+  background: var(--bg-hover);
+}
+
+.type-filter-item-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+  line-height: 1;
+}
+
+.filters .refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  line-height: 0;
 }
 
 .split {
@@ -2812,6 +3109,9 @@ onBeforeUnmount(() => {
 }
 
 .ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   border: none;
   background: transparent;
@@ -2827,6 +3127,22 @@ onBeforeUnmount(() => {
 
 .ctx-menu button.danger {
   color: var(--danger);
+}
+
+.ctx-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ctx-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .ctx-sep {
