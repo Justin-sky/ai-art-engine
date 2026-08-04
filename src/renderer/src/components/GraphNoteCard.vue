@@ -7,6 +7,7 @@
         connecting,
         'link-mode': linkMode,
         'force-chrome': forceShowChrome,
+        'suppress-chrome': suppressChrome,
         'preview-collapsed': previewCollapsed,
         'lock-node': isLocked,
         'run-error': runStatus === 'error',
@@ -188,6 +189,8 @@ const props = defineProps<{
   linkMode?: boolean
   /** 画布有选中时：全部节点显示折叠/锁定与类型图标 */
   forceShowChrome?: boolean
+  /** 缩放节点时强制隐藏控件，保持干净 */
+  suppressChrome?: boolean
   hostId?: string
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -638,6 +641,15 @@ function onBodyDblClick(): void {
 .graph-note.preview-collapsed .head-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.graph-note.suppress-chrome .collapse-tri-btn,
+.graph-note.suppress-chrome .head-actions,
+.graph-note.suppress-chrome .type-badge,
+.graph-note.suppress-chrome .title,
+.graph-note.suppress-chrome .title-input {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 @media (hover: none) {

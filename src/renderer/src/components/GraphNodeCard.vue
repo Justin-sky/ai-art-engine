@@ -11,6 +11,7 @@
       connecting: connecting,
       'link-mode': linkMode,
       'force-chrome': forceShowChrome,
+      'suppress-chrome': suppressChrome,
       'run-error': runStatus === 'error',
       'run-running': runStatus === 'running',
       'instruction-open': instructionOpen,
@@ -171,6 +172,7 @@
         loading="lazy"
         decoding="async"
         draggable="false"
+        @load="onPreviewImageLoad"
       />
 
       <video
@@ -404,6 +406,7 @@ import {
   formatPortLimitBadge,
   getGraphScopeDefinition,
   getNodePorts,
+  fitNodeSizeToMediaAspect,
   getNodeSize,
   nodePortYRatio,
   GraphPortType,
@@ -527,6 +530,8 @@ const props = defineProps<{
    * 未选中时仅悬停当前节点显示。
    */
   forceShowChrome?: boolean
+  /** 缩放节点时强制隐藏顶栏/标题/类型图标等，保持预览干净 */
+  suppressChrome?: boolean
   asset?: AssetInfo | null
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -541,6 +546,8 @@ const emit = defineEmits<{
   inPortDown: [nodeId: string, portId: string, event: PointerEvent]
   resizeStart: [nodeId: string, event: PointerEvent]
   titleChange: [nodeId: string, title: string]
+  /** 按预览媒体比例自动适配节点尺寸 */
+  sizeChange: [nodeId: string, size: { w: number; h: number }]
   runToggle: [nodeId: string]
   selectImageOpen: [nodeId: string]
   selectVideoOpen: [nodeId: string]
@@ -2060,10 +2067,41 @@ function onMediaTimeUpdate(e: Event): void {
   syncMediaClock(e.currentTarget as HTMLMediaElement)
 }
 
+const lastAutoFitMediaKey = ref('')
+
+watch(
+  () => previewUrl.value,
+  () => {
+    lastAutoFitMediaKey.value = ''
+  }
+)
+
+function tryAutoFitPreviewMedia(mediaW: number, mediaH: number): void {
+  if (!(mediaW > 0 && mediaH > 0)) return
+  if (previewCollapsed.value) return
+  if (props.node.params.sizeManuallyResized === true) return
+  if (previewKind.value !== 'image' && previewKind.value !== 'video') return
+  const key = `${previewUrl.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
+  if (key === lastAutoFitMediaKey.value) return
+  const next = fitNodeSizeToMediaAspect(props.node, mediaW, mediaH)
+  const cur = getNodeSize(props.node)
+  lastAutoFitMediaKey.value = key
+  if (Math.abs(cur.w - next.w) < 1 && Math.abs(cur.h - next.h) < 1) return
+  emit('sizeChange', props.node.id, next)
+}
+
+function onPreviewImageLoad(e: Event): void {
+  const img = e.currentTarget as HTMLImageElement
+  tryAutoFitPreviewMedia(img.naturalWidth, img.naturalHeight)
+}
+
 function onMediaLoaded(e: Event): void {
   const el = e.currentTarget as HTMLMediaElement
   applyMediaParams()
   syncMediaClock(el)
+  if (el instanceof HTMLVideoElement) {
+    tryAutoFitPreviewMedia(el.videoWidth, el.videoHeight)
+  }
 }
 
 onBeforeUnmount(() => {
@@ -2281,6 +2319,15 @@ function formatTime(sec: number): string {
 .graph-node.preview-collapsed .node-head {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 拉升尺寸时盖过 hover/选中，强制保持干净 */
+.graph-node.suppress-chrome .node-head,
+.graph-node.suppress-chrome .type-badge,
+.graph-node.suppress-chrome .transport,
+.graph-node.suppress-chrome .node-title {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* 折叠三角：与锁定按钮同尺寸 */

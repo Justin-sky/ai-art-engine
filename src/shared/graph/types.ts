@@ -433,6 +433,10 @@ export interface GraphNodeParams {
   /** 节点卡片收起预览区（仅保留标题栏） */
   previewCollapsed?: boolean
   /**
+   * 用户手动拖过右下角缩放后为 true，停止按预览媒体比例自动改尺寸。
+   */
+  sizeManuallyResized?: boolean
+  /**
    * 节点锁定（输入/输出除外）：开启后跳过执行，直接复用图库/上次 runStates 输出。
    * 无可用缓存时运行报错，不静默成功。
    */

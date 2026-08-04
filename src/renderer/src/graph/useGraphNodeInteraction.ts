@@ -273,6 +273,7 @@ export function useGraphNodeInteraction(options: GraphNodeInteractionOptions) {
       const dx = (moveEvent.clientX - resizeStart.x) / options.graph.viewport.zoom
       const dy = (moveEvent.clientY - resizeStart.y) / options.graph.viewport.zoom
       target.size = clampNodeSize(target, sizeStart.w + dx, sizeStart.h + dy)
+      target.params = { ...target.params, sizeManuallyResized: true }
     }
     const onUp = (): void => {
       window.removeEventListener('pointermove', onMove)

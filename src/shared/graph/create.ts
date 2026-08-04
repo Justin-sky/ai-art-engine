@@ -103,6 +103,53 @@ export function clampNodeSize(
   }
 }
 
+/**
+ * 按预览图/视频像素比计算节点尺寸：横图锚默认宽、竖图锚默认高，再钳制到 sizeLimits。
+ */
+export function fitNodeSizeToMediaAspect(
+  node: GraphNode,
+  mediaW: number,
+  mediaH: number
+): { w: number; h: number } {
+  if (!(mediaW > 0 && mediaH > 0) || !Number.isFinite(mediaW) || !Number.isFinite(mediaH)) {
+    return getNodeSize(node)
+  }
+  ensureBuiltinNodeTypes()
+  const def = resolveNodeType(node)
+  const defaults = def?.defaultSize ?? getNodeDefaultSize(node.category)
+  const limits = def?.sizeLimits ?? { minW: 120, minH: 72, maxW: 480, maxH: 400 }
+  const aspect = mediaW / mediaH
+
+  let w: number
+  let h: number
+  if (aspect >= 1) {
+    w = defaults.w
+    h = w / aspect
+  } else {
+    h = defaults.h
+    w = h * aspect
+  }
+
+  if (w > limits.maxW) {
+    w = limits.maxW
+    h = w / aspect
+  }
+  if (h > limits.maxH) {
+    h = limits.maxH
+    w = h * aspect
+  }
+  if (w < limits.minW) {
+    w = limits.minW
+    h = w / aspect
+  }
+  if (h < limits.minH) {
+    h = limits.minH
+    w = h * aspect
+  }
+
+  return clampNodeSize(node, w, h)
+}
+
 export function createNodeFromType(
   typeId: GraphNodeTypeId,
   position: { x: number; y: number },

@@ -334,7 +334,8 @@
           :selected="isNodeSelected(node.id)"
           :connecting="isLinkHighlightNode(node.id)"
           :link-mode="!!(linkingFrom || linkingTo || rewireSession)"
-          :force-show-chrome="selectedNodeIds.size > 0"
+          :force-show-chrome="selectedNodeIds.size > 0 && !isResizingNode"
+          :suppress-chrome="isResizingNode"
           :asset="assetFor(node)"
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"
@@ -344,6 +345,7 @@
           @drag-start="onNodeDragStart"
           @text-change="onNoteTextChange"
           @title-change="onNodeTitleChange"
+          @size-change="onNodeSizeChange"
           @out-port-down="onOutPortDown"
           @in-port-down="onInPortDown"
           @select-image-open="onSelectImageOpen"
@@ -4313,6 +4315,18 @@ function onNodeTitleChange(nodeId: string, title: string): void {
   recordGraphChange('rename-node', before)
 }
 
+/** 预览图/视频加载后按像素比自动适配节点尺寸（用户手动缩放后不再改） */
+function onNodeSizeChange(nodeId: string, size: { w: number; h: number }): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  if (node.params.sizeManuallyResized === true) return
+  const cur = getNodeSize(node)
+  if (Math.abs(cur.w - size.w) < 1 && Math.abs(cur.h - size.h) < 1) return
+  node.size = { w: size.w, h: size.h }
+  scheduleSave()
+  requestEdgeRender()
+}
+
 function isSelfAssetDrop(asset: Pick<AssetInfo, 'id'>): boolean {
   return isAssetGraph.value && !!props.assetId && asset.id === props.assetId
 }
@@ -5012,11 +5026,14 @@ const graphNodeInteraction = useGraphNodeInteraction({
   }
 })
 const { onNodeDragStart, onNodeResizeStart } = graphNodeInteraction
+/** 右下角拉升尺寸中：隐藏标题栏/控件，保持节点预览干净 */
+const isResizingNode = ref(false)
 
 function onNodeResizeStartWrapped(nodeId: string, event: PointerEvent): void {
   const node = graph.nodes.find((item) => item.id === nodeId)
   if (!node) return
   const resizingInGroup = !!node.groupId
+  isResizingNode.value = true
   onNodeResizeStart(nodeId, event)
   // 缩放会改变端口中心，边端点需随之逐帧重绘（无论是否在分组内）
   const onMove = (): void => {
@@ -5024,6 +5041,7 @@ function onNodeResizeStartWrapped(nodeId: string, event: PointerEvent): void {
     requestEdgeRender()
   }
   const onUp = (): void => {
+    isResizingNode.value = false
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
     window.removeEventListener('pointercancel', onUp)
