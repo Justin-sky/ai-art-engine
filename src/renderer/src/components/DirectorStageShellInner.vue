@@ -144,6 +144,73 @@
         </div>
       </div>
       <div class="title-actions no-drag">
+        <div class="gizmos-root">
+          <button
+            type="button"
+            class="shots-trigger gizmos-trigger"
+            :class="{ open: gizmosMenuOpen }"
+            :aria-expanded="gizmosMenuOpen"
+            :title="t('director.stage.gizmos.title')"
+            @click.stop="toggleGizmosMenu"
+          >
+            <span class="shots-trigger-icon" v-html="GIZMOS_ICON" />
+          </button>
+          <div v-if="gizmosMenuOpen" ref="gizmosMenuEl" class="gizmos-menu">
+            <div class="gizmos-title">{{ t('director.stage.gizmos.title') }}</div>
+            <label class="gizmos-row">
+              <span>{{ t('director.stage.gizmos.size') }}</span>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.05"
+                :value="scene.gizmoSize.value"
+                @input="onGizmoSizeInput"
+              />
+              <span class="gizmos-val">{{ scene.gizmoSize.value.toFixed(2) }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.sceneLabelsVisible.value"
+                @change="onGizmoToggle('labels', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.labels') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.cameraGizmosVisible.value"
+                @change="onGizmoToggle('cameras', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.cameras') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.gridGizmoVisible.value"
+                @change="onGizmoToggle('grid', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.grid') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.selectionBoundsVisible.value"
+                @change="onGizmoToggle('bounds', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.selectionBounds') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.captureLabelsVisible.value"
+                @change="onGizmoToggle('captureLabels', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.captureLabels') }}</span>
+            </label>
+          </div>
+        </div>
         <div class="shots-root">
           <button
             type="button"
@@ -251,6 +318,7 @@ import DirectorAnimationPanel from './DirectorAnimationPanel.vue'
 import DirectorCameraPreviewPanel from './DirectorCameraPreviewPanel.vue'
 
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
+const GIZMOS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.6"/><ellipse cx="12" cy="12" rx="7.6" ry="3.1"/><ellipse cx="12" cy="12" rx="3.1" ry="7.6"/><path d="M4.4 12h15.2"/><path d="M12 4.4v15.2"/></svg>`
 
 defineProps<{
   showClose?: boolean
@@ -277,6 +345,8 @@ const presetMenuEl = ref<HTMLElement | null>(null)
 const presetSubmenu = ref<string | null>(null)
 const shotsPanelOpen = ref(false)
 const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
+const gizmosMenuOpen = ref(false)
+const gizmosMenuEl = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
 const hasSelection = computed(
@@ -351,6 +421,28 @@ function toggleShotsPanel(): void {
   if (shotsPanelOpen.value) closeViewMenu()
 }
 
+function toggleGizmosMenu(): void {
+  gizmosMenuOpen.value = !gizmosMenuOpen.value
+  if (gizmosMenuOpen.value) closeShotsPanel()
+}
+
+function onGizmoSizeInput(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value)
+  if (Number.isFinite(value)) scene.setGizmoSize(value)
+}
+
+function onGizmoToggle(
+  kind: 'labels' | 'cameras' | 'grid' | 'bounds' | 'captureLabels',
+  event: Event
+): void {
+  const checked = (event.target as HTMLInputElement).checked
+  if (kind === 'labels') scene.setSceneLabelsVisible(checked)
+  else if (kind === 'cameras') scene.setCameraGizmosVisible(checked)
+  else if (kind === 'grid') scene.setGridGizmoVisible(checked)
+  else if (kind === 'bounds') scene.setSelectionBoundsVisible(checked)
+  else scene.setCaptureLabelsVisible(checked)
+}
+
 function closeShotsPanel(): void {
   shotsPanelOpen.value = false
 }
@@ -399,6 +491,11 @@ function onDocumentPointerDown(event: PointerEvent): void {
   if (shotsPanelOpen.value) {
     if (target?.closest('.shots-root')) return
     closeShotsPanel()
+  }
+  if (gizmosMenuOpen.value) {
+    if (gizmosMenuEl.value?.contains(target)) return
+    if (target?.closest('.gizmos-root')) return
+    gizmosMenuOpen.value = false
   }
 }
 
@@ -779,6 +876,68 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
   top: calc(100% + 6px);
   right: 0;
   z-index: 50;
+}
+
+.gizmos-root {
+  position: relative;
+}
+
+.gizmos-trigger {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+.gizmos-trigger .shots-trigger-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.gizmos-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 55;
+  min-width: 210px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.gizmos-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gizmos-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 2px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.gizmos-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.gizmos-val {
+  width: 34px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.gizmos-row.check input {
+  accent-color: var(--accent);
 }
 
 .close-btn {

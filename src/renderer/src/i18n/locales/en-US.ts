@@ -1208,6 +1208,15 @@ export default {
         profile: 'Profile',
         back: 'Back'
       },
+      gizmos: {
+        title: 'Gizmos',
+        size: 'Size',
+        labels: 'Scene labels',
+        cameras: 'Camera gizmos',
+        grid: 'Grid',
+        selectionBounds: 'Selection bounds',
+        captureLabels: 'Include scene labels in captures'
+      },
       aspectRatio: 'Aspect ratio',
       aspectAuto: 'Auto',
       shotsEmpty: 'No shots yet',
