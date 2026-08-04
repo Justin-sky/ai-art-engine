@@ -115,7 +115,8 @@ jobs:
             EXTRA_ARGS+=(--config.mac.identity=null)
             echo "Unsigned macOS build (no MAC_CSC_* secrets)"
           fi
-          npx electron-builder --mac --publish never "${EXTRA_ARGS[@]}"
+          # macos-latest 为 arm64；显式打 x64+arm64，供 Intel / Apple Silicon 分别下载
+          npx electron-builder --mac --x64 --arm64 --publish never "${EXTRA_ARGS[@]}"
 
       - name: Package (Linux)
         if: matrix.platform == 'linux'

@@ -24,7 +24,7 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:mac": "npm run build && electron-builder --mac --x64 --arm64",
     "dist:linux": "npm run build && electron-builder --linux",
     "site": "npx --yes serve website -p 5174",
     "site:deploy": "node scripts/deploy-website-oss.mjs"

@@ -88,7 +88,7 @@ npm run site:deploy          # 部署 website/ 到阿里云 OSS
 | Platform | Package | Get it |
 |----------|---------|--------|
 | **Windows** | `.exe` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases) |
-| **macOS** | `.dmg` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（需 Mac / CI 构建；未签名时在「隐私与安全性」允许） |
+| **macOS** | `.dmg`（`x64` / `arm64`） | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)：Intel 选 **x64**，Apple Silicon 选 **arm64**（仅 arm64 时 Intel Mac 会提示不支持） |
 | **Linux** | `.AppImage` | [GitHub Releases](https://github.com/Justin-sky/ai-art-engine/releases)（`chmod +x` 后运行） |
 
 推送 `v*` tag 可由 GitHub Actions 自动构建并发布多平台安装包。也可自行打包：

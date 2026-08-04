@@ -23,13 +23,23 @@ win:
     - nsis
   # 签名：CI 注入 WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD（.pfx base64）后自动签名
 mac:
+  # 同时打 Intel (x64) 与 Apple Silicon (arm64)；仅 arm64 时 Intel Mac 会提示「不支持此应用程序」
   target:
-    - dmg
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   # 公证：CI 在配置了 APPLE_* Secrets 时通过 --config.mac.notarize=true 开启
+  # 产物名带架构，避免 Intel / Apple Silicon 装错包
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage
