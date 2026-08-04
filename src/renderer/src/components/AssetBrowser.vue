@@ -425,6 +425,8 @@
       :rows="packageDialog.rows"
       :initial-selected="packageDialog.initialSelected"
       :initial-include-dependencies="packageDialog.includeDependencies"
+      :show-include-generated-outputs="packageDialog.mode === 'export'"
+      :initial-include-generated-outputs="packageDialog.includeGeneratedOutputs"
       :busy="packageDialog.busy"
       :error="packageDialog.error"
       :tip="packageDialog.tip"
@@ -612,6 +614,7 @@ type PackageDialogState = {
   rows: AssetPackageTreeRow[]
   initialSelected: string[]
   includeDependencies: boolean
+  includeGeneratedOutputs: boolean
   busy: boolean
   error: string
   tip: string
@@ -629,6 +632,7 @@ const packageDialog = ref<PackageDialogState>({
   rows: [],
   initialSelected: [],
   includeDependencies: true,
+  includeGeneratedOutputs: false,
   busy: false,
   error: '',
   tip: '',
@@ -659,6 +663,7 @@ function openExportPackageDialog(initialSelected: string[]): void {
     rows,
     initialSelected,
     includeDependencies: true,
+    includeGeneratedOutputs: false,
     busy: false,
     error: '',
     tip: '',
@@ -684,6 +689,7 @@ async function openImportPackageDialog(
       rows,
       initialSelected: rows.map((r) => r.guid),
       includeDependencies: true,
+      includeGeneratedOutputs: false,
       busy: false,
       error: '',
       tip: '',
@@ -698,6 +704,7 @@ async function openImportPackageDialog(
 async function onPackageDialogConfirm(payload: {
   selectedGuids: string[]
   includeDependencies: boolean
+  includeGeneratedOutputs: boolean
 }): Promise<void> {
   const dialog = packageDialog.value
   if (!dialog.open || dialog.busy) return
@@ -719,7 +726,8 @@ async function onPackageDialogConfirm(payload: {
       const result = await window.studio.exportAssetPackage({
         assetIds,
         folderIds,
-        includeDependencies: payload.includeDependencies
+        includeDependencies: payload.includeDependencies,
+        includeGeneratedOutputs: payload.includeGeneratedOutputs
       })
       packageDialog.value = { ...packageDialog.value, open: false, busy: false }
       if (!result.path) return
@@ -732,6 +740,7 @@ async function onPackageDialogConfirm(payload: {
         message: t('asset.browser.packageExportDone', {
           assets: result.exportedAssets,
           folders: result.exportedFolders,
+          generated: result.exportedGenerated,
           path: result.path
         })
       })
@@ -767,7 +776,8 @@ async function onPackageDialogConfirm(payload: {
         folders: result.importedFolders,
         folderReuse: result.reusedFolders,
         reused: result.reused,
-        remapped: result.remapped
+        remapped: result.remapped,
+        generated: result.restoredGenerated
       })
     })
   } catch (e) {

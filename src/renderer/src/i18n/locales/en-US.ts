@@ -514,9 +514,10 @@ export default {
       importPackageTitle: 'Import a .aipackage into the current folder',
       packageNeedSelection: 'Select assets first, or open the folder to export',
       packageSkipped: '{count} item(s) skipped (unsupported type, draft, etc.)',
-      packageExportDone: 'Exported {assets} asset(s), {folders} folder(s)\n{path}',
+      packageExportDone:
+        'Exported {assets} asset(s), {folders} folder(s), {generated} generated file(s)\n{path}',
       packageImportDone:
-        'Imported {assets} asset(s) (folders: new {folders}, reused {folderReuse}); entry reuse {reused}; remapped {remapped}',
+        'Imported {assets} asset(s) (folders: new {folders}, reused {folderReuse}); entry reuse {reused}; remapped {remapped}; restored generated {generated}',
       reimportNone: 'No media assets to reimport',
       reimportPartial: 'Reimported {ok} item(s), skipped {skip}',
       viewList: 'List',
@@ -560,6 +561,9 @@ export default {
       selectAll: 'Select all',
       selectNone: 'Select none',
       includeDependencies: 'Include dependencies',
+      includeGeneratedOutputs: 'Include generated outputs',
+      includeGeneratedOutputsHint:
+        'Also pack Cache/Output files referenced by canvases or scripts (may increase size)',
       selectedCount: '{count} selected',
       emptyTree: 'Nothing to show',
       exportConfirm: 'Export',

@@ -510,9 +510,10 @@ export default {
       importPackageTitle: '从 .aipackage 导入到当前文件夹',
       packageNeedSelection: '请先选中资产，或进入要导出的文件夹',
       packageSkipped: '另有 {count} 项已跳过（不支持的类型或草稿等）',
-      packageExportDone: '已导出 {assets} 个资产、{folders} 个文件夹\n{path}',
+      packageExportDone:
+        '已导出 {assets} 个资产、{folders} 个文件夹、{generated} 个生成产物\n{path}',
       packageImportDone:
-        '已导入 {assets} 个资产（文件夹：新建 {folders}，复用 {folderReuse}）；条目复用 {reused}；重映射 {remapped}',
+        '已导入 {assets} 个资产（文件夹：新建 {folders}，复用 {folderReuse}）；条目复用 {reused}；重映射 {remapped}；还原生成产物 {generated}',
       reimportNone: '没有可重新导入的媒体资产',
       reimportPartial: '已重新导入 {ok} 项，跳过 {skip} 项',
       viewList: '列表',
@@ -556,6 +557,9 @@ export default {
       selectAll: '全选',
       selectNone: '全不选',
       includeDependencies: '包含依赖',
+      includeGeneratedOutputs: '包含生成产物',
+      includeGeneratedOutputsHint:
+        '把画布/脚本中引用的 Cache、Output 等生成缓存一并打进包（体积可能较大）',
       selectedCount: '已勾选 {count} 项',
       emptyTree: '没有可选项',
       exportConfirm: '导出',

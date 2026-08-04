@@ -26,12 +26,18 @@ export interface PackedPackageEntry {
   role: AssetPackageManifest['entries'][number]['role']
 }
 
+export interface PackedGeneratedFile {
+  relativePath: string
+  data: Buffer
+}
+
 export async function writeAipackageArchive(
   filePath: string,
   input: {
     name: string
     appVersion: string
     entries: PackedPackageEntry[]
+    generated?: PackedGeneratedFile[]
   }
 ): Promise<AssetPackageManifest> {
   const zip = new JSZip()
@@ -65,6 +71,22 @@ export async function writeAipackageArchive(
     })
   }
 
+  const generated = input.generated ?? []
+  if (generated.length) {
+    const generatedFiles: NonNullable<AssetPackageManifest['generatedFiles']> = []
+    for (const file of generated) {
+      const sha = sha256Buffer(file.data)
+      zip.file(`generated/${file.relativePath}`, file.data)
+      generatedFiles.push({
+        relativePath: file.relativePath,
+        sha256: sha,
+        size: file.data.length
+      })
+    }
+    manifest.generatedFiles = generatedFiles
+    zip.file('generated.json', JSON.stringify(generatedFiles, null, 2))
+  }
+
   zip.file('manifest.json', JSON.stringify(manifest, null, 2))
   const content = await zip.generateAsync({
     type: 'nodebuffer',
@@ -86,6 +108,7 @@ export interface ReadPackageEntry {
 export async function readAipackageArchive(filePath: string): Promise<{
   manifest: AssetPackageManifest
   entries: ReadPackageEntry[]
+  generated: PackedGeneratedFile[]
 }> {
   const raw = readFileSync(filePath)
   // Soft zip-bomb guard: reject absurd ratios later via entry sizes
@@ -148,7 +171,34 @@ export async function readAipackageArchive(filePath: string): Promise<{
     })
   }
 
-  return { manifest, entries }
+  const generated: PackedGeneratedFile[] = []
+  const listedGenerated = Array.isArray(manifest.generatedFiles) ? manifest.generatedFiles : []
+  if (listedGenerated.length > 50_000) {
+    throw new Error('资产包生成产物过多')
+  }
+  for (const item of listedGenerated) {
+    const relativePath = String(item.relativePath ?? '')
+      .trim()
+      .replace(/\\/g, '/')
+    if (!relativePath || relativePath.includes('..') || relativePath.startsWith('/')) {
+      throw new Error(`非法生成产物路径: ${relativePath}`)
+    }
+    const file = zip.file(`generated/${relativePath}`)
+    if (!file) throw new Error(`缺少生成产物: ${relativePath}`)
+    const data = Buffer.from(await file.async('uint8array'))
+    if (data.length !== item.size) {
+      throw new Error(`生成产物大小不一致: ${relativePath}`)
+    }
+    if (data.length > 512 * 1024 * 1024) {
+      throw new Error(`生成产物过大: ${relativePath}`)
+    }
+    if (sha256Buffer(data) !== item.sha256) {
+      throw new Error(`生成产物校验失败: ${relativePath}`)
+    }
+    generated.push({ relativePath, data })
+  }
+
+  return { manifest, entries, generated }
 }
 
 /** 仅读 pathname + meta，用于导入前勾选预览（不读 payload） */

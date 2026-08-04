@@ -17,6 +17,13 @@ export interface AssetPackageManifestEntry {
   payloadSize: number
 }
 
+/** 可选：包内 `generated/` 下的生成缓存文件（非资产库条目） */
+export interface AssetPackageGeneratedFileEntry {
+  relativePath: string
+  sha256: string
+  size: number
+}
+
 export interface AssetPackageManifest {
   format: typeof AIPACKAGE_FORMAT
   formatVersion: typeof AIPACKAGE_FORMAT_VERSION
@@ -25,6 +32,8 @@ export interface AssetPackageManifest {
   createdAt: string
   createdWith: { app: string; version: string }
   entries: AssetPackageManifestEntry[]
+  /** 勾选「包含生成产物」时写入；旧版读取方可忽略 */
+  generatedFiles?: AssetPackageGeneratedFileEntry[]
 }
 
 export interface AssetPackagePortableAsset {
@@ -77,6 +86,11 @@ export interface ExportAssetPackageInput {
   folderIds?: string[]
   /** 默认 true：收集 genParams（及脚本分镜）内资产引用 */
   includeDependencies?: boolean
+  /**
+   * 默认 false：一并打包所选资产 genParams / 分镜中引用的生成缓存
+   *（Cache/*、历史 Output/* 等，非资产库登记文件）
+   */
+  includeGeneratedOutputs?: boolean
   /** 另存为默认名 */
   defaultName?: string
 }
@@ -85,6 +99,8 @@ export interface ExportAssetPackageResult {
   path: string | null
   exportedAssets: number
   exportedFolders: number
+  /** 打入包的生成产物文件数 */
+  exportedGenerated: number
   skipped: { id: string; reason: string }[]
 }
 
@@ -120,6 +136,8 @@ export interface ImportAssetPackageResult {
   reusedFolders: number
   reused: number
   remapped: number
+  /** 还原到工程的生成产物文件数（已存在则跳过） */
+  restoredGenerated: number
   items: ImportAssetPackageItemReport[]
 }
 

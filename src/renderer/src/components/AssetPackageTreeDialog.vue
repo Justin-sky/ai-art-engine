@@ -14,10 +14,20 @@
       <div class="toolbar">
         <button type="button" @click="selectAll">{{ t('asset.package.selectAll') }}</button>
         <button type="button" @click="selectNone">{{ t('asset.package.selectNone') }}</button>
-        <label class="deps">
-          <input v-model="includeDependencies" type="checkbox" />
-          {{ t('asset.package.includeDependencies') }}
-        </label>
+        <div class="opts">
+          <label class="deps">
+            <input v-model="includeDependencies" type="checkbox" />
+            {{ t('asset.package.includeDependencies') }}
+          </label>
+          <label
+            v-if="showIncludeGeneratedOutputs"
+            class="deps"
+            :title="t('asset.package.includeGeneratedOutputsHint')"
+          >
+            <input v-model="includeGeneratedOutputs" type="checkbox" />
+            {{ t('asset.package.includeGeneratedOutputs') }}
+          </label>
+        </div>
       </div>
 
       <div class="tree" role="tree">
@@ -98,6 +108,9 @@ const props = withDefaults(
     rows: AssetPackageTreeRow[]
     initialSelected?: string[]
     initialIncludeDependencies?: boolean
+    /** 仅导出模式：是否显示「包含生成产物」 */
+    showIncludeGeneratedOutputs?: boolean
+    initialIncludeGeneratedOutputs?: boolean
     busy?: boolean
     error?: string
     tip?: string
@@ -106,6 +119,8 @@ const props = withDefaults(
     subtitle: '',
     initialSelected: () => [],
     initialIncludeDependencies: true,
+    showIncludeGeneratedOutputs: false,
+    initialIncludeGeneratedOutputs: false,
     busy: false,
     error: '',
     tip: ''
@@ -113,7 +128,13 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  confirm: [payload: { selectedGuids: string[]; includeDependencies: boolean }]
+  confirm: [
+    payload: {
+      selectedGuids: string[]
+      includeDependencies: boolean
+      includeGeneratedOutputs: boolean
+    }
+  ]
   cancel: []
 }>()
 
@@ -121,6 +142,7 @@ const { t } = useStudioI18n()
 const selected = ref<Set<string>>(new Set())
 const expanded = ref<Set<string>>(new Set())
 const includeDependencies = ref(true)
+const includeGeneratedOutputs = ref(false)
 
 const rows = computed(() => props.rows)
 
@@ -133,6 +155,7 @@ watch(
   (visible) => {
     if (!visible) return
     includeDependencies.value = props.initialIncludeDependencies
+    includeGeneratedOutputs.value = props.initialIncludeGeneratedOutputs
     expanded.value = expandAllFolders(props.rows)
     const initial = props.initialSelected?.length
       ? props.initialSelected
@@ -206,7 +229,8 @@ function onConfirm(): void {
   if (props.busy || selected.value.size === 0) return
   emit('confirm', {
     selectedGuids: [...selected.value],
-    includeDependencies: includeDependencies.value
+    includeDependencies: includeDependencies.value,
+    includeGeneratedOutputs: includeGeneratedOutputs.value
   })
 }
 </script>
@@ -243,11 +267,18 @@ function onConfirm(): void {
   background: #333;
 }
 
+.opts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
 .deps {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-left: auto;
   font-size: 11px;
   color: var(--text-muted);
 }

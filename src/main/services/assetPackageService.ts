@@ -1,10 +1,15 @@
 import { app, dialog } from 'electron'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { extname, join, relative } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { dirname, extname, isAbsolute, join, relative } from 'path'
 import type { AssetFolder, AssetInfo, Shot } from '@shared/domain'
 import { isDraftAssetId, isStoryboardScript, resolveUniqueAssetName } from '@shared/domain'
 import { collectAssetGuids, remapAssetGuids } from '@shared/assetRef'
+import {
+  collectRelativePathStrings,
+  isPackableGeneratedRelativePath,
+  normalizePackableRelativePath
+} from '@shared/assetPackage/generatedOutputs'
 import {
   buildAssetPathname,
   folderPathname,
@@ -33,6 +38,7 @@ import {
   sha256Buffer,
   sha256Json,
   writeAipackageArchive,
+  type PackedGeneratedFile,
   type PackedPackageEntry
 } from '../repositories/assetPackageArchive'
 import { assetRepository } from '../repositories/assetRepository'
@@ -87,6 +93,15 @@ function loadShotsForScript(asset: AssetInfo): Shot[] {
     if (shot) shots.push(structuredClone(shot))
   }
   return shots
+}
+
+function resolveSafeProjectFile(root: string, relativePosix: string): string | null {
+  const safe = normalizePackableRelativePath(relativePosix)
+  if (!safe) return null
+  const abs = join(root, ...safe.split('/').filter(Boolean))
+  const rel = relative(root, abs)
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return null
+  return abs
 }
 
 function collectExportDependencies(
@@ -325,6 +340,35 @@ class AssetPackageService {
       })
     }
 
+    const generated: PackedGeneratedFile[] = []
+    if (input.includeGeneratedOutputs) {
+      const cacheRoot = projectService.getConfig()?.cacheOutputDir
+      const alreadyPayload = new Set(
+        [...exportAssetIds]
+          .map((id) => normalizePackableRelativePath(byId.get(id)?.relativePath))
+          .filter(Boolean)
+      )
+      const pathSet = new Set<string>()
+      for (const id of exportAssetIds) {
+        const asset = byId.get(id)
+        if (!asset) continue
+        collectRelativePathStrings(asset.genParams ?? {}, pathSet)
+        if (isStoryboardScript(asset.type)) {
+          collectRelativePathStrings(loadShotsForScript(asset), pathSet)
+        }
+      }
+      for (const rel of pathSet) {
+        if (!isPackableGeneratedRelativePath(rel, cacheRoot)) continue
+        if (alreadyPayload.has(rel)) continue
+        const abs = resolveSafeProjectFile(root, rel)
+        if (!abs || !existsSync(abs)) {
+          skipped.push({ id: rel, reason: 'missing-generated' })
+          continue
+        }
+        generated.push({ relativePath: rel, data: readFileSync(abs) })
+      }
+    }
+
     const defaultName =
       (input.defaultName?.trim() || 'assets').replace(/[<>:"/\\|?*]/g, '_') || 'assets'
     const save = await dialog.showSaveDialog({
@@ -334,7 +378,7 @@ class AssetPackageService {
       properties: ['createDirectory', 'showOverwriteConfirmation']
     })
     if (save.canceled || !save.filePath) {
-      return { path: null, exportedAssets: 0, exportedFolders: 0, skipped }
+      return { path: null, exportedAssets: 0, exportedFolders: 0, exportedGenerated: 0, skipped }
     }
     let outPath = save.filePath
     if (!outPath.toLowerCase().endsWith(`.${AIPACKAGE_EXTENSION}`)) {
@@ -344,13 +388,15 @@ class AssetPackageService {
     await writeAipackageArchive(outPath, {
       name: defaultName,
       appVersion: app.getVersion(),
-      entries: packed
+      entries: packed,
+      generated
     })
 
     return {
       path: outPath,
       exportedAssets: packed.filter((e) => e.meta.kind === 'asset').length,
       exportedFolders: packed.filter((e) => e.meta.kind === 'folder').length,
+      exportedGenerated: generated.length,
       skipped
     }
   }
@@ -412,13 +458,14 @@ class AssetPackageService {
           reusedFolders: 0,
           reused: 0,
           remapped: 0,
+          restoredGenerated: 0,
           items: []
         }
       }
       packPath = opened.filePaths[0]
     }
 
-    const { entries: allEntries } = await readAipackageArchive(packPath)
+    const { entries: allEntries, generated: packedGenerated } = await readAipackageArchive(packPath)
     let entries = allEntries
 
     if (input.selectedGuids && input.selectedGuids.length > 0) {
@@ -820,6 +867,18 @@ class AssetPackageService {
 
     runTransactionSync(steps)
 
+    let restoredGenerated = 0
+    const cacheRoot = projectService.getConfig().cacheOutputDir
+    for (const file of packedGenerated) {
+      if (!isPackableGeneratedRelativePath(file.relativePath, cacheRoot)) continue
+      const abs = resolveSafeProjectFile(root, file.relativePath)
+      if (!abs) continue
+      if (existsSync(abs)) continue
+      mkdirSync(dirname(abs), { recursive: true })
+      writeFileSync(abs, file.data)
+      restoredGenerated += 1
+    }
+
     return {
       canceled: false,
       importedAssets: items.filter((i) => i.kind === 'asset' && i.action !== 'reuse').length,
@@ -827,6 +886,7 @@ class AssetPackageService {
       reusedFolders: items.filter((i) => i.kind === 'folder' && i.action === 'reuse').length,
       reused: items.filter((i) => i.action === 'reuse').length,
       remapped: items.filter((i) => i.action === 'remap').length,
+      restoredGenerated,
       items
     }
   }
