@@ -47,12 +47,14 @@ import {
   type DirectorAnimPathKind,
   type DirectorSkeletonClipSegment,
   type DirectorAnimTrack,
+  type DirectorCameraCutSegment,
   type DirectorAnimationState,
   type DirectorPathForwardAxis,
   directorAnimTrackHasContent,
   directorTrackSkeletonClips,
   DEFAULT_PATH_FORWARD_AXIS,
   type DirectorAspectRatio,
+  type DirectorCameraGroup,
   type DirectorCameraState,
   type DirectorCameraShot,
   type DirectorCameraVideo,
@@ -70,6 +72,11 @@ import {
   type DirectorIkChainSlotId,
   type AssetInfo
 } from '@shared/domain'
+import {
+  findDirectorComboCameraPreset,
+  findDirectorShotCameraPreset,
+  type DirectorComboCameraDef
+} from '@shared/directorCameraPresets'
 import {
   bakeKeyframesFromPath,
   buildCirclePath,
@@ -171,6 +178,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const selectedCameraId = ref<string | null>(null)
   const selectionKind = ref<DirectorSelectionKind>('scene')
   const viewMode = ref<DirectorViewMode>('director')
+  /** 浮动相机预览窗：开启后按层级多选相机实时渲染各自视角 */
+  const cameraPreviewOpen = ref(false)
+  const cameraPreviewIds = ref<string[]>([])
+  /** 预览已弹出到独立 OS 窗口：主窗口隐藏面板但继续渲染供 captureStream 取帧 */
+  const cameraPreviewDetached = ref(false)
+  const cameraPreviewCanvases = new Map<string, HTMLCanvasElement>()
+  /** 层级多选（含相机）同步，供右键/快捷键复制使用 */
+  const multiSelectedIds = ref<string[]>([])
+  /** 复制剪贴板：对象 / 相机深拷贝 */
+  const stageClipboard = ref<
+    Array<{ kind: 'camera'; data: DirectorCameraState } | { kind: 'object'; data: StageObjectState }>
+  >([])
   const isPanning = ref(false)
   const isOrbiting = ref(false)
   /** ?????? UE ?????? + WASD/QE? */
@@ -309,6 +328,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const animExporting = ref(false)
   const animSelectedTrackId = ref<string | null>(null)
   const animSelectedKeyframeId = ref<string | null>(null)
+  const animSelectedCameraCutSegmentId = ref<string | null>(null)
   const pathDrawMode = ref<{ trackId: string; kind: DirectorAnimPathKind } | null>(null)
   const stageEditMode = ref<DirectorStageEditMode>('scene')
   const pathDrawDraft = ref<StageVec3[]>([])
@@ -589,7 +609,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     type Row = {
       id: string
       name: string
-      kind: StageObjectState['kind'] | 'camera' | 'panorama'
+      kind: StageObjectState['kind'] | 'camera' | 'cameraGroup' | 'panorama'
       depth: number
       visible: boolean
       locked: boolean
@@ -597,6 +617,49 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       hasChildren: boolean
       parentId: string | null
     }
+    const cameras = listCameras()
+    const groups = stage.value.cameraGroups ?? []
+    const groupById = new Map(groups.map((g) => [g.id, g]))
+
+    const cameraParentOf = (camera: DirectorCameraState): string | null => {
+      const p = camera.parentId
+      if (!p) return null
+      if (groupById.has(p)) return p
+      if (stage.value.objects.some((o) => o.id === p)) return p
+      return null
+    }
+    const cameraByParent = new Map<string | null, DirectorCameraState[]>()
+    for (const camera of cameras) {
+      const parent = cameraParentOf(camera)
+      const list = cameraByParent.get(parent) ?? []
+      list.push(camera)
+      cameraByParent.set(parent, list)
+    }
+    const groupByObjectParent = new Map<string | null, DirectorCameraGroup[]>()
+    for (const group of groups) {
+      const parent =
+        group.parentId && stage.value.objects.some((o) => o.id === group.parentId)
+          ? group.parentId
+          : null
+      const list = groupByObjectParent.get(parent) ?? []
+      list.push(group)
+      groupByObjectParent.set(parent, list)
+    }
+    const cameraRow = (
+      camera: DirectorCameraState,
+      depth: number,
+      parentId: string | null
+    ): Row => ({
+      id: camera.id,
+      name: camera.name,
+      kind: 'camera',
+      depth,
+      visible: camera.visible !== false,
+      locked: camera.locked === true,
+      nameVisible: false,
+      hasChildren: false,
+      parentId
+    })
     const rows: Row[] = [
       {
         id: DIRECTOR_PANORAMA_HIERARCHY_ID,
@@ -609,17 +672,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         hasChildren: false,
         parentId: null
       },
-      ...listCameras().map((camera) => ({
-        id: camera.id,
-        name: camera.name,
-        kind: 'camera' as const,
-        depth: 0,
-        visible: camera.visible !== false,
-        locked: camera.locked === true,
-        nameVisible: false,
-        hasChildren: false,
-        parentId: null
-      }))
+      ...(cameraByParent.get(null) ?? []).map((camera) => cameraRow(camera, 0, null))
     ]
     const objects = stage.value.objects
     const byParent = new Map<string | null, StageObjectState[]>()
@@ -633,6 +686,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const visit = (parentId: string | null, depth: number): void => {
       for (const obj of byParent.get(parentId) ?? []) {
         const kids = byParent.get(obj.id) ?? []
+        const cameraKids = cameraByParent.get(obj.id) ?? []
+        const groupKids = groupByObjectParent.get(obj.id) ?? []
         rows.push({
           id: obj.id,
           name: obj.name,
@@ -641,9 +696,29 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           visible: obj.visible !== false,
           locked: obj.locked === true,
           nameVisible: isObjectNameVisible(obj),
-          hasChildren: kids.length > 0,
+          hasChildren: kids.length > 0 || cameraKids.length > 0 || groupKids.length > 0,
           parentId
         })
+        for (const group of groupKids) {
+          const groupCameras = cameraByParent.get(group.id) ?? []
+          rows.push({
+            id: group.id,
+            name: group.name,
+            kind: 'cameraGroup' as const,
+            depth: depth + 1,
+            visible: true,
+            locked: false,
+            nameVisible: false,
+            hasChildren: groupCameras.length > 0,
+            parentId: obj.id
+          })
+          for (const camera of groupCameras) {
+            rows.push(cameraRow(camera, depth + 2, group.id))
+          }
+        }
+        for (const camera of cameraKids) {
+          rows.push(cameraRow(camera, depth + 1, obj.id))
+        }
         visit(obj.id, depth + 1)
       }
     }
@@ -765,6 +840,269 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     updateCamera(selected.id, { viewer: next })
     if (viewMode.value === 'camera') applyCameraView()
     syncShotVisuals()
+    previewRevision.value += 1
+    requestRender()
+    schedulePersist()
+  }
+
+  /** 选中物体下的模型子物体（世界包围盒中心/身高），供组合机位使用 */
+  function modelSubjectsUnder(objectId: string): {
+    id: string
+    pos: StageVec3
+    height: number
+  }[] {
+    const subjects: { id: string; pos: StageVec3; height: number }[] = []
+    for (const obj of stage.value.objects) {
+      if (obj.parentId !== objectId || obj.kind !== 'model') continue
+      const mesh = objectMeshes.get(obj.id)
+      let pos: StageVec3 = { x: obj.position.x, y: 0.9, z: obj.position.z }
+      let height = 1.8
+      if (mesh) {
+        const box = new THREE.Box3().setFromObject(mesh)
+        if (!box.isEmpty()) {
+          const c = box.getCenter(new THREE.Vector3())
+          pos = { x: c.x, y: c.y, z: c.z }
+          height = Math.max(0.3, box.max.y - box.min.y)
+        }
+      }
+      subjects.push({ id: obj.id, pos, height })
+    }
+    return subjects
+  }
+
+  function canApplyComboPresets(): boolean {
+    if (selectionKind.value !== 'object' || !selectedObjectId.value) return false
+    return modelSubjectsUnder(selectedObjectId.value).length >= 2
+  }
+
+  function canApplyComboPreset(presetId: string): boolean {
+    const preset = findDirectorComboCameraPreset(presetId)
+    if (!preset) return false
+    if (selectionKind.value !== 'object' || !selectedObjectId.value) return false
+    return modelSubjectsUnder(selectedObjectId.value).length >= preset.minSubjects
+  }
+
+  /** 组合机位：按专业对话机位规则在选中物体下批量创建相机（同一侧保持 180° 轴线） */
+  function applyComboCameraPreset(presetId: string): void {
+    const preset = findDirectorComboCameraPreset(presetId)
+    if (!preset) return
+    if (selectionKind.value !== 'object' || !selectedObjectId.value) return
+    const objectId = selectedObjectId.value
+    const subjects = modelSubjectsUnder(objectId)
+    if (subjects.length < preset.minSubjects) return
+    const a = subjects[0]!
+    const b = subjects.length > 1 ? subjects[1]! : a
+    const c = subjects.length > 2 ? subjects[2]! : b
+
+    // 创建机位组容器，相机统一挂在组下
+    const groupId = `camera-group:${crypto.randomUUID()}`
+    const group: DirectorCameraGroup = {
+      id: groupId,
+      name: resolveUniqueCameraName(t(preset.labelKey)),
+      parentId: objectId
+    }
+    stage.value.cameraGroups = [...(stage.value.cameraGroups ?? []), group]
+
+    const created: string[] = []
+    for (const def of preset.cameras) {
+      const viewer = buildComboCameraViewer(a, b, c, def)
+      const id = `camera:${crypto.randomUUID()}`
+      const camera = createDefaultDirectorCamera(id, resolveUniqueCameraName(t(def.nameKey)))
+      camera.parentId = groupId
+      camera.viewer = viewer
+      stage.value.cameras = [...listCameras(), camera]
+      ensureShotCameraVisual(camera)
+      created.push(id)
+    }
+    if (created.length) {
+      selectCamera(created[created.length - 1]!)
+      setViewMode('camera')
+      previewRevision.value += 1
+      requestRender()
+      schedulePersist()
+    }
+  }
+
+  function buildComboCameraViewer(
+    a: { pos: StageVec3; height: number },
+    b: { pos: StageVec3; height: number },
+    c: { pos: StageVec3; height: number },
+    def: DirectorComboCameraDef
+  ): DirectorViewerState {
+    const axisX = b.pos.x - a.pos.x
+    const axisZ = b.pos.z - a.pos.z
+    const axisLen = Math.hypot(axisX, axisZ) || 1
+    const ux = axisX / axisLen
+    const uz = axisZ / axisLen
+    const sx = -uz
+    const sz = ux
+    const midX = (a.pos.x + b.pos.x) / 2
+    const midY = (a.pos.y + b.pos.y) / 2
+    const midZ = (a.pos.z + b.pos.z) / 2
+    const abcX = (a.pos.x + b.pos.x + c.pos.x) / 3
+    const abcY = (a.pos.y + b.pos.y + c.pos.y) / 3
+    const abcZ = (a.pos.z + b.pos.z + c.pos.z) / 3
+    const anchorPos =
+      def.anchor === 'A'
+        ? a.pos
+        : def.anchor === 'B'
+          ? b.pos
+          : def.anchor === 'C'
+            ? c.pos
+            : def.anchor === 'abc'
+              ? { x: abcX, y: abcY, z: abcZ }
+              : { x: midX, y: midY, z: midZ }
+    const targetPos =
+      def.target === 'A'
+        ? a.pos
+        : def.target === 'B'
+          ? b.pos
+          : def.target === 'C'
+            ? c.pos
+            : def.target === 'abc'
+              ? { x: abcX, y: abcY, z: abcZ }
+              : { x: midX, y: midY, z: midZ }
+    const anchorHeight =
+      def.anchor === 'A'
+        ? a.height
+        : def.anchor === 'B'
+          ? b.height
+          : def.anchor === 'C'
+            ? c.height
+            : def.anchor === 'abc'
+              ? (a.height + b.height + c.height) / 3
+              : (a.height + b.height) / 2
+    const targetHeight =
+      def.target === 'A'
+        ? a.height
+        : def.target === 'B'
+          ? b.height
+          : def.target === 'C'
+            ? c.height
+            : def.target === 'abc'
+              ? (a.height + b.height + c.height) / 3
+              : (a.height + b.height) / 2
+    const aimY = targetPos.y + (def.targetBias - 0.5) * targetHeight
+    let position: StageVec3
+    if (def.orbitAngleDeg != null) {
+      const radius = Math.max(0.5, anchorHeight * (def.orbitDistanceFactor ?? 2))
+      const ang = (def.orbitAngleDeg * Math.PI) / 180
+      position = {
+        x: anchorPos.x + Math.sin(ang) * radius,
+        y: aimY + def.heightFactor * anchorHeight,
+        z: anchorPos.z + Math.cos(ang) * radius
+      }
+    } else {
+      position = {
+        x:
+          anchorPos.x +
+          ux * ((def.alongFactor ?? 0) * anchorHeight) +
+          sx * ((def.sideFactor ?? 0) * anchorHeight),
+        y: aimY + def.heightFactor * anchorHeight,
+        z:
+          anchorPos.z +
+          uz * ((def.alongFactor ?? 0) * anchorHeight) +
+          sz * ((def.sideFactor ?? 0) * anchorHeight)
+      }
+    }
+    const target: StageVec3 = { x: targetPos.x, y: aimY, z: targetPos.z }
+    let rotation = directorViewerRotationFromLook(position, target)
+    if (def.rollDeg) {
+      rotation = {
+        ...rotation,
+        z: rotation.z + (def.rollDeg * Math.PI) / 180
+      }
+    }
+    return {
+      position,
+      rotation,
+      scale: { x: 1, y: 1, z: 1 },
+      target,
+      fov: DEFAULT_DIRECTOR_CAMERA_FOV
+    }
+  }
+
+  /** 专业机位预设：以选中物体（或舞台中心）为主体，套用景别/角度到当前或活动相机 */
+  function applyCameraPreset(presetId: string): void {
+    if (findDirectorComboCameraPreset(presetId)) {
+      applyComboCameraPreset(presetId)
+      return
+    }
+    const preset = findDirectorShotCameraPreset(presetId)
+    if (!preset) return
+    // 仅选中物体时可用：在选中物体下新建相机
+    if (selectionKind.value !== 'object' || !selectedObjectId.value) return
+    const objectId = selectedObjectId.value
+    const object = stage.value.objects.find((o) => o.id === objectId)
+    if (!object) return
+
+    // 主体信息：选中物体世界包围盒与朝向；缺省舞台中心 + 平均身高
+    let centerX = 0
+    let centerY = 1.0
+    let centerZ = 0
+    let subjectHeight = 1.8
+    let facingYaw = 0
+    const mesh = objectMeshes.get(objectId)
+    if (mesh) {
+      const box = new THREE.Box3().setFromObject(mesh)
+      if (!box.isEmpty()) {
+        const c = box.getCenter(new THREE.Vector3())
+        centerX = c.x
+        centerY = c.y
+        centerZ = c.z
+        subjectHeight = Math.max(0.3, box.max.y - box.min.y)
+        const q = new THREE.Quaternion()
+        mesh.getWorldQuaternion(q)
+        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q)
+        facingYaw = Math.atan2(fwd.x, fwd.z)
+      }
+    }
+
+    const fov = preset.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV
+    const frameBias = preset.frameBias ?? 0.5
+    const aimY = centerY + (frameBias - 0.5) * subjectHeight
+    const target: StageVec3 = { x: centerX, y: aimY, z: centerZ }
+    const frameHeight = Math.max(0.1, subjectHeight * preset.frameFactor)
+    const distance = Math.max(
+      0.3,
+      frameHeight / 2 / Math.tan((fov / 2) * Math.PI / 180)
+    )
+
+    // 相机方向：相对主体朝向旋转 azimuth；azimuth 0 = 正面
+    const az = (preset.azimuthDeg * Math.PI) / 180
+    const frontX = Math.sin(facingYaw)
+    const frontZ = Math.cos(facingYaw)
+    const rx = frontX * Math.cos(az) + frontZ * Math.sin(az)
+    const rz = -frontX * Math.sin(az) + frontZ * Math.cos(az)
+    const camHeight = (preset.cameraHeightBias ?? 0) * subjectHeight
+    const position: StageVec3 = {
+      x: target.x - rx * distance,
+      y: target.y + camHeight,
+      z: target.z - rz * distance
+    }
+    let rotation = directorViewerRotationFromLook(position, target)
+    if (preset.rollDeg) {
+      rotation = {
+        ...rotation,
+        z: rotation.z + (preset.rollDeg * Math.PI) / 180
+      }
+    }
+    const viewer: DirectorViewerState = {
+      position,
+      rotation,
+      scale: { x: 1, y: 1, z: 1 },
+      target,
+      fov
+    }
+
+    const id = `camera:${crypto.randomUUID()}`
+    const camera = createDefaultDirectorCamera(id, resolveUniqueCameraName(t(preset.labelKey)))
+    camera.parentId = objectId
+    camera.viewer = viewer
+    stage.value.cameras = [...listCameras(), camera]
+    ensureShotCameraVisual(camera)
+    selectCamera(id)
+    setViewMode('camera')
     previewRevision.value += 1
     requestRender()
     schedulePersist()
@@ -1026,7 +1364,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function renderCameraPreviewToCanvas(
     targetCanvas: HTMLCanvasElement,
     viewer: DirectorViewerState,
-    aspect: number
+    aspect: number,
+    /** 渲染后是否排程下一次刷新（浮动预览循环传 false，避免把帧率顶满） */
+    schedule = true
   ): boolean {
     if (!renderer || !scene || offscreenCaptureLock > 0) return false
     const width = Math.max(1, Math.round(targetCanvas.clientWidth || targetCanvas.width || 320))
@@ -1046,8 +1386,72 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     previewCam.updateProjectionMatrix()
     previewCam.updateMatrixWorld(true)
     const ok = renderCameraToCanvas2D(previewCam, width, height, targetCanvas)
-    requestRender(120)
+    if (schedule) requestRender(120)
     return ok
+  }
+
+  /** 层级多选同步：仅保留相机，驱动浮动预览窗 */
+  function setCameraPreviewSelection(ids: Iterable<string>): void {
+    const seen = new Set<string>()
+    const next: string[] = []
+    for (const id of ids) {
+      if (seen.has(id) || !isStageCameraId(id)) continue
+      seen.add(id)
+      next.push(id)
+    }
+    cameraPreviewIds.value = next
+    if (cameraPreviewOpen.value) requestRender(120)
+  }
+
+  function toggleCameraPreview(): void {
+    cameraPreviewOpen.value = !cameraPreviewOpen.value
+    requestRender(120)
+  }
+
+  function setCameraPreviewOpen(open: boolean): void {
+    if (cameraPreviewOpen.value === open) return
+    cameraPreviewOpen.value = open
+    requestRender(120)
+  }
+
+  function setCameraPreviewDetached(detached: boolean): void {
+    cameraPreviewDetached.value = detached
+    requestRender(120)
+  }
+
+  function registerCameraPreviewCanvas(cameraId: string, canvas: HTMLCanvasElement): void {
+    cameraPreviewCanvases.set(cameraId, canvas)
+    requestRender(120)
+  }
+
+  function unregisterCameraPreviewCanvas(cameraId: string, canvas: HTMLCanvasElement): void {
+    if (cameraPreviewCanvases.get(cameraId) === canvas) {
+      cameraPreviewCanvases.delete(cameraId)
+    }
+  }
+
+  /** 跟随主渲染循环刷新浮动预览（开启时按循环节流刷新，不额外顶帧） */
+  function refreshCameraPreviews(): void {
+    if (
+      (!cameraPreviewOpen.value && !cameraPreviewDetached.value) ||
+      !renderer ||
+      !scene ||
+      offscreenCaptureLock > 0
+    ) {
+      return
+    }
+    for (const id of cameraPreviewIds.value) {
+      const canvas = cameraPreviewCanvases.get(id)
+      if (!canvas || !canvas.isConnected) {
+        cameraPreviewCanvases.delete(id)
+        continue
+      }
+      const state = getCameraState(id)
+      if (!state) continue
+      const cw = canvas.clientWidth || canvas.width || 320
+      const ch = canvas.clientHeight || canvas.height || 180
+      renderCameraPreviewToCanvas(canvas, state.viewer, Math.max(0.01, cw / Math.max(1, ch)), false)
+    }
   }
 
   function removeCameraShot(id: string): void {
@@ -1248,7 +1652,26 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!stage.value.animation) {
       stage.value.animation = createDefaultDirectorAnimation()
     }
-    return stage.value.animation
+    const anim = stage.value.animation
+    // 机位轨为内置轨道：默认存在、不可删除，保证时间线始终有它
+    if (!anim.tracks.some((t) => t.cameraCut)) {
+      const cameras = listCameras()
+      const active = stage.value.activeCameraId ?? cameras[0]?.id ?? ''
+      const track: DirectorAnimTrack = {
+        id: `anim-cut:${crypto.randomUUID()}`,
+        name: t('director.stage.anim.cameraCutTrack'),
+        targetKind: 'camera',
+        targetId: active,
+        start: 0,
+        end: anim.duration,
+        path: null,
+        keyframes: [],
+        cameraCut: true,
+        cameraSegments: []
+      }
+      anim.tracks = [track, ...anim.tracks]
+    }
+    return anim
   }
 
   function syncPathLineResolution(): void {
@@ -3162,6 +3585,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function setStageEditMode(mode: DirectorStageEditMode): void {
     if (stageEditMode.value === mode) return
     stageEditMode.value = mode
+    // 进入动画模式时确保动画数据与内置机位轨存在，避免面板打开时空列表
+    if (mode === 'animation') {
+      ensureAnimation()
+    }
     if (mode === 'scene') {
       if (animPlaying.value) pauseAnimation()
       cancelPathDraw()
@@ -3477,6 +3904,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const anim = stage.value.animation
     if (!anim) return
     for (const track of anim.tracks) {
+      if (track.cameraCut) {
+        applyCameraCutAtTime(track, time, persistState)
+        continue
+      }
       const keyframes = track.keyframes ?? []
       let sample: AnimKeyframeSample | null = null
       if (keyframes.length >= 1) {
@@ -3639,16 +4070,132 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function removeAnimTrack(trackId: string): void {
     const anim = ensureAnimation()
+    const target = anim.tracks.find((t) => t.id === trackId)
+    if (target?.cameraCut) return
     anim.tracks = anim.tracks.filter((t) => t.id !== trackId)
     if (animSelectedTrackId.value === trackId) {
       animSelectedTrackId.value = anim.tracks[0]?.id ?? null
       animSelectedSkeletonClipId.value = null
+      animSelectedCameraCutSegmentId.value = null
     }
     if (pathDrawMode.value?.trackId === trackId) cancelPathDraw()
     if (animSelectedKeyframeId.value) animSelectedKeyframeId.value = null
     syncPathVisual(trackId, null)
     syncPathEditOverlays()
     schedulePersist()
+  }
+
+  /** 机位切换轨：按当前时间激活对应相机（只切 activeCameraId，不改选中） */
+  function applyCameraCutAtTime(track: DirectorAnimTrack, time: number, persistState = false): void {
+    const segments = track.cameraSegments ?? []
+    const seg = segments.find((s) => time >= s.start - 1e-6 && time < s.end)
+    if (!seg) return
+    if (stage.value.activeCameraId === seg.cameraId) return
+    if (!getCameraState(seg.cameraId)) return
+    stage.value.activeCameraId = seg.cameraId
+    if (persistState) schedulePersist()
+    if (viewMode.value === 'camera') applyCameraView()
+    syncShotVisuals()
+    previewRevision.value += 1
+  }
+
+  /** 添加机位切换轨（同一舞台只允许一条，重复调用回到已有轨） */
+  function addCameraCutTrack(): string | null {
+    const anim = ensureAnimation()
+    const cameras = listCameras()
+    if (!cameras.length) return null
+    const existing = anim.tracks.find((t) => t.cameraCut)
+    if (existing) {
+      animSelectedTrackId.value = existing.id
+      syncSelectionFromAnimTrack(existing.id)
+      return existing.id
+    }
+    const active = stage.value.activeCameraId ?? cameras[0].id
+    const track: DirectorAnimTrack = {
+      id: `anim:${crypto.randomUUID()}`,
+      name: t('director.stage.anim.cameraCutTrack'),
+      targetKind: 'camera',
+      targetId: active,
+      start: 0,
+      end: anim.duration,
+      path: null,
+      keyframes: [],
+      cameraCut: true,
+      cameraSegments: []
+    }
+    // 机位轨固定在时间线最上面
+    anim.tracks = [track, ...anim.tracks]
+    animSelectedTrackId.value = track.id
+    syncSelectionFromAnimTrack(track.id)
+    schedulePersist()
+    return track.id
+  }
+
+  function addCameraCutSegment(
+    trackId: string,
+    cameraId: string,
+    start: number,
+    end: number
+  ): void {
+    const anim = ensureAnimation()
+    const idx = anim.tracks.findIndex((t) => t.id === trackId && t.cameraCut)
+    if (idx < 0) return
+    if (!getCameraState(cameraId)) return
+    const s = Math.max(0, Math.min(start, end - 0.05))
+    const e = Math.min(anim.duration, Math.max(s + 0.05, end))
+    const track = anim.tracks[idx]
+    const existing = track.cameraSegments ?? []
+    const next: DirectorCameraCutSegment[] = []
+    for (const seg of existing) {
+      if (seg.end <= s || seg.start >= e) {
+        next.push(seg)
+        continue
+      }
+      if (seg.start < s) next.push({ ...seg, end: s })
+      if (seg.end > e) next.push({ ...seg, start: e })
+    }
+    next.push({ id: `cut:${crypto.randomUUID()}`, cameraId, start: s, end: e })
+    next.sort((a, b) => a.start - b.start)
+    anim.tracks[idx] = { ...track, cameraSegments: next }
+    schedulePersist()
+    requestRender()
+  }
+
+  function removeCameraCutSegment(trackId: string, segmentId: string): void {
+    const anim = ensureAnimation()
+    const idx = anim.tracks.findIndex((t) => t.id === trackId)
+    if (idx < 0) return
+    const track = anim.tracks[idx]
+    const next = (track.cameraSegments ?? []).filter((seg) => seg.id !== segmentId)
+    anim.tracks[idx] = { ...track, cameraSegments: next.length ? next : undefined }
+    if (animSelectedCameraCutSegmentId.value === segmentId) {
+      animSelectedCameraCutSegmentId.value = null
+    }
+    schedulePersist()
+    requestRender()
+  }
+
+  function setCameraCutSegmentRange(
+    trackId: string,
+    segmentId: string,
+    start: number,
+    end: number
+  ): void {
+    const anim = ensureAnimation()
+    const idx = anim.tracks.findIndex((t) => t.id === trackId)
+    if (idx < 0) return
+    const track = anim.tracks[idx]
+    const segments = track.cameraSegments ?? []
+    const segIdx = segments.findIndex((seg) => seg.id === segmentId)
+    if (segIdx < 0) return
+    const s = Math.max(0, Math.min(start, anim.duration - 0.05))
+    const e = Math.min(anim.duration, Math.max(s + 0.05, end))
+    const next = segments.slice()
+    next[segIdx] = { ...next[segIdx]!, start: s, end: e }
+    next.sort((a, b) => a.start - b.start)
+    anim.tracks[idx] = { ...track, cameraSegments: next }
+    schedulePersist()
+    requestRender()
   }
 
   function syncSelectionFromAnimTrack(trackId: string | null): void {
@@ -3666,6 +4213,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function selectAnimTrack(trackId: string | null): void {
     animSelectedTrackId.value = trackId
+    animSelectedCameraCutSegmentId.value = null
     if (!trackId) {
       animSelectedKeyframeId.value = null
       clearPathEditOverlays()
@@ -3674,6 +4222,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     syncSelectionFromAnimTrack(trackId)
     syncAllPathVisuals()
+  }
+
+  function selectCameraCutSegment(trackId: string, segmentId: string | null): void {
+    animSelectedTrackId.value = trackId
+    animSelectedCameraCutSegmentId.value = segmentId
   }
 
   function selectAnimKeyframe(trackId: string, keyframeId: string | null): void {
@@ -3698,6 +4251,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const idx = anim.tracks.findIndex((t) => t.id === id)
     if (idx < 0) return
     let track = anim.tracks[idx]
+    // 机位切换轨不参与位置关键帧
+    if (track.cameraCut) return
     const rawTime = time ?? animTime.value
     const t = snapAnimTime(Math.min(anim.duration, Math.max(0, rawTime)))
     // ????????????????????????
@@ -4125,6 +4680,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       transformMode: transformMode.value,
       selectedObjectId: selectionKind.value === 'object' ? selectedObjectId.value : null,
       cameras: listCameras(),
+      cameraGroups: stage.value.cameraGroups ?? [],
       activeCameraId: stage.value.activeCameraId,
       gridVisible: stage.value.gridVisible !== false,
       gridOpacity: clampGridOpacity(stage.value.gridOpacity ?? DEFAULT_GRID_OPACITY),
@@ -4759,6 +5315,122 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return id
   }
 
+  function currentPrimarySelectionId(): string | null {
+    if (selectionKind.value === 'camera') return selectedCameraId.value
+    if (selectionKind.value === 'object') return selectedObjectId.value
+    return null
+  }
+
+  /** 舞台状态为可序列化纯数据（且是 Vue 响应式代理），用 JSON 深拷贝替代 structuredClone */
+  function cloneStageState<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T
+  }
+
+  function setMultiSelection(ids: Iterable<string>): void {
+    multiSelectedIds.value = [...new Set(ids)]
+  }
+
+  /** 复制选中项（对象 / 相机）到内部剪贴板；ids 缺省时用层级多选或当前主选中 */
+  function copyStageSelection(ids?: string[]): void {
+    const candidates =
+      ids && ids.length
+        ? ids
+        : multiSelectedIds.value.length
+          ? multiSelectedIds.value
+          : currentPrimarySelectionId()
+            ? [currentPrimarySelectionId()!]
+            : []
+    const copied: typeof stageClipboard.value = []
+    for (const id of candidates) {
+      if (isStageCameraId(id)) {
+        const cam = getCameraState(id)
+        if (cam) copied.push({ kind: 'camera', data: cloneStageState(cam) })
+      } else {
+        const obj = stage.value.objects.find((o) => o.id === id)
+        if (obj) copied.push({ kind: 'object', data: cloneStageState(obj) })
+      }
+    }
+    if (copied.length) stageClipboard.value = copied
+  }
+
+  function canPasteStageClipboard(): boolean {
+    return stageClipboard.value.length > 0
+  }
+
+  function pasteCameraState(src: DirectorCameraState): string | null {
+    const cameras = listCameras()
+    const id = `camera:${crypto.randomUUID()}`
+    const viewer = cloneStageState(src.viewer)
+    viewer.position.x += 1.5
+    const camera = createDefaultDirectorCamera(id, resolveUniqueCameraName(`${src.name} Copy`))
+    camera.viewer = viewer
+    if (src.visible !== undefined) camera.visible = src.visible
+    if (src.locked !== undefined) camera.locked = src.locked
+    stage.value.cameras = [...cameras, camera]
+    ensureShotCameraVisual(camera)
+    return id
+  }
+
+  function pasteObjectState(src: StageObjectState, blank = false): string | null {
+    const prefix = (src.id.match(/^[a-zA-Z0-9_-]+/) ?? ['object'])[0] ?? 'object'
+    const id = `${prefix}:${crypto.randomUUID()}`
+    // 选中物体 → 粘贴为选中物体的子结点；未选中（空白处）→ 与来源同级
+    const selectedParent =
+      !blank && selectionKind.value === 'object'
+        ? resolveCreateParentId(selectedObjectId.value)
+        : null
+    const obj: StageObjectState = {
+      ...cloneStageState(src),
+      id,
+      name: resolveUniqueObjectName(`${src.name} Copy`),
+      parentId: selectedParent ?? src.parentId,
+      position: {
+        x: src.position.x + 0.5,
+        y: src.position.y,
+        z: src.position.z + 0.5
+      }
+    }
+    stage.value.objects = [...stage.value.objects, obj]
+    return id
+  }
+
+  async function pasteStageClipboard(opts?: { blank?: boolean }): Promise<void> {
+    const entries = stageClipboard.value
+    if (!entries.length) return
+    try {
+      const pastedObjectIds: string[] = []
+      const pastedCameraIds: string[] = []
+      for (const entry of entries) {
+        if (entry.kind === 'camera') {
+          const id = pasteCameraState(entry.data)
+          if (id) pastedCameraIds.push(id)
+        } else {
+          const id = pasteObjectState(entry.data, opts?.blank)
+          if (id) pastedObjectIds.push(id)
+        }
+      }
+      if (pastedObjectIds.length && scene) {
+        await rebuildObjects()
+      }
+      if (pastedCameraIds.length) {
+        selectCamera(pastedCameraIds[0]!)
+      }
+      if (pastedObjectIds.length) {
+        selectObject(pastedObjectIds[pastedObjectIds.length - 1]!)
+      }
+      if (pastedObjectIds.length || pastedCameraIds.length) {
+        previewRevision.value += 1
+        requestRender()
+        schedulePersist()
+        void directorDocument.save().catch(() => {
+          /* 持久化失败不阻塞 */
+        })
+      }
+    } catch (err) {
+      console.error('[stage] paste failed', err)
+    }
+  }
+
   /** ???????????????????*/
   function canDeleteObject(id: string): boolean {
     if (isStageCameraId(id)) return listCameras().length > 1
@@ -4814,7 +5486,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         : null
 
     const keptModels = stage.value.objects
-      .filter((o) => removeIds.has(o.id) && o.kind === 'model')
+      // 只保留被删物体的子级模型（随父删除时提升到父级同层），删除目标本身不保留
+      .filter((o) => o.id !== id && removeIds.has(o.id) && o.kind === 'model')
       .map((o) => {
         const parentId = o.parentId ?? null
         if (!parentId || !removeIds.has(parentId)) return { ...o, parentId }
@@ -4862,6 +5535,92 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     schedulePersist()
     void directorDocument.save().catch(() => {
       /* persistStageNow ????error */
+    })
+    return true
+  }
+
+  /** 舞台对象/相机快照回放（撤销/重做用） */
+  async function applyStageSnapshot(
+    objects: StageObjectState[],
+    cameras: DirectorCameraState[],
+    activeCameraId: string | null,
+    selection?: {
+      kind: DirectorSelectionKind
+      objectId: string | null
+      cameraId: string | null
+    }
+  ): Promise<void> {
+    stage.value.objects = objects
+    stage.value.cameras = cameras
+    stage.value.activeCameraId =
+      activeCameraId && cameras.some((c) => c.id === activeCameraId)
+        ? activeCameraId
+        : (cameras[0]?.id ?? null)
+    if (scene) await rebuildObjects()
+    const knownCameraIds = new Set(listCameras().map((c) => c.id))
+    for (const id of [...shotVisuals.keys()]) {
+      if (!knownCameraIds.has(id)) disposeShotCameraVisual(id)
+    }
+    for (const cam of listCameras()) ensureShotCameraVisual(cam)
+    if (selection) {
+      if (
+        selection.kind === 'camera' &&
+        selection.cameraId &&
+        getCameraState(selection.cameraId)
+      ) {
+        selectCamera(selection.cameraId)
+      } else if (
+        selection.kind === 'object' &&
+        selection.objectId &&
+        stage.value.objects.some((o) => o.id === selection.objectId)
+      ) {
+        selectObject(selection.objectId)
+      } else {
+        selectScene()
+      }
+    } else {
+      applySelectionToScene()
+    }
+    previewRevision.value += 1
+    requestRender()
+    schedulePersist()
+    void directorDocument.save().catch(() => {
+      /* 持久化失败不阻塞撤销 */
+    })
+  }
+
+  /** 批量删除（物体/相机）并登记一次可撤销历史 */
+  function removeObjectsWithUndo(ids: string[]): boolean {
+    const valid = [...new Set(ids)].filter((id) => canDeleteObject(id))
+    if (!valid.length) return false
+
+    const beforeObjects = cloneStageState(stage.value.objects)
+    const beforeCameras = cloneStageState(listCameras())
+    const beforeActive = stage.value.activeCameraId ?? null
+    const beforeSelection = {
+      kind: selectionKind.value,
+      objectId: selectedObjectId.value,
+      cameraId: selectedCameraId.value
+    }
+
+    let removed = 0
+    for (const id of valid) {
+      if (removeObject(id)) removed += 1
+    }
+    if (!removed) return false
+
+    const afterObjects = cloneStageState(stage.value.objects)
+    const afterCameras = cloneStageState(listCameras())
+    const afterActive = stage.value.activeCameraId ?? null
+
+    const scope = `director-stage:${options.directorAssetId}`
+    editor.commands.setActiveScope(scope)
+    editor.commands.recordExecuted({
+      id: `director.remove.${crypto.randomUUID()}`,
+      label: '删除物体',
+      scope,
+      execute: () => applyStageSnapshot(afterObjects, afterCameras, afterActive),
+      undo: () => applyStageSnapshot(beforeObjects, beforeCameras, beforeActive, beforeSelection)
     })
     return true
   }
@@ -5080,6 +5839,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function selectHierarchyItem(id: string): void {
     if (id === DIRECTOR_PANORAMA_HIERARCHY_ID) selectPanorama()
     else if (isStageCameraId(id)) selectCamera(id)
+    else if (stage.value.cameraGroups?.some((g) => g.id === id)) {
+      // 机位组：选中其所属物体
+      const group = stage.value.cameraGroups.find((g) => g.id === id)
+      if (group?.parentId && stage.value.objects.some((o) => o.id === group.parentId)) {
+        selectObject(group.parentId)
+      } else {
+        selectScene()
+      }
+    }
     else selectObject(id)
   }
 
@@ -5829,6 +6597,77 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     endFlyNavigate()
   }
 
+  /** 舞台撤销/重做：按舞台作用域处理，避免活动作用域被切走后 Ctrl+Z 找不到历史 */
+  let stageUndoRetryTimer: ReturnType<typeof setTimeout> | null = null
+  let stageUndoRetryCount = 0
+
+  function cancelStageUndoRetry(): void {
+    if (stageUndoRetryTimer) {
+      clearTimeout(stageUndoRetryTimer)
+      stageUndoRetryTimer = null
+    }
+    stageUndoRetryCount = 0
+  }
+
+  /** 有历史但撤销栈正被其他命令占用（如保存中）：稍后重试，最多约 2 秒 */
+  function retryStageUndo(scope: string, redo: boolean): void {
+    if (stageUndoRetryTimer) return
+    stageUndoRetryTimer = setTimeout(() => {
+      stageUndoRetryTimer = null
+      const can = redo
+        ? editor.commands.canRedoInScope(scope)
+        : editor.commands.canUndoInScope(scope)
+      if (can) {
+        stageUndoRetryCount = 0
+        void (redo
+          ? editor.commands.redoInScope(scope)
+          : editor.commands.undoInScope(scope))
+        return
+      }
+      const has = redo
+        ? editor.commands.hasRedoInScope(scope)
+        : editor.commands.hasUndoInScope(scope)
+      if (has && stageUndoRetryCount < 25) {
+        stageUndoRetryCount += 1
+        retryStageUndo(scope, redo)
+      } else {
+        stageUndoRetryCount = 0
+      }
+    }, 80)
+  }
+
+  function onStageUndoKeydown(e: KeyboardEvent): void {
+    const mod = e.ctrlKey || e.metaKey
+    if (!mod || e.altKey) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+    const key = e.key.toLowerCase()
+    const scope = `director-stage:${options.directorAssetId}`
+    if (key === 'z' && !e.shiftKey) {
+      if (editor.commands.canUndoInScope(scope)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        void editor.commands.undoInScope(scope)
+      } else if (editor.commands.hasUndoInScope(scope)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        retryStageUndo(scope, false)
+      }
+      return
+    }
+    if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      if (editor.commands.canRedoInScope(scope)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        void editor.commands.redoInScope(scope)
+      } else if (editor.commands.hasRedoInScope(scope)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        retryStageUndo(scope, true)
+      }
+    }
+  }
+
   function onScenePick(): void {
     void loadPanorama(linkedPanoramaId.value)
     schedulePersist()
@@ -5888,6 +6727,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       removeAnimKeyframe()
       return
     }
+    if (
+      (e.code === 'Delete' || e.code === 'Backspace') &&
+      animSelectedCameraCutSegmentId.value &&
+      animSelectedTrackId.value
+    ) {
+      e.preventDefault()
+      removeCameraCutSegment(animSelectedTrackId.value, animSelectedCameraCutSegmentId.value)
+      return
+    }
     const mod = e.ctrlKey || e.metaKey
     if (mod && e.altKey && !e.shiftKey && e.code === 'KeyF') {
       e.preventDefault()
@@ -5897,6 +6745,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (mod && e.shiftKey && !e.altKey && e.code === 'KeyF') {
       e.preventDefault()
       alignSelectionWithView()
+      return
+    }
+    if (mod && !e.altKey && !e.shiftKey && e.code === 'KeyC') {
+      e.preventDefault()
+      copyStageSelection()
+      return
+    }
+    if (mod && !e.altKey && !e.shiftKey && e.code === 'KeyV') {
+      e.preventDefault()
+      void pasteStageClipboard()
       return
     }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
@@ -6240,6 +7098,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     renderer.domElement.addEventListener('pointercancel', onPointerCancel)
     renderer.domElement.addEventListener('contextmenu', onContextMenu)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onStageUndoKeydown, true)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', onWindowBlur)
 
@@ -6280,6 +7139,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         renderer.render(scene, camera)
         labelRenderer?.render(scene, camera)
       }
+      refreshCameraPreviews()
     }
     rafId = requestAnimationFrame(loop)
   }
@@ -6296,6 +7156,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     renderer?.domElement.removeEventListener('pointercancel', onPointerCancel)
     renderer?.domElement.removeEventListener('contextmenu', onContextMenu)
     window.removeEventListener('keydown', onKeyDown)
+    window.removeEventListener('keydown', onStageUndoKeydown, true)
+    cancelStageUndoRetry()
     window.removeEventListener('keyup', onKeyUp)
     window.removeEventListener('blur', onWindowBlur)
     animPlaying.value = false
@@ -6341,6 +7203,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       disposeGridHelper(grid)
       grid = null
     }
+    cameraPreviewCanvases.clear()
     shotRenderTarget?.dispose()
     shotRenderTarget = null
     labelRenderer?.domElement.remove()
@@ -6609,6 +7472,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setAspectRatio,
     setViewMode,
     setViewer: setViewerFromInspector,
+    applyCameraPreset,
+    canApplyComboPresets,
+    canApplyComboPreset,
     getViewer,
     updateObjectTransform,
     setObjectVisible,
@@ -6630,6 +7496,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     mediaGallerySignal,
     openMediaGallery,
     renderCameraPreviewToCanvas,
+    cameraPreviewOpen,
+    cameraPreviewIds,
+    cameraPreviewDetached,
+    setCameraPreviewSelection,
+    toggleCameraPreview,
+    setCameraPreviewOpen,
+    setCameraPreviewDetached,
+    registerCameraPreviewCanvas,
+    unregisterCameraPreviewCanvas,
+    setMultiSelection,
+    copyStageSelection,
+    pasteStageClipboard,
+    canPasteStageClipboard,
+    removeObjectsWithUndo,
     getSharedScene,
     renderSceneWithoutGizmos,
     getMainRenderer,
@@ -6674,6 +7554,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     ensureAnimation,
     addAnimTrack,
     removeAnimTrack,
+    addCameraCutTrack,
+    addCameraCutSegment,
+    removeCameraCutSegment,
+    setCameraCutSegmentRange,
+    selectCameraCutSegment,
+    animSelectedCameraCutSegmentId,
     selectAnimTrack,
     selectAnimKeyframe,
     addAnimKeyframe,

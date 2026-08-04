@@ -181,71 +181,95 @@
               <span v-if="skeletonSegments(track).length" class="skel-badge">{{
                 t('director.stage.anim.skeletonBadge')
               }}</span>
+              <span v-if="track.cameraCut" class="skel-badge cut-badge">{{
+                t('director.stage.anim.cameraCutTag')
+              }}</span>
             </span>
+            <template v-if="!track.cameraCut">
+              <button
+                type="button"
+                class="orient-btn"
+                :class="{ active: track.orientToPath }"
+                :title="t('director.stage.anim.orientToPath')"
+                :aria-pressed="track.orientToPath === true"
+                @click.stop="toggleOrientToPath(track)"
+              >
+                <span class="orient-icon" v-html="ICON_ORIENT" />
+              </button>
+              <div class="axis-wrap">
+                <button
+                  type="button"
+                  class="forward-axis-btn"
+                  :title="t('director.stage.anim.pathForwardAxis')"
+                  @click.stop="toggleAxisMenu(track.id)"
+                >
+                  {{ track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x') }}
+                </button>
+                <div
+                  v-if="axisMenuTrackId === track.id"
+                  class="menu axis-menu"
+                  @click.stop
+                >
+                  <button
+                    v-for="axis in forwardAxes"
+                    :key="axis"
+                    type="button"
+                    class="menu-item axis-item"
+                    :class="{ active: axis === (track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x')) }"
+                    @click="onForwardAxisPick(track, axis)"
+                  >
+                    {{ axis }}
+                  </button>
+                </div>
+              </div>
+              <div class="draw-wrap">
+                <button
+                  type="button"
+                  class="draw-btn"
+                  :class="{ active: pathDrawMode?.trackId === track.id }"
+                  @click.stop="toggleDrawMenu(track.id)"
+                >
+                  <span class="draw-icon" v-html="ICON_PATH" />
+                  <span>{{ t('director.stage.anim.drawPath') }}</span>
+                </button>
+                <div
+                  v-if="drawMenuTrackId === track.id"
+                  class="menu draw-menu"
+                  @click.stop
+                >
+                  <button
+                    v-for="kind in pathKinds"
+                    :key="kind"
+                    type="button"
+                    class="menu-item"
+                    @click="startDraw(track.id, kind)"
+                  >
+                    <span class="kind-icon" v-html="pathIcons[kind]" />
+                    <span>{{ t(`director.stage.anim.path.${kind}`) }}</span>
+                  </button>
+                </div>
+              </div>
+            </template>
             <button
+              v-if="track.cameraCut"
               type="button"
-              class="orient-btn"
-              :class="{ active: track.orientToPath }"
-              :title="t('director.stage.anim.orientToPath')"
-              :aria-pressed="track.orientToPath === true"
-              @click.stop="toggleOrientToPath(track)"
+              class="cut-add-btn"
+              :title="t('director.stage.anim.cameraCutAddHint')"
+              @click.stop="addCameraCutAtPlayhead(track)"
             >
-              <span class="orient-icon" v-html="ICON_ORIENT" />
+              +
             </button>
-            <div class="axis-wrap">
-              <button
-                type="button"
-                class="forward-axis-btn"
-                :title="t('director.stage.anim.pathForwardAxis')"
-                @click.stop="toggleAxisMenu(track.id)"
-              >
-                {{ track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x') }}
-              </button>
-              <div
-                v-if="axisMenuTrackId === track.id"
-                class="menu axis-menu"
-                @click.stop
-              >
-                <button
-                  v-for="axis in forwardAxes"
-                  :key="axis"
-                  type="button"
-                  class="menu-item axis-item"
-                  :class="{ active: axis === (track.pathForwardAxis ?? (track.targetKind === 'camera' ? '-z' : '-x')) }"
-                  @click="onForwardAxisPick(track, axis)"
-                >
-                  {{ axis }}
-                </button>
-              </div>
-            </div>
-            <div class="draw-wrap">
-              <button
-                type="button"
-                class="draw-btn"
-                :class="{ active: pathDrawMode?.trackId === track.id }"
-                @click.stop="toggleDrawMenu(track.id)"
-              >
-                <span class="draw-icon" v-html="ICON_PATH" />
-                <span>{{ t('director.stage.anim.drawPath') }}</span>
-              </button>
-              <div
-                v-if="drawMenuTrackId === track.id"
-                class="menu draw-menu"
-                @click.stop
-              >
-                <button
-                  v-for="kind in pathKinds"
-                  :key="kind"
-                  type="button"
-                  class="menu-item"
-                  @click="startDraw(track.id, kind)"
-                >
-                  <span class="kind-icon" v-html="pathIcons[kind]" />
-                  <span>{{ t(`director.stage.anim.path.${kind}`) }}</span>
-                </button>
-              </div>
-            </div>
             <button
+              v-if="track.cameraCut && scene.animSelectedCameraCutSegmentId.value"
+              type="button"
+              class="cut-remove-btn"
+              :title="t('director.stage.anim.cameraCutRemoveHint')"
+              @click.stop="removeSelectedCameraCutSegment(track)"
+            >
+              ×
+            </button>
+            <button
+              v-if="!track.cameraCut"
               type="button"
               class="remove-btn"
               :title="t('director.stage.anim.removeTrack')"
@@ -255,7 +279,7 @@
             </button>
           </div>
           <div
-            v-if="hasKeyframes(track) || track.id === selectedTrackId"
+            v-if="!track.cameraCut && (hasKeyframes(track) || track.id === selectedTrackId)"
             class="sub-row"
           >
             <span class="kf" v-html="ICON_KEY" />
@@ -334,6 +358,7 @@
             :class="{ selected: track.id === selectedTrackId }"
           >
             <div
+              v-if="!track.cameraCut"
               class="timeline-row"
               @click="scene.selectAnimTrack(track.id)"
             >
@@ -344,7 +369,7 @@
               />
             </div>
             <div
-              v-if="hasKeyframes(track) || track.id === selectedTrackId"
+              v-if="!track.cameraCut && (hasKeyframes(track) || track.id === selectedTrackId)"
               class="timeline-row kf-row"
             >
               <div
@@ -398,6 +423,43 @@
                 {{ t('director.stage.anim.skeletonDropHint') }}
               </div>
             </div>
+            <div
+              v-if="track.cameraCut"
+              class="timeline-row cut-lane"
+              :class="{ 'camera-drag-over': dropCutTrackId === track.id }"
+              @dragenter.prevent="onCutLaneDragEnter(track, $event)"
+              @dragover.prevent="onCutLaneDragOver(track, $event)"
+              @dragleave="onCutLaneDragLeave(track, $event)"
+              @drop.prevent="onCutLaneDrop(track, $event)"
+              @click="scene.selectAnimTrack(track.id)"
+            >
+              <div
+                v-for="seg in cameraCutSegments(track)"
+                :key="seg.id"
+                class="cut-clip"
+                :class="{
+                  active: seg.id === scene.animSelectedCameraCutSegmentId.value,
+                  playing: playing && scene.stage.value.activeCameraId === seg.cameraId
+                }"
+                :style="cameraCutSegStyle(seg)"
+                :title="cameraCutSegTitle(seg)"
+                @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'move')"
+                @click.stop="scene.selectCameraCutSegment(track.id, seg.id)"
+              >
+                <span
+                  class="skel-handle left"
+                  @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'left')"
+                />
+                <span class="cut-clip-label">{{ cameraName(seg.cameraId) }}</span>
+                <span
+                  class="skel-handle right"
+                  @pointerdown.stop="onCameraCutSegPointerDown($event, track.id, seg.id, 'right')"
+                />
+              </div>
+              <div v-if="!cameraCutSegments(track).length" class="skel-lane-hint">
+                {{ t('director.stage.anim.cameraCutDropHint') }}
+              </div>
+            </div>
           </div>
           <div
             class="playhead playhead-track"
@@ -416,10 +478,12 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
+  directorTrackCameraCutSegments,
   directorTrackSkeletonClips,
   isAnimationModelAsset,
   type DirectorAnimPathKind,
   type DirectorAnimTrack,
+  type DirectorCameraCutSegment,
   type DirectorPathForwardAxis,
   type DirectorSkeletonClipSegment
 } from '@shared/domain'
@@ -455,6 +519,8 @@ const ICON_EXPORT =
   '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="#e53935"/></svg>'
 const ICON_KEY =
   '<svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><path d="M6 1.2 10.8 6 6 10.8 1.2 6Z"/></svg>'
+/** 层级相机行拖入机位轨时使用的 MIME（与 DirectorSceneHierarchy 一致） */
+const DIRECTOR_CAMERA_DRAG_MIME = 'application/x-director-camera-id'
 
 const pathIcons: Record<DirectorAnimPathKind, string> = {
   circle:
@@ -474,6 +540,7 @@ const addMenuOpen = ref(false)
 const drawMenuTrackId = ref<string | null>(null)
 const axisMenuTrackId = ref<string | null>(null)
 const dropTrackId = ref<string | null>(null)
+const dropCutTrackId = ref<string | null>(null)
 const timelineEl = ref<HTMLElement | null>(null)
 const rulerWrapEl = ref<HTMLElement | null>(null)
 const pxPerSecond = ref(80)
@@ -498,10 +565,13 @@ const animation = computed(
     }
 )
 const tracks = computed(() =>
-  animation.value.tracks.map((track) => ({
-    ...track,
-    keyframes: track.keyframes ?? []
-  }))
+  animation.value.tracks
+    .map((track) => ({
+      ...track,
+      keyframes: track.keyframes ?? []
+    }))
+    // 机位切换轨固定在时间线最上面
+    .sort((a, b) => Number(b.cameraCut === true) - Number(a.cameraCut === true))
 )
 const duration = computed(() => animation.value.duration)
 const loop = computed(() => animation.value.loop)
@@ -514,7 +584,9 @@ const selectedKeyframeId = computed(() => scene.animSelectedKeyframeId.value)
 const pathDrawMode = computed(() => scene.pathDrawMode.value)
 
 const addCandidates = computed(() => {
-  const used = new Set(tracks.value.map((tr) => `${tr.targetKind}:${tr.targetId}`))
+  const used = new Set(
+    tracks.value.filter((tr) => !tr.cameraCut).map((tr) => `${tr.targetKind}:${tr.targetId}`)
+  )
   const cameras = (scene.stage.value.cameras ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -620,6 +692,153 @@ function skeletonSegStyle(seg: DirectorSkeletonClipSegment): Record<string, stri
     left: `${left}px`,
     width: `${width}px`
   }
+}
+
+function cameraCutSegments(track: DirectorAnimTrack): DirectorCameraCutSegment[] {
+  return directorTrackCameraCutSegments(track)
+}
+
+function cameraName(cameraId: string): string {
+  return scene.stage.value.cameras?.find((c) => c.id === cameraId)?.name ?? cameraId
+}
+
+function cameraCutSegStyle(seg: DirectorCameraCutSegment): Record<string, string> {
+  const left = timeToX(seg.start)
+  const width = Math.max(12, timeToX(seg.end) - left)
+  return {
+    left: `${left}px`,
+    width: `${width}px`
+  }
+}
+
+function cameraCutSegTitle(seg: DirectorCameraCutSegment): string {
+  return `${cameraName(seg.cameraId)} · ${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s`
+}
+
+/** 在播放头位置给当前激活相机添加一段机位区间 */
+function addCameraCutAtPlayhead(track: DirectorAnimTrack): void {
+  const cameraId = scene.stage.value.activeCameraId
+  if (!cameraId || !scene.stage.value.cameras?.some((c) => c.id === cameraId)) return
+  const t = currentTime.value
+  const end = Math.min(duration.value, t + 1.5)
+  scene.addCameraCutSegment(track.id, cameraId, Math.max(0, t), Math.max(t + 0.1, end))
+}
+
+function removeSelectedCameraCutSegment(track: DirectorAnimTrack): void {
+  const segmentId = scene.animSelectedCameraCutSegmentId.value
+  if (!segmentId) return
+  scene.removeCameraCutSegment(track.id, segmentId)
+}
+
+function isCameraCutDrag(event: DragEvent): boolean {
+  const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : []
+  if (types.includes(DIRECTOR_CAMERA_DRAG_MIME)) return true
+  // 兼容：text/plain 值为相机 id 的层级行拖入
+  const raw = event.dataTransfer?.getData('text/plain')
+  if (raw && scene.stage.value.cameras?.some((c) => c.id === raw)) return true
+  const shared = (window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId
+  return !!shared && !!scene.stage.value.cameras?.some((c) => c.id === shared)
+}
+
+function onCutLaneDragEnter(track: DirectorAnimTrack, event: DragEvent): void {
+  if (!isCameraCutDrag(event)) return
+  dropCutTrackId.value = track.id
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onCutLaneDragOver(track: DirectorAnimTrack, event: DragEvent): void {
+  // 始终接受拖放，避免显示禁止图标；是否为相机在 drop 时校验
+  dropCutTrackId.value = isCameraCutDrag(event) ? track.id : null
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onCutLaneDragLeave(track: DirectorAnimTrack, event: DragEvent): void {
+  const next = event.relatedTarget as Node | null
+  const block = event.currentTarget as HTMLElement | null
+  if (next && block?.contains(next)) return
+  if (dropCutTrackId.value === track.id) dropCutTrackId.value = null
+}
+
+function onCutLaneDrop(track: DirectorAnimTrack, event: DragEvent): void {
+  dropCutTrackId.value = null
+  const cameraId =
+    event.dataTransfer?.getData(DIRECTOR_CAMERA_DRAG_MIME) ||
+    event.dataTransfer?.getData('text/plain') ||
+    (window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId ||
+    ''
+  if (!cameraId) return
+  if (!scene.stage.value.cameras?.some((c) => c.id === cameraId)) return
+  const t = dropTimeFromEvent(event)
+  const end = Math.min(duration.value, t + 1.5)
+  scene.selectAnimTrack(track.id)
+  scene.addCameraCutSegment(track.id, cameraId, Math.max(0, t), Math.max(t + 0.1, end))
+}
+
+type CutSegDragMode = 'move' | 'left' | 'right'
+let cutSegDrag: {
+  trackId: string
+  segmentId: string
+  mode: CutSegDragMode
+  startX: number
+  originStart: number
+  originEnd: number
+} | null = null
+
+function onCameraCutSegPointerDown(
+  e: PointerEvent,
+  trackId: string,
+  segmentId: string,
+  mode: CutSegDragMode
+): void {
+  if (e.button !== 0) return
+  const track = tracks.value.find((tr) => tr.id === trackId)
+  const seg = track ? cameraCutSegments(track).find((item) => item.id === segmentId) : null
+  if (!track || !seg) return
+  scene.selectCameraCutSegment(trackId, segmentId)
+  cutSegDrag = {
+    trackId,
+    segmentId,
+    mode,
+    startX: e.clientX,
+    originStart: seg.start,
+    originEnd: seg.end
+  }
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  window.addEventListener('pointermove', onCameraCutSegPointerMove)
+  window.addEventListener('pointerup', onCameraCutSegPointerUp)
+}
+
+function onCameraCutSegPointerMove(e: PointerEvent): void {
+  if (!cutSegDrag) return
+  const dt = (e.clientX - cutSegDrag.startX) / pxPerSecond.value
+  const span = cutSegDrag.originEnd - cutSegDrag.originStart
+  if (cutSegDrag.mode === 'move') {
+    let start = cutSegDrag.originStart + dt
+    start = Math.max(0, Math.min(start, duration.value - span))
+    scene.setCameraCutSegmentRange(cutSegDrag.trackId, cutSegDrag.segmentId, start, start + span)
+    return
+  }
+  if (cutSegDrag.mode === 'left') {
+    const start = Math.max(0, Math.min(cutSegDrag.originEnd - 0.05, cutSegDrag.originStart + dt))
+    scene.setCameraCutSegmentRange(
+      cutSegDrag.trackId,
+      cutSegDrag.segmentId,
+      start,
+      cutSegDrag.originEnd
+    )
+    return
+  }
+  const end = Math.min(
+    duration.value,
+    Math.max(cutSegDrag.originStart + 0.05, cutSegDrag.originEnd + dt)
+  )
+  scene.setCameraCutSegmentRange(cutSegDrag.trackId, cutSegDrag.segmentId, cutSegDrag.originStart, end)
+}
+
+function onCameraCutSegPointerUp(): void {
+  cutSegDrag = null
+  window.removeEventListener('pointermove', onCameraCutSegPointerMove)
+  window.removeEventListener('pointerup', onCameraCutSegPointerUp)
 }
 
 function isStudioAssetDrag(event: DragEvent): boolean {
@@ -1753,6 +1972,110 @@ onBeforeUnmount(() => {
 
 .skel-handle:hover {
   background: var(--wash-35);
+}
+
+.add-btn.cut-btn {
+  border-color: rgba(91, 156, 245, 0.45);
+  color: var(--accent-fg);
+}
+
+.cut-badge {
+  border-color: rgba(91, 156, 245, 0.5);
+  color: #9ec9f5;
+}
+
+.cut-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cut-add-btn:hover {
+  border-color: rgba(91, 156, 245, 0.5);
+  background: rgba(91, 156, 245, 0.16);
+  color: var(--accent-fg);
+}
+
+.cut-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cut-remove-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(240, 113, 120, 0.14);
+}
+
+.timeline-row.cut-lane {
+  background: rgba(91, 156, 245, 0.05);
+}
+
+.timeline-row.cut-lane.camera-drag-over {
+  background: rgba(91, 156, 245, 0.16);
+  outline: 1px dashed rgba(91, 156, 245, 0.55);
+  outline-offset: -2px;
+}
+
+.cut-clip {
+  position: absolute;
+  top: 4px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  border: 1px solid rgba(91, 156, 245, 0.6);
+  background: linear-gradient(180deg, rgba(64, 118, 190, 0.95), rgba(42, 88, 150, 0.95));
+  color: #e8f2ff;
+  cursor: grab;
+  box-sizing: border-box;
+  overflow: hidden;
+  user-select: none;
+}
+
+.cut-clip.active {
+  border-color: #b8d6f7;
+  box-shadow: 0 0 0 1px rgba(184, 214, 247, 0.35);
+}
+
+.cut-clip.playing {
+  border-color: #ffe08a;
+  box-shadow: 0 0 0 1px rgba(255, 224, 138, 0.45);
+}
+
+.cut-clip-label {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .skel-count {

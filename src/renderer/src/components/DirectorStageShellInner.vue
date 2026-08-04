@@ -68,6 +68,79 @@
           >
             {{ t('director.stage.viewCamera') }}
           </button>
+          <button
+            type="button"
+            :class="{ active: scene.cameraPreviewOpen.value }"
+            :aria-pressed="scene.cameraPreviewOpen.value"
+            @click="scene.toggleCameraPreview"
+          >
+            {{ t('director.stage.cameraPreview') }}
+          </button>
+          <div class="preset-root">
+            <button
+              type="button"
+              :class="{ active: presetMenuOpen }"
+              :disabled="scene.selectionKind.value !== 'object'"
+              :title="
+                scene.selectionKind.value === 'object'
+                  ? t('director.stage.cameraPreset.title')
+                  : t('director.stage.cameraPreset.needObject')
+              "
+              :aria-expanded="presetMenuOpen"
+              @click.stop="togglePresetMenu"
+            >
+              {{ t('director.stage.cameraPreset.title') }}
+            </button>
+            <div
+              v-if="presetMenuOpen"
+              ref="presetMenuEl"
+              class="preset-dropdown"
+              role="menu"
+            >
+              <button
+                v-for="group in presetGroups"
+                :key="group.id"
+                type="button"
+                class="preset-group-item"
+                :class="{ active: presetSubmenu === group.id }"
+                role="menuitem"
+                :aria-haspopup="true"
+                :aria-expanded="presetSubmenu === group.id"
+                @mouseenter="presetSubmenu = group.id"
+                @click="presetSubmenu = group.id"
+              >
+                <span>{{ t(group.labelKey) }}</span>
+                <span class="preset-sub-arrow">›</span>
+              </button>
+              <div v-if="presetSubmenu" class="preset-submenu" role="menu">
+                <button
+                  v-for="preset in presetSubmenuItems"
+                  :key="preset.id"
+                  type="button"
+                  class="preset-item"
+                  :class="{
+                    disabled:
+                      presetSubmenu === 'combination' &&
+                      !scene.canApplyComboPreset(preset.id)
+                  }"
+                  :disabled="
+                    presetSubmenu === 'combination' &&
+                    !scene.canApplyComboPreset(preset.id)
+                  "
+                  :title="
+                    presetSubmenu === 'combination' &&
+                    !scene.canApplyComboPreset(preset.id)
+                      ? t('director.stage.cameraPreset.comboNeedModels')
+                      : ''
+                  "
+                  role="menuitem"
+                  @click="onPickPreset(preset.id)"
+                >
+                  {{ t(preset.labelKey) }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="title-actions no-drag">
@@ -129,12 +202,14 @@
           @capture="onCapture"
           @set-aspect-ratio="scene.setAspectRatio"
           @toggle-selection-bounds="scene.toggleSelectionBoundsVisible"
+          @apply-camera-preset="scene.applyCameraPreset"
         />
         <div
           v-if="scene.aspectRatio.value !== 'auto'"
           class="aspect-frame"
           :style="aspectFrameStyle"
         />
+        <DirectorCameraPreviewPanel />
         <DirectorViewOrientationGizmo
           @set-orientation="scene.setViewOrientation"
           @reset-view="scene.resetViewer"
@@ -155,6 +230,10 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { fitDirectorAspectFrame, isPoseModelAsset } from '@shared/domain'
+import {
+  DIRECTOR_COMBO_CAMERA_PRESETS,
+  DIRECTOR_SHOT_CAMERA_PRESETS
+} from '@shared/directorCameraPresets'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import {
@@ -169,6 +248,7 @@ import DirectorViewOrientationGizmo from './DirectorViewOrientationGizmo.vue'
 import type { DirectorMediaGalleryTab } from '../features/director/useDirectorStageScene'
 import DirectorCameraShotsPanel from './DirectorCameraShotsPanel.vue'
 import DirectorAnimationPanel from './DirectorAnimationPanel.vue'
+import DirectorCameraPreviewPanel from './DirectorCameraPreviewPanel.vue'
 
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
 
@@ -192,6 +272,9 @@ const viewportSize = ref({ width: 0, height: 0 })
 const viewportAssetDragOver = ref(false)
 const viewMenuOpen = ref(false)
 const viewMenuEl = ref<HTMLElement | null>(null)
+const presetMenuOpen = ref(false)
+const presetMenuEl = ref<HTMLElement | null>(null)
+const presetSubmenu = ref<string | null>(null)
 const shotsPanelOpen = ref(false)
 const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
 let resizeObserver: ResizeObserver | null = null
@@ -204,6 +287,28 @@ const hasSelection = computed(
 const shotCount = computed(
   () =>
     (scene.stage.value.cameraShots?.length ?? 0) + (scene.stage.value.cameraVideos?.length ?? 0)
+)
+
+const presetGroups = [
+  {
+    id: 'shotSize',
+    labelKey: 'director.stage.cameraPreset.groupShotSize',
+    items: DIRECTOR_SHOT_CAMERA_PRESETS.filter((p) => p.group === 'shotSize')
+  },
+  {
+    id: 'angle',
+    labelKey: 'director.stage.cameraPreset.groupAngle',
+    items: DIRECTOR_SHOT_CAMERA_PRESETS.filter((p) => p.group === 'angle')
+  },
+  {
+    id: 'combination',
+    labelKey: 'director.stage.cameraPreset.groupCombination',
+    items: DIRECTOR_COMBO_CAMERA_PRESETS.map((p) => ({ id: p.id, labelKey: p.labelKey }))
+  }
+]
+
+const presetSubmenuItems = computed(
+  () => presetGroups.find((g) => g.id === presetSubmenu.value)?.items ?? []
 )
 
 const aspectFrameStyle = computed(() => {
@@ -223,6 +328,18 @@ const aspectFrameStyle = computed(() => {
 function toggleViewMenu(): void {
   viewMenuOpen.value = !viewMenuOpen.value
   if (viewMenuOpen.value) closeShotsPanel()
+}
+
+function togglePresetMenu(): void {
+  presetMenuOpen.value = !presetMenuOpen.value
+  if (presetMenuOpen.value) closeShotsPanel()
+  if (!presetMenuOpen.value) presetSubmenu.value = null
+}
+
+function onPickPreset(presetId: string): void {
+  scene.applyCameraPreset(presetId)
+  presetMenuOpen.value = false
+  presetSubmenu.value = null
 }
 
 function closeViewMenu(): void {
@@ -272,6 +389,12 @@ function onDocumentPointerDown(event: PointerEvent): void {
     if (viewMenuEl.value?.contains(target)) return
     if (target?.closest('.menu-root')) return
     closeViewMenu()
+  }
+  if (presetMenuOpen.value) {
+    if (presetMenuEl.value?.contains(target)) return
+    if (target?.closest('.preset-root')) return
+    presetMenuOpen.value = false
+    presetSubmenu.value = null
   }
   if (shotsPanelOpen.value) {
     if (target?.closest('.shots-root')) return
@@ -504,6 +627,98 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 .view-modes button.active {
   background: var(--accent);
   color: #fff;
+}
+
+.view-modes button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.preset-root {
+  position: relative;
+}
+
+.preset-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 150px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.preset-group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.preset-group-item:hover,
+.preset-group-item.active {
+  background: rgba(91, 156, 245, 0.16);
+  color: var(--accent-fg);
+}
+
+.preset-sub-arrow {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.preset-submenu {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: -4px;
+  min-width: 170px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.preset-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preset-item:hover {
+  background: rgba(91, 156, 245, 0.16);
+  color: var(--accent-fg);
+}
+
+.preset-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.preset-item:disabled:hover {
+  background: transparent;
 }
 
 .title-actions {

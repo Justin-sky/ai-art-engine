@@ -112,6 +112,60 @@ export class EditorCommandService {
     }
   }
 
+  /** 指定作用域是否有可撤销历史（不依赖当前活动作用域） */
+  canUndoInScope(scope: string): boolean {
+    const history = this.histories.get(scope)
+    return !!history && history.undo.length > 0 && !this.running.value
+  }
+
+  /** 指定作用域是否存在撤销历史（不判断命令是否执行中） */
+  hasUndoInScope(scope: string): boolean {
+    return !!this.histories.get(scope)?.undo.length
+  }
+
+  /** 指定作用域是否有可重做历史（不依赖当前活动作用域） */
+  canRedoInScope(scope: string): boolean {
+    const history = this.histories.get(scope)
+    return !!history && history.redo.length > 0 && !this.running.value
+  }
+
+  /** 指定作用域是否存在重做历史（不判断命令是否执行中） */
+  hasRedoInScope(scope: string): boolean {
+    return !!this.histories.get(scope)?.redo.length
+  }
+
+  /** 撤销指定作用域的最新命令（不切换活动作用域） */
+  async undoInScope(scope: string): Promise<void> {
+    const history = this.histories.get(scope)
+    const entry = history?.undo.at(-1)
+    if (!entry?.command.undo || this.running.value) return
+    this.running.value = true
+    try {
+      await entry.command.undo()
+      history!.undo.pop()
+      history!.redo.push(entry)
+      this.touch()
+    } finally {
+      this.running.value = false
+    }
+  }
+
+  /** 重做指定作用域的最新命令（不切换活动作用域） */
+  async redoInScope(scope: string): Promise<void> {
+    const history = this.histories.get(scope)
+    const entry = history?.redo.at(-1)
+    if (!entry || this.running.value) return
+    this.running.value = true
+    try {
+      await entry.command.execute()
+      history!.redo.pop()
+      history!.undo.push(entry)
+      this.touch()
+    } finally {
+      this.running.value = false
+    }
+  }
+
   setActiveScope(scope: string): void {
     if (this.activeScopeRef.value === scope) return
     this.activeScopeRef.value = scope

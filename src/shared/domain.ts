@@ -948,11 +948,21 @@ export interface DirectorCameraVideo {
 export interface DirectorCameraState {
   id: string
   name: string
+  /** 相机所属父物体 id（机位预设创建的相机挂在物体下）；缺省为场景根 */
+  parentId?: string | null
   /** 默认 true */
   visible?: boolean
   /** 默认 false */
   locked?: boolean
   viewer: DirectorViewerState
+}
+
+/** 机位组：组合机位预设批量创建的相机容器（挂在物体下） */
+export interface DirectorCameraGroup {
+  id: string
+  name: string
+  /** 所属物体 id（缺省为场景根） */
+  parentId?: string | null
 }
 
 export interface DirectorStageState {
@@ -961,6 +971,8 @@ export interface DirectorStageState {
   selectedObjectId?: string | null
   /** 全景中的全部机位；viewer 权威在 cameras[activeCameraId].viewer */
   cameras?: DirectorCameraState[]
+  /** 机位组（组合机位预设批量创建的相机容器） */
+  cameraGroups?: DirectorCameraGroup[]
   /** 活动机位：相机视图 / 截屏 / 图节点输出 */
   activeCameraId?: string | null
   /** 地面网格是否显示 */
@@ -1208,6 +1220,14 @@ export interface DirectorSkeletonClipSegment {
   loop?: boolean
 }
 
+/** 机位切换轨上的相机区间：播放到该区间时激活对应机位 */
+export interface DirectorCameraCutSegment {
+  id: string
+  cameraId: string
+  start: number
+  end: number
+}
+
 export interface DirectorAnimTrack {
   id: string
   name: string
@@ -1224,6 +1244,10 @@ export interface DirectorAnimTrack {
   pathForwardAxis?: DirectorPathForwardAxis
   /** 时间轴上的骨骼动画片段（可多段、可调长度） */
   skeletonClips?: DirectorSkeletonClipSegment[]
+  /** 机位切换轨：播放时按时间激活 cameraSegments 中对应相机（目标机位取景不做变换插值） */
+  cameraCut?: boolean
+  /** 机位切换区间（cameraCut=true 时使用） */
+  cameraSegments?: DirectorCameraCutSegment[]
 }
 
 export interface DirectorAnimationState {
@@ -1332,6 +1356,16 @@ function normalizeDirectorSkeletonClipSegment(
   }
 }
 
+function normalizeDirectorCameraCutSegment(raw: unknown): DirectorCameraCutSegment | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.id !== 'string' || !o.id.trim() || typeof o.cameraId !== 'string') return null
+  const start = typeof o.start === 'number' && Number.isFinite(o.start) ? Math.max(0, o.start) : 0
+  const end =
+    typeof o.end === 'number' && Number.isFinite(o.end) ? Math.max(start + 0.05, o.end) : start + 1
+  return { id: o.id.trim(), cameraId: o.cameraId, start, end }
+}
+
 function normalizeDirectorAnimTrack(raw: unknown): DirectorAnimTrack | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -1371,6 +1405,14 @@ function normalizeDirectorAnimTrack(raw: unknown): DirectorAnimTrack | null {
         .sort((a, b) => a.start - b.start)
     : []
 
+  const cameraCut = o.cameraCut === true
+  const cameraSegments = Array.isArray(o.cameraSegments)
+    ? o.cameraSegments
+        .map((item) => normalizeDirectorCameraCutSegment(item))
+        .filter((item): item is DirectorCameraCutSegment => !!item)
+        .sort((a, b) => a.start - b.start)
+    : []
+
   return {
     id: o.id,
     name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : 'Track',
@@ -1385,7 +1427,9 @@ function normalizeDirectorAnimTrack(raw: unknown): DirectorAnimTrack | null {
       o.pathForwardAxis,
       targetKind === 'camera' ? '-z' : DEFAULT_PATH_FORWARD_AXIS
     ),
-    ...(skeletonClips.length ? { skeletonClips } : {})
+    ...(skeletonClips.length ? { skeletonClips } : {}),
+    ...(cameraCut ? { cameraCut: true } : {}),
+    ...(cameraSegments.length ? { cameraSegments } : {})
   }
 }
 
@@ -1394,7 +1438,16 @@ export function directorAnimTrackHasContent(track: DirectorAnimTrack): boolean {
   if ((track.keyframes?.length ?? 0) >= 1) return true
   if (track.path && track.path.points.length >= 2) return true
   if ((track.skeletonClips?.length ?? 0) > 0) return true
+  if ((track.cameraSegments?.length ?? 0) > 0) return true
   return false
+}
+
+/** 轨上有效的机位切换区间列表（已按 start 排序）；缺 cameraSegments 则空 */
+export function directorTrackCameraCutSegments(
+  track: Pick<DirectorAnimTrack, 'cameraSegments'>
+): DirectorCameraCutSegment[] {
+  if (!track.cameraSegments?.length) return []
+  return [...track.cameraSegments].sort((a, b) => a.start - b.start)
 }
 
 /** 轨上有效的骨骼片段列表（已按 start 排序）；缺 skeletonClips 则空 */
@@ -1531,6 +1584,7 @@ export function createDefaultDirectorStage(): DirectorStageState {
     transformMode: 'translate',
     selectedObjectId: null,
     cameras: [camera],
+    cameraGroups: [],
     activeCameraId: camera.id,
     gridVisible: DEFAULT_GRID_VISIBLE,
     gridOpacity: DEFAULT_GRID_OPACITY,
@@ -1562,9 +1616,26 @@ function normalizeDirectorCamera(raw: unknown, index: number): DirectorCameraSta
   return {
     id,
     name,
+    ...(typeof o.parentId === 'string' && o.parentId.trim()
+      ? { parentId: o.parentId.trim() }
+      : {}),
     visible: o.visible === false ? false : true,
     locked: o.locked === true,
     viewer: readDirectorViewer(o.viewer)
+  }
+}
+
+function normalizeDirectorCameraGroup(raw: unknown): DirectorCameraGroup | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : ''
+  if (!id) return null
+  return {
+    id,
+    name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : '机位组',
+    ...(typeof o.parentId === 'string' && o.parentId.trim()
+      ? { parentId: o.parentId.trim() }
+      : {})
   }
 }
 
@@ -1615,6 +1686,11 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
     selectedObjectId: typeof s.selectedObjectId === 'string' ? s.selectedObjectId : null,
     cameras,
     activeCameraId,
+    cameraGroups: Array.isArray(s.cameraGroups)
+      ? s.cameraGroups
+          .map((g) => normalizeDirectorCameraGroup(g))
+          .filter((g): g is DirectorCameraGroup => !!g)
+      : [],
     gridVisible: s.gridVisible === false ? false : true,
     gridOpacity:
       typeof s.gridOpacity === 'number' ? clampGridOpacity(s.gridOpacity) : base.gridOpacity,

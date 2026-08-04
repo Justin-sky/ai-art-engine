@@ -37,7 +37,7 @@
 - 官网使用手册补全一键工作流、宿主 Dive、任务复用与侧栏交互；首页工作流步骤增加「一键工作流」
 - 节点 / Inspector 预览改为完整显示（object-fit: contain）
 - 打光效果 / 多角度编辑器左侧预览改为顶部对齐
-- MinMax 提供商更名；Windows 风格视频图标；节点媒体控件优化
+- MiniMax 提供商更名；Windows 风格视频图标；节点媒体控件优化
 
 ### Fixed
 
@@ -58,7 +58,7 @@
 - 导演台左侧场景列表可拖拽调整宽度
 - 目录端口专用类型 `world` / `narrative` / `shots`（显示为世界元素 / 叙事单元 / 分镜）：结构化 JSON 不再占用 `text`，避免误连
 - 生成类节点锁定：开启后跳过模型调用，直接复用图库/上次输出（节点卡锁图标与 Inspector）
-- 模型提供商：可灵（Kling）、MinMax、通义千问（DashScope）、魔塔（ModelScope）
+- 模型提供商：可灵（Kling）、MiniMax、通义千问（DashScope）、魔塔（ModelScope）
 - 对象存储：阿里云 OSS、腾讯云 COS（与火山 TOS 并列；同时仅可启用一个；设置页支持折叠）
 - 设置页与手册展示各模型 / 对象存储密钥申请链接；方舟声音页签补充豆包语音控制台说明
 - 图片精修对齐编辑管线，Inspector 提示词实时同步
@@ -67,7 +67,7 @@
 
 - 可灵鉴权改为官方文档的 API Key（`Authorization: Bearer`），移除 Access Key / Secret Key JWT 签发
 - 通义千问静态模型目录按百炼文档对齐（可灵 V3 / HappyHorse t2v·i2v·r2v·edit + 万相图 ≤2.5 / 视频 2.2–2.7）
-- README / 官网 / 手册补全 MinMax 等模型提供商说明
+- README / 官网 / 手册补全 MiniMax 等模型提供商说明
 - 图库类生成节点双输出口：`out` 为当前选中单条（默认连线；每次成功执行强制选中最新），`out-all` 为全部历史；Inspector 可单击切换当前输出
 - 预览走弹窗，图片编辑工具仅 Dive
 

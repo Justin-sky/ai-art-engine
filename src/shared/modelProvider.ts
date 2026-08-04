@@ -8,7 +8,7 @@ export const VOLCENGINE_OPENSPEECH_CREDENTIALS_URL =
   'https://console.volcengine.com/speech/app'
 /** 可灵（Kling）国内开放平台 */
 export const KLING_DEFAULT_BASE_URL = 'https://api-beijing.klingai.com'
-/** MinMax（原海螺 AI / MiniMax）国内开放平台 */
+/** MiniMax（原海螺 AI）国内开放平台 */
 export const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.com'
 /** 通义千问 / 万相（阿里云百炼 DashScope OpenAI 兼容） */
 export const DASHSCOPE_DEFAULT_BASE_URL =
@@ -52,7 +52,7 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
   },
   {
     id: 'minimax',
-    label: 'MinMax',
+    label: 'MiniMax',
     defaultBaseUrl: MINIMAX_DEFAULT_BASE_URL,
     credentialsUrl:
       'https://platform.minimaxi.com/user-center/basic-information/interface-key'
@@ -657,7 +657,7 @@ function normalizeProviderKind(raw: unknown): ModelProviderKind | null {
   return MODEL_PROVIDER_KINDS.some((p) => p.id === raw) ? (raw as ModelProviderKind) : null
 }
 
-/** 旧版「海螺 AI」展示名迁移为 MinMax（自定义其它名称仍保留） */
+/** 旧版「海螺 AI」展示名迁移为 MiniMax（自定义其它名称仍保留） */
 function resolveProviderDisplayLabel(
   kind: ModelProviderKind,
   rawLabel: unknown,
@@ -667,7 +667,9 @@ function resolveProviderDisplayLabel(
   if (!label) return metaLabel
   if (
     kind === 'minimax' &&
-    /^(海螺\s*AI|Hailuo(\s*AI)?(\s*\/\s*MiniMax)?|Hailuo\s*\(\s*MiniMax\s*\))$/i.test(label)
+    /^(海螺\s*AI|Hailuo(\s*AI)?(\s*\/\s*MiniMax)?|Hailuo\s*\(\s*MiniMax\s*\)|MinMax)$/i.test(
+      label
+    )
   ) {
     return metaLabel
   }

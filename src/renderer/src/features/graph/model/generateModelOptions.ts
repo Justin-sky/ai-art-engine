@@ -25,7 +25,7 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled || !provider.apiKey.trim()) continue
-    // 声音（audio）：火山方舟 voice_design / MinMax 音色设计；排除 OpenRouter 等
+    // 声音（audio）：火山方舟 voice_design / MiniMax 音色设计；排除 OpenRouter 等
     if (
       modality === 'audio' &&
       provider.providerKind !== 'volcengine-ark' &&
@@ -35,7 +35,7 @@ export function buildModelOptions(
     }
     // 可灵仅图片/视频
     if (provider.providerKind === 'kling' && modality !== 'image' && modality !== 'video') continue
-    // MinMax：文本 / 图片 / 视频 / 声音设计
+    // MiniMax：文本 / 图片 / 视频 / 声音设计
     if (
       provider.providerKind === 'minimax' &&
       modality !== 'text' &&

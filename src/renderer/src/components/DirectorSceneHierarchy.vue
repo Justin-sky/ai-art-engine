@@ -40,8 +40,8 @@
         }"
         :style="{ paddingLeft: `${8 + item.depth * 14}px` }"
         :draggable="
-          item.kind !== 'camera' &&
           item.kind !== 'panorama' &&
+          item.kind !== 'cameraGroup' &&
           editingId !== item.id &&
           selectedIds.length <= 1
         "
@@ -52,9 +52,25 @@
         @dragend="onDragEnd"
         @dragover.prevent="onRowDragOver(item.id, $event)"
         @dragleave="onRowDragLeave(item.id)"
-        @drop.prevent="onDropRow(item.id, $event)"
+        @drop.prevent.stop="onDropRow(item.id, $event)"
       >
-        <template v-if="item.kind !== 'panorama'">
+        <button
+          v-if="item.hasChildren"
+          type="button"
+          class="tree-chevron"
+          :class="{ collapsed: !isExpanded(item.id) }"
+          :title="
+            isExpanded(item.id)
+              ? t('director.stage.collapse')
+              : t('director.stage.expand')
+          "
+          :aria-expanded="isExpanded(item.id)"
+          @click.stop="toggleExpanded(item.id)"
+          @dblclick.stop
+        >
+          <span class="chevron-icon" v-html="CHEVRON_ICON" />
+        </button>
+        <template v-if="item.kind !== 'panorama' && item.kind !== 'cameraGroup'">
           <button
             type="button"
             class="icon-btn"
@@ -99,6 +115,8 @@
           v-html="
             item.kind === 'camera'
               ? CAMERA_ICON
+              : item.kind === 'cameraGroup'
+                ? GROUP_ICON
               : item.kind === 'panorama'
                 ? PANORAMA_ICON
                 : CUBE_ICON
@@ -131,6 +149,24 @@
       <template v-if="menuMode === 'item'">
         <button
           type="button"
+          class="menu-item"
+          role="menuitem"
+          @click="copyContextItems"
+        >
+          {{ t('director.stage.copy') }}
+        </button>
+        <button
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          :disabled="!scene.canPasteStageClipboard()"
+          @click="pasteContextItems"
+        >
+          {{ t('director.stage.paste') }}
+        </button>
+        <div class="menu-sep" />
+        <button
+          type="button"
           class="menu-item danger"
           role="menuitem"
           :disabled="!contextCanDelete"
@@ -141,6 +177,16 @@
         </button>
       </template>
       <template v-else>
+        <button
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          :disabled="!scene.canPasteStageClipboard()"
+          @click="pasteContextItems"
+        >
+          {{ t('director.stage.paste') }}
+        </button>
+        <div class="menu-sep" />
         <button type="button" class="menu-item" role="menuitem" @click="createCamera">
           {{ t('director.stage.createCamera') }}
         </button>
@@ -174,6 +220,10 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import { DIRECTOR_PANORAMA_HIERARCHY_ID, type StagePrimitive } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
+
+/** 相机行拖入动画机位轨时使用的 MIME（与 DirectorAnimationPanel 一致） */
+const DIRECTOR_CAMERA_DRAG_MIME = 'application/x-director-camera-id'
+
 import {
   STUDIO_ASSET_DRAG_MIME,
   STUDIO_ASSET_ID_DRAG_MIME,
@@ -268,9 +318,53 @@ const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return scene.hierarchyRows.value
-  return scene.hierarchyRows.value.filter((item) => item.name.toLowerCase().includes(q))
+  const rows = scene.hierarchyRows.value
+  if (q) return rows.filter((item) => item.name.toLowerCase().includes(q))
+  // 折叠：隐藏已折叠节点的全部子孙
+  const hidden = new Set<string>()
+  const visible: typeof rows = []
+  for (const row of rows) {
+    if (row.parentId != null && hidden.has(row.parentId)) {
+      hidden.add(row.id)
+      continue
+    }
+    visible.push(row)
+    if (row.hasChildren && !expandedIds.value.has(row.id)) {
+      hidden.add(row.id)
+    }
+  }
+  return visible
 })
+
+const expandedIds = ref<Set<string>>(new Set())
+
+function isExpanded(id: string): boolean {
+  return expandedIds.value.has(id)
+}
+
+function toggleExpanded(id: string): void {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
+
+watch(
+  () => scene.hierarchyRows.value.map((r) => r.id).join('\0'),
+  () => {
+    const next = new Set(expandedIds.value)
+    const alive = new Set(scene.hierarchyRows.value.map((r) => r.id))
+    for (const id of [...next]) {
+      if (!alive.has(id)) next.delete(id)
+    }
+    // 新出现的可折叠节点默认展开
+    for (const row of scene.hierarchyRows.value) {
+      if (row.hasChildren && !next.has(row.id)) next.add(row.id)
+    }
+    expandedIds.value = next
+  },
+  { immediate: true }
+)
 
 const menuStyle = computed(() => {
   if (menuMode.value === 'dropdown') return undefined
@@ -310,6 +404,8 @@ function setSelection(ids: string[], primaryId?: string | null): void {
     ...new Set(ids.filter((id) => scene.hierarchyRows.value.some((row) => row.id === id)))
   ]
   selectedIds.value = unique
+  scene.setCameraPreviewSelection(unique)
+  scene.setMultiSelection(unique)
   const primary =
     primaryId && unique.includes(primaryId)
       ? primaryId
@@ -346,6 +442,8 @@ watch(
     const id = scenePrimaryId()
     selectedIds.value = id ? [id] : []
     anchorId.value = id
+    scene.setCameraPreviewSelection(selectedIds.value)
+    scene.setMultiSelection(selectedIds.value)
   }
 )
 
@@ -444,12 +542,24 @@ function contextDeleteIds(): string[] {
   return contextId ? [contextId] : []
 }
 
+function copyContextItems(): void {
+  // 先取值再关菜单：closeMenu 会清空 contextItemId
+  const ids = contextDeleteIds()
+  const fallback = selectedIds.value.length ? selectedIds.value.slice() : undefined
+  closeMenu()
+  scene.copyStageSelection(ids.length ? ids : fallback)
+}
+
+function pasteContextItems(): void {
+  const blank = menuMode.value === 'context'
+  closeMenu()
+  void scene.pasteStageClipboard({ blank })
+}
+
 function deleteContextItem(): void {
   const ids = contextDeleteIds()
   closeMenu()
-  for (const id of ids) {
-    if (scene.canDeleteObject(id)) scene.removeObject(id)
-  }
+  scene.removeObjectsWithUndo(ids)
   pruneSelection()
 }
 
@@ -458,12 +568,10 @@ function deleteSelectedObjects(): void {
   const ids = selectedIds.value.slice()
   if (ids.length === 0) {
     const id = scenePrimaryId()
-    if (id && scene.canDeleteObject(id)) scene.removeObject(id)
+    if (id) scene.removeObjectsWithUndo([id])
     return
   }
-  for (const id of ids) {
-    if (scene.canDeleteObject(id)) scene.removeObject(id)
-  }
+  scene.removeObjectsWithUndo(ids)
   pruneSelection()
 }
 
@@ -672,13 +780,23 @@ function isStudioAssetDrag(event: DragEvent): boolean {
 function onDragStart(id: string, event: DragEvent): void {
   clearRenameTimer()
   draggingId.value = id
+  // 兜底：跨组件 drop 时 dataTransfer 可能读不到，临时记到 window（drop 端校验是否相机）
+  ;(window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId = id
+  const row = scene.hierarchyRows.value.find((r) => r.id === id)
+  if (row?.kind === 'camera') {
+    event.dataTransfer?.setData(DIRECTOR_CAMERA_DRAG_MIME, id)
+    // 机位轨使用 copy 效果；effectAllowed 必须兼容 copy，否则 drop 不会触发
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'
+  } else {
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  }
   event.dataTransfer?.setData('text/plain', id)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 
 function onDragEnd(): void {
   draggingId.value = null
   dropTargetId.value = null
+  delete (window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId
 }
 
 function onRowDragOver(id: string, event: DragEvent): void {
@@ -752,7 +870,9 @@ async function onDropRoot(event: DragEvent): Promise<void> {
 }
 
 const CUBE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.5 7v10L12 21.2 3.5 17V7L12 2.8Z"/><path d="M3.7 7.2 12 11.8l8.3-4.6"/><path d="M12 11.8v9.2"/></svg>`
+const CHEVRON_ICON = `<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>`
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
+const GROUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M3 11h18"/></svg>`
 const PANORAMA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>`
 const EYE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`
 const EYE_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2.8 2.8 0 0 0 3.9 3.9"/><path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c6.5 0 10 7 10 7a17.4 17.4 0 0 1-3.1 4.1"/><path d="M6.1 6.1C3.9 7.7 2 12 2 12s3.5 7 10 7c1.4 0 2.7-.3 3.9-.8"/></svg>`
@@ -986,6 +1106,40 @@ const NAME_OFF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0.55;
+}
+
+.tree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+.tree-chevron:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.chevron-icon {
+  display: flex;
+  transition: transform 0.12s ease;
+  transform: rotate(0deg);
+}
+
+.tree-chevron.collapsed .chevron-icon {
+  transform: rotate(0deg);
+}
+
+.tree-chevron:not(.collapsed) .chevron-icon {
+  transform: rotate(90deg);
 }
 
 .row:hover .icon-btn,

@@ -33,7 +33,7 @@ export function createMiniMaxHttpClient(
 /** 按 MiniMax status_code / 文案给出可操作提示（避免余额不足时误导去改 Key） */
 export function formatMiniMaxError(message: string, statusCode?: number): string {
   const text = message.trim()
-  if (/账户余额不足，请前往 MinMax|请检查 API Key 与 Base URL 是否正确/.test(text)) {
+  if (/账户余额不足，请前往 MiniMax|请检查 API Key 与 Base URL 是否正确/.test(text)) {
     return text
   }
   const code =
@@ -49,7 +49,7 @@ export function formatMiniMaxError(message: string, statusCode?: number): string
     /insufficient\s*balance|余额不足|账户余额|balance\s*not\s*enough/i.test(lower)
   ) {
     const withCode = /\(1008\)|\b1008\b/.test(text) ? text : `${text} (1008)`
-    return `${withCode}（账户余额不足，请前往 MinMax 控制台充值后再试）`
+    return `${withCode}（账户余额不足，请前往 MiniMax 控制台充值后再试）`
   }
   if (
     code === 1004 ||
