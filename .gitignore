@@ -11,4 +11,4 @@ Thumbs.db
 .env
 .env.*
 oss-website.local.json
-
+.aiartengine-tmp/

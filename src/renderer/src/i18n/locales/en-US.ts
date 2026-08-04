@@ -106,6 +106,11 @@ export default {
     nav: {
       studio: 'Studio',
       settings: 'Settings'
+    },
+    menu: {
+      openAria: 'Project menu: new, open, and recent projects',
+      recentEmpty: 'No recent projects',
+      closeProject: 'Close Project'
     }
   },
   home: {

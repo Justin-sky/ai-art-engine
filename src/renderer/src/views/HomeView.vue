@@ -7,17 +7,17 @@
       </div>
       <p>{{ t('home.tagline') }}</p>
       <div class="actions">
-        <button class="primary" @click="onCreate">{{ t('home.createProject') }}</button>
+        <button class="primary" @click="openCreateDialog">{{ t('home.createProject') }}</button>
         <button @click="onOpen">{{ t('home.openProject') }}</button>
       </div>
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     </section>
 
     <section class="recent" v-if="recent.length">
       <h2>{{ t('home.recentProjects') }}</h2>
       <ul>
         <li v-for="path in recent" :key="path" class="recent-row">
-          <button type="button" class="linkish" @click="openPath(path)">{{ path }}</button>
+          <button type="button" class="linkish" @click="openProjectPath(path)">{{ path }}</button>
           <button
             type="button"
             class="recent-remove"
@@ -39,7 +39,7 @@
       :default-height="280"
       :min-width="360"
       :min-height="240"
-      @close="closeDialog"
+      @close="closeCreateDialog"
     >
       <form class="create-form" @submit.prevent="confirmCreate">
         <label>
@@ -49,7 +49,7 @@
             v-model="newName"
             required
             placeholder="MyShortFilm"
-            @keydown.esc.prevent="closeDialog"
+            @keydown.esc.prevent="closeCreateDialog"
           />
         </label>
         <label>
@@ -60,18 +60,18 @@
               readonly
               :placeholder="t('home.dialog.selectDirPlaceholder')"
             />
-            <button type="button" @click="pickDir">{{ t('common.browse') }}</button>
+            <button type="button" @click="pickCreateDir">{{ t('common.browse') }}</button>
           </div>
         </label>
         <p v-if="createError" class="form-error">{{ createError }}</p>
       </form>
 
       <template #footer>
-        <button type="button" @click="closeDialog">{{ t('common.cancel') }}</button>
+        <button type="button" @click="closeCreateDialog">{{ t('common.cancel') }}</button>
         <button
           type="button"
           class="primary"
-          :disabled="!newName || !parentDir"
+          :disabled="!newName || !parentDir || busy"
           @click="confirmCreate"
         >
           {{ t('common.create') }}
@@ -83,31 +83,41 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'HomeView' })
-import { nextTick, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useProjectStore } from '../stores/project'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useProjectLifecycle } from '../composables/useProjectLifecycle'
 import StudioFloatingWindow from '../components/StudioFloatingWindow.vue'
 import iconUrl from '../assets/logo-mark.png'
 
 const { t } = useStudioI18n()
-const router = useRouter()
-const project = useProjectStore()
-const recent = ref<string[]>([])
-const error = ref('')
-const createError = ref('')
-const createOpen = ref(false)
-const newName = ref('')
-const parentDir = ref('')
+const {
+  recent,
+  error,
+  createError,
+  createOpen,
+  newName,
+  parentDir,
+  busy,
+  refreshRecent,
+  openCreateDialog,
+  closeCreateDialog,
+  pickCreateDir,
+  confirmCreate,
+  openProjectPath,
+  browseAndOpen,
+  removeRecent
+} = useProjectLifecycle()
+
 const nameInputEl = ref<HTMLInputElement | null>(null)
+
+const errorMessage = computed(() => {
+  if (error.value === 'api-unavailable') return t('home.apiUnavailable')
+  return error.value
+})
 
 onMounted(async () => {
   try {
-    if (typeof window.studio?.getRecentProjects !== 'function') {
-      error.value = t('home.apiUnavailable')
-      return
-    }
-    recent.value = await window.studio.getRecentProjects()
+    await refreshRecent()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -119,71 +129,8 @@ watch(createOpen, async (open) => {
   nameInputEl.value?.focus()
 })
 
-function onCreate(): void {
-  error.value = ''
-  createError.value = ''
-  newName.value = ''
-  parentDir.value = ''
-  createOpen.value = true
-}
-
-function closeDialog(): void {
-  createOpen.value = false
-  createError.value = ''
-}
-
-async function pickDir(): Promise<void> {
-  const dir = await window.studio.selectDirectory()
-  if (dir) parentDir.value = dir
-}
-
-async function confirmCreate(): Promise<void> {
-  if (!newName.value || !parentDir.value) return
-  try {
-    createError.value = ''
-    const result = await window.studio.createProject({
-      name: newName.value,
-      parentDir: parentDir.value
-    })
-    project.loadFromResult(result)
-    await project.recoverAutosaves()
-    closeDialog()
-    router.push('/studio')
-  } catch (e) {
-    createError.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
 async function onOpen(): Promise<void> {
-  try {
-    error.value = ''
-    const path = await window.studio.selectProject()
-    if (!path) return
-    await openPath(path)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
-async function openPath(path: string): Promise<void> {
-  try {
-    error.value = ''
-    const result = await window.studio.openProject(path)
-    project.loadFromResult(result)
-    await project.recoverAutosaves()
-    router.push('/studio')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
-async function removeRecent(path: string): Promise<void> {
-  try {
-    error.value = ''
-    recent.value = await window.studio.removeRecentProject(path)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
+  await browseAndOpen()
 }
 </script>
 
@@ -253,20 +200,20 @@ async function removeRecent(path: string): Promise<void> {
 .recent h2 {
   font-size: 14px;
   color: var(--text-muted);
-  margin-bottom: 10px;
-  font-weight: 600;
+  margin-bottom: 12px;
+  font-weight: 500;
 }
 
 .recent ul {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .recent-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 4px;
 }
 
@@ -274,45 +221,59 @@ async function removeRecent(path: string): Promise<void> {
   flex: 1;
   min-width: 0;
   text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
   font-family: var(--mono);
   font-size: 12px;
-  background: var(--bg-panel);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.linkish:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
 .recent-remove {
-  flex-shrink: 0;
-  width: 32px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
+  flex: 0 0 32px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   color: var(--text-muted);
-  background: var(--bg-panel);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .recent-remove:hover {
   color: var(--danger);
+  background: var(--bg-hover);
+  border-color: var(--border);
 }
 
 .create-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 4px 2px;
 }
 
 .create-form label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: var(--text-muted);
   font-size: 12px;
+  color: var(--text-muted);
 }
 
 .create-form input {
   width: 100%;
-  box-sizing: border-box;
 }
 
 .row {
@@ -327,8 +288,7 @@ async function removeRecent(path: string): Promise<void> {
 
 .form-error {
   margin: 0;
-  font-size: 12px;
   color: var(--danger);
-  white-space: pre-wrap;
+  font-size: 12px;
 }
 </style>

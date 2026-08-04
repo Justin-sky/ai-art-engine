@@ -1,10 +1,7 @@
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <button type="button" class="brand" title="AI Art Engine" @click="goHome">
-        <img class="brand-logo" :src="logoUrl" alt="" />
-        <span class="brand-name">AI Art Engine</span>
-      </button>
+      <ProjectOpenMenu />
       <div class="topbar-meta" v-if="project.isOpen">
         <span class="muted">{{ project.config?.name }}</span>
         <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
@@ -42,9 +39,9 @@ import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
 import GraphRunLogDialog from './components/GraphRunLogDialog.vue'
 import MediaPreviewDialog from './components/MediaPreviewDialog.vue'
+import ProjectOpenMenu from './components/ProjectOpenMenu.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'
-import logoUrl from './assets/logo-mark.png'
 
 const { t } = useStudioI18n()
 const router = useRouter()
@@ -72,10 +69,6 @@ const shortPath = computed(() => {
   if (!p) return ''
   return p.length > 48 ? '…' + p.slice(-46) : p
 })
-
-function goHome(): void {
-  void router.push('/')
-}
 
 async function goSettings(): Promise<void> {
   try {
@@ -153,34 +146,6 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   -webkit-app-region: drag;
   app-region: drag;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.brand-logo {
-  display: block;
-  height: 26px;
-  width: 26px;
-  object-fit: contain;
-}
-
-.brand-name {
-  margin-left: 8px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
 }
 
 .topbar-meta {

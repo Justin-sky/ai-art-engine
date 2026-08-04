@@ -105,6 +105,11 @@ export default {
     nav: {
       studio: '工作室',
       settings: '设置'
+    },
+    menu: {
+      openAria: '工程菜单：新建、打开与最近工程',
+      recentEmpty: '暂无最近工程',
+      closeProject: '关闭工程'
     }
   },
   home: {
