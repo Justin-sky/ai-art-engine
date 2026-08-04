@@ -397,7 +397,7 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
-/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MinMax 文本/图片/视频/音色；魔塔文本+图片 */
+/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
   if (provider.providerKind === 'kling') {
     return ['image', 'video']
@@ -774,7 +774,7 @@ function capabilitySummary(model: CatalogModel): string {
 }
 
 .ext-link:hover {
-  color: #b4ceff;
+  color: var(--accent-fg);
 }
 
 .toolbar {
@@ -794,8 +794,8 @@ function capabilitySummary(model: CatalogModel): string {
 }
 
 .primary-btn {
-  background: rgba(90, 140, 255, 0.25);
-  border-color: rgba(90, 140, 255, 0.45);
+  background: var(--accent-25);
+  border-color: var(--accent-45);
 }
 
 .provider-card {
@@ -805,7 +805,7 @@ function capabilitySummary(model: CatalogModel): string {
   padding: 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(12, 14, 16, 0.55);
+  background: var(--panel-inset);
 }
 
 .provider-card.collapsed {
@@ -943,7 +943,7 @@ label {
   gap: 4px;
   padding: 2px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--wash-08);
 }
 
 .mod-tab {
@@ -977,7 +977,7 @@ label {
   font-size: 11px;
   line-height: 16px;
   text-align: center;
-  background: rgba(90, 140, 255, 0.28);
+  background: var(--accent-28);
   color: var(--text);
 }
 
@@ -1034,7 +1034,7 @@ label {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-input);
 }
 
 .model-list li {

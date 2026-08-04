@@ -504,8 +504,8 @@ function onCosRegionChange(provider: ObjectStorageProviderInstance, region: stri
 }
 
 .primary-btn {
-  background: rgba(90, 140, 255, 0.25);
-  border-color: rgba(90, 140, 255, 0.45);
+  background: var(--accent-25);
+  border-color: var(--accent-45);
 }
 
 .provider-card {
@@ -515,7 +515,7 @@ function onCosRegionChange(provider: ObjectStorageProviderInstance, region: stri
   padding: 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(12, 14, 16, 0.55);
+  background: var(--panel-inset);
 }
 
 .provider-card.collapsed {
@@ -659,6 +659,6 @@ label {
 }
 
 .ext-link:hover {
-  color: #b4ceff;
+  color: var(--accent-fg);
 }
 </style>

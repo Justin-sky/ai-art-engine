@@ -263,7 +263,13 @@ input,
 textarea,
 select {
   font: inherit;
-  color: inherit;
+}
+
+input,
+textarea,
+select {
+  /* 勿 color: inherit：父级 label 常用 --text-muted，会把下拉/输入正文染成灰字 */
+  color: var(--text);
 }
 
 button {
@@ -303,12 +309,19 @@ button.danger {
 input,
 textarea,
 select {
-  background: var(--bg);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 6px 8px;
   outline: none;
   width: 100%;
+}
+
+/* 展开列表跟随应用主题（避免系统原生浅色/深色弹出层与界面脱节） */
+option,
+optgroup {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* checkbox / radio 不能沿用文本框的 width/padding/border */
@@ -402,7 +415,7 @@ input[type='range']:focus {
  * 覆盖 textarea 背景时请同步设置 --textarea-bg，否则右下角会出现色块。
  */
 textarea {
-  --textarea-bg: var(--bg);
+  --textarea-bg: var(--bg-input);
   background: var(--textarea-bg);
   resize: vertical;
   min-height: 80px;
