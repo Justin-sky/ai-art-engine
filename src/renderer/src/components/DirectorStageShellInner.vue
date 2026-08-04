@@ -161,7 +161,7 @@
               <span>{{ t('director.stage.gizmos.size') }}</span>
               <input
                 type="range"
-                min="0.5"
+                min="0.1"
                 max="2"
                 step="0.05"
                 :value="scene.gizmoSize.value"
@@ -208,6 +208,14 @@
                 @change="onGizmoToggle('captureLabels', $event)"
               />
               <span>{{ t('director.stage.gizmos.captureLabels') }}</span>
+            </label>
+            <label class="gizmos-row check">
+              <input
+                type="checkbox"
+                :checked="scene.captureCameraLabelsVisible.value"
+                @change="onGizmoToggle('captureCameraLabels', $event)"
+              />
+              <span>{{ t('director.stage.gizmos.captureCameraLabels') }}</span>
             </label>
           </div>
         </div>
@@ -432,7 +440,13 @@ function onGizmoSizeInput(event: Event): void {
 }
 
 function onGizmoToggle(
-  kind: 'labels' | 'cameras' | 'grid' | 'bounds' | 'captureLabels',
+  kind:
+    | 'labels'
+    | 'cameras'
+    | 'grid'
+    | 'bounds'
+    | 'captureLabels'
+    | 'captureCameraLabels',
   event: Event
 ): void {
   const checked = (event.target as HTMLInputElement).checked
@@ -440,7 +454,8 @@ function onGizmoToggle(
   else if (kind === 'cameras') scene.setCameraGizmosVisible(checked)
   else if (kind === 'grid') scene.setGridGizmoVisible(checked)
   else if (kind === 'bounds') scene.setSelectionBoundsVisible(checked)
-  else scene.setCaptureLabelsVisible(checked)
+  else if (kind === 'captureLabels') scene.setCaptureLabelsVisible(checked)
+  else scene.setCaptureCameraLabelsVisible(checked)
 }
 
 function closeShotsPanel(): void {

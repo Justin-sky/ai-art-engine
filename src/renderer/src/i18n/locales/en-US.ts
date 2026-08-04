@@ -1215,7 +1215,8 @@ export default {
         cameras: 'Camera gizmos',
         grid: 'Grid',
         selectionBounds: 'Selection bounds',
-        captureLabels: 'Include scene labels in captures'
+        captureLabels: 'Include scene labels in captures',
+        captureCameraLabels: 'Include camera names in captures'
       },
       aspectRatio: 'Aspect ratio',
       aspectAuto: 'Auto',

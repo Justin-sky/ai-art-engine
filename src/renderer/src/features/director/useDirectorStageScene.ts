@@ -287,6 +287,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const gridGizmoVisible = ref(true)
   /** 截屏 / 视频导出是否把场景文字标签画进输出画面 */
   const captureLabelsVisible = ref(false)
+  /** 截屏 / 视频导出是否把相机名称标签画进输出画面（独立开关） */
+  const captureCameraLabelsVisible = ref(false)
   /** ???????? + ?????????????????*/
   type ShotViz = {
     root: THREE.Group
@@ -295,6 +297,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     body: THREE.Group
   }
   const shotVisuals = new Map<string, ShotViz>()
+  const cameraLabels = new Map<string, CSS2DObject>()
   const SHOT_VIZ_NEAR = 0.2
   const SHOT_VIZ_FAR = 10
   /** ???????? rebuildObjects ????????? mesh ????????????*/
@@ -505,7 +508,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const imageData = new ImageData(width, height)
       imageData.data.set(pixels)
       ctx.putImageData(imageData, 0, 0)
-      if (includeLabels && sceneLabelsVisible.value) {
+      if (includeLabels) {
         drawCapturedLabels(ctx, cam, width, height)
       }
       return true
@@ -526,7 +529,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  /** 截屏/导出：按相机投影把可见物体名称标签画进输出画面 */
+  /** 截屏/导出：按相机投影把可见物体/相机名称标签画进输出画面（各自由独立开关控制） */
   function drawCapturedLabels(
     ctx: CanvasRenderingContext2D,
     cam: THREE.PerspectiveCamera,
@@ -537,14 +540,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     scene.updateMatrixWorld(true)
     const world = new THREE.Vector3()
     const ndc = new THREE.Vector3()
-    for (const label of objectLabels.values()) {
-      if (!label.visible || !label.element.textContent) continue
+    const draw = (label: CSS2DObject): void => {
+      if (!label.visible || !label.element.textContent) return
       label.getWorldPosition(world)
       ndc.copy(world).project(cam)
-      if (ndc.z > 1 || ndc.z < -1) continue
+      if (ndc.z > 1 || ndc.z < -1) return
       const x = ((ndc.x + 1) / 2) * width
       const y = ((1 - ndc.y) / 2) * height
-      if (x < -60 || x > width + 60 || y < -60 || y > height + 60) continue
+      if (x < -60 || x > width + 60 || y < -60 || y > height + 60) return
       ctx.save()
       ctx.font = '600 13px system-ui, "Segoe UI", sans-serif'
       ctx.textAlign = 'center'
@@ -555,6 +558,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       ctx.fillStyle = '#ffffff'
       ctx.fillText(label.element.textContent, x, y - 4)
       ctx.restore()
+    }
+    if (captureLabelsVisible.value) {
+      for (const label of objectLabels.values()) {
+        draw(label)
+      }
+    }
+    if (captureCameraLabelsVisible.value) {
+      for (const label of cameraLabels.values()) {
+        draw(label)
+      }
     }
   }
 
@@ -1279,11 +1292,22 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     rootHost.add(helper)
     const viz = { root, camera: shotCamera, helper, body }
     shotVisuals.set(cameraState.id, viz)
+    // 相机名称标签（跟随相机 gizmo）
+    const label = createNameLabel(cameraState.name)
+    label.position.set(0, 0.2, 0)
+    root.add(label)
+    cameraLabels.set(cameraState.id, label)
     return viz
   }
 
   function disposeShotCameraVisual(id: string): void {
     const viz = shotVisuals.get(id)
+    const label = cameraLabels.get(id)
+    if (label) {
+      label.parent?.remove(label)
+      disposeLabel(label)
+      cameraLabels.delete(id)
+    }
     if (!viz) return
     const rootHost = getStageRoot()
     rootHost?.remove(viz.helper, viz.root, viz.body)
@@ -1321,6 +1345,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viz.body.visible = visible
       viz.root.scale.set(gizmoSize.value, gizmoSize.value, gizmoSize.value)
       viz.body.scale.set(gizmoSize.value, gizmoSize.value, gizmoSize.value)
+      const nameLabel = cameraLabels.get(cameraState.id)
+      if (nameLabel) {
+        nameLabel.visible = visible && sceneLabelsVisible.value
+        nameLabel.element.textContent = cameraState.name
+      }
       const draggingCamera =
         !!transform?.dragging && selectionKind.value === 'camera' && selectedCameraId.value === cameraState.id
       if (!draggingCamera) {
@@ -1387,7 +1416,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const width = 720
       const height = Math.max(1, Math.round(width / ratio))
       const shotCam = buildShotCamera(ratio)
-      if (!renderCameraToCanvas2D(shotCam, width, height, previewCanvas, captureLabelsVisible.value)) {
+      if (
+        !renderCameraToCanvas2D(
+          shotCam,
+          width,
+          height,
+          previewCanvas,
+          captureLabelsVisible.value || captureCameraLabelsVisible.value
+        )
+      ) {
         return null
       }
 
@@ -4551,7 +4588,15 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         animTime.value = t
         applyAnimationAtTime(t, false)
         const shotCam = buildShotCamera(width / Math.max(1, height))
-        if (!renderCameraToCanvas2D(shotCam, width, height, exportCanvas, captureLabelsVisible.value)) {
+        if (
+          !renderCameraToCanvas2D(
+            shotCam,
+            width,
+            height,
+            exportCanvas,
+            captureLabelsVisible.value || captureCameraLabelsVisible.value
+          )
+        ) {
           throw new Error('Failed to render export frame')
         }
         recordTrack.requestFrame?.()
@@ -4844,7 +4889,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function setGizmoSize(size: number): void {
-    gizmoSize.value = Math.min(2, Math.max(0.5, Number.isFinite(size) ? size : 1))
+    gizmoSize.value = Math.min(2, Math.max(0.1, Number.isFinite(size) ? size : 1))
     syncTransformGizmoScale()
     syncShotVisuals()
     requestRender()
@@ -4856,6 +4901,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const mesh = objectMeshes.get(obj.id)
       if (mesh) syncObjectNameLabel(obj, mesh)
     }
+    syncShotVisuals()
     requestRender()
   }
 
@@ -4873,6 +4919,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function setCaptureLabelsVisible(visible: boolean): void {
     captureLabelsVisible.value = !!visible
+  }
+
+  function setCaptureCameraLabelsVisible(visible: boolean): void {
+    captureCameraLabelsVisible.value = !!visible
   }
 
   function disposeLabel(label: CSS2DObject): void {
@@ -7614,11 +7664,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     cameraGizmosVisible,
     gridGizmoVisible,
     captureLabelsVisible,
+    captureCameraLabelsVisible,
     setGizmoSize,
     setSceneLabelsVisible,
     setCameraGizmosVisible,
     setGridGizmoVisible,
     setCaptureLabelsVisible,
+    setCaptureCameraLabelsVisible,
     objectSupportsPose,
     listObjectBones,
     listObjectBoneHierarchy,

@@ -1207,7 +1207,8 @@ export default {
         cameras: '相机 Gizmos',
         grid: '网格',
         selectionBounds: '选中包围盒',
-        captureLabels: '截屏/视频包含场景文字'
+        captureLabels: '截屏/视频包含场景文字',
+        captureCameraLabels: '截屏/视频包含相机名称'
       },
       aspectRatio: '比例',
       aspectAuto: 'Auto',
