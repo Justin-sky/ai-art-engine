@@ -10,6 +10,7 @@
       'lock-node': isLocked,
       connecting: connecting,
       'link-mode': linkMode,
+      'force-chrome': forceShowChrome,
       'run-error': runStatus === 'error',
       'run-running': runStatus === 'running',
       'instruction-open': instructionOpen,
@@ -521,6 +522,11 @@ const props = defineProps<{
   connecting?: boolean
   /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
   linkMode?: boolean
+  /**
+   * 画布有选中节点时：全部节点显示顶栏菜单与左下角类型图标。
+   * 未选中时仅悬停当前节点显示。
+   */
+  forceShowChrome?: boolean
   asset?: AssetInfo | null
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -2102,10 +2108,10 @@ function formatTime(sec: number): string {
 <style scoped>
 .graph-node {
   position: absolute;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: 10px;
   background: var(--graph-node-bg);
-  box-shadow: 0 4px 16px var(--shadow);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 55%, transparent);
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -2121,13 +2127,13 @@ function formatTime(sec: number): string {
     var(--graph-node-output-from) 0%,
     var(--graph-node-bg) 55%
   );
-  border-color: #3d6ea8;
+  border-color: color-mix(in srgb, #3d6ea8 55%, transparent);
   z-index: 12;
 }
 
 .graph-node.asset-ref {
   border-style: dashed;
-  border-color: #6b7280;
+  border-color: color-mix(in srgb, #6b7280 50%, transparent);
   background: var(--graph-node-asset-bg);
 }
 
@@ -2145,7 +2151,7 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.processing-node {
-  border-color: #3d9a6e;
+  border-color: color-mix(in srgb, #3d9a6e 55%, transparent);
   background: linear-gradient(
     160deg,
     var(--graph-node-processing-from) 0%,
@@ -2154,7 +2160,7 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.lock-node {
-  border-color: #8a7a4a;
+  border-color: color-mix(in srgb, #8a7a4a 55%, transparent);
   opacity: 0.82;
   background: linear-gradient(
     160deg,
@@ -2228,24 +2234,53 @@ function formatTime(sec: number): string {
 }
 
 .node-head {
-  position: relative;
+  /* 叠在预览上方，不占布局高度，避免隐藏后留下空白条 */
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   /* 高于 port-wrap(30)，避免右侧输出口标签盖住执行/锁定按钮 */
   z-index: 40;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   min-width: 0;
   border-radius: 10px 10px 0 0;
   overflow: hidden;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--graph-node-bg, var(--bg-elevated)) 92%, transparent);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
 .graph-node.preview-collapsed .node-head {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
   border-bottom: none;
   border-radius: 10px;
   height: 100%;
-  box-sizing: border-box;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+/* 顶栏 / 左下角类型图标：默认隐藏；悬停当前、有选中(全部)、连线/运行时显示 */
+.graph-node:hover .node-head,
+.graph-node.force-chrome .node-head,
+.graph-node.selected .node-head,
+.graph-node.connecting .node-head,
+.graph-node.link-mode .node-head,
+.graph-node.instruction-open .node-head,
+.graph-node.run-running .node-head,
+.graph-node.run-error .node-head,
+.graph-node.preview-collapsed .node-head {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* 折叠三角：与锁定按钮同尺寸 */
@@ -2308,8 +2343,31 @@ function formatTime(sec: number): string {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent),
     0 1px 4px rgba(0, 0, 0, 0.2);
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
   user-select: none;
+}
+
+.graph-node:hover .type-badge,
+.graph-node.force-chrome .type-badge,
+.graph-node.selected .type-badge,
+.graph-node.connecting .type-badge,
+.graph-node.link-mode .type-badge,
+.graph-node.instruction-open .type-badge,
+.graph-node.run-running .type-badge,
+.graph-node.run-error .type-badge {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 触控无悬停：始终显示顶栏与类型图标 */
+@media (hover: none) {
+  .node-head,
+  .type-badge {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .type-badge.role-generate {
@@ -2452,7 +2510,12 @@ function formatTime(sec: number): string {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 0 0 10px 10px;
+  /* 顶栏改为叠加后，预览铺满圆角 */
+  border-radius: 10px;
+}
+
+.graph-node.preview-collapsed .preview {
+  display: none;
 }
 
 .preview.has-text {
@@ -2607,6 +2670,29 @@ function formatTime(sec: number): string {
   border: 0;
   backdrop-filter: none;
   z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* 与顶栏/类型图标一致：默认隐藏，悬停或选中态显示 */
+.graph-node:hover .transport,
+.graph-node.force-chrome .transport,
+.graph-node.selected .transport,
+.graph-node.connecting .transport,
+.graph-node.link-mode .transport,
+.graph-node.instruction-open .transport,
+.graph-node.run-running .transport,
+.graph-node.run-error .transport {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .transport {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .transport-row {

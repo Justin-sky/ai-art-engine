@@ -334,6 +334,7 @@
           :selected="isNodeSelected(node.id)"
           :connecting="isLinkHighlightNode(node.id)"
           :link-mode="!!(linkingFrom || linkingTo || rewireSession)"
+          :force-show-chrome="selectedNodeIds.size > 0"
           :asset="assetFor(node)"
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"

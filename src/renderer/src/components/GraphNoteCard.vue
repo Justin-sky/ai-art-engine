@@ -6,8 +6,11 @@
         selected,
         connecting,
         'link-mode': linkMode,
+        'force-chrome': forceShowChrome,
         'preview-collapsed': previewCollapsed,
-        'lock-node': isLocked
+        'lock-node': isLocked,
+        'run-error': runStatus === 'error',
+        'run-running': runStatus === 'running'
       },
       isInputSlot ? `input-slot slot-${slotDataType}` : null
     ]"
@@ -183,6 +186,8 @@ const props = defineProps<{
   connecting?: boolean
   /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
   linkMode?: boolean
+  /** 画布有选中时：全部节点显示折叠/锁定与类型图标 */
+  forceShowChrome?: boolean
   hostId?: string
   runStatus?: GraphNodeRunStatus
   runError?: string
@@ -473,14 +478,14 @@ function onBodyDblClick(): void {
   --slot-border: #5a4a28;
   --slot-port: #8ab4d8;
   position: absolute;
-  border: 1px solid var(--slot-border);
+  border: 1px solid color-mix(in srgb, var(--slot-border) 45%, transparent);
   border-radius: 8px;
   background: linear-gradient(
     160deg,
     var(--graph-note-bg-from) 0%,
     var(--graph-note-bg-to) 100%
   );
-  box-shadow: 0 4px 14px var(--shadow);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 55%, transparent);
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -599,6 +604,51 @@ function onBodyDblClick(): void {
   border-right: none;
 }
 
+/* 折叠 / 锁定等控件与类型图标：默认隐藏 */
+.collapse-tri-btn,
+.head-actions,
+.type-badge {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.graph-note:hover .collapse-tri-btn,
+.graph-note:hover .head-actions,
+.graph-note:hover .type-badge,
+.graph-note.force-chrome .collapse-tri-btn,
+.graph-note.force-chrome .head-actions,
+.graph-note.force-chrome .type-badge,
+.graph-note.selected .collapse-tri-btn,
+.graph-note.selected .head-actions,
+.graph-note.selected .type-badge,
+.graph-note.connecting .collapse-tri-btn,
+.graph-note.connecting .head-actions,
+.graph-note.connecting .type-badge,
+.graph-note.link-mode .collapse-tri-btn,
+.graph-note.link-mode .head-actions,
+.graph-note.link-mode .type-badge,
+.graph-note.run-running .collapse-tri-btn,
+.graph-note.run-running .head-actions,
+.graph-note.run-running .type-badge,
+.graph-note.run-error .collapse-tri-btn,
+.graph-note.run-error .head-actions,
+.graph-note.run-error .type-badge,
+.graph-note.preview-collapsed .collapse-tri-btn,
+.graph-note.preview-collapsed .head-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .collapse-tri-btn,
+  .head-actions,
+  .type-badge {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 /* 状态/类型图标：节点左下角 */
 .type-badge {
   position: absolute;
@@ -619,7 +669,6 @@ function onBodyDblClick(): void {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--slot-border) 70%, transparent),
     0 1px 4px rgba(0, 0, 0, 0.2);
-  pointer-events: auto;
   user-select: none;
 }
 
