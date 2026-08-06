@@ -195,6 +195,15 @@
         >
           {{ t('graph.hostInterface.encapsulateAction') }}
         </button>
+        <button
+          v-if="isEpisodePipelineGraph"
+          type="button"
+          class="episode-pipeline-btn"
+          :title="t('graph.episodePipeline.openTitle')"
+          @click="openEpisodePipeline"
+        >
+          {{ t('graph.episodePipeline.open') }}
+        </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
@@ -1754,6 +1763,18 @@ const toolbarSelectedNode = computed(() => {
   return graph.nodes.find((n) => n.id === id) ?? null
 })
 
+/** 当前画布是否为剧集流水线（含宫格/动态格选择节点或阶段生成节点） */
+const isEpisodePipelineGraph = computed(() =>
+  graph.nodes.some(
+    (n) =>
+      n.typeId === 'episode.anchorSelect' ||
+      n.typeId === 'episode.cellSelect' ||
+      (n.typeId === 'prompt.optimize' &&
+        typeof n.params?.episodeStep === 'string' &&
+        !!n.params.episodeStep)
+  )
+)
+
 const toolbarSelectedIsOutput = computed(() => {
   const node = toolbarSelectedNode.value
   return !!node && isGraphOutputTerminalNode(node)
@@ -1790,6 +1811,16 @@ function onToolbarRunUpstreamForce(): void {
   const id = toolbarSelectedNodeId.value
   if (!id) return
   void guardedRunToNode(id)
+}
+
+/** 打开剧集流水线总览：画布全局控制，不挂在任何节点上 */
+function openEpisodePipeline(): void {
+  const assetId = props.assetId?.trim()
+  if (!assetId || !editorDive?.rootKey) return
+  void editorDive.diveView(
+    { viewId: 'episode.pipeline', hostAssetId: assetId },
+    graphAsset.value?.name?.trim() || t('graph.episodePipeline.open')
+  )
 }
 
 function onEnqueueWorkflowClick(event: MouseEvent): void {

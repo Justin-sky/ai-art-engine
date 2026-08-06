@@ -1383,6 +1383,10 @@ export default {
       cycleTitle: 'Edge style: {style} (click to switch)'
     },
     fitView: 'Fit view',
+    episodePipeline: {
+      open: 'Episode pipeline',
+      openTitle: 'Open the episode pipeline overview (global control for the current canvas)'
+    },
     minimap: {
       title: 'Node minimap (click or drag to navigate)',
       empty: 'No nodes'

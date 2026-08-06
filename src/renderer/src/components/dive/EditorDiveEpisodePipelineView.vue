@@ -3,23 +3,24 @@
     <div class="pipeline-header">
       <div class="pipeline-title">
         <span class="title-text">{{ assetTitle }}</span>
-        <span class="step-chip">当前步骤：{{ stateStepLabel }}</span>
-        <span
-          v-if="headerFailReason"
-          class="fail-chip"
-          title="最近一次导演审核失败原因"
-        >
-          FAIL：{{ headerFailReason }}
-        </span>
+        <span class="step-chip" :title="stateStepTitle">当前步骤：{{ stateStepLabel }}</span>
       </div>
       <div class="header-actions">
         <span v-if="runningCount" class="busy-chip">任务运行中…</span>
-        <button class="ghost-button" type="button" @click="loadAll">刷新</button>
+        <button class="ghost-button" type="button" :disabled="refreshing" @click="loadAll">
+          {{ refreshing ? '刷新中…' : '刷新' }}
+        </button>
       </div>
     </div>
 
+    <div v-if="headerFailReason" class="fail-row">
+      <span class="fail-chip" title="最近一次导演审核失败原因">
+        FAIL：{{ headerFailReason }}
+      </span>
+    </div>
+
     <div v-if="!graphDoc" class="empty-hint">
-      尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再双击宫格节点打开本视图。
+      尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再点击顶部工具栏的「剧集流水线」打开本视图。
     </div>
 
     <div v-else class="pipeline-body">
@@ -47,7 +48,7 @@
               <span v-if="beat.anchor" class="anchor-badge" title="关键锚点">锚</span>
             </span>
           </li>
-          <li v-if="!beats.length" class="empty-row">未生成（运行 breakdown 节点）</li>
+          <li v-if="!beats.length" class="empty-row">{{ beatsEmptyLabel }}</li>
         </ul>
       </section>
 
@@ -56,6 +57,7 @@
         <div class="panel-head">
           <h3>9宫格分镜表</h3>
           <div class="panel-actions">
+            <button type="button" @click="runAnchorImage">生成9宫格拼图</button>
             <button type="button" @click="runStage('beatboard')">重新生成</button>
             <button type="button" @click="runStage('review2')">导演审核</button>
           </div>
@@ -86,10 +88,10 @@
             />
             <span v-else class="anchor-empty">未生成图</span>
           </button>
-          <div v-if="!anchors9.length" class="empty-row">未生成（运行 beatboard 节点）</div>
+          <div v-if="!anchors9.length" class="empty-row">{{ anchorsEmptyLabel }}</div>
         </div>
         <p v-if="anchors9.length" class="hint">
-          双击宫格卡对应的宫格选择节点可回到本视图；图片/视频在节点图中运行。
+          顶部工具栏的「剧集流水线」按钮可随时回到本视图；图片/视频在节点图中运行。
         </p>
       </section>
 
@@ -105,6 +107,7 @@
           <div class="detail-head">
             <h4>4宫格（{{ selectedAnchorIndex }}）</h4>
             <div class="panel-actions">
+              <button type="button" @click="runFourGridImage">生成4宫格拼图</button>
               <button type="button" @click="runStage('sequence')">重新生成</button>
               <button type="button" @click="runStage('review3')">导演审核</button>
             </div>
@@ -120,11 +123,15 @@
             >
               <span class="cell-stage">{{ cell.stage }}</span>
               <span class="cell-desc">{{ cell.text }}</span>
+              <img
+                v-if="cellImageUrl(cell.groupIndex, cell.cellIndex)"
+                :src="cellImageUrl(cell.groupIndex, cell.cellIndex)"
+                class="cell-thumb"
+                alt=""
+              />
               <span class="status-badge">{{ cellVideoStatusLabel(cell) }}</span>
             </button>
-          </div>
-          <div class="cell-actions">
-            <button type="button" @click="runAnchorImage">生成锚点图（格{{ selectedAnchorIndex }}）</button>
+            <div v-if="!anchorCells.length" class="empty-row">{{ cellsEmptyLabel }}</div>
           </div>
         </div>
 
@@ -174,6 +181,7 @@ import {
   type EpisodeMotionRow
 } from '@shared/graph'
 import { readEpisodeAgentState } from '../../features/graph/episodeAgentStateIO'
+import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
 import { useProjectStore } from '../../stores/project'
 import { useGraphTaskStore, type GraphTaskTarget } from '../../stores/graphTasks'
@@ -187,6 +195,9 @@ const project = useProjectStore()
 const taskStore = useGraphTaskStore()
 const runningCount = computed(() => taskStore.runningCount)
 const agentState = ref<EpisodeAgentState | null>(null)
+const refreshing = ref(false)
+/** 刷新计数：强制 graphDoc / anchors / cells 重新读取实时文档 */
+const refreshTick = ref(0)
 const selectedAnchorIndex = ref(1)
 const selectedCell = ref<{ groupIndex: number; cellIndex: number }>({ groupIndex: 1, cellIndex: 1 })
 const activeBeat = ref(1)
@@ -196,6 +207,11 @@ const asset = computed(() => project.assets.find((item) => item.id === props.hos
 const assetTitle = computed(() => asset.value?.name ?? '剧集分镜流水线')
 
 const graphDoc = computed<GraphDocument | null>(() => {
+  void refreshTick.value
+  // 优先取当前打开画布的实时文档（含未落盘连线与运行结果），
+  // 避免双击「动态格选择」时只读到旧版已保存 graphJson 而误报无数据。
+  const live = graphEditorHosts.getLiveAssetDocument(props.hostAssetId)
+  if (live) return live
   const raw = asset.value?.genParams?.graphJson
   if (!raw || typeof raw !== 'string') return null
   try {
@@ -214,83 +230,107 @@ function nodeByKey(key: string): GraphNode | undefined {
   return findEpisodeNode(key)
 }
 
-function findEpisodeNode(kind: string): GraphNode | undefined {
+/** 阶段生成节点：优先按 episodeStep 参数匹配，其次按标题兜底（手动创建时可能没带参数） */
+function findStageNode(step: string, titleHint: string): GraphNode | undefined {
   const all = nodes.value
-  if (kind === 'breakdown') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === 'breakdown'
+  return (
+    all.find((n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === step) ??
+    all.find(
+      (n) =>
+        n.typeId === 'prompt.optimize' &&
+        typeof n.title === 'string' &&
+        n.title.includes(titleHint)
     )
+  )
+}
+
+/** 导演审核节点：优先按 episodeReviewTarget 匹配，其次按「审核 + 阶段名」标题兜底 */
+function findReviewNode(target: string, titleHint: string): GraphNode | undefined {
+  const all = nodes.value
+  return (
+    all.find(
+      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === target
+    ) ??
+    all.find(
+      (n) =>
+        n.typeId === 'prompt.optimize' &&
+        typeof n.title === 'string' &&
+        n.title.includes('审核') &&
+        n.title.includes(titleHint)
+    )
+  )
+}
+
+function findEpisodeNode(kind: string): GraphNode | undefined {
+  if (kind === 'breakdown') {
+    return findStageNode('breakdown', '节拍拆解')
   }
   if (kind === 'beatboard') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === 'beatboard'
-    )
+    return findStageNode('beatboard', '9宫格')
   }
   if (kind === 'sequence') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === 'sequence'
-    )
+    return findStageNode('sequence', '4宫格')
   }
   if (kind === 'motion') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === 'motion'
-    )
+    return findStageNode('motion', '动态提示词')
   }
   if (kind === 'review2') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === 'beatboard'
-    )
+    return findReviewNode('beatboard', '9宫格')
   }
   if (kind === 'review1') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === 'breakdown'
-    )
+    return findReviewNode('breakdown', '节拍拆解')
   }
   if (kind === 'review3') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === 'sequence'
-    )
+    return findReviewNode('sequence', '4宫格')
   }
   if (kind === 'review4') {
-    return all.find(
-      (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === 'motion'
-    )
+    return findReviewNode('motion', '动态提示词')
   }
   const anchorMatch = /^anchor(\d+)$/.exec(kind)
   if (anchorMatch) {
     const index = Number(anchorMatch[1])
-    return all.find(
+    return nodes.value.find(
       (n) => n.typeId === 'episode.anchorSelect' && n.params?.anchorIndex === index
     )
   }
   const imgMatch = /^img(\d+)$/.exec(kind)
   if (imgMatch) {
     const index = Number(imgMatch[1])
-    return (
-      all.find(
+    // 一键工作流：格图由「宫格提取·格N」（image.gridSplit 纯切分）产出
+    const gridSplit = nodes.value.find(
+      (n) =>
+        n.typeId === 'image.gridSplit' &&
+        typeof n.title === 'string' &&
+        n.title.includes(`宫格提取·格${index}`)
+    )
+    const candidates = [
+      gridSplit,
+      nodes.value.find(
         (n) =>
           n.typeId === 'asset.image' &&
           n.title?.includes(`锚点图·格${index}`)
-      ) ??
-      all.find(
+      ),
+      nodes.value.find(
         (n) =>
           n.typeId === 'asset.image' &&
           typeof n.params?.generateInstruction === 'string' &&
           (n.params.generateInstruction as string).includes(`格${index} 的锚点分镜图`)
       )
-    )
+    ].filter((n): n is GraphNode => !!n)
+    // 优先返回已生成图片的节点；都没有时按顺序取第一个（用于显示“未生成图”）
+    return candidates.find((n) => firstImageRelativePath(n)) ?? candidates[0]
   }
   const videoMatch = /^video(\d+)-(\d+)$/.exec(kind)
   if (videoMatch) {
     const g = Number(videoMatch[1])
     const c = Number(videoMatch[2])
     return (
-      all.find(
+      nodes.value.find(
         (n) =>
           n.typeId === 'asset.video' &&
           n.title?.includes(`格${g}-${c}`)
       ) ??
-      all.find(
+      nodes.value.find(
         (n) =>
           n.typeId === 'asset.video' &&
           typeof n.params?.generateInstruction === 'string' &&
@@ -311,6 +351,17 @@ function nodeText(key: string): string {
   return ''
 }
 
+/** 取节点最近一张输出图的相对路径（节点图库或运行结果） */
+function firstImageRelativePath(node: GraphNode | undefined): string {
+  if (!node) return ''
+  const direct = node.params?.generatedImages?.[0]?.relativePath
+  if (direct) return direct
+  const out = runStates.value[node.id]?.outputs?.out
+  if (out?.kind === 'image' && out.relativePath) return out.relativePath
+  if (out?.kind === 'images' && out.items[0]?.relativePath) return out.items[0].relativePath
+  return ''
+}
+
 const scopeKey = computed(
   () => String(nodeByKey('breakdown')?.params?.episodeScopeKey ?? 'default')
 )
@@ -322,6 +373,22 @@ const motions36 = computed<EpisodeMotionRow[]>(() => parseEpisodeMotionPrompts(n
 
 const anchorCells = computed<EpisodeCellRow[]>(() =>
   cells36.value.filter((cell) => cell.groupIndex === selectedAnchorIndex.value)
+)
+
+const beatsEmptyLabel = computed(() =>
+  nodeText('breakdown').trim()
+    ? '节拍拆解有内容，但未能解析为表格格式'
+    : '未生成（运行 breakdown 节点）'
+)
+const anchorsEmptyLabel = computed(() =>
+  nodeText('beatboard').trim()
+    ? '9宫格有内容，但未能解析'
+    : '未生成（运行 beatboard 节点）'
+)
+const cellsEmptyLabel = computed(() =>
+  nodeText('sequence').trim()
+    ? '4宫格有内容，但未能解析'
+    : '未生成（运行 sequence 节点）'
 )
 
 const selectedCellKey = computed(
@@ -346,13 +413,26 @@ const activeCellVideo = computed<string>(() => {
 
 const stateStepLabel = computed(() => {
   const map: Record<string, string> = {
-    breakdown: '节拍拆解',
-    beatboard: '9宫格',
-    sequence: '4宫格',
-    motion: '动态提示词',
+    breakdown: '节拍拆解表',
+    beatboard: '9宫格分镜表',
+    sequence: '4宫格动态分镜表',
+    motion: '动态提示词表',
     completed: '已完成'
   }
   return map[agentState.value?.current_step ?? ''] ?? '—'
+})
+
+/** 当前步骤的悬停说明：流水线推进到的阶段 */
+const stateStepTitle = computed(() => {
+  const step = agentState.value?.current_step
+  const hints: Record<string, string> = {
+    breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
+    beatboard: '9宫格分镜表已生成，正在推进 4宫格动态分镜表',
+    sequence: '4宫格动态分镜表已生成，正在推进 动态提示词表',
+    motion: '动态提示词表已生成，等待导演审核通过后完成',
+    completed: '全部阶段已通过'
+  }
+  return hints[step ?? ''] ?? '流水线当前推进到的阶段'
 })
 
 function nodeRunStatus(key: string): GraphNodeRunState['status'] | undefined {
@@ -420,6 +500,11 @@ function selectCell(cell: EpisodeCellRow): void {
   selectedCell.value = { groupIndex: cell.groupIndex, cellIndex: cell.cellIndex }
 }
 
+// 宫格切换（点击节拍联动或点击 9宫格）后，4宫格默认选中该组第一个
+watch(selectedAnchorIndex, (next) => {
+  selectedCell.value = { groupIndex: next, cellIndex: 1 }
+})
+
 function assetTaskTarget(): GraphTaskTarget {
   return {
     kind: 'asset',
@@ -429,13 +514,17 @@ function assetTaskTarget(): GraphTaskTarget {
 }
 
 function enqueueNode(node: GraphNode | undefined, title: string): void {
-  if (!node || !graphDoc.value) return
+  enqueueNodes(node ? [node] : [], title)
+}
+
+function enqueueNodes(targets: GraphNode[], title: string): void {
+  if (!targets.length || !graphDoc.value) return
   const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
   taskStore.enqueueWorkflow({
     title,
     graph: graphDoc.value,
     target: assetTaskTarget(),
-    targetNodeIds: [node.id],
+    targetNodeIds: targets.map((node) => node.id),
     priorNodeStates: runHost?.runStates ?? {},
     skipCompletedNodes: true
   })
@@ -448,7 +537,31 @@ function runStage(
 }
 
 function runAnchorImage(): void {
-  enqueueNode(nodeByKey(`img${selectedAnchorIndex.value}`), `锚点图·格${selectedAnchorIndex.value}`)
+  const index = selectedAnchorIndex.value
+  // 一键工作流：先跑「9宫格拼图·锚点画布」生成整张 9宫格，再提取当前格
+  const board = nodes.value.find(
+    (n) => n.typeId === 'asset.image' && n.title?.includes('9宫格拼图')
+  )
+  const extract = nodeByKey(`img${index}`)
+  enqueueNodes(
+    [board, extract].filter((n): n is GraphNode => !!n),
+    `生成9宫格拼图·格${index}`
+  )
+}
+
+/** 生成当前组的 4宫格拼图，并提取该组 4 格作为动态视频参考图 */
+function runFourGridImage(): void {
+  const groupIndex = selectedAnchorIndex.value
+  const board = nodes.value.find(
+    (n) => n.typeId === 'asset.image' && n.title?.includes(`4宫格拼图·组${groupIndex}`)
+  )
+  const extracts = [1, 2, 3, 4]
+    .map((cellIndex) => cellImageNode(groupIndex, cellIndex))
+    .filter((n): n is GraphNode => !!n)
+  enqueueNodes(
+    [board, ...extracts].filter((n): n is GraphNode => !!n),
+    `生成4宫格拼图·组${groupIndex}`
+  )
 }
 
 function runCurrentVideo(): void {
@@ -466,28 +579,75 @@ async function fileUrl(relativePath: string | undefined): Promise<string> {
 }
 
 function anchorImageUrl(index: number): string {
-  const node = nodeByKey(`img${index}`)
-  const path = node?.params?.generatedImages?.[0]?.relativePath
+  const key = `anchor:${index}`
+  const cached = imageUrls.value.get(key)
+  if (cached) return cached
+  const path = firstImageRelativePath(nodeByKey(`img${index}`))
   if (!path) return ''
   void fileUrl(path).then((url) => {
-    if (url) imageUrls.value = new Map(imageUrls.value).set(index, url)
+    if (!url) return
+    // 值未变化时不要重建 Map，避免「渲染 → 异步写回 → 再渲染」死循环
+    if (imageUrls.value.get(key) === url) return
+    imageUrls.value = new Map(imageUrls.value).set(key, url)
   })
-  return imageUrls.value.get(index) ?? ''
+  return ''
 }
 
-const imageUrls = ref(new Map<number, string>())
+/** 4宫格格图节点：来自「宫格提取·组G-格C」切分节点 */
+function cellImageNode(groupIndex: number, cellIndex: number): GraphNode | undefined {
+  return nodes.value.find(
+    (n) =>
+      n.typeId === 'image.gridSplit' &&
+      typeof n.title === 'string' &&
+      n.title.includes(`宫格提取·组${groupIndex}-格${cellIndex}`)
+  )
+}
+
+/** 4宫格格图 URL：优先缓存，未生成时异步取文件 URL */
+function cellImageUrl(groupIndex: number, cellIndex: number): string {
+  const key = `cell:${groupIndex}-${cellIndex}`
+  const cached = imageUrls.value.get(key)
+  if (cached) return cached
+  const node = cellImageNode(groupIndex, cellIndex)
+  const path = firstImageRelativePath(node)
+  if (!path) return ''
+  void fileUrl(path).then((url) => {
+    if (!url) return
+    if (imageUrls.value.get(key) === url) return
+    imageUrls.value = new Map(imageUrls.value).set(key, url)
+  })
+  return ''
+}
+
+const imageUrls = ref(new Map<string, string>())
 
 async function loadAll(): Promise<void> {
-  const raw = await readEpisodeAgentState(scopeKey.value)
-  agentState.value = parseEpisodeAgentState(raw)
+  refreshing.value = true
+  refreshTick.value += 1
+  try {
+    const raw = await readEpisodeAgentState(scopeKey.value)
+    agentState.value = parseEpisodeAgentState(raw)
+  } catch {
+    agentState.value = null
+  }
   imageUrls.value = new Map()
-  for (const anchor of anchors9.value) {
-    const node = nodeByKey(`img${anchor.index}`)
-    const path = node?.params?.generatedImages?.[0]?.relativePath
-    if (path) {
-      const url = await fileUrl(path)
-      if (url) imageUrls.value.set(anchor.index, url)
+  try {
+    for (const anchor of anchors9.value) {
+      const path = firstImageRelativePath(nodeByKey(`img${anchor.index}`))
+      if (path) {
+        const url = await fileUrl(path)
+        if (url) imageUrls.value.set(`anchor:${anchor.index}`, url)
+      }
     }
+    for (const cell of cells36.value) {
+      const path = firstImageRelativePath(cellImageNode(cell.groupIndex, cell.cellIndex))
+      if (path) {
+        const url = await fileUrl(path)
+        if (url) imageUrls.value.set(`cell:${cell.groupIndex}-${cell.cellIndex}`, url)
+      }
+    }
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -527,12 +687,16 @@ watch(runningCount, async (count, prev) => {
 .title-text {
   font-weight: 600;
 }
+.fail-row {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--danger, #c0392b) 8%, transparent);
+}
 .step-chip,
 .fail-chip {
   font-size: 12px;
   padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
+  border-radius: 6px;
 }
 .step-chip {
   background: var(--bg-input);
@@ -541,6 +705,9 @@ watch(runningCount, async (count, prev) => {
 .fail-chip {
   background: var(--danger, #c0392b);
   color: #fff;
+  white-space: normal;
+  line-height: 1.45;
+  display: inline-block;
 }
 .ghost-button {
   background: transparent;
@@ -585,8 +752,7 @@ watch(runningCount, async (count, prev) => {
   gap: 4px;
   padding-right: 8px;
 }
-.panel-actions button,
-.cell-actions button {
+.panel-actions button {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 5px;
@@ -595,8 +761,7 @@ watch(runningCount, async (count, prev) => {
   color: var(--fg);
   cursor: pointer;
 }
-.panel-actions button:hover,
-.cell-actions button:hover {
+.panel-actions button:hover {
   border-color: var(--accent, #3498db);
 }
 .detail-head {
@@ -607,11 +772,6 @@ watch(runningCount, async (count, prev) => {
 }
 .detail-head h4 {
   margin: 0;
-}
-.cell-actions {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
 }
 .empty-hint,
 .empty-row {
@@ -656,10 +816,20 @@ watch(runningCount, async (count, prev) => {
   padding: 6px;
   border-radius: 6px;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.06s ease;
 }
-.beat-item:hover,
+.beat-item:hover {
+  background: var(--bg-hover);
+}
 .beat-item.active {
-  background: var(--bg-input);
+  background: color-mix(in srgb, var(--accent, #3498db) 14%, var(--bg));
+  box-shadow: inset 3px 0 0 var(--accent, #3498db);
+}
+.beat-item:active {
+  transform: scale(0.98);
 }
 .beat-item.anchor {
   outline: 1px solid var(--accent, #3498db);
@@ -711,9 +881,25 @@ watch(runningCount, async (count, prev) => {
   color: var(--fg);
   cursor: pointer;
   text-align: left;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.06s ease;
+}
+.anchor-card:hover,
+.cell-card:hover {
+  border-color: var(--accent, #3498db);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #3498db) 35%, transparent);
+}
+.anchor-card:active,
+.cell-card:active {
+  transform: scale(0.98);
 }
 .anchor-card.active {
   border-color: var(--accent, #3498db);
+  background: color-mix(in srgb, var(--accent, #3498db) 10%, var(--bg-input));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #3498db) 50%, transparent);
 }
 .anchor-card.pass {
   border-color: var(--success, #27ae60);
@@ -790,9 +976,16 @@ watch(runningCount, async (count, prev) => {
   color: var(--fg);
   cursor: pointer;
   text-align: left;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.06s ease;
 }
 .cell-card.active {
   border-color: var(--accent, #3498db);
+  background: color-mix(in srgb, var(--accent, #3498db) 10%, var(--bg-input));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #3498db) 50%, transparent);
 }
 .cell-stage {
   font-size: 12px;
@@ -805,6 +998,13 @@ watch(runningCount, async (count, prev) => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.cell-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg);
 }
 .motion-text {
   font-size: 12px;

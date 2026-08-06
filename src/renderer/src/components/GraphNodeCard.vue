@@ -1866,15 +1866,9 @@ function onPreviewDblClick(): void {
       return
     }
 
-    const episodeHostAssetId = hostAssetId.value
-    if (
-      (isEpisodeAnchorSelectNode(props.node) || isEpisodeCellSelectNode(props.node)) &&
-      episodeHostAssetId
-    ) {
-      await diveView(
-        { viewId: 'episode.pipeline', hostAssetId: episodeHostAssetId },
-        title
-      )
+    // 剧集流水线总览由顶部工具栏打开；宫格/动态格选择双击统一打开记事本
+    if (isEpisodeAnchorSelectNode(props.node) || isEpisodeCellSelectNode(props.node)) {
+      emit('textOpen', props.node.id)
       return
     }
 

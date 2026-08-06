@@ -1373,6 +1373,10 @@ export default {
       cycleTitle: '连线样式：{style}（点击切换）'
     },
     fitView: '适配视图',
+    episodePipeline: {
+      open: '剧集流水线',
+      openTitle: '打开剧集流水线总览（当前画布全局控制）'
+    },
     minimap: {
       title: '节点小地图（点击或拖拽定位）',
       empty: '暂无节点'

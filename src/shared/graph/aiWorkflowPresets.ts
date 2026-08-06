@@ -113,6 +113,13 @@ function buildEpisodePipelinePlan(): GraphPlan {
       }
     })
     link('img9grid', extractKey, { fromPort: 'out', toPort: 'in' })
+    const upscaleKey = `upscale${i}`
+    add({
+      key: upscaleKey,
+      typeId: 'image.upscale',
+      title: `高清放大·格${i}`
+    })
+    link(extractKey, upscaleKey, { fromPort: 'out', toPort: 'in' })
   }
 
   add({
@@ -178,7 +185,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
       }
     })
     link('sequence', img4Key, { fromPort: 'out', toPort: 'in-text' })
-    link(`gridExtract${g}`, img4Key, { fromPort: 'out', toPort: 'in-image' })
+    link(`upscale${g}`, img4Key, { fromPort: 'out', toPort: 'in-image' })
     const CELL_KEYS = ['1-1', '1-2', '2-1', '2-2'] as const
     for (let c = 1; c <= 4; c++) {
       const extract4Key = `gridExtract4-${g}-${c}`
@@ -195,6 +202,13 @@ function buildEpisodePipelinePlan(): GraphPlan {
         }
       })
       link(img4Key, extract4Key, { fromPort: 'out', toPort: 'in' })
+      const upscale4Key = `upscale4-${g}-${c}`
+      add({
+        key: upscale4Key,
+        typeId: 'image.upscale',
+        title: `高清放大·组${g}-格${c}`
+      })
+      link(extract4Key, upscale4Key, { fromPort: 'out', toPort: 'in' })
     }
   }
 
@@ -219,7 +233,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
           generateDuration: 4
         }
       })
-      link(`gridExtract4-${g}-${c}`, videoKey, { fromPort: 'out', toPort: 'in-image' })
+      link(`upscale4-${g}-${c}`, videoKey, { fromPort: 'out', toPort: 'in-image' })
       link(cellKey, videoKey, { fromPort: 'out', toPort: 'in-text' })
     }
   }
@@ -229,7 +243,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
     typeId: 'note.text',
     title: '流水线说明',
     params: {
-      text: `流程：剧本 → 节拍拆解表 → 9宫格分镜表 → 1 张 9宫格拼图 → 宫格提取 9 格锚点图 → 4宫格动态分镜表(9×4=36) → 每组 1 张 2×2 4宫格拼图（参考第 g 格锚点图）→ 宫格提取 36 格 → 动态提示词表(36) → 36 条动态视频（参考图用对应 4宫格提取图）。
+      text: `流程：剧本 → 节拍拆解表 → 9宫格分镜表 → 1 张 9宫格拼图 → 宫格提取 9 格锚点图 → 高清放大 → 4宫格动态分镜表(9×4=36) → 每组 1 张 2×2 4宫格拼图（参考放大后的第 g 格锚点图）→ 宫格提取 36 格 → 高清放大 → 动态提示词表(36) → 36 条动态视频（参考图用对应放大后的 4宫格提取图）。
 
 导演审核：review1~review4 输出 ## 结论: PASS / FAIL；FAIL 原因会自动写入 agent-state.json，重跑对应分镜师/动画师节点时自动附加原因。
 

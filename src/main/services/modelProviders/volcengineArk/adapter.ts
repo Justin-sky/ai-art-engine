@@ -16,9 +16,13 @@ import {
 } from '@shared/modelProvider'
 import {
   isOpaqueVolcengineArkEndpointId,
-  resolveVolcengineArkModelCapabilities
+  resolveVolcengineArkModelCapabilities,
+  resolveVolcengineArkCapabilityProfileId
 } from '@shared/modelProviders/volcengineArk/modelCapabilities'
-import { resolveSeedreamImageSize } from '@shared/modelProviders/volcengineArk/imageSize'
+import {
+  SEEDREAM_MIN_PIXELS,
+  resolveSeedreamImageSize
+} from '@shared/modelProviders/volcengineArk/imageSize'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
@@ -183,7 +187,10 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
     // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
     // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
-    const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio)
+    // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。
+    const profileId = resolveVolcengineArkCapabilityProfileId(modelId)
+    const minPixels = profileId === 'seedream-3' ? undefined : SEEDREAM_MIN_PIXELS
+    const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio, minPixels)
     if (size) body.size = size
     if (input.inputReferences?.length) {
       const refs = input.inputReferences.map((url) => url.trim()).filter(Boolean)

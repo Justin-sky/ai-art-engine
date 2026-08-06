@@ -66,6 +66,17 @@ describe('episode board parse', () => {
     expect(rows[1]).toMatchObject({ index: 2, anchor: false })
   })
 
+  it('parses beat breakdown rows without # prefix', () => {
+    const rows = parseEpisodeBeatBreakdown(
+      '| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 |\n' +
+        '| 1 | 开场 | 悬念 | 5 | 是 |\n' +
+        '| 2 | 转折 | 信息 | 8 | 否 |'
+    )
+    expect(rows.length).toBe(2)
+    expect(rows[0]).toMatchObject({ index: 1, summary: '开场', intensity: 5, anchor: true })
+    expect(rows[1]).toMatchObject({ index: 2, anchor: false })
+  })
+
   it('parses 9-grid beat board into anchors', () => {
     const rows = parseEpisodeBeatBoard(BEAT_BOARD)
     expect(rows.length).toBe(2)
@@ -153,7 +164,7 @@ describe('episode director verdict', () => {
 describe('shortDrama agent pipeline preset', () => {
   it('materializes the 9×4=36 pipeline', () => {
     const plan = getAiWorkflowPresetPlan('shortDrama')!
-    expect(plan.nodes.length).toBe(137)
+    expect(plan.nodes.length).toBe(182)
     const result = materializeGraphPlan(plan, {
       scope: 'subgraphAsset',
       assetType: 'subgraph'
@@ -164,6 +175,7 @@ describe('shortDrama agent pipeline preset', () => {
     expect(nodes.filter((n) => n.typeId === 'episode.anchorSelect').length).toBe(0)
     expect(nodes.filter((n) => n.typeId === 'asset.image').length).toBe(10)
     expect(nodes.filter((n) => n.typeId === 'image.gridSplit').length).toBe(45)
+    expect(nodes.filter((n) => n.typeId === 'image.upscale').length).toBe(45)
     expect(nodes.filter((n) => n.typeId === 'episode.cellSelect').length).toBe(36)
     expect(nodes.filter((n) => n.typeId === 'asset.video').length).toBe(36)
     // 9宫格提取：每节点只提取对应 1 格

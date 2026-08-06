@@ -51,8 +51,9 @@ export interface EpisodeBeatRow {
 
 const ANCHOR_HEADING_RE = /^##\s*格\s*(\d+)/i
 const ANCHOR_BEAT_REF_RE = /节拍ID\s*[:：]\s*#?\s*([0-9A-Za-z_-]+)/i
+// 兼容 `| #1 |` 与 `| 1 |` 两种写法，避免模型省略井号导致整表解析失败
 const BEAT_ROW_RE =
-  /^\|\s*#\s*(\d+)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*(是|否|YES|NO)\s*\|/i
+  /^\|\s*#?\s*(\d+)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*(是|否|YES|NO)\s*\|/i
 
 /** 解析节拍拆解表：| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 | */
 export function parseEpisodeBeatBreakdown(text: string | undefined | null): EpisodeBeatRow[] {

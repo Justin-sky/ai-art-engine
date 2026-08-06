@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveSeedreamImageSize } from '../src/shared/modelProviders/volcengineArk/imageSize'
+import {
+  SEEDREAM_MIN_PIXELS,
+  resolveSeedreamImageSize
+} from '../src/shared/modelProviders/volcengineArk/imageSize'
 
 describe('resolveSeedreamImageSize', () => {
   it('2K 按官方像素表换算', () => {
@@ -46,6 +49,21 @@ describe('resolveSeedreamImageSize', () => {
     expect(resolveSeedreamImageSize('2048x2048', '16:9')).toBe('2048x2048')
     expect(resolveSeedreamImageSize('2048×2048', undefined)).toBe('2048x2048')
     expect(resolveSeedreamImageSize('2560*1440', '21:9')).toBe('2560x1440')
+  })
+
+  it('面积不足下限时按比例放大，保持宽高比', () => {
+    expect(resolveSeedreamImageSize('1K', '16:9')).toBe('1280x720')
+    expect(resolveSeedreamImageSize('1K', '16:9', SEEDREAM_MIN_PIXELS)).toBe('2560x1440')
+    expect(resolveSeedreamImageSize('1K', '1:1', SEEDREAM_MIN_PIXELS)).toBe('2048x2048')
+    expect(resolveSeedreamImageSize('1024x1024', undefined, SEEDREAM_MIN_PIXELS)).toBe(
+      '1920x1920'
+    )
+  })
+
+  it('面积已达下限时保持不变', () => {
+    expect(resolveSeedreamImageSize('2K', '1:1', SEEDREAM_MIN_PIXELS)).toBe('2048x2048')
+    expect(resolveSeedreamImageSize('2K', '21:9', SEEDREAM_MIN_PIXELS)).toBe('3024x1296')
+    expect(resolveSeedreamImageSize('4K', '16:9', SEEDREAM_MIN_PIXELS)).toBe('5404x3040')
   })
 
   it('大小写与空白容错', () => {

@@ -44,6 +44,9 @@ const SEEDREAM_4K_PRESETS: Readonly<Record<string, { width: number; height: numb
   '9:21': { width: 2656, height: 6198 }
 }
 
+/** Seedream 4.5 / 5 等要求的总像素下限（2560×1440 = 3686400） */
+export const SEEDREAM_MIN_PIXELS = 3_686_400
+
 function normalizeResolution(value: string | undefined): string | null {
   const raw = value?.trim()
   if (!raw) return null
@@ -95,6 +98,32 @@ function genericSize(base: number, ratioWidth: number, ratioHeight: number): str
   return `${width}x${height}`
 }
 
+/** 面积不足下限时按比例放大，保持宽高比不变 */
+function enforceMinPixels(
+  width: number,
+  height: number,
+  minPixels: number | undefined
+): { width: number; height: number } {
+  if (!minPixels || minPixels <= 0) return { width, height }
+  const area = width * height
+  if (area >= minPixels) return { width, height }
+  const factor = Math.sqrt(minPixels / area)
+  return {
+    width: Math.max(1, Math.round(width * factor)),
+    height: Math.max(1, Math.round(height * factor))
+  }
+}
+
+function enforceSizeString(size: string, minPixels: number | undefined): string {
+  const m = /^(\d+)x(\d+)$/.exec(size)
+  if (!m) return size
+  const width = Number(m[1])
+  const height = Number(m[2])
+  const enforced = enforceMinPixels(width, height, minPixels)
+  if (enforced.width === width && enforced.height === height) return size
+  return `${enforced.width}x${enforced.height}`
+}
+
 /**
  * 把应用内的分辨率 + 宽高比换算为 Seedream `size` 像素值。
  *
@@ -102,18 +131,25 @@ function genericSize(base: number, ratioWidth: number, ratioHeight: number): str
  * - 分辨率 + 宽高比均在官方表内：返回官方像素；
  * - 1K / 3K 无官方全量表：按 2K 官方表等比缩放；
  * - 仅给宽高比：按 2K 档位取像素；
+ * - 提供 minPixels 时，面积不足下限按比例放大（如 Seedream 4.5/5 的 3686400）；
  * - 无法换算：回退返回分辨率关键字（合法的方式 1），彻底无法识别时返回 undefined。
  */
 export function resolveSeedreamImageSize(
   resolution: string | undefined,
-  aspectRatio: string | undefined
+  aspectRatio: string | undefined,
+  minPixels?: number
 ): string | undefined {
   const res = normalizeResolution(resolution)
   const ratio = normalizeRatio(aspectRatio)
   const ratioPair = ratio?.split(':').map(Number) as [number, number] | undefined
 
-  // 已明确指定像素宽高：直接透传
-  if (res && /^\d+x\d+$/.test(res)) return res
+  // 已明确指定像素宽高：透传（面积不足下限时按比例放大）
+  if (res && /^\d+x\d+$/.test(res)) {
+    const [w, h] = res.split('x').map(Number) as [number, number]
+    const enforced = enforceMinPixels(w, h, minPixels)
+    if (enforced.width === w && enforced.height === h) return res
+    return `${enforced.width}x${enforced.height}`
+  }
 
   const base = res ? SEEDREAM_TIER_BASE_PIXELS[res] : undefined
   if (base != null) {
@@ -122,10 +158,15 @@ export function resolveSeedreamImageSize(
       const preset = table[ratio]
       if (preset) {
         const scale = res === '4K' ? 1 : base / 2048
-        const size = scale === 1 ? preset : scalePreset(preset, scale)
+        let size = scale === 1 ? preset : scalePreset(preset, scale)
+        // 低于模型像素下限时（如 1K），直接抬到 2K 官方表，保持推荐尺寸
+        if (minPixels && size.width * size.height < minPixels) {
+          const lifted = SEEDREAM_2K_PRESETS[ratio]
+          if (lifted) size = lifted
+        }
         return `${size.width}x${size.height}`
       }
-      if (ratioPair) return genericSize(base, ratioPair[0], ratioPair[1])
+      if (ratioPair) return enforceSizeString(genericSize(base, ratioPair[0], ratioPair[1]), minPixels)
     }
     // 只有分辨率：保留关键字写法，由模型按提示词定比例
     return res ?? undefined
@@ -134,8 +175,8 @@ export function resolveSeedreamImageSize(
   // 分辨率未识别但给了宽高比：按 2K 档位换算，至少保证比例生效
   if (ratio) {
     const preset = SEEDREAM_2K_PRESETS[ratio]
-    if (preset) return `${preset.width}x${preset.height}`
-    if (ratioPair) return genericSize(2048, ratioPair[0], ratioPair[1])
+    if (preset) return enforceSizeString(`${preset.width}x${preset.height}`, minPixels)
+    if (ratioPair) return enforceSizeString(genericSize(2048, ratioPair[0], ratioPair[1]), minPixels)
   }
 
   // 分辨率未识别且无宽高比：保留原值（由上层决定是否下发）
