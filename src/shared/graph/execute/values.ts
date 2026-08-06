@@ -54,6 +54,7 @@ import type { InstructionPresetKind } from '../instructionPresets'
 import {
   applyEpisodeAgentReview,
   createEpisodeAgentState,
+  episodeFailReasonForStep,
   parseEpisodeAgentState,
   serializeEpisodeAgentState
 } from '../episodeAgentState'
@@ -2299,6 +2300,22 @@ export async function executeImageGenerateNode(
   userPrompt = appendStyleImagesReferencePrompt(userPrompt, styleImages, {
     locale: ctx.locale
   })
+  // 剧集流水线产物节点（如 9宫格拼图 / 4宫格拼图）：重跑时附加导演上次 FAIL 原因
+  if (node.params.episodeStep && ctx.readEpisodeAgentState) {
+    try {
+      const scopeKey = node.params.episodeScopeKey?.trim() || 'default'
+      const raw = await ctx.readEpisodeAgentState(scopeKey)
+      const failReason = episodeFailReasonForStep(
+        parseEpisodeAgentState(raw),
+        node.params.episodeStep
+      )
+      if (failReason) {
+        userPrompt = `${userPrompt.trim()}\n\n【导演上次 FAIL 原因，必须针对性地修改】${failReason}`
+      }
+    } catch {
+      /* 状态读取失败时不影响生成 */
+    }
+  }
   const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
 
   let portUrls: string[] = []
@@ -3044,9 +3061,9 @@ export async function executePromptOptimizeNode(
   // 第二档闭环：上游 Agent 步骤存在 FAIL 原因时自动附加，要求针对修改
   if (episodeStep && ctx.readEpisodeAgentState) {
     const raw = await ctx.readEpisodeAgentState(episodeScopeKey)
-    const state = parseEpisodeAgentState(raw)
-    if (state?.last_failed_reason && state.current_step === episodeStep) {
-      prompt = `${prompt.trim()}\n\n【导演上次 FAIL 原因，必须针对性地修改】${state.last_failed_reason}`
+    const failReason = episodeFailReasonForStep(parseEpisodeAgentState(raw), episodeStep)
+    if (failReason) {
+      prompt = `${prompt.trim()}\n\n【导演上次 FAIL 原因，必须针对性地修改】${failReason}`
     }
   }
 

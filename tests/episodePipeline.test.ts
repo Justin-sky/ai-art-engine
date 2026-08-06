@@ -3,6 +3,7 @@ import {
   applyEpisodeReviewMarks,
   applyEpisodeAgentReview,
   createEpisodeAgentState,
+  episodeFailReasonForStep,
   getAiWorkflowPresetPlan,
   materializeGraphPlan,
   parseEpisodeBeatBoard,
@@ -124,6 +125,18 @@ describe('episode agent state machine', () => {
     expect(failed.last_failed_reason).toBe('第二幕视高跳跃太大')
     expect(failed.reviews?.length).toBe(2)
   })
+
+  it('episodeFailReasonForStep falls back to latest FAIL review', () => {
+    const state = createEpisodeAgentState('ep01-师陷冤狱', 'ep01')
+    const failed = applyEpisodeAgentReview(state, 'beatboard', 'FAIL', '第二幕视高跳跃太大')
+    // current_step 对齐时直接取 last_failed_reason
+    expect(episodeFailReasonForStep(failed, 'beatboard')).toBe('第二幕视高跳跃太大')
+    // 后续步骤被乱序推进后，仍能回退到该阶段最近一次 FAIL
+    const pushed = applyEpisodeAgentReview(failed, 'sequence', 'PASS', '')
+    expect(pushed.current_step).toBe('motion')
+    expect(episodeFailReasonForStep(pushed, 'beatboard')).toBe('第二幕视高跳跃太大')
+    expect(episodeFailReasonForStep(pushed, 'sequence')).toBe('')
+  })
 })
 
 describe('episode director verdict', () => {
@@ -200,6 +213,10 @@ describe('shortDrama agent pipeline preset', () => {
     const review = nodes.find((n) => n.params.episodeReviewTarget === 'motion')
     expect(review).toBeTruthy()
     const video = nodes.find((n) => n.typeId === 'asset.video')
+    const img9 = nodes.find((n) => n.title?.includes('9宫格拼图'))
+    expect(img9?.params.episodeStep).toBe('beatboard')
+    const img4 = nodes.find((n) => n.title?.includes('4宫格拼图'))
+    expect(img4?.params.episodeStep).toBe('sequence')
     expect(video?.params.generateFrameMode).toBeUndefined()
     const edges = result.document!.edges
     expect(

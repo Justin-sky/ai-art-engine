@@ -92,6 +92,8 @@ function buildEpisodePipelinePlan(): GraphPlan {
     typeId: 'asset.image',
     title: '9宫格拼图·锚点画布',
     params: {
+        ...scope,
+        episodeStep: 'beatboard',
         generateInstruction: `基于上游 9宫格分镜表生成一张 3×3 九宫格拼图画布：9 格按表内顺序依次对应 9 个核心锚点，人物服饰、主光方向、场景严格按表内描述保持绝对一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边；每格内容必须严格铺满自己的格子区域，格子边界即画面边界，不得内缩、留边距或留白；整张画布严格保持生成设置中的宽高比，无文字水印。`
     }
   })
@@ -181,6 +183,8 @@ function buildEpisodePipelinePlan(): GraphPlan {
       typeId: 'asset.image',
       title: `4宫格拼图·组${g}`,
       params: {
+        ...scope,
+        episodeStep: 'sequence',
         generateInstruction: `基于上游 4宫格动态分镜表生成第 ${g} 组的 2×2 四宫格拼图画布：左上定场、右上引入、左下冲突、右下收尾，人物服饰、主光方向、场景与参考首帧严格一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边；每格内容必须严格铺满自己的格子区域，格子边界即画面边界，不得内缩、留边距或留白；整张画布严格保持生成设置中的宽高比，无文字水印。`
       }
     })
