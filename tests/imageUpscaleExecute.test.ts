@@ -73,6 +73,40 @@ describe('executeUpscaleNode input', () => {
       'data:image/png;base64,src'
     ])
   })
+
+  it('uses instruction, resolution and aspect ratio from node params', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,out'],
+      model: 'test'
+    }))
+    const ctx: NodeExecuteContext = {
+      node: baseNode({
+        params: {
+          imageUpscale: { engineId: 'imageApi', variantId: 'general', scale: 2 },
+          generateInstruction: '请放大到 4K',
+          generateResolution: '4K',
+          generateAspectRatio: '16:9',
+          generateQuality: 'high'
+        }
+      }),
+      inputs: {
+        in: [
+          {
+            kind: 'images',
+            items: [{ id: 'a', dataUrl: 'data:image/png;base64,src', createdAt: '' }]
+          }
+        ]
+      },
+      document: { nodes: [], edges: [] },
+      generateImage
+    }
+    await executeUpscaleNode(ctx)
+    const call = generateImage.mock.calls[0]?.[0]
+    expect(call?.prompt).toContain('请放大到 4K')
+    expect(call?.resolution).toBe('4K')
+    expect(call?.aspectRatio).toBe('16:9')
+    expect(call?.quality).toBe('high')
+  })
 })
 
 describe('portsCompatible image family', () => {

@@ -108,8 +108,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
         imageGridSplit: {
           rows: 3,
           cols: 3,
-          selected: [`${row}-${col}`],
-          scale: 1
+          selected: [`${row}-${col}`]
         }
       }
     })
@@ -191,8 +190,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
           imageGridSplit: {
             rows: 2,
             cols: 2,
-            selected: [CELL_KEYS[c - 1]],
-            scale: 1
+            selected: [CELL_KEYS[c - 1]]
           }
         }
       })

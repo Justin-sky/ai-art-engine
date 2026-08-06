@@ -690,14 +690,12 @@ import {
   type EmotionPadState,
   emotionPadToNodePatch,
   readEmotionPadFromNode,
-  type ImageUpscaleState,
   type ImageExpandState,
   type ImageRedrawState,
   type ImageEraseState,
   type ImageMatteState,
   type ImageCropState,
   type ImageGridSplitState,
-  readImageUpscaleFromNode,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -5940,66 +5938,6 @@ function saveEmotion(
   closeEmotion()
 }
 
-const upscale = reactive({
-  open: false,
-  nodeId: '' as string,
-  setup: null as ImageUpscaleState | null,
-  generateModel: '',
-  generateProviderInstanceId: ''
-})
-
-function onUpscaleOpen(nodeId: string): void {
-  const node = graph.nodes.find((n) => n.id === nodeId)
-  if (!node) return
-  upscale.nodeId = nodeId
-  upscale.setup = readImageUpscaleFromNode(node.params)
-  upscale.generateModel = node.params.generateModel ?? ''
-  upscale.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
-  upscale.open = true
-}
-
-function closeUpscale(): void {
-  upscale.open = false
-  upscale.nodeId = ''
-  upscale.setup = null
-  upscale.generateModel = ''
-  upscale.generateProviderInstanceId = ''
-}
-
-function previewUpscale(payload: {
-  imageUpscale: ImageUpscaleState
-  generateModel: string
-  generateProviderInstanceId: string
-}): void {
-  const node = graph.nodes.find((n) => n.id === upscale.nodeId)
-  if (!node) return
-  node.params = { ...node.params, ...payload }
-  scheduleSave()
-  graphEditorHosts.bumpRevision()
-}
-
-function saveUpscale(payload: {
-  imageUpscale: ImageUpscaleState
-  generateModel: string
-  generateProviderInstanceId: string
-}): void {
-  const nodeId = upscale.nodeId
-  const node = graph.nodes.find((n) => n.id === nodeId)
-  if (!node) return
-  const before = buildGraphJson()
-  node.params = {
-    ...node.params,
-    ...payload
-  }
-  upscale.setup = payload.imageUpscale
-  upscale.generateModel = payload.generateModel
-  upscale.generateProviderInstanceId = payload.generateProviderInstanceId
-  scheduleSave()
-  graphEditorHosts.bumpRevision()
-  recordGraphChange('upscale', before)
-  closeUpscale()
-}
-
 const expand = reactive({
   open: false,
   nodeId: '' as string,
@@ -6449,9 +6387,7 @@ const gridSplit = reactive({
   nodeId: '' as string,
   setup: null as ImageGridSplitState | null,
   sourceUrl: '',
-  sourceLoading: false,
-  generateModel: '',
-  generateProviderInstanceId: ''
+  sourceLoading: false
 })
 
 async function onGridSplitOpen(nodeId: string): Promise<void> {
@@ -6461,8 +6397,6 @@ async function onGridSplitOpen(nodeId: string): Promise<void> {
   gridSplit.setup = readImageGridSplitFromNode(node.params)
   gridSplit.sourceUrl = ''
   gridSplit.sourceLoading = true
-  gridSplit.generateModel = node.params.generateModel ?? ''
-  gridSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   gridSplit.open = true
   await fillEditorSourceUrl(
     nodeId,
@@ -6482,15 +6416,9 @@ function closeGridSplit(): void {
   gridSplit.setup = null
   gridSplit.sourceUrl = ''
   gridSplit.sourceLoading = false
-  gridSplit.generateModel = ''
-  gridSplit.generateProviderInstanceId = ''
 }
 
-function previewGridSplit(payload: {
-  imageGridSplit: ImageGridSplitState
-  generateModel: string
-  generateProviderInstanceId: string
-}): void {
+function previewGridSplit(payload: { imageGridSplit: ImageGridSplitState }): void {
   const node = graph.nodes.find((n) => n.id === gridSplit.nodeId)
   if (!node) return
   node.params = { ...node.params, ...payload }
@@ -6498,11 +6426,7 @@ function previewGridSplit(payload: {
   graphEditorHosts.bumpRevision()
 }
 
-function saveGridSplit(payload: {
-  imageGridSplit: ImageGridSplitState
-  generateModel: string
-  generateProviderInstanceId: string
-}): void {
+function saveGridSplit(payload: { imageGridSplit: ImageGridSplitState }): void {
   const nodeId = gridSplit.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
@@ -6512,8 +6436,6 @@ function saveGridSplit(payload: {
     ...payload
   }
   gridSplit.setup = payload.imageGridSplit
-  gridSplit.generateModel = payload.generateModel
-  gridSplit.generateProviderInstanceId = payload.generateProviderInstanceId
   scheduleSave()
   graphEditorHosts.bumpRevision()
   recordGraphChange('gridSplit', before)
@@ -6532,7 +6454,6 @@ const graphDialogsApi = {
   lighting,
   portraitTexture,
   emotion,
-  upscale,
   expand,
   redraw,
   erase,
@@ -6562,9 +6483,6 @@ const graphDialogsApi = {
   closeEmotion,
   previewEmotion,
   saveEmotion,
-  closeUpscale,
-  previewUpscale,
-  saveUpscale,
   closeExpand,
   previewExpand,
   saveExpand,
@@ -6906,7 +6824,6 @@ function registerNodeToolHost(): void {
       'node.lighting': (nodeId) => onLightingOpen(nodeId),
       'node.portraitTexture': (nodeId) => onPortraitTextureOpen(nodeId),
       'node.emotion': (nodeId) => onEmotionOpen(nodeId),
-      'node.upscale': (nodeId) => onUpscaleOpen(nodeId),
       'node.expand': (nodeId) => onExpandOpen(nodeId),
       'node.redraw': (nodeId) => onRedrawOpen(nodeId),
       'node.erase': (nodeId) => onEraseOpen(nodeId),

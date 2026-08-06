@@ -75,7 +75,6 @@ import {
   resolveRedrawSystemPrompt,
   resolveEraseSystemPrompt,
   resolveMatteSystemPrompt,
-  resolveGridSplitSystemPrompt,
   resolveMultiAngleSystemPrompt,
   resolveLightingSystemPrompt,
   resolvePortraitTextureSystemPrompt,
@@ -142,8 +141,8 @@ import {
 } from '../portraitTexture'
 import { emotionPadToNodePatch, readEmotionPadFromNode } from '../emotionPad'
 import {
-  buildUpscalePrompt,
   readImageUpscaleFromNode,
+  resolveUpscaleInstruction,
   upscaleScaleToResolution
 } from '../imageUpscale'
 import {
@@ -171,9 +170,6 @@ import {
 } from '../imageMatte'
 import { readImageCropFromNode } from '../imageCrop'
 import {
-  buildGridCellUpscalePrompt,
-  gridSplitOutputResolution,
-  nearestApiAspectRatio,
   readImageGridSplitFromNode,
   resolveGridSplitTargets
 } from '../imageGridSplit'
@@ -4231,11 +4227,21 @@ export async function executeUpscaleNode(
   }
 
   const upscale = readImageUpscaleFromNode(ctx.node.params)
-  const userPrompt = buildUpscalePrompt(upscale)
+  const userPrompt = resolveUpscaleInstruction(
+    expandInstructionMentions(
+      ctx.node.params.generateInstruction ?? '',
+      resolveMentionSources(ctx)
+    ),
+    upscale,
+    ctx.locale
+  )
   const system = resolveUpscaleSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale)
   // /images 无独立 system 字段，拼入 prompt
   const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
-  const resolution = upscaleScaleToResolution(upscale.scale)
+  const resolution =
+    ctx.node.params.generateResolution?.trim() || upscaleScaleToResolution(upscale.scale)
+  const aspectRatio = ctx.node.params.generateAspectRatio?.trim() || undefined
+  const quality = ctx.node.params.generateQuality?.trim() || 'high'
 
   if (!ctx.generateImage) {
     // 无 API 时透传输入，便于离线预览链路
@@ -4295,7 +4301,8 @@ export async function executeUpscaleNode(
     model: ctx.node.params.generateModel || undefined,
     providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
     resolution,
-    quality: 'high',
+    ...(aspectRatio ? { aspectRatio } : {}),
+    quality,
     n: 1,
     inputReferences
   })
@@ -4974,6 +4981,10 @@ export async function executeCropNode(
 /**
  * 宫格切分：裁出选中（或全部）宫格，再逐格高清放大。
  */
+/**
+ * 宫格切分：纯裁切，不调用大模型。
+ * 按 rows×cols 从源图裁出每个目标宫格并直接输出。
+ */
 export async function executeGridSplitNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
@@ -4988,14 +4999,13 @@ export async function executeGridSplitNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
 
-  let sourceUrls: string[] = []
+  let sourceUrl = ''
   if (ctx.resolveImageUrls) {
-    sourceUrls = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).filter(Boolean)
+    sourceUrl = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).find(Boolean) ?? ''
   } else {
-    const dataUrl = sourceItems[0]?.dataUrl?.trim()
-    if (dataUrl) sourceUrls = [dataUrl]
+    sourceUrl = sourceItems[0]?.dataUrl?.trim() ?? ''
   }
-  if (!sourceUrls.length && ctx.resolveAssetImageUrl) {
+  if (!sourceUrl && ctx.resolveAssetImageUrl) {
     for (const value of [
       ...(ctx.inputs.in ?? []),
       ...(ctx.inputs['in-image'] ?? []),
@@ -5004,36 +5014,31 @@ export async function executeGridSplitNode(
       if (value.kind !== 'asset' || value.assetType !== 'image') continue
       const url = await ctx.resolveAssetImageUrl(value.assetId)
       if (url) {
-        sourceUrls = [url]
+        sourceUrl = url
         break
       }
     }
   }
-  if (!sourceUrls.length) {
+  if (!sourceUrl) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
-
+  if (!ctx.composeImageGridCell) {
+    throw new Error('宫格裁切能力未注入，无法执行宫格切分')
+  }
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const system = resolveGridSplitSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale)
-  const resolution = gridSplitOutputResolution(grid)
-  const configuredAspectRatio = ctx.node.params.generateAspectRatio?.trim() || ''
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
   const batch: GraphImageItem[] = []
 
-  for (const [index, cell] of targets.entries()) {
+  for (const cell of targets) {
     if (ctx.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')
     }
-
-    if (!ctx.composeImageGridCell) {
-      throw new Error('宫格裁切能力未注入，无法执行宫格切分')
-    }
     const composed = await ctx.composeImageGridCell({
-      sourceDataUrl: sourceUrls[0]!,
+      sourceDataUrl: sourceUrl,
       state: grid,
       cellKey: cell
     })
@@ -5041,54 +5046,15 @@ export async function executeGridSplitNode(
     if (!cellDataUrl) {
       throw new Error(`宫格 ${cell} 裁切失败`)
     }
-    const aspectRatio =
-      configuredAspectRatio || nearestApiAspectRatio(composed.width, composed.height)
-
-    const userPrompt = buildGridCellUpscalePrompt(cell, grid.scale)
-    const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
-
-    if (!ctx.generateImage) {
-      batch.push({
-        id: `gridSplit:${ctx.node.id}:${stamp}:${cell}`,
-        dataUrl: cellDataUrl,
-        createdAt
-      })
-      continue
-    }
-
-    const result = await ctx.generateImage({
-      prompt,
-      model: ctx.node.params.generateModel || undefined,
-      providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
-      aspectRatio,
-      resolution,
-      quality: 'high',
-      n: 1,
-      inputReferences: [cellDataUrl]
-    })
-    const url = result.images?.[0]
-    let dataUrl = typeof url === 'string' ? url.trim() : ''
-    if (!dataUrl) continue
-    if (aspectRatio && ctx.normalizeImageAspectRatio) {
-      try {
-        const normalized = await ctx.normalizeImageAspectRatio({
-          dataUrl,
-          aspectRatio
-        })
-        if (normalized) dataUrl = normalized
-      } catch {
-        /* 裁正失败时保留原图 */
-      }
-    }
     batch.push({
-      id: `gridSplit:${ctx.node.id}:${stamp}:${cell}:${index}`,
-      dataUrl,
+      id: `gridSplit:${ctx.node.id}:${stamp}:${cell}`,
+      dataUrl: cellDataUrl,
       createdAt
     })
   }
 
   if (!batch.length) {
-    throw new Error('模型未返回宫格放大结果')
+    throw new Error('宫格切分失败')
   }
 
   const materializedBatch = await materializeGeneratedBatch(

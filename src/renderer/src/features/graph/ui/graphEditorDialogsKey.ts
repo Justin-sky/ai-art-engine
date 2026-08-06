@@ -7,7 +7,6 @@ import type {
   ImageGridSplitState,
   ImageMatteState,
   ImageRedrawState,
-  ImageUpscaleState,
   LightingSetupState,
   MultiAngleCameraState,
   PortraitTextureState
@@ -78,12 +77,6 @@ export type GraphEditorDialogsApi = {
     generateModel: string
     generateProviderInstanceId: string
   }
-  upscale: {
-    open: boolean
-    setup: ImageUpscaleState | null
-    generateModel: string
-    generateProviderInstanceId: string
-  }
   expand: {
     open: boolean
     setup: ImageExpandState | null
@@ -127,8 +120,6 @@ export type GraphEditorDialogsApi = {
     setup: ImageGridSplitState | null
     sourceUrl: string
     sourceLoading: boolean
-    generateModel: string
-    generateProviderInstanceId: string
   }
   closeTextNotepad: () => void
   saveTextNotepad: (text: string) => void
@@ -153,9 +144,6 @@ export type GraphEditorDialogsApi = {
   closeEmotion: () => void
   previewEmotion: (payload: unknown) => void
   saveEmotion: (payload: unknown) => void
-  closeUpscale: () => void
-  previewUpscale: (payload: unknown) => void
-  saveUpscale: (payload: unknown) => void
   closeExpand: () => void
   previewExpand: (payload: unknown) => void
   saveExpand: (payload: unknown) => void

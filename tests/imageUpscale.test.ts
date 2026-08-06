@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildUpscalePrompt,
   normalizeImageUpscale,
+  resolveUpscaleInstruction,
   upscaleScaleToResolution
 } from '../src/shared/graph'
 
@@ -40,5 +41,18 @@ describe('imageUpscale', () => {
     expect(p).toContain('portrait')
     expect(p).toContain('AI image upscaling')
     expect(p).not.toContain('Topaz')
+  })
+
+  it('prefers explicit instruction over generated prompt', () => {
+    expect(
+      resolveUpscaleInstruction('请放大到 4K', normalizeImageUpscale({ scale: 2 }), 'zh-CN')
+    ).toBe('请放大到 4K')
+  })
+
+  it('falls back to generated prompt when instruction is empty', () => {
+    const state = normalizeImageUpscale({ scale: 4 })
+    const prompt = resolveUpscaleInstruction('', state)
+    expect(prompt).toContain('4x')
+    expect(prompt).toBe(buildUpscalePrompt(state))
   })
 })

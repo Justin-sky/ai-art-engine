@@ -404,40 +404,33 @@ export function drawGraphEdges(
     ctx.shadowBlur = 0
   }
 
-  // 2) 流动高亮：沿边方向的渐变（起点透明→终点纯白）配合滚动虚线，
-  //    形成“越靠近目标越亮”的彗星拖尾，与原 SVG userSpaceOnUse 渐变一致
+  // 2) 流动高亮：纯色滚动虚线，配合宽发光层形成沿边移动的流动效果
   if (!reduceEffects && flowEdgeIds.size > 0 && pathStyle !== 'hidden') {
     const period = 500
     const dashTravel = 160 * zoom
     const offset = -((opts.flowTimeMs % period) / period) * dashTravel
+    const flowColor = 'rgba(110, 216, 255, 0.9)'
     for (const g of visibleGeoms) {
-      // 选中节点的出边与入边都流动：入边流向选中节点（终点白色在 target 端）
+      // 选中节点的出边与入边都流动：虚线沿边向 target 方向滚动
       if (!flowEdgeIds.has(g.source) && !flowEdgeIds.has(g.target)) continue
-      const grad = ctx.createLinearGradient(g.sx, g.sy, g.ex, g.ey)
-      grad.addColorStop(0, 'rgba(94, 200, 255, 0)')
-      grad.addColorStop(0.18, 'rgba(94, 200, 255, 0.06)')
-      grad.addColorStop(0.42, 'rgba(110, 216, 255, 0.22)')
-      grad.addColorStop(0.68, 'rgba(158, 232, 255, 0.55)')
-      grad.addColorStop(0.88, 'rgba(200, 246, 255, 0.88)')
-      grad.addColorStop(1, 'rgba(255, 255, 255, 1)')
 
       ctx.setLineDash([36 * zoom, 100 * zoom])
       ctx.lineDashOffset = offset
 
-      // 宽发光层：低透明 + 软阴影模拟原 feGaussianBlur
+      // 宽发光层：低透明 + 软阴影
       traceEdge(ctx, g)
       ctx.lineWidth = 6 * zoom
       ctx.globalAlpha = 0.35
-      ctx.strokeStyle = grad
+      ctx.strokeStyle = flowColor
       ctx.shadowColor = 'rgba(120, 220, 255, 0.45)'
       ctx.shadowBlur = 3.5 * dpr
       ctx.stroke()
 
-      // 亮核层
+      // 亮核层：纯色实线
       traceEdge(ctx, g)
       ctx.lineWidth = 2 * zoom
       ctx.globalAlpha = 1
-      ctx.strokeStyle = grad
+      ctx.strokeStyle = flowColor
       ctx.shadowColor = 'rgba(120, 220, 255, 0.55)'
       ctx.shadowBlur = 2 * dpr
       ctx.stroke()

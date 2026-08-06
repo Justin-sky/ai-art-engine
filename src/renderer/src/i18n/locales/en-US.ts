@@ -1594,21 +1594,9 @@ export default {
     },
 
     upscale: {
-      appMark: 'HD upscale',
-      hint: 'Double-click to configure upscale; run the node to generate',
-      hintRun: 'Save closes this dialog. Run the node to upscale via the image model.',
-      engine: 'Engine',
-      model: 'Model',
-      scale: 'Scale',
-      resetParams: 'Reset parameters',
       systemPrompt: 'System prompt',
       mergedPrompt: 'Merged prompt',
-      promptEmpty: 'No merged prompt yet. Adjust scale in the editor dialog.',
-      variants: {
-        general: 'General',
-        portrait: 'Portrait',
-        landscape: 'Landscape'
-      }
+      promptEmpty: 'No merged prompt yet. Write the upscale instruction in the node instruction box.'
     },
     expand: {
       appMark: 'Image expand',
@@ -1716,17 +1704,15 @@ export default {
     },
     gridSplit: {
       appMark: 'Grid split',
-      hint: 'Double-click to pick grid cells; run the node to HD-enlarge selected tiles',
+      hint: 'Double-click to pick grid cells; run the node to split tiles locally without an AI model',
       noSource: 'Connect an upstream image first',
       selectedCount: 'Selected {n} cells',
       sizeLabel: '{n}-grid ({r}×{c})',
-      scale: 'Scale',
       clearSelection: 'Clear selection',
       customTitle: 'Custom grid',
       grid: 'Grid',
       selected: 'Selected',
       allCells: 'All cells',
-      systemPrompt: 'System prompt',
       cropPreview: 'Cropped source',
       cropPreviewHint: 'Tiles cropped from the upstream image with the current grid',
       cropLoading: 'Building crop preview…',
@@ -2197,7 +2183,7 @@ export default {
         hint: 'Double-click to adjust emotion and model. Run to generate an image; this panel shows the gallery and prompt.'
       },
       upscale: {
-        hint: 'Double-click the node to edit options. This panel shows the system prompt and the merged upscale prompt.',
+        hint: 'Double-click the node to open the instruction box. This panel shows the system prompt and the final upscale prompt.',
         previewHint: 'Double-click a thumbnail to enter media preview.',
         previewEmpty: 'No upscaled images yet. Connect an input and run the node.'
       },
@@ -2222,7 +2208,7 @@ export default {
         hint: 'Double-click the node to set the crop frame. Run the node to crop locally.'
       },
       gridSplit: {
-        hint: 'Double-click to choose grid size and cells. Run the node to HD-enlarge selected tiles.'
+        hint: 'Double-click to choose grid size and cells. Run the node to split tiles locally without an AI model.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

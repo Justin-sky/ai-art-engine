@@ -57,25 +57,6 @@
           {{ t('graph.gridSplit.selectedCount', { n: draft.selected.length }) }}
         </div>
 
-        <label class="scale-field">
-          <span class="scale-label">{{ t('graph.gridSplit.scale') }}</span>
-          <select v-model.number="draft.scale" class="select select-scale">
-            <option v-for="s in scales" :key="s" :value="s">{{ s }}×</option>
-          </select>
-        </label>
-
-        <label class="model-field">
-          <span class="scale-label">{{ t('graph.inspector.generate.imageModel') }}</span>
-          <select v-model="selectionKey" class="select select-model">
-            <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-              {{ opt.label }}
-            </option>
-            <option v-if="modelOptions.length === 0" value="">
-              {{ t('graph.inspector.generate.noModels') }}
-            </option>
-          </select>
-        </label>
-
         <button type="button" class="clear-btn" @click="clearSelection">
           {{ t('graph.gridSplit.clearSelection') }}
         </button>
@@ -116,32 +97,21 @@ import {
   DEFAULT_IMAGE_GRID_SPLIT,
   GRID_SPLIT_MAX,
   GRID_SPLIT_PRESETS,
-  UPSCALE_SCALES,
   cellKey,
   imageGridSplitToNodePatch,
   normalizeImageGridSplit,
   type ImageGridSplitState
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import {
-  loadGenerateModelOptions,
-  preferredModelKey,
-  type GenerateModelOption
-} from '../features/graph/model/generateModelOptions'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
-export type GridSplitEditorSavePayload = ReturnType<typeof imageGridSplitToNodePatch> & {
-  generateModel: string
-  generateProviderInstanceId: string
-}
+export type GridSplitEditorSavePayload = ReturnType<typeof imageGridSplitToNodePatch>
 
 const props = defineProps<{
   open: boolean
   setup?: Partial<ImageGridSplitState> | null
   sourceUrl?: string
   sourceLoading?: boolean
-  generateModel?: string
-  generateProviderInstanceId?: string
 }>()
 
 const emit = defineEmits<{
@@ -159,21 +129,14 @@ const sourceNatural = reactive({ w: 1, h: 1 })
 const display = reactive({ w: 360, h: 360 })
 const gridMenuOpen = ref(false)
 const hoverRC = ref<{ r: number; c: number } | null>(null)
-const modelOptions = ref<GenerateModelOption[]>([])
-const selectionKey = ref('')
 const hydrating = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
-const scales = UPSCALE_SCALES
 const presets = GRID_SPLIT_PRESETS
 
 const dirty = computed(() => {
   const a = normalizeImageGridSplit(props.setup)
   const b = normalizeImageGridSplit(draft)
-  const setupKey = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
-  return (
-    selectionKey.value !== setupKey ||
-    JSON.stringify(a) !== JSON.stringify(b)
-  )
+  return JSON.stringify(a) !== JSON.stringify(b)
 })
 
 const gridSizeLabel = computed(() =>
@@ -267,12 +230,7 @@ function fitDisplay(): void {
 }
 
 function buildSavePayload(): GridSplitEditorSavePayload {
-  const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
-  return {
-    ...imageGridSplitToNodePatch(normalizeImageGridSplit(draft)),
-    generateModel: opt?.model ?? '',
-    generateProviderInstanceId: opt?.providerInstanceId ?? ''
-  }
+  return imageGridSplitToNodePatch(normalizeImageGridSplit(draft))
 }
 
 function emitPreview(): void {
@@ -292,25 +250,15 @@ watch(
     hydrating.value = true
     gridMenuOpen.value = false
     Object.assign(draft, normalizeImageGridSplit(props.setup ?? DEFAULT_IMAGE_GRID_SPLIT))
-    const preferred = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
-    void loadGenerateModelOptions('image', preferred)
-      .then(({ options, selectedKey }) => {
-        if (!props.open) return
-        modelOptions.value = options
-        selectionKey.value = selectedKey || options[0]?.key || ''
-      })
-      .finally(() => {
-        void nextTick(() => {
-          hydrating.value = false
-          emitPreview()
-        })
-      })
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+    })
   },
   { immediate: true }
 )
 
 watch(draft, () => emitPreview(), { deep: true })
-watch(selectionKey, () => emitPreview())
 
 watch(
   () => [props.open, props.sourceUrl] as const,
@@ -462,43 +410,6 @@ function onClose(): void {
 .sel-count {
   font-size: 13px;
   color: var(--text);
-}
-
-.scale-field,
-.model-field {
-  display: inline-flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.scale-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  flex: 0 0 auto;
-}
-
-.select {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-elevated);
-  color: var(--text);
-  padding: 7px 8px;
-  font-size: 13px;
-}
-
-.select-scale {
-  width: 60px;
-  min-width: 60px;
-  max-width: 60px;
-}
-
-.select-model {
-  width: 160px;
-  max-width: 180px;
 }
 
 .clear-btn {

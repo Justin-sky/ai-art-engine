@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   cellKey,
   gridCellCropRect,
-  nearestApiAspectRatio,
   normalizeImageGridSplit,
   resolveGridSplitTargets
 } from '../src/shared/graph'
@@ -12,8 +11,7 @@ describe('imageGridSplit', () => {
     expect(normalizeImageGridSplit()).toMatchObject({
       rows: 3,
       cols: 3,
-      selected: [],
-      scale: 2
+      selected: []
     })
   })
 
@@ -45,10 +43,10 @@ describe('imageGridSplit', () => {
     expect(cellKey(3, 4)).toBe('3-4')
   })
 
-  it('picks nearest api aspect ratio for cell pixels', () => {
-    expect(nearestApiAspectRatio(1024, 1024)).toBe('1:1')
-    expect(nearestApiAspectRatio(1080, 1920)).toBe('9:16')
-    expect(nearestApiAspectRatio(1920, 1080)).toBe('16:9')
-    expect(nearestApiAspectRatio(800, 1000)).toBe('4:5')
+  it('drops legacy upscale fields', () => {
+    const s = normalizeImageGridSplit({ rows: 2, cols: 2, scale: 4, resolution: '4K' } as never)
+    expect(s).toMatchObject({ rows: 2, cols: 2, selected: [] })
+    expect(s).not.toHaveProperty('scale')
+    expect(s).not.toHaveProperty('resolution')
   })
 })

@@ -1584,21 +1584,9 @@ export default {
     },
 
     upscale: {
-      appMark: '高清放大',
-      hint: '双击配置放大参数；运行节点以生成结果',
-      hintRun: '关闭窗口会保存参数。运行节点时通过图片模型超分。',
-      engine: '模型选择',
-      model: '模型',
-      scale: '放大倍数',
-      resetParams: '重置参数',
       systemPrompt: '系统提示词',
       mergedPrompt: '合并提示词',
-      promptEmpty: '暂无合并提示词，请在编辑窗口调整放大倍数',
-      variants: {
-        general: '通用',
-        portrait: '人像',
-        landscape: '风景'
-      }
+      promptEmpty: '暂无合并提示词，请在节点指令框填写放大指令'
     },
 
     expand: {
@@ -1707,17 +1695,15 @@ export default {
     },
     gridSplit: {
       appMark: '宫格切分',
-      hint: '双击选择宫格；运行节点对选中格做局部高清放大',
+      hint: '双击选择宫格；运行节点直接切分原图，不调用大模型',
       noSource: '请先连接上游图片',
       selectedCount: '已选 {n} 个宫格',
       sizeLabel: '{n}宫格 ({r}×{c})',
-      scale: '放大倍数',
       clearSelection: '清空选择',
       customTitle: '自定义宫格',
       grid: '宫格',
       selected: '已选',
       allCells: '全部',
-      systemPrompt: '系统提示词',
       cropPreview: '切分原图',
       cropPreviewHint: '按当前宫格从上游图片裁出的格子（运行前参考）',
       cropLoading: '正在切分预览…',
@@ -2182,7 +2168,7 @@ export default {
         hint: '双击节点调节情绪与模型；运行后输出结果图，此处可预览图库与提示词'
       },
       upscale: {
-        hint: '双击节点编辑参数；此处预览系统提示词与由编辑选项合并的提示词',
+        hint: '双击节点打开指令框填写放大指令；此处预览系统提示词与最终放大提示词',
         previewHint: '双击缩略图进入媒体预览',
         previewEmpty: '暂无放大结果，请连接输入图并运行节点'
       },
@@ -2203,7 +2189,7 @@ export default {
         hint: '运行自动抠图；双击可 refinement。此处预览系统提示词与合并抠图提示词'
       },
       gridSplit: {
-        hint: '双击选择宫格大小与单元格；运行节点对选中格做局部高清放大'
+        hint: '双击选择宫格大小与单元格；运行节点直接切分原图，不调用大模型'
       },
       camera: {
         hint: '修改参数会同步到导演台编辑预览；在预览中环视也会实时更新。',

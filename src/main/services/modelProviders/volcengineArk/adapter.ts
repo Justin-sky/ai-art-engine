@@ -18,6 +18,7 @@ import {
   isOpaqueVolcengineArkEndpointId,
   resolveVolcengineArkModelCapabilities
 } from '@shared/modelProviders/volcengineArk/modelCapabilities'
+import { resolveSeedreamImageSize } from '@shared/modelProviders/volcengineArk/imageSize'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
@@ -180,8 +181,10 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       watermark: false
     }
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
-    if (input.resolution?.trim()) body.size = input.resolution.trim()
-    else if (input.aspectRatio?.trim()) body.size = input.aspectRatio.trim()
+    // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
+    // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
+    const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio)
+    if (size) body.size = size
     if (input.inputReferences?.length) {
       const refs = input.inputReferences.map((url) => url.trim()).filter(Boolean)
       body.image = refs.length === 1 ? refs[0] : refs

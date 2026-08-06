@@ -296,26 +296,6 @@ export function resolveMatteSystemPrompt(raw: string | undefined, locale?: strin
   return resolveOrDefault(raw, locale, defaultMatteSystemPrompt)
 }
 
-// ——— 宫格局部放大 ———
-
-export const DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_EN =
-  'You are an image upscaling specialist for cropped grid tiles. The reference image is already the exact tile to enlarge. Output the same full framing at higher resolution: preserve composition, subject scale, texture, edges and identity. Do not zoom in, crop, reframe, restyle, or add objects.'
-
-export const DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_ZH =
-  '你是宫格局部放大专家。参考图已经是要放大的完整格面。请在更高分辨率下输出同一构图：保留构图、主体相对大小、纹理、边缘与身份特征；禁止推近特写、二次裁切、重新构图、改风格或添加新物体。'
-
-export function defaultGridSplitSystemPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_EN,
-    DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_ZH
-  )
-}
-
-export function resolveGridSplitSystemPrompt(raw: string | undefined, locale?: string): string {
-  return resolveOrDefault(raw, locale, defaultGridSplitSystemPrompt)
-}
-
 // ——— 多角度精修 ———
 
 export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_EN = `You are a professional multi-view image synthesis specialist for AIArtEngine.

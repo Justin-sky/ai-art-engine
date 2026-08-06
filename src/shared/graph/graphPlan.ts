@@ -121,8 +121,6 @@ export function applyDefaultGenerateModels(
         params.generateProviderInstanceId = defaults.videoProviderInstanceId
       }
       if (aspectRatio) params.generateAspectRatio = aspectRatio
-    } else if (node.typeId === 'image.gridSplit' && aspectRatio) {
-      params.generateAspectRatio = aspectRatio
     } else {
       return node
     }

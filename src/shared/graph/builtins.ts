@@ -922,6 +922,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         variantId: 'general',
         scale: 2
       },
+      generateInstruction: '将输入图片高清放大，保持构图、色彩与主体身份不变，不裁切、不改风格。',
+      generateSystemPrompt: '',
       generateModel: '',
       generateProviderInstanceId: ''
     }),
@@ -1172,12 +1174,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       imageGridSplit: {
         rows: 3,
         cols: 3,
-        selected: [],
-        scale: 2
-      },
-      generateModel: '',
-      generateProviderInstanceId: '',
-      generateSystemPrompt: ''
+        selected: []
+      }
     }),
     addable: true,
     deletable: true,

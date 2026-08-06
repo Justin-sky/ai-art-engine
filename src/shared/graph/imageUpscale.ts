@@ -81,6 +81,20 @@ export function buildUpscalePrompt(state: ImageUpscaleState): string {
   ].join(', ')
 }
 
+/**
+ * 高清放大最终指令：优先使用节点 generateInstruction（双击指令框填写），
+ * 为空时回退到按放大倍数/风格自动生成的提示词。
+ */
+export function resolveUpscaleInstruction(
+  instruction: string | undefined,
+  state: ImageUpscaleState,
+  _locale?: string
+): string {
+  const raw = instruction?.trim()
+  if (raw) return raw
+  return buildUpscalePrompt(state)
+}
+
 export function readImageUpscaleFromNode(params: {
   imageUpscale?: Partial<ImageUpscaleState>
 }): ImageUpscaleState {

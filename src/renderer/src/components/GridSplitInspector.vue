@@ -49,23 +49,7 @@
         <dt>{{ t('graph.gridSplit.selected') }}</dt>
         <dd>{{ selectedLabel }}</dd>
       </div>
-      <div>
-        <dt>{{ t('graph.gridSplit.scale') }}</dt>
-        <dd>{{ scaleLabel }}</dd>
-      </div>
     </dl>
-
-    <label>
-      {{ t('graph.gridSplit.systemPrompt') }}
-      <ExpandableTextarea
-        :key="`sys-${node.id}`"
-        v-model="systemPrompt"
-        :title="t('graph.gridSplit.systemPrompt')"
-        :rows="4"
-        :placeholder="t('graph.inspector.generate.systemPromptPlaceholder')"
-        @change="persistSystemPrompt"
-      />
-    </label>
   </div>
   <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
 </template>
@@ -73,16 +57,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
-  DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_EN,
-  DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_ZH,
-  defaultGridSplitSystemPrompt,
   readImageGridSplitFromNode,
-  resolveGridSplitSystemPrompt,
   resolveGridSplitTargets
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
-import ExpandableTextarea from './ExpandableTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
@@ -93,7 +72,7 @@ import { resolveNodeUpstreamImageUrl } from '../features/graph/model/resolveNode
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
 
-const { t, locale, graphTypeLabel } = useStudioI18n()
+const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 const project = useProjectStore()
 
@@ -129,12 +108,6 @@ const selectedLabel = computed(() => {
   if (!g) return '—'
   if (!g.selected.length) return t('graph.gridSplit.allCells')
   return g.selected.join(', ')
-})
-
-const scaleLabel = computed(() => {
-  const g = grid.value
-  if (!g) return '—'
-  return `${g.scale}×`
 })
 
 type CropCell = { key: string; dataUrl: string }
@@ -205,6 +178,38 @@ async function refreshCropPreview(): Promise<void> {
   }
 }
 
+/** 只依赖真正影响切分预览的输入，避免切换输出等节点参数变化触发整块重算 */
+function gridSplitInputSignature(): string {
+  const hid = hostId.value
+  const current = node.value
+  if (!hid || !current) return ''
+  const doc = graphEditorHosts.getDocument(hid)
+  const edges = (doc?.edges ?? [])
+    .filter((e) => e.target === current.id)
+    .map((e) => `${e.id}:${e.source}:${e.targetPort ?? 'in'}`)
+    .join('|')
+  const runStates = graphRunHosts.get(hid)?.runStates
+  const upstreamIds = (doc?.edges ?? [])
+    .filter((e) => e.target === current.id)
+    .map((e) => e.source)
+  const runSig = upstreamIds
+    .map((id) => {
+      const st = runStates?.[id]
+      const out = st?.outputs?.out
+      const outId =
+        out && typeof out === 'object' && 'id' in out
+          ? String((out as { id?: unknown }).id ?? '')
+          : ''
+      const outData =
+        out && typeof out === 'object' && 'dataUrl' in out
+          ? String((out as { dataUrl?: unknown }).dataUrl ?? '').slice(0, 48)
+          : ''
+      return `${id}:${st?.status ?? ''}:${outId || outData}`
+    })
+    .join('|')
+  return `${edges}#${runSig}`
+}
+
 watch(
   [
     () => node.value?.id ?? '',
@@ -212,31 +217,10 @@ watch(
     () => {
       const g = grid.value
       if (!g) return ''
-      return `${g.rows}x${g.cols}:${g.scale}:${g.selected.join(',')}`
+      return `${g.rows}x${g.cols}:${g.selected.join(',')}`
     },
-    () => graphEditorHosts.revision.value,
     () => project.assets.length,
-    () => {
-      const hid = hostId.value
-      const current = node.value
-      if (!hid || !current) return ''
-      const doc = graphEditorHosts.getDocument(hid)
-      const edges = (doc?.edges ?? [])
-        .filter((e) => e.target === current.id)
-        .map((e) => `${e.id}:${e.source}`)
-        .join('|')
-      const runStates = graphRunHosts.get(hid)?.runStates
-      const upstreamIds = (doc?.edges ?? [])
-        .filter((e) => e.target === current.id)
-        .map((e) => e.source)
-      const runSig = upstreamIds
-        .map((id) => {
-          const st = runStates?.[id]
-          return `${id}:${st?.status ?? ''}:${st?.outputs?.out ? '1' : '0'}`
-        })
-        .join('|')
-      return `${edges}#${runSig}`
-    }
+    () => gridSplitInputSignature()
   ],
   () => {
     void refreshCropPreview()
@@ -246,54 +230,6 @@ watch(
 
 function openCropPreview(cell: CropCell): void {
   void openFullImagePreview({ dataUrl: cell.dataUrl })
-}
-
-const systemPrompt = ref('')
-const loadedNodeId = ref<string | null>(null)
-const loadedHostId = ref<string | null>(null)
-
-function loadSystemPrompt(current: NonNullable<typeof node.value>): void {
-  loadedNodeId.value = current.id
-  loadedHostId.value = hostId.value
-  systemPrompt.value = resolveGridSplitSystemPrompt(
-    current.params.generateSystemPrompt,
-    String(locale.value)
-  )
-}
-
-watch(
-  node,
-  (current) => {
-    if (!current) {
-      systemPrompt.value = ''
-      loadedNodeId.value = null
-      loadedHostId.value = null
-      return
-    }
-    const sameNode = current.id === loadedNodeId.value && hostId.value === loadedHostId.value
-    if (!sameNode) loadSystemPrompt(current)
-  },
-  { immediate: true }
-)
-
-watch(locale, (next) => {
-  if (!node.value) return
-  const cur = systemPrompt.value.trim()
-  if (
-    !cur ||
-    cur === DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_EN ||
-    cur === DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_ZH
-  ) {
-    systemPrompt.value = defaultGridSplitSystemPrompt(String(next))
-  }
-})
-
-function persistSystemPrompt(): void {
-  if (!node.value) return
-  const selection = editor.selection.current.value
-  graphEditorHosts.updateNode(selection.hostId, node.value.id, {
-    generateSystemPrompt: systemPrompt.value
-  })
 }
 </script>
 

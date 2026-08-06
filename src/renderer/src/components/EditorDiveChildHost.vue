@@ -102,7 +102,6 @@ const viewRegistry: Record<string, Component> = {
   'node.lighting': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.portraitTexture': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.emotion': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
-  'node.upscale': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.expand': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.redraw': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.erase': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),

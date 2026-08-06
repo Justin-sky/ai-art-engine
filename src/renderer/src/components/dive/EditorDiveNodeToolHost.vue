@@ -106,17 +106,6 @@
       @save="api.saveEmotion as never"
     />
 
-    <UpscaleEditorDialog
-      v-else-if="viewId === 'node.upscale' && api.upscale.open"
-      :open="true"
-      :setup="api.upscale.setup"
-      :generate-model="api.upscale.generateModel"
-      :generate-provider-instance-id="api.upscale.generateProviderInstanceId"
-      @close="onClose(api.closeUpscale)"
-      @update="api.previewUpscale as never"
-      @save="api.saveUpscale as never"
-    />
-
     <ExpandEditorDialog
       v-else-if="viewId === 'node.expand' && api.expand.open"
       :open="true"
@@ -189,8 +178,6 @@
       :setup="api.gridSplit.setup"
       :source-url="api.gridSplit.sourceUrl"
       :source-loading="api.gridSplit.sourceLoading"
-      :generate-model="api.gridSplit.generateModel"
-      :generate-provider-instance-id="api.gridSplit.generateProviderInstanceId"
       @close="onClose(api.closeGridSplit)"
       @update="api.previewGridSplit as never"
       @save="api.saveGridSplit as never"
@@ -220,7 +207,6 @@ import MultiAngleEditorDialog from '../MultiAngleEditorDialog.vue'
 import LightingEditorDialog from '../LightingEditorDialog.vue'
 import PortraitTextureEditorDialog from '../PortraitTextureEditorDialog.vue'
 import EmotionEditorDialog from '../EmotionEditorDialog.vue'
-import UpscaleEditorDialog from '../UpscaleEditorDialog.vue'
 import ExpandEditorDialog from '../ExpandEditorDialog.vue'
 import RedrawEditorDialog from '../RedrawEditorDialog.vue'
 import CropEditorDialog from '../CropEditorDialog.vue'
@@ -272,8 +258,6 @@ const toolOpen = computed(() => {
       return current.portraitTexture.open
     case 'node.emotion':
       return current.emotion.open
-    case 'node.upscale':
-      return current.upscale.open
     case 'node.expand':
       return current.expand.open
     case 'node.redraw':
@@ -360,9 +344,6 @@ function closeCurrent(): void {
       break
     case 'node.emotion':
       current.closeEmotion()
-      break
-    case 'node.upscale':
-      current.closeUpscale()
       break
     case 'node.expand':
       current.closeExpand()

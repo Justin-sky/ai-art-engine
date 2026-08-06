@@ -103,7 +103,7 @@ describe('graphPlan materialize', () => {
     expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
   })
 
-  it('injects unified aspect ratio into image/video/grid-split nodes', () => {
+  it('injects unified aspect ratio into image/video nodes and leaves grid-split untouched', () => {
     const plan: GraphPlan = {
       nodes: [
         {
@@ -136,10 +136,9 @@ describe('graphPlan materialize', () => {
     expect(split).toMatchObject({
       rows: 2,
       cols: 2,
-      selected: ['1-1'],
-      scale: 2
+      selected: ['1-1']
     })
-    expect(next.nodes[2]?.params?.generateAspectRatio).toBe('16:9')
+    expect(next.nodes[2]?.params?.generateAspectRatio).toBeUndefined()
     expect(next.nodes[2]?.params?.generateResolution).toBeUndefined()
   })
 
@@ -154,9 +153,7 @@ describe('graphPlan materialize', () => {
               imageGridSplit: {
                 rows: 2,
                 cols: 2,
-                selected: ['1-2'],
-                scale: 1,
-                resolution: '2K'
+                selected: ['1-2']
               }
             }
           }
@@ -172,9 +169,10 @@ describe('graphPlan materialize', () => {
     expect(split.params.imageGridSplit).toMatchObject({
       rows: 2,
       cols: 2,
-      selected: ['1-2'],
-      resolution: '2K'
+      selected: ['1-2']
     })
+    expect(split.params.imageGridSplit).not.toHaveProperty('scale')
+    expect(split.params.imageGridSplit).not.toHaveProperty('resolution')
   })
 
   it('materializes every curated preset seed plan', () => {

@@ -40,9 +40,9 @@ import { computed, ref, watch } from 'vue'
 import {
   DEFAULT_UPSCALE_SYSTEM_PROMPT_EN,
   DEFAULT_UPSCALE_SYSTEM_PROMPT_ZH,
-  buildUpscalePrompt,
   defaultUpscaleSystemPrompt,
   readImageUpscaleFromNode,
+  resolveUpscaleInstruction,
   resolveUpscaleSystemPrompt
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -81,7 +81,11 @@ const loadedHostId = ref<string | null>(null)
 const mergedPrompt = computed(() => {
   const current = node.value
   if (!current) return ''
-  return buildUpscalePrompt(readImageUpscaleFromNode(current.params))
+  return resolveUpscaleInstruction(
+    current.params.generateInstruction,
+    readImageUpscaleFromNode(current.params),
+    String(locale.value)
+  )
 })
 
 function loadSystemPrompt(current: NonNullable<typeof node.value>): void {

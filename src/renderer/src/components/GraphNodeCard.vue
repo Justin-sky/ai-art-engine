@@ -720,6 +720,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return isProcessingNode.value ? 'video' : null
     case 'video.lipSync':
       return 'lipSync'
+    case 'image.upscale':
+      return 'image'
     case 'asset.voice':
       return isProcessingNode.value ? 'voice' : null
     default:
@@ -1287,7 +1289,6 @@ const previewHint = computed(() => {
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
   if (isEmotionEditorNode(props.node)) return t('graph.emotion.hint')
-  if (isUpscaleEditorNode(props.node)) return t('graph.upscale.hint')
   if (isLipSyncNode(props.node)) return t('graph.lipSync.hint')
   if (isExpandEditorNode(props.node)) return t('graph.expand.hint')
   if (isRedrawEditorNode(props.node)) return t('graph.redraw.hint')
@@ -1813,10 +1814,6 @@ function onPreviewDblClick(): void {
     }
     if (isEmotionEditorNode(props.node)) {
       await diveNodeTool('node.emotion', title)
-      return
-    }
-    if (isUpscaleEditorNode(props.node)) {
-      await diveNodeTool('node.upscale', title)
       return
     }
     if (isExpandEditorNode(props.node)) {
