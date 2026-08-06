@@ -84,7 +84,7 @@ export interface GraphPlanMediaModelDefaults {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
-  /** 一键工作流统一宽高比：注入到图片/视频生成节点 */
+  /** 一键工作流统一宽高比：注入到图片/视频生成及高清放大节点 */
   generateAspectRatio?: string
 }
 
@@ -96,7 +96,7 @@ export interface GraphPlanPreview {
 
 /**
  * 将默认图/视频模型写入计划中尚未指定模型的生成节点，
- * 并在指定统一宽高比时覆盖图片/视频生成节点。
+ * 并在指定统一宽高比时覆盖图片/视频生成及高清放大节点。
  */
 export function applyDefaultGenerateModels(
   plan: GraphPlan,
@@ -105,7 +105,7 @@ export function applyDefaultGenerateModels(
   const aspectRatio = defaults.generateAspectRatio?.trim() || ''
   const nodes = plan.nodes.map((node) => {
     const params = { ...(node.params ?? {}) }
-    if (node.typeId === 'asset.image') {
+    if (node.typeId === 'asset.image' || node.typeId === 'image.upscale') {
       if (defaults.imageModel && !params.generateModel) {
         params.generateModel = defaults.imageModel
       }

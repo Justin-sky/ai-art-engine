@@ -370,6 +370,10 @@ export default {
       sep: '/',
       toolMissing: '工具不可用'
     },
+    window: {
+      detach: '弹出到独立窗口（也可把窗口拖出主窗口）',
+      dock: '停靠回主窗口'
+    },
     tabMenu: {
       float: '浮动窗口',
       detach: '分离到新窗口',

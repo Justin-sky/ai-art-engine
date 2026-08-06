@@ -925,7 +925,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateInstruction: '将输入图片高清放大，保持构图、色彩与主体身份不变，不裁切、不改风格。',
       generateSystemPrompt: '',
       generateModel: '',
-      generateProviderInstanceId: ''
+      generateProviderInstanceId: '',
+      generateAspectRatio: ''
     }),
     addable: true,
     deletable: true,

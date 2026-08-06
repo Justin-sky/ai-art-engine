@@ -371,6 +371,10 @@ export default {
       sep: '/',
       toolMissing: 'Tool unavailable'
     },
+    window: {
+      detach: 'Pop out to its own window (or drag it outside the main window)',
+      dock: 'Dock back to main window'
+    },
     tabMenu: {
       float: 'Float window',
       detach: 'Detach to new window',

@@ -86,9 +86,6 @@ const viewRegistry: Record<string, Component> = {
   'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
   'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
   'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
-  'episode.pipeline': defineAsyncComponent(() =>
-    import('./dive/EditorDiveEpisodePipelineView.vue')
-  ),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
   'node.instruction': defineAsyncComponent(() => import('./dive/EditorDiveInstructionView.vue')),
@@ -169,8 +166,6 @@ const viewBindings = computed(() => {
     case 'beat.gen':
     case 'beat.table':
       return { ...base, beatAssetId: meta.beatAssetId }
-    case 'episode.pipeline':
-      return { ...base, hostAssetId: meta.hostAssetId }
     case 'director.stage':
       return {
         ...base,

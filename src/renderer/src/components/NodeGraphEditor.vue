@@ -528,17 +528,48 @@
       @confirm="onEncapsulateSaveConfirm"
       @cancel="closeEncapsulateSaveDialog"
     />
+
+    <!-- 剧集流水线独立窗口：不占画布，可同时操作节点 -->
+    <StudioFloatingWindow
+      v-if="episodePipelineOpen"
+      :open="true"
+      :title="episodePipelineTitle"
+      :z-index="1200"
+      :default-width="1120"
+      :default-height="720"
+      :min-width="760"
+      :min-height="480"
+      body-class="pad-none"
+      @close="closeEpisodePipeline"
+    >
+      <EpisodePipelineView
+        :frame-key="'episode-pipeline'"
+        :host-asset-id="props.assetId ?? ''"
+      />
+    </StudioFloatingWindow>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  inject,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  reactive,
+  ref,
+  watch
+} from 'vue'
 import { resolveGraphCard } from '../graph/cards/registry'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import GraphMinimap from './GraphMinimap.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
+import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import {
   editorDiveKey,
   isEditorDiveAssetFrame
@@ -788,6 +819,9 @@ const workspace = useWorkspaceStore()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
 const editor = useEditorKernel()
+const EpisodePipelineView = defineAsyncComponent(
+  () => import('./dive/EditorDiveEpisodePipelineView.vue')
+)
 /** 挂载时绑定的工程根路径；切换工程后卸载时禁止写回旧图 */
 const boundRootPath = project.rootPath
 const props = withDefaults(
@@ -1813,15 +1847,30 @@ function onToolbarRunUpstreamForce(): void {
   void guardedRunToNode(id)
 }
 
-/** 打开剧集流水线总览：画布全局控制，不挂在任何节点上 */
+const episodePipelineOpen = ref(false)
+const episodePipelineTitle = computed(
+  () => graphAsset.value?.name?.trim() || t('graph.episodePipeline.open')
+)
+
+/** 打开剧集流水线独立窗口：画布全局控制，不挂在任何节点上 */
 function openEpisodePipeline(): void {
   const assetId = props.assetId?.trim()
-  if (!assetId || !editorDive?.rootKey) return
-  void editorDive.diveView(
-    { viewId: 'episode.pipeline', hostAssetId: assetId },
-    graphAsset.value?.name?.trim() || t('graph.episodePipeline.open')
-  )
+  if (!assetId) return
+  episodePipelineOpen.value = true
 }
+
+function closeEpisodePipeline(): void {
+  episodePipelineOpen.value = false
+}
+
+// 从宿主节点返回上级（dive 栈回退）时自动关闭剧集流水线窗口
+watch(
+  () => editorDive?.frames.length ?? 0,
+  (length, prev) => {
+    if (!episodePipelineOpen.value) return
+    if (length < prev) closeEpisodePipeline()
+  }
+)
 
 function onEnqueueWorkflowClick(event: MouseEvent): void {
   const from =

@@ -17,7 +17,6 @@ export type EditorDiveViewId =
   | 'world.table'
   | 'beat.gen'
   | 'beat.table'
-  | 'episode.pipeline'
   | 'director.stage'
   | 'node.notepad'
   | 'node.textsPreview'
@@ -65,7 +64,6 @@ export type EditorDiveViewMeta =
   | { viewId: 'world.table'; worldAssetId: string }
   | { viewId: 'beat.gen'; beatAssetId: string }
   | { viewId: 'beat.table'; beatAssetId: string }
-  | { viewId: 'episode.pipeline'; hostAssetId: string }
   | {
       viewId: 'director.stage'
       directorAssetId: string
@@ -148,8 +146,6 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
     case 'beat.table':
     case 'beat.gen':
       return `${root}/view:${meta.viewId}:${meta.beatAssetId}`
-    case 'episode.pipeline':
-      return `${root}/view:episode.pipeline:${meta.hostAssetId}`
     case 'director.stage':
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'media.preview':

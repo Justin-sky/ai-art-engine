@@ -25,6 +25,27 @@ function registerMediaProtocol(): void {
   protocol.handle('studio-media', (request) => handleStudioMediaRequest(request))
 }
 
+/** 解析 window.open 的 features，让渲染层能决定弹出窗的初始尺寸与位置 */
+function parseWindowFeatures(features: string): {
+  width?: number
+  height?: number
+  left?: number
+  top?: number
+} {
+  const parsed: { width?: number; height?: number; left?: number; top?: number } = {}
+  for (const part of features.split(',')) {
+    const [rawKey, rawValue] = part.split('=')
+    const key = rawKey?.trim().toLowerCase()
+    const value = Number(rawValue)
+    if (!key || !Number.isFinite(value)) continue
+    if (key === 'width' && value > 0) parsed.width = Math.round(value)
+    else if (key === 'height' && value > 0) parsed.height = Math.round(value)
+    else if (key === 'left') parsed.left = Math.round(value)
+    else if (key === 'top') parsed.top = Math.round(value)
+  }
+  return parsed
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1440,
@@ -75,11 +96,14 @@ function createWindow(): void {
       (is.dev && !!process.env['ELECTRON_RENDERER_URL'] && details.url.startsWith(process.env['ELECTRON_RENDERER_URL']))
 
     if (isPopout) {
+      const requested = parseWindowFeatures(details.features)
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          width: 960,
-          height: 640,
+          width: requested.width ?? 960,
+          height: requested.height ?? 640,
+          ...(requested.left == null ? {} : { x: requested.left }),
+          ...(requested.top == null ? {} : { y: requested.top }),
           minWidth: 420,
           minHeight: 280,
           autoHideMenuBar: true,

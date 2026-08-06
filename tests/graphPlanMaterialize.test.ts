@@ -86,6 +86,7 @@ describe('graphPlan materialize', () => {
           params: { generateModel: 'keep-me' }
         },
         { key: 'vid', typeId: 'asset.video' },
+        { key: 'upscale', typeId: 'image.upscale' },
         { key: 'txt', typeId: 'play.script' }
       ],
       edges: []
@@ -100,10 +101,12 @@ describe('graphPlan materialize', () => {
     expect(next.nodes[0]?.params?.generateProviderInstanceId).toBe('prov-img')
     expect(next.nodes[1]?.params?.generateModel).toBe('vid-default')
     expect(next.nodes[1]?.params?.generateProviderInstanceId).toBe('prov-vid')
-    expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
+    expect(next.nodes[2]?.params?.generateModel).toBe('img-default')
+    expect(next.nodes[2]?.params?.generateProviderInstanceId).toBe('prov-img')
+    expect(next.nodes[3]?.params?.generateModel).toBeUndefined()
   })
 
-  it('injects unified aspect ratio into image/video nodes and leaves grid-split untouched', () => {
+  it('injects unified aspect ratio into image/video/upscale nodes and leaves grid-split untouched', () => {
     const plan: GraphPlan = {
       nodes: [
         {
@@ -112,6 +115,7 @@ describe('graphPlan materialize', () => {
           params: { generateAspectRatio: '1:1' }
         },
         { key: 'vid', typeId: 'asset.video' },
+        { key: 'upscale', typeId: 'image.upscale' },
         {
           key: 'split',
           typeId: 'image.gridSplit',
@@ -132,14 +136,15 @@ describe('graphPlan materialize', () => {
     })
     expect(next.nodes[0]?.params?.generateAspectRatio).toBe('16:9')
     expect(next.nodes[1]?.params?.generateAspectRatio).toBe('16:9')
-    const split = next.nodes[2]?.params?.imageGridSplit as Record<string, unknown>
+    expect(next.nodes[2]?.params?.generateAspectRatio).toBe('16:9')
+    const split = next.nodes[3]?.params?.imageGridSplit as Record<string, unknown>
     expect(split).toMatchObject({
       rows: 2,
       cols: 2,
       selected: ['1-1']
     })
-    expect(next.nodes[2]?.params?.generateAspectRatio).toBeUndefined()
-    expect(next.nodes[2]?.params?.generateResolution).toBeUndefined()
+    expect(next.nodes[3]?.params?.generateAspectRatio).toBeUndefined()
+    expect(next.nodes[3]?.params?.generateResolution).toBeUndefined()
   })
 
   it('keeps grid-split params during materialization', () => {

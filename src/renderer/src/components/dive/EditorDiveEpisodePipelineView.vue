@@ -363,7 +363,12 @@ function firstImageRelativePath(node: GraphNode | undefined): string {
 }
 
 const scopeKey = computed(
-  () => String(nodeByKey('breakdown')?.params?.episodeScopeKey ?? 'default')
+  () =>
+    String(
+      nodeByKey('breakdown')?.params?.episodeScopeKey?.trim() ||
+        props.hostAssetId ||
+        'default'
+    )
 )
 
 const beats = computed<EpisodeBeatRow[]>(() => parseEpisodeBeatBreakdown(nodeText('breakdown')))
@@ -450,20 +455,19 @@ function reviewResult(target: string): 'PASS' | 'FAIL' | '' {
           ? 'review3'
           : 'review4'
   )
+  // 只读节点上的审核标记，不用 agent-state 历史（避免新工作流串到旧 FAIL/PASS）
   const direct = reviewNode?.params?.episodeReviewStatus
   if (direct === 'PASS' || direct === 'FAIL') return direct
-  const reviews = agentState.value?.reviews ?? []
-  const last = [...reviews].reverse().find((review) => review.step === target)
-  return last?.result ?? ''
+  return ''
 }
 
 const headerFailReason = computed(() => {
-  if (agentState.value?.last_failed_reason) return agentState.value.last_failed_reason
+  // 优先/仅从当前图审核节点取 FAIL 原因；agent-state 是跨工作流共享的历史文件，不能驱动顶栏展示
   for (const key of ['review1', 'review2', 'review3', 'review4']) {
     const node = nodeByKey(key)
-    if (node?.params?.episodeReviewStatus === 'FAIL' && node?.params?.episodeReviewReason) {
-      return node.params.episodeReviewReason
-    }
+    if (node?.params?.episodeReviewStatus !== 'FAIL') continue
+    const reason = String(node.params.episodeReviewReason ?? '').trim()
+    if (reason) return reason
   }
   return ''
 })
@@ -665,6 +669,7 @@ watch(runningCount, async (count, prev) => {
 <style scoped>
 .episode-pipeline-view {
   flex: 1;
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;

@@ -372,12 +372,57 @@ export async function commitAiWorkflow(
     }
   }
 
+  // 用宿主资产 id 隔离 agent-state.json，避免多个工作流共用 ep01 串历史 FAIL
+  const scopedDoc = bindEpisodeScopeKey(materialized.document, asset.id)
+  if (scopedDoc) {
+    try {
+      projectService.updateAsset({
+        ...asset,
+        genParams: {
+          ...(asset.genParams ?? {}),
+          graphJson: toPlainDocument(scopedDoc),
+          hostInterface: toPlainDocument(hostInterface)
+        }
+      })
+    } catch {
+      // 创建已成功；scope 绑定失败时仍返回资产，UI 侧会以 hostAssetId 兜底
+    }
+  }
+
   return {
     ok: true,
     assetId: asset.id,
     title: asset.name,
     warnings: materialized.warnings
   }
+}
+
+/** 将剧集流水线节点的 episodeScopeKey 绑定为宿主资产 id */
+function bindEpisodeScopeKey(
+  document: NonNullable<ReturnType<typeof materializeGraphPlan>['document']>,
+  scopeKey: string
+): typeof document | null {
+  const key = scopeKey.trim()
+  if (!key) return null
+  let touched = false
+  const nodes = document.nodes.map((node) => {
+    const params = node.params
+    if (!params) return node
+    const needsScope =
+      typeof params.episodeScopeKey === 'string' ||
+      typeof params.episodeStep === 'string' ||
+      typeof params.episodeReviewTarget === 'string'
+    if (!needsScope) return node
+    touched = true
+    return {
+      ...node,
+      params: {
+        ...params,
+        episodeScopeKey: key
+      }
+    }
+  })
+  return touched ? { ...document, nodes } : null
 }
 
 /**
