@@ -6,6 +6,7 @@ import {
 import {
   executeAssetNode,
   executeImageGenerateNode,
+  executeGridSplitNode,
   executePromptOptimizeNode,
   executeWorldExtractNode,
   selectIncomingValuesForInstruction
@@ -445,6 +446,36 @@ describe('generation input auto-include vs @ filter', () => {
     expect(items[1]?.text).toBe('version-2')
     expect(second.out).toMatchObject({ kind: 'text', text: 'version-2' })
     expect((second['out-all'] as { items: GraphTextItem[] }).items.length).toBe(2)
+  })
+
+  it('grid split upscale prefers configured aspect ratio', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,cell-upscaled'],
+      model: 'm'
+    }))
+    const ctx = baseCtx({
+      node: {
+        id: 'split',
+        category: 'note',
+        typeId: 'image.gridSplit',
+        title: 'Split',
+        position: { x: 0, y: 0 },
+        params: {
+          generateAspectRatio: '16:9',
+          imageGridSplit: { rows: 2, cols: 2, selected: ['1-1'], scale: 2 }
+        }
+      },
+      inputs: { in: [{ kind: 'image', dataUrl: 'data:image/png;base64,canvas' }] },
+      composeImageGridCell: async ({ cellKey }) => ({
+        dataUrl: 'data:image/png;base64,cell',
+        width: 500,
+        height: 500,
+        cellKey
+      }),
+      generateImage
+    })
+    await executeGridSplitNode(ctx)
+    expect(generateImage.mock.calls[0]![0].aspectRatio).toBe('16:9')
   })
 
   it('video generate with text-only input does not throw no-input', async () => {

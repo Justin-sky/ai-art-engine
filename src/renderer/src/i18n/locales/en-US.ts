@@ -28,8 +28,6 @@ export default {
     textModelLabel: 'Text model (AI plan)',
     imageModelLabel: 'Default image model',
     videoModelLabel: 'Default video model',
-    resolutionLabel: 'Resolution',
-    resolutionEmpty: 'Default (auto)',
     aspectRatioLabel: 'Aspect ratio',
     aspectRatioEmpty: 'Default (auto)',
     modelLabel: 'Text model',

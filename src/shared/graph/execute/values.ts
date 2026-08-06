@@ -2379,6 +2379,23 @@ export async function executeImageGenerateNode(
     throw new Error('模型未返回图片')
   }
 
+  // 按设定宽高比裁正画布：宫格画布裁正后每个格子几何上严格按该比例均分
+  if (genParams.aspectRatio?.trim() && ctx.normalizeImageAspectRatio) {
+    const ratio = genParams.aspectRatio.trim()
+    for (const item of batch) {
+      if (!item.dataUrl?.startsWith('data:image/')) continue
+      try {
+        const normalized = await ctx.normalizeImageAspectRatio({
+          dataUrl: item.dataUrl,
+          aspectRatio: ratio
+        })
+        if (normalized) item.dataUrl = normalized
+      } catch {
+        /* 裁正失败时保留原图 */
+      }
+    }
+  }
+
   const stampKey = `gen:${node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
@@ -5002,6 +5019,7 @@ export async function executeGridSplitNode(
 
   const system = resolveGridSplitSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale)
   const resolution = gridSplitOutputResolution(grid)
+  const configuredAspectRatio = ctx.node.params.generateAspectRatio?.trim() || ''
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
   const batch: GraphImageItem[] = []
@@ -5023,7 +5041,8 @@ export async function executeGridSplitNode(
     if (!cellDataUrl) {
       throw new Error(`宫格 ${cell} 裁切失败`)
     }
-    const aspectRatio = nearestApiAspectRatio(composed.width, composed.height)
+    const aspectRatio =
+      configuredAspectRatio || nearestApiAspectRatio(composed.width, composed.height)
 
     const userPrompt = buildGridCellUpscalePrompt(cell, grid.scale)
     const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
@@ -5048,8 +5067,19 @@ export async function executeGridSplitNode(
       inputReferences: [cellDataUrl]
     })
     const url = result.images?.[0]
-    const dataUrl = typeof url === 'string' ? url.trim() : ''
+    let dataUrl = typeof url === 'string' ? url.trim() : ''
     if (!dataUrl) continue
+    if (aspectRatio && ctx.normalizeImageAspectRatio) {
+      try {
+        const normalized = await ctx.normalizeImageAspectRatio({
+          dataUrl,
+          aspectRatio
+        })
+        if (normalized) dataUrl = normalized
+      } catch {
+        /* 裁正失败时保留原图 */
+      }
+    }
     batch.push({
       id: `gridSplit:${ctx.node.id}:${stamp}:${cell}:${index}`,
       dataUrl,

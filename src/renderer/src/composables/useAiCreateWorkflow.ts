@@ -5,7 +5,6 @@ import {
   AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
   AI_WORKFLOW_PRESET_IDS,
-  AI_WORKFLOW_RESOLUTION_KEY,
   AI_WORKFLOW_VIDEO_MODEL_KEY,
   getAiWorkflowPresetPlan,
   hasAiWorkflowPresetPlan,
@@ -64,7 +63,6 @@ export function useAiCreateWorkflow() {
   const textModelKey = ref('')
   const imageModelKey = ref('')
   const videoModelKey = ref('')
-  const generateResolution = ref(readStoredKey(AI_WORKFLOW_RESOLUTION_KEY))
   const generateAspectRatio = ref(readStoredKey(AI_WORKFLOW_ASPECT_RATIO_KEY))
   /** shallow：避免 Vue Proxy 经 IPC structuredClone 失败 */
   const pendingPlan = shallowRef<GraphPlan | null>(null)
@@ -107,11 +105,6 @@ export function useAiCreateWorkflow() {
   function setVideoModelKey(key: string): void {
     videoModelKey.value = key
     writeStoredKey(AI_WORKFLOW_VIDEO_MODEL_KEY, key)
-  }
-
-  function setGenerateResolution(key: string): void {
-    generateResolution.value = key
-    writeStoredKey(AI_WORKFLOW_RESOLUTION_KEY, key)
   }
 
   function setGenerateAspectRatio(key: string): void {
@@ -242,7 +235,6 @@ export function useAiCreateWorkflow() {
           useSeedOnly: mode === 'seed',
           model: text?.model,
           providerInstanceId: text?.providerInstanceId,
-          generateResolution: generateResolution.value || undefined,
           generateAspectRatio: generateAspectRatio.value || undefined,
           ...mediaModelPayload()
         })
@@ -388,7 +380,6 @@ export function useAiCreateWorkflow() {
           plan: pendingPlan.value,
           folderId: payload.folderId,
           name,
-          generateResolution: generateResolution.value || undefined,
           generateAspectRatio: generateAspectRatio.value || undefined,
           ...mediaModelPayload()
         })
@@ -434,7 +425,6 @@ export function useAiCreateWorkflow() {
     textModelKey,
     imageModelKey,
     videoModelKey,
-    generateResolution,
     generateAspectRatio,
     pendingPlan,
     preview,
@@ -447,7 +437,6 @@ export function useAiCreateWorkflow() {
     setTextModelKey,
     setImageModelKey,
     setVideoModelKey,
-    setGenerateResolution,
     setGenerateAspectRatio,
     openDialog,
     closeDialog,

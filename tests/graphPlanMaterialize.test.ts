@@ -103,13 +103,13 @@ describe('graphPlan materialize', () => {
     expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
   })
 
-  it('injects unified resolution and aspect ratio into image/video/grid-split nodes', () => {
+  it('injects unified aspect ratio into image/video/grid-split nodes', () => {
     const plan: GraphPlan = {
       nodes: [
         {
           key: 'img',
           typeId: 'asset.image',
-          params: { generateResolution: '4K' }
+          params: { generateAspectRatio: '1:1' }
         },
         { key: 'vid', typeId: 'asset.video' },
         {
@@ -128,22 +128,19 @@ describe('graphPlan materialize', () => {
       edges: []
     }
     const next = applyDefaultGenerateModels(plan, {
-      generateResolution: '2K',
       generateAspectRatio: '16:9'
     })
-    expect(next.nodes[0]?.params?.generateResolution).toBe('2K')
     expect(next.nodes[0]?.params?.generateAspectRatio).toBe('16:9')
-    expect(next.nodes[1]?.params?.generateResolution).toBe('2K')
     expect(next.nodes[1]?.params?.generateAspectRatio).toBe('16:9')
     const split = next.nodes[2]?.params?.imageGridSplit as Record<string, unknown>
     expect(split).toMatchObject({
       rows: 2,
       cols: 2,
       selected: ['1-1'],
-      scale: 2,
-      resolution: '2K'
+      scale: 2
     })
-    expect(next.nodes[2]?.params?.generateAspectRatio).toBeUndefined()
+    expect(next.nodes[2]?.params?.generateAspectRatio).toBe('16:9')
+    expect(next.nodes[2]?.params?.generateResolution).toBeUndefined()
   })
 
   it('keeps grid-split params during materialization', () => {

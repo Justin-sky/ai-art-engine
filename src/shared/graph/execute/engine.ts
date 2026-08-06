@@ -403,6 +403,7 @@ async function executeOneNode(
     composeImageRedrawCanvas: options.composeImageRedrawCanvas,
     composeImageCropCanvas: options.composeImageCropCanvas,
     composeImageGridCell: options.composeImageGridCell,
+    normalizeImageAspectRatio: options.normalizeImageAspectRatio,
     resolveBeatUnit: options.resolveBeatUnit,
     collectWorldElementOutputs: options.collectWorldElementOutputs,
     collectBeatUnitTexts: options.collectBeatUnitTexts,

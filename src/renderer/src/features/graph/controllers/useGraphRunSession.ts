@@ -35,6 +35,7 @@ import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
 import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
 import { composeImageGridCell } from '../model/composeImageGridCell'
+import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
 
@@ -626,6 +627,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageRedrawCanvas,
         composeImageCropCanvas,
         composeImageGridCell,
+        normalizeImageAspectRatio,
         onNodePatch: (nodeId, patch) => {
           if (token !== runToken || signal.aborted) return
           options.onNodePatch?.(nodeId, patch)

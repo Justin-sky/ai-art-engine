@@ -84,8 +84,6 @@ export interface GraphPlanMediaModelDefaults {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
-  /** 一键工作流统一分辨率：注入到图片/视频生成节点与宫格提取输出 */
-  generateResolution?: string
   /** 一键工作流统一宽高比：注入到图片/视频生成节点 */
   generateAspectRatio?: string
 }
@@ -98,13 +96,12 @@ export interface GraphPlanPreview {
 
 /**
  * 将默认图/视频模型写入计划中尚未指定模型的生成节点，
- * 并在指定统一分辨率时覆盖图片/视频生成节点与宫格提取节点的输出分辨率。
+ * 并在指定统一宽高比时覆盖图片/视频生成节点。
  */
 export function applyDefaultGenerateModels(
   plan: GraphPlan,
   defaults: GraphPlanMediaModelDefaults
 ): GraphPlan {
-  const resolution = defaults.generateResolution?.trim() || ''
   const aspectRatio = defaults.generateAspectRatio?.trim() || ''
   const nodes = plan.nodes.map((node) => {
     const params = { ...(node.params ?? {}) }
@@ -115,7 +112,6 @@ export function applyDefaultGenerateModels(
       if (defaults.imageProviderInstanceId && !params.generateProviderInstanceId) {
         params.generateProviderInstanceId = defaults.imageProviderInstanceId
       }
-      if (resolution) params.generateResolution = resolution
       if (aspectRatio) params.generateAspectRatio = aspectRatio
     } else if (node.typeId === 'asset.video') {
       if (defaults.videoModel && !params.generateModel) {
@@ -124,14 +120,9 @@ export function applyDefaultGenerateModels(
       if (defaults.videoProviderInstanceId && !params.generateProviderInstanceId) {
         params.generateProviderInstanceId = defaults.videoProviderInstanceId
       }
-      if (resolution) params.generateResolution = resolution
       if (aspectRatio) params.generateAspectRatio = aspectRatio
-    } else if (node.typeId === 'image.gridSplit' && resolution) {
-      const grid =
-        params.imageGridSplit && typeof params.imageGridSplit === 'object'
-          ? { ...(params.imageGridSplit as Record<string, unknown>) }
-          : {}
-      params.imageGridSplit = { ...grid, resolution }
+    } else if (node.typeId === 'image.gridSplit' && aspectRatio) {
+      params.generateAspectRatio = aspectRatio
     } else {
       return node
     }

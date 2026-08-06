@@ -66,23 +66,6 @@
           />
         </div>
         <div class="model-row">
-          <span class="label">{{ t('aiWorkflow.resolutionLabel') }}</span>
-          <select
-            class="resolution-select"
-            :value="resolution"
-            :disabled="busy"
-            :title="t('aiWorkflow.resolutionLabel')"
-            @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">{{ t('aiWorkflow.resolutionEmpty') }}</option>
-            <option value="1K">1K</option>
-            <option value="2K">2K</option>
-            <option value="4K">4K</option>
-            <option value="1080p">1080p</option>
-            <option value="720p">720p</option>
-          </select>
-        </div>
-        <div class="model-row">
           <span class="label">{{ t('aiWorkflow.aspectRatioLabel') }}</span>
           <select
             class="aspect-ratio-select"
@@ -186,7 +169,6 @@ const props = defineProps<{
   textModelKey: string
   imageModelKey: string
   videoModelKey: string
-  resolution: string
   aspectRatio: string
   textModelOptions: GenerateModelOption[]
   imageModelOptions: GenerateModelOption[]
@@ -202,7 +184,6 @@ const emit = defineEmits<{
   'update:textModelKey': [value: string]
   'update:imageModelKey': [value: string]
   'update:videoModelKey': [value: string]
-  'update:resolution': [value: string]
   'update:aspectRatio': [value: string]
   'select-preset': [id: AiWorkflowPresetId]
   'plan-ai': []
@@ -314,7 +295,6 @@ function onPlanAi(): void {
 }
 
 .model-select :deep(select),
-.resolution-select,
 .aspect-ratio-select {
   max-width: 100%;
   min-width: 140px;
@@ -328,14 +308,12 @@ function onPlanAi(): void {
   outline: none;
 }
 
-.resolution-select,
 .aspect-ratio-select {
   max-width: min(320px, 70%);
   flex: 1 1 auto;
   justify-content: flex-end;
 }
 
-.resolution-select:disabled,
 .aspect-ratio-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;

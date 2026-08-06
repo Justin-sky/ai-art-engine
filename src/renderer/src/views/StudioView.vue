@@ -178,7 +178,6 @@
       :text-model-key="aiWorkflowTextModelKey"
       :image-model-key="aiWorkflowImageModelKey"
       :video-model-key="aiWorkflowVideoModelKey"
-      :resolution="aiWorkflowGenerateResolution"
       :aspect-ratio="aiWorkflowGenerateAspectRatio"
       :text-model-options="aiWorkflowTextModelOptions"
       :image-model-options="aiWorkflowImageModelOptions"
@@ -191,7 +190,6 @@
       @update:text-model-key="setAiWorkflowTextModelKey"
       @update:image-model-key="setAiWorkflowImageModelKey"
       @update:video-model-key="setAiWorkflowVideoModelKey"
-      @update:resolution="setAiWorkflowGenerateResolution($event)"
       @update:aspect-ratio="setAiWorkflowGenerateAspectRatio($event)"
       @select-preset="applyAiWorkflowPreset"
       @plan-ai="void planAiWorkflowPreview('ai')"
@@ -333,7 +331,6 @@ const {
   textModelKey: aiWorkflowTextModelKey,
   imageModelKey: aiWorkflowImageModelKey,
   videoModelKey: aiWorkflowVideoModelKey,
-  generateResolution: aiWorkflowGenerateResolution,
   generateAspectRatio: aiWorkflowGenerateAspectRatio,
   preview: aiWorkflowPreview,
   previewWarnings: aiWorkflowPreviewWarnings,
@@ -342,7 +339,6 @@ const {
   setTextModelKey: setAiWorkflowTextModelKey,
   setImageModelKey: setAiWorkflowImageModelKey,
   setVideoModelKey: setAiWorkflowVideoModelKey,
-  setGenerateResolution: setAiWorkflowGenerateResolution,
   setGenerateAspectRatio: setAiWorkflowGenerateAspectRatio,
   openDialog: openAiWorkflowDialog,
   closeDialog: closeAiWorkflowDialog,

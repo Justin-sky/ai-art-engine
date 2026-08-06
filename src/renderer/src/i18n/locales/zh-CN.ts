@@ -28,8 +28,6 @@ export default {
     textModelLabel: '文本模型（AI 规划）',
     imageModelLabel: '图片默认模型',
     videoModelLabel: '视频默认模型',
-    resolutionLabel: '分辨率',
-    resolutionEmpty: '不设置（跟随默认）',
     aspectRatioLabel: '宽高比',
     aspectRatioEmpty: '不设置（跟随默认）',
     modelLabel: '文本模型',

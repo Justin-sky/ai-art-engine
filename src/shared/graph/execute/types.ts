@@ -374,6 +374,11 @@ export interface NodeExecuteContext {
     state: import('../imageGridSplit').ImageGridSplitState
     cellKey: string
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
+  /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
+  normalizeImageAspectRatio?: (input: {
+    dataUrl: string
+    aspectRatio: string
+  }) => Promise<string>
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
   /**
@@ -529,6 +534,7 @@ export interface GraphRunOptions {
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
+  normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
   collectBeatUnitTexts?: NodeExecuteContext['collectBeatUnitTexts']

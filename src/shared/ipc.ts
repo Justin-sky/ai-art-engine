@@ -184,8 +184,6 @@ export interface PlanAiWorkflowInput {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
-  /** 统一分辨率：写入所有图片/视频生成节点与宫格提取输出 */
-  generateResolution?: string
   /** 统一宽高比：写入所有图片/视频生成节点 */
   generateAspectRatio?: string
   presetId?: string
@@ -252,8 +250,6 @@ export interface CommitAiWorkflowInput {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
-  /** 统一分辨率：写入所有图片/视频生成节点与宫格提取输出 */
-  generateResolution?: string
   /** 统一宽高比：写入所有图片/视频生成节点 */
   generateAspectRatio?: string
 }
