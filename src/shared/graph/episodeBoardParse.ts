@@ -50,10 +50,21 @@ export interface EpisodeBeatRow {
 }
 
 const ANCHOR_HEADING_RE = /^##\s*格\s*(\d+)/i
-const ANCHOR_BEAT_REF_RE = /节拍ID\s*[:：]\s*#?\s*([0-9A-Za-z_-]+)/i
+// 兼容中文「节拍ID」与英文「Beat ID」，冒号可省略，井号可带可不带
+const ANCHOR_BEAT_REF_RE = /(?:节拍ID|Beat\s*ID)\s*[:：]?\s*#?\s*([0-9A-Za-z_-]+)/i
 // 兼容 `| #1 |` 与 `| 1 |` 两种写法，避免模型省略井号导致整表解析失败
 const BEAT_ROW_RE =
   /^\|\s*#?\s*(\d+)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|\s*(是|否|YES|NO)\s*\|/i
+
+/** 从宫格引用的节拍ID中提取数字（'1' / '#1' / 'B1' / '节拍1' → 1）；无法识别返回 null */
+export function extractEpisodeBeatNumber(beatId: string | undefined | null): number | null {
+  const raw = beatId?.trim() ?? ''
+  if (!raw) return null
+  const m = /\d+/.exec(raw)
+  if (!m) return null
+  const n = Number(m[0])
+  return Number.isFinite(n) ? n : null
+}
 
 /** 解析节拍拆解表：| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 | */
 export function parseEpisodeBeatBreakdown(text: string | undefined | null): EpisodeBeatRow[] {
@@ -73,6 +84,27 @@ export function parseEpisodeBeatBreakdown(text: string | undefined | null): Epis
     })
   }
   return rows
+}
+
+/**
+ * 从节拍拆解中选出关键锚点（默认 9 个）：
+ * 优先「关键锚点=是」的行；超过 9 个时按情绪强度降序取前 9（同分保持原顺序），
+ * 不足 9 个时用其余节拍按情绪强度补齐。这样即使模型把锚点标滥，也能拿到真正的转折点。
+ */
+export function selectEpisodeAnchors(
+  beats: readonly EpisodeBeatRow[],
+  count = 9
+): EpisodeBeatRow[] {
+  const limit = Math.max(1, Math.floor(count))
+  const marked = beats.filter((beat) => beat.anchor)
+  const rest = beats.filter((beat) => !beat.anchor)
+  const byIntensity = (rows: EpisodeBeatRow[]): EpisodeBeatRow[] =>
+    [...rows].sort((a, b) => {
+      const diff = b.intensity - a.intensity
+      return diff !== 0 ? diff : a.index - b.index
+    })
+  const picked = [...byIntensity(marked), ...byIntensity(rest)]
+  return picked.slice(0, limit).sort((a, b) => a.index - b.index)
 }
 
 function clampIntensity(raw: number): number {

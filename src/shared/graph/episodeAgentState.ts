@@ -113,19 +113,15 @@ export function applyEpisodeAgentReview(
 
 /**
  * 取某阶段最近的 FAIL 原因：
- * 优先当前步骤的 last_failed_reason，其次回退 reviews 里该阶段最近一次 FAIL。
- * 这样即使后续步骤被乱序推进，重跑该阶段仍能带上导演审核结果。
+ * 仅当该阶段最近一次审核结论为 FAIL 时返回原因；最近一次已 PASS 则返回空，
+ * 避免把已通过的历史 FAIL 反复附加进重跑提示词造成「越改越差 → 再 FAIL」循环。
  */
 export function episodeFailReasonForStep(
   state: EpisodeAgentState | null | undefined,
   step: string
 ): string {
   if (!state) return ''
-  if (state.current_step === step && state.last_failed_reason) {
-    return state.last_failed_reason
-  }
-  const last = [...(state.reviews ?? [])]
-    .reverse()
-    .find((review) => review.step === step && review.result === 'FAIL' && !!review.reason)
+  const last = [...(state.reviews ?? [])].reverse().find((review) => review.step === step)
+  if (last?.result === 'FAIL' && last.reason) return last.reason
   return last?.reason ?? ''
 }

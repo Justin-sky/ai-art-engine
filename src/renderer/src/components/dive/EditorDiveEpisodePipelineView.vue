@@ -42,10 +42,10 @@
             @click="selectBeat(beat)"
           >
             <span class="beat-index">#{{ beat.index }}</span>
-            <span class="beat-summary">{{ beat.summary }}</span>
+            <OverflowTip class="beat-summary" :text="beat.summary">{{ beat.summary }}</OverflowTip>
             <span class="beat-meta">
               <span class="intensity">{{ beat.intensity }}</span>
-              <span v-if="beat.anchor" class="anchor-badge" title="关键锚点">锚</span>
+              <span v-if="isAnchorBeat(beat)" class="anchor-badge" title="关键锚点（9宫格对应前 9 个锚）">锚</span>
             </span>
           </li>
           <li v-if="!beats.length" class="empty-row">{{ beatsEmptyLabel }}</li>
@@ -77,9 +77,10 @@
           >
             <span class="anchor-head">
               <b>格{{ anchor.index }}</b>
+              <span v-if="anchor.beatId" class="beat-ref" title="关联节拍">节拍{{ anchor.beatId }}</span>
               <span class="status-badge">{{ anchorReviewLabel() }}</span>
             </span>
-            <span class="anchor-title">{{ anchor.title }}</span>
+            <OverflowTip class="anchor-title" :text="anchor.title">{{ anchor.title }}</OverflowTip>
             <img
               v-if="anchorImageUrl(anchor.index)"
               :src="anchorImageUrl(anchor.index)"
@@ -122,7 +123,7 @@
               @click="selectCell(cell)"
             >
               <span class="cell-stage">{{ cell.stage }}</span>
-              <span class="cell-desc">{{ cell.text }}</span>
+              <OverflowTip class="cell-desc" :text="cell.text">{{ cell.text }}</OverflowTip>
               <img
                 v-if="cellImageUrl(cell.groupIndex, cell.cellIndex)"
                 :src="cellImageUrl(cell.groupIndex, cell.cellIndex)"
@@ -148,7 +149,7 @@
 
         <div v-if="activeCellVideo" class="detail-block video-block">
           <h4>视频产物</h4>
-          <span class="video-path">{{ activeCellVideo }}</span>
+          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
           <button class="ghost-button primary" type="button" @click="runCurrentVideo">
             重新生成这条视频
           </button>
@@ -168,12 +169,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { GraphDocument, GraphNode, GraphNodeRunState } from '@shared/graph'
+import OverflowTip from '../OverflowTip.vue'
 import {
+  extractEpisodeBeatNumber,
   parseEpisodeAgentState,
   parseEpisodeBeatBoard,
   parseEpisodeBeatBreakdown,
   parseEpisodeMotionPrompts,
   parseEpisodeSequenceBoard,
+  selectEpisodeAnchors,
   type EpisodeAgentState,
   type EpisodeAnchorRow,
   type EpisodeBeatRow,
@@ -496,8 +500,28 @@ function cellVideoStatusLabel(cell: EpisodeCellRow): string {
 
 function selectBeat(beat: EpisodeBeatRow): void {
   activeBeat.value = beat.index
-  const anchor = anchors9.value.find((row) => row.beatId === String(beat.index))
+  const anchors = anchors9.value
+  const topAnchors = selectEpisodeAnchors(beats.value)
+  const ordinal = topAnchors.findIndex((item) => item.index === beat.index)
+  let anchor: EpisodeAnchorRow | undefined
+  // 1) 新数据：9宫格按锚点序号 1~9 引用（与格号一致）
+  if (ordinal >= 0) {
+    anchor = anchors.find((row) => extractEpisodeBeatNumber(row.beatId) === ordinal + 1)
+  }
+  // 2) 旧数据：宫格引用原始节拍编号
+  if (!anchor) {
+    anchor = anchors.find((row) => extractEpisodeBeatNumber(row.beatId) === beat.index)
+  }
+  // 3) 旧数据无节拍ID：按锚点顺序对应宫格
+  if (!anchor && ordinal >= 0) {
+    anchor = anchors[ordinal]
+  }
   if (anchor) selectedAnchorIndex.value = anchor.index
+}
+
+/** 9宫格只对应前 9 个锚点；超出部分的锚标记不再显示，避免满屏重复“锚” */
+function isAnchorBeat(beat: EpisodeBeatRow): boolean {
+  return selectEpisodeAnchors(beats.value).some((item) => item.index === beat.index)
 }
 
 function selectCell(cell: EpisodeCellRow): void {
@@ -916,6 +940,15 @@ watch(runningCount, async (count, prev) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 6px;
+}
+.beat-ref {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg-soft);
+  white-space: nowrap;
 }
 .anchor-title {
   font-size: 12px;

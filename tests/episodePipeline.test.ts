@@ -4,6 +4,7 @@ import {
   applyEpisodeAgentReview,
   createEpisodeAgentState,
   episodeFailReasonForStep,
+  extractEpisodeBeatNumber,
   getAiWorkflowPresetPlan,
   materializeGraphPlan,
   parseEpisodeBeatBoard,
@@ -11,6 +12,7 @@ import {
   parseEpisodeDirectorVerdict,
   parseEpisodeMotionPrompts,
   parseEpisodeSequenceBoard,
+  selectEpisodeAnchors,
   selectEpisodeAnchor,
   selectEpisodeCell,
   selectEpisodeMotion
@@ -89,6 +91,41 @@ describe('episode board parse', () => {
     expect(selectEpisodeAnchor(BEAT_BOARD, 9)).toBeNull()
   })
 
+  it('parses beat refs from English and compact forms', () => {
+    const en = parseEpisodeBeatBoard('## 格1 [Beat ID: #2] - 夜探\n- 正文')
+    expect(en[0]?.beatId).toBe('2')
+    const noHash = parseEpisodeBeatBoard('## 格1 [节拍ID: 3] - 标题\n- 正文')
+    expect(noHash[0]?.beatId).toBe('3')
+    expect(extractEpisodeBeatNumber('B4')).toBe(4)
+    expect(extractEpisodeBeatNumber('节拍5')).toBe(5)
+    expect(extractEpisodeBeatNumber('#6')).toBe(6)
+    expect(extractEpisodeBeatNumber('')).toBeNull()
+    expect(extractEpisodeBeatNumber(undefined)).toBeNull()
+  })
+
+  it('selects top anchors by intensity when too many are marked', () => {
+    const rows = parseEpisodeBeatBreakdown(
+      '| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 |\n' +
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+          .map((n) => `| ${n} | 事件${n} | 信息 | ${n} | 是 |`)
+          .join('\n')
+    )
+    const anchors = selectEpisodeAnchors(rows, 9)
+    expect(anchors.length).toBe(9)
+    expect(anchors.map((a) => a.index)).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12])
+  })
+
+  it('fills remaining cells from non-anchor beats when short', () => {
+    const rows = parseEpisodeBeatBreakdown(
+      '| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 |\n' +
+        '| 1 | a | x | 3 | 是 |\n' +
+        '| 2 | b | x | 9 | 否 |\n' +
+        '| 3 | c | x | 7 | 否 |'
+    )
+    const anchors = selectEpisodeAnchors(rows, 9)
+    expect(anchors.map((a) => a.index)).toEqual([1, 2, 3])
+  })
+
   it('parses sequence board into 36 cells', () => {
     const rows = parseEpisodeSequenceBoard(SEQUENCE_BOARD)
     expect(rows.length).toBe(8)
@@ -136,6 +173,13 @@ describe('episode agent state machine', () => {
     expect(pushed.current_step).toBe('motion')
     expect(episodeFailReasonForStep(pushed, 'beatboard')).toBe('第二幕视高跳跃太大')
     expect(episodeFailReasonForStep(pushed, 'sequence')).toBe('')
+  })
+
+  it('does not attach historical FAIL after the stage passed', () => {
+    const state = createEpisodeAgentState('ep01-师陷冤狱', 'ep01')
+    const failed = applyEpisodeAgentReview(state, 'beatboard', 'FAIL', '第二幕视高跳跃太大')
+    const passed = applyEpisodeAgentReview(failed, 'beatboard', 'PASS', '')
+    expect(episodeFailReasonForStep(passed, 'beatboard')).toBe('')
   })
 })
 

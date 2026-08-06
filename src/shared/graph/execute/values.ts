@@ -59,7 +59,9 @@ import {
   serializeEpisodeAgentState
 } from '../episodeAgentState'
 import {
+  parseEpisodeBeatBreakdown,
   selectEpisodeAnchor,
+  selectEpisodeAnchors,
   selectEpisodeCell,
   selectEpisodeMotion
 } from '../episodeBoardParse'
@@ -3066,6 +3068,16 @@ export async function executePromptOptimizeNode(
       prompt = `${prompt.trim()}\n\n【导演上次 FAIL 原因，必须针对性地修改】${failReason}`
     }
   }
+  // 9宫格：注入从拆解表自动选出的 9 个关键锚点，强制逐格对应，避免模型自行乱选
+  if (episodeStep === 'beatboard' && incomingText) {
+    const anchors = selectEpisodeAnchors(parseEpisodeBeatBreakdown(incomingText))
+    if (anchors.length) {
+      const list = anchors
+        .map((a, i) => `锚点${i + 1} ← 原始节拍 #${a.index}「${a.summary}」`)
+        .join('\n')
+      prompt = `${prompt.trim()}\n\n【9宫格必须严格按以下 9 个关键锚点生成：锚点1 对应 格1、锚点2 对应 格2，以此类推；每格 [节拍ID: #N] 的 N 为锚点序号 1~9，必须与格号一致，不得使用原始节拍编号，不得更改或自创】\n${list}`
+    }
+  }
 
   const result = await ctx.generateText({
     prompt,
@@ -3139,7 +3151,10 @@ export function applyEpisodeReviewMarks(
     }
     patch(node.id, marks)
     const upstream = nodes.find(
-      (candidate) => candidate.params?.episodeStep === target && candidate.id !== node.id
+      (candidate) =>
+        candidate.typeId === 'prompt.optimize' &&
+        candidate.params?.episodeStep === target &&
+        candidate.id !== node.id
     )
     if (upstream) patch(upstream.id, marks)
   }

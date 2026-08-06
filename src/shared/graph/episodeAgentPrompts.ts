@@ -25,9 +25,10 @@ export const EPISODE_AGENT_BREAKDOWN: EpisodeAgentPromptPack = {
 
 硬性要求：
 1. 完整覆盖剧本“起承转合”叙事弧线，剔除冗余信息。
-2. 关键锚点准确卡在转折点上，每场约 9 个锚点（可按篇幅 ±2）。
-3. 情绪强度符合从平静到高潮的递进规律。
-4. 只输出表格，不要解释、不要 JSON。`,
+2. 单集总节拍控制在 12~28 条（可按篇幅 ±2，短剧一般约 20~25 条），按“起承转合”合并同类动作，禁止逐句逐动作拆条。
+3. 从全部节拍中选出 9 个关键锚点（可按篇幅 ±2，最多 11 个）准确卡在转折点上；每个节拍至多标 1 个“是”，锚点编号互不重复。
+4. 情绪强度符合从平静到高潮的递进规律。
+5. 只输出表格，不要解释、不要 JSON。`,
   systemPromptEn: `${STORYBOARD_COMMON_EN}
 
 Task: decompose the upstream screenplay into a Beat Breakdown table. Output strictly a Markdown table with header and data rows only:
@@ -35,9 +36,10 @@ Task: decompose the upstream screenplay into a Beat Breakdown table. Output stri
 
 Hard rules:
 1. Cover the full exposition–rise–climax–resolution arc; drop redundant information.
-2. Key anchors sit exactly on turning points, about 9 anchors per episode (may vary ±2).
-3. Emotion intensity must rise steadily toward the climax.
-4. Output the table only — no commentary, no JSON.`,
+2. Keep the total beat count to 12–28 per episode (may vary ±2; short dramas usually run 20–25). Merge similar actions across the arc — never split sentence-by-sentence or action-by-action.
+3. Select 9 key anchors from all beats (may vary ±2, at most 11), sitting exactly on turning points. Mark at most one "yes" per beat; anchor numbers must be unique.
+4. Emotion intensity must rise steadily toward the climax.
+5. Output the table only — no commentary, no JSON.`,
   instructionZh: `请将上游剧本拆解为节拍拆解表，严格按系统提示词规定的表格格式输出。`,
   instructionEn: `Decompose the upstream screenplay into a Beat Breakdown table, strictly following the table format in the system prompt.`
 }
@@ -48,7 +50,7 @@ export const EPISODE_AGENT_BEATBOARD: EpisodeAgentPromptPack = {
 
 任务：基于上游「节拍拆解表」，为每场生成 9 个核心锚点的分镜提示词，严格输出：
 # 9宫格核心锚点
-## 格N [节拍ID: #x] - 标题
+## 格N [节拍ID: #N] - 标题
 - **景别与视角**: 景别 / 机位
 - **人物描述**: 外貌、服饰、表情、动作
 - **场景与光影**: 必须指明主光源方向（如：窗外冷色月光作为主顶光）
@@ -61,12 +63,14 @@ export const EPISODE_AGENT_BEATBOARD: EpisodeAgentPromptPack = {
 3. 景别逻辑：禁止无意义的“拉抽屉”与同景别构图重复。
 4. 核心道具（如算筹）必须有特写或反应镜头强化。
 5. 先画面、后机位：先写画面内容与叙事重点，再选景别与机位。
-6. 只输出清单，不要解释。`,
+6. 严格按指令中注入的 9 个关键锚点生成：锚点1 对应 格1、锚点2 对应 格2，以此类推；每格 [节拍ID: #N] 的 N 为锚点序号 1~9，必须与格号一致，禁止使用原始节拍编号、禁止重复或自创。
+7. 若拆解表锚点不足 9 个，从其余节拍按顺序补齐到 9 格；若超过 9 个，只取前 9 个。
+8. 只输出清单，不要解释。`,
   systemPromptEn: `${STORYBOARD_COMMON_EN}
 
 Task: from the upstream Beat Breakdown, generate prompt text for 9 key anchors per episode. Output strictly:
 # 9-grid core anchors
-## Cell N [Beat ID: #x] - Title
+## Cell N [Beat ID: #N] - Title
 - **Shot size & angle**: size / camera
 - **Character**: appearance, costume, expression, action
 - **Scene & lighting**: must state the key light direction
@@ -79,7 +83,9 @@ Hard rules:
 3. No meaningless same-size cuts or repeated compositions.
 4. Key props must get a close-up or reaction shot.
 5. Picture first, camera second.
-6. Output the list only — no commentary.`,
+6. Generate from the 9 key anchors injected in the instruction: anchor 1 → cell 1, anchor 2 → cell 2, and so on. Each cell's [Beat ID: #N] must use the anchor ordinal 1–9 matching the cell number — never use the original beat number, never repeat or invent one.
+7. If fewer than 9 anchors are marked, fill the remaining cells from the other beats in order; if more than 9 are marked, take only the first 9.
+8. Output the list only — no commentary.`,
   instructionZh: `请基于上游节拍拆解表生成 9宫格分镜表（9 个核心锚点），严格按系统提示词规定的格式输出。`,
   instructionEn: `Generate the 9-grid beat board (9 key anchors) from the upstream Beat Breakdown, strictly following the format in the system prompt.`
 }
