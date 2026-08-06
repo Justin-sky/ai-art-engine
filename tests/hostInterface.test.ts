@@ -74,11 +74,6 @@ describe('hostInterface sanitize', () => {
     expect(fromParams.inputs[0]?.id).toBe('a')
     expect(fromParams.outputs[0]?.dataType).toBe('video')
 
-    const fallback = readHostInterfaceFromGenParams({}, 'script')
-    expect(fallback.inputs.map((p) => p.id)).toEqual([
-      'in-worldEntities',
-      'in-beat'
-    ])
   })
 
   it('unifies listHostInputPortDefs with default templates', () => {
@@ -371,7 +366,6 @@ describe('hostable assets as HDA', () => {
     'screenplay',
     'world',
     'beat',
-    'script',
     'subgraph'
   ] as const
 
@@ -396,8 +390,8 @@ describe('hostable assets as HDA', () => {
     }
   })
 
-  it('host instance ports follow editable hostInterfaceSnapshot for image/script', () => {
-    for (const type of ['image', 'script'] as const) {
+  it('host instance ports follow editable hostInterfaceSnapshot', () => {
+    for (const type of ['image'] as const) {
       const iface = defaultHostInterfaceForAssetType(type)
       const node = createAssetGraphNode(HOST_C, type, 'Host', { x: 0, y: 0 }, {
         assetHost: true,

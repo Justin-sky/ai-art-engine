@@ -23,7 +23,7 @@
       :hide-toolbar="!embedded && toolbarCollapsed"
     />
 
-    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
   </div>
 </template>
 
@@ -56,7 +56,7 @@ const toolbarCollapsed = ref(false)
 const rootTitle = computed(
   () => worldAsset.value?.name?.trim() || t('studio.dive.root')
 )
-const { diving, diveTop, diveContext } = useEditorDiveHost({
+const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
   kind: 'world',
   assetId: () => props.worldAssetId,
   rootTitle,

@@ -4,8 +4,7 @@ import type {
   DirectorCameraShot,
   DirectorCameraVideo,
   DirectorViewerState,
-  ProjectStyleImage,
-  ShotStoryboard
+  ProjectStyleImage
 } from '../domain'
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
@@ -33,21 +32,6 @@ export const GRAPH_OUTPUT_NODE_IDS = {
 } as const
 
 export type GraphOutputNodeIdKey = keyof typeof GRAPH_OUTPUT_NODE_IDS
-
-/** 分镜资产图：分镜拆分节点 */
-export const GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID = 'script-shot-split'
-
-/** 分镜资产图：分镜表格节点 */
-export const GRAPH_SCRIPT_SHOT_TABLE_NODE_ID = 'script-shot-table'
-
-/** 分镜资产图：生成分镜图入口节点 */
-export const GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID = 'script-shot-image-gen'
-
-/** 分镜资产图：生成分镜视频入口节点 */
-export const GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID = 'script-shot-video-gen'
-
-/** 分镜工作流：分镜参数节点（从 Inspector 组装提示词） */
-export const GRAPH_SCRIPT_SHOT_PARAMS_NODE_ID = 'script-shot-params'
 
 /** 场资产图：场拆解节点 */
 export const GRAPH_BEAT_SPLIT_NODE_ID = 'beat-split'
@@ -118,7 +102,7 @@ export type GraphPortDirection = 'in' | 'out'
  * 连线规则：同类型可连，异类型不可连（复数≠单数）。
  * 图库「全部」口与 select 输入使用 images/videos/voices/texts；
  * 默认 `out` 与消费方使用单数类型。
- * world / worldEntities / shotEntities / videoEntities / beat / shots 为目录 JSON 专用口，不可与 text 互通。
+ * world / worldEntities / beat 为目录 JSON 专用口，不可与 text 互通。
  */
 export const GraphPortType = {
   image: 'image',
@@ -132,12 +116,7 @@ export const GraphPortType = {
   world: 'world',
   /** 世界元素生成结果实体表（type/name/imageUrl），与目录口 world 区分 */
   worldEntities: 'worldEntities',
-  /** 分镜图生成结果实体表（id/name/imageUrls），与目录口 shots 区分 */
-  shotEntities: 'shotEntities',
-  /** 分镜视频生成结果实体表（id/name/videoUrls），与单视频口 video 区分 */
-  videoEntities: 'videoEntities',
   beat: 'beat',
-  shots: 'shots',
   model: 'model'
 } as const
 
@@ -145,18 +124,12 @@ export const GraphPortType = {
 export type GraphCatalogKind =
   | typeof GraphPortType.world
   | typeof GraphPortType.worldEntities
-  | typeof GraphPortType.shotEntities
-  | typeof GraphPortType.videoEntities
   | typeof GraphPortType.beat
-  | typeof GraphPortType.shots
 
 export const GRAPH_CATALOG_KINDS: readonly GraphCatalogKind[] = [
   GraphPortType.world,
   GraphPortType.worldEntities,
-  GraphPortType.shotEntities,
-  GraphPortType.videoEntities,
-  GraphPortType.beat,
-  GraphPortType.shots
+  GraphPortType.beat
 ]
 
 export function isGraphCatalogKind(value: unknown): value is GraphCatalogKind {
@@ -233,12 +206,13 @@ export type GraphNodeTypeId =
   | 'voice.select'
   | 'text.select'
   | 'beat.select'
-  | 'shotEntities.select'
   | 'beat.split'
   | 'beat.table'
   | 'beat.gen'
   | 'beat.unitGen'
   | 'beat.unitRef'
+  | 'episode.anchorSelect'
+  | 'episode.cellSelect'
   | 'image.multiAngle'
   | 'image.lighting'
   | 'image.portraitTexture'
@@ -307,7 +281,7 @@ export interface GraphNodeParams {
   volume?: number
   muted?: boolean
   loop?: boolean
-  /** 输出节点输入端口类型覆盖（如画布分镜输出仅接受剧本） */
+/** 输出节点输入端口类型覆盖 */
   inputDataType?: GraphPortDataType
   /** 拖入画布的资产引用节点：仅输出端口，在资产编辑器内修改 */
   assetRef?: boolean
@@ -384,18 +358,6 @@ export interface GraphNodeParams {
     name: string
     imageUrl: string
   }>
-  /** 分镜图生成：实体表 { id, name, imageUrls } */
-  shotEntities?: Array<{
-    id: string
-    name: string
-    imageUrls: string[]
-  }>
-  /** 分镜视频生成 / 分镜输出 / 成片时间线：实体表 { id, name, videoUrls } */
-  videoEntities?: Array<{
-    id: string
-    name: string
-    videoUrls: string[]
-  }>
   /**
    * 视频生成 / 对口型节点：历次生成累计的视频（重新执行追加，可在 Inspector 删除）。
    * 对齐图片：有 relativePath 时 dataUrl 可为空。
@@ -446,10 +408,6 @@ export interface GraphNodeParams {
    * 生成节点每次运行成功后强制切到最新一条。
    */
   selectedImageId?: string
-  /** @deprecated 已改用 shotEntities.select */
-  shotEntityPicker?: boolean
-  /** 选择分镜实体节点：当前选中的 ShotEntityResult.id */
-  selectedShotEntityId?: string
   /**
    * 当前选中的视频 id：生成节点 `out` / 选取视频节点共用。
    * 生成节点每次运行成功后强制切到最新一条。
@@ -499,17 +457,24 @@ export interface GraphNodeParams {
   imageCrop?: Partial<ImageCropState>
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
-  /** 分镜参数节点：与 Shot Inspector 同构的分镜字段 */
-  shotStoryboard?: ShotStoryboard
-  /**
-   * 分镜参数 out-images 软输出缓存：剧本下全部镜头的绑定图（角色/场景/道具/武器）。
-   * 不运行节点即可被 softResolve 读出。
-   */
-  shotParamsAllBindingImages?: Array<{ id: string; name: string; relativePath: string }>
-  /** 分镜参数节点绑定的 Shot.id；拖入分镜栏时写入 */
-  boundShotId?: string
   /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */
   boundBeatId?: string
+  /** 剧集 Agent 流水线：分镜师/动画师生成步骤（breakdown/beatboard/sequence/motion） */
+  episodeStep?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+  /** 剧集 Agent 流水线：导演审核目标步骤（与 episodeStep 互斥） */
+  episodeReviewTarget?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+  /** 剧集 Agent 流水线：导演审核回标结果（PASS / FAIL） */
+  episodeReviewStatus?: 'PASS' | 'FAIL'
+  /** 剧集 Agent 流水线：导演审核回标原因 */
+  episodeReviewReason?: string
+  /** 剧集 Agent 流水线：宫格选择节点选中的宫格编号（1..9） */
+  anchorIndex?: number
+  /** 剧集 Agent 流水线：动态格选择节点选中的组编号（1..9） */
+  cellGroupIndex?: number
+  /** 剧集 Agent 流水线：动态格选择节点选中的格编号（1..4） */
+  cellIndex?: number
+  /** 剧集 Agent 流水线：状态文件作用域键（通常为集编号，如 ep01） */
+  episodeScopeKey?: string
   /** 世界元素托管节点 id（四类画布同步用，勿与用户手搓节点冲突） */
   worldElementId?: string
   /** 世界元素目录审核状态（未审核 | 已审核） */

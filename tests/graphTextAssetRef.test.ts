@@ -207,35 +207,4 @@ describe('text asset ref (screenplay / script)', () => {
     expect(result.out).toEqual({ kind: 'text', text: 'from graph' })
   })
 
-  it('script asset ref still reads genParams text', async () => {
-    const ctx: NodeExecuteContext = {
-      node: {
-        id: 'ref-2',
-        typeId: 'asset.script',
-        category: 'asset',
-        assetId: 'script-1',
-        assetType: 'script',
-        position: { x: 0, y: 0 },
-        params: { assetRef: true }
-      },
-      inputs: {},
-      resolveAssetGenParams: () => ({
-        graphJson: {
-          version: 1,
-          nodes: [
-            {
-              id: 'note',
-              typeId: 'play.script',
-              category: 'note',
-              position: { x: 0, y: 0 },
-              params: { text: 'Shot note' }
-            }
-          ],
-          edges: []
-        }
-      })
-    }
-    const result = await executeTextAssetRefNode(ctx)
-    expect(result.out).toEqual({ kind: 'text', text: 'Shot note' })
-  })
 })

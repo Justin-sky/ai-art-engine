@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { RefMentionOption } from '@shared/domain'
+import type { RefMentionOption } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { getTextareaCaretClientRect } from '../utils/textareaCaretCoords'
 
@@ -51,7 +51,7 @@ const props = withDefaults(
     options: RefMentionOption[]
     rows?: number
     placeholder?: string
-    /** 省略则使用 shot.mention.hint；传空字符串可隐藏 */
+    /** 省略则使用生成指令的引用提示；传空字符串可隐藏 */
     hint?: string
   }>(),
   {
@@ -66,7 +66,7 @@ const emit = defineEmits<{
 }>()
 
 const hintText = computed(() =>
-  props.hint === undefined ? t('shot.mention.hint') : props.hint
+  props.hint === undefined ? t('graph.inspector.generate.mentionHint') : props.hint
 )
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const menuEl = ref<HTMLUListElement | null>(null)

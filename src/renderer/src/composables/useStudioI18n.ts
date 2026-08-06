@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AssetType, ShotAudioRefKind, ShotGenRefRole, ShotStatus } from '@shared/domain'
+import type { AssetType } from '@shared/domain'
 
 /** Typed helpers for common domain labels */
 export function useStudioI18n() {
@@ -21,26 +21,6 @@ export function useStudioI18n() {
     const key = `asset.create.${itemId}`
     if (te(key)) return String(t(key))
     return assetCreateName(assetType)
-  }
-
-  function shotStatusLabel(status: ShotStatus | string): string {
-    const key = `shot.status.${status}`
-    return te(key) ? String(t(key)) : String(status)
-  }
-
-  function shotSizeLabel(size: string): string {
-    const key = `shot.shotSize.${size}`
-    return te(key) ? String(t(key)) : size
-  }
-
-  function refRoleLabel(role: ShotGenRefRole | string): string {
-    const key = `shot.refRole.${role}`
-    return te(key) ? String(t(key)) : String(role)
-  }
-
-  function audioKindLabel(kind: ShotAudioRefKind | string): string {
-    const key = `shot.audioKind.${kind}`
-    return te(key) ? String(t(key)) : String(kind)
   }
 
   function graphTypeLabel(typeId: string): string {
@@ -69,10 +49,6 @@ export function useStudioI18n() {
     assetTypeLabel,
     assetCreateName,
     toolbarCreateLabel,
-    shotStatusLabel,
-    shotSizeLabel,
-    refRoleLabel,
-    audioKindLabel,
     graphTypeLabel,
     graphTitleForAssetType
   }

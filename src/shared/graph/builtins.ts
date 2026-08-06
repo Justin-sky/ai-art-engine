@@ -42,7 +42,6 @@ import {
   executeSelectVoiceNode,
   executeSelectTextNode,
   executeSelectBeatNode,
-  executeSelectShotEntitiesNode,
   executeMultiAngleNode,
   executeLightingNode,
   executePortraitTextureNode,
@@ -55,20 +54,17 @@ import {
   executeMatteNode,
   executeCropNode,
   executeGridSplitNode,
-  executeShotParamsNode,
-  executeShotSplitNode,
-  executeShotTableNode,
-  executeShotImageGenNode,
-  executeShotVideoGenNode,
   executeBeatSplitNode,
   executeBeatTableNode,
   executeBeatGenNode,
   executeBeatUnitGenNode,
   executeBeatUnitRefNode,
+  executeEpisodeAnchorSelectNode,
+  executeEpisodeCellSelectNode,
   executeWorldGenNode,
   executeWorldEntitiesOutputNode,
   executeBeatCatalogOutputNode,
-  executeVideoEntitiesOutputNode,
+  executeTimelineOutputNode,
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
@@ -79,7 +75,6 @@ import {
   ASSET_WORLD_OUTPUT_TITLE,
   BEAT_UNIT_OUTPUT_TITLE
 } from './scopes'
-import { defaultShotParamsNodeParams } from './shotParams'
 import { defaultBeatUnitGenParams } from './beatParams'
 import { isAssetRefNode } from './nodeRole'
 
@@ -182,15 +177,6 @@ const ASSET_META: Array<{
     processingIn: GraphPortType.text
   },
   {
-    type: 'script',
-    label: 'Shot',
-    icon: '🎥',
-    // 宿主出口为视频实体表（接成片时间线）
-    outType: GraphPortType.videoEntities,
-    addable: true,
-    weight: 0.85
-  },
-  {
     type: 'subgraph',
     label: 'Host Asset',
     icon: '📦',
@@ -260,33 +246,6 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
-/** 分镜宿主：世界元素实体 + 叙事文本入；出口为视频实体 */
-function scriptHostPorts(): GraphPortDef[] {
-  return [
-    {
-      id: 'in-worldEntities',
-      direction: 'in',
-      dataType: GraphPortType.worldEntities,
-      multiple: true,
-      label: 'World'
-    },
-    {
-      id: 'in-beat',
-      direction: 'in',
-      dataType: GraphPortType.text,
-      multiple: true,
-      label: 'Beat'
-    },
-    {
-      id: 'out',
-      direction: 'out',
-      dataType: GraphPortType.videoEntities,
-      multiple: false,
-      label: 'Out'
-    }
-  ]
-}
-
 /** 世界元素宿主：剧本文本入；出口为世界元素实体 */
 function worldHostPorts(): GraphPortDef[] {
   return [
@@ -301,7 +260,7 @@ function worldHostPorts(): GraphPortDef[] {
   ]
 }
 
-/** 场宿主：剧本文本入；出口为场目录（世界实体绑定在分镜层） */
+/** 场宿主：剧本文本入；出口为场目录 */
 function beatHostPorts(): GraphPortDef[] {
   return [
     { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
@@ -343,16 +302,14 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
             ? videoProcessingPorts()
             : meta.type === 'voice'
               ? voiceProcessingPorts()
-              : meta.type === 'script'
-                ? scriptHostPorts()
-                : meta.type === 'world'
-                  ? worldHostPorts()
-                  : meta.type === 'beat'
-                    ? beatHostPorts()
-                    : [
-                        ...(meta.processingIn
-                          ? [
-                              {
+              : meta.type === 'world'
+                ? worldHostPorts()
+                : meta.type === 'beat'
+                  ? beatHostPorts()
+                  : [
+                      ...(meta.processingIn
+                        ? [
+                            {
                                 id: 'in',
                                 direction: 'in' as const,
                                 dataType: meta.processingIn,
@@ -551,8 +508,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     '🎥',
     ASSET_TIMELINE_OUTPUT_TITLE,
     'video',
-    GraphPortType.videoEntities,
-    executeVideoEntitiesOutputNode
+    GraphPortType.video,
+    executeTimelineOutputNode
   ),
   specializedOutputDef(
     'output.beat',
@@ -809,42 +766,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectBeatNode
-  },
-  {
-    typeId: 'shotEntities.select',
-    category: 'note',
-    label: 'Select shot entity',
-    icon: VIDEO_ASSET_ICON,
-    defaultTitle: 'Select shot entity',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.shotEntities,
-        multiple: false,
-        label: 'In'
-      },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.image,
-        multiple: true,
-        label: 'Out'
-      }
-    ],
-    defaultParams: () => ({
-      text: '',
-      selectedShotEntityId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.select',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeSelectShotEntitiesNode
   },
   {
     typeId: 'image.multiAngle',
@@ -1323,39 +1244,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeImageToPromptNode
   },
   {
-    typeId: 'script.shotSplit',
-    category: 'note',
-    label: 'Shot split',
-    icon: '✂️',
-    defaultTitle: 'Shot split',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      {
-        id: 'in',
-        direction: 'in',
-        dataType: GraphPortType.text,
-        multiple: true,
-        label: 'In'
-      },
-      { id: 'out', direction: 'out', dataType: GraphPortType.shots, multiple: true, label: 'Out' }
-    ],
-    defaultParams: () => ({
-      text: '',
-      generateInstruction: '',
-      generateSystemPrompt: '',
-      generateModel: '',
-      generateProviderInstanceId: ''
-    }),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.shotSplit',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeShotSplitNode
-  },
-  {
     typeId: 'beat.split',
     category: 'note',
     label: 'Beat split',
@@ -1501,91 +1389,46 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeBeatUnitRefNode
   },
   {
-    typeId: 'script.shotTable',
+    typeId: 'episode.anchorSelect',
     category: 'note',
-    label: 'Shot table',
-    icon: '📊',
-    defaultTitle: 'Shot table',
+    label: 'Anchor select',
+    icon: '🎯',
+    defaultTitle: 'Anchor select',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'In' },
-      {
-        id: 'in-worldEntities',
-        direction: 'in',
-        dataType: GraphPortType.worldEntities,
-        multiple: true,
-        label: 'World'
-      },
-      { id: 'out', direction: 'out', dataType: GraphPortType.shots, multiple: true, label: 'Out' }
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
     ],
-    defaultParams: () => ({ text: '', worldElementOutputs: [] }),
+    defaultParams: () => ({ text: '', anchorIndex: 1 }),
     addable: true,
     deletable: true,
     inspector: 'none',
-    inspectorId: 'studio.graph.shotTable',
+    inspectorId: 'studio.graph.episodeAnchorSelect',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeShotTableNode
+    execute: executeEpisodeAnchorSelectNode
   },
   {
-    typeId: 'script.shotImageGen',
+    typeId: 'episode.cellSelect',
     category: 'note',
-    label: 'Shot image gen',
-    icon: '🖼️',
-    defaultTitle: 'Shot image gen',
+    label: 'Dynamic cell select',
+    icon: '🔲',
+    defaultTitle: 'Dynamic cell select',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.shotEntities,
-        multiple: true,
-        label: 'Out'
-      }
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: false, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: false, label: 'Out' }
     ],
-    defaultParams: () => ({}),
+    defaultParams: () => ({ text: '', cellGroupIndex: 1, cellIndex: 1 }),
     addable: true,
     deletable: true,
     inspector: 'none',
+    inspectorId: 'studio.graph.episodeCellSelect',
     card: 'media',
     contributeToGeneration: false,
-    execute: executeShotImageGenNode
-  },
-  {
-    typeId: 'script.shotVideoGen',
-    category: 'note',
-    label: 'Shot video gen',
-    icon: '🎬',
-    defaultTitle: 'Shot video gen',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'in-text', direction: 'in', dataType: GraphPortType.shots, multiple: false, label: 'Shots' },
-      {
-        id: 'in-entities',
-        direction: 'in',
-        dataType: GraphPortType.shotEntities,
-        multiple: true,
-        label: 'Entities'
-      },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.videoEntities,
-        multiple: false,
-        label: 'Out'
-      }
-    ],
-    defaultParams: () => ({}),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeShotVideoGenNode
+    execute: executeEpisodeCellSelectNode
   },
   {
     typeId: 'world.extract',
@@ -1684,33 +1527,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     /** 同步目录后收集实体；批跑元素子图由 cookBatchSubgraphs / Cook 子图控制 */
     execute: executeWorldGenNode
   },
-  {
-    typeId: 'script.shotParams',
-    category: 'note',
-    label: 'Shot params',
-    icon: '📋',
-    defaultTitle: 'Shot params',
-    defaultSize: { ...ASSET_SIZE },
-    sizeLimits: { ...ASSET_LIMITS },
-    ports: [
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' },
-      {
-        id: 'out-images',
-        direction: 'out',
-        dataType: GraphPortType.images,
-        multiple: true,
-        label: 'Images'
-      }
-    ],
-    defaultParams: () => defaultShotParamsNodeParams(),
-    addable: true,
-    deletable: true,
-    inspector: 'none',
-    inspectorId: 'studio.graph.shotParams',
-    card: 'media',
-    contributeToGeneration: false,
-    execute: executeShotParamsNode
-  }
 ]
 
 export function ensureBuiltinNodeTypes(): void {

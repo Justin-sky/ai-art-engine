@@ -6,7 +6,6 @@ import {
   isDirectorDeck,
   isDraftAssetId,
   isPoseModelAsset,
-  isStoryboardScript,
   type AssetInfo
 } from '@shared/domain'
 import { isAudioFilePath, isImageFilePath, isVideoFilePath } from '@shared/import'
@@ -64,7 +63,6 @@ const kind = computed((): 'image' | 'video' | 'voice' | 'text' | 'none' => {
   if (!a) return 'none'
   if (a.type === 'model' || isPoseModelAsset(a) || isAnimationModelAsset(a)) return 'none'
   if (isDirectorDeck(a.type)) return 'none'
-  if (isStoryboardScript(a.type)) return 'text'
   if (a.type === 'screenplay') return 'text'
   if (a.type === 'video') return 'video'
   if (a.type === 'voice') return 'voice'
@@ -85,8 +83,7 @@ const show = computed(() => {
     return (
       !!textPreview.value ||
       loading.value ||
-      props.asset.type === 'screenplay' ||
-      props.asset.type === 'script'
+      props.asset.type === 'screenplay'
     )
   }
   return true

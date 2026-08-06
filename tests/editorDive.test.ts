@@ -12,20 +12,20 @@ import { editorDiveFlush } from '../src/renderer/src/features/graph/model/editor
 
 describe('editorDive keys', () => {
   it('builds stable root / asset keys', () => {
-    expect(editorDiveRootKey('script', 'abc')).toBe('script-editor-abc')
-    expect(editorDiveAssetFrameKey('script', 'abc')).toBe('asset:script:abc')
+    expect(editorDiveRootKey('canvas', 'abc')).toBe('canvas-editor-abc')
+    expect(editorDiveAssetFrameKey('canvas', 'abc')).toBe('asset:canvas:abc')
     expect(editorDiveAssetFrameKey('world', ' w ')).toBe('asset:world:w')
   })
 
-  it('builds stable view keys that ignore shot switching', () => {
+  it('builds stable view keys', () => {
     const meta: EditorDiveViewMeta = {
-      viewId: 'script.shotImage',
+      viewId: 'script.timeline',
       scriptAssetId: 'script-1'
     }
-    const a = editorDiveViewFrameKey('script-editor-script-1', meta)
-    const b = editorDiveViewFrameKey('script-editor-script-1', meta)
+    const a = editorDiveViewFrameKey('canvas-editor-c', meta)
+    const b = editorDiveViewFrameKey('canvas-editor-c', meta)
     expect(a).toBe(b)
-    expect(a).toContain('script.shotImage')
+    expect(a).toContain('script.timeline')
     expect(a).toContain('script-1')
   })
 
@@ -52,17 +52,17 @@ describe('editorDive keys', () => {
   it('narrows frame types', () => {
     const asset: EditorDiveFrame = {
       type: 'asset',
-      key: 'asset:script:a',
+      key: 'asset:canvas:a',
       assetId: 'a',
-      kind: 'script',
+      kind: 'canvas',
       title: 'A'
     }
     const view: EditorDiveFrame = {
       type: 'view',
       key: 'k',
-      viewId: 'script.shotTable',
+      viewId: 'script.timeline',
       title: 'Table',
-      meta: { viewId: 'script.shotTable', scriptAssetId: 'a' }
+      meta: { viewId: 'script.timeline', scriptAssetId: 'a' }
     }
     expect(isEditorDiveAssetFrame(asset)).toBe(true)
     expect(isEditorDiveViewFrame(asset)).toBe(false)
@@ -112,9 +112,9 @@ describe('dive stack semantics (pure)', () => {
     const a: EditorDiveFrame = {
       type: 'view',
       key: 'v1',
-      viewId: 'script.shotTable',
+      viewId: 'script.timeline',
       title: 'T',
-      meta: { viewId: 'script.shotTable', scriptAssetId: 's' }
+      meta: { viewId: 'script.timeline', scriptAssetId: 's' }
     }
     const stack = pushUnique(pushUnique([], a), a)
     expect(stack).toHaveLength(1)
@@ -123,23 +123,23 @@ describe('dive stack semantics (pure)', () => {
   it('supports nested asset then view then pop', () => {
     const asset: EditorDiveFrame = {
       type: 'asset',
-      key: 'asset:script:child',
+      key: 'asset:canvas:child',
       assetId: 'child',
-      kind: 'script',
+      kind: 'canvas',
       title: 'Child'
     }
     const view: EditorDiveFrame = {
       type: 'view',
       key: 'view:table',
-      viewId: 'script.shotTable',
+      viewId: 'script.timeline',
       title: 'Table',
-      meta: { viewId: 'script.shotTable', scriptAssetId: 'child' }
+      meta: { viewId: 'script.timeline', scriptAssetId: 'child' }
     }
     let stack = pushUnique([], asset)
     stack = pushUnique(stack, view)
-    expect(stack.map((f) => f.key)).toEqual(['asset:script:child', 'view:table'])
+    expect(stack.map((f) => f.key)).toEqual(['asset:canvas:child', 'view:table'])
     stack = popTo(stack, 0)
-    expect(stack.map((f) => f.key)).toEqual(['asset:script:child'])
+    expect(stack.map((f) => f.key)).toEqual(['asset:canvas:child'])
     stack = popTo(stack, -1)
     expect(stack).toEqual([])
   })

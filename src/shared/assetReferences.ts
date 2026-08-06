@@ -1,10 +1,10 @@
 /**
  * 工程内资产引用查找（Find References）。
- * 基于 collectAssetGuids，扫描其他资产与分镜文档。
+ * 基于 collectAssetGuids，扫描其他资产文档。
  */
 
 import { collectAssetGuids } from './assetRef'
-import type { AssetInfo, Shot } from './domain'
+import type { AssetInfo } from './domain'
 
 export type AssetReferenceSite =
   | {
@@ -12,12 +12,6 @@ export type AssetReferenceSite =
       assetId: string
       assetName: string
       assetType: AssetInfo['type']
-    }
-  | {
-      kind: 'shot'
-      shotId: string
-      shotTitle: string
-      scriptAssetId?: string
     }
 
 export interface AssetReferenceHit {
@@ -31,14 +25,12 @@ export interface FindAssetReferencesResult {
 }
 
 /**
- * 在给定资产/分镜集合中查找对 `targetIds` 的引用。
+ * 在给定资产集合中查找对 `targetIds` 的引用。
  * - 不把「即将删除集合」内的资产当作引用源（互相引用随删一并消失）
- * - 不把「所属脚本即将删除」的分镜当作引用源（脚本删除会级联删分镜）
  */
 export function findAssetReferencesInProject(
   targetIds: readonly string[],
-  assets: readonly AssetInfo[],
-  shots: readonly Shot[]
+  assets: readonly AssetInfo[]
 ): FindAssetReferencesResult {
   const targets = new Set(targetIds.filter(Boolean))
   if (!targets.size) return { hits: [] }
@@ -61,23 +53,6 @@ export function findAssetReferencesInProject(
     }
   }
 
-  for (const shot of shots) {
-    const ownerScriptId = shot.scriptAssetId
-    if (ownerScriptId && targets.has(ownerScriptId)) continue
-    for (const guid of collectAssetGuids(shot)) {
-      if (!targets.has(guid)) continue
-      hits.push({
-        targetId: guid,
-        site: {
-          kind: 'shot',
-          shotId: shot.id,
-          shotTitle: shot.title,
-          scriptAssetId: ownerScriptId
-        }
-      })
-    }
-  }
-
   return { hits }
 }
 
@@ -86,8 +61,7 @@ export function summarizeReferenceSites(hits: readonly AssetReferenceHit[]): Ass
   const seen = new Set<string>()
   const sites: AssetReferenceSite[] = []
   for (const hit of hits) {
-    const key =
-      hit.site.kind === 'asset' ? `asset:${hit.site.assetId}` : `shot:${hit.site.shotId}`
+    const key = `asset:${hit.site.assetId}`
     if (seen.has(key)) continue
     seen.add(key)
     sites.push(hit.site)

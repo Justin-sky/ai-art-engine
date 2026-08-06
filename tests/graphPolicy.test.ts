@@ -30,10 +30,7 @@ describe('graph policy', () => {
         'beatAsset',
         'beatUnit',
         'screenplayAsset',
-        'scriptAsset',
-        'shotWorkflow',
         'subgraphAsset',
-        'visual',
         'workflow',
         'worldAsset'
       ].sort()
@@ -51,19 +48,15 @@ describe('graph policy', () => {
   it('all builtin scopes use the all-node addable wildcard', () => {
     for (const scope of [
       'workflow',
-      'shotWorkflow',
-      'visual',
       'screenplayAsset',
       'directorAsset',
-      'scriptAsset',
       'canvasAsset'
     ]) {
       expect(getScopePolicy(scope)!.addableNodeTypes).toEqual(['*'])
     }
     expect(isNodeAddableInScope('directorAsset', 'asset.motion')).toBe(true)
     expect(isNodeAddableInScope('directorAsset', 'asset.image')).toBe(true)
-    expect(isNodeAddableInScope('visual', 'play.script')).toBe(true)
-    expect(isNodeAddableInScope('scriptAsset', 'script.shotSplit')).toBe(true)
+    expect(isNodeAddableInScope('workflow', 'note.text')).toBe(true)
   })
 
   it('rejects every output node in every builtin scope and menu', () => {
@@ -82,14 +75,18 @@ describe('graph policy', () => {
         expect(isNodeAddableInScope(scope, typeId), `${scope}: ${typeId}`).toBe(false)
       }
       expect(
-        listAddableNodeTypes(scope).some((definition) => definition.typeId.startsWith('output.')),
+        listAddableNodeTypes(scope).some(
+          (definition) =>
+            definition.typeId.startsWith('output.') &&
+            !(scope === 'canvasAsset' && definition.typeId === 'output.timeline')
+        ),
         scope
       ).toBe(false)
     }
   })
 
   it('listAddableNodeTypes follows policy', () => {
-    const typeIds = listAddableNodeTypes('shotWorkflow')
+    const typeIds = listAddableNodeTypes('workflow')
       .map((def) => def.typeId)
       .sort()
     expect(typeIds).toEqual(
@@ -97,7 +94,6 @@ describe('graph policy', () => {
         'asset.image',
         'asset.motion',
         'asset.screenplay',
-        'asset.script',
         'asset.video',
         'asset.voice',
         'note.text',
@@ -120,17 +116,13 @@ describe('graph policy', () => {
         'image.upscale',
         'prompt.optimize',
         'beat.select',
-        'shotEntities.select',
+        'episode.anchorSelect',
+        'episode.cellSelect',
         'beat.split',
         'beat.table',
         'beat.unitGen',
         'beat.unitRef',
         'text.select',
-        'script.shotImageGen',
-        'script.shotVideoGen',
-        'script.shotParams',
-        'script.shotSplit',
-        'script.shotTable',
         'world.gen',
         'world.extract',
         'world.table'

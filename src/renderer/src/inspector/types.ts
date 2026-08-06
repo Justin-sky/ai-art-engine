@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import type { AssetInfo, ProjectConfig, Shot } from '@shared/domain'
+import type { AssetInfo, ProjectConfig } from '@shared/domain'
 import type { GraphGroup, GraphInspectorKind, GraphNode } from '@shared/graph'
 import type { NodeTypeDefinition } from '@shared/graph'
 
@@ -9,7 +9,6 @@ import type { NodeTypeDefinition } from '@shared/graph'
  */
 export type InspectorTargetKind =
   | 'project'
-  | 'shot'
   | 'asset'
   | 'asset.multi'
   | 'graph.node'
@@ -34,10 +33,6 @@ export interface ProjectInspectorTarget extends InspectorTarget<ProjectConfig> {
   kind: 'project'
 }
 
-export interface ShotInspectorTarget extends InspectorTarget<Shot> {
-  kind: 'shot'
-}
-
 export interface AssetInspectorTarget extends InspectorTarget<AssetInfo> {
   kind: 'asset'
 }
@@ -54,8 +49,6 @@ export interface GraphGroupInspectorTarget extends InspectorTarget<GraphGroup> {
 
 export interface InspectorContext {
   target: InspectorTarget
-  exportCanvas: () => Promise<string | null>
-  useGraphRefs: boolean
 }
 
 /**

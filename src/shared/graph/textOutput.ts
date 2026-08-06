@@ -1,6 +1,6 @@
 import type { GraphNode } from './types'
 import type { GraphNodeRunState, GraphValue } from './execute/types'
-import { isProcessingAssetNode, isScriptShotParamsNode } from './nodeRole'
+import { isProcessingAssetNode } from './nodeRole'
 
 /** 记事本可写回的节点参数字段 */
 export type GraphNodeTextField = 'text' | 'resultText'
@@ -46,7 +46,6 @@ export function textFromGraphValue(value: GraphValue | undefined): string {
 function isTextToolNode(node: GraphNode): boolean {
   return (
     node.typeId === 'beat.split' ||
-    node.typeId === 'script.shotSplit' ||
     node.typeId === 'world.extract' ||
     node.typeId === 'prompt.optimize' ||
     node.typeId === 'image.toPrompt'
@@ -55,8 +54,6 @@ function isTextToolNode(node: GraphNode): boolean {
 
 /** 节点是否具备可打开的文本输出 / 正文 */
 export function isNodeTextCapable(node: GraphNode): boolean {
-  // 分镜参数走右侧 Inspector，不打开空记事本
-  if (isScriptShotParamsNode(node)) return false
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
   if (isTextToolNode(node)) return true
@@ -68,7 +65,6 @@ export function isNodeTextCapable(node: GraphNode): boolean {
 }
 
 function preferredField(node: GraphNode): GraphNodeTextField | null {
-  if (isScriptShotParamsNode(node)) return null
   if (node.category === 'note' || node.typeId === 'note.text' || node.typeId === 'play.script') {
     return 'text'
   }

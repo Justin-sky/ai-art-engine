@@ -9,7 +9,6 @@ export const ASSET_REF_INPUT_HOST_TYPES = [
   'screenplay',
   'world',
   'beat',
-  'script',
   'image',
   'video',
   'voice',
@@ -75,7 +74,7 @@ export function isGraphIoNode(node: Pick<GraphNode, 'typeId' | 'category'>): boo
  * 也没有 generated* 图库可复用；锁定它只会让整条链取不到缓存而失败。
  */
 export function isCatalogTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return isWorldTableNode(node) || isBeatTableNode(node) || isScriptShotTableNode(node)
+  return isWorldTableNode(node) || isBeatTableNode(node)
 }
 
 /** 除输入/输出与目录表格外均可锁定上次输出（有图库或可复用 prior runStates） */
@@ -95,26 +94,6 @@ export function isDirectorProcessingNode(
   node: Pick<GraphNode, 'typeId' | 'category' | 'params' | 'assetId'>
 ): boolean {
   return node.typeId === 'asset.motion' && isProcessingAssetNode(node)
-}
-
-export function isScriptShotSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotSplit'
-}
-
-export function isScriptShotTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotTable'
-}
-
-export function isScriptShotImageGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotImageGen'
-}
-
-export function isScriptShotVideoGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotVideoGen'
-}
-
-export function isScriptShotParamsNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'script.shotParams'
 }
 
 export function isWorldExtractNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -141,6 +120,14 @@ export function isBeatUnitRefNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'beat.unitRef'
 }
 
+export function isEpisodeAnchorSelectNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'episode.anchorSelect'
+}
+
+export function isEpisodeCellSelectNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'episode.cellSelect'
+}
+
 export function isBeatOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'output.beat'
 }
@@ -161,16 +148,9 @@ export function isWorldGenNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'world.gen'
 }
 
-/**
- * 批量子图编排节点：执行时可能入队多份子图（元素 / 分镜画面 / 分镜视频）。
- * 「执行当前」默认只收集已有结果；圆形菜单「Cook 子图」才入队批跑。
- */
+/** 批量子图编排节点：执行时可能入队多份子图（元素）。 */
 export function isBatchSubgraphCookNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return (
-    isWorldGenNode(node) ||
-    isScriptShotImageGenNode(node) ||
-    isScriptShotVideoGenNode(node)
-  )
+  return isWorldGenNode(node)
 }
 
 export function isTimelineOutputNode(node: Pick<GraphNode, 'typeId'>): boolean {
@@ -195,10 +175,6 @@ export function isSelectTextNode(node: Pick<GraphNode, 'typeId'>): boolean {
 
 export function isSelectBeatNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'beat.select'
-}
-
-export function isSelectShotEntitiesNode(node: Pick<GraphNode, 'typeId'>): boolean {
-  return node.typeId === 'shotEntities.select'
 }
 
 export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {

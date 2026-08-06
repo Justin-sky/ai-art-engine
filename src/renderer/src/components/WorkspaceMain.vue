@@ -64,9 +64,9 @@ import {
   type AssetInfo
 } from '@shared/domain'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
+import { buildCanvasStarterGraph } from '@shared/graph'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
-import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert, promptText } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
@@ -74,13 +74,12 @@ import { useProjectStore } from '../stores/project'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 /** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
-const CREATE_IDS = new Set(['canvas', 'freeCanvas', 'subgraph', 'screenplay', 'script', 'motion'])
+const CREATE_IDS = new Set(['freeCanvas', 'subgraph', 'screenplay', 'motion'])
 const RECENT_LIMIT = 8
 
 const project = useProjectStore()
 const { openAssetEditor } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
-const { createSeriesWithStarter } = useSeriesCreation()
 const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 
@@ -132,10 +131,6 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
-    if (item.id === 'canvas') {
-      await createSeriesWithStarter(null)
-      return
-    }
     if (item.id === 'freeCanvas') {
       const name = await promptCreateName({
         title: t('asset.create.freeCanvasNameTitle'),
@@ -144,7 +139,10 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
         placeholder: t('asset.create.freeCanvasNamePlaceholder')
       })
       if (!name) return
-      createDraftAndOpen('canvas', { name, genParams: { canvasKind: 'free' } })
+      createDraftAndOpen('canvas', {
+        name,
+        genParams: { canvasKind: 'free', graphJson: buildCanvasStarterGraph() }
+      })
       return
     }
     const title = toolbarCreateLabel(item.id, item.assetType)

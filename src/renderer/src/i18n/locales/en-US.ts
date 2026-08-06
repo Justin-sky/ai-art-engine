@@ -28,6 +28,8 @@ export default {
     textModelLabel: 'Text model (AI plan)',
     imageModelLabel: 'Default image model',
     videoModelLabel: 'Default video model',
+    resolutionLabel: 'Resolution',
+    resolutionEmpty: 'Default (auto)',
     modelLabel: 'Text model',
     modelEmpty: 'Not configured',
     promptLabel: 'Workflow description',
@@ -91,9 +93,9 @@ export default {
       },
       shortDrama: {
         title: 'Short drama',
-        desc: 'Multi-scene boards & dialogue',
+        desc: 'Script → beats → 9-grid → 4-grid → 36 motion videos (agent pipeline)',
         prompt:
-          'Create a short-drama storyboard workflow: text nodes per scene for dialogue and shot notes, storyboard images per scene, video nodes for climax scenes; lay out left-to-right by scene.'
+          'Create a short-drama agent-pipeline workflow: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown, 9-grid beat board, and 4-grid dynamic storyboard (9×4=36); an animator node produces the motion prompt table; 9 anchor-select nodes each feed one key storyboard image, 36 dynamic-cell select nodes each feed one image-to-video clip (parent anchor image as first frame); after each stage a director-review node outputs PASS/FAIL, and failures are written to agent-state.json and appended on rerun.'
       },
       custom: {
         title: 'Custom',
@@ -471,16 +473,11 @@ export default {
       model: 'New Model',
       screenplay: 'New Screenplay',
       script: 'New Shot',
-      canvas: 'New Series',
       freeCanvas: 'New Free Canvas',
       world: 'New World Elements',
       beat: 'New Beat Units',
       subgraph: 'New Host Asset',
       default: 'New Asset',
-      seriesNameTitle: 'New Series',
-      seriesNameMessage:
-        'Enter a series name. After confirm, a screenplay, world elements, beat units, and shot will be created and placed on the series canvas.',
-      seriesNamePlaceholder: 'Series name',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
         'Enter a canvas name. Creates a blank node graph where you can freely add nodes and assets.',
@@ -544,7 +541,6 @@ export default {
       referencesNone: 'No references found.',
       referencesSummary: '{count} reference(s) to the target asset(s):',
       referencesAsset: 'Asset "{name}"',
-      referencesShot: 'Shot "{title}"',
       referencesMore: '…and {count} more',
       deleteConfirmTitle: 'Delete assets',
       deleteConfirm: 'Delete "{name}"?',
@@ -613,7 +609,6 @@ export default {
     inspector: {
       title: 'Asset parameters',
       empty: 'No asset selected',
-      shotCount: 'Shot count',
       shotCountValue: '{n}',
       linked: 'Linked',
       unlinked: 'Not linked',
@@ -687,219 +682,9 @@ export default {
       default: 'Optional description…'
     }
   },
-  shot: {
-    defaultName: 'Shot',
-    index: "Shot {'#'}{n}",
-    duration: 'Duration',
-    inspector: {
-      title: 'Shot parameters',
-      empty: 'No shot selected'
-    },
-    staging: {
-      title: 'Shot staging',
-      select: 'Choose a camera, performance, or lighting preset…',
-      selectField: 'Choose a {field} preset…',
-      apply: 'Apply',
-      showPresets: 'Show presets',
-      hidePresets: 'Hide presets',
-      hint: 'Inserts at the active caret and appends other related fields without clearing existing text.',
-      hintVisual: 'Click a card to apply. Glyphs are for recognition only; the written prompt text is unchanged.',
-      group: {
-        cameraLanguage: 'Camera language',
-        bodyFacing: 'Body orientation',
-        performance: 'Performance',
-        lighting: 'Lighting',
-        advertising: 'Ad camera and transitions'
-      },
-      preset: {
-        heroEntrance: 'Hero entrance',
-        mysteriousEntrance: 'Mysterious entrance',
-        storyEntrance: 'Story-driven entrance',
-        twoShot: 'Two-shot',
-        overShoulder: 'Over-the-shoulder reverse',
-        highEmotion: 'High-angle pressure',
-        backEmotion: 'Back-view isolation',
-        dutch: 'Dutch-angle imbalance',
-        facingFront: 'Full front',
-        facingThreeQuarter: 'Front three-quarter',
-        facingProfile: 'Pure profile',
-        facingBackThreeQuarter: 'Rear three-quarter',
-        facingBack: 'Strict back view',
-        performanceAnger: 'Anger: facial action',
-        performanceDazed: 'Dazed: focus and body drop',
-        performanceManic: 'Manic: blinking, twitch, head tilt',
-        performanceRelief: 'Relief: breath and release',
-        performanceAnxiety: 'Anxiety: scanning, fingers, weight',
-        performanceGrief: 'Grief: held breath and lost strength',
-        performanceConfidence: 'Confidence: steady gaze and posture',
-        performanceSurprise: 'Surprise: freeze and recoil',
-        lightingTop: 'Top light: eye-socket shadow',
-        lightingSide: 'Side light: split face',
-        lightingRembrandt: 'Rembrandt: cheek triangle',
-        lightingVolumetric: 'Volumetric light beams',
-        lightingBacklight: 'Backlight: rim separation',
-        lightingPractical: 'Motivated practical light',
-        adImpact: 'Impact hard cut',
-        adFlash: 'Flash transition',
-        adMotion: 'Motion-match transition',
-        adDissolve: 'Short dissolve',
-        adMatchCut: 'Shape / color match cut',
-        adOcclusion: 'Foreground occlusion',
-        adFocus: 'Defocus reveal',
-        adJumpCut: 'Locked-camera jump cut',
-        adProductReveal: 'Hero product reveal'
-      }
-    },
-    field: {
-      visual: 'Visual description',
-      shotSize: 'Shot size',
-      lighting: 'Lighting',
-      dialogue: 'Dialogue / VO',
-      soundFx: 'Sound FX',
-      cameraMove: 'Camera move',
-      finalPrompt: 'Final prompt'
-    },
-    placeholder: {
-      visual: 'Describe the frame…',
-      lighting: 'Lighting mood…',
-      dialogue: 'Dialogue or voice-over…',
-      soundFx: 'SFX…',
-      cameraMove: 'Camera move…'
-    },
-    shotSize: {
-      大特写: 'Extreme close-up',
-      特写: 'Close-up',
-      半身景: 'Medium close-up',
-      中景: 'Medium shot',
-      中远景: 'Medium long shot',
-      全景: 'Full shot',
-      远景: 'Long shot'
-    },
-    refRole: {
-      background: 'Background',
-      character: 'Character',
-      firstFrame: 'First frame',
-      style: 'Style',
-      motion: 'Motion'
-    },
-    audioKind: {
-      voice: 'Voice',
-      dialogue_tts: 'Dialogue TTS',
-      sfx: 'SFX',
-      bgm: 'BGM'
-    },
-    status: {
-      draft: 'Draft',
-      generating: 'Generating',
-      done: 'Done',
-      failed: 'Failed'
-    },
-    generate: {
-      button: 'Generate video',
-      running: 'Generating {n}%'
-    },
-    history: {
-      title: 'Generation history',
-      noPrompt: '(no prompt)'
-    },
-    genHint: {
-      refCount: '{n} refs',
-      refs: 'Refs: {list}',
-      promptOnly: 'Text prompt only'
-    },
-    error: {
-      canvasExport: 'Canvas export failed',
-      generateFailed: 'Generation failed',
-      draftMissing: 'Cannot create shot: draft missing'
-    },
-    strip: {
-      title: 'Shots',
-      switchHint: 'Click a shot to create params and link shot images to the generator; or drag onto canvas',
-      new: '+ New',
-      collapse: 'Collapse shot strip',
-      expand: 'Expand shot strip'
-    },
-    table: {
-      title: 'Shot table · {n} shots',
-      new: '+ New',
-      resizeCol: 'Drag to resize column',
-      resizeRow: 'Drag to resize row',
-      zoomHint: 'Ctrl + scroll to zoom; click percent to reset',
-      zoom: 'Zoom {n}%',
-      column: {
-        name: 'Name',
-        duration: 'Duration',
-        characters: 'Characters',
-        scenes: 'Scenes',
-        props: 'Props',
-        weapons: 'Weapons',
-        visual: 'Visual',
-        shotSize: 'Size',
-        lighting: 'Lighting',
-        dialogue: 'Dialogue / VO',
-        soundFx: 'SFX',
-        cameraMove: 'Camera',
-        status: 'Status'
-      },
-      bind: {
-        title: 'Bind world entity',
-        action: 'Bind',
-        add: 'Add and bind',
-        empty: 'No world entities to bind yet. Generate images in the world element graph first.'
-      },
-      placeholder: {
-        name: 'Shot name',
-        visual: 'Visual description',
-        lighting: 'Lighting',
-        dialogue: 'Dialogue',
-        soundFx: 'SFX',
-        cameraMove: 'Camera move'
-      }
-    },
-    refs: {
-      title: 'References',
-      hint: "Writes to the shot video node; frames are not {'@'} mentions",
-      drop: 'Drop assets here',
-      add: '+ Add reference',
-      badge: 'Ref {n}',
-      notes: 'Notes (optional)',
-      weight: 'Reference strength',
-      insertVisual: 'Insert into visual description',
-      remove: 'Remove',
-      help: 'Supports images, voice, and more as generation references.',
-      firstFrame: 'First',
-      lastFrame: 'Last',
-      setFrame: 'Choose',
-      changeFrame: 'Change',
-      clearFrame: 'Clear',
-      frameHint:
-        "First/last frames connect to dedicated video-node ports and do not use {'@'} numbers.",
-      error: {
-        invalidType: 'Drop an image, voice, or video asset',
-        noFile: 'This asset has no linked file yet',
-        dropFailed: 'Could not read dropped asset'
-      }
-    },
-    mention: {
-      hint: "Type {'@'} to mention a reference, e.g. {'@'}1, {'@'}2",
-      labelHint:
-        "Type {'@'} to insert a readable reference label; configure generation-port mentions in the instruction editor"
-    }
-  },
   script: {
-    hint: {
-      imageGraph: 'Per-shot visual graph · use the right Inspector for params and run',
-      videoGraph: 'Per-shot video graph · use the right Inspector for params and run',
-      timeline: 'Preview the cut · drag input videos, or asset-library / system video and audio files onto the tracks below',
-      table: 'Shot table · bulk edit all shots',
-      assetGraph:
-        'Double-click shot split to edit instruction · double-click shot table to enter the table · double-click shot image/video gen to dive into the matching graph; double-click cut timeline to enter it; use breadcrumbs to go back'
-    },
     dialog: {
-      shotImageEditor: 'Shot images',
-      shotVideoEditor: 'Shot videos',
       timeline: 'Timeline',
-      shotTable: 'Shot table',
       close: 'Close'
     },
     timeline: {
@@ -930,7 +715,6 @@ export default {
       musicEmpty: 'Drop music/audio here (asset library or audio files)',
       dropUnsupported: 'Only video or audio files can be dropped',
       importFailed: 'Import failed: {error}',
-      createShots: 'Create shots',
       none: 'None',
       track: {
         video: 'Video',
@@ -964,11 +748,6 @@ export default {
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'
-    },
-    shotTableWindow: {
-      loading: 'Opening shot table…',
-      missingAsset: 'Missing script asset',
-      noProject: 'No project open in the main window'
     },
     timelineWindow: {
       loading: 'Opening timeline…',
@@ -1314,8 +1093,6 @@ export default {
     }
   },
   canvas: {
-    noShot: 'No shot selected',
-    selectShot: 'Select a shot',
     toolbar: {
       grid: 'Grid',
       spacing: 'Spacing',
@@ -1340,7 +1117,6 @@ export default {
     },
     error: {
       notReady: 'Canvas not ready',
-      needShot: 'Select a shot first',
       dropFailed: 'Could not read dropped asset',
       imageOnly: 'Canvas only accepts image assets',
       noFile: 'This image has no linked file yet'
@@ -1612,7 +1388,6 @@ export default {
       title: 'Node minimap (click or drag to navigate)',
       empty: 'No nodes'
     },
-    shotEntityPicker: 'Select shot entity',
     layout: {
       dragHandle: 'Drag layout toolbar',
       expand: 'Expand layout tools',
@@ -1649,8 +1424,16 @@ export default {
       pasteSkippedHost: 'Skipped {n} host node(s) (host assets must be unique on the canvas)',
       groups: {
         imageRefine: 'Image refine',
-        imageEdit: 'Image edit'
+        imageEdit: 'Image edit',
+        episode: 'Episode'
       }
+    },
+    episodeAgent: {
+      breakdown: 'Beat breakdown',
+      beatboard: '9-grid beat board',
+      sequence: '4-grid storyboard',
+      motion: 'Motion prompts',
+      review: 'Director review'
     },
     selectImage: {
       appMark: 'Select image',
@@ -1680,11 +1463,6 @@ export default {
       appMark: 'Select beat unit',
       hint: 'Double-click to pick one unit from the upstream beat catalog. Defaults to the first item.',
       empty: 'No upstream beat units yet. Connect a beat asset and run it first.'
-    },
-    selectShotEntities: {
-      appMark: 'Select shot entity',
-      hint: 'Double-click to pick one shot entity from upstream. Not wired to video generate by default; connect manually if needed.',
-      empty: 'No upstream shot entities'
     },
     textsPreview: {
       appMark: 'Texts preview',
@@ -1950,6 +1728,11 @@ export default {
       selected: 'Selected',
       allCells: 'All cells',
       systemPrompt: 'System prompt',
+      cropPreview: 'Cropped source',
+      cropPreviewHint: 'Tiles cropped from the upstream image with the current grid',
+      cropLoading: 'Building crop preview…',
+      cropEmpty: 'No crop preview yet',
+      cropFailed: 'Failed to build crop preview',
       presets: {
         p4: '4-grid (2×2)',
         p9: '9-grid (3×3)',
@@ -2048,15 +1831,6 @@ export default {
       hint: 'Double-click to open director deck edit',
       live: 'Live preview · double-click to open director deck edit'
     },
-    scriptShotTableNode: {
-      hint: 'Double-click to open shot table'
-    },
-    scriptShotImageGenNode: {
-      hint: 'Double-click to enter shot image graph editing'
-    },
-    scriptShotVideoGenNode: {
-      hint: 'Double-click to enter shot video graph editing'
-    },
     timelineOutputNode: {
       hint: 'Double-click to enter the timeline editor'
     },
@@ -2134,10 +1908,7 @@ export default {
         texts: 'Texts',
         world: 'World element',
         worldEntities: 'World entities',
-        shotEntities: 'Shot entities',
-        videoEntities: 'Video entities',
         beat: 'Beat',
-        shots: 'Shot',
         model: 'Model'
       }
     },
@@ -2238,18 +2009,8 @@ export default {
       prompt: {
         optimize: 'Prompt optimize'
       },
-      script: {
-        shotSplit: 'Shot split',
-        shotTable: 'Shot table',
-        shotImageGen: 'Generate shot images',
-        shotVideoGen: 'Generate shot videos',
-        shotParams: 'Shot params'
-      },
       text: {
         select: 'Select text'
-      },
-      shotEntities: {
-        select: 'Select shot entity'
       },
       beat: {
         select: 'Select beat unit',
@@ -2258,6 +2019,10 @@ export default {
         gen: 'Beat unit gen',
         unitGen: 'Beat gen',
         unitRef: 'Beat ref'
+      },
+      episode: {
+        anchorSelect: 'Anchor select',
+        cellSelect: 'Dynamic cell select'
       },
       world: {
         extract: 'World extract',
@@ -2276,13 +2041,10 @@ export default {
       voice: 'Voice',
       motion: 'Director Deck',
       model: 'Model',
-      script: 'Shot',
       canvas: 'Canvas',
       world: 'World Elements',
       beat: 'Beat Units',
       subgraph: 'Host Asset',
-      shotOutput: 'Shot output',
-      shotVisualOutput: 'Image output',
       screenplayOutput: 'Screenplay output',
       directorOutput: 'Director deck output',
       timelineOutput: 'Cut timeline',
@@ -2406,23 +2168,8 @@ export default {
         memberCount: 'Members',
         empty: 'No group selected'
       },
-      shotParams: {
-        hint: 'Drag shots from the strip to create params nodes; text out is the active shot prompt, images out are bound character/scene/prop/weapon images from all shots (no run needed).',
-        boundShot: 'Bound shot',
-        boundShotValue: '#{n} {title}',
-        unbound: 'No shot bound'
-      },
       select: {
         hint: 'Double-click the node to open the picker. After running, preview the selected out port here.'
-      },
-      shotTable: {
-        hint: 'Double-click to open the shot table and fill it from the upstream split. Running outputs the current shot list, including bound characters / scenes / props / weapons.'
-      },
-      shotImageGen: {
-        hint: 'Run current collects existing shot visuals; use radial Cook subgraph to batch-run visual graphs.'
-      },
-      shotVideoGen: {
-        hint: 'Run current collects existing shot videos; use radial Cook subgraph to batch-run shot workflows.'
       },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
@@ -2523,8 +2270,6 @@ export default {
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
-        shotSplitInstructionPlaceholder:
-          "Split the screenplay into a shot list; use {'@'} to cite connected inputs",
         worldExtractInstructionPlaceholder:
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
         beatSplitInstructionPlaceholder:
@@ -2547,7 +2292,6 @@ export default {
           },
           titleScreenplay: 'Screenplay templates',
           titleOptimize: 'Prompt optimize templates',
-          titleShotSplit: 'Shot split templates',
           titleWorldExtract: 'World extract templates',
           titleBeatSplit: 'Beat split templates',
           titleImage: 'Image generation templates',
@@ -2625,7 +2369,12 @@ export default {
             scene: 'Scene prompt',
             camera: 'Camera move prompt',
             expression: 'Expression reference prompt',
-            vfx: 'VFX prompt'
+            vfx: 'VFX prompt',
+            episodeBreakdown: 'Storyboard artist: beat breakdown',
+            episodeBeatBoard: 'Storyboard artist: 9-grid beat board',
+            episodeSequenceBoard: 'Storyboard artist: 4-grid storyboard',
+            episodeMotionPrompt: 'Animator: motion prompt table',
+            episodeDirectorReview: 'Director: PASS/FAIL review'
           },
           toPrompt: {
             structured: 'Full structured caption',
@@ -2644,10 +2393,6 @@ export default {
             filmStoryboard: 'Storyboard frame',
             filmCostume: 'Costume / makeup',
             filmCamera: 'Camera language'
-          },
-          shotSplit: {
-            create: 'Split screenplay into shots',
-            refine: 'Refine shot pacing'
           },
           worldExtract: {
             create: 'Extract world elements',

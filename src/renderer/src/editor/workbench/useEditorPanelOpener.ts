@@ -25,11 +25,6 @@ const PANEL_DEFINITIONS = {
     component: 'assetEditor',
     param: 'assetId'
   },
-  script: {
-    panelPrefix: 'script-editor-',
-    component: 'scriptEditor',
-    param: 'scriptAssetId'
-  },
   canvas: {
     panelPrefix: 'canvas-editor-',
     component: 'canvasEditor',
@@ -84,7 +79,6 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     const groups: Array<[EditorPanelKind, string[]]> = [
       ['asset', workspace.openAssetEditorIds],
       ['screenplay', workspace.openScreenplayEditorIds],
-      ['script', workspace.openScriptEditorIds],
       ['canvas', workspace.openCanvasEditorIds],
       ['world', workspace.openWorldEditorIds],
       ['beat', workspace.openBeatEditorIds],
@@ -103,10 +97,6 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
   watch(() => workspace.openScreenplayEditorIds.slice(), (ids) => {
     const id = ids.at(-1)
     if (id) open('screenplay', id)
-  })
-  watch(() => workspace.openScriptEditorIds.slice(), (ids) => {
-    const id = ids.at(-1)
-    if (id) open('script', id)
   })
   watch(() => workspace.openCanvasEditorIds.slice(), (ids) => {
     const id = ids.at(-1)

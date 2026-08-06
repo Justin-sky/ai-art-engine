@@ -7,7 +7,10 @@
       v-bind="viewBindings"
     />
     <AssetEditor
-      v-else-if="assetFrame && (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')"
+      v-else-if="
+        assetFrame &&
+        (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')
+      "
       :key="assetFrame.assetId"
       :asset-id="assetFrame.assetId"
       embedded
@@ -24,18 +27,40 @@
       :world-asset-id="assetFrame.assetId"
       embedded
     />
-    <ScriptEditor
-      v-else-if="assetFrame && assetFrame.kind === 'script'"
-      :key="assetFrame.assetId"
-      :script-asset-id="assetFrame.assetId"
-      embedded
-    />
     <DirectorEditor
       v-else-if="assetFrame && assetFrame.kind === 'director'"
       :key="assetFrame.assetId"
       :director-asset-id="assetFrame.assetId"
       embedded
     />
+    <!--
+      子图内打开节点工具时，dive 栈顶会替换子图编辑器；这里把目标子图编辑器以隐藏方式
+      继续挂载，保证 NodeGraphEditor 的工具宿主（dialog 状态 / 保存 / 预览）仍然可用。
+    -->
+    <template v-if="keepAssetFrame">
+      <div v-show="false" :key="`keep:${keepAssetFrame.key}`" class="editor-dive-keep-host">
+        <AssetEditor
+          v-if="keepAssetFrame.kind === 'screenplay' || keepAssetFrame.kind === 'asset'"
+          :asset-id="keepAssetFrame.assetId"
+          embedded
+        />
+        <BeatAssetEditor
+          v-else-if="keepAssetFrame.kind === 'beat'"
+          :beat-asset-id="keepAssetFrame.assetId"
+          embedded
+        />
+        <WorldElementEditor
+          v-else-if="keepAssetFrame.kind === 'world'"
+          :world-asset-id="keepAssetFrame.assetId"
+          embedded
+        />
+        <DirectorEditor
+          v-else-if="keepAssetFrame.kind === 'director'"
+          :director-asset-id="keepAssetFrame.assetId"
+          embedded
+        />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -44,6 +69,7 @@ import { computed, defineAsyncComponent, type Component } from 'vue'
 import {
   isEditorDiveAssetFrame,
   isEditorDiveViewFrame,
+  type EditorDiveAssetFrame,
   type EditorDiveFrame,
   type EditorDiveNodeToolViewId
 } from '../features/graph/model/editorDive'
@@ -52,18 +78,17 @@ import {
 const AssetEditor = defineAsyncComponent(() => import('./AssetEditor.vue'))
 const BeatAssetEditor = defineAsyncComponent(() => import('./BeatAssetEditor.vue'))
 const WorldElementEditor = defineAsyncComponent(() => import('./WorldElementEditor.vue'))
-const ScriptEditor = defineAsyncComponent(() => import('./ScriptEditor.vue'))
 const DirectorEditor = defineAsyncComponent(() => import('./DirectorEditor.vue'))
 
 const viewRegistry: Record<string, Component> = {
-  'script.shotImage': defineAsyncComponent(() => import('./dive/EditorDiveScriptShotView.vue')),
-  'script.shotVideo': defineAsyncComponent(() => import('./dive/EditorDiveScriptShotView.vue')),
-  'script.shotTable': defineAsyncComponent(() => import('./dive/EditorDiveScriptTableView.vue')),
   'script.timeline': defineAsyncComponent(() => import('./dive/EditorDiveScriptTimelineView.vue')),
   'world.editor': defineAsyncComponent(() => import('./dive/EditorDiveWorldEditorView.vue')),
   'world.table': defineAsyncComponent(() => import('./dive/EditorDiveWorldTableView.vue')),
   'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
   'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
+  'episode.pipeline': defineAsyncComponent(() =>
+    import('./dive/EditorDiveEpisodePipelineView.vue')
+  ),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
   'node.instruction': defineAsyncComponent(() => import('./dive/EditorDiveInstructionView.vue')),
@@ -88,12 +113,41 @@ const viewRegistry: Record<string, Component> = {
 
 const props = defineProps<{
   frame: EditorDiveFrame | null
+  frames?: EditorDiveFrame[]
 }>()
 
 const assetFrame = computed(() =>
   isEditorDiveAssetFrame(props.frame) ? props.frame : null
 )
 const viewFrame = computed(() => (isEditorDiveViewFrame(props.frame) ? props.frame : null))
+
+const allFrames = computed<EditorDiveFrame[]>(() => {
+  if (props.frames && props.frames.length) return props.frames
+  return props.frame ? [props.frame] : []
+})
+
+/**
+ * 节点工具视图打开时，如果它的 hostId 指向 dive 栈里某个资产帧，
+ * 需要把该资产帧的编辑器继续隐藏挂载，工具宿主才不会随栈顶替换而丢失。
+ */
+const keepAssetFrame = computed<EditorDiveAssetFrame | null>(() => {
+  const frames = allFrames.value
+  const top = frames[frames.length - 1]
+  if (!top || top.type !== 'view') return null
+  const meta = top.meta
+  if (!('hostId' in meta) || !meta.hostId) return null
+  const hostId = meta.hostId.trim()
+  if (!hostId.startsWith('asset:')) return null
+  for (let i = frames.length - 2; i >= 0; i--) {
+    const frame = frames[i]
+    if (!isEditorDiveAssetFrame(frame)) continue
+    // 画布资产当前不走嵌入式编辑，跳过避免渲染空壳
+    if (frame.kind === 'canvas') continue
+    const prefix = `asset:${frame.assetId}`
+    if (hostId === prefix || hostId.startsWith(`${prefix}:`)) return frame
+  }
+  return null
+})
 
 const viewComponent = computed(() => {
   const frame = viewFrame.value
@@ -107,11 +161,6 @@ const viewBindings = computed(() => {
   const meta = frame.meta
   const base = { frameKey: frame.key }
   switch (meta.viewId) {
-    case 'script.shotImage':
-      return { ...base, scriptAssetId: meta.scriptAssetId, kind: 'image' as const }
-    case 'script.shotVideo':
-      return { ...base, scriptAssetId: meta.scriptAssetId, kind: 'video' as const }
-    case 'script.shotTable':
     case 'script.timeline':
       return { ...base, scriptAssetId: meta.scriptAssetId }
     case 'world.editor':
@@ -121,6 +170,8 @@ const viewBindings = computed(() => {
     case 'beat.gen':
     case 'beat.table':
       return { ...base, beatAssetId: meta.beatAssetId }
+    case 'episode.pipeline':
+      return { ...base, hostAssetId: meta.hostAssetId }
     case 'director.stage':
       return {
         ...base,

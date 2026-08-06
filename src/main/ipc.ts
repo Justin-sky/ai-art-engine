@@ -1,15 +1,12 @@
 import { ipcMain } from 'electron'
 import { IpcChannels } from '@shared/ipc'
-import type { AppSettings, ProjectConfig, Shot, AssetInfo } from '@shared/domain'
+import type { AppSettings, ProjectConfig, AssetInfo } from '@shared/domain'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
-  CreateSeriesWithStarterInput,
-  CreateShotInput,
-  SyncScriptShotsInput,
   DeleteFolderInput,
   ImportAssetsInput,
   ReimportAssetsInput,
@@ -123,9 +120,6 @@ export function registerIpcHandlers(): void {
     }
   })
   handle(IpcChannels.ASSET_CREATE, (input: CreateAssetInput) => projectService.createAsset(input))
-  handle(IpcChannels.ASSET_CREATE_SERIES, (input: CreateSeriesWithStarterInput) =>
-    projectService.createSeriesWithStarter(input ?? {})
-  )
   handle(IpcChannels.ASSET_DELETE, (assetId: string) => projectService.deleteAsset(assetId))
   handle(IpcChannels.ASSET_FIND_REFERENCES, (assetIds: string[]) =>
     projectService.findAssetReferences(assetIds)
@@ -202,16 +196,6 @@ export function registerIpcHandlers(): void {
     projectService.deleteFolder(input.folderId, { mode: input.mode })
   })
 
-  handle(IpcChannels.SHOT_LIST, () => projectService.listShots())
-  handle(IpcChannels.SHOT_GET, (shotId: string) => projectService.getShot(shotId))
-  handle(IpcChannels.SHOT_CREATE, (input?: CreateShotInput) => projectService.createShot(input))
-  handle(IpcChannels.SHOT_UPDATE, (shot: Shot) => projectService.updateShot(shot))
-  handle(IpcChannels.SHOT_DELETE, (shotId: string) => projectService.deleteShot(shotId))
-  handle(IpcChannels.SHOT_REORDER, (shotIds: string[]) => projectService.reorderShots(shotIds))
-  handle(IpcChannels.SHOT_SYNC_SCRIPT, (input: SyncScriptShotsInput) =>
-    projectService.syncScriptShots(input)
-  )
-
   handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => openRouterClient.generateText(input))
   handle(IpcChannels.GEN_AI_WORKFLOW, async (input: GenerateAiWorkflowInput) => {
     const result = await generateAiWorkflow(input)
@@ -275,9 +259,6 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.PLUGIN_LIST, () => pluginRepository.list())
 
-  handle(IpcChannels.CANVAS_SAVE_PNG, (shotId: string, dataUrl: string) =>
-    projectService.saveCanvasPng(shotId, dataUrl)
-  )
   handle(IpcChannels.GRAPH_SAVE_RUN_MEDIA, async (input: SaveGraphRunMediaInput) => {
     const result = await projectService.saveGraphRunMedia(input)
     if (result.asset) {
@@ -292,6 +273,14 @@ export function registerIpcHandlers(): void {
     }
     return result.relativePath
   })
+  handle(IpcChannels.PROJECT_READ_FILE, (relativePath: string) =>
+    projectService.readProjectFile(relativePath)
+  )
+  handle(
+    IpcChannels.PROJECT_WRITE_FILE,
+    (input: { relativePath: string; content: string }) =>
+      projectService.writeProjectFile(input)
+  )
   handle(IpcChannels.GRAPH_DELETE_RUN_MEDIA, (relativePath: string) =>
     projectService.deleteGraphRunMedia(relativePath)
   )

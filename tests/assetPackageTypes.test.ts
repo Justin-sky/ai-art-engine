@@ -4,7 +4,6 @@ import { isAipackageAssetType, AIPACKAGE_ASSET_TYPES } from '../src/shared/asset
 describe('aipackage asset types', () => {
   it('includes media and workflow document types', () => {
     expect(isAipackageAssetType('image')).toBe(true)
-    expect(isAipackageAssetType('script')).toBe(true)
     expect(isAipackageAssetType('canvas')).toBe(true)
     expect(isAipackageAssetType('screenplay')).toBe(true)
     expect(isAipackageAssetType('motion')).toBe(true)

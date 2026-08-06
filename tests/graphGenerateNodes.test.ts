@@ -11,7 +11,6 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.image',
   'asset.motion',
   'asset.screenplay',
-  'asset.script',
   'asset.video',
   'asset.voice',
   'note.text',
@@ -36,15 +35,11 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'beat.unitGen',
   'beat.unitRef',
   'beat.select',
-  'shotEntities.select',
+  'episode.anchorSelect',
+  'episode.cellSelect',
   'beat.split',
   'beat.table',
   'text.select',
-  'script.shotImageGen',
-  'script.shotVideoGen',
-  'script.shotParams',
-  'script.shotSplit',
-  'script.shotTable',
   'world.gen',
   'world.extract',
   'world.table'
@@ -60,32 +55,11 @@ describe('graph canvas menu nodes', () => {
     })
   }
 
-  it('scriptAsset exposes generate nodes without outputs', () => {
-    const typeIds = listAddableNodeTypes('scriptAsset')
-      .map((def) => def.typeId)
-      .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
-  })
-
-  it('shotWorkflow exposes generate nodes without outputs', () => {
-    const typeIds = listAddableNodeTypes('shotWorkflow')
-      .map((def) => def.typeId)
-      .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
-  })
-
-  it('visual exposes generate nodes without outputs', () => {
-    const typeIds = listAddableNodeTypes('visual')
-      .map((def) => def.typeId)
-      .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
-  })
-
-  it('canvasAsset exposes generate nodes without outputs', () => {
+  it('canvasAsset exposes generate nodes plus the timeline output', () => {
     const typeIds = listAddableNodeTypes('canvasAsset')
       .map((def) => def.typeId)
       .sort()
-    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES].sort())
+    expect(typeIds).toEqual([...CANVAS_ADDABLE_NODE_TYPES, 'output.timeline'].sort())
   })
 
   it('classic output nodes are deletable', () => {

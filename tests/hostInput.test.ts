@@ -196,58 +196,6 @@ describe('host input slots', () => {
     expect(nodes.map((n) => n.id)).toEqual([hostInputSlotNodeId('in', 0)])
   })
 
-  it('opens host with default one slot per port when no parent edges', () => {
-    const slots = resolveHostInputSlotsForHostOpen('script', [], HOST_ID)
-    expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([
-      'in-worldEntities:0:worldEntities',
-      'in-beat:0:text'
-    ])
-  })
-
-  it('host open merges parent expansion with missing-port defaults', () => {
-    const slots = resolveHostInputSlotsForHostOpen(
-      'script',
-      [
-        {
-          nodes: [
-            {
-              id: 'h',
-              typeId: 'asset.script',
-              category: 'asset',
-              position: { x: 0, y: 0 },
-              params: { assetHost: true },
-              assetId: HOST_ID,
-              assetType: 'script'
-            },
-            {
-              id: 't',
-              typeId: 'note.text',
-              category: 'note',
-              position: { x: 0, y: 0 },
-              params: { text: '叙事' },
-              title: 't'
-            }
-          ],
-          edges: [
-            {
-              id: 'e',
-              source: 't',
-              target: 'h',
-              sourcePort: 'out',
-              targetPort: 'in-text'
-            }
-          ],
-          viewport: { x: 0, y: 0, zoom: 1 }
-        }
-      ],
-      HOST_ID
-    )
-    expect(slots.map((s) => `${s.portId}:${s.index}`)).toEqual([
-      'in-worldEntities:0',
-      'in-beat:0'
-    ])
-  })
-
   it('opens beat host with text slot only', () => {
     const slots = resolveHostInputSlotsForHostOpen('beat', [], HOST_ID)
     expect(slots.map((s) => `${s.portId}:${s.index}:${s.dataType}`)).toEqual([

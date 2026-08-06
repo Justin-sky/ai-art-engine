@@ -4,19 +4,10 @@
     "workflow": {
       "addableNodeTypes": ["*"]
     },
-    "shotWorkflow": {
-      "addableNodeTypes": ["*"]
-    },
-    "visual": {
-      "addableNodeTypes": ["*"]
-    },
     "screenplayAsset": {
       "addableNodeTypes": ["*"]
     },
     "directorAsset": {
-      "addableNodeTypes": ["*"]
-    },
-    "scriptAsset": {
       "addableNodeTypes": ["*"]
     },
     "canvasAsset": {

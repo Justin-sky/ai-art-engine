@@ -1,12 +1,9 @@
 import { nextTick, reactive, ref } from 'vue'
 import type {
-  AssetType,
-  ProjectStyleImage,
-  ShotAudioRef,
-  ShotGenRef,
-  ShotStoryboard
+  ProjectStyleImage
 } from '@shared/domain'
 import {
+  applyEpisodeReviewMarks,
   exportPersistedRunStates,
   importPersistedRunStates,
   isBoundaryOutputNode,
@@ -24,6 +21,10 @@ import { createGraphRunLogBridge } from '../model/graphRunLogBridge'
 import { formatProviderErrorForLog } from '../model/formatProviderErrorForLog'
 import { resolveImageGenerateCapabilitiesForRun } from '../model/imageGenerateCapabilities'
 import { resolveVideoGenerateCapabilitiesForRun } from '../model/videoGenerateCapabilities'
+import {
+  readEpisodeAgentState,
+  writeEpisodeAgentState
+} from '../episodeAgentStateIO'
 import {
   resolveAssetImageUrl,
   resolveAssetMediaDataUrl,
@@ -134,6 +135,10 @@ export interface GraphRunSessionOptions {
     node: import('@shared/graph').GraphNode
   }) => Promise<string>
   readRunText?: (relativePath: string) => Promise<string>
+  /** 覆盖默认 agent-state.json 读取（默认按作用域键读工程 Cache 目录） */
+  readEpisodeAgentState?: (scopeKey: string) => Promise<string | null>
+  /** 覆盖默认 agent-state.json 写入 */
+  writeEpisodeAgentState?: (scopeKey: string, content: string) => Promise<void>
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
   resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
   /** 资产是否仍存在（含草稿）；缺失引用节点执行时短路） */
@@ -141,50 +146,12 @@ export interface GraphRunSessionOptions {
   resolveAssetName?: (assetId: string) => string | undefined
   resolveHostAssetName?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
-  resolveShotStoryboard?: (boundShotId?: string) => {
-    storyboard: ShotStoryboard
-    genRefs?: ShotGenRef[]
-    audioRefs?: ShotAudioRef[]
-    assetNames?: Map<string, string>
-    assetTypes?: Map<string, AssetType>
-    stylePreset?: string
-  } | null
-  /** 分镜参数 out-images：全部镜头绑定图 */
-  resolveAllShotBindingImages?: () => Array<{
-    id: string
-    name: string
-    relativePath: string
-  }> | null
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (
     beatId: string
   ) => import('@shared/graph').BeatRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
-  /** 分镜表格节点：输出当前分镜列表 JSON */
-  resolveShotSplitTableJson?: () => string | null
-  /** 生成分镜图 / 视频节点执行时：导入上游拆分 JSON 到分镜列表 */
-  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
-  /** 生成分镜图：收集各镜 visual 结果；cookBatch 时入队批跑画面子图 */
-  collectScriptShotImages?: (
-    signal?: AbortSignal,
-    options?: { cookBatch?: boolean }
-  ) => Promise<{
-    images: import('@shared/graph').GraphImageItem[]
-    aggregateJson: string
-    entities: Array<{ id: string; name: string; imageUrls: string[] }>
-  } | null>
-  /** 生成分镜视频：收集各镜子图视频结果；cookBatch 时入队批跑 shotWorkflow */
-  collectScriptShotVideos?: (
-    signal?: AbortSignal,
-    options?: {
-      cookBatch?: boolean
-      shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
-    }
-  ) => Promise<{
-    videos: import('@shared/graph').GraphVideoItem[]
-    entities: Array<{ id: string; name: string; videoUrls: string[] }>
-  } | null>
   /** 世界元素编辑：收集四类子图输出；cookBatch 时入队批跑元素子图 */
   collectWorldElementOutputs?: (
     signal?: AbortSignal,
@@ -637,13 +604,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveAssetName: options.resolveAssetName,
         resolveHostAssetName: options.resolveHostAssetName,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
-        resolveShotStoryboard: options.resolveShotStoryboard,
-        resolveAllShotBindingImages: options.resolveAllShotBindingImages,
         resolveBeatUnit: options.resolveBeatUnit,
-        resolveShotSplitTableJson: options.resolveShotSplitTableJson,
-        importShotSplitTableJson: options.importShotSplitTableJson,
-        collectScriptShotImages: options.collectScriptShotImages,
-        collectScriptShotVideos: options.collectScriptShotVideos,
         collectWorldElementOutputs: options.collectWorldElementOutputs,
         collectBeatUnitTexts: options.collectBeatUnitTexts,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
@@ -671,8 +632,17 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         },
         saveRunMedia: options.saveRunMedia,
         saveRunText: options.saveRunText,
-        readRunText: options.readRunText
+        readRunText: options.readRunText,
+        readEpisodeAgentState: options.readEpisodeAgentState ?? readEpisodeAgentState,
+        writeEpisodeAgentState: options.writeEpisodeAgentState ?? writeEpisodeAgentState
       })
+      if (result) {
+        // 导演审核回标：把 PASS/FAIL 与原因写到审核节点和对应生成节点
+        applyEpisodeReviewMarks(graph.nodes, (nodeId, params) => {
+          if (token !== runToken || signal.aborted) return
+          options.onNodePatch?.(nodeId, { params })
+        })
+      }
       if (token !== runToken) return null
       lastRunResult.value = result
       if (signal.aborted || result.error === 'GRAPH_CANCELLED') {

@@ -9,7 +9,6 @@ import { useProjectStore } from '../../stores/project'
 export type EditorPanelKind =
   | 'asset'
   | 'screenplay'
-  | 'script'
   | 'canvas'
   | 'world'
   | 'beat'
@@ -48,8 +47,6 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
       case 'asset':
       case 'screenplay':
         return [`asset:${assetId}`, `graph:asset:${assetId}`]
-      case 'script':
-        return [`editor:script:${assetId}`, `graph:script:${assetId}`]
       case 'canvas':
       case 'world':
       case 'beat':
@@ -79,7 +76,6 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
       const definitions: Array<[string, EditorPanelKind]> = [
         ['asset-editor-', 'asset'],
         ['screenplay-editor-', 'screenplay'],
-        ['script-editor-', 'script'],
         ['canvas-editor-', 'canvas'],
         ['world-editor-', 'world'],
         ['beat-editor-', 'beat'],

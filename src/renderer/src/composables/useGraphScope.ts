@@ -5,6 +5,6 @@ import type { GraphAddScope } from '@shared/graph'
 export function useGraphScope(): ComputedRef<GraphAddScope> {
   return inject<ComputedRef<GraphAddScope>>(
     'graphScope',
-    computed(() => 'shotWorkflow')
+    computed(() => 'workflow')
   )
 }

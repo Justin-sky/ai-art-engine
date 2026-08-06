@@ -18,8 +18,6 @@ import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
-import ShotParamsInspector from '../components/ShotParamsInspector.vue'
-import ShotInspector from '../components/ShotInspector.vue'
 import ShotNodeInspector from '../components/ShotNodeInspector.vue'
 import ShotNoteInspector from '../components/ShotNoteInspector.vue'
 import DirectorCameraInspector from '../components/DirectorCameraInspector.vue'
@@ -45,15 +43,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     match: (target) => target.kind === 'project',
     props: (context) => ({
       config: (context.target.subject as ProjectConfig | null) ?? null
-    })
-  },
-  {
-    id: 'studio.shot',
-    component: ShotInspector,
-    match: (target) => target.kind === 'shot',
-    props: (context) => ({
-      exportCanvas: context.exportCanvas,
-      compact: context.useGraphRefs
     })
   },
   {
@@ -125,11 +114,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'image.toPrompt'
   },
   {
-    id: 'studio.graph.shotSplit',
-    component: PromptOptimizeInspector,
-    nodeTypeId: 'script.shotSplit'
-  },
-  {
     id: 'studio.graph.worldExtract',
     component: PromptOptimizeInspector,
     nodeTypeId: 'world.extract'
@@ -166,21 +150,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     }
   },
   {
-    id: 'studio.graph.shotTable',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'script.shotTable'
-  },
-  {
-    id: 'studio.graph.shotImageGen',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'script.shotImageGen'
-  },
-  {
-    id: 'studio.graph.shotVideoGen',
-    component: TablePassThroughInspector,
-    nodeTypeId: 'script.shotVideoGen'
-  },
-  {
     id: 'studio.graph.worldTable',
     component: TablePassThroughInspector,
     nodeTypeId: 'world.table'
@@ -189,11 +158,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.worldGen',
     component: TablePassThroughInspector,
     nodeTypeId: 'world.gen'
-  },
-  {
-    id: 'studio.graph.shotParams',
-    component: ShotParamsInspector,
-    nodeTypeId: 'script.shotParams'
   },
   {
     id: 'studio.graph.multiAngle',
@@ -261,8 +225,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
         typeId === 'video.select' ||
         typeId === 'voice.select' ||
         typeId === 'text.select' ||
-        typeId === 'beat.select' ||
-        typeId === 'shotEntities.select'
+        typeId === 'beat.select'
       )
     }
   },

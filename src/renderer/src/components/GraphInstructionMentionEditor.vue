@@ -206,8 +206,7 @@ import {
   normalizeProjectStyleImages,
   portMentionIndex,
   resolveGenerateStyleImages,
-  type ProjectStyleImage,
-  type RefMentionOption
+  type ProjectStyleImage
 } from '@shared/domain'
 import {
   buildInstructionFinalPromptPreview,
@@ -215,7 +214,7 @@ import {
   resolveInstructionFinalPreviewKind,
   resolveInstructionVisual,
   resolveNodeTextContent,
-  resolveShotParamsNodePrompt,
+  type RefMentionOption,
   readBoundBeatIdFromNodeParams,
   formatBeatRefText,
   shouldKeepInstructionMentionToken,
@@ -382,7 +381,6 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'screenplay') return t('graph.inspector.generate.presets.titleScreenplay')
   if (props.presetKind === 'optimize') return t('graph.inspector.generate.presets.titleOptimize')
   if (props.presetKind === 'toPrompt') return t('graph.inspector.generate.presets.titleToPrompt')
-  if (props.presetKind === 'shotSplit') return t('graph.inspector.generate.presets.titleShotSplit')
   if (props.presetKind === 'worldExtract') return t('graph.inspector.generate.presets.titleWorldExtract')
   if (props.presetKind === 'beatSplit') {
     return t('graph.inspector.generate.presets.titleBeatSplit')
@@ -416,13 +414,8 @@ function sourceIcon(node: GraphNode): string {
   return '📄'
 }
 
-/** 预览/芯片摘要用：分镜参数节点需现场拼 storyboard，不能只读 params.text */
+/** 预览/芯片摘要用：场参考节点需现场拼正文 */
 function resolveSourcePlainText(node: GraphNode): string {
-  if (node.typeId === 'script.shotParams') {
-    return resolveShotParamsNodePrompt(node, {
-      stylePreset: project.config?.stylePreset
-    }).trim()
-  }
   if (node.typeId === 'beat.unitRef') {
     const beatId = readBoundBeatIdFromNodeParams(node.params)
     const assetId = resolveHostBeatAssetId(props.hostId)
@@ -440,7 +433,7 @@ function resolveHostBeatAssetId(hostId: string): string | null {
 }
 
 function sourceSnippet(node: GraphNode): string {
-  // 芯片摘要用轻量字段，避免打开指令面板时对分镜参数等做全量拼装
+  // 芯片摘要用轻量字段，避免打开指令面板时做全量拼装
   const quick =
     node.params.text?.trim() ||
     node.params.resultText?.trim() ||
@@ -479,7 +472,7 @@ function resolveSourcePreviewDataUrl(source: GraphNode): string {
 
 /**
  * 引用芯片缩略图路径：资产 relativePath、边界 previewRelativePath、图库落盘路径。
- * Cache/ 下的分镜实体边界通常没有 assetId，必须读 previewRelativePath。
+ * Cache/ 下的边界通常没有 assetId，必须读 previewRelativePath。
  */
 function resolveSourcePreviewPath(source: GraphNode): string {
   const previewRel = source.params.previewRelativePath?.trim().replace(/\\/g, '/')
@@ -649,7 +642,7 @@ watch(
               : asset.thumbnailPath?.trim() || asset.relativePath?.trim() || ''
         }
       }
-      // 分镜画面/视频实体边界常无 assetId，或资产表缺失时仍可读 previewRelativePath
+      // 边界常无 assetId，或资产表缺失时仍可读 previewRelativePath
       if (!path) path = resolveSourcePreviewPath(source)
       if (!path) continue
       try {

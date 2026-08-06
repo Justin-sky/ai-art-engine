@@ -10,8 +10,7 @@ import { getNodeTypeOrThrow } from './registry'
 import { ensureBoundaryProxyNodes } from './ensureBoundary'
 import {
   defaultHostInterfaceForAssetType,
-  HOST_INTERFACE_FORMAT_VERSION,
-  type HostInterfaceDocument
+  HOST_INTERFACE_FORMAT_VERSION
 } from './hostInterface'
 import { isAssetRefInputHostType } from './nodeRole'
 import type {
@@ -26,11 +25,8 @@ import { graphOutputNodeId, GraphPortType } from './types'
 
 export type BuiltinGraphAddScope =
   | 'workflow'
-  | 'shotWorkflow'
-  | 'visual'
   | 'screenplayAsset'
   | 'directorAsset'
-  | 'scriptAsset'
   | 'canvasAsset'
   | 'worldAsset'
   | 'beatAsset'
@@ -41,9 +37,6 @@ export type BuiltinGraphAddScope =
 /** 内置或插件注册的画布作用域 id */
 export type GraphAddScope = BuiltinGraphAddScope | (string & {})
 
-/** 分镜画面画布输出节点默认标题（持久化；UI 映射为「图片输出」） */
-export const SHOT_VISUAL_OUTPUT_TITLE = 'Image output'
-
 /** 剧本资产图输出节点默认标题（持久化；UI 映射为「剧本输出」） */
 export const ASSET_SCREENPLAY_OUTPUT_TITLE = 'Screenplay output'
 
@@ -52,9 +45,6 @@ export const ASSET_DIRECTOR_OUTPUT_TITLE = 'Director deck output'
 
 /** 成片时间线输出节点默认标题（持久化；UI 映射为「成片时间线」；挂在剧集画布） */
 export const ASSET_TIMELINE_OUTPUT_TITLE = 'Cut timeline'
-
-/** 分镜资产图「分镜输出」默认标题（持久化；UI 映射为「分镜输出」） */
-export const ASSET_SCRIPT_SHOT_OUTPUT_TITLE = 'Shot video output'
 
 /** 场资产图输出节点默认标题（持久化；UI 映射为「场输出」） */
 export const ASSET_BEAT_OUTPUT_TITLE = 'Beat output'
@@ -82,9 +72,6 @@ export interface GraphScopeDragAssetsConfig {
   denyTypes?: AssetType[]
 }
 
-/** 分镜画布上持久化 graph 的字段名 */
-export type ShotCanvasGraphField = 'graphJson' | 'visualGraphJson'
-
 export interface GraphScopeDefinition {
   id: GraphAddScope
   /** 加载图时保留的节点；未设置表示不过滤 */
@@ -101,9 +88,7 @@ export interface GraphScopeDefinition {
   createParams?: (typeId: GraphNodeTypeId) => Partial<GraphNodeParams> | undefined
   /** 拖入资产引用节点的规则 */
   dragAssets?: GraphScopeDragAssetsConfig
-  /** 分镜 Shot.canvas 上的图字段；默认 graphJson */
-  shotCanvasField?: ShotCanvasGraphField
-  /** 分镜内多画布时 graphHostId 后缀 */
+  /** 多画布时 graphHostId 后缀 */
   hostIdSuffix?: string
 }
 
@@ -125,17 +110,6 @@ const DEFAULT_SCOPE_DRAG_ASSETS: GraphScopeDragAssetsConfig = {
 }
 
 export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDefinition> = {
-  shotWorkflow: {
-    id: 'shotWorkflow',
-    ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.shotOutput',
-    output: {
-      kind: 'video',
-      title: 'Shot video output',
-      inputDataType: GraphPortType.video
-    },
-    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS
-  },
   workflow: {
     id: 'workflow',
     output: { kind: 'video', title: ASSET_OUTPUT_TITLES.video },
@@ -143,19 +117,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
     dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
     createParams: (typeId) =>
       typeId === 'asset.screenplay' ? { inputDataType: GraphPortType.text } : undefined
-  },
-  visual: {
-    id: 'visual',
-    ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.shotVisualOutput',
-    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    shotCanvasField: 'visualGraphJson',
-    hostIdSuffix: 'visual',
-    output: {
-      kind: 'image',
-      title: SHOT_VISUAL_OUTPUT_TITLE,
-      inputDataType: GraphPortType.image
-    }
   },
   screenplayAsset: {
     id: 'screenplayAsset',
@@ -177,18 +138,6 @@ export const GRAPH_SCOPE_DEFINITIONS: Record<BuiltinGraphAddScope, GraphScopeDef
       kind: 'image',
       title: ASSET_DIRECTOR_OUTPUT_TITLE,
       inputDataType: GraphPortType.image
-    }
-  },
-  scriptAsset: {
-    id: 'scriptAsset',
-    ensureOutput: false,
-    outputTitleI18nKey: 'graph.titles.shotOutput',
-    dragAssets: DEFAULT_SCOPE_DRAG_ASSETS,
-    output: {
-      typeId: 'output.video',
-      kind: 'video',
-      title: ASSET_SCRIPT_SHOT_OUTPUT_TITLE,
-      inputDataType: GraphPortType.videoEntities
     }
   },
   /** 空白节点画布：不强制输出节点，打开即为空图 */
@@ -311,7 +260,6 @@ export interface GraphScopeHostBinding {
 const BUILTIN_SCOPE_HOST_BINDINGS: GraphScopeHostBinding[] = [
   { assetType: 'screenplay', scope: 'screenplayAsset', priority: 100 },
   { assetType: 'motion', scope: 'directorAsset', priority: 100 },
-  { assetType: 'script', scope: 'scriptAsset', priority: 100 },
   { assetType: 'canvas', scope: 'canvasAsset', priority: 100 },
   { assetType: 'world', scope: 'worldAsset', priority: 100 },
   { assetType: 'beat', scope: 'beatAsset', priority: 100 },
@@ -356,7 +304,7 @@ export function resolveGraphScope(options: {
   const fromHost = resolveScopeFromHosts(options)
   if (fromHost) return fromHost
   if (options.assetId) return 'workflow'
-  return 'shotWorkflow'
+  return 'workflow'
 }
 
 export function assetTypeToGraphScope(assetType?: string | null): GraphAddScope {
@@ -395,12 +343,6 @@ export function canScopeAcceptDraggedAsset(
   if (drag.denyTypes?.includes(type)) return false
   if (!drag.allowTypes || drag.allowTypes === 'all') return true
   return drag.allowTypes.includes(type)
-}
-
-export const DEFAULT_SHOT_CANVAS_FIELD: ShotCanvasGraphField = 'graphJson'
-
-export function getScopeShotCanvasField(scope: GraphAddScope): ShotCanvasGraphField {
-  return getGraphScopeDefinition(scope).shotCanvasField ?? DEFAULT_SHOT_CANVAS_FIELD
 }
 
 export function getScopeHostIdSuffix(scope: GraphAddScope): string | undefined {
@@ -462,49 +404,6 @@ export function createScopeOutputNode(
   })
 }
 
-/** 分镜画面 / 分镜视频：每镜默认一个边界输出（无固定边界输入；绑定实体可动态加 input） */
-export function hostInterfaceForShotScope(
-  scope: 'visual' | 'shotWorkflow'
-): HostInterfaceDocument {
-  if (scope === 'visual') {
-    return {
-      version: HOST_INTERFACE_FORMAT_VERSION,
-      inputs: [],
-      outputs: [
-        {
-          id: 'out',
-          label: SHOT_VISUAL_OUTPUT_TITLE,
-          dataType: GraphPortType.image,
-          multiple: false
-        }
-      ]
-    }
-  }
-  return {
-    version: HOST_INTERFACE_FORMAT_VERSION,
-    inputs: [],
-    outputs: [
-      {
-        id: 'out',
-        label: ASSET_SCRIPT_SHOT_OUTPUT_TITLE,
-        dataType: GraphPortType.video,
-        multiple: false
-      }
-    ]
-  }
-}
-
-/** 确保分镜子图有主边界输出，并把悬空 gen 接到该出口；保留绑定用 boundary.input */
-export function ensureShotScopeBoundaryOutput(
-  document: GraphDocument,
-  scope: 'visual' | 'shotWorkflow'
-): GraphDocument {
-  if (!document.nodes.length) return document
-  return ensureBoundaryProxyNodes(document, hostInterfaceForShotScope(scope), {
-    preserveUnlistedBoundaryNodes: true
-  })
-}
-
 export function createDefaultScopedGraph(
   scope: GraphAddScope,
   assetType?: string | null,
@@ -522,13 +421,6 @@ export function createDefaultScopedGraph(
     hostAssetId: options?.hostAssetId,
     hasMediaFile: options?.hasMediaFile
   })
-  // 分镜图 / 分镜视频：默认补边界输出并接线
-  if (scope === 'visual' || scope === 'shotWorkflow') {
-    return ensureShotScopeBoundaryOutput(
-      document,
-      scope === 'visual' ? 'visual' : 'shotWorkflow'
-    )
-  }
   if (!isAssetRefInputHostType(assetType)) return document
   // 元素子图：无边界输入；边界输出由 syncWorldElementKindGraph 按目录物化
   if (scope === 'elementWorkflow') {

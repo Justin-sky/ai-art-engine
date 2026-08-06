@@ -269,22 +269,6 @@ describe('asset editor graph', () => {
     expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
   })
 
-  it('script asset host creates beat and worldEntities boundary inputs (HDA)', () => {
-    const doc = normalizeScopedGraph('scriptAsset', null, {
-      assetType: 'script',
-      hostAssetId: '00000000-0000-4000-8000-000000000701'
-    })
-    const table = doc.nodes.find((node) => node.typeId === 'script.shotTable')
-    const split = doc.nodes.find((node) => node.typeId === 'script.shotSplit')
-    expect(table).toBeTruthy()
-    expect(split).toBeTruthy()
-    expect(getNodePorts(table!).some((p) => p.id === 'in-worldEntities')).toBe(true)
-    expect(getNodePorts(split!).find((p) => p.id === 'in')?.dataType).toBe('text')
-    expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-beat'))).toBe(true)
-    expect(doc.nodes.some((n) => n.id === boundaryInputNodeId('in-worldEntities'))).toBe(true)
-    expect(doc.nodes.some((n) => n.typeId === 'graph.input.slot')).toBe(false)
-  })
-
   it('drops beat.gen → text.select edge on incompatible out port', () => {
     const gen = createNodeFromType('beat.gen', { x: 0, y: 0 }, { id: 'gen' })
     const select = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'select' })
@@ -444,7 +428,7 @@ describe('asset editor graph', () => {
   })
 
   it('strips classic video output while preserving refs and video processing', () => {
-    const doc = normalizeScopedGraph('shotWorkflow', {
+    const doc = normalizeScopedGraph('workflow', {
       nodes: [
         createAssetGraphNode('00000000-0000-4000-8000-000000000011', 'image', 'Ref', { x: 0, y: 0 }),
         createAssetGraphNode('00000000-0000-4000-8000-000000000012', 'video', 'Vid', {

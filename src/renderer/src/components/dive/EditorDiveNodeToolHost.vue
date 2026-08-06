@@ -239,7 +239,11 @@ const editorDive = inject(editorDiveKey, null)
 provide(editorDiveEmbeddedKey, true)
 
 const ready = ref(false)
-const host = computed(() => graphEditorNodeTools.get(props.hostId))
+const host = computed(() => {
+  // 宿主编辑器可能在工具视图之后才挂载（子图 dive 场景），订阅版本号保证重新读取
+  void graphEditorNodeTools.revision.value
+  return graphEditorNodeTools.get(props.hostId)
+})
 const api = computed(() => host.value?.api ?? null)
 
 let closing = false
@@ -288,7 +292,20 @@ const toolOpen = computed(() => {
 })
 
 onMounted(async () => {
-  await graphEditorNodeTools.open(props.hostId, props.viewId, props.nodeId, props.mode)
+  // 节点卡已预先打开工具状态时，只需等待宿主注册即可直接展示
+  if (toolOpen.value) {
+    ready.value = true
+    return
+  }
+  const opened = await graphEditorNodeTools.open(
+    props.hostId,
+    props.viewId,
+    props.nodeId,
+    props.mode
+  )
+  if (!opened) {
+    console.warn('[dive-node-tool] opener missing', props.viewId, props.hostId, props.nodeId)
+  }
   ready.value = true
 })
 

@@ -1,13 +1,11 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
-  shotScriptAssetId,
   isDraftAssetId,
   isDirectorDeck,
   isCanvasAsset,
   isImportedMediaRefAsset,
   isScreenplayAsset,
-  isStoryboardScript,
   isWorldElementAsset,
   isBeatAsset,
   type AssetInfo
@@ -32,8 +30,6 @@ export type {
   EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
 
-export type InspectorFocus = 'shot' | 'asset'
-
 export type CloseEditorsForAssetsResult =
   | { ok: true }
   | { ok: false; reason: 'graph-running' }
@@ -43,9 +39,6 @@ type CloseEditorsForAssetsFn = (assetIds: string[]) => CloseEditorsForAssetsResu
 export const STUDIO_ASSET_DRAG_MIME = 'application/x-studio-asset'
 export const STUDIO_ASSET_ID_DRAG_MIME = 'application/x-studio-asset-id'
 export const STUDIO_ASSET_IDS_DRAG_MIME = 'application/x-studio-asset-ids'
-/** 分镜栏 → 画布：拖入创建分镜参数节点 */
-export const STUDIO_SHOT_DRAG_MIME = 'application/x-studio-shot'
-export const STUDIO_SHOT_ID_DRAG_MIME = 'application/x-studio-shot-id'
 /** 场栏 → 画布：拖入创建场参考节点 */
 export const STUDIO_BEAT_UNIT_DRAG_MIME = 'application/x-studio-beat-unit'
 export const STUDIO_BEAT_UNIT_ID_DRAG_MIME = 'application/x-studio-beat-unit-id'
@@ -55,7 +48,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const editor = useEditorKernel()
   const openAssetEditorIds = ref<string[]>([])
   const openScreenplayEditorIds = ref<string[]>([])
-  const openScriptEditorIds = ref<string[]>([])
   const openCanvasEditorIds = ref<string[]>([])
   const openWorldEditorIds = ref<string[]>([])
   const openBeatEditorIds = ref<string[]>([])
@@ -68,11 +60,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ? (editor.selection.current.value.id ?? null)
       : null
   )
-  const inspectorFocus = computed<InspectorFocus>(() =>
-    editor.selection.current.value.kind === 'asset' ? 'asset' : 'shot'
-  )
-  const scriptCanvasExporters = ref(new Map<string, () => Promise<string | null>>())
-  const scriptGraphGetters = ref(new Map<string, () => import('@shared/graph').GraphDocument | null>())
   /** 资产库拖出时缓存，跨面板拖放时 dataTransfer 可能读不到自定义 MIME */
   const draggingAsset = ref<AssetInfo | null>(null)
   /** 节点图选中的节点 id（null = 当前编辑器全局参数） */
@@ -149,7 +136,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (isScreenplayAsset(asset.type)) return 'screenplay'
     if (isBeatAsset(asset.type)) return 'beat'
     if (isWorldElementAsset(asset.type)) return 'world'
-    if (isStoryboardScript(asset.type)) return 'script'
     if (isDirectorDeck(asset.type)) return 'director'
     if (isCanvasAsset(asset.type)) return 'canvas'
     return 'asset'
@@ -157,12 +143,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function defaultViewTitle(meta: EditorDiveViewMeta): string {
     switch (meta.viewId) {
-      case 'script.shotImage':
-        return 'Shot image'
-      case 'script.shotVideo':
-        return 'Shot video'
-      case 'script.shotTable':
-        return 'Shot table'
       case 'script.timeline':
         return 'Timeline'
       case 'world.editor':
@@ -301,9 +281,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       revealAssetInBrowser(assetId)
       return
     }
-    if (isStoryboardScript(asset.type)) {
-      openScriptEditor(assetId)
-    } else if (isCanvasAsset(asset.type)) {
+    if (isCanvasAsset(asset.type)) {
       openCanvasEditor(assetId)
     } else if (isWorldElementAsset(asset.type)) {
       openWorldEditor(assetId)
@@ -328,11 +306,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function openScreenplayEditor(screenplayAssetId: string): void {
     openScreenplayEditorIds.value = bumpOpenId(openScreenplayEditorIds.value, screenplayAssetId)
     focusEditorGlobalsForAsset(screenplayAssetId)
-  }
-
-  function openScriptEditor(scriptAssetId: string): void {
-    openScriptEditorIds.value = bumpOpenId(openScriptEditorIds.value, scriptAssetId)
-    focusEditorGlobalsForAsset(scriptAssetId)
   }
 
   function openCanvasEditor(canvasAssetId: string): void {
@@ -364,18 +337,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (sel.kind === 'graph.node' || sel.kind === 'graph.group') {
       const ctx = parseGraphHostContext(sel.hostId)
       if (
-        (ctx.kind === 'asset' || ctx.kind === 'script') &&
+        ctx.kind === 'asset' &&
         ctx.id === assetId
       ) {
         editor.selection.clear()
         return
-      }
-    }
-    if (sel.kind === 'shot') {
-      const project = useProjectStore()
-      const shot = project.activeShot
-      if (shot && shotScriptAssetId(shot) === assetId) {
-        editor.selection.clear()
       }
     }
   }
@@ -410,18 +376,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     clearInspectorForClosedEditor(directorAssetId)
   }
 
-  function consumeScriptEditor(scriptAssetId: string): void {
-    openScriptEditorIds.value = openScriptEditorIds.value.filter((id) => id !== scriptAssetId)
-    unregisterScriptCanvasExporter(scriptAssetId)
-    unregisterScriptGraphGetter(scriptAssetId)
-    clearInspectorForClosedEditor(scriptAssetId)
-  }
-
   /** 从所有打开列表中移除该资产（面板未挂载时的兜底） */
   function consumeEditorsForAsset(assetId: string): void {
     consumeAssetEditor(assetId)
     consumeScreenplayEditor(assetId)
-    consumeScriptEditor(assetId)
     consumeCanvasEditor(assetId)
     consumeWorldEditor(assetId)
     consumeBeatEditor(assetId)
@@ -432,15 +390,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function resetSession(): void {
     openAssetEditorIds.value = []
     openScreenplayEditorIds.value = []
-    openScriptEditorIds.value = []
     openCanvasEditorIds.value = []
     openWorldEditorIds.value = []
     openBeatEditorIds.value = []
     openDirectorEditorIds.value = []
     activeBeatId.value = null
     activeBeatAssetId.value = null
-    scriptCanvasExporters.value = new Map()
-    scriptGraphGetters.value = new Map()
     draggingAsset.value = null
     assetBrowserReveal.value = null
     diveClearAll()
@@ -473,56 +428,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     else resetSession()
   }
 
-  function registerScriptCanvasExporter(
-    scriptAssetId: string,
-    fn: () => Promise<string | null>
-  ): void {
-    scriptCanvasExporters.value.set(scriptAssetId, fn)
-  }
-
-  function unregisterScriptCanvasExporter(scriptAssetId: string): void {
-    scriptCanvasExporters.value.delete(scriptAssetId)
-  }
-
-  function registerScriptGraphGetter(
-    scriptAssetId: string,
-    fn: () => import('@shared/graph').GraphDocument | null
-  ): void {
-    scriptGraphGetters.value.set(scriptAssetId, fn)
-  }
-
-  function unregisterScriptGraphGetter(scriptAssetId: string): void {
-    scriptGraphGetters.value.delete(scriptAssetId)
-  }
-
-  function getActiveGraph(): import('@shared/graph').GraphDocument | null {
-    const project = useProjectStore()
-    const shot = project.activeShot
-    const ownerId = shot ? shotScriptAssetId(shot) : undefined
-    if (ownerId) {
-      return scriptGraphGetters.value.get(ownerId)?.() ?? null
-    }
-    for (const fn of scriptGraphGetters.value.values()) {
-      const g = fn()
-      if (g) return g
-    }
-    return null
-  }
-
-  async function exportCanvasForActiveShot(): Promise<string | null> {
-    const project = useProjectStore()
-    const shot = project.activeShot
-    const ownerId = shot ? shotScriptAssetId(shot) : undefined
-    if (ownerId) {
-      return (await scriptCanvasExporters.value.get(ownerId)?.()) ?? null
-    }
-    for (const fn of scriptCanvasExporters.value.values()) {
-      const dataUrl = await fn()
-      if (dataUrl) return dataUrl
-    }
-    return null
-  }
-
   function selectAsset(assetId: string | null): void {
     if (assetId) {
       editor.selection.select({
@@ -534,21 +439,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } else if (editor.selection.is('asset')) {
       focusProjectGlobals()
     }
-  }
-
-  function focusShot(): void {
-    const project = useProjectStore()
-    const shotId = project.activeShotId
-    editor.selection.select({
-      kind: 'shot',
-      key: shotId ? `shot:${shotId}` : 'shot:none',
-      id: shotId ?? undefined
-    })
-    editor.commands.setActiveScope(
-      shotId
-        ? `document:shot:${shotId}`
-        : `selection:shot:${shotId ?? 'none'}`
-    )
   }
 
   function selectBeatUnit(beatId: string | null, beatAssetId?: string | null): void {
@@ -591,12 +481,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function setGraphEditorScope(host: string): void {
-    const shotId = useProjectStore().activeShotId
-    editor.commands.setActiveScope(
-      host.startsWith('asset:')
-        ? `document:graph:${host}`
-        : `document:graph:${host}:shot:${shotId ?? 'none'}`
-    )
+    editor.commands.setActiveScope(`document:graph:${host}`)
   }
 
   function selectGraphNode(nodeId: string | null, hostId?: string): void {
@@ -683,7 +568,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     openAssetEditorIds,
     openScreenplayEditorIds,
-    openScriptEditorIds,
     openCanvasEditorIds,
     openWorldEditorIds,
     openBeatEditorIds,
@@ -692,19 +576,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeBeatAssetId,
     selectedAssetId,
     selectedAsset,
-    inspectorFocus,
     openAssetEditor,
     openEditorForAssetId,
     canOpenEditorForAssetId,
     openScreenplayEditor,
-    openScriptEditor,
     openCanvasEditor,
     openWorldEditor,
     openBeatEditor,
     openDirectorEditor,
     consumeAssetEditor,
     consumeScreenplayEditor,
-    consumeScriptEditor,
     consumeCanvasEditor,
     consumeWorldEditor,
     consumeBeatEditor,
@@ -715,14 +596,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     registerCloseEditorsForAssets,
     registerCloseAllEditorPanels,
     closeEditorsForAssetIds,
-    registerScriptCanvasExporter,
-    unregisterScriptCanvasExporter,
-    registerScriptGraphGetter,
-    unregisterScriptGraphGetter,
-    getActiveGraph,
-    exportCanvasForActiveShot,
     selectAsset,
-    focusShot,
     selectBeatUnit,
     focusBeatUnit,
     focusProjectGlobals,

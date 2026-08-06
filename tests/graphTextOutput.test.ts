@@ -96,18 +96,6 @@ describe('graph text output', () => {
     ).toBe(false)
   })
 
-  it('does not open notepad for shot params nodes', () => {
-    expect(
-      isNodeTextCapable(
-        baseNode({
-          id: 'params',
-          category: 'note',
-          typeId: 'script.shotParams'
-        })
-      )
-    ).toBe(false)
-  })
-
   it('prefers live run output, then persisted fields', () => {
     const screenplay = baseNode({
       id: 'edit',

@@ -52,7 +52,7 @@
                 :value="item.status"
                 @change="onStatusChange(item.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option v-for="opt in SHOT_REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
+<option v-for="opt in REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
                   {{ opt }}
                 </option>
               </select>
@@ -78,10 +78,10 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
-  DEFAULT_SHOT_REVIEW_STATUS,
-  normalizeShotReviewStatus,
-  SHOT_REVIEW_STATUS_OPTIONS
-} from '@shared/domain'
+  DEFAULT_REVIEW_STATUS,
+  normalizeReviewStatus,
+  REVIEW_STATUS_OPTIONS
+} from '@shared/graph'
 import {
   emptyWorldElementCatalog,
   stableWorldElementId,
@@ -173,7 +173,7 @@ function onPromptChange(id: string, prompt: string): void {
 }
 
 function onStatusChange(id: string, value: string): void {
-  const next = normalizeShotReviewStatus(value)
+  const next = normalizeReviewStatus(value)
   const item = catalog[activeKind.value].find((row) => row.id === id)
   if (!item || next === item.status) return
   item.status = next
@@ -187,7 +187,7 @@ function onAdd(): void {
     id: stableWorldElementId(kind, name),
     name,
     prompt: '',
-    status: DEFAULT_SHOT_REVIEW_STATUS
+  status: DEFAULT_REVIEW_STATUS
   })
   schedulePersist()
 }

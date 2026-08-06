@@ -12,15 +12,12 @@ export function resolveAssetEditorGlobalsMode(_type?: AssetType | null): EditorG
 }
 
 export function parseGraphHostContext(hostId: string | null | undefined): {
-  kind: 'asset' | 'script' | 'unknown'
+  kind: 'asset' | 'unknown'
   id?: string
 } {
   if (!hostId) return { kind: 'unknown' }
   if (hostId.startsWith('asset:')) {
     return { kind: 'asset', id: hostId.slice('asset:'.length).split(':')[0] }
-  }
-  if (hostId.startsWith('script:')) {
-    return { kind: 'script', id: hostId.slice('script:'.length).split(':')[0] }
   }
   return { kind: 'unknown' }
 }

@@ -268,6 +268,7 @@ select {
 input,
 textarea,
 select {
+  background: var(--bg);
   /* 勿 color: inherit：父级 label 常用 --text-muted，会把下拉/输入正文染成灰字 */
   color: var(--text);
 }
@@ -411,11 +412,11 @@ input[type='range']:focus {
 }
 
 /*
- * 文本框缩放柄底色与 surface 同源。
+ * 文本框缩放柄底色与全局背景同源。
  * 覆盖 textarea 背景时请同步设置 --textarea-bg，否则右下角会出现色块。
  */
 textarea {
-  --textarea-bg: var(--bg-input);
+  --textarea-bg: var(--bg);
   background: var(--textarea-bg);
   resize: vertical;
   min-height: 80px;

@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { createOutputGraphNode, SHOT_VISUAL_OUTPUT_TITLE } from '../src/shared/graph'
+import { createOutputGraphNode, ASSET_TIMELINE_OUTPUT_TITLE } from '../src/shared/graph'
 import { graphOutputNodeId } from '../src/shared/graph/types'
 import { resolveGraphNodeDisplayTitle } from '../src/renderer/src/features/graph/model/graphNodeDisplayTitle'
 
 describe('resolveGraphNodeDisplayTitle', () => {
-  it('maps visual stock output title to i18n 图片输出', () => {
+  it('maps timeline stock output title to i18n 成片时间线', () => {
     const node = createOutputGraphNode('image', { x: 0, y: 0 }, {
-      id: graphOutputNodeId('image'),
-      title: SHOT_VISUAL_OUTPUT_TITLE,
-      params: { outputKind: 'image' }
+      id: graphOutputNodeId('timeline'),
+      title: ASSET_TIMELINE_OUTPUT_TITLE,
+      params: { outputKind: 'video' }
     })
     const title = resolveGraphNodeDisplayTitle(node, {
-      scope: 'visual',
-      t: (key) => (key === 'graph.titles.shotVisualOutput' ? '图片输出' : key),
+      scope: 'canvasAsset',
+      t: (key) => (key === 'graph.titles.timelineOutput' ? '成片时间线' : key),
       graphTypeLabel: (typeId) => typeId,
       fallbackId: node.id
     })
-    expect(title).toBe('图片输出')
+    expect(title).toBe('成片时间线')
   })
 
   it('keeps user-customized output titles', () => {
@@ -26,7 +26,7 @@ describe('resolveGraphNodeDisplayTitle', () => {
       params: { outputKind: 'image' }
     })
     const title = resolveGraphNodeDisplayTitle(node, {
-      scope: 'visual',
+      scope: 'canvasAsset',
       t: (key) => key,
       graphTypeLabel: (typeId) => typeId,
       fallbackId: node.id

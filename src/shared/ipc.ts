@@ -1,4 +1,4 @@
-import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig, Shot } from './domain'
+import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type { TimelineExportInput, TimelineExportResult } from './graph'
 import type {
@@ -31,7 +31,6 @@ export const IpcChannels = {
   ASSET_IMPORT: 'asset:import',
   ASSET_REIMPORT: 'asset:reimport',
   ASSET_CREATE: 'asset:create',
-  ASSET_CREATE_SERIES: 'asset:create-series',
   ASSET_DELETE: 'asset:delete',
   ASSET_RENAME: 'asset:rename',
   ASSET_UPDATE: 'asset:update',
@@ -54,16 +53,6 @@ export const IpcChannels = {
   FOLDER_CREATE: 'folder:create',
   FOLDER_RENAME: 'folder:rename',
   FOLDER_DELETE: 'folder:delete',
-
-  // Shots
-  SHOT_LIST: 'shot:list',
-  SHOT_GET: 'shot:get',
-  SHOT_CREATE: 'shot:create',
-  SHOT_UPDATE: 'shot:update',
-  SHOT_DELETE: 'shot:delete',
-  SHOT_REORDER: 'shot:reorder',
-  /** 批量同步某剧本下的分镜列表（一次落盘） */
-  SHOT_SYNC_SCRIPT: 'shot:sync-script',
 
   // Generation
   GEN_TEXT: 'gen:text',
@@ -106,12 +95,14 @@ export const IpcChannels = {
   // Declarative external extensions
   PLUGIN_LIST: 'plugin:list',
 
-  // Canvas export
-  CANVAS_SAVE_PNG: 'canvas:save-png',
   /** 将图执行产物 dataUrl 写入图片输出目录（默认 Output/images） */
   GRAPH_SAVE_RUN_MEDIA: 'graph:save-run-media',
   /** 将图执行产物文本写入剧本输出目录（默认 Assets/{资产名}/Texts） */
   GRAPH_SAVE_RUN_TEXT: 'graph:save-run-text',
+  /** 读取工程内相对路径文本文件（agent-state.json 等） */
+  PROJECT_READ_FILE: 'project:read-file',
+  /** 写入工程内相对路径文本文件（agent-state.json 等） */
+  PROJECT_WRITE_FILE: 'project:write-file',
   /** 删除图执行产物及对应缩略图（允许的图片输出目录内） */
   GRAPH_DELETE_RUN_MEDIA: 'graph:delete-run-media',
   /** 用工程内相对路径媒体挂到资产上 */
@@ -149,7 +140,6 @@ export interface OpenProjectResult {
   config: ProjectConfig
   assets: AssetInfo[]
   folders: AssetFolder[]
-  shots: Shot[]
 }
 
 export interface ImportAssetsInput {
@@ -183,7 +173,6 @@ export interface CreateAssetInput {
   notes?: string
   genParams?: Record<string, unknown>
   /** 脚本资产：为 true 时不自动创建首个分镜（由草稿保存流程写入） */
-  skipScriptBootstrap?: boolean
 }
 
 /** AI 自由构图：规划输入（可含图/视频默认模型与预设骨架） */
@@ -195,6 +184,8 @@ export interface PlanAiWorkflowInput {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
+  /** 统一分辨率：写入所有图片/视频生成节点与宫格提取输出 */
+  generateResolution?: string
   presetId?: string
   /** true：只用预设固化拓扑，不调用文本模型 */
   useSeedOnly?: boolean
@@ -259,6 +250,8 @@ export interface CommitAiWorkflowInput {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
+  /** 统一分辨率：写入所有图片/视频生成节点与宫格提取输出 */
+  generateResolution?: string
 }
 
 export interface CommitAiWorkflowResult {
@@ -275,30 +268,6 @@ export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
 }
 
 export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
-
-export interface CreateSeriesWithStarterInput {
-  name?: string
-  folderId?: string | null
-  /** 子资产名称；缺省为「剧集名 + ASSET_TYPE_LABELS」 */
-  childNames?: Partial<
-    Record<'screenplay' | 'world' | 'beat' | 'script', string>
-  >
-  /** 子资产所在目录名（按类型）；缺省为 ASSET_TYPE_LABELS */
-  childFolderNames?: Partial<
-    Record<'screenplay' | 'world' | 'beat' | 'script', string>
-  >
-}
-
-export interface CreateShotInput {
-  title?: string
-  scriptAssetId?: string
-}
-
-/** 批量同步剧本分镜：写入有序列表并删除多余项 */
-export interface SyncScriptShotsInput {
-  scriptAssetId: string
-  orderedShots: Shot[]
-}
 
 export interface CreateFolderInput {
   name?: string
@@ -354,7 +323,7 @@ export type {
   PreviewAssetPackageResult
 } from './assetPackage/types'
 
-export type AutosaveKind = 'shot' | 'asset'
+export type AutosaveKind = 'asset'
 
 export interface AutosaveEntry {
   kind: AutosaveKind
@@ -373,7 +342,7 @@ export interface AutosaveManifest {
 export interface AutosaveWriteInput {
   kind: AutosaveKind
   id: string
-  payload: Shot | AssetInfo
+  payload: AssetInfo
   canonicalUpdatedAt?: string
 }
 
@@ -439,7 +408,6 @@ export interface StudioApi {
   reimportAssets: (input: ReimportAssetsInput) => Promise<ReimportAssetsResult>
   createAsset: (input: CreateAssetInput) => Promise<AssetInfo>
   /** 创建剧集并预置剧本/世界/场/分镜宿主节点与连线 */
-  createSeriesWithStarter: (input: CreateSeriesWithStarterInput) => Promise<AssetInfo>
   deleteAsset: (assetId: string) => Promise<void>
   renameAsset: (assetId: string, name: string) => Promise<AssetInfo>
   updateAsset: (asset: AssetInfo) => Promise<AssetInfo>
@@ -488,14 +456,6 @@ export interface StudioApi {
   renameFolder: (folderId: string, name: string) => Promise<AssetFolder>
   deleteFolder: (input: DeleteFolderInput | string) => Promise<void>
 
-  listShots: () => Promise<Shot[]>
-  getShot: (shotId: string) => Promise<Shot | null>
-  createShot: (input?: CreateShotInput) => Promise<Shot>
-  updateShot: (shot: Shot) => Promise<Shot>
-  deleteShot: (shotId: string) => Promise<void>
-  reorderShots: (shotIds: string[]) => Promise<void>
-  syncScriptShots: (input: SyncScriptShotsInput) => Promise<Shot[]>
-
   generateText: (input: GenerateTextInput) => Promise<GenerateTextResult>
   generateImage: (input: GenerateImageInput) => Promise<GenerateImageResult & { assetId?: string }>
   generateVideo: (
@@ -523,14 +483,17 @@ export interface StudioApi {
 
   writeAutosave: (input: AutosaveWriteInput) => Promise<AutosaveEntry>
   listAutosaves: () => Promise<AutosaveManifest>
-  readAutosave: (filter: Required<AutosaveFilter>) => Promise<Shot | AssetInfo | null>
+  readAutosave: (filter: Required<AutosaveFilter>) => Promise<AssetInfo | null>
   discardAutosave: (filter?: AutosaveFilter) => Promise<void>
   listPlugins: () => Promise<ExternalPluginManifest[]>
 
-  saveCanvasPng: (shotId: string, dataUrl: string) => Promise<string>
   saveGraphRunMedia: (input: SaveGraphRunMediaInput) => Promise<string>
   /** 将图执行剧本文本写入输出目录 */
   saveGraphRunText: (input: SaveGraphRunTextInput) => Promise<string>
+  /** 读取工程内相对路径文本文件；不存在返回 null */
+  readProjectFile: (relativePath: string) => Promise<string | null>
+  /** 写入工程内相对路径文本文件；路径越界返回 false */
+  writeProjectFile: (input: { relativePath: string; content: string }) => Promise<boolean>
   /** 删除图执行产物原图及缩略图 */
   deleteGraphRunMedia: (relativePath: string) => Promise<void>
 

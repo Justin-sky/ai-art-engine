@@ -3,19 +3,15 @@ import { computed, ref } from 'vue'
 import {
   createDefaultDirectorStage,
   createDraftAssetId,
-  createDraftShotId,
-  createEmptyShot,
   defaultAssetName,
   isDraftAssetId,
   normalizeAssetType,
   type AssetInfo,
   type AssetType,
-  type Resolution,
-  type Shot
+  type Resolution
 } from '@shared/domain'
 import { createDefaultScopedGraph } from '@shared/graph'
 import i18n from '../i18n'
-import { toPlain } from '../utils/toPlain'
 
 export interface DraftAssetRecord {
   id: string
@@ -28,14 +24,13 @@ export interface DraftAssetRecord {
   notes: string
   genParams?: Record<string, unknown>
   pendingFilePath?: string
-  shots?: Shot[]
 }
 
 function nowIso(): string {
   return new Date().toISOString()
 }
 
-function emptyDraft(type: AssetType, resolution: Resolution): DraftAssetRecord {
+function emptyDraft(type: AssetType): DraftAssetRecord {
   const id = createDraftAssetId()
   const draft: DraftAssetRecord = {
     id,
@@ -46,19 +41,6 @@ function emptyDraft(type: AssetType, resolution: Resolution): DraftAssetRecord {
     prompt: '',
     notes: '',
     genParams: {}
-  }
-  if (type === 'script') {
-    const ts = nowIso()
-    draft.genParams = { graphJson: createDefaultScopedGraph('scriptAsset', 'script') }
-    draft.shots = [
-      {
-        ...createEmptyShot(i18n.global.t('shot.defaultName'), resolution),
-        id: createDraftShotId(),
-        scriptAssetId: id,
-        createdAt: ts,
-        updatedAt: ts
-      }
-    ]
   }
   if (type === 'canvas') {
     draft.genParams = {
@@ -105,8 +87,8 @@ export const useDraftStore = defineStore('drafts', () => {
     return draftById.value.get(id) ?? null
   }
 
-  function createDraft(type: AssetType, resolution: Resolution): DraftAssetRecord {
-    const draft = emptyDraft(type, resolution)
+  function createDraft(type: AssetType, _resolution: Resolution): DraftAssetRecord {
+    const draft = emptyDraft(type)
     drafts.value = [...drafts.value, draft]
     return draft
   }
@@ -127,45 +109,6 @@ export const useDraftStore = defineStore('drafts', () => {
     drafts.value = []
   }
 
-  function listDraftShots(scriptDraftId: string): Shot[] {
-    return getDraft(scriptDraftId)?.shots ?? []
-  }
-
-  function persistDraftShot(scriptDraftId: string, shot: Shot): void {
-    const draft = getDraft(scriptDraftId)
-    if (!draft?.shots) return
-    const plain = toPlain(shot)
-    const idx = draft.shots.findIndex((s) => s.id === plain.id)
-    const nextShots =
-      idx >= 0
-        ? draft.shots.map((s, i) => (i === idx ? { ...plain, updatedAt: nowIso() } : s))
-        : [...draft.shots, { ...plain, updatedAt: nowIso() }]
-    updateDraft(scriptDraftId, { shots: nextShots })
-  }
-
-  function addDraftShot(scriptDraftId: string, resolution: Resolution): Shot | null {
-    const draft = getDraft(scriptDraftId)
-    if (!draft) return null
-    const ts = nowIso()
-    const shot: Shot = {
-      ...createEmptyShot(i18n.global.t('shot.defaultName'), resolution),
-      id: createDraftShotId(),
-      scriptAssetId: scriptDraftId,
-      createdAt: ts,
-      updatedAt: ts
-    }
-    updateDraft(scriptDraftId, { shots: [...(draft.shots ?? []), shot] })
-    return shot
-  }
-
-  function deleteDraftShot(scriptDraftId: string, shotId: string): void {
-    const draft = getDraft(scriptDraftId)
-    if (!draft?.shots) return
-    updateDraft(scriptDraftId, {
-      shots: draft.shots.filter((s) => s.id !== shotId)
-    })
-  }
-
   function isDraft(id: string): boolean {
     return isDraftAssetId(id) && !!getDraft(id)
   }
@@ -177,10 +120,6 @@ export const useDraftStore = defineStore('drafts', () => {
     updateDraft,
     removeDraft,
     clearAll,
-    listDraftShots,
-    persistDraftShot,
-    addDraftShot,
-    deleteDraftShot,
     isDraft
   }
 })

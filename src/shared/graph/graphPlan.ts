@@ -69,7 +69,14 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'generateAudio',
   'notes',
   'label',
-  'inputDataType'
+  'inputDataType',
+  'episodeStep',
+  'episodeReviewTarget',
+  'anchorIndex',
+  'cellGroupIndex',
+  'cellIndex',
+  'episodeScopeKey',
+  'imageGridSplit'
 ])
 
 export interface GraphPlanMediaModelDefaults {
@@ -77,6 +84,8 @@ export interface GraphPlanMediaModelDefaults {
   imageProviderInstanceId?: string
   videoModel?: string
   videoProviderInstanceId?: string
+  /** 一键工作流统一分辨率：注入到图片/视频生成节点与宫格提取输出 */
+  generateResolution?: string
 }
 
 export interface GraphPlanPreview {
@@ -85,11 +94,15 @@ export interface GraphPlanPreview {
   edges: Array<{ from: string; to: string; fromPort?: string; toPort?: string }>
 }
 
-/** 将默认图/视频模型写入计划中尚未指定模型的生成节点 */
+/**
+ * 将默认图/视频模型写入计划中尚未指定模型的生成节点，
+ * 并在指定统一分辨率时覆盖图片/视频生成节点与宫格提取节点的输出分辨率。
+ */
 export function applyDefaultGenerateModels(
   plan: GraphPlan,
   defaults: GraphPlanMediaModelDefaults
 ): GraphPlan {
+  const resolution = defaults.generateResolution?.trim() || ''
   const nodes = plan.nodes.map((node) => {
     const params = { ...(node.params ?? {}) }
     if (node.typeId === 'asset.image') {
@@ -99,6 +112,7 @@ export function applyDefaultGenerateModels(
       if (defaults.imageProviderInstanceId && !params.generateProviderInstanceId) {
         params.generateProviderInstanceId = defaults.imageProviderInstanceId
       }
+      if (resolution) params.generateResolution = resolution
     } else if (node.typeId === 'asset.video') {
       if (defaults.videoModel && !params.generateModel) {
         params.generateModel = defaults.videoModel
@@ -106,6 +120,13 @@ export function applyDefaultGenerateModels(
       if (defaults.videoProviderInstanceId && !params.generateProviderInstanceId) {
         params.generateProviderInstanceId = defaults.videoProviderInstanceId
       }
+      if (resolution) params.generateResolution = resolution
+    } else if (node.typeId === 'image.gridSplit' && resolution) {
+      const grid =
+        params.imageGridSplit && typeof params.imageGridSplit === 'object'
+          ? { ...(params.imageGridSplit as Record<string, unknown>) }
+          : {}
+      params.imageGridSplit = { ...grid, resolution }
     } else {
       return node
     }

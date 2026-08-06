@@ -85,9 +85,6 @@ type StoredGeneratedText = {
 }
 
 const PASS_THROUGH_TYPE_IDS = new Set([
-  'script.shotTable',
-  'script.shotImageGen',
-  'script.shotVideoGen',
   'world.table',
   'world.gen',
   'beat.table',
@@ -126,8 +123,6 @@ const hint = computed(() => {
   if (typeId === 'world.gen') return t('graph.inspector.worldGen.hint')
   if (typeId === 'beat.table') return t('graph.inspector.beatTable.hint')
   if (typeId === 'beat.gen') return t('graph.inspector.beatGen.hint')
-  if (typeId === 'script.shotImageGen') return t('graph.inspector.shotImageGen.hint')
-  if (typeId === 'script.shotVideoGen') return t('graph.inspector.shotVideoGen.hint')
   return t('graph.inspector.shotTable.hint')
 })
 

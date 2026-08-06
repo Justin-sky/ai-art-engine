@@ -116,15 +116,6 @@ export function useInspectorTarget(): ComputedRef<InspectorTarget> {
       }
     }
 
-    if (selection.kind === 'shot') {
-      const shot = project.activeShot
-      return {
-        kind: 'shot',
-        key: shot ? `shot:${shot.id}` : 'shot:none',
-        subject: shot
-      }
-    }
-
     if (selection.kind === 'beatUnit') {
       const beatId = selection.id ?? workspace.activeBeatId
       const assetId = workspace.activeBeatAssetId

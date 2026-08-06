@@ -26,9 +26,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
+import { buildCanvasStarterGraph } from '@shared/graph'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
-import { useSeriesCreation } from '../composables/useSeriesCreation'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptText, promptAlert } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
@@ -54,7 +54,6 @@ const displayItems = computed(() =>
 
 const { createAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
-const { createSeriesWithStarter } = useSeriesCreation()
 const { t, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 const activeTip = ref<string | null>(null)
@@ -96,13 +95,16 @@ async function createFreeCanvas(): Promise<void> {
     return
   }
   if (props.deferSave) {
-    createDraftAndOpen('canvas', { name, genParams: { canvasKind: 'free' } })
+    createDraftAndOpen('canvas', {
+      name,
+      genParams: { canvasKind: 'free', graphJson: buildCanvasStarterGraph() }
+    })
     return
   }
   await createAsset('canvas', props.folderId ?? null, {
     openEditor: true,
     name,
-    genParams: { canvasKind: 'free' }
+    genParams: { canvasKind: 'free', graphJson: buildCanvasStarterGraph() }
   })
 }
 
@@ -110,12 +112,6 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   if (busyId.value) return
   busyId.value = item.id
   try {
-    if (item.id === 'canvas') {
-      await createSeriesWithStarter(props.folderId ?? null, {
-        openEditor: item.openOnCreate
-      })
-      return
-    }
     if (item.id === 'freeCanvas') {
       await createFreeCanvas()
       return

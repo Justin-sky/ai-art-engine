@@ -103,6 +103,77 @@ describe('graphPlan materialize', () => {
     expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
   })
 
+  it('injects unified resolution into image/video/grid-split nodes', () => {
+    const plan: GraphPlan = {
+      nodes: [
+        {
+          key: 'img',
+          typeId: 'asset.image',
+          params: { generateResolution: '4K' }
+        },
+        { key: 'vid', typeId: 'asset.video' },
+        {
+          key: 'split',
+          typeId: 'image.gridSplit',
+          params: {
+            imageGridSplit: {
+              rows: 2,
+              cols: 2,
+              selected: ['1-1'],
+              scale: 2
+            }
+          }
+        }
+      ],
+      edges: []
+    }
+    const next = applyDefaultGenerateModels(plan, { generateResolution: '2K' })
+    expect(next.nodes[0]?.params?.generateResolution).toBe('2K')
+    expect(next.nodes[1]?.params?.generateResolution).toBe('2K')
+    const split = next.nodes[2]?.params?.imageGridSplit as Record<string, unknown>
+    expect(split).toMatchObject({
+      rows: 2,
+      cols: 2,
+      selected: ['1-1'],
+      scale: 2,
+      resolution: '2K'
+    })
+  })
+
+  it('keeps grid-split params during materialization', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'split',
+            typeId: 'image.gridSplit',
+            params: {
+              imageGridSplit: {
+                rows: 2,
+                cols: 2,
+                selected: ['1-2'],
+                scale: 1,
+                resolution: '2K'
+              }
+            }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const split = result.document!.nodes.find(
+      (n) => n.typeId === 'image.gridSplit'
+    )!
+    expect(split.params.imageGridSplit).toMatchObject({
+      rows: 2,
+      cols: 2,
+      selected: ['1-2'],
+      resolution: '2K'
+    })
+  })
+
   it('materializes every curated preset seed plan', () => {
     for (const id of [
       'gameUaVideo',
@@ -203,5 +274,44 @@ describe('graphPlan materialize', () => {
         wired.edges.filter((e) => boutIds.includes(e.target)).map((e) => e.target)
       ).size
     ).toBe(3)
+  })
+
+  it('aggregates shortDrama sinks into plural square host ports by category', () => {
+    const plan = getAiWorkflowPresetPlan('shortDrama')
+    expect(plan).toBeTruthy()
+    const result = materializeGraphPlan(plan!, {
+      scope: 'subgraphAsset',
+      assetType: 'subgraph'
+    })
+    expect(result.ok, result.error).toBe(true)
+    const iface = inferHostInterfaceFromGraph(result.document!)
+    const videoOuts = iface.outputs.filter(
+      (p) => p.dataType === 'video' || p.dataType === 'videos'
+    )
+    const textOuts = iface.outputs.filter(
+      (p) => p.dataType === 'text' || p.dataType === 'texts'
+    )
+    // 36 路视频应收成一个视频组方形口，而不是 36 个单数口
+    expect(videoOuts).toHaveLength(1)
+    expect(videoOuts[0]).toMatchObject({
+      dataType: 'videos',
+      multiple: true
+    })
+    expect(iface.outputs.length).toBeLessThan(10)
+
+    const wired = ensureBoundaryProxyNodes(result.document!, iface)
+    const boutId = boundaryOutputNodeId(videoOuts[0]!.id)
+    const videoGens = wired.nodes.filter((n) => n.typeId === 'asset.video')
+    expect(videoGens.length).toBe(36)
+    const wiredVideos = videoGens.filter((gen) =>
+      wired.edges.some((e) => e.source === gen.id && e.target === boutId)
+    )
+    expect(wiredVideos.length).toBe(36)
+
+    // 导演审核等多路文本汇点 → 文本组
+    if (textOuts.length) {
+      expect(textOuts[0]?.dataType).toBe('texts')
+      expect(textOuts[0]?.multiple).toBe(true)
+    }
   })
 })

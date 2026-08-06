@@ -469,7 +469,6 @@ import {
 } from '@shared/folderTree'
 import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { useAssetCreation } from '../composables/useAssetCreation'
-import { useSeriesCreation } from '../composables/useSeriesCreation'
 import {
   listRegisteredToolbarItems
 } from '../editor/extensions'
@@ -562,7 +561,6 @@ const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
-const { createSeriesWithStarter } = useSeriesCreation()
 const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
 
 /** 右键新建项：按显示名 Unity NaturalCompare（与资产目录一致） */
@@ -764,7 +762,6 @@ async function onPackageDialogConfirm(payload: {
     packageDialog.value = { ...packageDialog.value, open: false, busy: false }
     if (result.canceled) return
     await project.refreshLibrary()
-    await project.refreshShots()
     await openNameDialog({
       mode: 'alert',
       title: t('asset.browser.importPackage'),
@@ -861,7 +858,6 @@ const filterTypes: AssetType[] = [
   'subgraph',
   'world',
   'beat',
-  'script',
   'screenplay',
   'image',
   'video',
@@ -1704,10 +1700,7 @@ async function promptCreateAssetName(options: {
 async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   const folderId = resolveCreateParentId()
   closeMenu()
-  if (item.id === 'canvas') {
-    // 剧集创建内部已弹命名框
-    await createSeriesWithStarter(folderId)
-  } else if (item.id === 'freeCanvas') {
+  if (item.id === 'freeCanvas') {
     const name = await promptCreateAssetName({
       title: t('asset.create.freeCanvasNameTitle'),
       message: t('asset.create.freeCanvasNameMessage'),
@@ -1750,15 +1743,10 @@ async function deleteFolderTarget(mode: 'hoist' | 'deleteContents' = 'hoist'): P
       })
       return
     }
-    let message = assetsInFolder.some((asset) => asset.type === 'script')
-      ? t('asset.folder.deleteWithContentsConfirmScripts', {
-          name: folder?.name ?? id,
-          count: assetIds.length
-        })
-      : t('asset.folder.deleteWithContentsConfirm', {
-          name: folder?.name ?? id,
-          count: assetIds.length
-        })
+    let message = t('asset.folder.deleteWithContentsConfirm', {
+      name: folder?.name ?? id,
+      count: assetIds.length
+    })
     try {
       const { hits } = await window.studio.findAssetReferences(assetIds)
       if (hits.length) {
@@ -1795,7 +1783,6 @@ async function deleteFolderTarget(mode: 'hoist' | 'deleteContents' = 'hoist'): P
     }
     await project.refreshLibrary()
     if (mode === 'deleteContents') {
-      await project.refreshShots()
     }
   } catch (e) {
     void openNameDialog({
@@ -2286,10 +2273,7 @@ async function deleteAssets(ids: string[]): Promise<void> {
 }
 
 function formatReferenceSite(site: AssetReferenceSite): string {
-  if (site.kind === 'asset') {
-    return t('asset.browser.referencesAsset', { name: site.assetName })
-  }
-  return t('asset.browser.referencesShot', { title: site.shotTitle })
+  return t('asset.browser.referencesAsset', { name: site.assetName })
 }
 
 function formatReferenceMessage(hits: AssetReferenceHit[], forDelete: boolean): string {

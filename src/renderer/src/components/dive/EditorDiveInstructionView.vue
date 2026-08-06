@@ -46,8 +46,6 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'optimize'
     case 'beat.unitGen':
       return 'beatUnitGen'
-    case 'script.shotSplit':
-      return 'shotSplit'
     case 'world.extract':
       return 'worldExtract'
     case 'beat.split':

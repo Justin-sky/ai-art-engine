@@ -5,7 +5,6 @@ import type { WorldElementKind } from '@shared/graph'
 export type EditorDiveKind =
   | 'asset'
   | 'screenplay'
-  | 'script'
   | 'canvas'
   | 'world'
   | 'beat'
@@ -13,14 +12,12 @@ export type EditorDiveKind =
 
 /** 逻辑视图 id（双击侧栏/表格/工具/预览等） */
 export type EditorDiveViewId =
-  | 'script.shotImage'
-  | 'script.shotVideo'
-  | 'script.shotTable'
   | 'script.timeline'
   | 'world.editor'
   | 'world.table'
   | 'beat.gen'
   | 'beat.table'
+  | 'episode.pipeline'
   | 'director.stage'
   | 'node.notepad'
   | 'node.textsPreview'
@@ -65,14 +62,12 @@ export type EditorDiveNodeToolViewId = Extract<
 >
 
 export type EditorDiveViewMeta =
-  | { viewId: 'script.shotImage'; scriptAssetId: string }
-  | { viewId: 'script.shotVideo'; scriptAssetId: string }
-  | { viewId: 'script.shotTable'; scriptAssetId: string }
   | { viewId: 'script.timeline'; scriptAssetId: string }
   | { viewId: 'world.editor'; worldAssetId: string; tab?: WorldElementKind }
   | { viewId: 'world.table'; worldAssetId: string }
   | { viewId: 'beat.gen'; beatAssetId: string }
   | { viewId: 'beat.table'; beatAssetId: string }
+  | { viewId: 'episode.pipeline'; hostAssetId: string }
   | {
       viewId: 'director.stage'
       directorAssetId: string
@@ -128,7 +123,6 @@ export const editorDiveKey: InjectionKey<EditorDiveContext> = Symbol('editorDive
 const ROOT_KEY_PREFIX: Record<EditorDiveKind, string> = {
   asset: 'asset-editor-',
   screenplay: 'screenplay-editor-',
-  script: 'script-editor-',
   canvas: 'canvas-editor-',
   world: 'world-editor-',
   beat: 'beat-editor-',
@@ -147,9 +141,6 @@ export function editorDiveAssetFrameKey(kind: EditorDiveKind, assetId: string): 
 export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta): string {
   const root = rootKey.trim()
   switch (meta.viewId) {
-    case 'script.shotImage':
-    case 'script.shotVideo':
-    case 'script.shotTable':
     case 'script.timeline':
       return `${root}/view:${meta.viewId}:${meta.scriptAssetId}`
     case 'world.table':
@@ -159,6 +150,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
     case 'beat.table':
     case 'beat.gen':
       return `${root}/view:${meta.viewId}:${meta.beatAssetId}`
+    case 'episode.pipeline':
+      return `${root}/view:episode.pipeline:${meta.hostAssetId}`
     case 'director.stage':
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'media.preview':

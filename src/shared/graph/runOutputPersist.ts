@@ -51,7 +51,6 @@ function cloneGraphValue(value: GraphValue): GraphValue {
       return { ...value }
     case 'world':
     case 'beat':
-    case 'shots':
       return { ...value }
     case 'texts':
       return {
@@ -511,7 +510,7 @@ export function resolveHostMediaSyncSource(
       const fromOutImages = fromImages(out.images)
       if (fromOutImages) return fromOutImages
     }
-    if (hostType === 'script' || hostType === 'video') {
+    if (hostType === 'video') {
       for (const item of out.videos ?? []) {
         if (item.relativePath?.trim()) {
           return { kind: 'relativePath', relativePath: item.relativePath }

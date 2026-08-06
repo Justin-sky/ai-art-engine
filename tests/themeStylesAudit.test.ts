@@ -23,7 +23,6 @@ const RESIZE_CHROME_FILES = [
   'components/ExpandableTextarea.vue',
   'components/RefMentionTextarea.vue',
   'components/GraphInstructionMentionEditor.vue',
-  'components/ShotTable.vue',
   'styles/main.css'
 ] as const
 

@@ -1,4 +1,5 @@
-import { isDraftAssetId, normalizeShotReviewStatus } from '@shared/domain'
+import { isDraftAssetId } from '@shared/domain'
+import { normalizeReviewStatus } from '@shared/graph'
 import {
   emptyWorldElementCatalog,
   extractWorldCatalogJsonText,
@@ -72,7 +73,7 @@ export function catalogFromWorldGenParams(
     if (!doc?.nodes?.length) continue
     const byId = new Map<
       string,
-      { id: string; name: string; prompt: string; status: ReturnType<typeof normalizeShotReviewStatus> }
+  { id: string; name: string; prompt: string; status: ReturnType<typeof normalizeReviewStatus> }
     >()
     for (const node of doc.nodes) {
       const id = readWorldElementIdFromNodeParams(node.params)
@@ -81,14 +82,14 @@ export function catalogFromWorldGenParams(
         id,
         name: id,
         prompt: '',
-        status: normalizeShotReviewStatus(undefined)
+  status: normalizeReviewStatus(undefined)
       }
       if (node.typeId === 'play.script') {
         prev.prompt = node.params.text?.trim() || ''
         if (node.title?.trim()) prev.name = node.title.trim()
       } else if (node.typeId === 'asset.image') {
         if (node.title?.trim()) prev.name = node.title.trim()
-        prev.status = normalizeShotReviewStatus(node.params.reviewStatus)
+  prev.status = normalizeReviewStatus(node.params.reviewStatus)
       } else if (node.typeId === 'output.image') {
         if (!prev.name || prev.name === id) {
           const title = node.title?.trim()

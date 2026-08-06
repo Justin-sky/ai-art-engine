@@ -1,20 +1,18 @@
 /**
- * 从剧本资产图「分镜输出 / 成片时间线」上游收集可编排视频素材。
+ * 从宿主资产图收集可编排视频素材：
+ * 优先输出节点（output.video / output.timeline），再回退扫描所有 asset.video 节点的产物。
  */
-import { isDraftAssetId, shotScriptAssetId } from '@shared/domain'
+import { isDraftAssetId } from '@shared/domain'
 import {
   GRAPH_OUTPUT_NODE_IDS,
   flattenVideosValues,
-  parseVideoEntities,
   type GraphDocument,
   type GraphVideoItem,
-  type ScriptTimelineSource,
-  type VideoEntityResult
+  type ScriptTimelineSource
 } from '@shared/graph'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 import { graphRunHosts } from '../graph/model/graphRunHosts'
-import { collectScriptShotVideos } from './shotVisualPipeline'
 
 function readScriptGraph(scriptAssetId: string): GraphDocument | null {
   if (isDraftAssetId(scriptAssetId)) {
@@ -49,50 +47,6 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
   }
 }
 
-function urlToSource(
-  url: string,
-  index: number,
-  shotName?: string
-): ScriptTimelineSource | null {
-  const trimmed = url.trim()
-  if (!trimmed || trimmed.startsWith('data:')) return null
-  const project = useProjectStore()
-  const asset = project.assets.find(
-    (a) =>
-      a.type === 'video' && a.relativePath?.replace(/\\/g, '/') === trimmed.replace(/\\/g, '/')
-  )
-  return {
-    id: asset?.id || trimmed || `video:${index}`,
-    title: asset?.name?.trim() || shotName?.trim() || `视频 ${index + 1}`,
-    relativePath: trimmed,
-    assetId: asset?.id,
-    durationSec: undefined
-  }
-}
-
-function entitiesToSources(entities: VideoEntityResult[]): ScriptTimelineSource[] {
-  const sources: ScriptTimelineSource[] = []
-  const seen = new Set<string>()
-  for (const entity of entities) {
-    for (const url of entity.videoUrls) {
-      const src = urlToSource(url, sources.length, entity.name)
-      if (!src || seen.has(src.id)) continue
-      seen.add(src.id)
-      sources.push(src)
-    }
-  }
-  return sources
-}
-
-function readVideoEntitiesFromValue(value: unknown): VideoEntityResult[] {
-  if (!value || typeof value !== 'object') return []
-  const v = value as { kind?: string; text?: string }
-  if (v.kind === 'videoEntities' && typeof v.text === 'string') {
-    return parseVideoEntities(v.text)
-  }
-  return []
-}
-
 function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimelineSource[] {
   const output =
     doc.nodes.find((n) => n.id === GRAPH_OUTPUT_NODE_IDS.video) ||
@@ -103,14 +57,6 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
   if (!output) return []
 
   const runOut = graphRunHosts.get(hostId)?.runStates?.[output.id]?.outputs?.out
-  const fromEntities = readVideoEntitiesFromValue(runOut)
-  if (fromEntities.length) return entitiesToSources(fromEntities)
-
-  const fromParams = Array.isArray(output.params?.videoEntities)
-    ? parseVideoEntities(JSON.stringify(output.params.videoEntities))
-    : []
-  if (fromParams.length) return entitiesToSources(fromParams)
-
   const fromRun = runOut ? flattenVideosValues([runOut]) : []
   if (fromRun.length) {
     return fromRun
@@ -126,15 +72,6 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
     const sourceNode = doc.nodes.find((n) => n.id === edge.source)
     if (!sourceNode) continue
     const upstreamOut = graphRunHosts.get(hostId)?.runStates?.[sourceNode.id]?.outputs?.out
-    const upstreamEntities = readVideoEntitiesFromValue(upstreamOut)
-    if (upstreamEntities.length) {
-      for (const src of entitiesToSources(upstreamEntities)) {
-        if (seen.has(src.id)) continue
-        seen.add(src.id)
-        sources.push(src)
-      }
-      continue
-    }
     const videos = upstreamOut ? flattenVideosValues([upstreamOut]) : []
     for (const [i, item] of videos.entries()) {
       const src = videoItemToSource(item, sources.length + i)
@@ -153,6 +90,40 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
         })
       }
     }
+  }
+  return sources
+}
+
+/** 回退：扫描宿主图中所有 asset.video 节点的视频产物（agent 流水线 36 条动态视频） */
+function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimelineSource[] {
+  const sources: ScriptTimelineSource[] = []
+  const seen = new Set<string>()
+  const push = (relativePath: string | undefined, assetId: string | undefined, title?: string): void => {
+    const key = assetId || relativePath || ''
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    const src = videoItemToSource(
+      { id: assetId, relativePath, createdAt: undefined },
+      sources.length
+    )
+    if (!src) return
+    if (title) src.title = title
+    sources.push(src)
+  }
+  for (const node of doc.nodes) {
+    if (node.typeId !== 'asset.video') continue
+    const title = node.title?.trim()
+    const params = node.params ?? {}
+    const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
+    if (runOut) {
+      const videos = flattenVideosValues([runOut])
+      for (const item of videos) push(item.relativePath, item.id, title)
+    }
+    for (const item of Array.isArray(params.generatedVideos) ? params.generatedVideos : []) {
+      push(item?.relativePath, item?.id, title)
+    }
+    const rel = params.previewRelativePath?.trim()
+    if (rel) push(rel, undefined, title)
   }
   return sources
 }
@@ -176,20 +147,10 @@ export async function collectScriptTimelineSources(input: {
     if (fromGraph.length) return asInputSources(fromGraph)
   }
 
-  // 回退：收集各镜 shotWorkflow 已有视频
-  const project = useProjectStore()
-  const shots = isDraftAssetId(input.scriptAssetId)
-    ? useDraftStore().getDraft(input.scriptAssetId)?.shots ?? []
-    : project.shots.filter((s) => shotScriptAssetId(s) === input.scriptAssetId)
-  if (!shots.length) return []
-  const collected = await collectScriptShotVideos({
-    scriptAssetId: input.scriptAssetId,
-    shots
-  })
-  if (collected.entities.length) return asInputSources(entitiesToSources(collected.entities))
-  return asInputSources(
-    collected.videos
-      .map((item, i) => videoItemToSource(item, i))
-      .filter((item): item is ScriptTimelineSource => !!item)
-  )
+  // 回退：扫描宿主图中所有 asset.video 节点产物
+  if (doc) {
+    const fromVideoNodes = collectFromVideoNodes(doc, hostId)
+    if (fromVideoNodes.length) return asInputSources(fromVideoNodes)
+  }
+  return []
 }

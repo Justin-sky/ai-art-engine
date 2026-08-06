@@ -12,7 +12,7 @@ import {
 import { normalizeScopedGraph } from './normalize'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
 import { GraphPortType } from './types'
-import { normalizeShotReviewStatus } from '../domain'
+import { normalizeReviewStatus } from './reviewStatus'
 import {
   hostInterfaceForElementWorkflow,
   readWorldElementIdFromNodeParams,
@@ -185,7 +185,7 @@ export function syncWorldElementKindGraph(
           params: {
             worldElementId: item.id,
             generateInstruction: '',
-            reviewStatus: normalizeShotReviewStatus(item.status)
+  reviewStatus: normalizeReviewStatus(item.status)
           }
         }),
       (node) => ({
@@ -196,7 +196,7 @@ export function syncWorldElementKindGraph(
           ...node.params,
           worldElementId: item.id,
           generateInstruction: '',
-          reviewStatus: normalizeShotReviewStatus(item.status)
+  reviewStatus: normalizeReviewStatus(item.status)
         }
       })
     )

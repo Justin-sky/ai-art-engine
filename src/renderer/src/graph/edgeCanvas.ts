@@ -411,7 +411,8 @@ export function drawGraphEdges(
     const dashTravel = 160 * zoom
     const offset = -((opts.flowTimeMs % period) / period) * dashTravel
     for (const g of visibleGeoms) {
-      if (!flowEdgeIds.has(g.source)) continue
+      // 选中节点的出边与入边都流动：入边流向选中节点（终点白色在 target 端）
+      if (!flowEdgeIds.has(g.source) && !flowEdgeIds.has(g.target)) continue
       const grad = ctx.createLinearGradient(g.sx, g.sy, g.ex, g.ey)
       grad.addColorStop(0, 'rgba(94, 200, 255, 0)')
       grad.addColorStop(0.18, 'rgba(94, 200, 255, 0.06)')

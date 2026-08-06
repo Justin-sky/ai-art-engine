@@ -20,7 +20,7 @@
       :asset-id="assetId"
       :hide-toolbar="!embedded && toolbarCollapsed"
     />
-    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
     </template>
 
     <template v-else>
@@ -147,7 +147,7 @@ const diveKind = computed(() =>
 const rootTitle = computed(
   () => asset.value?.name?.trim() || t('studio.dive.root')
 )
-const { diving, diveTop, diveContext } = useEditorDiveHost({
+const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
   kind: diveKind,
   assetId: () => props.assetId,
   rootTitle,

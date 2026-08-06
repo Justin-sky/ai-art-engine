@@ -25,7 +25,6 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onErrorCaptured, ref, watch, type Component } from 'vue'
-import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   resolveInspectors,
@@ -42,26 +41,20 @@ type MountedEditor = {
 
 const props = withDefaults(
   defineProps<{
-    exportCanvas?: () => Promise<string | null>
     /** 无选中时的空态文案；舞台侧栏可传入 selectHint */
     emptyNoneMessage?: string
   }>(),
   {
-    exportCanvas: async () => null,
     emptyNoneMessage: undefined
   }
 )
 
 const { t } = useStudioI18n()
-const workspace = useWorkspaceStore()
-const useGraphRefs = computed(() => !!workspace.getActiveGraph())
 const target = useInspectorTarget()
 
 const context = computed<InspectorContext>(() => {
   return {
-    target: target.value,
-    exportCanvas: props.exportCanvas ?? (async () => null),
-    useGraphRefs: useGraphRefs.value
+    target: target.value
   }
 })
 

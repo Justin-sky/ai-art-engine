@@ -1,6 +1,5 @@
 /** Shared domain models for AIArtEngine P0 */
 
-import { createDefaultScopedGraph } from './graph'
 import {
   createEmptyModelsSettings,
   type ModelsSettings
@@ -60,7 +59,6 @@ export type AssetType =
   | 'motion'
   | 'model'
   | 'screenplay'
-  | 'script'
   | 'canvas'
   | 'world'
   | 'beat'
@@ -111,33 +109,6 @@ export function withImportedMediaRefParams(
 ): Record<string, unknown> {
   return { ...(genParams ?? {}), mediaRole: 'reference' }
 }
-
-export type ShotStatus = 'draft' | 'generating' | 'done' | 'failed'
-
-/** 分镜表格 / 拆分 JSON 审核状态（与生成状态 ShotStatus 独立） */
-export const SHOT_REVIEW_STATUS_OPTIONS = ['未审核', '已审核'] as const
-export type ShotReviewStatus = (typeof SHOT_REVIEW_STATUS_OPTIONS)[number]
-export const DEFAULT_SHOT_REVIEW_STATUS: ShotReviewStatus = '未审核'
-
-export function normalizeShotReviewStatus(value: unknown): ShotReviewStatus {
-  if (value === '已审核' || value === 'reviewed' || value === 'approved') return '已审核'
-  return DEFAULT_SHOT_REVIEW_STATUS
-}
-
-export type CameraMotion = 'static' | 'dolly' | 'pan' | 'orbit' | 'handheld'
-
-/** 常见景别选项 */
-export const SHOT_SIZE_OPTIONS = [
-  '大特写',
-  '特写',
-  '半身景',
-  '中景',
-  '中远景',
-  '全景',
-  '远景'
-] as const
-
-export type ShotSizeOption = (typeof SHOT_SIZE_OPTIONS)[number]
 
 /** 世界元素引用（分镜绑定 / 叙事名称列表共用） */
 export type WorldEntityKindLabel = '角色' | '场景' | '道具' | '武器'
@@ -206,71 +177,6 @@ export function asWorldRefList(value: unknown): WorldEntityRef[] {
 }
 
 
-/** 分镜参数（右侧参数面板） */
-export interface ShotStoryboard {
-  /** 画面描述 */
-  visualDescription: string
-  /** 景别 */
-  shotSize: string
-  /** 光影氛围 */
-  lighting: string
-  /** 对白·旁白 */
-  dialogue: string
-  /** 音效 */
-  soundFx: string
-  /** 运镜描述 */
-  cameraMove: string
-  /** 最终提示词（生成后填充） */
-  finalPrompt: string
-  /** 本镜绑定的世界元素 */
-  characters: WorldEntityRef[]
-  scenes: WorldEntityRef[]
-  props: WorldEntityRef[]
-  weapons: WorldEntityRef[]
-}
-
-export type ShotGenRefRole = 'background' | 'character' | 'firstFrame' | 'style' | 'motion'
-
-export type ShotAudioRefKind = 'voice' | 'dialogue_tts' | 'sfx' | 'bgm'
-
-/** 生成视频时的视觉参考（背景/角色/首帧等） */
-export interface ShotGenRef {
-  role: ShotGenRefRole
-  assetId: string
-  /** 参考编号，从 1 开始 */
-  refIndex: number
-  /** 角色名或备注 */
-  label?: string
-  /** 参考强度 0–1 */
-  weight?: number
-}
-
-/** 生成视频时的声音引用 */
-export interface ShotAudioRef {
-  kind: ShotAudioRefKind
-  assetId?: string
-  text?: string
-  /** 声音参考编号（与图片参考连续编号） */
-  refIndex?: number
-}
-
-export const IMAGE_REF_PARAM_LABEL = '参考'
-
-export const GEN_REF_ROLE_LABELS: Record<ShotGenRefRole, string> = {
-  background: 'Background',
-  character: 'Character',
-  firstFrame: 'First frame',
-  style: 'Style',
-  motion: 'Motion'
-}
-
-export const AUDIO_REF_KIND_LABELS: Record<ShotAudioRefKind, string> = {
-  voice: 'Audio',
-  dialogue_tts: 'Dialogue TTS',
-  sfx: 'SFX',
-  bgm: 'BGM'
-}
-
 export interface Resolution {
   w: number
   h: number
@@ -304,8 +210,6 @@ export interface ProjectConfig {
   videoOutputDir?: string
   createdAt: string
   updatedAt: string
-  /** Ordered shot ids for P0 flat storyboard */
-  shotIds: string[]
 }
 
 /** 工程级生成缓存根目录（相对工程根） */
@@ -474,7 +378,6 @@ export interface AssetInfo {
   prompt?: string
   notes?: string
   genParams?: Record<string, unknown>
-  sourceShotId?: string
   version: number
   createdAt: string
   updatedAt: string
@@ -489,64 +392,6 @@ export function isDraftAssetId(id: string): boolean {
 
 export function createDraftAssetId(): string {
   return `${DRAFT_ASSET_ID_PREFIX}${crypto.randomUUID()}`
-}
-
-export const DRAFT_SHOT_ID_PREFIX = 'draft-shot:'
-
-export function isDraftShotId(id: string): boolean {
-  return id.startsWith(DRAFT_SHOT_ID_PREFIX)
-}
-
-export function createDraftShotId(): string {
-  return `${DRAFT_SHOT_ID_PREFIX}${crypto.randomUUID()}`
-}
-
-export interface CameraParams {
-  motion: CameraMotion
-  durationSec: number
-}
-
-export interface GenerationRef {
-  id: string
-  assetId: string
-  createdAt: string
-  prompt: string
-  status: 'done' | 'failed'
-  error?: string
-}
-
-export interface CanvasDocument {
-  /** Fabric.js canvas JSON（旧画板模式） */
-  fabricJson: Record<string, unknown> | null
-  /** LibTV / ShaderGraph 式节点工作流（生成参考） */
-  graphJson?: import('./graph').GraphDocument | null
-  /** 画面构图节点画布（导出分镜画面） */
-  visualGraphJson?: import('./graph').GraphDocument | null
-  width: number
-  height: number
-}
-
-export interface Shot {
-  id: string
-  title: string
-  status: ShotStatus
-  /** 分镜表格审核状态：未审核 / 已审核 */
-  reviewStatus?: ShotReviewStatus
-  /** 兼容生成 API；通常与 storyboard 汇总同步 */
-  prompt: string
-  storyboard?: ShotStoryboard
-  camera: CameraParams
-  canvas: CanvasDocument
-  generations: GenerationRef[]
-  /** 生成引用：背景图、角色图等 */
-  genRefs?: ShotGenRef[]
-  /** 声音引用（统一声音资产） */
-  audioRefs?: ShotAudioRef[]
-  /** Owning 脚本 asset id */
-  scriptAssetId?: string
-  thumbnailPath?: string
-  createdAt: string
-  updatedAt: string
 }
 
 export interface AppSettings {
@@ -587,7 +432,6 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   motion: 'Director Deck',
   model: 'Model',
   screenplay: 'Screenplay',
-  script: 'Shot',
   canvas: 'Series',
   world: 'World Elements',
   beat: 'Beat Units',
@@ -602,7 +446,6 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   motion: '导演台',
   model: '模型',
   screenplay: '剧本',
-  script: '分镜',
   canvas: '剧集',
   world: '世界元素',
   beat: '场',
@@ -629,7 +472,6 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   motion: '🎬',
   model: '🧊',
   screenplay: '📜',
-  script: '🎥',
   canvas: '📺',
   world: '🤺',
   beat: '📖',
@@ -1896,18 +1738,9 @@ function readIkChains(raw: unknown): DirectorIkChainSpec[] | undefined {
   return out.length ? out : undefined
 }
 
-/** 脚本资产：分镜画布容器（非文本编辑器） */
-export function isStoryboardScript(type: AssetType): boolean {
-  return type === 'script'
-}
-
 /** 剧本资产：新建为节点图编辑；导入 txt 为引用文件（记事本） */
 export function isScreenplayAsset(type: AssetType | string): boolean {
   return normalizeAssetType(type) === 'screenplay'
-}
-
-export function shotScriptAssetId(shot: Pick<Shot, 'scriptAssetId'>): string | undefined {
-  return shot.scriptAssetId
 }
 
 /** 新建资产未显式命名时的默认显示名（随 language；默认 zh-CN） */
@@ -1915,8 +1748,6 @@ export function defaultAssetName(type: AssetType, language?: string | null): str
   const en = isEnglishLanguage(language)
   const label = assetTypeLabel(type, language)
   switch (type) {
-    case 'script':
-      return en ? 'New Shot' : '新建分镜'
     case 'screenplay':
       return en ? 'New Screenplay' : '新建剧本'
     case 'canvas':
@@ -1980,258 +1811,3 @@ export const DEFAULT_SETTINGS: AppSettings = {
   }
 }
 
-export function createEmptyStoryboard(): ShotStoryboard {
-  return {
-    visualDescription: '',
-    shotSize: '',
-    lighting: '',
-    dialogue: '',
-    soundFx: '',
-    cameraMove: '',
-    finalPrompt: '',
-    characters: [],
-    scenes: [],
-    props: [],
-    weapons: []
-  }
-}
-
-function cloneWorldEntityRefs(refs: WorldEntityRef[] | undefined | null): WorldEntityRef[] {
-  if (!Array.isArray(refs)) return []
-  return refs
-    .map((item) => {
-      const name = typeof item?.name === 'string' ? item.name.trim() : ''
-      if (!name) return null
-      const imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl.trim() : ''
-      const type = item.type
-      return {
-        name,
-        ...(imageUrl ? { imageUrl } : {}),
-        ...(type === '角色' || type === '场景' || type === '道具' || type === '武器'
-          ? { type }
-          : {})
-      } satisfies WorldEntityRef
-    })
-    .filter((item): item is WorldEntityRef => item != null)
-}
-
-export function normalizeStoryboard(shot: Pick<Shot, 'storyboard'> & Partial<Pick<Shot, 'prompt' | 'camera'>>): ShotStoryboard {
-  const base = createEmptyStoryboard()
-  if (shot.storyboard) {
-    return {
-      ...base,
-      ...shot.storyboard,
-      characters: cloneWorldEntityRefs(shot.storyboard.characters),
-      scenes: cloneWorldEntityRefs(shot.storyboard.scenes),
-      props: cloneWorldEntityRefs(shot.storyboard.props),
-      weapons: cloneWorldEntityRefs(shot.storyboard.weapons)
-    }
-  }
-  return {
-    ...base,
-    visualDescription: shot.prompt ?? '',
-    cameraMove: shot.camera?.motion === 'static' ? '' : (shot.camera?.motion ?? '')
-  }
-}
-
-export function buildShotGenerationPrompt(
-  storyboard: ShotStoryboard,
-  options?: {
-    /** 工程级画面风格，追加到自动组装提示词 */
-    stylePreset?: string
-  }
-): string {
-  if (storyboard.finalPrompt.trim()) return storyboard.finalPrompt.trim()
-  const parts: string[] = []
-
-  if (storyboard.visualDescription.trim()) parts.push(storyboard.visualDescription.trim())
-  if (storyboard.shotSize.trim()) parts.push(`景别：${storyboard.shotSize.trim()}`)
-  if (storyboard.lighting.trim()) parts.push(`光影：${storyboard.lighting.trim()}`)
-  if (storyboard.dialogue.trim()) parts.push(`对白：${storyboard.dialogue.trim()}`)
-  if (storyboard.soundFx.trim()) parts.push(`音效：${storyboard.soundFx.trim()}`)
-  if (storyboard.cameraMove.trim()) parts.push(`运镜：${storyboard.cameraMove.trim()}`)
-  const charNames = storyboard.characters.map((r) => r.name).filter(Boolean).join('、')
-  if (charNames) parts.push(`角色：${charNames}`)
-  const sceneNames = storyboard.scenes.map((r) => r.name).filter(Boolean).join('、')
-  if (sceneNames) parts.push(`场景：${sceneNames}`)
-  const propNames = storyboard.props.map((r) => r.name).filter(Boolean).join('、')
-  if (propNames) parts.push(`道具：${propNames}`)
-  const weaponNames = storyboard.weapons.map((r) => r.name).filter(Boolean).join('、')
-  if (weaponNames) parts.push(`武器：${weaponNames}`)
-  const style = options?.stylePreset?.trim()
-  if (style) parts.push(`画面风格：${style}`)
-
-  return parts.join('；')
-}
-
-export function reindexGenRefs(refs: ShotGenRef[]): ShotGenRef[] {
-  const visual = refs.filter((r) => r.role !== 'firstFrame')
-  return visual.map((ref, i) => ({ ...ref, refIndex: i + 1 }))
-}
-
-export function reindexAllShotRefs(
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[]
-): { genRefs: ShotGenRef[]; audioRefs: ShotAudioRef[] } {
-  const visual = reindexGenRefs(genRefs)
-  const voiceOnly = audioRefs.filter((a) => a.kind === 'voice' && a.assetId)
-  const others = audioRefs.filter((a) => a.kind !== 'voice' || !a.assetId)
-  const base = visual.length
-  const voices = voiceOnly.map((v, i) => ({ ...v, refIndex: base + i + 1 }))
-  return { genRefs: visual, audioRefs: [...others, ...voices] }
-}
-
-export function formatShotRefLabel(
-  assetId: string,
-  refIndex: number,
-  assetNames?: Map<string, string>,
-  assetTypes?: Map<string, AssetType>,
-  label?: string
-): string {
-  const name = assetNames?.get(assetId) ?? label ?? assetId.slice(0, 8)
-  const type = assetTypes?.get(assetId)
-  const typeLabel = type ? ASSET_TYPE_LABELS[type] : '参考'
-  return `参考${refIndex}·${typeLabel}·${name}`
-}
-
-export function formatImageRefLabel(
-  ref: ShotGenRef,
-  assetNames?: Map<string, string>,
-  assetTypes?: Map<string, AssetType>
-): string {
-  return formatShotRefLabel(ref.assetId, ref.refIndex, assetNames, assetTypes, ref.label)
-}
-
-export interface UnifiedShotRef {
-  refIndex: number
-  assetId: string
-  kind: 'visual' | 'voice'
-  label?: string
-  weight?: number
-}
-
-export function buildUnifiedShotRefs(
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[]
-): UnifiedShotRef[] {
-  const { genRefs: g, audioRefs: a } = reindexAllShotRefs(genRefs, audioRefs)
-  const items: UnifiedShotRef[] = g.map((r) => ({
-    refIndex: r.refIndex,
-    assetId: r.assetId,
-    kind: 'visual' as const,
-    label: r.label,
-    weight: r.weight
-  }))
-  for (const r of a) {
-    if (r.kind === 'voice' && r.assetId && r.refIndex) {
-      items.push({ refIndex: r.refIndex, assetId: r.assetId, kind: 'voice' })
-    }
-  }
-  return items.sort((x, y) => x.refIndex - y.refIndex)
-}
-
-export interface RefMentionOption {
-  token: string
-  label: string
-  kind: 'visual' | 'voice'
-  /** 选中后实际写入文本；省略时写入 token（生成指令继续使用 @n） */
-  insertText?: string
-}
-
-export function listRefMentionOptions(
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[],
-  assetNames?: Map<string, string>,
-  assetTypes?: Map<string, AssetType>
-): RefMentionOption[] {
-  return buildUnifiedShotRefs(genRefs, audioRefs).map((ref) => {
-    const label = formatShotRefLabel(
-      ref.assetId,
-      ref.refIndex,
-      assetNames,
-      assetTypes,
-      ref.label
-    )
-    return {
-      token: `@${ref.refIndex}`,
-      label,
-      kind: ref.kind,
-      // 分镜描述只保存稳定、可读的语义标签，不冒充生成节点端口引用。
-      insertText: `[${label}]`
-    }
-  })
-}
-
-export function normalizeShotRefs(shot: Pick<Shot, 'genRefs' | 'audioRefs'>): {
-  genRefs: ShotGenRef[]
-  audioRefs: ShotAudioRef[]
-} {
-  const rawGen = Array.isArray(shot.genRefs)
-    ? shot.genRefs
-        .filter((r) => r.role !== 'firstFrame')
-        .map((r) => ({ ...r, weight: r.weight ?? 0.75, refIndex: r.refIndex ?? 0 }))
-    : []
-  const rawAudio = Array.isArray(shot.audioRefs) ? shot.audioRefs.map((r) => ({ ...r })) : []
-  return reindexAllShotRefs(rawGen, rawAudio)
-}
-
-export function normalizeGenRefs(shot: Pick<Shot, 'genRefs' | 'audioRefs'>): ShotGenRef[] {
-  return normalizeShotRefs(shot).genRefs
-}
-
-export function normalizeAudioRefs(shot: Pick<Shot, 'audioRefs' | 'genRefs'>): ShotAudioRef[] {
-  return normalizeShotRefs(shot).audioRefs
-}
-
-export function assetAcceptsShotRef(type: AssetType): boolean {
-  return type === 'image' || type === 'voice' || type === 'video'
-}
-
-export function inferGenRefRole(type: AssetType): ShotGenRefRole {
-  if (type === 'video') return 'motion'
-  return 'character'
-}
-
-export function assetAcceptsGenRefRole(
-  type: AssetType,
-  role: ShotGenRefRole
-): boolean {
-  if (role === 'background' || role === 'firstFrame' || role === 'style') {
-    return type === 'image'
-  }
-  if (role === 'character') return type === 'image'
-  if (role === 'motion') return type === 'image' || type === 'video'
-  return false
-}
-
-export function assetAcceptsAudioRefKind(type: AssetType, kind: ShotAudioRefKind): boolean {
-  if (kind === 'voice' || kind === 'dialogue_tts' || kind === 'sfx' || kind === 'bgm') {
-    return isSoundAsset(type)
-  }
-  return false
-}
-
-export function createEmptyCanvas(resolution: Resolution = DEFAULT_RESOLUTION): CanvasDocument {
-  return {
-    fabricJson: null,
-    graphJson: createDefaultScopedGraph('shotWorkflow'),
-    visualGraphJson: createDefaultScopedGraph('visual'),
-    width: resolution.w,
-    height: resolution.h
-  }
-}
-
-export function createEmptyShot(title = 'Shot', resolution: Resolution = DEFAULT_RESOLUTION): Omit<Shot, 'id' | 'createdAt' | 'updatedAt'> {
-  return {
-    title,
-    status: 'draft',
-    reviewStatus: DEFAULT_SHOT_REVIEW_STATUS,
-    prompt: '',
-    storyboard: createEmptyStoryboard(),
-    camera: { motion: 'static', durationSec: 5 },
-    canvas: createEmptyCanvas(resolution),
-    generations: [],
-    genRefs: [],
-    audioRefs: []
-  }
-}

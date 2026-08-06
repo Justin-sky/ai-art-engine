@@ -4,13 +4,11 @@ import {
   findAssetReferencesInProject,
   summarizeReferenceSites
 } from '../src/shared/assetReferences'
-import type { AssetInfo, Shot } from '../src/shared/domain'
+import type { AssetInfo } from '../src/shared/domain'
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const SCRIPT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-const SHOT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 
 function asset(partial: Partial<AssetInfo> & Pick<AssetInfo, 'id' | 'name'>): AssetInfo {
   return {
@@ -23,18 +21,8 @@ function asset(partial: Partial<AssetInfo> & Pick<AssetInfo, 'id' | 'name'>): As
   }
 }
 
-function shot(partial: Partial<Shot> & Pick<Shot, 'id' | 'title'>): Shot {
-  return {
-    status: 'draft',
-    prompt: '',
-    createdAt: '',
-    updatedAt: '',
-    ...partial
-  } as Shot
-}
-
 describe('findAssetReferencesInProject', () => {
-  it('finds refs from other assets and shots', () => {
+  it('finds refs from other assets', () => {
     const assets = [
       asset({ id: A, name: 'Hero' }),
       asset({
@@ -44,18 +32,10 @@ describe('findAssetReferencesInProject', () => {
         genParams: { graphJson: { nodes: [{ assetId: A }] } }
       })
     ]
-    const shots = [
-      shot({
-        id: SHOT,
-        title: 'Opening',
-        scriptAssetId: SCRIPT,
-        genRefs: [{ assetId: A, role: 'character', refIndex: 1 }]
-      })
-    ]
-    const { hits } = findAssetReferencesInProject([A], assets, shots)
-    expect(hits.map((h) => h.site.kind).sort()).toEqual(['asset', 'shot'])
+    const { hits } = findAssetReferencesInProject([A], assets)
+    expect(hits.map((h) => h.site.kind)).toEqual(['asset'])
     const sites = summarizeReferenceSites(hits)
-    expect(sites).toHaveLength(2)
+    expect(sites).toHaveLength(1)
   })
 
   it('ignores refs from assets being deleted together', () => {
@@ -63,24 +43,8 @@ describe('findAssetReferencesInProject', () => {
       asset({ id: A, name: 'A', genParams: { modelAssetId: B } }),
       asset({ id: B, name: 'B' })
     ]
-    const { hits } = findAssetReferencesInProject([A, B], assets, [])
+    const { hits } = findAssetReferencesInProject([A, B], assets)
     expect(hits).toEqual([])
-  })
-
-  it('ignores shots owned by a script being deleted', () => {
-    const assets = [asset({ id: SCRIPT, name: 'Script', type: 'script' }), asset({ id: A, name: 'Hero' })]
-    const shots = [
-      shot({
-        id: SHOT,
-        title: 'Owned',
-        scriptAssetId: SCRIPT,
-        genRefs: [{ assetId: A, role: 'character', refIndex: 1 }]
-      })
-    ]
-    // 删脚本会级联删分镜 → 分镜上的引用不提示
-    expect(findAssetReferencesInProject([SCRIPT], assets, shots).hits).toEqual([])
-    // 只删图片、脚本保留 → 分镜引用应提示
-    expect(findAssetReferencesInProject([A], assets, shots).hits).toHaveLength(1)
   })
 
   it('finds tagged AssetRef', () => {
@@ -92,7 +56,7 @@ describe('findAssetReferencesInProject', () => {
         genParams: { ref: tagAssetRef(A) }
       })
     ]
-    const { hits } = findAssetReferencesInProject([A], assets, [])
+    const { hits } = findAssetReferencesInProject([A], assets)
     expect(hits).toHaveLength(1)
     expect(hits[0].site).toMatchObject({ kind: 'asset', assetId: C })
   })

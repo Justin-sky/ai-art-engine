@@ -20,7 +20,7 @@ import type {
   GraphPersistedRunState,
   GraphPortDataType
 } from './types'
-import { GraphPortType, isGraphCatalogKind, isGraphPortDataType } from './types'
+import { GraphPortType, isGraphCatalogKind, isGraphPortDataType, isPluralGraphPortDataType } from './types'
 import type { GraphValue } from './execute/types'
 import {
   boundaryInputNodeId,
@@ -32,11 +32,6 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
-import {
-  resolveShotParamsBindingImageItems,
-  SHOT_PARAMS_IMAGES_PORT_ID,
-  type ShotParamsBindingImage
-} from './shotParams'
 
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
@@ -62,12 +57,6 @@ export interface ResolveHostInputSlotsOptions {
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
   /** 已打开的源资产内图（优先于落盘 genParams.graphJson） */
   resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
-  /** 分镜参数绑定图：按 boundShotId 取 live storyboard */
-  resolveShotStoryboard?: (boundShotId?: string) => {
-    storyboard: import('../domain').ShotStoryboard
-  } | null
-  /** 分镜参数 out-images：全部镜头绑定图（不运行即可 soft 输出） */
-  resolveAllShotBindingImages?: () => ShotParamsBindingImage[] | null
 }
 
 /** 稳定节点 id：再打开不换号、不乱序 */
@@ -308,10 +297,7 @@ function slotPreviewFromValue(
   if (
     value.kind === 'world' ||
     value.kind === 'worldEntities' ||
-    value.kind === 'shotEntities' ||
-    value.kind === 'videoEntities' ||
-    value.kind === 'beat' ||
-    value.kind === 'shots'
+    value.kind === 'beat'
   ) {
     return { text: value.text }
   }
@@ -329,10 +315,7 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
   if (
     value.kind === 'world' ||
     value.kind === 'worldEntities' ||
-    value.kind === 'shotEntities' ||
-    value.kind === 'videoEntities' ||
-    value.kind === 'beat' ||
-    value.kind === 'shots'
+    value.kind === 'beat'
   ) {
     return !!value.text.trim() || !!value.relativePath?.trim()
   }
@@ -361,10 +344,140 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
 }
 
 /**
- * 边界输出：按入边顺序软解析第一个有载荷的上游口（与 executeBoundaryOutputNode 口径一致）。
+ * 边界输出：软解析上游。
+ * 单数口：按入边顺序取第一个有载荷的上游（与 executeBoundaryOutputNode 口径一致）。
+ * 复数口：合并全部匹配上游为数组。
  * 优先本节点已有 runStates.out，否则 walk 直接上游（不 deep walk 整条链）。
  */
-/** 边界输入：从 params 按 hostBoundaryPort.dataType 还原载荷（外层注入 / 分镜绑定图） */
+export function softResolveBoundaryOutputValue(
+  doc: GraphDocument,
+  boundaryNodeId: string,
+  options?: ResolveHostInputSlotsOptions
+): GraphValue | undefined {
+  const node =
+    doc.nodes.find((n) => n.id === boundaryNodeId) ??
+    doc.nodes.find(
+      (n) =>
+        isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === boundaryNodeId
+    )
+  if (!node || !isBoundaryOutputNode(node)) return undefined
+
+  const portType = node.params.hostBoundaryPort?.dataType
+  const aggregate =
+    node.params.hostBoundaryPort?.multiple === true ||
+    (!!portType && isPluralGraphPortDataType(portType))
+  const selfOut = doc.runStates?.[node.id]?.outputs?.out as GraphValue | undefined
+  if (graphValueMatchesBoundaryPort(selfOut, portType)) return selfOut
+
+  const incoming = doc.edges.filter((edge) => edge.target === node.id)
+  if (!aggregate) {
+    for (const edge of incoming) {
+      const value = softResolveSourceOutput(
+        doc,
+        edge.source,
+        edge.sourcePort ?? 'out',
+        options
+      )
+      if (graphValueMatchesBoundaryPort(value, portType)) return value
+    }
+    return undefined
+  }
+
+  const collected: GraphValue[] = []
+  for (const edge of incoming) {
+    const value = softResolveSourceOutput(
+      doc,
+      edge.source,
+      edge.sourcePort ?? 'out',
+      options
+    )
+    if (graphValueMatchesBoundaryPort(value, portType)) collected.push(value!)
+  }
+  if (!collected.length) return undefined
+  return mergeBoundarySoftValues(collected, portType)
+}
+
+function mergeBoundarySoftValues(
+  values: GraphValue[],
+  portType: GraphPortDataType | undefined
+): GraphValue | undefined {
+  if (!values.length) return undefined
+  if (
+    portType === GraphPortType.image ||
+    portType === GraphPortType.images
+  ) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'images') return v.items
+      if (v.kind === 'image') {
+        return [
+          {
+            id: v.id,
+            dataUrl: v.dataUrl,
+            createdAt: v.createdAt,
+            relativePath: v.relativePath
+          }
+        ]
+      }
+      if (v.kind === 'output' && v.images?.length) return v.images
+      return []
+    })
+    return items.length ? { kind: 'images', items } : undefined
+  }
+  if (
+    portType === GraphPortType.video ||
+    portType === GraphPortType.videos
+  ) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'videos') return v.items
+      if (v.kind === 'video') {
+        return [
+          {
+            id: v.id,
+            dataUrl: v.dataUrl,
+            createdAt: v.createdAt,
+            relativePath: v.relativePath
+          }
+        ]
+      }
+      if (v.kind === 'output' && v.videos?.length) return v.videos
+      return []
+    })
+    return items.length ? { kind: 'videos', items } : undefined
+  }
+  if (
+    portType === GraphPortType.voice ||
+    portType === GraphPortType.voices
+  ) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'voices') return v.items
+      if (v.kind === 'voice') {
+        return [{ id: v.id, relativePath: v.relativePath, createdAt: v.createdAt }]
+      }
+      if (v.kind === 'output' && v.voices?.length) return v.voices
+      return []
+    })
+    return items.length ? { kind: 'voices', items } : undefined
+  }
+  if (portType === GraphPortType.text || portType === GraphPortType.texts) {
+    const items = values.flatMap((v) => {
+      if (v.kind === 'texts') return v.items
+      if (v.kind === 'text') {
+        return [
+          {
+            id: v.id,
+            text: v.text,
+            relativePath: v.relativePath
+          }
+        ]
+      }
+      return []
+    })
+    return items.length ? { kind: 'texts', items } : undefined
+  }
+  return values[0]
+}
+
+/** 边界输入：从 params 按 hostBoundaryPort.dataType 还原载荷（外层注入 / 绑定图） */
 export function softResolveBoundaryInputParams(node: GraphNode): GraphValue | undefined {
   if (!isBoundaryInputNode(node)) return undefined
   const dataType = node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
@@ -466,43 +579,17 @@ function graphValueMatchesBoundaryPort(
     (dataType === GraphPortType.image && value.kind === 'images') ||
     (dataType === GraphPortType.images && value.kind === 'image') ||
     (dataType === GraphPortType.video && value.kind === 'videos') ||
-    (dataType === GraphPortType.videos && value.kind === 'video')
+    (dataType === GraphPortType.videos && value.kind === 'video') ||
+    (dataType === GraphPortType.voice && value.kind === 'voices') ||
+    (dataType === GraphPortType.voices && value.kind === 'voice') ||
+    (dataType === GraphPortType.text && value.kind === 'texts') ||
+    (dataType === GraphPortType.texts && value.kind === 'text')
   if (!kindOk) return false
   // 视频口拒绝 jpg 等误标成 video 的预览路径（否则边界软透传会写假预览，批跑以为已完成）
   if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
     return videoPayloadIsReal(value)
   }
   return true
-}
-
-export function softResolveBoundaryOutputValue(
-  doc: GraphDocument,
-  boundaryNodeId: string,
-  options?: ResolveHostInputSlotsOptions
-): GraphValue | undefined {
-  const node =
-    doc.nodes.find((n) => n.id === boundaryNodeId) ??
-    doc.nodes.find(
-      (n) =>
-        isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === boundaryNodeId
-    )
-  if (!node || !isBoundaryOutputNode(node)) return undefined
-
-  const portType = node.params.hostBoundaryPort?.dataType
-  const selfOut = doc.runStates?.[node.id]?.outputs?.out as GraphValue | undefined
-  if (graphValueMatchesBoundaryPort(selfOut, portType)) return selfOut
-
-  const incoming = doc.edges.filter((edge) => edge.target === node.id)
-  for (const edge of incoming) {
-    const value = softResolveSourceOutput(
-      doc,
-      edge.source,
-      edge.sourcePort ?? 'out',
-      options
-    )
-    if (graphValueMatchesBoundaryPort(value, portType)) return value
-  }
-  return undefined
 }
 
 /** 宿主实例：按出口 port dig 内图 boundary.output 的上游软值 */
@@ -788,26 +875,6 @@ export function softResolveSourceOutput(
   if (node.typeId === 'beat.select' && (sourcePort === 'out' || !sourcePort)) {
     const text = node.params.text?.trim() || ''
     if (text) return { kind: 'text', text }
-  }
-
-  // 选择分镜实体：输出选中实体首图
-  if (node.typeId === 'shotEntities.select' && (sourcePort === 'out' || !sourcePort)) {
-    const path = node.params.previewRelativePath?.trim()
-    if (path) return { kind: 'image', dataUrl: '', relativePath: path }
-  }
-
-  // 分镜参数：全部镜头绑定图口（不依赖 runStates，未运行也可输出）
-  if (node.typeId === 'script.shotParams' && sourcePort === SHOT_PARAMS_IMAGES_PORT_ID) {
-    const items = resolveShotParamsBindingImageItems({
-      node,
-      resolveAllShotBindingImages: options?.resolveAllShotBindingImages,
-      resolveShotStoryboard: options?.resolveShotStoryboard
-    }).map((item) => ({
-      id: item.id,
-      dataUrl: '',
-      relativePath: item.relativePath
-    }))
-    return { kind: 'images', items }
   }
 
   if (graphValueHasPayload(fromRun)) return fromRun
@@ -1297,10 +1364,7 @@ export function mergeHostInputValues(
   if (
     dataType === GraphPortType.world ||
     dataType === GraphPortType.worldEntities ||
-    dataType === GraphPortType.shotEntities ||
-    dataType === GraphPortType.videoEntities ||
-    dataType === GraphPortType.beat ||
-    dataType === GraphPortType.shots
+    dataType === GraphPortType.beat
   ) {
     const payloads = values.flatMap((value) => {
       if (value.kind !== dataType) return []

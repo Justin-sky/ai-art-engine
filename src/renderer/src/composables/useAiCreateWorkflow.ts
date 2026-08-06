@@ -4,6 +4,7 @@ import {
   AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
   AI_WORKFLOW_PRESET_IDS,
+  AI_WORKFLOW_RESOLUTION_KEY,
   AI_WORKFLOW_VIDEO_MODEL_KEY,
   getAiWorkflowPresetPlan,
   hasAiWorkflowPresetPlan,
@@ -62,6 +63,7 @@ export function useAiCreateWorkflow() {
   const textModelKey = ref('')
   const imageModelKey = ref('')
   const videoModelKey = ref('')
+  const generateResolution = ref(readStoredKey(AI_WORKFLOW_RESOLUTION_KEY))
   /** shallow：避免 Vue Proxy 经 IPC structuredClone 失败 */
   const pendingPlan = shallowRef<GraphPlan | null>(null)
   const preview = ref<AiWorkflowPreview | null>(null)
@@ -103,6 +105,11 @@ export function useAiCreateWorkflow() {
   function setVideoModelKey(key: string): void {
     videoModelKey.value = key
     writeStoredKey(AI_WORKFLOW_VIDEO_MODEL_KEY, key)
+  }
+
+  function setGenerateResolution(key: string): void {
+    generateResolution.value = key
+    writeStoredKey(AI_WORKFLOW_RESOLUTION_KEY, key)
   }
 
   function clearPreview(): void {
@@ -225,6 +232,7 @@ export function useAiCreateWorkflow() {
           useSeedOnly: mode === 'seed',
           model: text?.model,
           providerInstanceId: text?.providerInstanceId,
+          generateResolution: generateResolution.value || undefined,
           ...mediaModelPayload()
         })
       )
@@ -369,6 +377,7 @@ export function useAiCreateWorkflow() {
           plan: pendingPlan.value,
           folderId: payload.folderId,
           name,
+          generateResolution: generateResolution.value || undefined,
           ...mediaModelPayload()
         })
       )
@@ -413,6 +422,7 @@ export function useAiCreateWorkflow() {
     textModelKey,
     imageModelKey,
     videoModelKey,
+    generateResolution,
     pendingPlan,
     preview,
     previewWarnings,
@@ -424,6 +434,7 @@ export function useAiCreateWorkflow() {
     setTextModelKey,
     setImageModelKey,
     setVideoModelKey,
+    setGenerateResolution,
     openDialog,
     closeDialog,
     planPreview,

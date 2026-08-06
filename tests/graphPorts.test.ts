@@ -22,10 +22,7 @@ describe('GraphPortType', () => {
       GraphPortType.texts,
       GraphPortType.world,
       GraphPortType.worldEntities,
-      GraphPortType.shotEntities,
-      GraphPortType.videoEntities,
       GraphPortType.beat,
-      GraphPortType.shots,
       GraphPortType.model
     ])
     expect(isGraphPortDataType('image')).toBe(true)
@@ -36,10 +33,7 @@ describe('GraphPortType', () => {
     expect(isGraphPortDataType('texts')).toBe(true)
     expect(isGraphPortDataType('world')).toBe(true)
     expect(isGraphPortDataType('worldEntities')).toBe(true)
-    expect(isGraphPortDataType('shotEntities')).toBe(true)
-    expect(isGraphPortDataType('videoEntities')).toBe(true)
     expect(isGraphPortDataType('beat')).toBe(true)
-    expect(isGraphPortDataType('shots')).toBe(true)
     expect(isGraphPortDataType('voice')).toBe(true)
     expect(isGraphPortDataType('voices')).toBe(true)
     expect(isGraphPortDataType('camera')).toBe(false)
@@ -53,12 +47,9 @@ describe('catalog port types', () => {
     const worldGen = createNodeFromType('world.gen', { x: 200, y: 0 })
     const split = createNodeFromType('beat.split', { x: 0, y: 80 })
     const beatTable = createNodeFromType('beat.table', { x: 100, y: 80 })
-    const shotSplit = createNodeFromType('script.shotSplit', { x: 0, y: 160 })
-    const shotTable = createNodeFromType('script.shotTable', { x: 100, y: 160 })
     const screenplay = createNodeFromType('asset.screenplay', { x: 0, y: 240 })
     const beatSelect = createNodeFromType('beat.select', { x: 0, y: 120 })
 
-    expect(getNodePorts(shotSplit).find((p) => p.id === 'in')?.dataType).toBe('text')
     expect(canConnectNodes(extract, worldTable)).toBe(true)
     expect(canConnectNodes(worldTable, worldGen)).toBe(true)
     const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
@@ -68,8 +59,6 @@ describe('catalog port types', () => {
     ).toBe(false)
     expect(canConnectNodes(split, beatTable)).toBe(true)
     expect(canConnectNodes(beatTable, beatSelect)).toBe(true)
-    expect(canConnectNodes(beatSelect, shotSplit)).toBe(true)
-    expect(canConnectNodes(shotSplit, shotTable)).toBe(true)
 
     // 历史口 out-all 为 texts，不可直接进 world.table / beat.table
     expect(
@@ -88,21 +77,11 @@ describe('catalog port types', () => {
 
     expect(canConnectNodes(extract, beatTable)).toBe(false)
     expect(canConnectNodes(split, worldTable)).toBe(false)
-    expect(canConnectNodes(shotSplit, worldTable)).toBe(false)
     expect(canConnectNodes(extract, screenplay)).toBe(false)
     expect(canConnectNodes(worldTable, screenplay)).toBe(false)
     expect(canConnectNodes(screenplay, worldTable)).toBe(false)
     expect(canConnectNodes(screenplay, extract)).toBe(true)
 
-    const imageGen = createNodeFromType('script.shotImageGen', { x: 200, y: 160 })
-    const videoGen = createNodeFromType('script.shotVideoGen', { x: 300, y: 160 })
-    expect(
-      canConnectNodes(imageGen, videoGen, { sourcePort: 'out', targetPort: 'in-entities' })
-    ).toBe(true)
-    expect(canConnectNodes(imageGen, shotTable)).toBe(false)
-    expect(canConnectNodes(imageGen, createNodeFromType('output.image', { x: 400, y: 160 }))).toBe(
-      false
-    )
   })
 })
 
@@ -189,13 +168,6 @@ describe('asset reference ports', () => {
       { x: 0, y: 0 },
       { assetHost: true }
     )
-    const script = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000014',
-      'script',
-      'Shot',
-      { x: 0, y: 0 },
-      { assetHost: true }
-    )
 
     expect(getNodePorts(screenplay).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
@@ -208,11 +180,6 @@ describe('asset reference ports', () => {
     expect(getNodePorts(beat).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
       'in:text:in',
       'out:beat:out'
-    ])
-    expect(getNodePorts(script).map((p) => `${p.id}:${p.dataType}:${p.direction}`)).toEqual([
-      'in-worldEntities:worldEntities:in',
-      'in-beat:text:in',
-      'out:videoEntities:out'
     ])
   })
 })

@@ -18,7 +18,6 @@ import type {
 
 export interface EditorWindowFactoryContext {
   t: (key: string, params?: Record<string, unknown>) => string
-  exportCanvas: () => Promise<string | null>
 }
 
 export interface EditorWindowDefinition {

@@ -1,4 +1,250 @@
 import type { GraphPlan } from './graphPlan'
+import {
+  EPISODE_AGENT_BEATBOARD,
+  EPISODE_AGENT_BREAKDOWN,
+  EPISODE_AGENT_MOTION,
+  EPISODE_AGENT_REVIEW_BEATBOARD,
+  EPISODE_AGENT_REVIEW_BREAKDOWN,
+  EPISODE_AGENT_REVIEW_MOTION,
+  EPISODE_AGENT_REVIEW_SEQUENCE,
+  EPISODE_AGENT_SEQUENCE
+} from './episodeAgentPrompts'
+
+/** 剧集 Agent 流水线：状态作用域键（集编号），生成后可改 */
+const EPISODE_SCOPE_KEY = 'ep01'
+
+/** 短剧分镜（Agent 流水线）：剧本 → 节拍拆解 → 9宫格 → 9 锚点图 → 4宫格(36) → 动态提示词(36) → 36 视频，4 级导演审核 */
+function buildEpisodePipelinePlan(): GraphPlan {
+  const nodes: GraphPlan['nodes'] = []
+  const edges: GraphPlan['edges'] = []
+  const add = (node: GraphPlan['nodes'][number]): void => {
+    nodes.push(node)
+  }
+  const link = (
+    from: string,
+    to: string,
+    ports?: { fromPort?: string; toPort?: string }
+  ): void => {
+    edges.push({ from, to, ...ports })
+  }
+  const scope = { episodeScopeKey: EPISODE_SCOPE_KEY }
+
+  add({
+    key: 'script',
+    typeId: 'play.script',
+    title: '剧本',
+    params: { text: '（在此填写单集剧本，或用「短剧创作框架」先生成）' }
+  })
+  link('script', 'breakdown')
+
+  add({
+    key: 'breakdown',
+    typeId: 'prompt.optimize',
+    title: '分镜师·节拍拆解表',
+    params: {
+      ...scope,
+      episodeStep: 'breakdown',
+      generateSystemPrompt: EPISODE_AGENT_BREAKDOWN.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_BREAKDOWN.instructionZh
+    }
+  })
+  add({
+    key: 'review1',
+    typeId: 'prompt.optimize',
+    title: '导演审核·节拍拆解表',
+    params: {
+      ...scope,
+      episodeReviewTarget: 'breakdown',
+      generateSystemPrompt: EPISODE_AGENT_REVIEW_BREAKDOWN.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_REVIEW_BREAKDOWN.instructionZh
+    }
+  })
+  link('breakdown', 'review1')
+  link('breakdown', 'beatboard')
+
+  add({
+    key: 'beatboard',
+    typeId: 'prompt.optimize',
+    title: '分镜师·9宫格分镜表',
+    params: {
+      ...scope,
+      episodeStep: 'beatboard',
+      generateSystemPrompt: EPISODE_AGENT_BEATBOARD.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_BEATBOARD.instructionZh
+    }
+  })
+  add({
+    key: 'review2',
+    typeId: 'prompt.optimize',
+    title: '导演审核·9宫格分镜表',
+    params: {
+      ...scope,
+      episodeReviewTarget: 'beatboard',
+      generateSystemPrompt: EPISODE_AGENT_REVIEW_BEATBOARD.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_REVIEW_BEATBOARD.instructionZh
+    }
+  })
+  link('beatboard', 'review2')
+
+  // 9宫格拼图画布：一个生成节点生成 3×3 九宫格拼图，再逐格本地提取
+  add({
+    key: 'img9grid',
+    typeId: 'asset.image',
+    title: '9宫格拼图·锚点画布',
+    params: {
+        generateInstruction: `基于上游 9宫格分镜表生成一张 3×3 九宫格拼图画布：9 格按表内顺序依次对应 9 个核心锚点，人物服饰、主光方向、场景严格按表内描述保持绝对一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边，无文字水印。`
+    }
+  })
+  link('beatboard', 'img9grid', { fromPort: 'out', toPort: 'in-text' })
+  for (let i = 1; i <= 9; i++) {
+    const extractKey = `gridExtract${i}`
+    const row = Math.floor((i - 1) / 3) + 1
+    const col = ((i - 1) % 3) + 1
+    add({
+      key: extractKey,
+      typeId: 'image.gridSplit',
+      title: `宫格提取·格${i}`,
+      params: {
+        imageGridSplit: {
+          rows: 3,
+          cols: 3,
+          selected: [`${row}-${col}`],
+          scale: 1
+        }
+      }
+    })
+    link('img9grid', extractKey, { fromPort: 'out', toPort: 'in' })
+  }
+
+  add({
+    key: 'sequence',
+    typeId: 'prompt.optimize',
+    title: '分镜师·4宫格动态分镜表',
+    params: {
+      ...scope,
+      episodeStep: 'sequence',
+      generateSystemPrompt: EPISODE_AGENT_SEQUENCE.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_SEQUENCE.instructionZh
+    }
+  })
+  link('beatboard', 'sequence')
+  add({
+    key: 'review3',
+    typeId: 'prompt.optimize',
+    title: '导演审核·4宫格动态分镜表',
+    params: {
+      ...scope,
+      episodeReviewTarget: 'sequence',
+      generateSystemPrompt: EPISODE_AGENT_REVIEW_SEQUENCE.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_REVIEW_SEQUENCE.instructionZh
+    }
+  })
+  link('sequence', 'review3')
+  link('sequence', 'motion')
+
+  add({
+    key: 'motion',
+    typeId: 'prompt.optimize',
+    title: '动画师·动态提示词表',
+    params: {
+      ...scope,
+      episodeStep: 'motion',
+      generateSystemPrompt: EPISODE_AGENT_MOTION.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_MOTION.instructionZh
+    }
+  })
+  add({
+    key: 'review4',
+    typeId: 'prompt.optimize',
+    title: '导演审核·动态提示词表',
+    params: {
+      ...scope,
+      episodeReviewTarget: 'motion',
+      generateSystemPrompt: EPISODE_AGENT_REVIEW_MOTION.systemPromptZh,
+      generateInstruction: EPISODE_AGENT_REVIEW_MOTION.instructionZh
+    }
+  })
+  link('motion', 'review4')
+
+  // 9 组 4宫格拼图（2×2）：每组用 9宫格提取的锚点图作参考生成 4宫格拼图，
+  // 再本地提取 4 格，分别作为该组 4 个动态视频的参考图
+  for (let g = 1; g <= 9; g++) {
+    const img4Key = `img4grid${g}`
+    add({
+      key: img4Key,
+      typeId: 'asset.image',
+      title: `4宫格拼图·组${g}`,
+      params: {
+        generateInstruction: `基于上游 4宫格动态分镜表生成第 ${g} 组的 2×2 四宫格拼图画布：左上定场、右上引入、左下冲突、右下收尾，人物服饰、主光方向、场景与参考首帧严格一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边，无文字水印。`
+      }
+    })
+    link('sequence', img4Key, { fromPort: 'out', toPort: 'in-text' })
+    link(`gridExtract${g}`, img4Key, { fromPort: 'out', toPort: 'in-image' })
+    const CELL_KEYS = ['1-1', '1-2', '2-1', '2-2'] as const
+    for (let c = 1; c <= 4; c++) {
+      const extract4Key = `gridExtract4-${g}-${c}`
+      add({
+        key: extract4Key,
+        typeId: 'image.gridSplit',
+        title: `宫格提取·组${g}-格${c}`,
+        params: {
+          imageGridSplit: {
+            rows: 2,
+            cols: 2,
+            selected: [CELL_KEYS[c - 1]],
+            scale: 1
+          }
+        }
+      })
+      link(img4Key, extract4Key, { fromPort: 'out', toPort: 'in' })
+    }
+  }
+
+  // 36 个动态格选择 + 36 条动态视频（父宫格锚点图作首帧）
+  for (let g = 1; g <= 9; g++) {
+    for (let c = 1; c <= 4; c++) {
+      const cellKey = `cell${g}-${c}`
+      const videoKey = `video${g}-${c}`
+      add({
+        key: cellKey,
+        typeId: 'episode.cellSelect',
+        title: `动态格选择·格${g}-${c}`,
+        params: { cellGroupIndex: g, cellIndex: c }
+      })
+      link('motion', cellKey)
+      add({
+        key: videoKey,
+        typeId: 'asset.video',
+        title: `动态视频·格${g}-${c}`,
+        params: {
+          generateInstruction: `基于上游参考图与该动态格的图生视频指令生成 格${g}-${c} 的动态视频，参考图只提供风格与内容参考，严格遵循指令中的镜头运动、主体动作、环境交互与时长。`,
+          generateDuration: 4
+        }
+      })
+      link(`gridExtract4-${g}-${c}`, videoKey, { fromPort: 'out', toPort: 'in-image' })
+      link(cellKey, videoKey, { fromPort: 'out', toPort: 'in-text' })
+    }
+  }
+
+  add({
+    key: 'note',
+    typeId: 'note.text',
+    title: '流水线说明',
+    params: {
+      text: `流程：剧本 → 节拍拆解表 → 9宫格分镜表 → 1 张 9宫格拼图 → 宫格提取 9 格锚点图 → 4宫格动态分镜表(9×4=36) → 每组 1 张 2×2 4宫格拼图（参考第 g 格锚点图）→ 宫格提取 36 格 → 动态提示词表(36) → 36 条动态视频（参考图用对应 4宫格提取图）。
+
+导演审核：review1~review4 输出 ## 结论: PASS / FAIL；FAIL 原因会自动写入 agent-state.json，重跑对应分镜师/动画师节点时自动附加原因。
+
+视频产出：单条按需 = 只运行某个 video 节点；一键全跑 = 批量运行全部 video 节点。命名规则：集-场-宫格-动态格。`
+    }
+  })
+
+  return {
+    title: '短剧分镜（Agent 流水线）',
+    nodes,
+    edges
+  }
+}
 
 /** 一键工作流预设 id（文案在 i18n `aiWorkflow.presets.<id>.*`） */
 export const AI_WORKFLOW_PRESET_IDS = [
@@ -175,52 +421,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       { from: 'hero', to: 'video' }
     ]
   },
-  shortDrama: {
-    title: '短剧分镜',
-    nodes: [
-      {
-        key: 's1',
-        typeId: 'play.script',
-        title: '场次 1 对白',
-        params: { text: '（场次1：场景、人物、对白、镜头）' }
-      },
-      {
-        key: 'b1',
-        typeId: 'asset.image',
-        title: '场次 1 分镜',
-        params: { generateInstruction: '短剧场次1关键分镜' }
-      },
-      {
-        key: 's2',
-        typeId: 'play.script',
-        title: '场次 2 对白',
-        params: { text: '（场次2：场景、人物、对白、镜头）' }
-      },
-      {
-        key: 'b2',
-        typeId: 'asset.image',
-        title: '场次 2 分镜',
-        params: { generateInstruction: '短剧场次2关键分镜' }
-      },
-      {
-        key: 'climax',
-        typeId: 'asset.video',
-        title: '高潮场视频',
-        params: { generateInstruction: '高潮场次动态镜头', generateDuration: 8 }
-      },
-      {
-        key: 'note',
-        typeId: 'note.text',
-        title: '场次备注',
-        params: { text: '按场次从左到右排布；高潮接场次2分镜' }
-      }
-    ],
-    edges: [
-      { from: 's1', to: 'b1' },
-      { from: 's2', to: 'b2' },
-      { from: 'b2', to: 'climax' }
-    ]
-  }
+  shortDrama: buildEpisodePipelinePlan()
 }
 
 export function hasAiWorkflowPresetPlan(id: string): id is Exclude<AiWorkflowPresetId, 'custom'> {

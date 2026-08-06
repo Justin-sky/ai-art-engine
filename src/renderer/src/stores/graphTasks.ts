@@ -1,6 +1,7 @@
 import { computed, reactive, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import {
+  applyEpisodeReviewMarks,
   cloneGraphDocument,
   collectUpstreamNodeIds,
   findAllOutputNodes,
@@ -10,34 +11,29 @@ import {
   resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
-  extractShotTableCachedJsonText,
-  mergeShotSplitRowsWithCachedBindings,
-  shotsToShotSplitRows,
-  stringifyShotSplitRows,
   topologicalSort,
-  type GraphAddScope,
   type GraphDocument,
   type GraphNode,
   type GraphNodeParams,
   type GraphNodeRunState,
   type GraphNodeRunStatus,
   type HostInnerGraphRunInput,
-  type HostInnerGraphRunResult,
-  type ShotCanvasGraphField
+  type HostInnerGraphRunResult
 } from '@shared/graph'
 import {
   isDraftAssetId,
-  isDraftShotId,
   normalizeProjectStyleImages,
-  resolveMediaOutputDir,
-  shotScriptAssetId,
-  type Shot
+  resolveMediaOutputDir
 } from '@shared/domain'
 import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import { persistAssetRecord } from '../composables/useAssetRecord'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
+import {
+  readEpisodeAgentState,
+  writeEpisodeAgentState
+} from '../features/graph/episodeAgentStateIO'
 import { resolveImageGenerateCapabilitiesForRun } from '../features/graph/model/imageGenerateCapabilities'
 import { resolveVideoGenerateCapabilitiesForRun } from '../features/graph/model/videoGenerateCapabilities'
 import {
@@ -63,15 +59,6 @@ import { useDraftStore } from './drafts'
 import { useProjectStore } from './project'
 import { toPlain } from '../utils/toPlain'
 import {
-  applyVisualGraphGenRefsToShot,
-  collectScriptShotImages,
-  collectScriptShotVideos,
-  materializeBoundEntityRefsOnScriptShots,
-  shotNeedsVideoCascade,
-  shotNeedsVisualCascade
-} from '../features/script/shotVisualPipeline'
-import { applyShotSplitJson } from '../features/script/applyShotSplitOnOpen'
-import {
   applyWorldCatalog,
   loadWorldCatalog
 } from '../features/world/applyWorldCatalogOnOpen'
@@ -82,7 +69,6 @@ import {
   stringifyWorldElementCatalog,
   WORLD_ELEMENT_KINDS,
   collectTextFromBeatGraph,
-  getScopeHostIdSuffix,
   listVisualOutputNodeIdsNeedingCook,
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
@@ -97,14 +83,6 @@ import {
 export type GraphTaskStatus = 'pending' | 'running' | 'done' | 'error' | 'stopped'
 
 export type GraphTaskTarget =
-  | {
-      kind: 'script-shot'
-      scriptAssetId: string
-      shotId: string
-      scope: GraphAddScope
-      canvasField: ShotCanvasGraphField
-      hostId: string
-    }
   | {
       kind: 'world-element'
       worldAssetId: string
@@ -216,18 +194,16 @@ function applyRunStateToNodes(
 }
 
 function taskTargetKey(target: GraphTaskTarget): string {
-  if (target.kind === 'asset') {
-    return target.instanceKey
-      ? `asset:${target.assetId}:instance:${target.instanceKey}`
-      : `asset:${target.assetId}`
+  switch (target.kind) {
+    case 'asset':
+      return target.instanceKey
+        ? `asset:${target.assetId}:instance:${target.instanceKey}`
+        : `asset:${target.assetId}`
+    case 'world-element':
+      return `world-element:${target.worldAssetId}:${target.elementKind}`
+    case 'beat-unit':
+      return `beat-unit:${target.beatAssetId}:${target.beatId}`
   }
-  if (target.kind === 'world-element') {
-    return `world-element:${target.worldAssetId}:${target.elementKind}`
-  }
-  if (target.kind === 'beat-unit') {
-    return `beat-unit:${target.beatAssetId}:${target.beatId}`
-  }
-  return `shot:${target.scriptAssetId}:${target.shotId}:${target.scope}:${target.canvasField}`
 }
 
 /**
@@ -354,13 +330,7 @@ function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | n
     )
     return asGraphDocument(raw)
   }
-  const shot =
-    project.shots.find((s) => s.id === target.shotId) ??
-    (isDraftAssetId(target.scriptAssetId)
-      ? useDraftStore().getDraft(target.scriptAssetId)?.shots?.find((s) => s.id === target.shotId)
-      : null)
-  if (!shot) return null
-  return asGraphDocument(shot.canvas[target.canvasField])
+  return null
 }
 
 /** 把子集任务跑过的节点合并进最新底图，避免并行写回互相覆盖 */
@@ -399,16 +369,6 @@ export type EnqueueBatchResult = {
   taskIds: string[]
 }
 
-function resolveShotForScript(shotId: string, scriptAssetId: string): Shot | null {
-  const project = useProjectStore()
-  const fromProject = project.shots.find((s) => s.id === shotId)
-  if (fromProject) return fromProject
-  if (isDraftAssetId(scriptAssetId)) {
-    return useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId) ?? null
-  }
-  return null
-}
-
 function readWorldGenParams(worldAssetId: string): Record<string, unknown> {
   if (isDraftAssetId(worldAssetId)) {
     return { ...(useDraftStore().getDraft(worldAssetId)?.genParams ?? {}) }
@@ -431,12 +391,6 @@ function beatUnitNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
   return !(collected?.text.trim() || collected?.relativePath?.trim())
 }
 
-function scriptShotHostId(scriptAssetId: string, scope: GraphAddScope): string {
-  const base = `script:${scriptAssetId}`
-  const suffix = getScopeHostIdSuffix(scope)
-  return suffix ? `${base}:${suffix}` : base
-}
-
 function worldElementHostId(worldAssetId: string, elementKind: WorldElementKind): string {
   return `asset:${worldAssetId}:element:${elementKind}`
 }
@@ -454,10 +408,14 @@ function readBeatGenParams(beatAssetId: string): Record<string, unknown> {
 }
 
 function taskHostAssetId(target: GraphTaskTarget): string {
-  if (target.kind === 'asset') return target.assetId
-  if (target.kind === 'world-element') return target.worldAssetId
-  if (target.kind === 'beat-unit') return target.beatAssetId
-  return target.scriptAssetId
+  switch (target.kind) {
+    case 'asset':
+      return target.assetId
+    case 'world-element':
+      return target.worldAssetId
+    case 'beat-unit':
+      return target.beatAssetId
+  }
 }
 
 export const useGraphTaskStore = defineStore('graphTasks', () => {
@@ -637,37 +595,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         })
         return
       }
-
-      const { shotId, canvasField, scriptAssetId } = task.target
-      const shot =
-        project.shots.find((s) => s.id === shotId) ??
-        (isDraftAssetId(scriptAssetId)
-          ? useDraftStore().getDraft(scriptAssetId)?.shots?.find((s) => s.id === shotId)
-          : null)
-      if (!shot) return
-
-      let next: Shot = {
-        ...shot,
-        canvas: {
-          ...shot.canvas,
-          [canvasField]: toPlain(graph)
-        }
-      }
-      if (canvasField === 'visualGraphJson') {
-        next = await applyVisualGraphGenRefsToShot(next, graph)
-        next = {
-          ...next,
-          canvas: {
-            ...next.canvas,
-            visualGraphJson: toPlain(graph)
-          }
-        }
-      }
-      project.persistShotLocal(next)
-      const ownerId = shotScriptAssetId(next)
-      if (ownerId && isDraftAssetId(ownerId)) return
-      if (isDraftShotId(next.id)) return
-      await project.persistShot(next)
     })
   }
 
@@ -713,56 +640,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     bump()
     void runTask(task)
     return { ok: true, id }
-  }
-
-  function enqueueScriptShotBatch(input: {
-    scriptAssetId: string
-    shots: Shot[]
-    kind: 'visual' | 'shotWorkflow'
-    onlyMissing?: boolean
-  }): EnqueueBatchResult {
-    const onlyMissing = input.onlyMissing !== false
-    const scope: GraphAddScope = input.kind === 'visual' ? 'visual' : 'shotWorkflow'
-    const canvasField: ShotCanvasGraphField =
-      input.kind === 'visual' ? 'visualGraphJson' : 'graphJson'
-    const hostId = scriptShotHostId(input.scriptAssetId, scope)
-    let enqueued = 0
-    let skipped = 0
-    let duplicates = 0
-    const taskIds: string[] = []
-
-    for (const shot of input.shots) {
-      const live = resolveShotForScript(shot.id, input.scriptAssetId) ?? shot
-      const needs =
-        input.kind === 'visual' ? shotNeedsVisualCascade(live) : shotNeedsVideoCascade(live)
-      if (onlyMissing && !needs) {
-        skipped += 1
-        continue
-      }
-      const raw =
-        input.kind === 'visual' ? live.canvas.visualGraphJson : live.canvas.graphJson
-      const graph = normalizeScopedGraph(scope, raw ?? null)
-      const result = enqueueWorkflow({
-        title: live.title?.trim() || shot.id,
-        graph,
-        target: {
-          kind: 'script-shot',
-          scriptAssetId: input.scriptAssetId,
-          shotId: live.id,
-          scope,
-          canvasField,
-          hostId
-        }
-      })
-      if (result.ok) {
-        enqueued += 1
-        taskIds.push(result.id)
-      } else {
-        duplicates += 1
-      }
-    }
-
-    return { enqueued, skipped, duplicates, taskIds }
   }
 
   function enqueueWorldElementBatch(input: {
@@ -1110,6 +987,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             hostAssetId: taskHostAssetId(task.target)
           }),
         readRunText: readGraphRunText,
+        readEpisodeAgentState,
+        writeEpisodeAgentState,
         generateText: async (input) => {
           const startedAt = Date.now()
           const request = {
@@ -1410,98 +1289,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           return null
         },
-        resolveShotSplitTableJson: () => {
-          if (task.target.kind !== 'asset') return null
-          const scriptId = task.target.assetId
-          const project = useProjectStore()
-          const draft = useDraftStore().getDraft(scriptId)
-          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
-            return null
-          }
-          const shots =
-            draft?.shots ??
-            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          if (!shots.length) return null
-          const liveRows = shotsToShotSplitRows(shots)
-          const cached =
-            extractShotTableCachedJsonText(
-              graphEditorHosts.getLiveAssetDocument(scriptId) ??
-                ((draft?.genParams?.graphJson ??
-                  project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson) as
-                  | GraphDocument
-                  | undefined)
-            ) ?? null
-          return stringifyShotSplitRows(mergeShotSplitRowsWithCachedBindings(liveRows, cached))
-        },
-        importShotSplitTableJson: async (jsonText) => {
-          if (task.target.kind !== 'asset') return
-          const scriptId = task.target.assetId
-          const project = useProjectStore()
-          const draft = useDraftStore().getDraft(scriptId)
-          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
-            return
-          }
-          await applyShotSplitJson(scriptId, jsonText)
-        },
-        collectScriptShotImages: async (signal, options) => {
-          if (task.target.kind !== 'asset') return null
-          const scriptId = task.target.assetId
-          const project = useProjectStore()
-          const draft = useDraftStore().getDraft(scriptId)
-          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
-            return null
-          }
-          const shots =
-            draft?.shots ??
-            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          if (!shots.length) return { images: [], aggregateJson: '[]\n', entities: [] }
-          await materializeBoundEntityRefsOnScriptShots({
-            scriptAssetId: scriptId,
-            shots,
-            kind: 'visual',
-            signal
-          })
-          if (options?.cookBatch) {
-            const batch = enqueueScriptShotBatch({
-              scriptAssetId: scriptId,
-              shots,
-              kind: 'visual',
-              onlyMissing: true
-            })
-            await waitForTaskIds(batch.taskIds)
-          }
-          return collectScriptShotImages({ scriptAssetId: scriptId, shots, signal })
-        },
-        collectScriptShotVideos: async (signal, options) => {
-          if (task.target.kind !== 'asset') return null
-          const scriptId = task.target.assetId
-          const project = useProjectStore()
-          const draft = useDraftStore().getDraft(scriptId)
-          if ((draft?.type ?? project.assets.find((a) => a.id === scriptId)?.type) !== 'script') {
-            return null
-          }
-          const shots =
-            draft?.shots ??
-            project.shots.filter((s) => shotScriptAssetId(s) === scriptId)
-          if (!shots.length) return { videos: [], entities: [] }
-          await materializeBoundEntityRefsOnScriptShots({
-            scriptAssetId: scriptId,
-            shots,
-            kind: 'shotWorkflow',
-            signal,
-            shotEntities: options?.shotEntities
-          })
-          if (options?.cookBatch) {
-            const batch = enqueueScriptShotBatch({
-              scriptAssetId: scriptId,
-              shots,
-              kind: 'shotWorkflow',
-              onlyMissing: true
-            })
-            await waitForTaskIds(batch.taskIds)
-          }
-          return collectScriptShotVideos({ scriptAssetId: scriptId, shots, signal })
-        },
         resolveBeatCatalogJson: () => {
           if (task.target.kind !== 'asset') return null
           const beatId = task.target.assetId
@@ -1559,6 +1346,12 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       }
       applyRunStateToNodes(task.nodes, task.runStates)
 
+      // 导演审核回标：把 PASS/FAIL 与原因写到审核节点和对应生成节点
+      applyEpisodeReviewMarks(task.graph.nodes, (nodeId, params) => {
+        const node = task.graph.nodes.find((n) => n.id === nodeId)
+        if (node) node.params = { ...node.params, ...params } as GraphNodeParams
+      })
+
       if (result.ok) {
         task.status = 'done'
         task.message = 'ok'
@@ -1613,7 +1406,6 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     openDialog,
     closeDialog,
     enqueueWorkflow,
-    enqueueScriptShotBatch,
     enqueueWorldElementBatch,
     enqueueBeatUnitBatch,
     waitForTaskIds,

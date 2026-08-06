@@ -161,7 +161,7 @@
                 :value="row.status"
                 @change="onStatusChange(row.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option v-for="opt in SHOT_REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
+<option v-for="opt in REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
                   {{ opt }}
                 </option>
               </select>
@@ -187,10 +187,10 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  DEFAULT_SHOT_REVIEW_STATUS,
-  normalizeShotReviewStatus,
-  SHOT_REVIEW_STATUS_OPTIONS
-} from '@shared/domain'
+  DEFAULT_REVIEW_STATUS,
+  normalizeReviewStatus,
+  REVIEW_STATUS_OPTIONS
+} from '@shared/graph'
 import {
   stableBeatId,
   type BeatRow,
@@ -323,7 +323,7 @@ function removeRef(id: string, field: RefField, index: number): void {
 }
 
 function onStatusChange(id: string, value: string): void {
-  const next = normalizeShotReviewStatus(value)
+  const next = normalizeReviewStatus(value)
   const row = findRow(id)
   if (!row || next === row.status) return
   row.status = next
@@ -348,7 +348,7 @@ function onAdd(): void {
     props: [],
     weapons: [],
     sourceExcerpt: '',
-    status: DEFAULT_SHOT_REVIEW_STATUS
+  status: DEFAULT_REVIEW_STATUS
   })
   schedulePersist()
 }

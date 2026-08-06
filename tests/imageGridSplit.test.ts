@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cellKey,
   gridCellCropRect,
+  nearestApiAspectRatio,
   normalizeImageGridSplit,
   resolveGridSplitTargets
 } from '../src/shared/graph'
@@ -42,5 +43,12 @@ describe('imageGridSplit', () => {
       cropH: 0.5
     })
     expect(cellKey(3, 4)).toBe('3-4')
+  })
+
+  it('picks nearest api aspect ratio for cell pixels', () => {
+    expect(nearestApiAspectRatio(1024, 1024)).toBe('1:1')
+    expect(nearestApiAspectRatio(1080, 1920)).toBe('9:16')
+    expect(nearestApiAspectRatio(1920, 1080)).toBe('16:9')
+    expect(nearestApiAspectRatio(800, 1000)).toBe('4:5')
   })
 })

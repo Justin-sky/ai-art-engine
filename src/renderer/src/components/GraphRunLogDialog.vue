@@ -346,9 +346,6 @@ function isPassthroughOutputType(typeId: string | undefined): boolean {
   if (!typeId) return false
   return (
     typeId.startsWith('output.') ||
-    typeId === 'script.shotImageGen' ||
-    typeId === 'script.shotVideoGen' ||
-    typeId === 'script.shotTable' ||
     typeId === 'world.table' ||
     typeId === 'beat.table'
   )

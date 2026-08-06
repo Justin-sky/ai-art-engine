@@ -25,14 +25,7 @@
     />
     <AssetMediaPreview v-else-if="asset" :key="asset.id" :asset="asset" />
 
-    <template v-if="asset && isStoryboardScript(asset.type)">
-      <label>
-        {{ t('asset.inspector.shotCount') }}
-        <input :value="t('asset.inspector.shotCountValue', { n: scriptShotCount })" disabled />
-      </label>
-    </template>
-
-    <template v-else-if="asset && isDirectorDeck(asset.type)">
+    <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
         <input :value="linkedPanoramaName" disabled />
@@ -279,12 +272,10 @@ import {
   isImportedMediaRefAsset,
   isMediaFileAsset,
   isPoseModelAsset,
-  isStoryboardScript,
   readDirectorStage,
   readModelAssetTransform,
   readModelAssetColor,
   readPoseAssetData,
-  shotScriptAssetId,
   type AssetInfo,
   type ModelPreviewMeta,
   type StageVec3
@@ -407,10 +398,7 @@ function graphValueHasPreview(value: GraphValue | undefined): boolean {
   if (value.kind === 'text') return !!value.text.trim()
   if (value.kind === 'asset') {
     const type = value.assetType
-    if (
-      type === 'screenplay' ||
-      type === 'script'
-    ) {
+    if (type === 'screenplay') {
       return true
     }
     if (
@@ -480,7 +468,7 @@ function upstreamHasPreview(hostId: string, nodeId: string, visited: Set<string>
       return true
     }
     if (source.assetId && source.assetType) {
-      if (source.assetType === 'screenplay' || source.assetType === 'script') return true
+      if (source.assetType === 'screenplay') return true
       if (hasAssetFilePreview(assetById(source.assetId))) return true
     }
     if (upstreamHasPreview(hostId, source.id, visited)) return true
@@ -517,8 +505,8 @@ const graphPreviewNode = computed((): GraphNode | null => {
   if (selection.kind === 'graph.node' && selection.id && selection.hostId) {
     const node = graphEditorHosts.getNode(selection.hostId, selection.id)
     if (!node?.assetId) return null
-    // 剧本 / 分镜引用：走 AssetMediaPreview 读正文，不用图节点输出预览
-    if (node.assetType === 'screenplay' || node.assetType === 'script') return null
+    // 剧本引用：走 AssetMediaPreview 读正文，不用图节点输出预览
+    if (node.assetType === 'screenplay') return null
     return node
   }
   if (selection.kind !== 'asset') return null
@@ -539,7 +527,7 @@ const graphPreviewHostId = computed(() => {
       selection.id && selection.hostId
         ? graphEditorHosts.getNode(selection.hostId, selection.id)
         : null
-    if (node?.assetType === 'screenplay' || node?.assetType === 'script') return ''
+    if (node?.assetType === 'screenplay') return ''
     return selection.hostId ?? ''
   }
   if (selection.kind !== 'asset') return ''
@@ -591,7 +579,6 @@ const showHostInterface = computed(
 const showMediaPath = computed(
   () =>
     !showHostInterface.value &&
-    !(asset.value && isStoryboardScript(asset.value.type)) &&
     !(asset.value && isDirectorDeck(asset.value.type)) &&
     asset.value?.type !== 'model'
 )
@@ -620,10 +607,6 @@ const modelTransform = computed(() => ({
   rotation: degToRad(local.rotationDeg),
   scale: normalizeScale(local.scale)
 }))
-const scriptShotCount = computed(() => {
-  if (!asset.value || !isStoryboardScript(asset.value.type)) return 0
-  return project.shots.filter((s) => shotScriptAssetId(s) === asset.value!.id).length
-})
 const directorStage = computed(() => readDirectorStage(asset.value?.genParams))
 const linkedPanoramaName = computed(() => {
   const id = directorStage.value.linkedPanoramaAssetId

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { isDraftAssetId, shotScriptAssetId, type AssetInfo, type AssetType } from '@shared/domain'
+import { isDraftAssetId, type AssetInfo, type AssetType } from '@shared/domain'
 import {
   isAudioFilePath,
   isImageFilePath,
@@ -8,17 +8,11 @@ import {
   isVideoFilePath
 } from '@shared/import'
 import {
-  collectAllShotBindingImages,
-  extractShotTableCachedJsonText,
   flattenImagesValues,
   graphValueHasPayload,
   isBoundaryOutputNode,
-  readShotParamsAllBindingImages,
   resolveNodeTextContent,
   softResolveBoundaryOutputValue,
-  softResolveSourceOutput,
-  stringifyVideoEntities,
-  SHOT_PARAMS_IMAGES_PORT_ID,
   type GraphDocument,
   type GraphNode,
   type GraphValue
@@ -82,7 +76,7 @@ function assetPreviewKind(type: AssetType | undefined): PreviewMediaKind | null 
   if (type === 'image' || type === 'canvas') return 'image'
   if (type === 'video') return 'video'
   if (isSoundType(type)) return 'audio'
-  if (type === 'screenplay' || type === 'script') return 'text'
+  if (type === 'screenplay') return 'text'
   return null
 }
 
@@ -184,10 +178,7 @@ function mediaKindFromBoundaryPort(node: GraphNode): PreviewMediaKind | null {
     dataType === 'texts' ||
     dataType === 'world' ||
     dataType === 'worldEntities' ||
-    dataType === 'shotEntities' ||
-    dataType === 'videoEntities' ||
     dataType === 'beat' ||
-    dataType === 'shots' ||
     dataType === 'model'
   ) {
     return 'text'
@@ -198,10 +189,7 @@ function mediaKindFromBoundaryPort(node: GraphNode): PreviewMediaKind | null {
 function mediaKindFromNode(node: GraphNode): PreviewMediaKind | null {
   const boundaryKind = mediaKindFromBoundaryPort(node)
   if (boundaryKind) return boundaryKind
-  if (node.typeId === 'script.shotImageGen') return 'image'
-  if (node.typeId === 'script.shotVideoGen') return 'video'
   if (node.typeId === 'image.select') return 'image'
-  if (node.typeId === 'shotEntities.select') return 'image'
   if (node.typeId === 'video.select') return 'video'
   if (node.typeId === 'voice.select') return 'audio'
   if (node.typeId === 'text.select') return 'text'
@@ -279,10 +267,7 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
   if (
     (value.kind === 'world' ||
       value.kind === 'worldEntities' ||
-      value.kind === 'shotEntities' ||
-      value.kind === 'videoEntities' ||
-      value.kind === 'beat' ||
-      value.kind === 'shots') &&
+      value.kind === 'beat') &&
     value.text.trim()
   ) {
     into.push({
@@ -434,33 +419,6 @@ function pushLocalMediaPreview(
   }
 }
 
-/** 视频实体口：Inspector 只展示 JSON，不展开视频预览 */
-function isVideoEntitiesJsonPreviewNode(node: GraphNode): boolean {
-  return (
-    node.typeId === 'script.shotVideoGen' ||
-    node.typeId === 'output.timeline' ||
-    node.params.inputDataType === 'videoEntities'
-  )
-}
-
-function pushVideoEntitiesJsonPreview(into: PreviewItem[], node: GraphNode): boolean {
-  const fromResult =
-    (typeof node.params.resultText === 'string' && node.params.resultText.trim()) ||
-    (typeof node.params.text === 'string' && node.params.text.trim()) ||
-    ''
-  if (fromResult) {
-    into.push({ key: 'video-entities-json', kind: 'text', text: fromResult })
-    return true
-  }
-  const entities = node.params.videoEntities
-  if (Array.isArray(entities) && entities.length) {
-    const text = stringifyVideoEntities(entities)
-    into.push({ key: 'video-entities-json', kind: 'text', text })
-    return true
-  }
-  return false
-}
-
 function collectFallback(into: PreviewItem[]): void {
   void graphEditorHosts.revision.value
   void project.assets.length
@@ -478,15 +436,9 @@ function collectFallback(into: PreviewItem[]): void {
   }
 
   const nodeMediaKind = mediaKindFromNode(node)
-  const jsonVideoEntities = isVideoEntitiesJsonPreviewNode(node)
-  if (jsonVideoEntities) {
-    pushVideoEntitiesJsonPreview(into, node)
-    return
-  }
-  // 分镜视频节点的 cameraShots 曾被误写入分镜图，不能当图片图库
   const hasImageGallery =
     !!(node.params.generatedImages ?? []).length ||
-    (node.typeId !== 'script.shotVideoGen' && !!(node.params.cameraShots ?? []).length)
+    !!(node.params.cameraShots ?? []).length
 
   if (hasImageGallery || nodeMediaKind === 'image' || nodeMediaKind == null) {
     const imageItems = flattenImagesValues(
@@ -504,7 +456,7 @@ function collectFallback(into: PreviewItem[]): void {
                 }))
             }
           ]
-        : node.typeId !== 'script.shotVideoGen' && node.params.cameraShots?.length
+        : node.params.cameraShots?.length
           ? [
               {
                 kind: 'images' as const,
@@ -663,63 +615,11 @@ function softResolveBoundaryPreview(node: GraphNode): GraphValue | undefined {
       return asset?.genParams as Record<string, unknown> | undefined
     },
     resolveLiveAssetGraph: (assetId) =>
-      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
-    resolveAllShotBindingImages: () => resolvePreviewAllShotBindingImages()
+      graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined
   })
 }
 
-/** 预览用：剧本全部镜头绑定图（含表格缓存） */
-function resolvePreviewAllShotBindingImages() {
-  const shots = project.shots
-  let tableText: string | null = null
-  for (const shot of shots) {
-    const scriptId = shotScriptAssetId(shot)
-    if (!scriptId) continue
-    const doc =
-      graphEditorHosts.getLiveAssetDocument(scriptId) ??
-      (project.assets.find((a) => a.id === scriptId)?.genParams?.graphJson as
-        | GraphDocument
-        | undefined)
-    const text = extractShotTableCachedJsonText(doc)
-    if (text) {
-      tableText = text
-      break
-    }
-  }
-  return collectAllShotBindingImages({ shots, tableText })
-}
-
 function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
-  // 分镜参数：未运行也输出全部镜头绑定图
-  if (source.typeId === 'script.shotParams') {
-    const hostDoc = graphEditorHosts.getDocument(props.hostId)
-    const soft = hostDoc
-      ? softResolveSourceOutput(hostDoc, source.id, SHOT_PARAMS_IMAGES_PORT_ID, {
-          resolveAllShotBindingImages: () => resolvePreviewAllShotBindingImages()
-        })
-      : undefined
-    const fromSoft =
-      soft?.kind === 'images'
-        ? soft.items
-        : readShotParamsAllBindingImages(source.params).map((item) => ({
-            id: item.id,
-            dataUrl: '',
-            relativePath: item.relativePath
-          }))
-    let added = 0
-    for (const [index, item] of fromSoft.entries()) {
-      const path = item.relativePath?.trim()
-      if (!path) continue
-      pushLocalMediaPreview(
-        into,
-        item.id?.trim() || `shot-params-img:${source.id}:${index}`,
-        'image',
-        { relativePath: path }
-      )
-      added += 1
-    }
-    if (added) return
-  }
   // 累计图库优先于当次 runStates（out 可能只含本批）
   if ((source.params.generatedImages ?? []).length) {
     for (const [index, item] of (source.params.generatedImages ?? []).entries()) {
@@ -733,9 +633,6 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
       })
     }
     return
-  }
-  if (isVideoEntitiesJsonPreviewNode(source)) {
-    if (pushVideoEntitiesJsonPreview(into, source)) return
   }
   if ((source.params.generatedVideos ?? []).length) {
     for (const [index, item] of (source.params.generatedVideos ?? []).entries()) {
@@ -879,21 +776,6 @@ function collectUpstreamPreview(
   }
 }
 
-function isShotAggregatePreviewNode(typeId: string | undefined): boolean {
-  return typeId === 'script.shotImageGen' || typeId === 'script.shotVideoGen'
-}
-
-function appendNodeTextPreview(into: PreviewItem[]): void {
-  if (into.some((item) => item.kind === 'text' && item.text?.trim())) return
-  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
-  const runState = graphRunHosts.get(props.hostId)?.runStates?.[node.id]
-  void runState?.status
-  const textContent = resolveNodeTextContent(node, runState)
-  const text = textContent?.text?.trim() || node.params.text?.trim() || ''
-  if (!text) return
-  into.push({ key: 'node-text', kind: 'text', text })
-}
-
 function runOutHasTextItems(value: GraphValue | undefined): boolean {
   if (!value) return false
   if (value.kind === 'texts') {
@@ -903,10 +785,7 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
   if (
     value.kind === 'world' ||
     value.kind === 'worldEntities' ||
-    value.kind === 'shotEntities' ||
-    value.kind === 'videoEntities' ||
-    value.kind === 'beat' ||
-    value.kind === 'shots'
+    value.kind === 'beat'
   ) {
     return !!value.text.trim()
   }
@@ -933,14 +812,6 @@ const items = computed((): PreviewItem[] => {
     if (!list.length) {
       collectFromValue(softResolveBoundaryPreview(node), list)
     }
-  } else if (isVideoEntitiesJsonPreviewNode(node)) {
-    // 视频实体口：只展示 JSON，不走视频图库
-    if (runOutHasTextItems(runOut.value)) {
-      collectFromValue(runOut.value, list)
-    }
-    if (!list.length) {
-      pushVideoEntitiesJsonPreview(list, node)
-    }
   } else {
     // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
     // 有 generatedTexts 时走图库（支持选中 out）；无图库时再用本次 out.texts / 单条文本
@@ -950,26 +821,18 @@ const items = computed((): PreviewItem[] => {
       !!(node.params.generatedVideos ?? []).length ||
       !!(node.params.generatedVoices ?? []).length ||
       hasTextGallery ||
-      (node.typeId !== 'script.shotVideoGen' && !!(node.params.cameraShots ?? []).length)
+      !!(node.params.cameraShots ?? []).length
     // 目录口（world/beat）与 Selected text 只是当前选中，不能盖掉图库多版本
     const preferLiveTextOut = !hasTextGallery && runOutHasTextItems(runOut.value)
     if (preferLiveTextOut) {
       collectFromValue(runOut.value, list)
-      if (isShotAggregatePreviewNode(props.node.typeId)) {
-        appendNodeTextPreview(list)
-      }
     } else if (hasGallery) {
       collectFallback(list)
     } else {
       collectFromValue(runOut.value, list)
       if (!list.length) {
         collectFallback(list)
-      } else if (isShotAggregatePreviewNode(props.node.typeId)) {
-        appendNodeTextPreview(list)
       }
-    }
-    if (hasGallery && !preferLiveTextOut && isShotAggregatePreviewNode(props.node.typeId)) {
-      appendNodeTextPreview(list)
     }
   }
   // 去重：同 key，或同 relativePath / 同正文

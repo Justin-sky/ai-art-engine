@@ -7,7 +7,6 @@ import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
 import AssetEditor from '../../components/AssetEditor.vue'
 import DirectorEditor from '../../components/DirectorEditor.vue'
 import InspectorPanel from '../../components/InspectorPanel.vue'
-import ScriptEditor from '../../components/ScriptEditor.vue'
 import WorldElementEditor from '../../components/WorldElementEditor.vue'
 import BeatAssetEditor from '../../components/BeatAssetEditor.vue'
 import WorkspaceMain from '../../components/WorkspaceMain.vue'
@@ -67,21 +66,13 @@ const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   },
   {
     id: 'inspector',
-    createComponent: ({ exportCanvas }) =>
-      panel('DockInspector', () => h(InspectorPanel, { exportCanvas }))
+    createComponent: () => panel('DockInspector', () => h(InspectorPanel))
   },
   {
     id: 'assetEditor',
     createComponent: () =>
       panel('DockAssetEditor', (params) =>
         h(AssetEditor, { assetId: readParam(params, 'assetId') })
-      )
-  },
-  {
-    id: 'scriptEditor',
-    createComponent: () =>
-      panel('DockScriptEditor', (params) =>
-        h(ScriptEditor, { scriptAssetId: readParam(params, 'scriptAssetId') })
       )
   },
   {

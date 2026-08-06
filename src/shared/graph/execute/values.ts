@@ -1,16 +1,12 @@
 import {
   appendStyleImagesReferencePrompt,
   buildGeneratedMediaFileKey,
-  buildShotGenerationPrompt,
   formatGeneratedMediaStamp,
   normalizeProjectStyleImages,
   portMentionIndex,
   resolveGenerateStyleImages,
   resolveStyleMentionReserveCount,
   type ProjectStyleImage,
-  type ShotAudioRef,
-  type ShotGenRef,
-  type ShotGenRefRole,
   type AssetType
 } from '../../domain'
 import type {
@@ -25,7 +21,7 @@ import {
   isPluralGraphPortDataType,
   toSingularGraphPortDataType
 } from '../types'
-import { catalogTextFromInputs, catalogTextFromValue, catalogValue } from '../catalogValue'
+import { catalogTextFromInputs, catalogValue } from '../catalogValue'
 import { isAssetHostNode, isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
 import {
@@ -55,10 +51,20 @@ import {
 } from '../instructionMentions'
 import type { InstructionPresetKind } from '../instructionPresets'
 import {
+  applyEpisodeAgentReview,
+  createEpisodeAgentState,
+  parseEpisodeAgentState,
+  serializeEpisodeAgentState
+} from '../episodeAgentState'
+import {
+  selectEpisodeAnchor,
+  selectEpisodeCell,
+  selectEpisodeMotion
+} from '../episodeBoardParse'
+import {
   resolveImageSystemPrompt,
   resolveOptimizeSystemPrompt,
   resolveScreenplaySystemPrompt,
-  resolveShotSplitSystemPrompt,
   resolveWorldExtractSystemPrompt,
   resolveBeatSplitSystemPrompt,
   resolveBeatUnitGenSystemPrompt,
@@ -84,7 +90,6 @@ import {
   buildImagePrompt,
   buildOptimizePrompt,
   buildScreenplayPrompt,
-  buildShotSplitPrompt,
   buildWorldExtractPrompt,
   buildBeatSplitPrompt,
   buildBeatUnitGenPrompt,
@@ -109,24 +114,6 @@ import {
 import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
 import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
 import {
-  readShotStoryboardFromNodeParams,
-  resolveShotParamsBindingImageItems,
-  SHOT_PARAMS_IMAGES_PORT_ID
-} from '../shotParams'
-import {
-  mergeShotEntityResults,
-  parseShotEntities,
-  stringifyShotEntities,
-  type ShotEntityResult
-} from '../shotEntitiesParse'
-import { parseVideoEntities, stringifyVideoEntities } from '../videoEntitiesParse'
-import {
-  mergeShotSplitRowsPreservingReviewed,
-  mergeShotSplitRowsWithCachedBindings,
-  parseShotSplitJson,
-  stringifyShotSplitRows
-} from '../shotSplitParse'
-import {
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
   parseWorldElementGenResults,
@@ -136,7 +123,6 @@ import {
 } from '../worldElementParse'
 import {
   mergeBeatRowsPreservingReviewed,
-  parseBeatEntityJson,
   parseBeatJson,
   stringifyBeatRows
 } from '../beatParse'
@@ -185,7 +171,8 @@ import {
 import { readImageCropFromNode } from '../imageCrop'
 import {
   buildGridCellUpscalePrompt,
-  gridSplitScaleToResolution,
+  gridSplitOutputResolution,
+  nearestApiAspectRatio,
   readImageGridSplitFromNode,
   resolveGridSplitTargets
 } from '../imageGridSplit'
@@ -285,14 +272,25 @@ function mergeGeneratedImages(
   }))
 }
 
-function inferRole(type: AssetType): ShotGenRefRole {
+function inferRole(type: AssetType): string {
   if (type === 'video') return 'motion'
   return 'character'
 }
 
 export function reindexContribution(
-  genRefs: ShotGenRef[],
-  audioRefs: ShotAudioRef[]
+  genRefs: Array<{
+    role: string
+    assetId: string
+    refIndex: number
+    label?: string
+    weight?: number
+  }>,
+  audioRefs: Array<{
+    kind: string
+    assetId?: string
+    text?: string
+    refIndex?: number
+  }>
 ): GraphGenerationContribution {
   const visual = genRefs.map((ref, i) => ({ ...ref, refIndex: i + 1 }))
   const voiceOnly = audioRefs.filter((a) => a.kind === 'voice' && a.assetId)
@@ -303,8 +301,8 @@ export function reindexContribution(
 }
 
 export function contributionFromAssets(items: GraphAssetValue[]): GraphGenerationContribution {
-  const genRefs: ShotGenRef[] = []
-  const audioRefs: ShotAudioRef[] = []
+  const genRefs: GraphGenerationContribution['genRefs'] = []
+  const audioRefs: GraphGenerationContribution['audioRefs'] = []
   for (const item of items) {
     if (item.assetType === 'voice') {
       audioRefs.push({ kind: 'voice', assetId: item.assetId })
@@ -1039,18 +1037,6 @@ export function resolveGalleryOutputsFromNodeParams(
     }
   }
 
-  if (options?.typeId === 'script.shotImageGen') {
-    const fromParams = Array.isArray(params.shotEntities) ? params.shotEntities : []
-    const results =
-      fromParams.length > 0
-        ? fromParams.filter((item) => item?.id && item?.name && item?.imageUrls?.length)
-        : parseShotEntities(params.text)
-    if (!results.length) return null
-    return {
-      out: catalogValue(GraphPortType.shotEntities, stringifyShotEntities(results))
-    }
-  }
-
   const generatedImages = params.generatedImages
   if (Array.isArray(generatedImages) && generatedImages.length) {
     const items: GraphImageItem[] = generatedImages.map((item) => ({
@@ -1205,21 +1191,6 @@ function mapChildOutputToHostOut(
   assetType: string
 ): Record<string, GraphValue> | null {
   if (!output) return null
-  if (assetType === 'script') {
-    const entitiesText = Array.isArray(output.params?.videoEntities)
-      ? stringifyVideoEntities(
-          output.params.videoEntities as Array<{
-            id: string
-            name: string
-            videoUrls: string[]
-          }>
-        )
-      : ''
-    if (entitiesText) {
-      return { out: catalogValue(GraphPortType.videoEntities, entitiesText) }
-    }
-    return null
-  }
   if (assetType === 'world') {
     const fromParams = Array.isArray(output.params?.worldElementOutputs)
       ? (output.params.worldElementOutputs as WorldElementGenResult[])
@@ -1409,33 +1380,6 @@ export function mapHostInnerStatesToOutputs(
   const outs = findAllOutputNodes(doc)
   if (!outs.length) return null
 
-  if (assetType === 'script') {
-    const merged: Array<{ id: string; name: string; videoUrls: string[] }> = []
-    const seen = new Set<string>()
-    for (const outNode of outs) {
-      const raw = states[outNode.id]?.outputs?.out
-      const mapped = mapChildOutputToHostOut(
-        raw?.kind === 'output' ? raw : undefined,
-        'script'
-      )
-      const text =
-        mapped?.out && mapped.out.kind === 'videoEntities'
-          ? mapped.out.text
-          : raw?.kind === 'videoEntities'
-            ? raw.text
-            : ''
-      for (const entity of parseVideoEntities(text)) {
-        const key = `${entity.id}::${entity.videoUrls.join('|')}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        merged.push(entity)
-      }
-    }
-    return {
-      out: catalogValue(GraphPortType.videoEntities, stringifyVideoEntities(merged))
-    }
-  }
-
   for (const outNode of outs) {
     const raw = states[outNode.id]?.outputs?.out
     if (raw?.kind === 'output') {
@@ -1471,8 +1415,8 @@ export function executeAssetNode(
     // 缺内图 / 无 runner 由内部抛错，禁止静默当引用透传
     const nested = executeAssetHostInnerGraph(ctx)
     if (nested) return nested
-    // 剧本引用端口为 text；分镜非宿主引用仍可读正文
-    if (node.assetType === 'screenplay' || node.assetType === 'script') {
+    // 剧本引用端口为 text；非宿主引用仍可读正文
+    if (node.assetType === 'screenplay') {
       return executeTextAssetRefNode(ctx)
     }
     const value: GraphAssetValue = {
@@ -2416,7 +2360,6 @@ export type InstructionFinalPreviewKind =
   | 'voice'
   | 'optimize'
   | 'toPrompt'
-  | 'shotSplit'
   | 'worldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
@@ -2429,7 +2372,6 @@ export function resolveInstructionFinalPreviewKind(
   const typeId = node?.typeId
   if (typeId === 'prompt.optimize' || presetKind === 'optimize') return 'optimize'
   if (typeId === 'image.toPrompt' || presetKind === 'toPrompt') return 'toPrompt'
-  if (typeId === 'script.shotSplit' || presetKind === 'shotSplit') return 'shotSplit'
   if (typeId === 'world.extract' || presetKind === 'worldExtract') return 'worldExtract'
   if (typeId === 'beat.split' || presetKind === 'beatSplit') {
     return 'beatSplit'
@@ -2468,8 +2410,6 @@ function resolveSystemPromptForPreviewKind(
       return resolveOptimizeSystemPrompt(raw, locale)
     case 'toPrompt':
       return resolveToPromptSystemPrompt(raw, locale)
-    case 'shotSplit':
-      return resolveShotSplitSystemPrompt(raw, locale)
     case 'worldExtract':
       return resolveWorldExtractSystemPrompt(raw, locale)
     case 'beatSplit':
@@ -2498,8 +2438,6 @@ function buildUserPromptForPreviewKind(
       return buildOptimizePrompt(instruction, locale)
     case 'toPrompt':
       return buildToPromptUserPrompt(instruction, locale)
-    case 'shotSplit':
-      return buildShotSplitPrompt(instruction, locale)
     case 'worldExtract':
       return buildWorldExtractPrompt(instruction, locale)
     case 'beatSplit':
@@ -2678,8 +2616,8 @@ function resolveMentionSources(ctx: NodeExecuteContext): InstructionMentionSourc
 }
 
 /**
- * 画布上拖入的剧本/分镜资产引用。
- * 剧本优先 resolveAssetText（导入文件 URL / 新建 graphJson）；分镜走 genParams。
+ * 画布上拖入的剧本资产引用。
+ * 剧本优先 resolveAssetText（导入文件 URL / 新建 graphJson），否则走 genParams。
  */
 export async function executeTextAssetRefNode(
   ctx: NodeExecuteContext
@@ -2942,23 +2880,51 @@ function patchBoundaryOutputPreview(ctx: NodeExecuteContext, value: GraphValue):
   }
 }
 
-/** 宿主边界输出：透传第一个输入到 out */
+/** 宿主边界输出：单数透传首个输入；复数口按类别合并为数组 */
 export function executeBoundaryOutputNode(
   ctx: NodeExecuteContext
 ): Record<string, GraphValue> {
-  const first = (ctx.inputs.in ?? Object.values(ctx.inputs).flat())[0]
+  const incoming = ctx.inputs.in ?? Object.values(ctx.inputs).flat()
+  const dataType = ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
+  const aggregate =
+    ctx.node.params.hostBoundaryPort?.multiple === true || isPluralGraphPortDataType(dataType)
+
+  if (aggregate && incoming.length) {
+    if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+      const items = flattenImagesValues(incoming)
+      const value: GraphValue = { kind: 'images', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+    if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+      const items = flattenVideosValues(incoming)
+      const value: GraphValue = { kind: 'videos', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+    if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+      const items = flattenVoicesValues(incoming)
+      const value: GraphValue = { kind: 'voices', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+    if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
+      const items = flattenTextsValues(incoming)
+      const value: GraphValue = { kind: 'texts', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+  }
+
+  const first = incoming[0]
   if (first) {
     patchBoundaryOutputPreview(ctx, first)
     return { out: first }
   }
-  const dataType = ctx.node.params.hostBoundaryPort?.dataType ?? GraphPortType.text
   if (
     dataType === GraphPortType.beat ||
     dataType === GraphPortType.worldEntities ||
-    dataType === GraphPortType.shotEntities ||
-    dataType === GraphPortType.videoEntities ||
-    dataType === GraphPortType.world ||
-    dataType === GraphPortType.shots
+    dataType === GraphPortType.world
   ) {
     return { out: catalogValue(dataType, '') }
   }
@@ -2971,6 +2937,9 @@ export function executeBoundaryOutputNode(
   if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
     return { out: { kind: 'voices', items: [] } }
   }
+  if (dataType === GraphPortType.texts) {
+    return { out: { kind: 'texts', items: [] } }
+  }
   return { out: { kind: 'text', text: '' } }
 }
 
@@ -2982,6 +2951,9 @@ export async function executePromptOptimizeNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
+  const episodeStep = node.params.episodeStep
+  const episodeReviewTarget = node.params.episodeReviewTarget
+  const episodeScopeKey = node.params.episodeScopeKey?.trim() || 'default'
   const mentionSources = resolveMentionSources(ctx)
   const instructionRaw = node.params.generateInstruction?.trim() ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
@@ -3011,6 +2983,14 @@ export async function executePromptOptimizeNode(
   if (incomingText) {
     prompt = `${prompt.trim()}\n\n${incomingText}`
   }
+  // 第二档闭环：上游 Agent 步骤存在 FAIL 原因时自动附加，要求针对修改
+  if (episodeStep && ctx.readEpisodeAgentState) {
+    const raw = await ctx.readEpisodeAgentState(episodeScopeKey)
+    const state = parseEpisodeAgentState(raw)
+    if (state?.last_failed_reason && state.current_step === episodeStep) {
+      prompt = `${prompt.trim()}\n\n【导演上次 FAIL 原因，必须针对性地修改】${state.last_failed_reason}`
+    }
+  }
 
   const result = await ctx.generateText({
     prompt,
@@ -3024,267 +3004,144 @@ export async function executePromptOptimizeNode(
   const text = result.text.trim()
   if (!text) throw new Error('模型未返回优化结果')
 
+  // 第二档闭环：导演审核节点解析 PASS/FAIL 并落盘 agent-state.json
+  if (episodeReviewTarget && ctx.readEpisodeAgentState && ctx.writeEpisodeAgentState) {
+    const verdict = parseEpisodeDirectorVerdict(text)
+    if (verdict) {
+      const raw = await ctx.readEpisodeAgentState(episodeScopeKey)
+      const state =
+        parseEpisodeAgentState(raw) ?? createEpisodeAgentState(episodeScopeKey, episodeScopeKey)
+      const next = applyEpisodeAgentReview(state, episodeReviewTarget, verdict.result, verdict.reason)
+      await ctx.writeEpisodeAgentState(episodeScopeKey, serializeEpisodeAgentState(next))
+      node.params = {
+        ...node.params,
+        episodeReviewStatus: verdict.result,
+        episodeReviewReason: verdict.reason
+      }
+    }
+  }
+
   node.params = { ...node.params, text }
   ctx.patchNode?.({ params: { text } })
   return { out: { kind: 'text', text } }
 }
 
-/** 分镜参数：提示词文本 + 全部镜头绑定图（角色/场景/道具/武器） */
-export function executeShotParamsNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const storyboard = readShotStoryboardFromNodeParams(ctx.node.params)
-  const refs = ctx.resolveShotStoryboard?.(ctx.node.params.boundShotId)
-  const text = buildShotGenerationPrompt(storyboard, {
-    stylePreset: refs?.stylePreset
-  })
-  // 图片组：剧本下全部镜头绑定图（不限当前选中镜）；无 resolver 时回落节点缓存/单镜
-  const items = resolveShotParamsBindingImageItems({
-    node: ctx.node,
-    resolveAllShotBindingImages: ctx.resolveAllShotBindingImages,
-    resolveShotStoryboard: ctx.resolveShotStoryboard
-  }).map((item) => ({
-    id: item.id,
-    dataUrl: '',
-    relativePath: item.relativePath
-  }))
-  return {
-    out: { kind: 'text', text },
-    [SHOT_PARAMS_IMAGES_PORT_ID]: { kind: 'images', items }
+/** 解析导演审核结论：## 结论: PASS 或 ## 结论: FAIL (原因: …) */
+export function parseEpisodeDirectorVerdict(
+  text: string
+): { result: 'PASS' | 'FAIL'; reason: string } | null {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  for (const raw of lines) {
+    const line = raw.trim()
+    const match = /^##\s*结论\s*[:：]\s*(PASS|FAIL)/i.exec(line)
+    if (!match) continue
+    const result = match[1]!.toUpperCase() === 'PASS' ? 'PASS' : 'FAIL'
+    let reason = ''
+    if (result === 'FAIL') {
+      const reasonMatch = /^##\s*结论\s*[:：]\s*FAIL\s*\(原因\s*[:：]\s*(.*)\)/i.exec(line)
+      reason = reasonMatch?.[1]?.trim() ?? ''
+    }
+    return { result, reason }
+  }
+  return null
+}
+
+/**
+ * 导演审核结果回标：把 PASS/FAIL 与原因写到审核节点和对应生成节点（episodeStep 匹配）的参数上，
+ * 使节点卡片与流水线视图不依赖状态文件也能直接显示审核状态。
+ */
+export function applyEpisodeReviewMarks(
+  nodes: GraphNode[],
+  patch: (nodeId: string, params: Partial<GraphNodeParams>) => void
+): void {
+  for (const node of nodes) {
+    const target = node.params?.episodeReviewTarget
+    if (!target) continue
+    const text = typeof node.params?.text === 'string' ? node.params.text : ''
+    const verdict = parseEpisodeDirectorVerdict(text)
+    if (!verdict) continue
+    const marks: Partial<GraphNodeParams> = {
+      episodeReviewStatus: verdict.result,
+      episodeReviewReason: verdict.reason
+    }
+    patch(node.id, marks)
+    const upstream = nodes.find(
+      (candidate) => candidate.params?.episodeStep === target && candidate.id !== node.id
+    )
+    if (upstream) patch(upstream.id, marks)
   }
 }
 
-/** 场细化生成：文本模型 + 指令框；规则在系统提示词 */
-export async function executeBeatUnitGenNode(
+/** 宫格选择：从 9宫格分镜表文本中选中一个宫格，输出该格提示词 */
+export async function executeEpisodeAnchorSelectNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incomingText = autoIncomingTextForInstruction(
-    instructionRaw,
-    selected,
-    mentionSources
-  )
-  const localText = node.params.text?.trim() ?? ''
-
-  if (!ctx.generateText) {
-    const text = instruction.trim() || incomingText || localText
-    if (text && text !== localText) {
-      node.params = { ...node.params, text }
-      ctx.patchNode?.({ params: { text } })
-    }
-    return { out: { kind: 'text', text } }
-  }
-
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-
-  let prompt = buildBeatUnitGenPrompt(instruction, ctx.locale)
-  if (incomingText) {
-    prompt = `${prompt.trim()}\n\n${incomingText}`
-  }
-
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveBeatUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
-    model: node.params.generateModel || undefined,
-    providerInstanceId: node.params.generateProviderInstanceId || undefined
-  })
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-  const text = result.text.trim()
-  if (!text) throw new Error('模型未返回叙事细化结果')
-
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  const incoming = flattenTextValues(ctx.inputs.in ?? Object.values(ctx.inputs).flat())
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  const source = incoming || node.params.text?.trim() || ''
+  const index = node.params.anchorIndex ?? 1
+  const row = selectEpisodeAnchor(source, index)
+  const outText = row
+    ? `# 格${row.index}${row.title ? ` - ${row.title}` : ''}${row.beatId ? ` [节拍ID: ${row.beatId}]` : ''}\n\n${row.text}`
+    : source
+  node.params = { ...node.params, text: outText }
+  ctx.patchNode?.({ params: { text: outText } })
+  return { out: { kind: 'text', text: outText } }
 }
 
-/** 场参考：输出绑定单元的目录字段文本 */
-export function executeBeatUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const beatId = ctx.node.params.boundBeatId?.trim()
-  if (!beatId) return {}
-  const unit = ctx.resolveBeatUnit?.(beatId)
-  if (!unit) return {}
-  const text = formatBeatRefText(unit)
-  return text ? { out: { kind: 'text', text } } : {}
-}
-
-/**
- * 分镜表格：优先输出当前分镜列表（含表格内绑定的角色/场景/道具/武器），
- * 尚无分镜时才透传上游拆分 JSON。只产出输出值，不写分镜列表；
- * 导入发生在双击打开表格时。
- */
-export function executeShotTableNode(
-  ctx: NodeExecuteContext
-): Record<string, GraphValue> {
-  const fromWorld = catalogTextFromInputs(
-    ctx.inputs['in-worldEntities'] ?? [],
-    GraphPortType.worldEntities
-  )
-  if (fromWorld) {
-    const worldElementOutputs = parseWorldElementGenResults(fromWorld)
-    ctx.node.params = {
-      ...ctx.node.params,
-      worldElementOutputs
-    }
-    ctx.patchNode?.({
-      params: {
-        worldElementOutputs
-      }
-    })
-  }
-
-  // 已有分镜列表时以其为准；再与表格缓存合并绑定图，避免 Shot 空绑定时冲掉 params.text
-  const fromShots = ctx.resolveShotSplitTableJson?.()?.trim()
-  const fromShotsRows = fromShots ? parseShotSplitJson(fromShots) : null
-  if (fromShotsRows?.length) {
-    const mergedRows = mergeShotSplitRowsWithCachedBindings(
-      fromShotsRows,
-      ctx.node.params.text
-    )
-    const mergedText = stringifyShotSplitRows(mergedRows)
-    // 合并未增加绑定时原样透传，避免无谓改写 JSON 字段顺序
-    const text =
-      mergedText === stringifyShotSplitRows(fromShotsRows)
-        ? (fromShots ?? mergedText)
-        : mergedText
-    ctx.node.params = { ...ctx.node.params, text }
-    ctx.patchNode?.({ params: { text } })
-    return { out: catalogValue(GraphPortType.shots, text) }
-  }
-
-  const fromIn = catalogTextFromInputs(ctx.inputs.in ?? Object.values(ctx.inputs).flat(), GraphPortType.shots)
-  if (fromIn) {
-    ctx.node.params = { ...ctx.node.params, text: fromIn }
-    ctx.patchNode?.({ params: { text: fromIn } })
-    return { out: catalogValue(GraphPortType.shots, fromIn) }
-  }
-
-  const local = ctx.node.params.text?.trim() ?? ''
-  return local ? { out: catalogValue(GraphPortType.shots, local) } : {}
-}
-
-async function importShotSplitFromCatalogInput(
-  ctx: NodeExecuteContext,
-  input: GraphValue | undefined
-): Promise<void> {
-  const text = catalogTextFromValue(input, GraphPortType.shots)
-  if (!text) return
-  ctx.node.params = { ...ctx.node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  await ctx.importShotSplitTableJson?.(text)
-}
-
-/**
- * 生成分镜图：有上游拆分/表格 JSON 时写入分镜列表；
- * 再收集各镜 visual 结果写回 genRefs，输出 shotEntities。
- * 是否入队批跑画面子图由 ctx.cookBatchSubgraphs 决定（Cook 子图 / 整链为 true）。
- */
-export async function executeShotImageGenNode(
+/** 动态格选择：优先从动态提示词表选中该格指令，回退到 4宫格动态分镜表选中该格内容 */
+export async function executeEpisodeCellSelectNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const first = ctx.inputs.in?.[0] ?? Object.values(ctx.inputs).flat()[0]
-  await importShotSplitFromCatalogInput(ctx, first)
-
-  const collected = await ctx.collectScriptShotImages?.(ctx.signal, {
-    cookBatch: ctx.cookBatchSubgraphs === true
-  })
-  const items = collected?.images ?? []
-  const entities = collected?.entities ?? []
-  const entitiesText = stringifyShotEntities(entities)
-  const paramsPatch: Record<string, unknown> = {
-    text: entitiesText,
-    shotEntities: entities
-  }
-  if (collected?.aggregateJson?.trim()) {
-    paramsPatch.aggregateJson = collected.aggregateJson.trim()
-  }
-  if (items.length) {
-    const cameraShots = items.map((item, index) => ({
-      id: item.id ?? `shot-image:${index}`,
-      dataUrl: item.dataUrl,
-      createdAt: item.createdAt ?? new Date().toISOString(),
-      relativePath: item.relativePath
-    }))
-    paramsPatch.cameraShots = cameraShots
-    paramsPatch.previewRelativePath = items[0]?.relativePath
-    paramsPatch.previewDataUrl = items[0]?.dataUrl
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-  return { out: catalogValue(GraphPortType.shotEntities, entitiesText) }
+  const { node } = ctx
+  const incoming = flattenTextValues(ctx.inputs.in ?? Object.values(ctx.inputs).flat())
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  const source = incoming || node.params.text?.trim() || ''
+  const groupIndex = node.params.cellGroupIndex ?? 1
+  const cellIndex = node.params.cellIndex ?? 1
+  const motionRow = selectEpisodeMotion(source, groupIndex, cellIndex)
+  const cellRow = selectEpisodeCell(source, groupIndex, cellIndex)
+  const outText = motionRow
+    ? `# ${motionRow.key}\n\n${motionRow.text}`
+    : cellRow
+      ? `# 格${cellRow.groupIndex}-${cellRow.cellIndex} (${cellRow.stage})\n\n${cellRow.text}`
+      : source
+  node.params = { ...node.params, text: outText }
+  ctx.patchNode?.({ params: { text: outText } })
+  return { out: { kind: 'text', text: outText } }
 }
 
-/**
- * 生成分镜视频：文本口导入分镜列表；实体口接收分镜图实体表；
- * 再收集各镜子图视频结果写回 genRefs，输出 videoEntities。
- * 是否入队批跑 shotWorkflow 由 ctx.cookBatchSubgraphs 决定。
- * 导入只在节点执行时发生，打开编辑窗口不会导入。
- */
-export async function executeShotVideoGenNode(
+/** 成片时间线输出：透传上游视频（单视频 / 视频组），写回图库与预览路径 */
+export async function executeTimelineOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const textIn = ctx.inputs['in-text']?.[0] ?? ctx.inputs.in?.[0]
-  await importShotSplitFromCatalogInput(ctx, textIn)
-  const shotEntitiesText = catalogTextFromInputs(
-    [...(ctx.inputs['in-entities'] ?? []), ...(ctx.inputs['in-image'] ?? [])],
-    GraphPortType.shotEntities
-  )
-  const shotEntities = parseShotEntities(shotEntitiesText)
-  if (shotEntities.length) {
-    // 仅缓存分镜图实体，不写入 cameraShots（避免 Inspector 当成图片预览）
-    ctx.node.params = { ...ctx.node.params, shotEntities }
-    ctx.patchNode?.({ params: { shotEntities } })
-  }
-
-  // 把刚解析的实体表传给收集管线，避免物化边界输入时读到 shotVideoGen 旧缓存 / 旧 storyboard
-  const collected = await ctx.collectScriptShotVideos?.(ctx.signal, {
-    cookBatch: ctx.cookBatchSubgraphs === true,
-    shotEntities: shotEntities.length ? shotEntities : undefined
-  })
-  const videoEntities = collected?.entities ?? []
-  const videoEntitiesText = stringifyVideoEntities(videoEntities)
-  const paramsPatch: Record<string, unknown> = {
-    videoEntities,
-    text: videoEntitiesText,
-    resultText: videoEntitiesText,
-    // 视频实体口只展示 JSON，不写视频图库/媒体预览
-    generatedVideos: [],
-    cameraShots: [],
-    previewDataUrl: '',
-    previewRelativePath: ''
-  }
-  ctx.node.params = { ...ctx.node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
-  return { out: catalogValue(GraphPortType.videoEntities, videoEntitiesText) }
-}
-
-/** 视频实体输出 / 成片时间线：透传 videoEntities 目录 JSON */
-export async function executeVideoEntitiesOutputNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const incoming = Object.values(ctx.inputs).flat()
-  const text = catalogTextFromInputs(incoming, GraphPortType.videoEntities) ?? ''
-  const items = parseVideoEntities(text)
+  const incoming = collectIncomingValues(ctx.inputs)
+  const videos = flattenVideosValues(incoming)
+  const previewRelativePath = videos[0]?.relativePath?.trim() || undefined
+  const previewDataUrl = videos[0]?.dataUrl?.trim() || undefined
   const paramsPatch = {
-    resultText: text || '[]',
-    text: text || '[]',
-    videoEntities: items,
-    // 视频实体口只展示 JSON，不写视频图库/媒体预览路径
-    generatedVideos: [] as [],
+    resultText: '',
+    text: '',
+    generatedVideos: videos.map((video) => ({
+      id: video.id,
+      dataUrl: video.dataUrl,
+      relativePath: video.relativePath,
+      createdAt: video.createdAt
+    })),
     cameraShots: [] as [],
-    previewDataUrl: '',
-    previewRelativePath: '',
-    outputKind: (ctx.node.params.outputKind ?? 'video') as GraphOutputKind,
-    inputDataType: GraphPortType.videoEntities
+    previewDataUrl: previewDataUrl || '',
+    previewRelativePath: previewRelativePath || '',
+    outputKind: 'video' as GraphOutputKind,
+    inputDataType: GraphPortType.video
   }
   ctx.node.params = { ...ctx.node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
-  return { out: catalogValue(GraphPortType.videoEntities, text || '[]') }
+  return { out: { kind: 'videos', items: videos } }
 }
 
 /**
@@ -3496,83 +3353,6 @@ export async function executeBeatGenNode(
 }
 
 /**
- * 分镜拆分：将上游剧本文本按生成指令拆成有序分镜目录。
- * 未注入 generateText 时退回本地已有目录（不把剧本文当目录输出）。
- * 合并「已审核」行时只读本地 params 中的上次目录。
- */
-export async function executeShotSplitNode(
-  ctx: NodeExecuteContext
-): Promise<Record<string, GraphValue>> {
-  const { node } = ctx
-  const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  const incoming = ctx.inputs.in ?? Object.values(ctx.inputs).flat()
-  const entityText =
-    incoming.reduce<string>((found, value) => {
-      if (found) return found
-      if (value.kind === 'text' && value.text.trim()) return value.text.trim()
-      if (value.kind === 'texts') {
-        for (const item of value.items) {
-          const body = item.text?.trim()
-          if (body) return body
-        }
-      }
-      return ''
-    }, '') ||
-    ''
-  const entity = parseBeatEntityJson(entityText)
-  const entityPrompt = entity ? formatBeatRefText(entity) : ''
-  // 上游可能已是普通文本（如 beat.select），JSON 解析失败时直接用正文
-  const incomingText =
-    entityPrompt ||
-    entityText ||
-    autoIncomingTextForInstruction(instructionRaw, selected, mentionSources)
-  const localText = node.params.text?.trim() ?? ''
-  const previousRows = parseShotSplitJson(localText)
-
-  if (!ctx.generateText) {
-    const text = localText || instruction.trim()
-    if (text && text !== localText) {
-      node.params = { ...node.params, text }
-      ctx.patchNode?.({ params: { text } })
-    }
-    return text ? { out: catalogValue(GraphPortType.shots, text) } : {}
-  }
-
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-
-  let prompt = buildShotSplitPrompt(instruction, ctx.locale)
-  if (incomingText) {
-    prompt = `${prompt.trim()}\n\n${incomingText}`
-  }
-
-  const result = await ctx.generateText({
-    prompt,
-    system: resolveShotSplitSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
-    model: node.params.generateModel || undefined,
-    providerInstanceId: node.params.generateProviderInstanceId || undefined
-  })
-  if (ctx.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
-  }
-  let text = result.text.trim()
-  if (!text) throw new Error('模型未返回分镜拆分结果')
-
-  const nextRows = parseShotSplitJson(text)
-  const merged = mergeShotSplitRowsPreservingReviewed(previousRows, nextRows)
-  if (merged?.length) {
-    text = stringifyShotSplitRows(merged)
-  }
-
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: catalogValue(GraphPortType.shots, text) }
-}
-
 /**
  * 世界元素提取：将上游剧本文本拆成角色/场景/道具/武器目录。
  * 成功结果写入 generatedTexts 图库；`out` 选中目录，`out-all` 历史。
@@ -3687,6 +3467,67 @@ async function resolveBeatSplitSourceText(
     }
   }
   return ''
+}
+
+export async function executeBeatUnitGenNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const mentionSources = resolveMentionSources(ctx)
+  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
+  const localText = node.params.text?.trim() ?? ''
+
+  if (!ctx.generateText) {
+    const text = instruction.trim() || incomingText || localText
+    if (text && text !== localText) {
+      node.params = { ...node.params, text }
+      ctx.patchNode?.({ params: { text } })
+    }
+    return { out: { kind: 'text', text } }
+  }
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  let prompt = buildBeatUnitGenPrompt(instruction, ctx.locale)
+  if (incomingText) {
+    prompt = `${prompt.trim()}\n\n${incomingText}`
+  }
+
+  const result = await ctx.generateText({
+    prompt,
+    system: resolveBeatUnitGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined
+  })
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const text = result.text.trim()
+  if (!text) throw new Error('模型未返回叙事细化结果')
+
+  node.params = { ...node.params, text }
+  ctx.patchNode?.({ params: { text } })
+  return { out: { kind: 'text', text } }
+}
+
+/** 场参考：输出绑定单元的目录字段文本 */
+
+export function executeBeatUnitRefNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const beatId = ctx.node.params.boundBeatId?.trim()
+  if (!beatId) return {}
+  const unit = ctx.resolveBeatUnit?.(beatId)
+  if (!unit) return {}
+  const text = formatBeatRefText(unit)
+  return text ? { out: { kind: 'text', text } } : {}
 }
 
 export async function executeBeatSplitNode(
@@ -4053,71 +3894,6 @@ export function executeSelectBeatNode(
     }
   })
   return { out: { kind: 'text', text } }
-}
-
-function collectShotEntitiesFromInputs(inputs: Record<string, GraphValue[]>): ShotEntityResult[] {
-  const lists: ShotEntityResult[][] = []
-  for (const value of collectIncomingValues(inputs)) {
-    const text = catalogTextFromValue(value, GraphPortType.shotEntities)
-    if (text) lists.push(parseShotEntities(text))
-  }
-  return mergeShotEntityResults(...lists)
-}
-
-/**
- * 选择分镜实体：从多条 shotEntities 入边合并目录，选出一行，输出首图 image。
- * 默认不自动接到视频生成；用户手动连线。
- */
-export function executeSelectShotEntitiesNode(
-  ctx: NodeExecuteContext
-): Record<string, GraphValue> {
-  const rows = collectShotEntitiesFromInputs(ctx.inputs)
-  const selectedId = ctx.node.params.selectedShotEntityId?.trim()
-  const picked =
-    (selectedId ? rows.find((row) => row.id === selectedId) : undefined) ?? rows[0]
-  if (!picked) {
-    ctx.node.params = {
-      ...ctx.node.params,
-      text: '',
-      selectedShotEntityId: '',
-      previewRelativePath: undefined,
-      previewDataUrl: undefined
-    }
-    ctx.patchNode?.({
-      params: {
-        text: '',
-        selectedShotEntityId: '',
-        previewRelativePath: undefined,
-        previewDataUrl: undefined
-      }
-    })
-    return { out: { kind: 'image', dataUrl: '' } }
-  }
-  const previewRelativePath = picked.imageUrls[0]?.trim() || undefined
-  const text = stringifyShotEntities([picked])
-  ctx.node.params = {
-    ...ctx.node.params,
-    selectedShotEntityId: picked.id,
-    text,
-    previewRelativePath,
-    previewDataUrl: undefined
-  }
-  ctx.patchNode?.({
-    params: {
-      selectedShotEntityId: picked.id,
-      text,
-      previewRelativePath,
-      previewDataUrl: undefined
-    }
-  })
-  return {
-    out: {
-      kind: 'image',
-      id: picked.id,
-      dataUrl: '',
-      relativePath: previewRelativePath
-    }
-  }
 }
 
 /** 选取视频：从视频数组中选出一条，输出为单个 video */
@@ -5184,7 +4960,7 @@ export async function executeGridSplitNode(
   }
 
   const system = resolveGridSplitSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale)
-  const resolution = gridSplitScaleToResolution(grid.scale)
+  const resolution = gridSplitOutputResolution(grid)
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
   const batch: GraphImageItem[] = []
@@ -5194,19 +4970,19 @@ export async function executeGridSplitNode(
       throw new DOMException('Aborted', 'AbortError')
     }
 
-    let cellDataUrl = sourceUrls[0]!
-    if (ctx.composeImageGridCell) {
-      try {
-        const composed = await ctx.composeImageGridCell({
-          sourceDataUrl: sourceUrls[0]!,
-          state: grid,
-          cellKey: cell
-        })
-        if (composed.dataUrl) cellDataUrl = composed.dataUrl
-      } catch {
-        /* 裁切失败则退回整图参考 */
-      }
+    if (!ctx.composeImageGridCell) {
+      throw new Error('宫格裁切能力未注入，无法执行宫格切分')
     }
+    const composed = await ctx.composeImageGridCell({
+      sourceDataUrl: sourceUrls[0]!,
+      state: grid,
+      cellKey: cell
+    })
+    const cellDataUrl = composed.dataUrl?.trim()
+    if (!cellDataUrl) {
+      throw new Error(`宫格 ${cell} 裁切失败`)
+    }
+    const aspectRatio = nearestApiAspectRatio(composed.width, composed.height)
 
     const userPrompt = buildGridCellUpscalePrompt(cell, grid.scale)
     const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
@@ -5224,6 +5000,7 @@ export async function executeGridSplitNode(
       prompt,
       model: ctx.node.params.generateModel || undefined,
       providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
+      aspectRatio,
       resolution,
       quality: 'high',
       n: 1,
@@ -5432,14 +5209,6 @@ export async function executeOutputNode(
     ctx.node.typeId === 'output.beatUnit'
   ) {
     return executeScreenplayOutputNode(ctx)
-  }
-
-  // 分镜输出 / 成片时间线：透传视频实体目录
-  if (
-    ctx.node.params.inputDataType === GraphPortType.videoEntities ||
-    ctx.node.typeId === 'output.timeline'
-  ) {
-    return executeVideoEntitiesOutputNode(ctx)
   }
 
   const incoming = collectIncomingValues(ctx.inputs)

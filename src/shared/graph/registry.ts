@@ -96,7 +96,11 @@ export function listNodeTypes(): NodeTypeDefinition[] {
 
 export function listAddableNodeTypes(scope: GraphAddScope = 'workflow'): NodeTypeDefinition[] {
   return listNodeTypes().filter((d) => {
-    if (!d.addable) return false
+    if (!d.addable) {
+      // 画布（剧集）右键菜单保留成片时间线输出节点
+      if (scope === 'canvasAsset' && d.typeId === 'output.timeline') return true
+      return false
+    }
     return isNodeAddableInScope(scope, d.typeId)
   })
 }

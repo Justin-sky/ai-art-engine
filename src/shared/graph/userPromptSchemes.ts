@@ -113,22 +113,6 @@ export function buildToPromptUserPrompt(instruction: string, locale?: string): s
   return buildOrDefault(instruction, locale, defaultToPromptUserPrompt)
 }
 
-// ——— 分镜拆分 ———
-
-export const DEFAULT_SHOT_SPLIT_USER_PROMPT_EN =
-  'Split the screenplay into shots and output ONLY the JSON array required by the system prompt (Shot Editor table schema).'
-
-export const DEFAULT_SHOT_SPLIT_USER_PROMPT_ZH =
-  '请将剧本拆分为分镜，并仅输出系统提示词要求的 JSON 数组（对齐分镜编辑表格字段）。'
-
-export function defaultShotSplitUserPrompt(locale?: string): string {
-  return pickByLocale(locale, DEFAULT_SHOT_SPLIT_USER_PROMPT_EN, DEFAULT_SHOT_SPLIT_USER_PROMPT_ZH)
-}
-
-export function buildShotSplitPrompt(instruction: string, locale?: string): string {
-  return buildOrDefault(instruction, locale, defaultShotSplitUserPrompt)
-}
-
 // ——— 世界元素提取 ———
 
 export const DEFAULT_WORLD_EXTRACT_USER_PROMPT_EN =

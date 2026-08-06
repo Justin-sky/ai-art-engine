@@ -48,18 +48,4 @@ describe('createDefaultScopedGraph boundary input wiring', () => {
     expect(hasEdge(graph, bin, split.id, 'in')).toBe(true)
   })
 
-  it('wires all script boundary inputs to their chain heads', () => {
-    const graph = createDefaultScopedGraph('scriptAsset', 'script')
-    const iface = defaultHostInterfaceForAssetType('script')
-    const worldIn = boundaryInputNodeId('in-worldEntities')
-    const beatIn = boundaryInputNodeId('in-beat')
-    const split = graph.nodes.find((n) => n.typeId === 'script.shotSplit')!
-    const table = graph.nodes.find((n) => n.typeId === 'script.shotTable')!
-    // beat → shotSplit.in；worldEntities → shotTable.in-worldEntities
-    expect(hasEdge(graph, beatIn, split.id, 'in')).toBe(true)
-    expect(hasEdge(graph, worldIn, table.id, 'in-worldEntities')).toBe(true)
-    expect(iface.inputs.map((p) => p.id).sort()).toEqual(
-      ['in-beat', 'in-worldEntities'].sort()
-    )
-  })
 })

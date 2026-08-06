@@ -6,7 +6,7 @@ import type {
   AutosaveManifest,
   AutosaveWriteInput
 } from '@shared/ipc'
-import type { AssetInfo, Shot } from '@shared/domain'
+import type { AssetInfo } from '@shared/domain'
 import { readJsonFile, writeJsonAtomic } from './jsonFile'
 
 const EMPTY_MANIFEST: AutosaveManifest = {
@@ -72,13 +72,13 @@ export class AutosaveRepository {
   read(
     projectRoot: string,
     filter: Required<AutosaveFilter>
-  ): Shot | AssetInfo | null {
+  ): AssetInfo | null {
     const entry = this.list(projectRoot).entries.find(
       (item) => item.kind === filter.kind && item.id === filter.id
     )
     if (!entry) return null
     const path = join(this.root(projectRoot), entry.relativePath)
-    return existsSync(path) ? readJsonFile<Shot | AssetInfo>(path) : null
+    return existsSync(path) ? readJsonFile<AssetInfo>(path) : null
   }
 
   discard(projectRoot: string, filter?: AutosaveFilter): void {

@@ -5,7 +5,6 @@ import { readJsonFile, writeJsonAtomic } from './jsonFile'
 
 const PROJECT_DIRECTORIES = [
   'Assets',
-  'Storyboard/shots',
   'Output',
   'Output/images',
   'Output/videos',

@@ -1,10 +1,7 @@
 import type {
   AssetType,
   DirectorViewerState,
-  ProjectStyleImage,
-  ShotAudioRef,
-  ShotGenRef,
-  ShotStoryboard
+  ProjectStyleImage
 } from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
@@ -42,7 +39,7 @@ export interface GraphTextValue {
   relativePath?: string
 }
 
-/** 世界目录 / 世界·分镜·视频实体 / 叙事 / 分镜目录 JSON（端口 dataType 与 kind 同名） */
+/** 世界目录 / 世界实体 / 场目录 JSON（端口 dataType 与 kind 同名） */
 export interface GraphCatalogValue {
   kind: GraphCatalogKind
   text: string
@@ -88,7 +85,7 @@ export interface GraphImagesValue {
   items: GraphImageItem[]
 }
 
-/** 分镜编辑等视频数组条目 */
+/** 视频数组条目 */
 export interface GraphVideoItem {
   id?: string
   dataUrl?: string
@@ -97,7 +94,7 @@ export interface GraphVideoItem {
   relativePath?: string
 }
 
-/** 分镜编辑 → 分镜输出等视频数组 */
+/** 视频数组 */
 export interface GraphVideosValue {
   kind: 'videos'
   items: GraphVideoItem[]
@@ -150,7 +147,7 @@ export interface GraphOutputValue {
   params: GraphNodeParams
   /** 导演台等：站位图图片数组 */
   images?: GraphImageItem[]
-  /** 分镜输出等：视频数组 */
+  /** 视频数组 */
   videos?: GraphVideoItem[]
   /** 剧本输出等：文本数组（与 images / videos 对称） */
   texts?: GraphTextItem[]
@@ -210,6 +207,13 @@ export interface NodeExecuteContext {
   }) => Promise<string>
   /** 按工程相对路径读取落盘剧本文本（对齐 getAssetFileUrl + 读内容） */
   readRunText?: (relativePath: string) => Promise<string>
+  /**
+   * 剧集 Agent 流水线：读取该工作流作用域（宿主资产 id）的 agent-state.json 原文。
+   * 未注入时闭环自动附加/落盘功能关闭，节点仍可正常运行。
+   */
+  readEpisodeAgentState?: (scopeKey: string) => Promise<string | null>
+  /** 剧集 Agent 流水线：写入该工作流作用域的 agent-state.json 原文 */
+  writeEpisodeAgentState?: (scopeKey: string, content: string) => Promise<void>
   /** 可选：调用设置中的文本模型；未注入时剧本节点退回纯文本汇总 */
   generateText?: (input: {
     prompt: string
@@ -370,61 +374,8 @@ export interface NodeExecuteContext {
     state: import('../imageGridSplit').ImageGridSplitState
     cellKey: string
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
-  /**
-   * 分镜参数节点：读取当前分镜 Inspector 参数以组装提示词。
-   * 未注入时输出空文本。
-   */
-  resolveShotStoryboard?: (boundShotId?: string) => {
-    storyboard: ShotStoryboard
-    genRefs?: ShotGenRef[]
-    audioRefs?: ShotAudioRef[]
-    assetNames?: Map<string, string>
-    assetTypes?: Map<string, AssetType>
-    stylePreset?: string
-  } | null
-  /** 分镜参数 out-images：剧本下全部镜头的绑定图 */
-  resolveAllShotBindingImages?: () => Array<{
-    id: string
-    name: string
-    relativePath: string
-  }> | null
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
-  /**
-   * 分镜表格节点：把当前剧本分镜列表序列化为拆分 JSON，
-   * 供「表格 → 拆分」再次拆分时作为上游输入。
-   */
-  resolveShotSplitTableJson?: () => string | null
-  /**
-   * 生成分镜图 / 视频节点执行时：把上游拆分 JSON 写入剧本分镜列表。
-   * 分镜表格节点不再导入，改为双击打开表格时导入。
-   */
-  importShotSplitTableJson?: (jsonText: string) => void | Promise<void>
-  /**
-   * 生成分镜图：收集各镜 visual 图片输出；`cookBatch` 为 true 时先入队批跑画面子图。
-   */
-  collectScriptShotImages?: (
-    signal?: AbortSignal,
-    options?: { cookBatch?: boolean }
-  ) => Promise<{
-    images: GraphImageItem[]
-    aggregateJson: string
-    entities: Array<{ id: string; name: string; imageUrls: string[] }>
-  } | null>
-  /**
-   * 生成分镜视频：收集各镜子图视频结果；`cookBatch` 为 true 时先入队批跑 shotWorkflow。
-   */
-  collectScriptShotVideos?: (
-    signal?: AbortSignal,
-    options?: {
-      cookBatch?: boolean
-      /** 刚从 in-entities 解析的最新分镜实体表；物化边界输入时优先于落盘缓存 */
-      shotEntities?: Array<{ id: string; name: string; imageUrls: string[] }>
-    }
-  ) => Promise<{
-    videos: GraphVideoItem[]
-    entities: Array<{ id: string; name: string; videoUrls: string[] }>
-  } | null>
   /**
    * 世界元素编辑：收集四类 elementWorkflow 已完成输出；`cookBatch` 为 true 时先入队批跑。
    */
@@ -468,7 +419,7 @@ export interface NodeExecuteContext {
    */
   hostInnerSkipCompleted?: boolean
   /**
-   * 批量子图编排节点（世界元素 / 分镜图 / 分镜视频）是否入队 cook。
+   * 批量子图编排节点（世界元素 / 场单元）是否入队 cook。
    * 与 cookHostInnerGraph 同默认：onlyTarget 时 false，其余 true。
    */
   cookBatchSubgraphs?: boolean
@@ -552,6 +503,8 @@ export interface GraphRunOptions {
   saveRunMedia?: NodeExecuteContext['saveRunMedia']
   saveRunText?: NodeExecuteContext['saveRunText']
   readRunText?: NodeExecuteContext['readRunText']
+  readEpisodeAgentState?: NodeExecuteContext['readEpisodeAgentState']
+  writeEpisodeAgentState?: NodeExecuteContext['writeEpisodeAgentState']
   generateText?: NodeExecuteContext['generateText']
   generateImage?: NodeExecuteContext['generateImage']
   generateVideo?: NodeExecuteContext['generateVideo']
@@ -576,13 +529,7 @@ export interface GraphRunOptions {
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
-  resolveShotStoryboard?: NodeExecuteContext['resolveShotStoryboard']
-  resolveAllShotBindingImages?: NodeExecuteContext['resolveAllShotBindingImages']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
-  resolveShotSplitTableJson?: NodeExecuteContext['resolveShotSplitTableJson']
-  importShotSplitTableJson?: NodeExecuteContext['importShotSplitTableJson']
-  collectScriptShotImages?: NodeExecuteContext['collectScriptShotImages']
-  collectScriptShotVideos?: NodeExecuteContext['collectScriptShotVideos']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
   collectBeatUnitTexts?: NodeExecuteContext['collectBeatUnitTexts']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
@@ -594,8 +541,19 @@ export interface GraphRunOptions {
 }
 
 export interface GraphGenerationContribution {
-  genRefs: ShotGenRef[]
-  audioRefs: ShotAudioRef[]
+  genRefs: Array<{
+    role: string
+    assetId: string
+    refIndex: number
+    label?: string
+    weight?: number
+  }>
+  audioRefs: Array<{
+    kind: string
+    assetId?: string
+    text?: string
+    refIndex?: number
+  }>
 }
 
 export interface GraphRunResult {

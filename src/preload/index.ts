@@ -1,17 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
-import type { AppSettings, AssetInfo, ProjectConfig, Shot } from '@shared/domain'
+import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
-  CreateSeriesWithStarterInput,
   ImportAssetsInput,
   ReimportAssetsInput,
-  CreateShotInput,
   AutosaveFilter,
   AutosaveWriteInput,
   SaveTextFileInput,
@@ -38,8 +36,6 @@ const api: StudioApi = {
   reimportAssets: (input: ReimportAssetsInput) =>
     ipcRenderer.invoke(IpcChannels.ASSET_REIMPORT, input),
   createAsset: (input: CreateAssetInput) => ipcRenderer.invoke(IpcChannels.ASSET_CREATE, input),
-  createSeriesWithStarter: (input: CreateSeriesWithStarterInput) =>
-    ipcRenderer.invoke(IpcChannels.ASSET_CREATE_SERIES, input),
   deleteAsset: (assetId: string) => ipcRenderer.invoke(IpcChannels.ASSET_DELETE, assetId),
   findAssetReferences: (assetIds: string[]) =>
     ipcRenderer.invoke(IpcChannels.ASSET_FIND_REFERENCES, assetIds),
@@ -80,14 +76,6 @@ const api: StudioApi = {
       typeof input === 'string' ? { folderId: input, mode: 'hoist' as const } : input
     ),
 
-  listShots: () => ipcRenderer.invoke(IpcChannels.SHOT_LIST),
-  getShot: (shotId: string) => ipcRenderer.invoke(IpcChannels.SHOT_GET, shotId),
-  createShot: (input?: CreateShotInput) => ipcRenderer.invoke(IpcChannels.SHOT_CREATE, input),
-  updateShot: (shot: Shot) => ipcRenderer.invoke(IpcChannels.SHOT_UPDATE, shot),
-  deleteShot: (shotId: string) => ipcRenderer.invoke(IpcChannels.SHOT_DELETE, shotId),
-  reorderShots: (shotIds: string[]) => ipcRenderer.invoke(IpcChannels.SHOT_REORDER, shotIds),
-  syncScriptShots: (input) => ipcRenderer.invoke(IpcChannels.SHOT_SYNC_SCRIPT, input),
-
   generateText: (input) => ipcRenderer.invoke(IpcChannels.GEN_TEXT, input),
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),
   generateVideo: (input) => ipcRenderer.invoke(IpcChannels.GEN_VIDEO, input),
@@ -126,12 +114,14 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.AUTOSAVE_DISCARD, filter),
   listPlugins: () => ipcRenderer.invoke(IpcChannels.PLUGIN_LIST),
 
-  saveCanvasPng: (shotId: string, dataUrl: string) =>
-    ipcRenderer.invoke(IpcChannels.CANVAS_SAVE_PNG, shotId, dataUrl),
   saveGraphRunMedia: (input: SaveGraphRunMediaInput) =>
     ipcRenderer.invoke(IpcChannels.GRAPH_SAVE_RUN_MEDIA, input),
   saveGraphRunText: (input: SaveGraphRunTextInput) =>
     ipcRenderer.invoke(IpcChannels.GRAPH_SAVE_RUN_TEXT, input),
+  readProjectFile: (relativePath: string) =>
+    ipcRenderer.invoke(IpcChannels.PROJECT_READ_FILE, relativePath),
+  writeProjectFile: (input: { relativePath: string; content: string }) =>
+    ipcRenderer.invoke(IpcChannels.PROJECT_WRITE_FILE, input),
   deleteGraphRunMedia: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.GRAPH_DELETE_RUN_MEDIA, relativePath),
 

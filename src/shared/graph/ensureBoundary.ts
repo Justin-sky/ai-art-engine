@@ -12,7 +12,8 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
-import { canConnectNodes, getNodePorts } from './ports'
+import { isPluralGraphPortDataType, toSingularGraphPortDataType } from './types'
+import { canConnectNodes, getNodePorts, GRAPH_OUT_ALL_PORT_ID } from './ports'
 
 function pushEdge(
   edges: GraphEdge[],
@@ -38,8 +39,21 @@ function pushEdge(
   })
 }
 
+/** 接复数边界口时优先 out-all（图库节点禁止 out→复数） */
+function preferredSourcePort(node: GraphNode, targetIsPlural: boolean): string {
+  if (
+    targetIsPlural &&
+    getNodePorts(node).some((p) => p.id === GRAPH_OUT_ALL_PORT_ID && p.direction === 'out')
+  ) {
+    return GRAPH_OUT_ALL_PORT_ID
+  }
+  return 'out'
+}
+
 /**
- * 将各悬空业务链出口 1:1 接到对应 boundary.output。
+ * 将各悬空业务链出口接到对应 boundary.output。
+ * - 单数口：1:1（优先同名标题 / 偏好类型）
+ * - 复数口（图片组/视频组…）：同类悬空汇点全部接入该口
  * 优先无出边汇节点；某出口仍悬空时，再从兼容的加工节点补一条（即便它已有其它出边）。
  * 避免旧图拆掉 classic output 后边界永远无入边，导致选中边界输出入队只跑空透传。
  */
@@ -66,22 +80,37 @@ export function wireDanglingOutsToBoundaryOutputs(
     const boutId = boundaryOutputNodeId(port.id)
     const bout = byId.get(boutId)
     if (!bout) continue
-    if (edges.some((edge) => edge.target === boutId)) continue
+
+    const alreadyWired = edges.some((edge) => edge.target === boutId)
+    const aggregate = port.multiple === true || isPluralGraphPortDataType(port.dataType)
+    // 复数口允许补接更多源；单数口已有入边则跳过
+    if (alreadyWired && !aggregate) continue
 
     const connectable = (node: GraphNode): boolean => {
       if (isBoundaryProxyNode(node) || node.category === 'output') return false
       if (node.typeId === 'note.text') return false
-      const hasOut = getNodePorts(node).some((p) => p.direction === 'out')
+      const sourcePort = preferredSourcePort(node, aggregate)
+      const hasOut = getNodePorts(node).some(
+        (p) => p.direction === 'out' && p.id === sourcePort
+      )
       if (!hasOut) return false
-      return canConnectNodes(node, bout, { sourcePort: 'out', targetPort: 'in' })
+      return canConnectNodes(node, bout, { sourcePort, targetPort: 'in' })
     }
 
+    const hasOutEdgeIgnoringBoundary = (node: GraphNode): boolean =>
+      edges.some(
+        (edge) =>
+          edge.source === node.id &&
+          !isBoundaryProxyNode(byId.get(edge.target) ?? ({ typeId: '' } as GraphNode))
+      )
+
+    const singularType = toSingularGraphPortDataType(port.dataType)
     const preferredType =
-      port.dataType === 'video'
+      singularType === 'video'
         ? 'asset.video'
-        : port.dataType === 'image'
+        : singularType === 'image'
           ? 'asset.image'
-          : port.dataType === 'voice'
+          : singularType === 'voice'
             ? 'asset.voice'
             : null
 
@@ -90,9 +119,52 @@ export function wireDanglingOutsToBoundaryOutputs(
         (node) =>
           connectable(node) &&
           !usedSources.has(node.id) &&
-          !edges.some((edge) => edge.source === node.id)
+          !hasOutEdgeIgnoringBoundary(node)
       )
       .sort(byTopThenRight)
+
+    if (aggregate) {
+      // 悬空且可连的源全部接入复数口；若无悬空，再补接尚未连到本 boundary 的同类源
+      const extra =
+        dangling.length > 0
+          ? []
+          : nodes
+              .filter((node) => {
+                if (!connectable(node) || usedSources.has(node.id)) return false
+                if (
+                  edges.some(
+                    (e) =>
+                      e.source === node.id &&
+                      e.target === boutId &&
+                      (e.sourcePort ?? 'out') === preferredSourcePort(node, true)
+                  )
+                ) {
+                  return false
+                }
+                if (preferredType) return node.typeId === preferredType
+                return (
+                  (node.category === 'asset' && node.assetType === singularType) ||
+                  node.typeId === `asset.${singularType}`
+                )
+              })
+              .sort(byTopThenRight)
+
+      const toWire = dangling.length ? dangling : extra
+      let firstY: number | null = null
+      for (const source of toWire) {
+        const sourcePort = preferredSourcePort(source, true)
+        pushEdge(edges, source.id, boutId, sourcePort, 'in')
+        usedSources.add(source.id)
+        if (firstY == null) firstY = source.position.y
+      }
+      if (firstY != null && toWire[0]) {
+        bout.position = {
+          x: Math.max(bout.position.x, toWire[0].position.x + 280),
+          y: firstY
+        }
+      }
+      continue
+    }
 
     let source =
       dangling.find((n) => {
@@ -108,8 +180,8 @@ export function wireDanglingOutsToBoundaryOutputs(
           if (!connectable(node) || usedSources.has(node.id)) return false
           if (preferredType) return node.typeId === preferredType
           return (
-            (node.category === 'asset' && node.assetType === port.dataType) ||
-            node.typeId === `asset.${port.dataType}`
+            (node.category === 'asset' && node.assetType === singularType) ||
+            node.typeId === `asset.${singularType}`
           )
         })
         .sort(byTopThenRight)
@@ -117,7 +189,8 @@ export function wireDanglingOutsToBoundaryOutputs(
     }
 
     if (!source) continue
-    pushEdge(edges, source.id, boutId, 'out', 'in')
+    const sourcePort = preferredSourcePort(source, false)
+    pushEdge(edges, source.id, boutId, sourcePort, 'in')
     usedSources.add(source.id)
     // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对
     bout.position = {
@@ -211,7 +284,7 @@ export function ensureBoundaryProxyNodes(
     autoLinkHeadTypeIds?: string[]
     /**
      * 为 true 时只补齐/更新 iface 中的 boundary，不删除图上其它 boundary
-     *（分镜绑定实体会动态建 boundary.input，不能按空 inputs 剪掉）。
+ *（绑定实体会动态建 boundary.input，不能按空 inputs 剪掉）。
      */
     preserveUnlistedBoundaryNodes?: boolean
   }
@@ -297,7 +370,7 @@ export function ensureBoundaryProxyNodes(
     yOut += 80
   }
 
-  // 去掉接口中已删除的 boundary 节点及其边（分镜等场景可保留未列出的绑定输入）
+  // 去掉接口中已删除的 boundary 节点及其边（可保留未列出的绑定输入）
   const keepIds = new Set([
     ...iface.inputs.map((p) => boundaryInputNodeId(p.id)),
     ...iface.outputs.map((p) => boundaryOutputNodeId(p.id))

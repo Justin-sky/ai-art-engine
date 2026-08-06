@@ -11,7 +11,6 @@ import {
 import {
   assetTypeToGraphScope,
   createDefaultScopedGraph,
-  ensureShotScopeBoundaryOutput,
   getGraphScopeDefinition,
   isAssetEditorGraphScope,
   resolveAssetProcessingTypeId,
@@ -42,13 +41,12 @@ import { inferElementWorkflowHostInterface } from './worldElementParams'
 
 export {
   ASSET_DIRECTOR_OUTPUT_TITLE,
-  ASSET_SCREENPLAY_OUTPUT_TITLE,
-  SHOT_VISUAL_OUTPUT_TITLE
+  ASSET_SCREENPLAY_OUTPUT_TITLE
 } from './scopes'
 
 export function createDefaultGraph(_options?: NormalizeGraphOptions): GraphDocument {
-  // 分镜默认图：仅加工链，不再插入 classic output.*
-  return createDefaultScopedGraph('shotWorkflow')
+  // 默认图：仅加工链，不再插入 classic output.*
+  return createDefaultScopedGraph('workflow')
 }
 
 function renameNodeIdInGraph(
@@ -275,7 +273,6 @@ export function normalizeScopedGraph(
     if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
       created = ensureBoundaryProxyNodes(created, hostInterface())
     }
-    // createDefaultScopedGraph 已为 visual/shotWorkflow 补边界输出
     return created
   }
 
@@ -297,7 +294,7 @@ export function normalizeScopedGraph(
   }
 
   // 仅资产编辑器在打开已有图时按模板补齐加工节点（导入媒体宿主绑定）；
-  // 分镜/世界/场长链不在加载时回插已删节点。
+  // 世界/场长链不在加载时回插已删节点。
   if (isAssetEditorGraphScope(scope)) {
     ensureDefaultGraphFromTemplate(nodes, edges, {
       scope,
@@ -325,13 +322,6 @@ export function normalizeScopedGraph(
   if (scope === 'elementWorkflow' || isAssetRefInputHostType(options?.assetType)) {
     result = ensureBoundaryProxyNodes(result, hostInterface())
   }
-  // 旧分镜图缺边界输出时补齐（保留绑定用 boundary.input）
-  if (scope === 'visual' || scope === 'shotWorkflow') {
-    result = ensureShotScopeBoundaryOutput(
-      result,
-      scope === 'visual' ? 'visual' : 'shotWorkflow'
-    )
-  }
   return result
 }
 
@@ -350,7 +340,7 @@ export function normalizeGraph(
   }
 
   const hydrated = doc.nodes.map(hydrateNode)
-  return finalizeGraph(hydrated, doc, 'shotWorkflow')
+  return finalizeGraph(hydrated, doc, 'workflow')
 }
 
 /** 资产宿主：按资产类型校正输出节点语义 */

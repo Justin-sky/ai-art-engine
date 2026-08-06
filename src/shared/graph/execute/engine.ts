@@ -1,6 +1,5 @@
 import { graphValueHasPayload, softResolveSourceOutput } from '../hostInput'
 import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
-import { SHOT_PARAMS_IMAGES_PORT_ID } from '../shotParams'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
 import { resolveNodeType } from '../registry'
@@ -146,10 +145,7 @@ function hasUsableOutputRecord(
   if (
     out.kind === 'world' ||
     out.kind === 'worldEntities' ||
-    out.kind === 'shotEntities' ||
-    out.kind === 'videoEntities' ||
-    out.kind === 'beat' ||
-    out.kind === 'shots'
+    out.kind === 'beat'
   ) {
     return !!out.text.trim() || !!('relativePath' in out && out.relativePath?.trim())
   }
@@ -205,8 +201,6 @@ async function softSnapshotOutputs(
     | 'locale'
     | 'readRunText'
     | 'resolveBeatUnit'
-    | 'resolveShotStoryboard'
-    | 'resolveAllShotBindingImages'
   >,
   softCtx?: {
     graph: GraphDocument
@@ -217,9 +211,7 @@ async function softSnapshotOutputs(
   const softResolveOpts = {
     resolveAssetGenParams: options.resolveAssetGenParams,
     // 选择场等 onlyTarget 软快照需 dig 打开中的宿主内图
-    resolveLiveAssetGraph: options.resolveLiveAssetGraph,
-    resolveShotStoryboard: options.resolveShotStoryboard,
-    resolveAllShotBindingImages: options.resolveAllShotBindingImages
+    resolveLiveAssetGraph: options.resolveLiveAssetGraph
   }
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
@@ -227,30 +219,6 @@ async function softSnapshotOutputs(
   })
   if (hasUsablePriorOutputs(prior)) {
     const merged = gallery ? { ...prior!.outputs!, ...gallery } : { ...prior!.outputs! }
-    // 分镜参数：prior 常有文本但 out-images 为空/过期；用全镜绑定图补齐
-    if (
-      softCtx &&
-      node.typeId === 'script.shotParams' &&
-      (softCtx.sourcePort === SHOT_PARAMS_IMAGES_PORT_ID ||
-        !graphValueHasPayload(merged[SHOT_PARAMS_IMAGES_PORT_ID]))
-    ) {
-      const priorAsPersisted: Record<string, GraphPersistedRunState> = {
-        ...(softCtx.graph.runStates ?? {})
-      }
-      for (const [id, state] of Object.entries(softCtx.priorNodeStates ?? {})) {
-        priorAsPersisted[id] = state
-      }
-      const softDoc: GraphDocument = { ...softCtx.graph, runStates: priorAsPersisted }
-      const softImages = softResolveSourceOutput(
-        softDoc,
-        node.id,
-        SHOT_PARAMS_IMAGES_PORT_ID,
-        softResolveOpts
-      )
-      if (graphValueHasPayload(softImages) && softImages) {
-        merged[SHOT_PARAMS_IMAGES_PORT_ID] = softImages
-      }
-    }
     return hydrateOutputRecordTexts(merged, options.readRunText)
   }
   if (gallery) return hydrateOutputRecordTexts(gallery, options.readRunText)
@@ -279,21 +247,6 @@ async function softSnapshotOutputs(
       if (!deferAsyncAssetText) {
         const port = softCtx.sourcePort || 'out'
         const record: Record<string, GraphValue> = { [port]: softVal!, out: softVal! }
-        // 软解析文本口时一并补齐绑定图口
-        if (
-          node.typeId === 'script.shotParams' &&
-          port !== SHOT_PARAMS_IMAGES_PORT_ID
-        ) {
-          const softImages = softResolveSourceOutput(
-            softDoc,
-            node.id,
-            SHOT_PARAMS_IMAGES_PORT_ID,
-            softResolveOpts
-          )
-          if (graphValueHasPayload(softImages) && softImages) {
-            record[SHOT_PARAMS_IMAGES_PORT_ID] = softImages
-          }
-        }
         return hydrateOutputRecordTexts(record, options.readRunText)
       }
     }
@@ -306,14 +259,12 @@ async function softSnapshotOutputs(
       node,
       inputs: {},
       locale: options.locale,
-      // 剧本/分镜引用快照必须能读正文；不调 generateText/Image/Video
+      // 剧本引用快照必须能读正文；不调 generateText/Image/Video
       resolveAssetText: options.resolveAssetText,
       resolveAssetGenParams: options.resolveAssetGenParams,
       hasAsset: options.hasAsset,
       readRunText: options.readRunText,
       resolveBeatUnit: options.resolveBeatUnit,
-      resolveShotStoryboard: options.resolveShotStoryboard,
-      resolveAllShotBindingImages: options.resolveAllShotBindingImages
     })
   )
 }
@@ -331,10 +282,7 @@ async function hydrateOutputRecordTexts(
       (value.kind === 'text' ||
         value.kind === 'world' ||
         value.kind === 'worldEntities' ||
-        value.kind === 'shotEntities' ||
-        value.kind === 'videoEntities' ||
-        value.kind === 'beat' ||
-        value.kind === 'shots') &&
+        value.kind === 'beat') &&
       !value.text.trim() &&
       value.relativePath?.trim()
     ) {
@@ -455,13 +403,7 @@ async function executeOneNode(
     composeImageRedrawCanvas: options.composeImageRedrawCanvas,
     composeImageCropCanvas: options.composeImageCropCanvas,
     composeImageGridCell: options.composeImageGridCell,
-    resolveShotStoryboard: options.resolveShotStoryboard,
-    resolveAllShotBindingImages: options.resolveAllShotBindingImages,
     resolveBeatUnit: options.resolveBeatUnit,
-    resolveShotSplitTableJson: options.resolveShotSplitTableJson,
-    importShotSplitTableJson: options.importShotSplitTableJson,
-    collectScriptShotImages: options.collectScriptShotImages,
-    collectScriptShotVideos: options.collectScriptShotVideos,
     collectWorldElementOutputs: options.collectWorldElementOutputs,
     collectBeatUnitTexts: options.collectBeatUnitTexts,
     resolveWorldCatalogJson: options.resolveWorldCatalogJson,
@@ -481,6 +423,8 @@ async function executeOneNode(
     saveRunMedia: options.saveRunMedia,
     saveRunText: options.saveRunText,
     readRunText: options.readRunText,
+    readEpisodeAgentState: options.readEpisodeAgentState,
+    writeEpisodeAgentState: options.writeEpisodeAgentState,
     patchNode: options.onNodePatch
       ? (patch) => options.onNodePatch?.(nodeId, patch)
       : undefined

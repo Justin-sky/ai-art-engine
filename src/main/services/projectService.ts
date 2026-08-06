@@ -3,6 +3,7 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -15,7 +16,6 @@ import {
   DEFAULT_RESOLUTION,
   ASSET_IMAGE_OUTPUT_KIND_DIR,
   ASSET_TEXT_OUTPUT_KIND_DIR,
-  createEmptyShot,
   createDefaultDirectorStage,
   assetTypeLabel,
   defaultAssetName,
@@ -33,13 +33,12 @@ import {
   type AssetFolder,
   type AssetInfo,
   type AssetType,
-  type ProjectConfig,
-  type Shot
+  type ProjectConfig
 } from '@shared/domain'
 import {
   assetTypeToGraphScope,
+  buildCanvasStarterGraph,
   createDefaultScopedGraph,
-  buildSeriesStarterGraph,
   defaultHostInterfaceForAssetType,
   ensureBoundaryProxyNodes,
   HOST_INTERFACE_SCHEMA_VERSION,
@@ -55,18 +54,14 @@ import type {
   CreateAssetInput,
   CreateFolderInput,
   CreateProjectInput,
-  CreateSeriesWithStarterInput,
-  CreateShotInput,
   OpenProjectResult,
   SaveGraphRunMediaInput,
   SaveGraphRunTextInput,
-  SyncScriptShotsInput,
   WriteAssetTextInput
 } from '@shared/ipc'
 import { renameReplaceSync } from '../persistence/atomicRename'
 import { settingsService } from './settingsService'
 import { autosaveRepository } from '../repositories/autosaveRepository'
-import { shotRepository } from '../repositories/shotRepository'
 import { assetRepository } from '../repositories/assetRepository'
 import { projectRepository } from '../repositories/projectRepository'
 import { folderRepository } from '../repositories/folderRepository'
@@ -214,8 +209,7 @@ class ProjectService {
       resolution: { ...DEFAULT_RESOLUTION },
       fps: 24,
       createdAt: ts,
-      updatedAt: ts,
-      shotIds: []
+      updatedAt: ts
     }
 
     projectRepository.write(root, config)
@@ -223,7 +217,12 @@ class ProjectService {
     this.rootPath = root
     this.config = config
 
-    this.createSeriesWithStarter({ name: defaultAssetName('canvas', settingsService.get().language) })
+    // 新工程默认创建自由画布
+    this.createAsset({
+      type: 'canvas',
+      name: defaultAssetName('canvas', settingsService.get().language),
+      genParams: { canvasKind: 'free', graphJson: buildCanvasStarterGraph() }
+    })
 
     const projectJson = join(root, 'project.json')
     settingsService.addRecent(projectJson)
@@ -232,8 +231,7 @@ class ProjectService {
       rootPath: root,
       config: this.getConfig(),
       assets: this.listAssets(),
-      folders: [],
-      shots: this.listShots()
+      folders: []
     }
   }
 
@@ -255,8 +253,7 @@ class ProjectService {
       rootPath: root,
       config: this.config,
       assets,
-      folders: this.listFolders(),
-      shots: this.listShots()
+      folders: this.listFolders()
     }
   }
 
@@ -272,8 +269,7 @@ class ProjectService {
       rootPath: this.rootPath,
       config: this.config,
       assets: this.listAssets(),
-      folders: this.listFolders(),
-      shots: this.listShots()
+      folders: this.listFolders()
     }
   }
 
@@ -382,11 +378,6 @@ class ProjectService {
     }
     if (input.genParams && typeof input.genParams === 'object') {
       asset.genParams = { ...input.genParams }
-    } else if (input.type === 'script') {
-      asset.genParams = {
-        shotIds: [],
-        graphJson: createDefaultScopedGraph('scriptAsset', 'script')
-      }
     }
     if (input.type === 'canvas') {
       if (!asset.genParams?.graphJson) {
@@ -441,107 +432,17 @@ class ProjectService {
       asset.genParams = finalizeHostableAssetGenParams(input.type, asset.genParams)
     }
     this.writeAsset(asset)
-    if (input.type === 'script' && !input.skipScriptBootstrap) {
-      this.createShot({ title: '分镜', scriptAssetId: id })
-      return this.readAsset(id)
-    }
     return asset
-  }
-
-  /** 创建剧集，并预置剧本 / 世界元素 / 场 / 分镜宿主节点与连线 */
-  createSeriesWithStarter(input: CreateSeriesWithStarterInput = {}): AssetInfo {
-    const parentFolderId = input.folderId ?? null
-    const language = settingsService.get().language
-    const seriesName = input.name?.trim() || defaultAssetName('canvas', language)
-    const childTypes = ['screenplay', 'world', 'beat', 'script'] as const
-
-    const childName = (type: (typeof childTypes)[number]): string => {
-      const override = input.childNames?.[type]?.trim()
-      if (override) return override
-      return `${seriesName}${assetTypeLabel(type, language)}`
-    }
-    const childFolderName = (type: (typeof childTypes)[number]): string => {
-      const override = input.childFolderNames?.[type]?.trim()
-      if (override) return override
-      return assetTypeLabel(type, language)
-    }
-
-    /** 当前目录下按类型名找或建子目录（不建剧集名外层目录） */
-    const ensureTypeFolder = (type: (typeof childTypes)[number]): string => {
-      const name = childFolderName(type)
-      const existing = this.listFolders().find(
-        (folder) =>
-          (folder.parentId ?? null) === parentFolderId && folder.name.trim() === name
-      )
-      if (existing) return existing.id
-      return this.createFolder({ name, parentId: parentFolderId }).id
-    }
-
-    const children = {} as Record<(typeof childTypes)[number], AssetInfo>
-    for (const type of childTypes) {
-      children[type] = this.createAsset({
-        type,
-        folderId: ensureTypeFolder(type),
-        name: childName(type)
-      })
-    }
-
-    return this.createAsset({
-      type: 'canvas',
-      folderId: parentFolderId,
-      name: seriesName,
-      genParams: {
-        canvasKind: 'series',
-        graphJson: buildSeriesStarterGraph({
-          screenplay: children.screenplay,
-          world: children.world,
-          beat: children.beat,
-          script: children.script
-        })
-      }
-    })
-  }
-
-  private appendShotToScript(scriptAssetId: string, shotId: string): void {
-    const asset = this.readAsset(scriptAssetId)
-    const raw = asset.genParams?.shotIds
-    const ids = Array.isArray(raw) ? raw.map(String) : []
-    if (!ids.includes(shotId)) ids.push(shotId)
-    asset.genParams = { ...asset.genParams, shotIds: ids }
-    asset.updatedAt = nowIso()
-    this.writeAsset(asset)
-  }
-
-  private removeShotFromScript(scriptAssetId: string, shotId: string): void {
-    try {
-      const asset = this.readAsset(scriptAssetId)
-      const raw = asset.genParams?.shotIds
-      const ids = Array.isArray(raw) ? raw.map(String).filter((id) => id !== shotId) : []
-      asset.genParams = { ...asset.genParams, shotIds: ids }
-      asset.updatedAt = nowIso()
-      this.writeAsset(asset)
-    } catch {
-      // script asset may already be deleted
-    }
   }
 
   deleteAsset(assetId: string): void {
     const root = this.getRoot()
-    const asset = this.readAsset(assetId)
-    const type = asset.type === ('act' as AssetType) ? 'script' : asset.type
-    if (type === 'script') {
-      const raw = asset.genParams?.shotIds
-      const shotIds = Array.isArray(raw) ? [...raw.map(String)] : []
-      for (const shotId of shotIds) {
-        this.deleteShot(shotId)
-      }
-    }
     autosaveRepository.discard(root, { kind: 'asset', id: assetId })
     assetRepository.removeMetadata(root, assetId)
   }
 
   findAssetReferences(assetIds: string[]): FindAssetReferencesResult {
-    return findAssetReferencesInProject(assetIds, this.listAssets(), this.listShots())
+    return findAssetReferencesInProject(assetIds, this.listAssets())
   }
 
   renameAsset(assetId: string, name: string): AssetInfo {
@@ -1044,187 +945,6 @@ class ProjectService {
     assetRepository.write(this.getRoot(), asset)
   }
 
-  // ---- Shots ----
-
-  listShots(): Shot[] {
-    return shotRepository.list(this.getRoot(), this.getConfig().shotIds)
-  }
-
-  getShot(shotId: string): Shot | null {
-    return shotRepository.read(this.getRoot(), shotId)
-  }
-
-  createShot(input?: CreateShotInput): Shot {
-    const config = this.getConfig()
-    const ts = nowIso()
-    const scriptAssetId = input?.scriptAssetId
-    const scopedShots = scriptAssetId
-      ? config.shotIds
-          .map((id) => this.getShot(id))
-          .filter((s): s is Shot => {
-            if (!s) return false
-            return s.scriptAssetId === scriptAssetId
-          })
-      : []
-    const base = createEmptyShot(
-      input?.title ?? `分镜 ${scriptAssetId ? scopedShots.length + 1 : config.shotIds.length + 1}`,
-      config.resolution
-    )
-    const shot: Shot = {
-      ...base,
-      id: randomUUID(),
-      scriptAssetId,
-      createdAt: ts,
-      updatedAt: ts
-    }
-    shotRepository.write(this.getRoot(), shot)
-    config.shotIds.push(shot.id)
-    this.saveConfig(config)
-    if (scriptAssetId) this.appendShotToScript(scriptAssetId, shot.id)
-    return shot
-  }
-
-  updateShot(shot: Shot): Shot {
-    shot.updatedAt = nowIso()
-    shotRepository.write(this.getRoot(), shot)
-    autosaveRepository.discard(this.getRoot(), { kind: 'shot', id: shot.id })
-    return shot
-  }
-
-  deleteShot(shotId: string): void {
-    const config = this.getConfig()
-    const shot = this.getShot(shotId)
-    shotRepository.remove(this.getRoot(), shotId)
-    autosaveRepository.discard(this.getRoot(), { kind: 'shot', id: shotId })
-    config.shotIds = config.shotIds.filter((id) => id !== shotId)
-    this.saveConfig(config)
-    if (shot?.scriptAssetId) {
-      this.removeShotFromScript(shot.scriptAssetId, shotId)
-    }
-  }
-
-  /** 资产包导入：按已定 id 写入分镜并登记到工程（不改 genParams.shotIds） */
-  registerImportedShots(shots: Shot[]): void {
-    if (!shots.length) return
-    const root = this.getRoot()
-    const config = this.getConfig()
-    const known = new Set(config.shotIds)
-    for (const shot of shots) {
-      shotRepository.write(root, shot)
-      if (!known.has(shot.id)) {
-        config.shotIds.push(shot.id)
-        known.add(shot.id)
-      }
-    }
-    this.saveConfig(config)
-  }
-
-  unregisterImportedShots(shotIds: string[]): void {
-    if (!shotIds.length) return
-    const root = this.getRoot()
-    const config = this.getConfig()
-    for (const shotId of shotIds) {
-      shotRepository.remove(root, shotId)
-      autosaveRepository.discard(root, { kind: 'shot', id: shotId })
-    }
-    const remove = new Set(shotIds)
-    config.shotIds = config.shotIds.filter((id) => !remove.has(id))
-    this.saveConfig(config)
-  }
-
-  reorderShots(shotIds: string[]): void {
-    const config = this.getConfig()
-    const set = new Set(config.shotIds)
-    if (shotIds.length !== set.size || shotIds.some((id) => !set.has(id))) {
-      throw new Error('分镜排序列表无效')
-    }
-    config.shotIds = shotIds
-    this.saveConfig(config)
-  }
-
-  /**
-   * 一次落盘同步某剧本下的分镜：写入有序列表、删除多余项、更新 config / genParams.shotIds。
-   * 供打开分镜表格时导入拆分 JSON，避免逐条 IPC。
-   */
-  syncScriptShots(input: SyncScriptShotsInput): Shot[] {
-    const scriptAssetId = input.scriptAssetId?.trim()
-    if (!scriptAssetId) throw new Error('缺少剧本资产')
-    const ordered = Array.isArray(input.orderedShots) ? input.orderedShots : []
-    const root = this.getRoot()
-    const config = this.getConfig()
-    const ts = nowIso()
-
-    const nextIds = ordered.map((shot) => {
-      if (!shot?.id?.trim()) throw new Error('分镜缺少 id')
-      return shot.id
-    })
-    const nextIdSet = new Set(nextIds)
-    if (nextIdSet.size !== nextIds.length) throw new Error('分镜 id 重复')
-
-    const previousIds = (() => {
-      try {
-        const asset = this.readAsset(scriptAssetId)
-        const raw = asset.genParams?.shotIds
-        if (Array.isArray(raw) && raw.length) return raw.map(String)
-      } catch {
-        // fall through
-      }
-      return config.shotIds
-        .map((id) => this.getShot(id))
-        .filter((s): s is Shot => !!s && s.scriptAssetId === scriptAssetId)
-        .map((s) => s.id)
-    })()
-
-    for (const shotId of previousIds) {
-      if (nextIdSet.has(shotId)) continue
-      shotRepository.remove(root, shotId)
-      autosaveRepository.discard(root, { kind: 'shot', id: shotId })
-    }
-
-    const written: Shot[] = []
-    for (const raw of ordered) {
-      const shot: Shot = {
-        ...raw,
-        scriptAssetId,
-        updatedAt: ts,
-        createdAt: raw.createdAt?.trim() || ts
-      }
-      shotRepository.write(root, shot)
-      autosaveRepository.discard(root, { kind: 'shot', id: shot.id })
-      written.push(shot)
-    }
-
-    const removeSet = new Set(previousIds.filter((id) => !nextIdSet.has(id)))
-    const known = new Set(config.shotIds.filter((id) => !removeSet.has(id)))
-    for (const id of nextIds) {
-      if (!known.has(id)) {
-        config.shotIds.push(id)
-        known.add(id)
-      }
-    }
-    config.shotIds = config.shotIds.filter((id) => !removeSet.has(id))
-    this.saveConfig(config)
-
-    const asset = this.readAsset(scriptAssetId)
-    asset.genParams = { ...asset.genParams, shotIds: nextIds }
-    asset.updatedAt = ts
-    this.writeAsset(asset)
-
-    return written
-  }
-
-  /** Save canvas PNG under Thumbnails and return relative path */
-  saveCanvasPng(shotId: string, dataUrl: string): string {
-    const root = this.getRoot()
-    const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl)
-    if (!match) throw new Error('无效的 PNG data URL')
-    const buf = Buffer.from(match[1], 'base64')
-    const rel = `Thumbnails/${shotId}.png`
-    const abs = assertInsideProject(root, join(root, rel))
-    writeFileSync(abs, buf)
-    return rel.replace(/\\/g, '/')
-  }
-
   /**
    * 将图执行产物写入指定输出目录（默认 `Cache/Images/`）。
    * 落在 Assets/ 下时登记旁挂 `.asset.json`；Cache/ 下仅写文件不进资产库。
@@ -1280,6 +1000,38 @@ class ProjectService {
     return { relativePath, asset }
   }
 
+  /** 读取工程内相对路径文本文件；不存在返回 null */
+  async readProjectFile(relativePath: string): Promise<string | null> {
+    const root = this.getRoot()
+    const clean = String(relativePath ?? '')
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+    if (!clean || clean.includes('..')) return null
+    const abs = assertInsideProject(root, join(root, clean))
+    if (!existsSync(abs)) return null
+    return readFileSync(abs, 'utf-8')
+  }
+
+  /** 写入工程内相对路径文本文件；路径越界返回 false */
+  async writeProjectFile(input: {
+    relativePath: string
+    content: string
+  }): Promise<boolean> {
+    try {
+      const root = this.getRoot()
+      const clean = String(input?.relativePath ?? '')
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+      if (!clean || clean.includes('..')) return false
+      const abs = assertInsideProject(root, join(root, clean))
+      mkdirSync(dirname(abs), { recursive: true })
+      writeFileSync(abs, String(input?.content ?? ''), 'utf-8')
+      return true
+    } catch {
+      return false
+    }
+  }
+
   /**
    * 将图执行剧本正文写入指定输出目录（默认 `Cache/Texts/`）。
    * Assets/ 下登记旁挂；Cache/ 下仅写文件。
@@ -1324,7 +1076,6 @@ class ProjectService {
     type: AssetType
     name: string
     prompt?: string
-    sourceShotId?: string
   }): AssetInfo {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, params.relativePath))
@@ -1343,7 +1094,6 @@ class ProjectService {
       name: params.name,
       relativePath: toPosix(params.relativePath),
       folderId,
-      sourceShotId: params.sourceShotId,
       prompt: params.prompt,
       version: 1,
       createdAt: ts,
@@ -1414,21 +1164,6 @@ class ProjectService {
     return asset
   }
 
-  /** Register a generated video asset into the resolved Videos output dir */
-  registerGeneratedVideo(params: {
-    shotId: string
-    sourceFilePath: string
-    prompt: string
-  }): AssetInfo {
-    return this.attachExternalGeneratedFile({
-      type: 'video',
-      sourceFilePath: params.sourceFilePath,
-      name: `Gen_${shotShort(params.shotId)}`,
-      prompt: params.prompt,
-      sourceShotId: params.shotId
-    })
-  }
-
   /**
    * 将外部生成的文件写入工程：默认视频/语音 → Cache/{Videos|Voices}，其它 → Assets/。
    * Cache/ 下只落盘、返回内存 AssetInfo（不写 `.asset.json`）；Assets/ 下登记进库。
@@ -1438,7 +1173,6 @@ class ProjectService {
     sourceFilePath: string
     name: string
     prompt?: string
-    sourceShotId?: string
     /** @deprecated 已忽略；主文件直接写入 outputDir */
     alsoCopyToOutput?: boolean
     /** 主落盘目录（相对工程根） */
@@ -1479,7 +1213,6 @@ class ProjectService {
         relativePath,
         folderId: null,
         prompt: params.prompt,
-        sourceShotId: params.sourceShotId,
         version: 1,
         createdAt: ts,
         updatedAt: ts
@@ -1489,8 +1222,7 @@ class ProjectService {
       relativePath,
       type: params.type,
       name: params.name,
-      prompt: params.prompt,
-      sourceShotId: params.sourceShotId
+      prompt: params.prompt
     })
   }
 
@@ -1501,10 +1233,6 @@ class ProjectService {
     }
     return app.getPath('documents')
   }
-}
-
-function shotShort(id: string): string {
-  return id.slice(0, 8)
 }
 
 function assetTypeFromMime(mime: string): AssetType | null {

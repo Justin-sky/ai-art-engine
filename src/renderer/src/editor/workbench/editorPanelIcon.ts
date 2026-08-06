@@ -6,7 +6,6 @@ import type { EditorPanelKind } from './usePanelTitles'
 const PANEL_DEFINITIONS: Array<{ prefix: string; kind: EditorPanelKind }> = [
   { prefix: 'asset-editor-', kind: 'asset' },
   { prefix: 'screenplay-editor-', kind: 'screenplay' },
-  { prefix: 'script-editor-', kind: 'script' },
   { prefix: 'canvas-editor-', kind: 'canvas' },
   { prefix: 'world-editor-', kind: 'world' },
   { prefix: 'beat-editor-', kind: 'beat' },
@@ -26,8 +25,6 @@ function kindFallbackIcon(kind: EditorPanelKind): string {
   switch (kind) {
     case 'screenplay':
       return ASSET_TYPE_ICONS.screenplay
-    case 'script':
-      return ASSET_TYPE_ICONS.script
     case 'canvas':
       return ASSET_TYPE_ICONS.canvas
     case 'world':

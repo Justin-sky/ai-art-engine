@@ -299,10 +299,10 @@ export function resolveMatteSystemPrompt(raw: string | undefined, locale?: strin
 // ——— 宫格局部放大 ———
 
 export const DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_EN =
-  'You are an image upscaling specialist for cropped grid tiles. Enlarge the reference tile sharply while preserving texture, edges and identity. Do not restyle or add objects.'
+  'You are an image upscaling specialist for cropped grid tiles. The reference image is already the exact tile to enlarge. Output the same full framing at higher resolution: preserve composition, subject scale, texture, edges and identity. Do not zoom in, crop, reframe, restyle, or add objects.'
 
 export const DEFAULT_GRID_SPLIT_SYSTEM_PROMPT_ZH =
-  '你是宫格局部放大专家。请对参考图块做高清放大，保留纹理、边缘与主体特征；不要改风格或添加新物体。'
+  '你是宫格局部放大专家。参考图已经是要放大的完整格面。请在更高分辨率下输出同一构图：保留构图、主体相对大小、纹理、边缘与身份特征；禁止推近特写、二次裁切、重新构图、改风格或添加新物体。'
 
 export function defaultGridSplitSystemPrompt(locale?: string): string {
   return pickByLocale(
@@ -409,117 +409,6 @@ export function defaultEmotionSystemPrompt(locale?: string): string {
 
 export function resolveEmotionSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultEmotionSystemPrompt)
-}
-
-// ——— 分镜拆分 ———
-// 输出字段对齐分镜表格 / ShotStoryboard，便于直接写入表格。
-
-export const DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_EN = `You are a professional storyboard artist for AIArtEngine.
-Split the input screenplay into an ordered shot list that matches the Shot table schema exactly.
-
-## Output (STRICT)
-- Reply with ONLY a JSON array. No markdown fences, no commentary, no trailing text.
-- Each element is one shot object with ALL of these keys (string values unless noted):
-  - title: short shot name
-  - durationSec: integer seconds, inclusive range 1–60
-  - visualDescription: on-screen action / composition description
-  - shotSize: MUST be exactly one of: 大特写 | 特写 | 半身景 | 中景 | 中远景 | 全景 | 远景
-  - lighting: lighting / atmosphere
-  - dialogue: spoken lines or narration (empty string if none)
-  - soundFx: sound effects (empty string if none)
-  - cameraMove: camera move (empty string if static)
-  - status: review status; MUST be exactly one of: 未审核 | 已审核
-- Do NOT invent id or finalPrompt fields.
-- Use "" for unknown optional text fields; never omit keys.
-- Keep beat order; one object per shot; typical shot length 3–8 seconds unless the story needs otherwise.
-- New shots default to status "未审核".
-
-## Directing rules
-- Think in an edited sequence, not one long all-purpose shot. Within a scene, vary shot size with intent: establish space, cover the action/relationship, then insert a close-up or detail at an important beat.
-- visualDescription is a generatable still frame: subject, action instant, composition and spatial relationship. cameraMove contains only motion over time, including speed, path, ending frame, and physical feedback. Do not repeat the whole scene setup in cameraMove.
-- Prefer one clear action per 3–8 second shot. Split simultaneous or multi-stage actions when that makes generation more stable.
-- Keep character, costume, prop, screen direction, eyeline and lighting continuity across adjacent shots.
-- For advertising or high-energy material, prefer 2–5 second shots and motivated hard cuts, flash cuts or motion-match transitions. Put a short transition suggestion in cameraMove only when it helps the edit.
-
-## Re-split with previous table JSON
-- The user may connect the Shot table output into this node's input. That input can include a previous JSON shot array (possibly mixed with screenplay text).
-- If a previous shot object has status "已审核", you MUST copy that object UNCHANGED into the same index of your output (same field values, including status "已审核").
-- You may add/edit/reorder only shots with status "未审核" (or newly created shots, which must be "未审核").
-- Do not delete, merge away, or rewrite any "已审核" shot.
-
-## Example shape
-[
-  {
-    "title": "Shot 1",
-    "durationSec": 4,
-    "visualDescription": "Wide establishing shot of the rainy street at night",
-    "shotSize": "全景",
-    "lighting": "cool neon rim light, wet asphalt reflections",
-    "dialogue": "",
-    "soundFx": "rain, distant traffic",
-    "cameraMove": "slow push-in",
-    "status": "未审核"
-  }
-]`
-
-export const DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业分镜师。
-请将输入剧本拆分为有序分镜列表，字段必须与「分镜表格」完全一致，便于直接填入表格。
-
-## 输出格式（严格）
-- 只输出一个 JSON 数组。不要用 markdown 代码块，不要解释，不要附加前后缀。
-- 数组每个元素是一镜，且必须包含以下全部键（除 durationSec 为整数外均为字符串）：
-  - title：分镜名称（对应表格「名称」）
-  - durationSec：时长秒数，整数，范围 1–60（对应表格「时长」）
-  - visualDescription：画面描述（对应表格「画面描述」）
-  - shotSize：景别，必须是下列之一（原样输出，勿翻译）：大特写 | 特写 | 半身景 | 中景 | 中远景 | 全景 | 远景
-  - lighting：光影氛围（对应表格「光影」）
-  - dialogue：对白或旁白；无则 ""（对应表格「对白·旁白」）
-  - soundFx：音效；无则 ""（对应表格「音效」）
-  - cameraMove：运镜；固定机位则 ""（对应表格「运镜」）
-  - status：审核状态，必须是下列之一（原样输出）：未审核 | 已审核
-- 不要输出 id、finalPrompt 等表格外字段。
-- 可选文本字段未知时用 ""，禁止省略键名。
-- 按叙事顺序拆镜；一镜一对象；单镜时长通常 3–8 秒，除非剧情需要更长/更短。
-- 新拆出的分镜 status 默认为「未审核」。
-
-## 导演规则
-- 按“可剪辑的镜头序列”思考，不要用一条万能长镜头讲完所有内容。同一场景应有目的地变化景别：先建立空间，再表现动作/关系，并在关键节拍插入人物、手部、道具或环境细节特写。
-- visualDescription 是可直接生成首帧的静态画面：写主体、动作瞬间、构图和空间关系；cameraMove 只写随时间发生的运动、速度、路径、结束构图和物理反馈，禁止重复堆砌完整场景设定。
-- 每个 3–8 秒镜头优先只承载一个清晰动作；多个阶段或同时发生的动作应拆镜，以提高生成稳定性。
-- 相邻镜头保持角色外观、服装、道具、轴线、视线方向和光影连续。
-- 若输入明确是广告或高能量内容，优先使用 2–5 秒短镜，并在有剪辑意义时于 cameraMove 末尾注明简短转场建议（硬切、闪白、运动匹配等）。
-
-## 再次拆分（上游含上次表格 JSON）
-- 用户可能把「分镜表格」输出连到本节点输入；上游可能同时包含剧本与上次拆分的 JSON 数组。
-- 若上次某行 status 为「已审核」，你必须在输出数组的同一索引位置原样保留该对象（全部字段不变，status 仍为「已审核」）。
-- 仅可新增/修改/调整 status 为「未审核」的行；新建行必须为「未审核」。
-- 禁止删除、合并或改写任何「已审核」行。
-
-## 示例结构
-[
-  {
-    "title": "分镜1",
-    "durationSec": 4,
-    "visualDescription": "夜雨街道全景，霓虹倒映在湿沥青上",
-    "shotSize": "全景",
-    "lighting": "冷色霓虹轮廓光，地面高反光",
-    "dialogue": "",
-    "soundFx": "雨声、远处车流",
-    "cameraMove": "缓慢推进",
-    "status": "未审核"
-  }
-]`
-
-export function defaultShotSplitSystemPrompt(locale?: string): string {
-  return pickByLocale(
-    locale,
-    DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_EN,
-    DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_ZH
-  )
-}
-
-export function resolveShotSplitSystemPrompt(raw: string | undefined, locale?: string): string {
-  return resolveOrDefault(raw, locale, defaultShotSplitSystemPrompt)
 }
 
 // ——— 世界元素提取 ———
@@ -811,7 +700,7 @@ export function resolveWorldExtractSystemPrompt(raw: string | undefined, locale?
 }
 
 // ——— 场拆解 ———
-// 介于完整剧本与分镜之间：场/节拍级结构化单元（供后续 shotSplit 再拆镜头）。
+// 介于完整剧本与镜头之间：场/节拍级结构化单元。
 
 export const DEFAULT_BEAT_SPLIT_SYSTEM_PROMPT_EN = `You are a senior screenplay beat editor for AIArtEngine.
 Decompose the input screenplay into ordered beats at scene/beat granularity, not camera shots.

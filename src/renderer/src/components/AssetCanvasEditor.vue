@@ -23,7 +23,7 @@
       :hide-toolbar="toolbarCollapsed"
     />
 
-    <EditorDiveChildHost :frame="diving ? diveTop : null" />
+    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
   </div>
 </template>
 
@@ -52,7 +52,7 @@ const rootTitle = computed(
   () => canvasAsset.value?.name?.trim() || t('studio.dive.root')
 )
 
-const { diving, diveTop, diveContext } = useEditorDiveHost({
+const { diving, diveTop, diveFrames, diveContext } = useEditorDiveHost({
   kind: 'canvas',
   assetId: () => props.canvasAssetId,
   rootTitle

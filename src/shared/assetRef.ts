@@ -30,7 +30,6 @@ export interface TaggedAssetRef extends AssetRef {
  */
 export const ASSET_GUID_FIELD_KEYS = new Set([
   'assetId',
-  'scriptAssetId',
   'modelAssetId',
   'linkedPanoramaAssetId',
   'sourceModelAssetId',

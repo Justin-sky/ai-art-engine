@@ -178,6 +178,7 @@
       :text-model-key="aiWorkflowTextModelKey"
       :image-model-key="aiWorkflowImageModelKey"
       :video-model-key="aiWorkflowVideoModelKey"
+      :resolution="aiWorkflowGenerateResolution"
       :text-model-options="aiWorkflowTextModelOptions"
       :image-model-options="aiWorkflowImageModelOptions"
       :video-model-options="aiWorkflowVideoModelOptions"
@@ -189,6 +190,7 @@
       @update:text-model-key="setAiWorkflowTextModelKey"
       @update:image-model-key="setAiWorkflowImageModelKey"
       @update:video-model-key="setAiWorkflowVideoModelKey"
+      @update:resolution="setAiWorkflowGenerateResolution($event)"
       @select-preset="applyAiWorkflowPreset"
       @plan-seed="void planAiWorkflowPreview('seed')"
       @plan-ai="void planAiWorkflowPreview('ai')"
@@ -330,6 +332,7 @@ const {
   textModelKey: aiWorkflowTextModelKey,
   imageModelKey: aiWorkflowImageModelKey,
   videoModelKey: aiWorkflowVideoModelKey,
+  generateResolution: aiWorkflowGenerateResolution,
   preview: aiWorkflowPreview,
   previewWarnings: aiWorkflowPreviewWarnings,
   presetIds: aiWorkflowPresetIds,
@@ -337,6 +340,7 @@ const {
   setTextModelKey: setAiWorkflowTextModelKey,
   setImageModelKey: setAiWorkflowImageModelKey,
   setVideoModelKey: setAiWorkflowVideoModelKey,
+  setGenerateResolution: setAiWorkflowGenerateResolution,
   openDialog: openAiWorkflowDialog,
   closeDialog: closeAiWorkflowDialog,
   planPreview: planAiWorkflowPreview,
@@ -639,10 +643,6 @@ function cleanupDraftEditor(panelId: string, prefix: string, consume: (id: strin
   consume(id)
 }
 
-async function exportCanvas(): Promise<string | null> {
-  return workspace.exportCanvasForActiveShot()
-}
-
 const dockTabComponents: Record<string, VueComponent> = {
   editorTab: markRaw(EditorDockTab) as unknown as VueComponent,
   lockedTab: markRaw(
@@ -669,8 +669,7 @@ const dockTabComponents: Record<string, VueComponent> = {
 }
 
 const dockComponents: Record<string, VueComponent> = createEditorWindowComponents({
-  t: (key, params) => t(key, params ?? {}),
-  exportCanvas
+  t: (key, params) => t(key, params ?? {})
 })
 
 function readDockWidth(): number {
@@ -825,7 +824,6 @@ function ensureCorePanels(api: DockviewApi): void {
   if (!api.getPanel(CENTER_PANEL_ID)) {
     const ref = api.panels.find(
       (p) =>
-        p.id.startsWith('script-editor-') ||
         p.id.startsWith('canvas-editor-') ||
         p.id.startsWith('director-editor-') ||
         p.id.startsWith('screenplay-editor-') ||
@@ -1017,9 +1015,6 @@ function onReady(event: DockviewReadyEvent): void {
     }
     if (panel.id.startsWith('screenplay-editor-')) {
       cleanupDraftEditor(panel.id, 'screenplay-editor-', workspace.consumeScreenplayEditor)
-    }
-    if (panel.id.startsWith('script-editor-')) {
-      cleanupDraftEditor(panel.id, 'script-editor-', workspace.consumeScriptEditor)
     }
     if (panel.id.startsWith('canvas-editor-')) {
       cleanupDraftEditor(panel.id, 'canvas-editor-', workspace.consumeCanvasEditor)

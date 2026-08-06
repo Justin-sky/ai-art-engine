@@ -137,10 +137,7 @@ const PORT_DATA_TYPE_LABELS: Record<string, string> = {
   [GraphPortType.texts]: '文本组',
   [GraphPortType.world]: '世界元素',
   [GraphPortType.worldEntities]: '世界元素实体',
-  [GraphPortType.shotEntities]: '分镜实体',
-  [GraphPortType.videoEntities]: '视频实体',
   [GraphPortType.beat]: '场',
-  [GraphPortType.shots]: '分镜',
   [GraphPortType.model]: '模型'
 }
 
@@ -202,32 +199,6 @@ export function defaultHostInterfaceForAssetType(
             label: 'Out',
             dataType: GraphPortType.beat,
             multiple: true
-          }
-        ]
-      }
-    case 'script':
-      return {
-        version: HOST_INTERFACE_FORMAT_VERSION,
-        inputs: [
-          {
-            id: 'in-worldEntities',
-            label: 'World',
-            dataType: GraphPortType.worldEntities,
-            multiple: true
-          },
-          {
-            id: 'in-beat',
-            label: 'Beat',
-            dataType: GraphPortType.text,
-            multiple: true
-          }
-        ],
-        outputs: [
-          {
-            id: 'out',
-            label: 'Out',
-            dataType: GraphPortType.videoEntities,
-            multiple: false
           }
         ]
       }

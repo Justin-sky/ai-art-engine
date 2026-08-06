@@ -1,5 +1,13 @@
 const INSTRUCTION_MENTION_RE = /@(\d+)/g
 
+export interface RefMentionOption {
+  token: string
+  label: string
+  kind: 'visual' | 'voice'
+  /** 选中后实际写入文本；省略时写入 token（生成指令继续使用 @n） */
+  insertText?: string
+}
+
 export interface InstructionMentionSource {
   /** 1-based，与 UI / @n 一致（含风格图占位偏移） */
   index: number

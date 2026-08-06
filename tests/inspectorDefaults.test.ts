@@ -29,13 +29,7 @@ describe('graph inspector defaults', () => {
     ).toBe('plugin.custom')
   })
 
-  it('resolves shot / world table inspector ids', () => {
-    expect(
-      resolveGraphInspectorId(
-        { inspector: 'none', inspectorId: 'studio.graph.shotTable' },
-        { category: 'note', typeId: 'script.shotTable', params: {} }
-      )
-    ).toBe('studio.graph.shotTable')
+  it('resolves world table inspector id', () => {
     expect(
       resolveGraphInspectorId(
         { inspector: 'none', inspectorId: 'studio.graph.worldTable' },
@@ -49,12 +43,6 @@ describe('graph inspector defaults', () => {
       resolveGraphInspectorId(
         { inspector: 'none', inspectorId: 'studio.graph.select' },
         { category: 'note', typeId: 'image.select', params: {} }
-      )
-    ).toBe('studio.graph.select')
-    expect(
-      resolveGraphInspectorId(
-        { inspector: 'none', inspectorId: 'studio.graph.select' },
-        { category: 'note', typeId: 'shotEntities.select', params: {} }
       )
     ).toBe('studio.graph.select')
   })

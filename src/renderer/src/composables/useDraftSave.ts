@@ -2,11 +2,9 @@ import {
   isDirectorDeck,
   isCanvasAsset,
   isScreenplayAsset,
-  isStoryboardScript,
   isWorldElementAsset,
   type AssetInfo,
-  type AssetType,
-  type Shot
+  type AssetType
 } from '@shared/domain'
 import type { DockviewApi } from 'dockview-vue'
 import { useDraftStore } from '../stores/drafts'
@@ -43,9 +41,7 @@ export function useDraftSave() {
   }
 
   function migrateEditor(draftId: string, assetId: string, type: AssetType): void {
-    if (isStoryboardScript(type)) {
-      workspace.consumeScriptEditor(draftId)
-    } else if (isCanvasAsset(type)) {
+    if (isCanvasAsset(type)) {
       workspace.consumeCanvasEditor(draftId)
     } else if (isWorldElementAsset(type)) {
       workspace.consumeWorldEditor(draftId)
@@ -79,8 +75,7 @@ export function useDraftSave() {
         folderId,
         prompt: draft.prompt,
         notes: draft.notes,
-        genParams: draft.genParams,
-        skipScriptBootstrap: draft.type === 'script'
+        genParams: draft.genParams
       })
     )
 
@@ -93,46 +88,19 @@ export function useDraftSave() {
       })
     }
 
-    if (draft.type === 'script' && draft.shots?.length) {
-      for (const draftShot of draft.shots) {
-        const shot = await window.studio.createShot({
-          scriptAssetId: asset.id,
-          title: draftShot.title
-        })
-        const merged: Shot = {
-          ...shot,
-          title: draftShot.title,
-          status: draftShot.status,
-          prompt: draftShot.prompt,
-          storyboard: draftShot.storyboard,
-          camera: draftShot.camera,
-          canvas: draftShot.canvas,
-          generations: draftShot.generations ?? [],
-          genRefs: draftShot.genRefs,
-          audioRefs: draftShot.audioRefs,
-          thumbnailPath: draftShot.thumbnailPath,
-          scriptAssetId: asset.id
-        }
-        await window.studio.updateShot(toPlain(merged))
-      }
-    }
-
     drafts.removeDraft(draftId)
     await project.refreshLibrary()
-    await project.refreshShots()
 
     if (dockApi) {
-      const prefix = isStoryboardScript(draft.type)
-        ? 'script-editor-'
-        : isCanvasAsset(draft.type)
-          ? 'canvas-editor-'
-          : isWorldElementAsset(draft.type)
-            ? 'world-editor-'
-            : isDirectorDeck(draft.type)
-              ? 'director-editor-'
-              : isScreenplayAsset(draft.type)
-                ? 'screenplay-editor-'
-                : 'asset-editor-'
+      const prefix = isCanvasAsset(draft.type)
+        ? 'canvas-editor-'
+        : isWorldElementAsset(draft.type)
+          ? 'world-editor-'
+          : isDirectorDeck(draft.type)
+            ? 'director-editor-'
+            : isScreenplayAsset(draft.type)
+              ? 'screenplay-editor-'
+              : 'asset-editor-'
       const oldPanel = dockApi.getPanel(`${prefix}${draftId}`)
       if (oldPanel) dockApi.removePanel(oldPanel)
     }
@@ -145,7 +113,6 @@ export function useDraftSave() {
     const id = workspace.selectedAssetId
     if (id && drafts.isDraft(id)) return id
     const lists = [
-      ...workspace.openScriptEditorIds,
       ...workspace.openCanvasEditorIds,
       ...workspace.openWorldEditorIds,
       ...workspace.openDirectorEditorIds,

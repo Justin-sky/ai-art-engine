@@ -17,12 +17,7 @@ import type {
   GraphOutputKind,
   GraphPortDataType
 } from './types'
-import {
-  GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
-  GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
-  GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
-  GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID
-} from './types'
+import { GRAPH_OUTPUT_NODE_IDS } from './types'
 
 /** 默认图节点：固定 typeId，或按角色解析（加工 / 作用域输出） */
 export interface DefaultGraphNodeSpec {
@@ -100,56 +95,9 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
     nodes: [{ key: 'gen', typeId: 'asset.motion', x: 240, y: 160 }],
     edges: []
   },
-  shotWorkflow: {
-    nodes: [{ key: 'gen', typeId: 'asset.video', x: 300, y: 160 }],
-    edges: []
-  },
-  visual: {
-    nodes: [{ key: 'gen', typeId: 'asset.image', x: 300, y: 160 }],
-    edges: []
-  },
   beatUnit: {
     nodes: [{ key: 'gen', typeId: 'beat.unitGen', x: 300, y: 160 }],
     edges: []
-  },
-  scriptAsset: {
-    nodes: [
-      {
-        key: 'split',
-        typeId: 'script.shotSplit',
-        id: GRAPH_SCRIPT_SHOT_SPLIT_NODE_ID,
-        x: 120,
-        y: 160
-      },
-      {
-        key: 'table',
-        typeId: 'script.shotTable',
-        id: GRAPH_SCRIPT_SHOT_TABLE_NODE_ID,
-        x: 340,
-        y: 160
-      },
-      {
-        key: 'imageGen',
-        typeId: 'script.shotImageGen',
-        id: GRAPH_SCRIPT_SHOT_IMAGE_GEN_NODE_ID,
-        x: 560,
-        y: 160
-      },
-      {
-        key: 'videoGen',
-        typeId: 'script.shotVideoGen',
-        id: GRAPH_SCRIPT_SHOT_VIDEO_GEN_NODE_ID,
-        x: 780,
-        y: 160
-      }
-    ],
-    edges: [
-      { from: 'split', to: 'table', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'imageGen', fromPort: 'out', toPort: 'in' },
-      { from: 'table', to: 'videoGen', fromPort: 'out', toPort: 'in-text' },
-      { from: 'imageGen', to: 'videoGen', fromPort: 'out', toPort: 'in-entities' }
-    ],
-    inputLinkTo: ['split', 'table']
   },
   worldAsset: {
     nodes: [
@@ -387,4 +335,19 @@ export function resolveInputLinkHeadTypeIds(
     }
   }
   return typeIds
+}
+
+/** 新建画布默认图：预置成片时间线输出节点（资产库新建画布不调用） */
+export function buildCanvasStarterGraph(): GraphDocument {
+  const timeline = createNodeFromType(
+    'output.timeline',
+    { x: 240, y: 160 },
+    { id: GRAPH_OUTPUT_NODE_IDS.timeline }
+  )
+  return {
+    nodes: [timeline],
+    edges: [],
+    groups: [],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  }
 }

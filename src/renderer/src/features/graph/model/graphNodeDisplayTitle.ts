@@ -12,7 +12,6 @@ const STOCK_OUTPUT_TITLE_I18N: Record<string, string> = {
   'Video output': 'graph.titles.assetOutput.video',
   'Voice output': 'graph.titles.assetOutput.voice',
   'Text output': 'graph.titles.assetOutput.text',
-  'Shot video output': 'graph.titles.shotOutput',
   'Screenplay output': 'graph.titles.screenplayOutput',
   'Director deck output': 'graph.titles.directorOutput',
   'Cut timeline': 'graph.titles.timelineOutput',

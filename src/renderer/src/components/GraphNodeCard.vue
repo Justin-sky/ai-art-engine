@@ -83,6 +83,14 @@
         >
           {{ runStatusLabel }}
         </span>
+        <span
+          v-if="reviewStatus"
+          class="run-pill"
+          :class="reviewStatus === 'FAIL' ? 'error' : 'done'"
+          :title="reviewReason || (reviewStatus === 'FAIL' ? '导演审核失败' : '导演审核通过')"
+        >
+          {{ reviewStatus === 'FAIL' ? 'FAIL' : 'PASS' }}
+        </span>
         <GraphNodeRunControl
           v-if="hasInPort"
           compact
@@ -140,7 +148,7 @@
       </div>
 
       <img
-        v-else-if="(isSelectImageNode(node) || isSelectShotEntitiesNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
+        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
         :src="selectImagePreview"
         alt=""
         loading="lazy"
@@ -418,11 +426,6 @@ import {
   supportsGenerateLock,
   isVideoFramePortId,
   isDirectorProcessingNode,
-  isScriptShotImageGenNode,
-  isScriptShotParamsNode,
-  isScriptShotSplitNode,
-  isScriptShotTableNode,
-  isScriptShotVideoGenNode,
   isTimelineOutputNode,
   isWorldGenNode,
   isWorldExtractNode,
@@ -432,13 +435,14 @@ import {
   isBeatGenNode,
   isBeatOutputNode,
   isBeatUnitOutputNode,
+  isEpisodeAnchorSelectNode,
+  isEpisodeCellSelectNode,
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
   isSelectVoiceNode,
   isSelectTextNode,
   isSelectBeatNode,
-  isSelectShotEntitiesNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
@@ -485,6 +489,7 @@ import {
   editorDiveKey,
   type EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
+import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 
 const { t, te, assetTypeLabel, graphTypeLabel } = useStudioI18n()
@@ -597,9 +602,13 @@ function portTypeLabel(dataType: GraphPortDataType): string {
   return t(`graph.port.types.${dataType}`)
 }
 
-/** Houdini 风格：复数端口（out-all / select 输入）用方形 */
+/** Houdini 风格：复数端口（images/videos… / out-all / multiple）用方形 */
 function isBatchPort(port: GraphPortDef): boolean {
-  return isPluralGraphPortDataType(port.dataType) || port.id === GRAPH_OUT_ALL_PORT_ID
+  return (
+    isPluralGraphPortDataType(port.dataType) ||
+    port.multiple === true ||
+    port.id === GRAPH_OUT_ALL_PORT_ID
+  )
 }
 
 function portDataTypeClass(port: GraphPortDef): string {
@@ -608,14 +617,8 @@ function portDataTypeClass(port: GraphPortDef): string {
       return 'port-world'
     case GraphPortType.worldEntities:
       return 'port-world-entities'
-    case GraphPortType.shotEntities:
-      return 'port-shot-entities'
-    case GraphPortType.videoEntities:
-      return 'port-video-entities'
     case GraphPortType.beat:
       return 'port-beat'
-    case GraphPortType.shots:
-      return 'port-shots'
     default:
       return ''
   }
@@ -705,8 +708,6 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'optimize'
     case 'beat.unitGen':
       return 'beatUnitGen'
-    case 'script.shotSplit':
-      return 'shotSplit'
     case 'world.extract':
       return 'worldExtract'
     case 'beat.split':
@@ -819,9 +820,6 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'voice') {
     return t('graph.inspector.generate.voiceInstructionPlaceholder')
   }
-  if (instructionKind.value === 'shotSplit') {
-    return t('graph.inspector.generate.shotSplitInstructionPlaceholder')
-  }
   if (instructionKind.value === 'worldExtract') {
     return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
   }
@@ -908,9 +906,6 @@ const canDiveIntoHost = computed(
 const canDiveIntoSubgraph = computed(() => {
   const n = props.node
   return (
-    isScriptShotImageGenNode(n) ||
-    isScriptShotVideoGenNode(n) ||
-    isScriptShotTableNode(n) ||
     isTimelineOutputNode(n) ||
     isWorldTableNode(n) ||
     isWorldGenNode(n) ||
@@ -975,10 +970,6 @@ const displayTitle = computed(() => {
 })
 
 const typeIcon = computed(() => {
-  if (isScriptShotSplitNode(props.node)) return '✂️'
-  if (isScriptShotTableNode(props.node)) return '📊'
-  if (isScriptShotImageGenNode(props.node)) return '🖼️'
-  if (isScriptShotVideoGenNode(props.node)) return '🎬'
   if (isWorldExtractNode(props.node)) return '🗡️'
   if (isWorldTableNode(props.node) || isBeatTableNode(props.node)) return '📋'
   if (isBeatGenNode(props.node) || isBeatSplitNode(props.node)) return '📖'
@@ -1008,6 +999,9 @@ const runStatusLabel = computed(() => {
       return ''
   }
 })
+
+const reviewStatus = computed(() => props.node.params?.episodeReviewStatus ?? '')
+const reviewReason = computed(() => props.node.params?.episodeReviewReason ?? '')
 
 const assetName = computed(() => props.asset?.name ?? '')
 
@@ -1082,7 +1076,6 @@ watch(
           ]?.imageUrl
         : '',
       isSelectImageNode(props.node) ||
-        isSelectShotEntitiesNode(props.node) ||
         isMultiAngleEditorNode(props.node) ||
         isLightingEditorNode(props.node) ||
         isPortraitTextureEditorNode(props.node) ||
@@ -1238,10 +1231,6 @@ const cardTextGridItems = computed((): string[] => {
 /** 分镜 / 世界元素流程节点：不展示正文预览，仅显示图标+提示以便双击 */
 const hideCardPreview = computed(
   () =>
-    isScriptShotSplitNode(props.node) ||
-    isScriptShotTableNode(props.node) ||
-    isScriptShotImageGenNode(props.node) ||
-    isScriptShotVideoGenNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isWorldTableNode(props.node) ||
     isWorldGenNode(props.node) ||
@@ -1252,16 +1241,10 @@ const hideCardPreview = computed(
 
 const scriptNodePreviewTitle = computed(() => {
   if (
-    isScriptShotSplitNode(props.node) ||
     isWorldExtractNode(props.node) ||
     isBeatSplitNode(props.node)
   ) {
     return t('graph.generateNode.instructionHint')
-  }
-  if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
-  if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
-  if (isScriptShotVideoGenNode(props.node)) {
-    return t('graph.scriptShotVideoGenNode.hint')
   }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
@@ -1272,11 +1255,8 @@ const scriptNodePreviewTitle = computed(() => {
 
 /** 节点上展示的文本输出（执行结果或已保存正文）；有内容才覆盖媒体预览 */
 const textPreview = computed(() => {
-  // 剧本 / 分镜引用：不展示正文预览（图标 + 引用提示）
-  if (
-    isAssetRef.value &&
-    (props.node.assetType === 'screenplay' || props.node.assetType === 'script')
-  ) {
+  // 剧本引用：不展示正文预览（图标 + 引用提示）
+  if (isAssetRef.value && props.node.assetType === 'screenplay') {
     return ''
   }
   if (hideCardPreview.value) return ''
@@ -1294,11 +1274,6 @@ const previewHint = computed(() => {
   if (isTimelineOutputNode(props.node)) {
     return t('graph.timelineOutputNode.hint')
   }
-  if (isScriptShotTableNode(props.node)) return t('graph.scriptShotTableNode.hint')
-  if (isScriptShotImageGenNode(props.node)) return t('graph.scriptShotImageGenNode.hint')
-  if (isScriptShotVideoGenNode(props.node)) {
-    return t('graph.scriptShotVideoGenNode.hint')
-  }
   if (isWorldTableNode(props.node)) return t('graph.worldTableNode.hint')
   if (isWorldGenNode(props.node)) return t('graph.worldGenNode.hint')
   if (isBeatTableNode(props.node)) return t('graph.beatTableNode.hint')
@@ -1308,7 +1283,6 @@ const previewHint = computed(() => {
   if (isSelectVoiceNode(props.node)) return t('graph.selectVoice.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
-  if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   if (isMultiAngleEditorNode(props.node)) return t('graph.multiAngle.hint')
   if (isLightingEditorNode(props.node)) return t('graph.lighting.hint')
   if (isPortraitTextureEditorNode(props.node)) return t('graph.portraitTexture.hint')
@@ -1335,12 +1309,10 @@ const previewOpenHint = computed(() => {
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
   if (isSelectBeatNode(props.node)) return t('graph.selectBeat.hint')
-  if (isSelectShotEntitiesNode(props.node)) return t('graph.selectShotEntities.hint')
   // 预览区已有正文时，双击优先打开记事本
   if (
     textPreview.value &&
     !isAssetRef.value &&
-    !isSelectShotEntitiesNode(props.node) &&
     isNodeTextCapable(props.node)
   ) {
     return t('graph.notepad.openHint')
@@ -1779,6 +1751,9 @@ async function diveNodeTool(
 ): Promise<boolean> {
   const hostId = props.hostId?.trim()
   if (!hostId) return false
+  // 子图宿主在 dive 后可能被工具视图替换卸载；先在宿主仍挂载时打开工具状态，
+  // 再进入 dive，工具视图挂载后直接读取已打开的状态。
+  await graphEditorNodeTools.open(hostId, viewId, props.node.id, mode)
   return diveView(
     { viewId, hostId, nodeId: props.node.id, ...(mode ? { mode } : {}) },
     title
@@ -1804,7 +1779,7 @@ function onPreviewDblClick(): void {
       return
     }
 
-    if (isSelectImageNode(props.node) || isSelectShotEntitiesNode(props.node)) {
+    if (isSelectImageNode(props.node)) {
       emit('selectImageOpen', props.node.id)
       return
     }
@@ -1868,22 +1843,7 @@ function onPreviewDblClick(): void {
       await diveNodeTool('node.gridSplit', title)
       return
     }
-    // 分镜参数：双击无效，参数在右侧 Inspector 编辑
-    if (isScriptShotParamsNode(props.node)) return
-
     const scriptAssetId = hostAssetId.value
-    if (isScriptShotTableNode(props.node) && scriptAssetId) {
-      await diveView({ viewId: 'script.shotTable', scriptAssetId }, title)
-      return
-    }
-    if (isScriptShotImageGenNode(props.node) && scriptAssetId) {
-      await diveView({ viewId: 'script.shotImage', scriptAssetId }, title)
-      return
-    }
-    if (isScriptShotVideoGenNode(props.node) && scriptAssetId) {
-      await diveView({ viewId: 'script.shotVideo', scriptAssetId }, title)
-      return
-    }
     if (isTimelineOutputNode(props.node) && scriptAssetId) {
       await diveView({ viewId: 'script.timeline', scriptAssetId }, title)
       return
@@ -1906,6 +1866,18 @@ function onPreviewDblClick(): void {
     }
     if ((isBeatGenNode(props.node) || isBeatOutputNode(props.node)) && beatAssetId) {
       await diveView({ viewId: 'beat.gen', beatAssetId }, title)
+      return
+    }
+
+    const episodeHostAssetId = hostAssetId.value
+    if (
+      (isEpisodeAnchorSelectNode(props.node) || isEpisodeCellSelectNode(props.node)) &&
+      episodeHostAssetId
+    ) {
+      await diveView(
+        { viewId: 'episode.pipeline', hostAssetId: episodeHostAssetId },
+        title
+      )
       return
     }
 

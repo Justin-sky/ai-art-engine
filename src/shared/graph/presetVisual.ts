@@ -206,9 +206,6 @@ export function resolveInstructionVisual(input: {
       ]
     }
   }
-  if (id.startsWith('shotSplit.') || id.includes('shotSplit')) {
-    return { kind: 'chips', chips: ['镜', '画面', '台词'] }
-  }
   if (id.startsWith('world.') || id.includes('worldExtract')) {
     return { kind: 'chips', chips: ['角', '景', '道'] }
   }

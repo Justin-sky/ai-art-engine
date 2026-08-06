@@ -1,18 +1,20 @@
 import {
-  DEFAULT_SHOT_REVIEW_STATUS,
   asWorldRefList,
-  normalizeShotReviewStatus,
-  type ShotReviewStatus,
   type WorldEntityRef
 } from '../domain'
-import { stripJsonCodeFence } from './shotSplitParse'
+import {
+  DEFAULT_REVIEW_STATUS,
+  normalizeReviewStatus,
+  type ReviewStatus
+} from './reviewStatus'
+import { stripJsonCodeFence } from './jsonFence'
 import type { GraphDocument } from './types'
 
-/** 场中的世界元素引用（绑定在分镜层完成） */
+/** 场中的世界元素引用 */
 export type BeatWorldRef = WorldEntityRef
 export { asWorldRefList }
 
-/** 剧本中的场（介于完整剧本与分镜之间） */
+/** 剧本中的场（介于完整剧本与镜头之间） */
 export interface BeatRow {
   id: string
   title: string
@@ -31,7 +33,7 @@ export interface BeatRow {
   weapons: BeatWorldRef[]
   /** 对应原文摘录 */
   sourceExcerpt: string
-  status: ShotReviewStatus
+  status: ReviewStatus
 }
 
 function serializeWorldRef(ref: BeatWorldRef): BeatWorldRef {
@@ -93,7 +95,7 @@ function normalizeRow(item: unknown, index: number): BeatRow | null {
   const weapons = asWorldRefList(row.weapons)
   const sourceExcerpt = asString(row.sourceExcerpt ?? row['原文']).trim()
   const id = stableBeatId(title, order, asString(row.id).trim() || undefined)
-  const status = normalizeShotReviewStatus(row.status ?? row['状态'])
+  const status = normalizeReviewStatus(row.status ?? row['状态'])
   return {
     id,
     title,
@@ -161,7 +163,7 @@ function serializableBeat(row: BeatRow): Record<string, unknown> {
     props: row.props.map(serializeWorldRef),
     weapons: row.weapons.map(serializeWorldRef),
     sourceExcerpt: row.sourceExcerpt,
-    status: normalizeShotReviewStatus(row.status)
+  status: normalizeReviewStatus(row.status)
   }
 }
 
@@ -232,7 +234,7 @@ export function mergeBeatRowsPreservingReviewed(
   if (!previous?.length) {
     return next.map((row) => ({
       ...row,
-      status: normalizeShotReviewStatus(row.status) || DEFAULT_SHOT_REVIEW_STATUS
+  status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
     }))
   }
 
@@ -247,7 +249,7 @@ export function mergeBeatRowsPreservingReviewed(
     used.add(row.id)
     return {
       ...row,
-      status: normalizeShotReviewStatus(row.status) || DEFAULT_SHOT_REVIEW_STATUS
+  status: normalizeReviewStatus(row.status) || DEFAULT_REVIEW_STATUS
     }
   })
 

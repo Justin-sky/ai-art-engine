@@ -180,7 +180,7 @@ async function formatTextGenerateFailure(
 ): Promise<string> {
   if (axios.isAxiosError(err) && err.code === 'ECONNABORTED') {
     const sec = Math.round(LONG_GENERATE_TIMEOUT_MS / 1000)
-    return `请求超时（已等待 ${sec} 秒）。分镜拆分等长输出可再试一次，或改用更快的文本模型`
+  return `请求超时（已等待 ${sec} 秒）。长输出可再试一次，或改用更快的文本模型`
   }
 
   const raw = await readHttpError(err)

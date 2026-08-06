@@ -65,6 +65,23 @@
             @update:model-value="emit('update:videoModelKey', $event)"
           />
         </div>
+        <div class="model-row">
+          <span class="label">{{ t('aiWorkflow.resolutionLabel') }}</span>
+          <select
+            class="resolution-select"
+            :value="resolution"
+            :disabled="busy"
+            :title="t('aiWorkflow.resolutionLabel')"
+            @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ t('aiWorkflow.resolutionEmpty') }}</option>
+            <option value="1K">1K</option>
+            <option value="2K">2K</option>
+            <option value="4K">4K</option>
+            <option value="1080p">1080p</option>
+            <option value="720p">720p</option>
+          </select>
+        </div>
       </div>
 
       <label class="label" for="ai-workflow-prompt">{{ t('aiWorkflow.promptLabel') }}</label>
@@ -155,6 +172,7 @@ const props = defineProps<{
   textModelKey: string
   imageModelKey: string
   videoModelKey: string
+  resolution: string
   textModelOptions: GenerateModelOption[]
   imageModelOptions: GenerateModelOption[]
   videoModelOptions: GenerateModelOption[]
@@ -169,6 +187,7 @@ const emit = defineEmits<{
   'update:textModelKey': [value: string]
   'update:imageModelKey': [value: string]
   'update:videoModelKey': [value: string]
+  'update:resolution': [value: string]
   'select-preset': [id: AiWorkflowPresetId]
   'plan-seed': []
   'plan-ai': []
@@ -282,9 +301,29 @@ function onPlanAi(): void {
   max-width: min(320px, 70%);
 }
 
-.model-select :deep(select) {
+.model-select :deep(select),
+.resolution-select {
   max-width: 100%;
   min-width: 140px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  outline: none;
+}
+
+.resolution-select {
+  max-width: min(320px, 70%);
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.resolution-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .prompt {

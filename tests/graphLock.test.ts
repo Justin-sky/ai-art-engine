@@ -31,7 +31,6 @@ describe('generate node lock', () => {
     const inputSlot = createNodeFromType('graph.input.slot', { x: 0, y: 0 })
     const worldTable = createNodeFromType('world.table', { x: 0, y: 0 })
     const beatTable = createNodeFromType('beat.table', { x: 0, y: 0 })
-    const shotTable = createNodeFromType('script.shotTable', { x: 0, y: 0 })
     expect(supportsGenerateLock(image)).toBe(true)
     expect(supportsGenerateLock(select)).toBe(true)
     expect(supportsGenerateLock(lipSync)).toBe(true)
@@ -49,7 +48,6 @@ describe('generate node lock', () => {
     // 目录表格只透传，无图库可复用，锁定必然取不到缓存
     expect(supportsGenerateLock(worldTable)).toBe(false)
     expect(supportsGenerateLock(beatTable)).toBe(false)
-    expect(supportsGenerateLock(shotTable)).toBe(false)
     expect(isGenerateLocked({ ...image, params: { locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...host, params: { ...host.params, locked: true } })).toBe(true)
     expect(isGenerateLocked({ ...select, params: { locked: true } })).toBe(true)

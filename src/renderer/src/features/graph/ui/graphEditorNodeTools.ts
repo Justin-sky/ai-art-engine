@@ -1,5 +1,6 @@
 import type { EditorDiveNodeToolViewId } from '../model/editorDive'
 import type { GraphEditorDialogsApi } from './graphEditorDialogsKey'
+import { ref } from 'vue'
 
 export type GraphNodeToolOpener = (nodeId: string, mode?: string) => void | Promise<void>
 
@@ -10,13 +11,19 @@ export type GraphNodeToolHost = {
 
 class GraphEditorNodeToolRegistry {
   private hosts = new Map<string, GraphNodeToolHost>()
+  /** 注册/注销版本号：宿主编辑器可能晚于 dive 工具视图挂载，需驱动 computed 重新读取 */
+  readonly revision = ref(0)
 
   register(hostId: string, host: GraphNodeToolHost): () => void {
     const id = hostId.trim()
     if (!id) return () => undefined
     this.hosts.set(id, host)
+    this.revision.value += 1
     return () => {
-      if (this.hosts.get(id) === host) this.hosts.delete(id)
+      if (this.hosts.get(id) === host) {
+        this.hosts.delete(id)
+        this.revision.value += 1
+      }
     }
   }
 

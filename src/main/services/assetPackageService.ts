@@ -2,8 +2,8 @@ import { app, dialog } from 'electron'
 import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, extname, isAbsolute, join, relative } from 'path'
-import type { AssetFolder, AssetInfo, Shot } from '@shared/domain'
-import { isDraftAssetId, isStoryboardScript, resolveUniqueAssetName } from '@shared/domain'
+import type { AssetFolder, AssetInfo } from '@shared/domain'
+import { isDraftAssetId, resolveUniqueAssetName } from '@shared/domain'
 import { collectAssetGuids, remapAssetGuids } from '@shared/assetRef'
 import {
   collectRelativePathStrings,
@@ -66,33 +66,16 @@ function portableAsset(asset: AssetInfo): AssetPackageAssetMeta['asset'] {
 
 function portableFingerprint(
   asset: AssetInfo,
-  payloadSha: string,
-  shots?: Shot[] | null
+  payloadSha: string
 ): string {
   return sha256Json({
     asset: portableAsset(asset),
-    payloadSha,
-    shots: shots ?? null
+    payloadSha
   })
 }
 
 function extFromRelativePath(relativePath: string): string {
   return extname(relativePath) || ''
-}
-
-function scriptShotIds(asset: AssetInfo): string[] {
-  const raw = asset.genParams?.shotIds
-  return Array.isArray(raw) ? raw.map(String).filter(Boolean) : []
-}
-
-function loadShotsForScript(asset: AssetInfo): Shot[] {
-  if (!isStoryboardScript(asset.type)) return []
-  const shots: Shot[] = []
-  for (const shotId of scriptShotIds(asset)) {
-    const shot = projectService.getShot(shotId)
-    if (shot) shots.push(structuredClone(shot))
-  }
-  return shots
 }
 
 function resolveSafeProjectFile(root: string, relativePosix: string): string | null {
@@ -118,11 +101,6 @@ function collectExportDependencies(
       const asset = byId.get(id)
       if (!asset) continue
       const guids = new Set(collectAssetGuids(asset.genParams ?? {}))
-      if (isStoryboardScript(asset.type)) {
-        for (const shot of loadShotsForScript(asset)) {
-          for (const g of collectAssetGuids(shot)) guids.add(g)
-        }
-      }
       for (const dep of guids) {
         if (isDraftAssetId(dep) || dep === id) continue
         if (!byId.has(dep)) {
@@ -138,50 +116,6 @@ function collectExportDependencies(
     }
   }
   return { exportIds, dependencyIds, skipped }
-}
-
-function remapShotIdsInGenParams(
-  genParams: Record<string, unknown> | undefined,
-  shotIdMap: Map<string, string>
-): Record<string, unknown> | undefined {
-  if (!genParams) return genParams
-  const raw = genParams.shotIds
-  if (!Array.isArray(raw)) return genParams
-  return {
-    ...genParams,
-    shotIds: raw.map((id) => {
-      const key = String(id)
-      return shotIdMap.get(key) ?? key
-    })
-  }
-}
-
-function remapPackedShots(
-  shots: Shot[] | undefined,
-  assetGuidMap: Map<string, string>,
-  scriptTargetGuid: string,
-  existingShotIds: Set<string>
-): { shots: Shot[]; shotIdMap: Map<string, string> } {
-  const shotIdMap = new Map<string, string>()
-  if (!shots?.length) return { shots: [], shotIdMap }
-
-  const next: Shot[] = []
-  for (const raw of shots) {
-    const sourceId = raw.id
-    let targetId = sourceId
-    if (existingShotIds.has(sourceId) || shotIdMap.has(sourceId)) {
-      targetId = randomUUID()
-    }
-    shotIdMap.set(sourceId, targetId)
-    existingShotIds.add(targetId)
-    const remapped = remapAssetGuids(structuredClone(raw), assetGuidMap) as Shot
-    next.push({
-      ...remapped,
-      id: targetId,
-      scriptAssetId: scriptTargetGuid
-    })
-  }
-  return { shots: next, shotIdMap }
 }
 
 class AssetPackageService {
@@ -305,11 +239,9 @@ class AssetPackageService {
         extension = extFromRelativePath(asset.relativePath)
         mode = 'binary'
       }
-      const shots = loadShotsForScript(asset)
       const deps = includeDeps
         ? [
-            ...collectAssetGuids(asset.genParams ?? {}),
-            ...shots.flatMap((shot) => collectAssetGuids(shot))
+            ...collectAssetGuids(asset.genParams ?? {})
           ].filter((g) => g !== id)
         : []
       const meta: AssetPackageAssetMeta = {
@@ -324,8 +256,7 @@ class AssetPackageService {
           size: payload.length,
           sha256: sha256Buffer(payload)
         },
-        dependencies: [...new Set(deps)],
-        ...(shots.length ? { shots } : {})
+        dependencies: [...new Set(deps)]
       }
       packed.push({
         guid: id,
@@ -353,9 +284,6 @@ class AssetPackageService {
         const asset = byId.get(id)
         if (!asset) continue
         collectRelativePathStrings(asset.genParams ?? {}, pathSet)
-        if (isStoryboardScript(asset.type)) {
-          collectRelativePathStrings(loadShotsForScript(asset), pathSet)
-        }
       }
       for (const rel of pathSet) {
         if (!isPackableGeneratedRelativePath(rel, cacheRoot)) continue
@@ -658,14 +586,12 @@ class AssetPackageService {
         const abs = join(root, existing.relativePath)
         if (existsSync(abs)) existingPayloadSha = sha256Buffer(readFileSync(abs))
       }
-      const existingShots = loadShotsForScript(existing)
       const payloadSha = sha256Buffer(entry.payload)
       const same =
-        portableFingerprint(existing, existingPayloadSha, existingShots) ===
+        portableFingerprint(existing, existingPayloadSha) ===
         sha256Json({
           asset: meta.asset,
-          payloadSha,
-          shots: meta.shots ?? null
+          payloadSha
         })
       if (same) {
         guidMap.set(meta.guid, meta.guid)
@@ -707,9 +633,7 @@ class AssetPackageService {
       })
     }
 
-    const existingShotIds = new Set(projectService.listShots().map((s) => s.id))
     const remappedAssetMetas = new Map<string, AssetPackageAssetMeta>()
-    const remappedShotsByAsset = new Map<string, Shot[]>()
 
     for (const plan of plans) {
       if (plan.kind !== 'asset' || plan.action === 'reuse') continue
@@ -721,19 +645,6 @@ class AssetPackageService {
         ? remapAssetGuids(plan.meta.asset.genParams, guidMap)
         : undefined
 
-      let packedShots: Shot[] | undefined
-      if (isStoryboardScript(plan.meta.asset.type) && plan.meta.shots?.length) {
-        const remapped = remapPackedShots(
-          plan.meta.shots,
-          guidMap,
-          plan.targetGuid,
-          existingShotIds
-        )
-        packedShots = remapped.shots
-        safeGen = remapShotIdsInGenParams(safeGen, remapped.shotIdMap)
-        remappedShotsByAsset.set(plan.targetGuid, packedShots)
-      }
-
       remappedAssetMetas.set(plan.targetGuid, {
         ...plan.meta,
         guid: plan.targetGuid,
@@ -742,8 +653,7 @@ class AssetPackageService {
           ...plan.meta.asset,
           genParams: safeGen
         },
-        dependencies: plan.meta.dependencies.map((d) => guidMap.get(d) ?? d),
-        ...(packedShots?.length ? { shots: packedShots } : {})
+        dependencies: plan.meta.dependencies.map((d) => guidMap.get(d) ?? d)
       })
     }
 
@@ -841,20 +751,8 @@ class AssetPackageService {
           }
           assetRepository.write(root, asset)
           assetById.set(asset.id, asset)
-          const shots = remappedShotsByAsset.get(plan.targetGuid)
-          if (shots?.length) {
-            projectService.registerImportedShots(shots)
-          }
         },
         rollback: () => {
-          const shots = remappedShotsByAsset.get(plan.targetGuid)
-          if (shots?.length) {
-            try {
-              projectService.unregisterImportedShots(shots.map((s) => s.id))
-            } catch {
-              /* ignore */
-            }
-          }
           try {
             assetRepository.removeMetadata(root, plan.targetGuid)
           } catch {

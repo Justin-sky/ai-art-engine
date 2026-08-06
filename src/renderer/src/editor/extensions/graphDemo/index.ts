@@ -68,9 +68,6 @@ export function registerGraphDemoExtension(): void {
         },
         workflow: {
           addableNodeTypes: [GRAPH_DEMO_NODE_TYPE_ID]
-        },
-        shotWorkflow: {
-          addableNodeTypes: [GRAPH_DEMO_NODE_TYPE_ID]
         }
       }
     },

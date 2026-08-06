@@ -48,8 +48,6 @@ import {
   DEFAULT_BEAT_UNIT_GEN_SYSTEM_PROMPT_ZH,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_EN,
   DEFAULT_OPTIMIZE_SYSTEM_PROMPT_ZH,
-  DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_EN,
-  DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_ZH,
   DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_EN,
   DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH,
   DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN,
@@ -57,13 +55,11 @@ import {
   defaultBeatSplitSystemPrompt,
   defaultBeatUnitGenSystemPrompt,
   defaultOptimizeSystemPrompt,
-  defaultShotSplitSystemPrompt,
   defaultWorldExtractSystemPrompt,
   defaultToPromptSystemPrompt,
   resolveBeatSplitSystemPrompt,
   resolveBeatUnitGenSystemPrompt,
   resolveOptimizeSystemPrompt,
-  resolveShotSplitSystemPrompt,
   resolveWorldExtractSystemPrompt,
   resolveToPromptSystemPrompt
 } from '@shared/graph'
@@ -85,7 +81,6 @@ import { useProjectStore } from '../stores/project'
 const TOOL_TYPE_IDS = new Set([
   'prompt.optimize',
   'image.toPrompt',
-  'script.shotSplit',
   'world.extract',
   'beat.split',
   'beat.unitGen'
@@ -113,7 +108,6 @@ const hostId = computed(() => {
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 
 const isToPrompt = computed(() => node.value?.typeId === 'image.toPrompt')
-const isShotSplit = computed(() => node.value?.typeId === 'script.shotSplit')
 const isWorldExtract = computed(() => node.value?.typeId === 'world.extract')
 const isBeatSplit = computed(() => node.value?.typeId === 'beat.split')
 const isBeatUnitGen = computed(() => node.value?.typeId === 'beat.unitGen')
@@ -121,7 +115,6 @@ const isBeatUnitGen = computed(() => node.value?.typeId === 'beat.unitGen')
 const typeLabel = computed(() => {
   if (node.value?.typeId) return graphTypeLabel(node.value.typeId)
   if (isToPrompt.value) return t('graph.types.image.toPrompt')
-  if (isShotSplit.value) return t('graph.types.script.shotSplit')
   if (isWorldExtract.value) return t('graph.types.world.extract')
   if (isBeatSplit.value) return t('graph.types.beat.split')
   if (isBeatUnitGen.value) return t('graph.types.beat.unitGen')
@@ -151,7 +144,6 @@ async function loadModels(preferredKey?: string): Promise<void> {
 
 function resolveSystemPrompt(raw: string | undefined, nextLocale: string): string {
   if (isToPrompt.value) return resolveToPromptSystemPrompt(raw, nextLocale)
-  if (isShotSplit.value) return resolveShotSplitSystemPrompt(raw, nextLocale)
   if (isWorldExtract.value) return resolveWorldExtractSystemPrompt(raw, nextLocale)
   if (isBeatSplit.value) {
     const trimmed = raw?.trim() ?? ''
@@ -179,7 +171,6 @@ function resolveSystemPrompt(raw: string | undefined, nextLocale: string): strin
 
 function defaultSystemPrompt(nextLocale: string): string {
   if (isToPrompt.value) return defaultToPromptSystemPrompt(nextLocale)
-  if (isShotSplit.value) return defaultShotSplitSystemPrompt(nextLocale)
   if (isWorldExtract.value) return defaultWorldExtractSystemPrompt(nextLocale)
   if (isBeatSplit.value) return defaultBeatSplitSystemPrompt(nextLocale)
   if (isBeatUnitGen.value) return defaultBeatUnitGenSystemPrompt(nextLocale)
@@ -190,11 +181,6 @@ function isDefaultSystemPrompt(value: string): boolean {
   if (isToPrompt.value) {
     return (
       value === DEFAULT_TO_PROMPT_SYSTEM_PROMPT_EN || value === DEFAULT_TO_PROMPT_SYSTEM_PROMPT_ZH
-    )
-  }
-  if (isShotSplit.value) {
-    return (
-      value === DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_EN || value === DEFAULT_SHOT_SPLIT_SYSTEM_PROMPT_ZH
     )
   }
   if (isWorldExtract.value) {

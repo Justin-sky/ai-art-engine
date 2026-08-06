@@ -1,4 +1,4 @@
-import { isStoryboardScript, type AssetInfo, type AssetType } from '@shared/domain'
+import { type AssetInfo, type AssetType } from '@shared/domain'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from './useStudioI18n'
@@ -24,9 +24,6 @@ export function useAssetCreation() {
       ...(options?.genParams ? { genParams: options.genParams } : {})
     })
     await project.refreshAssets()
-    if (isStoryboardScript(type)) {
-      await project.refreshShots()
-    }
     if (options?.openEditor !== false) {
       openAssetEditor(asset)
     }

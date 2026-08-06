@@ -225,10 +225,7 @@ const isImageBoundary = computed(
   () =>
     isBoundary.value &&
     (boundaryDataType.value === 'image' ||
-      boundaryDataType.value === 'images' ||
-      // 分镜实体边界：有首图路径时也显示缩略图
-      (boundaryDataType.value === 'shotEntities' &&
-        !!props.node.params.previewRelativePath?.trim()))
+      boundaryDataType.value === 'images')
 )
 
 function portTypeLabel(dataType: GraphPortDataType): string {
@@ -251,7 +248,6 @@ function mediaPathFromValue(value: GraphValue | undefined): string {
     const item = value.items.find((i) => i.relativePath?.trim())
     return item?.relativePath?.trim() || ''
   }
-  if (value.kind === 'shotEntities') return value.relativePath?.trim() || ''
   return ''
 }
 

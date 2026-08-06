@@ -12,6 +12,8 @@ export interface ImageGridSplitState {
   selected: string[]
   /** 局部放大倍数 */
   scale: UpscaleScale
+  /** 输出分辨率档（如 1K / 2K / 4K / 1080p）；缺省按 scale 推导 */
+  resolution?: string
 }
 
 export const GRID_SPLIT_PRESETS: readonly { rows: number; cols: number; labelKey: string }[] = [
@@ -80,7 +82,10 @@ export function normalizeImageGridSplit(
     rows,
     cols,
     selected: normalizeGridSelected(base.selected, rows, cols),
-    scale: normalizeUpscaleScale(base.scale)
+    scale: normalizeUpscaleScale(base.scale),
+    ...(typeof base.resolution === 'string' && base.resolution.trim()
+      ? { resolution: base.resolution.trim() }
+      : {})
   }
 }
 
@@ -118,15 +123,62 @@ export function gridCellCropRect(
 
 export function buildGridCellUpscalePrompt(cellLabel: string, scale: UpscaleScale): string {
   return [
-    `Upscale the cropped grid cell ${cellLabel} by ${scale}x`,
-    'local detail enhancement / HD enlarge of this tile',
-    'preserve texture, edges and identity',
+    `Faithfully upscale the entire reference image (grid cell ${cellLabel}) by ${scale}x`,
+    'this reference IS the full tile to enlarge — keep the exact same framing and composition',
+    'enhance sharpness and local detail only',
+    'preserve texture, edges, identity, colors and relative subject sizes',
+    'no zoom-in, no crop, no reframe, no focus shift to a single object',
     'no restyling, no added objects, no borders, no text'
   ].join(', ')
 }
 
+/** 按裁切格像素比贴近模型常用宽高比，避免默认方图导致模型二次构图 */
+export function nearestApiAspectRatio(
+  width: number,
+  height: number,
+  candidates: readonly string[] = [
+    '1:1',
+    '5:4',
+    '4:5',
+    '4:3',
+    '3:4',
+    '3:2',
+    '2:3',
+    '16:9',
+    '9:16',
+    '2:1',
+    '1:2',
+    '21:9',
+    '9:21'
+  ]
+): string {
+  const w = Math.max(1, width)
+  const h = Math.max(1, height)
+  const target = w / h
+  let best = '1:1'
+  let bestScore = Number.POSITIVE_INFINITY
+  for (const raw of candidates) {
+    const m = /^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/.exec(String(raw).trim())
+    if (!m) continue
+    const aw = Number(m[1])
+    const ah = Number(m[2])
+    if (!(aw > 0) || !(ah > 0)) continue
+    const score = Math.abs(Math.log(target) - Math.log(aw / ah))
+    if (score < bestScore) {
+      bestScore = score
+      best = `${Math.round(aw)}:${Math.round(ah)}`
+    }
+  }
+  return best
+}
+
 export function gridSplitScaleToResolution(scale: UpscaleScale): string {
   return upscaleScaleToResolution(scale)
+}
+
+/** 宫格放大输出分辨率：优先用节点显式 resolution，否则按 scale 推导 */
+export function gridSplitOutputResolution(state: ImageGridSplitState): string {
+  return state.resolution?.trim() || gridSplitScaleToResolution(state.scale)
 }
 
 export function readImageGridSplitFromNode(params: {

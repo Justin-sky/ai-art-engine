@@ -41,20 +41,12 @@ describe('beat.select node', () => {
     ])
   })
 
-  it('connects catalog → select → shotSplit / script host', () => {
+  it('connects catalog → select → text consumer', () => {
     const catalog = createNodeFromType('beat.table', { x: 0, y: 0 })
     const select = createNodeFromType('beat.select', { x: 120, y: 0 })
-    const split = createNodeFromType('script.shotSplit', { x: 240, y: 0 })
-    const script = createAssetGraphNode(
-      '00000000-0000-4000-8000-000000000801',
-      'script',
-      'Shot',
-      { x: 240, y: 80 },
-      { assetHost: true }
-    )
+    const textSelect = createNodeFromType('text.select', { x: 240, y: 80 })
     expect(canConnectNodes(catalog, select)).toBe(true)
-    expect(canConnectNodes(select, split)).toBe(true)
-    expect(canConnectNodes(select, script, { targetPort: 'in-beat' })).toBe(true)
+    expect(canConnectNodes(select, textSelect)).toBe(true)
   })
 
   it('picks selected unit as text', () => {

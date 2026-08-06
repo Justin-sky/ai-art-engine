@@ -28,6 +28,8 @@ export default {
     textModelLabel: '文本模型（AI 规划）',
     imageModelLabel: '图片默认模型',
     videoModelLabel: '视频默认模型',
+    resolutionLabel: '分辨率',
+    resolutionEmpty: '不设置（跟随默认）',
     modelLabel: '文本模型',
     modelEmpty: '未配置',
     promptLabel: '工作流描述',
@@ -90,9 +92,9 @@ export default {
       },
       shortDrama: {
         title: '短剧分镜',
-        desc: '多场戏分镜与对白',
+        desc: '剧本→节拍→9宫格→4宫格→36动态视频（Agent 流水线）',
         prompt:
-          '创建一个短剧分镜工作流：文本节点按场次输出对白与镜头说明，每个场次对应分镜图生成，并为高潮场次增加视频生成节点；布局按场次从左到右排列。'
+          '创建一个短剧分镜 Agent 流水线工作流：文本节点放单集剧本，分镜师角色节点依次生成节拍拆解表、9宫格分镜表、4宫格动态分镜表（9×4=36），动画师角色节点生成动态提示词表；9 个宫格选择节点各接一张锚点分镜图，36 个动态格选择节点各接一条图生视频（父宫格锚点图作首帧）；每个阶段后接导演审核节点（输出 PASS/FAIL，失败原因自动写入 agent-state.json 并在重跑时附加）。'
       },
       custom: {
         title: '自定义',
@@ -469,15 +471,11 @@ export default {
       model: '新建模型',
       screenplay: '新建剧本',
       script: '新建分镜',
-      canvas: '新建剧集',
       freeCanvas: '新建自由画布',
       world: '新建世界元素',
       beat: '新建场',
       subgraph: '新建宿主资产',
       default: '新建资产',
-      seriesNameTitle: '新建剧集',
-      seriesNameMessage: '请输入剧集名称。确认后将自动创建剧本、世界元素、场与分镜，并放入剧集画布。',
-      seriesNamePlaceholder: '剧集名称',
       freeCanvasNameTitle: '新建自由画布',
       freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',
       freeCanvasNamePlaceholder: '画布名称',
@@ -540,7 +538,6 @@ export default {
       referencesNone: '未找到引用。',
       referencesSummary: '以下内容引用了目标资产（共 {count} 处）：',
       referencesAsset: '资产「{name}」',
-      referencesShot: '分镜「{title}」',
       referencesMore: '…另有 {count} 处',
       deleteConfirmTitle: '删除资产',
       deleteConfirm: '确定删除「{name}」？',
@@ -609,7 +606,6 @@ export default {
     inspector: {
       title: '资产参数',
       empty: '未选择资产',
-      shotCount: '分镜数量',
       shotCountValue: '{n} 个',
       linked: '已关联',
       unlinked: '未关联',
@@ -683,217 +679,9 @@ export default {
       default: '可选描述…'
     }
   },
-  shot: {
-    defaultName: '分镜',
-    index: "分镜 {'#'}{n}",
-    duration: '时长',
-    inspector: {
-      title: '镜头参数',
-      empty: '未选择分镜'
-    },
-    staging: {
-      title: '镜头调度',
-      select: '选择镜头、表演或光影预设…',
-      selectField: '选择{field}预设…',
-      apply: '套用',
-      showPresets: '打开预设',
-      hidePresets: '收起预设',
-      hint: '预设文本插入当前光标处，其余相关字段追加到末尾；不会清空已有内容。',
-      hintVisual: '点选卡片即可套用；示意仅帮助辨认，实际写入仍是提示词文本。',
-      group: {
-        cameraLanguage: '镜头语言',
-        bodyFacing: '身体朝向',
-        performance: '人物表演',
-        lighting: '打光',
-        advertising: '广告运镜与转场'
-      },
-      preset: {
-        heroEntrance: '英雄出场',
-        mysteriousEntrance: '神秘人物出场',
-        storyEntrance: '故事感出场',
-        twoShot: '双人中景',
-        overShoulder: '过肩反打',
-        highEmotion: '俯视压迫',
-        backEmotion: '背面孤独',
-        dutch: '荷兰角失衡',
-        facingFront: '全正面',
-        facingThreeQuarter: '45° 正面',
-        facingProfile: '纯侧面',
-        facingBackThreeQuarter: '45° 背面',
-        facingBack: '严格背面',
-        performanceAnger: '愤怒：面部肌肉拆解',
-        performanceDazed: '失神：焦距与身体下沉',
-        performanceManic: '疯癫：眨眼、抽动与歪头',
-        performanceRelief: '释然：呼吸与放松',
-        performanceAnxiety: '焦虑：扫视、手指与重心',
-        performanceGrief: '悲伤：屏息与力量流失',
-        performanceConfidence: '自信：稳定目光与肩背',
-        performanceSurprise: '惊讶：停顿与后撤',
-        lightingTop: '顶光：眼窝阴影',
-        lightingSide: '正侧光：半脸明暗',
-        lightingRembrandt: '伦勃朗光：脸颊三角光',
-        lightingVolumetric: '体积光：可见光束',
-        lightingBacklight: '逆光：轮廓分离',
-        lightingPractical: '有动机环境光',
-        adImpact: '冲击硬切',
-        adFlash: '闪白转场',
-        adMotion: '运动匹配转场',
-        adDissolve: '短叠化：舒缓过渡',
-        adMatchCut: '形状/颜色匹配剪辑',
-        adOcclusion: '前景遮挡转场',
-        adFocus: '虚焦揭示转场',
-        adJumpCut: '原机位跳切',
-        adProductReveal: '产品英雄揭示'
-      }
-    },
-    field: {
-      visual: '画面描述',
-      shotSize: '景别',
-      lighting: '光影氛围',
-      dialogue: '对白·旁白',
-      soundFx: '音效',
-      cameraMove: '运镜',
-      finalPrompt: '最终提示词'
-    },
-    placeholder: {
-      visual: '描述画面…',
-      lighting: '光影氛围…',
-      dialogue: '对白或旁白…',
-      soundFx: '音效…',
-      cameraMove: '运镜描述…'
-    },
-    shotSize: {
-      大特写: '大特写',
-      特写: '特写',
-      半身景: '半身景',
-      中景: '中景',
-      中远景: '中远景',
-      全景: '全景',
-      远景: '远景'
-    },
-    refRole: {
-      background: '背景',
-      character: '角色',
-      firstFrame: '首帧',
-      style: '风格',
-      motion: '动作'
-    },
-    audioKind: {
-      voice: '声音',
-      dialogue_tts: '对白配音',
-      sfx: '音效',
-      bgm: '背景音乐'
-    },
-    status: {
-      draft: '草稿',
-      generating: '生成中',
-      done: '已完成',
-      failed: '失败'
-    },
-    generate: {
-      button: '生成视频',
-      running: '生成中 {n}%'
-    },
-    history: {
-      title: '生成历史',
-      noPrompt: '（无提示词）'
-    },
-    genHint: {
-      refCount: '{n} 项参考',
-      refs: '引用：{list}',
-      promptOnly: '仅文本 prompt'
-    },
-    error: {
-      canvasExport: '画布导出失败',
-      generateFailed: '生成失败',
-      draftMissing: '无法新建分镜：草稿不存在'
-    },
-    strip: {
-      title: '分镜',
-      switchHint: '点击分镜自动创建参数，并将分镜图连到生成节点；也可拖到画布',
-      new: '+ 新建',
-      collapse: '收起分镜条',
-      expand: '展开分镜条'
-    },
-    table: {
-      title: '分镜表格 · {n} 镜',
-      new: '+ 新建',
-      resizeCol: '拖拽调整列宽',
-      resizeRow: '拖拽调整行高',
-      zoomHint: 'Ctrl + 滚轮缩放表格；点击百分比复位',
-      zoom: '缩放 {n}%',
-      column: {
-        name: '名称',
-        duration: '时长',
-        characters: '角色',
-        scenes: '场景',
-        props: '道具',
-        weapons: '武器',
-        visual: '画面描述',
-        shotSize: '景别',
-        lighting: '光影',
-        dialogue: '对白·旁白',
-        soundFx: '音效',
-        cameraMove: '运镜',
-        status: '状态'
-      },
-      bind: {
-        title: '绑定世界元素',
-        action: '绑定',
-        add: '添加并绑定',
-        empty: '暂无可绑定的世界元素，请先在世界元素图中生成图片'
-      },
-      placeholder: {
-        name: '分镜名称',
-        visual: '画面描述',
-        lighting: '光影',
-        dialogue: '对白',
-        soundFx: '音效',
-        cameraMove: '运镜'
-      }
-    },
-    refs: {
-      title: '参考',
-      hint: "写入分镜视频节点；首/尾帧不占 {'@'}",
-      drop: '拖入资产到此处',
-      add: '+ 添加参考',
-      badge: '参考{n}',
-      notes: '备注（可选）',
-      weight: '参考强度',
-      insertVisual: '插入到画面描述',
-      remove: '移除',
-      help: '支持图片、声音等多种资产作为生成参考。',
-      firstFrame: '首帧',
-      lastFrame: '尾帧',
-      setFrame: '选择',
-      changeFrame: '更换',
-      clearFrame: '清除',
-      frameHint: "首/尾帧连到视频生成节点专用口，不占用 {'@'} 编号。",
-      error: {
-        invalidType: '请拖入图片、声音或视频资产',
-        noFile: '该资产尚未关联文件',
-        dropFailed: '无法读取拖入的资产'
-      }
-    },
-    mention: {
-      hint: "输入 {'@'} 引用参考，如 {'@'}1、{'@'}2",
-      labelHint: "输入 {'@'} 选择参考，将写入可读标签；生成端口引用请在指令窗口设置"
-    }
-  },
   script: {
-    hint: {
-      imageGraph: '每镜独立画面图 · 参数与运行使用右侧 Inspector',
-      videoGraph: '每镜独立视频图 · 参数与运行使用右侧 Inspector',
-      timeline: '预览成片 · 左侧输入视频、资产库或系统视频/音频文件可拖入下方轨道',
-      table: '分镜表格 · 批量编辑全部分镜',
-      assetGraph:
-        '双击分镜拆分进入指令编辑 · 双击分镜表格进入表格 · 双击生成分镜图/分镜视频进入对应画布；成片时间线双击进入；面包屑返回上一级'
-    },
     dialog: {
-      shotImageEditor: '分镜图',
-      shotVideoEditor: '分镜视频',
       timeline: '成片时间线',
-      shotTable: '分镜表格',
       close: '关闭'
     },
     timeline: {
@@ -923,7 +711,6 @@ export default {
       musicEmpty: '拖入音乐/音频到此处（资产库或音频文件）',
       dropUnsupported: '仅支持拖入视频或声音文件',
       importFailed: '导入失败：{error}',
-      createShots: '创建分镜',
       none: '无',
       track: {
         video: '视频',
@@ -957,11 +744,6 @@ export default {
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'
-    },
-    shotTableWindow: {
-      loading: '正在打开分镜表格…',
-      missingAsset: '缺少剧本资产',
-      noProject: '主窗口未打开工程'
     },
     timelineWindow: {
       loading: '正在打开成片时间线…',
@@ -1306,8 +1088,6 @@ export default {
     }
   },
   canvas: {
-    noShot: '未选择分镜',
-    selectShot: '请选择分镜',
     toolbar: {
       grid: '网格',
       spacing: '间距',
@@ -1332,7 +1112,6 @@ export default {
     },
     error: {
       notReady: '画布未就绪',
-      needShot: '请先选择分镜',
       dropFailed: '无法读取拖入的资产',
       imageOnly: '画布仅支持拖入图片资产',
       noFile: '该图片尚未关联文件'
@@ -1599,7 +1378,6 @@ export default {
       title: '节点小地图（点击或拖拽定位）',
       empty: '暂无节点'
     },
-    shotEntityPicker: '选择分镜实体',
     layout: {
       dragHandle: '拖动布局工具条',
       expand: '展开布局工具',
@@ -1636,8 +1414,16 @@ export default {
       pasteSkippedHost: '已跳过 {n} 个宿主节点（同资产宿主画布唯一）',
       groups: {
         imageRefine: '图片精修',
-        imageEdit: '图片编辑'
+        imageEdit: '图片编辑',
+        episode: '剧集'
       }
+    },
+    episodeAgent: {
+      breakdown: '节拍拆解表',
+      beatboard: '9宫格分镜表',
+      sequence: '4宫格动态分镜表',
+      motion: '动态提示词表',
+      review: '导演审核'
     },
     selectImage: {
       appMark: '选取图片',
@@ -1667,11 +1453,6 @@ export default {
       appMark: '选择场',
       hint: '双击从上游场目录中选出一个单元；默认第一项。',
       empty: '暂无上游场，请先连接场资产并执行'
-    },
-    selectShotEntities: {
-      appMark: '选择分镜实体',
-      hint: '双击从上游分镜实体中选出一个；默认不接到视频生成，需要时请手动连线。',
-      empty: '暂无上游分镜实体'
     },
     textsPreview: {
       appMark: '文本预览',
@@ -1938,6 +1719,11 @@ export default {
       selected: '已选',
       allCells: '全部',
       systemPrompt: '系统提示词',
+      cropPreview: '切分原图',
+      cropPreviewHint: '按当前宫格从上游图片裁出的格子（运行前参考）',
+      cropLoading: '正在切分预览…',
+      cropEmpty: '暂无切分预览',
+      cropFailed: '切分预览失败',
       presets: {
         p4: '4宫格 (2×2)',
         p9: '9宫格 (3×3)',
@@ -2035,15 +1821,6 @@ export default {
       hint: '双击打开导演台编辑',
       live: '实时预览 · 双击打开导演台编辑'
     },
-    scriptShotTableNode: {
-      hint: '双击打开分镜表格'
-    },
-    scriptShotImageGenNode: {
-      hint: '双击进入分镜图画布编辑'
-    },
-    scriptShotVideoGenNode: {
-      hint: '双击进入分镜视频画布编辑'
-    },
     timelineOutputNode: {
       hint: '双击进入成片时间线编辑'
     },
@@ -2121,10 +1898,7 @@ export default {
         texts: '文本组',
         world: '世界元素',
         worldEntities: '世界元素实体',
-        shotEntities: '分镜实体',
-        videoEntities: '视频实体',
         beat: '场',
-        shots: '分镜',
         model: '模型'
       }
     },
@@ -2223,18 +1997,8 @@ export default {
       prompt: {
         optimize: '提示词优化'
       },
-      script: {
-        shotSplit: '分镜拆分',
-        shotTable: '分镜表格',
-        shotImageGen: '生成分镜图',
-        shotVideoGen: '生成分镜视频',
-        shotParams: '分镜参数'
-      },
       text: {
         select: '选择文本'
-      },
-      shotEntities: {
-        select: '选择分镜实体'
       },
       beat: {
         select: '选择场',
@@ -2243,6 +2007,10 @@ export default {
         gen: '场生成',
         unitGen: '场生成',
         unitRef: '场参考'
+      },
+      episode: {
+        anchorSelect: '宫格选择',
+        cellSelect: '动态格选择'
       },
       world: {
         extract: '世界元素提取',
@@ -2261,13 +2029,10 @@ export default {
       voice: '声音',
       motion: '导演台',
       model: '模型',
-      script: '分镜',
       canvas: '画布',
       world: '世界元素',
       beat: '场',
       subgraph: '宿主资产',
-      shotOutput: '分镜输出',
-      shotVisualOutput: '图片输出',
       screenplayOutput: '剧本输出',
       directorOutput: '导演台输出',
       timelineOutput: '成片时间线',
@@ -2388,23 +2153,8 @@ export default {
         memberCount: '成员数量',
         empty: '未选择分组'
       },
-      shotParams: {
-        hint: '从分镜栏拖入创建；文本口输出当前镜提示词，图片口输出全部镜头的角色/场景/道具/武器绑定图（无需运行）。',
-        boundShot: '绑定分镜',
-        boundShotValue: '#{n} {title}',
-        unbound: '未绑定分镜'
-      },
       select: {
         hint: '双击节点打开选取面板；运行后可在此预览输出端口当前选中项'
-      },
-      shotTable: {
-        hint: '双击打开分镜表格并按上游拆分填充；运行节点输出当前分镜列表（含绑定的角色/场景/道具/武器）'
-      },
-      shotImageGen: {
-        hint: '执行当前只收集各镜已有画面；圆形菜单「Cook 子图」才批跑画面子图'
-      },
-      shotVideoGen: {
-        hint: '执行当前只收集各镜已有视频；圆形菜单「Cook 子图」才批跑视频子图'
       },
       worldTable: {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
@@ -2499,8 +2249,6 @@ export default {
         lipSyncInstructionPlaceholder:
           '可选：补充表演/镜头说明（图→图片1+音频1；视频→视频1+音频1）；推荐 Seedance 2.0',
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
-        shotSplitInstructionPlaceholder:
-          "将剧本拆分为分镜列表；可用 {'@'} 引用上方连线资源",
         worldExtractInstructionPlaceholder:
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
         beatSplitInstructionPlaceholder:
@@ -2523,7 +2271,6 @@ export default {
           },
           titleScreenplay: '生成剧本模板',
           titleOptimize: '提示词优化模板',
-          titleShotSplit: '分镜拆分模板',
           titleWorldExtract: '世界元素提取模板',
           titleBeatSplit: '场拆解模板',
           titleImage: '图片生成模板',
@@ -2601,7 +2348,12 @@ export default {
             scene: '场景提示词优化',
             camera: '运镜提示词优化',
             expression: '人物表情提示词优化',
-            vfx: '特效提示词优化'
+            vfx: '特效提示词优化',
+            episodeBreakdown: '分镜师：节拍拆解表',
+            episodeBeatBoard: '分镜师：9宫格分镜表',
+            episodeSequenceBoard: '分镜师：4宫格动态分镜表',
+            episodeMotionPrompt: '动画师：动态提示词表',
+            episodeDirectorReview: '导演：PASS/FAIL 审核'
           },
           toPrompt: {
             structured: '结构化全量反推',
@@ -2620,10 +2372,6 @@ export default {
             filmStoryboard: '分镜画面',
             filmCostume: '服化道造型',
             filmCamera: '镜头语言'
-          },
-          shotSplit: {
-            create: '剧本拆分为分镜',
-            refine: '优化分镜节奏'
           },
           worldExtract: {
             create: '提取世界元素',

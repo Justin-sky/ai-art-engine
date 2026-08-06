@@ -60,11 +60,6 @@ export interface AssetPackageAssetMeta {
     sha256: string
   }
   dependencies: string[]
-  /**
-   * 脚本工作流携带的分镜快照（仅 type=script）。
-   * 导入时写入 Storyboard/shots，并登记到 project.shotIds / genParams.shotIds。
-   */
-  shots?: import('../domain').Shot[]
 }
 
 export interface AssetPackageFolderMeta {
@@ -165,7 +160,6 @@ export const AIPACKAGE_ASSET_TYPES: ReadonlySet<AssetType> = new Set([
   'video',
   'voice',
   'model',
-  'script',
   'canvas',
   'world',
   'beat',

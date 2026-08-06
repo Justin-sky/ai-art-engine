@@ -400,6 +400,7 @@ export async function generateAiWorkflow(
     imageModel: input.imageModel,
     imageProviderInstanceId: input.imageProviderInstanceId,
     videoModel: input.videoModel,
-    videoProviderInstanceId: input.videoProviderInstanceId
+    videoProviderInstanceId: input.videoProviderInstanceId,
+    generateResolution: input.generateResolution
   })
 }

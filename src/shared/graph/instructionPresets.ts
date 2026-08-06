@@ -12,13 +12,21 @@ export type InstructionPresetKind =
   | 'voice'
   | 'toPrompt'
   | 'optimize'
-  | 'shotSplit'
   | 'worldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
 export type InstructionPresetTab = 'general' | 'game' | 'film'
+
+import {
+  EPISODE_AGENT_BEATBOARD,
+  EPISODE_AGENT_BREAKDOWN,
+  EPISODE_AGENT_DIRECTOR,
+  EPISODE_AGENT_MOTION,
+  EPISODE_AGENT_SEQUENCE,
+  type EpisodeAgentPromptPack
+} from './episodeAgentPrompts'
 
 export const INSTRUCTION_PRESET_TAB_ORDER: readonly InstructionPresetTab[] = [
   'general',
@@ -185,13 +193,18 @@ const OPTIMIZE_EXPRESSION_BODY = `你是一位专业的影视表演指导。请�
 /** 特效提示词优化 */
 const OPTIMIZE_VFX_BODY = `你是一位专业的影视特效师，擅长为 AI 短剧生成符合AI工具要求的特效提示词。请根据我提供的特效需求，生成一段详细、具体的特效描述，要求包含特效的颜色、形状、大小、位置、运动方式、光影效果，语言风格符合 AI 绘画提示词的规范，不要有多余的修饰。特效需求：`
 
+/** 剧集 Agent 流水线：角色提示词整包作为生成指令（含角色设定与输出格式） */
+function episodePresetBody(pack: EpisodeAgentPromptPack): string {
+  return `${pack.systemPromptZh}\n\n${pack.instructionZh}`
+}
+
 /** 多机位九宫格 */
 const IMAGE_MULTI_ANGLE_9_BODY = `基于当前参考图，生成一张「多机位九宫格」拼图。
 要求：
 1. 约 9 个不同机位/景别视角（如大特写、特写、半身、中景、全景、仰拍、俯拍、侧拍、过肩等），均匀排布为 3×3 九宫格
 2. 保持同一主体、服装、气质与场景风格一致，仅改变机位、景别与构图
 3. 支持并尽量发挥模型可用的图像分辨率能力，画面清晰、边缘整齐、无错位拼接感
-4. 白边分隔清晰，每格独立成幅，无文字水印
+4. 无边框、无白边、无缝拼接，每格独立成幅，无文字水印
 
 请直接输出九宫格图像。`
 
@@ -201,7 +214,7 @@ const IMAGE_STORY_4_BODY = `基于当前参考图，生成一张「剧情推演�
 1. 2×2 四宫格，按时间顺序推演后续剧情（起→承→转→合）
 2. 角色身份、服装与场景逻辑连贯，动作与情绪递进自然
 3. 支持文生或参考图生成：有参考图时保持主体一致；可结合指令中的文本补充剧情
-4. 分格清晰，电影分镜感，无文字水印
+4. 无边框、无白边、无缝拼接，电影分镜感，无文字水印
 
 请直接输出四宫格剧情推演图。`
 
@@ -1112,34 +1125,35 @@ const OPTIMIZE_PRESETS: InstructionPreset[] = [
     id: 'optimize.vfx',
     titleKey: 'graph.inspector.generate.presets.optimize.vfx',
     body: OPTIMIZE_VFX_BODY
+  },
+  {
+    id: 'optimize.episodeBreakdown',
+    titleKey: 'graph.inspector.generate.presets.optimize.episodeBreakdown',
+    body: episodePresetBody(EPISODE_AGENT_BREAKDOWN)
+  },
+  {
+    id: 'optimize.episodeBeatBoard',
+    titleKey: 'graph.inspector.generate.presets.optimize.episodeBeatBoard',
+    body: episodePresetBody(EPISODE_AGENT_BEATBOARD)
+  },
+  {
+    id: 'optimize.episodeSequenceBoard',
+    titleKey: 'graph.inspector.generate.presets.optimize.episodeSequenceBoard',
+    body: episodePresetBody(EPISODE_AGENT_SEQUENCE)
+  },
+  {
+    id: 'optimize.episodeMotionPrompt',
+    titleKey: 'graph.inspector.generate.presets.optimize.episodeMotionPrompt',
+    body: episodePresetBody(EPISODE_AGENT_MOTION)
+  },
+  {
+    id: 'optimize.episodeDirectorReview',
+    titleKey: 'graph.inspector.generate.presets.optimize.episodeDirectorReview',
+    body: episodePresetBody(EPISODE_AGENT_DIRECTOR)
   }
 ]
 
 /** 剧本拆分为分镜表（输出由系统提示词约束为表格 JSON） */
-const SHOT_SPLIT_CREATE_BODY = `请将下列剧本拆分为分镜，并严格按系统提示词规定的 JSON 数组格式输出（字段：title、durationSec、visualDescription、shotSize、lighting、dialogue、soundFx、cameraMove、status）。
-要求：按叙事顺序；景别只能用 大特写/特写/半身景/中景/中远景/全景/远景；时长 1–60 秒；status 默认「未审核」；只输出 JSON。
-
-剧本内容：`
-
-/** 优化已有分镜节奏（仍须输出同一 JSON 格式） */
-const SHOT_SPLIT_REFINE_BODY = `请优化下列分镜列表的镜头节奏与表达，并严格按系统提示词规定的 JSON 数组格式重新输出（字段不变）。
-要求：合并冗余、拆分过长镜头；景别与运镜更清晰可执行；保留剧情与台词含义；status 为「已审核」的行必须原样保留、不得修改；只输出 JSON。
-
-分镜内容：`
-
-const SHOT_SPLIT_PRESETS: InstructionPreset[] = [
-  {
-    id: 'shotSplit.create',
-    titleKey: 'graph.inspector.generate.presets.shotSplit.create',
-    body: SHOT_SPLIT_CREATE_BODY
-  },
-  {
-    id: 'shotSplit.refine',
-    titleKey: 'graph.inspector.generate.presets.shotSplit.refine',
-    body: SHOT_SPLIT_REFINE_BODY
-  }
-]
-
 const WORLD_EXTRACT_CREATE_BODY = `请从下列文本提取世界元素目录，并严格按系统提示词规定的 JSON 对象格式输出（顶层：characters / scenes / props / weapons；每项含 id、name、prompt、status）。
 要求：
 1. 只输出 JSON；空类用 []；顶层键不得增减。
@@ -1217,7 +1231,6 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   voice: VOICE_PRESETS,
   toPrompt: TO_PROMPT_PRESETS,
   optimize: OPTIMIZE_PRESETS,
-  shotSplit: SHOT_SPLIT_PRESETS,
   worldExtract: WORLD_EXTRACT_PRESETS,
   beatSplit: BEAT_SPLIT_PRESETS,
   // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
