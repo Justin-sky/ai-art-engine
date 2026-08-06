@@ -8,12 +8,13 @@ import {
   boundaryOutputNodeId,
   GRAPH_BOUNDARY_INPUT_TYPE_ID,
   GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+  isBoundaryOutputNode,
   isBoundaryProxyNode,
   type HostInterfaceDocument
 } from './hostInterface'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
-import { isPluralGraphPortDataType, toSingularGraphPortDataType } from './types'
-import { canConnectNodes, getNodePorts, GRAPH_OUT_ALL_PORT_ID } from './ports'
+import { GraphPortType, isPluralGraphPortDataType, toSingularGraphPortDataType } from './types'
+import { canConnectNodes, getNodePorts, GRAPH_OUT_ALL_PORT_ID, portsCompatible } from './ports'
 
 function pushEdge(
   edges: GraphEdge[],
@@ -67,7 +68,7 @@ export function wireDanglingOutsToBoundaryOutputs(
     ...node,
     params: { ...node.params },
     position: { ...node.position },
-    size: node.size ? { ...node.size } : undefined
+    ...(node.size ? { size: { ...node.size } } : {})
   }))
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const edges = document.edges.map((edge) => ({ ...edge }))
@@ -79,22 +80,31 @@ export function wireDanglingOutsToBoundaryOutputs(
   for (const port of iface.outputs) {
     const boutId = boundaryOutputNodeId(port.id)
     const bout = byId.get(boutId)
-    if (!bout) continue
-
-    const alreadyWired = edges.some((edge) => edge.target === boutId)
     const aggregate = port.multiple === true || isPluralGraphPortDataType(port.dataType)
-    // 复数口允许补接更多源；单数口已有入边则跳过
-    if (alreadyWired && !aggregate) continue
+    const singularType = toSingularGraphPortDataType(port.dataType)
+    const splittable =
+      aggregate &&
+      (singularType === GraphPortType.image ||
+        singularType === GraphPortType.video ||
+        singularType === GraphPortType.voice ||
+        singularType === GraphPortType.text)
+    if (!aggregate && !bout) continue
+    if (aggregate && !splittable && !bout) continue
 
     const connectable = (node: GraphNode): boolean => {
       if (isBoundaryProxyNode(node) || node.category === 'output') return false
       if (node.typeId === 'note.text') return false
+      if (splittable) {
+        // 可拆分复数口内部按汇点拆分：每个源用自己的单输出 out 接一个槽边界节点
+        const out = getNodePorts(node).find((p) => p.direction === 'out' && p.id === 'out')
+        return !!out && portsCompatible(out.dataType, singularType)
+      }
       const sourcePort = preferredSourcePort(node, aggregate)
       const hasOut = getNodePorts(node).some(
         (p) => p.direction === 'out' && p.id === sourcePort
       )
       if (!hasOut) return false
-      return canConnectNodes(node, bout, { sourcePort, targetPort: 'in' })
+      return canConnectNodes(node, bout!, { sourcePort, targetPort: 'in' })
     }
 
     const hasOutEdgeIgnoringBoundary = (node: GraphNode): boolean =>
@@ -104,7 +114,6 @@ export function wireDanglingOutsToBoundaryOutputs(
           !isBoundaryProxyNode(byId.get(edge.target) ?? ({ typeId: '' } as GraphNode))
       )
 
-    const singularType = toSingularGraphPortDataType(port.dataType)
     const preferredType =
       singularType === 'video'
         ? 'asset.video'
@@ -124,23 +133,40 @@ export function wireDanglingOutsToBoundaryOutputs(
       .sort(byTopThenRight)
 
     if (aggregate) {
-      // 悬空且可连的源全部接入复数口；若无悬空，再补接尚未连到本 boundary 的同类源
+      if (!splittable) {
+        // 世界/场等不可拆目录型复数口：保持旧行为，全部汇到主边界节点
+        for (const source of dangling) {
+          const sourcePort = preferredSourcePort(source, true)
+          pushEdge(edges, source.id, boutId, sourcePort, 'in')
+          usedSources.add(source.id)
+        }
+        if (dangling.length && bout) {
+          bout.position = {
+            x: Math.max(bout.position.x, dangling[0]!.position.x + 280),
+            y: dangling[0]!.position.y
+          }
+        }
+        continue
+      }
+      const alreadySlotWired = (node: GraphNode): boolean =>
+        edges.some((edge) => {
+          if (edge.source !== node.id) return false
+          const target = byId.get(edge.target)
+          return (
+            !!target &&
+            isBoundaryOutputNode(target) &&
+            target.params?.hostBoundaryPort?.portId === port.id
+          )
+        })
+      // 悬空且可连的源全部接入复数口（每个源一个槽边界节点）；
+      // 若无悬空，再补接尚未连到本 boundary 的同类源
       const extra =
         dangling.length > 0
           ? []
           : nodes
               .filter((node) => {
                 if (!connectable(node) || usedSources.has(node.id)) return false
-                if (
-                  edges.some(
-                    (e) =>
-                      e.source === node.id &&
-                      e.target === boutId &&
-                      (e.sourcePort ?? 'out') === preferredSourcePort(node, true)
-                  )
-                ) {
-                  return false
-                }
+                if (alreadySlotWired(node)) return false
                 if (preferredType) return node.typeId === preferredType
                 return (
                   (node.category === 'asset' && node.assetType === singularType) ||
@@ -150,17 +176,52 @@ export function wireDanglingOutsToBoundaryOutputs(
               .sort(byTopThenRight)
 
       const toWire = dangling.length ? dangling : extra
-      let firstY: number | null = null
+      let slotIndex = 0
       for (const source of toWire) {
-        const sourcePort = preferredSourcePort(source, true)
-        pushEdge(edges, source.id, boutId, sourcePort, 'in')
+        const slotId = boundaryOutputNodeId(port.id, source.id)
+        let slot: GraphNode | undefined = byId.get(slotId)
+        const slotParams = {
+          portId: port.id,
+          dataType: singularType,
+          multiple: false,
+          slotIndex,
+          slotSourceId: source.id
+        }
+        if (!slot || slot.typeId !== GRAPH_BOUNDARY_OUTPUT_TYPE_ID) {
+          slot = {
+            id: slotId,
+            typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+            category: 'note',
+            position: { x: source.position.x + 280, y: source.position.y },
+            title: source.title?.trim() || port.label,
+            params: {
+              previewCollapsed: true,
+              hostBoundaryPort: slotParams
+            }
+          }
+          nodes.push(slot)
+          byId.set(slotId, slot)
+        } else {
+          slot.params = {
+            ...slot.params,
+            hostBoundaryPort: slotParams
+          }
+          slot.title = source.title?.trim() || port.label
+        }
+        pushEdge(edges, source.id, slotId, 'out', 'in')
         usedSources.add(source.id)
-        if (firstY == null) firstY = source.position.y
+        slotIndex += 1
       }
-      if (firstY != null && toWire[0]) {
-        bout.position = {
-          x: Math.max(bout.position.x, toWire[0].position.x + 280),
-          y: firstY
+      if (slotIndex > 0) {
+        // 有槽节点后移除汇总主节点，内部只保留逐个拆分的边界输出
+        const primary = byId.get(boutId)
+        if (primary && isBoundaryOutputNode(primary)) {
+          const idx = nodes.indexOf(primary)
+          if (idx >= 0) nodes.splice(idx, 1)
+          byId.delete(boutId)
+          for (let i = edges.length - 1; i >= 0; i--) {
+            if (edges[i]!.target === boutId) edges.splice(i, 1)
+          }
         }
       }
       continue
@@ -193,8 +254,8 @@ export function wireDanglingOutsToBoundaryOutputs(
     pushEdge(edges, source.id, boutId, sourcePort, 'in')
     usedSources.add(source.id)
     // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对
-    bout.position = {
-      x: Math.max(bout.position.x, source.position.x + 280),
+    bout!.position = {
+      x: Math.max(bout!.position.x, source.position.x + 280),
       y: source.position.y
     }
   }
@@ -336,6 +397,61 @@ export function ensureBoundaryProxyNodes(
 
   let yOut = 40
   for (const port of iface.outputs) {
+    const plural = port.multiple === true || isPluralGraphPortDataType(port.dataType)
+    const singularType = toSingularGraphPortDataType(port.dataType)
+    const splittable =
+      plural &&
+      (singularType === GraphPortType.image ||
+        singularType === GraphPortType.video ||
+        singularType === GraphPortType.voice ||
+        singularType === GraphPortType.text)
+    if (splittable) {
+      // 可拆分复数口：已有按汇点拆分的槽节点时不再建主节点；
+      // 尚无槽节点时先建一个汇总主节点兜底（空图也保留出口）。
+      const hasSlots = nodes.some(
+        (n) =>
+          isBoundaryOutputNode(n) &&
+          n.params?.hostBoundaryPort?.portId === port.id &&
+          !!n.params?.hostBoundaryPort?.slotSourceId
+      )
+      if (hasSlots) {
+        yOut += 80
+        continue
+      }
+      const id = boundaryOutputNodeId(port.id)
+      if (!byId.has(id)) {
+        const node: GraphNode = {
+          id,
+          typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+          category: 'note',
+          position: { x: 520, y: yOut },
+          title: port.label || port.id,
+          params: {
+            previewCollapsed: true,
+            hostBoundaryPort: {
+              portId: port.id,
+              dataType: port.dataType,
+              multiple: true
+            }
+          }
+        }
+        nodes.push(node)
+        byId.set(id, node)
+      } else {
+        const existing = byId.get(id)!
+        existing.params = {
+          ...existing.params,
+          hostBoundaryPort: {
+            portId: port.id,
+            dataType: port.dataType,
+            multiple: true
+          }
+        }
+        existing.title = port.label || existing.title || port.id
+      }
+      yOut += 80
+      continue
+    }
     const id = boundaryOutputNodeId(port.id)
     if (!byId.has(id)) {
       const node: GraphNode = {
@@ -349,7 +465,7 @@ export function ensureBoundaryProxyNodes(
           hostBoundaryPort: {
             portId: port.id,
             dataType: port.dataType,
-            multiple: port.multiple === true
+            multiple: plural
           }
         }
       }
@@ -362,7 +478,7 @@ export function ensureBoundaryProxyNodes(
         hostBoundaryPort: {
           portId: port.id,
           dataType: port.dataType,
-          multiple: port.multiple === true
+          multiple: plural
         }
       }
       existing.title = port.label || existing.title || port.id
@@ -371,10 +487,8 @@ export function ensureBoundaryProxyNodes(
   }
 
   // 去掉接口中已删除的 boundary 节点及其边（可保留未列出的绑定输入）
-  const keepIds = new Set([
-    ...iface.inputs.map((p) => boundaryInputNodeId(p.id)),
-    ...iface.outputs.map((p) => boundaryOutputNodeId(p.id))
-  ])
+  const inPortIds = new Set(iface.inputs.map((p) => p.id))
+  const outPortById = new Map(iface.outputs.map((p) => [p.id, p]))
   const nextNodes = nodes.filter((n) => {
     if (
       n.typeId !== GRAPH_BOUNDARY_INPUT_TYPE_ID &&
@@ -383,7 +497,37 @@ export function ensureBoundaryProxyNodes(
       return true
     }
     if (options?.preserveUnlistedBoundaryNodes) return true
-    return keepIds.has(n.id)
+    const bp = n.params?.hostBoundaryPort
+    const portId = bp?.portId?.trim()
+    if (!portId) return false
+    if (n.typeId === GRAPH_BOUNDARY_INPUT_TYPE_ID) return inPortIds.has(portId)
+    const port = outPortById.get(portId)
+    if (!port) return false
+    const plural = port.multiple === true || isPluralGraphPortDataType(port.dataType)
+    const singularType = toSingularGraphPortDataType(port.dataType)
+    const splittable =
+      plural &&
+      (singularType === GraphPortType.image ||
+        singularType === GraphPortType.video ||
+        singularType === GraphPortType.voice ||
+        singularType === GraphPortType.text)
+    const slotSourceId = bp?.slotSourceId?.trim()
+    if (splittable) {
+      if (slotSourceId) {
+        // 槽节点：槽源节点必须仍存在于图中
+        return nodes.some(
+          (m) => m.id === slotSourceId && !isBoundaryProxyNode(m)
+        )
+      }
+      // 主节点兜底：仅当该复数口没有任何槽节点时保留
+      return !nodes.some(
+        (n) =>
+          isBoundaryOutputNode(n) &&
+          n.params?.hostBoundaryPort?.portId === portId &&
+          !!n.params?.hostBoundaryPort?.slotSourceId
+      )
+    }
+    return n.id === boundaryOutputNodeId(port.id)
   })
   const nodeIds = new Set(nextNodes.map((n) => n.id))
   const finalById = new Map(nextNodes.map((node) => [node.id, node]))

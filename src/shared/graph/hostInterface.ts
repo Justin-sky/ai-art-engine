@@ -18,6 +18,10 @@ export interface HostBoundaryPort {
   dataType: GraphPortDataType
   /** 是否允许多条入边；输出侧通常 false */
   multiple?: boolean
+  /** 同一宿主口下的内部边界节点序号（复数口按汇点拆分时使用） */
+  slotIndex?: number
+  /** 内部边界节点对应的上游业务节点 id（复数口按汇点拆分时使用） */
+  slotSourceId?: string
   /** 端口说明（文档 / tooltip） */
   description?: string
   /** 作者备注 */
@@ -74,6 +78,12 @@ export function sanitizeHostBoundaryPort(
       ? obj.fileRelativePath.trim().replace(/\\/g, '/')
       : ''
   const port: HostBoundaryPort = { id, label, dataType, multiple }
+  if (typeof obj.slotIndex === 'number' && Number.isFinite(obj.slotIndex)) {
+    port.slotIndex = Math.max(0, Math.floor(obj.slotIndex))
+  }
+  if (typeof obj.slotSourceId === 'string' && obj.slotSourceId.trim()) {
+    port.slotSourceId = obj.slotSourceId.trim()
+  }
   if (description) port.description = description
   if (notes) port.notes = notes
   if (fileRelativePath) port.fileRelativePath = fileRelativePath
@@ -378,10 +388,12 @@ export function boundaryInputNodeId(portId: string): string {
   return `graph-boundary-in-${safe}`
 }
 
-/** 稳定 boundary 输出节点 id */
-export function boundaryOutputNodeId(portId: string): string {
+/** 稳定 boundary 输出节点 id；复数口按上游汇点拆分时可带 slotKey */
+export function boundaryOutputNodeId(portId: string, slotKey?: string | number): string {
   const safe = portId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return `graph-boundary-out-${safe}`
+  const base = `graph-boundary-out-${safe}`
+  if (slotKey === undefined || slotKey === null || slotKey === '') return base
+  return `${base}-slot-${String(slotKey).replace(/[^a-zA-Z0-9_-]/g, '_')}`
 }
 
 export const GRAPH_BOUNDARY_INPUT_TYPE_ID = 'graph.boundary.input' as const

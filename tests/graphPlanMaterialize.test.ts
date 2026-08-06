@@ -103,7 +103,7 @@ describe('graphPlan materialize', () => {
     expect(next.nodes[2]?.params?.generateModel).toBeUndefined()
   })
 
-  it('injects unified resolution into image/video/grid-split nodes', () => {
+  it('injects unified resolution and aspect ratio into image/video/grid-split nodes', () => {
     const plan: GraphPlan = {
       nodes: [
         {
@@ -127,9 +127,14 @@ describe('graphPlan materialize', () => {
       ],
       edges: []
     }
-    const next = applyDefaultGenerateModels(plan, { generateResolution: '2K' })
+    const next = applyDefaultGenerateModels(plan, {
+      generateResolution: '2K',
+      generateAspectRatio: '16:9'
+    })
     expect(next.nodes[0]?.params?.generateResolution).toBe('2K')
+    expect(next.nodes[0]?.params?.generateAspectRatio).toBe('16:9')
     expect(next.nodes[1]?.params?.generateResolution).toBe('2K')
+    expect(next.nodes[1]?.params?.generateAspectRatio).toBe('16:9')
     const split = next.nodes[2]?.params?.imageGridSplit as Record<string, unknown>
     expect(split).toMatchObject({
       rows: 2,
@@ -138,6 +143,7 @@ describe('graphPlan materialize', () => {
       scale: 2,
       resolution: '2K'
     })
+    expect(next.nodes[2]?.params?.generateAspectRatio).toBeUndefined()
   })
 
   it('keeps grid-split params during materialization', () => {
@@ -276,7 +282,7 @@ describe('graphPlan materialize', () => {
     ).toBe(3)
   })
 
-  it('aggregates shortDrama sinks into plural square host ports by category', () => {
+  it('collapses same-type host outputs into one square port with per-sink internal boundaries', () => {
     const plan = getAiWorkflowPresetPlan('shortDrama')
     expect(plan).toBeTruthy()
     const result = materializeGraphPlan(plan!, {
@@ -297,21 +303,105 @@ describe('graphPlan materialize', () => {
       dataType: 'videos',
       multiple: true
     })
-    expect(iface.outputs.length).toBeLessThan(10)
+    // 视频/文本各收成一个复数方形口
+    expect(textOuts).toHaveLength(1)
+    expect(textOuts[0]).toMatchObject({
+      dataType: 'texts',
+      multiple: true
+    })
+    expect(iface.outputs.length).toBe(2)
 
     const wired = ensureBoundaryProxyNodes(result.document!, iface)
-    const boutId = boundaryOutputNodeId(videoOuts[0]!.id)
+    // 内部：每个视频生成节点对应一个边界输出槽节点，用单输出 out 接入
+    const videoBouts = wired.nodes.filter(
+      (n) =>
+        n.typeId === 'graph.boundary.output' &&
+        n.params.hostBoundaryPort?.portId === videoOuts[0]!.id &&
+        !!n.params.hostBoundaryPort?.slotSourceId
+    )
+    expect(videoBouts).toHaveLength(36)
     const videoGens = wired.nodes.filter((n) => n.typeId === 'asset.video')
     expect(videoGens.length).toBe(36)
     const wiredVideos = videoGens.filter((gen) =>
-      wired.edges.some((e) => e.source === gen.id && e.target === boutId)
+      wired.edges.some(
+        (e) =>
+          e.source === gen.id &&
+          (e.sourcePort ?? 'out') === 'out' &&
+          videoBouts.some((b) => b.id === e.target)
+      )
     )
     expect(wiredVideos.length).toBe(36)
 
-    // 导演审核等多路文本汇点 → 文本组
-    if (textOuts.length) {
-      expect(textOuts[0]?.dataType).toBe('texts')
-      expect(textOuts[0]?.multiple).toBe(true)
-    }
+    // 每个导演审核节点用单输出 out 接到自己的文本边界槽节点
+    const textBouts = wired.nodes.filter(
+      (n) =>
+        n.typeId === 'graph.boundary.output' &&
+        n.params.hostBoundaryPort?.portId === textOuts[0]!.id &&
+        !!n.params.hostBoundaryPort?.slotSourceId
+    )
+    expect(textBouts).toHaveLength(4)
+    const reviewNodes = wired.nodes.filter(
+      (n) => n.typeId === 'prompt.optimize' && !!n.params.episodeReviewTarget
+    )
+    expect(reviewNodes.length).toBe(4)
+    const wiredReviews = reviewNodes.filter((review) =>
+      wired.edges.some(
+        (e) =>
+          e.source === review.id &&
+          (e.sourcePort ?? 'out') === 'out' &&
+          textBouts.some((b) => b.id === e.target)
+      )
+    )
+    expect(wiredReviews.length).toBe(4)
+    // 导演审核输入来自上游单输出口
+    const reviewInEdges = wired.edges.filter(
+      (e) =>
+        reviewNodes.some((r) => r.id === e.target) &&
+        (e.targetPort ?? 'in') === 'in' &&
+        (e.sourcePort ?? 'out') === 'out'
+    )
+    expect(reviewInEdges.length).toBe(4)
+    // 汇总主节点已被槽节点替代，内部只保留逐个拆分的边界输出
+    expect(
+      wired.nodes.filter((n) => n.typeId === 'graph.boundary.output').length
+    ).toBe(40)
+  })
+
+  it('wires director review single out to its own boundary output', () => {
+    const result = materializeGraphPlan(
+      {
+        title: 'Review chain',
+        nodes: [
+          { key: 'gen', typeId: 'prompt.optimize', title: '分镜师·拆解' },
+          {
+            key: 'review',
+            typeId: 'prompt.optimize',
+            title: '导演审核·拆解',
+            params: { episodeReviewTarget: 'breakdown' }
+          }
+        ],
+        edges: [{ from: 'gen', to: 'review', fromPort: 'out', toPort: 'in' }]
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    const iface = inferHostInterfaceFromGraph(result.document!)
+    const reviewOuts = iface.outputs.filter(
+      (p) => p.dataType === 'text' && p.label.includes('导演审核')
+    )
+    expect(reviewOuts).toHaveLength(1)
+    const wired = ensureBoundaryProxyNodes(result.document!, iface)
+    const review = wired.nodes.find(
+      (n) => n.typeId === 'prompt.optimize' && !!n.params.episodeReviewTarget
+    )!
+    const boutId = boundaryOutputNodeId(reviewOuts[0]!.id)
+    expect(
+      wired.edges.some(
+        (e) =>
+          e.source === review.id &&
+          (e.sourcePort ?? 'out') === 'out' &&
+          e.target === boutId
+      )
+    ).toBe(true)
   })
 })

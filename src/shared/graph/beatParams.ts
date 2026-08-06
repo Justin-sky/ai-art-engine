@@ -96,6 +96,8 @@ export function createBeatRefNode(
 export function defaultBeatUnitGenParams(): Pick<
   GraphNodeParams,
   | 'text'
+  | 'generatedTexts'
+  | 'selectedTextId'
   | 'generateInstruction'
   | 'generateSystemPrompt'
   | 'generateModel'
@@ -103,6 +105,8 @@ export function defaultBeatUnitGenParams(): Pick<
 > {
   return {
     text: '',
+    generatedTexts: [],
+    selectedTextId: '',
     generateInstruction: '',
     generateSystemPrompt: '',
     generateModel: '',

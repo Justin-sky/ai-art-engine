@@ -1198,10 +1198,12 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.text)
     ],
     defaultParams: () => ({
       text: '',
+      generatedTexts: [],
+      selectedTextId: '',
       generateInstruction: '',
       generateSystemPrompt: '',
       generateModel: '',
@@ -1225,10 +1227,12 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.text)
     ],
     defaultParams: () => ({
       text: '',
+      generatedTexts: [],
+      selectedTextId: '',
       generateInstruction:
         '根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言、风格关键词。',
       generateSystemPrompt: '',
@@ -1357,7 +1361,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      { id: 'out', direction: 'out', dataType: GraphPortType.text, multiple: true, label: 'Out' }
+      ...galleryOutPorts(GraphPortType.text)
     ],
     defaultParams: () => defaultBeatUnitGenParams(),
     addable: true,

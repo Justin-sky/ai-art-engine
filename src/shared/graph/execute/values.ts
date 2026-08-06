@@ -26,6 +26,7 @@ import { isAssetHostNode, isAssetRefNode, isProcessingAssetNode } from '../nodeR
 import { cloneGraphDocument } from '../document'
 import {
   graphValueHasPayload,
+  mergeBoundarySoftValues,
   mergeHostInputValues,
   readHostInputSlot,
   softResolveBoundaryOutputValue
@@ -528,6 +529,22 @@ async function persistScreenplayGeneration(
       selectedTextId
     }
   })
+  return dualTextGalleryOutputs(generatedTexts, selectedTextId)
+}
+
+/** 无模型回退：正文写入累计图库（不落盘），返回 out / out-all */
+function commitInMemoryTextGallery(
+  ctx: NodeExecuteContext,
+  text: string
+): Record<string, GraphValue> {
+  const createdAt = new Date().toISOString()
+  const stamp = formatGeneratedMediaStamp()
+  const id = `gen-text:${stamp}`
+  const generatedTexts = mergeGeneratedTexts(ctx, [{ id, text, createdAt }], `${stamp}:keep`)
+  const selectedTextId = newestTextSelectedId(generatedTexts)
+  const params = { text, generatedTexts, selectedTextId }
+  ctx.node.params = { ...ctx.node.params, ...params }
+  ctx.patchNode?.({ params })
   return dualTextGalleryOutputs(generatedTexts, selectedTextId)
 }
 
@@ -1353,13 +1370,40 @@ export function mapHostBoundaryStatesToOutputs(
     runStates: { ...(doc.runStates ?? {}), ...states }
   }
   for (const port of iface.outputs) {
-    const id = boundaryOutputNodeId(port.id)
-    const node = doc.nodes.find((n) => n.id === id) ??
-      doc.nodes.find(
-        (n) =>
-          isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === port.id
-      )
-    if (!node) continue
+    const plural = port.multiple === true || isPluralGraphPortDataType(port.dataType)
+    const slotNodes = doc.nodes.filter(
+      (n) =>
+        isBoundaryOutputNode(n) &&
+        n.params.hostBoundaryPort?.portId === port.id &&
+        !!n.params.hostBoundaryPort?.slotSourceId
+    )
+    let boundaryNodes = slotNodes.length
+      ? slotNodes
+      : doc.nodes.filter(
+          (n) =>
+            isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === port.id
+        )
+    if (!boundaryNodes.length) {
+      const primary = doc.nodes.find((n) => n.id === boundaryOutputNodeId(port.id))
+      if (primary) boundaryNodes = [primary]
+    }
+    if (!boundaryNodes.length) continue
+    if (plural) {
+      const collected: GraphValue[] = []
+      for (const bnode of boundaryNodes) {
+        const out = states[bnode.id]?.outputs?.out
+        if (graphValueHasPayload(out)) {
+          collected.push(out!)
+          continue
+        }
+        const soft = softResolveBoundaryOutputValue(softDoc, bnode.id)
+        if (graphValueHasPayload(soft)) collected.push(soft!)
+      }
+      const merged = mergeBoundarySoftValues(collected, port.dataType)
+      if (merged) result[port.id] = merged
+      continue
+    }
+    const node = boundaryNodes[0]!
     const out = states[node.id]?.outputs?.out
     if (graphValueHasPayload(out)) {
       result[port.id] = out!
@@ -2971,7 +3015,8 @@ export async function executePromptOptimizeNode(
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
     }
-    return { out: { kind: 'text', text } }
+    if (!text) return { out: { kind: 'text', text: '' } }
+    return commitInMemoryTextGallery(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3021,9 +3066,7 @@ export async function executePromptOptimizeNode(
     }
   }
 
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return persistScreenplayGeneration(ctx, text)
 }
 
 /** 解析导演审核结论：## 结论: PASS 或 ## 结论: FAIL (原因: …) */
@@ -3490,7 +3533,8 @@ export async function executeBeatUnitGenNode(
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
     }
-    return { out: { kind: 'text', text } }
+    if (!text) return { out: { kind: 'text', text: '' } }
+    return commitInMemoryTextGallery(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3514,9 +3558,7 @@ export async function executeBeatUnitGenNode(
   const text = result.text.trim()
   if (!text) throw new Error('模型未返回叙事细化结果')
 
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return persistScreenplayGeneration(ctx, text)
 }
 
 /** 场参考：输出绑定单元的目录字段文本 */
@@ -3661,7 +3703,8 @@ export async function executeImageToPromptNode(
       node.params = { ...node.params, text }
       ctx.patchNode?.({ params: { text } })
     }
-    return { out: { kind: 'text', text } }
+    if (!text) return { out: { kind: 'text', text: '' } }
+    return commitInMemoryTextGallery(ctx, text)
   }
 
   if (ctx.signal?.aborted) {
@@ -3691,9 +3734,7 @@ export async function executeImageToPromptNode(
   const text = result.text.trim()
   if (!text) throw new Error('模型未返回提示词')
 
-  node.params = { ...node.params, text }
-  ctx.patchNode?.({ params: { text } })
-  return { out: { kind: 'text', text } }
+  return persistScreenplayGeneration(ctx, text)
 }
 
 export function executeCamera3dNode(ctx: NodeExecuteContext): Record<string, GraphValue> {

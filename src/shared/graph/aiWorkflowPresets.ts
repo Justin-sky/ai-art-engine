@@ -59,8 +59,8 @@ function buildEpisodePipelinePlan(): GraphPlan {
       generateInstruction: EPISODE_AGENT_REVIEW_BREAKDOWN.instructionZh
     }
   })
-  link('breakdown', 'review1')
-  link('breakdown', 'beatboard')
+  link('breakdown', 'review1', { fromPort: 'out', toPort: 'in' })
+  link('breakdown', 'beatboard', { fromPort: 'out', toPort: 'in' })
 
   add({
     key: 'beatboard',
@@ -84,7 +84,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
       generateInstruction: EPISODE_AGENT_REVIEW_BEATBOARD.instructionZh
     }
   })
-  link('beatboard', 'review2')
+  link('beatboard', 'review2', { fromPort: 'out', toPort: 'in' })
 
   // 9宫格拼图画布：一个生成节点生成 3×3 九宫格拼图，再逐格本地提取
   add({
@@ -127,7 +127,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
       generateInstruction: EPISODE_AGENT_SEQUENCE.instructionZh
     }
   })
-  link('beatboard', 'sequence')
+  link('beatboard', 'sequence', { fromPort: 'out', toPort: 'in' })
   add({
     key: 'review3',
     typeId: 'prompt.optimize',
@@ -139,8 +139,8 @@ function buildEpisodePipelinePlan(): GraphPlan {
       generateInstruction: EPISODE_AGENT_REVIEW_SEQUENCE.instructionZh
     }
   })
-  link('sequence', 'review3')
-  link('sequence', 'motion')
+  link('sequence', 'review3', { fromPort: 'out', toPort: 'in' })
+  link('sequence', 'motion', { fromPort: 'out', toPort: 'in' })
 
   add({
     key: 'motion',
@@ -164,7 +164,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
       generateInstruction: EPISODE_AGENT_REVIEW_MOTION.instructionZh
     }
   })
-  link('motion', 'review4')
+  link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
 
   // 9 组 4宫格拼图（2×2）：每组用 9宫格提取的锚点图作参考生成 4宫格拼图，
   // 再本地提取 4 格，分别作为该组 4 个动态视频的参考图

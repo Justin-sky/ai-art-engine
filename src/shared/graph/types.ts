@@ -332,6 +332,8 @@ export interface GraphNodeParams {
     portId: string
     dataType: GraphPortDataType
     multiple?: boolean
+    slotIndex?: number
+    slotSourceId?: string
   }
   /** 导演台 3D 相机节点参数 */
   viewer?: DirectorViewerState

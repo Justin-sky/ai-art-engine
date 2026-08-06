@@ -12,6 +12,7 @@ import {
 } from '../src/shared/graph/execute/values'
 import type { GraphValue, NodeExecuteContext } from '../src/shared/graph/execute/types'
 import type { GraphNode } from '../src/shared/graph/types'
+import type { GraphTextItem } from '../src/shared/graph'
 
 function imageNode(instruction: string): GraphNode {
   return {
@@ -417,6 +418,33 @@ describe('generation input auto-include vs @ filter', () => {
     const prompt = generateText.mock.calls[0]![0].prompt as string
     expect(prompt).toContain('内容A')
     expect(prompt).not.toContain('内容B')
+  })
+
+  it('prompt optimize accumulates text history and returns out + out-all', async () => {
+    const generateText = vi.fn(async () => ({ text: 'version-1', model: 'm' }))
+    const ctx = baseCtx({
+      node: {
+        id: 'opt',
+        category: 'note',
+        typeId: 'prompt.optimize',
+        title: 'Optimize',
+        position: { x: 0, y: 0 },
+        params: { generateInstruction: '请优化' }
+      },
+      generateText
+    })
+    const first = await executePromptOptimizeNode(ctx)
+    expect(first.out).toMatchObject({ kind: 'text', text: 'version-1' })
+    expect(first['out-all']).toMatchObject({ kind: 'texts' })
+    expect((ctx.node.params.generatedTexts as GraphTextItem[]).length).toBe(1)
+
+    generateText.mockResolvedValue({ text: 'version-2', model: 'm' })
+    const second = await executePromptOptimizeNode(ctx)
+    const items = ctx.node.params.generatedTexts as GraphTextItem[]
+    expect(items.length).toBe(2)
+    expect(items[1]?.text).toBe('version-2')
+    expect(second.out).toMatchObject({ kind: 'text', text: 'version-2' })
+    expect((second['out-all'] as { items: GraphTextItem[] }).items.length).toBe(2)
   })
 
   it('video generate with text-only input does not throw no-input', async () => {

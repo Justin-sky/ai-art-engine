@@ -86,6 +86,8 @@ export interface GraphPlanMediaModelDefaults {
   videoProviderInstanceId?: string
   /** 一键工作流统一分辨率：注入到图片/视频生成节点与宫格提取输出 */
   generateResolution?: string
+  /** 一键工作流统一宽高比：注入到图片/视频生成节点 */
+  generateAspectRatio?: string
 }
 
 export interface GraphPlanPreview {
@@ -103,6 +105,7 @@ export function applyDefaultGenerateModels(
   defaults: GraphPlanMediaModelDefaults
 ): GraphPlan {
   const resolution = defaults.generateResolution?.trim() || ''
+  const aspectRatio = defaults.generateAspectRatio?.trim() || ''
   const nodes = plan.nodes.map((node) => {
     const params = { ...(node.params ?? {}) }
     if (node.typeId === 'asset.image') {
@@ -113,6 +116,7 @@ export function applyDefaultGenerateModels(
         params.generateProviderInstanceId = defaults.imageProviderInstanceId
       }
       if (resolution) params.generateResolution = resolution
+      if (aspectRatio) params.generateAspectRatio = aspectRatio
     } else if (node.typeId === 'asset.video') {
       if (defaults.videoModel && !params.generateModel) {
         params.generateModel = defaults.videoModel
@@ -121,6 +125,7 @@ export function applyDefaultGenerateModels(
         params.generateProviderInstanceId = defaults.videoProviderInstanceId
       }
       if (resolution) params.generateResolution = resolution
+      if (aspectRatio) params.generateAspectRatio = aspectRatio
     } else if (node.typeId === 'image.gridSplit' && resolution) {
       const grid =
         params.imageGridSplit && typeof params.imageGridSplit === 'object'

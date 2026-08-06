@@ -82,6 +82,27 @@
             <option value="720p">720p</option>
           </select>
         </div>
+        <div class="model-row">
+          <span class="label">{{ t('aiWorkflow.aspectRatioLabel') }}</span>
+          <select
+            class="aspect-ratio-select"
+            :value="aspectRatio"
+            :disabled="busy"
+            :title="t('aiWorkflow.aspectRatioLabel')"
+            @change="emit('update:aspectRatio', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ t('aiWorkflow.aspectRatioEmpty') }}</option>
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+            <option value="3:2">3:2</option>
+            <option value="2:3">2:3</option>
+            <option value="21:9">21:9</option>
+            <option value="9:21">9:21</option>
+          </select>
+        </div>
       </div>
 
       <label class="label" for="ai-workflow-prompt">{{ t('aiWorkflow.promptLabel') }}</label>
@@ -129,13 +150,6 @@
       </button>
       <button
         type="button"
-        :disabled="busy || !canPreviewSeed"
-        @click="emit('plan-seed')"
-      >
-        {{ t('aiWorkflow.previewSeed') }}
-      </button>
-      <button
-        type="button"
         :disabled="busy || !canPlanAi"
         @click="onPlanAi"
       >
@@ -173,6 +187,7 @@ const props = defineProps<{
   imageModelKey: string
   videoModelKey: string
   resolution: string
+  aspectRatio: string
   textModelOptions: GenerateModelOption[]
   imageModelOptions: GenerateModelOption[]
   videoModelOptions: GenerateModelOption[]
@@ -188,8 +203,8 @@ const emit = defineEmits<{
   'update:imageModelKey': [value: string]
   'update:videoModelKey': [value: string]
   'update:resolution': [value: string]
+  'update:aspectRatio': [value: string]
   'select-preset': [id: AiWorkflowPresetId]
-  'plan-seed': []
   'plan-ai': []
   commit: []
   close: []
@@ -199,9 +214,6 @@ const { t } = useStudioI18n()
 
 const busy = computed(() => props.generating || props.committing)
 const hasPreview = computed(() => !!props.preview)
-const canPreviewSeed = computed(
-  () => !!props.selectedPresetId && hasAiWorkflowPresetPlan(props.selectedPresetId)
-)
 const canPlanAi = computed(() => {
   if (!props.textModelKey) return false
   if (props.prompt.trim()) return true
@@ -302,7 +314,8 @@ function onPlanAi(): void {
 }
 
 .model-select :deep(select),
-.resolution-select {
+.resolution-select,
+.aspect-ratio-select {
   max-width: 100%;
   min-width: 140px;
   padding: 4px 8px;
@@ -315,13 +328,15 @@ function onPlanAi(): void {
   outline: none;
 }
 
-.resolution-select {
+.resolution-select,
+.aspect-ratio-select {
   max-width: min(320px, 70%);
   flex: 1 1 auto;
   justify-content: flex-end;
 }
 
-.resolution-select:disabled {
+.resolution-select:disabled,
+.aspect-ratio-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }

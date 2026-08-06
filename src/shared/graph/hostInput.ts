@@ -397,7 +397,7 @@ export function softResolveBoundaryOutputValue(
   return mergeBoundarySoftValues(collected, portType)
 }
 
-function mergeBoundarySoftValues(
+export function mergeBoundarySoftValues(
   values: GraphValue[],
   portType: GraphPortDataType | undefined
 ): GraphValue | undefined {
@@ -617,8 +617,32 @@ function softResolveHostBoundaryOutput(
       : undefined)
   if (!graphJson) return undefined
 
-  const boundaryId = boundaryOutputNodeId(port.id)
-  return softResolveBoundaryOutputValue(graphJson, boundaryId, options)
+  const plural = port.multiple === true || isPluralGraphPortDataType(port.dataType)
+  const slotNodes = (graphJson.nodes ?? []).filter(
+    (n) =>
+      isBoundaryOutputNode(n) &&
+      n.params.hostBoundaryPort?.portId === port.id &&
+      !!n.params.hostBoundaryPort?.slotSourceId
+  )
+  let boundaryNodes = slotNodes.length
+    ? slotNodes
+    : (graphJson.nodes ?? []).filter(
+        (n) => isBoundaryOutputNode(n) && n.params.hostBoundaryPort?.portId === port.id
+      )
+  if (!boundaryNodes.length) {
+    const primary = graphJson.nodes?.find((n) => n.id === boundaryOutputNodeId(port.id))
+    if (primary) boundaryNodes = [primary]
+  }
+  if (!boundaryNodes.length) return undefined
+  if (plural) {
+    const collected: GraphValue[] = []
+    for (const bnode of boundaryNodes) {
+      const value = softResolveBoundaryOutputValue(graphJson, bnode.id, options)
+      if (value) collected.push(value)
+    }
+    return mergeBoundarySoftValues(collected, port.dataType)
+  }
+  return softResolveBoundaryOutputValue(graphJson, boundaryNodes[0]!.id, options)
 }
 
 /**

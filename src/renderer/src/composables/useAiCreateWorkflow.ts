@@ -1,6 +1,7 @@
 import { shallowRef, ref } from 'vue'
 import type { GraphPlan } from '@shared/graph'
 import {
+  AI_WORKFLOW_ASPECT_RATIO_KEY,
   AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
   AI_WORKFLOW_PRESET_IDS,
@@ -64,6 +65,7 @@ export function useAiCreateWorkflow() {
   const imageModelKey = ref('')
   const videoModelKey = ref('')
   const generateResolution = ref(readStoredKey(AI_WORKFLOW_RESOLUTION_KEY))
+  const generateAspectRatio = ref(readStoredKey(AI_WORKFLOW_ASPECT_RATIO_KEY))
   /** shallow：避免 Vue Proxy 经 IPC structuredClone 失败 */
   const pendingPlan = shallowRef<GraphPlan | null>(null)
   const preview = ref<AiWorkflowPreview | null>(null)
@@ -112,20 +114,28 @@ export function useAiCreateWorkflow() {
     writeStoredKey(AI_WORKFLOW_RESOLUTION_KEY, key)
   }
 
+  function setGenerateAspectRatio(key: string): void {
+    generateAspectRatio.value = key
+    writeStoredKey(AI_WORKFLOW_ASPECT_RATIO_KEY, key)
+  }
+
   function clearPreview(): void {
     pendingPlan.value = null
     preview.value = null
     previewWarnings.value = []
   }
 
-  function applyPreset(id: AiWorkflowPresetId): void {
+  async function applyPreset(id: AiWorkflowPresetId): Promise<void> {
     selectedPresetId.value = id
     clearPreview()
     if (id === 'custom') {
       draftPrompt.value = ''
+      error.value = ''
       return
     }
     draftPrompt.value = t(`aiWorkflow.presets.${id}.prompt`)
+    // 选模板即自动预览固化拓扑，无需再点“预览模板”
+    await planPreview('seed')
   }
 
   function mediaModelPayload() {
@@ -233,6 +243,7 @@ export function useAiCreateWorkflow() {
           model: text?.model,
           providerInstanceId: text?.providerInstanceId,
           generateResolution: generateResolution.value || undefined,
+          generateAspectRatio: generateAspectRatio.value || undefined,
           ...mediaModelPayload()
         })
       )
@@ -378,6 +389,7 @@ export function useAiCreateWorkflow() {
           folderId: payload.folderId,
           name,
           generateResolution: generateResolution.value || undefined,
+          generateAspectRatio: generateAspectRatio.value || undefined,
           ...mediaModelPayload()
         })
       )
@@ -423,6 +435,7 @@ export function useAiCreateWorkflow() {
     imageModelKey,
     videoModelKey,
     generateResolution,
+    generateAspectRatio,
     pendingPlan,
     preview,
     previewWarnings,
@@ -435,6 +448,7 @@ export function useAiCreateWorkflow() {
     setImageModelKey,
     setVideoModelKey,
     setGenerateResolution,
+    setGenerateAspectRatio,
     openDialog,
     closeDialog,
     planPreview,
