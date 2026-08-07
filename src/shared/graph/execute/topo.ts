@@ -20,6 +20,29 @@ export function collectUpstreamNodeIds(graph: GraphDocument, targetId: string): 
   return visited
 }
 
+/** 收集自 source 出发沿出边可达的全部下游节点（含 source） */
+export function collectDownstreamNodeIds(
+  graph: GraphDocument,
+  sourceId: string
+): Set<string> {
+  const outgoing = new Map<string, string[]>()
+  for (const edge of graph.edges) {
+    const list = outgoing.get(edge.source) ?? []
+    list.push(edge.target)
+    outgoing.set(edge.source, list)
+  }
+
+  const visited = new Set<string>()
+  const stack = [sourceId]
+  while (stack.length) {
+    const id = stack.pop()!
+    if (visited.has(id)) continue
+    visited.add(id)
+    for (const next of outgoing.get(id) ?? []) stack.push(next)
+  }
+  return visited
+}
+
 /**
  * Kahn 拓扑排序。若有环返回 null。
  * 仅对 `subset` 内节点排序；边只考虑两端都在 subset 中的。

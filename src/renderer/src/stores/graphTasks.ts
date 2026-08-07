@@ -137,6 +137,8 @@ interface GraphTaskInternal extends GraphTask {
   cookAssetIdStack?: string[]
   /** 指定汇点；缺省时跑图内全部输出节点 */
   targetNodeIds?: string[]
+  /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
+  invalidatedNodeIds?: string[]
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -608,6 +610,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     cookAssetIdStack?: string[]
     /** 只跑这些汇点的上游并集（如侧栏图内选中的单条链） */
     targetNodeIds?: string[]
+    /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
+    invalidatedNodeIds?: string[]
   }): EnqueueWorkflowResult {
     const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
     if (conflictsWithActiveWorkflow(input.target, targetNodeIds, activeTasks.value)) {
@@ -634,7 +638,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       priorNodeStates: input.priorNodeStates,
       skipCompletedNodes: input.skipCompletedNodes,
       cookAssetIdStack: input.cookAssetIdStack,
-      targetNodeIds
+      targetNodeIds,
+      invalidatedNodeIds: input.invalidatedNodeIds
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -897,7 +902,11 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     }
     sources.push(readPersistedGraphForTarget(task.target)?.runStates)
     sources.push(graphEditorHosts.getDocument(task.target.hostId)?.runStates)
-    return mergeDoneRunStates(...sources)
+    const merged = mergeDoneRunStates(...sources)
+    if (task.invalidatedNodeIds?.length) {
+      for (const id of task.invalidatedNodeIds) delete merged[id]
+    }
+    return merged
   }
 
   /**

@@ -245,11 +245,18 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { GraphDocument, GraphNode, GraphNodeRunState } from '@shared/graph'
+import type {
+  GraphDocument,
+  GraphNode,
+  GraphNodeParams,
+  GraphNodeRunState
+} from '@shared/graph'
 import OverflowTip from '../OverflowTip.vue'
 import MediaPreviewPlayer from '../MediaPreviewPlayer.vue'
 import GridIcon from '../icons/GridIcon.vue'
 import {
+  cloneGraphDocument,
+  collectDownstreamNodeIds,
   extractEpisodeBeatNumber,
   parseEpisodeAgentState,
   parseEpisodeBeatBoard,
@@ -287,6 +294,8 @@ const activeBeat = ref(1)
 const urlCache = new Map<string, string>()
 /** 本窗口发起的阶段重生成任务；成功写回后才开放导演审核。 */
 const regenerationTasks = new Map<string, ReviewTarget>()
+/** 已失效（下游内容变更）尚未重新生成的节点；任务入队时禁止复用其旧结果 */
+const staleNodeIds = new Set<string>()
 
 /** 三栏宽度（px）：节拍拆解 / 9宫格 / 4宫格，可拖动分隔条调整 */
 const leftWidth = ref(240)
@@ -697,15 +706,17 @@ function assetTaskTarget(): GraphTaskTarget {
 function enqueueNode(
   node: GraphNode | undefined,
   title: string,
-  forceTargets = false
+  forceTargets = false,
+  invalidatedNodeIds?: string[]
 ): string | null {
-  return enqueueNodes(node ? [node] : [], title, forceTargets)
+  return enqueueNodes(node ? [node] : [], title, forceTargets, invalidatedNodeIds)
 }
 
 function enqueueNodes(
   targets: GraphNode[],
   title: string,
-  forceTargets = false
+  forceTargets = false,
+  invalidatedNodeIds?: string[]
 ): string | null {
   if (!targets.length || !graphDoc.value) return null
   const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
@@ -714,13 +725,18 @@ function enqueueNodes(
     // 只移除目标节点的 done 状态：目标会重跑，上游仍可复用，避免重生成整条链。
     for (const node of targets) delete priorNodeStates[node.id]
   }
+  // 失效节点并入本次任务：已失效的下游即使“已完成”也不得复用旧结果
+  const invalidated = invalidatedNodeIds?.length
+    ? [...new Set([...staleNodeIds, ...invalidatedNodeIds])]
+    : [...staleNodeIds]
   const result = taskStore.enqueueWorkflow({
     title,
     graph: graphDoc.value,
     target: assetTaskTarget(),
     targetNodeIds: targets.map((node) => node.id),
     priorNodeStates,
-    skipCompletedNodes: true
+    skipCompletedNodes: true,
+    invalidatedNodeIds: invalidated.length ? invalidated : undefined
   })
   return result.ok ? result.id : null
 }
@@ -756,8 +772,53 @@ function armReview(target: ReviewTarget): void {
   void graphEditorHosts.flush(hostId)
 }
 
+/**
+ * 阶段文本重新生成后，其全部下游产物（拼图 / 提取 / 放大 / 4宫格 / 视频 / 审核）
+ * 一律视为失效：清掉展示产物与运行态，后续任何生成动作都不再复用旧结果，
+ * 而是从最新文本一致地补跑整条链。
+ */
+function invalidateDownstream(target: ReviewTarget): void {
+  const hostId = `asset:${props.hostAssetId}`
+  const stage = nodeByKey(target)
+  const doc = graphDoc.value
+  if (!stage || !doc) return
+  const ids = [...collectDownstreamNodeIds(doc, stage.id)].filter((id) => id !== stage.id)
+  if (!ids.length) return
+
+  const idSet = new Set(ids)
+  const cloned = cloneGraphDocument(doc)
+  cloned.runStates = { ...(cloned.runStates ?? {}) }
+  for (const node of cloned.nodes) {
+    if (!idSet.has(node.id)) continue
+    delete cloned.runStates?.[node.id]
+    const patch: Partial<GraphNodeParams> = {}
+    if (Array.isArray(node.params?.generatedImages) && node.params.generatedImages.length) {
+      patch.generatedImages = []
+    }
+    if (Array.isArray(node.params?.generatedVideos) && node.params.generatedVideos.length) {
+      patch.generatedVideos = []
+    }
+    if (node.params?.selectedImageId) patch.selectedImageId = ''
+    if (node.params?.previewDataUrl) patch.previewDataUrl = ''
+    if (node.params?.previewRelativePath) patch.previewRelativePath = ''
+    // 下游导演审核同样失效：旧 PASS/FAIL 不再驱动角标/顶栏
+    if (node.params?.episodeReviewTarget) {
+      patch.episodeReviewStatus = undefined
+      patch.episodeReviewReason = ''
+      patch.episodeReviewPending = false
+    }
+    node.params = { ...node.params, ...patch }
+  }
+  graphEditorHosts.applyExternalGraph(hostId, cloned)
+  for (const id of ids) staleNodeIds.add(id)
+  refreshTick.value += 1
+  void graphEditorHosts.flush(hostId)
+}
+
 function regenerateStage(target: ReviewTarget): void {
   invalidateReview(target)
+  // 级联失效：下游图/视频/审核不复用旧结果，后续生成自动从最新文本一致补跑
+  invalidateDownstream(target)
   // “重新生成”强制执行目标节点，但继续复用其已完成上游。
   const taskId = enqueueNode(nodeByKey(target), `分镜流水线·${target}`, true)
   if (taskId) regenerationTasks.set(taskId, target)
@@ -889,6 +950,12 @@ async function loadAll(): Promise<void> {
     await refreshActiveVideoUrl()
   } finally {
     refreshing.value = false
+    // 已重新生成完成的失效节点移出失效集合，后续可正常复用
+    if (staleNodeIds.size) {
+      for (const id of [...staleNodeIds]) {
+        if (runStates.value[id]?.status === 'done') staleNodeIds.delete(id)
+      }
+    }
   }
 }
 
