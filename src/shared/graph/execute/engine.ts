@@ -1,4 +1,9 @@
-import { graphValueHasPayload, softResolveSourceOutput } from '../hostInput'
+import {
+  graphValueHasPayload,
+  softResolveHostOutputsFromInnerGraph,
+  softResolveSourceOutput,
+  type ResolveHostInputSlotsOptions
+} from '../hostInput'
 import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
@@ -170,7 +175,8 @@ function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
 function resolveLockedOutputs(
   node: GraphNode,
   prior: GraphNodeRunState | undefined,
-  graph?: GraphDocument
+  graph?: GraphDocument,
+  softOptions?: ResolveHostInputSlotsOptions
 ): Record<string, GraphValue> | null {
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
     typeId: node.typeId
@@ -180,7 +186,7 @@ function resolveLockedOutputs(
   }
   if (hasUsablePriorOutputs(prior)) return prior!.outputs!
   if (graph) {
-    const soft = softResolveSourceOutput(graph, node.id, 'out')
+    const soft = softResolveSourceOutput(graph, node.id, 'out', softOptions)
     if (graphValueHasPayload(soft) && soft) {
       return { out: soft }
     }
@@ -315,9 +321,19 @@ async function executeOneNode(
 
   const def = resolveNodeType(node)
 
+  const softResolveOptions: ResolveHostInputSlotsOptions = {
+    resolveAssetGenParams: options.resolveAssetGenParams,
+    resolveLiveAssetGraph: options.resolveLiveAssetGraph
+  }
+
   // 节点锁定：不 cook，直接复用图库 / 上次输出 / soft params
   if (isGenerateLocked(node)) {
-    const locked = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId], graph)
+    const locked = resolveLockedOutputs(
+      node,
+      options.priorNodeStates?.[nodeId],
+      graph,
+      softResolveOptions
+    )
     if (!locked) {
       publish(
         states,
@@ -436,7 +452,15 @@ async function executeOneNode(
     const shouldCookHostInner =
       options.cookHostInnerGraph ?? options.onlyTargetNode !== true
     if (isAssetHostNode(node) && !shouldCookHostInner) {
-      const reused = resolveLockedOutputs(node, options.priorNodeStates?.[nodeId], graph)
+      // 内图 boundary 出口即真值：内层生成后无需 cook 宿主也能收集，且不会读到过期抬升缓存。
+      // 缺内图 / 缺资产解析器时回退已抬升的宿主出口，再回退节点 params 图库；
+      // 避免 params 只落单条选中、把外层的视频组口覆盖成单视频。
+      const prior = options.priorNodeStates?.[nodeId]
+      const fromInner = softResolveHostOutputsFromInnerGraph(node, softResolveOptions)
+      const cached = hasUsablePriorOutputs(prior)
+        ? prior!.outputs!
+        : resolveLockedOutputs(node, prior, graph, softResolveOptions)
+      const reused = fromInner ? { ...(cached ?? {}), ...fromInner } : cached
       if (!reused) {
         publish(
           states,

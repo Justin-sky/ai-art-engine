@@ -493,7 +493,11 @@ function collectFallback(into: PreviewItem[]): void {
     }
   }
 
-  if (nodeMediaKind === 'audio' && (node.params.generatedVoices ?? []).length) {
+  // 宿主节点 mediaKind 为空：图库（视频/声音）仍要展示，不能只按节点类型 gate
+  const galleryKindOk = (kind: 'video' | 'audio'): boolean =>
+    nodeMediaKind === kind || nodeMediaKind == null
+
+  if (galleryKindOk('audio') && (node.params.generatedVoices ?? []).length) {
     for (const [index, item] of (node.params.generatedVoices ?? []).entries()) {
       pushLocalMediaPreview(into, item.id?.trim() || `fallback-audio:${index}`, 'audio', {
         relativePath: item.relativePath,
@@ -501,7 +505,7 @@ function collectFallback(into: PreviewItem[]): void {
         label: node.title
       })
     }
-  } else if (nodeMediaKind === 'video' && (node.params.generatedVideos ?? []).length) {
+  } else if (galleryKindOk('video') && (node.params.generatedVideos ?? []).length) {
     for (const [index, item] of (node.params.generatedVideos ?? []).entries()) {
       pushLocalMediaPreview(into, item.id?.trim() || `fallback-video:${index}`, 'video', {
         relativePath: item.relativePath,

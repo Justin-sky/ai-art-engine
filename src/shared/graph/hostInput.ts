@@ -593,7 +593,7 @@ function graphValueMatchesBoundaryPort(
 }
 
 /** 宿主实例：按出口 port dig 内图 boundary.output 的上游软值 */
-function softResolveHostBoundaryOutput(
+export function softResolveHostBoundaryOutput(
   node: GraphNode,
   sourcePort: string,
   options?: ResolveHostInputSlotsOptions
@@ -643,6 +643,25 @@ function softResolveHostBoundaryOutput(
     return mergeBoundarySoftValues(collected, port.dataType)
   }
   return softResolveBoundaryOutputValue(graphJson, boundaryNodes[0]!.id, options)
+}
+
+/**
+ * 宿主实例：逐个出口 dig 内图 boundary.output，得到整张出口表。
+ * 内图节点 params 图库即真值，因此内层生成后无需 cook 宿主也能收集。
+ * 缺内图 / 缺资产解析器时返回 null，由调用方回退缓存。
+ */
+export function softResolveHostOutputsFromInnerGraph(
+  node: GraphNode,
+  options?: ResolveHostInputSlotsOptions
+): Record<string, GraphValue> | null {
+  if (!isAssetHostNode(node) || !node.assetId) return null
+  const iface = resolveNodeHostInterface(node)
+  const outputs: Record<string, GraphValue> = {}
+  for (const port of iface.outputs) {
+    const value = softResolveHostBoundaryOutput(node, port.id, options)
+    if (graphValueHasPayload(value)) outputs[port.id] = value
+  }
+  return Object.keys(outputs).length ? outputs : null
 }
 
 /**

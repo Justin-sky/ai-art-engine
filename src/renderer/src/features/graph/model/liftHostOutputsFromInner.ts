@@ -60,6 +60,9 @@ export async function liftHostOutputsFromInnerGraph(
         }
       }
     }
+    // 实时编辑器同步：把抬升后的 runStates + params 图库一并写入宿主文档，
+    // 外层端口预览与「不 cook 单跑复用」立即可见。
+    graphEditorHosts.applyExternalGraph(hostId, withHostOutputLifts(toPlain(document), lifts))
     liveParentHostIds.add(hostId)
     const parentAssetId = parentAssetIdFromHostId(hostId)
     if (parentAssetId) liveParentAssetIds.add(parentAssetId)

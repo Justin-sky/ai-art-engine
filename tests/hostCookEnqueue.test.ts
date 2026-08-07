@@ -192,6 +192,126 @@ describe('host node cook enqueues inner graph', () => {
     expect(result.error).toContain('GRAPH_HOST_NO_CACHE_COOK')
   })
 
+  it('collects inner boundary outputs without cook when nothing was lifted yet', async () => {
+    // 内层已生成视频但从未 cook 过宿主：出口按内图节点 params 收集，不应报 NO_CACHE
+    const inner: GraphDocument = {
+      nodes: [
+        {
+          id: 'v1',
+          typeId: 'asset.video',
+          category: 'asset',
+          position: { x: 0, y: 0 },
+          params: {
+            generatedVideos: [{ id: 'vid-1', relativePath: 'Cache/Videos/a.mp4' }],
+            selectedVideoId: 'vid-1'
+          }
+        },
+        {
+          id: 'b-video-1',
+          typeId: 'graph.boundary.output',
+          category: 'note',
+          position: { x: 300, y: 0 },
+          params: {
+            hostBoundaryPort: {
+              portId: 'out-video',
+              dataType: 'video',
+              multiple: false,
+              slotIndex: 0,
+              slotSourceId: 'v1'
+            }
+          }
+        }
+      ],
+      edges: [
+        { id: 'inner-e1', source: 'v1', target: 'b-video-1', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const host: GraphNode = {
+      ...hostNode(),
+      params: {
+        assetRef: true,
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: HOST_INTERFACE_SCHEMA_VERSION,
+          inputs: [],
+          outputs: [{ id: 'out-video', label: '视频组输出', dataType: 'videos', multiple: true }]
+        }
+      }
+    }
+    const runHostInnerGraph = makeRunner()
+    const result = await runGraph(parentWithHost(host), {
+      stepDelayMs: 1,
+      targetNodeId: 'host-node',
+      onlyTargetNode: true,
+      hasAsset: () => true,
+      resolveAssetGenParams: () => ({ graphJson: inner }),
+      runHostInnerGraph
+    })
+    expect(runHostInnerGraph).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+    expect(result.states['host-node']?.outputs?.['out-video']).toMatchObject({
+      kind: 'videos',
+      items: [{ id: 'vid-1', relativePath: 'Cache/Videos/a.mp4' }]
+    })
+  })
+
+  it('prefers the current inner graph over a stale lifted cache', async () => {
+    const inner: GraphDocument = {
+      nodes: [
+        {
+          id: boundaryInputNodeId('in-text'),
+          typeId: 'graph.boundary.input',
+          category: 'note',
+          position: { x: 0, y: 0 },
+          params: { hostBoundaryPort: { portId: 'in-text', dataType: 'text' } }
+        },
+        {
+          id: 'writer',
+          typeId: 'note.text',
+          category: 'note',
+          position: { x: 150, y: 0 },
+          params: { text: '内图最新正文' }
+        },
+        {
+          id: boundaryOutputNodeId('out-text'),
+          typeId: 'graph.boundary.output',
+          category: 'note',
+          position: { x: 300, y: 0 },
+          params: { hostBoundaryPort: { portId: 'out-text', dataType: 'text' } }
+        }
+      ],
+      edges: [
+        {
+          id: 'inner-e1',
+          source: 'writer',
+          target: boundaryOutputNodeId('out-text'),
+          sourcePort: 'out',
+          targetPort: 'in'
+        }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const result = await runGraph(parentDocument(), {
+      stepDelayMs: 1,
+      targetNodeId: 'host-node',
+      onlyTargetNode: true,
+      hasAsset: () => true,
+      resolveAssetGenParams: () => ({ graphJson: inner }),
+      priorNodeStates: {
+        'host-node': {
+          status: 'done',
+          outputs: { 'out-text': { kind: 'text', text: '过期抬升缓存' } }
+        }
+      },
+      runHostInnerGraph: makeRunner()
+    })
+    expect(result.states['host-node']?.outputs?.['out-text']).toMatchObject({
+      kind: 'text',
+      text: '内图最新正文'
+    })
+  })
+
   it('passes the outer input value into the boundary input seed', async () => {
     const runHostInnerGraph = makeRunner()
     await runGraph(parentDocument(), {

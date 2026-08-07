@@ -97,6 +97,133 @@ function parentDocument(): GraphDocument {
 }
 
 describe('liftHostOutputs', () => {
+  it('collects video slot from upstream params when the boundary node has not run', () => {
+    const boundary = {
+      id: 'b-video-1',
+      typeId: 'graph.boundary.output',
+      category: 'note',
+      position: { x: 300, y: 0 },
+      params: {
+        hostBoundaryPort: {
+          portId: 'out',
+          dataType: 'video',
+          multiple: false,
+          slotIndex: 0,
+          slotSourceId: 'v1'
+        }
+      }
+    }
+    const video = {
+      id: 'v1',
+      typeId: 'asset.video',
+      category: 'asset',
+      position: { x: 0, y: 0 },
+      params: {
+        generatedVideos: [
+          {
+            id: 'vid-1',
+            relativePath: 'Cache/Videos/a.mp4',
+            createdAt: '2026-08-07T00:00:00.000Z'
+          }
+        ],
+        selectedVideoId: 'vid-1'
+      }
+    }
+    const inner: GraphDocument = {
+      nodes: [video, boundary],
+      edges: [{ id: 'e1', source: 'v1', target: 'b-video-1', sourcePort: 'out', targetPort: 'in' }],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const host = {
+      ...hostNode(),
+      params: {
+        assetRef: true,
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: HOST_INTERFACE_SCHEMA_VERSION,
+          inputs: [],
+          outputs: [{ id: 'out', label: '视频组输出', dataType: 'videos', multiple: true }]
+        }
+      }
+    }
+    const parent: GraphDocument = {
+      nodes: [host],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    // 边界节点没有任何 runState：靠边界输入（上游视频节点 params）收集
+    const lifts = collectHostOutputLifts(HOST_ASSET_ID, inner, {}, parent)
+    expect(lifts).toHaveLength(1)
+    expect(lifts[0]?.outputs['out']).toMatchObject({
+      kind: 'videos',
+      items: [{ id: 'vid-1', relativePath: 'Cache/Videos/a.mp4' }]
+    })
+  })
+
+  it('writes aggregated gallery into host node params for reuse without cook', () => {
+    const boundary = {
+      id: 'b-video-1',
+      typeId: 'graph.boundary.output',
+      category: 'note',
+      position: { x: 300, y: 0 },
+      params: {
+        hostBoundaryPort: {
+          portId: 'out',
+          dataType: 'video',
+          multiple: false,
+          slotIndex: 0,
+          slotSourceId: 'v1'
+        }
+      }
+    }
+    const video = {
+      id: 'v1',
+      typeId: 'asset.video',
+      category: 'asset',
+      position: { x: 0, y: 0 },
+      params: {
+        generatedVideos: [
+          {
+            id: 'vid-1',
+            relativePath: 'Cache/Videos/a.mp4',
+            createdAt: '2026-08-07T00:00:00.000Z'
+          }
+        ],
+        selectedVideoId: 'vid-1'
+      }
+    }
+    const inner: GraphDocument = {
+      nodes: [video, boundary],
+      edges: [{ id: 'e1', source: 'v1', target: 'b-video-1', sourcePort: 'out', targetPort: 'in' }],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const host = {
+      ...hostNode(),
+      params: {
+        assetRef: true,
+        assetHost: true,
+        hostInterfaceSnapshot: {
+          version: HOST_INTERFACE_SCHEMA_VERSION,
+          inputs: [],
+          outputs: [{ id: 'out', label: '视频组输出', dataType: 'videos', multiple: true }]
+        }
+      }
+    }
+    const parent: GraphDocument = {
+      nodes: [host],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const lifts = collectHostOutputLifts(HOST_ASSET_ID, inner, {}, parent)
+    const next = withHostOutputLifts(parent, lifts)
+    const liftedHost = next.nodes.find((n) => n.id === 'host-node')
+    expect((liftedHost?.params.generatedVideos as Array<{ id?: string }>)?.map((i) => i.id)).toEqual(
+      ['vid-1']
+    )
+    expect(liftedHost?.params.selectedVideoId).toBe('vid-1')
+    expect(next.runStates?.['host-node']?.status).toBe('done')
+  })
+
   it('maps inner boundary.output states onto parent host node ports', () => {
     const outId = boundaryOutputNodeId('out-text')
     const lifts = collectHostOutputLifts(
