@@ -448,6 +448,35 @@ describe('generation input auto-include vs @ filter', () => {
     expect((second['out-all'] as { items: GraphTextItem[] }).items.length).toBe(2)
   })
 
+  it('prompt optimize re-ids same-millisecond generations so newest is selected', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-07T12:00:00.000Z'))
+    try {
+      const generateText = vi.fn(async () => ({ text: 'version-1', model: 'm' }))
+      const ctx = baseCtx({
+        node: {
+          id: 'opt',
+          category: 'note',
+          typeId: 'prompt.optimize',
+          title: 'Optimize',
+          position: { x: 0, y: 0 },
+          params: { generateInstruction: '请优化' }
+        },
+        generateText
+      })
+      await executePromptOptimizeNode(ctx)
+      generateText.mockResolvedValue({ text: 'version-2', model: 'm' })
+      const second = await executePromptOptimizeNode(ctx)
+      const items = ctx.node.params.generatedTexts as GraphTextItem[]
+      expect(items.length).toBe(2)
+      expect(items[1]?.text).toBe('version-2')
+      expect(items[1]?.id).not.toBe(items[0]?.id)
+      expect(second.out).toMatchObject({ kind: 'text', text: 'version-2' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('grid split crops cells without calling a model', async () => {
     const generateImage = vi.fn(async () => ({
       images: ['data:image/png;base64,unused'],

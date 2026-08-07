@@ -270,10 +270,33 @@ function mergeGeneratedImages(
   idFallbackPrefix: string
 ): GraphImageItem[] {
   const previous = (ctx.node.params.generatedImages ?? []).map(stripEmbeddedImageData)
-  return [...previous, ...materializedBatch].map((item, index) => ({
-    ...stripEmbeddedImageData(item),
-    id: item.id?.trim() || `${idFallbackPrefix}:${index}`
-  }))
+  return dedupeGalleryIds(previous, materializedBatch.map(stripEmbeddedImageData), idFallbackPrefix)
+}
+
+/**
+ * 追加批量条目到累计图库时保证 id 唯一：
+ * 同一毫秒内的连续生成可能复用相同时间戳 id（如 `gen-text:…`），
+ * 若不重新编号，“最新选中”会按 id 命中旧条目，导致 out 返回旧结果。
+ */
+function dedupeGalleryIds<T extends { id?: string | null }>(
+  previous: T[],
+  batch: T[],
+  idFallbackPrefix: string
+): T[] {
+  const used = new Set(previous.map((item) => item.id?.trim()).filter(Boolean))
+  const next: T[] = [...previous]
+  for (const item of batch) {
+    const rawId = item.id?.trim()
+    let id = rawId || `${idFallbackPrefix}:${next.length}`
+    if (used.has(id)) {
+      let suffix = 1
+      while (used.has(`${id}:${suffix}`)) suffix += 1
+      id = `${id}:${suffix}`
+    }
+    used.add(id)
+    next.push({ ...item, id })
+  }
+  return next
 }
 
 function inferRole(type: AssetType): string {
@@ -447,10 +470,7 @@ function mergeGeneratedTexts(
   idFallbackPrefix: string
 ): GraphTextItem[] {
   const previous = (ctx.node.params.generatedTexts ?? []).map(stripEmbeddedTextData)
-  return [...previous, ...batch].map((item, index) => ({
-    ...stripEmbeddedTextData(item),
-    id: item.id?.trim() || `${idFallbackPrefix}:${index}`
-  }))
+  return dedupeGalleryIds(previous, batch.map(stripEmbeddedTextData), idFallbackPrefix)
 }
 
 /** 从生成正文首行解析「剧本名：…」/「Title: …」 */
@@ -646,10 +666,7 @@ function mergeGeneratedVoices(
   idFallbackPrefix: string
 ): GraphVoiceItem[] {
   const previous = (ctx.node.params.generatedVoices ?? []).map(stripEmbeddedVoiceData)
-  return [...previous, ...batch].map((item, index) => ({
-    ...stripEmbeddedVoiceData(item),
-    id: item.id?.trim() || `${idFallbackPrefix}:${index}`
-  }))
+  return dedupeGalleryIds(previous, batch.map(stripEmbeddedVoiceData), idFallbackPrefix)
 }
 
 function stripEmbeddedVideoData(item: GraphVideoItem): GraphVideoItem {
@@ -667,10 +684,7 @@ function mergeGeneratedVideos(
   idFallbackPrefix: string
 ): GraphVideoItem[] {
   const previous = (ctx.node.params.generatedVideos ?? []).map(stripEmbeddedVideoData)
-  return [...previous, ...batch].map((item, index) => ({
-    ...stripEmbeddedVideoData(item),
-    id: item.id?.trim() || `${idFallbackPrefix}:${index}`
-  }))
+  return dedupeGalleryIds(previous, batch.map(stripEmbeddedVideoData), idFallbackPrefix)
 }
 
 /** 视频生成结果写入累计图库；强制选中最新；`out` 选中单条，`out-all` 全部历史 */
