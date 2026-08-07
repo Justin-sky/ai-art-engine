@@ -212,9 +212,13 @@ describe('episode director verdict', () => {
     })
     expect(patched.get('review-node')).toMatchObject({
       episodeReviewStatus: 'FAIL',
-      episodeReviewReason: '第二幕视高跳跃太大'
+      episodeReviewReason: '第二幕视高跳跃太大',
+      episodeReviewPending: false
     })
-    expect(patched.get('beatboard-node')).toMatchObject({ episodeReviewStatus: 'FAIL' })
+    expect(patched.get('beatboard-node')).toMatchObject({
+      episodeReviewStatus: 'FAIL',
+      episodeReviewPending: false
+    })
   })
 })
 

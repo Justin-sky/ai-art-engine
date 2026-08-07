@@ -27,10 +27,21 @@
       <!-- 左：节拍拆解表 -->
       <section class="panel beats-panel">
         <div class="panel-head">
-          <h3>节拍拆解</h3>
+          <h3>
+            节拍拆解
+            <span v-if="reviewResult('breakdown') === 'PASS'" class="pass-mark">✓ 已通过</span>
+          </h3>
           <div class="panel-actions">
-            <button type="button" @click="runStage('breakdown')">重新生成</button>
-            <button type="button" @click="runStage('review1')">导演审核</button>
+            <button type="button" @click="regenerateStage('breakdown')">重新生成</button>
+            <button
+              type="button"
+              class="review-button"
+              :class="{ ready: reviewReady('breakdown') }"
+              :disabled="!reviewReady('breakdown')"
+              @click="runReview('breakdown')"
+            >
+              导演审核
+            </button>
           </div>
         </div>
         <ul class="beat-list">
@@ -55,11 +66,22 @@
       <!-- 中：9宫格 -->
       <section class="panel board-panel">
         <div class="panel-head">
-          <h3>9宫格分镜表</h3>
+          <h3>
+            9宫格分镜表
+            <span v-if="reviewResult('beatboard') === 'PASS'" class="pass-mark">✓ 已通过</span>
+          </h3>
           <div class="panel-actions">
             <button type="button" @click="runAnchorImage">生成9宫格拼图</button>
-            <button type="button" @click="runStage('beatboard')">重新生成</button>
-            <button type="button" @click="runStage('review2')">导演审核</button>
+            <button type="button" @click="regenerateStage('beatboard')">重新生成</button>
+            <button
+              type="button"
+              class="review-button"
+              :class="{ ready: reviewReady('beatboard') }"
+              :disabled="!reviewReady('beatboard')"
+              @click="runReview('beatboard')"
+            >
+              导演审核
+            </button>
           </div>
         </div>
         <div class="grid-9">
@@ -106,11 +128,22 @@
 
         <div class="detail-block">
           <div class="detail-head">
-            <h4>4宫格（{{ selectedAnchorIndex }}）</h4>
+            <h4>
+              4宫格（{{ selectedAnchorIndex }}）
+              <span v-if="reviewResult('sequence') === 'PASS'" class="pass-mark">✓ 已通过</span>
+            </h4>
             <div class="panel-actions">
               <button type="button" @click="runFourGridImage">生成4宫格拼图</button>
-              <button type="button" @click="runStage('sequence')">重新生成</button>
-              <button type="button" @click="runStage('review3')">导演审核</button>
+              <button type="button" @click="regenerateStage('sequence')">重新生成</button>
+              <button
+                type="button"
+                class="review-button"
+                :class="{ ready: reviewReady('sequence') }"
+                :disabled="!reviewReady('sequence')"
+                @click="runReview('sequence')"
+              >
+                导演审核
+              </button>
             </div>
           </div>
           <div class="grid-4">
@@ -138,10 +171,21 @@
 
         <div v-if="activeMotion" class="detail-block motion-block">
           <div class="detail-head">
-            <h4>动态提示词（{{ activeMotion.key }}）</h4>
+            <h4>
+              动态提示词（{{ activeMotion.key }}）
+              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">✓ 已通过</span>
+            </h4>
             <div class="panel-actions">
-              <button type="button" @click="runStage('motion')">重新生成</button>
-              <button type="button" @click="runStage('review4')">导演审核</button>
+              <button type="button" @click="regenerateStage('motion')">重新生成</button>
+              <button
+                type="button"
+                class="review-button"
+                :class="{ ready: reviewReady('motion') }"
+                :disabled="!reviewReady('motion')"
+                @click="runReview('motion')"
+              >
+                导演审核
+              </button>
             </div>
           </div>
           <pre class="motion-text">{{ activeMotion.text }}</pre>
@@ -206,6 +250,8 @@ const selectedAnchorIndex = ref(1)
 const selectedCell = ref<{ groupIndex: number; cellIndex: number }>({ groupIndex: 1, cellIndex: 1 })
 const activeBeat = ref(1)
 const urlCache = new Map<string, string>()
+/** 本窗口发起的阶段重生成任务；成功写回后才开放导演审核。 */
+const regenerationTasks = new Map<string, ReviewTarget>()
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
 const assetTitle = computed(() => asset.value?.name ?? '剧集分镜流水线')
@@ -465,6 +511,21 @@ function reviewResult(target: string): 'PASS' | 'FAIL' | '' {
   return ''
 }
 
+type ReviewTarget = 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+
+const REVIEW_NODE_KEY: Record<ReviewTarget, 'review1' | 'review2' | 'review3' | 'review4'> = {
+  breakdown: 'review1',
+  beatboard: 'review2',
+  sequence: 'review3',
+  motion: 'review4'
+}
+
+/** 只有对应阶段重新生成后，导演审核才进入待审核状态。 */
+function reviewReady(target: ReviewTarget): boolean {
+  const reviewNode = nodeByKey(REVIEW_NODE_KEY[target])
+  return reviewNode?.params?.episodeReviewPending === true && !reviewResult(target)
+}
+
 const headerFailReason = computed(() => {
   // 优先/仅从当前图审核节点取 FAIL 原因；agent-state 是跨工作流共享的历史文件，不能驱动顶栏展示
   for (const key of ['review1', 'review2', 'review3', 'review4']) {
@@ -541,27 +602,85 @@ function assetTaskTarget(): GraphTaskTarget {
   }
 }
 
-function enqueueNode(node: GraphNode | undefined, title: string): void {
-  enqueueNodes(node ? [node] : [], title)
+function enqueueNode(
+  node: GraphNode | undefined,
+  title: string,
+  forceTargets = false
+): string | null {
+  return enqueueNodes(node ? [node] : [], title, forceTargets)
 }
 
-function enqueueNodes(targets: GraphNode[], title: string): void {
-  if (!targets.length || !graphDoc.value) return
+function enqueueNodes(
+  targets: GraphNode[],
+  title: string,
+  forceTargets = false
+): string | null {
+  if (!targets.length || !graphDoc.value) return null
   const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
-  taskStore.enqueueWorkflow({
+  const priorNodeStates = { ...(runHost?.runStates ?? {}) }
+  if (forceTargets) {
+    // 只移除目标节点的 done 状态：目标会重跑，上游仍可复用，避免重生成整条链。
+    for (const node of targets) delete priorNodeStates[node.id]
+  }
+  const result = taskStore.enqueueWorkflow({
     title,
     graph: graphDoc.value,
     target: assetTaskTarget(),
     targetNodeIds: targets.map((node) => node.id),
-    priorNodeStates: runHost?.runStates ?? {},
+    priorNodeStates,
     skipCompletedNodes: true
   })
+  return result.ok ? result.id : null
 }
 
-function runStage(
-  kind: 'breakdown' | 'beatboard' | 'sequence' | 'motion' | 'review1' | 'review2' | 'review3' | 'review4'
-): void {
-  enqueueNode(nodeByKey(kind), `分镜流水线·${kind}`)
+/** 作废旧审核；重新生成尚未产出时保持导演审核不可用。 */
+function invalidateReview(target: ReviewTarget): void {
+  const hostId = `asset:${props.hostAssetId}`
+  const stageNode = nodeByKey(target)
+  const reviewNode = nodeByKey(REVIEW_NODE_KEY[target])
+  for (const node of [stageNode, reviewNode]) {
+    if (!node) continue
+    graphEditorHosts.updateNode(hostId, node.id, {
+      episodeReviewStatus: undefined,
+      episodeReviewReason: '',
+      episodeReviewPending: false,
+      // 重新生成时必须清掉旧审核正文，否则后台写回会再次解析旧 PASS/FAIL。
+      ...(node === reviewNode ? { text: '', generatedTexts: [], selectedTextId: '' } : {})
+    })
+  }
+  refreshTick.value += 1
+  void graphEditorHosts.flush(hostId)
+}
+
+/** 生成任务成功写回后才进入待审核状态并点亮按钮。 */
+function armReview(target: ReviewTarget): void {
+  const hostId = `asset:${props.hostAssetId}`
+  const stageNode = nodeByKey(target)
+  const reviewNode = nodeByKey(REVIEW_NODE_KEY[target])
+  for (const node of [stageNode, reviewNode]) {
+    if (node) graphEditorHosts.updateNode(hostId, node.id, { episodeReviewPending: true })
+  }
+  refreshTick.value += 1
+  void graphEditorHosts.flush(hostId)
+}
+
+function regenerateStage(target: ReviewTarget): void {
+  invalidateReview(target)
+  // “重新生成”强制执行目标节点，但继续复用其已完成上游。
+  const taskId = enqueueNode(nodeByKey(target), `分镜流水线·${target}`, true)
+  if (taskId) regenerationTasks.set(taskId, target)
+}
+
+function runReview(target: ReviewTarget): void {
+  if (!reviewReady(target)) return
+  const reviewNode = nodeByKey(REVIEW_NODE_KEY[target])
+  if (!reviewNode) return
+  // 点击后立即锁定，避免重复提交；审核结果写回时会保持 pending=false。
+  const hostId = `asset:${props.hostAssetId}`
+  graphEditorHosts.updateNode(hostId, reviewNode.id, { episodeReviewPending: false })
+  refreshTick.value += 1
+  void graphEditorHosts.flush(hostId)
+  enqueueNode(reviewNode, `分镜流水线·${REVIEW_NODE_KEY[target]}`, true)
 }
 
 function runAnchorImage(): void {
@@ -688,6 +807,23 @@ watch(runningCount, async (count, prev) => {
     await loadAll()
   }
 })
+
+// 只有“重新生成”任务成功完成并写回结果，才开放对应导演审核。
+watch(
+  () => taskStore.completed.map((task) => `${task.id}:${task.status}`).join('|'),
+  async () => {
+    for (const task of taskStore.completed) {
+      const target = regenerationTasks.get(task.id)
+      if (!target) continue
+      regenerationTasks.delete(task.id)
+      if (task.status !== 'done') continue
+      const stageNode = nodeByKey(target)
+      if (!stageNode || task.runStates[stageNode.id]?.status !== 'done') continue
+      await loadAll()
+      armReview(target)
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -792,6 +928,32 @@ watch(runningCount, async (count, prev) => {
 }
 .panel-actions button:hover {
   border-color: var(--accent, #3498db);
+}
+.panel-actions button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  border-color: var(--border);
+}
+.panel-actions .review-button.ready {
+  color: #fff;
+  font-weight: 600;
+  background: var(--accent, #3498db);
+  border-color: var(--accent, #3498db);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent, #3498db) 45%, transparent),
+    0 0 10px color-mix(in srgb, var(--accent, #3498db) 42%, transparent);
+}
+.pass-mark {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--success, #27ae60);
+  vertical-align: middle;
 }
 .detail-head {
   display: flex;

@@ -166,53 +166,65 @@ Hard rules:
   instructionEn: `Generate the motion prompt table (36 entries) from the upstream 4-grid dynamic storyboard, strictly following the format in the system prompt.`
 }
 
+const DIRECTOR_PASS_BIAS_ZH = `判定原则（必须遵守）：
+1. 你是工业流水线质检，不是艺术挑刺。默认偏 PASS：整体可用、无明显阻断问题时必须 PASS。
+2. 仅当存在「阻断性问题」时才 FAIL——阻断指：结构明显残缺、前后严重矛盾、或会直接导致下游生成失败。
+3. 风格偏好、措辞不够完美、个别细节不够理想、非关键项未写满 → 一律 PASS，可在正文简短点评，但结论必须是 PASS。
+4. FAIL 时最多列 2 条最关键原因；原因必须可执行（指出产物位置与怎么改），禁止空泛批评。`
+
+const DIRECTOR_PASS_BIAS_EN = `Judging rules (mandatory):
+1. You are industrial QA, not an art critic. Default to PASS: if the artifact is usable with no blocking defect, you MUST PASS.
+2. FAIL only for blocking issues — structural gaps, severe contradictions, or defects that would break downstream generation.
+3. Style taste, imperfect wording, minor missing polish, incomplete non-critical fields → always PASS. You may note them briefly, but the verdict must be PASS.
+4. On FAIL, list at most 2 critical actionable reasons (artifact location + how to fix). No vague criticism.`
+
 /** Agent 2 导演：PASS/FAIL 审核 */
 export const EPISODE_AGENT_DIRECTOR: EpisodeAgentPromptPack = {
-  systemPromptZh: `你是片场最严苛的导演。你负责分阶段审核分镜师/动画师生成的产物，审核核心：顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
+  systemPromptZh: `你是片场质检导演。你负责分阶段审核分镜师/动画师生成的产物，关注顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
 
-按审核目标逐项检查：
-- 节拍拆解表：是否完整覆盖起承转合？关键锚点是否卡在转折点？情绪强度是否递进？
-- 9宫格分镜表：人物站位是否稳定 I/A/L 型、有无越轴？有无拉抽屉/同景别？主光源方向是否恒定？核心道具是否有特写或反应镜头？9 格服饰发型是否一致？
-- 4宫格动态分镜表：是否严格 定场→引入→冲突→收尾？景别是否按 全景→中景→近景/特写→全景/中景 推进？是否符合渐松渐紧？
-- 动态提示词表：动作是否含预备-发力-缓冲？环境物理是否正确？小于 3 秒镜头是否单一视觉焦点？组间动势方向是否连续？
+${DIRECTOR_PASS_BIAS_ZH}
+
+按审核目标只查阻断项：
+- 节拍拆解表：是否大体覆盖起承转合？是否标出约 9 个关键锚点？情绪强度是否整体有起伏（不必完美递进）？
+- 9宫格分镜表：是否有 9 格且格式齐全？同角色服饰发型是否大体一致？主光是否大致稳定（允许合理变化）？严重越轴/瞬移感才算阻断。
+- 4宫格动态分镜表：是否有约 9 组×4 格？组内是否大体按 定场→引入→冲突→收尾？景别大致由远到近再收回即可，不必逐格严丝合缝。
+- 动态提示词表：是否约 36 条且含镜头/主体/环境/时长？主体动作有运动过程即可（不必死抠三段式措辞）；明显违反物理或缺关键字段才算阻断。
 
 输出协议（必须严格，供状态机解析）：
 ## 结论: PASS
 或
-## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)
+## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)`,
+  systemPromptEn: `You are an on-set QA director. You review the storyboard artist's / animator's artifacts phase by phase, focusing on smoothness, physical logic, and visual focus. You only judge and give reasons — never edit the artifacts.
 
-FAIL 原因必须是可执行的修改指令（指出产物、位置、问题），禁止“不够好”这类空泛表述。`,
-  systemPromptEn: `You are the strictest director on set. You review the storyboard artist's / animator's artifacts phase by phase. Core review focus: smoothness, physical logic, visual focus. You only judge and give reasons — never edit the artifacts.
+${DIRECTOR_PASS_BIAS_EN}
 
-Check against the review target:
-- Beat Breakdown: complete exposition–rise–climax–resolution arc? Key anchors on turning points? Emotion intensity progression?
-- 9-grid Beat Board: stable I/A/L blocking, no axis crossing? No meaningless same-size cuts? Key-light direction constant? Key props get close-up/reaction? Costume and hairstyle identical across 9 cells?
-- 4-grid Dynamic Storyboard: strictly establish → introduce → conflict → resolve? Shot flow wide → medium → close → wide/medium? Rhythm tightening before conflict?
-- Motion Prompt Table: three-phase prepare–exert–recover? Physics correct? Shots under 3s have one focus? Screen direction continuous between groups?
+Check only blocking items against the review target:
+- Beat Breakdown: roughly covers exposition–rise–climax–resolution? About 9 key anchors marked? Emotion intensity has some arc (need not be perfect)?
+- 9-grid Beat Board: 9 cells with required fields? Costume/hair roughly consistent? Key light mostly stable (reasonable variation OK)? Only severe axis-crossing / teleport feel is blocking.
+- 4-grid Dynamic Storyboard: about 9×4 frames? Groups roughly establish → introduce → conflict → resolve? Shot sizes roughly tighten then loosen — not every cell needs perfection.
+- Motion Prompt Table: about 36 entries with camera/subject/env/duration? Subject action needs a clear motion process (exact three-phase wording not required); FAIL only for broken physics or missing critical fields.
 
 Output protocol (strict, machine-parseable):
 ## 结论: PASS
 or
-## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)
-
-FAIL reasons must be actionable (point to artifact, location, and problem) — never vague phrases like "not good enough".`,
+## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)`,
   instructionZh:
-    '请以导演身份审核上方连接的产物，输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。',
+    '请以质检导演身份审核上方连接的产物。默认 PASS；仅阻断性问题才 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。',
   instructionEn:
-    'Review the upstream artifacts as the Director. Output ## 结论: PASS or ## 结论: FAIL (原因: …).'
+    'Review the upstream artifacts as QA Director. Default to PASS; FAIL only for blocking issues. Output ## 结论: PASS or ## 结论: FAIL (原因: …).'
 }
 
-const REVIEW_CHECK_BREAKDOWN_ZH = `- 节拍拆解表：是否完整覆盖起承转合？关键锚点是否卡在转折点？情绪强度是否递进？`
-const REVIEW_CHECK_BREAKDOWN_EN = `- Beat Breakdown: complete exposition–rise–climax–resolution arc? Key anchors on turning points? Emotion intensity progression?`
+const REVIEW_CHECK_BREAKDOWN_ZH = `- 节拍拆解表：是否大体覆盖起承转合？是否标出约 9 个关键锚点？情绪强度是否整体有起伏（不必完美递进）？`
+const REVIEW_CHECK_BREAKDOWN_EN = `- Beat Breakdown: roughly covers exposition–rise–climax–resolution? About 9 key anchors marked? Emotion intensity has some arc (need not be perfect)?`
 
-const REVIEW_CHECK_BEATBOARD_ZH = `- 9宫格分镜表：人物站位是否稳定 I/A/L 型、有无越轴？有无拉抽屉/同景别？主光源方向是否恒定？核心道具是否有特写或反应镜头？9 格服饰发型是否一致？`
-const REVIEW_CHECK_BEATBOARD_EN = `- 9-grid Beat Board: stable I/A/L blocking, no axis crossing? No meaningless same-size cuts? Key-light direction constant? Key props get close-up/reaction? Costume and hairstyle identical across 9 cells?`
+const REVIEW_CHECK_BEATBOARD_ZH = `- 9宫格分镜表：是否有 9 格且格式齐全？同角色服饰发型是否大体一致？主光是否大致稳定？仅严重越轴/瞬移感算阻断。`
+const REVIEW_CHECK_BEATBOARD_EN = `- 9-grid Beat Board: 9 cells with required fields? Costume/hair roughly consistent? Key light mostly stable? Only severe axis-crossing / teleport feel is blocking.`
 
-const REVIEW_CHECK_SEQUENCE_ZH = `- 4宫格动态分镜表：是否严格 定场→引入→冲突→收尾？景别是否按 全景→中景→近景/特写→全景/中景 推进？是否符合渐松渐紧？`
-const REVIEW_CHECK_SEQUENCE_EN = `- 4-grid Dynamic Storyboard: strictly establish → introduce → conflict → resolve? Shot flow wide → medium → close → wide/medium? Rhythm tightening before conflict?`
+const REVIEW_CHECK_SEQUENCE_ZH = `- 4宫格动态分镜表：是否有约 9 组×4 格？组内是否大体 定场→引入→冲突→收尾？景别大致由远到近再收回即可。`
+const REVIEW_CHECK_SEQUENCE_EN = `- 4-grid Dynamic Storyboard: about 9×4 frames? Groups roughly establish → introduce → conflict → resolve? Shot sizes roughly tighten then loosen.`
 
-const REVIEW_CHECK_MOTION_ZH = `- 动态提示词表：动作是否含预备-发力-缓冲？环境物理是否正确？小于 3 秒镜头是否单一视觉焦点？组间动势方向是否连续？`
-const REVIEW_CHECK_MOTION_EN = `- Motion Prompt Table: three-phase prepare–exert–recover? Physics correct? Shots under 3s have one focus? Screen direction continuous between groups?`
+const REVIEW_CHECK_MOTION_ZH = `- 动态提示词表：是否约 36 条且含镜头/主体/环境/时长？主体有运动过程即可（不必死抠三段式措辞）；明显违反物理或缺关键字段才算阻断。`
+const REVIEW_CHECK_MOTION_EN = `- Motion Prompt Table: about 36 entries with camera/subject/env/duration? Clear motion process is enough (exact three-phase wording not required); FAIL only for broken physics or missing critical fields.`
 
 /** 按审核目标生成单一阶段的导演审核提示词（人设 + 本阶段检查项 + 输出协议） */
 function directorReviewPrompt(
@@ -222,30 +234,30 @@ function directorReviewPrompt(
   targetEn: string
 ): EpisodeAgentPromptPack {
   return {
-    systemPromptZh: `你是片场最严苛的导演。你负责审核${targetZh}。审核核心：顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
+    systemPromptZh: `你是片场质检导演。你负责审核${targetZh}，关注顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
 
-按审核目标逐项检查：
+${DIRECTOR_PASS_BIAS_ZH}
+
+按审核目标只查阻断项：
 ${checkZh}
 
 输出协议（必须严格，供状态机解析）：
 ## 结论: PASS
 或
-## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)
+## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)`,
+    systemPromptEn: `You are an on-set QA director. You review ${targetEn}, focusing on smoothness, physical logic, and visual focus. You only judge and give reasons — never edit the artifacts.
 
-FAIL 原因必须是可执行的修改指令（指出产物、位置、问题），禁止“不够好”这类空泛表述。`,
-    systemPromptEn: `You are the strictest director on set. You review ${targetEn}. Core review focus: smoothness, physical logic, visual focus. You only judge and give reasons — never edit the artifacts.
+${DIRECTOR_PASS_BIAS_EN}
 
-Check against the review target:
+Check only blocking items against the review target:
 ${checkEn}
 
 Output protocol (strict, machine-parseable):
 ## 结论: PASS
 or
-## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)
-
-FAIL reasons must be actionable (point to artifact, location, and problem) — never vague phrases like "not good enough".`,
-    instructionZh: `请以导演身份审核上方连接的${targetZh}，输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。`,
-    instructionEn: `Review the upstream ${targetEn} as the Director. Output ## 结论: PASS or ## 结论: FAIL (原因: …).`
+## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)`,
+    instructionZh: `请以质检导演身份审核上方连接的${targetZh}。默认 PASS；仅阻断性问题才 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。`,
+    instructionEn: `Review the upstream ${targetEn} as QA Director. Default to PASS; FAIL only for blocking issues. Output ## 结论: PASS or ## 结论: FAIL (原因: …).`
   }
 }
 
@@ -290,3 +302,30 @@ export const EPISODE_AGENT_PROMPT_PACKS = {
 } as const
 
 export type EpisodeAgentKind = keyof typeof EPISODE_AGENT_PROMPT_PACKS
+
+export type EpisodeReviewTarget = 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+
+const EPISODE_AGENT_REVIEW_BY_TARGET: Record<EpisodeReviewTarget, EpisodeAgentPromptPack> = {
+  breakdown: EPISODE_AGENT_REVIEW_BREAKDOWN,
+  beatboard: EPISODE_AGENT_REVIEW_BEATBOARD,
+  sequence: EPISODE_AGENT_REVIEW_SEQUENCE,
+  motion: EPISODE_AGENT_REVIEW_MOTION
+}
+
+/** 导演审核节点执行时取最新 pack（避免旧图仍固化「最严苛」提示词） */
+export function resolveEpisodeDirectorReviewPack(
+  target: EpisodeReviewTarget | string | undefined
+): EpisodeAgentPromptPack | null {
+  if (!target || !(target in EPISODE_AGENT_REVIEW_BY_TARGET)) return null
+  return EPISODE_AGENT_REVIEW_BY_TARGET[target as EpisodeReviewTarget]
+}
+
+export function pickEpisodeAgentPrompt(
+  pack: EpisodeAgentPromptPack,
+  locale: string | undefined,
+  field: 'systemPrompt' | 'instruction'
+): string {
+  const english = (locale ?? '').toLowerCase().startsWith('en')
+  if (field === 'systemPrompt') return english ? pack.systemPromptEn : pack.systemPromptZh
+  return english ? pack.instructionEn : pack.instructionZh
+}

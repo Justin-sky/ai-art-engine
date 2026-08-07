@@ -469,6 +469,8 @@ export interface GraphNodeParams {
   episodeReviewStatus?: 'PASS' | 'FAIL'
   /** 剧集 Agent 流水线：导演审核回标原因 */
   episodeReviewReason?: string
+  /** 剧集 Agent 流水线：重新生成后等待导演审核 */
+  episodeReviewPending?: boolean
   /** 剧集 Agent 流水线：宫格选择节点选中的宫格编号（1..9） */
   anchorIndex?: number
   /** 剧集 Agent 流水线：动态格选择节点选中的组编号（1..9） */

@@ -59,6 +59,10 @@ import {
   serializeEpisodeAgentState
 } from '../episodeAgentState'
 import {
+  pickEpisodeAgentPrompt,
+  resolveEpisodeDirectorReviewPack
+} from '../episodeAgentPrompts'
+import {
   parseEpisodeBeatBreakdown,
   selectEpisodeAnchor,
   selectEpisodeAnchors,
@@ -3031,7 +3035,12 @@ export async function executePromptOptimizeNode(
   const episodeReviewTarget = node.params.episodeReviewTarget
   const episodeScopeKey = node.params.episodeScopeKey?.trim() || 'default'
   const mentionSources = resolveMentionSources(ctx)
-  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  const reviewPack = resolveEpisodeDirectorReviewPack(episodeReviewTarget)
+  // 导演审核节点用最新 pack 指令（默认 PASS），不吃旧图里固化的严苛文案
+  const instructionRaw =
+    (reviewPack
+      ? pickEpisodeAgentPrompt(reviewPack, ctx.locale, 'instruction')
+      : node.params.generateInstruction?.trim()) ?? ''
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
   const incomingText = autoIncomingTextForInstruction(
@@ -3079,9 +3088,14 @@ export async function executePromptOptimizeNode(
     }
   }
 
+  // 导演审核：始终用最新质检 pack，避免旧图仍固化「最严苛」标准导致几乎必 FAIL
+  const systemPrompt = reviewPack
+    ? pickEpisodeAgentPrompt(reviewPack, ctx.locale, 'systemPrompt')
+    : resolveOptimizeSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
+
   const result = await ctx.generateText({
     prompt,
-    system: resolveOptimizeSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    system: systemPrompt,
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined
   })
@@ -3103,7 +3117,8 @@ export async function executePromptOptimizeNode(
       node.params = {
         ...node.params,
         episodeReviewStatus: verdict.result,
-        episodeReviewReason: verdict.reason
+        episodeReviewReason: verdict.reason,
+        episodeReviewPending: false
       }
     }
   }
@@ -3147,7 +3162,8 @@ export function applyEpisodeReviewMarks(
     if (!verdict) continue
     const marks: Partial<GraphNodeParams> = {
       episodeReviewStatus: verdict.result,
-      episodeReviewReason: verdict.reason
+      episodeReviewReason: verdict.reason,
+      episodeReviewPending: false
     }
     patch(node.id, marks)
     const upstream = nodes.find(
