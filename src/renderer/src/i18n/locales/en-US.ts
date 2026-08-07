@@ -2164,6 +2164,15 @@ export default {
       select: {
         hint: 'Double-click the node to open the picker. After running, preview the selected out port here.'
       },
+      episode: {
+        anchorHint:
+          'Pick the anchor cell (1–9) from the upstream 9-grid beat board; the node outputs that cell’s prompt when run.',
+        cellHint:
+          'Pick a dynamic cell by group (1–9) × cell (1–4) from the upstream motion prompt table; the node outputs that cell’s instruction when run.',
+        anchorLabel: 'Anchor',
+        groupLabel: 'Group',
+        cellLabel: 'Cell'
+      },
       worldTable: {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },

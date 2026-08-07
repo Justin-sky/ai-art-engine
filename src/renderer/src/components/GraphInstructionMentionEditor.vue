@@ -9,13 +9,13 @@
           v-for="chip in styleChips"
           :key="chip.id"
           class="ref-chip style-chip"
-          :title="chip.title"
         >
           <button
             type="button"
             class="ref-thumb"
-            :title="chip.title"
             @click="insertToken(`@${chip.index}`)"
+            @pointerenter="showRefPreview('style', chip, $event)"
+            @pointerleave="hideRefPreview"
           >
             <span class="ref-role">{{ chip.roleLabel }}</span>
             <span class="ref-index">{{ chip.index }}</span>
@@ -27,9 +27,12 @@
           v-for="chip in frameChips"
           :key="chip.edgeId"
           class="ref-chip frame-chip"
-          :title="chip.title"
         >
-          <div class="ref-thumb" :title="chip.title">
+          <div
+            class="ref-thumb"
+            @pointerenter="showRefPreview('frame', chip, $event)"
+            @pointerleave="hideRefPreview"
+          >
             <span class="ref-role">{{ chip.roleLabel }}</span>
             <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
             <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="chip.icon" :size="16" /></span>
@@ -62,8 +65,9 @@
           <button
             type="button"
             class="ref-thumb"
-            :title="chip.title"
             @click="onThumbClick(chip)"
+            @pointerenter="showRefPreview('mention', chip, $event)"
+            @pointerleave="hideRefPreview"
           >
             <span class="ref-index">{{ chip.index }}</span>
             <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
@@ -169,6 +173,20 @@
       </div>
     </Teleport>
 
+    <Teleport to="body">
+      <div
+        v-if="refPreview"
+        ref="refPreviewEl"
+        class="ref-preview-tip"
+        role="tooltip"
+        :style="refPreviewStyle"
+      >
+        <div class="ref-preview-title">{{ refPreview.title }}</div>
+        <img v-if="refPreview.thumbUrl" :src="refPreview.thumbUrl" alt="" draggable="false" />
+        <div v-if="refPreview.text" class="ref-preview-text">{{ refPreview.text }}</div>
+      </div>
+    </Teleport>
+
     <div class="editor-area" @mousedown="onEditorMouseDown" @dblclick.stop="onEditorDblClick">
       <RefMentionTextarea
         ref="editorRef"
@@ -239,6 +257,10 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
 import { loadBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import {
+  fetchTextFromAssetRelativePath,
+  resolveAssetText
+} from '../features/media/resolveAssetText'
 import {
   enrichStyleImagesWithLibraryPrompts,
   getDefaultStylePreset
@@ -348,6 +370,118 @@ const DRAG_THRESHOLD_PX = 5
 const dragGhostStyle = computed(() => ({
   transform: `translate3d(${Math.round(dragGhostX.value)}px, ${Math.round(dragGhostY.value)}px, 0)`
 }))
+
+interface RefPreviewContent {
+  title: string
+  thumbUrl: string
+  text: string
+}
+
+/** 悬停预览浮层：图片显示缩略大图（限制尺寸），文本显示正文前段 */
+const refPreview = ref<RefPreviewContent | null>(null)
+const refPreviewEl = ref<HTMLElement | null>(null)
+const refPreviewStyle = ref<Record<string, string>>({
+  position: 'fixed',
+  top: '-9999px',
+  left: '-9999px',
+  zIndex: '5200'
+})
+/** 预览代次：异步文件正文返回时若已切走/关闭则丢弃 */
+let refPreviewEpoch = 0
+
+/** 引入节点正文前段，避免大文本撑爆浮层 */
+function sourcePreviewText(source: GraphNode): string {
+  return resolveSourcePlainText(source).slice(0, 300)
+}
+
+/** 补充文件正文：剧本/文本资产以旁挂 txt/md 为准，其次节点内联，最后落盘 generatedTexts */
+async function resolveSourcePreviewText(source: GraphNode): Promise<string> {
+  const assetId = source.assetId?.trim()
+  if (assetId) {
+    try {
+      const fromAsset = await resolveAssetText(assetId)
+      if (fromAsset?.trim()) return fromAsset.trim()
+    } catch {
+      /* 读文件失败时回退内联 / generatedTexts */
+    }
+  }
+  const inline = sourcePreviewText(source)
+  if (inline) return inline
+  for (const item of source.params.generatedTexts ?? []) {
+    const path = item.relativePath?.trim()
+    if (!path) continue
+    try {
+      const fromFile = await fetchTextFromAssetRelativePath(path)
+      if (fromFile.trim()) return fromFile.trim()
+    } catch {
+      /* 尝试下一条 */
+    }
+  }
+  return ''
+}
+
+function showRefPreview(
+  kind: 'style' | 'frame' | 'mention',
+  chip: StyleChip | FrameChip | RefChip,
+  event: Event
+): void {
+  // 拖动换序期间不弹预览，避免遮挡干扰
+  if (dragPointerId != null) return
+  const anchor = event.currentTarget as HTMLElement | null
+  if (!anchor) return
+  const epoch = ++refPreviewEpoch
+  const source =
+    kind === 'style'
+      ? null
+      : graphEditorHosts.getNode(
+          props.hostId,
+          (chip as RefChip | FrameChip).sourceNodeId
+        )
+  const text = source ? sourcePreviewText(source) : ''
+  refPreview.value = { title: chip.title, thumbUrl: chip.thumbUrl, text }
+  void nextTick(() => positionRefPreview(anchor))
+  // 文件正文异步补充：内联为空（剧本旁挂 txt 等）或资产正文优先时写回
+  if (source) {
+    void resolveSourcePreviewText(source).then((fileText) => {
+      if (!fileText || epoch !== refPreviewEpoch) return
+      const current = refPreview.value
+      if (!current) return
+      refPreview.value = { ...current, text: fileText.slice(0, 300) }
+      requestAnimationFrame(() => {
+        if (anchor.isConnected) positionRefPreview(anchor)
+      })
+    })
+  }
+}
+
+function hideRefPreview(): void {
+  refPreviewEpoch += 1
+  refPreview.value = null
+}
+
+function positionRefPreview(anchor: HTMLElement): void {
+  const tip = refPreviewEl.value
+  if (!tip || !refPreview.value) return
+  const rect = anchor.getBoundingClientRect()
+  const vw = window.visualViewport?.width ?? window.innerWidth
+  const vh = window.visualViewport?.height ?? window.innerHeight
+  const tw = tip.offsetWidth
+  const th = tip.offsetHeight
+  const gap = 8
+  // 优先放在缩略图右侧；右侧放不下则放左侧，上下超界时贴边收拢
+  let left = rect.right + gap
+  if (left + tw > vw - 8) left = Math.max(8, rect.left - tw - gap)
+  left = Math.max(8, left)
+  let top = rect.top
+  if (top + th > vh - 8) top = Math.max(8, vh - th - 8)
+  top = Math.max(8, top)
+  refPreviewStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(top)}px`,
+    left: `${Math.round(left)}px`,
+    zIndex: '5200'
+  }
+}
 
 /** 预设按需动态加载，避免首次打开指令面板时同步解析大段模板 */
 const presets = ref<InstructionPreset[]>([])
@@ -1271,6 +1405,55 @@ onBeforeUnmount(() => {
 .ref-close:hover {
   background: rgba(200, 70, 70, 0.92);
   color: #fff;
+}
+
+.ref-preview-tip {
+  position: fixed;
+  z-index: 5200;
+  box-sizing: border-box;
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 28px var(--shadow);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ref-preview-title {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-preview-tip img {
+  flex: none;
+  width: 220px;
+  height: 150px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  display: block;
+}
+
+.ref-preview-text {
+  flex: none;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 130px;
+  overflow: hidden;
 }
 
 .preset-btn {

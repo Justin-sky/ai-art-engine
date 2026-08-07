@@ -23,7 +23,7 @@
       尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再点击顶部工具栏的「剧集流水线」打开本视图。
     </div>
 
-    <div v-else class="pipeline-body">
+    <div v-else class="pipeline-body" :style="pipelineBodyStyle">
       <!-- 左：节拍拆解表 -->
       <section class="panel beats-panel">
         <div class="panel-head">
@@ -63,6 +63,15 @@
         </ul>
       </section>
 
+      <div
+        class="splitter"
+        :class="{ active: draggingSplit === 'left' }"
+        @pointerdown="onSplitterDown('left', $event)"
+        @pointermove="onSplitterMove($event)"
+        @pointerup="onSplitterUp"
+        @pointercancel="onSplitterUp"
+      />
+
       <!-- 中：9宫格 -->
       <section class="panel board-panel">
         <div class="panel-head">
@@ -71,7 +80,6 @@
             <span v-if="reviewResult('beatboard') === 'PASS'" class="pass-mark">✓ 已通过</span>
           </h3>
           <div class="panel-actions">
-            <button type="button" @click="runAnchorImage">生成9宫格拼图</button>
             <button type="button" @click="regenerateStage('beatboard')">重新生成</button>
             <button
               type="button"
@@ -81,6 +89,14 @@
               @click="runReview('beatboard')"
             >
               导演审核
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              title="生成9宫格拼图"
+              @click="runAnchorImage"
+            >
+              <GridIcon :rows="3" :cols="3" />
             </button>
           </div>
         </div>
@@ -100,7 +116,7 @@
             <span class="anchor-head">
               <b>格{{ anchor.index }}</b>
               <span v-if="anchor.beatId" class="beat-ref" title="关联节拍">节拍{{ anchor.beatId }}</span>
-              <span class="status-badge">{{ anchorReviewLabel() }}</span>
+              <span class="status-badge">{{ anchorReviewLabel(anchor.index) }}</span>
             </span>
             <OverflowTip class="anchor-title" :text="anchor.title">{{ anchor.title }}</OverflowTip>
             <img
@@ -118,6 +134,15 @@
         </p>
       </section>
 
+      <div
+        class="splitter"
+        :class="{ active: draggingSplit === 'right' }"
+        @pointerdown="onSplitterDown('right', $event)"
+        @pointermove="onSplitterMove($event)"
+        @pointerup="onSplitterUp"
+        @pointercancel="onSplitterUp"
+      />
+
       <!-- 右：Inspector 式详情 -->
       <section class="panel detail-panel">
         <div class="panel-head">
@@ -133,7 +158,6 @@
               <span v-if="reviewResult('sequence') === 'PASS'" class="pass-mark">✓ 已通过</span>
             </h4>
             <div class="panel-actions">
-              <button type="button" @click="runFourGridImage">生成4宫格拼图</button>
               <button type="button" @click="regenerateStage('sequence')">重新生成</button>
               <button
                 type="button"
@@ -143,6 +167,14 @@
                 @click="runReview('sequence')"
               >
                 导演审核
+              </button>
+              <button
+                type="button"
+                class="icon-button"
+                title="生成4宫格拼图"
+                @click="runFourGridImage"
+              >
+                <GridIcon :rows="2" :cols="2" />
               </button>
             </div>
           </div>
@@ -169,6 +201,22 @@
           </div>
         </div>
 
+        <div v-if="activeCellVideo" class="detail-block video-block">
+          <h4>视频产物</h4>
+          <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
+          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
+          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
+            重新生成这条视频
+          </button>
+        </div>
+        <div v-else class="detail-block video-block">
+          <h4>视频产物</h4>
+          <span class="video-path">未生成</span>
+          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
+            生成这条视频
+          </button>
+        </div>
+
         <div v-if="activeMotion" class="detail-block motion-block">
           <div class="detail-head">
             <h4>
@@ -190,21 +238,6 @@
           </div>
           <pre class="motion-text">{{ activeMotion.text }}</pre>
         </div>
-
-        <div v-if="activeCellVideo" class="detail-block video-block">
-          <h4>视频产物</h4>
-          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
-          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
-            重新生成这条视频
-          </button>
-        </div>
-        <div v-else class="detail-block video-block">
-          <h4>视频产物</h4>
-          <span class="video-path">未生成</span>
-          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
-            生成这条视频
-          </button>
-        </div>
       </section>
     </div>
   </div>
@@ -214,6 +247,8 @@
 import { computed, ref, watch } from 'vue'
 import type { GraphDocument, GraphNode, GraphNodeRunState } from '@shared/graph'
 import OverflowTip from '../OverflowTip.vue'
+import MediaPreviewPlayer from '../MediaPreviewPlayer.vue'
+import GridIcon from '../icons/GridIcon.vue'
 import {
   extractEpisodeBeatNumber,
   parseEpisodeAgentState,
@@ -252,6 +287,45 @@ const activeBeat = ref(1)
 const urlCache = new Map<string, string>()
 /** 本窗口发起的阶段重生成任务；成功写回后才开放导演审核。 */
 const regenerationTasks = new Map<string, ReviewTarget>()
+
+/** 三栏宽度（px）：节拍拆解 / 9宫格 / 4宫格，可拖动分隔条调整 */
+const leftWidth = ref(240)
+const rightWidth = ref(360)
+const draggingSplit = ref<'left' | 'right' | null>(null)
+let dragSplitStartX = 0
+let dragSplitStartLeft = 0
+let dragSplitStartRight = 0
+
+const pipelineBodyStyle = computed(() => ({
+  gridTemplateColumns: `${leftWidth.value}px 8px minmax(0, 1fr) 8px ${rightWidth.value}px`
+}))
+
+function clampWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function onSplitterDown(kind: 'left' | 'right', event: PointerEvent): void {
+  if (event.button !== 0) return
+  draggingSplit.value = kind
+  dragSplitStartX = event.clientX
+  dragSplitStartLeft = leftWidth.value
+  dragSplitStartRight = rightWidth.value
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+
+function onSplitterMove(event: PointerEvent): void {
+  if (!draggingSplit.value) return
+  const dx = event.clientX - dragSplitStartX
+  if (draggingSplit.value === 'left') {
+    leftWidth.value = clampWidth(dragSplitStartLeft + dx, 160, 460)
+  } else {
+    rightWidth.value = clampWidth(dragSplitStartRight + dx, 280, 640)
+  }
+}
+
+function onSplitterUp(): void {
+  draggingSplit.value = null
+}
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
 const assetTitle = computed(() => asset.value?.name ?? '剧集分镜流水线')
@@ -466,6 +540,22 @@ const activeCellVideo = computed<string>(() => {
   return typeof path === 'string' ? path : ''
 })
 
+/** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
+const activeVideoUrl = ref('')
+
+async function refreshActiveVideoUrl(): Promise<void> {
+  const path = activeCellVideo.value
+  activeVideoUrl.value = path ? await fileUrl(path) : ''
+}
+
+watch(
+  activeCellVideo,
+  () => {
+    void refreshActiveVideoUrl()
+  },
+  { immediate: true }
+)
+
 const stateStepLabel = computed(() => {
   const map: Record<string, string> = {
     breakdown: '节拍拆解表',
@@ -541,12 +631,14 @@ function anchorReviewStatus(): 'PASS' | 'FAIL' | '' {
   return reviewResult('beatboard')
 }
 
-function anchorReviewLabel(): string {
+function anchorReviewLabel(index: number): string {
   const status = anchorReviewStatus()
   if (status === 'PASS') return 'PASS'
   if (status === 'FAIL') return 'FAIL'
   const run = nodeRunStatus('review2')
-  return run === 'done' ? '待审核' : '未生成'
+  if (run === 'done') return '待审核'
+  // 审核未出结果时按本格图片是否已生成显示，避免“有图却标未生成”
+  return anchorImageUrl(index) ? '已生成' : '未生成'
 }
 
 function cellVideoStatusLabel(cell: EpisodeCellRow): string {
@@ -684,15 +776,16 @@ function runReview(target: ReviewTarget): void {
 }
 
 function runAnchorImage(): void {
-  const index = selectedAnchorIndex.value
-  // 一键工作流：先跑「9宫格拼图·锚点画布」生成整张 9宫格，再提取当前格
+  // 一键工作流：先跑「9宫格拼图·锚点画布」生成整张 9宫格，再一次性提取全部 9 格
   const board = nodes.value.find(
     (n) => n.typeId === 'asset.image' && n.title?.includes('9宫格拼图')
   )
-  const extract = nodeByKey(`img${index}`)
+  const extracts = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    .map((index) => nodeByKey(`img${index}`))
+    .filter((n): n is GraphNode => !!n)
   enqueueNodes(
-    [board, extract].filter((n): n is GraphNode => !!n),
-    `生成9宫格拼图·格${index}`
+    [board, ...extracts].filter((n): n is GraphNode => !!n),
+    '生成9宫格拼图'
   )
 }
 
@@ -793,6 +886,7 @@ async function loadAll(): Promise<void> {
         if (url) imageUrls.value.set(`cell:${cell.groupIndex}-${cell.cellIndex}`, url)
       }
     }
+    await refreshActiveVideoUrl()
   } finally {
     refreshing.value = false
   }
@@ -934,6 +1028,14 @@ watch(
   cursor: not-allowed;
   border-color: var(--border);
 }
+.panel-actions .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+}
 .panel-actions .review-button.ready {
   color: #fff;
   font-weight: 600;
@@ -974,13 +1076,25 @@ watch(
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 240px 1fr 360px;
   gap: 10px;
   padding: 10px;
+}
+.splitter {
+  width: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  border-radius: 3px;
+  background: transparent;
+}
+.splitter:hover,
+.splitter.active {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
 }
 .panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   border: 1px solid var(--border);
   border-radius: 8px;

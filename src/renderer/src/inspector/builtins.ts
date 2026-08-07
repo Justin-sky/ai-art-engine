@@ -13,6 +13,7 @@ import EraseInspector from '../components/EraseInspector.vue'
 import MatteInspector from '../components/MatteInspector.vue'
 import CropInspector from '../components/CropInspector.vue'
 import SelectNodeInspector from '../components/SelectNodeInspector.vue'
+import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
@@ -228,6 +229,16 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
         typeId === 'beat.select'
       )
     }
+  },
+  {
+    id: 'studio.graph.episodeAnchorSelect',
+    component: EpisodeSelectInspector,
+    nodeTypeId: 'episode.anchorSelect'
+  },
+  {
+    id: 'studio.graph.episodeCellSelect',
+    component: EpisodeSelectInspector,
+    nodeTypeId: 'episode.cellSelect'
   },
   {
     id: 'studio.graph.gridSplit',

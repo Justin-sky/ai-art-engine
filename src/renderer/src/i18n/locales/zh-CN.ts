@@ -2149,6 +2149,13 @@ export default {
       select: {
         hint: '双击节点打开选取面板；运行后可在此预览输出端口当前选中项'
       },
+      episode: {
+        anchorHint: '从上游 9宫格分镜表选择要提取的宫格（1~9）；运行后输出该格提示词。',
+        cellHint: '从上游动态提示词表选择动态格：组（1~9）× 格（1~4）；运行后输出该格动态指令。',
+        anchorLabel: '宫格',
+        groupLabel: '组',
+        cellLabel: '格'
+      },
       worldTable: {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
