@@ -2,6 +2,12 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
 
+## [3.0.1] — 2026-08-07
+
+### Fixed
+
+- 修复同一毫秒内连续生成导致文本图库出现重复 id、「最新选中」误指旧条目的问题（图片 / 视频 / 声音图库同类冲突一并处理）
+
 ## [3.0.0] — 2026-08-07
 
 3.0 首个正式版本：短剧分镜 Agent 流水线一键成片。
