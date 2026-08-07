@@ -33,6 +33,51 @@ import {
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
 
+/**
+ * 把抬升/软解析出的宿主出口值物化到宿主节点 params 图库：
+ * 即使不重新 cook，`resolveLockedOutputs` / 外层预览也能从节点参数直接复用汇总结果。
+ */
+export function outputsToHostGalleryParams(
+  outputs: Record<string, GraphValue>
+): Partial<GraphNodeParams> {
+  const params: Partial<GraphNodeParams> = {}
+  for (const value of Object.values(outputs)) {
+    if (value.kind === 'videos') {
+      params.generatedVideos = value.items.map((item) => ({
+        id: item.id,
+        dataUrl: item.dataUrl ?? '',
+        createdAt: item.createdAt,
+        relativePath: item.relativePath
+      }))
+      const last = value.items[value.items.length - 1]
+      if (last?.id) params.selectedVideoId = last.id
+      if (!params.previewRelativePath && value.items[0]?.relativePath) {
+        params.previewRelativePath = value.items[0].relativePath
+      }
+    } else if (value.kind === 'texts') {
+      params.generatedTexts = value.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        text: item.text ?? '',
+        createdAt: item.createdAt,
+        ...(item.relativePath ? { relativePath: item.relativePath } : {})
+      }))
+      const last = value.items[value.items.length - 1]
+      if (last?.id) params.selectedTextId = last.id
+    } else if (value.kind === 'images') {
+      params.generatedImages = value.items.map((item) => ({
+        id: item.id,
+        dataUrl: item.dataUrl ?? '',
+        createdAt: item.createdAt,
+        relativePath: item.relativePath
+      }))
+      const last = value.items[value.items.length - 1]
+      if (last?.id) params.selectedImageId = last.id
+    }
+  }
+  return params
+}
+
 export const GRAPH_INPUT_SLOT_TYPE_ID = 'graph.input.slot' as const
 
 export interface HostInputSlotBinding {

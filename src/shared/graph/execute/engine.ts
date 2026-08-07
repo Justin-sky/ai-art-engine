@@ -1,5 +1,6 @@
 import {
   graphValueHasPayload,
+  outputsToHostGalleryParams,
   softResolveHostOutputsFromInnerGraph,
   softResolveSourceOutput,
   type ResolveHostInputSlotsOptions
@@ -473,6 +474,8 @@ async function executeOneNode(
           error: `${def?.label ?? node.title ?? nodeId}: GRAPH_HOST_NO_CACHE_COOK`
         }
       }
+      // 物化到节点 params 图库：外层预览（视频组 + 文本组）与持久化统一走图库
+      options.onNodePatch?.(nodeId, { params: outputsToHostGalleryParams(reused) })
       const hydrated = await hydrateOutputRecordTexts(reused, options.readRunText)
       outputs.set(nodeId, hydrated)
       publish(states, nodeId, { status: 'done', outputs: hydrated }, options.onNodeUpdate)
