@@ -2004,6 +2004,9 @@ export default {
         unitGen: '场生成',
         unitRef: '场参考'
       },
+      ui: {
+        split: 'UI 界面拆分'
+      },
       episode: {
         anchorSelect: '宫格选择',
         cellSelect: '动态格选择'
@@ -2256,6 +2259,8 @@ export default {
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
         beatSplitInstructionPlaceholder:
           "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
+        uiSplitInstructionPlaceholder:
+          "将策划案中的 UI 拆为独立界面详细提示词；可用 {'@'} 引用上方连线资源",
         beatUnitGenInstructionPlaceholder:
           "可选：补充本次细化焦点（规则已在 Inspector 系统提示词）；可用 {'@'} 引用上游",
         refsEmpty: '连接上游后可用 @ 引用；也可只在指令框中输入文本',

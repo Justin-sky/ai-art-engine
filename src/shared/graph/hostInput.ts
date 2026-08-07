@@ -788,6 +788,10 @@ export function softResolveSourceOutput(
     if (sourcePort === 'out-all') {
       return { kind: 'texts', items }
     }
+    // UI 界面拆分：主出口即为界面提示词数组
+    if (node.typeId === 'ui.split' && (sourcePort === 'out' || !sourcePort)) {
+      return { kind: 'texts', items }
+    }
     if (sourcePort === 'out' || !sourcePort) {
       const selectedId = node.params.selectedTextId?.trim()
       const picked =

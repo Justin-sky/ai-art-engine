@@ -410,6 +410,7 @@ import {
   VIDEO_LAST_FRAME_PORT_ID,
   GRAPH_OUT_ALL_PORT_ID,
   defaultGameSystemUserPrompt,
+  defaultUiSplitUserPrompt,
   deductReservedImageSlots,
   formatDurationRange,
   formatPortLimitBadge,
@@ -713,6 +714,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'worldExtract'
     case 'beat.split':
       return 'beatSplit'
+    case 'ui.split':
+      return 'uiSplit'
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
@@ -830,6 +833,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'beatSplit') {
     return t('graph.inspector.generate.beatSplitInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'uiSplit') {
+    return t('graph.inspector.generate.uiSplitInstructionPlaceholder')
   }
   if (instructionKind.value === 'beatUnitGen') {
     return t('graph.inspector.generate.beatUnitGenInstructionPlaceholder')
@@ -1561,9 +1567,13 @@ watch(
 function resolvedNodeInstruction(): string {
   const stored = props.node.params.generateInstruction
   if (stored != null) return stored
-  return props.node.typeId === 'asset.gameSystem'
-    ? defaultGameSystemUserPrompt(String(locale.value))
-    : ''
+  if (props.node.typeId === 'asset.gameSystem') {
+    return defaultGameSystemUserPrompt(String(locale.value))
+  }
+  if (props.node.typeId === 'ui.split') {
+    return defaultUiSplitUserPrompt(String(locale.value))
+  }
+  return ''
 }
 
 watch(

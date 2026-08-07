@@ -77,6 +77,7 @@ import {
   resolveWorldExtractSystemPrompt,
   resolveBeatSplitSystemPrompt,
   resolveBeatUnitGenSystemPrompt,
+  resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
   resolveUpscaleSystemPrompt,
   resolveExpandSystemPrompt,
@@ -102,6 +103,7 @@ import {
   buildWorldExtractPrompt,
   buildBeatSplitPrompt,
   buildBeatUnitGenPrompt,
+  buildUiSplitPrompt,
   buildToPromptUserPrompt,
   buildVideoPrompt,
   buildVoicePrompt
@@ -135,6 +137,7 @@ import {
   parseBeatJson,
   stringifyBeatRows
 } from '../beatParse'
+import { parseUiScreenPrompts } from '../uiSplitParse'
 import { formatBeatRefText } from '../beatParams'
 import {
   multiAngleCameraToNodePatch,
@@ -1127,6 +1130,10 @@ export function resolveGalleryOutputsFromNodeParams(
     }
     if (options?.typeId === 'beat.split') {
       return dualBeatCatalogOutputs(items, selectedId)
+    }
+    if (options?.typeId === 'ui.split') {
+      // 主出口为文本数组：每一项一个界面详细提示词
+      return { out: { kind: 'texts', items } }
     }
     return dualTextGalleryOutputs(items, selectedId)
   }
@@ -2459,6 +2466,7 @@ export type InstructionFinalPreviewKind =
   | 'worldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
+  | 'uiSplit'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -2474,6 +2482,9 @@ export function resolveInstructionFinalPreviewKind(
   }
   if (typeId === 'beat.unitGen' || presetKind === 'beatUnitGen') {
     return 'beatUnitGen'
+  }
+  if (typeId === 'ui.split' || presetKind === 'uiSplit') {
+    return 'uiSplit'
   }
 
   const assetType = node?.assetType
@@ -2512,6 +2523,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveBeatSplitSystemPrompt(raw, locale)
     case 'beatUnitGen':
       return resolveBeatUnitGenSystemPrompt(raw, locale)
+    case 'uiSplit':
+      return resolveUiSplitSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -2540,6 +2553,8 @@ function buildUserPromptForPreviewKind(
       return buildBeatSplitPrompt(instruction, locale)
     case 'beatUnitGen':
       return buildBeatUnitGenPrompt(instruction, locale)
+    case 'uiSplit':
+      return buildUiSplitPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)
@@ -3774,6 +3789,102 @@ export async function executeBeatSplitNode(
   }
 
   return persistBeatSplitGeneration(ctx, text)
+}
+
+/**
+ * UI 界面拆分：读策划案，把每个独立界面拆成详细生图提示词。
+ * 主出口 `out` 为 texts 数组（每项一个界面）；图库 generatedTexts 同步保存便于预览。
+ */
+export async function executeUiSplitNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const mentionSources = resolveMentionSources(ctx)
+  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const incomingText = await resolveBeatSplitSourceText(
+    ctx,
+    instructionRaw,
+    mentionSources
+  )
+
+  if (!ctx.generateText) {
+    const existing = resolveGalleryOutputsFromNodeParams(node.params, {
+      typeId: node.typeId
+    })
+    if (existing) return existing
+    const fallback = instruction.trim() || incomingText.trim()
+    if (!fallback) return { out: { kind: 'texts', items: [] } }
+    const screens = parseUiScreenPrompts(fallback)
+    if (!screens.length) return { out: { kind: 'texts', items: [] } }
+    return persistUiSplitGeneration(ctx, screens)
+  }
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const hasMentionSource =
+    instructionHasMentions(instructionRaw) && !!instruction.trim()
+  if (!incomingText.trim() && !hasMentionSource) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  let prompt = buildUiSplitPrompt(instruction, ctx.locale)
+  if (incomingText.trim()) {
+    prompt = `${prompt.trim()}\n\n${incomingText}`
+  }
+
+  const result = await ctx.generateText({
+    prompt,
+    system: resolveUiSplitSystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined
+  })
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const text = result.text.trim()
+  if (!text) throw new Error('模型未返回 UI 界面拆分结果')
+
+  const screens = parseUiScreenPrompts(text)
+  if (!screens.length) {
+    throw new Error('模型未返回可解析的界面列表（需要 JSON 数组，含 title/prompt）')
+  }
+
+  return persistUiSplitGeneration(ctx, screens)
+}
+
+async function persistUiSplitGeneration(
+  ctx: NodeExecuteContext,
+  screens: Array<{ id: string; title: string; prompt: string }>
+): Promise<Record<string, GraphValue>> {
+  const createdAt = new Date().toISOString()
+  const stamp = formatGeneratedMediaStamp()
+  const items = screens.map((screen, index) => ({
+    id: screen.id || `ui-screen:${stamp}:${index}`,
+    title: screen.title,
+    text: screen.prompt,
+    createdAt
+  }))
+  // 每次拆分结果整体替换图库，避免新旧界面混在一起
+  const generatedTexts = items
+  const selectedTextId = newestTextSelectedId(generatedTexts)
+  const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+  ctx.node.params = {
+    ...ctx.node.params,
+    text: summary,
+    generatedTexts,
+    selectedTextId
+  }
+  ctx.patchNode?.({
+    params: {
+      text: summary,
+      generatedTexts,
+      selectedTextId
+    }
+  })
+  return { out: { kind: 'texts', items: generatedTexts } }
 }
 
 async function collectImageUrlsForPrompt(

@@ -50,6 +50,8 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'worldExtract'
     case 'beat.split':
       return 'beatSplit'
+    case 'ui.split':
+      return 'uiSplit'
     case 'asset.screenplay':
       return 'screenplay'
     case 'asset.image':

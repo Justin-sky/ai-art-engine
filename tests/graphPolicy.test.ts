@@ -120,6 +120,7 @@ describe('graph policy', () => {
         'episode.anchorSelect',
         'episode.cellSelect',
         'beat.split',
+        'ui.split',
         'beat.table',
         'beat.unitGen',
         'beat.unitRef',

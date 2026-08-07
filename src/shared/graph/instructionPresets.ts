@@ -15,6 +15,7 @@ export type InstructionPresetKind =
   | 'worldExtract'
   | 'beatSplit'
   | 'beatUnitGen'
+  | 'uiSplit'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
 export type InstructionPresetTab = 'general' | 'game' | 'film'
@@ -1234,7 +1235,8 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   worldExtract: WORLD_EXTRACT_PRESETS,
   beatSplit: BEAT_SPLIT_PRESETS,
   // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
-  beatUnitGen: []
+  beatUnitGen: [],
+  uiSplit: []
 }
 
 export function listInstructionPresets(kind: InstructionPresetKind): InstructionPreset[] {

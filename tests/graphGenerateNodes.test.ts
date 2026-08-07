@@ -39,6 +39,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'episode.anchorSelect',
   'episode.cellSelect',
   'beat.split',
+  'ui.split',
   'beat.table',
   'text.select',
   'world.gen',

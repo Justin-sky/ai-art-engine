@@ -104,6 +104,10 @@ export function isBeatSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'beat.split'
 }
 
+export function isUiSplitNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'ui.split'
+}
+
 export function isBeatTableNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'beat.table'
 }

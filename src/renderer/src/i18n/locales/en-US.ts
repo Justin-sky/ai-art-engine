@@ -2016,6 +2016,9 @@ export default {
         unitGen: 'Beat gen',
         unitRef: 'Beat ref'
       },
+      ui: {
+        split: 'UI screen split'
+      },
       episode: {
         anchorSelect: 'Anchor select',
         cellSelect: 'Dynamic cell select'
@@ -2279,6 +2282,8 @@ export default {
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
         beatSplitInstructionPlaceholder:
           "Decompose the screenplay into beat units; use {'@'} to cite connected inputs",
+        uiSplitInstructionPlaceholder:
+          "Split UI screens from the design doc into detailed prompts; use {'@'} to cite connected inputs",
         beatUnitGenInstructionPlaceholder:
           "Optional focus for this refine (rules live in Inspector system prompt); use {'@'} to cite upstream",
         refsEmpty: 'Connect upstream inputs to cite with @, or type the instruction alone',

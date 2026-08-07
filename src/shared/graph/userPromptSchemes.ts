@@ -188,3 +188,19 @@ export function defaultBeatUnitGenUserPrompt(locale?: string): string {
 export function buildBeatUnitGenPrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultBeatUnitGenUserPrompt)
 }
+
+// ——— UI 界面拆分 ———
+
+export const DEFAULT_UI_SPLIT_USER_PROMPT_EN =
+  'Split the game system design into independent UI screens and output ONLY the JSON array required by the system prompt. Each item is one screen with id, title, and a detailed image-generation prompt.'
+
+export const DEFAULT_UI_SPLIT_USER_PROMPT_ZH =
+  '请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组。每一项对应一个界面，包含 id、title，以及可用于生图的详细提示词 prompt。'
+
+export function defaultUiSplitUserPrompt(locale?: string): string {
+  return pickByLocale(locale, DEFAULT_UI_SPLIT_USER_PROMPT_EN, DEFAULT_UI_SPLIT_USER_PROMPT_ZH)
+}
+
+export function buildUiSplitPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultUiSplitUserPrompt)
+}

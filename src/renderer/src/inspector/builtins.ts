@@ -125,6 +125,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'beat.split'
   },
   {
+    id: 'studio.graph.uiSplit',
+    component: PromptOptimizeInspector,
+    nodeTypeId: 'ui.split'
+  },
+  {
     id: 'studio.graph.beatUnitGen',
     component: PromptOptimizeInspector,
     nodeTypeId: 'beat.unitGen'

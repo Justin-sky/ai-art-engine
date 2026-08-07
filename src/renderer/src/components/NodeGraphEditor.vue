@@ -3001,7 +3001,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem']
+    typeIds: ['asset.gameSystem', 'ui.split']
   },
   {
     id: 'beat',

@@ -62,6 +62,7 @@ import {
   executeBeatUnitRefNode,
   executeEpisodeAnchorSelectNode,
   executeEpisodeCellSelectNode,
+  executeUiSplitNode,
   executeWorldGenNode,
   executeWorldEntitiesOutputNode,
   executeBeatCatalogOutputNode,
@@ -69,8 +70,8 @@ import {
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
-import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
-import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH } from './userPromptSchemes'
+import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
+import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_BEAT_OUTPUT_TITLE,
@@ -1325,6 +1326,41 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeBeatSplitNode
+  },
+  {
+    typeId: 'ui.split',
+    category: 'note',
+    label: 'UI 界面拆分',
+    icon: '🪟',
+    defaultTitle: 'UI 界面拆分',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.texts,
+        multiple: true,
+        label: 'UI Screens'
+      }
+    ],
+    defaultParams: () => ({
+      text: '',
+      generatedTexts: [],
+      selectedTextId: '',
+      generateInstruction: DEFAULT_UI_SPLIT_USER_PROMPT_ZH,
+      generateSystemPrompt: DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH,
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.uiSplit',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeUiSplitNode
   },
   {
     typeId: 'beat.table',
