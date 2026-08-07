@@ -338,7 +338,7 @@
       <button
         type="button"
         class="port in"
-        :class="portDataTypeClass(port)"
+        :class="[portDataTypeClass(port), { 'port-square': isPluralGraphPortDataType(port.dataType) }]"
         :data-port-id="port.id"
         :title="inPortTitle(port)"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"

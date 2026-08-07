@@ -3238,7 +3238,8 @@ export async function executeEpisodeCellSelectNode(
 export async function executeTimelineOutputNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const incoming = collectIncomingValues(ctx.inputs)
+  // 合并全部输入口（单条 in 与方形 in-videos 视频组），按出现顺序排入时间线
+  const incoming = Object.values(ctx.inputs).flat()
   const videos = flattenVideosValues(incoming)
   const previewRelativePath = videos[0]?.relativePath?.trim() || undefined
   const previewDataUrl = videos[0]?.dataUrl?.trim() || undefined

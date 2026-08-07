@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { executeVideoGenerateNode } from '../src/shared/graph'
+import { executeTimelineOutputNode, executeVideoGenerateNode } from '../src/shared/graph'
 import type { GraphNode, NodeExecuteContext } from '../src/shared/graph'
 
 function videoNode(overrides?: Partial<GraphNode>): GraphNode {
@@ -61,5 +61,39 @@ describe('executeVideoGenerateNode API', () => {
     }
     const out = await executeVideoGenerateNode(ctx)
     expect(out.out).toMatchObject({ kind: 'text' })
+  })
+})
+
+describe('executeTimelineOutputNode', () => {
+  it('merges single video in and square videos input in order', async () => {
+    const patchNode = vi.fn()
+    const ctx: NodeExecuteContext = {
+      node: {
+        id: 'tl',
+        typeId: 'output.timeline',
+        category: 'output',
+        title: 'Timeline',
+        position: { x: 0, y: 0 },
+        params: {}
+      },
+      inputs: {
+        in: [{ kind: 'video', id: 'a', relativePath: 'assets/a.mp4' }],
+        'in-videos': [
+          {
+            kind: 'videos',
+            items: [
+              { id: 'b', relativePath: 'assets/b.mp4', dataUrl: '', createdAt: undefined },
+              { id: 'c', relativePath: 'assets/c.mp4', dataUrl: '', createdAt: undefined }
+            ]
+          }
+        ]
+      },
+      patchNode
+    }
+    const out = await executeTimelineOutputNode(ctx)
+    const items = (out.out as { kind: 'videos'; items: Array<{ id: string }> }).items
+    expect(items.map((item) => item.id)).toEqual(['a', 'b', 'c'])
+    expect(ctx.node.params.generatedVideos as Array<{ id: string }>).toHaveLength(3)
+    expect(patchNode).toHaveBeenCalled()
   })
 })

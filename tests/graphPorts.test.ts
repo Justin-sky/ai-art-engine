@@ -187,6 +187,27 @@ describe('asset reference ports', () => {
 describe('port type matching', () => {
   const playScript = createNodeFromType('play.script', { x: 0, y: 0 })
 
+  it('timeline output exposes a square videos input besides single video in', () => {
+    const timeline = createNodeFromType('output.timeline', { x: 0, y: 0 })
+    const ports = getNodePorts(timeline)
+    expect(ports.map((p) => `${p.id}:${p.dataType}:${p.direction}:${p.multiple ?? false}`)).toEqual([
+      'in:video:in:true',
+      'in-videos:videos:in:true'
+    ])
+    // 单条 video 输出与批量 videos 输出（导演台 out-actions）都可接入方形口
+    const videoSelect = createNodeFromType('video.select', { x: 100, y: 0 })
+    const motion = createNodeFromType('asset.motion', { x: 100, y: 80 })
+    expect(canConnectNodes(videoSelect, timeline, { targetPort: 'in-videos' })).toBe(true)
+    expect(
+      canConnectNodes(motion, timeline, {
+        sourcePort: 'out-actions',
+        targetPort: 'in-videos'
+      })
+    ).toBe(true)
+    // 默认单视频口保持可连
+    expect(canConnectNodes(videoSelect, timeline)).toBe(true)
+  })
+
   it('connects play.script (text) to screenplay processing', () => {
     const screenplay = createNodeFromType('asset.screenplay', { x: 100, y: 0 })
     const motion = createNodeFromType('asset.motion', { x: 100, y: 80 })

@@ -437,7 +437,8 @@ function specializedOutputDef(
   kind: GraphOutputKind,
   inputDataType: GraphPortDataType,
   execute: NodeTypeDefinition['execute'] = executeOutputNode,
-  inspectorId?: string
+  inspectorId?: string,
+  extraPorts?: GraphPortDef[]
 ): NodeTypeDefinition {
   return {
     typeId,
@@ -454,7 +455,8 @@ function specializedOutputDef(
         dataType: inputDataType,
         multiple: true,
         label: 'In'
-      }
+      },
+      ...(extraPorts ?? [])
     ],
     defaultParams: () => ({
       outputKind: kind,
@@ -509,7 +511,17 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ASSET_TIMELINE_OUTPUT_TITLE,
     'video',
     GraphPortType.video,
-    executeTimelineOutputNode
+    executeTimelineOutputNode,
+    undefined,
+    [
+      {
+        id: 'in-videos',
+        direction: 'in',
+        dataType: GraphPortType.videos,
+        multiple: true,
+        label: 'Videos'
+      }
+    ]
   ),
   specializedOutputDef(
     'output.beat',
