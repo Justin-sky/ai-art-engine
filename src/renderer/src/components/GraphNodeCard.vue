@@ -2995,6 +2995,23 @@ function formatTime(sec: number): string {
   transform: translate(calc(-50% + 8px), -50%) scale(1.15);
 }
 
+/* 端口内 `+`（CSS 绘制，保证像素级居中）：强化“可在此连线”的提示 */
+.port::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  color: var(--text, #fff);
+  background:
+    linear-gradient(currentColor, currentColor) 0 50% / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 50% 0 / 2px 100% no-repeat;
+  opacity: 0.8;
+  pointer-events: none;
+  user-select: none;
+}
+
 :deep(.resize-handle) {
   z-index: 50;
 }
