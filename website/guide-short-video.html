@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AIArtEngine 教程：用一键工作流的短视频模板自动生成工作流，再在 Agent 流程窗口完成拼图、分镜与视频生成。"
+    />
+    <title>短视频制作教程 · AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260802-3" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html" aria-current="page">短视频教程</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >视频教程</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html" aria-current="page">短视频教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#prep">准备</a></li>
+          <li><a href="#step-1">第 1 步：选择短视频模板</a></li>
+          <li><a href="#step-2">第 2 步：自动生成的工作流节点</a></li>
+          <li><a href="#step-3">第 3 步：在 Agent 流程窗口完成所有操作</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html">← 返回完整手册</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Short Video</p>
+          <h1>短视频制作教程</h1>
+          <p class="lede">
+            三步跑通一条短视频：先用<strong>一键工作流</strong>的短视频模板自动生成完整节点图，再在
+            <strong>Agent 流程窗口</strong>中完成分镜、拼图、导演审核与视频生成，全程无需手动搭节点。
+          </p>
+        </header>
+
+        <section id="prep">
+          <h2>1. 准备</h2>
+          <ol>
+            <li>
+              <strong>模型</strong>：设置 → 模型 → 添加并启用提供商（火山方舟、可灵、MiniMax、通义千问、魔塔、
+              OpenRouter 等）。建议分别勾选并设置默认的<strong>文本模型</strong>（分镜 / 提示词 / 审核）、
+              <strong>图片模型</strong>（拼图与锚点图）与<strong>视频模型</strong>（动态视频）。
+            </li>
+            <li>
+              <strong>对象存储（可选）</strong>：设置 → 对象存储 → 启用火山 TOS / 阿里云 OSS / 腾讯云 COS 之一。
+              视频需要外链或做参考视频时推荐配置；纯本地预览可暂不配置。
+            </li>
+            <li>从首页新建或打开一个工程，进入工作区。</li>
+          </ol>
+          <div class="tip">确认提供商账户有足够额度；余额不足时生成会直接失败。</div>
+        </section>
+
+        <section id="step-1">
+          <h2>2. 第 1 步：选择短视频模板</h2>
+          <ol>
+            <li>打开工程后，点击顶栏的<strong>一键工作流</strong>。</li>
+            <li>在<strong>预设模板</strong>中选择「短剧分镜（Agent 流水线）」——即短视频模板。</li>
+            <li>点击<strong>预览模板</strong>查看自动生成的节点与连线拓扑；可先选预设再改“工作流描述”。</li>
+            <li>确认后点击<strong>创建工作流</strong>，选择保存目录与名称。</li>
+            <li>资产库中出现新的<strong>宿主资产</strong>，短视频工作流即创建完成。</li>
+          </ol>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-1.png"
+              alt="在一键工作流中选择短视频模板"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              图 1：一键工作流 → 选择短视频模板
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="step-2">
+          <h2>3. 第 2 步：自动生成的工作流节点</h2>
+          <p>双击宿主资产进入内图，可以看到模板自动生成的完整链路：</p>
+          <ol>
+            <li><strong>剧本</strong> → <strong>节拍拆解表</strong>（分镜师）→ <strong>9宫格分镜表</strong>。</li>
+            <li>9宫格拼图：一个节点生成 3×3 拼图画布，再按格拆出 9 张锚点图并高清放大。</li>
+            <li><strong>4宫格动态分镜表</strong> → 每组 2×2 拼图 → 36 个动态格提取与高清放大。</li>
+            <li><strong>动态提示词表</strong>（36 条）→ <strong>动态格选择</strong> → <strong>36 条动态视频</strong>。</li>
+            <li>全程穿插 <strong>review1~review4</strong> 四个导演审核节点（节拍 / 9宫格 / 4宫格 / 动态提示词）。</li>
+          </ol>
+          <p>
+            节点图支持任意微调：改提示词、换模型、重连边。日常使用无需逐个节点手动运行，直接进入第 3 步的
+            Agent 流程窗口操作即可。
+          </p>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-2.png"
+              alt="一键工作流自动生成的短视频节点图"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              图 2：自动生成的完整工作流节点
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="step-3">
+          <h2>4. 第 3 步：在 Agent 流程窗口完成所有操作</h2>
+          <p>点击顶部工具栏的<strong>「剧集流水线」</strong>按钮，打开 Agent 流程窗口，之后的生成与审核都在这里完成：</p>
+          <ol>
+            <li>
+              <strong>节拍拆解</strong>（左栏）：先运行<strong>重新生成</strong>产出节拍表，再点<strong>导演审核</strong>。
+            </li>
+            <li>
+              <strong>9宫格分镜表</strong>（中栏）：运行<strong>重新生成</strong>产出 9 宫格文本；点击右上角
+              <strong>网格图标</strong>一次性生成整张 9宫格拼图并拆出全部 9 格；随后<strong>导演审核</strong>。
+            </li>
+            <li>
+              <strong>4宫格</strong>（右栏）：运行<strong>重新生成</strong>；点击<strong>2×2 网格图标</strong>生成当前组
+              4宫格拼图；<strong>导演审核</strong>。右侧可查看动态提示词与视频产物。
+            </li>
+            <li>
+              <strong>视频</strong>：点<strong>生成这条视频</strong>（或按需逐条生成），生成后窗口内直接播放预览。
+            </li>
+            <li>三栏之间可拖动分隔条调整宽度，方便同时观察文本与图片。</li>
+          </ol>
+          <div class="tip">
+            推荐顺序：节拍拆解 → 9宫格分镜表 → 生成9宫格拼图 → 4宫格动态分镜表 → 生成4宫格拼图 → 动态提示词 →
+            导演审核逐级 PASS → 生成视频。阶段<strong>重新生成</strong>后，其下游图 / 视频会自动失效并显示“未生成”，
+            再次点击生成会从最新文本一致补跑，避免“新文本配旧图”。
+          </div>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-3.png"
+              alt="在 Agent 流程窗口中完成分镜、拼图与视频操作"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              图 3：在 Agent 流程窗口完成所有操作
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="faq">
+          <h2>5. 常见问题</h2>
+          <ul>
+            <li>
+              <strong>需要哪些模型？</strong>文本模型必须（分镜 / 提示词 / 导演审核）；图片模型用于拼图与锚点图；
+              视频模型用于动态视频。均在 设置 → 模型 中勾选并设默认。
+            </li>
+            <li>
+              <strong>视频只显示路径、没有预览？</strong>生成完成后流程窗口会自动加载可播放预览；若仍未出现，点击刷新或重新打开流程窗口。
+            </li>
+            <li>
+              <strong>导演审核按钮是灰色的？</strong>对应阶段“重新生成”成功写回结果后按钮才会点亮，避免审核旧内容。
+            </li>
+            <li>
+              <strong>生成失败？</strong>先检查模型密钥、默认模型与账户余额；失败原因会显示在任务队列或窗口顶部。
+            </li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+  </body>
+</html>
