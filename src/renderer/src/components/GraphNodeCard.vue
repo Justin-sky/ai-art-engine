@@ -2867,14 +2867,14 @@ function formatTime(sec: number): string {
 }
 
 .port-wrap.in .port-type {
-  /* 左边框外、端口上方 */
-  transform: translate(calc(-100% - 10px), calc(-100% - 6px));
+  /* 左边框外、端口上方；端口外移 8px 后标签再往外让开 */
+  transform: translate(calc(-100% - 18px), calc(-100% - 6px));
   text-align: right;
 }
 
 .port-wrap.out .port-type {
-  /* 右边框外、端口上方 */
-  transform: translate(10px, calc(-100% - 6px));
+  /* 右边框外、端口上方；端口外移 8px 后标签再往外让开 */
+  transform: translate(18px, calc(-100% - 6px));
   text-align: left;
 }
 
@@ -2913,6 +2913,15 @@ function formatTime(sec: number): string {
   cursor: crosshair;
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+/* 端口外移到节点边框外，与边框外切；连线锚点仍停在边框上，与端口内沿相接 */
+.port-wrap.in .port {
+  transform: translate(calc(-50% - 8px), -50%);
+}
+
+.port-wrap.out .port {
+  transform: translate(calc(-50% + 8px), -50%);
 }
 
 .graph-node:hover .port-wrap .port,
@@ -2976,6 +2985,14 @@ function formatTime(sec: number): string {
 
 .port:hover {
   transform: translate(-50%, -50%) scale(1.15);
+}
+
+.port-wrap.in .port:hover {
+  transform: translate(calc(-50% - 8px), -50%) scale(1.15);
+}
+
+.port-wrap.out .port:hover {
+  transform: translate(calc(-50% + 8px), -50%) scale(1.15);
 }
 
 :deep(.resize-handle) {
