@@ -409,6 +409,7 @@ import {
   VIDEO_FIRST_FRAME_PORT_ID,
   VIDEO_LAST_FRAME_PORT_ID,
   GRAPH_OUT_ALL_PORT_ID,
+  defaultGameSystemUserPrompt,
   deductReservedImageSlots,
   formatDurationRange,
   formatPortLimitBadge,
@@ -492,7 +493,7 @@ import {
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 
-const { t, te, assetTypeLabel, graphTypeLabel } = useStudioI18n()
+const { t, te, locale, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
 const graphScope = useGraphScope()
 const previewVisibility = inject(graphPreviewVisibilityKey, null)
@@ -713,6 +714,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     case 'beat.split':
       return 'beatSplit'
     case 'asset.screenplay':
+      return isProcessingNode.value ? 'screenplay' : null
+    case 'asset.gameSystem':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.image':
       return isProcessingNode.value ? 'image' : null
@@ -1555,10 +1558,18 @@ watch(
   }
 )
 
+function resolvedNodeInstruction(): string {
+  const stored = props.node.params.generateInstruction
+  if (stored != null) return stored
+  return props.node.typeId === 'asset.gameSystem'
+    ? defaultGameSystemUserPrompt(String(locale.value))
+    : ''
+}
+
 watch(
   () => props.node.params.generateInstruction,
   (value) => {
-    const next = value ?? ''
+    const next = value ?? resolvedNodeInstruction()
     if (next !== instruction.value) instruction.value = next
   },
   { immediate: true }
@@ -1566,7 +1577,7 @@ watch(
 
 watch(instructionOpen, (open) => {
   if (open) {
-    instruction.value = props.node.params.generateInstruction ?? ''
+    instruction.value = resolvedNodeInstruction()
     window.setTimeout(() => {
       void refreshModelOptions()
     }, 0)

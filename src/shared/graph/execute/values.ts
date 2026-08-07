@@ -71,6 +71,7 @@ import {
 } from '../episodeBoardParse'
 import {
   resolveImageSystemPrompt,
+  resolveGameSystemSystemPrompt,
   resolveOptimizeSystemPrompt,
   resolveScreenplaySystemPrompt,
   resolveWorldExtractSystemPrompt,
@@ -97,6 +98,7 @@ import {
   buildImagePrompt,
   buildOptimizePrompt,
   buildScreenplayPrompt,
+  defaultGameSystemUserPrompt,
   buildWorldExtractPrompt,
   buildBeatSplitPrompt,
   buildBeatUnitGenPrompt,
@@ -2786,6 +2788,60 @@ export async function executeScreenplayGenerateNode(
   }
   const text = result.text.trim()
   if (!text) throw new Error('模型未返回剧本文本')
+
+  return await persistScreenplayGeneration(ctx, text)
+}
+
+/** 游戏系统策划案生成：按专业系统策划提示词生成功能点与 UI 布局要求，并写入文本图库 */
+export async function executeGameSystemGenerateNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  if (isAssetRefNode(node)) {
+    return executeTextAssetRefNode(ctx)
+  }
+
+  const mentionSources = resolveMentionSources(ctx)
+  const instructionRaw = node.params.generateInstruction?.trim() ?? ''
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
+
+  if (!ctx.generateText) {
+    const localText = normalizeLocalScreenplayText(node.params.text)
+    const text = instruction.trim() || incomingText || localText
+    if (!text.trim()) return dualTextGalleryOutputs([], '')
+    return await persistScreenplayGeneration(ctx, text)
+  }
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const userPrompt = instruction.trim() || defaultGameSystemUserPrompt(ctx.locale)
+  const prompt = incomingText
+    ? `${userPrompt.trim()}\n\n${incomingText}`
+    : userPrompt
+  const system = resolveGameSystemSystemPrompt(
+    node.params.generateSystemPrompt,
+    ctx.locale
+  )
+
+  const result = await ctx.generateText({
+    prompt,
+    system,
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined
+  })
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const text = result.text.trim()
+  if (!text) throw new Error('模型未返回游戏系统策划案')
 
   return await persistScreenplayGeneration(ctx, text)
 }

@@ -63,7 +63,7 @@
       />
     </section>
 
-    <template v-if="isImage || isScreenplay || isVoice || isVideo">
+    <template v-if="isImage || isScreenplay || isVoice || isVideo || isGameSystem">
       <section class="gen-config">
         <label>
           {{ t('graph.inspector.generate.systemPrompt') }}
@@ -301,6 +301,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_EN,
+  DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+  DEFAULT_GAME_SYSTEM_USER_PROMPT_EN,
+  DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
   DEFAULT_IMAGE_SYSTEM_PROMPT_EN,
   DEFAULT_IMAGE_SYSTEM_PROMPT_ZH,
   DEFAULT_SCREENPLAY_SYSTEM_PROMPT_EN,
@@ -309,11 +313,14 @@ import {
   DEFAULT_VIDEO_SYSTEM_PROMPT_ZH,
   DEFAULT_VOICE_SYSTEM_PROMPT_EN,
   DEFAULT_VOICE_SYSTEM_PROMPT_ZH,
+  defaultGameSystemSystemPrompt,
+  defaultGameSystemUserPrompt,
   defaultImageSystemPrompt,
   defaultScreenplaySystemPrompt,
   defaultVideoSystemPrompt,
   defaultTimbreSystemPrompt,
   isProcessingAssetNode,
+  resolveGameSystemSystemPrompt,
   resolveImageSystemPrompt,
   resolveNodeType,
   resolveScreenplaySystemPrompt,
@@ -460,12 +467,14 @@ const isImage = computed(() => assetType.value === 'image')
 const isVideo = computed(() => assetType.value === 'video')
 const isVoice = computed(() => assetType.value === 'voice')
 const isScreenplay = computed(() => assetType.value === 'screenplay')
+const isGameSystem = computed(() => assetType.value === 'gameSystem')
 const hasGenerateConfig = computed(
   () =>
     isImage.value ||
     isScreenplay.value ||
     isVoice.value ||
-    isVideo.value
+    isVideo.value ||
+    isGameSystem.value
 )
 const locked = computed(() => node.value?.params.locked === true)
 
@@ -1111,7 +1120,11 @@ async function loadModels(
 function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
   loadedHostId.value = hostId.value
-  instruction.value = current.params.generateInstruction ?? ''
+  instruction.value =
+    current.params.generateInstruction ??
+    (current.assetType === 'gameSystem'
+      ? defaultGameSystemUserPrompt(String(locale.value))
+      : '')
   if (current.assetType === 'image' || current.assetType === 'video') {
     localStyleImages.value = normalizeProjectStyleImages(current.params.styleImages)
     useGlobalStyle.value = current.params.styleImagesUseGlobal !== false
@@ -1135,6 +1148,15 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
 
   if (current.assetType === 'screenplay') {
     systemPrompt.value = resolveScreenplaySystemPrompt(
+      current.params.generateSystemPrompt,
+      String(locale.value)
+    )
+    void loadModels('text', preferred)
+    return
+  }
+
+  if (current.assetType === 'gameSystem') {
+    systemPrompt.value = resolveGameSystemSystemPrompt(
       current.params.generateSystemPrompt,
       String(locale.value)
     )
@@ -1183,6 +1205,7 @@ watch(
     const hasGen =
       current.assetType === 'image' ||
       current.assetType === 'screenplay' ||
+      current.assetType === 'gameSystem' ||
       current.assetType === 'voice' ||
       current.assetType === 'video'
     if (hasGen && !sameNode) {
@@ -1259,6 +1282,10 @@ watch(isScreenplay, (yes) => {
   if (yes) void loadModels('text', selectedModelKey.value)
 })
 
+watch(isGameSystem, (yes) => {
+  if (yes) void loadModels('text', selectedModelKey.value)
+})
+
 watch(isVoice, (yes) => {
   if (yes) void loadModels('audio', selectedModelKey.value)
 })
@@ -1286,6 +1313,24 @@ watch(locale, (next) => {
       cur === DEFAULT_SCREENPLAY_SYSTEM_PROMPT_ZH
     ) {
       systemPrompt.value = defaultScreenplaySystemPrompt(String(next))
+    }
+    return
+  }
+  if (isGameSystem.value) {
+    const currentInstruction = instruction.value.trim()
+    if (
+      !currentInstruction ||
+      currentInstruction === DEFAULT_GAME_SYSTEM_USER_PROMPT_EN ||
+      currentInstruction === DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH
+    ) {
+      instruction.value = defaultGameSystemUserPrompt(String(next))
+    }
+    if (
+      !cur ||
+      cur === DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_EN ||
+      cur === DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH
+    ) {
+      systemPrompt.value = defaultGameSystemSystemPrompt(String(next))
     }
     return
   }

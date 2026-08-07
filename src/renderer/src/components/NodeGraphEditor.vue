@@ -2950,6 +2950,8 @@ type ResourceMenuGroupId = Extract<
 > | 'episode'
   | 'imageRefine'
   | 'imageEdit'
+  | 'text'
+  | 'game'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
@@ -2991,7 +2993,15 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'screenplay',
-    typeIds: ['asset.screenplay', 'play.script', 'text.select']
+    typeIds: ['asset.screenplay']
+  },
+  {
+    id: 'text',
+    typeIds: ['play.script', 'text.select']
+  },
+  {
+    id: 'game',
+    typeIds: ['asset.gameSystem']
   },
   {
     id: 'beat',
@@ -3155,7 +3165,10 @@ const resourceAddableMenuGroups = computed(() => {
       label:
         group.id === 'episode'
           ? t(`graph.context.groups.${group.id}`)
-          : group.id === 'imageRefine' || group.id === 'imageEdit'
+          : group.id === 'imageRefine' ||
+              group.id === 'imageEdit' ||
+              group.id === 'text' ||
+              group.id === 'game'
             ? t(`graph.context.groups.${group.id}`)
           : assetTypeLabel(group.id),
       icon:
@@ -3163,6 +3176,10 @@ const resourceAddableMenuGroups = computed(() => {
           ? '📽️'
           : group.id === 'imageRefine' || group.id === 'imageEdit'
             ? '🎛️'
+            : group.id === 'text'
+              ? '📝'
+            : group.id === 'game'
+              ? '🕹️'
           : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }

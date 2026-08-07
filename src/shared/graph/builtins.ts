@@ -37,6 +37,7 @@ import {
   executeImageToPromptNode,
   executePromptOptimizeNode,
   executeScreenplayGenerateNode,
+  executeGameSystemGenerateNode,
   executeSelectImageNode,
   executeSelectVideoNode,
   executeSelectVoiceNode,
@@ -68,6 +69,8 @@ import {
   executeWorldExtractNode,
   executeWorldTableNode
 } from './execute/values'
+import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
+import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH } from './userPromptSchemes'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_BEAT_OUTPUT_TITLE,
@@ -171,6 +174,15 @@ const ASSET_META: Array<{
     type: 'screenplay',
     label: 'Screenplay',
     icon: '📜',
+    outType: GraphPortType.text,
+    addable: true,
+    weight: 0.85,
+    processingIn: GraphPortType.text
+  },
+  {
+    type: 'gameSystem',
+    label: '策划案生成',
+    icon: '🕹️',
     outType: GraphPortType.text,
     addable: true,
     weight: 0.85,
@@ -350,6 +362,17 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
       if (meta.type === 'screenplay') {
         return { text: '…', weight: meta.weight, volume: 1, muted: false, loop: true }
       }
+      if (meta.type === 'gameSystem') {
+        return {
+          text: '…',
+          generateInstruction: DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
+          generateSystemPrompt: DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+          weight: meta.weight,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
+      }
       if (meta.type === 'motion') {
         return { viewer: defaultViewer }
       }
@@ -370,7 +393,9 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
               : executeCamera3dNode(ctx)
         : meta.type === 'screenplay'
           ? executeScreenplayGenerateNode
-          : executeAssetNode
+          : meta.type === 'gameSystem'
+            ? executeGameSystemGenerateNode
+            : executeAssetNode
   }
 }
 

@@ -11,6 +11,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.image',
   'asset.motion',
   'asset.screenplay',
+  'asset.gameSystem',
   'asset.video',
   'asset.voice',
   'note.text',

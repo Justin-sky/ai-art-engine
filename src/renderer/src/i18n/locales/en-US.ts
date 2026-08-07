@@ -1432,7 +1432,9 @@ export default {
       groups: {
         imageRefine: 'Image refine',
         imageEdit: 'Image edit',
-        episode: 'Episode'
+        episode: 'Episode',
+        text: 'Text',
+        game: 'Game'
       }
     },
     episodeAgent: {
@@ -1957,6 +1959,7 @@ export default {
         motion: 'Director deck edit',
         model: 'Model',
         screenplay: 'Screenplay generation',
+        gameSystem: 'Plan generation',
         script: 'Shot',
         subgraph: 'Host asset'
       },

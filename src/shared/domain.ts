@@ -59,6 +59,7 @@ export type AssetType =
   | 'motion'
   | 'model'
   | 'screenplay'
+  | 'gameSystem'
   | 'canvas'
   | 'world'
   | 'beat'
@@ -432,6 +433,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   motion: 'Director Deck',
   model: 'Model',
   screenplay: 'Screenplay',
+  gameSystem: 'Game System Plan',
   canvas: 'Series',
   world: 'World Elements',
   beat: 'Beat Units',
@@ -446,6 +448,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   motion: '导演台',
   model: '模型',
   screenplay: '剧本',
+  gameSystem: '游戏系统策划案',
   canvas: '剧集',
   world: '世界元素',
   beat: '场',
@@ -472,6 +475,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   motion: '🎬',
   model: '🧊',
   screenplay: '📜',
+  gameSystem: '🕹️',
   canvas: '📺',
   world: '🤺',
   beat: '📖',
@@ -1750,6 +1754,8 @@ export function defaultAssetName(type: AssetType, language?: string | null): str
   switch (type) {
     case 'screenplay':
       return en ? 'New Screenplay' : '新建剧本'
+    case 'gameSystem':
+      return en ? 'New Game System Plan' : '新建游戏系统策划案'
     case 'canvas':
       return en ? 'New Series' : '新建剧集'
     case 'world':

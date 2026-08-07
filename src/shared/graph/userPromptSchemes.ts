@@ -37,6 +37,22 @@ export function buildScreenplayPrompt(instruction: string, locale?: string): str
   return buildOrDefault(instruction, locale, defaultScreenplayUserPrompt)
 }
 
+// ——— 游戏系统策划案 ———
+
+export const DEFAULT_GAME_SYSTEM_USER_PROMPT_EN =
+  'Based on the connected requirements, worldbuilding, references, and project context, produce a complete, development-ready game system design document. Cover the system overview and goals, core loop, feature rules and priorities, UI wireframes and control states, data/configuration needs, edge cases, acceptance criteria, open questions, and risks. Make every item concrete, enumerable, and testable.'
+
+export const DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH =
+  '根据连接的需求、世界观、参考资料与项目背景，生成一份完整、可直接交付开发的游戏系统策划案。必须覆盖系统概述与目标、核心循环、功能规则与优先级、UI 布局草图与控件状态、数据/配置需求、边界与异常处理、验收标准、待确认项及风险；所有条目须具体、可穷举、可测试。'
+
+export function defaultGameSystemUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_GAME_SYSTEM_USER_PROMPT_EN,
+    DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH
+  )
+}
+
 // ——— 图片 ———
 
 export const DEFAULT_IMAGE_USER_PROMPT_EN =

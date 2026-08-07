@@ -1422,7 +1422,9 @@ export default {
       groups: {
         imageRefine: '图片精修',
         imageEdit: '图片编辑',
-        episode: '剧集'
+        episode: '剧集',
+        text: '文本',
+        game: '游戏'
       }
     },
     episodeAgent: {
@@ -1945,6 +1947,7 @@ export default {
         motion: '导演台编辑',
         model: '模型',
         screenplay: '剧本生成',
+        gameSystem: '策划案生成',
         script: '分镜',
         subgraph: '宿主资产'
       },
