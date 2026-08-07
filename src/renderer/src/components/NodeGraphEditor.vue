@@ -3426,9 +3426,9 @@ function screenToWorld(clientX: number, clientY: number): { x: number; y: number
   return clientToGraphWorld(clientX, clientY, rect, liveViewport)
 }
 
-/** 画布缩放范围（相对旧版再扩大 2 倍：原 0.35～2 → 0.175～4） */
-const GRAPH_ZOOM_MIN = 0.175
-const GRAPH_ZOOM_MAX = 4
+/** 画布缩放范围（相对旧版再扩大：原 0.35～2 → 0.01～10） */
+const GRAPH_ZOOM_MIN = 0.01
+const GRAPH_ZOOM_MAX = 10
 const GRAPH_ZOOM_SENSITIVITY = 0.999
 /** 适配视图时略收一点上限，避免贴边过近 */
 const GRAPH_FIT_ZOOM_MAX = 3.2
