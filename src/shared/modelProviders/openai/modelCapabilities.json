@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "console": "https://platform.openai.com/api-keys",
+    "docs": [
+      "https://developers.openai.com/api/reference/resources/images/methods/generate",
+      "https://developers.openai.com/api/reference/resources/images/methods/create-edit",
+      "https://developers.openai.com/api/reference/resources/models"
+    ],
+    "note": "OpenAI 官方不提供图片模型目录接口，本地维护静态图片模型表；文本模型通过 GET /models 动态拉取。gpt-image 系列只接受固定 size（1024x1024 / 1536x1024 / 1024x1536 / auto），quality 为 low / medium / high，图生图走 /images/edits 且最多 1 张参考图。OpenAI 未向中国大陆开放，需可访问 api.openai.com 的网络与账号（2026-08）。"
+  },
+  "models": [
+    {
+      "id": "gpt-image-1",
+      "name": "GPT Image 1",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "gpt-image-2",
+      "name": "GPT Image 2",
+      "modality": "image",
+      "profile": "image-gpt"
+    }
+  ],
+  "profiles": {
+    "image-gpt": {
+      "modality": "image",
+      "label": "OpenAI GPT Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4"]
+          },
+          "quality": {
+            "values": ["low", "medium", "high"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 1
+          }
+        }
+      }
+    }
+  }
+}

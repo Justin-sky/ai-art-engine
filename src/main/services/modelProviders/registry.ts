@@ -1,6 +1,9 @@
 import type { ModelProviderKind } from '@shared/modelProvider'
 import type { ModelProviderAdapter } from './types'
 import { openRouterAdapter } from './openrouter/adapter'
+import { openAiAdapter } from './openai/adapter'
+import { deepSeekAdapter } from './deepseek/adapter'
+import { zhipuAdapter } from './zhipu/adapter'
 import { volcengineArkAdapter } from './volcengineArk/adapter'
 import { klingAdapter } from './kling/adapter'
 import { miniMaxAdapter } from './minimax/adapter'
@@ -9,6 +12,9 @@ import { modelScopeAdapter } from './modelscope/adapter'
 
 const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   openrouter: openRouterAdapter,
+  openai: openAiAdapter,
+  deepseek: deepSeekAdapter,
+  zhipu: zhipuAdapter,
   'volcengine-ark': volcengineArkAdapter,
   kling: klingAdapter,
   minimax: miniMaxAdapter,

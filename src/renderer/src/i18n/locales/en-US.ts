@@ -168,9 +168,9 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, OpenAI, DeepSeek, Zhipu, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image).',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image). OpenAI official supports text and image only and requires network access to api.openai.com. DeepSeek supports text only. Zhipu supports GLM text and CogView image.',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -179,6 +179,9 @@ export default {
       hideApiKey: 'Hide API key',
       credentialsHint: {
         openrouter: 'Get API key:',
+        openai: 'Get OpenAI API key:',
+        deepseek: 'Get DeepSeek API key:',
+        zhipu: 'Get Zhipu API key:',
         'volcengine-ark': 'Get Ark API key (text / image / video):',
         kling: 'Get API key:',
         minimax: 'Get API key:',
@@ -252,6 +255,19 @@ export default {
       modelscopeModalityHint: {
         text: 'ModelScope API-Inference chat. Default Base URL is api-inference.modelscope.cn/v1; use an access token (ms-…).',
         image: 'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
+      },
+      openaiModalityHint: {
+        text: 'OpenAI official chat models (GPT family). Default Base URL is api.openai.com/v1 via /chat/completions; the text catalog is fetched from GET /models.',
+        image:
+          'OpenAI image models (gpt-image-1 / gpt-image-2). Text-to-image via /images/generations; reference-image edits via /images/edits (max 1). Fixed sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto.'
+      },
+      deepseekModalityHint: {
+        text: 'DeepSeek chat models (deepseek-chat / deepseek-reasoner), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
+      },
+      zhipuModalityHint: {
+        text: 'Zhipu GLM chat (OpenAI-compatible). Default Base URL is open.bigmodel.cn/api/paas/v4 via /chat/completions.',
+        image:
+          'Zhipu CogView text-to-image (glm-image / cogview-4 / cogview-3-flash) via /images/generations; text-to-image only, no reference images.'
       }
     },
     objectStorage: {

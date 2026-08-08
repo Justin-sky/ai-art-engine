@@ -167,9 +167,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、火山方舟、可灵、MiniMax、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、火山方舟、可灵、MiniMax、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -178,6 +178,9 @@ export default {
       hideApiKey: '隐藏 API Key',
       credentialsHint: {
         openrouter: '获取 API Key：',
+        openai: '获取 OpenAI API Key：',
+        deepseek: '获取 DeepSeek API Key：',
+        zhipu: '获取智谱 API Key：',
         'volcengine-ark': '获取方舟 API Key（文本 / 图片 / 视频）：',
         kling: '获取 API Key：',
         minimax: '获取 API Key：',
@@ -251,6 +254,19 @@ export default {
       modelscopeModalityHint: {
         text: '魔塔（ModelScope）API-Inference 对话，默认 Base URL 为 api-inference.modelscope.cn/v1，填写访问令牌（ms-…）。',
         image: '魔塔文生图，调用 /v1/images/generations；模型 id 形如 org/model_name。'
+      },
+      openaiModalityHint: {
+        text: 'OpenAI 官方对话模型（GPT 系列），默认 Base URL 为 api.openai.com/v1，对应 /chat/completions；文本目录由 GET /models 拉取。',
+        image:
+          'OpenAI 图片模型（gpt-image-1 / gpt-image-2）：文生图走 /images/generations，参考图编辑走 /images/edits（最多 1 张）；固定 size 为 1024x1024 / 1536x1024 / 1024x1536 / auto。'
+      },
+      deepseekModalityHint: {
+        text: 'DeepSeek 对话模型（deepseek-chat / deepseek-reasoner），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
+      },
+      zhipuModalityHint: {
+        text: '智谱 GLM 对话（OpenAI 兼容），默认 Base URL 为 open.bigmodel.cn/api/paas/v4，对应 /chat/completions。',
+        image:
+          '智谱 CogView 文生图（glm-image / cogview-4 / cogview-3-flash），调用 /images/generations；仅支持文生图，不支持参考图。'
       }
     },
     objectStorage: {

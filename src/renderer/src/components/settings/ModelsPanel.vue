@@ -399,6 +399,15 @@ const { t } = useStudioI18n()
 
 /** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
+  if (provider.providerKind === 'zhipu') {
+    return ['text', 'image']
+  }
+  if (provider.providerKind === 'deepseek') {
+    return ['text']
+  }
+  if (provider.providerKind === 'openai') {
+    return ['text', 'image']
+  }
   if (provider.providerKind === 'kling') {
     return ['image', 'video']
   }
@@ -491,6 +500,15 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
 
 function modalityHintText(provider: ModelProviderInstance): string {
   const mod = currentModality(provider)
+  if (provider.providerKind === 'zhipu') {
+    return t(`settings.models.zhipuModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'deepseek') {
+    return t(`settings.models.deepseekModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'openai') {
+    return t(`settings.models.openaiModalityHint.${mod}`)
+  }
   if (provider.providerKind === 'volcengine-ark') {
     return t(`settings.models.arkModalityHint.${mod}`)
   }

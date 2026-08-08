@@ -10,6 +10,8 @@ import {
   isKlingProvider,
   isMiniMaxProvider,
   isModelScopeProvider,
+  isOpenAiProvider,
+  isZhipuProvider,
   isVolcengineArkProvider
 } from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
@@ -17,6 +19,8 @@ import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/mode
 import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
+import { resolveOpenAiModelCapabilities } from '@shared/modelProviders/openai/modelCapabilities'
+import { resolveZhipuModelCapabilities } from '@shared/modelProviders/zhipu/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 const cache = new Map<string, ImageGenerateParamCapabilities>()
@@ -46,6 +50,8 @@ async function resolveSupportedParameters(
   let isMiniMax = false
   let isDashScope = false
   let isModelScope = false
+  let isOpenAi = false
+  let isZhipu = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
@@ -54,6 +60,8 @@ async function resolveSupportedParameters(
     isMiniMax = isMiniMaxProvider(provider)
     isDashScope = isDashScopeProvider(provider)
     isModelScope = isModelScopeProvider(provider)
+    isOpenAi = isOpenAiProvider(provider)
+    isZhipu = isZhipuProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -100,6 +108,18 @@ async function resolveSupportedParameters(
 
   if (isModelScope) {
     const local = resolveModelScopeModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isOpenAi) {
+    const local = resolveOpenAiModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isZhipu) {
+    const local = resolveZhipuModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }

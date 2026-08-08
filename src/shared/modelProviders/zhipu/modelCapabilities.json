@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "console": "https://open.bigmodel.cn/usercenter/apikeys",
+    "docs": [
+      "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction",
+      "https://docs.bigmodel.cn/cn/guide/models/image-generation/cogview-4"
+    ],
+    "note": "智谱开放平台 OpenAI 兼容（base https://open.bigmodel.cn/api/paas/v4）。文本目录优先 GET /models 拉取并过滤 glm-*，失败时回退本静态 GLM 列表；图片无目录接口，静态维护 CogView / glm-image。CogView-4 支持 512-2048 自定义像素，推荐固定 size 见 profiles（2026-08）。"
+  },
+  "models": [
+    {
+      "id": "glm-4-flash",
+      "name": "GLM-4-Flash（免费）",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-z1-flash",
+      "name": "GLM-Z1-Flash（免费）",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4-plus",
+      "name": "GLM-4-Plus",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4-air",
+      "name": "GLM-4-Air",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4.5",
+      "name": "GLM-4.5",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4.6",
+      "name": "GLM-4.6",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4.7",
+      "name": "GLM-4.7",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-5",
+      "name": "GLM-5",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-5-turbo",
+      "name": "GLM-5-Turbo",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-5.1",
+      "name": "GLM-5.1",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "GLM-5.2",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-z1",
+      "name": "GLM-Z1",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4v-plus",
+      "name": "GLM-4V-Plus",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-4v-flash",
+      "name": "GLM-4V-Flash",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-5v-turbo",
+      "name": "GLM-5V-Turbo",
+      "modality": "text",
+      "profile": "text-glm"
+    },
+    {
+      "id": "glm-image",
+      "name": "GLM-Image（CogView 最新）",
+      "modality": "image",
+      "profile": "image-cogview"
+    },
+    {
+      "id": "cogview-4-250304",
+      "name": "CogView-4（250304）",
+      "modality": "image",
+      "profile": "image-cogview"
+    },
+    {
+      "id": "cogview-4",
+      "name": "CogView-4",
+      "modality": "image",
+      "profile": "image-cogview"
+    },
+    {
+      "id": "cogview-3-flash",
+      "name": "CogView-3-Flash（免费）",
+      "modality": "image",
+      "profile": "image-cogview"
+    }
+  ],
+  "profiles": {
+    "text-glm": {
+      "modality": "text",
+      "label": "GLM Chat",
+      "capabilities": {}
+    },
+    "image-cogview": {
+      "modality": "image",
+      "label": "CogView",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"]
+          },
+          "n": {
+            "min": 1,
+            "max": 1
+          },
+          "input_references": {
+            "max": 0
+          }
+        }
+      }
+    }
+  }
+}

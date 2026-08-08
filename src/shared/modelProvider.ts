@@ -1,6 +1,12 @@
 /** Model provider + catalog types shared by main/renderer */
 
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
+/** OpenAI 官方 API（文本 / 图片） */
+export const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+/** DeepSeek 开放平台（OpenAI 兼容，仅文本） */
+export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com'
+/** 智谱开放平台（OpenAI 兼容；GLM 文本 + CogView 图片） */
+export const ZHIPU_DEFAULT_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 /** 豆包语音控制台（声音设计 API Key / speaker_id；与方舟 Ark Key 可能不同） */
@@ -18,6 +24,9 @@ export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/
 
 export type ModelProviderKind =
   | 'openrouter'
+  | 'openai'
+  | 'deepseek'
+  | 'zhipu'
   | 'volcengine-ark'
   | 'kling'
   | 'minimax'
@@ -37,6 +46,24 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     label: 'OpenRouter',
     defaultBaseUrl: OPENROUTER_DEFAULT_BASE_URL,
     credentialsUrl: 'https://openrouter.ai/keys'
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    defaultBaseUrl: OPENAI_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://platform.openai.com/api-keys'
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    defaultBaseUrl: DEEPSEEK_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://platform.deepseek.com/api_keys'
+  },
+  {
+    id: 'zhipu',
+    label: '智谱',
+    defaultBaseUrl: ZHIPU_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://open.bigmodel.cn/usercenter/apikeys'
   },
   {
     id: 'volcengine-ark',
@@ -158,6 +185,30 @@ export function isModelScopeProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'modelscope'
   return provider.providerKind === 'modelscope'
+}
+
+export function isOpenAiProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'openai'
+  return provider.providerKind === 'openai'
+}
+
+export function isDeepSeekProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'deepseek'
+  return provider.providerKind === 'deepseek'
+}
+
+export function isZhipuProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'zhipu'
+  return provider.providerKind === 'zhipu'
 }
 
 /** 魔塔目录启发式：文生图 vs 文本/多模态对话 */

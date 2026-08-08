@@ -6,7 +6,7 @@
   <p><b>专业 AI 创作工具 · 短剧 · 广告 · 成片</b></p>
   <p>
     本地工程与素材 · 分镜与节点图驱动生成<br />
-    对接 OpenRouter · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔<br />
+    对接 OpenRouter · OpenAI · DeepSeek · 智谱 · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔<br />
     对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
   </p>
 
@@ -115,7 +115,7 @@ npm run dist:linux  # Linux
 - **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
 - **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`
 - **成片时间线** — 素材分组与上轨编排；预览播选中 / 时间线整轨联播；导出成片
-- **多模型提供商** — OpenRouter、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）
+- **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + 声明式扩展（窗口 / Inspector / 节点 / 工具栏）
 
@@ -124,6 +124,9 @@ npm run dist:linux  # Linux
 | 类型 | 提供商 | 能力概要 |
 |------|--------|----------|
 | 模型 | OpenRouter | 文本 / 图片 / 视频（聚合目录） |
+| 模型 | OpenAI | 文本 / 图片（需可访问 api.openai.com 的网络与账号） |
+| 模型 | DeepSeek | 文本（deepseek-chat / deepseek-reasoner） |
+| 模型 | 智谱 | GLM 文本 / CogView 文生图 |
 | 模型 | 火山方舟 | 文本 / Seedream 图 / Seedance 视频 / 声音设计 |
 | 模型 | 可灵 | 图片 / 视频（API Key） |
 | 模型 | MiniMax | 文本 / 图片 / 视频 / 音色设计 |
