@@ -40,6 +40,8 @@ export const IpcChannels = {
   /** 将文本写回资产旁挂文件（剧本 txt 等） */
   ASSET_WRITE_TEXT: 'asset:write-text',
   ASSET_SHOW_IN_FOLDER: 'asset:show-in-folder',
+  ASSET_SHOW_FOLDER: 'asset:show-folder',
+  VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
   /** 将选中资产的原始媒体文件复制到系统剪贴板 */
   ASSET_COPY_ORIGINAL_FILES: 'asset:copy-original-files',
   ASSET_FIND_REFERENCES: 'asset:find-references',
@@ -433,6 +435,10 @@ export interface StudioApi {
   }>
   /** 在系统文件管理器中显示资产对应文件（媒体或 meta） */
   showAssetInFolder: (assetId: string) => Promise<void>
+  /** 在系统文件管理器中打开目录对应的真实磁盘文件夹 */
+  showFolderInFolder: (folderId: string) => Promise<void>
+  /** 用主进程 ffprobe 探测视频关键帧时间（秒）；无 ffprobe 或失败时返回 null */
+  detectVideoKeyframes: (relativePath: string) => Promise<number[] | null>
   /** 复制选中资产的原始媒体文件到系统剪贴板（非缩略图） */
   copyAssetOriginalFiles: (
     assetIds: string[]

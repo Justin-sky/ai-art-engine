@@ -529,7 +529,7 @@ export default {
       dropRelease: '松开以导入',
       context: {
         openEditor: '打开编辑器',
-        showInFolder: '在文件管理器中显示',
+        showInFolder: '在文件夹中打开',
         copyOriginal: '复制原始文件',
         reimport: '重新导入',
         rename: '重命名',
@@ -1985,7 +1985,8 @@ export default {
       },
       video: {
         select: '选取视频',
-        lipSync: '对口型'
+        lipSync: '对口型',
+        framePull: '逐帧拉片'
       },
       voice: {
         select: '选取声音'
@@ -2192,6 +2193,24 @@ export default {
         hint: '双击节点打开指令框填写放大指令；此处预览系统提示词与最终放大提示词',
         previewHint: '双击缩略图进入媒体预览',
         previewEmpty: '暂无放大结果，请连接输入图并运行节点'
+      },
+      framePull: {
+        hint: '双击节点打开拉片台：<、> 键步进，空格播放/暂停，可逐帧取图并批注',
+        openHint: '双击打开拉片台',
+        noSource: '请先连接上游视频（视频生成节点执行后，或视频资产）',
+        capture: '取当前帧',
+        clear: '清空取帧',
+        captured: '已取 {n} 帧',
+        keyframeStrip: '关键帧胶片条',
+        frameStripFallback: '未检测到 ffprobe，已回退为逐帧胶片条',
+        framesEmpty: '尚未取帧，在拉片台里点击「取当前帧」开始',
+        prevFrame: '上一帧',
+        nextFrame: '下一帧',
+        frameLabel: '帧 {frame}/{total}',
+        frameShort: '帧',
+        remove: '移除该帧',
+        note: '当前帧批注',
+        notePlaceholder: '记录这一帧的镜头、构图、表演要点…'
       },
       lipSync: {
         hint: '连接角色图或参考视频 + 声音；有视频时优先对视频中角色对口型。在节点下方可填表演指令，并选 Seedance 2.0',

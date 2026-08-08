@@ -64,6 +64,12 @@ export type GraphEditorDialogsApi = {
     generateModel: string
     generateProviderInstanceId: string
   }
+  framePull: {
+    open: boolean
+    hostId: string
+    nodeId: string
+  }
+  closeFramePull: () => void
   portraitTexture: {
     open: boolean
     setup: PortraitTextureState | null

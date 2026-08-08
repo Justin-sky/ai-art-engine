@@ -83,6 +83,14 @@
       @save="api.saveLighting as never"
     />
 
+    <FramePullEditorDialog
+      v-else-if="viewId === 'node.framePull' && api.framePull.open"
+      :open="true"
+      :host-id="api.framePull.hostId"
+      :node-id="api.framePull.nodeId"
+      @close="onClose(api.closeFramePull)"
+    />
+
     <PortraitTextureEditorDialog
       v-else-if="viewId === 'node.portraitTexture' && api.portraitTexture.open"
       :open="true"
@@ -205,6 +213,7 @@ import GraphSelectTextDialog from '../GraphSelectTextDialog.vue'
 import GraphTextsPreviewDialog from '../GraphTextsPreviewDialog.vue'
 import MultiAngleEditorDialog from '../MultiAngleEditorDialog.vue'
 import LightingEditorDialog from '../LightingEditorDialog.vue'
+import FramePullEditorDialog from '../FramePullEditorDialog.vue'
 import PortraitTextureEditorDialog from '../PortraitTextureEditorDialog.vue'
 import EmotionEditorDialog from '../EmotionEditorDialog.vue'
 import ExpandEditorDialog from '../ExpandEditorDialog.vue'
@@ -254,6 +263,8 @@ const toolOpen = computed(() => {
       return current.multiAngle.open
     case 'node.lighting':
       return current.lighting.open
+    case 'node.framePull':
+      return current.framePull.open
     case 'node.portraitTexture':
       return current.portraitTexture.open
     case 'node.emotion':
@@ -338,6 +349,9 @@ function closeCurrent(): void {
       break
     case 'node.lighting':
       current.closeLighting()
+      break
+    case 'node.framePull':
+      current.closeFramePull()
       break
     case 'node.portraitTexture':
       current.closePortraitTexture()

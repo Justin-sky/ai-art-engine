@@ -2985,7 +2985,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'video',
-    typeIds: ['asset.video', 'video.lipSync', 'video.select']
+    typeIds: ['asset.video', 'video.lipSync', 'video.select', 'video.framePull']
   },
   {
     id: 'voice',
@@ -5847,6 +5847,26 @@ function saveLighting(
   closeLighting()
 }
 
+const framePull = reactive({
+  open: false,
+  hostId: '' as string,
+  nodeId: '' as string
+})
+
+function onFramePullOpen(nodeId: string): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  framePull.hostId = graphHostId.value
+  framePull.nodeId = nodeId
+  framePull.open = true
+}
+
+function closeFramePull(): void {
+  framePull.open = false
+  framePull.hostId = ''
+  framePull.nodeId = ''
+}
+
 const portraitTexture = reactive({
   open: false,
   nodeId: '' as string,
@@ -6549,6 +6569,7 @@ const graphDialogsApi = {
   textsPreview,
   multiAngle,
   lighting,
+  framePull,
   portraitTexture,
   emotion,
   expand,
@@ -6574,6 +6595,7 @@ const graphDialogsApi = {
   closeLighting,
   previewLighting,
   saveLighting,
+  closeFramePull,
   closePortraitTexture,
   previewPortraitTexture,
   savePortraitTexture,
@@ -6919,6 +6941,7 @@ function registerNodeToolHost(): void {
       'node.selectText': (nodeId) => onSelectTextOpen(nodeId),
       'node.multiAngle': (nodeId) => onMultiAngleOpen(nodeId),
       'node.lighting': (nodeId) => onLightingOpen(nodeId),
+      'node.framePull': (nodeId) => onFramePullOpen(nodeId),
       'node.portraitTexture': (nodeId) => onPortraitTextureOpen(nodeId),
       'node.emotion': (nodeId) => onEmotionOpen(nodeId),
       'node.expand': (nodeId) => onExpandOpen(nodeId),

@@ -6,6 +6,7 @@ import LightingInspector from '../components/LightingInspector.vue'
 import PortraitTextureInspector from '../components/PortraitTextureInspector.vue'
 import EmotionInspector from '../components/EmotionInspector.vue'
 import UpscaleInspector from '../components/UpscaleInspector.vue'
+import FramePullInspector from '../components/FramePullInspector.vue'
 import LipSyncInspector from '../components/LipSyncInspector.vue'
 import ExpandInspector from '../components/ExpandInspector.vue'
 import RedrawInspector from '../components/RedrawInspector.vue'
@@ -189,6 +190,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.upscale',
     component: UpscaleInspector,
     nodeTypeId: 'image.upscale'
+  },
+  {
+    id: 'studio.graph.framePull',
+    component: FramePullInspector,
+    nodeTypeId: 'video.framePull'
   },
   {
     id: 'studio.graph.lipSync',

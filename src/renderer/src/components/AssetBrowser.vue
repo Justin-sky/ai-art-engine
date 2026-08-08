@@ -307,6 +307,10 @@
         </button>
         <template v-if="menu.kind === 'folder'">
           <div class="ctx-sep" />
+          <button type="button" @click="showContextFolderInFolder">
+            <span class="ctx-icon" aria-hidden="true">📂</span>
+            <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
+          </button>
           <button type="button" @click="onReimportFolder">
             <span class="ctx-icon" aria-hidden="true">🔄</span>
             <span class="ctx-label">{{ t('asset.browser.context.reimport') }}</span>
@@ -1542,6 +1546,20 @@ async function showContextAssetInFolder(): Promise<void> {
   if (!assetId || isDraftAssetId(assetId)) return
   try {
     await window.studio.showAssetInFolder(assetId)
+  } catch (e) {
+    await promptAlert({
+      title: t('asset.browser.context.showInFolder'),
+      message: e instanceof Error ? e.message : String(e)
+    })
+  }
+}
+
+async function showContextFolderInFolder(): Promise<void> {
+  const folderId = menu.value?.kind === 'folder' ? menu.value.targetId : null
+  closeMenu()
+  if (!folderId) return
+  try {
+    await window.studio.showFolderInFolder(folderId)
   } catch (e) {
     await promptAlert({
       title: t('asset.browser.context.showInFolder'),

@@ -532,7 +532,7 @@ export default {
       dropRelease: 'Release to import',
       context: {
         openEditor: 'Open editor',
-        showInFolder: 'Show in File Explorer',
+        showInFolder: 'Open in folder',
         copyOriginal: 'Copy original files',
         reimport: 'Reimport',
         rename: 'Rename',
@@ -1997,7 +1997,8 @@ export default {
       },
       video: {
         select: 'Select video',
-        lipSync: 'Lip sync'
+        lipSync: 'Lip sync',
+        framePull: 'Frame pull'
       },
       voice: {
         select: 'Select voice'
@@ -2209,6 +2210,24 @@ export default {
         hint: 'Double-click the node to open the instruction box. This panel shows the system prompt and the final upscale prompt.',
         previewHint: 'Double-click a thumbnail to enter media preview.',
         previewEmpty: 'No upscaled images yet. Connect an input and run the node.'
+      },
+      framePull: {
+        hint: 'Double-click the node to open the frame puller: < and > step frames, Space toggles playback. Capture frames and add notes there.',
+        openHint: 'Double-click to open the frame puller',
+        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        capture: 'Capture frame',
+        clear: 'Clear frames',
+        captured: '{n} captured',
+        keyframeStrip: 'Keyframe strip',
+        frameStripFallback: 'ffprobe not found — fell back to a per-frame strip',
+        framesEmpty: 'No frames captured yet. Use “Capture frame” in the frame puller.',
+        prevFrame: 'Previous frame',
+        nextFrame: 'Next frame',
+        frameLabel: 'Frame {frame}/{total}',
+        frameShort: 'F',
+        remove: 'Remove frame',
+        note: 'Frame note',
+        notePlaceholder: 'Note shot, composition or performance observations for this frame…'
       },
       lipSync: {
         hint: 'Connect a character image or reference video plus voice. With a video, lip-sync targets the character in that clip. Optionally add performance notes; pick Seedance 2.0.',

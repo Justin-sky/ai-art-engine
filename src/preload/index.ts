@@ -57,6 +57,10 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.OBJECT_STORAGE_UPLOAD_MEDIA, relativePath),
   showAssetInFolder: (assetId: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_SHOW_IN_FOLDER, assetId),
+  showFolderInFolder: (folderId: string) =>
+    ipcRenderer.invoke(IpcChannels.ASSET_SHOW_FOLDER, folderId),
+  detectVideoKeyframes: (relativePath: string) =>
+    ipcRenderer.invoke(IpcChannels.VIDEO_DETECT_KEYFRAMES, relativePath),
   copyAssetOriginalFiles: (assetIds: string[]) =>
     ipcRenderer.invoke(IpcChannels.ASSET_COPY_ORIGINAL_FILES, assetIds),
 

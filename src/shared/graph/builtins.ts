@@ -40,6 +40,7 @@ import {
   executeGameSystemGenerateNode,
   executeSelectImageNode,
   executeSelectVideoNode,
+  executeFramePullNode,
   executeSelectVoiceNode,
   executeSelectTextNode,
   executeSelectBeatNode,
@@ -729,6 +730,38 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeSelectVideoNode
+  },
+  {
+    typeId: 'video.framePull',
+    category: 'note',
+    label: 'Frame pull',
+    icon: '🎞️',
+    defaultTitle: 'Frame pull',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.video, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      frameNotes: {},
+      frameFilmstrip: [],
+      frameFilmstripKey: '',
+      frameFilmstripTotalFrames: 0,
+      frameFilmstripFps: 0,
+      frameFilmstripMode: '',
+      selectedImageId: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.framePull',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeFramePullNode
   },
   {
     typeId: 'voice.select',

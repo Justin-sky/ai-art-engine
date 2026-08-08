@@ -113,6 +113,7 @@ describe('graph policy', () => {
         'video.select',
         'voice.select',
         'video.lipSync',
+        'video.framePull',
         'image.toPrompt',
         'image.upscale',
         'prompt.optimize',

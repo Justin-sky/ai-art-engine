@@ -169,6 +169,12 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.ASSET_SHOW_IN_FOLDER, (assetId: string) =>
     projectService.showAssetInFolder(assetId)
   )
+  handle(IpcChannels.ASSET_SHOW_FOLDER, (folderId: string) =>
+    projectService.showFolderInFolder(folderId)
+  )
+  handle(IpcChannels.VIDEO_DETECT_KEYFRAMES, (relativePath: string) =>
+    projectService.detectVideoKeyframes(relativePath)
+  )
   handle(IpcChannels.ASSET_COPY_ORIGINAL_FILES, (assetIds: string[]) =>
     projectService.copyAssetOriginalFiles(assetIds)
   )

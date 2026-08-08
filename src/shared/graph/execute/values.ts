@@ -4220,6 +4220,22 @@ export function executeSelectVideoNode(ctx: NodeExecuteContext): Record<string, 
   }
 }
 
+/**
+ * 逐帧拉片：交互取帧存于 `params.generatedImages`，执行时把图库透出为图片输出。
+ * 无已取帧时输出空图（不报错，节点本身以交互为主）。
+ */
+export function executeFramePullNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const frames = (ctx.node.params.generatedImages ?? []).filter(
+    (item) =>
+      (typeof item.dataUrl === 'string' && item.dataUrl.length > 0) ||
+      (typeof item.relativePath === 'string' && item.relativePath.length > 0)
+  )
+  if (!frames.length) {
+    return { out: { kind: 'image', dataUrl: '' } }
+  }
+  return commitGeneratedImages(ctx, frames, frames[frames.length - 1]?.relativePath?.trim())
+}
+
 /** 选取声音：从声音数组中选出一条，输出为单个 voice */
 export function executeSelectVoiceNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const items = flattenVoicesValues(collectIncomingValues(ctx.inputs)).filter(

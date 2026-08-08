@@ -225,6 +225,11 @@
         />
       </div>
 
+      <div v-else-if="isFramePullNode(node)" class="media-fallback frame-pull-hint">
+        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
+        <span class="hint">{{ t('graph.inspector.framePull.openHint') }}</span>
+      </div>
+
       <div v-else class="media-fallback">
         <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
         <span class="hint">{{ previewHint }}</span>
@@ -445,6 +450,7 @@ import {
   isSelectVoiceNode,
   isSelectTextNode,
   isSelectBeatNode,
+  isFramePullNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
@@ -1827,6 +1833,10 @@ function onPreviewDblClick(): void {
     }
     if (isLightingEditorNode(props.node)) {
       await diveNodeTool('node.lighting', title)
+      return
+    }
+    if (isFramePullNode(props.node)) {
+      await diveNodeTool('node.framePull', title)
       return
     }
     if (isPortraitTextureEditorNode(props.node)) {

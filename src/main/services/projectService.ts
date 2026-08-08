@@ -12,6 +12,7 @@ import {
 import { basename, dirname, extname, join, relative, resolve, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { randomBytes, randomUUID } from 'crypto'
+import { detectVideoKeyframes } from './ffprobeService'
 import {
   DEFAULT_RESOLUTION,
   ASSET_IMAGE_OUTPUT_KIND_DIR,
@@ -856,6 +857,24 @@ class ProjectService {
     }
     if (!abs) throw new Error('磁盘上找不到该资产文件')
     shell.showItemInFolder(abs)
+  }
+
+  /** 在系统文件管理器中打开目录对应的真实磁盘文件夹 */
+  async showFolderInFolder(folderId: string): Promise<void> {
+    const root = this.getRoot()
+    const dirAbs = resolveFolderDirAbs(root, folderId)
+    if (!existsSync(dirAbs)) throw new Error('磁盘上找不到该目录')
+    const error = await shell.openPath(dirAbs)
+    if (error) throw new Error(error)
+  }
+
+  /** 探测视频关键帧时间（秒）；无 ffprobe / 文件缺失时返回 null */
+  async detectVideoKeyframes(relativePath: string): Promise<number[] | null> {
+    const root = this.getRoot()
+    if (!relativePath?.trim()) return null
+    const abs = assertInsideProject(root, join(root, relativePath.trim()))
+    if (!existsSync(abs)) return null
+    return detectVideoKeyframes(abs)
   }
 
   /**

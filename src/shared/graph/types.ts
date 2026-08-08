@@ -219,6 +219,7 @@ export type GraphNodeTypeId =
   | 'image.emotion'
   | 'image.upscale'
   | 'video.lipSync'
+  | 'video.framePull'
   | 'image.expand'
   | 'image.redraw'
   | 'image.erase'
@@ -447,6 +448,22 @@ export interface GraphNodeParams {
   emotionPrompt?: string
   /** 高清放大参数 */
   imageUpscale?: Partial<ImageUpscaleState>
+  /**
+   * 逐帧拉片节点：按帧号记录的批注（key 为取帧条目的 id）。
+   */
+  frameNotes?: Record<string, string>
+  /**
+   * 逐帧拉片节点：胶片条缩略图（首次生成后持久化，同源视频复用，避免重复抽帧）。
+   */
+  frameFilmstrip?: Array<{ frame: number; dataUrl: string }>
+  /** 胶片条来源标识（当前视频 URL 的短哈希），来源变化时自动重新生成 */
+  frameFilmstripKey?: string
+  /** 生成胶片条时快照的总帧数；复用缓存时直接使用，不再现场计算 */
+  frameFilmstripTotalFrames?: number
+  /** 生成胶片条时快照的帧率；复用缓存时锁定该帧率换算当前帧号 */
+  frameFilmstripFps?: number
+  /** 胶片条模式：keyframe=仅关键帧；frame=逐帧回退；空=未生成 */
+  frameFilmstripMode?: 'keyframe' | 'frame' | ''
   /** 扩图参数 */
   imageExpand?: Partial<ImageExpandState>
   /** 重绘（inpaint）参数 */
