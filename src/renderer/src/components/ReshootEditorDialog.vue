@@ -468,6 +468,81 @@ onBeforeUnmount(() => {
   border-color: var(--accent);
 }
 
+.ctrl-btn .triangle {
+  width: 0;
+  height: 0;
+  border-left: 9px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  margin-left: 2px;
+}
+
+.ctrl-btn .pause {
+  width: 8px;
+  height: 12px;
+  border-left: 3px solid currentColor;
+  border-right: 3px solid currentColor;
+}
+
+.ctrl-btn .icon-restart {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  position: relative;
+}
+
+.ctrl-btn .icon-restart::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  border-left: 4px solid currentColor;
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+}
+
+.ctrl-btn .icon-step-back {
+  width: 0;
+  height: 0;
+  border-right: 8px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  position: relative;
+  margin-right: 4px;
+}
+
+.ctrl-btn .icon-step-back::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: -6px;
+  width: 2px;
+  height: 12px;
+  background: currentColor;
+}
+
+.ctrl-btn .icon-step-fwd {
+  width: 0;
+  height: 0;
+  border-left: 8px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  position: relative;
+  margin-left: 4px;
+}
+
+.ctrl-btn .icon-step-fwd::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  top: -6px;
+  width: 2px;
+  height: 12px;
+  background: currentColor;
+}
+
 .time-row {
   color: var(--text-muted);
   font-size: 12px;
