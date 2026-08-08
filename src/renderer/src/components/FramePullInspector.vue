@@ -1,7 +1,6 @@
 <template>
   <div class="node-inspector" v-if="node">
     <div class="head">
-      <span class="type">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
     <p class="hint">{{ t('graph.inspector.framePull.hint') }}</p>
