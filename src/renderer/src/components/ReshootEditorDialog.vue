@@ -145,15 +145,39 @@
           <p class="segment-hint">{{ t('graph.inspector.reshoot.segmentHint') }}</p>
         </div>
 
-        <label class="note">
-          {{ t('graph.inspector.reshoot.instruction') }}
-          <textarea
-            :value="instruction"
-            rows="6"
+        <div class="instruction-block">
+          <div class="instruction-header">
+            <span class="instruction-label">{{ t('graph.inspector.reshoot.instruction') }}</span>
+            <InstructionModelSelect
+              v-model="selectedModelKey"
+              :options="modelOptions"
+              :title="t('graph.inspector.reshoot.model')"
+              :empty-label="t('graph.inspector.generate.noModels')"
+              @change="persistGenerateModel"
+            />
+          </div>
+          <GraphInstructionMentionEditor
+            v-model="instruction"
+            :host-id="props.hostId"
+            :node-id="props.nodeId"
+            :preset-kind="'reshoot'"
+            :rows="6"
             :placeholder="t('graph.inspector.reshoot.instructionPlaceholder')"
-            @input="onInstructionInput"
+            @change="persistInstruction"
+            @expand="instructionDialogOpen = true"
           />
-        </label>
+          <GraphInstructionEditorDialog
+            v-if="instructionDialogMounted"
+            :open="instructionDialogOpen"
+            v-model="instruction"
+            :host-id="props.hostId"
+            :node-id="props.nodeId"
+            :preset-kind="'reshoot'"
+            :placeholder="t('graph.inspector.reshoot.instructionPlaceholder')"
+            @change="persistInstruction"
+            @close="instructionDialogOpen = false"
+          />
+        </div>
 
         <div class="actions">
           <button
@@ -173,12 +197,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
+import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
+import InstructionModelSelect from './InstructionModelSelect.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { resolveNodeUpstreamVideoUrl } from '../features/graph/model/resolveNodeUpstreamVideoUrl'
 import { useFrameStepper } from '../composables/useFrameStepper'
 import { useProjectStore } from '../stores/project'
+import {
+  loadGenerateModelOptions,
+  parseModelKey,
+  preferredModelKey,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
 
 const props = defineProps<{
   open: boolean
@@ -219,7 +252,11 @@ const {
 
 const startSec = computed(() => Number(node.value?.params.reshootStartSec ?? 0))
 const endSec = computed(() => Number(node.value?.params.reshootEndSec ?? 0))
-const instruction = computed(() => String(node.value?.params.generateInstruction ?? ''))
+const instruction = ref('')
+const modelOptions = ref<GenerateModelOption[]>([])
+const selectedModelKey = ref('')
+const instructionDialogMounted = ref(false)
+const instructionDialogOpen = ref(false)
 const segmentActive = computed(() => {
   return (
     Number.isFinite(startSec.value) &&
@@ -236,6 +273,45 @@ const progressValue = computed(() => {
 })
 
 let videoToken = 0
+
+watch(
+  () => node.value?.params.generateInstruction,
+  (value) => {
+    const next = String(value ?? '')
+    if (next !== instruction.value) instruction.value = next
+  },
+  { immediate: true }
+)
+
+watch(instructionDialogOpen, (open) => {
+  if (open) instructionDialogMounted.value = true
+})
+
+async function refreshModelOptions(): Promise<void> {
+  const preferred = preferredModelKey(
+    node.value?.params.generateProviderInstanceId ?? '',
+    node.value?.params.generateModel ?? ''
+  )
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    'video',
+    preferred,
+    selectedModelKey.value
+  )
+  modelOptions.value = options
+  selectedModelKey.value = selectedKey
+}
+
+function persistInstruction(): void {
+  updateParams({ generateInstruction: instruction.value })
+}
+
+function persistGenerateModel(): void {
+  const parsed = parseModelKey(selectedModelKey.value)
+  updateParams({
+    generateModel: parsed?.model ?? '',
+    generateProviderInstanceId: parsed?.providerInstanceId ?? ''
+  })
+}
 
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -363,10 +439,6 @@ function onEndInput(e: Event): void {
   updateParams({ reshootEndSec: Number((e.target as HTMLInputElement).value) })
 }
 
-function onInstructionInput(e: Event): void {
-  updateParams({ generateInstruction: (e.target as HTMLTextAreaElement).value })
-}
-
 function onKeydown(e: KeyboardEvent): void {
   if (!props.open) return
   const tag = (e.target as HTMLElement | null)?.tagName
@@ -390,6 +462,7 @@ function onClose(): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  void refreshModelOptions()
 })
 
 onBeforeUnmount(() => {
@@ -652,24 +725,24 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 
-.note {
+.instruction-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.note textarea {
-  resize: vertical;
-  min-height: 96px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--text);
-  font: inherit;
-  line-height: 1.5;
+.instruction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.instruction-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .actions {

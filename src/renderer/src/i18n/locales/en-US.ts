@@ -2241,6 +2241,7 @@ export default {
         segmentHint: 'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
         instruction: 'Change',
         instructionPlaceholder: 'e.g. change the black umbrella in the character’s hand to a transparent one',
+        model: 'Video model',
         range: 'Reshoot range {range}',
         done: 'Done'
       },

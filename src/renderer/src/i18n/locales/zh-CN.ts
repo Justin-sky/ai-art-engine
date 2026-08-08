@@ -2224,6 +2224,7 @@ export default {
         segmentHint: '在视频上定位后点「标记起点 / 标记终点」，或直接输入秒数；区间默认按 mm:ss 写入指令',
         instruction: '修改要求',
         instructionPlaceholder: '例如：将人物手中的黑色雨伞改成透明雨伞',
+        model: '视频模型',
         range: '重拍区间 {range}',
         done: '完成'
       },
