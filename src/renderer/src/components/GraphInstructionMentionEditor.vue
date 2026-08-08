@@ -1103,7 +1103,14 @@ function openPromptPreview(): void {
     sources: buildMentionSources(),
     systemPrompt: node?.params.generateSystemPrompt,
     locale: String(locale.value),
-    styleImages
+    styleImages,
+    reshootSegment:
+      kind === 'reshoot'
+        ? {
+            startSec: Number(node?.params.reshootStartSec ?? 0),
+            endSec: Number(node?.params.reshootEndSec ?? 0)
+          }
+        : undefined
   })
   previewImages.value =
     kind === 'image' || kind === 'video' ? buildPreviewImages(styleImages) : []

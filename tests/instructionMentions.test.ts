@@ -204,3 +204,32 @@ describe('buildInstructionFinalPromptPreview style images', () => {
     expect(preview).not.toContain('参考@1「水彩」画风')
   })
 })
+
+describe('buildInstructionFinalPromptPreview reshoot', () => {
+  it('writes the reshoot timestamp range into the user prompt', () => {
+    const preview = buildInstructionFinalPromptPreview({
+      kind: 'reshoot',
+      instructionRaw: '将人物手中的黑色雨伞改成透明雨伞',
+      sources: [],
+      includeSystem: true,
+      locale: 'zh-CN',
+      reshootSegment: { startSec: 5, endSec: 9 }
+    })
+    expect(preview).toContain('00:05—00:09')
+    expect(preview).toContain('黑色雨伞改成透明雨伞')
+    expect(preview).toContain('其余片段保持与原视频完全一致')
+    expect(preview).toContain('系统提示词')
+  })
+
+  it('omits the timestamp when the segment is missing', () => {
+    const preview = buildInstructionFinalPromptPreview({
+      kind: 'reshoot',
+      instructionRaw: '把雨伞改成透明',
+      sources: [],
+      includeSystem: false,
+      locale: 'zh-CN'
+    })
+    expect(preview).not.toContain('00:')
+    expect(preview).toContain('把雨伞改成透明')
+  })
+})

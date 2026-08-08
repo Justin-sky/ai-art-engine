@@ -2585,6 +2585,7 @@ export type InstructionFinalPreviewKind =
   | 'screenplay'
   | 'image'
   | 'video'
+  | 'reshoot'
   | 'voice'
   | 'optimize'
   | 'toPrompt'
@@ -2611,6 +2612,7 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'ui.split' || presetKind === 'uiSplit') {
     return 'uiSplit'
   }
+  if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
@@ -2636,6 +2638,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveImageSystemPrompt(raw, locale)
     case 'video':
       return resolveVideoSystemPrompt(raw, locale)
+    case 'reshoot':
+      return resolveReshootSystemPrompt(raw, locale)
     case 'voice':
       return resolveVoiceSystemPrompt(raw, locale)
     case 'optimize':
@@ -2659,13 +2663,16 @@ function resolveSystemPromptForPreviewKind(
 function buildUserPromptForPreviewKind(
   kind: InstructionFinalPreviewKind,
   instruction: string,
-  locale?: string
+  locale?: string,
+  reshootSegment?: { startSec?: number; endSec?: number }
 ): string {
   switch (kind) {
     case 'image':
       return buildImagePrompt(instruction, locale)
     case 'video':
       return buildVideoPrompt(instruction, locale)
+    case 'reshoot':
+      return buildReshootPrompt(instruction, reshootSegment ?? {}, locale)
     case 'voice':
       return buildVoicePrompt(instruction, locale)
     case 'optimize':
@@ -2703,9 +2710,16 @@ export function buildInstructionFinalPromptPreview(input: {
   locale?: string
   /** 图片/视频生成：风格参考（与执行侧一致，追加「参考xx风格@n，参考强度…」） */
   styleImages?: ProjectStyleImage[] | null
+  /** 片段重拍：重拍区间（与执行侧 buildReshootPrompt 一致，写入 mm:ss 时间戳） */
+  reshootSegment?: { startSec?: number; endSec?: number }
 }): string {
   const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
-  let userPrompt = buildUserPromptForPreviewKind(input.kind, instruction, input.locale)
+  let userPrompt = buildUserPromptForPreviewKind(
+    input.kind,
+    instruction,
+    input.locale,
+    input.reshootSegment
+  )
   // 所有指令框：先 build*Prompt(指令)，再无 @ 时追加上游 / 输入接口正文
   if (!instructionHasMentions(input.instructionRaw)) {
     const auto = input.sources
