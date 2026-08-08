@@ -59,7 +59,9 @@ export async function resolveNodeUpstreamVideoUrl(input: {
 
   for (const edge of edges) {
     if (edge.target !== nodeId) continue
-    if ((edge.targetPort ?? 'in') !== 'in') continue
+    // 兼容单口节点（in）与多口视频节点（in-video，如片段重拍 / 对口型）
+    const targetPort = edge.targetPort ?? 'in'
+    if (targetPort !== 'in' && targetPort !== 'in-video') continue
     const source = nodes.find((n) => n.id === edge.source)
     if (!source) continue
 
