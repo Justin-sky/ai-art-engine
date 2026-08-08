@@ -109,7 +109,7 @@
           class="tree-row"
           :class="{ active: isTreeRowActive(row), 'drop-over': isTreeRowDropOver(row) }"
           :style="{ paddingLeft: `${4 + row.depth * 14}px` }"
-          @click="selectFolder(folderIdFromTreeRow(row.id))"
+          @click="onTreeRowClick(row.id, $event)"
           @dblclick.stop="onTreeRowDblClick(row.id)"
           @contextmenu.prevent.stop="onTreeRowContextMenu($event, row.id)"
           @dragover.prevent="onFolderDragOver($event, folderIdFromTreeRow(row.id))"
@@ -307,7 +307,11 @@
         </button>
         <template v-if="menu.kind === 'folder'">
           <div class="ctx-sep" />
-          <button type="button" @click="showContextFolderInFolder">
+          <button
+            type="button"
+            :disabled="contextMenuFolderCount > 1"
+            @click="showContextFolderInFolder"
+          >
             <span class="ctx-icon" aria-hidden="true">📂</span>
             <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
           </button>
@@ -319,7 +323,11 @@
             <span class="ctx-icon" aria-hidden="true">⬆️</span>
             <span class="ctx-label">{{ t('asset.browser.exportPackage') }}</span>
           </button>
-          <button type="button" @click="startRenameFolder">
+          <button
+            type="button"
+            :disabled="contextMenuFolderCount > 1"
+            @click="startRenameFolder"
+          >
             <span class="ctx-icon" aria-hidden="true">✏️</span>
             <span class="ctx-label">{{ t('asset.folder.rename') }}</span>
           </button>
@@ -1109,6 +1117,10 @@ function folderIdFromTreeRow(rowId: string): string | null {
 }
 
 function isTreeRowActive(row: { id: string }): boolean {
+  // 目录多选时高亮全部选中行；未多选时高亮当前导航目录
+  if (selectedFolderIds.value.size > 0) {
+    return row.id !== ASSETS_ROOT_TREE_KEY && selectedFolderIds.value.has(row.id)
+  }
   if (row.id === ASSETS_ROOT_TREE_KEY) return currentFolderId.value === null
   return currentFolderId.value === row.id
 }
@@ -1166,6 +1178,47 @@ function selectFolder(id: string | null, opts?: { expandTarget?: boolean }): voi
   }
   expandedMap.value = next
   closeMenu()
+}
+
+/**
+ * 左侧目录树点击：普通点击 = 进入目录（单选）；Ctrl/Cmd 切换多选；Shift 按可见树行范围选择。
+ * 与右侧列表 onFolderClick 共用 selectedFolderIds / anchorFolderId。
+ */
+function onTreeRowClick(rowId: string, e: MouseEvent): void {
+  if (rowId === ASSETS_ROOT_TREE_KEY) {
+    selectFolder(null)
+    return
+  }
+  const list = visibleTreeRows.value.map((row) => row.id)
+  if (e.shiftKey && anchorFolderId.value && list.includes(anchorFolderId.value)) {
+    const start = list.indexOf(anchorFolderId.value)
+    const end = list.indexOf(rowId)
+    if (start >= 0 && end >= 0) {
+      const [lo, hi] = start < end ? [start, end] : [end, start]
+      const range = list
+        .slice(lo, hi + 1)
+        .filter((id) => id !== ASSETS_ROOT_TREE_KEY)
+      clearAssetSelectionLocal()
+      if (e.ctrlKey || e.metaKey) {
+        const next = new Set(selectedFolderIds.value)
+        for (const id of range) next.add(id)
+        selectedFolderIds.value = next
+      } else {
+        selectedFolderIds.value = new Set(range)
+      }
+      return
+    }
+  }
+  if (e.ctrlKey || e.metaKey) {
+    clearAssetSelectionLocal()
+    const next = new Set(selectedFolderIds.value)
+    if (next.has(rowId)) next.delete(rowId)
+    else next.add(rowId)
+    selectedFolderIds.value = next
+    anchorFolderId.value = next.size ? rowId : null
+    return
+  }
+  selectFolder(rowId)
 }
 
 function onTreeRowDblClick(rowId: string): void {
@@ -1557,7 +1610,7 @@ async function showContextAssetInFolder(): Promise<void> {
 async function showContextFolderInFolder(): Promise<void> {
   const folderId = menu.value?.kind === 'folder' ? menu.value.targetId : null
   closeMenu()
-  if (!folderId) return
+  if (!folderId || contextMenuFolderCount.value > 1) return
   try {
     await window.studio.showFolderInFolder(folderId)
   } catch (e) {
@@ -1630,7 +1683,7 @@ function startCreateFolder(): void {
 
 function startRenameFolder(): void {
   const id = menu.value?.targetId
-  if (!id) return
+  if (!id || contextMenuFolderCount.value > 1) return
   const folder = project.folders.find((f) => f.id === id)
   void openNameDialog({
     mode: 'rename-folder',
@@ -1741,16 +1794,34 @@ async function createToolbarItemHere(item: ResolvedWorkspaceToolbarItem): Promis
 }
 
 async function deleteFolderTarget(mode: 'hoist' | 'deleteContents' = 'hoist'): Promise<void> {
-  const id = menu.value?.targetId
-  if (!id) return
-  const folder = normalizedFolders.value.find((item) => item.id === id)
-  const parentId = folder?.parentId ?? null
-  const subtreeIds = new Set(collectFolderSubtreeIds(project.folders, id))
-  const assetsInFolder = project.assets.filter(
+  const ids = outermostFolderIds(contextMenuFolderIds())
+  closeMenu()
+  if (!ids.length) return
+  await deleteFolderIds(ids, mode)
+}
+
+/** 批量删除目录（多选 / 键盘 Delete 共用）：只删除最外层选中目录，避免父子重复 */
+async function deleteFolderIds(
+  ids: string[],
+  mode: 'hoist' | 'deleteContents' = 'hoist'
+): Promise<void> {
+  const targets = outermostFolderIds(ids)
+  if (!targets.length) return
+  const folders = targets
+    .map((id) => normalizedFolders.value.find((item) => item.id === id))
+    .filter((folder): folder is NonNullable<typeof folder> => Boolean(folder))
+  const subtreeIds = new Set<string>()
+  for (const folder of folders) {
+    for (const id of collectFolderSubtreeIds(project.folders, folder.id)) subtreeIds.add(id)
+  }
+  const assetsInFolders = project.assets.filter(
     (asset) => asset.folderId != null && subtreeIds.has(asset.folderId)
   )
-  const assetIds = assetsInFolder.map((asset) => asset.id)
-  closeMenu()
+  const assetIds = assetsInFolders.map((asset) => asset.id)
+  const label =
+    folders.length === 1
+      ? folders[0]!.name
+      : t('asset.browser.selectedCount', { count: folders.length })
 
   if (mode === 'deleteContents') {
     const closed = workspace.closeEditorsForAssetIds(assetIds)
@@ -1762,7 +1833,7 @@ async function deleteFolderTarget(mode: 'hoist' | 'deleteContents' = 'hoist'): P
       return
     }
     let message = t('asset.folder.deleteWithContentsConfirm', {
-      name: folder?.name ?? id,
+      name: label,
       count: assetIds.length
     })
     try {
@@ -1795,13 +1866,14 @@ async function deleteFolderTarget(mode: 'hoist' | 'deleteContents' = 'hoist'): P
   }
 
   try {
-    await window.studio.deleteFolder({ folderId: id, mode })
+    for (const folder of folders) {
+      await window.studio.deleteFolder({ folderId: folder.id, mode })
+    }
     if (currentFolderId.value && subtreeIds.has(currentFolderId.value)) {
-      currentFolderId.value = parentId
+      currentFolderId.value = folders[0]?.parentId ?? null
     }
+    clearFolderSelectionLocal()
     await project.refreshLibrary()
-    if (mode === 'deleteContents') {
-    }
   } catch (e) {
     void openNameDialog({
       mode: 'alert',
@@ -1854,11 +1926,13 @@ async function onExportSelectedPackage(): Promise<void> {
 }
 
 async function onExportFolderPackage(): Promise<void> {
-  const id = menu.value?.targetId
+  const ids = contextMenuFolderIds()
   closeMenu()
-  if (!id) return
+  if (!ids.length) return
   const rows = buildProjectPackageTree(project.folders, project.assets)
-  const initial = [id, ...collectDescendantGuids(rows, id)]
+  const initial = [
+    ...new Set(ids.flatMap((id) => [id, ...collectDescendantGuids(rows, id)]))
+  ]
   openExportPackageDialog(initial)
 }
 
@@ -1877,6 +1951,32 @@ function contextMenuAssetIds(): string[] {
   return [targetId]
 }
 
+/** 右键目录菜单要操作的目录集：目标目录已在多选中时返回全部选中目录 */
+function contextMenuFolderIds(): string[] {
+  if (menu.value?.kind !== 'folder' || !menu.value.targetId) return []
+  const targetId = menu.value.targetId
+  if (selectedFolderIds.value.has(targetId) && selectedFolderIds.value.size > 1) {
+    return [...selectedFolderIds.value]
+  }
+  return [targetId]
+}
+
+const contextMenuFolderCount = computed(() => contextMenuFolderIds().length)
+
+/** 选中目录集中最外层目录（不被其他选中目录包含），避免父子目录重复删除 */
+function outermostFolderIds(ids: string[]): string[] {
+  const byId = new Map(normalizedFolders.value.map((folder) => [folder.id, folder]))
+  const idSet = new Set(ids)
+  return ids.filter((id) => {
+    let cursor = byId.get(id)?.parentId ?? null
+    while (cursor) {
+      if (idSet.has(cursor)) return false
+      cursor = byId.get(cursor)?.parentId ?? null
+    }
+    return true
+  })
+}
+
 async function onReimportSelectedAssets(): Promise<void> {
   const ids = contextMenuAssetIds()
   closeMenu()
@@ -1884,14 +1984,17 @@ async function onReimportSelectedAssets(): Promise<void> {
 }
 
 async function onReimportFolder(): Promise<void> {
-  const folderId = menu.value?.kind === 'folder' ? menu.value.targetId : null
+  const ids = contextMenuFolderIds()
   closeMenu()
-  if (!folderId) return
-  const subtree = new Set(collectFolderSubtreeIds(project.folders, folderId))
-  const ids = project.assets
+  if (!ids.length) return
+  const subtree = new Set<string>()
+  for (const folderId of ids) {
+    for (const id of collectFolderSubtreeIds(project.folders, folderId)) subtree.add(id)
+  }
+  const assetIds = project.assets
     .filter((asset) => asset.folderId != null && subtree.has(asset.folderId))
     .map((asset) => asset.id)
-  await reimportAssetIds(ids, { folderId })
+  await reimportAssetIds(assetIds, { folderId: ids[0] })
 }
 
 async function reimportAssetIds(
@@ -2360,11 +2463,28 @@ function onKeyDown(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement)?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
   if (e.key === 'Delete' || e.key === 'Backspace') {
+    // 目录多选优先（资产选择为空时）：删除选中的目录
+    if (selectedFolderIds.value.size > 0 && selectedAssetIds.value.size === 0) {
+      e.preventDefault()
+      void deleteFolderIds([...selectedFolderIds.value], 'hoist')
+      return
+    }
     if (selectedAssetIds.value.size === 0) return
     e.preventDefault()
     void deleteAssets([...selectedAssetIds.value])
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+    // 树上已多选或当前无资产选中时：全选可见树目录
+    if (selectedFolderIds.value.size > 0 || selectedAssetIds.value.size === 0) {
+      const ids = visibleTreeRows.value
+        .map((row) => row.id)
+        .filter((id) => id !== ASSETS_ROOT_TREE_KEY)
+      if (!ids.length) return
+      e.preventDefault()
+      clearAssetSelectionLocal()
+      selectedFolderIds.value = new Set(ids)
+      return
+    }
     const ids = visibleAssets.value.map((asset) => asset.id)
     if (!ids.length) return
     e.preventDefault()
