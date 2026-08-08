@@ -55,6 +55,7 @@ export function resolveDashScopeModelCapabilities(
         : 'text')
   if (mod === 'image') return profileCapabilities('image-t2i')
   if (mod === 'video') {
+    if (/wan[-_.]?3/i.test(id)) return profileCapabilities('video-wan3')
     if (/^kling\//i.test(id) || /kling-v3.*video/i.test(id)) {
       return profileCapabilities(
         /omni/i.test(id) ? 'video-kling-omni-bailian' : 'video-kling-bailian'

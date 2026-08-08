@@ -5,7 +5,7 @@
       "https://www.volcengine.com/docs/82379/1541523",
       "https://www.volcengine.com/docs/82379/1520757"
     ],
-    "note": "控制台模型页需登录，无法程序化抓取。本文件按火山方舟官方图片/视频生成 API 与 Seedream/Seedance 模型族公开能力整理；按 model id/name 正则匹配。endpoint(ep-*) 在指令面板按当前模态回退到 seedream-4.5 / seedance-2。"
+    "note": "控制台模型页需登录，无法程序化抓取。本文件按火山方舟官方图片/视频生成 API 与 Seedream/Seedance 模型族公开能力整理；按 model id/name 正则匹配。endpoint(ep-*) 在指令面板按当前模态回退到 seedream-4.5 / seedance-2。2026-08 补充 Seedance 2.5：原生 30 秒视频直出、最多 50 个全模态素材参考（规格按公开资料整理，最终以官方文档为准）。"
   },
   "profiles": {
     "seedream-5": {
@@ -69,6 +69,28 @@
           },
           "n": { "min": 1, "max": 4 },
           "input_references": { "max": 1 }
+        }
+      }
+    },
+    "seedance-2.5": {
+      "modality": "video",
+      "label": "Seedance 2.5",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        "supported_durations": [
+          4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+          27, 28, 29, 30
+        ],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": true,
+        "max_input_images": 50,
+        "max_input_videos": 50,
+        "max_input_audios": 50,
+        "supported_parameters": {
+          "input_references": { "max": 50 },
+          "max_videos": { "max": 50 },
+          "max_audios": { "max": 50 }
         }
       }
     },
@@ -174,6 +196,7 @@
     { "match": "seedream[-_]?4([-_.]?0)?(?![-_.]?5)", "profile": "seedream-4" },
     { "match": "seedream[-_]?3|seedream[-_]?3\\.0", "profile": "seedream-3" },
     { "match": "seedream", "profile": "seedream-4.5" },
+    { "match": "seedance[-_]?2[-_.]?5", "profile": "seedance-2.5" },
     { "match": "seedance[-_]?2([-_.]?0)?[-_]?fast|seedance[-_]?2\\.0[-_]?fast", "profile": "seedance-2-fast" },
     { "match": "seedance[-_]?2([-_.]?0)?(?![-_]?fast)|seedance[-_]?2\\.0(?![-_]?fast)", "profile": "seedance-2" },
     { "match": "seedance[-_]?1[-_.]?5|seedance[-_]?1\\.5", "profile": "seedance-1.5" },

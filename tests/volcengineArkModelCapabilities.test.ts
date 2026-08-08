@@ -17,6 +17,10 @@ describe('volcengineArk modelCapabilities', () => {
   })
 
   it('matches Seedance 2 / 1.5 / 1 profiles', () => {
+    expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-2-5-260628')).toBe(
+      'seedance-2.5'
+    )
+    expect(resolveVolcengineArkCapabilityProfileId('seedance-2.5')).toBe('seedance-2.5')
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-2-0-fast-260128')).toBe(
       'seedance-2-fast'
     )
@@ -30,6 +34,20 @@ describe('volcengineArk modelCapabilities', () => {
     expect(resolveVolcengineArkCapabilityProfileId('doubao-seedance-1-0-pro-250528')).toBe(
       'seedance-1'
     )
+  })
+
+  it('exposes video params and port limits for Seedance 2.5', () => {
+    const caps = resolveVolcengineArkModelCapabilities('doubao-seedance-2-5-260628')
+    expect(caps).toBeTruthy()
+    const params = parseVideoGenerateParamCapabilities(caps)
+    expect(params.supportsGenerateAudio).toBe(true)
+    expect(params.durations).toEqual(expect.arrayContaining([4, 30]))
+    expect(params.resolutions).toContain('1080p')
+    expect(params.supportedFrameImages).toEqual(['first_frame', 'last_frame'])
+    const ports = resolveVideoGeneratePortLimits('doubao-seedance-2-5-260628', caps)
+    expect(ports.maxImages).toBe(50)
+    expect(ports.maxVideos).toBe(50)
+    expect(ports.maxVoices).toBe(50)
   })
 
   it('exposes image params consumable by UI parser', () => {

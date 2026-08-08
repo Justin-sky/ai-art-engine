@@ -12,6 +12,7 @@ describe('dashscope modelCapabilities', () => {
       true
     )
     expect(listDashScopeCatalogModels('image').some((m) => m.id === 'wan2.2-t2i-plus')).toBe(true)
+    expect(listDashScopeCatalogModels('video').some((m) => m.id === 'wan3.0-video')).toBe(true)
     expect(listDashScopeCatalogModels('video').some((m) => m.id === 'wan2.7-t2v')).toBe(true)
     expect(listDashScopeCatalogModels('video').some((m) => m.id === 'happyhorse-1.1-t2v')).toBe(
       true
@@ -49,6 +50,15 @@ describe('dashscope modelCapabilities', () => {
     expect(edit?.max_input_videos).toBe(1)
     expect(edit?.max_input_images).toBe(5)
     expect(edit?.supported_durations).toEqual([])
+    const wan3 = resolveDashScopeModelCapabilities('wan3.0-video', 'video')
+    expect(wan3?.supported_durations).toContain(30)
+    expect(wan3?.supported_frame_images).toEqual(['first_frame', 'last_frame'])
+    expect(wan3?.generate_audio).toBe(true)
+    expect(wan3?.max_input_images).toBe(10)
+    expect(wan3?.max_input_videos).toBe(5)
+    expect(wan3?.max_input_audios).toBe(5)
+    const wan3Variant = resolveDashScopeModelCapabilities('wan3.0-r2v', 'video')
+    expect(wan3Variant?.supported_durations).toContain(30)
   })
 
   it('classifies model modality by id', () => {
