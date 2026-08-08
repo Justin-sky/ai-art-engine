@@ -60,6 +60,8 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'video'
     case 'video.lipSync':
       return 'lipSync'
+    case 'video.reshoot':
+      return 'reshoot'
     case 'asset.voice':
       return 'voice'
     default:

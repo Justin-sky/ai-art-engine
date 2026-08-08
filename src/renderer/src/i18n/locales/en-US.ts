@@ -1998,7 +1998,8 @@ export default {
       video: {
         select: 'Select video',
         lipSync: 'Lip sync',
-        framePull: 'Frame pull'
+        framePull: 'Frame pull',
+        reshoot: 'Segment reshoot'
       },
       voice: {
         select: 'Select voice'
@@ -2229,6 +2230,20 @@ export default {
         note: 'Frame note',
         notePlaceholder: 'Note shot, composition or performance observations for this frame…'
       },
+      reshoot: {
+        hint: 'Connect a source video and double-click the node to open the reshoot desk: locate the start and end times to edit, write the change, and run — only that segment is regenerated while the rest stays intact. Works best with Seedance 2.5 (timestamp-level video editing)',
+        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        segment: 'Reshoot segment',
+        markStart: 'Mark start {time}',
+        markEnd: 'Mark end {time}',
+        start: 'Start (s)',
+        end: 'End (s)',
+        segmentHint: 'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
+        instruction: 'Change',
+        instructionPlaceholder: 'e.g. change the black umbrella in the character’s hand to a transparent one',
+        range: 'Reshoot range {range}',
+        done: 'Done'
+      },
       lipSync: {
         hint: 'Connect a character image or reference video plus voice. With a video, lip-sync targets the character in that clip. Optionally add performance notes; pick Seedance 2.0.',
         modelHint:
@@ -2391,6 +2406,12 @@ export default {
             talkingHead: 'Talking to camera',
             performance: 'Performance lip sync',
             fromVideo: 'Lip sync from video'
+          },
+          reshoot: {
+            prop: 'Swap prop',
+            scene: 'Swap scene',
+            camera: 'Change camera',
+            performance: 'Change performance'
           },
           optimize: {
             character: 'Character design prompt',

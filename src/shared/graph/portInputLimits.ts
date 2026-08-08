@@ -89,10 +89,11 @@ export function resolveVideoGeneratePortLimits(
     return asPositiveInt(raw)
   }
 
+  // 分类型上限优先（max_images / max_input_images）；未声明时回退总参考数 input_references
   let maxImages =
-    fromSp('input_references') ??
     fromSp('max_images') ??
-    asPositiveInt(caps?.max_input_images)
+    asPositiveInt(caps?.max_input_images) ??
+    fromSp('input_references')
   let maxVideos = fromSp('max_videos') ?? asPositiveInt(caps?.max_input_videos)
   let maxVoices = fromSp('max_audios') ?? asPositiveInt(caps?.max_input_audios)
 

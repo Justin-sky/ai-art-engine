@@ -91,6 +91,14 @@
       @close="onClose(api.closeFramePull)"
     />
 
+    <ReshootEditorDialog
+      v-else-if="viewId === 'node.reshoot' && api.reshoot.open"
+      :open="true"
+      :host-id="api.reshoot.hostId"
+      :node-id="api.reshoot.nodeId"
+      @close="onClose(api.closeReshoot)"
+    />
+
     <PortraitTextureEditorDialog
       v-else-if="viewId === 'node.portraitTexture' && api.portraitTexture.open"
       :open="true"
@@ -214,6 +222,7 @@ import GraphTextsPreviewDialog from '../GraphTextsPreviewDialog.vue'
 import MultiAngleEditorDialog from '../MultiAngleEditorDialog.vue'
 import LightingEditorDialog from '../LightingEditorDialog.vue'
 import FramePullEditorDialog from '../FramePullEditorDialog.vue'
+import ReshootEditorDialog from '../ReshootEditorDialog.vue'
 import PortraitTextureEditorDialog from '../PortraitTextureEditorDialog.vue'
 import EmotionEditorDialog from '../EmotionEditorDialog.vue'
 import ExpandEditorDialog from '../ExpandEditorDialog.vue'
@@ -265,6 +274,8 @@ const toolOpen = computed(() => {
       return current.lighting.open
     case 'node.framePull':
       return current.framePull.open
+    case 'node.reshoot':
+      return current.reshoot.open
     case 'node.portraitTexture':
       return current.portraitTexture.open
     case 'node.emotion':
@@ -352,6 +363,9 @@ function closeCurrent(): void {
       break
     case 'node.framePull':
       current.closeFramePull()
+      break
+    case 'node.reshoot':
+      current.closeReshoot()
       break
     case 'node.portraitTexture':
       current.closePortraitTexture()

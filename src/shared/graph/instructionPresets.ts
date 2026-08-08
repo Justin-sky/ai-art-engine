@@ -9,6 +9,7 @@ export type InstructionPresetKind =
   | 'image'
   | 'video'
   | 'lipSync'
+  | 'reshoot'
   | 'voice'
   | 'toPrompt'
   | 'optimize'
@@ -867,6 +868,30 @@ const LIP_SYNC_PRESETS: InstructionPreset[] = [
   }
 ]
 
+/** 片段重拍：修改要求模板（时间戳区间由节点参数写入 prompt） */
+const RESHOOT_PRESETS: InstructionPreset[] = [
+  {
+    id: 'reshoot.prop',
+    titleKey: 'graph.inspector.generate.presets.reshoot.prop',
+    body: '将目标区间内的道具改为：___。保持人物、场景、镜头与声音不变。'
+  },
+  {
+    id: 'reshoot.scene',
+    titleKey: 'graph.inspector.generate.presets.reshoot.scene',
+    body: '将目标区间的背景/场景改为：___。保持人物动作、镜头与声音不变。'
+  },
+  {
+    id: 'reshoot.camera',
+    titleKey: 'graph.inspector.generate.presets.reshoot.camera',
+    body: '保持人物与环境不变，将目标区间的镜头改为：___。'
+  },
+  {
+    id: 'reshoot.performance',
+    titleKey: 'graph.inspector.generate.presets.reshoot.performance',
+    body: '将目标区间的人物表演/动作改为：___，其余保持一致。'
+  }
+]
+
 const VOICE_PRESETS: InstructionPreset[] = []
 
 /** ——— 图片反推提示词：通用 ——— */
@@ -1229,6 +1254,7 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   image: IMAGE_PRESETS,
   video: VIDEO_PRESETS,
   lipSync: LIP_SYNC_PRESETS,
+  reshoot: RESHOOT_PRESETS,
   voice: VOICE_PRESETS,
   toPrompt: TO_PROMPT_PRESETS,
   optimize: OPTIMIZE_PRESETS,

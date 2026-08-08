@@ -96,6 +96,12 @@ import {
   resolveLipSyncSystemPrompt
 } from '../lipSync'
 import {
+  buildReshootPrompt,
+  formatReshootTimestamp,
+  isValidReshootSegment,
+  resolveReshootSystemPrompt
+} from '../reshoot'
+import {
   buildImagePrompt,
   buildOptimizePrompt,
   buildScreenplayPrompt,
@@ -1929,6 +1935,125 @@ export async function executeLipSyncNode(
 
   const notes =
     [instruction, incomingText].filter(Boolean).join('\n') || undefined
+
+  return persistVideoGeneration(
+    ctx,
+    {
+      id: result.assetId,
+      relativePath: result.relativePath,
+      createdAt: new Date().toISOString()
+    },
+    notes
+  )
+}
+
+/**
+ * 片段重拍：源视频（必填）+ 参考素材 + 时间戳区间 → Seedance 2.5 时间戳级视频编辑。
+ * Prompt 内组装「编辑 @视频1：00:05—00:09 修改要求」，仅重绘指定区间，其余片段保持原视频。
+ */
+export async function executeVideoReshootNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+
+  const videoValues = [...(ctx.inputs['in-video'] ?? []), ...(ctx.inputs.in ?? [])]
+  const videoRefs = await collectVideoGenerateInputReferences(ctx, videoValues)
+  const videoUrl = videoRefs.find((ref) => ref.kind === 'video_url')?.url?.trim()
+  if (!videoUrl) {
+    throw new Error('GRAPH_RESHOOT_NO_VIDEO')
+  }
+
+  const segment = {
+    startSec: Number(node.params.reshootStartSec),
+    endSec: Number(node.params.reshootEndSec)
+  }
+
+  const instructionRaw = node.params.generateInstruction?.trim() || ''
+  const mentionSources = resolveMentionSources(ctx)
+  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
+  const incomingText = autoIncomingTextForInstruction(
+    instructionRaw,
+    selected,
+    mentionSources
+  )
+  let userPrompt = buildReshootPrompt(instruction, segment, ctx.locale)
+  if (incomingText) {
+    userPrompt = userPrompt.trim()
+      ? `${userPrompt.trim()}\n\n${incomingText}`
+      : incomingText
+  }
+  const system = resolveReshootSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
+  const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
+
+  if (!ctx.generateVideo) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  let capsParams: VideoGenerateParamCapabilities | null = null
+  if (ctx.resolveVideoGenerateCapabilities) {
+    try {
+      const bundle = await ctx.resolveVideoGenerateCapabilities({
+        model: node.params.generateModel || undefined,
+        providerInstanceId: node.params.generateProviderInstanceId || undefined
+      })
+      if (bundle) capsParams = bundle.params
+    } catch {
+      /* 沿用节点已保存参数 */
+    }
+  }
+
+  const genParams = resolveVideoGenerateParamsForApi(node.params, capsParams)
+  const paramsPatch = videoGenerateParamsToNodePatch({
+    ...genParams,
+    generateAudio: genParams.generateAudio ?? true
+  })
+  node.params = { ...node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+
+  // 源视频必须是第一个视频参考（@视频1）；随后拼图片 / 音频参考
+  const referenceValues = [
+    ...(ctx.inputs['in-image'] ?? []),
+    ...(ctx.inputs['in-voice'] ?? [])
+  ]
+  const otherRefs = await collectVideoGenerateInputReferences(ctx, referenceValues)
+  const inputReferences: Array<{
+    kind: 'image_url' | 'video_url' | 'audio_url'
+    url: string
+  }> = [
+    { kind: 'video_url', url: videoUrl },
+    ...otherRefs
+  ]
+
+  const result = await ctx.generateVideo({
+    prompt,
+    model: node.params.generateModel || undefined,
+    providerInstanceId: node.params.generateProviderInstanceId || undefined,
+    duration: genParams.duration,
+    resolution: genParams.resolution,
+    aspectRatio: genParams.aspectRatio,
+    generateAudio: paramsPatch.generateAudio !== false,
+    inputReferences,
+    outputDir: node.params.mediaOutputDir?.trim() || undefined,
+    name: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: node.title || node.typeId || 'reshoot',
+      stamp: formatGeneratedMediaStamp()
+    })
+  })
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const segmentText = isValidReshootSegment(segment)
+    ? `${formatReshootTimestamp(segment.startSec)}—${formatReshootTimestamp(segment.endSec)}`
+    : ''
+  const notes =
+    [segmentText, instruction, incomingText].filter(Boolean).join('\n') || undefined
 
   return persistVideoGeneration(
     ctx,

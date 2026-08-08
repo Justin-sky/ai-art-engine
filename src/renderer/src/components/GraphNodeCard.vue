@@ -148,7 +148,7 @@
       </div>
 
       <img
-        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node)) && selectImagePreview"
+        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
         :src="selectImagePreview"
         alt=""
         loading="lazy"
@@ -451,6 +451,7 @@ import {
   isSelectTextNode,
   isSelectBeatNode,
   isFramePullNode,
+  isReshootNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
   isLightingEditorNode,
@@ -652,8 +653,12 @@ function inPortTypeLabel(port: GraphPortDef): string {
   if (port.id === VIDEO_LAST_FRAME_PORT_ID) return t('graph.port.lastFrame')
   if (
     port.id === 'in-image' &&
-    (props.node.typeId === 'asset.video' || props.node.typeId === 'video.lipSync') &&
-    (isProcessingAssetNode(props.node) || props.node.typeId === 'video.lipSync')
+    (props.node.typeId === 'asset.video' ||
+      props.node.typeId === 'video.lipSync' ||
+      props.node.typeId === 'video.reshoot') &&
+    (isProcessingAssetNode(props.node) ||
+      props.node.typeId === 'video.lipSync' ||
+      props.node.typeId === 'video.reshoot')
   ) {
     return t('graph.port.referenceImage')
   }
@@ -732,6 +737,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return isProcessingNode.value ? 'video' : null
     case 'video.lipSync':
       return 'lipSync'
+    case 'video.reshoot':
+      return 'reshoot'
     case 'image.upscale':
       return 'image'
     case 'asset.voice':
@@ -743,7 +750,12 @@ const instructionKind = computed((): InstructionPresetKind | null => {
 
 const portLimitKind = computed((): 'image' | 'video' | null => {
   if (instructionKind.value === 'image') return 'image'
-  if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
+  if (
+    instructionKind.value === 'video' ||
+    instructionKind.value === 'lipSync' ||
+    instructionKind.value === 'reshoot'
+  )
+    return 'video'
   return null
 })
 
@@ -1103,7 +1115,8 @@ watch(
         isEraseEditorNode(props.node) ||
         isMatteEditorNode(props.node) ||
         isCropEditorNode(props.node) ||
-        isGridSplitEditorNode(props.node),
+        isGridSplitEditorNode(props.node) ||
+        isFramePullNode(props.node),
       previewInViewport.value,
       previewPriority.value
     ] as const,
@@ -1837,6 +1850,10 @@ function onPreviewDblClick(): void {
     }
     if (isFramePullNode(props.node)) {
       await diveNodeTool('node.framePull', title)
+      return
+    }
+    if (isReshootNode(props.node)) {
+      await diveNodeTool('node.reshoot', title)
       return
     }
     if (isPortraitTextureEditorNode(props.node)) {

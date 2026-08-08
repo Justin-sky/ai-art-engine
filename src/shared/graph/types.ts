@@ -220,6 +220,7 @@ export type GraphNodeTypeId =
   | 'image.upscale'
   | 'video.lipSync'
   | 'video.framePull'
+  | 'video.reshoot'
   | 'image.expand'
   | 'image.redraw'
   | 'image.erase'
@@ -260,6 +261,10 @@ export interface GraphNodeParams {
   generateAudio?: boolean
   /** 视频生成：帧模式 none | first | first_last */
   generateFrameMode?: 'none' | 'first' | 'first_last'
+  /** 片段重拍：重拍区间起点（秒） */
+  reshootStartSec?: number
+  /** 片段重拍：重拍区间终点（秒） */
+  reshootEndSec?: number
   /**
    * 图片/视频/剧本/声音生成落盘目录（相对工程根）。
    * 空则默认：宿主资产目录下的 {资产名}/Images、Videos、Texts 或 Audio。

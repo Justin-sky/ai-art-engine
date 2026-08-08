@@ -31,6 +31,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'voice.select',
   'video.lipSync',
   'video.framePull',
+  'video.reshoot',
   'image.toPrompt',
   'image.upscale',
   'prompt.optimize',

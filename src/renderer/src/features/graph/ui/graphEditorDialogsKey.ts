@@ -69,7 +69,13 @@ export type GraphEditorDialogsApi = {
     hostId: string
     nodeId: string
   }
+  reshoot: {
+    open: boolean
+    hostId: string
+    nodeId: string
+  }
   closeFramePull: () => void
+  closeReshoot: () => void
   portraitTexture: {
     open: boolean
     setup: PortraitTextureState | null

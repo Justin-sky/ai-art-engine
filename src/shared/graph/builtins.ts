@@ -50,6 +50,7 @@ import {
   executeEmotionNode,
   executeUpscaleNode,
   executeLipSyncNode,
+  executeVideoReshootNode,
   executeExpandNode,
   executeRedrawNode,
   executeEraseNode,
@@ -1062,6 +1063,63 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'video',
     contributeToGeneration: false,
     execute: executeLipSyncNode
+  },
+  {
+    typeId: 'video.reshoot',
+    category: 'note',
+    label: 'Reshoot',
+    icon: '✂️',
+    defaultTitle: 'Reshoot',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-video',
+        direction: 'in',
+        dataType: GraphPortType.video,
+        multiple: false,
+        label: 'Video'
+      },
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Image'
+      },
+      {
+        id: 'in-voice',
+        direction: 'in',
+        dataType: GraphPortType.voice,
+        multiple: true,
+        label: 'Audio'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Text'
+      },
+      ...galleryOutPorts(GraphPortType.video)
+    ],
+    defaultParams: () => ({
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateInstruction: '',
+      generateAudio: true,
+      generateFrameMode: 'none' as const,
+      reshootStartSec: 0,
+      reshootEndSec: 0
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.reshoot',
+    card: 'media',
+    assetType: 'video',
+    contributeToGeneration: false,
+    execute: executeVideoReshootNode
   },
   {
     typeId: 'image.expand',

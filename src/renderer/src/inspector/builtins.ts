@@ -7,6 +7,7 @@ import PortraitTextureInspector from '../components/PortraitTextureInspector.vue
 import EmotionInspector from '../components/EmotionInspector.vue'
 import UpscaleInspector from '../components/UpscaleInspector.vue'
 import FramePullInspector from '../components/FramePullInspector.vue'
+import ReshootInspector from '../components/ReshootInspector.vue'
 import LipSyncInspector from '../components/LipSyncInspector.vue'
 import ExpandInspector from '../components/ExpandInspector.vue'
 import RedrawInspector from '../components/RedrawInspector.vue'
@@ -195,6 +196,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.framePull',
     component: FramePullInspector,
     nodeTypeId: 'video.framePull'
+  },
+  {
+    id: 'studio.graph.reshoot',
+    component: ReshootInspector,
+    nodeTypeId: 'video.reshoot'
   },
   {
     id: 'studio.graph.lipSync',

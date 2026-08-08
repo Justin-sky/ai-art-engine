@@ -42,12 +42,13 @@ describe('volcengineArk modelCapabilities', () => {
     const params = parseVideoGenerateParamCapabilities(caps)
     expect(params.supportsGenerateAudio).toBe(true)
     expect(params.durations).toEqual(expect.arrayContaining([4, 30]))
-    expect(params.resolutions).toContain('1080p')
+    expect(params.resolutions).toContain('720p')
+    expect(params.resolutions).not.toContain('1080p')
     expect(params.supportedFrameImages).toEqual(['first_frame', 'last_frame'])
     const ports = resolveVideoGeneratePortLimits('doubao-seedance-2-5-260628', caps)
-    expect(ports.maxImages).toBe(50)
-    expect(ports.maxVideos).toBe(50)
-    expect(ports.maxVoices).toBe(50)
+    expect(ports.maxImages).toBe(30)
+    expect(ports.maxVideos).toBe(10)
+    expect(ports.maxVoices).toBe(10)
   })
 
   it('exposes image params consumable by UI parser', () => {

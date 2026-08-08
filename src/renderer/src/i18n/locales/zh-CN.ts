@@ -1986,7 +1986,8 @@ export default {
       video: {
         select: '选取视频',
         lipSync: '对口型',
-        framePull: '逐帧拉片'
+        framePull: '逐帧拉片',
+        reshoot: '片段重拍'
       },
       voice: {
         select: '选取声音'
@@ -2212,6 +2213,20 @@ export default {
         note: '当前帧批注',
         notePlaceholder: '记录这一帧的镜头、构图、表演要点…'
       },
+      reshoot: {
+        hint: '连接源视频后双击节点打开重拍台：定位到要修改的起止时间，填写修改要求，运行后仅重拍该区间，其余片段保持不变。建议配合 Seedance 2.5（时间戳级视频编辑）使用',
+        noSource: '请先连接上游视频（视频生成节点执行后，或视频资产）',
+        segment: '重拍区间',
+        markStart: '标记起点 {time}',
+        markEnd: '标记终点 {time}',
+        start: '起点（秒）',
+        end: '终点（秒）',
+        segmentHint: '在视频上定位后点「标记起点 / 标记终点」，或直接输入秒数；区间默认按 mm:ss 写入指令',
+        instruction: '修改要求',
+        instructionPlaceholder: '例如：将人物手中的黑色雨伞改成透明雨伞',
+        range: '重拍区间 {range}',
+        done: '完成'
+      },
       lipSync: {
         hint: '连接角色图或参考视频 + 声音；有视频时优先对视频中角色对口型。在节点下方可填表演指令，并选 Seedance 2.0',
         modelHint: '请选择 Seedance 2.0 / 2.0 Fast 等支持参考音频的模型；模型与时长比例在节点指令面板中设置'
@@ -2368,6 +2383,12 @@ export default {
             talkingHead: '对镜头说话',
             performance: '表演式对口型',
             fromVideo: '视频角色对口型'
+          },
+          reshoot: {
+            prop: '改道具',
+            scene: '改场景',
+            camera: '改运镜',
+            performance: '改表演'
           },
           optimize: {
             character: '人物设定提示词优化',
