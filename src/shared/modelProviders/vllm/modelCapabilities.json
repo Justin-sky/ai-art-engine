@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "console": "https://docs.vllm.ai/projects/vllm-omni/en/stable/serving/videos_api/",
+    "docs": [
+      "https://docs.vllm.ai/projects/vllm-omni/en/stable/serving/videos_api/",
+      "https://docs.vllm.ai/projects/vllm-omni/en/stable/user_guide/examples/online_serving/text_to_video/"
+    ],
+    "note": "vLLM-Omni 视频生成（扩散模型，如 Wan2.1 / Wan2.2 T2V / I2V）：OpenAI 兼容 /v1/videos 异步任务，multipart/form-data；一个服务实例只跑一个模型，模型 id 以实际部署为准。默认 profile 保守声明 generate_audio=false，避免对不支持声音的模型发送 generate_sound。"
+  },
+  "profiles": {
+    "video-wan": {
+      "modality": "video",
+      "label": "vLLM-Omni 视频（Wan 等扩散模型）",
+      "capabilities": {
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"],
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "supported_durations": [4, 5, 6, 8, 10, 12, 15, 20],
+        "generate_audio": false,
+        "supported_frame_images": ["first_frame"],
+        "max_input_images": 1,
+        "max_input_videos": 1,
+        "max_input_audios": 1
+      }
+    }
+  }
+}

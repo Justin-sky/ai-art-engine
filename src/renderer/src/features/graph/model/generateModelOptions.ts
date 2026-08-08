@@ -1,5 +1,5 @@
 import type { ModelModality, ModelProviderInstance } from '@shared/modelProvider'
-import { modalityConfig } from '@shared/modelProvider'
+import { isLocalOpenAiProvider, isVllmProvider, modalityConfig } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
   key: string
@@ -24,7 +24,18 @@ export function buildModelOptions(
 ): GenerateModelOption[] {
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
-    if (!provider.enabled || !provider.apiKey.trim()) continue
+    if (!provider.enabled) continue
+    // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）无需 API Key
+    if (!provider.apiKey.trim() && !isLocalOpenAiProvider(provider)) continue
+    // 本地服务仅文本（多模态理解可在文本节点传图）
+    if (isVllmProvider(provider) && modality !== 'text' && modality !== 'video') continue
+    if (
+      isLocalOpenAiProvider(provider) &&
+      !isVllmProvider(provider) &&
+      modality !== 'text'
+    ) {
+      continue
+    }
     // 声音（audio）：火山方舟 voice_design / MiniMax 音色设计；排除 OpenRouter 等
     if (
       modality === 'audio' &&
@@ -92,7 +103,8 @@ export function pickDefaultModelKey(
 ): string {
   if (options.length === 0) return ''
   for (const provider of providers) {
-    if (!provider.enabled || !provider.apiKey.trim()) continue
+    if (!provider.enabled) continue
+    if (!provider.apiKey.trim() && !isLocalOpenAiProvider(provider)) continue
     const defaultModelId = modalityConfig(provider, modality).defaultModelId
     if (defaultModelId) {
       const key = modelKey(provider.id, defaultModelId)

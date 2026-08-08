@@ -9,6 +9,8 @@
 - 新增 OpenAI 官方模型提供商：文本（GPT 系列，`/chat/completions`）+ 图片（gpt-image-1 / gpt-image-2，`/images/generations` 与 `/images/edits`）
 - 新增 DeepSeek 模型提供商：文本（deepseek-chat / deepseek-reasoner，OpenAI 兼容）
 - 新增智谱（Zhipu）模型提供商：GLM 文本（`/chat/completions`）+ CogView 文生图（`/images/generations`）
+- 新增本地 OpenAI 兼容提供商 vLLM / Ollama / LM Studio：默认 Base URL 分别为 localhost:8000/v1、localhost:11434/v1、localhost:1234/v1；无需 API Key，模型目录由 `/models` 全量拉取
+- vLLM-Omni 视频生成接入：异步任务走 `/v1/videos`（multipart/form-data），完成后自动下载登记；支持 Wan T2V / I2V 等扩散模型，首帧图生视频（input_reference / image_reference）与参考视频 / 音频（video_reference / audio_reference）；Ollama / LM Studio 保持仅文本
 
 ## [3.0.2] — 2026-08-07
 

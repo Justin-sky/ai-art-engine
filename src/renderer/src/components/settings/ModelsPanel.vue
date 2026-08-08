@@ -374,6 +374,8 @@ import {
   VOLCENGINE_OPENSPEECH_CREDENTIALS_URL,
   catalogEntryFromModel,
   createProviderInstance,
+  isLocalOpenAiProvider,
+  isVllmProvider,
   modalityConfig,
   modelProviderCredentialsUrl,
   syncModalityCatalogEntries,
@@ -399,6 +401,12 @@ const { t } = useStudioI18n()
 
 /** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
+  if (isVllmProvider(provider)) {
+    return ['text', 'video']
+  }
+  if (isLocalOpenAiProvider(provider)) {
+    return ['text']
+  }
   if (provider.providerKind === 'zhipu') {
     return ['text', 'image']
   }
@@ -500,6 +508,9 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
 
 function modalityHintText(provider: ModelProviderInstance): string {
   const mod = currentModality(provider)
+  if (isLocalOpenAiProvider(provider)) {
+    return t(`settings.models.localModalityHint.${mod}`)
+  }
   if (provider.providerKind === 'zhipu') {
     return t(`settings.models.zhipuModalityHint.${mod}`)
   }
@@ -528,7 +539,7 @@ function modalityHintText(provider: ModelProviderInstance): string {
 }
 
 function canFetchCatalog(provider: ModelProviderInstance): boolean {
-  return Boolean(provider.apiKey.trim())
+  return Boolean(provider.apiKey.trim()) || isLocalOpenAiProvider(provider)
 }
 
 function toggleKeyReveal(providerId: string): void {

@@ -167,9 +167,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、火山方舟、可灵、MiniMax、通义千问或魔塔，填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问或魔塔；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -181,6 +181,9 @@ export default {
         openai: '获取 OpenAI API Key：',
         deepseek: '获取 DeepSeek API Key：',
         zhipu: '获取智谱 API Key：',
+        vllm: '本地服务无需 API Key；vLLM 文档：',
+        ollama: '本地服务无需 API Key；Ollama 官网：',
+        lmstudio: '本地服务无需 API Key；LM Studio 官网：',
         'volcengine-ark': '获取方舟 API Key（文本 / 图片 / 视频）：',
         kling: '获取 API Key：',
         minimax: '获取 API Key：',
@@ -267,6 +270,11 @@ export default {
         text: '智谱 GLM 对话（OpenAI 兼容），默认 Base URL 为 open.bigmodel.cn/api/paas/v4，对应 /chat/completions。',
         image:
           '智谱 CogView 文生图（glm-image / cogview-4 / cogview-3-flash），调用 /images/generations；仅支持文生图，不支持参考图。'
+      },
+      localModalityHint: {
+        text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',
+        video:
+          'vLLM-Omni 视频生成（Wan T2V / I2V 等扩散模型）：异步任务走 /v1/videos，完成后下载成片；支持首帧图生视频与参考视频/音频；Ollama / LM Studio 不支持视频。'
       }
     },
     objectStorage: {

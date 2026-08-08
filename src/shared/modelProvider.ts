@@ -7,6 +7,12 @@ export const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com'
 /** 智谱开放平台（OpenAI 兼容；GLM 文本 + CogView 图片） */
 export const ZHIPU_DEFAULT_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
+/** 本地 vLLM（OpenAI 兼容；默认端口 8000） */
+export const VLLM_DEFAULT_BASE_URL = 'http://localhost:8000/v1'
+/** 本地 Ollama（OpenAI 兼容端点；默认端口 11434） */
+export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434/v1'
+/** 本地 LM Studio（OpenAI 兼容端点；默认端口 1234） */
+export const LMSTUDIO_DEFAULT_BASE_URL = 'http://localhost:1234/v1'
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 /** 豆包语音控制台（声音设计 API Key / speaker_id；与方舟 Ark Key 可能不同） */
@@ -27,6 +33,9 @@ export type ModelProviderKind =
   | 'openai'
   | 'deepseek'
   | 'zhipu'
+  | 'vllm'
+  | 'ollama'
+  | 'lmstudio'
   | 'volcengine-ark'
   | 'kling'
   | 'minimax'
@@ -64,6 +73,24 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     label: '智谱',
     defaultBaseUrl: ZHIPU_DEFAULT_BASE_URL,
     credentialsUrl: 'https://open.bigmodel.cn/usercenter/apikeys'
+  },
+  {
+    id: 'vllm',
+    label: 'vLLM',
+    defaultBaseUrl: VLLM_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://docs.vllm.ai'
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    defaultBaseUrl: OLLAMA_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://ollama.com'
+  },
+  {
+    id: 'lmstudio',
+    label: 'LM Studio',
+    defaultBaseUrl: LMSTUDIO_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://lmstudio.ai'
   },
   {
     id: 'volcengine-ark',
@@ -209,6 +236,45 @@ export function isZhipuProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'zhipu'
   return provider.providerKind === 'zhipu'
+}
+
+export function isVllmProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'vllm'
+  return provider.providerKind === 'vllm'
+}
+
+export function isOllamaProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'ollama'
+  return provider.providerKind === 'ollama'
+}
+
+export function isLmStudioProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'lmstudio'
+  return provider.providerKind === 'lmstudio'
+}
+
+/** 本地 OpenAI 兼容推理服务：无需 API Key，允许空密钥使用 */
+export const LOCAL_OPENAI_PROVIDER_KINDS: readonly ModelProviderKind[] = [
+  'vllm',
+  'ollama',
+  'lmstudio'
+]
+
+export function isLocalOpenAiProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  const kind = typeof provider === 'string' ? provider : provider.providerKind
+  return (LOCAL_OPENAI_PROVIDER_KINDS as readonly string[]).includes(kind)
 }
 
 /** 魔塔目录启发式：文生图 vs 文本/多模态对话 */
@@ -616,7 +682,9 @@ export function pickActiveProvider(
   preferredModelId?: string
 ): { provider: ModelProviderInstance; modelId: string } | null {
   const candidates = providers.filter((p) => {
-    if (!p.enabled || !p.apiKey.trim()) return false
+    if (!p.enabled) return false
+    // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）允许空 API Key
+    if (!p.apiKey.trim() && !isLocalOpenAiProvider(p)) return false
     return modalityConfig(p, modality).selectedModelIds.length > 0
   })
   if (!candidates.length) return null

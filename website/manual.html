@@ -114,7 +114,7 @@
           <h2>1. 概述与准备</h2>
           <p>
             AIArtEngine 是面向短剧、广告与成片制作的专业 AI 创作工具。工程与素材保存在你指定的本机目录；文本 /
-            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、火山方舟、可灵、MiniMax、通义千问、魔塔等）。
+            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔等）。
             可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
           </p>
           <h3>首次使用建议</h3>
@@ -185,6 +185,16 @@
                   （glm-image / cogview-4 / cogview-3-flash，<code>/images/generations</code>）。
                 </li>
                 <li>
+                  <strong>vLLM</strong>：本地 OpenAI 兼容服务（默认 <code>http://localhost:8000/v1</code>），无需 API Key；
+                  部署 vLLM-Omni 扩散模型（如 Wan2.2 T2V / I2V）后支持视频生成（异步任务走 <code>/v1/videos</code>，可带首帧图生视频）。
+                </li>
+                <li>
+                  <strong>Ollama</strong>：本地 OpenAI 兼容端点（默认 <code>http://localhost:11434/v1</code>），无需 API Key。
+                </li>
+                <li>
+                  <strong>LM Studio</strong>：本地 OpenAI 兼容端点（默认 <code>http://localhost:1234/v1</code>），无需 API Key。
+                </li>
+                <li>
                   <strong>火山方舟</strong>：文本 / Seedream 图 / Seedance 视频用方舟 API Key；声音设计走豆包语音
                   openspeech（语音控制台 API Key，可与方舟 Key 不同）+ 手填 <code>speaker_id</code>。
                   视频模型含 Seedance 2.5（<code>doubao-seedance-2-5-260628</code>：单次最长 30s、50 个全模态参考、
@@ -237,6 +247,24 @@
                     target="_blank"
                     rel="noopener noreferrer"
                     >https://open.bigmodel.cn/usercenter/apikeys</a
+                  >
+                </li>
+                <li>
+                  vLLM 文档（本地服务无需密钥）：
+                  <a href="https://docs.vllm.ai" target="_blank" rel="noopener noreferrer"
+                    >https://docs.vllm.ai</a
+                  >
+                </li>
+                <li>
+                  Ollama 官网（本地服务无需密钥）：
+                  <a href="https://ollama.com" target="_blank" rel="noopener noreferrer"
+                    >https://ollama.com</a
+                  >
+                </li>
+                <li>
+                  LM Studio 官网（本地服务无需密钥）：
+                  <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer"
+                    >https://lmstudio.ai</a
                   >
                 </li>
                 <li>
@@ -293,12 +321,13 @@
               </ul>
             </li>
             <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
-            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录）。</li>
+            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio 等本地服务无需密钥，直接拉取）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
               按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
-              DeepSeek 仅文本；智谱支持 GLM 文本与 CogView 图片；魔塔仅文本与图片，文生图为异步任务）。
+              DeepSeek 仅文本；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
+              魔塔仅文本与图片，文生图为异步任务）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>

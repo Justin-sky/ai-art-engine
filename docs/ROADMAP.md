@@ -2,7 +2,7 @@
 
 ## Unreleased（进行中）
 
-- [x] 新增 OpenAI / DeepSeek / 智谱模型提供商（文本 / 图片）
+- [x] 新增 OpenAI / DeepSeek / 智谱 / 本地 vLLM / Ollama / LM Studio 模型提供商
 - [ ] 剧本 → 集 → 幕 → 分镜树
 - [ ] 参数继承与覆盖
 - [ ] 批量生成

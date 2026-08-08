@@ -168,9 +168,9 @@ export default {
       collapseProvider: 'Collapse provider',
       expandProvider: 'Expand provider',
       emptyProviders:
-        'No providers yet. Add OpenRouter, OpenAI, DeepSeek, Zhipu, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, or ModelScope (Mota), enter credentials, then select models per modality.',
+        'No providers yet. Add OpenRouter, OpenAI, DeepSeek, Zhipu, vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, or ModelScope (Mota). Local servers need no API key; cloud providers need credentials, then select models per modality.',
       unifiedHint:
-        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image). OpenAI official supports text and image only and requires network access to api.openai.com. DeepSeek supports text only. Zhipu supports GLM text and CogView image.',
+        'One credential set / Base URL per provider. Fetch text, image, video, and audio models. Ark Voice uses purchased speaker_ids; Kling, MiniMax, and Qianwen use an API Key; ModelScope uses an access token (text/image). OpenAI official supports text and image only and requires network access to api.openai.com. DeepSeek supports text only. Zhipu supports GLM text and CogView image. vLLM / Ollama / LM Studio are local OpenAI-compatible servers and need no API key.',
       enabled: 'Enabled',
       remove: 'Remove',
       label: 'Display name',
@@ -182,6 +182,9 @@ export default {
         openai: 'Get OpenAI API key:',
         deepseek: 'Get DeepSeek API key:',
         zhipu: 'Get Zhipu API key:',
+        vllm: 'Local server, no API key needed; vLLM docs:',
+        ollama: 'Local server, no API key needed; Ollama site:',
+        lmstudio: 'Local server, no API key needed; LM Studio site:',
         'volcengine-ark': 'Get Ark API key (text / image / video):',
         kling: 'Get API key:',
         minimax: 'Get API key:',
@@ -268,6 +271,11 @@ export default {
         text: 'Zhipu GLM chat (OpenAI-compatible). Default Base URL is open.bigmodel.cn/api/paas/v4 via /chat/completions.',
         image:
           'Zhipu CogView text-to-image (glm-image / cogview-4 / cogview-3-flash) via /images/generations; text-to-image only, no reference images.'
+      },
+      localModalityHint: {
+        text: 'Local OpenAI-compatible servers (vLLM / Ollama / LM Studio): no API key needed. Chat via /chat/completions; the model catalog is fetched from /models. Multimodal understanding works by passing images into a text node.',
+        video:
+          'vLLM-Omni video generation (Wan T2V / I2V diffusion models): async jobs via /v1/videos, download the result when completed; supports first-frame image-to-video and reference video/audio. Ollama / LM Studio do not support video.'
       }
     },
     objectStorage: {

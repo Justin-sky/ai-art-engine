@@ -8,16 +8,15 @@ export function trimBaseUrl(url: string): string {
 
 export function authHeaders(apiKey: string): Record<string, string> {
   const key = apiKey.trim()
-  if (!key) {
-    throw new Error('API Key 为空，请在设置中填写模型提供商的 API Key')
-  }
-  return {
-    Authorization: `Bearer ${key}`,
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'HTTP-Referer': 'https://github.com/Justin-sky/ai-art-engine',
     'X-Title': 'AIArtEngine',
     'X-OpenRouter-Title': 'AIArtEngine'
   }
+  // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）无需 API Key
+  if (key) headers.Authorization = `Bearer ${key}`
+  return headers
 }
 
 /** 文本 / 图片生成等长耗时请求统一超时（30 分钟） */
