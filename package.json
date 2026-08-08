@@ -1,6 +1,6 @@
 {
   "name": "aiartengine",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "AIArtEngine — professional AI creation tool for short drama, ads, and film",
   "main": "./out/main/index.js",
   "author": "AIArtEngine",
