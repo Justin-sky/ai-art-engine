@@ -7,6 +7,7 @@
     :default-height="760"
     :min-width="480"
     :min-height="420"
+    :embedded="embedded"
     body-class="pad-none"
     @close="onClose"
   >
@@ -88,11 +89,14 @@ const props = withDefaults(
     title: string
     text: string
     editable?: boolean
+    /** 覆盖 dive 注入：false 时始终作为独立模态浮层（如指令提示词预览） */
+    embedded?: boolean
     /** 最终提示词预览时一并展示的批量参考图（风格图 + 端口图） */
     images?: NotepadPreviewImage[]
   }>(),
   {
     editable: true,
+    embedded: undefined,
     images: () => []
   }
 )

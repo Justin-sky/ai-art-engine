@@ -211,6 +211,7 @@
       :text="previewText"
       :images="previewImages"
       :editable="false"
+      :embedded="false"
       @close="previewOpen = false"
     />
   </div>
