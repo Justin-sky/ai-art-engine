@@ -11,6 +11,7 @@ import {
   isMiniMaxProvider,
   isModelScopeProvider,
   isOpenAiProvider,
+  isXaiProvider,
   isZhipuProvider,
   isVolcengineArkProvider
 } from '@shared/modelProvider'
@@ -20,6 +21,7 @@ import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { resolveOpenAiModelCapabilities } from '@shared/modelProviders/openai/modelCapabilities'
+import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveZhipuModelCapabilities } from '@shared/modelProviders/zhipu/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
@@ -51,6 +53,7 @@ async function resolveSupportedParameters(
   let isDashScope = false
   let isModelScope = false
   let isOpenAi = false
+  let isXai = false
   let isZhipu = false
   try {
     const settings = await window.studio.getSettings()
@@ -61,6 +64,7 @@ async function resolveSupportedParameters(
     isDashScope = isDashScopeProvider(provider)
     isModelScope = isModelScopeProvider(provider)
     isOpenAi = isOpenAiProvider(provider)
+    isXai = isXaiProvider(provider)
     isZhipu = isZhipuProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
@@ -114,6 +118,12 @@ async function resolveSupportedParameters(
 
   if (isOpenAi) {
     const local = resolveOpenAiModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isXai) {
+    const local = resolveXaiModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }

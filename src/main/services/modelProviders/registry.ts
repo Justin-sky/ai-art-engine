@@ -4,6 +4,9 @@ import { openRouterAdapter } from './openrouter/adapter'
 import { openAiAdapter } from './openai/adapter'
 import { deepSeekAdapter } from './deepseek/adapter'
 import { zhipuAdapter } from './zhipu/adapter'
+import { moonshotAdapter } from './moonshot/adapter'
+import { xaiAdapter } from './xai/adapter'
+import { googleAdapter } from './google/adapter'
 import { vllmAdapter, ollamaAdapter, lmStudioAdapter } from './localOpenAi'
 import { volcengineArkAdapter } from './volcengineArk/adapter'
 import { klingAdapter } from './kling/adapter'
@@ -16,6 +19,9 @@ const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   openai: openAiAdapter,
   deepseek: deepSeekAdapter,
   zhipu: zhipuAdapter,
+  moonshot: moonshotAdapter,
+  xai: xaiAdapter,
+  google: googleAdapter,
   vllm: vllmAdapter,
   ollama: ollamaAdapter,
   lmstudio: lmStudioAdapter,

@@ -167,9 +167,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问或魔塔；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问或魔塔；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -181,6 +181,9 @@ export default {
         openai: '获取 OpenAI API Key：',
         deepseek: '获取 DeepSeek API Key：',
         zhipu: '获取智谱 API Key：',
+        moonshot: '获取 Kimi（月之暗面）API Key：',
+        xai: '获取 xAI API Key：',
+        google: '获取 Google AI Studio API Key：',
         vllm: '本地服务无需 API Key；vLLM 文档：',
         ollama: '本地服务无需 API Key；Ollama 官网：',
         lmstudio: '本地服务无需 API Key；LM Studio 官网：',
@@ -265,6 +268,19 @@ export default {
       },
       deepseekModalityHint: {
         text: 'DeepSeek 对话模型（deepseek-chat / deepseek-reasoner），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
+      },
+      moonshotModalityHint: {
+        text: 'Kimi 对话模型（kimi-k2 系列 / moonshot-v1 系列），OpenAI 兼容，默认 Base URL 为 api.moonshot.cn/v1，对应 /chat/completions；文本目录由 GET /models 拉取。'
+      },
+      xaiModalityHint: {
+        text: 'xAI（Grok）对话模型（grok-* 系列），OpenAI 兼容，默认 Base URL 为 api.x.ai/v1，对应 /chat/completions；文本目录由 GET /models 拉取。',
+        image:
+          'Grok Imagine 文生图（grok-imagine-image / grok-imagine-image-pro），JSON body 调用 /images/generations，支持 aspect_ratio 与 response_format（返回 base64，落盘不受 URL 过期影响）。',
+        video:
+          'Grok Imagine Video（grok-imagine-video）：异步提交 /videos/generations 后轮询 GET /videos/{request_id}，status=done 后下载 video.url；支持 480p / 720p、5–15 秒与首帧图生视频（image 字段）。'
+      },
+      googleModalityHint: {
+        text: 'Google Gemini 对话（gemini-* 系列），走官方 OpenAI 兼容层，默认 Base URL 为 generativelanguage.googleapis.com/v1beta/openai，对应 /chat/completions；文本目录由 GET /models 拉取。'
       },
       zhipuModalityHint: {
         text: '智谱 GLM 对话（OpenAI 兼容），默认 Base URL 为 open.bigmodel.cn/api/paas/v4，对应 /chat/completions。',

@@ -13,6 +13,12 @@ export const VLLM_DEFAULT_BASE_URL = 'http://localhost:8000/v1'
 export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434/v1'
 /** 本地 LM Studio（OpenAI 兼容端点；默认端口 1234） */
 export const LMSTUDIO_DEFAULT_BASE_URL = 'http://localhost:1234/v1'
+/** 月之暗面 Kimi（Moonshot AI，OpenAI 兼容，仅文本） */
+export const MOONSHOT_DEFAULT_BASE_URL = 'https://api.moonshot.cn/v1'
+/** xAI（Grok，OpenAI 兼容；文本 / 图片 / 视频） */
+export const XAI_DEFAULT_BASE_URL = 'https://api.x.ai/v1'
+/** Google Gemini（走官方 OpenAI 兼容层） */
+export const GOOGLE_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai'
 /** 火山方舟（Ark）OpenAI 兼容端点 */
 export const VOLCENGINE_ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 /** 豆包语音控制台（声音设计 API Key / speaker_id；与方舟 Ark Key 可能不同） */
@@ -33,6 +39,9 @@ export type ModelProviderKind =
   | 'openai'
   | 'deepseek'
   | 'zhipu'
+  | 'moonshot'
+  | 'xai'
+  | 'google'
   | 'vllm'
   | 'ollama'
   | 'lmstudio'
@@ -73,6 +82,24 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     label: '智谱',
     defaultBaseUrl: ZHIPU_DEFAULT_BASE_URL,
     credentialsUrl: 'https://open.bigmodel.cn/usercenter/apikeys'
+  },
+  {
+    id: 'moonshot',
+    label: 'Kimi（月之暗面）',
+    defaultBaseUrl: MOONSHOT_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://platform.moonshot.cn/console/api-keys'
+  },
+  {
+    id: 'xai',
+    label: 'xAI（Grok）',
+    defaultBaseUrl: XAI_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://console.x.ai/'
+  },
+  {
+    id: 'google',
+    label: 'Google（Gemini）',
+    defaultBaseUrl: GOOGLE_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://aistudio.google.com/apikey'
   },
   {
     id: 'vllm',
@@ -236,6 +263,30 @@ export function isZhipuProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'zhipu'
   return provider.providerKind === 'zhipu'
+}
+
+export function isMoonshotProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'moonshot'
+  return provider.providerKind === 'moonshot'
+}
+
+export function isXaiProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'xai'
+  return provider.providerKind === 'xai'
+}
+
+export function isGoogleProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'google'
+  return provider.providerKind === 'google'
 }
 
 export function isVllmProvider(

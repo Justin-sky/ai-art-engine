@@ -76,6 +76,23 @@ export function buildModelOptions(
     if (provider.providerKind === 'zhipu' && modality !== 'text' && modality !== 'image') {
       continue
     }
+    // Kimi（月之暗面）：仅文本
+    if (provider.providerKind === 'moonshot' && modality !== 'text') {
+      continue
+    }
+    // Google（Gemini）：仅文本
+    if (provider.providerKind === 'google' && modality !== 'text') {
+      continue
+    }
+    // xAI（Grok）：文本 / 图片 / 视频
+    if (
+      provider.providerKind === 'xai' &&
+      modality !== 'text' &&
+      modality !== 'image' &&
+      modality !== 'video'
+    ) {
+      continue
+    }
     const sel = modalityConfig(provider, modality)
     const models =
       sel.selectedModelIds.length > 0

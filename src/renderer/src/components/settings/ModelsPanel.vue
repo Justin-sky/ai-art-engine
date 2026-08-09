@@ -389,6 +389,7 @@ import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/mode
 import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
+import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { clearImageGenerateCapabilitiesCache } from '../../features/graph/model/imageGenerateCapabilities'
 import { clearVideoGenerateCapabilitiesCache } from '../../features/graph/model/videoGenerateCapabilities'
@@ -399,8 +400,17 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
-/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片 */
+/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片；xAI 文本/图片/视频；Google 仅文本 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
+  if (provider.providerKind === 'moonshot') {
+    return ['text']
+  }
+  if (provider.providerKind === 'google') {
+    return ['text']
+  }
+  if (provider.providerKind === 'xai') {
+    return ['text', 'image', 'video']
+  }
   if (isVllmProvider(provider)) {
     return ['text', 'video']
   }
@@ -508,6 +518,15 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
 
 function modalityHintText(provider: ModelProviderInstance): string {
   const mod = currentModality(provider)
+  if (provider.providerKind === 'moonshot') {
+    return t(`settings.models.moonshotModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'google') {
+    return t(`settings.models.googleModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'xai') {
+    return t(`settings.models.xaiModalityHint.${mod}`)
+  }
   if (isLocalOpenAiProvider(provider)) {
     return t(`settings.models.localModalityHint.${mod}`)
   }
@@ -666,6 +685,11 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       (modality === 'image' || modality === 'text')
     ) {
       capabilities = resolveModelScopeModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'xai' &&
+      (modality === 'image' || modality === 'video')
+    ) {
+      capabilities = resolveXaiModelCapabilities(id, modality) ?? undefined
     }
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }

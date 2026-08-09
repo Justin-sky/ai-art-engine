@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "console": "https://console.x.ai/",
+    "docs": [
+      "https://docs.x.ai/developers/model-capabilities/imagine",
+      "https://docs.x.ai/developers/model-capabilities/video/generation"
+    ],
+    "note": "xAI（Grok）OpenAI 兼容（base https://api.x.ai/v1）。文本目录由 GET /models 拉取并过滤 grok-*；图片 / 视频无目录接口，静态维护 grok-imagine-*。图片走 /images/generations（JSON body，aspect_ratio + response_format）；视频走 /videos/generations 异步提交，轮询 GET /videos/{request_id}，status=done 后取 video.url。"
+  },
+  "models": [
+    {
+      "id": "grok-imagine-image",
+      "name": "Grok Imagine Image",
+      "modality": "image",
+      "profile": "image-grok"
+    },
+    {
+      "id": "grok-imagine-image-pro",
+      "name": "Grok Imagine Image Pro",
+      "modality": "image",
+      "profile": "image-grok"
+    },
+    {
+      "id": "grok-imagine-video",
+      "name": "Grok Imagine Video",
+      "modality": "video",
+      "profile": "video-grok"
+    },
+    {
+      "id": "grok-imagine-video-1.5-preview",
+      "name": "Grok Imagine Video 1.5 Preview",
+      "modality": "video",
+      "profile": "video-grok"
+    }
+  ],
+  "profiles": {
+    "image-grok": {
+      "modality": "image",
+      "label": "Grok Imagine",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "2:1", "1:2"]
+          },
+          "resolution": {
+            "values": ["1K", "2K"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 0
+          }
+        }
+      }
+    },
+    "video-grok": {
+      "modality": "video",
+      "label": "Grok Imagine Video",
+      "capabilities": {
+        "supported_resolutions": ["480p", "720p"],
+        "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+        "supported_durations": [5, 10, 15],
+        "supported_frame_images": ["first_frame"]
+      }
+    }
+  }
+}
