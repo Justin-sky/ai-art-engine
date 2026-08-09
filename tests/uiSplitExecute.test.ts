@@ -38,6 +38,30 @@ describe('ui.split', () => {
     expect(items[1]?.id).toMatch(/^ui-/)
   })
 
+  it('unwraps object-wrapped arrays and prose-around JSON', () => {
+    const wrapped = parseUiScreenPrompts(
+      '{"screens":[{"title":"主界面","prompt":"顶栏资源条"},{"title":"背包","prompt":"三列格子"}]}'
+    )
+    expect(wrapped.map((item) => item.title)).toEqual(['主界面', '背包'])
+
+    const prose = parseUiScreenPrompts(
+      '以下是拆分结果：[{"title":"商店","prompt":"左侧分类右侧商品卡"}] 共 1 个界面'
+    )
+    expect(prose).toHaveLength(1)
+    expect(prose[0]?.title).toBe('商店')
+  })
+
+  it('falls back to markdown list when model ignores JSON', () => {
+    const items = parseUiScreenPrompts(
+      '- 主界面：主界面 HUD，顶栏资源条，底部页签导航\n' +
+        '1. 背包：背包列表界面，三列格子\n' +
+        '* 商店：商店货架界面，左侧分类右侧商品卡'
+    )
+    expect(items.map((item) => item.title)).toEqual(['主界面', '背包', '商店'])
+    expect(items.every((item) => item.prompt.length > 0)).toBe(true)
+    expect(items.every((item) => item.id.startsWith('ui-'))).toBe(true)
+  })
+
   it('outputs texts array from model JSON', async () => {
     const node = createNodeFromType('ui.split', { x: 0, y: 0 })
     const generateText = vi.fn(async () => ({

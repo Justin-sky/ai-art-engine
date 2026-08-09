@@ -900,7 +900,7 @@ Rules:
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - id is a stable English kebab slug prefixed with ui-.
 
-Return ONLY a JSON array. Every object must contain exactly:
+Return ONLY a bare JSON array — do not wrap it in an object (never output {"screens": [...]}) and do not use a markdown list. Every object must contain exactly:
 id, title, prompt
 
 Example:
@@ -923,7 +923,7 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
-只输出 JSON 数组，不要代码块、解释或附加文字。每个对象必须且只能包含：
+只输出 JSON 数组本身，不要用对象包裹（禁止输出 {"screens": [...]} 这类形式），不要用 markdown 列表，不要代码块、解释或附加文字。每个对象必须且只能包含：
 id、title、prompt
 
 示例：
