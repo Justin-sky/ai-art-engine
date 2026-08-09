@@ -42,8 +42,7 @@
         :draggable="
           item.kind !== 'panorama' &&
           item.kind !== 'cameraGroup' &&
-          editingId !== item.id &&
-          selectedIds.length <= 1
+          editingId !== item.id
         "
         @click="onRowClick(item, $event)"
         @dblclick="onRowDblClick(item)"
@@ -253,6 +252,7 @@ function readPaneMaxWidth(): number {
 
 const query = ref('')
 const draggingId = ref<string | null>(null)
+const draggingIds = ref<string[]>([])
 const dropTargetId = ref<string | null>(null)
 const menuOpen = ref(false)
 const menuMode = ref<'dropdown' | 'context' | 'item'>('dropdown')
@@ -780,6 +780,9 @@ function isStudioAssetDrag(event: DragEvent): boolean {
 function onDragStart(id: string, event: DragEvent): void {
   clearRenameTimer()
   draggingId.value = id
+  // 拖拽已选中的项且存在多选 → 整组一起移动；否则只移动当前项
+  draggingIds.value =
+    isSelected(id) && selectedIds.value.length > 1 ? selectedIds.value.slice() : [id]
   // 兜底：跨组件 drop 时 dataTransfer 可能读不到，临时记到 window（drop 端校验是否相机）
   ;(window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId = id
   const row = scene.hierarchyRows.value.find((r) => r.id === id)
@@ -795,8 +798,33 @@ function onDragStart(id: string, event: DragEvent): void {
 
 function onDragEnd(): void {
   draggingId.value = null
+  draggingIds.value = []
   dropTargetId.value = null
   delete (window as unknown as { __directorCameraDragId?: string }).__directorCameraDragId
+}
+
+/** 本次拖拽中可重挂父级的物体 id（排除相机/机位组/全景，以及祖先也在拖拽集合中的子级） */
+function reparentableDragIds(): string[] {
+  const rows = scene.hierarchyRows.value
+  const rowById = new Map(rows.map((row) => [row.id, row]))
+  const candidates = draggingIds.value.filter((id) => {
+    const row = rowById.get(id)
+    return (
+      !!row &&
+      row.kind !== 'camera' &&
+      row.kind !== 'cameraGroup' &&
+      row.kind !== 'panorama'
+    )
+  })
+  const candidateSet = new Set(candidates)
+  return candidates.filter((id) => {
+    let parentId = rowById.get(id)?.parentId ?? null
+    while (parentId) {
+      if (candidateSet.has(parentId)) return false
+      parentId = rowById.get(parentId)?.parentId ?? null
+    }
+    return true
+  })
 }
 
 function onRowDragOver(id: string, event: DragEvent): void {
@@ -843,15 +871,16 @@ async function onDropRow(targetId: string, event: DragEvent): Promise<void> {
     await scene.createModelObject(asset.id, parentId)
     return
   }
-  const childId = draggingId.value
+  const dropIds = reparentableDragIds().filter((id) => id !== targetId)
   dropTargetId.value = null
   draggingId.value = null
-  if (!childId || childId === targetId) return
+  draggingIds.value = []
+  if (!dropIds.length) return
   if (scene.hierarchyRows.value.some((item) => item.id === targetId && item.kind === 'camera')) {
-    scene.reparentObject(childId, null)
+    for (const childId of dropIds) scene.reparentObject(childId, null)
     return
   }
-  scene.reparentObject(childId, targetId)
+  for (const childId of dropIds) scene.reparentObject(childId, targetId)
 }
 
 async function onDropRoot(event: DragEvent): Promise<void> {
@@ -862,11 +891,12 @@ async function onDropRoot(event: DragEvent): Promise<void> {
     await scene.createModelObject(asset.id, null)
     return
   }
-  const childId = draggingId.value
+  const dropIds = reparentableDragIds()
   dropTargetId.value = null
   draggingId.value = null
-  if (!childId) return
-  scene.reparentObject(childId, null)
+  draggingIds.value = []
+  if (!dropIds.length) return
+  for (const childId of dropIds) scene.reparentObject(childId, null)
 }
 
 const CUBE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20.5 7v10L12 21.2 3.5 17V7L12 2.8Z"/><path d="M3.7 7.2 12 11.8l8.3-4.6"/><path d="M12 11.8v9.2"/></svg>`
