@@ -40,10 +40,10 @@ export function buildScreenplayPrompt(instruction: string, locale?: string): str
 // ——— 游戏系统策划案 ———
 
 export const DEFAULT_GAME_SYSTEM_USER_PROMPT_EN =
-  'Based on the connected requirements, worldbuilding, references, and project context, produce a complete, development-ready game system design document. Cover the system overview and goals, core loop, feature rules and priorities, UI wireframes and control states, data/configuration needs, edge cases, acceptance criteria, open questions, and risks. Make every item concrete, enumerable, and testable.'
+  'Based on the connected requirements, worldbuilding, references, and project context, produce a complete, development-ready game system design document. Cover the system overview and goals, core loop, feature rules and priorities, UI wireframes and control states, data/configuration needs, edge cases, acceptance criteria, open questions, and risks. Make every item concrete, enumerable, and testable. Do not specify concrete colors in UI descriptions; the palette comes from the style reference.'
 
 export const DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH =
-  '根据连接的需求、世界观、参考资料与项目背景，生成一份完整、可直接交付开发的游戏系统策划案。必须覆盖系统概述与目标、核心循环、功能规则与优先级、UI 布局草图与控件状态、数据/配置需求、边界与异常处理、验收标准、待确认项及风险；所有条目须具体、可穷举、可测试。'
+  '根据连接的需求、世界观、参考资料与项目背景，生成一份完整、可直接交付开发的游戏系统策划案。必须覆盖系统概述与目标、核心循环、功能规则与优先级、UI 布局草图与控件状态、数据/配置需求、边界与异常处理、验收标准、待确认项及风险；所有条目须具体、可穷举、可测试。UI 描述不要指定具体颜色，配色由风格参考图决定。'
 
 export function defaultGameSystemUserPrompt(locale?: string): string {
   return pickByLocale(
@@ -192,10 +192,10 @@ export function buildBeatUnitGenPrompt(instruction: string, locale?: string): st
 // ——— UI 界面拆分 ———
 
 export const DEFAULT_UI_SPLIT_USER_PROMPT_EN =
-  'Split the game system design into independent UI screens and output ONLY the bare JSON array required by the system prompt — no object wrapper, no markdown list. Each item is one screen with id, title, and a detailed image-generation prompt.'
+  'Split the game system design into independent UI screens and output ONLY the bare JSON array required by the system prompt — no object wrapper, no markdown list. Each item is one screen with id, title, and a detailed image-generation prompt. Prompts must not specify concrete colors; leave the palette to the style reference.'
 
 export const DEFAULT_UI_SPLIT_USER_PROMPT_ZH =
-  '请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组本身——不要用对象包裹，不要用 markdown 列表。每一项对应一个界面，包含 id、title，以及可用于生图的详细提示词 prompt。'
+  '请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组本身——不要用对象包裹，不要用 markdown 列表。每一项对应一个界面，包含 id、title，以及可用于生图的详细提示词 prompt。提示词不要指定具体颜色，配色交给风格参考图。'
 
 export function defaultUiSplitUserPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_UI_SPLIT_USER_PROMPT_EN, DEFAULT_UI_SPLIT_USER_PROMPT_ZH)

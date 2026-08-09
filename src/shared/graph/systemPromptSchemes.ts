@@ -102,6 +102,7 @@ For each screen:
 
 # UI Requirements
 - Visual style and consistency (palette, type, hierarchy)
+- Do not specify concrete colors (hex values or color names); the palette is decided later by a unified style reference — describe layout, controls and states instead
 - Grid and spacing rules, multi-resolution adaptation, safe areas
 - Readability and contrast, touch / mouse target sizes
 - Motion and feedback (click feedback, transitions, loading)
@@ -138,6 +139,7 @@ export const DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH = `你是资深游戏系统策
 
 # UI 要求
 - 视觉风格与整体一致性（色板、字体、视觉层级）
+- 不指定具体颜色（色值/色名）；配色由后续统一风格参考图决定，界面描述聚焦布局、控件与状态
 - 栅格与间距规范、多分辨率适配、安全区
 - 可读性与对比度、触控/键鼠操作区域大小
 - 动效与反馈（点击反馈、转场、加载动画）
@@ -897,6 +899,7 @@ Rules:
 - One JSON array item per screen. Cover all screens mentioned or clearly implied by the document.
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
 - Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, style cues, and readable labels if the source uses them.
+- Do not specify concrete colors (hex values or color names); leave the palette to the style reference — describe layout, controls, states and visual hierarchy only.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - id is a stable English kebab slug prefixed with ui-.
 
@@ -920,6 +923,7 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - JSON 数组每一项对应一个界面；覆盖文中明确写出或可合理推断出的全部界面。
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
 - 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级、风格线索；文案标签沿用原文语言。
+- 不指定具体颜色（色值/色名）；配色交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
