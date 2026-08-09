@@ -90,7 +90,7 @@ npm run dist:win | dist:mac | dist:linux
 - **Host assets** — boundary ports outside, full graph inside via Dive  
 - **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`  
 - **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
-- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope  
+- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope  
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + declarative extensions  
 
@@ -104,7 +104,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | Zhipu | GLM text / CogView text-to-image |
 | Model | Kimi (Moonshot) | Text (kimi-k2 family / moonshot-v1 family) |
 | Model | xAI (Grok) | Text / Grok Imagine image / Grok Imagine Video (async polling) |
-| Model | Google (Gemini) | Text (official OpenAI-compatible layer) |
+| Model | Google (Gemini) | Text / Nano Banana image / Veo 3.1 video (async polling, official OpenAI-compatible layer) |
 | Model | vLLM | Local text / video (Wan T2V / I2V, OpenAI-compatible, no API key) |
 | Model | Ollama / LM Studio | Local text (OpenAI-compatible, no API key) |
 | Model | Volcengine Ark | Text / Seedream / Seedance / voice design |

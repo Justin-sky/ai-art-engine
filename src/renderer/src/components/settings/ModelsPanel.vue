@@ -390,6 +390,7 @@ import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
+import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { clearImageGenerateCapabilitiesCache } from '../../features/graph/model/imageGenerateCapabilities'
 import { clearVideoGenerateCapabilitiesCache } from '../../features/graph/model/videoGenerateCapabilities'
@@ -400,13 +401,13 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
-/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片；xAI 文本/图片/视频；Google 仅文本 */
+/** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片；xAI 与 Google 文本/图片/视频 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
   if (provider.providerKind === 'moonshot') {
     return ['text']
   }
   if (provider.providerKind === 'google') {
-    return ['text']
+    return ['text', 'image', 'video']
   }
   if (provider.providerKind === 'xai') {
     return ['text', 'image', 'video']
@@ -690,6 +691,11 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       (modality === 'image' || modality === 'video')
     ) {
       capabilities = resolveXaiModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'google' &&
+      (modality === 'image' || modality === 'video')
+    ) {
+      capabilities = resolveGoogleModelCapabilities(id, modality) ?? undefined
     }
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }

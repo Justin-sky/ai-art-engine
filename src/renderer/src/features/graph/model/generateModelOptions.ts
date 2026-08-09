@@ -80,8 +80,13 @@ export function buildModelOptions(
     if (provider.providerKind === 'moonshot' && modality !== 'text') {
       continue
     }
-    // Google（Gemini）：仅文本
-    if (provider.providerKind === 'google' && modality !== 'text') {
+    // Google（Gemini）：文本 / 图片 / 视频
+    if (
+      provider.providerKind === 'google' &&
+      modality !== 'text' &&
+      modality !== 'image' &&
+      modality !== 'video'
+    ) {
       continue
     }
     // xAI（Grok）：文本 / 图片 / 视频

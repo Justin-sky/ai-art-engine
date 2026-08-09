@@ -70,9 +70,17 @@ describe('googleAdapter', () => {
     expect(getMock).toHaveBeenCalledWith('/models')
   })
 
-  it('returns empty catalog for non-text modalities', async () => {
-    expect(await googleAdapter.fetchCatalog(provider(), 'image')).toEqual([])
-    expect(await googleAdapter.fetchCatalog(provider(), 'video')).toEqual([])
+  it('returns static image and video catalogs with capabilities', async () => {
+    const images = await googleAdapter.fetchCatalog(provider(), 'image')
+    expect(images.map((m) => m.id)).toContain('gemini-2.5-flash-image')
+    const image = images.find((m) => m.id === 'gemini-2.5-flash-image')
+    expect(image?.capabilities?.supported_parameters).toBeTruthy()
+
+    const videos = await googleAdapter.fetchCatalog(provider(), 'video')
+    expect(videos.map((m) => m.id)).toContain('veo-3.1-generate-001')
+    const video = videos.find((m) => m.id === 'veo-3.1-generate-001')
+    expect(video?.capabilities?.supported_resolutions).toContain('4K')
+    expect(video?.capabilities?.supported_durations).toContain(8)
     expect(await googleAdapter.fetchCatalog(provider(), 'audio')).toEqual([])
   })
 
@@ -84,15 +92,114 @@ describe('googleAdapter', () => {
     expect(result.model).toBe('gemini-2.5-flash')
   })
 
-  it('rejects image, video and speech with a clear message', async () => {
-    await expect(
-      googleAdapter.generateImage(provider(), 'gemini-2.5-flash-image', { prompt: 'x' })
-    ).rejects.toThrow(/仅支持文本/)
+  it('generates images via JSON /images/generations with aspect_ratio and base64 output', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: [{ b64_json: 'aGVsbG8=' }] }
+    })
+    const result = await googleAdapter.generateImage(provider(), 'gemini-2.5-flash-image', {
+      prompt: 'a cat',
+      aspectRatio: '16:9',
+      resolution: '2K',
+      n: 2
+    })
+    expect(postMock).toHaveBeenCalledWith('/images/generations', {
+      model: 'gemini-2.5-flash-image',
+      prompt: 'a cat',
+      response_format: 'b64_json',
+      aspect_ratio: '16:9',
+      resolution: '2K',
+      n: 2
+    })
+    expect(result.images[0]).toBe('data:image/png;base64,aGVsbG8=')
+    expect(result.model).toBe('gemini-2.5-flash-image')
+  })
+
+  it('passes reference images in the image field for image editing', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: [{ url: 'https://example.com/out.png' }] }
+    })
+    const result = await googleAdapter.generateImage(
+      provider(),
+      'gemini-3-pro-image-preview',
+      {
+        prompt: 'add a hat',
+        inputReferences: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
+      }
+    )
+    expect(postMock).toHaveBeenCalledWith('/images/generations', {
+      model: 'gemini-3-pro-image-preview',
+      prompt: 'add a hat',
+      response_format: 'b64_json',
+      image: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
+    })
+    expect(result.images[0]).toBe('https://example.com/out.png')
+  })
+
+  it('submits video to /videos and builds polling URL from id', async () => {
+    postMock.mockResolvedValueOnce({ data: { id: 'video-123' } })
+    const job = await googleAdapter.submitVideo(provider(), 'veo-3.1-generate-preview', {
+      prompt: 'ocean waves',
+      duration: 10,
+      resolution: '1080p',
+      aspectRatio: '16:9',
+      firstFrameImageUrl: 'data:image/png;base64,Zmlyc3Q='
+    })
+    expect(postMock).toHaveBeenCalledWith('/videos', {
+      model: 'veo-3.1-generate-preview',
+      prompt: 'ocean waves',
+      duration: 8,
+      resolution: '1080p',
+      aspect_ratio: '16:9',
+      image: 'data:image/png;base64,Zmlyc3Q='
+    })
+    expect(job.jobId).toBe('video-123')
+    expect(job.pollingUrl).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/openai/videos/video-123'
+    )
+  })
+
+  it('polls video until done and extracts video_url as download address', async () => {
+    getMock.mockResolvedValueOnce({
+      data: {
+        id: 'video-123',
+        status: 'completed',
+        video_url: 'https://example.com/v.mp4'
+      }
+    })
+    const result = await googleAdapter.pollVideo(provider(), {
+      jobId: 'video-123',
+      pollingUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/videos/video-123'
+    })
+    expect(result.status).toBe('completed')
+    expect(result.progress).toBe(100)
+    expect(result.downloadUrl).toBe('https://example.com/v.mp4')
+  })
+
+  it('maps queued / failed video job statuses', async () => {
+    getMock.mockResolvedValueOnce({
+      data: { id: 'video-123', status: 'queued' }
+    })
+    const queued = await googleAdapter.pollVideo(provider(), {
+      jobId: 'video-123',
+      pollingUrl: '/videos/video-123'
+    })
+    expect(queued.status).toBe('pending')
+
+    getMock.mockResolvedValueOnce({
+      data: { id: 'video-123', status: 'failed', error: { message: 'boom' } }
+    })
+    const failed = await googleAdapter.pollVideo(provider(), {
+      jobId: 'video-123',
+      pollingUrl: '/videos/video-123'
+    })
+    expect(failed.status).toBe('failed')
+    expect(failed.error).toBe('boom')
+    expect(failed.downloadUrl).toBeUndefined()
+  })
+
+  it('rejects speech with a clear message', async () => {
     await expect(
       googleAdapter.generateSpeech(provider(), 'tts-1', { input: 'hi' })
-    ).rejects.toThrow(/仅支持文本/)
-    await expect(
-      googleAdapter.submitVideo(provider(), 'veo-3.1', { prompt: 'x' })
     ).rejects.toThrow(/仅支持文本/)
   })
 })

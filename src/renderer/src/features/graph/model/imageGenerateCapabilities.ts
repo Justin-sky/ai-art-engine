@@ -7,6 +7,7 @@ import {
 import {
   getSavedModelCatalogEntry,
   isDashScopeProvider,
+  isGoogleProvider,
   isKlingProvider,
   isMiniMaxProvider,
   isModelScopeProvider,
@@ -22,6 +23,7 @@ import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashsc
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { resolveOpenAiModelCapabilities } from '@shared/modelProviders/openai/modelCapabilities'
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
+import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
 import { resolveZhipuModelCapabilities } from '@shared/modelProviders/zhipu/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
@@ -51,6 +53,7 @@ async function resolveSupportedParameters(
   let isKling = false
   let isMiniMax = false
   let isDashScope = false
+  let isGoogle = false
   let isModelScope = false
   let isOpenAi = false
   let isXai = false
@@ -62,6 +65,7 @@ async function resolveSupportedParameters(
     isKling = isKlingProvider(provider)
     isMiniMax = isMiniMaxProvider(provider)
     isDashScope = isDashScopeProvider(provider)
+    isGoogle = isGoogleProvider(provider)
     isModelScope = isModelScopeProvider(provider)
     isOpenAi = isOpenAiProvider(provider)
     isXai = isXaiProvider(provider)
@@ -124,6 +128,12 @@ async function resolveSupportedParameters(
 
   if (isXai) {
     const local = resolveXaiModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isGoogle) {
+    const local = resolveGoogleModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }

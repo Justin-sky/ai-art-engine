@@ -280,7 +280,11 @@ export default {
           'Grok Imagine Video（grok-imagine-video）：异步提交 /videos/generations 后轮询 GET /videos/{request_id}，status=done 后下载 video.url；支持 480p / 720p、5–15 秒与首帧图生视频（image 字段）。'
       },
       googleModalityHint: {
-        text: 'Google Gemini 对话（gemini-* 系列），走官方 OpenAI 兼容层，默认 Base URL 为 generativelanguage.googleapis.com/v1beta/openai，对应 /chat/completions；文本目录由 GET /models 拉取。'
+        text: 'Google Gemini 对话（gemini-* 系列），走官方 OpenAI 兼容层，默认 Base URL 为 generativelanguage.googleapis.com/v1beta/openai，对应 /chat/completions；文本目录由 GET /models 拉取。',
+        image:
+          'Nano Banana 系列文生图 / 图生图（gemini-2.5-flash-image、gemini-3-pro-image、gemini-3.1-flash-image 等），JSON body 调用 /images/generations，支持 aspect_ratio、resolution、n 与 response_format（返回 base64，落盘不受 URL 过期影响）；参考图走 image 字段（gemini-3-pro-image 最多 14 张）。',
+        video:
+          'Veo 3.1 视频生成（veo-3.1-generate / fast / lite）：异步提交 /videos 后轮询 GET /videos/{id}，OpenAI VideoJob 形态，status=completed 后取 video_url / output.url；支持 720p–4K、4–8 秒与首帧图生视频（image 字段）。'
       },
       zhipuModalityHint: {
         text: '智谱 GLM 对话（OpenAI 兼容），默认 Base URL 为 open.bigmodel.cn/api/paas/v4，对应 /chat/completions。',

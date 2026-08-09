@@ -196,8 +196,11 @@
                   <code>GET /videos/{request_id}</code>，支持 480p / 720p、5–15 秒与首帧图生视频）。
                 </li>
                 <li>
-                  <strong>Google（Gemini）</strong>：文本（gemini-* 对话），走官方 OpenAI 兼容层（默认
-                  Base URL <code>https://generativelanguage.googleapis.com/v1beta/openai</code>）。
+                  <strong>Google（Gemini）</strong>：文本（gemini-* 对话）+ Nano Banana 系列文生图 /
+                  图生图（<code>/images/generations</code>，JSON body，支持 aspect_ratio / resolution / n /
+                  response_format 与 image 参考图字段）+ Veo 3.1 异步视频（<code>/videos</code> 提交后轮询
+                  <code>GET /videos/{id}</code>，支持 720p–4K、4–8 秒与首帧图生视频），均走官方 OpenAI 兼容层
+                  （默认 Base URL <code>https://generativelanguage.googleapis.com/v1beta/openai</code>）。
                 </li>
                 <li>
                   <strong>vLLM</strong>：本地 OpenAI 兼容服务（默认 <code>http://localhost:8000/v1</code>），无需 API Key；
@@ -362,7 +365,7 @@
             <li>
               按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
-              DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）仅文本；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
+              DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
               魔塔仅文本与图片，文生图为异步任务）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>

@@ -281,7 +281,11 @@ export default {
           'Grok Imagine Video (grok-imagine-video): submit async to /videos/generations, poll GET /videos/{request_id}, download video.url when status=done; supports 480p / 720p, 5-15 seconds, and first-frame image-to-video via the image field.'
       },
       googleModalityHint: {
-        text: 'Google Gemini chat (gemini-* family) via the official OpenAI-compatible layer. Default Base URL is generativelanguage.googleapis.com/v1beta/openai via /chat/completions; the text catalog is fetched from GET /models.'
+        text: 'Google Gemini chat (gemini-* family) via the official OpenAI-compatible layer. Default Base URL is generativelanguage.googleapis.com/v1beta/openai via /chat/completions; the text catalog is fetched from GET /models.',
+        image:
+          'Nano Banana family text-to-image / image editing (gemini-2.5-flash-image, gemini-3-pro-image, gemini-3.1-flash-image, etc.) via JSON /images/generations with aspect_ratio, resolution, n and response_format (base64 is returned, so saved assets are not affected by URL expiry). Reference images are passed in the image field (up to 14 on gemini-3-pro-image).',
+        video:
+          'Veo 3.1 video generation (veo-3.1-generate / fast / lite): submit asynchronously to /videos, poll GET /videos/{id} with OpenAI-style video jobs, then take video_url / output.url when status=completed; supports 720p-4K, 4-8 seconds, and first-frame image-to-video via the image field.'
       },
       zhipuModalityHint: {
         text: 'Zhipu GLM chat (OpenAI-compatible). Default Base URL is open.bigmodel.cn/api/paas/v4 via /chat/completions.',

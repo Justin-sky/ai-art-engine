@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "console": "https://aistudio.google.com/apikey",
+    "docs": [
+      "https://ai.google.dev/gemini-api/docs/image-generation",
+      "https://ai.google.dev/gemini-api/docs/video"
+    ],
+    "note": "Google Gemini OpenAI-compatible layer (base https://generativelanguage.googleapis.com/v1beta/openai). Text catalog is fetched from GET /models and filtered to gemini-* chat models. Images (Nano Banana family) go through JSON /images/generations with aspect_ratio and response_format=b64_json; reference images are passed in the image field. Videos (Veo 3.1) are submitted asynchronously to /videos and polled via GET /videos/{id} (OpenAI-style video jobs)."
+  },
+  "models": [
+    {
+      "id": "gemini-2.5-flash-image",
+      "name": "Gemini 2.5 Flash Image (Nano Banana)",
+      "modality": "image",
+      "profile": "image-gemini"
+    },
+    {
+      "id": "gemini-2.5-flash-image-preview",
+      "name": "Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "modality": "image",
+      "profile": "image-gemini"
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "name": "Gemini 3 Pro Image (Nano Banana Pro)",
+      "modality": "image",
+      "profile": "image-gemini-pro"
+    },
+    {
+      "id": "gemini-3-pro-image-preview",
+      "name": "Gemini 3 Pro Image Preview (Nano Banana Pro)",
+      "modality": "image",
+      "profile": "image-gemini-pro"
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "name": "Gemini 3.1 Flash Image (Nano Banana 2)",
+      "modality": "image",
+      "profile": "image-gemini"
+    },
+    {
+      "id": "gemini-3.1-flash-image-preview",
+      "name": "Gemini 3.1 Flash Image Preview (Nano Banana 2)",
+      "modality": "image",
+      "profile": "image-gemini"
+    },
+    {
+      "id": "gemini-3.1-flash-lite-image",
+      "name": "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)",
+      "modality": "image",
+      "profile": "image-gemini-lite"
+    },
+    {
+      "id": "veo-3.1-generate-preview",
+      "name": "Veo 3.1 Generate Preview",
+      "modality": "video",
+      "profile": "video-veo31"
+    },
+    {
+      "id": "veo-3.1-generate-001",
+      "name": "Veo 3.1 Generate",
+      "modality": "video",
+      "profile": "video-veo31"
+    },
+    {
+      "id": "veo-3.1-fast-generate-preview",
+      "name": "Veo 3.1 Fast Generate Preview",
+      "modality": "video",
+      "profile": "video-veo31"
+    },
+    {
+      "id": "veo-3.1-fast-generate-001",
+      "name": "Veo 3.1 Fast Generate",
+      "modality": "video",
+      "profile": "video-veo31"
+    },
+    {
+      "id": "veo-3.1-lite-generate-preview",
+      "name": "Veo 3.1 Lite Generate Preview",
+      "modality": "video",
+      "profile": "video-veo31-lite"
+    },
+    {
+      "id": "veo-3.1-lite-generate-001",
+      "name": "Veo 3.1 Lite Generate",
+      "modality": "video",
+      "profile": "video-veo31-lite"
+    }
+  ],
+  "profiles": {
+    "image-gemini": {
+      "modality": "image",
+      "label": "Nano Banana",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1K", "2K", "4K"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 3
+          }
+        }
+      }
+    },
+    "image-gemini-pro": {
+      "modality": "image",
+      "label": "Nano Banana Pro",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1K", "2K", "4K"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 14
+          }
+        }
+      }
+    },
+    "image-gemini-lite": {
+      "modality": "image",
+      "label": "Nano Banana 2 Lite",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1K", "2K"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 3
+          }
+        }
+      }
+    },
+    "video-veo31": {
+      "modality": "video",
+      "label": "Veo 3.1",
+      "capabilities": {
+        "supported_resolutions": ["720p", "1080p", "4K"],
+        "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+        "supported_durations": [4, 5, 6, 7, 8],
+        "supported_frame_images": ["first_frame"]
+      }
+    },
+    "video-veo31-lite": {
+      "modality": "video",
+      "label": "Veo 3.1 Lite",
+      "capabilities": {
+        "supported_resolutions": ["720p"],
+        "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+        "supported_durations": [4, 5, 6, 7, 8],
+        "supported_frame_images": ["first_frame"]
+      }
+    }
+  }
+}
