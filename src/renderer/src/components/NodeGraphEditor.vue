@@ -3246,14 +3246,32 @@ function resolveTempEdgeWorlds(): Array<{ from: { x: number; y: number }; to: { 
   if (linkingFrom.value) {
     const node = graph.nodes.find((n) => n.id === linkingFrom.value)
     if (!node) return []
-    const start = getNodePortCenter(node, 'right', linkingFromPort.value ?? undefined)
-    return [{ from: start, to: end }]
+    // 多选：从每个选中节点相同的输出口各拉一条预览线
+    const batch = new Set([linkingFrom.value, ...selectedNodeIds.value])
+    const out: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
+    for (const id of batch) {
+      const n = graph.nodes.find((item) => item.id === id)
+      if (!n) continue
+      const port = findOutPort(n, linkingFromPort.value ?? undefined)
+      if (!port) continue
+      out.push({ from: getNodePortCenter(n, 'right', port.id), to: end })
+    }
+    return out
   }
   if (linkingTo.value) {
     const node = graph.nodes.find((n) => n.id === linkingTo.value)
     if (!node) return []
-    const dst = getNodePortCenter(node, 'left', linkingToPort.value ?? undefined)
-    return [{ from: end, to: dst }]
+    // 多选：从光标到每个选中节点相同的输入口各拉一条预览线
+    const batch = new Set([linkingTo.value, ...selectedNodeIds.value])
+    const out: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
+    for (const id of batch) {
+      const n = graph.nodes.find((item) => item.id === id)
+      if (!n) continue
+      const port = findInPort(n, linkingToPort.value ?? undefined)
+      if (!port) continue
+      out.push({ from: end, to: getNodePortCenter(n, 'left', port.id) })
+    }
+    return out
   }
   return []
 }
@@ -4494,7 +4512,30 @@ function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
     const sourcePort = linkingFromPort.value ?? 'out'
     const targetHit = findLinkTarget(ev.clientX, ev.clientY)
     if (targetHit && sourceId) {
-      connectNodes(sourceId, targetHit.nodeId, sourcePort, targetHit.portId)
+      // 多选：从选中节点中找出所有具备相同输出口的节点，一起连到目标端口（合并为一次撤销）
+      const batchIds = [...new Set([sourceId, ...selectedNodeIds.value])].filter(
+        (id) => id !== targetHit.nodeId
+      )
+      if (batchIds.length > 1) {
+        const before = buildGraphJson()
+        let connected = 0
+        for (const id of batchIds) {
+          if (
+            connectNodes(id, targetHit.nodeId, sourcePort, targetHit.portId, {
+              skipHistory: true
+            })
+          ) {
+            connected += 1
+          }
+        }
+        if (connected > 0) {
+          recordGraphChange('connect-nodes', before)
+          scheduleSave()
+          graphEditorHosts.bumpRevision()
+        }
+      } else {
+        connectNodes(sourceId, targetHit.nodeId, sourcePort, targetHit.portId)
+      }
     } else if (sourceId) {
       const source = graph.nodes.find((n) => n.id === sourceId)
       const outPort = source ? findOutPort(source, sourcePort) : undefined
@@ -4589,7 +4630,30 @@ function onInPortDown(nodeId: string, portId: string, e: PointerEvent): void {
     const targetPort = linkingToPort.value ?? undefined
     const sourceHit = findLinkSource(ev.clientX, ev.clientY)
     if (sourceHit && targetId) {
-      connectNodes(sourceHit.nodeId, targetId, sourceHit.portId, targetPort)
+      // 多选：从选中节点中找出所有具备相同输入口的节点，一起接入来源端口（合并为一次撤销）
+      const batchIds = [...new Set([targetId, ...selectedNodeIds.value])].filter(
+        (id) => id !== sourceHit.nodeId
+      )
+      if (batchIds.length > 1) {
+        const before = buildGraphJson()
+        let connected = 0
+        for (const id of batchIds) {
+          if (
+            connectNodes(sourceHit.nodeId, id, sourceHit.portId, targetPort, {
+              skipHistory: true
+            })
+          ) {
+            connected += 1
+          }
+        }
+        if (connected > 0) {
+          recordGraphChange('connect-nodes', before)
+          scheduleSave()
+          graphEditorHosts.bumpRevision()
+        }
+      } else {
+        connectNodes(sourceHit.nodeId, targetId, sourceHit.portId, targetPort)
+      }
     } else if (targetId) {
       const target = graph.nodes.find((n) => n.id === targetId)
       const inPort = target ? findInPort(target, targetPort) : undefined
