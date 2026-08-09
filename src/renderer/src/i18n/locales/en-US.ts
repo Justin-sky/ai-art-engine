@@ -489,7 +489,8 @@ export default {
     maxReached: 'You can add at most {max} style images',
     truncated: 'Limit reached — added {n} of the selected files (max {max})',
     customName: 'Custom style',
-    readFailed: 'Failed to read image'
+    readFailed: 'Failed to read image',
+    onlyImage: 'Only image assets can be dropped'
   },
   asset: {
     type: {

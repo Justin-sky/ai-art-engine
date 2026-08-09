@@ -11,7 +11,14 @@
       <p v-else class="hint">{{ t('stylePicker.hint', { max }) }}</p>
     </template>
 
-    <div class="tray">
+    <div
+      class="tray"
+      :class="{ 'drag-over': dragOver }"
+      @dragenter.prevent="onDragEnter"
+      @dragover.prevent
+      @dragleave="onDragLeave"
+      @drop.prevent="onDrop"
+    >
       <div v-for="item in items" :key="item.id" class="slot">
         <img v-if="previewUrl(item)" :src="previewUrl(item)" :alt="item.name" />
         <div v-else class="slot-empty">?</div>
@@ -93,8 +100,15 @@ import {
   normalizeProjectStyleImages,
   type ProjectStyleImage
 } from '@shared/domain'
+import type { AssetInfo } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { getDefaultStylePreset } from '../features/stylePresets/defaultLibrary'
+import {
+  STUDIO_ASSET_DRAG_MIME,
+  STUDIO_ASSET_ID_DRAG_MIME,
+  STUDIO_ASSET_IDS_DRAG_MIME,
+  useWorkspaceStore
+} from '../stores/workspace'
 import StyleLibraryDialog from './StyleLibraryDialog.vue'
 
 const props = withDefaults(
@@ -121,6 +135,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useStudioI18n()
+const workspace = useWorkspaceStore()
 
 const items = computed(() => normalizeProjectStyleImages(props.modelValue, props.max))
 const remaining = computed(() => Math.max(0, props.max - items.value.length))
@@ -132,6 +147,7 @@ const selectedLibraryIds = computed(() =>
 const menuOpen = ref(false)
 const libraryOpen = ref(false)
 const error = ref('')
+const dragOver = ref(false)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 
 function previewUrl(item: ProjectStyleImage): string {
@@ -187,29 +203,26 @@ function pickCustom(): void {
   fileInputEl.value?.click()
 }
 
-async function readFileAsDataUrl(file: File): Promise<string> {
+async function readFileAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ''))
     reader.onerror = () => reject(reader.error ?? new Error('read failed'))
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(blob)
   })
 }
 
-async function onFilesPicked(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  if (!files.length) return
-
+async function addImageFiles(files: File[]): Promise<void> {
+  const images = files.filter((file) => file.type.startsWith('image/'))
+  if (!images.length) return
   const room = remaining.value
   if (room <= 0) {
     error.value = t('stylePicker.maxReached', { max: props.max })
     return
   }
 
-  const take = files.slice(0, room)
-  if (files.length > room) {
+  const take = images.slice(0, room)
+  if (images.length > room) {
     error.value = t('stylePicker.truncated', { max: props.max, n: take.length })
   } else {
     error.value = ''
@@ -217,7 +230,6 @@ async function onFilesPicked(event: Event): Promise<void> {
 
   const added: ProjectStyleImage[] = []
   for (const file of take) {
-    if (!file.type.startsWith('image/')) continue
     try {
       const dataUrl = await readFileAsDataUrl(file)
       if (!dataUrl.startsWith('data:')) continue
@@ -233,6 +245,84 @@ async function onFilesPicked(event: Event): Promise<void> {
     }
   }
   if (added.length) commit([...items.value, ...added])
+}
+
+async function onFilesPicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (!files.length) return
+  await addImageFiles(files)
+}
+
+async function addAssetImage(asset: AssetInfo): Promise<void> {
+  if (props.readonly || !asset.relativePath) return
+  if (remaining.value <= 0) {
+    error.value = t('stylePicker.maxReached', { max: props.max })
+    return
+  }
+  try {
+    const url = await window.studio.getAssetFileUrl(asset.relativePath)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`fetch asset failed: ${res.status}`)
+    const blob = await res.blob()
+    const dataUrl = await readFileAsDataUrl(blob)
+    if (!dataUrl.startsWith('data:')) return
+    commit([
+      ...items.value,
+      {
+        id: createStyleImageId(),
+        name: asset.name || t('stylePicker.customName'),
+        weight: DEFAULT_STYLE_IMAGE_WEIGHT,
+        dataUrl
+      }
+    ])
+    error.value = ''
+  } catch {
+    error.value = t('stylePicker.readFailed')
+  }
+}
+
+function isStudioAssetDrag(event: DragEvent): boolean {
+  if (workspace.draggingAsset) return true
+  const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : []
+  return (
+    types.includes(STUDIO_ASSET_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_ID_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_IDS_DRAG_MIME)
+  )
+}
+
+function onDragEnter(event: DragEvent): void {
+  if (props.readonly) return
+  if (isStudioAssetDrag(event) || Array.from(event.dataTransfer?.files ?? []).length) {
+    dragOver.value = true
+  }
+}
+
+function onDragLeave(event: DragEvent): void {
+  const current = event.currentTarget as HTMLElement | null
+  const related = event.relatedTarget as Node | null
+  if (current && related && current.contains(related)) return
+  dragOver.value = false
+}
+
+async function onDrop(event: DragEvent): Promise<void> {
+  if (props.readonly) return
+  dragOver.value = false
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  if (files.some((file) => file.type.startsWith('image/'))) {
+    await addImageFiles(files)
+    return
+  }
+  if (isStudioAssetDrag(event)) {
+    const asset = workspace.resolveDraggedAsset(event)
+    if (asset?.type === 'image') {
+      await addAssetImage(asset)
+    } else if (asset) {
+      error.value = t('stylePicker.onlyImage')
+    }
+  }
 }
 
 const rootEl = ref<HTMLElement | null>(null)
@@ -297,6 +387,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.tray.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+  border-radius: 10px;
 }
 
 .slot {

@@ -487,7 +487,8 @@ export default {
     maxReached: '最多只能添加 {max} 张风格图',
     truncated: '已达上限，仅添加了 {n} 张（最多 {max} 张）',
     customName: '自定义风格',
-    readFailed: '读取图片失败'
+    readFailed: '读取图片失败',
+    onlyImage: '仅支持拖入图片'
   },
   asset: {
     type: {
