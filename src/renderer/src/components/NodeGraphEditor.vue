@@ -801,6 +801,7 @@ import {
   setMemoryGraphClipboard
 } from '../features/graph/model/graphClipboardMemory'
 import {
+  DIRECTOR_STAGES_BY_NODE_KEY,
   createFreshDirectorStage,
   patchGenParamsWithNodeStage,
   removeNodeStagesFromGenParams
@@ -3778,8 +3779,17 @@ function seedFreshStageForNode(node: GraphNode, graphJson: GraphDocument): void 
 
 function removeStagesForNodeIds(nodeIds: string[], graphJson: GraphDocument): void {
   const asset = graphAsset.value
-  if (!asset || !props.assetId || graphScope.value !== 'directorAsset' || !nodeIds.length) return
-  const nextGenParams = removeNodeStagesFromGenParams(asset.genParams, nodeIds, graphJson)
+  // 自由画布等作用域同样会内嵌导演台节点：只要资产带 stagesByNodeId 就清理，避免孤儿舞台残留
+  if (!asset || !props.assetId || !nodeIds.length) return
+  const genParams = asset.genParams
+  if (
+    !genParams ||
+    typeof genParams !== 'object' ||
+    !(DIRECTOR_STAGES_BY_NODE_KEY in genParams)
+  ) {
+    return
+  }
+  const nextGenParams = removeNodeStagesFromGenParams(genParams, nodeIds, graphJson)
   writeDirectorGenParams({ ...nextGenParams, graphJson })
 }
 

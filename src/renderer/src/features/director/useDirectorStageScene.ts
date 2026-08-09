@@ -156,6 +156,11 @@ export type DirectorStageEditMode = 'scene' | 'animation'
 
 export type DirectorMediaGalleryTab = 'shots' | 'actions'
 
+/** 相机 far 平面 = 全景半径倍数（需覆盖最大拉远距离，避免远景被裁掉） */
+const DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER = 10
+/** 无全景背景时允许的最大拉远距离 = 全景半径倍数（模型可在屏幕上显示得更小） */
+const DIRECTOR_MAX_ZOOMOUT_RADIUS_MULTIPLIER = 6
+
 export interface UseDirectorStageSceneOptions {
   directorAssetId: string
   /** ?????????????????????????*/
@@ -577,7 +582,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV,
       aspect,
       0.1,
-      currentPanoramaRadius() * 2
+      currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
     shotCam.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
     const rotation =
@@ -635,6 +640,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   function isStageCameraId(id: string): boolean {
     return !!getCameraState(id)
+  }
+
+  function isCameraGroupId(id: string): boolean {
+    return !!stage.value.cameraGroups?.some((group) => group.id === id)
   }
 
   /** ??????????????????empty ?????????*/
@@ -1461,7 +1470,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV,
       aspect,
       0.1,
-      currentPanoramaRadius() * 2
+      currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
     previewCam.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
     const rotation =
@@ -1618,12 +1627,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function syncCameraClipPlanes(): void {
-    const far = currentPanoramaRadius() * 2
+    const far = currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     if (camera) {
       camera.far = far
       camera.updateProjectionMatrix()
     }
-    if (orbit) orbit.maxDistance = currentPanoramaRadius() * 0.9
+    if (orbit) {
+      // 有全景背景时保持相机在球体内（避免背景被裁掉）；无全景时放开拉远上限，模型可显示得更小
+      orbit.maxDistance = panoramaSphere
+        ? currentPanoramaRadius() * 0.9
+        : currentPanoramaRadius() * DIRECTOR_MAX_ZOOMOUT_RADIUS_MULTIPLIER
+    }
   }
 
   function applyGridVisuals(): void {
@@ -5288,6 +5302,34 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     syncObjectNameLabel(obj, mesh)
   }
 
+  /** 只统计可见 Mesh 的世界包围盒（跳过隐藏 / 辅助几何，兼容 SkinnedMesh 对象级包围盒） */
+  function computeVisibleWorldBox(root: THREE.Object3D): THREE.Box3 | null {
+    const box = new THREE.Box3()
+    const tmp = new THREE.Box3()
+    let found = false
+    root.updateWorldMatrix(true, true)
+    root.traverse((child) => {
+      if (child.visible === false) return
+      if (!(child instanceof THREE.Mesh)) return
+      const geometry = child.geometry
+      if (!geometry) return
+      const skinned = child as THREE.SkinnedMesh
+      if (skinned.isSkinnedMesh && skinned.boundingBox !== undefined) {
+        if (skinned.boundingBox === null) skinned.computeBoundingBox()
+        if (!skinned.boundingBox) return
+        tmp.copy(skinned.boundingBox)
+      } else {
+        if (geometry.boundingBox === null) geometry.computeBoundingBox()
+        if (!geometry.boundingBox) return
+        tmp.copy(geometry.boundingBox)
+      }
+      tmp.applyMatrix4(child.matrixWorld)
+      box.union(tmp)
+      found = true
+    })
+    return found ? box : null
+  }
+
   function syncObjectNameLabel(obj: StageObjectState, mesh: THREE.Object3D): void {
     const show = sceneLabelsVisible.value && obj.visible !== false && isObjectNameVisible(obj)
     let label = objectLabels.get(obj.id)
@@ -5302,13 +5344,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     } else {
       label.element.textContent = obj.name
     }
-    // 标签贴在物体实际包围盒顶部上方，并按网格缩放抵消，避免缩放后标签远离物体
-    mesh.updateWorldMatrix(true, false)
-    const box = new THREE.Box3().setFromObject(mesh)
+    // 标签贴在「可见网格」包围盒顶部中心上方（跳过隐藏/辅助几何），并按网格缩放抵消，避免缩放后标签远离物体
+    const box = computeVisibleWorldBox(mesh)
     const worldScaleY = Math.max(0.0001, mesh.getWorldScale(new THREE.Vector3()).y)
-    if (!box.isEmpty()) {
-      const top = mesh.worldToLocal(new THREE.Vector3(box.max.x, box.max.y, box.max.z))
-      label.position.set(top.x, top.y + 0.1 / worldScaleY, top.z)
+    if (box && !box.isEmpty()) {
+      const anchor = mesh.worldToLocal(
+        new THREE.Vector3(
+          (box.min.x + box.max.x) / 2,
+          box.max.y,
+          (box.min.z + box.max.z) / 2
+        )
+      )
+      label.position.set(anchor.x, anchor.y + 0.1 / worldScaleY, anchor.z)
     } else {
       label.position.set(0, 2.1 / worldScaleY, 0)
     }
@@ -5575,6 +5622,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   /** ???????????????????*/
   function canDeleteObject(id: string): boolean {
     if (isStageCameraId(id)) return listCameras().length > 1
+    if (isCameraGroupId(id)) return true
     const obj = stage.value.objects.find((o) => o.id === id)
     if (!obj) return false
     return true
@@ -5599,8 +5647,86 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   /**
    * ?????????????????? model ???????????????
    */
+  /** 删除物体/相机后，清理仍引用它们的动画轨道与机位组，避免孤儿动画数据残留 */
+  function pruneStageAnimationForRemoved(removeIds: Set<string>): void {
+    const anim = stage.value.animation
+    if (anim?.tracks?.length) {
+      const tracks: DirectorAnimTrack[] = []
+      for (const track of anim.tracks) {
+        if (track.targetKind === 'object') {
+          if (removeIds.has(track.targetId)) continue
+          tracks.push(track)
+          continue
+        }
+        if (track.targetKind === 'camera') {
+          if (track.cameraCut) {
+            const segments = (track.cameraSegments ?? []).filter(
+              (seg) => !removeIds.has(seg.cameraId)
+            )
+            if (segments.length === 0) continue
+            const targetId = removeIds.has(track.targetId)
+              ? segments[0].cameraId
+              : track.targetId
+            tracks.push(
+              segments.length === (track.cameraSegments?.length ?? 0)
+                ? { ...track, targetId }
+                : { ...track, targetId, cameraSegments: segments }
+            )
+            continue
+          }
+          if (removeIds.has(track.targetId)) continue
+          tracks.push(track)
+          continue
+        }
+        tracks.push(track)
+      }
+      stage.value.animation = { ...anim, tracks }
+    }
+    if (stage.value.cameraGroups?.length) {
+      stage.value.cameraGroups = stage.value.cameraGroups.filter(
+        (group) => !removeIds.has(group.parentId ?? '')
+      )
+    }
+  }
+
   function removeObject(id: string): boolean {
     if (!canDeleteObject(id)) return false
+    if (isCameraGroupId(id)) {
+      // 机位组：删除组及其下的预设相机
+      const groupCameraIds = new Set(
+        listCameras()
+          .filter((camera) => camera.parentId === id)
+          .map((camera) => camera.id)
+      )
+      const wasActiveInGroup = groupCameraIds.has(stage.value.activeCameraId ?? '')
+      const wasSelectedInGroup = groupCameraIds.has(selectedCameraId.value ?? '')
+      for (const cameraId of groupCameraIds) disposeShotCameraVisual(cameraId)
+      stage.value.cameras = listCameras().filter((camera) => !groupCameraIds.has(camera.id))
+      stage.value.cameraGroups = (stage.value.cameraGroups ?? []).filter(
+        (group) => group.id !== id
+      )
+      if (wasActiveInGroup || !getCameraState(stage.value.activeCameraId ?? '')) {
+        stage.value.activeCameraId = listCameras()[0]?.id ?? null
+      }
+      if (wasSelectedInGroup) {
+        const nextCameraId = stage.value.activeCameraId ?? listCameras()[0]?.id ?? null
+        if (nextCameraId) {
+          selectCamera(nextCameraId)
+        } else {
+          selectedCameraId.value = null
+          selectionKind.value = null
+          applySelectionToScene()
+        }
+      }
+      pruneStageAnimationForRemoved(new Set([id, ...groupCameraIds]))
+      previewRevision.value += 1
+      requestRender()
+      schedulePersist()
+      void directorDocument.save().catch(() => {
+        /* 持久化失败不阻塞 */
+      })
+      return true
+    }
     if (isStageCameraId(id)) {
       const wasActive = stage.value.activeCameraId === id
       const wasSelected = selectedCameraId.value === id
@@ -5609,6 +5735,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       disposeShotCameraVisual(id)
       if (wasActive) stage.value.activeCameraId = cameras[0].id
       if (wasSelected) selectCamera(stage.value.activeCameraId ?? cameras[0].id)
+      pruneStageAnimationForRemoved(new Set([id]))
       previewRevision.value += 1
       requestRender()
       schedulePersist()
@@ -5647,6 +5774,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       ...stage.value.objects.filter((o) => !removeIds.has(o.id)),
       ...keptModels
     ]
+    pruneStageAnimationForRemoved(removeIds)
 
     // ???? model mesh ??????
     for (const model of keptModels) {
@@ -5689,10 +5817,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       kind: DirectorSelectionKind
       objectId: string | null
       cameraId: string | null
-    }
+    },
+    cameraGroups?: DirectorCameraGroup[]
   ): Promise<void> {
     stage.value.objects = objects
     stage.value.cameras = cameras
+    if (cameraGroups) stage.value.cameraGroups = cameraGroups
     stage.value.activeCameraId =
       activeCameraId && cameras.some((c) => c.id === activeCameraId)
         ? activeCameraId
@@ -5738,6 +5868,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const beforeObjects = cloneStageState(stage.value.objects)
     const beforeCameras = cloneStageState(listCameras())
     const beforeActive = stage.value.activeCameraId ?? null
+    const beforeGroups = cloneStageState(stage.value.cameraGroups ?? [])
     const beforeSelection = {
       kind: selectionKind.value,
       objectId: selectedObjectId.value,
@@ -5753,6 +5884,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const afterObjects = cloneStageState(stage.value.objects)
     const afterCameras = cloneStageState(listCameras())
     const afterActive = stage.value.activeCameraId ?? null
+    const afterGroups = cloneStageState(stage.value.cameraGroups ?? [])
 
     const scope = `director-stage:${options.directorAssetId}`
     editor.commands.setActiveScope(scope)
@@ -5760,8 +5892,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       id: `director.remove.${crypto.randomUUID()}`,
       label: '删除物体',
       scope,
-      execute: () => applyStageSnapshot(afterObjects, afterCameras, afterActive),
-      undo: () => applyStageSnapshot(beforeObjects, beforeCameras, beforeActive, beforeSelection)
+      execute: () =>
+        applyStageSnapshot(afterObjects, afterCameras, afterActive, undefined, afterGroups),
+      undo: () =>
+        applyStageSnapshot(
+          beforeObjects,
+          beforeCameras,
+          beforeActive,
+          beforeSelection,
+          beforeGroups
+        )
     })
     return true
   }
@@ -6533,6 +6673,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     if (!panoramaAssetId) {
       applyBorderlessStyle(false)
+      syncCameraClipPlanes()
       previewRevision.value += 1
       requestRender()
       return
@@ -7086,7 +7227,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV,
       1,
       0.1,
-      currentPanoramaRadius() * 2
+      currentPanoramaRadius() * DIRECTOR_CAMERA_FAR_RADIUS_MULTIPLIER
     )
     camera.position.set(viewer.position.x, viewer.position.y, viewer.position.z)
 
@@ -7108,8 +7249,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     orbit.enableDamping = true
     orbit.enablePan = true
     orbit.screenSpacePanning = true
-    orbit.minDistance = 0.05
-    orbit.maxDistance = currentPanoramaRadius() * 0.9
+    // 最小缩放距离再缩小 10 倍：0.05 → 0.005，小模型也能推得更近
+    orbit.minDistance = 0.005
+    // 无全景时放开拉远上限；若后续加载全景，syncCameraClipPlanes 会收回到球体内
+    orbit.maxDistance = currentPanoramaRadius() * DIRECTOR_MAX_ZOOMOUT_RADIUS_MULTIPLIER
     orbit.target.set(viewer.target.x, viewer.target.y, viewer.target.z)
     // ????????????????????
     orbit.mouseButtons = {

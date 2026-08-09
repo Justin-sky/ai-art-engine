@@ -112,18 +112,20 @@ export function patchGenParamsWithNodeStage(
   stage: DirectorStageState
 ): Record<string, unknown> {
   const base = { ...(genParams ?? {}) }
-  const prevMap =
-    base[DIRECTOR_STAGES_BY_NODE_KEY] &&
-    typeof base[DIRECTOR_STAGES_BY_NODE_KEY] === 'object' &&
-    !Array.isArray(base[DIRECTOR_STAGES_BY_NODE_KEY])
-      ? { ...(base[DIRECTOR_STAGES_BY_NODE_KEY] as Record<string, unknown>) }
-      : {}
+  const prevMap = readStagesByNodeId(base, base.graphJson)
+  // 只保留仍存在于图中的导演台节点舞台，避免删除/重建节点后孤儿数据残留
+  const liveNodes = listDirectorProcessingNodes(base.graphJson)
+  const liveNodeIds = liveNodes.length ? new Set(liveNodes.map((node) => node.id)) : null
+  const nextMap: Record<string, DirectorStageState> = {}
+  for (const [id, stored] of Object.entries(prevMap)) {
+    if (!liveNodeIds || liveNodeIds.has(id)) nextMap[id] = stored
+  }
   const nextStage = { ...stage, ownerProcessingNodeId: nodeId }
-  prevMap[nodeId] = nextStage
+  nextMap[nodeId] = nextStage
   const { stage: _legacyStage, ...rest } = base
   return {
     ...rest,
-    [DIRECTOR_STAGES_BY_NODE_KEY]: prevMap
+    [DIRECTOR_STAGES_BY_NODE_KEY]: nextMap
   }
 }
 
