@@ -898,8 +898,8 @@ Rules:
 - Extract only UI surfaces (screens, panels, popups, HUD, lists, dialogs). Skip pure rules / data tables that have no visual layout.
 - One JSON array item per screen. Cover all screens mentioned or clearly implied by the document.
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
-- Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, style cues, and readable labels if the source uses them.
-- Do not specify concrete colors (hex values or color names); leave the palette to the style reference — describe layout, controls, states and visual hierarchy only.
+- Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, and readable labels if the source uses them.
+- Do not specify concrete colors or visual style (art direction such as fantasy/realistic/cartoon); both come from the style reference — describe layout, controls, states and visual hierarchy only.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - id is a stable English kebab slug prefixed with ui-.
 
@@ -911,7 +911,7 @@ Example:
   {
     "id": "ui-main-hud",
     "title": "Main HUD",
-    "prompt": "Mobile game main HUD, top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean fantasy UI, high readability, no watermark"
+    "prompt": "Mobile game main HUD, top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean, high-readability UI, no watermark"
   }
 ]`
 
@@ -922,8 +922,8 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - 只拆 UI 界面（全屏、面板、弹窗、HUD、列表、对话框等）；纯规则/数值表且无视觉布局的内容跳过。
 - JSON 数组每一项对应一个界面；覆盖文中明确写出或可合理推断出的全部界面。
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
-- 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级、风格线索；文案标签沿用原文语言。
-- 不指定具体颜色（色值/色名）；配色交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
+- 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级；文案标签沿用原文语言。
+- 不指定具体颜色（色值/色名），也不指定视觉风格（画风/氛围形容词）；颜色与风格都交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
@@ -935,7 +935,7 @@ id、title、prompt
   {
     "id": "ui-main-hud",
     "title": "主界面 HUD",
-    "prompt": "手游主界面 HUD，顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰奇幻 UI，高可读性，无水印"
+    "prompt": "手游主界面 HUD，顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读 UI，无水印"
   }
 ]`
 
