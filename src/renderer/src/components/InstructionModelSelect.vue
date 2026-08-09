@@ -26,12 +26,13 @@
     </svg>
     <select
       :value="modelValue"
+      :class="{ 'has-value': !!modelValue }"
       :aria-label="title"
       @change="onChange"
     >
       <option v-if="options.length === 0" value="">{{ emptyLabel }}</option>
       <option v-for="opt in options" :key="opt.key" :value="opt.key">
-        {{ opt.label }}
+        {{ opt.key === modelValue ? '✓ ' : '' }}{{ opt.label }}
       </option>
     </select>
   </label>
@@ -94,5 +95,16 @@ select:hover,
 select:focus {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   outline: none;
+}
+
+select.has-value {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+select option:checked {
+  color: var(--accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 </style>
