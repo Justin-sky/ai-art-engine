@@ -2,6 +2,22 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
 
+## [3.0.5] — 2026-08-10
+
+### Added
+
+- 图片/视频生成支持随机种子（seed）：图片生成适配火山方舟 Seedream / OpenRouter 透传 seed，视频生成链路（视频生成、对口型、片段重拍）接通节点参数；执行日志记录实际使用的 seed，未设置时显式输出 `null`，便于同参数复现
+- 全局参数面板新增「全局随机种子」：生成节点默认跟随全局，节点可关闭跟随并单独设置，与全局风格参考图同一套交互
+- 右键菜单新增「提示词」分组（提示词优化 / 图片反推提示词），并区分「图片精修 / 图片编辑」等分组图标
+
+### Changed
+
+- CI：`actions/upload-artifact` 升级 v6（Node 24），消除 GitHub Actions 的 Node 20 弃用警告
+
+### Fixed
+
+- 修复记事本等浮动窗口脱离主窗口后复制功能不可用：剪贴板写入改走主进程（Electron clipboard），不再依赖渲染窗口焦点，并保留 `navigator.clipboard` / `execCommand` 回退
+
 ## [3.0.4] — 2026-08-10
 
 ### Added
