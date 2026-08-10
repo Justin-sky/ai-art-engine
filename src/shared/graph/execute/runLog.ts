@@ -55,8 +55,8 @@ export interface GraphRunLogApiCall {
     resolution?: string
     quality?: string
     n?: number
-    /** 随机种子（固定后同参数可复现） */
-    seed?: number
+    /** 随机种子（固定后同参数可复现）；null 表示未设置、服务端随机 */
+    seed?: number | null
     duration?: number
     generateAudio?: boolean
     inputReferenceCount?: number

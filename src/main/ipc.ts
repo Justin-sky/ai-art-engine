@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { clipboard, ipcMain } from 'electron'
 import { IpcChannels } from '@shared/ipc'
 import type { AppSettings, ProjectConfig, AssetInfo } from '@shared/domain'
 import type {
@@ -63,6 +63,10 @@ function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): v
 }
 
 export function registerIpcHandlers(): void {
+  handle(IpcChannels.CLIPBOARD_WRITE_TEXT, (text: string) => {
+    clipboard.writeText(String(text ?? ''))
+  })
+
   handle(IpcChannels.DIALOG_SELECT_DIRECTORY, () => projectService.selectDirectory())
   handle(IpcChannels.DIALOG_SELECT_PROJECT, () => projectService.selectProject())
   handle(IpcChannels.DIALOG_SELECT_FILES, (filters?: { name: string; extensions: string[] }[]) =>

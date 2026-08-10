@@ -1037,7 +1037,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution: input.resolution,
             quality: input.quality,
             n: input.n,
-            seed: input.seed,
+            seed: input.seed ?? null,
             inputReferenceCount: input.inputReferences?.length || undefined,
             inputReferences: input.inputReferenceMeta
           }
@@ -1070,7 +1070,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution?: string
             duration?: number
             generateAudio?: boolean
-            seed?: number
+            seed?: number | null
             inputReferenceCount?: number
             tosUploads?: Array<{
               sourceLabel: string
@@ -1086,7 +1086,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution: input.resolution,
             duration: input.duration,
             generateAudio: input.generateAudio,
-            seed: input.seed,
+            seed: input.seed ?? null,
             inputReferenceCount: input.inputReferences?.length || undefined
           }
           try {

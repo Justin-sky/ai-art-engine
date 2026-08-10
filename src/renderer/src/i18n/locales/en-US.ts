@@ -1491,6 +1491,7 @@ export default {
         imageEdit: 'Image edit',
         episode: 'Episode',
         text: 'Text',
+        prompt: 'Prompt',
         game: 'Game'
       }
     },

@@ -2953,6 +2953,7 @@ type ResourceMenuGroupId = Extract<
   | 'imageRefine'
   | 'imageEdit'
   | 'text'
+  | 'prompt'
   | 'game'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
@@ -2962,7 +2963,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
 }> = [
   {
     id: 'image',
-    typeIds: ['asset.image', 'image.select', 'image.toPrompt']
+    typeIds: ['asset.image', 'image.select']
   },
   {
     id: 'imageRefine',
@@ -3000,6 +3001,10 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'text',
     typeIds: ['play.script', 'text.select']
+  },
+  {
+    id: 'prompt',
+    typeIds: ['prompt.optimize', 'image.toPrompt']
   },
   {
     id: 'game',
@@ -3170,19 +3175,24 @@ const resourceAddableMenuGroups = computed(() => {
           : group.id === 'imageRefine' ||
               group.id === 'imageEdit' ||
               group.id === 'text' ||
+              group.id === 'prompt' ||
               group.id === 'game'
             ? t(`graph.context.groups.${group.id}`)
           : assetTypeLabel(group.id),
       icon:
         group.id === 'episode'
           ? '📽️'
-          : group.id === 'imageRefine' || group.id === 'imageEdit'
-            ? '🎛️'
+          : group.id === 'imageRefine'
+            ? '🎨'
+            : group.id === 'imageEdit'
+              ? '🛠️'
             : group.id === 'text'
               ? '📝'
-            : group.id === 'game'
-              ? '🕹️'
-          : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
+              : group.id === 'prompt'
+                ? '✨'
+                : group.id === 'game'
+                  ? '🕹️'
+                  : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }
   })

@@ -30,6 +30,8 @@ const api: StudioApi = {
   selectDirectory: () => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_DIRECTORY),
   selectProject: () => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_PROJECT),
   selectFiles: (filters?) => ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_FILES, filters),
+  writeClipboardText: (text: string) =>
+    ipcRenderer.invoke(IpcChannels.CLIPBOARD_WRITE_TEXT, text),
 
   listAssets: () => ipcRenderer.invoke(IpcChannels.ASSET_LIST),
   importAssets: (input: ImportAssetsInput) => ipcRenderer.invoke(IpcChannels.ASSET_IMPORT, input),

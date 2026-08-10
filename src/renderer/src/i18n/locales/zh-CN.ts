@@ -1481,6 +1481,7 @@ export default {
         imageEdit: '图片编辑',
         episode: '剧集',
         text: '文本',
+        prompt: '提示词',
         game: '游戏'
       }
     },

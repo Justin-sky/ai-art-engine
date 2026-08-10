@@ -77,6 +77,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { estimateTokenCount } from '@shared/textTokens'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import { copyTextToClipboard } from '../utils/copyText'
 
 export interface NotepadPreviewImage {
   url: string
@@ -277,15 +278,11 @@ function onClose(): void {
 
 async function copyText(): Promise<void> {
   if (!draft.value) return
-  try {
-    await navigator.clipboard.writeText(draft.value)
-    copiedFlash.value = true
-    window.setTimeout(() => {
-      copiedFlash.value = false
-    }, 1200)
-  } catch {
-    // ignore clipboard failures
-  }
+  const ok = await copyTextToClipboard(draft.value)
+  copiedFlash.value = ok
+  window.setTimeout(() => {
+    copiedFlash.value = false
+  }, 1200)
 }
 
 defineExpose({

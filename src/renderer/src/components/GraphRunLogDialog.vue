@@ -218,6 +218,7 @@ import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import { copyTextToClipboard } from '../utils/copyText'
 
 type LevelFilter = 'all' | GraphRunLogLevel
 
@@ -479,17 +480,13 @@ async function copySelected(): Promise<void> {
   const session = selectedSession.value
   if (!session) return
   const text = logStore.formatSessionPlainText(session)
-  try {
-    await navigator.clipboard.writeText(text)
-    copiedFlash.value = true
-    if (copiedTimer) clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => {
-      copiedFlash.value = false
-      copiedTimer = null
-    }, 1600)
-  } catch {
-    // ignore clipboard failures
-  }
+  const ok = await copyTextToClipboard(text)
+  copiedFlash.value = ok
+  if (copiedTimer) clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => {
+    copiedFlash.value = false
+    copiedTimer = null
+  }, 1600)
 }
 
 async function clearAll(): Promise<void> {

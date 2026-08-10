@@ -44,6 +44,8 @@ export const IpcChannels = {
   VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
   /** 将选中资产的原始媒体文件复制到系统剪贴板 */
   ASSET_COPY_ORIGINAL_FILES: 'asset:copy-original-files',
+  /** 主进程写系统剪贴板文本（脱离主窗口的弹窗无文档焦点时 navigator.clipboard 不可用） */
+  CLIPBOARD_WRITE_TEXT: 'clipboard:write-text',
   ASSET_FIND_REFERENCES: 'asset:find-references',
 
   ASSET_PACKAGE_EXPORT: 'asset-package:export',
@@ -403,6 +405,8 @@ export interface StudioApi {
   selectDirectory: () => Promise<string | null>
   selectProject: () => Promise<string | null>
   selectFiles: (filters?: { name: string; extensions: string[] }[]) => Promise<string[]>
+  /** 主进程写系统剪贴板文本（弹窗/脱离窗口等无文档焦点场景的可靠路径） */
+  writeClipboardText: (text: string) => Promise<void>
 
   listAssets: () => Promise<AssetInfo[]>
   importAssets: (input: ImportAssetsInput) => Promise<ImportAssetsResult>
