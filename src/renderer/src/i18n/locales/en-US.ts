@@ -2064,7 +2064,8 @@ export default {
         unitRef: 'Beat ref'
       },
       ui: {
-        split: 'UI screen split'
+        split: 'UI screen split',
+        gen: 'UI screen gen'
       },
       episode: {
         anchorSelect: 'Anchor select',

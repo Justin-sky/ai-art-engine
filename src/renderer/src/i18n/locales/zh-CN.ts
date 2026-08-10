@@ -2052,7 +2052,8 @@ export default {
         unitRef: '场参考'
       },
       ui: {
-        split: 'UI 界面拆分'
+        split: 'UI 界面拆分',
+        gen: 'UI 界面生成'
       },
       episode: {
         anchorSelect: '宫格选择',
