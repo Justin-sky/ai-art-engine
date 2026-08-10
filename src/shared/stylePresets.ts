@@ -6,6 +6,14 @@
 /** 画面风格参考图上限 */
 export const MAX_STYLE_IMAGES = 4
 
+/**
+ * 风格参考图追加提示的语义模式。
+ * - default：常规主体生图，风格只借鉴画风，严禁迁移构图/主体。
+ * - ui：UI 界面生图，允许复刻参考图的界面视觉语言（控件/配色/材质/图标），
+ *   仅要求不照抄具体界面内容与文案，布局按用户提示词。
+ */
+export type StyleReferenceSubject = 'default' | 'ui'
+
 /** 新建风格图默认参考强度（0–1） */
 export const DEFAULT_STYLE_IMAGE_WEIGHT = 0.75
 
@@ -148,7 +156,7 @@ function isEnglishLocale(locale?: string): boolean {
  */
 export function buildStyleImagesReferencePrompt(
   images?: ProjectStyleImage[] | null,
-  options?: { locale?: string; startIndex?: number }
+  options?: { locale?: string; startIndex?: number; subject?: StyleReferenceSubject }
 ): string {
   const items = normalizeProjectStyleImages(images)
   if (!items.length) return ''
@@ -167,6 +175,23 @@ export function buildStyleImagesReferencePrompt(
     return detail ? `${head}。画风要点：${detail}` : head
   })
   const joined = clauses.join(en ? '\n' : '\n')
+  // UI 生图：界面本身就要复刻参考图的视觉语言（控件/配色/材质/图标），
+  // 因此不写“严禁迁移构图/布局”，仅要求不照抄参考图的具体界面内容与文案。
+  if (options?.subject === 'ui') {
+    if (en) {
+      return (
+        `${joined}\nTreat the numbered images as UI style references: transfer their UI visual language — ` +
+        `control and widget shapes, borders and corner radius, color palette, materials, lighting, icons and type feel. ` +
+        `Do not copy the specific screen content, labels, numbers or any recognizable subject from the references; ` +
+        `the layout, regions and functionality follow the user prompt.`
+      )
+    }
+    return (
+      `${joined}\n上述编号图为界面风格参考：请迁移其 UI 视觉语言——控件与按钮造型、边框与圆角、` +
+      `配色方案、材质质感、光影、图标与字体气质；` +
+      `但不要照抄参考图里的具体界面内容、文案与数值，界面布局、区域与功能以用户提示词为准。`
+    )
+  }
   if (en) {
     return (
       `${joined}\nTreat those references only as visual-style cues (palette, medium, brushwork, lighting mood, texture). ` +
@@ -185,7 +210,7 @@ export function buildStyleImagesReferencePrompt(
 export function appendStyleImagesReferencePrompt(
   prompt: string,
   images?: ProjectStyleImage[] | null,
-  options?: { locale?: string; startIndex?: number }
+  options?: { locale?: string; startIndex?: number; subject?: StyleReferenceSubject }
 ): string {
   const line = buildStyleImagesReferencePrompt(images, options)
   if (!line) return prompt

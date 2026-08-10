@@ -57,7 +57,7 @@ export const UI_SPLIT_SLOT_CAP = 12
  * dive 内图结构版本：边界节点/连线结构变化时递增，
  * 使已存在的内图资产在下一次 dive 时按新结构重建。
  */
-export const UI_SPLIT_INNER_GRAPH_VERSION = 3
+export const UI_SPLIT_INNER_GRAPH_VERSION = 4
 
 /** ui.split 内图资产的宿主接口：每条链一个提示词输入口 + 一个图片输出口 */
 export function buildUiSplitHostInterface(
@@ -135,6 +135,7 @@ export function buildUiSplitInnerGraph(
           params: {
             generateAspectRatio: '9:16',
             styleImagesUseGlobal: true,
+            styleReferenceSubject: 'ui',
             generateSystemPrompt: uiImageSystemPrompt
           }
         }

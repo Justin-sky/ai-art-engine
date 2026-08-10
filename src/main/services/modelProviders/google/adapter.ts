@@ -15,6 +15,7 @@ import {
   isGoogleTextModelId,
   listGoogleCatalogModels
 } from '@shared/modelProviders/google/modelCapabilities'
+import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
   createProviderHttpClient,
@@ -144,7 +145,8 @@ export const googleAdapter: ModelProviderAdapter = {
   ): Promise<GenerateImageResult> {
     const body: Record<string, unknown> = {
       model: modelId,
-      prompt: input.prompt,
+      // Gemini/Nano Banana 用「图n」对齐 image[]；应用内统一 @n，此处转换
+      prompt: rewriteAtMentionsForImagePrompt(input.prompt),
       response_format: 'b64_json'
     }
     if (input.aspectRatio?.trim()) body.aspect_ratio = input.aspectRatio.trim()

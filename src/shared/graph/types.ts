@@ -4,7 +4,8 @@ import type {
   DirectorCameraShot,
   DirectorCameraVideo,
   DirectorViewerState,
-  ProjectStyleImage
+  ProjectStyleImage,
+  StyleReferenceSubject
 } from '../domain'
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
@@ -277,6 +278,11 @@ export interface GraphNodeParams {
   styleImagesUseGlobal?: boolean
   /** 图片/视频生成：节点本地画面风格参考图（styleImagesUseGlobal === false 时生效） */
   styleImages?: ProjectStyleImage[]
+  /**
+   * 图片生成：风格参考图追加语义（默认 default）。
+   * 'ui'：UI 界面生图，允许复刻参考图的界面视觉语言，不写“严禁迁移构图”。
+   */
+  styleReferenceSubject?: StyleReferenceSubject
   /** 声音 TTS：供应商声音 ID（对应 API 字段 voice） */
   generateSpeechVoice?: string
   /** 「生成剧本」等输出节点：最近一次执行汇总的结果文本 */

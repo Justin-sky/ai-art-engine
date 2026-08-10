@@ -1104,6 +1104,7 @@ function openPromptPreview(): void {
     systemPrompt: node?.params.generateSystemPrompt,
     locale: String(locale.value),
     styleImages,
+    styleReferenceSubject: node?.params.styleReferenceSubject,
     reshootSegment:
       kind === 'reshoot'
         ? {

@@ -1205,251 +1205,251 @@
       "id": "ui-screen-01",
       "index": 1,
       "category": "ui",
-      "name": "UI界面 01",
-      "nameEn": "UI screen 01",
+      "name": "UI·奇幻RPG",
+      "nameEn": "UI · Fantasy RPG",
       "image": "ui-01-screen-01.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "暗黑奇幻 RPG 界面风格，华丽神秘。深紫与深褐为底，古铜金描边，青蓝与绯红作能量强调；面板为圆角暗质凹槽块，搭配细金发光边框与卷草金饰。按钮厚重哑光，页签小矩形金描边，材质似鞣革与暗石。光影柔暖、内凹层次明显，图标采用发光符文方格，字体典雅古典，信息密度中高且模块分区清晰。",
+      "promptEn": "Dark high-fantasy RPG UI with a luxurious, mysterious mood. Deep purple and dark brown bases, antique bronze-gold borders, cyan and crimson energy accents; rounded recessed panels with thin glowing gold frames and ornate filigree. Thick matte buttons, compact gold-outlined tabs, leather and dark-stone materials, soft warm lighting and pronounced inset depth. Glowing rune-tile icons, elegant classical typography, medium-high density and clear modular grouping."
     },
     {
       "id": "ui-screen-02",
       "index": 2,
       "category": "ui",
-      "name": "UI界面 02",
-      "nameEn": "UI screen 02",
+      "name": "UI·科幻未来",
+      "nameEn": "UI · Sci-Fi Future",
       "image": "ui-02-screen-02.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "科幻全息 HUD 界面风格，冷静精密。深午夜蓝为底，霓虹青与电光蓝作发光描边；半透明玻璃面板使用纤细边框、几何切角、断线与托架装饰。按钮为蓝色渐变圆角矩形并配亮青描边，整体呈纯数字全息材质，以辉光和泛光塑造层次。图标是极简发光符号，字体为带微光的现代无衬线，层级清晰且数据感适中。",
+      "promptEn": "Cold, precise sci-fi holographic HUD UI. Deep midnight-blue base with neon cyan and electric-blue emissive outlines; semi-transparent glass panels use thin borders, geometric corner cuts, broken lines and bracket details. Rounded blue-gradient buttons with bright cyan strokes, purely digital holographic surfaces shaped by bloom and glow. Minimal luminous glyph icons, clean modern sans-serif type with soft luminescence, clear hierarchy and moderate data-centric density."
     },
     {
       "id": "ui-screen-03",
       "index": 3,
       "category": "ui",
-      "name": "UI界面 03",
-      "nameEn": "UI screen 03",
+      "name": "UI·赛博朋克",
+      "nameEn": "UI · Cyberpunk",
       "image": "ui-03-screen-03.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "高饱和赛博朋克霓虹界面风格，动感张扬。深紫黑为底，霓虹粉、极光红与电光蓝强烈点缀；面板为倒角矩形，双层霓虹流光描边并带明显外发光。按钮厚重半透明磨砂，以内发光和高光边缘形成体积，材质似暗碳与磨砂玻璃。图标扁平发光并带轻微数字抖动，字体硬朗未来，以亮度区分主次，信息密度适中。",
+      "promptEn": "Energetic high-saturation cyberpunk neon UI. Deep magenta-black base with hot neon pink, aurora red and electric blue; chamfered panels with double flowing-neon borders and strong outer glow. Thick frosted translucent buttons use inner glow and highlight edges for volume, combining dark carbon and frosted glass. Flat luminous icons with subtle digital glitch, bold futuristic typography, hierarchy through light intensity and balanced information density."
     },
     {
       "id": "ui-screen-04",
       "index": 4,
       "category": "ui",
-      "name": "UI界面 04",
-      "nameEn": "UI screen 04",
+      "name": "UI·中世写实",
+      "nameEn": "UI · Medieval Realism",
       "image": "ui-04-screen-04.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "中世纪手绘写实策略界面风格，古朴厚重。橄榄绿、深褐、米色与砂金等大地色为主；大圆角面板带手绘不规则金线，呈羊皮纸嵌厚木框效果。按钮为深木色圆角块并以浅金勾边，材质强调哑光羊皮纸、岩石和旧木纹。柔和环境光避免强金属高光，图标为手绘扁平写实，字体古雅有书法感，布局留白适度。",
+      "promptEn": "Rustic, weighty medieval hand-painted strategy UI. Earth tones of olive green, deep brown, beige and sandy gold; large rounded panels with irregular hand-painted gold lines, like parchment set into thick timber frames. Dark wood rounded buttons with pale-gold strokes, matte parchment, stone and aged-wood textures. Soft ambient lighting without sharp metallic highlights, flattened hand-painted realistic icons, archaic calligraphic typography and balanced breathing space."
     },
     {
       "id": "ui-screen-05",
       "index": 5,
       "category": "ui",
-      "name": "UI界面 05",
-      "nameEn": "UI screen 05",
+      "name": "UI·国风武侠",
+      "nameEn": "UI · Guofeng Wuxia",
       "image": "ui-05-screen-05.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "国风水墨武侠界面风格，纸本质朴。宣纸米白、墨黑和青灰绿为主，朱砂红点缀；面板呈毛边宣纸或撕裂纸层，边缘不规则并带墨渍飞白。按钮为浅灰石质圆角并有轻浮雕感，材质聚焦纸与石，使用柔和漫射光和浅淡叠纸阴影。图标采用墨线简笔或印章语言，标题有书法笔意，正文厚圆手写，留白充足。",
+      "promptEn": "Restrained guofeng ink-wash wuxia UI with a tactile paper character. Rice-paper cream, ink black and sage-teal with cinnabar accents; deckled or torn-paper panels with irregular edges, ink stains and flying-white brush artifacts. Soft stone rounded buttons with light emboss, paper-and-stone materials, diffuse lighting and gentle layered-paper shadows. Ink-line or seal-like icons, calligraphic titles, thick rounded handwritten body type and ample negative space."
     },
     {
       "id": "ui-screen-06",
       "index": 6,
       "category": "ui",
-      "name": "UI界面 06",
-      "nameEn": "UI screen 06",
+      "name": "UI·可爱卡通",
+      "nameEn": "UI · Cute Cartoon",
       "image": "ui-06-screen-06.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "可爱卡通休闲界面风格，采用气泡大圆角与厚重深色描边。主色是清透天蓝，辅以明艳黄橙和草绿，页签使用粉紫、淡黄等马卡龙色块。面板与按钮呈哑光软塑材质，顶缘高光和底缘内阴影形成蓬松立体感。图标圆润高饱和，字体为粗圆白字配深描边；信息密度低、控件偏大、留白充足，禁止混入科幻金属或暗黑 HUD 质感。",
+      "promptEn": "Cute cartoon casual UI with bubbly large-radius shapes and thick dark outlines. Clear sky-blue base with vivid yellow-orange and leafy green, plus pink, purple and pale-yellow macaron tabs. Matte soft-plastic panels and buttons use top highlights and lower inner shadows for a puffy 3D feel. Rounded high-saturation icons, bold rounded white type with dark outlines, low density, oversized controls and generous spacing; avoid sci-fi metal or dark HUD styling."
     },
     {
       "id": "ui-screen-07",
       "index": 7,
       "category": "ui",
-      "name": "UI界面 07",
-      "nameEn": "UI screen 07",
+      "name": "UI·极简白蓝",
+      "nameEn": "UI · Minimal Blue",
       "image": "ui-07-screen-07.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "现代极简白蓝扁平界面风格，高亮白灰底配少量天蓝强调色。面板与导航采用大圆角胶囊形，不用粗描边，仅靠柔和弥散阴影分层；材质为干净哑光塑料，光影均匀平缓。图标使用简洁黑色细线或剪影，字体为现代无衬线并通过字重和尺寸建立层级。信息密度极低，大面积留白，呼吸感强且对齐规整。",
+      "promptEn": "Modern minimal flat UI on a bright white-gray ground with sparse cerulean accents. Large-radius capsule panels and navigation without heavy borders, separated only by soft diffused shadows; clean matte-plastic surfaces and even high-key lighting. Simple black line or silhouette icons, modern sans-serif typography with hierarchy through weight and size. Very low information density, generous whitespace, calm rhythm and precise alignment."
     },
     {
       "id": "ui-screen-08",
       "index": 8,
       "category": "ui",
-      "name": "UI界面 08",
-      "nameEn": "UI screen 08",
+      "name": "UI·像素复古",
+      "nameEn": "UI · Pixel Retro",
       "image": "ui-08-screen-08.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "像素复古奇幻界面风格，厚重圆角嵌套面板配深色粗边框。主色为深棕、墨绿与靛蓝，点缀金黄及高饱和状态色；面板呈雕琢木石质感，顶缘使用浅色像素阶梯高光。按钮方圆结合并带立体浮雕，图标为粗描边块状像素插画。字体粗壮方正、复古明确，布局模块化且中等偏密，保持清晰的像素级层次。",
+      "promptEn": "Retro pixel-fantasy UI with chunky rounded nested panels and thick dark borders. Deep brown, forest green and indigo with gold and saturated status accents; carved wood-and-stone panels with pale pixel-step highlights along upper edges. Beveled square-round buttons and chunky outlined pixel-art icons. Bold blocky retro typography, modular medium-dense layouts and crisp pixel-level hierarchy."
     },
     {
       "id": "ui-screen-09",
       "index": 9,
       "category": "ui",
-      "name": "UI界面 09",
-      "nameEn": "UI screen 09",
+      "name": "UI·恐怖生存",
+      "nameEn": "UI · Horror Survival",
       "image": "ui-09-screen-09.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "恐怖生存暗黑手绘界面风格，以炭黑和深红为主，血色与余烬橙强调关键状态。面板为半透明圆角模块，细边带暗红外发光；按钮厚重暗赤且有风化皮革、污损石面的粗粝纹理。低调戏剧光影和暗红外辉营造压迫感，图标呈粗糙素描并有琥珀黄微光。字体是不规则磨损手写体，信息偏密，以高对比红橙建立层级。",
+      "promptEn": "Dark hand-painted horror-survival UI in charcoal and deep crimson, using blood red and ember orange for critical states. Semi-transparent rounded modules with thin dim-red glowing borders; heavy dark-red buttons textured like weathered leather and stained stone. Low-key dramatic lighting and ominous red bloom, rough sketch icons with amber glow, irregular distressed hand lettering and dense modules ordered by high-contrast red-orange cues."
     },
     {
       "id": "ui-screen-10",
       "index": 10,
       "category": "ui",
-      "name": "UI界面 10",
-      "nameEn": "UI screen 10",
+      "name": "UI·魔法学院",
+      "nameEn": "UI · Magic Academy",
       "image": "ui-10-screen-10.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "魔法学院童话绘本界面风格，深蓝午夜底配古铜金边与象牙白。边框采用纤细金藤蔓线稿和卷草角饰，面板为深蓝磨砂，按钮厚重浮雕金边并填充深色石纹。蓝白魔法微光从图标与边框缝隙溢出，形成鲜明冷暖对比。字体为优雅金色手写体，带仪式感；装饰华丽但空间舒朗，层次清楚，避免现代科技 HUD 元素。",
+      "promptEn": "Magic-academy storybook UI on midnight navy with antique-gold frames and soft ivory. Delicate golden vine linework and swirling corner flourishes, matte dark-blue panels, thick embossed gold-edged buttons with dark stone fills. Blue-white magical light leaks from icons and frame seams for vivid warm-cool contrast. Elegant golden calligraphic type, ceremonial detail, ornate yet spacious hierarchy, without modern technological HUD motifs."
     },
     {
       "id": "ui-screen-11",
       "index": 11,
       "category": "ui",
-      "name": "UI界面 11",
-      "nameEn": "UI screen 11",
+      "name": "UI·海洋冒险",
+      "nameEn": "UI · Ocean Adventure",
       "image": "ui-11-screen-11.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "海洋冒险游戏界面风格，以深蓝和青蓝为底，琥珀金突出主要操作，形成冷底暖交互。面板是圆角哑光海军蓝半透明块，由细青边微光勾勒；按钮厚实圆润，使用黏土般立体阴影，主按钮呈暖橙金渐变。图标采用手绘金黄粗线航海符号，字体为粗白圆角无衬线。整体材质柔润哑光，光源柔和向下，层级疏朗清晰。",
+      "promptEn": "Ocean-adventure game UI with deep navy and teal foundations, amber-gold primary actions for cool-ground warm interaction. Rounded matte translucent navy panels edged by fine cyan glow; chunky rounded buttons with clay-like depth and warm orange-gold gradients for primary actions. Hand-drawn golden nautical line icons, bold white rounded sans-serif typography, soft matte materials, gentle top lighting and an airy, clearly ordered hierarchy."
     },
     {
       "id": "ui-screen-12",
       "index": 12,
       "category": "ui",
-      "name": "UI界面 12",
-      "nameEn": "UI screen 12",
+      "name": "UI·西部牛仔",
+      "nameEn": "UI · Western Cowboy",
       "image": "ui-12-screen-12.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "西部牛仔复古游戏界面风格，采用巧克力棕、赭黄和泛旧米色，整体呈怀旧褐调。面板厚描边大圆角，带皮革与羊皮纸颗粒，边线略微手绘不规则。按钮鼓胀立体，深棕底配浅色字，页签及底栏使用成组方框图标。图标为象牙色蚀刻线稿，字体偏毛笔手写或粗野海报感；暖黄顶光，中等层级，控件大而分明。",
+      "promptEn": "Vintage western-cowboy game UI in chocolate brown, ochre and aged beige with a nostalgic sepia cast. Thick-bordered large-radius panels carry leather and parchment grain with slightly irregular hand-painted edges. Puffy beveled dark-brown buttons with pale lettering and grouped framed icon tabs. Ivory etched line icons, brushy or rugged poster typography, warm top lighting and medium-density hierarchy with large distinct controls."
     },
     {
       "id": "ui-screen-13",
       "index": 13,
       "category": "ui",
-      "name": "UI界面 13",
-      "nameEn": "UI screen 13",
+      "name": "UI·机甲战斗",
+      "nameEn": "UI · Mecha Combat",
       "image": "ui-13-screen-13.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "机甲战斗科幻游戏界面风格，深海军蓝与炭灰硬表面为底，亮橙只用于主要操作，青白用于信息提示。面板如适度圆角的装甲板，带斜切高光和内阴影；次级按钮采用同色系哑光金属，主按钮为厚实橙色渐变块。图标是简洁功能性矢量符号，字体为粗重白色无衬线。整体战术清晰、中低密度，呈哑光硬塑或涂层金属质感。",
+      "promptEn": "Mecha-combat sci-fi game UI on deep navy and charcoal hard surfaces, reserving vivid orange for primary actions and cyan-white for information. Moderately rounded armor-plate panels with beveled highlights and inner shadows; matte-metal secondary buttons and chunky orange-gradient primary buttons. Clean functional vector icons, heavy white sans-serif typography, tactical medium-low density and matte hard-plastic or coated-metal materials."
     },
     {
       "id": "ui-screen-14",
       "index": 14,
       "category": "ui",
-      "name": "UI界面 14",
-      "nameEn": "UI screen 14",
+      "name": "UI·神话古希腊",
+      "nameEn": "UI · Mythic Ancient Greece",
       "image": "ui-14-screen-14.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "神话古希腊游戏界面风格，以象牙石白、浅砂岩与古董金为主。边框融入石柱轮廓和茛苕卷草金饰，面板呈羊皮纸或抛光大理石质感；按钮像凿刻石灰岩厚板，带清晰斜切和立体阴影。图标采用鎏金纹样，字体优雅并有书法或古典衬线气质。暖色顶光配柔和阴影，装饰精致但不拥挤，营造庄严神殿与史诗感。",
+      "promptEn": "Mythic ancient-Greek game UI in ivory stone, pale sandstone and antique gold. Frames incorporate column silhouettes and gilded acanthus filigree; panels resemble parchment or polished marble, while buttons feel like thick chiseled limestone slabs with clear bevels and depth. Gilded ornamental icons, elegant calligraphic or classical serif typography, soft warm top light and refined decoration without clutter, creating a solemn temple-epic mood."
     },
     {
       "id": "ui-screen-15",
       "index": 15,
       "category": "ui",
-      "name": "UI界面 15",
-      "nameEn": "UI screen 15",
+      "name": "UI·东方仙侠",
+      "nameEn": "UI · Oriental Xianxia",
       "image": "ui-15-screen-15.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "东方仙侠新国风游戏界面，以青瓷、黛青和月白构成通透冷调，琥珀金少量点缀。面板呈半透明润玉质感，使用银白细线边框与祥云卷纹角饰，仿佛浮于云雾；按钮为圆润白玉或抛光青石，并带浅内阴影。图标采用墨韵简线或单色符号，字体挺拔清秀。光影柔和并有灵气微光，信息疏朗，呼吸感强且高雅。",
+      "promptEn": "Refined modern oriental-xianxia UI in translucent cool celadon, deep teal and moonlight white with restrained amber-gold accents. Semi-transparent jade panels use fine silver-white borders and cloud-scroll corners, floating in mist; rounded white-jade or polished-bluestone buttons carry soft inset shadows. Ink-line or monochrome glyph icons, slender elegant typography, gentle spiritual glow and spacious low-density hierarchy."
     },
     {
       "id": "ui-screen-16",
       "index": 16,
       "category": "ui",
-      "name": "UI界面 16",
-      "nameEn": "UI screen 16",
+      "name": "UI·霓虹节奏",
+      "nameEn": "UI · Neon Rhythm",
       "image": "ui-16-screen-16.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "霓虹节奏游戏界面风格，暗紫夜场底色配洋红和电青高饱和自发光点缀。控件采用不规则圆润宝石形与菱形焦点键，半透明磨砂玻璃内部泛出光晕，以细发光边缘取代硬框。图标为极简白色线性符号，数据使用清晰无衬线，反馈文字偏几何块面。强泛光和体积光营造舞台感，信息密度低、中心留白、控件聚于边缘。",
+      "promptEn": "Neon-rhythm game UI on deep night violet with hot magenta and electric-cyan emissive accents. Irregular rounded gem-like controls and diamond focal keys use frosted translucent glass with inner glow, replacing hard frames with thin luminous edges. Minimal white line glyphs, clear sans-serif data and blocky geometric feedback type. Strong bloom and volumetric light, low density, an open center and controls clustered around the edges."
     },
     {
       "id": "ui-screen-17",
       "index": 17,
       "category": "ui",
-      "name": "UI界面 17",
-      "nameEn": "UI screen 17",
+      "name": "UI·电竞看板",
+      "nameEn": "UI · Esports Dashboard",
       "image": "ui-17-screen-17.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "电竞赛事看板界面风格，深青炭黑为底，翠绿和朱红作高对比行动色，白字配少量金色点缀。中圆角矩形模块条带嵌套，水平分区明确；磨砂复合材质带轻微内凹和浅内描边，实色圆角按钮醒目。图标呈扁平渐变徽章感，粗无衬线和放大数字主导视觉。信息密度高、条块堆叠，具有转播记分板气质，发光效果克制。",
+      "promptEn": "Esports broadcast-dashboard UI on deep teal-charcoal with emerald and cherry action colors, white type and sparse gold accents. Nested medium-radius modular bars create clear horizontal zones; matte composite surfaces use micro-recesses and soft inner strokes, with bold solid rounded buttons. Flat gradient badge-like icons, heavy sans-serif type and oversized numerals dominate. High-density stacked strips, scoreboard character and restrained glow."
     },
     {
       "id": "ui-screen-18",
       "index": 18,
       "category": "ui",
-      "name": "UI界面 18",
-      "nameEn": "UI screen 18",
+      "name": "UI·竞速HUD",
+      "nameEn": "UI · Racing HUD",
       "image": "ui-18-screen-18.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "竞速驾驶舱 HUD 界面风格，半透明深蓝舱体面板贴边分布，使用青蓝细发光描边。控件以胶囊和圆角仪表簇为主，强度区域可加入橙红暖色段；磨砂数码玻璃与哑光金属表盘并存。数字采用粗无衬线并略带斜体，强调前冲感，图标几何极简。外发光克制，信息中低密度，主视区保持通透，突出实时遥测气质。",
+      "promptEn": "Racing-cockpit HUD UI with translucent deep-navy panels anchored to screen edges and thin cyan luminous outlines. Capsule controls and rounded instrument clusters, with warm orange-red sections for intensity; frosted digital glass mixed with matte metallic dials. Bold slightly italic sans-serif numerals convey forward thrust, icons remain sparse and geometric. Restrained bloom, low-to-medium density and a clear central field of view for real-time telemetry."
     },
     {
       "id": "ui-screen-19",
       "index": 19,
       "category": "ui",
-      "name": "UI界面 19",
-      "nameEn": "UI screen 19",
+      "name": "UI·温馨经营",
+      "nameEn": "UI · Cozy Management",
       "image": "ui-19-screen-19.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "温馨经营类手工板游界面风格，深绿外框配深咖木色面板，以鎏金或青铜描边和金字强调。容器采用大圆角柔和造型，按钮接近胶囊并有嵌入感；材质表现暗木与旧铜触感，避免锐利数码硬边。顶光薄高光和柔阴影形成浅浮雕，图标为粗简手绘金黄剪影，字体圆润略带书法感。信息中等密度，分区明确且温暖亲切。",
+      "promptEn": "Cozy management UI with a handmade board-game feel: forest-green framing, dark chocolate wood panels and burnished gold or bronze borders and type. Soft heavily rounded containers and near-pill inset buttons, tactile dark wood and aged bronze without sharp digital edges. Thin top highlights and gentle shadows create shallow relief; chunky hand-stamped golden icons and rounded slightly calligraphic typography. Moderate density, clear zones and warm approachability."
     },
     {
       "id": "ui-screen-20",
       "index": 20,
       "category": "ui",
-      "name": "UI界面 20",
-      "nameEn": "UI screen 20",
+      "name": "UI·深空全息",
+      "nameEn": "UI · Deep-Space Holo",
       "image": "ui-20-screen-20.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "深空探索全息界面风格，午夜海军蓝为底，电青和天蓝细发光描边配少量紫色过渡。圆角半透明面板如悬浮全息玻璃，按钮使用暗蓝渐变与内缘微光，导航图标为青色霓虹线描。字体是清晰克制的现代白色无衬线，材质结合暗金属和磨砂玻璃，外发光柔和。信息中低密度、分区疏朗，整体呈安静精密的科幻探索控制台气质。",
+      "promptEn": "Deep-space exploration holographic UI on midnight navy, with thin electric-cyan and sky-blue luminous outlines and subtle purple transitions. Rounded translucent panels float like holographic glass; dark-blue gradient buttons use faint inner rim light, and navigation icons are cyan neon linework. Clean restrained white sans-serif typography, dark metal mixed with frosted glass and soft outer glow. Airy medium-low density and a quiet, precise exploration-console mood."
     },
     {
       "id": "ui-screen-21",
       "index": 21,
       "category": "ui",
-      "name": "UI界面 21",
-      "nameEn": "UI screen 21",
+      "name": "UI·陈案羊皮",
+      "nameEn": "UI · Casefile Parchment",
       "image": "ui-21-screen-21.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "复古解谜侦探档案界面风格，深褐皮革底叠加泛黄羊皮纸，厚重外框配暗金卷草角饰。信息区呈撕边纸片叠层，按钮是圆角厚重的浮雕石质与压印纸感，页签敦实内凹。材质强调纸纹、磨损和颗粒，以低对比暖褐光影烘托年代感。图标为粗粝墨线速写，字体混合古旧衬线和手写笔记，中等密度且模块分明。",
+      "promptEn": "Vintage detective casefile UI with a dark leather base layered under yellowed parchment and thick frames with tarnished-gold filigree corners. Information areas resemble torn paper overlays; heavy rounded embossed stone or pressed-card buttons and sturdy recessed tabs. Paper grain, wear and particles under low-contrast warm sepia light. Rough ink-sketch icons, antique serif mixed with handwritten notes, medium density and clearly separated modules."
     },
     {
       "id": "ui-screen-22",
       "index": 22,
       "category": "ui",
-      "name": "UI界面 22",
-      "nameEn": "UI screen 22",
+      "name": "UI·森绿手绘",
+      "nameEn": "UI · Forest Hand-drawn",
       "image": "ui-22-screen-22.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "休闲塔防手绘卡通界面风格，深青灰与森林绿作底，交互高亮使用饱和橙、金黄和浅蓝。面板厚重圆角并呈哑光石材感，按钮以双色块切分，下沿配深色底座阴影。光影扁平，通过色块明度塑形，细亮描边强化层级。图标采用粗黑边概括笔触，标题偏灵动金黄手写，数值为清晰白色无衬线。功能区界限明确，信息中等偏低。",
+      "promptEn": "Casual tower-defense hand-drawn cartoon UI on deep teal-gray and forest green, with saturated orange, gold and soft sky-blue interactions. Thick rounded matte-stone panels and chunky two-tone buttons resting on dark pedestal shadows. Flat lighting shapes forms through value blocks, with thin bright outlines for hierarchy. Bold black-outlined brushy icons, lively golden handwritten titles and clean white sans-serif numerals. Clear functional zones and medium-low density."
     },
     {
       "id": "ui-screen-23",
       "index": 23,
       "category": "ui",
-      "name": "UI界面 23",
-      "nameEn": "UI screen 23",
+      "name": "UI·废土战术",
+      "nameEn": "UI · Wasteland Tactical",
       "image": "ui-23-screen-23.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "废土射击战术 HUD 界面风格，哑光炭黑与深灰半透明条带贴边分布，关键信息使用炽橙至血红渐变条和高对比白。控件为厚描边圆角方块，呈内凹哑光聚合物质感；避免镜面高光，只让能量条保留微弱内辉。图标采用简洁白色模板线条，字体为粗壮工业无衬线，数字醒目。整体中心视野留空，低密度信息集中于边缘。",
+      "promptEn": "Wasteland-shooter tactical HUD with matte charcoal and dark translucent edge bars. Critical information uses glowing orange-to-crimson bars and high-contrast white. Thick-outlined rounded-square controls feel like recessed matte polymer; avoid mirror highlights and reserve soft inner glow for energy bars. Clean white stencil icons, bold industrial sans-serif typography and prominent numerals. Keep the center clear with low-density information concentrated around the edges."
     },
     {
       "id": "ui-screen-24",
       "index": 24,
       "category": "ui",
-      "name": "UI界面 24",
-      "nameEn": "UI screen 24",
+      "name": "UI·幻夜金辉",
+      "nameEn": "UI · Mystic Gilded Night",
       "image": "ui-24-screen-24.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "幻夜金辉魔幻界面风格，深靛蓝紫磨砂底衬以纤细流金描边和典雅折角饰。主按钮呈厚重黄金铸造感，带金属拉丝和柔和溢光；次级按钮为暗紫圆角并嵌金字。图标采用圆润半透明晶石质感，以青色与琥珀色点缀；字体统一为明黄金色无衬线，层级清楚。强烈暗底与发光金属对比，信息中等密度，视觉聚焦明确。",
+      "promptEn": "Mystic gilded-night fantasy UI with deep indigo-purple matte panels, slender flowing-gold outlines and elegant folded-corner flourishes. Primary buttons feel like heavy cast gold with brushed metal sheen and soft bloom; secondary buttons are dark-purple rounded bars inset with gold text. Rounded translucent gemstone icons use cyan and amber accents, with bright golden sans-serif typography and clear hierarchy. Strong dark-versus-luminous-metal contrast and focused medium density."
     },
     {
       "id": "ui-screen-25",
       "index": 25,
       "category": "ui",
-      "name": "UI界面 25",
-      "nameEn": "UI screen 25",
+      "name": "UI·翠玉水墨",
+      "nameEn": "UI · Jade Ink Wash",
       "image": "ui-25-screen-25.webp",
-      "prompt": "游戏 UI 界面风格参考：沿用该界面的信息层级、控件造型、配色与质感，界面元素清晰可读，整体风格与该参考图保持一致，避免混入无关美术风格。",
-      "promptEn": "Game UI style reference: follow this screen's information hierarchy, widget shapes, palette and finish; keep UI elements crisp and readable, consistent with the reference, avoid mixing unrelated art styles."
+      "prompt": "东方写意水墨战棋界面风格，哑光深苔绿石面为底，翠玉色圆角棋格带轻微抛光立体感。功能按钮采用朱砂红与赭石橙，造型圆润厚实；层级通过深浅色块与内切阴影区分，质感如宣纸叠合磨砂石。图标以黑白水墨笔触概括，标题偏白色毛笔书法，数值使用干净白金无衬线。布局规整，信息中等密度并突出策略感。",
+      "promptEn": "Oriental expressive ink-wash tactical UI on a matte dark moss-green stone ground, with vivid jade rounded tiles in soft polished relief. Thick rounded action buttons use cinnabar red and ochre orange; hierarchy comes from light-dark blocks and inset shadows, like xuan paper layered over frosted stone. Black-and-white brush-glyph icons, white calligraphic headers and clean white-gold sans-serif numerals. Ordered composition, medium density and a strategic tone."
     }
   ]
 }

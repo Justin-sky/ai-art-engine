@@ -10,7 +10,7 @@ import {
 } from './objectStorage'
 import type { ProjectStyleImage } from './stylePresets'
 
-export type { ProjectStyleImage, StylePresetCategory } from './stylePresets'
+export type { ProjectStyleImage, StylePresetCategory, StyleReferenceSubject } from './stylePresets'
 export {
   MAX_STYLE_IMAGES,
   DEFAULT_STYLE_IMAGE_WEIGHT,

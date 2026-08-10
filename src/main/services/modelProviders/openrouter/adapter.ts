@@ -14,6 +14,7 @@ import type {
   OpenRouterVideoModel
 } from '@shared/modelProvider'
 import { isTextCatalogModel, toOpenRouterInputReferenceBody } from '@shared/modelProvider'
+import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
   createProviderHttpClient,
@@ -166,7 +167,8 @@ export const openRouterAdapter: ModelProviderAdapter = {
     const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
     const body: Record<string, unknown> = {
       model: modelId,
-      prompt: input.prompt
+      // 多参考图（input_references）需用「图n」对齐；应用内统一 @n，此处转换
+      prompt: rewriteAtMentionsForImagePrompt(input.prompt)
     }
     if (input.aspectRatio) body.aspect_ratio = input.aspectRatio
     if (input.resolution) body.resolution = input.resolution

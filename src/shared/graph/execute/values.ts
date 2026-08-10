@@ -7,6 +7,7 @@ import {
   resolveGenerateStyleImages,
   resolveStyleMentionReserveCount,
   type ProjectStyleImage,
+  type StyleReferenceSubject,
   type AssetType
 } from '../../domain'
 import type {
@@ -2458,7 +2459,8 @@ export async function executeImageGenerateNode(
   // /images 无独立 system 字段，拼入 prompt
   // 风格图占 image[] 前 N 张：追加「参考xx风格@n，参考强度…」，与 API 多图指代一致
   userPrompt = appendStyleImagesReferencePrompt(userPrompt, styleImages, {
-    locale: ctx.locale
+    locale: ctx.locale,
+    subject: node.params.styleReferenceSubject
   })
   // 剧集流水线产物节点（如 9宫格拼图 / 4宫格拼图）：重跑时附加导演上次 FAIL 原因
   if (node.params.episodeStep && ctx.readEpisodeAgentState) {
@@ -2716,6 +2718,8 @@ export function buildInstructionFinalPromptPreview(input: {
   locale?: string
   /** 图片/视频生成：风格参考（与执行侧一致，追加「参考xx风格@n，参考强度…」） */
   styleImages?: ProjectStyleImage[] | null
+  /** 图片生成：风格追加语义（与执行侧 node.params.styleReferenceSubject 一致） */
+  styleReferenceSubject?: StyleReferenceSubject
   /** 片段重拍：重拍区间（与执行侧 buildReshootPrompt 一致，写入 mm:ss 时间戳） */
   reshootSegment?: { startSec?: number; endSec?: number }
 }): string {
@@ -2739,7 +2743,8 @@ export function buildInstructionFinalPromptPreview(input: {
   // 与 executeImage/VideoGenerateNode：风格图 @n 指代（在展开连线 @ 之后追加，保留 @n）
   if (input.kind === 'image' || input.kind === 'video') {
     userPrompt = appendStyleImagesReferencePrompt(userPrompt, input.styleImages, {
-      locale: input.locale
+      locale: input.locale,
+      subject: input.styleReferenceSubject
     })
   }
   if (input.includeSystem === false) return userPrompt

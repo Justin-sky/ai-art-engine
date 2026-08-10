@@ -116,6 +116,28 @@ describe('buildStyleImagesReferencePrompt', () => {
     expect(line).toContain('identity')
     expect(line).not.toMatch(/@n\b/)
   })
+
+  it('uses UI visual language and drops the no-layout clause for subject ui', () => {
+    const line = buildStyleImagesReferencePrompt(
+      [{ id: '1', name: 'UI·可爱卡通', libraryId: 'ui-screen-06', weight: 1 }],
+      { subject: 'ui' }
+    )
+    expect(line).toContain('参考@1「UI·可爱卡通」画风，强度1')
+    expect(line).toContain('界面风格参考')
+    expect(line).toContain('控件')
+    expect(line).not.toContain('严禁迁移')
+    expect(line).not.toMatch(/@n\b/)
+  })
+
+  it('supports UI subject in english locale', () => {
+    const line = buildStyleImagesReferencePrompt(
+      [{ id: '1', name: 'UI · Cute Cartoon', libraryId: 'ui-screen-06', weight: 1 }],
+      { locale: 'en-US', subject: 'ui' }
+    )
+    expect(line).toContain('UI style references')
+    expect(line).toContain('control and widget shapes')
+    expect(line).not.toContain('keep the subject and composition from the user prompt')
+  })
 })
 
 describe('appendStyleImagesReferencePrompt', () => {

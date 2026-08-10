@@ -72,15 +72,17 @@ export function stylePresetPromptText(
 }
 
 /**
- * 为已选风格回填库内详细提示词（仅 libraryId；已有 prompt 不覆盖）。
- * 自定义上传图无库条目则保持原样。
+ * 为已选库风格同步当前语言的最新详细提示词。
+ * project.json 会持久化选中时的 prompt；库文案升级后必须以 libraryId 对应的
+ * 最新版本覆盖旧缓存，否则现有项目仍会继续使用历史通用 prompt。
+ * 自定义上传图无库条目，保持原样。
  */
 export function enrichStyleImagesWithLibraryPrompts(
   images: ProjectStyleImage[] | null | undefined,
   locale: string
 ): ProjectStyleImage[] {
   return normalizeProjectStyleImages(images).map((item) => {
-    if (item.prompt?.trim() || !item.libraryId) return item
+    if (!item.libraryId) return item
     const preset = getDefaultStylePreset(item.libraryId)
     if (!preset) return item
     const prompt = stylePresetPromptText(preset, locale)
