@@ -2,13 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
 
-## [3.0.4] — 2026-08-09
+## [3.0.4] — 2026-08-10
 
 ### Added
 
+- 游戏 UI 工作流：一键工作流新增「游戏UI界面」预设（策划案生成 → UI界面拆分 → UI界面生成），UI界面生成支持双击 dive 进内图逐屏出图，外层 Cook 汇集全部输出边界；拆分为 UI界面拆分 / UI界面生成两个节点，UI界面拆分输出各界面提示词数组
+- 风格库新增「UI 风格」分类：内置 25 张游戏界面风格图，可设为全局风格参考统一控件、配色与质感；风格图预览改为完整显示（竖版 UI 图不再被裁切）
+- 图片生成参考图 `@n` 指代改写共享化（Google / OpenRouter / 火山方舟统一转换）；风格引用新增 UI 语义（迁移界面视觉语言，不照抄参考图具体内容）
+- 执行日志记录图片生成参考图清单：来源（风格库 / 端口参考图）与相对路径
+- 游戏 UI 工作流剪映教程脚本（`website/tutorial-script/gameui-tutorial-script.md`）
+- 节点图支持多选批量连线（输入/输出口多条预览线，合并为一次撤销）
 - 导演台（3D 工作台）：名称标签改为可见网格顶部中心锚点（排除隐藏/辅助几何）；最小推近距离 0.05 → 0.005，无全景背景时拉远上限放宽至全景半径 ×6；删除导演台节点 / 模型 / 相机时清理孤儿舞台与动画数据（stagesByNodeId 自动剪枝、轨道与机位组同步清理）；机位组支持整组删除（连同预设相机，可撤销）；层级列表支持多选拖拽改父级（整组移动并保留世界变换）
 - 新增 3D 工作台剪映教程脚本（`website/tutorial-script/director-stage-tutorial-script.md`，约 2 分钟）
-- 一键工作流新增「游戏UI界面」预设（策划案生成 → UI 界面拆分 → UI 界面生成）及配套剪映教程脚本（`website/tutorial-script/gameui-tutorial-script.md`）
 - 新增 OpenAI 官方模型提供商：文本（GPT 系列，`/chat/completions`）+ 图片（gpt-image-1 / gpt-image-2，`/images/generations` 与 `/images/edits`）
 - 新增 DeepSeek 模型提供商：文本（deepseek-chat / deepseek-reasoner，OpenAI 兼容）
 - 新增智谱（Zhipu）模型提供商：GLM 文本（`/chat/completions`）+ CogView 文生图（`/images/generations`）
@@ -17,6 +22,17 @@
 - 新增 Kimi（月之暗面 / Moonshot AI）模型提供商：文本（kimi-k2 系列 / moonshot-v1 系列，OpenAI 兼容），默认 Base URL 为 api.moonshot.cn/v1
 - 新增 xAI（Grok）模型提供商：文本（grok-* 对话，OpenAI 兼容）+ Grok Imagine 文生图（`/images/generations`，aspect_ratio / response_format）+ Grok Imagine Video 异步视频（`/videos/generations` 提交、轮询 `GET /videos/{request_id}`，支持 480p / 720p、5–15 秒与首帧图生视频）
 - 新增 Google（Gemini）模型提供商：文本（gemini-* 对话）+ Nano Banana 系列文生图 / 图生图（`/images/generations`，JSON body，支持 aspect_ratio / resolution / n / response_format 与 image 参考图字段）+ Veo 3.1 异步视频（`/videos` 提交、轮询 `GET /videos/{id}`，支持 720p–4K、4–8 秒与首帧图生视频），均走官方 OpenAI 兼容层（默认 Base URL 为 generativelanguage.googleapis.com/v1beta/openai）
+
+### Changed
+
+- UI 界面拆分提示词体系：禁止输出视觉风格 / 材质 / 光影 / 配色描述（策划案中的风格词一律剔除）；游戏 UI 生成专用系统提示词要求严格对齐风格参考图的 UI 元素、界面风格、控件、配色等细节
+- 风格库条目提示词按最新库内容强制刷新，避免项目残留旧通用提示词
+
+### Fixed
+
+- 修复 ui.gen 内图边界节点重复、提示词输入未连接图片生成节点的问题；dive 后直接按输入端口数组展开，无需先 Cook
+- 修复 UI 风格库中文乱码（`library.json` 条目）
+- 修复 ui.split dive 面包屑显示英文（改为本地化标题）
 
 ## [3.0.2] — 2026-08-07
 
