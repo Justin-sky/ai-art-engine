@@ -929,7 +929,7 @@ Rules:
 - One JSON array item per screen. Cover all screens mentioned or clearly implied by the document.
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
 - Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, and readable labels if the source uses them.
-- Do not specify concrete colors or visual style (art direction such as fantasy/realistic/cartoon); both come from the style reference — describe layout, controls, states and visual hierarchy only.
+- NEVER include visual-style, material, lighting or color descriptions in any prompt. Forbidden words include (not limited to): sci-fi, cyber, fantasy, realistic, cartoon, mechanical, metal, glass, translucent, blur, glow, gradient, thin lines, sharp edges, dark, neon, tech-feel and other art-style/material words. Even if the source document states a visual style, strip it out entirely — all visual presentation must come from the style reference image. Describe only structure, regions, control types and states, content, labels, and hierarchy; functional feedback is allowed, visual-effect descriptions (e.g. glowing on hover) are not.
 - Each prompt must end with a one-sentence style-lock clause: "Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow the reference's look only, never copy its specific screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - Output must be complete and readable: no garbled text, no "?", ellipsis or placeholder substitutes, no truncated prompts.
@@ -955,7 +955,7 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - JSON 数组每一项对应一个界面；覆盖文中明确写出或可合理推断出的全部界面。
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
 - 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级；文案标签沿用原文语言。
-- 不指定具体颜色（色值/色名），也不指定视觉风格（画风/氛围形容词）；颜色与风格都交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
+- 禁止在 prompt 中出现任何视觉风格 / 材质 / 光影 / 配色描述。违禁词包括但不限于：科幻、赛博、写实、卡通、机械、金属、玻璃、半透明、模糊、发光、渐变、细线、锐利边角、暗黑、霓虹、科技感等画风与材质词。即使策划案中写了视觉风格要求，也必须一律剔除，所有视觉呈现都交给风格参考图。prompt 只允许描述：布局区域、控件类型与状态、内容与文案、层级关系；功能交互可以写，视觉效果描述（如悬停发光）禁止写。
 - 每条 prompt 必须以一句风格锁定语结尾：「严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容）」；同一策划案的所有界面必须共用同一套控件体系、配色与视觉层级，防止各屏风格漂移。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - 输出必须完整无乱码：中英文文本完整可读，禁止用问号、省略号、占位符替代文字，禁止截断 prompt。

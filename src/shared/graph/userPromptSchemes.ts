@@ -192,10 +192,10 @@ export function buildBeatUnitGenPrompt(instruction: string, locale?: string): st
 // ——— UI 界面拆分 ———
 
 export const DEFAULT_UI_SPLIT_USER_PROMPT_EN =
-  'Split the game system design into independent UI screens and output ONLY the bare JSON array required by the system prompt — no object wrapper, no markdown list. Each item is one screen with id, title, and a detailed image-generation prompt. Prompts must not hard-code concrete colors or art-style words; every visual detail comes from the style reference, and each prompt must end with the one-sentence style-lock clause telling the image model to follow the reference in UI elements, interface style, controls, colors and all other details.'
+  'Split the game system design into independent UI screens and output ONLY the bare JSON array required by the system prompt — no object wrapper, no markdown list. Each item is one screen with id, title, and a detailed image-generation prompt. Prompts must NOT contain any visual-style, material, lighting or color description — strip such wording from the source document too; every visual detail comes from the style reference, and each prompt must end with the one-sentence style-lock clause telling the image model to follow the reference in UI elements, interface style, controls, colors and all other details.'
 
 export const DEFAULT_UI_SPLIT_USER_PROMPT_ZH =
-  '请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组本身——不要用对象包裹，不要用 markdown 列表。每一项对应一个界面，包含 id、title，以及可用于生图的详细提示词 prompt。提示词不要写死具体颜色或画风词，所有视觉细节都交给风格参考图，且每条 prompt 必须以风格锁定语结尾，明确要求图像模型参考风格参考图中的 UI 元素、界面风格、控件、配色等所有细节。'
+  '请将策划案中的 UI 拆分为独立界面，并仅输出系统提示词要求的 JSON 数组本身——不要用对象包裹，不要用 markdown 列表。每一项对应一个界面，包含 id、title，以及可用于生图的详细提示词 prompt。提示词禁止出现任何视觉风格/材质/光影/配色描述，策划案中的风格描述也要一并剔除；所有视觉细节都交给风格参考图，且每条 prompt 必须以风格锁定语结尾，明确要求图像模型参考风格参考图中的 UI 元素、界面风格、控件、配色等所有细节。'
 
 export function defaultUiSplitUserPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_UI_SPLIT_USER_PROMPT_EN, DEFAULT_UI_SPLIT_USER_PROMPT_ZH)
