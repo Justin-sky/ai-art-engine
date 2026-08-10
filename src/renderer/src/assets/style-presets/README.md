@@ -1,11 +1,12 @@
 # 默认画面风格库
 
-清单与缩略图可配置，供 `StyleImagePicker` 使用。风格分四类页签：
+清单与缩略图可配置，供 `StyleImagePicker` 使用。风格分五类页签：
 
 - **角色**（`category: "character"`）：人物版总览图 `_sheet-character-source.png`
 - **场景**（`category: "scene"`）：场景版总览图 `_sheet-source.png`
 - **道具**（`category: "prop"`）：道具版总览图 `_sheet-prop-source.png`
 - **武器**（`category: "weapon"`）：武器版总览图 `_sheet-weapon-source.png`
+- **UI 界面**（`category: "ui"`）：游戏 UI 界面总览图 `_sheet-ui-source.png`（5 列 × 5 行，底部说明文字已剔除）
 
 ## 如何添加 / 修改风格
 

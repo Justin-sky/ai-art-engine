@@ -8,6 +8,7 @@ import {
   normalizeProjectStyleImages,
   portMentionIndex,
   resolveGenerateStyleImages,
+  resolveStylePresetCategory,
   resolveStyleMentionReserveCount,
   styleImagesToPresetText,
   styleImagesToStrengthText,
@@ -167,5 +168,14 @@ describe('resolveGenerateStyleImages', () => {
     expect(
       resolveGenerateStyleImages({ styleImagesUseGlobal: false, styleImages: [] }, globalStyles)
     ).toEqual([])
+  })
+})
+
+describe('resolveStylePresetCategory', () => {
+  it('resolves ui category from id prefix and explicit category', () => {
+    expect(resolveStylePresetCategory({ id: 'ui-screen-01' })).toBe('ui')
+    expect(resolveStylePresetCategory({ id: 'anything', category: 'ui' })).toBe('ui')
+    expect(resolveStylePresetCategory({ id: 'character-hyper-real-photo' })).toBe('character')
+    expect(resolveStylePresetCategory({ id: 'scene-anything' })).toBe('scene')
   })
 })

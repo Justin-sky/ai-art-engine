@@ -485,6 +485,7 @@ export default {
     categoryScene: 'Scene',
     categoryProp: 'Props',
     categoryWeapon: 'Weapons',
+    categoryUi: 'UI style',
     alreadySelected: 'In use',
     maxReached: 'You can add at most {max} style images',
     truncated: 'Limit reached — added {n} of the selected files (max {max})',

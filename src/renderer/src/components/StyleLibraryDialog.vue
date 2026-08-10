@@ -121,6 +121,11 @@ const tabs = computed(() => [
     id: 'weapon' as const,
     label: t('stylePicker.categoryWeapon'),
     count: listStylePresetsByCategory('weapon').length
+  },
+  {
+    id: 'ui' as const,
+    label: t('stylePicker.categoryUi'),
+    count: listStylePresetsByCategory('ui').length
   }
 ])
 

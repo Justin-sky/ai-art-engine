@@ -483,6 +483,7 @@ export default {
     categoryScene: '场景',
     categoryProp: '道具',
     categoryWeapon: '武器',
+    categoryUi: 'UI 风格',
     alreadySelected: '已选用',
     maxReached: '最多只能添加 {max} 张风格图',
     truncated: '已达上限，仅添加了 {n} 张（最多 {max} 张）',

@@ -27,14 +27,14 @@ export interface ProjectStyleImage {
   prompt?: string
 }
 
-/** 风格库分类：角色 / 场景 / 道具 / 武器 */
-export type StylePresetCategory = 'character' | 'scene' | 'prop' | 'weapon'
+/** 风格库分类：角色 / 场景 / 道具 / 武器 / UI 界面 */
+export type StylePresetCategory = 'character' | 'scene' | 'prop' | 'weapon' | 'ui'
 
 /** 默认库清单条目（配置文件形态，不含已解析 URL） */
 export interface StylePresetLibraryEntry {
   id: string
   index: number
-  /** 角色 | 场景 | 道具 | 武器；缺省按 id 前缀推断 */
+  /** 角色 | 场景 | 道具 | 武器 | UI 界面；缺省按 id 前缀推断 */
   category?: StylePresetCategory
   name: string
   nameEn: string
@@ -58,13 +58,15 @@ export function resolveStylePresetCategory(
     entry.category === 'character' ||
     entry.category === 'scene' ||
     entry.category === 'prop' ||
-    entry.category === 'weapon'
+    entry.category === 'weapon' ||
+    entry.category === 'ui'
   ) {
     return entry.category
   }
   if (entry.id.startsWith('character-')) return 'character'
   if (entry.id.startsWith('prop-')) return 'prop'
   if (entry.id.startsWith('weapon-')) return 'weapon'
+  if (entry.id.startsWith('ui-')) return 'ui'
   return 'scene'
 }
 
