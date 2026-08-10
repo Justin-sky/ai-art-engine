@@ -28,8 +28,10 @@ import {
   graphValueHasPayload,
   mergeBoundarySoftValues,
   mergeHostInputValues,
+  outputsToHostGalleryParams,
   readHostInputSlot,
-  softResolveBoundaryOutputValue
+  softResolveBoundaryOutputValue,
+  type ResolveHostInputSlotsOptions
 } from '../hostInput'
 import {
   boundaryInputNodeId,
@@ -143,7 +145,7 @@ import {
   parseBeatJson,
   stringifyBeatRows
 } from '../beatParse'
-import { parseUiScreenPrompts } from '../uiSplitParse'
+import { parseUiScreenPrompts, screensFromUiGenIncoming } from '../uiSplitParse'
 import { formatBeatRefText } from '../beatParams'
 import {
   multiAngleCameraToNodePatch,
@@ -3999,27 +4001,47 @@ export async function executeUiGenNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
-  const incomingTexts: Array<{ title: string; prompt: string }> = []
-  for (const value of Object.values(ctx.inputs).flat()) {
-    if (value.kind === 'texts') {
-      for (const item of value.items) {
-        incomingTexts.push({ title: item.title?.trim() || '', prompt: item.text?.trim() || '' })
-      }
-    } else if (value.kind === 'text' && value.text?.trim()) {
-      incomingTexts.push({ title: '', prompt: value.text.trim() })
-    }
-  }
-  const screens = incomingTexts
-    .filter((item) => !!item.prompt)
-    .map((item, index) => ({
-      id: `ui-${index + 1}`,
-      title: item.title || `界面 ${index + 1}`,
-      prompt: item.prompt
-    }))
+  const incoming = screensFromUiGenIncoming(Object.values(ctx.inputs).flat())
+  // 端口无输入时保留已存界面列表，避免上游未运行就把 dive 提示词清空
+  const screens = incoming.length
+    ? incoming
+    : (Array.isArray(node.params.uiScreens) ? node.params.uiScreens : [])
   const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
-  node.params = { ...node.params, text: summary, uiScreens: screens }
-  ctx.patchNode?.({ params: { text: summary, uiScreens: screens } })
-  return { out: { kind: 'images', items: [] } }
+  // 点 cook：收集内图所有输出边界（边界输出未运行也可从上游取到），并落节点图库供预览
+  const collected = collectUiGenInnerOutputs(ctx)
+  const out: GraphValue = collected ?? { kind: 'images', items: [] }
+  const gallery = collected ? outputsToHostGalleryParams({ out }) : {}
+  node.params = { ...node.params, text: summary, uiScreens: screens, ...gallery }
+  ctx.patchNode?.({ params: { text: summary, uiScreens: screens, ...gallery } })
+  return { out }
+}
+
+/** ui.gen：从 dive 子图资产软解析所有输出边界，合并为图片组 */
+function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefined {
+  const assetId = ctx.node.params.uiSplitAssetId?.trim()
+  if (!assetId) return undefined
+  const liveDoc = ctx.resolveLiveAssetGraph?.(assetId)
+  const gen = ctx.resolveAssetGenParams?.(assetId)
+  const raw = liveDoc ?? gen?.graphJson
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    !Array.isArray((raw as GraphDocument).nodes)
+  ) {
+    return undefined
+  }
+  const doc = raw as GraphDocument
+  const collected: GraphValue[] = []
+  const softOptions: ResolveHostInputSlotsOptions = {
+    resolveLiveAssetGraph: ctx.resolveLiveAssetGraph,
+    resolveAssetGenParams: ctx.resolveAssetGenParams
+  }
+  for (const bnode of doc.nodes) {
+    if (!isBoundaryOutputNode(bnode)) continue
+    const value = softResolveBoundaryOutputValue(doc, bnode.id, softOptions)
+    if (graphValueHasPayload(value)) collected.push(value)
+  }
+  return mergeBoundarySoftValues(collected, GraphPortType.images)
 }
 
 async function persistUiSplitGeneration(

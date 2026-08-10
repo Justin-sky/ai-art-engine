@@ -14,6 +14,39 @@ export interface UiScreenPromptItem {
   prompt: string
 }
 
+/**
+ * 把输入端口收到的提示词载荷直接展开为界面列表。
+ * 供 ui.gen 执行与 dive 打开共用：dive 时无需先 cook，直接按端口数组展开。
+ */
+export function screensFromUiGenIncoming(
+  values: unknown[]
+): UiScreenPromptItem[] {
+  const raw: Array<{ title: string; prompt: string }> = []
+  for (const value of values) {
+    if (!value || typeof value !== 'object') continue
+    const entry = value as { kind?: unknown; text?: unknown; items?: unknown }
+    if (entry.kind === 'texts' && Array.isArray(entry.items)) {
+      for (const item of entry.items) {
+        const rec = (item ?? {}) as { title?: unknown; text?: unknown }
+        const prompt = typeof rec.text === 'string' ? rec.text.trim() : ''
+        if (prompt) {
+          raw.push({
+            title: typeof rec.title === 'string' ? rec.title.trim() : '',
+            prompt
+          })
+        }
+      }
+    } else if (entry.kind === 'text' && typeof entry.text === 'string' && entry.text.trim()) {
+      raw.push({ title: '', prompt: entry.text.trim() })
+    }
+  }
+  return raw.map((item, index) => ({
+    id: `ui-${index + 1}`,
+    title: item.title || `界面 ${index + 1}`,
+    prompt: item.prompt
+  }))
+}
+
 /** UI界面拆分 dive 内图槽位上限（每条提示词一条输出链） */
 export const UI_SPLIT_SLOT_CAP = 12
 

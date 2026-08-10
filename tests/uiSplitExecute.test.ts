@@ -6,12 +6,30 @@ import {
   getNodePorts,
   parseUiScreenPrompts,
   buildUiSplitInnerGraph,
+  screensFromUiGenIncoming,
   UI_SPLIT_SLOT_CAP,
   GraphPortType,
   type NodeExecuteContext
 } from '../src/shared/graph'
 
 describe('ui.split', () => {
+  it('expands incoming texts array into screens directly (no cook needed)', () => {
+    const screens = screensFromUiGenIncoming([
+      {
+        kind: 'texts',
+        items: [
+          { title: '主界面', text: '主界面提示词' },
+          { title: '商店', text: '商店提示词' }
+        ]
+      },
+      { kind: 'text', text: '结算界面提示词' }
+    ])
+    expect(screens).toHaveLength(3)
+    expect(screens[0]).toMatchObject({ title: '主界面', prompt: '主界面提示词' })
+    expect(screens[1]).toMatchObject({ title: '商店', prompt: '商店提示词' })
+    expect(screens[2]).toMatchObject({ title: '界面 3', prompt: '结算界面提示词' })
+  })
+
   it('ui.gen stores incoming screen prompts as uiScreens and returns empty images', async () => {
     const patchNode = vi.fn()
     const ctx = {
@@ -41,6 +59,44 @@ describe('ui.split', () => {
     expect((ctx.node.params.uiScreens as unknown[]).length).toBe(2)
     expect(ctx.node.params.uiScreens?.[0]).toMatchObject({ title: '主界面', prompt: '主界面提示词' })
     expect(patchNode).toHaveBeenCalled()
+  })
+
+  it('ui.gen cook collects all inner boundary outputs', async () => {
+    const doc = buildUiSplitInnerGraph([
+      { id: 'a', title: '主界面', prompt: 'p1' },
+      { id: 'b', title: '商店', prompt: 'p2' }
+    ])
+    const img1 = doc.nodes.find((n) => n.id === 'ui-img-1')!
+    img1.params = {
+      ...img1.params,
+      generatedImages: [{ id: 'img-1', dataUrl: 'data:image/png;base64,AAA', createdAt: 't1' }]
+    }
+    const img2 = doc.nodes.find((n) => n.id === 'ui-img-2')!
+    img2.params = {
+      ...img2.params,
+      generatedImages: [{ id: 'img-2', dataUrl: 'data:image/png;base64,BBB', createdAt: 't2' }]
+    }
+    const patchNode = vi.fn()
+    const ctx = {
+      node: {
+        id: 'gen',
+        typeId: 'ui.gen',
+        category: 'note',
+        title: 'UI 界面生成',
+        position: { x: 0, y: 0 },
+        params: { uiSplitAssetId: 'sub-1' }
+      },
+      inputs: {},
+      resolveAssetGenParams: () => ({ graphJson: doc }),
+      patchNode
+    } as unknown as NodeExecuteContext
+    const out = await executeUiGenNode(ctx)
+    expect(out.out.kind).toBe('images')
+    const items = (out.out as { items: Array<{ id?: string }> }).items
+    expect(items).toHaveLength(2)
+    expect(items.map((item) => item.id).sort()).toEqual(['img-1', 'img-2'])
+    expect(patchNode).toHaveBeenCalled()
+    expect((ctx.node.params.generatedImages as unknown[]).length).toBe(2)
   })
 
   it('builds a dive inner graph with one prompt->image->output chain per screen', () => {

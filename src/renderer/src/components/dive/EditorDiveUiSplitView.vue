@@ -11,6 +11,9 @@ import { defineAsyncComponent, onMounted, ref } from 'vue'
 import {
   buildUiSplitHostInterface,
   buildUiSplitInnerGraph,
+  screensFromUiGenIncoming,
+  softResolveSourceOutput,
+  type ResolveHostInputSlotsOptions,
   type UiScreenPromptItem
 } from '@shared/graph'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
@@ -29,12 +32,40 @@ const innerAssetId = ref('')
 const loading = ref(true)
 const errorText = ref('')
 
+/** 从输入端口（上游 texts 数组）直接软解析界面列表，无需先 cook */
+function resolveScreensFromIncomingPort(nodeId: string): UiScreenPromptItem[] {
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  if (!doc) return []
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, nodeId, 'in')
+  if (!incoming.length) return []
+  const options: ResolveHostInputSlotsOptions = {
+    resolveLiveAssetGraph: (id) => graphEditorHosts.getLiveAssetDocument(id) ?? undefined,
+    resolveAssetGenParams: (id) => project.assets.find((a) => a.id === id)?.genParams
+  }
+  const values = incoming.map((edge) =>
+    softResolveSourceOutput(doc, edge.sourceNodeId, edge.sourcePort ?? 'out', options)
+  )
+  return screensFromUiGenIncoming(values)
+}
+
 onMounted(async () => {
   try {
     const node = graphEditorHosts.getNode(props.hostId, props.nodeId)
-    const screens: UiScreenPromptItem[] = node?.params?.uiScreens ?? []
+    // 直接按输入端口数组展开（无需先 cook）；端口无输出时回退已存提示词
+    let screens = resolveScreensFromIncomingPort(props.nodeId)
+    if (!screens.length) {
+      screens = Array.isArray(node?.params?.uiScreens)
+        ? node!.params.uiScreens!.filter((item) => !!item?.prompt?.trim())
+        : []
+    }
     const existing = node?.params?.uiSplitAssetId
-    if (existing && project.assets.some((asset) => asset.id === existing)) {
+    const sameScreens =
+      screens.length > 0 &&
+      JSON.stringify(screens) === JSON.stringify(node?.params?.uiScreens ?? [])
+    if (screens.length && node && !sameScreens) {
+      graphEditorHosts.updateNode(props.hostId, props.nodeId, { uiScreens: screens })
+    }
+    if (existing && sameScreens && project.assets.some((asset) => asset.id === existing)) {
       innerAssetId.value = existing
       return
     }
