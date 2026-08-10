@@ -82,14 +82,45 @@ describe('videoGenerateParams node patch', () => {
       generateResolution: '720p',
       generateDuration: 6,
       generateAudio: false,
-      generateFrameMode: 'none'
+      generateFrameMode: 'none',
+      generateSeedUseGlobal: true
     })
     expect(readVideoGenerateParamsFromNode(patch)).toEqual({
       aspectRatio: '9:16',
       resolution: '720p',
       duration: 6,
       generateAudio: false,
-      frameMode: 'none'
+      frameMode: 'none',
+      seedUseGlobal: true
+    })
+  })
+
+  it('round-trips seed and use-global flag', () => {
+    const patch = videoGenerateParamsToNodePatch({
+      aspectRatio: '9:16',
+      resolution: '720p',
+      duration: 6,
+      generateAudio: false,
+      seed: 42,
+      seedUseGlobal: false
+    })
+    expect(patch).toEqual({
+      generateAspectRatio: '9:16',
+      generateResolution: '720p',
+      generateDuration: 6,
+      generateAudio: false,
+      generateFrameMode: 'none',
+      generateSeed: 42,
+      generateSeedUseGlobal: false
+    })
+    expect(readVideoGenerateParamsFromNode(patch)).toEqual({
+      aspectRatio: '9:16',
+      resolution: '720p',
+      duration: 6,
+      generateAudio: false,
+      frameMode: 'none',
+      seed: 42,
+      seedUseGlobal: false
     })
   })
 })

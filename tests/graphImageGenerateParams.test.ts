@@ -28,7 +28,8 @@ describe('resolveImageGenerateParamsForApi', () => {
       aspectRatio: '1:1',
       resolution: '4K',
       quality: 'high',
-      count: 2
+      count: 2,
+      seedUseGlobal: true
     })
   })
 
