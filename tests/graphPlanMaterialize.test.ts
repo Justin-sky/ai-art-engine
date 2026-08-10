@@ -186,6 +186,7 @@ describe('graphPlan materialize', () => {
       'characterSheet',
       'storyboardVideo',
       'productAd',
+      'gameUi',
       'shortDrama'
     ] as const) {
       const plan = getAiWorkflowPresetPlan(id)

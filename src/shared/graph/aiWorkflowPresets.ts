@@ -268,6 +268,7 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'characterSheet',
   'storyboardVideo',
   'productAd',
+  'gameUi',
   'shortDrama',
   'custom'
 ] as const
@@ -435,6 +436,39 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       { from: 'copy', to: 'hero' },
       { from: 'copy', to: 'scene' },
       { from: 'hero', to: 'video' }
+    ]
+  },
+  gameUi: {
+    title: '游戏UI界面',
+    nodes: [
+      {
+        key: 'gameSystem',
+        typeId: 'asset.gameSystem',
+        title: '策划案生成',
+        params: { text: '（在此填写游戏系统需求，如：背包系统、任务系统、公会系统…）' }
+      },
+      {
+        key: 'uiSplit',
+        typeId: 'ui.split',
+        title: 'UI界面拆分'
+      },
+      {
+        key: 'uiGen',
+        typeId: 'ui.gen',
+        title: 'UI界面生成'
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '使用流程：运行「策划案生成」产出系统策划案 → 运行「UI界面拆分」拆出各界面提示词 → 双击「UI界面生成」进入内图逐屏出图 → 回外层点 Cook 汇集全部界面图。界面风格由全局风格参考图统一控制（风格库 → UI 风格）。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'gameSystem', to: 'uiSplit' },
+      { from: 'uiSplit', to: 'uiGen' }
     ]
   },
   shortDrama: buildEpisodePipelinePlan()

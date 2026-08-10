@@ -90,6 +90,12 @@ export default {
         prompt:
           'Create a product-ad workflow: text for selling points, image nodes for hero/product scenes, then a short video with product close-ups; include a product reference upload.'
       },
+      gameUi: {
+        title: 'Game UI screens',
+        desc: 'System design → UI split → UI gen',
+        prompt:
+          'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
+      },
       shortDrama: {
         title: 'Short drama',
         desc: 'Script → beats → 9-grid → 4-grid → 36 motion videos (agent pipeline)',
