@@ -274,7 +274,7 @@ function confirm(): void {
   display: block;
   width: 100%;
   aspect-ratio: 1;
-  object-fit: cover;
+  object-fit: contain;
   background: var(--media-letterbox);
 }
 
