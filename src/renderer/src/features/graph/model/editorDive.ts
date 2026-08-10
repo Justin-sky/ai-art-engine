@@ -18,6 +18,7 @@ export type EditorDiveViewId =
   | 'beat.gen'
   | 'beat.table'
   | 'director.stage'
+  | 'ui.split'
   | 'node.notepad'
   | 'node.textsPreview'
   | 'node.selectImage'
@@ -73,6 +74,7 @@ export type EditorDiveViewMeta =
       directorAssetId: string
       processingNodeId?: string
     }
+  | { viewId: 'ui.split'; hostId: string; nodeId: string }
   | {
       viewId: EditorDiveNodeToolViewId
       hostId: string
@@ -152,6 +154,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:${meta.viewId}:${meta.beatAssetId}`
     case 'director.stage':
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
+    case 'ui.split':
+      return `${root}/view:ui.split:${meta.hostId}:${meta.nodeId}`
     case 'media.preview':
       return `${root}/view:media.preview:${meta.mediaKind}:${meta.relativePath || meta.url}`
     default:

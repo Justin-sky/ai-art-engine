@@ -65,6 +65,7 @@ import {
   executeEpisodeAnchorSelectNode,
   executeEpisodeCellSelectNode,
   executeUiSplitNode,
+  executeUiGenNode,
   executeWorldGenNode,
   executeWorldEntitiesOutputNode,
   executeBeatCatalogOutputNode,
@@ -1452,6 +1453,36 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeUiSplitNode
+  },
+  {
+    typeId: 'ui.gen',
+    category: 'note',
+    label: 'UI 界面生成',
+    icon: '🖼️',
+    defaultTitle: 'UI 界面生成',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.texts, multiple: true, label: 'UI Screens' },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'UI Images'
+      }
+    ],
+    defaultParams: () => ({
+      text: '',
+      uiScreens: [],
+      uiSplitAssetId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeUiGenNode
   },
   {
     typeId: 'beat.table',

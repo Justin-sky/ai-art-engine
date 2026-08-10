@@ -2,13 +2,81 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createNodeFromType,
   executeUiSplitNode,
+  executeUiGenNode,
   getNodePorts,
   parseUiScreenPrompts,
+  buildUiSplitInnerGraph,
+  UI_SPLIT_SLOT_CAP,
   GraphPortType,
   type NodeExecuteContext
 } from '../src/shared/graph'
 
 describe('ui.split', () => {
+  it('ui.gen stores incoming screen prompts as uiScreens and returns empty images', async () => {
+    const patchNode = vi.fn()
+    const ctx = {
+      node: {
+        id: 'gen',
+        typeId: 'ui.gen',
+        category: 'note',
+        title: 'UI 界面生成',
+        position: { x: 0, y: 0 },
+        params: {}
+      },
+      inputs: {
+        in: [
+          {
+            kind: 'texts',
+            items: [
+              { id: 'a', title: '主界面', text: '主界面提示词' },
+              { id: 'b', title: '商店', text: '商店提示词' }
+            ]
+          }
+        ]
+      },
+      patchNode
+    } as unknown as NodeExecuteContext
+    const out = await executeUiGenNode(ctx)
+    expect(out.out).toEqual({ kind: 'images', items: [] })
+    expect((ctx.node.params.uiScreens as unknown[]).length).toBe(2)
+    expect(ctx.node.params.uiScreens?.[0]).toMatchObject({ title: '主界面', prompt: '主界面提示词' })
+    expect(patchNode).toHaveBeenCalled()
+  })
+
+  it('builds a dive inner graph with one prompt->image->output chain per screen', () => {
+    const screens = [
+      { id: 'ui-main', title: '主界面', prompt: '主界面 HUD 生图提示词' },
+      { id: 'ui-shop', title: '商店', prompt: '商店界面生图提示词' }
+    ]
+    const doc = buildUiSplitInnerGraph(screens)
+    expect(doc.nodes).toHaveLength(6)
+    expect(doc.edges).toHaveLength(4)
+    const chain = doc.edges.filter((e) => e.source === 'graph-boundary-in-ui-1')
+    expect(chain).toHaveLength(1)
+    expect(chain[0]?.target).toBe('ui-img-1')
+    expect(doc.edges.some((e) => e.source === 'ui-img-1' && e.target === 'graph-boundary-out-ui-1')).toBe(
+      true
+    )
+    const inNode = doc.nodes.find((n) => n.id === 'graph-boundary-in-ui-1')
+    expect(inNode?.params?.text).toBe('主界面 HUD 生图提示词')
+    const imgNode = doc.nodes.find((n) => n.id === 'ui-img-1')
+    expect(imgNode?.typeId).toBe('asset.image')
+    expect(imgNode?.title).toBe('UI图·主界面')
+    expect(doc.nodes.find((n) => n.id === 'graph-boundary-out-ui-1')?.typeId).toBe(
+      'graph.boundary.output'
+    )
+  })
+
+  it('caps the dive inner graph at UI_SPLIT_SLOT_CAP chains', () => {
+    const screens = Array.from({ length: 20 }, (_, i) => ({
+      id: `ui-${i}`,
+      title: `界面 ${i + 1}`,
+      prompt: `提示词 ${i + 1}`
+    }))
+    const doc = buildUiSplitInnerGraph(screens)
+    expect(doc.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(UI_SPLIT_SLOT_CAP)
+  })
+
   it('exposes text in and texts out ports', () => {
     const node = createNodeFromType('ui.split', { x: 0, y: 0 })
     const ports = getNodePorts(node)

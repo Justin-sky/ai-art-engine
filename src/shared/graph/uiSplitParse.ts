@@ -1,9 +1,120 @@
 import { stripJsonCodeFence } from './jsonFence'
+import { createNodeFromType } from './create'
+import {
+  GRAPH_BOUNDARY_INPUT_TYPE_ID,
+  GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+  HOST_INTERFACE_FORMAT_VERSION,
+  type HostInterfaceDocument
+} from './hostInterface'
+import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
 
 export interface UiScreenPromptItem {
   id: string
   title: string
   prompt: string
+}
+
+/** UI界面拆分 dive 内图槽位上限（每条提示词一条输出链） */
+export const UI_SPLIT_SLOT_CAP = 12
+
+/** ui.split 内图资产的宿主接口：每条链一个提示词输入口 + 一个图片输出口 */
+export function buildUiSplitHostInterface(
+  screens: UiScreenPromptItem[]
+): HostInterfaceDocument {
+  const cap = Math.min(UI_SPLIT_SLOT_CAP, screens.length)
+  const items = screens.slice(0, cap)
+  return {
+    version: HOST_INTERFACE_FORMAT_VERSION,
+    inputs: items.map((screen, i) => ({
+      id: `in-${i + 1}`,
+      label: `提示词·${screen.title}`,
+      dataType: GraphPortType.text,
+      multiple: false
+    })),
+    outputs: items.map((screen, i) => ({
+      id: `out-${i + 1}`,
+      label: `图片·${screen.title}`,
+      dataType: GraphPortType.image,
+      multiple: false
+    }))
+  }
+}
+
+/**
+ * 构建 ui.split 的 dive 内图：每个界面一条链
+ * 提示词输入边界 → 图像生成（asset.image）→ 图片输出边界。
+ * 提示词直接烘焙进边界节点 params.text，图像节点用空指令接收上游文本。
+ */
+export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocument {
+  const nodes: GraphNode[] = []
+  const edges: GraphEdge[] = []
+  const cap = Math.min(UI_SPLIT_SLOT_CAP, screens.length)
+  for (let i = 0; i < cap; i += 1) {
+    const screen = screens[i]!
+    const slot = i + 1
+    const y = 80 * i + 40
+    const inId = `graph-boundary-in-ui-${slot}`
+    const imgId = `ui-img-${slot}`
+    const outId = `graph-boundary-out-ui-${slot}`
+
+    nodes.push({
+      id: inId,
+      typeId: GRAPH_BOUNDARY_INPUT_TYPE_ID,
+      category: 'note',
+      position: { x: 40, y },
+      title: `提示词·${screen.title}`,
+      params: {
+        previewCollapsed: true,
+        hostBoundaryPort: {
+          portId: `in-${slot}`,
+          dataType: GraphPortType.text,
+          multiple: false
+        },
+        text: screen.prompt
+      }
+    })
+    nodes.push(
+      createNodeFromType(
+        'asset.image',
+        { x: 260, y },
+        {
+          id: imgId,
+          title: `UI图·${screen.title}`,
+          params: { generateAspectRatio: '9:16', styleImagesUseGlobal: true }
+        }
+      )
+    )
+    nodes.push({
+      id: outId,
+      typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+      category: 'note',
+      position: { x: 480, y },
+      title: `图片·${screen.title}`,
+      params: {
+        previewCollapsed: true,
+        hostBoundaryPort: {
+          portId: `out-${slot}`,
+          dataType: GraphPortType.image,
+          multiple: false
+        }
+      }
+    })
+    edges.push({
+      id: `ui-e-in-${slot}`,
+      source: inId,
+      target: imgId,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    edges.push({
+      id: `ui-e-out-${slot}`,
+      source: imgId,
+      target: outId,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+  }
+  return { nodes, edges, groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
 }
 
 function slugify(raw: string, index: number): string {

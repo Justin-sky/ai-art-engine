@@ -87,6 +87,7 @@ const viewRegistry: Record<string, Component> = {
   'beat.gen': defineAsyncComponent(() => import('./dive/EditorDiveBeatGenView.vue')),
   'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
+  'ui.split': defineAsyncComponent(() => import('./dive/EditorDiveUiSplitView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
   'node.instruction': defineAsyncComponent(() => import('./dive/EditorDiveInstructionView.vue')),
   'node.notepad': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
@@ -184,6 +185,8 @@ const viewBindings = computed(() => {
         text: meta.text
       }
     case 'node.instruction':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'ui.split':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     default:
       return {

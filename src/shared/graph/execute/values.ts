@@ -3994,6 +3994,34 @@ export async function executeUiSplitNode(
   return persistUiSplitGeneration(ctx, screens)
 }
 
+/** UI 界面生成：接收界面提示词数组，落为 uiScreens 供 dive 内图使用；外口输出图片组（由内图产出） */
+export async function executeUiGenNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const { node } = ctx
+  const incomingTexts: Array<{ title: string; prompt: string }> = []
+  for (const value of Object.values(ctx.inputs).flat()) {
+    if (value.kind === 'texts') {
+      for (const item of value.items) {
+        incomingTexts.push({ title: item.title?.trim() || '', prompt: item.text?.trim() || '' })
+      }
+    } else if (value.kind === 'text' && value.text?.trim()) {
+      incomingTexts.push({ title: '', prompt: value.text.trim() })
+    }
+  }
+  const screens = incomingTexts
+    .filter((item) => !!item.prompt)
+    .map((item, index) => ({
+      id: `ui-${index + 1}`,
+      title: item.title || `界面 ${index + 1}`,
+      prompt: item.prompt
+    }))
+  const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+  node.params = { ...node.params, text: summary, uiScreens: screens }
+  ctx.patchNode?.({ params: { text: summary, uiScreens: screens } })
+  return { out: { kind: 'images', items: [] } }
+}
+
 async function persistUiSplitGeneration(
   ctx: NodeExecuteContext,
   screens: Array<{ id: string; title: string; prompt: string }>
@@ -4010,17 +4038,24 @@ async function persistUiSplitGeneration(
   const generatedTexts = items
   const selectedTextId = newestTextSelectedId(generatedTexts)
   const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+  // 提示词变化时作废旧的内图资产引用，避免 dive 打开与当前提示词不一致的子图
+  const sameScreens = JSON.stringify(screens) === JSON.stringify(ctx.node.params.uiScreens)
+  const uiSplitAssetId = sameScreens ? ctx.node.params.uiSplitAssetId : ''
   ctx.node.params = {
     ...ctx.node.params,
     text: summary,
     generatedTexts,
-    selectedTextId
+    selectedTextId,
+    uiScreens: screens,
+    uiSplitAssetId
   }
   ctx.patchNode?.({
     params: {
       text: summary,
       generatedTexts,
-      selectedTextId
+      selectedTextId,
+      uiScreens: screens,
+      uiSplitAssetId
     }
   })
   return { out: { kind: 'texts', items: generatedTexts } }

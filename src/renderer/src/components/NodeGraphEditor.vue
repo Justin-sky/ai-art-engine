@@ -363,6 +363,7 @@
           @select-text-open="onSelectTextOpen"
           @texts-open="onTextsOpen"
           @text-open="onTextOpen"
+          @ui-split-open="onUiSplitOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -3002,7 +3003,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split']
+    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen']
   },
   {
     id: 'beat',
@@ -4893,6 +4894,16 @@ function openTextNotepad(nodeId: string): void {
 
 function onTextOpen(nodeId: string): void {
   openTextNotepad(nodeId)
+}
+
+/** UI 界面拆分：双击进入内图（懒创建子图资产并打开资产编辑器） */
+function onUiSplitOpen(nodeId: string): void {
+  if (editorDive) {
+    void editorDive.diveView(
+      { viewId: 'ui.split', hostId: graphHostId.value, nodeId },
+      undefined
+    )
+  }
 }
 
 function closeTextNotepad(): void {

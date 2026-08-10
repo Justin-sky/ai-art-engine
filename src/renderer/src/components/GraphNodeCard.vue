@@ -496,6 +496,7 @@ import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
 import {
   editorDiveKey,
+  type EditorDiveNodeToolViewId,
   type EditorDiveViewMeta
 } from '../features/graph/model/editorDive'
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
@@ -568,6 +569,7 @@ const emit = defineEmits<{
   selectVoiceOpen: [nodeId: string]
   selectTextOpen: [nodeId: string]
   textsOpen: [nodeId: string]
+  uiSplitOpen: [nodeId: string]
   textOpen: [nodeId: string]
 }>()
 
@@ -1786,7 +1788,7 @@ async function diveView(meta: EditorDiveViewMeta, title?: string): Promise<boole
 }
 
 async function diveNodeTool(
-  viewId: Extract<EditorDiveViewMeta, { hostId: string }>['viewId'],
+  viewId: EditorDiveNodeToolViewId,
   title?: string,
   mode?: string
 ): Promise<boolean> {
@@ -1917,6 +1919,12 @@ function onPreviewDblClick(): void {
     // 剧集流水线总览由顶部工具栏打开；宫格/动态格选择双击统一打开记事本
     if (isEpisodeAnchorSelectNode(props.node) || isEpisodeCellSelectNode(props.node)) {
       emit('textOpen', props.node.id)
+      return
+    }
+
+    // UI 界面生成：双击进入内图（每条提示词一条输出链）
+    if (props.node.typeId === 'ui.gen') {
+      emit('uiSplitOpen', props.node.id)
       return
     }
 

@@ -428,6 +428,10 @@ export interface GraphNodeParams {
   selectedTextId?: string
   /** 选择场节点：当前选中的 BeatRow.id */
   selectedBeatId?: string
+  /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链） */
+  uiScreens?: Array<{ id: string; title: string; prompt: string }>
+  /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
+  uiSplitAssetId?: string
   /**
    * 当前选中的声音 id：生成节点 `out` 默认输出口。
    * 每次运行成功后强制切到最新一条。
