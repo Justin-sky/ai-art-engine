@@ -9,6 +9,7 @@ import {
   type HostInterfaceDocument
 } from './hostInterface'
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
+import { resolveUiImageSystemPrompt } from './systemPromptSchemes'
 
 export interface UiScreenPromptItem {
   id: string
@@ -56,7 +57,7 @@ export const UI_SPLIT_SLOT_CAP = 12
  * dive 内图结构版本：边界节点/连线结构变化时递增，
  * 使已存在的内图资产在下一次 dive 时按新结构重建。
  */
-export const UI_SPLIT_INNER_GRAPH_VERSION = 2
+export const UI_SPLIT_INNER_GRAPH_VERSION = 3
 
 /** ui.split 内图资产的宿主接口：每条链一个提示词输入口 + 一个图片输出口 */
 export function buildUiSplitHostInterface(
@@ -86,10 +87,16 @@ export function buildUiSplitHostInterface(
  * 提示词输入边界 → 图像生成（asset.image）→ 图片输出边界。
  * 提示词直接烘焙进边界节点 params.text，图像节点用空指令接收上游文本。
  */
-export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocument {
+export function buildUiSplitInnerGraph(
+  screens: UiScreenPromptItem[],
+  locale?: string
+): GraphDocument {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
   const cap = Math.min(UI_SPLIT_SLOT_CAP, screens.length)
+  // 游戏 UI 生成专用系统提示词：对齐风格参考图的 UI 元素/界面风格/控件/配色等细节，
+  // 不影响标准图片生成的默认系统提示词
+  const uiImageSystemPrompt = resolveUiImageSystemPrompt(undefined, locale)
   for (let i = 0; i < cap; i += 1) {
     const screen = screens[i]!
     const slot = i + 1
@@ -125,7 +132,11 @@ export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocu
         {
           id: imgId,
           title: `UI图·${screen.title}`,
-          params: { generateAspectRatio: '9:16', styleImagesUseGlobal: true }
+          params: {
+            generateAspectRatio: '9:16',
+            styleImagesUseGlobal: true,
+            generateSystemPrompt: uiImageSystemPrompt
+          }
         }
       )
     )

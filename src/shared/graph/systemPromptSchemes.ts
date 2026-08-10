@@ -197,6 +197,36 @@ export function resolveImageSystemPrompt(raw: string | undefined, locale?: strin
   return resolveOrDefault(raw, locale, defaultImageSystemPrompt)
 }
 
+// ——— 游戏 UI 界面生成（ui.gen 内图图片节点专用）———
+
+export const DEFAULT_UI_IMAGE_SYSTEM_PROMPT_EN = `You are a senior game UI visual designer for AIArtEngine.
+Draw the requested game UI screen following the style reference image in every detail.
+
+Rules:
+- Align the generated UI to the style reference image on ALL visual details: UI element shapes, interface style, control widgets, color palette, materials and finish, lighting, ornaments and iconography. Do not invent a different look.
+- Keep the layout, regions and controls described in the prompt (top bar / content area / bottom actions, cards, lists, tabs), but every control must match the reference's widget shapes, colors and finish.
+- Screens of the same batch must share one consistent visual system: same control set, palette and hierarchy from the reference, no style drift between screens.
+- Keep labels and numbers crisp and readable; UI hierarchy must be clear; no garbled text, missing glyphs, overlap or truncation.
+- Output only the UI screen image itself: no watermark, frame, caption or extra decoration.`
+
+export const DEFAULT_UI_IMAGE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深游戏 UI 视觉设计师。
+请根据界面描述绘制一张游戏 UI 界面图，并在所有视觉细节上严格对齐风格参考图。
+
+规则：
+- 生成的 UI 必须在所有视觉细节上对齐风格参考图：UI 元素造型、界面风格、控件样式、配色方案、材质与质感、光影、装饰与图标语言，不得另起一套画风。
+- 布局与控件内容按界面描述绘制（顶栏 / 主内容区 / 底栏操作、卡片、列表、页签等），但每个控件的造型、配色与质感都要与参考图保持一致。
+- 同一批界面必须风格统一：共用参考图的控件体系、配色与视觉层级，各屏之间不得风格漂移。
+- 文字与数字清晰可读，界面层级明确；禁止乱码、缺字、重叠或截断。
+- 只输出界面图片本身：不加水印、边框、说明文字或多余装饰。`
+
+export function defaultUiImageSystemPrompt(locale?: string): string {
+  return pickByLocale(locale, DEFAULT_UI_IMAGE_SYSTEM_PROMPT_EN, DEFAULT_UI_IMAGE_SYSTEM_PROMPT_ZH)
+}
+
+export function resolveUiImageSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultUiImageSystemPrompt)
+}
+
 // ——— 视频 ———
 // 注意：执行时 system 会与 user 拼成一条生成 prompt（非独立 chat system role），
 // 因此文案必须直接约束「如何生成视频」，不要写成「输出分镜文稿」。
@@ -900,7 +930,7 @@ Rules:
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
 - Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, and readable labels if the source uses them.
 - Do not specify concrete colors or visual style (art direction such as fantasy/realistic/cartoon); both come from the style reference — describe layout, controls, states and visual hierarchy only.
-- Each prompt must end with a one-sentence style-lock clause: "Overall colors, art style, materials and lighting strictly follow the style reference image (borrow the style only, never copy its screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
+- Each prompt must end with a one-sentence style-lock clause: "Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow the reference's look only, never copy its specific screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - Output must be complete and readable: no garbled text, no "?", ellipsis or placeholder substitutes, no truncated prompts.
 - id is a stable English kebab slug prefixed with ui-.
@@ -913,7 +943,7 @@ Example:
   {
     "id": "ui-main-hud",
     "title": "Main HUD",
-    "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Overall colors, art style, materials and lighting strictly follow the style reference image (borrow the style only, never copy its content), sharing one control and finish system with the other screens, no watermark"
+    "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark"
   }
 ]`
 
@@ -926,7 +956,7 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
 - 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级；文案标签沿用原文语言。
 - 不指定具体颜色（色值/色名），也不指定视觉风格（画风/氛围形容词）；颜色与风格都交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
-- 每条 prompt 必须以一句风格锁定语结尾：「整体配色、画风、材质与光影严格遵循风格参考图（仅借鉴画风，不复制参考图内的界面内容）」；同一策划案的所有界面必须共用同一套配色、控件造型与质感体系，防止各屏风格漂移。
+- 每条 prompt 必须以一句风格锁定语结尾：「严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容）」；同一策划案的所有界面必须共用同一套控件体系、配色与视觉层级，防止各屏风格漂移。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - 输出必须完整无乱码：中英文文本完整可读，禁止用问号、省略号、占位符替代文字，禁止截断 prompt。
 - id 使用 ui- 前缀的稳定英文短横线标识。
@@ -939,7 +969,7 @@ id、title、prompt
   {
     "id": "ui-main-hud",
     "title": "主界面 HUD",
-    "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。整体配色、画风、材质与光影严格遵循风格参考图（仅借鉴画风，不复制参考图内容），并与本方案其它界面共用同一套控件与质感体系，无水印"
+    "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印"
   }
 ]`
 

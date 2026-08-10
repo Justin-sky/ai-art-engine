@@ -18,6 +18,7 @@ import {
   type UiScreenPromptItem
 } from '@shared/graph'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
+import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useProjectStore } from '../../stores/project'
 
 const AssetEditor = defineAsyncComponent(() => import('../AssetEditor.vue'))
@@ -29,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const project = useProjectStore()
+const { locale } = useStudioI18n()
 const innerAssetId = ref('')
 const loading = ref(true)
 const errorText = ref('')
@@ -85,7 +87,7 @@ onMounted(async () => {
       name: `UI拆分·${node?.title?.trim() || props.nodeId}`,
       folderId: null,
       genParams: {
-        graphJson: buildUiSplitInnerGraph(screens),
+        graphJson: buildUiSplitInnerGraph(screens, locale.value),
         hostInterface: buildUiSplitHostInterface(screens)
       } as never
     })

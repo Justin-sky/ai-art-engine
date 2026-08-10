@@ -122,9 +122,16 @@ describe('ui.split', () => {
     const imgNode = doc.nodes.find((n) => n.id === 'ui-img-1')
     expect(imgNode?.typeId).toBe('asset.image')
     expect(imgNode?.title).toBe('UI图·主界面')
+    expect(imgNode?.params?.generateSystemPrompt).toContain('风格参考图')
+    expect(imgNode?.params?.generateSystemPrompt).toContain('UI 元素')
     expect(doc.nodes.find((n) => n.id === outId)?.typeId).toBe(
       'graph.boundary.output'
     )
+  })
+
+  it('keeps the standard image system prompt untouched for non-UI nodes', () => {
+    const node = createNodeFromType('asset.image', { x: 0, y: 0 })
+    expect(node.params.generateSystemPrompt).toBeUndefined()
   })
 
   it('caps the dive inner graph at UI_SPLIT_SLOT_CAP chains', () => {
