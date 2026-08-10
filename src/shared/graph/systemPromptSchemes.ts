@@ -900,7 +900,9 @@ Rules:
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
 - Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, and readable labels if the source uses them.
 - Do not specify concrete colors or visual style (art direction such as fantasy/realistic/cartoon); both come from the style reference — describe layout, controls, states and visual hierarchy only.
+- Each prompt must end with a one-sentence style-lock clause: "Overall colors, art style, materials and lighting strictly follow the style reference image (borrow the style only, never copy its screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
+- Output must be complete and readable: no garbled text, no "?", ellipsis or placeholder substitutes, no truncated prompts.
 - id is a stable English kebab slug prefixed with ui-.
 
 Return ONLY a bare JSON array — do not wrap it in an object (never output {"screens": [...]}) and do not use a markdown list. Every object must contain exactly:
@@ -911,7 +913,7 @@ Example:
   {
     "id": "ui-main-hud",
     "title": "Main HUD",
-    "prompt": "Mobile game main HUD, top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean, high-readability UI, no watermark"
+    "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Overall colors, art style, materials and lighting strictly follow the style reference image (borrow the style only, never copy its content), sharing one control and finish system with the other screens, no watermark"
   }
 ]`
 
@@ -924,7 +926,9 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
 - 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级；文案标签沿用原文语言。
 - 不指定具体颜色（色值/色名），也不指定视觉风格（画风/氛围形容词）；颜色与风格都交给风格参考图，prompt 只描述布局、控件、状态与视觉层级。
+- 每条 prompt 必须以一句风格锁定语结尾：「整体配色、画风、材质与光影严格遵循风格参考图（仅借鉴画风，不复制参考图内的界面内容）」；同一策划案的所有界面必须共用同一套配色、控件造型与质感体系，防止各屏风格漂移。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
+- 输出必须完整无乱码：中英文文本完整可读，禁止用问号、省略号、占位符替代文字，禁止截断 prompt。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
 只输出 JSON 数组本身，不要用对象包裹（禁止输出 {"screens": [...]} 这类形式），不要用 markdown 列表，不要代码块、解释或附加文字。每个对象必须且只能包含：
@@ -935,7 +939,7 @@ id、title、prompt
   {
     "id": "ui-main-hud",
     "title": "主界面 HUD",
-    "prompt": "手游主界面 HUD，顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读 UI，无水印"
+    "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。整体配色、画风、材质与光影严格遵循风格参考图（仅借鉴画风，不复制参考图内容），并与本方案其它界面共用同一套控件与质感体系，无水印"
   }
 ]`
 
