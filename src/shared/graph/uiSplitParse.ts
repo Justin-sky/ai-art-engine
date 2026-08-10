@@ -4,6 +4,8 @@ import {
   GRAPH_BOUNDARY_INPUT_TYPE_ID,
   GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
   HOST_INTERFACE_FORMAT_VERSION,
+  boundaryInputNodeId,
+  boundaryOutputNodeId,
   type HostInterfaceDocument
 } from './hostInterface'
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
@@ -50,6 +52,12 @@ export function screensFromUiGenIncoming(
 /** UI界面拆分 dive 内图槽位上限（每条提示词一条输出链） */
 export const UI_SPLIT_SLOT_CAP = 12
 
+/**
+ * dive 内图结构版本：边界节点/连线结构变化时递增，
+ * 使已存在的内图资产在下一次 dive 时按新结构重建。
+ */
+export const UI_SPLIT_INNER_GRAPH_VERSION = 2
+
 /** ui.split 内图资产的宿主接口：每条链一个提示词输入口 + 一个图片输出口 */
 export function buildUiSplitHostInterface(
   screens: UiScreenPromptItem[]
@@ -86,9 +94,13 @@ export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocu
     const screen = screens[i]!
     const slot = i + 1
     const y = 80 * i + 40
-    const inId = `graph-boundary-in-ui-${slot}`
+    const portIn = `in-${slot}`
+    const portOut = `out-${slot}`
+    // 用规范边界 id：资产打开时 ensureBoundaryProxyNodes 按接口补齐/复用，
+    // 自定义 id 会导致同一端口出现两套边界节点且连线错位
+    const inId = boundaryInputNodeId(portIn)
     const imgId = `ui-img-${slot}`
-    const outId = `graph-boundary-out-ui-${slot}`
+    const outId = boundaryOutputNodeId(portOut)
 
     nodes.push({
       id: inId,
@@ -99,7 +111,7 @@ export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocu
       params: {
         previewCollapsed: true,
         hostBoundaryPort: {
-          portId: `in-${slot}`,
+          portId: portIn,
           dataType: GraphPortType.text,
           multiple: false
         },
@@ -126,7 +138,7 @@ export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocu
       params: {
         previewCollapsed: true,
         hostBoundaryPort: {
-          portId: `out-${slot}`,
+          portId: portOut,
           dataType: GraphPortType.image,
           multiple: false
         }
@@ -137,7 +149,8 @@ export function buildUiSplitInnerGraph(screens: UiScreenPromptItem[]): GraphDocu
       source: inId,
       target: imgId,
       sourcePort: 'out',
-      targetPort: 'in'
+      // 图片生成节点的文本输入口为 in-text（in 仅用于引用类单值口）
+      targetPort: 'in-text'
     })
     edges.push({
       id: `ui-e-out-${slot}`,

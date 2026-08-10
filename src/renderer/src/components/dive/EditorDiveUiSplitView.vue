@@ -13,6 +13,7 @@ import {
   buildUiSplitInnerGraph,
   screensFromUiGenIncoming,
   softResolveSourceOutput,
+  UI_SPLIT_INNER_GRAPH_VERSION,
   type ResolveHostInputSlotsOptions,
   type UiScreenPromptItem
 } from '@shared/graph'
@@ -62,10 +63,16 @@ onMounted(async () => {
     const sameScreens =
       screens.length > 0 &&
       JSON.stringify(screens) === JSON.stringify(node?.params?.uiScreens ?? [])
+    const sameVersion = node?.params?.uiSplitGraphVersion === UI_SPLIT_INNER_GRAPH_VERSION
     if (screens.length && node && !sameScreens) {
       graphEditorHosts.updateNode(props.hostId, props.nodeId, { uiScreens: screens })
     }
-    if (existing && sameScreens && project.assets.some((asset) => asset.id === existing)) {
+    if (
+      existing &&
+      sameScreens &&
+      sameVersion &&
+      project.assets.some((asset) => asset.id === existing)
+    ) {
       innerAssetId.value = existing
       return
     }
@@ -83,7 +90,10 @@ onMounted(async () => {
       } as never
     })
     innerAssetId.value = created.id
-    graphEditorHosts.updateNode(props.hostId, props.nodeId, { uiSplitAssetId: created.id })
+    graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+      uiSplitAssetId: created.id,
+      uiSplitGraphVersion: UI_SPLIT_INNER_GRAPH_VERSION
+    })
     await graphEditorHosts.flush(props.hostId)
     await project.refreshLibrary()
   } catch (err) {

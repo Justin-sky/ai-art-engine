@@ -145,7 +145,11 @@ import {
   parseBeatJson,
   stringifyBeatRows
 } from '../beatParse'
-import { parseUiScreenPrompts, screensFromUiGenIncoming } from '../uiSplitParse'
+import {
+  parseUiScreenPrompts,
+  screensFromUiGenIncoming,
+  UI_SPLIT_INNER_GRAPH_VERSION
+} from '../uiSplitParse'
 import { formatBeatRefText } from '../beatParams'
 import {
   multiAngleCameraToNodePatch,
@@ -4060,9 +4064,12 @@ async function persistUiSplitGeneration(
   const generatedTexts = items
   const selectedTextId = newestTextSelectedId(generatedTexts)
   const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
-  // 提示词变化时作废旧的内图资产引用，避免 dive 打开与当前提示词不一致的子图
+  // 提示词变化或内图结构升级时作废旧的内图资产引用，
+  // 避免 dive 打开与当前提示词 / 新结构不一致的子图
   const sameScreens = JSON.stringify(screens) === JSON.stringify(ctx.node.params.uiScreens)
-  const uiSplitAssetId = sameScreens ? ctx.node.params.uiSplitAssetId : ''
+  const sameVersion = ctx.node.params.uiSplitGraphVersion === UI_SPLIT_INNER_GRAPH_VERSION
+  const uiSplitAssetId =
+    sameScreens && sameVersion ? ctx.node.params.uiSplitAssetId : ''
   ctx.node.params = {
     ...ctx.node.params,
     text: summary,

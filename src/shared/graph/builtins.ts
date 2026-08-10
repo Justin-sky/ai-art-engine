@@ -75,6 +75,7 @@ import {
 } from './execute/values'
 import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
+import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_BEAT_OUTPUT_TITLE,
@@ -1475,7 +1476,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultParams: () => ({
       text: '',
       uiScreens: [],
-      uiSplitAssetId: ''
+      uiSplitAssetId: '',
+      uiSplitGraphVersion: UI_SPLIT_INNER_GRAPH_VERSION
     }),
     addable: true,
     deletable: true,

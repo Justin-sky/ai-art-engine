@@ -432,6 +432,8 @@ export interface GraphNodeParams {
   uiScreens?: Array<{ id: string; title: string; prompt: string }>
   /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
   uiSplitAssetId?: string
+  /** UI 界面拆分：dive 内图结构版本（结构变化时递增，旧资产强制重建） */
+  uiSplitGraphVersion?: number
   /**
    * 当前选中的声音 id：生成节点 `out` 默认输出口。
    * 每次运行成功后强制切到最新一条。

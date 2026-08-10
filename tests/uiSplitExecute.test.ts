@@ -6,6 +6,10 @@ import {
   getNodePorts,
   parseUiScreenPrompts,
   buildUiSplitInnerGraph,
+  buildUiSplitHostInterface,
+  boundaryInputNodeId,
+  boundaryOutputNodeId,
+  ensureBoundaryProxyNodes,
   screensFromUiGenIncoming,
   UI_SPLIT_SLOT_CAP,
   GraphPortType,
@@ -107,18 +111,18 @@ describe('ui.split', () => {
     const doc = buildUiSplitInnerGraph(screens)
     expect(doc.nodes).toHaveLength(6)
     expect(doc.edges).toHaveLength(4)
-    const chain = doc.edges.filter((e) => e.source === 'graph-boundary-in-ui-1')
+    const inId = boundaryInputNodeId('in-1')
+    const outId = boundaryOutputNodeId('out-1')
+    const chain = doc.edges.filter((e) => e.source === inId)
     expect(chain).toHaveLength(1)
     expect(chain[0]?.target).toBe('ui-img-1')
-    expect(doc.edges.some((e) => e.source === 'ui-img-1' && e.target === 'graph-boundary-out-ui-1')).toBe(
-      true
-    )
-    const inNode = doc.nodes.find((n) => n.id === 'graph-boundary-in-ui-1')
+    expect(doc.edges.some((e) => e.source === 'ui-img-1' && e.target === outId)).toBe(true)
+    const inNode = doc.nodes.find((n) => n.id === inId)
     expect(inNode?.params?.text).toBe('主界面 HUD 生图提示词')
     const imgNode = doc.nodes.find((n) => n.id === 'ui-img-1')
     expect(imgNode?.typeId).toBe('asset.image')
     expect(imgNode?.title).toBe('UI图·主界面')
-    expect(doc.nodes.find((n) => n.id === 'graph-boundary-out-ui-1')?.typeId).toBe(
+    expect(doc.nodes.find((n) => n.id === outId)?.typeId).toBe(
       'graph.boundary.output'
     )
   })
@@ -131,6 +135,28 @@ describe('ui.split', () => {
     }))
     const doc = buildUiSplitInnerGraph(screens)
     expect(doc.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(UI_SPLIT_SLOT_CAP)
+  })
+
+  it('keeps one boundary set per chain after host interface normalization', () => {
+    const screens = [
+      { id: 'ui-main', title: '主界面', prompt: '主界面提示词' },
+      { id: 'ui-shop', title: '商店', prompt: '商店提示词' }
+    ]
+    const doc = buildUiSplitInnerGraph(screens)
+    const iface = buildUiSplitHostInterface(screens)
+    const normalized = ensureBoundaryProxyNodes(doc, iface)
+    expect(normalized.nodes.filter((n) => n.typeId === 'graph.boundary.input')).toHaveLength(2)
+    expect(normalized.nodes.filter((n) => n.typeId === 'graph.boundary.output')).toHaveLength(2)
+    const in1 = boundaryInputNodeId('in-1')
+    const out1 = boundaryOutputNodeId('out-1')
+    expect(normalized.edges.some((e) => e.source === in1 && e.target === 'ui-img-1')).toBe(true)
+    expect(
+      normalized.edges.some(
+        (e) => e.source === in1 && e.target === 'ui-img-1' && (e.targetPort ?? 'in') === 'in-text'
+      )
+    ).toBe(true)
+    expect(normalized.edges.some((e) => e.source === 'ui-img-1' && e.target === out1)).toBe(true)
+    expect(normalized.edges.filter((e) => e.source === 'ui-img-1')).toHaveLength(1)
   })
 
   it('exposes text in and texts out ports', () => {
