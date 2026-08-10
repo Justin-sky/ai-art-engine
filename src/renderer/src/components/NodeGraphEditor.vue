@@ -4899,9 +4899,10 @@ function onTextOpen(nodeId: string): void {
 /** UI 界面拆分：双击进入内图（懒创建子图资产并打开资产编辑器） */
 function onUiSplitOpen(nodeId: string): void {
   if (editorDive) {
+    const node = graph.nodes.find((n) => n.id === nodeId)
     void editorDive.diveView(
       { viewId: 'ui.split', hostId: graphHostId.value, nodeId },
-      undefined
+      node ? nodeDisplayTitle(node) : undefined
     )
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '@shared/domain'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
+import i18n from '../i18n'
 import {
   editorDiveAssetFrameKey,
   editorDiveViewFrameKey,
@@ -157,6 +158,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return 'Director stage'
       case 'media.preview':
         return meta.title?.trim() || 'Preview'
+      case 'ui.split':
+        return String(i18n.global.t('graph.types.ui.split'))
       default:
         return meta.viewId
     }
