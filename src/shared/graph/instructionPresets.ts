@@ -17,9 +17,10 @@ export type InstructionPresetKind =
   | 'beatSplit'
   | 'beatUnitGen'
   | 'uiSplit'
+  | 'frameAnimGen'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
-export type InstructionPresetTab = 'general' | 'game' | 'film'
+export type InstructionPresetTab = 'general' | 'game' | 'film' | 'character' | 'fx'
 
 import {
   EPISODE_AGENT_BEATBOARD,
@@ -29,8 +30,11 @@ import {
   EPISODE_AGENT_SEQUENCE,
   type EpisodeAgentPromptPack
 } from './episodeAgentPrompts'
+import { ANIM2D_PRESETS } from './anim2d'
 
 export const INSTRUCTION_PRESET_TAB_ORDER: readonly InstructionPresetTab[] = [
+  'character',
+  'fx',
   'general',
   'game',
   'film'
@@ -1249,6 +1253,223 @@ const BEAT_SPLIT_PRESETS: InstructionPreset[] = [
   }
 ]
 
+/** 帧动画序列图 · 武功动作预设：武侠拳脚招式，点击后写入指令框 */
+const FRAME_ANIM_GEN_WUSHU_PRESETS: InstructionPreset[] = [
+  {
+    id: 'wushu.xianglong',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.xianglong',
+    tab: 'character',
+    body: '降龙十八掌：双掌连环推出，每掌带金色龙形气浪，劲风扑面，最后一掌威力最大，包含完整发掌周期'
+  },
+  {
+    id: 'wushu.taiji',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.taiji',
+    tab: 'character',
+    body: '太极拳：缓慢圆转云手，重心沉稳，借力打力，动作连绵不断，包含完整云手循环'
+  },
+  {
+    id: 'wushu.wuyingjiao',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.wuyingjiao',
+    tab: 'character',
+    body: '佛山无影脚：身体腾空连环踢击，腿影密集如残影，落地稳健，包含完整连踢序列'
+  },
+  {
+    id: 'wushu.zuiquan',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.zuiquan',
+    tab: 'character',
+    body: '醉拳：脚步踉跄如醉，身体左右摇摆，突然出拳攻其不备，包含完整醉步出拳周期'
+  },
+  {
+    id: 'wushu.cunquan',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.cunquan',
+    tab: 'character',
+    body: '咏春寸拳：贴身短打，拳头在极短距离内爆发寸劲，命中瞬间震开对手，短促有力'
+  },
+  {
+    id: 'wushu.shizihou',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.shizihou',
+    tab: 'character',
+    body: '狮子吼：深吸气后张口怒吼，声波化作环形冲击气浪向外扩散，包含完整蓄力到释放周期'
+  },
+  {
+    id: 'wushu.lingbo',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.lingbo',
+    tab: 'character',
+    body: '凌波微步：身形如鬼魅快速移动，脚下轻点，残影连连，闪避自如，包含完整游走周期'
+  },
+  {
+    id: 'wushu.saotangtui',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.saotangtui',
+    tab: 'character',
+    body: '扫堂腿：低身下蹲，一腿横扫地面卷起尘土，扫倒对手，包含完整蓄力扫腿周期'
+  },
+  {
+    id: 'wushu.tieshazhang',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.tieshazhang',
+    tab: 'character',
+    body: '铁砂掌：马步蓄力，双掌连续劈击，掌风凌厉，包含完整劈掌序列'
+  },
+  {
+    id: 'wushu.yiyangzhi',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.yiyangzhi',
+    tab: 'character',
+    body: '一阳指：食指前点，指尖射出金色指劲光束，精准穿透，包含完整运劲点射周期'
+  },
+  {
+    id: 'wushu.liumai',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.liumai',
+    tab: 'character',
+    body: '六脉神剑：双掌连挥，指尖射出六道不同颜色的剑气，纵横交错，包含完整剑气连发序列'
+  },
+  {
+    id: 'wushu.dugu',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.dugu',
+    tab: 'character',
+    body: '独孤九剑：持剑快速连刺九剑，剑光如虹，破绽全无，包含完整九连刺序列'
+  },
+  {
+    id: 'wushu.dianxue',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.dianxue',
+    tab: 'character',
+    body: '葵花点穴手：身形前探，双指闪电般连点对手穴位，动作干脆利落，包含完整点穴序列'
+  },
+  {
+    id: 'wushu.jinzhongzhao',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.jinzhongzhao',
+    tab: 'character',
+    body: '金钟罩：马步运气，身体泛起金色光罩，硬抗攻击纹丝不动，包含完整运气护体周期'
+  },
+  {
+    id: 'wushu.rulai',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.rulai',
+    tab: 'character',
+    body: '如来神掌：跃起后单掌下压，金色巨掌虚影从天而降，带风压与光芒，包含完整出掌序列'
+  },
+  {
+    id: 'wushu.tiyunzong',
+    titleKey: 'graph.inspector.generate.presets.frameAnimWushu.tiyunzong',
+    tab: 'character',
+    body: '梯云纵：双脚踏空连纵，身形节节升高，轻灵飘逸，包含完整连续纵跃序列'
+  }
+]
+
+/** 帧动画序列图 · 角色预设：动画动作即动作描述，点击后写入指令框 */
+const FRAME_ANIM_GEN_CHARACTER_PRESETS: InstructionPreset[] = [
+  ...ANIM2D_PRESETS.map((preset) => ({
+    id: `anim2d.${preset.id}`,
+    titleKey: `graph.anim2d.presets.${preset.labelKey}`,
+    body: preset.prompt,
+    tab: 'character' as const
+  })),
+  ...FRAME_ANIM_GEN_WUSHU_PRESETS
+]
+
+/** 帧动画序列图 · 特效预设：常用 2D 游戏特效，点击后写入指令框 */
+const FRAME_ANIM_GEN_FX_PRESETS: InstructionPreset[] = [
+  {
+    id: 'fx.smoke',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.smoke',
+    tab: 'fx',
+    body: '2D 游戏烟雾特效循环：灰白色烟雾从底部升起，体积逐渐膨胀扩散，边缘柔和半透明，缓慢消散，包含完整的升腾到消散周期'
+  },
+  {
+    id: 'fx.fire',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.fire',
+    tab: 'fx',
+    body: '2D 游戏火焰特效循环：火焰从底部窜起，火苗左右摇曳，内部亮黄外部橙红，顶部零星火星飘散，包含完整燃烧周期'
+  },
+  {
+    id: 'fx.lightning',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.lightning',
+    tab: 'fx',
+    body: '2D 游戏闪电特效：屏幕边缘闪白，一道锯齿状闪电劈下，伴随瞬间高亮与余光衰减，包含完整放电周期'
+  },
+  {
+    id: 'fx.explosion',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.explosion',
+    tab: 'fx',
+    body: '2D 游戏爆炸特效序列：依次为强闪光、火球膨胀、烟尘扩散、碎片飞溅、余烬下落，节奏快、动感强'
+  },
+  {
+    id: 'fx.water',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.water',
+    tab: 'fx',
+    body: '2D 游戏水波特效循环：水面涟漪从中心向外扩散，波光闪动，边缘半透明，包含完整波动周期'
+  },
+  {
+    id: 'fx.magic',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.magic',
+    tab: 'fx',
+    body: '2D 游戏魔法特效循环：彩色光点粒子从中心向外飘散，带拖尾光迹，闪烁明暗变化，神秘氛围'
+  },
+  {
+    id: 'fx.rain',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.rain',
+    tab: 'fx',
+    body: '2D 游戏下雨特效循环：密集雨丝斜向下落，近处粗远景细，落地溅起小水花，持续循环'
+  },
+  {
+    id: 'fx.snow',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.snow',
+    tab: 'fx',
+    body: '2D 游戏下雪特效循环：雪花缓慢飘落并左右摇摆，大小不一，近处清晰远处朦胧，持续循环'
+  },
+  {
+    id: 'fx.spark',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.spark',
+    tab: 'fx',
+    body: '2D 游戏火花特效：金属撞击迸发橙黄色火花，向四周飞溅并快速熄灭，短促有力'
+  },
+  {
+    id: 'fx.wind',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.wind',
+    tab: 'fx',
+    body: '2D 游戏风特效循环：半透明气流线从一侧扫过，卷起落叶与尘土，方向一致，持续循环'
+  },
+  {
+    id: 'fx.dust',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.dust',
+    tab: 'fx',
+    body: '2D 游戏尘土特效：角色脚下扬起灰褐色尘土团，向两侧扩散并缓缓沉降，包含完整扬尘周期'
+  },
+  {
+    id: 'fx.shockwave',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.shockwave',
+    tab: 'fx',
+    body: '2D 游戏冲击波特效：环形气浪从中心急速扩散，边缘高亮，伴随地面碎裂感，短促爆发'
+  },
+  {
+    id: 'fx.glow',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.glow',
+    tab: 'fx',
+    body: '2D 游戏光效循环：柔和光晕由中心向外呼吸式明暗变化，边缘羽化，通透发光'
+  },
+  {
+    id: 'fx.embers',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.embers',
+    tab: 'fx',
+    body: '2D 游戏火星余烬循环：细小火星从底部向上飘升，明灭闪烁，上升过程中逐渐熄灭'
+  },
+  {
+    id: 'fx.bubbles',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.bubbles',
+    tab: 'fx',
+    body: '2D 游戏气泡特效：透明气泡从底部缓缓上升，表面反光，到达顶部破裂，包含完整周期'
+  },
+  {
+    id: 'fx.slash',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.slash',
+    tab: 'fx',
+    body: '2D 游戏斩击特效：弧形刀光横扫，前段亮白后段拖尾，瞬间出现快速消失'
+  },
+  {
+    id: 'fx.impact',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.impact',
+    tab: 'fx',
+    body: '2D 游戏打击特效：命中点爆出星形闪光与短促放射线条，向四周扩散，快速消失'
+  }
+]
+
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   screenplay: SCREENPLAY_PRESETS,
   image: IMAGE_PRESETS,
@@ -1262,7 +1483,8 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   beatSplit: BEAT_SPLIT_PRESETS,
   // 规则在系统提示词；指令窗口仅作临时焦点，暂无成套预设
   beatUnitGen: [],
-  uiSplit: []
+  uiSplit: [],
+  frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS]
 }
 
 export function listInstructionPresets(kind: InstructionPresetKind): InstructionPreset[] {

@@ -114,6 +114,7 @@ import {
   buildBeatSplitPrompt,
   buildBeatUnitGenPrompt,
   buildUiSplitPrompt,
+  buildFrameAnimGenPrompt,
   buildToPromptUserPrompt,
   buildVideoPrompt,
   buildVoicePrompt
@@ -2627,6 +2628,7 @@ export type InstructionFinalPreviewKind =
   | 'beatSplit'
   | 'beatUnitGen'
   | 'uiSplit'
+  | 'frameAnimGen'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -2645,6 +2647,9 @@ export function resolveInstructionFinalPreviewKind(
   }
   if (typeId === 'ui.split' || presetKind === 'uiSplit') {
     return 'uiSplit'
+  }
+  if (typeId === 'frame.animGen' || presetKind === 'frameAnimGen') {
+    return 'frameAnimGen'
   }
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
@@ -2688,6 +2693,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveBeatUnitGenSystemPrompt(raw, locale)
     case 'uiSplit':
       return resolveUiSplitSystemPrompt(raw, locale)
+    case 'frameAnimGen':
+      return resolveFrameAnimGenSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -2721,6 +2728,8 @@ function buildUserPromptForPreviewKind(
       return buildBeatUnitGenPrompt(instruction, locale)
     case 'uiSplit':
       return buildUiSplitPrompt(instruction, locale)
+    case 'frameAnimGen':
+      return buildFrameAnimGenPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)
@@ -2748,6 +2757,8 @@ export function buildInstructionFinalPromptPreview(input: {
   styleReferenceSubject?: StyleReferenceSubject
   /** 片段重拍：重拍区间（与执行侧 buildReshootPrompt 一致，写入 mm:ss 时间戳） */
   reshootSegment?: { startSec?: number; endSec?: number }
+  /** 帧动画序列图：行列数（与执行侧 buildAnim2dGridInstruction 一致，拼入网格排版指令） */
+  frameAnimGrid?: { rows?: number; cols?: number }
 }): string {
   const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
   let userPrompt = buildUserPromptForPreviewKind(
@@ -2772,6 +2783,12 @@ export function buildInstructionFinalPromptPreview(input: {
       locale: input.locale,
       subject: input.styleReferenceSubject
     })
+  }
+  if (input.kind === 'frameAnimGen' && input.frameAnimGrid) {
+    const rows = Math.max(1, Math.floor(Number(input.frameAnimGrid.rows) || 1))
+    const cols = Math.max(1, Math.floor(Number(input.frameAnimGrid.cols) || 4))
+    const grid = buildAnim2dGridInstruction(rows, cols, input.locale)
+    userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${grid}` : grid
   }
   if (input.includeSystem === false) return userPrompt
   const system = resolveSystemPromptForPreviewKind(input.kind, input.systemPrompt, input.locale)
@@ -5659,10 +5676,15 @@ export async function executeAnim2dNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const assetId = node.params.animAssetId?.trim()
-  // 行列以内层「生成帧动画序列图」节点为准，外层只做切分预览
+  // 普通播放节点：优先取 in 端口序列图；旧数据无输入时回退内图产物
+  const incoming = await collectIncomingImageItems(ctx)
+  let gridItem: (GraphImageItem & { assetId?: string }) | undefined = incoming[0]
+  if (!gridItem && assetId) {
+    gridItem = await softResolveAnim2dGridImage(ctx, assetId)
+  }
+  // 行列：有内图时沿用内图层帧生成行列，否则用本节点 Inspector 行列
   const innerState = assetId ? softResolveAnim2dInnerState(ctx, assetId) : undefined
   const state = innerState ?? readAnim2dFromNode(node.params)
-  const gridItem = assetId ? await softResolveAnim2dGridImage(ctx, assetId) : undefined
   if (!gridItem) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
@@ -5718,8 +5740,9 @@ export async function executeAnim2dNode(
   if (!materializedBatch.length) {
     throw new Error('图片落盘失败')
   }
-  const generatedImages = mergeGeneratedImages(
-    ctx,
+  // 普通播放节点：每次 cook 只保留本次切分结果，清除上一次的数据，不累积历史
+  const generatedImages = dedupeGalleryIds(
+    [],
     materializedBatch,
     `anim2d:${node.id}:${stamp}:keep`
   )

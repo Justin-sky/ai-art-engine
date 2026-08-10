@@ -2,6 +2,10 @@ import type { AssetType } from '../domain'
 
 /** 与 domain.VIDEO_ASSET_ICON 同值；勿从 domain 导入（domain→graph→builtins 循环会 TDZ） */
 const VIDEO_ASSET_ICON = 'video-file'
+/** 与 domain.ANIM2D_ASSET_ICON 同值；勿从 domain 导入（循环依赖同上） */
+const ANIM2D_ASSET_ICON = 'anim2d'
+/** 与 domain.FRAME_ANIM_GEN_ASSET_ICON 同值；勿从 domain 导入（循环依赖同上） */
+const FRAME_ANIM_GEN_ASSET_ICON = 'frame-anim-gen'
 import {
   bindEnsureBuiltinNodeTypes,
   builtinRegistrationState
@@ -1493,7 +1497,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'anim.2d',
     category: 'note',
     label: '2D帧动画',
-    icon: '🎞️',
+    icon: ANIM2D_ASSET_ICON,
     defaultTitle: '2D帧动画',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
@@ -1522,7 +1526,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     typeId: 'frame.animGen',
     category: 'note',
     label: '生成帧动画序列图',
-    icon: '🎞️',
+    icon: FRAME_ANIM_GEN_ASSET_ICON,
     defaultTitle: '生成帧动画序列图',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },

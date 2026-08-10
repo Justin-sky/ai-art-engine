@@ -13,15 +13,6 @@
       @toggle="toggleRun"
     />
 
-    <label class="field">
-      <span>{{ t('graph.anim2d.preset') }}</span>
-      <select :value="String(node.params.animPresetId ?? 'walk')" @change="onPresetChange">
-        <option v-for="p in ANIM2D_PRESETS" :key="p.id" :value="p.id">
-          {{ t(`graph.anim2d.presets.${p.labelKey}`) }}
-        </option>
-      </select>
-    </label>
-
     <div class="config-row">
       <label class="field">
         <span>{{ t('graph.anim2d.rows') }}</span>
@@ -48,27 +39,33 @@
     </div>
 
     <label class="field">
-      <span>{{ t('graph.anim2d.action') }}</span>
+      <span>{{ t('graph.anim2d.systemPrompt') }}</span>
       <textarea
         class="instruction"
-        :value="String(node.params.generateInstruction ?? '')"
-        rows="4"
-        :placeholder="t('graph.anim2d.actionPlaceholder')"
-        @change="persistInstruction"
+        v-model="systemPrompt"
+        rows="6"
+        :placeholder="t('graph.anim2d.systemPromptPlaceholder')"
+        @change="persistSystemPrompt"
       />
     </label>
 
-    <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="hostId"
+      :node="node"
+      :host-id="hostId"
+      clearable
+      @clear-output="onClearOutput"
+    />
   </div>
   <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   ANIM2D_MAX_DIM,
-  ANIM2D_PRESETS,
-  readAnim2dFromNode
+  readAnim2dFromNode,
+  resolveFrameAnimGenSystemPrompt
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
@@ -76,8 +73,9 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const { t, graphTypeLabel } = useStudioI18n()
+const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 
 const node = computed(() => {
@@ -100,6 +98,15 @@ const typeLabel = computed(() => graphTypeLabel('frame.animGen'))
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
+const systemPrompt = ref('')
+
+watch(
+  () => [node.value?.params.generateSystemPrompt, locale.value] as const,
+  ([stored]) => {
+    systemPrompt.value = resolveFrameAnimGenSystemPrompt(stored, String(locale.value))
+  },
+  { immediate: true }
+)
 
 function clampDim(n: number): number {
   return Math.min(ANIM2D_MAX_DIM, Math.max(1, Math.floor(n) || 1))
@@ -108,10 +115,6 @@ function clampDim(n: number): number {
 function patchParams(patch: Record<string, unknown>): void {
   if (!node.value || !hostId.value) return
   graphEditorHosts.updateNode(hostId.value, node.value.id, patch)
-}
-
-function onPresetChange(e: Event): void {
-  patchParams({ animPresetId: (e.target as HTMLSelectElement).value })
 }
 
 function onRowsChange(e: Event): void {
@@ -126,8 +129,24 @@ function onColsChange(e: Event): void {
   patchParams({ animCols: clampDim(n) })
 }
 
-function persistInstruction(e: Event): void {
-  patchParams({ generateInstruction: (e.target as HTMLTextAreaElement).value })
+function persistSystemPrompt(): void {
+  patchParams({ generateSystemPrompt: systemPrompt.value })
+}
+
+/** 删除已生成的输出：清空运行态与该节点的输出参数，便于重新生成 */
+function onClearOutput(): void {
+  if (!node.value || !hostId.value) return
+  const host = graphRunHosts.get(hostId.value)
+  if (host && !host.isRunning.value) {
+    delete host.runStates[node.value.id]
+  }
+  graphEditorHosts.updateNode(hostId.value, node.value.id, {
+    generatedImages: [],
+    selectedImageId: '',
+    previewDataUrl: undefined,
+    previewRelativePath: '',
+    animGridImage: undefined
+  })
 }
 </script>
 

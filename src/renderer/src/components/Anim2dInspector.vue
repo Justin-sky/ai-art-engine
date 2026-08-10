@@ -13,6 +13,31 @@
       @toggle="toggleRun"
     />
 
+    <div class="config-row">
+      <label class="field">
+        <span>{{ t('graph.anim2d.rows') }}</span>
+        <input
+          type="number"
+          min="1"
+          :max="String(ANIM2D_MAX_DIM)"
+          step="1"
+          :value="state.rows"
+          @change="onRowsChange"
+        />
+      </label>
+      <label class="field">
+        <span>{{ t('graph.anim2d.cols') }}</span>
+        <input
+          type="number"
+          min="1"
+          :max="String(ANIM2D_MAX_DIM)"
+          step="1"
+          :value="state.cols"
+          @change="onColsChange"
+        />
+      </label>
+    </div>
+
     <section v-if="cells.length > 1" class="anim-section" :aria-label="t('graph.anim2d.preview')">
       <div class="anim-preview">
         <img :src="cells[activeIndex]?.dataUrl" alt="" />
@@ -59,6 +84,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  ANIM2D_MAX_DIM,
   anim2dCellKeys,
   readAnim2dFromNode
 } from '@shared/graph'
@@ -93,6 +119,27 @@ const typeLabel = computed(() => graphTypeLabel('anim.2d'))
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
+
+function clampDim(n: number): number {
+  return Math.min(ANIM2D_MAX_DIM, Math.max(1, Math.floor(n) || 1))
+}
+
+function patchParams(patch: Record<string, unknown>): void {
+  if (!node.value || !hostId.value) return
+  graphEditorHosts.updateNode(hostId.value, node.value.id, patch)
+}
+
+function onRowsChange(e: Event): void {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n)) return
+  patchParams({ animRows: clampDim(n) })
+}
+
+function onColsChange(e: Event): void {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n)) return
+  patchParams({ animCols: clampDim(n) })
+}
 
 type AnimCell = { key: string; dataUrl: string }
 const cells = ref<AnimCell[]>([])
@@ -358,6 +405,11 @@ onBeforeUnmount(stopPlayback)
   color: var(--text-muted);
 }
 
+.anim-field span {
+  flex: none;
+  white-space: nowrap;
+}
+
 .anim-loop {
   color: var(--text);
   cursor: pointer;
@@ -413,5 +465,29 @@ onBeforeUnmount(stopPlayback)
   line-height: 1.4;
   color: #fff;
   background: rgba(0, 0, 0, 0.55);
+}
+
+.config-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.field input {
+  width: 76px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
 }
 </style>

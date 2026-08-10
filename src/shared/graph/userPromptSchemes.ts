@@ -204,3 +204,23 @@ export function defaultUiSplitUserPrompt(locale?: string): string {
 export function buildUiSplitPrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultUiSplitUserPrompt)
 }
+
+// ——— 帧动画序列图 ———
+
+export const DEFAULT_FRAME_ANIM_GEN_USER_PROMPT_EN =
+  'Based on the existing content (upstream inputs and @ references), expand and organize it into a complete 2D frame-animation sequence description: a character/subject performs one continuous action; frames are ordered left to right then top to bottom in equal cells, identical look and art style across all frames, only the pose changes; clean output, no extra decoration.'
+
+export const DEFAULT_FRAME_ANIM_GEN_USER_PROMPT_ZH =
+  '根据现有内容（上游输入与 @ 引用）扩写、整理为完整的 2D 帧动画序列描述：角色/主体执行一个连贯动作，帧序从左到右、从上到下排布成等尺寸格子，所有帧外观与画风完全一致、仅动作变化；画面干净，不加多余装饰。'
+
+export function defaultFrameAnimGenUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_FRAME_ANIM_GEN_USER_PROMPT_EN,
+    DEFAULT_FRAME_ANIM_GEN_USER_PROMPT_ZH
+  )
+}
+
+export function buildFrameAnimGenPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultFrameAnimGenUserPrompt)
+}

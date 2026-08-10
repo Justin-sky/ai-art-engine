@@ -132,6 +132,20 @@
       />
 
       <div
+        v-else-if="isAnim2dNode && cardAnimFrames.length > 1"
+        class="card-preview-grid anim2d-live"
+        :title="previewOpenHint"
+      >
+        <img
+          :src="cardAnimFrames[animFrameIndex]"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+        />
+      </div>
+
+      <div
         v-else-if="cardImageGridSrcs.length > 1"
         class="card-preview-grid"
         :title="previewOpenHint"
@@ -402,6 +416,7 @@ import {
 } from '../features/graph/model/generateModelOptions'
 import { loadImageGenerateCapabilities } from '../features/graph/model/imageGenerateCapabilities'
 import { loadVideoGeneratePortLimits } from '../features/graph/model/videoGenerateCapabilities'
+import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import {
   ASSET_TYPE_ICONS,
   assetDisplayIcon,
@@ -415,6 +430,7 @@ import {
   VIDEO_LAST_FRAME_PORT_ID,
   GRAPH_OUT_ALL_PORT_ID,
   defaultGameSystemUserPrompt,
+  defaultFrameAnimGenUserPrompt,
   defaultUiSplitUserPrompt,
   deductReservedImageSlots,
   formatDurationRange,
@@ -444,6 +460,7 @@ import {
   isBeatUnitOutputNode,
   isEpisodeAnchorSelectNode,
   isEpisodeCellSelectNode,
+  anim2dCellKeys,
   isWorldOutputNode,
   isSelectImageNode,
   isSelectVideoNode,
@@ -467,6 +484,7 @@ import {
   isGridSplitEditorNode,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
+  readAnim2dFromNode,
   readVideoGenerateParamsFromNode,
   resolveNodeTextContent,
   resolveNodeType,
@@ -570,7 +588,6 @@ const emit = defineEmits<{
   selectTextOpen: [nodeId: string]
   textsOpen: [nodeId: string]
   uiSplitOpen: [nodeId: string]
-  anim2dOpen: [nodeId: string]
   textOpen: [nodeId: string]
 }>()
 
@@ -580,6 +597,11 @@ const progressInput = ref<HTMLInputElement | null>(null)
 const previewUrl = ref('')
 const mediaPlaying = ref(false)
 const mediaError = ref(false)
+/** 2D 帧动画：卡片自动播放帧预览 */
+const isAnim2dNode = computed(() => props.node.typeId === 'anim.2d')
+const animFrameIndex = ref(0)
+const cardAnimFrames = ref<string[]>([])
+let animCardTimer: ReturnType<typeof setInterval> | null = null
 const currentTime = ref(0)
 const duration = ref(0)
 const seeking = ref(false)
@@ -730,6 +752,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'beatSplit'
     case 'ui.split':
       return 'uiSplit'
+    case 'frame.animGen':
+      return 'frameAnimGen'
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
@@ -825,7 +849,7 @@ function inPortTitle(port: GraphPortDef): string {
 }
 
 const instructionModality = computed((): GenerateModelModality => {
-  if (instructionKind.value === 'image') {
+  if (instructionKind.value === 'image' || instructionKind.value === 'frameAnimGen') {
     return 'image'
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
@@ -865,7 +889,7 @@ const instructionPlaceholder = computed(() => {
 })
 
 const instructionModelTitle = computed(() => {
-  if (instructionKind.value === 'image') {
+  if (instructionKind.value === 'image' || instructionKind.value === 'frameAnimGen') {
     return t('graph.inspector.generate.imageModel')
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') {
@@ -877,7 +901,7 @@ const instructionModelTitle = computed(() => {
 
 /** 图片生成：模型旁展示生成参数（按模型能力动态） */
 const showImageGenerateParams = computed(
-  () => instructionKind.value === 'image'
+  () => instructionKind.value === 'image' || instructionKind.value === 'frameAnimGen'
 )
 
 /** 视频 / 对口型：模型旁展示生成参数（按时长/比例等能力动态） */
@@ -1588,12 +1612,16 @@ watch(
 
 function resolvedNodeInstruction(): string {
   const stored = props.node.params.generateInstruction
-  if (stored != null) return stored
+  // 空字符串视为未填写，回落到类型默认（剧本/策划案/UI拆分/帧动画等）
+  if (typeof stored === 'string' && stored.trim()) return stored
   if (props.node.typeId === 'asset.gameSystem') {
     return defaultGameSystemUserPrompt(String(locale.value))
   }
   if (props.node.typeId === 'ui.split') {
     return defaultUiSplitUserPrompt(String(locale.value))
+  }
+  if (props.node.typeId === 'frame.animGen') {
+    return defaultFrameAnimGenUserPrompt(String(locale.value))
   }
   return ''
 }
@@ -1601,7 +1629,8 @@ function resolvedNodeInstruction(): string {
 watch(
   () => props.node.params.generateInstruction,
   (value) => {
-    const next = value ?? resolvedNodeInstruction()
+    const next =
+      typeof value === 'string' && value.trim() ? value : resolvedNodeInstruction()
     if (next !== instruction.value) instruction.value = next
   },
   { immediate: true }
@@ -1929,12 +1958,6 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 2D 帧动画：双击进入内图（参考图 → 生成帧动画序列图 → 切分播放）
-    if (props.node.typeId === 'anim.2d') {
-      emit('anim2dOpen', props.node.id)
-      return
-    }
-
     // 生成剧本：双击展开生成指令面板（勿被正文预览抢成记事本）
     if (instructionKind.value === 'screenplay') {
       instructionOpen.value = !instructionOpen.value
@@ -2130,9 +2153,77 @@ function onMediaLoaded(e: Event): void {
   }
 }
 
+function startCardAnimPreview(): void {
+  if (animCardTimer != null) return
+  animCardTimer = setInterval(() => {
+    const count = cardAnimFrames.value.length
+    if (count <= 1) return
+    animFrameIndex.value = (animFrameIndex.value + 1) % count
+  }, 125)
+}
+
+function stopCardAnimPreview(): void {
+  if (animCardTimer != null) {
+    clearInterval(animCardTimer)
+    animCardTimer = null
+  }
+}
+
+async function loadCardAnimFramesFromSequence(): Promise<void> {
+  if (!isAnim2dNode.value || cardAnimFrames.value.length > 1) return
+  const s = readAnim2dFromNode(props.node.params)
+  if (anim2dCellKeys(s.rows, s.cols).length <= 1) return
+  const grid = props.node.params?.animGridImage as
+    | { dataUrl?: string; relativePath?: string }
+    | undefined
+  let sourceUrl = grid?.dataUrl?.trim() || ''
+  if (!sourceUrl && grid?.relativePath?.trim()) {
+    try {
+      sourceUrl = (await window.studio.getAssetMediaDataUrl(grid.relativePath.trim())) ?? ''
+    } catch {
+      sourceUrl = ''
+    }
+  }
+  if (!sourceUrl) sourceUrl = previewUrl.value || ''
+  if (!sourceUrl) return
+  const next: string[] = []
+  for (const key of anim2dCellKeys(s.rows, s.cols)) {
+    try {
+      const composed = await composeImageGridCell({
+        sourceDataUrl: sourceUrl,
+        state: { rows: s.rows, cols: s.cols, selected: [] },
+        cellKey: key
+      })
+      if (composed.dataUrl?.trim()) next.push(composed.dataUrl.trim())
+    } catch {
+      /* 跳过切分失败的帧 */
+    }
+  }
+  if (next.length > 1) cardAnimFrames.value = next
+}
+
+watch(
+  () => [cardImageGridSrcs.value.slice().join('\0'), previewInViewport.value] as const,
+  async () => {
+    if (isAnim2dNode.value && cardImageGridSrcs.value.length > 1) {
+      cardAnimFrames.value = cardImageGridSrcs.value.slice()
+    } else if (cardAnimFrames.value.length <= 1) {
+      await loadCardAnimFramesFromSequence()
+    }
+    if (isAnim2dNode.value && previewInViewport.value && cardAnimFrames.value.length > 1) {
+      animFrameIndex.value = 0
+      startCardAnimPreview()
+    } else {
+      stopCardAnimPreview()
+    }
+  },
+  { immediate: true }
+)
+
 onBeforeUnmount(() => {
   cancelPreviewLoads()
   stopProgressTicker()
+  stopCardAnimPreview()
 })
 
 function onVideoMouseEnter(e: MouseEvent): void {
@@ -2664,6 +2755,16 @@ function formatTime(sec: number): string {
   height: 100%;
   min-height: 0;
   background: var(--graph-preview-bg);
+}
+
+.card-preview-grid.anim2d-live {
+  display: block;
+}
+
+.card-preview-grid.anim2d-live img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .card-preview-grid img {

@@ -44,6 +44,12 @@ export type PreviewItem = {
 const props = defineProps<{
   node: GraphNode
   hostId: string
+  /** 输出预览图右上角显示「删除输出」（frame.animGen 等用） */
+  clearable?: boolean
+}>()
+
+const emit = defineEmits<{
+  clearOutput: []
 }>()
 
 const { t } = useStudioI18n()
@@ -1280,6 +1286,16 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :title="imagePreviewHint"
             @dblclick="openImageFull(item)"
           />
+          <button
+            v-if="clearable && item.kind === 'image'"
+            type="button"
+            class="output-clear-btn"
+            :title="t('graph.inspector.outputDelete')"
+            :aria-label="t('graph.inspector.outputDelete')"
+            @click.stop="emit('clearOutput')"
+          >
+            <span class="icon-delete" aria-hidden="true">×</span>
+          </button>
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
@@ -1352,6 +1368,16 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :title="imagePreviewHint"
           @dblclick="openImageFull(item)"
         />
+        <button
+          v-if="clearable && item.kind === 'image'"
+          type="button"
+          class="output-clear-btn"
+          :title="t('graph.inspector.outputDelete')"
+          :aria-label="t('graph.inspector.outputDelete')"
+          @click.stop="emit('clearOutput')"
+        >
+          <span class="icon-delete" aria-hidden="true">×</span>
+        </button>
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
@@ -1512,6 +1538,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   background: transparent;
 }
 
+
 .icon-reveal::after {
   content: '';
   position: absolute;
@@ -1531,6 +1558,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 }
 
 .single {
+  position: relative;
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 8px;
   overflow: hidden;
@@ -1543,6 +1571,34 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   max-height: 240px;
   object-fit: contain;
   background: var(--graph-preview-bg);
+}
+
+.output-clear-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.15s ease;
+}
+
+.output-clear-btn:hover {
+  background: rgba(180, 40, 40, 0.85);
+}
+
+.icon-delete {
+  display: block;
+  font-size: 15px;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .preview-image.interactive {

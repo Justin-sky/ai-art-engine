@@ -364,7 +364,6 @@
           @texts-open="onTextsOpen"
           @text-open="onTextOpen"
           @ui-split-open="onUiSplitOpen"
-          @anim2d-open="onAnim2dOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -601,6 +600,7 @@ import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { compareNames } from '@shared/folderTree'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import {
+  ANIM2D_ASSET_ICON,
   ASSET_TYPE_ICONS,
   isDraftAssetId,
   isImportedMediaRefAsset,
@@ -2956,6 +2956,7 @@ type ResourceMenuGroupId = Extract<
   | 'text'
   | 'prompt'
   | 'game'
+  | 'motionFx'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
@@ -3009,7 +3010,11 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen', 'anim.2d']
+    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen']
+  },
+  {
+    id: 'motionFx',
+    typeIds: ['frame.animGen', 'anim.2d']
   },
   {
     id: 'beat',
@@ -3177,7 +3182,8 @@ const resourceAddableMenuGroups = computed(() => {
               group.id === 'imageEdit' ||
               group.id === 'text' ||
               group.id === 'prompt' ||
-              group.id === 'game'
+              group.id === 'game' ||
+              group.id === 'motionFx'
             ? t(`graph.context.groups.${group.id}`)
           : assetTypeLabel(group.id),
       icon:
@@ -3191,9 +3197,11 @@ const resourceAddableMenuGroups = computed(() => {
               ? '📝'
               : group.id === 'prompt'
                 ? '✨'
-                : group.id === 'game'
-                  ? '🕹️'
-                  : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
+              : group.id === 'game'
+                ? '🕹️'
+                : group.id === 'motionFx'
+                  ? ANIM2D_ASSET_ICON
+                : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }
   })
@@ -4913,17 +4921,6 @@ function onUiSplitOpen(nodeId: string): void {
     const node = graph.nodes.find((n) => n.id === nodeId)
     void editorDive.diveView(
       { viewId: 'ui.split', hostId: graphHostId.value, nodeId },
-      node ? nodeDisplayTitle(node) : undefined
-    )
-  }
-}
-
-/** 2D 帧动画：双击进入内图（懒创建子图资产并打开资产编辑器） */
-function onAnim2dOpen(nodeId: string): void {
-  if (editorDive) {
-    const node = graph.nodes.find((n) => n.id === nodeId)
-    void editorDive.diveView(
-      { viewId: 'anim.2d', hostId: graphHostId.value, nodeId },
       node ? nodeDisplayTitle(node) : undefined
     )
   }

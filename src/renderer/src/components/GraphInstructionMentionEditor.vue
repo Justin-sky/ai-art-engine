@@ -523,12 +523,15 @@ const presetMenuTitle = computed(() => {
   if (props.presetKind === 'image') return t('graph.inspector.generate.presets.titleImage')
   if (props.presetKind === 'video') return t('graph.inspector.generate.presets.titleVideo')
   if (props.presetKind === 'lipSync') return t('graph.inspector.generate.presets.titleLipSync')
+  if (props.presetKind === 'frameAnimGen') return t('graph.anim2d.preset')
   return t('graph.inspector.generate.presets.title')
 })
 
 function presetTabLabel(tab: InstructionPresetTab): string {
   if (tab === 'game') return t('graph.inspector.generate.presets.tabGame')
   if (tab === 'film') return t('graph.inspector.generate.presets.tabFilm')
+  if (tab === 'character') return t('graph.inspector.generate.presets.tabCharacter')
+  if (tab === 'fx') return t('graph.inspector.generate.presets.tabFx')
   return t('graph.inspector.generate.presets.tabGeneral')
 }
 
@@ -1105,6 +1108,13 @@ function openPromptPreview(): void {
     locale: String(locale.value),
     styleImages,
     styleReferenceSubject: node?.params.styleReferenceSubject,
+    frameAnimGrid:
+      kind === 'frameAnimGen'
+        ? {
+            rows: Number(node?.params.animRows),
+            cols: Number(node?.params.animCols)
+          }
+        : undefined,
     reshootSegment:
       kind === 'reshoot'
         ? {

@@ -471,6 +471,10 @@ export function assetTypeLabel(type: AssetType, language?: string | null): strin
 
 /** 视频资产图标 key（由 WorkspaceItemIcon / VideoAssetIcon 渲染，Windows 紫底三角） */
 export const VIDEO_ASSET_ICON = 'video-file'
+/** 2D 帧动画专属图标 token（经 WorkspaceItemIcon 渲染为 Anim2dIcon SVG） */
+export const ANIM2D_ASSET_ICON = 'anim2d'
+/** 帧动画序列图生成专属图标 token（经 WorkspaceItemIcon 渲染为 FrameAnimGenIcon SVG） */
+export const FRAME_ANIM_GEN_ASSET_ICON = 'frame-anim-gen'
 
 export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   image: '🖼️',

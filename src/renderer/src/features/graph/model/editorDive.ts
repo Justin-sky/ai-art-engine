@@ -19,7 +19,6 @@ export type EditorDiveViewId =
   | 'beat.table'
   | 'director.stage'
   | 'ui.split'
-  | 'anim.2d'
   | 'node.notepad'
   | 'node.textsPreview'
   | 'node.selectImage'
@@ -76,7 +75,6 @@ export type EditorDiveViewMeta =
       processingNodeId?: string
     }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
-  | { viewId: 'anim.2d'; hostId: string; nodeId: string; mode?: string }
   | {
       viewId: EditorDiveNodeToolViewId
       hostId: string

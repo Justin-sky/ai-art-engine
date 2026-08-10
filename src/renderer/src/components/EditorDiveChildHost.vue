@@ -88,7 +88,6 @@ const viewRegistry: Record<string, Component> = {
   'beat.table': defineAsyncComponent(() => import('./dive/EditorDiveBeatTableView.vue')),
   'director.stage': defineAsyncComponent(() => import('./dive/EditorDiveDirectorStageView.vue')),
   'ui.split': defineAsyncComponent(() => import('./dive/EditorDiveUiSplitView.vue')),
-  'anim.2d': defineAsyncComponent(() => import('./dive/EditorDiveAnim2dView.vue')),
   'media.preview': defineAsyncComponent(() => import('./dive/EditorDiveMediaPreview.vue')),
   'node.instruction': defineAsyncComponent(() => import('./dive/EditorDiveInstructionView.vue')),
   'node.notepad': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
