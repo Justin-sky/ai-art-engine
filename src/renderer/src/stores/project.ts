@@ -146,7 +146,10 @@ export const useProjectStore = defineStore('project', () => {
 
   async function updateConfig(
     partial: Partial<
-      Pick<ProjectConfig, 'stylePreset' | 'styleImages' | 'name' | 'cacheOutputDir'>
+      Pick<
+        ProjectConfig,
+        'stylePreset' | 'styleImages' | 'name' | 'cacheOutputDir' | 'generateSeed'
+      >
     >
   ): Promise<void> {
     if (!config.value) return

@@ -465,6 +465,11 @@ export default {
       stylePreset: '画面风格',
       stylePresetPlaceholder: '画风、色调、材质、镜头气质…',
       styleImagesHint: '最多 4 张风格参考图（计入图片输入口数量），可从默认库选择或上传自定义图片',
+      generateSeed: '全局随机种子',
+      generateSeedPlaceholder: '留空随机',
+      generateSeedRandom: '随机',
+      generateSeedHint:
+        '图片/视频生成节点默认使用此种子（节点可关闭跟随）；固定后同提示词与参考图可复现',
       cacheOutputDir: '生成缓存根目录',
       cacheOutputDirHint:
         '相对工程根；生成结果默认写入 Cache/Images、Cache/Videos、Cache/Texts、Cache/Voices，不自动登记进资产库',
@@ -2514,6 +2519,11 @@ export default {
           aspectRatio: '比例',
           count: '生成数量',
           countOption: '{n}张',
+          seed: '随机种子',
+          seedPlaceholder: '留空随机',
+          seedRandom: '随机',
+          seedSummary: 'seed {n}',
+          seedUseGlobal: '使用全局种子',
         },
         videoParams: {
           title: '视频生成参数',
@@ -2530,7 +2540,12 @@ export default {
           frameMode: '帧模式',
           frameMode_none: '无帧控制',
           frameMode_first: '仅首帧',
-          frameMode_first_last: '首尾帧'
+          frameMode_first_last: '首尾帧',
+          seed: '随机种子',
+          seedPlaceholder: '留空随机',
+          seedRandom: '随机',
+          seedSummary: 'seed {n}',
+          seedUseGlobal: '使用全局种子'
         },
         generatedImages: '已生成图片',
         generatedImagesCount: '{n} 张',

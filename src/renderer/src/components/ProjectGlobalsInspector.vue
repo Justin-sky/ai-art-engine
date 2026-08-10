@@ -12,6 +12,25 @@
     />
 
     <label class="cache-field">
+      {{ t('project.globals.generateSeed') }}
+      <span class="seed-row">
+        <input
+          v-model="localSeed"
+          type="number"
+          min="0"
+          :max="String(MAX_GENERATE_SEED)"
+          step="1"
+          :placeholder="t('project.globals.generateSeedPlaceholder')"
+          @change="onSeedChange"
+        />
+        <button type="button" class="seed-clear" @click="clearSeed">
+          {{ t('project.globals.generateSeedRandom') }}
+        </button>
+      </span>
+      <span class="field-hint">{{ t('project.globals.generateSeedHint') }}</span>
+    </label>
+
+    <label class="cache-field">
       {{ t('project.globals.cacheOutputDir') }}
       <input
         v-model="localCacheDir"
@@ -34,6 +53,7 @@ import {
   type ProjectConfig,
   type ProjectStyleImage
 } from '@shared/domain'
+import { MAX_GENERATE_SEED, clampSeed } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
 import StyleImagePicker from './StyleImagePicker.vue'
@@ -50,6 +70,7 @@ const config = computed(() => project.config ?? props.config)
 
 const localImages = ref<ProjectStyleImage[]>([])
 const localCacheDir = ref('')
+const localSeed = ref('')
 const defaultCacheDir = DEFAULT_CACHE_OUTPUT_DIR
 
 watch(
@@ -58,6 +79,14 @@ watch(
     localImages.value = normalizeProjectStyleImages(value)
   },
   { immediate: true, deep: true }
+)
+
+watch(
+  () => config.value?.generateSeed,
+  (value) => {
+    localSeed.value = clampSeed(value) != null ? String(clampSeed(value)) : ''
+  },
+  { immediate: true }
 )
 
 watch(
@@ -75,6 +104,20 @@ async function onImagesChange(images: ProjectStyleImage[]): Promise<void> {
     styleImages: next,
     stylePreset: styleImagesToPresetText(next)
   })
+}
+
+async function onSeedChange(): Promise<void> {
+  const text = localSeed.value.trim()
+  const n = text ? Number(text) : NaN
+  const next = clampSeed(n)
+  localSeed.value = next != null ? String(next) : ''
+  if (next === clampSeed(config.value?.generateSeed)) return
+  await project.updateConfig({ generateSeed: next })
+}
+
+async function clearSeed(): Promise<void> {
+  localSeed.value = ''
+  await project.updateConfig({ generateSeed: undefined })
 }
 
 async function onCacheDirChange(): Promise<void> {
@@ -122,6 +165,29 @@ async function onCacheDirChange(): Promise<void> {
   background: var(--bg-elevated, var(--bg));
   color: var(--text);
   font-size: 13px;
+}
+
+.seed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seed-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.seed-clear {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated, var(--bg));
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .field-hint {

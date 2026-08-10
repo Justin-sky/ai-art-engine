@@ -1037,6 +1037,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution: input.resolution,
             quality: input.quality,
             n: input.n,
+            seed: input.seed,
             inputReferenceCount: input.inputReferences?.length || undefined,
             inputReferences: input.inputReferenceMeta
           }
@@ -1069,6 +1070,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution?: string
             duration?: number
             generateAudio?: boolean
+            seed?: number
             inputReferenceCount?: number
             tosUploads?: Array<{
               sourceLabel: string
@@ -1084,6 +1086,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution: input.resolution,
             duration: input.duration,
             generateAudio: input.generateAudio,
+            seed: input.seed,
             inputReferenceCount: input.inputReferences?.length || undefined
           }
           try {
@@ -1223,6 +1226,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         resolveStyleImageUrls,
         resolveProjectStyleImages: () =>
           normalizeProjectStyleImages(useProjectStore().config?.styleImages),
+        resolveProjectGenerateSeed: () => useProjectStore().config?.generateSeed,
         enrichStyleImages: (images) =>
           enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),
         resolveImageGenerateCapabilities: resolveImageGenerateCapabilitiesForRun,

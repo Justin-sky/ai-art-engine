@@ -197,6 +197,10 @@ export interface ProjectConfig {
    */
   styleImages?: ProjectStyleImage[]
   /**
+   * 工程全局随机种子：生成节点默认使用（节点可关闭跟随并单独设置）。
+   */
+  generateSeed?: number
+  /**
    * 生成缓存根目录（相对工程根）。缺省见 DEFAULT_CACHE_OUTPUT_DIR。
    * 实际落盘为 `{cacheOutputDir}/{Images|Videos|Texts|Voices}`。
    */

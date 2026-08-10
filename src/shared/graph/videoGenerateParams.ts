@@ -3,6 +3,8 @@
  * UI 按模型 catalog 能力动态显示可选值。
  */
 
+import { clampSeed } from './imageGenerateParams'
+
 /** 视频首/尾帧专用入端口 */
 export const VIDEO_FIRST_FRAME_PORT_ID = 'in-first-frame'
 export const VIDEO_LAST_FRAME_PORT_ID = 'in-last-frame'
@@ -49,6 +51,10 @@ export interface VideoGenerateParams {
   resolution?: string
   /** 输出时长（秒） */
   duration?: number
+  /** 随机种子：固定可复现；缺省由服务端随机 */
+  seed?: number
+  /** 是否跟随工程全局种子（默认 true；false 时用 seed） */
+  seedUseGlobal?: boolean
   /** 是否生成音频（模型声明 generate_audio 时可选） */
   generateAudio?: boolean
   /** 首/尾帧控制：none | first | first_last */
@@ -250,6 +256,8 @@ export function readVideoGenerateParamsFromNode(params: {
   generateAspectRatio?: string
   generateResolution?: string
   generateDuration?: number
+  generateSeed?: number
+  generateSeedUseGlobal?: boolean
   generateAudio?: boolean
   generateFrameMode?: string
 }): VideoGenerateParams {
@@ -262,6 +270,8 @@ export function readVideoGenerateParamsFromNode(params: {
     aspectRatio: params.generateAspectRatio?.trim() || undefined,
     resolution: params.generateResolution?.trim() || undefined,
     duration,
+    seed: clampSeed(params.generateSeed),
+    seedUseGlobal: params.generateSeedUseGlobal !== false,
     generateAudio: typeof params.generateAudio === 'boolean' ? params.generateAudio : undefined,
     frameMode: parseFrameMode(params.generateFrameMode) ?? 'none'
   }
@@ -271,6 +281,8 @@ export function videoGenerateParamsToNodePatch(params: VideoGenerateParams): {
   generateAspectRatio: string
   generateResolution: string
   generateDuration: number | undefined
+  generateSeed?: number
+  generateSeedUseGlobal?: boolean
   generateAudio: boolean | undefined
   generateFrameMode: VideoFrameMode
 } {
@@ -278,6 +290,8 @@ export function videoGenerateParamsToNodePatch(params: VideoGenerateParams): {
     generateAspectRatio: params.aspectRatio ?? '',
     generateResolution: params.resolution ?? '',
     generateDuration: params.duration,
+    ...(clampSeed(params.seed) != null ? { generateSeed: clampSeed(params.seed) } : {}),
+    generateSeedUseGlobal: params.seedUseGlobal !== false,
     generateAudio: params.generateAudio,
     generateFrameMode: params.frameMode ?? 'none'
   }
@@ -291,6 +305,8 @@ export function resolveVideoGenerateParamsForApi(
     generateAspectRatio?: string
     generateResolution?: string
     generateDuration?: number
+    generateSeed?: number
+    generateSeedUseGlobal?: boolean
     generateAudio?: boolean
     generateFrameMode?: string
   },

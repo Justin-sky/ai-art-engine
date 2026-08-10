@@ -467,6 +467,11 @@ export default {
       stylePresetPlaceholder: 'Art style, palette, materials, camera mood…',
       styleImagesHint:
         'Up to 4 style references (count toward image input slots) — library or upload',
+      generateSeed: 'Global seed',
+      generateSeedPlaceholder: 'Empty = random',
+      generateSeedRandom: 'Random',
+      generateSeedHint:
+        'Image/video generation nodes use this seed by default (nodes can opt out); fixed seed reproduces same prompt + references',
       cacheOutputDir: 'Generation cache root',
       cacheOutputDirHint:
         'Relative to project root; outputs default to Cache/Images, Cache/Videos, Cache/Texts, Cache/Voices and are not auto-registered in the asset library',
@@ -2538,6 +2543,11 @@ export default {
           aspectRatio: 'Aspect ratio',
           count: 'Count',
           countOption: '{n}',
+          seed: 'Seed',
+          seedPlaceholder: 'Empty = random',
+          seedRandom: 'Random',
+          seedSummary: 'seed {n}',
+          seedUseGlobal: 'Use global seed',
         },
         videoParams: {
           title: 'Video generation params',
@@ -2554,7 +2564,12 @@ export default {
           frameMode: 'Frame mode',
           frameMode_none: 'None',
           frameMode_first: 'First frame',
-          frameMode_first_last: 'First & last'
+          frameMode_first_last: 'First & last',
+          seed: 'Seed',
+          seedPlaceholder: 'Empty = random',
+          seedRandom: 'Random',
+          seedSummary: 'seed {n}',
+          seedUseGlobal: 'Use global seed'
         },
         generatedImages: 'Generated images',
         generatedImagesCount: '{n}',

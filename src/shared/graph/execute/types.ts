@@ -233,6 +233,7 @@ export interface NodeExecuteContext {
     resolution?: string
     quality?: string
     n?: number
+    seed?: number
     inputReferences?: string[]
     /** 与 inputReferences 一一对应的参考图元信息（仅用于执行日志） */
     inputReferenceMeta?: GraphImageReferenceMeta[]
@@ -248,6 +249,7 @@ export interface NodeExecuteContext {
     duration?: number
     resolution?: string
     aspectRatio?: string
+    seed?: number
     generateAudio?: boolean
     firstFrameImageUrl?: string
     lastFrameImageUrl?: string
@@ -310,6 +312,8 @@ export interface NodeExecuteContext {
   resolveStyleImageUrls?: (images: ProjectStyleImage[]) => Promise<string[]>
   /** 读取工程全局画面风格（供生成节点「使用全局风格」） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
+  /** 读取工程全局随机种子（供生成节点「使用全局种子」） */
+  resolveProjectGenerateSeed?: () => number | undefined
   /**
    * 为风格条目回填风格库详细提示词（按 libraryId）。
    * 未注入时仅使用条目内已有的 prompt 字段。
@@ -528,6 +532,7 @@ export interface GraphRunOptions {
   resolveImageUrls?: NodeExecuteContext['resolveImageUrls']
   resolveStyleImageUrls?: NodeExecuteContext['resolveStyleImageUrls']
   resolveProjectStyleImages?: NodeExecuteContext['resolveProjectStyleImages']
+  resolveProjectGenerateSeed?: NodeExecuteContext['resolveProjectGenerateSeed']
   enrichStyleImages?: NodeExecuteContext['enrichStyleImages']
   resolveImageGenerateCapabilities?: NodeExecuteContext['resolveImageGenerateCapabilities']
   resolveVideoGenerateCapabilities?: NodeExecuteContext['resolveVideoGenerateCapabilities']

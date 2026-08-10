@@ -122,7 +122,8 @@ import { resolveAssetTextFromGenParams } from '../assetText'
 import {
   resolveImageGenerateParamsForApi,
   imageGenerateParamsToNodePatch,
-  resolveMaxInputReferences
+  resolveMaxInputReferences,
+  resolveGenerateSeed
 } from '../imageGenerateParams'
 import {
   VIDEO_FIRST_FRAME_PORT_ID,
@@ -1784,6 +1785,7 @@ export async function executeVideoGenerateNode(
     resolution: genParams.resolution,
     aspectRatio: genParams.aspectRatio,
     generateAudio: genParams.generateAudio,
+    seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
     firstFrameImageUrl: useFirstFrame,
     lastFrameImageUrl: useLastFrame,
     inputReferences: apiRefs.length ? apiRefs : undefined,
@@ -1928,6 +1930,7 @@ export async function executeLipSyncNode(
     resolution: genParams.resolution,
     aspectRatio: genParams.aspectRatio,
     generateAudio: paramsPatch.generateAudio !== false,
+    seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
     inputReferences,
     outputDir: node.params.mediaOutputDir?.trim() || undefined,
     name: buildGeneratedMediaFileKey({
@@ -2044,6 +2047,7 @@ export async function executeVideoReshootNode(
     resolution: genParams.resolution,
     aspectRatio: genParams.aspectRatio,
     generateAudio: paramsPatch.generateAudio !== false,
+    seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
     inputReferences,
     outputDir: node.params.mediaOutputDir?.trim() || undefined,
     name: buildGeneratedMediaFileKey({
@@ -2542,6 +2546,7 @@ export async function executeImageGenerateNode(
     resolution: genParams.resolution,
     quality: genParams.quality,
     n: genParams.count,
+    seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
     inputReferences: inputReferences.length ? inputReferences : undefined,
     inputReferenceMeta: inputReferenceMeta.length ? inputReferenceMeta : undefined
   })

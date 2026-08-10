@@ -613,6 +613,8 @@ export interface GenerateImageInput {
   /** OpenRouter quality：auto / low / medium / high */
   quality?: string
   n?: number
+  /** 随机种子：固定后同参数可复现；缺省由服务端随机 */
+  seed?: number
   /** 参考图 data URL 或 http(s) */
   inputReferences?: string[]
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */

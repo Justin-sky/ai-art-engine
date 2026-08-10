@@ -185,6 +185,7 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       watermark: false
     }
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+    if (input.seed != null) body.seed = input.seed
     // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
     // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
     // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。

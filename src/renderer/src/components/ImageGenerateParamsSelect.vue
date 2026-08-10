@@ -26,10 +26,11 @@
         @pointerdown.stop
       >
         <p v-if="loading" class="menu-status">{{ t('graph.inspector.generate.imageParams.loading') }}</p>
-        <p v-else-if="!hasSections" class="menu-status">
-          {{ t('graph.inspector.generate.imageParams.empty') }}
-        </p>
         <template v-else>
+          <p v-if="!hasSections" class="menu-status">
+            {{ t('graph.inspector.generate.imageParams.empty') }}
+          </p>
+          <template v-else>
           <section v-if="caps.qualities.length" class="section">
             <div class="section-title">{{ t('graph.inspector.generate.imageParams.quality') }}</div>
             <div class="chip-row">
@@ -94,6 +95,41 @@
               </button>
             </div>
           </section>
+          </template>
+
+          <section class="section">
+            <div class="section-title">{{ t('graph.inspector.generate.imageParams.seed') }}</div>
+            <label class="seed-global-toggle">
+              <input
+                type="checkbox"
+                :checked="local.seedUseGlobal !== false"
+                @change="toggleSeedUseGlobal"
+              />
+              <span>{{ t('graph.inspector.generate.imageParams.seedUseGlobal') }}</span>
+            </label>
+            <div class="seed-row">
+              <input
+                type="number"
+                min="0"
+                :max="String(MAX_GENERATE_SEED)"
+                step="1"
+                class="seed-input"
+                :value="local.seed ?? ''"
+                :disabled="local.seedUseGlobal !== false"
+                :placeholder="t('graph.inspector.generate.imageParams.seedPlaceholder')"
+                @input="pickSeed(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                type="button"
+                class="chip"
+                :class="{ active: local.seed == null }"
+                :disabled="local.seedUseGlobal !== false"
+                @click="pickSeed('')"
+              >
+                {{ t('graph.inspector.generate.imageParams.seedRandom') }}
+              </button>
+            </div>
+          </section>
         </template>
       </div>
     </Teleport>
@@ -103,6 +139,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  MAX_GENERATE_SEED,
+  clampSeed,
   clampImageGenerateParams,
   hasAnyImageGenerateCapability,
   type ImageGenerateParamCapabilities,
@@ -158,6 +196,9 @@ const summaryText = computed(() => {
   if (caps.value.counts.length && local.value.count != null) {
     parts.push(t('graph.inspector.generate.imageParams.countOption', { n: local.value.count }))
   }
+  if (local.value.seedUseGlobal === false && local.value.seed != null) {
+    parts.push(t('graph.inspector.generate.imageParams.seedSummary', { n: local.value.seed }))
+  }
   return parts.length ? parts.join(' · ') : t('graph.inspector.generate.imageParams.placeholder')
 })
 
@@ -198,6 +239,19 @@ function pickAspectRatio(ratio: string): void {
 
 function pickCount(n: number): void {
   local.value = { ...local.value, count: n }
+  emitLocal()
+}
+
+function pickSeed(raw: string): void {
+  const text = raw.trim()
+  const n = text ? Number(text) : NaN
+  local.value = { ...local.value, seed: clampSeed(n) }
+  emitLocal()
+}
+
+function toggleSeedUseGlobal(e: Event): void {
+  const on = (e.target as HTMLInputElement).checked
+  local.value = { ...local.value, seedUseGlobal: on }
   emitLocal()
 }
 
@@ -429,6 +483,39 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.img-params-menu .seed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.img-params-menu .seed-global-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.img-params-menu .seed-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.img-params-menu .seed-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .img-params-menu .chip {

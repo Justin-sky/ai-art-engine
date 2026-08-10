@@ -26,10 +26,11 @@
         @pointerdown.stop
       >
         <p v-if="loading" class="menu-status">{{ t('graph.inspector.generate.videoParams.loading') }}</p>
-        <p v-else-if="!hasSections" class="menu-status">
-          {{ t('graph.inspector.generate.videoParams.empty') }}
-        </p>
         <template v-else>
+          <p v-if="!hasSections" class="menu-status">
+            {{ t('graph.inspector.generate.videoParams.empty') }}
+          </p>
+          <template v-else>
           <section v-if="caps.durations.length" class="section">
             <div class="section-title">{{ t('graph.inspector.generate.videoParams.duration') }}</div>
             <div class="chip-row">
@@ -116,6 +117,41 @@
               </button>
             </div>
           </section>
+          </template>
+
+          <section class="section">
+            <div class="section-title">{{ t('graph.inspector.generate.videoParams.seed') }}</div>
+            <label class="seed-global-toggle">
+              <input
+                type="checkbox"
+                :checked="local.seedUseGlobal !== false"
+                @change="toggleSeedUseGlobal"
+              />
+              <span>{{ t('graph.inspector.generate.videoParams.seedUseGlobal') }}</span>
+            </label>
+            <div class="seed-row">
+              <input
+                type="number"
+                min="0"
+                :max="String(MAX_GENERATE_SEED)"
+                step="1"
+                class="seed-input"
+                :value="local.seed ?? ''"
+                :disabled="local.seedUseGlobal !== false"
+                :placeholder="t('graph.inspector.generate.videoParams.seedPlaceholder')"
+                @input="pickSeed(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                type="button"
+                class="chip"
+                :class="{ active: local.seed == null }"
+                :disabled="local.seedUseGlobal !== false"
+                @click="pickSeed('')"
+              >
+                {{ t('graph.inspector.generate.videoParams.seedRandom') }}
+              </button>
+            </div>
+          </section>
         </template>
       </div>
     </Teleport>
@@ -126,7 +162,9 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   EMPTY_VIDEO_GENERATE_CAPABILITIES,
+  MAX_GENERATE_SEED,
   availableVideoFrameModes,
+  clampSeed,
   clampVideoGenerateParams,
   hasAnyVideoGenerateCapability,
   type VideoFrameMode,
@@ -192,6 +230,9 @@ const summaryText = computed(() => {
   if (!hideFrameMode.value && frameModeOptions.value.length > 1 && mode !== 'none') {
     parts.push(t(`graph.inspector.generate.videoParams.frameMode_${mode}`))
   }
+  if (local.value.seedUseGlobal === false && local.value.seed != null) {
+    parts.push(t('graph.inspector.generate.videoParams.seedSummary', { n: local.value.seed }))
+  }
   return parts.length ? parts.join(' · ') : t('graph.inspector.generate.videoParams.placeholder')
 })
 
@@ -226,6 +267,19 @@ function pickGenerateAudio(on: boolean): void {
 
 function pickFrameMode(mode: VideoFrameMode): void {
   local.value = { ...local.value, frameMode: mode }
+  emitLocal()
+}
+
+function pickSeed(raw: string): void {
+  const text = raw.trim()
+  const n = text ? Number(text) : NaN
+  local.value = { ...local.value, seed: clampSeed(n) }
+  emitLocal()
+}
+
+function toggleSeedUseGlobal(e: Event): void {
+  const on = (e.target as HTMLInputElement).checked
+  local.value = { ...local.value, seedUseGlobal: on }
   emitLocal()
 }
 
@@ -445,6 +499,39 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.video-params-menu .seed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-params-menu .seed-global-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.video-params-menu .seed-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.video-params-menu .seed-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .video-params-menu .chip {

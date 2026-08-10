@@ -154,6 +154,8 @@ export interface GraphRunSessionOptions {
   ) => import('@shared/graph').BeatRow | null
   /** 工程全局画面风格（生成节点「使用全局风格」时读取） */
   resolveProjectStyleImages?: () => ProjectStyleImage[]
+  /** 工程全局随机种子（生成节点「使用全局种子」时读取） */
+  resolveProjectGenerateSeed?: () => number | undefined
   /** 世界元素编辑：收集四类子图输出；cookBatch 时入队批跑元素子图 */
   collectWorldElementOutputs?: (
     signal?: AbortSignal,
@@ -358,6 +360,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       resolution?: string
       quality?: string
       n?: number
+      seed?: number
       inputReferences?: string[]
       inputReferenceMeta?: GraphImageReferenceMeta[]
     }) => {
@@ -373,6 +376,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolution: input.resolution,
         quality: input.quality,
         n: input.n,
+        seed: input.seed,
         inputReferenceCount: input.inputReferences?.length || undefined,
         inputReferences: input.inputReferenceMeta
       }
@@ -414,6 +418,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       resolution?: string
       aspectRatio?: string
       generateAudio?: boolean
+      seed?: number
       inputReferences?: Array<
         | string
         | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
@@ -431,6 +436,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolution?: string
         duration?: number
         generateAudio?: boolean
+        seed?: number
         inputReferenceCount?: number
         tosUploads?: Array<{
           sourceLabel: string
@@ -446,6 +452,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolution: input.resolution,
         duration: input.duration,
         generateAudio: input.generateAudio,
+        seed: input.seed,
         inputReferenceCount: input.inputReferences?.length || undefined
       }
       try {
@@ -620,6 +627,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveStyleImageUrls: resolveStyleImageUrls,
         resolveProjectStyleImages:
           options.resolveProjectStyleImages ?? (() => [] as ProjectStyleImage[]),
+        resolveProjectGenerateSeed: options.resolveProjectGenerateSeed ?? (() => undefined),
         enrichStyleImages: (images) =>
           enrichStyleImagesWithLibraryPrompts(images, options.locale?.() ?? 'zh-CN'),
         resolveImageGenerateCapabilities: resolveImageGenerateCapabilitiesForRun,

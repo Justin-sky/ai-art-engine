@@ -256,6 +256,10 @@ export interface GraphNodeParams {
   generateQuality?: string
   /** 图片/全景生成：张数 n */
   generateCount?: number
+  /** 图片/视频生成：随机种子（固定可复现，留空随机） */
+  generateSeed?: number
+  /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */
+  generateSeedUseGlobal?: boolean
   /** 视频生成：输出时长（秒） */
   generateDuration?: number
   /** 视频生成：是否生成音频（模型支持时） */

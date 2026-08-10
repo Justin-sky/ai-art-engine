@@ -104,7 +104,7 @@ function buildSystemPrompt(seedPlan?: GraphPlan | null): string {
 2. 节点数 4～12；形成从输入到输出的完整数据流。
 3. 边的 from/to 使用节点 key；端口 dataType 必须兼容（image≠images，除非单数接复数口）。
 4. 不要编造 assetId；不要填写 generateModel / generateProviderInstanceId（由客户端注入）。
-5. 可用 params 仅限：text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateFrameMode, generateAudio, notes, label, inputDataType。
+5. 可用 params 仅限：text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType。
 6. 常见链：play.script / prompt.optimize → asset.image → asset.video；备注用 note.text。
 7. 输出严格为此 JSON 形状：
 {"title":"短标题","nodes":[{"key":"a","typeId":"...","title":"可选","params":{}}],"edges":[{"from":"a","to":"b","fromPort":"out","toPort":"in"}]}

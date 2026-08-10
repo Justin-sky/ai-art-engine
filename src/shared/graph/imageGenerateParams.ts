@@ -9,6 +9,10 @@ export interface ImageGenerateParams {
   quality?: string
   /** 生成张数 n */
   count?: number
+  /** 随机种子：固定可复现；缺省由服务端随机 */
+  seed?: number
+  /** 是否跟随工程全局种子（默认 true；false 时用 seed） */
+  seedUseGlobal?: boolean
 }
 
 export interface ImageGenerateParamCapabilities {
@@ -25,6 +29,36 @@ export interface ImageGenerateParamCapabilities {
 
 /** OpenRouter 文档示例 / 历史硬编码上限 */
 export const DEFAULT_MAX_INPUT_REFERENCES = 14
+
+/** 图片/视频生成随机种子合法上限（Seedream / OpenRouter 等通用） */
+export const MAX_GENERATE_SEED = 2_147_483_647
+
+/**
+ * 归一化随机种子：仅保留 0..MAX_GENERATE_SEED 的整数；
+ * 负数（-1 等“随机”）与非法值统一视为缺省，由服务端随机。
+ */
+export function clampSeed(value?: number | null): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const n = Math.trunc(value)
+  if (n < 0 || n > MAX_GENERATE_SEED) return undefined
+  return n
+}
+
+/**
+ * 解析生成节点实际使用的随机种子：
+ * - generateSeedUseGlobal !== false（默认跟随全局）：取工程全局种子
+ * - generateSeedUseGlobal === false：取节点本地种子；未配置则为空（随机）
+ */
+export function resolveGenerateSeed(
+  params: {
+    generateSeedUseGlobal?: boolean
+    generateSeed?: number
+  },
+  globalSeed?: number | null
+): number | undefined {
+  if (params.generateSeedUseGlobal !== false) return clampSeed(globalSeed)
+  return clampSeed(params.generateSeed)
+}
 
 /** 无目录能力时的常见回退（与参考 UI 一致） */
 export const DEFAULT_IMAGE_GENERATE_CAPABILITIES: ImageGenerateParamCapabilities = {
@@ -245,6 +279,8 @@ export function readImageGenerateParamsFromNode(params: {
   generateResolution?: string
   generateQuality?: string
   generateCount?: number
+  generateSeed?: number
+  generateSeedUseGlobal?: boolean
 }): ImageGenerateParams {
   return {
     aspectRatio: params.generateAspectRatio?.trim() || undefined,
@@ -253,7 +289,9 @@ export function readImageGenerateParamsFromNode(params: {
     count:
       typeof params.generateCount === 'number' && params.generateCount >= 1
         ? Math.floor(params.generateCount)
-        : undefined
+        : undefined,
+    seed: clampSeed(params.generateSeed),
+    seedUseGlobal: params.generateSeedUseGlobal !== false
   }
 }
 
@@ -267,6 +305,8 @@ export function resolveImageGenerateParamsForApi(
     generateResolution?: string
     generateQuality?: string
     generateCount?: number
+    generateSeed?: number
+    generateSeedUseGlobal?: boolean
   },
   caps: ImageGenerateParamCapabilities = DEFAULT_IMAGE_GENERATE_CAPABILITIES
 ): ImageGenerateParams {
@@ -278,11 +318,15 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
   generateResolution: string
   generateQuality: string
   generateCount?: number
+  generateSeed?: number
+  generateSeedUseGlobal?: boolean
 } {
   return {
     generateAspectRatio: params.aspectRatio ?? '',
     generateResolution: params.resolution ?? '',
     generateQuality: params.quality ?? '',
-    ...(params.count != null && params.count >= 1 ? { generateCount: Math.floor(params.count) } : {})
+    ...(params.count != null && params.count >= 1 ? { generateCount: Math.floor(params.count) } : {}),
+    ...(clampSeed(params.seed) != null ? { generateSeed: clampSeed(params.seed) } : {}),
+    generateSeedUseGlobal: params.seedUseGlobal !== false
   }
 }

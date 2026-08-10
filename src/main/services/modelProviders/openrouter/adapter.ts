@@ -174,6 +174,7 @@ export const openRouterAdapter: ModelProviderAdapter = {
     if (input.resolution) body.resolution = input.resolution
     if (input.quality?.trim()) body.quality = input.quality.trim()
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+    if (input.seed != null) body.seed = input.seed
     if (input.inputReferences?.length) {
       body.input_references = input.inputReferences.map((url) => ({
         type: 'image_url',
