@@ -1784,6 +1784,31 @@ export default {
         p25: '25宫格 (5×5)'
       }
     },
+    anim2d: {
+      inspectorHint: '双击进入内图生成帧动画序列图；运行本节点按行列切分为单帧，下方可逐帧播放预览',
+      genInspectorHint: '选择动画预设并设置行列数，运行后用生图 API 生成序列图；可自定义动作描述',
+      rows: '行',
+      cols: '列',
+      preset: '动画预设',
+      action: '动作描述',
+      actionPlaceholder: '可选：自定义动作描述（留空使用预设）',
+      preview: '动画预览',
+      play: '播放',
+      pause: '暂停',
+      fps: '帧率',
+      loop: '循环',
+      loading: '正在切分预览…',
+      emptyPreview: '暂无预览：请先双击进入内图生成序列图，再运行本节点',
+      presets: {
+        idle: '待机',
+        walk: '行走',
+        run: '奔跑',
+        jump: '跳跃',
+        attack: '攻击',
+        hurt: '受击',
+        skill: '技能'
+      }
+    },
     group: {
       action: '分组',
       ungroup: '取消分组',
@@ -2067,6 +2092,12 @@ export default {
       ui: {
         split: 'UI 界面拆分',
         gen: 'UI 界面生成'
+      },
+      anim: {
+        '2d': '2D帧动画'
+      },
+      frame: {
+        animGen: '生成帧动画序列图'
       },
       episode: {
         anchorSelect: '宫格选择',

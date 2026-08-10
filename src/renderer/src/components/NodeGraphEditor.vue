@@ -364,6 +364,7 @@
           @texts-open="onTextsOpen"
           @text-open="onTextOpen"
           @ui-split-open="onUiSplitOpen"
+          @anim2d-open="onAnim2dOpen"
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
@@ -3008,7 +3009,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen']
+    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen', 'anim.2d']
   },
   {
     id: 'beat',
@@ -4912,6 +4913,17 @@ function onUiSplitOpen(nodeId: string): void {
     const node = graph.nodes.find((n) => n.id === nodeId)
     void editorDive.diveView(
       { viewId: 'ui.split', hostId: graphHostId.value, nodeId },
+      node ? nodeDisplayTitle(node) : undefined
+    )
+  }
+}
+
+/** 2D 帧动画：双击进入内图（懒创建子图资产并打开资产编辑器） */
+function onAnim2dOpen(nodeId: string): void {
+  if (editorDive) {
+    const node = graph.nodes.find((n) => n.id === nodeId)
+    void editorDive.diveView(
+      { viewId: 'anim.2d', hostId: graphHostId.value, nodeId },
       node ? nodeDisplayTitle(node) : undefined
     )
   }

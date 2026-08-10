@@ -71,11 +71,14 @@ import {
   executeBeatCatalogOutputNode,
   executeTimelineOutputNode,
   executeWorldExtractNode,
-  executeWorldTableNode
+  executeWorldTableNode,
+  executeAnim2dNode,
+  executeFrameAnimGenNode
 } from './execute/values'
 import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
+import { ANIM2D_INNER_GRAPH_VERSION, DEFAULT_ANIM2D_STATE } from './anim2d'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_BEAT_OUTPUT_TITLE,
@@ -1485,6 +1488,64 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeUiGenNode
+  },
+  {
+    typeId: 'anim.2d',
+    category: 'note',
+    label: '2D帧动画',
+    icon: '🎞️',
+    defaultTitle: '2D帧动画',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      animRows: DEFAULT_ANIM2D_STATE.rows,
+      animCols: DEFAULT_ANIM2D_STATE.cols,
+      animPresetId: 'walk',
+      animInstruction: '',
+      animAssetId: '',
+      animGraphVersion: ANIM2D_INNER_GRAPH_VERSION,
+      text: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.anim2d',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeAnim2dNode
+  },
+  {
+    typeId: 'frame.animGen',
+    category: 'note',
+    label: '生成帧动画序列图',
+    icon: '🎞️',
+    defaultTitle: '生成帧动画序列图',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      animRows: DEFAULT_ANIM2D_STATE.rows,
+      animCols: DEFAULT_ANIM2D_STATE.cols,
+      animPresetId: 'walk',
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.frameAnimGen',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeFrameAnimGenNode
   },
   {
     typeId: 'beat.table',

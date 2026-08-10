@@ -570,6 +570,7 @@ const emit = defineEmits<{
   selectTextOpen: [nodeId: string]
   textsOpen: [nodeId: string]
   uiSplitOpen: [nodeId: string]
+  anim2dOpen: [nodeId: string]
   textOpen: [nodeId: string]
 }>()
 
@@ -1925,6 +1926,12 @@ function onPreviewDblClick(): void {
     // UI 界面生成：双击进入内图（每条提示词一条输出链）
     if (props.node.typeId === 'ui.gen') {
       emit('uiSplitOpen', props.node.id)
+      return
+    }
+
+    // 2D 帧动画：双击进入内图（参考图 → 生成帧动画序列图 → 切分播放）
+    if (props.node.typeId === 'anim.2d') {
+      emit('anim2dOpen', props.node.id)
       return
     }
 

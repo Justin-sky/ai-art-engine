@@ -96,6 +96,8 @@ describe('graph policy', () => {
         'asset.screenplay',
         'asset.gameSystem',
         'ui.gen',
+        'anim.2d',
+        'frame.animGen',
         'asset.video',
         'asset.voice',
         'note.text',

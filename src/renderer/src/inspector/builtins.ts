@@ -18,6 +18,8 @@ import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
+import Anim2dInspector from '../components/Anim2dInspector.vue'
+import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
@@ -130,6 +132,16 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.uiSplit',
     component: PromptOptimizeInspector,
     nodeTypeId: 'ui.split'
+  },
+  {
+    id: 'studio.graph.anim2d',
+    component: Anim2dInspector,
+    nodeTypeId: 'anim.2d'
+  },
+  {
+    id: 'studio.graph.frameAnimGen',
+    component: FrameAnimGenInspector,
+    nodeTypeId: 'frame.animGen'
   },
   {
     id: 'studio.graph.beatUnitGen',

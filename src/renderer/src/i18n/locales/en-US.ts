@@ -1793,6 +1793,31 @@ export default {
         p25: '25-grid (5×5)'
       }
     },
+    anim2d: {
+      inspectorHint: 'Double-click to dive in and generate a frame-animation sheet; run this node to split frames and preview playback below',
+      genInspectorHint: 'Pick an animation preset and rows/cols, then run to generate the sheet via image API; action can be customized',
+      rows: 'Rows',
+      cols: 'Cols',
+      preset: 'Preset',
+      action: 'Action',
+      actionPlaceholder: 'Optional: custom action description (empty = preset)',
+      preview: 'Animation preview',
+      play: 'Play',
+      pause: 'Pause',
+      fps: 'FPS',
+      loop: 'Loop',
+      loading: 'Building frame preview…',
+      emptyPreview: 'No preview yet: dive in to generate the sheet first, then run this node',
+      presets: {
+        idle: 'Idle',
+        walk: 'Walk',
+        run: 'Run',
+        jump: 'Jump',
+        attack: 'Attack',
+        hurt: 'Hurt',
+        skill: 'Skill'
+      }
+    },
     group: {
       action: 'Group',
       ungroup: 'Ungroup',
@@ -2079,6 +2104,12 @@ export default {
       ui: {
         split: 'UI screen split',
         gen: 'UI screen gen'
+      },
+      anim: {
+        '2d': '2D Frame Animation'
+      },
+      frame: {
+        animGen: 'Generate Frame Animation Sheet'
       },
       episode: {
         anchorSelect: 'Anchor select',

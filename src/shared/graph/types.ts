@@ -260,6 +260,19 @@ export interface GraphNodeParams {
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */
   generateSeedUseGlobal?: boolean
+  /** 2D帧动画：帧行数 / 列数 */
+  animRows?: number
+  animCols?: number
+  /** 2D帧动画：动画动作预设 id（见 ANIM2D_PRESETS） */
+  animPresetId?: string
+  /** 2D帧动画：自定义动作描述（留空用预设） */
+  animInstruction?: string
+  /** 2D帧动画：dive 子图资产 id */
+  animAssetId?: string
+  /** 2D帧动画：dive 内图结构版本（变化时重建内图） */
+  animGraphVersion?: number
+  /** 2D帧动画：序列图预览（dataUrl 或 relativePath） */
+  animGridImage?: { dataUrl?: string; relativePath?: string }
   /** 视频生成：输出时长（秒） */
   generateDuration?: number
   /** 视频生成：是否生成音频（模型支持时） */
