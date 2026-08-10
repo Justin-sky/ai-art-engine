@@ -1037,7 +1037,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             resolution: input.resolution,
             quality: input.quality,
             n: input.n,
-            inputReferenceCount: input.inputReferences?.length || undefined
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferences: input.inputReferenceMeta
           }
           try {
             const value = await window.studio.generateImage(input)

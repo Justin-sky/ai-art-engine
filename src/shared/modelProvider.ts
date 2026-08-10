@@ -594,6 +594,16 @@ export interface GenerateTextResult {
   model: string
 }
 
+/** 图片生成参考图元信息：用于执行日志展示来源与落盘路径，不落 data URL */
+export interface GraphImageReferenceMeta {
+  /** 来源：风格库 / 端口参考图 */
+  source: 'style' | 'port'
+  /** 端口参考图落盘相对路径（风格库条目通常无工程相对路径） */
+  relativePath?: string
+  /** 风格库条目名 / 自定义上传图名 */
+  name?: string
+}
+
 export interface GenerateImageInput {
   prompt: string
   model?: string
@@ -605,6 +615,8 @@ export interface GenerateImageInput {
   n?: number
   /** 参考图 data URL 或 http(s) */
   inputReferences?: string[]
+  /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
+  inputReferenceMeta?: GraphImageReferenceMeta[]
 }
 
 export interface GenerateImageResult {

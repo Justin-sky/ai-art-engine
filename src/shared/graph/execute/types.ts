@@ -14,6 +14,7 @@ import type {
   GraphNodeParams,
   GraphOutputKind
 } from '../types'
+import type { GraphImageReferenceMeta } from '../../modelProvider'
 
 export type GraphNodeRunStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'skipped'
 
@@ -233,6 +234,8 @@ export interface NodeExecuteContext {
     quality?: string
     n?: number
     inputReferences?: string[]
+    /** 与 inputReferences 一一对应的参考图元信息（仅用于执行日志） */
+    inputReferenceMeta?: GraphImageReferenceMeta[]
   }) => Promise<{ images: string[]; model: string }>
   /**
    * 可选：调用设置中的视频模型（提交+轮询+落盘资产）。

@@ -1,4 +1,5 @@
 import type { GraphNodeRunStatus, GraphValue } from './types'
+import type { GraphImageReferenceMeta } from '../../modelProvider'
 
 export type GraphRunLogLevel = 'info' | 'warn' | 'error'
 
@@ -57,6 +58,8 @@ export interface GraphRunLogApiCall {
     duration?: number
     generateAudio?: boolean
     inputReferenceCount?: number
+    /** 图片生成：参考图清单（来源 + 相对路径/名称，不落 data URL） */
+    inputReferences?: GraphImageReferenceMeta[]
     voice?: string
     name?: string
     /** 参考视频 TOS 上传摘要（不落完整签名参数） */

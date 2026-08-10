@@ -2,6 +2,7 @@ import { nextTick, reactive, ref } from 'vue'
 import type {
   ProjectStyleImage
 } from '@shared/domain'
+import type { GraphImageReferenceMeta } from '@shared/modelProvider'
 import {
   applyEpisodeReviewMarks,
   exportPersistedRunStates,
@@ -358,6 +359,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       quality?: string
       n?: number
       inputReferences?: string[]
+      inputReferenceMeta?: GraphImageReferenceMeta[]
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -371,7 +373,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolution: input.resolution,
         quality: input.quality,
         n: input.n,
-        inputReferenceCount: input.inputReferences?.length || undefined
+        inputReferenceCount: input.inputReferences?.length || undefined,
+        inputReferences: input.inputReferenceMeta
       }
       try {
         const value = await withAbortSignal(generateImage(input), token, signal)

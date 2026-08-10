@@ -10,6 +10,7 @@ import {
   type StyleReferenceSubject,
   type AssetType
 } from '../../domain'
+import type { GraphImageReferenceMeta } from '../../modelProvider'
 import type {
   GraphDocument,
   GraphNode,
@@ -131,7 +132,7 @@ import {
   videoGenerateParamsToNodePatch,
   type VideoGenerateParamCapabilities
 } from '../videoGenerateParams'
-import { mergeImageUrlsWithStyleBudget, UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
+import { UNKNOWN_VIDEO_PORT_LIMITS } from '../portInputLimits'
 import { resolveMotionImageItems, resolveMotionVideoItems } from '../motionShots'
 import {
   mergeWorldCatalogPreservingReviewed,
@@ -2516,11 +2517,22 @@ export async function executeImageGenerateNode(
     }
   }
   // 风格图优先占位（@1..@N），与端口参考图共享上限并一并提交
-  const inputReferences = mergeImageUrlsWithStyleBudget(
-    portUrls,
-    styleUrls,
-    maxInputReferences
-  )
+  const cap = Math.max(0, Math.floor(maxInputReferences))
+  const styleRefs = styleUrls.map((url) => url.trim()).filter(Boolean).slice(0, cap)
+  const rest = Math.max(0, cap - styleRefs.length)
+  const portRefs = portUrls.map((url) => url.trim()).filter(Boolean).slice(0, rest)
+  const inputReferences = [...styleRefs, ...portRefs]
+  // 与 inputReferences 一一对应的元信息：来源（风格库/端口参考图）+ 落盘相对路径/名称
+  const inputReferenceMeta: GraphImageReferenceMeta[] = [
+    ...styleImages.slice(0, styleRefs.length).map((item) => ({
+      source: 'style' as const,
+      name: item.name?.trim() || item.libraryId
+    })),
+    ...sourceItems.slice(0, portRefs.length).map((item) => ({
+      source: 'port' as const,
+      ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+    }))
+  ]
 
   const result = await ctx.generateImage({
     prompt,
@@ -2530,7 +2542,8 @@ export async function executeImageGenerateNode(
     resolution: genParams.resolution,
     quality: genParams.quality,
     n: genParams.count,
-    inputReferences: inputReferences.length ? inputReferences : undefined
+    inputReferences: inputReferences.length ? inputReferences : undefined,
+    inputReferenceMeta: inputReferenceMeta.length ? inputReferenceMeta : undefined
   })
 
   if (ctx.signal?.aborted) {
