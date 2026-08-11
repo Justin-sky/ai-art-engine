@@ -601,6 +601,8 @@ const mediaError = ref(false)
 const isAnim2dNode = computed(() => props.node.typeId === 'anim.2d')
 const animFrameIndex = ref(0)
 const cardAnimFrames = ref<string[]>([])
+/** 用户双击暂停后，避免视口 watch 立刻重新自动播放 */
+let animCardUserPaused = false
 let animCardTimer: ReturnType<typeof setInterval> | null = null
 const currentTime = ref(0)
 const duration = ref(0)
@@ -1361,6 +1363,7 @@ const previewHint = computed(() => {
 })
 
 const previewOpenHint = computed(() => {
+  if (isAnim2dNode.value) return t('graph.anim2d.cardPlayHint')
   if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
@@ -1838,6 +1841,12 @@ function onPreviewDblClick(): void {
   void (async () => {
     const title = displayTitle.value
 
+    // 2D帧动画：双击播放/暂停序列帧，勿走 note 分类的记事本
+    if (isAnim2dNode.value) {
+      await toggleCardAnimPreview()
+      return
+    }
+
     if (isDirectorProcessingNode(props.node)) {
       const directorAssetId = hostAssetId.value
       if (!directorAssetId) return
@@ -2169,6 +2178,25 @@ function stopCardAnimPreview(): void {
   }
 }
 
+/** 卡片预览：双击切换序列帧播放；未切分时先从序列图加载 */
+async function toggleCardAnimPreview(): Promise<void> {
+  if (animCardTimer != null) {
+    stopCardAnimPreview()
+    animCardUserPaused = true
+    return
+  }
+  animCardUserPaused = false
+  if (cardAnimFrames.value.length <= 1) {
+    if (cardImageGridSrcs.value.length > 1) {
+      cardAnimFrames.value = cardImageGridSrcs.value.slice()
+    } else {
+      await loadCardAnimFramesFromSequence()
+    }
+  }
+  if (cardAnimFrames.value.length <= 1) return
+  startCardAnimPreview()
+}
+
 async function loadCardAnimFramesFromSequence(): Promise<void> {
   if (!isAnim2dNode.value || cardAnimFrames.value.length > 1) return
   const s = readAnim2dFromNode(props.node.params)
@@ -2210,7 +2238,12 @@ watch(
     } else if (cardAnimFrames.value.length <= 1) {
       await loadCardAnimFramesFromSequence()
     }
-    if (isAnim2dNode.value && previewInViewport.value && cardAnimFrames.value.length > 1) {
+    if (
+      isAnim2dNode.value &&
+      previewInViewport.value &&
+      cardAnimFrames.value.length > 1 &&
+      !animCardUserPaused
+    ) {
       animFrameIndex.value = 0
       startCardAnimPreview()
     } else {

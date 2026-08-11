@@ -1788,6 +1788,7 @@ export default {
     anim2d: {
       inspectorHint: '接入上游帧动画序列图；运行本节点按行列切分为单帧，下方可逐帧播放预览',
       genInspectorHint: '双击节点打开指令面板选择预设与动作描述；此处设置行列数与系统提示词，运行后生成序列图',
+      cardPlayHint: '双击播放 / 暂停序列帧',
       rows: '行',
       cols: '列',
       preset: '动画预设',
@@ -1801,7 +1802,7 @@ export default {
       fps: '帧率',
       loop: '循环',
       loading: '正在切分预览…',
-      emptyPreview: '暂无预览：请先双击进入内图生成序列图，再运行本节点',
+      emptyPreview: '暂无预览：请接入上游序列图并运行本节点',
       presets: {
         idle: '待机',
         walk: '行走',
@@ -2205,6 +2206,7 @@ export default {
       notes: '节点备注',
       outputPreview: '输出预览',
       outputDelete: '删除输出',
+      outputGalleryHint: '单击设为当前输出（out），× 删除该条',
       outputPreviewCount: '{n} 项',
       outputPreviewLoading: '正在加载预览…',
       outputPreviewMissing: '无法加载预览',

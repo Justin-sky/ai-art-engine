@@ -1797,6 +1797,7 @@ export default {
     anim2d: {
       inspectorHint: 'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
       genInspectorHint: 'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
+      cardPlayHint: 'Double-click to play / pause the frame sequence',
       rows: 'Rows',
       cols: 'Cols',
       preset: 'Preset',
@@ -1810,7 +1811,7 @@ export default {
       fps: 'FPS',
       loop: 'Loop',
       loading: 'Building frame preview…',
-      emptyPreview: 'No preview yet: dive in to generate the sheet first, then run this node',
+      emptyPreview: 'No preview yet: connect an upstream sheet and run this node',
       presets: {
         idle: 'Idle',
         walk: 'Walk',
@@ -2218,6 +2219,7 @@ export default {
       notes: 'Node notes',
       outputPreview: 'Output preview',
       outputDelete: 'Delete output',
+      outputGalleryHint: 'Click to set as current output; × deletes that item',
       outputPreviewCount: '{n} items',
       outputPreviewLoading: 'Loading preview…',
       outputPreviewMissing: 'Preview unavailable',

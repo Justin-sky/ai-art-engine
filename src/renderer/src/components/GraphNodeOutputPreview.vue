@@ -17,8 +17,16 @@ import {
   type GraphNode,
   type GraphValue
 } from '@shared/graph'
+import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import {
+  deleteGalleryOutput,
+  hasGalleryEntry,
+  selectGalleryOutput,
+  type GalleryOutputKind
+} from '../features/graph/model/graphGalleryOutput'
+import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -888,8 +896,14 @@ const layoutKind = computed(() => {
 
 const hasPreview = computed(() => items.value.length > 0)
 
+/** Inspector 传入的 props.node 可能是快照，写回前统一取宿主上的活节点 */
+function liveNode(): GraphNode {
+  void graphEditorHosts.revision.value
+  return graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+}
+
 const canSelectGalleryOutput = computed(() => {
-  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  const node = liveNode()
   return (
     !!(node.params.generatedImages ?? []).length ||
     !!(node.params.generatedVideos ?? []).length ||
@@ -900,7 +914,7 @@ const canSelectGalleryOutput = computed(() => {
 
 function isSelectedPreview(item: PreviewItem): boolean {
   if (!canSelectGalleryOutput.value) return false
-  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+  const node = liveNode()
   const id = item.key.trim()
   if (!id) return false
   if (item.kind === 'image') {
@@ -930,139 +944,52 @@ function isSelectedPreview(item: PreviewItem): boolean {
   return false
 }
 
-function selectAsCurrentOutput(item: PreviewItem): void {
-  if (!canSelectGalleryOutput.value) return
-  const node = graphEditorHosts.getNode(props.hostId, props.node.id) ?? props.node
+function galleryKindOf(item: PreviewItem): GalleryOutputKind {
+  return item.kind === 'audio' ? 'voice' : item.kind
+}
+
+/** 预览项 key 是否为累计图库条目 id（回退键与绑定资产键不可写回） */
+function galleryEntryId(item: PreviewItem): string {
   const id = item.key.trim()
   if (!id || id.startsWith('fallback-') || id.startsWith('bound') || id.startsWith('node-')) {
+    return ''
+  }
+  return hasGalleryEntry(liveNode(), galleryKindOf(item), id) ? id : ''
+}
+
+function selectAsCurrentOutput(item: PreviewItem): void {
+  if (!canSelectGalleryOutput.value) return
+  const id = galleryEntryId(item)
+  if (!id) return
+  selectGalleryOutput(props.hostId, liveNode(), galleryKindOf(item), id)
+}
+
+/** 单条可删（图库条目）；仅本次运行态产物时回退为整体清空 */
+function canDeleteOutputItem(item: PreviewItem): boolean {
+  if (!props.clearable) return false
+  if (item.kind === 'text') return !!galleryEntryId(item)
+  return true
+}
+
+function deleteOutputItem(item: PreviewItem): void {
+  if (!props.clearable) return
+  const id = galleryEntryId(item)
+  if (!id) {
+    emit('clearOutput')
     return
   }
-  const host = graphRunHosts.get(props.hostId)
-  if (!host) return
-  const prev = host.runStates[node.id] ?? { status: 'done' as const }
-
-  if (item.kind === 'image') {
-    const list = node.params.generatedImages ?? []
-    const picked = list.find((entry) => entry.id === id)
-    if (!picked?.id) return
-    host.runStates[node.id] = {
-      ...prev,
-      status: prev.status === 'idle' ? 'done' : prev.status,
-      outputs: {
-        ...(prev.outputs ?? {}),
-        out: {
-          kind: 'image',
-          id: picked.id,
-          dataUrl: picked.dataUrl || '',
-          createdAt: picked.createdAt,
-          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-        },
-        'out-all': { kind: 'images', items: list }
-      }
-    }
-    graphEditorHosts.updateNode(props.hostId, node.id, {
-      selectedImageId: picked.id,
-      previewDataUrl: picked.dataUrl?.trim() ? picked.dataUrl : '',
-      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
-    })
-    graphEditorHosts.bumpRevision()
+  const result = deleteGalleryOutput(props.hostId, liveNode(), galleryKindOf(item), id)
+  if (!result.removed) {
+    emit('clearOutput')
     return
   }
-
-  if (item.kind === 'video') {
-    const list = node.params.generatedVideos ?? []
-    const picked = list.find((entry) => entry.id === id)
-    if (!picked?.id) return
-    host.runStates[node.id] = {
-      ...prev,
-      status: prev.status === 'idle' ? 'done' : prev.status,
-      outputs: {
-        ...(prev.outputs ?? {}),
-        out: {
-          kind: 'video',
-          id: picked.id,
-          dataUrl: picked.dataUrl || '',
-          createdAt: picked.createdAt,
-          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-        },
-        'out-all': { kind: 'videos', items: list }
-      }
-    }
-    graphEditorHosts.updateNode(props.hostId, node.id, {
-      selectedVideoId: picked.id,
-      previewDataUrl: picked.dataUrl?.trim() ? picked.dataUrl : '',
-      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
-    })
-    graphEditorHosts.bumpRevision()
-    return
-  }
-
-  if (item.kind === 'audio') {
-    const list = node.params.generatedVoices ?? []
-    const picked = list.find((entry) => entry.id === id)
-    if (!picked?.id) return
-    host.runStates[node.id] = {
-      ...prev,
-      status: prev.status === 'idle' ? 'done' : prev.status,
-      outputs: {
-        ...(prev.outputs ?? {}),
-        out: {
-          kind: 'voice',
-          id: picked.id,
-          createdAt: picked.createdAt,
-          ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-        },
-        'out-all': { kind: 'voices', items: list }
-      }
-    }
-    graphEditorHosts.updateNode(props.hostId, node.id, {
-      selectedVoiceId: picked.id,
-      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
-    })
-    graphEditorHosts.bumpRevision()
-    return
-  }
-
-  if (item.kind === 'text') {
-    const list = node.params.generatedTexts ?? []
-    const picked = list.find((entry) => entry.id === id)
-    if (!picked?.id) return
-    const body = picked.text ?? ''
-    const outValue =
-      node.typeId === 'world.extract'
-        ? {
-            kind: 'world' as const,
-            text: body,
-            ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-          }
-        : node.typeId === 'beat.split'
-          ? {
-              kind: 'beat' as const,
-              text: body,
-              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-            }
-          : {
-              kind: 'text' as const,
-              text: body,
-              id: picked.id,
-              ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
-            }
-    host.runStates[node.id] = {
-      ...prev,
-      status: prev.status === 'idle' ? 'done' : prev.status,
-      outputs: {
-        ...(prev.outputs ?? {}),
-        out: outValue,
-        'out-all': { kind: 'texts', items: list }
-      }
-    }
-    graphEditorHosts.updateNode(props.hostId, node.id, {
-      selectedTextId: picked.id,
-      text: body.trim() ? body : node.params.text,
-      previewRelativePath: picked.relativePath?.trim() ? picked.relativePath : ''
-    })
-    graphEditorHosts.bumpRevision()
-  }
+  const relativePath = result.relativePath?.trim()
+  if (!relativePath) return
+  invalidateAssetUrlCache(relativePath)
+  invalidateAssetUrlCache(thumbRelativePathFor(relativePath))
+  void window.studio.deleteGraphRunMedia(relativePath).catch((err) => {
+    console.warn('[GraphNodeOutputPreview] delete graph media failed', relativePath, err)
+  })
 }
 
 const primaryRevealAssetId = computed(() => {
@@ -1261,6 +1188,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
       </div>
     </div>
 
+    <p v-if="clearable && canSelectGalleryOutput" class="hint">
+      {{ t('graph.inspector.outputGalleryHint') }}
+    </p>
+
     <p v-if="loading" class="hint">{{ t('graph.inspector.outputPreviewLoading') }}</p>
 
     <div v-else-if="layoutKind === 'text'" class="text-stack">
@@ -1286,22 +1217,22 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :title="imagePreviewHint"
             @dblclick="openImageFull(item)"
           />
-          <button
-            v-if="clearable && item.kind === 'image'"
-            type="button"
-            class="output-clear-btn"
-            :title="t('graph.inspector.outputDelete')"
-            :aria-label="t('graph.inspector.outputDelete')"
-            @click.stop="emit('clearOutput')"
-          >
-            <span class="icon-delete" aria-hidden="true">×</span>
-          </button>
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
             :src="displaySrc(item)"
           />
           <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+          <button
+            v-if="canDeleteOutputItem(item)"
+            type="button"
+            class="output-clear-btn"
+            :title="t('graph.inspector.outputDelete')"
+            :aria-label="t('graph.inspector.outputDelete')"
+            @click.stop="deleteOutputItem(item)"
+          >
+            <span class="icon-delete" aria-hidden="true" />
+          </button>
         </template>
       </div>
       <div v-else class="media-grid">
@@ -1314,16 +1245,28 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
           @click="selectAsCurrentOutput(item)"
         >
-          <button
-            v-if="revealableAssetId(item.assetId)"
-            type="button"
-            class="reveal-btn card-reveal"
-            :title="t('graph.inspector.revealInAssets')"
-            :aria-label="t('graph.inspector.revealInAssets')"
-            @click.stop="revealInAssets(item.assetId)"
-          >
-            <span class="icon-reveal" aria-hidden="true" />
-          </button>
+          <div class="card-actions">
+            <button
+              v-if="revealableAssetId(item.assetId)"
+              type="button"
+              class="reveal-btn card-reveal"
+              :title="t('graph.inspector.revealInAssets')"
+              :aria-label="t('graph.inspector.revealInAssets')"
+              @click.stop="revealInAssets(item.assetId)"
+            >
+              <span class="icon-reveal" aria-hidden="true" />
+            </button>
+            <button
+              v-if="canDeleteOutputItem(item)"
+              type="button"
+              class="output-clear-btn card-clear"
+              :title="t('graph.inspector.outputDelete')"
+              :aria-label="t('graph.inspector.outputDelete')"
+              @click.stop="deleteOutputItem(item)"
+            >
+              <span class="icon-delete" aria-hidden="true" />
+            </button>
+          </div>
           <img
             v-if="item.kind === 'image' && displaySrc(item)"
             :src="displaySrc(item)"
@@ -1342,6 +1285,9 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           />
           <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
           <span class="media-index">{{ index + 1 }}</span>
+          <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
+            {{ t('graph.inspector.generate.selectedAsOutput') }}
+          </span>
         </div>
       </div>
       <div class="text-stack aggregate-json">
@@ -1368,16 +1314,6 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :title="imagePreviewHint"
           @dblclick="openImageFull(item)"
         />
-        <button
-          v-if="clearable && item.kind === 'image'"
-          type="button"
-          class="output-clear-btn"
-          :title="t('graph.inspector.outputDelete')"
-          :aria-label="t('graph.inspector.outputDelete')"
-          @click.stop="emit('clearOutput')"
-        >
-          <span class="icon-delete" aria-hidden="true">×</span>
-        </button>
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
@@ -1390,6 +1326,16 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           @dblclick="openTextNotepad(item)"
         >{{ displayText(item) }}</pre>
         <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+        <button
+          v-if="canDeleteOutputItem(item)"
+          type="button"
+          class="output-clear-btn"
+          :title="t('graph.inspector.outputDelete')"
+          :aria-label="t('graph.inspector.outputDelete')"
+          @click.stop="deleteOutputItem(item)"
+        >
+          <span class="icon-delete" aria-hidden="true" />
+        </button>
       </template>
     </div>
 
@@ -1403,16 +1349,28 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
         @click="selectAsCurrentOutput(item)"
       >
-        <button
-          v-if="revealableAssetId(item.assetId)"
-          type="button"
-          class="reveal-btn card-reveal"
-          :title="t('graph.inspector.revealInAssets')"
-          :aria-label="t('graph.inspector.revealInAssets')"
-          @click.stop="revealInAssets(item.assetId)"
-        >
-          <span class="icon-reveal" aria-hidden="true" />
-        </button>
+        <div class="card-actions">
+          <button
+            v-if="revealableAssetId(item.assetId)"
+            type="button"
+            class="reveal-btn card-reveal"
+            :title="t('graph.inspector.revealInAssets')"
+            :aria-label="t('graph.inspector.revealInAssets')"
+            @click.stop="revealInAssets(item.assetId)"
+          >
+            <span class="icon-reveal" aria-hidden="true" />
+          </button>
+          <button
+            v-if="canDeleteOutputItem(item)"
+            type="button"
+            class="output-clear-btn card-clear"
+            :title="t('graph.inspector.outputDelete')"
+            :aria-label="t('graph.inspector.outputDelete')"
+            @click.stop="deleteOutputItem(item)"
+          >
+            <span class="icon-delete" aria-hidden="true" />
+          </button>
+        </div>
         <img
           v-if="item.kind === 'image' && displaySrc(item)"
           :src="displaySrc(item)"
@@ -1441,6 +1399,9 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         >{{ displayText(item) }}</pre>
         <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
         <span class="media-index">{{ index + 1 }}</span>
+        <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
+          {{ t('graph.inspector.generate.selectedAsOutput') }}
+        </span>
       </div>
     </div>
 
@@ -1508,11 +1469,17 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   background: var(--bg-hover);
 }
 
-.reveal-btn.card-reveal {
+.card-actions {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reveal-btn.card-reveal {
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
 }
 
@@ -1577,14 +1544,19 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   position: absolute;
   top: 6px;
   right: 6px;
+  box-sizing: border-box;
   width: 24px;
   height: 24px;
+  padding: 0;
+  margin: 0;
   border: none;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
   cursor: pointer;
   z-index: 2;
   transition: background 0.15s ease;
@@ -1594,11 +1566,45 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   background: rgba(180, 40, 40, 0.85);
 }
 
+.output-clear-btn.card-clear {
+  position: static;
+  top: auto;
+  right: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+/** 纯 CSS 斜十字：两条线都以盒子中心为原点旋转，避免 × 字形基线偏移 */
 .icon-delete {
+  position: relative;
   display: block;
-  font-size: 15px;
-  line-height: 1;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
   pointer-events: none;
+}
+
+.icon-delete::before,
+.icon-delete::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 1.5px;
+  margin: 0;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: center;
+}
+
+.icon-delete::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.icon-delete::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .preview-image.interactive {
@@ -1706,6 +1712,19 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
+}
+
+.media-current {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent, #5a8cff) 82%, transparent);
+  color: #fff;
+  pointer-events: none;
 }
 
 .text-stack {
