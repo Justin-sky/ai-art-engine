@@ -1343,32 +1343,33 @@ watch(
   { immediate: true }
 )
 
-/** 叠放层：最多 3 张，末张（最新/当前）在最前 */
+/** 叠放层：最多 5 张，呈扑克手牌扇形；末张（最新）在最右上方 */
 const cardImageStackSrcs = computed((): string[] => {
   const urls = cardImageGridSrcs.value
   if (urls.length <= 1) return urls
-  return urls.slice(Math.max(0, urls.length - 3))
+  return urls.slice(Math.max(0, urls.length - 5))
 })
 
-/** 堆叠：正面居中，后面的卡片交替旋转并略缩小，形成照片摞 */
+/**
+ * 扑克手牌扇形：以底部为轴心，左右对称展开，右侧牌叠在最上层。
+ * index 0 最左，total-1 最右（最新）。
+ */
 function cardImageStackStyle(index: number, total: number): Record<string, string> {
-  const depth = total - 1 - index
-  if (depth <= 0) {
-    return {
-      zIndex: '10',
-      transform: 'translate(-50%, -50%) rotate(0deg) scale(1)',
-      opacity: '1'
-    }
-  }
-  const sign = depth % 2 === 1 ? -1 : 1
-  const rot = sign * (5 + depth * 3)
-  const tx = sign * (6 + depth * 3)
-  const ty = 3 + depth * 2
-  const scale = 1 - depth * 0.045
+  const n = Math.max(1, total)
+  const mid = (n - 1) / 2
+  const t = index - mid
+  // 张数少时扇角略大，张数多时收一点，避免裁切
+  const rotStep = n <= 2 ? 10 : n <= 3 ? 12 : n <= 4 ? 10 : 8
+  const xStep = n <= 2 ? 16 : n <= 3 ? 14 : n <= 4 ? 12 : 10
+  const rot = t * rotStep
+  const tx = t * xStep
+  // 轻微弧线：两侧略下沉，中间略抬起
+  const ty = Math.abs(t) * 5 - (mid > 0 ? 2 : 0)
   return {
-    zIndex: String(10 - depth),
-    transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`,
-    opacity: String(Math.max(0.55, 1 - depth * 0.12))
+    zIndex: String(index + 1),
+    transformOrigin: '50% 100%',
+    transform: `translate(calc(-50% + ${tx}px), calc(-42% + ${ty}px)) rotate(${rot}deg)`,
+    opacity: '1'
   }
 }
 
@@ -2496,7 +2497,7 @@ function formatTime(sec: number): string {
 <style scoped>
 .graph-node {
   position: absolute;
-  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  border: 1px solid color-mix(in srgb, #c4c9d1 42%, var(--border));
   border-radius: 10px;
   background: var(--graph-node-bg);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 55%, transparent);
@@ -2515,13 +2516,13 @@ function formatTime(sec: number): string {
     var(--graph-node-output-from) 0%,
     var(--graph-node-bg) 55%
   );
-  border-color: color-mix(in srgb, #3d6ea8 55%, transparent);
+  border-color: color-mix(in srgb, #3d6ea8 78%, transparent);
   z-index: 12;
 }
 
 .graph-node.asset-ref {
   border-style: dashed;
-  border-color: color-mix(in srgb, #6b7280 50%, transparent);
+  border-color: color-mix(in srgb, #b8bec8 65%, transparent);
   background: var(--graph-node-asset-bg);
 }
 
@@ -2539,7 +2540,7 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.processing-node {
-  border-color: color-mix(in srgb, #3d9a6e 55%, transparent);
+  border-color: color-mix(in srgb, #3d9a6e 78%, transparent);
   background: linear-gradient(
     160deg,
     var(--graph-node-processing-from) 0%,
@@ -2548,7 +2549,7 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.lock-node {
-  border-color: color-mix(in srgb, #8a7a4a 55%, transparent);
+  border-color: color-mix(in srgb, #8a7a4a 78%, transparent);
   opacity: 0.82;
   background: linear-gradient(
     160deg,
@@ -3016,17 +3017,18 @@ function formatTime(sec: number): string {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 74%;
-  height: 74%;
+  /* 略窄略高，更像手牌比例，扇开后不易互挡太多 */
+  width: 58%;
+  height: 72%;
   object-fit: cover;
   object-position: center;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, #fff 14%, transparent);
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, #fff 18%, transparent);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.28),
-    0 4px 12px rgba(0, 0, 0, 0.32);
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 6px 14px rgba(0, 0, 0, 0.34);
   background: var(--graph-preview-bg);
-  transform-origin: center center;
+  /* origin 由 cardImageStackStyle 设为底部，便于扇形展开 */
   pointer-events: none;
 }
 
