@@ -3063,6 +3063,18 @@ function formatTime(sec: number): string {
   background: var(--bg-hover, var(--bg-elevated));
 }
 
+.graph-node .grid-expand-btn {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.graph-node:hover .grid-expand-btn,
+.graph-node.selected .grid-expand-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .grid-expand-count {
   min-width: 1.1em;
   font-variant-numeric: tabular-nums;
@@ -3476,5 +3488,14 @@ function formatTime(sec: number): string {
 
 :deep(.resize-handle) {
   z-index: 50;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.graph-node:hover :deep(.resize-handle),
+.graph-node.selected :deep(.resize-handle) {
+  opacity: 1;
+  pointer-events: auto;
 }
 </style>
