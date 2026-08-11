@@ -5716,7 +5716,9 @@ export async function executeAnim2dNode(
     const composed = await ctx.composeImageGridCell({
       sourceDataUrl: sourceUrl,
       state: { rows: state.rows, cols: state.cols, selected: [] },
-      cellKey: cell
+      cellKey: cell,
+      // 序列图常带格线/黑边：整数切格后再按格子尺寸内缩
+      edgeInset: 'auto'
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {

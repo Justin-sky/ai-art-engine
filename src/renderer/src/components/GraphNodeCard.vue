@@ -129,6 +129,7 @@
         loading="lazy"
         decoding="async"
         draggable="false"
+        @load="onPreviewImageLoad"
       />
 
       <div
@@ -142,32 +143,81 @@
           loading="lazy"
           decoding="async"
           draggable="false"
+          @load="onPreviewImageLoad"
         />
       </div>
 
       <div
         v-else-if="cardImageGridSrcs.length > 1"
         class="card-preview-grid"
+        :class="cardImageGridExpanded ? 'is-expanded' : 'is-stacked'"
+        :style="
+          cardImageGridExpanded
+            ? { gridTemplateColumns: `repeat(${cardImageGridColCount}, minmax(0, 1fr))` }
+            : undefined
+        "
         :title="previewOpenHint"
       >
-        <img
-          v-for="(src, index) in cardImageGridSrcs"
-          :key="`grid-img-${index}`"
-          :src="src"
-          alt=""
-          loading="lazy"
-          decoding="async"
-          draggable="false"
-        />
+        <template v-if="cardImageGridExpanded">
+          <img
+            v-for="(src, index) in cardImageGridSrcs"
+            :key="`grid-img-${index}`"
+            :src="src"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+            @load="onCardGridImageLoad(index, $event)"
+          />
+        </template>
+        <template v-else>
+          <img
+            v-for="(src, index) in cardImageStackSrcs"
+            :key="`stack-img-${index}`"
+            class="stack-layer"
+            :style="cardImageStackStyle(index, cardImageStackSrcs.length)"
+            :src="src"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+            @load="index === cardImageStackSrcs.length - 1 ? onPreviewImageLoad($event) : undefined"
+          />
+        </template>
+        <button
+          type="button"
+          class="grid-expand-btn"
+          :title="
+            cardImageGridExpanded
+              ? t('graph.node.collapseImageGrid')
+              : t('graph.node.expandImageGrid')
+          "
+          :aria-expanded="cardImageGridExpanded"
+          :aria-label="
+            cardImageGridExpanded
+              ? t('graph.node.collapseImageGrid')
+              : t('graph.node.expandImageGrid')
+          "
+          @pointerdown.stop
+          @click.stop="toggleCardImageGridExpanded"
+        >
+          <span class="grid-expand-count">{{ cardImageGridSrcs.length }}</span>
+          <span class="grid-expand-label">{{
+            cardImageGridExpanded
+              ? t('graph.node.collapseImageGridShort')
+              : t('graph.node.expandImageGridShort')
+          }}</span>
+        </button>
       </div>
 
       <img
-        v-else-if="(isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
+        v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
         :src="selectImagePreview"
         alt=""
         loading="lazy"
         decoding="async"
         draggable="false"
+        @load="onPreviewImageLoad"
       />
 
       <div
@@ -437,6 +487,8 @@ import {
   formatPortLimitBadge,
   getGraphScopeDefinition,
   getNodePorts,
+  cardImageGridCols,
+  cardImageGridMediaSize,
   fitNodeSizeToMediaAspect,
   getNodeSize,
   nodePortYRatio,
@@ -599,6 +651,8 @@ const mediaPlaying = ref(false)
 const mediaError = ref(false)
 /** 2D 帧动画：卡片自动播放帧预览 */
 const isAnim2dNode = computed(() => props.node.typeId === 'anim.2d')
+/** 生成帧动画序列图：note 分类但输出图片，需走图片预览与尺寸自适应 */
+const isFrameAnimGenNode = computed(() => props.node.typeId === 'frame.animGen')
 const animFrameIndex = ref(0)
 const cardAnimFrames = ref<string[]>([])
 /** 用户双击暂停后，避免视口 watch 立刻重新自动播放 */
@@ -720,11 +774,22 @@ const isScreenplayOutputNode = computed(
     (props.node.typeId === 'output.text' || props.node.params.outputKind === 'text')
 )
 const previewCollapsed = computed(() => props.node.params.previewCollapsed === true)
+/** 多图默认错位叠放；仅显式 true 时平铺 */
+const cardImageGridExpanded = computed(() => props.node.params.cardImageGridExpanded === true)
+
+const cardImageGridColCount = computed(() => cardImageGridCols(cardImageGridSrcs.value.length))
 
 function togglePreviewCollapsed(): void {
   if (!props.hostId) return
   graphEditorHosts.updateNode(props.hostId, props.node.id, {
     previewCollapsed: !previewCollapsed.value
+  })
+}
+
+function toggleCardImageGridExpanded(): void {
+  if (!props.hostId) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    cardImageGridExpanded: !cardImageGridExpanded.value
   })
 }
 
@@ -1133,7 +1198,8 @@ watch(
             (props.node.params.worldElementOutputs?.length ?? 1) - 1
           ]?.imageUrl
         : '',
-      isSelectImageNode(props.node) ||
+      isFrameAnimGenNode.value ||
+        isSelectImageNode(props.node) ||
         isMultiAngleEditorNode(props.node) ||
         isLightingEditorNode(props.node) ||
         isPortraitTextureEditorNode(props.node) ||
@@ -1277,6 +1343,35 @@ watch(
   { immediate: true }
 )
 
+/** 叠放层：最多 3 张，末张（最新/当前）在最前 */
+const cardImageStackSrcs = computed((): string[] => {
+  const urls = cardImageGridSrcs.value
+  if (urls.length <= 1) return urls
+  return urls.slice(Math.max(0, urls.length - 3))
+})
+
+/** 堆叠：正面居中，后面的卡片交替旋转并略缩小，形成照片摞 */
+function cardImageStackStyle(index: number, total: number): Record<string, string> {
+  const depth = total - 1 - index
+  if (depth <= 0) {
+    return {
+      zIndex: '10',
+      transform: 'translate(-50%, -50%) rotate(0deg) scale(1)',
+      opacity: '1'
+    }
+  }
+  const sign = depth % 2 === 1 ? -1 : 1
+  const rot = sign * (5 + depth * 3)
+  const tx = sign * (6 + depth * 3)
+  const ty = 3 + depth * 2
+  const scale = 1 - depth * 0.045
+  return {
+    zIndex: String(10 - depth),
+    transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`,
+    opacity: String(Math.max(0.55, 1 - depth * 0.12))
+  }
+}
+
 /** 多结果文本：节点卡小网格（≥2） */
 const cardTextGridItems = computed((): string[] => {
   if (hideCardPreview.value) return []
@@ -1391,6 +1486,8 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     if (kind === 'voice') return 'voice'
     if (kind === 'text') return 'none'
   }
+  // 帧动画：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
+  if (isFrameAnimGenNode.value || isAnim2dNode.value) return 'image'
   if (isSelectVideoNode(props.node)) return 'video'
   if (isSelectVoiceNode(props.node)) return 'voice'
   const t = props.node.assetType ?? props.asset?.type
@@ -2127,19 +2224,41 @@ function onMediaTimeUpdate(e: Event): void {
 
 const lastAutoFitMediaKey = ref('')
 
+/** 卡片上是否在展示可按比例适配的图片/视频 */
+function hasAutoFitMediaPreview(): boolean {
+  if (previewKind.value === 'image' || previewKind.value === 'video') return true
+  if (isAnim2dNode.value && cardAnimFrames.value.length > 0) return true
+  if (isFrameAnimGenNode.value) return true
+  if (cardImageGridSrcs.value.length > 0) return true
+  if (selectImagePreview.value.trim()) return true
+  if (directorLivePreview.value.trim()) return true
+  return false
+}
+
 watch(
-  () => previewUrl.value,
+  () =>
+    [
+      previewUrl.value,
+      cardAnimFrames.value[0] ?? '',
+      cardImageGridSrcs.value.length,
+      cardImageGridSrcs.value[0] ?? '',
+      cardImageGridExpanded.value,
+      selectImagePreview.value,
+      directorLivePreview.value
+    ] as const,
   () => {
     lastAutoFitMediaKey.value = ''
   }
 )
 
-function tryAutoFitPreviewMedia(mediaW: number, mediaH: number): void {
+function tryAutoFitPreviewMedia(mediaW: number, mediaH: number, mediaKey?: string): void {
   if (!(mediaW > 0 && mediaH > 0)) return
   if (previewCollapsed.value) return
   if (props.node.params.sizeManuallyResized === true) return
-  if (previewKind.value !== 'image' && previewKind.value !== 'video') return
-  const key = `${previewUrl.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
+  if (!hasAutoFitMediaPreview()) return
+  const key =
+    mediaKey ||
+    `${previewUrl.value || cardAnimFrames.value[0] || cardImageGridSrcs.value[0] || selectImagePreview.value || directorLivePreview.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
   if (key === lastAutoFitMediaKey.value) return
   const next = fitNodeSizeToMediaAspect(props.node, mediaW, mediaH)
   const cur = getNodeSize(props.node)
@@ -2150,7 +2269,86 @@ function tryAutoFitPreviewMedia(mediaW: number, mediaH: number): void {
 
 function onPreviewImageLoad(e: Event): void {
   const img = e.currentTarget as HTMLImageElement
-  tryAutoFitPreviewMedia(img.naturalWidth, img.naturalHeight)
+  const src = img.currentSrc || img.src || ''
+  tryAutoFitPreviewMedia(img.naturalWidth, img.naturalHeight, `${src}|${img.naturalWidth}x${img.naturalHeight}`)
+}
+
+function loadImageNaturalSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    let settled = false
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      if (!ok || !(img.naturalWidth > 0 && img.naturalHeight > 0)) {
+        reject(new Error('IMAGE_SIZE_UNAVAILABLE'))
+        return
+      }
+      resolve({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+    img.onload = () => finish(true)
+    img.onerror = () => finish(false)
+    img.src = src
+    // 缓存图常常不触发 @load，complete 时直接可读尺寸
+    if (img.complete) finish(img.naturalWidth > 0)
+  })
+}
+
+/**
+ * 多图卡片尺寸适配：叠放按单张比例；平铺按方阵整网格比例。
+ * 不依赖 img @load（缓存图常常不触发 load）。
+ */
+let cardGridAutoFitToken = 0
+async function autoFitCardImageGrid(urls: string[]): Promise<void> {
+  const n = urls.length
+  const src = (cardImageGridExpanded.value ? urls[0] : urls[urls.length - 1])?.trim()
+  if (!src || n <= 1) return
+  const token = ++cardGridAutoFitToken
+  const expanded = cardImageGridExpanded.value
+  try {
+    const { width, height } = await loadImageNaturalSize(src)
+    if (token !== cardGridAutoFitToken) return
+    if (cardImageGridSrcs.value.length !== n) return
+    if (cardImageGridExpanded.value !== expanded) return
+    if (expanded) {
+      const cols = cardImageGridCols(n)
+      const media = cardImageGridMediaSize(n, width, height, cols)
+      tryAutoFitPreviewMedia(
+        media.w,
+        media.h,
+        `grid:expanded:${n}:${cols}x${Math.ceil(n / cols)}:${width}x${height}`
+      )
+      return
+    }
+    tryAutoFitPreviewMedia(width, height, `grid:stacked:${n}:${width}x${height}`)
+  } catch {
+    /* 尺寸探测失败时保留当前节点大小 */
+  }
+}
+
+watch(
+  [cardImageGridSrcs, cardImageGridExpanded],
+  ([urls]) => {
+    if (urls.length > 1) void autoFitCardImageGrid(urls)
+  },
+  { flush: 'post' }
+)
+
+/** 平铺网格 @load 兜底 */
+function onCardGridImageLoad(index: number, e: Event): void {
+  if (index !== 0 || !cardImageGridExpanded.value) return
+  const img = e.currentTarget as HTMLImageElement
+  const n = cardImageGridSrcs.value.length
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  if (!(iw > 0 && ih > 0) || n <= 1) return
+  const cols = cardImageGridCols(n)
+  const media = cardImageGridMediaSize(n, iw, ih, cols)
+  tryAutoFitPreviewMedia(
+    media.w,
+    media.h,
+    `grid:expanded:${n}:${cols}x${Math.ceil(n / cols)}:${iw}x${ih}`
+  )
 }
 
 function onMediaLoaded(e: Event): void {
@@ -2220,7 +2418,8 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
       const composed = await composeImageGridCell({
         sourceDataUrl: sourceUrl,
         state: { rows: s.rows, cols: s.cols, selected: [] },
-        cellKey: key
+        cellKey: key,
+        edgeInset: 'auto'
       })
       if (composed.dataUrl?.trim()) next.push(composed.dataUrl.trim())
     } catch {
@@ -2257,6 +2456,7 @@ onBeforeUnmount(() => {
   cancelPreviewLoads()
   stopProgressTicker()
   stopCardAnimPreview()
+  cardGridAutoFitToken += 1
 })
 
 function onVideoMouseEnter(e: MouseEvent): void {
@@ -2438,7 +2638,7 @@ function formatTime(sec: number): string {
   border-radius: 10px 10px 0 0;
   overflow: hidden;
   box-sizing: border-box;
-  background: color-mix(in srgb, var(--graph-node-bg, var(--bg-elevated)) 92%, transparent);
+  background: color-mix(in srgb, var(--graph-node-bg, var(--bg-elevated)) 60%, transparent);
   backdrop-filter: blur(6px);
   opacity: 0;
   pointer-events: none;
@@ -2781,6 +2981,7 @@ function formatTime(sec: number): string {
 }
 
 .card-preview-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
@@ -2800,13 +3001,77 @@ function formatTime(sec: number): string {
   object-fit: contain;
 }
 
-.card-preview-grid img {
+.card-preview-grid.is-expanded {
+  display: grid;
+  /* 列数由 :style gridTemplateColumns（方阵）注入 */
+  gap: 2px;
+}
+
+.card-preview-grid.is-stacked {
+  display: block;
+  overflow: hidden;
+}
+
+.card-preview-grid.is-stacked .stack-layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 74%;
+  height: 74%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #fff 14%, transparent);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 4px 12px rgba(0, 0, 0, 0.32);
+  background: var(--graph-preview-bg);
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+.card-preview-grid.is-expanded img {
   width: 100%;
   height: 100%;
   min-height: 0;
   object-fit: contain;
   display: block;
   background: var(--graph-preview-bg);
+}
+
+.grid-expand-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.grid-expand-btn:hover {
+  border-color: var(--accent, #5a8cff);
+  background: var(--bg-hover, var(--bg-elevated));
+}
+
+.grid-expand-count {
+  min-width: 1.1em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.grid-expand-label {
+  opacity: 0.85;
 }
 
 .card-text-grid {

@@ -267,7 +267,8 @@ async function refreshCells(): Promise<void> {
         const composed = await composeImageGridCell({
           sourceDataUrl: sourceUrl,
           state: { rows: s.rows, cols: s.cols, selected: [] },
-          cellKey: cell
+          cellKey: cell,
+          edgeInset: 'auto'
         })
         if (composed.dataUrl) next.push({ key: cell, dataUrl: composed.dataUrl })
       } catch {

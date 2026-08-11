@@ -1921,6 +1921,10 @@ export default {
     node: {
       collapsePreview: '收起预览',
       expandPreview: '展开预览',
+      expandImageGrid: '展开多图平铺',
+      collapseImageGrid: '折叠为叠放预览',
+      expandImageGridShort: '展开',
+      collapseImageGridShort: '折叠',
       enableLock: '锁定：跳过执行，保留上次结果',
       disableLock: '解锁：下次运行将重新执行'
     },

@@ -380,6 +380,8 @@ export interface NodeExecuteContext {
     sourceDataUrl: string
     state: import('../imageGridSplit').ImageGridSplitState
     cellKey: string
+    /** 向内收缩像素；`'auto'` 按格子尺寸估算，用于去掉序列图格线/黑边 */
+    edgeInset?: number | 'auto'
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: {

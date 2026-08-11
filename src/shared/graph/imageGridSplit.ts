@@ -110,6 +110,50 @@ export function gridCellCropRect(
   }
 }
 
+/**
+ * 像素级宫格裁切：用整除边界，相邻格不重叠、不留缝，避免 Math.round 均分产生的 1px 黑边。
+ * `edgeInsetPx` 再向内收缩，用于削掉 AI 序列图常见的格线 / 黑边。
+ */
+export function gridCellPixelRect(
+  imageWidth: number,
+  imageHeight: number,
+  rows: number,
+  cols: number,
+  row1: number,
+  col1: number,
+  options?: { edgeInsetPx?: number }
+): { sx: number; sy: number; width: number; height: number } {
+  const r = Math.max(1, Math.floor(rows))
+  const c = Math.max(1, Math.floor(cols))
+  const row = Math.max(1, Math.min(r, Math.floor(row1)))
+  const col = Math.max(1, Math.min(c, Math.floor(col1)))
+  const sw = Math.max(1, Math.floor(imageWidth))
+  const sh = Math.max(1, Math.floor(imageHeight))
+  let sx = Math.floor(((col - 1) * sw) / c)
+  let sy = Math.floor(((row - 1) * sh) / r)
+  const ex = Math.floor((col * sw) / c)
+  const ey = Math.floor((row * sh) / r)
+  let width = Math.max(1, ex - sx)
+  let height = Math.max(1, ey - sy)
+
+  const inset = Math.max(0, Math.floor(options?.edgeInsetPx ?? 0))
+  if (inset > 0) {
+    const ix = Math.min(inset, Math.max(0, Math.floor((width - 1) / 2)))
+    const iy = Math.min(inset, Math.max(0, Math.floor((height - 1) / 2)))
+    sx += ix
+    sy += iy
+    width = Math.max(1, width - ix * 2)
+    height = Math.max(1, height - iy * 2)
+  }
+  return { sx, sy, width, height }
+}
+
+/** 按格子尺寸估算内缩：约 1.5%，至少 1px，封顶避免裁掉主体 */
+export function autoGridCellEdgeInsetPx(cellWidth: number, cellHeight: number): number {
+  const m = Math.min(Math.max(1, Math.floor(cellWidth)), Math.max(1, Math.floor(cellHeight)))
+  return Math.max(1, Math.min(12, Math.round(m * 0.015)))
+}
+
 export function readImageGridSplitFromNode(params: {
   imageGridSplit?: Partial<ImageGridSplitState>
 }): ImageGridSplitState {

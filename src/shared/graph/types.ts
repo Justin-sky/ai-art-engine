@@ -426,6 +426,11 @@ export interface GraphNodeParams {
   /** 节点卡片收起预览区（仅保留标题栏） */
   previewCollapsed?: boolean
   /**
+   * 多图卡片预览是否平铺展开。
+   * 未设置 / false：错位叠放只突出一张；true：按数量方阵平铺。
+   */
+  cardImageGridExpanded?: boolean
+  /**
    * 用户手动拖过右下角缩放后为 true，停止按预览媒体比例自动改尺寸。
    */
   sizeManuallyResized?: boolean

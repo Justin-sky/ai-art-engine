@@ -118,19 +118,21 @@ export function resolveAnim2dPreset(id: string | undefined): Anim2dPreset | unde
 
 const FRAME_ANIM_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的 2D 帧动画序列图专家。
 请把动作描述绘制成一张严格分格的序列图：
-- 整张图横向分为 N 列、纵向分为 M 行，共 N×M 个格子，格子大小完全一致、间距统一（建议不留空隙）；
+- 整张图横向分为 N 列、纵向分为 M 行，共 N×M 个等大格子，无缝紧贴拼接；
+- 格与格之间禁止黑边、白边、分隔线、描边或空隙；每格内容必须铺满自己的格子，格子边界即画面边界，不得内缩留边；
 - 帧序固定为从左到右、从上到下依次为该动作的连续帧；
 - 同一角色/主体在所有格子中保持外观、体型、配色与画风完全一致，仅动作与姿态变化；
 - 动作连贯、每帧之间过渡自然，符合该动作的运动规律；
-- 只输出序列图本身：不加边框、说明文字、水印或多余装饰。`
+- 只输出序列图本身：不加外框、说明文字、水印或多余装饰。`
 
 const FRAME_ANIM_SYSTEM_PROMPT_EN = `You are an expert in 2D frame-animation sprite sheets for AIArtEngine.
 Turn the action description into a strictly tiled sequence image:
-- The image is divided into N columns and M rows, N×M equal cells with consistent spacing (no gutters preferred);
+- The image is divided into N columns and M rows, N×M equal cells, seamless edge-to-edge tiling;
+- No black/white gutters, borders, outlines or gaps between cells; each frame must fill its cell completely (cell edge = image edge, no inset padding);
 - Frame order is fixed: left to right, then top to bottom, as consecutive frames of the action;
 - The same character/subject keeps identical look, proportions, palette and art style in every cell, only pose changes;
 - Motion is fluid and each frame transitions naturally per the action's movement rules;
-- Output only the sequence image itself: no borders, captions, watermarks or extra decoration.`
+- Output only the sequence image itself: no outer frame, captions, watermarks or extra decoration.`
 
 export function resolveFrameAnimGenSystemPrompt(
   override?: string | null,
@@ -150,9 +152,9 @@ export function buildAnim2dGridInstruction(
   const c = Math.max(1, Math.floor(cols))
   const total = r * c
   if (locale?.startsWith('en')) {
-    return `Draw this as a single sequence image of ${total} frames arranged in a ${r}×${c} grid (${c} columns, ${r} rows), frame order left to right then top to bottom; keep the character identical across all frames.`
+    return `Draw this as a single sequence image of ${total} frames arranged in a ${r}×${c} grid (${c} columns, ${r} rows), frame order left to right then top to bottom; seamless tiling with no gutters/borders between cells; each frame fills its cell edge-to-edge; keep the character identical across all frames.`
   }
-  return `将上述动作绘制成一张 ${total} 帧的序列图：横向 ${c} 列、纵向 ${r} 行，共 ${r}×${c} 个等大的格子；帧序从左到右、从上到下；所有格子中的角色保持外观与画风完全一致，仅动作不同。`
+  return `将上述动作绘制成一张 ${total} 帧的序列图：横向 ${c} 列、纵向 ${r} 行，共 ${r}×${c} 个等大的格子；帧序从左到右、从上到下；格子无缝拼接，禁止格间黑边/白边/分隔线；每格内容铺满格子；所有格子中的角色保持外观与画风完全一致，仅动作不同。`
 }
 
 /** dive 内图结构版本：结构变化时递增，使已存在的内图资产按新结构重建 */

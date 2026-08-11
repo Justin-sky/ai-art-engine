@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cardImageGridCols,
+  cardImageGridMediaSize,
   createNodeFromType,
   fitNodeSizeToMediaAspect,
   getNodeDefaultSize
@@ -31,5 +33,38 @@ describe('fitNodeSizeToMediaAspect', () => {
     const node = createNodeFromType('asset.image', { x: 0, y: 0 })
     const def = getNodeDefaultSize('asset.image')
     expect(fitNodeSizeToMediaAspect(node, 0, 100)).toEqual(def)
+  })
+
+  it('fits 2-column card grid wider than a single landscape image', () => {
+    const node = createNodeFromType('asset.image', { x: 0, y: 0 })
+    const single = fitNodeSizeToMediaAspect(node, 1920, 1080)
+    const gridMedia = cardImageGridMediaSize(2, 1920, 1080, 2)
+    expect(gridMedia).toEqual({ w: 3840, h: 1080 })
+    const grid = fitNodeSizeToMediaAspect(node, gridMedia.w, gridMedia.h)
+    // 两张横图并排：节点应更扁（更宽或更矮），避免格子上下黑边
+    expect(grid.w / grid.h).toBeGreaterThan(single.w / single.h)
+  })
+})
+
+describe('cardImageGridCols', () => {
+  it('uses square matrix side length', () => {
+    expect(cardImageGridCols(2)).toBe(2)
+    expect(cardImageGridCols(3)).toBe(2)
+    expect(cardImageGridCols(4)).toBe(2)
+    expect(cardImageGridCols(5)).toBe(3)
+    expect(cardImageGridCols(9)).toBe(3)
+    expect(cardImageGridCols(16)).toBe(4)
+  })
+})
+
+describe('cardImageGridMediaSize', () => {
+  it('defaults to square matrix columns', () => {
+    expect(cardImageGridMediaSize(3, 100, 50)).toEqual({ w: 200, h: 100 })
+    expect(cardImageGridMediaSize(4, 100, 50)).toEqual({ w: 200, h: 100 })
+    expect(cardImageGridMediaSize(9, 100, 50)).toEqual({ w: 300, h: 150 })
+  })
+
+  it('honors explicit columns', () => {
+    expect(cardImageGridMediaSize(3, 100, 50, 2)).toEqual({ w: 200, h: 100 })
   })
 })

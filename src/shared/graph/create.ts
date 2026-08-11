@@ -150,6 +150,31 @@ export function fitNodeSizeToMediaAspect(
   return clampNodeSize(node, w, h)
 }
 
+/** 多图平铺列数：按数量取方阵边长（ceil(sqrt(n))），如 9→3、4→2、3→2 */
+export function cardImageGridCols(count: number): number {
+  const n = Math.max(1, Math.floor(count))
+  return Math.max(1, Math.ceil(Math.sqrt(n)))
+}
+
+/**
+ * 节点卡多图网格拼成的虚拟画布尺寸，供 fitNodeSizeToMediaAspect 使用。
+ * 未指定 cols 时按方阵列数；与 GraphNodeCard 平铺列数保持一致。
+ */
+export function cardImageGridMediaSize(
+  count: number,
+  imageW: number,
+  imageH: number,
+  cols?: number
+): { w: number; h: number } {
+  const n = Math.max(1, Math.floor(count))
+  const c = Math.max(1, Math.floor(cols ?? cardImageGridCols(n)))
+  const rows = Math.ceil(n / c)
+  return {
+    w: Math.max(1, c * imageW),
+    h: Math.max(1, rows * imageH)
+  }
+}
+
 export function createNodeFromType(
   typeId: GraphNodeTypeId,
   position: { x: number; y: number },

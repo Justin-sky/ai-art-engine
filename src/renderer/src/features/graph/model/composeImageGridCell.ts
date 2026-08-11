@@ -1,5 +1,6 @@
 import {
-  gridCellCropRect,
+  autoGridCellEdgeInsetPx,
+  gridCellPixelRect,
   normalizeImageGridSplit,
   parseCellKey,
   type ImageGridSplitState
@@ -19,24 +20,36 @@ export async function composeImageGridCell(input: {
   sourceDataUrl: string
   state: ImageGridSplitState
   cellKey: string
+  /**
+   * 向内收缩像素，削掉 AI 序列图常见的格线 / 黑边。
+   * `'auto'`：按格子尺寸估算（约 1.5%）。
+   */
+  edgeInset?: number | 'auto'
 }): Promise<{ dataUrl: string; width: number; height: number; cellKey: string }> {
   const state = normalizeImageGridSplit(input.state)
   const parsed = parseCellKey(input.cellKey)
   if (!parsed) throw new Error('GRID_SPLIT_BAD_CELL')
-  const rect = gridCellCropRect(state.rows, state.cols, parsed.row, parsed.col)
   const img = await loadImage(input.sourceDataUrl)
   const sw = img.naturalWidth || 1
   const sh = img.naturalHeight || 1
-  const sx = Math.round(rect.cropX * sw)
-  const sy = Math.round(rect.cropY * sh)
-  const width = Math.max(1, Math.min(sw - sx, Math.round(rect.cropW * sw)))
-  const height = Math.max(1, Math.min(sh - sy, Math.round(rect.cropH * sh)))
+  const base = gridCellPixelRect(sw, sh, state.rows, state.cols, parsed.row, parsed.col)
+  const edgeInsetPx =
+    input.edgeInset === 'auto'
+      ? autoGridCellEdgeInsetPx(base.width, base.height)
+      : Math.max(0, Math.floor(Number(input.edgeInset) || 0))
+  const { sx, sy, width, height } = edgeInsetPx
+    ? gridCellPixelRect(sw, sh, state.rows, state.cols, parsed.row, parsed.col, {
+        edgeInsetPx
+      })
+    : base
 
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('GRID_SPLIT_CANVAS_UNAVAILABLE')
+  // 关闭平滑，避免裁边像素被插值成发灰/发糊的「假边」
+  ctx.imageSmoothingEnabled = false
   ctx.drawImage(img, sx, sy, width, height, 0, 0, width, height)
   return {
     dataUrl: canvas.toDataURL('image/png'),

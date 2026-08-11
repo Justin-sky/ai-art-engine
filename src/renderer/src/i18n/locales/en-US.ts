@@ -1931,6 +1931,10 @@ export default {
     node: {
       collapsePreview: 'Collapse preview',
       expandPreview: 'Expand preview',
+      expandImageGrid: 'Expand to image grid',
+      collapseImageGrid: 'Collapse to stacked preview',
+      expandImageGridShort: 'Expand',
+      collapseImageGridShort: 'Stack',
       enableLock: 'Lock: skip execution and keep the last result',
       disableLock: 'Unlock: the next run will re-execute'
     },
