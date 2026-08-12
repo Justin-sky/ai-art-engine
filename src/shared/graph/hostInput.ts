@@ -8,7 +8,9 @@ import { getNodePorts } from './ports'
 import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent } from './textOutput'
 import {
+  isWorldGenImageOutPortId,
   stringifyWorldElementGenResults,
+  worldGenImageGroupOutputs,
   type WorldElementGenResult
 } from './worldElementParse'
 import type {
@@ -746,6 +748,19 @@ export function softResolveSourceOutput(
     const text = node.params.text?.trim() || node.params.resultText?.trim() || ''
     if (text) return { kind: 'beat', text }
     if (graphValueHasPayload(fromRun) && fromRun?.kind === 'beat') return fromRun
+  }
+
+  // 世界元素生成：按四类图片组口软解析
+  if (node.typeId === 'world.gen' && sourcePort && isWorldGenImageOutPortId(sourcePort)) {
+    const fromParams = Array.isArray(node.params.worldElementOutputs)
+      ? (node.params.worldElementOutputs as WorldElementGenResult[])
+      : []
+    const results =
+      fromParams.length > 0
+        ? fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
+        : []
+    const groups = worldGenImageGroupOutputs(results)
+    return groups[sourcePort] ?? { kind: 'images', items: [] }
   }
 
   // 世界元素宿主 / 生成：实体先于文本图库，避免目录或正文冒充实体

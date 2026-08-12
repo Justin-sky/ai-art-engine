@@ -407,7 +407,14 @@
       <button
         type="button"
         class="port in"
-        :class="[portDataTypeClass(port), { 'port-square': isPluralGraphPortDataType(port.dataType) }]"
+        :class="[
+          portDataTypeClass(port),
+          {
+            'port-square': isPluralGraphPortDataType(port.dataType),
+            'snap-highlight': snapHighlightPortIds?.has(port.id),
+            'snap-ready': snapReadyPortIds?.has(port.id)
+          }
+        ]"
         :data-port-id="port.id"
         :title="inPortTitle(port)"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
@@ -426,7 +433,14 @@
       <button
         type="button"
         class="port out"
-        :class="[portDataTypeClass(port), { 'port-square': isBatchPort(port) }]"
+        :class="[
+          portDataTypeClass(port),
+          {
+            'port-square': isBatchPort(port),
+            'snap-highlight': snapHighlightPortIds?.has(port.id),
+            'snap-ready': snapReadyPortIds?.has(port.id)
+          }
+        ]"
         :data-port-id="port.id"
         :title="outPortTitle(port)"
         @pointerdown.stop.prevent="onOutPortDown(port.id, $event)"
@@ -610,6 +624,10 @@ const props = defineProps<{
   connecting?: boolean
   /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
   linkMode?: boolean
+  /** 拖节点重合：类型兼容的端口高亮 */
+  snapHighlightPortIds?: ReadonlySet<string>
+  /** 拖节点靠近：即将自动连线的端口 */
+  snapReadyPortIds?: ReadonlySet<string>
   /**
    * 画布有选中节点时：全部节点显示顶栏菜单与左下角类型图标。
    * 未选中时仅悬停当前节点显示。
@@ -3405,6 +3423,31 @@ function formatTime(sec: number): string {
 .graph-node.connecting .port-wrap .port,
 .graph-node.link-mode .port-wrap .port {
   pointer-events: auto;
+}
+
+.port.snap-highlight {
+  pointer-events: auto;
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #64b4ff) 75%, transparent);
+  filter: brightness(1.15);
+}
+
+.port.snap-ready {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translate(calc(-50% + 0px), -50%) scale(1.25);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, #7dcea0 90%, transparent),
+    0 0 10px color-mix(in srgb, #7dcea0 55%, transparent);
+  filter: brightness(1.25);
+}
+
+.port-wrap.in .port.snap-ready {
+  transform: translate(calc(-50% - 8px), -50%) scale(1.25);
+}
+
+.port-wrap.out .port.snap-ready {
+  transform: translate(calc(-50% + 8px), -50%) scale(1.25);
 }
 
 /* 触控无悬停：始终显示端口 */

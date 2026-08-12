@@ -311,9 +311,12 @@ describe('asset editor graph', () => {
       ['in', 'world'],
       ['out', 'world']
     ])
-    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType])).toEqual([
-      ['in', 'world'],
-      ['out', 'worldEntities']
+    expect(getNodePorts(editor!).map((p) => [p.direction, p.dataType, p.id])).toEqual([
+      ['in', 'world', 'in'],
+      ['out', 'images', 'out-characters'],
+      ['out', 'images', 'out-scenes'],
+      ['out', 'images', 'out-props'],
+      ['out', 'images', 'out-weapons']
     ])
     expect(getNodePorts(output!).map((p) => [p.direction, p.dataType])).toEqual([
       ['in', 'worldEntities']
@@ -324,10 +327,17 @@ describe('asset editor graph', () => {
     expect(
       doc.edges.some((edge) => edge.source === table?.id && edge.target === editor?.id)
     ).toBe(true)
+    // 生成节点改为四类图片组出口，不再直接接到 worldEntities 边界
     expect(
       doc.edges.some((edge) => edge.source === editor?.id && edge.target === output?.id)
+    ).toBe(false)
+    expect(canConnectNodes(editor!, output!)).toBe(false)
+    expect(
+      canConnectNodes(editor!, createNodeFromType('image.select', { x: 400, y: 0 }), {
+        sourcePort: 'out-characters',
+        targetPort: 'in'
+      })
     ).toBe(true)
-    expect(canConnectNodes(editor!, output!)).toBe(true)
     expect(isNodeDeletable(output!)).toBe(false)
   })
 

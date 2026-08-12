@@ -53,7 +53,14 @@ describe('catalog port types', () => {
     expect(canConnectNodes(extract, worldTable)).toBe(true)
     expect(canConnectNodes(worldTable, worldGen)).toBe(true)
     const worldOutput = createNodeFromType('output.world', { x: 300, y: 0 })
-    expect(canConnectNodes(worldGen, worldOutput)).toBe(true)
+    // world.gen 出口为四类图片组，不再直连 worldEntities 输出
+    expect(canConnectNodes(worldGen, worldOutput)).toBe(false)
+    expect(
+      canConnectNodes(worldGen, createNodeFromType('image.select', { x: 400, y: 0 }), {
+        sourcePort: 'out-characters',
+        targetPort: 'in'
+      })
+    ).toBe(true)
     expect(
       canConnectNodes(worldGen, createNodeFromType('asset.screenplay', { x: 400, y: 0 }))
     ).toBe(false)

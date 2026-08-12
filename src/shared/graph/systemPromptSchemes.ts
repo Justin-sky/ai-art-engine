@@ -535,31 +535,40 @@ If unsure between props and weapons: **weapons = designed to strike / defend / k
 If unsure between scene and prop/weapon: **fixed architecture / terrain / built-in fixtures → scene; portable, handheld, combat, or plot-interactive objects → props/weapons as their own entries.**
 If a costume piece is worn as part of a character’s look, put its description **inside the character prompt**, not as a separate entry—unless the object later appears independently (then also list it under props/weapons).
 
+## Dynamic visual style (CRITICAL — never use a fixed house style)
+**Do NOT** force any default look such as UE5, Unreal Engine, photorealistic human modeling, PBR slogan packs, “8K cinematic”, anime, etc., unless the **source screenplay itself** justifies that look.
+
+You MUST first **distill a detailed project style brief from the script**, then weave it into every \`prompt\`:
+1. Read genre, era, tone, culture, medium cues, and any explicit art direction in the text (e.g. wuxia ink-wash, 90s Hong Kong crime film, fairy-tale watercolor, cyberpunk neon, stop-motion clay, children’s picture book, noir B&W, documentary handheld realism).
+2. Write a **shared style spine** for this catalog: medium / rendering approach, line & texture language, palette & color temperature, lighting philosophy, material treatment, grain/finish, and what to avoid. Make it specific enough to regenerate consistently.
+3. Apply that same spine to characters, scenes, props, and weapons so the catalog feels like one production—not four random styles.
+4. If the script is silent on style, infer the **most coherent** style from setting + tone + genre, and state it clearly in each prompt; still avoid inventing a universal UE5-realism default.
+5. Prefer natural integration of style words over slogan spam. Style must **follow the story**, not a preset template.
+
 ## Prompt hygiene by category (HARD RULES — never violate)
 These rules exist so each catalog entry can be reused as a clean asset plate, not a story still.
-Style baseline (all categories): prefer Unreal Engine UE5 high-precision look, 8K clarity, cinematic quality; weave style cues naturally into the prompt—do not dump an unedited slogan block.
+Composition rules below are framing rules only; **visual style still comes from the dynamic style brief above**.
 
 ### characters — full-body front design sheet
 - Frame: **standard character design sheet**, **full-body front view** only; **A-pose** (arms open ~45°); target **head-to-body ~1:7**; no cinematic scene staging.
-- Style/skin: UE5 realistic human modeling, soft lighting, realistic skin with visible pores; **forbid** influencer face, heavy skin smoothing, plastic skin; clear features, natural hair.
+- Appearance: clear facial features and hair consistent with the distilled style; avoid influencer face / plastic skin unless the script’s style intentionally calls for stylized faces.
 - Background: **clean white / plain studio** only; clean composition, no overlap/occlusion, no other people.
-- Content to cover when the text supports it: basic identity (age/role), appearance, costume, hairstyle & makeup, expression & temperament.
-- FORBIDDEN: rooms, streets, weather, landscapes, crowds, “standing in …”, story actions.
+- Content to cover when the text supports it: basic identity (age/role), appearance, costume, hairstyle & makeup, expression & temperament, **plus the script-derived style brief**.
+- FORBIDDEN: rooms, streets, weather, landscapes, crowds, “standing in …”, story actions; forbidden to hardcode UE5 / photoreal slogans unrelated to the script.
 
 ### scenes — empty environment / panorama-friendly plate
 - Describe **place only**: location, architecture/terrain, layout/structure, time of day, weather, atmosphere, lighting. Only include **immovable set dressing** that defines the place (street lamps, built-in shelves, plaza statue, wall murals, parked neon signs).
-- Style: UE5 modeling, high-precision render, cinematic light, realistic materials; explicitly **no people, no text, no watermark**.
+- Style: use the **script-derived** medium, palette, and lighting language; explicitly **no people, no text, no watermark**.
 - FORBIDDEN in scene \`prompt\`: humans/faces/silhouettes/crowds; **weapons of any kind** (swords, guns, bows, staffs, blades, shields as gear); **portable/plot props** (suitcases, lanterns held by characters, tools, vehicles in focus, consoles as hero objects, ritual items as hero objects); staged still-life of story MacGuffins; “with a sword on the table”, “weapons rack full of…”, “luggage in the corner” as hero subjects.
 - Split correctly: if the text mentions a sword in a temple, the **temple** goes to \`scenes\` (empty architecture + light/weather); the **sword** goes to \`weapons\` as its own entry—do **not** put the sword into the scene prompt.
 
 ### props — isolated product plate
-- Frame as a **single standalone prop**: front view, upright, centered, fully visible silhouette; materials readable (color, shape, size, ornaments, wear, special effects).
-- Style: UE5 + PBR / physically based materials, global illumination, realistic lighting.
+- Frame as a **single standalone prop**: front view, upright, centered, fully visible silhouette; materials readable (color, shape, size, ornaments, wear, special effects) **in the distilled style**.
 - Background: **pure white solid**; no other elements; prefer **no shadow / no reflection / no cast shadow**.
-- FORBIDDEN: rooms, landscapes, hands holding the object, characters, story staging, weapons.
+- FORBIDDEN: rooms, landscapes, hands holding the object, characters, story staging, weapons; forbidden fixed UE5/PBR slogan packs unless justified by the script style.
 
 ### weapons — isolated product plate
-- Same isolation rules as props: **single standalone weapon**, front view, upright/centered, fully visible silhouette; readable materials, edge wear, ornaments, special effects.
+- Same isolation rules as props: **single standalone weapon**, front view, upright/centered, fully visible silhouette; readable materials, edge wear, ornaments, special effects **in the distilled style**.
 - Background: **pure white solid**; prefer **no shadow / no reflection**.
 - FORBIDDEN: combat staging, hands gripping the weapon, characters, forest/stone scenery, story stills.
 
@@ -587,24 +596,26 @@ Each array element MUST include all three keys:
 Write 1–3 dense sentences (or a structured comma/phrase list) covering, when applicable:
 1. **Subject & identity**: who/what; age band; species; role silhouette
 2. **Appearance**: face, hair, body, clothing layers, colors, materials, wear & tear, signatures (scar, tattoo, emblem)
-3. **Materials & craft**: fabric, metal, wood, neon, rain-slick asphalt, paper texture, PBR-readable surfaces, etc.
-4. **Lighting / render**: soft studio for characters/props/weapons; cinematic / architectural light for scenes; UE5 + 8K quality cues
+3. **Materials & craft**: fabric, metal, wood, ink wash, watercolor paper, clay, neon glass, rain-slick asphalt, etc.—as implied by the distilled style
+4. **Lighting / mood**: soft studio for characters/props/weapons; cinematic / architectural light for scenes—expressed in the **script’s** visual language
 5. **Framing** matching the category rules above (full-body front A-pose sheet / empty panorama-friendly plate / white-bg product shot)
-6. **Style anchors** coherent across the catalog—keep them concise, not slogan spam
-7. Hygiene: no watermark/random text; do NOT invent logos unless the story needs them
+6. **Dynamic style brief**: detailed style distilled from the screenplay (medium, palette, lighting, texture, era/genre finish); must be consistent across the catalog
+7. Hygiene: no watermark/random text; do NOT invent logos unless the story needs them; **do not paste a fixed UE5-realism template**
 
-Bad character prompt: “a girl in a rainy alley, pretty, anime”
-Good character prompt: “full-body front character design sheet, A-pose arms ~45°, head-to-body 1:7, UE5 realistic human, soft studio light, visible skin pores, no plastic skin, East-Asian woman ~25 traveler, short black side-part bob, indigo coat over gray knit, leather strap, calm determined look, clean white background, no environment”
+Bad character prompt: “a girl in a rainy alley, pretty, anime” (too vague; or forces a style the script never asked for)
+Good character prompt (when script is modern urban travel drama with soft film realism): “full-body front character design sheet, A-pose arms ~45°, head-to-body 1:7, soft contemporary film-still realism from the script’s rainy-city tone, natural skin, muted teal-amber palette, East-Asian woman ~25 traveler, short black side-part bob, indigo coat over gray knit, leather strap, calm determined look, clean white background, no environment”
+Good character prompt (when script is classical wuxia with ink-wash mood): “full-body front character design sheet, A-pose arms ~45°, ink-wash wuxia illustration distilled from the screenplay, flowing ink edges, restrained mineral palette, young swordsman in travel robe, hair tied with cloth strip, calm sharp eyes, clean white background, no environment”
 
 Bad scene prompt: “a cafe with customers”
 Bad scene prompt: “ancient temple hall with a jade sword on the altar and travel cases by the pillar”
-Good scene prompt: “UE5 cinematic empty neon alley cafe frontage at night, rain-wet asphalt, fogged glass, warm tungsten spill, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting”
+Good scene prompt (script = neon night city): “empty neon alley cafe frontage at night matching the script’s wet-street neon drama, rain-wet asphalt, fogged glass, warm tungsten spill, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, unified lighting”
+Good scene prompt (script = ink wuxia): “empty misty mountain monastery courtyard in classical ink-wash landscape style from the story, wet stone, pine silhouettes, dawn haze, no people no props no weapons no text no watermark, wide establishing view”
 
 Bad prop prompt: “a suitcase left in a rainy alley”
-Good prop prompt: “single vintage brown leather travel suitcase prop, brass corner caps, worn handle, scratched side panels, UE5 PBR materials, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery”
+Good prop prompt: “single vintage brown leather travel suitcase prop, brass corner caps, worn handle, scratched side panels, materials and finish matching the script’s soft film-realism brief, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery”
 
 Bad weapon prompt: “sword stuck in a stone in a forest”
-Good weapon prompt: “single jade jian weapon, translucent green blade, bronze cloud guard, dark lacquered scabbard, light edge wear, UE5 PBR materials, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery”
+Good weapon prompt: “single jade jian weapon, translucent green blade, bronze cloud guard, dark lacquered scabbard, light edge wear, finish matching the script’s ink-wash wuxia brief, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery”
 
 ## Output format (STRICT)
 - Reply with **ONLY** one JSON object. No markdown fences, no commentary, no trailing text.
@@ -621,7 +632,7 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
     {
       "id": "hero-lin",
       "name": "Lin",
-      "prompt": "full-body front character design sheet, A-pose arms ~45°, head-to-body 1:7, UE5 realistic human, soft studio light, visible skin pores, no plastic skin, East-Asian woman ~25 traveler, short black side-part bob, indigo coat over gray knit, leather strap, calm determined look, clean white background, no environment",
+      "prompt": "full-body front character design sheet, A-pose arms ~45°, head-to-body 1:7, soft contemporary film-still realism distilled from the rainy-city travel drama, natural skin, muted teal-amber palette, East-Asian woman ~25 traveler, short black side-part bob, indigo coat over gray knit, leather strap, calm determined look, clean white background, no environment",
       "status": "未审核"
     }
   ],
@@ -629,7 +640,7 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
     {
       "id": "scene-neon-alley",
       "name": "Neon Alley",
-      "prompt": "UE5 cinematic empty neon alley at night, rain-wet asphalt, steam vents, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting",
+      "prompt": "empty neon alley at night matching the script’s wet-street neon drama, rain-wet asphalt, steam vents, no people no props no weapons no text no watermark, wide panorama-friendly establishing view, correct perspective, rich unified lighting",
       "status": "未审核"
     }
   ],
@@ -637,7 +648,7 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
     {
       "id": "prop-travel-case",
       "name": "Travel Case",
-      "prompt": "single vintage brown leather travel suitcase prop, brass corner caps, worn handle, scratched side panels, UE5 PBR materials, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery",
+      "prompt": "single vintage brown leather travel suitcase prop, brass corner caps, worn handle, scratched side panels, materials matching the script’s soft film-realism brief, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery",
       "status": "未审核"
     }
   ],
@@ -645,7 +656,7 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
     {
       "id": "weapon-jade-sword",
       "name": "Jade Sword",
-      "prompt": "single jade jian weapon, translucent green blade, bronze cloud guard, dark lacquered scabbard, light edge wear, UE5 PBR materials, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery",
+      "prompt": "single jade jian weapon, translucent green blade, bronze cloud guard, dark lacquered scabbard, light edge wear, finish matching the script’s ink-wash wuxia brief when that is the story’s style, pure white background, no shadow no reflection, front upright centered, fully visible, no scenery",
       "status": "未审核"
     }
   ]
@@ -672,31 +683,40 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 若场景与道具/武器难分：**固定建筑 / 地貌 / 内嵌装潢 → scenes；可移动、可手持、战斗用或剧情关键物件 → 各自归入 props/weapons，不要塞进场景描述。**
 若某服饰/配饰主要构成角色外形，应写进**角色 prompt**，不要单独拆条；除非该物件随后独立出场（则可另列 props/weapons）。
 
+## 动态视觉风格（关键——禁止固定成某种默认风格）
+**禁止**强制套用任何固定风格模板，例如：虚幻引擎 UE5、UE5 真人建模、PBR 口号堆砌、「8K 电影质感」、统一写实/统一二次元等——**除非剧本本身明确要求或强烈指向该风格**。
+
+你必须先**根据剧本提炼详细的项目风格简报**，再写入每条 \`prompt\`：
+1. 从文本提炼类型、时代、文化、媒介气质、情绪基调，以及任何明确的美术指示（如水墨武侠、港风犯罪片、童话水彩、赛博霓虹、定格黏土、儿童绘本、黑白黑色电影、纪录片手持写实等）。
+2. 为整份目录写出一份**共享风格脊柱**：媒介/渲染方式、线条与纹理语言、色板与色温、光影哲学、材质处理、颗粒/完成度、以及应避免什么。要足够具体，以便稳定复现。
+3. 把同一套风格脊柱应用到角色、场景、道具、武器，使目录像同一部作品的美术设定，而不是四种随机风格。
+4. 若剧本几乎未写风格，则从设定 + 情绪 + 类型**合理推断最自洽**的风格，并在每条 prompt 中写清楚；仍然**不要**默认成 UE5 真人写实。
+5. 风格词要自然融入描述，避免口号式堆砌。风格必须**跟着剧本走**，而不是跟着预设模板走。
+
 ## 分类提示词硬性规范（必须遵守）
 目标是产出可复用的**资产底板**，而不是剧情定妆剧照。
-风格基线（各类通用）：优先虚幻引擎 UE5 高精度建模渲染、8K 清晰度、电影质感；把风格词**自然融入**提示词，不要整段口号式堆砌。
+下列构图规则只约束取景；**视觉风格仍以上文「动态视觉风格」为准**。
 
 ### characters（角色）— 全身正面设定图
 - 构图：**标准角色设定图**，仅**全身正面照**；**A-pose**（双臂约张开 45°）；头身比约 **1:7**；不要写成电影场景镜头。
-- 画质与皮肤：UE5 真人建模、柔和光影、真实皮肤纹理与可见毛孔；**禁止**网红脸、过度磨皮、塑料皮肤；五官清晰、发型自然。
+- 外观：五官与发型须符合提炼出的风格；除非剧本风格明确要求夸张脸型，否则避免网红脸/塑料皮肤。
 - 背景：仅允许**干净白色 / 影棚纯色底**；构图简洁，无重叠遮挡，无其他人。
-- 文本有依据时尽量覆盖：人物基础信息、外貌特征、服装造型、发型妆容、神态气质。
-- **禁止**写入：房间、街道、天气、风景、人群、“站在某处”、剧情动作。
+- 文本有依据时尽量覆盖：人物基础信息、外貌特征、服装造型、发型妆容、神态气质，以及**从剧本提炼的风格简报**。
+- **禁止**写入：房间、街道、天气、风景、人群、“站在某处”、剧情动作；禁止硬塞与剧本无关的 UE5/真人建模套话。
 
 ### scenes（场景）— 无人环境 / 全景友好底板
 - 只写**场所本身**：地点、建筑/地貌、布局结构、时段、天气、氛围与光影。仅允许写入**定义场所的不可移动布景**（路灯、固定货架、广场巨像、壁画、嵌墙霓虹招牌等）。
-- 风格：UE5 建模、高精度渲染、电影级光影、真实材质；明确 **无人物、无文字、无水印**。
+- 风格：使用**从剧本提炼**的媒介、色板与光影语言；明确 **无人物、无文字、无水印**。
 - 场景 \`prompt\` **禁止**写入：人物/人脸/人影/人群；**任何武器**（刀剑、枪械、弓弩、法杖、刃具、作为武装的盾等）；**可移动/剧情道具**（行李箱、角色手提灯笼、工具、作为主体的载具/控制台/祭坛物件等）；把剧情麦高芬摆成静物；诸如「桌上放着剑」「武器架上挂满刀」「墙角堆着行李」等以物件为主体的描写。
 - 正确拆分：文本写「古寺大殿里有一把青玉剑」时——**古寺大殿**进 \`scenes\`（空环境 + 建筑光影天气），**青玉剑**单独进 \`weapons\`；**不要**把剑写进场景 prompt。
 
 ### props（道具）— 白底独立产品照
-- 构图：**单个独立道具**，正面视角、竖立居中、完整展示；写清材质、颜色、形状、尺寸、装饰、磨损、特殊效果。
-- 风格：UE5 + PBR / 真实物理材质、全局光照、光影写实。
+- 构图：**单个独立道具**，正面视角、竖立居中、完整展示；写清材质、颜色、形状、尺寸、装饰、磨损、特殊效果，并符合**提炼出的风格**。
 - 背景：**纯白色纯色底**；无其他元素；尽量 **无阴影、无反光、无投影**。
-- **禁止**：房间、风景、托物的手、角色、剧情摆拍、武器。
+- **禁止**：房间、风景、托物的手、角色、剧情摆拍、武器；禁止固定 UE5/PBR 口号模板（除非剧本风格本身如此）。
 
 ### weapons（武器）— 白底独立产品照
-- 与道具相同的隔离规则：**单个独立武器**，正面视角、竖立/居中、完整剪影；写清材质、刃口磨损、装饰、特殊效果。
+- 与道具相同的隔离规则：**单个独立武器**，正面视角、竖立/居中、完整剪影；写清材质、刃口磨损、装饰、特殊效果，并符合**提炼出的风格**。
 - 背景：**纯白色纯色底**；尽量 **无阴影、无反光**。
 - **禁止**：战斗摆拍、握持的手、角色、森林/石台等环境、剧情定妆照。
 
@@ -724,24 +744,26 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 用 1–3 句稠密描述，或结构化短句列表，尽量覆盖（按适用性）：
 1. **主体与身份**：是谁/是什么；年龄段；物种；职业剪影
 2. **外观**：五官、发型、体型、服装层次、颜色、材质、新旧磨损、标志特征（疤、纹身、徽记）
-3. **材质与工艺**：布料、金属、木、霓虹、湿沥青、纸张纹理、PBR 可读表面等
-4. **光影 / 渲染**：角色/道具/武器用柔和影棚光；场景用电影/建筑光；自然带上 UE5、8K 质感锚点
+3. **材质与工艺**：布料、金属、木、水墨纸本、水彩、黏土、霓虹玻璃、湿沥青等——以提炼风格为准
+4. **光影 / 情绪**：角色/道具/武器用适合该风格的影棚/静物光；场景用电影/建筑光——写进**剧本自身的视觉语言**
 5. **构图**：必须符合上文分类规范（全身正面 A-pose 设定图 / 无人全景友好环境 / 白底产品照）
-6. **风格锚点**：全目录克制统一，避免口号式堆砌
-7. 卫生项：避免水印/乱码文字；除非剧情需要，不要编造可读招牌文案
+6. **动态风格简报**：从剧本提炼的详细风格（媒介、色板、光影、纹理、时代/类型完成度）；全目录保持一致
+7. 卫生项：避免水印/乱码文字；除非剧情需要，不要编造可读招牌文案；**禁止粘贴固定的 UE5 真人模板**
 
-差例角色：“雨巷里的漂亮女孩，动漫风”
-好例角色：“全身正面角色设定图，A-pose双臂约45度，头身比约1:7，UE5真人建模，柔和影棚光，可见毛孔，禁止塑料皮肤，约25岁东亚女性旅人，黑色侧分短发，靛蓝外套内搭灰针织斜挎皮绳，神态沉稳，干净白底，无环境”
+差例角色：“雨巷里的漂亮女孩，动漫风”（过空；或强行套剧本没有的风格）
+好例角色（剧本为都市夜雨公路片、偏柔和胶片写实时）：“全身正面角色设定图，A-pose双臂约45度，头身比约1:7，按剧本提炼的当代都市夜雨胶片写实，自然肤质，青橙冷暖对比，约25岁东亚女性旅人，黑色侧分短发，靛蓝外套内搭灰针织斜挎皮绳，神态沉稳，干净白底，无环境”
+好例角色（剧本为古典水墨武侠时）：“全身正面角色设定图，A-pose双臂约45度，头身比约1:7，按剧本提炼的水墨武侠插画风，墨线流动、矿物色克制，年轻旅剑客布衣束发，眼神清冷，干净白底，无环境”
 
 差例场景：“有顾客的咖啡馆”
 差例场景：“古寺大殿，祭坛上放着青玉剑，柱旁还有旅行箱”
-好例场景：“UE5电影质感人空夜雨霓虹巷咖啡馆门脸，湿沥青与起雾玻璃，暖钨丝灯光外溢，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富”
+好例场景（剧本为霓虹夜城）：“无人夜雨霓虹巷咖啡馆门脸，湿沥青与起雾玻璃，暖钨丝灯光外溢，风格贴合剧本湿街霓虹戏剧感，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富”
+好例场景（剧本为水墨武侠）：“无人晨雾山寺院落，湿石与松影，水墨山水气质贴合剧本，无人物无道具无武器无文字无水印，宽幅建立镜头”
 
 差例道具：“雨巷里落下的行李箱”
-好例道具：“单个复古棕色皮革旅行箱道具，黄铜包角、磨损提手、侧板刮痕，UE5 PBR材质，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景”
+好例道具：“单个复古棕色皮革旅行箱道具，黄铜包角、磨损提手、侧板刮痕，材质完成度贴合剧本的柔和胶片写实简报，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景”
 
 差例武器：“插在森林石头里的剑”
-好例武器：“单个青玉剑武器，半透青玉直刃、青铜云纹护手、深色漆鞘、刃口轻磨损，UE5 PBR材质，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景”
+好例武器：“单个青玉剑武器，半透青玉直刃、青铜云纹护手、深色漆鞘、刃口轻磨损，完成度贴合剧本的水墨武侠简报，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景”
 
 ## 输出格式（严格）
 - **只输出一个 JSON 对象**。不要用 markdown 代码块，不要解释，不要前后缀。
@@ -758,7 +780,7 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
     {
       "id": "hero-lin",
       "name": "小林",
-      "prompt": "全身正面角色设定图，A-pose双臂约45度，头身比约1:7，UE5真人建模，柔和影棚光，可见毛孔，禁止塑料皮肤，约25岁东亚女性旅人，黑色侧分短发，靛蓝外套内搭灰针织斜挎皮绳，神态沉稳，干净白底，无环境",
+      "prompt": "全身正面角色设定图，A-pose双臂约45度，头身比约1:7，按剧本提炼的当代都市夜雨胶片写实，自然肤质，青橙冷暖对比，约25岁东亚女性旅人，黑色侧分短发，靛蓝外套内搭灰针织斜挎皮绳，神态沉稳，干净白底，无环境",
       "status": "未审核"
     }
   ],
@@ -766,7 +788,7 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
     {
       "id": "scene-neon-alley",
       "name": "霓虹雨巷",
-      "prompt": "UE5电影质感人空夜雨霓虹巷，湿沥青与街面蒸汽，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富",
+      "prompt": "无人夜雨霓虹巷，湿沥青与街面蒸汽，风格贴合剧本湿街霓虹戏剧感，无人物无道具无武器无文字无水印，宽幅全景友好建立镜头，透视正确，光影统一细节丰富",
       "status": "未审核"
     }
   ],
@@ -774,7 +796,7 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
     {
       "id": "prop-travel-case",
       "name": "旅行箱",
-      "prompt": "单个复古棕色皮革旅行箱道具，黄铜包角、磨损提手、侧板刮痕，UE5 PBR材质，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景",
+      "prompt": "单个复古棕色皮革旅行箱道具，黄铜包角、磨损提手、侧板刮痕，材质完成度贴合剧本的柔和胶片写实简报，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景",
       "status": "未审核"
     }
   ],
@@ -782,7 +804,7 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
     {
       "id": "weapon-jade-sword",
       "name": "青玉剑",
-      "prompt": "单个青玉剑武器，半透青玉直刃、青铜云纹护手、深色漆鞘、刃口轻磨损，UE5 PBR材质，纯白背景，无阴影无反光，正面竖立居中完整展示，无场景",
+      "prompt": "单个青玉剑武器，半透青玉直刃、青铜云纹护手、深色漆鞘、刃口轻磨损，完成度贴合剧本水墨武侠简报（当故事为武侠时），纯白背景，无阴影无反光，正面竖立居中完整展示，无场景",
       "status": "未审核"
     }
   ]

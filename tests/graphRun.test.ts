@@ -868,19 +868,26 @@ describe('graph run', () => {
     ).toBe(false)
   })
 
-  it('world.gen collects element entities into worldEntities output', async () => {
+  it('world.gen collects element entities into four image group outputs', async () => {
     const doc = createDefaultScopedGraph('worldAsset', 'world')
     const editor = doc.nodes.find((node) => node.typeId === 'world.gen')
     expect(editor).toBeTruthy()
 
     const result = await runGraph(doc, {
       stepDelayMs: 1,
+      targetNodeId: editor!.id,
+      onlyTargetNode: true,
       collectWorldElementOutputs: async () => ({
         items: [
           {
             type: '角色',
             name: 'Hero',
             imageUrl: '.aiartengine/graph-outputs/hero.png'
+          },
+          {
+            type: '场景',
+            name: 'Town',
+            imageUrl: '.aiartengine/graph-outputs/town.png'
           }
         ]
       })
@@ -889,19 +896,39 @@ describe('graph run', () => {
     expect(result.ok, result.error).toBe(true)
     const editorState = result.states[editor!.id]
     expect(editorState?.status).toBe('done')
-    const out = editorState?.outputs?.out
-    expect(out?.kind).toBe('worldEntities')
-    if (out?.kind === 'worldEntities') {
-      const parsed = JSON.parse(out.text) as Array<{ type: string; name: string; imageUrl: string }>
-      expect(parsed).toEqual([
+    expect(editorState?.outputs?.out).toBeUndefined()
+    const characters = editorState?.outputs?.['out-characters']
+    expect(characters?.kind).toBe('images')
+    if (characters?.kind === 'images') {
+      expect(characters.items).toEqual([
         {
-          type: '角色',
-          name: 'Hero',
-          imageUrl: '.aiartengine/graph-outputs/hero.png'
+          id: '角色:Hero:0',
+          dataUrl: '',
+          relativePath: '.aiartengine/graph-outputs/hero.png'
         }
       ])
     }
-    expect(editorState?.outputs?.['out-all']).toBeUndefined()
+    const scenes = editorState?.outputs?.['out-scenes']
+    expect(scenes?.kind).toBe('images')
+    if (scenes?.kind === 'images') {
+      expect(scenes.items.map((item) => item.relativePath)).toEqual([
+        '.aiartengine/graph-outputs/town.png'
+      ])
+    }
+    expect(editorState?.outputs?.['out-props']?.kind).toBe('images')
+    expect(editorState?.outputs?.['out-weapons']?.kind).toBe('images')
+    expect(editor?.params.worldElementOutputs).toEqual([
+      {
+        type: '角色',
+        name: 'Hero',
+        imageUrl: '.aiartengine/graph-outputs/hero.png'
+      },
+      {
+        type: '场景',
+        name: 'Town',
+        imageUrl: '.aiartengine/graph-outputs/town.png'
+      }
+    ])
   })
 
   it('batch cook nodes: onlyTarget skips cookBatch; Cook / chain enables it', async () => {

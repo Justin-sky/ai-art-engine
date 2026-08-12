@@ -132,10 +132,10 @@ export function buildToPromptUserPrompt(instruction: string, locale?: string): s
 // ——— 世界元素提取 ———
 
 export const DEFAULT_WORLD_EXTRACT_USER_PROMPT_EN =
-  'Extract a reusable visual catalog from the text and output ONLY the JSON object required by the system prompt (characters / scenes / props / weapons). Hard rules: characters = front portrait on plain background (no environment); scenes = empty of people; props/weapons = object-only product shots on plain background (no scenery). Appearance + materials + lighting—not plot summaries.'
+  'Extract a reusable visual catalog from the text and output ONLY the JSON object required by the system prompt (characters / scenes / props / weapons). First distill a detailed visual-style brief from the screenplay (genre, era, medium, palette, lighting, texture)—do NOT force UE5 / photoreal defaults. Hard framing rules: characters = front design sheet on plain background (no environment); scenes = empty of people; props/weapons = object-only product shots on plain background (no scenery). Appearance + materials + lighting + script-derived style—not plot summaries.'
 
 export const DEFAULT_WORLD_EXTRACT_USER_PROMPT_ZH =
-  '请从文本提取可复用的视觉元素目录，并仅输出系统提示词要求的 JSON 对象（characters / scenes / props / weapons）。硬性要求：角色=正面设定照+纯色背景（无环境）；场景=空无一人；道具/武器=纯色底产品照（无场景）。写外观、材质、光影——不要写成剧情摘要。'
+  '请从文本提取可复用的视觉元素目录，并仅输出系统提示词要求的 JSON 对象（characters / scenes / props / weapons）。先根据剧本提炼详细视觉风格简报（类型、时代、媒介、色板、光影、纹理）——禁止强制套用 UE5 / 真人写实默认。硬性构图：角色=正面设定照+纯色背景（无环境）；场景=空无一人；道具/武器=纯色底产品照（无场景）。写外观、材质、光影与剧本风格——不要写成剧情摘要。'
 
 export function defaultWorldExtractUserPrompt(locale?: string): string {
   return pickByLocale(

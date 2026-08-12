@@ -150,6 +150,7 @@ import {
   parseWorldElementGenResults,
   stringifyWorldElementCatalog,
   stringifyWorldElementGenResults,
+  worldGenImageGroupOutputs,
   type WorldElementGenResult
 } from '../worldElementParse'
 import {
@@ -1095,9 +1096,7 @@ export function resolveGalleryOutputsFromNodeParams(
         ? fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
         : parseWorldElementGenResults(params.text)
     if (!results.length) return null
-    return {
-      out: catalogValue(GraphPortType.worldEntities, stringifyWorldElementGenResults(results))
-    }
+    return worldGenImageGroupOutputs(results)
   }
 
   const generatedImages = params.generatedImages
@@ -3554,6 +3553,8 @@ export async function executeWorldTableNode(
   return local ? { out: catalogValue(GraphPortType.world, local) } : {}
 }
 
+export { worldGenImageGroupOutputs }
+
 /**
  * 世界元素生成：有上游提取/表格目录时同步到元素子图；
  * 再通过 ctx.collectWorldElementOutputs 汇集四类 elementWorkflow 边界输出实体。
@@ -3586,7 +3587,7 @@ export async function executeWorldGenNode(
   }
   ctx.node.params = { ...ctx.node.params, ...params }
   ctx.patchNode?.({ params })
-  return { out: catalogValue(GraphPortType.worldEntities, text) }
+  return worldGenImageGroupOutputs(items)
 }
 
 /** 世界元素实体输出：透传 worldEntities 目录 JSON */

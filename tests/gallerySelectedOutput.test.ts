@@ -61,22 +61,31 @@ describe('gallery selected output', () => {
     expect(outs?.['out-all']?.kind).toBe('texts')
   })
 
-  it('resolveGalleryOutputsFromNodeParams maps world.gen entities to worldEntities out', () => {
+  it('resolveGalleryOutputsFromNodeParams maps world.gen entities to four image groups', () => {
     const outs = resolveGalleryOutputsFromNodeParams(
       {
         worldElementOutputs: [
-          { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' }
+          { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' },
+          { type: '武器', name: 'Sword', imageUrl: 'data:image/png;base64,xx' }
         ]
       },
       { typeId: 'world.gen' }
     )
-    expect(outs?.out?.kind).toBe('worldEntities')
-    if (outs?.out?.kind === 'worldEntities') {
-      expect(JSON.parse(outs.out.text)).toEqual([
-        { type: '角色', name: 'Ada', imageUrl: 'Assets/a.png' }
+    expect(outs?.out).toBeUndefined()
+    expect(outs?.['out-characters']?.kind).toBe('images')
+    if (outs?.['out-characters']?.kind === 'images') {
+      expect(outs['out-characters'].items).toEqual([
+        { id: '角色:Ada:0', dataUrl: '', relativePath: 'Assets/a.png' }
       ])
     }
-    expect(outs?.['out-all']).toBeUndefined()
+    expect(outs?.['out-weapons']?.kind).toBe('images')
+    if (outs?.['out-weapons']?.kind === 'images') {
+      expect(outs['out-weapons'].items).toEqual([
+        { id: '武器:Sword:1', dataUrl: 'data:image/png;base64,xx' }
+      ])
+    }
+    expect(outs?.['out-scenes']?.kind).toBe('images')
+    expect(outs?.['out-props']?.kind).toBe('images')
   })
 
   it('onlyTarget soft-snapshot overlays selected over stale prior out', async () => {

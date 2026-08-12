@@ -4,6 +4,7 @@ import {
   type ReviewStatus
 } from './reviewStatus'
 import type { GraphDocument, GraphNodeParams } from './types'
+import type { GraphImageItem, GraphValue } from './execute/types'
 
 /** 世界元素四类 */
 export type WorldElementKind = 'characters' | 'scenes' | 'props' | 'weapons'
@@ -246,6 +247,13 @@ export const WORLD_ELEMENT_KIND_TO_TYPE: Record<WorldElementKind, WorldElementOu
   weapons: '武器'
 }
 
+export const WORLD_ELEMENT_TYPE_TO_KIND: Record<WorldElementOutputType, WorldElementKind> = {
+  角色: 'characters',
+  场景: 'scenes',
+  道具: 'props',
+  武器: 'weapons'
+}
+
 const WORLD_ELEMENT_OUTPUT_TYPES: readonly WorldElementOutputType[] = [
   '角色',
   '场景',
@@ -253,10 +261,61 @@ const WORLD_ELEMENT_OUTPUT_TYPES: readonly WorldElementOutputType[] = [
   '武器'
 ] as const
 
+/** 世界元素生成节点：四类图片组输出口 */
+export const WORLD_GEN_IMAGE_OUT_PORTS = [
+  { id: 'out-characters', kind: 'characters' as const, type: '角色' as const, label: '角色' },
+  { id: 'out-scenes', kind: 'scenes' as const, type: '场景' as const, label: '场景' },
+  { id: 'out-props', kind: 'props' as const, type: '道具' as const, label: '道具' },
+  { id: 'out-weapons', kind: 'weapons' as const, type: '武器' as const, label: '武器' }
+] as const
+
+export type WorldGenImageOutPortId = (typeof WORLD_GEN_IMAGE_OUT_PORTS)[number]['id']
+
+export function isWorldGenImageOutPortId(id: string): id is WorldGenImageOutPortId {
+  return WORLD_GEN_IMAGE_OUT_PORTS.some((port) => port.id === id)
+}
+
+export function worldGenImageOutPortIdForType(
+  type: WorldElementOutputType
+): WorldGenImageOutPortId {
+  const kind = WORLD_ELEMENT_TYPE_TO_KIND[type]
+  return (
+    WORLD_GEN_IMAGE_OUT_PORTS.find((port) => port.kind === kind)?.id ?? 'out-characters'
+  )
+}
+
 export interface WorldElementGenResult {
   type: WorldElementOutputType
   name: string
   imageUrl: string
+}
+
+/** 世界元素生成结果 → 角色/场景/道具/武器四个图片组输出口 */
+export function worldGenImageGroupOutputs(
+  results: WorldElementGenResult[]
+): Record<string, GraphValue> {
+  const buckets: Record<WorldElementOutputType, GraphImageItem[]> = {
+    角色: [],
+    场景: [],
+    道具: [],
+    武器: []
+  }
+  for (const [index, item] of results.entries()) {
+    const url = item.imageUrl?.trim() || ''
+    if (!item.type || !item.name?.trim() || !url) continue
+    if (!(item.type in buckets)) continue
+    const imageItem: GraphImageItem = {
+      id: `${item.type}:${item.name}:${index}`,
+      dataUrl: url.startsWith('data:') ? url : '',
+      ...(url.startsWith('data:') ? {} : { relativePath: url })
+    }
+    buckets[item.type].push(imageItem)
+  }
+  const out: Record<string, GraphValue> = {}
+  for (const port of WORLD_GEN_IMAGE_OUT_PORTS) {
+    out[port.id] = { kind: 'images', items: buckets[port.type] }
+  }
+  return out
 }
 
 export function stringifyWorldElementGenResults(results: WorldElementGenResult[]): string {

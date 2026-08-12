@@ -83,6 +83,7 @@ import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
 import { ANIM2D_INNER_GRAPH_VERSION, DEFAULT_ANIM2D_STATE } from './anim2d'
+import { WORLD_GEN_IMAGE_OUT_PORTS } from './worldElementParse'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
   ASSET_BEAT_OUTPUT_TITLE,
@@ -1770,13 +1771,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.world, multiple: false, label: 'In' },
-      {
-        id: 'out',
-        direction: 'out',
-        dataType: GraphPortType.worldEntities,
+      ...WORLD_GEN_IMAGE_OUT_PORTS.map((port) => ({
+        id: port.id,
+        direction: 'out' as const,
+        dataType: GraphPortType.images,
         multiple: true,
-        label: 'Out'
-      }
+        label: port.label
+      }))
     ],
     defaultParams: () => ({
       worldElementOutputs: [],

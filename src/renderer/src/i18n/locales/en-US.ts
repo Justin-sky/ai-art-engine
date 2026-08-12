@@ -2285,7 +2285,7 @@ export default {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },
       worldGen: {
-        hint: 'Run current collects existing element images; use radial Cook subgraph to batch-run element graphs.'
+        hint: 'Four image-group outs: Characters / Scenes / Props / Weapons. Run current collects existing images; use radial Cook subgraph to batch-run element graphs.'
       },
       beatTable: {
         hint: 'Double-click to open the beat unit table. Run the node to import catalog JSON and preview the out port here.'

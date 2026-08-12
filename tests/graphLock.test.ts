@@ -205,7 +205,7 @@ describe('generate node lock', () => {
     expect(result.states.extract?.outputs?.['out-all']?.kind).toBe('texts')
   })
 
-  it('world.gen lock reuses worldEntities without collecting', async () => {
+  it('world.gen lock reuses image groups without collecting', async () => {
     const gen = createNodeFromType('world.gen', { x: 0, y: 0 }, {
       id: 'gen',
       params: {
@@ -237,10 +237,16 @@ describe('generate node lock', () => {
 
     expect(result.ok, result.error).toBe(true)
     expect(collectCalls).toBe(0)
-    expect(result.states.gen?.outputs?.out?.kind).toBe('worldEntities')
-    if (result.states.gen?.outputs?.out?.kind === 'worldEntities') {
-      const parsed = JSON.parse(result.states.gen.outputs.out.text) as Array<{ name: string }>
-      expect(parsed.map((item) => item.name)).toEqual(['A', 'B'])
+    expect(result.states.gen?.outputs?.out).toBeUndefined()
+    const characters = result.states.gen?.outputs?.['out-characters']
+    expect(characters?.kind).toBe('images')
+    if (characters?.kind === 'images') {
+      expect(characters.items.map((item) => item.id)).toEqual(['角色:A:0'])
+    }
+    const scenes = result.states.gen?.outputs?.['out-scenes']
+    expect(scenes?.kind).toBe('images')
+    if (scenes?.kind === 'images') {
+      expect(scenes.items.map((item) => item.id)).toEqual(['场景:B:1'])
     }
   })
 

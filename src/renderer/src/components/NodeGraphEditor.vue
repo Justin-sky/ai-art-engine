@@ -342,9 +342,11 @@
           :node="node"
           :selected="isNodeSelected(node.id)"
           :connecting="isLinkHighlightNode(node.id)"
-          :link-mode="!!(linkingFrom || linkingTo || rewireSession)"
+          :link-mode="isPortLinkMode"
           :force-show-chrome="selectedNodeIds.size > 0 && !isResizingNode"
           :suppress-chrome="isResizingNode"
+          :snap-highlight-port-ids="snapHighlightPortIdsFor(node.id)"
+          :snap-ready-port-ids="snapReadyPortIdsFor(node.id)"
           :asset="assetFor(node)"
           :run-status="runStates[node.id]?.status"
           :run-error="runStates[node.id]?.error"
@@ -628,6 +630,12 @@ import {
   findCompatibleInPort,
   findInPort,
   findOutPort,
+  resolveSnapConnectEdges,
+  resolveSnapDragPreview,
+  snapConnectThresholdWorld,
+  snapPortKey,
+  connectEdgesWithShortcutPrune,
+  type SnapConnectCandidate,
   canScopeAcceptDraggedAsset,
   cloneGraphDocument,
   buildGraphClipboardPayload,
@@ -1469,6 +1477,11 @@ const linkingFromPort = ref<string | null>(null)
 const linkingTo = ref<string | null>(null)
 const linkingToPort = ref<string | null>(null)
 const tempEdgeEnd = ref<{ x: number; y: number } | null>(null)
+/** 拖节点重合：兼容端口高亮 / 靠近可连预览 */
+const snapHighlightPortKeys = ref<Set<string>>(new Set())
+const snapReadyPortKeys = ref<Set<string>>(new Set())
+const snapHighlightNodeIds = ref<Set<string>>(new Set())
+const snapPreviewCandidates = ref<SnapConnectCandidate[]>([])
 /** 批量拖线改接：固定端列表 + 正在拖动的一端 */
 const rewireSession = ref<{
   movingEnd: 'source' | 'target'
@@ -2887,8 +2900,72 @@ function setSingleEdgeSelection(edgeId: string): void {
 
 function isLinkHighlightNode(nodeId: string): boolean {
   if (linkingFrom.value === nodeId || linkingTo.value === nodeId) return true
+  if (snapHighlightNodeIds.value.has(nodeId)) return true
   const session = rewireSession.value
   return !!session?.fixed.some((fixed) => fixed.nodeId === nodeId)
+}
+
+const isPortLinkMode = computed(
+  () =>
+    !!(linkingFrom.value || linkingTo.value || rewireSession.value) ||
+    snapHighlightNodeIds.value.size > 0
+)
+
+function clearSnapDragPreview(): void {
+  if (
+    snapHighlightPortKeys.value.size === 0 &&
+    snapReadyPortKeys.value.size === 0 &&
+    snapHighlightNodeIds.value.size === 0 &&
+    snapPreviewCandidates.value.length === 0
+  ) {
+    return
+  }
+  snapHighlightPortKeys.value = new Set()
+  snapReadyPortKeys.value = new Set()
+  snapHighlightNodeIds.value = new Set()
+  snapPreviewCandidates.value = []
+}
+
+function updateSnapDragPreview(draggedNodeIds: string[]): void {
+  const preview = resolveSnapDragPreview({
+    nodes: graph.nodes,
+    edges: graph.edges,
+    draggedNodeIds,
+    thresholdWorld: snapConnectThresholdWorld(graph.viewport.zoom)
+  })
+  snapHighlightPortKeys.value = preview.highlightPortKeys
+  snapHighlightNodeIds.value = preview.highlightNodeIds
+  snapPreviewCandidates.value = preview.connectCandidates
+  const ready = new Set<string>()
+  for (const c of preview.connectCandidates) {
+    ready.add(snapPortKey(c.sourceId, c.sourcePort))
+    ready.add(snapPortKey(c.targetId, c.targetPort))
+  }
+  snapReadyPortKeys.value = ready
+}
+
+const emptySnapPortIds = new Set<string>()
+
+function snapHighlightPortIdsFor(nodeId: string): Set<string> {
+  const keys = snapHighlightPortKeys.value
+  if (keys.size === 0) return emptySnapPortIds
+  const ids = new Set<string>()
+  const prefix = `${nodeId}::`
+  for (const key of keys) {
+    if (key.startsWith(prefix)) ids.add(key.slice(prefix.length))
+  }
+  return ids
+}
+
+function snapReadyPortIdsFor(nodeId: string): Set<string> {
+  const keys = snapReadyPortKeys.value
+  if (keys.size === 0) return emptySnapPortIds
+  const ids = new Set<string>()
+  const prefix = `${nodeId}::`
+  for (const key of keys) {
+    if (key.startsWith(prefix)) ids.add(key.slice(prefix.length))
+  }
+  return ids
 }
 
 function setMarqueeSelection(nodeIds: string[], edgeIds: string[]): void {
@@ -3239,8 +3316,22 @@ function assetFor(node: GraphNode): AssetInfo | null {
   return project.assets.find((a) => a.id === node.assetId) ?? null
 }
 
-/** 临时连线（拖拽建边 / 批量改接）在世界坐标下的两端；供 Canvas 直接绘制 */
+/** 临时连线（拖拽建边 / 批量改接 / 节点吸附预览）在世界坐标下的两端；供 Canvas 直接绘制 */
 function resolveTempEdgeWorlds(): Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> {
+  // 拖节点靠近：不依赖光标临时端点
+  if (snapPreviewCandidates.value.length > 0 && !tempEdgeEnd.value) {
+    const out: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
+    for (const c of snapPreviewCandidates.value) {
+      const source = graph.nodes.find((n) => n.id === c.sourceId)
+      const target = graph.nodes.find((n) => n.id === c.targetId)
+      if (!source || !target) continue
+      out.push({
+        from: getNodePortCenter(source, 'right', c.sourcePort),
+        to: getNodePortCenter(target, 'left', c.targetPort)
+      })
+    }
+    return out
+  }
   const end = tempEdgeEnd.value
   if (!end) return []
   const session = rewireSession.value
@@ -3912,21 +4003,12 @@ function addNodeFromMenu(item: AddableMenuItem): void {
         ? findCompatibleInPort(node, outPort.dataType)
         : undefined
       if (outPort && inPort) {
-        graph.edges = graph.edges.filter(
-          (e) =>
-            !(
-              e.source === linkFromId &&
-              e.target === node.id &&
-              (e.sourcePort ?? 'out') === outPort.id &&
-              (e.targetPort ?? 'in') === inPort.id
-            )
-        )
-        graph.edges.push({
-          id: `edge-${crypto.randomUUID()}`,
-          source: linkFromId,
-          target: node.id,
+        graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+          sourceId: linkFromId,
+          targetId: node.id,
           sourcePort: outPort.id,
-          targetPort: inPort.id
+          targetPort: inPort.id,
+          edgeId: `edge-${crypto.randomUUID()}`
         })
       }
     }
@@ -3942,21 +4024,12 @@ function addNodeFromMenu(item: AddableMenuItem): void {
         ? findCompatibleInPort(target, outPort.dataType, targetPort)
         : undefined
       if (outPort && inPort) {
-        graph.edges = graph.edges.filter(
-          (e) =>
-            !(
-              e.source === node.id &&
-              e.target === linkToId &&
-              (e.sourcePort ?? 'out') === outPort.id &&
-              (e.targetPort ?? 'in') === inPort.id
-            )
-        )
-        graph.edges.push({
-          id: `edge-${crypto.randomUUID()}`,
-          source: node.id,
-          target: linkToId,
+        graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+          sourceId: node.id,
+          targetId: linkToId,
           sourcePort: outPort.id,
-          targetPort: inPort.id
+          targetPort: inPort.id,
+          edgeId: `edge-${crypto.randomUUID()}`
         })
       }
     }
@@ -4389,6 +4462,7 @@ const graphNodeInteraction = useGraphNodeInteraction({
   snapToGrid: () => snapToGridEnabled.value,
   onNodesDragStart: (nodeIds) => {
     isDraggingNodes.value = true
+    clearSnapDragPreview()
     bumpGroupLayout(nodeIds)
     requestEdgeRender()
   },
@@ -4397,14 +4471,34 @@ const graphNodeInteraction = useGraphNodeInteraction({
       detachDraggedNodesFromGroup(context.nodeIds)
     }
     bumpGroupLayout(context.nodeIds)
-    // 拖动每帧重绘边，使连线端点跟随节点
+    updateSnapDragPreview(context.nodeIds)
+    // 拖动每帧重绘边，使连线端点跟随节点 / 吸附预览
     requestEdgeRender()
   },
   onNodesDragEnd: (context) => {
     isDraggingNodes.value = false
-    if (!context.didMove) return
+    if (!context.didMove) {
+      clearSnapDragPreview()
+      return
+    }
     bumpGroupLayout(context.nodeIds)
     if (!context.fromGroupLabel) syncMovedNodesGroupMembership(context)
+    // Houdini 风格：松手后端口靠近且类型兼容则自动连线（并入同次 move-node 撤销）
+    const snaps =
+      snapPreviewCandidates.value.length > 0
+        ? snapPreviewCandidates.value
+        : resolveSnapConnectEdges({
+            nodes: graph.nodes,
+            edges: graph.edges,
+            draggedNodeIds: context.nodeIds,
+            thresholdWorld: snapConnectThresholdWorld(graph.viewport.zoom)
+          })
+    clearSnapDragPreview()
+    for (const snap of snaps) {
+      connectNodes(snap.sourceId, snap.targetId, snap.sourcePort, snap.targetPort, {
+        skipHistory: true
+      })
+    }
     // 拖动结束后按最终位置重算可见集合（拖出视口的节点在此被正确剔除）
     refreshGraphRenderWindow(true)
     requestEdgeRender()
@@ -4823,21 +4917,13 @@ function connectNodes(
     return false
   }
   const before = options?.skipHistory ? null : buildGraphJson()
-  graph.edges = graph.edges.filter(
-    (e) =>
-      !(
-        e.source === sourceId &&
-        e.target === targetId &&
-        (e.sourcePort ?? 'out') === outPort.id &&
-        (e.targetPort ?? 'in') === inPort.id
-      )
-  )
-  graph.edges.push({
-    id: `edge-${crypto.randomUUID()}`,
-    source: sourceId,
-    target: targetId,
+  // 若源已能到达目标（如 A→B→C→D 再连 A→D），先断开目标口上的原入边
+  graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+    sourceId,
+    targetId,
     sourcePort: outPort.id,
-    targetPort: inPort.id
+    targetPort: inPort.id,
+    edgeId: `edge-${crypto.randomUUID()}`
   })
   scheduleSave()
   if (before) {

@@ -100,6 +100,7 @@
         loading="lazy"
         decoding="async"
         draggable="false"
+        @load="onPreviewImageLoad"
       />
       <div v-else class="note-body">{{ displayText }}</div>
     </div>
@@ -123,6 +124,10 @@
       <button
         type="button"
         class="port in"
+        :class="{
+          'snap-highlight': snapHighlightPortIds?.has(port.id),
+          'snap-ready': snapReadyPortIds?.has(port.id)
+        }"
         :data-port-id="port.id"
         :title="`${t('graph.port.inTitle')} · ${portTypeLabel(port.dataType)}`"
         @pointerdown.stop.prevent="onInPortDown(port.id, $event)"
@@ -137,6 +142,10 @@
       <button
         type="button"
         class="port out"
+        :class="{
+          'snap-highlight': snapHighlightPortIds?.has(port.id),
+          'snap-ready': snapReadyPortIds?.has(port.id)
+        }"
         :data-port-id="port.id"
         :title="`${t('graph.port.outTitle')} · ${portTypeLabel(port.dataType)}`"
         @pointerdown.stop.prevent="onOutPortDown(port.id, $event)"
@@ -152,6 +161,7 @@ import GraphNodeResizeHandle from './GraphNodeResizeHandle.vue'
 import LockIcon from './icons/LockIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import {
+  fitNodeSizeToMediaAspect,
   getNodePorts,
   getNodeSize,
   GRAPH_INPUT_SLOT_TYPE_ID,
@@ -187,6 +197,10 @@ const props = defineProps<{
   connecting?: boolean
   /** 画布处于拖线/连线中：全部节点显示端口，便于对准 */
   linkMode?: boolean
+  /** 拖节点重合：类型兼容的端口高亮 */
+  snapHighlightPortIds?: ReadonlySet<string>
+  /** 拖节点靠近：即将自动连线的端口 */
+  snapReadyPortIds?: ReadonlySet<string>
   /** 画布有选中时：全部节点显示折叠/锁定与类型图标 */
   forceShowChrome?: boolean
   /** 缩放节点时强制隐藏控件，保持干净 */
@@ -201,6 +215,7 @@ const emit = defineEmits<{
   dragStart: [nodeId: string, event: PointerEvent]
   titleChange: [nodeId: string, title: string]
   resizeStart: [nodeId: string, event: PointerEvent]
+  sizeChange: [nodeId: string, size: { w: number; h: number }]
   outPortDown: [nodeId: string, portId: string, event: PointerEvent]
   inPortDown: [nodeId: string, portId: string, event: PointerEvent]
   textOpen: [nodeId: string]
@@ -303,7 +318,10 @@ function togglePreviewCollapsed(): void {
 }
 
 const mediaPreviewUrl = ref('')
+const lastAutoFitMediaKey = ref('')
 let mediaPreviewCancel: (() => void) | null = null
+let noteImageAutoFitToken = 0
+
 watch(
   () => [boundaryImagePath.value, previewCollapsed.value, isImageBoundary.value] as const,
   async ([path, collapsed, imageBoundary]) => {
@@ -327,9 +345,85 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => mediaPreviewUrl.value,
+  () => {
+    lastAutoFitMediaKey.value = ''
+  }
+)
+
+/** 图片边界：预览加载后按像素比自适应节点尺寸（手动缩放后不再改） */
+function tryAutoFitPreviewMedia(mediaW: number, mediaH: number, mediaKey?: string): void {
+  if (!isImageBoundary.value) return
+  if (!(mediaW > 0 && mediaH > 0)) return
+  if (previewCollapsed.value) return
+  if (!mediaPreviewUrl.value) return
+  if (props.node.params.sizeManuallyResized === true) return
+  const key =
+    mediaKey ||
+    `${mediaPreviewUrl.value}|${Math.round(mediaW)}x${Math.round(mediaH)}`
+  if (key === lastAutoFitMediaKey.value) return
+  const next = fitNodeSizeToMediaAspect(props.node, mediaW, mediaH)
+  const cur = getNodeSize(props.node)
+  lastAutoFitMediaKey.value = key
+  if (Math.abs(cur.w - next.w) < 1 && Math.abs(cur.h - next.h) < 1) return
+  emit('sizeChange', props.node.id, next)
+}
+
+function onPreviewImageLoad(e: Event): void {
+  const img = e.currentTarget as HTMLImageElement
+  const src = img.currentSrc || img.src || ''
+  tryAutoFitPreviewMedia(
+    img.naturalWidth,
+    img.naturalHeight,
+    `${src}|${img.naturalWidth}x${img.naturalHeight}`
+  )
+}
+
+function loadImageNaturalSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    let settled = false
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      if (!ok || !(img.naturalWidth > 0 && img.naturalHeight > 0)) {
+        reject(new Error('IMAGE_SIZE_UNAVAILABLE'))
+        return
+      }
+      resolve({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+    img.onload = () => finish(true)
+    img.onerror = () => finish(false)
+    img.src = src
+    // 缓存图常常不触发 @load，complete 时直接可读尺寸
+    if (img.complete) finish(img.naturalWidth > 0)
+  })
+}
+
+watch(
+  () =>
+    [mediaPreviewUrl.value, previewCollapsed.value, isImageBoundary.value] as const,
+  async ([url, collapsed, imageBoundary]) => {
+    if (!imageBoundary || collapsed || !url) return
+    const token = ++noteImageAutoFitToken
+    try {
+      const { width, height } = await loadImageNaturalSize(url)
+      if (token !== noteImageAutoFitToken) return
+      if (mediaPreviewUrl.value !== url || previewCollapsed.value) return
+      tryAutoFitPreviewMedia(width, height, `${url}|${width}x${height}`)
+    } catch {
+      /* 尺寸探测失败时保留当前节点大小 */
+    }
+  },
+  { flush: 'post' }
+)
+
 onBeforeUnmount(() => {
   mediaPreviewCancel?.()
   mediaPreviewCancel = null
+  noteImageAutoFitToken += 1
 })
 
 function toggleLock(): void {
@@ -906,6 +1000,23 @@ function onBodyDblClick(): void {
 .graph-note.connecting .port-wrap .port,
 .graph-note.link-mode .port-wrap .port {
   pointer-events: auto;
+}
+
+.port.snap-highlight {
+  pointer-events: auto;
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #64b4ff) 75%, transparent);
+  filter: brightness(1.15);
+}
+
+.port.snap-ready {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.25);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, #7dcea0 90%, transparent),
+    0 0 10px color-mix(in srgb, #7dcea0 55%, transparent);
+  filter: brightness(1.25);
 }
 
 @media (hover: none) {
