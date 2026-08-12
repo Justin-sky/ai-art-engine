@@ -957,8 +957,14 @@ function galleryEntryId(item: PreviewItem): string {
   return hasGalleryEntry(liveNode(), galleryKindOf(item), id) ? id : ''
 }
 
-function selectAsCurrentOutput(item: PreviewItem): void {
+/**
+ * 捕获阶段处理选中：播放器/控制条内部的 stopPropagation 无法阻断捕获，
+ * 保证视频/音频卡片单击也能设为输出。排除卡片右上角操作按钮与角标区域。
+ */
+function selectAsCurrentOutputCapture(item: PreviewItem, event: MouseEvent): void {
   if (!canSelectGalleryOutput.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.card-actions, .media-index, .media-current')) return
   const id = galleryEntryId(item)
   if (!id) return
   selectGalleryOutput(props.hostId, liveNode(), galleryKindOf(item), id)
@@ -1251,7 +1257,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :class="{ selected: isSelectedPreview(item), selectable: canSelectGalleryOutput }"
           :data-kind="item.kind"
           :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
-          @click="selectAsCurrentOutput(item)"
+          @click.capture="selectAsCurrentOutputCapture(item, $event)"
         >
           <div class="card-actions">
             <button
@@ -1353,9 +1359,9 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         :key="item.key"
         class="media-card"
         :class="{ selected: isSelectedPreview(item), selectable: canSelectGalleryOutput }"
-        :data-kind="item.kind"
-        :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
-        @click="selectAsCurrentOutput(item)"
+          :data-kind="item.kind"
+          :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
+          @click.capture="selectAsCurrentOutputCapture(item, $event)"
       >
         <div class="card-actions">
           <button

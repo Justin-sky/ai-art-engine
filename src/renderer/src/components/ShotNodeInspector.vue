@@ -259,7 +259,7 @@
             type="button"
             class="video-thumb video-thumb-btn"
             :title="t('graph.inspector.generate.setAsOutput')"
-            @click="selectGeneratedVideo(item.id || `index:${index}`)"
+            @click.capture="selectGeneratedVideo(item.id || `index:${index}`)"
             @dblclick="openGeneratedVideoPreview(item.id || `index:${index}`)"
           >
             <video
@@ -269,7 +269,6 @@
               playsinline
               preload="metadata"
               :title="t('graph.selectVideo.previewHint')"
-              @click.stop
               @dblclick.stop="openGeneratedVideoPreview(item.id || `index:${index}`)"
             />
             <span v-else class="shot-loading">…</span>

@@ -36,7 +36,6 @@
       v-if="!mediaError"
       class="transport"
       @pointerdown.stop
-      @click.stop
       @wheel.stop
     >
       <div class="transport-actions">

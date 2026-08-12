@@ -503,6 +503,27 @@ function firstImageRelativePath(node: GraphNode | undefined): string {
   return ''
 }
 
+/** 取节点当前选中/最新视频的相对路径（与 Inspector 选中输出一致） */
+function selectedVideoRelativePath(node: GraphNode | undefined): string {
+  if (!node) return ''
+  const generated = node.params?.generatedVideos ?? []
+  const selectedId = node.params?.selectedVideoId?.trim()
+  const picked =
+    (selectedId ? generated.find((item) => item.id === selectedId) : undefined) ??
+    generated[generated.length - 1] ??
+    generated[0]
+  const direct = picked?.relativePath?.trim()
+  if (direct) return direct
+  const preview = node.params?.previewRelativePath?.trim()
+  if (preview) return preview
+  const out = runStates.value[node.id]?.outputs?.out
+  if (out?.kind === 'video' && out.relativePath) return out.relativePath
+  if (out?.kind === 'videos' && out.items[out.items.length - 1]?.relativePath) {
+    return out.items[out.items.length - 1]!.relativePath!
+  }
+  return ''
+}
+
 const scopeKey = computed(
   () =>
     String(
@@ -552,9 +573,7 @@ const activeMotion = computed<EpisodeMotionRow | null>(() => {
 
 const activeCellVideo = computed<string>(() => {
   const key = `video${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
-  const node = nodeByKey(key)
-  const path = node?.params?.generatedVideos?.[0]?.relativePath
-  return typeof path === 'string' ? path : ''
+  return selectedVideoRelativePath(nodeByKey(key))
 })
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
@@ -661,7 +680,7 @@ function anchorReviewLabel(index: number): string {
 function cellVideoStatusLabel(cell: EpisodeCellRow): string {
   const key = `video${cell.groupIndex}-${cell.cellIndex}`
   const status = nodeRunStatus(key)
-  const path = nodeByKey(key)?.params?.generatedVideos?.[0]?.relativePath
+  const path = selectedVideoRelativePath(nodeByKey(key))
   if (path) return '已生成'
   if (status === 'done') return '已运行'
   if (status === 'error') return '失败'
