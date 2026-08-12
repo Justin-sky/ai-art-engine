@@ -52,16 +52,16 @@ export const EPISODE_AGENT_BEATBOARD: EpisodeAgentPromptPack = {
 # 9宫格核心锚点
 ## 格N [节拍ID: #N] - 标题
 - **景别与视角**: 景别 / 机位
-- **人物描述**: 外貌、服饰、表情、动作
-- **场景与光影**: 必须指明主光源方向（如：窗外冷色月光作为主顶光）
+- **人物动作与表情**: 角色此刻的动作、姿态、表情、状态；服装/道具/武器如提及只写名称，不描述颜色/形态/材质
+- **场景与光影**: 场景只写名称（如：瓜摊），不描述场景外观；必须指明主光源方向（如：窗外冷色月光作为主顶光）
 - **构图与动线**: 疏密对比 / 空间纵深（前景、中景、后景）
 - **故事功能**: 该格承担的叙事作用
 
 硬性要求：
-1. 9 个格子的主角服饰、发型必须绝对一致。
+1. 服装、道具、武器、场景一律只写名称（如：虎皮裙、金箍棒、算筹、瓜摊），不描述颜色/形态/材质等视觉细节；发型等外观细节由参考图提供，文字不描述以免干扰生图；9 格外观以参考图为准保持一致。
 2. 同场景主光源方向恒定；人物站位稳定成 I / A / L 型，禁止越轴造成瞬移感。
 3. 景别逻辑：禁止无意义的“拉抽屉”与同景别构图重复。
-4. 核心道具（如算筹）必须有特写或反应镜头强化。
+4. 核心道具（如算筹）必须有特写或反应镜头强化其存在，但只写道具名称，不描述其外观。
 5. 先画面、后机位：先写画面内容与叙事重点，再选景别与机位。
 6. 严格按指令中注入的 9 个关键锚点生成：锚点1 对应 格1、锚点2 对应 格2，以此类推；每格 [节拍ID: #N] 的 N 为锚点序号 1~9，必须与格号一致，禁止使用原始节拍编号、禁止重复或自创。
 7. 若拆解表锚点不足 9 个，从其余节拍按顺序补齐到 9 格；若超过 9 个，只取前 9 个。
@@ -72,16 +72,16 @@ Task: from the upstream Beat Breakdown, generate prompt text for 9 key anchors p
 # 9-grid core anchors
 ## Cell N [Beat ID: #N] - Title
 - **Shot size & angle**: size / camera
-- **Character**: appearance, costume, expression, action
-- **Scene & lighting**: must state the key light direction
+- **Character action & expression**: action, pose, expression, state; costumes/props/weapons are named only, never described (colors/forms/materials)
+- **Scene & lighting**: name the scene only (e.g. "melon stand"), no appearance description; must state the key light direction
 - **Composition & movement**: density contrast / depth (foreground, middle ground, background)
 - **Story function**: what this cell does for the narrative
 
 Hard rules:
-1. The protagonist's costume and hairstyle must be absolutely identical across all 9 cells.
+1. Costumes, props, weapons, and scenes are named only (e.g. "tiger-skin skirt", "Ruyi Jingu Bang", "melon stand") — never describe their colors, forms, or materials; those and hairstyle details come only from reference images. All 9 cells stay consistent via the reference images.
 2. Key-light direction stays constant per scene; blocking forms stable I/A/L shapes; no crossing the axis (teleport feel).
 3. No meaningless same-size cuts or repeated compositions.
-4. Key props must get a close-up or reaction shot.
+4. Key props must get a close-up or reaction shot to reinforce their presence — name which prop appears, without describing its appearance.
 5. Picture first, camera second.
 6. Generate from the 9 key anchors injected in the instruction: anchor 1 → cell 1, anchor 2 → cell 2, and so on. Each cell's [Beat ID: #N] must use the anchor ordinal 1–9 matching the cell number — never use the original beat number, never repeat or invent one.
 7. If fewer than 9 anchors are marked, fill the remaining cells from the other beats in order; if more than 9 are marked, take only the first 9.
