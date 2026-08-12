@@ -28,11 +28,31 @@ export function shouldKeepInstructionMentionToken(
   if (node.assetType === 'image' || node.assetType === 'video' || node.assetType === 'voice') {
     return true
   }
-  return (
+  if (
     node.typeId === 'asset.image' ||
     node.typeId === 'asset.video' ||
     node.typeId === 'asset.voice'
-  )
+  ) {
+    return true
+  }
+  // 图片/视频/声音加工节点（upscale / gridSplit / select / multiAngle …）：输出媒体，保留 @n。
+  // image.toPrompt 输出的是文本提示词，不保留。
+  if (
+    node.typeId?.startsWith('image.') ||
+    node.typeId?.startsWith('video.') ||
+    node.typeId?.startsWith('voice.')
+  ) {
+    if (node.typeId !== 'image.toPrompt') return true
+  }
+  if (
+    node.typeId === 'media.bundle' ||
+    node.typeId === 'output.image' ||
+    node.typeId === 'output.video' ||
+    node.typeId === 'output.voice'
+  ) {
+    return true
+  }
+  return false
 }
 
 /**

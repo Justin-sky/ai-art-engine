@@ -4700,6 +4700,11 @@ function findLinkSource(
 function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
   linkingFrom.value = nodeId
   linkingFromPort.value = portId
+  // 从「未选中」的节点拉线时，先取消之前节点的选中；
+  // 从已选中节点拉线则保留多选，用于批量连线。
+  if (!selectedNodeIds.value.has(nodeId)) {
+    clearSelection()
+  }
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const captureEl = e.currentTarget as HTMLElement | null

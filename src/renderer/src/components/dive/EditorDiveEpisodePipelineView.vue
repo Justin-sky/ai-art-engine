@@ -205,15 +205,25 @@
           <h4>视频产物</h4>
           <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
           <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
-          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
-            重新生成这条视频
+          <button
+            class="ghost-button primary"
+            type="button"
+            :disabled="currentCellVideoRunning"
+            @click="runCurrentVideo"
+          >
+            {{ currentCellVideoRunning ? '生成中…' : '重新生成这条视频' }}
           </button>
         </div>
         <div v-else class="detail-block video-block">
           <h4>视频产物</h4>
           <span class="video-path">未生成</span>
-          <button class="ghost-button primary" type="button" @click="runCurrentVideo">
-            生成这条视频
+          <button
+            class="ghost-button primary"
+            type="button"
+            :disabled="currentCellVideoRunning"
+            @click="runCurrentVideo"
+          >
+            {{ currentCellVideoRunning ? '生成中…' : '生成这条视频' }}
           </button>
         </div>
 
@@ -574,6 +584,14 @@ const activeMotion = computed<EpisodeMotionRow | null>(() => {
 const activeCellVideo = computed<string>(() => {
   const key = `video${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
   return selectedVideoRelativePath(nodeByKey(key))
+})
+
+/** 当前选中格的视频是否正在生成（按钮显示“生成中…”并禁用，避免重复点击被静默吞掉） */
+const currentCellVideoRunning = computed(() => {
+  const status = nodeRunStatus(
+    `video${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
+  )
+  return status === 'pending' || status === 'running'
 })
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */

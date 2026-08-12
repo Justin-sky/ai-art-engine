@@ -21,6 +21,7 @@
     @pointerdown.stop="onPointerDown"
   >
     <div class="bundle-body">
+      <span class="bundle-plus">+</span>
       <span class="bundle-mark">{{ t('graph.bundle.title') }}</span>
       <span v-if="incomingCount" class="bundle-count">{{ incomingCount }}</span>
     </div>
@@ -196,6 +197,13 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
   box-sizing: border-box;
 }
 
+.bundle-plus {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: color-mix(in srgb, var(--studio-accent, #6aa8ff) 88%, #fff);
+}
+
 .bundle-mark {
   font-size: 12px;
   font-weight: 650;
@@ -240,6 +248,27 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
   background: color-mix(in srgb, var(--studio-panel, #222) 70%, #445);
   padding: 0;
   cursor: crosshair;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.12s ease;
+}
+
+.port:hover {
+  background: var(--slot-port);
+  border-color: #fff;
+  transform: scale(1.7);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--slot-port) 55%, transparent),
+    0 0 12px color-mix(in srgb, var(--slot-port) 65%, transparent);
+}
+
+.port.in:hover {
+  background: #ffb347;
+  border-color: #fff;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, #ffb347 50%, transparent),
+    0 0 12px color-mix(in srgb, #ffb347 60%, transparent);
 }
 
 .port.snap-highlight {

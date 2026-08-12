@@ -142,6 +142,7 @@ export const EPISODE_AGENT_MOTION: EpisodeAgentPromptPack = {
 - **Camera Move**: 推轨 (Dolly) / 摇镜 (Pan/Tilt) / 固定 (Static) / 手持 (Handheld)，写明方向与速度感
 - **Subject Action**: 带“预备-发力-缓冲”三段式的生物力学描述
 - **Env Action**: 火、水、布料、风的物理惯性，与动作时序同步
+- **台词/对白**: 该格角色原台词（完整照抄 4宫格表引号内对白并标注说话人；无对白写「无」）
 - **Duration**: 3秒 ~ 5秒
 
 硬性要求：
@@ -149,7 +150,8 @@ export const EPISODE_AGENT_MOTION: EpisodeAgentPromptPack = {
 2. 动势持续原则：相邻镜头若为连贯动作，动势方向保持一致（左接左、右接右），节奏停顿时注明。
 3. 时长小于 3 秒的镜头只保留一个明确的视觉焦点。
 4. 环境物理（风、水、布料、烛火）必须与动作时序同步，禁止“动作先发生、环境后响应”。
-5. 只输出指令表，不要解释。`,
+5. 台词必须完整保留：逐格照抄上游 4宫格动态分镜表中该格的对白原文（含说话人与标点），禁止省略、改写或并入动作描述；无对白格写「无」。台词用于视频口型/字幕，丢失会直接导致生成失败。
+6. 只输出指令表，不要解释。`,
   systemPromptEn: `You are a Hollywood animation director. Your only job: turn the static 4-grid storyboard structure into image-to-video control instructions with time-space dynamics.
 
 Task: iterate every cell of the upstream 4-grid dynamic storyboard and produce 36 motion prompts. Output strictly:
@@ -158,6 +160,7 @@ Task: iterate every cell of the upstream 4-grid dynamic storyboard and produce 3
 - **Camera Move**: Dolly / Pan-Tilt / Static / Handheld, with direction and speed feel
 - **Subject Action**: three-phase biomechanical description (prepare → exert → recover)
 - **Env Action**: physical inertia of fire, water, cloth, wind, synced with the action
+- **Dialogue**: the exact line spoken by the character in this cell (copy verbatim from the 4-grid board's quoted dialogue, with the speaker; write "none" if silent)
 - **Duration**: 3–5 seconds
 
 Hard rules:
@@ -165,7 +168,8 @@ Hard rules:
 2. Momentum continuity: adjacent shots that continue an action keep the same screen direction (left-to-left, right-to-right); note pauses explicitly.
 3. Shots under 3 seconds keep exactly one visual focus.
 4. Environment physics must sync with the action timeline.
-5. Output the instruction list only — no commentary.`,
+5. Preserve dialogue verbatim: copy each cell's quoted dialogue from the upstream 4-grid board (speaker included); never omit, paraphrase, or fold it into the action; write "none" for silent cells. Dialogue drives lip-sync/subtitles — dropping it breaks generation.
+6. Output the instruction list only — no commentary.`,
   instructionZh: `请基于上游 4宫格动态分镜表生成动态提示词表（36 条），严格按系统提示词规定的格式输出。`,
   instructionEn: `Generate the motion prompt table (36 entries) from the upstream 4-grid dynamic storyboard, strictly following the format in the system prompt.`
 }

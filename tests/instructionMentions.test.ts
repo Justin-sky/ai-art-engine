@@ -54,6 +54,24 @@ describe('instruction mentions', () => {
     expect(selectByMentionIndexes('只要 @2', indexed)).toEqual(['b'])
   })
 
+  it('keeps @n for image/video processing nodes and bundles, expands image.toPrompt text', () => {
+    expect(shouldKeepInstructionMentionToken({ typeId: 'image.upscale' })).toBe(true)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'image.gridSplit' })).toBe(true)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'image.select' })).toBe(true)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'media.bundle' })).toBe(true)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'video.reshoot' })).toBe(true)
+    // 输出文本的图片节点不保留 @n
+    expect(shouldKeepInstructionMentionToken({ typeId: 'image.toPrompt' })).toBe(false)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'play.script' })).toBe(false)
+    // 预览展开：图片加工节点引用保留 @n
+    expect(
+      expandInstructionMentions('基于参考图@1 与剧本@2', [
+        { index: 1, title: '格1', text: '', keepMentionToken: true },
+        { index: 2, title: '剧本', text: '孙悟空买瓜' }
+      ])
+    ).toBe('基于参考图@1 与剧本孙悟空买瓜')
+  })
+
   it('buildMentionSourcesForNode falls back to source node text when output missing', () => {
     const source: GraphNode = {
       id: 'n1',
