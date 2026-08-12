@@ -236,7 +236,7 @@ function buildEpisodePipelinePlan(): GraphPlan {
         typeId: 'asset.video',
         title: `动态视频·格${g}-${c}`,
         params: {
-          generateInstruction: `基于上游参考图与该动态格的图生视频指令生成 格${g}-${c} 的动态视频，参考图只提供风格与内容参考，严格遵循指令中的镜头运动、主体动作、环境交互与时长。`,
+          generateInstruction: `基于上游参考图与该动态格的图生视频指令生成 格${g}-${c} 的动态视频，参考图提供一切细节（角色外观、服装、道具、武器、场景环境等），严格按参考图还原，严格遵循指令中的镜头运动、主体动作、环境交互与时长。`,
           generateDuration: 4
         }
       })
