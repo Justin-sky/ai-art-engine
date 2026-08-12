@@ -18,6 +18,15 @@ export function isBundleNode(node: Pick<GraphNode, 'typeId'> | null | undefined)
   return node?.typeId === MEDIA_BUNDLE_TYPE_ID
 }
 
+/** 束结是否锁定为图片类型（指令框对束引入的图片自动插入强制参考） */
+export function isImageBundle(
+  node: Pick<GraphNode, 'typeId' | 'params'> | null | undefined
+): boolean {
+  if (!isBundleNode(node)) return false
+  const locked = node?.params?.bundleDataType
+  return locked === 'image' || locked === 'images'
+}
+
 /** 束结可锁定的端口族（含单/复数） */
 export function isBundleAcceptableDataType(dataType: GraphPortDataType): boolean {
   const singular = toSingularGraphPortDataType(dataType)

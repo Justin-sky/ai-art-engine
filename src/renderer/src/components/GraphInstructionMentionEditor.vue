@@ -57,6 +57,7 @@
           }"
           :data-edge-id="chip.edgeId"
           :title="chipDragTitle(chip)"
+          @click="onThumbClick(chip)"
           @pointerdown="onChipPointerDown(chip, $event)"
           @pointermove="onChipPointerMove($event)"
           @pointerup="onChipPointerUp($event)"
@@ -65,7 +66,6 @@
           <button
             type="button"
             class="ref-thumb"
-            @click="onThumbClick(chip)"
             @pointerenter="showRefPreview('mention', chip, $event)"
             @pointerleave="hideRefPreview"
           >
@@ -239,6 +239,7 @@ import {
   shouldKeepInstructionMentionToken,
   softResolveBoundaryInputParams,
   isBoundaryInputNode,
+  isImageBundle,
   expandIncomingThroughBundles,
   isBundleNode,
   type GraphNode,
@@ -1014,9 +1015,21 @@ function onChipPointerCancel(): void {
   resetChipDrag()
 }
 
+/** 芯片是否由「图片束」引入：ownerNodeId 指向束结且锁定为图片类型 */
+function chipIntroducedViaImageBundle(chip: RefChip): boolean {
+  const owner = graphEditorHosts.getNode(props.hostId, chip.ownerNodeId)
+  return isImageBundle(owner)
+}
+
 function onThumbClick(chip: RefChip): void {
   if (suppressThumbClick) {
     suppressThumbClick = false
+    return
+  }
+  // 图片束引入的引用：自动插入强制参考「名称 严格参考@N」，名称从束内图片节点解析
+  if (chipIntroducedViaImageBundle(chip)) {
+    const name = chip.title?.trim() || `图${chip.index}`
+    insertToken(`${name} 严格参考@${chip.index}`)
     return
   }
   insertToken(`@${chip.index}`)
@@ -1024,10 +1037,15 @@ function onThumbClick(chip: RefChip): void {
 
 function insertToken(token: string): void {
   const current = props.modelValue ?? ''
-  const spacer = !current || /\s$/.test(current) ? '' : ' '
-  emit('update:modelValue', `${current}${spacer}${token} `)
+  // 所有引用都插入到光标处（未聚焦时按起始位置 0，即最前面）
+  const selection = editorRef.value?.getSelection()
+  const start = selection?.start ?? current.length
+  const next = `${current.slice(0, start)}${token}${current.slice(start)}`
+  emit('update:modelValue', next)
   emit('change')
-  editorRef.value?.focus()
+  void nextTick(() => {
+    editorRef.value?.setSelection(start + token.length)
+  })
 }
 
 function onEditorDblClick(): void {

@@ -8,6 +8,7 @@ import {
   getNodeType,
   GraphPortType,
   isBundleAcceptableDataType,
+  isImageBundle,
   lockBundleDataType,
   syncBundleDataTypeAfterEdgeChange,
   type GraphDocument
@@ -18,6 +19,19 @@ function doc(nodes: GraphDocument['nodes'], edges: GraphDocument['edges']): Grap
 }
 
 describe('media.bundle expand / lock', () => {
+  it('isImageBundle only when locked to image type', () => {
+    const bundle = createNodeFromType('media.bundle', { x: 0, y: 0 })
+    expect(isImageBundle(bundle)).toBe(false)
+    lockBundleDataType(bundle, GraphPortType.image)
+    expect(isImageBundle(bundle)).toBe(true)
+    lockBundleDataType(bundle, GraphPortType.video)
+    expect(bundle.params.bundleDataType).toBe(GraphPortType.image) // 已锁定不变
+    expect(isImageBundle(bundle)).toBe(true)
+    const videoBundle = createNodeFromType('media.bundle', { x: 0, y: 40 })
+    lockBundleDataType(videoBundle, GraphPortType.video)
+    expect(isImageBundle(videoBundle)).toBe(false)
+  })
+
   it('exposes singular in/out ports and locks bundleDataType', () => {
     const bundle = createNodeFromType('media.bundle', { x: 0, y: 0 })
     expect(getNodePorts(bundle).map((p) => [p.id, p.dataType, p.multiple])).toEqual([
