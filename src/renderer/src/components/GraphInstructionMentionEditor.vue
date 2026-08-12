@@ -239,6 +239,8 @@ import {
   shouldKeepInstructionMentionToken,
   softResolveBoundaryInputParams,
   isBoundaryInputNode,
+  expandIncomingThroughBundles,
+  isBundleNode,
   type GraphNode,
   type GraphValue,
   type InstructionMentionSource,
@@ -271,6 +273,7 @@ import {
   VIDEO_LAST_FRAME_PORT_ID,
   isVideoFramePortId
 } from '@shared/graph'
+import { isAudioFilePath, isImageFilePath, isVideoFilePath } from '@shared/import'
 import {
   buildMentionIndexMapAfterReorder,
   buildMentionIndexMapForStyleReserveChange,
@@ -281,6 +284,8 @@ import {
 
 interface RefChip {
   edgeId: string
+  /** 该边所属目标节点（束结或当前节点）；换序时按此节点重排入边 */
+  ownerNodeId: string
   sourceNodeId: string
   index: number
   title: string
@@ -543,12 +548,29 @@ function sourceTitle(node: GraphNode): string {
   return t('graph.defaultNode')
 }
 
+/** 文本产出/透传节点：指令窗口引用芯片统一显示文本图标 */
+const TEXT_ICON_TYPE_IDS = new Set([
+  'play.script',
+  'text.select',
+  'output.text',
+  'episode.cellSelect',
+  'prompt.optimize',
+  'world.extract',
+  'beat.split',
+  'beat.table',
+  'beat.gen'
+])
+
 function sourceIcon(node: GraphNode): string {
   if (node.assetType && ASSET_TYPE_ICONS[node.assetType]) {
     return ASSET_TYPE_ICONS[node.assetType]
   }
-  if (node.typeId === 'play.script') return '📝'
   if (node.typeId === 'note.text') return '📌'
+  if (TEXT_ICON_TYPE_IDS.has(node.typeId)) return '📝'
+  if (isBoundaryInputNode(node)) {
+    const dataType = node.params.hostBoundaryPort?.dataType
+    if (dataType === 'text' || dataType === 'texts') return '📝'
+  }
   return '📄'
 }
 
@@ -614,7 +636,17 @@ function resolveSourcePreviewDataUrl(source: GraphNode): string {
  */
 function resolveSourcePreviewPath(source: GraphNode): string {
   const previewRel = source.params.previewRelativePath?.trim().replace(/\\/g, '/')
-  if (previewRel) return previewRel
+  if (previewRel) {
+    // 文本类节点的 previewRelativePath 是正文旁挂路径（txt/md 等），不能当缩略图
+    if (
+      isImageFilePath(previewRel) ||
+      isVideoFilePath(previewRel) ||
+      isAudioFilePath(previewRel)
+    ) {
+      return previewRel
+    }
+    return ''
+  }
   const images = source.params.generatedImages
   if (Array.isArray(images) && images.length) {
     const selectedId = source.params.selectedImageId?.trim()
@@ -648,12 +680,13 @@ function lookupThumbUrl(source: GraphNode | null): string {
 }
 
 function toRefChip(
-  edge: { edgeId: string; sourceNodeId: string; index: number },
+  edge: { edgeId: string; ownerNodeId: string; sourceNodeId: string; index: number },
   source: GraphNode | null
 ): RefChip {
   const title = source ? sourceTitle(source) : edge.sourceNodeId.slice(0, 8)
   return {
     edgeId: edge.edgeId,
+    ownerNodeId: edge.ownerNodeId,
     sourceNodeId: edge.sourceNodeId,
     index: edge.index,
     title,
@@ -708,14 +741,38 @@ const styleChips = computed((): StyleChip[] => {
 
 const mentionChips = computed((): RefChip[] => {
   void revision.value
-  const edges = graphEditorHosts
-    .listIncomingEdges(props.hostId, props.nodeId)
-    .filter((edge) => !isVideoFramePortId(edge.targetPort))
+  const doc = graphEditorHosts.getDocument(props.hostId)
   const reserve = styleMentionReserve.value
-  // 重新按非帧口编号，并叠加风格占位，与执行侧 / API @n 一致
-  return edges.map((edge, i) => {
+  if (!doc) {
+    const edges = graphEditorHosts
+      .listIncomingEdges(props.hostId, props.nodeId)
+      .filter((edge) => !isVideoFramePortId(edge.targetPort))
+    return edges.map((edge, i) => {
+      const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+      return toRefChip(
+        {
+          edgeId: edge.edgeId,
+          ownerNodeId: props.nodeId,
+          sourceNodeId: edge.sourceNodeId,
+          index: portMentionIndex(i, reserve)
+        },
+        source
+      )
+    })
+  }
+  // 束结入边展开为真实上游缩略图，与 cook @n 一致
+  const logical = expandIncomingThroughBundles(doc, props.nodeId)
+  return logical.map((edge, i) => {
     const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
-    return toRefChip({ ...edge, index: portMentionIndex(i, reserve) }, source)
+    return toRefChip(
+      {
+        edgeId: edge.edgeId,
+        ownerNodeId: edge.ownerNodeId,
+        sourceNodeId: edge.sourceNodeId,
+        index: portMentionIndex(i, reserve)
+      },
+      source
+    )
   })
 })
 
@@ -797,9 +854,7 @@ watch(
 watch(styleMentionReserve, (next, prev) => {
   if (prev == null || next === prev) return
   if (props.presetKind !== 'image' && props.presetKind !== 'video') return
-  const portCount = graphEditorHosts
-    .listIncomingEdges(props.hostId, props.nodeId)
-    .filter((edge) => !isVideoFramePortId(edge.targetPort)).length
+  const portCount = mentionChips.value.length
   const indexMap = buildMentionIndexMapForStyleReserveChange(prev, next, portCount)
   const nextText = remapInstructionMentions(props.modelValue ?? '', indexMap)
   if (nextText !== (props.modelValue ?? '')) {
@@ -835,30 +890,58 @@ function resetChipDrag(): void {
 
 function applyChipReorder(fromId: string, toId: string): void {
   if (fromId === toId) return
-  const oldMentionIds = mentionChips.value.map((item) => item.edgeId)
-  const fromIdx = oldMentionIds.indexOf(fromId)
-  const toIdx = oldMentionIds.indexOf(toId)
+  const chips = mentionChips.value
+  const fromChip = chips.find((item) => item.edgeId === fromId)
+  const toChip = chips.find((item) => item.edgeId === toId)
+  if (!fromChip || !toChip) return
+  // 跨束/直连换序会改变物理拓扑，仅支持同一 owner 内换序
+  if (fromChip.ownerNodeId !== toChip.ownerNodeId) return
+
+  const ownerId = fromChip.ownerNodeId
+  const ownerChips = chips.filter((item) => item.ownerNodeId === ownerId)
+  const oldOwnerIds = ownerChips.map((item) => item.edgeId)
+  const fromIdx = oldOwnerIds.indexOf(fromId)
+  const toIdx = oldOwnerIds.indexOf(toId)
   if (fromIdx < 0 || toIdx < 0) return
 
-  const nextMentionIds = [...oldMentionIds]
-  nextMentionIds.splice(fromIdx, 1)
-  nextMentionIds.splice(toIdx, 0, fromId)
-  if (nextMentionIds.every((id, i) => id === oldMentionIds[i])) return
+  const nextOwnerIds = [...oldOwnerIds]
+  nextOwnerIds.splice(fromIdx, 1)
+  nextOwnerIds.splice(toIdx, 0, fromId)
+  if (nextOwnerIds.every((id, i) => id === oldOwnerIds[i])) return
 
-  // 帧口位置保持不变，只在 mention 槽位上换序
-  const allEdges = graphEditorHosts.listIncomingEdges(props.hostId, props.nodeId)
-  let mi = 0
-  const nextFullIds = allEdges.map((edge) =>
-    isVideoFramePortId(edge.targetPort) ? edge.edgeId : nextMentionIds[mi++]!
-  )
+  const oldMentionIds = chips.map((item) => item.edgeId)
+  const rebuilt: string[] = []
+  let oi = 0
+  for (const chip of chips) {
+    if (chip.ownerNodeId === ownerId) {
+      rebuilt.push(nextOwnerIds[oi++]!)
+    } else {
+      rebuilt.push(chip.edgeId)
+    }
+  }
 
   const indexMap = buildMentionIndexMapAfterReorder(
     oldMentionIds,
-    nextMentionIds,
+    rebuilt,
     styleMentionReserve.value
   )
   const nextText = remapInstructionMentions(props.modelValue ?? '', indexMap)
-  graphEditorHosts.reorderIncomingEdges(props.hostId, props.nodeId, nextFullIds)
+
+  if (ownerId === props.nodeId) {
+    const allEdges = graphEditorHosts.listIncomingEdges(props.hostId, props.nodeId)
+    const queue = [...nextOwnerIds]
+    const nextFullIds = allEdges.map((edge) => {
+      if (isVideoFramePortId(edge.targetPort)) return edge.edgeId
+      const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+      // 束桥边位置不变；仅重排直连入边
+      if (source && isBundleNode(source)) return edge.edgeId
+      return queue.shift() ?? edge.edgeId
+    })
+    graphEditorHosts.reorderIncomingEdges(props.hostId, props.nodeId, nextFullIds)
+  } else {
+    graphEditorHosts.reorderIncomingEdges(props.hostId, ownerId, nextOwnerIds)
+  }
+
   if (nextText !== (props.modelValue ?? '')) {
     emit('update:modelValue', nextText)
     emit('change')

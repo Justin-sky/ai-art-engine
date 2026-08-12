@@ -12,6 +12,11 @@ import {
   resolveNodeHostInterface
 } from './hostInterface'
 import {
+  isBundleAcceptableDataType,
+  isBundleNode,
+  MEDIA_BUNDLE_TYPE_ID
+} from './bundleExpand'
+import {
   GraphPortType,
   isPluralGraphPortDataType,
   toSingularGraphPortDataType,
@@ -117,6 +122,7 @@ export function resolveTypeDefPorts(
   params?: Pick<
     GraphNodeParams,
     | 'inputDataType'
+    | 'bundleDataType'
     | 'assetRef'
     | 'assetHost'
     | 'generateFrameMode'
@@ -156,6 +162,29 @@ export function resolveTypeDefPorts(
         }
       ]
     }
+  }
+
+  // 束结：按 bundleDataType 锁定 in/out；未锁定时占位 image（连接/菜单另有特例）
+  if (typeDef.typeId === MEDIA_BUNDLE_TYPE_ID) {
+    const locked =
+      node?.params?.bundleDataType ?? params?.bundleDataType ?? GraphPortType.image
+    const dataType = toSingularGraphPortDataType(locked)
+    ports = [
+      {
+        id: 'in',
+        direction: 'in',
+        dataType,
+        multiple: true,
+        label: 'In'
+      },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType,
+        multiple: true,
+        label: 'Out'
+      }
+    ]
   }
 
   // boundary proxy：按 hostBoundaryPort 暴露单口
@@ -270,7 +299,7 @@ export interface GraphConnectOptions {
   /** 新建节点时的 params（含 scope createParams 的 inputDataType） */
   typeParams?: Pick<
     GraphNodeParams,
-    'inputDataType' | 'assetRef' | 'assetHost' | 'generateFrameMode'
+    'inputDataType' | 'bundleDataType' | 'assetRef' | 'assetHost' | 'generateFrameMode'
   > | null
 }
 
@@ -282,8 +311,28 @@ export function canConnectNodes(
   if (source.id === target.id) return false
   const outPort = findOutPort(source, options.sourcePort)
   if (!outPort) return false
+  // 未锁定束结：接受任意可束类型（不依赖占位 image 口）
+  if (isBundleNode(target) && !target.params.bundleDataType) {
+    return isBundleAcceptableDataType(outPort.dataType)
+  }
+  if (isBundleNode(target) && target.params.bundleDataType) {
+    const locked = toSingularGraphPortDataType(target.params.bundleDataType)
+    if (
+      !portsCompatible(outPort.dataType, locked) &&
+      toSingularGraphPortDataType(outPort.dataType) !== locked
+    ) {
+      return false
+    }
+  }
   const inPort = findCompatibleInPort(target, outPort.dataType, options.targetPort)
-  if (!inPort) return false
+  if (!inPort) {
+    // 未锁定束结占位口可能与源类型不一致，仍允许落到 in
+    if (isBundleNode(target) && isBundleAcceptableDataType(outPort.dataType)) {
+      const bundleIn = findInPort(target, options.targetPort ?? 'in')
+      return !!bundleIn
+    }
+    return false
+  }
   // 图库节点默认单数 `out` 不进 select 复数口（须用 out-all）；边界等无 out-all 的 image→images 仍允许
   if (
     outPort.id === 'out' &&
@@ -312,6 +361,15 @@ export function typeDefAcceptsDataType(
   dataType: GraphPortDataType,
   options: GraphConnectOptions = {}
 ): boolean {
+  if (typeDef.typeId === MEDIA_BUNDLE_TYPE_ID) {
+    const locked = options.typeParams?.bundleDataType
+    if (!locked) return isBundleAcceptableDataType(dataType)
+    const singular = toSingularGraphPortDataType(locked)
+    return (
+      portsCompatible(dataType, singular) ||
+      toSingularGraphPortDataType(dataType) === singular
+    )
+  }
   const inPorts = typeDefInPorts(typeDef, options)
   if (options.targetPort) {
     const inPort = inPorts.find((p) => p.id === options.targetPort)
@@ -326,6 +384,15 @@ export function typeDefProvidesDataType(
   dataType: GraphPortDataType,
   options: GraphConnectOptions = {}
 ): boolean {
+  if (typeDef.typeId === MEDIA_BUNDLE_TYPE_ID) {
+    const locked = options.typeParams?.bundleDataType
+    if (!locked) return isBundleAcceptableDataType(dataType)
+    const singular = toSingularGraphPortDataType(locked)
+    return (
+      portsCompatible(singular, dataType) ||
+      singular === toSingularGraphPortDataType(dataType)
+    )
+  }
   const outPorts = typeDefOutPorts(typeDef, options)
   if (options.sourcePort) {
     const outPort = outPorts.find((p) => p.id === options.sourcePort)

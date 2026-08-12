@@ -630,6 +630,10 @@ import {
   findCompatibleInPort,
   findInPort,
   findOutPort,
+  isBundleNode,
+  isBundleAcceptableDataType,
+  lockBundleDataType,
+  syncBundleDataTypeAfterEdgeChange,
   resolveSnapConnectEdges,
   resolveSnapDragPreview,
   snapConnectThresholdWorld,
@@ -1545,6 +1549,8 @@ type CtxMenuState = {
   kind?: 'selection' | 'add'
   linkFromNodeId?: string
   linkFromPortId?: string
+  /** 多选输出松手：批量连到新建节点（含束结） */
+  linkFromSources?: Array<{ nodeId: string; portId: string }>
   linkToNodeId?: string
   linkToPortId?: string
 }
@@ -4063,25 +4069,34 @@ function addNodeFromMenu(item: AddableMenuItem): void {
     graphScope.value === 'directorAsset' &&
     isDirectorProcessingNode(node)
 
-  if (linkFromId) {
-    const source = graph.nodes.find((n) => n.id === linkFromId)
-    const sourcePort = menu.linkFromPortId ?? findOutPort(source!)?.id ?? 'out'
-    if (
-      source &&
-      canConnectNodes(source, node, { sourcePort })
-    ) {
+  const linkFromSources =
+    menu.linkFromSources?.length
+      ? menu.linkFromSources
+      : linkFromId
+        ? [{ nodeId: linkFromId, portId: menu.linkFromPortId ?? 'out' }]
+        : []
+  if (linkFromSources.length) {
+    for (const src of linkFromSources) {
+      const source = graph.nodes.find((n) => n.id === src.nodeId)
+      const sourcePort = src.portId || findOutPort(source!)?.id || 'out'
+      if (!source || !canConnectNodes(source, node, { sourcePort })) continue
       const outPort = findOutPort(source, sourcePort)
-      const inPort = outPort
+      let inPort = outPort
         ? findCompatibleInPort(node, outPort.dataType)
         : undefined
-      if (outPort && inPort) {
-        graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
-          sourceId: linkFromId,
-          targetId: node.id,
-          sourcePort: outPort.id,
-          targetPort: inPort.id,
-          edgeId: `edge-${crypto.randomUUID()}`
-        })
+      if (!inPort && isBundleNode(node) && outPort && isBundleAcceptableDataType(outPort.dataType)) {
+        inPort = findInPort(node, 'in') ?? undefined
+      }
+      if (!outPort || !inPort) continue
+      graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+        sourceId: src.nodeId,
+        targetId: node.id,
+        sourcePort: outPort.id,
+        targetPort: inPort.id,
+        edgeId: `edge-${crypto.randomUUID()}`
+      })
+      if (isBundleNode(node)) {
+        lockBundleDataType(node, outPort.dataType)
       }
     }
   } else if (linkToId) {
@@ -4118,8 +4133,11 @@ function addNodeFromMenu(item: AddableMenuItem): void {
   }
   requestPreviewVisibilityUpdate()
   requestEdgeRender()
-  recordGraphChange(linkFromId || linkToId ? 'add-and-connect-node' : 'add-node', before)
-  if (linkFromId || linkToId) graphEditorHosts.bumpRevision()
+  recordGraphChange(
+    linkFromSources.length || linkToId ? 'add-and-connect-node' : 'add-node',
+    before
+  )
+  if (linkFromSources.length || linkToId) graphEditorHosts.bumpRevision()
   // 每个新导演台编辑节点拥有独立全新场景
   if (createdDirectorProcessing) {
     seedFreshStageForNode(node, buildGraphJson())
@@ -4737,6 +4755,26 @@ function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
         )
       if (hasConnectable) {
         const pos = screenToWorld(ev.clientX, ev.clientY)
+        const batchIds = [...new Set([sourceId, ...selectedNodeIds.value])]
+        const linkFromSources = batchIds
+          .map((id) => {
+            const src = graph.nodes.find((n) => n.id === id)
+            const out = src ? findOutPort(src, id === sourceId ? sourcePort : undefined) : undefined
+            if (!src || !out) return null
+            if (
+              !menuAddableNodeTypes().some((def) =>
+                canConnectToNodeType(src, def, {
+                  sourcePort: out.id,
+                  dataType: out.dataType,
+                  typeParams: createParamsForScope(graphScope.value, def.typeId as GraphNodeTypeId)
+                })
+              )
+            ) {
+              return null
+            }
+            return { nodeId: id, portId: out.id }
+          })
+          .filter((item): item is { nodeId: string; portId: string } => !!item)
         void showCtxMenu({
           x: ev.clientX,
           y: ev.clientY,
@@ -4744,7 +4782,8 @@ function onOutPortDown(nodeId: string, portId: string, e: PointerEvent): void {
           worldY: pos.y,
           kind: 'add',
           linkFromNodeId: sourceId,
-          linkFromPortId: sourcePort
+          linkFromPortId: sourcePort,
+          linkFromSources: linkFromSources.length ? linkFromSources : undefined
         })
       }
     }
@@ -4893,11 +4932,15 @@ function beginEdgesRewire(
   const batch = [...unique.values()]
   const before = buildGraphJson()
   const removeIds = new Set(batch.map((edge) => edge.id))
+  const affectedTargets = [...new Set(batch.map((edge) => edge.target))]
   graph.edges = graph.edges.filter((item) => !removeIds.has(item.id))
   if ([...removeIds].some((id) => selectedEdgeIds.value.has(id))) {
     selectedEdgeIds.value = new Set(
       [...selectedEdgeIds.value].filter((id) => !removeIds.has(id))
     )
+  }
+  for (const targetId of affectedTargets) {
+    syncBundleDataTypeAfterEdgeChange(graph as GraphDocument, targetId)
   }
   scheduleSave()
   graphEditorHosts.bumpRevision()
@@ -4978,7 +5021,14 @@ function connectNodes(
   if (!source || !target) return false
   const outPort = findOutPort(source, sourcePortId)
   if (!outPort) return false
-  const inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
+  let inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
+  if (
+    !inPort &&
+    isBundleNode(target) &&
+    isBundleAcceptableDataType(outPort.dataType)
+  ) {
+    inPort = findInPort(target, targetPortId ?? 'in') ?? undefined
+  }
   if (!inPort) return false
   if (
     !canConnectNodes(source, target, {
@@ -4997,6 +5047,9 @@ function connectNodes(
     targetPort: inPort.id,
     edgeId: `edge-${crypto.randomUUID()}`
   })
+  if (isBundleNode(target)) {
+    lockBundleDataType(target, outPort.dataType)
+  }
   scheduleSave()
   if (before) {
     recordGraphChange('connect-nodes', before)
@@ -5006,14 +5059,17 @@ function connectNodes(
 }
 
 function removeGraphEdge(edgeId: string): void {
-  if (!graph.edges.some((edge) => edge.id === edgeId)) return
+  const edge = graph.edges.find((item) => item.id === edgeId)
+  if (!edge) return
   const before = buildGraphJson()
-  graph.edges = graph.edges.filter((edge) => edge.id !== edgeId)
+  const targetId = edge.target
+  graph.edges = graph.edges.filter((item) => item.id !== edgeId)
   if (selectedEdgeIds.value.has(edgeId)) {
     const next = new Set(selectedEdgeIds.value)
     next.delete(edgeId)
     selectedEdgeIds.value = next
   }
+  syncBundleDataTypeAfterEdgeChange(graph as GraphDocument, targetId)
   scheduleSave()
   recordGraphChange('delete-edges', before)
   graphEditorHosts.bumpRevision()

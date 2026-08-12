@@ -5,6 +5,7 @@ import {
   softResolveSourceOutput,
   type ResolveHostInputSlotsOptions
 } from '../hostInput'
+import { expandIncomingThroughBundles, isBundleNode } from '../bundleExpand'
 import { isAssetHostNode, isGenerateLocked } from '../nodeRole'
 import { getNodePorts } from '../ports'
 import { findOutputNode } from '../query'
@@ -346,10 +347,25 @@ async function executeOneNode(
   }
   for (const edge of graph.edges) {
     if (edge.target !== nodeId) continue
+    const targetPort = edge.targetPort ?? 'in'
+    const source = byId.get(edge.source)
+    // 非帧口且源为束结：展开为真实上游值（与指令 @n 一致）；束结自身仍聚合输出
+    if (
+      source &&
+      isBundleNode(source) &&
+      !isVideoFramePortId(targetPort) &&
+      !isBundleNode(node)
+    ) {
+      for (const logical of expandIncomingThroughBundles(graph, source.id)) {
+        const value = outputs.get(logical.sourceNodeId)?.[logical.sourcePort]
+        if (!value) continue
+        ;(inputs[targetPort] ??= []).push(value)
+      }
+      continue
+    }
     const sourcePorts = outputs.get(edge.source)
     if (!sourcePorts) continue
     const sourcePort = edge.sourcePort ?? 'out'
-    const targetPort = edge.targetPort ?? 'in'
     const value = sourcePorts[sourcePort]
     if (!value) continue
     ;(inputs[targetPort] ??= []).push(value)
@@ -369,16 +385,11 @@ async function executeOneNode(
     mentionIndexBase,
     resolveBeatUnit: options.resolveBeatUnit
   })
-  const incomingByIndex = graph.edges
-    .filter(
-      (edge) => edge.target === nodeId && !isVideoFramePortId(edge.targetPort ?? 'in')
-    )
-    .map((edge, i) => {
-      const index = mentionIndexBase + i + 1
-      const sourcePort = edge.sourcePort ?? 'out'
-      const value = outputs.get(edge.source)?.[sourcePort]
-      return value ? { index, value } : { index }
-    })
+  const incomingByIndex = expandIncomingThroughBundles(graph, nodeId).map((edge, i) => {
+    const index = mentionIndexBase + i + 1
+    const value = outputs.get(edge.sourceNodeId)?.[edge.sourcePort]
+    return value ? { index, value } : { index }
+  })
   const ctx: NodeExecuteContext = {
     node,
     inputs,

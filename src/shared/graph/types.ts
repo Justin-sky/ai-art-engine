@@ -200,6 +200,7 @@ export type GraphNodeTypeId =
   | 'output.beatUnit'
   | 'output.world'
   | 'note.text'
+  | 'media.bundle'
   | 'play.script'
   | 'prompt.optimize'
   | 'image.select'
@@ -233,7 +234,7 @@ export type GraphNodeTypeId =
   | (string & {})
 
 export type GraphInspectorKind = 'asset' | 'output' | 'note' | 'camera' | 'none'
-export type GraphCardKind = 'media' | 'note'
+export type GraphCardKind = 'media' | 'note' | 'bundle'
 
 export interface GraphNodeParams {
   weight?: number
@@ -312,6 +313,10 @@ export interface GraphNodeParams {
   loop?: boolean
 /** 输出节点输入端口类型覆盖 */
   inputDataType?: GraphPortDataType
+  /**
+   * 束结（media.bundle）锁定的单数端口类型；空/未设表示未锁定，可接首条任意可接受类型。
+   */
+  bundleDataType?: GraphPortDataType
   /** 拖入画布的资产引用节点：仅输出端口，在资产编辑器内修改 */
   assetRef?: boolean
   /**

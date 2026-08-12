@@ -15,7 +15,8 @@ import type {
   GraphDocument,
   GraphNode,
   GraphNodeParams,
-  GraphOutputKind
+  GraphOutputKind,
+  GraphPortDataType
 } from '../types'
 import {
   GraphPortType,
@@ -23,6 +24,7 @@ import {
   isPluralGraphPortDataType,
   toSingularGraphPortDataType
 } from '../types'
+import { expandIncomingThroughBundles } from '../bundleExpand'
 import { catalogTextFromInputs, catalogValue } from '../catalogValue'
 import { isAssetHostNode, isAssetRefNode, isProcessingAssetNode } from '../nodeRole'
 import { cloneGraphDocument } from '../document'
@@ -137,7 +139,6 @@ import {
 import {
   VIDEO_FIRST_FRAME_PORT_ID,
   VIDEO_LAST_FRAME_PORT_ID,
-  isVideoFramePortId,
   resolveVideoGenerateParamsForApi,
   videoGenerateParamsToNodePatch,
   type VideoGenerateParamCapabilities
@@ -2878,14 +2879,12 @@ export function buildMentionSourcesForNode(input: {
   resolveBeatUnit?: (beatId: string) => import('../beatParse').BeatRow | null
 }): InstructionMentionSource[] {
   const base = Math.max(0, Math.floor(input.mentionIndexBase ?? 0))
-  const incoming = input.graph.edges.filter(
-    (edge) => edge.target === input.nodeId && !isVideoFramePortId(edge.targetPort ?? 'in')
-  )
+  const incoming = expandIncomingThroughBundles(input.graph, input.nodeId)
   return incoming.map((edge, i) => {
     const index = portMentionIndex(i, base)
-    const source = input.byId.get(edge.source)
-    const sourcePort = edge.sourcePort ?? 'out'
-    const value = input.outputs.get(edge.source)?.[sourcePort]
+    const source = input.byId.get(edge.sourceNodeId)
+    const sourcePort = edge.sourcePort
+    const value = input.outputs.get(edge.sourceNodeId)?.[sourcePort]
     const fromValue = value ? graphValueToMentionSource(value, index) : null
     const keepMentionToken =
       fromValue?.keepMentionToken === true || shouldKeepInstructionMentionToken(source)
@@ -6074,6 +6073,93 @@ export async function executeOutputNode(
     ...(voices.length ? { voices } : {})
   }
   return { out: value }
+}
+
+/**
+ * 束结：按锁定类型聚合多条入边为复数（或 catalog）输出。
+ * 下游指令 / cook 另经 expandIncomingThroughBundles 展开真实上游。
+ */
+export function executeBundleNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+  const incoming = ctx.inputs.in ?? Object.values(ctx.inputs).flat()
+  const dataType =
+    ctx.node.params.bundleDataType ??
+    (incoming[0] ? graphValueKindToPortType(incoming[0].kind) : GraphPortType.image)
+
+  if (incoming.length) {
+    if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+      const items = flattenImagesValues(incoming)
+      const value: GraphValue = { kind: 'images', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+    if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+      const items = flattenVideosValues(incoming)
+      const value: GraphValue = { kind: 'videos', items }
+      if (items.length) patchBoundaryOutputPreview(ctx, value)
+      return { out: value }
+    }
+    if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+      const items = flattenVoicesValues(incoming)
+      const value: GraphValue = { kind: 'voices', items }
+      return { out: value }
+    }
+    if (dataType === GraphPortType.text || dataType === GraphPortType.texts) {
+      const items = flattenTextsValues(incoming)
+      const value: GraphValue = { kind: 'texts', items }
+      return { out: value }
+    }
+    const first = incoming[0]
+    if (first) {
+      patchBoundaryOutputPreview(ctx, first)
+      return { out: first }
+    }
+  }
+
+  if (
+    dataType === GraphPortType.beat ||
+    dataType === GraphPortType.worldEntities ||
+    dataType === GraphPortType.world
+  ) {
+    return { out: catalogValue(dataType, '') }
+  }
+  if (dataType === GraphPortType.image || dataType === GraphPortType.images) {
+    return { out: { kind: 'images', items: [] } }
+  }
+  if (dataType === GraphPortType.video || dataType === GraphPortType.videos) {
+    return { out: { kind: 'videos', items: [] } }
+  }
+  if (dataType === GraphPortType.voice || dataType === GraphPortType.voices) {
+    return { out: { kind: 'voices', items: [] } }
+  }
+  if (dataType === GraphPortType.texts || dataType === GraphPortType.text) {
+    return { out: { kind: 'texts', items: [] } }
+  }
+  return { out: { kind: 'text', text: '' } }
+}
+
+function graphValueKindToPortType(kind: GraphValue['kind']): GraphPortDataType {
+  switch (kind) {
+    case 'image':
+    case 'images':
+      return GraphPortType.image
+    case 'video':
+    case 'videos':
+      return GraphPortType.video
+    case 'voice':
+    case 'voices':
+      return GraphPortType.voice
+    case 'text':
+    case 'texts':
+      return GraphPortType.text
+    case 'beat':
+      return GraphPortType.beat
+    case 'world':
+      return GraphPortType.world
+    case 'worldEntities':
+      return GraphPortType.worldEntities
+    default:
+      return GraphPortType.image
+  }
 }
 
 /** 无 execute 时的兜底：透传第一个输入或空 */

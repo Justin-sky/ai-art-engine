@@ -1493,6 +1493,10 @@ export default {
       motion: '动态提示词表',
       review: '导演审核'
     },
+    bundle: {
+      title: '束',
+      hint: '汇聚多条同类型连线，减少画布线条；下游指令窗展开为真实上游缩略图'
+    },
     selectImage: {
       appMark: '选取图片',
       hint: '单击缩略图选择图片；双击缩略图打开预览。默认第一张。',
@@ -2055,6 +2059,9 @@ export default {
       },
       note: {
         text: '备注'
+      },
+      media: {
+        bundle: '束结'
       },
       play: {
         script: '文本'

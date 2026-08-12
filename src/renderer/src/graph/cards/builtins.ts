@@ -1,3 +1,4 @@
+import GraphBundleCard from '../../components/GraphBundleCard.vue'
 import GraphNodeCard from '../../components/GraphNodeCard.vue'
 import GraphNoteCard from '../../components/GraphNoteCard.vue'
 import { registerGraphCard } from './registry'
@@ -13,6 +14,13 @@ export function registerBuiltinGraphCards(): void {
     order: 0,
     match: (_node, typeDef) => typeDef?.card === 'note',
     component: GraphNoteCard
+  })
+
+  registerGraphCard({
+    id: 'studio.graph.bundle',
+    order: 5,
+    match: (_node, typeDef) => typeDef?.card === 'bundle',
+    component: GraphBundleCard
   })
 
   registerGraphCard({

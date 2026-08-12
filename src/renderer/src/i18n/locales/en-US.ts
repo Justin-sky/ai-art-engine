@@ -1503,6 +1503,10 @@ export default {
       motion: 'Motion prompts',
       review: 'Director review'
     },
+    bundle: {
+      title: 'Bundle',
+      hint: 'Merge same-type wires to reduce canvas edges; the instruction panel expands real upstream thumbnails'
+    },
     selectImage: {
       appMark: 'Select image',
       hint: 'Click a thumbnail to select; double-click a thumbnail to open preview. Defaults to the first image.',
@@ -2067,6 +2071,9 @@ export default {
       },
       note: {
         text: 'Note'
+      },
+      media: {
+        bundle: 'Bundle'
       },
       play: {
         script: 'Text'

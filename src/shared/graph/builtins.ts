@@ -35,6 +35,7 @@ import {
   executeHostInputSlotNode,
   executeBoundaryInputNode,
   executeBoundaryOutputNode,
+  executeBundleNode,
   executeImageToPromptNode,
   executePromptOptimizeNode,
   executeScreenplayGenerateNode,
@@ -605,6 +606,26 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     },
     contributeToGeneration: false,
     execute: executeNoteNode
+  },
+  {
+    typeId: 'media.bundle',
+    category: 'note',
+    label: 'Bundle',
+    icon: '🪢',
+    defaultTitle: 'Bundle',
+    defaultSize: { w: 88, h: 48 },
+    sizeLimits: { minW: 72, minH: 40, maxW: 160, maxH: 96 },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      { id: 'out', direction: 'out', dataType: GraphPortType.image, multiple: true, label: 'Out' }
+    ],
+    defaultParams: () => ({}),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    card: 'bundle',
+    contributeToGeneration: false,
+    execute: executeBundleNode
   },
   {
     typeId: 'play.script',

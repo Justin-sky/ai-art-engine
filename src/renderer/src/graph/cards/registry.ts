@@ -5,7 +5,8 @@ import type { GraphCardDefinition, ResolvedGraphCard } from './types'
 
 export const DEFAULT_GRAPH_CARD_IDS: Record<GraphCardKind, string> = {
   note: 'studio.graph.note',
-  media: 'studio.graph.media'
+  media: 'studio.graph.media',
+  bundle: 'studio.graph.bundle'
 }
 
 const definitions = shallowRef(new Map<string, GraphCardDefinition>())
