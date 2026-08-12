@@ -2096,6 +2096,18 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
+    // 剧集 Agent 分镜师/动画师（节拍拆解表 / 9宫格分镜表 / 4宫格动态分镜表 / 动态提示词表）：
+    // 双击展开生成指令面板，与文本生成节点保持一致，不打开正文记事本
+    if (
+      instructionKind.value === 'optimize' &&
+      (props.node.params.episodeStep === 'breakdown' ||
+        props.node.params.episodeStep === 'beatboard' ||
+        props.node.params.episodeStep === 'sequence' ||
+        props.node.params.episodeStep === 'motion')
+    ) {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
     // 预览区已有正文：双击打开记事本弹窗，避免误开空的生成指令
     if (
       textPreview.value &&
