@@ -588,10 +588,22 @@ const activeCellVideo = computed<string>(() => {
 
 /** 当前选中格的视频是否正在生成（按钮显示“生成中…”并禁用，避免重复点击被静默吞掉） */
 const currentCellVideoRunning = computed(() => {
-  const status = nodeRunStatus(
+  const node = nodeByKey(
     `video${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
   )
-  return status === 'pending' || status === 'running'
+  if (!node) return false
+  // 任务队列在途（排队/运行中）是生成中的权威信号；任务结束（成功/失败/中止）即恢复
+  const inFlightTask = taskStore.tasks.some(
+    (task) =>
+      (task.status === 'pending' || task.status === 'running') &&
+      task.targetNodeIds?.includes(node.id)
+  )
+  if (inFlightTask) return true
+  // 编辑器 run session 正在单独执行该节点也算生成中
+  const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
+  if (runHost?.runningTargetNodeId.value === node.id) return true
+  // 不依赖 live 文档里可能残留的 pending/running，避免任务结束后按钮仍被锁死
+  return false
 })
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
