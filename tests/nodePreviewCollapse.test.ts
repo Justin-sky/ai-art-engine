@@ -38,4 +38,24 @@ describe('graph node preview collapse', () => {
     expect(nodePortYRatio(0, 2, 180)).toBeCloseTo(1 / 3)
     expect(nodePortYRatio(1, 2, 180)).toBeCloseTo(2 / 3)
   })
+
+  it('image boundary expands when local preview exists unless user collapsed', () => {
+    const node = createNodeFromType('graph.boundary.output', { x: 0, y: 0 })
+    node.size = { w: 220, h: 124 }
+    node.params.hostBoundaryPort = {
+      portId: 'out',
+      dataType: 'image',
+      multiple: false
+    }
+    node.params.previewCollapsed = true
+    expect(getNodeSize(node).h).toBe(GRAPH_NODE_COLLAPSED_HEIGHT_PX)
+
+    node.params.previewRelativePath = 'assets/demo.png'
+    // 有预览且未显式折叠（=== true）时展开，便于 soft/cook 后按图片比例自适应
+    node.params.previewCollapsed = false
+    expect(getNodeSize(node)).toEqual({ w: 220, h: 124 })
+
+    node.params.previewCollapsed = true
+    expect(getNodeSize(node).h).toBe(GRAPH_NODE_COLLAPSED_HEIGHT_PX)
+  })
 })

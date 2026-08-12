@@ -63,7 +63,7 @@ import {
   applyWorldCatalog,
   loadWorldCatalog
 } from '../features/world/applyWorldCatalogOnOpen'
-import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
+import { collectWorldElementOutputs, previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPipeline'
 import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
 import { loadBeatCatalog, applyBeatCatalog } from '../features/beat/applyBeatCatalogOnOpen'
 import {
@@ -71,12 +71,13 @@ import {
   WORLD_ELEMENT_KINDS,
   collectTextFromBeatGraph,
   listVisualOutputNodeIdsNeedingCook,
+  LEGACY_WORLD_GEN_NODE_ID,
   normalizeScopedGraph,
-  readWorldElementGraphFromGenParams,
+  readWorldElementGraphForNode,
   readWorldElementIdFromNodeParams,
   inferElementWorkflowHostInterface,
   readBeatGraphFromGenParams,
-  withWorldElementGraph,
+  withWorldElementGraphForNode,
   withBeatGraph,
   type WorldElementKind
 } from '@shared/graph'
@@ -89,6 +90,8 @@ export type GraphTaskTarget =
       worldAssetId: string
       elementKind: WorldElementKind
       hostId: string
+      /** 所属 world.gen 节点 id；缺省 / 旧版默认节点走资产级共享子图 */
+      nodeId?: string
     }
   | {
       kind: 'beat-unit'
@@ -203,7 +206,9 @@ function taskTargetKey(target: GraphTaskTarget): string {
         ? `asset:${target.assetId}:instance:${target.instanceKey}`
         : `asset:${target.assetId}`
     case 'world-element':
-      return `world-element:${target.worldAssetId}:${target.elementKind}`
+      return `world-element:${target.worldAssetId}${
+        target.nodeId ? `:${target.nodeId}` : ''
+      }:${target.elementKind}`
     case 'beat-unit':
       return `beat-unit:${target.beatAssetId}:${target.beatId}`
   }
@@ -216,7 +221,9 @@ function taskTargetKey(target: GraphTaskTarget): string {
  */
 export function writeBackExclusiveKey(target: GraphTaskTarget): string {
   if (target.kind === 'world-element') {
-    return `world-element:${target.worldAssetId}`
+    return `world-element:${target.worldAssetId}${
+      target.nodeId ? `:${target.nodeId}` : ''
+    }`
   }
   if (target.kind === 'beat-unit') {
     return `beat-unit:${target.beatAssetId}`
@@ -320,8 +327,9 @@ function readPersistedGraphForTarget(target: GraphTaskTarget): GraphDocument | n
     )
   }
   if (target.kind === 'world-element') {
-    const raw = readWorldElementGraphFromGenParams(
+    const raw = readWorldElementGraphForNode(
       readWorldGenParams(target.worldAssetId),
+      target.nodeId ?? LEGACY_WORLD_GEN_NODE_ID,
       target.elementKind
     )
     return asGraphDocument(raw)
@@ -380,6 +388,11 @@ function readWorldGenParams(worldAssetId: string): Record<string, unknown> {
   return { ...((asset?.genParams as Record<string, unknown> | undefined) ?? {}) }
 }
 
+/** 世界元素管线宿主资产：世界元素资产，或封装了世界节点链的子图资产 */
+function isWorldPipelineAssetType(type: string | undefined | null): boolean {
+  return type === 'world' || type === 'subgraph'
+}
+
 function worldKindNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
   const hasElements = doc.nodes.some((node) => !!readWorldElementIdFromNodeParams(node.params))
   if (!hasElements) return false
@@ -394,8 +407,20 @@ function beatUnitNeedsBatch(doc: GraphDocument, onlyMissing: boolean): boolean {
   return !(collected?.text.trim() || collected?.relativePath?.trim())
 }
 
-function worldElementHostId(worldAssetId: string, elementKind: WorldElementKind): string {
-  return `asset:${worldAssetId}:element:${elementKind}`
+function worldElementNodeKey(nodeId?: string): string | undefined {
+  const id = nodeId?.trim()
+  return id && id !== LEGACY_WORLD_GEN_NODE_ID ? id : undefined
+}
+
+function worldElementHostId(
+  worldAssetId: string,
+  elementKind: WorldElementKind,
+  nodeId?: string
+): string {
+  const nodeKey = worldElementNodeKey(nodeId)
+  return nodeKey
+    ? `asset:${worldAssetId}:element:${elementKind}:${nodeKey}`
+    : `asset:${worldAssetId}:element:${elementKind}`
 }
 
 function beatUnitHostId(beatAssetId: string, beatId: string): string {
@@ -582,10 +607,15 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       }
 
       if (task.target.kind === 'world-element') {
-        const { worldAssetId, elementKind } = task.target
+        const { worldAssetId, elementKind, nodeId } = task.target
         const prevParams = readWorldGenParams(worldAssetId)
         await persistAssetRecord(worldAssetId, {
-          genParams: withWorldElementGraph(prevParams, elementKind, toPlain(graph) as GraphDocument)
+          genParams: withWorldElementGraphForNode(
+            prevParams,
+            nodeId ?? LEGACY_WORLD_GEN_NODE_ID,
+            elementKind,
+            toPlain(graph) as GraphDocument
+          )
         })
         return
       }
@@ -650,17 +680,19 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
 
   function enqueueWorldElementBatch(input: {
     worldAssetId: string
+    nodeId?: string
     onlyMissing?: boolean
   }): EnqueueBatchResult {
     const onlyMissing = input.onlyMissing !== false
     const genParams = readWorldGenParams(input.worldAssetId)
+    const ownerNodeId = input.nodeId ?? LEGACY_WORLD_GEN_NODE_ID
     let enqueued = 0
     let skipped = 0
     let duplicates = 0
     const taskIds: string[] = []
 
     for (const elementKind of WORLD_ELEMENT_KINDS) {
-      const raw = readWorldElementGraphFromGenParams(genParams, elementKind)
+      const raw = readWorldElementGraphForNode(genParams, ownerNodeId, elementKind)
       const graph = normalizeScopedGraph('elementWorkflow', raw ?? null, {
         assetType: 'world',
         hostInterface: inferElementWorkflowHostInterface(raw)
@@ -680,7 +712,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           kind: 'world-element',
           worldAssetId: input.worldAssetId,
           elementKind,
-          hostId: worldElementHostId(input.worldAssetId, elementKind)
+          hostId: worldElementHostId(input.worldAssetId, elementKind, input.nodeId),
+          nodeId: input.nodeId
         },
         // 缺图补跑 + 未锁定有图重烹；锁定有图不入队，collect 时 soft 进实体列表
         // skipCompletedNodes=false：未锁定节点即使 prior=done 也要重新 cook
@@ -1243,27 +1276,46 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           const worldId = task.target.assetId
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
-            if (draft?.type !== 'world') return null
+            if (!isWorldPipelineAssetType(draft?.type)) return null
           } else {
             const project = useProjectStore()
             const asset = project.assets.find((a) => a.id === worldId)
-            if (asset?.type !== 'world') return null
+            if (!isWorldPipelineAssetType(asset?.type)) return null
           }
           const catalog = loadWorldCatalog(worldId)
           const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + catalog[kind].length, 0)
           if (!total) return null
           return stringifyWorldElementCatalog(catalog)
         },
-        importWorldCatalogJson: async (jsonText) => {
+        importWorldCatalogJson: async (jsonText, sourceNodeId) => {
           if (task.target.kind !== 'asset') return
           const worldId = task.target.assetId
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
-            if (draft?.type !== 'world') return
+            if (!isWorldPipelineAssetType(draft?.type)) return
           } else {
             const project = useProjectStore()
             const asset = project.assets.find((a) => a.id === worldId)
-            if (asset?.type !== 'world') return
+            if (!isWorldPipelineAssetType(asset?.type)) return
+          }
+          if (sourceNodeId) {
+            const source = task.graph?.nodes.find((node) => node.id === sourceNodeId)
+            if (source?.typeId === 'world.gen') {
+              await applyWorldCatalog(worldId, jsonText, sourceNodeId)
+              return
+            }
+            // 表格/提取运行：目录沿边流入其下游 world.gen 节点
+            const downstreamGens = (task.graph?.edges ?? [])
+              .filter((edge) => edge.source === sourceNodeId)
+              .map((edge) => task.graph?.nodes.find((node) => node.id === edge.target))
+              .filter(
+                (node): node is GraphNode =>
+                  !!node && node.typeId === 'world.gen'
+              )
+            for (const gen of downstreamGens) {
+              await applyWorldCatalog(worldId, jsonText, gen.id)
+            }
+            if (downstreamGens.length) return
           }
           await applyWorldCatalog(worldId, jsonText)
         },
@@ -1321,22 +1373,54 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           const worldId = task.target.assetId
           if (isDraftAssetId(worldId)) {
             const draft = useDraftStore().getDraft(worldId)
-            if (draft?.type !== 'world') return null
+            if (!isWorldPipelineAssetType(draft?.type)) return null
             // Cook / 整链：缺图补跑后再收集；执行当前只收集已有结果
             if (options?.cookBatch) {
-              const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+              const batch = enqueueWorldElementBatch({
+                worldAssetId: worldId,
+                nodeId: options?.nodeId,
+                onlyMissing: true
+              })
               await waitForTaskIds(batch.taskIds)
             }
-            return collectWorldElementOutputs({ worldAssetId: worldId, signal })
+            return collectWorldElementOutputs({
+              worldAssetId: worldId,
+              nodeId: options?.nodeId,
+              signal
+            })
           }
           const project = useProjectStore()
           const asset = project.assets.find((a) => a.id === worldId)
-          if (asset?.type !== 'world') return null
+          if (!isWorldPipelineAssetType(asset?.type)) return null
           if (options?.cookBatch) {
-            const batch = enqueueWorldElementBatch({ worldAssetId: worldId, onlyMissing: true })
+            const batch = enqueueWorldElementBatch({
+              worldAssetId: worldId,
+              nodeId: options?.nodeId,
+              onlyMissing: true
+            })
             await waitForTaskIds(batch.taskIds)
           }
-          return collectWorldElementOutputs({ worldAssetId: worldId, signal })
+          return collectWorldElementOutputs({
+            worldAssetId: worldId,
+            nodeId: options?.nodeId,
+            signal
+          })
+        },
+        resolveWorldElementOutputs: (node) => {
+          if (task.target.kind !== 'asset') return []
+          const worldId = task.target.assetId
+          if (isDraftAssetId(worldId)) {
+            const draft = useDraftStore().getDraft(worldId)
+            if (!isWorldPipelineAssetType(draft?.type)) return []
+          } else {
+            const project = useProjectStore()
+            const asset = project.assets.find((a) => a.id === worldId)
+            if (!isWorldPipelineAssetType(asset?.type)) return []
+          }
+          return previewWorldElementOutputsFromSubgraphs({
+            worldAssetId: worldId,
+            nodeId: node?.id
+          })
         },
         runHostInnerGraph
       })

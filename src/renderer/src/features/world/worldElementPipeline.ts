@@ -11,6 +11,8 @@ import {
   normalizeScopedGraph,
   readWorldElementGraphFromGenParams,
   readWorldElementIdFromNodeParams,
+  readWorldElementGraphForNode,
+  LEGACY_WORLD_GEN_NODE_ID,
   WORLD_ELEMENT_KIND_TO_TYPE,
   WORLD_ELEMENT_KINDS,
   type GraphDocument,
@@ -20,6 +22,7 @@ import {
 } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
+import { graphRunHosts } from '../graph/model/graphRunHosts'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 
@@ -157,16 +160,78 @@ export type CollectWorldElementOutputsResult = {
   items: WorldElementGenResult[]
 }
 
+function resolvedElementNodeKey(nodeId?: string): string | undefined {
+  const id = nodeId?.trim()
+  if (!id || id === LEGACY_WORLD_GEN_NODE_ID) return undefined
+  return id
+}
+
+function elementWorkflowHostId(
+  worldAssetId: string,
+  kind: (typeof WORLD_ELEMENT_KINDS)[number],
+  nodeId?: string
+): string {
+  const nodeKey = resolvedElementNodeKey(nodeId)
+  return nodeKey
+    ? `asset:${worldAssetId}:element:${kind}:${nodeKey}`
+    : `asset:${worldAssetId}:element:${kind}`
+}
+
 function readElementWorkflowDoc(
   worldAssetId: string,
   kind: (typeof WORLD_ELEMENT_KINDS)[number],
-  genParams: Record<string, unknown> | undefined
+  genParams: Record<string, unknown> | undefined,
+  nodeId?: string
 ): GraphDocument {
-  // 打开中的 element 画布优先（含刚 writeBack 的 runStates / preview）
-  const live = graphEditorHosts.getDocument(`asset:${worldAssetId}:element:${kind}`)
-  if (live) return normalizeElementWorkflowDoc(live)
-  const raw = readWorldElementGraphFromGenParams(genParams, kind)
-  return normalizeElementWorkflowDoc(raw)
+  const nodeKey = resolvedElementNodeKey(nodeId)
+  const hostId = elementWorkflowHostId(worldAssetId, kind, nodeId)
+  const live = graphEditorHosts.getDocument(hostId)
+  const base = live
+    ? normalizeElementWorkflowDoc(live)
+    : normalizeElementWorkflowDoc(
+        nodeKey
+          ? readWorldElementGraphForNode(genParams, nodeKey, kind)
+          : readWorldElementGraphFromGenParams(genParams, kind)
+      )
+  const liveStates = graphRunHosts.get(hostId)?.runStates
+  if (!liveStates || !Object.keys(liveStates).length) return base
+  return {
+    ...base,
+    runStates: { ...(base.runStates ?? {}), ...liveStates }
+  }
+}
+
+/**
+ * 从四类 elementWorkflow 子图的边界输出 soft 收集实体（预览用，不创建资产）。
+ * 子图已有图但 world.gen 尚未执行时，Inspector 仍可展示分组预览。
+ */
+export function previewWorldElementOutputsFromSubgraphs(input: {
+  worldAssetId: string
+  nodeId?: string
+}): WorldElementGenResult[] {
+  const worldAssetId = input.worldAssetId.trim()
+  if (!worldAssetId) return []
+  const genParams = readWorldGenParams(worldAssetId)
+  const items: WorldElementGenResult[] = []
+
+  for (const kind of WORLD_ELEMENT_KINDS) {
+    const doc = readElementWorkflowDoc(worldAssetId, kind, genParams, input.nodeId)
+    const outputs = listVisualOutputNodes(doc)
+    const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]
+
+    for (let i = 0; i < outputs.length; i += 1) {
+      const output = outputs[i]!
+      if (!isVisualOutputNodeComplete(doc, output.id)) continue
+      const images = collectImagesFromCompletedOutputNode(doc, output)
+      if (!images.length) continue
+      const name = resolveElementName(doc, output, `${type} · ${i + 1}`)
+      const imageUrl = imageUrlFromItem(images[0]!)
+      if (!imageUrl) continue
+      items.push({ type, name, imageUrl })
+    }
+  }
+
+  return items
 }
 
 /**
@@ -176,6 +241,7 @@ function readElementWorkflowDoc(
  */
 export async function collectWorldElementOutputs(input: {
   worldAssetId: string
+  nodeId?: string
   signal?: AbortSignal
 }): Promise<CollectWorldElementOutputsResult> {
   const items: WorldElementGenResult[] = []
@@ -184,7 +250,7 @@ export async function collectWorldElementOutputs(input: {
     assertNotAborted(input.signal)
     // 每类单独读盘：四类写回串行完成后也能拿到最新 runStates
     const genParams = readWorldGenParams(input.worldAssetId)
-    const doc = readElementWorkflowDoc(input.worldAssetId, kind, genParams)
+    const doc = readElementWorkflowDoc(input.worldAssetId, kind, genParams, input.nodeId)
     // 按子图边界输出端口收集（锁定生成节点经 soft-resolve 直接出图）
     const outputs = listVisualOutputNodes(doc)
     const type = WORLD_ELEMENT_KIND_TO_TYPE[kind]

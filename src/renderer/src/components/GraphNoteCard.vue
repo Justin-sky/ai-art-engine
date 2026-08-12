@@ -256,48 +256,67 @@ function portWrapStyle(count: number, index: number): Record<string, string> {
 const width = computed(() => nodeSize.value.w)
 const height = computed(() => nodeSize.value.h)
 
-function mediaPathFromValue(value: GraphValue | undefined): string {
-  if (!value) return ''
-  if (value.kind === 'image') return value.relativePath?.trim() || ''
-  if (value.kind === 'images') {
-    const item = value.items.find((i) => i.relativePath?.trim())
-    return item?.relativePath?.trim() || ''
+type BoundaryMediaRef = { path: string; dataUrl: string }
+
+function mediaRefFromValue(value: GraphValue | undefined): BoundaryMediaRef {
+  if (!value) return { path: '', dataUrl: '' }
+  if (value.kind === 'image') {
+    const path = value.relativePath?.trim() || ''
+    return { path, dataUrl: path ? '' : value.dataUrl?.trim() || '' }
   }
-  return ''
+  if (value.kind === 'images') {
+    const byPath = value.items.find((i) => i.relativePath?.trim())
+    if (byPath?.relativePath?.trim()) {
+      return { path: byPath.relativePath.trim(), dataUrl: '' }
+    }
+    const byData = value.items.find((i) => i.dataUrl?.trim())
+    return { path: '', dataUrl: byData?.dataUrl?.trim() || '' }
+  }
+  return { path: '', dataUrl: '' }
 }
 
-const boundaryImagePath = computed(() => {
-  if (!isImageBoundary.value) return ''
+/** 图片边界：本地预览 / runStates / soft 上游（无需 cook 边界） */
+const boundaryImageMedia = computed((): BoundaryMediaRef => {
+  if (!isImageBoundary.value) return { path: '', dataUrl: '' }
   void graphEditorHosts.revision.value
   void props.runState?.status
   void props.runState?.outputs?.out
-  const local = props.node.params.previewRelativePath?.trim()
-  if (local) return local
-  const fromRun = mediaPathFromValue(props.runState?.outputs?.out as GraphValue | undefined)
-  if (fromRun) return fromRun
+  const localPath = props.node.params.previewRelativePath?.trim()
+  if (localPath) return { path: localPath, dataUrl: '' }
+  const localData = props.node.params.previewDataUrl?.trim()
+  if (localData) return { path: '', dataUrl: localData }
+  const fromRun = mediaRefFromValue(props.runState?.outputs?.out as GraphValue | undefined)
+  if (fromRun.path || fromRun.dataUrl) return fromRun
   // 边界输入：读 params 注入；边界输出：soft 上游
   if (isBoundaryInputNode(props.node)) {
-    return mediaPathFromValue(softResolveBoundaryInputParams(props.node))
+    return mediaRefFromValue(softResolveBoundaryInputParams(props.node))
   }
-  if (!props.hostId) return ''
+  if (!props.hostId) return { path: '', dataUrl: '' }
   const base = graphEditorHosts.getDocument(props.hostId)
-  if (!base) return ''
+  if (!base) return { path: '', dataUrl: '' }
   const liveStates = graphRunHosts.get(props.hostId)?.runStates
   const doc: GraphDocument = liveStates
     ? { ...base, runStates: { ...(base.runStates ?? {}), ...liveStates } }
     : base
   const soft = softResolveBoundaryOutputValue(doc, props.node.id)
-  return graphValueHasPayload(soft) ? mediaPathFromValue(soft) : ''
+  return graphValueHasPayload(soft) ? mediaRefFromValue(soft) : { path: '', dataUrl: '' }
 })
+
+const boundaryImagePath = computed(() => boundaryImageMedia.value.path)
+const hasBoundaryImage = computed(
+  () => !!(boundaryImageMedia.value.path || boundaryImageMedia.value.dataUrl)
+)
 
 /**
  * 输入接口：默认折叠。
- * 图片边界输出：有可预览图时默认展开；用户折叠后保留折叠。
+ * 图片边界输出：有可预览图时默认展开（含 soft 上游，无需 cook）；用户折叠后保留折叠。
  */
 const previewCollapsed = computed(() => {
   if (isImageBoundary.value) {
-    if (!boundaryImagePath.value) return true
-    const hasLocalPreview = !!props.node.params.previewRelativePath?.trim()
+    if (!hasBoundaryImage.value) return true
+    const hasLocalPreview =
+      !!props.node.params.previewRelativePath?.trim() ||
+      !!props.node.params.previewDataUrl?.trim()
     return hasLocalPreview && props.node.params.previewCollapsed === true
   }
   if (isInputSlot.value || isBoundary.value) {
@@ -311,8 +330,13 @@ function togglePreviewCollapsed(): void {
   const nextCollapsed = !previewCollapsed.value
   const patch: Record<string, unknown> = { previewCollapsed: nextCollapsed }
   // 折叠/展开时把 soft-resolve 到的路径落盘，便于记住折叠态
-  if (isImageBoundary.value && boundaryImagePath.value) {
-    patch.previewRelativePath = boundaryImagePath.value
+  if (isImageBoundary.value) {
+    if (boundaryImageMedia.value.path) {
+      patch.previewRelativePath = boundaryImageMedia.value.path
+      patch.previewDataUrl = undefined
+    } else if (boundaryImageMedia.value.dataUrl) {
+      patch.previewDataUrl = boundaryImageMedia.value.dataUrl
+    }
   }
   graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
 }
@@ -322,14 +346,56 @@ const lastAutoFitMediaKey = ref('')
 let mediaPreviewCancel: (() => void) | null = null
 let noteImageAutoFitToken = 0
 
+/**
+ * soft 到上游图时落盘预览并展开，使 getNodeSize 与自适应尺寸生效（无需 cook 边界）。
+ * 已有本地预览时不覆盖用户折叠态。
+ */
 watch(
-  () => [boundaryImagePath.value, previewCollapsed.value, isImageBoundary.value] as const,
-  async ([path, collapsed, imageBoundary]) => {
+  () =>
+    [
+      isImageBoundary.value,
+      hasBoundaryImage.value,
+      boundaryImageMedia.value.path,
+      boundaryImageMedia.value.dataUrl,
+      props.node.params.previewRelativePath,
+      props.node.params.previewDataUrl,
+      props.node.params.previewCollapsed
+    ] as const,
+  ([imageBoundary, hasImage, path, dataUrl, localPath, localData]) => {
+    if (!imageBoundary || !hasImage || !props.hostId) return
+    const hasLocal = !!(localPath?.trim() || localData?.trim())
+    if (hasLocal) return
+    const patch: Record<string, unknown> = { previewCollapsed: false }
+    if (path) {
+      patch.previewRelativePath = path
+      patch.previewDataUrl = undefined
+    } else if (dataUrl) {
+      patch.previewDataUrl = dataUrl
+    } else {
+      return
+    }
+    graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
+  }
+)
+
+watch(
+  () =>
+    [
+      boundaryImageMedia.value.path,
+      boundaryImageMedia.value.dataUrl,
+      previewCollapsed.value,
+      isImageBoundary.value
+    ] as const,
+  async ([path, dataUrl, collapsed, imageBoundary]) => {
     mediaPreviewCancel?.()
     mediaPreviewCancel = null
     // 折叠态仍加载缩略图：标题栏 head-thumb / 指令引用条同源路径
-    if (!path || (collapsed && !imageBoundary)) {
+    if ((!path && !dataUrl) || (collapsed && !imageBoundary)) {
       mediaPreviewUrl.value = ''
+      return
+    }
+    if (dataUrl) {
+      mediaPreviewUrl.value = dataUrl
       return
     }
     const { promise, cancel } = graphPreviewLoadScheduler.enqueue(0, () =>

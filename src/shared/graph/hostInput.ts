@@ -9,6 +9,7 @@ import type { GraphAddScope } from './scopes'
 import { resolveNodeTextContent } from './textOutput'
 import {
   isWorldGenImageOutPortId,
+  parseWorldElementGenResults,
   stringifyWorldElementGenResults,
   worldGenImageGroupOutputs,
   type WorldElementGenResult
@@ -45,34 +46,39 @@ export function outputsToHostGalleryParams(
   const params: Partial<GraphNodeParams> = {}
   for (const value of Object.values(outputs)) {
     if (value.kind === 'videos') {
-      params.generatedVideos = value.items.map((item) => ({
+      const items = value.items.map((item) => ({
         id: item.id,
         dataUrl: item.dataUrl ?? '',
         createdAt: item.createdAt,
         relativePath: item.relativePath
       }))
+      params.generatedVideos = [...(params.generatedVideos ?? []), ...items]
       const last = value.items[value.items.length - 1]
       if (last?.id) params.selectedVideoId = last.id
       if (!params.previewRelativePath && value.items[0]?.relativePath) {
         params.previewRelativePath = value.items[0].relativePath
       }
     } else if (value.kind === 'texts') {
-      params.generatedTexts = value.items.map((item) => ({
+      const items = value.items.map((item) => ({
         id: item.id,
         title: item.title,
         text: item.text ?? '',
         createdAt: item.createdAt,
         ...(item.relativePath ? { relativePath: item.relativePath } : {})
       }))
+      params.generatedTexts = [...(params.generatedTexts ?? []), ...items]
       const last = value.items[value.items.length - 1]
       if (last?.id) params.selectedTextId = last.id
     } else if (value.kind === 'images') {
-      params.generatedImages = value.items.map((item) => ({
+      const items = value.items.map((item) => ({
         id: item.id,
         dataUrl: item.dataUrl ?? '',
         createdAt: item.createdAt,
         relativePath: item.relativePath
       }))
+      // 多出口（如世界资产宿主的 角色/场景/道具/武器 四个图片组）合并进同一画廊，
+      // 避免后一个出口覆盖前一个导致卡片只显示最后一组
+      params.generatedImages = [...(params.generatedImages ?? []), ...items]
       const last = value.items[value.items.length - 1]
       if (last?.id) params.selectedImageId = last.id
     }
@@ -104,6 +110,8 @@ export interface ResolveHostInputSlotsOptions {
   resolveAssetGenParams?: (assetId: string) => Record<string, unknown> | undefined
   /** 已打开的源资产内图（优先于落盘 genParams.graphJson） */
   resolveLiveAssetGraph?: (assetId: string) => GraphDocument | undefined
+  /** world.gen 四类图片组口：params 为空时从该节点自己的 element 子图 soft 收集 */
+  resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
 }
 
 /** 稳定节点 id：再打开不换号、不乱序 */
@@ -755,10 +763,25 @@ export function softResolveSourceOutput(
     const fromParams = Array.isArray(node.params.worldElementOutputs)
       ? (node.params.worldElementOutputs as WorldElementGenResult[])
       : []
-    const results =
-      fromParams.length > 0
-        ? fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
-        : []
+    const fromParamsWithImages = fromParams.filter(
+      (item) => item?.type && item?.name && item?.imageUrl
+    )
+    // params 有行但尚无图 / 为空：继续 soft 子图与 text，勿短路成空 images
+    let results = fromParamsWithImages
+    if (!results.length) {
+      results = options?.resolveWorldElementOutputs?.(node) ?? []
+    }
+    if (!results.length) {
+      results = parseWorldElementGenResults(node.params.text)
+    }
+    // 运行态该口已有有效图时优先（避免子图回退覆盖本批结果）
+    if (
+      graphValueHasPayload(fromRun) &&
+      fromRun &&
+      (fromRun.kind === 'images' || fromRun.kind === 'image')
+    ) {
+      return fromRun
+    }
     const groups = worldGenImageGroupOutputs(results)
     return groups[sourcePort] ?? { kind: 'images', items: [] }
   }

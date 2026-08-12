@@ -65,7 +65,13 @@ export type EditorDiveNodeToolViewId = Extract<
 
 export type EditorDiveViewMeta =
   | { viewId: 'script.timeline'; scriptAssetId: string }
-  | { viewId: 'world.editor'; worldAssetId: string; tab?: WorldElementKind }
+  | {
+      viewId: 'world.editor'
+      worldAssetId: string
+      tab?: WorldElementKind
+      /** 打开的 world.gen 节点；缺省 / 旧版默认节点编辑资产级共享子图 */
+      worldGenNodeId?: string
+    }
   | { viewId: 'world.table'; worldAssetId: string }
   | { viewId: 'beat.gen'; beatAssetId: string }
   | { viewId: 'beat.table'; beatAssetId: string }
@@ -148,7 +154,7 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
     case 'world.table':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}`
     case 'world.editor':
-      return `${root}/view:${meta.viewId}:${meta.worldAssetId}:${meta.tab ?? 'characters'}`
+      return `${root}/view:${meta.viewId}:${meta.worldAssetId}:${meta.worldGenNodeId ?? '_'}:${meta.tab ?? 'characters'}`
     case 'beat.table':
     case 'beat.gen':
       return `${root}/view:${meta.viewId}:${meta.beatAssetId}`

@@ -9,6 +9,7 @@
           class="kind-graph"
           :asset-id="worldAssetId"
           :world-element-kind="kind"
+          :world-gen-node-id="worldGenNodeId"
           scope="elementWorkflow"
           :hide-toolbar="hideGraphToolbar"
         />
@@ -19,7 +20,7 @@
 
 <script setup lang="ts">
 import { onMounted, provide, toRef, watch } from 'vue'
-import { WORLD_ELEMENT_KINDS, type WorldElementKind } from '@shared/graph'
+import { LEGACY_WORLD_GEN_NODE_ID, WORLD_ELEMENT_KINDS, type WorldElementKind } from '@shared/graph'
 import { useEditorKernel } from '../editor/kernel'
 import { worldElementKindKey } from '../features/world/worldElementKindKey'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -28,6 +29,7 @@ import NodeGraphEditor from './NodeGraphEditor.vue'
 const props = withDefaults(
   defineProps<{
     worldAssetId: string
+    worldGenNodeId?: string
     activeTab: WorldElementKind
     hideGraphToolbar?: boolean
   }>(),
@@ -43,7 +45,13 @@ const workspace = useWorkspaceStore()
 const kinds = WORLD_ELEMENT_KINDS
 
 function elementGraphDocumentId(kind: WorldElementKind): string {
-  return `graph:asset:${props.worldAssetId}:element:${kind}`
+  const nodeKey =
+    props.worldGenNodeId?.trim() && props.worldGenNodeId.trim() !== LEGACY_WORLD_GEN_NODE_ID
+      ? props.worldGenNodeId.trim()
+      : ''
+  return nodeKey
+    ? `graph:asset:${props.worldAssetId}:element:${kind}:${nodeKey}`
+    : `graph:asset:${props.worldAssetId}:element:${kind}`
 }
 
 onMounted(() => {

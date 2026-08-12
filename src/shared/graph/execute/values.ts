@@ -1091,10 +1091,11 @@ export function resolveGalleryOutputsFromNodeParams(
     const fromParams = Array.isArray(params.worldElementOutputs)
       ? (params.worldElementOutputs as WorldElementGenResult[])
       : []
+    const withImages = fromParams.filter(
+      (item) => item?.type && item?.name && item?.imageUrl
+    )
     const results =
-      fromParams.length > 0
-        ? fromParams.filter((item) => item?.type && item?.name && item?.imageUrl)
-        : parseWorldElementGenResults(params.text)
+      withImages.length > 0 ? withImages : parseWorldElementGenResults(params.text)
     if (!results.length) return null
     return worldGenImageGroupOutputs(results)
   }
@@ -3538,7 +3539,7 @@ export async function executeWorldTableNode(
   if (fromIn) {
     ctx.node.params = { ...ctx.node.params, text: fromIn }
     ctx.patchNode?.({ params: { text: fromIn } })
-    await ctx.importWorldCatalogJson?.(fromIn)
+    await ctx.importWorldCatalogJson?.(fromIn, ctx.node.id)
     return { out: catalogValue(GraphPortType.world, fromIn) }
   }
 
@@ -3566,11 +3567,12 @@ export async function executeWorldGenNode(
 ): Promise<Record<string, GraphValue>> {
   const fromIn = catalogTextFromInputs(Object.values(ctx.inputs).flat(), GraphPortType.world)
   if (fromIn) {
-    await ctx.importWorldCatalogJson?.(fromIn)
+    await ctx.importWorldCatalogJson?.(fromIn, ctx.node.id)
   }
 
   const collected = await ctx.collectWorldElementOutputs?.(ctx.signal, {
-    cookBatch: ctx.cookBatchSubgraphs === true
+    cookBatch: ctx.cookBatchSubgraphs === true,
+    nodeId: ctx.node.id
   })
   const items: WorldElementGenResult[] = (collected?.items ?? [])
     .map((item) => ({

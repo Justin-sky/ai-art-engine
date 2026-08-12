@@ -11,6 +11,8 @@ describe('image instruction presets', () => {
       'image.faceTurnaround',
       'image.characterSheet',
       'image.characterTurnaround',
+      'image.propTurnaround',
+      'image.weaponTurnaround',
       'image.sceneSheet',
       'image.productSheet',
       'image.story25',

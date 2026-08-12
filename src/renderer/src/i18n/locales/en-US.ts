@@ -2285,7 +2285,11 @@ export default {
         hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
       },
       worldGen: {
-        hint: 'Four image-group outs: Characters / Scenes / Props / Weapons. Run current collects existing images; use radial Cook subgraph to batch-run element graphs.'
+        hint: 'Four image-group outs: Characters / Scenes / Props / Weapons. Run current collects existing images; use radial Cook subgraph to batch-run element graphs.',
+        groupedPreview: 'Grouped preview',
+        groupedPreviewHint: 'Organized by image-group out port; double-click a thumbnail to zoom',
+        groupCount: '{n} images',
+        groupEmpty: 'No images yet'
       },
       beatTable: {
         hint: 'Double-click to open the beat unit table. Run the node to import catalog JSON and preview the out port here.'
@@ -2498,7 +2502,9 @@ export default {
             faceTurnaround: 'Character face turnaround',
             characterSheet: 'Character design sheet',
             characterTurnaround: 'Character turnaround',
-            sceneSheet: 'Scene design sheet',
+            propTurnaround: 'Prop turnaround',
+            weaponTurnaround: 'Weapon turnaround',
+            sceneSheet: 'Scene design sheet (Three.js-ready)',
             productSheet: 'Product design sheet',
             story25: '25-grid storyboard',
             cinematicLighting: 'Cinematic lighting fix',
@@ -2556,7 +2562,7 @@ export default {
           optimize: {
             character: 'Character design prompt',
             prop: 'Prop prompt',
-            scene: 'Scene prompt',
+            scene: 'Scene prompt (Three.js)',
             camera: 'Camera move prompt',
             expression: 'Expression reference prompt',
             vfx: 'VFX prompt',

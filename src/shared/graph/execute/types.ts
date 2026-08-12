@@ -4,6 +4,7 @@ import type {
   ProjectStyleImage
 } from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
+import type { WorldElementGenResult } from '../worldElementParse'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
 import type { VideoGenerateParamCapabilities } from '../videoGenerateParams'
 import type { VideoGeneratePortLimits } from '../portInputLimits'
@@ -74,6 +75,8 @@ export interface GraphCameraValue {
 
 export interface GraphImageItem {
   id?: string
+  /** 展示名（如世界元素实体名）；选取对话框优先显示 */
+  title?: string
   dataUrl: string
   createdAt?: string
   /** 物化后的工程相对路径；有值时可清空 dataUrl 以减小落盘体积 */
@@ -395,7 +398,7 @@ export interface NodeExecuteContext {
    */
   collectWorldElementOutputs?: (
     signal?: AbortSignal,
-    options?: { cookBatch?: boolean }
+    options?: { cookBatch?: boolean; nodeId?: string }
   ) => Promise<{
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
@@ -412,7 +415,14 @@ export interface NodeExecuteContext {
   /**
    * 世界元素表格 / 编辑节点执行时：把上游提取 JSON 同步到元素子图。
    */
-  importWorldCatalogJson?: (jsonText: string) => void | Promise<void>
+  /**
+   * 世界元素目录导入：sourceNodeId 为执行节点 id。
+   * world.gen → 导入到该节点独立子图；world.extract/table → 导入到其下游 world.gen 节点。
+   */
+  importWorldCatalogJson?: (
+    jsonText: string,
+    sourceNodeId?: string
+  ) => void | Promise<void>
   /**
    * 场表格节点：把当前目录序列化为拆解 JSON。
    */
@@ -547,6 +557,8 @@ export interface GraphRunOptions {
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']
+  /** world.gen 四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
+  resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
   collectBeatUnitTexts?: NodeExecuteContext['collectBeatUnitTexts']
   resolveWorldCatalogJson?: NodeExecuteContext['resolveWorldCatalogJson']
   importWorldCatalogJson?: NodeExecuteContext['importWorldCatalogJson']

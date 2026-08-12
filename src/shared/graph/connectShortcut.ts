@@ -1,9 +1,3 @@
-/**
- * 单通路连线：两节点之间只保留一条通路。
- * - A→…→D 再连 A→D：断开旧通路在 D 上的入边
- * - 已有 A→D 再经另一线路连到 D：断开短路 A→D
- * - 无关来源的并行入边保留
- */
 import type { GraphEdge } from './types'
 
 export interface ConnectEdgeSpec {
@@ -97,7 +91,9 @@ export function nodesShareUpstream(
 }
 
 /**
- * 施加连线并保证：新边所在馈入族到目标口只保留一条通路。
+ * 施加连线：去重同四元组后直接追加新边。
+ * 不做短路/单通路剪枝——多个输出可以连接同一个输入，
+ * 已有入边不会被替换或删除。
  */
 export function connectEdgesWithShortcutPrune(
   edges: GraphEdge[],
@@ -108,41 +104,25 @@ export function connectEdgesWithShortcutPrune(
   const newId = spec.edgeId ?? `edge-tmp-${spec.sourceId}-${spec.targetId}`
 
   // 去重同四元组后加入新边
-  let next = edges.filter((e) => {
-    const eTargetPort = e.targetPort ?? 'in'
-    const eSourcePort = e.sourcePort ?? 'out'
-    return !(
-      e.source === spec.sourceId &&
-      e.target === spec.targetId &&
-      eSourcePort === sourcePort &&
-      eTargetPort === targetPort
-    )
-  })
-
-  const newEdge: GraphEdge = {
-    id: newId,
-    source: spec.sourceId,
-    target: spec.targetId,
-    sourcePort,
-    targetPort
-  }
-  next = [...next, newEdge]
-
-  // 目标口上：与新边同源馈入族的其它入边一律去掉（只留新通路）
-  next = next.filter((e) => {
-    if (e.id === newId) return true
-    const eTargetPort = e.targetPort ?? 'in'
-    if (e.target !== spec.targetId || eTargetPort !== targetPort) return true
-    // 用「含新边」的图判断共享上游，使 A→D 与 C→D 在 A→B→C→D 形成后被识别为同族
-    return !nodesShareUpstream(next, spec.sourceId, e.source)
-  })
-
-  // 再清掉其它已成冗余的直连（源仍可经别的路径到达目标）
-  next = next.filter((e) => {
-    if (e.id === newId) return true
-    const rest = next.filter((x) => x.id !== e.id)
-    return !nodeCanReach(rest, e.source, e.target)
-  })
+  const next = [
+    ...edges.filter((e) => {
+      const eTargetPort = e.targetPort ?? 'in'
+      const eSourcePort = e.sourcePort ?? 'out'
+      return !(
+        e.source === spec.sourceId &&
+        e.target === spec.targetId &&
+        eSourcePort === sourcePort &&
+        eTargetPort === targetPort
+      )
+    }),
+    {
+      id: newId,
+      source: spec.sourceId,
+      target: spec.targetId,
+      sourcePort,
+      targetPort
+    }
+  ]
 
   // 若调用方未提供 edgeId，不留下临时 id 边（仅返回剪枝后的旧边 + 由调用方自行 push）
   if (!spec.edgeId) {

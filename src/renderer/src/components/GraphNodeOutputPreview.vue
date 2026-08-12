@@ -1064,18 +1064,26 @@ function displayText(item: PreviewItem): string {
 
 async function resolveItems(): Promise<void> {
   const token = ++resolveToken
-  const next: Record<string, string> = {}
-  const nextText: Record<string, string> = {}
+  // 增量合并：保留已解析条目，避免选中切换时整列重建/闪“加载中”
+  const next = { ...resolvedSrc.value }
+  const nextText = { ...resolvedText.value }
   const pendingMedia = items.value.filter(
-    (item) => item.src?.startsWith('asset:') || item.src?.startsWith('rel:')
+    (item) =>
+      (item.src?.startsWith('asset:') || item.src?.startsWith('rel:')) &&
+      !next[item.key]
   )
   const pendingText = items.value.filter(
     (item) =>
       item.kind === 'text' &&
       !item.text?.trim() &&
-      (!!item.relativePath?.trim() || !!item.assetId?.trim())
+      (!!item.relativePath?.trim() || !!item.assetId?.trim()) &&
+      !nextText[item.key]
   )
-  loading.value = pendingMedia.length > 0 || pendingText.length > 0
+  const needsLoad = pendingMedia.length > 0 || pendingText.length > 0
+  // 只有“还没有任何可显示内容”时才进入加载态；已有内容的选中切换不闪整列
+  if (needsLoad && Object.keys(next).length === 0 && Object.keys(nextText).length === 0) {
+    loading.value = true
+  }
   await Promise.all([
     ...pendingMedia.map(async (item) => {
       if (item.src!.startsWith('asset:')) {

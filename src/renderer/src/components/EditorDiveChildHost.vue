@@ -163,7 +163,12 @@ const viewBindings = computed(() => {
     case 'script.timeline':
       return { ...base, scriptAssetId: meta.scriptAssetId }
     case 'world.editor':
-      return { ...base, worldAssetId: meta.worldAssetId, tab: meta.tab }
+      return {
+        ...base,
+        worldAssetId: meta.worldAssetId,
+        tab: meta.tab,
+        worldGenNodeId: meta.worldGenNodeId
+      }
     case 'world.table':
       return { ...base, worldAssetId: meta.worldAssetId }
     case 'beat.gen':

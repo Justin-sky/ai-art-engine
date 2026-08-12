@@ -159,10 +159,14 @@ export interface GraphRunSessionOptions {
   /** 世界元素编辑：收集四类子图输出；cookBatch 时入队批跑元素子图 */
   collectWorldElementOutputs?: (
     signal?: AbortSignal,
-    options?: { cookBatch?: boolean }
+    options?: { cookBatch?: boolean; nodeId?: string }
   ) => Promise<{
     items: Array<{ type: string; name: string; imageUrl: string }>
   } | null>
+  /** world.gen 四类图片组口：params 为空时从 element 子图 soft 收集 */
+  resolveWorldElementOutputs?: (
+    node: import('@shared/graph').GraphNode
+  ) => import('@shared/graph').WorldElementGenResult[]
   /** 场生成：收集各单元子图「场输出」已有文本 */
   collectBeatUnitTexts?: (signal?: AbortSignal) => Promise<{
     items: import('@shared/graph').GraphTextItem[]
@@ -170,7 +174,10 @@ export interface GraphRunSessionOptions {
   /** 世界元素表格节点：输出当前目录 JSON */
   resolveWorldCatalogJson?: () => string | null
   /** 世界元素表格 / 编辑节点执行时：导入上游提取 JSON 到元素子图 */
-  importWorldCatalogJson?: (jsonText: string) => void | Promise<void>
+  importWorldCatalogJson?: (
+    jsonText: string,
+    sourceNodeId?: string
+  ) => void | Promise<void>
   /** 场表格节点：输出当前目录 JSON */
   resolveBeatCatalogJson?: () => string | null
   /** 场表格 / 编辑节点执行时：导入上游拆解 JSON */
@@ -617,6 +624,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveBeatUnit: options.resolveBeatUnit,
         collectWorldElementOutputs: options.collectWorldElementOutputs,
+        resolveWorldElementOutputs: options.resolveWorldElementOutputs,
         collectBeatUnitTexts: options.collectBeatUnitTexts,
         resolveWorldCatalogJson: options.resolveWorldCatalogJson,
         importWorldCatalogJson: options.importWorldCatalogJson,

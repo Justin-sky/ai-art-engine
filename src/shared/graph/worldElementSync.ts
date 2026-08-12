@@ -106,6 +106,104 @@ function isManagedWorldElementNode(node: GraphNode): boolean {
   return isBoundaryInputNode(node) || node.typeId === 'output.image' || node.category === 'output'
 }
 
+function graphEdgeKey(edge: GraphEdge): string {
+  return `${edge.source}:${edge.sourcePort ?? 'out'}->${edge.target}:${edge.targetPort ?? 'in'}`
+}
+
+/** 生成节点是否已有可用图片（落盘预览或图库条目），用于区分空壳托管节点 */
+function hasUsableGeneratedImage(node: GraphNode): boolean {
+  if (typeof node.params.previewRelativePath === 'string' && node.params.previewRelativePath.trim()) {
+    return true
+  }
+  const images = node.params.generatedImages
+  if (!Array.isArray(images)) return false
+  return images.some((item) => {
+    const row = item as { relativePath?: unknown; dataUrl?: unknown }
+    return (
+      (typeof row.relativePath === 'string' && row.relativePath.trim().length > 0) ||
+      (typeof row.dataUrl === 'string' && row.dataUrl.trim().length > 0)
+    )
+  })
+}
+
+interface ElementChain {
+  /** 链上所有边的规范化 key（保留用） */
+  edgeKeys: Set<string>
+  /** 链上所有节点 id */
+  nodeIds: Set<string>
+  /** script 之后的第一个 asset.image 链首（认领为托管生成节点） */
+  headGenId: string | null
+}
+
+/**
+ * 收集每个目录条目从 script 到 boundary 的既有图片链：script → (asset.image)* → boundary.output。
+ * 用于认领用户已有链路（含中间加工节点，如角色三视图），
+ * 避免同步时把旧链拆散、再新建一个无图空壳生成节点导致预览缺项。
+ */
+function collectElementChains(
+  doc: GraphDocument,
+  items: WorldElementItem[],
+  managedScripts: Map<string, GraphNode>
+): Map<string, ElementChain> {
+  const nodeById = new Map(doc.nodes.map((node) => [node.id, node]))
+  const edgesBySource = new Map<string, GraphEdge[]>()
+  for (const edge of doc.edges) {
+    const list = edgesBySource.get(edge.source)
+    if (list) list.push(edge)
+    else edgesBySource.set(edge.source, [edge])
+  }
+
+  const chains = new Map<string, ElementChain>()
+  const walk = (
+    currentId: string,
+    itemId: string,
+    boundaryId: string,
+    visited: Set<string>,
+    pathEdges: GraphEdge[],
+    chain: ElementChain
+  ): void => {
+    if (currentId === boundaryId) {
+      for (const edge of pathEdges) {
+        chain.edgeKeys.add(graphEdgeKey(edge))
+        chain.nodeIds.add(edge.source)
+        chain.nodeIds.add(edge.target)
+      }
+      return
+    }
+    if (visited.has(currentId) || pathEdges.length >= 16) return
+    const node = nodeById.get(currentId)
+    if (!node) return
+    const traversable =
+      node.typeId === 'play.script' ||
+      node.typeId === 'asset.image' ||
+      isBoundaryOutputNode(node)
+    if (!traversable) return
+    // 不跨元素：已带其它 worldElementId 的节点不并入本链
+    const wid = readWorldElementIdFromNodeParams(node.params)
+    if (wid && wid !== itemId && !isBoundaryOutputNode(node)) return
+    visited.add(currentId)
+    for (const edge of edgesBySource.get(currentId) ?? []) {
+      walk(edge.target, itemId, boundaryId, visited, [...pathEdges, edge], chain)
+    }
+    visited.delete(currentId)
+  }
+
+  for (const item of items) {
+    const script = managedScripts.get(item.id)
+    const boundaryId = boundaryOutputNodeId(worldElementBoundaryPortId(item.id))
+    if (!script || !nodeById.has(boundaryId)) continue
+    const chain: ElementChain = { edgeKeys: new Set(), nodeIds: new Set(), headGenId: null }
+    walk(script.id, item.id, boundaryId, new Set(), [], chain)
+    if (!chain.edgeKeys.size) continue
+    const firstGen = (edgesBySource.get(script.id) ?? [])
+      .map((edge) => nodeById.get(edge.target))
+      .find((node) => node?.typeId === 'asset.image')
+    chain.headGenId = firstGen?.id ?? null
+    chains.set(item.id, chain)
+  }
+  return chains
+}
+
 /** 按目录条目物化 elementWorkflow：script → image gen → boundary.output */
 export function syncWorldElementKindGraph(
   existing: GraphDocument | null | undefined,
@@ -126,6 +224,25 @@ export function syncWorldElementKindGraph(
     else if (node.typeId === 'asset.image') managedGens.set(id, node)
   }
 
+  // 既有链路认领计划：有完整 script → … → boundary 时，链首作托管 gen，
+  // 取代无图的空壳托管节点，避免同步拆链/新建空节点。
+  const chains = collectElementChains(doc, items, managedScripts)
+  const adoptPlan = new Map<string, GraphNode>()
+  const supersedeIds = new Set<string>()
+  for (const item of items) {
+    const chain = chains.get(item.id)
+    if (!chain?.headGenId) continue
+    const head = doc.nodes.find((node) => node.id === chain.headGenId)
+    if (!head || head.typeId !== 'asset.image') continue
+    const headWid = readWorldElementIdFromNodeParams(head.params)
+    if (headWid === item.id) continue
+    const current = managedGens.get(item.id)
+    if (current && !hasUsableGeneratedImage(current)) {
+      supersedeIds.add(current.id)
+    }
+    adoptPlan.set(item.id, head)
+  }
+
   const keepIds = new Set(items.map((item) => item.id))
   const keepBoundaryIds = new Set(
     items.map((item) => boundaryOutputNodeId(worldElementBoundaryPortId(item.id)))
@@ -138,6 +255,7 @@ export function syncWorldElementKindGraph(
     if (isBoundaryOutputNode(node)) {
       return keepBoundaryIds.has(node.id)
     }
+    if (supersedeIds.has(node.id)) return false
     const id = readWorldElementIdFromNodeParams(node.params)
     if (!id) return true
     return keepIds.has(id)
@@ -147,7 +265,7 @@ export function syncWorldElementKindGraph(
     const item = items[index]!
     const pos = chainPosition(index)
     const foundScript = managedScripts.get(item.id)
-    const foundGen = managedGens.get(item.id)
+    const foundGen = adoptPlan.get(item.id) ?? managedGens.get(item.id)
     const boundaryPortId = worldElementBoundaryPortId(item.id)
     const boundaryId = boundaryOutputNodeId(boundaryPortId)
     const foundBoundary = nextNodes.find((node) => node.id === boundaryId)
@@ -276,8 +394,14 @@ export function syncWorldElementKindGraph(
     (edge) => nextIds.has(edge.source) && nextIds.has(edge.target)
   )
 
+  // 既有链路的边完整保留（含中间加工节点），其余按托管边规则清理
+  const chainEdgeKeys = new Set<string>()
+  for (const chain of chains.values()) {
+    for (const key of chain.edgeKeys) chainEdgeKeys.add(key)
+  }
   // 只保留同元素 id 的托管边；其余托管相关边丢弃后重建
   const cleanedEdges = edges.filter((edge) => {
+    if (chainEdgeKeys.has(graphEdgeKey(edge))) return true
     const source = alignedNodes.find((n) => n.id === edge.source)
     const target = alignedNodes.find((n) => n.id === edge.target)
     if (!source || !target) return false
@@ -304,10 +428,11 @@ export function syncWorldElementKindGraph(
     const boundary = alignedNodes.find(
       (n) => n.id === boundaryOutputNodeId(worldElementBoundaryPortId(item.id))
     )
-    if (script && gen) {
+    const hasChain = !!chains.get(item.id)?.edgeKeys.size
+    if (script && gen && !hasChain) {
       ensureEdge(cleanedEdges, script.id, gen.id, 'out', 'in-text')
     }
-    if (gen && boundary) {
+    if (gen && boundary && !hasChain) {
       ensureEdge(cleanedEdges, gen.id, boundary.id, 'out', 'in')
     }
   }

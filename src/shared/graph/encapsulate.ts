@@ -50,6 +50,8 @@ interface CrossingIn {
   /** 选中侧目标端口 */
   targetPort: string
   targetNodeId: string
+  /** 目标端口语义标签（如 world.extract 的 in），用于命名边界输入 */
+  label?: string
 }
 
 interface CrossingOut {
@@ -57,6 +59,8 @@ interface CrossingOut {
   dataType: GraphPortDataType
   sourcePort: string
   sourceNodeId: string
+  /** 源端口语义标签（如 world.gen 的 角色/场景/道具/武器），用于命名边界输出 */
+  label?: string
 }
 
 function nodeById(nodes: GraphNode[], id: string): GraphNode | undefined {
@@ -122,7 +126,7 @@ function groupInputPorts(crossings: CrossingIn[]): Array<{
     return {
       port: {
         id: `in-${index}`,
-        label: hostBoundaryPortLabel(dataType, 'in', next),
+        label: semanticPortLabel(first.label) || hostBoundaryPortLabel(dataType, 'in', next),
         dataType,
         multiple: first.multiple || list.length > 1
       },
@@ -159,7 +163,7 @@ function groupOutputPorts(crossings: CrossingOut[]): Array<{
     return {
       port: {
         id: `out-${index}`,
-        label: hostBoundaryPortLabel(dataType, 'out', next),
+        label: semanticPortLabel(first.label) || hostBoundaryPortLabel(dataType, 'out', next),
         dataType,
         multiple: false
       },
@@ -214,6 +218,16 @@ function newEdgeId(prefix: string, index: number): string {
   return `${prefix}-${index}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** 通用端口标签：封装时不做语义名（回退到按类型的默认名） */
+const GENERIC_PORT_LABELS = new Set(['in', 'out', 'selected', 'all', 'prompt', 'text', ''])
+
+function semanticPortLabel(label: string | undefined | null): string | undefined {
+  const trimmed = label?.trim() || ''
+  if (!trimmed) return undefined
+  if (GENERIC_PORT_LABELS.has(trimmed.toLowerCase())) return undefined
+  return trimmed
+}
+
 /**
  * 分析选中节点边界并封装为宿主内图 + 父图 host 实例。
  * 无选中或不存在的 id 时抛错。
@@ -263,7 +277,12 @@ export function encapsulateSelection(
               )?.multiple === true
             : false,
         targetPort,
-        targetNodeId: edge.target
+        targetNodeId: edge.target,
+        label: target
+          ? getNodePorts(target).find(
+              (port) => port.direction === 'in' && port.id === targetPort
+            )?.label?.trim()
+          : undefined
       })
       continue
     }
@@ -277,7 +296,8 @@ export function encapsulateSelection(
         edge,
         dataType,
         sourcePort,
-        sourceNodeId: edge.source
+        sourceNodeId: edge.source,
+        label: source ? findOutPort(source, sourcePort)?.label?.trim() : undefined
       })
     }
   }

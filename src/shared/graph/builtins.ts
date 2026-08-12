@@ -16,9 +16,6 @@ import {
   GRAPH_BEAT_SPLIT_NODE_ID,
   GRAPH_BEAT_TABLE_NODE_ID,
   GRAPH_BEAT_GEN_NODE_ID,
-  GRAPH_WORLD_GEN_NODE_ID,
-  GRAPH_WORLD_EXTRACT_NODE_ID,
-  GRAPH_WORLD_TABLE_NODE_ID,
   graphOutputNodeId,
   GraphPortType,
   toPluralGraphPortDataType,
@@ -1731,7 +1728,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       generateProviderInstanceId: ''
     }),
     addable: true,
-    singletonId: GRAPH_WORLD_EXTRACT_NODE_ID,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.worldExtract',
@@ -1753,7 +1749,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     ],
     defaultParams: () => ({ text: '' }),
     addable: true,
-    singletonId: GRAPH_WORLD_TABLE_NODE_ID,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.worldTable',
@@ -1784,7 +1779,6 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       text: ''
     }),
     addable: true,
-    singletonId: GRAPH_WORLD_GEN_NODE_ID,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.worldGen',

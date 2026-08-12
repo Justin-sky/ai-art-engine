@@ -75,13 +75,13 @@ describe('gallery selected output', () => {
     expect(outs?.['out-characters']?.kind).toBe('images')
     if (outs?.['out-characters']?.kind === 'images') {
       expect(outs['out-characters'].items).toEqual([
-        { id: '角色:Ada:0', dataUrl: '', relativePath: 'Assets/a.png' }
+        { id: '角色:Ada:0', title: 'Ada', dataUrl: '', relativePath: 'Assets/a.png' }
       ])
     }
     expect(outs?.['out-weapons']?.kind).toBe('images')
     if (outs?.['out-weapons']?.kind === 'images') {
       expect(outs['out-weapons'].items).toEqual([
-        { id: '武器:Sword:1', dataUrl: 'data:image/png;base64,xx' }
+        { id: '武器:Sword:1', title: 'Sword', dataUrl: 'data:image/png;base64,xx' }
       ])
     }
     expect(outs?.['out-scenes']?.kind).toBe('images')

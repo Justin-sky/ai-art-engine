@@ -3,7 +3,6 @@
  * - 节点重合：高亮双方兼容的 in/out 端口
  * - 端口靠近：松手后自动连线（可预览）
  */
-import { nodeCanReach, nodesShareUpstream } from './connectShortcut'
 import { getNodePortCenter, getNodeSize } from './create'
 import { canConnectNodes, getNodePorts } from './ports'
 import type { GraphEdge, GraphNode } from './types'
@@ -85,21 +84,6 @@ function portDistance(
   return Math.hypot(dx, dy)
 }
 
-/**
- * 节点叠放/紧贴时，左右端口天然相距约半个节点宽，需放宽阈值，
- * 否则「拖到另一节点上」无法触发自动连线。
- */
-function pairPortThreshold(
-  source: GraphNode,
-  target: GraphNode,
-  baseThreshold: number
-): number {
-  if (!boundsOverlap(source, target, baseThreshold)) return baseThreshold
-  const sw = getNodeSize(source).w
-  const tw = getNodeSize(target).w
-  return Math.max(baseThreshold, (sw + tw) / 2 + baseThreshold)
-}
-
 function collectDirectedCandidates(
   source: GraphNode,
   target: GraphNode,
@@ -108,7 +92,8 @@ function collectDirectedCandidates(
   const outPorts = getNodePorts(source).filter((p) => p.direction === 'out')
   const inPorts = getNodePorts(target).filter((p) => p.direction === 'in')
   if (outPorts.length === 0 || inPorts.length === 0) return []
-  const maxDist = pairPortThreshold(source, target, thresholdWorld)
+  // 只按端口距离判定：节点重叠不放大阈值，避免「一重叠就自动连」
+  const maxDist = thresholdWorld
 
   const hits: SnapConnectCandidate[] = []
   for (const outPort of outPorts) {
@@ -226,21 +211,9 @@ export function resolveSnapConnectEdges(
       edgeKey(e.source, e.target, e.sourcePort ?? 'out', e.targetPort ?? 'in')
     )
   )
-  const occupiedIn = new Set<string>()
-  for (const e of options.edges) {
-    const target = byId.get(e.target)
-    if (!target) continue
-    const portId = e.targetPort ?? 'in'
-    const inPort = getNodePorts(target).find((p) => p.direction === 'in' && p.id === portId)
-    if (inPort && inPort.multiple === false) {
-      occupiedIn.add(incomingKey(e.target, portId))
-    }
-  }
-
   const raw: SnapConnectCandidate[] = []
   for (const moved of draggedNodes) {
     for (const other of others) {
-      if (!boundsOverlap(moved, other, threshold)) continue
       raw.push(...collectDirectedCandidates(moved, other, threshold))
       raw.push(...collectDirectedCandidates(other, moved, threshold))
     }
@@ -258,27 +231,9 @@ export function resolveSnapConnectEdges(
     if (existingKeys.has(ek)) continue
 
     const inKey = incomingKey(cand.targetId, cand.targetPort)
-    const target = byId.get(cand.targetId)
-    const inPort = target
-      ? getNodePorts(target).find((p) => p.direction === 'in' && p.id === cand.targetPort)
-      : undefined
-    // 同馈入族 / 已可达：允许顶替目标口原入边（保证单通路）
-    const shortcut = nodeCanReach(options.edges, cand.sourceId, cand.targetId)
-    const sameFeedFamily = options.edges.some(
-      (e) =>
-        e.target === cand.targetId &&
-        (e.targetPort ?? 'in') === cand.targetPort &&
-        nodesShareUpstream(options.edges, cand.sourceId, e.source)
-    )
-    const canReplaceIn = shortcut || sameFeedFamily
-    if (inPort?.multiple === false) {
-      if (!canReplaceIn && (occupiedIn.has(inKey) || usedInThisPass.has(inKey))) continue
-    } else if (!canReplaceIn && usedInThisPass.has(inKey)) {
-      // multiple 口：同一次松手也只自动补一条，避免刷屏
-      continue
-    } else if (canReplaceIn && usedInThisPass.has(inKey)) {
-      continue
-    }
+    // 不做短路/单通路判断：同一输入可接受多个输出。
+    // 仅限制同一次松手同一输入只补一条新边，避免一次拖拽刷出多条
+    if (usedInThisPass.has(inKey)) continue
 
     const outKey = `${cand.sourceId}>${cand.sourcePort}`
     if (usedOutThisPass.has(outKey)) continue
@@ -287,7 +242,6 @@ export function resolveSnapConnectEdges(
     existingKeys.add(ek)
     usedInThisPass.add(inKey)
     usedOutThisPass.add(outKey)
-    if (inPort?.multiple === false) occupiedIn.add(inKey)
   }
 
   return accepted

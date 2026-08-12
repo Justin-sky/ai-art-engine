@@ -39,7 +39,7 @@ describe('nodesShareUpstream', () => {
 })
 
 describe('connectEdgesWithShortcutPrune', () => {
-  it('when A→B→C exists, connecting A→C removes B→C', () => {
+  it('appends the new edge without pruning the existing path', () => {
     const edges = [edge('e1', 'A', 'B'), edge('e2', 'B', 'C')]
     const next = connectEdgesWithShortcutPrune(edges, {
       sourceId: 'A',
@@ -48,11 +48,10 @@ describe('connectEdgesWithShortcutPrune', () => {
       targetPort: 'in',
       edgeId: 'e-ac'
     })
-    expect(next.map((e) => e.id).sort()).toEqual(['e-ac', 'e1'])
-    expect(next.some((e) => e.id === 'e2')).toBe(false)
+    expect(next.map((e) => e.id).sort()).toEqual(['e-ac', 'e1', 'e2'])
   })
 
-  it('when A→B→C→D exists, connecting A→D removes C→D', () => {
+  it('does not remove redundant direct edges when a path already exists', () => {
     const edges = [
       edge('e1', 'A', 'B'),
       edge('e2', 'B', 'C'),
@@ -65,11 +64,10 @@ describe('connectEdgesWithShortcutPrune', () => {
       targetPort: 'in',
       edgeId: 'e-ad'
     })
-    expect(next.map((e) => e.id).sort()).toEqual(['e-ad', 'e1', 'e2'])
-    expect(next.some((e) => e.id === 'e3')).toBe(false)
+    expect(next.map((e) => e.id).sort()).toEqual(['e-ad', 'e1', 'e2', 'e3'])
   })
 
-  it('when A→D short exists, completing A→B→C→D removes A→D', () => {
+  it('allows multiple outputs to connect into one input port', () => {
     const edges = [
       edge('e-ad', 'A', 'D'),
       edge('e1', 'A', 'B'),
@@ -82,13 +80,11 @@ describe('connectEdgesWithShortcutPrune', () => {
       targetPort: 'in',
       edgeId: 'e-cd'
     })
-    expect(next.some((e) => e.id === 'e-ad')).toBe(false)
-    expect(next.some((e) => e.id === 'e-cd')).toBe(true)
-    expect(next.some((e) => e.id === 'e1')).toBe(true)
-    expect(next.some((e) => e.id === 'e2')).toBe(true)
+    // A→D 与 C→D 同时保留，同一输入口可接入多个输出
+    expect(next.map((e) => e.id).sort()).toEqual(['e-ad', 'e-cd', 'e1', 'e2'])
   })
 
-  it('keeps unrelated parallel feed into the same target', () => {
+  it('keeps unrelated parallel feed and dedupes identical four-tuples', () => {
     const edges = [edge('e1', 'A', 'B'), edge('e2', 'C', 'D')]
     const next = connectEdgesWithShortcutPrune(edges, {
       sourceId: 'A',
@@ -98,23 +94,24 @@ describe('connectEdgesWithShortcutPrune', () => {
       edgeId: 'e-ad'
     })
     expect(next.map((e) => e.id).sort()).toEqual(['e-ad', 'e1', 'e2'])
-  })
-
-  it('only clears the matched target port on shortcut', () => {
-    const edges = [
-      edge('e1', 'A', 'B'),
-      edge('e2', 'B', 'D', 'out', 'in'),
-      edge('e3', 'X', 'D', 'out', 'in-text')
-    ]
-    const next = connectEdgesWithShortcutPrune(edges, {
+    const again = connectEdgesWithShortcutPrune(next, {
       sourceId: 'A',
       targetId: 'D',
       sourcePort: 'out',
       targetPort: 'in',
       edgeId: 'e-ad'
     })
-    expect(next.some((e) => e.id === 'e2')).toBe(false)
-    expect(next.some((e) => e.id === 'e3')).toBe(true)
-    expect(next.some((e) => e.id === 'e-ad')).toBe(true)
+    expect(again.filter((e) => e.id === 'e-ad')).toHaveLength(1)
+  })
+
+  it('without edgeId only returns deduped old edges for caller to push', () => {
+    const edges = [edge('e1', 'A', 'B')]
+    const next = connectEdgesWithShortcutPrune(edges, {
+      sourceId: 'A',
+      targetId: 'C',
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    expect(next.map((e) => e.id)).toEqual(['e1'])
   })
 })

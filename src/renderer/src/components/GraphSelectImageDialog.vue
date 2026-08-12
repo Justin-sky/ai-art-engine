@@ -39,10 +39,10 @@
           alt=""
           loading="lazy"
           decoding="async"
-          :title="t('graph.selectImage.previewHint')"
+          :title="`${itemLabel(item, index)} · ${t('graph.selectImage.previewHint')}`"
           @dblclick.stop="openPreview(item)"
         />
-        <span class="caption">{{ index + 1 }}</span>
+        <span class="caption" :title="itemLabel(item, index)">{{ itemLabel(item, index) }}</span>
       </button>
     </div>
   </StudioFloatingWindow>
@@ -74,6 +74,22 @@ let thumbToken = 0
 
 function itemKey(item: GraphImageItem, index: number): string {
   return imageItemKey(item, index)
+}
+
+function fileNameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, '/').trim()
+  if (!normalized) return ''
+  const base = normalized.split('/').pop()?.trim() || ''
+  return base
+}
+
+/** 优先实体名 / 标题，其次文件名，最后序号 */
+function itemLabel(item: GraphImageItem, index: number): string {
+  const title = item.title?.trim()
+  if (title) return title
+  const fromPath = fileNameFromPath(item.relativePath ?? '')
+  if (fromPath) return fromPath
+  return String(index + 1)
 }
 
 function resolvedThumbSrc(item: GraphImageItem, index: number): string {
@@ -246,8 +262,12 @@ function onClose(): void {
 .caption {
   padding: 6px 8px;
   font-size: 12px;
+  line-height: 1.3;
   color: var(--text-muted);
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card.selected .caption {

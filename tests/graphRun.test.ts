@@ -903,6 +903,7 @@ describe('graph run', () => {
       expect(characters.items).toEqual([
         {
           id: '角色:Hero:0',
+          title: 'Hero',
           dataUrl: '',
           relativePath: '.aiartengine/graph-outputs/hero.png'
         }

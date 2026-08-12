@@ -8,7 +8,7 @@
     @mouseleave="hide"
   >
     <slot />
-    <Teleport to="body">
+    <Teleport :to="bodyTarget" :disabled="!bodyTarget">
       <span
         ref="popEl"
         v-if="visible && text"
@@ -37,6 +37,21 @@ const visible = ref(false)
 const pop = reactive({ left: 0, top: 0, maxWidth: 360, arrowLeft: 16, placement: 'top' as 'top' | 'bottom' })
 let lastMouseY = 0
 
+/**
+ * 独立窗口（detached window）会把已挂载的 DOM 整体 Teleport 进弹窗文档：
+ * `el` 节点引用不变，但 ownerDocument 会切换，computed 不会因此重算。
+ * 因此在悬停时（元素已就位于最终文档后）再解析目标 body，并缓存到 ref 供 Teleport 使用。
+ */
+const bodyTarget = ref<HTMLElement | null>(null)
+
+function viewportSize(target: HTMLElement | null | undefined): { width: number; height: number } {
+  const win = target?.ownerDocument.defaultView ?? window
+  return {
+    width: win.visualViewport?.width ?? win.innerWidth,
+    height: win.visualViewport?.height ?? win.innerHeight
+  }
+}
+
 const popStyle = computed(() => ({
   left: `${pop.left}px`,
   top: `${pop.top}px`,
@@ -63,7 +78,8 @@ function show(mouseX?: number, mouseY?: number): void {
   if (!props.text) return
   const rect = el.value?.getBoundingClientRect()
   if (!rect) return
-  const viewportW = window.visualViewport?.width ?? window.innerWidth
+  bodyTarget.value = el.value?.ownerDocument.body ?? null
+  const viewportW = viewportSize(el.value).width
   const maxWidth = Math.min(360, Math.max(160, viewportW - 16))
   const anchorX = mouseX ?? rect.left + rect.width / 2
   const anchorY = mouseY ?? rect.top + rect.height / 2
@@ -82,7 +98,7 @@ function positionPop(): void {
   const target = popEl.value
   if (!target) return
   const height = target.offsetHeight || 120
-  const viewportH = window.visualViewport?.height ?? window.innerHeight
+  const viewportH = viewportSize(el.value).height
   const gap = 12
   let placement: 'top' | 'bottom'
   let top: number

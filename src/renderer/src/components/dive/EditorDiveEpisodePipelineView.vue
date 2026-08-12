@@ -487,7 +487,15 @@ function nodeText(key: string): string {
 /** 取节点最近一张输出图的相对路径（节点图库或运行结果） */
 function firstImageRelativePath(node: GraphNode | undefined): string {
   if (!node) return ''
-  const direct = node.params?.generatedImages?.[0]?.relativePath
+  // 优先取节点当前选中/最新生成的图，而不是图库里最早的一张：
+  // 宫格提取等节点重跑后图库会累积旧切块，显示必须跟随 selectedImageId
+  const generated = node.params?.generatedImages ?? []
+  const selectedId = node.params?.selectedImageId?.trim()
+  const picked =
+    (selectedId ? generated.find((item) => item.id === selectedId) : undefined) ??
+    generated[generated.length - 1] ??
+    generated[0]
+  const direct = picked?.relativePath
   if (direct) return direct
   const out = runStates.value[node.id]?.outputs?.out
   if (out?.kind === 'image' && out.relativePath) return out.relativePath
@@ -1308,8 +1316,6 @@ watch(
 }
 .anchor-thumb {
   width: 100%;
-  aspect-ratio: 16/9;
-  object-fit: cover;
   border-radius: 6px;
 }
 .anchor-empty {
@@ -1382,8 +1388,6 @@ watch(
 }
 .cell-thumb {
   width: 100%;
-  aspect-ratio: 16/9;
-  object-fit: cover;
   border-radius: 6px;
   background: var(--bg);
 }

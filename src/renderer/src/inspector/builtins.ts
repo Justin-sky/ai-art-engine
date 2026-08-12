@@ -21,6 +21,7 @@ import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
+import WorldGenInspector from '../components/WorldGenInspector.vue'
 import BeatInspector from '../components/BeatInspector.vue'
 import ProjectGlobalsInspector from '../components/ProjectGlobalsInspector.vue'
 import ShotNodeInspector from '../components/ShotNodeInspector.vue'
@@ -176,7 +177,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
   },
   {
     id: 'studio.graph.worldGen',
-    component: TablePassThroughInspector,
+    component: WorldGenInspector,
     nodeTypeId: 'world.gen'
   },
   {

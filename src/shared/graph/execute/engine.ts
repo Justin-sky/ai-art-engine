@@ -138,29 +138,13 @@ function waitStep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** 输出表是否含有可用正文/媒体（空 text 视为无效） */
+/** 输出表是否含有可用正文/媒体（空 text / 空 images 组视为无效） */
 function hasUsableOutputRecord(
   outputs: Record<string, GraphValue> | undefined | null
 ): boolean {
   if (!outputs || !Object.keys(outputs).length) return false
-  const out = outputs.out
-  if (!out) return true
-  if (out.kind === 'text') {
-    return !!out.text.trim() || !!out.relativePath?.trim()
-  }
-  if (
-    out.kind === 'world' ||
-    out.kind === 'worldEntities' ||
-    out.kind === 'beat'
-  ) {
-    return !!out.text.trim() || !!('relativePath' in out && out.relativePath?.trim())
-  }
-  if (out.kind === 'texts') {
-    return out.items.some(
-      (item) => !!item.text.trim() || !!item.relativePath?.trim()
-    )
-  }
-  return true
+  // world.gen 等只有 out-* 组口、无 out：必须逐口检查，不能因缺 out 当成可用
+  return Object.values(outputs).some((value) => graphValueHasPayload(value))
 }
 
 /** 缓存 outputs 是否含有可用正文/媒体（空 text 视为无效，需重新快照） */
@@ -204,6 +188,7 @@ async function softSnapshotOutputs(
     | 'resolveAssetText'
     | 'resolveAssetGenParams'
     | 'resolveLiveAssetGraph'
+    | 'resolveWorldElementOutputs'
     | 'hasAsset'
     | 'locale'
     | 'readRunText'
@@ -218,7 +203,8 @@ async function softSnapshotOutputs(
   const softResolveOpts = {
     resolveAssetGenParams: options.resolveAssetGenParams,
     // 选择场等 onlyTarget 软快照需 dig 打开中的宿主内图
-    resolveLiveAssetGraph: options.resolveLiveAssetGraph
+    resolveLiveAssetGraph: options.resolveLiveAssetGraph,
+    resolveWorldElementOutputs: options.resolveWorldElementOutputs
   }
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
@@ -324,7 +310,8 @@ async function executeOneNode(
 
   const softResolveOptions: ResolveHostInputSlotsOptions = {
     resolveAssetGenParams: options.resolveAssetGenParams,
-    resolveLiveAssetGraph: options.resolveLiveAssetGraph
+    resolveLiveAssetGraph: options.resolveLiveAssetGraph,
+    resolveWorldElementOutputs: options.resolveWorldElementOutputs
   }
 
   // 节点锁定：不 cook，直接复用图库 / 上次输出 / soft params

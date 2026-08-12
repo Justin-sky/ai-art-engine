@@ -94,7 +94,7 @@ Hard rules:
 export const EPISODE_AGENT_SEQUENCE: EpisodeAgentPromptPack = {
   systemPromptZh: `${STORYBOARD_COMMON_ZH}
 
-任务：基于上游「9宫格分镜表」，把 9 个宫格全部展开为动态分镜：每宫格 4 格（定场/引入/冲突/收尾），共 36 格。严格输出：
+任务：基于上游「节拍拆解表」与「9宫格分镜表」，把 9 个宫格全部展开为动态分镜：每宫格 4 格（定场/引入/冲突/收尾），共 36 格。严格输出：
 # 展开的 9组/4宫格 动态故事板
 ## 组N: 标题 -> 对应九宫格 格N
 - **格N-1 (定场)**: 画面描述。（景别: 全景）
@@ -107,10 +107,12 @@ export const EPISODE_AGENT_SEQUENCE: EpisodeAgentPromptPack = {
 2. 组内景别遵循 定场(全景/远景) → 引入(中景) → 冲突(近景/特写) → 收尾(全景/中景) 的视觉推进。
 3. 严格遵循“渐松渐紧”：冲突前镜头渐紧（景别收近），冲突后渐松。
 4. 人物、服装、主光方向与 9宫格一致。
-5. 只输出清单，不要解释。`,
+5. 每组覆盖完整叙事区间：组N 覆盖「锚点N-1 之后到锚点N（含锚点N）」之间的节拍内容，锚点N为本组关键帧；除关键帧外，必须把区间内的普通节拍内容并入本组 4 格，禁止只画关键帧单帧。
+6. 组与组之间按节拍顺序连续衔接：整本剧本的节拍内容必须被全部展开，不丢节拍、不跳内容。
+7. 只输出清单，不要解释。`,
   systemPromptEn: `${STORYBOARD_COMMON_EN}
 
-Task: from the upstream 9-grid beat board, expand ALL 9 cells into dynamic storyboard quads — each cell gets 4 frames (establish / introduce / conflict / resolve), 36 frames total. Output strictly:
+Task: from the upstream Beat Breakdown and the 9-grid beat board, expand ALL 9 cells into dynamic storyboard quads — each cell gets 4 frames (establish / introduce / conflict / resolve), 36 frames total. Output strictly:
 # Expanded 9-group / 4-grid dynamic storyboard
 ## Group N: Title -> 9-grid cell N
 - **Cell N-1 (Establish)**: description.（Shot: wide）
@@ -123,9 +125,11 @@ Hard rules:
 2. Shot flow per group: wide/establish → medium/introduce → close/conflict → wide/medium/resolve.
 3. Rhythm tightens toward the conflict and loosens after it.
 4. Characters, costumes, and key-light direction stay consistent with the 9-grid board.
-5. Output the list only — no commentary.`,
-  instructionZh: `请基于上游 9宫格分镜表生成 4宫格动态分镜表（9 组 × 4 格 = 36 格），严格按系统提示词规定的格式输出。`,
-  instructionEn: `Expand the upstream 9-grid beat board into the 4-grid dynamic storyboard (9 groups × 4 frames = 36), strictly following the format in the system prompt.`
+5. Each group covers a complete narrative span: group N covers the beats after anchor N-1 up to and including anchor N (the keyframe); besides the keyframe, merge the ordinary beats in that span into the group's 4 frames — never draw only the single keyframe.
+6. Groups connect in beat order; every beat of the script must be expanded, none skipped.
+7. Output the list only — no commentary.`,
+  instructionZh: `请基于上游节拍拆解表与9宫格分镜表生成 4宫格动态分镜表（9 组 × 4 格 = 36 格），每组覆盖锚点及其相邻普通节拍，严格按系统提示词规定的格式输出。`,
+  instructionEn: `Expand the upstream Beat Breakdown and 9-grid beat board into the 4-grid dynamic storyboard (9 groups × 4 frames = 36); each group covers its anchor and adjacent ordinary beats, strictly following the format in the system prompt.`
 }
 
 /** Agent 3 动画师：动态提示词表（图生视频指令） */

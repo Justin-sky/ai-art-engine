@@ -2268,7 +2268,11 @@ export default {
         hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
       },
       worldGen: {
-        hint: '四个图片组出口：角色 / 场景 / 道具 / 武器。执行当前只收集已有图片；圆形菜单「Cook 子图」才批跑元素子图'
+        hint: '四个图片组出口：角色 / 场景 / 道具 / 武器。执行当前只收集已有图片；圆形菜单「Cook 子图」才批跑元素子图',
+        groupedPreview: '分组预览',
+        groupedPreviewHint: '按图片组出口分类；双击缩略图可放大查看',
+        groupCount: '{n} 张',
+        groupEmpty: '暂无图片'
       },
       beatTable: {
         hint: '双击打开场表格；运行节点导入目录 JSON，并在此预览输出端口'
@@ -2475,7 +2479,9 @@ export default {
             faceTurnaround: '角色脸部三视图',
             characterSheet: '角色设定图',
             characterTurnaround: '角色三视图',
-            sceneSheet: '场景设定图',
+            propTurnaround: '道具三视图',
+            weaponTurnaround: '武器三视图',
+            sceneSheet: '场景设定图（Three.js 可读）',
             productSheet: '产品设定图',
             story25: '25宫格连贯分镜',
             cinematicLighting: '电影级光影校正',
@@ -2533,7 +2539,7 @@ export default {
           optimize: {
             character: '人物设定提示词优化',
             prop: '道具提示词优化',
-            scene: '场景提示词优化',
+            scene: '场景提示词优化（Three.js）',
             camera: '运镜提示词优化',
             expression: '人物表情提示词优化',
             vfx: '特效提示词优化',

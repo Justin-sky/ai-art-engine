@@ -84,12 +84,7 @@ type StoredGeneratedText = {
   createdAt?: string
 }
 
-const PASS_THROUGH_TYPE_IDS = new Set([
-  'world.table',
-  'world.gen',
-  'beat.table',
-  'beat.gen'
-])
+const PASS_THROUGH_TYPE_IDS = new Set(['world.table', 'beat.table', 'beat.gen'])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -120,7 +115,6 @@ const typeLabel = computed(() =>
 const hint = computed(() => {
   const typeId = node.value?.typeId
   if (typeId === 'world.table') return t('graph.inspector.worldTable.hint')
-  if (typeId === 'world.gen') return t('graph.inspector.worldGen.hint')
   if (typeId === 'beat.table') return t('graph.inspector.beatTable.hint')
   if (typeId === 'beat.gen') return t('graph.inspector.beatGen.hint')
   return t('graph.inspector.shotTable.hint')

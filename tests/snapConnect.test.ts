@@ -122,7 +122,7 @@ describe('resolveSnapConnectEdges', () => {
     expect(hits).toEqual([])
   })
 
-  it('skips occupied non-multiple input ports', () => {
+  it('allows a second output to connect into an already-fed input port', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'a' })
     const b = createNodeFromType('asset.screenplay', { x: 0, y: 400 }, { id: 'b' })
     const note = createNodeFromType('graph.boundary.output', { x: 200, y: 0 }, {
@@ -137,7 +137,7 @@ describe('resolveSnapConnectEdges', () => {
     a.position = { x: inCenter.x - aSize.w - 12, y: 0 }
     const outY = getNodePortCenter(a, 'right', 'out').y
     a.position.y += inCenter.y - outY
-    // b 远离，仅占用 bout；不与 a 叠放
+    // b 远离，但 bout 的输入口已被 b 占用；a 的出口紧贴 bout 入口仍应可连
 
     const hits = resolveSnapConnectEdges({
       nodes: [a, b, note],
@@ -154,7 +154,7 @@ describe('resolveSnapConnectEdges', () => {
       thresholdWorld: 40
     })
 
-    expect(hits).toEqual([])
+    expect(hits.some((h) => h.sourceId === 'a' && h.targetId === 'bout')).toBe(true)
   })
 
   it('does not wire nodes that moved together in the same drag', () => {
@@ -206,17 +206,16 @@ describe('resolveSnapConnectEdges', () => {
     expect(preview.highlightNodeIds.has('C')).toBe(true)
     expect(preview.highlightPortKeys.has(snapPortKey('A', 'out'))).toBe(true)
     expect(preview.highlightPortKeys.has(snapPortKey('C', 'in'))).toBe(true)
-    expect(preview.connectCandidates.some((h) => h.sourceId === 'A' && h.targetId === 'C')).toBe(
-      true
-    )
+    // 节点重叠只负责高亮兼容端口；自动连线只看端口距离，
+    // 叠放时左右端口相距约一个节点宽，超出阈值 → 不产生连线候选
+    expect(preview.connectCandidates).toEqual([])
   })
 
-  it('connects when dragged node is stacked on target (Houdini drop-on-node)', () => {
-    // A→B→C 文本链；把 A 叠到 C 上短路
+  it('does not connect when nodes overlap but ports are far apart', () => {
     const a = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'A' })
     const b = createNodeFromType('beat.unitGen', { x: 220, y: 0 }, { id: 'B' })
     const c = createNodeFromType('beat.split', { x: 440, y: 0 }, { id: 'C' })
-    // 叠放到 C 上：左右端口距≈节点宽，旧阈值 36 不够
+    // A 与 C 完全叠放：左右端口相距约一个节点宽，超出端口阈值
     a.position = { ...c.position }
 
     const hits = resolveSnapConnectEdges({
@@ -229,6 +228,25 @@ describe('resolveSnapConnectEdges', () => {
       thresholdWorld: 36
     })
 
-    expect(hits.some((h) => h.sourceId === 'A' && h.targetId === 'C')).toBe(true)
+    expect(hits.some((h) => h.sourceId === 'A' && h.targetId === 'C')).toBe(false)
+    // 把 A 的出口贴到 C 的入口附近时仍可自动连线
+    const aSize = getNodeSize(a)
+    const inCenter = getNodePortCenter(c, 'left', 'in')
+    a.position = {
+      x: inCenter.x - aSize.w - 12,
+      y: 0
+    }
+    const outY = getNodePortCenter(a, 'right', 'out').y
+    a.position.y += inCenter.y - outY
+    const nearHits = resolveSnapConnectEdges({
+      nodes: [a, b, c],
+      edges: [
+        { id: 'e1', source: 'A', target: 'B', sourcePort: 'out', targetPort: 'in' },
+        { id: 'e2', source: 'B', target: 'C', sourcePort: 'out', targetPort: 'in' }
+      ],
+      draggedNodeIds: [a.id],
+      thresholdWorld: 36
+    })
+    expect(nearHits.some((h) => h.sourceId === 'A' && h.targetId === 'C')).toBe(true)
   })
 })

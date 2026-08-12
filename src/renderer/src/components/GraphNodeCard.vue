@@ -2057,7 +2057,10 @@ function onPreviewDblClick(): void {
       return
     }
     if (isWorldGenNode(props.node) && worldAssetId) {
-      await diveView({ viewId: 'world.editor', worldAssetId }, title)
+      await diveView(
+        { viewId: 'world.editor', worldAssetId, worldGenNodeId: props.node.id },
+        title
+      )
       return
     }
 
@@ -2581,9 +2584,13 @@ function formatTime(sec: number): string {
 }
 
 .graph-node.selected,
-.graph-node.connecting,
-.graph-node.instruction-open {
+.graph-node.connecting {
   z-index: 20;
+}
+
+/* 指令框打开时整卡抬到所有节点之上，避免被后方/重叠节点盖住 */
+.graph-node.instruction-open {
+  z-index: 200;
 }
 
 .instruction-panel {

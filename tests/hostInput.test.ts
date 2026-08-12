@@ -12,6 +12,7 @@ import {
   hydrateHostInputSlotSpecs,
   isNodeDeletable,
   normalizeScopedGraph,
+  outputsToHostGalleryParams,
   resolveBoundaryInputValuesFromParentGraph,
   resolveBoundaryInputValuesFromParents,
   resolveHostInputSlotsFromParentGraph,
@@ -26,6 +27,36 @@ import {
 const HOST_ID = '00000000-0000-4000-8000-000000000201'
 const SRC_A = 'src-a'
 const SRC_B = 'src-b'
+
+describe('outputsToHostGalleryParams', () => {
+  it('merges multiple image-group host outputs instead of last-wins', () => {
+    const params = outputsToHostGalleryParams({
+      'out-0': {
+        kind: 'images',
+        items: [
+          { id: '角色:孙悟空:0', relativePath: 'a.png' },
+          { id: '角色:瓜摊老板:1', relativePath: 'b.png' }
+        ]
+      },
+      'out-1': {
+        kind: 'images',
+        items: [{ id: '场景:市井水果摊:3', relativePath: 'c.png' }]
+      },
+      'out-2': {
+        kind: 'images',
+        items: [{ id: '道具:筋斗云:4', relativePath: 'd.png' }]
+      }
+    } as never)
+
+    expect(params.generatedImages?.map((item) => item.id)).toEqual([
+      '角色:孙悟空:0',
+      '角色:瓜摊老板:1',
+      '场景:市井水果摊:3',
+      '道具:筋斗云:4'
+    ])
+    expect(params.selectedImageId).toBe('道具:筋斗云:4')
+  })
+})
 
 function parentWithHostEdges(opts?: {
   textsItems?: number

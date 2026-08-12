@@ -7,6 +7,7 @@
       ref="bodyRef"
       class="body"
       :world-asset-id="worldAssetId"
+      :world-gen-node-id="worldGenNodeId"
       :active-tab="activeTab"
     />
   </div>
@@ -25,6 +26,7 @@ import WorldEditorTabs from '../WorldEditorTabs.vue'
 const props = defineProps<{
   frameKey: string
   worldAssetId: string
+  worldGenNodeId?: string
   tab?: WorldElementKind
 }>()
 
@@ -48,7 +50,7 @@ watch(
 
 onMounted(async () => {
   try {
-    await applyWorldCatalog(props.worldAssetId)
+    await applyWorldCatalog(props.worldAssetId, undefined, props.worldGenNodeId)
   } catch (error) {
     console.warn('[dive] applyWorldCatalog failed', error)
   }

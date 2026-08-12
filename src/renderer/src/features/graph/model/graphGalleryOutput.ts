@@ -90,7 +90,6 @@ function commitImages(
     previewDataUrl: picked?.dataUrl?.trim() ? picked.dataUrl : '',
     previewRelativePath: picked?.relativePath?.trim() ? picked.relativePath : ''
   })
-  graphEditorHosts.bumpRevision()
 }
 
 function commitVideos(
@@ -122,7 +121,6 @@ function commitVideos(
     previewDataUrl: picked?.dataUrl?.trim() ? picked.dataUrl : '',
     previewRelativePath: picked?.relativePath?.trim() ? picked.relativePath : ''
   })
-  graphEditorHosts.bumpRevision()
 }
 
 function commitVoices(
@@ -152,7 +150,6 @@ function commitVoices(
     selectedVoiceId: picked?.id ?? '',
     previewRelativePath: picked?.relativePath?.trim() ? picked.relativePath : ''
   })
-  graphEditorHosts.bumpRevision()
 }
 
 function commitTexts(hostId: string, node: GraphNode, list: TextList, selectedId: string): void {
@@ -188,7 +185,6 @@ function commitTexts(hostId: string, node: GraphNode, list: TextList, selectedId
     text: body.trim() ? body : node.params.text,
     previewRelativePath: picked?.relativePath?.trim() ? picked.relativePath : ''
   })
-  graphEditorHosts.bumpRevision()
 }
 
 /** 图库中是否存在该 id（可单独选中 / 删除） */

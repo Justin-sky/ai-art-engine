@@ -3,13 +3,16 @@ import { normalizeReviewStatus } from '@shared/graph'
 import {
   emptyWorldElementCatalog,
   extractWorldCatalogJsonText,
+  LEGACY_WORLD_GEN_NODE_ID,
   mergeWorldCatalogPreservingReviewed,
   parseWorldElementCatalog,
-  readWorldElementGraphFromGenParams,
+  readWorldElementGraphForNode,
   readWorldElementIdFromNodeParams,
   stringifyWorldElementCatalog,
   syncWorldElementKindGraph,
-  withWorldElementGraph,
+  WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY,
+  WORLD_CATALOG_FINGERPRINT_KEY,
+  withWorldElementGraphForNode,
   WORLD_ELEMENT_KINDS,
   type GraphDocument,
   type WorldElementCatalog,
@@ -21,7 +24,13 @@ import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 
 /** 已成功导入的世界元素目录指纹，存在世界资产 genParams */
-export const LAST_APPLIED_WORLD_CATALOG_FP_KEY = 'lastAppliedWorldCatalogFingerprint'
+export const LAST_APPLIED_WORLD_CATALOG_FP_KEY = WORLD_CATALOG_FINGERPRINT_KEY
+
+/** 目录归属节点：未指定 / 旧版默认节点 → 资产级共享图；其它 → 按节点独立图 */
+function catalogOwnerNodeId(nodeId?: string): string {
+  const id = nodeId?.trim()
+  return id && id !== LEGACY_WORLD_GEN_NODE_ID ? id : LEGACY_WORLD_GEN_NODE_ID
+}
 
 function readWorldAssetGraph(worldAssetId: string): GraphDocument | null {
   const project = useProjectStore()
@@ -65,11 +74,12 @@ function graphTopologyKey(doc: GraphDocument | null | undefined): string {
 
 /** 从四类子图还原可编辑目录（按 worldElementId 聚合，避免 script/gen/out 重复） */
 export function catalogFromWorldGenParams(
-  genParams?: Record<string, unknown> | null
+  genParams?: Record<string, unknown> | null,
+  nodeId?: string
 ): WorldElementCatalog {
   const catalog = emptyWorldElementCatalog()
   for (const kind of WORLD_ELEMENT_KINDS) {
-    const doc = readWorldElementGraphFromGenParams(genParams, kind)
+    const doc = readWorldElementGraphForNode(genParams, catalogOwnerNodeId(nodeId), kind)
     if (!doc?.nodes?.length) continue
     const byId = new Map<
       string,
@@ -103,8 +113,8 @@ export function catalogFromWorldGenParams(
   return catalog
 }
 
-export function loadWorldCatalog(worldAssetId: string): WorldElementCatalog {
-  const fromGraphs = catalogFromWorldGenParams(readWorldGenParams(worldAssetId))
+export function loadWorldCatalog(worldAssetId: string, nodeId?: string): WorldElementCatalog {
+  const fromGraphs = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), nodeId)
   const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + fromGraphs[kind].length, 0)
   if (total > 0) return fromGraphs
   return (
@@ -125,32 +135,59 @@ async function writeWorldGenParams(
   await persistAssetRecord(worldAssetId, { genParams })
 }
 
-function readLastAppliedFingerprint(worldAssetId: string): string | null {
-  const raw = readWorldGenParams(worldAssetId)?.[LAST_APPLIED_WORLD_CATALOG_FP_KEY]
+function readLastAppliedFingerprint(worldAssetId: string, nodeId?: string): string | null {
+  const genParams = readWorldGenParams(worldAssetId)
+  const owner = catalogOwnerNodeId(nodeId)
+  if (owner !== LEGACY_WORLD_GEN_NODE_ID) {
+    const byNode = genParams?.[WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY]
+    if (byNode && typeof byNode === 'object') {
+      const raw = (byNode as Record<string, unknown>)[owner]
+      if (typeof raw === 'string' && raw) return raw
+    }
+    return null
+  }
+  const raw = genParams?.[LAST_APPLIED_WORLD_CATALOG_FP_KEY]
   return typeof raw === 'string' && raw ? raw : null
 }
 
 async function persistCatalog(
   worldAssetId: string,
   catalog: WorldElementCatalog,
-  fingerprint: string
+  fingerprint: string,
+  nodeId?: string
 ): Promise<number> {
   let genParams = { ...(readWorldGenParams(worldAssetId) ?? {}) }
   let changed = false
+  const owner = catalogOwnerNodeId(nodeId)
 
   for (const kind of WORLD_ELEMENT_KINDS) {
-    const prev = readWorldElementGraphFromGenParams(genParams, kind)
+    const prev = readWorldElementGraphForNode(genParams, owner, kind)
     const next = syncWorldElementKindGraph(prev, catalog[kind])
     if (graphTopologyKey(prev) !== graphTopologyKey(next)) {
-      genParams = withWorldElementGraph(genParams, kind, toPlain(next) as GraphDocument)
+      genParams = withWorldElementGraphForNode(genParams, owner, kind, toPlain(next) as GraphDocument)
       changed = true
     }
   }
 
-  if (readLastAppliedFingerprint(worldAssetId) !== fingerprint) {
-    genParams = {
-      ...genParams,
-      [LAST_APPLIED_WORLD_CATALOG_FP_KEY]: fingerprint
+  if (readLastAppliedFingerprint(worldAssetId, owner) !== fingerprint) {
+    if (owner !== LEGACY_WORLD_GEN_NODE_ID) {
+      const byNode =
+        genParams[WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY] &&
+        typeof genParams[WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY] === 'object'
+          ? { ...(genParams[WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY] as Record<string, unknown>) }
+          : {}
+      genParams = {
+        ...genParams,
+        [WORLD_CATALOG_FINGERPRINT_BY_NODE_KEY]: {
+          ...byNode,
+          [owner]: fingerprint
+        }
+      }
+    } else {
+      genParams = {
+        ...genParams,
+        [LAST_APPLIED_WORLD_CATALOG_FP_KEY]: fingerprint
+      }
     }
     changed = true
   }
@@ -164,9 +201,10 @@ async function persistCatalog(
 /** 表格编辑落盘：同步目录到四类子图（补齐图片生成 + 图片输出）；拓扑未变则跳过写盘 */
 export async function saveWorldCatalog(
   worldAssetId: string,
-  catalog: WorldElementCatalog
+  catalog: WorldElementCatalog,
+  nodeId?: string
 ): Promise<number> {
-  return persistCatalog(worldAssetId, catalog, stringifyWorldElementCatalog(catalog))
+  return persistCatalog(worldAssetId, catalog, stringifyWorldElementCatalog(catalog), nodeId)
 }
 
 /**
@@ -176,18 +214,24 @@ export async function saveWorldCatalog(
  */
 export async function applyWorldCatalog(
   worldAssetId: string,
-  jsonText?: string | null
+  jsonText?: string | null,
+  nodeId?: string
 ): Promise<number> {
+  const owner = catalogOwnerNodeId(nodeId)
+  // 新节点的子图必须由它自己的目录导入（运行/上游）填充，打开编辑视图不自动播种画布级目录
+  if (owner !== LEGACY_WORLD_GEN_NODE_ID && !jsonText?.trim()) {
+    return 0
+  }
   const text = jsonText?.trim() || extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
   const parsed = parseWorldElementCatalog(text)
   if (!parsed) return 0
 
-  const existing = catalogFromWorldGenParams(readWorldGenParams(worldAssetId))
+  const existing = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), owner)
   const catalog =
     mergeWorldCatalogPreservingReviewed(existing, parsed) ?? parsed
 
   const fingerprint = stringifyWorldElementCatalog(catalog)
-  return persistCatalog(worldAssetId, catalog, fingerprint)
+  return persistCatalog(worldAssetId, catalog, fingerprint, owner)
 }
 
 export type { WorldElementCatalog, WorldElementKind }

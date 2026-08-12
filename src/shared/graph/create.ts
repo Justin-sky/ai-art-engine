@@ -62,6 +62,24 @@ export const GRAPH_NODE_HEAD_HEIGHT_PX = 30
 /** 收起预览后的节点高度（约等于标题栏） */
 export const GRAPH_NODE_COLLAPSED_HEIGHT_PX = 34
 
+function isImageBoundaryNode(node: GraphNode): boolean {
+  if (
+    node.typeId !== 'graph.boundary.input' &&
+    node.typeId !== 'graph.boundary.output'
+  ) {
+    return false
+  }
+  const dataType = node.params?.hostBoundaryPort?.dataType
+  return dataType === 'image' || dataType === 'images'
+}
+
+function hasBoundaryLocalMediaPreview(node: GraphNode): boolean {
+  return (
+    !!node.params?.previewRelativePath?.trim() ||
+    !!node.params?.previewDataUrl?.trim()
+  )
+}
+
 export function getNodeSize(node: GraphNode): { w: number; h: number } {
   ensureBuiltinNodeTypes()
   const def = resolveNodeType(node)
@@ -69,13 +87,22 @@ export function getNodeSize(node: GraphNode): { w: number; h: number } {
   const w = node.size?.w ?? defaults.w
   const h = node.size?.h ?? defaults.h
   // 收起预览时高度压到标题栏；展开时仍用节点保存的 size.h
-  // 输入接口 / boundary 默认折叠（仅 previewCollapsed === false 时展开）
-  const collapsed =
+  // 图片边界：有本地预览时与 GraphNoteCard 一致，仅用户明确折叠才压高度
+  // 其它输入接口 / boundary：默认折叠（仅 previewCollapsed === false 时展开）
+  let collapsed: boolean
+  if (isImageBoundaryNode(node)) {
+    collapsed = !hasBoundaryLocalMediaPreview(node)
+      ? true
+      : node.params?.previewCollapsed === true
+  } else if (
     node.typeId === 'graph.input.slot' ||
     node.typeId === 'graph.boundary.input' ||
     node.typeId === 'graph.boundary.output'
-      ? node.params?.previewCollapsed !== false
-      : node.params?.previewCollapsed === true
+  ) {
+    collapsed = node.params?.previewCollapsed !== false
+  } else {
+    collapsed = node.params?.previewCollapsed === true
+  }
   if (collapsed) {
     return { w, h: GRAPH_NODE_COLLAPSED_HEIGHT_PX }
   }

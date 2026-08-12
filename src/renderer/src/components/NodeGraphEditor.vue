@@ -616,7 +616,7 @@ import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaFor
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
-import { collectWorldElementOutputs } from '../features/world/worldElementPipeline'
+import { collectWorldElementOutputs, previewWorldElementOutputsFromSubgraphs } from '../features/world/worldElementPipeline'
 import { collectBeatUnitTexts } from '../features/beat/beatPipeline'
 import { applyWorldCatalog, loadWorldCatalog } from '../features/world/applyWorldCatalogOnOpen'
 import {
@@ -664,6 +664,7 @@ import {
   isAssetRefNode,
   isAssetRefInputHostType,
   encapsulateSelection,
+  pickWorldElementStateForMigration,
   cloneHostInterface,
   pruneEdgesForHostInterface,
   readHostInterfaceFromGenParams,
@@ -698,7 +699,12 @@ import {
   flattenTextsValues,
   flattenVideosValues,
   flattenVoicesValues,
+  graphValueHasPayload,
   imageItemKey,
+  isWorldGenImageOutPortId,
+  softResolveSourceOutput,
+  WORLD_GEN_IMAGE_OUT_PORTS,
+  worldGenImageGroupOutputs,
   textItemKey,
   videoItemKey,
   voiceItemKey,
@@ -709,9 +715,10 @@ import {
   resolveAssetTextFromGenParams,
   resolveMotionImageItems,
   createBeatRefNode,
-  readWorldElementGraphFromGenParams,
+  readWorldElementGraphForNode,
+  LEGACY_WORLD_GEN_NODE_ID,
   inferElementWorkflowHostInterface,
-  withWorldElementGraph,
+  withWorldElementGraphForNode,
   readBeatGraphFromGenParams,
   withBeatGraph,
   readBoundBeatIdFromNodeParams,
@@ -843,6 +850,8 @@ const props = withDefaults(
     scope?: GraphAddScope
     /** 世界元素四类子画布 kind（优先于 inject） */
     worldElementKind?: WorldElementKind
+    /** 所属 world.gen 节点 id；elementWorkflow 画布按节点读写独立子图 */
+    worldGenNodeId?: string
     /** 场细化画布：当前单元 id（与 assetId + scope=beatUnit 合用） */
     beatId?: string
     /** 嵌入底栏等场景隐藏图工具条，运行/参数走外层 Inspector */
@@ -884,6 +893,18 @@ const worldElementKind = computed((): WorldElementKind | null => {
 const isElementWorkflowGraph = computed(
   () => isAssetGraph.value && graphScope.value === 'elementWorkflow' && !!worldElementKind.value
 )
+/** 世界元素管线宿主：世界元素资产图、内嵌世界节点链的自由画布、或封装了世界节点链的子图资产 */
+const isWorldElementPipelineHost = computed(
+  () =>
+    graphScope.value === 'worldAsset' ||
+    graphScope.value === 'canvasAsset' ||
+    graphScope.value === 'subgraphAsset'
+)
+const worldElementNodeId = computed(() => {
+  const id = props.worldGenNodeId?.trim() || ''
+  // 旧版默认节点走资产级共享子图（宿主 id 不带节点后缀）
+  return id === LEGACY_WORLD_GEN_NODE_ID ? '' : id
+})
 const isBeatUnitGraph = computed(
   () =>
     isAssetGraph.value &&
@@ -968,7 +989,9 @@ const graphHostId = computed(() => {
     ? `asset:${props.assetId}`
     : 'asset:unscoped'
   if (isElementWorkflowGraph.value && worldElementKind.value) {
-    return `${base}:element:${worldElementKind.value}`
+    return worldElementNodeId.value
+      ? `${base}:element:${worldElementKind.value}:${worldElementNodeId.value}`
+      : `${base}:element:${worldElementKind.value}`
   }
   if (isBeatUnitGraph.value && props.beatId) {
     return `${base}:unit:${props.beatId}`
@@ -1148,7 +1171,11 @@ function readAssetGraph(): GraphDocument {
       (isDraftAssetId(props.assetId)
         ? draftStore.getDraft(props.assetId)?.genParams
         : graphAsset.value?.genParams) ?? undefined
-    const raw = readWorldElementGraphFromGenParams(gen, worldElementKind.value)
+    const raw = readWorldElementGraphForNode(
+      gen,
+      worldElementNodeId.value || LEGACY_WORLD_GEN_NODE_ID,
+      worldElementKind.value
+    )
     return normalizeScopedGraph(graphScope.value, raw, {
       assetType: graphAsset.value?.type ?? 'world',
       hostAssetId: props.assetId,
@@ -1216,13 +1243,19 @@ function commitAssetGraph(): boolean {
     if (isDraftAssetId(props.assetId)) {
       const draft = draftStore.getDraft(props.assetId)
       draftStore.updateDraft(props.assetId, {
-        genParams: withWorldElementGraph(draft?.genParams, worldElementKind.value, plain)
+        genParams: withWorldElementGraphForNode(
+          draft?.genParams,
+          worldElementNodeId.value || LEGACY_WORLD_GEN_NODE_ID,
+          worldElementKind.value,
+          plain
+        )
       })
       return true
     }
     const write = persistAssetRecord(props.assetId, {
-      genParams: withWorldElementGraph(
+      genParams: withWorldElementGraphForNode(
         latest.genParams as Record<string, unknown> | undefined,
+        worldElementNodeId.value || LEGACY_WORLD_GEN_NODE_ID,
         worldElementKind.value,
         plain
       )
@@ -1644,20 +1677,30 @@ const {
     return loadBeatCatalog(beatAssetId).find((row) => row.id === id) ?? null
   },
   collectWorldElementOutputs: async (signal, options) => {
-    if (graphScope.value !== 'worldAsset') return null
+    if (!isWorldElementPipelineHost.value) return null
     const worldId = props.assetId
     if (!worldId) return null
     // Cook 子图 / 整链：先跑齐四类元素子图，再收集；执行当前只收集已有结果
     if (options?.cookBatch) {
       const batch = taskStore.enqueueWorldElementBatch({
         worldAssetId: worldId,
+        nodeId: options?.nodeId,
         onlyMissing: false
       })
       await taskStore.waitForTaskIds(batch.taskIds)
     }
     return collectWorldElementOutputs({
       worldAssetId: worldId,
+      nodeId: options?.nodeId,
       signal
+    })
+  },
+  resolveWorldElementOutputs: (node) => {
+    const worldId = props.assetId?.trim()
+    if (!worldId || !isWorldElementPipelineHost.value) return []
+    return previewWorldElementOutputsFromSubgraphs({
+      worldAssetId: worldId,
+      nodeId: node?.id
     })
   },
   collectBeatUnitTexts: async (signal) => {
@@ -1671,7 +1714,7 @@ const {
   },
   runHostInnerGraph: (input) => taskStore.runHostInnerGraph(input),
   resolveWorldCatalogJson: () => {
-    if (graphScope.value !== 'worldAsset') return null
+    if (!isWorldElementPipelineHost.value) return null
     const worldId = props.assetId
     if (!worldId) return null
     const catalog = loadWorldCatalog(worldId)
@@ -1679,10 +1722,29 @@ const {
     if (!total) return null
     return stringifyWorldElementCatalog(catalog)
   },
-  importWorldCatalogJson: async (jsonText) => {
-    if (graphScope.value !== 'worldAsset') return
+  importWorldCatalogJson: async (jsonText, sourceNodeId) => {
+    if (!isWorldElementPipelineHost.value) return
     const worldId = props.assetId
     if (!worldId) return
+    if (sourceNodeId) {
+      const source = graph.nodes.find((node) => node.id === sourceNodeId)
+      if (source?.typeId === 'world.gen') {
+        await applyWorldCatalog(worldId, jsonText, sourceNodeId)
+        return
+      }
+      // 表格/提取运行：目录沿边流入其下游 world.gen 节点
+      const downstreamGens = graph.edges
+        .filter((edge) => edge.source === sourceNodeId)
+        .map((edge) => graph.nodes.find((node) => node.id === edge.target))
+        .filter(
+          (node): node is GraphNode =>
+            !!node && node.typeId === 'world.gen'
+        )
+      for (const gen of downstreamGens) {
+        await applyWorldCatalog(worldId, jsonText, gen.id)
+      }
+      if (downstreamGens.length) return
+    }
     await applyWorldCatalog(worldId, jsonText)
   },
   resolveBeatCatalogJson: () => {
@@ -1734,7 +1796,8 @@ function currentGraphTaskTarget(): GraphTaskTarget | null {
       kind: 'world-element',
       worldAssetId: props.assetId,
       elementKind: worldElementKind.value,
-      hostId: graphHostId.value
+      hostId: graphHostId.value,
+      nodeId: worldElementNodeId.value || undefined
     }
   }
   if (isBeatUnitGraph.value && props.beatId?.trim()) {
@@ -2707,12 +2770,21 @@ async function onEncapsulateSaveConfirm(payload: {
       hostAssetId: created.id,
       hostAssetName: created.name
     })
+    // 迁移被封装 world.gen 节点的世界元素状态（四类子图 + 指纹），
+    // 避免封装后已生成数据丢失、图片输出为空
+    const migratedWorldState = pickWorldElementStateForMigration(
+      graphAsset.value?.genParams as Record<string, unknown> | undefined,
+      before.nodes
+        .filter((node) => ids.includes(node.id) && node.typeId === 'world.gen')
+        .map((node) => node.id)
+    )
     // IPC 不能传 Vue Proxy；toPlain 剥离响应式后再写回定义资产
     await window.studio.updateAsset(
       toPlain({
         ...created,
         genParams: {
           ...(created.genParams ?? {}),
+          ...migratedWorldState,
           graphJson: result.innerDocument,
           hostInterface: result.hostInterface,
           schemaVersion: HOST_INTERFACE_SCHEMA_VERSION
@@ -5044,6 +5116,36 @@ const selectImage = reactive({
   selectedImageId: '' as string
 })
 
+function resolveWorldElementOutputsForSelect(
+  node?: GraphNode
+): import('@shared/graph').WorldElementGenResult[] {
+  const worldId = props.assetId?.trim()
+  if (!worldId) return []
+  return previewWorldElementOutputsFromSubgraphs({
+    worldAssetId: worldId,
+    nodeId: node?.id
+  })
+}
+
+function resolveWorldGenPortImages(source: GraphNode, sourcePort: string): GraphImageItem[] {
+  if (!isWorldGenImageOutPortId(sourcePort)) return []
+  const softOpts = {
+    resolveWorldElementOutputs: resolveWorldElementOutputsForSelect
+  }
+  // soft：params / runStates / 子图边界（与执行快照同源）
+  const soft = softResolveSourceOutput(buildGraphJson(), source.id, sourcePort, softOpts)
+  if (soft && graphValueHasPayload(soft)) {
+    return flattenImagesValues([soft])
+  }
+  // 再直读子图（world.gen 未执行且 params 为空时）
+  const groups = worldGenImageGroupOutputs(resolveWorldElementOutputsForSelect(source))
+  const fromSubgraphs = groups[sourcePort]
+  if (fromSubgraphs && graphValueHasPayload(fromSubgraphs)) {
+    return flattenImagesValues([fromSubgraphs])
+  }
+  return []
+}
+
 function collectSelectImageItems(nodeId: string): GraphImageItem[] {
   const items: GraphImageItem[] = []
   const seen = new Set<string>()
@@ -5055,9 +5157,11 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     const keys = [item.id?.trim(), relativePath, dataUrl].filter((k): k is string => !!k)
     if (keys.some((k) => seen.has(k))) return
     for (const k of keys) seen.add(k)
+    const title = item.title?.trim() || ''
     items.push({
       ...item,
       dataUrl,
+      ...(title ? { title } : {}),
       ...(relativePath ? { relativePath } : {})
     })
   }
@@ -5067,6 +5171,32 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
     if ((edge.targetPort ?? 'in') !== 'in') continue
     const source = graph.nodes.find((n) => n.id === edge.source)
     if (!source) continue
+
+    const sourcePort = edge.sourcePort ?? 'out'
+    if (source.typeId === 'world.gen') {
+      const ports = isWorldGenImageOutPortId(sourcePort)
+        ? [sourcePort]
+        : WORLD_GEN_IMAGE_OUT_PORTS.map((port) => port.id)
+      for (const port of ports) {
+        for (const item of resolveWorldGenPortImages(source, port)) pushItem(item)
+      }
+      continue
+    }
+
+    // 宿主节点：按边上的源端口解析对应的内部边界输出，
+    // 不能读合并后的节点画廊（generatedImages），否则每个端口都会拿到全部图片
+    if (isAssetHostNode(source)) {
+      const soft = softResolveSourceOutput(
+        buildGraphJson(),
+        source.id,
+        sourcePort,
+        {}
+      )
+      if (soft && graphValueHasPayload(soft)) {
+        for (const item of flattenImagesValues([soft])) pushItem(item)
+      }
+      continue
+    }
 
     const generatedImages = source.params.generatedImages ?? []
     if (generatedImages.length) {
@@ -5094,7 +5224,6 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
       continue
     }
 
-    const sourcePort = edge.sourcePort ?? 'out'
     const runOut = runStates[source.id]?.outputs?.[sourcePort]
     if (runOut) {
       for (const item of flattenImagesValues([runOut])) pushItem(item)
@@ -5129,7 +5258,8 @@ function collectSelectImageItems(nodeId: string): GraphImageItem[] {
         pushItem({
           id: source.assetId,
           dataUrl: '',
-          relativePath: path
+          relativePath: path,
+          ...(asset?.name?.trim() ? { title: asset.name.trim() } : {})
         })
       }
     }
@@ -6917,6 +7047,9 @@ function onWindowMouseDown(e: MouseEvent): void {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
+  // dive / 后台保活时画布被 v-show 隐藏但仍挂载：全局快捷键必须只响应可见画布，
+  // 否则在子层按 Delete/Backspace 会误删外层仍处于选中状态的节点（如 world.gen）。
+  if (!isGraphViewportVisible()) return
   if (e.code === 'Escape' && radialMenu.value) {
     e.preventDefault()
     closeRadialMenu()
@@ -6996,6 +7129,12 @@ function onKeyDown(e: KeyboardEvent): void {
     }
     deleteSelectedNodes()
   }
+}
+
+function isGraphViewportVisible(): boolean {
+  const el = viewportEl.value
+  if (!el) return false
+  return el.offsetParent !== null || el.getClientRects().length > 0
 }
 
 function onKeyUp(e: KeyboardEvent): void {

@@ -306,6 +306,7 @@ export function worldGenImageGroupOutputs(
     if (!(item.type in buckets)) continue
     const imageItem: GraphImageItem = {
       id: `${item.type}:${item.name}:${index}`,
+      title: item.name.trim(),
       dataUrl: url.startsWith('data:') ? url : '',
       ...(url.startsWith('data:') ? {} : { relativePath: url })
     }

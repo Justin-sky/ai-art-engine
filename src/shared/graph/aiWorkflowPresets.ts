@@ -136,6 +136,9 @@ function buildEpisodePipelinePlan(): GraphPlan {
     }
   })
   link('beatboard', 'sequence', { fromPort: 'out', toPort: 'in' })
+  // 4宫格动态分镜需要同时拿到节拍拆解：每组按“锚点 + 相邻普通节拍”合并展开，
+  // 保证完整剧本内容都被使用，而不是只画关键帧单帧
+  link('breakdown', 'sequence', { fromPort: 'out', toPort: 'in' })
   add({
     key: 'review3',
     typeId: 'prompt.optimize',
