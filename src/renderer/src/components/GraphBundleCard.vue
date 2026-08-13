@@ -130,7 +130,7 @@ function portTypeLabel(dataType: GraphPortDataType): string {
 }
 
 function portWrapStyle(count: number, index: number): Record<string, string> {
-  const ratio = nodePortYRatio(count, index)
+  const ratio = nodePortYRatio(index, count, height.value)
   return { top: `${ratio * 100}%` }
 }
 

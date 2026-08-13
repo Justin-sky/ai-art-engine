@@ -102,6 +102,12 @@ export default {
         prompt:
           'Create a short-drama agent-pipeline workflow: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown, 9-grid beat board, and 4-grid dynamic storyboard (9×4=36); an animator node produces the motion prompt table; 9 anchor-select nodes each feed one key storyboard image, 36 dynamic-cell select nodes each feed one image-to-video clip (parent anchor image as first frame); after each stage a director-review node outputs PASS/FAIL, and failures are written to agent-state.json and appended on rerun.'
       },
+      shortDrama9: {
+        title: 'Short drama · 9 direct',
+        desc: 'Script → beats → 9-grid → animator 9 motion prompts → 9 videos',
+        prompt:
+          'Create a short-drama agent-pipeline workflow that skips 4-grid expansion: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown and 9-grid beat board; one 9-grid canvas is split into 9 anchor images; an animator node decomposes one motion prompt for each of the 9 cells, and each motion prompt drives one image-to-video clip together with its anchor image (9 clips total); director-review nodes after the beat breakdown and 9-grid board output PASS/FAIL, with failures written to agent-state.json and appended on rerun.'
+      },
       custom: {
         title: 'Custom',
         desc: 'Clear and write your own',

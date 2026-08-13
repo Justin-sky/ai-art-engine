@@ -2096,14 +2096,11 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
-    // 剧集 Agent 分镜师/动画师（节拍拆解表 / 9宫格分镜表 / 4宫格动态分镜表 / 动态提示词表）：
-    // 双击展开生成指令面板，与文本生成节点保持一致，不打开正文记事本
+    // 剧集 Agent 流水线的分镜师/动画师 prompt.optimize：
+    // 即使已经产出正文，双击也优先打开/收起生成指令窗口，而不是打开记事本预览
     if (
-      instructionKind.value === 'optimize' &&
-      (props.node.params.episodeStep === 'breakdown' ||
-        props.node.params.episodeStep === 'beatboard' ||
-        props.node.params.episodeStep === 'sequence' ||
-        props.node.params.episodeStep === 'motion')
+      props.node.typeId === 'prompt.optimize' &&
+      typeof props.node.params?.episodeStep === 'string'
     ) {
       instructionOpen.value = !instructionOpen.value
       return

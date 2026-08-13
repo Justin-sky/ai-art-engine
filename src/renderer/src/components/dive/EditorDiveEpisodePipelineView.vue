@@ -32,7 +32,14 @@
             <span v-if="reviewResult('breakdown') === 'PASS'" class="pass-mark">✓ 已通过</span>
           </h3>
           <div class="panel-actions">
-            <button type="button" @click="regenerateStage('breakdown')">重新生成</button>
+            <button
+              type="button"
+              :disabled="stageBusy('breakdown')"
+              :title="stageBusy('breakdown') ? '节拍拆解生成中…' : ''"
+              @click="regenerateStage('breakdown')"
+            >
+              {{ stageActionLabel('breakdown') }}
+            </button>
             <button
               type="button"
               class="review-button"
@@ -76,11 +83,18 @@
       <section class="panel board-panel">
         <div class="panel-head">
           <h3>
-            9宫格分镜表
+            {{ isDirect9 ? '9宫格分镜表 · 直出视频' : '9宫格分镜表' }}
             <span v-if="reviewResult('beatboard') === 'PASS'" class="pass-mark">✓ 已通过</span>
           </h3>
           <div class="panel-actions">
-            <button type="button" @click="regenerateStage('beatboard')">重新生成</button>
+            <button
+              type="button"
+              :disabled="stageBusy('beatboard')"
+              :title="stageBusy('beatboard') ? '9宫格分镜表生成中…' : ''"
+              @click="regenerateStage('beatboard')"
+            >
+              {{ stageActionLabel('beatboard') }}
+            </button>
             <button
               type="button"
               class="review-button"
@@ -147,18 +161,27 @@
       <section class="panel detail-panel">
         <div class="panel-head">
           <h3 class="breadcrumb">
-            场/节拍 #{{ activeBeat }} → 格{{ selectedAnchorIndex }} → 动态格 {{ selectedCellKey }}
+            {{ isDirect9
+              ? `场/节拍 #${activeBeat} → 格${selectedAnchorIndex} → 9格直出视频`
+              : `场/节拍 #${activeBeat} → 格${selectedAnchorIndex} → 动态格 ${selectedCellKey}` }}
           </h3>
         </div>
 
-        <div class="detail-block">
+        <div v-if="!isDirect9" class="detail-block">
           <div class="detail-head">
             <h4>
               4宫格（{{ selectedAnchorIndex }}）
               <span v-if="reviewResult('sequence') === 'PASS'" class="pass-mark">✓ 已通过</span>
             </h4>
             <div class="panel-actions">
-              <button type="button" @click="regenerateStage('sequence')">重新生成</button>
+              <button
+                type="button"
+                :disabled="stageBusy('sequence')"
+                :title="stageBusy('sequence') ? '4宫格分镜表生成中…' : ''"
+                @click="regenerateStage('sequence')"
+              >
+                {{ stageActionLabel('sequence') }}
+              </button>
               <button
                 type="button"
                 class="review-button"
@@ -201,41 +224,23 @@
           </div>
         </div>
 
-        <div v-if="activeCellVideo" class="detail-block video-block">
-          <h4>视频产物</h4>
-          <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
-          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
-          <button
-            class="ghost-button primary"
-            type="button"
-            :disabled="currentCellVideoRunning"
-            @click="runCurrentVideo"
-          >
-            {{ currentCellVideoRunning ? '生成中…' : '重新生成这条视频' }}
-          </button>
-        </div>
-        <div v-else class="detail-block video-block">
-          <h4>视频产物</h4>
-          <span class="video-path">未生成</span>
-          <button
-            class="ghost-button primary"
-            type="button"
-            :disabled="currentCellVideoRunning"
-            @click="runCurrentVideo"
-          >
-            {{ currentCellVideoRunning ? '生成中…' : '生成这条视频' }}
-          </button>
-        </div>
-
-        <div v-if="activeMotion" class="detail-block motion-block">
+        <div v-if="isDirect9" class="detail-block">
           <div class="detail-head">
             <h4>
-              动态提示词（{{ activeMotion.key }}）
+              9宫格动态提示词
               <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">✓ 已通过</span>
             </h4>
             <div class="panel-actions">
-              <button type="button" @click="regenerateStage('motion')">重新生成</button>
               <button
+                type="button"
+                :disabled="stageBusy('motion')"
+                :title="stageBusy('motion') ? '动态提示词生成中…' : ''"
+                @click="regenerateStage('motion')"
+              >
+                {{ stageActionLabel('motion', isDirect9) }}
+              </button>
+              <button
+                v-if="hasMotionText"
                 type="button"
                 class="review-button"
                 :class="{ ready: reviewReady('motion') }"
@@ -246,7 +251,69 @@
               </button>
             </div>
           </div>
-          <pre class="motion-text">{{ activeMotion.text }}</pre>
+          <pre v-if="activeMotion" class="motion-text">{{ activeMotion.text }}</pre>
+          <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
+        </div>
+
+        <div v-if="activeCellVideo" class="detail-block video-block">
+          <h4>视频产物</h4>
+          <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
+          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
+          <button
+            class="ghost-button primary"
+            :class="{ 'is-disabled': !canRunCurrentVideo }"
+            type="button"
+            :disabled="!canRunCurrentVideo"
+            :title="videoActionTitle"
+            @click="runCurrentVideo"
+          >
+            {{ videoBusy ? '生成中…' : '重新生成这条视频' }}
+          </button>
+        </div>
+        <div v-else class="detail-block video-block">
+          <h4>视频产物</h4>
+          <span class="video-path">{{ videoBusy ? '生成中…' : '未生成' }}</span>
+          <button
+            class="ghost-button primary"
+            :class="{ 'is-disabled': !canRunCurrentVideo }"
+            type="button"
+            :disabled="!canRunCurrentVideo"
+            :title="videoActionTitle"
+            @click="runCurrentVideo"
+          >
+            {{ videoBusy ? '生成中…' : '生成这条视频' }}
+          </button>
+        </div>
+
+        <div v-if="!isDirect9" class="detail-block motion-block">
+          <div class="detail-head">
+            <h4>
+              动态提示词（{{ selectedCellKey }}）
+              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">✓ 已通过</span>
+            </h4>
+            <div class="panel-actions">
+              <button
+                type="button"
+                :disabled="stageBusy('motion')"
+                :title="stageBusy('motion') ? '动态提示词生成中…' : ''"
+                @click="regenerateStage('motion')"
+              >
+                {{ stageActionLabel('motion', false) }}
+              </button>
+              <button
+                v-if="hasMotionText"
+                type="button"
+                class="review-button"
+                :class="{ ready: reviewReady('motion') }"
+                :disabled="!reviewReady('motion')"
+                @click="runReview('motion')"
+              >
+                导演审核
+              </button>
+            </div>
+          </div>
+          <pre v-if="activeMotion" class="motion-text">{{ activeMotion.text }}</pre>
+          <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
         </div>
       </section>
     </div>
@@ -484,14 +551,52 @@ function findEpisodeNode(kind: string): GraphNode | undefined {
   return undefined
 }
 
+/** 9宫格直出模式：没有 4宫格 sequence 阶段节点，动画师直接为 9 个宫格各拆 1 条动态提示词 */
+const isDirect9 = computed(() => !nodeByKey('sequence'))
+
+type ReviewTarget = 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+
+function textFromRunOutput(out: unknown): string {
+  if (!out || typeof out !== 'object') return ''
+  const value = out as { kind?: string; text?: string; items?: Array<{ text?: string }> }
+  if (value.kind === 'text' && typeof value.text === 'string') return value.text.trim()
+  if (value.kind === 'texts' && Array.isArray(value.items)) {
+    return value.items
+      .map((item) => (typeof item.text === 'string' ? item.text.trim() : ''))
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  if (typeof value.text === 'string') return value.text.trim()
+  return ''
+}
+
 function nodeText(key: string): string {
   const node = nodeByKey(key)
   if (!node) return ''
-  const text = node.params?.text?.trim()
-  if (text) return text
-  const out = runStates.value[node.id]?.outputs?.out
-  if (out && 'text' in out && typeof out.text === 'string') return out.text
-  return ''
+  const fromParams = node.params?.text?.trim()
+  if (fromParams) return fromParams
+  const fromResult = node.params?.resultText?.trim()
+  if (fromResult) return fromResult
+  const generated = node.params?.generatedTexts ?? []
+  const selected = generated.find((item) => item.id && item.id === node.params?.selectedTextId)
+  const fromGallery =
+    selected?.text?.trim() || generated.find((item) => item.text?.trim())?.text?.trim() || ''
+  if (fromGallery) return fromGallery
+  return textFromRunOutput(runStates.value[node.id]?.outputs?.out)
+}
+
+/** 生成过程中正文可能被暂时清空：保留上一份可解析文本，避免按钮和预览一起垮掉 */
+const lastStageText: Record<ReviewTarget, string> = {
+  breakdown: '',
+  beatboard: '',
+  sequence: '',
+  motion: ''
+}
+
+function stageText(key: ReviewTarget): string {
+  const live = nodeText(key).trim()
+  if (live) lastStageText[key] = live
+  return live || lastStageText[key]
 }
 
 /** 取节点最近一张输出图的相对路径（节点图库或运行结果） */
@@ -543,10 +648,10 @@ const scopeKey = computed(
     )
 )
 
-const beats = computed<EpisodeBeatRow[]>(() => parseEpisodeBeatBreakdown(nodeText('breakdown')))
-const anchors9 = computed<EpisodeAnchorRow[]>(() => parseEpisodeBeatBoard(nodeText('beatboard')))
-const cells36 = computed<EpisodeCellRow[]>(() => parseEpisodeSequenceBoard(nodeText('sequence')))
-const motions36 = computed<EpisodeMotionRow[]>(() => parseEpisodeMotionPrompts(nodeText('motion')))
+const beats = computed<EpisodeBeatRow[]>(() => parseEpisodeBeatBreakdown(stageText('breakdown')))
+const anchors9 = computed<EpisodeAnchorRow[]>(() => parseEpisodeBeatBoard(stageText('beatboard')))
+const cells36 = computed<EpisodeCellRow[]>(() => parseEpisodeSequenceBoard(stageText('sequence')))
+const motions36 = computed<EpisodeMotionRow[]>(() => parseEpisodeMotionPrompts(stageText('motion')))
 
 const anchorCells = computed<EpisodeCellRow[]>(() =>
   cells36.value.filter((cell) => cell.groupIndex === selectedAnchorIndex.value)
@@ -586,25 +691,77 @@ const activeCellVideo = computed<string>(() => {
   return selectedVideoRelativePath(nodeByKey(key))
 })
 
-/** 当前选中格的视频是否正在生成（按钮显示“生成中…”并禁用，避免重复点击被静默吞掉） */
-const currentCellVideoRunning = computed(() => {
-  const node = nodeByKey(
-    `video${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
-  )
-  if (!node) return false
-  // 任务队列在途（排队/运行中）是生成中的权威信号；任务结束（成功/失败/中止）即恢复
-  const inFlightTask = taskStore.tasks.some(
-    (task) =>
-      (task.status === 'pending' || task.status === 'running') &&
-      task.targetNodeIds?.includes(node.id)
-  )
-  if (inFlightTask) return true
-  // 编辑器 run session 正在单独执行该节点也算生成中
-  const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
-  if (runHost?.runningTargetNodeId.value === node.id) return true
-  // 不依赖 live 文档里可能残留的 pending/running，避免任务结束后按钮仍被锁死
-  return false
+function currentVideoNode(): GraphNode | undefined {
+  const { groupIndex, cellIndex } = selectedCell.value
+  return nodeByKey(`video${groupIndex}-${cellIndex}`)
+}
+
+function isActiveTaskStatus(status: string): boolean {
+  return status === 'pending' || status === 'running'
+}
+
+function isNodeBusy(nodeId: string | undefined): boolean {
+  if (!nodeId) return false
+  return taskStore.tasks.some((task) => {
+    if (!isActiveTaskStatus(task.status)) return false
+    if (task.target.kind !== 'asset' || task.target.assetId !== props.hostAssetId) return false
+    return task.nodes.some(
+      (node) => node.nodeId === nodeId && isActiveTaskStatus(node.status)
+    )
+  })
+}
+
+function stageBusy(target: ReviewTarget): boolean {
+  const nodeId = nodeByKey(target)?.id
+  if (!nodeId) return false
+  return taskStore.tasks.some((task) => {
+    if (!isActiveTaskStatus(task.status)) return false
+    if (task.target.kind !== 'asset' || task.target.assetId !== props.hostAssetId) return false
+    // 入队后、节点尚未标 pending 时也要锁视频：看本任务汇点是不是该阶段
+    if (task.order[task.order.length - 1] === nodeId) return true
+    return task.nodes.some(
+      (node) => node.nodeId === nodeId && isActiveTaskStatus(node.status)
+    )
+  })
+}
+
+const videoBusy = computed(() => isNodeBusy(currentVideoNode()?.id))
+
+const hasMotionText = computed(() => !!activeMotion.value)
+
+/** 任一阶段「重新生成」进行中时，不允许再点生成视频 */
+const pipelineRegenBusy = computed(
+  () =>
+    stageBusy('breakdown') ||
+    stageBusy('beatboard') ||
+    stageBusy('sequence') ||
+    stageBusy('motion')
+)
+
+const canRunCurrentVideo = computed(() => {
+  if (pipelineRegenBusy.value || videoBusy.value) return false
+  if (!currentVideoNode()) return false
+  return hasMotionText.value || !!stageText('motion').trim()
 })
+
+const videoActionTitle = computed(() => {
+  if (pipelineRegenBusy.value) return '请等待重新生成完成后再生成视频'
+  if (videoBusy.value) return '这条视频正在生成…'
+  if (!hasMotionText.value && !stageText('motion').trim()) return '请先生成动态提示词'
+  return ''
+})
+
+function stageActionLabel(target: ReviewTarget, direct9 = false): string {
+  if (stageBusy(target)) return '生成中…'
+  const hasText = !!stageText(target).trim()
+  if (target === 'motion' && direct9) {
+    return hasText ? '重新生成' : '生成9宫格动态提示词'
+  }
+  if (target === 'motion') {
+    return hasText ? '重新生成' : '生成动态提示词'
+  }
+  return hasText ? '重新生成' : '生成'
+}
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
 const activeVideoUrl = ref('')
@@ -623,26 +780,42 @@ watch(
 )
 
 const stateStepLabel = computed(() => {
-  const map: Record<string, string> = {
-    breakdown: '节拍拆解表',
-    beatboard: '9宫格分镜表',
-    sequence: '4宫格动态分镜表',
-    motion: '动态提示词表',
-    completed: '已完成'
-  }
+  const map: Record<string, string> = isDirect9.value
+    ? {
+        breakdown: '节拍拆解表',
+        beatboard: '9宫格分镜表',
+        sequence: '9宫格动态提示词表',
+        motion: '9宫格动态提示词表',
+        completed: '已完成'
+      }
+    : {
+        breakdown: '节拍拆解表',
+        beatboard: '9宫格分镜表',
+        sequence: '4宫格动态分镜表',
+        motion: '动态提示词表',
+        completed: '已完成'
+      }
   return map[agentState.value?.current_step ?? ''] ?? '—'
 })
 
 /** 当前步骤的悬停说明：流水线推进到的阶段 */
 const stateStepTitle = computed(() => {
   const step = agentState.value?.current_step
-  const hints: Record<string, string> = {
-    breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
-    beatboard: '9宫格分镜表已生成，正在推进 4宫格动态分镜表',
-    sequence: '4宫格动态分镜表已生成，正在推进 动态提示词表',
-    motion: '动态提示词表已生成，等待导演审核通过后完成',
-    completed: '全部阶段已通过'
-  }
+  const hints: Record<string, string> = isDirect9.value
+    ? {
+        breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
+        beatboard: '9宫格分镜表已生成，正在推进 动画师·9宫格动态提示词表',
+        sequence: '9宫格动态提示词表已生成，可逐格或一键生成 9 条直出视频',
+        motion: '9宫格动态提示词表已生成，可逐格或一键生成 9 条直出视频',
+        completed: '全部阶段已通过'
+      }
+    : {
+        breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
+        beatboard: '9宫格分镜表已生成，正在推进 4宫格动态分镜表',
+        sequence: '4宫格动态分镜表已生成，正在推进 动态提示词表',
+        motion: '动态提示词表已生成，等待导演审核通过后完成',
+        completed: '全部阶段已通过'
+      }
   return hints[step ?? ''] ?? '流水线当前推进到的阶段'
 })
 
@@ -666,8 +839,6 @@ function reviewResult(target: string): 'PASS' | 'FAIL' | '' {
   if (direct === 'PASS' || direct === 'FAIL') return direct
   return ''
 }
-
-type ReviewTarget = 'breakdown' | 'beatboard' | 'sequence' | 'motion'
 
 const REVIEW_NODE_KEY: Record<ReviewTarget, 'review1' | 'review2' | 'review3' | 'review4'> = {
   breakdown: 'review1',
@@ -873,6 +1044,7 @@ function invalidateDownstream(target: ReviewTarget): void {
 }
 
 function regenerateStage(target: ReviewTarget): void {
+  if (stageBusy(target)) return
   invalidateReview(target)
   // 级联失效：下游图/视频/审核不复用旧结果，后续生成自动从最新文本一致补跑
   invalidateDownstream(target)
@@ -923,8 +1095,11 @@ function runFourGridImage(): void {
 }
 
 function runCurrentVideo(): void {
+  if (!canRunCurrentVideo.value) return
+  const node = currentVideoNode()
+  if (!node) return
   const { groupIndex, cellIndex } = selectedCell.value
-  enqueueNode(nodeByKey(`video${groupIndex}-${cellIndex}`), `动态视频·格${groupIndex}-${cellIndex}`)
+  enqueueNode(node, `动态视频·格${groupIndex}-${cellIndex}`, true)
 }
 
 async function fileUrl(relativePath: string | undefined): Promise<string> {
@@ -1100,9 +1275,10 @@ watch(
   padding: 4px 10px;
   cursor: pointer;
 }
-.ghost-button:disabled {
+.ghost-button:disabled,
+.ghost-button.is-disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
 }
 .ghost-button.primary {
   background: var(--accent, #3498db);

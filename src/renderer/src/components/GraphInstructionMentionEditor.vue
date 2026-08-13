@@ -567,7 +567,7 @@ function sourceIcon(node: GraphNode): string {
     return ASSET_TYPE_ICONS[node.assetType]
   }
   if (node.typeId === 'note.text') return '📌'
-  if (TEXT_ICON_TYPE_IDS.has(node.typeId)) return '📝'
+  if (node.typeId && TEXT_ICON_TYPE_IDS.has(node.typeId)) return '📝'
   if (isBoundaryInputNode(node)) {
     const dataType = node.params.hostBoundaryPort?.dataType
     if (dataType === 'text' || dataType === 'texts') return '📝'
