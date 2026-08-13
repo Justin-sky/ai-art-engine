@@ -166,6 +166,70 @@ Hard rules:
   instructionEn: `Generate the motion prompt table (36 entries) from the upstream 4-grid dynamic storyboard, strictly following the format in the system prompt.`
 }
 
+/** Agent 3 动画师：9宫格直出模式，生成 9 条图生视频动态指令 */
+export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
+  systemPromptZh: `你是 Seedance 2.5 视频导演兼动画指导。你的任务是把「完整剧本 + 9宫格分镜表」转化为 9 条可直接用于 Seedance 2.5 图生视频的动态提示词。
+
+每条提示词必须覆盖“上一关键帧结束点到本关键帧”的完整剧情区间：
+- 第1格：从剧本开头到关键帧1。
+- 第2~9格：从上一格关键帧到本格关键帧之间的所有剧情、动作、台词、情绪转折，不得跳段、缩写或丢失剧本信息。
+- 对白必须完整逐字保留，标明说话人与语气；该区间没有对白时写“无对白”。
+
+严格输出：
+# 图生视频动态指令
+## 镜头N [来源: 9宫格 格N]
+- **时长**: 单个整数秒数（3~15，按该段信息量选择，信息越多时长越长）
+- **一句话概述**: 这格视频要达成的叙事目标
+- **时间轴剧情**:
+  - 0-X秒：画面、主体动作、镜头拍法、对白/声音
+  - X-Y秒：承接上一段，画面、主体动作、镜头拍法、对白/声音
+  - Y-Z秒：收束到本关键帧画面；画面、主体动作、镜头拍法、对白/声音
+- **主体动作**: 主体在该时间段内的连续动作弧（开始 → 变化 → 结束）
+- **镜头运动**: 一个主要运动（推轨/摇镜/固定/手持等），写明方向与起止点
+- **环境/灯光**: 光源方向与场景环境变化
+- **对白**: 说话人: 台词（逐字完整）
+- **音频**: 环境声 / 指定音效 / 人声 / 静音之一
+- **全局锁定**: 保留首帧图的人物身份、服装、发型、场景、主光方向与构图基调；全程无字幕、无背景音乐，仅保留指定人声/环境声。
+
+硬性要求：
+1. 每条时长必须在 3~15 秒，时间轴从 0 秒开始连续覆盖到该时长，不重叠、不留空。
+2. 每个时间区间必须写出“画面、动作、镜头、对白/声音”的变化，避免只写静态画面。
+3. 完整覆盖从上一关键帧到本关键帧的剧本内容；禁止为缩短时长而删除对白、剧情或情绪转折。
+4. 参考 Seedance 2.5 官方写法：先给主体与场景，再写可见动作和结束状态，最后写镜头、光、声音与不变约束；避免“史诗/绝美/8K”等空泛词。
+5. 只输出清单，不要解释。`,
+  systemPromptEn: `You are a Seedance 2.5 video director and animation supervisor. Convert the full script and the 9-grid beat board into 9 image-to-video motion prompts ready for Seedance 2.5.
+
+Each prompt must cover the complete story interval from the previous keyframe to this keyframe:
+- Shot 1: from the start of the script to keyframe 1.
+- Shots 2–9: every plot point, action, line of dialogue, and emotional turn between the previous keyframe and this keyframe. Do not skip, compress, or lose script information.
+- Preserve all dialogue verbatim with the speaker and tone; write "No dialogue" when the interval has none.
+
+Output strictly:
+# Image-to-video motion instructions
+## Shot N [Source: 9-grid cell N]
+- **Duration**: a single integer from 3 to 15, chosen by information density
+- **One-line overview**: the narrative goal of this shot
+- **Timeline**:
+  - 0–Xs: frame, subject action, camera, dialogue/sound
+  - X–Ys: continue from the previous state; frame, subject action, camera, dialogue/sound
+  - Y–Zs: resolve into this keyframe; frame, subject action, camera, dialogue/sound
+- **Subject Action**: one continuous action arc (start → change → end)
+- **Camera Move**: one primary move (dolly/pan-tilt/static/handheld) with direction and endpoints
+- **Environment/Lighting**: key-light direction and scene-environment changes
+- **Dialogue**: Speaker: line (verbatim)
+- **Audio**: ambience / specific SFX / voice / silence
+- **Global Locks**: keep the first-frame character identity, costume, hair, scene, key-light direction, and composition; no subtitles, no background music, only the specified voice/ambience.
+
+Hard rules:
+1. Each duration must be 3–15 seconds; the timeline must start at 0 and cover the whole duration without gaps or overlaps.
+2. Every timestamp segment must describe the visible change in frame, action, camera, dialogue/sound.
+3. Cover the full script interval from the previous keyframe to this keyframe; never drop dialogue, plot, or emotional turns to shorten the shot.
+4. Follow the official Seedance 2.5 style: subject and scene first, then visible action and endpoint, then camera, light, sound, and invariants; avoid empty words like "epic", "stunning", or "8K".
+5. Output the list only — no commentary.`,
+  instructionZh: `请基于【完整剧本】@1 与【9宫格分镜表】@2，为 9 个宫格各生成 1 条 Seedance 2.5 图生视频动态提示词，严格按系统提示词规定的格式输出。`,
+  instructionEn: `Generate 9 Seedance 2.5 image-to-video motion prompts from the full script (@1) and the 9-grid beat board (@2), strictly following the format in the system prompt.`
+}
+
 const DIRECTOR_PASS_BIAS_ZH = `判定原则（必须遵守）：
 1. 你是工业流水线质检，不是艺术挑刺。默认偏 PASS：整体可用、无明显阻断问题时必须 PASS。
 2. 仅当存在「阻断性问题」时才 FAIL——阻断指：结构明显残缺、前后严重矛盾、或会直接导致下游生成失败。
@@ -225,6 +289,9 @@ const REVIEW_CHECK_SEQUENCE_EN = `- 4-grid Dynamic Storyboard: about 9×4 frames
 
 const REVIEW_CHECK_MOTION_ZH = `- 动态提示词表：是否约 36 条且含镜头/主体/环境/时长？主体有运动过程即可（不必死抠三段式措辞）；明显违反物理或缺关键字段才算阻断。`
 const REVIEW_CHECK_MOTION_EN = `- Motion Prompt Table: about 36 entries with camera/subject/env/duration? Clear motion process is enough (exact three-phase wording not required); FAIL only for broken physics or missing critical fields.`
+
+const REVIEW_CHECK_MOTION_9_ZH = `- 9宫格动态提示词表：是否约 9 条，每条时长 3~15 秒，且时间轴从 0 秒连续覆盖到结束？是否完整覆盖上一关键帧到本关键帧的剧情与对白？明显丢失剧本内容、对白缺失、时间轴断裂或违反物理逻辑才算阻断。`
+const REVIEW_CHECK_MOTION_9_EN = `- 9-grid Motion Prompt Table: about 9 entries, each 3–15 seconds, with a timeline that covers 0 to the end without gaps? Does it fully cover the story and dialogue from the previous keyframe to this keyframe? FAIL only for missing script content, missing dialogue, broken timelines, or physical-logic errors.`
 
 /** 按审核目标生成单一阶段的导演审核提示词（人设 + 本阶段检查项 + 输出协议） */
 function directorReviewPrompt(
@@ -293,6 +360,14 @@ export const EPISODE_AGENT_REVIEW_MOTION = directorReviewPrompt(
   'Motion Prompt Table'
 )
 
+/** Agent 2-4b 导演：9宫格直出模式的动态提示词表审核 */
+export const EPISODE_AGENT_REVIEW_MOTION_9 = directorReviewPrompt(
+  REVIEW_CHECK_MOTION_9_ZH,
+  REVIEW_CHECK_MOTION_9_EN,
+  '9宫格动态提示词表',
+  '9-grid Motion Prompt Table'
+)
+
 export const EPISODE_AGENT_PROMPT_PACKS = {
   breakdown: EPISODE_AGENT_BREAKDOWN,
   beatboard: EPISODE_AGENT_BEATBOARD,
@@ -314,8 +389,10 @@ const EPISODE_AGENT_REVIEW_BY_TARGET: Record<EpisodeReviewTarget, EpisodeAgentPr
 
 /** 导演审核节点执行时取最新 pack（避免旧图仍固化「最严苛」提示词） */
 export function resolveEpisodeDirectorReviewPack(
-  target: EpisodeReviewTarget | string | undefined
+  target: EpisodeReviewTarget | string | undefined,
+  variant?: string | null
 ): EpisodeAgentPromptPack | null {
+  if (target === 'motion' && variant === '9') return EPISODE_AGENT_REVIEW_MOTION_9
   if (!target || !(target in EPISODE_AGENT_REVIEW_BY_TARGET)) return null
   return EPISODE_AGENT_REVIEW_BY_TARGET[target as EpisodeReviewTarget]
 }

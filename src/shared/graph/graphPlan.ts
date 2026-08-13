@@ -74,6 +74,7 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'inputDataType',
   'episodeStep',
   'episodeReviewTarget',
+  'episodeReviewVariant',
   'episodeReviewPending',
   'anchorIndex',
   'cellGroupIndex',

@@ -2075,6 +2075,15 @@ function onPreviewDblClick(): void {
       instructionOpen.value = !instructionOpen.value
       return
     }
+    // 剧集 Agent 流水线的分镜师/动画师 prompt.optimize：
+    // 即使已经产出正文，双击也优先打开/收起生成指令窗口，而不是打开记事本预览
+    if (
+      props.node.typeId === 'prompt.optimize' &&
+      typeof props.node.params?.episodeStep === 'string'
+    ) {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
     // 预览区已有正文：双击打开记事本弹窗，避免误开空的生成指令
     if (
       textPreview.value &&

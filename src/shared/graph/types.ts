@@ -521,6 +521,8 @@ export interface GraphNodeParams {
   episodeStep?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
   /** 剧集 Agent 流水线：导演审核目标步骤（与 episodeStep 互斥） */
   episodeReviewTarget?: 'breakdown' | 'beatboard' | 'sequence' | 'motion'
+  /** 剧集 Agent 流水线：导演审核变体（如 motion 的 9宫格直出变体） */
+  episodeReviewVariant?: string
   /** 剧集 Agent 流水线：导演审核回标结果（PASS / FAIL） */
   episodeReviewStatus?: 'PASS' | 'FAIL'
   /** 剧集 Agent 流水线：导演审核回标原因 */

@@ -225,7 +225,7 @@ describe('episode director verdict', () => {
 describe('shortDrama agent pipeline preset', () => {
   it('materializes the 9×4=36 pipeline', () => {
     const plan = getAiWorkflowPresetPlan('shortDrama')!
-    expect(plan.nodes.length).toBe(182)
+    expect(plan.nodes.length).toBe(137)
     const result = materializeGraphPlan(plan, {
       scope: 'subgraphAsset',
       assetType: 'subgraph'
@@ -236,7 +236,7 @@ describe('shortDrama agent pipeline preset', () => {
     expect(nodes.filter((n) => n.typeId === 'episode.anchorSelect').length).toBe(0)
     expect(nodes.filter((n) => n.typeId === 'asset.image').length).toBe(10)
     expect(nodes.filter((n) => n.typeId === 'image.gridSplit').length).toBe(45)
-    expect(nodes.filter((n) => n.typeId === 'image.upscale').length).toBe(45)
+    expect(nodes.filter((n) => n.typeId === 'image.upscale').length).toBe(0)
     expect(nodes.filter((n) => n.typeId === 'episode.cellSelect').length).toBe(36)
     expect(nodes.filter((n) => n.typeId === 'asset.video').length).toBe(36)
     // 9宫格提取：每节点只提取对应 1 格
@@ -272,6 +272,26 @@ describe('shortDrama agent pipeline preset', () => {
     ).toBe(true)
     expect(
       edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-image')
+    ).toBe(true)
+    // 高清放大节点已移除：9宫格提取图直接作 4宫格拼图参考图
+    const extract9 = nodes.find((n) => n.title === '宫格提取·格1')
+    expect(
+      edges.some(
+        (e) =>
+          e.source === extract9?.id &&
+          e.target === img4?.id &&
+          e.targetPort === 'in-image'
+      )
+    ).toBe(true)
+    // 4宫格提取图直接作动态视频参考图
+    const extract4 = nodes.find((n) => n.title === '宫格提取·组1-格1')
+    expect(
+      edges.some(
+        (e) =>
+          e.source === extract4?.id &&
+          e.target === video?.id &&
+          e.targetPort === 'in-image'
+      )
     ).toBe(true)
   })
 })

@@ -190,6 +190,7 @@ export function parseEpisodeSequenceBoard(text: string | undefined | null): Epis
 }
 
 const MOTION_HEADING_RE = /^##\s*镜头\s*(\d+)/i
+const MOTION_SOURCE_GRID9_RE = /9\s*宫格\s*格\s*(\d+)/i
 const MOTION_SOURCE_RE = /组\s*(\d+)\s*[-—]\s*格\s*(\d+)(?:\s*[-—]\s*(\d+))?/i
 
 /** 解析动态提示词表：36 条（按 [来源: 4宫格 组x-格y] 归组） */
@@ -199,13 +200,22 @@ export function parseEpisodeMotionPrompts(text: string | undefined | null): Epis
   for (const block of blocks) {
     const match = MOTION_HEADING_RE.exec(block.heading)
     if (!match) continue
-    const source = MOTION_SOURCE_RE.exec(block.heading)
-    const groupIndex = source ? Number(source[1]) : rows.length === 0 ? 1 : rows[rows.length - 1]!.groupIndex
-    const cellIndex = source
-      ? Number(source[2])
-      : rows.length === 0
-        ? 1
-        : rows[rows.length - 1]!.cellIndex + 1
+    const grid9Source = MOTION_SOURCE_GRID9_RE.exec(block.heading)
+    const source = grid9Source ? null : MOTION_SOURCE_RE.exec(block.heading)
+    const groupIndex = grid9Source
+      ? Number(grid9Source[1])
+      : source
+        ? Number(source[1])
+        : rows.length === 0
+          ? 1
+          : rows[rows.length - 1]!.groupIndex
+    const cellIndex = grid9Source
+      ? 1
+      : source
+        ? Number(source[2])
+        : rows.length === 0
+          ? 1
+          : rows[rows.length - 1]!.cellIndex + 1
     rows.push({
       groupIndex,
       cellIndex,

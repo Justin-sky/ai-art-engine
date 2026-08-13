@@ -3313,7 +3313,11 @@ export async function executePromptOptimizeNode(
   const episodeReviewTarget = node.params.episodeReviewTarget
   const episodeScopeKey = node.params.episodeScopeKey?.trim() || 'default'
   const mentionSources = resolveMentionSources(ctx)
-  const reviewPack = resolveEpisodeDirectorReviewPack(episodeReviewTarget)
+  const reviewVariant =
+    typeof node.params.episodeReviewVariant === 'string'
+      ? node.params.episodeReviewVariant
+      : null
+  const reviewPack = resolveEpisodeDirectorReviewPack(episodeReviewTarget, reviewVariant)
   // 导演审核节点用最新 pack 指令（默认 PASS），不吃旧图里固化的严苛文案
   const instructionRaw =
     (reviewPack
