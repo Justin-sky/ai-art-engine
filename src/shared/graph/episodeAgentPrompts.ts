@@ -193,7 +193,7 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 1. 每条时长必须在 3~15 秒，时间轴从 0 秒开始连续覆盖到该时长，不重叠、不留空。
 2. 每个时间区间必须写出“画面、动作、镜头、对白/声音”的变化，避免只写静态画面。
 3. 完整覆盖从上一关键帧到本关键帧的剧本内容；禁止为缩短时长而删除对白、剧情或情绪转折。
-4. 一格是一镜到底：不要写“切至/剪辑/转场”等硬切；需要变化时用连续的推、拉、摇、移、跟随或人物入画/出画描述。
+4. 一格优先按一镜到底处理：用连续的推、拉、摇、移、跟随或人物入画/出画描述变化；只有当该区间原本就包含明确分镜切换时，才写“切至/转场”，并写清切入的是什么景别与画面。
 5. 避免“史诗/绝美/8K”等空泛词，只写具体可见的动作、物件、光线、声音与结束状态。
 6. 只输出清单，不要解释。`,
   systemPromptEn: `You are a Seedance 2.5 video director and animation supervisor. Convert the full script and the 9-grid beat board into 9 image-to-video motion prompts ready for Seedance 2.5.
@@ -221,7 +221,7 @@ Hard rules:
 1. Each duration must be 3–15 seconds; the timeline must start at 0 and cover the whole duration without gaps or overlaps.
 2. Every timestamp segment must describe the visible change in frame, action, camera, dialogue/sound.
 3. Cover the full script interval from the previous keyframe to this keyframe; never drop dialogue, plot, or emotional turns to shorten the shot.
-4. One cell is one continuous take: do not write "cut to / cut / transition"; describe required changes as a continuous dolly, pan, tilt, tracking, or characters entering/leaving frame.
+4. Prefer one continuous take per cell: describe changes as a continuous dolly, pan, tilt, tracking, or characters entering/leaving frame. Write "cut to / transition" only when the source interval actually contains an explicit shot change, and state what frame and shot size it cuts to.
 5. Avoid empty words like "epic", "stunning", or "8K"; write only concrete visible action, props, light, sound, and endpoint.
 6. Output the list only — no commentary.`,
   instructionZh: `请基于【完整剧本】@1 与【9宫格分镜表】@2，为 9 个宫格各生成 1 条 Seedance 2.5 图生视频动态提示词，严格按系统提示词规定的格式输出。`,
