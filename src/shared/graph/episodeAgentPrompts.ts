@@ -195,7 +195,7 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 - **镜头运动**: 一个主要运动（推轨/摇镜/手持/固定等），写明方向与起止点
 - **环境/灯光**: 主光源方向 + 场景环境变化
 - **音频**: 环境声 / 指定音效 / 人声 / 静音（有对白时优先写“人声+环境声/音效”）
-- **全局锁定**: 保留首帧图的人物身份、服装、发型、场景、主光方向与构图基调；全程无字幕、无背景音乐，仅保留指定人声/环境声。
+- **全局锁定**: 保留首帧图的人物身份、服装、道具、发型、场景、主光方向与构图基调；服装/道具/发型等静态外观只写名称，外观细节以首帧参考图为准；全程无字幕、无背景音乐，仅保留指定人声/环境声。
 
 硬性要求：
 1. 每条时长必须在 3~15 秒，时间轴从 0 秒开始连续覆盖到该时长，不重叠、不留空。
@@ -203,7 +203,8 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 3. 完整覆盖从上一关键帧到本关键帧的剧本内容；禁止为缩短时长而删除对白、剧情或情绪转折。
 4. 一格优先按一镜到底处理：用连续的推、拉、摇、移、跟随或人物入画/出画描述变化；只有当该区间原本就包含明确分镜切换时，才写“切至/转场”，并写清切入的是什么景别与画面。
 5. 避免“史诗/绝美/8K”等空泛词，只写具体可见的动作、物件、光线、声音与结束状态。
-6. 只输出清单，不要解释。`,
+6. 只输出清单，不要解释。
+7. 服装、道具、武器、场景、发型等静态外观只写名称（如：棒球帽、机能夹克、金箍棒、西瓜摊），不写颜色/材质/形态，这些外观细节以首帧参考图为准；但动作引起的临时可见变化（出汗、脸红、青筋、衣料被风吹动、帽檐/头发摆动、油光反光、血迹污渍等）必须照实描述。`,
   systemPromptEn: `You are a video director and animation supervisor. Convert the full script and the 9-grid beat board into 9 image-to-video motion prompts ready for the target image-to-video model.
 
 Each prompt must cover the complete story interval from the previous keyframe to this keyframe:
@@ -223,7 +224,7 @@ Output strictly:
 - **Camera Move**: one primary move (dolly/pan-tilt/handheld/static) with direction and endpoints
 - **Environment/Lighting**: key-light direction + scene-environment changes
 - **Audio**: ambience / specific SFX / voice / silence (prefer "voice + ambience/SFX" when dialogue is present)
-- **Global Locks**: keep the first-frame character identity, costume, hair, scene, key-light direction, and composition; no subtitles, no background music, only the specified voice/ambience.
+- **Global Locks**: keep the first-frame character identity, costume, props, hair, scene, key-light direction, and composition; static appearance (costume, props, hair) is named only — visual details come from the reference image; no subtitles, no background music, only the specified voice/ambience.
 
 Hard rules:
 1. Each duration must be 3–15 seconds; the timeline must start at 0 and cover the whole duration without gaps or overlaps.
@@ -231,7 +232,8 @@ Hard rules:
 3. Cover the full script interval from the previous keyframe to this keyframe; never drop dialogue, plot, or emotional turns to shorten the shot.
 4. Prefer one continuous take per cell: describe changes as a continuous dolly, pan, tilt, tracking, or characters entering/leaving frame. Write "cut to / transition" only when the source interval actually contains an explicit shot change, and state what frame and shot size it cuts to.
 5. Avoid empty words like "epic", "stunning", or "8K"; write only concrete visible action, props, light, sound, and endpoint.
-6. Output the list only — no commentary.`,
+6. Output the list only — no commentary.
+7. Name static appearance only (hat, jacket, staff, melon stand) — never restate color, material, or shape; those details come from the first-frame reference image. Keep transient, action-driven changes (sweat, flushing, veins, fabric blown by wind, hat/hair shifting, glare/reflection, blood/stains) described explicitly.`,
   instructionZh: `请基于【完整剧本】@1 与【9宫格分镜表】@2，为 9 个宫格各生成 1 条图生视频动态提示词，严格按系统提示词规定的格式输出。`,
   instructionEn: `Generate 9 image-to-video motion prompts from the full script (@1) and the 9-grid beat board (@2), strictly following the format in the system prompt.`
 }
