@@ -44,7 +44,11 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            ×
+            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
+              <path
+                d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
+              />
+            </svg>
           </button>
         </div>
         <div
@@ -80,7 +84,11 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            ×
+            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
+              <path
+                d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -1508,6 +1516,9 @@ onBeforeUnmount(() => {
   width: 16px;
   height: 16px;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 50%;
   background: var(--panel-glass);
@@ -1516,15 +1527,32 @@ onBeforeUnmount(() => {
   line-height: 1;
   cursor: pointer;
   opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    background-color 0.12s ease,
+    color 0.12s ease,
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .ref-chip:hover .ref-close {
   opacity: 1;
+  background: rgba(200, 70, 70, 0.92);
+  color: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, rgba(200, 70, 70, 0.92) 28%, transparent);
 }
 
 .ref-close:hover {
-  background: rgba(200, 70, 70, 0.92);
+  background: #d83a3a;
   color: #fff;
+  transform: scale(1.14);
+  box-shadow: 0 0 0 3px color-mix(in srgb, #d83a3a 22%, transparent);
+}
+
+.ref-close-icon {
+  display: block;
+  fill: currentColor;
+  pointer-events: none;
 }
 
 .ref-preview-tip {
