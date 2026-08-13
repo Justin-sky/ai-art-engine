@@ -354,14 +354,14 @@ describe('graphPlan materialize', () => {
       )
     )
     expect(wiredReviews.length).toBe(4)
-    // 导演审核输入来自上游单输出口
+    // 导演审核节点已接入原始剧本与各自上游阶段：review1(2) + review2(3) + review3(4) + review4(5)
     const reviewInEdges = wired.edges.filter(
       (e) =>
         reviewNodes.some((r) => r.id === e.target) &&
         (e.targetPort ?? 'in') === 'in' &&
         (e.sourcePort ?? 'out') === 'out'
     )
-    expect(reviewInEdges.length).toBe(4)
+    expect(reviewInEdges.length).toBe(14)
     // 汇总主节点已被槽节点替代，内部只保留逐个拆分的边界输出
     expect(
       wired.nodes.filter((n) => n.typeId === 'graph.boundary.output').length

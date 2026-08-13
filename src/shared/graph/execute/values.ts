@@ -3317,7 +3317,7 @@ export async function executePromptOptimizeNode(
       ? node.params.episodeReviewVariant
       : null
   const reviewPack = resolveEpisodeDirectorReviewPack(episodeReviewTarget, reviewVariant)
-  // 导演审核节点用最新 pack 指令（默认 PASS），不吃旧图里固化的严苛文案
+  // 导演审核节点用最新 pack 指令（严格 PASS 门槛），不吃旧图里固化的宽松/严苛文案
   const instructionRaw =
     (reviewPack
       ? pickEpisodeAgentPrompt(reviewPack, ctx.locale, 'instruction')
@@ -3412,15 +3412,32 @@ export function parseEpisodeDirectorVerdict(
   text: string
 ): { result: 'PASS' | 'FAIL'; reason: string } | null {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
-  for (const raw of lines) {
-    const line = raw.trim()
-    const match = /^##\s*结论\s*[:：]\s*(PASS|FAIL)/i.exec(line)
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!.trim()
+    const match = /^##\s*结论\s*[:：]\s*(PASS|FAIL)\b/i.exec(line)
     if (!match) continue
     const result = match[1]!.toUpperCase() === 'PASS' ? 'PASS' : 'FAIL'
     let reason = ''
     if (result === 'FAIL') {
-      const reasonMatch = /^##\s*结论\s*[:：]\s*FAIL\s*\(原因\s*[:：]\s*(.*)\)/i.exec(line)
-      reason = reasonMatch?.[1]?.trim() ?? ''
+      const normalized = line.replace(/（/g, '(').replace(/）/g, ')')
+      const inline = /\(原因\s*[:：]\s*([\s\S]*)\)/i.exec(normalized)
+      if (inline) {
+        reason = inline[1]!.trim()
+      } else {
+        const reasonLines: string[] = []
+        for (let next = index + 1; next < lines.length; next++) {
+          const nextLine = lines[next]!.trim()
+          if (/^##\s*/.test(nextLine)) break
+          if (!nextLine) continue
+          reasonLines.push(nextLine)
+          if (reasonLines.length >= 3) break
+        }
+        reason = reasonLines
+          .join(' ')
+          .replace(/^[-*]\s*/, '')
+          .replace(/^原因\s*[:：]\s*/i, '')
+          .trim()
+      }
     }
     return { result, reason }
   }

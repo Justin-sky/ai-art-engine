@@ -63,6 +63,7 @@ function buildEpisodePipelinePlan(
       generateInstruction: EPISODE_AGENT_REVIEW_BREAKDOWN.instructionZh
     }
   })
+  link('script', 'review1', { fromPort: 'out', toPort: 'in' })
   link('breakdown', 'review1', { fromPort: 'out', toPort: 'in' })
   link('breakdown', 'beatboard', { fromPort: 'out', toPort: 'in' })
 
@@ -88,6 +89,8 @@ function buildEpisodePipelinePlan(
       generateInstruction: EPISODE_AGENT_REVIEW_BEATBOARD.instructionZh
     }
   })
+  link('script', 'review2', { fromPort: 'out', toPort: 'in' })
+  link('breakdown', 'review2', { fromPort: 'out', toPort: 'in' })
   link('beatboard', 'review2', { fromPort: 'out', toPort: 'in' })
 
   // 9宫格拼图画布：一个生成节点生成 3×3 九宫格拼图，再逐格本地提取
@@ -148,6 +151,8 @@ function buildEpisodePipelinePlan(
         generateInstruction: EPISODE_AGENT_REVIEW_MOTION_9.instructionZh
       }
     })
+    link('script', 'review4', { fromPort: 'out', toPort: 'in' })
+    link('beatboard', 'review4', { fromPort: 'out', toPort: 'in' })
     link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
 
     for (let g = 1; g <= 9; g++) {
@@ -212,6 +217,9 @@ function buildEpisodePipelinePlan(
         generateInstruction: EPISODE_AGENT_REVIEW_SEQUENCE.instructionZh
       }
     })
+    link('script', 'review3', { fromPort: 'out', toPort: 'in' })
+    link('breakdown', 'review3', { fromPort: 'out', toPort: 'in' })
+    link('beatboard', 'review3', { fromPort: 'out', toPort: 'in' })
     link('sequence', 'review3', { fromPort: 'out', toPort: 'in' })
     link('sequence', 'motion', { fromPort: 'out', toPort: 'in' })
 
@@ -237,6 +245,10 @@ function buildEpisodePipelinePlan(
         generateInstruction: EPISODE_AGENT_REVIEW_MOTION.instructionZh
       }
     })
+    link('script', 'review4', { fromPort: 'out', toPort: 'in' })
+    link('breakdown', 'review4', { fromPort: 'out', toPort: 'in' })
+    link('beatboard', 'review4', { fromPort: 'out', toPort: 'in' })
+    link('sequence', 'review4', { fromPort: 'out', toPort: 'in' })
     link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
 
     // 9 组 4宫格拼图（2×2）：每组用 9宫格提取的锚点图作参考生成 4宫格拼图，

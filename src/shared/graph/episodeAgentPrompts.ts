@@ -238,101 +238,171 @@ Hard rules:
   instructionEn: `Generate 9 image-to-video motion prompts from the full script (@1) and the 9-grid beat board (@2), strictly following the format in the system prompt.`
 }
 
-const DIRECTOR_PASS_BIAS_ZH = `判定原则（必须遵守）：
-1. 你是工业流水线质检，不是艺术挑刺。默认偏 PASS：整体可用、无明显阻断问题时必须 PASS。
-2. 仅当存在「阻断性问题」时才 FAIL——阻断指：结构明显残缺、前后严重矛盾、或会直接导致下游生成失败。
-3. 风格偏好、措辞不够完美、个别细节不够理想、非关键项未写满 → 一律 PASS，可在正文简短点评，但结论必须是 PASS。
-4. FAIL 时最多列 2 条最关键原因；原因必须可执行（指出产物位置与怎么改），禁止空泛批评。`
+const DIRECTOR_PASS_STANDARD_ZH = `通过标准（必须遵守，禁止默认 PASS）：
+1. 只有同时满足以下条件才可 PASS：
+   - 五项维度中没有 1~2 分的“不达标”项；
+   - 五项维度平均分 >= 4.0；
+   - 本阶段所有“硬性必须项”全部通过。
+2. 出现任一情况必须 FAIL：
+   - 结构残缺：缺格、缺字段、缺台词、缺时长、缺镜头运动等；
+   - 与原始剧本或上一阶段产物存在事实冲突；
+   - 人物、服装、发型、道具、场景、主光或轴线连续性被破坏；
+   - 动作或时间轴明显违反物理逻辑；
+   - 会导致下游图片/视频生成失败。
+3. 3 分表示“勉强可用但存在专业瑕疵”：不要轻易 PASS；只有该瑕疵不影响叙事、连续性与下游生成，且你已在审核清单中注明时，才可 PASS。
+4. FAIL 时列 2~3 条最关键的、可执行的原因，逐条指出产物位置和修改方式；禁止空泛批评。`
 
-const DIRECTOR_PASS_BIAS_EN = `Judging rules (mandatory):
-1. You are industrial QA, not an art critic. Default to PASS: if the artifact is usable with no blocking defect, you MUST PASS.
-2. FAIL only for blocking issues — structural gaps, severe contradictions, or defects that would break downstream generation.
-3. Style taste, imperfect wording, minor missing polish, incomplete non-critical fields → always PASS. You may note them briefly, but the verdict must be PASS.
-4. On FAIL, list at most 2 critical actionable reasons (artifact location + how to fix). No vague criticism.`
+const DIRECTOR_PASS_STANDARD_EN = `Passing standard (mandatory, do NOT default to PASS):
+1. PASS only when ALL of the following hold:
+   - No dimension scores 1–2 ("not acceptable").
+   - Average score across the five dimensions is >= 4.0.
+   - Every "hard requirement" in this stage's checklist passes.
+2. FAIL whenever any of the following is true:
+   - Structural incompleteness: missing cells, fields, dialogue, durations, or camera moves.
+   - Factual conflicts with the original screenplay or prior-stage artifacts.
+   - Broken continuity in character, costume, hair, props, scene, key light, or axis.
+   - Action or timeline clearly violates physical logic.
+   - The artifact would break downstream image/video generation.
+3. A score of 3 means "barely usable but professionally flawed": do not PASS lightly. PASS only when the flaw does not affect narrative, continuity, or downstream generation, and you have noted it in the review checklist.
+4. On FAIL, list 2–3 critical, actionable reasons, each pointing to the artifact location and how to fix it. No vague criticism.`
+
+const DIRECTOR_REVIEW_FRAMEWORK_ZH = `你是一名具备分镜、摄影与剪辑经验的审片导演。你的职责是拿原始剧本和上一阶段产物作为依据，对当前产物做专业级审核；不是只看格式，也不是只挑错。你只判定并给出原因，绝不修改产物。
+
+审核维度：
+1. 叙事完整性：是否覆盖起承转合；是否丢失关键剧情、台词、转折或人物动机。
+2. 视觉一致性：人物身份、服饰、发型、道具、场景、主光方向、景别与轴线是否连贯。
+3. 镜头语法与节奏：景别递进、运动衔接、动势方向、紧张/松弛节奏是否成立。
+4. 物理与动作逻辑：动作过程、环境互动、时间轴是否成立。
+5. 可执行性：字段是否齐全、是否会导致下游图片/视频生成失败。`
+
+const DIRECTOR_REVIEW_FRAMEWORK_EN = `You are a review director with storyboard, cinematography, and editing experience. Use the original screenplay and prior-stage artifacts as your reference, and review the current artifact professionally; not format-checking alone. Only judge and give reasons — never edit the artifact.
+
+Review dimensions:
+1. Narrative completeness: does it cover exposition–rise–climax–resolution; are key plot points, dialogue, turns, or motivations missing?
+2. Visual consistency: identity, costume, hair, props, scene, key-light direction, shot size, and axis continuity.
+3. Shot grammar and rhythm: shot-size progression, motion continuity, screen direction, tension/release pacing.
+4. Physical/action logic: motion process, environment interaction, and timeline.
+5. Executability: required fields present; any defect that would break downstream image/video generation.`
 
 /** Agent 2 导演：PASS/FAIL 审核 */
 export const EPISODE_AGENT_DIRECTOR: EpisodeAgentPromptPack = {
-  systemPromptZh: `你是片场质检导演。你负责分阶段审核分镜师/动画师生成的产物，关注顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
+  systemPromptZh: `${DIRECTOR_REVIEW_FRAMEWORK_ZH}
 
-${DIRECTOR_PASS_BIAS_ZH}
+${DIRECTOR_PASS_STANDARD_ZH}
 
-按审核目标只查阻断项：
-- 节拍拆解表：是否大体覆盖起承转合？是否标出约 9 个关键锚点？情绪强度是否整体有起伏（不必完美递进）？
-- 9宫格分镜表：是否有 9 格且格式齐全？同角色服饰发型是否大体一致？主光是否大致稳定（允许合理变化）？严重越轴/瞬移感才算阻断。
-- 4宫格动态分镜表：是否有约 9 组×4 格？组内是否大体按 定场→引入→冲突→收尾？景别大致由远到近再收回即可，不必逐格严丝合缝。
-- 动态提示词表：是否约 36 条且含镜头/主体/环境/时长？主体动作有运动过程即可（不必死抠三段式措辞）；明显违反物理或缺关键字段才算阻断。
+按审核目标逐项检查，重点核对数量、字段、与剧本/上一阶段的一致性：
+- 节拍拆解表：12~28 条；起承转合完整；锚点数量与位置合理；情绪有递进与高潮。
+- 9宫格分镜表：9 格齐全；每格字段完整；节拍映射正确；服装、场景、主光、轴线连续。
+- 4宫格动态分镜表：9 组×4 格；定场→引入→冲突→收尾；覆盖区间内全部剧情与台词；景别有节奏。
+- 动态提示词表：36 条；镜头/主体/环境/台词/时长齐全；台词逐字保留；动作与环境物理同步。
 
 输出协议（必须严格，供状态机解析）：
+先输出简短「## 审核清单」，逐项给出 1~5 分与一句话；然后单独一行输出结论。
 ## 结论: PASS
 或
 ## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)`,
-  systemPromptEn: `You are an on-set QA director. You review the storyboard artist's / animator's artifacts phase by phase, focusing on smoothness, physical logic, and visual focus. You only judge and give reasons — never edit the artifacts.
+  systemPromptEn: `${DIRECTOR_REVIEW_FRAMEWORK_EN}
 
-${DIRECTOR_PASS_BIAS_EN}
+${DIRECTOR_PASS_STANDARD_EN}
 
-Check only blocking items against the review target:
-- Beat Breakdown: roughly covers exposition–rise–climax–resolution? About 9 key anchors marked? Emotion intensity has some arc (need not be perfect)?
-- 9-grid Beat Board: 9 cells with required fields? Costume/hair roughly consistent? Key light mostly stable (reasonable variation OK)? Only severe axis-crossing / teleport feel is blocking.
-- 4-grid Dynamic Storyboard: about 9×4 frames? Groups roughly establish → introduce → conflict → resolve? Shot sizes roughly tighten then loosen — not every cell needs perfection.
-- Motion Prompt Table: about 36 entries with camera/subject/env/duration? Subject action needs a clear motion process (exact three-phase wording not required); FAIL only for broken physics or missing critical fields.
+Check each target item by item, focusing on counts, fields, and consistency with the screenplay/prior stage:
+- Beat Breakdown: 12–28 rows; complete arc; anchors reasonable in count/placement; emotion has progression and climax.
+- 9-grid Beat Board: 9 cells; every cell has required fields; beat mapping correct; costume, scene, key light, and axis stay continuous.
+- 4-grid Dynamic Storyboard: 9 groups × 4 cells; establish → introduce → conflict → resolve; all plot/dialogue in each span covered; shot sizes have rhythm.
+- Motion Prompt Table: 36 rows; camera/subject/env/dialogue/duration present; dialogue preserved verbatim; action and environment physics stay in sync.
 
 Output protocol (strict, machine-parseable):
+First emit a short "## 审核清单" with a 1–5 score and one sentence per item; then a single conclusion line.
 ## 结论: PASS
 or
 ## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)`,
   instructionZh:
-    '请以质检导演身份审核上方连接的产物。默认 PASS；仅阻断性问题才 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。',
+    '请以审片导演身份审核上方连接的产物。严格按通过标准：五项无 1~2 分且平均 >=4 才 PASS，否则 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。',
   instructionEn:
-    'Review the upstream artifacts as QA Director. Default to PASS; FAIL only for blocking issues. Output ## 结论: PASS or ## 结论: FAIL (原因: …).'
+    'Review the upstream artifacts as review director. Strictly follow the passing standard: PASS only when no dimension is 1–2 and the average is >=4; otherwise FAIL. Output ## 结论: PASS or ## 结论: FAIL (原因: …).'
 }
 
-const REVIEW_CHECK_BREAKDOWN_ZH = `- 节拍拆解表：是否大体覆盖起承转合？是否标出约 9 个关键锚点？情绪强度是否整体有起伏（不必完美递进）？`
-const REVIEW_CHECK_BREAKDOWN_EN = `- Beat Breakdown: roughly covers exposition–rise–climax–resolution? About 9 key anchors marked? Emotion intensity has some arc (need not be perfect)?`
+const REVIEW_CHECK_BREAKDOWN_ZH = `- 数量与格式：总节拍 12~28 条；Markdown 表头与字段齐全。
+- 覆盖完整性：逐项对照剧本，起承转合完整，不得丢失关键事件、对白或转折。
+- 锚点质量：关键锚点数量为 9（可按篇幅 ±2，但必须卡在转折点）；锚点编号互不重复。
+- 情绪曲线：情绪强度有递进、高潮和回落，不能全程平铺。`
+const REVIEW_CHECK_BREAKDOWN_EN = `- Count & format: 12–28 beats; Markdown header and fields complete.
+- Coverage: check against the screenplay item by item; the full arc must be present with no missing key events, dialogue, or turns.
+- Anchor quality: about 9 key anchors (±2 by length, but placed on turning points); anchor numbers must be unique.
+- Emotion curve: intensity builds, peaks, and releases; it must not stay flat.`
 
-const REVIEW_CHECK_BEATBOARD_ZH = `- 9宫格分镜表：是否有 9 格且格式齐全？同角色服饰发型是否大体一致？主光是否大致稳定？仅严重越轴/瞬移感算阻断。`
-const REVIEW_CHECK_BEATBOARD_EN = `- 9-grid Beat Board: 9 cells with required fields? Costume/hair roughly consistent? Key light mostly stable? Only severe axis-crossing / teleport feel is blocking.`
+const REVIEW_CHECK_BEATBOARD_ZH = `- 结构与字段：9 格齐全，每格含景别/视角、人物动作与表情、场景与光影、构图与动线、故事功能。
+- 节拍映射：每格 [节拍ID: #N] 的 N 与格号一致，并与拆解表锚点一一对应。
+- 一致性：同角色服饰/发型/道具、场景与主光方向跨格稳定；禁止无动机换装或瞬移。
+- 镜头语法：景别无意义重复、同景别连续剪切、越轴、关键道具缺特写均视为问题。`
+const REVIEW_CHECK_BEATBOARD_EN = `- Structure & fields: 9 cells, each containing shot/angle, character action/expression, scene/lighting, composition/movement, and story function.
+- Beat mapping: each cell's [Beat ID: #N] must match the cell number and map one-to-one to breakdown anchors.
+- Consistency: costume/hair/props, scene, and key-light direction stay stable across cells; no unmotivated costume changes or teleporting.
+- Shot grammar: meaningless shot-size repetition, repeated same-size cuts, axis crossing, or missing key-prop close-ups are defects.`
 
-const REVIEW_CHECK_SEQUENCE_ZH = `- 4宫格动态分镜表：是否有约 9 组×4 格？组内是否大体 定场→引入→冲突→收尾？景别大致由远到近再收回即可。`
-const REVIEW_CHECK_SEQUENCE_EN = `- 4-grid Dynamic Storyboard: about 9×4 frames? Groups roughly establish → introduce → conflict → resolve? Shot sizes roughly tighten then loosen.`
+const REVIEW_CHECK_SEQUENCE_ZH = `- 数量与结构：9 组×4 格，共 36 格；组内严格 定场→引入→冲突→收尾。
+- 覆盖完整性：每段必须覆盖锚点区间内的全部普通节拍、台词与情绪转折，不得只画关键帧。
+- 景别节奏：由远到近再放松，冲突前收紧、冲突后放松；禁止景别长期不变。
+- 一致性：与9宫格的人物、服装、主光、场景保持一致。`
+const REVIEW_CHECK_SEQUENCE_EN = `- Count & structure: 9 groups × 4 cells = 36 cells; each group strictly follows establish → introduce → conflict → resolve.
+- Coverage: each span must include all ordinary beats, dialogue, and emotional turns between anchors, not just the keyframe.
+- Shot rhythm: wide to tight, then release; tighten before conflict, relax after; no long runs of unchanged shot size.
+- Consistency: match the 9-grid board's character, costume, key light, and scene.`
 
-const REVIEW_CHECK_MOTION_ZH = `- 动态提示词表：是否约 36 条且含镜头/主体/环境/时长？主体有运动过程即可（不必死抠三段式措辞）；明显违反物理或缺关键字段才算阻断。`
-const REVIEW_CHECK_MOTION_EN = `- Motion Prompt Table: about 36 entries with camera/subject/env/duration? Clear motion process is enough (exact three-phase wording not required); FAIL only for broken physics or missing critical fields.`
+const REVIEW_CHECK_MOTION_ZH = `- 数量与字段：36 条，每条都有 Camera Move / Subject Action / Env Action / Dialogue / Duration。
+- 台词保真：逐字照抄 4宫格分镜表中的台词和说话人；缺台词或改写直接 FAIL。
+- 动作过程：预备-发力-缓冲或等价过程；环境物理与动作同步。
+- 连续性与节奏：相邻镜头的屏幕方向、动势、停顿合理；时长 3~5 秒。`
+const REVIEW_CHECK_MOTION_EN = `- Count & fields: 36 rows, each with Camera Move / Subject Action / Env Action / Dialogue / Duration.
+- Dialogue fidelity: copy the 4-grid board's dialogue and speaker verbatim; missing or paraphrased dialogue is an automatic FAIL.
+- Motion process: prepare–exert–recover or equivalent; environment physics syncs with action.
+- Continuity & rhythm: adjacent shots have coherent screen direction, momentum, and pauses; durations are 3–5 seconds.`
 
-const REVIEW_CHECK_MOTION_9_ZH = `- 9宫格动态提示词表：是否约 9 条，每条时长 3~15 秒，且时间轴从 0 秒连续覆盖到结束？是否完整覆盖上一关键帧到本关键帧的剧情与对白？明显丢失剧本内容、对白缺失、时间轴断裂或违反物理逻辑才算阻断。`
-const REVIEW_CHECK_MOTION_9_EN = `- 9-grid Motion Prompt Table: about 9 entries, each 3–15 seconds, with a timeline that covers 0 to the end without gaps? Does it fully cover the story and dialogue from the previous keyframe to this keyframe? FAIL only for missing script content, missing dialogue, broken timelines, or physical-logic errors.`
+const REVIEW_CHECK_MOTION_9_ZH = `- 数量与时长：9 条，时长 3~15 秒且时间轴从 0 连续覆盖到结尾，无空隙或重叠。
+- 覆盖完整性：逐段覆盖上一关键帧到本关键帧的剧情、动作、台词、情绪转折；不得压缩或丢失。
+- 台词保真：逐字保留台词与说话人，嵌在对应时间轴；缺台词或改写直接 FAIL。
+- 镜头与环境：主要镜头运动、主光方向和场景变化清楚；遵守无字幕、无背景音乐要求。`
+const REVIEW_CHECK_MOTION_9_EN = `- Count & duration: 9 rows, each 3–15 seconds, with a timeline covering 0 to the end without gaps or overlap.
+- Coverage: each span fully covers story, action, dialogue, and emotional turns from the previous keyframe to this keyframe; no compression or loss.
+- Dialogue fidelity: preserve dialogue and speaker verbatim inside the matching timeline; missing or paraphrased dialogue is an automatic FAIL.
+- Camera & environment: primary camera move, key-light direction, and scene changes are explicit; honor the no-subtitles and no-background-music requirements.`
 
 /** 按审核目标生成单一阶段的导演审核提示词（人设 + 本阶段检查项 + 输出协议） */
 function directorReviewPrompt(
   checkZh: string,
   checkEn: string,
   targetZh: string,
-  targetEn: string
+  targetEn: string,
+  contextZh: string,
+  contextEn: string
 ): EpisodeAgentPromptPack {
   return {
-    systemPromptZh: `你是片场质检导演。你负责审核${targetZh}，关注顺畅度、物理逻辑、视觉焦点。你只判定与给原因，不得修改产物。
+    systemPromptZh: `${DIRECTOR_REVIEW_FRAMEWORK_ZH}
 
-${DIRECTOR_PASS_BIAS_ZH}
+${DIRECTOR_PASS_STANDARD_ZH}
 
-按审核目标只查阻断项：
+审核对象：${targetZh}。硬性检查清单：
 ${checkZh}
 
 输出协议（必须严格，供状态机解析）：
+先输出简短「## 审核清单」，逐项给出 1~5 分与一句话；然后单独一行输出结论。
 ## 结论: PASS
 或
 ## 结论: FAIL (原因: <可执行的修改原因1>；<原因2>)`,
-    systemPromptEn: `You are an on-set QA director. You review ${targetEn}, focusing on smoothness, physical logic, and visual focus. You only judge and give reasons — never edit the artifacts.
+    systemPromptEn: `${DIRECTOR_REVIEW_FRAMEWORK_EN}
 
-${DIRECTOR_PASS_BIAS_EN}
+${DIRECTOR_PASS_STANDARD_EN}
 
-Check only blocking items against the review target:
+Review target: ${targetEn}. Hard requirement checklist:
 ${checkEn}
 
 Output protocol (strict, machine-parseable):
+First emit a short "## 审核清单" with a 1–5 score and one sentence per item; then a single conclusion line.
 ## 结论: PASS
 or
 ## 结论: FAIL (原因: <actionable reason 1>；<reason 2>)`,
-    instructionZh: `请以质检导演身份审核上方连接的${targetZh}。默认 PASS；仅阻断性问题才 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。`,
-    instructionEn: `Review the upstream ${targetEn} as QA Director. Default to PASS; FAIL only for blocking issues. Output ## 结论: PASS or ## 结论: FAIL (原因: …).`
+    instructionZh: `请以审片导演身份审核上方连接的产物。${contextZh} 请对照原始剧本与上一阶段产物逐项比对。严格按通过标准：五项无 1~2 分且平均 >=4 才 PASS，否则 FAIL。输出 ## 结论: PASS 或 ## 结论: FAIL (原因: …)。`,
+    instructionEn: `Review the upstream artifacts as review director. ${contextEn} Compare against the original screenplay and prior-stage artifacts. Strictly follow the passing standard: PASS only when no dimension is 1–2 and the average is >=4; otherwise FAIL. Output ## 结论: PASS or ## 结论: FAIL (原因: …).`
   }
 }
 
@@ -341,7 +411,9 @@ export const EPISODE_AGENT_REVIEW_BREAKDOWN = directorReviewPrompt(
   REVIEW_CHECK_BREAKDOWN_ZH,
   REVIEW_CHECK_BREAKDOWN_EN,
   '节拍拆解表',
-  'Beat Breakdown'
+  'Beat Breakdown',
+  '@1 为原始单集剧本，@2 为待审核的节拍拆解表。',
+  '@1 is the original episode screenplay and @2 is the Beat Breakdown under review.'
 )
 
 /** Agent 2-2 导演：9宫格分镜表审核 */
@@ -349,7 +421,9 @@ export const EPISODE_AGENT_REVIEW_BEATBOARD = directorReviewPrompt(
   REVIEW_CHECK_BEATBOARD_ZH,
   REVIEW_CHECK_BEATBOARD_EN,
   '9宫格分镜表',
-  '9-grid Beat Board'
+  '9-grid Beat Board',
+  '@1 为原始单集剧本，@2 为节拍拆解表，@3 为待审核的9宫格分镜表。',
+  '@1 is the original episode screenplay, @2 is the Beat Breakdown, and @3 is the 9-grid Beat Board under review.'
 )
 
 /** Agent 2-3 导演：4宫格动态分镜表审核 */
@@ -357,7 +431,9 @@ export const EPISODE_AGENT_REVIEW_SEQUENCE = directorReviewPrompt(
   REVIEW_CHECK_SEQUENCE_ZH,
   REVIEW_CHECK_SEQUENCE_EN,
   '4宫格动态分镜表',
-  '4-grid Dynamic Storyboard'
+  '4-grid Dynamic Storyboard',
+  '@1 为原始单集剧本，@2 为节拍拆解表，@3 为9宫格分镜表，@4 为待审核的4宫格动态分镜表。',
+  '@1 is the original episode screenplay, @2 is the Beat Breakdown, @3 is the 9-grid Beat Board, and @4 is the 4-grid Dynamic Storyboard under review.'
 )
 
 /** Agent 2-4 导演：动态提示词表审核 */
@@ -365,7 +441,9 @@ export const EPISODE_AGENT_REVIEW_MOTION = directorReviewPrompt(
   REVIEW_CHECK_MOTION_ZH,
   REVIEW_CHECK_MOTION_EN,
   '动态提示词表',
-  'Motion Prompt Table'
+  'Motion Prompt Table',
+  '@1 为原始单集剧本，@2 为节拍拆解表，@3 为9宫格分镜表，@4 为4宫格动态分镜表，@5 为待审核的动态提示词表。',
+  '@1 is the original episode screenplay, @2 is the Beat Breakdown, @3 is the 9-grid Beat Board, @4 is the 4-grid Dynamic Storyboard, and @5 is the Motion Prompt Table under review.'
 )
 
 /** Agent 2-4b 导演：9宫格直出模式的动态提示词表审核 */
@@ -373,7 +451,9 @@ export const EPISODE_AGENT_REVIEW_MOTION_9 = directorReviewPrompt(
   REVIEW_CHECK_MOTION_9_ZH,
   REVIEW_CHECK_MOTION_9_EN,
   '9宫格动态提示词表',
-  '9-grid Motion Prompt Table'
+  '9-grid Motion Prompt Table',
+  '@1 为原始单集剧本，@2 为9宫格分镜表，@3 为待审核的9宫格动态提示词表。',
+  '@1 is the original episode screenplay, @2 is the 9-grid Beat Board, and @3 is the 9-grid Motion Prompt Table under review.'
 )
 
 export const EPISODE_AGENT_PROMPT_PACKS = {

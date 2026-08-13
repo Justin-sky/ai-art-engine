@@ -192,6 +192,20 @@ describe('episode director verdict', () => {
     expect(parseEpisodeDirectorVerdict('没有结论')).toBeNull()
   })
 
+  it('parses FAIL reasons on the next line and full-width punctuation', () => {
+    expect(
+      parseEpisodeDirectorVerdict('## 结论: FAIL\n原因：第二幕视高跳跃太大')
+    ).toEqual({ result: 'FAIL', reason: '第二幕视高跳跃太大' })
+    expect(
+      parseEpisodeDirectorVerdict('## 结论：FAIL（原因：格3主光跳变）')
+    ).toEqual({ result: 'FAIL', reason: '格3主光跳变' })
+    expect(
+      parseEpisodeDirectorVerdict(
+        '## 审核清单\n- 叙事完整性：5/5\n- 视觉一致性：4/5\n\n## 结论: FAIL\n原因：缺少第 3 组对白'
+      )
+    ).toEqual({ result: 'FAIL', reason: '缺少第 3 组对白' })
+  })
+
   it('marks review node and upstream node with FAIL result', () => {
     const review = {
       id: 'review-node',
@@ -267,6 +281,25 @@ describe('shortDrama agent pipeline preset', () => {
     expect(img4?.params.episodeStep).toBe('sequence')
     expect(video?.params.generateFrameMode).toBeUndefined()
     const edges = result.document!.edges
+    const titleById = new Map<string, string>()
+    for (const node of nodes) titleById.set(node.id, node.title ?? '')
+    const sourceTitles = (target: string | undefined): string[] =>
+      edges.filter((edge) => edge.target === target).map((edge) => titleById.get(edge.source) ?? '')
+    const reviewBreakdown = nodes.find((n) => n.params.episodeReviewTarget === 'breakdown')
+    expect(sourceTitles(reviewBreakdown?.id)).toEqual(
+      expect.arrayContaining(['剧本', '分镜师·节拍拆解表'])
+    )
+    expect(
+      sourceTitles(nodes.find((n) => n.params.episodeReviewTarget === 'motion')?.id)
+    ).toEqual(
+      expect.arrayContaining([
+        '剧本',
+        '分镜师·节拍拆解表',
+        '分镜师·9宫格分镜表',
+        '分镜师·4宫格动态分镜表',
+        '动画师·动态提示词表'
+      ])
+    )
     expect(
       edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-text')
     ).toBe(true)
