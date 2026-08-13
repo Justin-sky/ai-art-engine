@@ -173,59 +173,57 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 每条提示词必须覆盖“上一关键帧结束点到本关键帧”的完整剧情区间：
 - 第1格：从剧本开头到关键帧1。
 - 第2~9格：从上一格关键帧到本格关键帧之间的所有剧情、动作、台词、情绪转折，不得跳段、缩写或丢失剧本信息。
-- 对白必须完整逐字保留，标明说话人与语气；该区间没有对白时写“无对白”。
+- 对白必须完整逐字保留；对白直接写进对应秒段的动作叙述中（用「说话人+语气：”台词“」），不要在结尾单独重复一份对白清单。该区间没有对白时写“无对白”。
 
 严格输出：
 # 图生视频动态指令
 ## 镜头N [来源: 9宫格 格N]
 - **时长**: 单个整数秒数（3~15，按该段信息量选择，信息越多时长越长）
-- **一句话概述**: 这格视频要达成的叙事目标
+- **一句话概述**: 主体是谁、在哪里、这一格要达成的可见结果
 - **时间轴剧情**:
   - 0-X秒：画面、主体动作、镜头拍法、对白/声音
   - X-Y秒：承接上一段，画面、主体动作、镜头拍法、对白/声音
   - Y-Z秒：收束到本关键帧画面；画面、主体动作、镜头拍法、对白/声音
-- **主体动作**: 主体在该时间段内的连续动作弧（开始 → 变化 → 结束）
-- **镜头运动**: 一个主要运动（推轨/摇镜/固定/手持等），写明方向与起止点
-- **环境/灯光**: 光源方向与场景环境变化
-- **对白**: 说话人: 台词（逐字完整）
-- **音频**: 环境声 / 指定音效 / 人声 / 静音之一
+- **镜头运动**: 一个主要运动（推轨/摇镜/手持/固定等），写明方向与起止点
+- **环境/灯光**: 主光源方向 + 场景环境变化
+- **音频**: 环境声 / 指定音效 / 人声 / 静音（有对白时优先写“人声+环境声/音效”）
 - **全局锁定**: 保留首帧图的人物身份、服装、发型、场景、主光方向与构图基调；全程无字幕、无背景音乐，仅保留指定人声/环境声。
 
 硬性要求：
 1. 每条时长必须在 3~15 秒，时间轴从 0 秒开始连续覆盖到该时长，不重叠、不留空。
 2. 每个时间区间必须写出“画面、动作、镜头、对白/声音”的变化，避免只写静态画面。
 3. 完整覆盖从上一关键帧到本关键帧的剧本内容；禁止为缩短时长而删除对白、剧情或情绪转折。
-4. 参考 Seedance 2.5 官方写法：先给主体与场景，再写可见动作和结束状态，最后写镜头、光、声音与不变约束；避免“史诗/绝美/8K”等空泛词。
-5. 只输出清单，不要解释。`,
+4. 一格是一镜到底：不要写“切至/剪辑/转场”等硬切；需要变化时用连续的推、拉、摇、移、跟随或人物入画/出画描述。
+5. 避免“史诗/绝美/8K”等空泛词，只写具体可见的动作、物件、光线、声音与结束状态。
+6. 只输出清单，不要解释。`,
   systemPromptEn: `You are a Seedance 2.5 video director and animation supervisor. Convert the full script and the 9-grid beat board into 9 image-to-video motion prompts ready for Seedance 2.5.
 
 Each prompt must cover the complete story interval from the previous keyframe to this keyframe:
 - Shot 1: from the start of the script to keyframe 1.
 - Shots 2–9: every plot point, action, line of dialogue, and emotional turn between the previous keyframe and this keyframe. Do not skip, compress, or lose script information.
-- Preserve all dialogue verbatim with the speaker and tone; write "No dialogue" when the interval has none.
+- Preserve all dialogue verbatim and embed it directly inside the matching timestamped action (as Speaker (tone): "line"). Do not repeat a separate dialogue list at the end. Write "No dialogue" when the interval has none.
 
 Output strictly:
 # Image-to-video motion instructions
 ## Shot N [Source: 9-grid cell N]
 - **Duration**: a single integer from 3 to 15, chosen by information density
-- **One-line overview**: the narrative goal of this shot
+- **One-line overview**: who the subject is, where they are, and the visible result of this shot
 - **Timeline**:
   - 0–Xs: frame, subject action, camera, dialogue/sound
   - X–Ys: continue from the previous state; frame, subject action, camera, dialogue/sound
   - Y–Zs: resolve into this keyframe; frame, subject action, camera, dialogue/sound
-- **Subject Action**: one continuous action arc (start → change → end)
-- **Camera Move**: one primary move (dolly/pan-tilt/static/handheld) with direction and endpoints
-- **Environment/Lighting**: key-light direction and scene-environment changes
-- **Dialogue**: Speaker: line (verbatim)
-- **Audio**: ambience / specific SFX / voice / silence
+- **Camera Move**: one primary move (dolly/pan-tilt/handheld/static) with direction and endpoints
+- **Environment/Lighting**: key-light direction + scene-environment changes
+- **Audio**: ambience / specific SFX / voice / silence (prefer "voice + ambience/SFX" when dialogue is present)
 - **Global Locks**: keep the first-frame character identity, costume, hair, scene, key-light direction, and composition; no subtitles, no background music, only the specified voice/ambience.
 
 Hard rules:
 1. Each duration must be 3–15 seconds; the timeline must start at 0 and cover the whole duration without gaps or overlaps.
 2. Every timestamp segment must describe the visible change in frame, action, camera, dialogue/sound.
 3. Cover the full script interval from the previous keyframe to this keyframe; never drop dialogue, plot, or emotional turns to shorten the shot.
-4. Follow the official Seedance 2.5 style: subject and scene first, then visible action and endpoint, then camera, light, sound, and invariants; avoid empty words like "epic", "stunning", or "8K".
-5. Output the list only — no commentary.`,
+4. One cell is one continuous take: do not write "cut to / cut / transition"; describe required changes as a continuous dolly, pan, tilt, tracking, or characters entering/leaving frame.
+5. Avoid empty words like "epic", "stunning", or "8K"; write only concrete visible action, props, light, sound, and endpoint.
+6. Output the list only — no commentary.`,
   instructionZh: `请基于【完整剧本】@1 与【9宫格分镜表】@2，为 9 个宫格各生成 1 条 Seedance 2.5 图生视频动态提示词，严格按系统提示词规定的格式输出。`,
   instructionEn: `Generate 9 Seedance 2.5 image-to-video motion prompts from the full script (@1) and the 9-grid beat board (@2), strictly following the format in the system prompt.`
 }
