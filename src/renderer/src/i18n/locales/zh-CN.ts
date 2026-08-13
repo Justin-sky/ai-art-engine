@@ -1261,13 +1261,17 @@ export default {
     table: {
       new: '新建',
       empty: '暂无条目，点击新建或先执行提取',
+      briefStyle: '画风设定',
+      briefWorldview: '世界观设定',
       column: {
         name: '名称',
         prompt: '提示词',
         status: '状态'
       },
       placeholder: {
-        prompt: '图片生成提示词'
+        prompt: '图片生成提示词',
+        style: '从剧本提炼的画风/媒介/色板/光影/材质/避免项',
+        worldview: '时代、文化、规则、势力、基调等可复用的非视觉设定'
       }
     },
     tab: {
@@ -1917,7 +1921,7 @@ export default {
       hint: '双击进入成片时间线编辑'
     },
     worldTableNode: {
-      hint: '双击打开世界元素表格'
+      hint: '双击打开世界元素审核'
     },
     worldGenNode: {
       hint: '双击打开世界元素生成画布'
@@ -2126,7 +2130,7 @@ export default {
       },
       world: {
         extract: '世界元素提取',
-        table: '世界元素表格',
+        table: '世界元素审核',
         gen: '世界元素生成'
       },
       plugin: {
@@ -2278,7 +2282,7 @@ export default {
         cellLabel: '格'
       },
       worldTable: {
-        hint: '双击打开世界元素表格；运行节点导入目录 JSON，并在此预览输出端口'
+        hint: '双击打开世界元素审核；运行节点导入目录 JSON，并在此预览输出端口'
       },
       worldGen: {
         hint: '四个图片组出口：角色 / 场景 / 道具 / 武器。执行当前只收集已有图片；圆形菜单「Cook 子图」才批跑元素子图',

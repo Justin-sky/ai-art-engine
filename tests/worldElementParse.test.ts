@@ -13,11 +13,15 @@ import {
 describe('worldElementParse', () => {
   it('parses english keys with default review status', () => {
     const catalog = parseWorldElementCatalog(`{
+      "style": "ink-wash wuxia",
+      "worldview": "classical martial world",
       "characters": [{ "id": "a1", "name": "Ada", "prompt": "portrait" }],
       "scenes": [],
       "props": [],
       "weapons": []
     }`)
+    expect(catalog?.style).toBe('ink-wash wuxia')
+    expect(catalog?.worldview).toBe('classical martial world')
     expect(catalog?.characters).toHaveLength(1)
     expect(catalog?.characters[0]).toMatchObject({
       id: 'a1',
@@ -66,7 +70,9 @@ describe('worldElementParse', () => {
       ],
       scenes: [],
       props: [],
-      weapons: []
+      weapons: [],
+      style: '',
+      worldview: ''
     }
     const next: WorldElementCatalog = {
       characters: [
@@ -75,7 +81,9 @@ describe('worldElementParse', () => {
       ],
       scenes: [],
       props: [],
-      weapons: []
+      weapons: [],
+      style: '',
+      worldview: ''
     }
     const merged = mergeWorldCatalogPreservingReviewed(previous, next)
     expect(merged?.characters).toEqual([
@@ -89,10 +97,14 @@ describe('worldElementParse', () => {
       characters: [{ id: 'a1', name: 'Ada', prompt: 'p', status: '已审核' }],
       scenes: [],
       props: [],
-      weapons: []
+      weapons: [],
+      style: 'ink-wash wuxia',
+      worldview: 'classical martial world'
     })
     expect(text).toContain('"status": "已审核"')
     expect(text).toContain('"weapons"')
+    expect(text).toContain('"style"')
+    expect(text).toContain('"worldview"')
   })
 
   it('extracts upstream text linked into world.table', () => {

@@ -1759,9 +1759,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'world.table',
     category: 'note',
-    label: 'World table',
+    label: 'World element review',
     icon: '📋',
-    defaultTitle: 'World table',
+    defaultTitle: 'World element review',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [

@@ -619,7 +619,9 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
 
 ## Output format (STRICT)
 - Reply with **ONLY** one JSON object. No markdown fences, no commentary, no trailing text.
-- Top-level keys MUST be exactly these English keys: \`characters\`, \`scenes\`, \`props\`, \`weapons\`.
+- Top-level keys MUST be exactly these English keys: \`style\`, \`worldview\`, \`characters\`, \`scenes\`, \`props\`, \`weapons\`.
+- \`style\` is a single concise but dense project style brief string distilled from the script (genre, medium, palette, lighting, texture, finish, avoid). It must be used consistently across all element prompts.
+- \`worldview\` is a single concise world-building brief string for the non-visual but production-relevant setting (era, culture, rules, factions, geography/society, tone, constraints). Do not dump plot; keep it reusable and editable.
 - Each value is an array of objects. Every object MUST include \`id\`, \`name\`, \`prompt\`, \`status\` (all strings).
 - \`status\` must be exactly \`未审核\` or \`已审核\` (default \`未审核\` for newly extracted entries).
 - When the input already contains catalog JSON: any entry with \`status\` = \`已审核\` must be kept **byte-for-byte** (same id/name/prompt/status). Do not rewrite reviewed entries.
@@ -628,6 +630,8 @@ Good weapon prompt: “single jade jian weapon, translucent green blade, bronze 
 
 ## Example shape
 {
+  "style": "contemporary rainy-city soft film realism; muted teal-amber palette; natural skin; wet asphalt reflections; shallow depth; no UE5/8K slogans",
+  "worldview": "near-future East Asian city, late autumn; crime-travel tone; reliable grounded physics; no supernatural elements; muted civic anxiety",
   "characters": [
     {
       "id": "hero-lin",
@@ -767,7 +771,9 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 
 ## 输出格式（严格）
 - **只输出一个 JSON 对象**。不要用 markdown 代码块，不要解释，不要前后缀。
-- 顶层键必须恰好为英文：\`characters\`、\`scenes\`、\`props\`、\`weapons\`。
+- 顶层键必须恰好为英文：\`style\`、\`worldview\`、\`characters\`、\`scenes\`、\`props\`、\`weapons\`。
+- \`style\` 是从剧本提炼的单个简洁但信息密度高的项目画风简报字符串（类型、媒介、色板、光影、纹理、完成度、应避免项）。必须与所有元素 prompt 中的风格保持一致。
+- \`worldview\` 是单个简洁的世界观设定字符串，用于记录与制作相关但偏非视觉的设定（时代、文化、规则、势力、地理/社会、基调、约束）。不要倾倒剧情；保持可复用、可编辑。
 - 每个键对应数组；数组元素必须包含字符串字段 \`id\`、\`name\`、\`prompt\`、\`status\`。
 - \`status\` 只能是 \`未审核\` 或 \`已审核\`；新提取项默认 \`未审核\`。
 - 若输入已含目录 JSON：\`status\` 为 \`已审核\` 的项必须原样保留（id/name/prompt/status 均不得改写）。
@@ -776,6 +782,8 @@ export const DEFAULT_WORLD_EXTRACT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资
 
 ## 示例结构
 {
+  "style": "当代都市夜雨柔和胶片写实；青橙冷暖对比；自然肤质；湿沥青反光；浅景深；避免 UE5/8K 口号",
+  "worldview": "近未来东亚城市，深秋；犯罪旅行为主；扎实的写实物理；无超自然元素；克制的都市焦虑感",
   "characters": [
     {
       "id": "hero-lin",

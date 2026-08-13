@@ -7,17 +7,33 @@
           :key="kind"
           type="button"
           class="tab"
-          :class="{ active: activeKind === kind }"
-          @click="activeKind = kind"
+          :class="{ active: !briefTab && activeKind === kind }"
+          @click="activeKind = kind; briefTab = null"
         >
           {{ t(`world.tab.${kind}`) }}
           <span class="count">{{ catalog[kind].length }}</span>
         </button>
+        <button
+          type="button"
+          class="tab brief-tab"
+          :class="{ active: briefTab === 'style' }"
+          @click="briefTab = briefTab === 'style' ? null : 'style'"
+        >
+          {{ t('world.table.briefStyle') }}
+        </button>
+        <button
+          type="button"
+          class="tab brief-tab"
+          :class="{ active: briefTab === 'worldview' }"
+          @click="briefTab = briefTab === 'worldview' ? null : 'worldview'"
+        >
+          {{ t('world.table.briefWorldview') }}
+        </button>
       </div>
-      <button type="button" @click="onAdd">{{ t('world.table.new') }}</button>
+      <button v-if="!briefTab" type="button" @click="onAdd">{{ t('world.table.new') }}</button>
     </div>
     <p v-if="error" class="table-error">{{ error }}</p>
-    <div class="table-scroll">
+    <div v-if="!briefTab" class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -72,6 +88,19 @@
       </table>
       <p v-if="!catalog[activeKind].length" class="empty">{{ t('world.table.empty') }}</p>
     </div>
+    <div v-else class="brief-editor">
+      <label class="brief-label">{{ briefTab === 'style' ? t('world.table.briefStyle') : t('world.table.briefWorldview') }}</label>
+      <textarea
+        class="brief-textarea"
+        :value="briefTab === 'style' ? catalog.style : catalog.worldview"
+        :placeholder="
+          briefTab === 'style'
+            ? t('world.table.placeholder.style')
+            : t('world.table.placeholder.worldview')
+        "
+        @change="onBriefChange(($event.target as HTMLTextAreaElement).value)"
+      />
+    </div>
   </div>
 </template>
 
@@ -99,6 +128,7 @@ const props = defineProps<{
 const { t } = useStudioI18n()
 const rootRef = ref<HTMLElement | null>(null)
 const activeKind = ref<WorldElementKind>('characters')
+const briefTab = ref<'style' | 'worldview' | null>(null)
 const error = ref('')
 const catalog = reactive<WorldElementCatalog>(emptyWorldElementCatalog())
 
@@ -117,6 +147,8 @@ function replaceCatalog(next: WorldElementCatalog): void {
   for (const kind of WORLD_ELEMENT_KINDS) {
     catalog[kind] = next[kind].map((item) => ({ ...item }))
   }
+  catalog.style = next.style ?? ''
+  catalog.worldview = next.worldview ?? ''
   dirty = false
 }
 
@@ -131,6 +163,8 @@ function snapshotCatalog(): WorldElementCatalog {
   for (const kind of WORLD_ELEMENT_KINDS) {
     out[kind] = catalog[kind].map((item) => ({ ...item }))
   }
+  out.style = catalog.style ?? ''
+  out.worldview = catalog.worldview ?? ''
   return out
 }
 
@@ -177,6 +211,18 @@ function onStatusChange(id: string, value: string): void {
   const item = catalog[activeKind.value].find((row) => row.id === id)
   if (!item || next === item.status) return
   item.status = next
+  schedulePersist()
+}
+
+function onBriefChange(value: string): void {
+  if (!briefTab.value) return
+  if (briefTab.value === 'style') {
+    if (catalog.style === value) return
+    catalog.style = value
+  } else {
+    if (catalog.worldview === value) return
+    catalog.worldview = value
+  }
   schedulePersist()
 }
 
@@ -278,6 +324,39 @@ defineExpose({ flushSave })
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+.brief-tab {
+  color: var(--accent);
+}
+
+.brief-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 8px;
+}
+
+.brief-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.brief-textarea {
+  flex: 1;
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 8px;
+  font: inherit;
+  line-height: 1.5;
 }
 
 table {

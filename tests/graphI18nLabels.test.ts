@@ -17,7 +17,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.asset.screenplay')).toBe('剧本生成')
     expect(t('graph.types.asset.motion')).toBe('导演台编辑')
     expect(t('graph.types.world.extract')).toBe('世界元素提取')
-    expect(t('graph.types.world.table')).toBe('世界元素表格')
+    expect(t('graph.types.world.table')).toBe('世界元素审核')
     expect(t('graph.types.world.gen')).toBe('世界元素生成')
     expect(t('graph.inspector.generate.presets.image.multiAngle9')).toBe('多机位九宫格')
     expect(t('graph.inspector.generate.presets.image.story25')).toBe('25宫格连贯分镜')

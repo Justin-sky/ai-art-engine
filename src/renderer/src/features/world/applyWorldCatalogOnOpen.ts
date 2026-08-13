@@ -26,6 +26,9 @@ import { useProjectStore } from '../../stores/project'
 /** 已成功导入的世界元素目录指纹，存在世界资产 genParams */
 export const LAST_APPLIED_WORLD_CATALOG_FP_KEY = WORLD_CATALOG_FINGERPRINT_KEY
 
+const WORLD_CATALOG_STYLE_KEY = 'worldCatalogStyle'
+const WORLD_CATALOG_WORLDVIEW_KEY = 'worldCatalogWorldview'
+
 /** 目录归属节点：未指定 / 旧版默认节点 → 资产级共享图；其它 → 按节点独立图 */
 function catalogOwnerNodeId(nodeId?: string): string {
   const id = nodeId?.trim()
@@ -58,7 +61,10 @@ function graphTopologyKey(doc: GraphDocument | null | undefined): string {
   const nodes = doc.nodes
     .map((node) => {
       const elementId = readWorldElementIdFromNodeParams(node.params) ?? ''
-      return `${node.id}:${node.typeId}:${elementId}:${node.title ?? ''}`
+      const text = typeof node.params?.text === 'string' ? node.params.text : ''
+      const instruction =
+        typeof node.params?.generateInstruction === 'string' ? node.params.generateInstruction : ''
+      return `${node.id}:${node.typeId}:${elementId}:${node.title ?? ''}:${text}:${instruction}`
     })
     .sort()
     .join('|')
@@ -78,6 +84,12 @@ export function catalogFromWorldGenParams(
   nodeId?: string
 ): WorldElementCatalog {
   const catalog = emptyWorldElementCatalog()
+  catalog.style = typeof genParams?.[WORLD_CATALOG_STYLE_KEY] === 'string'
+    ? (genParams[WORLD_CATALOG_STYLE_KEY] as string)
+    : ''
+  catalog.worldview = typeof genParams?.[WORLD_CATALOG_WORLDVIEW_KEY] === 'string'
+    ? (genParams[WORLD_CATALOG_WORLDVIEW_KEY] as string)
+    : ''
   for (const kind of WORLD_ELEMENT_KINDS) {
     const doc = readWorldElementGraphForNode(genParams, catalogOwnerNodeId(nodeId), kind)
     if (!doc?.nodes?.length) continue
@@ -116,11 +128,17 @@ export function catalogFromWorldGenParams(
 export function loadWorldCatalog(worldAssetId: string, nodeId?: string): WorldElementCatalog {
   const fromGraphs = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), nodeId)
   const total = WORLD_ELEMENT_KINDS.reduce((sum, kind) => sum + fromGraphs[kind].length, 0)
-  if (total > 0) return fromGraphs
-  return (
-    parseWorldElementCatalog(extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))) ??
-    emptyWorldElementCatalog()
+  const jsonCatalog = parseWorldElementCatalog(
+    extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
   )
+  if (total > 0 || fromGraphs.style?.trim() || fromGraphs.worldview?.trim()) {
+    // 元素子图存在时，genParams 可能还没写入新的 style/worldview；
+    // 从世界元素提取节点的 JSON 文本补齐，避免表格打开后两个设定为空。
+    if (!fromGraphs.style?.trim()) fromGraphs.style = jsonCatalog?.style ?? ''
+    if (!fromGraphs.worldview?.trim()) fromGraphs.worldview = jsonCatalog?.worldview ?? ''
+    return fromGraphs
+  }
+  return jsonCatalog ?? emptyWorldElementCatalog()
 }
 
 async function writeWorldGenParams(
@@ -162,11 +180,25 @@ async function persistCatalog(
 
   for (const kind of WORLD_ELEMENT_KINDS) {
     const prev = readWorldElementGraphForNode(genParams, owner, kind)
-    const next = syncWorldElementKindGraph(prev, catalog[kind])
+    const next = syncWorldElementKindGraph(prev, catalog[kind], {
+      style: catalog.style,
+      worldview: catalog.worldview
+    })
     if (graphTopologyKey(prev) !== graphTopologyKey(next)) {
       genParams = withWorldElementGraphForNode(genParams, owner, kind, toPlain(next) as GraphDocument)
       changed = true
     }
+  }
+
+  const nextStyle = catalog.style?.trim() ?? ''
+  const nextWorldview = catalog.worldview?.trim() ?? ''
+  if ((genParams[WORLD_CATALOG_STYLE_KEY] ?? '') !== nextStyle) {
+    genParams = { ...genParams, [WORLD_CATALOG_STYLE_KEY]: nextStyle }
+    changed = true
+  }
+  if ((genParams[WORLD_CATALOG_WORLDVIEW_KEY] ?? '') !== nextWorldview) {
+    genParams = { ...genParams, [WORLD_CATALOG_WORLDVIEW_KEY]: nextWorldview }
+    changed = true
   }
 
   if (readLastAppliedFingerprint(worldAssetId, owner) !== fingerprint) {

@@ -31,6 +31,10 @@ export interface WorldElementCatalog {
   scenes: WorldElementItem[]
   props: WorldElementItem[]
   weapons: WorldElementItem[]
+  /** 项目级画风设定（从剧本提炼的共享风格脊柱） */
+  style: string
+  /** 项目级世界观设定（时代、文化、规则、势力等非视觉设定） */
+  worldview: string
 }
 
 const KIND_ALIASES: Record<string, WorldElementKind> = {
@@ -117,6 +121,8 @@ function normalizeKindList(kind: WorldElementKind, raw: unknown): WorldElementIt
 export function emptyWorldElementCatalog(): WorldElementCatalog {
   const catalog = {} as WorldElementCatalog
   for (const kind of WORLD_ELEMENT_KINDS) catalog[kind] = []
+  catalog.style = ''
+  catalog.worldview = ''
   return catalog
 }
 
@@ -128,6 +134,8 @@ function mapCatalogItems(
   for (const kind of WORLD_ELEMENT_KINDS) {
     out[kind] = catalog[kind].map(mapItem)
   }
+  out.style = catalog.style
+  out.worldview = catalog.worldview
   return out
 }
 
@@ -156,6 +164,8 @@ export function parseWorldElementCatalog(
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
 
   const catalog = emptyWorldElementCatalog()
+  catalog.style = asString((parsed as Record<string, unknown>).style).trim()
+  catalog.worldview = asString((parsed as Record<string, unknown>).worldview).trim()
   let anyKey = false
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
     const kind = KIND_ALIASES[key.trim()] ?? KIND_ALIASES[key.trim().toLowerCase()]
@@ -183,6 +193,8 @@ export function mergeWorldCatalogPreservingReviewed(
   }
 
   const result = emptyWorldElementCatalog()
+  result.style = next.style?.trim() ? next.style : previous.style ?? ''
+  result.worldview = next.worldview?.trim() ? next.worldview : previous.worldview ?? ''
   for (const kind of WORLD_ELEMENT_KINDS) {
     const prevById = new Map(previous[kind].map((item) => [item.id, item]))
     const used = new Set<string>()
@@ -222,9 +234,13 @@ function nodeCatalogPayload(doc: GraphDocument, nodeId: string): string | null {
 
 /** 序列化世界元素目录（表格 ↔ 提取 JSON） */
 export function stringifyWorldElementCatalog(catalog: WorldElementCatalog): string {
-  const payload = {} as Record<
-    WorldElementKind,
-    Array<Pick<WorldElementItem, 'id' | 'name' | 'prompt' | 'status'>>
+  const payload = {
+    style: catalog.style?.trim() ?? '',
+    worldview: catalog.worldview?.trim() ?? ''
+  } as Record<
+    WorldElementKind | 'style' | 'worldview',
+    | string
+    | Array<Pick<WorldElementItem, 'id' | 'name' | 'prompt' | 'status'>>
   >
   for (const kind of WORLD_ELEMENT_KINDS) {
     payload[kind] = catalog[kind].map((item) => ({

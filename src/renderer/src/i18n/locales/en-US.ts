@@ -1266,13 +1266,17 @@ export default {
     table: {
       new: 'New',
       empty: 'No entries yet — add one or run extract first',
+      briefStyle: 'Style brief',
+      briefWorldview: 'Worldview brief',
       column: {
         name: 'Name',
         prompt: 'Prompt',
         status: 'Status'
       },
       placeholder: {
-        prompt: 'Image generation prompt'
+        prompt: 'Image generation prompt',
+        style: 'Distilled genre / medium / palette / lighting / texture / avoid list',
+        worldview: 'Era, culture, rules, factions, tone and other reusable non-visual settings'
       }
     },
     tab: {
@@ -1927,7 +1931,7 @@ export default {
       hint: 'Double-click to enter the timeline editor'
     },
     worldTableNode: {
-      hint: 'Double-click to open world element table'
+      hint: 'Double-click to open world element review'
     },
     worldGenNode: {
       hint: 'Double-click to open world element gen canvas'
@@ -2138,7 +2142,7 @@ export default {
       },
       world: {
         extract: 'World extract',
-        table: 'World table',
+        table: 'World element review',
         gen: 'World element gen'
       },
       plugin: {
@@ -2295,7 +2299,7 @@ export default {
         cellLabel: 'Cell'
       },
       worldTable: {
-        hint: 'Double-click to open the world element table. Run the node to import catalog JSON and preview the out port here.'
+        hint: 'Double-click to open the world element review. Run the node to import catalog JSON and preview the out port here.'
       },
       worldGen: {
         hint: 'Four image-group outs: Characters / Scenes / Props / Weapons. Run current collects existing images; use radial Cook subgraph to batch-run element graphs.',

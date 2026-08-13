@@ -34,6 +34,20 @@ const ORIGIN_Y = 80
 const GEN_DX = 200
 const BOUNDARY_DX = 200
 
+export interface WorldElementBriefInput {
+  style?: string
+  worldview?: string
+}
+
+function buildWorldElementBriefInstruction(brief?: WorldElementBriefInput): string {
+  const parts: string[] = []
+  const style = brief?.style?.trim()
+  const worldview = brief?.worldview?.trim()
+  if (style) parts.push(`画风设定：${style}`)
+  if (worldview) parts.push(`世界观设定：${worldview}`)
+  return parts.join('\n\n')
+}
+
 export function worldElementScriptNodeId(elementId: string): string {
   return `world-el-script:${elementId}`
 }
@@ -207,7 +221,8 @@ function collectElementChains(
 /** 按目录条目物化 elementWorkflow：script → image gen → boundary.output */
 export function syncWorldElementKindGraph(
   existing: GraphDocument | null | undefined,
-  items: WorldElementItem[]
+  items: WorldElementItem[],
+  brief?: WorldElementBriefInput
 ): GraphDocument {
   const iface = hostInterfaceForElementWorkflow(items)
   const doc = normalizeScopedGraph('elementWorkflow', existing ?? null, {
@@ -300,22 +315,22 @@ export function syncWorldElementKindGraph(
       () =>
         createNodeFromType('asset.image', pos.gen, {
           title: item.name,
-          params: {
-            worldElementId: item.id,
-            generateInstruction: '',
+           params: {
+             worldElementId: item.id,
+             generateInstruction: buildWorldElementBriefInstruction(brief),
   reviewStatus: normalizeReviewStatus(item.status)
-          }
+           }
         }),
       (node) => ({
         ...node,
         title: item.name,
         position: pos.gen,
         params: {
-          ...node.params,
-          worldElementId: item.id,
-          generateInstruction: '',
+           ...node.params,
+           worldElementId: item.id,
+           generateInstruction: buildWorldElementBriefInstruction(brief),
   reviewStatus: normalizeReviewStatus(item.status)
-        }
+         }
       })
     )
 
