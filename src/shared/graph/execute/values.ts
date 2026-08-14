@@ -7,8 +7,7 @@ import {
   resolveGenerateStyleImages,
   resolveStyleMentionReserveCount,
   type ProjectStyleImage,
-  type StyleReferenceSubject,
-  type AssetType
+  type StyleReferenceSubject
 } from '../../domain'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 import type {
@@ -214,7 +213,6 @@ import {
 } from '../imageGridSplit'
 import type {
   GraphAssetValue,
-  GraphGenerationContribution,
   GraphImageItem,
   GraphNodeRunState,
   GraphOutputValue,
@@ -276,6 +274,8 @@ export {
   resolveIncomingByIndex,
   selectIncomingValuesForInstruction
 }
+import { contributionFromAssets, reindexContribution } from './contribution'
+export { contributionFromAssets, reindexContribution }
 
 /** 将本批生成图落盘；有 saveRunMedia 时去掉 dataUrl，只保留 relativePath */
 async function materializeGeneratedBatch(
@@ -380,53 +380,6 @@ function dedupeGalleryIds<T extends { id?: string | null }>(
     next.push({ ...item, id })
   }
   return next
-}
-
-function inferRole(type: AssetType): string {
-  if (type === 'video') return 'motion'
-  return 'character'
-}
-
-export function reindexContribution(
-  genRefs: Array<{
-    role: string
-    assetId: string
-    refIndex: number
-    label?: string
-    weight?: number
-  }>,
-  audioRefs: Array<{
-    kind: string
-    assetId?: string
-    text?: string
-    refIndex?: number
-  }>
-): GraphGenerationContribution {
-  const visual = genRefs.map((ref, i) => ({ ...ref, refIndex: i + 1 }))
-  const voiceOnly = audioRefs.filter((a) => a.kind === 'voice' && a.assetId)
-  const others = audioRefs.filter((a) => a.kind !== 'voice' || !a.assetId)
-  const base = visual.length
-  const voices = voiceOnly.map((v, i) => ({ ...v, refIndex: base + i + 1 }))
-  return { genRefs: visual, audioRefs: [...others, ...voices] }
-}
-
-export function contributionFromAssets(items: GraphAssetValue[]): GraphGenerationContribution {
-  const genRefs: GraphGenerationContribution['genRefs'] = []
-  const audioRefs: GraphGenerationContribution['audioRefs'] = []
-  for (const item of items) {
-    if (item.assetType === 'voice') {
-      audioRefs.push({ kind: 'voice', assetId: item.assetId })
-    } else {
-      genRefs.push({
-        role: inferRole(item.assetType),
-        assetId: item.assetId,
-        refIndex: 0,
-        label: item.label,
-        weight: item.weight ?? 0.85
-      })
-    }
-  }
-  return reindexContribution(genRefs, audioRefs)
 }
 
 /** 对齐图片 stripEmbeddedImageData：有 relativePath 时清空正文，边上只传路径 */
