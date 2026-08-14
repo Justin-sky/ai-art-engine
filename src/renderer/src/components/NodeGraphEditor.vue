@@ -5937,6 +5937,17 @@ async function resolveNodeUpstreamPreviewUrl(nodeId: string): Promise<string> {
       }
     }
 
+    const generatedImages = source.params.generatedImages
+    if (Array.isArray(generatedImages) && generatedImages.length) {
+      const selectedId = source.params.selectedImageId?.trim()
+      const picked =
+        (selectedId ? generatedImages.find((item) => item.id === selectedId) : undefined) ??
+        generatedImages[generatedImages.length - 1]
+      if (picked?.dataUrl?.trim()) return picked.dataUrl
+      const url = await resolveAssetFileUrl(picked?.relativePath)
+      if (url) return url
+    }
+
     if (source.params.previewDataUrl?.trim()) return source.params.previewDataUrl
     const sourcePreview = await resolveAssetFileUrl(source.params.previewRelativePath)
     if (sourcePreview) return sourcePreview
@@ -6016,7 +6027,8 @@ async function onMultiAngleOpen(nodeId: string): Promise<void> {
     (url) => {
       multiAngle.previewUrl = url
     },
-    () => multiAngle.open && multiAngle.nodeId === nodeId
+    () => multiAngle.open && multiAngle.nodeId === nodeId,
+    { preferUpstream: true }
   )
 }
 
@@ -6137,7 +6149,8 @@ async function onLightingOpen(nodeId: string): Promise<void> {
     (url) => {
       lighting.previewUrl = url
     },
-    () => lighting.open && lighting.nodeId === nodeId
+    () => lighting.open && lighting.nodeId === nodeId,
+    { preferUpstream: true }
   )
 }
 
@@ -6365,7 +6378,8 @@ async function onEmotionOpen(nodeId: string): Promise<void> {
     (url) => {
       emotion.previewUrl = url
     },
-    () => emotion.open && emotion.nodeId === nodeId
+    () => emotion.open && emotion.nodeId === nodeId,
+    { preferUpstream: true }
   )
 }
 
