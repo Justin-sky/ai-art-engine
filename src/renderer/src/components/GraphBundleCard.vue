@@ -160,7 +160,7 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
       color-mix(in srgb, var(--studio-panel, #1e1e24) 88%, #4a6a7a) 0%,
       color-mix(in srgb, var(--studio-panel, #1e1e24) 94%, #2a2a32) 100%
     );
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--studio-text, #ececf1) 6%, transparent) inset;
   cursor: grab;
   user-select: none;
   z-index: 2;
@@ -170,7 +170,7 @@ function onOutPortDown(portId: string, e: PointerEvent): void {
   border-color: color-mix(in srgb, var(--studio-accent, #6aa8ff) 70%, #fff);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--studio-accent, #6aa8ff) 45%, transparent),
-    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    0 1px 0 color-mix(in srgb, var(--studio-text, #ececf1) 9%, transparent) inset;
 }
 
 .graph-bundle.connecting,

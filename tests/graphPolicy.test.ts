@@ -113,6 +113,7 @@ describe('graph policy', () => {
         'image.portraitTexture',
         'image.redraw',
         'image.select',
+        'media.bundle',
         'video.select',
         'voice.select',
         'video.lipSync',
