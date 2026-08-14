@@ -7,6 +7,7 @@ import type {
   GraphValue,
   GraphVideoItem
 } from './types'
+import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 
 function voiceItemToAsset(item: GraphVoiceItem): GraphAssetValue | null {
   const assetId = item.id?.trim()
@@ -246,4 +247,95 @@ export function pickVoiceItem(
     if (byRawId) return byRawId
   }
   return items[0]
+}
+
+/** 生成图库双输出口：`out` 选中单条，`out-all` 全部历史 */
+export function dualImageGalleryOutputs(
+  items: GraphImageItem[],
+  selectedImageId: string
+): Record<string, GraphValue> {
+  const picked = pickImageItem(items, selectedImageId)
+  return {
+    out: {
+      kind: 'image',
+      id: picked?.id,
+      dataUrl: picked?.dataUrl || '',
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'images', items }
+  }
+}
+
+export function dualVideoGalleryOutputs(
+  items: GraphVideoItem[],
+  selectedVideoId: string
+): Record<string, GraphValue> {
+  const picked = pickVideoItem(items, selectedVideoId)
+  return {
+    out: {
+      kind: 'video',
+      id: picked?.id,
+      dataUrl: picked?.dataUrl || '',
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'videos', items }
+  }
+}
+
+export function dualVoiceGalleryOutputs(
+  items: GraphVoiceItem[],
+  selectedVoiceId: string
+): Record<string, GraphValue> {
+  const picked = pickVoiceItem(items, selectedVoiceId)
+  return {
+    out: {
+      kind: 'voice',
+      id: picked?.id,
+      createdAt: picked?.createdAt,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'voices', items }
+  }
+}
+
+export function dualTextGalleryOutputs(
+  items: GraphTextItem[],
+  selectedTextId: string
+): Record<string, GraphValue> {
+  const picked = pickTextItem(items, selectedTextId)
+  return {
+    out: {
+      kind: 'text',
+      text: picked?.text ?? '',
+      id: picked?.id,
+      ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
+    },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }
+  }
+}
+
+export function newestImageSelectedId(items: GraphImageItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return imageItemKey(items[index]!, index)
+}
+
+export function newestVideoSelectedId(items: GraphVideoItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return videoItemKey(items[index]!, index)
+}
+
+export function newestVoiceSelectedId(items: GraphVoiceItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return voiceItemKey(items[index]!, index)
+}
+
+export function newestTextSelectedId(items: GraphTextItem[]): string {
+  if (!items.length) return ''
+  const index = items.length - 1
+  return textItemKey(items[index]!, index)
 }
