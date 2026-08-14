@@ -9,7 +9,7 @@ import type {
   ImageRedrawState,
   LightingSetupState,
   MultiAngleCameraState,
-  PortraitTextureState
+  PortraitQualityState
 } from '@shared/graph'
 
 /** 图编辑器 Dialog 层：状态在父组件，但模板隔离，避免 open 时整图重渲 */
@@ -78,7 +78,7 @@ export type GraphEditorDialogsApi = {
   closeReshoot: () => void
   portraitTexture: {
     open: boolean
-    setup: PortraitTextureState | null
+    setup: PortraitQualityState | null
     sourceUrl: string
     sourceLoading: boolean
     generateModel: string

@@ -1648,6 +1648,49 @@ export default {
         }
       }
     },
+    portraitQuality: {
+      appMark: '人像质量调节',
+      previewEmpty: '接入图片输入后可在此预览',
+      before: '原图',
+      after: '效果',
+      reset: '重置参数',
+      groups: {
+        skin: '肤质',
+        light: '光影',
+        blend: '融合',
+        color: '色彩',
+        detail: '细节'
+      },
+      fields: {
+        skinSmoothing: '磨皮',
+        skinPore: '毛孔保留',
+        skinEvenness: '肤色均匀',
+        blemishRemoval: '瑕疵移除',
+        lightRatio: '主光比',
+        fillLight: '补光',
+        rimLight: '轮廓光',
+        catchlight: '眼神光',
+        atmosphere: '氛围',
+        personSceneBlend: '人景融合',
+        edgeTransition: '边缘过渡',
+        colorTemp: '色温',
+        saturation: '饱和度',
+        contrast: '对比度',
+        skinTone: '肤色调',
+        sharpness: '锐度',
+        grain: '颗粒',
+        softFocus: '柔焦',
+        clarity: '清晰度',
+        vignette: '暗角'
+      },
+      presets: {
+        natural: '自然',
+        magazine: '杂志人像',
+        commercial: '商业修图',
+        cinematic: '电影感',
+        retro: '港风复古'
+      }
+    },
     emotion: {
       appMark: '情绪调节',
       hint: '双击调节情绪与模型；运行节点以生成结果',

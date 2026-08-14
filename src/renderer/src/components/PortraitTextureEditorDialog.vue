@@ -3,10 +3,10 @@
     :open="open"
     :title="windowTitle"
     :z-index="1200"
-    :default-width="720"
-    :default-height="500"
-    :min-width="560"
-    :min-height="400"
+    :default-width="780"
+    :default-height="560"
+    :min-width="620"
+    :min-height="440"
     body-class="pad-none"
     @close="onClose"
   >
@@ -20,8 +20,8 @@
             {{ t('graph.editor.loadingSource') }}
           </div>
           <img
-            v-else-if="sourceUrl"
-            :src="sourceUrl"
+            v-else-if="currentPreviewUrl"
+            :src="currentPreviewUrl"
             alt=""
             class="preview-img"
             draggable="false"
@@ -30,33 +30,60 @@
             v-else
             class="preview-empty"
           >
-            {{ t('graph.portraitTexture.previewEmpty') }}
+            {{ t('graph.portraitQuality.previewEmpty') }}
           </div>
+
+          <button
+            v-if="sourceUrl"
+            type="button"
+            class="compare-btn"
+            :class="{ active: showBefore }"
+            @pointerdown.stop
+            @click="showBefore = !showBefore"
+          >
+            {{ showBefore ? t('graph.portraitQuality.before') : t('graph.portraitQuality.after') }}
+          </button>
         </div>
 
         <div class="params-pane">
+          <div class="preset-row">
+            <button
+              v-for="preset in presets"
+              :key="preset.id"
+              type="button"
+              class="preset-btn"
+              :class="{ active: isPresetActive(preset) }"
+              @click="applyPreset(preset)"
+            >
+              {{ t(`graph.portraitQuality.presets.${preset.labelKey}`) }}
+            </button>
+          </div>
+
           <div
-            v-for="row in fields"
-            :key="row.field"
-            class="option-row"
+            v-for="group in groupedParams"
+            :key="group.id"
+            class="param-group"
           >
-            <span class="row-label">{{ t(`graph.portraitTexture.fields.${row.labelKey}`) }}</span>
-            <div class="seg">
-              <button
-                v-for="(opt, idx) in row.options"
-                :key="opt.id"
-                type="button"
-                class="seg-btn"
-                :class="[
-                  { active: draft[row.field] === opt.id },
-                  `level-${idx}`
-                ]"
-                :aria-pressed="draft[row.field] === opt.id"
-                @click="setField(row.field, opt.id)"
+            <div class="group-title">
+              {{ t(`graph.portraitQuality.groups.${group.id}`) }}
+            </div>
+            <div class="slider-list">
+              <label
+                v-for="spec in group.specs"
+                :key="spec.key"
+                class="slider-row"
               >
-                <span class="opt-swatch" />
-                <span class="opt-label">{{ t(`graph.portraitTexture.options.${row.field}.${opt.titleKey}`) }}</span>
-              </button>
+                <span class="slider-label">{{ t(`graph.portraitQuality.fields.${spec.labelKey}`) }}</span>
+                <input
+                  type="range"
+                  :min="spec.min"
+                  :max="spec.max"
+                  :step="spec.step"
+                  :value="draft[spec.key]"
+                  @input="setParam(spec, ($event.target as HTMLInputElement).value)"
+                >
+                <span class="slider-value">{{ displayValue(spec, draft[spec.key]) }}</span>
+              </label>
             </div>
           </div>
         </div>
@@ -75,7 +102,7 @@
           class="reset-btn"
           @click="resetParams"
         >
-          {{ t('graph.portraitTexture.resetParams') }}
+          {{ t('graph.portraitQuality.reset') }}
         </button>
       </div>
     </div>
@@ -85,27 +112,31 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
-  DEFAULT_PORTRAIT_TEXTURE,
-  PORTRAIT_TEXTURE_FIELDS,
-  normalizePortraitTexture,
-  portraitTextureToNodePatch,
-  type PortraitTextureField,
-  type PortraitTextureState
+  DEFAULT_PORTRAIT_QUALITY,
+  PORTRAIT_QUALITY_PARAMS,
+  PORTRAIT_QUALITY_PRESETS,
+  normalizePortraitQuality,
+  portraitQualityToNodePatch,
+  type PortraitQualityGroup,
+  type PortraitQualityParamSpec,
+  type PortraitQualityPreset,
+  type PortraitQualityState
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { renderPortraitQualityPreview } from '../features/graph/portraitQualityPreview'
 import ImageGenerateModelField from './ImageGenerateModelField.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 const props = defineProps<{
   open: boolean
-  setup?: Partial<PortraitTextureState> | null
+  setup?: Partial<PortraitQualityState> | null
   sourceUrl?: string
   sourceLoading?: boolean
   generateModel?: string
   generateProviderInstanceId?: string
 }>()
 
-export type PortraitTextureEditorSavePayload = ReturnType<typeof portraitTextureToNodePatch> & {
+export type PortraitTextureEditorSavePayload = ReturnType<typeof portraitQualityToNodePatch> & {
   generateModel: string
   generateProviderInstanceId: string
 }
@@ -117,10 +148,18 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useStudioI18n()
-const windowTitle = computed(() => t('graph.portraitTexture.appMark'))
-const fields = PORTRAIT_TEXTURE_FIELDS
+const windowTitle = computed(() => t('graph.portraitQuality.appMark'))
+const presets = PORTRAIT_QUALITY_PRESETS
 
-const draft = reactive<PortraitTextureState>(normalizePortraitTexture())
+const GROUP_ORDER: PortraitQualityGroup[] = ['skin', 'light', 'blend', 'color', 'detail']
+const groupedParams = computed(() =>
+  GROUP_ORDER.map((id) => ({
+    id,
+    specs: PORTRAIT_QUALITY_PARAMS.filter((spec) => spec.group === id)
+  })).filter((group) => group.specs.length)
+)
+
+const draft = reactive<PortraitQualityState>(normalizePortraitQuality())
 const modelFieldEl = ref<{
   currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
 } | null>(null)
@@ -129,9 +168,16 @@ const modelDraft = reactive({
   generateProviderInstanceId: ''
 })
 
+const previewUrl = ref('')
+const showBefore = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+let previewToken = 0
+
+const currentPreviewUrl = computed(() => (showBefore.value ? props.sourceUrl || '' : previewUrl.value))
+
 const dirty = computed(() => {
-  const a = normalizePortraitTexture(props.setup)
-  const b = normalizePortraitTexture(draft)
+  const a = normalizePortraitQuality(props.setup)
+  const b = normalizePortraitQuality(draft)
   const modelDirty =
     modelDraft.generateModel !== (props.generateModel ?? '') ||
     modelDraft.generateProviderInstanceId !== (props.generateProviderInstanceId ?? '')
@@ -147,12 +193,12 @@ function onModelChange(payload: {
 }
 
 const hydrating = ref(false)
-let previewTimer: ReturnType<typeof setTimeout> | null = null
+let emitTimer: ReturnType<typeof setTimeout> | null = null
 
 function buildSavePayload(): PortraitTextureEditorSavePayload {
   const model = modelFieldEl.value?.currentSelection() ?? { ...modelDraft }
   return {
-    ...portraitTextureToNodePatch(normalizePortraitTexture(draft)),
+    ...portraitQualityToNodePatch(normalizePortraitQuality(draft)),
     generateModel: model.generateModel,
     generateProviderInstanceId: model.generateProviderInstanceId
   }
@@ -160,55 +206,34 @@ function buildSavePayload(): PortraitTextureEditorSavePayload {
 
 function emitPreview(): void {
   if (!props.open || hydrating.value) return
-  if (previewTimer) clearTimeout(previewTimer)
-  previewTimer = setTimeout(() => {
-    previewTimer = null
+  if (emitTimer) clearTimeout(emitTimer)
+  emitTimer = setTimeout(() => {
+    emitTimer = null
     if (!props.open || hydrating.value) return
     emit('update', buildSavePayload())
   }, 48)
 }
 
-watch(
-  () => props.open,
-  (open) => {
-    if (!open) return
-    hydrating.value = true
-    Object.assign(draft, normalizePortraitTexture(props.setup))
-    modelDraft.generateModel = props.generateModel ?? ''
-    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
-    void nextTick(() => {
-      hydrating.value = false
-      emitPreview()
-    })
-  },
-  { immediate: true }
-)
+function setParam(spec: PortraitQualityParamSpec, raw: string): void {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return
+  draft[spec.key] = Math.min(spec.max, Math.max(spec.min, value))
+}
 
-watch(draft, () => emitPreview(), { deep: true })
-watch(modelDraft, () => emitPreview(), { deep: true })
+function displayValue(_spec: PortraitQualityParamSpec, value: number): string {
+  return String(Math.round(value))
+}
 
-function setField(field: PortraitTextureField, id: string): void {
-  switch (field) {
-    case 'personScene':
-      draft.personScene = id as PortraitTextureState['personScene']
-      break
-    case 'lightShadow':
-      draft.lightShadow = id as PortraitTextureState['lightShadow']
-      break
-    case 'skin':
-      draft.skin = id as PortraitTextureState['skin']
-      break
-    case 'texture':
-      draft.texture = id as PortraitTextureState['texture']
-      break
-    case 'sharpness':
-      draft.sharpness = id as PortraitTextureState['sharpness']
-      break
-  }
+function applyPreset(preset: PortraitQualityPreset): void {
+  Object.assign(draft, normalizePortraitQuality(preset.state))
+}
+
+function isPresetActive(preset: PortraitQualityPreset): boolean {
+  return JSON.stringify(normalizePortraitQuality(preset.state)) === JSON.stringify(normalizePortraitQuality(draft))
 }
 
 function resetParams(): void {
-  Object.assign(draft, normalizePortraitTexture(DEFAULT_PORTRAIT_TEXTURE))
+  Object.assign(draft, normalizePortraitQuality(DEFAULT_PORTRAIT_QUALITY))
 }
 
 function save(): void {
@@ -219,6 +244,60 @@ function onClose(): void {
   if (dirty.value) save()
   emit('close')
 }
+
+async function refreshPreview(): Promise<void> {
+  const token = ++previewToken
+  if (!props.sourceUrl) {
+    previewUrl.value = ''
+    return
+  }
+  try {
+    const url = await renderPortraitQualityPreview(
+      props.sourceUrl,
+      normalizePortraitQuality(draft)
+    )
+    if (token === previewToken) previewUrl.value = url
+  } catch {
+    if (token === previewToken) previewUrl.value = props.sourceUrl
+  }
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    hydrating.value = true
+    Object.assign(draft, normalizePortraitQuality(props.setup))
+    modelDraft.generateModel = props.generateModel ?? ''
+    modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
+    showBefore.value = false
+    void nextTick(() => {
+      hydrating.value = false
+      emitPreview()
+      void refreshPreview()
+    })
+  },
+  { immediate: true }
+)
+
+watch(draft, () => {
+  emitPreview()
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    void refreshPreview()
+  }, 120)
+}, { deep: true })
+
+watch(
+  () => props.sourceUrl,
+  () => {
+    if (!props.open || hydrating.value) return
+    void refreshPreview()
+  }
+)
+
+watch(modelDraft, () => emitPreview(), { deep: true })
 </script>
 
 <style scoped>
@@ -239,7 +318,8 @@ function onClose(): void {
 }
 
 .preview-pane {
-  flex: 0 0 240px;
+  position: relative;
+  flex: 0 0 260px;
   min-height: 0;
   display: flex;
   align-items: center;
@@ -265,6 +345,24 @@ function onClose(): void {
   line-height: 1.5;
 }
 
+.compare-btn {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.compare-btn.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
 .params-pane {
   flex: 1;
   min-width: 0;
@@ -274,105 +372,66 @@ function onClose(): void {
   overflow-y: auto;
 }
 
-.option-row {
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preset-btn.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  border-color: var(--accent);
+}
+
+.param-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.row-label {
+.group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.slider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-label {
   font-size: 12px;
   color: var(--text-muted);
 }
 
-.seg {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.slider-row input[type='range'] {
+  width: 100%;
 }
 
-.seg-btn {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-radius: 9px;
-  padding: 10px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    color 140ms ease,
-    border-color 140ms ease,
-    background-color 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease;
-}
-
-.seg-btn:hover {
-  background: var(--bg-hover);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-}
-
-.seg-btn.active {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
-  border-color: var(--accent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent),
-    0 2px 8px color-mix(in srgb, var(--accent) 18%, transparent);
-  font-weight: 600;
-}
-
-.seg-btn.active::after {
-  content: '✓';
-  position: absolute;
-  right: 6px;
-  top: 6px;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.seg-btn:active {
-  transform: translateY(1px);
-}
-
-.seg-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  outline-offset: 2px;
-}
-
-.opt-swatch {
-  display: block;
-  width: 38px;
-  height: 22px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--bg-input);
-  transition: background 140ms ease;
-}
-
-.level-0 .opt-swatch {
-  background: linear-gradient(90deg, var(--accent, #6aa8ff) 33%, var(--bg-input) 33%);
-}
-
-.level-1 .opt-swatch {
-  background: linear-gradient(90deg, var(--accent, #6aa8ff) 66%, var(--bg-input) 66%);
-}
-
-.level-2 .opt-swatch {
-  background: linear-gradient(90deg, var(--accent, #6aa8ff) 100%, var(--bg-input) 100%);
-}
-
-.opt-label {
+.slider-value {
   font-size: 11px;
-  line-height: 1.2;
-  text-align: center;
-  white-space: normal;
+  color: var(--text-muted);
+  text-align: right;
 }
 
 .editor-footer {
@@ -392,9 +451,5 @@ function onClose(): void {
   padding: 6px 14px;
   font-size: 12px;
   cursor: pointer;
-}
-
-.reset-btn:hover {
-  background: var(--bg-hover);
 }
 </style>

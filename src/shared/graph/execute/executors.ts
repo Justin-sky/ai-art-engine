@@ -167,9 +167,9 @@ import {
   resolveLightingOutputPrompt
 } from '../lightingSetup'
 import {
-  portraitTextureToNodePatch,
-  readPortraitTextureFromNode
-} from '../portraitTexture'
+  portraitQualityToNodePatch,
+  readPortraitQualityFromNode
+} from '../portraitQuality'
 import { emotionPadToNodePatch, readEmotionPadFromNode } from '../emotionPad'
 import {
   readImageUpscaleFromNode,
@@ -3585,10 +3585,14 @@ export async function executeLightingNode(
 export async function executePortraitTextureNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const patch = portraitTextureToNodePatch(readPortraitTextureFromNode(ctx.node.params))
+  const patch = portraitQualityToNodePatch(readPortraitQualityFromNode(ctx.node.params))
+  const negative = patch.portraitQualityNegative.trim()
+  const userPrompt = negative
+    ? `${patch.portraitQualityPrompt}。负面提示：${negative}`
+    : patch.portraitQualityPrompt
   return executePromptImageEditNode(ctx, {
     stampPrefix: 'portraitTexture',
-    userPrompt: patch.portraitTexturePrompt,
+    userPrompt,
     systemPrompt: resolvePortraitTextureSystemPrompt(
       ctx.node.params.generateSystemPrompt,
       ctx.locale

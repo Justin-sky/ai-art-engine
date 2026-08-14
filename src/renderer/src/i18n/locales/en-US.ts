@@ -1658,6 +1658,49 @@ export default {
         }
       }
     },
+    portraitQuality: {
+      appMark: 'Portrait quality',
+      previewEmpty: 'Connect an image input to preview here',
+      before: 'Before',
+      after: 'After',
+      reset: 'Reset',
+      groups: {
+        skin: 'Skin',
+        light: 'Light',
+        blend: 'Blend',
+        color: 'Color',
+        detail: 'Detail'
+      },
+      fields: {
+        skinSmoothing: 'Skin smoothing',
+        skinPore: 'Pore retention',
+        skinEvenness: 'Even skin tone',
+        blemishRemoval: 'Blemish removal',
+        lightRatio: 'Light ratio',
+        fillLight: 'Fill light',
+        rimLight: 'Rim light',
+        catchlight: 'Catchlight',
+        atmosphere: 'Atmosphere',
+        personSceneBlend: 'Person-scene blend',
+        edgeTransition: 'Edge transition',
+        colorTemp: 'Color temperature',
+        saturation: 'Saturation',
+        contrast: 'Contrast',
+        skinTone: 'Skin tone',
+        sharpness: 'Sharpness',
+        grain: 'Grain',
+        softFocus: 'Soft focus',
+        clarity: 'Clarity',
+        vignette: 'Vignette'
+      },
+      presets: {
+        natural: 'Natural',
+        magazine: 'Magazine',
+        commercial: 'Commercial',
+        cinematic: 'Cinematic',
+        retro: 'Retro'
+      }
+    },
     emotion: {
       appMark: 'Emotion pad',
       hint: 'Double-click to adjust emotion and model; run the node to generate',

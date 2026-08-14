@@ -875,9 +875,9 @@ import {
   type LightingSetupState,
   lightingSetupToNodePatch,
   readLightingSetupFromNode,
-  type PortraitTextureState,
-  portraitTextureToNodePatch,
-  readPortraitTextureFromNode,
+  type PortraitQualityState,
+  portraitQualityToNodePatch,
+  readPortraitQualityFromNode,
   type EmotionPadState,
   emotionPadToNodePatch,
   readEmotionPadFromNode,
@@ -6420,7 +6420,7 @@ function closeReshoot(): void {
 const portraitTexture = reactive({
   open: false,
   nodeId: '' as string,
-  setup: null as PortraitTextureState | null,
+  setup: null as PortraitQualityState | null,
   sourceUrl: '' as string,
   sourceLoading: false,
   generateModel: '' as string,
@@ -6431,7 +6431,7 @@ async function onPortraitTextureOpen(nodeId: string): Promise<void> {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   portraitTexture.nodeId = nodeId
-  portraitTexture.setup = readPortraitTextureFromNode(node.params)
+  portraitTexture.setup = readPortraitQualityFromNode(node.params)
   portraitTexture.sourceUrl = ''
   portraitTexture.sourceLoading = true
   portraitTexture.generateModel = node.params.generateModel ?? ''
@@ -6462,7 +6462,7 @@ function closePortraitTexture(): void {
 }
 
 function applyPortraitTextureParams(
-  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+  payload: ReturnType<typeof portraitQualityToNodePatch> & {
     generateModel: string
     generateProviderInstanceId: string
   }
@@ -6482,7 +6482,7 @@ function applyPortraitTextureParams(
 }
 
 function previewPortraitTexture(
-  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+  payload: ReturnType<typeof portraitQualityToNodePatch> & {
     generateModel: string
     generateProviderInstanceId: string
   }
@@ -6491,7 +6491,7 @@ function previewPortraitTexture(
 }
 
 function savePortraitTexture(
-  payload: ReturnType<typeof portraitTextureToNodePatch> & {
+  payload: ReturnType<typeof portraitQualityToNodePatch> & {
     generateModel: string
     generateProviderInstanceId: string
   }
@@ -6501,7 +6501,7 @@ function savePortraitTexture(
   if (!node) return
   const before = buildGraphJson()
   applyPortraitTextureParams(payload)
-  portraitTexture.setup = payload.portraitTexture
+  portraitTexture.setup = payload.portraitQuality
   portraitTexture.generateModel = payload.generateModel
   portraitTexture.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('portrait-texture', before)
