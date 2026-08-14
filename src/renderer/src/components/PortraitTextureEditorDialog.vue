@@ -370,6 +370,7 @@ watch(modelDraft, () => emitPreview(), { deep: true })
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  padding-right: 12px;
 }
 
 .preset-row {
