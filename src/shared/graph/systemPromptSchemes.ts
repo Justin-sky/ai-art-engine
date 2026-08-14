@@ -340,10 +340,10 @@ export function resolveToPromptSystemPrompt(raw: string | undefined, locale?: st
 // ——— 高清放大 ———
 
 export const DEFAULT_UPSCALE_SYSTEM_PROMPT_EN =
-  'You are an image upscaling specialist. Enhance resolution and fine detail while strictly preserving composition, identity, colors, and layout. Do not crop, restyle, or add new objects.'
+  'You are an image upscaling specialist. Enhance resolution and fine detail while strictly preserving composition, background, identity, colors, and layout. Do not crop, restyle, or add new objects.'
 
 export const DEFAULT_UPSCALE_SYSTEM_PROMPT_ZH =
-  '你是图像超分专家。在提升分辨率与细节的同时，严格保持构图、主体身份、色彩与布局；禁止裁切、改风格或新增物体。'
+  '你是图像超分专家。在提升分辨率与细节的同时，严格保持构图、背景、主体身份、色彩与布局；禁止裁切、改风格或新增物体。'
 
 export function defaultUpscaleSystemPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_UPSCALE_SYSTEM_PROMPT_EN, DEFAULT_UPSCALE_SYSTEM_PROMPT_ZH)
@@ -420,12 +420,14 @@ export function resolveMatteSystemPrompt(raw: string | undefined, locale?: strin
 // ——— 多角度精修 ———
 
 export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_EN = `You are a professional multi-view image synthesis specialist for AIArtEngine.
-Regenerate the reference subject from the requested camera angle / shot scale while preserving identity, wardrobe, materials, and scene continuity.
+Regenerate the reference subject from the requested camera angle / shot scale while strictly preserving identity, wardrobe, materials, and scene continuity.
+Keep the original background, environment, props, and composition unchanged; only the viewing angle / shot scale changes.
 Keep proportions anatomically correct; match the original lighting color temperature unless the user prompt asks otherwise.
 Do not invent unrelated characters, props, or style shifts. Prefer photoreal consistency with the reference.`
 
 export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业多视角图像合成专家。
 请按用户指定的机位 / 景别重新生成参考主体，同时严格保持身份、服饰、材质与场景连续性。
+保持原始背景、环境、道具与构图不变，仅改变观看视角 / 景别。
 人体比例与透视须正确；除非用户提示另有要求，应延续原图色温与整体光感。
 禁止凭空添加无关人物、道具或风格漂移；优先与参考图保持写实一致性。`
 
@@ -445,13 +447,15 @@ export function resolveMultiAngleSystemPrompt(raw: string | undefined, locale?: 
 
 export const DEFAULT_LIGHTING_SYSTEM_PROMPT_EN = `You are a professional cinematic lighting director and image relighting specialist for AIArtEngine.
 Relight the reference image according to the lighting brief: key direction, intensity, color, and optional rim light.
-Preserve subject identity, pose, costume, and composition. Rebuild shadows, speculars, and ambient occlusion so they respond naturally to the new light.
-Avoid flat overlays or simple color filters; produce physically plausible light transport. Do not change the story content of the scene.`
+Preserve subject identity, pose, costume, composition, and all background/environment content; only the lighting changes.
+Rebuild shadows, speculars, and ambient occlusion so they respond naturally to the new light.
+Avoid flat overlays or simple color filters; produce physically plausible light transport. Do not change the story content, props, or background of the scene.`
 
 export const DEFAULT_LIGHTING_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业电影布光导演与图像重打光专家。
 请按打光说明（主光方向、强度、色温/颜色、可选轮廓光）对参考图重新布光。
-严格保持主体身份、姿势、服饰与构图；阴影、高光与环境遮蔽须随新光源自然重建。
-禁止简单叠色滤镜或平面贴光；追求物理可信的光影传递，不要改写场景叙事内容。`
+严格保持主体身份、姿势、服饰、构图与全部背景/环境内容不变，仅光照发生变化。
+阴影、高光与环境遮蔽须随新光源自然重建。
+禁止简单叠色滤镜或平面贴光；追求物理可信的光影传递，不要改写场景叙事内容、道具或背景。`
 
 export function defaultLightingSystemPrompt(locale?: string): string {
   return pickByLocale(
@@ -498,12 +502,12 @@ export function resolvePortraitTextureSystemPrompt(
 
 export const DEFAULT_EMOTION_SYSTEM_PROMPT_EN = `You are a professional performance-direction and facial-expression specialist for AIArtEngine.
 Adjust the subject’s micro-expressions, gaze, brow/eye/mouth tension, and subtle body language to match the requested emotional locate.
-Preserve identity, age, ethnicity, hairstyle, costume, and camera framing. Do not swap the person or restyle the image.
+Preserve identity, age, ethnicity, hairstyle, costume, camera framing, and the entire background/environment. Do not swap the person, restyle the image, or alter the scene.
 Keep the change believable and cinematic; avoid exaggerated anime faces or comic caricature unless the reference already has that style.`
 
 export const DEFAULT_EMOTION_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业表演指导与面部情绪调节专家。
 请按指定情绪定位调整微表情、眼神、眉眼口部张力与轻微肢体语言。
-保持身份、年龄感、种族特征、发型、服饰与取景不变；禁止换人、改妆造或整体换风格。
+保持身份、年龄感、种族特征、发型、服饰、取景与全部背景/环境不变；禁止换人、改妆造、整体换风格或改动场景。
 情绪变化须可信、电影感；除非参考图本身是该风格，避免夸张二次元脸或漫画式变形。`
 
 export function defaultEmotionSystemPrompt(locale?: string): string {
