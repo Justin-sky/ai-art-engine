@@ -843,7 +843,7 @@ function onRowDragOver(id: string, event: DragEvent): void {
     dropTargetId.value = null
     return
   }
-  event.dataTransfer && (event.dataTransfer.dropEffect = 'move')
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
   dropTargetId.value = id
 }
 
@@ -857,7 +857,7 @@ function onListDragOver(event: DragEvent): void {
     return
   }
   if (!draggingId.value) return
-  event.dataTransfer && (event.dataTransfer.dropEffect = 'move')
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
 }
 
 async function onDropRow(targetId: string, event: DragEvent): Promise<void> {

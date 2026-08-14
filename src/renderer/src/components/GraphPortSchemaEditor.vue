@@ -188,7 +188,7 @@ function onDragStart(index: number, event: DragEvent): void {
 
 function onDragOver(index: number, event: DragEvent): void {
   if (dragFromIndex.value == null) return
-  event.dataTransfer && (event.dataTransfer.dropEffect = 'move')
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
   dropIndex.value = index
 }
 

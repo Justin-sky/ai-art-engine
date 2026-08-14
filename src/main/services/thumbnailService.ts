@@ -209,7 +209,7 @@ type ThumbJob = {
 }
 
 const pending = new Map<string, Promise<string>>()
-let queue: ThumbJob[] = []
+const queue: ThumbJob[] = []
 let active = 0
 const MAX_CONCURRENT = 2
 const warnedDecode = new Set<string>()

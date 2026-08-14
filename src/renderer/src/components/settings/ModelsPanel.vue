@@ -568,6 +568,7 @@ function toggleKeyReveal(providerId: string): void {
 
 function addProvider(): void {
   const provider = createProviderInstance(pendingProviderKind.value)
+  // eslint-disable-next-line vue/no-mutating-props
   props.models.providers.push(provider)
   activeModality[provider.id] = settingsModalitiesFor(provider)[0] ?? 'text'
   collapsedProviders[provider.id] = false
@@ -575,6 +576,7 @@ function addProvider(): void {
 
 function removeProvider(id: string): void {
   const idx = props.models.providers.findIndex((p) => p.id === id)
+  // eslint-disable-next-line vue/no-mutating-props
   if (idx >= 0) props.models.providers.splice(idx, 1)
   delete collapsedProviders[id]
   delete activeModality[id]

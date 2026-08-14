@@ -125,8 +125,8 @@ export function fitCropRectToAspect(
   }
   w = Math.max(MIN_CROP, Math.min(1, w))
   h = Math.max(MIN_CROP, Math.min(1, h))
-  let x = cx - w / 2
-  let y = cy - h / 2
+  const x = cx - w / 2
+  const y = cy - h / 2
   return normalizeCropRect({ cropX: x, cropY: y, cropW: w, cropH: h })
 }
 

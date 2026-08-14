@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   canConnectNodes,
-  createAssetGraphNode,
   createNodeFromType,
   executeSelectBeatNode,
   formatBeatRefText,

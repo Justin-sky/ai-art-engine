@@ -2725,7 +2725,7 @@ async function resolveBeatSplitSourceText(
   mentionSources?: InstructionMentionSource[]
 ): Promise<string> {
   const selected = selectIncomingValuesForInstruction(ctx, instructionRaw)
-  let text = autoIncomingTextForInstruction(
+  const text = autoIncomingTextForInstruction(
     instructionRaw,
     selected,
     mentionSources

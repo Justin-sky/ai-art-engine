@@ -77,7 +77,7 @@ export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
   folderId?: string | null
 }
 
-export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
+export type GenerateAiWorkflowResult = CommitAiWorkflowResult
 
 function catalogPromptBlock(): string {
   const catalog = buildGraphPlanCatalog('subgraphAsset')

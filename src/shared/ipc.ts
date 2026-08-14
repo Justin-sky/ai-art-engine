@@ -271,7 +271,7 @@ export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
   folderId?: string | null
 }
 
-export interface GenerateAiWorkflowResult extends CommitAiWorkflowResult {}
+export type GenerateAiWorkflowResult = CommitAiWorkflowResult
 
 export interface CreateFolderInput {
   name?: string

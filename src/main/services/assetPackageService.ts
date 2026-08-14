@@ -641,7 +641,7 @@ class AssetPackageService {
         plan.meta.folderGuid == null
           ? null
           : (guidMap.get(plan.meta.folderGuid) ?? plan.meta.folderGuid)
-      let safeGen = plan.meta.asset.genParams
+      const safeGen = plan.meta.asset.genParams
         ? remapAssetGuids(plan.meta.asset.genParams, guidMap)
         : undefined
 

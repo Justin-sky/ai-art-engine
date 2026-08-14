@@ -38,7 +38,7 @@ describe('flick gesture tracker', () => {
 
   it('does not count a single fast throw as enough flicks', () => {
     const tracker = createFlickGestureTracker()
-    let t = 2000
+    const t = 2000
     tracker.reset(0, 0, t)
     tracker.track(180, 0, t + 30)
     tracker.track(360, 0, t + 45)

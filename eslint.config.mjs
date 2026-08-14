@@ -11,11 +11,24 @@ export default tseslint.config(
       'release/**',
       'website/**',
       'resources/**',
-      'scripts/**'
+      'scripts/**',
+      '.aiartengine-tmp/**'
     ]
   },
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_'
+        }
+      ]
+    }
+  },
   {
     files: ['**/*.vue'],
     languageOptions: {

@@ -429,6 +429,7 @@ function addProvider(): void {
   // 已有启用项时，新添加的默认不抢占启用
   const hasEnabled = props.objectStorage.providers.some((p) => p.enabled)
   provider.enabled = !hasEnabled
+  // eslint-disable-next-line vue/no-mutating-props
   props.objectStorage.providers.push(provider)
   collapsedProviders[provider.id] = false
   if (provider.enabled) {
@@ -449,6 +450,7 @@ function removeProvider(id: string): void {
   const idx = props.objectStorage.providers.findIndex((p) => p.id === id)
   if (idx < 0) return
   const wasEnabled = props.objectStorage.providers[idx]!.enabled
+  // eslint-disable-next-line vue/no-mutating-props
   props.objectStorage.providers.splice(idx, 1)
   delete revealedSecrets[id]
   delete collapsedProviders[id]

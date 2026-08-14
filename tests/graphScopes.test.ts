@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  boundaryInputNodeId,
   canScopeAcceptDraggedAsset,
-  createDefaultScopedGraph,
   createParamsForScope,
   getGraphScopeDefinition,
   getScopeHostIdSuffix,
-  normalizeScopedGraph,
   registerGraphScope,
   registerGraphScopeHost,
   resolveDefaultGraphTemplate,
   resolveGraphScope,
   resolveScopeOutput
 } from '../src/shared/graph'
-import { createNodeFromType } from '../src/shared/graph'
 
 describe('graph scopes', () => {
   it('resolves scope from editor host context', () => {
