@@ -421,13 +421,13 @@ export function resolveMatteSystemPrompt(raw: string | undefined, locale?: strin
 
 export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_EN = `You are a professional multi-view image synthesis specialist for AIArtEngine.
 Regenerate the reference subject from the requested camera angle / shot scale while strictly preserving identity, wardrobe, materials, and scene continuity.
-Keep the original background, environment, props, and composition unchanged; only the viewing angle / shot scale changes.
+Keep the original background, environment, and props unchanged; only the viewing angle / shot scale changes.
 Keep proportions anatomically correct; match the original lighting color temperature unless the user prompt asks otherwise.
 Do not invent unrelated characters, props, or style shifts. Prefer photoreal consistency with the reference.`
 
 export const DEFAULT_MULTI_ANGLE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业多视角图像合成专家。
 请按用户指定的机位 / 景别重新生成参考主体，同时严格保持身份、服饰、材质与场景连续性。
-保持原始背景、环境、道具与构图不变，仅改变观看视角 / 景别。
+保持原始背景、环境与道具不变，仅改变观看视角 / 景别。
 人体比例与透视须正确；除非用户提示另有要求，应延续原图色温与整体光感。
 禁止凭空添加无关人物、道具或风格漂移；优先与参考图保持写实一致性。`
 
