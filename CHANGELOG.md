@@ -2,6 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
 
+## [3.0.7] — 2026-08-14
+
+### Fixed
+
+- 修复 Windows 自动更新 404：NSIS 安装包改为 `AIArtEngine-Setup-x.y.z.exe`（无空格），与 GitHub Release / electron-updater 文件名一致
+
+### Added
+
+- GraphSkill：短剧流水线提示词以 `params.skillId` 快照绑定，运行轨迹记录 skill 与阶段
+- 9 宫格直出视频模式与动态提示词；末端关键帧之后的节拍覆盖到剧本结束
+- 分镜窗动态提示词可双击打开词本编辑
+
 ## [3.0.6] — 2026-08-11
 
 ### Added

@@ -22,6 +22,11 @@ win:
   target:
     - nsis
   # 签名：CI 注入 WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD（.pfx base64）后自动签名
+nsis:
+  # 禁止空格：NSIS 默认是「AIArtEngine Setup x.y.z.exe」。
+  # GitHub Release 会把空格改成点（AIArtEngine.Setup.x.y.z.exe），
+  # electron-updater 则按连字符去下（AIArtEngine-Setup-x.y.z.exe）→ 404。
+  artifactName: ${productName}-Setup-${version}.${ext}
 mac:
   # 同时打 Intel (x64) 与 Apple Silicon (arm64)；仅 arm64 时 Intel Mac 会提示「不支持此应用程序」
   target:
