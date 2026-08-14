@@ -1,0 +1,26 @@
+# 统一文本文件行尾为 LF，避免 Windows 检出 CRLF 造成无意义 diff
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换与 diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.mp3 binary
+*.wav binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+*.zip binary
+*.pak binary
+*.exe binary
+*.dll binary
+*.node binary
