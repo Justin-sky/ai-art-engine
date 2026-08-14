@@ -107,6 +107,63 @@ export function selectEpisodeAnchors(
   return picked.slice(0, limit).sort((a, b) => a.index - b.index)
 }
 
+/** 一格动态提示词 / 4宫格组对应的节拍闭区间 */
+export interface EpisodeKeyframeSpan {
+  cell: number
+  fromBeat: number
+  toBeat: number
+  keyframeBeat: number
+  /** 末端关键帧之后、仍须并入最后一格的节拍 */
+  tailBeats: EpisodeBeatRow[]
+  beats: EpisodeBeatRow[]
+}
+
+/**
+ * 按关键锚点切分剧情节拍区间。
+ * 非末格：上一锚点之后 → 本锚点（含）。
+ * 末格：上一锚点之后 → 拆解表最后一条（含末端关键帧之后的剩余节拍）。
+ */
+export function selectEpisodeKeyframeSpans(
+  beats: readonly EpisodeBeatRow[],
+  count = 9
+): EpisodeKeyframeSpan[] {
+  const anchors = selectEpisodeAnchors(beats, count)
+  if (!anchors.length || !beats.length) return []
+  const lastBeatIndex = Math.max(...beats.map((beat) => beat.index))
+  return anchors.map((anchor, i) => {
+    const prevIndex = i === 0 ? 0 : anchors[i - 1]!.index
+    const isLast = i === anchors.length - 1
+    const fromBeat = prevIndex + 1
+    const toBeat = isLast ? lastBeatIndex : anchor.index
+    const spanBeats = beats.filter((beat) => beat.index >= fromBeat && beat.index <= toBeat)
+    const tailBeats = isLast ? beats.filter((beat) => beat.index > anchor.index) : []
+    return {
+      cell: i + 1,
+      fromBeat,
+      toBeat,
+      keyframeBeat: anchor.index,
+      tailBeats,
+      beats: spanBeats
+    }
+  })
+}
+
+export function formatEpisodeKeyframeSpanNotes(spans: readonly EpisodeKeyframeSpan[]): string {
+  if (!spans.length) return ''
+  const lines = spans.map((span) => {
+    const summaries = span.beats
+      .map((beat) => `#${beat.index}「${beat.summary}」`)
+      .join('、')
+    if (span.tailBeats.length) {
+      const tail = span.tailBeats.map((beat) => `#${beat.index}`).join('、')
+      return `格${span.cell}：节拍 #${span.fromBeat}～#${span.toBeat}（上一关键帧之后→末端关键帧 #${span.keyframeBeat}，并含其后剩余节拍 ${tail} 直至结束）：${summaries}`
+    }
+    const kind = span.cell === 1 ? '开头→本关键帧' : '上一关键帧之后→本关键帧'
+    return `格${span.cell}：节拍 #${span.fromBeat}～#${span.toBeat}（${kind} #${span.keyframeBeat}）：${summaries}`
+  })
+  return `【各格必须覆盖的节拍区间；最后一格若关键帧不是最后一条节拍，必须把其后剩余节拍全部写入该格，禁止在末端关键帧截断】\n${lines.join('\n')}`
+}
+
 function clampIntensity(raw: number): number {
   if (!Number.isFinite(raw)) return 0
   return Math.min(10, Math.max(0, Math.round(raw)))
@@ -258,4 +315,35 @@ export function selectEpisodeMotion(
       (row) => row.groupIndex === groupIndex && row.cellIndex === cellIndex
     ) ?? null
   )
+}
+
+/** 替换动态提示词表中某一格的正文；找不到该格时返回 null */
+export function replaceEpisodeMotionPrompt(
+  text: string | undefined | null,
+  groupIndex: number,
+  cellIndex: number,
+  nextBody: string
+): string | null {
+  const raw = (text ?? '').replace(/\r\n/g, '\n')
+  const rows = parseEpisodeMotionPrompts(raw)
+  const blockIndex = rows.findIndex(
+    (row) => row.groupIndex === groupIndex && row.cellIndex === cellIndex
+  )
+  if (blockIndex < 0) return null
+  const lines = raw.split('\n')
+  const headingAt: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (MOTION_HEADING_RE.test(lines[i]!.trim())) headingAt.push(i)
+  }
+  if (blockIndex >= headingAt.length) return null
+  const start = headingAt[blockIndex]!
+  const end = headingAt[blockIndex + 1] ?? lines.length
+  const body = nextBody.replace(/\r\n/g, '\n').replace(/^\n+|\n+$/g, '')
+  const next = [...lines.slice(0, start + 1)]
+  if (body) next.push(body)
+  if (end < lines.length) {
+    if (next[next.length - 1] !== '') next.push('')
+    next.push(...lines.slice(end))
+  }
+  return next.join('\n')
 }

@@ -7,6 +7,15 @@
       </div>
       <div class="header-actions">
         <span v-if="runningCount" class="busy-chip">任务运行中…</span>
+        <button
+          class="ghost-button"
+          type="button"
+          :disabled="!lastPipelineRunId"
+          :title="lastPipelineRunId ? '打开本次流水线轨迹' : '尚无本次轨迹'"
+          @click="openPipelineLog"
+        >
+          查看轨迹
+        </button>
         <button class="ghost-button" type="button" :disabled="refreshing" @click="loadAll">
           {{ refreshing ? '刷新中…' : '刷新' }}
         </button>
@@ -251,7 +260,12 @@
               </button>
             </div>
           </div>
-          <pre v-if="activeMotion" class="motion-text">{{ activeMotion.text }}</pre>
+          <pre
+            v-if="activeMotion"
+            class="motion-text interactive"
+            :title="t('graph.notepad.openHint')"
+            @dblclick="openMotionNotepad"
+          >{{ activeMotion.text }}</pre>
           <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
         </div>
 
@@ -312,12 +326,25 @@
               </button>
             </div>
           </div>
-          <pre v-if="activeMotion" class="motion-text">{{ activeMotion.text }}</pre>
+          <pre
+            v-if="activeMotion"
+            class="motion-text interactive"
+            :title="t('graph.notepad.openHint')"
+            @dblclick="openMotionNotepad"
+          >{{ activeMotion.text }}</pre>
           <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
         </div>
       </section>
     </div>
   </div>
+  <GraphTextNotepadDialog
+    :open="motionNotepadOpen"
+    :title="motionNotepadTitle"
+    :text="motionNotepadText"
+    :embedded="false"
+    @close="closeMotionNotepad"
+    @save="saveMotionNotepad"
+  />
 </template>
 
 <script setup lang="ts">
@@ -326,9 +353,11 @@ import type {
   GraphDocument,
   GraphNode,
   GraphNodeParams,
-  GraphNodeRunState
+  GraphNodeRunState,
+  GraphRunLogMeta
 } from '@shared/graph'
 import OverflowTip from '../OverflowTip.vue'
+import GraphTextNotepadDialog from '../GraphTextNotepadDialog.vue'
 import MediaPreviewPlayer from '../MediaPreviewPlayer.vue'
 import GridIcon from '../icons/GridIcon.vue'
 import {
@@ -340,6 +369,7 @@ import {
   parseEpisodeBeatBreakdown,
   parseEpisodeMotionPrompts,
   parseEpisodeSequenceBoard,
+  replaceEpisodeMotionPrompt,
   selectEpisodeAnchors,
   type EpisodeAgentState,
   type EpisodeAnchorRow,
@@ -352,6 +382,9 @@ import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
 import { useProjectStore } from '../../stores/project'
 import { useGraphTaskStore, type GraphTaskTarget } from '../../stores/graphTasks'
+import { useGraphRunLogsStore } from '../../stores/graphRunLogs'
+import { useStudioI18n } from '../../composables/useStudioI18n'
+import { promptAlert } from '../../composables/useStudioPrompt'
 
 const props = defineProps<{
   frameKey: string
@@ -360,6 +393,13 @@ const props = defineProps<{
 
 const project = useProjectStore()
 const taskStore = useGraphTaskStore()
+const runLogs = useGraphRunLogsStore()
+const { t } = useStudioI18n()
+const lastPipelineRunId = ref<string | null>(null)
+const motionNotepadOpen = ref(false)
+const motionNotepadTitle = ref('')
+const motionNotepadText = ref('')
+const motionNotepadCell = ref({ groupIndex: 1, cellIndex: 1 })
 const runningCount = computed(() => taskStore.runningCount)
 const agentState = ref<EpisodeAgentState | null>(null)
 const refreshing = ref(false)
@@ -935,16 +975,18 @@ function enqueueNode(
   node: GraphNode | undefined,
   title: string,
   forceTargets = false,
-  invalidatedNodeIds?: string[]
+  invalidatedNodeIds?: string[],
+  logMeta?: GraphRunLogMeta
 ): string | null {
-  return enqueueNodes(node ? [node] : [], title, forceTargets, invalidatedNodeIds)
+  return enqueueNodes(node ? [node] : [], title, forceTargets, invalidatedNodeIds, logMeta)
 }
 
 function enqueueNodes(
   targets: GraphNode[],
   title: string,
   forceTargets = false,
-  invalidatedNodeIds?: string[]
+  invalidatedNodeIds?: string[],
+  logMeta?: GraphRunLogMeta
 ): string | null {
   if (!targets.length || !graphDoc.value) return null
   const runHost = graphRunHosts.get(`asset:${props.hostAssetId}`)
@@ -964,9 +1006,70 @@ function enqueueNodes(
     targetNodeIds: targets.map((node) => node.id),
     priorNodeStates,
     skipCompletedNodes: true,
-    invalidatedNodeIds: invalidated.length ? invalidated : undefined
+    invalidatedNodeIds: invalidated.length ? invalidated : undefined,
+    logMeta
   })
-  return result.ok ? result.id : null
+  if (!result.ok) {
+    void promptAlert({
+      title: t('graph.tasks.duplicateTitle'),
+      message: t('graph.tasks.duplicateMessage')
+    })
+    return null
+  }
+  lastPipelineRunId.value = result.id
+  return result.id
+}
+
+function openPipelineLog(): void {
+  if (!lastPipelineRunId.value) return
+  runLogs.openDialog(lastPipelineRunId.value)
+}
+
+function openMotionNotepad(): void {
+  const row = activeMotion.value
+  if (!row) return
+  motionNotepadCell.value = { groupIndex: row.groupIndex, cellIndex: row.cellIndex }
+  motionNotepadTitle.value = `${t('graph.notepad.appMark')} · ${row.key}`
+  motionNotepadText.value = row.text
+  motionNotepadOpen.value = true
+}
+
+function closeMotionNotepad(): void {
+  motionNotepadOpen.value = false
+  motionNotepadText.value = ''
+}
+
+function patchMotionNodeText(nextFull: string): void {
+  const node = nodeByKey('motion')
+  if (!node) return
+  const hostId = `asset:${props.hostAssetId}`
+  const generated = node.params?.generatedTexts ?? []
+  const selectedId = node.params?.selectedTextId?.trim()
+  const generatedTexts = generated.length
+    ? generated.map((item, index) => {
+        const hit =
+          (selectedId && item.id === selectedId) ||
+          (!selectedId && index === generated.length - 1)
+        return hit ? { ...item, text: nextFull } : item
+      })
+    : undefined
+  graphEditorHosts.updateNode(hostId, node.id, {
+    text: nextFull,
+    ...(generatedTexts ? { generatedTexts } : {})
+  })
+  lastStageText.motion = nextFull
+  refreshTick.value += 1
+  void graphEditorHosts.flush(hostId)
+}
+
+function saveMotionNotepad(text: string): void {
+  const { groupIndex, cellIndex } = motionNotepadCell.value
+  const nextFull = replaceEpisodeMotionPrompt(stageText('motion'), groupIndex, cellIndex, text)
+  if (nextFull == null) return
+  patchMotionNodeText(nextFull)
+  motionNotepadText.value = text
+  invalidateReview('motion')
+  invalidateDownstream('motion')
 }
 
 /** 作废旧审核；重新生成尚未产出时保持导演审核不可用。 */
@@ -1049,7 +1152,9 @@ function regenerateStage(target: ReviewTarget): void {
   // 级联失效：下游图/视频/审核不复用旧结果，后续生成自动从最新文本一致补跑
   invalidateDownstream(target)
   // “重新生成”强制执行目标节点，但继续复用其已完成上游。
-  const taskId = enqueueNode(nodeByKey(target), `分镜流水线·${target}`, true)
+  const taskId = enqueueNode(nodeByKey(target), `分镜流水线·${target}`, true, undefined, {
+    pipelineStage: target
+  })
   if (taskId) regenerationTasks.set(taskId, target)
 }
 
@@ -1062,7 +1167,9 @@ function runReview(target: ReviewTarget): void {
   graphEditorHosts.updateNode(hostId, reviewNode.id, { episodeReviewPending: false })
   refreshTick.value += 1
   void graphEditorHosts.flush(hostId)
-  enqueueNode(reviewNode, `分镜流水线·${REVIEW_NODE_KEY[target]}`, true)
+  enqueueNode(reviewNode, `分镜流水线·${REVIEW_NODE_KEY[target]}`, true, undefined, {
+    pipelineStage: `review.${target}`
+  })
 }
 
 function runAnchorImage(): void {
@@ -1075,7 +1182,10 @@ function runAnchorImage(): void {
     .filter((n): n is GraphNode => !!n)
   enqueueNodes(
     [board, ...extracts].filter((n): n is GraphNode => !!n),
-    '生成9宫格拼图'
+    '生成9宫格拼图',
+    false,
+    undefined,
+    { pipelineStage: 'image.grid9' }
   )
 }
 
@@ -1090,7 +1200,10 @@ function runFourGridImage(): void {
     .filter((n): n is GraphNode => !!n)
   enqueueNodes(
     [board, ...extracts].filter((n): n is GraphNode => !!n),
-    `生成4宫格拼图·组${groupIndex}`
+    `生成4宫格拼图·组${groupIndex}`,
+    false,
+    undefined,
+    { pipelineStage: 'image.grid4', cellKey: String(groupIndex) }
   )
 }
 
@@ -1099,7 +1212,10 @@ function runCurrentVideo(): void {
   const node = currentVideoNode()
   if (!node) return
   const { groupIndex, cellIndex } = selectedCell.value
-  enqueueNode(node, `动态视频·格${groupIndex}-${cellIndex}`, true)
+  enqueueNode(node, `动态视频·格${groupIndex}-${cellIndex}`, true, undefined, {
+    pipelineStage: 'video',
+    cellKey: `${groupIndex}-${cellIndex}`
+  })
 }
 
 async function fileUrl(relativePath: string | undefined): Promise<string> {
@@ -1621,7 +1737,19 @@ watch(
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+  padding: 10px;
+  max-height: 220px;
+  overflow: auto;
   color: var(--fg);
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border, transparent);
+  border-radius: 8px;
+}
+.motion-text.interactive {
+  cursor: pointer;
+}
+.motion-text.interactive:hover {
+  border-color: color-mix(in srgb, var(--accent, #6ea8fe) 45%, var(--border, currentColor));
 }
 .video-path {
   font-size: 12px;

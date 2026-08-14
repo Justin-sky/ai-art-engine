@@ -1,16 +1,5 @@
 import type { GraphPlan } from './graphPlan'
-import {
-  EPISODE_AGENT_BEATBOARD,
-  EPISODE_AGENT_BREAKDOWN,
-  EPISODE_AGENT_MOTION,
-  EPISODE_AGENT_MOTION_9,
-  EPISODE_AGENT_REVIEW_BEATBOARD,
-  EPISODE_AGENT_REVIEW_BREAKDOWN,
-  EPISODE_AGENT_REVIEW_MOTION,
-  EPISODE_AGENT_REVIEW_MOTION_9,
-  EPISODE_AGENT_REVIEW_SEQUENCE,
-  EPISODE_AGENT_SEQUENCE
-} from './episodeAgentPrompts'
+import { applyGraphSkill } from './graphSkills'
 
 /** 剧集 Agent 流水线：状态作用域键（集编号），生成后可改 */
 const EPISODE_SCOPE_KEY = 'ep01'
@@ -48,8 +37,7 @@ function buildEpisodePipelinePlan(
     params: {
       ...scope,
       episodeStep: 'breakdown',
-      generateSystemPrompt: EPISODE_AGENT_BREAKDOWN.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_BREAKDOWN.instructionZh
+      ...applyGraphSkill('episode.breakdown')
     }
   })
   add({
@@ -59,8 +47,7 @@ function buildEpisodePipelinePlan(
     params: {
       ...scope,
       episodeReviewTarget: 'breakdown',
-      generateSystemPrompt: EPISODE_AGENT_REVIEW_BREAKDOWN.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_REVIEW_BREAKDOWN.instructionZh
+      ...applyGraphSkill('episode.review.breakdown')
     }
   })
   link('script', 'review1', { fromPort: 'out', toPort: 'in' })
@@ -74,8 +61,7 @@ function buildEpisodePipelinePlan(
     params: {
       ...scope,
       episodeStep: 'beatboard',
-      generateSystemPrompt: EPISODE_AGENT_BEATBOARD.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_BEATBOARD.instructionZh
+      ...applyGraphSkill('episode.beatboard')
     }
   })
   add({
@@ -85,8 +71,7 @@ function buildEpisodePipelinePlan(
     params: {
       ...scope,
       episodeReviewTarget: 'beatboard',
-      generateSystemPrompt: EPISODE_AGENT_REVIEW_BEATBOARD.systemPromptZh,
-      generateInstruction: EPISODE_AGENT_REVIEW_BEATBOARD.instructionZh
+      ...applyGraphSkill('episode.review.beatboard')
     }
   })
   link('script', 'review2', { fromPort: 'out', toPort: 'in' })
@@ -101,7 +86,7 @@ function buildEpisodePipelinePlan(
     params: {
         ...scope,
         episodeStep: 'beatboard',
-        generateInstruction: `基于上游 9宫格分镜表生成一张 3×3 九宫格拼图画布：9 格按表内顺序依次对应 9 个核心锚点，人物服饰、主光方向、场景严格按表内描述保持绝对一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边；每格内容必须严格铺满自己的格子区域，格子边界即画面边界，不得内缩、留边距或留白；整张画布严格保持生成设置中的宽高比，无文字水印。`
+        ...applyGraphSkill('episode.image.grid9')
     }
   })
   link('beatboard', 'img9grid', { fromPort: 'out', toPort: 'in-text' })
@@ -133,11 +118,11 @@ function buildEpisodePipelinePlan(
       params: {
         ...scope,
         episodeStep: 'motion',
-        generateSystemPrompt: EPISODE_AGENT_MOTION_9.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_MOTION_9.instructionZh
+        ...applyGraphSkill('episode.motion9')
       }
     })
     link('script', 'motion', { fromPort: 'out', toPort: 'in' })
+    link('breakdown', 'motion', { fromPort: 'out', toPort: 'in' })
     link('beatboard', 'motion', { fromPort: 'out', toPort: 'in' })
     add({
       key: 'review4',
@@ -147,11 +132,11 @@ function buildEpisodePipelinePlan(
         ...scope,
         episodeReviewTarget: 'motion',
         episodeReviewVariant: '9',
-        generateSystemPrompt: EPISODE_AGENT_REVIEW_MOTION_9.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_REVIEW_MOTION_9.instructionZh
+        ...applyGraphSkill('episode.review.motion9')
       }
     })
     link('script', 'review4', { fromPort: 'out', toPort: 'in' })
+    link('breakdown', 'review4', { fromPort: 'out', toPort: 'in' })
     link('beatboard', 'review4', { fromPort: 'out', toPort: 'in' })
     link('motion', 'review4', { fromPort: 'out', toPort: 'in' })
 
@@ -170,7 +155,7 @@ function buildEpisodePipelinePlan(
         typeId: 'asset.video',
         title: `动态视频·格${g}-1`,
         params: {
-          generateInstruction: `基于参考首帧图与上游动态提示词生成图生视频：保留参考图中人物身份、服装、发型、场景、主光方向与构图基调，严格按动态提示词中的时间轴、镜头运动、主体动作、完整对白与环境音执行。`,
+          ...applyGraphSkill('episode.video.grid9'),
           generateDuration: 15
         }
       })
@@ -198,8 +183,7 @@ function buildEpisodePipelinePlan(
       params: {
         ...scope,
         episodeStep: 'sequence',
-        generateSystemPrompt: EPISODE_AGENT_SEQUENCE.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_SEQUENCE.instructionZh
+        ...applyGraphSkill('episode.sequence')
       }
     })
     link('beatboard', 'sequence', { fromPort: 'out', toPort: 'in' })
@@ -213,8 +197,7 @@ function buildEpisodePipelinePlan(
       params: {
         ...scope,
         episodeReviewTarget: 'sequence',
-        generateSystemPrompt: EPISODE_AGENT_REVIEW_SEQUENCE.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_REVIEW_SEQUENCE.instructionZh
+        ...applyGraphSkill('episode.review.sequence')
       }
     })
     link('script', 'review3', { fromPort: 'out', toPort: 'in' })
@@ -230,8 +213,7 @@ function buildEpisodePipelinePlan(
       params: {
         ...scope,
         episodeStep: 'motion',
-        generateSystemPrompt: EPISODE_AGENT_MOTION.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_MOTION.instructionZh
+        ...applyGraphSkill('episode.motion')
       }
     })
     add({
@@ -241,8 +223,7 @@ function buildEpisodePipelinePlan(
       params: {
         ...scope,
         episodeReviewTarget: 'motion',
-        generateSystemPrompt: EPISODE_AGENT_REVIEW_MOTION.systemPromptZh,
-        generateInstruction: EPISODE_AGENT_REVIEW_MOTION.instructionZh
+        ...applyGraphSkill('episode.review.motion')
       }
     })
     link('script', 'review4', { fromPort: 'out', toPort: 'in' })
@@ -262,7 +243,7 @@ function buildEpisodePipelinePlan(
         params: {
           ...scope,
           episodeStep: 'sequence',
-          generateInstruction: `基于上游 4宫格动态分镜表生成第 ${g} 组的 2×2 四宫格拼图画布：左上定场、右上引入、左下冲突、右下收尾，人物服饰、主光方向、场景与参考首帧严格一致；每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边；每格内容必须严格铺满自己的格子区域，格子边界即画面边界，不得内缩、留边距或留白；整张画布严格保持生成设置中的宽高比，无文字水印。`
+          ...applyGraphSkill('episode.image.grid4', { vars: { group: g } })
         }
       })
       link('sequence', img4Key, { fromPort: 'out', toPort: 'in-text' })
@@ -303,7 +284,7 @@ function buildEpisodePipelinePlan(
           typeId: 'asset.video',
           title: `动态视频·格${g}-${c}`,
           params: {
-            generateInstruction: `基于上游参考图与该动态格的图生视频指令生成 格${g}-${c} 的动态视频，参考图只提供风格与内容参考，严格遵循指令中的镜头运动、主体动作、环境交互与时长。`,
+            ...applyGraphSkill('episode.video.grid4', { vars: { group: g, cell: c } }),
             generateDuration: 4
           }
         })

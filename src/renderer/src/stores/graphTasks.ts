@@ -18,7 +18,8 @@ import {
   type GraphNodeRunState,
   type GraphNodeRunStatus,
   type HostInnerGraphRunInput,
-  type HostInnerGraphRunResult
+  type HostInnerGraphRunResult,
+  type GraphRunLogMeta
 } from '@shared/graph'
 import {
   isDraftAssetId,
@@ -142,6 +143,7 @@ interface GraphTaskInternal extends GraphTask {
   targetNodeIds?: string[]
   /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
   invalidatedNodeIds?: string[]
+  logMeta?: GraphRunLogMeta
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -642,6 +644,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     targetNodeIds?: string[]
     /** 本次任务不得复用这些节点的旧 done 结果（上游内容已失效） */
     invalidatedNodeIds?: string[]
+    logMeta?: GraphRunLogMeta
   }): EnqueueWorkflowResult {
     const targetNodeIds = input.targetNodeIds?.length ? [...input.targetNodeIds] : undefined
     if (conflictsWithActiveWorkflow(input.target, targetNodeIds, activeTasks.value)) {
@@ -669,7 +672,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       skipCompletedNodes: input.skipCompletedNodes,
       cookAssetIdStack: input.cookAssetIdStack,
       targetNodeIds,
-      invalidatedNodeIds: input.invalidatedNodeIds
+      invalidatedNodeIds: input.invalidatedNodeIds,
+      logMeta: input.logMeta
     }) as GraphTaskInternal
 
     activeTasks.value = [task, ...activeTasks.value]
@@ -977,7 +981,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       hostId: task.target.hostId,
       mode: 'task',
       graph: task.graph,
-      startMessage: 'task'
+      startMessage: 'task',
+      pipelineStage: task.logMeta?.pipelineStage,
+      cellKey: task.logMeta?.cellKey
     })
     try {
       await waitForOlderSharedUpstreamPeers(task)

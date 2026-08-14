@@ -218,7 +218,10 @@ export interface NodeExecuteContext {
   readEpisodeAgentState?: (scopeKey: string) => Promise<string | null>
   /** 剧集 Agent 流水线：写入该工作流作用域的 agent-state.json 原文 */
   writeEpisodeAgentState?: (scopeKey: string, content: string) => Promise<void>
-  /** 可选：调用设置中的文本模型；未注入时剧本节点退回纯文本汇总 */
+  /**
+   * 能力缝·提供商：调用设置中的文本模型；未注入时剧本节点退回纯文本汇总。
+   * 节点 execute 必须走这些适配器，禁止在 execute 内直连 HTTP。
+   */
   generateText?: (input: {
     prompt: string
     system?: string
@@ -227,7 +230,7 @@ export interface NodeExecuteContext {
     /** 视觉多模态：data URL / http(s) */
     images?: string[]
   }) => Promise<{ text: string; model: string }>
-  /** 可选：调用设置中的图片模型；未注入时图片生成退回上游透传 */
+  /** 可选：调用设置中的图片模型；未注入时图片生成退回上游透传。须走适配器，禁止直连 HTTP。 */
   generateImage?: (input: {
     prompt: string
     model?: string

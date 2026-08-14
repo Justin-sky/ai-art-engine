@@ -58,6 +58,7 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'text',
   'generateInstruction',
   'generateSystemPrompt',
+  'skillId',
   'generateModel',
   'generateProviderInstanceId',
   'generateAspectRatio',

@@ -60,6 +60,26 @@ Scope 配置项（`GraphScopeDefinition`）：
 
 内置 scope 的 `addableNodeTypes` 均为 `["*"]`。插件可通过 manifest 的 `graphPolicy` 合并可添加节点白名单；卸载扩展时覆盖层自动移除。
 
+### 能力缝（定义 / 提供商 / 消费）
+
+节点图是唯一执行引擎。一种生成能力只在一处实现，节点只消费：
+
+| 层 | 含义 | 代码 |
+|---|---|---|
+| 定义 | `typeId` + `ports` + `execute` | `registerNodeType` / `NodeTypeDefinition` |
+| 提供商 | 文本 / 图 / 视频 / 语音生成 | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` |
+| 消费 | 边两端 `dataType` 严格相等 | 现有 port policy |
+
+新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。P0 不重写 `builtins.ts` 执行表。
+
+角色提示词（系统提示 + 指令 + 可选解析指针）走 `GraphSkill`（`src/shared/graph/graphSkills.ts`），用节点 `params.skillId` 绑定，**不要**按 `typeId` 绑死（同一 `asset.image` 可扮演九宫格、四宫格、立绘）。检查器插入片段仍用 `instructionPresets`，与 Skill 目录分开。扩展注册额外 Skill 的插件面预留 `registerGraphSkill`，完整 manifest 字段后续再加。
+
+有意的现状（不是漏做）：
+
+- **没有 `NodeTypeDefinition.defaultSkillKind`**：已被 `params.skillId` 替代。`asset.image` 等多角色类型不能按 typeId 绑死默认 Skill。
+- **`applyGraphSkill` 是快照，不是引用**：写入当时的指令/系统提示；之后改 Skill 目录或改节点文案，互不自动跟随。执行层只读 `generateInstruction` / `generateSystemPrompt`。
+- **`system.*` 不在运行时兜底**：目录镜像 `systemPromptSchemes` 的默认文案，供套预设时烤入。未绑 `skillId` 的节点仍走 `resolve*`。若改成「空文案则按 skillId 引用 Skill」，等于另做引用语义，需单独拍板，P0 不做。
+
 ## 最小扩展示例
 
 ```ts
@@ -202,6 +222,7 @@ const scopeDef = getGraphScopeDefinition(graphScope.value)
 - `tests/graphPolicy.test.ts` — 图策略加载、通配、合并
 - `tests/graphCards.test.ts` — 卡片注册表解析（`cardId` / `card` 种类）
 - `tests/graphPorts.test.ts` — 连线
+- `tests/graphSkills.test.ts` — GraphSkill 目录与 `params.skillId`
 - `tests/inspectorMatch.test.ts` / `inspectorDefaults.test.ts` — 检查器
 
 运行：`npm test`（`vitest.config.ts` 已配置 `@shared` 别名）

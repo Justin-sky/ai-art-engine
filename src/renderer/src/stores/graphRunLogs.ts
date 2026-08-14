@@ -49,6 +49,8 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
     targetNodeId?: string
     targetNodeTitle?: string
     message?: string
+    pipelineStage?: string
+    cellKey?: string
   }): void {
     const startedAt = Date.now()
     const session: GraphRunLogSession = {
@@ -57,6 +59,8 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
       hostId: input.hostId,
       mode: input.mode,
       targetNodeId: input.targetNodeId,
+      pipelineStage: input.pipelineStage,
+      cellKey: input.cellKey,
       startedAt,
       status: 'running',
       events: [
@@ -181,6 +185,8 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
       `status=${session.status}`,
       `startedAt=${new Date(session.startedAt).toISOString()}`,
       session.endedAt ? `endedAt=${new Date(session.endedAt).toISOString()}` : null,
+      session.pipelineStage ? `pipelineStage=${session.pipelineStage}` : null,
+      session.cellKey ? `cellKey=${session.cellKey}` : null,
       ''
     ].filter((line): line is string => line !== null)
 
@@ -211,7 +217,7 @@ export const useGraphRunLogsStore = defineStore('graphRunLogs', () => {
       for (const call of apiCalls) {
         lines.push(
           '',
-          `### ${call.kind} node=${call.nodeId}${call.durationMs != null ? ` ${call.durationMs}ms` : ''}`,
+          `### ${call.kind} node=${call.nodeId}${call.skillId ? ` skill=${call.skillId}` : ''}${call.promptHash ? ` hash=${call.promptHash}` : ''}${call.durationMs != null ? ` ${call.durationMs}ms` : ''}`,
           'request:',
           JSON.stringify(call.request, null, 2)
         )

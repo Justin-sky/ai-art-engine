@@ -73,6 +73,8 @@ import {
   selectEpisodeAnchor,
   selectEpisodeAnchors,
   selectEpisodeCell,
+  selectEpisodeKeyframeSpans,
+  formatEpisodeKeyframeSpanNotes,
   selectEpisodeMotion
 } from '../episodeBoardParse'
 import {
@@ -3369,6 +3371,20 @@ export async function executePromptOptimizeNode(
     }
   }
 
+  // 4宫格 / 动态提示词：注入各格节拍区间，末格必须吃掉末端关键帧之后的剩余节拍
+  if (episodeStep === 'sequence' || episodeStep === 'motion') {
+    let beatRows = parseEpisodeBeatBreakdown(incomingText)
+    if (!beatRows.length) {
+      for (const source of mentionSources ?? []) {
+        beatRows = parseEpisodeBeatBreakdown(source.text)
+        if (beatRows.length) break
+      }
+    }
+    const spanNotes = formatEpisodeKeyframeSpanNotes(selectEpisodeKeyframeSpans(beatRows))
+    if (spanNotes) {
+      prompt = `${prompt.trim()}\n\n${spanNotes}`
+    }
+  }
   // 导演审核：始终用最新质检 pack，避免旧图仍固化「最严苛」标准导致几乎必 FAIL
   const systemPrompt = reviewPack
     ? pickEpisodeAgentPrompt(reviewPack, ctx.locale, 'systemPrompt')

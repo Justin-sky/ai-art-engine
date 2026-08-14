@@ -245,6 +245,12 @@ export interface GraphNodeParams {
   generateInstruction?: string
   /** 加工节点系统提示词（可编辑；空则用该类型内置默认） */
   generateSystemPrompt?: string
+  /**
+   * GraphSkill id（快照绑定，非运行时引用）。
+   * 套预设时写入，并同时烤入 generateInstruction / generateSystemPrompt；执行只读这两份文案。
+   * 不按 typeId 设 defaultSkillKind：同一类型可扮演多种角色。
+   */
+  skillId?: string
   /** 加工节点模型 id（剧本=文本，图片/全景=图片，视频=视频，声音=音频） */
   generateModel?: string
   /** 加工节点提供商实例 id */

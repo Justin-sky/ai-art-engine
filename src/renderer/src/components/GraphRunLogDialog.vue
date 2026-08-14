@@ -57,6 +57,8 @@
             <div class="session-meta">
               <span>{{ formatTime(session.startedAt) }}</span>
               <span>{{ modeLabel(session.mode) }}</span>
+              <span v-if="session.pipelineStage">{{ session.pipelineStage }}</span>
+              <span v-if="session.cellKey">{{ session.cellKey }}</span>
             </div>
           </li>
         </ul>
@@ -179,6 +181,8 @@
                 >
                   <div class="api-head">
                     <span>{{ t('graph.logs.apiCall', { n: index + 1, kind: call.kind }) }}</span>
+                    <span v-if="call.skillId" class="muted">{{ call.skillId }}</span>
+                    <span v-if="call.promptHash" class="muted">{{ call.promptHash }}</span>
                     <span v-if="call.durationMs != null" class="muted">
                       {{ formatDuration(call.durationMs) }}
                     </span>

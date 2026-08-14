@@ -174,4 +174,35 @@ describe('graphRunLogBridge', () => {
     expect(errEvent?.message).toBe('mapped:GRAPH_CYCLE')
     expect(errEvent?.errorCode).toBe('GRAPH_CYCLE')
   })
+
+  it('attaches skillId and promptHash on API calls', () => {
+    const text = createNodeFromType('prompt.optimize', { x: 0, y: 0 }, {
+      id: 'n-opt',
+      params: { skillId: 'episode.breakdown', generateInstruction: 'x' }
+    })
+    const graph: GraphDocument = {
+      nodes: [text],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+    const store = useGraphRunLogsStore()
+    const bridge = createGraphRunLogBridge({
+      runId: 'run-skill',
+      title: 'Skill run',
+      mode: 'task',
+      graph,
+      pipelineStage: 'breakdown'
+    })
+    bridge.onNodeUpdate('n-opt', { status: 'running' })
+    bridge.recordApiCall({
+      kind: 'generateText',
+      request: { prompt: 'hello', system: 'sys' }
+    })
+    const session = store.sessions[0]!
+    expect(session.pipelineStage).toBe('breakdown')
+    const call = session.apiCalls[0]
+    expect(call?.skillId).toBe('episode.breakdown')
+    expect(call?.promptHash).toMatch(/^[0-9a-f]{8}$/)
+    expect(call?.nodeId).toBe('n-opt')
+  })
 })

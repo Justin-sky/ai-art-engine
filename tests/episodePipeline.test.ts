@@ -3,8 +3,10 @@ import {
   applyEpisodeReviewMarks,
   applyEpisodeAgentReview,
   createEpisodeAgentState,
+  EPISODE_AGENT_MOTION_9,
   episodeFailReasonForStep,
   extractEpisodeBeatNumber,
+  formatEpisodeKeyframeSpanNotes,
   getAiWorkflowPresetPlan,
   materializeGraphPlan,
   parseEpisodeBeatBoard,
@@ -12,9 +14,11 @@ import {
   parseEpisodeDirectorVerdict,
   parseEpisodeMotionPrompts,
   parseEpisodeSequenceBoard,
+  replaceEpisodeMotionPrompt,
   selectEpisodeAnchors,
   selectEpisodeAnchor,
   selectEpisodeCell,
+  selectEpisodeKeyframeSpans,
   selectEpisodeMotion
 } from '../src/shared/graph'
 
@@ -126,6 +130,47 @@ describe('episode board parse', () => {
     expect(anchors.map((a) => a.index)).toEqual([1, 2, 3])
   })
 
+  it('extends the last keyframe span through remaining tail beats', () => {
+    const header = '| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 |'
+    const marked = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+      .map((n) => `| ${n} | 锚点${n} | x | ${n} | 是 |`)
+      .join('\n')
+    const rows = parseEpisodeBeatBreakdown(
+      `${header}\n${marked}\n| 10 | 余波 | x | 4 | 否 |\n| 11 | 收束 | x | 3 | 否 |`
+    )
+    const spans = selectEpisodeKeyframeSpans(rows, 9)
+    expect(spans).toHaveLength(9)
+    expect(spans[8]).toMatchObject({
+      cell: 9,
+      fromBeat: 9,
+      toBeat: 11,
+      keyframeBeat: 9
+    })
+    expect(spans[8]?.tailBeats.map((beat) => beat.index)).toEqual([10, 11])
+    const notes = formatEpisodeKeyframeSpanNotes(spans)
+    expect(notes).toContain('末端关键帧')
+    expect(notes).toContain('#10')
+    expect(notes).toContain('收束')
+  })
+
+  it('keeps last span at the keyframe when it is already the final beat', () => {
+    const header = '| 节拍编号 | 事件摘要 | 观众获得 | 情绪强度 | 关键锚点 |'
+    const marked = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+      .map((n) => `| ${n} | 事件${n} | x | ${n} | 是 |`)
+      .join('\n')
+    const rows = parseEpisodeBeatBreakdown(`${header}\n${marked}`)
+    const spans = selectEpisodeKeyframeSpans(rows, 9)
+    expect(spans[8]).toMatchObject({ fromBeat: 9, toBeat: 9, keyframeBeat: 9 })
+    expect(spans[8]?.tailBeats).toEqual([])
+    expect(formatEpisodeKeyframeSpanNotes(spans)).not.toContain('并含其后剩余节拍')
+  })
+
+  it('asks motion-9 prompts to cover tail beats after the last keyframe', () => {
+    expect(EPISODE_AGENT_MOTION_9.systemPromptZh).toContain('末端关键帧')
+    expect(EPISODE_AGENT_MOTION_9.systemPromptZh).toContain('直至剧本结束')
+    expect(EPISODE_AGENT_MOTION_9.instructionZh).toContain('末端关键帧')
+  })
+
   it('parses sequence board into 36 cells', () => {
     const rows = parseEpisodeSequenceBoard(SEQUENCE_BOARD)
     expect(rows.length).toBe(8)
@@ -141,6 +186,11 @@ describe('episode board parse', () => {
     expect(rows[0]).toMatchObject({ groupIndex: 1, cellIndex: 1, key: '格1-1' })
     expect(rows[1]?.key).toBe('格1-2')
     expect(selectEpisodeMotion(MOTION_PROMPTS, 1, 2)?.text).toContain('沈约惊坐起身')
+    const patched = replaceEpisodeMotionPrompt(MOTION_PROMPTS, 1, 2, '- **Duration**: 5秒')
+    expect(patched).toContain('## 镜头2')
+    expect(selectEpisodeMotion(patched, 1, 2)?.text).toContain('Duration**: 5秒')
+    expect(selectEpisodeMotion(patched, 1, 1)?.text).toContain('Dolly In')
+    expect(replaceEpisodeMotionPrompt(MOTION_PROMPTS, 9, 1, 'x')).toBeNull()
     expect(selectEpisodeMotion(MOTION_PROMPTS, 3, 1)).toBeNull()
   })
 })
@@ -272,6 +322,7 @@ describe('shortDrama agent pipeline preset', () => {
     const breakdown = nodes.find((n) => n.params.episodeStep === 'breakdown')
     expect(breakdown).toBeTruthy()
     expect(breakdown?.params.generateSystemPrompt).toContain('分镜师')
+    expect(breakdown?.params.skillId).toBe('episode.breakdown')
     const review = nodes.find((n) => n.params.episodeReviewTarget === 'motion')
     expect(review).toBeTruthy()
     const video = nodes.find((n) => n.typeId === 'asset.video')
@@ -279,6 +330,9 @@ describe('shortDrama agent pipeline preset', () => {
     expect(img9?.params.episodeStep).toBe('beatboard')
     const img4 = nodes.find((n) => n.title?.includes('4宫格拼图'))
     expect(img4?.params.episodeStep).toBe('sequence')
+    expect(img9?.params.skillId).toBe('episode.image.grid9')
+    expect(img4?.params.skillId).toBe('episode.image.grid4')
+    expect(video?.params.skillId).toBe('episode.video.grid4')
     expect(video?.params.generateFrameMode).toBeUndefined()
     const edges = result.document!.edges
     const titleById = new Map<string, string>()

@@ -42,6 +42,10 @@ export interface GraphRunLogApiCall {
   ts: number
   kind: 'generateText' | 'generateImage' | 'generateVideo' | 'generateSpeech'
   nodeId: string
+  /** 节点 params.skillId；无则省略 */
+  skillId?: string
+  /** 进模型文本的短哈希（仅日志，不参与跳过已完成） */
+  promptHash?: string
   request: {
     prompt?: string
     /** TTS / 声音设计输入 */
@@ -114,12 +118,32 @@ export interface GraphRunLogSession {
   hostId?: string
   mode: GraphRunLogMode
   targetNodeId?: string
+  /** 短剧弹窗入队时的阶段（breakdown / beatboard / video 等） */
+  pipelineStage?: string
+  /** 短剧弹窗入队时的格键（如 3-2） */
+  cellKey?: string
   startedAt: number
   endedAt?: number
   status: GraphRunLogSessionStatus
   events: GraphRunLogEvent[]
   /** 按节点关联的 API 调用明细 */
   apiCalls: GraphRunLogApiCall[]
+}
+
+export interface GraphRunLogMeta {
+  pipelineStage?: string
+  cellKey?: string
+}
+
+/** FNV-1a 32-bit hex；仅用于 RunLog 对账，不参与跳过已完成 */
+export function hashPromptForLog(...parts: Array<string | undefined | null>): string {
+  const text = parts.filter((part) => part != null && part !== '').join('\n')
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
 function truncateText(text: string, max = LOG_TEXT_MAX): { text: string; textLength: number } {

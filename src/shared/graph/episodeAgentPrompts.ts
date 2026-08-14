@@ -107,7 +107,7 @@ export const EPISODE_AGENT_SEQUENCE: EpisodeAgentPromptPack = {
 2. 组内景别遵循 定场(全景/远景) → 引入(中景) → 冲突(近景/特写) → 收尾(全景/中景) 的视觉推进。
 3. 严格遵循“渐松渐紧”：冲突前镜头渐紧（景别收近），冲突后渐松。
 4. 人物、服装、主光方向与 9宫格一致。
-5. 每组覆盖完整叙事区间：组N 覆盖「锚点N-1 之后到锚点N（含锚点N）」之间的节拍内容，锚点N为本组关键帧；除关键帧外，必须把区间内的普通节拍内容并入本组 4 格，禁止只画关键帧单帧。
+5. 每组覆盖完整叙事区间：组N 覆盖「锚点N-1 之后到锚点N（含锚点N）」之间的节拍内容，锚点N为本组关键帧；除关键帧外，必须把区间内的普通节拍内容并入本组 4 格，禁止只画关键帧单帧。最后一组是末端关键帧：若该锚点之后还有节拍，必须全部并入最后一组（尤其收尾格），覆盖到剧本结束，禁止在最后锚点画面处截断。
 6. 组与组之间按节拍顺序连续衔接：整本剧本的节拍内容必须被全部展开，不丢节拍、不跳内容。
 7. 只输出清单，不要解释。`,
   systemPromptEn: `${STORYBOARD_COMMON_EN}
@@ -125,7 +125,7 @@ Hard rules:
 2. Shot flow per group: wide/establish → medium/introduce → close/conflict → wide/medium/resolve.
 3. Rhythm tightens toward the conflict and loosens after it.
 4. Characters, costumes, and key-light direction stay consistent with the 9-grid board.
-5. Each group covers a complete narrative span: group N covers the beats after anchor N-1 up to and including anchor N (the keyframe); besides the keyframe, merge the ordinary beats in that span into the group's 4 frames — never draw only the single keyframe.
+5. Each group covers a complete narrative span: group N covers the beats after anchor N-1 up to and including anchor N (the keyframe); besides the keyframe, merge the ordinary beats in that span into the group's 4 frames — never draw only the single keyframe. The last group is the terminal keyframe: any beats after that anchor must be merged into the last group (especially the resolve frame), covering through the end of the script — do not cut off at the final keyframe.
 6. Groups connect in beat order; every beat of the script must be expanded, none skipped.
 7. Output the list only — no commentary.`,
   instructionZh: `请基于上游节拍拆解表与9宫格分镜表生成 4宫格动态分镜表（9 组 × 4 格 = 36 格），每组覆盖锚点及其相邻普通节拍，严格按系统提示词规定的格式输出。`,
@@ -178,9 +178,10 @@ Hard rules:
 export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
   systemPromptZh: `你是视频导演兼动画指导。你的任务是把「完整剧本 + 9宫格分镜表」转化为 9 条可直接用于图生视频模型生成的动态提示词。
 
-每条提示词必须覆盖“上一关键帧结束点到本关键帧”的完整剧情区间：
+每条提示词必须覆盖完整剧情区间：
 - 第1格：从剧本开头到关键帧1。
-- 第2~9格：从上一格关键帧到本格关键帧之间的所有剧情、动作、台词、情绪转折，不得跳段、缩写或丢失剧本信息。
+- 第2格到倒数第2格：从上一格关键帧到本格关键帧之间的所有剧情、动作、台词、情绪转折，不得跳段、缩写或丢失剧本信息。
+- 最后一格（末端关键帧）：从上一格关键帧到本格关键帧，并必须继续覆盖本关键帧之后直至剧本结束的全部剩余节拍、对白与收束；禁止停在最后一个关键帧画面处截断。
 - 对白必须完整逐字保留；对白直接写进对应秒段的动作叙述中（用「说话人+语气：”台词“」），不要在结尾单独重复一份对白清单。该区间没有对白时写“无对白”。
 
 严格输出：
@@ -191,7 +192,7 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 - **时间轴剧情**:
   - 0-X秒：画面、主体动作、镜头拍法、对白/声音
   - X-Y秒：承接上一段，画面、主体动作、镜头拍法、对白/声音
-  - Y-Z秒：收束到本关键帧画面；画面、主体动作、镜头拍法、对白/声音
+  - Y-Z秒：收束到本关键帧画面；画面、主体动作、镜头拍法、对白/声音（最后一格须在到达本关键帧后继续写到本集结束，不得停在关键帧）
 - **镜头运动**: 一个主要运动（推轨/摇镜/手持/固定等），写明方向与起止点
 - **环境/灯光**: 主光源方向 + 场景环境变化
 - **音频**: 环境声 / 指定音效 / 人声 / 静音（有对白时优先写“人声+环境声/音效”）
@@ -200,16 +201,17 @@ export const EPISODE_AGENT_MOTION_9: EpisodeAgentPromptPack = {
 硬性要求：
 1. 每条时长必须在 3~15 秒，时间轴从 0 秒开始连续覆盖到该时长，不重叠、不留空。
 2. 每个时间区间必须写出“画面、动作、镜头、对白/声音”的变化，避免只写静态画面。
-3. 完整覆盖从上一关键帧到本关键帧的剧本内容；禁止为缩短时长而删除对白、剧情或情绪转折。
+3. 完整覆盖对应区间的剧本内容；最后一格必须吃掉末端关键帧之后的剩余剧情。禁止为缩短时长而删除对白、剧情或情绪转折。
 4. 一格优先按一镜到底处理：用连续的推、拉、摇、移、跟随或人物入画/出画描述变化；只有当该区间原本就包含明确分镜切换时，才写“切至/转场”，并写清切入的是什么景别与画面。
 5. 避免“史诗/绝美/8K”等空泛词，只写具体可见的动作、物件、光线、声音与结束状态。
 6. 只输出清单，不要解释。
 7. 服装、道具、武器、场景、发型等静态外观只写名称（如：棒球帽、机能夹克、金箍棒、西瓜摊），不写颜色/材质/形态，这些外观细节以首帧参考图为准；但动作引起的临时可见变化（出汗、脸红、青筋、衣料被风吹动、帽檐/头发摆动、油光反光、血迹污渍等）必须照实描述。`,
   systemPromptEn: `You are a video director and animation supervisor. Convert the full script and the 9-grid beat board into 9 image-to-video motion prompts ready for the target image-to-video model.
 
-Each prompt must cover the complete story interval from the previous keyframe to this keyframe:
+Each prompt must cover a complete story interval:
 - Shot 1: from the start of the script to keyframe 1.
-- Shots 2–9: every plot point, action, line of dialogue, and emotional turn between the previous keyframe and this keyframe. Do not skip, compress, or lose script information.
+- Shots 2 through the second-to-last: every plot point, action, line of dialogue, and emotional turn between the previous keyframe and this keyframe. Do not skip, compress, or lose script information.
+- Last shot (terminal keyframe): from the previous keyframe to this keyframe, then continue through every remaining beat, line, and resolution after this keyframe to the end of the script. Do not cut off at the final keyframe still.
 - Preserve all dialogue verbatim and embed it directly inside the matching timestamped action (as Speaker (tone): "line"). Do not repeat a separate dialogue list at the end. Write "No dialogue" when the interval has none.
 
 Output strictly:
@@ -220,7 +222,7 @@ Output strictly:
 - **Timeline**:
   - 0–Xs: frame, subject action, camera, dialogue/sound
   - X–Ys: continue from the previous state; frame, subject action, camera, dialogue/sound
-  - Y–Zs: resolve into this keyframe; frame, subject action, camera, dialogue/sound
+  - Y–Zs: resolve into this keyframe; frame, subject action, camera, dialogue/sound (the last shot must continue past this keyframe to the episode end)
 - **Camera Move**: one primary move (dolly/pan-tilt/handheld/static) with direction and endpoints
 - **Environment/Lighting**: key-light direction + scene-environment changes
 - **Audio**: ambience / specific SFX / voice / silence (prefer "voice + ambience/SFX" when dialogue is present)
@@ -229,13 +231,13 @@ Output strictly:
 Hard rules:
 1. Each duration must be 3–15 seconds; the timeline must start at 0 and cover the whole duration without gaps or overlaps.
 2. Every timestamp segment must describe the visible change in frame, action, camera, dialogue/sound.
-3. Cover the full script interval from the previous keyframe to this keyframe; never drop dialogue, plot, or emotional turns to shorten the shot.
+3. Cover the full script interval for that shot; the last shot must absorb remaining plot after the terminal keyframe. Never drop dialogue, plot, or emotional turns to shorten the shot.
 4. Prefer one continuous take per cell: describe changes as a continuous dolly, pan, tilt, tracking, or characters entering/leaving frame. Write "cut to / transition" only when the source interval actually contains an explicit shot change, and state what frame and shot size it cuts to.
 5. Avoid empty words like "epic", "stunning", or "8K"; write only concrete visible action, props, light, sound, and endpoint.
 6. Output the list only — no commentary.
 7. Name static appearance only (hat, jacket, staff, melon stand) — never restate color, material, or shape; those details come from the first-frame reference image. Keep transient, action-driven changes (sweat, flushing, veins, fabric blown by wind, hat/hair shifting, glare/reflection, blood/stains) described explicitly.`,
-  instructionZh: `请基于【完整剧本】@1 与【9宫格分镜表】@2，为 9 个宫格各生成 1 条图生视频动态提示词，严格按系统提示词规定的格式输出。`,
-  instructionEn: `Generate 9 image-to-video motion prompts from the full script (@1) and the 9-grid beat board (@2), strictly following the format in the system prompt.`
+  instructionZh: `请基于【完整剧本】@1、【节拍拆解表】@2 与【9宫格分镜表】@3，为 9 个宫格各生成 1 条图生视频动态提示词，严格按系统提示词规定的格式输出。最后一格必须覆盖末端关键帧之后直至剧本结束的剩余节拍。`,
+  instructionEn: `Generate 9 image-to-video motion prompts from the full script (@1), Beat Breakdown (@2), and 9-grid beat board (@3), strictly following the format in the system prompt. The last shot must cover remaining beats after the terminal keyframe through the end of the script.`
 }
 
 const DIRECTOR_PASS_STANDARD_ZH = `通过标准（必须遵守，禁止默认 PASS）：
@@ -341,11 +343,11 @@ const REVIEW_CHECK_BEATBOARD_EN = `- Structure & fields: 9 cells, each containin
 - Shot grammar: meaningless shot-size repetition, repeated same-size cuts, axis crossing, or missing key-prop close-ups are defects.`
 
 const REVIEW_CHECK_SEQUENCE_ZH = `- 数量与结构：9 组×4 格，共 36 格；组内严格 定场→引入→冲突→收尾。
-- 覆盖完整性：每段必须覆盖锚点区间内的全部普通节拍、台词与情绪转折，不得只画关键帧。
+- 覆盖完整性：每段必须覆盖锚点区间内的全部普通节拍、台词与情绪转折，不得只画关键帧；最后一组必须包含末端关键帧之后直至结束的剩余节拍。
 - 景别节奏：由远到近再放松，冲突前收紧、冲突后放松；禁止景别长期不变。
 - 一致性：与9宫格的人物、服装、主光、场景保持一致。`
 const REVIEW_CHECK_SEQUENCE_EN = `- Count & structure: 9 groups × 4 cells = 36 cells; each group strictly follows establish → introduce → conflict → resolve.
-- Coverage: each span must include all ordinary beats, dialogue, and emotional turns between anchors, not just the keyframe.
+- Coverage: each span must include all ordinary beats, dialogue, and emotional turns between anchors, not just the keyframe; the last group must include remaining beats after the terminal keyframe through the end.
 - Shot rhythm: wide to tight, then release; tighten before conflict, relax after; no long runs of unchanged shot size.
 - Consistency: match the 9-grid board's character, costume, key light, and scene.`
 
@@ -359,11 +361,11 @@ const REVIEW_CHECK_MOTION_EN = `- Count & fields: 36 rows, each with Camera Move
 - Continuity & rhythm: adjacent shots have coherent screen direction, momentum, and pauses; durations are 3–5 seconds.`
 
 const REVIEW_CHECK_MOTION_9_ZH = `- 数量与时长：9 条，时长 3~15 秒且时间轴从 0 连续覆盖到结尾，无空隙或重叠。
-- 覆盖完整性：逐段覆盖上一关键帧到本关键帧的剧情、动作、台词、情绪转折；不得压缩或丢失。
+- 覆盖完整性：逐段覆盖上一关键帧到本关键帧的剧情、动作、台词、情绪转折；最后一格必须覆盖末端关键帧之后直至剧本结束的剩余内容，不得在最后关键帧截断。
 - 台词保真：逐字保留台词与说话人，嵌在对应时间轴；缺台词或改写直接 FAIL。
 - 镜头与环境：主要镜头运动、主光方向和场景变化清楚；遵守无字幕、无背景音乐要求。`
 const REVIEW_CHECK_MOTION_9_EN = `- Count & duration: 9 rows, each 3–15 seconds, with a timeline covering 0 to the end without gaps or overlap.
-- Coverage: each span fully covers story, action, dialogue, and emotional turns from the previous keyframe to this keyframe; no compression or loss.
+- Coverage: each span fully covers story, action, dialogue, and emotional turns from the previous keyframe to this keyframe; the last shot must also cover remaining content after the terminal keyframe through the end of the script — do not cut off at the last keyframe.
 - Dialogue fidelity: preserve dialogue and speaker verbatim inside the matching timeline; missing or paraphrased dialogue is an automatic FAIL.
 - Camera & environment: primary camera move, key-light direction, and scene changes are explicit; honor the no-subtitles and no-background-music requirements.`
 
@@ -452,8 +454,8 @@ export const EPISODE_AGENT_REVIEW_MOTION_9 = directorReviewPrompt(
   REVIEW_CHECK_MOTION_9_EN,
   '9宫格动态提示词表',
   '9-grid Motion Prompt Table',
-  '@1 为原始单集剧本，@2 为9宫格分镜表，@3 为待审核的9宫格动态提示词表。',
-  '@1 is the original episode screenplay, @2 is the 9-grid Beat Board, and @3 is the 9-grid Motion Prompt Table under review.'
+  '@1 为原始单集剧本，@2 为节拍拆解表，@3 为9宫格分镜表，@4 为待审核的9宫格动态提示词表。最后一格必须覆盖末端关键帧之后的剩余节拍。',
+  '@1 is the original episode screenplay, @2 is the Beat Breakdown, @3 is the 9-grid Beat Board, and @4 is the 9-grid Motion Prompt Table under review. The last shot must cover remaining beats after the terminal keyframe.'
 )
 
 export const EPISODE_AGENT_PROMPT_PACKS = {

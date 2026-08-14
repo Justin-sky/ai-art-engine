@@ -1,5 +1,6 @@
 import {
   getNodeType,
+  hashPromptForLog,
   resolveNodeType,
   summarizeInputPortsForLog,
   summarizeOutputPortsForLog,
@@ -37,6 +38,8 @@ export interface GraphRunLogBridgeOptions {
   /** 节点展示名（含 i18n）；未传则用持久化 title / 英文 label */
   resolveNodeTitle?: (node: GraphNode | undefined, fallbackId: string) => string
   startMessage?: string
+  pipelineStage?: string
+  cellKey?: string
 }
 
 export interface GraphRunLogBridge {
@@ -81,7 +84,9 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     mode: options.mode,
     targetNodeId: options.targetNodeId,
     targetNodeTitle,
-    message: options.startMessage
+    message: options.startMessage,
+    pipelineStage: options.pipelineStage,
+    cellKey: options.cellKey
   })
 
   function resolveMessage(code: string | undefined): string | undefined {
@@ -158,9 +163,18 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
   ): void {
     const nodeId = call.nodeId ?? currentRunningNodeId ?? options.targetNodeId
     if (!nodeId) return
+    const node = byId.get(nodeId)
+    const skillId = node?.params?.skillId?.trim() || undefined
+    const promptHash = hashPromptForLog(
+      call.request?.prompt,
+      call.request?.system,
+      call.request?.input
+    )
     store.appendApiCall(options.runId, {
       ...call,
-      nodeId
+      nodeId,
+      ...(skillId ? { skillId } : {}),
+      promptHash
     })
   }
 
