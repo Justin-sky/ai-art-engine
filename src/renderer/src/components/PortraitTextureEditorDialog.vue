@@ -13,36 +13,47 @@
     <div class="editor-root">
       <div class="editor-body">
         <div class="preview-pane">
-          <div
-            v-if="sourceLoading"
-            class="preview-empty"
-          >
-            {{ t('graph.editor.loadingSource') }}
-          </div>
-          <img
-            v-else-if="currentPreviewUrl"
-            :src="currentPreviewUrl"
-            alt=""
-            class="preview-img"
-            draggable="false"
-          >
-          <div
-            v-else
-            class="preview-empty"
-          >
-            {{ t('graph.portraitQuality.previewEmpty') }}
-          </div>
+          <div class="preview-stack">
+            <div class="preview-half">
+              <span class="half-label">{{ t('graph.portraitQuality.before') }}</span>
+              <img
+                v-if="sourceUrl"
+                :src="sourceUrl"
+                alt=""
+                class="preview-img"
+                draggable="false"
+              >
+              <div
+                v-else-if="sourceLoading"
+                class="preview-empty"
+              >
+                {{ t('graph.editor.loadingSource') }}
+              </div>
+              <div
+                v-else
+                class="preview-empty"
+              >
+                {{ t('graph.portraitQuality.previewEmpty') }}
+              </div>
+            </div>
 
-          <button
-            v-if="sourceUrl"
-            type="button"
-            class="compare-btn"
-            :class="{ active: showBefore }"
-            @pointerdown.stop
-            @click="showBefore = !showBefore"
-          >
-            {{ showBefore ? t('graph.portraitQuality.before') : t('graph.portraitQuality.after') }}
-          </button>
+            <div class="preview-half">
+              <span class="half-label">{{ t('graph.portraitQuality.after') }}</span>
+              <img
+                v-if="previewUrl"
+                :src="previewUrl"
+                alt=""
+                class="preview-img"
+                draggable="false"
+              >
+              <div
+                v-else
+                class="preview-empty"
+              >
+                {{ t('graph.portraitQuality.previewEmpty') }}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="params-pane">
@@ -169,11 +180,8 @@ const modelDraft = reactive({
 })
 
 const previewUrl = ref('')
-const showBefore = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let previewToken = 0
-
-const currentPreviewUrl = computed(() => (showBefore.value ? props.sourceUrl || '' : previewUrl.value))
 
 const dirty = computed(() => {
   const a = normalizePortraitQuality(props.setup)
@@ -270,7 +278,6 @@ watch(
     Object.assign(draft, normalizePortraitQuality(props.setup))
     modelDraft.generateModel = props.generateModel ?? ''
     modelDraft.generateProviderInstanceId = props.generateProviderInstanceId ?? ''
-    showBefore.value = false
     void nextTick(() => {
       hydrating.value = false
       emitPreview()
@@ -318,21 +325,45 @@ watch(modelDraft, () => emitPreview(), { deep: true })
 }
 
 .preview-pane {
-  position: relative;
   flex: 0 0 260px;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-panel);
   overflow: hidden;
 }
 
+.preview-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-half {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-half + .preview-half {
+  border-top: 1px solid var(--border);
+}
+
+.half-label {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .preview-img {
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   object-fit: contain;
   display: block;
 }
@@ -343,24 +374,6 @@ watch(modelDraft, () => emitPreview(), { deep: true })
   text-align: center;
   padding: 20px;
   line-height: 1.5;
-}
-
-.compare-btn {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.compare-btn.active {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 
 .params-pane {
