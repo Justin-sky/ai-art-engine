@@ -6421,24 +6421,42 @@ const portraitTexture = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as PortraitTextureState | null,
+  sourceUrl: '' as string,
+  sourceLoading: false,
   generateModel: '' as string,
   generateProviderInstanceId: '' as string
 })
 
-function onPortraitTextureOpen(nodeId: string): void {
+async function onPortraitTextureOpen(nodeId: string): Promise<void> {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   portraitTexture.nodeId = nodeId
   portraitTexture.setup = readPortraitTextureFromNode(node.params)
+  portraitTexture.sourceUrl = ''
+  portraitTexture.sourceLoading = true
   portraitTexture.generateModel = node.params.generateModel ?? ''
   portraitTexture.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   portraitTexture.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      portraitTexture.sourceUrl = url
+      portraitTexture.sourceLoading = false
+    },
+    () => portraitTexture.open && portraitTexture.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (portraitTexture.open && portraitTexture.nodeId === nodeId) {
+    portraitTexture.sourceLoading = false
+  }
 }
 
 function closePortraitTexture(): void {
   portraitTexture.open = false
   portraitTexture.nodeId = ''
   portraitTexture.setup = null
+  portraitTexture.sourceUrl = ''
+  portraitTexture.sourceLoading = false
   portraitTexture.generateModel = ''
   portraitTexture.generateProviderInstanceId = ''
 }

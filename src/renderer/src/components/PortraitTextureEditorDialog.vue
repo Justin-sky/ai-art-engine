@@ -3,32 +3,62 @@
     :open="open"
     :title="windowTitle"
     :z-index="1200"
-    :default-width="520"
-    :default-height="420"
-    :min-width="420"
-    :min-height="360"
+    :default-width="720"
+    :default-height="500"
+    :min-width="560"
+    :min-height="400"
     body-class="pad-none"
     @close="onClose"
   >
     <div class="editor-root">
-      <div
-        v-for="row in fields"
-        :key="row.field"
-        class="option-row"
-      >
-        <span class="row-label">{{ t(`graph.portraitTexture.fields.${row.labelKey}`) }}</span>
-        <div class="seg">
-          <button
-            v-for="opt in row.options"
-            :key="opt.id"
-            type="button"
-            class="seg-btn"
-            :class="{ active: draft[row.field] === opt.id }"
-            :aria-pressed="draft[row.field] === opt.id"
-            @click="setField(row.field, opt.id)"
+      <div class="editor-body">
+        <div class="preview-pane">
+          <div
+            v-if="sourceLoading"
+            class="preview-empty"
           >
-            {{ t(`graph.portraitTexture.options.${row.field}.${opt.titleKey}`) }}
-          </button>
+            {{ t('graph.editor.loadingSource') }}
+          </div>
+          <img
+            v-else-if="sourceUrl"
+            :src="sourceUrl"
+            alt=""
+            class="preview-img"
+            draggable="false"
+          >
+          <div
+            v-else
+            class="preview-empty"
+          >
+            {{ t('graph.portraitTexture.previewEmpty') }}
+          </div>
+        </div>
+
+        <div class="params-pane">
+          <div
+            v-for="row in fields"
+            :key="row.field"
+            class="option-row"
+          >
+            <span class="row-label">{{ t(`graph.portraitTexture.fields.${row.labelKey}`) }}</span>
+            <div class="seg">
+              <button
+                v-for="(opt, idx) in row.options"
+                :key="opt.id"
+                type="button"
+                class="seg-btn"
+                :class="[
+                  { active: draft[row.field] === opt.id },
+                  `level-${idx}`
+                ]"
+                :aria-pressed="draft[row.field] === opt.id"
+                @click="setField(row.field, opt.id)"
+              >
+                <span class="opt-swatch" />
+                <span class="opt-label">{{ t(`graph.portraitTexture.options.${row.field}.${opt.titleKey}`) }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -69,6 +99,8 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 const props = defineProps<{
   open: boolean
   setup?: Partial<PortraitTextureState> | null
+  sourceUrl?: string
+  sourceLoading?: boolean
   generateModel?: string
   generateProviderInstanceId?: string
 }>()
@@ -193,10 +225,53 @@ function onClose(): void {
 .editor-root {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px 18px 12px;
+  gap: 12px;
+  padding: 14px 16px 12px;
   box-sizing: border-box;
   height: 100%;
+}
+
+.editor-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-pane {
+  flex: 0 0 240px;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.preview-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+  line-height: 1.5;
+}
+
+.params-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
 }
 
 .option-row {
@@ -218,14 +293,17 @@ function onClose(): void {
 
 .seg-btn {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
-  border-radius: 8px;
-  padding: 8px 28px 8px 10px;
+  border-radius: 9px;
+  padding: 10px 8px;
   font-size: 12px;
   cursor: pointer;
-  white-space: nowrap;
   transition:
     color 140ms ease,
     border-color 140ms ease,
@@ -252,11 +330,10 @@ function onClose(): void {
 .seg-btn.active::after {
   content: '✓';
   position: absolute;
-  right: 9px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 6px;
+  top: 6px;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -267,6 +344,35 @@ function onClose(): void {
 .seg-btn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 2px;
+}
+
+.opt-swatch {
+  display: block;
+  width: 38px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  transition: background 140ms ease;
+}
+
+.level-0 .opt-swatch {
+  background: linear-gradient(90deg, var(--accent, #6aa8ff) 33%, var(--bg-input) 33%);
+}
+
+.level-1 .opt-swatch {
+  background: linear-gradient(90deg, var(--accent, #6aa8ff) 66%, var(--bg-input) 66%);
+}
+
+.level-2 .opt-swatch {
+  background: linear-gradient(90deg, var(--accent, #6aa8ff) 100%, var(--bg-input) 100%);
+}
+
+.opt-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
 }
 
 .editor-footer {

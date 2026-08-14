@@ -79,6 +79,8 @@ export type GraphEditorDialogsApi = {
   portraitTexture: {
     open: boolean
     setup: PortraitTextureState | null
+    sourceUrl: string
+    sourceLoading: boolean
     generateModel: string
     generateProviderInstanceId: string
   }

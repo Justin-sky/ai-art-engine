@@ -1619,6 +1619,7 @@ export default {
     portraitTexture: {
       appMark: 'Portrait texture',
       hint: 'Double-click to adjust texture and model; run the node to generate',
+      previewEmpty: 'Connect an image input to preview here',
       outputPrompt: 'Final prompt',
       promptEmpty: '(Built from current texture options)',
       resetParams: 'Reset parameters',

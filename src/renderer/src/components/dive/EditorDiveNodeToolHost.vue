@@ -106,6 +106,8 @@
       v-else-if="viewId === 'node.portraitTexture' && api.portraitTexture.open"
       :open="true"
       :setup="api.portraitTexture.setup"
+      :source-url="api.portraitTexture.sourceUrl"
+      :source-loading="api.portraitTexture.sourceLoading"
       :generate-model="api.portraitTexture.generateModel"
       :generate-provider-instance-id="api.portraitTexture.generateProviderInstanceId"
       @close="onClose(api.closePortraitTexture)"

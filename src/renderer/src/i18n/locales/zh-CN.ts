@@ -1609,6 +1609,7 @@ export default {
     portraitTexture: {
       appMark: '人像质感调节',
       hint: '双击调节质感与模型；运行节点以生成结果',
+      previewEmpty: '接入图片输入后可在此预览',
       outputPrompt: '最终提示词',
       promptEmpty: '（根据当前质感选项生成）',
       resetParams: '重置参数',
