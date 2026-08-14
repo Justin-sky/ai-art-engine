@@ -87,20 +87,22 @@
             @change="persistGenerateConfig"
           />
         </label>
-        <InstructionModelSelect
-          v-if="modelOptions.length > 0"
-          v-model="selectedModelKey"
-          :options="modelOptions"
-          :title="generateModelTitle"
-          :empty-label="modelsHint"
-          @change="persistGenerateConfig"
-        />
-        <ImageGenerateParamsSelect
-          v-if="isImage && selectedModelKey"
-          v-model="imageGenerateParams"
-          :model-key="selectedModelKey"
-          @change="persistImageGenerateParams"
-        />
+        <div class="gen-model-row">
+          <InstructionModelSelect
+            v-if="modelOptions.length > 0"
+            v-model="selectedModelKey"
+            :options="modelOptions"
+            :title="generateModelTitle"
+            :empty-label="modelsHint"
+            @change="persistGenerateConfig"
+          />
+          <ImageGenerateParamsSelect
+            v-if="isImage && selectedModelKey"
+            v-model="imageGenerateParams"
+            :model-key="selectedModelKey"
+            @change="persistImageGenerateParams"
+          />
+        </div>
         <p
           v-if="modelOptions.length === 0"
           class="hint"
@@ -1772,6 +1774,13 @@ textarea,
   padding-top: 4px;
   border-top: 1px solid var(--border);
   margin-top: 4px;
+}
+
+.gen-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .generated-images,
