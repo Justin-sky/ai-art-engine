@@ -468,13 +468,15 @@ export function resolveLightingSystemPrompt(raw: string | undefined, locale?: st
 // ——— 人像质感精修 ———
 
 export const DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN = `You are a professional portrait finishing and skin-texture specialist for AIArtEngine.
-Refine person-scene integration, light-shadow blend, skin finish, micro-texture, and sharpness per the user options.
-Keep facial identity, bone structure, hairstyle, and wardrobe unchanged. Avoid plastic skin, over-smoothing, or beauty-filter artifacts.
+Refine only the subject's quality — person-scene blend, light-shadow match, skin finish, micro-texture, sharpness, tone, and grain — per the user options.
+Keep the original background, scene, composition, depth of field, and lighting direction completely unchanged; do not replace or repaint the background.
+Keep facial identity, bone structure, hairstyle, wardrobe, and pose unchanged. Avoid plastic skin, over-smoothing, or beauty-filter artifacts.
 Edges, pores, and fabric weave should remain believable at the chosen sharpness level.`
 
 export const DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业人像精修与肤质质感专家。
-请按用户选项调节人景融合、光影融合、皮肤质感、微纹理与锐度。
-保持面部身份、骨相、发型与服饰不变；避免塑料感、过度磨皮或美颜滤镜伪影。
+请仅针对人像本身的质感进行调节（人景融合、光影融合、皮肤质感、微纹理、锐度、色调与颗粒等）。
+严格保持原始背景、场景、构图、景深与光线方向不变，不要替换或重绘背景。
+保持人物面部身份、骨相、发型、服饰与姿势不变；避免塑料感、过度磨皮或美颜滤镜伪影。
 在所选锐度下，边缘、毛孔与织物纹理须保持可信。`
 
 export function defaultPortraitTextureSystemPrompt(locale?: string): string {
