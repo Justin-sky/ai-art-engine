@@ -339,3 +339,68 @@ export function newestTextSelectedId(items: GraphTextItem[]): string {
   const index = items.length - 1
   return textItemKey(items[index]!, index)
 }
+
+export function stripEmbeddedImageData(item: GraphImageItem): GraphImageItem {
+  return {
+    id: item.id,
+    dataUrl: item.relativePath?.trim() ? '' : item.dataUrl || '',
+    createdAt: item.createdAt,
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }
+}
+
+/**
+ * 追加批量条目到累计图库时保证 id 唯一：
+ * 同一毫秒内的连续生成可能复用相同时间戳 id（如 `gen-text:…`），
+ * 若不重新编号，“最新选中”会按 id 命中旧条目，导致 out 返回旧结果。
+ */
+export function dedupeGalleryIds<T extends { id?: string | null }>(
+  previous: T[],
+  batch: T[],
+  idFallbackPrefix: string
+): T[] {
+  const used = new Set(previous.map((item) => item.id?.trim()).filter(Boolean))
+  const next: T[] = [...previous]
+  for (const item of batch) {
+    const rawId = item.id?.trim()
+    let id = rawId || `${idFallbackPrefix}:${next.length}`
+    if (used.has(id)) {
+      let suffix = 1
+      while (used.has(`${id}:${suffix}`)) suffix += 1
+      id = `${id}:${suffix}`
+    }
+    used.add(id)
+    next.push({ ...item, id })
+  }
+  return next
+}
+
+/** 对齐图片 stripEmbeddedImageData：有 relativePath 时清空正文，边上只传路径 */
+export function stripEmbeddedTextData(item: GraphTextItem): GraphTextItem {
+  const relativePath = item.relativePath?.trim()
+  const title = item.title?.trim()
+  return {
+    ...(item.id ? { id: item.id } : {}),
+    ...(title ? { title } : {}),
+    text: relativePath ? '' : item.text || '',
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    ...(relativePath ? { relativePath } : {})
+  }
+}
+
+export function stripEmbeddedVoiceData(item: GraphVoiceItem): GraphVoiceItem {
+  return {
+    ...(item.id ? { id: item.id } : {}),
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }
+}
+
+export function stripEmbeddedVideoData(item: GraphVideoItem): GraphVideoItem {
+  return {
+    ...(item.id ? { id: item.id } : {}),
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    dataUrl: item.relativePath?.trim() ? '' : item.dataUrl || '',
+    ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+  }
+}
