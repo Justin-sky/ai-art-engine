@@ -216,7 +216,12 @@ defineExpose({
     role="menu"
     @pointerdown="onPointerDown"
   >
-    <svg class="radial-svg" :width="size" :height="size" aria-hidden="true">
+    <svg
+      class="radial-svg"
+      :width="size"
+      :height="size"
+      aria-hidden="true"
+    >
       <circle
         class="radial-dead"
         :cx="cx"
@@ -246,12 +251,21 @@ defineExpose({
         width: `${contentMaxWidth}px`
       }"
     >
-      <MediaRunIcon :kind="w.item.icon" :size="16" />
+      <MediaRunIcon
+        :kind="w.item.icon"
+        :size="16"
+      />
       <span class="radial-label">{{ w.item.label }}</span>
     </div>
 
-    <div class="radial-center" aria-hidden="true">
-      <span v-if="hint" class="radial-hint">{{ hint }}</span>
+    <div
+      class="radial-center"
+      aria-hidden="true"
+    >
+      <span
+        v-if="hint"
+        class="radial-hint"
+      >{{ hint }}</span>
     </div>
   </div>
 </template>

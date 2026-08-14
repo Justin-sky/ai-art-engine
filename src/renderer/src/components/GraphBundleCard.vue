@@ -23,7 +23,10 @@
     <div class="bundle-body">
       <span class="bundle-plus">+</span>
       <span class="bundle-mark">{{ t('graph.bundle.title') }}</span>
-      <span v-if="incomingCount" class="bundle-count">{{ incomingCount }}</span>
+      <span
+        v-if="incomingCount"
+        class="bundle-count"
+      >{{ incomingCount }}</span>
     </div>
 
     <div

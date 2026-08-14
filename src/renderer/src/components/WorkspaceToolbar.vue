@@ -1,5 +1,8 @@
 <template>
-  <nav class="workspace-toolbar" :aria-label="t('asset.create.default')">
+  <nav
+    class="workspace-toolbar"
+    :aria-label="t('asset.create.default')"
+  >
     <button
       v-for="item in displayItems"
       :key="item.id"
@@ -13,12 +16,25 @@
       @focus="showTip($event, itemLabel(item))"
       @blur="hideTip"
     >
-      <span class="tool-icon" aria-hidden="true">
-        <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="16" />
+      <span
+        class="tool-icon"
+        aria-hidden="true"
+      >
+        <WorkspaceItemIcon
+          :icon="item.icon"
+          :item-id="item.id"
+          :size="16"
+        />
       </span>
     </button>
     <Teleport to="body">
-      <div v-if="activeTip" class="tool-tip-floating" :style="tipStyle">{{ activeTip }}</div>
+      <div
+        v-if="activeTip"
+        class="tool-tip-floating"
+        :style="tipStyle"
+      >
+        {{ activeTip }}
+      </div>
     </Teleport>
   </nav>
 </template>

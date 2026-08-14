@@ -27,13 +27,62 @@ const px = computed(() => {
     aria-hidden="true"
     focusable="false"
   >
-    <rect x="0" y="0" width="24" height="24" rx="6" fill="#0EA5E9" />
-    <rect x="2.6" y="2.6" width="8.6" height="8.6" rx="1.5" fill="#fff" opacity="0.95" />
-    <rect x="13.6" y="2.6" width="7.8" height="8.6" rx="1.5" fill="#fff" opacity="0.55" />
-    <rect x="2.6" y="13.6" width="7.8" height="7.8" rx="1.5" fill="#fff" opacity="0.55" />
-    <rect x="13.6" y="13.6" width="7.8" height="7.8" rx="1.5" fill="#fff" opacity="0.95" />
-    <circle cx="20.4" cy="3.6" r="3.8" fill="#fff" />
-    <path d="M20.4 2v3.2M18.8 3.6h3.2" stroke="#0EA5E9" stroke-width="1.7" stroke-linecap="round" />
+    <rect
+      x="0"
+      y="0"
+      width="24"
+      height="24"
+      rx="6"
+      fill="#0EA5E9"
+    />
+    <rect
+      x="2.6"
+      y="2.6"
+      width="8.6"
+      height="8.6"
+      rx="1.5"
+      fill="#fff"
+      opacity="0.95"
+    />
+    <rect
+      x="13.6"
+      y="2.6"
+      width="7.8"
+      height="8.6"
+      rx="1.5"
+      fill="#fff"
+      opacity="0.55"
+    />
+    <rect
+      x="2.6"
+      y="13.6"
+      width="7.8"
+      height="7.8"
+      rx="1.5"
+      fill="#fff"
+      opacity="0.55"
+    />
+    <rect
+      x="13.6"
+      y="13.6"
+      width="7.8"
+      height="7.8"
+      rx="1.5"
+      fill="#fff"
+      opacity="0.95"
+    />
+    <circle
+      cx="20.4"
+      cy="3.6"
+      r="3.8"
+      fill="#fff"
+    />
+    <path
+      d="M20.4 2v3.2M18.8 3.6h3.2"
+      stroke="#0EA5E9"
+      stroke-width="1.7"
+      stroke-linecap="round"
+    />
   </svg>
 </template>
 

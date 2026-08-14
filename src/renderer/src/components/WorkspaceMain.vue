@@ -2,13 +2,25 @@
   <div class="workspace-main">
     <div class="workspace-home">
       <header class="home-header">
-        <h1 class="home-title">{{ t('workspace.empty.title') }}</h1>
-        <p class="home-hint">{{ t('workspace.empty.hint') }}</p>
-        <p class="home-pipeline">{{ t('workspace.empty.pipeline') }}</p>
+        <h1 class="home-title">
+          {{ t('workspace.empty.title') }}
+        </h1>
+        <p class="home-hint">
+          {{ t('workspace.empty.hint') }}
+        </p>
+        <p class="home-pipeline">
+          {{ t('workspace.empty.pipeline') }}
+        </p>
       </header>
 
-      <section class="home-section" aria-labelledby="workspace-create-heading">
-        <h2 id="workspace-create-heading" class="section-label">
+      <section
+        class="home-section"
+        aria-labelledby="workspace-create-heading"
+      >
+        <h2
+          id="workspace-create-heading"
+          class="section-label"
+        >
           {{ t('workspace.empty.createTitle') }}
         </h2>
         <div class="create-grid">
@@ -20,27 +32,52 @@
             :disabled="busyId === item.id"
             @click="onCreate(item)"
           >
-            <span class="create-icon" aria-hidden="true">
-              <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="18" />
+            <span
+              class="create-icon"
+              aria-hidden="true"
+            >
+              <WorkspaceItemIcon
+                :icon="item.icon"
+                :item-id="item.id"
+                :size="18"
+              />
             </span>
             <span class="create-label">{{ createItemLabel(item) }}</span>
           </button>
         </div>
       </section>
 
-      <section class="home-section" aria-labelledby="workspace-recent-heading">
-        <h2 id="workspace-recent-heading" class="section-label">
+      <section
+        class="home-section"
+        aria-labelledby="workspace-recent-heading"
+      >
+        <h2
+          id="workspace-recent-heading"
+          class="section-label"
+        >
           {{ t('workspace.empty.recentTitle') }}
         </h2>
-        <ul v-if="recentAssets.length" class="recent-list">
-          <li v-for="asset in recentAssets" :key="asset.id">
+        <ul
+          v-if="recentAssets.length"
+          class="recent-list"
+        >
+          <li
+            v-for="asset in recentAssets"
+            :key="asset.id"
+          >
             <button
               type="button"
               class="recent-item"
               @click="openAsset(asset)"
             >
-              <span class="recent-icon" aria-hidden="true">
-                <WorkspaceItemIcon :icon="assetDisplayIcon(asset)" :size="18" />
+              <span
+                class="recent-icon"
+                aria-hidden="true"
+              >
+                <WorkspaceItemIcon
+                  :icon="assetDisplayIcon(asset)"
+                  :size="18"
+                />
               </span>
               <span class="recent-meta">
                 <span class="recent-name">{{ asset.name }}</span>
@@ -49,7 +86,12 @@
             </button>
           </li>
         </ul>
-        <p v-else class="recent-empty">{{ t('workspace.empty.recentEmpty') }}</p>
+        <p
+          v-else
+          class="recent-empty"
+        >
+          {{ t('workspace.empty.recentEmpty') }}
+        </p>
       </section>
     </div>
   </div>

@@ -1,10 +1,15 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.emotion.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.emotion.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -14,9 +19,16 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="node && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
 
-    <div v-if="emotionLabel" class="label-row">
+    <div
+      v-if="emotionLabel"
+      class="label-row"
+    >
       <span>{{ t('graph.emotion.locate') }}</span>
       <strong>{{ emotionLabel }}</strong>
     </div>
@@ -35,10 +47,20 @@
 
     <label>
       {{ t('graph.emotion.outputPrompt') }}
-      <textarea class="prompt-view" :value="outputPrompt || emptyPrompt" rows="6" readonly />
+      <textarea
+        class="prompt-view"
+        :value="outputPrompt || emptyPrompt"
+        rows="6"
+        readonly
+      />
     </label>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

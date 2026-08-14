@@ -1,16 +1,28 @@
 <template>
-  <div v-if="node" class="node-inspector">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ hint }}</p>
+    <p class="hint">
+      {{ hint }}
+    </p>
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="displayName" type="text" @change="persistTitle" />
+      <input
+        v-model="displayName"
+        type="text"
+        @change="persistTitle"
+      >
     </label>
 
-    <section v-if="isAnchorSelect" class="select-section">
+    <section
+      v-if="isAnchorSelect"
+      class="select-section"
+    >
       <h3>{{ t('graph.inspector.episode.anchorLabel') }}</h3>
       <div class="grid-buttons">
         <button
@@ -69,10 +81,19 @@
 
     <section class="output-section">
       <h3>{{ t('graph.inspector.outputPreview') }}</h3>
-      <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+      <GraphNodeOutputPreview
+        v-if="hostId"
+        :node="node"
+        :host-id="hostId"
+      />
     </section>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

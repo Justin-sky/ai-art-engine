@@ -1,9 +1,14 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.gridSplit.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.gridSplit.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -13,17 +18,36 @@
       @toggle="toggleRun"
     />
 
-    <section class="preview-section" :aria-label="t('graph.gridSplit.cropPreview')">
+    <section
+      class="preview-section"
+      :aria-label="t('graph.gridSplit.cropPreview')"
+    >
       <div class="section-head">
         <span class="section-title">{{ t('graph.gridSplit.cropPreview') }}</span>
-        <span v-if="cropCells.length" class="section-count">{{ cropCells.length }}</span>
+        <span
+          v-if="cropCells.length"
+          class="section-count"
+        >{{ cropCells.length }}</span>
       </div>
-      <p class="section-hint">{{ t('graph.gridSplit.cropPreviewHint') }}</p>
-      <div v-if="cropLoading" class="empty-shots">{{ t('graph.gridSplit.cropLoading') }}</div>
-      <div v-else-if="!cropCells.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.gridSplit.cropPreviewHint') }}
+      </p>
+      <div
+        v-if="cropLoading"
+        class="empty-shots"
+      >
+        {{ t('graph.gridSplit.cropLoading') }}
+      </div>
+      <div
+        v-else-if="!cropCells.length"
+        class="empty-shots"
+      >
         {{ cropEmptyLabel }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <button
           v-for="cell in cropCells"
           :key="cell.key"
@@ -32,13 +56,22 @@
           :title="cell.key"
           @dblclick="openCropPreview(cell)"
         >
-          <img :src="cell.dataUrl" alt="" loading="lazy" decoding="async" />
+          <img
+            :src="cell.dataUrl"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          >
           <span class="shot-index">{{ cell.key }}</span>
         </button>
       </div>
     </section>
 
-    <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="hostId"
+      :node="node"
+      :host-id="hostId"
+    />
 
     <dl class="meta">
       <div>
@@ -51,7 +84,12 @@
       </div>
     </dl>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

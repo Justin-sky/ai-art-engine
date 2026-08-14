@@ -11,19 +11,41 @@
     <template #title>
       <div class="title-block">
         <span class="app-mark">{{ t('graph.selectVoice.appMark') }}</span>
-        <h2 class="title" :title="title">{{ title }}</h2>
+        <h2
+          class="title"
+          :title="title"
+        >
+          {{ title }}
+        </h2>
       </div>
     </template>
 
     <template #title-actions>
-      <button type="button" class="tool-btn" :disabled="!dirty" @click="save">
+      <button
+        type="button"
+        class="tool-btn"
+        :disabled="!dirty"
+        @click="save"
+      >
         {{ t('common.save') }}
       </button>
     </template>
 
-    <p class="hint">{{ t('graph.selectVoice.hint') }}</p>
-    <div v-if="!items.length" class="empty">{{ t('graph.selectVoice.empty') }}</div>
-    <div v-else class="voice-grid" role="listbox" :aria-label="t('graph.selectVoice.appMark')">
+    <p class="hint">
+      {{ t('graph.selectVoice.hint') }}
+    </p>
+    <div
+      v-if="!items.length"
+      class="empty"
+    >
+      {{ t('graph.selectVoice.empty') }}
+    </div>
+    <div
+      v-else
+      class="voice-grid"
+      role="listbox"
+      :aria-label="t('graph.selectVoice.appMark')"
+    >
       <button
         v-for="(item, index) in items"
         :key="itemKey(item, index)"

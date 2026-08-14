@@ -37,7 +37,10 @@
         @pointerdown.stop
         @click.stop="togglePreviewCollapsed"
       >
-        <span class="collapse-tri" aria-hidden="true" />
+        <span
+          class="collapse-tri"
+          aria-hidden="true"
+        />
       </button>
       <input
         v-if="editingTitle"
@@ -49,7 +52,7 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      />
+      >
       <span
         v-else
         class="title"
@@ -65,7 +68,7 @@
         decoding="async"
         draggable="false"
         :title="displayTitle"
-      />
+      >
       <div class="head-actions">
         <button
           v-if="canLock"
@@ -78,7 +81,10 @@
           @pointerdown.stop
           @click.stop="toggleLock"
         >
-          <LockIcon :locked="isLocked" :size="12" />
+          <LockIcon
+            :locked="isLocked"
+            :size="12"
+          />
         </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
@@ -91,7 +97,11 @@
       </div>
     </div>
 
-    <div v-show="!previewCollapsed" class="note-content" :class="{ 'has-media': !!mediaPreviewUrl }">
+    <div
+      v-show="!previewCollapsed"
+      class="note-content"
+      :class="{ 'has-media': !!mediaPreviewUrl }"
+    >
       <img
         v-if="mediaPreviewUrl"
         :src="mediaPreviewUrl"
@@ -101,18 +111,29 @@
         decoding="async"
         draggable="false"
         @load="onPreviewImageLoad"
-      />
-      <div v-else class="note-body">{{ displayText }}</div>
+      >
+      <div
+        v-else
+        class="note-body"
+      >
+        {{ displayText }}
+      </div>
     </div>
 
-    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
+    <GraphNodeResizeHandle
+      v-if="!previewCollapsed"
+      @resize-start="onResizeStart"
+    />
 
     <span
       v-if="!previewCollapsed"
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14" /></span>
+    ><WorkspaceItemIcon
+      :icon="typeBadgeIcon"
+      :size="14"
+    /></span>
 
     <div
       v-for="(port, index) in inPorts"

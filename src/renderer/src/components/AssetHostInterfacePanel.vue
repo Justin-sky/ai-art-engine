@@ -1,22 +1,37 @@
 <template>
-  <section v-if="asset" class="host-iface-panel">
-    <p class="hint">{{ t('graph.hostInterface.assetInspectorHint') }}</p>
+  <section
+    v-if="asset"
+    class="host-iface-panel"
+  >
+    <p class="hint">
+      {{ t('graph.hostInterface.assetInspectorHint') }}
+    </p>
     <GraphPortSchemaEditor
+      v-model="inputs"
       :title="t('graph.hostInterface.inputs')"
       direction="in"
       :default-collapsed="false"
-      v-model="inputs"
     />
     <GraphPortSchemaEditor
+      v-model="outputs"
       :title="t('graph.hostInterface.outputs')"
       direction="out"
       :default-collapsed="false"
-      v-model="outputs"
     />
-    <button type="button" class="apply-btn" :disabled="saving || !dirty" @click="applyInterface">
+    <button
+      type="button"
+      class="apply-btn"
+      :disabled="saving || !dirty"
+      @click="applyInterface"
+    >
       {{ saving ? t('graph.hostInterface.saving') : t('graph.hostInterface.apply') }}
     </button>
-    <p v-if="error" class="err">{{ error }}</p>
+    <p
+      v-if="error"
+      class="err"
+    >
+      {{ error }}
+    </p>
   </section>
 </template>
 

@@ -8,7 +8,10 @@ defineProps<{
 </script>
 
 <template>
-  <span class="folder-tree-icon" aria-hidden="true">
+  <span
+    class="folder-tree-icon"
+    aria-hidden="true"
+  >
     <img
       class="folder-tree-icon-img"
       :src="open ? folderOpen : folderClosed"
@@ -16,7 +19,7 @@ defineProps<{
       width="16"
       height="16"
       draggable="false"
-    />
+    >
   </span>
 </template>
 

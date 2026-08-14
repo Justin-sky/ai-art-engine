@@ -1,12 +1,20 @@
 <template>
-  <aside class="inspector" :class="{ embedded }">
+  <aside
+    class="inspector"
+    :class="{ embedded }"
+  >
     <div class="body">
       <div class="head">
         <div>
-          <div class="type">{{ selectionTypeLabel }}</div>
+          <div class="type">
+            {{ selectionTypeLabel }}
+          </div>
           <h2>{{ t('asset.inspector.title') }}</h2>
         </div>
-        <span class="icon" :title="selectionTypeLabel">{{ selectionIcon }}</span>
+        <span
+          class="icon"
+          :title="selectionTypeLabel"
+        >{{ selectionIcon }}</span>
       </div>
 
       <div
@@ -19,43 +27,164 @@
       </div>
 
       <template v-if="scene.selectionKind.value === 'camera'">
-        <p v-if="editingKeyframeHint" class="keyframe-hint">{{ editingKeyframeHint }}</p>
-        <p v-if="cameraLocked" class="locked-hint">{{ t('director.stage.lockedHint') }}</p>
-        <div class="fields" @focusin="isEditingViewer = true" @focusout="onViewerFocusOut">
+        <p
+          v-if="editingKeyframeHint"
+          class="keyframe-hint"
+        >
+          {{ editingKeyframeHint }}
+        </p>
+        <p
+          v-if="cameraLocked"
+          class="locked-hint"
+        >
+          {{ t('director.stage.lockedHint') }}
+        </p>
+        <div
+          class="fields"
+          @focusin="isEditingViewer = true"
+          @focusout="onViewerFocusOut"
+        >
           <label>
             {{ t('asset.field.name') }}
-            <input v-model="cameraName" type="text" @change="persistCameraName" />
+            <input
+              v-model="cameraName"
+              type="text"
+              @change="persistCameraName"
+            >
           </label>
-          <div class="section-label">{{ t('director.stage.position') }}</div>
-          <div class="vec-row" :class="{ disabled: cameraLocked }">
-            <label>X <input v-model.number="posX" v-number-scrub type="number" step="0.01" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Y <input v-model.number="posY" v-number-scrub type="number" step="0.01" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Z <input v-model.number="posZ" v-number-scrub type="number" step="0.01" :disabled="cameraLocked" @input="persistViewer" /></label>
+          <div class="section-label">
+            {{ t('director.stage.position') }}
           </div>
-          <div class="section-label">{{ t('director.stage.rotationDeg') }}</div>
-          <div class="vec-row" :class="{ disabled: cameraLocked }">
-            <label>X <input v-model.number="rotX" v-number-scrub type="number" step="0.1" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Y <input v-model.number="rotY" v-number-scrub type="number" step="0.1" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Z <input v-model.number="rotZ" v-number-scrub type="number" step="0.1" :disabled="cameraLocked" @input="persistViewer" /></label>
+          <div
+            class="vec-row"
+            :class="{ disabled: cameraLocked }"
+          >
+            <label>X <input
+              v-model.number="posX"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Y <input
+              v-model.number="posY"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Z <input
+              v-model.number="posZ"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
           </div>
-          <div class="section-label">{{ t('director.stage.scale') }}</div>
-          <div class="vec-row" :class="{ disabled: cameraLocked }">
-            <label>X <input v-model.number="scaleX" v-number-scrub type="number" step="0.01" min="0.001" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Y <input v-model.number="scaleY" v-number-scrub type="number" step="0.01" min="0.001" :disabled="cameraLocked" @input="persistViewer" /></label>
-            <label>Z <input v-model.number="scaleZ" v-number-scrub type="number" step="0.01" min="0.001" :disabled="cameraLocked" @input="persistViewer" /></label>
+          <div class="section-label">
+            {{ t('director.stage.rotationDeg') }}
+          </div>
+          <div
+            class="vec-row"
+            :class="{ disabled: cameraLocked }"
+          >
+            <label>X <input
+              v-model.number="rotX"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Y <input
+              v-model.number="rotY"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Z <input
+              v-model.number="rotZ"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+          </div>
+          <div class="section-label">
+            {{ t('director.stage.scale') }}
+          </div>
+          <div
+            class="vec-row"
+            :class="{ disabled: cameraLocked }"
+          >
+            <label>X <input
+              v-model.number="scaleX"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Y <input
+              v-model.number="scaleY"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
+            <label>Z <input
+              v-model.number="scaleZ"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            ></label>
           </div>
           <label class="fov-row">
             {{ t('graph.inspector.camera.fov') }}
-            <input v-model.number="fov" type="range" min="20" max="100" step="1" :disabled="cameraLocked" @input="persistViewer" />
+            <input
+              v-model.number="fov"
+              type="range"
+              min="20"
+              max="100"
+              step="1"
+              :disabled="cameraLocked"
+              @input="persistViewer"
+            >
             <span>{{ fov }}&deg;</span>
           </label>
         </div>
       </template>
 
       <template v-else-if="obj">
-        <p v-if="editingKeyframeHint" class="keyframe-hint">{{ editingKeyframeHint }}</p>
-        <p v-if="obj.locked" class="locked-hint">{{ t('director.stage.lockedHint') }}</p>
-        <div v-if="showPoseTab" class="object-tabs" role="tablist">
+        <p
+          v-if="editingKeyframeHint"
+          class="keyframe-hint"
+        >
+          {{ editingKeyframeHint }}
+        </p>
+        <p
+          v-if="obj.locked"
+          class="locked-hint"
+        >
+          {{ t('director.stage.lockedHint') }}
+        </p>
+        <div
+          v-if="showPoseTab"
+          class="object-tabs"
+          role="tablist"
+        >
           <button
             type="button"
             role="tab"
@@ -85,25 +214,110 @@
         >
           <label>
             {{ t('asset.field.name') }}
-            <input v-model="objName" type="text" @change="persistObject" />
+            <input
+              v-model="objName"
+              type="text"
+              @change="persistObject"
+            >
           </label>
-          <div class="section-label">{{ t('director.stage.position') }}</div>
-          <div class="vec-row" :class="{ disabled: obj.locked }">
-            <label>X <input v-model.number="objPosX" v-number-scrub type="number" step="0.01" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Y <input v-model.number="objPosY" v-number-scrub type="number" step="0.01" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Z <input v-model.number="objPosZ" v-number-scrub type="number" step="0.01" :disabled="obj.locked" @input="persistObject" /></label>
+          <div class="section-label">
+            {{ t('director.stage.position') }}
           </div>
-          <div class="section-label">{{ t('director.stage.rotationDeg') }}</div>
-          <div class="vec-row" :class="{ disabled: obj.locked }">
-            <label>X <input v-model.number="objRotX" v-number-scrub type="number" step="0.1" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Y <input v-model.number="objRotY" v-number-scrub type="number" step="0.1" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Z <input v-model.number="objRotZ" v-number-scrub type="number" step="0.1" :disabled="obj.locked" @input="persistObject" /></label>
+          <div
+            class="vec-row"
+            :class="{ disabled: obj.locked }"
+          >
+            <label>X <input
+              v-model.number="objPosX"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Y <input
+              v-model.number="objPosY"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Z <input
+              v-model.number="objPosZ"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
           </div>
-          <div class="section-label">{{ t('director.stage.scale') }}</div>
-          <div class="vec-row" :class="{ disabled: obj.locked }">
-            <label>X <input v-model.number="objScaleX" v-number-scrub type="number" step="0.01" min="0.001" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Y <input v-model.number="objScaleY" v-number-scrub type="number" step="0.01" min="0.001" :disabled="obj.locked" @input="persistObject" /></label>
-            <label>Z <input v-model.number="objScaleZ" v-number-scrub type="number" step="0.01" min="0.001" :disabled="obj.locked" @input="persistObject" /></label>
+          <div class="section-label">
+            {{ t('director.stage.rotationDeg') }}
+          </div>
+          <div
+            class="vec-row"
+            :class="{ disabled: obj.locked }"
+          >
+            <label>X <input
+              v-model.number="objRotX"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Y <input
+              v-model.number="objRotY"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Z <input
+              v-model.number="objRotZ"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+          </div>
+          <div class="section-label">
+            {{ t('director.stage.scale') }}
+          </div>
+          <div
+            class="vec-row"
+            :class="{ disabled: obj.locked }"
+          >
+            <label>X <input
+              v-model.number="objScaleX"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Y <input
+              v-model.number="objScaleY"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
+            <label>Z <input
+              v-model.number="objScaleZ"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              min="0.001"
+              :disabled="obj.locked"
+              @input="persistObject"
+            ></label>
           </div>
           <label class="uniform-row">
             {{ t('director.stage.uniformScale') }}
@@ -116,7 +330,7 @@
                 step="0.01"
                 :disabled="obj.locked"
                 @input="applyUniformScale"
-              />
+              >
               <input
                 v-model.number="objUniformScale"
                 v-number-scrub
@@ -125,19 +339,32 @@
                 min="0.01"
                 :disabled="obj.locked"
                 @input="applyUniformScale"
-              />
+              >
             </span>
           </label>
           <label class="color-row">
             {{ t('director.stage.color') }}
             <span class="color-control">
-              <input v-model="objColor" type="color" @input="persistObject" />
-              <input v-model="objColor" type="text" @input="persistObject" />
+              <input
+                v-model="objColor"
+                type="color"
+                @input="persistObject"
+              >
+              <input
+                v-model="objColor"
+                type="text"
+                @input="persistObject"
+              >
             </span>
           </label>
         </div>
-        <div v-else class="fields pose-panel">
-          <div class="section-label">{{ t('director.stage.poseAssets') }}</div>
+        <div
+          v-else
+          class="fields pose-panel"
+        >
+          <div class="section-label">
+            {{ t('director.stage.poseAssets') }}
+          </div>
           <div
             class="pose-asset-bar"
             :class="{ 'asset-drag-over': poseAssetDragOver }"
@@ -146,7 +373,10 @@
             @dragleave="onPoseAssetDragLeave"
             @drop.prevent="onPoseAssetDrop"
           >
-            <div v-if="poseAssets.length" class="pose-preset-list">
+            <div
+              v-if="poseAssets.length"
+              class="pose-preset-list"
+            >
               <button
                 v-for="asset in poseAssets"
                 :key="asset.id"
@@ -161,8 +391,18 @@
                 <span class="pose-asset-name">{{ asset.name }}</span>
               </button>
             </div>
-            <p v-else class="pose-hint">{{ t('director.stage.poseAssetsEmpty') }}</p>
-            <p v-if="poseAssetApplyHint" class="pose-hint">{{ poseAssetApplyHint }}</p>
+            <p
+              v-else
+              class="pose-hint"
+            >
+              {{ t('director.stage.poseAssetsEmpty') }}
+            </p>
+            <p
+              v-if="poseAssetApplyHint"
+              class="pose-hint"
+            >
+              {{ poseAssetApplyHint }}
+            </p>
             <div class="pose-asset-actions">
               <button
                 type="button"
@@ -186,7 +426,10 @@
           <div class="section-label">
             {{ t('director.stage.poseBones', { n: poseBoneNames.length }) }}
           </div>
-          <div class="pose-mode-tabs" role="tablist">
+          <div
+            class="pose-mode-tabs"
+            role="tablist"
+          >
             <button
               type="button"
               class="pose-mode-tab"
@@ -219,24 +462,41 @@
             </button>
           </div>
           <template v-if="poseEditMode === 'ai'">
-            <p class="pose-hint">{{ t('director.stage.poseAiHint') }}</p>
+            <p class="pose-hint">
+              {{ t('director.stage.poseAiHint') }}
+            </p>
             <label class="pose-ai-field">
               {{ t('director.stage.poseAiModel') }}
-              <select v-model="aiPoseModelKey" :disabled="obj.locked || aiPoseBusy">
-                <option value="" disabled>
+              <select
+                v-model="aiPoseModelKey"
+                :disabled="obj.locked || aiPoseBusy"
+              >
+                <option
+                  value=""
+                  disabled
+                >
                   {{
                     aiPoseModelOptions.length
                       ? t('director.stage.poseAiModelPick')
                       : t('director.stage.poseAiModelEmpty')
                   }}
                 </option>
-                <option v-for="opt in aiPoseModelOptions" :key="opt.key" :value="opt.key">
+                <option
+                  v-for="opt in aiPoseModelOptions"
+                  :key="opt.key"
+                  :value="opt.key"
+                >
                   {{ opt.label }}
                 </option>
               </select>
             </label>
-            <div class="section-label">{{ t('director.stage.poseAiPresets') }}</div>
-            <div class="pose-ai-presets" role="list">
+            <div class="section-label">
+              {{ t('director.stage.poseAiPresets') }}
+            </div>
+            <div
+              class="pose-ai-presets"
+              role="list"
+            >
               <button
                 v-for="preset in aiPosePresets"
                 :key="preset.id"
@@ -272,13 +532,26 @@
                 {{ aiPoseBusy ? t('director.stage.poseAiGenerating') : t('director.stage.poseAiGenerate') }}
               </button>
             </div>
-            <p v-if="aiPoseStatus" class="pose-hint">{{ aiPoseStatus }}</p>
+            <p
+              v-if="aiPoseStatus"
+              class="pose-hint"
+            >
+              {{ aiPoseStatus }}
+            </p>
           </template>
           <template v-else-if="poseEditMode === 'ik'">
-            <p class="pose-hint">{{ t('director.stage.poseIkHint') }}</p>
-            <p class="pose-hint">{{ t('director.stage.poseIkManualHint') }}</p>
+            <p class="pose-hint">
+              {{ t('director.stage.poseIkHint') }}
+            </p>
+            <p class="pose-hint">
+              {{ t('director.stage.poseIkManualHint') }}
+            </p>
             <div class="pose-ik-list">
-              <div v-for="slot in ikTargetSlots" :key="slot.id" class="pose-ik-row">
+              <div
+                v-for="slot in ikTargetSlots"
+                :key="slot.id"
+                class="pose-ik-row"
+              >
                 <button
                   type="button"
                   class="pose-ik-chip"
@@ -286,8 +559,11 @@
                   :disabled="obj.locked || !slot.effector"
                   @click="onSelectIkChain(slot.id)"
                 >
-                {{ ikSlotLabel(slot.id) }}
-                  <span v-if="slot.manual" class="pose-ik-badge">{{ t('director.stage.poseIkManual') }}</span>
+                  {{ ikSlotLabel(slot.id) }}
+                  <span
+                    v-if="slot.manual"
+                    class="pose-ik-badge"
+                  >{{ t('director.stage.poseIkManual') }}</span>
                 </button>
                 <select
                   class="pose-ik-select"
@@ -302,16 +578,37 @@
                         : t('director.stage.poseIkPickBone')
                     }}
                   </option>
-                  <option v-for="bone in poseBoneNames" :key="bone" :value="bone">{{ bone }}</option>
+                  <option
+                    v-for="bone in poseBoneNames"
+                    :key="bone"
+                    :value="bone"
+                  >
+                    {{ bone }}
+                  </option>
                 </select>
               </div>
             </div>
-            <p v-if="!ikTargetSlots.some((s) => s.effector)" class="pose-hint">{{ t('director.stage.poseIkChainsEmpty') }}</p>
+            <p
+              v-if="!ikTargetSlots.some((s) => s.effector)"
+              class="pose-hint"
+            >
+              {{ t('director.stage.poseIkChainsEmpty') }}
+            </p>
           </template>
           <template v-else>
-            <p class="pose-hint">{{ t('director.stage.poseViewportHint') }}</p>
-            <p v-if="!poseBoneNames.length" class="pose-hint">{{ t('director.stage.poseBonesEmpty') }}</p>
-            <div v-else class="pose-bone-list">
+            <p class="pose-hint">
+              {{ t('director.stage.poseViewportHint') }}
+            </p>
+            <p
+              v-if="!poseBoneNames.length"
+              class="pose-hint"
+            >
+              {{ t('director.stage.poseBonesEmpty') }}
+            </p>
+            <div
+              v-else
+              class="pose-bone-list"
+            >
               <div
                 v-for="bone in poseBoneNames"
                 :key="bone"
@@ -319,8 +616,16 @@
                 :class="{ active: selectedPoseBone === bone }"
                 @click="onPoseBoneSelect(bone)"
               >
-                <div class="pose-bone-name" :title="bone">{{ bone }}</div>
-                <div class="pose-bone-sliders" @click.stop>
+                <div
+                  class="pose-bone-name"
+                  :title="bone"
+                >
+                  {{ bone }}
+                </div>
+                <div
+                  class="pose-bone-sliders"
+                  @click.stop
+                >
                   <label
                     v-for="axis in poseAxes"
                     :key="axis"
@@ -335,7 +640,7 @@
                       :value="poseDegFor(bone)[axis]"
                       :disabled="obj.locked"
                       @input="onPoseBoneAxis(bone, axis, $event)"
-                    />
+                    >
                     <span>{{ poseDegFor(bone)[axis] }}&deg;</span>
                     <button
                       type="button"
@@ -356,7 +661,9 @@
 
       <template v-else-if="showSceneGlobal">
         <div class="fields">
-          <div class="section-label">{{ t('director.stage.panoramaBackground') }}</div>
+          <div class="section-label">
+            {{ t('director.stage.panoramaBackground') }}
+          </div>
           <div
             class="panorama-drop"
             :class="{ active: panoramaDragOver, filled: !!linkedPanoramaName }"
@@ -366,7 +673,10 @@
             @drop.prevent="onPanoramaDrop"
           >
             <template v-if="linkedPanoramaName">
-              <span class="panorama-drop-name" :title="linkedPanoramaName">{{ linkedPanoramaName }}</span>
+              <span
+                class="panorama-drop-name"
+                :title="linkedPanoramaName"
+              >{{ linkedPanoramaName }}</span>
               <button
                 type="button"
                 class="panorama-drop-remove"
@@ -376,33 +686,75 @@
                 ?
               </button>
             </template>
-            <span v-else class="panorama-drop-hint">{{ t('director.stage.panoramaDropHint') }}</span>
+            <span
+              v-else
+              class="panorama-drop-hint"
+            >{{ t('director.stage.panoramaDropHint') }}</span>
           </div>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
-              <input v-model="skyColor" type="color" @input="persistSkyColor" />
-              <input v-model="skyColor" type="text" @input="persistSkyColor" />
+              <input
+                v-model="skyColor"
+                type="color"
+                @input="persistSkyColor"
+              >
+              <input
+                v-model="skyColor"
+                type="text"
+                @input="persistSkyColor"
+              >
             </span>
           </label>
 
-          <div class="section-label">{{ t('director.stage.panoramaSphere') }}</div>
+          <div class="section-label">
+            {{ t('director.stage.panoramaSphere') }}
+          </div>
           <label class="uniform-row">
             {{ t('director.stage.panoramaYaw') }}
             <span class="uniform-control">
-              <input v-model.number="panoramaYaw" type="range" min="-180" max="180" step="1" @input="persistPanoramaYaw" />
-              <input v-model.number="panoramaYaw" v-number-scrub type="number" step="1" @input="persistPanoramaYaw" />
+              <input
+                v-model.number="panoramaYaw"
+                type="range"
+                min="-180"
+                max="180"
+                step="1"
+                @input="persistPanoramaYaw"
+              >
+              <input
+                v-model.number="panoramaYaw"
+                v-number-scrub
+                type="number"
+                step="1"
+                @input="persistPanoramaYaw"
+              >
             </span>
           </label>
           <label class="uniform-row">
             {{ t('director.stage.panoramaRadius') }}
             <span class="uniform-control">
-              <input v-model.number="panoramaRadius" type="range" min="10" max="1000" step="1" @input="persistPanoramaRadius" />
-              <input v-model.number="panoramaRadius" v-number-scrub type="number" step="1" min="10" @input="persistPanoramaRadius" />
+              <input
+                v-model.number="panoramaRadius"
+                type="range"
+                min="10"
+                max="1000"
+                step="1"
+                @input="persistPanoramaRadius"
+              >
+              <input
+                v-model.number="panoramaRadius"
+                v-number-scrub
+                type="number"
+                step="1"
+                min="10"
+                @input="persistPanoramaRadius"
+              >
             </span>
           </label>
 
-          <div class="section-label">{{ t('director.stage.sceneGlobal') }}</div>
+          <div class="section-label">
+            {{ t('director.stage.sceneGlobal') }}
+          </div>
           <label class="uniform-row">
             {{ t('director.stage.sceneScale') }}
             <span class="uniform-control">
@@ -413,7 +765,7 @@
                 max="500"
                 step="1"
                 @input="persistSceneWorld"
-              />
+              >
               <input
                 v-model.number="sceneScalePercent"
                 v-number-scrub
@@ -421,20 +773,60 @@
                 step="1"
                 min="1"
                 @input="persistSceneWorld"
-              />
+              >
             </span>
           </label>
-          <div class="section-label">{{ t('director.stage.sceneTranslation') }}</div>
-          <div class="vec-row">
-            <label>X <input v-model.number="scenePosX" v-number-scrub type="number" step="0.01" @input="persistSceneWorld" /></label>
-            <label>Y <input v-model.number="scenePosY" v-number-scrub type="number" step="0.01" @input="persistSceneWorld" /></label>
-            <label>Z <input v-model.number="scenePosZ" v-number-scrub type="number" step="0.01" @input="persistSceneWorld" /></label>
+          <div class="section-label">
+            {{ t('director.stage.sceneTranslation') }}
           </div>
-          <div class="section-label">{{ t('director.stage.sceneRotation') }}</div>
           <div class="vec-row">
-            <label>X <input v-model.number="sceneRotX" v-number-scrub type="number" step="0.1" @input="persistSceneWorld" /></label>
-            <label>Y <input v-model.number="sceneRotY" v-number-scrub type="number" step="0.1" @input="persistSceneWorld" /></label>
-            <label>Z <input v-model.number="sceneRotZ" v-number-scrub type="number" step="0.1" @input="persistSceneWorld" /></label>
+            <label>X <input
+              v-model.number="scenePosX"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              @input="persistSceneWorld"
+            ></label>
+            <label>Y <input
+              v-model.number="scenePosY"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              @input="persistSceneWorld"
+            ></label>
+            <label>Z <input
+              v-model.number="scenePosZ"
+              v-number-scrub
+              type="number"
+              step="0.01"
+              @input="persistSceneWorld"
+            ></label>
+          </div>
+          <div class="section-label">
+            {{ t('director.stage.sceneRotation') }}
+          </div>
+          <div class="vec-row">
+            <label>X <input
+              v-model.number="sceneRotX"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              @input="persistSceneWorld"
+            ></label>
+            <label>Y <input
+              v-model.number="sceneRotY"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              @input="persistSceneWorld"
+            ></label>
+            <label>Z <input
+              v-model.number="sceneRotZ"
+              v-number-scrub
+              type="number"
+              step="0.1"
+              @input="persistSceneWorld"
+            ></label>
           </div>
 
           <div class="section-label ground-label">
@@ -450,7 +842,10 @@
               <span class="ground-switch-thumb" />
             </button>
           </div>
-          <label class="uniform-row" :class="{ disabled: !gridVisible }">
+          <label
+            class="uniform-row"
+            :class="{ disabled: !gridVisible }"
+          >
             {{ t('director.stage.groundOpacity') }}
             <span class="uniform-control">
               <input
@@ -461,7 +856,7 @@
                 step="0.01"
                 :disabled="!gridVisible"
                 @input="persistGround"
-              />
+              >
               <input
                 v-model.number="gridOpacity"
                 v-number-scrub
@@ -471,10 +866,13 @@
                 max="1"
                 :disabled="!gridVisible"
                 @input="persistGround"
-              />
+              >
             </span>
           </label>
-          <label class="uniform-row" :class="{ disabled: !gridVisible }">
+          <label
+            class="uniform-row"
+            :class="{ disabled: !gridVisible }"
+          >
             {{ t('director.stage.groundHeight') }}
             <span class="uniform-control">
               <input
@@ -485,7 +883,7 @@
                 step="0.1"
                 :disabled="!gridVisible"
                 @input="persistGround"
-              />
+              >
               <input
                 v-model.number="gridOffsetY"
                 v-number-scrub
@@ -493,7 +891,7 @@
                 step="0.1"
                 :disabled="!gridVisible"
                 @input="persistGround"
-              />
+              >
             </span>
           </label>
         </div>
@@ -501,7 +899,9 @@
 
       <template v-else-if="showPanoramaProps">
         <div class="fields">
-          <div class="section-label">{{ t('director.stage.panoramaBackground') }}</div>
+          <div class="section-label">
+            {{ t('director.stage.panoramaBackground') }}
+          </div>
           <div
             class="panorama-drop"
             :class="{ active: panoramaDragOver, filled: !!linkedPanoramaName }"
@@ -511,7 +911,10 @@
             @drop.prevent="onPanoramaDrop"
           >
             <template v-if="linkedPanoramaName">
-              <span class="panorama-drop-name" :title="linkedPanoramaName">{{ linkedPanoramaName }}</span>
+              <span
+                class="panorama-drop-name"
+                :title="linkedPanoramaName"
+              >{{ linkedPanoramaName }}</span>
               <button
                 type="button"
                 class="panorama-drop-remove"
@@ -521,34 +924,79 @@
                 ?
               </button>
             </template>
-            <span v-else class="panorama-drop-hint">{{ t('director.stage.panoramaDropHint') }}</span>
+            <span
+              v-else
+              class="panorama-drop-hint"
+            >{{ t('director.stage.panoramaDropHint') }}</span>
           </div>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
-              <input v-model="skyColor" type="color" @input="persistSkyColor" />
-              <input v-model="skyColor" type="text" @input="persistSkyColor" />
+              <input
+                v-model="skyColor"
+                type="color"
+                @input="persistSkyColor"
+              >
+              <input
+                v-model="skyColor"
+                type="text"
+                @input="persistSkyColor"
+              >
             </span>
           </label>
-          <div class="section-label">{{ t('director.stage.panoramaSphere') }}</div>
+          <div class="section-label">
+            {{ t('director.stage.panoramaSphere') }}
+          </div>
           <label class="uniform-row">
             {{ t('director.stage.panoramaYaw') }}
             <span class="uniform-control">
-              <input v-model.number="panoramaYaw" type="range" min="-180" max="180" step="1" @input="persistPanoramaYaw" />
-              <input v-model.number="panoramaYaw" v-number-scrub type="number" step="1" @input="persistPanoramaYaw" />
+              <input
+                v-model.number="panoramaYaw"
+                type="range"
+                min="-180"
+                max="180"
+                step="1"
+                @input="persistPanoramaYaw"
+              >
+              <input
+                v-model.number="panoramaYaw"
+                v-number-scrub
+                type="number"
+                step="1"
+                @input="persistPanoramaYaw"
+              >
             </span>
           </label>
           <label class="uniform-row">
             {{ t('director.stage.panoramaRadius') }}
             <span class="uniform-control">
-              <input v-model.number="panoramaRadius" type="range" min="10" max="1000" step="1" @input="persistPanoramaRadius" />
-              <input v-model.number="panoramaRadius" v-number-scrub type="number" step="1" min="10" @input="persistPanoramaRadius" />
+              <input
+                v-model.number="panoramaRadius"
+                type="range"
+                min="10"
+                max="1000"
+                step="1"
+                @input="persistPanoramaRadius"
+              >
+              <input
+                v-model.number="panoramaRadius"
+                v-number-scrub
+                type="number"
+                step="1"
+                min="10"
+                @input="persistPanoramaRadius"
+              >
             </span>
           </label>
         </div>
       </template>
 
-      <p v-else class="empty">{{ t('director.stage.selectHint') }}</p>
+      <p
+        v-else
+        class="empty"
+      >
+        {{ t('director.stage.selectHint') }}
+      </p>
     </div>
   </aside>
 

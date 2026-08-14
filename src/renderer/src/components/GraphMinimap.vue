@@ -16,7 +16,10 @@
       :height="bitmapH"
       @pointerdown="onPointerDown"
     />
-    <div v-if="nodes.length === 0" class="graph-minimap-empty">
+    <div
+      v-if="nodes.length === 0"
+      class="graph-minimap-empty"
+    >
       {{ t('graph.minimap.empty') }}
     </div>
   </div>
@@ -48,6 +51,7 @@ const props = withDefaults(
     height?: number
   }>(),
   {
+    selectedNodeIds: () => new Set<string>(),
     width: 180,
     height: 120
   }

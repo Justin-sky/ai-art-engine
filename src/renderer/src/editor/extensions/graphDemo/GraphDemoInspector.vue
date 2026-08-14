@@ -1,22 +1,39 @@
 <template>
-  <div class="demo-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="demo-inspector"
+  >
     <div class="head">
       <span class="type">{{ t('graph.demo.badge') }}</span>
       <h2>{{ node.title || t('graph.demo.title') }}</h2>
     </div>
-    <p class="hint">{{ t('graph.demo.inspector.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.demo.inspector.hint') }}
+    </p>
 
     <label>
       {{ t('graph.inspector.note.title') }}
-      <input v-model="localTitle" @change="persist" />
+      <input
+        v-model="localTitle"
+        @change="persist"
+      >
     </label>
 
     <label>
       {{ t('graph.inspector.note.body') }}
-      <textarea v-model="localText" rows="8" @change="persist" />
+      <textarea
+        v-model="localText"
+        rows="8"
+        @change="persist"
+      />
     </label>
   </div>
-  <div v-else class="demo-inspector empty">{{ t('graph.inspector.note.empty') }}</div>
+  <div
+    v-else
+    class="demo-inspector empty"
+  >
+    {{ t('graph.inspector.note.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

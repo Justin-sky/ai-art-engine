@@ -1,5 +1,8 @@
 <template>
-  <div class="inspector" v-if="unit">
+  <div
+    v-if="unit"
+    class="inspector"
+  >
     <div class="head">
       <div>
         <div class="type">
@@ -11,43 +14,61 @@
         </div>
         <h2>{{ t('beat.unit.inspector.title') }}</h2>
       </div>
-      <span class="status" :data-status="local.status">{{ local.status }}</span>
+      <span
+        class="status"
+        :data-status="local.status"
+      >{{ local.status }}</span>
     </div>
 
     <label v-if="isRefNode && refNode">
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localNodeTitle" @change="persistNodeTitle" />
+      <input
+        v-model="localNodeTitle"
+        @change="persistNodeTitle"
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.order') }}
       <input
+        v-model.number="local.order"
         type="number"
         min="1"
         step="1"
-        v-model.number="local.order"
         @change="persist"
-      />
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.title') }}
-      <input v-model="local.title" @change="persist" />
+      <input
+        v-model="local.title"
+        @change="persist"
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.time') }}
-      <input v-model="local.time" @change="persist" />
+      <input
+        v-model="local.time"
+        @change="persist"
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.durationHint') }}
-      <input v-model="local.durationHint" @change="persist" />
+      <input
+        v-model="local.durationHint"
+        @change="persist"
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.location') }}
-      <input v-model="local.location" @change="persist" />
+      <input
+        v-model="local.location"
+        @change="persist"
+      >
     </label>
 
     <label>
@@ -55,7 +76,7 @@
       <input
         :value="namesOf(local.locations)"
         @change="onRefsChange('locations', ($event.target as HTMLInputElement).value)"
-      />
+      >
     </label>
 
     <label>
@@ -63,22 +84,34 @@
       <input
         :value="namesOf(local.characters)"
         @change="onRefsChange('characters', ($event.target as HTMLInputElement).value)"
-      />
+      >
     </label>
 
     <label>
       {{ t('beat.table.column.action') }}
-      <textarea v-model="local.action" rows="3" @change="persist" />
+      <textarea
+        v-model="local.action"
+        rows="3"
+        @change="persist"
+      />
     </label>
 
     <label>
       {{ t('beat.table.column.conflict') }}
-      <textarea v-model="local.conflict" rows="3" @change="persist" />
+      <textarea
+        v-model="local.conflict"
+        rows="3"
+        @change="persist"
+      />
     </label>
 
     <label>
       {{ t('beat.table.column.atmosphere') }}
-      <textarea v-model="local.atmosphere" rows="3" @change="persist" />
+      <textarea
+        v-model="local.atmosphere"
+        rows="3"
+        @change="persist"
+      />
     </label>
 
     <label>
@@ -86,7 +119,7 @@
       <input
         :value="namesOf(local.props)"
         @change="onRefsChange('props', ($event.target as HTMLInputElement).value)"
-      />
+      >
     </label>
 
     <label>
@@ -94,17 +127,24 @@
       <input
         :value="namesOf(local.weapons)"
         @change="onRefsChange('weapons', ($event.target as HTMLInputElement).value)"
-      />
+      >
     </label>
 
     <label>
       {{ t('beat.unit.inspector.sourceExcerpt') }}
-      <textarea v-model="local.sourceExcerpt" rows="4" @change="persist" />
+      <textarea
+        v-model="local.sourceExcerpt"
+        rows="4"
+        @change="persist"
+      />
     </label>
 
     <label>
       {{ t('beat.table.column.status') }}
-      <select v-model="local.status" @change="persist">
+      <select
+        v-model="local.status"
+        @change="persist"
+      >
         <option value="未审核">未审核</option>
         <option value="已审核">已审核</option>
       </select>
@@ -116,7 +156,12 @@
       :host-id="hostId"
     />
   </div>
-  <div v-else class="inspector empty">{{ t('beat.unit.inspector.empty') }}</div>
+  <div
+    v-else
+    class="inspector empty"
+  >
+    {{ t('beat.unit.inspector.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

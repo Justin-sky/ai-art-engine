@@ -1,5 +1,8 @@
 <template>
-  <div ref="rootRef" class="world-table">
+  <div
+    ref="rootRef"
+    class="world-table"
+  >
     <div class="table-toolbar">
       <div class="tabs">
         <button
@@ -30,30 +33,63 @@
           {{ t('world.table.briefWorldview') }}
         </button>
       </div>
-      <button v-if="!briefTab" type="button" @click="onAdd">{{ t('world.table.new') }}</button>
+      <button
+        v-if="!briefTab"
+        type="button"
+        @click="onAdd"
+      >
+        {{ t('world.table.new') }}
+      </button>
     </div>
-    <p v-if="error" class="table-error">{{ error }}</p>
-    <div v-if="!briefTab" class="table-scroll">
+    <p
+      v-if="error"
+      class="table-error"
+    >
+      {{ error }}
+    </p>
+    <div
+      v-if="!briefTab"
+      class="table-scroll"
+    >
       <table>
         <thead>
           <tr>
-            <th class="col-idx">#</th>
-            <th class="col-name">{{ t('world.table.column.name') }}</th>
-            <th class="col-prompt">{{ t('world.table.column.prompt') }}</th>
-            <th class="col-status">{{ t('world.table.column.status') }}</th>
+            <th class="col-idx">
+              #
+            </th>
+            <th class="col-name">
+              {{ t('world.table.column.name') }}
+            </th>
+            <th class="col-prompt">
+              {{ t('world.table.column.prompt') }}
+            </th>
+            <th class="col-status">
+              {{ t('world.table.column.status') }}
+            </th>
             <th class="col-actions" />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(item, index) in catalog[activeKind]" :key="item.id">
-            <td class="col-idx">{{ index + 1 }}</td>
-            <td class="col-name" @click.stop>
+          <tr
+            v-for="(item, index) in catalog[activeKind]"
+            :key="item.id"
+          >
+            <td class="col-idx">
+              {{ index + 1 }}
+            </td>
+            <td
+              class="col-name"
+              @click.stop
+            >
               <input
                 :value="item.name"
                 @change="onNameChange(item.id, ($event.target as HTMLInputElement).value)"
-              />
+              >
             </td>
-            <td class="col-prompt" @click.stop>
+            <td
+              class="col-prompt"
+              @click.stop
+            >
               <textarea
                 rows="2"
                 :value="item.prompt"
@@ -61,19 +97,29 @@
                 @change="onPromptChange(item.id, ($event.target as HTMLTextAreaElement).value)"
               />
             </td>
-            <td class="col-status" @click.stop>
+            <td
+              class="col-status"
+              @click.stop
+            >
               <select
                 class="review-status"
                 :data-status="item.status"
                 :value="item.status"
                 @change="onStatusChange(item.id, ($event.target as HTMLSelectElement).value)"
               >
-<option v-for="opt in REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
+                <option
+                  v-for="opt in REVIEW_STATUS_OPTIONS"
+                  :key="opt"
+                  :value="opt"
+                >
                   {{ opt }}
                 </option>
               </select>
             </td>
-            <td class="col-actions" @click.stop>
+            <td
+              class="col-actions"
+              @click.stop
+            >
               <button
                 type="button"
                 class="del"
@@ -86,9 +132,17 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="!catalog[activeKind].length" class="empty">{{ t('world.table.empty') }}</p>
+      <p
+        v-if="!catalog[activeKind].length"
+        class="empty"
+      >
+        {{ t('world.table.empty') }}
+      </p>
     </div>
-    <div v-else class="brief-editor">
+    <div
+      v-else
+      class="brief-editor"
+    >
       <label class="brief-label">{{ briefTab === 'style' ? t('world.table.briefStyle') : t('world.table.briefWorldview') }}</label>
       <textarea
         class="brief-textarea"

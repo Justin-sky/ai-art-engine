@@ -7,14 +7,20 @@
     @dragleave="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <div v-if="!hideToolbar" class="graph-toolbar">
+    <div
+      v-if="!hideToolbar"
+      class="graph-toolbar"
+    >
       <EditorDiveBar
         v-if="diveNavActive && editorDive"
         :root-title="editorDive.rootTitle"
         :frames="editorDive.frames"
         @pop-to="editorDive.popTo"
       />
-      <span v-else class="hint">{{ t('graph.toolbar.hint') }}</span>
+      <span
+        v-else
+        class="hint"
+      >{{ t('graph.toolbar.hint') }}</span>
       <div class="tools">
         <template v-if="isRunning">
           <button
@@ -24,7 +30,10 @@
             :aria-label="t('graph.play.stopAria')"
             @click="stopWorkflow"
           >
-            <span class="play-glyph" aria-hidden="true">
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            >
               <MediaRunIcon kind="stop" />
             </span>
           </button>
@@ -37,7 +46,10 @@
             :aria-label="toolbarCurrentNodeLabel"
             @click="onToolbarRunCurrent"
           >
-            <span class="play-glyph" aria-hidden="true">
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            >
               <MediaRunIcon :kind="toolbarCurrentIsRerun ? 'replay' : 'play'" />
             </span>
           </button>
@@ -48,7 +60,10 @@
             :aria-label="t('graph.play.runUpstreamSkip')"
             @click="onToolbarRunUpstreamSkip"
           >
-            <span class="play-glyph" aria-hidden="true">
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            >
               <MediaRunIcon kind="forward" />
             </span>
           </button>
@@ -59,7 +74,10 @@
             :aria-label="t('graph.play.runUpstreamForce')"
             @click="onToolbarRunUpstreamForce"
           >
-            <span class="play-glyph" aria-hidden="true">
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            >
               <MediaRunIcon kind="rewind" />
             </span>
           </button>
@@ -71,12 +89,19 @@
             :aria-label="t('graph.play.enqueue')"
             @click="onEnqueueWorkflowClick"
           >
-            <span class="play-glyph" aria-hidden="true">
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            >
               <MediaRunIcon kind="queue" />
             </span>
           </button>
         </template>
-        <button type="button" :class="{ active: linkingFrom || linkingTo || rewireSession }" @click="cancelLink">
+        <button
+          type="button"
+          :class="{ active: linkingFrom || linkingTo || rewireSession }"
+          @click="cancelLink"
+        >
           {{ linkingFrom || linkingTo || rewireSession ? t('graph.link.cancel') : t('graph.link.start') }}
         </button>
         <button
@@ -117,7 +142,13 @@
               d="M2 12 H8 V4 H14"
             />
           </svg>
-          <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <svg
+            v-else
+            viewBox="0 0 16 16"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
             <path
               fill="none"
               stroke="currentColor"
@@ -136,7 +167,11 @@
           </svg>
           <span class="edge-style-label">{{ t(`graph.edgeStyle.${edgePathStyle}`) }}</span>
         </button>
-        <span class="tool-mode-group" role="group" :aria-label="t('graph.toolbar.toolMode')">
+        <span
+          class="tool-mode-group"
+          role="group"
+          :aria-label="t('graph.toolbar.toolMode')"
+        >
           <button
             type="button"
             class="tool-mode-btn"
@@ -147,7 +182,12 @@
             @click="setViewportToolMode('select')"
           >
             <!-- 选择：实心鼠标光标箭头 -->
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <svg
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
               <path
                 fill="currentColor"
                 d="M3 1.4v12.2l3.15-3.05 1.85 4.45 1.85-.75-1.85-4.4H12.9Z"
@@ -164,7 +204,12 @@
             @click="setViewportToolMode('pan')"
           >
             <!-- 平移：鼠标实心抓取手形（Material pan_tool） -->
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
               <path
                 fill="currentColor"
                 d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S11 3.17 11 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S15 .67 15 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z"
@@ -172,7 +217,12 @@
             </svg>
           </button>
         </span>
-        <button type="button" @click="fitView">{{ t('graph.fitView') }}</button>
+        <button
+          type="button"
+          @click="fitView"
+        >
+          {{ t('graph.fitView') }}
+        </button>
         <button
           v-if="canGroupSelection"
           type="button"
@@ -204,7 +254,10 @@
         >
           {{ t('graph.episodePipeline.open') }}
         </button>
-        <span ref="zoomLabelEl" class="zoom">100%</span>
+        <span
+          ref="zoomLabelEl"
+          class="zoom"
+        >100%</span>
       </div>
     </div>
     <div
@@ -284,9 +337,19 @@
       @pointermove="onViewportPointerMove"
       @pointerleave="onViewportPointerLeave"
     >
-      <div class="grid-layer" :class="{ hidden: !gridVisible }" aria-hidden="true">
-        <div ref="gridMinorEl" class="grid-pattern grid-pattern-minor" />
-        <div ref="gridMajorEl" class="grid-pattern grid-pattern-major" />
+      <div
+        class="grid-layer"
+        :class="{ hidden: !gridVisible }"
+        aria-hidden="true"
+      >
+        <div
+          ref="gridMinorEl"
+          class="grid-pattern grid-pattern-minor"
+        />
+        <div
+          ref="gridMajorEl"
+          class="grid-pattern grid-pattern-major"
+        />
       </div>
       <div
         v-if="selectionBox"
@@ -298,7 +361,10 @@
           height: `${selectionBox.h}px`
         }"
       />
-      <div ref="worldBackEl" class="graph-world graph-world-back">
+      <div
+        ref="worldBackEl"
+        class="graph-world graph-world-back"
+      >
         <div
           v-for="frame in renderedGroupFrames"
           :key="frame.id"
@@ -330,15 +396,22 @@
             @blur="commitGroupTitleEdit"
             @keydown.enter.prevent="commitGroupTitleEdit"
             @keydown.esc.prevent="cancelGroupTitleEdit"
-          />
+          >
         </div>
       </div>
-      <canvas ref="edgesCanvasEl" class="edges-canvas" aria-hidden="true" />
-      <div ref="worldEl" class="graph-world">
+      <canvas
+        ref="edgesCanvasEl"
+        class="edges-canvas"
+        aria-hidden="true"
+      />
+      <div
+        ref="worldEl"
+        class="graph-world"
+      >
         <component
+          :is="card.component"
           v-for="{ node, card } in renderedGraphCards"
           :key="node.id"
-          :is="card.component"
           :node="node"
           :selected="isNodeSelected(node.id)"
           :connecting="isLinkHighlightNode(node.id)"
@@ -381,141 +454,198 @@
         @mousedown.stop
         @click.stop
       >
-      <template v-if="ctxMenu.kind === 'selection'">
-        <div class="ctx-title">{{ t('graph.context.selection') }}</div>
-        <template v-if="selectedLayoutNodes.length >= 2">
-          <button type="button" @click="applyAlign('left'); closeCtxMenu()">
-            {{ t('graph.layout.alignLeft') }}
-          </button>
-          <button type="button" @click="applyAlign('centerX'); closeCtxMenu()">
-            {{ t('graph.layout.alignCenterX') }}
-          </button>
-          <button type="button" @click="applyAlign('right'); closeCtxMenu()">
-            {{ t('graph.layout.alignRight') }}
-          </button>
-          <button type="button" @click="applyAlign('top'); closeCtxMenu()">
-            {{ t('graph.layout.alignTop') }}
-          </button>
-          <button type="button" @click="applyAlign('centerY'); closeCtxMenu()">
-            {{ t('graph.layout.alignCenterY') }}
-          </button>
-          <button type="button" @click="applyAlign('bottom'); closeCtxMenu()">
-            {{ t('graph.layout.alignBottom') }}
-          </button>
-          <button
-            v-if="selectedLayoutNodes.length >= 3"
-            type="button"
-            @click="applyDistribute('horizontal'); closeCtxMenu()"
-          >
-            {{ t('graph.layout.distributeH') }}
-          </button>
-          <button
-            v-if="selectedLayoutNodes.length >= 3"
-            type="button"
-            @click="applyDistribute('vertical'); closeCtxMenu()"
-          >
-            {{ t('graph.layout.distributeV') }}
-          </button>
-          <button type="button" @click="applyAutoLayout(); closeCtxMenu()">
-            {{ t('graph.layout.auto') }}
-          </button>
-          <div class="ctx-sep" aria-hidden="true" />
-        </template>
-        <button
-          v-if="canGroupSelection"
-          type="button"
-          @click="groupSelectedNodes(); closeCtxMenu()"
-        >
-          {{ t('graph.group.action') }}
-        </button>
-        <button
-          v-if="canUngroupSelection"
-          type="button"
-          @click="ungroupSelectedNodes(); closeCtxMenu()"
-        >
-          {{ t('graph.group.ungroup') }}
-        </button>
-        <button
-          v-if="canEncapsulateSelection"
-          type="button"
-          @click="encapsulateSelectedAsHost(); closeCtxMenu()"
-        >
-          {{ t('graph.hostInterface.encapsulate') }}
-        </button>
-        <div
-          v-if="canGroupSelection || canUngroupSelection || canEncapsulateSelection"
-          class="ctx-sep"
-          aria-hidden="true"
-        />
-        <button type="button" :disabled="!canCopySelection" @click="copySelectedNodes(); closeCtxMenu()">
-          {{ t('graph.context.copy') }}
-        </button>
-        <button type="button" :disabled="!canPasteClipboard" @click="void pasteClipboardNodes(); closeCtxMenu()">
-          {{ t('graph.context.paste') }}
-        </button>
-      </template>
-      <template v-else>
-        <div class="ctx-title">
-          <template v-if="ctxMenu.linkFromNodeId || ctxMenu.linkToNodeId">
-            {{ t('graph.context.addAndConnect') }}
-            <span v-if="connectMenuPortTypeLabel" class="ctx-port-type">{{ connectMenuPortTypeLabel }}</span>
+        <template v-if="ctxMenu.kind === 'selection'">
+          <div class="ctx-title">
+            {{ t('graph.context.selection') }}
+          </div>
+          <template v-if="selectedLayoutNodes.length >= 2">
+            <button
+              type="button"
+              @click="applyAlign('left'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignLeft') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAlign('centerX'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignCenterX') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAlign('right'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignRight') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAlign('top'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignTop') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAlign('centerY'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignCenterY') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAlign('bottom'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.alignBottom') }}
+            </button>
+            <button
+              v-if="selectedLayoutNodes.length >= 3"
+              type="button"
+              @click="applyDistribute('horizontal'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.distributeH') }}
+            </button>
+            <button
+              v-if="selectedLayoutNodes.length >= 3"
+              type="button"
+              @click="applyDistribute('vertical'); closeCtxMenu()"
+            >
+              {{ t('graph.layout.distributeV') }}
+            </button>
+            <button
+              type="button"
+              @click="applyAutoLayout(); closeCtxMenu()"
+            >
+              {{ t('graph.layout.auto') }}
+            </button>
+            <div
+              class="ctx-sep"
+              aria-hidden="true"
+            />
           </template>
-          <template v-else>{{ t('graph.context.addNode') }}</template>
-        </div>
-        <button
-          v-for="item in rootAddableMenuItems"
-          :key="`${item.typeId}:${item.title ?? ''}`"
-          type="button"
-          @click="addNodeFromMenu(item)"
-        >
-          <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
-          <span class="ctx-label">{{ item.label }}</span>
-          <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
-        </button>
-        <div
-          v-for="group in resourceAddableMenuGroups"
-          :key="group.id"
-          class="ctx-submenu"
-          @pointerenter="openCtxSubmenu(group.id)"
-          @pointerleave="closeCtxSubmenu(group.id)"
-        >
           <button
+            v-if="canGroupSelection"
             type="button"
-            class="ctx-submenu-trigger"
-            :class="{ open: ctxSubmenu === group.id, pinned: ctxSubmenuPinned && ctxSubmenu === group.id }"
-            @click="toggleCtxSubmenu(group.id)"
+            @click="groupSelectedNodes(); closeCtxMenu()"
           >
-            <span class="ctx-icon"><WorkspaceItemIcon :icon="group.icon" :size="14" /></span>
-            <span class="ctx-label">{{ group.label }}</span>
-            <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
+            {{ t('graph.group.action') }}
+          </button>
+          <button
+            v-if="canUngroupSelection"
+            type="button"
+            @click="ungroupSelectedNodes(); closeCtxMenu()"
+          >
+            {{ t('graph.group.ungroup') }}
+          </button>
+          <button
+            v-if="canEncapsulateSelection"
+            type="button"
+            @click="encapsulateSelectedAsHost(); closeCtxMenu()"
+          >
+            {{ t('graph.hostInterface.encapsulate') }}
           </button>
           <div
-            v-if="ctxSubmenu === group.id"
-            class="ctx-submenu-panel"
-            :class="{
-              'open-left': submenuFlip.left,
-              'open-up': submenuFlip.up
-            }"
+            v-if="canGroupSelection || canUngroupSelection || canEncapsulateSelection"
+            class="ctx-sep"
+            aria-hidden="true"
+          />
+          <button
+            type="button"
+            :disabled="!canCopySelection"
+            @click="copySelectedNodes(); closeCtxMenu()"
           >
-        <button
-          v-for="item in group.items"
-          :key="`${item.typeId}:${item.title ?? ''}`"
-          type="button"
-          @click="addNodeFromMenu(item)"
-        >
-              <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
-              <span class="ctx-label">{{ item.label }}</span>
-              <span v-if="item.portTypeLabel" class="ctx-item-type">{{ item.portTypeLabel }}</span>
-            </button>
+            {{ t('graph.context.copy') }}
+          </button>
+          <button
+            type="button"
+            :disabled="!canPasteClipboard"
+            @click="void pasteClipboardNodes(); closeCtxMenu()"
+          >
+            {{ t('graph.context.paste') }}
+          </button>
+        </template>
+        <template v-else>
+          <div class="ctx-title">
+            <template v-if="ctxMenu.linkFromNodeId || ctxMenu.linkToNodeId">
+              {{ t('graph.context.addAndConnect') }}
+              <span
+                v-if="connectMenuPortTypeLabel"
+                class="ctx-port-type"
+              >{{ connectMenuPortTypeLabel }}</span>
+            </template>
+            <template v-else>
+              {{ t('graph.context.addNode') }}
+            </template>
           </div>
-        </div>
-        <div
-          v-if="(ctxMenu.linkFromNodeId || ctxMenu.linkToNodeId) && addableMenuItems.length === 0"
-          class="ctx-empty"
-        >
-          {{ t('graph.context.noCompatibleNodes') }}
-        </div>
-      </template>
+          <button
+            v-for="item in rootAddableMenuItems"
+            :key="`${item.typeId}:${item.title ?? ''}`"
+            type="button"
+            @click="addNodeFromMenu(item)"
+          >
+            <span class="ctx-icon"><WorkspaceItemIcon
+              :icon="item.icon"
+              :size="14"
+            /></span>
+            <span class="ctx-label">{{ item.label }}</span>
+            <span
+              v-if="item.portTypeLabel"
+              class="ctx-item-type"
+            >{{ item.portTypeLabel }}</span>
+          </button>
+          <div
+            v-for="group in resourceAddableMenuGroups"
+            :key="group.id"
+            class="ctx-submenu"
+            @pointerenter="openCtxSubmenu(group.id)"
+            @pointerleave="closeCtxSubmenu(group.id)"
+          >
+            <button
+              type="button"
+              class="ctx-submenu-trigger"
+              :class="{ open: ctxSubmenu === group.id, pinned: ctxSubmenuPinned && ctxSubmenu === group.id }"
+              @click="toggleCtxSubmenu(group.id)"
+            >
+              <span class="ctx-icon"><WorkspaceItemIcon
+                :icon="group.icon"
+                :size="14"
+              /></span>
+              <span class="ctx-label">{{ group.label }}</span>
+              <span
+                class="ctx-submenu-arrow"
+                aria-hidden="true"
+              >›</span>
+            </button>
+            <div
+              v-if="ctxSubmenu === group.id"
+              class="ctx-submenu-panel"
+              :class="{
+                'open-left': submenuFlip.left,
+                'open-up': submenuFlip.up
+              }"
+            >
+              <button
+                v-for="item in group.items"
+                :key="`${item.typeId}:${item.title ?? ''}`"
+                type="button"
+                @click="addNodeFromMenu(item)"
+              >
+                <span class="ctx-icon"><WorkspaceItemIcon
+                  :icon="item.icon"
+                  :size="14"
+                /></span>
+                <span class="ctx-label">{{ item.label }}</span>
+                <span
+                  v-if="item.portTypeLabel"
+                  class="ctx-item-type"
+                >{{ item.portTypeLabel }}</span>
+              </button>
+            </div>
+          </div>
+          <div
+            v-if="(ctxMenu.linkFromNodeId || ctxMenu.linkToNodeId) && addableMenuItems.length === 0"
+            class="ctx-empty"
+          >
+            {{ t('graph.context.noCompatibleNodes') }}
+          </div>
+        </template>
       </div>
     </Teleport>
 
@@ -862,6 +992,11 @@ const props = withDefaults(
     hideToolbar?: boolean
   }>(),
   {
+    assetId: '',
+    scope: undefined,
+    worldElementKind: undefined,
+    worldGenNodeId: '',
+    beatId: '',
     hideToolbar: false
   }
 )

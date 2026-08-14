@@ -27,9 +27,24 @@ const px = computed(() => {
     aria-hidden="true"
     focusable="false"
   >
-    <rect x="0" y="0" width="24" height="24" rx="6" fill="#0EA5E9" />
-    <circle cx="12" cy="12" r="6.4" fill="#fff" />
-    <path d="M9.9 9.1v5.8l5-2.9-5-2.9z" fill="#0EA5E9" />
+    <rect
+      x="0"
+      y="0"
+      width="24"
+      height="24"
+      rx="6"
+      fill="#0EA5E9"
+    />
+    <circle
+      cx="12"
+      cy="12"
+      r="6.4"
+      fill="#fff"
+    />
+    <path
+      d="M9.9 9.1v5.8l5-2.9-5-2.9z"
+      fill="#0EA5E9"
+    />
   </svg>
 </template>
 

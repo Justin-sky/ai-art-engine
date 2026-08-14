@@ -1,10 +1,15 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ hint }}</p>
+    <p class="hint">
+      {{ hint }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -15,19 +20,36 @@
     />
 
     <template v-if="isBeatGen">
-      <section class="generated-texts" :aria-label="t('graph.output.beatPaths')">
+      <section
+        class="generated-texts"
+        :aria-label="t('graph.output.beatPaths')"
+      >
         <div class="section-head">
           <span class="section-title">{{ t('graph.output.beatPaths') }}</span>
-          <span v-if="generatedTexts.length" class="section-count">
+          <span
+            v-if="generatedTexts.length"
+            class="section-count"
+          >
             {{ t('graph.inspector.generate.generatedTextsCount', { n: generatedTexts.length }) }}
           </span>
         </div>
-        <p class="section-hint">{{ t('graph.output.beatPathsHint') }}</p>
-        <div v-if="!generatedTexts.length" class="empty">
+        <p class="section-hint">
+          {{ t('graph.output.beatPathsHint') }}
+        </p>
+        <div
+          v-if="!generatedTexts.length"
+          class="empty"
+        >
           {{ t('graph.output.beatPathsEmpty') }}
         </div>
-        <ul v-else class="path-list">
-          <li v-for="(item, index) in generatedTexts" :key="item.id || `index:${index}`">
+        <ul
+          v-else
+          class="path-list"
+        >
+          <li
+            v-for="(item, index) in generatedTexts"
+            :key="item.id || `index:${index}`"
+          >
             <button
               type="button"
               class="path-card"
@@ -49,11 +71,18 @@
       </section>
     </template>
 
-    <GraphNodeOutputPreview v-else-if="node && hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-else-if="node && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localTitle" @change="persistTitle" />
+      <input
+        v-model="localTitle"
+        @change="persistTitle"
+      >
     </label>
 
     <GraphTextNotepadDialog
@@ -64,7 +93,12 @@
       @close="textNotepadOpen = false"
     />
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

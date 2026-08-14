@@ -1,5 +1,8 @@
 <template>
-  <label class="instruction-model" :title="title">
+  <label
+    class="instruction-model"
+    :title="title"
+  >
     <svg
       class="model-icon"
       xmlns="http://www.w3.org/2000/svg"
@@ -30,8 +33,15 @@
       :aria-label="title"
       @change="onChange"
     >
-      <option v-if="options.length === 0" value="">{{ emptyLabel }}</option>
-      <option v-for="opt in options" :key="opt.key" :value="opt.key">
+      <option
+        v-if="options.length === 0"
+        value=""
+      >{{ emptyLabel }}</option>
+      <option
+        v-for="opt in options"
+        :key="opt.key"
+        :value="opt.key"
+      >
         {{ opt.key === modelValue ? '✓ ' : '' }}{{ opt.label }}
       </option>
     </select>

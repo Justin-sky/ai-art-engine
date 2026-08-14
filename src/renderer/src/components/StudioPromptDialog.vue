@@ -10,7 +10,12 @@
     :min-height="200"
     @close="onBackdrop"
   >
-    <p v-if="current" class="message">{{ current.message }}</p>
+    <p
+      v-if="current"
+      class="message"
+    >
+      {{ current.message }}
+    </p>
     <input
       v-if="current?.mode === 'prompt'"
       ref="inputEl"
@@ -20,7 +25,7 @@
       :placeholder="current.placeholder || ''"
       @keydown.enter.prevent="onConfirm"
       @keydown.escape.prevent="onCancel"
-    />
+    >
 
     <template #footer>
       <button
@@ -30,7 +35,11 @@
       >
         {{ current.cancelLabel || t('common.cancel') }}
       </button>
-      <button type="button" class="primary" @click="onConfirm">
+      <button
+        type="button"
+        class="primary"
+        @click="onConfirm"
+      >
         {{
           current?.mode === 'confirm' || current?.mode === 'prompt'
             ? current.confirmLabel || t('common.confirm')

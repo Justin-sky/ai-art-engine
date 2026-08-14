@@ -1,13 +1,22 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.hostInterface.inspectorHint') }}</p>
+    <p class="hint">
+      {{ t('graph.hostInterface.inspectorHint') }}
+    </p>
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="displayName" type="text" @change="persistTitle" />
+      <input
+        v-model="displayName"
+        type="text"
+        @change="persistTitle"
+      >
     </label>
 
     <GraphNodeRunControl
@@ -19,27 +28,46 @@
     />
 
     <GraphPortSchemaEditor
+      v-model="inputs"
       :title="t('graph.hostInterface.inputs')"
       direction="in"
-      v-model="inputs"
     />
     <GraphPortSchemaEditor
+      v-model="outputs"
       :title="t('graph.hostInterface.outputs')"
       direction="out"
-      v-model="outputs"
     />
 
-    <button type="button" class="apply-btn" :disabled="saving" @click="applyInterface">
+    <button
+      type="button"
+      class="apply-btn"
+      :disabled="saving"
+      @click="applyInterface"
+    >
       {{ saving ? t('graph.hostInterface.saving') : t('graph.hostInterface.apply') }}
     </button>
-    <p v-if="error" class="err">{{ error }}</p>
+    <p
+      v-if="error"
+      class="err"
+    >
+      {{ error }}
+    </p>
 
     <section class="output-section">
       <h3>{{ t('graph.inspector.outputPreview') }}</h3>
-      <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+      <GraphNodeOutputPreview
+        v-if="hostId"
+        :node="node"
+        :host-id="hostId"
+      />
     </section>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

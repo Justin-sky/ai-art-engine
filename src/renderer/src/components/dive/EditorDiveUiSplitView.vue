@@ -1,8 +1,23 @@
 <template>
   <div class="ui-split-dive">
-    <div v-if="loading" class="hint">正在打开 UI 界面拆分内图…</div>
-    <AssetEditor v-else-if="innerAssetId" :key="innerAssetId" :asset-id="innerAssetId" embedded />
-    <div v-else class="hint">{{ errorText }}</div>
+    <div
+      v-if="loading"
+      class="hint"
+    >
+      正在打开 UI 界面拆分内图…
+    </div>
+    <AssetEditor
+      v-else-if="innerAssetId"
+      :key="innerAssetId"
+      :asset-id="innerAssetId"
+      embedded
+    />
+    <div
+      v-else
+      class="hint"
+    >
+      {{ errorText }}
+    </div>
   </div>
 </template>
 

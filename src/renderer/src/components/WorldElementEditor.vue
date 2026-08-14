@@ -1,6 +1,9 @@
 <template>
   <div class="world-element-editor">
-    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
+    <div
+      v-if="showDiveShellBar && diveContext"
+      class="dive-shell-bar"
+    >
       <EditorDiveBar
         :root-title="diveContext.rootTitle"
         :frames="diveContext.frames"
@@ -8,7 +11,10 @@
       />
     </div>
 
-    <div v-if="!embedded && !diving" class="toolbar">
+    <div
+      v-if="!embedded && !diving"
+      class="toolbar"
+    >
       <span>{{ t('studio.editor.world') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('world.asset.hint') }}</span>
@@ -23,7 +29,10 @@
       :hide-toolbar="!embedded && toolbarCollapsed"
     />
 
-    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
+    <EditorDiveChildHost
+      :frame="diving ? diveTop : null"
+      :frames="diveFrames"
+    />
   </div>
 </template>
 

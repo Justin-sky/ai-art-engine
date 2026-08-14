@@ -1,9 +1,20 @@
 <template>
-  <div v-if="!project.isOpen" class="empty">
+  <div
+    v-if="!project.isOpen"
+    class="empty"
+  >
     <p>{{ t('studio.noProject') }}</p>
-    <button class="primary" @click="router.push('/')">{{ t('studio.backHome') }}</button>
+    <button
+      class="primary"
+      @click="router.push('/')"
+    >
+      {{ t('studio.backHome') }}
+    </button>
   </div>
-  <div v-else class="studio">
+  <div
+    v-else
+    class="studio"
+  >
     <div class="studio-toolbar">
       <span class="hint">{{ t('studio.toolbar.hint') }}</span>
       <button
@@ -41,7 +52,10 @@
         @click="taskStore.openDialog(tasksBtnEl)"
       >
         {{ t('studio.toolbar.tasks') }}
-        <span v-if="taskStore.runningCount > 0" class="tasks-badge">
+        <span
+          v-if="taskStore.runningCount > 0"
+          class="tasks-badge"
+        >
           {{ taskStore.runningCount }}
         </span>
       </button>
@@ -53,7 +67,10 @@
         @click="runLogsStore.openDialog()"
       >
         {{ t('studio.toolbar.logs') }}
-        <span v-if="runLogsStore.activeRunId" class="tasks-badge live">·</span>
+        <span
+          v-if="runLogsStore.activeRunId"
+          class="tasks-badge live"
+        >·</span>
       </button>
       <div class="layout-menu">
         <button
@@ -67,7 +84,10 @@
           @click="toggleLayoutMenu"
         >
           {{ t('studio.layout.menu') }}
-          <span class="layout-caret" aria-hidden="true">▾</span>
+          <span
+            class="layout-caret"
+            aria-hidden="true"
+          >▾</span>
         </button>
         <Teleport to="body">
           <div
@@ -88,19 +108,28 @@
               :aria-checked="preset.id === layouts.activeId"
               @click="onLayoutMenuSelect(preset.id)"
             >
-              <span class="layout-check" aria-hidden="true">{{
+              <span
+                class="layout-check"
+                aria-hidden="true"
+              >{{
                 preset.id === layouts.activeId ? '✓' : ''
               }}</span>
               <span class="layout-item-label">{{ presetLabel(preset) }}</span>
             </button>
-            <div class="layout-menu-sep" role="separator" />
+            <div
+              class="layout-menu-sep"
+              role="separator"
+            />
             <button
               type="button"
               class="layout-menu-item"
               role="menuitem"
               @click="onLayoutMenuAction(openSaveLayoutDialog)"
             >
-              <span class="layout-check" aria-hidden="true" />
+              <span
+                class="layout-check"
+                aria-hidden="true"
+              />
               <span class="layout-item-label">{{ t('studio.layout.save') }}…</span>
             </button>
             <button
@@ -110,17 +139,26 @@
               :disabled="!canDeleteActive"
               @click="onLayoutMenuAction(removeActiveLayout)"
             >
-              <span class="layout-check" aria-hidden="true" />
+              <span
+                class="layout-check"
+                aria-hidden="true"
+              />
               <span class="layout-item-label">{{ t('studio.layout.delete') }}</span>
             </button>
-            <div class="layout-menu-sep" role="separator" />
+            <div
+              class="layout-menu-sep"
+              role="separator"
+            />
             <button
               type="button"
               class="layout-menu-item"
               role="menuitem"
               @click="onLayoutMenuAction(triggerImportLayout)"
             >
-              <span class="layout-check" aria-hidden="true" />
+              <span
+                class="layout-check"
+                aria-hidden="true"
+              />
               <span class="layout-item-label">{{ t('studio.layout.fromFile') }}</span>
             </button>
             <button
@@ -129,7 +167,10 @@
               role="menuitem"
               @click="onLayoutMenuAction(exportActiveLayout)"
             >
-              <span class="layout-check" aria-hidden="true" />
+              <span
+                class="layout-check"
+                aria-hidden="true"
+              />
               <span class="layout-item-label">{{ t('studio.layout.toFile') }}</span>
             </button>
           </div>
@@ -141,7 +182,7 @@
         accept=".json,application/json"
         hidden
         @change="onImportFile"
-      />
+      >
     </div>
     <div class="studio-main">
       <DockviewVue

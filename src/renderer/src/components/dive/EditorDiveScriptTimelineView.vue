@@ -1,6 +1,9 @@
 <template>
   <div class="dive-view">
-    <ScriptTimelineEditor ref="editorRef" :script-asset-id="scriptAssetId" />
+    <ScriptTimelineEditor
+      ref="editorRef"
+      :script-asset-id="scriptAssetId"
+    />
   </div>
 </template>
 

@@ -1,10 +1,15 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.worldGen.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.worldGen.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -20,11 +25,16 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.worldGen.groupedPreview') }}</span>
-        <span v-if="totalImageCount" class="section-count">
+        <span
+          v-if="totalImageCount"
+          class="section-count"
+        >
           {{ t('graph.inspector.outputPreviewCount', { n: totalImageCount }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.worldGen.groupedPreviewHint') }}</p>
+      <p class="section-hint">
+        {{ t('graph.inspector.worldGen.groupedPreviewHint') }}
+      </p>
 
       <section
         v-for="group in outputGroups"
@@ -38,10 +48,16 @@
             {{ t('graph.inspector.worldGen.groupCount', { n: group.items.length }) }}
           </span>
         </div>
-        <div v-if="!group.items.length" class="empty">
+        <div
+          v-if="!group.items.length"
+          class="empty"
+        >
           {{ t('graph.inspector.worldGen.groupEmpty') }}
         </div>
-        <div v-else class="media-grid">
+        <div
+          v-else
+          class="media-grid"
+        >
           <button
             v-for="item in group.items"
             :key="item.key"
@@ -56,8 +72,11 @@
               :alt="item.name"
               loading="lazy"
               decoding="async"
-            />
-            <span v-else class="media-placeholder">…</span>
+            >
+            <span
+              v-else
+              class="media-placeholder"
+            >…</span>
             <span class="item-label">{{ item.name }}</span>
           </button>
         </div>
@@ -66,10 +85,18 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localTitle" @change="persistTitle" />
+      <input
+        v-model="localTitle"
+        @change="persistTitle"
+      >
     </label>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

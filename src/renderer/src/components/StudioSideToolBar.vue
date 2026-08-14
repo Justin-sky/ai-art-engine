@@ -15,7 +15,10 @@
       :aria-pressed="!sidePanelCollapsed[item.id]"
       @click="onToggle(item.id)"
     >
-      <span class="rail-icon" aria-hidden="true">{{ item.icon }}</span>
+      <span
+        class="rail-icon"
+        aria-hidden="true"
+      >{{ item.icon }}</span>
       <span class="rail-label">{{ item.label }}</span>
     </button>
   </aside>

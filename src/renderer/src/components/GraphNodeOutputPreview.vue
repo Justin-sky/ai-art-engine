@@ -1182,11 +1182,18 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 </script>
 
 <template>
-  <section v-if="hasPreview" class="output-preview" :aria-label="t('graph.inspector.outputPreview')">
+  <section
+    v-if="hasPreview"
+    class="output-preview"
+    :aria-label="t('graph.inspector.outputPreview')"
+  >
     <div class="section-head">
       <span class="section-title">{{ t('graph.inspector.outputPreview') }}</span>
       <div class="section-actions">
-        <span v-if="items.length > 1" class="section-count">
+        <span
+          v-if="items.length > 1"
+          class="section-count"
+        >
           {{ t('graph.inspector.outputPreviewCount', { n: items.length }) }}
         </span>
         <button
@@ -1197,18 +1204,32 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :aria-label="t('graph.inspector.revealInAssets')"
           @click="revealInAssets(primaryRevealAssetId)"
         >
-          <span class="icon-reveal" aria-hidden="true" />
+          <span
+            class="icon-reveal"
+            aria-hidden="true"
+          />
         </button>
       </div>
     </div>
 
-    <p v-if="clearable && canSelectGalleryOutput" class="hint">
+    <p
+      v-if="clearable && canSelectGalleryOutput"
+      class="hint"
+    >
       {{ t('graph.inspector.outputGalleryHint') }}
     </p>
 
-    <p v-if="loading" class="hint">{{ t('graph.inspector.outputPreviewLoading') }}</p>
+    <p
+      v-if="loading"
+      class="hint"
+    >
+      {{ t('graph.inspector.outputPreviewLoading') }}
+    </p>
 
-    <div v-else-if="layoutKind === 'text'" class="text-stack">
+    <div
+      v-else-if="layoutKind === 'text'"
+      class="text-stack"
+    >
       <pre
         v-for="item in items"
         :key="item.key"
@@ -1218,9 +1239,18 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
       >{{ displayText(item) }}</pre>
     </div>
 
-    <div v-else-if="layoutKind === 'mixed'" class="mixed-stack">
-      <div v-if="mediaItems.length === 1" class="single">
-        <template v-for="item in mediaItems" :key="item.key">
+    <div
+      v-else-if="layoutKind === 'mixed'"
+      class="mixed-stack"
+    >
+      <div
+        v-if="mediaItems.length === 1"
+        class="single"
+      >
+        <template
+          v-for="item in mediaItems"
+          :key="item.key"
+        >
           <img
             v-if="item.kind === 'image' && displaySrc(item)"
             :src="displaySrc(item)"
@@ -1230,13 +1260,18 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             class="preview-image interactive"
             :title="imagePreviewHint"
             @dblclick="openImageFull(item)"
-          />
+          >
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
             :src="displaySrc(item)"
           />
-          <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+          <p
+            v-else
+            class="hint"
+          >
+            {{ t('graph.inspector.outputPreviewMissing') }}
+          </p>
           <button
             v-if="canDeleteOutputItem(item)"
             type="button"
@@ -1245,11 +1280,17 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.outputDelete')"
             @click.stop="deleteOutputItem(item)"
           >
-            <span class="icon-delete" aria-hidden="true" />
+            <span
+              class="icon-delete"
+              aria-hidden="true"
+            />
           </button>
         </template>
       </div>
-      <div v-else class="media-grid">
+      <div
+        v-else
+        class="media-grid"
+      >
         <div
           v-for="(item, index) in mediaItems"
           :key="item.key"
@@ -1268,7 +1309,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
               :aria-label="t('graph.inspector.revealInAssets')"
               @click.stop="revealInAssets(item.assetId)"
             >
-              <span class="icon-reveal" aria-hidden="true" />
+              <span
+                class="icon-reveal"
+                aria-hidden="true"
+              />
             </button>
             <button
               v-if="canDeleteOutputItem(item)"
@@ -1278,7 +1322,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
               :aria-label="t('graph.inspector.outputDelete')"
               @click.stop="deleteOutputItem(item)"
             >
-              <span class="icon-delete" aria-hidden="true" />
+              <span
+                class="icon-delete"
+                aria-hidden="true"
+              />
             </button>
           </div>
           <img
@@ -1290,16 +1337,24 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             class="preview-image interactive"
             :title="imagePreviewHint"
             @dblclick.stop="openImageFull(item)"
-          />
+          >
           <MediaPreviewPlayer
             v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
             class="grid-player"
             :kind="item.kind === 'audio' ? 'voice' : 'video'"
             :src="displaySrc(item)"
           />
-          <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+          <p
+            v-else
+            class="hint"
+          >
+            {{ t('graph.inspector.outputPreviewMissing') }}
+          </p>
           <span class="media-index">{{ index + 1 }}</span>
-          <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
+          <span
+            v-if="canSelectGalleryOutput && isSelectedPreview(item)"
+            class="media-current"
+          >
             {{ t('graph.inspector.generate.selectedAsOutput') }}
           </span>
         </div>
@@ -1316,8 +1371,14 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
       </div>
     </div>
 
-    <div v-else-if="layoutKind === 'single'" class="single">
-      <template v-for="item in items" :key="item.key">
+    <div
+      v-else-if="layoutKind === 'single'"
+      class="single"
+    >
+      <template
+        v-for="item in items"
+        :key="item.key"
+      >
         <img
           v-if="item.kind === 'image' && displaySrc(item)"
           :src="displaySrc(item)"
@@ -1327,7 +1388,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="preview-image interactive"
           :title="imagePreviewHint"
           @dblclick="openImageFull(item)"
-        />
+        >
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
@@ -1339,7 +1400,12 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :title="textOpenHint"
           @dblclick="openTextNotepad(item)"
         >{{ displayText(item) }}</pre>
-        <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+        <p
+          v-else
+          class="hint"
+        >
+          {{ t('graph.inspector.outputPreviewMissing') }}
+        </p>
         <button
           v-if="canDeleteOutputItem(item)"
           type="button"
@@ -1348,20 +1414,26 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :aria-label="t('graph.inspector.outputDelete')"
           @click.stop="deleteOutputItem(item)"
         >
-          <span class="icon-delete" aria-hidden="true" />
+          <span
+            class="icon-delete"
+            aria-hidden="true"
+          />
         </button>
       </template>
     </div>
 
-    <div v-else class="media-grid">
+    <div
+      v-else
+      class="media-grid"
+    >
       <div
         v-for="(item, index) in items"
         :key="item.key"
         class="media-card"
         :class="{ selected: isSelectedPreview(item), selectable: canSelectGalleryOutput }"
-          :data-kind="item.kind"
-          :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
-          @click.capture="selectAsCurrentOutputCapture(item, $event)"
+        :data-kind="item.kind"
+        :title="canSelectGalleryOutput ? t('graph.inspector.generate.setAsOutput') : undefined"
+        @click.capture="selectAsCurrentOutputCapture(item, $event)"
       >
         <div class="card-actions">
           <button
@@ -1372,7 +1444,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.revealInAssets')"
             @click.stop="revealInAssets(item.assetId)"
           >
-            <span class="icon-reveal" aria-hidden="true" />
+            <span
+              class="icon-reveal"
+              aria-hidden="true"
+            />
           </button>
           <button
             v-if="canDeleteOutputItem(item)"
@@ -1382,7 +1457,10 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
             :aria-label="t('graph.inspector.outputDelete')"
             @click.stop="deleteOutputItem(item)"
           >
-            <span class="icon-delete" aria-hidden="true" />
+            <span
+              class="icon-delete"
+              aria-hidden="true"
+            />
           </button>
         </div>
         <img
@@ -1394,16 +1472,24 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           class="preview-image interactive"
           :title="imagePreviewHint"
           @dblclick.stop="openImageFull(item)"
-        />
+        >
         <MediaPreviewPlayer
           v-else-if="(item.kind === 'video' || item.kind === 'audio') && displaySrc(item)"
           class="grid-player"
           :kind="item.kind === 'audio' ? 'voice' : 'video'"
           :src="displaySrc(item)"
         />
-        <div v-else-if="item.kind === 'audio'" class="audio-card">
-          <span class="audio-glyph" aria-hidden="true">♪</span>
-          <p class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+        <div
+          v-else-if="item.kind === 'audio'"
+          class="audio-card"
+        >
+          <span
+            class="audio-glyph"
+            aria-hidden="true"
+          >♪</span>
+          <p class="hint">
+            {{ t('graph.inspector.outputPreviewMissing') }}
+          </p>
         </div>
         <pre
           v-else-if="item.kind === 'text'"
@@ -1411,9 +1497,17 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
           :title="textOpenHint"
           @dblclick.stop="openTextNotepad(item)"
         >{{ displayText(item) }}</pre>
-        <p v-else class="hint">{{ t('graph.inspector.outputPreviewMissing') }}</p>
+        <p
+          v-else
+          class="hint"
+        >
+          {{ t('graph.inspector.outputPreviewMissing') }}
+        </p>
         <span class="media-index">{{ index + 1 }}</span>
-        <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
+        <span
+          v-if="canSelectGalleryOutput && isSelectedPreview(item)"
+          class="media-current"
+        >
           {{ t('graph.inspector.generate.selectedAsOutput') }}
         </span>
       </div>

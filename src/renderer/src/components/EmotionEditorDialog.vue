@@ -19,7 +19,7 @@
             :alt="currentLabel"
             :title="currentLabel"
             draggable="false"
-          />
+          >
         </div>
 
         <div class="pad-pane">
@@ -67,7 +67,11 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button type="button" class="reset-btn" @click="resetParams">
+        <button
+          type="button"
+          class="reset-btn"
+          @click="resetParams"
+        >
           {{ t('graph.emotion.resetParams') }}
         </button>
       </div>

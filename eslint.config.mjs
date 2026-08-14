@@ -26,7 +26,9 @@ export default tseslint.config(
           varsIgnorePattern: '^_',
           caughtErrorsIgnorePattern: '^_'
         }
-      ]
+      ],
+      // v-html 用于渲染受信任的内部预览/笔记内容（Electron 桌面应用），关闭该安全启发式告警
+      'vue/no-v-html': 'off'
     }
   },
   {

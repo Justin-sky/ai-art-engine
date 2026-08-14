@@ -14,7 +14,10 @@
     <div class="body">
       <div class="row">
         <span class="label">{{ t('aiWorkflow.presetsLabel') }}</span>
-        <div class="presets" role="list">
+        <div
+          class="presets"
+          role="list"
+        >
           <button
             v-for="id in presetIds"
             :key="id"
@@ -74,21 +77,44 @@
             :title="t('aiWorkflow.aspectRatioLabel')"
             @change="emit('update:aspectRatio', ($event.target as HTMLSelectElement).value)"
           >
-            <option value="">{{ t('aiWorkflow.aspectRatioEmpty') }}</option>
-            <option value="1:1">1:1</option>
-            <option value="16:9">16:9</option>
-            <option value="9:16">9:16</option>
-            <option value="4:3">4:3</option>
-            <option value="3:4">3:4</option>
-            <option value="3:2">3:2</option>
-            <option value="2:3">2:3</option>
-            <option value="21:9">21:9</option>
-            <option value="9:21">9:21</option>
+            <option value="">
+              {{ t('aiWorkflow.aspectRatioEmpty') }}
+            </option>
+            <option value="1:1">
+              1:1
+            </option>
+            <option value="16:9">
+              16:9
+            </option>
+            <option value="9:16">
+              9:16
+            </option>
+            <option value="4:3">
+              4:3
+            </option>
+            <option value="3:4">
+              3:4
+            </option>
+            <option value="3:2">
+              3:2
+            </option>
+            <option value="2:3">
+              2:3
+            </option>
+            <option value="21:9">
+              21:9
+            </option>
+            <option value="9:21">
+              9:21
+            </option>
           </select>
         </div>
       </div>
 
-      <label class="label" for="ai-workflow-prompt">{{ t('aiWorkflow.promptLabel') }}</label>
+      <label
+        class="label"
+        for="ai-workflow-prompt"
+      >{{ t('aiWorkflow.promptLabel') }}</label>
       <textarea
         id="ai-workflow-prompt"
         v-model="promptModel"
@@ -101,7 +127,10 @@
         @keydown.meta.enter.prevent="onPlanAi"
       />
 
-      <div v-if="preview" class="preview">
+      <div
+        v-if="preview"
+        class="preview"
+      >
         <div class="preview-head">
           <span class="label">{{ t('aiWorkflow.previewLabel') }}</span>
           <strong class="preview-title">{{ preview.title }}</strong>
@@ -110,25 +139,48 @@
           </span>
         </div>
         <ul class="preview-nodes">
-          <li v-for="node in preview.nodes" :key="node.key">
+          <li
+            v-for="node in preview.nodes"
+            :key="node.key"
+          >
             <span class="node-title">{{ node.title }}</span>
             <span class="node-type">{{ node.typeId }}</span>
           </li>
         </ul>
-        <p v-if="preview.edges.length" class="preview-edges">
+        <p
+          v-if="preview.edges.length"
+          class="preview-edges"
+        >
           {{ preview.edges.map((e) => `${e.from}→${e.to}`).join(' · ') }}
         </p>
-        <p v-if="previewWarnings.length" class="preview-warn">
+        <p
+          v-if="previewWarnings.length"
+          class="preview-warn"
+        >
           {{ previewWarnings.slice(0, 4).join('；') }}
         </p>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
-      <p v-else class="hint">{{ t('aiWorkflow.hint') }}</p>
+      <p
+        v-if="error"
+        class="error"
+      >
+        {{ error }}
+      </p>
+      <p
+        v-else
+        class="hint"
+      >
+        {{ t('aiWorkflow.hint') }}
+      </p>
     </div>
 
     <template #footer>
-      <button type="button" :disabled="busy" @click="onClose">
+      <button
+        type="button"
+        :disabled="busy"
+        @click="onClose"
+      >
         {{ t('common.cancel') }}
       </button>
       <button

@@ -11,13 +11,29 @@
     <template #title>
       <div class="title-block">
         <span class="app-mark">{{ t('graph.textsPreview.appMark') }}</span>
-        <h2 class="title" :title="title">{{ title }}</h2>
+        <h2
+          class="title"
+          :title="title"
+        >
+          {{ title }}
+        </h2>
       </div>
     </template>
 
-    <p class="hint">{{ t('graph.textsPreview.hint') }}</p>
-    <div v-if="!items.length" class="empty">{{ t('graph.textsPreview.empty') }}</div>
-    <div v-else class="text-grid" :aria-label="t('graph.textsPreview.appMark')">
+    <p class="hint">
+      {{ t('graph.textsPreview.hint') }}
+    </p>
+    <div
+      v-if="!items.length"
+      class="empty"
+    >
+      {{ t('graph.textsPreview.empty') }}
+    </div>
+    <div
+      v-else
+      class="text-grid"
+      :aria-label="t('graph.textsPreview.appMark')"
+    >
       <button
         v-for="(item, index) in items"
         :key="itemKey(item, index)"

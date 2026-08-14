@@ -24,7 +24,7 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      />
+      >
       <span
         v-else
         class="title"
@@ -44,10 +44,18 @@
         @keydown.esc.prevent="cancelEdit"
         @keydown.enter.ctrl.prevent="commitEdit"
       />
-      <div v-else class="demo-body">{{ displayText }}</div>
+      <div
+        v-else
+        class="demo-body"
+      >
+        {{ displayText }}
+      </div>
     </div>
 
-    <GraphNodeResizeHandle v-if="!editing" @resize-start="onResizeStart" />
+    <GraphNodeResizeHandle
+      v-if="!editing"
+      @resize-start="onResizeStart"
+    />
 
     <button
       v-for="(port, index) in outPorts"

@@ -31,7 +31,10 @@
         </li>
       </ul>
     </Teleport>
-    <p v-if="options.length && hintText" class="mention-hint">
+    <p
+      v-if="options.length && hintText"
+      class="mention-hint"
+    >
       {{ hintText }}
     </p>
   </div>
@@ -55,7 +58,9 @@ const props = withDefaults(
     hint?: string
   }>(),
   {
-    rows: 4
+    rows: 4,
+    placeholder: '',
+    hint: ''
   }
 )
 

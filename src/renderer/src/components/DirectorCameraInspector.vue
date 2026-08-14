@@ -1,30 +1,58 @@
 <template>
-  <div class="camera-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="camera-inspector"
+  >
     <div class="head">
       <span class="type">{{ t('graph.types.asset.motion') }}</span>
       <h2>{{ node.title || t('graph.types.asset.motion') }}</h2>
     </div>
 
-    <button type="button" class="link-btn" @click="openStage">{{ t('graph.inspector.camera.openStage') }}</button>
-    <p class="subhint">{{ t('director.stage.editInStage') }}</p>
+    <button
+      type="button"
+      class="link-btn"
+      @click="openStage"
+    >
+      {{ t('graph.inspector.camera.openStage') }}
+    </button>
+    <p class="subhint">
+      {{ t('director.stage.editInStage') }}
+    </p>
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localTitle" @change="persist" />
+      <input
+        v-model="localTitle"
+        @change="persist"
+      >
     </label>
 
-    <section class="out-images" :aria-label="t('graph.inspector.camera.outImages')">
+    <section
+      class="out-images"
+      :aria-label="t('graph.inspector.camera.outImages')"
+    >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.camera.outImages') }}</span>
-        <span v-if="outImages.length" class="section-count">
+        <span
+          v-if="outImages.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.camera.outImagesCount', { n: outImages.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.camera.outImagesHint') }}</p>
-      <div v-if="!outImages.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.camera.outImagesHint') }}
+      </p>
+      <div
+        v-if="!outImages.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.camera.outImagesEmpty') }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <button
           v-for="(shot, index) in outImages"
           :key="shot.id || `index:${index}`"
@@ -38,24 +66,38 @@
             alt=""
             loading="lazy"
             decoding="async"
-          />
+          >
           <span class="shot-index">{{ index + 1 }}</span>
         </button>
       </div>
     </section>
 
-    <section class="out-images" :aria-label="t('graph.inspector.camera.outActions')">
+    <section
+      class="out-images"
+      :aria-label="t('graph.inspector.camera.outActions')"
+    >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.camera.outActions') }}</span>
-        <span v-if="outActions.length" class="section-count">
+        <span
+          v-if="outActions.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.camera.outActionsCount', { n: outActions.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.camera.outActionsHint') }}</p>
-      <div v-if="!outActions.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.camera.outActionsHint') }}
+      </p>
+      <div
+        v-if="!outActions.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.camera.outActionsEmpty') }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <button
           v-for="(clip, index) in outActions"
           :key="clip.id || `action:${index}`"
@@ -76,7 +118,12 @@
       </div>
     </section>
   </div>
-  <div v-else class="camera-inspector empty">{{ t('graph.inspector.camera.empty') }}</div>
+  <div
+    v-else
+    class="camera-inspector empty"
+  >
+    {{ t('graph.inspector.camera.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

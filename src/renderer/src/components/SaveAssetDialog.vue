@@ -11,46 +11,61 @@
   >
     <div class="form">
       <label class="field">
-      {{ t('dialog.saveAsset.fileName') }}
-      <input
-        ref="nameInputEl"
-        v-model="name"
-        @keydown.enter.prevent="onConfirm"
-        @keydown.esc.prevent="onCancel"
-      />
-    </label>
+        {{ t('dialog.saveAsset.fileName') }}
+        <input
+          ref="nameInputEl"
+          v-model="name"
+          @keydown.enter.prevent="onConfirm"
+          @keydown.esc.prevent="onCancel"
+        >
+      </label>
 
-    <div class="field">
-      <span class="field-label">{{ t('dialog.saveAsset.folder') }}</span>
-      <div class="folder-tree">
-        <button
-          type="button"
-          class="folder-row"
-          :class="{ active: folderId === null }"
-          @click="folderId = null"
-        >
-          📂 {{ t('asset.browser.assetsRoot') }}
-        </button>
-        <button
-          v-for="row in flatFolders"
-          :key="row.id"
-          type="button"
-          class="folder-row"
-          :class="{ active: folderId === row.id }"
-          :style="{ paddingLeft: `${12 + row.depth * 14}px` }"
-          @click="folderId = row.id"
-        >
-          📁 {{ row.name }}
-        </button>
+      <div class="field">
+        <span class="field-label">{{ t('dialog.saveAsset.folder') }}</span>
+        <div class="folder-tree">
+          <button
+            type="button"
+            class="folder-row"
+            :class="{ active: folderId === null }"
+            @click="folderId = null"
+          >
+            📂 {{ t('asset.browser.assetsRoot') }}
+          </button>
+          <button
+            v-for="row in flatFolders"
+            :key="row.id"
+            type="button"
+            class="folder-row"
+            :class="{ active: folderId === row.id }"
+            :style="{ paddingLeft: `${12 + row.depth * 14}px` }"
+            @click="folderId = row.id"
+          >
+            📁 {{ row.name }}
+          </button>
+        </div>
       </div>
-    </div>
 
-    <p v-if="error" class="err">{{ error }}</p>
+      <p
+        v-if="error"
+        class="err"
+      >
+        {{ error }}
+      </p>
     </div>
 
     <template #footer>
-      <button type="button" @click="onCancel">{{ t('common.cancel') }}</button>
-      <button type="button" class="primary" :disabled="saving" @click="onConfirm">
+      <button
+        type="button"
+        @click="onCancel"
+      >
+        {{ t('common.cancel') }}
+      </button>
+      <button
+        type="button"
+        class="primary"
+        :disabled="saving"
+        @click="onConfirm"
+      >
         {{ saving ? t('common.saving') : t('common.save') }}
       </button>
     </template>
@@ -73,7 +88,7 @@ const props = withDefaults(
     subtitle?: string
     zIndex?: number
   }>(),
-  { zIndex: 2000 }
+  { zIndex: 2000, defaultFolderId: null, title: '', subtitle: '' }
 )
 
 const emit = defineEmits<{

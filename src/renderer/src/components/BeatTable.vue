@@ -1,46 +1,96 @@
 <template>
-  <div ref="rootRef" class="beat-table">
+  <div
+    ref="rootRef"
+    class="beat-table"
+  >
     <div class="table-toolbar">
       <span class="count">{{ rows.length }}</span>
-      <button type="button" @click="onAdd">{{ t('beat.table.new') }}</button>
+      <button
+        type="button"
+        @click="onAdd"
+      >
+        {{ t('beat.table.new') }}
+      </button>
     </div>
-    <p v-if="error" class="table-error">{{ error }}</p>
+    <p
+      v-if="error"
+      class="table-error"
+    >
+      {{ error }}
+    </p>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th class="col-order">{{ t('beat.table.column.order') }}</th>
-            <th class="col-title">{{ t('beat.table.column.title') }}</th>
-            <th class="col-text">{{ t('beat.table.column.time') }}</th>
-            <th class="col-text">{{ t('beat.table.column.durationHint') }}</th>
-            <th class="col-text">{{ t('beat.table.column.location') }}</th>
-            <th class="col-refs">{{ t('beat.table.column.locations') }}</th>
-            <th class="col-refs">{{ t('beat.table.column.characters') }}</th>
-            <th class="col-long">{{ t('beat.table.column.action') }}</th>
-            <th class="col-long">{{ t('beat.table.column.conflict') }}</th>
-            <th class="col-long">{{ t('beat.table.column.atmosphere') }}</th>
-            <th class="col-refs">{{ t('beat.table.column.props') }}</th>
-            <th class="col-refs">{{ t('beat.table.column.weapons') }}</th>
-            <th class="col-long">{{ t('beat.table.column.sourceExcerpt') }}</th>
-            <th class="col-status">{{ t('beat.table.column.status') }}</th>
+            <th class="col-order">
+              {{ t('beat.table.column.order') }}
+            </th>
+            <th class="col-title">
+              {{ t('beat.table.column.title') }}
+            </th>
+            <th class="col-text">
+              {{ t('beat.table.column.time') }}
+            </th>
+            <th class="col-text">
+              {{ t('beat.table.column.durationHint') }}
+            </th>
+            <th class="col-text">
+              {{ t('beat.table.column.location') }}
+            </th>
+            <th class="col-refs">
+              {{ t('beat.table.column.locations') }}
+            </th>
+            <th class="col-refs">
+              {{ t('beat.table.column.characters') }}
+            </th>
+            <th class="col-long">
+              {{ t('beat.table.column.action') }}
+            </th>
+            <th class="col-long">
+              {{ t('beat.table.column.conflict') }}
+            </th>
+            <th class="col-long">
+              {{ t('beat.table.column.atmosphere') }}
+            </th>
+            <th class="col-refs">
+              {{ t('beat.table.column.props') }}
+            </th>
+            <th class="col-refs">
+              {{ t('beat.table.column.weapons') }}
+            </th>
+            <th class="col-long">
+              {{ t('beat.table.column.sourceExcerpt') }}
+            </th>
+            <th class="col-status">
+              {{ t('beat.table.column.status') }}
+            </th>
             <th class="col-actions" />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.id">
-            <td class="col-order" @click.stop>
+          <tr
+            v-for="row in rows"
+            :key="row.id"
+          >
+            <td
+              class="col-order"
+              @click.stop
+            >
               <input
                 type="number"
                 min="1"
                 :value="row.order"
                 @change="onOrderChange(row.id, ($event.target as HTMLInputElement).value)"
-              />
+              >
             </td>
-            <td class="col-title" @click.stop>
+            <td
+              class="col-title"
+              @click.stop
+            >
               <input
                 :value="row.title"
                 @change="onTitleChange(row.id, ($event.target as HTMLInputElement).value)"
-              />
+              >
             </td>
             <td
               v-for="field in LEAD_TEXT_FIELDS"
@@ -56,7 +106,12 @@
                 "
               />
             </td>
-            <td v-for="field in REF_FIELDS.slice(0, 2)" :key="field" class="col-refs" @click.stop>
+            <td
+              v-for="field in REF_FIELDS.slice(0, 2)"
+              :key="field"
+              class="col-refs"
+              @click.stop
+            >
               <div class="ref-list">
                 <div
                   v-for="(refItem, index) in row[field]"
@@ -74,7 +129,7 @@
                         ($event.target as HTMLInputElement).value
                       )
                     "
-                  />
+                  >
                   <button
                     type="button"
                     class="ref-remove"
@@ -94,7 +149,12 @@
                 </button>
               </div>
             </td>
-            <td v-for="field in CORE_TEXT_FIELDS" :key="field" class="col-long" @click.stop>
+            <td
+              v-for="field in CORE_TEXT_FIELDS"
+              :key="field"
+              class="col-long"
+              @click.stop
+            >
               <textarea
                 rows="2"
                 :value="row[field]"
@@ -103,7 +163,12 @@
                 "
               />
             </td>
-            <td v-for="field in REF_FIELDS.slice(2)" :key="field" class="col-refs" @click.stop>
+            <td
+              v-for="field in REF_FIELDS.slice(2)"
+              :key="field"
+              class="col-refs"
+              @click.stop
+            >
               <div class="ref-list">
                 <div
                   v-for="(refItem, index) in row[field]"
@@ -121,7 +186,7 @@
                         ($event.target as HTMLInputElement).value
                       )
                     "
-                  />
+                  >
                   <button
                     type="button"
                     class="ref-remove"
@@ -141,7 +206,10 @@
                 </button>
               </div>
             </td>
-            <td class="col-long" @click.stop>
+            <td
+              class="col-long"
+              @click.stop
+            >
               <textarea
                 rows="2"
                 :value="row.sourceExcerpt"
@@ -154,19 +222,29 @@
                 "
               />
             </td>
-            <td class="col-status" @click.stop>
+            <td
+              class="col-status"
+              @click.stop
+            >
               <select
                 class="review-status"
                 :data-status="row.status"
                 :value="row.status"
                 @change="onStatusChange(row.id, ($event.target as HTMLSelectElement).value)"
               >
-<option v-for="opt in REVIEW_STATUS_OPTIONS" :key="opt" :value="opt">
+                <option
+                  v-for="opt in REVIEW_STATUS_OPTIONS"
+                  :key="opt"
+                  :value="opt"
+                >
                   {{ opt }}
                 </option>
               </select>
             </td>
-            <td class="col-actions" @click.stop>
+            <td
+              class="col-actions"
+              @click.stop
+            >
               <button
                 type="button"
                 class="del"
@@ -179,7 +257,12 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="!rows.length" class="empty">{{ t('beat.table.empty') }}</p>
+      <p
+        v-if="!rows.length"
+        class="empty"
+      >
+        {{ t('beat.table.empty') }}
+      </p>
     </div>
   </div>
 </template>

@@ -1,6 +1,9 @@
 <template>
   <div class="director-editor">
-    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
+    <div
+      v-if="showDiveShellBar && diveContext"
+      class="dive-shell-bar"
+    >
       <EditorDiveBar
         :root-title="diveContext.rootTitle"
         :frames="diveContext.frames"
@@ -8,7 +11,10 @@
       />
     </div>
 
-    <div v-if="!embedded && !diving" class="toolbar">
+    <div
+      v-if="!embedded && !diving"
+      class="toolbar"
+    >
       <span>{{ t('director.title') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('director.hint.graph') }}</span>
@@ -20,7 +26,10 @@
       :asset-id="directorAssetId"
       :hide-toolbar="!embedded && toolbarCollapsed"
     />
-    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
+    <EditorDiveChildHost
+      :frame="diving ? diveTop : null"
+      :frames="diveFrames"
+    />
   </div>
 </template>
 

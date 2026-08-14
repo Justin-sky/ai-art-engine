@@ -7,7 +7,9 @@
   >
     <div class="panel">
       <h1>{{ t('settings.title') }}</h1>
-      <p class="hint">{{ t('settings.hint') }}</p>
+      <p class="hint">
+        {{ t('settings.hint') }}
+      </p>
 
       <nav class="top-tabs">
         <button
@@ -61,7 +63,10 @@
           </select>
         </label>
         <label class="check">
-          <input type="checkbox" v-model="form.editor.autoSaveEnabled" />
+          <input
+            v-model="form.editor.autoSaveEnabled"
+            type="checkbox"
+          >
           {{ t('settings.autoSave.enabled') }}
         </label>
         <label>
@@ -73,12 +78,14 @@
               min="1"
               max="3600"
               :disabled="!form.editor.autoSaveEnabled"
-            />
+            >
             <span>{{ t('common.second') }}</span>
           </div>
         </label>
 
-        <h2 class="about-heading">{{ t('settings.about.title') }}</h2>
+        <h2 class="about-heading">
+          {{ t('settings.about.title') }}
+        </h2>
         <div class="about-row">
           <div>
             <span class="about-label">{{ t('settings.about.version') }}</span>
@@ -103,33 +110,61 @@
             </button>
           </div>
         </div>
-        <p class="hint about-status">{{ updateStatus }}</p>
+        <p class="hint about-status">
+          {{ updateStatus }}
+        </p>
       </section>
 
-      <section v-show="mainTab === 'models'" class="models-section">
+      <section
+        v-show="mainTab === 'models'"
+        class="models-section"
+      >
         <ModelsPanel :models="form.models" />
       </section>
 
-      <section v-show="mainTab === 'objectStorage'" class="models-section">
+      <section
+        v-show="mainTab === 'objectStorage'"
+        class="models-section"
+      >
         <ObjectStoragePanel :object-storage="form.objectStorage" />
       </section>
 
       <section v-show="mainTab === 'plugins'">
         <h2>{{ t('settings.section.plugins') }}</h2>
-        <p class="hint">{{ t('settings.plugins.hint') }}</p>
-        <div v-for="plugin in plugins" :key="plugin.id" class="plugin-row">
+        <p class="hint">
+          {{ t('settings.plugins.hint') }}
+        </p>
+        <div
+          v-for="plugin in plugins"
+          :key="plugin.id"
+          class="plugin-row"
+        >
           <div>
             <strong>{{ plugin.displayName }}</strong>
             <span>{{ plugin.id }} · v{{ plugin.version }}</span>
           </div>
           <span>{{ t('settings.plugins.declarative') }}</span>
         </div>
-        <p v-if="plugins.length === 0" class="hint">{{ t('settings.plugins.empty') }}</p>
+        <p
+          v-if="plugins.length === 0"
+          class="hint"
+        >
+          {{ t('settings.plugins.empty') }}
+        </p>
       </section>
 
       <div class="actions">
-        <span v-if="message" class="msg" :class="{ error: isError, saving: saving }">{{ message }}</span>
-        <button type="button" @click="router.back()">{{ t('common.back') }}</button>
+        <span
+          v-if="message"
+          class="msg"
+          :class="{ error: isError, saving: saving }"
+        >{{ message }}</span>
+        <button
+          type="button"
+          @click="router.back()"
+        >
+          {{ t('common.back') }}
+        </button>
       </div>
     </div>
   </div>

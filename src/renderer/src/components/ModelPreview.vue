@@ -1,9 +1,27 @@
 <template>
   <div class="model-preview">
-    <div ref="viewportEl" class="viewport" />
-    <div v-if="status === 'loading'" class="overlay">{{ t('asset.inspector.modelPreviewLoading') }}</div>
-    <div v-else-if="status === 'empty'" class="overlay">{{ t('asset.inspector.unlinked') }}</div>
-    <div v-else-if="status === 'error'" class="overlay error">{{ errorMessage }}</div>
+    <div
+      ref="viewportEl"
+      class="viewport"
+    />
+    <div
+      v-if="status === 'loading'"
+      class="overlay"
+    >
+      {{ t('asset.inspector.modelPreviewLoading') }}
+    </div>
+    <div
+      v-else-if="status === 'empty'"
+      class="overlay"
+    >
+      {{ t('asset.inspector.unlinked') }}
+    </div>
+    <div
+      v-else-if="status === 'error'"
+      class="overlay error"
+    >
+      {{ errorMessage }}
+    </div>
   </div>
 </template>
 
@@ -52,6 +70,8 @@ const props = withDefaults(
     selectedBone?: string | null
   }>(),
   {
+    relativePath: null,
+    transform: null,
     previewClip: null,
     previewPlaying: false,
     previewSpeed: 1,

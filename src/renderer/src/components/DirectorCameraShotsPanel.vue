@@ -1,5 +1,9 @@
 <template>
-  <div class="shots-panel" role="dialog" :aria-label="t('director.stage.tabShots')">
+  <div
+    class="shots-panel"
+    role="dialog"
+    :aria-label="t('director.stage.tabShots')"
+  >
     <header class="panel-head">
       <span class="panel-title">{{ t('director.stage.tabShots') }}</span>
       <button
@@ -12,7 +16,10 @@
       </button>
     </header>
 
-    <div class="tabs" role="tablist">
+    <div
+      class="tabs"
+      role="tablist"
+    >
       <button
         type="button"
         class="tab"
@@ -22,7 +29,10 @@
         @click="activeTab = 'shots'"
       >
         {{ t('director.stage.tabShotsOnly') }}
-        <span v-if="shotList.length" class="tab-count">{{ shotList.length }}</span>
+        <span
+          v-if="shotList.length"
+          class="tab-count"
+        >{{ shotList.length }}</span>
       </button>
       <button
         type="button"
@@ -33,27 +43,60 @@
         @click="activeTab = 'actions'"
       >
         {{ t('director.stage.tabActionsOnly') }}
-        <span v-if="videoList.length" class="tab-count">{{ videoList.length }}</span>
+        <span
+          v-if="videoList.length"
+          class="tab-count"
+        >{{ videoList.length }}</span>
       </button>
     </div>
 
-    <div v-show="activeTab === 'shots'" class="shots-list">
-      <div v-if="!shotList.length" class="empty">{{ t('director.stage.shotsEmpty') }}</div>
-      <div v-for="shot in shotList" :key="shot.id" class="shot">
+    <div
+      v-show="activeTab === 'shots'"
+      class="shots-list"
+    >
+      <div
+        v-if="!shotList.length"
+        class="empty"
+      >
+        {{ t('director.stage.shotsEmpty') }}
+      </div>
+      <div
+        v-for="shot in shotList"
+        :key="shot.id"
+        class="shot"
+      >
         <img
           :src="shotBlobSrc[shot.id] || shot.dataUrl"
           alt=""
           loading="lazy"
           decoding="async"
           @dblclick="openShotPreview(shot)"
-        />
-        <button type="button" class="remove" @click="scene.removeCameraShot(shot.id)">×</button>
+        >
+        <button
+          type="button"
+          class="remove"
+          @click="scene.removeCameraShot(shot.id)"
+        >
+          ×
+        </button>
       </div>
     </div>
 
-    <div v-show="activeTab === 'actions'" class="shots-list">
-      <div v-if="!videoList.length" class="empty">{{ t('director.stage.actionsEmpty') }}</div>
-      <div v-for="video in videoList" :key="video.id" class="shot video">
+    <div
+      v-show="activeTab === 'actions'"
+      class="shots-list"
+    >
+      <div
+        v-if="!videoList.length"
+        class="empty"
+      >
+        {{ t('director.stage.actionsEmpty') }}
+      </div>
+      <div
+        v-for="video in videoList"
+        :key="video.id"
+        class="shot video"
+      >
         <video
           v-if="videoSrc[video.id]"
           :src="videoSrc[video.id]"
@@ -62,8 +105,19 @@
           preload="metadata"
           @dblclick="openVideoPreview(video)"
         />
-        <div v-else class="video-placeholder">{{ t('director.stage.actionLoading') }}</div>
-        <button type="button" class="remove" @click="scene.removeCameraVideo(video.id)">×</button>
+        <div
+          v-else
+          class="video-placeholder"
+        >
+          {{ t('director.stage.actionLoading') }}
+        </div>
+        <button
+          type="button"
+          class="remove"
+          @click="scene.removeCameraVideo(video.id)"
+        >
+          ×
+        </button>
       </div>
     </div>
   </div>

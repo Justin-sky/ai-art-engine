@@ -27,8 +27,18 @@ const px = computed(() => {
     aria-hidden="true"
     focusable="false"
   >
-    <rect x="0" y="0" width="24" height="24" rx="6" fill="#8B5CF6" />
-    <path d="M8.6 6.6v10.8L18 12 8.6 6.6z" fill="#fff" />
+    <rect
+      x="0"
+      y="0"
+      width="24"
+      height="24"
+      rx="6"
+      fill="#8B5CF6"
+    />
+    <path
+      d="M8.6 6.6v10.8L18 12 8.6 6.6z"
+      fill="#fff"
+    />
   </svg>
 </template>
 

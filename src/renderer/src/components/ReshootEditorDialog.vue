@@ -12,7 +12,10 @@
   >
     <div class="reshoot-editor">
       <div class="stage-col">
-        <div v-if="videoUrl && !videoError" class="stage">
+        <div
+          v-if="videoUrl && !videoError"
+          class="stage"
+        >
           <video
             ref="videoEl"
             class="video-el"
@@ -28,7 +31,12 @@
             @error="onVideoError"
           />
 
-          <div class="transport" @pointerdown.stop @click.stop @wheel.stop>
+          <div
+            class="transport"
+            @pointerdown.stop
+            @click.stop
+            @wheel.stop
+          >
             <div class="transport-actions">
               <button
                 type="button"
@@ -76,21 +84,30 @@
                 :value="progressValue"
                 @input="onSeekInput"
                 @change="onSeekChange"
-              />
+              >
             </div>
-            <div class="segment-summary" :class="{ active: segmentActive }">
+            <div
+              class="segment-summary"
+              :class="{ active: segmentActive }"
+            >
               <span class="segment-dot start" />
               <span>{{ formatTime(startSec) }}</span>
               <span class="segment-arrow">→</span>
               <span>{{ formatTime(endSec) }}</span>
               <span class="segment-dot end" />
-              <span v-if="segmentActive" class="segment-range">
+              <span
+                v-if="segmentActive"
+                class="segment-range"
+              >
                 {{ t('graph.inspector.reshoot.range', { range: segmentRange }) }}
               </span>
             </div>
           </div>
         </div>
-        <div v-else class="stage empty">
+        <div
+          v-else
+          class="stage empty"
+        >
           <span>{{
             videoError
               ? t('graph.preview.videoError')
@@ -129,7 +146,7 @@
                 step="0.1"
                 :value="startSec"
                 @input="onStartInput"
-              />
+              >
             </label>
             <label>
               {{ t('graph.inspector.reshoot.end') }}
@@ -139,10 +156,12 @@
                 step="0.1"
                 :value="endSec"
                 @input="onEndInput"
-              />
+              >
             </label>
           </div>
-          <p class="segment-hint">{{ t('graph.inspector.reshoot.segmentHint') }}</p>
+          <p class="segment-hint">
+            {{ t('graph.inspector.reshoot.segmentHint') }}
+          </p>
         </div>
 
         <div class="instruction-block">
@@ -168,8 +187,8 @@
           />
           <GraphInstructionEditorDialog
             v-if="instructionDialogMounted"
-            :open="instructionDialogOpen"
             v-model="instruction"
+            :open="instructionDialogOpen"
             :host-id="props.hostId"
             :node-id="props.nodeId"
             :preset-kind="'reshoot'"

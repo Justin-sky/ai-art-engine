@@ -13,12 +13,23 @@
     <div class="editor-root">
       <div class="topbar">
         <div class="grid-menu-wrap">
-          <button type="button" class="menu-btn" @click="toggleGridMenu">
-            <span class="grid-ico" aria-hidden="true">▦</span>
+          <button
+            type="button"
+            class="menu-btn"
+            @click="toggleGridMenu"
+          >
+            <span
+              class="grid-ico"
+              aria-hidden="true"
+            >▦</span>
             <span>{{ gridSizeLabel }}</span>
             <span class="chev">▾</span>
           </button>
-          <div v-if="gridMenuOpen" class="grid-menu" @mousedown.stop>
+          <div
+            v-if="gridMenuOpen"
+            class="grid-menu"
+            @mousedown.stop
+          >
             <button
               v-for="p in presets"
               :key="`${p.rows}x${p.cols}`"
@@ -31,7 +42,9 @@
             </button>
             <div class="menu-sep" />
             <div class="custom-block">
-              <div class="custom-title">{{ t('graph.gridSplit.customTitle') }}</div>
+              <div class="custom-title">
+                {{ t('graph.gridSplit.customTitle') }}
+              </div>
               <div
                 class="custom-picker"
                 @pointerleave="hoverRC = null"
@@ -57,23 +70,49 @@
           {{ t('graph.gridSplit.selectedCount', { n: draft.selected.length }) }}
         </div>
 
-        <button type="button" class="clear-btn" @click="clearSelection">
+        <button
+          type="button"
+          class="clear-btn"
+          @click="clearSelection"
+        >
           {{ t('graph.gridSplit.clearSelection') }}
         </button>
       </div>
 
-      <div class="stage" ref="stageEl" @click="gridMenuOpen = false">
-        <div v-if="sourceLoading" class="stage-empty">{{ t('graph.editor.loadingSource') }}</div>
-        <div v-else-if="!sourceUrl" class="stage-empty">{{ t('graph.gridSplit.noSource') }}</div>
-        <div v-else class="canvas-wrap" :style="canvasWrapStyle">
+      <div
+        ref="stageEl"
+        class="stage"
+        @click="gridMenuOpen = false"
+      >
+        <div
+          v-if="sourceLoading"
+          class="stage-empty"
+        >
+          {{ t('graph.editor.loadingSource') }}
+        </div>
+        <div
+          v-else-if="!sourceUrl"
+          class="stage-empty"
+        >
+          {{ t('graph.gridSplit.noSource') }}
+        </div>
+        <div
+          v-else
+          class="canvas-wrap"
+          :style="canvasWrapStyle"
+        >
           <img
             class="source-img"
             :src="sourceUrl"
             alt=""
             draggable="false"
             decoding="async"
+          >
+          <div
+            class="grid-lines"
+            :style="gridLinesStyle"
+            aria-hidden="true"
           />
-          <div class="grid-lines" :style="gridLinesStyle" aria-hidden="true" />
           <button
             v-for="cell in cells"
             :key="cell.key"
@@ -83,7 +122,10 @@
             :style="cell.style"
             @click.stop="toggleCell(cell.key)"
           >
-            <span v-if="isSelected(cell.key)" class="cell-tag">{{ cell.key }}</span>
+            <span
+              v-if="isSelected(cell.key)"
+              class="cell-tag"
+            >{{ cell.key }}</span>
           </button>
         </div>
       </div>

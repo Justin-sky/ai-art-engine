@@ -1,18 +1,27 @@
 <template>
-  <div class="inspector-host" :class="{ stacked: mountedEditors.length > 1 }">
+  <div
+    class="inspector-host"
+    :class="{ stacked: mountedEditors.length > 1 }"
+  >
     <div
       v-for="editor in mountedEditors"
       :key="editor.key"
       class="editor-frame"
     >
-      <component :is="editor.component" v-bind="editor.props" />
+      <component
+        :is="editor.component"
+        v-bind="editor.props"
+      />
     </div>
     <div
       v-for="drawer in mountedDrawers"
       :key="drawer.key"
       class="editor-frame property-drawer"
     >
-      <component :is="drawer.component" v-bind="drawer.props" />
+      <component
+        :is="drawer.component"
+        v-bind="drawer.props"
+      />
     </div>
     <div
       v-if="!switching && mountedEditors.length === 0 && mountedDrawers.length === 0"

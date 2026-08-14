@@ -17,7 +17,11 @@
       </div>
     </template>
 
-    <div ref="dialogEl" class="dialog-body" tabindex="-1">
+    <div
+      ref="dialogEl"
+      class="dialog-body"
+      tabindex="-1"
+    >
       <GraphInstructionMentionEditor
         variant="dialog"
         :model-value="modelValue"
@@ -36,7 +40,11 @@
         <span class="hint">{{ t('graph.inspector.generate.instructionDialogHint') }}</span>
         <span class="stats">{{ statsText }}</span>
       </div>
-      <button type="button" class="primary done-btn" @click="emit('close')">
+      <button
+        type="button"
+        class="primary done-btn"
+        @click="emit('close')"
+      >
         {{ t('graph.inspector.generate.instructionDialogDone') }}
       </button>
     </template>

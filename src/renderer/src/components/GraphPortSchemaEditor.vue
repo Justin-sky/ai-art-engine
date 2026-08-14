@@ -1,5 +1,8 @@
 <template>
-  <div class="port-schema-editor" :class="{ collapsed }">
+  <div
+    class="port-schema-editor"
+    :class="{ collapsed }"
+  >
     <div class="head-row">
       <button
         type="button"
@@ -10,9 +13,16 @@
         :aria-label="collapsed ? t('graph.hostInterface.expandPorts') : t('graph.hostInterface.collapsePorts')"
         @click="collapsed = !collapsed"
       >
-        <span class="collapse-tri" aria-hidden="true" />
+        <span
+          class="collapse-tri"
+          aria-hidden="true"
+        />
       </button>
-      <button type="button" class="title-btn" @click="collapsed = !collapsed">
+      <button
+        type="button"
+        class="title-btn"
+        @click="collapsed = !collapsed"
+      >
         <h3>{{ title }}</h3>
         <span class="count">{{ modelValue.length }}</span>
       </button>
@@ -26,72 +36,91 @@
       </button>
     </div>
     <template v-if="!collapsed">
-    <p v-if="modelValue.length > 1" class="reorder-hint">{{ t('graph.hostInterface.reorderHint') }}</p>
-    <div v-if="!modelValue.length" class="empty">{{ t('graph.hostInterface.emptyPorts') }}</div>
-    <div
-      v-for="(port, index) in modelValue"
-      :key="port.id"
-      class="port-row"
-      :class="{
-        dragging: dragFromIndex === index,
-        'drop-before': dropIndex === index && dragFromIndex !== null && dragFromIndex > index,
-        'drop-after': dropIndex === index && dragFromIndex !== null && dragFromIndex < index
-      }"
-      @dragover.prevent="onDragOver(index, $event)"
-      @drop.prevent="onDrop(index)"
-    >
-      <button
-        type="button"
-        class="drag-handle"
-        draggable="true"
-        :title="t('graph.hostInterface.reorderHandle')"
-        :aria-label="t('graph.hostInterface.reorderHandle')"
-        @dragstart="onDragStart(index, $event)"
-        @dragend="onDragEnd"
+      <p
+        v-if="modelValue.length > 1"
+        class="reorder-hint"
       >
-        ⋮⋮
-      </button>
-      <div class="port-fields">
-        <label>
-          {{ t('graph.hostInterface.portType') }}
-          <select
-            :value="port.dataType"
-            @change="
-              patch(index, {
-                dataType: ($event.target as HTMLSelectElement).value as GraphPortDataType
-              })
-            "
-          >
-            <option v-for="dt in dataTypes" :key="dt" :value="dt">
-              {{ t(`graph.port.types.${dt}`) }}
-            </option>
-          </select>
-        </label>
-        <label>
-          {{ t('graph.hostInterface.portLabel') }}
-          <input
-            :value="port.label"
-            @change="patch(index, { label: ($event.target as HTMLInputElement).value.trim() || port.id })"
-          />
-        </label>
+        {{ t('graph.hostInterface.reorderHint') }}
+      </p>
+      <div
+        v-if="!modelValue.length"
+        class="empty"
+      >
+        {{ t('graph.hostInterface.emptyPorts') }}
+      </div>
+      <div
+        v-for="(port, index) in modelValue"
+        :key="port.id"
+        class="port-row"
+        :class="{
+          dragging: dragFromIndex === index,
+          'drop-before': dropIndex === index && dragFromIndex !== null && dragFromIndex > index,
+          'drop-after': dropIndex === index && dragFromIndex !== null && dragFromIndex < index
+        }"
+        @dragover.prevent="onDragOver(index, $event)"
+        @drop.prevent="onDrop(index)"
+      >
         <button
           type="button"
-          class="remove"
-          :title="t('common.delete')"
-          :aria-label="t('common.delete')"
-          @pointerdown.stop
-          @click.stop="remove(index)"
+          class="drag-handle"
+          draggable="true"
+          :title="t('graph.hostInterface.reorderHandle')"
+          :aria-label="t('graph.hostInterface.reorderHandle')"
+          @dragstart="onDragStart(index, $event)"
+          @dragend="onDragEnd"
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 11H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
-            />
-          </svg>
-          <span>{{ t('common.delete') }}</span>
+          ⋮⋮
         </button>
+        <div class="port-fields">
+          <label>
+            {{ t('graph.hostInterface.portType') }}
+            <select
+              :value="port.dataType"
+              @change="
+                patch(index, {
+                  dataType: ($event.target as HTMLSelectElement).value as GraphPortDataType
+                })
+              "
+            >
+              <option
+                v-for="dt in dataTypes"
+                :key="dt"
+                :value="dt"
+              >
+                {{ t(`graph.port.types.${dt}`) }}
+              </option>
+            </select>
+          </label>
+          <label>
+            {{ t('graph.hostInterface.portLabel') }}
+            <input
+              :value="port.label"
+              @change="patch(index, { label: ($event.target as HTMLInputElement).value.trim() || port.id })"
+            >
+          </label>
+          <button
+            type="button"
+            class="remove"
+            :title="t('common.delete')"
+            :aria-label="t('common.delete')"
+            @pointerdown.stop
+            @click.stop="remove(index)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 11H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
+              />
+            </svg>
+            <span>{{ t('common.delete') }}</span>
+          </button>
+        </div>
       </div>
-    </div>
     </template>
   </div>
 </template>

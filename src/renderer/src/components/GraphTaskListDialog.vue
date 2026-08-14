@@ -16,7 +16,10 @@
       </div>
     </template>
 
-    <div class="task-tabs" role="tablist">
+    <div
+      class="task-tabs"
+      role="tablist"
+    >
       <button
         type="button"
         class="task-tab"
@@ -26,7 +29,10 @@
         @click="activeTab = 'active'"
       >
         {{ t('graph.tasks.tabActive') }}
-        <span v-if="activeCount > 0" class="tab-count">{{ activeCount }}</span>
+        <span
+          v-if="activeCount > 0"
+          class="tab-count"
+        >{{ activeCount }}</span>
       </button>
       <button
         type="button"
@@ -37,28 +43,49 @@
         @click="activeTab = 'completed'"
       >
         {{ t('graph.tasks.tabCompleted') }}
-        <span v-if="completedCount > 0" class="tab-count">{{ completedCount }}</span>
+        <span
+          v-if="completedCount > 0"
+          class="tab-count"
+        >{{ completedCount }}</span>
       </button>
     </div>
 
     <div class="task-body">
       <template v-if="activeTab === 'active'">
-        <section v-if="activeVideoJobs.length" class="section">
-          <h3 class="section-title">{{ t('graph.tasks.videoSection') }}</h3>
+        <section
+          v-if="activeVideoJobs.length"
+          class="section"
+        >
+          <h3 class="section-title">
+            {{ t('graph.tasks.videoSection') }}
+          </h3>
           <ul class="task-list">
-            <li v-for="job in activeVideoJobs" :key="job.localJobId" class="task-row">
+            <li
+              v-for="job in activeVideoJobs"
+              :key="job.localJobId"
+              class="task-row"
+            >
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
-                  <span class="task-status" :data-status="job.status">
+                  <span
+                    class="task-status"
+                    :data-status="job.status"
+                  >
                     {{ videoStatusLabel(job.status) }}
                     <template v-if="job.progress > 0"> · {{ job.progress }}%</template>
                   </span>
                 </div>
-                <p class="task-sub">{{ job.model }}</p>
+                <p class="task-sub">
+                  {{ job.model }}
+                </p>
               </div>
               <div class="task-actions">
-                <button type="button" class="danger-lite" @click="onCancelVideo(job.localJobId)">
+                <button
+                  type="button"
+                  class="danger-lite"
+                  @click="onCancelVideo(job.localJobId)"
+                >
                   {{ t('graph.tasks.stop') }}
                 </button>
               </div>
@@ -67,36 +94,65 @@
         </section>
 
         <section class="section">
-          <h3 v-if="activeVideoJobs.length" class="section-title">
+          <h3
+            v-if="activeVideoJobs.length"
+            class="section-title"
+          >
             {{ t('graph.tasks.workflowSection') }}
           </h3>
-          <p v-if="!tasks.length" class="empty">
+          <p
+            v-if="!tasks.length"
+            class="empty"
+          >
             {{
               activeVideoJobs.length
                 ? t('graph.tasks.emptyWorkflowActive')
                 : t('graph.tasks.emptyActive')
             }}
           </p>
-          <ul v-else class="task-list">
-            <li v-for="task in tasks" :key="task.id" class="task-row">
+          <ul
+            v-else
+            class="task-list"
+          >
+            <li
+              v-for="task in tasks"
+              :key="task.id"
+              class="task-row"
+            >
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ task.title }}</span>
-                  <span class="task-status" :data-status="task.status">
+                  <span
+                    class="task-status"
+                    :data-status="task.status"
+                  >
                     {{ statusLabel(task.status) }}
                   </span>
                 </div>
-                <div class="flow" :title="flowTitle(task)">
-                  <template v-for="(node, index) in task.nodes" :key="node.nodeId">
+                <div
+                  class="flow"
+                  :title="flowTitle(task)"
+                >
+                  <template
+                    v-for="(node, index) in task.nodes"
+                    :key="node.nodeId"
+                  >
                     <span
                       class="flow-node"
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span class="flow-icon" aria-hidden="true"
-                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
+                      <span
+                        class="flow-icon"
+                        aria-hidden="true"
+                      ><WorkspaceItemIcon
+                        :icon="node.icon"
+                        :size="14"
                       /></span>
-                      <span class="flow-dot" aria-hidden="true" />
+                      <span
+                        class="flow-dot"
+                        aria-hidden="true"
+                      />
                     </span>
                     <span
                       v-if="index < task.nodes.length - 1"
@@ -109,7 +165,11 @@
                 </div>
               </div>
               <div class="task-actions">
-                <button type="button" class="danger-lite" @click="onStop(task.id)">
+                <button
+                  type="button"
+                  class="danger-lite"
+                  @click="onStop(task.id)"
+                >
                   {{ t('graph.tasks.stop') }}
                 </button>
               </div>
@@ -119,55 +179,106 @@
       </template>
 
       <template v-else>
-        <section v-if="recentTerminalVideoJobs.length" class="section">
-          <h3 class="section-title">{{ t('graph.tasks.videoSection') }}</h3>
+        <section
+          v-if="recentTerminalVideoJobs.length"
+          class="section"
+        >
+          <h3 class="section-title">
+            {{ t('graph.tasks.videoSection') }}
+          </h3>
           <ul class="task-list">
-            <li v-for="job in recentTerminalVideoJobs" :key="job.localJobId" class="task-row">
+            <li
+              v-for="job in recentTerminalVideoJobs"
+              :key="job.localJobId"
+              class="task-row"
+            >
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
-                  <span class="task-status" :data-status="job.status">
+                  <span
+                    class="task-status"
+                    :data-status="job.status"
+                  >
                     {{ videoStatusLabel(job.status) }}
                   </span>
                 </div>
-                <p v-if="job.error" class="task-sub error">{{ job.error }}</p>
-                <p v-else-if="job.relativePath" class="task-sub">{{ job.relativePath }}</p>
+                <p
+                  v-if="job.error"
+                  class="task-sub error"
+                >
+                  {{ job.error }}
+                </p>
+                <p
+                  v-else-if="job.relativePath"
+                  class="task-sub"
+                >
+                  {{ job.relativePath }}
+                </p>
               </div>
             </li>
           </ul>
         </section>
 
         <section class="section">
-          <h3 v-if="recentTerminalVideoJobs.length" class="section-title">
+          <h3
+            v-if="recentTerminalVideoJobs.length"
+            class="section-title"
+          >
             {{ t('graph.tasks.workflowSection') }}
           </h3>
-          <p v-if="!completed.length" class="empty">
+          <p
+            v-if="!completed.length"
+            class="empty"
+          >
             {{
               recentTerminalVideoJobs.length
                 ? t('graph.tasks.emptyWorkflowCompleted')
                 : t('graph.tasks.emptyCompleted')
             }}
           </p>
-          <ul v-else class="task-list">
-            <li v-for="task in completed" :key="task.id" class="task-row">
+          <ul
+            v-else
+            class="task-list"
+          >
+            <li
+              v-for="task in completed"
+              :key="task.id"
+              class="task-row"
+            >
               <div class="task-row-main">
                 <div class="task-meta">
                   <span class="task-title">{{ task.title }}</span>
-                  <span class="task-status" :data-status="task.status">
+                  <span
+                    class="task-status"
+                    :data-status="task.status"
+                  >
                     {{ statusLabel(task.status) }}
                   </span>
                 </div>
-                <div class="flow" :title="flowTitle(task)">
-                  <template v-for="(node, index) in task.nodes" :key="node.nodeId">
+                <div
+                  class="flow"
+                  :title="flowTitle(task)"
+                >
+                  <template
+                    v-for="(node, index) in task.nodes"
+                    :key="node.nodeId"
+                  >
                     <span
                       class="flow-node"
                       :data-status="node.status"
                       :title="`${node.title} · ${nodeStatusLabel(node.status)}`"
                     >
-                      <span class="flow-icon" aria-hidden="true"
-                        ><WorkspaceItemIcon :icon="node.icon" :size="14"
+                      <span
+                        class="flow-icon"
+                        aria-hidden="true"
+                      ><WorkspaceItemIcon
+                        :icon="node.icon"
+                        :size="14"
                       /></span>
-                      <span class="flow-dot" aria-hidden="true" />
+                      <span
+                        class="flow-dot"
+                        aria-hidden="true"
+                      />
                     </span>
                     <span
                       v-if="index < task.nodes.length - 1"
@@ -180,7 +291,10 @@
                 </div>
               </div>
               <div class="task-actions">
-                <button type="button" @click="onRemove(task.id)">
+                <button
+                  type="button"
+                  @click="onRemove(task.id)"
+                >
                   {{ t('graph.tasks.remove') }}
                 </button>
               </div>

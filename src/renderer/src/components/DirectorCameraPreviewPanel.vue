@@ -5,9 +5,15 @@
     class="camera-preview-panel"
     :style="panelStyle"
   >
-    <div class="preview-head" @pointerdown="onHeadPointerDown">
+    <div
+      class="preview-head"
+      @pointerdown="onHeadPointerDown"
+    >
       <span class="preview-title">{{ t('director.stage.cameraPreview') }}</span>
-      <span v-if="cameras.length" class="preview-count">{{ cameras.length }}</span>
+      <span
+        v-if="cameras.length"
+        class="preview-count"
+      >{{ cameras.length }}</span>
       <button
         type="button"
         class="preview-detach"
@@ -29,7 +35,10 @@
         ×
       </button>
     </div>
-    <div class="preview-body" :style="gridStyle">
+    <div
+      class="preview-body"
+      :style="gridStyle"
+    >
       <template v-if="cameras.length">
         <div
           v-for="cam in cameras"
@@ -37,15 +46,20 @@
           class="preview-cell"
         >
           <canvas
+            :ref="(el) => bindCanvas(cam.id, el)"
             class="preview-canvas"
             :width="canvasW"
             :height="canvasH"
-            :ref="(el) => bindCanvas(cam.id, el)"
           />
           <span class="preview-label">{{ cam.name }}</span>
         </div>
       </template>
-      <p v-else class="preview-empty">{{ t('director.stage.cameraPreviewEmpty') }}</p>
+      <p
+        v-else
+        class="preview-empty"
+      >
+        {{ t('director.stage.cameraPreviewEmpty') }}
+      </p>
     </div>
     <div
       class="resize-handle"

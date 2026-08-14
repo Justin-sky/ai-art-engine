@@ -5,7 +5,12 @@
         <div class="panel-head">
           <span class="panel-title">{{ t('script.timeline.sources') }}</span>
           <div class="panel-actions">
-            <button type="button" class="ghost-btn" :disabled="sourcesBusy" @click="reloadSources">
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="sourcesBusy"
+              @click="reloadSources"
+            >
               {{ sourcesBusy ? '…' : t('script.timeline.refreshSources') }}
             </button>
             <button
@@ -22,7 +27,10 @@
           class="source-list"
           @contextmenu.prevent="onImportedPanelContextMenu"
         >
-          <section v-if="inputSources.length" class="source-group">
+          <section
+            v-if="inputSources.length"
+            class="source-group"
+          >
             <div class="source-group-head">
               <span>{{ t('script.timeline.sourceGroup.input') }}</span>
               <span class="source-group-count">{{ inputSources.length }}</span>
@@ -35,9 +43,20 @@
               @dragstart="onSourceDragStart($event, src)"
               @dblclick="onSourceActivate(src)"
             >
-              <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
-                <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
-                <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+              <span
+                class="source-thumb"
+                :class="sourceThumbClass(src)"
+                aria-hidden="true"
+              >
+                <img
+                  v-if="sourceThumbUrls[src.id]"
+                  :src="sourceThumbUrls[src.id]"
+                  alt=""
+                >
+                <span
+                  v-else-if="sourceMediaKind(src) === 'voice'"
+                  class="source-thumb-glyph"
+                >{{
                   voiceSourceIcon
                 }}</span>
               </span>
@@ -45,7 +64,10 @@
                 <span class="source-name">{{ src.title }}</span>
                 <span class="source-tags">
                   <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                  <span v-if="src.durationSec" class="source-dur">{{ formatTime(src.durationSec) }}</span>
+                  <span
+                    v-if="src.durationSec"
+                    class="source-dur"
+                  >{{ formatTime(src.durationSec) }}</span>
                 </span>
               </span>
             </div>
@@ -75,14 +97,24 @@
               @dragleave="onGroupDragLeave($event, group.id)"
               @drop.prevent.stop="onGroupDrop($event, group.id)"
             >
-              <button type="button" class="folder-head" @click="toggleGroupCollapsed(group.id)">
-                <span class="folder-chevron" aria-hidden="true">{{
+              <button
+                type="button"
+                class="folder-head"
+                @click="toggleGroupCollapsed(group.id)"
+              >
+                <span
+                  class="folder-chevron"
+                  aria-hidden="true"
+                >{{
                   collapsedGroupIds.has(group.id) ? '▸' : '▾'
                 }}</span>
                 <span class="folder-title">{{ group.title }}</span>
                 <span class="source-group-count">{{ sourcesInGroup(group.id).length }}</span>
               </button>
-              <div v-show="!collapsedGroupIds.has(group.id)" class="folder-body">
+              <div
+                v-show="!collapsedGroupIds.has(group.id)"
+                class="folder-body"
+              >
                 <div
                   v-for="src in sourcesInGroup(group.id)"
                   :key="`im-${src.id}`"
@@ -91,9 +123,20 @@
                   @dragstart="onSourceDragStart($event, src)"
                   @dblclick="onSourceActivate(src)"
                 >
-                  <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
-                    <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
-                    <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                  <span
+                    class="source-thumb"
+                    :class="sourceThumbClass(src)"
+                    aria-hidden="true"
+                  >
+                    <img
+                      v-if="sourceThumbUrls[src.id]"
+                      :src="sourceThumbUrls[src.id]"
+                      alt=""
+                    >
+                    <span
+                      v-else-if="sourceMediaKind(src) === 'voice'"
+                      class="source-thumb-glyph"
+                    >{{
                       voiceSourceIcon
                     }}</span>
                   </span>
@@ -101,7 +144,10 @@
                     <span class="source-name">{{ src.title }}</span>
                     <span class="source-tags">
                       <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                      <span v-if="src.durationSec" class="source-dur">{{
+                      <span
+                        v-if="src.durationSec"
+                        class="source-dur"
+                      >{{
                         formatTime(src.durationSec)
                       }}</span>
                     </span>
@@ -116,7 +162,10 @@
                     ×
                   </button>
                 </div>
-                <div v-if="!sourcesInGroup(group.id).length" class="folder-empty">
+                <div
+                  v-if="!sourcesInGroup(group.id).length"
+                  class="folder-empty"
+                >
                   {{ t('script.timeline.groupEmpty') }}
                 </div>
               </div>
@@ -130,7 +179,10 @@
               @dragleave="onGroupDragLeave($event, '')"
               @drop.prevent.stop="onGroupDrop($event, '')"
             >
-              <div v-if="sourceGroups.length && ungroupedImportedSources.length" class="ungrouped-label">
+              <div
+                v-if="sourceGroups.length && ungroupedImportedSources.length"
+                class="ungrouped-label"
+              >
                 {{ t('script.timeline.ungrouped') }}
               </div>
               <div
@@ -141,9 +193,20 @@
                 @dragstart="onSourceDragStart($event, src)"
                 @dblclick="onSourceActivate(src)"
               >
-                <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
-                  <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
-                  <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                <span
+                  class="source-thumb"
+                  :class="sourceThumbClass(src)"
+                  aria-hidden="true"
+                >
+                  <img
+                    v-if="sourceThumbUrls[src.id]"
+                    :src="sourceThumbUrls[src.id]"
+                    alt=""
+                  >
+                  <span
+                    v-else-if="sourceMediaKind(src) === 'voice'"
+                    class="source-thumb-glyph"
+                  >{{
                     voiceSourceIcon
                   }}</span>
                 </span>
@@ -154,7 +217,10 @@
                       t('script.timeline.sourceGroup.importedTag')
                     }}</span>
                     <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                    <span v-if="src.durationSec" class="source-dur">{{
+                    <span
+                      v-if="src.durationSec"
+                      class="source-dur"
+                    >{{
                       formatTime(src.durationSec)
                     }}</span>
                   </span>
@@ -189,10 +255,17 @@
           :style="{ left: `${sourceCtx.x}px`, top: `${sourceCtx.y}px` }"
           @pointerdown.stop
         >
-          <button type="button" @click="createImportedGroup">
+          <button
+            type="button"
+            @click="createImportedGroup"
+          >
             {{ t('script.timeline.createGroup') }}
           </button>
-          <button v-if="sourceCtx.groupId" type="button" @click="renameImportedGroup">
+          <button
+            v-if="sourceCtx.groupId"
+            type="button"
+            @click="renameImportedGroup"
+          >
             {{ t('script.timeline.renameGroup') }}
           </button>
           <button
@@ -219,11 +292,22 @@
             @timeupdate="onPreviewTimeUpdate"
             @loadedmetadata="onPreviewLoaded"
           />
-          <div v-else class="preview-empty">
-            <span class="play-glyph" aria-hidden="true" />
+          <div
+            v-else
+            class="preview-empty"
+          >
+            <span
+              class="play-glyph"
+              aria-hidden="true"
+            />
             <p>{{ t('script.timeline.emptyPreview') }}</p>
           </div>
-          <div v-if="activeSubtitleText" class="subtitle-overlay">{{ activeSubtitleText }}</div>
+          <div
+            v-if="activeSubtitleText"
+            class="subtitle-overlay"
+          >
+            {{ activeSubtitleText }}
+          </div>
           <div class="preview-transport">
             <button
               type="button"
@@ -244,11 +328,20 @@
       </section>
     </div>
 
-    <section class="timeline-dock" :class="{ collapsed: timelineCollapsed }">
+    <section
+      class="timeline-dock"
+      :class="{ collapsed: timelineCollapsed }"
+    >
       <header class="timeline-bar">
         <span class="timeline-bar-title">{{ t('script.dialog.timeline') }}</span>
-        <div class="timeline-controls" @pointerdown.stop>
-          <label class="ctrl-field" :title="t('script.timeline.durationHint')">
+        <div
+          class="timeline-controls"
+          @pointerdown.stop
+        >
+          <label
+            class="ctrl-field"
+            :title="t('script.timeline.durationHint')"
+          >
             <span>{{ t('script.timeline.duration') }}</span>
             <input
               v-model.number="durationInputSec"
@@ -258,19 +351,31 @@
               max="3600"
               step="1"
               @change="commitDuration"
-            />
+            >
             <span class="ctrl-unit">s</span>
           </label>
           <label class="ctrl-field">
             <span>{{ t('script.timeline.rate') }}</span>
-            <select v-model.number="playbackRate" class="ctrl-select" @change="onRateChange">
-              <option v-for="rate in PLAYBACK_RATE_OPTIONS" :key="rate" :value="rate">
+            <select
+              v-model.number="playbackRate"
+              class="ctrl-select"
+              @change="onRateChange"
+            >
+              <option
+                v-for="rate in PLAYBACK_RATE_OPTIONS"
+                :key="rate"
+                :value="rate"
+              >
                 {{ rate }}x
               </option>
             </select>
           </label>
           <label class="ctrl-check">
-            <input v-model="loopPlayback" type="checkbox" @change="scheduleSave" />
+            <input
+              v-model="loopPlayback"
+              type="checkbox"
+              @change="scheduleSave"
+            >
             <span>{{ t('script.timeline.loop') }}</span>
           </label>
           <button
@@ -312,8 +417,8 @@
             {{
               exporting
                 ? t('script.timeline.exporting', {
-                    progress: Math.round(exportProgress * 100)
-                  })
+                  progress: Math.round(exportProgress * 100)
+                })
                 : t('script.timeline.export')
             }}
           </button>
@@ -328,10 +433,16 @@
         :class="{ scrollable: needsHScroll }"
         @wheel.prevent="onTimelineWheel"
       >
-        <div class="timeline-inner" :style="{ width: `${TRACK_LABEL_W + laneWidth}px` }">
+        <div
+          class="timeline-inner"
+          :style="{ width: `${TRACK_LABEL_W + laneWidth}px` }"
+        >
           <div class="ruler-row">
             <div class="track-label gutter" />
-            <div class="ruler" @pointerdown="onRulerPointerDown">
+            <div
+              class="ruler"
+              @pointerdown="onRulerPointerDown"
+            >
               <span
                 v-for="mark in rulerMarks"
                 :key="mark.t"
@@ -361,17 +472,25 @@
             @dragleave="onTrackDragLeave($event, track.kind)"
             @drop.prevent="onTrackDrop($event, track.kind)"
           >
-            <div class="track-label">{{ track.label }}</div>
+            <div class="track-label">
+              {{ track.label }}
+            </div>
             <div class="track-lane">
               <template v-if="track.kind === 'video' && !clipsOn(track.kind).length">
                 <div class="lane-empty">
-                  <span class="play-glyph sm" aria-hidden="true" />
+                  <span
+                    class="play-glyph sm"
+                    aria-hidden="true"
+                  />
                   <span>{{ t('script.timeline.videoEmpty') }}</span>
                 </div>
               </template>
               <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
-                  <span class="speaker" aria-hidden="true" />
+                  <span
+                    class="speaker"
+                    aria-hidden="true"
+                  />
                   <span>{{ t('script.timeline.voiceEmpty') }}</span>
                 </div>
               </template>
@@ -379,7 +498,11 @@
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.subtitleEmpty') }}</span>
                 </div>
-                <button type="button" class="create-hint" @click="addBlankSubtitle">
+                <button
+                  type="button"
+                  class="create-hint"
+                  @click="addBlankSubtitle"
+                >
                   {{ t('script.timeline.addSubtitle') }}
                 </button>
               </template>
@@ -426,9 +549,19 @@
       </div>
     </section>
 
-    <div v-if="subtitleEditor" class="subtitle-edit-mask" @click.self="cancelSubtitleEdit">
-      <div class="subtitle-edit-panel" role="dialog" aria-modal="true">
-        <div class="subtitle-edit-title">{{ t('script.timeline.editSubtitle') }}</div>
+    <div
+      v-if="subtitleEditor"
+      class="subtitle-edit-mask"
+      @click.self="cancelSubtitleEdit"
+    >
+      <div
+        class="subtitle-edit-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="subtitle-edit-title">
+          {{ t('script.timeline.editSubtitle') }}
+        </div>
         <input
           ref="subtitleInputEl"
           v-model="subtitleEditor.draft"
@@ -437,12 +570,20 @@
           maxlength="200"
           @keydown.enter.prevent="commitSubtitleEdit"
           @keydown.escape.prevent="cancelSubtitleEdit"
-        />
+        >
         <div class="subtitle-edit-actions">
-          <button type="button" class="ghost-btn" @click="cancelSubtitleEdit">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="cancelSubtitleEdit"
+          >
             {{ t('common.cancel') }}
           </button>
-          <button type="button" class="export-btn" @click="commitSubtitleEdit">
+          <button
+            type="button"
+            class="export-btn"
+            @click="commitSubtitleEdit"
+          >
             {{ t('common.confirm') }}
           </button>
         </div>

@@ -1,15 +1,25 @@
 <template>
   <div class="models-panel">
-    <p class="hint">{{ t('settings.models.unifiedHint') }}</p>
+    <p class="hint">
+      {{ t('settings.models.unifiedHint') }}
+    </p>
 
     <div class="toolbar">
       <label class="add-provider">
         <span>{{ t('settings.models.addProvider') }}</span>
         <select v-model="pendingProviderKind">
-          <option v-for="p in providerKinds" :key="p.id" :value="p.id">{{ p.label }}</option>
+          <option
+            v-for="p in providerKinds"
+            :key="p.id"
+            :value="p.id"
+          >{{ p.label }}</option>
         </select>
       </label>
-      <button type="button" class="primary-btn" @click="addProvider">
+      <button
+        type="button"
+        class="primary-btn"
+        @click="addProvider"
+      >
         {{ t('settings.models.add') }}
       </button>
     </div>
@@ -25,7 +35,12 @@
       </a>
     </p>
 
-    <p v-if="providers.length === 0" class="empty">{{ t('settings.models.emptyProviders') }}</p>
+    <p
+      v-if="providers.length === 0"
+      class="empty"
+    >
+      {{ t('settings.models.emptyProviders') }}
+    </p>
 
     <article
       v-for="provider in providers"
@@ -50,316 +65,364 @@
           "
           @click="toggleProviderCollapsed(provider.id)"
         >
-          <span class="chevron" aria-hidden="true">▾</span>
+          <span
+            class="chevron"
+            aria-hidden="true"
+          >▾</span>
           <strong>{{ provider.label }}</strong>
           <span class="badge">{{ provider.providerKind }}</span>
         </button>
         <div class="head-actions">
-          <label class="check" @click.stop>
-            <input type="checkbox" v-model="provider.enabled" />
+          <label
+            class="check"
+            @click.stop
+          >
+            <input
+              v-model="provider.enabled"
+              type="checkbox"
+            >
             {{ t('settings.models.enabled') }}
           </label>
-          <button type="button" class="danger" @click="removeProvider(provider.id)">
+          <button
+            type="button"
+            class="danger"
+            @click="removeProvider(provider.id)"
+          >
             {{ t('settings.models.remove') }}
           </button>
         </div>
       </header>
 
-      <div v-show="!isProviderCollapsed(provider.id)" class="provider-body">
-      <label>
-        {{ t('settings.models.label') }}
-        <input v-model="provider.label" />
-      </label>
-      <label>
-        {{ t('settings.models.baseUrl') }}
-        <input v-model="provider.baseUrl" spellcheck="false" />
-      </label>
-      <label>
-        API Key
-        <div class="secret-field">
+      <div
+        v-show="!isProviderCollapsed(provider.id)"
+        class="provider-body"
+      >
+        <label>
+          {{ t('settings.models.label') }}
+          <input v-model="provider.label">
+        </label>
+        <label>
+          {{ t('settings.models.baseUrl') }}
           <input
-            v-model="provider.apiKey"
-            :type="revealedKeys[provider.id] ? 'text' : 'password'"
-            autocomplete="off"
+            v-model="provider.baseUrl"
             spellcheck="false"
-          />
-          <button
-            type="button"
-            class="reveal-btn"
-            :aria-label="
-              revealedKeys[provider.id]
-                ? t('settings.models.hideApiKey')
-                : t('settings.models.showApiKey')
-            "
-            :title="
-              revealedKeys[provider.id]
-                ? t('settings.models.hideApiKey')
-                : t('settings.models.showApiKey')
-            "
-            @click="toggleKeyReveal(provider.id)"
           >
-            <svg
-              v-if="!revealedKeys[provider.id]"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              aria-hidden="true"
+        </label>
+        <label>
+          API Key
+          <div class="secret-field">
+            <input
+              v-model="provider.apiKey"
+              :type="revealedKeys[provider.id] ? 'text' : 'password'"
+              autocomplete="off"
+              spellcheck="false"
             >
-              <path
-                fill="currentColor"
-                d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
-              />
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
-              />
-            </svg>
+            <button
+              type="button"
+              class="reveal-btn"
+              :aria-label="
+                revealedKeys[provider.id]
+                  ? t('settings.models.hideApiKey')
+                  : t('settings.models.showApiKey')
+              "
+              :title="
+                revealedKeys[provider.id]
+                  ? t('settings.models.hideApiKey')
+                  : t('settings.models.showApiKey')
+              "
+              @click="toggleKeyReveal(provider.id)"
+            >
+              <svg
+                v-if="!revealedKeys[provider.id]"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 .001 6.001A3 3 0 0 0 12 9z"
+                />
+              </svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M2.1 3.51 3.5 2.1l18.4 18.4-1.41 1.41-3.17-3.17A12.3 12.3 0 0 1 12 19c-5 0-9.27-3.11-11-7a13.4 13.4 0 0 1 4.68-5.41L2.1 3.51zM12 7a5 5 0 0 1 4.9 4.03l-1.56-1.56A3 3 0 0 0 12 9c-.4 0-.78.08-1.13.23L9.3 7.66A4.9 4.9 0 0 1 12 7zm9.9 4.49A13.4 13.4 0 0 0 17.4 7.4l-1.5 1.5c.9.7 1.67 1.55 2.27 2.51-.9 1.72-2.4 3.2-4.3 4.2l1.55 1.55c2.2-1.2 4.02-3.05 5.18-5.27a.75.75 0 0 0 0-.4z"
+                />
+              </svg>
+            </button>
+          </div>
+        </label>
+        <p class="meta credentials-hint">
+          {{ t(`settings.models.credentialsHint.${provider.providerKind}`) }}
+          <a
+            class="ext-link"
+            :href="modelProviderCredentialsUrl(provider.providerKind)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {{ modelProviderCredentialsUrl(provider.providerKind) }}
+          </a>
+        </p>
+
+        <div
+          class="modality-tabs"
+          role="tablist"
+        >
+          <button
+            v-for="mod in settingsModalitiesFor(provider)"
+            :key="mod"
+            type="button"
+            role="tab"
+            class="mod-tab"
+            :class="{ active: currentModality(provider) === mod }"
+            :aria-selected="currentModality(provider) === mod"
+            @click="activeModality[provider.id] = mod"
+          >
+            {{ modalityTabLabel(provider, mod) }}
+            <span
+              v-if="modalityConfig(provider, mod).selectedModelIds.length"
+              class="mod-count"
+            >
+              {{ modalityConfig(provider, mod).selectedModelIds.length }}
+            </span>
           </button>
         </div>
-      </label>
-      <p class="meta credentials-hint">
-        {{ t(`settings.models.credentialsHint.${provider.providerKind}`) }}
-        <a
-          class="ext-link"
-          :href="modelProviderCredentialsUrl(provider.providerKind)"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {{ modelProviderCredentialsUrl(provider.providerKind) }}
-        </a>
-      </p>
 
-      <div class="modality-tabs" role="tablist">
-        <button
-          v-for="mod in settingsModalitiesFor(provider)"
-          :key="mod"
-          type="button"
-          role="tab"
-          class="mod-tab"
-          :class="{ active: currentModality(provider) === mod }"
-          :aria-selected="currentModality(provider) === mod"
-          @click="activeModality[provider.id] = mod"
+        <p class="meta">
+          {{ modalityHintText(provider) }}
+        </p>
+        <p
+          v-if="provider.providerKind === 'volcengine-ark' && isArkVoiceModality(provider)"
+          class="meta credentials-hint"
         >
-          {{ modalityTabLabel(provider, mod) }}
-          <span
-            v-if="modalityConfig(provider, mod).selectedModelIds.length"
-            class="mod-count"
+          {{ t('settings.models.arkVoiceCredentialsHint') }}
+          <a
+            class="ext-link"
+            :href="VOLCENGINE_OPENSPEECH_CREDENTIALS_URL"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            {{ modalityConfig(provider, mod).selectedModelIds.length }}
-          </span>
-        </button>
-      </div>
+            {{ VOLCENGINE_OPENSPEECH_CREDENTIALS_URL }}
+          </a>
+        </p>
 
-      <p class="meta">{{ modalityHintText(provider) }}</p>
-      <p
-        v-if="provider.providerKind === 'volcengine-ark' && isArkVoiceModality(provider)"
-        class="meta credentials-hint"
-      >
-        {{ t('settings.models.arkVoiceCredentialsHint') }}
-        <a
-          class="ext-link"
-          :href="VOLCENGINE_OPENSPEECH_CREDENTIALS_URL"
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
+          v-if="!isArkVoiceModality(provider)"
+          class="catalog-toolbar"
         >
-          {{ VOLCENGINE_OPENSPEECH_CREDENTIALS_URL }}
-        </a>
-      </p>
+          <button
+            type="button"
+            :disabled="
+              loadingKey === catalogKey(provider.id, currentModality(provider)) ||
+                !canFetchCatalog(provider)
+            "
+            @click="refreshModels(provider, currentModality(provider))"
+          >
+            {{
+              loadingKey === catalogKey(provider.id, currentModality(provider))
+                ? t('settings.models.testingConnection')
+                : t('settings.models.fetchModels')
+            }}
+          </button>
+          <span
+            v-if="catalogErrors[catalogKey(provider.id, currentModality(provider))]"
+            class="err"
+          >
+            {{ catalogErrors[catalogKey(provider.id, currentModality(provider))] }}
+          </span>
+          <span
+            v-else-if="(catalogs[catalogKey(provider.id, currentModality(provider))] ?? []).length"
+            class="meta"
+          >
+            {{
+              t('settings.models.catalogCount', {
+                n: (catalogs[catalogKey(provider.id, currentModality(provider))] ?? []).length
+              })
+            }}
+          </span>
+        </div>
 
-      <div v-if="!isArkVoiceModality(provider)" class="catalog-toolbar">
-        <button
-          type="button"
-          :disabled="
-            loadingKey === catalogKey(provider.id, currentModality(provider)) ||
-            !canFetchCatalog(provider)
+        <div class="manual-add">
+          <input
+            v-model="manualModelIds[catalogKey(provider.id, currentModality(provider))]"
+            type="text"
+            spellcheck="false"
+            :placeholder="
+              isArkVoiceModality(provider)
+                ? t('settings.models.manualSpeakerPlaceholder')
+                : t('settings.models.manualModelPlaceholder')
+            "
+            @keydown.enter.prevent="
+              addManualModel(provider, currentModality(provider))
+            "
+          >
+          <button
+            type="button"
+            @click="addManualModel(provider, currentModality(provider))"
+          >
+            {{
+              isArkVoiceModality(provider)
+                ? t('settings.models.manualSpeakerAdd')
+                : t('settings.models.manualModelAdd')
+            }}
+          </button>
+        </div>
+
+        <p
+          v-if="
+            !isArkVoiceModality(provider) &&
+              catalogs[catalogKey(provider.id, currentModality(provider))] &&
+              !catalogSize(provider) &&
+              !catalogErrors[catalogKey(provider.id, currentModality(provider))]
           "
-          @click="refreshModels(provider, currentModality(provider))"
+          class="meta empty-catalog"
+        >
+          {{ t('settings.models.emptyCatalog') }}
+        </p>
+
+        <p
+          v-else-if="
+            isArkVoiceModality(provider) &&
+              !modalityConfig(provider, 'audio').selectedModelIds.length
+          "
+          class="meta empty-catalog"
+        >
+          {{ t('settings.models.emptySpeakers') }}
+        </p>
+
+        <!-- 用未筛选数量决定是否展示，避免筛选无匹配时连筛选框一起消失 -->
+        <div
+          v-if="catalogSize(provider) > 0"
+          class="model-list-wrap"
+        >
+          <div class="list-actions">
+            <button
+              v-if="!isArkVoiceModality(provider)"
+              type="button"
+              @click="selectAll(provider, currentModality(provider))"
+            >
+              {{ t('settings.models.selectAll') }}
+            </button>
+            <button
+              type="button"
+              @click="clearSelection(provider, currentModality(provider))"
+            >
+              {{ t('settings.models.clearSelection') }}
+            </button>
+            <input
+              v-model="filters[catalogKey(provider.id, currentModality(provider))]"
+              class="filter"
+              type="search"
+              autocomplete="off"
+              :placeholder="
+                isArkVoiceModality(provider)
+                  ? t('settings.models.filterSpeakerPlaceholder')
+                  : t('settings.models.filterPlaceholder')
+              "
+            >
+            <button
+              v-if="(filters[catalogKey(provider.id, currentModality(provider))] ?? '').trim()"
+              type="button"
+              @click="filters[catalogKey(provider.id, currentModality(provider))] = ''"
+            >
+              {{ t('settings.models.clearFilter') }}
+            </button>
+          </div>
+          <p
+            v-if="!modalityCatalog(provider).length"
+            class="meta empty-catalog"
+          >
+            {{ t('settings.models.filterNoMatch') }}
+          </p>
+          <ul
+            v-else
+            class="model-list"
+          >
+            <li
+              v-for="model in modalityCatalog(provider)"
+              :key="model.id || model.name"
+            >
+              <label class="check model-row">
+                <input
+                  type="checkbox"
+                  :checked="
+                    modalityConfig(provider, currentModality(provider)).selectedModelIds.includes(
+                      model.id
+                    )
+                  "
+                  @change="
+                    toggleModel(
+                      provider,
+                      currentModality(provider),
+                      model.id,
+                      ($event.target as HTMLInputElement).checked
+                    )
+                  "
+                >
+                <span class="model-text">
+                  <span class="model-name">{{ model.name }}</span>
+                  <span class="model-id">{{ model.id }}</span>
+                  <span
+                    v-if="capabilitySummary(model)"
+                    class="model-caps"
+                  >{{
+                    capabilitySummary(model)
+                  }}</span>
+                </span>
+              </label>
+            </li>
+          </ul>
+        </div>
+
+        <label
+          v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
         >
           {{
-            loadingKey === catalogKey(provider.id, currentModality(provider))
-              ? t('settings.models.testingConnection')
-              : t('settings.models.fetchModels')
+            isArkVoiceModality(provider)
+              ? t('settings.models.defaultSpeaker')
+              : t('settings.models.defaultModel')
           }}
-        </button>
-        <span
-          v-if="catalogErrors[catalogKey(provider.id, currentModality(provider))]"
-          class="err"
-        >
-          {{ catalogErrors[catalogKey(provider.id, currentModality(provider))] }}
-        </span>
-        <span
-          v-else-if="(catalogs[catalogKey(provider.id, currentModality(provider))] ?? []).length"
+          <select
+            :value="modalityConfig(provider, currentModality(provider)).defaultModelId"
+            @change="
+              setDefaultModel(
+                provider,
+                currentModality(provider),
+                ($event.target as HTMLSelectElement).value
+              )
+            "
+          >
+            <option
+              v-for="id in modalityConfig(provider, currentModality(provider)).selectedModelIds"
+              :key="id"
+              :value="id"
+            >
+              {{ id }}
+            </option>
+          </select>
+        </label>
+        <p
+          v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
           class="meta"
         >
           {{
-            t('settings.models.catalogCount', {
-              n: (catalogs[catalogKey(provider.id, currentModality(provider))] ?? []).length
-            })
-          }}
-        </span>
-      </div>
-
-      <div class="manual-add">
-        <input
-          v-model="manualModelIds[catalogKey(provider.id, currentModality(provider))]"
-          type="text"
-          spellcheck="false"
-          :placeholder="
-            isArkVoiceModality(provider)
-              ? t('settings.models.manualSpeakerPlaceholder')
-              : t('settings.models.manualModelPlaceholder')
-          "
-          @keydown.enter.prevent="
-            addManualModel(provider, currentModality(provider))
-          "
-        />
-        <button
-          type="button"
-          @click="addManualModel(provider, currentModality(provider))"
-        >
-          {{
-            isArkVoiceModality(provider)
-              ? t('settings.models.manualSpeakerAdd')
-              : t('settings.models.manualModelAdd')
-          }}
-        </button>
-      </div>
-
-      <p
-        v-if="
-          !isArkVoiceModality(provider) &&
-          catalogs[catalogKey(provider.id, currentModality(provider))] &&
-          !catalogSize(provider) &&
-          !catalogErrors[catalogKey(provider.id, currentModality(provider))]
-        "
-        class="meta empty-catalog"
-      >
-        {{ t('settings.models.emptyCatalog') }}
-      </p>
-
-      <p
-        v-else-if="
-          isArkVoiceModality(provider) &&
-          !modalityConfig(provider, 'audio').selectedModelIds.length
-        "
-        class="meta empty-catalog"
-      >
-        {{ t('settings.models.emptySpeakers') }}
-      </p>
-
-      <!-- 用未筛选数量决定是否展示，避免筛选无匹配时连筛选框一起消失 -->
-      <div v-if="catalogSize(provider) > 0" class="model-list-wrap">
-        <div class="list-actions">
-          <button
-            v-if="!isArkVoiceModality(provider)"
-            type="button"
-            @click="selectAll(provider, currentModality(provider))"
-          >
-            {{ t('settings.models.selectAll') }}
-          </button>
-          <button type="button" @click="clearSelection(provider, currentModality(provider))">
-            {{ t('settings.models.clearSelection') }}
-          </button>
-          <input
-            v-model="filters[catalogKey(provider.id, currentModality(provider))]"
-            class="filter"
-            type="search"
-            autocomplete="off"
-            :placeholder="
+            t(
               isArkVoiceModality(provider)
-                ? t('settings.models.filterSpeakerPlaceholder')
-                : t('settings.models.filterPlaceholder')
-            "
-          />
-          <button
-            v-if="(filters[catalogKey(provider.id, currentModality(provider))] ?? '').trim()"
-            type="button"
-            @click="filters[catalogKey(provider.id, currentModality(provider))] = ''"
-          >
-            {{ t('settings.models.clearFilter') }}
-          </button>
-        </div>
-        <p v-if="!modalityCatalog(provider).length" class="meta empty-catalog">
-          {{ t('settings.models.filterNoMatch') }}
-        </p>
-        <ul v-else class="model-list">
-          <li
-            v-for="model in modalityCatalog(provider)"
-            :key="model.id || model.name"
-          >
-            <label class="check model-row">
-              <input
-                type="checkbox"
-                :checked="
-                  modalityConfig(provider, currentModality(provider)).selectedModelIds.includes(
-                    model.id
-                  )
-                "
-                @change="
-                  toggleModel(
-                    provider,
-                    currentModality(provider),
-                    model.id,
-                    ($event.target as HTMLInputElement).checked
-                  )
-                "
-              />
-              <span class="model-text">
-                <span class="model-name">{{ model.name }}</span>
-                <span class="model-id">{{ model.id }}</span>
-                <span v-if="capabilitySummary(model)" class="model-caps">{{
-                  capabilitySummary(model)
-                }}</span>
-              </span>
-            </label>
-          </li>
-        </ul>
-      </div>
-
-      <label
-        v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
-      >
-        {{
-          isArkVoiceModality(provider)
-            ? t('settings.models.defaultSpeaker')
-            : t('settings.models.defaultModel')
-        }}
-        <select
-          :value="modalityConfig(provider, currentModality(provider)).defaultModelId"
-          @change="
-            setDefaultModel(
-              provider,
-              currentModality(provider),
-              ($event.target as HTMLSelectElement).value
+                ? 'settings.models.selectedSpeakerCount'
+                : 'settings.models.selectedCount',
+              {
+                n: modalityConfig(provider, currentModality(provider)).selectedModelIds.length
+              }
             )
-          "
-        >
-          <option
-            v-for="id in modalityConfig(provider, currentModality(provider)).selectedModelIds"
-            :key="id"
-            :value="id"
-          >
-            {{ id }}
-          </option>
-        </select>
-      </label>
-      <p
-        v-if="modalityConfig(provider, currentModality(provider)).selectedModelIds.length"
-        class="meta"
-      >
-        {{
-          t(
-            isArkVoiceModality(provider)
-              ? 'settings.models.selectedSpeakerCount'
-              : 'settings.models.selectedCount',
-            {
-              n: modalityConfig(provider, currentModality(provider)).selectedModelIds.length
-            }
-          )
-        }}
-      </p>
+          }}
+        </p>
       </div>
     </article>
   </div>

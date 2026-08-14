@@ -1,6 +1,9 @@
 <template>
   <div class="asset-canvas-editor">
-    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
+    <div
+      v-if="showDiveShellBar && diveContext"
+      class="dive-shell-bar"
+    >
       <EditorDiveBar
         :root-title="diveContext.rootTitle"
         :frames="diveContext.frames"
@@ -8,7 +11,10 @@
       />
     </div>
 
-    <div v-if="!diving" class="toolbar">
+    <div
+      v-if="!diving"
+      class="toolbar"
+    >
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('canvas.asset.hint') }}</span>
@@ -23,7 +29,10 @@
       :hide-toolbar="toolbarCollapsed"
     />
 
-    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
+    <EditorDiveChildHost
+      :frame="diving ? diveTop : null"
+      :frames="diveFrames"
+    />
   </div>
 </template>
 

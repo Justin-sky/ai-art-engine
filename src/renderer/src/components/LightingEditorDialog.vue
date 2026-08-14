@@ -31,7 +31,10 @@
               {{ t('graph.lighting.frontal') }}
             </button>
           </div>
-          <div ref="spherePaneEl" class="sphere-pane">
+          <div
+            ref="spherePaneEl"
+            class="sphere-pane"
+          >
             <canvas
               ref="canvasEl"
               class="sphere-canvas"
@@ -70,7 +73,7 @@
               :value="draft.brightness"
               :style="{ '--range-pct': rangePct(draft.brightness, 0, 100) }"
               @input="onBrightnessInput"
-            />
+            >
             <span class="slider-value">{{ draft.brightness }}%</span>
           </label>
 
@@ -81,7 +84,7 @@
               class="color-input"
               :value="draft.color"
               @input="onColorInput"
-            />
+            >
           </label>
 
           <div class="section-head spaced">
@@ -146,7 +149,9 @@
 
           <div class="output-block">
             <span class="slider-label">{{ t('graph.lighting.outputPrompt') }}</span>
-            <p class="prompt-preview">{{ outputPromptText || t('graph.lighting.promptEmpty') }}</p>
+            <p class="prompt-preview">
+              {{ outputPromptText || t('graph.lighting.promptEmpty') }}
+            </p>
           </div>
         </div>
       </div>
@@ -159,7 +164,11 @@
           :generate-provider-instance-id="generateProviderInstanceId"
           @change="onModelChange"
         />
-        <button type="button" class="reset-btn" @click="resetParams">
+        <button
+          type="button"
+          class="reset-btn"
+          @click="resetParams"
+        >
           {{ t('graph.lighting.resetParams') }}
         </button>
       </div>

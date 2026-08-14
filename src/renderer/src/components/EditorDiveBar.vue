@@ -1,16 +1,36 @@
 <template>
-  <nav v-if="frames.length" class="editor-dive-bar" :aria-label="t('studio.dive.up')">
-    <button type="button" class="dive-up" :title="t('studio.dive.up')" @click="emit('popTo', -1)">
+  <nav
+    v-if="frames.length"
+    class="editor-dive-bar"
+    :aria-label="t('studio.dive.up')"
+  >
+    <button
+      type="button"
+      class="dive-up"
+      :title="t('studio.dive.up')"
+      @click="emit('popTo', -1)"
+    >
       {{ t('studio.dive.up') }}
     </button>
     <ol class="dive-crumbs">
       <li>
-        <button type="button" class="dive-crumb" @click="emit('popTo', -1)">
+        <button
+          type="button"
+          class="dive-crumb"
+          @click="emit('popTo', -1)"
+        >
           {{ rootTitle || t('studio.dive.root') }}
         </button>
       </li>
-      <li v-for="(frame, index) in frames" :key="frame.key" class="dive-crumb-item">
-        <span class="dive-sep" aria-hidden="true">{{ t('studio.dive.sep') }}</span>
+      <li
+        v-for="(frame, index) in frames"
+        :key="frame.key"
+        class="dive-crumb-item"
+      >
+        <span
+          class="dive-sep"
+          aria-hidden="true"
+        >{{ t('studio.dive.sep') }}</span>
         <button
           type="button"
           class="dive-crumb"

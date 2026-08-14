@@ -39,7 +39,7 @@
         @blur="commitTitleEdit"
         @keydown.enter.prevent="commitTitleEdit"
         @keydown.esc.prevent="cancelTitleEdit"
-      />
+      >
       <span
         v-else
         class="title"
@@ -59,7 +59,10 @@
         @pointerdown.stop
         @click.stop="togglePreviewCollapsed"
       >
-        <span class="collapse-tri" aria-hidden="true" />
+        <span
+          class="collapse-tri"
+          aria-hidden="true"
+        />
       </button>
       <div class="head-actions">
         <button
@@ -73,7 +76,10 @@
           @pointerdown.stop
           @click.stop="toggleLock"
         >
-          <LockIcon :locked="isLocked" :size="12" />
+          <LockIcon
+            :locked="isLocked"
+            :size="12"
+          />
         </button>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
@@ -116,230 +122,266 @@
         class="media-fallback preview-icon-fallback"
         :title="scriptNodePreviewTitle"
       >
-        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
+        <span class="icon"><WorkspaceItemIcon
+          :icon="typeIcon"
+          :size="18"
+        /></span>
         <span class="hint">{{ scriptNodePreviewTitle }}</span>
       </div>
 
       <template v-else>
-      <img
-        v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview && cardImageGridSrcs.length <= 1"
-        :src="directorLivePreview"
-        alt=""
-        class="camera-live-preview"
-        loading="lazy"
-        decoding="async"
-        draggable="false"
-        @load="onPreviewImageLoad"
-      />
-
-      <div
-        v-else-if="isAnim2dNode && cardAnimFrames.length > 1"
-        class="card-preview-grid anim2d-live"
-        :title="previewOpenHint"
-      >
         <img
-          :src="cardAnimFrames[animFrameIndex]"
+          v-if="(isDirectorGenerateNode || isDirectorOutputNode) && directorLivePreview && cardImageGridSrcs.length <= 1"
+          :src="directorLivePreview"
+          alt=""
+          class="camera-live-preview"
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+          @load="onPreviewImageLoad"
+        >
+
+        <div
+          v-else-if="isAnim2dNode && cardAnimFrames.length > 1"
+          class="card-preview-grid anim2d-live"
+          :title="previewOpenHint"
+        >
+          <img
+            :src="cardAnimFrames[animFrameIndex]"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+            @load="onPreviewImageLoad"
+          >
+        </div>
+
+        <div
+          v-else-if="cardImageGridSrcs.length > 1"
+          class="card-preview-grid"
+          :class="cardImageGridExpanded ? 'is-expanded' : 'is-stacked'"
+          :style="
+            cardImageGridExpanded
+              ? { gridTemplateColumns: `repeat(${cardImageGridColCount}, minmax(0, 1fr))` }
+              : undefined
+          "
+          :title="previewOpenHint"
+        >
+          <template v-if="cardImageGridExpanded">
+            <img
+              v-for="(src, index) in cardImageGridSrcs"
+              :key="`grid-img-${index}`"
+              :src="src"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+              @load="onCardGridImageLoad(index, $event)"
+            >
+          </template>
+          <template v-else>
+            <img
+              v-for="(src, index) in cardImageStackSrcs"
+              :key="`stack-img-${index}`"
+              class="stack-layer"
+              :style="cardImageStackStyle(index, cardImageStackSrcs.length)"
+              :src="src"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+              @load="index === cardImageStackSrcs.length - 1 ? onPreviewImageLoad($event) : undefined"
+            >
+          </template>
+          <button
+            type="button"
+            class="grid-expand-btn"
+            :title="
+              cardImageGridExpanded
+                ? t('graph.node.collapseImageGrid')
+                : t('graph.node.expandImageGrid')
+            "
+            :aria-expanded="cardImageGridExpanded"
+            :aria-label="
+              cardImageGridExpanded
+                ? t('graph.node.collapseImageGrid')
+                : t('graph.node.expandImageGrid')
+            "
+            @pointerdown.stop
+            @click.stop="toggleCardImageGridExpanded"
+          >
+            <span class="grid-expand-count">{{ cardImageGridSrcs.length }}</span>
+            <span class="grid-expand-label">{{
+              cardImageGridExpanded
+                ? t('graph.node.collapseImageGridShort')
+                : t('graph.node.expandImageGridShort')
+            }}</span>
+          </button>
+        </div>
+
+        <img
+          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
+          :src="selectImagePreview"
           alt=""
           loading="lazy"
           decoding="async"
           draggable="false"
           @load="onPreviewImageLoad"
-        />
-      </div>
-
-      <div
-        v-else-if="cardImageGridSrcs.length > 1"
-        class="card-preview-grid"
-        :class="cardImageGridExpanded ? 'is-expanded' : 'is-stacked'"
-        :style="
-          cardImageGridExpanded
-            ? { gridTemplateColumns: `repeat(${cardImageGridColCount}, minmax(0, 1fr))` }
-            : undefined
-        "
-        :title="previewOpenHint"
-      >
-        <template v-if="cardImageGridExpanded">
-          <img
-            v-for="(src, index) in cardImageGridSrcs"
-            :key="`grid-img-${index}`"
-            :src="src"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            draggable="false"
-            @load="onCardGridImageLoad(index, $event)"
-          />
-        </template>
-        <template v-else>
-          <img
-            v-for="(src, index) in cardImageStackSrcs"
-            :key="`stack-img-${index}`"
-            class="stack-layer"
-            :style="cardImageStackStyle(index, cardImageStackSrcs.length)"
-            :src="src"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            draggable="false"
-            @load="index === cardImageStackSrcs.length - 1 ? onPreviewImageLoad($event) : undefined"
-          />
-        </template>
-        <button
-          type="button"
-          class="grid-expand-btn"
-          :title="
-            cardImageGridExpanded
-              ? t('graph.node.collapseImageGrid')
-              : t('graph.node.expandImageGrid')
-          "
-          :aria-expanded="cardImageGridExpanded"
-          :aria-label="
-            cardImageGridExpanded
-              ? t('graph.node.collapseImageGrid')
-              : t('graph.node.expandImageGrid')
-          "
-          @pointerdown.stop
-          @click.stop="toggleCardImageGridExpanded"
         >
-          <span class="grid-expand-count">{{ cardImageGridSrcs.length }}</span>
-          <span class="grid-expand-label">{{
-            cardImageGridExpanded
-              ? t('graph.node.collapseImageGridShort')
-              : t('graph.node.expandImageGridShort')
-          }}</span>
-        </button>
-      </div>
 
-      <img
-        v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
-        :src="selectImagePreview"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        draggable="false"
-        @load="onPreviewImageLoad"
-      />
+        <div
+          v-else-if="cardTextGridItems.length > 1"
+          class="card-text-grid"
+          :title="previewOpenHint"
+        >
+          <pre
+            v-for="(item, index) in cardTextGridItems"
+            :key="`grid-text-${index}`"
+            class="card-text-grid-item"
+          >{{ item }}</pre>
+        </div>
 
-      <div
-        v-else-if="cardTextGridItems.length > 1"
-        class="card-text-grid"
-        :title="previewOpenHint"
-      >
-        <pre
-          v-for="(item, index) in cardTextGridItems"
-          :key="`grid-text-${index}`"
-          class="card-text-grid-item"
-        >{{ item }}</pre>
-      </div>
+        <div
+          v-else-if="textPreview"
+          class="text-preview"
+          :title="previewOpenHint"
+        >
+          <pre class="text-preview-body">{{ textPreview }}</pre>
+          <span class="text-preview-hint">{{ previewOpenHint }}</span>
+        </div>
 
-      <div v-else-if="textPreview" class="text-preview" :title="previewOpenHint">
-        <pre class="text-preview-body">{{ textPreview }}</pre>
-        <span class="text-preview-hint">{{ previewOpenHint }}</span>
-      </div>
+        <img
+          v-else-if="previewKind === 'image' && previewUrl"
+          :src="previewUrl"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+          @load="onPreviewImageLoad"
+        >
 
-      <img
-        v-else-if="previewKind === 'image' && previewUrl"
-        :src="previewUrl"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        draggable="false"
-        @load="onPreviewImageLoad"
-      />
-
-      <video
-        v-else-if="previewKind === 'video' && previewUrl"
-        ref="videoEl"
-        :src="previewUrl"
-        :muted="mediaMuted"
-        :loop="mediaLoop"
-        preload="auto"
-        playsinline
-        draggable="false"
-        @play="onMediaPlay"
-        @pause="onMediaPause"
-        @ended="onMediaEnded"
-        @timeupdate="onMediaTimeUpdate"
-        @loadedmetadata="onMediaLoaded"
-        @durationchange="onMediaLoaded"
-        @mouseenter="onVideoMouseEnter"
-        @mouseleave="onVideoMouseLeave"
-        @error="onVideoError"
-      />
-
-      <div v-else-if="previewKind === 'voice'" class="media-fallback audio">
-        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
-        <span v-if="!showMediaTransport || !previewUrl || mediaError" class="hint">{{
-          previewHint
-        }}</span>
-        <audio
-          v-if="previewUrl"
-          ref="audioEl"
+        <video
+          v-else-if="previewKind === 'video' && previewUrl"
+          ref="videoEl"
           :src="previewUrl"
           :muted="mediaMuted"
           :loop="mediaLoop"
           preload="auto"
+          playsinline
+          draggable="false"
           @play="onMediaPlay"
           @pause="onMediaPause"
           @ended="onMediaEnded"
           @timeupdate="onMediaTimeUpdate"
           @loadedmetadata="onMediaLoaded"
           @durationchange="onMediaLoaded"
-          @error="onAudioError"
+          @mouseenter="onVideoMouseEnter"
+          @mouseleave="onVideoMouseLeave"
+          @error="onVideoError"
         />
-      </div>
 
-      <div v-else-if="isFramePullNode(node)" class="media-fallback frame-pull-hint">
-        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
-        <span class="hint">{{ t('graph.inspector.framePull.openHint') }}</span>
-      </div>
-
-      <div v-else class="media-fallback">
-        <span class="icon"><WorkspaceItemIcon :icon="typeIcon" :size="18" /></span>
-        <span class="hint">{{ previewHint }}</span>
-      </div>
-
-      <div
-        v-if="showMediaTransport && previewUrl && !mediaError"
-        class="transport"
-        @pointerdown.stop
-        @click.stop
-        @wheel.stop
-      >
-        <div class="time-row inline">
-          <span>{{ formatTime(currentTime) }}</span>
-          <span>/</span>
-          <span>{{ formatTime(duration) }}</span>
+        <div
+          v-else-if="previewKind === 'voice'"
+          class="media-fallback audio"
+        >
+          <span class="icon"><WorkspaceItemIcon
+            :icon="typeIcon"
+            :size="18"
+          /></span>
+          <span
+            v-if="!showMediaTransport || !previewUrl || mediaError"
+            class="hint"
+          >{{
+            previewHint
+          }}</span>
+          <audio
+            v-if="previewUrl"
+            ref="audioEl"
+            :src="previewUrl"
+            :muted="mediaMuted"
+            :loop="mediaLoop"
+            preload="auto"
+            @play="onMediaPlay"
+            @pause="onMediaPause"
+            @ended="onMediaEnded"
+            @timeupdate="onMediaTimeUpdate"
+            @loadedmetadata="onMediaLoaded"
+            @durationchange="onMediaLoaded"
+            @error="onAudioError"
+          />
         </div>
-        <div class="transport-row">
-          <button type="button" class="ctrl-btn" :title="t('graph.media.restart')" @click="seekToStart">
-            <span class="icon-restart" />
-          </button>
-          <div class="progress-wrap">
-            <input
-              ref="progressInput"
-              class="progress"
-              type="range"
-              min="0"
-              max="1000"
-              step="1"
-              :value="progressValue"
-              @input="onSeekInput"
-              @change="onSeekChange"
-            />
+
+        <div
+          v-else-if="isFramePullNode(node)"
+          class="media-fallback frame-pull-hint"
+        >
+          <span class="icon"><WorkspaceItemIcon
+            :icon="typeIcon"
+            :size="18"
+          /></span>
+          <span class="hint">{{ t('graph.inspector.framePull.openHint') }}</span>
+        </div>
+
+        <div
+          v-else
+          class="media-fallback"
+        >
+          <span class="icon"><WorkspaceItemIcon
+            :icon="typeIcon"
+            :size="18"
+          /></span>
+          <span class="hint">{{ previewHint }}</span>
+        </div>
+
+        <div
+          v-if="showMediaTransport && previewUrl && !mediaError"
+          class="transport"
+          @pointerdown.stop
+          @click.stop
+          @wheel.stop
+        >
+          <div class="time-row inline">
+            <span>{{ formatTime(currentTime) }}</span>
+            <span>/</span>
+            <span>{{ formatTime(duration) }}</span>
           </div>
-          <button
-            type="button"
-            class="ctrl-btn primary"
-            :title="mediaPlaying ? t('graph.media.pause') : t('graph.media.play')"
-            @click="togglePlayback"
-          >
-            <span :class="{ pause: mediaPlaying, triangle: !mediaPlaying }" />
-          </button>
+          <div class="transport-row">
+            <button
+              type="button"
+              class="ctrl-btn"
+              :title="t('graph.media.restart')"
+              @click="seekToStart"
+            >
+              <span class="icon-restart" />
+            </button>
+            <div class="progress-wrap">
+              <input
+                ref="progressInput"
+                class="progress"
+                type="range"
+                min="0"
+                max="1000"
+                step="1"
+                :value="progressValue"
+                @input="onSeekInput"
+                @change="onSeekChange"
+              >
+            </div>
+            <button
+              type="button"
+              class="ctrl-btn primary"
+              :title="mediaPlaying ? t('graph.media.pause') : t('graph.media.play')"
+              @click="togglePlayback"
+            >
+              <span :class="{ pause: mediaPlaying, triangle: !mediaPlaying }" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      <span v-if="mediaError" class="media-error">{{ mediaErrorText }}</span>
+        <span
+          v-if="mediaError"
+          class="media-error"
+        >{{ mediaErrorText }}</span>
       </template>
     </div>
 
@@ -350,7 +392,9 @@
       @dblclick.stop
       @wheel.stop
     >
-      <div class="instruction-panel-label">{{ t('graph.inspector.generate.instruction') }}</div>
+      <div class="instruction-panel-label">
+        {{ t('graph.inspector.generate.instruction') }}
+      </div>
       <GraphInstructionMentionEditor
         v-model="instruction"
         :host-id="hostId"
@@ -386,8 +430,8 @@
       </GraphInstructionMentionEditor>
       <GraphInstructionEditorDialog
         v-if="instructionDialogMounted"
-        :open="instructionDialogOpen"
         v-model="instruction"
+        :open="instructionDialogOpen"
         :host-id="hostId"
         :node-id="node.id"
         :preset-kind="instructionKind"
@@ -448,14 +492,20 @@
       <span class="port-type">{{ outPortTypeLabel(port) }}</span>
     </div>
 
-    <GraphNodeResizeHandle v-if="!previewCollapsed" @resize-start="onResizeStart" />
+    <GraphNodeResizeHandle
+      v-if="!previewCollapsed"
+      @resize-start="onResizeStart"
+    />
 
     <span
       v-if="!previewCollapsed"
       class="type-badge"
       :class="typeBadgeClass"
       :title="typeBadgeTitle"
-    ><WorkspaceItemIcon :icon="typeBadgeIcon" :size="14" /></span>
+    ><WorkspaceItemIcon
+      :icon="typeBadgeIcon"
+      :size="14"
+    /></span>
   </div>
 </template>
 

@@ -27,7 +27,13 @@ withDefaults(
     aria-hidden="true"
     focusable="false"
   >
-    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <rect
+      x="3"
+      y="3"
+      width="18"
+      height="18"
+      rx="2"
+    />
     <line
       v-for="i in cols - 1"
       :key="`v${i}`"

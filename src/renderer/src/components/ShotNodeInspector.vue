@@ -1,11 +1,16 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <span class="role">{{ t('graph.nodeRole.generate') }}</span>
       <span class="type">{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.generate.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.generate.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -17,7 +22,10 @@
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localTitle" @change="persist" />
+      <input
+        v-model="localTitle"
+        @change="persist"
+      >
     </label>
 
     <div class="lock-field">
@@ -26,7 +34,7 @@
           type="checkbox"
           :checked="locked"
           @change="onLockChange(($event.target as HTMLInputElement).checked)"
-        />
+        >
         <span>
           <span class="lock-option-title">{{ t('graph.inspector.generate.lock') }}</span>
           <span class="field-hint">{{ t('graph.inspector.generate.lockHint') }}</span>
@@ -34,7 +42,10 @@
       </label>
     </div>
 
-    <section v-if="isImage || isVideo" class="style-section">
+    <section
+      v-if="isImage || isVideo"
+      class="style-section"
+    >
       <div class="style-toolbar-heading">
         <span class="style-toolbar-title">{{ t('project.globals.stylePreset') }}</span>
         <span class="style-toolbar-count">
@@ -46,7 +57,7 @@
           type="checkbox"
           :checked="useGlobalStyle"
           @change="onUseGlobalStyleChange(($event.target as HTMLInputElement).checked)"
-        />
+        >
         <span>{{ t('stylePicker.useGlobal') }}</span>
       </label>
       <p class="style-toolbar-hint">
@@ -76,7 +87,10 @@
             @change="persistGenerateConfig"
           />
         </label>
-        <p v-if="modelOptions.length === 0" class="hint">
+        <p
+          v-if="modelOptions.length === 0"
+          class="hint"
+        >
           {{ modelsHint }}
         </p>
       </section>
@@ -95,15 +109,26 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedImages') }}</span>
-        <span v-if="generatedImages.length" class="section-count">
+        <span
+          v-if="generatedImages.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.generate.generatedImagesCount', { n: generatedImages.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.generate.generatedImagesHint') }}</p>
-      <div v-if="!generatedImages.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.generatedImagesHint') }}
+      </p>
+      <div
+        v-if="!generatedImages.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.generate.generatedImagesEmpty') }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <div
           v-for="(shot, index) in generatedImages"
           :key="shot.id || `index:${index}`"
@@ -123,8 +148,11 @@
               alt=""
               loading="lazy"
               decoding="async"
-            />
-            <span v-else class="shot-loading">…</span>
+            >
+            <span
+              v-else
+              class="shot-loading"
+            >…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -146,15 +174,26 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedTexts') }}</span>
-        <span v-if="generatedTexts.length" class="section-count">
+        <span
+          v-if="generatedTexts.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.generate.generatedTextsCount', { n: generatedTexts.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.generate.generatedTextsHint') }}</p>
-      <div v-if="!generatedTexts.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.generatedTextsHint') }}
+      </p>
+      <div
+        v-if="!generatedTexts.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.generate.generatedTextsEmpty') }}
       </div>
-      <div v-else class="text-grid">
+      <div
+        v-else
+        class="text-grid"
+      >
         <div
           v-for="(item, index) in generatedTexts"
           :key="item.id || `index:${index}`"
@@ -190,15 +229,26 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedVoices') }}</span>
-        <span v-if="generatedVoices.length" class="section-count">
+        <span
+          v-if="generatedVoices.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.generate.generatedVoicesCount', { n: generatedVoices.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.generate.generatedVoicesHint') }}</p>
-      <div v-if="!generatedVoices.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.generatedVoicesHint') }}
+      </p>
+      <div
+        v-if="!generatedVoices.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.generate.generatedVoicesEmpty') }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <div
           v-for="(item, index) in generatedVoices"
           :key="item.id || `index:${index}`"
@@ -218,7 +268,10 @@
               preload="metadata"
               @click.stop
             />
-            <span v-else class="shot-loading">…</span>
+            <span
+              v-else
+              class="shot-loading"
+            >…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -240,15 +293,26 @@
     >
       <div class="section-head">
         <span class="section-title">{{ t('graph.inspector.generate.generatedVideos') }}</span>
-        <span v-if="generatedVideos.length" class="section-count">
+        <span
+          v-if="generatedVideos.length"
+          class="section-count"
+        >
           {{ t('graph.inspector.generate.generatedVideosCount', { n: generatedVideos.length }) }}
         </span>
       </div>
-      <p class="section-hint">{{ t('graph.inspector.generate.generatedVideosHint') }}</p>
-      <div v-if="!generatedVideos.length" class="empty-shots">
+      <p class="section-hint">
+        {{ t('graph.inspector.generate.generatedVideosHint') }}
+      </p>
+      <div
+        v-if="!generatedVideos.length"
+        class="empty-shots"
+      >
         {{ t('graph.inspector.generate.generatedVideosEmpty') }}
       </div>
-      <div v-else class="shot-grid">
+      <div
+        v-else
+        class="shot-grid"
+      >
         <div
           v-for="(item, index) in generatedVideos"
           :key="item.id || `index:${index}`"
@@ -271,7 +335,10 @@
               :title="t('graph.selectVideo.previewHint')"
               @dblclick.stop="openGeneratedVideoPreview(item.id || `index:${index}`)"
             />
-            <span v-else class="shot-loading">…</span>
+            <span
+              v-else
+              class="shot-loading"
+            >…</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <button
@@ -294,7 +361,12 @@
       @close="textNotepadOpen = false"
     />
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

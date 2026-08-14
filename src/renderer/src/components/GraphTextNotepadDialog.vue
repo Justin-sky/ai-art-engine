@@ -14,7 +14,12 @@
     <template #title>
       <div class="title-block">
         <span class="app-mark">{{ t('graph.notepad.appMark') }}</span>
-        <h2 class="title" :title="title">{{ title }}</h2>
+        <h2
+          class="title"
+          :title="title"
+        >
+          {{ title }}
+        </h2>
       </div>
     </template>
 
@@ -42,10 +47,25 @@
     </template>
 
     <div class="pad-body">
-      <div v-if="images.length" class="image-batch" :aria-label="t('graph.notepad.imageBatch')">
-        <div v-for="(item, index) in images" :key="`${item.url}-${index}`" class="image-card">
-          <img :src="item.url" :alt="item.label || ''" />
-          <span v-if="item.label" class="image-label" :title="item.label">{{ item.label }}</span>
+      <div
+        v-if="images.length"
+        class="image-batch"
+        :aria-label="t('graph.notepad.imageBatch')"
+      >
+        <div
+          v-for="(item, index) in images"
+          :key="`${item.url}-${index}`"
+          class="image-card"
+        >
+          <img
+            :src="item.url"
+            :alt="item.label || ''"
+          >
+          <span
+            v-if="item.label"
+            class="image-label"
+            :title="item.label"
+          >{{ item.label }}</span>
         </div>
       </div>
 

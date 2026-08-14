@@ -9,10 +9,22 @@
     @pointerdown.stop
     @click.stop="onClick"
   >
-    <span v-if="mode === 'stop'" class="icon-stop" />
-    <span v-else-if="mode === 'rerun'" class="icon-rerun" />
-    <span v-else class="icon-play" />
-    <span v-if="!compact" class="label">{{ label }}</span>
+    <span
+      v-if="mode === 'stop'"
+      class="icon-stop"
+    />
+    <span
+      v-else-if="mode === 'rerun'"
+      class="icon-rerun"
+    />
+    <span
+      v-else
+      class="icon-play"
+    />
+    <span
+      v-if="!compact"
+      class="label"
+    >{{ label }}</span>
   </button>
 </template>
 
@@ -31,6 +43,7 @@ const props = withDefaults(
     blocked?: boolean
   }>(),
   {
+    status: 'idle',
     isRunning: false,
     compact: false,
     blocked: false

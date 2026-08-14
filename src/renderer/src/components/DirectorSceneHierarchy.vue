@@ -1,7 +1,13 @@
 <template>
-  <aside ref="rootEl" class="hierarchy" :style="{ width: `${paneWidth}px` }">
+  <aside
+    ref="rootEl"
+    class="hierarchy"
+    :style="{ width: `${paneWidth}px` }"
+  >
     <div class="hierarchy-head">
-      <div class="hierarchy-title">{{ t('director.stage.scenePanel') }}</div>
+      <div class="hierarchy-title">
+        {{ t('director.stage.scenePanel') }}
+      </div>
       <div class="create-wrap">
         <button
           type="button"
@@ -10,7 +16,10 @@
           :aria-expanded="menuOpen && menuMode === 'dropdown'"
           @click.stop="toggleDropdownMenu"
         >
-          <span class="create-plus" aria-hidden="true" />
+          <span
+            class="create-plus"
+            aria-hidden="true"
+          />
         </button>
       </div>
     </div>
@@ -19,7 +28,7 @@
       class="search"
       type="search"
       :placeholder="t('director.stage.searchPlaceholder')"
-    />
+    >
     <ul
       class="list"
       @click="onListClick"
@@ -41,8 +50,8 @@
         :style="{ paddingLeft: `${8 + item.depth * 14}px` }"
         :draggable="
           item.kind !== 'panorama' &&
-          item.kind !== 'cameraGroup' &&
-          editingId !== item.id
+            item.kind !== 'cameraGroup' &&
+            editingId !== item.id
         "
         @click="onRowClick(item, $event)"
         @dblclick="onRowDblClick(item)"
@@ -67,7 +76,10 @@
           @click.stop="toggleExpanded(item.id)"
           @dblclick.stop
         >
-          <span class="chevron-icon" v-html="CHEVRON_ICON" />
+          <span
+            class="chevron-icon"
+            v-html="CHEVRON_ICON"
+          />
         </button>
         <template v-if="item.kind !== 'panorama' && item.kind !== 'cameraGroup'">
           <button
@@ -116,9 +128,9 @@
               ? CAMERA_ICON
               : item.kind === 'cameraGroup'
                 ? GROUP_ICON
-              : item.kind === 'panorama'
-                ? PANORAMA_ICON
-                : CUBE_ICON
+                : item.kind === 'panorama'
+                  ? PANORAMA_ICON
+                  : CUBE_ICON
           "
         />
         <input
@@ -131,10 +143,18 @@
           @keydown.enter.prevent="commitRename"
           @keydown.escape.prevent="cancelRename"
           @blur="commitRename"
-        />
-        <span v-else class="name">{{ item.name }}</span>
+        >
+        <span
+          v-else
+          class="name"
+        >{{ item.name }}</span>
       </li>
-      <li v-if="filtered.length === 0" class="empty">{{ t('director.stage.hierarchyEmpty') }}</li>
+      <li
+        v-if="filtered.length === 0"
+        class="empty"
+      >
+        {{ t('director.stage.hierarchyEmpty') }}
+      </li>
     </ul>
 
     <div
@@ -186,10 +206,20 @@
           {{ t('director.stage.paste') }}
         </button>
         <div class="menu-sep" />
-        <button type="button" class="menu-item" role="menuitem" @click="createCamera">
+        <button
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          @click="createCamera"
+        >
           {{ t('director.stage.createCamera') }}
         </button>
-        <button type="button" class="menu-item" role="menuitem" @click="createEmpty">
+        <button
+          type="button"
+          class="menu-item"
+          role="menuitem"
+          @click="createEmpty"
+        >
           {{ t('director.stage.createEmpty') }}
         </button>
         <div class="menu-sep" />

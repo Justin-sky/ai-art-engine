@@ -12,7 +12,10 @@
   >
     <div class="frame-pull-editor">
       <div class="stage-col">
-        <div v-if="videoUrl && !videoError" class="stage">
+        <div
+          v-if="videoUrl && !videoError"
+          class="stage"
+        >
           <video
             ref="videoEl"
             class="video-el"
@@ -28,7 +31,12 @@
             @error="onVideoError"
           />
 
-          <div class="transport" @pointerdown.stop @click.stop @wheel.stop>
+          <div
+            class="transport"
+            @pointerdown.stop
+            @click.stop
+            @wheel.stop
+          >
             <div class="transport-actions">
               <button
                 type="button"
@@ -82,9 +90,13 @@
                 :value="progressValue"
                 @input="onSeekInput"
                 @change="onSeekChange"
-              />
+              >
             </div>
-            <div v-if="filmstrip.length" ref="filmstripEl" class="filmstrip">
+            <div
+              v-if="filmstrip.length"
+              ref="filmstripEl"
+              class="filmstrip"
+            >
               <button
                 v-for="thumb in filmstrip"
                 :key="thumb.frame"
@@ -100,7 +112,11 @@
                 })"
                 @click="onFilmstripClick(thumb.frame)"
               >
-                <img :src="thumb.dataUrl" alt="" loading="lazy" />
+                <img
+                  :src="thumb.dataUrl"
+                  alt=""
+                  loading="lazy"
+                >
                 <span
                   v-if="capturedFrameSet.has(thumb.frame)"
                   class="filmstrip-captured-dot"
@@ -108,7 +124,10 @@
                 <span class="filmstrip-frame-label">{{ thumb.frame }}</span>
               </button>
             </div>
-            <span v-if="filmstripMode" class="filmstrip-mode">
+            <span
+              v-if="filmstripMode"
+              class="filmstrip-mode"
+            >
               {{
                 filmstripMode === 'keyframe'
                   ? t('graph.inspector.framePull.keyframeStrip')
@@ -117,7 +136,10 @@
             </span>
           </div>
         </div>
-        <div v-else class="stage empty">
+        <div
+          v-else
+          class="stage empty"
+        >
           <span>{{
             videoError
               ? t('graph.preview.videoError')
@@ -136,7 +158,12 @@
           >
             {{ t('graph.inspector.framePull.capture') }}
           </button>
-          <button type="button" class="ghost" :disabled="!frames.length" @click="clearFrames">
+          <button
+            type="button"
+            class="ghost"
+            :disabled="!frames.length"
+            @click="clearFrames"
+          >
             {{ t('graph.inspector.framePull.clear') }}
           </button>
           <span class="capture-count">
@@ -144,7 +171,10 @@
           </span>
         </div>
 
-        <div v-if="frames.length" class="frames">
+        <div
+          v-if="frames.length"
+          class="frames"
+        >
           <div
             v-for="item in frames"
             :key="item.id"
@@ -152,7 +182,11 @@
             :class="{ active: item.id === selectedFrameId }"
             @click="selectFrame(item.id)"
           >
-            <img :src="item.dataUrl" alt="" loading="lazy" />
+            <img
+              :src="item.dataUrl"
+              alt=""
+              loading="lazy"
+            >
             <span class="frame-meta">{{ frameItemLabel(item) }}</span>
             <button
               type="button"
@@ -164,9 +198,17 @@
             </button>
           </div>
         </div>
-        <p v-else class="frames-empty">{{ t('graph.inspector.framePull.framesEmpty') }}</p>
+        <p
+          v-else
+          class="frames-empty"
+        >
+          {{ t('graph.inspector.framePull.framesEmpty') }}
+        </p>
 
-        <label v-if="selectedFrameId" class="note">
+        <label
+          v-if="selectedFrameId"
+          class="note"
+        >
           {{ t('graph.inspector.framePull.note') }}
           <textarea
             :value="currentNote"

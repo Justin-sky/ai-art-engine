@@ -1,9 +1,14 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.expand.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.expand.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -13,7 +18,11 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="node && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
 
     <label>
       {{ t('graph.expand.systemPrompt') }}
@@ -29,10 +38,20 @@
 
     <label>
       {{ t('graph.expand.mergedPrompt') }}
-      <textarea class="prompt-view" :value="mergedPrompt || emptyPrompt" rows="6" readonly />
+      <textarea
+        class="prompt-view"
+        :value="mergedPrompt || emptyPrompt"
+        rows="6"
+        readonly
+      />
     </label>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

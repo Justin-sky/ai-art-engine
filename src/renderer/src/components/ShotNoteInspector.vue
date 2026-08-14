@@ -1,15 +1,26 @@
 <template>
-  <div class="note-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="note-inspector"
+  >
     <div class="head">
-      <span class="type" :class="typeToneClass">{{ typeLabel }}</span>
+      <span
+        class="type"
+        :class="typeToneClass"
+      >{{ typeLabel }}</span>
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ hintText }}</p>
+    <p class="hint">
+      {{ hintText }}
+    </p>
 
     <template v-if="isBoundary">
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.boundary.dataType') }}</span>
-        <span class="meta-value type-chip" :class="typeToneClass">{{ dataTypeLabel }}</span>
+        <span
+          class="meta-value type-chip"
+          :class="typeToneClass"
+        >{{ dataTypeLabel }}</span>
       </div>
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.boundary.port') }}</span>
@@ -18,19 +29,31 @@
 
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input v-model="localTitle" @change="persistTitleOnly" />
+        <input
+          v-model="localTitle"
+          @change="persistTitleOnly"
+        >
       </label>
 
       <section class="preview-section">
-        <div class="preview-label">{{ t('graph.inspector.boundary.preview') }}</div>
-        <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+        <div class="preview-label">
+          {{ t('graph.inspector.boundary.preview') }}
+        </div>
+        <GraphNodeOutputPreview
+          v-if="hostId"
+          :node="node"
+          :host-id="hostId"
+        />
       </section>
     </template>
 
     <template v-else-if="isInputSlot">
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.inputInterface.dataType') }}</span>
-        <span class="meta-value type-chip" :class="`slot-${slotDataType}`">{{ dataTypeLabel }}</span>
+        <span
+          class="meta-value type-chip"
+          :class="`slot-${slotDataType}`"
+        >{{ dataTypeLabel }}</span>
       </div>
       <div class="meta-row">
         <span class="meta-label">{{ t('graph.inspector.inputInterface.port') }}</span>
@@ -43,11 +66,16 @@
 
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input v-model="localTitle" @change="persistTitleOnly" />
+        <input
+          v-model="localTitle"
+          @change="persistTitleOnly"
+        >
       </label>
 
       <div class="preview-block">
-        <div class="preview-label">{{ t('graph.inspector.inputInterface.preview') }}</div>
+        <div class="preview-label">
+          {{ t('graph.inspector.inputInterface.preview') }}
+        </div>
         <pre class="preview-body">{{ previewText }}</pre>
       </div>
     </template>
@@ -55,7 +83,10 @@
     <template v-else>
       <label>
         {{ t('graph.inspector.note.title') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
 
       <label>
@@ -71,7 +102,12 @@
       </label>
     </template>
   </div>
-  <div v-else class="note-inspector empty">{{ emptyText }}</div>
+  <div
+    v-else
+    class="note-inspector empty"
+  >
+    {{ emptyText }}
+  </div>
 </template>
 
 <script setup lang="ts">

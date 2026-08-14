@@ -1,9 +1,14 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.lipSync.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.lipSync.hint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -13,11 +18,18 @@
       @toggle="toggleRun"
     />
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="node && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
 
     <label>
       {{ t('graph.inspector.displayName') }}
-      <input v-model="localTitle" @change="persistTitle" />
+      <input
+        v-model="localTitle"
+        @change="persistTitle"
+      >
     </label>
 
     <section class="gen-config">
@@ -32,13 +44,26 @@
           @change="persistGenerateConfig"
         />
       </label>
-      <p v-if="modelOptions.length === 0" class="hint">
+      <p
+        v-if="modelOptions.length === 0"
+        class="hint"
+      >
         {{ t('graph.inspector.generate.configureVideoModelsHint') }}
       </p>
-      <p v-else class="field-hint">{{ t('graph.inspector.lipSync.modelHint') }}</p>
+      <p
+        v-else
+        class="field-hint"
+      >
+        {{ t('graph.inspector.lipSync.modelHint') }}
+      </p>
     </section>
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

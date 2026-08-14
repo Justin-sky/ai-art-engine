@@ -5,7 +5,11 @@
     tabindex="0"
     @wheel.prevent="onWheel"
   >
-    <div class="viewport" :class="{ text: mediaKind === 'text' }" @click="onBackdropClick">
+    <div
+      class="viewport"
+      :class="{ text: mediaKind === 'text' }"
+      @click="onBackdropClick"
+    >
       <textarea
         v-if="mediaKind === 'text'"
         class="text-view"
@@ -14,7 +18,12 @@
         :value="textContent"
         @click.stop
       />
-      <p v-else-if="!resolvedUrl" class="empty">{{ emptyText }}</p>
+      <p
+        v-else-if="!resolvedUrl"
+        class="empty"
+      >
+        {{ emptyText }}
+      </p>
       <img
         v-else-if="mediaKind === 'image'"
         :src="resolvedUrl"
@@ -28,7 +37,7 @@
         @pointerup="onPanEnd"
         @pointercancel="onPanEnd"
         @click.stop
-      />
+      >
       <video
         v-else-if="mediaKind === 'video'"
         :src="resolvedUrl"

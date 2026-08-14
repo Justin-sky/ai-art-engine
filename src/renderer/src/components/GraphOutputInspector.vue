@@ -1,5 +1,8 @@
 <template>
-  <div v-if="node" class="output-inspector">
+  <div
+    v-if="node"
+    class="output-inspector"
+  >
     <div class="head">
       <span class="type">{{ outputLabel }}</span>
       <h2>{{ node.title || outputLabel }}</h2>
@@ -16,7 +19,10 @@
     <template v-if="isGenerateScriptOutput">
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
       <div class="export-row">
         <button
@@ -26,47 +32,82 @@
           :title="t('graph.output.exportScreenplay')"
           @click="exportScreenplay"
         >
-          <span class="icon-export" aria-hidden="true" />
+          <span
+            class="icon-export"
+            aria-hidden="true"
+          />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportScreenplay') }}
           </span>
         </button>
-        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
+        <span
+          v-if="exportMessage"
+          class="export-msg"
+          :class="{ error: exportFailed }"
+        >
           {{ exportMessage }}
         </span>
       </div>
     </template>
 
     <template v-else-if="isVoiceOutput">
-      <p class="hint">{{ t('graph.output.voiceHint') }}</p>
+      <p class="hint">
+        {{ t('graph.output.voiceHint') }}
+      </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
       <label>
         {{ t('graph.output.volume') }}
-        <input v-model.number="volume" type="range" min="0" max="1" step="0.05" @change="persist" />
+        <input
+          v-model.number="volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          @change="persist"
+        >
         <span class="value">{{ Math.round(volume * 100) }}%</span>
       </label>
       <label class="row">
-        <input v-model="muted" type="checkbox" @change="persist" />
+        <input
+          v-model="muted"
+          type="checkbox"
+          @change="persist"
+        >
         {{ t('graph.output.muted') }}
       </label>
       <label class="row">
-        <input v-model="loop" type="checkbox" @change="persist" />
+        <input
+          v-model="loop"
+          type="checkbox"
+          @change="persist"
+        >
         {{ t('graph.output.loop') }}
       </label>
     </template>
 
     <template v-else-if="isVideoOutput">
-      <p class="hint">{{ t('graph.output.videoHint') }}</p>
+      <p class="hint">
+        {{ t('graph.output.videoHint') }}
+      </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
       <label>
         {{ t('graph.output.speed') }}
-        <select v-model.number="playbackRate" @change="persist">
+        <select
+          v-model.number="playbackRate"
+          @change="persist"
+        >
           <option :value="0.5">0.5×</option>
           <option :value="0.75">0.75×</option>
           <option :value="1">1×</option>
@@ -83,22 +124,34 @@
           :title="t('graph.output.exportVideo')"
           @click="exportVideo"
         >
-          <span class="icon-export" aria-hidden="true" />
+          <span
+            class="icon-export"
+            aria-hidden="true"
+          />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportVideo') }}
           </span>
         </button>
-        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
+        <span
+          v-if="exportMessage"
+          class="export-msg"
+          :class="{ error: exportFailed }"
+        >
           {{ exportMessage }}
         </span>
       </div>
     </template>
 
     <template v-else-if="isImageOutput">
-      <p class="hint">{{ t('graph.output.imageHint') }}</p>
+      <p class="hint">
+        {{ t('graph.output.imageHint') }}
+      </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
       <div class="export-row">
         <button
@@ -108,26 +161,42 @@
           :title="t('graph.output.exportImages')"
           @click="exportImagesBatch"
         >
-          <span class="icon-export" aria-hidden="true" />
+          <span
+            class="icon-export"
+            aria-hidden="true"
+          />
           <span class="label">
             {{ exporting ? t('graph.output.exporting') : t('graph.output.exportImages') }}
           </span>
         </button>
-        <span v-if="exportMessage" class="export-msg" :class="{ error: exportFailed }">
+        <span
+          v-if="exportMessage"
+          class="export-msg"
+          :class="{ error: exportFailed }"
+        >
           {{ exportMessage }}
         </span>
       </div>
     </template>
 
     <template v-else>
-      <p class="hint">{{ t('graph.output.connectHint') }}</p>
+      <p class="hint">
+        {{ t('graph.output.connectHint') }}
+      </p>
       <label>
         {{ t('graph.inspector.displayName') }}
-        <input v-model="localTitle" @change="persist" />
+        <input
+          v-model="localTitle"
+          @change="persist"
+        >
       </label>
     </template>
 
-    <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="node && hostId"
+      :node="node"
+      :host-id="hostId"
+    />
   </div>
 </template>
 

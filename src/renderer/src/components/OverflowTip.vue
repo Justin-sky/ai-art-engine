@@ -8,10 +8,13 @@
     @mouseleave="hide"
   >
     <slot />
-    <Teleport :to="bodyTarget" :disabled="!bodyTarget">
+    <Teleport
+      :to="bodyTarget"
+      :disabled="!bodyTarget"
+    >
       <span
-        ref="popEl"
         v-if="visible && text"
+        ref="popEl"
         class="overflow-tip-pop"
         :class="placementClass"
         role="tooltip"

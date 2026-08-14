@@ -10,7 +10,10 @@
     :min-height="360"
     @close="emit('cancel')"
   >
-    <div class="tabs" role="tablist">
+    <div
+      class="tabs"
+      role="tablist"
+    >
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -41,12 +44,18 @@
         :title="stylePresetDisplayName(style, locale)"
         @click="toggle(style.id)"
       >
-        <img :src="style.imageUrl" :alt="stylePresetDisplayName(style, locale)" />
+        <img
+          :src="style.imageUrl"
+          :alt="stylePresetDisplayName(style, locale)"
+        >
         <span class="caption">
           <span class="idx">{{ style.index }}.</span>
           {{ stylePresetDisplayName(style, locale) }}
         </span>
-        <span v-if="isLocked(style.id)" class="badge">{{ t('stylePicker.alreadySelected') }}</span>
+        <span
+          v-if="isLocked(style.id)"
+          class="badge"
+        >{{ t('stylePicker.alreadySelected') }}</span>
       </button>
     </div>
 
@@ -54,7 +63,12 @@
       <span class="footer-hint">
         {{ t('stylePicker.libraryPicked', { n: pending.size, max: remaining }) }}
       </span>
-      <button type="button" @click="emit('cancel')">{{ t('common.cancel') }}</button>
+      <button
+        type="button"
+        @click="emit('cancel')"
+      >
+        {{ t('common.cancel') }}
+      </button>
       <button
         type="button"
         class="primary"

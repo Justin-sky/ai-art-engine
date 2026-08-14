@@ -1,5 +1,10 @@
 <template>
-  <div v-if="visible" class="video-params" @pointerdown.stop @dblclick.stop>
+  <div
+    v-if="visible"
+    class="video-params"
+    @pointerdown.stop
+    @dblclick.stop
+  >
     <button
       ref="triggerEl"
       type="button"
@@ -10,7 +15,10 @@
       @click.stop="toggleMenu"
     >
       <span class="summary-text">{{ summaryText }}</span>
-      <span class="chevron" aria-hidden="true" />
+      <span
+        class="chevron"
+        aria-hidden="true"
+      />
     </button>
 
     <Teleport to="body">
@@ -25,108 +33,146 @@
         @click.stop
         @pointerdown.stop
       >
-        <p v-if="loading" class="menu-status">{{ t('graph.inspector.generate.videoParams.loading') }}</p>
+        <p
+          v-if="loading"
+          class="menu-status"
+        >
+          {{ t('graph.inspector.generate.videoParams.loading') }}
+        </p>
         <template v-else>
-          <p v-if="!hasSections" class="menu-status">
+          <p
+            v-if="!hasSections"
+            class="menu-status"
+          >
             {{ t('graph.inspector.generate.videoParams.empty') }}
           </p>
           <template v-else>
-          <section v-if="caps.durations.length" class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.duration') }}</div>
-            <div class="chip-row">
-              <button
-                v-for="sec in caps.durations"
-                :key="sec"
-                type="button"
-                class="chip"
-                :class="{ active: local.duration === sec }"
-                @click="pickDuration(sec)"
-              >
-                {{ t('graph.inspector.generate.videoParams.durationOption', { n: sec }) }}
-              </button>
-            </div>
-          </section>
+            <section
+              v-if="caps.durations.length"
+              class="section"
+            >
+              <div class="section-title">
+                {{ t('graph.inspector.generate.videoParams.duration') }}
+              </div>
+              <div class="chip-row">
+                <button
+                  v-for="sec in caps.durations"
+                  :key="sec"
+                  type="button"
+                  class="chip"
+                  :class="{ active: local.duration === sec }"
+                  @click="pickDuration(sec)"
+                >
+                  {{ t('graph.inspector.generate.videoParams.durationOption', { n: sec }) }}
+                </button>
+              </div>
+            </section>
 
-          <section v-if="caps.resolutions.length" class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.resolution') }}</div>
-            <div class="chip-row">
-              <button
-                v-for="r in caps.resolutions"
-                :key="r"
-                type="button"
-                class="chip"
-                :class="{ active: local.resolution === r }"
-                @click="pickResolution(r)"
-              >
-                {{ r }}
-              </button>
-            </div>
-          </section>
+            <section
+              v-if="caps.resolutions.length"
+              class="section"
+            >
+              <div class="section-title">
+                {{ t('graph.inspector.generate.videoParams.resolution') }}
+              </div>
+              <div class="chip-row">
+                <button
+                  v-for="r in caps.resolutions"
+                  :key="r"
+                  type="button"
+                  class="chip"
+                  :class="{ active: local.resolution === r }"
+                  @click="pickResolution(r)"
+                >
+                  {{ r }}
+                </button>
+              </div>
+            </section>
 
-          <section v-if="caps.aspectRatios.length" class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.aspectRatio') }}</div>
-            <div class="ratio-grid">
-              <button
-                v-for="ratio in caps.aspectRatios"
-                :key="ratio"
-                type="button"
-                class="ratio-item"
-                :class="{ active: local.aspectRatio === ratio }"
-                @click="pickAspectRatio(ratio)"
-              >
-                <span class="ratio-icon" v-html="ratioIcon(ratio)" />
-                <span class="ratio-label">{{ ratio }}</span>
-              </button>
-            </div>
-          </section>
+            <section
+              v-if="caps.aspectRatios.length"
+              class="section"
+            >
+              <div class="section-title">
+                {{ t('graph.inspector.generate.videoParams.aspectRatio') }}
+              </div>
+              <div class="ratio-grid">
+                <button
+                  v-for="ratio in caps.aspectRatios"
+                  :key="ratio"
+                  type="button"
+                  class="ratio-item"
+                  :class="{ active: local.aspectRatio === ratio }"
+                  @click="pickAspectRatio(ratio)"
+                >
+                  <span
+                    class="ratio-icon"
+                    v-html="ratioIcon(ratio)"
+                  />
+                  <span class="ratio-label">{{ ratio }}</span>
+                </button>
+              </div>
+            </section>
 
-          <section v-if="caps.supportsGenerateAudio" class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.generateAudio') }}</div>
-            <div class="chip-row">
-              <button
-                type="button"
-                class="chip"
-                :class="{ active: local.generateAudio === true }"
-                @click="pickGenerateAudio(true)"
-              >
-                {{ t('graph.inspector.generate.videoParams.generateAudioOn') }}
-              </button>
-              <button
-                type="button"
-                class="chip"
-                :class="{ active: local.generateAudio === false }"
-                @click="pickGenerateAudio(false)"
-              >
-                {{ t('graph.inspector.generate.videoParams.generateAudioOff') }}
-              </button>
-            </div>
-          </section>
+            <section
+              v-if="caps.supportsGenerateAudio"
+              class="section"
+            >
+              <div class="section-title">
+                {{ t('graph.inspector.generate.videoParams.generateAudio') }}
+              </div>
+              <div class="chip-row">
+                <button
+                  type="button"
+                  class="chip"
+                  :class="{ active: local.generateAudio === true }"
+                  @click="pickGenerateAudio(true)"
+                >
+                  {{ t('graph.inspector.generate.videoParams.generateAudioOn') }}
+                </button>
+                <button
+                  type="button"
+                  class="chip"
+                  :class="{ active: local.generateAudio === false }"
+                  @click="pickGenerateAudio(false)"
+                >
+                  {{ t('graph.inspector.generate.videoParams.generateAudioOff') }}
+                </button>
+              </div>
+            </section>
 
-          <section v-if="!hideFrameMode && frameModeOptions.length > 1" class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.frameMode') }}</div>
-            <div class="chip-row">
-              <button
-                v-for="mode in frameModeOptions"
-                :key="mode"
-                type="button"
-                class="chip"
-                :class="{ active: (local.frameMode ?? 'none') === mode }"
-                @click="pickFrameMode(mode)"
-              >
-                {{ t(`graph.inspector.generate.videoParams.frameMode_${mode}`) }}
-              </button>
-            </div>
-          </section>
+            <section
+              v-if="!hideFrameMode && frameModeOptions.length > 1"
+              class="section"
+            >
+              <div class="section-title">
+                {{ t('graph.inspector.generate.videoParams.frameMode') }}
+              </div>
+              <div class="chip-row">
+                <button
+                  v-for="mode in frameModeOptions"
+                  :key="mode"
+                  type="button"
+                  class="chip"
+                  :class="{ active: (local.frameMode ?? 'none') === mode }"
+                  @click="pickFrameMode(mode)"
+                >
+                  {{ t(`graph.inspector.generate.videoParams.frameMode_${mode}`) }}
+                </button>
+              </div>
+            </section>
           </template>
 
           <section class="section">
-            <div class="section-title">{{ t('graph.inspector.generate.videoParams.seed') }}</div>
+            <div class="section-title">
+              {{ t('graph.inspector.generate.videoParams.seed') }}
+            </div>
             <label class="seed-global-toggle">
               <input
                 type="checkbox"
                 :checked="local.seedUseGlobal !== false"
                 @change="toggleSeedUseGlobal"
-              />
+              >
               <span>{{ t('graph.inspector.generate.videoParams.seedUseGlobal') }}</span>
             </label>
             <div class="seed-row">
@@ -140,7 +186,7 @@
                 :disabled="local.seedUseGlobal !== false"
                 :placeholder="t('graph.inspector.generate.videoParams.seedPlaceholder')"
                 @input="pickSeed(($event.target as HTMLInputElement).value)"
-              />
+              >
               <button
                 type="button"
                 class="chip"

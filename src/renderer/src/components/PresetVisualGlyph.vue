@@ -1,15 +1,30 @@
 <template>
-  <div class="glyph" :data-kind="visual.kind" aria-hidden="true">
+  <div
+    class="glyph"
+    :data-kind="visual.kind"
+    aria-hidden="true"
+  >
     <div
       v-if="visual.kind === 'grid' && visual.grid"
       class="grid"
       :style="gridStyle"
     >
-      <span v-for="n in gridCells" :key="n" class="grid-cell" />
+      <span
+        v-for="n in gridCells"
+        :key="n"
+        class="grid-cell"
+      />
     </div>
 
-    <div v-else-if="visual.kind === 'chips' && visual.chips?.length" class="chips">
-      <span v-for="(chip, i) in visual.chips.slice(0, 4)" :key="i" class="chip">
+    <div
+      v-else-if="visual.kind === 'chips' && visual.chips?.length"
+      class="chips"
+    >
+      <span
+        v-for="(chip, i) in visual.chips.slice(0, 4)"
+        :key="i"
+        class="chip"
+      >
         {{ chipLabel(chip) }}
       </span>
     </div>
@@ -21,15 +36,26 @@
     >
       <span class="frame outer" />
       <span class="frame subject" />
-      <span v-if="visual.camera" class="cam-hint" />
+      <span
+        v-if="visual.camera"
+        class="cam-hint"
+      />
     </div>
 
-    <div v-else-if="visual.kind === 'camera'" class="camera" :data-cam="visual.camera || 'dolly'">
+    <div
+      v-else-if="visual.kind === 'camera'"
+      class="camera"
+      :data-cam="visual.camera || 'dolly'"
+    >
       <span class="cam-box" />
       <span class="cam-arrow" />
     </div>
 
-    <div v-else-if="visual.kind === 'facing'" class="facing" :data-facing="visual.facing || 'front'">
+    <div
+      v-else-if="visual.kind === 'facing'"
+      class="facing"
+      :data-facing="visual.facing || 'front'"
+    >
       <span class="head" />
       <span class="body" />
     </div>
@@ -43,13 +69,20 @@
       <span class="beam" />
     </div>
 
-    <div v-else-if="visual.kind === 'mood'" class="mood" :data-mood="visual.mood || 'confidence'">
+    <div
+      v-else-if="visual.kind === 'mood'"
+      class="mood"
+      :data-mood="visual.mood || 'confidence'"
+    >
       <span class="face-circle" />
       <span class="brow" />
       <span class="mouth" />
     </div>
 
-    <div v-else class="icon-fallback">
+    <div
+      v-else
+      class="icon-fallback"
+    >
       {{ visual.icon || '✦' }}
     </div>
   </div>

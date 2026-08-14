@@ -1,5 +1,8 @@
 <template>
-  <div v-if="api" class="dive-node-tool">
+  <div
+    v-if="api"
+    class="dive-node-tool"
+  >
     <GraphTextNotepadDialog
       v-if="viewId === 'node.notepad' && api.notepad.open"
       :open="true"
@@ -199,9 +202,19 @@
       @save="api.saveGridSplit as never"
     />
 
-    <p v-else-if="ready" class="missing">{{ t('studio.dive.toolMissing') }}</p>
+    <p
+      v-else-if="ready"
+      class="missing"
+    >
+      {{ t('studio.dive.toolMissing') }}
+    </p>
   </div>
-  <p v-else-if="ready" class="missing">{{ t('studio.dive.toolMissing') }}</p>
+  <p
+    v-else-if="ready"
+    class="missing"
+  >
+    {{ t('studio.dive.toolMissing') }}
+  </p>
 </template>
 
 <script setup lang="ts">

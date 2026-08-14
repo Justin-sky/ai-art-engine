@@ -12,11 +12,24 @@
   >
     <div class="panel">
       <div class="toolbar">
-        <button type="button" @click="selectAll">{{ t('asset.package.selectAll') }}</button>
-        <button type="button" @click="selectNone">{{ t('asset.package.selectNone') }}</button>
+        <button
+          type="button"
+          @click="selectAll"
+        >
+          {{ t('asset.package.selectAll') }}
+        </button>
+        <button
+          type="button"
+          @click="selectNone"
+        >
+          {{ t('asset.package.selectNone') }}
+        </button>
         <div class="opts">
           <label class="deps">
-            <input v-model="includeDependencies" type="checkbox" />
+            <input
+              v-model="includeDependencies"
+              type="checkbox"
+            >
             {{ t('asset.package.includeDependencies') }}
           </label>
           <label
@@ -24,13 +37,19 @@
             class="deps"
             :title="t('asset.package.includeGeneratedOutputsHint')"
           >
-            <input v-model="includeGeneratedOutputs" type="checkbox" />
+            <input
+              v-model="includeGeneratedOutputs"
+              type="checkbox"
+            >
             {{ t('asset.package.includeGeneratedOutputs') }}
           </label>
         </div>
       </div>
 
-      <div class="tree" role="tree">
+      <div
+        class="tree"
+        role="tree"
+      >
         <div
           v-for="(row, index) in visibleRows"
           :key="row.guid"
@@ -39,13 +58,13 @@
           :style="{ paddingLeft: `${4 + row.depth * 14}px` }"
         >
           <input
+            :ref="(el) => bindIndeterminate(el, row.guid)"
             class="row-check"
             type="checkbox"
             :checked="selected.has(row.guid)"
-            :ref="(el) => bindIndeterminate(el, row.guid)"
             @click.stop
             @change="onToggle(row.guid, ($event.target as HTMLInputElement).checked)"
-          />
+          >
           <span
             class="twist"
             :class="{
@@ -58,24 +77,55 @@
             v-if="row.kind === 'folder'"
             :open="row.hasChildren && expanded.has(row.guid)"
           />
-          <span v-else class="asset-icon" aria-hidden="true" />
-          <span class="tree-label" :title="row.name" @click="onToggle(row.guid, !selected.has(row.guid))">
+          <span
+            v-else
+            class="asset-icon"
+            aria-hidden="true"
+          />
+          <span
+            class="tree-label"
+            :title="row.name"
+            @click="onToggle(row.guid, !selected.has(row.guid))"
+          >
             {{ row.name }}
           </span>
-          <span v-if="row.assetType" class="type">{{ row.assetType }}</span>
+          <span
+            v-if="row.assetType"
+            class="type"
+          >{{ row.assetType }}</span>
         </div>
-        <p v-if="!rows.length" class="empty">{{ t('asset.package.emptyTree') }}</p>
+        <p
+          v-if="!rows.length"
+          class="empty"
+        >
+          {{ t('asset.package.emptyTree') }}
+        </p>
       </div>
 
       <p class="count">
         {{ t('asset.package.selectedCount', { count: selected.size }) }}
       </p>
-      <p v-if="tip" class="tip">{{ tip }}</p>
-      <p v-if="error" class="err">{{ error }}</p>
+      <p
+        v-if="tip"
+        class="tip"
+      >
+        {{ tip }}
+      </p>
+      <p
+        v-if="error"
+        class="err"
+      >
+        {{ error }}
+      </p>
     </div>
 
     <template #footer>
-      <button type="button" @click="onCancel">{{ t('common.cancel') }}</button>
+      <button
+        type="button"
+        @click="onCancel"
+      >
+        {{ t('common.cancel') }}
+      </button>
       <button
         type="button"
         class="primary"

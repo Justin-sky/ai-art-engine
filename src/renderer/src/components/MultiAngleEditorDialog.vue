@@ -11,140 +11,179 @@
     @close="onClose"
   >
     <div class="editor-root">
-    <div class="presets">
-      <button
-        v-for="preset in presets"
-        :key="preset.id"
-        type="button"
-        class="preset-btn"
-        :class="{ active: draft.presetId === preset.id }"
-        @click="onPreset(preset.id)"
-      >
-        {{ t(`graph.multiAngle.presets.${preset.titleKey}`) }}
-      </button>
-    </div>
-
-    <div class="body">
-      <div class="sphere-col">
-        <div ref="spherePaneEl" class="sphere-pane">
-          <button type="button" class="orbit-btn up" :title="t('graph.multiAngle.pitchUp')" @click="nudgePitch(5)">
-            <span class="orbit-chevron">&gt;</span>
-          </button>
-          <button type="button" class="orbit-btn down" :title="t('graph.multiAngle.pitchDown')" @click="nudgePitch(-5)">
-            <span class="orbit-chevron">&gt;</span>
-          </button>
-          <button type="button" class="orbit-btn left" :title="t('graph.multiAngle.yawLeft')" @click="nudgeYaw(-15)">
-            <span class="orbit-chevron">&lt;</span>
-          </button>
-          <button type="button" class="orbit-btn right" :title="t('graph.multiAngle.yawRight')" @click="nudgeYaw(15)">
-            <span class="orbit-chevron">&gt;</span>
-          </button>
-          <canvas
-            ref="canvasEl"
-            class="sphere-canvas"
-            @pointerdown="onSpherePointerDown"
-            @pointermove="onSpherePointerMove"
-            @pointerup="onSpherePointerUp"
-            @pointercancel="onSpherePointerUp"
-          />
-        </div>
+      <div class="presets">
+        <button
+          v-for="preset in presets"
+          :key="preset.id"
+          type="button"
+          class="preset-btn"
+          :class="{ active: draft.presetId === preset.id }"
+          @click="onPreset(preset.id)"
+        >
+          {{ t(`graph.multiAngle.presets.${preset.titleKey}`) }}
+        </button>
       </div>
 
-      <div class="controls">
-        <label class="slider-row">
-          <span class="slider-label">{{ t('graph.multiAngle.yaw') }}</span>
-          <input
-            type="range"
-            class="slider"
-            :min="yawMin"
-            :max="yawMax"
-            :step="1"
-            :value="draft.yaw"
-            :style="{ '--range-pct': rangePct(draft.yaw, yawMin, yawMax) }"
-            @input="onYawInput"
-          />
-          <span class="slider-value">{{ draft.yaw }}°</span>
-        </label>
-
-        <label class="slider-row">
-          <span class="slider-label">{{ t('graph.multiAngle.pitch') }}</span>
-          <input
-            type="range"
-            class="slider"
-            :min="pitchMin"
-            :max="pitchMax"
-            :step="1"
-            :value="draft.pitch"
-            :style="{ '--range-pct': rangePct(draft.pitch, pitchMin, pitchMax) }"
-            @input="onPitchInput"
-          />
-          <span class="slider-value">{{ draft.pitch }}°</span>
-        </label>
-
-        <label class="slider-row">
-          <span class="slider-label">{{ t('graph.multiAngle.shotScale') }}</span>
-          <input
-            type="range"
-            class="slider"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="draft.shotScale"
-            :style="{ '--range-pct': rangePct(draft.shotScale, 0, 1) }"
-            @input="onScaleInput"
-          />
-          <span class="slider-value">{{ scaleLabel }}</span>
-        </label>
-
-        <div class="prompt-preview-block">
-          <span class="slider-label">{{ t('graph.multiAngle.cameraPrompt') }}</span>
-          <p class="prompt-preview">{{ cameraPromptText || t('graph.multiAngle.promptEmpty') }}</p>
-        </div>
-
-        <div class="prompt-row">
-          <span class="slider-label">{{ t('graph.multiAngle.prompt') }}</span>
-          <button
-            type="button"
-            class="toggle"
-            :class="{ on: draft.promptEnabled }"
-            role="switch"
-            :aria-checked="draft.promptEnabled"
-            @click="togglePrompt"
+      <div class="body">
+        <div class="sphere-col">
+          <div
+            ref="spherePaneEl"
+            class="sphere-pane"
           >
-            <span class="toggle-knob" />
-          </button>
+            <button
+              type="button"
+              class="orbit-btn up"
+              :title="t('graph.multiAngle.pitchUp')"
+              @click="nudgePitch(5)"
+            >
+              <span class="orbit-chevron">&gt;</span>
+            </button>
+            <button
+              type="button"
+              class="orbit-btn down"
+              :title="t('graph.multiAngle.pitchDown')"
+              @click="nudgePitch(-5)"
+            >
+              <span class="orbit-chevron">&gt;</span>
+            </button>
+            <button
+              type="button"
+              class="orbit-btn left"
+              :title="t('graph.multiAngle.yawLeft')"
+              @click="nudgeYaw(-15)"
+            >
+              <span class="orbit-chevron">&lt;</span>
+            </button>
+            <button
+              type="button"
+              class="orbit-btn right"
+              :title="t('graph.multiAngle.yawRight')"
+              @click="nudgeYaw(15)"
+            >
+              <span class="orbit-chevron">&gt;</span>
+            </button>
+            <canvas
+              ref="canvasEl"
+              class="sphere-canvas"
+              @pointerdown="onSpherePointerDown"
+              @pointermove="onSpherePointerMove"
+              @pointerup="onSpherePointerUp"
+              @pointercancel="onSpherePointerUp"
+            />
+          </div>
         </div>
 
-        <label class="panel-prompt">
-          <span class="slider-label">{{ t('graph.multiAngle.panelPrompt') }}</span>
-          <textarea
-            v-model="panelDraft"
-            class="panel-textarea"
-            rows="3"
-            :placeholder="t('graph.multiAngle.panelPromptPlaceholder')"
-          />
-        </label>
+        <div class="controls">
+          <label class="slider-row">
+            <span class="slider-label">{{ t('graph.multiAngle.yaw') }}</span>
+            <input
+              type="range"
+              class="slider"
+              :min="yawMin"
+              :max="yawMax"
+              :step="1"
+              :value="draft.yaw"
+              :style="{ '--range-pct': rangePct(draft.yaw, yawMin, yawMax) }"
+              @input="onYawInput"
+            >
+            <span class="slider-value">{{ draft.yaw }}°</span>
+          </label>
 
-        <div v-if="draft.promptEnabled" class="prompt-preview-block">
-          <span class="slider-label">{{ t('graph.multiAngle.outputPrompt') }}</span>
-          <p class="prompt-preview">{{ outputPromptText || t('graph.multiAngle.promptEmpty') }}</p>
+          <label class="slider-row">
+            <span class="slider-label">{{ t('graph.multiAngle.pitch') }}</span>
+            <input
+              type="range"
+              class="slider"
+              :min="pitchMin"
+              :max="pitchMax"
+              :step="1"
+              :value="draft.pitch"
+              :style="{ '--range-pct': rangePct(draft.pitch, pitchMin, pitchMax) }"
+              @input="onPitchInput"
+            >
+            <span class="slider-value">{{ draft.pitch }}°</span>
+          </label>
+
+          <label class="slider-row">
+            <span class="slider-label">{{ t('graph.multiAngle.shotScale') }}</span>
+            <input
+              type="range"
+              class="slider"
+              min="0"
+              max="1"
+              step="0.01"
+              :value="draft.shotScale"
+              :style="{ '--range-pct': rangePct(draft.shotScale, 0, 1) }"
+              @input="onScaleInput"
+            >
+            <span class="slider-value">{{ scaleLabel }}</span>
+          </label>
+
+          <div class="prompt-preview-block">
+            <span class="slider-label">{{ t('graph.multiAngle.cameraPrompt') }}</span>
+            <p class="prompt-preview">
+              {{ cameraPromptText || t('graph.multiAngle.promptEmpty') }}
+            </p>
+          </div>
+
+          <div class="prompt-row">
+            <span class="slider-label">{{ t('graph.multiAngle.prompt') }}</span>
+            <button
+              type="button"
+              class="toggle"
+              :class="{ on: draft.promptEnabled }"
+              role="switch"
+              :aria-checked="draft.promptEnabled"
+              @click="togglePrompt"
+            >
+              <span class="toggle-knob" />
+            </button>
+          </div>
+
+          <label class="panel-prompt">
+            <span class="slider-label">{{ t('graph.multiAngle.panelPrompt') }}</span>
+            <textarea
+              v-model="panelDraft"
+              class="panel-textarea"
+              rows="3"
+              :placeholder="t('graph.multiAngle.panelPromptPlaceholder')"
+            />
+          </label>
+
+          <div
+            v-if="draft.promptEnabled"
+            class="prompt-preview-block"
+          >
+            <span class="slider-label">{{ t('graph.multiAngle.outputPrompt') }}</span>
+            <p class="prompt-preview">
+              {{ outputPromptText || t('graph.multiAngle.promptEmpty') }}
+            </p>
+          </div>
+          <p
+            v-else
+            class="prompt-hint"
+          >
+            {{ t('graph.multiAngle.promptOffHint') }}
+          </p>
         </div>
-        <p v-else class="prompt-hint">{{ t('graph.multiAngle.promptOffHint') }}</p>
       </div>
-    </div>
 
-    <div class="editor-footer">
-      <ImageGenerateModelField
-        ref="modelFieldEl"
-        :open="open"
-        :generate-model="generateModel"
-        :generate-provider-instance-id="generateProviderInstanceId"
-        @change="onModelChange"
-      />
-      <button type="button" class="reset-btn" @click="resetParams">
-        {{ t('graph.multiAngle.resetParams') }}
-      </button>
-    </div>
+      <div class="editor-footer">
+        <ImageGenerateModelField
+          ref="modelFieldEl"
+          :open="open"
+          :generate-model="generateModel"
+          :generate-provider-instance-id="generateProviderInstanceId"
+          @change="onModelChange"
+        />
+        <button
+          type="button"
+          class="reset-btn"
+          @click="resetParams"
+        >
+          {{ t('graph.multiAngle.resetParams') }}
+        </button>
+      </div>
     </div>
   </StudioFloatingWindow>
 </template>

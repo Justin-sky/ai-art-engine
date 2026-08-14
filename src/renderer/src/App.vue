@@ -2,12 +2,22 @@
   <div class="app-shell">
     <header class="topbar">
       <ProjectOpenMenu />
-      <div class="topbar-meta" v-if="project.isOpen">
+      <div
+        v-if="project.isOpen"
+        class="topbar-meta"
+      >
         <span class="muted">{{ project.config?.name }}</span>
-        <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
+        <span
+          class="path"
+          :title="project.rootPath ?? ''"
+        >{{ shortPath }}</span>
       </div>
       <nav class="topbar-actions">
-        <button type="button" class="topbar-btn" @click="goSettings">
+        <button
+          type="button"
+          class="topbar-btn"
+          @click="goSettings"
+        >
           {{ t('app.nav.settings') }}
         </button>
       </nav>
@@ -15,8 +25,14 @@
     <main class="content">
       <!-- 设置打开时仍保留主界面，半透明遮罩才能透出后面内容 -->
       <KeepAlive :include="['HomeView', 'StudioView']">
-        <HomeView v-if="mainView === 'home'" key="home" />
-        <StudioView v-else-if="mainView === 'studio'" key="studio" />
+        <HomeView
+          v-if="mainView === 'home'"
+          key="home"
+        />
+        <StudioView
+          v-else-if="mainView === 'studio'"
+          key="studio"
+        />
       </KeepAlive>
       <SettingsView v-if="isSettings" />
     </main>

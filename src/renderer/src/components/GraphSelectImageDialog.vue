@@ -11,19 +11,41 @@
     <template #title>
       <div class="title-block">
         <span class="app-mark">{{ t('graph.selectImage.appMark') }}</span>
-        <h2 class="title" :title="title">{{ title }}</h2>
+        <h2
+          class="title"
+          :title="title"
+        >
+          {{ title }}
+        </h2>
       </div>
     </template>
 
     <template #title-actions>
-      <button type="button" class="tool-btn" :disabled="!dirty" @click="save">
+      <button
+        type="button"
+        class="tool-btn"
+        :disabled="!dirty"
+        @click="save"
+      >
         {{ t('common.save') }}
       </button>
     </template>
 
-    <p class="hint">{{ t('graph.selectImage.hint') }}</p>
-    <div v-if="!items.length" class="empty">{{ t('graph.selectImage.empty') }}</div>
-    <div v-else class="image-grid" role="listbox" :aria-label="t('graph.selectImage.appMark')">
+    <p class="hint">
+      {{ t('graph.selectImage.hint') }}
+    </p>
+    <div
+      v-if="!items.length"
+      class="empty"
+    >
+      {{ t('graph.selectImage.empty') }}
+    </div>
+    <div
+      v-else
+      class="image-grid"
+      role="listbox"
+      :aria-label="t('graph.selectImage.appMark')"
+    >
       <button
         v-for="(item, index) in items"
         :key="itemKey(item, index)"
@@ -41,8 +63,11 @@
           decoding="async"
           :title="`${itemLabel(item, index)} · ${t('graph.selectImage.previewHint')}`"
           @dblclick.stop="openPreview(item)"
-        />
-        <span class="caption" :title="itemLabel(item, index)">{{ itemLabel(item, index) }}</span>
+        >
+        <span
+          class="caption"
+          :title="itemLabel(item, index)"
+        >{{ itemLabel(item, index) }}</span>
       </button>
     </div>
   </StudioFloatingWindow>

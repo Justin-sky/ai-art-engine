@@ -1,5 +1,9 @@
 <template>
-  <div ref="rootEl" class="instruction-box" :class="variant">
+  <div
+    ref="rootEl"
+    class="instruction-box"
+    :class="variant"
+  >
     <div class="toolbar">
       <div
         v-if="styleChips.length || frameChips.length || mentionChips.length"
@@ -19,8 +23,16 @@
           >
             <span class="ref-role">{{ chip.roleLabel }}</span>
             <span class="ref-index">{{ chip.index }}</span>
-            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
-            <span v-else class="ref-fallback">🎨</span>
+            <img
+              v-if="chip.thumbUrl"
+              :src="chip.thumbUrl"
+              alt=""
+              draggable="false"
+            >
+            <span
+              v-else
+              class="ref-fallback"
+            >🎨</span>
           </button>
         </div>
         <div
@@ -34,8 +46,19 @@
             @pointerleave="hideRefPreview"
           >
             <span class="ref-role">{{ chip.roleLabel }}</span>
-            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
-            <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="chip.icon" :size="16" /></span>
+            <img
+              v-if="chip.thumbUrl"
+              :src="chip.thumbUrl"
+              alt=""
+              draggable="false"
+            >
+            <span
+              v-else
+              class="ref-fallback"
+            ><WorkspaceItemIcon
+              :icon="chip.icon"
+              :size="16"
+            /></span>
           </div>
           <button
             type="button"
@@ -44,7 +67,13 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
+            <svg
+              class="ref-close-icon"
+              width="8"
+              height="8"
+              viewBox="0 0 28 28"
+              aria-hidden="true"
+            >
               <path
                 d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
               />
@@ -74,8 +103,19 @@
             @pointerleave="hideRefPreview"
           >
             <span class="ref-index">{{ chip.index }}</span>
-            <img v-if="chip.thumbUrl" :src="chip.thumbUrl" alt="" draggable="false" />
-            <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="chip.icon" :size="16" /></span>
+            <img
+              v-if="chip.thumbUrl"
+              :src="chip.thumbUrl"
+              alt=""
+              draggable="false"
+            >
+            <span
+              v-else
+              class="ref-fallback"
+            ><WorkspaceItemIcon
+              :icon="chip.icon"
+              :size="16"
+            /></span>
           </button>
           <button
             type="button"
@@ -84,7 +124,13 @@
             @pointerdown.stop
             @click.stop="disconnect(chip.edgeId)"
           >
-            <svg class="ref-close-icon" width="8" height="8" viewBox="0 0 28 28" aria-hidden="true">
+            <svg
+              class="ref-close-icon"
+              width="8"
+              height="8"
+              viewBox="0 0 28 28"
+              aria-hidden="true"
+            >
               <path
                 d="M2.1 27.3L0 25.2L11.55 13.65L0 2.1L2.1 0L13.65 11.55L25.2 0L27.3 2.1L15.75 13.65L27.3 25.2L25.2 27.3L13.65 15.75L2.1 27.3Z"
               />
@@ -92,7 +138,10 @@
           </button>
         </div>
       </div>
-      <div v-else class="toolbar-spacer" />
+      <div
+        v-else
+        class="toolbar-spacer"
+      />
 
       <div class="toolbar-actions">
         <button
@@ -104,7 +153,10 @@
           :aria-expanded="menuOpen"
           @click.stop="toggleMenu"
         >
-          <span class="preset-icon" aria-hidden="true" />
+          <span
+            class="preset-icon"
+            aria-hidden="true"
+          />
         </button>
         <button
           type="button"
@@ -112,7 +164,10 @@
           :title="t('graph.inspector.generate.instructionPreview')"
           @click.stop.prevent="openPromptPreview"
         >
-          <span class="preview-icon" aria-hidden="true" />
+          <span
+            class="preview-icon"
+            aria-hidden="true"
+          />
         </button>
         <button
           v-if="variant === 'inline'"
@@ -137,8 +192,14 @@
         @mousedown.stop
         @click.stop
       >
-        <div class="preset-menu-title">{{ presetMenuTitle }}</div>
-        <div v-if="presetTabs.length > 1" class="preset-tabs" role="tablist">
+        <div class="preset-menu-title">
+          {{ presetMenuTitle }}
+        </div>
+        <div
+          v-if="presetTabs.length > 1"
+          class="preset-tabs"
+          role="tablist"
+        >
           <button
             v-for="tab in presetTabs"
             :key="tab"
@@ -161,7 +222,10 @@
             :title="t(item.titleKey)"
             @click="applyPreset(item)"
           >
-            <PresetVisualGlyph class="preset-glyph" :visual="visualForPreset(item)" />
+            <PresetVisualGlyph
+              class="preset-glyph"
+              :visual="visualForPreset(item)"
+            />
             <span class="preset-card-title">{{ t(item.titleKey) }}</span>
           </button>
         </div>
@@ -176,8 +240,19 @@
         aria-hidden="true"
       >
         <span class="ref-index">{{ dragGhost.index }}</span>
-        <img v-if="dragGhost.thumbUrl" :src="dragGhost.thumbUrl" alt="" draggable="false" />
-        <span v-else class="ref-fallback"><WorkspaceItemIcon :icon="dragGhost.icon" :size="16" /></span>
+        <img
+          v-if="dragGhost.thumbUrl"
+          :src="dragGhost.thumbUrl"
+          alt=""
+          draggable="false"
+        >
+        <span
+          v-else
+          class="ref-fallback"
+        ><WorkspaceItemIcon
+          :icon="dragGhost.icon"
+          :size="16"
+        /></span>
       </div>
     </Teleport>
 
@@ -189,13 +264,29 @@
         role="tooltip"
         :style="refPreviewStyle"
       >
-        <div class="ref-preview-title">{{ refPreview.title }}</div>
-        <img v-if="refPreview.thumbUrl" :src="refPreview.thumbUrl" alt="" draggable="false" />
-        <div v-if="refPreview.text" class="ref-preview-text">{{ refPreview.text }}</div>
+        <div class="ref-preview-title">
+          {{ refPreview.title }}
+        </div>
+        <img
+          v-if="refPreview.thumbUrl"
+          :src="refPreview.thumbUrl"
+          alt=""
+          draggable="false"
+        >
+        <div
+          v-if="refPreview.text"
+          class="ref-preview-text"
+        >
+          {{ refPreview.text }}
+        </div>
       </div>
     </Teleport>
 
-    <div class="editor-area" @mousedown="onEditorMouseDown" @dblclick.stop="onEditorDblClick">
+    <div
+      class="editor-area"
+      @mousedown="onEditorMouseDown"
+      @dblclick.stop="onEditorDblClick"
+    >
       <RefMentionTextarea
         ref="editorRef"
         class="instruction-input"
@@ -209,7 +300,12 @@
       />
     </div>
 
-    <div v-if="$slots.footer" class="footer-toolbar" @pointerdown.stop @dblclick.stop>
+    <div
+      v-if="$slots.footer"
+      class="footer-toolbar"
+      @pointerdown.stop
+      @dblclick.stop
+    >
       <slot name="footer" />
     </div>
 
@@ -334,6 +430,7 @@ const props = withDefaults(
   }>(),
   {
     rows: 8,
+    placeholder: '',
     presetKind: null,
     variant: 'inline'
   }

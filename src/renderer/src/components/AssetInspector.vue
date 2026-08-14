@@ -1,21 +1,35 @@
 <template>
-  <div class="inspector" v-if="asset">
+  <div
+    v-if="asset"
+    class="inspector"
+  >
     <div class="head">
       <div>
-        <div class="type">{{ typeLabel }}</div>
+        <div class="type">
+          {{ typeLabel }}
+        </div>
         <h2>{{ t('asset.inspector.title') }}</h2>
       </div>
-      <span class="icon" :title="typeLabel">{{ typeIcon }}</span>
+      <span
+        class="icon"
+        :title="typeLabel"
+      >{{ typeIcon }}</span>
     </div>
 
     <label>
       {{ t('asset.field.name') }}
-      <input v-model="local.name" @change="persist" />
+      <input
+        v-model="local.name"
+        @change="persist"
+      >
     </label>
 
     <label v-if="!showHostInterface">
       {{ t('asset.field.type') }}
-      <input :value="typeLabel" disabled />
+      <input
+        :value="typeLabel"
+        disabled
+      >
     </label>
 
     <GraphNodeOutputPreview
@@ -23,213 +37,334 @@
       :node="graphPreviewNode"
       :host-id="graphPreviewHostId"
     />
-    <AssetMediaPreview v-else-if="asset" :key="asset.id" :asset="asset" />
+    <AssetMediaPreview
+      v-else-if="asset"
+      :key="asset.id"
+      :asset="asset"
+    />
 
     <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
-        <input :value="linkedPanoramaName" disabled />
+        <input
+          :value="linkedPanoramaName"
+          disabled
+        >
       </label>
       <label>
         {{ t('asset.inspector.stageObjects') }}
-        <input :value="t('asset.inspector.shotCountValue', { n: directorStage.objects.length })" disabled />
+        <input
+          :value="t('asset.inspector.shotCountValue', { n: directorStage.objects.length })"
+          disabled
+        >
       </label>
       <label>
         {{ t('asset.inspector.transformMode') }}
-        <input :value="directorModeLabel" disabled />
+        <input
+          :value="directorModeLabel"
+          disabled
+        >
       </label>
     </template>
 
     <template v-else-if="asset && isPoseModelAsset(asset)">
       <div class="bone-panel">
-        <p class="hint">{{ t('asset.inspector.pose.hint') }}</p>
+        <p class="hint">
+          {{ t('asset.inspector.pose.hint') }}
+        </p>
         <div class="section-label">
           {{ t('asset.inspector.pose.bones', { n: poseAssetBoneNames.length }) }}
         </div>
-        <ul v-if="poseAssetBoneNames.length" class="bone-list">
-          <li v-for="bone in poseAssetBoneNames" :key="bone">{{ bone }}</li>
+        <ul
+          v-if="poseAssetBoneNames.length"
+          class="bone-list"
+        >
+          <li
+            v-for="bone in poseAssetBoneNames"
+            :key="bone"
+          >
+            {{ bone }}
+          </li>
         </ul>
-        <p v-else class="hint">{{ t('asset.inspector.pose.empty') }}</p>
+        <p
+          v-else
+          class="hint"
+        >
+          {{ t('asset.inspector.pose.empty') }}
+        </p>
       </div>
     </template>
 
     <template v-else-if="asset && asset.type === 'model'">
       <div class="model-layout">
-      <div v-if="!isAnimationOnlyModel" class="model-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          class="model-tab"
-          :class="{ active: modelTab === 'preview' }"
-          :aria-selected="modelTab === 'preview'"
-          @click="modelTab = 'preview'"
+        <div
+          v-if="!isAnimationOnlyModel"
+          class="model-tabs"
+          role="tablist"
         >
-          {{ t('asset.inspector.tabs.preview') }}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="model-tab"
-          :class="{ active: modelTab === 'animation' }"
-          :aria-selected="modelTab === 'animation'"
-          @click="modelTab = 'animation'"
-        >
-          {{ t('asset.inspector.tabs.animation') }}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="model-tab"
-          :class="{ active: modelTab === 'skeleton' }"
-          :aria-selected="modelTab === 'skeleton'"
-          @click="modelTab = 'skeleton'"
-        >
-          {{ t('asset.inspector.tabs.skeleton') }}
-        </button>
-      </div>
-
-      <ModelPreview
-        :key="`${asset.id}:${asset.relativePath ?? ''}`"
-        :relative-path="asset.relativePath"
-        :transform="modelTransform"
-        :preview-clip="previewClip"
-        :preview-playing="previewPlaying && modelTab === 'animation'"
-        :preview-speed="previewSpeed"
-        :show-skeleton="showSkeletonOverlay"
-        :selected-bone="modelTab === 'skeleton' ? selectedBone : null"
-        @clips="onModelClips"
-        @bones="onModelBones"
-        @meta="onModelMeta"
-        @select-bone="onSelectBone"
-        @scene-defaults="onModelSceneDefaults"
-      />
-
-      <div class="model-panel" :class="{ fill: modelTab === 'skeleton' }">
-      <template v-if="modelTab === 'preview' && !isAnimationOnlyModel">
-        <div class="section-label">{{ t('asset.inspector.transform.position') }}</div>
-        <div class="vec-row">
-          <label>
-            X
-            <input type="number" step="0.01" :value="local.position.x" disabled />
-          </label>
-          <label>
-            Y
-            <input type="number" step="0.01" :value="local.position.y" disabled />
-          </label>
-          <label>
-            Z
-            <input type="number" step="0.01" :value="local.position.z" disabled />
-          </label>
-        </div>
-
-        <div class="section-label">{{ t('asset.inspector.transform.rotation') }}</div>
-        <div class="vec-row">
-          <label>
-            X
-            <input type="number" step="0.1" :value="local.rotationDeg.x" disabled />
-          </label>
-          <label>
-            Y
-            <input type="number" step="0.1" :value="local.rotationDeg.y" disabled />
-          </label>
-          <label>
-            Z
-            <input type="number" step="0.1" :value="local.rotationDeg.z" disabled />
-          </label>
-        </div>
-
-        <div class="section-label">{{ t('asset.inspector.transform.scale') }}</div>
-        <div class="vec-row">
-          <label>
-            X
-            <input type="number" step="0.01" min="0.001" :value="local.scale.x" disabled />
-          </label>
-          <label>
-            Y
-            <input type="number" step="0.01" min="0.001" :value="local.scale.y" disabled />
-          </label>
-          <label>
-            Z
-            <input type="number" step="0.01" min="0.001" :value="local.scale.z" disabled />
-          </label>
-        </div>
-
-        <label class="color-row">
-          {{ t('director.stage.color') }}
-          <span class="color-control">
-            <input :value="local.color" type="color" disabled />
-            <input :value="local.color" type="text" disabled />
-          </span>
-        </label>
-      </template>
-
-      <template v-else-if="modelTab === 'animation' || isAnimationOnlyModel">
-        <template v-if="modelClips.length">
-          <label>
-            {{ t('asset.inspector.animation.clip') }}
-            <select :value="previewClip ?? ''" @change="onPreviewClipChange">
-              <option value="">{{ t('asset.inspector.animation.none') }}</option>
-              <option v-for="clip in modelClips" :key="clip" :value="clip">{{ clip }}</option>
-            </select>
-          </label>
-          <div class="anim-controls">
-            <button
-              type="button"
-              class="anim-btn"
-              :disabled="!previewClip"
-              @click="togglePreviewPlaying"
-            >
-              {{
-                previewPlaying
-                  ? t('asset.inspector.animation.pause')
-                  : t('asset.inspector.animation.play')
-              }}
-            </button>
-            <label class="speed-inline">
-              {{ t('asset.inspector.animation.speed') }}
-              <input
-                type="number"
-                min="0.25"
-                max="2"
-                step="0.25"
-                :value="previewSpeed"
-                @change="onPreviewSpeedChange"
-              />
-            </label>
-          </div>
-          <div class="section-label">{{ t('asset.inspector.animation.clipList') }}</div>
-          <ul class="clip-list">
-            <li
-              v-for="clip in modelClips"
-              :key="clip"
-              :class="{ active: clip === previewClip }"
-              @click="selectPreviewClip(clip)"
-            >
-              {{ clip }}
-            </li>
-          </ul>
-        </template>
-        <p v-else class="hint">{{ t('asset.inspector.animation.empty') }}</p>
-      </template>
-
-      <template v-else-if="modelTab === 'skeleton'">
-        <p class="hint">{{ t('asset.inspector.skeleton.hint') }}</p>
-        <div class="section-label">
-          {{ t('asset.inspector.skeleton.bones', { n: modelBones.length }) }}
-        </div>
-        <ul v-if="modelBones.length" class="bone-list">
-          <li
-            v-for="bone in modelBones"
-            :key="bone"
-            :class="{ active: bone === selectedBone }"
-            @click="onBoneListClick(bone)"
+          <button
+            type="button"
+            role="tab"
+            class="model-tab"
+            :class="{ active: modelTab === 'preview' }"
+            :aria-selected="modelTab === 'preview'"
+            @click="modelTab = 'preview'"
           >
-            {{ bone }}
-          </li>
-        </ul>
-        <p v-else class="hint">{{ t('asset.inspector.skeleton.empty') }}</p>
-      </template>
-      </div>
+            {{ t('asset.inspector.tabs.preview') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="model-tab"
+            :class="{ active: modelTab === 'animation' }"
+            :aria-selected="modelTab === 'animation'"
+            @click="modelTab = 'animation'"
+          >
+            {{ t('asset.inspector.tabs.animation') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="model-tab"
+            :class="{ active: modelTab === 'skeleton' }"
+            :aria-selected="modelTab === 'skeleton'"
+            @click="modelTab = 'skeleton'"
+          >
+            {{ t('asset.inspector.tabs.skeleton') }}
+          </button>
+        </div>
+
+        <ModelPreview
+          :key="`${asset.id}:${asset.relativePath ?? ''}`"
+          :relative-path="asset.relativePath"
+          :transform="modelTransform"
+          :preview-clip="previewClip"
+          :preview-playing="previewPlaying && modelTab === 'animation'"
+          :preview-speed="previewSpeed"
+          :show-skeleton="showSkeletonOverlay"
+          :selected-bone="modelTab === 'skeleton' ? selectedBone : null"
+          @clips="onModelClips"
+          @bones="onModelBones"
+          @meta="onModelMeta"
+          @select-bone="onSelectBone"
+          @scene-defaults="onModelSceneDefaults"
+        />
+
+        <div
+          class="model-panel"
+          :class="{ fill: modelTab === 'skeleton' }"
+        >
+          <template v-if="modelTab === 'preview' && !isAnimationOnlyModel">
+            <div class="section-label">
+              {{ t('asset.inspector.transform.position') }}
+            </div>
+            <div class="vec-row">
+              <label>
+                X
+                <input
+                  type="number"
+                  step="0.01"
+                  :value="local.position.x"
+                  disabled
+                >
+              </label>
+              <label>
+                Y
+                <input
+                  type="number"
+                  step="0.01"
+                  :value="local.position.y"
+                  disabled
+                >
+              </label>
+              <label>
+                Z
+                <input
+                  type="number"
+                  step="0.01"
+                  :value="local.position.z"
+                  disabled
+                >
+              </label>
+            </div>
+
+            <div class="section-label">
+              {{ t('asset.inspector.transform.rotation') }}
+            </div>
+            <div class="vec-row">
+              <label>
+                X
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="local.rotationDeg.x"
+                  disabled
+                >
+              </label>
+              <label>
+                Y
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="local.rotationDeg.y"
+                  disabled
+                >
+              </label>
+              <label>
+                Z
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="local.rotationDeg.z"
+                  disabled
+                >
+              </label>
+            </div>
+
+            <div class="section-label">
+              {{ t('asset.inspector.transform.scale') }}
+            </div>
+            <div class="vec-row">
+              <label>
+                X
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.001"
+                  :value="local.scale.x"
+                  disabled
+                >
+              </label>
+              <label>
+                Y
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.001"
+                  :value="local.scale.y"
+                  disabled
+                >
+              </label>
+              <label>
+                Z
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.001"
+                  :value="local.scale.z"
+                  disabled
+                >
+              </label>
+            </div>
+
+            <label class="color-row">
+              {{ t('director.stage.color') }}
+              <span class="color-control">
+                <input
+                  :value="local.color"
+                  type="color"
+                  disabled
+                >
+                <input
+                  :value="local.color"
+                  type="text"
+                  disabled
+                >
+              </span>
+            </label>
+          </template>
+
+          <template v-else-if="modelTab === 'animation' || isAnimationOnlyModel">
+            <template v-if="modelClips.length">
+              <label>
+                {{ t('asset.inspector.animation.clip') }}
+                <select
+                  :value="previewClip ?? ''"
+                  @change="onPreviewClipChange"
+                >
+                  <option value="">{{ t('asset.inspector.animation.none') }}</option>
+                  <option
+                    v-for="clip in modelClips"
+                    :key="clip"
+                    :value="clip"
+                  >{{ clip }}</option>
+                </select>
+              </label>
+              <div class="anim-controls">
+                <button
+                  type="button"
+                  class="anim-btn"
+                  :disabled="!previewClip"
+                  @click="togglePreviewPlaying"
+                >
+                  {{
+                    previewPlaying
+                      ? t('asset.inspector.animation.pause')
+                      : t('asset.inspector.animation.play')
+                  }}
+                </button>
+                <label class="speed-inline">
+                  {{ t('asset.inspector.animation.speed') }}
+                  <input
+                    type="number"
+                    min="0.25"
+                    max="2"
+                    step="0.25"
+                    :value="previewSpeed"
+                    @change="onPreviewSpeedChange"
+                  >
+                </label>
+              </div>
+              <div class="section-label">
+                {{ t('asset.inspector.animation.clipList') }}
+              </div>
+              <ul class="clip-list">
+                <li
+                  v-for="clip in modelClips"
+                  :key="clip"
+                  :class="{ active: clip === previewClip }"
+                  @click="selectPreviewClip(clip)"
+                >
+                  {{ clip }}
+                </li>
+              </ul>
+            </template>
+            <p
+              v-else
+              class="hint"
+            >
+              {{ t('asset.inspector.animation.empty') }}
+            </p>
+          </template>
+
+          <template v-else-if="modelTab === 'skeleton'">
+            <p class="hint">
+              {{ t('asset.inspector.skeleton.hint') }}
+            </p>
+            <div class="section-label">
+              {{ t('asset.inspector.skeleton.bones', { n: modelBones.length }) }}
+            </div>
+            <ul
+              v-if="modelBones.length"
+              class="bone-list"
+            >
+              <li
+                v-for="bone in modelBones"
+                :key="bone"
+                :class="{ active: bone === selectedBone }"
+                @click="onBoneListClick(bone)"
+              >
+                {{ bone }}
+              </li>
+            </ul>
+            <p
+              v-else
+              class="hint"
+            >
+              {{ t('asset.inspector.skeleton.empty') }}
+            </p>
+          </template>
+        </div>
       </div>
     </template>
 
@@ -239,28 +374,51 @@
         <textarea
           v-model="local.prompt"
           rows="5"
-          @change="persist"
           :placeholder="promptPlaceholder"
+          @change="persist"
         />
       </label>
 
       <label v-if="showMediaPath">
         {{ t('asset.field.file') }}
-        <input :value="asset.relativePath || t('asset.inspector.unlinked')" disabled />
+        <input
+          :value="asset.relativePath || t('asset.inspector.unlinked')"
+          disabled
+        >
       </label>
     </template>
 
     <label v-if="showAssetNotes">
       {{ t('asset.field.notes') }}
-      <textarea v-model="local.notes" rows="3" @change="persist" :placeholder="t('asset.field.notesPlaceholder')" />
+      <textarea
+        v-model="local.notes"
+        rows="3"
+        :placeholder="t('asset.field.notesPlaceholder')"
+        @change="persist"
+      />
     </label>
 
-    <AssetHostInterfacePanel v-if="showHostInterface" :asset="asset" />
+    <AssetHostInterfacePanel
+      v-if="showHostInterface"
+      :asset="asset"
+    />
 
-    <p v-if="error" class="err">{{ error }}</p>
-    <p class="meta">ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}</p>
+    <p
+      v-if="error"
+      class="err"
+    >
+      {{ error }}
+    </p>
+    <p class="meta">
+      ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}
+    </p>
   </div>
-  <div v-else class="inspector empty">{{ t('asset.inspector.empty') }}</div>
+  <div
+    v-else
+    class="inspector empty"
+  >
+    {{ t('asset.inspector.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

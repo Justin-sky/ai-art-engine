@@ -1,9 +1,14 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.anim2d.genInspectorHint') }}</p>
+    <p class="hint">
+      {{ t('graph.anim2d.genInspectorHint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -23,7 +28,7 @@
           step="1"
           :value="state.rows"
           @change="onRowsChange"
-        />
+        >
       </label>
       <label class="field">
         <span>{{ t('graph.anim2d.cols') }}</span>
@@ -34,15 +39,15 @@
           step="1"
           :value="state.cols"
           @change="onColsChange"
-        />
+        >
       </label>
     </div>
 
     <label class="field">
       <span>{{ t('graph.anim2d.systemPrompt') }}</span>
       <textarea
-        class="instruction"
         v-model="systemPrompt"
+        class="instruction"
         rows="6"
         :placeholder="t('graph.anim2d.systemPromptPlaceholder')"
         @change="persistSystemPrompt"
@@ -57,7 +62,12 @@
       @clear-output="onClearOutput"
     />
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

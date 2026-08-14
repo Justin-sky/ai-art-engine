@@ -1,8 +1,16 @@
 <template>
   <label class="model-field">
     <span class="label">{{ t('graph.inspector.generate.imageModel') }}</span>
-    <select v-model="selectionKey" class="select" @change="emitSelection">
-      <option v-for="opt in selectionOptions" :key="opt.key || 'empty'" :value="opt.key">
+    <select
+      v-model="selectionKey"
+      class="select"
+      @change="emitSelection"
+    >
+      <option
+        v-for="opt in selectionOptions"
+        :key="opt.key || 'empty'"
+        :value="opt.key"
+      >
         {{ opt.label }}
       </option>
     </select>

@@ -22,11 +22,23 @@
           <span class="thumb-placeholder">{{ index + 1 }}</span>
         </div>
         <div class="meta">
-          <div class="title">#{{ unit.order }} {{ unit.title || t('beat.table.unit') }}</div>
-          <div class="status" :data-status="unit.status">{{ unit.status }}</div>
+          <div class="title">
+            #{{ unit.order }} {{ unit.title || t('beat.table.unit') }}
+          </div>
+          <div
+            class="status"
+            :data-status="unit.status"
+          >
+            {{ unit.status }}
+          </div>
         </div>
       </div>
-      <p v-if="!units.length" class="strip-empty">{{ t('beat.strip.empty') }}</p>
+      <p
+        v-if="!units.length"
+        class="strip-empty"
+      >
+        {{ t('beat.strip.empty') }}
+      </p>
     </div>
   </div>
 </template>

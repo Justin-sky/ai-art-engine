@@ -1,14 +1,22 @@
 <template>
-  <div class="group-inspector" v-if="group">
+  <div
+    v-if="group"
+    class="group-inspector"
+  >
     <div class="head">
       <span class="type">{{ t('graph.group.title') }}</span>
       <h2>{{ displayTitle }}</h2>
     </div>
-    <p class="hint">{{ t('graph.inspector.group.hint') }}</p>
+    <p class="hint">
+      {{ t('graph.inspector.group.hint') }}
+    </p>
 
     <label>
       {{ t('graph.inspector.group.name') }}
-      <input v-model="localTitle" @change="persistTitle" />
+      <input
+        v-model="localTitle"
+        @change="persistTitle"
+      >
     </label>
 
     <div class="stat">
@@ -16,7 +24,12 @@
       <span class="stat-value">{{ memberCount }}</span>
     </div>
   </div>
-  <div v-else class="group-inspector empty">{{ t('graph.inspector.group.empty') }}</div>
+  <div
+    v-else
+    class="group-inspector empty"
+  >
+    {{ t('graph.inspector.group.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

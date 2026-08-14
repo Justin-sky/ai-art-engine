@@ -26,10 +26,20 @@ withDefaults(
     focusable="false"
   >
     <!-- 停止 -->
-    <rect v-if="kind === 'stop'" x="7" y="7" width="10" height="10" rx="1.5" />
+    <rect
+      v-if="kind === 'stop'"
+      x="7"
+      y="7"
+      width="10"
+      height="10"
+      rx="1.5"
+    />
 
     <!-- 播放：执行当前 -->
-    <path v-else-if="kind === 'play'" d="M8 5.5v13l11-6.5z" />
+    <path
+      v-else-if="kind === 'play'"
+      d="M8 5.5v13l11-6.5z"
+    />
 
     <!-- 重播：重新执行当前（标准环形重播箭头） -->
     <path
@@ -63,8 +73,21 @@ withDefaults(
 
     <!-- 层叠：Cook 宿主子图 -->
     <g v-else-if="kind === 'cook'">
-      <rect x="5" y="9" width="12" height="9" rx="1.5" opacity="0.45" />
-      <rect x="7" y="6" width="12" height="9" rx="1.5" />
+      <rect
+        x="5"
+        y="9"
+        width="12"
+        height="9"
+        rx="1.5"
+        opacity="0.45"
+      />
+      <rect
+        x="7"
+        y="6"
+        width="12"
+        height="9"
+        rx="1.5"
+      />
     </g>
   </svg>
 </template>

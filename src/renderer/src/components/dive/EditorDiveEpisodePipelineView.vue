@@ -3,10 +3,16 @@
     <div class="pipeline-header">
       <div class="pipeline-title">
         <span class="title-text">{{ assetTitle }}</span>
-        <span class="step-chip" :title="stateStepTitle">当前步骤：{{ stateStepLabel }}</span>
+        <span
+          class="step-chip"
+          :title="stateStepTitle"
+        >当前步骤：{{ stateStepLabel }}</span>
       </div>
       <div class="header-actions">
-        <span v-if="runningCount" class="busy-chip">任务运行中…</span>
+        <span
+          v-if="runningCount"
+          class="busy-chip"
+        >任务运行中…</span>
         <button
           class="ghost-button"
           type="button"
@@ -16,29 +22,50 @@
         >
           查看轨迹
         </button>
-        <button class="ghost-button" type="button" :disabled="refreshing" @click="loadAll">
+        <button
+          class="ghost-button"
+          type="button"
+          :disabled="refreshing"
+          @click="loadAll"
+        >
           {{ refreshing ? '刷新中…' : '刷新' }}
         </button>
       </div>
     </div>
 
-    <div v-if="headerFailReason" class="fail-row">
-      <span class="fail-chip" title="最近一次导演审核失败原因">
+    <div
+      v-if="headerFailReason"
+      class="fail-row"
+    >
+      <span
+        class="fail-chip"
+        title="最近一次导演审核失败原因"
+      >
         FAIL：{{ headerFailReason }}
       </span>
     </div>
 
-    <div v-if="!graphDoc" class="empty-hint">
+    <div
+      v-if="!graphDoc"
+      class="empty-hint"
+    >
       尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再点击顶部工具栏的「剧集流水线」打开本视图。
     </div>
 
-    <div v-else class="pipeline-body" :style="pipelineBodyStyle">
+    <div
+      v-else
+      class="pipeline-body"
+      :style="pipelineBodyStyle"
+    >
       <!-- 左：节拍拆解表 -->
       <section class="panel beats-panel">
         <div class="panel-head">
           <h3>
             节拍拆解
-            <span v-if="reviewResult('breakdown') === 'PASS'" class="pass-mark">✓ 已通过</span>
+            <span
+              v-if="reviewResult('breakdown') === 'PASS'"
+              class="pass-mark"
+            >✓ 已通过</span>
           </h3>
           <div class="panel-actions">
             <button
@@ -69,13 +96,27 @@
             @click="selectBeat(beat)"
           >
             <span class="beat-index">#{{ beat.index }}</span>
-            <OverflowTip class="beat-summary" :text="beat.summary">{{ beat.summary }}</OverflowTip>
+            <OverflowTip
+              class="beat-summary"
+              :text="beat.summary"
+            >
+              {{ beat.summary }}
+            </OverflowTip>
             <span class="beat-meta">
               <span class="intensity">{{ beat.intensity }}</span>
-              <span v-if="isAnchorBeat(beat)" class="anchor-badge" title="关键锚点（9宫格对应前 9 个锚）">锚</span>
+              <span
+                v-if="isAnchorBeat(beat)"
+                class="anchor-badge"
+                title="关键锚点（9宫格对应前 9 个锚）"
+              >锚</span>
             </span>
           </li>
-          <li v-if="!beats.length" class="empty-row">{{ beatsEmptyLabel }}</li>
+          <li
+            v-if="!beats.length"
+            class="empty-row"
+          >
+            {{ beatsEmptyLabel }}
+          </li>
         </ul>
       </section>
 
@@ -93,7 +134,10 @@
         <div class="panel-head">
           <h3>
             {{ isDirect9 ? '9宫格分镜表 · 直出视频' : '9宫格分镜表' }}
-            <span v-if="reviewResult('beatboard') === 'PASS'" class="pass-mark">✓ 已通过</span>
+            <span
+              v-if="reviewResult('beatboard') === 'PASS'"
+              class="pass-mark"
+            >✓ 已通过</span>
           </h3>
           <div class="panel-actions">
             <button
@@ -119,7 +163,10 @@
               title="生成9宫格拼图"
               @click="runAnchorImage"
             >
-              <GridIcon :rows="3" :cols="3" />
+              <GridIcon
+                :rows="3"
+                :cols="3"
+              />
             </button>
           </div>
         </div>
@@ -138,21 +185,41 @@
           >
             <span class="anchor-head">
               <b>格{{ anchor.index }}</b>
-              <span v-if="anchor.beatId" class="beat-ref" title="关联节拍">节拍{{ anchor.beatId }}</span>
+              <span
+                v-if="anchor.beatId"
+                class="beat-ref"
+                title="关联节拍"
+              >节拍{{ anchor.beatId }}</span>
               <span class="status-badge">{{ anchorReviewLabel(anchor.index) }}</span>
             </span>
-            <OverflowTip class="anchor-title" :text="anchor.title">{{ anchor.title }}</OverflowTip>
+            <OverflowTip
+              class="anchor-title"
+              :text="anchor.title"
+            >
+              {{ anchor.title }}
+            </OverflowTip>
             <img
               v-if="anchorImageUrl(anchor.index)"
               :src="anchorImageUrl(anchor.index)"
               class="anchor-thumb"
               alt=""
-            />
-            <span v-else class="anchor-empty">未生成图</span>
+            >
+            <span
+              v-else
+              class="anchor-empty"
+            >未生成图</span>
           </button>
-          <div v-if="!anchors9.length" class="empty-row">{{ anchorsEmptyLabel }}</div>
+          <div
+            v-if="!anchors9.length"
+            class="empty-row"
+          >
+            {{ anchorsEmptyLabel }}
+          </div>
         </div>
-        <p v-if="anchors9.length" class="hint">
+        <p
+          v-if="anchors9.length"
+          class="hint"
+        >
           顶部工具栏的「剧集流水线」按钮可随时回到本视图；图片/视频在节点图中运行。
         </p>
       </section>
@@ -176,11 +243,17 @@
           </h3>
         </div>
 
-        <div v-if="!isDirect9" class="detail-block">
+        <div
+          v-if="!isDirect9"
+          class="detail-block"
+        >
           <div class="detail-head">
             <h4>
               4宫格（{{ selectedAnchorIndex }}）
-              <span v-if="reviewResult('sequence') === 'PASS'" class="pass-mark">✓ 已通过</span>
+              <span
+                v-if="reviewResult('sequence') === 'PASS'"
+                class="pass-mark"
+              >✓ 已通过</span>
             </h4>
             <div class="panel-actions">
               <button
@@ -206,7 +279,10 @@
                 title="生成4宫格拼图"
                 @click="runFourGridImage"
               >
-                <GridIcon :rows="2" :cols="2" />
+                <GridIcon
+                  :rows="2"
+                  :cols="2"
+                />
               </button>
             </div>
           </div>
@@ -220,24 +296,40 @@
               @click="selectCell(cell)"
             >
               <span class="cell-stage">{{ cell.stage }}</span>
-              <OverflowTip class="cell-desc" :text="cell.text">{{ cell.text }}</OverflowTip>
+              <OverflowTip
+                class="cell-desc"
+                :text="cell.text"
+              >
+                {{ cell.text }}
+              </OverflowTip>
               <img
                 v-if="cellImageUrl(cell.groupIndex, cell.cellIndex)"
                 :src="cellImageUrl(cell.groupIndex, cell.cellIndex)"
                 class="cell-thumb"
                 alt=""
-              />
+              >
               <span class="status-badge">{{ cellVideoStatusLabel(cell) }}</span>
             </button>
-            <div v-if="!anchorCells.length" class="empty-row">{{ cellsEmptyLabel }}</div>
+            <div
+              v-if="!anchorCells.length"
+              class="empty-row"
+            >
+              {{ cellsEmptyLabel }}
+            </div>
           </div>
         </div>
 
-        <div v-if="isDirect9" class="detail-block">
+        <div
+          v-if="isDirect9"
+          class="detail-block"
+        >
           <div class="detail-head">
             <h4>
               9宫格动态提示词
-              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">✓ 已通过</span>
+              <span
+                v-if="reviewResult('motion') === 'PASS'"
+                class="pass-mark"
+              >✓ 已通过</span>
             </h4>
             <div class="panel-actions">
               <button
@@ -266,13 +358,28 @@
             :title="t('graph.notepad.openHint')"
             @dblclick="openMotionNotepad"
           >{{ activeMotion.text }}</pre>
-          <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
+          <span
+            v-else
+            class="video-path"
+          >{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
         </div>
 
-        <div v-if="activeCellVideo" class="detail-block video-block">
+        <div
+          v-if="activeCellVideo"
+          class="detail-block video-block"
+        >
           <h4>视频产物</h4>
-          <MediaPreviewPlayer v-if="activeVideoUrl" kind="video" :src="activeVideoUrl" />
-          <OverflowTip class="video-path" :text="activeCellVideo">{{ activeCellVideo }}</OverflowTip>
+          <MediaPreviewPlayer
+            v-if="activeVideoUrl"
+            kind="video"
+            :src="activeVideoUrl"
+          />
+          <OverflowTip
+            class="video-path"
+            :text="activeCellVideo"
+          >
+            {{ activeCellVideo }}
+          </OverflowTip>
           <button
             class="ghost-button primary"
             :class="{ 'is-disabled': !canRunCurrentVideo }"
@@ -284,7 +391,10 @@
             {{ videoBusy ? '生成中…' : '重新生成这条视频' }}
           </button>
         </div>
-        <div v-else class="detail-block video-block">
+        <div
+          v-else
+          class="detail-block video-block"
+        >
           <h4>视频产物</h4>
           <span class="video-path">{{ videoBusy ? '生成中…' : '未生成' }}</span>
           <button
@@ -299,11 +409,17 @@
           </button>
         </div>
 
-        <div v-if="!isDirect9" class="detail-block motion-block">
+        <div
+          v-if="!isDirect9"
+          class="detail-block motion-block"
+        >
           <div class="detail-head">
             <h4>
               动态提示词（{{ selectedCellKey }}）
-              <span v-if="reviewResult('motion') === 'PASS'" class="pass-mark">✓ 已通过</span>
+              <span
+                v-if="reviewResult('motion') === 'PASS'"
+                class="pass-mark"
+              >✓ 已通过</span>
             </h4>
             <div class="panel-actions">
               <button
@@ -332,7 +448,10 @@
             :title="t('graph.notepad.openHint')"
             @dblclick="openMotionNotepad"
           >{{ activeMotion.text }}</pre>
-          <span v-else class="video-path">{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
+          <span
+            v-else
+            class="video-path"
+          >{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
         </div>
       </section>
     </div>

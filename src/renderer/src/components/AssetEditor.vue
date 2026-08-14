@@ -1,92 +1,155 @@
 <template>
-  <div class="asset-editor" :class="{ graph: supportsGraph }" v-if="asset">
+  <div
+    v-if="asset"
+    class="asset-editor"
+    :class="{ graph: supportsGraph }"
+  >
     <template v-if="supportsGraph">
-    <div v-if="showDiveShellBar && diveContext" class="dive-shell-bar">
-      <EditorDiveBar
-        :root-title="diveContext.rootTitle"
-        :frames="diveContext.frames"
-        @pop-to="diveContext.popTo"
+      <div
+        v-if="showDiveShellBar && diveContext"
+        class="dive-shell-bar"
+      >
+        <EditorDiveBar
+          :root-title="diveContext.rootTitle"
+          :frames="diveContext.frames"
+          @pop-to="diveContext.popTo"
+        />
+      </div>
+      <div
+        v-if="!embedded && !diving"
+        class="toolbar"
+      >
+        <span>{{ typeLabel }}</span>
+        <span class="spacer" />
+        <span class="hint">{{ t('asset.editor.graphHint') }}</span>
+        <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
+      </div>
+      <NodeGraphEditor
+        v-show="!diving"
+        class="asset-graph"
+        :asset-id="assetId"
+        :hide-toolbar="!embedded && toolbarCollapsed"
       />
-    </div>
-    <div v-if="!embedded && !diving" class="toolbar">
-      <span>{{ typeLabel }}</span>
-      <span class="spacer" />
-      <span class="hint">{{ t('asset.editor.graphHint') }}</span>
-      <GraphToolbarCollapseBtn v-model="toolbarCollapsed" />
-    </div>
-    <NodeGraphEditor
-      v-show="!diving"
-      class="asset-graph"
-      :asset-id="assetId"
-      :hide-toolbar="!embedded && toolbarCollapsed"
-    />
-    <EditorDiveChildHost :frame="diving ? diveTop : null" :frames="diveFrames" />
+      <EditorDiveChildHost
+        :frame="diving ? diveTop : null"
+        :frames="diveFrames"
+      />
     </template>
 
     <template v-else>
-    <header class="head">
-      <div>
-        <div class="type">
-          <span>{{ typeLabel }}</span>
-          <span v-if="isDraft" class="draft-mark">*</span>
+      <header class="head">
+        <div>
+          <div class="type">
+            <span>{{ typeLabel }}</span>
+            <span
+              v-if="isDraft"
+              class="draft-mark"
+            >*</span>
+          </div>
+          <h2 class="title-row">
+            <span>{{ isDraft ? (local.name || t('common.unnamed')) : asset.name }}</span>
+            <span
+              v-if="isDraft"
+              class="draft-mark"
+            >*</span>
+          </h2>
         </div>
-        <h2 class="title-row">
-          <span>{{ isDraft ? (local.name || t('common.unnamed')) : asset.name }}</span>
-          <span v-if="isDraft" class="draft-mark">*</span>
-        </h2>
+        <button @click="onAttach">
+          {{ attachLabel }}
+        </button>
+      </header>
+
+      <div class="preview">
+        <img
+          v-if="previewUrl && isImageLike"
+          :src="previewUrl"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          class="preview-image"
+          :title="t('graph.selectImage.previewHint')"
+          @dblclick="openFullPreview"
+        >
+        <video
+          v-else-if="previewUrl && isVideoLike"
+          :src="previewUrl"
+          controls
+        />
+        <audio
+          v-else-if="previewUrl && isAudioLike"
+          :src="previewUrl"
+          controls
+        />
+        <div
+          v-else-if="previewLoading"
+          class="placeholder"
+        >
+          <span>{{ typeLabel }}</span>
+          <p>{{ t('asset.editor.loadingPreview') }}</p>
+        </div>
+        <div
+          v-else
+          class="placeholder"
+        >
+          <span>{{ typeLabel }}</span>
+          <p>{{ asset.relativePath ? t('asset.editor.noPreview') : t('asset.editor.noMedia') }}</p>
+        </div>
       </div>
-      <button @click="onAttach">{{ attachLabel }}</button>
-    </header>
 
-    <div class="preview">
-      <img
-        v-if="previewUrl && isImageLike"
-        :src="previewUrl"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        class="preview-image"
-        :title="t('graph.selectImage.previewHint')"
-        @dblclick="openFullPreview"
-      />
-      <video v-else-if="previewUrl && isVideoLike" :src="previewUrl" controls />
-      <audio v-else-if="previewUrl && isAudioLike" :src="previewUrl" controls />
-      <div v-else-if="previewLoading" class="placeholder">
-        <span>{{ typeLabel }}</span>
-        <p>{{ t('asset.editor.loadingPreview') }}</p>
-      </div>
-      <div v-else class="placeholder">
-        <span>{{ typeLabel }}</span>
-        <p>{{ asset.relativePath ? t('asset.editor.noPreview') : t('asset.editor.noMedia') }}</p>
-      </div>
-    </div>
+      <label>
+        {{ t('asset.field.name') }}
+        <input
+          v-model="local.name"
+          @change="persist"
+        >
+      </label>
 
-    <label>
-      {{ t('asset.field.name') }}
-      <input v-model="local.name" @change="persist" />
-    </label>
+      <label>
+        {{ t('asset.field.description') }}
+        <textarea
+          v-model="local.prompt"
+          rows="5"
+          :placeholder="t('asset.editor.descPlaceholder')"
+          @change="persist"
+        />
+      </label>
 
-    <label>
-      {{ t('asset.field.description') }}
-      <textarea
-        v-model="local.prompt"
-        rows="5"
-        @change="persist"
-        :placeholder="t('asset.editor.descPlaceholder')"
-      />
-    </label>
+      <label>
+        {{ t('asset.field.notes') }}
+        <textarea
+          v-model="local.notes"
+          rows="3"
+          :placeholder="t('asset.field.notesPlaceholder')"
+          @change="persist"
+        />
+      </label>
 
-    <label>
-      {{ t('asset.field.notes') }}
-      <textarea v-model="local.notes" rows="3" @change="persist" :placeholder="t('asset.field.notesPlaceholder')" />
-    </label>
-
-    <p v-if="error" class="err">{{ error }}</p>
-    <p class="meta" v-if="!isDraft">ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}</p>
-    <p v-else-if="isDraft" class="meta draft-hint">{{ t('asset.editor.draftHint') }}</p>
+      <p
+        v-if="error"
+        class="err"
+      >
+        {{ error }}
+      </p>
+      <p
+        v-if="!isDraft"
+        class="meta"
+      >
+        ID {{ asset.id.slice(0, 8) }} · v{{ asset.version }}
+      </p>
+      <p
+        v-else-if="isDraft"
+        class="meta draft-hint"
+      >
+        {{ t('asset.editor.draftHint') }}
+      </p>
     </template>
   </div>
-  <div v-else class="asset-editor empty">{{ t('asset.editor.notFound') }}</div>
+  <div
+    v-else
+    class="asset-editor empty"
+  >
+    {{ t('asset.editor.notFound') }}
+  </div>
 </template>
 
 <script setup lang="ts">

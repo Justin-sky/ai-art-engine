@@ -1,5 +1,8 @@
 <template>
-  <div class="media-preview-player" :class="kind">
+  <div
+    class="media-preview-player"
+    :class="kind"
+  >
     <video
       v-if="kind === 'video'"
       ref="mediaEl"
@@ -15,8 +18,14 @@
       @durationchange="onLoaded"
       @error="onError"
     />
-    <div v-else class="audio-stage">
-      <span class="audio-glyph" aria-hidden="true">♪</span>
+    <div
+      v-else
+      class="audio-stage"
+    >
+      <span
+        class="audio-glyph"
+        aria-hidden="true"
+      >♪</span>
       <audio
         ref="mediaEl"
         class="media-el"
@@ -39,7 +48,12 @@
       @wheel.stop
     >
       <div class="transport-actions">
-        <button type="button" class="ctrl-btn" :title="t('graph.media.restart')" @click="seekToStart">
+        <button
+          type="button"
+          class="ctrl-btn"
+          :title="t('graph.media.restart')"
+          @click="seekToStart"
+        >
           <span class="icon-restart" />
         </button>
         <button
@@ -66,11 +80,14 @@
           :value="progressValue"
           @input="onSeekInput"
           @change="onSeekChange"
-        />
+        >
       </div>
     </div>
 
-    <p v-else class="media-error">
+    <p
+      v-else
+      class="media-error"
+    >
       {{ kind === 'voice' ? t('graph.preview.audioError') : t('graph.preview.videoError') }}
     </p>
   </div>

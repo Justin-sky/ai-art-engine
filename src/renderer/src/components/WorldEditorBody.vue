@@ -34,6 +34,7 @@ const props = withDefaults(
     hideGraphToolbar?: boolean
   }>(),
   {
+    worldGenNodeId: '',
     hideGraphToolbar: false
   }
 )

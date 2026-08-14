@@ -1,8 +1,24 @@
 <template>
-  <div class="view-gizmo" @pointerdown.stop>
-    <div class="dial" role="group" :aria-label="t('director.stage.viewOrientation')">
-      <svg class="dial-svg" viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="50" r="46" class="dial-bg" />
+  <div
+    class="view-gizmo"
+    @pointerdown.stop
+  >
+    <div
+      class="dial"
+      role="group"
+      :aria-label="t('director.stage.viewOrientation')"
+    >
+      <svg
+        class="dial-svg"
+        viewBox="0 0 100 100"
+        aria-hidden="true"
+      >
+        <circle
+          cx="50"
+          cy="50"
+          r="46"
+          class="dial-bg"
+        />
         <line
           v-for="axis in axes"
           :key="`line-${axis.id}`"
@@ -35,7 +51,11 @@
         @click="emit('set-orientation', 'z')"
       />
     </div>
-    <button type="button" class="reset-btn" @click="emit('reset-view')">
+    <button
+      type="button"
+      class="reset-btn"
+      @click="emit('reset-view')"
+    >
       {{ t('director.stage.resetView') }}
     </button>
   </div>

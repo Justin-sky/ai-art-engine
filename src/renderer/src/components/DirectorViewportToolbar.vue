@@ -7,7 +7,9 @@
       role="dialog"
       :aria-label="t('director.stage.aspectRatio')"
     >
-      <div class="ratio-title">{{ t('director.stage.aspectRatio') }}</div>
+      <div class="ratio-title">
+        {{ t('director.stage.aspectRatio') }}
+      </div>
       <div class="ratio-grid">
         <button
           v-for="option in ratioOptions"
@@ -17,7 +19,10 @@
           :class="{ active: aspectRatio === option.id }"
           @click="onPickRatio(option.id)"
         >
-          <span class="ratio-icon" v-html="option.icon" />
+          <span
+            class="ratio-icon"
+            v-html="option.icon"
+          />
           <span class="ratio-label">{{ ratioLabel(option.id) }}</span>
         </button>
       </div>
@@ -32,7 +37,10 @@
         :aria-label="t('director.stage.modeScene')"
         @click="onSetStageMode('scene')"
       >
-        <span class="tool-icon" v-html="SCENE_MODE_ICON" />
+        <span
+          class="tool-icon"
+          v-html="SCENE_MODE_ICON"
+        />
       </button>
       <button
         type="button"
@@ -42,7 +50,10 @@
         :aria-label="t('director.stage.modeAnimation')"
         @click="onSetStageMode('animation')"
       >
-        <span class="tool-icon" v-html="ANIM_MODE_ICON" />
+        <span
+          class="tool-icon"
+          v-html="ANIM_MODE_ICON"
+        />
       </button>
       <span class="sep" />
       <button
@@ -55,7 +66,10 @@
         :aria-label="t(tool.labelKey)"
         @click="onSetMode(tool.mode)"
       >
-        <span class="tool-icon" v-html="tool.icon" />
+        <span
+          class="tool-icon"
+          v-html="tool.icon"
+        />
       </button>
       <span class="sep" />
       <button
@@ -67,7 +81,10 @@
         :aria-expanded="ratioMenuOpen"
         @click.stop="toggleRatioMenu"
       >
-        <span class="tool-icon" v-html="activeRatioIcon" />
+        <span
+          class="tool-icon"
+          v-html="activeRatioIcon"
+        />
       </button>
       <button
         type="button"
@@ -86,7 +103,10 @@
         :aria-pressed="selectionBoundsVisible"
         @click="onToggleSelectionBounds"
       >
-        <span class="tool-icon" v-html="BOUNDS_ICON" />
+        <span
+          class="tool-icon"
+          v-html="BOUNDS_ICON"
+        />
       </button>
       <button
         type="button"
@@ -95,7 +115,10 @@
         :aria-label="t('director.stage.captureShot')"
         @click="onCapture"
       >
-        <span class="tool-icon" v-html="CAMERA_ICON" />
+        <span
+          class="tool-icon"
+          v-html="CAMERA_ICON"
+        />
       </button>
     </div>
   </div>

@@ -13,12 +13,27 @@
     <div class="editor-root">
       <div class="topbar">
         <div class="aspect-wrap">
-          <button type="button" class="aspect-btn" @click="aspectMenuOpen = !aspectMenuOpen">
-            <span class="aspect-ico" :class="aspectIconClass(draft.aspectId)" aria-hidden="true" />
+          <button
+            type="button"
+            class="aspect-btn"
+            @click="aspectMenuOpen = !aspectMenuOpen"
+          >
+            <span
+              class="aspect-ico"
+              :class="aspectIconClass(draft.aspectId)"
+              aria-hidden="true"
+            />
             <span>{{ aspectLabel(draft.aspectId) }}</span>
-            <span class="chev" aria-hidden="true">▾</span>
+            <span
+              class="chev"
+              aria-hidden="true"
+            >▾</span>
           </button>
-          <div v-if="aspectMenuOpen" class="aspect-menu" @mousedown.stop>
+          <div
+            v-if="aspectMenuOpen"
+            class="aspect-menu"
+            @mousedown.stop
+          >
             <button
               v-for="opt in aspectMenuOptions"
               :key="opt.id"
@@ -27,30 +42,70 @@
               :class="{ active: draft.aspectId === opt.id }"
               @click="selectAspect(opt.id)"
             >
-              <span class="aspect-ico" :class="opt.iconClass" aria-hidden="true" />
+              <span
+                class="aspect-ico"
+                :class="opt.iconClass"
+                aria-hidden="true"
+              />
               <span>{{ opt.label }}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div class="stage" ref="stageEl" @pointerdown="onStagePointerDown">
-        <div v-if="sourceLoading" class="stage-empty">{{ t('graph.editor.loadingSource') }}</div>
-        <div v-else-if="!sourceUrl" class="stage-empty">{{ t('graph.crop.noSource') }}</div>
-        <div v-else class="canvas-wrap" :style="canvasWrapStyle">
+      <div
+        ref="stageEl"
+        class="stage"
+        @pointerdown="onStagePointerDown"
+      >
+        <div
+          v-if="sourceLoading"
+          class="stage-empty"
+        >
+          {{ t('graph.editor.loadingSource') }}
+        </div>
+        <div
+          v-else-if="!sourceUrl"
+          class="stage-empty"
+        >
+          {{ t('graph.crop.noSource') }}
+        </div>
+        <div
+          v-else
+          class="canvas-wrap"
+          :style="canvasWrapStyle"
+        >
           <img
             class="source-img"
             :src="sourceUrl"
             alt=""
             draggable="false"
             decoding="async"
+          >
+          <div
+            class="dim dim-t"
+            :style="dimStyles.t"
           />
-          <div class="dim dim-t" :style="dimStyles.t" />
-          <div class="dim dim-b" :style="dimStyles.b" />
-          <div class="dim dim-l" :style="dimStyles.l" />
-          <div class="dim dim-r" :style="dimStyles.r" />
-          <div class="crop-box" :style="cropBoxStyle">
-            <div class="grid" aria-hidden="true" />
+          <div
+            class="dim dim-b"
+            :style="dimStyles.b"
+          />
+          <div
+            class="dim dim-l"
+            :style="dimStyles.l"
+          />
+          <div
+            class="dim dim-r"
+            :style="dimStyles.r"
+          />
+          <div
+            class="crop-box"
+            :style="cropBoxStyle"
+          >
+            <div
+              class="grid"
+              aria-hidden="true"
+            />
             <button
               v-for="h in handles"
               :key="h.id"

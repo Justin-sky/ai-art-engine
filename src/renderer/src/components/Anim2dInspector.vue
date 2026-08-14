@@ -1,9 +1,14 @@
 <template>
-  <div class="node-inspector" v-if="node">
+  <div
+    v-if="node"
+    class="node-inspector"
+  >
     <div class="head">
       <h2>{{ node.title || typeLabel }}</h2>
     </div>
-    <p class="hint">{{ t('graph.anim2d.inspectorHint') }}</p>
+    <p class="hint">
+      {{ t('graph.anim2d.inspectorHint') }}
+    </p>
 
     <GraphNodeRunControl
       v-if="hasInPort"
@@ -23,7 +28,7 @@
           step="1"
           :value="state.rows"
           @change="onRowsChange"
-        />
+        >
       </label>
       <label class="field">
         <span>{{ t('graph.anim2d.cols') }}</span>
@@ -34,27 +39,52 @@
           step="1"
           :value="state.cols"
           @change="onColsChange"
-        />
+        >
       </label>
     </div>
 
-    <section v-if="cells.length > 1" class="anim-section" :aria-label="t('graph.anim2d.preview')">
+    <section
+      v-if="cells.length > 1"
+      class="anim-section"
+      :aria-label="t('graph.anim2d.preview')"
+    >
       <div class="anim-preview">
-        <img :src="cells[activeIndex]?.dataUrl" alt="" />
+        <img
+          :src="cells[activeIndex]?.dataUrl"
+          alt=""
+        >
         <span class="anim-frame-badge">{{ activeIndex + 1 }}/{{ cells.length }}</span>
       </div>
       <div class="anim-bar">
-        <button type="button" class="anim-play" @click="togglePlay">
+        <button
+          type="button"
+          class="anim-play"
+          @click="togglePlay"
+        >
           {{ playing ? t('graph.anim2d.pause') : t('graph.anim2d.play') }}
         </button>
         <label class="anim-field">
           <span>{{ t('graph.anim2d.fps') }}</span>
-          <select :value="fps" class="anim-fps" :disabled="playing" @change="onFpsChange">
-            <option v-for="f in FPS_OPTIONS" :key="f" :value="f">{{ f }}</option>
+          <select
+            :value="fps"
+            class="anim-fps"
+            :disabled="playing"
+            @change="onFpsChange"
+          >
+            <option
+              v-for="f in FPS_OPTIONS"
+              :key="f"
+              :value="f"
+            >{{ f }}</option>
           </select>
         </label>
         <label class="anim-loop">
-          <input type="checkbox" :checked="loop" :disabled="playing" @change="onLoopChange" />
+          <input
+            type="checkbox"
+            :checked="loop"
+            :disabled="playing"
+            @change="onLoopChange"
+          >
           <span>{{ t('graph.anim2d.loop') }}</span>
         </label>
       </div>
@@ -68,17 +98,41 @@
           :title="cell.key"
           @click="seekTo(index)"
         >
-          <img :src="cell.dataUrl" alt="" loading="lazy" decoding="async" />
+          <img
+            :src="cell.dataUrl"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          >
           <span class="frame-index">{{ index + 1 }}</span>
         </button>
       </div>
     </section>
-    <p v-else-if="gridLoading" class="hint">{{ t('graph.anim2d.loading') }}</p>
-    <p v-else class="hint">{{ t('graph.anim2d.emptyPreview') }}</p>
+    <p
+      v-else-if="gridLoading"
+      class="hint"
+    >
+      {{ t('graph.anim2d.loading') }}
+    </p>
+    <p
+      v-else
+      class="hint"
+    >
+      {{ t('graph.anim2d.emptyPreview') }}
+    </p>
 
-    <GraphNodeOutputPreview v-if="hostId" :node="node" :host-id="hostId" />
+    <GraphNodeOutputPreview
+      v-if="hostId"
+      :node="node"
+      :host-id="hostId"
+    />
   </div>
-  <div v-else class="node-inspector empty">{{ t('graph.inspector.node.empty') }}</div>
+  <div
+    v-else
+    class="node-inspector empty"
+  >
+    {{ t('graph.inspector.node.empty') }}
+  </div>
 </template>
 
 <script setup lang="ts">

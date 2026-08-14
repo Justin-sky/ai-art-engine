@@ -1,5 +1,8 @@
 <template>
-  <div v-if="frame" class="editor-dive-child">
+  <div
+    v-if="frame"
+    class="editor-dive-child"
+  >
     <component
       :is="viewComponent"
       v-if="viewFrame && viewComponent"
@@ -9,7 +12,7 @@
     <AssetEditor
       v-else-if="
         assetFrame &&
-        (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')
+          (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')
       "
       :key="assetFrame.assetId"
       :asset-id="assetFrame.assetId"
@@ -38,7 +41,11 @@
       继续挂载，保证 NodeGraphEditor 的工具宿主（dialog 状态 / 保存 / 预览）仍然可用。
     -->
     <template v-if="keepAssetFrame">
-      <div v-show="false" :key="`keep:${keepAssetFrame.key}`" class="editor-dive-keep-host">
+      <div
+        v-show="false"
+        :key="`keep:${keepAssetFrame.key}`"
+        class="editor-dive-keep-host"
+      >
         <AssetEditor
           v-if="keepAssetFrame.kind === 'screenplay' || keepAssetFrame.kind === 'asset'"
           :asset-id="keepAssetFrame.assetId"
