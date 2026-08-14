@@ -182,6 +182,41 @@ const runOutput = computed(() => {
   return graphRunHosts.get(hid)?.runStates[current.id]?.outputs?.out ?? null
 })
 
+const COMPARE_CANVAS_SIZE = 640
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('图片加载失败'))
+    img.src = src
+  })
+}
+
+/** 将原图 / 生成图归一化到同一尺寸画布（等比居中，不裁切） */
+async function normalizeCompareImage(src: string): Promise<string> {
+  try {
+    const img = await loadImage(src)
+    const canvas = document.createElement('canvas')
+    canvas.width = COMPARE_CANVAS_SIZE
+    canvas.height = COMPARE_CANVAS_SIZE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return src
+    const scale = Math.min(
+      COMPARE_CANVAS_SIZE / img.naturalWidth,
+      COMPARE_CANVAS_SIZE / img.naturalHeight
+    )
+    const dw = Math.max(1, Math.round(img.naturalWidth * scale))
+    const dh = Math.max(1, Math.round(img.naturalHeight * scale))
+    const dx = Math.round((COMPARE_CANVAS_SIZE - dw) / 2)
+    const dy = Math.round((COMPARE_CANVAS_SIZE - dh) / 2)
+    ctx.drawImage(img, dx, dy, dw, dh)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return src
+  }
+}
+
 async function resolveCompare(): Promise<void> {
   const current = node.value
   const hid = hostId.value
@@ -192,48 +227,50 @@ async function resolveCompare(): Promise<void> {
   }
 
   const document = graphEditorHosts.getDocument(hid)
-  beforeUrl.value = await resolveNodeUpstreamImageUrl({
+  let before = await resolveNodeUpstreamImageUrl({
     document,
     nodeId: current.id,
     runStates: graphRunHosts.get(hid)?.runStates ?? {},
     assets: project.assets
   })
 
+  let after = ''
   const runOut = runOutput.value
   for (const item of flattenImagesValues(runOut ? [runOut] : [])) {
     if (item.dataUrl?.trim()) {
-      afterUrl.value = item.dataUrl
-      return
+      after = item.dataUrl
+      break
     }
     if (item.relativePath?.trim()) {
       const url = await resolveAssetFileUrl(item.relativePath)
       if (url) {
-        afterUrl.value = url
-        return
+        after = url
+        break
       }
     }
   }
 
-  const generated = current.params.generatedImages
-  if (Array.isArray(generated) && generated.length) {
-    const selectedId = current.params.selectedImageId?.trim()
-    const picked =
-      (selectedId ? generated.find((item) => item.id === selectedId) : undefined) ??
-      generated[generated.length - 1]
-    if (picked?.dataUrl?.trim()) {
-      afterUrl.value = picked.dataUrl
-      return
-    }
-    if (picked?.relativePath?.trim()) {
-      const url = await resolveAssetFileUrl(picked.relativePath)
-      if (url) {
-        afterUrl.value = url
-        return
+  if (!after) {
+    const generated = current.params.generatedImages
+    if (Array.isArray(generated) && generated.length) {
+      const selectedId = current.params.selectedImageId?.trim()
+      const picked =
+        (selectedId ? generated.find((item) => item.id === selectedId) : undefined) ??
+        generated[generated.length - 1]
+      if (picked?.dataUrl?.trim()) {
+        after = picked.dataUrl
+      } else if (picked?.relativePath?.trim()) {
+        after = await resolveAssetFileUrl(picked.relativePath)
       }
     }
   }
 
-  afterUrl.value = ''
+  if (before && after) {
+    before = await normalizeCompareImage(before)
+    after = await normalizeCompareImage(after)
+  }
+  beforeUrl.value = before
+  afterUrl.value = after
 }
 
 watch([node, hostId, runOutput], () => {
@@ -354,7 +391,7 @@ function persistSystemPrompt(): void {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   pointer-events: none;
 }
