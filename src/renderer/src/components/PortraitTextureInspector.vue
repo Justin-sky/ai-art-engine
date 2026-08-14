@@ -61,8 +61,8 @@ import {
   DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN,
   DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH,
   defaultPortraitTextureSystemPrompt,
-  readPortraitTextureFromNode,
-  resolvePortraitTextureOutputPrompt,
+  readPortraitQualityFromNode,
+  resolvePortraitQualityOutputPrompt,
   resolvePortraitTextureSystemPrompt
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -102,7 +102,7 @@ const outputPrompt = computed(() => {
   const current = node.value
   if (!current) return ''
   // 始终按当前质感选项重算，编辑面板实时写回时 Inspector 同步刷新
-  return resolvePortraitTextureOutputPrompt(readPortraitTextureFromNode(current.params))
+  return resolvePortraitQualityOutputPrompt(readPortraitQualityFromNode(current.params))
 })
 
 function loadSystemPrompt(current: NonNullable<typeof node.value>): void {
