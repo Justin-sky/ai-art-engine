@@ -1659,7 +1659,7 @@ export default {
       }
     },
     portraitQuality: {
-      appMark: 'Portrait quality',
+      appMark: 'Portrait texture',
       previewEmpty: 'Connect an image input to preview here',
       before: 'Before',
       after: 'After',

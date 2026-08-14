@@ -1649,7 +1649,7 @@ export default {
       }
     },
     portraitQuality: {
-      appMark: '人像质量调节',
+      appMark: '人像质感调节',
       previewEmpty: '接入图片输入后可在此预览',
       before: '原图',
       after: '效果',
