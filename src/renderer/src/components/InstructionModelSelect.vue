@@ -72,6 +72,7 @@ function onChange(event: Event): void {
 <style scoped>
 .instruction-model {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 5px;
   flex: none;
