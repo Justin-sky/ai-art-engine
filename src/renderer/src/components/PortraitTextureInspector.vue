@@ -19,6 +19,64 @@
       @toggle="toggleRun"
     />
 
+    <div
+      v-if="node && hostId"
+      class="before-after"
+    >
+      <div
+        ref="compareEl"
+        class="compare-pane"
+        @pointermove="onCompareMove"
+        @pointerup="onCompareUp"
+        @pointercancel="onCompareUp"
+      >
+        <template v-if="beforeUrl && afterUrl">
+          <img
+            :src="afterUrl"
+            alt=""
+            class="compare-img"
+            draggable="false"
+          >
+          <img
+            :src="beforeUrl"
+            alt=""
+            class="compare-img before"
+            :style="{ clipPath: `inset(0 ${100 - splitPos}% 0 0)` }"
+            draggable="false"
+          >
+          <div
+            class="compare-divider"
+            :style="{ left: `${splitPos}%` }"
+            @pointerdown="onCompareDown"
+          >
+            <span class="compare-handle" />
+          </div>
+          <span class="compare-tag before">{{ t('graph.portraitQuality.before') }}</span>
+          <span class="compare-tag after">{{ t('graph.portraitQuality.generated') }}</span>
+        </template>
+        <img
+          v-else-if="beforeUrl"
+          :src="beforeUrl"
+          alt=""
+          class="compare-img"
+          draggable="false"
+        >
+        <img
+          v-else-if="afterUrl"
+          :src="afterUrl"
+          alt=""
+          class="compare-img"
+          draggable="false"
+        >
+        <div
+          v-else
+          class="compare-empty"
+        >
+          {{ t('graph.portraitQuality.previewEmpty') }}
+        </div>
+      </div>
+    </div>
+
     <GraphNodeOutputPreview
       v-if="node && hostId"
       :node="node"
@@ -61,6 +119,7 @@ import {
   DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN,
   DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_ZH,
   defaultPortraitTextureSystemPrompt,
+  flattenImagesValues,
   readPortraitQualityFromNode,
   resolvePortraitQualityOutputPrompt,
   resolvePortraitTextureSystemPrompt
@@ -72,6 +131,10 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { resolveNodeUpstreamImageUrl } from '../features/graph/model/resolveNodeUpstreamImageUrl'
+import { resolveAssetFileUrl } from '../features/media/assetUrlCache'
+import { useProjectStore } from '../stores/project'
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -104,6 +167,103 @@ const outputPrompt = computed(() => {
   // 始终按当前质感选项重算，编辑面板实时写回时 Inspector 同步刷新
   return resolvePortraitQualityOutputPrompt(readPortraitQualityFromNode(current.params))
 })
+
+const project = useProjectStore()
+const beforeUrl = ref('')
+const afterUrl = ref('')
+const splitPos = ref(50)
+const compareEl = ref<HTMLElement | null>(null)
+let compareDragging = false
+
+const runOutput = computed(() => {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return null
+  return graphRunHosts.get(hid)?.runStates[current.id]?.outputs?.out ?? null
+})
+
+async function resolveCompare(): Promise<void> {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) {
+    beforeUrl.value = ''
+    afterUrl.value = ''
+    return
+  }
+
+  const document = graphEditorHosts.getDocument(hid)
+  beforeUrl.value = await resolveNodeUpstreamImageUrl({
+    document,
+    nodeId: current.id,
+    runStates: graphRunHosts.get(hid)?.runStates ?? {},
+    assets: project.assets
+  })
+
+  const runOut = runOutput.value
+  for (const item of flattenImagesValues(runOut ? [runOut] : [])) {
+    if (item.dataUrl?.trim()) {
+      afterUrl.value = item.dataUrl
+      return
+    }
+    if (item.relativePath?.trim()) {
+      const url = await resolveAssetFileUrl(item.relativePath)
+      if (url) {
+        afterUrl.value = url
+        return
+      }
+    }
+  }
+
+  const generated = current.params.generatedImages
+  if (Array.isArray(generated) && generated.length) {
+    const selectedId = current.params.selectedImageId?.trim()
+    const picked =
+      (selectedId ? generated.find((item) => item.id === selectedId) : undefined) ??
+      generated[generated.length - 1]
+    if (picked?.dataUrl?.trim()) {
+      afterUrl.value = picked.dataUrl
+      return
+    }
+    if (picked?.relativePath?.trim()) {
+      const url = await resolveAssetFileUrl(picked.relativePath)
+      if (url) {
+        afterUrl.value = url
+        return
+      }
+    }
+  }
+
+  afterUrl.value = ''
+}
+
+watch([node, hostId, runOutput], () => {
+  splitPos.value = 50
+  void resolveCompare()
+}, { immediate: true })
+
+function setSplitFromClientX(clientX: number): void {
+  const el = compareEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  if (!rect.width) return
+  const ratio = (clientX - rect.left) / rect.width
+  splitPos.value = Math.min(100, Math.max(0, ratio * 100))
+}
+
+function onCompareDown(e: PointerEvent): void {
+  compareDragging = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  setSplitFromClientX(e.clientX)
+}
+
+function onCompareMove(e: PointerEvent): void {
+  if (!compareDragging) return
+  setSplitFromClientX(e.clientX)
+}
+
+function onCompareUp(): void {
+  compareDragging = false
+}
 
 function loadSystemPrompt(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
@@ -167,6 +327,97 @@ function persistSystemPrompt(): void {
   color: var(--text-muted);
   align-items: center;
   justify-content: center;
+}
+
+.before-after {
+  flex: none;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.compare-pane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.compare-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.compare-img.before {
+  z-index: 1;
+}
+
+.compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  z-index: 2;
+  cursor: col-resize;
+}
+
+.compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 35%);
+}
+
+.compare-tag {
+  position: absolute;
+  top: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  color: var(--text);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.compare-tag.before {
+  left: 8px;
+}
+
+.compare-tag.after {
+  right: 8px;
+}
+
+.compare-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+  line-height: 1.5;
 }
 
 .head .type {

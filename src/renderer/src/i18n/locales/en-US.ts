@@ -1663,6 +1663,7 @@ export default {
       previewEmpty: 'Connect an image input to preview here',
       before: 'Before',
       after: 'After',
+      generated: 'Generated',
       reset: 'Reset',
       groups: {
         skin: 'Skin',

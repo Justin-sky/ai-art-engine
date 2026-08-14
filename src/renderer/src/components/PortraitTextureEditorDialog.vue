@@ -13,48 +13,45 @@
     <div class="editor-root">
       <div class="editor-body">
         <div class="preview-pane">
-          <div
-            ref="compareEl"
-            class="compare-pane"
-            @pointermove="onComparePointerMove"
-            @pointerup="onComparePointerUp"
-            @pointercancel="onComparePointerUp"
-          >
-            <template v-if="sourceUrl && previewUrl">
+          <div class="preview-stack">
+            <div class="preview-half">
+              <span class="half-label">{{ t('graph.portraitQuality.before') }}</span>
               <img
-                :src="previewUrl"
-                alt=""
-                class="compare-img"
-                draggable="false"
-              >
-              <img
+                v-if="sourceUrl"
                 :src="sourceUrl"
                 alt=""
-                class="compare-img before"
-                :style="{ clipPath: `inset(0 ${100 - splitPos}% 0 0)` }"
+                class="preview-img"
                 draggable="false"
               >
               <div
-                class="compare-divider"
-                :style="{ left: `${splitPos}%` }"
-                @pointerdown="onComparePointerDown"
+                v-else-if="sourceLoading"
+                class="preview-empty"
               >
-                <span class="compare-handle" />
+                {{ t('graph.editor.loadingSource') }}
               </div>
-              <span class="compare-tag before">{{ t('graph.portraitQuality.before') }}</span>
-              <span class="compare-tag after">{{ t('graph.portraitQuality.after') }}</span>
-            </template>
-            <div
-              v-else-if="sourceLoading"
-              class="preview-empty"
-            >
-              {{ t('graph.editor.loadingSource') }}
+              <div
+                v-else
+                class="preview-empty"
+              >
+                {{ t('graph.portraitQuality.previewEmpty') }}
+              </div>
             </div>
-            <div
-              v-else
-              class="preview-empty"
-            >
-              {{ t('graph.portraitQuality.previewEmpty') }}
+
+            <div class="preview-half">
+              <span class="half-label">{{ t('graph.portraitQuality.after') }}</span>
+              <img
+                v-if="previewUrl"
+                :src="previewUrl"
+                alt=""
+                class="preview-img"
+                draggable="false"
+              >
+              <div
+                v-else
+                class="preview-empty"
+              >
+                {{ t('graph.portraitQuality.previewEmpty') }}
+              </div>
             </div>
           </div>
         </div>
@@ -185,34 +182,6 @@ const modelDraft = reactive({
 const previewUrl = ref('')
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let previewToken = 0
-
-const compareEl = ref<HTMLElement | null>(null)
-const splitPos = ref(50)
-let compareDragging = false
-
-function setSplitFromClientX(clientX: number): void {
-  const el = compareEl.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  if (!rect.width) return
-  const ratio = (clientX - rect.left) / rect.width
-  splitPos.value = Math.min(100, Math.max(0, ratio * 100))
-}
-
-function onComparePointerDown(e: PointerEvent): void {
-  compareDragging = true
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  setSplitFromClientX(e.clientX)
-}
-
-function onComparePointerMove(e: PointerEvent): void {
-  if (!compareDragging) return
-  setSplitFromClientX(e.clientX)
-}
-
-function onComparePointerUp(): void {
-  compareDragging = false
-}
 
 const dirty = computed(() => {
   const a = normalizePortraitQuality(props.setup)
@@ -358,77 +327,45 @@ watch(modelDraft, () => emitPreview(), { deep: true })
 .preview-pane {
   flex: 0 0 260px;
   min-height: 0;
+  display: flex;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-panel);
   overflow: hidden;
 }
 
-.compare-pane {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  cursor: col-resize;
-  user-select: none;
-  touch-action: none;
+.preview-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
-.compare-img {
-  position: absolute;
-  inset: 0;
+.preview-half {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-half + .preview-half {
+  border-top: 1px solid var(--border);
+}
+
+.half-label {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-img {
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   object-fit: contain;
   display: block;
-  pointer-events: none;
-}
-
-.compare-img.before {
-  z-index: 1;
-}
-
-.compare-divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--accent);
-  z-index: 2;
-  cursor: col-resize;
-}
-
-.compare-handle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid #fff;
-  box-shadow: 0 1px 5px rgb(0 0 0 / 35%);
-}
-
-.compare-tag {
-  position: absolute;
-  top: 8px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
-  color: var(--text);
-  z-index: 3;
-  pointer-events: none;
-}
-
-.compare-tag.before {
-  left: 8px;
-}
-
-.compare-tag.after {
-  right: 8px;
 }
 
 .preview-empty {

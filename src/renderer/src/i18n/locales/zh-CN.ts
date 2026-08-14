@@ -1653,6 +1653,7 @@ export default {
       previewEmpty: '接入图片输入后可在此预览',
       before: '原图',
       after: '效果',
+      generated: '生成',
       reset: '重置参数',
       groups: {
         skin: '肤质',
