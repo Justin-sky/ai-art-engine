@@ -87,6 +87,20 @@
             @change="persistGenerateConfig"
           />
         </label>
+        <InstructionModelSelect
+          v-if="modelOptions.length > 0"
+          v-model="selectedModelKey"
+          :options="modelOptions"
+          :title="generateModelTitle"
+          :empty-label="modelsHint"
+          @change="persistGenerateConfig"
+        />
+        <ImageGenerateParamsSelect
+          v-if="isImage && selectedModelKey"
+          v-model="imageGenerateParams"
+          :model-key="selectedModelKey"
+          @change="persistImageGenerateParams"
+        />
         <p
           v-if="modelOptions.length === 0"
           class="hint"
@@ -390,18 +404,23 @@ import {
   defaultScreenplaySystemPrompt,
   defaultVideoSystemPrompt,
   defaultTimbreSystemPrompt,
+  imageGenerateParamsToNodePatch,
   isProcessingAssetNode,
+  readImageGenerateParamsFromNode,
   resolveGameSystemSystemPrompt,
   resolveImageSystemPrompt,
   resolveNodeType,
   resolveScreenplaySystemPrompt,
   resolveVideoSystemPrompt,
-  resolveVoiceSystemPrompt
+  resolveVoiceSystemPrompt,
+  type ImageGenerateParams
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
+import InstructionModelSelect from './InstructionModelSelect.vue'
+import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
@@ -487,6 +506,7 @@ const playbackRate = ref(1)
 
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
+const imageGenerateParams = ref<ImageGenerateParams>(readImageGenerateParamsFromNode({}))
 const systemPrompt = ref('')
 const instruction = ref('')
 const localStyleImages = ref<ProjectStyleImage[]>([])
@@ -539,6 +559,12 @@ const isVideo = computed(() => assetType.value === 'video')
 const isVoice = computed(() => assetType.value === 'voice')
 const isScreenplay = computed(() => assetType.value === 'screenplay')
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
+const generateModelTitle = computed(() => {
+  if (isImage.value) return t('graph.inspector.generate.imageModel')
+  if (isVideo.value) return t('graph.inspector.generate.videoModel')
+  if (isVoice.value) return t('graph.inspector.generate.voiceModel')
+  return t('graph.inspector.generate.model')
+})
 const hasGenerateConfig = computed(
   () =>
     isImage.value ||
@@ -1209,6 +1235,7 @@ function loadGenerateConfig(current: NonNullable<typeof node.value>): void {
   )
 
   if (current.assetType === 'image') {
+    imageGenerateParams.value = readImageGenerateParamsFromNode(current.params)
     systemPrompt.value = resolveImageSystemPrompt(
       current.params.generateSystemPrompt,
       String(locale.value)
@@ -1483,6 +1510,17 @@ function persistGenerateConfig(): void {
         }
       : {})
   })
+}
+
+function persistImageGenerateParams(): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid || !isImage.value) return
+  graphEditorHosts.updateNode(
+    hid,
+    current.id,
+    imageGenerateParamsToNodePatch(imageGenerateParams.value)
+  )
 }
 
 function onUseGlobalStyleChange(checked: boolean): void {

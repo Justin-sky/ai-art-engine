@@ -362,22 +362,53 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
     ports,
     defaultParams: () => {
       if (meta.type === 'image') {
-        return { weight: meta.weight, volume: 1, muted: false, loop: true }
+        return {
+          generateModel: '',
+          generateProviderInstanceId: '',
+          weight: meta.weight,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
       }
       if (meta.type === 'video') {
-        return { durationSec: 5, playbackRate: 1, volume: 1, muted: false, loop: true }
+        return {
+          generateModel: '',
+          generateProviderInstanceId: '',
+          durationSec: 5,
+          playbackRate: 1,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
       }
       if (meta.type === 'voice') {
-        return { volume: 1, muted: false, loop: true }
+        return {
+          generateModel: '',
+          generateProviderInstanceId: '',
+          volume: 1,
+          muted: false,
+          loop: true
+        }
       }
       if (meta.type === 'screenplay') {
-        return { text: '…', weight: meta.weight, volume: 1, muted: false, loop: true }
+        return {
+          text: '…',
+          generateModel: '',
+          generateProviderInstanceId: '',
+          weight: meta.weight,
+          volume: 1,
+          muted: false,
+          loop: true
+        }
       }
       if (meta.type === 'gameSystem') {
         return {
           text: '…',
           generateInstruction: DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
           generateSystemPrompt: DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+          generateModel: '',
+          generateProviderInstanceId: '',
           weight: meta.weight,
           volume: 1,
           muted: false,
