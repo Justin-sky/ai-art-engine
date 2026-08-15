@@ -4514,7 +4514,9 @@ function waitUntilAudioClipEnd(
         resolve()
         return
       }
-      playheadSec.value = clip.startSec + (el.currentTime || 0)
+      if (!playheadDrag.value) {
+        playheadSec.value = clip.startSec + (el.currentTime || 0)
+      }
       if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
@@ -4683,6 +4685,7 @@ function onPreviewEnded(): void {
 
 function onPreviewTimeUpdate(): void {
   if (!playing.value) return
+  if (playheadDrag.value) return
   // solo 声音由 audio 回调推进
   if (
     playMode.value === 'solo' &&
@@ -6564,11 +6567,12 @@ defineExpose({ flushSave: persist, reloadSources })
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 0;
+  width: 12px;
   border-left: 2px solid var(--success);
   pointer-events: auto;
   cursor: ew-resize;
   z-index: 2;
+  touch-action: none;
 }
 
 .playhead-cap {
