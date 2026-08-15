@@ -1,6 +1,11 @@
 <template>
-  <div class="script-timeline">
-    <div class="workspace">
+  <div ref="rootEl" class="script-timeline">
+    <div
+      class="workspace"
+      :style="{
+        gridTemplateColumns: `${leftPaneWidth}px 5px minmax(280px, 1fr) 5px ${rightPaneWidth}px`
+      }"
+    >
       <aside class="panel sources-panel">
         <div class="panel-head">
           <span class="panel-title">{{ t('script.timeline.sources') }}</span>
@@ -25,6 +30,7 @@
         </div>
         <div
           class="source-list"
+          :style="{ '--source-card-size': `${sourceGridSize}px` }"
           @contextmenu.prevent="onImportedPanelContextMenu"
         >
           <section
@@ -61,7 +67,7 @@
                 }}</span>
               </span>
               <span class="source-meta">
-                <span class="source-name">{{ src.title }}</span>
+                <span class="source-name" :title="src.title">{{ src.title }}</span>
                 <span class="source-tags">
                   <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
                   <span
@@ -141,7 +147,7 @@
                     }}</span>
                   </span>
                   <span class="source-meta">
-                    <span class="source-name">{{ src.title }}</span>
+                    <span class="source-name" :title="src.title">{{ src.title }}</span>
                     <span class="source-tags">
                       <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
                       <span
@@ -211,7 +217,7 @@
                   }}</span>
                 </span>
                 <span class="source-meta">
-                  <span class="source-name">{{ src.title }}</span>
+                  <span class="source-name" :title="src.title">{{ src.title }}</span>
                   <span class="source-tags">
                     <span class="source-tag imported">{{
                       t('script.timeline.sourceGroup.importedTag')
@@ -249,6 +255,18 @@
           </section>
         </div>
 
+        <div class="source-size-footer">
+          <span class="source-size-label">{{ t('script.timeline.sourceGridSize') }}</span>
+          <input
+            v-model.number="sourceGridSize"
+            class="source-size-range"
+            type="range"
+            min="48"
+            max="120"
+            step="4"
+          >
+        </div>
+
         <div
           v-if="sourceCtx"
           class="source-ctx-menu"
@@ -279,6 +297,12 @@
         </div>
       </aside>
 
+      <div
+        class="horizontal-splitter"
+        title="拖动调整素材库宽度"
+        @pointerdown="onPanelSplitterDown($event, 'left')"
+      />
+
       <section class="panel preview-panel">
         <div class="preview-stage">
           <video
@@ -303,8 +327,17 @@
             <p>{{ t('script.timeline.emptyPreview') }}</p>
           </div>
           <div
+            class="export-frame-overlay"
+            :style="{ aspectRatio: `${exportWidth} / ${exportHeight}` }"
+          >
+            <span class="export-frame-label">{{ exportWidth }} × {{ exportHeight }}</span>
+          </div>
+          <div
             v-if="activeSubtitleText"
             class="subtitle-overlay"
+            :title="t('script.timeline.subtitleResizeHint')"
+            @pointerdown.stop="onSubtitleMoveDown"
+            @wheel.prevent="onSubtitleWheel"
             :style="{
               fontSize: `${subtitleFontSize}px`,
               bottom: `${Math.max(0, subtitleYOffset)}px`,
@@ -312,6 +345,26 @@
             }"
           >
             {{ activeSubtitleText }}
+            <span
+              class="subtitle-handle corner-tl"
+              title="缩放字幕"
+              @pointerdown.stop="onSubtitleScaleDown"
+            />
+            <span
+              class="subtitle-handle corner-tr"
+              title="缩放字幕"
+              @pointerdown.stop="onSubtitleScaleDown"
+            />
+            <span
+              class="subtitle-handle corner-bl"
+              title="缩放字幕"
+              @pointerdown.stop="onSubtitleScaleDown"
+            />
+            <span
+              class="subtitle-handle corner-br"
+              title="缩放字幕"
+              @pointerdown.stop="onSubtitleScaleDown"
+            />
           </div>
           <div class="preview-transport">
             <button
@@ -329,15 +382,106 @@
             </button>
             <span class="time">{{ formatTime(playheadSec) }} / {{ formatTime(totalDuration) }}</span>
           </div>
-          <div v-if="selectedAudioClip" class="audio-mix-controls">
-            <label class="mix-field">
+        </div>
+      </section>
+      <div
+        class="horizontal-splitter"
+        title="拖动调整属性面板宽度"
+        @pointerdown="onPanelSplitterDown($event, 'right')"
+      />
+      <aside class="panel inspector-panel">
+        <div class="panel-head">
+          <span class="panel-title">{{ t('script.timeline.inspector') }}</span>
+        </div>
+        <div v-if="selectedClip" class="inspector-body">
+          <div class="inspector-track">
+            {{ trackLabel(selectedClip.track) }}
+          </div>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.startSec') }}</span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              :value="selectedClip.startSec"
+              @change="
+                onClipStartChange(
+                  Number(($event.target as HTMLInputElement).value)
+                )
+              "
+            >
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.durationSec') }}</span>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              :value="selectedClip.durationSec"
+              @change="
+                onClipDurationChange(
+                  Number(($event.target as HTMLInputElement).value)
+                )
+              "
+            >
+          </label>
+          <template v-if="selectedClip.track === 'subtitle'">
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitlePlaceholder') }}</span>
+              <textarea
+                rows="2"
+                :value="selectedClip.text || selectedClip.title"
+                @change="
+                  onSubtitleTextChange(
+                    ($event.target as HTMLTextAreaElement).value
+                  )
+                "
+              />
+            </label>
+            <div class="inspector-section-title">
+              {{ t('script.timeline.subtitleStyle') }}
+            </div>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleFontSize') }}</span>
+              <input
+                v-model.number="subtitleFontSize"
+                type="number"
+                min="12"
+                max="200"
+                step="1"
+                @change="scheduleSave"
+              >
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleYOffset') }}</span>
+              <input
+                v-model.number="subtitleYOffset"
+                type="number"
+                min="0"
+                max="1000"
+                step="1"
+                @change="scheduleSave"
+              >
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.subtitleColor') }}</span>
+              <input
+                v-model="subtitleColor"
+                type="color"
+                class="color-input"
+                @change="scheduleSave"
+              >
+            </label>
+          </template>
+          <template v-if="selectedClip.track === 'voice' || selectedClip.track === 'music'">
+            <label class="inspector-field">
               <span>{{ t('script.timeline.volume') }}</span>
               <input
                 type="range"
                 min="0"
                 max="1"
                 step="0.05"
-                :value="selectedAudioClip.volume ?? 1"
+                :value="selectedClip.volume ?? 1"
                 @input="
                   onAudioVolumeChange(
                     Number(($event.target as HTMLInputElement).value)
@@ -345,14 +489,14 @@
                 "
               >
             </label>
-            <label class="mix-field">
+            <label class="inspector-field">
               <span>{{ t('script.timeline.fadeIn') }}</span>
               <input
                 type="number"
                 min="0"
-                max="30"
+                :max="selectedClip.durationSec"
                 step="0.1"
-                :value="selectedAudioClip.fadeInSec ?? 0"
+                :value="selectedClip.fadeInSec ?? 0"
                 @change="
                   onAudioFadeChange(
                     'fadeInSec',
@@ -361,14 +505,14 @@
                 "
               >
             </label>
-            <label class="mix-field">
+            <label class="inspector-field">
               <span>{{ t('script.timeline.fadeOut') }}</span>
               <input
                 type="number"
                 min="0"
-                max="30"
+                :max="selectedClip.durationSec"
                 step="0.1"
-                :value="selectedAudioClip.fadeOutSec ?? 0"
+                :value="selectedClip.fadeOutSec ?? 0"
                 @change="
                   onAudioFadeChange(
                     'fadeOutSec',
@@ -377,14 +521,83 @@
                 "
               >
             </label>
-          </div>
+          </template>
         </div>
-      </section>
+        <div v-else class="inspector-body">
+          <div class="inspector-section-title">{{ t('script.timeline.exportSettings') }}</div>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.exportResolution') }}</span>
+            <select
+              :value="exportResolutionKey"
+              @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="res in EXPORT_RESOLUTIONS"
+                :key="res.label"
+                :value="`${res.w}x${res.h}`"
+              >
+                {{ res.label }}
+              </option>
+              <option value="custom">{{ t('script.timeline.customResolution') }}</option>
+            </select>
+          </label>
+          <div class="export-custom-grid">
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.exportWidthField') }}</span>
+              <input
+                v-model.number="exportWidth"
+                type="number"
+                min="320"
+                max="7680"
+                step="2"
+                :readonly="!isCustomResolution"
+              >
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.exportHeightField') }}</span>
+              <input
+                v-model.number="exportHeight"
+                type="number"
+                min="180"
+                max="4320"
+                step="2"
+                :readonly="!isCustomResolution"
+              >
+            </label>
+          </div>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.exportFps') }}</span>
+            <select v-model.number="exportFps" @change="scheduleSave">
+              <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
+                {{ fps }}
+              </option>
+            </select>
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.exportBitrate') }}</span>
+            <input
+              v-model.number="exportVideoBitrateKbps"
+              type="number"
+              min="500"
+              max="200000"
+              step="500"
+              @change="scheduleSave"
+            >
+          </label>
+        </div>
+      </aside>
     </div>
+
+    <div
+      class="vertical-splitter"
+      :title="t('script.pane.resizeSplit')"
+      @pointerdown="onVerticalSplitterDown"
+    />
 
     <section
       class="timeline-dock"
       :class="{ collapsed: timelineCollapsed }"
+      :style="{ height: `${timelineHeight}px` }"
     >
       <header class="timeline-bar">
         <span class="timeline-bar-title">{{ t('script.dialog.timeline') }}</span>
@@ -423,79 +636,6 @@
                 {{ rate }}x
               </option>
             </select>
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.exportResolution') }}</span>
-            <select
-              :value="`${exportWidth}x${exportHeight}`"
-              class="ctrl-select"
-              @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
-            >
-              <option
-                v-for="res in EXPORT_RESOLUTIONS"
-                :key="res.label"
-                :value="`${res.w}x${res.h}`"
-              >
-                {{ res.label }}
-              </option>
-            </select>
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.exportFps') }}</span>
-            <select
-              v-model.number="exportFps"
-              class="ctrl-select"
-              @change="scheduleSave"
-            >
-              <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
-                {{ fps }}
-              </option>
-            </select>
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.exportBitrate') }}</span>
-            <input
-              v-model.number="exportVideoBitrateKbps"
-              class="ctrl-input"
-              type="number"
-              min="500"
-              max="200000"
-              step="500"
-              @change="scheduleSave"
-            >
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.subtitleFontSize') }}</span>
-            <input
-              v-model.number="subtitleFontSize"
-              class="ctrl-input"
-              type="number"
-              min="12"
-              max="200"
-              step="1"
-              @change="scheduleSave"
-            >
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.subtitleYOffset') }}</span>
-            <input
-              v-model.number="subtitleYOffset"
-              class="ctrl-input"
-              type="number"
-              min="0"
-              max="1000"
-              step="1"
-              @change="scheduleSave"
-            >
-          </label>
-          <label class="ctrl-field">
-            <span>{{ t('script.timeline.subtitleColor') }}</span>
-            <input
-              v-model="subtitleColor"
-              class="ctrl-input color-input"
-              type="color"
-              @change="scheduleSave"
-            >
           </label>
           <label class="ctrl-check">
             <input
@@ -584,7 +724,7 @@
             class="export-btn"
             :disabled="exporting || !clips.length"
             :title="t('script.timeline.exportHint')"
-            @click="exportTimeline"
+            @click="openExportDialog"
           >
             {{
               exporting
@@ -613,6 +753,7 @@
         class="timeline-board"
         :class="{ scrollable: needsHScroll }"
         @wheel.prevent="onTimelineWheel"
+        @pointerdown="onTimelineBlankPointerDown"
       >
         <div
           class="timeline-inner"
@@ -669,7 +810,10 @@
                 "
                 @click.stop="toggleTrackHidden(track.kind)"
               >
-                {{ hiddenTracks.has(track.kind) ? '👁' : '🙈' }}
+                <span
+                  class="eye-icon"
+                  :class="{ off: hiddenTracks.has(track.kind) }"
+                >👁</span>
               </button>
               <button
                 type="button"
@@ -759,6 +903,7 @@
           <div
             class="playhead"
             :style="{ left: `${TRACK_LABEL_W + timeToX(playheadSec)}px` }"
+            @pointerdown.stop="onPlayheadPointerDown"
             aria-hidden="true"
           >
             <span class="playhead-cap" />
@@ -766,6 +911,78 @@
         </div>
       </div>
     </section>
+
+    <div v-if="exportDialogOpen" class="export-settings-mask" @click.self="closeExportDialog">
+      <div class="export-settings-panel" role="dialog" aria-modal="true">
+        <div class="export-settings-title">{{ t('script.timeline.exportSettings') }}</div>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.exportResolution') }}</span>
+          <select
+            :value="exportResolutionKey"
+            @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="res in EXPORT_RESOLUTIONS"
+              :key="res.label"
+              :value="`${res.w}x${res.h}`"
+            >
+              {{ res.label }}
+              </option>
+              <option value="custom">{{ t('script.timeline.customResolution') }}</option>
+            </select>
+        </label>
+        <div class="export-custom-grid">
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.exportWidthField') }}</span>
+            <input
+              v-model.number="exportWidth"
+              type="number"
+              min="320"
+              max="7680"
+              step="2"
+              :readonly="!isCustomResolution"
+            >
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.exportHeightField') }}</span>
+            <input
+              v-model.number="exportHeight"
+              type="number"
+              min="180"
+              max="4320"
+              step="2"
+              :readonly="!isCustomResolution"
+            >
+          </label>
+        </div>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.exportFps') }}</span>
+          <select v-model.number="exportFps">
+            <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
+              {{ fps }}
+            </option>
+          </select>
+        </label>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.exportBitrate') }}</span>
+          <input
+            v-model.number="exportVideoBitrateKbps"
+            type="number"
+            min="500"
+            max="200000"
+            step="500"
+          >
+        </label>
+        <div class="export-settings-actions">
+          <button type="button" class="ghost-btn" @click="closeExportDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" class="export-btn" @click="confirmExportDialog">
+            {{ t('script.timeline.export') }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div
       v-if="subtitleEditor"
@@ -847,17 +1064,19 @@ import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
 const props = defineProps<{
   scriptAssetId: string
+  timelineNodeId?: string
 }>()
 
 const { t } = useStudioI18n()
 const project = useProjectStore()
 const drafts = useDraftStore()
 const workspace = useWorkspaceStore()
+const rootEl = ref<HTMLElement | null>(null)
 
 const DRAFT_MIME = 'application/x-aiart-timeline-source'
 /** 导入列表内整理分组用（与上轨 MIME 并存） */
 const SOURCE_MOVE_MIME = 'application/x-aiart-timeline-source-id'
-const TRACK_LABEL_W = 72
+const TRACK_LABEL_W = 100
 const PX_PER_SEC_MAX = 160
 const PX_PER_SEC_MIN = 4
 const ZOOM_MIN = 0.25
@@ -868,10 +1087,13 @@ const MIN_CLIP_SEC = 0.1
 const PLAYBACK_RATE_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 const EXPORT_RESOLUTIONS = [
   { w: 1280, h: 720, label: '1280 × 720' },
+  { w: 1024, h: 576, label: '1024 × 576' },
   { w: 1920, h: 1080, label: '1920 × 1080' },
+  { w: 2560, h: 1440, label: '2560 × 1440' },
+  { w: 3840, h: 2160, label: '3840 × 2160' },
   { w: 1080, h: 1920, label: '1080 × 1920' },
   { w: 720, h: 1280, label: '720 × 1280' },
-  { w: 1024, h: 576, label: '1024 × 576' }
+  { w: 1080, h: 1080, label: '1080 × 1080' }
 ]
 const EXPORT_FPS_OPTIONS = [24, 25, 30, 60]
 
@@ -889,6 +1111,7 @@ const HISTORY_LIMIT = 100
 const sourcesBusy = ref(false)
 /** 视频素材首帧预览 URL（与资产库列表同源） */
 const sourceThumbUrls = ref<Record<string, string>>({})
+const sourceGridSize = ref(72)
 const sourceThumbPathById = new Map<string, string>()
 const voiceSourceIcon = ASSET_TYPE_ICONS.voice
 const collapsedGroupIds = ref<Set<string>>(new Set())
@@ -903,6 +1126,28 @@ const previewSrc = ref('')
 const previewEl = ref<HTMLVideoElement | null>(null)
 const timelineBoardEl = ref<HTMLElement | null>(null)
 const timelineCollapsed = ref(false)
+const timelineHeight = ref(280)
+const splitterDrag = ref<{
+  pointerId: number
+  startY: number
+  startHeight: number
+} | null>(null)
+const leftPaneWidth = ref(220)
+const rightPaneWidth = ref(220)
+const panelSplitter = ref<{
+  side: 'left' | 'right'
+  pointerId: number
+  startX: number
+  startWidth: number
+} | null>(null)
+const playheadDrag = ref<{ pointerId: number } | null>(null)
+const subtitleDrag = ref<{
+  type: 'move' | 'scale'
+  pointerId: number
+  startY: number
+  startFont: number
+  startOffset: number
+} | null>(null)
 const viewportLanePx = ref(0)
 /** 相对「铺满可视宽度」的缩放倍率 */
 const zoomFactor = ref(1)
@@ -912,12 +1157,21 @@ const playbackRate = ref(1)
 const loopPlayback = ref(false)
 const exportWidth = ref(1280)
 const exportHeight = ref(720)
+const isCustomResolution = ref(false)
+const exportResolutionKey = computed(() =>
+  isCustomResolution.value
+    ? 'custom'
+    : EXPORT_RESOLUTIONS.some((res) => res.w === exportWidth.value && res.h === exportHeight.value)
+      ? `${exportWidth.value}x${exportHeight.value}`
+      : 'custom'
+)
 const exportFps = ref(30)
 const exportVideoBitrateKbps = ref(5000)
 const subtitleFontSize = ref(36)
 const subtitleYOffset = ref(80)
 const subtitleColor = ref('#ffffff')
 const exporting = ref(false)
+const exportDialogOpen = ref(false)
 const exportProgress = ref(0)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
 const subtitleInputEl = ref<HTMLInputElement | null>(null)
@@ -971,6 +1225,10 @@ const selectedPlayableClip = computed(() => {
   if (clip.track === 'video' || clip.track === 'voice' || clip.track === 'music') return clip
   return null
 })
+
+const selectedClip = computed(
+  () => clips.value.find((clip) => clip.id === activeClipId.value) ?? null
+)
 
 const selectedAudioClip = computed(() => {
   const clip = selectedPlayableClip.value
@@ -1208,10 +1466,10 @@ function onSourceActivate(src: ScriptTimelineSource): void {
 }
 
 function sourceIdentityKey(src: Pick<ScriptTimelineSource, 'id' | 'assetId' | 'relativePath'>): string {
-  const assetId = src.assetId?.trim()
-  if (assetId) return `asset:${assetId}`
   const rel = src.relativePath?.trim().replace(/\\/g, '/')
   if (rel) return `path:${rel}`
+  const assetId = src.assetId?.trim()
+  if (assetId) return `asset:${assetId}`
   return `id:${src.id}`
 }
 
@@ -1373,6 +1631,10 @@ function clipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
     .filter((c) => c.track === kind)
     .slice()
     .sort((a, b) => a.startSec - b.startSec)
+}
+
+function trackLabel(kind: ScriptTimelineTrackKind): string {
+  return t(`script.timeline.track.${kind}`)
 }
 
 function visibleClipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
@@ -1628,7 +1890,7 @@ function readGenParams(): Record<string, unknown> {
 }
 
 function loadPersisted(): void {
-  const doc = readScriptTimelineFromGenParams(readGenParams())
+  const doc = readScriptTimelineFromGenParams(readGenParams(), props.timelineNodeId)
   clips.value = doc.clips.map((c) => ({ ...c }))
   if (doc.sources?.length) {
     sources.value = doc.sources
@@ -1661,6 +1923,9 @@ function loadPersisted(): void {
   loopPlayback.value = settings?.loop === true
   exportWidth.value = settings?.exportWidth ?? 1280
   exportHeight.value = settings?.exportHeight ?? 720
+  isCustomResolution.value = !EXPORT_RESOLUTIONS.some(
+    (res) => res.w === exportWidth.value && res.h === exportHeight.value
+  )
   exportFps.value = settings?.exportFps ?? 30
   exportVideoBitrateKbps.value = settings?.exportVideoBitrateKbps ?? 5000
   subtitleFontSize.value = settings?.subtitleFontSize ?? 36
@@ -1701,7 +1966,7 @@ async function persist(): Promise<void> {
       subtitleColor: subtitleColor.value
     }
   }
-  const next = withScriptTimeline(readGenParams(), doc)
+  const next = withScriptTimeline(readGenParams(), doc, props.timelineNodeId)
   if (isDraftAssetId(props.scriptAssetId)) {
     drafts.updateDraft(props.scriptAssetId, { genParams: next })
     return
@@ -1727,10 +1992,16 @@ function onRateChange(): void {
 }
 
 function onExportResolutionChange(value: string): void {
+  if (value === 'custom') {
+    isCustomResolution.value = true
+    scheduleSave()
+    return
+  }
   const match = /^(\d+)x(\d+)$/i.exec(value.trim())
   if (!match) return
   exportWidth.value = Math.min(7680, Math.max(320, Number(match[1])))
   exportHeight.value = Math.min(4320, Math.max(180, Number(match[2])))
+  isCustomResolution.value = false
   scheduleSave()
 }
 
@@ -1947,6 +2218,85 @@ function commitSubtitleEdit(): void {
   scheduleSave()
 }
 
+function selectSubtitleAtPlayhead(): void {
+  const clip = clipsOn('subtitle').find(
+    (item) =>
+      playheadSec.value >= item.startSec &&
+      playheadSec.value < item.startSec + item.durationSec
+  )
+  if (!clip) return
+  activeClipId.value = clip.id
+  setSingleClipSelection(clip.id)
+}
+
+function onSubtitleWheel(e: WheelEvent): void {
+  const delta = e.deltaY < 0 ? 1 : -1
+  subtitleFontSize.value = Math.min(200, Math.max(12, subtitleFontSize.value + delta))
+  scheduleSave()
+}
+
+function bindSubtitleDragListeners(): void {
+  window.addEventListener('pointermove', onSubtitleDragMove)
+  window.addEventListener('pointerup', onSubtitleDragUp)
+  window.addEventListener('pointercancel', onSubtitleDragUp)
+}
+
+function unbindSubtitleDragListeners(): void {
+  window.removeEventListener('pointermove', onSubtitleDragMove)
+  window.removeEventListener('pointerup', onSubtitleDragUp)
+  window.removeEventListener('pointercancel', onSubtitleDragUp)
+}
+
+function onSubtitleMoveDown(e: PointerEvent): void {
+  if (e.button !== 0) return
+  selectSubtitleAtPlayhead()
+  unbindSubtitleDragListeners()
+  subtitleDrag.value = {
+    type: 'move',
+    pointerId: e.pointerId,
+    startY: e.clientY,
+    startFont: subtitleFontSize.value,
+    startOffset: subtitleYOffset.value
+  }
+  bindSubtitleDragListeners()
+}
+
+function onSubtitleScaleDown(e: PointerEvent): void {
+  if (e.button !== 0) return
+  selectSubtitleAtPlayhead()
+  unbindSubtitleDragListeners()
+  subtitleDrag.value = {
+    type: 'scale',
+    pointerId: e.pointerId,
+    startY: e.clientY,
+    startFont: subtitleFontSize.value,
+    startOffset: subtitleYOffset.value
+  }
+  bindSubtitleDragListeners()
+}
+
+function onSubtitleDragMove(e: PointerEvent): void {
+  const session = subtitleDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const delta = session.startY - e.clientY
+  if (session.type === 'scale') {
+    subtitleFontSize.value = Math.min(
+      200,
+      Math.max(12, Math.round(session.startFont + delta / 2))
+    )
+  } else {
+    subtitleYOffset.value = Math.min(1000, Math.max(0, Math.round(session.startOffset + delta)))
+  }
+  scheduleSave()
+}
+
+function onSubtitleDragUp(e: PointerEvent): void {
+  const session = subtitleDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  subtitleDrag.value = null
+  unbindSubtitleDragListeners()
+}
+
 function onAudioVolumeChange(value: number): void {
   const clip = selectedAudioClip.value
   if (!clip) return
@@ -1964,6 +2314,44 @@ function onAudioFadeChange(field: 'fadeInSec' | 'fadeOutSec', value: number): vo
   commitClips(
     clips.value.map((c) =>
       c.id === clip.id ? { ...c, [field]: sec } : c
+    )
+  )
+  scheduleSave()
+}
+
+function onClipStartChange(value: number): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const startSec = Number.isFinite(value)
+    ? Math.min(Math.max(0, totalDuration.value - MIN_CLIP_SEC), Math.max(0, value))
+    : clip.startSec
+  if (Math.abs(startSec - clip.startSec) < 0.001) return
+  commitClips(
+    clips.value.map((c) => (c.id === clip.id ? { ...c, startSec } : c))
+  )
+  scheduleSave()
+}
+
+function onClipDurationChange(value: number): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const durationSec = Number.isFinite(value)
+    ? Math.max(MIN_CLIP_SEC, Math.min(totalDuration.value - clip.startSec, value))
+    : clip.durationSec
+  if (Math.abs(durationSec - clip.durationSec) < 0.001) return
+  commitClips(
+    clips.value.map((c) => (c.id === clip.id ? { ...c, durationSec } : c))
+  )
+  scheduleSave()
+}
+
+function onSubtitleTextChange(value: string): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track !== 'subtitle') return
+  const text = value.trim()
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id ? { ...c, text, title: text || c.title } : c
     )
   )
   scheduleSave()
@@ -2041,12 +2429,12 @@ function splitSelectedClipAtPlayhead(): void {
 function selectClip(clip: ScriptTimelineClip): void {
   activeClipId.value = clip.id
   setSingleClipSelection(clip.id)
-  void showClipPreview(clip)
+  if (clip.track === 'video') void showClipPreview(clip)
 }
 
 function seekToClip(clip: ScriptTimelineClip): void {
   playheadSec.value = clip.startSec
-  void showClipPreview(clip)
+  if (clip.track === 'video') void showClipPreview(clip)
 }
 
 async function showClipPreview(clip: ScriptTimelineClip): Promise<void> {
@@ -2545,12 +2933,52 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
   }
 }
 
+function onPlayheadPointerDown(e: PointerEvent): void {
+  if (e.button !== 0) return
+  playheadDrag.value = { pointerId: e.pointerId }
+  window.addEventListener('pointermove', onPlayheadPointerMove)
+  window.addEventListener('pointerup', onPlayheadPointerUp)
+  window.addEventListener('pointercancel', onPlayheadPointerUp)
+  e.preventDefault()
+}
+
+function onPlayheadPointerMove(e: PointerEvent): void {
+  const session = playheadDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const lane = timelineBoardEl.value?.querySelector('.track-lane') as HTMLElement | null
+  const rect = lane?.getBoundingClientRect()
+  if (!rect) return
+  playheadSec.value = Math.min(totalDuration.value, Math.max(0, xToTime(e.clientX - rect.left)))
+}
+
+function onPlayheadPointerUp(e: PointerEvent): void {
+  const session = playheadDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  playheadDrag.value = null
+  window.removeEventListener('pointermove', onPlayheadPointerMove)
+  window.removeEventListener('pointerup', onPlayheadPointerUp)
+  window.removeEventListener('pointercancel', onPlayheadPointerUp)
+}
+
+function onTimelineBlankPointerDown(e: PointerEvent): void {
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.clip, .track-label, .ruler, .playhead, .track-state-btn')) return
+  activeClipId.value = null
+  selectedClipIds.value = new Set()
+}
+
 function onRulerPointerDown(e: PointerEvent): void {
+  if (e.button !== 0) return
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   playheadSec.value = xToTime(e.clientX - rect.left)
   void syncPreviewToPlayhead()
   void syncAudioToPlayhead(playing.value)
+  playheadDrag.value = { pointerId: e.pointerId }
+  window.addEventListener('pointermove', onPlayheadPointerMove)
+  window.addEventListener('pointerup', onPlayheadPointerUp)
+  window.addEventListener('pointercancel', onPlayheadPointerUp)
+  e.preventDefault()
 }
 
 function clipAtPlayhead(): ScriptTimelineClip | null {
@@ -2900,6 +3328,21 @@ function resolveClipRelativePath(clip: ScriptTimelineClip): string | undefined {
   return project.assets.find((a) => a.id === clip.assetId)?.relativePath?.trim() || undefined
 }
 
+function openExportDialog(): void {
+  if (exporting.value || !clips.value.length) return
+  exportDialogOpen.value = true
+}
+
+function closeExportDialog(): void {
+  exportDialogOpen.value = false
+}
+
+function confirmExportDialog(): void {
+  closeExportDialog()
+  scheduleSave()
+  void exportTimeline()
+}
+
 async function exportTimeline(): Promise<void> {
   if (exporting.value || !clips.value.length) return
   stopPlayback()
@@ -3042,6 +3485,77 @@ async function exportSubtitles(): Promise<void> {
   }
 }
 
+function onVerticalSplitterDown(e: PointerEvent): void {
+  if (e.button !== 0) return
+  splitterDrag.value = {
+    pointerId: e.pointerId,
+    startY: e.clientY,
+    startHeight: timelineHeight.value
+  }
+  window.addEventListener('pointermove', onVerticalSplitterMove)
+  window.addEventListener('pointerup', onVerticalSplitterUp)
+  window.addEventListener('pointercancel', onVerticalSplitterUp)
+  e.preventDefault()
+}
+
+function onVerticalSplitterMove(e: PointerEvent): void {
+  const session = splitterDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const root = rootEl.value
+  const max = Math.max(140, (root?.clientHeight ?? 480) - 120)
+  const next = Math.min(max, Math.max(120, session.startHeight + (session.startY - e.clientY)))
+  timelineHeight.value = next
+}
+
+function onVerticalSplitterUp(e: PointerEvent): void {
+  const session = splitterDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  splitterDrag.value = null
+  window.removeEventListener('pointermove', onVerticalSplitterMove)
+  window.removeEventListener('pointerup', onVerticalSplitterUp)
+  window.removeEventListener('pointercancel', onVerticalSplitterUp)
+  window.removeEventListener('pointermove', onPanelSplitterMove)
+  window.removeEventListener('pointerup', onPanelSplitterUp)
+  window.removeEventListener('pointercancel', onPanelSplitterUp)
+  window.removeEventListener('pointermove', onPlayheadPointerMove)
+  window.removeEventListener('pointerup', onPlayheadPointerUp)
+  window.removeEventListener('pointercancel', onPlayheadPointerUp)
+}
+
+function onPanelSplitterDown(e: PointerEvent, side: 'left' | 'right'): void {
+  if (e.button !== 0) return
+  panelSplitter.value = {
+    side,
+    pointerId: e.pointerId,
+    startX: e.clientX,
+    startWidth: side === 'left' ? leftPaneWidth.value : rightPaneWidth.value
+  }
+  window.addEventListener('pointermove', onPanelSplitterMove)
+  window.addEventListener('pointerup', onPanelSplitterUp)
+  window.addEventListener('pointercancel', onPanelSplitterUp)
+  e.preventDefault()
+}
+
+function onPanelSplitterMove(e: PointerEvent): void {
+  const session = panelSplitter.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const root = rootEl.value
+  const max = Math.max(160, (root?.clientWidth ?? 960) - 320)
+  const delta = e.clientX - session.startX
+  const next = Math.min(max, Math.max(160, session.startWidth + (session.side === 'left' ? delta : -delta)))
+  if (session.side === 'left') leftPaneWidth.value = next
+  else rightPaneWidth.value = next
+}
+
+function onPanelSplitterUp(e: PointerEvent): void {
+  const session = panelSplitter.value
+  if (!session || e.pointerId !== session.pointerId) return
+  panelSplitter.value = null
+  window.removeEventListener('pointermove', onPanelSplitterMove)
+  window.removeEventListener('pointerup', onPanelSplitterUp)
+  window.removeEventListener('pointercancel', onPanelSplitterUp)
+}
+
 function onDocPointerDownForSourceCtx(e: PointerEvent): void {
   const target = e.target as HTMLElement | null
   if (target?.closest('.source-ctx-menu')) return
@@ -3052,6 +3566,11 @@ function onTimelineKeydown(e: KeyboardEvent): void {
   if (e.defaultPrevented) return
   const target = e.target as HTMLElement | null
   if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (e.key === ' ') {
+    e.preventDefault()
+    void toggleTimelinePlay()
+    return
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault()
     deleteSelectedClips()
@@ -3146,6 +3665,10 @@ onBeforeUnmount(() => {
   timelineViewportRo = null
   unbindClipDragListeners()
   unbindClipResizeListeners()
+  unbindSubtitleDragListeners()
+  window.removeEventListener('pointermove', onVerticalSplitterMove)
+  window.removeEventListener('pointerup', onVerticalSplitterUp)
+  window.removeEventListener('pointercancel', onVerticalSplitterUp)
   clipDrag.value = null
   clipResize.value = null
   window.removeEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
@@ -3172,7 +3695,31 @@ defineExpose({ flushSave: persist, reloadSources })
   flex: 1;
   min-height: 120px;
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr);
+  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr) minmax(180px, 220px);
+}
+
+.vertical-splitter {
+  flex: none;
+  height: 5px;
+  cursor: ns-resize;
+  background: transparent;
+  border-top: 1px solid var(--border);
+  transition: background-color 0.12s ease;
+}
+
+.vertical-splitter:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.horizontal-splitter {
+  width: 5px;
+  cursor: ew-resize;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.horizontal-splitter:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .panel {
@@ -3186,6 +3733,65 @@ defineExpose({ flushSave: persist, reloadSources })
 .sources-panel {
   background: var(--bg-elevated);
   border-right: 1px solid var(--border);
+}
+
+.inspector-panel {
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+}
+
+.inspector-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.inspector-track {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.inspector-section-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inspector-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.inspector-field input[type='number'],
+.inspector-field input[type='range'],
+.inspector-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  padding: 4px 6px;
+}
+
+.inspector-field input[readonly] {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  opacity: 0.62;
+}
+
+.inspector-empty {
+  padding: 14px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .panel-head {
@@ -3210,6 +3816,28 @@ defineExpose({ flushSave: persist, reloadSources })
   flex-shrink: 0;
 }
 
+.source-size-range {
+  width: 72px;
+}
+
+.source-size-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.source-size-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .panel-empty {
   padding: 16px 12px;
   font-size: 12px;
@@ -3222,15 +3850,14 @@ defineExpose({ flushSave: persist, reloadSources })
   min-height: 0;
   overflow: auto;
   padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--source-card-size, 72px), 1fr));
+  gap: 8px;
+  align-content: start;
 }
 
 .source-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: contents;
 }
 
 .imported-panel {
@@ -3240,6 +3867,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-group-head {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3252,6 +3880,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-folder {
+  display: contents;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-elevated));
@@ -3265,6 +3894,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .folder-head {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3298,8 +3928,9 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .folder-body {
-  display: flex;
-  flex-direction: column;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--source-card-size, 72px), 1fr));
   gap: 6px;
   padding: 0 6px 8px;
 }
@@ -3311,8 +3942,9 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .ungrouped-zone {
-  display: flex;
-  flex-direction: column;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--source-card-size, 72px), 1fr));
   gap: 6px;
   flex: 1;
   min-height: 64px;
@@ -3322,6 +3954,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .ungrouped-label {
+  grid-column: 1 / -1;
   padding: 2px 2px 0;
   font-size: 10px;
   color: var(--text-muted);
@@ -3379,10 +4012,15 @@ defineExpose({ flushSave: persist, reloadSources })
 .source-card {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
-  padding: 8px;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: calc(var(--source-card-size, 72px) + 46px);
+  padding: 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
@@ -3406,13 +4044,14 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   width: 22px;
   height: 22px;
-  margin-left: auto;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -3429,8 +4068,9 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-thumb {
-  width: 36px;
-  height: 36px;
+  width: var(--source-card-size, 72px);
+  height: var(--source-card-size, 72px);
+  box-sizing: border-box;
   border-radius: 6px;
   flex-shrink: 0;
   overflow: hidden;
@@ -3452,6 +4092,8 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-thumb.voice {
+  width: var(--source-card-size, 72px);
+  height: var(--source-card-size, 72px);
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--warning) 32%, var(--bg-elevated)),
@@ -3460,7 +4102,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-thumb-glyph {
-  font-size: 16px;
+  font-size: calc(var(--source-card-size, 72px) * 0.22);
   line-height: 1;
   user-select: none;
 }
@@ -3468,9 +4110,13 @@ defineExpose({ flushSave: persist, reloadSources })
 .source-meta {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: center;
+  text-align: center;
 }
 
 .source-tags {
@@ -3494,10 +4140,16 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .source-name {
+  width: 100%;
+  max-width: 100%;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-tags {
+  display: none;
 }
 
 .source-dur {
@@ -3513,6 +4165,7 @@ defineExpose({ flushSave: persist, reloadSources })
   position: relative;
   flex: 1;
   min-height: 0;
+  min-height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3537,6 +4190,37 @@ defineExpose({ flushSave: persist, reloadSources })
   text-align: center;
 }
 
+.export-frame-overlay {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  height: calc(100% - 32px);
+  width: auto;
+  max-width: calc(100% - 32px);
+  border: 1px solid rgba(120, 190, 255, 0.95);
+  border-radius: 2px;
+  box-sizing: border-box;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.export-frame-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 0 0 6px 0;
+  background: rgba(8, 16, 28, 0.78);
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
 .subtitle-overlay {
   position: absolute;
   left: 50%;
@@ -3552,22 +4236,48 @@ defineExpose({ flushSave: persist, reloadSources })
   line-height: 1.35;
   text-align: center;
   text-shadow: 0 1px 2px var(--on-media-line-shadow);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   z-index: 2;
+  border: 1px dashed rgba(255, 255, 255, 0.75);
+}
+
+.subtitle-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.subtitle-handle.corner-tl {
+  left: -7px;
+  top: -7px;
+  cursor: nwse-resize;
+}
+
+.subtitle-handle.corner-tr {
+  right: -7px;
+  top: -7px;
+  cursor: nesw-resize;
+}
+
+.subtitle-handle.corner-bl {
+  left: -7px;
+  bottom: -7px;
+  cursor: nesw-resize;
+}
+
+.subtitle-handle.corner-br {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
 }
 
 .preview-transport {
-  position: absolute;
-  left: 10px;
-  bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 11px;
+  display: none;
 }
 
 .audio-mix-controls {
@@ -3789,6 +4499,46 @@ defineExpose({ flushSave: persist, reloadSources })
   cursor: not-allowed;
 }
 
+.export-settings-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.export-settings-panel {
+  width: min(360px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.export-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.export-custom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.export-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .subtitle-edit-mask {
   position: absolute;
   inset: 0;
@@ -3853,7 +4603,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .ruler-row,
 .track-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 100px minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -3879,6 +4629,9 @@ defineExpose({ flushSave: persist, reloadSources })
 .track-label > span {
   flex: 1;
   min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .track-state-btn {
@@ -3901,6 +4654,19 @@ defineExpose({ flushSave: persist, reloadSources })
 .track-state-btn:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.eye-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.eye-icon.off {
+  opacity: 0.35;
+  filter: grayscale(1);
 }
 
 .track-row.hidden-track {
@@ -4055,10 +4821,13 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .clip-remove {
-  flex: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
   opacity: 0.7;
   font-size: 14px;
   line-height: 1;
+  z-index: 3;
 }
 
 .clip-handle {
@@ -4095,7 +4864,8 @@ defineExpose({ flushSave: persist, reloadSources })
   bottom: 0;
   width: 0;
   border-left: 2px solid var(--success);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: ew-resize;
   z-index: 2;
 }
 

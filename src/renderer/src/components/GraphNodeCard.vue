@@ -2097,7 +2097,10 @@ function onPreviewDblClick(): void {
     }
     const scriptAssetId = hostAssetId.value
     if (isTimelineOutputNode(props.node) && scriptAssetId) {
-      await diveView({ viewId: 'script.timeline', scriptAssetId }, title)
+      await diveView(
+        { viewId: 'script.timeline', scriptAssetId, timelineNodeId: props.node.id },
+        title
+      )
       return
     }
 

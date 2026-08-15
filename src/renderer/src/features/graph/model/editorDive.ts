@@ -64,7 +64,7 @@ export type EditorDiveNodeToolViewId = Extract<
 >
 
 export type EditorDiveViewMeta =
-  | { viewId: 'script.timeline'; scriptAssetId: string }
+  | { viewId: 'script.timeline'; scriptAssetId: string; timelineNodeId?: string }
   | {
       viewId: 'world.editor'
       worldAssetId: string
@@ -150,7 +150,7 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
   const root = rootKey.trim()
   switch (meta.viewId) {
     case 'script.timeline':
-      return `${root}/view:${meta.viewId}:${meta.scriptAssetId}`
+      return `${root}/view:${meta.viewId}:${meta.scriptAssetId}:${meta.timelineNodeId ?? '_'}`
     case 'world.table':
       return `${root}/view:${meta.viewId}:${meta.worldAssetId}`
     case 'world.editor':

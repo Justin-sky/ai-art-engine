@@ -4144,7 +4144,7 @@ function addNodeFromMenu(item: AddableMenuItem): void {
   const linkToId = menu.linkToNodeId
   const def = getNodeType(typeId)
   /** 画布 / 分镜图 / 分镜视频窗等可添加多个输出，不复用 singleton */
-  const allowMultipleOutputs = false
+  const allowMultipleOutputs = typeId === 'output.timeline'
   const existing =
     !allowMultipleOutputs && def?.singletonId != null
       ? graph.nodes.find((n) => n.id === def.singletonId)

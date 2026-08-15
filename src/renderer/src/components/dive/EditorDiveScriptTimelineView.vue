@@ -3,6 +3,7 @@
     <ScriptTimelineEditor
       ref="editorRef"
       :script-asset-id="scriptAssetId"
+      :timeline-node-id="timelineNodeId"
     />
   </div>
 </template>
@@ -15,6 +16,7 @@ import ScriptTimelineEditor from '../ScriptTimelineEditor.vue'
 const props = defineProps<{
   frameKey: string
   scriptAssetId: string
+  timelineNodeId?: string
 }>()
 
 const editorRef = ref<InstanceType<typeof ScriptTimelineEditor> | null>(null)

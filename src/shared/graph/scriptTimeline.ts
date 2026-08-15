@@ -119,6 +119,12 @@ export type TimelineExportResult =
   | { ok: false; canceled?: boolean; error: string }
 
 export const SCRIPT_TIMELINE_PARAM_KEY = 'scriptTimeline'
+export const SCRIPT_TIMELINE_NODE_PREFIX = 'scriptTimeline:'
+
+function timelineParamKeyForNode(nodeId?: string): string {
+  const id = nodeId?.trim()
+  return id && id !== 'timeline-output' ? `${SCRIPT_TIMELINE_NODE_PREFIX}${id}` : SCRIPT_TIMELINE_PARAM_KEY
+}
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
 
@@ -146,9 +152,10 @@ export function contentEndSecOfTimeline(clips: ScriptTimelineClip[]): number {
 }
 
 export function readScriptTimelineFromGenParams(
-  genParams?: Record<string, unknown> | null
+  genParams?: Record<string, unknown> | null,
+  nodeId?: string
 ): ScriptTimelineDocument {
-  const raw = genParams?.[SCRIPT_TIMELINE_PARAM_KEY]
+  const raw = genParams?.[timelineParamKeyForNode(nodeId)]
   if (!raw || typeof raw !== 'object') return { clips: [] }
   const doc = raw as ScriptTimelineDocument
   return {
@@ -175,7 +182,8 @@ export function readScriptTimelineFromGenParams(
 
 export function withScriptTimeline(
   genParams: Record<string, unknown> | null | undefined,
-  timeline: ScriptTimelineDocument
+  timeline: ScriptTimelineDocument,
+  nodeId?: string
 ): Record<string, unknown> {
   const settings = sanitizeSettings(timeline.settings)
   const sourceGroups = (timeline.sourceGroups ?? [])
@@ -183,7 +191,7 @@ export function withScriptTimeline(
     .filter((item): item is ScriptTimelineSourceGroup => !!item)
   return {
     ...(genParams ?? {}),
-    [SCRIPT_TIMELINE_PARAM_KEY]: {
+    [timelineParamKeyForNode(nodeId)]: {
       clips: timeline.clips,
       ...(timeline.sources?.length ? { sources: timeline.sources } : {}),
       ...(sourceGroups.length ? { sourceGroups } : {}),

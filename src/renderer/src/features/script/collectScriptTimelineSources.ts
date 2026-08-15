@@ -41,7 +41,7 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
         )
       : undefined
   return {
-    id: assetId || relativePath || `video:${index}`,
+    id: relativePath || assetId || `video:${index}`,
     title: asset?.name?.trim() || `视频 ${index + 1}`,
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
@@ -64,7 +64,7 @@ function voiceItemToSource(item: GraphVoiceItem, index: number): ScriptTimelineS
         )
       : undefined
   return {
-    id: assetId || relativePath || `voice:${index}`,
+    id: relativePath || assetId || `voice:${index}`,
     title: asset?.name?.trim() || `声音 ${index + 1}`,
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
@@ -137,7 +137,12 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     sources.push(src)
   }
   for (const node of doc.nodes) {
-    if (node.typeId !== 'asset.video') continue
+    if (
+      node.typeId !== 'asset.video' &&
+      !Array.isArray(node.params?.generatedVideos)
+    ) {
+      continue
+    }
     const title = node.title?.trim()
     const params = node.params ?? {}
     const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
@@ -170,7 +175,12 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     sources.push(src)
   }
   for (const node of doc.nodes) {
-    if (node.typeId !== 'asset.voice') continue
+    if (
+      node.typeId !== 'asset.voice' &&
+      !Array.isArray(node.params?.generatedVoices)
+    ) {
+      continue
+    }
     const title = node.title?.trim()
     const params = node.params ?? {}
     const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
@@ -203,15 +213,15 @@ export async function collectScriptTimelineSources(input: {
   const doc = readScriptGraph(input.scriptAssetId)
   if (doc) {
     const fromGraph = collectFromValueVideos(doc, hostId)
-    if (fromGraph.length) return asInputSources(fromGraph)
-  }
-
-  // 回退：扫描宿主图中所有 asset.video 节点产物
-  if (doc) {
     const fromVideoNodes = collectFromVideoNodes(doc, hostId)
     const fromVoiceNodes = collectFromVoiceNodes(doc, hostId)
-    if (fromVideoNodes.length || fromVoiceNodes.length) {
-      return asInputSources([...fromVideoNodes, ...fromVoiceNodes])
+    const merged = new Map<string, ScriptTimelineSource>()
+    for (const source of [...fromGraph, ...fromVideoNodes]) {
+      merged.set(source.id, source)
+    }
+    const videoSources = [...merged.values()]
+    if (videoSources.length || fromVoiceNodes.length) {
+      return asInputSources([...videoSources, ...fromVoiceNodes])
     }
   }
   return []

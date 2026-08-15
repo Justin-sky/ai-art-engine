@@ -168,7 +168,11 @@ const viewBindings = computed(() => {
   const base = { frameKey: frame.key }
   switch (meta.viewId) {
     case 'script.timeline':
-      return { ...base, scriptAssetId: meta.scriptAssetId }
+      return {
+        ...base,
+        scriptAssetId: meta.scriptAssetId,
+        timelineNodeId: meta.timelineNodeId
+      }
     case 'world.editor':
       return {
         ...base,
