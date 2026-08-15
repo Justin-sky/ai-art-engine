@@ -1,5 +1,5 @@
 /** 成片时间线：存于剧本资产 genParams.scriptTimeline */
-export type ScriptTimelineTrackKind = 'video' | 'voice' | 'subtitle' | 'music'
+export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music'
 
 /** 左侧素材来源：节点上游收集 vs 资产库/系统文件拖入 */
 export type ScriptTimelineSourceOrigin = 'input' | 'imported'
@@ -45,6 +45,16 @@ export type ScriptTimelineClip = {
   fadeInSec?: number
   /** 淡出时长（秒） */
   fadeOutSec?: number
+  /** 画中画左边界（相对导出画布宽度，0~1） */
+  overlayX?: number
+  /** 画中画上边界（相对导出画布高度，0~1） */
+  overlayY?: number
+  /** 画中画宽度（相对导出画布宽度，0~1） */
+  overlayWidth?: number
+  /** 画中画高度（相对导出画布高度，0~1） */
+  overlayHeight?: number
+  /** 画中画不透明度（0~1） */
+  opacity?: number
 }
 
 export type ScriptTimelineSettings = {
@@ -68,6 +78,8 @@ export type ScriptTimelineSettings = {
   subtitleYOffset?: number
   /** 字幕颜色（#RRGGBB） */
   subtitleColor?: string
+  /** 预览框比例：video/export/16:9/9:16/1:1/4:3/3:4 */
+  previewFrameRatio?: string
 }
 
 export type ScriptTimelineDocument = {
@@ -97,6 +109,11 @@ export type TimelineExportClip = {
   volume?: number
   fadeInSec?: number
   fadeOutSec?: number
+  overlayX?: number
+  overlayY?: number
+  overlayWidth?: number
+  overlayHeight?: number
+  opacity?: number
 }
 
 export type TimelineExportInput = {
@@ -237,6 +254,20 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   if (typeof row.subtitleColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.subtitleColor.trim())) {
     next.subtitleColor = row.subtitleColor.trim()
   }
+  if (
+    typeof row.previewFrameRatio === 'string' &&
+    [
+      'video',
+      'export',
+      '16:9',
+      '9:16',
+      '1:1',
+      '4:3',
+      '3:4'
+    ].includes(row.previewFrameRatio.trim())
+  ) {
+    next.previewFrameRatio = row.previewFrameRatio.trim()
+  }
   return Object.keys(next).length ? next : undefined
 }
 
@@ -282,7 +313,13 @@ export function normalizeScriptTimelineSource(
 }
 
 function isTrackKind(value: unknown): value is ScriptTimelineTrackKind {
-  return value === 'video' || value === 'voice' || value === 'subtitle' || value === 'music'
+  return (
+    value === 'video' ||
+    value === 'overlay' ||
+    value === 'voice' ||
+    value === 'subtitle' ||
+    value === 'music'
+  )
 }
 
 function isClip(item: unknown): item is ScriptTimelineClip {
@@ -295,6 +332,7 @@ function isClip(item: unknown): item is ScriptTimelineClip {
     typeof row.startSec === 'number' &&
     typeof row.durationSec === 'number' &&
     (row.track === 'video' ||
+      row.track === 'overlay' ||
       row.track === 'voice' ||
       row.track === 'subtitle' ||
       row.track === 'music')

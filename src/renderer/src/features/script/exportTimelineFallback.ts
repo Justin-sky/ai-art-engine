@@ -97,7 +97,9 @@ export async function exportTimelineViaRecorder(
   const dest = audioCtx.createMediaStreamDestination()
   const audioNodes: Array<{ el: HTMLAudioElement; source: MediaElementAudioSourceNode }> = []
 
-  const voiceMusic = input.clips.filter((c) => c.track === 'voice' || c.track === 'music')
+  const voiceMusic = input.clips.filter(
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay'
+  )
   for (const clip of voiceMusic) {
     const el = new Audio()
     el.preload = 'auto'
@@ -140,6 +142,8 @@ export async function exportTimelineViaRecorder(
   recorder.start(200)
 
   const videoClips = input.clips.filter((c) => c.track === 'video')
+  const overlayClips = input.clips.filter((c) => c.track === 'overlay')
+  const overlayVideos = new Map<string, HTMLVideoElement>()
   let currentVideoId = ''
   const startWall = performance.now()
 
@@ -173,6 +177,49 @@ export async function exportTimelineViaRecorder(
     } else {
       currentVideoId = ''
       if (!videoEl.paused) videoEl.pause()
+    }
+
+    for (const clip of overlayClips) {
+      const local = t - clip.startSec
+      const inRange = local >= 0 && local < clip.durationSec
+      if (!inRange) {
+        const existing = overlayVideos.get(clip.id)
+        if (existing && !existing.paused) existing.pause()
+        continue
+      }
+      let el = overlayVideos.get(clip.id)
+      if (!el) {
+        el = document.createElement('video')
+        el.playsInline = true
+        el.muted = true
+        el.preload = 'auto'
+        el.src = await input.resolveSrc(clip)
+        overlayVideos.set(clip.id, el)
+        await el.play().catch(() => undefined)
+      }
+      if (Math.abs(el.currentTime - local) > 0.25) {
+        try {
+          el.currentTime = local
+        } catch {
+          /* ignore */
+        }
+      }
+      if (el.paused) void el.play().catch(() => undefined)
+      if (el.readyState >= 2) {
+        const left = W * (clip.overlayX ?? 0.12)
+        const top = H * (clip.overlayY ?? 0.12)
+        const ow = W * (clip.overlayWidth ?? 0.36)
+        const oh = H * (clip.overlayHeight ?? 0.36)
+        const vw = el.videoWidth || ow
+        const vh = el.videoHeight || oh
+        const scale = Math.min(ow / vw, oh / vh)
+        const dw = vw * scale
+        const dh = vh * scale
+        ctx.save()
+        ctx.globalAlpha = Math.min(1, Math.max(0, clip.opacity ?? 1))
+        ctx.drawImage(el, left + (ow - dw) / 2, top + (oh - dh) / 2, dw, dh)
+        ctx.restore()
+      }
     }
 
     for (const [i, clip] of voiceMusic.entries()) {
@@ -221,6 +268,7 @@ export async function exportTimelineViaRecorder(
   } finally {
     try {
       videoEl.pause()
+      for (const el of overlayVideos.values()) el.pause()
       for (const n of audioNodes) n.el.pause()
       osc.stop()
       recorder.stop()

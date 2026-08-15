@@ -93,7 +93,8 @@ function resolveClipPath(clip: TimelineExportClip): string | null {
 }
 
 function buildFilterGraph(
-  videos: Array<TimelineExportClip & { path: string; inputIndex: number }>,
+  mainVideos: Array<TimelineExportClip & { path: string; inputIndex: number }>,
+  overlays: Array<TimelineExportClip & { path: string; inputIndex: number }>,
   audios: Array<TimelineExportClip & { path: string; inputIndex: number }>,
   subs: TimelineExportClip[],
   baseVideoIndex: number,
@@ -110,7 +111,7 @@ function buildFilterGraph(
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
   const videoLabels: string[] = ['base']
 
-  for (const clip of videos) {
+  for (const clip of mainVideos) {
     const start = Math.max(0, clip.startSec)
     const dur = Math.max(0.05, clip.durationSec)
     const vLabel = `v${clip.inputIndex}`
@@ -126,6 +127,41 @@ function buildFilterGraph(
   }
 
   let lastVideo = videoLabels[videoLabels.length - 1]!
+
+  for (const clip of overlays) {
+    const start = Math.max(0, clip.startSec)
+    const dur = Math.max(0.05, clip.durationSec)
+    const opacity = Number.isFinite(clip.opacity)
+      ? Math.min(1, Math.max(0, clip.opacity!))
+      : 1
+    const relX = Number.isFinite(clip.overlayX)
+      ? Math.min(1, Math.max(0, clip.overlayX!))
+      : 0.12
+    const relY = Number.isFinite(clip.overlayY)
+      ? Math.min(1, Math.max(0, clip.overlayY!))
+      : 0.12
+    const relW = Number.isFinite(clip.overlayWidth)
+      ? Math.min(1, Math.max(0.05, clip.overlayWidth!))
+      : 0.36
+    const relH = Number.isFinite(clip.overlayHeight)
+      ? Math.min(1, Math.max(0.05, clip.overlayHeight!))
+      : 0.36
+    const ow = Math.max(2, Math.round(width * relW))
+    const oh = Math.max(2, Math.round(height * relH))
+    const x = Math.max(0, Math.min(width - ow, Math.round(width * relX)))
+    const y = Math.max(0, Math.min(height - oh, Math.round(height * relY)))
+    const vLabel = `pip${clip.inputIndex}`
+    const ovLabel = `pipov${clip.inputIndex}`
+    const prev = lastVideo
+    filterParts.push(
+      `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
+    )
+    filterParts.push(
+      `[${prev}][${vLabel}]overlay=${x}:${y}:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`
+    )
+    lastVideo = ovLabel
+  }
+
   const font = findDrawtextFont()
   const fontOpt = font ? `:fontfile='${font.replace(/\\/g, '/').replace(/:/g, '\\:')}'` : ''
 
@@ -208,8 +244,9 @@ async function encodeTimeline(
       ? input.subtitleColor.trim()
       : 'white'
 
-  const videoClips = input.clips.filter((c) => c.track === 'video')
-  const audioClips = input.clips.filter((c) => c.track === 'voice' || c.track === 'music')
+  const mainVideoClips = input.clips.filter((c) => c.track === 'video')
+  const overlayClips = input.clips.filter((c) => c.track === 'overlay')
+  const voiceMusicClips = input.clips.filter((c) => c.track === 'voice' || c.track === 'music')
   const subs = input.clips.filter((c) => c.track === 'subtitle' && (c.text?.trim() || c.title.trim()))
 
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
@@ -225,28 +262,38 @@ async function encodeTimeline(
   args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:d=${duration}`)
   const baseAudioIndex = inputIndex++
 
-  const videos: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
-  for (const clip of videoClips) {
+  const mainVideos: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
+  for (const clip of mainVideoClips) {
     const path = resolveClipPath(clip)
     if (!path) continue
     args.push('-i', path)
-    videos.push({ ...clip, path, inputIndex: inputIndex++ })
+    mainVideos.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
-  const audios: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
-  for (const clip of audioClips) {
+  const audioOnlyInputs: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
+  for (const clip of voiceMusicClips) {
     const path = resolveClipPath(clip)
     if (!path) continue
     args.push('-i', path)
-    audios.push({ ...clip, path, inputIndex: inputIndex++ })
+    audioOnlyInputs.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
-  if (!videos.length && !audios.length) {
+  const overlays: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
+  for (const clip of overlayClips) {
+    const path = resolveClipPath(clip)
+    if (!path) continue
+    args.push('-i', path)
+    overlays.push({ ...clip, path, inputIndex: inputIndex++ })
+  }
+
+  if (!mainVideos.length && !overlays.length && !audioOnlyInputs.length) {
     throw new Error('时间线上没有可导出的视频或音频片段')
   }
 
+  const audios = [...audioOnlyInputs, ...overlays]
   const { filter, mapVideo, mapAudio } = buildFilterGraph(
-    videos,
+    mainVideos,
+    overlays,
     audios,
     subs,
     baseVideoIndex,

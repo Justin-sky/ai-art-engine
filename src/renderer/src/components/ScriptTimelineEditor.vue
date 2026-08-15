@@ -304,7 +304,7 @@
       />
 
       <section class="panel preview-panel">
-        <div class="preview-stage">
+        <div ref="previewStageEl" class="preview-stage">
           <video
             v-if="previewSrc"
             ref="previewEl"
@@ -327,11 +327,65 @@
             <p>{{ t('script.timeline.emptyPreview') }}</p>
           </div>
           <div
+            ref="previewCanvasEl"
             class="export-frame-overlay"
-            :style="{ aspectRatio: `${exportWidth} / ${exportHeight}` }"
+            :style="previewFrameStyle"
           >
-            <span class="export-frame-label">{{ exportWidth }} × {{ exportHeight }}</span>
+            <span class="export-frame-label">{{ previewFrameRatioLabel }}</span>
+            <div class="overlay-layer">
+              <video
+                v-for="clip in previewOverlayClips"
+                :key="clip.id"
+                v-show="isOverlayClipActive(clip)"
+                class="overlay-video"
+                :style="overlayVideoStyle(clip)"
+                :ref="(el) => bindOverlayVideo(el as HTMLVideoElement | null, clip.id)"
+                playsinline
+                preload="metadata"
+                @pointerdown.stop="onOverlayPointerDown($event, clip)"
+              />
+              <div
+                v-if="selectedOverlayClip"
+                class="overlay-selection"
+                :style="overlaySelectionStyle(selectedOverlayClip)"
+              >
+                <span
+                  class="overlay-handle corner-tl"
+                  data-corner="tl"
+                  @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
+                />
+                <span
+                  class="overlay-handle corner-tr"
+                  data-corner="tr"
+                  @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
+                />
+                <span
+                  class="overlay-handle corner-bl"
+                  data-corner="bl"
+                  @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
+                />
+                <span
+                  class="overlay-handle corner-br"
+                  data-corner="br"
+                  @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
+                />
+              </div>
+            </div>
           </div>
+          <select
+            v-model="previewFrameRatioKey"
+            class="preview-frame-ratio-select"
+            :title="t('script.timeline.previewFrameRatio')"
+            @change="scheduleSave"
+          >
+            <option
+              v-for="option in previewFrameRatioOptions"
+              :key="option.key"
+              :value="option.key"
+            >
+              {{ option.label }}
+            </option>
+          </select>
           <div
             v-if="activeSubtitleText"
             class="subtitle-overlay"
@@ -472,6 +526,118 @@
                 @change="scheduleSave"
               >
             </label>
+          </template>
+          <template v-if="selectedClip.track === 'overlay'">
+            <div class="inspector-section-title">
+              {{ t('script.timeline.overlayTransform') }}
+            </div>
+            <div class="inspector-grid">
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.overlayX') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="Math.round((selectedClip.overlayX ?? 0.15) * 100)"
+                  @change="
+                    onOverlayFieldChange(
+                      'overlayX',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                >
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.overlayY') }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="Math.round((selectedClip.overlayY ?? 0.15) * 100)"
+                  @change="
+                    onOverlayFieldChange(
+                      'overlayY',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                >
+              </label>
+            </div>
+            <div class="inspector-grid">
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.overlayWidth') }}</span>
+                <input
+                  type="number"
+                  min="8"
+                  max="100"
+                  step="1"
+                  :value="Math.round((selectedClip.overlayWidth ?? 0.36) * 100)"
+                  @change="
+                    onOverlayFieldChange(
+                      'overlayWidth',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                >
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.overlayHeight') }}</span>
+                <input
+                  type="number"
+                  min="8"
+                  max="100"
+                  step="1"
+                  :value="Math.round((selectedClip.overlayHeight ?? 0.36) * 100)"
+                  @change="
+                    onOverlayFieldChange(
+                      'overlayHeight',
+                      Number(($event.target as HTMLInputElement).value) / 100
+                    )
+                  "
+                >
+              </label>
+            </div>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.overlayOpacity') }}</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                :value="selectedClip.opacity ?? 1"
+                @input="
+                  onOverlayFieldChange(
+                    'opacity',
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              >
+            </label>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.overlayVolume') }}</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                :value="selectedClip.volume ?? 1"
+                @input="
+                  onOverlayFieldChange(
+                    'volume',
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              >
+            </label>
+            <button
+              type="button"
+              class="ghost-btn inspector-reset"
+              @click="resetOverlayTransform"
+            >
+              {{ t('script.timeline.overlayReset') }}
+            </button>
           </template>
           <template v-if="selectedClip.track === 'voice' || selectedClip.track === 'music'">
             <label class="inspector-field">
@@ -757,7 +923,10 @@
       >
         <div
           class="timeline-inner"
-          :style="{ width: `${TRACK_LABEL_W + laneWidth}px` }"
+          :style="{
+            width: `${TRACK_LABEL_W + laneWidth}px`,
+            height: `${timelineInnerHeight}px`
+          }"
         >
           <div class="ruler-row">
             <div class="track-label gutter" />
@@ -838,6 +1007,11 @@
                   <span>{{ t('script.timeline.videoEmpty') }}</span>
                 </div>
               </template>
+              <template v-else-if="track.kind === 'overlay' && !clipsOn(track.kind).length">
+                <div class="lane-muted">
+                  <span>{{ t('script.timeline.overlayEmpty') }}</span>
+                </div>
+              </template>
               <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
                 <div class="lane-muted">
                   <span
@@ -873,6 +1047,7 @@
                    active: clip.id === activeClipId,
                    selected: selectedClipIds.has(clip.id),
                    subtitle: clip.track === 'subtitle',
+                   overlay: clip.track === 'overlay',
                    dragging: clipDrag?.clipId === clip.id
                  }"
                 :style="clipStyle(clip)"
@@ -900,6 +1075,18 @@
             </div>
           </div>
 
+          <div
+            v-if="clipDragPreview && clipDragPreviewClip"
+            class="clip-drag-ghost"
+            :style="clipDragPreviewStyle"
+          >
+            <span class="clip-title">{{ clipDisplayTitle(clipDragPreviewClip) }}</span>
+          </div>
+          <div
+            v-if="clipDragPreview"
+            class="clip-insert-line"
+            :style="{ left: `${TRACK_LABEL_W + timeToX(clipDragPreview.startSec)}px` }"
+          />
           <div
             class="playhead"
             :style="{ left: `${TRACK_LABEL_W + timeToX(playheadSec)}px` }"
@@ -1124,9 +1311,13 @@ const playMode = ref<'timeline' | 'solo' | null>(null)
 const activeClipId = ref<string | null>(null)
 const previewSrc = ref('')
 const previewEl = ref<HTMLVideoElement | null>(null)
+const previewStageEl = ref<HTMLElement | null>(null)
+const previewCanvasEl = ref<HTMLElement | null>(null)
+const previewFrameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
+const previewVideoMeta = ref({ width: 0, height: 0 })
 const timelineBoardEl = ref<HTMLElement | null>(null)
 const timelineCollapsed = ref(false)
-const timelineHeight = ref(280)
+const timelineHeight = ref(336)
 const splitterDrag = ref<{
   pointerId: number
   startY: number
@@ -1170,6 +1361,7 @@ const exportVideoBitrateKbps = ref(5000)
 const subtitleFontSize = ref(36)
 const subtitleYOffset = ref(80)
 const subtitleColor = ref('#ffffff')
+const previewFrameRatioKey = ref('export')
 const exporting = ref(false)
 const exportDialogOpen = ref(false)
 const exportProgress = ref(0)
@@ -1186,6 +1378,14 @@ const clipDrag = ref<{
   moved: boolean
 } | null>(null)
 
+const clipDragPreview = ref<{
+  clipId: string
+  track: ScriptTimelineTrackKind
+  startSec: number
+  pointerX: number
+  pointerY: number
+} | null>(null)
+
 const clipResize = ref<{
   clipId: string
   pointerId: number
@@ -1193,18 +1393,35 @@ const clipResize = ref<{
   moved: boolean
 } | null>(null)
 
+const overlayDrag = ref<{
+  clipId: string
+  pointerId: number
+  mode: 'move' | 'scale'
+  corner: 'tl' | 'tr' | 'bl' | 'br'
+  startX: number
+  startY: number
+  startLeft: number
+  startTop: number
+  startWidth: number
+  startHeight: number
+} | null>(null)
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let playSeq = 0
 const audioEls = new Map<string, HTMLAudioElement>()
+const overlayEls = new Map<string, HTMLVideoElement>()
 
 const hostId = computed(() => `asset:${props.scriptAssetId}`)
 
 const tracks = computed(() => [
   { kind: 'video' as const, label: t('script.timeline.track.video') },
+  { kind: 'overlay' as const, label: t('script.timeline.track.overlay') },
   { kind: 'voice' as const, label: t('script.timeline.track.voice') },
   { kind: 'subtitle' as const, label: t('script.timeline.track.subtitle') },
   { kind: 'music' as const, label: t('script.timeline.track.music') }
 ])
+
+const timelineInnerHeight = computed(() => 28 + tracks.value.length * 52)
 
 const inputSources = computed(() =>
   sources.value.filter((s) => (s.origin ?? 'input') === 'input')
@@ -1222,7 +1439,14 @@ const videoSources = computed(() =>
 const selectedPlayableClip = computed(() => {
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   if (!clip) return null
-  if (clip.track === 'video' || clip.track === 'voice' || clip.track === 'music') return clip
+  if (
+    clip.track === 'video' ||
+    clip.track === 'overlay' ||
+    clip.track === 'voice' ||
+    clip.track === 'music'
+  ) {
+    return clip
+  }
   return null
 })
 
@@ -1233,6 +1457,63 @@ const selectedClip = computed(
 const selectedAudioClip = computed(() => {
   const clip = selectedPlayableClip.value
   return clip && (clip.track === 'voice' || clip.track === 'music') ? clip : null
+})
+
+const selectedOverlayClip = computed(() => {
+  const clip = selectedClip.value
+  return clip?.track === 'overlay' ? clip : null
+})
+
+const previewOverlayClips = computed(() => visibleClipsOn('overlay'))
+
+const previewFrameRatioOptions = computed(() => [
+  { key: 'video', label: t('script.timeline.previewFrameRatioVideo'), ratio: null as number | null },
+  { key: 'export', label: t('script.timeline.previewFrameRatioExport'), ratio: null as number | null },
+  { key: '16:9', label: '16:9', ratio: 16 / 9 },
+  { key: '9:16', label: '9:16', ratio: 9 / 16 },
+  { key: '1:1', label: '1:1', ratio: 1 },
+  { key: '4:3', label: '4:3', ratio: 4 / 3 },
+  { key: '3:4', label: '3:4', ratio: 3 / 4 }
+])
+
+const previewFrameRatioLabel = computed(() => {
+  if (previewFrameRatioKey.value === 'export') {
+    return `${exportWidth.value} × ${exportHeight.value}`
+  }
+  if (previewFrameRatioKey.value === 'video') {
+    return previewVideoMeta.value.width && previewVideoMeta.value.height
+      ? `${previewVideoMeta.value.width} × ${previewVideoMeta.value.height}`
+      : t('script.timeline.previewFrameRatioVideo')
+  }
+  return (
+    previewFrameRatioOptions.value.find((item) => item.key === previewFrameRatioKey.value)?.label ??
+    previewFrameRatioKey.value
+  )
+})
+
+const previewFrameStyle = computed(() => ({
+  left: `${previewFrameRect.value.left}px`,
+  top: `${previewFrameRect.value.top}px`,
+  width: `${previewFrameRect.value.width}px`,
+  height: `${previewFrameRect.value.height}px`
+}))
+
+const clipDragPreviewClip = computed(
+  () => clips.value.find((clip) => clip.id === clipDragPreview.value?.clipId) ?? null
+)
+
+const clipDragPreviewStyle = computed(() => {
+  const preview = clipDragPreview.value
+  const clip = clipDragPreviewClip.value
+  if (!preview || !clip) return { display: 'none' }
+  const trackIndex = Math.max(0, tracks.value.findIndex((track) => track.kind === preview.track))
+  return {
+    display: 'flex',
+    left: `${TRACK_LABEL_W + timeToX(preview.startSec)}px`,
+    top: `${28 + trackIndex * 52 + 8}px`,
+    width: `${Math.max(36, timeToX(clip.durationSec))}px`,
+    height: '36px'
+  }
 })
 
 const canSplitActiveClip = computed(() => {
@@ -1874,10 +2155,106 @@ function fitClipStart(
   return resolved
 }
 
+function reorderClipsOnTrack(
+  kind: ScriptTimelineTrackKind,
+  draggedId: string,
+  desiredStart: number,
+  durationSec: number
+): ScriptTimelineClip[] {
+  const dragged = clips.value.find((clip) => clip.id === draggedId)
+  if (!dragged) return clips.value
+
+  const others = clips.value
+    .filter((clip) => clip.track === kind && clip.id !== draggedId)
+    .slice()
+    .sort((a, b) => a.startSec - b.startSec)
+
+  const clampedStart = Math.max(0, desiredStart)
+  let insertIndex = others.findIndex(
+    (clip) =>
+      clampedStart <
+      clip.startSec + Math.max(MIN_CLIP_SEC, clip.durationSec) / 2 - 0.001
+  )
+  if (insertIndex < 0) insertIndex = others.length
+
+  const prefix = others.slice(0, insertIndex)
+  const suffix = others.slice(insertIndex)
+  const updatedTrack: ScriptTimelineClip[] = prefix.map((clip) => ({ ...clip }))
+
+  let cursor = prefix.length
+    ? prefix[prefix.length - 1]!.startSec + prefix[prefix.length - 1]!.durationSec
+    : 0
+  const nextStart = Math.max(clampedStart, cursor)
+  updatedTrack.push({ ...dragged, startSec: nextStart })
+  cursor = nextStart + Math.max(MIN_CLIP_SEC, durationSec)
+
+  for (const other of suffix) {
+    const start = cursor
+    updatedTrack.push({ ...other, startSec: start })
+    cursor = start + Math.max(MIN_CLIP_SEC, other.durationSec)
+  }
+
+  const byId = new Map(updatedTrack.map((clip) => [clip.id, clip]))
+  return clips.value.map((clip) =>
+    clip.track === kind ? byId.get(clip.id) ?? clip : clip
+  )
+}
+
 function clipStyle(clip: ScriptTimelineClip): Record<string, string> {
   return {
     left: `${timeToX(clip.startSec)}px`,
     width: `${Math.max(36, timeToX(clip.durationSec))}px`
+  }
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function overlayRect(clip: ScriptTimelineClip): {
+  left: number
+  top: number
+  width: number
+  height: number
+} {
+  const width = clamp01(clip.overlayWidth ?? 0.36)
+  const height = clamp01(clip.overlayHeight ?? 0.36)
+  return {
+    left: clamp01(clip.overlayX ?? 0.15),
+    top: clamp01(clip.overlayY ?? 0.15),
+    width,
+    height
+  }
+}
+
+function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
+  const rect = overlayRect(clip)
+  return {
+    left: `${rect.left * 100}%`,
+    top: `${rect.top * 100}%`,
+    width: `${rect.width * 100}%`,
+    height: `${rect.height * 100}%`,
+    opacity: `${clamp01(clip.opacity ?? 1)}`
+  }
+}
+
+function overlaySelectionStyle(clip: ScriptTimelineClip): Record<string, string> {
+  return overlayVideoStyle(clip)
+}
+
+function isOverlayClipActive(clip: ScriptTimelineClip): boolean {
+  return (
+    playheadSec.value >= clip.startSec &&
+    playheadSec.value < clip.startSec + clip.durationSec
+  )
+}
+
+function bindOverlayVideo(el: HTMLVideoElement | null, clipId: string): void {
+  if (el) {
+    el.muted = true
+    overlayEls.set(clipId, el)
+  } else {
+    overlayEls.delete(clipId)
   }
 }
 
@@ -1931,6 +2308,7 @@ function loadPersisted(): void {
   subtitleFontSize.value = settings?.subtitleFontSize ?? 36
   subtitleYOffset.value = settings?.subtitleYOffset ?? 80
   subtitleColor.value = settings?.subtitleColor ?? '#ffffff'
+  previewFrameRatioKey.value = settings?.previewFrameRatio ?? 'export'
   undoStack.value = []
   redoStack.value = []
   selectedClipIds.value = new Set()
@@ -1963,7 +2341,8 @@ async function persist(): Promise<void> {
       exportVideoBitrateKbps: exportVideoBitrateKbps.value,
       subtitleFontSize: subtitleFontSize.value,
       subtitleYOffset: subtitleYOffset.value,
-      subtitleColor: subtitleColor.value
+      subtitleColor: subtitleColor.value,
+      previewFrameRatio: previewFrameRatioKey.value
     }
   }
   const next = withScriptTimeline(readGenParams(), doc, props.timelineNodeId)
@@ -2010,6 +2389,9 @@ function applyPlaybackRate(): void {
   if (el) el.playbackRate = playbackRate.value
   for (const audio of audioEls.values()) {
     audio.playbackRate = playbackRate.value
+  }
+  for (const overlay of overlayEls.values()) {
+    overlay.playbackRate = playbackRate.value
   }
 }
 
@@ -2149,13 +2531,27 @@ async function addSourceToTrack(
         ? nextStartOnTrack(track)
         : fitClipStart(track, startSec, durationSec),
     durationSec,
-    ...(track === 'subtitle' ? { text: source.title } : {})
+    ...(track === 'subtitle' ? { text: source.title } : {}),
+    ...(track === 'overlay'
+      ? {
+          overlayX: 0.12,
+          overlayY: 0.12,
+          overlayWidth: 0.36,
+          overlayHeight: 0.36,
+          opacity: 1,
+          volume: 1
+        }
+      : {})
   }
   commitClips([...clips.value, clip])
   activeClipId.value = clip.id
   patchSourceDuration(source.id, durationSec)
   scheduleSave()
   if (track === 'video') void showClipPreview(clip)
+  if (track === 'overlay') {
+    playheadSec.value = clip.startSec
+    void syncPreviewToPlayhead()
+  }
 }
 
 function addBlankSubtitle(): void {
@@ -2319,6 +2715,161 @@ function onAudioFadeChange(field: 'fadeInSec' | 'fadeOutSec', value: number): vo
   scheduleSave()
 }
 
+function onOverlayFieldChange(
+  field: 'overlayX' | 'overlayY' | 'overlayWidth' | 'overlayHeight' | 'opacity' | 'volume',
+  value: number
+): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const rect = overlayRect(clip)
+  const next = { ...clip }
+  if (field === 'overlayWidth' || field === 'overlayHeight') {
+    const n = clamp01(value)
+    const min = 0.08
+    next[field] = Math.min(1, Math.max(min, n))
+    if (field === 'overlayWidth') {
+      next.overlayX = Math.min(rect.left, Math.max(0, 1 - next.overlayWidth!))
+    } else {
+      next.overlayY = Math.min(rect.top, Math.max(0, 1 - next.overlayHeight!))
+    }
+  } else if (field === 'overlayX') {
+    next.overlayX = Math.min(Math.max(0, value), Math.max(0, 1 - rect.width))
+  } else if (field === 'overlayY') {
+    next.overlayY = Math.min(Math.max(0, value), Math.max(0, 1 - rect.height))
+  } else {
+    next[field] = clamp01(value)
+  }
+  clips.value = clips.value.map((c) => (c.id === clip.id ? next : c))
+  scheduleSave()
+}
+
+function resetOverlayTransform(): void {
+  const clip = selectedOverlayClip.value
+  if (!clip) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            overlayX: 0.12,
+            overlayY: 0.12,
+            overlayWidth: 0.36,
+            overlayHeight: 0.36,
+            opacity: 1,
+            volume: 1
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function bindOverlayDragListeners(): void {
+  window.addEventListener('pointermove', onOverlayPointerMove)
+  window.addEventListener('pointerup', onOverlayPointerUp)
+  window.addEventListener('pointercancel', onOverlayPointerUp)
+}
+
+function unbindOverlayDragListeners(): void {
+  window.removeEventListener('pointermove', onOverlayPointerMove)
+  window.removeEventListener('pointerup', onOverlayPointerUp)
+  window.removeEventListener('pointercancel', onOverlayPointerUp)
+}
+
+function onOverlayPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
+  if (e.button !== 0 || lockedTracks.value.has(clip.track)) return
+  selectClip(clip)
+  const target = e.target as HTMLElement | null
+  const handle = target?.closest('.overlay-handle') as HTMLElement | null
+  const corner = (handle?.dataset.corner as 'tl' | 'tr' | 'bl' | 'br' | undefined) ?? 'br'
+  const rect = overlayRect(clip)
+  unbindOverlayDragListeners()
+  overlayDrag.value = {
+    clipId: clip.id,
+    pointerId: e.pointerId,
+    mode: handle ? 'scale' : 'move',
+    corner,
+    startX: e.clientX,
+    startY: e.clientY,
+    startLeft: rect.left,
+    startTop: rect.top,
+    startWidth: rect.width,
+    startHeight: rect.height
+  }
+  bindOverlayDragListeners()
+  e.preventDefault()
+}
+
+function onOverlayPointerMove(e: PointerEvent): void {
+  const session = overlayDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const canvas = previewCanvasEl.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  const dx = (e.clientX - session.startX) / rect.width
+  const dy = (e.clientY - session.startY) / rect.height
+  const minSize = 0.08
+
+  if (session.mode === 'move') {
+    const left = clamp01(session.startLeft + dx)
+    const top = clamp01(session.startTop + dy)
+    const x = Math.min(left, Math.max(0, 1 - session.startWidth))
+    const y = Math.min(top, Math.max(0, 1 - session.startHeight))
+    clips.value = clips.value.map((c) =>
+      c.id === session.clipId ? { ...c, overlayX: x, overlayY: y } : c
+    )
+    return
+  }
+
+  let left = session.startLeft
+  let top = session.startTop
+  let width = session.startWidth
+  let height = session.startHeight
+  const right = left + width
+  const bottom = top + height
+
+  if (session.corner.includes('l')) {
+    left = Math.min(Math.max(0, session.startLeft + dx), right - minSize)
+    width = right - left
+  } else {
+    const nextRight = Math.max(left + minSize, Math.min(1, right + dx))
+    width = nextRight - left
+  }
+
+  if (session.corner.includes('t')) {
+    top = Math.min(Math.max(0, session.startTop + dy), bottom - minSize)
+    height = bottom - top
+  } else {
+    const nextBottom = Math.max(top + minSize, Math.min(1, bottom + dy))
+    height = nextBottom - top
+  }
+
+  left = clamp01(left)
+  top = clamp01(top)
+  width = clamp01(width)
+  height = clamp01(height)
+  clips.value = clips.value.map((c) =>
+    c.id === session.clipId
+      ? {
+          ...c,
+          overlayX: left,
+          overlayY: top,
+          overlayWidth: width,
+          overlayHeight: height
+        }
+      : c
+  )
+}
+
+function onOverlayPointerUp(e: PointerEvent): void {
+  const session = overlayDrag.value
+  if (!session || e.pointerId !== session.pointerId) return
+  overlayDrag.value = null
+  unbindOverlayDragListeners()
+  scheduleSave()
+}
+
 function onClipStartChange(value: number): void {
   const clip = selectedClip.value
   if (!clip || lockedTracks.value.has(clip.track)) return
@@ -2470,6 +3021,7 @@ function trackKindAtClientY(clientY: number): ScriptTimelineTrackKind | null {
     const kind = row.dataset.trackKind
     if (
       kind === 'video' ||
+      kind === 'overlay' ||
       kind === 'voice' ||
       kind === 'subtitle' ||
       kind === 'music'
@@ -2521,6 +3073,13 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
     lastStartSec: clip.startSec,
     moved: false
   }
+  clipDragPreview.value = {
+    clipId: clip.id,
+    track: clip.track,
+    startSec: clip.startSec,
+    pointerX: e.clientX,
+    pointerY: e.clientY
+  }
   bindClipDragListeners()
   e.preventDefault()
 }
@@ -2530,13 +3089,33 @@ function onClipPointerMove(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   const clip = clips.value.find((c) => c.id === session.clipId)
   if (!clip) return
-  const kind = trackKindAtClientY(e.clientY) ?? clip.track
+  const hoverKind = trackKindAtClientY(e.clientY) ?? clip.track
+  if (hoverKind === 'overlay' && clip.track !== 'video' && clip.track !== 'overlay') return
+  if (clip.track === 'overlay' && hoverKind !== 'overlay' && hoverKind !== 'video') return
+  const kind = hoverKind
   const rect = laneRectForTrack(kind)
   if (!rect) return
   const desiredStart = Math.max(0, xToTime(e.clientX - rect.left) - session.grabOffsetSec)
+  clipDragPreview.value = {
+    clipId: clip.id,
+    track: kind,
+    startSec: desiredStart,
+    pointerX: e.clientX,
+    pointerY: e.clientY
+  }
   const moveDir = desiredStart >= session.lastStartSec ? 1 : -1
+  if (kind === clip.track) {
+    const next = reorderClipsOnTrack(kind, clip.id, desiredStart, clip.durationSec)
+    const moved = next.find((c) => c.id === clip.id)
+    if (!moved || Math.abs(moved.startSec - clip.startSec) < 0.001) return
+    session.moved = true
+    session.lastStartSec = moved.startSec
+    clips.value = next
+    return
+  }
+
   const startSec = fitClipStart(kind, desiredStart, clip.durationSec, clip.id, moveDir)
-  if (Math.abs(startSec - clip.startSec) < 0.001 && kind === clip.track) return
+  if (Math.abs(startSec - clip.startSec) < 0.001) return
   session.moved = true
   session.lastStartSec = startSec
   clips.value = clips.value.map((c) =>
@@ -2545,7 +3124,17 @@ function onClipPointerMove(e: PointerEvent): void {
           ...c,
           track: kind,
           startSec,
-          ...(kind === 'subtitle' && !c.text ? { text: c.text || c.title } : {})
+          ...(kind === 'subtitle' && !c.text ? { text: c.text || c.title } : {}),
+          ...(kind === 'overlay' && c.track !== 'overlay'
+            ? {
+                overlayX: 0.12,
+                overlayY: 0.12,
+                overlayWidth: 0.36,
+                overlayHeight: 0.36,
+                opacity: 1,
+                volume: 1
+              }
+            : {})
         }
       : c
   )
@@ -2555,6 +3144,7 @@ function onClipPointerUp(e: PointerEvent): void {
   const session = clipDrag.value
   if (!session || e.pointerId !== session.pointerId) return
   clipDrag.value = null
+  clipDragPreview.value = null
   unbindClipDragListeners()
   if (session.moved) scheduleSave()
 }
@@ -2658,6 +3248,7 @@ function hasExternalFiles(e: DragEvent): boolean {
 
 function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): boolean {
   if (kind === 'video') return asset.type === 'video'
+  if (kind === 'overlay') return asset.type === 'video'
   if (kind === 'voice' || kind === 'music') return asset.type === 'voice'
   if (kind === 'subtitle') return asset.type === 'video' || asset.type === 'voice'
   return false
@@ -2670,18 +3261,40 @@ function resolveTargetTrack(
 ): ScriptTimelineTrackKind | null {
   if (canDropAssetOnTrack(asset, requested)) return requested
   if (asset.type === 'voice') return requested === 'music' ? 'music' : 'voice'
-  if (asset.type === 'video') return requested === 'subtitle' ? 'subtitle' : 'video'
+  if (asset.type === 'video') {
+    if (requested === 'overlay') return 'overlay'
+    return requested === 'subtitle' ? 'subtitle' : 'video'
+  }
   return null
 }
 
 function canAcceptExternalFilesOnTrack(kind: ScriptTimelineTrackKind): boolean {
-  return kind === 'video' || kind === 'voice' || kind === 'music' || kind === 'subtitle'
+  return (
+    kind === 'video' ||
+    kind === 'overlay' ||
+    kind === 'voice' ||
+    kind === 'music' ||
+    kind === 'subtitle'
+  )
 }
 
 function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
   if (!e.dataTransfer) return
 
   if (e.dataTransfer.types.includes(DRAFT_MIME)) {
+    if (kind === 'overlay') {
+      const raw = e.dataTransfer.getData(DRAFT_MIME)
+      try {
+        const payload = JSON.parse(raw) as { mediaKind?: string }
+        if (payload.mediaKind === 'voice') {
+          e.dataTransfer.dropEffect = 'none'
+          dragOverTrack.value = null
+          return
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     // 素材上轨为 copy；若仍有 move 会话则配合 effectAllowed，避免 copy/move 不匹配导致无法放下
     const allowed = e.dataTransfer.effectAllowed
     e.dataTransfer.dropEffect =
@@ -2876,6 +3489,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
     } catch {
       return
     }
+    if (kind === 'overlay' && payload.mediaKind === 'voice') return
     if (payload._moveClipId) {
       const idx = clips.value.findIndex((c) => c.id === payload._moveClipId)
       if (idx >= 0) {
@@ -2949,6 +3563,7 @@ function onPlayheadPointerMove(e: PointerEvent): void {
   const rect = lane?.getBoundingClientRect()
   if (!rect) return
   playheadSec.value = Math.min(totalDuration.value, Math.max(0, xToTime(e.clientX - rect.left)))
+  void syncOverlayVideosToPlayhead(playing.value)
 }
 
 function onPlayheadPointerUp(e: PointerEvent): void {
@@ -2958,6 +3573,8 @@ function onPlayheadPointerUp(e: PointerEvent): void {
   window.removeEventListener('pointermove', onPlayheadPointerMove)
   window.removeEventListener('pointerup', onPlayheadPointerUp)
   window.removeEventListener('pointercancel', onPlayheadPointerUp)
+  void syncPreviewToPlayhead()
+  void syncAudioToPlayhead(playing.value)
 }
 
 function onTimelineBlankPointerDown(e: PointerEvent): void {
@@ -3014,8 +3631,41 @@ function disposeAudioPool(): void {
   audioEls.clear()
 }
 
+function pauseOverlayVideos(): void {
+  for (const el of overlayEls.values()) {
+    try {
+      el.pause()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function disposeOverlayVideos(): void {
+  pauseOverlayVideos()
+  overlayEls.clear()
+}
+
+function clipAudioVolumeAt(clip: ScriptTimelineClip, local: number): number {
+  let volume = Number.isFinite(clip.volume) ? clamp01(clip.volume!) : 1
+  const fadeIn = Number.isFinite(clip.fadeInSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.fadeInSec!))
+    : 0
+  const fadeOut = Number.isFinite(clip.fadeOutSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.fadeOutSec!))
+    : 0
+  if (fadeIn > 0 && local < fadeIn) volume *= local / fadeIn
+  const fadeStart = clip.durationSec - fadeOut
+  if (fadeOut > 0 && local > fadeStart) {
+    volume *= Math.max(0, (clip.durationSec - local) / fadeOut)
+  }
+  return clamp01(volume)
+}
+
 async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
-  const audioClips = clips.value.filter((c) => c.track === 'voice' || c.track === 'music')
+  const audioClips = clips.value.filter(
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay'
+  )
   const alive = new Set(audioClips.map((c) => c.id))
   for (const id of [...audioEls.keys()]) {
     if (alive.has(id)) continue
@@ -3043,6 +3693,7 @@ async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
     const local = playheadSec.value - clip.startSec
     const inRange = local >= -0.05 && local < clip.durationSec
     el.playbackRate = playbackRate.value
+    el.volume = clipAudioVolumeAt(clip, Math.max(0, local))
     if (!inRange) {
       if (!el.paused) el.pause()
       continue
@@ -3066,6 +3717,7 @@ async function syncPreviewToPlayhead(): Promise<void> {
   const clip = clipAtPlayhead()
   if (!clip) {
     previewSrc.value = ''
+    await syncOverlayVideosToPlayhead(playing.value)
     return
   }
   activeClipId.value = clip.id
@@ -3081,6 +3733,37 @@ async function syncPreviewToPlayhead(): Promise<void> {
   } catch {
     /* ignore */
   }
+  await syncOverlayVideosToPlayhead(false)
+}
+
+async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
+  await nextTick()
+  for (const clip of visibleClipsOn('overlay')) {
+    const el = overlayEls.get(clip.id)
+    if (!el) continue
+    const local = playheadSec.value - clip.startSec
+    const inRange = local >= -0.05 && local < clip.durationSec
+    el.playbackRate = playbackRate.value
+    if (!inRange) {
+      if (!el.paused) el.pause()
+      continue
+    }
+    if (!el.getAttribute('src')) {
+      el.src = await resolveSrc(clip)
+    }
+    try {
+      if (Math.abs(el.currentTime - Math.max(0, local)) > 0.25) {
+        el.currentTime = Math.max(0, local)
+      }
+    } catch {
+      /* ignore */
+    }
+    if (playingNow) {
+      if (el.paused) void el.play().catch(() => undefined)
+    } else if (!el.paused) {
+      el.pause()
+    }
+  }
 }
 
 function stopPlayback(): void {
@@ -3089,6 +3772,7 @@ function stopPlayback(): void {
   playSeq += 1
   previewEl.value?.pause()
   stopAllAudio()
+  pauseOverlayVideos()
 }
 
 /** 时间线工具栏：整轨联播（视频序列 + 声音轨） */
@@ -3127,7 +3811,7 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
     playheadSec.value = clip.startSec
     stopAllAudio()
 
-    if (clip.track === 'video') {
+    if (clip.track === 'video' || clip.track === 'overlay') {
       previewSrc.value = await resolveSrc(clip)
       await Promise.resolve()
       const el = previewEl.value
@@ -3168,6 +3852,7 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
     playMode.value = null
     stopAllAudio()
     previewEl.value?.pause()
+    pauseOverlayVideos()
   }
 }
 
@@ -3209,6 +3894,7 @@ async function runSequence(seq: number): Promise<void> {
       const elapsed = ((performance.now() - started) / 1000) * playbackRate.value
       playheadSec.value = origin + elapsed
       await syncAudioToPlayhead(true)
+      await syncOverlayVideosToPlayhead(true)
       if (playheadSec.value >= end) {
         if (loopPlayback.value) {
           playheadSec.value = 0
@@ -3221,6 +3907,7 @@ async function runSequence(seq: number): Promise<void> {
     playing.value = false
     playMode.value = null
     stopAllAudio()
+    pauseOverlayVideos()
     return
   }
 
@@ -3270,6 +3957,7 @@ async function runSequence(seq: number): Promise<void> {
     playing.value = false
     playMode.value = null
     stopAllAudio()
+    pauseOverlayVideos()
   }
 }
 
@@ -3289,6 +3977,7 @@ function waitUntilClipEnd(
       }
       playheadSec.value = clip.startSec + (el.currentTime || 0)
       if (syncAudio) void syncAudioToPlayhead(true)
+      if (syncAudio) void syncOverlayVideosToPlayhead(true)
       if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
@@ -3310,15 +3999,87 @@ function onPreviewEnded(): void {
 function onPreviewTimeUpdate(): void {
   if (!playing.value) return
   // solo 声音由 audio 回调推进
-  if (playMode.value === 'solo' && selectedPlayableClip.value?.track !== 'video') return
+  if (
+    playMode.value === 'solo' &&
+    selectedPlayableClip.value?.track !== 'video' &&
+    selectedPlayableClip.value?.track !== 'overlay'
+  ) {
+    return
+  }
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   const el = previewEl.value
   if (!clip || !el) return
   playheadSec.value = clip.startSec + (el.currentTime || 0)
+  void syncOverlayVideosToPlayhead(true)
+}
+
+function updatePreviewFrameRect(): void {
+  const stage = previewStageEl.value
+  if (!stage) return
+  const stageWidth = stage.clientWidth
+  const stageHeight = stage.clientHeight
+  const option = previewFrameRatioOptions.value.find(
+    (item) => item.key === previewFrameRatioKey.value
+  )
+  const targetAspect =
+    previewFrameRatioKey.value === 'video' &&
+    previewVideoMeta.value.width &&
+    previewVideoMeta.value.height
+      ? previewVideoMeta.value.width / previewVideoMeta.value.height
+      : previewFrameRatioKey.value === 'export'
+        ? exportWidth.value / exportHeight.value
+        : option?.ratio ?? exportWidth.value / exportHeight.value
+
+  const videoAspect =
+    previewVideoMeta.value.width && previewVideoMeta.value.height
+      ? previewVideoMeta.value.width / previewVideoMeta.value.height
+      : 0
+  const matchesVideo = videoAspect > 0 && Math.abs(targetAspect - videoAspect) < 0.001
+
+  if (
+    (previewFrameRatioKey.value === 'video' || matchesVideo) &&
+    previewVideoMeta.value.width &&
+    previewVideoMeta.value.height
+  ) {
+    const scale = Math.min(
+      stageWidth / previewVideoMeta.value.width,
+      stageHeight / previewVideoMeta.value.height
+    )
+    const width = previewVideoMeta.value.width * scale
+    const height = previewVideoMeta.value.height * scale
+    previewFrameRect.value = {
+      left: (stageWidth - width) / 2,
+      top: (stageHeight - height) / 2,
+      width,
+      height
+    }
+    return
+  }
+
+  const maxWidth = Math.max(80, stageWidth)
+  const maxHeight = Math.max(60, stageHeight)
+  let width = maxWidth
+  let height = width / targetAspect
+  if (height > maxHeight) {
+    height = maxHeight
+    width = height * targetAspect
+  }
+  previewFrameRect.value = {
+    left: (stageWidth - width) / 2,
+    top: (stageHeight - height) / 2,
+    width,
+    height
+  }
 }
 
 function onPreviewLoaded(): void {
   applyPlaybackRate()
+  const video = previewEl.value
+  previewVideoMeta.value = {
+    width: video?.videoWidth ?? 0,
+    height: video?.videoHeight ?? 0
+  }
+  updatePreviewFrameRect()
 }
 
 function resolveClipRelativePath(clip: ScriptTimelineClip): string | undefined {
@@ -3357,15 +4118,20 @@ async function exportTimeline(): Promise<void> {
     const exportClips: TimelineExportClip[] = clips.value
       .filter((c) => !hiddenTracks.value.has(c.track))
       .map((c) => ({
-      track: c.track,
-      relativePath: resolveClipRelativePath(c),
-      text: c.text,
-      title: c.title,
-      startSec: c.startSec,
-      durationSec: c.durationSec,
-      volume: c.volume,
-      fadeInSec: c.fadeInSec,
-      fadeOutSec: c.fadeOutSec
+        track: c.track,
+        relativePath: resolveClipRelativePath(c),
+        text: c.text,
+        title: c.title,
+        startSec: c.startSec,
+        durationSec: c.durationSec,
+        volume: c.volume,
+        fadeInSec: c.fadeInSec,
+        fadeOutSec: c.fadeOutSec,
+        overlayX: c.overlayX,
+        overlayY: c.overlayY,
+        overlayWidth: c.overlayWidth,
+        overlayHeight: c.overlayHeight,
+        opacity: c.opacity
       }))
     const defaultFileName = `cut-${Date.now()}.mp4`
     let result = await window.studio.exportScriptTimeline({
@@ -3602,6 +4368,7 @@ onMounted(async () => {
   const first = visibleClipsOn('video')[0]
   if (first) void showClipPreview(first)
   bindTimelineViewport()
+  bindPreviewStage()
   window.addEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
   window.addEventListener('keydown', onTimelineKeydown)
 })
@@ -3611,6 +4378,7 @@ watch(
   async () => {
     stopPlayback()
     disposeAudioPool()
+    disposeOverlayVideos()
     sourceThumbUrls.value = {}
     sourceThumbPathById.clear()
     loadPersisted()
@@ -3638,6 +4406,10 @@ watch(timelineCollapsed, async (collapsed) => {
   bindTimelineViewport()
 })
 
+watch(previewFrameRatioKey, () => {
+  updatePreviewFrameRect()
+})
+
 watch(contentEndSec, (end) => {
   if (end <= durationSec.value) return
   durationSec.value = Math.max(durationSec.value, end)
@@ -3645,6 +4417,7 @@ watch(contentEndSec, (end) => {
 })
 
 let timelineViewportRo: ResizeObserver | null = null
+let previewStageRo: ResizeObserver | null = null
 
 function bindTimelineViewport(): void {
   timelineViewportRo?.disconnect()
@@ -3658,18 +4431,33 @@ function bindTimelineViewport(): void {
   timelineViewportRo.observe(el)
 }
 
+function bindPreviewStage(): void {
+  previewStageRo?.disconnect()
+  const el = previewStageEl.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const update = () => updatePreviewFrameRect()
+  update()
+  previewStageRo = new ResizeObserver(update)
+  previewStageRo.observe(el)
+}
+
 onBeforeUnmount(() => {
   stopPlayback()
   disposeAudioPool()
+  disposeOverlayVideos()
   timelineViewportRo?.disconnect()
   timelineViewportRo = null
+  previewStageRo?.disconnect()
+  previewStageRo = null
   unbindClipDragListeners()
   unbindClipResizeListeners()
   unbindSubtitleDragListeners()
+  unbindOverlayDragListeners()
   window.removeEventListener('pointermove', onVerticalSplitterMove)
   window.removeEventListener('pointerup', onVerticalSplitterUp)
   window.removeEventListener('pointercancel', onVerticalSplitterUp)
   clipDrag.value = null
+  clipDragPreview.value = null
   clipResize.value = null
   window.removeEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
   window.removeEventListener('keydown', onTimelineKeydown)
@@ -3767,6 +4555,17 @@ defineExpose({ flushSave: persist, reloadSources })
   gap: 4px;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.inspector-reset {
+  margin-top: 2px;
+  align-self: flex-start;
 }
 
 .inspector-field input[type='number'],
@@ -4190,13 +4989,29 @@ defineExpose({ flushSave: persist, reloadSources })
   text-align: center;
 }
 
+.preview-frame-ratio-select {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 92px;
+  max-width: 92px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  background: rgba(8, 16, 28, 0.72);
+  color: #fff;
+  font-size: 11px;
+  outline: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .export-frame-overlay {
   position: absolute;
   z-index: 1;
   pointer-events: none;
-  height: calc(100% - 32px);
-  width: auto;
-  max-width: calc(100% - 32px);
   border: 1px solid rgba(120, 190, 255, 0.95);
   border-radius: 2px;
   box-sizing: border-box;
@@ -4219,6 +5034,67 @@ defineExpose({ flushSave: persist, reloadSources })
   line-height: 1.4;
   white-space: nowrap;
   letter-spacing: 0.02em;
+}
+
+.overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.overlay-video {
+  position: absolute;
+  pointer-events: auto;
+  cursor: move;
+  background: rgba(0, 0, 0, 0.35);
+  object-fit: cover;
+  touch-action: none;
+}
+
+.overlay-selection {
+  position: absolute;
+  pointer-events: none;
+  border: 1.5px solid #4c9aff;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 12px rgba(76, 154, 255, 0.38);
+}
+
+.overlay-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #4c9aff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  cursor: nwse-resize;
+}
+
+.overlay-handle.corner-tl {
+  left: -7px;
+  top: -7px;
+  cursor: nwse-resize;
+}
+
+.overlay-handle.corner-tr {
+  right: -7px;
+  top: -7px;
+  cursor: nesw-resize;
+}
+
+.overlay-handle.corner-bl {
+  left: -7px;
+  bottom: -7px;
+  cursor: nesw-resize;
+}
+
+.overlay-handle.corner-br {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
 }
 
 .subtitle-overlay {
@@ -4596,7 +5472,6 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .timeline-inner {
   position: relative;
-  height: 236px; /* 标尺 28 + 4 轨 × 52 */
   overflow: hidden;
 }
 
@@ -4796,7 +5671,37 @@ defineExpose({ flushSave: persist, reloadSources })
 .clip.dragging {
   cursor: grabbing;
   z-index: 4;
-  opacity: 0.92;
+  opacity: 0.55;
+  outline: 2px dashed color-mix(in srgb, var(--accent) 78%, transparent);
+  outline-offset: -1px;
+}
+
+.clip-drag-ghost {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 90%, #fff);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 24%, rgba(255, 255, 255, 0.18));
+  color: var(--text);
+  font-size: 11px;
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  user-select: none;
+}
+
+.clip-insert-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  width: 0;
+  border-left: 2px solid var(--accent);
+  pointer-events: none;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .clip.active {
@@ -4810,6 +5715,11 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .clip.subtitle {
   background: color-mix(in srgb, var(--accent) 35%, var(--bg-elevated));
+}
+
+.clip.overlay {
+  border-color: color-mix(in srgb, #4c9aff 68%, var(--border));
+  background: color-mix(in srgb, #4c9aff 20%, var(--bg-elevated));
 }
 
 .clip-title {
