@@ -55,6 +55,28 @@ export type ScriptTimelineClip = {
   overlayHeight?: number
   /** 画中画不透明度（0~1） */
   opacity?: number
+  /** 入场淡入转场时长（秒，视频轨） */
+  transitionInSec?: number
+  /** 出场淡出转场时长（秒，视频轨） */
+  transitionOutSec?: number
+  /** 转场效果：none/dissolve/fade/flash */
+  transitionType?:
+    | 'none'
+    | 'dissolve'
+    | 'fade'
+    | 'fadeout'
+    | 'fadein'
+    | 'flash'
+    | 'slideleft'
+    | 'slideright'
+    | 'slideup'
+    | 'slidedown'
+    | 'wipeleft'
+    | 'wiperight'
+    | 'wipeup'
+    | 'wipedown'
+    | 'circleopen'
+    | 'circleclose'
 }
 
 export type ScriptTimelineSettings = {
@@ -80,6 +102,8 @@ export type ScriptTimelineSettings = {
   subtitleColor?: string
   /** 预览框比例：video/export/16:9/9:16/1:1/4:3/3:4 */
   previewFrameRatio?: string
+  /** 时间线轨道高度（像素） */
+  trackHeight?: number
 }
 
 export type ScriptTimelineDocument = {
@@ -92,6 +116,8 @@ export type ScriptTimelineDocument = {
   hiddenTracks?: ScriptTimelineTrackKind[]
   /** 当前锁定的轨道 */
   lockedTracks?: ScriptTimelineTrackKind[]
+  /** 当前折叠的轨道 */
+  collapsedTracks?: ScriptTimelineTrackKind[]
   settings?: ScriptTimelineSettings
 }
 
@@ -114,6 +140,25 @@ export type TimelineExportClip = {
   overlayWidth?: number
   overlayHeight?: number
   opacity?: number
+  transitionInSec?: number
+  transitionOutSec?: number
+  transitionType?:
+    | 'none'
+    | 'dissolve'
+    | 'fade'
+    | 'fadeout'
+    | 'fadein'
+    | 'flash'
+    | 'slideleft'
+    | 'slideright'
+    | 'slideup'
+    | 'slidedown'
+    | 'wipeleft'
+    | 'wiperight'
+    | 'wipeup'
+    | 'wipedown'
+    | 'circleopen'
+    | 'circleclose'
 }
 
 export type TimelineExportInput = {
@@ -193,6 +238,9 @@ export function readScriptTimelineFromGenParams(
     lockedTracks: Array.isArray(doc.lockedTracks)
       ? doc.lockedTracks.filter(isTrackKind)
       : [],
+    collapsedTracks: Array.isArray(doc.collapsedTracks)
+      ? doc.collapsedTracks.filter(isTrackKind)
+      : [],
     settings: sanitizeSettings(doc.settings)
   }
 }
@@ -214,6 +262,7 @@ export function withScriptTimeline(
       ...(sourceGroups.length ? { sourceGroups } : {}),
       ...(timeline.hiddenTracks?.length ? { hiddenTracks: timeline.hiddenTracks } : {}),
       ...(timeline.lockedTracks?.length ? { lockedTracks: timeline.lockedTracks } : {}),
+      ...(timeline.collapsedTracks?.length ? { collapsedTracks: timeline.collapsedTracks } : {}),
       ...(settings ? { settings } : {})
     }
   }
@@ -267,6 +316,9 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
     ].includes(row.previewFrameRatio.trim())
   ) {
     next.previewFrameRatio = row.previewFrameRatio.trim()
+  }
+  if (typeof row.trackHeight === 'number' && Number.isFinite(row.trackHeight)) {
+    next.trackHeight = Math.min(96, Math.max(36, Math.round(row.trackHeight)))
   }
   return Object.keys(next).length ? next : undefined
 }

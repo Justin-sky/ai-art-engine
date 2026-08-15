@@ -109,24 +109,98 @@ function buildFilterGraph(
 ): { filter: string; mapVideo: string; mapAudio: string } {
   const filterParts: string[] = []
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
-  const videoLabels: string[] = ['base']
 
-  for (const clip of mainVideos) {
-    const start = Math.max(0, clip.startSec)
-    const dur = Math.max(0.05, clip.durationSec)
-    const vLabel = `v${clip.inputIndex}`
-    const ovLabel = `ov${clip.inputIndex}`
-    const prev = videoLabels[videoLabels.length - 1]!
+  const orderedMainVideos = [...mainVideos].sort(
+    (a, b) => a.startSec - b.startSec
+  )
+  let lastVideo = 'base'
+  if (orderedMainVideos.length) {
+    let currentLabel: string | null = null
+    let currentStartSec = 0
+    let currentDurationSec = 0
+
+    for (const [index, clip] of orderedMainVideos.entries()) {
+      const dur = Math.max(0.05, clip.durationSec)
+      const normalizedLabel = `main${index}`
+      filterParts.push(
+        `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${normalizedLabel}]`
+      )
+
+      if (!currentLabel) {
+        currentLabel = normalizedLabel
+        currentStartSec = Math.max(0, clip.startSec)
+        currentDurationSec = dur
+        continue
+      }
+
+      const clipStart = Math.max(0, clip.startSec)
+      const transitionIn = Math.min(
+        dur,
+        Math.max(0, clip.transitionInSec ?? 0)
+      )
+      const type = clip.transitionType ?? 'none'
+      const xfadeMap: Record<string, string> = {
+        dissolve: 'dissolve',
+        fade: 'fadeblack',
+        fadeout: 'fadeblack',
+        fadein: 'fadeblack',
+        flash: 'fadewhite',
+        slideleft: 'slideleft',
+        slideright: 'slideright',
+        slideup: 'slideup',
+        slidedown: 'slidedown',
+        wipeleft: 'wipeleft',
+        wiperight: 'wiperight',
+        wipeup: 'wipeup',
+        wipedown: 'wipedown',
+        circleopen: 'circleopen',
+        circleclose: 'circleclose'
+      }
+      const transitionName = xfadeMap[type] ?? 'fade'
+
+      const currentEnd = currentStartSec + currentDurationSec
+      const gap = Math.max(0, clipStart - currentEnd)
+      if (gap > 0) {
+        const paddedLabel = `${currentLabel}gap${index}`
+        filterParts.push(
+          `[${currentLabel}]tpad=stop_mode=add:stop_duration=${gap.toFixed(3)}:color=black[${paddedLabel}]`
+        )
+        currentLabel = paddedLabel
+        currentDurationSec += gap
+      }
+
+      const offset = Math.max(0, clipStart - currentStartSec)
+      const maxTransition = Math.min(
+        currentDurationSec - offset,
+        dur,
+        transitionIn
+      )
+      const transitionDuration = Math.max(0, maxTransition)
+      const xfadeLabel = `xfade${index}`
+      if (transitionDuration > 0) {
+        filterParts.push(
+          `[${currentLabel}][${normalizedLabel}]xfade=transition=${transitionName}:duration=${transitionDuration.toFixed(3)}:offset=${Math.max(0, offset).toFixed(3)}[${xfadeLabel}]`
+        )
+      } else {
+        filterParts.push(
+          `[${currentLabel}][${normalizedLabel}]concat=n=2:v=1:a=0[${xfadeLabel}]`
+        )
+      }
+      currentLabel = xfadeLabel
+      currentDurationSec =
+        currentDurationSec + dur - transitionDuration
+    }
+
+    const firstStart = orderedMainVideos[0]!.startSec
+    const shiftedMain = 'mainshifted'
     filterParts.push(
-      `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${vLabel}]`
+      `[${currentLabel}]setpts=PTS+${Math.max(0, firstStart).toFixed(3)}/TB[${shiftedMain}]`
     )
     filterParts.push(
-      `[${prev}][${vLabel}]overlay=0:0:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`
+      `[base][${shiftedMain}]overlay=0:0[mainbase]`
     )
-    videoLabels.push(ovLabel)
+    lastVideo = 'mainbase'
   }
-
-  let lastVideo = videoLabels[videoLabels.length - 1]!
 
   for (const clip of overlays) {
     const start = Math.max(0, clip.startSec)

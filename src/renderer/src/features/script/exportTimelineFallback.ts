@@ -47,6 +47,20 @@ function clipAt(
   return null
 }
 
+function topVideoClipAt(
+  clips: ScriptTimelineClip[],
+  t: number
+): ScriptTimelineClip | null {
+  let found: ScriptTimelineClip | null = null
+  for (const clip of clips) {
+    if (clip.track !== 'video') continue
+    if (t >= clip.startSec && t < clip.startSec + clip.durationSec) {
+      if (!found || clip.startSec >= found.startSec) found = clip
+    }
+  }
+  return found
+}
+
 function clipVolumeAt(clip: ScriptTimelineClip, local: number): number {
   let volume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
   const fadeIn = Number.isFinite(clip.fadeInSec)
@@ -61,6 +75,22 @@ function clipVolumeAt(clip: ScriptTimelineClip, local: number): number {
     volume *= Math.max(0, (clip.durationSec - local) / fadeOut)
   }
   return Math.min(1, Math.max(0, volume))
+}
+
+function clipVideoOpacityAt(clip: ScriptTimelineClip, local: number): number {
+  const fadeIn = Number.isFinite(clip.transitionInSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.transitionInSec!))
+    : 0
+  const fadeOut = Number.isFinite(clip.transitionOutSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.transitionOutSec!))
+    : 0
+  let opacity = 1
+  if (fadeIn > 0 && local < fadeIn) opacity *= local / fadeIn
+  const fadeStart = clip.durationSec - fadeOut
+  if (fadeOut > 0 && local > fadeStart) {
+    opacity *= Math.max(0, (clip.durationSec - local) / fadeOut)
+  }
+  return Math.min(1, Math.max(0, opacity))
 }
 
 export async function exportTimelineViaRecorder(
@@ -151,7 +181,7 @@ export async function exportTimelineViaRecorder(
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, W, H)
 
-    const vClip = clipAt(videoClips, 'video', t)
+    const vClip = topVideoClipAt(videoClips, t)
     if (vClip) {
       if (currentVideoId !== vClip.id) {
         currentVideoId = vClip.id
@@ -172,7 +202,10 @@ export async function exportTimelineViaRecorder(
         const scale = Math.min(W / vw, H / vh)
         const dw = vw * scale
         const dh = vh * scale
+        ctx.save()
+        ctx.globalAlpha = clipVideoOpacityAt(vClip, local)
         ctx.drawImage(videoEl, (W - dw) / 2, (H - dh) / 2, dw, dh)
+        ctx.restore()
       }
     } else {
       currentVideoId = ''
