@@ -5,8 +5,10 @@
 import { isDraftAssetId } from '@shared/domain'
 import {
   GRAPH_OUTPUT_NODE_IDS,
+  flattenVoicesValues,
   flattenVideosValues,
   type GraphDocument,
+  type GraphVoiceItem,
   type GraphVideoItem,
   type ScriptTimelineSource
 } from '@shared/graph'
@@ -44,6 +46,30 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
     durationSec: undefined
+  }
+}
+
+function voiceItemToSource(item: GraphVoiceItem, index: number): ScriptTimelineSource | null {
+  const relativePath = item.relativePath?.trim()
+  const assetId = item.id?.trim()
+  if (!relativePath && !assetId) return null
+  const project = useProjectStore()
+  const asset = assetId
+    ? project.assets.find((a) => a.id === assetId)
+    : relativePath
+      ? project.assets.find(
+          (a) =>
+            a.type === 'voice' &&
+            a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
+        )
+      : undefined
+  return {
+    id: assetId || relativePath || `voice:${index}`,
+    title: asset?.name?.trim() || `声音 ${index + 1}`,
+    relativePath: relativePath || asset?.relativePath,
+    assetId: asset?.id || assetId,
+    durationSec: undefined,
+    mediaKind: 'voice'
   }
 }
 
@@ -128,6 +154,39 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
   return sources
 }
 
+function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimelineSource[] {
+  const sources: ScriptTimelineSource[] = []
+  const seen = new Set<string>()
+  const push = (relativePath: string | undefined, assetId: string | undefined, title?: string): void => {
+    const key = assetId || relativePath || ''
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    const src = voiceItemToSource(
+      { id: assetId, relativePath, createdAt: undefined },
+      sources.length
+    )
+    if (!src) return
+    if (title) src.title = title
+    sources.push(src)
+  }
+  for (const node of doc.nodes) {
+    if (node.typeId !== 'asset.voice') continue
+    const title = node.title?.trim()
+    const params = node.params ?? {}
+    const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
+    if (runOut) {
+      const voices = flattenVoicesValues([runOut])
+      for (const item of voices) push(item.relativePath, item.id, title)
+    }
+    for (const item of Array.isArray(params.generatedVoices) ? params.generatedVoices : []) {
+      push(item?.relativePath, item?.id, title)
+    }
+    const rel = params.previewRelativePath?.trim()
+    if (rel) push(rel, undefined, title)
+  }
+  return sources
+}
+
 function asInputSources(list: ScriptTimelineSource[]): ScriptTimelineSource[] {
   return list.map((src) => ({
     ...src,
@@ -150,7 +209,10 @@ export async function collectScriptTimelineSources(input: {
   // 回退：扫描宿主图中所有 asset.video 节点产物
   if (doc) {
     const fromVideoNodes = collectFromVideoNodes(doc, hostId)
-    if (fromVideoNodes.length) return asInputSources(fromVideoNodes)
+    const fromVoiceNodes = collectFromVoiceNodes(doc, hostId)
+    if (fromVideoNodes.length || fromVoiceNodes.length) {
+      return asInputSources([...fromVideoNodes, ...fromVoiceNodes])
+    }
   }
   return []
 }

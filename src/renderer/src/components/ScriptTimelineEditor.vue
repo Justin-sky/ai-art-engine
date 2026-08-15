@@ -305,6 +305,11 @@
           <div
             v-if="activeSubtitleText"
             class="subtitle-overlay"
+            :style="{
+              fontSize: `${subtitleFontSize}px`,
+              bottom: `${Math.max(0, subtitleYOffset)}px`,
+              color: subtitleColor
+            }"
           >
             {{ activeSubtitleText }}
           </div>
@@ -323,6 +328,55 @@
               <span :class="playing && playMode === 'solo' ? 'pause' : 'triangle'" />
             </button>
             <span class="time">{{ formatTime(playheadSec) }} / {{ formatTime(totalDuration) }}</span>
+          </div>
+          <div v-if="selectedAudioClip" class="audio-mix-controls">
+            <label class="mix-field">
+              <span>{{ t('script.timeline.volume') }}</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                :value="selectedAudioClip.volume ?? 1"
+                @input="
+                  onAudioVolumeChange(
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              >
+            </label>
+            <label class="mix-field">
+              <span>{{ t('script.timeline.fadeIn') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="30"
+                step="0.1"
+                :value="selectedAudioClip.fadeInSec ?? 0"
+                @change="
+                  onAudioFadeChange(
+                    'fadeInSec',
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              >
+            </label>
+            <label class="mix-field">
+              <span>{{ t('script.timeline.fadeOut') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="30"
+                step="0.1"
+                :value="selectedAudioClip.fadeOutSec ?? 0"
+                @change="
+                  onAudioFadeChange(
+                    'fadeOutSec',
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              >
+            </label>
           </div>
         </div>
       </section>
@@ -370,6 +424,79 @@
               </option>
             </select>
           </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.exportResolution') }}</span>
+            <select
+              :value="`${exportWidth}x${exportHeight}`"
+              class="ctrl-select"
+              @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="res in EXPORT_RESOLUTIONS"
+                :key="res.label"
+                :value="`${res.w}x${res.h}`"
+              >
+                {{ res.label }}
+              </option>
+            </select>
+          </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.exportFps') }}</span>
+            <select
+              v-model.number="exportFps"
+              class="ctrl-select"
+              @change="scheduleSave"
+            >
+              <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
+                {{ fps }}
+              </option>
+            </select>
+          </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.exportBitrate') }}</span>
+            <input
+              v-model.number="exportVideoBitrateKbps"
+              class="ctrl-input"
+              type="number"
+              min="500"
+              max="200000"
+              step="500"
+              @change="scheduleSave"
+            >
+          </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.subtitleFontSize') }}</span>
+            <input
+              v-model.number="subtitleFontSize"
+              class="ctrl-input"
+              type="number"
+              min="12"
+              max="200"
+              step="1"
+              @change="scheduleSave"
+            >
+          </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.subtitleYOffset') }}</span>
+            <input
+              v-model.number="subtitleYOffset"
+              class="ctrl-input"
+              type="number"
+              min="0"
+              max="1000"
+              step="1"
+              @change="scheduleSave"
+            >
+          </label>
+          <label class="ctrl-field">
+            <span>{{ t('script.timeline.subtitleColor') }}</span>
+            <input
+              v-model="subtitleColor"
+              class="ctrl-input color-input"
+              type="color"
+              @change="scheduleSave"
+            >
+          </label>
           <label class="ctrl-check">
             <input
               v-model="loopPlayback"
@@ -406,6 +533,51 @@
           >
             {{ t('script.timeline.zoomFit') }}
           </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canSplitActiveClip"
+            :title="t('script.timeline.splitClip')"
+            @click="splitSelectedClipAtPlayhead"
+          >
+            ✂
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canUndo"
+            :title="t('script.timeline.undo')"
+            @click="undo"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canCopyClips"
+            :title="t('script.timeline.copyClip')"
+            @click="copySelectedClips"
+          >
+            ⧉
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canPasteClips"
+            :title="t('script.timeline.pasteClip')"
+            @click="pasteClips"
+          >
+            ▣
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canRedo"
+            :title="t('script.timeline.redo')"
+            @click="redo"
+          >
+            ↷
+          </button>
           <span class="zoom-readout">{{ Math.round(zoomFactor * 100) }}%</span>
           <button
             type="button"
@@ -421,6 +593,15 @@
                 })
                 : t('script.timeline.export')
             }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!canExportSrt"
+            :title="t('script.timeline.exportSrt')"
+            @click="exportSubtitles"
+          >
+            SRT
           </button>
         </div>
         <GraphToolbarCollapseBtn v-model="timelineCollapsed" />
@@ -466,14 +647,42 @@
             :key="track.kind"
             class="track-row droppable"
             :data-track-kind="track.kind"
-            :class="{ 'drag-over': dragOverTrack === track.kind }"
+            :class="{
+              'drag-over': dragOverTrack === track.kind,
+              'hidden-track': hiddenTracks.has(track.kind),
+              'locked-track': lockedTracks.has(track.kind)
+            }"
             @dragenter.prevent="onTrackDragOver($event, track.kind)"
             @dragover.prevent="onTrackDragOver($event, track.kind)"
             @dragleave="onTrackDragLeave($event, track.kind)"
             @drop.prevent="onTrackDrop($event, track.kind)"
           >
             <div class="track-label">
-              {{ track.label }}
+              <span>{{ track.label }}</span>
+              <button
+                type="button"
+                class="track-state-btn"
+                :title="
+                  hiddenTracks.has(track.kind)
+                    ? t('script.timeline.showTrack')
+                    : t('script.timeline.hideTrack')
+                "
+                @click.stop="toggleTrackHidden(track.kind)"
+              >
+                {{ hiddenTracks.has(track.kind) ? '👁' : '🙈' }}
+              </button>
+              <button
+                type="button"
+                class="track-state-btn"
+                :title="
+                  lockedTracks.has(track.kind)
+                    ? t('script.timeline.unlockTrack')
+                    : t('script.timeline.lockTrack')
+                "
+                @click.stop="toggleTrackLocked(track.kind)"
+              >
+                {{ lockedTracks.has(track.kind) ? '🔒' : '🔓' }}
+              </button>
             </div>
             <div class="track-lane">
               <template v-if="track.kind === 'video' && !clipsOn(track.kind).length">
@@ -512,22 +721,31 @@
                 </div>
               </template>
               <button
-                v-for="clip in clipsOn(track.kind)"
+                v-for="clip in visibleClipsOn(track.kind)"
                 :key="clip.id"
                 type="button"
-                class="clip"
-                :class="{
-                  active: clip.id === activeClipId,
-                  subtitle: clip.track === 'subtitle',
-                  dragging: clipDrag?.clipId === clip.id
-                }"
+                 class="clip"
+                 :class="{
+                   active: clip.id === activeClipId,
+                   selected: selectedClipIds.has(clip.id),
+                   subtitle: clip.track === 'subtitle',
+                   dragging: clipDrag?.clipId === clip.id
+                 }"
                 :style="clipStyle(clip)"
-                @pointerdown.stop="onClipPointerDown($event, clip)"
-                @dblclick.stop="onClipDblClick(clip)"
-              >
-                <span class="clip-title">{{ clipDisplayTitle(clip) }}</span>
-                <span
-                  class="clip-remove"
+                 @pointerdown.stop="onClipPointerDown($event, clip)"
+                 @dblclick.stop="onClipDblClick(clip)"
+               >
+                 <span
+                   class="clip-handle left"
+                   @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
+                 />
+                 <span class="clip-title">{{ clipDisplayTitle(clip) }}</span>
+                 <span
+                   class="clip-handle right"
+                   @pointerdown.stop="onClipResizeStart($event, clip, 'right')"
+                 />
+                 <span
+                   class="clip-remove"
                   :title="t('script.timeline.removeClip')"
                   @pointerdown.stop
                   @click.stop="removeClip(clip.id)"
@@ -645,11 +863,29 @@ const PX_PER_SEC_MIN = 4
 const ZOOM_MIN = 0.25
 const ZOOM_MAX = 8
 const minLaneSec = 12
+const SNAP_PX = 12
+const MIN_CLIP_SEC = 0.1
 const PLAYBACK_RATE_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
+const EXPORT_RESOLUTIONS = [
+  { w: 1280, h: 720, label: '1280 × 720' },
+  { w: 1920, h: 1080, label: '1920 × 1080' },
+  { w: 1080, h: 1920, label: '1080 × 1920' },
+  { w: 720, h: 1280, label: '720 × 1280' },
+  { w: 1024, h: 576, label: '1024 × 576' }
+]
+const EXPORT_FPS_OPTIONS = [24, 25, 30, 60]
 
 const sources = ref<ScriptTimelineSource[]>([])
 const sourceGroups = ref<ScriptTimelineSourceGroup[]>([])
 const clips = ref<ScriptTimelineClip[]>([])
+const undoStack = ref<ScriptTimelineClip[][]>([])
+const redoStack = ref<ScriptTimelineClip[][]>([])
+const selectedClipIds = ref<Set<string>>(new Set())
+const timelineClipboard = ref<ScriptTimelineClip[]>([])
+const hiddenTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
+const lockedTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
+let historyReady = false
+const HISTORY_LIMIT = 100
 const sourcesBusy = ref(false)
 /** 视频素材首帧预览 URL（与资产库列表同源） */
 const sourceThumbUrls = ref<Record<string, string>>({})
@@ -674,6 +910,13 @@ const durationSec = ref(minLaneSec)
 const durationInputSec = ref(minLaneSec)
 const playbackRate = ref(1)
 const loopPlayback = ref(false)
+const exportWidth = ref(1280)
+const exportHeight = ref(720)
+const exportFps = ref(30)
+const exportVideoBitrateKbps = ref(5000)
+const subtitleFontSize = ref(36)
+const subtitleYOffset = ref(80)
+const subtitleColor = ref('#ffffff')
 const exporting = ref(false)
 const exportProgress = ref(0)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
@@ -685,6 +928,14 @@ const clipDrag = ref<{
   clipId: string
   pointerId: number
   grabOffsetSec: number
+  lastStartSec: number
+  moved: boolean
+} | null>(null)
+
+const clipResize = ref<{
+  clipId: string
+  pointerId: number
+  edge: 'left' | 'right'
   moved: boolean
 } | null>(null)
 
@@ -719,6 +970,18 @@ const selectedPlayableClip = computed(() => {
   if (!clip) return null
   if (clip.track === 'video' || clip.track === 'voice' || clip.track === 'music') return clip
   return null
+})
+
+const selectedAudioClip = computed(() => {
+  const clip = selectedPlayableClip.value
+  return clip && (clip.track === 'voice' || clip.track === 'music') ? clip : null
+})
+
+const canSplitActiveClip = computed(() => {
+  const clip = clips.value.find((c) => c.id === activeClipId.value)
+  if (!clip) return false
+  const t = playheadSec.value
+  return t > clip.startSec + MIN_CLIP_SEC && t < clip.startSec + clip.durationSec - MIN_CLIP_SEC
 })
 
 function sourcesInGroup(groupId: string): ScriptTimelineSource[] {
@@ -992,7 +1255,7 @@ function removeSource(id: string): void {
   sources.value = sources.value.filter((s) => s.id !== id)
   const key = sourceIdentityKey(src)
   const removedClipIds = new Set<string>()
-  clips.value = clips.value.filter((clip) => {
+  commitClips(clips.value.filter((clip) => {
     const sameSource =
       clip.sourceId === src.id ||
       sourceIdentityKey({
@@ -1002,7 +1265,10 @@ function removeSource(id: string): void {
       }) === key
     if (sameSource) removedClipIds.add(clip.id)
     return !sameSource
-  })
+  }))
+  selectedClipIds.value = new Set(
+    [...selectedClipIds.value].filter((id) => clips.value.some((clip) => clip.id === id))
+  )
   if (activeClipId.value && removedClipIds.has(activeClipId.value)) {
     activeClipId.value = null
     previewSrc.value = ''
@@ -1109,6 +1375,243 @@ function clipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
     .sort((a, b) => a.startSec - b.startSec)
 }
 
+function visibleClipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
+  return hiddenTracks.value.has(kind) ? [] : clipsOn(kind)
+}
+
+function toggleTrackHidden(kind: ScriptTimelineTrackKind): void {
+  const next = new Set(hiddenTracks.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  hiddenTracks.value = next
+  scheduleSave()
+}
+
+function toggleTrackLocked(kind: ScriptTimelineTrackKind): void {
+  const next = new Set(lockedTracks.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  lockedTracks.value = next
+  scheduleSave()
+}
+
+function snapshotClips(): ScriptTimelineClip[] {
+  return clips.value.map((clip) => ({ ...clip }))
+}
+
+function commitClips(next: ScriptTimelineClip[]): void {
+  if (!historyReady) {
+    clips.value = next
+    return
+  }
+  undoStack.value.push(snapshotClips())
+  if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
+  redoStack.value = []
+  clips.value = next
+}
+
+const canUndo = computed(() => undoStack.value.length > 0)
+const canRedo = computed(() => redoStack.value.length > 0)
+const selectedClips = computed(() =>
+  clips.value.filter((clip) => selectedClipIds.value.has(clip.id))
+)
+const canCopyClips = computed(() => selectedClips.value.length > 0)
+const canPasteClips = computed(() => timelineClipboard.value.length > 0)
+const canExportSrt = computed(() =>
+  visibleClipsOn('subtitle').some((clip) => (clip.text || clip.title).trim())
+)
+
+function undo(): void {
+  if (!canUndo.value) return
+  redoStack.value.push(snapshotClips())
+  const prev = undoStack.value.pop()
+  clips.value = prev ?? []
+  if (activeClipId.value && !clips.value.some((c) => c.id === activeClipId.value)) {
+    activeClipId.value = null
+    previewSrc.value = ''
+  }
+  selectedClipIds.value = activeClipId.value
+    ? new Set([activeClipId.value])
+    : new Set()
+  scheduleSave()
+}
+
+function redo(): void {
+  if (!canRedo.value) return
+  undoStack.value.push(snapshotClips())
+  const next = redoStack.value.pop()
+  clips.value = next ?? []
+  if (activeClipId.value && !clips.value.some((c) => c.id === activeClipId.value)) {
+    activeClipId.value = null
+    previewSrc.value = ''
+  }
+  selectedClipIds.value = activeClipId.value
+    ? new Set([activeClipId.value])
+    : new Set()
+  scheduleSave()
+}
+
+function setSingleClipSelection(clipId: string): void {
+  selectedClipIds.value = new Set([clipId])
+}
+
+function toggleClipSelection(clipId: string): void {
+  const next = new Set(selectedClipIds.value)
+  if (next.has(clipId)) next.delete(clipId)
+  else next.add(clipId)
+  selectedClipIds.value = next
+}
+
+function copySelectedClips(): void {
+  const selected = selectedClips.value.length
+    ? selectedClips.value
+    : clips.value.filter((clip) => clip.id === activeClipId.value)
+  timelineClipboard.value = selected.map((clip) => ({ ...clip }))
+}
+
+function findOverlapInArray(
+  list: ScriptTimelineClip[],
+  kind: ScriptTimelineTrackKind,
+  startSec: number,
+  durationSec: number,
+  excludeClipId?: string
+): ScriptTimelineClip | null {
+  const endSec = startSec + durationSec
+  return (
+    list.find(
+      (clip) =>
+        clip.id !== excludeClipId &&
+        clip.track === kind &&
+        startSec < clip.startSec + clip.durationSec - 0.001 &&
+        endSec > clip.startSec + 0.001
+    ) ?? null
+  )
+}
+
+function fitStartInArray(
+  list: ScriptTimelineClip[],
+  kind: ScriptTimelineTrackKind,
+  desiredStart: number,
+  durationSec: number,
+  excludeClipId?: string
+): number {
+  const maxStart = Math.max(0, totalDuration.value - Math.max(MIN_CLIP_SEC, durationSec))
+  let resolved = Math.min(maxStart, Math.max(0, desiredStart))
+  for (let guard = 0; guard <= list.length; guard++) {
+    const overlap = findOverlapInArray(list, kind, resolved, durationSec, excludeClipId)
+    if (!overlap) return resolved
+    resolved = Math.min(maxStart, overlap.startSec + overlap.durationSec)
+  }
+  return resolved
+}
+
+function pasteClips(): void {
+  if (!timelineClipboard.value.length) return
+  const baseStart = playheadSec.value
+  const sorted = [...timelineClipboard.value].sort((a, b) => a.startSec - b.startSec)
+  const minStart = sorted[0]?.startSec ?? 0
+  const working = clips.value.map((clip) => ({ ...clip }))
+  const pasted: ScriptTimelineClip[] = []
+  for (const clip of sorted) {
+    const desiredStart = baseStart + Math.max(0, clip.startSec - minStart)
+    const startSec = fitStartInArray(working, clip.track, desiredStart, clip.durationSec)
+    const next: ScriptTimelineClip = {
+      ...clip,
+      id: newClipId(),
+      startSec
+    }
+    working.push(next)
+    pasted.push(next)
+  }
+  if (!pasted.length) return
+  commitClips(working)
+  selectedClipIds.value = new Set(pasted.map((clip) => clip.id))
+  activeClipId.value = pasted[0]?.id ?? activeClipId.value
+  scheduleSave()
+}
+
+function selectAllClips(): void {
+  selectedClipIds.value = new Set(clips.value.map((clip) => clip.id))
+}
+
+function deleteSelectedClips(): void {
+  const ids = new Set(selectedClipIds.value)
+  if (!ids.size) return
+  const removable = clips.value.filter(
+    (clip) => ids.has(clip.id) && !lockedTracks.value.has(clip.track)
+  )
+  if (!removable.length) return
+  commitClips(clips.value.filter((clip) => !ids.has(clip.id)))
+  if (activeClipId.value && ids.has(activeClipId.value)) {
+    activeClipId.value = null
+    previewSrc.value = ''
+  }
+  selectedClipIds.value = new Set()
+  scheduleSave()
+}
+
+function snapCandidates(excludeClipId?: string): number[] {
+  const points = [0, totalDuration.value, playheadSec.value]
+  for (const clip of clips.value) {
+    if (clip.id === excludeClipId) continue
+    points.push(clip.startSec, clip.startSec + clip.durationSec)
+  }
+  return points
+}
+
+function snapTime(sec: number, excludeClipId?: string): number {
+  const threshold = SNAP_PX / Math.max(1, pxPerSec.value)
+  let best = sec
+  let bestDist = threshold
+  for (const point of snapCandidates(excludeClipId)) {
+    const dist = Math.abs(point - sec)
+    if (dist < bestDist) {
+      best = point
+      bestDist = dist
+    }
+  }
+  return best
+}
+
+function findOverlap(
+  kind: ScriptTimelineTrackKind,
+  startSec: number,
+  durationSec: number,
+  excludeClipId?: string
+): ScriptTimelineClip | null {
+  const endSec = startSec + durationSec
+  return (
+    clips.value.find(
+      (clip) =>
+        clip.id !== excludeClipId &&
+        clip.track === kind &&
+        startSec < clip.startSec + clip.durationSec - 0.001 &&
+        endSec > clip.startSec + 0.001
+    ) ?? null
+  )
+}
+
+function fitClipStart(
+  kind: ScriptTimelineTrackKind,
+  desiredStart: number,
+  durationSec: number,
+  excludeClipId?: string,
+  moveDir = 1
+): number {
+  const snapped = snapTime(Math.max(0, desiredStart), excludeClipId)
+  const maxStart = Math.max(0, totalDuration.value - Math.max(MIN_CLIP_SEC, durationSec))
+  let resolved = Math.min(maxStart, snapped)
+  for (let guard = 0; guard <= clips.value.length; guard++) {
+    const overlap = findOverlap(kind, resolved, durationSec, excludeClipId)
+    if (!overlap) return resolved
+    resolved =
+      moveDir >= 0
+        ? Math.min(maxStart, overlap.startSec + overlap.durationSec)
+        : Math.max(0, overlap.startSec - durationSec)
+  }
+  return resolved
+}
+
 function clipStyle(clip: ScriptTimelineClip): Record<string, string> {
   return {
     left: `${timeToX(clip.startSec)}px`,
@@ -1137,6 +1640,8 @@ function loadPersisted(): void {
   sourceGroups.value = (doc.sourceGroups ?? [])
     .map((g) => normalizeScriptTimelineSourceGroup(g))
     .filter((g): g is ScriptTimelineSourceGroup => !!g)
+  hiddenTracks.value = new Set(doc.hiddenTracks ?? [])
+  lockedTracks.value = new Set(doc.lockedTracks ?? [])
   // 清理指向已删分组的引用
   const groupIds = new Set(sourceGroups.value.map((g) => g.id))
   sources.value = sources.value.map((s) =>
@@ -1154,6 +1659,18 @@ function loadPersisted(): void {
   durationInputSec.value = Math.round(nextDuration)
   playbackRate.value = normalizePlaybackRate(settings?.playbackRate ?? 1)
   loopPlayback.value = settings?.loop === true
+  exportWidth.value = settings?.exportWidth ?? 1280
+  exportHeight.value = settings?.exportHeight ?? 720
+  exportFps.value = settings?.exportFps ?? 30
+  exportVideoBitrateKbps.value = settings?.exportVideoBitrateKbps ?? 5000
+  subtitleFontSize.value = settings?.subtitleFontSize ?? 36
+  subtitleYOffset.value = settings?.subtitleYOffset ?? 80
+  subtitleColor.value = settings?.subtitleColor ?? '#ffffff'
+  undoStack.value = []
+  redoStack.value = []
+  selectedClipIds.value = new Set()
+  timelineClipboard.value = []
+  historyReady = true
   applyPlaybackRate()
 }
 
@@ -1169,10 +1686,19 @@ async function persist(): Promise<void> {
     clips: toPlain(clips.value) as ScriptTimelineClip[],
     sources: toPlain(sources.value) as ScriptTimelineSource[],
     sourceGroups: toPlain(sourceGroups.value) as ScriptTimelineSourceGroup[],
+    hiddenTracks: [...hiddenTracks.value],
+    lockedTracks: [...lockedTracks.value],
     settings: {
       durationSec: durationSec.value,
       playbackRate: playbackRate.value,
-      loop: loopPlayback.value
+      loop: loopPlayback.value,
+      exportWidth: exportWidth.value,
+      exportHeight: exportHeight.value,
+      exportFps: exportFps.value,
+      exportVideoBitrateKbps: exportVideoBitrateKbps.value,
+      subtitleFontSize: subtitleFontSize.value,
+      subtitleYOffset: subtitleYOffset.value,
+      subtitleColor: subtitleColor.value
     }
   }
   const next = withScriptTimeline(readGenParams(), doc)
@@ -1197,6 +1723,14 @@ function commitDuration(): void {
 function onRateChange(): void {
   playbackRate.value = normalizePlaybackRate(playbackRate.value)
   applyPlaybackRate()
+  scheduleSave()
+}
+
+function onExportResolutionChange(value: string): void {
+  const match = /^(\d+)x(\d+)$/i.exec(value.trim())
+  if (!match) return
+  exportWidth.value = Math.min(7680, Math.max(320, Number(match[1])))
+  exportHeight.value = Math.min(4320, Math.max(180, Number(match[2])))
   scheduleSave()
 }
 
@@ -1339,11 +1873,14 @@ async function addSourceToTrack(
     title: source.title,
     relativePath: source.relativePath,
     assetId: source.assetId,
-    startSec: startSec ?? nextStartOnTrack(track),
+    startSec:
+      startSec == null
+        ? nextStartOnTrack(track)
+        : fitClipStart(track, startSec, durationSec),
     durationSec,
     ...(track === 'subtitle' ? { text: source.title } : {})
   }
-  clips.value = [...clips.value, clip]
+  commitClips([...clips.value, clip])
   activeClipId.value = clip.id
   patchSourceDuration(source.id, durationSec)
   scheduleSave()
@@ -1361,7 +1898,7 @@ function addBlankSubtitle(): void {
     startSec: Math.max(0, playheadSec.value),
     durationSec: 3
   }
-  clips.value = [...clips.value, clip]
+  commitClips([...clips.value, clip])
   activeClipId.value = clip.id
   scheduleSave()
   openSubtitleEditor(clip)
@@ -1402,11 +1939,33 @@ function commitSubtitleEdit(): void {
   if (!editor) return
   const text = editor.draft.trim() || t('script.timeline.subtitlePlaceholder')
   if (editor.clipId) {
-    clips.value = clips.value.map((c) =>
+    commitClips(clips.value.map((c) =>
       c.id === editor.clipId ? { ...c, text, title: text } : c
-    )
+    ))
   }
   subtitleEditor.value = null
+  scheduleSave()
+}
+
+function onAudioVolumeChange(value: number): void {
+  const clip = selectedAudioClip.value
+  if (!clip) return
+  const volume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1
+  clips.value = clips.value.map((c) =>
+    c.id === clip.id ? { ...c, volume } : c
+  )
+  scheduleSave()
+}
+
+function onAudioFadeChange(field: 'fadeInSec' | 'fadeOutSec', value: number): void {
+  const clip = selectedAudioClip.value
+  if (!clip) return
+  const sec = Number.isFinite(value) ? Math.min(clip.durationSec, Math.max(0, value)) : 0
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id ? { ...c, [field]: sec } : c
+    )
+  )
   scheduleSave()
 }
 
@@ -1414,13 +1973,13 @@ async function autoPlaceAll(): Promise<void> {
   if (!videoSources.value.length) await reloadSources()
   const videos = videoSources.value
   if (!videos.length) return
-  clips.value = clips.value.filter((c) => c.track !== 'video')
+  const nextClips = clips.value.filter((c) => c.track !== 'video')
   let cursor = 0
   for (const src of videos) {
     const url = await resolveSrc(src)
     const durationSec =
       src.durationSec && src.durationSec > 0 ? src.durationSec : await probeDuration(url, 'video')
-    clips.value.push({
+    nextClips.push({
       id: newClipId(),
       track: 'video',
       sourceId: src.id,
@@ -1433,9 +1992,9 @@ async function autoPlaceAll(): Promise<void> {
     patchSourceDuration(src.id, durationSec)
     cursor += durationSec
   }
-  clips.value = [...clips.value]
+  commitClips(nextClips)
   scheduleSave()
-  const first = clipsOn('video')[0]
+  const first = visibleClipsOn('video')[0]
   if (first) {
     activeClipId.value = first.id
     void showClipPreview(first)
@@ -1443,13 +2002,45 @@ async function autoPlaceAll(): Promise<void> {
 }
 
 function removeClip(id: string): void {
-  clips.value = clips.value.filter((c) => c.id !== id)
+  const clip = clips.value.find((c) => c.id === id)
+  if (clip && lockedTracks.value.has(clip.track)) return
+  commitClips(clips.value.filter((c) => c.id !== id))
+  const selection = new Set(selectedClipIds.value)
+  selection.delete(id)
+  selectedClipIds.value = selection
   if (activeClipId.value === id) activeClipId.value = null
+  scheduleSave()
+}
+
+function splitSelectedClipAtPlayhead(): void {
+  const clip = clips.value.find((c) => c.id === activeClipId.value)
+  if (!clip) return
+  if (lockedTracks.value.has(clip.track)) return
+  const t = playheadSec.value
+  if (t <= clip.startSec + MIN_CLIP_SEC || t >= clip.startSec + clip.durationSec - MIN_CLIP_SEC) {
+    return
+  }
+  const first: ScriptTimelineClip = {
+    ...clip,
+    durationSec: t - clip.startSec
+  }
+  const second: ScriptTimelineClip = {
+    ...clip,
+    id: newClipId(),
+    startSec: t,
+    durationSec: clip.startSec + clip.durationSec - t
+  }
+  commitClips(clips.value.flatMap((c) => {
+    if (c.id !== clip.id) return [c]
+    return [first, second]
+  }))
+  activeClipId.value = second.id
   scheduleSave()
 }
 
 function selectClip(clip: ScriptTimelineClip): void {
   activeClipId.value = clip.id
+  setSingleClipSelection(clip.id)
   void showClipPreview(clip)
 }
 
@@ -1524,7 +2115,13 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   if (e.button !== 0) return
   const target = e.target as HTMLElement | null
   if (target?.closest('.clip-remove')) return
-  selectClip(clip)
+  if (lockedTracks.value.has(clip.track)) return
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    toggleClipSelection(clip.id)
+    activeClipId.value = clip.id
+  } else {
+    selectClip(clip)
+  }
   const rect = laneRectForTrack(clip.track)
   const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
   // 换轨会重挂载 DOM，监听挂在 window 上以免丢掉拖拽
@@ -1533,6 +2130,7 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
     clipId: clip.id,
     pointerId: e.pointerId,
     grabOffsetSec: timeAtPointer - clip.startSec,
+    lastStartSec: clip.startSec,
     moved: false
   }
   bindClipDragListeners()
@@ -1547,9 +2145,12 @@ function onClipPointerMove(e: PointerEvent): void {
   const kind = trackKindAtClientY(e.clientY) ?? clip.track
   const rect = laneRectForTrack(kind)
   if (!rect) return
-  const startSec = Math.max(0, xToTime(e.clientX - rect.left) - session.grabOffsetSec)
+  const desiredStart = Math.max(0, xToTime(e.clientX - rect.left) - session.grabOffsetSec)
+  const moveDir = desiredStart >= session.lastStartSec ? 1 : -1
+  const startSec = fitClipStart(kind, desiredStart, clip.durationSec, clip.id, moveDir)
   if (Math.abs(startSec - clip.startSec) < 0.001 && kind === clip.track) return
   session.moved = true
+  session.lastStartSec = startSec
   clips.value = clips.value.map((c) =>
     c.id === session.clipId
       ? {
@@ -1567,6 +2168,87 @@ function onClipPointerUp(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   clipDrag.value = null
   unbindClipDragListeners()
+  if (session.moved) scheduleSave()
+}
+
+function bindClipResizeListeners(): void {
+  window.addEventListener('pointermove', onClipResizeMove)
+  window.addEventListener('pointerup', onClipResizeUp)
+  window.addEventListener('pointercancel', onClipResizeUp)
+}
+
+function unbindClipResizeListeners(): void {
+  window.removeEventListener('pointermove', onClipResizeMove)
+  window.removeEventListener('pointerup', onClipResizeUp)
+  window.removeEventListener('pointercancel', onClipResizeUp)
+}
+
+function onClipResizeStart(
+  e: PointerEvent,
+  clip: ScriptTimelineClip,
+  edge: 'left' | 'right'
+): void {
+  if (e.button !== 0) return
+  if (lockedTracks.value.has(clip.track)) return
+  selectClip(clip)
+  unbindClipResizeListeners()
+  clipResize.value = { clipId: clip.id, pointerId: e.pointerId, edge, moved: false }
+  bindClipResizeListeners()
+  e.preventDefault()
+}
+
+function onClipResizeMove(e: PointerEvent): void {
+  const session = clipResize.value
+  if (!session || e.pointerId !== session.pointerId) return
+  const clip = clips.value.find((c) => c.id === session.clipId)
+  if (!clip) return
+  const rect = laneRectForTrack(clip.track)
+  if (!rect) return
+  const time = snapTime(xToTime(e.clientX - rect.left), clip.id)
+
+  if (session.edge === 'right') {
+    const minEnd = clip.startSec + MIN_CLIP_SEC
+    let nextEnd = Math.max(minEnd, time)
+    const blocker = clips.value.find(
+      (c) =>
+        c.id !== clip.id &&
+        c.track === clip.track &&
+        c.startSec > clip.startSec + 0.001 &&
+        nextEnd > c.startSec + 0.001
+    )
+    if (blocker) nextEnd = Math.max(minEnd, blocker.startSec)
+    nextEnd = Math.min(totalDuration.value, nextEnd)
+    const durationSec = Math.max(MIN_CLIP_SEC, nextEnd - clip.startSec)
+    if (Math.abs(durationSec - clip.durationSec) < 0.001) return
+    session.moved = true
+    clips.value = clips.value.map((c) =>
+      c.id === clip.id ? { ...c, durationSec } : c
+    )
+    return
+  }
+
+  const endSec = clip.startSec + clip.durationSec
+  let startSec = Math.max(0, Math.min(time, endSec - MIN_CLIP_SEC))
+  const durationSec = endSec - startSec
+  startSec = fitClipStart(clip.track, startSec, durationSec, clip.id, -1)
+  const nextDuration = endSec - startSec
+  if (
+    Math.abs(startSec - clip.startSec) < 0.001 &&
+    Math.abs(nextDuration - clip.durationSec) < 0.001
+  ) {
+    return
+  }
+  session.moved = true
+  clips.value = clips.value.map((c) =>
+    c.id === clip.id ? { ...c, startSec, durationSec: nextDuration } : c
+  )
+}
+
+function onClipResizeUp(e: PointerEvent): void {
+  const session = clipResize.value
+  if (!session || e.pointerId !== session.pointerId) return
+  clipResize.value = null
+  unbindClipResizeListeners()
   if (session.moved) scheduleSave()
 }
 
@@ -1810,6 +2492,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
       const idx = clips.value.findIndex((c) => c.id === payload._moveClipId)
       if (idx >= 0) {
         const prev = clips.value[idx]!
+        if (lockedTracks.value.has(prev.track)) return
         const next: ScriptTimelineClip = {
           ...prev,
           track: kind,
@@ -1818,7 +2501,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
             ? { text: prev.text || prev.title }
             : {})
         }
-        clips.value = clips.value.map((c, i) => (i === idx ? next : c))
+        commitClips(clips.value.map((c, i) => (i === idx ? next : c)))
         scheduleSave()
         return
       }
@@ -1871,7 +2554,7 @@ function onRulerPointerDown(e: PointerEvent): void {
 }
 
 function clipAtPlayhead(): ScriptTimelineClip | null {
-  const list = clipsOn('video')
+  const list = visibleClipsOn('video')
   for (const clip of list) {
     if (playheadSec.value >= clip.startSec && playheadSec.value < clip.startSec + clip.durationSec) {
       return clip
@@ -2088,7 +2771,7 @@ function waitUntilAudioClipEnd(
 }
 
 async function runSequence(seq: number): Promise<void> {
-  const list = clipsOn('video')
+  const list = visibleClipsOn('video')
   if (!list.length) {
     // 仅音频/字幕时按时间轴空播
     const end = totalDuration.value
@@ -2228,19 +2911,31 @@ async function exportTimeline(): Promise<void> {
     exportProgress.value = progress
   })
   try {
-    const exportClips: TimelineExportClip[] = clips.value.map((c) => ({
+    const exportClips: TimelineExportClip[] = clips.value
+      .filter((c) => !hiddenTracks.value.has(c.track))
+      .map((c) => ({
       track: c.track,
       relativePath: resolveClipRelativePath(c),
       text: c.text,
       title: c.title,
       startSec: c.startSec,
-      durationSec: c.durationSec
-    }))
+      durationSec: c.durationSec,
+      volume: c.volume,
+      fadeInSec: c.fadeInSec,
+      fadeOutSec: c.fadeOutSec
+      }))
     const defaultFileName = `cut-${Date.now()}.mp4`
     let result = await window.studio.exportScriptTimeline({
       clips: exportClips,
       durationSec: totalDuration.value,
       playbackRate: playbackRate.value,
+      width: exportWidth.value,
+      height: exportHeight.value,
+      fps: exportFps.value,
+      videoBitrateKbps: exportVideoBitrateKbps.value,
+      subtitleFontSize: subtitleFontSize.value,
+      subtitleYOffset: subtitleYOffset.value,
+      subtitleColor: subtitleColor.value,
       defaultFileName
     })
 
@@ -2257,6 +2952,9 @@ async function exportTimeline(): Promise<void> {
         playbackRate: playbackRate.value,
         resolveSrc,
         defaultFileName: defaultFileName.replace(/\.mp4$/i, '.webm'),
+        subtitleFontSize: subtitleFontSize.value,
+        subtitleYOffset: subtitleYOffset.value,
+        subtitleColor: subtitleColor.value,
         onProgress: (ratio) => {
           exportProgress.value = ratio
         }
@@ -2298,19 +2996,95 @@ async function exportTimeline(): Promise<void> {
   }
 }
 
+function formatSrtTimestamp(sec: number): string {
+  const total = Math.max(0, Math.round(sec * 1000))
+  const ms = total % 1000
+  const s = Math.floor(total / 1000) % 60
+  const m = Math.floor(total / 60000) % 60
+  const h = Math.floor(total / 3600000)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+async function exportSubtitles(): Promise<void> {
+  const subs = visibleClipsOn('subtitle')
+    .map((clip) => ({
+      text: (clip.text || clip.title).trim(),
+      startSec: clip.startSec,
+      endSec: clip.startSec + clip.durationSec
+    }))
+    .filter((clip) => clip.text)
+    .sort((a, b) => a.startSec - b.startSec)
+  if (!subs.length) return
+  const content = subs
+    .map(
+      (clip, index) =>
+        `${index + 1}\n${formatSrtTimestamp(clip.startSec)} --> ${formatSrtTimestamp(clip.endSec)}\n${clip.text}`
+    )
+    .join('\n\n')
+  try {
+    const path = await window.studio.saveTextFile({
+      content,
+      defaultPath: `subtitles-${Date.now()}.srt`,
+      filters: [{ name: 'SRT', extensions: ['srt'] }]
+    })
+    if (!path) return
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.exportSrtDone', { path })
+    })
+  } catch (err) {
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.exportSrtFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  }
+}
+
 function onDocPointerDownForSourceCtx(e: PointerEvent): void {
   const target = e.target as HTMLElement | null
   if (target?.closest('.source-ctx-menu')) return
   closeSourceCtx()
 }
 
+function onTimelineKeydown(e: KeyboardEvent): void {
+  if (e.defaultPrevented) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault()
+    deleteSelectedClips()
+    return
+  }
+  if (!(e.ctrlKey || e.metaKey)) return
+  const key = e.key.toLowerCase()
+  if (key === 'a') {
+    e.preventDefault()
+    selectAllClips()
+  } else if (key === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    undo()
+  } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault()
+    redo()
+  } else if (key === 'c') {
+    e.preventDefault()
+    copySelectedClips()
+  } else if (key === 'v') {
+    e.preventDefault()
+    pasteClips()
+  }
+}
+
 onMounted(async () => {
   loadPersisted()
   await reloadSources()
-  const first = clipsOn('video')[0]
+  const first = visibleClipsOn('video')[0]
   if (first) void showClipPreview(first)
   bindTimelineViewport()
   window.addEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
+  window.addEventListener('keydown', onTimelineKeydown)
 })
 
 watch(
@@ -2371,8 +3145,11 @@ onBeforeUnmount(() => {
   timelineViewportRo?.disconnect()
   timelineViewportRo = null
   unbindClipDragListeners()
+  unbindClipResizeListeners()
   clipDrag.value = null
+  clipResize.value = null
   window.removeEventListener('pointerdown', onDocPointerDownForSourceCtx, true)
+  window.removeEventListener('keydown', onTimelineKeydown)
   closeSourceCtx()
   if (saveTimer) clearTimeout(saveTimer)
   void persist()
@@ -2793,6 +3570,39 @@ defineExpose({ flushSave: persist, reloadSources })
   font-size: 11px;
 }
 
+.audio-mix-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+}
+
+.mix-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mix-field input[type='number'] {
+  width: 48px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.mix-field input[type='range'] {
+  width: 72px;
+}
+
 .preview-play-btn {
   width: 28px;
   height: 28px;
@@ -2941,6 +3751,11 @@ defineExpose({ flushSave: persist, reloadSources })
   min-width: 64px;
 }
 
+.ctrl-input.color-input {
+  width: 40px;
+  padding: 2px;
+}
+
 .ctrl-unit {
   font-size: 10px;
 }
@@ -3059,6 +3874,41 @@ defineExpose({ flushSave: persist, reloadSources })
   border-right: 1px solid var(--border);
   background: var(--bg-elevated);
   z-index: 3;
+}
+
+.track-label > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.track-state-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.track-state-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.track-row.hidden-track {
+  opacity: 0.45;
+}
+
+.track-row.locked-track .track-lane {
+  background: color-mix(in srgb, var(--warning, #c9842a) 10%, var(--bg-panel));
 }
 
 .track-label.gutter {
@@ -3187,6 +4037,11 @@ defineExpose({ flushSave: persist, reloadSources })
   outline: 1px solid var(--accent);
 }
 
+.clip.selected {
+  outline: 2px solid var(--success);
+  border-color: var(--success);
+}
+
 .clip.subtitle {
   background: color-mix(in srgb, var(--accent) 35%, var(--bg-elevated));
 }
@@ -3204,6 +4059,34 @@ defineExpose({ flushSave: persist, reloadSources })
   opacity: 0.7;
   font-size: 14px;
   line-height: 1;
+}
+
+.clip-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.clip-handle.left {
+  left: 0;
+}
+
+.clip-handle.right {
+  right: 0;
+}
+
+.clip:hover .clip-handle,
+.clip.active .clip-handle {
+  opacity: 1;
+}
+
+.clip-handle:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .playhead {

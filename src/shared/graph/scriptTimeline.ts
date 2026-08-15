@@ -39,6 +39,12 @@ export type ScriptTimelineClip = {
   /** 轨道上的起始时间（秒） */
   startSec: number
   durationSec: number
+  /** 声音/音乐轨片段音量（0~1） */
+  volume?: number
+  /** 淡入时长（秒） */
+  fadeInSec?: number
+  /** 淡出时长（秒） */
+  fadeOutSec?: number
 }
 
 export type ScriptTimelineSettings = {
@@ -48,6 +54,20 @@ export type ScriptTimelineSettings = {
   playbackRate?: number
   /** 播放到末尾后循环 */
   loop?: boolean
+  /** 导出画布宽度（像素） */
+  exportWidth?: number
+  /** 导出画布高度（像素） */
+  exportHeight?: number
+  /** 导出帧率 */
+  exportFps?: number
+  /** 视频目标码率（kbps） */
+  exportVideoBitrateKbps?: number
+  /** 字幕字号（像素） */
+  subtitleFontSize?: number
+  /** 字幕距底部距离（像素） */
+  subtitleYOffset?: number
+  /** 字幕颜色（#RRGGBB） */
+  subtitleColor?: string
 }
 
 export type ScriptTimelineDocument = {
@@ -56,6 +76,10 @@ export type ScriptTimelineDocument = {
   sources?: ScriptTimelineSource[]
   /** 导入素材的自定义分组 */
   sourceGroups?: ScriptTimelineSourceGroup[]
+  /** 当前隐藏的轨道 */
+  hiddenTracks?: ScriptTimelineTrackKind[]
+  /** 当前锁定的轨道 */
+  lockedTracks?: ScriptTimelineTrackKind[]
   settings?: ScriptTimelineSettings
 }
 
@@ -70,12 +94,22 @@ export type TimelineExportClip = {
   title: string
   startSec: number
   durationSec: number
+  volume?: number
+  fadeInSec?: number
+  fadeOutSec?: number
 }
 
 export type TimelineExportInput = {
   clips: TimelineExportClip[]
   durationSec: number
   playbackRate?: number
+  width?: number
+  height?: number
+  fps?: number
+  videoBitrateKbps?: number
+  subtitleFontSize?: number
+  subtitleYOffset?: number
+  subtitleColor?: string
   /** 另存为默认文件名（不含路径） */
   defaultFileName?: string
 }
@@ -129,6 +163,12 @@ export function readScriptTimelineFromGenParams(
           .map((item) => normalizeScriptTimelineSourceGroup(item))
           .filter((item): item is ScriptTimelineSourceGroup => !!item)
       : [],
+    hiddenTracks: Array.isArray(doc.hiddenTracks)
+      ? doc.hiddenTracks.filter(isTrackKind)
+      : [],
+    lockedTracks: Array.isArray(doc.lockedTracks)
+      ? doc.lockedTracks.filter(isTrackKind)
+      : [],
     settings: sanitizeSettings(doc.settings)
   }
 }
@@ -147,6 +187,8 @@ export function withScriptTimeline(
       clips: timeline.clips,
       ...(timeline.sources?.length ? { sources: timeline.sources } : {}),
       ...(sourceGroups.length ? { sourceGroups } : {}),
+      ...(timeline.hiddenTracks?.length ? { hiddenTracks: timeline.hiddenTracks } : {}),
+      ...(timeline.lockedTracks?.length ? { lockedTracks: timeline.lockedTracks } : {}),
       ...(settings ? { settings } : {})
     }
   }
@@ -163,6 +205,30 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
     next.playbackRate = normalizePlaybackRate(row.playbackRate)
   }
   if (typeof row.loop === 'boolean') next.loop = row.loop
+  if (typeof row.exportWidth === 'number' && Number.isFinite(row.exportWidth)) {
+    next.exportWidth = Math.min(7680, Math.max(320, Math.round(row.exportWidth)))
+  }
+  if (typeof row.exportHeight === 'number' && Number.isFinite(row.exportHeight)) {
+    next.exportHeight = Math.min(4320, Math.max(180, Math.round(row.exportHeight)))
+  }
+  if (typeof row.exportFps === 'number' && Number.isFinite(row.exportFps)) {
+    next.exportFps = Math.min(60, Math.max(1, Math.round(row.exportFps)))
+  }
+  if (typeof row.exportVideoBitrateKbps === 'number' && Number.isFinite(row.exportVideoBitrateKbps)) {
+    next.exportVideoBitrateKbps = Math.min(
+      200000,
+      Math.max(500, Math.round(row.exportVideoBitrateKbps))
+    )
+  }
+  if (typeof row.subtitleFontSize === 'number' && Number.isFinite(row.subtitleFontSize)) {
+    next.subtitleFontSize = Math.min(200, Math.max(12, Math.round(row.subtitleFontSize)))
+  }
+  if (typeof row.subtitleYOffset === 'number' && Number.isFinite(row.subtitleYOffset)) {
+    next.subtitleYOffset = Math.min(1000, Math.max(0, Math.round(row.subtitleYOffset)))
+  }
+  if (typeof row.subtitleColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(row.subtitleColor.trim())) {
+    next.subtitleColor = row.subtitleColor.trim()
+  }
   return Object.keys(next).length ? next : undefined
 }
 
@@ -205,6 +271,10 @@ export function normalizeScriptTimelineSource(
     }
   }
   return next
+}
+
+function isTrackKind(value: unknown): value is ScriptTimelineTrackKind {
+  return value === 'video' || value === 'voice' || value === 'subtitle' || value === 'music'
 }
 
 function isClip(item: unknown): item is ScriptTimelineClip {

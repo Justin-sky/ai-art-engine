@@ -16,6 +16,9 @@ export type TimelineRecorderExportInput = {
   resolveSrc: ResolveSrc
   onProgress?: (ratio: number) => void
   defaultFileName?: string
+  subtitleFontSize?: number
+  subtitleYOffset?: number
+  subtitleColor?: string
 }
 
 export type TimelineRecorderExportResult =
@@ -44,6 +47,22 @@ function clipAt(
   return null
 }
 
+function clipVolumeAt(clip: ScriptTimelineClip, local: number): number {
+  let volume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
+  const fadeIn = Number.isFinite(clip.fadeInSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.fadeInSec!))
+    : 0
+  const fadeOut = Number.isFinite(clip.fadeOutSec)
+    ? Math.min(clip.durationSec, Math.max(0, clip.fadeOutSec!))
+    : 0
+  if (fadeIn > 0 && local < fadeIn) volume *= local / fadeIn
+  const fadeStart = clip.durationSec - fadeOut
+  if (fadeOut > 0 && local > fadeStart) {
+    volume *= Math.max(0, (clip.durationSec - local) / fadeOut)
+  }
+  return Math.min(1, Math.max(0, volume))
+}
+
 export async function exportTimelineViaRecorder(
   input: TimelineRecorderExportInput
 ): Promise<TimelineRecorderExportResult> {
@@ -56,6 +75,12 @@ export async function exportTimelineViaRecorder(
   const rate = input.playbackRate > 0 ? input.playbackRate : 1
   const W = 1280
   const H = 720
+  const subtitleFontSize = Math.min(200, Math.max(12, Math.round(input.subtitleFontSize ?? 36)))
+  const subtitleYOffset = Math.min(1000, Math.max(0, Math.round(input.subtitleYOffset ?? 80)))
+  const subtitleColor =
+    input.subtitleColor && /^#[0-9a-fA-F]{6}$/.test(input.subtitleColor.trim())
+      ? input.subtitleColor.trim()
+      : '#ffffff'
 
   const canvas = document.createElement('canvas')
   canvas.width = W
@@ -165,19 +190,20 @@ export async function exportTimelineViaRecorder(
         /* ignore */
       }
       if (node.el.paused) void node.el.play().catch(() => undefined)
+      node.el.volume = clipVolumeAt(clip, local)
     }
 
     const sub = clipAt(input.clips, 'subtitle', t)
     if (sub) {
       const text = (sub.text || sub.title).trim()
       if (text) {
-        ctx.font = '36px sans-serif'
+        ctx.font = `${subtitleFontSize}px sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'bottom'
         ctx.lineWidth = 4
         ctx.strokeStyle = '#000'
-        ctx.fillStyle = '#fff'
-        const y = H - 56
+        ctx.fillStyle = subtitleColor
+        const y = H - subtitleYOffset
         ctx.strokeText(text, W / 2, y)
         ctx.fillText(text, W / 2, y)
       }

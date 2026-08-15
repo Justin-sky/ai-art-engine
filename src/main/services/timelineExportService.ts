@@ -98,7 +98,13 @@ function buildFilterGraph(
   subs: TimelineExportClip[],
   baseVideoIndex: number,
   baseAudioIndex: number,
-  rate: number
+  rate: number,
+  width: number,
+  height: number,
+  fps: number,
+  subtitleFontSize: number,
+  subtitleYOffset: number,
+  subtitleColor: string
 ): { filter: string; mapVideo: string; mapAudio: string } {
   const filterParts: string[] = []
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
@@ -111,7 +117,7 @@ function buildFilterGraph(
     const ovLabel = `ov${clip.inputIndex}`
     const prev = videoLabels[videoLabels.length - 1]!
     filterParts.push(
-      `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${vLabel}]`
+      `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${vLabel}]`
     )
     filterParts.push(
       `[${prev}][${vLabel}]overlay=0:0:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`
@@ -130,7 +136,7 @@ function buildFilterGraph(
     const end = start + Math.max(0.05, sub.durationSec)
     const next = `sub${i}`
     filterParts.push(
-      `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=36:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-80:enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'[${next}]`
+      `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${subtitleFontSize}:fontcolor=${subtitleColor}:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${subtitleYOffset}:enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'[${next}]`
     )
     lastVideo = next
   }
@@ -139,10 +145,25 @@ function buildFilterGraph(
   for (const clip of audios) {
     const startMs = Math.max(0, Math.round(clip.startSec * 1000))
     const dur = Math.max(0.05, clip.durationSec)
+    const volume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
+    const fadeIn = Number.isFinite(clip.fadeInSec)
+      ? Math.min(dur, Math.max(0, clip.fadeInSec!))
+      : 0
+    const fadeOut = Number.isFinite(clip.fadeOutSec)
+      ? Math.min(dur, Math.max(0, clip.fadeOutSec!))
+      : 0
     const aLabel = `a${clip.inputIndex}`
-    filterParts.push(
-      `[${clip.inputIndex}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,adelay=${startMs}|${startMs}[${aLabel}]`
-    )
+    const chain = [
+      'atrim=0:' + dur,
+      'asetpts=PTS-STARTPTS',
+      volume !== 1 ? `volume=${volume.toFixed(3)}` : '',
+      fadeIn > 0 ? `afade=t=in:st=0:d=${fadeIn.toFixed(3)}` : '',
+      fadeOut > 0 ? `afade=t=out:st=${Math.max(0, dur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}` : '',
+      `adelay=${startMs}|${startMs}`
+    ]
+      .filter(Boolean)
+      .join(',')
+    filterParts.push(`[${clip.inputIndex}:a]${chain}[${aLabel}]`)
     audioMixInputs.push(`[${aLabel}]`)
   }
 
@@ -167,6 +188,25 @@ async function encodeTimeline(
 ): Promise<void> {
   const duration = Math.max(1, input.durationSec)
   const rate = input.playbackRate && input.playbackRate > 0 ? input.playbackRate : 1
+  const width = Math.min(7680, Math.max(320, Math.round(input.width ?? 1280)))
+  const height = Math.min(4320, Math.max(180, Math.round(input.height ?? 720)))
+  const fps = Math.min(60, Math.max(1, Math.round(input.fps ?? 30)))
+  const videoBitrateKbps = Math.min(
+    200000,
+    Math.max(500, Math.round(input.videoBitrateKbps ?? 5000))
+  )
+  const subtitleFontSize = Math.min(
+    200,
+    Math.max(12, Math.round(input.subtitleFontSize ?? 36))
+  )
+  const subtitleYOffset = Math.min(
+    1000,
+    Math.max(0, Math.round(input.subtitleYOffset ?? 80))
+  )
+  const subtitleColor =
+    input.subtitleColor && /^#[0-9a-fA-F]{6}$/.test(input.subtitleColor.trim())
+      ? input.subtitleColor.trim()
+      : 'white'
 
   const videoClips = input.clips.filter((c) => c.track === 'video')
   const audioClips = input.clips.filter((c) => c.track === 'voice' || c.track === 'music')
@@ -175,7 +215,12 @@ async function encodeTimeline(
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
   let inputIndex = 0
 
-  args.push('-f', 'lavfi', '-i', `color=c=black:s=1280x720:d=${duration}:r=30`)
+  args.push(
+    '-f',
+    'lavfi',
+    '-i',
+    `color=c=black:s=${width}x${height}:d=${duration}:r=${fps}`
+  )
   const baseVideoIndex = inputIndex++
   args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:d=${duration}`)
   const baseAudioIndex = inputIndex++
@@ -206,7 +251,13 @@ async function encodeTimeline(
     subs,
     baseVideoIndex,
     baseAudioIndex,
-    rate
+    rate,
+    width,
+    height,
+    fps,
+    subtitleFontSize,
+    subtitleYOffset,
+    subtitleColor
   )
 
   args.push(
@@ -224,6 +275,8 @@ async function encodeTimeline(
     'aac',
     '-b:a',
     '192k',
+    '-b:v',
+    `${videoBitrateKbps}k`,
     '-movflags',
     '+faststart',
     '-t',

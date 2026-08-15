@@ -784,10 +784,28 @@ export default {
         subtitle: '字幕',
         music: '音乐'
       },
+      hideTrack: '隐藏轨道',
+      showTrack: '显示轨道',
+      lockTrack: '锁定轨道',
+      unlockTrack: '解锁轨道',
       removeClip: '移除片段',
+      splitClip: '在播放头分割选中片段',
+      undo: '撤销',
+      redo: '重做',
+      copyClip: '复制选中片段',
+      pasteClip: '在播放头粘贴片段',
       duration: '总时长',
       durationHint: '时间线总时长（秒），不得短于素材内容',
       rate: '速度',
+      volume: '音量',
+      fadeIn: '淡入',
+      fadeOut: '淡出',
+      exportResolution: '分辨率',
+      exportFps: '帧率',
+      exportBitrate: '码率',
+      subtitleFontSize: '字幕字号',
+      subtitleYOffset: '字幕高度',
+      subtitleColor: '字幕颜色',
       loop: '循环',
       toStart: '回到起点',
       play: '播放',
@@ -806,7 +824,10 @@ export default {
       exportDoneFallback:
         '未检测到 ffmpeg，已用预览录制导出 WebM：\n{path}\n\n安装 ffmpeg 并加入 PATH（或设置 FFMPEG_PATH）可导出更高质量 MP4。',
       exportFailed: '导出失败：{error}',
-      exportEmpty: '时间线为空，无法导出'
+      exportEmpty: '时间线为空，无法导出',
+      exportSrt: '导出字幕 SRT',
+      exportSrtDone: '字幕已导出：\n{path}',
+      exportSrtFailed: '字幕导出失败：{error}'
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'

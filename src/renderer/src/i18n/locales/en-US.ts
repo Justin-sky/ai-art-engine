@@ -788,10 +788,28 @@ export default {
         subtitle: 'Subs',
         music: 'Music'
       },
+      hideTrack: 'Hide track',
+      showTrack: 'Show track',
+      lockTrack: 'Lock track',
+      unlockTrack: 'Unlock track',
       removeClip: 'Remove clip',
+      splitClip: 'Split selected clip at playhead',
+      undo: 'Undo',
+      redo: 'Redo',
+      copyClip: 'Copy selected clips',
+      pasteClip: 'Paste clips at playhead',
       duration: 'Duration',
       durationHint: 'Timeline length in seconds (cannot be shorter than content)',
       rate: 'Speed',
+      volume: 'Volume',
+      fadeIn: 'Fade in',
+      fadeOut: 'Fade out',
+      exportResolution: 'Resolution',
+      exportFps: 'FPS',
+      exportBitrate: 'Bitrate',
+      subtitleFontSize: 'Subtitle size',
+      subtitleYOffset: 'Subtitle height',
+      subtitleColor: 'Subtitle color',
       loop: 'Loop',
       toStart: 'Go to start',
       play: 'Play',
@@ -810,7 +828,10 @@ export default {
       exportDoneFallback:
         'ffmpeg not found — exported WebM via preview capture:\n{path}\n\nInstall ffmpeg on PATH (or set FFMPEG_PATH) for higher-quality MP4.',
       exportFailed: 'Export failed: {error}',
-      exportEmpty: 'Timeline is empty'
+      exportEmpty: 'Timeline is empty',
+      exportSrt: 'Export subtitles as SRT',
+      exportSrtDone: 'Subtitles exported:\n{path}',
+      exportSrtFailed: 'Subtitle export failed: {error}'
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'
