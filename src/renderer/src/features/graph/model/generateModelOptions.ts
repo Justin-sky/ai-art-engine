@@ -1,5 +1,10 @@
 import type { ModelModality, ModelProviderInstance } from '@shared/modelProvider'
-import { isLocalOpenAiProvider, isVllmProvider, modalityConfig } from '@shared/modelProvider'
+import {
+  allowsEmptyApiKey,
+  isLocalOpenAiProvider,
+  isVllmProvider,
+  modalityConfig
+} from '@shared/modelProvider'
 
 export interface GenerateModelOption {
   key: string
@@ -25,8 +30,8 @@ export function buildModelOptions(
   const options: GenerateModelOption[] = []
   for (const provider of providers) {
     if (!provider.enabled) continue
-    // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）无需 API Key
-    if (!provider.apiKey.trim() && !isLocalOpenAiProvider(provider)) continue
+    // 本地 OpenAI 兼容服务与 ComfyUI 无需 API Key
+    if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     // 本地服务仅文本（多模态理解可在文本节点传图）
     if (isVllmProvider(provider) && modality !== 'text' && modality !== 'video') continue
     if (
@@ -40,10 +45,12 @@ export function buildModelOptions(
     if (
       modality === 'audio' &&
       provider.providerKind !== 'volcengine-ark' &&
-      provider.providerKind !== 'minimax'
+      provider.providerKind !== 'minimax' &&
+      provider.providerKind !== 'comfyui'
     ) {
       continue
     }
+    if (provider.providerKind === 'comfyui' && modality === 'text') continue
     // 可灵仅图片/视频
     if (provider.providerKind === 'kling' && modality !== 'image' && modality !== 'video') continue
     // MiniMax：文本 / 图片 / 视频 / 声音设计
@@ -126,7 +133,7 @@ export function pickDefaultModelKey(
   if (options.length === 0) return ''
   for (const provider of providers) {
     if (!provider.enabled) continue
-    if (!provider.apiKey.trim() && !isLocalOpenAiProvider(provider)) continue
+    if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     const defaultModelId = modalityConfig(provider, modality).defaultModelId
     if (defaultModelId) {
       const key = modelKey(provider.id, defaultModelId)

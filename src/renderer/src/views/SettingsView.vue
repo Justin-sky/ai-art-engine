@@ -2,7 +2,6 @@
   <div
     class="settings"
     tabindex="-1"
-    @click.self="router.back()"
     @keydown="onSettingsKeydown"
   >
     <div class="panel">

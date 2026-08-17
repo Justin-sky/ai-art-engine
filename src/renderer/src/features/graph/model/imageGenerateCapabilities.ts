@@ -8,6 +8,7 @@ import {
   getSavedModelCatalogEntry,
   isDashScopeProvider,
   isGoogleProvider,
+  isComfyUiProvider,
   isKlingProvider,
   isMiniMaxProvider,
   isModelScopeProvider,
@@ -18,6 +19,7 @@ import {
 } from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
 import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
@@ -58,11 +60,13 @@ async function resolveSupportedParameters(
   let isOpenAi = false
   let isXai = false
   let isZhipu = false
+  let isComfyUi = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
     isKling = isKlingProvider(provider)
+    isComfyUi = isComfyUiProvider(provider)
     isMiniMax = isMiniMaxProvider(provider)
     isDashScope = isDashScopeProvider(provider)
     isGoogle = isGoogleProvider(provider)
@@ -98,6 +102,12 @@ async function resolveSupportedParameters(
 
   if (isKling) {
     const local = resolveKlingModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isComfyUi) {
+    const local = resolveComfyUiModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }

@@ -33,6 +33,8 @@ export const DASHSCOPE_DEFAULT_BASE_URL =
   'https://dashscope.aliyuncs.com/compatible-mode/v1'
 /** 魔塔 / 魔搭 ModelScope API-Inference（OpenAI 兼容） */
 export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1'
+/** ComfyUI API 2（本机 comfy-api-proxy 默认 8189；云端填 https://cloud.comfy.org） */
+export const COMFYUI_DEFAULT_BASE_URL = 'http://127.0.0.1:8189'
 
 export type ModelProviderKind =
   | 'openrouter'
@@ -50,6 +52,7 @@ export type ModelProviderKind =
   | 'minimax'
   | 'dashscope'
   | 'modelscope'
+  | 'comfyui'
 
 /** 可扩展：新增厂商时同步实现 main/services/modelProviders 下的 Adapter，并在 registry 注册 */
 export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
@@ -149,6 +152,12 @@ export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
     label: '魔塔',
     defaultBaseUrl: MODELSCOPE_DEFAULT_BASE_URL,
     credentialsUrl: 'https://modelscope.cn/my/myaccesstoken'
+  },
+  {
+    id: 'comfyui',
+    label: 'ComfyUI',
+    defaultBaseUrl: COMFYUI_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://docs.comfy.org/development/api-development/getting-an-api-key'
   }
 ]
 
@@ -311,6 +320,21 @@ export function isLmStudioProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'lmstudio'
   return provider.providerKind === 'lmstudio'
+}
+
+export function isComfyUiProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'comfyui'
+  return provider.providerKind === 'comfyui'
+}
+
+/** 本机服务允许空 Key：vLLM / Ollama / LM Studio / ComfyUI（云端仍可填 Key） */
+export function allowsEmptyApiKey(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  return isLocalOpenAiProvider(provider) || isComfyUiProvider(provider)
 }
 
 /** 本地 OpenAI 兼容推理服务：无需 API Key，允许空密钥使用 */
@@ -748,8 +772,8 @@ export function pickActiveProvider(
 ): { provider: ModelProviderInstance; modelId: string } | null {
   const candidates = providers.filter((p) => {
     if (!p.enabled) return false
-    // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）允许空 API Key
-    if (!p.apiKey.trim() && !isLocalOpenAiProvider(p)) return false
+    // 本地 OpenAI 兼容服务与 ComfyUI 允许空 API Key（云端 Comfy 仍可填 Key）
+    if (!p.apiKey.trim() && !allowsEmptyApiKey(p)) return false
     return modalityConfig(p, modality).selectedModelIds.length > 0
   })
   if (!candidates.length) return null

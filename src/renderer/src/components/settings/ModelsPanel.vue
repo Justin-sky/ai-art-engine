@@ -437,6 +437,8 @@ import {
   VOLCENGINE_OPENSPEECH_CREDENTIALS_URL,
   catalogEntryFromModel,
   createProviderInstance,
+  allowsEmptyApiKey,
+  isComfyUiProvider,
   isLocalOpenAiProvider,
   isVllmProvider,
   modalityConfig,
@@ -449,6 +451,7 @@ import {
 } from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
 import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
 import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
@@ -474,6 +477,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   }
   if (provider.providerKind === 'xai') {
     return ['text', 'image', 'video']
+  }
+  if (isComfyUiProvider(provider)) {
+    return ['image', 'video', 'audio']
   }
   if (isVllmProvider(provider)) {
     return ['text', 'video']
@@ -618,11 +624,14 @@ function modalityHintText(provider: ModelProviderInstance): string {
   if (provider.providerKind === 'modelscope') {
     return t(`settings.models.modelscopeModalityHint.${mod}`)
   }
+  if (provider.providerKind === 'comfyui') {
+    return t(`settings.models.comfyuiModalityHint.${mod}`)
+  }
   return t(`settings.models.modalityHint.${mod}`)
 }
 
 function canFetchCatalog(provider: ModelProviderInstance): boolean {
-  return Boolean(provider.apiKey.trim()) || isLocalOpenAiProvider(provider)
+  return Boolean(provider.apiKey.trim()) || allowsEmptyApiKey(provider)
 }
 
 function toggleKeyReveal(providerId: string): void {
@@ -761,6 +770,11 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       (modality === 'image' || modality === 'video')
     ) {
       capabilities = resolveGoogleModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'comfyui' &&
+      (modality === 'image' || modality === 'video' || modality === 'audio')
+    ) {
+      capabilities = resolveComfyUiModelCapabilities(id, modality) ?? undefined
     }
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }

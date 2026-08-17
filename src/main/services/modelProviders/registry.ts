@@ -13,6 +13,7 @@ import { klingAdapter } from './kling/adapter'
 import { miniMaxAdapter } from './minimax/adapter'
 import { dashscopeAdapter } from './dashscope/adapter'
 import { modelScopeAdapter } from './modelscope/adapter'
+import { comfyUiAdapter } from './comfyui/adapter'
 
 const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   openrouter: openRouterAdapter,
@@ -29,7 +30,8 @@ const adapters: Record<ModelProviderKind, ModelProviderAdapter> = {
   kling: klingAdapter,
   minimax: miniMaxAdapter,
   dashscope: dashscopeAdapter,
-  modelscope: modelScopeAdapter
+  modelscope: modelScopeAdapter,
+  comfyui: comfyUiAdapter
 }
 
 /** 按 providerKind 取适配器；未知 kind 回退 OpenRouter */

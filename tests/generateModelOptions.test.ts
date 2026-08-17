@@ -40,6 +40,28 @@ describe('buildModelOptions', () => {
     expect(pickDefaultModelKey(providers, 'image', options)).toBe('k2::m1')
   })
 
+  it('includes comfyui image/video/audio without api key and hides text', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.image.selectedModelIds = ['txt2img']
+    modalities.image.defaultModelId = 'txt2img'
+    modalities.video.selectedModelIds = ['txt2vid']
+    modalities.video.defaultModelId = 'txt2vid'
+    modalities.audio.selectedModelIds = ['txt2audio']
+    modalities.audio.defaultModelId = 'txt2audio'
+    const providers = [
+      baseProvider({
+        id: 'c1',
+        providerKind: 'comfyui',
+        apiKey: '',
+        modalities
+      })
+    ]
+    expect(buildModelOptions(providers, 'text')).toEqual([])
+    expect(buildModelOptions(providers, 'image').map((o) => o.model)).toEqual(['txt2img'])
+    expect(buildModelOptions(providers, 'video').map((o) => o.model)).toEqual(['txt2vid'])
+    expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual(['txt2audio'])
+  })
+
   it('includes minimax for text, image, video and audio', () => {
     const modalities = createEmptyModalityMap()
     modalities.text.selectedModelIds = ['MiniMax-M3']

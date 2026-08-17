@@ -4,6 +4,7 @@ import {
   buildModelOptions
 } from '../src/renderer/src/features/graph/model/generateModelOptions'
 import {
+  allowsEmptyApiKey,
   createEmptyModalityMap,
   createProviderInstance,
   pickActiveProvider
@@ -38,6 +39,19 @@ describe('local providers with empty API key', () => {
 
   it('pickActiveProvider still requires a key for cloud providers', () => {
     expect(pickActiveProvider([withTextModel('openrouter')], 'text')).toBeNull()
+  })
+
+  it('allows empty API key for ComfyUI image workflows', () => {
+    expect(allowsEmptyApiKey('comfyui')).toBe(true)
+    const comfy = createProviderInstance('comfyui', {
+      id: 'comfy-1',
+      apiKey: '',
+      modalities: {
+        ...createEmptyModalityMap(),
+        image: { selectedModelIds: ['txt2img'], defaultModelId: 'txt2img' }
+      }
+    })
+    expect(pickActiveProvider([comfy], 'image')?.modelId).toBe('txt2img')
   })
 
   it('buildModelOptions includes local providers without a key (text only)', () => {
