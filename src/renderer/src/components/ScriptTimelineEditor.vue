@@ -5711,7 +5711,7 @@ defineExpose({ flushSave: persist, reloadSources })
   max-width: 60px;
   height: 26px;
   padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid color-mix(in srgb, var(--on-media-line) 24%, transparent);
   border-radius: 6px;
   background: rgba(8, 16, 28, 0.72);
   color: #fff;
@@ -5730,7 +5730,7 @@ defineExpose({ flushSave: persist, reloadSources })
   box-sizing: border-box;
   box-shadow:
     0 0 0 9999px rgba(0, 0, 0, 0.38),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    inset 0 0 0 1px color-mix(in srgb, var(--on-media-line) 12%, transparent);
 }
 
 .export-frame-label {
@@ -5740,8 +5740,8 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 8px;
   border-radius: 0 0 6px 0;
   background: rgba(8, 16, 28, 0.78);
-  border-right: 1px solid rgba(255, 255, 255, 0.14);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  border-right: 1px solid color-mix(in srgb, var(--on-media-line) 14%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--on-media-line) 14%, transparent);
   color: #fff;
   font-size: 10px;
   line-height: 1.4;
@@ -5902,8 +5902,8 @@ defineExpose({ flushSave: persist, reloadSources })
 .mix-field input[type='number'] {
   width: 48px;
   color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--on-media-line) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--on-media-line) 22%, transparent);
   border-radius: 4px;
   padding: 2px 4px;
 }
@@ -6449,7 +6449,7 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 0 8px;
   border: 1px dashed color-mix(in srgb, var(--accent) 90%, #fff);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 24%, rgba(255, 255, 255, 0.18));
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg-elevated));
   color: var(--text);
   font-size: 11px;
   pointer-events: none;
