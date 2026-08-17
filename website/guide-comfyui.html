@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AIArtEngine 教程：接入 ComfyUI API 2，本机安装 comfy-api-proxy，用 workflow 出图、视频与声音。"
+    />
+    <title>ComfyUI 接入教程 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260817-1" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-short-video.html">短视频教程</a>
+        <a href="guide-comfyui.html" aria-current="page">ComfyUI 教程</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >视频教程</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html" aria-current="page">ComfyUI 教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#overview">它怎么接</a></li>
+          <li><a href="#local-proxy">本机安装 comfy-api-proxy</a></li>
+          <li><a href="#workflow">准备 API 格式 workflow</a></li>
+          <li><a href="#settings">在本软件里添加 ComfyUI</a></li>
+          <li><a href="#cloud">云端 Comfy Cloud</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html#settings">← 返回手册 · 设置</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · ComfyUI</p>
+          <h1>ComfyUI 接入教程</h1>
+          <p class="lede">
+            本软件只走 <strong>ComfyUI API 2</strong>（<code>POST /api/v2/jobs</code>）。
+            本机默认的 8188 没有这套接口，需要在旁边再跑
+            <strong>comfy-api-proxy</strong>（默认 8189）；云端直接填
+            <code>https://cloud.comfy.org</code>。
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. 它怎么接</h2>
+          <p>
+            ComfyUI 在本软件里是一个模型提供商，<strong>模型 id = workflow 文件名</strong>（不是 checkpoint 名）。
+            图片 / 视频 / 声音都走同一套任务：提交 API 格式图 → 轮询 job → 按输出类型取结果。
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>场景</th>
+                <th>Base URL</th>
+                <th>API Key</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>本机</td>
+                <td><code>http://127.0.0.1:8189</code></td>
+                <td>可空（proxy 默认无鉴权）</td>
+              </tr>
+              <tr>
+                <td>Comfy Cloud</td>
+                <td><code>https://cloud.comfy.org</code></td>
+                <td>必填（付费档才开放 API）</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            不要把 Base URL 写成 <code>http://127.0.0.1:8188</code> 或带 <code>/v1</code>。
+            直连 8188 是旧的 <code>/prompt</code>，本软件不会用。
+          </div>
+        </section>
+
+        <section id="local-proxy">
+          <h2>2. 本机安装 comfy-api-proxy</h2>
+          <p>
+            <a href="https://github.com/Comfy-Org/comfy-api-proxy" target="_blank" rel="noopener noreferrer"
+              >comfy-api-proxy</a
+            >
+            把本机 ComfyUI（8188）转成 API 2（8189）。需要 <strong>Python 3.10+</strong>。
+          </p>
+
+          <h3>2.1 先启动 ComfyUI</h3>
+          <ol>
+            <li>按你平时的方式打开 ComfyUI，确认浏览器能打开 <code>http://127.0.0.1:8188</code>。</li>
+            <li>需要用到的 checkpoint / LoRA / 视频或音频模型先放进 ComfyUI 的 <code>models/</code>。</li>
+          </ol>
+
+          <h3>2.2 安装并启动代理</h3>
+          <p>另开一个终端：</p>
+          <pre><code>pip install comfy-api-proxy
+comfy-api-proxy</code></pre>
+          <p>
+            默认把 <code>http://127.0.0.1:8188</code> 转到本机 <strong>8189</strong>，前台运行，<kbd>Ctrl</kbd>+<kbd>C</kbd> 停止。
+            需要改端口或 ComfyUI 地址时：
+          </p>
+          <pre><code>comfy-api-proxy --comfyui http://127.0.0.1:8188 --port 8189</code></pre>
+          <p>可选：与 ComfyUI 安装目录同机时，加上根目录，便于以后往模型目录放权重：</p>
+          <pre><code>comfy-api-proxy --comfyui http://127.0.0.1:8188 --port 8189 --comfyui-base-dir D:\ComfyUI</code></pre>
+          <p>Windows 若 <code>comfy-api-proxy</code> 不是命令，用：</p>
+          <pre><code>python -m comfy_api_proxy</code></pre>
+          <p>或 <code>py -3.12 -m pip install comfy-api-proxy</code> 后再 <code>py -3.12 -m comfy_api_proxy</code>。</p>
+
+          <h3>2.3 确认代理活着</h3>
+          <p>浏览器或终端访问：</p>
+          <pre><code>http://127.0.0.1:8189/api/v2/health</code></pre>
+          <p>能返回即表示 API 2 已就绪。本软件设置里点「拉取可用模型」也会先探活 <code>/api/v2/jobs</code>。</p>
+          <div class="tip">
+            代理默认只绑 <code>127.0.0.1</code>。不要对局域网裸开 8189；若必须外网访问，先看官方
+            <code>--token</code> / CORS 说明。
+          </div>
+        </section>
+
+        <section id="workflow">
+          <h2>3. 准备 API 格式 workflow</h2>
+          <p>
+            生成时本软件会按<strong>模型 id</strong>去 ComfyUI userdata 取 JSON，再写入提示词、尺寸、seed、参考图。
+            必须是 <strong>API 格式</strong>（节点是 <code>class_type</code> + <code>inputs</code>），不能是带
+            <code>nodes</code> / <code>links</code> 的画布导出。
+          </p>
+          <ol>
+            <li>在 ComfyUI 设置里打开 <strong>Enable Dev mode Options</strong>（开发者模式）。</li>
+            <li>菜单出现 <strong>Save (API Format)</strong>，把当前图画导出为 JSON。</li>
+            <li>
+              按用途命名，与设置里勾选的模型 id 一致。内置目录为：
+              <ul>
+                <li><code>txt2img</code> — 文生图</li>
+                <li><code>img2img</code> — 图生图（需 LoadImage）</li>
+                <li><code>txt2vid</code> — 文生视频</li>
+                <li><code>img2vid</code> — 图生视频</li>
+                <li><code>txt2audio</code> — 文生声音</li>
+              </ul>
+            </li>
+            <li>
+              把文件放到 ComfyUI 用户目录，任选其一即可（文件名带不带 <code>.json</code> 均可）：
+              <ul>
+                <li><code>ComfyUI/user/default/txt2img.json</code></li>
+                <li><code>ComfyUI/user/default/workflows/txt2img.json</code></li>
+                <li><code>ComfyUI/user/default/aiartengine/txt2img.json</code></li>
+              </ul>
+            </li>
+          </ol>
+          <p>本软件会把节点指令写入第一张正向 <code>CLIPTextEncode</code>（标题含 Negative 的当负向）；尺寸写入 <code>EmptyLatentImage</code>；seed 写入 <code>KSampler</code> / <code>RandomNoise</code>；参考图上传后写入 <code>LoadImage</code>。</p>
+          <div class="tip">
+            也可在设置里<strong>手动添加</strong>已有 workflow 文件名（不必用内置那五个 id）。
+            图里的 checkpoint 名必须和本机 <code>models/</code> 里的文件一致。
+          </div>
+        </section>
+
+        <section id="settings">
+          <h2>4. 在本软件里添加 ComfyUI</h2>
+          <ol>
+            <li>打开<strong>设置 → 模型 → 添加模型提供商 → ComfyUI</strong>。</li>
+            <li>Base URL 填 <code>http://127.0.0.1:8189</code>（本机）或云端地址。</li>
+            <li>本机可空 Key；若 proxy 加了 <code>--token</code>，把同一串填进 API Key。</li>
+            <li>启用后，在<strong>图片 / 视频 / 声音</strong>页签分别「拉取可用模型」并勾选，设默认项。</li>
+            <li>保存后，图片生成 / 视频生成 / 声音生成节点的模型下拉里会出现 <code>ComfyUI · txt2img</code> 等。</li>
+          </ol>
+          <p>跑一条图节点：选 <code>txt2img</code>，写指令，执行。任务队列里能看到提交与轮询；失败时看执行日志（缺节点、缺权重、workflow 找不到都会写明）。</p>
+        </section>
+
+        <section id="cloud">
+          <h2>5. 云端 Comfy Cloud</h2>
+          <ol>
+            <li>
+              在
+              <a
+                href="https://docs.comfy.org/development/api-development/getting-an-api-key"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Comfy 开发者文档</a
+              >
+              申请 API Key。免费档通常不能调 API。
+            </li>
+            <li>设置里 Base URL 改为 <code>https://cloud.comfy.org</code>，填入 Key。</li>
+            <li>workflow 仍须是 API 格式；云端还可能从模板目录拉到额外项。</li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>6. 常见问题</h2>
+          <ul>
+            <li>
+              <strong>连接测试失败 / 404</strong>：ComfyUI 在 8188，但本软件打的是 8189。先确认
+              <code>comfy-api-proxy</code> 在跑，Base URL 不要写成 8188。
+            </li>
+            <li>
+              <strong>未找到 workflow</strong>：文件名与模型 id 不一致，或不是 API 格式。用
+              Save (API Format) 再放到 <code>user/default/</code>。
+            </li>
+            <li>
+              <strong>缺节点 / 缺模型</strong>：workflow 里的自定义节点和权重必须已装在这台 ComfyUI 上。
+            </li>
+            <li>
+              <strong>图生图没有参考图</strong>：workflow 里要有 <code>LoadImage</code>；节点上要连参考图。
+            </li>
+            <li>
+              <strong>要不要接旧版 /prompt？</strong>：不必。本软件只维护 API 2。
+            </li>
+          </ul>
+          <p>
+            官方说明：
+            <a href="https://docs.comfy.org/api-reference/v2/jobs/submit-a-workflow-for-execution" target="_blank" rel="noopener noreferrer">API 2 提交任务</a>
+            ·
+            <a href="https://github.com/Comfy-Org/comfy-api-proxy" target="_blank" rel="noopener noreferrer">comfy-api-proxy</a>
+            ·
+            <a href="https://docs.comfy.org/development/api-development/workflow-api-format" target="_blank" rel="noopener noreferrer">API 格式 workflow</a>。
+          </p>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+  </body>
+</html>

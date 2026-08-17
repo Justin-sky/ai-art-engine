@@ -29,6 +29,7 @@
       <nav class="nav" aria-label="主导航">
         <a href="index.html">首页</a>
         <a href="manual.html" aria-current="page">使用手册</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
         <a href="index.html#download">下载</a>
         <a
           href="https://space.bilibili.com/3707036976024122"
@@ -48,6 +49,7 @@
         <nav class="mobile-nav" aria-label="移动端导航">
           <a href="index.html">首页</a>
           <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
           <a href="index.html#download">下载</a>
           <a
             href="https://space.bilibili.com/3707036976024122"
@@ -82,6 +84,7 @@
           <li><a href="#graph">节点图</a></li>
           <li><a href="guide-video.html">自由画布 · 视频与参考视频</a></li>
           <li><a href="guide-short-video.html">短视频制作教程</a></li>
+          <li><a href="guide-comfyui.html">ComfyUI 接入教程</a></li>
           <li><a href="#script-beat">剧本与场</a></li>
           <li><a href="#timeline">成片时间线</a></li>
           <li><a href="#canvas">画布与世界元素</a></li>
@@ -114,7 +117,7 @@
           <h2>1. 概述与准备</h2>
           <p>
             AIArtEngine 是面向短剧、广告与成片制作的专业 AI 创作工具。工程与素材保存在你指定的本机目录；文本 /
-            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔等）。
+            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI 等）。
             可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
           </p>
           <h3>首次使用建议</h3>
@@ -229,6 +232,14 @@
                   Model ID 以百炼控制台为准。
                 </li>
                 <li><strong>魔塔</strong>：文本 / 文生图（ModelScope 访问令牌，如 <code>ms-…</code>）。</li>
+                <li>
+                  <strong>ComfyUI</strong>：图片 / 视频 / 声音，走 API 2（<code>POST /api/v2/jobs</code>）。
+                  模型 id = userdata 里的 <strong>API 格式 workflow 名</strong>（不是 checkpoint）。
+                  本机默认 Base URL <code>http://127.0.0.1:8189</code>（需先装
+                  <a href="guide-comfyui.html#local-proxy">comfy-api-proxy</a>，不要直连 8188）；
+                  云端填 <code>https://cloud.comfy.org</code> 并填 Key。本机可空 Key。
+                  完整步骤见 <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
+                </li>
               </ul>
             </li>
             <li>
@@ -357,16 +368,27 @@
                     >https://modelscope.cn/my/myaccesstoken</a
                   >
                 </li>
+                <li>
+                  ComfyUI：本机可空 Key；云端 API Key 见
+                  <a
+                    href="https://docs.comfy.org/development/api-development/getting-an-api-key"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Comfy 开发者文档</a
+                  >
+                  ；本机安装 proxy 与 workflow 见
+                  <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
+                </li>
               </ul>
             </li>
             <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
-            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio 等本地服务无需密钥，直接拉取）。</li>
+            <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio / ComfyUI 等本地服务无需密钥，直接拉取）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
               按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
-              魔塔仅文本与图片，文生图为异步任务）。
+              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>
@@ -1146,6 +1168,7 @@
         <nav class="foot-links" aria-label="页脚">
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
           <a href="index.html#download">下载</a>
           <a
             href="https://space.bilibili.com/3707036976024122"

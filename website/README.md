@@ -13,6 +13,9 @@ npm run site
 |------|------|
 | `index.html` | 官网首页 |
 | `manual.html` | 使用手册（一键工作流、宿主资产、节点任务、成片时间线、导演台等） |
+| `guide-short-video.html` | 短视频制作教程 |
+| `guide-video.html` | 自由画布 · 视频与参考视频 |
+| `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
 | `manual.css` | 手册页样式 |
 
 ## 资源目录

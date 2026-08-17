@@ -28,6 +28,7 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>官网</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>使用手册</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI 教程</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>视频教程</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·
@@ -140,7 +141,7 @@ npm run dist:linux  # Linux
 | 模型 | ComfyUI | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL） |
 | 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用 |
 
-配置入口：**设置 → 模型** / **设置 → 对象存储**。
+配置入口：**设置 → 模型** / **设置 → 对象存储**。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
 ---
 
@@ -155,7 +156,7 @@ npm run dist:linux  # Linux
 3. 设置里添加模型提供商并填写密钥；可选配置对象存储  
 4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路  
 
-完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。
+完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
 **从源码**
 

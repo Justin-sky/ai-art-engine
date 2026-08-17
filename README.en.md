@@ -27,6 +27,7 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>Manual</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI guide</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#community"><b>Community</b></a> ·
@@ -115,7 +116,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | ComfyUI | Image / video / audio (API v2; local :8189 or cloud Base URL) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
 
-Configure under **Settings → Models** / **Settings → Object storage**.
+Configure under **Settings → Models** / **Settings → Object storage**. Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) on port 8189 — do not point Base URL at 8188.
 
 ---
 
@@ -130,7 +131,7 @@ Configure under **Settings → Models** / **Settings → Object storage**.
 3. Add model providers (and optional object storage) in Settings  
 4. Use toolbar **One-click workflow**, or build chains in shots / node graph  
 
-Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (source: `website/manual.html`).
+Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (source: `website/manual.html`). Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) on port 8189 — do not point Base URL at 8188.
 
 **From source**
 
