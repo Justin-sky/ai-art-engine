@@ -1,6 +1,17 @@
 # Changelog
 
-本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。
+本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
+
+## [4.0.0-alpha.0] — 2026-08-18
+
+4.0 首个 Alpha 预发布：内部扩展改为 Cordis 插件运行时。
+
+### Changed
+
+- 节点连线要求两端端口类型完全相同：图 / 视频 / 声音 / 文本的单数口不能接入复数口；选取节点只收 `out-all` 等列表口
+- 编辑器、模型提供商与对象存储改为 Cordis 插件注册；图执行器按域拆分，Skill / 执行器支持覆盖栈回滚
+- 内部上传接口统一为对象存储服务（不再用 TOS 作为内部通称）
+- 官网手册、README 与仓库文档同步连线规则与扩展说明
 
 ## [3.0.9] — 2026-08-17
 

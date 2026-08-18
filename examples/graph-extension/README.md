@@ -45,4 +45,4 @@
 
 - `tests/graphCards.test.ts` — 卡片注册表解析
 - `tests/graphScopes.test.ts` — Scope 与拖入规则
-- `tests/graphPolicy.test.ts` — 图策略（可添加节点 + 连线）
+- `tests/graphPolicy.test.ts` — 图策略（可添加节点白名单）

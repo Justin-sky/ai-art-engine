@@ -111,6 +111,7 @@ Graph 编辑端口已迁到 `features/graph/model/graphEditorHosts.ts`，不再�
 - Main runtime：`src/main/runtime/`（Cordis；模型提供商 / 对象存储为 `ctx.plugin`）
 - Graph Node：`src/shared/graph/registry.ts`
 - Graph Executor：`src/shared/graph/execute/`（覆盖栈 `registry.ts`；实现按域拆在 `host` / `generateMedia` / `generateText` / `imageEdit` / `narrative` 等；Cordis `ctx.editor.executor`）
+- Graph Ports：`src/shared/graph/ports.ts`（`portsCompatible` 仅认两端 `dataType` 相同；单数与复数不互通）
 - Graph Scope：`src/shared/graph/scopes.ts`
 - Graph Card：`src/renderer/src/graph/cards/registry.ts`
 

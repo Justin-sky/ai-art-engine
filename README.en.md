@@ -15,7 +15,7 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/network/members"><img src="https://img.shields.io/github/forks/Justin-sky/ai-art-engine?style=social" alt="GitHub forks" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-2.0.2-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-4.0.0--alpha.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -87,13 +87,13 @@ npm run dist:win | dist:mac | dist:linux
 - **One-click workflow** — preset or AI-planned topology → reusable host asset (boundary I/O + Dive)  
 - **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
-- **Node graph** — generation nodes; dual gallery outputs; edge styles / minimap; task queue reuses shared upstream  
+- **Node graph** — generation nodes; dual gallery outputs; ports must match (singular cannot connect to plural; select nodes accept list ports only); edge styles / minimap; task queue reuses shared upstream  
 - **Host assets** — boundary ports outside, full graph inside via Dive  
 - **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`  
 - **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
 - **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL)
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
-- **Extensible** — Editor Kernel + declarative extensions  
+- **Extensible** — Editor Kernel + Cordis internal plugins (windows / Inspector / nodes / skills / executors) + declarative external plugin list  
 
 ### Providers at a glance
 
@@ -147,6 +147,15 @@ Requires **Node.js 22+**.
 ```bash
 npm run typecheck && npm test
 ```
+
+---
+
+## Docs
+
+- [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (`website/manual.html`)
+- [Architecture](./docs/ARCHITECTURE.md) · [Graph plugins](./docs/GRAPH_PLUGINS.md) · [Docs index](./docs/README.md)
+- [Asset model](./docs/ASSET_MODEL.md) · [AssetRef](./docs/ASSET_REF.md) · [Asset package](./docs/ASSET_PACKAGE.md)
+- [Roadmap](./docs/ROADMAP.md) · [Changelog](./CHANGELOG.md)
 
 ---
 

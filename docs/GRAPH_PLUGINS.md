@@ -1,6 +1,6 @@
 # 节点图插件开发指南
 
-本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与 **GraphSkill**。
+本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与 **GraphSkill**。用户向连线规则见官网手册 [§7.1](https://justin-sky.github.io/ai-art-engine/manual.html#graph)。
 
 相关代码：
 

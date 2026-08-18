@@ -18,6 +18,8 @@ npm run site
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
 | `manual.css` | 手册页样式 |
 
+开发文档在仓库 [`docs/`](../docs/README.md)（架构、节点图插件、资产模型）。用户手册 §7.1 已写明：端口类型必须相同，单数不能进复数。
+
 ## 资源目录
 
 | 路径 | 说明 |

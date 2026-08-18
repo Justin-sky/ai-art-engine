@@ -2,11 +2,16 @@
 
 ## Unreleased（进行中）
 
-- [x] 新增 OpenAI / DeepSeek / 智谱 / Kimi / xAI / Google / 本地 vLLM / Ollama / LM Studio 模型提供商
 - [ ] 剧本 → 集 → 幕 → 分镜树
 - [ ] 参数继承与覆盖
 - [ ] 批量生成
 - [ ] 时间线高级剪辑（多轨特效 / 转场库等）
+
+## 4.0.0-alpha.0（已发布）
+
+- [x] Cordis 插件运行时（编辑器 / 模型提供商 / 对象存储）与图执行器按域拆分
+- [x] 端口类型严格相等（图 / 视频 / 声音 / 文本单数不能进复数）
+- [x] 新增 OpenAI / DeepSeek / 智谱 / Kimi / xAI / Google / 本地 vLLM / Ollama / LM Studio 模型提供商
 
 ## 2.0.0-alpha.0（已发布）
 

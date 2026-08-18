@@ -16,7 +16,7 @@
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/v/release/Justin-sky/ai-art-engine?include_prereleases&label=release&style=flat-square" alt="release" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?label=downloads&style=flat-square" alt="downloads" /></a>
     <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="license" /></a>
-    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-3.0.2-orange.svg?style=flat-square" alt="version" /></a>
+    <a href="https://github.com/Justin-sky/ai-art-engine/blob/main/package.json"><img src="https://img.shields.io/badge/version-4.0.0--alpha.0-orange.svg?style=flat-square" alt="version" /></a>
   </p>
 
   <p>
@@ -112,13 +112,13 @@ npm run dist:linux  # Linux
 - **资产库** — 图片 / 视频 / 声音；AssetRef GUID；`.aipackage` 导入导出
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
 - **一键工作流** — 预设模板或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
-- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口；连线样式 / 小地图；任务队列复用共同上游
+- **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游
 - **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
 - **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`
 - **成片时间线** — 素材分组与上轨编排；预览播选中 / 时间线整轨联播；导出成片
 - **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
-- **可扩展** — Editor Kernel + 声明式扩展（窗口 / Inspector / 节点 / 工具栏）
+- **可扩展** — Editor Kernel + Cordis 内部扩展（窗口 / Inspector / 节点 / Skill / 执行器）+ 声明式外部插件清单
 
 ### 模型与对象存储一览
 
@@ -186,6 +186,15 @@ npm run pack                    # 未封装目录，便于自测
 
 ---
 
+## 文档
+
+- [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码 `website/manual.html`）
+- [架构](./docs/ARCHITECTURE.md) · [节点图插件](./docs/GRAPH_PLUGINS.md) · [文档目录](./docs/README.md)
+- [资产模型](./docs/ASSET_MODEL.md) · [AssetRef](./docs/ASSET_REF.md) · [素材包](./docs/ASSET_PACKAGE.md)
+- [路线图](./docs/ROADMAP.md) · [变更记录](./CHANGELOG.md)
+
+---
+
 ## 版本与更新
 
 - 版本号以 [`package.json`](./package.json) 的 `version` 为准（SemVer），变更记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
@@ -231,7 +240,7 @@ npm run typecheck && npm test
 
 ## Stack
 
-`Electron` · `Vue 3` · `Pinia` · `TypeScript` · `Fabric.js` · `electron-vite` · `electron-builder`
+`Electron` · `Vue 3` · `Pinia` · `TypeScript` · `Cordis` · `Fabric.js` · `electron-vite` · `electron-builder`
 
 ---
 
