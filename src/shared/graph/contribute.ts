@@ -1,7 +1,7 @@
 import { ensureBuiltinNodeTypes } from './builtinState'
 import { collectAssetValuesUpstream } from './collect'
 import { findOutputNode } from './query'
-import { contributionFromAssets, nodeToAssetValue } from './execute/values'
+import { contributionFromAssets, nodeToAssetValue } from './execute'
 import type { GraphAssetValue } from './execute/types'
 import { isProcessingAssetNode } from './nodeRole'
 import type { GraphDocument } from './types'

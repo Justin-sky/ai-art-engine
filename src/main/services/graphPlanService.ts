@@ -12,7 +12,7 @@ import {
   type GraphPlanMediaModelDefaults,
   type GraphPlanPreview
 } from '@shared/graph'
-import { openRouterClient } from './openRouterClient'
+import { modelProviderFacade } from './modelProviders'
 import { projectService } from './projectService'
 import type { AssetInfo } from '@shared/domain'
 
@@ -72,13 +72,6 @@ export interface CommitAiWorkflowResult {
   error?: string
 }
 
-/** @deprecated 兼容旧 IPC：规划并立即落盘 */
-export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
-  folderId?: string | null
-}
-
-export type GenerateAiWorkflowResult = CommitAiWorkflowResult
-
 function catalogPromptBlock(): string {
   const catalog = buildGraphPlanCatalog('subgraphAsset')
   const lines = catalog.map((entry) => {
@@ -102,7 +95,7 @@ function buildSystemPrompt(seedPlan?: GraphPlan | null): string {
 规则：
 1. 只使用下列 catalog 中的 typeId，禁止编造类型。
 2. 节点数 4～12；形成从输入到输出的完整数据流。
-3. 边的 from/to 使用节点 key；端口 dataType 必须兼容（image≠images，除非单数接复数口）。
+3. 边的 from/to 使用节点 key；端口 dataType 必须相同（image≠images，单数不能进复数口）。
 4. 不要编造 assetId；不要填写 generateModel / generateProviderInstanceId（由客户端注入）。
 5. 可用 params 仅限：text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType。
 6. 常见链：play.script / prompt.optimize → asset.image → asset.video；备注用 note.text。
@@ -169,7 +162,7 @@ async function requestPlan(
   }
   let recorded = false
   try {
-    const result = await openRouterClient.generateText({
+    const result = await modelProviderFacade.generateText({
       prompt: userPrompt,
       system,
       model,
@@ -423,29 +416,4 @@ function bindEpisodeScopeKey(
     }
   })
   return touched ? { ...document, nodes } : null
-}
-
-/**
- * 兼容：规划并立即落盘
- */
-export async function generateAiWorkflow(
-  input: GenerateAiWorkflowInput
-): Promise<GenerateAiWorkflowResult> {
-  const planned = await planAiWorkflow(input)
-  if (!planned.ok || !planned.plan) {
-    return {
-      ok: false,
-      warnings: planned.warnings,
-      error: planned.error
-    }
-  }
-  return commitAiWorkflow({
-    plan: planned.plan,
-    folderId: input.folderId,
-    imageModel: input.imageModel,
-    imageProviderInstanceId: input.imageProviderInstanceId,
-    videoModel: input.videoModel,
-    videoProviderInstanceId: input.videoProviderInstanceId,
-    generateAspectRatio: input.generateAspectRatio
-  })
 }

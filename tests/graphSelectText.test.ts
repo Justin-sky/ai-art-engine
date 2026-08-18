@@ -31,6 +31,14 @@ describe('text.select node', () => {
     expect(canConnectNodes(generate, beat)).toBe(true)
   })
 
+  it('rejects a single text node into text.select', () => {
+    const text = createNodeFromType('play.script', { x: 0, y: 0 })
+    const select = createNodeFromType('text.select', { x: 120, y: 0 })
+    const beat = createNodeFromType('beat.split', { x: 240, y: 0 })
+    expect(canConnectNodes(text, select)).toBe(false)
+    expect(canConnectNodes(text, beat)).toBe(true)
+  })
+
   it('defaults to the first text and can pick by id', () => {
     const items: GraphTextItem[] = [
       { id: 'a', text: '剧本A' },

@@ -741,7 +741,6 @@ import {
   type AssetInfo,
   type AssetType
 } from '@shared/domain'
-import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
@@ -1749,14 +1748,9 @@ const {
     }),
   readRunText: readGraphRunText,
   generateVideo: async (input) => {
-    const hostAsset = graphAsset.value
-    const dirs = assetMediaHostDirs(hostAsset ?? null, project.folders)
     const outputDir = resolveMediaOutputDir({
       mediaOutputDir: input.outputDir,
       cacheOutputDir: project.config?.cacheOutputDir,
-      hostRelativePath: dirs.hostRelativePath,
-      hostFolderDir: dirs.hostFolderDir,
-      hostAssetName: dirs.hostAssetName,
       kind: 'video'
     })
     const value = await window.studio.generateVideo({ ...input, outputDir })
@@ -1767,14 +1761,9 @@ const {
     return value
   },
   generateSpeech: async (input) => {
-    const hostAsset = graphAsset.value
-    const dirs = assetMediaHostDirs(hostAsset ?? null, project.folders)
     const outputDir = resolveMediaOutputDir({
       mediaOutputDir: input.outputDir,
       cacheOutputDir: project.config?.cacheOutputDir,
-      hostRelativePath: dirs.hostRelativePath,
-      hostFolderDir: dirs.hostFolderDir,
-      hostAssetName: dirs.hostAssetName,
       kind: 'voice'
     })
     const value = await window.studio.generateSpeech({ ...input, outputDir })

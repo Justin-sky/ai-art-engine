@@ -367,7 +367,7 @@ export default {
       }
     },
     plugins: {
-      hint: '从用户数据目录的 plugins 文件夹读取受控声明式扩展，不执行外部脚本。',
+      hint: '编辑器运行时为 Cordis。用户数据目录 plugins 下的受控声明式扩展只贡献工具栏等数据，不执行外部脚本。',
       declarative: '声明式',
       empty: '未发现扩展'
     },

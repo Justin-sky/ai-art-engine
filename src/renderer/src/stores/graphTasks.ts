@@ -26,7 +26,6 @@ import {
   normalizeProjectStyleImages,
   resolveMediaOutputDir
 } from '@shared/domain'
-import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import { persistAssetRecord } from '../composables/useAssetRecord'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
@@ -566,10 +565,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
 
       const { document: prepared, materializedStates } = await prepareGraphDocumentForPersist(
         task.graph,
-        task.runStates,
-        {
-          hostAssetId: taskHostAssetId(task.target)
-        }
+        task.runStates
       )
       // 同步内存 runStates 为物化后版本，便于后续增量重跑 / 预览
       for (const key of Object.keys(task.runStates)) delete task.runStates[key]
@@ -1111,7 +1107,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             generateAudio?: boolean
             seed?: number | null
             inputReferenceCount?: number
-            tosUploads?: Array<{
+            uploads?: Array<{
               sourceLabel: string
               objectKey: string
               bytes: number
@@ -1130,33 +1126,25 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           try {
             const project = useProjectStore()
-            const hostAssetId = taskHostAssetId(task.target)
-            const hostAsset = hostAssetId
-              ? project.assets.find((a) => a.id === hostAssetId)
-              : null
-            const dirs = assetMediaHostDirs(hostAsset, project.folders)
             const outputDir = resolveMediaOutputDir({
               mediaOutputDir: input.outputDir,
               cacheOutputDir: project.config?.cacheOutputDir,
-              hostRelativePath: dirs.hostRelativePath,
-              hostFolderDir: dirs.hostFolderDir,
-              hostAssetName: dirs.hostAssetName,
               kind: 'video'
             })
             const value = await window.studio.generateVideo({ ...input, outputDir })
             if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
               await project.scheduleRefreshLibrary()
             }
-            if (value.tosUploads?.length) {
-              request.tosUploads = value.tosUploads.map((item) => ({
+            if (value.uploads?.length) {
+              request.uploads = value.uploads.map((item) => ({
                 sourceLabel: item.sourceLabel,
                 objectKey: item.objectKey,
                 bytes: item.bytes,
                 urlPreview: item.url.slice(0, 120)
               }))
-              for (const item of value.tosUploads) {
+              for (const item of value.uploads) {
                 for (const log of item.logs) {
-                  logBridge.appendMessage(`[TOS] ${log.message}`, log.level)
+                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
                 }
               }
             }
@@ -1193,17 +1181,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           }
           try {
             const project = useProjectStore()
-            const hostAssetId = taskHostAssetId(task.target)
-            const hostAsset = hostAssetId
-              ? project.assets.find((a) => a.id === hostAssetId)
-              : null
-            const dirs = assetMediaHostDirs(hostAsset, project.folders)
             const outputDir = resolveMediaOutputDir({
               mediaOutputDir: input.outputDir,
               cacheOutputDir: project.config?.cacheOutputDir,
-              hostRelativePath: dirs.hostRelativePath,
-              hostFolderDir: dirs.hostFolderDir,
-              hostAssetName: dirs.hostAssetName,
               kind: 'voice'
             })
             const value = await window.studio.generateSpeech({ ...input, outputDir })

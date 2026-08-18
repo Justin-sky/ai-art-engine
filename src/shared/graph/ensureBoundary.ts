@@ -263,14 +263,6 @@ export function wireDanglingOutsToBoundaryOutputs(
   return { ...document, nodes, edges }
 }
 
-/** @deprecated 使用 wireDanglingOutsToBoundaryOutputs */
-export function wireDanglingOutsToPrimaryBoundary(
-  document: GraphDocument,
-  iface: HostInterfaceDocument
-): GraphDocument {
-  return wireDanglingOutsToBoundaryOutputs(document, iface)
-}
-
 /**
  * 按模板 inputLinkTo 对应的链首 typeId，把各 boundary.input 接到兼容入口。
  * 优先同名口；否则落同类型 `in`；已有占用的单值口不抢连。

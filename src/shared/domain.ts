@@ -205,24 +205,12 @@ export interface ProjectConfig {
    * 实际落盘为 `{cacheOutputDir}/{Images|Videos|Texts|Voices}`。
    */
   cacheOutputDir?: string
-  /**
-   * @deprecated 已收敛为 cacheOutputDir；保留以兼容旧工程 JSON
-   */
-  imageOutputDir?: string
-  /**
-   * @deprecated 已收敛为 cacheOutputDir；保留以兼容旧工程 JSON
-   */
-  videoOutputDir?: string
   createdAt: string
   updatedAt: string
 }
 
 /** 工程级生成缓存根目录（相对工程根） */
 export const DEFAULT_CACHE_OUTPUT_DIR = 'Cache'
-/** @deprecated 历史默认；新代码请用 DEFAULT_CACHE_OUTPUT_DIR */
-export const DEFAULT_IMAGE_OUTPUT_DIR = 'Output/images'
-/** @deprecated 历史默认；新代码请用 DEFAULT_CACHE_OUTPUT_DIR */
-export const DEFAULT_VIDEO_OUTPUT_DIR = 'Output/videos'
 /** Cache / 历史资产目录下的图片子目录名 */
 export const ASSET_IMAGE_OUTPUT_KIND_DIR = 'Images'
 /** Cache / 历史资产目录下的视频子目录名 */
@@ -322,18 +310,11 @@ export function formatGeneratedMediaStamp(date = new Date()): string {
 /**
  * 解析媒体输出目录：
  * 节点显式 mediaOutputDir > `{cacheOutputDir|Cache}/{Images|Videos|Texts|Voices}`。
- * host* 参数仅保留兼容旧调用方，默认路径不再按资产目录铺开。
  */
 export function resolveMediaOutputDir(input: {
   mediaOutputDir?: string | null
   /** 工程配置的缓存根；缺省 Cache */
   cacheOutputDir?: string | null
-  /** @deprecated 默认路径不再使用 */
-  hostRelativePath?: string | null
-  /** @deprecated 默认路径不再使用 */
-  hostFolderDir?: string | null
-  /** @deprecated 默认路径不再使用；文件名仍可带宿主名 */
-  hostAssetName?: string | null
   kind: 'image' | 'video' | 'text' | 'voice'
 }): string {
   const explicit = normalizeProjectRelativeDir(input.mediaOutputDir)

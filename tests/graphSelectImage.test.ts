@@ -31,14 +31,14 @@ describe('image.select node', () => {
     expect(canConnectNodes(select, imageGenerate)).toBe(true)
   })
 
-  it('accepts singular image boundary into images in', () => {
+  it('rejects a singular image boundary into images in', () => {
     const boundary = createNodeFromType('graph.boundary.input', { x: 0, y: 0 }, {
       params: {
         hostBoundaryPort: { portId: 'bound-img-x', dataType: GraphPortType.image, multiple: false }
       }
     })
     const select = createNodeFromType('image.select', { x: 120, y: 0 })
-    expect(canConnectNodes(boundary, select)).toBe(true)
+    expect(canConnectNodes(boundary, select)).toBe(false)
   })
 
   it('defaults to the first image and can pick by id', () => {

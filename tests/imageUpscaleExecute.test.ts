@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { executeUpscaleNode } from '../src/shared/graph/execute/values'
+import { executeUpscaleNode } from '../src/shared/graph/execute'
 import type { GraphNode, NodeExecuteContext } from '../src/shared/graph'
 import { portsCompatible, GraphPortType } from '../src/shared/graph'
 
@@ -112,10 +112,13 @@ describe('executeUpscaleNode input', () => {
 describe('portsCompatible image family', () => {
   it('allows singular into matching plural, rejects cross family', () => {
     expect(portsCompatible(GraphPortType.image, GraphPortType.image)).toBe(true)
-    expect(portsCompatible(GraphPortType.image, GraphPortType.images)).toBe(true)
-    expect(portsCompatible(GraphPortType.video, GraphPortType.videos)).toBe(true)
+    expect(portsCompatible(GraphPortType.image, GraphPortType.images)).toBe(false)
+    expect(portsCompatible(GraphPortType.video, GraphPortType.videos)).toBe(false)
+    expect(portsCompatible(GraphPortType.voice, GraphPortType.voices)).toBe(false)
     expect(portsCompatible(GraphPortType.images, GraphPortType.image)).toBe(false)
     expect(portsCompatible(GraphPortType.image, GraphPortType.video)).toBe(false)
     expect(portsCompatible(GraphPortType.image, GraphPortType.text)).toBe(false)
+    expect(portsCompatible(GraphPortType.text, GraphPortType.texts)).toBe(false)
+    expect(portsCompatible(GraphPortType.texts, GraphPortType.texts)).toBe(true)
   })
 })

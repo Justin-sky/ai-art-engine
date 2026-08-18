@@ -368,7 +368,7 @@ export default {
       }
     },
     plugins: {
-      hint: 'Loads controlled declarative extensions from the user data plugins folder. External scripts are not executed.',
+      hint: 'The editor runtime is Cordis. Controlled declarative extensions in the user-data plugins folder contribute toolbar items only; external scripts are not executed.',
       declarative: 'Declarative',
       empty: 'No extensions found'
     },

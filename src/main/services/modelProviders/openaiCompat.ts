@@ -315,8 +315,7 @@ export async function generateOpenAiCompatibleSpeech(
         type: 'voice',
         sourceFilePath: absPath,
         name: input.name ?? `TTS ${new Date().toLocaleString()}`,
-        prompt: input.input,
-        alsoCopyToOutput: false
+        prompt: input.input
       })
       return {
         model: modelId,

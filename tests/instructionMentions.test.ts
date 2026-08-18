@@ -8,7 +8,7 @@ import {
 import {
   buildInstructionFinalPromptPreview,
   buildMentionSourcesForNode
-} from '../src/shared/graph/execute/values'
+} from '../src/shared/graph/execute'
 import type { GraphDocument, GraphNode } from '../src/shared/graph/types'
 import { portMentionIndex } from '../src/shared/domain'
 import {

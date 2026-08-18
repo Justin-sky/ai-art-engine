@@ -68,8 +68,8 @@ export interface GraphRunLogApiCall {
     inputReferences?: GraphImageReferenceMeta[]
     voice?: string
     name?: string
-    /** 参考视频 TOS 上传摘要（不落完整签名参数） */
-    tosUploads?: Array<{
+    /** 参考视频对象存储上传摘要（不落完整签名参数） */
+    uploads?: Array<{
       sourceLabel: string
       objectKey: string
       bytes: number

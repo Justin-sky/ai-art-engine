@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, protocol, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
+import { startMainRuntime } from './runtime'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
@@ -130,11 +131,12 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.aiartengine.app')
   Menu.setApplicationMenu(null)
   registerMediaProtocol()
   settingsService.init()
+  await startMainRuntime()
   registerIpcHandlers()
   updateService.init()
 

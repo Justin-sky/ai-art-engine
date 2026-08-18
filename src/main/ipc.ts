@@ -20,7 +20,6 @@ import type {
   ExportAssetPackageInput,
   ImportAssetPackageInput,
   WriteAssetTextInput,
-  GenerateAiWorkflowInput,
   PlanAiWorkflowInput,
   CommitAiWorkflowInput
 } from '@shared/ipc'
@@ -33,18 +32,18 @@ import type {
   GenerateVideoInput,
   ListModelsInput
 } from '@shared/modelProvider'
+import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
 import { exportScriptTimeline } from './services/timelineExportService'
 import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
-import { openRouterClient, toMediaUrl } from './services/openRouterClient'
+import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
 import {
   commitAiWorkflow,
-  generateAiWorkflow,
   planAiWorkflow
 } from './services/graphPlanService'
-import { uploadProjectMediaToTos } from './services/tosUploadService'
+import { uploadProjectMedia } from './services/objectStorageUploadService'
 import { autosaveRepository } from './repositories/autosaveRepository'
 import { pluginRepository } from './repositories/pluginRepository'
 import { dialogService } from './services/dialogService'
@@ -161,7 +160,7 @@ export function registerIpcHandlers(): void {
     toMediaUrl(relativePath, projectService.getRoot())
   )
   handle(IpcChannels.OBJECT_STORAGE_UPLOAD_MEDIA, async (relativePath: string) => {
-    const uploaded = await uploadProjectMediaToTos(relativePath)
+    const uploaded = await uploadProjectMedia(relativePath)
     return {
       url: uploaded.url,
       objectKey: uploaded.objectKey,
@@ -206,15 +205,7 @@ export function registerIpcHandlers(): void {
     projectService.deleteFolder(input.folderId, { mode: input.mode })
   })
 
-  handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => openRouterClient.generateText(input))
-  handle(IpcChannels.GEN_AI_WORKFLOW, async (input: GenerateAiWorkflowInput) => {
-    const result = await generateAiWorkflow(input)
-    if (result.ok && result.assetId) {
-      const asset = projectService.listAssets().find((item) => item.id === result.assetId)
-      if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-    }
-    return result
-  })
+  handle(IpcChannels.GEN_TEXT, (input: GenerateTextInput) => modelProviderFacade.generateText(input))
   handle(IpcChannels.GEN_AI_WORKFLOW_PLAN, (input: PlanAiWorkflowInput) => planAiWorkflow(input))
   handle(IpcChannels.GEN_AI_WORKFLOW_COMMIT, async (input: CommitAiWorkflowInput) => {
     const result = await commitAiWorkflow(input)
@@ -226,22 +217,24 @@ export function registerIpcHandlers(): void {
   })
   // 图节点执行需要 images 内容；落盘资产请走 generateImageAsset 专用路径
   handle(IpcChannels.GEN_IMAGE, (input: GenerateImageInput) =>
-    openRouterClient.generateImage(input)
+    modelProviderFacade.generateImage(input)
   )
   handle(IpcChannels.GEN_VIDEO, async (input: GenerateVideoInput & { name?: string }) => {
-    const result = await openRouterClient.generateVideo(input)
+    const result = await modelProviderFacade.generateVideo(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)
     if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     return result
   })
   handle(IpcChannels.GEN_SPEECH, (input: GenerateSpeechInput) =>
-    openRouterClient.generateSpeech(input)
+    modelProviderFacade.generateSpeech(input)
   )
   handle(IpcChannels.VIDEO_JOB_LIST, () => videoJobService.list())
   handle(IpcChannels.VIDEO_JOB_GET, (localJobId: string) => videoJobService.get(localJobId))
   handle(IpcChannels.VIDEO_JOB_CANCEL, (localJobId: string) => videoJobService.cancel(localJobId))
+  handle(IpcChannels.PROVIDERS_LIST_KINDS, () => listRegisteredProviderKinds())
+  handle(IpcChannels.OBJECT_STORAGE_LIST_KINDS, () => listRegisteredObjectStorageKinds())
   handle(IpcChannels.MODELS_LIST, (input: ListModelsInput) =>
-    openRouterClient.listModels(input.modality, input.providerInstanceId, {
+    modelProviderFacade.listModels(input.modality, input.providerInstanceId, {
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
       providerKind: input.providerKind

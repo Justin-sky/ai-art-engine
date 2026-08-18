@@ -1,18 +1,19 @@
 # 节点图插件开发指南
 
-本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**与**检查器**。
+本文说明如何为 AIArtEngine 内部扩展贡献**节点类型**、**画布作用域（Scope）**、**图策略（Policy）**、**卡片**、**检查器**与 **GraphSkill**。
 
 相关代码：
 
 | 模块 | 路径 |
 |------|------|
 | 节点类型注册 | `src/shared/graph/registry.ts` |
+| GraphSkill 目录 | `src/shared/graph/graphSkills.ts` |
 | 画布 Scope | `src/shared/graph/scopes.ts` |
 | 图策略（可添加节点 + 连线） | `src/shared/graph/policy/`、`default.graph-policy.json` |
 | 图规范化 | `src/shared/graph/normalize.ts` |
 | 卡片注册 | `src/renderer/src/graph/cards/registry.ts` |
 | 检查器注册 | `src/renderer/src/inspector/registry.ts` |
-| 扩展入口 | `src/renderer/src/editor/extensions/registry.ts` |
+| 扩展入口 | `src/renderer/src/editor/runtime/`（Cordis `Context` + `EditorHub`） |
 
 ## 概念
 
@@ -54,11 +55,11 @@ Scope 配置项（`GraphScopeDefinition`）：
 连线规则与策略无关：
 
 1. 源节点有输出端口、目标节点有输入端口
-2. **两端 `dataType` 严格相等**（见 `GraphPortType`：`image` / `images` / `voice` / `voices` / `video` / `videos` / `text` / `texts` / `world` / `beat` / `shots` / `model`）。目录 JSON 使用 `world` / `beat` / `shots`，不可与 `text` 互通。
+2. **两端 `dataType` 必须相同**。单数与复数不互通（`image` 不能进 `images`，`text` 不能进 `texts`；选择节点只收列表）。目录口 `world` / `beat` 不可与 `text` 互通。
 
 端口上会显示类型名。需要接多种上游的节点应声明多个输入口（如导演台编辑：`in-text` / `in-model` / `in-image`）。导演台编辑另有方形输出口 `out-shots`（`images`，站位截图）与 `out-actions`（`videos`，动作录制）。
 
-内置 scope 的 `addableNodeTypes` 均为 `["*"]`。插件可通过 manifest 的 `graphPolicy` 合并可添加节点白名单；卸载扩展时覆盖层自动移除。
+内置 scope 的 `addableNodeTypes` 均为 `["*"]`。插件通过 `ctx.editor.graphPolicy(id, partial)` 合并可添加节点白名单；卸载插件时覆盖层随 Cordis effect 移除。
 
 ### 能力缝（定义 / 提供商 / 消费）
 
@@ -68,11 +69,13 @@ Scope 配置项（`GraphScopeDefinition`）：
 |---|---|---|
 | 定义 | `typeId` + `ports` + `execute` | `registerNodeType` / `NodeTypeDefinition` |
 | 提供商 | 文本 / 图 / 视频 / 语音生成 | `NodeExecuteContext.generateText` / `generateImage` / `generateVideo` |
-| 消费 | 边两端 `dataType` 严格相等 | 现有 port policy |
+| 消费 | 边两端 `dataType` 相同（单数与复数不互通） | `portsCompatible` |
 
-新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。P0 不重写 `builtins.ts` 执行表。
+新节点继续 `registerNodeType`。`execute` **必须**走已注入的 `generate*` 适配器，禁止在 execute 里直连 HTTP。
 
-角色提示词（系统提示 + 指令 + 可选解析指针）走 `GraphSkill`（`src/shared/graph/graphSkills.ts`），用节点 `params.skillId` 绑定，**不要**按 `typeId` 绑死（同一 `asset.image` 可扮演九宫格、四宫格、立绘）。检查器插入片段仍用 `instructionPresets`，与 Skill 目录分开。扩展注册额外 Skill 的插件面预留 `registerGraphSkill`，完整 manifest 字段后续再加。
+执行器可与类型定义分离：插件用 `ctx.editor.executor(typeId, fn)` 覆盖某 typeId 的实现，`fork.dispose()` 后回落到 `NodeTypeDefinition.execute`。引擎查找顺序：覆盖栈 → 类型定义 → `executePassthrough`。内置类型仍由 `ensureBuiltinNodeTypes()` 注册（主进程规范化 / 测试共用），不要把节点类型只挂在渲染进程 Cordis 上。
+
+角色提示词（系统提示 + 指令 + 可选解析指针）走 `GraphSkill`（`src/shared/graph/graphSkills.ts`），用节点 `params.skillId` 绑定，**不要**按 `typeId` 绑死（同一 `asset.image` 可扮演九宫格、四宫格、立绘）。检查器插入片段仍用 `instructionPresets`，与 Skill 目录分开。插件用 `ctx.editor.skill(skill)` 登记或覆盖 Skill（底层 `registerGraphSkill` 覆盖栈，后注册优先）；`fork.dispose()` 后回落到内置目录。内置 `BUILTIN_SKILLS` 在 shared 模块加载时入栈，不要只挂在渲染进程 Cordis 上。完整 manifest 字段后续再加。
 
 有意的现状（不是漏做）：
 
@@ -83,17 +86,16 @@ Scope 配置项（`GraphScopeDefinition`）：
 ## 最小扩展示例
 
 ```ts
-import { activateExtension, registerExtensionManifest } from '@/editor/extensions/registry'
+import type { Context } from '@cordisjs/core'
+import { executePassthrough } from '@shared/graph'
 import MyNodeInspector from './MyNodeInspector.vue'
 import MyNodeCard from './MyNodeCard.vue'
-import { executePassthrough } from '@shared/graph'
 
-registerExtensionManifest({
-  id: 'example.graph',
-  version: '1.0.0',
-  apiVersion: 1,
-  displayName: 'Example Graph',
-  nodeTypes: [{
+export const name = 'example.graph'
+export const inject = ['kernel', 'editor']
+
+export function apply(ctx: Context): void {
+  ctx.editor.nodeType({
     typeId: 'plugin.custom',
     category: 'note',
     label: 'Custom',
@@ -108,41 +110,47 @@ registerExtensionManifest({
     card: 'note',
     cardId: 'plugin.custom.card',
     execute: executePassthrough
-  }],
-  graphScopes: [{
+  })
+  ctx.editor.skill({
+    id: 'plugin.custom.skill',
+    kind: 'system',
+    titleZh: '自定义',
+    titleEn: 'Custom',
+    instructionZh: '…',
+    instructionEn: '…'
+  })
+  ctx.editor.graphScope({
     id: 'plugin.customCanvas',
     output: { kind: 'image', title: 'Custom output' },
     dragAssets: { allowTypes: ['image'] }
-  }],
-  graphScopeHosts: [{
+  })
+  ctx.editor.graphScopeHost({
     assetType: 'model',
     scope: 'plugin.customCanvas',
     priority: 200
-  }],
-  graphPolicy: {
+  })
+  ctx.editor.graphPolicy(name, {
     scopes: {
       'plugin.customCanvas': {
         addableNodeTypes: ['plugin.custom', 'note.text', 'play.script']
       }
     }
-  },
-  inspectors: [{
+  })
+  ctx.editor.inspector({
     id: 'plugin.custom.inspector',
     nodeTypeId: 'plugin.custom',
     component: MyNodeInspector
-  }],
-  activate(ctx) {
-    ctx.registerGraphCard({
-      id: 'plugin.custom.card',
-      order: 5,
-      match: (_node, typeDef) => typeDef?.typeId === 'plugin.custom',
-      component: MyNodeCard
-    })
-  }
-})
-
-activateExtension('example.graph')
+  })
+  ctx.editor.graphCard({
+    id: 'plugin.custom.card',
+    order: 5,
+    match: (_node, typeDef) => typeDef?.typeId === 'plugin.custom',
+    component: MyNodeCard
+  })
+}
 ```
+
+启动时由 `startEditorRuntime()` 创建 Cordis `Context`，再 `ctx.plugin(yourPlugin)`。卸载 `fork.dispose()` 会回滚上述全部注册。覆盖已有节点的执行器用 `ctx.editor.executor(typeId, fn)`，不必替换整份 `nodeType`。额外或覆盖 Skill 用 `ctx.editor.skill(skill)`。
 
 ## 节点类型字段
 
@@ -153,7 +161,7 @@ activateExtension('example.graph')
 | `inspector` / `inspectorId` | 检查器种类或显式绑定 |
 | `card` / `cardId` | 卡片种类（`note`/`media`）或显式绑定 |
 | `presentation` | 备注类卡片 i18n 键（`badgeKey` 等） |
-| `execute` | 节点执行器；缺省透传 |
+| `execute` | 节点执行器；缺省透传。可另用 `ctx.editor.executor(typeId, fn)` 覆盖 |
 
 默认检查器解析见 `src/renderer/src/inspector/defaults.ts`。  
 默认卡片 id：`studio.graph.note` / `studio.graph.media`。
@@ -182,7 +190,7 @@ dragAssets: {
 ## 连线
 
 1. 源节点须有输出端口、目标节点须有输入端口（结构检查，`getNodePorts`）
-2. **两端端口 `dataType` 严格相等**（无通配；目录 JSON 为 `world` / `beat` / `shots`）
+2. **两端端口 `dataType` 必须相同**（单数与复数不互通；目录口 `world` / `beat` 无通配）
 
 API：`canConnectNodes(source, target, { sourcePort?, targetPort? })`。多输入口时需指定 `targetPort`（或由 `findCompatibleInPort` 按类型自动匹配）。
 
@@ -214,7 +222,7 @@ const scopeDef = getGraphScopeDefinition(graphScope.value)
 
 ## 示例模板
 
-仓库内 `examples/graph-extension/` 提供 manifest 说明；**可运行演示**在 `src/renderer/src/editor/extensions/graphDemo/`，应用启动时自动加载。
+仓库内 `examples/graph-extension/` 提供插件骨架；**可运行演示**在 `src/renderer/src/editor/extensions/graphDemo/`，正式包默认不加载，本地可调用 `registerGraphDemoExtension()`。
 
 ## 测试
 
@@ -222,7 +230,9 @@ const scopeDef = getGraphScopeDefinition(graphScope.value)
 - `tests/graphPolicy.test.ts` — 图策略加载、通配、合并
 - `tests/graphCards.test.ts` — 卡片注册表解析（`cardId` / `card` 种类）
 - `tests/graphPorts.test.ts` — 连线
-- `tests/graphSkills.test.ts` — GraphSkill 目录与 `params.skillId`
+- `tests/graphSkills.test.ts` — GraphSkill 目录、`params.skillId`、覆盖栈回滚
+- `tests/graphExecutorRegistry.test.ts` — 执行器覆盖栈
+- `tests/cordisEditor.test.ts` — Cordis `nodeType` / `executor` / `skill` 注册与回滚
 - `tests/inspectorMatch.test.ts` / `inspectorDefaults.test.ts` — 检查器
 
 运行：`npm test`（`vitest.config.ts` 已配置 `@shared` 别名）

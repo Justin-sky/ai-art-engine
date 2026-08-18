@@ -1,6 +1,6 @@
 export * from './types'
-export * from './registry'
 export * from './protocol'
 export * from './builtins'
 export * from './external'
 export * from './contributions'
+export * from './slots'

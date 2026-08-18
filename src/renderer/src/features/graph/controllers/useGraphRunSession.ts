@@ -87,7 +87,7 @@ export interface GraphRunSessionOptions {
     assetId: string
     relativePath: string
     model: string
-    tosUploads?: Array<{
+    uploads?: Array<{
       objectKey: string
       url: string
       bytes: number
@@ -445,7 +445,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateAudio?: boolean
         seed?: number | null
         inputReferenceCount?: number
-        tosUploads?: Array<{
+        uploads?: Array<{
           sourceLabel: string
           objectKey: string
           bytes: number
@@ -464,16 +464,16 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       }
       try {
         const value = await withAbortSignal(generateVideo(input), token, signal)
-        if (value.tosUploads?.length) {
-          request.tosUploads = value.tosUploads.map((item) => ({
+        if (value.uploads?.length) {
+          request.uploads = value.uploads.map((item) => ({
             sourceLabel: item.sourceLabel,
             objectKey: item.objectKey,
             bytes: item.bytes,
             urlPreview: item.url.slice(0, 120)
           }))
-          for (const item of value.tosUploads) {
+          for (const item of value.uploads) {
             for (const log of item.logs) {
-              activeLogBridge?.appendMessage(`[TOS] ${log.message}`, log.level)
+              activeLogBridge?.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
             }
           }
         }

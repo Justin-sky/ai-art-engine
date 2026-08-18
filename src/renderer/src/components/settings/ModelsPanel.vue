@@ -429,7 +429,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import type { AppSettings } from '@shared/domain'
 import {
   MODEL_MODALITIES,
@@ -447,6 +447,7 @@ import {
   type CatalogModel,
   type ModelModality,
   type ModelProviderInstance,
+  type ModelProviderKindMeta,
   type ModelProviderKind
 } from '@shared/modelProvider'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
@@ -552,7 +553,16 @@ function catalogSize(provider: ModelProviderInstance): number {
   return (catalogs[key] ?? []).length
 }
 
-const providerKinds = MODEL_PROVIDER_KINDS
+const providerKinds = ref<readonly ModelProviderKindMeta[]>(MODEL_PROVIDER_KINDS)
+
+onMounted(async () => {
+  try {
+    const kinds = await window.studio.listProviderKinds()
+    if (kinds.length > 0) providerKinds.value = kinds
+  } catch {
+    /* 预加载未就绪时沿用 shared 目录 */
+  }
+})
 const pendingProviderKind = ref<ModelProviderKind>('openrouter')
 const loadingKey = ref<string | null>(null)
 const catalogs = reactive<Record<string, CatalogModel[]>>({})

@@ -1,7 +1,6 @@
 import { defineComponent, h, markRaw } from 'vue'
 import type { VueComponent } from 'dockview-vue'
 import { WORKSPACE_TOOLBAR_ITEMS } from '@shared/workspaceToolbar'
-import { BUILTIN_NODE_TYPES } from '@shared/graph'
 import AssetBrowser from '../../components/AssetBrowser.vue'
 import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
 import AssetEditor from '../../components/AssetEditor.vue'
@@ -12,8 +11,6 @@ import BeatAssetEditor from '../../components/BeatAssetEditor.vue'
 import WorkspaceMain from '../../components/WorkspaceMain.vue'
 import WorkspaceToolbar from '../../components/WorkspaceToolbar.vue'
 import { BUILTIN_INSPECTORS } from '../../inspector/builtins'
-import { activateExtension, registerExtensionManifest } from './registry'
-import { registerBuiltinGraphCards } from '../../graph/cards/builtins'
 import type { EditorWindowDefinition } from './types'
 import type {
   AssetImporterDefinition,
@@ -46,7 +43,7 @@ function readParam(params: Record<string, unknown>, key: string): string {
   return String(params[key] ?? '')
 }
 
-const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
+export const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   {
     id: 'workspace',
     createComponent: () => panel('DockWorkspace', () => h(WorkspaceMain))
@@ -105,7 +102,7 @@ const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   }
 ]
 
-const BUILTIN_COMMANDS: EditorCommandContribution[] = [
+export const BUILTIN_COMMANDS: EditorCommandContribution[] = [
   {
     id: 'editor.undo',
     title: 'Undo',
@@ -129,32 +126,17 @@ const BUILTIN_COMMANDS: EditorCommandContribution[] = [
   }
 ]
 
-const BUILTIN_IMPORTERS: AssetImporterDefinition[] = [
+export const BUILTIN_IMPORTERS: AssetImporterDefinition[] = [
   { id: 'core.image', assetType: 'image', label: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
   { id: 'core.video', assetType: 'video', label: 'Videos', extensions: ['mp4', 'mov', 'webm'] },
   { id: 'core.audio', assetType: 'voice', label: 'voice', extensions: ['mp3', 'wav', 'ogg', 'm4a'] },
   { id: 'core.model', assetType: 'model', label: 'Models', extensions: ['glb', 'gltf', 'fbx'] }
 ]
 
-export const CORE_EDITOR_EXTENSION_ID = 'aiartengine.core'
+export const CORE_EDITOR_PLUGIN_ID = 'aiartengine.core'
+export const CORE_EDITOR_EXTENSION_ID = CORE_EDITOR_PLUGIN_ID
 
-let activated = false
-
-export function activateBuiltinExtensions(): void {
-  if (activated) return
-  activated = true
-  registerBuiltinGraphCards()
-  registerExtensionManifest({
-    id: CORE_EDITOR_EXTENSION_ID,
-    version: '1.0.0',
-    apiVersion: 1,
-    displayName: 'AIArtEngine Core',
-    inspectors: BUILTIN_INSPECTORS,
-    windows: BUILTIN_WINDOWS,
-    nodeTypes: BUILTIN_NODE_TYPES,
-    toolbarItems: WORKSPACE_TOOLBAR_ITEMS,
-    commands: BUILTIN_COMMANDS,
-    importers: BUILTIN_IMPORTERS
-  })
-  activateExtension(CORE_EDITOR_EXTENSION_ID)
+export {
+  BUILTIN_INSPECTORS,
+  WORKSPACE_TOOLBAR_ITEMS
 }

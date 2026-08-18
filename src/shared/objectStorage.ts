@@ -2,10 +2,13 @@
 
 export type ObjectStorageProviderKind = 'volcengine-tos' | 'aliyun-oss' | 'tencent-cos'
 
-export const OBJECT_STORAGE_PROVIDER_KINDS: ReadonlyArray<{
+export interface ObjectStorageKindMeta {
   id: ObjectStorageProviderKind
   label: string
-}> = [
+}
+
+/** 设置落盘与规范化用的 kind 目录。运行时适配器由主进程 Cordis 插件登记。 */
+export const OBJECT_STORAGE_PROVIDER_KINDS: readonly ObjectStorageKindMeta[] = [
   { id: 'volcengine-tos', label: '火山引擎 TOS' },
   { id: 'aliyun-oss', label: '阿里云 OSS' },
   { id: 'tencent-cos', label: '腾讯云 COS' }

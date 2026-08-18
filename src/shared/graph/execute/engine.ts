@@ -21,14 +21,11 @@ import type {
   GraphValue,
   NodeExecuteContext
 } from './types'
-import {
-  buildMentionSourcesForNode,
-  contributionFromAssets,
-  executeAssetHostInnerGraph,
-  executePassthrough,
-  resolveGalleryOutputsFromNodeParams,
-  resolveGenerateMentionIndexBase
-} from './values'
+import { contributionFromAssets } from './contribution'
+import { buildMentionSourcesForNode, resolveGenerateMentionIndexBase } from './context'
+import { resolveGalleryOutputsFromNodeParams } from './helpers'
+import { executeAssetHostInnerGraph } from './host'
+import { resolveNodeExecutor } from './registry'
 
 function emptyState(status: GraphNodeRunState['status'] = 'idle'): GraphNodeRunState {
   return { status }
@@ -247,7 +244,7 @@ async function softSnapshotOutputs(
   }
 
   const def = resolveNodeType(node)
-  const execute = def?.execute ?? executePassthrough
+  const execute = resolveNodeExecutor(node, def)
   return Promise.resolve(
     execute({
       node,
@@ -372,7 +369,7 @@ async function executeOneNode(
   }
 
   publish(states, nodeId, { status: 'running', inputs }, options.onNodeUpdate)
-  const execute = def?.execute ?? executePassthrough
+  const execute = resolveNodeExecutor(node, def)
   const mentionIndexBase = resolveGenerateMentionIndexBase(
     node,
     options.resolveProjectStyleImages?.() ?? []

@@ -9,8 +9,8 @@ export type VideoJobStatus =
 
 export type VideoJobSource = 'graph'
 
-/** 可落盘的 TOS 临时参考（终态后删除） */
-export interface VideoJobTosUpload {
+/** 可落盘的对象存储临时参考（终态后删除） */
+export interface VideoJobUpload {
   objectKey: string
   url: string
   bytes: number
@@ -41,11 +41,9 @@ export interface VideoJobRecord {
   progress: number
   source: VideoJobSource
   graphBinding?: VideoJobGraphBinding
-  /** @deprecated 旧 GEN_START 任务；新代码不再写入 */
-  shotBinding?: { shotId: string }
   /** 视频副本输出目录（相对工程根） */
   outputDir?: string
-  tosUploads?: VideoJobTosUpload[]
+  uploads?: VideoJobUpload[]
   /** ISO：任务创建时间（超时从此时起算） */
   createdAt: string
   /** ISO：提交到供应商成功时间 */

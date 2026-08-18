@@ -1,16 +1,16 @@
 import type { GenerateVideoInput } from '@shared/modelProvider'
 import { normalizeVideoInputReference } from '@shared/modelProvider'
-import { ensureRemoteMediaUrl, deleteTosUploads, type TosUploadResult } from '../tosUploadService'
+import { ensureRemoteMediaUrl, deleteUploads, type ObjectStorageUploadResult } from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 
-/** 参考视频：本地/data URL → TOS 远程 URL；图片/音频保持原样（或已是 http） */
+/** 参考视频：本地/data URL → 对象存储远程 URL；图片/音频保持原样（或已是 http） */
 export async function prepareVideoInputReferencesForApi(
   input: GenerateVideoInput
-): Promise<{ input: GenerateVideoInput; tosUploads: TosUploadResult[] }> {
+): Promise<{ input: GenerateVideoInput; uploads: ObjectStorageUploadResult[] }> {
   const refs = input.inputReferences ?? []
-  if (!refs.length) return { input, tosUploads: [] }
+  if (!refs.length) return { input, uploads: [] }
 
-  const tosUploads: TosUploadResult[] = []
+  const uploads: ObjectStorageUploadResult[] = []
   const nextRefs: GenerateVideoInput['inputReferences'] = []
   const root = projectService.isOpen() ? projectService.getRoot() : undefined
 
@@ -25,16 +25,16 @@ export async function prepareVideoInputReferencesForApi(
         sourceLabel: `video-ref-${i + 1}`,
         projectRoot: root
       })
-      if (uploaded) tosUploads.push(uploaded)
+      if (uploaded) uploads.push(uploaded)
       nextRefs.push({ kind: 'video_url', url })
     }
   } catch (err) {
-    await deleteTosUploads(tosUploads)
+    await deleteUploads(uploads)
     throw err
   }
 
   return {
     input: { ...input, inputReferences: nextRefs },
-    tosUploads
+    uploads
   }
 }

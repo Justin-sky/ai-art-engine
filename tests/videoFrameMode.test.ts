@@ -23,7 +23,7 @@ import {
   buildFrameIncomingEdgeRefs,
   buildIncomingEdgeRefs
 } from '../src/renderer/src/features/graph/model/graphEditorHosts'
-import { executeVideoGenerateNode } from '../src/shared/graph/execute/values'
+import { executeVideoGenerateNode } from '../src/shared/graph/execute'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 
 describe('video frame mode clamp', () => {

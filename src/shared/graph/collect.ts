@@ -1,4 +1,4 @@
-import { nodeToAssetValue } from './execute/values'
+import { nodeToAssetValue } from './execute'
 import { isProcessingAssetNode } from './nodeRole'
 import type { GraphAssetValue } from './execute/types'
 import type { GraphDocument, GraphNode } from './types'

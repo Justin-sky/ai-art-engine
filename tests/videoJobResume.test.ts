@@ -37,7 +37,7 @@ describe('video job resume completion (repository + settle shape)', () => {
       createdAt: now,
       submittedAt: now,
       updatedAt: now,
-      tosUploads: [
+      uploads: [
         {
           objectKey: 'k',
           url: 'https://tos/k',
@@ -62,7 +62,7 @@ describe('video job resume completion (repository + settle shape)', () => {
       progress: 100,
       assetId: 'asset-1',
       relativePath: 'Assets/gen.mp4',
-      tosUploads: undefined,
+      uploads: undefined,
       error: undefined
     })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNodeFromType } from '../src/shared/graph'
-import { executeBeatSplitNode } from '../src/shared/graph/execute/values'
+import { executeBeatSplitNode } from '../src/shared/graph/execute'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 import { parseBeatJson } from '../src/shared/graph/beatParse'
 

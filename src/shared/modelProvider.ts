@@ -54,14 +54,16 @@ export type ModelProviderKind =
   | 'modelscope'
   | 'comfyui'
 
-/** 可扩展：新增厂商时同步实现 main/services/modelProviders 下的 Adapter，并在 registry 注册 */
-export const MODEL_PROVIDER_KINDS: ReadonlyArray<{
+export interface ModelProviderKindMeta {
   id: ModelProviderKind
   label: string
   defaultBaseUrl: string
   /** 控制台 / 密钥申请页，设置 UI 与手册共用 */
   credentialsUrl: string
-}> = [
+}
+
+/** 设置落盘与规范化用的 kind 目录。运行时适配器由主进程 Cordis 插件登记。 */
+export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
@@ -691,8 +693,8 @@ export interface GenerateVideoResult {
   assetId: string
   relativePath: string
   model: string
-  /** 参考视频上传到 TOS 的记录（便于日志展示） */
-  tosUploads?: Array<{
+  /** 参考视频上传到对象存储的记录（便于日志展示） */
+  uploads?: Array<{
     objectKey: string
     url: string
     bytes: number

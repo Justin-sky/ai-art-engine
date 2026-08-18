@@ -36,6 +36,7 @@ describe('connect menu type filter', () => {
     expect(ids).not.toContain('image.toPrompt')
     expect(ids).not.toContain('asset.motion')
     expect(ids).not.toContain('note.text')
+    expect(ids).not.toContain('text.select')
   })
 
   it('from image out lists image-to-prompt among image-accepting types', () => {
@@ -56,6 +57,7 @@ describe('connect menu type filter', () => {
     expect(ids).toContain('image.toPrompt')
     expect(ids).toContain('asset.image')
     expect(ids).toContain('asset.video')
+    expect(ids).not.toContain('image.select')
     expect(ids).not.toContain('prompt.optimize')
     expect(ids).not.toContain('asset.screenplay')
   })

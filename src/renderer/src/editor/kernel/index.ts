@@ -33,9 +33,14 @@ export function createEditorKernel(): EditorKernel {
   return kernel
 }
 
-const editorKernel = createEditorKernel()
+let boundKernel: EditorKernel | null = null
 
-/** 应用级 Editor Kernel；Feature 通过该入口协作，不直接互相引用。 */
+export function bindEditorKernel(kernel: EditorKernel): void {
+  boundKernel = kernel
+}
+
+/** 由 Cordis runtime 绑定；未启动时惰性创建，供测试与单测直接用。 */
 export function useEditorKernel(): EditorKernel {
-  return editorKernel
+  if (!boundKernel) boundKernel = createEditorKernel()
+  return boundKernel
 }

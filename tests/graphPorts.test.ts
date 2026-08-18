@@ -201,10 +201,10 @@ describe('port type matching', () => {
       'in:video:in:true',
       'in-videos:videos:in:true'
     ])
-    // 单条 video 输出与批量 videos 输出（导演台 out-actions）都可接入方形口
+    // 批量 videos（导演台 out-actions）接方形口；单条 video 只能走默认 in
     const videoSelect = createNodeFromType('video.select', { x: 100, y: 0 })
     const motion = createNodeFromType('asset.motion', { x: 100, y: 80 })
-    expect(canConnectNodes(videoSelect, timeline, { targetPort: 'in-videos' })).toBe(true)
+    expect(canConnectNodes(videoSelect, timeline, { targetPort: 'in-videos' })).toBe(false)
     expect(
       canConnectNodes(motion, timeline, {
         sourcePort: 'out-actions',
@@ -226,6 +226,36 @@ describe('port type matching', () => {
     const processing = createNodeFromType('asset.voice', { x: 100, y: 0 })
     expect(canConnectNodes(playScript, processing)).toBe(true)
     expect(canConnectNodes(playScript, processing, { targetPort: 'in-text' })).toBe(true)
+  })
+
+  it('rejects a single media ref into the matching select node', () => {
+    const imageRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000041',
+      'image',
+      'Img',
+      { x: 0, y: 0 }
+    )
+    const videoRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000042',
+      'video',
+      'Vid',
+      { x: 0, y: 80 }
+    )
+    const voiceRef = createAssetGraphNode(
+      '00000000-0000-4000-8000-000000000043',
+      'voice',
+      'Voc',
+      { x: 0, y: 160 }
+    )
+    expect(canConnectNodes(imageRef, createNodeFromType('image.select', { x: 200, y: 0 }))).toBe(
+      false
+    )
+    expect(canConnectNodes(videoRef, createNodeFromType('video.select', { x: 200, y: 80 }))).toBe(
+      false
+    )
+    expect(canConnectNodes(voiceRef, createNodeFromType('voice.select', { x: 200, y: 160 }))).toBe(
+      false
+    )
   })
 
   it('connects image ref to audio processing image input', () => {

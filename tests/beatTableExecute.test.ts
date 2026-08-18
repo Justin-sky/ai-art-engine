@@ -4,7 +4,7 @@ import {
   executeBeatGenNode,
   executeBeatOutputNode,
   executeBeatTableNode
-} from '../src/shared/graph/execute/values'
+} from '../src/shared/graph/execute'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 
 function baseCtx(

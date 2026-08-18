@@ -1,7 +1,4 @@
-import type {
-  EditorExtensionManifest,
-  EditorPluginPermission
-} from './types'
+import type { EditorPluginManifest, EditorPluginPermission } from './types'
 
 export const EDITOR_EXTENSION_API_VERSION = 1 as const
 
@@ -17,9 +14,9 @@ export interface ExtensionValidationResult {
   errors: string[]
 }
 
-/** 外部清单进入注册表前的纯数据兼容检查，不负责加载任意脚本。 */
+/** 外部清单进入 Cordis 前的纯数据检查，不负责加载任意脚本。 */
 export function validateExtensionManifest(
-  manifest: EditorExtensionManifest
+  manifest: EditorPluginManifest
 ): ExtensionValidationResult {
   const errors: string[] = []
   if (!/^[a-z0-9][a-z0-9._-]+$/i.test(manifest.id)) {
@@ -42,7 +39,7 @@ export function validateExtensionManifest(
 }
 
 export function assertExtensionPermissions(
-  manifest: EditorExtensionManifest,
+  manifest: EditorPluginManifest,
   granted: ReadonlySet<EditorPluginPermission>
 ): void {
   const denied = (manifest.permissions ?? []).filter(

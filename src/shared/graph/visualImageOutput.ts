@@ -2,7 +2,7 @@
  * 视觉图图片出口通用收集：世界元素 / 场子图批跑共用。
  * 输出节点 = boundary.output / classic output / 图片生成加工节点。
  */
-import { flattenImagesValues } from './execute/values'
+import { flattenImagesValues } from './execute'
 import type { GraphImageItem } from './execute/types'
 import { graphValueHasPayload, softResolveBoundaryOutputValue } from './hostInput'
 import { findOutputNode } from './query'

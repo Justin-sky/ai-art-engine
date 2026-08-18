@@ -1192,8 +1192,6 @@ class ProjectService {
     sourceFilePath: string
     name: string
     prompt?: string
-    /** @deprecated 已忽略；主文件直接写入 outputDir */
-    alsoCopyToOutput?: boolean
     /** 主落盘目录（相对工程根） */
     outputDir?: string
   }): AssetInfo {

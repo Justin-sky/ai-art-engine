@@ -9,7 +9,6 @@ import {
   type GraphNodeRunState
 } from '@shared/graph'
 import { isMediaFileAsset, resolveMediaOutputDir } from '@shared/domain'
-import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import { useProjectStore } from '../../stores/project'
 
 async function saveGraphRunMedia(input: {
@@ -22,22 +21,11 @@ async function saveGraphRunMedia(input: {
   return relativePath
 }
 
-function resolveNodeImageOutputDir(
-  node: GraphNode | undefined,
-  host: { hostRelativePath: string | null; hostFolderDir: string; hostAssetName: string }
-): string {
-  // 节点绑定资产优先于图宿主
+function resolveNodeImageOutputDir(node: GraphNode | undefined): string {
   const project = useProjectStore()
-  const bound = node?.assetId
-    ? project.assets.find((item) => item.id === node.assetId)
-    : null
-  const dirs = bound ? assetMediaHostDirs(bound, project.folders) : host
   return resolveMediaOutputDir({
     mediaOutputDir: node?.params.mediaOutputDir,
     cacheOutputDir: project.config?.cacheOutputDir,
-    hostRelativePath: dirs.hostRelativePath,
-    hostFolderDir: dirs.hostFolderDir,
-    hostAssetName: dirs.hostAssetName,
     kind: 'image'
   })
 }
@@ -45,26 +33,20 @@ function resolveNodeImageOutputDir(
 /** 物化 dataUrl → 相对路径，并导出可落盘 graphJson（含 outputs） */
 export async function prepareGraphDocumentForPersist(
   graph: GraphDocument,
-  runStates: Record<string, GraphNodeRunState>,
-  options?: { hostAssetId?: string | null }
+  runStates: Record<string, GraphNodeRunState>
 ): Promise<{
   document: GraphDocument
   materializedStates: Record<string, GraphNodeRunState>
 }> {
-  const project = useProjectStore()
-  const hostAsset = options?.hostAssetId
-    ? project.assets.find((item) => item.id === options.hostAssetId)
-    : null
-  const host = assetMediaHostDirs(hostAsset, project.folders)
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
 
   const materializedStates = await materializeRunStateOutputs(
     runStates,
     saveGraphRunMedia,
-    (nodeId) => resolveNodeImageOutputDir(nodesById.get(nodeId), host)
+    (nodeId) => resolveNodeImageOutputDir(nodesById.get(nodeId))
   )
   const nodes = await materializeNodePreviewParams(graph.nodes, saveGraphRunMedia, (node) =>
-    resolveNodeImageOutputDir(node, host)
+    resolveNodeImageOutputDir(node)
   )
   const document = cloneGraphDocument({
     ...graph,

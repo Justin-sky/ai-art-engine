@@ -11,8 +11,10 @@ import type {
   GenerateTextResult,
   GenerateVideoInput,
   GenerateVideoResult,
-  ListModelsInput
+  ListModelsInput,
+  ModelProviderKindMeta
 } from './modelProvider'
+import type { ObjectStorageKindMeta } from './objectStorage'
 
 export const IpcChannels = {
   // Project
@@ -63,8 +65,6 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
-  /** AI 自由构图：自然语言 → 新建 subgraph 宿主工作流（规划+落盘） */
-  GEN_AI_WORKFLOW: 'gen:ai-workflow',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
   /** AI 自由构图：确认 GraphPlan 后落盘 */
@@ -78,6 +78,10 @@ export const IpcChannels = {
 
   // Model catalog
   MODELS_LIST: 'models:list',
+  /** 主进程 Cordis 已装载的提供商 kind 目录 */
+  PROVIDERS_LIST_KINDS: 'providers:list-kinds',
+  /** 主进程 Cordis 已装载的对象存储 kind 目录 */
+  OBJECT_STORAGE_LIST_KINDS: 'object-storage:list-kinds',
 
   // Settings
   SETTINGS_GET: 'settings:get',
@@ -265,13 +269,6 @@ export interface CommitAiWorkflowResult {
   warnings: string[]
   error?: string
 }
-
-/** AI 自由构图：规划并立即新建 subgraph 宿主工作流 */
-export interface GenerateAiWorkflowInput extends PlanAiWorkflowInput {
-  folderId?: string | null
-}
-
-export type GenerateAiWorkflowResult = CommitAiWorkflowResult
 
 export interface CreateFolderInput {
   name?: string
@@ -472,8 +469,6 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
-  /** AI 自由构图：根据自然语言新建 subgraph 宿主资产 */
-  generateAiWorkflow: (input: GenerateAiWorkflowInput) => Promise<GenerateAiWorkflowResult>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
   /** AI 自由构图：确认计划后落盘 */
@@ -482,6 +477,8 @@ export interface StudioApi {
   getVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   cancelVideoJob: (localJobId: string) => Promise<import('./videoJob').VideoJobRecord | null>
   listModels: (input: ListModelsInput) => Promise<CatalogModel[]>
+  listProviderKinds: () => Promise<ModelProviderKindMeta[]>
+  listObjectStorageKinds: () => Promise<ObjectStorageKindMeta[]>
 
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: AppSettings) => Promise<AppSettings>

@@ -22,7 +22,8 @@ export type VideoPollResult = {
 
 /**
  * 单一模型供应商适配器。
- * 新增厂商：实现本接口 → registry 注册 → shared MODEL_PROVIDER_KINDS 加一项。
+ * 新增厂商：实现本接口 → Cordis `createProviderPlugin`（kind 目录随插件登记）
+ * → shared MODEL_PROVIDER_KINDS 加一项（设置落盘 / 规范化）。
  */
 export interface ModelProviderAdapter {
   readonly kind: ModelProviderKind

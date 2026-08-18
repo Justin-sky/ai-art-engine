@@ -33,6 +33,7 @@
     "site:deploy": "node scripts/deploy-website-oss.mjs"
   },
   "dependencies": {
+    "@cordisjs/core": "^3.18.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@volcengine/tos-sdk": "^2.9.1",

@@ -3,18 +3,17 @@ import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import type { AssetInfo } from '@shared/domain'
 import { isUnderCacheOutputDir, resolveMediaOutputDir } from '@shared/domain'
-import { assetMediaHostDirs } from '@shared/assetPackage/pathname'
 import type {
   VideoJobGraphBinding,
   VideoJobRecord,
-  VideoJobTosUpload
+  VideoJobUpload
 } from '@shared/videoJob'
 import { isVideoJobActive } from '@shared/videoJob'
 import { IpcChannels } from '@shared/ipc'
 import { findProviderById } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
 import { videoJobRepository } from '../repositories/videoJobRepository'
-import { deleteTosUploads } from './tosUploadService'
+import { deleteUploads } from './objectStorageUploadService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
 
@@ -31,7 +30,7 @@ export interface CreateVideoJobInput {
   source: VideoJobRecord['source']
   graphBinding?: VideoJobGraphBinding
   outputDir?: string
-  tosUploads?: VideoJobTosUpload[]
+  uploads?: VideoJobUpload[]
   localJobId?: string
 }
 
@@ -41,19 +40,11 @@ type Waiter = {
 }
 
 function resolveJobVideoOutputDir(job: VideoJobRecord): string {
-  const hostAssetId = job.graphBinding?.assetId
-  const hostAsset = hostAssetId
-    ? projectService.listAssets().find((a) => a.id === hostAssetId)
-    : undefined
-  const dirs = assetMediaHostDirs(hostAsset, projectService.listFolders())
   return resolveMediaOutputDir({
     mediaOutputDir: job.outputDir,
     cacheOutputDir: projectService.isOpen()
       ? projectService.getConfig().cacheOutputDir
       : undefined,
-    hostRelativePath: dirs.hostRelativePath,
-    hostFolderDir: dirs.hostFolderDir,
-    hostAssetName: dirs.hostAssetName,
     kind: 'video'
   })
 }
@@ -91,7 +82,7 @@ class VideoJobService {
       source: input.source,
       graphBinding: input.graphBinding,
       outputDir: input.outputDir?.trim() || undefined,
-      tosUploads: input.tosUploads?.length ? [...input.tosUploads] : undefined,
+      uploads: input.uploads?.length ? [...input.uploads] : undefined,
       createdAt: now,
       submittedAt: now,
       updatedAt: now
@@ -146,7 +137,7 @@ class VideoJobService {
       progress: 100,
       error: '已取消'
     })
-    void this.cleanupTos(next)
+    void this.cleanupUploads(next)
     this.finishWaiters(next, new Error('已取消'))
     this.emitUpdated(next)
     videoJobRepository.pruneTerminal(root)
@@ -170,7 +161,7 @@ class VideoJobService {
           progress: 100,
           error: '视频提供商已移除，无法继续轮询'
         })
-        void this.cleanupTos(failed)
+        void this.cleanupUploads(failed)
         this.emitUpdated(failed)
         continue
       }
@@ -239,8 +230,8 @@ class VideoJobService {
         return
       }
 
-      const { openRouterClient } = await import('./openRouterClient')
-      const result = await openRouterClient.pollVideo(provider, {
+      const { modelProviderFacade } = await import('./modelProviders')
+      const result = await modelProviderFacade.pollVideo(provider, {
         jobId: job.providerJobId,
         pollingUrl: job.pollingUrl
       })
@@ -282,12 +273,12 @@ class VideoJobService {
     provider: import('@shared/modelProvider').ModelProviderInstance,
     downloadUrl: string
   ): Promise<void> {
-    const { openRouterClient } = await import('./openRouterClient')
+    const { modelProviderFacade } = await import('./modelProviders')
     const root = projectService.getRoot()
-    const tmpDir = join(root, '.aiartengine', 'openrouter-video', job.localJobId)
+    const tmpDir = join(root, '.aiartengine', 'video-download', job.localJobId)
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
     const dest = join(tmpDir, 'output.mp4')
-    await openRouterClient.downloadVideoToFile(provider, downloadUrl, dest)
+    await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
 
     const outputDir = resolveJobVideoOutputDir(job)
     const asset = projectService.attachExternalGeneratedFile({
@@ -306,9 +297,9 @@ class VideoJobService {
       assetId: asset.id,
       relativePath: asset.relativePath,
       error: undefined,
-      tosUploads: undefined
+      uploads: undefined
     })
-    await this.cleanupTos(job)
+    await this.cleanupUploads(job)
     this.finishWaiters(next)
     this.emitUpdated(next)
     // Cache/ 产物不进资产库，避免把内存 AssetInfo 广播进库
@@ -357,24 +348,24 @@ class VideoJobService {
       status: 'failed',
       progress: 100,
       error: err.message,
-      tosUploads: undefined
+      uploads: undefined
     })
-    await this.cleanupTos(job)
+    await this.cleanupUploads(job)
     this.finishWaiters(next, err)
     this.emitUpdated(next)
     videoJobRepository.pruneTerminal(root)
   }
 
-  private async cleanupTos(job: VideoJobRecord): Promise<void> {
-    const uploads = job.tosUploads
+  private async cleanupUploads(job: VideoJobRecord): Promise<void> {
+    const uploads = job.uploads
     if (!uploads?.length) return
     try {
-      await deleteTosUploads(uploads)
+      await deleteUploads(uploads)
     } catch (err) {
-      console.warn('[videoJob] 清理 TOS 失败:', err)
+      console.warn('[videoJob] 清理对象存储失败:', err)
     }
     if (projectService.isOpen()) {
-      videoJobRepository.patch(projectService.getRoot(), job.localJobId, { tosUploads: undefined })
+      videoJobRepository.patch(projectService.getRoot(), job.localJobId, { uploads: undefined })
     }
   }
 

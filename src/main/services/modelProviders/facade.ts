@@ -24,12 +24,12 @@ import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
 import { ensureApiImageUrl, ensureApiImageUrls } from './apiImageUrl'
-import { deleteTosUploads, type TosUploadResult } from '../tosUploadService'
+import { deleteUploads, type ObjectStorageUploadResult } from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
 
 /**
- * 模型生成门面：选型 → 派发到对应 ModelProviderAdapter → 编排落盘/TOS。
+ * 模型生成门面：选型 → 派发到对应 ModelProviderAdapter → 编排落盘/对象存储。
  * IPC / 图执行继续依赖本类公开方法，勿在调用方感知适配器细节。
  */
 class ModelProviderFacade {
@@ -150,19 +150,19 @@ class ModelProviderFacade {
   }
 
   /**
-   * 图节点视频生成：参考视频先上传 TOS → 提交 → 持久化 job → 轮询 → 下载 → 登记资产。
-   * 结束后删除 TOS 临时对象。关软件后可由 videoJobService.resumePending 续取结果。
+   * 图节点视频生成：参考视频先上传对象存储 → 提交 → 持久化 job → 轮询 → 下载 → 登记资产。
+   * 结束后删除临时对象。关软件后可由 videoJobService.resumePending 续取结果。
    */
   async generateVideo(
     input: GenerateVideoInput
   ): Promise<GenerateVideoResult> {
     if (!projectService.isOpen()) throw new Error('未打开工程')
 
-    let tosUploads: TosUploadResult[] = []
+    let uploads: ObjectStorageUploadResult[] = []
 
     try {
       const prepared = await prepareVideoInputReferencesForApi(input)
-      tosUploads = prepared.tosUploads
+      uploads = prepared.uploads
       const job = await this.submitVideo(prepared.input)
       const { provider } = resolveActiveProvider('video', input.providerInstanceId, input.model)
 
@@ -175,7 +175,7 @@ class ModelProviderFacade {
         name: input.name,
         source: 'graph',
         outputDir: input.outputDir,
-        tosUploads: tosUploads.map((item) => ({
+        uploads: uploads.map((item) => ({
           objectKey: item.objectKey,
           url: item.url,
           bytes: item.bytes,
@@ -186,8 +186,8 @@ class ModelProviderFacade {
         }))
       })
 
-      // 已移交 videoJobService 管理 TOS 清理，避免双重删除
-      tosUploads = []
+      // 已移交 videoJobService 管理对象清理，避免双重删除
+      uploads = []
 
       const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
       if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
@@ -198,7 +198,7 @@ class ModelProviderFacade {
         assetId: settled.assetId,
         relativePath: settled.relativePath,
         model: settled.model,
-        tosUploads: persisted.tosUploads?.map((item) => ({
+        uploads: persisted.uploads?.map((item) => ({
           objectKey: item.objectKey,
           url: item.url,
           bytes: item.bytes,
@@ -207,7 +207,7 @@ class ModelProviderFacade {
         }))
       }
     } catch (err) {
-      if (tosUploads.length) await deleteTosUploads(tosUploads)
+      if (uploads.length) await deleteUploads(uploads)
       throw err
     }
   }
@@ -274,6 +274,3 @@ class ModelProviderFacade {
 }
 
 export const modelProviderFacade = new ModelProviderFacade()
-
-/** @deprecated 兼容旧名；新代码请用 modelProviderFacade */
-export const openRouterClient = modelProviderFacade

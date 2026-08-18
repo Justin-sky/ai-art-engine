@@ -10,7 +10,7 @@ import {
   executePromptOptimizeNode,
   executeWorldExtractNode,
   selectIncomingValuesForInstruction
-} from '../src/shared/graph/execute/values'
+} from '../src/shared/graph/execute'
 import type { GraphValue, NodeExecuteContext } from '../src/shared/graph/execute/types'
 import type { GraphNode } from '../src/shared/graph/types'
 import type { GraphTextItem } from '../src/shared/graph'

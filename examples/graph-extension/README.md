@@ -6,7 +6,7 @@
 
 源码：`src/renderer/src/editor/extensions/graphDemo/`
 
-应用启动时由 `activateBuiltinExtensions()` 自动注册，无需额外配置。
+正式包默认不加载。本地调试时在 runtime 启动后调用 `registerGraphDemoExtension()`（内部是 `ctx.plugin`）。
 
 ### 如何体验
 
@@ -38,7 +38,7 @@
 
 1. 复制 `graphDemo/` 目录并重命名
 2. 修改 `typeId` / `scope` id（建议 `plugin.*` 前缀）
-3. 在 `builtins.ts` 或独立扩展入口调用 `registerExtensionManifest` + `activateExtension`
+3. 导出 Cordis `apply(ctx)`，在 `startEditorRuntime()` 之后 `ctx.plugin(yourPlugin)`
 4. 补充 `tests/` 用例；运行 `npm test`
 
 ## 测试

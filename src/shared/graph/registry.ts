@@ -33,10 +33,6 @@ export interface NodeTypeDefinition {
   defaultParams: () => GraphNodeParams
   /** 右键菜单可添加（全局开关；scope 白名单见 graph-policy） */
   addable?: boolean
-  /**
-   * @deprecated 由 `default.graph-policy.json` 的 `addableNodeTypes` 取代；保留兼容旧插件读取
-   */
-  graphScopes?: GraphAddScope[]
   /** 从该资产类型拖入/创建时使用 */
   assetType?: AssetType
   /** 固定单例节点 id（如输出） */

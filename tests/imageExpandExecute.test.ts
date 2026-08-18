@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { executeExpandNode } from '../src/shared/graph/execute/values'
+import { executeExpandNode } from '../src/shared/graph/execute'
 import type { GraphNode, NodeExecuteContext } from '../src/shared/graph'
 
 function baseNode(): GraphNode {

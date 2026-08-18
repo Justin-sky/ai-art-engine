@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildGeneratedMediaFileKey,
-  DEFAULT_CACHE_OUTPUT_DIR,
   isUnderAssetLibraryDir,
   isUnderCacheOutputDir,
   resolveMediaOutputDir
@@ -21,26 +20,13 @@ describe('resolveMediaOutputDir (cache redesign)', () => {
     ).toBe('Temp/Cache/Images')
   })
 
-  it('keeps explicit mediaOutputDir (legacy graphs)', () => {
+  it('keeps explicit mediaOutputDir', () => {
     expect(
       resolveMediaOutputDir({
         kind: 'image',
-        mediaOutputDir: 'Assets/Hero/Images',
-        hostAssetName: 'Hero',
-        hostFolderDir: 'Assets'
+        mediaOutputDir: 'Assets/Hero/Images'
       })
     ).toBe('Assets/Hero/Images')
-  })
-
-  it('ignores host asset folder for default path', () => {
-    expect(
-      resolveMediaOutputDir({
-        kind: 'video',
-        hostAssetName: 'ShotA',
-        hostFolderDir: 'Assets/Characters',
-        hostRelativePath: 'Assets/Characters/ShotA.script'
-      })
-    ).toBe(`${DEFAULT_CACHE_OUTPUT_DIR}/Videos`)
   })
 })
 

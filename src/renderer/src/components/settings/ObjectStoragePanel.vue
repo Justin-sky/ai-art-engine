@@ -455,7 +455,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import type { AppSettings } from '@shared/domain'
 import {
   ALIYUN_OSS_REGION_PRESETS,
@@ -467,6 +467,7 @@ import {
   applyVolcengineTosRegionPreset,
   createObjectStorageProvider,
   enableOnlyObjectStorageProvider,
+  type ObjectStorageKindMeta,
   type ObjectStorageProviderInstance,
   type ObjectStorageProviderKind
 } from '@shared/objectStorage'
@@ -477,7 +478,16 @@ const props = defineProps<{
 }>()
 
 const { t } = useStudioI18n()
-const providerKinds = OBJECT_STORAGE_PROVIDER_KINDS
+const providerKinds = ref<readonly ObjectStorageKindMeta[]>(OBJECT_STORAGE_PROVIDER_KINDS)
+
+onMounted(async () => {
+  try {
+    const kinds = await window.studio.listObjectStorageKinds()
+    if (kinds.length > 0) providerKinds.value = kinds
+  } catch {
+    /* 预加载未就绪时沿用 shared 目录 */
+  }
+})
 const tosRegionPresets = VOLCENGINE_TOS_REGION_PRESETS
 const ossRegionPresets = ALIYUN_OSS_REGION_PRESETS
 const cosRegionPresets = TENCENT_COS_REGION_PRESETS

@@ -18,7 +18,6 @@ import {
 } from './bundleExpand'
 import {
   GraphPortType,
-  isPluralGraphPortDataType,
   toSingularGraphPortDataType,
   type GraphEdge,
   type GraphNode,
@@ -40,17 +39,9 @@ function shouldHideAssetRefInputs(
   return (node?.params ?? params)?.assetHost !== true
 }
 
-/** 同类型可连 */
+/** 同类型可连。单数与复数不互通（选择节点只收 images / videos / voices / texts 列表）。 */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
-  if (source === target) return true
-  // 单数可接入对应复数口（多张 image 边界 → image.select 的 images）
-  const plural: Partial<Record<GraphPortDataType, GraphPortDataType>> = {
-    [GraphPortType.image]: GraphPortType.images,
-    [GraphPortType.video]: GraphPortType.videos,
-    [GraphPortType.voice]: GraphPortType.voices,
-    [GraphPortType.text]: GraphPortType.texts
-  }
-  return plural[source] === target
+  return source === target
 }
 
 function resolveVideoFrameMode(raw: unknown): VideoFrameMode {
@@ -331,15 +322,6 @@ export function canConnectNodes(
       const bundleIn = findInPort(target, options.targetPort ?? 'in')
       return !!bundleIn
     }
-    return false
-  }
-  // 图库节点默认单数 `out` 不进 select 复数口（须用 out-all）；边界等无 out-all 的 image→images 仍允许
-  if (
-    outPort.id === 'out' &&
-    isPluralGraphPortDataType(inPort.dataType) &&
-    toSingularGraphPortDataType(inPort.dataType) === outPort.dataType &&
-    getNodePorts(source).some((port) => port.id === GRAPH_OUT_ALL_PORT_ID)
-  ) {
     return false
   }
   return true

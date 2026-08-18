@@ -294,21 +294,41 @@ const BUILTIN_SKILLS: GraphSkill[] = [
   fromSystemDefault('system.emotion', '情绪', 'Emotion', defaultEmotionSystemPrompt)
 ]
 
-const skillById = new Map(BUILTIN_SKILLS.map((skill) => [skill.id, skill]))
+/**
+ * Skill 覆盖栈（后注册优先）。
+ * 内置 BUILTIN_SKILLS 在模块加载时入栈；插件用 registerGraphSkill 追加，dispose 后回落到内置。
+ * 不要把内置 Skill 只挂在渲染进程 Cordis 上（主进程 / 测试共用本目录）。
+ */
+const skillStacks = new Map<string, GraphSkill[]>(
+  BUILTIN_SKILLS.map((skill) => [skill.id, [skill]])
+)
 
-/** 扩展预留：P0 不接 GRAPH_PLUGINS 完整插件面 */
-export function registerGraphSkill(skill: GraphSkill): void {
-  skillById.set(skill.id, skill)
+export function registerGraphSkill(skill: GraphSkill): () => void {
+  const id = skill.id.trim()
+  if (!id) throw new Error('GraphSkill id is empty')
+  const entry = id === skill.id ? skill : { ...skill, id }
+  const stack = skillStacks.get(id) ?? []
+  stack.push(entry)
+  skillStacks.set(id, stack)
+  return () => {
+    const next = (skillStacks.get(id) ?? []).filter((item) => item !== entry)
+    if (next.length) skillStacks.set(id, next)
+    else skillStacks.delete(id)
+  }
 }
 
 export function getGraphSkill(id: string | undefined | null): GraphSkill | undefined {
   const key = id?.trim()
   if (!key) return undefined
-  return skillById.get(key)
+  const stack = skillStacks.get(key)
+  return stack?.[stack.length - 1]
 }
 
 export function listGraphSkills(): GraphSkill[] {
-  return [...skillById.values()]
+  return [...skillStacks.values()].flatMap((stack) => {
+    const top = stack[stack.length - 1]
+    return top ? [top] : []
+  })
 }
 
 export type GraphSkillApplyVars = Record<string, string | number>

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { startMainRuntime, stopMainRuntime } from '../src/main/runtime'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -61,13 +62,13 @@ vi.mock('../src/main/services/projectService', () => ({
   }
 }))
 
-import { deleteTosUploads, uploadLocalFileToTos } from '../src/main/services/tosUploadService'
+import { deleteUploads, uploadLocalFile } from '../src/main/services/objectStorageUploadService'
 
 describe('object storage multi-cloud upload', () => {
   let tmpDir = ''
   let sampleFile = ''
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     ossMocks.put.mockResolvedValue({})
     ossMocks.delete.mockResolvedValue({})
@@ -75,9 +76,11 @@ describe('object storage multi-cloud upload', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'oss-multi-'))
     sampleFile = join(tmpDir, 'clip.mp4')
     writeFileSync(sampleFile, Buffer.from('fake-video'))
+    await startMainRuntime()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await stopMainRuntime()
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
   })
 
@@ -93,7 +96,7 @@ describe('object storage multi-cloud upload', () => {
     })
     serviceMocks.getSettings.mockReturnValue({ objectStorage: { providers: [provider] } })
 
-    const result = await uploadLocalFileToTos(sampleFile, { sourceLabel: 'clip.mp4' })
+    const result = await uploadLocalFile(sampleFile, { sourceLabel: 'clip.mp4' })
     expect(ossMocks.put).toHaveBeenCalled()
     expect(result.url).toContain('oss-signed.example')
     expect(result.bucket).toBe('demo')
@@ -111,7 +114,7 @@ describe('object storage multi-cloud upload', () => {
     })
     serviceMocks.getSettings.mockReturnValue({ objectStorage: { providers: [provider] } })
 
-    const result = await uploadLocalFileToTos(sampleFile)
+    const result = await uploadLocalFile(sampleFile)
     expect(cosMocks.putObject).toHaveBeenCalled()
     expect(result.url).toContain('cos-signed.example')
   })
@@ -126,7 +129,7 @@ describe('object storage multi-cloud upload', () => {
       }
     })
     serviceMocks.getSettings.mockReturnValue({ objectStorage: { providers: [provider] } })
-    await deleteTosUploads([{ bucket: 'demo', objectKey: 'k.mp4', sourceLabel: 'k' }])
+    await deleteUploads([{ bucket: 'demo', objectKey: 'k.mp4', sourceLabel: 'k' }])
     expect(ossMocks.delete).toHaveBeenCalledWith('k.mp4')
   })
 })
