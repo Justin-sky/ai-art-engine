@@ -2,6 +2,12 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [4.0.0-alpha.1] — 2026-08-18
+
+### Fixed
+
+- 场选取节点输出单条文本，测试改为接到文本消费口，不再误连「选取文本」
+
 ## [4.0.0-alpha.0] — 2026-08-18
 
 4.0 首个 Alpha 预发布：内部扩展改为 Cordis 插件运行时。

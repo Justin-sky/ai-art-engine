@@ -43,9 +43,12 @@ describe('beat.select node', () => {
   it('connects catalog → select → text consumer', () => {
     const catalog = createNodeFromType('beat.table', { x: 0, y: 0 })
     const select = createNodeFromType('beat.select', { x: 120, y: 0 })
-    const textSelect = createNodeFromType('text.select', { x: 240, y: 80 })
+    const textConsumer = createNodeFromType('prompt.optimize', { x: 240, y: 80 })
     expect(canConnectNodes(catalog, select)).toBe(true)
-    expect(canConnectNodes(select, textSelect)).toBe(true)
+    expect(canConnectNodes(select, textConsumer)).toBe(true)
+    expect(canConnectNodes(select, createNodeFromType('text.select', { x: 240, y: 160 }))).toBe(
+      false
+    )
   })
 
   it('picks selected unit as text', () => {
