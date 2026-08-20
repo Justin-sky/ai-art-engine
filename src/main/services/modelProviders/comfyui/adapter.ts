@@ -22,6 +22,7 @@ import {
 import {
   collectComfyNodeClassTypes,
   injectComfyWorkflow,
+  minimaxH3NativeSize,
   sizeFromAspectRatio,
   unwrapComfyApiWorkflow,
   type ComfyApiWorkflow
@@ -495,10 +496,21 @@ async function prepareWorkflow(
   const graph = await loadWorkflow(provider, modelId)
   const size = sizeFromAspectRatio(input.aspectRatio, input.resolution)
   // MiniMax H3 等视频模型的 latent 采用 1x2x2 分块，要求 width/height 为 32 的整数倍
-  //（否则 patchify 会因奇数 latent 维度报 shape 不匹配）。视频任务就近对齐到 32。
+  //（否则 patchify 会因奇数 latent 维度报 shape 不匹配）。视频任务就近对齐到 32，
+  // MiniMax H3 再压到原生画布量级（768 短边 / 768*1344 面积上限），避免 1080p 撑爆显存。
   const isVideo = input.duration != null
-  const width = isVideo ? roundToMultiple(size.width, 32) : size.width
-  const height = isVideo ? roundToMultiple(size.height, 32) : size.height
+  let width = size.width
+  let height = size.height
+  if (isVideo) {
+    width = roundToMultiple(width, 32)
+    height = roundToMultiple(height, 32)
+    const isMiniMaxH3 = collectComfyNodeClassTypes(graph).some((t) => /minimaxh3/i.test(t))
+    if (isMiniMaxH3) {
+      const native = minimaxH3NativeSize(width, height)
+      width = Math.min(width, native.width)
+      height = Math.min(height, native.height)
+    }
+  }
   const imageFilenames = input.imageUrls?.length
     ? await uploadReferenceImages(provider, input.imageUrls)
     : []

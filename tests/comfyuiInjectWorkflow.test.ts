@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   collectComfyNodeClassTypes,
   injectComfyWorkflow,
+  minimaxH3NativeSize,
   sizeFromAspectRatio,
   unwrapComfyApiWorkflow
 } from '../src/shared/modelProviders/comfyui/injectWorkflow'
@@ -99,6 +100,12 @@ describe('comfyui injectWorkflow', () => {
     expect(next['104']?.inputs?.length).toBe(124)
     // non-H3 stays on the legacy 16fps heuristic
     expect(next['10']?.inputs?.length).toBe(80)
+  })
+
+  it('computes the MiniMax H3 native canvas', () => {
+    expect(minimaxH3NativeSize(1920, 1088)).toEqual({ width: 1344, height: 768 })
+    expect(minimaxH3NativeSize(1024, 1024)).toEqual({ width: 768, height: 768 })
+    expect(minimaxH3NativeSize(1088, 1920)).toEqual({ width: 768, height: 1344 })
   })
 
   it('collects class types from API graphs and UI workflows', () => {

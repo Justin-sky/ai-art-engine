@@ -177,6 +177,27 @@ function minimaxH3FrameCount(durationSec: number): number {
   return raw + ((5 - (raw % 17)) % 17)
 }
 
+/** MiniMax H3 原生画布：768 短边 + 768*1344 面积上限，逐轴对齐到 32。 */
+export function minimaxH3NativeSize(
+  width: number,
+  height: number
+): { width: number; height: number } {
+  const ratio = width / height
+  const short = 768
+  const maxPixels = 768 * 1344
+  let w = ratio >= 1 ? short * ratio : short
+  let h = ratio >= 1 ? short : short / ratio
+  if (w * h > maxPixels) {
+    const s = Math.sqrt(maxPixels / (w * h))
+    w *= s
+    h *= s
+  }
+  return {
+    width: Math.max(32, Math.round(w / 32) * 32),
+    height: Math.max(32, Math.round(h / 32) * 32)
+  }
+}
+
 export function injectComfyWorkflow(
   workflow: ComfyApiWorkflow,
   input: ComfyWorkflowInjectInput
