@@ -37,6 +37,12 @@ const SIZE_CLASSES = new Set([
   'minimaxh3referencetovideo'
 ])
 
+const MINIMAX_H3_VIDEO_CLASSES = new Set([
+  'emptyminimaxh3latentav',
+  'minimaxh3imagetovideo',
+  'minimaxh3referencetovideo'
+])
+
 const SEED_CLASSES = new Set([
   'ksampler',
   'ksampleradvanced',
@@ -165,6 +171,12 @@ export function sizeFromAspectRatio(
   return { width, height }
 }
 
+/** MiniMax H3 视频按 24fps 计帧，帧数需落在 17k+5 网格上（与官方 ComfyMathExpression 一致）。 */
+function minimaxH3FrameCount(durationSec: number): number {
+  const raw = Math.max(5, Math.round(durationSec * 24))
+  return raw + ((5 - (raw % 17)) % 17)
+}
+
 export function injectComfyWorkflow(
   workflow: ComfyApiWorkflow,
   input: ComfyWorkflowInjectInput
@@ -213,12 +225,12 @@ export function injectComfyWorkflow(
     }
 
     if (input.durationSec != null && Number.isFinite(input.durationSec)) {
-      const frames = Math.max(1, Math.round(input.durationSec * 16))
-      if ('length' in inputs && typeof inputs.length === 'number') inputs.length = frames
-      if ('num_frames' in inputs && typeof inputs.num_frames === 'number') {
-        inputs.num_frames = frames
-      }
-      if ('frames' in inputs && typeof inputs.frames === 'number') inputs.frames = frames
+      const frames = MINIMAX_H3_VIDEO_CLASSES.has(cls)
+        ? minimaxH3FrameCount(input.durationSec)
+        : Math.max(1, Math.round(input.durationSec * 16))
+      if ('length' in inputs) inputs.length = frames
+      if ('num_frames' in inputs) inputs.num_frames = frames
+      if ('frames' in inputs) inputs.frames = frames
       if ('duration' in inputs && typeof inputs.duration === 'number') {
         inputs.duration = input.durationSec
       }

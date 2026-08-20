@@ -86,6 +86,21 @@ describe('comfyui injectWorkflow', () => {
     expect(next['104']?.inputs?.height).toBe(1088)
   })
 
+  it('overrides linked length on MiniMax H3 nodes with the 24fps 17k+5 grid', () => {
+    const graph = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { clip: ['13', 0], vae: ['11', 0], length: ['107', 1] }
+      },
+      '10': { class_type: 'EmptyLTXVLatents', inputs: { length: 97 } }
+    }
+    const next = injectComfyWorkflow(graph, { prompt: 'a cat', durationSec: 5 })
+    // H3: 5s * 24fps = 120 -> snap to 17k+5 => 124
+    expect(next['104']?.inputs?.length).toBe(124)
+    // non-H3 stays on the legacy 16fps heuristic
+    expect(next['10']?.inputs?.length).toBe(80)
+  })
+
   it('collects class types from API graphs and UI workflows', () => {
     expect(collectComfyNodeClassTypes(sample)).toContain('EmptyLatentImage')
     expect(collectComfyNodeClassTypes({ prompt: sample })).toContain('CLIPTextEncode')
