@@ -46,6 +46,7 @@ class ModelProviderFacade {
     overrides?: {
       apiKey?: string
       baseUrl?: string
+      nativeBaseUrl?: string
       providerKind?: ModelProviderKind
     }
   ): Promise<CatalogModel[]> {
@@ -53,6 +54,7 @@ class ModelProviderFacade {
       providerInstanceId,
       apiKey: overrides?.apiKey,
       baseUrl: overrides?.baseUrl,
+      nativeBaseUrl: overrides?.nativeBaseUrl,
       providerKind: overrides?.providerKind
     })
     // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）无需 API Key
@@ -69,12 +71,14 @@ class ModelProviderFacade {
     modality?: ModelModality
     apiKey?: string
     baseUrl?: string
+    nativeBaseUrl?: string
     providerKind?: ModelProviderKind
   }): Promise<{ ok: true }> {
     const provider = buildProviderSnapshot({
       providerInstanceId: input.providerInstanceId,
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
+      nativeBaseUrl: input.nativeBaseUrl,
       providerKind: input.providerKind
     })
     await getProviderAdapter(provider.providerKind).assertAuth(provider)

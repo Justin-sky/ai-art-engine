@@ -24,6 +24,7 @@ vi.mock('../src/main/services/projectService', () => ({
 }))
 
 import { comfyUiAdapter } from '../src/main/services/modelProviders/comfyui/adapter'
+import { comfyUiUserdataOrigins } from '../src/main/services/modelProviders/comfyui/http'
 
 const workflow = {
   '6': { class_type: 'CLIPTextEncode', inputs: { text: 'old' } },
@@ -136,4 +137,297 @@ describe('comfyUiAdapter', () => {
     expect(poll.status).toBe('completed')
     expect(poll.downloadUrl).toBe('http://x/out.mp4')
   })
+
+  it('treats an image-typed mp4 output as a video download', async () => {
+    getMock.mockImplementation((url: string) => {
+      if (String(url).includes('/api/v2/jobs')) {
+        return Promise.resolve({
+          data: {
+            id: 'v-mp4',
+            status: 'succeeded',
+            outputs: [
+              {
+                node_id: '92',
+                name: 'MiniMax_H3_00004_.mp4',
+                type: 'image',
+                content_type: 'video/mp4',
+                url: 'http://x/out-as-image.mp4'
+              }
+            ],
+            progress: { value: 1 }
+          }
+        })
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const poll = await comfyUiAdapter.pollVideo(provider(), {
+      jobId: 'v-mp4',
+      pollingUrl: '/api/v2/jobs/v-mp4'
+    })
+    expect(poll.status).toBe('completed')
+    expect(poll.downloadUrl).toBe('http://x/out-as-image.mp4')
+  })
+
+  it('loads a workflow listed as a basename under dir=workflows', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/video_minimax_h3_t2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string; file?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['video_minimax_h3_t2v.json'] })
+      }
+      if (config?.params?.file === 'workflows/video_minimax_h3_t2v.json') {
+        return Promise.resolve({ data: workflow })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: workflow })
+      }
+      if (String(url).includes('/api/workflow_templates') || String(url).includes('/userdata')) {
+        return Promise.reject(
+          Object.assign(new Error('Request failed with status code 404'), {
+            isAxiosError: true,
+            response: { status: 404, data: { message: 'not found' } }
+          })
+        )
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    postMock.mockResolvedValueOnce({
+      data: {
+        id: 'job-v',
+        status: 'queued',
+        urls: { self: '/api/v2/jobs/job-v' }
+      }
+    })
+    const job = await comfyUiAdapter.submitVideo(provider(), 'video_minimax_h3_t2v', {
+      prompt: 'run'
+    })
+    expect(job.jobId).toBe('job-v')
+  })
+
+  it('sends file_path and content_type when uploading references to /api/v2/assets', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/txt2img.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/txt2img.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: workflow })
+      }
+      if (String(url).includes('/api/userdata') || String(url).includes('/userdata')) {
+        return Promise.reject(
+          Object.assign(new Error('Request failed with status code 404'), {
+            isAxiosError: true,
+            response: { status: 404, data: { message: 'not found' } }
+          })
+        )
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    postMock
+      .mockRejectedValueOnce(new Error('upload/image unsupported'))
+      .mockResolvedValueOnce({ data: { id: 'asset-1', file_path: 'ref-upload.png' } })
+      .mockResolvedValueOnce({
+        data: { id: 'job-ref', status: 'queued', urls: { self: '/api/v2/jobs/job-ref' } }
+      })
+
+    const job = await comfyUiAdapter.submitVideo(provider(), 'txt2img', {
+      prompt: 'run',
+      inputReferences: ['data:image/png;base64,AA==']
+    })
+
+    const upload = postMock.mock.calls.find((call) => call[0] === '/api/v2/assets')
+    expect(upload).toBeTruthy()
+    const form = upload?.[1] as FormData
+    expect(form.get('content_type')).toBe('image/png')
+    expect(String(form.get('file_path') ?? '')).toMatch(/^ref-\d+\.png$/)
+    expect(job.jobId).toBe('job-ref')
+  })
+
+  it('loads a workflow from encoded workflows/ userdata path', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/txt2img.json')}`
+    getMock.mockImplementation((url: string) => {
+      if (url === encoded || String(url).endsWith(encoded)) return Promise.resolve({ data: workflow })
+      if (String(url).includes('/api/userdata') || String(url).includes('/userdata')) {
+        return Promise.reject(
+          Object.assign(new Error('Request failed with status code 404'), {
+            isAxiosError: true,
+            response: { status: 404, data: { message: 'not found' } }
+          })
+        )
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    postMock.mockResolvedValueOnce({
+      data: {
+        id: 'job-2',
+        status: 'succeeded',
+        outputs: [{ type: 'image', url: 'http://127.0.0.1:8189/view?f=b.png' }]
+      }
+    })
+    const result = await comfyUiAdapter.generateImage(provider(), 'txt2img', { prompt: 'a cat' })
+    expect(result.images[0]).toContain('b.png')
+  })
+
+  it('lists userdata workflows instead of txt2img placeholders', async () => {
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({
+          data: [
+            'workflows/千问文生图zimage.json',
+            'workflows/wan22文生视频.json',
+            'workflows/wan22_animate.json'
+          ]
+        })
+      }
+      const path = decodeURIComponent(String(url))
+      if (path.includes('千问文生图zimage.json')) {
+        return Promise.resolve({
+          data: {
+            '1': { class_type: 'EmptyLatentImage' },
+            '2': { class_type: 'SaveImage' }
+          }
+        })
+      }
+      if (path.includes('wan22文生视频.json') || path.includes('wan22_animate.json')) {
+        return Promise.resolve({
+          data: {
+            '1': { class_type: 'WanImageToVideo' },
+            '2': { class_type: 'VHS_VideoCombine' }
+          }
+        })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (String(url).includes('/api/userdata')) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const images = await comfyUiAdapter.fetchCatalog(provider(), 'image')
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    expect(images.map((m) => m.id)).toContain('千问文生图zimage')
+    expect(images.map((m) => m.id)).not.toContain('txt2img')
+    expect(images.map((m) => m.id)).not.toContain('wan22文生视频')
+    expect(images.map((m) => m.id)).not.toContain('wan22_animate')
+    expect(videos.map((m) => m.id)).toContain('wan22文生视频')
+    expect(videos.map((m) => m.id)).toContain('wan22_animate')
+  })
+
+  it('classifies a generically named workflow by its node types', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/my-flow.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/my-flow.json'] })
+      }
+      if (url === encoded) {
+        return Promise.resolve({
+          data: {
+            '1': { class_type: 'EmptyHunyuanLatentVideo' },
+            '2': { class_type: 'VHS_VideoCombine' }
+          }
+        })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (String(url).includes('/api/userdata')) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const images = await comfyUiAdapter.fetchCatalog(provider(), 'image')
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    expect(images.map((m) => m.id)).not.toContain('my-flow')
+    expect(videos.map((m) => m.id)).toContain('my-flow')
+  })
+
+  it('keeps a video-named workflow in the image catalog when nodes only save images', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/wan22文生视频.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/wan22文生视频.json'] })
+      }
+      if (url === encoded) {
+        return Promise.resolve({
+          data: {
+            '1': { class_type: 'EmptyLatentImage' },
+            '2': { class_type: 'SaveImage' }
+          }
+        })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (String(url).includes('/api/userdata')) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const images = await comfyUiAdapter.fetchCatalog(provider(), 'image')
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    expect(images.map((m) => m.id)).toContain('wan22文生视频')
+    expect(videos.map((m) => m.id)).not.toContain('wan22文生视频')
+  })
+
+  it('lists userdata json names when the selected workflow is missing', async () => {
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/my-flow.json'] })
+      }
+      if (String(url).includes('/api/userdata')) {
+        return Promise.reject(
+          Object.assign(new Error('Request failed with status code 404'), {
+            isAxiosError: true,
+            response: { status: 404, data: { message: 'not found' } }
+          })
+        )
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    await expect(
+      comfyUiAdapter.generateImage(provider(), 'txt2img', { prompt: 'a cat' })
+    ).rejects.toThrow(/my-flow/)
+  })
+
+  it('reports an API-format error instead of a misleading 404 for UI workflows', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/my-flow.json')}`
+    const uiWorkflow = {
+      nodes: [{ id: 1, type: 'MarkdownNote', widgets_values: ['no executable nodes'] }],
+      links: []
+    }
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/my-flow.json'] })
+      }
+      if (url === encoded) {
+        return Promise.resolve({ data: uiWorkflow })
+      }
+      if (String(url).includes('/api/userdata')) {
+        return Promise.reject(
+          Object.assign(new Error('Request failed with status code 404'), {
+            isAxiosError: true,
+            response: { status: 404, data: { message: 'not found' } }
+          })
+        )
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    await expect(
+      comfyUiAdapter.generateImage(provider(), 'my-flow', { prompt: 'a cat' })
+    ).rejects.toThrow(/API 格式|Save \(API Format\)/)
+  })
+
+  it('falls back to ComfyUI :8188 for userdata when Base URL is the proxy', () => {
+    expect(comfyUiUserdataOrigins(provider())).toEqual([
+      'http://127.0.0.1:8189',
+      'http://127.0.0.1:8188'
+    ])
+  })
+
+  it('prefers a configured native ComfyUI URL for userdata', () => {
+    expect(
+      comfyUiUserdataOrigins(provider({ nativeBaseUrl: 'http://127.0.0.1:8190/' }))
+    ).toEqual(['http://127.0.0.1:8190'])
+  })
+
 })

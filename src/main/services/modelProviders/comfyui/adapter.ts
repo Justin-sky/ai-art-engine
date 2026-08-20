@@ -20,6 +20,7 @@ import {
   resolveComfyUiModelCapabilities
 } from '@shared/modelProviders/comfyui/modelCapabilities'
 import {
+  collectComfyNodeClassTypes,
   injectComfyWorkflow,
   sizeFromAspectRatio,
   unwrapComfyApiWorkflow,
@@ -30,6 +31,8 @@ import { sleep } from '../http'
 import { projectService } from '../../projectService'
 import {
   comfyUiBaseUrl,
+  createComfyUiFormClient,
+  comfyUiUserdataOrigins,
   createComfyUiHttpClient,
   createComfyUiLongClient,
   readComfyUiError
@@ -81,9 +84,33 @@ function jobProgress(job: ComfyJob, status: VideoPollResult['status']): number {
   return 10
 }
 
-function outputUrls(job: ComfyJob, type: string): string[] {
+function comfyOutputKind(row: ComfyJobOutput): 'image' | 'video' | 'audio' {
+  const type = (row.type ?? '').toLowerCase()
+  const contentType = (row.content_type ?? '').toLowerCase()
+  const name = (row.name ?? '').toLowerCase()
+  const url = (row.url ?? '').toLowerCase()
+
+  if (
+    contentType.startsWith('video/') ||
+    /\.(mp4|webm|mov|avi|mkv|m4v)(?:[?#]|$)/.test(name) ||
+    /\.(mp4|webm|mov|avi|mkv|m4v)(?:[?#]|$)/.test(url)
+  ) {
+    return 'video'
+  }
+  if (
+    contentType.startsWith('audio/') ||
+    /\.(mp3|wav|ogg|flac|m4a|pcm)(?:[?#]|$)/.test(name) ||
+    /\.(mp3|wav|ogg|flac|m4a)(?:[?#]|$)/.test(url)
+  ) {
+    return 'audio'
+  }
+  if (type === 'video' || type === 'audio') return type
+  return 'image'
+}
+
+function outputUrls(job: ComfyJob, type: 'image' | 'video' | 'audio'): string[] {
   return (job.outputs ?? [])
-    .filter((row) => (row.type ?? '').toLowerCase() === type && row.url?.trim())
+    .filter((row) => comfyOutputKind(row) === type && row.url?.trim())
     .map((row) => row.url!.trim())
 }
 
@@ -129,16 +156,139 @@ async function fetchRemoteCatalog(
   }
 }
 
+function joinUserdataRel(dir: string, rel: string): string {
+  const base = dir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const path = rel.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (!path) return base
+  if (!base || base === '.') return path
+  if (path === base || path.startsWith(`${base}/`)) return path
+  return `${base}/${path}`
+}
+
+function userdataFileRequests(rel: string, origin: string): Array<{ url: string }> {
+  const encoded = encodeURIComponent(rel)
+  const originTrim = origin.replace(/\/$/, '')
+  return [
+    { url: `${originTrim}/api/userdata/${encoded}` },
+    { url: `${originTrim}/userdata/${encoded}` },
+    { url: `/api/userdata/${encoded}` },
+    { url: `/userdata/${encoded}` },
+    { url: `/api/userdata/${rel}` },
+    { url: `/userdata/${rel}` }
+  ]
+}
+
 function userdataCandidates(modelId: string): string[] {
   const id = modelId.trim().replace(/^\/+/, '')
   const withJson = id.endsWith('.json') ? id : `${id}.json`
-  return [
-    `/api/userdata/${encodeURIComponent(id)}`,
-    `/api/userdata/${encodeURIComponent(withJson)}`,
-    `/api/userdata/workflows/${encodeURIComponent(id)}`,
-    `/api/userdata/workflows/${encodeURIComponent(withJson)}`,
-    `/api/userdata/aiartengine/${encodeURIComponent(withJson)}`
-  ]
+  return [...new Set([withJson, id, `workflows/${withJson}`, `workflows/${id}`, `aiartengine/${withJson}`])]
+}
+
+function isUsableWorkflowId(id: string): boolean {
+  if (!id) return false
+  if (/^comfy\.settings$/i.test(id)) return false
+  if (/^user\.css$/i.test(id)) return false
+  return true
+}
+
+type UserdataWorkflowRel = { id: string; rel: string }
+type UserdataWorkflowFile = UserdataWorkflowRel & { origin: string }
+
+function collectUserdataJsonFiles(raw: unknown, dirPrefix = ''): UserdataWorkflowRel[] {
+  const rows = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { files?: unknown }).files)
+      ? ((raw as { files: unknown[] }).files ?? [])
+      : []
+  const files: UserdataWorkflowRel[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (row && typeof row === 'object' && (row as { type?: unknown }).type === 'directory') {
+      continue
+    }
+    const path =
+      typeof row === 'string'
+        ? row
+        : row && typeof row === 'object'
+          ? String(
+              (row as { path?: unknown; name?: unknown }).path ??
+                (row as { name?: unknown }).name ??
+                ''
+            )
+          : ''
+    const rel = joinUserdataRel(dirPrefix, path)
+    if (!rel.toLowerCase().endsWith('.json')) continue
+    const id = rel.replace(/\.json$/i, '').split('/').pop() ?? ''
+    if (!isUsableWorkflowId(id) || seen.has(id)) continue
+    seen.add(id)
+    files.push({ id, rel })
+  }
+  return files
+}
+
+async function listUserdataWorkflowFiles(
+  provider: ModelProviderInstance
+): Promise<UserdataWorkflowFile[]> {
+  const files: UserdataWorkflowFile[] = []
+  const seen = new Set<string>()
+  for (const origin of comfyUiUserdataOrigins(provider)) {
+    const client = createComfyUiHttpClient(provider, 60_000, origin)
+    const before = files.length
+    const add = (batch: UserdataWorkflowRel[]) => {
+      for (const file of batch) {
+        if (seen.has(file.id)) continue
+        seen.add(file.id)
+        files.push({ ...file, origin })
+      }
+    }
+    for (const url of ['/api/v2/userdata', '/v2/userdata']) {
+      try {
+        const { data } = await client.get(url, { params: { path: '' } })
+        add(collectUserdataJsonFiles(data))
+      } catch {
+        /* 旧版没有 v2 列表 */
+      }
+    }
+    for (const dir of ['.', 'workflows', 'aiartengine']) {
+      try {
+        const { data } = await client.get('/api/userdata', {
+          params: { dir, recurse: 'true' }
+        })
+        add(collectUserdataJsonFiles(data, dir))
+      } catch {
+        /* 旧版 ComfyUI 可能没有列表接口 */
+      }
+    }
+    if (files.length > before) break
+  }
+  return files
+}
+
+function parseWorkflowBody(data: unknown): unknown {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) as unknown
+    } catch {
+      return data
+    }
+  }
+  return data
+}
+
+async function tryReadUserdataFile(
+  provider: ModelProviderInstance,
+  file: UserdataWorkflowFile
+): Promise<unknown | null> {
+  const client = createComfyUiHttpClient(provider, 15_000, file.origin)
+  for (const req of userdataFileRequests(file.rel, file.origin)) {
+    try {
+      const { data } = await client.get(req.url)
+      return parseWorkflowBody(data)
+    } catch {
+      /* 路径编码 / 新旧接口不同时换下一种 */
+    }
+  }
+  return null
 }
 
 async function loadWorkflow(
@@ -149,18 +299,66 @@ async function loadWorkflow(
   if (trimmed.startsWith('{')) {
     return unwrapComfyApiWorkflow(JSON.parse(trimmed) as unknown)
   }
-  const client = createComfyUiHttpClient(provider)
+  const listed = await listUserdataWorkflowFiles(provider)
+  const withJson = trimmed.endsWith('.json') ? trimmed : `${trimmed}.json`
+  const matched = listed.filter(
+    (file) =>
+      file.id === trimmed ||
+      file.rel === trimmed ||
+      file.rel === withJson ||
+      file.rel.endsWith(`/${withJson}`)
+  )
   let lastError = '未找到 workflow'
-  for (const path of userdataCandidates(trimmed)) {
+  let contentError = ''
+  let readContent = false
+  const tryUnwrap = (raw: unknown): ComfyApiWorkflow | null => {
     try {
-      const { data } = await client.get(path)
-      return unwrapComfyApiWorkflow(data)
+      return unwrapComfyApiWorkflow(parseWorkflowBody(raw))
     } catch (err) {
-      lastError = await readComfyUiError(err)
+      const message = err instanceof Error ? err.message : String(err)
+      lastError = message
+      contentError = message
+      return null
     }
   }
+  for (const file of matched) {
+    const raw = await tryReadUserdataFile(provider, file)
+    if (raw == null) {
+      lastError = `Request failed with status code 404`
+      continue
+    }
+    readContent = true
+    const graph = tryUnwrap(raw)
+    if (graph) return graph
+  }
+  const origins = [
+    ...new Set([...matched.map((file) => file.origin), ...comfyUiUserdataOrigins(provider)])
+  ]
+  for (const origin of origins) {
+    const client = createComfyUiHttpClient(provider, 60_000, origin)
+    for (const rel of userdataCandidates(trimmed)) {
+      for (const req of userdataFileRequests(rel, origin)) {
+        try {
+          const { data } = await client.get(req.url)
+          readContent = true
+          const graph = tryUnwrap(data)
+          if (graph) return graph
+        } catch (err) {
+          lastError = await readComfyUiError(err)
+        }
+      }
+    }
+  }
+  if (readContent && contentError) {
+    throw new Error(
+      `workflow「${trimmed}」已找到，但无法作为 ComfyUI API 使用：${contentError}。请在 ComfyUI 里用 Save (API Format) 导出后覆盖同名 userdata 文件。`
+    )
+  }
+  const available = listed.map((file) => file.id)
+  const found = available.length ? ` 当前 userdata 可见：${available.join('、')}。` : ''
+  const originHint = comfyUiUserdataOrigins(provider).join('、')
   throw new Error(
-    `未找到 workflow「${trimmed}」。请把 API 格式 JSON 放到 ComfyUI userdata（如 userdata/${trimmed}.json），或在设置里手填已有文件名。${lastError ? `（${lastError}）` : ''}`
+    `未找到 workflow「${trimmed}」。请在设置里「拉取可用模型」后勾选本机已有的 workflow 名（不要用占位的 txt2img）。本机 userdata 在 ${originHint}。${found}（${lastError}）`
   )
 }
 
@@ -200,6 +398,7 @@ async function uploadReferenceImages(
 ): Promise<string[]> {
   if (!urls.length) return []
   const client = createComfyUiLongClient(provider)
+  const formClient = createComfyUiFormClient(provider)
   const names: string[] = []
   for (const url of urls) {
     const media = await loadMediaBuffer(client, url)
@@ -210,7 +409,7 @@ async function uploadReferenceImages(
       media.filename
     )
     try {
-      const { data } = await client.post<{ name?: string }>('/upload/image', form)
+      const { data } = await formClient.post<{ name?: string }>('/upload/image', form)
       names.push(data?.name?.trim() || media.filename)
     } catch {
       const retry = new FormData()
@@ -219,8 +418,13 @@ async function uploadReferenceImages(
         new Blob([new Uint8Array(media.buffer)], { type: media.contentType }),
         media.filename
       )
-      const { data } = await client.post<{ id?: string; name?: string }>('/api/v2/assets', retry)
-      names.push(data?.name?.trim() || data?.id?.trim() || media.filename)
+      retry.append('content_type', media.contentType)
+      retry.append('file_path', media.filename)
+      const { data } = await formClient.post<{ id?: string; name?: string; file_path?: string }>(
+        '/api/v2/assets',
+        retry
+      )
+      names.push(data?.file_path?.trim() || data?.name?.trim() || data?.id?.trim() || media.filename)
     }
   }
   return names
@@ -272,6 +476,10 @@ async function waitForJob(
   throw new Error('ComfyUI 任务超时：仍未完成')
 }
 
+function roundToMultiple(value: number, multiple: number): number {
+  return Math.max(multiple, Math.round(value / multiple) * multiple)
+}
+
 async function prepareWorkflow(
   provider: ModelProviderInstance,
   modelId: string,
@@ -286,14 +494,19 @@ async function prepareWorkflow(
 ): Promise<ComfyApiWorkflow> {
   const graph = await loadWorkflow(provider, modelId)
   const size = sizeFromAspectRatio(input.aspectRatio, input.resolution)
+  // MiniMax H3 等视频模型的 latent 采用 1x2x2 分块，要求 width/height 为 32 的整数倍
+  //（否则 patchify 会因奇数 latent 维度报 shape 不匹配）。视频任务就近对齐到 32。
+  const isVideo = input.duration != null
+  const width = isVideo ? roundToMultiple(size.width, 32) : size.width
+  const height = isVideo ? roundToMultiple(size.height, 32) : size.height
   const imageFilenames = input.imageUrls?.length
     ? await uploadReferenceImages(provider, input.imageUrls)
     : []
   return injectComfyWorkflow(graph, {
     prompt: input.prompt,
     seed: input.seed,
-    width: size.width,
-    height: size.height,
+    width,
+    height,
     durationSec: input.duration,
     imageFilenames
   })
@@ -315,9 +528,24 @@ export const comfyUiAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality: ModelModality): Promise<CatalogModel[]> {
-    const local = listComfyUiCatalogModels(modality)
+    const discovered = await listUserdataWorkflowFiles(provider)
+    const fromDisk = (
+      await Promise.all(
+        discovered.map(async (file) => {
+          const raw = await tryReadUserdataFile(provider, file)
+          const classTypes = raw ? collectComfyNodeClassTypes(raw) : []
+          const inferred = inferComfyUiWorkflowModality(file.id, file.rel, classTypes)
+          return {
+            id: file.id,
+            name: file.id,
+            modality: inferred,
+            capabilities: resolveComfyUiModelCapabilities(file.id, inferred) ?? undefined
+          }
+        })
+      )
+    ).filter((row) => row.modality === modality)
     const remote = await fetchRemoteCatalog(provider, modality)
-    if (!remote.length) return local
+    const local = fromDisk.length ? fromDisk : listComfyUiCatalogModels(modality)
     const seen = new Set(local.map((m) => m.id))
     return [...local, ...remote.filter((m) => !seen.has(m.id))]
   },

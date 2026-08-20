@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  collectComfyNodeClassTypes,
   injectComfyWorkflow,
   sizeFromAspectRatio,
   unwrapComfyApiWorkflow
@@ -31,9 +32,14 @@ const sample = {
 }
 
 describe('comfyui injectWorkflow', () => {
-  it('unwraps prompt wrapper and rejects UI format', () => {
+  it('unwraps prompt wrapper and converts UI graphs', () => {
     expect(unwrapComfyApiWorkflow({ prompt: sample })['6']?.class_type).toBe('CLIPTextEncode')
-    expect(() => unwrapComfyApiWorkflow({ nodes: [], links: [] })).toThrow(/UI 格式/)
+    expect(() => unwrapComfyApiWorkflow({ nodes: [], links: [] })).toThrow(/没有可执行节点/)
+    expect(
+      unwrapComfyApiWorkflow({
+        nodes: [{ id: 1, type: 'SaveImage', widgets_values_named: { filename_prefix: 'a' } }]
+      })['1']?.class_type
+    ).toBe('SaveImage')
   })
 
   it('injects prompt, size, seed and load image', () => {
@@ -57,5 +63,42 @@ describe('comfyui injectWorkflow', () => {
   it('maps aspect ratio to size', () => {
     expect(sizeFromAspectRatio('16:9', '1k')).toEqual({ width: 1280, height: 720 })
     expect(sizeFromAspectRatio('1:1', '2k')).toEqual({ width: 1536, height: 1536 })
+  })
+
+  it('overrides width/height on MiniMax H3 nodes even when linked upstream', () => {
+    const next = injectComfyWorkflow(
+      {
+        '104': {
+          class_type: 'MiniMaxH3ImageToVideo',
+          inputs: {
+            clip: ['13', 0],
+            vae: ['11', 0],
+            width: ['115', 0],
+            height: ['115', 1],
+            length: 73,
+            first_frame: ['114', 0]
+          }
+        }
+      },
+      { prompt: 'a cat', width: 1920, height: 1088 }
+    )
+    expect(next['104']?.inputs?.width).toBe(1920)
+    expect(next['104']?.inputs?.height).toBe(1088)
+  })
+
+  it('collects class types from API graphs and UI workflows', () => {
+    expect(collectComfyNodeClassTypes(sample)).toContain('EmptyLatentImage')
+    expect(collectComfyNodeClassTypes({ prompt: sample })).toContain('CLIPTextEncode')
+    expect(
+      collectComfyNodeClassTypes({
+        nodes: [{ type: 'VHS_VideoCombine' }, { class_type: 'SaveVideo' }],
+        links: []
+      })
+    ).toEqual(['VHS_VideoCombine', 'SaveVideo'])
+    expect(
+      collectComfyNodeClassTypes({
+        '1': { class_type: 'SaveImage', _meta: { title: '最终出图' } }
+      })
+    ).toEqual(['SaveImage', '最终出图'])
   })
 })

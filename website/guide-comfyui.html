@@ -255,7 +255,12 @@ comfy-api-proxy</code></pre>
             </li>
             <li>
               <strong>未找到 workflow</strong>：文件名与模型 id 不一致，或不是 API 格式。用
-              Save (API Format) 再放到 <code>user/default/</code>。
+              Save (API Format) 再放到 <code>user/default/</code> 或 <code>user/default/workflows/</code>。
+              提交任务走 proxy 的 8189，读取 workflow 走设置里的「ComfyUI 本体地址」。
+              填了本体地址就不会再连 8188。ComfyUI 改到 8190 时：本体地址填
+              <code>http://127.0.0.1:8190</code>，并把 proxy 重开为
+              <code>comfy-api-proxy --comfyui http://127.0.0.1:8190 --port 8189</code>，
+              否则视频任务仍会打到旧的 8188。
             </li>
             <li>
               <strong>缺节点 / 缺模型</strong>：workflow 里的自定义节点和权重必须已装在这台 ComfyUI 上。

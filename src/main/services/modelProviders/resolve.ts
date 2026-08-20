@@ -43,6 +43,7 @@ export function buildProviderSnapshot(input: {
   providerInstanceId: string
   apiKey?: string
   baseUrl?: string
+  nativeBaseUrl?: string
   providerKind?: ModelProviderKind
 }): ModelProviderInstance {
   const settings = settingsService.get()
@@ -54,6 +55,7 @@ export function buildProviderSnapshot(input: {
     label: saved?.label ?? defaultLabelForKind(kind),
     apiKey: input.apiKey ?? saved?.apiKey ?? '',
     baseUrl: input.baseUrl ?? saved?.baseUrl ?? defaultBaseUrlForKind(kind),
+    nativeBaseUrl: input.nativeBaseUrl ?? saved?.nativeBaseUrl ?? '',
     enabled: saved?.enabled ?? true,
     modalities: saved?.modalities ?? createEmptyModalityMap()
   }

@@ -186,6 +186,10 @@ export default {
       remove: '移除',
       label: '显示名称',
       baseUrl: 'API Base URL',
+      nativeBaseUrl: 'ComfyUI 本体地址',
+      nativeBaseUrlPlaceholder: 'http://127.0.0.1:8188',
+      nativeBaseUrlHint:
+        '填正在运行的 ComfyUI，例如 http://127.0.0.1:8190。workflow 只从这里读，填了就不会再连 8188。上面的 Base URL 仍是 comfy-api-proxy（默认 8189）。视频任务也走 proxy，ComfyUI 改端口后请把 proxy 重开为 --comfyui 指向同一地址。留空才尝试 8188。',
       showApiKey: '显示 API Key',
       hideApiKey: '隐藏 API Key',
       credentialsHint: {

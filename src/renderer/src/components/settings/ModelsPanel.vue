@@ -108,6 +108,20 @@
             spellcheck="false"
           >
         </label>
+        <label v-if="provider.providerKind === 'comfyui'">
+          {{ t('settings.models.nativeBaseUrl') }}
+          <input
+            v-model="provider.nativeBaseUrl"
+            :placeholder="t('settings.models.nativeBaseUrlPlaceholder')"
+            spellcheck="false"
+          >
+        </label>
+        <p
+          v-if="provider.providerKind === 'comfyui'"
+          class="meta"
+        >
+          {{ t('settings.models.nativeBaseUrlHint') }}
+        </p>
         <label>
           API Key
           <div class="secret-field">
@@ -695,6 +709,7 @@ async function refreshModels(
       providerInstanceId: providerId,
       apiKey: latestBefore.apiKey,
       baseUrl: latestBefore.baseUrl,
+      nativeBaseUrl: latestBefore.nativeBaseUrl,
       providerKind: latestBefore.providerKind
     })
     if (seq !== refreshSeqByKey[key]) return

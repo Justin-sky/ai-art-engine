@@ -237,6 +237,7 @@ export function registerIpcHandlers(): void {
     modelProviderFacade.listModels(input.modality, input.providerInstanceId, {
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
+      nativeBaseUrl: input.nativeBaseUrl,
       providerKind: input.providerKind
     })
   )

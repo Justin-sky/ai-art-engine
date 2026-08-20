@@ -187,6 +187,10 @@ export default {
       remove: 'Remove',
       label: 'Display name',
       baseUrl: 'API Base URL',
+      nativeBaseUrl: 'ComfyUI native URL',
+      nativeBaseUrlPlaceholder: 'http://127.0.0.1:8188',
+      nativeBaseUrlHint:
+        'The running ComfyUI, e.g. http://127.0.0.1:8190. Workflows are read only from this URL; 8188 is not tried once this is set. Base URL above stays comfy-api-proxy (default 8189). Video jobs also go through the proxy — after changing the ComfyUI port, restart the proxy with --comfyui pointing at the same address. Leave empty to try 8188.',
       showApiKey: 'Show API key',
       hideApiKey: 'Hide API key',
       credentialsHint: {

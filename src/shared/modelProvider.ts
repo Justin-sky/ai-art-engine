@@ -207,6 +207,11 @@ export interface ModelProviderInstance {
   /** API Key */
   apiKey: string
   baseUrl: string
+  /**
+   * ComfyUI 本体地址（读 userdata / workflow）。
+   * Base URL 仍是 comfy-api-proxy（默认 8189）；两套 ComfyUI 时填正在用的那套，例如 http://127.0.0.1:8188。
+   */
+  nativeBaseUrl?: string
   enabled: boolean
   /** 各模态下的模型勾选与默认项 */
   modalities: ProviderModalityMap
@@ -520,6 +525,7 @@ export function createProviderInstance(
     label: meta.label,
     apiKey: '',
     baseUrl: meta.defaultBaseUrl,
+    nativeBaseUrl: '',
     enabled: true,
     modalities: createEmptyModalityMap()
   }
@@ -602,6 +608,8 @@ export interface ListModelsInput {
   /** 未点保存时由前端直接传入，避免读到旧密钥 */
   apiKey?: string
   baseUrl?: string
+  /** ComfyUI 本体地址（读 workflow）；未保存时由设置页传入 */
+  nativeBaseUrl?: string
   providerKind?: ModelProviderKind
 }
 
@@ -901,6 +909,10 @@ function normalizeProviderInstance(
       typeof item.baseUrl === 'string' && item.baseUrl.trim()
         ? item.baseUrl.replace(/\/$/, '')
         : meta.defaultBaseUrl,
+    nativeBaseUrl:
+      kind === 'comfyui' && typeof item.nativeBaseUrl === 'string' && item.nativeBaseUrl.trim()
+        ? item.nativeBaseUrl.replace(/\/$/, '')
+        : '',
     enabled: item.enabled !== false,
     modalities: normalizeModalityMap(item.modalities)
   }
