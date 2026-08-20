@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [4.0.0] — 2026-08-20
+
+4.0 正式版：内部扩展改为 Cordis 插件运行时，并补齐 ComfyUI 视频 / 声音生成与 MiniMax H3 支持。
+
+### Added
+
+- ComfyUI API 2 视频 / 声音生成：从 userdata 拉取并读取 API 格式 workflow，画布 UI 图（含子图）自动转 API，首帧 / 参考图 multipart 上传
+- MiniMax H3 视频：宽高自动对齐到 32 并压到原生画布（768 短边 / 768×1344 面积上限），时长按 24fps + 17k+5 网格注入
+
+### Changed
+
+- 编辑器、模型提供商与对象存储改为 Cordis 插件注册；节点连线端口类型严格匹配；内部上传接口统一为对象存储服务（详见 4.0.0-alpha.0）
+
 ## [4.0.0-alpha.1] — 2026-08-18
 
 ### Fixed
