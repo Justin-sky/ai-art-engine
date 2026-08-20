@@ -179,9 +179,9 @@ export default {
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔或 ComfyUI；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI 或 MagicRouter；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
       unifiedHint:
-        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key；ComfyUI 走 API 2（本机 8189 或云端 Base URL），图片 / 视频 / 声音，本机可空 Key。',
+        '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key；ComfyUI 走 API 2（本机 8189 或云端 Base URL），图片 / 视频 / 声音，本机可空 Key；MagicRouter 为多供应商聚合（OpenAI 兼容），支持文本 / 图片 / 视频，需 mr- 开头 API Key。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
@@ -208,7 +208,8 @@ export default {
         minimax: '获取 API Key：',
         dashscope: '获取百炼 API Key：',
         modelscope: '获取访问令牌：',
-        comfyui: '本机可空 Key；云端 API Key：'
+        comfyui: '本机可空 Key；云端 API Key：',
+        magicrouter: '获取 MagicRouter API Key（mr- 开头）：'
       },
       arkVoiceCredentialsHint:
         '声音设计走豆包语音 openspeech，请填语音控制台 API Key（可与方舟 Key 不同），并手填已购 speaker_id：',
@@ -315,6 +316,14 @@ export default {
           'ComfyUI API 2 视频：同一套 /api/v2/jobs 轮询。请使用 txt2vid / img2vid 等 API 格式 workflow；有首帧时写入 LoadImage。',
         audio:
           'ComfyUI API 2 声音：同一套 /api/v2/jobs，收取 type=audio 的输出。请使用 txt2audio 等 API 格式 workflow。'
+      },
+      magicrouterModalityHint: {
+        text:
+          'MagicRouter 多供应商聚合（OpenAI 兼容），默认 Base URL 为 api.magicrouter.ai/v1，对应 /chat/completions；目录由 /models/live 拉取。',
+        image:
+          'MagicRouter 文生图 / 图生编辑，调用 /images/generations（参考图走 image / images 字段）；目录由 /models/live 拉取。',
+        video:
+          'MagicRouter 视频（happyhorse / wan2.7）：异步 POST /videos/generations 后轮询 GET /videos/generations/{id}；支持 t2v / i2v / r2v / videoedit。'
       },
       localModalityHint: {
         text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',

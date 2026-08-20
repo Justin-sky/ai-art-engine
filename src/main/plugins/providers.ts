@@ -15,6 +15,7 @@ import { miniMaxAdapter } from '../services/modelProviders/minimax/adapter'
 import { dashscopeAdapter } from '../services/modelProviders/dashscope/adapter'
 import { modelScopeAdapter } from '../services/modelProviders/modelscope/adapter'
 import { comfyUiAdapter } from '../services/modelProviders/comfyui/adapter'
+import { magicRouterAdapter } from '../services/modelProviders/magicrouter/adapter'
 
 function resolveProviderMeta(
   adapter: ModelProviderAdapter,
@@ -62,5 +63,6 @@ export const builtinProviderPlugins = [
   createProviderPlugin(miniMaxAdapter),
   createProviderPlugin(dashscopeAdapter),
   createProviderPlugin(modelScopeAdapter),
-  createProviderPlugin(comfyUiAdapter)
+  createProviderPlugin(comfyUiAdapter),
+  createProviderPlugin(magicRouterAdapter)
 ] as const

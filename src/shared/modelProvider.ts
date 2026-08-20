@@ -35,6 +35,8 @@ export const DASHSCOPE_DEFAULT_BASE_URL =
 export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1'
 /** ComfyUI API 2（本机 comfy-api-proxy 默认 8189；云端填 https://cloud.comfy.org） */
 export const COMFYUI_DEFAULT_BASE_URL = 'http://127.0.0.1:8189'
+/** MagicRouter（多供应商聚合，OpenAI 兼容；文本 / 图片 / 视频） */
+export const MAGICROUTER_DEFAULT_BASE_URL = 'https://api.magicrouter.ai/v1'
 
 export type ModelProviderKind =
   | 'openrouter'
@@ -53,6 +55,7 @@ export type ModelProviderKind =
   | 'dashscope'
   | 'modelscope'
   | 'comfyui'
+  | 'magicrouter'
 
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
@@ -160,6 +163,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'ComfyUI',
     defaultBaseUrl: COMFYUI_DEFAULT_BASE_URL,
     credentialsUrl: 'https://docs.comfy.org/development/api-development/getting-an-api-key'
+  },
+  {
+    id: 'magicrouter',
+    label: 'MagicRouter',
+    defaultBaseUrl: MAGICROUTER_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://www.magicrouter.ai/docs/api'
   }
 ]
 
@@ -335,6 +344,14 @@ export function isComfyUiProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'comfyui'
   return provider.providerKind === 'comfyui'
+}
+
+export function isMagicRouterProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'magicrouter'
+  return provider.providerKind === 'magicrouter'
 }
 
 /** 本机服务允许空 Key：vLLM / Ollama / LM Studio / ComfyUI（云端仍可填 Key） */

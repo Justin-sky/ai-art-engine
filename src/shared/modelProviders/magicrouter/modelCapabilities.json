@@ -1,0 +1,192 @@
+{
+  "meta": {
+    "console": "https://www.magicrouter.ai",
+    "docs": [
+      "https://www.magicrouter.ai/docs/api"
+    ],
+    "note": "OpenAI 兼容聚合网关。Base URL: https://api.magicrouter.ai/v1。文本: /chat/completions。图片: /images/generations（image/images 走编辑）。视频: /videos/generations 提交 + /videos/generations/{id} 轮询。模型目录: /models/live 返回 chat/image/video 分类列表。"
+  },
+  "models": [
+    {
+      "id": "qwen/qwen3.7-max",
+      "name": "Qwen3.7 Max",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen/qwen3.6-plus",
+      "name": "Qwen3.6 Plus",
+      "modality": "text",
+      "profile": "text-base"
+    },
+    {
+      "id": "qwen/qwen-image-2.0-pro",
+      "name": "Qwen Image 2.0 Pro",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "qwen/qwen-image-edit-plus",
+      "name": "Qwen Image Edit Plus",
+      "modality": "image",
+      "profile": "image-ref"
+    },
+    {
+      "id": "wan2.7-image",
+      "name": "Wan 2.7 Image",
+      "modality": "image",
+      "profile": "image-base"
+    },
+    {
+      "id": "happyhorse-1.0-t2v",
+      "name": "HappyHorse 1.0 T2V",
+      "modality": "video",
+      "profile": "video-t2v"
+    },
+    {
+      "id": "happyhorse-1.0-i2v",
+      "name": "HappyHorse 1.0 I2V",
+      "modality": "video",
+      "profile": "video-i2v"
+    },
+    {
+      "id": "wan2.7-t2v",
+      "name": "Wan 2.7 T2V",
+      "modality": "video",
+      "profile": "video-t2v"
+    },
+    {
+      "id": "wan2.7-i2v",
+      "name": "Wan 2.7 I2V",
+      "modality": "video",
+      "profile": "video-i2v"
+    },
+    {
+      "id": "wan2.7-r2v",
+      "name": "Wan 2.7 R2V",
+      "modality": "video",
+      "profile": "video-r2v"
+    },
+    {
+      "id": "wan2.7-videoedit",
+      "name": "Wan 2.7 VideoEdit",
+      "modality": "video",
+      "profile": "video-videoedit"
+    }
+  ],
+  "profiles": {
+    "text-base": {
+      "modality": "text",
+      "label": "MagicRouter Text",
+      "capabilities": {}
+    },
+    "image-base": {
+      "modality": "image",
+      "label": "MagicRouter Image",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1k", "2k"]
+          },
+          "n": { "min": 1, "max": 4 },
+          "input_references": { "max": 0 }
+        }
+      }
+    },
+    "image-ref": {
+      "modality": "image",
+      "label": "MagicRouter Image (ref)",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+          },
+          "resolution": {
+            "values": ["1k", "2k"]
+          },
+          "n": { "min": 1, "max": 4 },
+          "input_references": { "max": 3 }
+        }
+      }
+    },
+    "video-t2v": {
+      "modality": "video",
+      "label": "MagicRouter Video (T2V)",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [3, 5, 8, 10, 15],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 0,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 0 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-i2v": {
+      "modality": "video",
+      "label": "MagicRouter Video (I2V)",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [3, 5, 8, 10, 15],
+        "supported_frame_images": ["first_frame", "last_frame"],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 1 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-r2v": {
+      "modality": "video",
+      "label": "MagicRouter Video (R2V)",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [3, 5, 8, 10, 15],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 5,
+        "max_input_videos": 0,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 5 },
+          "max_videos": { "max": 0 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    },
+    "video-videoedit": {
+      "modality": "video",
+      "label": "MagicRouter VideoEdit",
+      "capabilities": {
+        "supported_resolutions": ["480P", "720P", "1080P"],
+        "supported_aspect_ratios": [],
+        "supported_durations": [3, 5, 8, 10, 15],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 3,
+        "max_input_videos": 1,
+        "max_input_audios": 0,
+        "supported_parameters": {
+          "input_references": { "max": 3 },
+          "max_videos": { "max": 1 },
+          "max_audios": { "max": 0 }
+        }
+      }
+    }
+  }
+}

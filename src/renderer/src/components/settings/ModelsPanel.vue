@@ -472,6 +472,7 @@ import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashsc
 import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
+import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { clearImageGenerateCapabilitiesCache } from '../../features/graph/model/imageGenerateCapabilities'
 import { clearVideoGenerateCapabilitiesCache } from '../../features/graph/model/videoGenerateCapabilities'
@@ -522,6 +523,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   }
   if (provider.providerKind === 'volcengine-ark') {
     return [...MODEL_MODALITIES]
+  }
+  if (provider.providerKind === 'magicrouter') {
+    return ['text', 'image', 'video']
   }
   return MODEL_MODALITIES.filter((m) => m !== 'audio')
 }
@@ -650,6 +654,9 @@ function modalityHintText(provider: ModelProviderInstance): string {
   }
   if (provider.providerKind === 'comfyui') {
     return t(`settings.models.comfyuiModalityHint.${mod}`)
+  }
+  if (provider.providerKind === 'magicrouter') {
+    return t(`settings.models.magicrouterModalityHint.${mod}`)
   }
   return t(`settings.models.modalityHint.${mod}`)
 }
@@ -800,6 +807,11 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       (modality === 'image' || modality === 'video' || modality === 'audio')
     ) {
       capabilities = resolveComfyUiModelCapabilities(id, modality) ?? undefined
+    } else if (
+      provider.providerKind === 'magicrouter' &&
+      (modality === 'image' || modality === 'video')
+    ) {
+      capabilities = resolveMagicRouterModelCapabilities(id, modality) ?? undefined
     }
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }

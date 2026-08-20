@@ -12,6 +12,7 @@ import {
   isGoogleProvider,
   isComfyUiProvider,
   isKlingProvider,
+  isMagicRouterProvider,
   isMiniMaxProvider,
   isVllmProvider,
   isVolcengineArkProvider,
@@ -25,6 +26,7 @@ import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashsc
 import { resolveVllmModelCapabilities } from '@shared/modelProviders/vllm/modelCapabilities'
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
+import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 export interface VideoGenerateCapabilitiesBundle {
@@ -74,6 +76,7 @@ async function resolveVideoCapabilitiesRaw(
   let isVllm = false
   let isXai = false
   let isComfyUi = false
+  let isMagicRouter = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
@@ -85,6 +88,7 @@ async function resolveVideoCapabilitiesRaw(
     isDashScope = isDashScopeProvider(provider)
     isVllm = isVllmProvider(provider)
     isXai = isXaiProvider(provider)
+    isMagicRouter = isMagicRouterProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -137,6 +141,9 @@ async function resolveVideoCapabilitiesRaw(
   }
   if (isGoogle) {
     return resolveGoogleModelCapabilities(modelId, 'video')
+  }
+  if (isMagicRouter) {
+    return resolveMagicRouterModelCapabilities(modelId, 'video')
   }
   return resolveVolcengineArkModelCapabilities(modelId, catalogName)
 }

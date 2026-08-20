@@ -10,6 +10,7 @@ import {
   isGoogleProvider,
   isComfyUiProvider,
   isKlingProvider,
+  isMagicRouterProvider,
   isMiniMaxProvider,
   isModelScopeProvider,
   isOpenAiProvider,
@@ -27,6 +28,7 @@ import { resolveOpenAiModelCapabilities } from '@shared/modelProviders/openai/mo
 import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
 import { resolveZhipuModelCapabilities } from '@shared/modelProviders/zhipu/modelCapabilities'
+import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 const cache = new Map<string, ImageGenerateParamCapabilities>()
@@ -61,6 +63,7 @@ async function resolveSupportedParameters(
   let isXai = false
   let isZhipu = false
   let isComfyUi = false
+  let isMagicRouter = false
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
@@ -74,6 +77,7 @@ async function resolveSupportedParameters(
     isOpenAi = isOpenAiProvider(provider)
     isXai = isXaiProvider(provider)
     isZhipu = isZhipuProvider(provider)
+    isMagicRouter = isMagicRouterProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -150,6 +154,12 @@ async function resolveSupportedParameters(
 
   if (isZhipu) {
     const local = resolveZhipuModelCapabilities(modelId, 'image')
+    if (local?.supported_parameters) return local.supported_parameters
+    return undefined
+  }
+
+  if (isMagicRouter) {
+    const local = resolveMagicRouterModelCapabilities(modelId, 'image')
     if (local?.supported_parameters) return local.supported_parameters
     return undefined
   }
