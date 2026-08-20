@@ -86,6 +86,7 @@
           <li><a href="#overview">它怎么接</a></li>
           <li><a href="#local-proxy">本机安装 comfy-api-proxy</a></li>
           <li><a href="#workflow">准备 API 格式 workflow</a></li>
+          <li><a href="#minimax-h3">MiniMax H3 视频</a></li>
           <li><a href="#settings">在本软件里添加 ComfyUI</a></li>
           <li><a href="#cloud">云端 Comfy Cloud</a></li>
           <li><a href="#faq">常见问题</a></li>
@@ -216,8 +217,64 @@ comfy-api-proxy</code></pre>
           </div>
         </section>
 
+        <section id="minimax-h3">
+          <h2>4. MiniMax H3 视频</h2>
+          <p>
+            <strong>MiniMax H3</strong> 是开源权重的视频模型，官方节点已内置在较新的 ComfyUI 里
+            （<code>comfy_extras/nodes_minimax_h3.py</code>），<strong>无需安装第三方节点</strong>。
+            支持文生视频（T2V）、图生视频（I2V）、首尾帧（FL2V）、多模态参考（R2V），
+            并可同步生成原生立体声音轨。
+          </p>
+
+          <h3>4.1 需要的模型文件</h3>
+          <p>在 ComfyUI 的模型下载里拉齐这些权重（名字以本机 <code>models/</code> 为准）：</p>
+          <ul>
+            <li>H3 扩散模型（UNet）</li>
+            <li>视频 VAE</li>
+            <li>音频 VAE（不生成声音可省略）</li>
+            <li>CLIP（Qwen3-VL）</li>
+          </ul>
+
+          <h3>4.2 内置节点</h3>
+          <ul>
+            <li>
+              <code>MiniMaxH3ImageToVideo</code> — 文生视频 / 首尾帧图生视频
+              （<code>first_frame</code> / <code>last_frame</code>）
+            </li>
+            <li><code>MiniMaxH3ReferenceToVideo</code> — 多模态参考（图片 / 视频 / 音频）</li>
+            <li><code>EmptyMiniMaxH3LatentAV</code> — 视频 + 音频联合 latent</li>
+            <li><code>MiniMaxH3AddGuide</code> — 在指定帧锚定图片 / 音频引导</li>
+          </ul>
+
+          <h3>4.3 尺寸与帧数硬约束</h3>
+          <p>
+            H3 的 latent 采用 1×2×2 分块，<strong>width / height 必须是 32 的整数倍</strong>（否则会报
+            <code>shape … is invalid for input of size</code>）；帧数按 24fps 落在
+            <strong>17k+5</strong> 网格上。
+          </p>
+          <p>
+            本软件已自动处理：检测到 H3 节点后，会把宽高就近对齐到 32、再压到原生画布量级
+            （768 短边 / 768×1344 面积上限），并把时长按 5s→124 帧、8s→192 帧、10s→243 帧写入。
+            所以 workflow 里即便挂了 <code>ResolutionSelector</code> 或自算帧数的数学节点，也会被本软件覆盖。
+          </p>
+
+          <h3>4.4 最小 I2V workflow 建议</h3>
+          <ol>
+            <li><code>LoadImage</code> → <code>MiniMaxH3ImageToVideo</code> 的 <code>first_frame</code>。</li>
+            <li><code>MiniMaxH3ImageToVideo</code> 接 CLIP 与视频 VAE，正向输出接 <code>BasicGuider</code>。</li>
+            <li><code>LATENT</code> → 采样器 → <code>VAEDecode</code> → <code>SaveVideo</code>（有声音再接 <code>VAEDecodeAudio</code>）。</li>
+            <li>用 <strong>Save (API Format)</strong> 导出，命名如 <code>video_minimax_h3_i2v</code>，放到 <code>user/default/workflows/</code>。</li>
+          </ol>
+          <p>
+            官方完整示例与提示词写法：
+            <a href="https://docs.comfy.org/zh/tutorials/video/minimax/minimax-h3" target="_blank" rel="noopener noreferrer"
+              >ComfyUI · MiniMax H3 教程</a
+            >。
+          </p>
+        </section>
+
         <section id="settings">
-          <h2>4. 在本软件里添加 ComfyUI</h2>
+          <h2>5. 在本软件里添加 ComfyUI</h2>
           <ol>
             <li>打开<strong>设置 → 模型 → 添加模型提供商 → ComfyUI</strong>。</li>
             <li>Base URL 填 <code>http://127.0.0.1:8189</code>（本机）或云端地址。</li>
@@ -229,7 +286,7 @@ comfy-api-proxy</code></pre>
         </section>
 
         <section id="cloud">
-          <h2>5. 云端 Comfy Cloud</h2>
+          <h2>6. 云端 Comfy Cloud</h2>
           <ol>
             <li>
               在
@@ -247,7 +304,7 @@ comfy-api-proxy</code></pre>
         </section>
 
         <section id="faq">
-          <h2>6. 常见问题</h2>
+          <h2>7. 常见问题</h2>
           <ul>
             <li>
               <strong>连接测试失败 / 404</strong>：ComfyUI 在 8188，但本软件打的是 8189。先确认
@@ -267,6 +324,16 @@ comfy-api-proxy</code></pre>
             </li>
             <li>
               <strong>图生图没有参考图</strong>：workflow 里要有 <code>LoadImage</code>；节点上要连参考图。
+            </li>
+            <li>
+              <strong>MiniMax H3 报 shape … is invalid for input of size</strong>：说明宽高不是 32 的整数倍
+              （H3 latent 采用 1×2×2 分块）。本软件会自动对齐并压到原生画布；若你手写的 workflow 里
+              固定了 <code>ResolutionSelector</code> 且数值不是 32 的倍数，删掉它或改成 32 的倍数即可。
+            </li>
+            <li>
+              <strong>H3 workflow 在「拉取模型」里看不到</strong>：先把 API 格式 JSON 放到
+              <code>user/default/</code> 或 <code>user/default/workflows/</code>，再回设置里「拉取可用模型」；
+              本软件按节点类型把它识别为「视频」页签下的模型。
             </li>
             <li>
               <strong>要不要接旧版 /prompt？</strong>：不必。本软件只维护 API 2。
