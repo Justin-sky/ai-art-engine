@@ -25,19 +25,33 @@ export function createMagicRouterHttpClient(
   })
 }
 
-/** OpenAI 兼容错误：{ error: { message } } / { message } / 纯文本 */
+/** 从响应体抽取可读错误信息；对象/数组用 JSON 兜底，避免 [object Object] */
+function magicRouterErrorMessage(data: unknown): string | null {
+  if (data == null) return null
+  if (typeof data === 'string') return data.trim() || null
+  if (typeof data !== 'object') return String(data)
+
+  const rec = data as Record<string, unknown>
+  const error = rec.error
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>
+    const code = e.code != null ? `[${String(e.code)}] ` : ''
+    const message =
+      typeof e.message === 'string' && e.message.trim() ? e.message : JSON.stringify(e)
+    return `${code}${message}`
+  }
+  if (typeof rec.message === 'string' && rec.message.trim()) return rec.message
+  // FastAPI 校验错误常用 detail: [{ msg, loc, ... }]
+  if (rec.detail != null) return JSON.stringify(rec.detail)
+  return JSON.stringify(rec)
+}
+
+/** OpenAI 兼容错误：{ error: { message } } / { message } / { detail } / 纯文本 */
 export async function readMagicRouterHttpError(err: unknown): Promise<string> {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as
-      | { error?: { message?: string; code?: string } | string; message?: string; detail?: string }
-      | undefined
-    if (typeof data?.error === 'string') return data.error
-    if (data?.error && typeof data.error === 'object') {
-      const code = data.error.code ? `[${data.error.code}] ` : ''
-      if (data.error.message) return `${code}${data.error.message}`
-    }
-    if (data?.message) return data.message
-    if (data?.detail) return data.detail
+    const parsed = magicRouterErrorMessage(err.response?.data)
+    if (parsed) return parsed
     const status = err.response?.status
     if (status === 401 || status === 403) {
       return `${err.message}（请检查 MagicRouter API Key 是否正确、已保存）`

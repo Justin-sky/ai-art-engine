@@ -78,13 +78,11 @@ function normalizeDuration(seconds: number | undefined): number {
 
 function resolveImageSize(aspectRatio: string | undefined): string | undefined {
   const table: Record<string, string> = {
-    '1:1': '1024x1024',
-    '16:9': '1280x720',
-    '9:16': '720x1280',
-    '4:3': '1024x768',
-    '3:4': '768x1024',
-    '3:2': '1152x768',
-    '2:3': '768x1152'
+    '1:1': '1024*1024',
+    '16:9': '1280*720',
+    '9:16': '720*1280',
+    '4:3': '1280*960',
+    '3:4': '960*1280'
   }
   return table[(aspectRatio ?? '').trim()]
 }

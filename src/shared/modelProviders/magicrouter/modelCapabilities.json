@@ -86,7 +86,7 @@
       "capabilities": {
         "supported_parameters": {
           "aspect_ratio": {
-            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4"]
           },
           "resolution": {
             "values": ["1k", "2k"]
@@ -102,7 +102,7 @@
       "capabilities": {
         "supported_parameters": {
           "aspect_ratio": {
-            "values": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+            "values": ["1:1", "16:9", "9:16", "4:3", "3:4"]
           },
           "resolution": {
             "values": ["1k", "2k"]
