@@ -95,10 +95,11 @@ describe('graph canvas menu nodes', () => {
     }
   })
 
-  it('director generate node only exposes output ports', () => {
+  it('director generate node exposes panorama input and shot outputs', () => {
     const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const ports = getNodePorts(node)
-    expect(ports.some((port) => port.direction === 'in')).toBe(false)
+    const inPorts = ports.filter((port) => port.direction === 'in')
+    expect(inPorts.map((port) => [port.id, port.dataType])).toEqual([['in-panorama', 'image']])
     expect(ports.some((port) => port.direction === 'out')).toBe(true)
   })
 

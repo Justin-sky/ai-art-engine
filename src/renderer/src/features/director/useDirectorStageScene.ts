@@ -138,7 +138,8 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
-import { isDirectorProcessingNode } from '@shared/graph'
+import { flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
+import { resolveAssetFileUrl } from '../media/assetUrlCache'
 import { extractModelSceneDefaults } from './modelSceneDefaults'
 import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
 import { useEditorDocumentSession } from '../../composables/useEditorDocumentSession'
@@ -6660,9 +6661,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     previewRevision.value += 1
   }
 
-  async function loadPanorama(panoramaAssetId: string | null): Promise<void> {
-    if (!scene || !contentRoot) return
-    if (panoramaSphere) {
+  function disposePanoramaSphere(): void {
+    if (panoramaSphere && contentRoot) {
       contentRoot.remove(panoramaSphere)
       panoramaSphere.geometry.dispose()
       ;(panoramaSphere.material as THREE.Material).dispose()
@@ -6670,6 +6670,48 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     panoramaTexture?.dispose()
     panoramaTexture = null
+  }
+
+  async function createPanoramaSphere(url: string): Promise<void> {
+    if (!contentRoot) return
+    panoramaTexture = await new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load(url, resolve, undefined, reject)
+    })
+    panoramaTexture.colorSpace = THREE.SRGBColorSpace
+    const geo = new THREE.SphereGeometry(currentPanoramaRadius(), 64, 40)
+    geo.scale(-1, 1, 1)
+    panoramaSphere = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        map: panoramaTexture,
+        depthWrite: false
+      })
+    )
+    panoramaSphere.renderOrder = -1
+    panoramaSphere.userData.stagePanorama = true
+    contentRoot.add(panoramaSphere)
+    applyPanoramaVisuals()
+    applyBorderlessStyle(true)
+    syncCameraClipPlanes()
+  }
+
+  async function loadPanoramaFromUrl(url: string): Promise<void> {
+    if (!scene || !contentRoot || !url) return
+    disposePanoramaSphere()
+    try {
+      await createPanoramaSphere(url)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : t('director.error.panoramaLoad')
+      applyBorderlessStyle(false)
+    } finally {
+      previewRevision.value += 1
+      requestRender()
+    }
+  }
+
+  async function loadPanorama(panoramaAssetId: string | null): Promise<void> {
+    if (!scene || !contentRoot) return
+    disposePanoramaSphere()
 
     if (!panoramaAssetId) {
       applyBorderlessStyle(false)
@@ -6688,31 +6730,88 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     try {
       const url = await window.studio.getAssetFileUrl(sceneAsset.relativePath)
-      panoramaTexture = await new Promise<THREE.Texture>((resolve, reject) => {
-        new THREE.TextureLoader().load(url, resolve, undefined, reject)
-      })
-      panoramaTexture.colorSpace = THREE.SRGBColorSpace
-      const geo = new THREE.SphereGeometry(currentPanoramaRadius(), 64, 40)
-      geo.scale(-1, 1, 1)
-      panoramaSphere = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({
-          map: panoramaTexture,
-          depthWrite: false
-        })
-      )
-      panoramaSphere.renderOrder = -1
-      panoramaSphere.userData.stagePanorama = true
-      contentRoot.add(panoramaSphere)
-      applyPanoramaVisuals()
-      applyBorderlessStyle(true)
-      syncCameraClipPlanes()
+      await createPanoramaSphere(url)
     } catch (e) {
       error.value = e instanceof Error ? e.message : t('director.error.panoramaLoad')
       applyBorderlessStyle(false)
     } finally {
       previewRevision.value += 1
       requestRender()
+    }
+  }
+
+  interface IncomingPanoramaImage {
+    key: string
+    url: string
+    assetId: string
+  }
+
+  async function resolveIncomingPanoramaImage(): Promise<IncomingPanoramaImage | null> {
+    const nodeId = boundProcessingNodeId()
+    if (!nodeId) return null
+    const doc = graphEditorHosts.getDocument(graphHostId.value)
+    if (!doc) return null
+    const edge = (doc.edges ?? []).find(
+      (item) => item.target === nodeId && (item.targetPort ?? 'in') === 'in-panorama'
+    )
+    if (!edge) return null
+    const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
+    if (!source) return null
+
+    const runOut = doc.runStates?.[source.id]?.outputs?.out
+    if (runOut?.kind === 'asset' && runOut.assetType === 'image' && runOut.assetId) {
+      return { key: `asset:${runOut.assetId}`, url: '', assetId: runOut.assetId }
+    }
+    for (const item of flattenImagesValues(runOut ? [runOut] : [])) {
+      if (item.dataUrl?.trim()) {
+        return { key: `data:${item.dataUrl.slice(-192)}`, url: item.dataUrl, assetId: '' }
+      }
+      const path = item.relativePath?.trim()
+      if (path) {
+        try {
+          return { key: `path:${path}`, url: await resolveAssetFileUrl(path), assetId: '' }
+        } catch {
+          // ignore unreadable relative path and keep scanning
+        }
+      }
+    }
+    if (source.params.previewDataUrl?.trim()) {
+      const dataUrl = source.params.previewDataUrl.trim()
+      return { key: `data:${dataUrl.slice(-192)}`, url: dataUrl, assetId: '' }
+    }
+    const previewPath = source.params.previewRelativePath?.trim()
+    if (previewPath) {
+      try {
+        return { key: `path:${previewPath}`, url: await resolveAssetFileUrl(previewPath), assetId: '' }
+      } catch {
+        // ignore
+      }
+    }
+    if (source.assetType === 'image' && source.assetId) {
+      return { key: `asset:${source.assetId}`, url: '', assetId: source.assetId }
+    }
+    return null
+  }
+
+  let appliedIncomingPanoramaKey = ''
+
+  async function syncIncomingPanorama(): Promise<void> {
+    const incoming = await resolveIncomingPanoramaImage()
+    if (!incoming) {
+      appliedIncomingPanoramaKey = ''
+      await loadPanorama(linkedPanoramaId.value)
+      return
+    }
+    if (incoming.key !== appliedIncomingPanoramaKey) {
+      appliedIncomingPanoramaKey = incoming.key
+      if (incoming.assetId) linkedPanoramaId.value = incoming.assetId
+    }
+    if (incoming.assetId) {
+      await loadPanorama(incoming.assetId)
+    } else if (incoming.url) {
+      await loadPanoramaFromUrl(incoming.url)
+    } else {
+      await loadPanorama(linkedPanoramaId.value)
     }
   }
 
@@ -7670,7 +7769,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       applySceneWorldTransform()
       syncCameraClipPlanes()
       syncAllPathVisuals()
-      await loadPanorama(linkedPanoramaId.value)
+      await syncIncomingPanorama()
       if (skipAssetWatch) return
       await rebuildObjects()
     },
@@ -7697,7 +7796,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     syncShotVisuals()
     rebuildGrid()
     applySceneWorldTransform()
-    void loadPanorama(linkedPanoramaId.value)
+    void syncIncomingPanorama()
     void rebuildObjects()
     selectScene()
   }

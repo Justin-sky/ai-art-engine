@@ -211,9 +211,16 @@ const ASSET_META: Array<{
   }
 ]
 
-/** 导演台编辑：站位（images）与动作（videos），均为方形复数口 */
+/** 导演台编辑：全景背景图（单图）输入 + 站位（images）与动作（videos）输出 */
 function motionProcessingPorts(): GraphPortDef[] {
   return [
+    {
+      id: 'in-panorama',
+      direction: 'in',
+      dataType: GraphPortType.image,
+      multiple: false,
+      label: '全景'
+    },
     {
       id: 'out-shots',
       direction: 'out',

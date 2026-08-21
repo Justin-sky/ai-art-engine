@@ -17,7 +17,10 @@ describe('director asset graph', () => {
       ['out-shots', 'images'],
       ['out-actions', 'videos']
     ])
-    expect(getNodePorts(processing!).filter((p) => p.direction === 'in')).toEqual([])
+    const inPorts = getNodePorts(processing!).filter((p) => p.direction === 'in')
+    expect(inPorts.map((p) => [p.id, p.dataType, p.multiple ?? false])).toEqual([
+      ['in-panorama', 'image', false]
+    ])
     expect(doc.edges).toHaveLength(0)
   })
 

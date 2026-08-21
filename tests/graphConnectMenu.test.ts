@@ -106,16 +106,17 @@ describe('connect menu type filter', () => {
     )).toBe(true)
   })
 
-  it('director motion node has no input ports', () => {
+  it('director motion node only accepts panorama image input', () => {
     const target = createNodeFromType('asset.motion', { x: 0, y: 0 })
-    expect(getNodePorts(target).filter((p) => p.direction === 'in')).toEqual([])
+    const inPorts = getNodePorts(target).filter((p) => p.direction === 'in')
+    expect(inPorts.map((p) => [p.id, p.dataType])).toEqual([['in-panorama', 'image']])
   })
 
-  it('typeDef helpers: motion provides images and videos (no inputs)', () => {
+  it('typeDef helpers: motion provides images and videos (panorama image input)', () => {
     const motion = listAddableNodeTypes('directorAsset').find((d) => d.typeId === 'asset.motion')!
     expect(typeDefAcceptsDataType(motion, GraphPortType.text)).toBe(false)
     expect(typeDefAcceptsDataType(motion, GraphPortType.model)).toBe(false)
-    expect(typeDefAcceptsDataType(motion, GraphPortType.image)).toBe(false)
+    expect(typeDefAcceptsDataType(motion, GraphPortType.image)).toBe(true)
     expect(typeDefAcceptsDataType(motion, GraphPortType.video)).toBe(false)
     // 方形口 out-shots / out-actions：复数类型，与单数 image/video 严格不相通
     expect(typeDefProvidesDataType(motion, GraphPortType.images)).toBe(true)
