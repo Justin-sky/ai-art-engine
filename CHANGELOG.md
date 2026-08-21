@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [4.0.3] — 2026-08-21
+
+### Added
+
+- 图层分离导出 PSD 时保留嵌套分组（名称、折叠、可见性）
+
+### Fixed
+
+- 图层分离等 dive 编辑器打开时，工具栏撤销/重做代理到草稿历史，不再误回退整张图
+- 面包屑回退时提交裁剪 / 网格拆分 / 图层分离的实时预览，撤销命令不再丢失
+
 ## [4.0.2] — 2026-08-21
 
 ### Added
