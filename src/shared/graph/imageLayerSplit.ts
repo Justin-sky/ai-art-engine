@@ -406,6 +406,41 @@ export function layerSplitGroupForSource(
   return state.groups.find((group) => group.sourceLayerId === id)
 }
 
+/** 从根到该分组的祖先链（含自身） */
+export function layerSplitExportGroupChain(
+  state: Pick<ImageLayerSplitState, 'groups'>,
+  groupId?: string
+): ImageLayerSplitGroup[] {
+  const chain: ImageLayerSplitGroup[] = []
+  let gid = groupId?.trim() ?? ''
+  const seen = new Set<string>()
+  while (gid) {
+    if (seen.has(gid)) break
+    seen.add(gid)
+    const group = state.groups.find((item) => item.id === gid)
+    if (!group) break
+    chain.unshift(group)
+    gid = group.parentGroupId?.trim() ?? ''
+  }
+  return chain
+}
+
+/**
+ * 导出时的相对文件夹（分组名）。
+ * rootGroupId 有值时去掉该分组及祖先，便于「导出选中分组」时本组图层落在所选目录根下。
+ */
+export function layerSplitExportFolderSegments(
+  state: Pick<ImageLayerSplitState, 'groups'>,
+  groupId?: string,
+  rootGroupId?: string
+): string[] {
+  const chain = layerSplitExportGroupChain(state, groupId)
+  const root = rootGroupId?.trim() ?? ''
+  const start = root ? chain.findIndex((group) => group.id === root) : -1
+  const sliced = start >= 0 ? chain.slice(start + 1) : chain
+  return sliced.map((group) => group.name.trim() || group.id)
+}
+
 /** 分组及其嵌套子分组里的全部图层（按叠放顺序） */
 export function collectLayerSplitGroupLayers(
   state: Pick<ImageLayerSplitState, 'groups' | 'layers'>,

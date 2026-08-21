@@ -381,6 +381,7 @@ export interface SaveBinaryFileInput {
 
 export interface SaveBinaryFilesToDirectoryInput {
   files: Array<{
+    /** 文件名；可用 `/` 表示相对子目录（如 `分组/01-层.png`） */
     fileName: string
     data: Uint8Array
   }>

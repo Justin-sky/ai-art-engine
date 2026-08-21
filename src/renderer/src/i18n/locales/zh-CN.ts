@@ -1980,7 +1980,10 @@ export default {
       exportAllDone: '已导出 {n} 个图层',
       exportFailed: '导出失败：{error}',
       exportNeedImage: '没有可导出的图层图片',
-      exportFilterImage: '图片'
+      exportFilterImage: '图片',
+      exportPsd: '导出 PSD',
+      exportPsdDone: '已导出 PSD',
+      exportPsdFilter: 'Photoshop PSD'
     },
     anim2d: {
       inspectorHint: '接入上游帧动画序列图；运行本节点按行列切分为单帧，下方可逐帧播放预览',

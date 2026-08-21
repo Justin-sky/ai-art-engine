@@ -1,6 +1,6 @@
 import { dialog } from 'electron'
-import { basename, extname, join } from 'path'
-import { existsSync, writeFileSync } from 'fs'
+import { basename, extname, join, resolve, sep } from 'path'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { importFileFilter } from '@shared/import'
 import type { SaveBinaryFilesToDirectoryInput } from '@shared/ipc'
 
@@ -115,19 +115,33 @@ class DialogService {
     if (!directory) return null
 
     let written = 0
+    const root = resolve(directory)
     for (const file of input.files) {
-      const safeBase = (file.fileName || 'image')
-        .normalize('NFC')
-        .trim()
+      const raw = (file.fileName || 'image').normalize('NFC').trim().replace(/\\/g, '/')
+      const parts = raw.split('/').filter(Boolean)
+      const filePart = parts.pop() || 'image'
+      const dirParts = parts
+        .map((part) =>
+          part
+            .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+            .replace(/\.+$/g, '')
+            .replace(/^\.+$/g, '_')
+        )
+        .filter((part) => part && part !== '.' && part !== '..')
+      const destDir = resolve(root, ...dirParts)
+      if (destDir !== root && !destDir.startsWith(root + sep)) continue
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
+
+      const safeBase = filePart
         .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
         .replace(/\.+$/g, '')
       const ext = extname(safeBase)
       const stem = ext ? safeBase.slice(0, -ext.length) : safeBase
       const suffix = ext || '.png'
-      let dest = join(directory, `${stem || 'image'}${suffix}`)
+      let dest = join(destDir, `${stem || 'image'}${suffix}`)
       let i = 2
       while (existsSync(dest)) {
-        dest = join(directory, `${stem || 'image'}-${i}${suffix}`)
+        dest = join(destDir, `${stem || 'image'}-${i}${suffix}`)
         i += 1
       }
       const buf = Buffer.isBuffer(file.data)

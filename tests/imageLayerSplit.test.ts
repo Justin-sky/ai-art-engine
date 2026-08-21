@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLayerSplitList,
   collectLayerSplitGroupLayers,
+  layerSplitExportFolderSegments,
   isCanvasSafeImageSrc,
   isLayerSplitLayerDrawable,
   layerSplitFingerprint,
@@ -162,6 +163,12 @@ describe('imageLayerSplit', () => {
       'p-base',
       'hat'
     ])
+    expect(layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'hat')?.groupId)).toEqual([
+      'Person 拆分'
+    ])
+    expect(layerSplitExportFolderSegments(next, next.layers.find((l) => l.id === 'a')?.groupId)).toEqual(
+      []
+    )
 
     const hidden = {
       ...next,

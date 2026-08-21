@@ -1989,7 +1989,10 @@ export default {
       exportAllDone: 'Exported {n} layers',
       exportFailed: 'Export failed: {error}',
       exportNeedImage: 'No layer image to export',
-      exportFilterImage: 'Images'
+      exportFilterImage: 'Images',
+      exportPsd: 'Export PSD',
+      exportPsdDone: 'PSD exported',
+      exportPsdFilter: 'Photoshop PSD'
     },
     anim2d: {
       inspectorHint: 'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',

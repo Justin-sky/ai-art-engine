@@ -246,6 +246,16 @@
                   />
                 </svg>
               </button>
+              <button
+                type="button"
+                class="icon-btn psd-btn"
+                :disabled="!canExportAll"
+                :title="t('graph.layerSplit.exportPsd')"
+                :aria-label="t('graph.layerSplit.exportPsd')"
+                @click="exportPsd"
+              >
+                PSD
+              </button>
             </div>
           </div>
           <p
@@ -394,6 +404,7 @@ import {
   LAYER_SPLIT_RESOLUTIONS,
   buildLayerSplitList,
   collectLayerSplitGroupLayers,
+  layerSplitExportFolderSegments,
   imageLayerSplitToNodePatch,
   isLayerSplitBase,
   isLayerSplitLayerDrawable,
@@ -415,6 +426,7 @@ import {
   preferredModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
+import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 export type LayerSplitEditorSavePayload = ReturnType<typeof imageLayerSplitToNodePatch> & {
@@ -472,6 +484,11 @@ const handles: ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 const resolutions = LAYER_SPLIT_RESOLUTIONS
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
+const localHistory = {
+  undo: [] as ImageLayerSplitState[],
+  redo: [] as ImageLayerSplitState[],
+  applying: false
+}
 
 type DragKind = 'move' | 'resize'
 const drag = reactive<{
@@ -634,14 +651,29 @@ async function resolveLayerBytes(src: string): Promise<{ data: Uint8Array; ext: 
   }
 }
 
-async function exportLayerFiles(layers: ImageLayerSplitLayer[]): Promise<number | null> {
+async function exportLayerFiles(
+  layers: ImageLayerSplitLayer[],
+  options?: { nestGroups?: boolean; rootGroupId?: string }
+): Promise<number | null> {
+  const counts = new Map<string, number>()
   const files: Array<{ fileName: string; data: Uint8Array }> = []
-  for (const [index, layer] of layers.entries()) {
+  for (const layer of layers) {
     const src = layerUrl(layer)
     if (!src) continue
     const { data, ext } = await resolveLayerBytes(src)
+    let dirPrefix = ''
+    let dirKey = ''
+    if (options?.nestGroups) {
+      const segs = layerSplitExportFolderSegments(draft, layer.groupId, options.rootGroupId).map(
+        (name) => sanitizeFileBase(name)
+      )
+      dirKey = segs.join('/')
+      dirPrefix = segs.length ? `${segs.join('/')}/` : ''
+    }
+    const n = (counts.get(dirKey) ?? 0) + 1
+    counts.set(dirKey, n)
     files.push({
-      fileName: `${String(index + 1).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`,
+      fileName: `${dirPrefix}${String(n).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`,
       data
     })
   }
@@ -682,7 +714,10 @@ async function exportSelectedGroup(): Promise<void> {
   if (!canExportGroup.value) return
   exporting.value = true
   try {
-    const written = await exportLayerFiles(selectedGroupLayers.value)
+    const written = await exportLayerFiles(selectedGroupLayers.value, {
+      nestGroups: true,
+      rootGroupId: selectedGroupId.value
+    })
     if (written == null) return
     flashExportMessage(t('graph.layerSplit.exportGroupDone', { n: written }))
   } catch (err) {
@@ -702,9 +737,40 @@ async function exportAllLayers(): Promise<void> {
   }
   exporting.value = true
   try {
-    const written = await exportLayerFiles(layers)
+    const written = await exportLayerFiles(layers, { nestGroups: true })
     if (written == null) return
     flashExportMessage(t('graph.layerSplit.exportAllDone', { n: written }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportPsd(): Promise<void> {
+  if (exporting.value) return
+  const layers = sortLayersForCompose(draft.layers).filter((layer) => layerUrl(layer))
+  if (!layers.length) {
+    flashExportMessage(t('graph.layerSplit.exportNeedImage'), true)
+    return
+  }
+  exporting.value = true
+  try {
+    const data = await layerSplitToPsdUint8Array({
+      state: draft,
+      layerUrls: props.layerUrls
+    })
+    const saved = await window.studio.saveBinaryFile({
+      data,
+      defaultPath: 'layer-split.psd',
+      filters: [
+        { name: t('graph.layerSplit.exportPsdFilter'), extensions: ['psd'] },
+        { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
+      ]
+    })
+    if (!saved) return
+    flashExportMessage(t('graph.layerSplit.exportPsdDone'))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
@@ -738,6 +804,69 @@ function findLayer(id: string): ImageLayerSplitLayer | undefined {
   return draft.layers.find((layer) => layer.id === id)
 }
 
+function cloneDraft(state: ImageLayerSplitState = draft): ImageLayerSplitState {
+  return normalizeImageLayerSplit(JSON.parse(JSON.stringify(state)) as ImageLayerSplitState)
+}
+
+function resetLocalHistory(): void {
+  localHistory.undo.length = 0
+  localHistory.redo.length = 0
+}
+
+function pushDraftHistory(): void {
+  if (hydrating.value || localHistory.applying || splitting.value) return
+  const snap = cloneDraft()
+  const last = localHistory.undo.at(-1)
+  if (last && JSON.stringify(last) === JSON.stringify(snap)) return
+  localHistory.undo.push(snap)
+  if (localHistory.undo.length > 80) localHistory.undo.shift()
+  localHistory.redo.length = 0
+}
+
+function applyDraftState(next: ImageLayerSplitState): void {
+  localHistory.applying = true
+  hydrating.value = true
+  Object.assign(draft, next)
+  void nextTick(() => {
+    hydrating.value = false
+    localHistory.applying = false
+    emitPreview()
+  })
+}
+
+function undoDraft(): void {
+  const prev = localHistory.undo.pop()
+  if (!prev) return
+  localHistory.redo.push(cloneDraft())
+  applyDraftState(prev)
+}
+
+function redoDraft(): void {
+  const next = localHistory.redo.pop()
+  if (!next) return
+  localHistory.undo.push(cloneDraft())
+  applyDraftState(next)
+}
+
+function onWindowUndoKeydown(event: KeyboardEvent): void {
+  if (!props.open) return
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  const key = event.key.toLowerCase()
+  if (key === 'z' && !event.shiftKey) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    undoDraft()
+    return
+  }
+  if (key === 'y' || (key === 'z' && event.shiftKey)) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    redoDraft()
+  }
+}
+
 function replaceLayer(next: ImageLayerSplitLayer): void {
   const index = draft.layers.findIndex((layer) => layer.id === next.id)
   if (index < 0) return
@@ -757,6 +886,7 @@ function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): v
   draft.selectedId = layer.id
   stageEl.value?.focus()
   if (isBase(layer) || !layer.visible) return
+  pushDraftHistory()
   event.preventDefault()
   drag.kind = 'move'
   drag.id = layer.id
@@ -775,6 +905,7 @@ function onHandlePointerDown(
   handle: ResizeHandle
 ): void {
   draft.selectedId = layer.id
+  pushDraftHistory()
   event.preventDefault()
   drag.kind = 'resize'
   drag.id = layer.id
@@ -832,14 +963,17 @@ function onPointerUp(): void {
 
 function reorder(direction: 'up' | 'down'): void {
   if (!draft.selectedId) return
+  pushDraftHistory()
   draft.layers = reorderLayerSplit(draft.layers, draft.selectedId, direction)
 }
 
 function toggleGroupCollapsed(groupId: string): void {
+  pushDraftHistory()
   draft.groups = toggleLayerSplitGroupCollapsed(draft.groups, groupId)
 }
 
 function toggleGroupVisible(groupId: string): void {
+  pushDraftHistory()
   draft.groups = toggleLayerSplitGroupVisible(draft.groups, groupId)
 }
 
@@ -871,6 +1005,7 @@ function onSplitSelected(): void {
 function toggleVisible(id: string): void {
   const layer = findLayer(id)
   if (!layer) return
+  pushDraftHistory()
   replaceLayer({ ...layer, visible: !layer.visible })
 }
 
@@ -883,10 +1018,12 @@ function toggleBaseVisible(): void {
 function resetSelected(): void {
   const layer = selectedLayer.value
   if (!layer) return
+  pushDraftHistory()
   replaceLayer(resetLayerSplitRect(layer, draft.canvasWidth, draft.canvasHeight))
 }
 
 function resetAll(): void {
+  pushDraftHistory()
   draft.layers = draft.layers.map((layer) =>
     resetLayerSplitRect(layer, draft.canvasWidth, draft.canvasHeight)
   )
@@ -898,15 +1035,19 @@ function onKeydown(event: KeyboardEvent): void {
   const step = event.shiftKey ? 10 : 1
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
+    pushDraftHistory()
     replaceLayer(nudgeLayerSplit(layer, -step, 0))
   } else if (event.key === 'ArrowRight') {
     event.preventDefault()
+    pushDraftHistory()
     replaceLayer(nudgeLayerSplit(layer, step, 0))
   } else if (event.key === 'ArrowUp') {
     event.preventDefault()
+    pushDraftHistory()
     replaceLayer(nudgeLayerSplit(layer, 0, -step))
   } else if (event.key === 'ArrowDown') {
     event.preventDefault()
+    pushDraftHistory()
     replaceLayer(nudgeLayerSplit(layer, 0, step))
   } else if (event.key === ']' && (event.ctrlKey || event.metaKey)) {
     event.preventDefault()
@@ -969,7 +1110,13 @@ async function refreshModels(): Promise<void> {
 watch(
   () => props.open,
   (open) => {
-    if (!open) return
+    if (!open) {
+      window.removeEventListener('keydown', onWindowUndoKeydown, true)
+      resetLocalHistory()
+      return
+    }
+    resetLocalHistory()
+    window.addEventListener('keydown', onWindowUndoKeydown, true)
     hydrating.value = true
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
     generateModel.value = props.generateModel ?? ''
@@ -993,6 +1140,7 @@ watch(
     ].join('::'),
   (key) => {
     if (!props.open || !key) return
+    resetLocalHistory()
     hydrating.value = true
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
     void nextTick(() => {
@@ -1024,6 +1172,7 @@ function onClose(): void {
 
 onBeforeUnmount(() => {
   onPointerUp()
+  window.removeEventListener('keydown', onWindowUndoKeydown, true)
   if (previewTimer) clearTimeout(previewTimer)
   if (exportMsgTimer) clearTimeout(exportMsgTimer)
 })
@@ -1240,6 +1389,14 @@ onBeforeUnmount(() => {
 .icon-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.psd-btn {
+  width: auto;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .side-export {
