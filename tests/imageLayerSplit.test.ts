@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLayerSplitList,
+  buildLayerSplitTree,
   collectLayerSplitGroupLayers,
   layerSplitExportFolderSegments,
   isCanvasSafeImageSrc,
@@ -9,6 +10,7 @@ import {
   nestLayerSplitResult,
   normalizedToRect,
   normalizeImageLayerSplit,
+  orderLayerSplitTreeForPsd,
   placeLayersInParentRect,
   reorderLayerSplit,
   resetLayerSplitRect
@@ -176,6 +178,72 @@ describe('imageLayerSplit', () => {
     }
     expect(isLayerSplitLayerDrawable(hidden, hidden.layers.find((l) => l.id === 'hat')!)).toBe(false)
     expect(isLayerSplitLayerDrawable(hidden, hidden.layers.find((l) => l.id === 'base')!)).toBe(true)
+  })
+
+  it('orders the psd tree bottom -> top so ag-psd children match the layer panel', () => {
+    // 图层面板（顶 → 底）：b / group[hat, p-base, person] / a / base
+    const state = nestLayerSplitResult({
+      state: normalizeImageLayerSplit({
+        canvasWidth: 1000,
+        canvasHeight: 1000,
+        layers: [
+          { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 1000, height: 1000 },
+          { id: 'a', imageId: 'a', zIndex: 1, name: 'A', visible: true, left: 0, top: 0, width: 10, height: 10 },
+          { id: 'person', imageId: 'person', zIndex: 2, name: 'Person', visible: true, left: 100, top: 50, width: 200, height: 100 },
+          { id: 'b', imageId: 'b', zIndex: 3, name: 'B', visible: true, left: 0, top: 0, width: 10, height: 10 }
+        ]
+      }),
+      parentId: 'person',
+      nestedLayers: [
+        { id: 'p-base', imageId: 'p-base', zIndex: 0, name: 'Base', description: '', visible: true, left: 0, top: 0, width: 200, height: 100 },
+        { id: 'hat', imageId: 'hat', zIndex: 1, name: 'Hat', description: '', visible: true, left: 40, top: 20, width: 80, height: 40 }
+      ],
+      groupName: 'Person 拆分',
+      stamp: 1
+    })
+    const groupId = state.groups[0]!.id
+
+    // ag-psd 的 children[0] 是最底层，所以每一级都应相对面板反转（底 → 顶）。
+    const ordered = orderLayerSplitTreeForPsd<{ kind: string; id: string; children?: unknown[] }>(
+      buildLayerSplitTree(state),
+      {
+        layer: (layer) => ({ kind: 'layer', id: layer.id }),
+        group: (group, children) => ({ kind: 'group', id: group.id, children })
+      }
+    )
+    expect(ordered).toEqual([
+      { kind: 'layer', id: 'base' },
+      { kind: 'layer', id: 'a' },
+      {
+        kind: 'group',
+        id: groupId,
+        children: [
+          { kind: 'layer', id: 'person' },
+          { kind: 'layer', id: 'p-base' },
+          { kind: 'layer', id: 'hat' }
+        ]
+      },
+      { kind: 'layer', id: 'b' }
+    ])
+  })
+
+  it('drops empty groups and keeps only rendered leaves in psd order', () => {
+    const state = normalizeImageLayerSplit({
+      canvasWidth: 100,
+      canvasHeight: 100,
+      layers: [
+        { id: 'base', imageId: 'base', zIndex: 0, name: 'Base', visible: true, left: 0, top: 0, width: 100, height: 100 },
+        { id: 'skip', imageId: 'skip', zIndex: 1, name: 'Skip', visible: true, left: 0, top: 0, width: 10, height: 10, groupId: 'g-empty' },
+        { id: 'top', imageId: 'top', zIndex: 2, name: 'Top', visible: true, left: 0, top: 0, width: 10, height: 10 }
+      ],
+      groups: [{ id: 'g-empty', name: 'Empty', collapsed: false, visible: true, sourceLayerId: 'base' }]
+    })
+    // 'skip' 没有栅格像素（layer 回调返回 null），其所在分组因此变空要被剔除。
+    const ordered = orderLayerSplitTreeForPsd<{ id: string }>(buildLayerSplitTree(state), {
+      layer: (layer) => (layer.id === 'skip' ? null : { id: layer.id }),
+      group: (group) => ({ id: `group:${group.id}` })
+    })
+    expect(ordered).toEqual([{ id: 'base' }, { id: 'top' }])
   })
 
   it('allows z-index beyond a single API split', () => {

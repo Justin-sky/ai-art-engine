@@ -562,6 +562,35 @@ export function buildLayerSplitTree(state: ImageLayerSplitState): LayerSplitTree
   return collectLayerSplitTree(state, '')
 }
 
+/**
+ * 把分组树摊平成 ag-psd `children` 的顺序（底 → 顶）。
+ *
+ * buildLayerSplitTree 同级是「顶 → 底」（高 z 在前，与图层面板一致），
+ * 而 ag-psd 的 children[0] 是最底层、末尾才是最顶层，两者相反，所以每一层都要反转，
+ * 嵌套分组由递归各自反转。空分组（无任何可绘制叶子）会被跳过。
+ * 叶子/分组节点的构造交给回调，避免让 @shared 反向依赖 ag-psd 类型。
+ */
+export function orderLayerSplitTreeForPsd<T>(
+  nodes: LayerSplitTreeNode[],
+  build: {
+    layer: (layer: ImageLayerSplitLayer) => T | null
+    group: (group: ImageLayerSplitGroup, children: T[]) => T
+  }
+): T[] {
+  const out: T[] = []
+  for (const node of nodes) {
+    if (node.kind === 'layer') {
+      const leaf = build.layer(node.layer)
+      if (leaf != null) out.push(leaf)
+      continue
+    }
+    const children = orderLayerSplitTreeForPsd(node.children, build)
+    if (!children.length) continue // 跳过没有任何可绘制内容的空分组
+    out.push(build.group(node.group, children))
+  }
+  return out.reverse()
+}
+
 export function toggleLayerSplitGroupCollapsed(
   groups: ImageLayerSplitGroup[],
   groupId: string

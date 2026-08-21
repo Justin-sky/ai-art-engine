@@ -3,10 +3,10 @@ import {
   buildLayerSplitTree,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
+  orderLayerSplitTreeForPsd,
   sortLayersForCompose,
   type ImageLayerSplitLayer,
-  type ImageLayerSplitState,
-  type LayerSplitTreeNode
+  type ImageLayerSplitState
 } from '@shared/graph'
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -78,31 +78,20 @@ export async function layerSplitToPsdUint8Array(input: {
     })
   }
 
-  // 按分组树写入 ag-psd children：组 → 带 children 的分组节点（保留 折叠/可见），叶 → 栅格化图层。
-  // buildLayerSplitTree 同级已按 z 从高到低排列，正是 ag-psd children 的「顶 → 底」顺序。
-  const toPsdNodes = (nodes: LayerSplitTreeNode[]): Layer[] => {
-    const out: Layer[] = []
-    for (const node of nodes) {
-      if (node.kind === 'layer') {
-        const layer = rendered.get(node.layer.id)
-        if (layer) out.push(layer)
-        continue
-      }
-      const children = toPsdNodes(node.children)
-      if (!children.length) continue // 跳过没有任何可绘制内容的空分组
-      out.push({
-        name: node.group.name.trim() || node.group.id,
-        opened: !node.group.collapsed,
-        hidden: node.group.visible === false,
-        blendMode: 'normal',
-        opacity: 1,
-        children
-      })
-    }
-    return out
-  }
-
-  const children = toPsdNodes(buildLayerSplitTree(state))
+  // 按分组树写入 ag-psd children：叶 → 栅格化图层，枝 → 带 children 的分组节点（保留 折叠/可见）。
+  // ag-psd 的 children[0] 是最底层，orderLayerSplitTreeForPsd 已把「顶 → 底」的树反转成「底 → 顶」，
+  // 否则整摞图层会上下颠倒。
+  const children = orderLayerSplitTreeForPsd<Layer>(buildLayerSplitTree(state), {
+    layer: (layer) => rendered.get(layer.id) ?? null,
+    group: (group, groupChildren) => ({
+      name: group.name.trim() || group.id,
+      opened: !group.collapsed,
+      hidden: group.visible === false,
+      blendMode: 'normal',
+      opacity: 1,
+      children: groupChildren
+    })
+  })
   if (!children.length) throw new Error('没有可导出的图层')
 
   const psd: Psd = {
