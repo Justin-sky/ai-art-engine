@@ -36,6 +36,7 @@ import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
 import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
 import { composeImageGridCell } from '../model/composeImageGridCell'
+import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -370,6 +371,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       seed?: number
       inputReferences?: string[]
       inputReferenceMeta?: GraphImageReferenceMeta[]
+      layerDecomposition?: boolean
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -385,7 +387,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         n: input.n,
         seed: input.seed ?? null,
         inputReferenceCount: input.inputReferences?.length || undefined,
-        inputReferences: input.inputReferenceMeta
+        inputReferences: input.inputReferenceMeta,
+        layerDecomposition: input.layerDecomposition || undefined
       }
       try {
         const value = await withAbortSignal(generateImage(input), token, signal)
@@ -646,6 +649,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageRedrawCanvas,
         composeImageCropCanvas,
         composeImageGridCell,
+        composeImageLayerStack,
         normalizeImageAspectRatio,
         onNodePatch: (nodeId, patch) => {
           if (token !== runToken || signal.aborted) return

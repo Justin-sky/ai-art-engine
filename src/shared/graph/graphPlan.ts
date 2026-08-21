@@ -81,7 +81,8 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'cellGroupIndex',
   'cellIndex',
   'episodeScopeKey',
-  'imageGridSplit'
+  'imageGridSplit',
+  'imageLayerSplit'
 ])
 
 export interface GraphPlanMediaModelDefaults {

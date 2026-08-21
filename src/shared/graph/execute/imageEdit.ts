@@ -40,7 +40,20 @@ import {
 } from '../imageMatte'
 import { readImageCropFromNode } from '../imageCrop'
 import { readImageGridSplitFromNode, resolveGridSplitTargets } from '../imageGridSplit'
+import {
+  imageLayerSplitToNodePatch,
+  isCanvasSafeImageSrc,
+  isLayerSplitBase,
+  layerSplitCompositeImageId,
+  layerSplitFingerprint,
+  mapDecompositionToLayers,
+  readImageLayerSplitFromNode,
+  sortLayersForCompose,
+  type ImageLayerSplitLayer,
+  type ImageLayerSplitState
+} from '../imageLayerSplit'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
+import type { GenerateImageLayer } from '../../modelProvider'
 import { collectIncomingValues } from './incoming'
 import {
   commitGeneratedImages,
@@ -1084,4 +1097,218 @@ export async function executeGridSplitNode(
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
     imageGridSplit: grid
   })
+}
+
+async function resolveLayerSplitSourceUrl(ctx: NodeExecuteContext): Promise<string> {
+  const sourceItems = await collectIncomingImageItems(ctx)
+  if (!sourceItems.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+  let sourceUrl = ''
+  if (ctx.resolveImageUrls) {
+    sourceUrl = (await ctx.resolveImageUrls(sourceItems.slice(0, 1))).find(Boolean) ?? ''
+  } else {
+    sourceUrl = sourceItems[0]?.dataUrl?.trim() ?? ''
+  }
+  if (!sourceUrl && ctx.resolveAssetImageUrl) {
+    for (const value of [
+      ...(ctx.inputs.in ?? []),
+      ...(ctx.inputs['in-image'] ?? []),
+      ...collectIncomingValues(ctx.inputs)
+    ]) {
+      if (value.kind !== 'asset' || value.assetType !== 'image') continue
+      const url = await ctx.resolveAssetImageUrl(value.assetId)
+      if (url) {
+        sourceUrl = url
+        break
+      }
+    }
+  }
+  if (!sourceUrl) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+  return sourceUrl
+}
+
+function layersFromApiResult(
+  ctx: NodeExecuteContext,
+  stamp: number,
+  result: {
+    images: string[]
+    layers?: GenerateImageLayer[]
+  },
+  canvasHint: { width: number; height: number }
+): { layers: ImageLayerSplitLayer[]; batch: GraphImageItem[]; canvasWidth: number; canvasHeight: number } {
+  const mapped = mapDecompositionToLayers({
+    idPrefix: `layerSplit:${ctx.node.id}:${stamp}`,
+    apiLayers: result.layers,
+    images: result.images,
+    canvasHint,
+    asCanvasBase: true
+  })
+  const createdAt = new Date().toISOString()
+  const batch: GraphImageItem[] = mapped.items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    dataUrl: item.url,
+    createdAt
+  }))
+  return {
+    layers: mapped.layers,
+    batch,
+    canvasWidth: mapped.canvasWidth,
+    canvasHeight: mapped.canvasHeight
+  }
+}
+
+async function composeLayerSplitOutput(
+  ctx: NodeExecuteContext,
+  state: ImageLayerSplitState,
+  layerBatch: GraphImageItem[]
+): Promise<GraphImageItem | null> {
+  if (!ctx.composeImageLayerStack) return null
+  const layerUrls: Record<string, string> = {}
+  const pending: GraphImageItem[] = []
+  for (const item of layerBatch) {
+    const id = item.id?.trim()
+    if (!id) continue
+    const url = item.dataUrl?.trim()
+    if (url && isCanvasSafeImageSrc(url)) {
+      layerUrls[id] = url
+      continue
+    }
+    pending.push(item)
+  }
+  if (ctx.resolveImageUrls && pending.length) {
+    // TOS https 不能进 canvas（CORS）；只把已落盘的 relativePath 转成 data URL。
+    // 必须逐条解析：resolveImageUrls 失败会跳过条目，不能按下标对齐。
+    await Promise.all(
+      pending.map(async (item) => {
+        const id = item.id?.trim()
+        const relativePath = item.relativePath?.trim()
+        if (!id || !relativePath || !ctx.resolveImageUrls) return
+        const urls = await ctx.resolveImageUrls([{ relativePath }])
+        const url = urls[0]?.trim()
+        if (url && isCanvasSafeImageSrc(url)) layerUrls[id] = url
+      })
+    )
+  }
+  const composed = await ctx.composeImageLayerStack({ state, layerUrls })
+  const dataUrl = composed.dataUrl?.trim()
+  if (!dataUrl) return null
+  return {
+    id: layerSplitCompositeImageId(ctx.node.id),
+    title: 'Composite',
+    dataUrl,
+    createdAt: new Date().toISOString()
+  }
+}
+
+/**
+ * 图层分离：调用 Seedream 5.0 Pro layer_decomposition，再按用户调整的层级/位置合成。
+ * 源图、提示词或分辨率变化时重新拆层；否则只按当前图层本地合成。
+ */
+export async function executeLayerSplitNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const sourceUrl = await resolveLayerSplitSourceUrl(ctx)
+  const prev = readImageLayerSplitFromNode(ctx.node.params)
+  const fingerprint = layerSplitFingerprint(sourceUrl, prev.prompt, prev.resolution)
+  const canReuse =
+    prev.layers.length > 0 &&
+    prev.sourceFingerprint === fingerprint &&
+    prev.canvasWidth > 0 &&
+    prev.canvasHeight > 0
+
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const stamp = Date.now()
+  let state = prev
+  let layerBatch: GraphImageItem[] = []
+
+  let reused = false
+  if (canReuse) {
+    const previous = ctx.node.params.generatedImages ?? []
+    const wanted = new Set(prev.layers.map((layer) => layer.imageId))
+    layerBatch = previous.filter((item) => item.id && wanted.has(item.id))
+    if (layerBatch.length < prev.layers.length && ctx.resolveImageUrls) {
+      const urls = await ctx.resolveImageUrls(layerBatch)
+      layerBatch = layerBatch.map((item, index) => ({
+        ...item,
+        dataUrl: urls[index]?.trim() || item.dataUrl || ''
+      }))
+    }
+    reused = layerBatch.length >= prev.layers.length
+  }
+
+  if (!reused) {
+    if (!ctx.generateImage) {
+      throw new Error('未注入图片生成能力，无法图层分离')
+    }
+    const result = await ctx.generateImage({
+      prompt: prev.prompt,
+      model: ctx.node.params.generateModel || undefined,
+      providerInstanceId: ctx.node.params.generateProviderInstanceId || undefined,
+      resolution: prev.resolution,
+      inputReferences: [sourceUrl],
+      layerDecomposition: true
+    })
+    if (ctx.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
+      throw new Error('当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离')
+    }
+    const mapped = layersFromApiResult(ctx, stamp, result, {
+      width: prev.canvasWidth,
+      height: prev.canvasHeight
+    })
+    if (!mapped.layers.length) {
+      throw new Error('图层分离失败：未得到有效图层')
+    }
+    layerBatch = mapped.batch
+    const selectedId =
+      mapped.layers.find((layer) => !isLayerSplitBase(layer))?.id || mapped.layers[0]?.id || ''
+    state = {
+      ...prev,
+      selectedId,
+      canvasWidth: mapped.canvasWidth,
+      canvasHeight: mapped.canvasHeight,
+      layers: sortLayersForCompose(mapped.layers),
+      groups: [],
+      sourceFingerprint: fingerprint
+    }
+  }
+
+  const materializedLayers = await materializeGeneratedBatch(
+    ctx,
+    layerBatch,
+    `layerSplit:${ctx.node.id}:${stamp}`
+  )
+  if (!materializedLayers.length) {
+    throw new Error('图片落盘失败')
+  }
+
+  let composite: GraphImageItem | null = null
+  try {
+    composite = await composeLayerSplitOutput(ctx, state, materializedLayers)
+  } catch (err) {
+    console.warn('[graph] layer split compose failed', err)
+  }
+  const extra: GraphImageItem[] = []
+  if (composite) {
+    const [materializedComposite] = await materializeGeneratedBatch(
+      ctx,
+      [composite],
+      `layerSplit:${ctx.node.id}:${stamp}:comp`
+    )
+    if (materializedComposite) extra.push(materializedComposite)
+  }
+
+  const generatedImages = [...materializedLayers, ...extra]
+  const previewPath =
+    extra[0]?.relativePath?.trim() || materializedLayers[0]?.relativePath?.trim()
+  return commitGeneratedImages(ctx, generatedImages, previewPath, imageLayerSplitToNodePatch(state))
 }

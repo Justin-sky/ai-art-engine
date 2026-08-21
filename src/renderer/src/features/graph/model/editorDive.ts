@@ -37,6 +37,7 @@ export type EditorDiveViewId =
   | 'node.matte'
   | 'node.crop'
   | 'node.gridSplit'
+  | 'node.layerSplit'
   | 'node.instruction'
   | 'media.preview'
 
@@ -60,6 +61,7 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.matte'
   | 'node.crop'
   | 'node.gridSplit'
+  | 'node.layerSplit'
   | 'node.instruction'
 >
 

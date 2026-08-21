@@ -1936,6 +1936,52 @@ export default {
         p25: '25宫格 (5×5)'
       }
     },
+    layerSplit: {
+      appMark: '图层分离',
+      hint: '运行节点调用 Seedream 5.0 Pro 拆层；双击进入画布调整层级与位置',
+      needRun: '请先连接上游图片并运行节点。模型会拆出底图和透明图层，之后可在此拖动、缩放与调整叠放顺序。',
+      noSelection: '未选中图层',
+      layers: '图层',
+      emptyLayers: '尚未拆层。运行节点后会显示各图层。',
+      layerCount: '{n} 层',
+      prompt: '拆层提示词',
+      promptPlaceholder: '可选：描述要拆出的元素。留空则自动识别主体、文字与装饰。',
+      resolution: '分辨率',
+      sendBack: '下移一层',
+      bringForward: '上移一层',
+      hideBase: '隐藏底图',
+      showBase: '显示底图',
+      hideLayer: '隐藏图层',
+      showLayer: '显示图层',
+      baseLayer: '底图',
+      resetPos: '复位位置',
+      resetAll: '全部复位',
+      redecompose: '清空并重新拆层',
+      splitSelected: '拆分选中层',
+      splitting: '正在拆分选中层…',
+      splitNeedLayer: '请先选中要继续拆分的图层',
+      splitAlready: '该图层已经拆成分组',
+      splitNeedImage: '选中层没有可用图片',
+      group: '分组',
+      splitGroupName: '{name} 拆分',
+      splitLogTitle: '拆分选中层 · {name}',
+      splitLogStart: '对图层「{layer}」继续拆层',
+      splitLogDone: '已拆出 {n} 层并收入分组',
+      collapseGroup: '折叠分组',
+      expandGroup: '展开分组',
+      hideGroup: '隐藏分组',
+      showGroup: '显示分组',
+      exportSelected: '导出选中图层',
+      exportGroup: '导出选中分组',
+      exportAll: '导出全部图层',
+      exporting: '导出中…',
+      exportSelectedDone: '已导出选中图层',
+      exportGroupDone: '已导出分组内 {n} 个图层',
+      exportAllDone: '已导出 {n} 个图层',
+      exportFailed: '导出失败：{error}',
+      exportNeedImage: '没有可导出的图层图片',
+      exportFilterImage: '图片'
+    },
     anim2d: {
       inspectorHint: '接入上游帧动画序列图；运行本节点按行列切分为单帧，下方可逐帧播放预览',
       genInspectorHint: '双击节点打开指令面板选择预设与动作描述；此处设置行列数与系统提示词，运行后生成序列图',
@@ -2226,6 +2272,7 @@ export default {
         matte: '抠图',
         crop: '裁剪',
         gridSplit: '宫格切分',
+        layerSplit: '图层分离',
         toPrompt: '图片反推提示词'
       },
       video: {
@@ -2504,6 +2551,9 @@ export default {
       },
       gridSplit: {
         hint: '双击选择宫格大小与单元格；运行节点直接切分原图，不调用大模型'
+      },
+      layerSplit: {
+        hint: '运行节点用 Seedream 5.0 Pro 拆层。双击进入画布：拖动移动、角点缩放、列表调整叠放顺序。选中一层可继续拆分，结果收进分组。提示词或分辨率变化后会重新拆层。'
       },
       camera: {
         hint: '修改参数会同步到导演台编辑预览；在预览中环视也会实时更新。',

@@ -670,12 +670,29 @@ export interface GenerateImageInput {
   inputReferences?: string[]
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
   inputReferenceMeta?: GraphImageReferenceMeta[]
+  /** Seedream 5.0 Pro：图层分离（layer_decomposition） */
+  layerDecomposition?: boolean
+}
+
+export interface GenerateImageLayer {
+  url: string
+  zIndex: number
+  size?: string
+  outputFormat?: string
+  boundingBox?: {
+    absolute?: [number, number, number, number]
+    normalized?: [number, number, number, number]
+  }
+  name?: string
+  description?: string
 }
 
 export interface GenerateImageResult {
   /** data:image/...;base64,... 或远程 URL */
   images: string[]
   model: string
+  /** layer_decomposition 时与 images 对齐的图层元数据 */
+  layers?: GenerateImageLayer[]
 }
 
 /** OpenRouter `/videos` 的 `input_references` 条目类型 */

@@ -59,6 +59,7 @@ import {
   executeMatteNode,
   executeCropNode,
   executeGridSplitNode,
+  executeLayerSplitNode,
   executeBeatSplitNode,
   executeBeatTableNode,
   executeBeatGenNode,
@@ -1374,6 +1375,40 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeGridSplitNode
+  },
+  {
+    typeId: 'image.layerSplit',
+    category: 'note',
+    label: 'Layer split',
+    icon: '🗂️',
+    defaultTitle: 'Layer split',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageLayerSplit: {
+        prompt: '',
+        resolution: '2K',
+        selectedId: '',
+        canvasWidth: 0,
+        canvasHeight: 0,
+        layers: [],
+        sourceFingerprint: ''
+      },
+      generateModel: '',
+      generateProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.layerSplit',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeLayerSplitNode
   },
   {
     typeId: 'prompt.optimize',

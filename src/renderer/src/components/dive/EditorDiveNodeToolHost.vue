@@ -204,6 +204,23 @@
       @save="api.saveGridSplit as never"
     />
 
+    <LayerSplitEditorDialog
+      v-else-if="viewId === 'node.layerSplit' && api.layerSplit.open"
+      :open="true"
+      :setup="api.layerSplit.setup"
+      :source-url="api.layerSplit.sourceUrl"
+      :source-loading="api.layerSplit.sourceLoading"
+      :layer-urls="api.layerSplit.layerUrls"
+      :generate-model="api.layerSplit.generateModel"
+      :generate-provider-instance-id="api.layerSplit.generateProviderInstanceId"
+      :splitting="api.layerSplit.splitting"
+      :split-error="api.layerSplit.splitError"
+      @close="onClose(api.closeLayerSplit)"
+      @update="api.previewLayerSplit as never"
+      @save="api.saveLayerSplit as never"
+      @split-selected="api.splitSelectedLayerSplit as never"
+    />
+
     <p
       v-else-if="ready"
       class="missing"
@@ -244,6 +261,7 @@ import ExpandEditorDialog from '../ExpandEditorDialog.vue'
 import RedrawEditorDialog from '../RedrawEditorDialog.vue'
 import CropEditorDialog from '../CropEditorDialog.vue'
 import GridSplitEditorDialog from '../GridSplitEditorDialog.vue'
+import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
 
 const props = defineProps<{
   frameKey: string
@@ -307,6 +325,8 @@ const toolOpen = computed(() => {
       return current.crop.open
     case 'node.gridSplit':
       return current.gridSplit.open
+    case 'node.layerSplit':
+      return current.layerSplit.open
     default:
       return false
   }
@@ -405,6 +425,9 @@ function closeCurrent(): void {
       break
     case 'node.gridSplit':
       current.closeGridSplit()
+      break
+    case 'node.layerSplit':
+      current.closeLayerSplit()
       break
     default:
       break

@@ -1945,6 +1945,52 @@ export default {
         p25: '25-grid (5×5)'
       }
     },
+    layerSplit: {
+      appMark: 'Layer split',
+      hint: 'Run the node to decompose with Seedream 5.0 Pro; double-click to reorder and move layers',
+      needRun: 'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
+      noSelection: 'No layer selected',
+      layers: 'Layers',
+      emptyLayers: 'No layers yet. Run the node to decompose the image.',
+      layerCount: '{n} layers',
+      prompt: 'Decompose prompt',
+      promptPlaceholder: 'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
+      resolution: 'Resolution',
+      sendBack: 'Send backward',
+      bringForward: 'Bring forward',
+      hideBase: 'Hide base',
+      showBase: 'Show base',
+      hideLayer: 'Hide layer',
+      showLayer: 'Show layer',
+      baseLayer: 'Base',
+      resetPos: 'Reset position',
+      resetAll: 'Reset all',
+      redecompose: 'Clear and decompose again',
+      splitSelected: 'Split selected layer',
+      splitting: 'Splitting selected layer…',
+      splitNeedLayer: 'Select a layer to split further',
+      splitAlready: 'This layer is already in a split group',
+      splitNeedImage: 'The selected layer has no image',
+      group: 'Group',
+      splitGroupName: '{name} split',
+      splitLogTitle: 'Split selected layer · {name}',
+      splitLogStart: 'Decompose layer “{layer}” further',
+      splitLogDone: 'Split into {n} layers and added a group',
+      collapseGroup: 'Collapse group',
+      expandGroup: 'Expand group',
+      hideGroup: 'Hide group',
+      showGroup: 'Show group',
+      exportSelected: 'Export selected layer',
+      exportGroup: 'Export selected group',
+      exportAll: 'Export all layers',
+      exporting: 'Exporting…',
+      exportSelectedDone: 'Selected layer exported',
+      exportGroupDone: 'Exported {n} layers from the group',
+      exportAllDone: 'Exported {n} layers',
+      exportFailed: 'Export failed: {error}',
+      exportNeedImage: 'No layer image to export',
+      exportFilterImage: 'Images'
+    },
     anim2d: {
       inspectorHint: 'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
       genInspectorHint: 'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
@@ -2238,6 +2284,7 @@ export default {
         matte: 'Matte',
         crop: 'Crop',
         gridSplit: 'Grid split',
+        layerSplit: 'Layer split',
         toPrompt: 'Image reverse prompt'
       },
       video: {
@@ -2525,6 +2572,9 @@ export default {
       },
       gridSplit: {
         hint: 'Double-click to choose grid size and cells. Run the node to split tiles locally without an AI model.'
+      },
+      layerSplit: {
+        hint: 'Run the node to decompose with Seedream 5.0 Pro. Double-click to drag, resize, and restack layers. Select a layer to split it further into a group. Changing the prompt or resolution triggers a new decompose.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

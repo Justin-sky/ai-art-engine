@@ -236,3 +236,7 @@ export function isCropEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
 export function isGridSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.gridSplit'
 }
+
+export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.layerSplit'
+}

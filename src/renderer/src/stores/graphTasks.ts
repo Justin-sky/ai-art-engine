@@ -49,6 +49,7 @@ import { composeImageExpandCanvas } from '../features/graph/model/composeImageEx
 import { composeImageRedrawCanvas } from '../features/graph/model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../features/graph/model/composeImageCropCanvas'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import {
   prepareGraphDocumentForPersist
@@ -1074,7 +1075,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             n: input.n,
             seed: input.seed ?? null,
             inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferences: input.inputReferenceMeta
+            inputReferences: input.inputReferenceMeta,
+            layerDecomposition: input.layerDecomposition || undefined
           }
           try {
             const value = await window.studio.generateImage(input)
@@ -1256,6 +1258,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageRedrawCanvas,
         composeImageCropCanvas,
         composeImageGridCell,
+        composeImageLayerStack,
         normalizeImageAspectRatio,
         resolveWorldCatalogJson: () => {
           if (task.target.kind !== 'asset') return null

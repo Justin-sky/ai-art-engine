@@ -742,6 +742,7 @@ import {
   type AssetType
 } from '@shared/domain'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
+import { resolveGraphImageUrls } from '../features/graph/model/resolveGraphImageUrls'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { resolveAssetText } from '../features/media/resolveAssetText'
@@ -886,12 +887,19 @@ import {
   type ImageMatteState,
   type ImageCropState,
   type ImageGridSplitState,
+  type ImageLayerSplitState,
+  type ImageLayerSplitNestedRequest,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
   readImageMatteFromNode,
   readImageCropFromNode,
   readImageGridSplitFromNode,
+  readImageLayerSplitFromNode,
+  nestLayerSplitResult,
+  mapDecompositionToLayers,
+  placeLayersInParentRect,
+  layerSplitGroupForSource,
   stringifyWorldElementCatalog,
   stringifyBeatRows,
   formatBeatRefText,
@@ -960,6 +968,8 @@ import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { useGraphRunSession } from '../features/graph/controllers/useGraphRunSession'
+import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
+import { formatProviderErrorForLog } from '../features/graph/model/formatProviderErrorForLog'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
@@ -3264,7 +3274,8 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'image.erase',
       'image.matte',
       'image.crop',
-      'image.gridSplit'
+      'image.gridSplit',
+      'image.layerSplit'
     ]
   },
   {
@@ -7117,6 +7128,343 @@ function saveGridSplit(payload: { imageGridSplit: ImageGridSplitState }): void {
   closeGridSplit()
 }
 
+const layerSplit = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageLayerSplitState | null,
+  sourceUrl: '',
+  sourceLoading: false,
+  layerUrls: {} as Record<string, string>,
+  generateModel: '',
+  generateProviderInstanceId: '',
+  splitting: false,
+  splitError: ''
+})
+
+async function resolveGeneratedImageUrls(nodeId: string): Promise<Record<string, string>> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  const urls: Record<string, string> = {}
+  if (!node) return urls
+  for (const item of node.params.generatedImages ?? []) {
+    const id = item.id?.trim()
+    if (!id) continue
+    if (item.dataUrl?.trim()) {
+      urls[id] = item.dataUrl.trim()
+      continue
+    }
+    const fileUrl = await resolveAssetFileUrl(item.relativePath)
+    if (fileUrl) urls[id] = fileUrl
+  }
+  return urls
+}
+
+async function onLayerSplitOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  layerSplit.nodeId = nodeId
+  layerSplit.setup = readImageLayerSplitFromNode(node.params)
+  layerSplit.sourceUrl = ''
+  layerSplit.sourceLoading = true
+  layerSplit.layerUrls = {}
+  layerSplit.generateModel = node.params.generateModel ?? ''
+  layerSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  layerSplit.splitting = false
+  layerSplit.splitError = ''
+  layerSplit.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      layerSplit.sourceUrl = url
+      layerSplit.sourceLoading = false
+    },
+    () => layerSplit.open && layerSplit.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  const urls = await resolveGeneratedImageUrls(nodeId)
+  if (layerSplit.open && layerSplit.nodeId === nodeId) {
+    layerSplit.layerUrls = urls
+    layerSplit.sourceLoading = false
+  }
+}
+
+function closeLayerSplit(): void {
+  layerSplit.open = false
+  layerSplit.nodeId = ''
+  layerSplit.setup = null
+  layerSplit.sourceUrl = ''
+  layerSplit.sourceLoading = false
+  layerSplit.layerUrls = {}
+  layerSplit.generateModel = ''
+  layerSplit.generateProviderInstanceId = ''
+  layerSplit.splitting = false
+  layerSplit.splitError = ''
+}
+
+function previewLayerSplit(payload: {
+  imageLayerSplit: ImageLayerSplitState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  if (layerSplit.splitting) return
+  const node = graph.nodes.find((n) => n.id === layerSplit.nodeId)
+  if (!node) return
+  node.params = {
+    ...node.params,
+    ...payload
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function saveLayerSplit(payload: {
+  imageLayerSplit: ImageLayerSplitState
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  const nodeId = layerSplit.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  node.params = {
+    ...node.params,
+    ...payload
+  }
+  layerSplit.setup = payload.imageLayerSplit
+  layerSplit.generateModel = payload.generateModel
+  layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('layerSplit', before)
+  closeLayerSplit()
+}
+
+async function resolveLayerSplitLayerApiUrl(
+  node: GraphNode,
+  layerId: string
+): Promise<string> {
+  const item = (node.params.generatedImages ?? []).find(
+    (row) => row.id === layerId
+  )
+  if (item) {
+    const urls = await resolveGraphImageUrls([item])
+    const url = urls[0]?.trim()
+    if (url) return url
+  }
+  const preview = layerSplit.layerUrls[layerId]?.trim() ?? ''
+  if (preview.startsWith('data:') || /^https?:\/\//i.test(preview)) return preview
+  return ''
+}
+
+async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): Promise<void> {
+  const nodeId = layerSplit.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node || layerSplit.splitting) return
+  const state = payload.imageLayerSplit
+  const parent = state.layers.find((layer) => layer.id === payload.layerId)
+  if (!parent) {
+    layerSplit.splitError = t('graph.layerSplit.splitNeedLayer')
+    return
+  }
+  if (layerSplitGroupForSource(state, parent.id)) {
+    layerSplit.splitError = t('graph.layerSplit.splitAlready')
+    return
+  }
+  const sourceUrl = await resolveLayerSplitLayerApiUrl(node, parent.imageId || parent.id)
+  if (!sourceUrl) {
+    layerSplit.splitError = t('graph.layerSplit.splitNeedImage')
+    return
+  }
+
+  const before = buildGraphJson()
+  layerSplit.splitting = true
+  layerSplit.splitError = ''
+  node.params = {
+    ...node.params,
+    imageLayerSplit: state,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId
+  }
+
+  const nodeTitle = resolveGraphNodeDisplayTitle(node, {
+    scope: graphScope.value,
+    t: (key, params) => t(key, params ?? {}),
+    graphTypeLabel,
+    fallbackId: node.id
+  })
+  const layerLabel = parent.name?.trim() || parent.id
+  const logBridge = createGraphRunLogBridge({
+    runId: `layer-split-nest-${crypto.randomUUID()}`,
+    title: t('graph.layerSplit.splitLogTitle', { name: nodeTitle }),
+    hostId: graphHostId.value,
+    mode: 'nodeOnly',
+    graph: buildGraphJson(),
+    targetNodeId: node.id,
+    resolveNodeTitle: (item, fallbackId) =>
+      resolveGraphNodeDisplayTitle(item, {
+        scope: graphScope.value,
+        t: (key, params) => t(key, params ?? {}),
+        graphTypeLabel,
+        fallbackId
+      }),
+    startMessage: t('graph.layerSplit.splitLogStart', { layer: layerLabel })
+  })
+  let logClosed = false
+  const finishLog = (ok: boolean, message?: string): void => {
+    if (logClosed) return
+    logClosed = true
+    logBridge.onNodeUpdate(node.id, ok ? { status: 'done' } : { status: 'error', error: message })
+    logBridge.endFromResult(
+      ok
+        ? { ok: true, order: [node.id], states: {} }
+        : { ok: false, order: [node.id], states: {}, error: message },
+      { message }
+    )
+  }
+
+  const apiRequest = {
+    prompt: payload.prompt,
+    model: payload.generateModel || undefined,
+    providerInstanceId: payload.generateProviderInstanceId || undefined,
+    resolution: payload.resolution,
+    inputReferenceCount: 1,
+    inputReferences: [{ source: 'port' as const, name: layerLabel }],
+    layerDecomposition: true
+  }
+
+  try {
+    logBridge.onNodeUpdate(node.id, { status: 'running' })
+    const apiStarted = Date.now()
+    let result
+    try {
+      result = await window.studio.generateImage({
+        prompt: payload.prompt,
+        model: payload.generateModel || undefined,
+        providerInstanceId: payload.generateProviderInstanceId || undefined,
+        resolution: payload.resolution,
+        inputReferences: [sourceUrl],
+        layerDecomposition: true
+      })
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        response: {
+          model: result.model,
+          imageCount: result.layers?.length || result.images?.length || 0
+        },
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err)
+      const error = formatProviderErrorForLog(raw, String(locale.value))
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        error,
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+      throw new Error(error)
+    }
+    if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
+      finishLog(true)
+      return
+    }
+    if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
+      throw new Error('当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离')
+    }
+    const stamp = Date.now()
+    const mapped = mapDecompositionToLayers({
+      idPrefix: `layerSplit:${node.id}:${stamp}:nest`,
+      apiLayers: result.layers,
+      images: result.images,
+      canvasHint: { width: parent.width, height: parent.height },
+      asCanvasBase: false
+    })
+    if (!mapped.layers.length) {
+      throw new Error('图层分离失败：未得到有效图层')
+    }
+    const placed = placeLayersInParentRect(parent, mapped.layers, {
+      width: mapped.canvasWidth,
+      height: mapped.canvasHeight
+    })
+    const groupName = t('graph.layerSplit.splitGroupName', {
+      name: parent.name?.trim() || t('graph.layerSplit.layers')
+    })
+    const nextState = nestLayerSplitResult({
+      state,
+      parentId: parent.id,
+      nestedLayers: placed,
+      groupName,
+      stamp
+    })
+    const createdAt = new Date().toISOString()
+    const newItems: GraphImageItem[] = []
+    for (const [index, item] of mapped.items.entries()) {
+      const relativePath = await saveGraphRunMediaForNode({
+        dataUrl: item.url,
+        key: `layerSplit-nest-${node.id}-${stamp}-${index + 1}`,
+        node,
+        hostAssetId: props.assetId ?? null
+      })
+      newItems.push({
+        id: item.id,
+        title: item.title,
+        dataUrl: '',
+        createdAt,
+        relativePath
+      })
+    }
+    if (!layerSplit.open || layerSplit.nodeId !== nodeId) {
+      finishLog(true, t('graph.layerSplit.splitLogDone', { n: mapped.layers.length }))
+      return
+    }
+    const previous = node.params.generatedImages ?? []
+    const byId = new Map(previous.map((item) => [item.id ?? '', item]))
+    for (const item of newItems) {
+      if (item.id) byId.set(item.id, item)
+    }
+    node.params = {
+      ...node.params,
+      generatedImages: [...byId.values()],
+      imageLayerSplit: nextState,
+      generateModel: payload.generateModel,
+      generateProviderInstanceId: payload.generateProviderInstanceId
+    }
+    layerSplit.setup = nextState
+    layerSplit.generateModel = payload.generateModel
+    layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
+    layerSplit.layerUrls = await resolveGeneratedImageUrls(nodeId)
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+    recordGraphChange('layerSplitNested', before)
+    finishLog(true, t('graph.layerSplit.splitLogDone', { n: mapped.layers.length }))
+  } catch (err) {
+    const message = err instanceof Error && err.message.trim() ? err.message.trim() : String(err)
+    layerSplit.splitError = message
+    console.warn('[graph] split selected layer failed', err)
+    finishLog(false, message)
+  } finally {
+    if (!logClosed) finishLog(false)
+    if (layerSplit.nodeId === nodeId) layerSplit.splitting = false
+  }
+}
+
+watch(
+  () => {
+    if (!layerSplit.open || !layerSplit.nodeId) return ''
+    const node = graph.nodes.find((n) => n.id === layerSplit.nodeId)
+    if (!node) return ''
+    return `${node.params.imageLayerSplit?.sourceFingerprint ?? ''}|${node.params.generatedImages?.length ?? 0}`
+  },
+  async (key) => {
+    if (!layerSplit.open || !key) return
+    const nodeId = layerSplit.nodeId
+    const node = graph.nodes.find((n) => n.id === nodeId)
+    if (!node) return
+    layerSplit.setup = readImageLayerSplitFromNode(node.params)
+    layerSplit.layerUrls = await resolveGeneratedImageUrls(nodeId)
+  }
+)
+
 /** Dialog：选取器 + 文本预览；图片/视频预览走全局 MediaPreviewDialog；图片编辑等仅 Dive */
 const graphDialogsApi = {
   notepad,
@@ -7137,6 +7485,7 @@ const graphDialogsApi = {
   matte,
   crop,
   gridSplit,
+  layerSplit,
   closeTextNotepad,
   saveTextNotepad,
   closeSelectImage,
@@ -7179,7 +7528,11 @@ const graphDialogsApi = {
   saveCrop,
   closeGridSplit,
   previewGridSplit,
-  saveGridSplit
+  saveGridSplit,
+  closeLayerSplit,
+  previewLayerSplit,
+  saveLayerSplit,
+  splitSelectedLayerSplit
 } as GraphEditorDialogsApi
 
 provide(graphEditorDialogsKey, graphDialogsApi)
@@ -7519,7 +7872,8 @@ function registerNodeToolHost(): void {
       'node.erase': (nodeId) => onEraseOpen(nodeId),
       'node.matte': (nodeId) => onMatteOpen(nodeId),
       'node.crop': (nodeId) => onCropOpen(nodeId),
-      'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId)
+      'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId),
+      'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId)
     }
   })
 }

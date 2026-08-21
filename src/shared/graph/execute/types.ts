@@ -243,7 +243,12 @@ export interface NodeExecuteContext {
     inputReferences?: string[]
     /** 与 inputReferences 一一对应的参考图元信息（仅用于执行日志） */
     inputReferenceMeta?: GraphImageReferenceMeta[]
-  }) => Promise<{ images: string[]; model: string }>
+    layerDecomposition?: boolean
+  }) => Promise<{
+    images: string[]
+    model: string
+    layers?: import('../../modelProvider').GenerateImageLayer[]
+  }>
   /**
    * 可选：调用设置中的视频模型（提交+轮询+落盘资产）。
    * 未注入时视频生成退回上游透传。
@@ -389,6 +394,11 @@ export interface NodeExecuteContext {
     /** 向内收缩像素；`'auto'` 按格子尺寸估算，用于去掉序列图格线/黑边 */
     edgeInset?: number | 'auto'
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
+  /** 图层分离：按 z_index 与 bounding box 把底图+透明层合成一张 PNG。 */
+  composeImageLayerStack?: (input: {
+    state: import('../imageLayerSplit').ImageLayerSplitState
+    layerUrls: Record<string, string>
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: {
     dataUrl: string
@@ -557,6 +567,7 @@ export interface GraphRunOptions {
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
+  composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']

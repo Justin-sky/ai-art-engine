@@ -24,6 +24,7 @@ import {
   resolveSeedreamImageSize
 } from '@shared/modelProviders/volcengineArk/imageSize'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
+import { parseVolcengineArkImageLayers } from '@shared/modelProviders/volcengineArk/layerDecomposition'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
@@ -177,22 +178,28 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
     input: GenerateImageInput
   ): Promise<GenerateImageResult> {
     const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
+    const prompt = rewriteAtMentionsForVolcengineArkImagePrompt(input.prompt)
     const body: Record<string, unknown> = {
       model: modelId,
-      // Seedream 用「图n」对齐 image[]；应用内统一 @n，此处转换
-      prompt: rewriteAtMentionsForVolcengineArkImagePrompt(input.prompt),
       response_format: 'url',
       watermark: false
     }
-    if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+    if (prompt.trim() || !input.layerDecomposition) body.prompt = prompt
+    if (input.layerDecomposition) {
+      body.layer_decomposition = true
+      const size = input.resolution?.trim()
+      if (size) body.size = size
+    } else {
+      if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+      // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
+      // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
+      // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。
+      const profileId = resolveVolcengineArkCapabilityProfileId(modelId)
+      const minPixels = profileId === 'seedream-3' ? undefined : SEEDREAM_MIN_PIXELS
+      const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio, minPixels)
+      if (size) body.size = size
+    }
     if (input.seed != null) body.seed = input.seed
-    // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
-    // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
-    // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。
-    const profileId = resolveVolcengineArkCapabilityProfileId(modelId)
-    const minPixels = profileId === 'seedream-3' ? undefined : SEEDREAM_MIN_PIXELS
-    const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio, minPixels)
-    if (size) body.size = size
     if (input.inputReferences?.length) {
       const refs = input.inputReferences.map((url) => url.trim()).filter(Boolean)
       body.image = refs.length === 1 ? refs[0] : refs
@@ -200,20 +207,26 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
 
     try {
       const { data } = await client.post<{
-        data?: Array<{ b64_json?: string; url?: string }>
+        data?: Array<{
+          b64_json?: string
+          url?: string
+          size?: string
+          output_format?: string
+          z_index?: number
+          bounding_box?: { absolute?: number[]; normalized?: number[] }
+          name?: string
+          description?: string
+        }>
         model?: string
       }>('/images/generations', body)
 
-      const images = (data.data ?? [])
-        .map((row) => {
-          if (row.b64_json) return `data:image/png;base64,${row.b64_json}`
-          if (row.url) return row.url
-          return ''
-        })
-        .filter(Boolean)
-
-      if (!images.length) throw new Error('模型未返回图片')
-      return { images, model: data.model ?? modelId }
+      const parsed = parseVolcengineArkImageLayers(data.data)
+      if (!parsed.images.length) throw new Error('模型未返回图片')
+      return {
+        images: parsed.images,
+        model: data.model ?? modelId,
+        ...(input.layerDecomposition ? { layers: parsed.layers } : {})
+      }
     } catch (err) {
       throw new Error(`图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
     }

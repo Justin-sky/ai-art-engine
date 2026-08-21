@@ -18,6 +18,7 @@ import type { ImageEraseState } from './imageErase'
 import type { ImageMatteState } from './imageMatte'
 import type { ImageCropState } from './imageCrop'
 import type { ImageGridSplitState } from './imageGridSplit'
+import type { ImageLayerSplitState } from './imageLayerSplit'
 
 /** 按输出类型的规范单例 id */
 export const GRAPH_OUTPUT_NODE_IDS = {
@@ -229,6 +230,7 @@ export type GraphNodeTypeId =
   | 'image.matte'
   | 'image.crop'
   | 'image.gridSplit'
+  | 'image.layerSplit'
   | 'image.toPrompt'
   | 'graph.input.slot'
   | (string & {})
@@ -526,6 +528,8 @@ export interface GraphNodeParams {
   imageCrop?: Partial<ImageCropState>
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
+  /** 图层分离（Seedream layer_decomposition） */
+  imageLayerSplit?: Partial<ImageLayerSplitState>
   /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */
   boundBeatId?: string
   /** 剧集 Agent 流水线：分镜师/动画师生成步骤（breakdown/beatboard/sequence/motion） */

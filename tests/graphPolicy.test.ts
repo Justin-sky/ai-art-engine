@@ -107,6 +107,7 @@ describe('graph policy', () => {
         'image.erase',
         'image.expand',
         'image.gridSplit',
+        'image.layerSplit',
         'image.lighting',
         'image.matte',
         'image.multiAngle',

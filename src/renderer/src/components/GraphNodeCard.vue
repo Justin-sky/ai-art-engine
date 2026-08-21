@@ -220,7 +220,7 @@
         </div>
 
         <img
-          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
+          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isLayerSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
           :src="selectImagePreview"
           alt=""
           loading="lazy"
@@ -598,6 +598,7 @@ import {
   isMatteEditorNode,
   isCropEditorNode,
   isGridSplitEditorNode,
+  isLayerSplitEditorNode,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
@@ -1279,6 +1280,7 @@ watch(
         isMatteEditorNode(props.node) ||
         isCropEditorNode(props.node) ||
         isGridSplitEditorNode(props.node) ||
+        isLayerSplitEditorNode(props.node) ||
         isFramePullNode(props.node),
       previewInViewport.value,
       previewPriority.value
@@ -1517,6 +1519,7 @@ const previewHint = computed(() => {
   if (isMatteEditorNode(props.node)) return t('graph.matte.hint')
   if (isCropEditorNode(props.node)) return t('graph.crop.hint')
   if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
+  if (isLayerSplitEditorNode(props.node)) return t('graph.layerSplit.hint')
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
   if (isMissingLinkedAsset.value) return t('graph.assetMissing.hint')
   if (isAssetRef.value) {
@@ -2093,6 +2096,10 @@ function onPreviewDblClick(): void {
     }
     if (isGridSplitEditorNode(props.node)) {
       await diveNodeTool('node.gridSplit', title)
+      return
+    }
+    if (isLayerSplitEditorNode(props.node)) {
+      await diveNodeTool('node.layerSplit', title)
       return
     }
     const scriptAssetId = hostAssetId.value

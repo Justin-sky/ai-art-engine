@@ -66,6 +66,8 @@ export interface GraphRunLogApiCall {
     inputReferenceCount?: number
     /** 图片生成：参考图清单（来源 + 相对路径/名称，不落 data URL） */
     inputReferences?: GraphImageReferenceMeta[]
+    /** Seedream 图层分离 */
+    layerDecomposition?: boolean
     voice?: string
     name?: string
     /** 参考视频对象存储上传摘要（不落完整签名参数） */

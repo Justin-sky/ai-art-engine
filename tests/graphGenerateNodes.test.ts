@@ -24,6 +24,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'image.erase',
   'image.expand',
   'image.gridSplit',
+  'image.layerSplit',
   'image.lighting',
   'image.matte',
   'image.multiAngle',

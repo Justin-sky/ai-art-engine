@@ -17,6 +17,7 @@ import CropInspector from '../components/CropInspector.vue'
 import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
+import LayerSplitInspector from '../components/LayerSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
@@ -274,6 +275,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.gridSplit',
     component: GridSplitInspector,
     nodeTypeId: 'image.gridSplit'
+  },
+  {
+    id: 'studio.graph.layerSplit',
+    component: LayerSplitInspector,
+    nodeTypeId: 'image.layerSplit'
   },
   {
     id: 'studio.graph.camera',

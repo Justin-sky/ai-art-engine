@@ -5,6 +5,8 @@ import type {
   ImageExpandState,
   ImageEraseState,
   ImageGridSplitState,
+  ImageLayerSplitState,
+  ImageLayerSplitNestedRequest,
   ImageMatteState,
   ImageRedrawState,
   LightingSetupState,
@@ -135,6 +137,17 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  layerSplit: {
+    open: boolean
+    setup: ImageLayerSplitState | null
+    sourceUrl: string
+    sourceLoading: boolean
+    layerUrls: Record<string, string>
+    generateModel: string
+    generateProviderInstanceId: string
+    splitting: boolean
+    splitError: string
+  }
   closeTextNotepad: () => void
   saveTextNotepad: (text: string) => void
   closeSelectImage: () => void
@@ -176,6 +189,10 @@ export type GraphEditorDialogsApi = {
   closeGridSplit: () => void
   previewGridSplit: (payload: unknown) => void
   saveGridSplit: (payload: unknown) => void
+  closeLayerSplit: () => void
+  previewLayerSplit: (payload: unknown) => void
+  saveLayerSplit: (payload: unknown) => void
+  splitSelectedLayerSplit: (payload: ImageLayerSplitNestedRequest) => void | Promise<void>
 }
 
 export const graphEditorDialogsKey: InjectionKey<GraphEditorDialogsApi> = Symbol('graphEditorDialogs')
