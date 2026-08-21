@@ -75,7 +75,11 @@
           ref="stageEl"
           class="stage"
           tabindex="0"
+          :class="{ 'space-pan': spaceHeld && hasCanvas, panning: pan.active }"
           @keydown="onKeydown"
+          @dblclick.self="resetView"
+          @wheel.prevent="onStageWheel"
+          @pointerdown="onStagePanStart"
         >
           <div
             v-if="sourceLoading"
@@ -94,6 +98,7 @@
             class="canvas-wrap"
             :style="canvasWrapStyle"
             @pointerdown.self="draft.selectedId = ''"
+            @dblclick.self="resetView"
           >
             <div
               v-if="splitting"
@@ -473,6 +478,20 @@ const windowTitle = computed(() => t('graph.layerSplit.appMark'))
 const draft = reactive<ImageLayerSplitState>(normalizeImageLayerSplit())
 const stageEl = ref<HTMLElement | null>(null)
 const display = reactive({ w: 480, h: 480 })
+const ZOOM_MIN = 0.2
+const ZOOM_MAX = 8
+const ZOOM_STEP = 1.1
+const STAGE_PAD = 16
+const zoom = ref(1)
+const spaceHeld = ref(false)
+const panOffset = reactive({ x: 0, y: 0 })
+const pan = reactive({
+  active: false,
+  startX: 0,
+  startY: 0,
+  originX: 0,
+  originY: 0
+})
 const hydrating = ref(false)
 const exporting = ref(false)
 const exportMessage = ref('')
@@ -581,8 +600,9 @@ const canExportAll = computed(
 )
 
 const canvasWrapStyle = computed(() => ({
-  width: `${display.w}px`,
-  height: `${display.h}px`
+  width: `${Math.round(display.w * zoom.value)}px`,
+  height: `${Math.round(display.h * zoom.value)}px`,
+  transform: `translate(${Math.round(panOffset.x)}px, ${Math.round(panOffset.y)}px)`
 }))
 
 function isBase(layer: ImageLayerSplitLayer): boolean {
@@ -873,8 +893,7 @@ function releaseDiveHistoryBridge(): void {
 function onWindowUndoKeydown(event: KeyboardEvent): void {
   if (!props.open) return
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-  const target = event.target as HTMLElement | null
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (isEditableTarget(event.target)) return
   const key = event.key.toLowerCase()
   if (key === 'z' && !event.shiftKey) {
     event.preventDefault()
@@ -898,13 +917,19 @@ function replaceLayer(next: ImageLayerSplitLayer): void {
 function scaleFromDisplay(dx: number, dy: number): { dx: number; dy: number } {
   const cw = Math.max(1, draft.canvasWidth)
   const ch = Math.max(1, draft.canvasHeight)
+  const zw = Math.max(1, display.w * zoom.value)
+  const zh = Math.max(1, display.h * zoom.value)
   return {
-    dx: Math.round((dx / Math.max(1, display.w)) * cw),
-    dy: Math.round((dy / Math.max(1, display.h)) * ch)
+    dx: Math.round((dx / zw) * cw),
+    dy: Math.round((dy / zh) * ch)
   }
 }
 
 function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): void {
+  if (spaceHeld.value) {
+    onStagePanStart(event)
+    return
+  }
   draft.selectedId = layer.id
   stageEl.value?.focus()
   if (isBase(layer) || !layer.visible) return
@@ -926,6 +951,10 @@ function onHandlePointerDown(
   layer: ImageLayerSplitLayer,
   handle: ResizeHandle
 ): void {
+  if (spaceHeld.value) {
+    onStagePanStart(event)
+    return
+  }
   draft.selectedId = layer.id
   pushDraftHistory()
   event.preventDefault()
@@ -1095,6 +1124,83 @@ function fitDisplay(): void {
   }
   display.w = Math.max(80, Math.round(w))
   display.h = Math.max(80, Math.round(h))
+  resetView()
+}
+
+function resetView(): void {
+  zoom.value = 1
+  panOffset.x = 0
+  panOffset.y = 0
+}
+
+function onStageWheel(event: WheelEvent): void {
+  if (!hasCanvas.value || !event.deltaY) return
+  const stage = stageEl.value
+  if (!stage) return
+  const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP
+  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.value * factor))
+  if (next === zoom.value) return
+  const rect = stage.getBoundingClientRect()
+  const prevGapX = Math.max((stage.clientWidth - display.w * zoom.value) / 2, STAGE_PAD)
+  const prevGapY = Math.max((stage.clientHeight - display.h * zoom.value) / 2, STAGE_PAD)
+  const cx = (event.clientX - rect.left - prevGapX - panOffset.x) / zoom.value
+  const cy = (event.clientY - rect.top - prevGapY - panOffset.y) / zoom.value
+  const gapX = Math.max((stage.clientWidth - display.w * next) / 2, STAGE_PAD)
+  const gapY = Math.max((stage.clientHeight - display.h * next) / 2, STAGE_PAD)
+  panOffset.x = event.clientX - rect.left - gapX - cx * next
+  panOffset.y = event.clientY - rect.top - gapY - cy * next
+  zoom.value = next
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el?.closest('input, textarea, select, [contenteditable="true"]')
+}
+
+function endStagePan(): void {
+  pan.active = false
+  window.removeEventListener('pointermove', onStagePanMove)
+  window.removeEventListener('pointerup', onStagePanEnd)
+}
+
+function onStagePanStart(event: PointerEvent): void {
+  if (!spaceHeld.value || !hasCanvas.value || !event.isPrimary) return
+  event.preventDefault()
+  pan.active = true
+  pan.startX = event.clientX
+  pan.startY = event.clientY
+  pan.originX = panOffset.x
+  pan.originY = panOffset.y
+  window.addEventListener('pointermove', onStagePanMove)
+  window.addEventListener('pointerup', onStagePanEnd)
+}
+
+function onStagePanMove(event: PointerEvent): void {
+  if (!pan.active) return
+  panOffset.x = pan.originX + (event.clientX - pan.startX)
+  panOffset.y = pan.originY + (event.clientY - pan.startY)
+}
+
+function onStagePanEnd(): void {
+  endStagePan()
+}
+
+function onWindowSpaceKeydown(event: KeyboardEvent): void {
+  if (!props.open || event.code !== 'Space' || event.repeat) return
+  if (isEditableTarget(event.target) || !hasCanvas.value) return
+  event.preventDefault()
+  spaceHeld.value = true
+}
+
+function onWindowSpaceKeyup(event: KeyboardEvent): void {
+  if (event.code !== 'Space') return
+  spaceHeld.value = false
+  endStagePan()
+}
+
+function onWindowBlur(): void {
+  spaceHeld.value = false
+  endStagePan()
 }
 
 function buildSavePayload(): LayerSplitEditorSavePayload {
@@ -1134,12 +1240,19 @@ watch(
   (open) => {
     if (!open) {
       window.removeEventListener('keydown', onWindowUndoKeydown, true)
+      window.removeEventListener('keydown', onWindowSpaceKeydown, true)
+      window.removeEventListener('keyup', onWindowSpaceKeyup, true)
+      window.removeEventListener('blur', onWindowBlur)
+      onWindowBlur()
       releaseDiveHistoryBridge()
       resetLocalHistory()
       return
     }
     resetLocalHistory()
     window.addEventListener('keydown', onWindowUndoKeydown, true)
+    window.addEventListener('keydown', onWindowSpaceKeydown, true)
+    window.addEventListener('keyup', onWindowSpaceKeyup, true)
+    window.addEventListener('blur', onWindowBlur)
     bindDiveHistory()
     hydrating.value = true
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
@@ -1279,14 +1392,25 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 16px;
-  overflow: auto;
+  overflow: hidden;
   outline: none;
 }
 
+.stage.space-pan,
+.stage.space-pan .layer,
+.stage.space-pan .handle {
+  cursor: grab;
+}
+
+.stage.panning,
+.stage.panning .layer,
+.stage.panning .handle {
+  cursor: grabbing;
+}
+
 .stage-empty {
+  margin: auto;
   color: var(--text-muted);
   font-size: 13px;
   max-width: 360px;
@@ -1297,6 +1421,7 @@ onBeforeUnmount(() => {
 .canvas-wrap {
   position: relative;
   flex: 0 0 auto;
+  margin: auto;
   background-image:
     linear-gradient(45deg, #3a3a3a 25%, transparent 25%),
     linear-gradient(-45deg, #3a3a3a 25%, transparent 25%),
