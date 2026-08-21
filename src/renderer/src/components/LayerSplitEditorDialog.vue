@@ -50,20 +50,20 @@
         </button>
         <button
           type="button"
-          class="tool-btn primary"
-          :disabled="!canSplitSelected"
-          :title="splitDisabledReason"
-          @click="onSplitSelected"
-        >
-          {{ splitting ? t('graph.layerSplit.splitting') : t('graph.layerSplit.splitSelected') }}
-        </button>
-        <button
-          type="button"
           class="tool-btn"
           :disabled="!draft.layers.length"
           @click="resetAll"
         >
           {{ t('graph.layerSplit.resetAll') }}
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
+          :disabled="!canSplitSelected"
+          :title="splitDisabledReason"
+          @click="onSplitSelected"
+        >
+          {{ splitting ? t('graph.layerSplit.splitting') : t('graph.layerSplit.splitSelected') }}
         </button>
         <span class="layer-count">
           {{ t('graph.layerSplit.layerCount', { n: draft.layers.length }) }}
@@ -1118,10 +1118,6 @@ onBeforeUnmount(() => {
   max-width: 360px;
   text-align: center;
   line-height: 1.5;
-}
-
-.tool-btn.primary {
-  border-color: #4a90e2;
 }
 
 .canvas-wrap {
