@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [4.0.1] — 2026-08-21
+
+### Added
+
+- MagicRouter 提供商（OpenAI 兼容聚合网关）：文本 / 图片 / 视频，图片按 DashScope 风格尺寸映射，视频异步提交 / 轮询
+- 图层分离：Seedream 5.0 Pro `layer_decomposition` 拆成底图 + 最多 16 张透明 PNG，可在 dive 编辑器调层级后本地重组
+
+### Changed
+
+- ComfyUI 教程补充 MiniMax H3 视频说明，并新增 ComfyUI 接入教程脚本
+
 ## [4.0.0] — 2026-08-20
 
 4.0 正式版：内部扩展改为 Cordis 插件运行时，并补齐 ComfyUI 视频 / 声音生成与 MiniMax H3 支持。
