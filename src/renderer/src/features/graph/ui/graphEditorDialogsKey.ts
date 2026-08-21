@@ -186,13 +186,19 @@ export type GraphEditorDialogsApi = {
   closeCrop: () => void
   previewCrop: (payload: unknown) => void
   saveCrop: (payload: unknown) => void
+  /** dive 面包屑回退前提交裁剪的实时预览编辑，补记撤销命令 */
+  flushCrop: () => void
   closeGridSplit: () => void
   previewGridSplit: (payload: unknown) => void
   saveGridSplit: (payload: unknown) => void
+  /** dive 面包屑回退前提交网格拆分的实时预览编辑，补记撤销命令 */
+  flushGridSplit: () => void
   closeLayerSplit: () => void
   previewLayerSplit: (payload: unknown) => void
   saveLayerSplit: (payload: unknown) => void
   splitSelectedLayerSplit: (payload: ImageLayerSplitNestedRequest) => void | Promise<void>
+  /** dive 面包屑回退前提交图层拆分的实时预览编辑，补记撤销命令 */
+  flushLayerSplit: () => void
 }
 
 export const graphEditorDialogsKey: InjectionKey<GraphEditorDialogsApi> = Symbol('graphEditorDialogs')

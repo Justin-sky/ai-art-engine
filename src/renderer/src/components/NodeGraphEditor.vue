@@ -7012,6 +7012,7 @@ const crop = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as ImageCropState | null,
+  historyBefore: null as GraphDocument | null,
   sourceUrl: '',
   sourceLoading: false
 })
@@ -7023,6 +7024,7 @@ async function onCropOpen(nodeId: string): Promise<void> {
   crop.setup = readImageCropFromNode(node.params)
   crop.sourceUrl = ''
   crop.sourceLoading = true
+  crop.historyBefore = buildGraphJson()
   crop.open = true
   await fillEditorSourceUrl(
     nodeId,
@@ -7040,6 +7042,7 @@ function closeCrop(): void {
   crop.open = false
   crop.nodeId = ''
   crop.setup = null
+  crop.historyBefore = null
   crop.sourceUrl = ''
   crop.sourceLoading = false
 }
@@ -7056,7 +7059,8 @@ function saveCrop(payload: { imageCrop: ImageCropState }): void {
   const nodeId = crop.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
+  // 裁剪走实时预览：before 必须取开窗快照，否则预览已改写参数、before≈after 会被判等跳过
+  const before = crop.historyBefore ?? buildGraphJson()
   node.params = {
     ...node.params,
     ...payload
@@ -7068,10 +7072,20 @@ function saveCrop(payload: { imageCrop: ImageCropState }): void {
   closeCrop()
 }
 
+/** dive 面包屑回退前提交裁剪的实时预览编辑，补记撤销命令。详见 flushLayerSplit。 */
+function flushCrop(): void {
+  if (!crop.open) return
+  const before = crop.historyBefore
+  if (!before) return
+  crop.historyBefore = null
+  recordGraphChange('crop', before)
+}
+
 const gridSplit = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as ImageGridSplitState | null,
+  historyBefore: null as GraphDocument | null,
   sourceUrl: '',
   sourceLoading: false
 })
@@ -7083,6 +7097,7 @@ async function onGridSplitOpen(nodeId: string): Promise<void> {
   gridSplit.setup = readImageGridSplitFromNode(node.params)
   gridSplit.sourceUrl = ''
   gridSplit.sourceLoading = true
+  gridSplit.historyBefore = buildGraphJson()
   gridSplit.open = true
   await fillEditorSourceUrl(
     nodeId,
@@ -7100,6 +7115,7 @@ function closeGridSplit(): void {
   gridSplit.open = false
   gridSplit.nodeId = ''
   gridSplit.setup = null
+  gridSplit.historyBefore = null
   gridSplit.sourceUrl = ''
   gridSplit.sourceLoading = false
 }
@@ -7116,7 +7132,8 @@ function saveGridSplit(payload: { imageGridSplit: ImageGridSplitState }): void {
   const nodeId = gridSplit.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
+  // 网格拆分走实时预览：before 必须取开窗快照，否则预览已改写参数、before≈after 会被判等跳过
+  const before = gridSplit.historyBefore ?? buildGraphJson()
   node.params = {
     ...node.params,
     ...payload
@@ -7128,10 +7145,20 @@ function saveGridSplit(payload: { imageGridSplit: ImageGridSplitState }): void {
   closeGridSplit()
 }
 
+/** dive 面包屑回退前提交网格拆分的实时预览编辑，补记撤销命令。详见 flushLayerSplit。 */
+function flushGridSplit(): void {
+  if (!gridSplit.open) return
+  const before = gridSplit.historyBefore
+  if (!before) return
+  gridSplit.historyBefore = null
+  recordGraphChange('gridSplit', before)
+}
+
 const layerSplit = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as ImageLayerSplitState | null,
+  historyBefore: null as GraphDocument | null,
   sourceUrl: '',
   sourceLoading: false,
   layerUrls: {} as Record<string, string>,
@@ -7170,6 +7197,7 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   layerSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
+  layerSplit.historyBefore = buildGraphJson()
   layerSplit.open = true
   await fillEditorSourceUrl(
     nodeId,
@@ -7191,6 +7219,7 @@ function closeLayerSplit(): void {
   layerSplit.open = false
   layerSplit.nodeId = ''
   layerSplit.setup = null
+  layerSplit.historyBefore = null
   layerSplit.sourceUrl = ''
   layerSplit.sourceLoading = false
   layerSplit.layerUrls = {}
@@ -7224,7 +7253,7 @@ function saveLayerSplit(payload: {
   const nodeId = layerSplit.nodeId
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
-  const before = buildGraphJson()
+  const before = layerSplit.historyBefore ?? buildGraphJson()
   node.params = {
     ...node.params,
     ...payload
@@ -7236,6 +7265,21 @@ function saveLayerSplit(payload: {
   graphEditorHosts.bumpRevision()
   recordGraphChange('layerSplit', before)
   closeLayerSplit()
+}
+
+/**
+ * dive 面包屑回退时，工具宿主帧会先于弹窗卸载，saveLayerSplit（仅由弹窗 onClose 触发）
+ * 无从执行，导致实时预览已改写节点、却没有任何撤销命令入栈，主界面 undo/redo 因而失效。
+ * 这里把「开窗快照 historyBefore」与「当前实时预览态」之间的差异补记为一次撤销命令。
+ * 不主动关闭弹窗：flush 发生在 popTo 卸载之前，置 open=false 会触发 watch(toolOpen) 二次回退。
+ * historyBefore 记完即清空，保证重复 flush 幂等；无变化时 recordGraphChange 自身会跳过。
+ */
+function flushLayerSplit(): void {
+  if (!layerSplit.open) return
+  const before = layerSplit.historyBefore
+  if (!before) return
+  layerSplit.historyBefore = null
+  recordGraphChange('layerSplit', before)
 }
 
 async function resolveLayerSplitLayerApiUrl(
@@ -7526,13 +7570,16 @@ const graphDialogsApi = {
   closeCrop,
   previewCrop,
   saveCrop,
+  flushCrop,
   closeGridSplit,
   previewGridSplit,
   saveGridSplit,
+  flushGridSplit,
   closeLayerSplit,
   previewLayerSplit,
   saveLayerSplit,
-  splitSelectedLayerSplit
+  splitSelectedLayerSplit,
+  flushLayerSplit
 } as GraphEditorDialogsApi
 
 provide(graphEditorDialogsKey, graphDialogsApi)

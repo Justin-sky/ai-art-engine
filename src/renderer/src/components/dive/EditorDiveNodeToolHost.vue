@@ -244,6 +244,7 @@ import {
 } from '../../features/graph/model/editorDive'
 import { editorDiveEmbeddedKey } from '../../features/graph/ui/editorDiveEmbeddedKey'
 import { graphEditorNodeTools } from '../../features/graph/ui/graphEditorNodeTools'
+import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import GraphTextNotepadDialog from '../GraphTextNotepadDialog.vue'
 import GraphSelectImageDialog from '../GraphSelectImageDialog.vue'
@@ -331,6 +332,30 @@ const toolOpen = computed(() => {
       return false
   }
 })
+
+// 面包屑回退 / 下钻会先触发 flushTop：在宿主帧卸载前把实时预览的编辑提交进撤销栈。
+// 图层拆分靠 previewLayerSplit 实时改写节点，但仅弹窗 onClose 才记录撤销命令，
+// 而嵌入式（dive）下没有关闭按钮，回退时弹窗被直接卸载，命令因此丢失 → 主界面 undo/redo 失效。
+useEditorDiveFrameFlush(
+  () => props.frameKey,
+  () => {
+    const current = api.value
+    if (!current) return
+    switch (props.viewId) {
+      case 'node.layerSplit':
+        current.flushLayerSplit()
+        break
+      case 'node.crop':
+        current.flushCrop()
+        break
+      case 'node.gridSplit':
+        current.flushGridSplit()
+        break
+      default:
+        break
+    }
+  }
+)
 
 onMounted(async () => {
   // 节点卡已预先打开工具状态时，只需等待宿主注册即可直接展示

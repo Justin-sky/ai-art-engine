@@ -527,6 +527,41 @@ export function buildLayerSplitList(state: ImageLayerSplitState): LayerSplitList
   return collectLayerSplitList(state, '', 0)
 }
 
+export type LayerSplitTreeNode =
+  | { kind: 'group'; group: ImageLayerSplitGroup; children: LayerSplitTreeNode[] }
+  | { kind: 'layer'; layer: ImageLayerSplitLayer }
+
+/**
+ * 分组树：组为枝、图层为叶，同级按 z 从高到低（顶 → 底）排列，顺序与 buildLayerSplitList 一致。
+ * 与列表版的区别是保留嵌套结构、且不受 collapsed 影响（折叠只是 UI 状态，导出始终展开完整层级），
+ * 供 PSD 等需要还原图层分组的导出使用。
+ */
+function collectLayerSplitTree(
+  state: ImageLayerSplitState,
+  parentGroupId: string
+): LayerSplitTreeNode[] {
+  type Unit = { sortZ: number; id: string; node: LayerSplitTreeNode }
+  const units: Unit[] = []
+  for (const group of state.groups) {
+    if ((group.parentGroupId ?? '') !== parentGroupId) continue
+    units.push({
+      sortZ: groupSortZ(state, group),
+      id: group.id,
+      node: { kind: 'group', group, children: collectLayerSplitTree(state, group.id) }
+    })
+  }
+  for (const layer of state.layers) {
+    if ((layer.groupId ?? '') !== parentGroupId) continue
+    units.push({ sortZ: layer.zIndex, id: layer.id, node: { kind: 'layer', layer } })
+  }
+  units.sort((a, b) => b.sortZ - a.sortZ || a.id.localeCompare(b.id))
+  return units.map((unit) => unit.node)
+}
+
+export function buildLayerSplitTree(state: ImageLayerSplitState): LayerSplitTreeNode[] {
+  return collectLayerSplitTree(state, '')
+}
+
 export function toggleLayerSplitGroupCollapsed(
   groups: ImageLayerSplitGroup[],
   groupId: string

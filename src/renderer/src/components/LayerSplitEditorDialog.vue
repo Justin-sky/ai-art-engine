@@ -427,6 +427,7 @@ import {
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
 import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
+import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 export type LayerSplitEditorSavePayload = ReturnType<typeof imageLayerSplitToNodePatch> & {
@@ -484,11 +485,14 @@ const handles: ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 const resolutions = LAYER_SPLIT_RESOLUTIONS
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
-const localHistory = {
+const localHistory = reactive({
   undo: [] as ImageLayerSplitState[],
   redo: [] as ImageLayerSplitState[],
   applying: false
-}
+})
+
+const canUndo = computed(() => localHistory.undo.length > 0)
+const canRedo = computed(() => localHistory.redo.length > 0)
 
 type DragKind = 'move' | 'resize'
 const drag = reactive<{
@@ -848,6 +852,24 @@ function redoDraft(): void {
   applyDraftState(next)
 }
 
+// 打开时把本地草稿历史注册到 dive 历史桥，主窗口工具栏 ↶↷ 便代理到此编辑器。详见 diveEditorHistory。
+let releaseDiveHistory: (() => void) | null = null
+
+function bindDiveHistory(): void {
+  releaseDiveHistory?.()
+  releaseDiveHistory = diveEditorHistory.register({
+    canUndo: () => canUndo.value,
+    canRedo: () => canRedo.value,
+    undo: undoDraft,
+    redo: redoDraft
+  })
+}
+
+function releaseDiveHistoryBridge(): void {
+  releaseDiveHistory?.()
+  releaseDiveHistory = null
+}
+
 function onWindowUndoKeydown(event: KeyboardEvent): void {
   if (!props.open) return
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return
@@ -1112,11 +1134,13 @@ watch(
   (open) => {
     if (!open) {
       window.removeEventListener('keydown', onWindowUndoKeydown, true)
+      releaseDiveHistoryBridge()
       resetLocalHistory()
       return
     }
     resetLocalHistory()
     window.addEventListener('keydown', onWindowUndoKeydown, true)
+    bindDiveHistory()
     hydrating.value = true
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
     generateModel.value = props.generateModel ?? ''
@@ -1173,6 +1197,7 @@ function onClose(): void {
 onBeforeUnmount(() => {
   onPointerUp()
   window.removeEventListener('keydown', onWindowUndoKeydown, true)
+  releaseDiveHistoryBridge()
   if (previewTimer) clearTimeout(previewTimer)
   if (exportMsgTimer) clearTimeout(exportMsgTimer)
 })

@@ -19,17 +19,17 @@
       <span class="hint">{{ t('studio.toolbar.hint') }}</span>
       <button
         type="button"
-        :disabled="!editor.commands.canUndo.value"
+        :disabled="!toolbarCanUndo"
         :title="t('studio.toolbar.undo')"
-        @click="executeEditorCommand('editor.undo', editor)"
+        @click="onToolbarUndo"
       >
         ↶
       </button>
       <button
         type="button"
-        :disabled="!editor.commands.canRedo.value"
+        :disabled="!toolbarCanRedo"
         :title="t('studio.toolbar.redo')"
-        @click="executeEditorCommand('editor.redo', editor)"
+        @click="onToolbarRedo"
       >
         ↷
       </button>
@@ -296,6 +296,7 @@ import {
   listPersistentEditorWindowIds
 } from '../editor/extensions'
 import { useEditorKernel } from '../editor/kernel'
+import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
 import { usePanelTitles } from '../editor/workbench/usePanelTitles'
 import { useEditorPanelOpener } from '../editor/workbench/useEditorPanelOpener'
 import { isEditorPanelGraphRunning } from '../editor/workbench/canCloseEditorPanel'
@@ -359,6 +360,33 @@ const drafts = useDraftStore()
 const editor = useEditorKernel()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
+
+/**
+ * 工具栏 ↶↷：内嵌 dive 编辑器（图层分离等）打开时代理到其草稿历史，
+ * 否则驱动主图命令栈。详见 diveEditorHistory。
+ */
+const toolbarCanUndo = computed(
+  () => diveEditorHistory.active.value?.canUndo() ?? editor.commands.canUndo.value
+)
+const toolbarCanRedo = computed(
+  () => diveEditorHistory.active.value?.canRedo() ?? editor.commands.canRedo.value
+)
+function onToolbarUndo(): void {
+  const history = diveEditorHistory.active.value
+  if (history) {
+    history.undo()
+    return
+  }
+  void executeEditorCommand('editor.undo', editor)
+}
+function onToolbarRedo(): void {
+  const history = diveEditorHistory.active.value
+  if (history) {
+    history.redo()
+    return
+  }
+  void executeEditorCommand('editor.redo', editor)
+}
 const {
   dialogOpen: aiWorkflowDialogOpen,
   generating: aiWorkflowGenerating,
