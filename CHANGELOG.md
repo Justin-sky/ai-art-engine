@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [4.0.2] — 2026-08-21
+
+### Added
+
+- 图层分离导出：支持导出为 PSD（保留层级、位置、尺寸、透明通道与名称）；分组 PNG 导出支持按分组建子目录
+
+### Changed
+
+- 图层拆分对话框导出工具栏调整按钮顺序与样式
+
 ## [4.0.1] — 2026-08-21
 
 ### Added
