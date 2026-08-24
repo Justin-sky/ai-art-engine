@@ -5468,6 +5468,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       hemisphere: 'Hemisphere',
       torus: 'Torus',
       arch: 'Arch',
+      pointedArch: 'Pointed Arch',
+      cross: 'Cross',
       tube: 'Tube',
       prism: 'Prism',
       tetrahedron: 'Tetrahedron',
@@ -6611,6 +6613,73 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return geo
   }
 
+  function makePointedArchGeometry(): THREE.BufferGeometry {
+    const spanHalf = 0.5
+    const radius = spanHalf * 2
+    const halfThick = 0.08
+    const halfDepth = 0.16
+    const path = new (class extends THREE.Curve<THREE.Vector3> {
+      getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+        const s = Math.min(1, Math.max(0, t))
+        let cx: number
+        let angle: number
+        if (s <= 0.5) {
+          const u = s / 0.5
+          cx = spanHalf
+          angle = Math.PI - (Math.PI / 3) * u
+        } else {
+          const u = (s - 0.5) / 0.5
+          cx = -spanHalf
+          angle = Math.PI / 3 - (Math.PI / 3) * u
+        }
+        return target.set(cx + Math.cos(angle) * radius, Math.sin(angle) * radius, 0)
+      }
+    })()
+    const profile = new THREE.Shape()
+    profile.moveTo(-halfThick, -halfDepth)
+    profile.lineTo(halfThick, -halfDepth)
+    profile.lineTo(halfThick, halfDepth)
+    profile.lineTo(-halfThick, halfDepth)
+    profile.closePath()
+    const geo = new THREE.ExtrudeGeometry(profile, {
+      steps: 24,
+      bevelEnabled: false,
+      extrudePath: path
+    })
+    geo.computeBoundingBox()
+    const center = geo.boundingBox?.getCenter(new THREE.Vector3())
+    if (center) geo.translate(-center.x, -center.y, -center.z)
+    geo.computeVertexNormals()
+    return geo
+  }
+
+  function makeCrossGeometry(): THREE.BufferGeometry {
+    const arm = 0.18
+    const half = 0.5
+    const barHalf = 0.25
+    const barBottom = 0.16
+    const barTop = 0.34
+    const depth = 0.18
+    const shape = new THREE.Shape()
+    shape.moveTo(-arm / 2, -half)
+    shape.lineTo(arm / 2, -half)
+    shape.lineTo(arm / 2, barBottom)
+    shape.lineTo(barHalf, barBottom)
+    shape.lineTo(barHalf, barTop)
+    shape.lineTo(arm / 2, barTop)
+    shape.lineTo(arm / 2, half)
+    shape.lineTo(-arm / 2, half)
+    shape.lineTo(-arm / 2, barTop)
+    shape.lineTo(-barHalf, barTop)
+    shape.lineTo(-barHalf, barBottom)
+    shape.lineTo(-arm / 2, barBottom)
+    shape.closePath()
+    const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 })
+    geo.translate(0, 0, -depth / 2)
+    geo.computeVertexNormals()
+    return geo
+  }
+
   function makeTubeGeometry(): THREE.BufferGeometry {
     const inner = 0.32
     const outer = 0.5
@@ -6660,6 +6729,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         break
       case 'arch':
         mesh = new THREE.Mesh(makeArchGeometry(), mat)
+        break
+      case 'pointedArch':
+        mesh = new THREE.Mesh(makePointedArchGeometry(), mat)
+        break
+      case 'cross':
+        mesh = new THREE.Mesh(makeCrossGeometry(), mat)
         break
       case 'tube':
         mesh = new THREE.Mesh(makeTubeGeometry(), mat)

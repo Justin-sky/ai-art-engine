@@ -987,6 +987,8 @@ export default {
         hemisphere: 'Hemisphere',
         torus: 'Torus',
         arch: 'Arch',
+        pointedArch: 'Pointed Arch',
+        cross: 'Cross',
         tube: 'Tube',
         prism: 'Prism',
         tetrahedron: 'Tetrahedron',

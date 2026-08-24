@@ -983,6 +983,8 @@ export default {
         hemisphere: 'Hemisphere',
         torus: 'Torus',
         arch: 'Arch',
+        pointedArch: '尖拱',
+        cross: '十字架',
         tube: 'Tube',
         prism: 'Prism',
         tetrahedron: 'Tetrahedron',

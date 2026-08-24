@@ -1108,6 +1108,7 @@ import {
   buildSceneBlockoutUserPrompt,
   parseAiSceneBlockoutCall,
   resolveBlockoutWorldPosition,
+  snapBlockoutToGround,
   type AiSceneBlockoutObject,
   type BlockoutLayoutMode
 } from '../features/director/aiSceneBlockout'
@@ -1531,10 +1532,12 @@ function applySceneBlockoutObjects(
       spec.rotation.z === 0
         ? { x: -Math.PI / 2, y: 0, z: 0 }
         : spec.rotation
+    const worldPos = resolveBlockoutWorldPosition(spec, { mode, panoramaYawDeg: yaw })
+    const groundedY = snapBlockoutToGround(spec, worldPos.y)
     scene.updateObjectTransform(id, {
       name: spec.name,
       color: spec.color,
-      position: resolveBlockoutWorldPosition(spec, { mode, panoramaYawDeg: yaw }),
+      position: groundedY == null ? worldPos : { ...worldPos, y: groundedY },
       rotation,
       scale: spec.scale
     })
@@ -1567,19 +1570,34 @@ async function onGenerateBlockout(payload: {
   const panoramaYawDeg =
     typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
 
+  const viewer = scene.getViewer()
+  const fovDeg =
+    typeof viewer?.fov === 'number' && viewer.fov > 0
+      ? viewer.fov
+      : DEFAULT_DIRECTOR_CAMERA_FOV
+  const aspectRatio = directorAspectRatioValue(scene.aspectRatio.value, 16, 9)
+  const eyeHeight = 1.6
+
   const drafted = payload.system.trim()
   const modeToken = layoutMode === 'panorama' ? 'azimuthDeg' : 'position'
   const system =
     drafted.includes(modeToken)
       ? drafted
-      : buildSceneBlockoutSystemPrompt(locale.value, layoutMode)
+      : buildSceneBlockoutSystemPrompt(locale.value, layoutMode, {
+          fovDeg,
+          aspectRatio,
+          eyeHeight
+        })
   const prompt = buildSceneBlockoutUserPrompt({
     instruction: payload.instruction,
     imageCount: images.length,
     mode: layoutMode,
     panoramaRadius,
     panoramaYawDeg,
-    unwrapped: prepared.unwrapped
+    unwrapped: prepared.unwrapped,
+    fovDeg,
+    aspectRatio,
+    eyeHeight
   })
 
   const runId = `ai-blockout-${crypto.randomUUID()}`

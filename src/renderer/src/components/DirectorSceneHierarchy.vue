@@ -347,6 +347,8 @@ const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
   { primitive: 'hemisphere', labelKey: 'director.stage.primitive.hemisphere' },
   { primitive: 'torus', labelKey: 'director.stage.primitive.torus' },
   { primitive: 'arch', labelKey: 'director.stage.primitive.arch' },
+  { primitive: 'pointedArch', labelKey: 'director.stage.primitive.pointedArch' },
+  { primitive: 'cross', labelKey: 'director.stage.primitive.cross' },
   { primitive: 'tube', labelKey: 'director.stage.primitive.tube' },
   { primitive: 'prism', labelKey: 'director.stage.primitive.prism' },
   { primitive: 'tetrahedron', labelKey: 'director.stage.primitive.tetrahedron' },

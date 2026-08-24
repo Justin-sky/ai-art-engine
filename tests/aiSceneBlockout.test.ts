@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   BUILD_SCENE_FUNCTION_NAME,
+  blockoutGroundedCenterY,
   buildSceneBlockoutSystemPrompt,
   buildSceneBlockoutUserPrompt,
   isLikelyEquirectangularSize,
   panoramaAzimuthToWorld,
   parseAiSceneBlockoutCall,
   photoSpaceToStageWorld,
-  resolveBlockoutWorldPosition
+  resolveBlockoutWorldPosition,
+  snapBlockoutToGround
 } from '../src/renderer/src/features/director/aiSceneBlockout'
 
 const validObject = {
@@ -92,6 +94,8 @@ describe('aiSceneBlockout', () => {
       'hemisphere',
       'torus',
       'arch',
+      'pointedArch',
+      'cross',
       'tetrahedron',
       'octahedron',
       'icosphere',
@@ -259,5 +263,61 @@ describe('aiSceneBlockout', () => {
     const zhPano = buildSceneBlockoutSystemPrompt('zh-CN', 'panorama')
     expect(zhPano).toContain('360')
     expect(zhPano).toContain('azimuthDeg')
+  })
+
+  it('injects camera FOV, aspect and eye height into prompts', () => {
+    const system = buildSceneBlockoutSystemPrompt('en-US', 'perspective', {
+      fovDeg: 60,
+      aspectRatio: 1.7778,
+      eyeHeight: 1.5
+    })
+    expect(system).toContain('60')
+    expect(system).toContain('1.5')
+
+    const user = buildSceneBlockoutUserPrompt({
+      instruction: 'match the photo',
+      imageCount: 1,
+      mode: 'perspective',
+      fovDeg: 60,
+      aspectRatio: 1.7778,
+      eyeHeight: 1.5
+    })
+    expect(user).toContain('FOV ≈ 60°')
+    expect(user).toContain('1.5')
+  })
+
+  it('grounds solids to y=0 without moving truly floating objects', () => {
+    const column = {
+      name: 'column',
+      primitive: 'box' as const,
+      color: '#808080',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 3, y: 6, z: 3 }
+    }
+    expect(blockoutGroundedCenterY(column)).toBeCloseTo(3, 5)
+    expect(snapBlockoutToGround(column, 0)).toBeCloseTo(3, 5)
+    expect(snapBlockoutToGround(column, 3)).toBeCloseTo(3, 5)
+    expect(snapBlockoutToGround(column, 8)).toBeNull()
+
+    const person = {
+      name: 'person',
+      primitive: 'capsule' as const,
+      color: '#808080',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 0.85, y: 0.85, z: 0.85 }
+    }
+    expect(snapBlockoutToGround(person, 0)).toBeCloseTo(0.85, 5)
+
+    const arch = {
+      name: 'arch',
+      primitive: 'arch' as const,
+      color: '#808080',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 2, y: 1, z: 0.3 }
+    }
+    expect(snapBlockoutToGround(arch, 0)).toBeNull()
   })
 })
