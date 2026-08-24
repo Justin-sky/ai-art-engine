@@ -342,6 +342,19 @@ const primitiveItems: { primitive: StagePrimitive; labelKey: string }[] = [
   { primitive: 'sphere', labelKey: 'director.stage.primitive.sphere' },
   { primitive: 'capsule', labelKey: 'director.stage.primitive.capsule' },
   { primitive: 'cylinder', labelKey: 'director.stage.primitive.cylinder' },
+  { primitive: 'cone', labelKey: 'director.stage.primitive.cone' },
+  { primitive: 'pyramid', labelKey: 'director.stage.primitive.pyramid' },
+  { primitive: 'hemisphere', labelKey: 'director.stage.primitive.hemisphere' },
+  { primitive: 'torus', labelKey: 'director.stage.primitive.torus' },
+  { primitive: 'arch', labelKey: 'director.stage.primitive.arch' },
+  { primitive: 'tube', labelKey: 'director.stage.primitive.tube' },
+  { primitive: 'prism', labelKey: 'director.stage.primitive.prism' },
+  { primitive: 'tetrahedron', labelKey: 'director.stage.primitive.tetrahedron' },
+  { primitive: 'octahedron', labelKey: 'director.stage.primitive.octahedron' },
+  { primitive: 'icosphere', labelKey: 'director.stage.primitive.icosphere' },
+  { primitive: 'wedge', labelKey: 'director.stage.primitive.wedge' },
+  { primitive: 'disc', labelKey: 'director.stage.primitive.disc' },
+  { primitive: 'ring', labelKey: 'director.stage.primitive.ring' },
   { primitive: 'plane', labelKey: 'director.stage.primitive.plane' },
   { primitive: 'quad', labelKey: 'director.stage.primitive.quad' }
 ]
@@ -776,23 +789,61 @@ function toolTargetIds(itemId: string): string[] {
   return [itemId]
 }
 
+function descendantIds(rootId: string): string[] {
+  const childrenOf = new Map<string, string[]>()
+  for (const row of scene.hierarchyRows.value) {
+    if (!row.parentId) continue
+    const list = childrenOf.get(row.parentId) ?? []
+    list.push(row.id)
+    childrenOf.set(row.parentId, list)
+  }
+  const out: string[] = []
+  const walk = (id: string): void => {
+    for (const child of childrenOf.get(id) ?? []) {
+      out.push(child)
+      walk(child)
+    }
+  }
+  walk(rootId)
+  return out
+}
+
+/** 父节点上的显隐 / 文本 / 锁定，连同全部子孙一起改。 */
+function flagTargetIds(itemId: string): string[] {
+  const kindById = new Map(scene.hierarchyRows.value.map((row) => [row.id, row.kind]))
+  const seen = new Set<string>()
+  const out: string[] = []
+  const push = (id: string): void => {
+    if (seen.has(id)) return
+    const kind = kindById.get(id)
+    if (kind === 'panorama' || kind === 'cameraGroup') return
+    seen.add(id)
+    out.push(id)
+  }
+  for (const id of toolTargetIds(itemId)) {
+    push(id)
+    for (const child of descendantIds(id)) push(child)
+  }
+  return out
+}
+
 function toggleVisible(item: { id: string; visible: boolean }): void {
   const next = !item.visible
-  for (const id of toolTargetIds(item.id)) {
+  for (const id of flagTargetIds(item.id)) {
     scene.setObjectVisible(id, next)
   }
 }
 
 function toggleLocked(item: { id: string; locked: boolean }): void {
   const next = !item.locked
-  for (const id of toolTargetIds(item.id)) {
+  for (const id of flagTargetIds(item.id)) {
     scene.setObjectLocked(id, next)
   }
 }
 
 function toggleNameVisible(item: { id: string; nameVisible: boolean }): void {
   const next = !item.nameVisible
-  for (const id of toolTargetIds(item.id)) {
+  for (const id of flagTargetIds(item.id)) {
     scene.setObjectNameVisible(id, next)
   }
 }

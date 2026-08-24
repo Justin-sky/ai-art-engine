@@ -1621,10 +1621,41 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     syncAllPathVisuals()
   }
 
-  function applyPanoramaVisuals(): void {
-    if (!panoramaSphere) return
+  function resolvePanoramaSphere(): THREE.Mesh | null {
+    if (panoramaSphere?.parent || panoramaSphere) return panoramaSphere
+    const root = contentRoot ?? scene
+    if (!root) return null
+    let found: THREE.Mesh | null = null
+    root.traverse((obj) => {
+      if (found || !(obj instanceof THREE.Mesh)) return
+      if (obj.userData.stagePanorama) found = obj
+    })
+    if (found) panoramaSphere = found
+    return found
+  }
+
+  function applyPanoramaMeshVisibility(mesh: THREE.Mesh, visible: boolean): void {
     const yaw = typeof stage.value.panoramaYaw === 'number' ? stage.value.panoramaYaw : 0
-    panoramaSphere.rotation.set(0, THREE.MathUtils.degToRad(yaw), 0)
+    mesh.rotation.set(0, THREE.MathUtils.degToRad(yaw), 0)
+    mesh.visible = visible
+    const material = mesh.material
+    if (!Array.isArray(material) && material) material.visible = visible
+  }
+
+  function applyPanoramaVisuals(visibleOverride?: boolean): void {
+    const visible = visibleOverride ?? stage.value.panoramaVisible !== false
+    const sphere = resolvePanoramaSphere()
+    const root = contentRoot ?? scene
+    if (root) {
+      root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh) || !obj.userData.stagePanorama) return
+        applyPanoramaMeshVisibility(obj, visible)
+      })
+    } else if (sphere) {
+      applyPanoramaMeshVisibility(sphere, visible)
+    }
+    applyBorderlessStyle(visible && !!sphere)
+    requestRender()
   }
 
   function syncCameraClipPlanes(): void {
@@ -1711,9 +1742,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       next.toLowerCase() === themeDirectorSkyHex().toLowerCase() || isDirectorSkyFollowTheme(color)
         ? DEFAULT_DIRECTOR_SKY_COLOR
         : next
-    applyBorderlessStyle(!!panoramaSphere)
+    applyPanoramaVisuals()
     previewRevision.value += 1
     requestRender()
+    schedulePersist()
+  }
+
+  function updatePanoramaVisible(visible: boolean): void {
+    stage.value = { ...stage.value, panoramaVisible: visible }
+    applyPanoramaVisuals(visible)
+    previewRevision.value += 1
+    requestRender(800)
     schedulePersist()
   }
 
@@ -4803,6 +4842,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       skyColor: isDirectorSkyFollowTheme(stage.value.skyColor)
         ? DEFAULT_DIRECTOR_SKY_COLOR
         : normalizeDirectorSkyColor(stage.value.skyColor),
+      panoramaVisible: stage.value.panoramaVisible !== false,
       panoramaYaw: typeof stage.value.panoramaYaw === 'number' ? stage.value.panoramaYaw : 0,
       panoramaRadius: currentPanoramaRadius(),
       animation: readDirectorAnimation(stage.value.animation),
@@ -5422,7 +5462,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       box: 'Cube',
       sphere: 'Sphere',
       capsule: 'Capsule',
+      cone: 'Cone',
       cylinder: 'Cylinder',
+      pyramid: 'Pyramid',
+      hemisphere: 'Hemisphere',
+      torus: 'Torus',
+      arch: 'Arch',
+      tube: 'Tube',
+      prism: 'Prism',
+      tetrahedron: 'Tetrahedron',
+      octahedron: 'Octahedron',
+      icosphere: 'Icosphere',
+      wedge: 'Wedge',
+      disc: 'Disc',
+      ring: 'Ring',
       plane: 'Plane',
       quad: 'Quad'
     }
@@ -6503,10 +6556,84 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return mesh
   }
 
+  function makeWedgeGeometry(): THREE.BufferGeometry {
+    const shape = new THREE.Shape()
+    shape.moveTo(-0.5, -0.5)
+    shape.lineTo(0.5, -0.5)
+    shape.lineTo(-0.5, 0.5)
+    shape.closePath()
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, steps: 1 })
+    geo.translate(0, 0, -0.5)
+    geo.computeVertexNormals()
+    return geo
+  }
+
+  function makeHemisphereGeometry(): THREE.BufferGeometry {
+    const geo = new THREE.SphereGeometry(0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)
+    geo.translate(0, -0.25, 0)
+    return geo
+  }
+
+  function makeHorizontalCircleGeometry(innerRadius: number, outerRadius: number): THREE.BufferGeometry {
+    const geo =
+      innerRadius > 0
+        ? new THREE.RingGeometry(innerRadius, outerRadius, 32)
+        : new THREE.CircleGeometry(outerRadius, 32)
+    geo.rotateX(-Math.PI / 2)
+    return geo
+  }
+
+  function makeArchGeometry(): THREE.BufferGeometry {
+    const radius = 0.5
+    const halfThick = 0.08
+    const halfDepth = 0.16
+    const path = new (class extends THREE.Curve<THREE.Vector3> {
+      getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+        const a = Math.PI * t
+        return target.set(Math.cos(a) * radius, Math.sin(a) * radius, 0)
+      }
+    })()
+    const profile = new THREE.Shape()
+    profile.moveTo(-halfThick, -halfDepth)
+    profile.lineTo(halfThick, -halfDepth)
+    profile.lineTo(halfThick, halfDepth)
+    profile.lineTo(-halfThick, halfDepth)
+    profile.closePath()
+    const geo = new THREE.ExtrudeGeometry(profile, {
+      steps: 24,
+      bevelEnabled: false,
+      extrudePath: path
+    })
+    geo.computeBoundingBox()
+    const center = geo.boundingBox?.getCenter(new THREE.Vector3())
+    if (center) geo.translate(-center.x, -center.y, -center.z)
+    geo.computeVertexNormals()
+    return geo
+  }
+
+  function makeTubeGeometry(): THREE.BufferGeometry {
+    const inner = 0.32
+    const outer = 0.5
+    const half = 0.5
+    const pts = [
+      new THREE.Vector2(inner, -half),
+      new THREE.Vector2(outer, -half),
+      new THREE.Vector2(outer, half),
+      new THREE.Vector2(inner, half)
+    ]
+    return new THREE.LatheGeometry(pts, 32)
+  }
+
   function makePrimitive(name: string, primitive: StagePrimitive, color: number): THREE.Object3D {
+    const twoSided =
+      primitive === 'plane' ||
+      primitive === 'quad' ||
+      primitive === 'disc' ||
+      primitive === 'ring' ||
+      primitive === 'tube'
     const mat = new THREE.MeshStandardMaterial({
       color,
-      side: primitive === 'plane' || primitive === 'quad' ? THREE.DoubleSide : THREE.FrontSide
+      side: twoSided ? THREE.DoubleSide : THREE.FrontSide
     })
     let mesh: THREE.Mesh
     switch (primitive) {
@@ -6517,7 +6644,46 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1, 8, 16), mat)
         break
       case 'cylinder':
-        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 32), mat)
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 48), mat)
+        break
+      case 'cone':
+        mesh = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 48), mat)
+        break
+      case 'pyramid':
+        mesh = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 4), mat)
+        break
+      case 'hemisphere':
+        mesh = new THREE.Mesh(makeHemisphereGeometry(), mat)
+        break
+      case 'torus':
+        mesh = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.12, 24, 48), mat)
+        break
+      case 'arch':
+        mesh = new THREE.Mesh(makeArchGeometry(), mat)
+        break
+      case 'tube':
+        mesh = new THREE.Mesh(makeTubeGeometry(), mat)
+        break
+      case 'prism':
+        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), mat)
+        break
+      case 'tetrahedron':
+        mesh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.6), mat)
+        break
+      case 'octahedron':
+        mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), mat)
+        break
+      case 'icosphere':
+        mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), mat)
+        break
+      case 'wedge':
+        mesh = new THREE.Mesh(makeWedgeGeometry(), mat)
+        break
+      case 'disc':
+        mesh = new THREE.Mesh(makeHorizontalCircleGeometry(0, 0.5), mat)
+        break
+      case 'ring':
+        mesh = new THREE.Mesh(makeHorizontalCircleGeometry(0.28, 0.5), mat)
         break
       case 'plane':
         mesh = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), mat)
@@ -6691,7 +6857,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     panoramaSphere.userData.stagePanorama = true
     contentRoot.add(panoramaSphere)
     applyPanoramaVisuals()
-    applyBorderlessStyle(true)
     syncCameraClipPlanes()
   }
 
@@ -7695,9 +7860,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   })
 
   watch(themePreference, () => {
-    applyBorderlessStyle(!!panoramaSphere)
+    applyPanoramaVisuals()
     requestRender()
   })
+
+  watch(
+    () => stage.value.panoramaVisible,
+    () => {
+      applyPanoramaVisuals()
+    }
+  )
 
   watch(
     asset,
@@ -7845,6 +8017,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     focusHierarchyItem,
     updateSceneWorld,
     updateSkyColor,
+    updatePanoramaVisible,
     updatePanoramaYaw,
     updatePanoramaRadius,
     updateGround,

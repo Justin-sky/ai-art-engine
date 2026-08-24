@@ -22,3 +22,22 @@ export function resolveDirectorStageScene(
 ): DirectorStageSceneApi | null {
   return injected ?? active.value
 }
+
+/**
+ * Dock Inspector 在 dive 前后不会重挂，必须每次都读当前舞台，
+ * 不能把 setup 时的 scene 快照握到下一次 dive。
+ */
+export function bindLiveDirectorStageScene(
+  injected: DirectorStageSceneApi | null | undefined
+): DirectorStageSceneApi {
+  return new Proxy({} as DirectorStageSceneApi, {
+    get(_target, prop, _receiver) {
+      const api = resolveDirectorStageScene(injected)
+      if (!api) {
+        throw new Error('DirectorStageInspector requires an active director stage scene')
+      }
+      const value = Reflect.get(api, prop, api)
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(api) : value
+    }
+  })
+}

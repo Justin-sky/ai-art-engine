@@ -640,7 +640,26 @@ export function isDirectorDeck(type: AssetType): boolean {
 export const DEFAULT_DIRECTOR_DECK_NAME = 'New Director Deck'
 export const DEFAULT_DIRECTOR_DECK_NAME_ZH = '新建导演台'
 
-export type StagePrimitive = 'box' | 'capsule' | 'cylinder' | 'sphere' | 'plane' | 'quad'
+export type StagePrimitive =
+  | 'arch'
+  | 'box'
+  | 'capsule'
+  | 'cone'
+  | 'cylinder'
+  | 'disc'
+  | 'hemisphere'
+  | 'icosphere'
+  | 'octahedron'
+  | 'plane'
+  | 'prism'
+  | 'pyramid'
+  | 'quad'
+  | 'ring'
+  | 'sphere'
+  | 'tetrahedron'
+  | 'torus'
+  | 'tube'
+  | 'wedge'
 export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty'
 export type TransformMode = 'translate' | 'rotate' | 'scale'
 
@@ -828,6 +847,8 @@ export interface DirectorStageState {
   world?: DirectorSceneWorld
   /** 无全景时的天空/清屏色 */
   skyColor?: string
+  /** 全景球是否显示；默认 true */
+  panoramaVisible?: boolean
   /** 全景球水平旋转（度） */
   panoramaYaw?: number
   /** 全景球半径 */
@@ -1430,6 +1451,7 @@ export function createDefaultDirectorStage(): DirectorStageState {
     aspectRatio: 'auto',
     world: createDefaultDirectorSceneWorld(),
     skyColor: DEFAULT_DIRECTOR_SKY_COLOR,
+    panoramaVisible: true,
     panoramaYaw: 0,
     panoramaRadius: DEFAULT_DIRECTOR_PANORAMA_RADIUS,
     animation: createDefaultDirectorAnimation(),
@@ -1549,6 +1571,7 @@ export function readDirectorStage(gen?: Record<string, unknown>): DirectorStageS
     aspectRatio: normalizeDirectorAspectRatio(s.aspectRatio),
     world: readDirectorSceneWorld(s.world),
     skyColor: normalizeDirectorSkyColor(s.skyColor),
+    panoramaVisible: s.panoramaVisible === false ? false : true,
     panoramaYaw: typeof s.panoramaYaw === 'number' && Number.isFinite(s.panoramaYaw) ? s.panoramaYaw : 0,
     panoramaRadius: clampDirectorPanoramaRadius(
       typeof s.panoramaRadius === 'number' ? s.panoramaRadius : DEFAULT_DIRECTOR_PANORAMA_RADIUS

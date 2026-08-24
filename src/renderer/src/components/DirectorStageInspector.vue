@@ -661,8 +661,22 @@
 
       <template v-else-if="showSceneGlobal">
         <div class="fields">
-          <div class="section-label">
-            {{ t('director.stage.panoramaBackground') }}
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.panoramaBackground') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="panoramaVisible"
+              :title="
+                panoramaVisible
+                  ? t('director.stage.hidePanorama')
+                  : t('director.stage.showPanorama')
+              "
+              @click.stop="togglePanoramaVisible"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
           </div>
           <div
             class="panorama-drop"
@@ -691,6 +705,15 @@
               class="panorama-drop-hint"
             >{{ t('director.stage.panoramaDropHint') }}</span>
           </div>
+          <button
+            type="button"
+            class="blockout-btn"
+            :disabled="blockoutGenerating"
+            :title="t('director.stage.blockoutButton')"
+            @click="openBlockoutDialog"
+          >
+            {{ t('director.stage.blockoutButton') }}
+          </button>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
@@ -899,8 +922,22 @@
 
       <template v-else-if="showPanoramaProps">
         <div class="fields">
-          <div class="section-label">
-            {{ t('director.stage.panoramaBackground') }}
+          <div class="section-label ground-label">
+            <span>{{ t('director.stage.panoramaBackground') }}</span>
+            <button
+              type="button"
+              class="ground-switch"
+              role="switch"
+              :aria-checked="panoramaVisible"
+              :title="
+                panoramaVisible
+                  ? t('director.stage.hidePanorama')
+                  : t('director.stage.showPanorama')
+              "
+              @click.stop="togglePanoramaVisible"
+            >
+              <span class="ground-switch-thumb" />
+            </button>
           </div>
           <div
             class="panorama-drop"
@@ -929,6 +966,15 @@
               class="panorama-drop-hint"
             >{{ t('director.stage.panoramaDropHint') }}</span>
           </div>
+          <button
+            type="button"
+            class="blockout-btn"
+            :disabled="blockoutGenerating"
+            :title="t('director.stage.blockoutButton')"
+            @click="openBlockoutDialog"
+          >
+            {{ t('director.stage.blockoutButton') }}
+          </button>
           <label class="color-row">
             {{ t('director.stage.skyColor') }}
             <span class="color-control">
@@ -1008,6 +1054,15 @@
     @confirm="onSavePoseAssetConfirm"
     @cancel="closeSavePoseAssetDialog"
   />
+
+  <DirectorStageBlockoutDialog
+    :open="blockoutDialogOpen"
+    :initial-asset-id="scene.linkedPanoramaId.value ?? ''"
+    :generating="blockoutGenerating"
+    :error="blockoutError"
+    @close="closeBlockoutDialog"
+    @generate="onGenerateBlockout"
+  />
 </template>
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -1043,8 +1098,20 @@ import {
   resolveAiPosePresetInstruction,
   type AiPoseInstructionPreset
 } from '../features/director/aiPosePresets'
-import { resolveDirectorStageScene } from '../features/director/activeDirectorStageScene'
+import {
+  bindLiveDirectorStageScene,
+  resolveDirectorStageScene
+} from '../features/director/activeDirectorStageScene'
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
+import {
+  buildSceneBlockoutSystemPrompt,
+  buildSceneBlockoutUserPrompt,
+  parseAiSceneBlockoutCall,
+  resolveBlockoutWorldPosition,
+  type AiSceneBlockoutObject,
+  type BlockoutLayoutMode
+} from '../features/director/aiSceneBlockout'
+import { prepareBlockoutReferenceImages } from '../features/director/equirectViews'
 import {
   loadGenerateModelOptions,
   parseModelKey,
@@ -1059,6 +1126,7 @@ import {
   useWorkspaceStore
 } from '../stores/workspace'
 import SaveAssetDialog from './SaveAssetDialog.vue'
+import DirectorStageBlockoutDialog from './DirectorStageBlockoutDialog.vue'
 
 withDefaults(
   defineProps<{
@@ -1069,11 +1137,11 @@ withDefaults(
 )
 
 const { t, locale } = useStudioI18n()
-const resolvedScene = resolveDirectorStageScene(inject(directorStageSceneKey, null))
-if (!resolvedScene) {
+const injectedScene = inject(directorStageSceneKey, null)
+if (!resolveDirectorStageScene(injectedScene)) {
   throw new Error('DirectorStageInspector requires an active director stage scene')
 }
-const scene = resolvedScene
+const scene = bindLiveDirectorStageScene(injectedScene)
 const workspace = useWorkspaceStore()
 const project = useProjectStore()
 const runLogs = useGraphRunLogsStore()
@@ -1089,6 +1157,11 @@ const aiPosePresets = AI_POSE_INSTRUCTION_PRESETS
 const activeAiPosePresetId = ref<string | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const panoramaDragOver = ref(false)
+
+const BLOCKOUT_LOG_NODE_ID = 'director.blockout'
+const blockoutDialogOpen = ref(false)
+const blockoutGenerating = ref(false)
+const blockoutError = ref('')
 
 const posX = ref(0)
 const posY = ref(0)
@@ -1137,6 +1210,7 @@ const sceneRotY = ref(0)
 const sceneRotZ = ref(0)
 const skyColor = ref(DEFAULT_DIRECTOR_SKY_COLOR)
 const panoramaYaw = ref(0)
+const panoramaVisible = ref(true)
 const panoramaRadius = ref(DEFAULT_DIRECTOR_PANORAMA_RADIUS)
 const gridVisible = ref(DEFAULT_GRID_VISIBLE)
 const gridOpacity = ref(DEFAULT_GRID_OPACITY)
@@ -1424,6 +1498,177 @@ async function onGenerateAiPose(): Promise<void> {
     runLogs.endRun({ runId, status: 'error', message: msg })
   } finally {
     aiPoseBusy.value = false
+  }
+}
+
+function openBlockoutDialog(): void {
+  if (blockoutGenerating.value) return
+  blockoutError.value = ''
+  blockoutDialogOpen.value = true
+}
+
+function closeBlockoutDialog(): void {
+  if (blockoutGenerating.value) return
+  blockoutDialogOpen.value = false
+}
+
+function applySceneBlockoutObjects(
+  objects: AiSceneBlockoutObject[],
+  mode: BlockoutLayoutMode
+): number {
+  const groupId = scene.createEmptyObject()
+  if (groupId) scene.updateObjectTransform(groupId, { name: 'AI 白模' })
+  const yaw =
+    typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
+  let created = 0
+  for (const spec of objects) {
+    const id = scene.createPrimitiveObject(spec.primitive, groupId)
+    if (!id) continue
+    const rotation =
+      spec.primitive === 'plane' &&
+      spec.rotation.x === 0 &&
+      spec.rotation.y === 0 &&
+      spec.rotation.z === 0
+        ? { x: -Math.PI / 2, y: 0, z: 0 }
+        : spec.rotation
+    scene.updateObjectTransform(id, {
+      name: spec.name,
+      color: spec.color,
+      position: resolveBlockoutWorldPosition(spec, { mode, panoramaYawDeg: yaw }),
+      rotation,
+      scale: spec.scale
+    })
+    created += 1
+  }
+  return created
+}
+
+async function onGenerateBlockout(payload: {
+  providerInstanceId: string
+  model: string
+  system: string
+  instruction: string
+  images: string[]
+  layoutMode?: BlockoutLayoutMode
+}): Promise<void> {
+  if (blockoutGenerating.value) return
+  const rawImages = payload.images.map((url) => url.trim()).filter(Boolean).slice(0, 3)
+  if (!rawImages.length) {
+    blockoutError.value = t('director.stage.blockoutNoImage')
+    return
+  }
+  const layoutMode = payload.layoutMode === 'panorama' ? 'panorama' : 'perspective'
+  const prepared = await prepareBlockoutReferenceImages(rawImages, layoutMode)
+  const images = prepared.images
+  const panoramaRadius =
+    typeof scene.stage.value.panoramaRadius === 'number'
+      ? scene.stage.value.panoramaRadius
+      : DEFAULT_DIRECTOR_PANORAMA_RADIUS
+  const panoramaYawDeg =
+    typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
+
+  const drafted = payload.system.trim()
+  const modeToken = layoutMode === 'panorama' ? 'azimuthDeg' : 'position'
+  const system =
+    drafted.includes(modeToken)
+      ? drafted
+      : buildSceneBlockoutSystemPrompt(locale.value, layoutMode)
+  const prompt = buildSceneBlockoutUserPrompt({
+    instruction: payload.instruction,
+    imageCount: images.length,
+    mode: layoutMode,
+    panoramaRadius,
+    panoramaYawDeg,
+    unwrapped: prepared.unwrapped
+  })
+
+  const runId = `ai-blockout-${crypto.randomUUID()}`
+  runLogs.beginRun({
+    runId,
+    title: t('director.stage.blockoutLogTitle'),
+    mode: 'task',
+    targetNodeId: BLOCKOUT_LOG_NODE_ID,
+    targetNodeTitle: linkedPanoramaName.value || t('director.stage.blockoutLogTitle'),
+    message: t('director.stage.blockoutLogStart', { model: payload.model })
+  })
+
+  blockoutGenerating.value = true
+  blockoutError.value = ''
+
+  const apiStarted = Date.now()
+  try {
+    const result = await window.studio.generateText({
+      providerInstanceId: payload.providerInstanceId,
+      model: payload.model,
+      system,
+      prompt,
+      images
+    })
+    runLogs.appendApiCall(runId, {
+      kind: 'generateText',
+      nodeId: BLOCKOUT_LOG_NODE_ID,
+      durationMs: Math.max(0, Date.now() - apiStarted),
+      request: {
+        prompt,
+        system,
+        model: payload.model,
+        providerInstanceId: payload.providerInstanceId,
+        imageCount: images.length
+      },
+      response: { text: result.text, model: result.model }
+    })
+
+    const call = parseAiSceneBlockoutCall(result.text)
+    if (!call) {
+      const msg = t('director.stage.blockoutParseFailed')
+      blockoutError.value = msg
+      runLogs.append({
+        runId,
+        level: 'warn',
+        kind: 'run_message',
+        mode: 'task',
+        nodeId: BLOCKOUT_LOG_NODE_ID,
+        nodeTitle: t('director.stage.blockoutLogTitle'),
+        message: t('director.stage.poseAiLog.rawReply', { text: result.text.slice(0, 800) }),
+        status: 'error'
+      })
+      runLogs.endRun({ runId, status: 'error', message: msg })
+      return
+    }
+
+    const created = applySceneBlockoutObjects(call.arguments.objects, layoutMode)
+    const msg = t('director.stage.blockoutDone', { count: created })
+    runLogs.append({
+      runId,
+      level: 'info',
+      kind: 'run_message',
+      mode: 'task',
+      nodeId: BLOCKOUT_LOG_NODE_ID,
+      nodeTitle: t('director.stage.blockoutLogTitle'),
+      message: call.arguments.summary ? `${msg} — ${call.arguments.summary}` : msg,
+      status: 'done'
+    })
+    runLogs.endRun({ runId, status: 'done', message: msg })
+    blockoutDialogOpen.value = false
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+    blockoutError.value = error
+    runLogs.appendApiCall(runId, {
+      kind: 'generateText',
+      nodeId: BLOCKOUT_LOG_NODE_ID,
+      durationMs: Math.max(0, Date.now() - apiStarted),
+      request: {
+        prompt,
+        system,
+        model: payload.model,
+        providerInstanceId: payload.providerInstanceId,
+        imageCount: images.length
+      },
+      error
+    })
+    runLogs.endRun({ runId, status: 'error', message: error })
+  } finally {
+    blockoutGenerating.value = false
   }
 }
 
@@ -1918,6 +2163,7 @@ function fillSceneLocals(): void {
   skyColor.value = resolveSkyColorForUi(scene.stage.value.skyColor)
   panoramaYaw.value =
     typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
+  panoramaVisible.value = scene.stage.value.panoramaVisible !== false
   panoramaRadius.value =
     typeof scene.stage.value.panoramaRadius === 'number'
       ? scene.stage.value.panoramaRadius
@@ -1961,6 +2207,12 @@ function persistGround(): void {
 function toggleGridVisible(): void {
   gridVisible.value = !gridVisible.value
   persistGround()
+}
+
+function togglePanoramaVisible(): void {
+  const next = !panoramaVisible.value
+  panoramaVisible.value = next
+  scene.updatePanoramaVisible(next)
 }
 
 function resolveSkyColorForUi(raw: unknown): string {
@@ -2030,6 +2282,7 @@ watch(
     scene.stage.value.skyColor,
     scene.stage.value.panoramaYaw,
     scene.stage.value.panoramaRadius,
+    scene.stage.value.panoramaVisible,
     scene.stage.value.gridVisible,
     scene.stage.value.gridOpacity,
     scene.stage.value.gridOffsetY
@@ -2731,6 +2984,11 @@ input:not([type]):focus {
   background: var(--accent, #5b8def);
 }
 
+.ground-switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .ground-switch-thumb {
   position: absolute;
   top: 2px;
@@ -2817,6 +3075,27 @@ input:not([type]):focus {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.blockout-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.blockout-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.blockout-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .panorama-drop-name {
