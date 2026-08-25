@@ -31,6 +31,16 @@ const workflow = {
   '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512 } }
 }
 
+const r2vWorkflow = {
+  '1': {
+    class_type: 'WanImageToVideo',
+    inputs: { reference_image: ['10', 0], reference_video: ['11', 0], reference_audio: ['12', 0] }
+  },
+  '10': { class_type: 'LoadImage', inputs: { image: 'old.png' } },
+  '11': { class_type: 'VHS_LoadVideo', inputs: { video: 'old.mp4' } },
+  '12': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'old.wav' } }
+}
+
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
   return {
     id: 'comfy-1',
@@ -412,6 +422,37 @@ describe('comfyUiAdapter', () => {
     await expect(
       comfyUiAdapter.generateImage(provider(), 'my-flow', { prompt: 'a cat' })
     ).rejects.toThrow(/API 格式|Save \(API Format\)/)
+  })
+
+  it('infers media input capabilities from generate node sockets in fetchCatalog', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: r2vWorkflow })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    const r2v = videos.find((m) => m.id === 'r2v')
+    expect(r2v).toBeTruthy()
+    expect(r2v?.capabilities).toMatchObject({
+      max_input_images: 1,
+      max_input_videos: 1,
+      max_input_audios: 1
+    })
   })
 
   it('falls back to ComfyUI :8188 for userdata when Base URL is the proxy', () => {

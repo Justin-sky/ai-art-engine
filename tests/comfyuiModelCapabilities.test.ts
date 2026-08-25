@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  inferComfyUiMediaInputs,
   inferComfyUiWorkflowModality,
   resolveComfyUiModelCapabilities
 } from '../src/shared/modelProviders/comfyui/modelCapabilities'
@@ -47,5 +48,59 @@ describe('comfyui modelCapabilities', () => {
     expect(
       inferComfyUiWorkflowModality('audio-flow', undefined, ['VAEDecodeAudio', 'SaveAudio'])
     ).toBe('audio')
+  })
+})
+
+describe('inferComfyUiMediaInputs', () => {
+  it('infers image + video + audio inputs from an r2v generate node', () => {
+    const graph = {
+      '1': {
+        class_type: 'WanImageToVideo',
+        inputs: {
+          reference_image: ['10', 0],
+          reference_video: ['11', 0],
+          reference_audio: ['12', 0],
+          prompt: 'x'
+        }
+      }
+    }
+    expect(inferComfyUiMediaInputs(graph)).toEqual({
+      maxImages: 1,
+      maxVideos: 1,
+      maxAudios: 1
+    })
+  })
+
+  it('infers image-only input from an i2v node with start_image', () => {
+    const graph = {
+      '1': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { start_image: ['2', 0], first_frame: ['3', 0], length: 73 }
+      }
+    }
+    expect(inferComfyUiMediaInputs(graph)).toEqual({
+      maxImages: 1,
+      maxVideos: 0,
+      maxAudios: 0
+    })
+  })
+
+  it('returns all zeros for a pure text-to-video node with no media socket', () => {
+    const graph = {
+      '1': { class_type: 'EmptyHunyuanLatentVideo', inputs: { width: 1280, height: 720, length: 73 } }
+    }
+    expect(inferComfyUiMediaInputs(graph)).toEqual({
+      maxImages: 0,
+      maxVideos: 0,
+      maxAudios: 0
+    })
+  })
+
+  it('returns null for a null or empty graph with no generate node', () => {
+    expect(inferComfyUiMediaInputs(null)).toBeNull()
+    expect(inferComfyUiMediaInputs({})).toBeNull()
+    expect(
+      inferComfyUiMediaInputs({ '1': { class_type: 'LoadImage', inputs: { image: 'a.png' } } })
+    ).toBeNull()
   })
 })

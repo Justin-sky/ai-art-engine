@@ -1,4 +1,5 @@
 import type { ModelModality } from '@shared/modelProvider'
+import type { ComfyApiNode, ComfyApiWorkflow } from './injectWorkflow'
 import catalog from './modelCapabilities.json'
 
 export interface ComfyUiModelCapabilitiesCatalog {
@@ -128,6 +129,51 @@ export function inferComfyUiWorkflowModality(
   return 'image'
 }
 
+/**
+ * 从视频生成节点的 media 输入 socket 键名推断支持的媒体输入类型。
+ * 命中 → 对应 max = 1（端口显示）；未命中 → 0（端口隐藏，如纯文生视频）。
+ * 找不到生成节点 / graph 为空 → 返回 null（无法推断，交由调用方回退）。
+ * 生成节点 socket 命名（image / start_image / reference_image、reference_video、reference_audio …）
+ * 相对稳定，比靠 workflow 文件名猜更可靠。
+ */
+export function inferComfyUiMediaInputs(graph: ComfyApiWorkflow | null): {
+  maxImages: number
+  maxVideos: number
+  maxAudios: number
+} | null {
+  if (!graph) return null
+  let foundGenerate = false
+  let hasImage = false
+  let hasVideo = false
+  let hasAudio = false
+  let anyMediaSocket = false
+  for (const node of Object.values(graph)) {
+    if (!node || typeof node !== 'object') continue
+    const cls = String((node as ComfyApiNode).class_type ?? '').trim().toLowerCase()
+    if (!cls || !classMatches([cls], VIDEO_GENERATE_PATTERNS)) continue
+    foundGenerate = true
+    const inputs = (node as ComfyApiNode).inputs
+    if (!inputs || typeof inputs !== 'object') continue
+    for (const key of Object.keys(inputs)) {
+      const k = key.toLowerCase()
+      if (/image/.test(k)) {
+        hasImage = true
+        anyMediaSocket = true
+      } else if (/video/.test(k)) {
+        hasVideo = true
+        anyMediaSocket = true
+      } else if (/audio/.test(k)) {
+        hasAudio = true
+        anyMediaSocket = true
+      }
+    }
+  }
+  if (!foundGenerate) return null
+  // 生成节点没有任何 media 输入 socket → 纯文生视频
+  if (!anyMediaSocket) return { maxImages: 0, maxVideos: 0, maxAudios: 0 }
+  return { maxImages: hasImage ? 1 : 0, maxVideos: hasVideo ? 1 : 0, maxAudios: hasAudio ? 1 : 0 }
+}
+
 export function resolveComfyUiModelCapabilities(
   modelId: string,
   modality?: ModelModality
@@ -139,7 +185,7 @@ export function resolveComfyUiModelCapabilities(
     : inferComfyUiWorkflowModality(id)
   if (inferred === 'audio') return profileCapabilities('audio-base')
   if (inferred === 'video') {
-    return /i2v|img2vid|image.?to.?video|ref/i.test(id)
+    return /i2v|r2v|img2vid|img2video|image2video|image.?to.?video|ref/i.test(id)
       ? profileCapabilities('video-ref')
       : profileCapabilities('video-base')
   }

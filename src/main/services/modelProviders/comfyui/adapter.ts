@@ -17,6 +17,7 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import {
+  inferComfyUiMediaInputs,
   inferComfyUiWorkflowModality,
   resolveComfyUiModelCapabilities
 } from '@shared/modelProviders/comfyui/modelCapabilities'
@@ -548,11 +549,35 @@ export const comfyUiAdapter: ModelProviderAdapter = {
           const raw = await tryReadUserdataFile(provider, file)
           const classTypes = raw ? collectComfyNodeClassTypes(raw) : []
           const inferred = inferComfyUiWorkflowModality(file.id, file.rel, classTypes)
+          let graph: ComfyApiWorkflow | null = null
+          if (raw) {
+            try {
+              graph = unwrapComfyApiWorkflow(raw)
+            } catch {
+              graph = null
+            }
+          }
+          let capabilities = resolveComfyUiModelCapabilities(file.id, inferred) ?? undefined
+          const mediaInputs = inferComfyUiMediaInputs(graph)
+          if (mediaInputs) {
+            // 从生成节点推断出的输入能力优先于文件名猜测（修正 r2v 等自定义 workflow 被误判为纯文生视频）
+            capabilities = {
+              ...(capabilities ?? {}),
+              max_input_images: mediaInputs.maxImages,
+              max_input_videos: mediaInputs.maxVideos,
+              max_input_audios: mediaInputs.maxAudios
+            }
+          } else if (capabilities) {
+            // 无法从节点推断时，删除文件名猜出的 0，避免误隐藏端口（下游视为「未声明」）
+            delete capabilities.max_input_images
+            delete capabilities.max_input_videos
+            delete capabilities.max_input_audios
+          }
           return {
             id: file.id,
             name: file.id,
             modality: inferred,
-            capabilities: resolveComfyUiModelCapabilities(file.id, inferred) ?? undefined
+            capabilities
           }
         })
       )
