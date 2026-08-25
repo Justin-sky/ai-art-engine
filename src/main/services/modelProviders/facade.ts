@@ -178,6 +178,7 @@ class ModelProviderFacade {
       const { provider } = resolveActiveProvider('video', input.providerInstanceId, input.model)
 
       const persisted = videoJobService.create({
+        kind: 'video',
         providerJobId: job.jobId,
         pollingUrl: job.pollingUrl,
         providerInstanceId: provider.id,
@@ -293,57 +294,57 @@ class ModelProviderFacade {
   }
 
   /**
-   * 图节点 3D 模型生成：提交 → 轮询 → 下载 GLB → 登记资产。
+   * 图节点 3D 模型生成：参考图上传对象存储 → 提交 → 持久化 job → 轮询 → 下载 GLB → 登记资产。
+   * 结束后删除临时对象。关软件后可由 videoJobService.resumePending 续取结果。
    */
   async generateModel3d(input: GenerateModel3dInput): Promise<GenerateModel3dResult> {
     if (!projectService.isOpen()) throw new Error('未打开工程')
 
     let uploads: ObjectStorageUploadResult[] = []
+
     try {
       const prepared = await this.prepareModel3dInputReferencesForApi(input)
       uploads = prepared.uploads
       const job = await this.submitModel3d(prepared.input)
-
       const { provider } = resolveActiveProvider('model3d', input.providerInstanceId, input.model)
 
-      // 轮询直到完成；单次 poll 失败按瞬时错误继续等待
-      const jobRef = { jobId: job.jobId, pollingUrl: job.pollingUrl }
-      let settled = await this.pollModel3d(provider, jobRef)
-      const MAX_POLLS = 200
-      for (let i = 0; i < MAX_POLLS; i++) {
-        if (settled.status === 'completed' || settled.status === 'failed') break
-        await new Promise((r) => setTimeout(r, 3000))
-        try {
-          settled = await this.pollModel3d(provider, jobRef)
-        } catch (err) {
-          // 瞬时轮询失败不中断；达到最大次数后由下方 status 兜底报错
-          settled = { status: 'pending', progress: 0 }
-        }
-      }
+      const persisted = videoJobService.create({
+        kind: 'model3d',
+        providerJobId: job.jobId,
+        pollingUrl: job.pollingUrl,
+        providerInstanceId: provider.id,
+        model: job.model,
+        prompt: input.prompt,
+        name: input.name,
+        source: 'graph',
+        outputDir: input.outputDir,
+        uploads: uploads.map((item) => ({
+          objectKey: item.objectKey,
+          url: item.url,
+          bytes: item.bytes,
+          bucket: item.bucket,
+          providerId: item.providerId,
+          providerLabel: item.providerLabel,
+          sourceLabel: item.sourceLabel
+        }))
+      })
 
-      if (settled.status !== 'completed' || !settled.downloadUrl) {
+      // 已移交 videoJobService 管理对象清理，避免双重删除
+      uploads = []
+
+      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
         throw new Error(settled.error ?? '3D 模型生成失败')
       }
 
-      // 下载 GLB 到 assets 目录
-      const root = projectService.getRoot()
-      const dir = join(root, 'assets', 'generated', 'models')
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-
-      const stamp = Date.now()
-      const absPath = join(dir, `model-${stamp}.glb`)
-      await this.downloadVideoToFile(provider, settled.downloadUrl, absPath)
-
-      // 登记资产
-      const asset = projectService.attachExternalGeneratedFile({
-        type: 'model',
-        sourceFilePath: absPath,
-        name: input.name ?? `生成 3D 模型 ${new Date().toLocaleString()}`,
-        prompt: input.prompt
-      })
-      return { assetId: asset.id, relativePath: asset.relativePath, model: job.model }
-    } finally {
+      return {
+        assetId: settled.assetId,
+        relativePath: settled.relativePath,
+        model: settled.model
+      }
+    } catch (err) {
       if (uploads.length) await deleteUploads(uploads)
+      throw err
     }
   }
 

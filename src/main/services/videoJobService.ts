@@ -5,10 +5,11 @@ import type { AssetInfo } from '@shared/domain'
 import { isUnderCacheOutputDir, resolveMediaOutputDir } from '@shared/domain'
 import type {
   VideoJobGraphBinding,
+  VideoJobKind,
   VideoJobRecord,
   VideoJobUpload
 } from '@shared/videoJob'
-import { isVideoJobActive } from '@shared/videoJob'
+import { isVideoJobActive, jobKind } from '@shared/videoJob'
 import { IpcChannels } from '@shared/ipc'
 import { findProviderById } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
@@ -18,9 +19,9 @@ import { projectService } from './projectService'
 import { settingsService } from './settingsService'
 
 const POLL_INTERVAL_MS = 5000
-const MAX_WAIT_MS = 20 * 60 * 1000
 
 export interface CreateVideoJobInput {
+  kind: VideoJobKind
   providerJobId: string
   pollingUrl: string
   providerInstanceId: string
@@ -70,6 +71,7 @@ class VideoJobService {
     const now = new Date().toISOString()
     const job: VideoJobRecord = {
       version: 1,
+      kind: input.kind,
       localJobId: input.localJobId?.trim() || randomUUID(),
       providerJobId: input.providerJobId,
       pollingUrl: input.pollingUrl,
@@ -165,10 +167,6 @@ class VideoJobService {
         this.emitUpdated(failed)
         continue
       }
-      if (this.isTimedOut(job)) {
-        void this.failJob(job.localJobId, new Error('视频生成超时'))
-        continue
-      }
       this.schedulePoll(job.localJobId, 500)
     }
   }
@@ -183,12 +181,6 @@ class VideoJobService {
       for (const w of list) w.reject(new Error('工程已关闭'))
       this.waiters.delete(id)
     }
-  }
-
-  private isTimedOut(job: VideoJobRecord): boolean {
-    const start = Date.parse(job.submittedAt || job.createdAt)
-    if (!Number.isFinite(start)) return false
-    return Date.now() - start >= MAX_WAIT_MS
   }
 
   private schedulePoll(localJobId: string, delayMs: number): void {
@@ -214,11 +206,6 @@ class VideoJobService {
     let job = videoJobRepository.get(root, localJobId)
     if (!job || !isVideoJobActive(job.status)) return
 
-    if (this.isTimedOut(job)) {
-      await this.failJob(localJobId, new Error('视频生成超时'))
-      return
-    }
-
     this.polling.add(localJobId)
     try {
       const provider = findProviderById(
@@ -231,10 +218,11 @@ class VideoJobService {
       }
 
       const { modelProviderFacade } = await import('./modelProviders')
-      const result = await modelProviderFacade.pollVideo(provider, {
-        jobId: job.providerJobId,
-        pollingUrl: job.pollingUrl
-      })
+      const pollJob = { jobId: job.providerJobId, pollingUrl: job.pollingUrl }
+      const result =
+        jobKind(job) === 'model3d'
+          ? await modelProviderFacade.pollModel3d(provider, pollJob)
+          : await modelProviderFacade.pollVideo(provider, pollJob)
 
       job = videoJobRepository.get(root, localJobId)
       if (!job || !isVideoJobActive(job.status)) return
@@ -275,16 +263,24 @@ class VideoJobService {
   ): Promise<void> {
     const { modelProviderFacade } = await import('./modelProviders')
     const root = projectService.getRoot()
-    const tmpDir = join(root, '.aiartengine', 'video-download', job.localJobId)
+    const isModel3d = jobKind(job) === 'model3d'
+    const tmpDir = join(
+      root,
+      '.aiartengine',
+      isModel3d ? 'model3d-download' : 'video-download',
+      job.localJobId
+    )
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-    const dest = join(tmpDir, 'output.mp4')
+    const dest = join(tmpDir, isModel3d ? 'output.glb' : 'output.mp4')
     await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
 
-    const outputDir = resolveJobVideoOutputDir(job)
+    const outputDir = isModel3d ? job.outputDir?.trim() || undefined : resolveJobVideoOutputDir(job)
     const asset = projectService.attachExternalGeneratedFile({
-      type: 'video',
+      type: isModel3d ? 'model' : 'video',
       sourceFilePath: dest,
-      name: job.name ?? `生成视频 ${new Date().toLocaleString()}`,
+      name: job.name ?? (isModel3d
+        ? `生成 3D 模型 ${new Date().toLocaleString()}`
+        : `生成视频 ${new Date().toLocaleString()}`),
       prompt: job.prompt,
       outputDir
     })
@@ -391,6 +387,5 @@ export const videoJobService = new VideoJobService()
 
 /** 供测试读取常量 */
 export const __videoJobTest = {
-  POLL_INTERVAL_MS,
-  MAX_WAIT_MS
+  POLL_INTERVAL_MS
 }

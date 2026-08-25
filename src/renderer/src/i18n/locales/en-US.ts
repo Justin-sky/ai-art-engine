@@ -1469,9 +1469,13 @@ export default {
       emptyCompleted: 'No completed tasks',
       emptyWorkflowActive: 'No active workflows',
       emptyWorkflowCompleted: 'No completed workflows',
+      generationSection: 'Generation jobs',
       videoSection: 'Video generation',
       workflowSection: 'Workflows',
+      videoKind: 'Video',
       videoUntitled: 'Video job',
+      model3dKind: '3D model',
+      model3dUntitled: '3D model job',
       videoStopConfirmMessage:
         'Cancel this video job? The provider may still continue and bill the request.',
       stop: 'Stop',
