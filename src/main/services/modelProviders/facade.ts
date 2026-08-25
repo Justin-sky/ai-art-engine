@@ -7,6 +7,9 @@ import type {
   CatalogModel,
   GenerateImageInput,
   GenerateImageResult,
+  GenerateModel3dInput,
+  GenerateModel3dJob,
+  GenerateModel3dResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -24,7 +27,11 @@ import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
 import { ensureApiImageUrl, ensureApiImageUrls } from './apiImageUrl'
-import { deleteUploads, type ObjectStorageUploadResult } from '../objectStorageUploadService'
+import {
+  deleteUploads,
+  ensureRemoteMediaUrl,
+  type ObjectStorageUploadResult
+} from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
 
@@ -229,6 +236,115 @@ class ModelProviderFacade {
       ? await client.get(downloadUrl)
       : await client.get(downloadUrl, { responseType: 'stream', timeout: 300_000 })
     await pipeline(response.data as Readable, createWriteStream(destPath))
+  }
+
+  async submitModel3d(input: GenerateModel3dInput): Promise<GenerateModel3dJob> {
+    const { provider, modelId } = resolveActiveProvider(
+      'model3d',
+      input.providerInstanceId,
+      input.model
+    )
+    return getProviderAdapter(provider.providerKind).submitModel3d(provider, modelId, input)
+  }
+
+  /**
+   * 参考图：data URL / 本地路径 → 对象存储公网 URL（Meshy / Tripo 仅接受 http(s) 图片）。
+   */
+  async prepareModel3dInputReferencesForApi(
+    input: GenerateModel3dInput
+  ): Promise<{ input: GenerateModel3dInput; uploads: ObjectStorageUploadResult[] }> {
+    const refs = input.inputReferences ?? []
+    if (!refs.length) return { input, uploads: [] }
+
+    const uploads: ObjectStorageUploadResult[] = []
+    const nextRefs: GenerateModel3dInput['inputReferences'] = []
+    const root = projectService.isOpen() ? projectService.getRoot() : undefined
+
+    try {
+      for (let i = 0; i < refs.length; i++) {
+        const ref = refs[i]!
+        const rawUrl = (typeof ref === 'string' ? ref : ref.url).trim()
+        if (!rawUrl) continue
+        const { url, uploaded } = await ensureRemoteMediaUrl(rawUrl, {
+          sourceLabel: `model3d-ref-${i + 1}`,
+          projectRoot: root
+        })
+        if (uploaded) uploads.push(uploaded)
+        nextRefs.push({ kind: 'image_url', url })
+      }
+    } catch (err) {
+      await deleteUploads(uploads)
+      throw err
+    }
+
+    return { input: { ...input, inputReferences: nextRefs }, uploads }
+  }
+
+  async pollModel3d(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<{
+    status: 'pending' | 'in_progress' | 'completed' | 'failed'
+    progress: number
+    error?: string
+    downloadUrl?: string
+  }> {
+    return getProviderAdapter(provider.providerKind).pollModel3d(provider, job)
+  }
+
+  /**
+   * 图节点 3D 模型生成：提交 → 轮询 → 下载 GLB → 登记资产。
+   */
+  async generateModel3d(input: GenerateModel3dInput): Promise<GenerateModel3dResult> {
+    if (!projectService.isOpen()) throw new Error('未打开工程')
+
+    let uploads: ObjectStorageUploadResult[] = []
+    try {
+      const prepared = await this.prepareModel3dInputReferencesForApi(input)
+      uploads = prepared.uploads
+      const job = await this.submitModel3d(prepared.input)
+
+      const { provider } = resolveActiveProvider('model3d', input.providerInstanceId, input.model)
+
+      // 轮询直到完成；单次 poll 失败按瞬时错误继续等待
+      const jobRef = { jobId: job.jobId, pollingUrl: job.pollingUrl }
+      let settled = await this.pollModel3d(provider, jobRef)
+      const MAX_POLLS = 200
+      for (let i = 0; i < MAX_POLLS; i++) {
+        if (settled.status === 'completed' || settled.status === 'failed') break
+        await new Promise((r) => setTimeout(r, 3000))
+        try {
+          settled = await this.pollModel3d(provider, jobRef)
+        } catch (err) {
+          // 瞬时轮询失败不中断；达到最大次数后由下方 status 兜底报错
+          settled = { status: 'pending', progress: 0 }
+        }
+      }
+
+      if (settled.status !== 'completed' || !settled.downloadUrl) {
+        throw new Error(settled.error ?? '3D 模型生成失败')
+      }
+
+      // 下载 GLB 到 assets 目录
+      const root = projectService.getRoot()
+      const dir = join(root, 'assets', 'generated', 'models')
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+
+      const stamp = Date.now()
+      const absPath = join(dir, `model-${stamp}.glb`)
+      await this.downloadVideoToFile(provider, settled.downloadUrl, absPath)
+
+      // 登记资产
+      const asset = projectService.attachExternalGeneratedFile({
+        type: 'model',
+        sourceFilePath: absPath,
+        name: input.name ?? `生成 3D 模型 ${new Date().toLocaleString()}`,
+        prompt: input.prompt
+      })
+      return { assetId: asset.id, relativePath: asset.relativePath, model: job.model }
+    } finally {
+      if (uploads.length) await deleteUploads(uploads)
+    }
   }
 
   async generateImageAsset(input: GenerateImageInput & { name?: string }): Promise<{

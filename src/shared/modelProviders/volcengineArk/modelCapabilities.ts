@@ -1,4 +1,5 @@
 import catalog from './modelCapabilities.json'
+import type { ModelModality } from '@shared/modelProvider'
 
 export type VolcengineArkCapabilityProfileId = keyof typeof catalog.profiles
 
@@ -60,7 +61,7 @@ export function isOpaqueVolcengineArkEndpointId(modelId: string): boolean {
 export function resolveVolcengineArkModelCapabilities(
   modelId: string,
   modelName?: string,
-  modality?: 'image' | 'video' | 'text' | 'voice'
+  modality?: ModelModality
 ): Record<string, unknown> | null {
   const text = `${modelId} ${modelName ?? ''}`.trim()
   if (text) {

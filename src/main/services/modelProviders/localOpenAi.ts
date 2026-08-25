@@ -2,6 +2,8 @@ import axios from 'axios'
 import type {
   GenerateImageInput,
   GenerateImageResult,
+  GenerateModel3dInput,
+  GenerateModel3dJob,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -261,6 +263,21 @@ export function createLocalOpenAiAdapter(
       _input: GenerateSpeechInput
     ): Promise<GenerateSpeechResult> {
       return notSupported(displayName, '语音合成')
+    },
+
+    submitModel3d(
+      _provider: ModelProviderInstance,
+      _modelId: string,
+      _input: GenerateModel3dInput
+    ): Promise<GenerateModel3dJob> {
+      return notSupported(displayName, '3D 模型生成')
+    },
+
+    pollModel3d(
+      _provider: ModelProviderInstance,
+      _job: { jobId: string; pollingUrl: string }
+    ): Promise<VideoPollResult> {
+      return notSupported(displayName, '3D 模型生成')
     }
   }
 }

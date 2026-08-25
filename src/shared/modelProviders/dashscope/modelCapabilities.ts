@@ -40,7 +40,7 @@ function profileCapabilities(profileId: string): Record<string, unknown> | null 
 /** 按模型 id 解析静态能力 */
 export function resolveDashScopeModelCapabilities(
   modelId: string,
-  modality?: 'text' | 'image' | 'video'
+  modality?: ModelModality
 ): Record<string, unknown> | null {
   const id = modelId.trim()
   const entry = data.models.find((m) => m.id === id)
@@ -76,6 +76,7 @@ export function resolveDashScopeModelCapabilities(
     if (/2\.5/i.test(id)) return profileCapabilities('video-t2v-full')
     return profileCapabilities('video-t2v')
   }
+  if (mod !== 'text') return null
   return profileCapabilities('text-base')
 }
 

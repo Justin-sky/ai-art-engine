@@ -58,6 +58,7 @@ export type AssetType =
   | 'voice'
   | 'motion'
   | 'model'
+  | 'model3d'
   | 'screenplay'
   | 'gameSystem'
   | 'canvas'
@@ -417,6 +418,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   voice: 'Voice',
   motion: 'Director Deck',
   model: 'Model',
+  model3d: '3D Model',
   screenplay: 'Screenplay',
   gameSystem: 'Game System Plan',
   canvas: 'Series',
@@ -432,6 +434,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   voice: '声音',
   motion: '导演台',
   model: '模型',
+  model3d: '3D 模型',
   screenplay: '剧本',
   gameSystem: '游戏系统策划案',
   canvas: '剧集',
@@ -463,6 +466,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   voice: '🔊',
   motion: '🎬',
   model: '🧊',
+  model3d: '🧊',
   screenplay: '📜',
   gameSystem: '🕹️',
   canvas: '📺',

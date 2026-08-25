@@ -30,6 +30,7 @@ import type {
   GenerateSpeechInput,
   GenerateTextInput,
   GenerateVideoInput,
+  GenerateModel3dInput,
   ListModelsInput
 } from '@shared/modelProvider'
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
@@ -228,6 +229,12 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GEN_SPEECH, (input: GenerateSpeechInput) =>
     modelProviderFacade.generateSpeech(input)
   )
+  handle(IpcChannels.GEN_MODEL3D, async (input: GenerateModel3dInput) => {
+    const result = await modelProviderFacade.generateModel3d(input)
+    const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+    if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    return result
+  })
   handle(IpcChannels.VIDEO_JOB_LIST, () => videoJobService.list())
   handle(IpcChannels.VIDEO_JOB_GET, (localJobId: string) => videoJobService.get(localJobId))
   handle(IpcChannels.VIDEO_JOB_CANCEL, (localJobId: string) => videoJobService.cancel(localJobId))

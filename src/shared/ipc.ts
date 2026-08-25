@@ -11,6 +11,8 @@ import type {
   GenerateTextResult,
   GenerateVideoInput,
   GenerateVideoResult,
+  GenerateModel3dInput,
+  GenerateModel3dResult,
   ListModelsInput,
   ModelProviderKindMeta
 } from './modelProvider'
@@ -65,6 +67,7 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
+  GEN_MODEL3D: 'gen:model3d',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
   /** AI 自由构图：确认 GraphPlan 后落盘 */
@@ -470,6 +473,7 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
+  generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
   /** AI 自由构图：确认计划后落盘 */

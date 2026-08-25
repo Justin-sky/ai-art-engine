@@ -46,6 +46,7 @@ export {
 } from './context'
 export * from './host'
 export * from './generateMedia'
+export * from './generateModel3d'
 export * from './generateText'
 export {
   executeNoteNode,

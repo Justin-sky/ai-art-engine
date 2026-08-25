@@ -1782,6 +1782,13 @@ const {
     }
     return value
   },
+  generateModel3d: async (input) => {
+    const value = await window.studio.generateModel3d(input)
+    if (value.relativePath === 'Assets' || value.relativePath.startsWith('Assets/')) {
+      await project.refreshAssets()
+    }
+    return value
+  },
   resolveAssetGenParams: (assetId) => {
     const live = graphEditorHosts.getLiveAssetDocument(assetId)
     const base = isDraftAssetId(assetId)
@@ -3246,6 +3253,7 @@ type ResourceMenuGroupId = Extract<
   | 'prompt'
   | 'game'
   | 'motionFx'
+  | 'model3d'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
@@ -3329,6 +3337,10 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'episode',
     typeIds: ['episode.anchorSelect', 'episode.cellSelect']
+  },
+  {
+    id: 'model3d',
+    typeIds: ['asset.model3d']
   }
 ]
 
@@ -3473,7 +3485,8 @@ const resourceAddableMenuGroups = computed(() => {
               group.id === 'text' ||
               group.id === 'prompt' ||
               group.id === 'game' ||
-              group.id === 'motionFx'
+              group.id === 'motionFx' ||
+              group.id === 'model3d'
             ? t(`graph.context.groups.${group.id}`)
           : assetTypeLabel(group.id),
       icon:
@@ -3491,6 +3504,8 @@ const resourceAddableMenuGroups = computed(() => {
                 ? '🕹️'
                 : group.id === 'motionFx'
                   ? ANIM2D_ASSET_ICON
+                : group.id === 'model3d'
+                  ? '🧊'
                 : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }

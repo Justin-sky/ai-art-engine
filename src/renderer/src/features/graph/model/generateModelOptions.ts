@@ -105,6 +105,10 @@ export function buildModelOptions(
     ) {
       continue
     }
+    // 3D 模型生成：仅 meshy / tripo
+    if (modality === 'model3d' && provider.providerKind !== 'meshy' && provider.providerKind !== 'tripo') {
+      continue
+    }
     const sel = modalityConfig(provider, modality)
     const models =
       sel.selectedModelIds.length > 0
@@ -151,7 +155,7 @@ export function preferredModelKey(
   return modelKey(providerInstanceId, model)
 }
 
-export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio'
+export type GenerateModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d'
 
 /** 打开编辑窗时会连打 getSettings；短缓存避免同一次打开多 Dialog 重复 IPC */
 let settingsCache: { at: number; value: Awaited<ReturnType<typeof window.studio.getSettings>> } | null =

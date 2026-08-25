@@ -357,13 +357,18 @@ function reconstructionRulesText(zh: boolean): string {
   if (zh) {
     return `还原目标（比“大块概括”更重要）：
 - 对照参考图数清可见元素：塔楼、拱门/门洞、回廊开间、道路、人物、灌木都要各自出件，禁止把整面立面收成一块实心盒子。
+- 禁止用错误几何体代替正确形状——这是最常见的错误，必须避免：
+  - ❌ 用 box 当拱券 → ✅ 必须用 arch
+  - ❌ 用 box 当锥顶/尖塔 → ✅ 必须用 cone 或 pyramid
+  - ❌ 用 prism 当圆柱 → ✅ 必须用 cylinder
+  - ❌ 用 box 当圆顶 → ✅ 必须用 hemisphere
+  - ❌ 用两个 box 拼十字架 → ✅ 必须用 cross
 - 弧线与锥顶必须用对的几何体，禁止用方块或棱柱去“近似”：
   - 半圆/圆拱/拱桥券体只用 arch。默认已立好：跨度沿 X，矢高沿 Y，开口朝相机（±Z）。position 是包围盒中心，rotation 用 {0,0,0}，不要再绕轴转 90°。scale.x=跨度，scale.y=矢高，scale.z=券厚。左右墩用 box/cylinder，中间必须留空。
   - 圆锥塔尖/尖顶只用 cone。尖顶朝 +Y，position 是锥体中心（不是锥尖）。scale.x 必须等于 scale.z（圆形底），scale.y 是锥高。直立塔尖 rotation 必须是 {0,0,0}。
   - 圆形塔身/圆柱只用 cylinder，不要用 prism。prism 只留给能数出六/八个平面的塔。
   - 哥特尖拱/尖券只用 pointedArch（只有半圆券才用 arch），不要用 arch 或 box 代替尖拱。
   - 十字架只用 cross：竖直杆朝 +Y、横臂在上段，立在塔尖/屋顶/钟楼顶。
-- 禁止：用 box 当拱券或锥顶；用 wedge/tetrahedron 拼圆弧；用 prism 冒充圆柱；用 arch 冒充尖拱；用两个 box 拼十字架。
 - 连拱廊：每个开间一根 arch + 柱墩，沿 -Z 重复。
 - 塔楼 = 基座(box) + 圆塔身(cylinder) 或明确的棱塔(prism) + 锥顶(cone) 或方锥(pyramid)。穹顶用 hemisphere。
 - wedge 只用于直坡：坡道、台阶、斜屋顶。圆形水池用 disc，花坛用 ring。
@@ -373,6 +378,12 @@ function reconstructionRulesText(zh: boolean): string {
   }
   return `Fidelity beats massing:
 - Count visible towers, arches, colonnade bays, path, people, shrubs. Never collapse a whole facade into one solid box.
+- NEVER use a wrong primitive for a shape — this is the #1 mistake:
+  - ❌ box for an arch → ✅ arch
+  - ❌ box for a spire/tip → ✅ cone or pyramid
+  - ❌ prism for a round shaft → ✅ cylinder
+  - ❌ box for a dome → ✅ hemisphere
+  - ❌ two boxes for a cross → ✅ cross
 - Curves and tapers must use the right primitive — never a box or prism stand-in:
   - Round arch / gate / bridge rib = arch only. It already stands: span X, rise Y, opening toward the camera (±Z). position = bbox center, rotation {0,0,0}, do NOT add a 90° tilt. scale.x=span, scale.y=rise, scale.z=rib depth. Piers = box/cylinder, VOID under the arch.
   - Circular spire = cone only. Tip is +Y. position is the cone CENTER, not the tip. scale.x MUST equal scale.z. Upright spires use rotation {0,0,0}.
@@ -511,14 +522,23 @@ ${groundingRules}
 
 ${fidelity}
 
+深度与遮挡规则（精确度比数量更重要）：
+- 按图层从近到远输出物体：先近景（z≈-4～-12），再中景（z≈-15～-40），再远景（z≈-40～-80）。
+- 逐物体判断遮挡关系：被遮挡的物体 z 更远（更负），遮挡别人的物体 z 更近。
+- 如果两物体在画面中重叠，在后方的物体 z 至少比前方的远 2-5 米（根据实际距离）。
+- 使用参考图中的人/门/车等已知尺度反推每个物体的绝对距离，不要只凭感觉。
+- 如果画面中有重复构件（柱子、窗、拱券），确保间距均匀、大小一致。
+
 规则：
-1. 只输出一个 JSON 对象，不要 markdown，不要解释。
-2. JSON 必须是 function call：
+1. 输出前先分析图片中的每个物体形状，判断它属于方体(box)、圆柱(cylinder)、圆锥(cone)、半球(hemisphere)、拱门(arch)、尖拱(pointedArch)、方锥(pyramid)、十字架(cross) 等——不要把所有东西都归为 box。
+2. 只输出一个 JSON 对象，不要 markdown，不要解释。
+3. JSON 必须是 function call：
 {"name":"build_scene","arguments":{"summary":"一句话概括","objects":[{"name":"左门墩","primitive":"box","color":"#8a7a66","position":{"x":-4,"y":6,"z":-28},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":3,"y":12,"z":3}}]}}
-3. scale 是相对基础尺寸的倍数（box 基础 1×1×1 米）。
-4. rotation 为弧度欧拉角 XYZ。
-5. color 使用 #rrggbb。
-6. 物体不超过 ${MAX_BLOCKOUT_OBJECTS} 个。不要输出目录外 primitive。`
+4. scale 是相对基础尺寸的倍数（box 基础 1×1×1 米）。
+5. rotation 为弧度欧拉角 XYZ。
+6. color 使用 #rrggbb。
+7. 物体不超过 ${MAX_BLOCKOUT_OBJECTS} 个。不要输出目录外 primitive。
+8. 输出的物体按从近到远排序。`
   }
   return `You are a previz / blockout assistant. The reference is a normal perspective photo (or concept art). Match silhouette, proportion, depth, and repeating parts — not a toy-scale diagram.
 
@@ -537,12 +557,21 @@ ${groundingRules}
 
 ${fidelity}
 
+Depth & occlusion rules (precision over quantity):
+- Output objects from nearest to farthest: foreground (z ≈ -4 to -12), midground (z ≈ -15 to -40), background (z ≈ -40 to -80).
+- Judge occlusion per object: occluded objects go farther (more negative Z), occluding objects come closer (less negative Z).
+- If two objects overlap in the frame, the farther one should be at least 2-5m behind the nearer one, scaled by actual distance.
+- Use known scales (people, doors, cars) to infer absolute distance for each object. Do not guess.
+- For repeating elements (columns, windows, arches), ensure uniform spacing and consistent sizing.
+
 Rules:
-1. Output ONE JSON function call only.
-2. Shape:
+1. Before outputting, analyze each shape in the image and classify it: box, cylinder, cone, hemisphere, arch, pointedArch, pyramid, cross, etc. — do NOT default everything to box.
+2. Output ONE JSON function call only.
+3. Shape:
 {"name":"build_scene","arguments":{"summary":"one line","objects":[{"name":"left pier","primitive":"box","color":"#8a7a66","position":{"x":-4,"y":6,"z":-28},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":3,"y":12,"z":3}}]}}
-3. scale multiplies base size (box 1×1×1m).
-4. At most ${MAX_BLOCKOUT_OBJECTS} objects.`
+4. scale multiplies base size (box 1×1×1m).
+5. At most ${MAX_BLOCKOUT_OBJECTS} objects.
+6. Sort objects from nearest to farthest.`
 }
 
 export function buildSceneBlockoutUserPrompt(input: {
@@ -555,6 +584,8 @@ export function buildSceneBlockoutUserPrompt(input: {
   fovDeg?: number
   aspectRatio?: number
   eyeHeight?: number
+  /** 深度描述文字（如"最近 2m，最远 80m，中间建筑约 30m"），可空 */
+  depthDescription?: string
 }): string {
   const mode = input.mode ?? 'perspective'
   const lines = [
@@ -567,6 +598,9 @@ export function buildSceneBlockoutUserPrompt(input: {
   const fov = Number.isFinite(input.fovDeg) ? Number(input.fovDeg) : DEFAULT_DIRECTOR_CAMERA_FOV
   const aspect = Number.isFinite(input.aspectRatio) ? Number(input.aspectRatio) : 16 / 9
   const eye = Number.isFinite(input.eyeHeight) ? Number(input.eyeHeight) : 1.6
+  if (input.depthDescription) {
+    lines.push(`Depth analysis: ${input.depthDescription}. Use this to calibrate the Z placement of each object.`)
+  }
   if (mode === 'panorama') {
     const radius = Number.isFinite(input.panoramaRadius) ? Number(input.panoramaRadius) : 500
     const yaw = Number.isFinite(input.panoramaYawDeg) ? Number(input.panoramaYawDeg) : 0
@@ -589,4 +623,152 @@ export function buildSceneBlockoutUserPrompt(input: {
   }
   lines.push(`Return the ${BUILD_SCENE_FUNCTION_NAME} function call JSON now.`)
   return lines.join('\n')
+}
+
+/**
+ * 透视校正：根据相机参数和 FOV，检查物体位置的一致性。
+ * 如果物体在画面中的预期大小与实际 scale 偏差过大，报告警告。
+ */
+export function perspectiveConsistencyCheck(
+  objects: AiSceneBlockoutObject[],
+  camera: BlockoutCameraContext
+): { valid: boolean; warnings: string[] } {
+  const warnings: string[] = []
+  const fovDeg = Number.isFinite(camera.fovDeg) ? Number(camera.fovDeg) : DEFAULT_DIRECTOR_CAMERA_FOV
+  const fovRad = (fovDeg * Math.PI) / 180
+  const aspect = Number.isFinite(camera.aspectRatio) ? Number(camera.aspectRatio) : 16 / 9
+  const eye = Number.isFinite(camera.eyeHeight) ? Number(camera.eyeHeight) : 1.6
+  // 相机位于 (0, eye, 0) 朝 -Z：某深度处画面半宽/半高（用于判断物体是否出画）
+  const tanHalfV = Math.tan(fovRad / 2)
+  const tanHalfH = tanHalfV * aspect
+
+  // 已知标定物：capsule scale.y ≈ 0.85 对应 1.7m 成人
+  const calibrationObj = objects.find((o) => o.primitive === 'capsule' && o.scale.y >= 0.6 && o.scale.y <= 1.2)
+  if (!calibrationObj) {
+    warnings.push('缺少人物 capsule 作为尺度标定，建议至少添加一个 ~1.7m 高的人物')
+  }
+
+  for (const obj of objects) {
+    // 检查物体是否在合理范围内
+    const dist = Math.sqrt(obj.position.x * obj.position.x + obj.position.z * obj.position.z)
+    if (dist > 0 && dist < 1) {
+      warnings.push(`${obj.name} 距相机仅 ${dist.toFixed(1)}m，检查是否过近`)
+    }
+    // 透视：物体应落在相机前方画面内（-Z 越远画面越宽/越高）
+    const depth = -obj.position.z
+    if (depth > 0.5) {
+      const halfW = depth * tanHalfH
+      const halfH = depth * tanHalfV
+      if (Math.abs(obj.position.x) > halfW) {
+        warnings.push(`${obj.name} 横向超出画面：x=${obj.position.x.toFixed(1)}m，画面半宽约 ${halfW.toFixed(1)}m`)
+      }
+      if (Math.abs(obj.position.y - eye) > halfH) {
+        warnings.push(`${obj.name} 纵向超出画面：相对视平线偏移 ${(obj.position.y - eye).toFixed(1)}m，画面半高约 ${halfH.toFixed(1)}m`)
+      }
+    }
+    // 检查物体是否埋入地面或浮空过高
+    const groundedY = blockoutGroundedCenterY(obj)
+    if (groundedY != null && obj.position.y < 0) {
+      warnings.push(`${obj.name} 埋入地面 (y=${obj.position.y.toFixed(2)})，应调整到 y=${groundedY.toFixed(2)}`)
+    }
+  }
+
+  return { valid: warnings.length === 0, warnings }
+}
+
+/**
+ * 后处理修复：自动纠正常见的 LLM 几何体错误匹配。
+ * 当 LLM 把弧形/锥形物体误识别为 box 时，根据名称和尺寸特征自动修正。
+ */
+export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiSceneBlockoutObject[] {
+  return objects.map((obj) => {
+    const name = obj.name.toLowerCase()
+    const fixed = { ...obj }
+
+    // 根据名称关键词修复误匹配
+    // 拱门/券洞：LLM 常用 box 代替 arch
+    if (
+      fixed.primitive === 'box' &&
+      (name.includes('拱') || name.includes('券') || name.includes('门洞') ||
+       name.includes('arch') || name.includes('gate') || name.includes('arc'))
+    ) {
+      fixed.primitive = 'arch'
+      fixed.rotation = { x: 0, y: 0, z: 0 }
+      if (fixed.scale.z > 2) fixed.scale.z = Math.min(fixed.scale.z, 1.5)
+    }
+
+    // 尖顶/塔尖：LLM 常用 box 或 pyramid 代替 cone
+    if (
+      (fixed.primitive === 'box' || fixed.primitive === 'pyramid') &&
+      (name.includes('尖') || name.includes('塔尖') || name.includes('锥') ||
+       name.includes('spire') || name.includes('steeple') || name.includes('cone') ||
+       name.includes('尖顶') || name.includes('锥顶'))
+    ) {
+      fixed.primitive = 'cone'
+      fixed.rotation = { x: 0, y: 0, z: 0 }
+      const avgH = (fixed.scale.x + fixed.scale.z) / 2
+      fixed.scale.x = avgH
+      fixed.scale.z = avgH
+    }
+
+    // 圆顶/穹顶：LLM 常用 box/sphere 代替 hemisphere
+    if (
+      (fixed.primitive === 'box' || fixed.primitive === 'sphere' || fixed.primitive === 'cylinder') &&
+      (name.includes('穹顶') || name.includes('圆顶') || name.includes('dome') ||
+       name.includes('半球') || name.includes('cupola'))
+    ) {
+      fixed.primitive = 'hemisphere'
+      fixed.rotation = { x: 0, y: 0, z: 0 }
+    }
+
+    // 圆塔/圆柱：LLM 常用 prism 或 box 代替 cylinder
+    if (
+      (fixed.primitive === 'box' || fixed.primitive === 'prism') &&
+      (name.includes('圆柱') || name.includes('圆塔') || name.includes('column') ||
+       name.includes('pillar') || name.includes('round tower') || name.includes('circular') ||
+       name.includes('圆筒') || name.includes('圆墩'))
+    ) {
+      fixed.primitive = 'cylinder'
+      const avgH = (fixed.scale.x + fixed.scale.z) / 2
+      fixed.scale.x = avgH
+      fixed.scale.z = avgH
+    }
+
+    // 十字架
+    if (
+      fixed.primitive === 'box' &&
+      (name.includes('十字') || name.includes('cross'))
+    ) {
+      fixed.primitive = 'cross'
+      fixed.rotation = { x: 0, y: 0, z: 0 }
+    }
+
+    // 方锥屋顶：LLM 常用 box 代替 pyramid
+    if (
+      fixed.primitive === 'box' &&
+      (name.includes('屋顶') || name.includes('房顶') || name.includes('roof') ||
+       name.includes('坡顶') || name.includes('山花') || name.includes('gable') ||
+       name.includes('pediment'))
+    ) {
+      fixed.primitive = 'pyramid'
+      fixed.rotation = { x: 0, y: 0, z: 0 }
+    }
+
+    return fixed
+  })
+}
+
+/**
+ * 深度估计集成点。
+ * 如果供应商提供了深度估计能力，在此将深度图 dataURL 注入到 prompt 中。
+ * 当前为占位函数，可扩展为调用 Depth Anything / MiDaS 等模型。
+ */
+export async function tryEnrichWithDepthMap(
+  _imageDataUrl: string,
+  _providerInstanceId?: string
+): Promise<{ depthMapUrl: string | null; depthDescription: string | null }> {
+  // TODO: 集成深度估计模型
+  // 1. 调用本地 ONNX 模型或远程 API 生成深度图
+  // 2. 返回深度图 data URL 和文字描述（如"最近距离 2m，最远 80m"）
+  return { depthMapUrl: null, depthDescription: null }
 }

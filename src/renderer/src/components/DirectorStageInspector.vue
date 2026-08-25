@@ -1105,12 +1105,13 @@ import {
 import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import {
   buildSceneBlockoutSystemPrompt,
-  buildSceneBlockoutUserPrompt,
-  parseAiSceneBlockoutCall,
-  resolveBlockoutWorldPosition,
-  snapBlockoutToGround,
-  type AiSceneBlockoutObject,
-  type BlockoutLayoutMode
+	  buildSceneBlockoutUserPrompt,
+	  parseAiSceneBlockoutCall,
+	  fixCommonBlockoutMistakes,
+	  resolveBlockoutWorldPosition,
+	  snapBlockoutToGround,
+	  type AiSceneBlockoutObject,
+	  type BlockoutLayoutMode
 } from '../features/director/aiSceneBlockout'
 import { prepareBlockoutReferenceImages } from '../features/director/equirectViews'
 import {
@@ -1654,7 +1655,23 @@ async function onGenerateBlockout(payload: {
       return
     }
 
-    const created = applySceneBlockoutObjects(call.arguments.objects, layoutMode)
+    // 后处理修复常见几何体误匹配（如 box 变 arch/cone/hemisphere）
+	    const fixedObjects = fixCommonBlockoutMistakes(call.arguments.objects)
+	    const fixedCount = fixedObjects.filter((o, i) => o.primitive !== call.arguments.objects[i]?.primitive).length
+	    if (fixedCount > 0) {
+	      runLogs.append({
+	        runId,
+	        level: 'info',
+	        kind: 'run_message',
+	        mode: 'task',
+	        nodeId: BLOCKOUT_LOG_NODE_ID,
+	        nodeTitle: t('director.stage.blockoutLogTitle'),
+	        message: t('director.stage.blockoutAutoFix', { count: fixedCount }),
+	        status: 'done'
+	      })
+	    }
+
+	    const created = applySceneBlockoutObjects(fixedObjects, layoutMode)
     const msg = t('director.stage.blockoutDone', { count: created })
     runLogs.append({
       runId,

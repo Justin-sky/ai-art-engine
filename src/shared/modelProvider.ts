@@ -56,6 +56,8 @@ export type ModelProviderKind =
   | 'modelscope'
   | 'comfyui'
   | 'magicrouter'
+  | 'tripo'
+  | 'meshy'
 
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
@@ -169,6 +171,18 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'MagicRouter',
     defaultBaseUrl: MAGICROUTER_DEFAULT_BASE_URL,
     credentialsUrl: 'https://www.magicrouter.ai/docs/api'
+  },
+  {
+    id: 'tripo',
+    label: 'Tripo',
+    defaultBaseUrl: 'https://api.tripo3d.ai',
+    credentialsUrl: 'https://platform.tripo3d.ai/'
+  },
+  {
+    id: 'meshy',
+    label: 'Meshy',
+    defaultBaseUrl: 'https://api.meshy.ai',
+    credentialsUrl: 'https://www.meshy.ai/'
   }
 ]
 
@@ -179,13 +193,14 @@ export function modelProviderCredentialsUrl(kind: ModelProviderKind): string {
   )
 }
 
-export type ModelModality = 'text' | 'image' | 'video' | 'audio'
+export type ModelModality = 'text' | 'image' | 'video' | 'audio' | 'model3d'
 
 export const MODEL_MODALITIES: readonly ModelModality[] = [
   'text',
   'image',
   'video',
-  'audio'
+  'audio',
+  'model3d'
 ] as const
 
 /** 拉取目录时缓存的模型元数据（随设置持久化，供生成参数 UI 离线使用） */
@@ -459,7 +474,8 @@ export function createEmptyModalityMap(): ProviderModalityMap {
     text: createEmptyModalityConfig(),
     image: createEmptyModalityConfig(),
     video: createEmptyModalityConfig(),
-    audio: createEmptyModalityConfig()
+    audio: createEmptyModalityConfig(),
+    model3d: createEmptyModalityConfig()
   }
 }
 
@@ -471,7 +487,7 @@ export function modalityConfig(
   provider: ModelProviderInstance,
   modality: ModelModality
 ): ModalityModelConfig {
-  return provider.modalities[modality]
+  return provider.modalities[modality] ?? createEmptyModalityConfig()
 }
 
 export function findProviderById(
@@ -752,6 +768,34 @@ export interface GenerateVideoJob {
   model: string
 }
 
+// ── 3D 模型生成 ──────────────────────────────────────────
+
+export interface GenerateModel3dInput {
+  prompt: string
+  model?: string
+  providerInstanceId?: string
+  /** 参考图（图生3D/多图生3D） */
+  inputReferences?: GenerateVideoInputReference[]
+  /** 落盘目录（相对工程根） */
+  outputDir?: string
+  /** 落盘文件名 stem */
+  name?: string
+}
+
+export interface GenerateModel3dResult {
+  /** 已登记的模型资产 id */
+  assetId: string
+  relativePath: string
+  model: string
+}
+
+export interface GenerateModel3dJob {
+  jobId: string
+  pollingUrl: string
+  status: string
+  model: string
+}
+
 export function normalizeVideoInputReference(
   ref: GenerateVideoInputReference
 ): VideoInputReference {
@@ -900,7 +944,8 @@ function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): Provid
     text: normalizeModalityConfig(raw.text),
     image: normalizeModalityConfig(raw.image),
     video: normalizeModalityConfig(raw.video),
-    audio: normalizeModalityConfig(raw.audio)
+    audio: normalizeModalityConfig(raw.audio),
+    model3d: normalizeModalityConfig(raw.model3d)
   }
 }
 

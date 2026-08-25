@@ -73,7 +73,15 @@ function bufferFromDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
             ? 'mp3'
             : mime.includes('wav')
               ? 'wav'
-              : 'bin'
+              : mime.includes('png')
+                ? 'png'
+                : mime.includes('jpeg') || mime.includes('jpg')
+                  ? 'jpg'
+                  : mime.includes('webp')
+                    ? 'webp'
+                    : mime.includes('gif')
+                      ? 'gif'
+                      : 'bin'
   return { buffer, ext }
 }
 

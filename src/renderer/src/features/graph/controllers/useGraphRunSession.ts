@@ -110,6 +110,14 @@ export interface GraphRunSessionOptions {
     model: string
     voice: string
   }>
+  generateModel3d?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+    outputDir?: string
+    name?: string
+  }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
   /** 图宿主 id，用于执行日志关联 */
@@ -556,6 +564,54 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     }
   }
 
+  function wrapGenerateModel3d(token: number, signal: AbortSignal) {
+    const generateModel3d = options.generateModel3d
+    if (!generateModel3d) return undefined
+    return async (input: {
+      prompt: string
+      model?: string
+      providerInstanceId?: string
+      inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+      outputDir?: string
+      name?: string
+    }) => {
+      if (token !== runToken || signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const startedAt = Date.now()
+      const request = {
+        prompt: input.prompt,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        inputReferenceCount: input.inputReferences?.length || undefined
+      }
+      try {
+        const value = await withAbortSignal(generateModel3d(input), token, signal)
+        activeLogBridge?.recordApiCall({
+          kind: 'generateModel3d',
+          request,
+          response: {
+            model: value.model,
+            assetId: value.assetId,
+            relativePath: value.relativePath
+          },
+          durationMs: Math.max(0, Date.now() - startedAt)
+        })
+        return value
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          activeLogBridge?.recordApiCall({
+            kind: 'generateModel3d',
+            request,
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Math.max(0, Date.now() - startedAt)
+          })
+        }
+        throw err
+      }
+    }
+  }
+
   async function executeRun(opts: {
     targetNodeId?: string
     clearAll: boolean
@@ -618,6 +674,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateImage: wrapGenerateImage(token, signal),
         generateVideo: wrapGenerateVideo(token, signal),
         generateSpeech: wrapGenerateSpeech(token, signal),
+        generateModel3d: wrapGenerateModel3d(token, signal),
         locale: options.locale?.(),
         resolveAssetGenParams: options.resolveAssetGenParams,
         resolveLiveAssetGraph: options.resolveLiveAssetGraph,

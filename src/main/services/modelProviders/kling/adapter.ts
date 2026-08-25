@@ -2,6 +2,8 @@ import type {
   CatalogModel,
   GenerateImageInput,
   GenerateImageResult,
+  GenerateModel3dInput,
+  GenerateModel3dJob,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -239,5 +241,20 @@ export const klingAdapter: ModelProviderAdapter = {
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
     throw new Error('可灵不支持语音生成')
+  },
+
+  submitModel3d(
+    _provider: ModelProviderInstance,
+    _modelId: string,
+    _input: GenerateModel3dInput
+  ): Promise<GenerateModel3dJob> {
+    throw new Error('该提供商暂不支持 3D 模型生成')
+  },
+
+  pollModel3d(
+    _provider: ModelProviderInstance,
+    _job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult> {
+    throw new Error('该提供商暂不支持 3D 模型生成')
   }
 }

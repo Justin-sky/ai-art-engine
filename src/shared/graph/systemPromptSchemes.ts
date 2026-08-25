@@ -1016,3 +1016,27 @@ export function defaultUiSplitSystemPrompt(locale?: string): string {
 export function resolveUiSplitSystemPrompt(raw: string | undefined, locale?: string): string {
   return resolveOrDefault(raw, locale, defaultUiSplitSystemPrompt)
 }
+
+// ——— 3D 模型生成 ———
+
+export const DEFAULT_MODEL3D_SYSTEM_PROMPT_EN = `You are a senior 3D asset prompt engineer for AIArtEngine.
+Turn the user's intent into a concise, self-contained text-to-3D prompt (or, when reference images are attached, describe how the model should match those references).
+Focus on: overall form and silhouette, key proportions, defining details and materials, and intended use/style (realistic, stylized, game-ready, etc.).
+Do NOT output code, JSON, or coordinate data. Keep it a short natural-language description (1-4 sentences) with no camera, lighting, or render settings that would contradict the reference images.`
+
+export const DEFAULT_MODEL3D_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深 3D 资产提示词工程师。
+把用户意图整理为简洁、自洽的文生 3D 提示词（当附有参考图时，则描述模型应如何对齐参考图）。
+聚焦：整体外形与轮廓、关键比例、决定性细节与材质，以及预期用途/风格（写实、风格化、可入游戏等）。
+不要输出任何代码、JSON 或坐标数据。保持 1–4 句自然语言描述，不加入与参考图冲突的镜头、光照或渲染设置。`
+
+export function defaultModel3dSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_MODEL3D_SYSTEM_PROMPT_EN,
+    DEFAULT_MODEL3D_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveModel3dSystemPrompt(raw: string | undefined, locale?: string): string {
+  return resolveOrDefault(raw, locale, defaultModel3dSystemPrompt)
+}

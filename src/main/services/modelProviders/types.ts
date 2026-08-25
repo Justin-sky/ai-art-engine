@@ -2,6 +2,8 @@ import type {
   CatalogModel,
   GenerateImageInput,
   GenerateImageResult,
+  GenerateModel3dInput,
+  GenerateModel3dJob,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -53,4 +55,13 @@ export interface ModelProviderAdapter {
     modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult>
+  submitModel3d(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateModel3dInput
+  ): Promise<GenerateModel3dJob>
+  pollModel3d(
+    provider: ModelProviderInstance,
+    job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult>
 }

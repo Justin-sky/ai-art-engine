@@ -86,6 +86,7 @@ const api: StudioApi = {
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),
   generateVideo: (input) => ipcRenderer.invoke(IpcChannels.GEN_VIDEO, input),
   generateSpeech: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPEECH, input),
+  generateModel3d: (input) => ipcRenderer.invoke(IpcChannels.GEN_MODEL3D, input),
   planAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_PLAN, input),
   commitAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_COMMIT, input),
   listVideoJobs: () => ipcRenderer.invoke(IpcChannels.VIDEO_JOB_LIST),

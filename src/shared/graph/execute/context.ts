@@ -23,7 +23,8 @@ import {
   resolveBeatUnitGenSystemPrompt,
   resolveUiSplitSystemPrompt,
   resolveToPromptSystemPrompt,
-  resolveVoiceSystemPrompt
+  resolveVoiceSystemPrompt,
+  resolveModel3dSystemPrompt
 } from '../systemPromptSchemes'
 import { resolveReshootSystemPrompt, buildReshootPrompt } from '../reshoot'
 import {
@@ -37,7 +38,8 @@ import {
   buildUiSplitPrompt,
   buildToPromptUserPrompt,
   buildVoicePrompt,
-  buildFrameAnimGenPrompt
+  buildFrameAnimGenPrompt,
+  buildModel3dPrompt
 } from '../userPromptSchemes'
 import { buildAnim2dGridInstruction, resolveFrameAnimGenSystemPrompt } from '../anim2d'
 import { expandIncomingThroughBundles } from '../bundleExpand'
@@ -64,6 +66,7 @@ export type InstructionFinalPreviewKind =
   | 'beatUnitGen'
   | 'uiSplit'
   | 'frameAnimGen'
+  | 'model3d'
 
 /** 按节点 typeId / assetType / 编辑器 preset 解析预览种类 */
 export function resolveInstructionFinalPreviewKind(
@@ -89,6 +92,7 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'video.reshoot' || presetKind === 'reshoot') return 'reshoot'
 
   const assetType = node?.assetType
+  if (typeId === 'asset.model3d' || assetType === 'model3d' || presetKind === 'model3d') return 'model3d'
   if (typeId === 'asset.video' || assetType === 'video' || presetKind === 'video') return 'video'
   if (typeId === 'asset.voice' || assetType === 'voice' || presetKind === 'voice') return 'voice'
   if (typeId === 'asset.image' || assetType === 'image' || presetKind === 'image') return 'image'
@@ -130,6 +134,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveUiSplitSystemPrompt(raw, locale)
     case 'frameAnimGen':
       return resolveFrameAnimGenSystemPrompt(raw, locale)
+    case 'model3d':
+      return resolveModel3dSystemPrompt(raw, locale)
     case 'screenplay':
     default:
       return resolveScreenplaySystemPrompt(raw, locale)
@@ -165,6 +171,8 @@ function buildUserPromptForPreviewKind(
       return buildUiSplitPrompt(instruction, locale)
     case 'frameAnimGen':
       return buildFrameAnimGenPrompt(instruction, locale)
+    case 'model3d':
+      return buildModel3dPrompt(instruction, locale)
     case 'screenplay':
     default:
       return buildScreenplayPrompt(instruction, locale)

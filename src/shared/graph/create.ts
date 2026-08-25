@@ -24,6 +24,7 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   voice: 'voice',
   motion: 'Director Deck',
   model: 'Model',
+  model3d: '3D Model',
   screenplay: 'Screenplay',
   gameSystem: '策划案生成',
   canvas: 'Canvas',

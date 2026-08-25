@@ -527,6 +527,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (provider.providerKind === 'magicrouter') {
     return ['text', 'image', 'video']
   }
+  if (provider.providerKind === 'meshy' || provider.providerKind === 'tripo') {
+    return ['model3d']
+  }
   return MODEL_MODALITIES.filter((m) => m !== 'audio')
 }
 

@@ -183,6 +183,14 @@ const ASSET_META: Array<{
     weight: 0.85
   },
   {
+    type: 'model3d',
+    label: '3D Model',
+    icon: '🧊',
+    outType: GraphPortType.model,
+    addable: true,
+    weight: 0.85
+  },
+  {
     type: 'screenplay',
     label: 'Screenplay',
     icon: '📜',
@@ -277,6 +285,15 @@ function voiceProcessingPorts(): GraphPortDef[] {
   ]
 }
 
+/** 3D 模型生成：可接文本提示 / 图片参考 */
+function model3dProcessingPorts(): GraphPortDef[] {
+  return [
+    { id: 'in-text', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Text' },
+    { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+    ...galleryOutPorts(GraphPortType.model)
+  ]
+}
+
 /** 世界元素宿主：剧本文本入；出口为世界元素实体 */
 function worldHostPorts(): GraphPortDef[] {
   return [
@@ -333,7 +350,9 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
             ? videoProcessingPorts()
             : meta.type === 'voice'
               ? voiceProcessingPorts()
-              : meta.type === 'world'
+              : meta.type === 'model3d'
+                ? model3dProcessingPorts()
+                : meta.type === 'world'
                 ? worldHostPorts()
                 : meta.type === 'beat'
                   ? beatHostPorts()
@@ -394,6 +413,16 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
         return {
           generateModel: '',
           generateProviderInstanceId: '',
+          volume: 1,
+          muted: false,
+          loop: true
+        }
+      }
+      if (meta.type === 'model3d') {
+        return {
+          generateModel: '',
+          generateProviderInstanceId: '',
+          weight: meta.weight,
           volume: 1,
           muted: false,
           loop: true

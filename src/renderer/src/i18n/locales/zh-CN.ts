@@ -549,7 +549,8 @@ export default {
       freeCanvas: '自由画布',
       world: '世界元素',
       beat: '场',
-      subgraph: '宿主资产'
+      subgraph: '宿主资产',
+      model3d: '3D 模型'
     },
     create: {
       image: '新建图片',
@@ -563,6 +564,7 @@ export default {
       world: '新建世界元素',
       beat: '新建场',
       subgraph: '新建宿主资产',
+      model3d: '新建 3D 模型',
       default: '新建资产',
       freeCanvasNameTitle: '新建自由画布',
       freeCanvasNameMessage: '请输入画布名称。将创建空白节点画布，可自由添加节点与资产。',
@@ -1228,6 +1230,7 @@ export default {
       blockoutNoImage: '请先添加至少一张场景参考图',
       blockoutParseFailed: '模型未返回有效的场景数据',
       blockoutDone: '已创建 {count} 个白模物体',
+      blockoutAutoFix: '自动修复了 {count} 个几何体类型',
       blockoutLogTitle: 'AI 场景白模',
       blockoutLogStart: '开始生成场景白模（模型：{model}）',
       skyColor: '天空颜色',
@@ -1636,7 +1639,8 @@ export default {
         text: '文本',
         prompt: '提示词',
         game: '游戏',
-        motionFx: '动效'
+        motionFx: '动效',
+        model3d: '3D 模型'
       }
     },
     episodeAgent: {
@@ -2640,6 +2644,7 @@ export default {
         imageModel: '图片模型',
         videoModel: '视频模型',
         voiceModel: '已购声音',
+        model3dModel: '3D 模型',
         noModels: '暂无可用模型',
         systemPrompt: '系统提示词',
         systemPromptPlaceholder: '定义模型角色与输出规范；留空则使用内置默认',
@@ -2652,6 +2657,7 @@ export default {
         lipSyncInstructionPlaceholder:
           '可选：补充表演/镜头说明（图→图片1+音频1；视频→视频1+音频1）；推荐 Seedance 2.0',
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
+        model3dInstructionPlaceholder: "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
         worldExtractInstructionPlaceholder:
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
         beatSplitInstructionPlaceholder:

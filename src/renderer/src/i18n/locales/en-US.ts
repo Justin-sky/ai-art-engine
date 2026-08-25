@@ -1234,6 +1234,7 @@ export default {
       blockoutNoImage: 'Add at least one scene reference image',
       blockoutParseFailed: 'The model returned no valid scene data',
       blockoutDone: 'Created {count} blockout objects',
+      blockoutAutoFix: 'Auto-fixed {count} primitive types',
       blockoutLogTitle: 'AI scene blockout',
       blockoutLogStart: 'Start scene blockout (model: {model})',
       skyColor: 'Sky Color',
@@ -1647,7 +1648,8 @@ export default {
         text: 'Text',
         prompt: 'Prompt',
         game: 'Game',
-        motionFx: 'Motion FX'
+        motionFx: 'Motion FX',
+        model3d: '3D Model'
       }
     },
     episodeAgent: {
@@ -2663,6 +2665,7 @@ export default {
         imageModel: 'Image model',
         videoModel: 'Video model',
         voiceModel: 'Purchased speaker',
+        model3dModel: '3D model',
         noModels: 'No models available',
         systemPrompt: 'System prompt',
         systemPromptPlaceholder: 'Define the model role and output rules; leave empty to use the built-in default',
@@ -2676,6 +2679,8 @@ export default {
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
           "Describe the voice in text; connect an image for visual prompt; use {'@'} to cite inputs",
+        model3dInstructionPlaceholder:
+          "Describe the 3D model to generate; connect reference images for image-to-3D; use {'@'} to cite inputs",
         worldExtractInstructionPlaceholder:
           "Extract characters / scenes / props / weapons; use {'@'} to cite connected inputs",
         beatSplitInstructionPlaceholder:

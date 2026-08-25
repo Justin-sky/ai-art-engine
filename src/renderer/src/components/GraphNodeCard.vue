@@ -906,6 +906,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'image'
     case 'asset.voice':
       return isProcessingNode.value ? 'voice' : null
+    case 'asset.model3d':
+      return isProcessingNode.value ? 'model3d' : null
     default:
       return null
   }
@@ -990,6 +992,7 @@ const instructionModality = computed((): GenerateModelModality => {
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
   if (instructionKind.value === 'voice') return 'audio'
+  if (instructionKind.value === 'model3d') return 'model3d'
   return 'text'
 })
 
@@ -1008,6 +1011,9 @@ const instructionPlaceholder = computed(() => {
   }
   if (instructionKind.value === 'voice') {
     return t('graph.inspector.generate.voiceInstructionPlaceholder')
+  }
+  if (instructionKind.value === 'model3d') {
+    return t('graph.inspector.generate.model3dInstructionPlaceholder')
   }
   if (instructionKind.value === 'worldExtract') {
     return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
@@ -1032,6 +1038,7 @@ const instructionModelTitle = computed(() => {
     return t('graph.inspector.generate.videoModel')
   }
   if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
+  if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
   return t('graph.inspector.generate.model')
 })
 

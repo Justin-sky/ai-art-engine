@@ -2,6 +2,8 @@ import axios from 'axios'
 import type {
   GenerateImageInput,
   GenerateImageResult,
+  GenerateModel3dInput,
+  GenerateModel3dJob,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -98,5 +100,20 @@ export const deepSeekAdapter: ModelProviderAdapter = {
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
     return notSupported('语音合成')
+  },
+
+  submitModel3d(
+    _provider: ModelProviderInstance,
+    _modelId: string,
+    _input: GenerateModel3dInput
+  ): Promise<GenerateModel3dJob> {
+    throw new Error('该提供商暂不支持 3D 模型生成')
+  },
+
+  pollModel3d(
+    _provider: ModelProviderInstance,
+    _job: { jobId: string; pollingUrl: string }
+  ): Promise<VideoPollResult> {
+    throw new Error('该提供商暂不支持 3D 模型生成')
   }
 }

@@ -40,7 +40,7 @@ export type GraphRunLogPortSnapshot = {
 export interface GraphRunLogApiCall {
   id: string
   ts: number
-  kind: 'generateText' | 'generateImage' | 'generateVideo' | 'generateSpeech'
+  kind: 'generateText' | 'generateImage' | 'generateVideo' | 'generateSpeech' | 'generateModel3d'
   nodeId: string
   /** 节点 params.skillId；无则省略 */
   skillId?: string

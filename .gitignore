@@ -12,3 +12,5 @@ Thumbs.db
 .env.*
 oss-website.local.json
 .aiartengine-tmp/
+.claude/
+*.stackdump

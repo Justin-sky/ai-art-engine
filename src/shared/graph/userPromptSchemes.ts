@@ -224,3 +224,19 @@ export function defaultFrameAnimGenUserPrompt(locale?: string): string {
 export function buildFrameAnimGenPrompt(instruction: string, locale?: string): string {
   return buildOrDefault(instruction, locale, defaultFrameAnimGenUserPrompt)
 }
+
+// ——— 3D 模型生成 ———
+
+export const DEFAULT_MODEL3D_USER_PROMPT_EN =
+  'Generate a 3D model according to the brief (text and/or reference images).'
+
+export const DEFAULT_MODEL3D_USER_PROMPT_ZH =
+  '根据创作意图（文本和/或参考图）生成 3D 模型。'
+
+export function defaultModel3dUserPrompt(locale?: string): string {
+  return pickByLocale(locale, DEFAULT_MODEL3D_USER_PROMPT_EN, DEFAULT_MODEL3D_USER_PROMPT_ZH)
+}
+
+export function buildModel3dPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultModel3dUserPrompt)
+}

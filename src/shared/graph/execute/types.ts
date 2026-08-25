@@ -274,6 +274,17 @@ export interface NodeExecuteContext {
     name?: string
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
+   * 可选：调用设置中的 3D 模型生成；未注入时退回上游透传。
+   */
+  generateModel3d?: (input: {
+    prompt: string
+    model?: string
+    providerInstanceId?: string
+    inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
+    outputDir?: string
+    name?: string
+  }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  /**
    * 可选：调用设置中的语音合成；未注入时声音节点退回上游透传 / 文本。
    */
   generateSpeech?: (input: {
@@ -545,6 +556,7 @@ export interface GraphRunOptions {
   generateText?: NodeExecuteContext['generateText']
   generateImage?: NodeExecuteContext['generateImage']
   generateVideo?: NodeExecuteContext['generateVideo']
+  generateModel3d?: NodeExecuteContext['generateModel3d']
   generateSpeech?: NodeExecuteContext['generateSpeech']
   /** 软件界面语言，用于默认系统提示词等 */
   locale?: string
