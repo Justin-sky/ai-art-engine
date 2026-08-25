@@ -37,6 +37,10 @@ export const MODELSCOPE_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/
 export const COMFYUI_DEFAULT_BASE_URL = 'http://127.0.0.1:8189'
 /** MagicRouter（多供应商聚合，OpenAI 兼容；文本 / 图片 / 视频） */
 export const MAGICROUTER_DEFAULT_BASE_URL = 'https://api.magicrouter.ai/v1'
+/** Hyper3D Rodin（3D 模型生成） */
+export const HYPER3D_DEFAULT_BASE_URL = 'https://api.hyper3d.com/api/v2'
+/** Luma Genie（Dream Machine，3D 模型生成） */
+export const LUMA_DEFAULT_BASE_URL = 'https://api.lumalabs.ai/dream-machine/v1'
 
 export type ModelProviderKind =
   | 'openrouter'
@@ -58,6 +62,8 @@ export type ModelProviderKind =
   | 'magicrouter'
   | 'tripo'
   | 'meshy'
+  | 'hyper3d'
+  | 'luma'
 
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
@@ -183,6 +189,18 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'Meshy',
     defaultBaseUrl: 'https://api.meshy.ai',
     credentialsUrl: 'https://www.meshy.ai/'
+  },
+  {
+    id: 'hyper3d',
+    label: 'Rodin（Hyper3D）',
+    defaultBaseUrl: HYPER3D_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://hyper3d.ai/'
+  },
+  {
+    id: 'luma',
+    label: 'Luma AI',
+    defaultBaseUrl: LUMA_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://lumalabs.ai/'
   }
 ]
 
@@ -367,6 +385,11 @@ export function isMagicRouterProvider(
   if (!provider) return false
   if (typeof provider === 'string') return provider === 'magicrouter'
   return provider.providerKind === 'magicrouter'
+}
+
+/** 支持 3D 模型生成（model3d）的提供商 kind */
+export function isModel3dProviderKind(kind: ModelProviderKind): boolean {
+  return kind === 'meshy' || kind === 'tripo' || kind === 'hyper3d' || kind === 'luma'
 }
 
 /** 本机服务允许空 Key：vLLM / Ollama / LM Studio / ComfyUI（云端仍可填 Key） */

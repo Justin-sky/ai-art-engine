@@ -454,6 +454,7 @@ import {
   allowsEmptyApiKey,
   isComfyUiProvider,
   isLocalOpenAiProvider,
+  isModel3dProviderKind,
   isVllmProvider,
   modalityConfig,
   modelProviderCredentialsUrl,
@@ -522,15 +523,15 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
     return ['text', 'image']
   }
   if (provider.providerKind === 'volcengine-ark') {
-    return [...MODEL_MODALITIES]
+    return MODEL_MODALITIES.filter((m) => m !== 'model3d')
   }
   if (provider.providerKind === 'magicrouter') {
     return ['text', 'image', 'video']
   }
-  if (provider.providerKind === 'meshy' || provider.providerKind === 'tripo') {
+  if (isModel3dProviderKind(provider.providerKind)) {
     return ['model3d']
   }
-  return MODEL_MODALITIES.filter((m) => m !== 'audio')
+  return MODEL_MODALITIES.filter((m) => m !== 'audio' && m !== 'model3d')
 }
 
 function modalityTabLabel(provider: ModelProviderInstance, mod: ModelModality): string {

@@ -2,6 +2,7 @@ import type { ModelModality, ModelProviderInstance } from '@shared/modelProvider
 import {
   allowsEmptyApiKey,
   isLocalOpenAiProvider,
+  isModel3dProviderKind,
   isVllmProvider,
   modalityConfig
 } from '@shared/modelProvider'
@@ -105,8 +106,8 @@ export function buildModelOptions(
     ) {
       continue
     }
-    // 3D 模型生成：仅 meshy / tripo
-    if (modality === 'model3d' && provider.providerKind !== 'meshy' && provider.providerKind !== 'tripo') {
+    // 3D 模型生成：仅支持 3D 供应商
+    if (modality === 'model3d' && !isModel3dProviderKind(provider.providerKind)) {
       continue
     }
     const sel = modalityConfig(provider, modality)

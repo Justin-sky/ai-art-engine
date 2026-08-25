@@ -239,13 +239,15 @@ export default {
         text: 'Text',
         image: 'Image',
         video: 'Video',
-        audio: 'Voice'
+        audio: 'Voice',
+        model3d: '3D Model'
       },
       modalityHint: {
         text: 'Script and chat generation via OpenRouter /api/v1/models.',
         image: 'Image generation via /api/v1/images/models.',
         video: 'Shot video generation via /api/v1/videos/models.',
-        audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.'
+        audio: 'TTS via /api/v1/models?output_modalities=speech and /api/v1/audio/speech.',
+        model3d: '3D model generation from text and/or reference images, producing GLB assets.'
       },
       arkModalityHint: {
         text: 'Volcengine Ark chat models (Doubao, etc.). Default Base URL https://ark.cn-beijing.volces.com/api/v3 via /chat/completions.',

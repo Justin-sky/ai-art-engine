@@ -18,6 +18,8 @@ import { comfyUiAdapter } from '../services/modelProviders/comfyui/adapter'
 import { magicRouterAdapter } from '../services/modelProviders/magicrouter/adapter'
 import { tripoAdapter } from '../services/modelProviders/tripo/adapter'
 import { meshyAdapter } from '../services/modelProviders/meshy/adapter'
+import { hyper3dAdapter } from '../services/modelProviders/hyper3d/adapter'
+import { lumaAdapter } from '../services/modelProviders/luma/adapter'
 
 function resolveProviderMeta(
   adapter: ModelProviderAdapter,
@@ -68,5 +70,7 @@ export const builtinProviderPlugins = [
   createProviderPlugin(comfyUiAdapter),
   createProviderPlugin(magicRouterAdapter),
   createProviderPlugin(tripoAdapter),
-  createProviderPlugin(meshyAdapter)
+  createProviderPlugin(meshyAdapter),
+  createProviderPlugin(hyper3dAdapter),
+  createProviderPlugin(lumaAdapter)
 ] as const

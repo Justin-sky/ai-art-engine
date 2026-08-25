@@ -238,13 +238,15 @@ export default {
         text: '文本',
         image: '图片',
         video: '视频',
-        audio: '声音'
+        audio: '声音',
+        model3d: '3D 模型'
       },
       modalityHint: {
         text: '用于剧本与对话生成，对应 OpenRouter /api/v1/models。',
         image: '用于文生图 / 图生图，对应 /api/v1/images/models。',
         video: '用于分镜视频生成，对应 /api/v1/videos/models。',
-        audio: '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。'
+        audio: '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
+        model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。'
       },
       arkModalityHint: {
         text: '火山方舟对话模型（豆包等），Base URL 默认 https://ark.cn-beijing.volces.com/api/v3，对应 /chat/completions。',
