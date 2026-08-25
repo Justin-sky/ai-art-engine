@@ -940,12 +940,26 @@ function shouldShowPortLimitBadge(port: GraphPortDef): boolean {
   return portLimitKind.value != null && shouldShowPortLimitBadgeShared(port)
 }
 
+/** 视频端口限额：节点参数（同步、持久化）优先，缺失时回退异步拉取的能力表 */
+function effectiveVideoPortLimits(): VideoGeneratePortLimits {
+  const async = videoPortLimits.value
+  const p = props.node.params
+  const prefer = (param: number | undefined, fallback: number | null): number | null =>
+    typeof param === 'number' && Number.isFinite(param) ? param : fallback
+  return {
+    maxImages: prefer(p.generateMaxInputImages, async?.maxImages ?? null),
+    maxVideos: prefer(p.generateMaxInputVideos, async?.maxVideos ?? null),
+    maxVoices: prefer(p.generateMaxInputVoices, async?.maxVoices ?? null),
+    durations: async?.durations ?? []
+  }
+}
+
 function portLimitMax(port: GraphPortDef): number | null | undefined {
   if (isVideoFramePortId(port.id)) return 1
   const raw = portLimitMaxForDataType(port.dataType, {
     kind: portLimitKind.value,
     imageMax: imageMaxInputReferences.value,
-    videoLimits: videoPortLimits.value
+    videoLimits: effectiveVideoPortLimits()
   })
   if (port.dataType === GraphPortType.image) {
     return deductReservedImageSlots(raw, styleImageSlotCount.value)
@@ -1902,7 +1916,10 @@ watch(
       return
     }
     try {
-      videoPortLimits.value = await loadVideoGeneratePortLimits(key)
+      const limits = await loadVideoGeneratePortLimits(key)
+      videoPortLimits.value = limits
+      // 把上限固化到节点参数，使端口隐藏/显示由节点同步驱动（与首尾帧一致）
+      persistVideoInputLimits(limits)
     } catch {
       videoPortLimits.value = null
     }
@@ -1939,6 +1956,26 @@ function persistGenerateModel(): void {
     generateModel: parsed?.model ?? '',
     generateProviderInstanceId: parsed?.providerInstanceId ?? ''
   })
+}
+
+/** 视频模型端口上限 → 节点参数（同步驱动端口隐藏/显示）；同时剪掉已隐藏口的入边 */
+function persistVideoInputLimits(limits: VideoGeneratePortLimits): void {
+  if (!props.hostId) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, {
+    generateMaxInputImages: typeof limits.maxImages === 'number' ? limits.maxImages : undefined,
+    generateMaxInputVideos: typeof limits.maxVideos === 'number' ? limits.maxVideos : undefined,
+    generateMaxInputVoices: typeof limits.maxVoices === 'number' ? limits.maxVoices : undefined
+  })
+
+  const hidden = new Set<string>()
+  if (limits.maxImages === 0) hidden.add('in-image')
+  if (limits.maxVideos === 0) hidden.add('in-video')
+  if (limits.maxVoices === 0) hidden.add('in-voice')
+  if (!hidden.size) return
+  for (const edge of graphEditorHosts.listIncomingEdges(props.hostId, props.node.id)) {
+    const port = edge.targetPort ?? 'in'
+    if (hidden.has(port)) graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+  }
 }
 
 function persistImageGenerateParams(): void {

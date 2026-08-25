@@ -107,6 +107,43 @@ function injectVideoFramePorts(
   return [...next.slice(0, insertAt), ...framePorts, ...next.slice(insertAt)]
 }
 
+/**
+ * 视频生成：按模型声明上限隐藏「限额为 0」的媒体入端口。
+ * 只作用于通用参考口 in-image / in-video / in-voice；首/尾帧口由帧模式独立控制，不受影响。
+ */
+function hideZeroLimitVideoInputPorts(
+  ports: GraphPortDef[],
+  maxImages: number | undefined,
+  maxVideos: number | undefined,
+  maxVoices: number | undefined
+): GraphPortDef[] {
+  if (maxImages !== 0 && maxVideos !== 0 && maxVoices !== 0) return ports
+  return ports.filter((port) => {
+    if (port.direction !== 'in') return true
+    if (port.id === 'in-image') return maxImages !== 0
+    if (port.id === 'in-video') return maxVideos !== 0
+    if (port.id === 'in-voice') return maxVoices !== 0
+    return true
+  })
+}
+
+function readVideoInputLimit(
+  params:
+    | Pick<
+        GraphNodeParams,
+        | 'generateMaxInputImages'
+        | 'generateMaxInputVideos'
+        | 'generateMaxInputVoices'
+      >
+    | null
+    | undefined,
+  node: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null,
+  key: 'generateMaxInputImages' | 'generateMaxInputVideos' | 'generateMaxInputVoices'
+): number | undefined {
+  const raw = params?.[key] ?? node?.params?.[key]
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
+}
+
 /** 对类型定义端口应用与 getNodePorts 相同的 inputDataType 覆盖规则 */
 export function resolveTypeDefPorts(
   typeDef: Pick<NodeTypeDefinition, 'ports' | 'typeId' | 'assetType'>,
@@ -117,6 +154,9 @@ export function resolveTypeDefPorts(
     | 'assetRef'
     | 'assetHost'
     | 'generateFrameMode'
+    | 'generateMaxInputImages'
+    | 'generateMaxInputVideos'
+    | 'generateMaxInputVoices'
     | 'hostInputSlot'
     | 'hostBoundaryPort'
   > | null,
@@ -226,6 +266,12 @@ export function resolveTypeDefPorts(
       params?.generateFrameMode ?? node?.params?.generateFrameMode
     )
     ports = injectVideoFramePorts(ports, mode)
+    ports = hideZeroLimitVideoInputPorts(
+      ports,
+      readVideoInputLimit(params, node, 'generateMaxInputImages'),
+      readVideoInputLimit(params, node, 'generateMaxInputVideos'),
+      readVideoInputLimit(params, node, 'generateMaxInputVoices')
+    )
   }
   return ports
 }

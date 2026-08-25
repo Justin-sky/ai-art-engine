@@ -288,6 +288,12 @@ export interface GraphNodeParams {
   generateAudio?: boolean
   /** 视频生成：帧模式 none | first | first_last */
   generateFrameMode?: 'none' | 'first' | 'first_last'
+  /** 视频生成：模型声明的图片输入口上限（0 隐藏 in-image；缺省显示） */
+  generateMaxInputImages?: number
+  /** 视频生成：模型声明的视频输入口上限（0 隐藏 in-video；缺省显示） */
+  generateMaxInputVideos?: number
+  /** 视频生成：模型声明的音频输入口上限（0 隐藏 in-voice；缺省显示） */
+  generateMaxInputVoices?: number
   /** 片段重拍：重拍区间起点（秒） */
   reshootStartSec?: number
   /** 片段重拍：重拍区间终点（秒） */

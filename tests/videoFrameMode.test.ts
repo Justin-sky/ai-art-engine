@@ -140,6 +140,64 @@ describe('video frame ports', () => {
   })
 })
 
+describe('video input port hiding by model limits', () => {
+  function videoNodeWithLimits(params: Record<string, unknown>): GraphNode {
+    return {
+      id: 'v1',
+      typeId: 'asset.video',
+      category: 'asset',
+      assetType: 'video',
+      position: { x: 0, y: 0 },
+      size: { w: 220, h: 180 },
+      params
+    }
+  }
+
+  function inPortIds(node: GraphNode): string[] {
+    return getNodePorts(node)
+      .filter((p) => p.direction === 'in')
+      .map((p) => p.id)
+  }
+
+  it('hides in-image when maxImages is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputImages: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-video', 'in-voice'])
+  })
+
+  it('hides in-video when maxVideos is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputVideos: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-voice'])
+  })
+
+  it('hides in-voice when maxVoices is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputVoices: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-video'])
+  })
+
+  it('t2v (all zero) keeps only text input', () => {
+    const node = videoNodeWithLimits({
+      generateMaxInputImages: 0,
+      generateMaxInputVideos: 0,
+      generateMaxInputVoices: 0
+    })
+    expect(inPortIds(node)).toEqual(['in-text'])
+  })
+
+  it('keeps ports whose limit is above zero and omits the rest', () => {
+    const node = videoNodeWithLimits({
+      generateMaxInputImages: 5,
+      generateMaxInputVideos: 0,
+      generateMaxInputVoices: 1
+    })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-voice'])
+  })
+
+  it('keeps all ports when limits are absent (backward compatible)', () => {
+    const node = videoNodeWithLimits({})
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-video', 'in-voice'])
+  })
+})
+
 describe('mention index excludes frame ports', () => {
   const edges: GraphEdge[] = [
     {
