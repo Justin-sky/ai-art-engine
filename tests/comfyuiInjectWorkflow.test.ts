@@ -61,6 +61,39 @@ describe('comfyui injectWorkflow', () => {
     expect(sample['6']?.inputs?.text).toBe('old')
   })
 
+  it('injects video and audio filenames into VHS load nodes', () => {
+    const graph = {
+      '1': { class_type: 'VHS_LoadVideo', inputs: { video: 'a.mp4' } },
+      '2': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'a.wav' } },
+      '3': { class_type: 'LoadImage', inputs: { image: 'a.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'x',
+      imageFilenames: ['img.png'],
+      videoFilenames: ['vid.mp4'],
+      audioFilenames: ['aud.wav']
+    })
+    expect(next['1']?.inputs?.video).toBe('vid.mp4')
+    expect(next['2']?.inputs?.audio_file).toBe('aud.wav')
+    expect(next['3']?.inputs?.image).toBe('img.png')
+  })
+
+  it('assigns multiple video/audio filenames in node order', () => {
+    const graph = {
+      '1': { class_type: 'VHS_LoadVideo', inputs: { video: 'a.mp4' } },
+      '2': { class_type: 'VHS_LoadVideo', inputs: { video: 'b.mp4' } },
+      '3': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'a.wav' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'x',
+      videoFilenames: ['v1.mp4', 'v2.mp4'],
+      audioFilenames: ['a1.wav']
+    })
+    expect(next['1']?.inputs?.video).toBe('v1.mp4')
+    expect(next['2']?.inputs?.video).toBe('v2.mp4')
+    expect(next['3']?.inputs?.audio_file).toBe('a1.wav')
+  })
+
   it('maps aspect ratio to size', () => {
     expect(sizeFromAspectRatio('16:9', '1k')).toEqual({ width: 1280, height: 720 })
     expect(sizeFromAspectRatio('1:1', '2k')).toEqual({ width: 1536, height: 1536 })

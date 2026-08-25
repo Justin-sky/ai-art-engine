@@ -16,6 +16,8 @@ export type ComfyWorkflowInjectInput = {
   height?: number
   durationSec?: number
   imageFilenames?: string[]
+  videoFilenames?: string[]
+  audioFilenames?: string[]
 }
 
 const PROMPT_CLASSES = new Set([
@@ -52,6 +54,23 @@ const SEED_CLASSES = new Set([
 ])
 
 const LOAD_IMAGE_CLASSES = new Set(['loadimage', 'loadimagetensor'])
+
+/** 视频加载节点（VHS 插件 + 常见变体），注入键为 `video` */
+const LOAD_VIDEO_CLASSES = new Set([
+  'vhs_loadvideo',
+  'vhs_loadvideopath',
+  'loadvideo',
+  'loadvideopath'
+])
+
+/** 音频加载节点（VHS 插件 + 内置），注入键为 `audio_file` */
+const LOAD_AUDIO_CLASSES = new Set([
+  'vhs_loadaudio',
+  'vhs_loadaudiopath',
+  'vhs_loadaudioupload',
+  'loadaudio',
+  'loadaudiopath'
+])
 
 function className(node: ComfyApiNode): string {
   return String(node.class_type ?? '').trim().toLowerCase()
@@ -207,6 +226,8 @@ export function injectComfyWorkflow(
   let filledPositive = false
   let filledNegative = false
   let imageIndex = 0
+  let videoIndex = 0
+  let audioIndex = 0
 
   for (const node of nodes) {
     const cls = className(node)
@@ -260,6 +281,16 @@ export function injectComfyWorkflow(
     if (LOAD_IMAGE_CLASSES.has(cls) && input.imageFilenames?.[imageIndex]) {
       inputs.image = input.imageFilenames[imageIndex]
       imageIndex += 1
+    }
+
+    if (LOAD_VIDEO_CLASSES.has(cls) && input.videoFilenames?.[videoIndex]) {
+      inputs.video = input.videoFilenames[videoIndex]
+      videoIndex += 1
+    }
+
+    if (LOAD_AUDIO_CLASSES.has(cls) && input.audioFilenames?.[audioIndex]) {
+      inputs.audio_file = input.audioFilenames[audioIndex]
+      audioIndex += 1
     }
   }
 

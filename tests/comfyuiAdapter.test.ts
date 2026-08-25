@@ -455,6 +455,61 @@ describe('comfyUiAdapter', () => {
     })
   })
 
+  it('splits submitVideo references by kind and injects into image/video/audio load nodes', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: r2vWorkflow })
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    postMock.mockImplementation((url: string, body?: unknown) => {
+      if (url === '/upload/image') return Promise.reject(new Error('fallback'))
+      if (url === '/api/v2/assets') {
+        const form = body as FormData
+        const contentType = String(form.get('content_type') ?? '')
+        const name = contentType.includes('video')
+          ? 'ref-video.mp4'
+          : contentType.includes('audio')
+            ? 'ref-audio.wav'
+            : 'ref-image.png'
+        return Promise.resolve({ data: { file_path: name } })
+      }
+      if (url === '/api/v2/jobs') {
+        return Promise.resolve({
+          data: { id: 'job-r2v', status: 'queued', urls: { self: '/api/v2/jobs/job-r2v' } }
+        })
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`))
+    })
+
+    await comfyUiAdapter.submitVideo(provider(), 'r2v', {
+      prompt: 'run',
+      inputReferences: [
+        'data:image/png;base64,AA==',
+        { kind: 'video_url', url: 'data:video/mp4;base64,AA==' },
+        { kind: 'audio_url', url: 'data:audio/wav;base64,AA==' }
+      ]
+    })
+
+    const submit = postMock.mock.calls.find((call) => call[0] === '/api/v2/jobs')
+    expect(submit).toBeTruthy()
+    const body = submit?.[1] as { workflow: Record<string, { inputs: Record<string, unknown> }> }
+    expect(body.workflow['10']?.inputs.image).toBe('ref-image.png')
+    expect(body.workflow['11']?.inputs.video).toBe('ref-video.mp4')
+    expect(body.workflow['12']?.inputs.audio_file).toBe('ref-audio.wav')
+  })
+
   it('falls back to ComfyUI :8188 for userdata when Base URL is the proxy', () => {
     expect(comfyUiUserdataOrigins(provider())).toEqual([
       'http://127.0.0.1:8189',

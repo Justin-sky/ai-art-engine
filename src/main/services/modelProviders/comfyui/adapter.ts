@@ -365,6 +365,24 @@ async function loadWorkflow(
   )
 }
 
+function extFromContentType(contentType: string): string {
+  const ct = contentType.toLowerCase()
+  if (ct.includes('png')) return 'png'
+  if (ct.includes('jpeg') || ct.includes('jpg')) return 'jpg'
+  if (ct.includes('webp')) return 'webp'
+  if (ct.includes('quicktime')) return 'mov'
+  if (ct.includes('webm')) return 'webm'
+  if (ct.includes('x-matroska')) return 'mkv'
+  if (ct.includes('avi')) return 'avi'
+  if (ct.includes('wav') || ct.includes('wave')) return 'wav'
+  if (ct.includes('mpeg') || ct.includes('mp3')) return 'mp3'
+  if (ct.includes('m4a') || ct.includes('aac') || ct.includes('mp4a')) return 'm4a'
+  if (ct.includes('ogg') || ct.includes('opus')) return 'ogg'
+  if (ct.includes('flac')) return 'flac'
+  if (ct.includes('mp4')) return 'mp4'
+  return 'bin'
+}
+
 async function loadMediaBuffer(
   client: ReturnType<typeof createComfyUiHttpClient>,
   source: string
@@ -372,32 +390,32 @@ async function loadMediaBuffer(
   const dataUrl = /^data:([^;]+);base64,(.+)$/i.exec(source)
   if (dataUrl) {
     const contentType = dataUrl[1] || 'application/octet-stream'
-    const ext = contentType.includes('png')
-      ? 'png'
-      : contentType.includes('jpeg') || contentType.includes('jpg')
-        ? 'jpg'
-        : contentType.includes('webp')
-          ? 'webp'
-          : 'bin'
     return {
       buffer: Buffer.from(dataUrl[2]!, 'base64'),
-      filename: `ref-${Date.now()}.${ext}`,
+      filename: `ref-${Date.now()}.${extFromContentType(contentType)}`,
       contentType
     }
   }
   const { data, headers } = await client.get<ArrayBuffer>(source, { responseType: 'arraybuffer' })
   const contentType = String(headers['content-type'] ?? 'application/octet-stream')
-  const ext = contentType.includes('png') ? 'png' : contentType.includes('jpeg') ? 'jpg' : 'bin'
   return {
     buffer: Buffer.from(data),
-    filename: `ref-${Date.now()}.${ext}`,
+    filename: `ref-${Date.now()}.${extFromContentType(contentType)}`,
     contentType
   }
 }
 
-async function uploadReferenceImages(
+type ComfyUiUploadKind = 'image' | 'video' | 'audio'
+
+/**
+ * 上传参考媒体到 ComfyUI。图片/视频/音频统一走 `/upload/image`（ComfyUI 不校验内容类型，
+ * 文件落到 input/ 目录，VHS_LoadVideo / VHS_LoadAudio 按文件名引用）；失败回退 API 2 通用资产接口。
+ * `kind` 仅用于语义标注，当前不区分上传端点。
+ */
+async function uploadReferenceMedia(
   provider: ModelProviderInstance,
-  urls: string[]
+  urls: string[],
+  _kind: ComfyUiUploadKind
 ): Promise<string[]> {
   if (!urls.length) return []
   const client = createComfyUiLongClient(provider)
@@ -493,6 +511,8 @@ async function prepareWorkflow(
     resolution?: string
     duration?: number
     imageUrls?: string[]
+    videoUrls?: string[]
+    audioUrls?: string[]
   }
 ): Promise<ComfyApiWorkflow> {
   const graph = await loadWorkflow(provider, modelId)
@@ -514,7 +534,13 @@ async function prepareWorkflow(
     }
   }
   const imageFilenames = input.imageUrls?.length
-    ? await uploadReferenceImages(provider, input.imageUrls)
+    ? await uploadReferenceMedia(provider, input.imageUrls, 'image')
+    : []
+  const videoFilenames = input.videoUrls?.length
+    ? await uploadReferenceMedia(provider, input.videoUrls, 'video')
+    : []
+  const audioFilenames = input.audioUrls?.length
+    ? await uploadReferenceMedia(provider, input.audioUrls, 'audio')
     : []
   return injectComfyWorkflow(graph, {
     prompt: input.prompt,
@@ -522,7 +548,9 @@ async function prepareWorkflow(
     width,
     height,
     durationSec: input.duration,
-    imageFilenames
+    imageFilenames,
+    videoFilenames,
+    audioFilenames
   })
 }
 
@@ -627,19 +655,27 @@ export const comfyUiAdapter: ModelProviderAdapter = {
     input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
     try {
-      const refs = [
-        input.firstFrameImageUrl?.trim(),
-        ...(input.inputReferences ?? []).map((ref) =>
-          typeof ref === 'string' ? ref.trim() : ref.url.trim()
-        )
-      ].filter((u): u is string => Boolean(u))
+      // 按参考类型分流：图片注入 LoadImage，视频/音频分别注入 VHS_LoadVideo / VHS_LoadAudio
+      const imageRefs: string[] = []
+      const videoRefs: string[] = []
+      const audioRefs: string[] = []
+      if (input.firstFrameImageUrl?.trim()) imageRefs.push(input.firstFrameImageUrl.trim())
+      for (const ref of input.inputReferences ?? []) {
+        const url = typeof ref === 'string' ? ref.trim() : ref.url?.trim()
+        if (!url) continue
+        if (typeof ref !== 'string' && ref.kind === 'video_url') videoRefs.push(url)
+        else if (typeof ref !== 'string' && ref.kind === 'audio_url') audioRefs.push(url)
+        else imageRefs.push(url)
+      }
       const workflow = await prepareWorkflow(provider, modelId, {
         prompt: input.prompt,
         seed: input.seed,
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
         duration: input.duration,
-        imageUrls: refs
+        imageUrls: imageRefs.length ? imageRefs : undefined,
+        videoUrls: videoRefs.length ? videoRefs : undefined,
+        audioUrls: audioRefs.length ? audioRefs : undefined
       })
       const job = await submitJob(provider, workflow)
       return {
