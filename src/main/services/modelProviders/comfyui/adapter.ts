@@ -18,7 +18,6 @@ import type {
 } from '@shared/modelProvider'
 import {
   inferComfyUiWorkflowModality,
-  listComfyUiCatalogModels,
   resolveComfyUiModelCapabilities
 } from '@shared/modelProviders/comfyui/modelCapabilities'
 import {
@@ -559,7 +558,7 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       )
     ).filter((row) => row.modality === modality)
     const remote = await fetchRemoteCatalog(provider, modality)
-    const local = fromDisk.length ? fromDisk : listComfyUiCatalogModels(modality)
+    const local = fromDisk
     const seen = new Set(local.map((m) => m.id))
     return [...local, ...remote.filter((m) => !seen.has(m.id))]
   },

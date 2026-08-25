@@ -56,14 +56,11 @@ describe('comfyUiAdapter', () => {
     expect(getMock).toHaveBeenCalledWith('/api/v2/jobs', { params: { limit: 1 } })
   })
 
-  it('returns static catalogs and ignores text', async () => {
+  it('returns no models when userdata has no workflows and remote fails', async () => {
     getMock.mockRejectedValue(new Error('no templates'))
-    const images = await comfyUiAdapter.fetchCatalog(provider(), 'image')
-    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
-    const audio = await comfyUiAdapter.fetchCatalog(provider(), 'audio')
-    expect(images.some((m) => m.id === 'txt2img')).toBe(true)
-    expect(videos.some((m) => m.id === 'txt2vid')).toBe(true)
-    expect(audio.some((m) => m.id === 'txt2audio')).toBe(true)
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'image')).toEqual([])
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'video')).toEqual([])
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'audio')).toEqual([])
     expect(await comfyUiAdapter.fetchCatalog(provider(), 'text')).toEqual([])
   })
 
