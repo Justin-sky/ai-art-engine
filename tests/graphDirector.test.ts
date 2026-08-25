@@ -19,7 +19,8 @@ describe('director asset graph', () => {
     ])
     const inPorts = getNodePorts(processing!).filter((p) => p.direction === 'in')
     expect(inPorts.map((p) => [p.id, p.dataType, p.multiple ?? false])).toEqual([
-      ['in-panorama', 'image', false]
+      ['in-panorama', 'image', false],
+      ['in-model', 'model', false]
     ])
     expect(doc.edges).toHaveLength(0)
   })

@@ -138,7 +138,7 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
-import { flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
+import { flattenAssetValues, flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
 import { resolveAssetFileUrl } from '../media/assetUrlCache'
 import { extractModelSceneDefaults } from './modelSceneDefaults'
 import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
@@ -7055,6 +7055,52 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
+  /**
+   * 解析导演台节点 `in-model` 端口连接的上游 3D 模型资产 id。
+   * 优先取上游节点的已物化模型输出（runStates.out），其次取模型引用节点自身的 assetId。
+   */
+  async function resolveIncomingModelAssetId(): Promise<string | null> {
+    const nodeId = boundProcessingNodeId()
+    if (!nodeId) return null
+    const doc = graphEditorHosts.getDocument(graphHostId.value)
+    if (!doc) return null
+    const edge = (doc.edges ?? []).find(
+      (item) => item.target === nodeId && (item.targetPort ?? 'in') === 'in-model'
+    )
+    if (!edge) return null
+    const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
+    if (!source) return null
+
+    const runOut = doc.runStates?.[source.id]?.outputs?.out
+    if (runOut?.kind === 'asset' && runOut.assetType === 'model' && runOut.assetId) {
+      return runOut.assetId
+    }
+    for (const item of flattenAssetValues(runOut ? [runOut] : [])) {
+      if (item.assetType === 'model' && item.assetId) return item.assetId
+    }
+    if (source.assetType === 'model' && source.assetId) {
+      return source.assetId
+    }
+    return null
+  }
+
+  let appliedIncomingModelKey = ''
+
+  /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台模型列表（去重）。 */
+  async function syncIncomingModel(): Promise<void> {
+    const modelAssetId = await resolveIncomingModelAssetId()
+    if (!modelAssetId) {
+      appliedIncomingModelKey = ''
+      return
+    }
+    if (modelAssetId === appliedIncomingModelKey) return
+    appliedIncomingModelKey = modelAssetId
+    if (stage.value.objects.some((o) => o.kind === 'model' && o.modelAssetId === modelAssetId)) {
+      return
+    }
+    await createModelObject(modelAssetId)
+  }
+
   function clearFlyKeys(): void {
     flyKeys.forward = false
     flyKeys.back = false
@@ -8017,6 +8063,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       syncCameraClipPlanes()
       syncAllPathVisuals()
       await syncIncomingPanorama()
+      await syncIncomingModel()
       if (skipAssetWatch) return
       await rebuildObjects()
     },
@@ -8044,6 +8091,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     rebuildGrid()
     applySceneWorldTransform()
     void syncIncomingPanorama()
+    void syncIncomingModel()
     void rebuildObjects()
     selectScene()
   }

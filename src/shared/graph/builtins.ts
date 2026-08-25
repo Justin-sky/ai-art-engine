@@ -219,7 +219,7 @@ const ASSET_META: Array<{
   }
 ]
 
-/** 导演台编辑：全景背景图（单图）输入 + 站位（images）与动作（videos）输出 */
+/** 导演台编辑：全景背景图（单图）与 3D 模型输入 + 站位（images）与动作（videos）输出 */
 function motionProcessingPorts(): GraphPortDef[] {
   return [
     {
@@ -228,6 +228,13 @@ function motionProcessingPorts(): GraphPortDef[] {
       dataType: GraphPortType.image,
       multiple: false,
       label: '全景'
+    },
+    {
+      id: 'in-model',
+      direction: 'in',
+      dataType: GraphPortType.model,
+      multiple: false,
+      label: '模型'
     },
     {
       id: 'out-shots',

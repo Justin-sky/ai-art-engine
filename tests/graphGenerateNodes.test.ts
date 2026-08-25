@@ -9,6 +9,7 @@ import { graphOutputNodeId } from '../src/shared/graph/types'
 
 const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.image',
+  'asset.model3d',
   'asset.motion',
   'asset.screenplay',
   'asset.gameSystem',
@@ -95,11 +96,14 @@ describe('graph canvas menu nodes', () => {
     }
   })
 
-  it('director generate node exposes panorama input and shot outputs', () => {
+  it('director generate node exposes panorama + model inputs and shot outputs', () => {
     const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     const inPorts = ports.filter((port) => port.direction === 'in')
-    expect(inPorts.map((port) => [port.id, port.dataType])).toEqual([['in-panorama', 'image']])
+    expect(inPorts.map((port) => [port.id, port.dataType])).toEqual([
+      ['in-panorama', 'image'],
+      ['in-model', 'model']
+    ])
     expect(ports.some((port) => port.direction === 'out')).toBe(true)
   })
 

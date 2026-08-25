@@ -92,6 +92,7 @@ describe('graph policy', () => {
     expect(typeIds).toEqual(
       [
         'asset.image',
+        'asset.model3d',
         'asset.motion',
         'asset.screenplay',
         'asset.gameSystem',
@@ -151,13 +152,13 @@ describe('graph policy', () => {
     expect(canConnectNodes(ref, output)).toBe(true)
   })
 
-  it('allows image references to director panorama input, rejects model and video refs', () => {
+  it('allows image and model references to director inputs, rejects video refs', () => {
     const modelRef = createAssetGraphNode('00000000-0000-4000-8000-000000000201', 'model', 'Model', { x: 0, y: 0 })
     const director = createNodeFromType('asset.motion', { x: 200, y: 0 })
     const imageRef = createAssetGraphNode('00000000-0000-4000-8000-000000000202', 'image', 'Image', { x: 0, y: 160 })
     const videoRef = createAssetGraphNode('00000000-0000-4000-8000-000000000203', 'video', 'Video', { x: 0, y: 240 })
 
-    expect(canConnectNodes(modelRef, director)).toBe(false)
+    expect(canConnectNodes(modelRef, director)).toBe(true)
     expect(canConnectNodes(imageRef, director)).toBe(true)
     expect(canConnectNodes(videoRef, director)).toBe(false)
   })
