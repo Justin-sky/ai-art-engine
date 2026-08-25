@@ -137,7 +137,10 @@ function readVideoInputLimit(
       >
     | null
     | undefined,
-  node: Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'> | null,
+  node:
+    | Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'>
+    | null
+    | undefined,
   key: 'generateMaxInputImages' | 'generateMaxInputVideos' | 'generateMaxInputVoices'
 ): number | undefined {
   const raw = params?.[key] ?? node?.params?.[key]
