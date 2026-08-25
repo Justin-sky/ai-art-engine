@@ -588,12 +588,27 @@ export const comfyUiAdapter: ModelProviderAdapter = {
           let capabilities = resolveComfyUiModelCapabilities(file.id, inferred) ?? undefined
           const mediaInputs = inferComfyUiMediaInputs(graph)
           if (mediaInputs) {
-            // 从生成节点推断出的输入能力优先于文件名猜测（修正 r2v 等自定义 workflow 被误判为纯文生视频）
+            const base = (capabilities ?? {}) as Record<string, unknown>
+            const allZero =
+              mediaInputs.maxImages === 0 &&
+              mediaInputs.maxVideos === 0 &&
+              mediaInputs.maxAudios === 0
+            // 纯文生视频（生成节点存在但无任何媒体信号）：以推断为准，全部隐藏端口。
+            // 部分媒体：推断命中(1)可补充端口；推断未命中(0)不覆盖 profile 声明——
+            // 避免漏识别负载节点（如 VHS_LoadVideo）把 r2v 的视频参考口误隐藏。
+            const resolve = (
+              key: 'max_input_images' | 'max_input_videos' | 'max_input_audios',
+              inferred: number
+            ): number => {
+              if (allZero) return 0
+              const declared = typeof base[key] === 'number' ? (base[key] as number) : 0
+              return Math.max(declared, inferred)
+            }
             capabilities = {
-              ...(capabilities ?? {}),
-              max_input_images: mediaInputs.maxImages,
-              max_input_videos: mediaInputs.maxVideos,
-              max_input_audios: mediaInputs.maxAudios
+              ...base,
+              max_input_images: resolve('max_input_images', mediaInputs.maxImages),
+              max_input_videos: resolve('max_input_videos', mediaInputs.maxVideos),
+              max_input_audios: resolve('max_input_audios', mediaInputs.maxAudios)
             }
           } else if (capabilities) {
             // 无法从节点推断时，删除文件名猜出的 0，避免误隐藏端口（下游视为「未声明」）

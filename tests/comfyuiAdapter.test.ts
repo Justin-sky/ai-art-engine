@@ -455,6 +455,43 @@ describe('comfyUiAdapter', () => {
     })
   })
 
+  it('keeps r2v video/audio ports when graph inference only detects image', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v-partial.json')}`
+    // 生成节点只暴露了图片 socket，视频/音频参考经由未识别的负载节点注入，
+    // 推断只会命中 image —— 但 r2v profile 声明的 video/audio 口不应被误隐藏。
+    const partialWorkflow = {
+      '1': { class_type: 'WanImageToVideo', inputs: { reference_image: ['10', 0], prompt: 'x' } },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old.png' } }
+    }
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v-partial.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: partialWorkflow })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    const r2v = videos.find((m) => m.id === 'r2v-partial')
+    expect(r2v).toBeTruthy()
+    expect(r2v?.capabilities).toMatchObject({
+      max_input_images: 1,
+      max_input_videos: 1,
+      max_input_audios: 1
+    })
+  })
+
   it('splits submitVideo references by kind and injects into image/video/audio load nodes', async () => {
     const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v.json')}`
     getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {

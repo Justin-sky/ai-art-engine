@@ -21,7 +21,7 @@ import type {
   ModelProviderInstance,
   ModelProviderKind
 } from '@shared/modelProvider'
-import { isLocalOpenAiProvider } from '@shared/modelProvider'
+import { allowsEmptyApiKey } from '@shared/modelProvider'
 import { createProviderHttpClient } from './http'
 import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'
@@ -64,8 +64,8 @@ class ModelProviderFacade {
       nativeBaseUrl: overrides?.nativeBaseUrl,
       providerKind: overrides?.providerKind
     })
-    // 本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）无需 API Key
-    if (!provider.apiKey.trim() && !isLocalOpenAiProvider(provider)) {
+    // 本地服务（vLLM / Ollama / LM Studio / ComfyUI）无需 API Key
+    if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) {
       throw new Error('请先填写 API Key')
     }
     const adapter = getProviderAdapter(provider.providerKind)

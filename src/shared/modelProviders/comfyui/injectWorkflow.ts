@@ -53,10 +53,10 @@ const SEED_CLASSES = new Set([
   'samplercustomadvanced'
 ])
 
-const LOAD_IMAGE_CLASSES = new Set(['loadimage', 'loadimagetensor'])
+export const LOAD_IMAGE_CLASSES = new Set(['loadimage', 'loadimagetensor'])
 
 /** 视频加载节点（VHS 插件 + 常见变体），注入键为 `video` */
-const LOAD_VIDEO_CLASSES = new Set([
+export const LOAD_VIDEO_CLASSES = new Set([
   'vhs_loadvideo',
   'vhs_loadvideopath',
   'loadvideo',
@@ -64,7 +64,7 @@ const LOAD_VIDEO_CLASSES = new Set([
 ])
 
 /** 音频加载节点（VHS 插件 + 内置），注入键为 `audio_file` */
-const LOAD_AUDIO_CLASSES = new Set([
+export const LOAD_AUDIO_CLASSES = new Set([
   'vhs_loadaudio',
   'vhs_loadaudiopath',
   'vhs_loadaudioupload',
