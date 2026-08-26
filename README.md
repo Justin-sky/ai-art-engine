@@ -6,7 +6,7 @@
   <p><b>专业 AI 创作工具 · 短剧 · 广告 · 成片</b></p>
   <p>
     本地工程与素材 · 分镜与节点图驱动生成<br />
-    对接 OpenRouter · OpenAI · DeepSeek · 智谱 · Kimi · xAI · Google · vLLM · Ollama · LM Studio · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔 · ComfyUI<br />
+    对接 OpenRouter · OpenAI · DeepSeek · 智谱 · Kimi · xAI · Google · vLLM · Ollama · LM Studio · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔 · ComfyUI · Meshy · Tripo · Rodin（Hyper3D） · Luma AI<br />
     对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
   </p>
 
@@ -114,9 +114,9 @@ npm run dist:linux  # Linux
 - **一键工作流** — 预设模板或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
 - **节点图生成** — 文本 / 图片 / 视频 / 声音节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游
 - **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
-- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`
+- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台
 - **成片时间线** — 素材分组与上轨编排；预览播选中 / 时间线整轨联播；导出成片
-- **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）
+- **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI（3D 模型生成，文生 3D / 图生 3D）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
 - **可扩展** — Editor Kernel + Cordis 内部扩展（窗口 / Inspector / 节点 / Skill / 执行器）+ 声明式外部插件清单
 
@@ -139,6 +139,10 @@ npm run dist:linux  # Linux
 | 模型 | 通义千问 | 文本（兼容模式）/ 万相图 / 万相视频（含 HappyHorse 等） |
 | 模型 | 魔塔 | 文本 / 文生图（访问令牌） |
 | 模型 | ComfyUI | 图片 / 视频 / 声音（API 2；本机 8189 或云端 Base URL） |
+| 模型 | Meshy | 文生 3D / 图生 3D（含多图生 3D，API Key） |
+| 模型 | Tripo | 文生 3D / 图生 3D（API Key） |
+| 模型 | Rodin（Hyper3D） | 文生 3D / 图生 3D（API Key） |
+| 模型 | Luma AI | 文生 3D / 图生 3D（API Key） |
 | 对象存储 | 火山 TOS / 阿里云 OSS / 腾讯云 COS | 参考媒体上传与签名 URL；设置中互斥启用 |
 
 配置入口：**设置 → 模型** / **设置 → 对象存储**。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
