@@ -94,7 +94,11 @@ export async function executeModel3dGenerateNode(
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
     inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
-    name: node.title
+    name: node.title,
+    graphBinding: {
+      nodeId: node.id,
+      assetId: ctx.resolveHostAssetId?.()
+    }
   })
 
   // 构建输出值

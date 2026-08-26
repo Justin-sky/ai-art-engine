@@ -403,6 +403,7 @@ async function executeOneNode(
     hasAsset: options.hasAsset,
     resolveAssetName: options.resolveAssetName,
     resolveHostAssetName: options.resolveHostAssetName,
+    resolveHostAssetId: options.resolveHostAssetId,
     resolveAssetText: options.resolveAssetText,
     resolveImageUrls: options.resolveImageUrls,
     resolveStyleImageUrls: options.resolveStyleImageUrls,

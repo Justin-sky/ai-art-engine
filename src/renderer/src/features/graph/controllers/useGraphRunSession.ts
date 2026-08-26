@@ -84,6 +84,7 @@ export interface GraphRunSessionOptions {
       | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
     >
     outputDir?: string
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{
     assetId: string
     relativePath: string
@@ -117,6 +118,7 @@ export interface GraphRunSessionOptions {
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
@@ -156,6 +158,7 @@ export interface GraphRunSessionOptions {
   hasAsset?: (assetId: string) => boolean
   resolveAssetName?: (assetId: string) => string | undefined
   resolveHostAssetName?: () => string | undefined
+  resolveHostAssetId?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (
@@ -441,6 +444,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         | string
         | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
       >
+      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -574,6 +578,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
       outputDir?: string
       name?: string
+      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -681,6 +686,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         hasAsset: options.hasAsset,
         resolveAssetName: options.resolveAssetName,
         resolveHostAssetName: options.resolveHostAssetName,
+        resolveHostAssetId: options.resolveHostAssetId,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveBeatUnit: options.resolveBeatUnit,
         collectWorldElementOutputs: options.collectWorldElementOutputs,

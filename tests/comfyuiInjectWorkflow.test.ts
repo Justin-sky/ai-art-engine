@@ -135,6 +135,43 @@ describe('comfyui injectWorkflow', () => {
     expect(next['10']?.inputs?.length).toBe(80)
   })
 
+  it('injects first/last frame into their MiniMax H3 socket LoadImage nodes', () => {
+    const graph = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { clip: ['13', 0], vae: ['11', 0], first_frame: ['10', 0], last_frame: ['12', 0] }
+      },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'a cat',
+      firstFrameFilenames: ['first.png'],
+      lastFrameFilenames: ['last.png']
+    })
+    expect(next['10']?.inputs?.image).toBe('first.png')
+    expect(next['12']?.inputs?.image).toBe('last.png')
+  })
+
+  it('routes first/last frame by socket regardless of node iteration order', () => {
+    const graph = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { first_frame: ['12', 0], last_frame: ['10', 0] }
+      },
+      // 尾帧 LoadImage 排在首帧之前，注入仍应各就各位
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'a cat',
+      firstFrameFilenames: ['first.png'],
+      lastFrameFilenames: ['last.png']
+    })
+    expect(next['10']?.inputs?.image).toBe('last.png')
+    expect(next['12']?.inputs?.image).toBe('first.png')
+  })
+
   it('computes the MiniMax H3 native canvas', () => {
     expect(minimaxH3NativeSize(1920, 1088)).toEqual({ width: 1344, height: 768 })
     expect(minimaxH3NativeSize(1024, 1024)).toEqual({ width: 768, height: 768 })

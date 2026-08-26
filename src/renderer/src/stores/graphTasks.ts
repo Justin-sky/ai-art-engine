@@ -1273,6 +1273,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             undefined
           )
         },
+        resolveHostAssetId: () => taskHostAssetId(task.target),
         resolveAssetText,
         resolveImageUrls: resolveGraphImageUrls,
         resolveStyleImageUrls,

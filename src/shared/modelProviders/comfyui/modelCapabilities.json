@@ -62,7 +62,7 @@
         "supported_resolutions": ["720p", "1080p"],
         "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
         "supported_durations": [5, 8, 10, 15],
-        "supported_frame_images": ["first_frame"],
+        "supported_frame_images": ["first_frame", "last_frame"],
         "generate_audio": false,
         "max_input_images": 1,
         "max_input_videos": 0,

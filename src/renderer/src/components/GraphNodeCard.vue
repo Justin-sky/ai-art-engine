@@ -1995,14 +1995,21 @@ function persistVideoGenerateParams(): void {
     props.node.id,
     videoGenerateParamsToNodePatch(videoGenerateParams.value)
   )
+  const hasFrameControl = nextMode === 'first' || nextMode === 'first_last'
   for (const edge of graphEditorHosts.listIncomingEdges(props.hostId, props.node.id)) {
     const port = edge.targetPort
-    if (!isVideoFramePortId(port)) continue
-    if (nextMode === 'none') {
-      graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+    if (isVideoFramePortId(port)) {
+      if (nextMode === 'none') {
+        graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+        continue
+      }
+      if (nextMode === 'first' && port === VIDEO_LAST_FRAME_PORT_ID) {
+        graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
+      }
       continue
     }
-    if (nextMode === 'first' && port === VIDEO_LAST_FRAME_PORT_ID) {
+    // 首帧 / 首尾帧模式下参考图口隐藏，剪掉其入边
+    if (port === 'in-image' && hasFrameControl) {
       graphEditorHosts.removeEdge(props.hostId, edge.edgeId)
     }
   }

@@ -547,6 +547,60 @@ describe('comfyUiAdapter', () => {
     expect(body.workflow['12']?.inputs.audio_file).toBe('ref-audio.wav')
   })
 
+  it('submits i2v with first/last frame into MiniMax H3 socket LoadImage nodes', async () => {
+    const fl2vWorkflow = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { clip: ['13', 0], vae: ['11', 0], first_frame: ['10', 0], last_frame: ['12', 0] }
+      },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } }
+    }
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/fl2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/fl2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: fl2vWorkflow })
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    let uploadCount = 0
+    postMock.mockImplementation((url: string, body?: unknown) => {
+      if (url === '/upload/image') {
+        uploadCount += 1
+        // 首帧先上传、尾帧后上传
+        return Promise.resolve({ data: { name: uploadCount === 1 ? 'first.png' : 'last.png' } })
+      }
+      if (url === '/api/v2/jobs') {
+        return Promise.resolve({
+          data: { id: 'job-fl2v', status: 'queued', urls: { self: '/api/v2/jobs/job-fl2v' } }
+        })
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`))
+    })
+
+    await comfyUiAdapter.submitVideo(provider(), 'fl2v', {
+      prompt: 'run',
+      firstFrameImageUrl: 'data:image/png;base64,AA==',
+      lastFrameImageUrl: 'data:image/png;base64,BB=='
+    })
+
+    const submit = postMock.mock.calls.find((call) => call[0] === '/api/v2/jobs')
+    expect(submit).toBeTruthy()
+    const body = submit?.[1] as { workflow: Record<string, { inputs: Record<string, unknown> }> }
+    expect(body.workflow['10']?.inputs.image).toBe('first.png')
+    expect(body.workflow['12']?.inputs.image).toBe('last.png')
+  })
+
   it('falls back to ComfyUI :8188 for userdata when Base URL is the proxy', () => {
     expect(comfyUiUserdataOrigins(provider())).toEqual([
       'http://127.0.0.1:8189',

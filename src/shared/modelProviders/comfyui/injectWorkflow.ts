@@ -16,6 +16,8 @@ export type ComfyWorkflowInjectInput = {
   height?: number
   durationSec?: number
   imageFilenames?: string[]
+  firstFrameFilenames?: string[]
+  lastFrameFilenames?: string[]
   videoFilenames?: string[]
   audioFilenames?: string[]
 }
@@ -217,19 +219,52 @@ export function minimaxH3NativeSize(
   }
 }
 
+/** 图生视频节点的首帧 socket（MiniMax H3 first_frame / Wan start_image） */
+const FIRST_FRAME_SOCKET_KEYS = ['first_frame', 'start_image'] as const
+/** 图生视频节点的尾帧 socket（MiniMax H3 last_frame / Wan end_image） */
+const LAST_FRAME_SOCKET_KEYS = ['last_frame', 'end_image'] as const
+
+/**
+ * 解析首帧 / 尾帧 socket 指向的 LoadImage 节点 id。
+ * ComfyUI API 图里 `first_frame: ['114', 0]` 表示节点 114 的输出喂给该 socket，
+ * 注入时需把首帧文件名写进 114（LoadImage），尾帧同理。
+ */
+function resolveFrameNodeIds(workflow: ComfyApiWorkflow): {
+  firstFrameNodeIds: Set<string>
+  lastFrameNodeIds: Set<string>
+} {
+  const first = new Set<string>()
+  const last = new Set<string>()
+  for (const node of Object.values(workflow)) {
+    const inputs = node?.inputs
+    if (!inputs || typeof inputs !== 'object') continue
+    for (const key of FIRST_FRAME_SOCKET_KEYS) {
+      const ref = inputs[key]
+      if (Array.isArray(ref) && typeof ref[0] === 'string' && ref[0].trim()) first.add(ref[0])
+    }
+    for (const key of LAST_FRAME_SOCKET_KEYS) {
+      const ref = inputs[key]
+      if (Array.isArray(ref) && typeof ref[0] === 'string' && ref[0].trim()) last.add(ref[0])
+    }
+  }
+  return { firstFrameNodeIds: first, lastFrameNodeIds: last }
+}
+
 export function injectComfyWorkflow(
   workflow: ComfyApiWorkflow,
   input: ComfyWorkflowInjectInput
 ): ComfyApiWorkflow {
   const next = cloneWorkflow(workflow)
-  const nodes = Object.values(next)
+  const { firstFrameNodeIds, lastFrameNodeIds } = resolveFrameNodeIds(next)
   let filledPositive = false
   let filledNegative = false
   let imageIndex = 0
+  let firstFrameIndex = 0
+  let lastFrameIndex = 0
   let videoIndex = 0
   let audioIndex = 0
 
-  for (const node of nodes) {
+  for (const [nodeId, node] of Object.entries(next)) {
     const cls = className(node)
     const inputs = (node.inputs ??= {})
 
@@ -278,9 +313,17 @@ export function injectComfyWorkflow(
       }
     }
 
-    if (LOAD_IMAGE_CLASSES.has(cls) && input.imageFilenames?.[imageIndex]) {
-      inputs.image = input.imageFilenames[imageIndex]
-      imageIndex += 1
+    if (LOAD_IMAGE_CLASSES.has(cls)) {
+      if (lastFrameNodeIds.has(nodeId) && input.lastFrameFilenames?.[lastFrameIndex]) {
+        inputs.image = input.lastFrameFilenames[lastFrameIndex]
+        lastFrameIndex += 1
+      } else if (firstFrameNodeIds.has(nodeId) && input.firstFrameFilenames?.[firstFrameIndex]) {
+        inputs.image = input.firstFrameFilenames[firstFrameIndex]
+        firstFrameIndex += 1
+      } else if (input.imageFilenames?.[imageIndex]) {
+        inputs.image = input.imageFilenames[imageIndex]
+        imageIndex += 1
+      }
     }
 
     if (LOAD_VIDEO_CLASSES.has(cls) && input.videoFilenames?.[videoIndex]) {

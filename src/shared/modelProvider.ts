@@ -746,6 +746,15 @@ export interface VideoInputReference {
 /** 字符串视为 image_url */
 export type GenerateVideoInputReference = string | VideoInputReference
 
+/** 生成任务回写图节点的绑定（宿主资产 id + 节点 id，供重启后节点状态与后台任务对齐） */
+export interface GenerateGraphBinding {
+  hostId?: string
+  nodeId?: string
+  assetId?: string
+  shotId?: string
+  canvasField?: string
+}
+
 export interface GenerateVideoInput {
   prompt: string
   model?: string
@@ -767,6 +776,8 @@ export interface GenerateVideoInput {
   outputDir?: string
   /** 落盘文件名 stem（含宿主/节点/时间戳） */
   name?: string
+  /** 图节点回写绑定 */
+  graphBinding?: GenerateGraphBinding
 }
 
 export interface GenerateVideoResult {
@@ -803,6 +814,8 @@ export interface GenerateModel3dInput {
   outputDir?: string
   /** 落盘文件名 stem */
   name?: string
+  /** 图节点回写绑定 */
+  graphBinding?: GenerateGraphBinding
 }
 
 export interface GenerateModel3dResult {

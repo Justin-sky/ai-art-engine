@@ -241,8 +241,8 @@ export async function executeVideoGenerateNode(
       ? firstFrameImageUrl
       : undefined
   const useLastFrame = genParams.frameMode === 'first_last' ? lastFrameImageUrl : undefined
-  // 方舟等：尾帧不可与 reference_image 混用；首尾帧模式下去掉参考图
-  const apiRefs = useLastFrame?.trim()
+  // 首帧 / 首尾帧模式下参考图与帧口互斥，去掉 image_url 类参考（方舟等：尾帧不可与 reference_image 混用）
+  const apiRefs = useFirstFrame?.trim()
     ? limitedRefs.filter((ref) => ref.kind !== 'image_url')
     : limitedRefs
 
@@ -263,7 +263,11 @@ export async function executeVideoGenerateNode(
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'video',
       stamp: formatGeneratedMediaStamp()
-    })
+    }),
+    graphBinding: {
+      nodeId: node.id,
+      assetId: ctx.resolveHostAssetId?.()
+    }
   })
 
   if (ctx.signal?.aborted) {
@@ -396,7 +400,11 @@ export async function executeLipSyncNode(
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'lipSync',
       stamp: formatGeneratedMediaStamp()
-    })
+    }),
+    graphBinding: {
+      nodeId: node.id,
+      assetId: ctx.resolveHostAssetId?.()
+    }
   })
 
   if (ctx.signal?.aborted) {
@@ -500,7 +508,11 @@ export async function executeVideoReshootNode(
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'reshoot',
       stamp: formatGeneratedMediaStamp()
-    })
+    }),
+    graphBinding: {
+      nodeId: node.id,
+      assetId: ctx.resolveHostAssetId?.()
+    }
   })
 
   if (ctx.signal?.aborted) {

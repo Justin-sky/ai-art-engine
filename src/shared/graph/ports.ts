@@ -102,9 +102,14 @@ function injectVideoFramePorts(
     })
   }
   if (!framePorts.length) return next
+  // 首帧 / 首尾帧模式下参考图口与帧口互斥：隐藏 in-image，仅保留帧口；
+  // 无帧控制（none）不注入帧口，in-image 保持为参考图口。
   const insertAt = next.findIndex((port) => port.id === 'in-image')
-  if (insertAt < 0) return [...framePorts, ...next]
-  return [...next.slice(0, insertAt), ...framePorts, ...next.slice(insertAt)]
+  if (insertAt >= 0) {
+    next = next.filter((port) => port.id !== 'in-image')
+  }
+  const at = insertAt >= 0 ? insertAt : next.length
+  return [...next.slice(0, at), ...framePorts, ...next.slice(at)]
 }
 
 /**

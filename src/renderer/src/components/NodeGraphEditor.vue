@@ -869,6 +869,7 @@ import {
   type GraphNodeTextField,
   type GraphNodeTypeId,
   type GraphPortDataType,
+  type GraphValue,
   type MultiAngleCameraState,
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode,
@@ -913,8 +914,10 @@ import {
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
   GraphPortType,
+  GRAPH_OUT_ALL_PORT_ID,
   WORLD_ELEMENT_KINDS
 } from '@shared/graph'
+import { isVideoJobActive, jobKind, type VideoJobRecord } from '@shared/videoJob'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert } from '../composables/useStudioPrompt'
 import { useEditorKernel } from '../editor/kernel'
@@ -1814,6 +1817,7 @@ const {
     return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
   },
   resolveHostAssetName: () => graphAsset.value?.name?.trim() || undefined,
+  resolveHostAssetId: () => props.assetId?.trim() || undefined,
   resolveProjectStyleImages: () =>
     normalizeProjectStyleImages(project.config?.styleImages),
   resolveBeatUnit: (beatId) => {
@@ -1934,6 +1938,77 @@ importRunStatesSnapshot(
   graph.runStates,
   graph.nodes.map((n) => n.id)
 )
+
+// —— 后台生成任务与节点状态对齐：退出重启后任务仍在轮询时，节点不应停留在「失败」 ——
+let stopVideoJobUpdated: (() => void) | null = null
+
+function buildJobDoneOutputs(job: VideoJobRecord): Record<string, GraphValue> {
+  const assetId = job.assetId!
+  const createdAt = job.updatedAt
+  if (jobKind(job) === 'model3d') {
+    const modelValue: GraphValue = {
+      kind: 'asset',
+      assetId,
+      assetType: 'model',
+      ...(job.relativePath ? { relativePath: job.relativePath } : {})
+    }
+    return { out: modelValue, [GRAPH_OUT_ALL_PORT_ID]: modelValue }
+  }
+  const item = {
+    id: assetId,
+    dataUrl: '',
+    createdAt,
+    ...(job.relativePath ? { relativePath: job.relativePath } : {})
+  }
+  return {
+    out: { kind: 'video', ...item },
+    [GRAPH_OUT_ALL_PORT_ID]: { kind: 'videos', items: [item] }
+  }
+}
+
+function applyVideoJobToNode(job: VideoJobRecord): void {
+  // 前台运行由 runGraph 自身维护节点状态，避免并发回写冲突
+  if (isRunning.value) return
+  const assetId = props.assetId?.trim()
+  if (!assetId) return
+  if (job.graphBinding?.assetId !== assetId || !job.graphBinding.nodeId) return
+  const nodeId = job.graphBinding.nodeId
+  if (!graph.nodes.some((n) => n.id === nodeId)) return
+
+  const prev = runStates[nodeId]
+  if (isVideoJobActive(job.status)) {
+    if (prev?.status === 'done') return
+    runStates[nodeId] = { status: 'running' }
+  } else if (job.status === 'succeeded') {
+    if (prev?.status === 'done' && prev.outputs) return
+    if (!job.assetId) return
+    runStates[nodeId] = { status: 'done', outputs: buildJobDoneOutputs(job) }
+  } else {
+    if (prev?.status === 'done') return
+    runStates[nodeId] = { status: 'error', error: job.error || t('graph.run.failed') }
+  }
+  scheduleSave()
+}
+
+async function reconcileVideoJobNodes(): Promise<void> {
+  const assetId = props.assetId?.trim()
+  if (!assetId) return
+  if (typeof window.studio?.listVideoJobs !== 'function') return
+  let jobs: VideoJobRecord[] = []
+  try {
+    jobs = await window.studio.listVideoJobs()
+  } catch {
+    return
+  }
+  for (const job of jobs) applyVideoJobToNode(job)
+}
+
+function subscribeVideoJobUpdates(): void {
+  if (typeof window.studio?.onVideoJobUpdated !== 'function') return
+  stopVideoJobUpdated = window.studio.onVideoJobUpdated((job) => {
+    applyVideoJobToNode(job)
+  })
+}
 
 function currentGraphTaskTarget(): GraphTaskTarget | null {
   if (!props.assetId) return null
@@ -7951,6 +8026,9 @@ onMounted(() => {
   } catch (err) {
     console.error('[NodeGraphEditor] loadGraphFromAsset failed', err)
   }
+  // 退出重启后：把仍在后台轮询的生成任务同步到节点状态，避免节点停留在「失败」
+  subscribeVideoJobUpdates()
+  void reconcileVideoJobNodes()
   syncLiveViewportFromGraph()
   resizeEdgeCanvas()
   applyViewportTransform(true)
@@ -8069,6 +8147,8 @@ onBeforeUnmount(() => {
   if (isPanning) onPanEnd()
   // 切单元 / 关面板会销毁画布：先停跑，避免会话悬空表现为「运行卡死」
   stopWorkflow()
+  stopVideoJobUpdated?.()
+  stopVideoJobUpdated = null
   if (viewportSaveTimer) {
     clearTimeout(viewportSaveTimer)
     viewportSaveTimer = null

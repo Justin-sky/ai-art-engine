@@ -10,7 +10,7 @@ describe('comfyui modelCapabilities', () => {
     const image = resolveComfyUiModelCapabilities('txt2img', 'image')
     expect(image?.supported_parameters).toBeTruthy()
     const video = resolveComfyUiModelCapabilities('custom-i2v', 'video')
-    expect(video?.supported_frame_images).toEqual(['first_frame'])
+    expect(video?.supported_frame_images).toEqual(['first_frame', 'last_frame'])
   })
 
   it('resolves r2v to the multi-modal ref profile (image + video + audio)', () => {

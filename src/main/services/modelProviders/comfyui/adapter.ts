@@ -511,6 +511,8 @@ async function prepareWorkflow(
     resolution?: string
     duration?: number
     imageUrls?: string[]
+    firstFrameUrls?: string[]
+    lastFrameUrls?: string[]
     videoUrls?: string[]
     audioUrls?: string[]
   }
@@ -536,6 +538,12 @@ async function prepareWorkflow(
   const imageFilenames = input.imageUrls?.length
     ? await uploadReferenceMedia(provider, input.imageUrls, 'image')
     : []
+  const firstFrameFilenames = input.firstFrameUrls?.length
+    ? await uploadReferenceMedia(provider, input.firstFrameUrls, 'image')
+    : []
+  const lastFrameFilenames = input.lastFrameUrls?.length
+    ? await uploadReferenceMedia(provider, input.lastFrameUrls, 'image')
+    : []
   const videoFilenames = input.videoUrls?.length
     ? await uploadReferenceMedia(provider, input.videoUrls, 'video')
     : []
@@ -549,6 +557,8 @@ async function prepareWorkflow(
     height,
     durationSec: input.duration,
     imageFilenames,
+    firstFrameFilenames,
+    lastFrameFilenames,
     videoFilenames,
     audioFilenames
   })
@@ -670,11 +680,15 @@ export const comfyUiAdapter: ModelProviderAdapter = {
     input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
     try {
-      // 按参考类型分流：图片注入 LoadImage，视频/音频分别注入 VHS_LoadVideo / VHS_LoadAudio
+      // 按参考类型分流：首/尾帧注入 first_frame / last_frame 对应 LoadImage，
+      // 参考图注入其余 LoadImage，视频/音频分别注入 VHS_LoadVideo / VHS_LoadAudio
+      const firstFrameUrls: string[] = []
+      const lastFrameUrls: string[] = []
       const imageRefs: string[] = []
       const videoRefs: string[] = []
       const audioRefs: string[] = []
-      if (input.firstFrameImageUrl?.trim()) imageRefs.push(input.firstFrameImageUrl.trim())
+      if (input.firstFrameImageUrl?.trim()) firstFrameUrls.push(input.firstFrameImageUrl.trim())
+      if (input.lastFrameImageUrl?.trim()) lastFrameUrls.push(input.lastFrameImageUrl.trim())
       for (const ref of input.inputReferences ?? []) {
         const url = typeof ref === 'string' ? ref.trim() : ref.url?.trim()
         if (!url) continue
@@ -689,6 +703,8 @@ export const comfyUiAdapter: ModelProviderAdapter = {
         resolution: input.resolution,
         duration: input.duration,
         imageUrls: imageRefs.length ? imageRefs : undefined,
+        firstFrameUrls: firstFrameUrls.length ? firstFrameUrls : undefined,
+        lastFrameUrls: lastFrameUrls.length ? lastFrameUrls : undefined,
         videoUrls: videoRefs.length ? videoRefs : undefined,
         audioUrls: audioRefs.length ? audioRefs : undefined
       })

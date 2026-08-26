@@ -272,6 +272,8 @@ export interface NodeExecuteContext {
     outputDir?: string
     /** 落盘文件名 stem */
     name?: string
+    /** 图节点回写绑定 */
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
    * 可选：调用设置中的 3D 模型生成；未注入时退回上游透传。
@@ -283,6 +285,8 @@ export interface NodeExecuteContext {
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
+    /** 图节点回写绑定 */
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /**
    * 可选：调用设置中的语音合成；未注入时声音节点退回上游透传 / 文本。
@@ -318,6 +322,8 @@ export interface NodeExecuteContext {
   resolveAssetName?: (assetId: string) => string | undefined
   /** 当前图宿主资产名（剧本资产图内生成时优先用作文件名前缀） */
   resolveHostAssetName?: () => string | undefined
+  /** 当前图宿主资产 id（用于生成任务回写绑定） */
+  resolveHostAssetId?: () => string | undefined
   /**
    * 按资产 id 异步解析剧本文本（文件 URL / 旁挂正文）。
    * 注入后剧本引用节点优先走此路径，与图片 resolveAssetImageUrl 对称。
@@ -565,6 +571,7 @@ export interface GraphRunOptions {
   hasAsset?: NodeExecuteContext['hasAsset']
   resolveAssetName?: NodeExecuteContext['resolveAssetName']
   resolveHostAssetName?: NodeExecuteContext['resolveHostAssetName']
+  resolveHostAssetId?: NodeExecuteContext['resolveHostAssetId']
   resolveAssetText?: NodeExecuteContext['resolveAssetText']
   resolveImageUrls?: NodeExecuteContext['resolveImageUrls']
   resolveStyleImageUrls?: NodeExecuteContext['resolveStyleImageUrls']

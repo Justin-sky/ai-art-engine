@@ -167,15 +167,17 @@ class ModelProviderFacade {
   async generateVideo(
     input: GenerateVideoInput
   ): Promise<GenerateVideoResult> {
+    // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
+    const { graphBinding, ...genInput } = input
     if (!projectService.isOpen()) throw new Error('未打开工程')
 
     let uploads: ObjectStorageUploadResult[] = []
 
     try {
-      const prepared = await prepareVideoInputReferencesForApi(input)
+      const prepared = await prepareVideoInputReferencesForApi(genInput)
       uploads = prepared.uploads
       const job = await this.submitVideo(prepared.input)
-      const { provider } = resolveActiveProvider('video', input.providerInstanceId, input.model)
+      const { provider } = resolveActiveProvider('video', genInput.providerInstanceId, genInput.model)
 
       const persisted = videoJobService.create({
         kind: 'video',
@@ -183,10 +185,11 @@ class ModelProviderFacade {
         pollingUrl: job.pollingUrl,
         providerInstanceId: provider.id,
         model: job.model,
-        prompt: input.prompt,
-        name: input.name,
+        prompt: genInput.prompt,
+        name: genInput.name,
         source: 'graph',
-        outputDir: input.outputDir,
+        outputDir: genInput.outputDir,
+        graphBinding,
         uploads: uploads.map((item) => ({
           objectKey: item.objectKey,
           url: item.url,
@@ -298,15 +301,17 @@ class ModelProviderFacade {
    * 结束后删除临时对象。关软件后可由 videoJobService.resumePending 续取结果。
    */
   async generateModel3d(input: GenerateModel3dInput): Promise<GenerateModel3dResult> {
+    // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
+    const { graphBinding, ...genInput } = input
     if (!projectService.isOpen()) throw new Error('未打开工程')
 
     let uploads: ObjectStorageUploadResult[] = []
 
     try {
-      const prepared = await this.prepareModel3dInputReferencesForApi(input)
+      const prepared = await this.prepareModel3dInputReferencesForApi(genInput)
       uploads = prepared.uploads
       const job = await this.submitModel3d(prepared.input)
-      const { provider } = resolveActiveProvider('model3d', input.providerInstanceId, input.model)
+      const { provider } = resolveActiveProvider('model3d', genInput.providerInstanceId, genInput.model)
 
       const persisted = videoJobService.create({
         kind: 'model3d',
@@ -314,10 +319,11 @@ class ModelProviderFacade {
         pollingUrl: job.pollingUrl,
         providerInstanceId: provider.id,
         model: job.model,
-        prompt: input.prompt,
-        name: input.name,
+        prompt: genInput.prompt,
+        name: genInput.name,
         source: 'graph',
-        outputDir: input.outputDir,
+        outputDir: genInput.outputDir,
+        graphBinding,
         uploads: uploads.map((item) => ({
           objectKey: item.objectKey,
           url: item.url,
