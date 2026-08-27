@@ -248,7 +248,7 @@ export const googleAdapter: ModelProviderAdapter = {
 
       return {
         status,
-        progress,
+      progress,
         error,
         downloadUrl: status === 'completed' ? extractVideoDownloadUrl(data) : undefined
       }
