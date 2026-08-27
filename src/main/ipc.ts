@@ -58,7 +58,9 @@ function handle<T>(channel: string, fn: (...args: never[]) => Promise<T> | T): v
       return await fn(...(args as never[]))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[IPC ${channel}]`, message)
+      const code = err instanceof Error && 'code' in err ? String(err.code) : '-'
+      // code 便于日志检索；用户可见消息保持原样透传
+      console.error(`[IPC ${channel}] code=${code}`, message)
       throw new Error(message)
     }
   })

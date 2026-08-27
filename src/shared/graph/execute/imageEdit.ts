@@ -62,6 +62,8 @@ import {
 } from './materialize'
 import { resolveMentionSources } from './context'
 import { collectIncomingImageItems } from './mediaInputs'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
  * 多角度 / 打光 / 人像质感 / 情绪：以上游图为参考，用编辑器拼出的提示词调用图片 API，输出图库。
@@ -73,7 +75,8 @@ async function executePromptImageEditNode(
     userPrompt: string
     systemPrompt: string
     extraParams: Record<string, unknown>
-    emptyResultError: string
+    /** 「模型未返回X」中的 X 双语描述 */
+    emptyResultError: { zh: string; en: string }
   }
 ): Promise<Record<string, GraphValue>> {
   const sourceItems = await collectIncomingImageItems(ctx)
@@ -154,13 +157,13 @@ async function executePromptImageEditNode(
     })
   }
   if (!batch.length) {
-    throw new Error(options.emptyResultError)
+    throw fail(SHARED_ERRORS.resultMissing, { what: options.emptyResultError })
   }
 
   const stampKey = `${options.stampPrefix}:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(
@@ -185,7 +188,7 @@ export async function executeMultiAngleNode(
     userPrompt: patch.multiAnglePrompt,
     systemPrompt: resolveMultiAngleSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: '模型未返回多角度图片'
+    emptyResultError: { zh: '多角度图片', en: 'multi-angle images' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -206,7 +209,7 @@ export async function executeLightingNode(
     userPrompt: lightingPrompt,
     systemPrompt: resolveLightingSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: '模型未返回打光图片'
+    emptyResultError: { zh: '打光图片', en: 'lighting setup image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -229,7 +232,7 @@ export async function executePortraitTextureNode(
       ctx.locale
     ),
     extraParams: patch,
-    emptyResultError: '模型未返回人像质感图片'
+    emptyResultError: { zh: '人像质感图片', en: 'portrait texture image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -245,7 +248,7 @@ export async function executeEmotionNode(
     userPrompt: patch.emotionPrompt,
     systemPrompt: resolveEmotionSystemPrompt(ctx.node.params.generateSystemPrompt, ctx.locale),
     extraParams: patch,
-    emptyResultError: '模型未返回情绪图片'
+    emptyResultError: { zh: '情绪图片', en: 'emotion sheet image' }  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   })
 }
 
@@ -358,13 +361,13 @@ export async function executeUpscaleNode(
     })
   }
   if (!batch.length) {
-    throw new Error('模型未返回放大图片')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '放大图片', en: 'upscaled image' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `upscale:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -488,13 +491,13 @@ export async function executeExpandNode(
     })
   }
   if (!batch.length) {
-    throw new Error('模型未返回扩图结果')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '扩图结果', en: 'outpaint result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `expand:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -626,13 +629,13 @@ export async function executeRedrawNode(
     })
   }
   if (!batch.length) {
-    throw new Error('模型未返回重绘结果')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '重绘结果', en: 'redraw result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `redraw:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -763,13 +766,13 @@ export async function executeEraseNode(
     })
   }
   if (!batch.length) {
-    throw new Error('模型未返回擦除结果')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '擦除结果', en: 'erase result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `erase:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -897,13 +900,13 @@ export async function executeMatteNode(
     })
   }
   if (!batch.length) {
-    throw new Error('模型未返回抠图结果')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '抠图结果', en: 'matte result' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `matte:${ctx.node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -970,7 +973,7 @@ export async function executeCropNode(
     state: crop
   })
   if (!composed.dataUrl) {
-    throw new Error('裁剪失败')
+    throw fail(SHARED_ERRORS.imageCropEmpty)
   }
 
   if (ctx.signal?.aborted) {
@@ -990,7 +993,7 @@ export async function executeCropNode(
     `crop:${ctx.node.id}:${stamp}`
   )
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(
     ctx,
@@ -1047,7 +1050,7 @@ export async function executeGridSplitNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
   if (!ctx.composeImageGridCell) {
-    throw new Error('宫格裁切能力未注入，无法执行宫格切分')
+    throw fail(SHARED_ERRORS.capabilityGridCrop)
   }
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
@@ -1068,7 +1071,7 @@ export async function executeGridSplitNode(
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {
-      throw new Error(`宫格 ${cell} 裁切失败`)
+      throw fail(SHARED_ERRORS.gridCellCropFailed, { cell })
     }
     batch.push({
       id: `gridSplit:${ctx.node.id}:${stamp}:${cell}`,
@@ -1078,7 +1081,7 @@ export async function executeGridSplitNode(
   }
 
   if (!batch.length) {
-    throw new Error('宫格切分失败')
+    throw fail(SHARED_ERRORS.gridSplitEmpty)
   }
 
   const materializedBatch = await materializeGeneratedBatch(
@@ -1087,7 +1090,7 @@ export async function executeGridSplitNode(
     `grid:${ctx.node.id}:${stamp}`
   )
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(
     ctx,
@@ -1245,7 +1248,7 @@ export async function executeLayerSplitNode(
 
   if (!reused) {
     if (!ctx.generateImage) {
-      throw new Error('未注入图片生成能力，无法图层分离')
+      throw fail(SHARED_ERRORS.capabilityImageGenerate)
     }
     const result = await ctx.generateImage({
       prompt: prev.prompt,
@@ -1259,14 +1262,14 @@ export async function executeLayerSplitNode(
       throw new DOMException('Aborted', 'AbortError')
     }
     if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
-      throw new Error('当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离')
+      throw fail(SHARED_ERRORS.layerSplitNoLayers)
     }
     const mapped = layersFromApiResult(ctx, stamp, result, {
       width: prev.canvasWidth,
       height: prev.canvasHeight
     })
     if (!mapped.layers.length) {
-      throw new Error('图层分离失败：未得到有效图层')
+      throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
     layerBatch = mapped.batch
     const selectedId =
@@ -1288,7 +1291,7 @@ export async function executeLayerSplitNode(
     `layerSplit:${ctx.node.id}:${stamp}`
   )
   if (!materializedLayers.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
 
   let composite: GraphImageItem | null = null

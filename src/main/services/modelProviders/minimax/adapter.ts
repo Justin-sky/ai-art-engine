@@ -19,6 +19,13 @@ import {
   listMiniMaxCatalogModels,
   resolveMiniMaxModelCapabilities
 } from '@shared/modelProviders/minimax/modelCapabilities'
+import {
+  isAppError,
+  resolveAppErrorLocale,
+  fail,
+  defErrSimple
+} from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { trimBaseUrl } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
@@ -68,6 +75,48 @@ type MiniMaxV2ContentItem = Record<string, unknown>
 type MiniMaxV2Mode = 't2va' | 'i2va' | 'r2va'
 
 const MINIMAX_V2_RATIOS = new Set(['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'])
+
+// —— 本地双语文案（中文保持原文不变，英文为新增映射）——
+const E_MM_VIDEO_PROMPT_EMPTY = defErrSimple(
+  'provider.minimax.videoPromptRequired',
+  '视频提示词不能为空',
+  'Video prompt must not be empty'
+)
+const E_MM_H3_FRAME_REF_MIXED = defErrSimple(
+  'provider.minimax.hailuoH3FrameRefMixed',
+  '海螺 H3：首尾帧图生视频与多模态参考（视频/音频）不可混用',
+  'Hailuo H3: first/last-frame image-to-video cannot be combined with multimodal references (video/audio)'
+)
+const E_MM_H3_AUDIO_ONLY_REF = defErrSimple(
+  'provider.minimax.hailuoH3AudioOnlyRef',
+  '海螺 H3：不可仅输入参考音频，须至少包含 1 个参考视频或图片',
+  'Hailuo H3: audio-only input is not supported; include at least 1 reference video or image'
+)
+const E_MM_FAST_IMAGE_TO_VIDEO_ONLY = defErrSimple(
+  'provider.minimax.fastImageToVideoOnly',
+  '海螺 2.3 Fast 仅支持图生视频，请提供首帧图片',
+  'Hailuo 2.3 Fast supports image-to-video only; provide a first-frame image'
+)
+const E_MM_FIRST_LAST_PAIR_REQUIRED = defErrSimple(
+  'provider.minimax.firstLastFramePairRequired',
+  '首尾帧生成需要同时提供首帧与尾帧',
+  'First/last frame generation requires both a first frame and a last frame'
+)
+const E_MM_FIRST_LAST_MODEL = defErrSimple(
+  'provider.minimax.firstLastOnlyModel',
+  '首尾帧生成目前仅支持 MiniMax-Hailuo-02',
+  'First/last frame generation currently supports MiniMax-Hailuo-02 only'
+)
+const E_MM_NO_FILE_ID = defErrSimple(
+  'provider.minimax.noFileId',
+  '视频任务已完成但未返回 file_id',
+  'Video task finished but returned no file_id'
+)
+
+/** 非 throw 场景（结果对象的 error 字段）按当前语言取文案 */
+function pickMmBi(zh: string, en: string): string {
+  return resolveAppErrorLocale() === 'en-US' ? en : zh
+}
 
 /** 视频/文件接口挂在主机根；若用户误填 …/v1 则去掉 */
 function nativeApiBase(provider: ModelProviderInstance): string {
@@ -147,7 +196,7 @@ export function buildMiniMaxV2VideoContent(input: GenerateVideoInput): {
   mode: MiniMaxV2Mode
 } {
   const prompt = input.prompt?.trim()
-  if (!prompt) throw new Error('视频提示词不能为空')
+  if (!prompt) throw fail(E_MM_VIDEO_PROMPT_EMPTY)
 
   const firstFrame = input.firstFrameImageUrl?.trim()
   const lastFrame = input.lastFrameImageUrl?.trim()
@@ -162,10 +211,10 @@ export function buildMiniMaxV2VideoContent(input: GenerateVideoInput): {
   const hasMultimodalRefs = refVideos.length > 0 || refAudios.length > 0 || (!hasFrames && refImages.length > 0)
 
   if (hasFrames && (refVideos.length > 0 || refAudios.length > 0)) {
-    throw new Error('海螺 H3：首尾帧图生视频与多模态参考（视频/音频）不可混用')
+    throw fail(E_MM_H3_FRAME_REF_MIXED)
   }
   if (refAudios.length > 0 && refVideos.length === 0 && refImages.length === 0 && !hasFrames) {
-    throw new Error('海螺 H3：不可仅输入参考音频，须至少包含 1 个参考视频或图片')
+    throw fail(E_MM_H3_AUDIO_ONLY_REF)
   }
 
   const content: MiniMaxV2ContentItem[] = [{ type: 'text', text: prompt }]
@@ -221,7 +270,7 @@ async function resolveDownloadUrl(
   })
   assertMiniMaxBaseResp(data.base_resp, '获取视频文件')
   const url = data.file?.download_url?.trim()
-  if (!url) throw new Error('视频任务已完成但未返回下载地址')
+  if (!url) throw fail(PROVIDER_ERRORS.videoResultNoUrl)
   return url
 }
 
@@ -238,7 +287,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const { data } = await client.get<{ base_resp?: MiniMaxBaseResp }>('/v1/models')
       assertMiniMaxBaseResp(data?.base_resp, '连接测试')
     } catch (err) {
-      throw new Error(`连接测试失败：${await readMiniMaxHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: await readMiniMaxHttpError(err) })
     }
   },
 
@@ -317,11 +366,20 @@ export const miniMaxAdapter: ModelProviderAdapter = {
           raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`
         )
       const images = urls.length ? urls : b64
-      if (!images.length) throw new Error('模型未返回图片')
+      if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return { images, model: modelId }
     } catch (err) {
-      if (err instanceof Error && /未返回图片|图片生成失败/.test(err.message)) throw err
-      throw new Error(`图片生成失败: ${await readMiniMaxHttpError(err)}`)
+      if (isAppError(err) && err.code === PROVIDER_ERRORS.noImageResult.code) throw err
+      if (
+        err instanceof Error &&
+        /未返回图片|图片生成失败|returned no image|image generation failed/i.test(err.message)
+      ) {
+        throw err
+      }
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: await readMiniMaxHttpError(err)
+      })
     }
   },
 
@@ -347,7 +405,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         const { data } = await client.post<MiniMaxSubmitResp>('/v2/video_generation', body)
         assertMiniMaxBaseResp(data.base_resp, '提交视频生成')
         const taskId = data.task_id?.trim()
-        if (!taskId) throw new Error('未返回视频任务 id')
+        if (!taskId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
         return {
           jobId: taskId,
           pollingUrl: `${base}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
@@ -355,10 +413,28 @@ export const miniMaxAdapter: ModelProviderAdapter = {
           model: modelId
         }
       } catch (err) {
-        if (err instanceof Error && /海螺 H3|提示词不能为空|提交视频生成失败/.test(err.message)) {
+        if (
+          isAppError(err) &&
+          [
+            E_MM_VIDEO_PROMPT_EMPTY.code,
+            E_MM_H3_FRAME_REF_MIXED.code,
+            E_MM_H3_AUDIO_ONLY_REF.code
+          ].includes(err.code)
+        ) {
           throw err
         }
-        throw new Error(`提交视频生成失败: ${await readMiniMaxHttpError(err)}`)
+        if (
+          err instanceof Error &&
+          /海螺 H3|提示词不能为空|提交视频生成失败|submitting video generation failed/i.test(
+            err.message
+          )
+        ) {
+          throw err
+        }
+        throw fail(PROVIDER_ERRORS.actionFailed, {
+          action: 'videoSubmit',
+          detail: await readMiniMaxHttpError(err)
+        })
       }
     }
 
@@ -366,13 +442,13 @@ export const miniMaxAdapter: ModelProviderAdapter = {
     const lastFrame = input.lastFrameImageUrl?.trim()
 
     if (isHailuoFast(modelId) && !firstFrame) {
-      throw new Error('海螺 2.3 Fast 仅支持图生视频，请提供首帧图片')
+      throw fail(E_MM_FAST_IMAGE_TO_VIDEO_ONLY)
     }
     if (lastFrame && !firstFrame) {
-      throw new Error('首尾帧生成需要同时提供首帧与尾帧')
+      throw fail(E_MM_FIRST_LAST_PAIR_REQUIRED)
     }
     if (lastFrame && !isHailuo02(modelId)) {
-      throw new Error('首尾帧生成目前仅支持 MiniMax-Hailuo-02')
+      throw fail(E_MM_FIRST_LAST_MODEL)
     }
 
     const resolution = normalizeResolution(input.resolution, modelId)
@@ -392,7 +468,7 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const { data } = await client.post<MiniMaxSubmitResp>('/v1/video_generation', body)
       assertMiniMaxBaseResp(data.base_resp, '提交视频生成')
       const taskId = data.task_id?.trim()
-      if (!taskId) throw new Error('未返回视频任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId: taskId,
         pollingUrl: `${base}/v1/query/video_generation?task_id=${encodeURIComponent(taskId)}`,
@@ -400,10 +476,18 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      if (err instanceof Error && /海螺|首尾帧|图生视频|提交视频生成失败/.test(err.message)) {
+      if (
+        err instanceof Error &&
+        /海螺|首尾帧|图生视频|提交视频生成失败|submitting video generation failed/i.test(
+          err.message
+        )
+      ) {
         throw err
       }
-      throw new Error(`提交视频生成失败: ${await readMiniMaxHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: await readMiniMaxHttpError(err)
+      })
     }
   },
 
@@ -425,7 +509,8 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         const status = mapTaskStatus(task?.status)
         const error =
           status === 'failed'
-            ? task?.error?.message?.trim() || '视频生成失败'
+            ? task?.error?.message?.trim() ||
+              pickMmBi('视频生成失败', 'Video generation failed')
             : undefined
 
         let progress = 15
@@ -436,13 +521,22 @@ export const miniMaxAdapter: ModelProviderAdapter = {
         let downloadUrl: string | undefined
         if (status === 'completed') {
           downloadUrl = task?.content?.url?.trim()
-          if (!downloadUrl) throw new Error('视频任务已完成但未返回下载地址')
+          if (!downloadUrl) throw fail(PROVIDER_ERRORS.videoResultNoUrl)
         }
 
         return { status, progress, error, downloadUrl }
       } catch (err) {
-        if (err instanceof Error && err.message.includes('下载地址')) throw err
-        throw new Error(`轮询视频任务失败: ${await readMiniMaxHttpError(err)}`)
+        if (isAppError(err) && err.code === PROVIDER_ERRORS.videoResultNoUrl.code) throw err
+        if (
+          err instanceof Error &&
+          /下载地址|download url/i.test(err.message)
+        ) {
+          throw err
+        }
+        throw fail(PROVIDER_ERRORS.actionFailed, {
+          action: 'videoPolling',
+          detail: await readMiniMaxHttpError(err)
+        })
       }
     }
 
@@ -454,7 +548,8 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       const status = mapTaskStatus(data.status)
       const error =
         status === 'failed'
-          ? data.base_resp?.status_msg || '视频生成失败'
+          ? data.base_resp?.status_msg ||
+            pickMmBi('视频生成失败', 'Video generation failed')
           : undefined
 
       let progress = 15
@@ -466,15 +561,19 @@ export const miniMaxAdapter: ModelProviderAdapter = {
       if (status === 'completed') {
         const fileId = data.file_id
         if (fileId == null || fileId === '') {
-          throw new Error('视频任务已完成但未返回 file_id')
+          throw fail(E_MM_NO_FILE_ID)
         }
         downloadUrl = await resolveDownloadUrl(provider, fileId)
       }
 
       return { status, progress, error, downloadUrl }
     } catch (err) {
-      if (err instanceof Error && err.message.includes('file_id')) throw err
-      throw new Error(`轮询视频任务失败: ${await readMiniMaxHttpError(err)}`)
+      if (isAppError(err) && err.code === E_MM_NO_FILE_ID.code) throw err
+      if (err instanceof Error && /file_id/.test(err.message)) throw err
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: await readMiniMaxHttpError(err)
+      })
     }
   },
 
@@ -491,13 +590,13 @@ export const miniMaxAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

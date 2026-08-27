@@ -1,6 +1,13 @@
 import { TosClient } from '@volcengine/tos-sdk'
 import type { VolcengineTosParams } from '@shared/objectStorage'
+import { defErrSimple, fail } from '@shared/errors/appError'
 import type { ObjectStorageAdapter } from './types'
+
+const E_TOS_INVALID_ENDPOINT = defErrSimple(
+  'tos.invalidEndpoint',
+  '对象存储 TOS endpoint 无效',
+  'The Volcengine TOS endpoint is invalid'
+)
 
 /** TOS SDK 的 endpoint 必须是主机名；带 https:// 时预签名会变成 bucket.https://… */
 function tosEndpointHost(endpoint: string): string {
@@ -48,7 +55,7 @@ function resolveTosPublicUrl(
   }
 
   const endpointHost = tosEndpointHost(tos.endpoint)
-  if (!endpointHost) throw new Error('对象存储 TOS endpoint 无效')
+  if (!endpointHost) throw fail(E_TOS_INVALID_ENDPOINT)
   return `https://${tos.bucket.trim()}.${endpointHost}/${objectKey}`
 }
 

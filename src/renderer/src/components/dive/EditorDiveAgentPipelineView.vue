@@ -3,21 +3,21 @@
     <div class="pipeline-header">
       <div class="pipeline-title">
         <span class="title-text">{{ assetTitle }}</span>
-        <span class="stage-chip">Agent 流水线</span>
+        <span class="stage-chip">{{ t('divePipeline.agent.title') }}</span>
       </div>
       <div class="header-actions">
         <span
           class="summary-chip pending"
-          :title="'待处理：质检 pending + 返工 running'"
-        >待处理 {{ overview.pendingCount }}</span>
+          :title="t('divePipeline.agent.summary.pendingTitle')"
+        >{{ t('divePipeline.agent.summary.pending', { n: overview.pendingCount }) }}</span>
         <span
           class="summary-chip fail"
-          :title="'质检 FAIL 节点数'"
-        >FAIL {{ overview.failCount }}</span>
+          :title="t('divePipeline.agent.summary.failTitle')"
+        >{{ t('divePipeline.agent.summary.fail', { n: overview.failCount }) }}</span>
         <span
           class="summary-chip exhausted"
-          :title="'达上限仍未通过的返工节点数'"
-        >达上限 {{ overview.exhaustedCount }}</span>
+          :title="t('divePipeline.agent.summary.exhaustedTitle')"
+        >{{ t('divePipeline.agent.summary.exhausted', { n: overview.exhaustedCount }) }}</span>
       </div>
     </div>
 
@@ -27,15 +27,15 @@
     >
       <span
         class="fail-chip"
-        title="最近一次 FAIL / 达上限原因"
-      >最近失败：{{ overview.lastFailReason }}</span>
+        :title="t('divePipeline.agent.fail.latestTitle')"
+      >{{ t('divePipeline.agent.fail.latestPrefix') }}{{ overview.lastFailReason }}</span>
     </div>
 
     <div
       v-if="!overview.hasPipeline"
       class="empty-hint"
     >
-      当前画布尚未放置「质检（media.review）」或「返工（media.rework）」节点。运行生成节点后，在其下游接上质检节点即可自动质检；质检 FAIL 时由返工节点自动重试，直到 PASS 或达尝试上限。
+      {{ t('divePipeline.agent.empty.noNodes') }}
     </div>
 
     <div
@@ -46,7 +46,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>
-            质检节点（media.review）
+            {{ t('divePipeline.agent.panel.review') }}
             <span class="count-badge">{{ overview.reviewRows.length }}</span>
           </h3>
         </div>
@@ -56,7 +56,7 @@
             :key="row.nodeId"
             class="row-item"
             :class="row.status"
-            :title="'点击定位到节点'"
+            :title="t('divePipeline.agent.panel.locateHint')"
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
@@ -72,7 +72,7 @@
           <li
             v-if="!overview.reviewRows.length"
             class="empty-row"
-          >无质检节点</li>
+          >{{ t('divePipeline.agent.panel.noReview') }}</li>
         </ul>
       </section>
 
@@ -80,7 +80,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>
-            返工节点（media.rework）
+            {{ t('divePipeline.agent.panel.rework') }}
             <span class="count-badge">{{ overview.reworkRows.length }}</span>
           </h3>
         </div>
@@ -90,7 +90,7 @@
             :key="row.nodeId"
             class="row-item"
             :class="row.status"
-            :title="'点击定位到节点'"
+            :title="t('divePipeline.agent.panel.locateHint')"
             @click="selectNode(row.nodeId)"
           >
             <span class="row-title">{{ row.title }}</span>
@@ -98,7 +98,7 @@
               class="status-badge"
               :class="row.status"
             >{{ reworkStatusLabel(row.status) }}</span>
-            <span class="attempt">第 {{ row.attempt }}/{{ row.maxAttempts }} 次</span>
+            <span class="attempt">{{ t('divePipeline.agent.row.attempt', { attempt: row.attempt, maxAttempts: row.maxAttempts }) }}</span>
             <span
               v-if="row.lastReason"
               class="reason"
@@ -107,7 +107,7 @@
           <li
             v-if="!overview.reworkRows.length"
             class="empty-row"
-          >无返工节点</li>
+          >{{ t('divePipeline.agent.panel.noRework') }}</li>
         </ul>
       </section>
     </div>
@@ -124,6 +124,7 @@ import {
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useProjectStore } from '../../stores/project'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { useStudioI18n } from '../../composables/useStudioI18n'
 
 const props = defineProps<{
   frameKey: string
@@ -132,9 +133,10 @@ const props = defineProps<{
 
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
+const { t } = useStudioI18n()
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
-const assetTitle = computed(() => asset.value?.name?.trim() || 'Agent 流水线')
+const assetTitle = computed(() => asset.value?.name?.trim() || String(t('divePipeline.agent.title')))
 
 /** 优先取当前打开画布的实时文档（含未落盘的连线与运行结果） */
 const graphDoc = computed<GraphDocument | null>(() => {
@@ -155,16 +157,17 @@ function selectNode(nodeId: string): void {
   workspace.selectGraphNode(nodeId, `asset:${props.hostAssetId}`)
 }
 
+/** PASS / FAIL 为内检结论原样展示；其余状态 id 在渲染时映射为当前语言文案 */
 function reviewStatusLabel(status: AgentReviewStatus): string {
   if (status === 'PASS') return 'PASS'
   if (status === 'FAIL') return 'FAIL'
-  return '待审核'
+  return String(t('divePipeline.agent.status.review.pending'))
 }
 
 function reworkStatusLabel(status: string): string {
-  if (status === 'passed') return '已通过'
-  if (status === 'exhausted') return '达上限'
-  return '返工中'
+  if (status === 'passed') return String(t('divePipeline.agent.status.rework.passed'))
+  if (status === 'exhausted') return String(t('divePipeline.agent.status.rework.exhausted'))
+  return String(t('divePipeline.agent.status.rework.running'))
 }
 </script>
 

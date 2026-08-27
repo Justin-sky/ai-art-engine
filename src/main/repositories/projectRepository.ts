@@ -1,7 +1,14 @@
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import type { ProjectConfig } from '@shared/domain'
+import { defErrSimple, fail } from '@shared/errors/appError'
 import { readJsonFile, writeJsonAtomic } from './jsonFile'
+
+const E_PROJECT_JSON_MISSING = defErrSimple(
+  'project.jsonMissing',
+  'project.json 不存在',
+  'project.json does not exist'
+)
 
 const PROJECT_DIRECTORIES = [
   'Assets',
@@ -29,7 +36,7 @@ export class ProjectRepository {
 
   read(root: string): ProjectConfig {
     const path = this.configPath(root)
-    if (!existsSync(path)) throw new Error('project.json 不存在')
+    if (!existsSync(path)) throw fail(E_PROJECT_JSON_MISSING)
     return readJsonFile<ProjectConfig>(path)
   }
 

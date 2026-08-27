@@ -18,6 +18,8 @@ import {
 } from '@shared/modelProviders/zhipu/modelCapabilities'
 import { resolveZhipuImageSize } from '@shared/modelProviders/zhipu/imageSize'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -27,15 +29,34 @@ import {
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 
-function notSupported(feature: string): Promise<never> {
-  return Promise.reject(new Error(`智谱提供商暂未接入${feature}，当前仅支持文本与图片`))
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const NOT_SUPPORTED_FEATURES = {
+  video: { zh: '视频生成', en: 'video generation' },
+  speech: { zh: '语音合成', en: 'speech synthesis' }
+} as const
+
+const E_NOT_SUPPORTED = defErr<{ kind: keyof typeof NOT_SUPPORTED_FEATURES }>(
+  'provider.zhipu.unsupported-modality',
+  ({ kind }) => `智谱提供商暂未接入${NOT_SUPPORTED_FEATURES[kind].zh}，当前仅支持文本与图片`,
+  ({ kind }) =>
+    `Zhipu (GLM) does not support ${NOT_SUPPORTED_FEATURES[kind].en} yet; text and image only`
+)
+
+const E_COGVIEW_NO_REFS = defErrSimple(
+  'provider.zhipu.cogview-no-reference-images',
+  '智谱图片生成（CogView）暂不支持参考图，请使用纯文生图',
+  'Zhipu image generation (CogView) does not support reference images yet; use text-to-image only'
+)
+
+function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never> {
+  return Promise.reject(fail(E_NOT_SUPPORTED, { kind }))
 }
 
 export const zhipuAdapter: ModelProviderAdapter = {
   kind: 'zhipu',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient(provider)
     try {
       await client.get('/models', { timeout: 20_000 })
@@ -47,9 +68,11 @@ export const zhipuAdapter: ModelProviderAdapter = {
         return
       }
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型: ${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败: ${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -87,7 +110,7 @@ export const zhipuAdapter: ModelProviderAdapter = {
     input: GenerateImageInput
   ): Promise<GenerateImageResult> {
     if (input.inputReferences?.length) {
-      throw new Error('智谱图片生成（CogView）暂不支持参考图，请使用纯文生图')
+      throw fail(E_COGVIEW_NO_REFS)
     }
     const size = resolveZhipuImageSize(input.resolution, input.aspectRatio)
     const body: Record<string, unknown> = {
@@ -108,10 +131,13 @@ export const zhipuAdapter: ModelProviderAdapter = {
           return ''
         })
         .filter(Boolean)
-      if (!images.length) throw new Error('智谱未返回图片')
+      if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return { images, model: modelId }
     } catch (err) {
-      throw new Error(`智谱图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -120,14 +146,14 @@ export const zhipuAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    return notSupported('视频生成')
+    return notSupported('video')
   },
 
   pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    return notSupported('视频生成')
+    return notSupported('video')
   },
 
   generateSpeech(
@@ -135,7 +161,7 @@ export const zhipuAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('语音合成')
+    return notSupported('speech')
   },
 
   submitModel3d(
@@ -143,13 +169,13 @@ export const zhipuAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

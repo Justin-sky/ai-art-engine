@@ -12,6 +12,8 @@ import {
   readAdVariantMatrixFromNode
 } from '../adVariantMatrix'
 import { resolveAdVariantSystemPrompt } from '../systemPromptSchemes'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
  * 广告变体生成：按矩阵单元格逐个生成图片（可选产品参考图），汇总进图库 out-all，
@@ -84,13 +86,13 @@ export async function executeAdVariantsNode(
   }
 
   if (!batch.length) {
-    throw new Error('模型未返回变体图片')
+    throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '变体图片', en: 'variant images' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
   }
 
   const stampKey = `adVariant:${node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
 

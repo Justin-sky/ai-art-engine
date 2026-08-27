@@ -3,6 +3,8 @@ import { join } from 'path'
 import { compareNames } from '@shared/folderTree'
 import type { AssetFolder } from '@shared/domain'
 import { normalizePathSegment } from '@shared/assetPackage/pathname'
+import { fail } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import {
   hoistDirectoryContentsAndRemove,
   resolveFolderDirAbs,
@@ -18,7 +20,7 @@ export class FolderRepository {
   read(root: string, folderId: string): AssetFolder {
     const scan = scanAssetTree(root)
     const folder = scan.folders.find((f) => f.id === folderId)
-    if (!folder) throw new Error('目录不存在')
+    if (!folder) throw fail(MAIN_ERRORS.dirNotFound)
     return folder
   }
 
@@ -42,7 +44,7 @@ export class FolderRepository {
   write(root: string, folder: AssetFolder): void {
     const scan = scanAssetTree(root)
     const dirAbs = scan.dirAbsByFolderId.get(folder.id)
-    if (!dirAbs) throw new Error('目录不存在')
+    if (!dirAbs) throw fail(MAIN_ERRORS.dirNotFound)
     writeFolderMeta(dirAbs, folder)
   }
 
@@ -50,7 +52,7 @@ export class FolderRepository {
     const scan = scanAssetTree(root)
     const dirAbs = scan.dirAbsByFolderId.get(folderId)
     const folder = scan.folders.find((f) => f.id === folderId)
-    if (!dirAbs || !folder) throw new Error('目录不存在')
+    if (!dirAbs || !folder) throw fail(MAIN_ERRORS.dirNotFound)
     const parentAbs = resolveFolderDirAbs(root, folder.parentId ?? null, scan)
     const safe = normalizePathSegment(name.trim() || folder.name)
     let nextAbs = join(parentAbs, safe)
@@ -79,7 +81,7 @@ export class FolderRepository {
     const scan = scanAssetTree(root)
     const dirAbs = scan.dirAbsByFolderId.get(folderId)
     const folder = scan.folders.find((f) => f.id === folderId)
-    if (!dirAbs || !folder) throw new Error('目录不存在')
+    if (!dirAbs || !folder) throw fail(MAIN_ERRORS.dirNotFound)
     const parentAbs = resolveFolderDirAbs(root, folder.parentId ?? null, scan)
     hoistDirectoryContentsAndRemove(dirAbs, parentAbs)
   }
@@ -88,7 +90,7 @@ export class FolderRepository {
   removeRecursive(root: string, folderId: string): void {
     const scan = scanAssetTree(root)
     const dirAbs = scan.dirAbsByFolderId.get(folderId)
-    if (!dirAbs) throw new Error('目录不存在')
+    if (!dirAbs) throw fail(MAIN_ERRORS.dirNotFound)
     rmSync(dirAbs, { recursive: true, force: true })
   }
 }

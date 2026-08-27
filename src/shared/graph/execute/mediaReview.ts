@@ -16,6 +16,8 @@ import { flattenImagesValues, flattenVideosValues } from './gallery'
 import { collectIncomingValues } from './incoming'
 import { commitInMemoryTextGallery } from './materialize'
 import type { GraphValue, NodeExecuteContext } from './types'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
  * 收集上游媒体 → 可加载 URL（图片 + 视频首帧；去重，最多 4 张以免请求过大）。
@@ -97,7 +99,7 @@ export async function executeMediaReviewNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw new Error('模型未返回质检结果')
+  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   const verdict = parseMediaReviewVerdict(text)
   if (verdict) {

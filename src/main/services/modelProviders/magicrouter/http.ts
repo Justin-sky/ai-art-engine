@@ -2,10 +2,24 @@ import axios, { type AxiosInstance } from 'axios'
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import { MAGICROUTER_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { trimBaseUrl } from '../http'
+import { defErrSimple, fail, resolveAppErrorLocale } from '@shared/errors/appError'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_MAGICROUTER_MISSING_API_KEY = defErrSimple(
+  'provider.magicrouter.missingApiKey',
+  '请先填写 MagicRouter API Key（mr- 开头）',
+  'Fill in your MagicRouter API key (starts with mr-)'
+)
+const MAGICROUTER_AUTH_HINT_ZH = '请检查 MagicRouter API Key 是否正确、已保存'
+const MAGICROUTER_AUTH_HINT_EN = 'Check that your MagicRouter API Key is correct and saved'
+
+function isEn(): boolean {
+  return resolveAppErrorLocale() === 'en-US'
+}
 
 export function assertMagicRouterCredentials(provider: ModelProviderInstance): void {
   if (!provider.apiKey.trim()) {
-    throw new Error('请先填写 MagicRouter API Key（mr- 开头）')
+    throw fail(E_MAGICROUTER_MISSING_API_KEY)
   }
 }
 
@@ -54,7 +68,9 @@ export async function readMagicRouterHttpError(err: unknown): Promise<string> {
     if (parsed) return parsed
     const status = err.response?.status
     if (status === 401 || status === 403) {
-      return `${err.message}（请检查 MagicRouter API Key 是否正确、已保存）`
+      return isEn()
+        ? `${err.message} (${MAGICROUTER_AUTH_HINT_EN})`
+        : `${err.message}（${MAGICROUTER_AUTH_HINT_ZH}）`
     }
     return err.message
   }

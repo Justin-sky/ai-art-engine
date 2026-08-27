@@ -2,6 +2,13 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { clipboard } from 'electron'
 import { platform } from 'os'
+import { defErrSimple, fail } from '@shared/errors/appError'
+
+const E_CLIPBOARD_NO_FILE_PATHS = defErrSimple(
+  'clipboard.noFilePaths',
+  '没有可复制的文件路径',
+  'No file paths to copy'
+)
 
 const execFileAsync = promisify(execFile)
 
@@ -49,7 +56,7 @@ pb's writeObjects:theUrls
  */
 export async function copyFilePathsToClipboard(paths: string[]): Promise<'files' | 'text'> {
   const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))]
-  if (!unique.length) throw new Error('没有可复制的文件路径')
+  if (!unique.length) throw fail(E_CLIPBOARD_NO_FILE_PATHS)
 
   const os = platform()
   try {

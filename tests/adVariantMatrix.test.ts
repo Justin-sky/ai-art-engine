@@ -26,7 +26,7 @@ describe('adVariantMatrix', () => {
       prompt: '一瓶香水\n机位角度：正面\n视觉风格：简约'
     })
     expect(cells[3].combo).toEqual({ angle: '侧面', style: '高级' })
-    expect(cells[0].status).toBe('未审核')
+    expect(cells[0].status).toBe('unreviewed')
   })
 
   it('ignores dimensions with no values', () => {
@@ -70,7 +70,8 @@ describe('adVariantMatrix', () => {
     expect(normalized.product).toBe('产品')
     expect(normalized.dimensions[0].values).toEqual(['x'])
     expect(normalized.cells[0].outputRefs).toEqual(['r'])
-    expect(normalized.cells[0].status).toBe('已审核')
+    // 旧版中文状态值在读取时归一化为英文规范 id
+    expect(normalized.cells[0].status).toBe('reviewed')
   })
 
   it('roundtrips through genParams', () => {
@@ -137,9 +138,9 @@ describe('adVariantMatrix', () => {
       product: '产品',
       dimensions,
       cells: [
-        { id: 'c1', combo: {}, prompt: '', outputRefs: [], status: '未审核', verdict: '入选' },
-        { id: 'c2', combo: {}, prompt: '', outputRefs: [], status: '未审核', verdict: '淘汰' },
-        { id: 'c3', combo: {}, prompt: '', outputRefs: [], status: '未审核' }
+        { id: 'c1', combo: {}, prompt: '', outputRefs: [], status: 'unreviewed', verdict: '入选' },
+        { id: 'c2', combo: {}, prompt: '', outputRefs: [], status: 'unreviewed', verdict: '淘汰' },
+        { id: 'c3', combo: {}, prompt: '', outputRefs: [], status: 'unreviewed' }
       ]
     })
     expect(normalized.cells[0].verdict).toBe('selected')

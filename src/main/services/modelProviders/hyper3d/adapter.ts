@@ -15,6 +15,8 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import {
   LONG_GENERATE_TIMEOUT_MS,
   createProviderHttpClient,
@@ -23,6 +25,39 @@ import {
   trimBaseUrl
 } from '../http'
 import { resolveMediaBytesFromUrl } from '../../resolveMediaBytesFromUrl'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const HYPER3D_NAME = { zh: 'Rodin（Hyper3D）', en: 'Rodin (Hyper3D)' }
+const E_HYPER3D_NO_TEXT = defErrSimple(
+  'provider.hyper3d.unsupportedText',
+  'Rodin（Hyper3D）不支持文本生成',
+  'Rodin (Hyper3D) does not support text generation'
+)
+const E_HYPER3D_REQUIRES_INPUT = defErrSimple(
+  'provider.hyper3d.requiresInput',
+  'Rodin（Hyper3D）需要文本提示或参考图',
+  'Rodin (Hyper3D) requires a prompt or reference images'
+)
+const E_HYPER3D_NO_TASK_ID = defErrSimple(
+  'provider.hyper3d.noTaskId',
+  'Rodin（Hyper3D）未返回任务 uuid',
+  'Rodin (Hyper3D) returned no task uuid'
+)
+const E_HYPER3D_SUBMIT_FAILED = defErr<{ detail: string }>(
+  'provider.hyper3d.submitFailed',
+  ({ detail }) => `提交 Rodin（Hyper3D）3D 生成失败: ${detail}`,
+  ({ detail }) => `Failed to submit Rodin (Hyper3D) 3D generation: ${detail}`
+)
+const E_HYPER3D_POLL_FAILED = defErr<{ detail: string }>(
+  'provider.hyper3d.pollFailed',
+  ({ detail }) => `轮询 Rodin（Hyper3D）3D 生成失败: ${detail}`,
+  ({ detail }) => `Failed to poll Rodin (Hyper3D) 3D generation: ${detail}`
+)
+const E_HYPER3D_GEN_FAILED = defErrSimple(
+  'provider.hyper3d.generationFailed',
+  'Rodin（Hyper3D）3D 生成失败',
+  'Rodin (Hyper3D) 3D generation failed'
+)
 
 /**
  * Rodin（Hyper3D）3D 模型生成适配器
@@ -65,7 +100,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
       if (axios.isAxiosError(err) && !isAuthFailure(err.response?.status, err.message)) {
         return
       }
-      throw new Error(`Rodin（Hyper3D）连接测试失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: await readHttpError(err) })
     }
   },
 
@@ -87,7 +122,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    throw new Error('Rodin（Hyper3D）不支持文本生成')
+    throw fail(E_HYPER3D_NO_TEXT)
   },
 
   generateImage(
@@ -95,7 +130,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateImageInput
   ): Promise<GenerateImageResult> {
-    throw new Error('Rodin（Hyper3D）不支持图片生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'image', name: HYPER3D_NAME })
   },
 
   async submitVideo(
@@ -103,14 +138,14 @@ export const hyper3dAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    throw new Error('Rodin（Hyper3D）不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'video', name: HYPER3D_NAME })
   },
 
   async pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('Rodin（Hyper3D）不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'video', name: HYPER3D_NAME })
   },
 
   generateSpeech(
@@ -118,7 +153,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('Rodin（Hyper3D）不支持语音合成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'speech', name: HYPER3D_NAME })
   },
 
   async submitModel3d(
@@ -131,7 +166,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
       .filter(Boolean)
     const prompt = input.prompt?.trim() || ''
 
-    if (!refs.length && !prompt) throw new Error('Rodin（Hyper3D）需要文本提示或参考图')
+    if (!refs.length && !prompt) throw fail(E_HYPER3D_REQUIRES_INPUT)
 
     const form = new FormData()
     if (prompt) form.append('prompt', prompt)
@@ -149,7 +184,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
       const client = createHyper3dFormClient(provider)
       const { data } = await client.post<{ uuid?: string }>('/rodin', form)
       const taskId = data?.uuid
-      if (!taskId) throw new Error('Rodin（Hyper3D）未返回任务 uuid')
+      if (!taskId) throw fail(E_HYPER3D_NO_TASK_ID)
       return {
         jobId: taskId,
         pollingUrl: taskId,
@@ -157,7 +192,7 @@ export const hyper3dAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交 Rodin（Hyper3D）3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_HYPER3D_SUBMIT_FAILED, { detail: await readHttpError(err) })
     }
   },
 
@@ -181,14 +216,14 @@ export const hyper3dAdapter: ModelProviderAdapter = {
 
       const s = (data?.status ?? '').toLowerCase()
       if (s === 'failed' || s === 'error' || s === 'cancelled') {
-        return { status: 'failed', progress: 100, error: 'Rodin（Hyper3D）3D 生成失败' }
+        return { status: 'failed', progress: 100, error: fail(E_HYPER3D_GEN_FAILED).message }
       }
       if (s === 'running' || s === 'processing' || s === 'in_progress') {
         return { status: 'in_progress', progress: 55 }
       }
       return { status: 'pending', progress: 20 }
     } catch (err) {
-      throw new Error(`轮询 Rodin（Hyper3D）3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_HYPER3D_POLL_FAILED, { detail: await readHttpError(err) })
     }
   }
 }

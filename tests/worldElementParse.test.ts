@@ -27,11 +27,11 @@ describe('worldElementParse', () => {
       id: 'a1',
       name: 'Ada',
       prompt: 'portrait',
-      status: '未审核'
+      status: 'unreviewed'
     })
   })
 
-  it('parses explicit reviewed status and chinese aliases', () => {
+  it('parses legacy chinese alias keys/status into canonical ids', () => {
     const catalog = parseWorldElementCatalog(`\`\`\`json
 {
   "角色": [{ "名称": "小林", "提示词": "旅人", "状态": "已审核" }],
@@ -43,7 +43,8 @@ describe('worldElementParse', () => {
     expect(catalog?.characters).toHaveLength(1)
     expect(catalog?.characters[0]?.name).toBe('小林')
     expect(catalog?.characters[0]?.prompt).toBe('旅人')
-    expect(catalog?.characters[0]?.status).toBe('已审核')
+    // 旧版中文「已审核」必须归一化为英文规范值
+    expect(catalog?.characters[0]?.status).toBe('reviewed')
     expect(catalog?.characters[0]?.id).toMatch(/^we-characters-/)
     expect(catalog?.weapons).toHaveLength(1)
     expect(catalog?.weapons[0]?.name).toBe('青玉剑')
@@ -58,15 +59,15 @@ describe('worldElementParse', () => {
       "extra": [{ "id": "x", "name": "X", "prompt": "y" }]
     }`)
     expect(catalog?.weapons).toEqual([
-      { id: 'w1', name: 'Blade', prompt: 'sword', status: '未审核' }
+      { id: 'w1', name: 'Blade', prompt: 'sword', status: 'unreviewed' }
     ])
   })
 
   it('merges catalogs preserving reviewed items by id', () => {
     const previous: WorldElementCatalog = {
       characters: [
-        { id: 'a1', name: 'Ada', prompt: 'keep-me', status: '已审核' },
-        { id: 'a2', name: 'Bob', prompt: 'old', status: '未审核' }
+        { id: 'a1', name: 'Ada', prompt: 'keep-me', status: 'reviewed' },
+        { id: 'a2', name: 'Bob', prompt: 'old', status: 'unreviewed' }
       ],
       scenes: [],
       props: [],
@@ -76,8 +77,8 @@ describe('worldElementParse', () => {
     }
     const next: WorldElementCatalog = {
       characters: [
-        { id: 'a1', name: 'AdaX', prompt: 'changed', status: '未审核' },
-        { id: 'a3', name: 'Cara', prompt: 'new', status: '未审核' }
+        { id: 'a1', name: 'AdaX', prompt: 'changed', status: 'unreviewed' },
+        { id: 'a3', name: 'Cara', prompt: 'new', status: 'unreviewed' }
       ],
       scenes: [],
       props: [],
@@ -87,21 +88,21 @@ describe('worldElementParse', () => {
     }
     const merged = mergeWorldCatalogPreservingReviewed(previous, next)
     expect(merged?.characters).toEqual([
-      { id: 'a1', name: 'Ada', prompt: 'keep-me', status: '已审核' },
-      { id: 'a3', name: 'Cara', prompt: 'new', status: '未审核' }
+      { id: 'a1', name: 'Ada', prompt: 'keep-me', status: 'reviewed' },
+      { id: 'a3', name: 'Cara', prompt: 'new', status: 'unreviewed' }
     ])
   })
 
-  it('serializes status field', () => {
+  it('serializes canonical status values (legacy chinese input normalizes on write)', () => {
     const text = stringifyWorldElementCatalog({
-      characters: [{ id: 'a1', name: 'Ada', prompt: 'p', status: '已审核' }],
+      characters: [{ id: 'a1', name: 'Ada', prompt: 'p', status: 'reviewed' }],
       scenes: [],
       props: [],
       weapons: [],
       style: 'ink-wash wuxia',
       worldview: 'classical martial world'
     })
-    expect(text).toContain('"status": "已审核"')
+    expect(text).toContain('"status": "reviewed"')
     expect(text).toContain('"weapons"')
     expect(text).toContain('"style"')
     expect(text).toContain('"worldview"')

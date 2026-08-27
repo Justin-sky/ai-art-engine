@@ -27,7 +27,7 @@ function unit(id: string, order: number, title: string): BeatRow {
     props: [],
     weapons: [],
     sourceExcerpt: '',
-    status: '未审核'
+    status: 'unreviewed'
   }
 }
 

@@ -1,3 +1,5 @@
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 import { convertComfyUiWorkflowToApi, isComfyUiGraphWorkflow } from './uiToApi'
 
 export type ComfyApiNode = {
@@ -143,7 +145,7 @@ export function collectComfyNodeClassTypes(raw: unknown): string[] {
 /** 把 UI 导出（nodes/links / subgraph）或 { prompt } 包一层的 JSON 收成 API 图 */
 export function unwrapComfyApiWorkflow(raw: unknown): ComfyApiWorkflow {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('workflow 不是对象')
+    throw fail(SHARED_ERRORS.comfyuiWorkflowNotObject)
   }
   const obj = raw as Record<string, unknown>
   if (isComfyUiGraphWorkflow(obj)) {
@@ -165,7 +167,7 @@ export function unwrapComfyApiWorkflow(raw: unknown): ComfyApiWorkflow {
   if (values.some((v) => v && typeof v === 'object' && 'class_type' in (v as object))) {
     return obj as ComfyApiWorkflow
   }
-  throw new Error('无法识别 ComfyUI API 格式 workflow')
+  throw fail(SHARED_ERRORS.comfyuiUnrecognizedFormat)
 }
 
 export function sizeFromAspectRatio(

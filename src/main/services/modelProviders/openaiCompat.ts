@@ -17,6 +17,8 @@ import {
   readHttpError,
   sleep
 } from './http'
+import { PROVIDER_ERRORS } from './catalog'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { projectService } from '../projectService'
 
 type ChatMessage = { role: string; content: unknown }
@@ -38,8 +40,75 @@ type ChatCompletionResponse = {
   model?: string
 }
 
-const EMPTY_CHAT_TEXT_HINT =
-  '模型未返回文本内容。可能原因：思考模型只产出了内部推理字段、响应走了 tool_calls、或 choices 为空。请换普通 chat 文本模型重试，并确认接入点支持 /chat/completions。'
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_EMPTY_CHAT_TEXT = defErrSimple(
+  'provider.openai-compat.empty-chat-text',
+  '模型未返回文本内容。可能原因：思考模型只产出了内部推理字段、响应走了 tool_calls、或 choices 为空。请换普通 chat 文本模型重试，并确认接入点支持 /chat/completions。',
+  'The model returned no text content. Possible causes: a reasoning model only produced internal reasoning fields, the response took tool_calls, or choices was empty. Try a regular chat text model and confirm the endpoint supports /chat/completions.'
+)
+
+const E_CHAT_REFUSAL = defErr<{ refusal: string }>(
+  'provider.openai-compat.chat-refused',
+  ({ refusal }) => `模型拒绝回答：${refusal}`,
+  ({ refusal }) => `The model refused to answer: ${refusal}`
+)
+
+const E_TOS_OPENROUTER_DENIED = defErrSimple(
+  'provider.openai-compat.tos-openrouter-denied',
+  'OpenRouter 拒绝了该请求（provider Terms of Service / 数据策略）。' +
+    '常见原因：隐私设置未允许该上游供应商（如 OpenAI），或账号对 openai/* 路由受限。' +
+    '请到 https://openrouter.ai/settings/privacy 调整 Provider 与数据策略后重试；' +
+    '也可改用非 OpenAI 文本模型，或换用方舟 / 通义等国内文本接入点。',
+  'OpenRouter rejected this request (provider Terms of Service / data policy). ' +
+    'Common causes: privacy settings do not allow the upstream provider (e.g. OpenAI), or your account restricts openai/* routes. ' +
+    'Adjust providers and data policy at https://openrouter.ai/settings/privacy and retry; ' +
+    'or switch to a non-OpenAI text model or a domestic endpoint such as Volcengine Ark / Qwen.'
+)
+
+const E_TOS_UPSTREAM_DENIED = defErrSimple(
+  'provider.openai-compat.tos-upstream-denied',
+  '上游模型提供商拒绝了该请求（Terms of Service / 内容或路由策略）。' +
+    '请换一个文本模型重试，或检查该提供商控制台的隐私、区域与模型访问权限。',
+  'The upstream model provider rejected this request (Terms of Service / content or routing policy). ' +
+    'Try another text model, or check privacy, region and model access settings in that provider console.'
+)
+
+const E_TEXT_REQUEST_TIMEOUT = defErr<{ sec: number }>(
+  'provider.openai-compat.text-request-timeout',
+  ({ sec }) => `请求超时（已等待 ${sec} 秒）。长输出可再试一次，或改用更快的文本模型`,
+  ({ sec }) => `Request timed out after ${sec}s. Retry for long outputs, or switch to a faster text model`
+)
+
+const E_ARK_TEXT_INTERNAL = defErr<{ requestId?: string }>(
+  'provider.openai-compat.ark-text-internal-error',
+  ({ requestId }) =>
+    `火山方舟服务端内部错误${requestId ? `（Request id: ${requestId}）` : ''}。` +
+    `这通常是方舟侧瞬时故障或接入点异常，不是本地超时。` +
+    `请稍后重试；若持续失败，到方舟控制台核对该文本模型接入点状态/余额，或换一个文本接入点`,
+  ({ requestId }) =>
+    `Volcengine Ark server-side internal error${requestId ? ` (Request id: ${requestId})` : ''}. ` +
+    `This is usually a transient Ark-side failure or endpoint issue, not a local timeout. ` +
+    `Retry later; if it persists, verify the text model endpoint status/balance in the Ark console or switch to another endpoint`
+)
+
+const E_TEXT_SERVER_INTERNAL = defErr<{ requestId?: string }>(
+  'provider.openai-compat.text-server-internal-error',
+  ({ requestId }) => `服务端内部错误${requestId ? `（Request id: ${requestId}）` : ''}，请稍后重试`,
+  ({ requestId }) =>
+    `Server-side internal error${requestId ? ` (Request id: ${requestId})` : ''}; please retry later`
+)
+
+const E_TEXT_GENERATE_FAILED = defErr<{ detail: string }>(
+  'provider.openai-compat.text-generate-failed',
+  ({ detail }) => `文本生成失败: ${detail}`,
+  ({ detail }) => `Text generation failed: ${detail}`
+)
+
+const E_VOICE_GENERATE_FAILED = defErr<{ detail: string }>(
+  'provider.openai-compat.voice-generate-failed',
+  ({ detail }) => `语音生成失败: ${detail}`,
+  ({ detail }) => `Voice generation failed: ${detail}`
+)
 
 function normalizeMessageContent(content: unknown): string {
   if (typeof content === 'string') return content.trim()
@@ -88,7 +157,7 @@ export function extractChatCompletionText(data: ChatCompletionResponse): string 
   }
 
   if (typeof message?.refusal === 'string' && message.refusal.trim()) {
-    throw new Error(`模型拒绝回答：${message.refusal.trim()}`)
+    throw fail(E_CHAT_REFUSAL, { refusal: message.refusal.trim() })
   }
 
   return ''
@@ -161,17 +230,9 @@ export function explainProviderTosDenial(raw: string, baseUrl?: string): string 
     return null
   }
   if (/openrouter\.ai/i.test(baseUrl || '')) {
-    return (
-      'OpenRouter 拒绝了该请求（provider Terms of Service / 数据策略）。' +
-      '常见原因：隐私设置未允许该上游供应商（如 OpenAI），或账号对 openai/* 路由受限。' +
-      '请到 https://openrouter.ai/settings/privacy 调整 Provider 与数据策略后重试；' +
-      '也可改用非 OpenAI 文本模型，或换用方舟 / 通义等国内文本接入点。'
-    )
+    return fail(E_TOS_OPENROUTER_DENIED).message
   }
-  return (
-    '上游模型提供商拒绝了该请求（Terms of Service / 内容或路由策略）。' +
-    '请换一个文本模型重试，或检查该提供商控制台的隐私、区域与模型访问权限。'
-  )
+  return fail(E_TOS_UPSTREAM_DENIED).message
 }
 
 async function formatTextGenerateFailure(
@@ -180,7 +241,7 @@ async function formatTextGenerateFailure(
 ): Promise<string> {
   if (axios.isAxiosError(err) && err.code === 'ECONNABORTED') {
     const sec = Math.round(LONG_GENERATE_TIMEOUT_MS / 1000)
-  return `请求超时（已等待 ${sec} 秒）。长输出可再试一次，或改用更快的文本模型`
+    return fail(E_TEXT_REQUEST_TIMEOUT, { sec }).message
   }
 
   const raw = await readHttpError(err)
@@ -199,14 +260,11 @@ async function formatTextGenerateFailure(
     /InternalServiceError/i.test(code) ||
     /internal\s*(service\s*)?error/i.test(raw)
   ) {
-    const idHint = requestId ? `（Request id: ${requestId}）` : ''
+    const idHint = requestId ?? undefined
     if (isVolcengineArkProvider(provider)) {
-      return (
-        `火山方舟服务端内部错误${idHint}。这通常是方舟侧瞬时故障或接入点异常，不是本地超时。` +
-        `请稍后重试；若持续失败，到方舟控制台核对该文本模型接入点状态/余额，或换一个文本接入点`
-      )
+      return fail(E_ARK_TEXT_INTERNAL, { requestId: idHint }).message
     }
-    return `服务端内部错误${idHint}，请稍后重试`
+    return fail(E_TEXT_SERVER_INTERNAL, { requestId: idHint }).message
   }
 
   return formatAuthError(raw, provider)
@@ -242,7 +300,7 @@ export async function generateOpenAiCompatibleText(
         { headers: authHeaders(provider.apiKey) }
       )
       const text = extractChatCompletionText(data)
-      if (!text) throw new Error(EMPTY_CHAT_TEXT_HINT)
+      if (!text) throw fail(E_EMPTY_CHAT_TEXT)
       return { text, model: data.model ?? modelId }
     } catch (err) {
       lastError = err
@@ -261,7 +319,7 @@ export async function generateOpenAiCompatibleText(
             { headers: authHeaders(provider.apiKey) }
           )
           const text = extractChatCompletionText(data)
-          if (!text) throw new Error(EMPTY_CHAT_TEXT_HINT)
+          if (!text) throw fail(E_EMPTY_CHAT_TEXT)
           return { text, model: data.model ?? modelId }
         } catch (retryErr) {
           lastError = retryErr
@@ -273,7 +331,9 @@ export async function generateOpenAiCompatibleText(
     }
   }
 
-  throw new Error(`文本生成失败: ${await formatTextGenerateFailure(lastError, provider)}`)
+  throw fail(E_TEXT_GENERATE_FAILED, {
+    detail: await formatTextGenerateFailure(lastError, provider)
+  })
 }
 
 /** OpenAI 兼容：POST /audio/speech */
@@ -300,7 +360,7 @@ export async function generateOpenAiCompatibleSpeech(
     )
 
     const buf = Buffer.from(response.data as ArrayBuffer)
-    if (!buf.length) throw new Error('模型未返回音频数据')
+    if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
 
     const ext = format === 'pcm' ? 'pcm' : 'mp3'
     const stamp = Date.now()
@@ -333,6 +393,6 @@ export async function generateOpenAiCompatibleSpeech(
     writeFileSync(filePath, buf)
     return { model: modelId, voice, format, filePath }
   } catch (err) {
-    throw new Error(`语音生成失败: ${await readHttpError(err)}`)
+    throw fail(E_VOICE_GENERATE_FAILED, { detail: await readHttpError(err) })
   }
 }

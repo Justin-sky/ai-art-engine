@@ -19,6 +19,8 @@ import {
 } from '@shared/modelProviders/google/modelCapabilities'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -29,10 +31,15 @@ import {
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 
-function notSupported(feature: string): Promise<never> {
-  return Promise.reject(
-    new Error(`Google（Gemini）提供商暂未接入${feature}，当前仅支持文本、图片与视频`)
-  )
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_NOT_SUPPORTED = defErrSimple(
+  'provider.google.unsupported-speech',
+  'Google（Gemini）提供商暂未接入语音合成，当前仅支持文本、图片与视频',
+  'Google (Gemini) does not support speech synthesis yet; text, image and video only'
+)
+
+function notSupported(): Promise<never> {
+  return Promise.reject(fail(E_NOT_SUPPORTED))
 }
 
 function parseGeneratedImages(
@@ -46,7 +53,7 @@ function parseGeneratedImages(
       return ''
     })
     .filter(Boolean)
-  if (!images.length) throw new Error('Google 未返回图片')
+  if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
   return { images, model: modelId }
 }
 
@@ -60,7 +67,10 @@ async function fetchTextCatalog(provider: ModelProviderInstance): Promise<Catalo
       .filter(isGoogleTextModelId)
       .map((id) => ({ id, name: id, modality: 'text' as const }))
   } catch (err) {
-    throw new Error(`拉取 Google 文本模型列表失败: ${await readHttpError(err)}`)
+    throw fail(PROVIDER_ERRORS.actionFailed, {
+      action: 'listModels',
+      detail: await readHttpError(err)
+    })
   }
 }
 
@@ -110,7 +120,7 @@ export const googleAdapter: ModelProviderAdapter = {
   kind: 'google',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient(provider)
     try {
       await client.get('/models', { timeout: 20_000 })
@@ -118,9 +128,11 @@ export const googleAdapter: ModelProviderAdapter = {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
       const raw = await readHttpError(err)
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型: ${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败: ${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -169,9 +181,10 @@ export const googleAdapter: ModelProviderAdapter = {
       }>('/images/generations', body)
       return parseGeneratedImages(data, modelId)
     } catch (err) {
-      throw new Error(
-        `Google 图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`
-      )
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -198,7 +211,7 @@ export const googleAdapter: ModelProviderAdapter = {
     try {
       const { data } = await client.post<{ id?: string }>('/videos', body)
       const jobId = data.id
-      if (!jobId) throw new Error('Google 未返回视频任务 id')
+      if (!jobId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId,
         pollingUrl: `${trimBaseUrl(provider.baseUrl)}/videos/${jobId}`,
@@ -206,7 +219,10 @@ export const googleAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交 Google 视频生成失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -248,12 +264,15 @@ export const googleAdapter: ModelProviderAdapter = {
 
       return {
         status,
-      progress,
+        progress,
         error,
         downloadUrl: status === 'completed' ? extractVideoDownloadUrl(data) : undefined
       }
     } catch (err) {
-      throw new Error(`轮询 Google 视频任务失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -262,7 +281,7 @@ export const googleAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('语音合成')
+    return notSupported()
   },
 
   submitModel3d(
@@ -270,13 +289,13 @@ export const googleAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

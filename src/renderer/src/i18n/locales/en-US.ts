@@ -20,6 +20,16 @@ export default {
     open: 'Open',
     close: 'Close'
   },
+  characterRefs: {
+    title: 'Character refs',
+    importFromCatalog: 'Import from world catalog',
+    collapse: 'Collapse',
+    hint: 'Bind character reference images from the world catalog; they are injected during generation to keep the same character consistent across shots.',
+    removeTitle: 'Remove',
+    empty: 'No characters bound yet',
+    loadingCatalog: 'Loading world characters…',
+    catalogEmpty: 'No characters with generated images in the world catalog'
+  },
   aiWorkflow: {
     title: 'One-Click Workflow',
     shortAction: 'One-Click Workflow',
@@ -215,6 +225,10 @@ export default {
       arkVoiceCredentialsHint:
         'Voice design uses Doubao openspeech — use the speech console API key (may differ from Ark) and enter a purchased speaker_id:',
       fetchModels: 'Fetch models',
+      preloadListModelsUnavailable:
+        'window.studio.listModels is unavailable: fully exit and re-run npm run dev (preload changes are not hot-reloaded)',
+      capFirstFrame: 'First frame',
+      capLastFrame: 'Last frame',
       testingConnection: 'Verifying API key…',
       loading: 'Loading…',
       catalogCount: '{n} models',
@@ -553,7 +567,8 @@ export default {
       freeCanvas: 'Free Canvas',
       world: 'World Elements',
       beat: 'Beat Units',
-      subgraph: 'Host Asset'
+      subgraph: 'Host Asset',
+      model3d: '3D Model'
     },
     create: {
       image: 'New Image',
@@ -567,6 +582,7 @@ export default {
       world: 'New World Elements',
       beat: 'New Beat Units',
       subgraph: 'New Host Asset',
+      model3d: 'New 3D Model',
       default: 'New Asset',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
@@ -904,7 +920,18 @@ export default {
       exportEmpty: 'Timeline is empty',
       exportSrt: 'Export subtitles as SRT',
       exportSrtDone: 'Subtitles exported:\n{path}',
-      exportSrtFailed: 'Subtitle export failed: {error}'
+      exportSrtFailed: 'Subtitle export failed: {error}',
+      resizeSourcesWidth: 'Drag to resize library width',
+      resizeInspectorWidth: 'Drag to resize inspector width',
+      subtitleScaleHint: 'Scale subtitle',
+      recordFallbackFailed: 'Recorder fallback also failed: {error}',
+      recorderUnsupported:
+        'MediaRecorder is unavailable in this environment and ffmpeg was not detected',
+      canvasUnavailable: 'Unable to create canvas',
+      recordEmpty: 'Recording produced no data',
+      recordCanceled: 'Canceled',
+      defaultVideoTitle: 'Video {index}',
+      defaultVoiceTitle: 'Voice {index}'
     },
     pane: {
       resizeSplit: 'Drag to resize the upper/lower canvases'
@@ -967,6 +994,7 @@ export default {
       createCamera: 'Create Camera',
       createEmpty: 'Create Empty',
       createMenu: 'Create object',
+      aiBlockoutGroupName: 'AI Blockout',
       deleteObject: 'Delete',
       copy: 'Copy',
       paste: 'Paste',
@@ -1305,6 +1333,159 @@ export default {
       }
     }
   },
+  divePipeline: {
+    episode: {
+      title: {
+        default: 'Episode storyboard pipeline'
+      },
+      header: {
+        currentStep: 'Current step: ',
+        busyTasks: 'Tasks running…',
+        viewTrace: 'View trace',
+        traceOpen: 'Open this run trace',
+        traceNone: 'No trace yet for this run',
+        refresh: 'Refresh',
+        refreshing: 'Refreshing…',
+        failPrefix: 'FAIL: ',
+        failReasonTitle: 'Reason of the last failed director review'
+      },
+      empty: {
+        noGraph:
+          'No workflow data found yet. Run a "Storyboard · Beat Breakdown Table" node first, then open this view from the "Episode Pipeline" toolbar button.',
+        beatsUnparsed: 'Beat breakdown has content but could not be parsed into a table',
+        beatsPending: 'Not generated (run the breakdown node)',
+        anchorsUnparsed: '9-grid has content but could not be parsed',
+        anchorsPending: 'Not generated (run the beatboard node)',
+        cellsUnparsed: '4-grid has content but could not be parsed',
+        cellsPending: 'Not generated (run the sequence node)'
+      },
+      panel: {
+        beats: 'Beat breakdown',
+        boardDirect: '9-grid storyboard table · direct-to-video'
+      },
+      action: {
+        directorReview: 'Director review',
+        generate: 'Generate',
+        regenerate: 'Regenerate',
+        generateMotion: 'Generate motion prompts',
+        generateMotionDirect: 'Generate 9-grid motion prompts',
+        buildGrid4: 'Generate 4-grid collage',
+        buildGrid9: 'Generate 9-grid collage'
+      },
+      stageBusyTitle: {
+        breakdown: 'Generating beat breakdown…',
+        beatboard: 'Generating 9-grid storyboard table…',
+        sequence: 'Generating 4-grid storyboard table…',
+        motion: 'Generating motion prompts…'
+      },
+      task: {
+        stage: 'Storyboard pipeline · {stage}',
+        buildGrid4Group: 'Generate 4-grid collage · Group {g}',
+        video: 'Motion video · Cell {g}-{c}'
+      },
+      state: {
+        generating: 'Generating…',
+        passedMark: '✓ Passed',
+        awaitReview: 'Awaiting review',
+        generated: 'Generated',
+        ranOnce: 'Ran once',
+        failed: 'Failed',
+        notGenerated: 'Not generated',
+        noImage: 'No image yet',
+        completed: 'Completed'
+      },
+      stepLabel: {
+        motionDirect: '9-grid motion prompt table'
+      },
+      stepHint: {
+        default: 'The stage the pipeline has advanced to',
+        breakdown: 'Beat breakdown table generated; advancing to the 9-grid storyboard table',
+        beatboardDirect:
+          '9-grid storyboard table generated; advancing to the Animator · 9-grid motion prompt table',
+        beatboardCells:
+          '9-grid storyboard table generated; advancing to the 4-grid motion storyboard table',
+        readyDirect:
+          '9-grid motion prompt table generated; generate all 9 direct videos cell by cell or in one click',
+        sequenceCells: '4-grid motion storyboard table generated; advancing to the motion prompt table',
+        motionCells: 'Motion prompt table generated; completes once director review passes',
+        completed: 'All stages approved'
+      },
+      cell: {
+        short: 'Cell {n}',
+        key: 'Cell {g}-{c}',
+        beatRef: 'Beat {n}',
+        beatRefTitle: 'Linked beat'
+      },
+      anchor: {
+        badge: 'Anchor',
+        badgeTitle: 'Key anchors (the first 9 anchors map to the 9-grid)'
+      },
+      breadcrumb: {
+        direct: 'Scene/beat #{beat} → Cell {cell} → 9-cell direct video',
+        cells: 'Scene/beat #{beat} → Cell {cell} → Motion cell {key}'
+      },
+      detail: {
+        grid4: '4-grid ({index})',
+        motionDirect: '9-grid motion prompts',
+        motionCell: 'Motion prompts ({key})',
+        videoOutput: 'Video output',
+        generateVideo: 'Generate this video',
+        regenVideo: 'Regenerate this video',
+        videoWaitRegen: 'Wait for regeneration to finish before generating video',
+        videoRunning: 'This video is being generated…',
+        videoNeedsPrompt: 'Generate motion prompts first'
+      },
+      hint: {
+        backFromToolbar:
+          'Use the "Episode Pipeline" button on the top toolbar to return to this view anytime; images/videos run in the node graph.'
+      }
+    },
+    agent: {
+      title: 'Agent pipeline',
+      summary: {
+        pending: 'Pending {n}',
+        pendingTitle: 'Pending: review pending + rework running',
+        fail: 'FAIL {n}',
+        failTitle: 'Quality-check FAIL node count',
+        exhausted: 'Exhausted {n}',
+        exhaustedTitle: 'Rework nodes exhausted without passing'
+      },
+      fail: {
+        latestTitle: 'Reason of the last FAIL / exhaustion',
+        latestPrefix: 'Last failure: '
+      },
+      empty: {
+        noNodes:
+          'This canvas has no "Quality check (media.review)" or "Rework (media.rework)" nodes yet. After running a generate node, connect a quality-check node downstream for automatic review; on FAIL the rework node retries automatically until PASS or the attempt limit.'
+      },
+      panel: {
+        review: 'Quality check nodes (media.review)',
+        rework: 'Rework nodes (media.rework)',
+        noReview: 'No quality check nodes',
+        noRework: 'No rework nodes',
+        locateHint: 'Click to locate the node'
+      },
+      row: {
+        attempt: 'Attempt {attempt}/{maxAttempts}'
+      },
+      status: {
+        review: {
+          pending: 'Awaiting review'
+        },
+        rework: {
+          running: 'Reworking',
+          passed: 'Passed',
+          exhausted: 'Exhausted'
+        }
+      }
+    },
+    uiSplit: {
+      loading: 'Opening UI split inner canvas…',
+      error: {
+        noScreens: 'Generate UI screen prompts first, then double-click to enter the inner canvas.'
+      }
+    }
+  },
   canvas: {
     toolbar: {
       grid: 'Grid',
@@ -1334,6 +1515,10 @@ export default {
       imageOnly: 'Canvas only accepts image assets',
       noFile: 'This image has no linked file yet'
     }
+  },
+  review: {
+    unreviewed: 'Unreviewed',
+    reviewed: 'Reviewed'
   },
   beat: {
     asset: {
@@ -1431,6 +1616,12 @@ export default {
       scenes: 'Scenes',
       props: 'Props',
       weapons: 'Weapons'
+    },
+    kind: {
+      character: 'Character',
+      scene: 'Scene',
+      prop: 'Prop',
+      weapon: 'Weapon'
     },
     tableWindow: {
       loading: 'Opening world element table…',
@@ -1670,7 +1861,14 @@ export default {
       beatboard: '9-grid beat board',
       sequence: '4-grid storyboard',
       motion: 'Motion prompts',
-      review: 'Director review'
+      review: 'Director review',
+      title: {
+        beatBreakdown: 'Beat Breakdown Table',
+        grid9Storyboard: '9-Grid Storyboard Table',
+        grid4Motion: '4-Grid Motion Storyboard Table',
+        motionPrompt: 'Motion Prompt Table',
+        directorReview: 'Director Review'
+      }
     },
     bundle: {
       title: 'Bundle',
@@ -1886,6 +2084,8 @@ export default {
     portraitQuality: {
       appMark: 'Portrait texture',
       previewEmpty: 'Connect an image input to preview here',
+      previewLoadFailed: 'Failed to load preview image',
+      compareLoadFailed: 'Failed to load image',
       before: 'Before',
       after: 'After',
       generated: 'Generated',
@@ -2269,7 +2469,9 @@ export default {
       expandImageGridShort: 'Expand',
       collapseImageGridShort: 'Stack',
       enableLock: 'Lock: skip execution and keep the last result',
-      disableLock: 'Unlock: the next run will re-execute'
+      disableLock: 'Unlock: the next run will re-execute',
+      directorReviewFail: 'Director review failed',
+      directorReviewPass: 'Director review passed'
     },
     nodeRole: {
       ref: 'Ref',

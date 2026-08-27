@@ -70,7 +70,7 @@ describe('beatUnit scope', () => {
       props: [],
       weapons: [],
       sourceExcerpt: '撑伞走进巷口',
-      status: '未审核'
+      status: 'unreviewed'
     }
     const node = createBeatRefNode(unit, { x: 10, y: 20 })
     expect(node.typeId).toBe('beat.unitRef')

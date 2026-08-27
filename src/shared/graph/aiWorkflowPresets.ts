@@ -1,8 +1,16 @@
 import type { GraphPlan } from './graphPlan'
 import { applyGraphSkill } from './graphSkills'
+import { EPISODE_AGENT_STOCK_TITLES } from './episodeStageTitles'
 
 /** 剧集 Agent 流水线：状态作用域键（集编号），生成后可改 */
 const EPISODE_SCOPE_KEY = 'ep01'
+
+/** 导演审核复合标题：前缀 + 目标阶段英文名（与旧中文「导演审核·X」同构） */
+function directorReviewTitle(target: keyof typeof EPISODE_AGENT_STOCK_TITLES): string {
+  return target === 'directorReview'
+    ? EPISODE_AGENT_STOCK_TITLES.directorReview
+    : `${EPISODE_AGENT_STOCK_TITLES.directorReview} · ${EPISODE_AGENT_STOCK_TITLES[target]}`
+}
 
 /** 短剧分镜（Agent 流水线）：剧本 → 节拍拆解 → 9宫格 → 9 锚点图 → 4宫格(36) → 动态提示词(36) → 36 视频，4 级导演审核；grid9 为 9宫格直出 9 条视频 */
 function buildEpisodePipelinePlan(
@@ -33,7 +41,7 @@ function buildEpisodePipelinePlan(
   add({
     key: 'breakdown',
     typeId: 'prompt.optimize',
-    title: '分镜师·节拍拆解表',
+    title: EPISODE_AGENT_STOCK_TITLES.breakdown,
     params: {
       ...scope,
       episodeStep: 'breakdown',
@@ -43,7 +51,7 @@ function buildEpisodePipelinePlan(
   add({
     key: 'review1',
     typeId: 'prompt.optimize',
-    title: '导演审核·节拍拆解表',
+    title: directorReviewTitle('breakdown'),
     params: {
       ...scope,
       episodeReviewTarget: 'breakdown',
@@ -57,7 +65,7 @@ function buildEpisodePipelinePlan(
   add({
     key: 'beatboard',
     typeId: 'prompt.optimize',
-    title: '分镜师·9宫格分镜表',
+    title: EPISODE_AGENT_STOCK_TITLES.beatboard,
     params: {
       ...scope,
       episodeStep: 'beatboard',
@@ -67,7 +75,7 @@ function buildEpisodePipelinePlan(
   add({
     key: 'review2',
     typeId: 'prompt.optimize',
-    title: '导演审核·9宫格分镜表',
+    title: directorReviewTitle('beatboard'),
     params: {
       ...scope,
       episodeReviewTarget: 'beatboard',
@@ -99,6 +107,8 @@ function buildEpisodePipelinePlan(
       typeId: 'image.gridSplit',
       title: `宫格提取·格${i}`,
       params: {
+        // 稳定参数：流水线视图优先按此定位，避免按标题探测
+        anchorCellIndex: i,
         imageGridSplit: {
           rows: 3,
           cols: 3,
@@ -114,7 +124,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'motion',
       typeId: 'prompt.optimize',
-      title: '动画师·9宫格动态提示词表',
+      title: EPISODE_AGENT_STOCK_TITLES.motion,
       params: {
         ...scope,
         episodeStep: 'motion',
@@ -127,7 +137,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'review4',
       typeId: 'prompt.optimize',
-      title: '导演审核·9宫格动态提示词表',
+      title: directorReviewTitle('motion'),
       params: {
         ...scope,
         episodeReviewTarget: 'motion',
@@ -156,6 +166,8 @@ function buildEpisodePipelinePlan(
         title: `动态视频·格${g}-1`,
         params: {
           ...applyGraphSkill('episode.video.grid9'),
+          // 稳定参数：流水线视图优先按此定位该条动态视频
+          motionCellIndex: `${g}-1`,
           generateDuration: 15
         }
       })
@@ -179,7 +191,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'sequence',
       typeId: 'prompt.optimize',
-      title: '分镜师·4宫格动态分镜表',
+      title: EPISODE_AGENT_STOCK_TITLES.sequence,
       params: {
         ...scope,
         episodeStep: 'sequence',
@@ -193,7 +205,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'review3',
       typeId: 'prompt.optimize',
-      title: '导演审核·4宫格动态分镜表',
+      title: directorReviewTitle('sequence'),
       params: {
         ...scope,
         episodeReviewTarget: 'sequence',
@@ -209,7 +221,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'motion',
       typeId: 'prompt.optimize',
-      title: '动画师·动态提示词表',
+      title: EPISODE_AGENT_STOCK_TITLES.motion,
       params: {
         ...scope,
         episodeStep: 'motion',
@@ -219,7 +231,7 @@ function buildEpisodePipelinePlan(
     add({
       key: 'review4',
       typeId: 'prompt.optimize',
-      title: '导演审核·动态提示词表',
+      title: directorReviewTitle('motion'),
       params: {
         ...scope,
         episodeReviewTarget: 'motion',
@@ -256,6 +268,8 @@ function buildEpisodePipelinePlan(
           typeId: 'image.gridSplit',
           title: `宫格提取·组${g}-格${c}`,
           params: {
+            // 稳定参数：4 宫格按「组-格」定位，替代按标题探测
+            gridCellIndex: `${g}-${c}`,
             imageGridSplit: {
               rows: 2,
               cols: 2,
@@ -285,6 +299,8 @@ function buildEpisodePipelinePlan(
           title: `动态视频·格${g}-${c}`,
           params: {
             ...applyGraphSkill('episode.video.grid4', { vars: { group: g, cell: c } }),
+            // 稳定参数：流水线视图优先按此定位该条动态视频
+            motionCellIndex: `${g}-${c}`,
             generateDuration: 4
           }
         })

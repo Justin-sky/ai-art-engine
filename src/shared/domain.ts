@@ -112,13 +112,50 @@ export function withImportedMediaRefParams(
   return { ...(genParams ?? {}), mediaRole: 'reference' }
 }
 
-/** 世界元素引用（分镜绑定 / 叙事名称列表共用） */
-export type WorldEntityKindLabel = '角色' | '场景' | '道具' | '武器'
+/** 世界元素引用（分镜绑定 / 叙事名称列表共用）；kind 以英文规范 id 持久化 */
+export type WorldEntityKind = 'scene' | 'character' | 'prop' | 'weapon'
 
 export interface WorldEntityRef {
   name: string
   imageUrl?: string
-  type?: WorldEntityKindLabel
+  type?: WorldEntityKind
+}
+
+/**
+ * 旧版中文 kind → 规范英文 id（仅供测试 / 文档说明用途）。
+ * 历史文档以「角色 / 场景 / 道具 / 武器」持久化；所有读取路径必须经过
+ * normalizeWorldEntityKind 归一化。
+ */
+export const LEGACY_WORLD_ENTITY_KIND: Record<string, WorldEntityKind> = {
+  角色: 'character', // cjk-ok 旧版中文持久化值（只读兼容，不再写入）
+  场景: 'scene', // cjk-ok 旧版中文持久化值（只读兼容，不再写入）
+  道具: 'prop', // cjk-ok 旧版中文持久化值（只读兼容，不再写入）
+  武器: 'weapon' // cjk-ok 旧版中文持久化值（只读兼容，不再写入）
+}
+
+/** 归一化世界元素 kind：接受新旧两代值与常见英文同义词；无法识别返回 undefined */
+export function normalizeWorldEntityKind(value: unknown): WorldEntityKind | undefined {
+  if (typeof value !== 'string') return undefined
+  const raw = value.trim()
+  if (!raw) return undefined
+  const legacy = LEGACY_WORLD_ENTITY_KIND[raw]
+  if (legacy) return legacy
+  switch (raw.toLowerCase()) {
+    case 'scene':
+    case 'scenes':
+      return 'scene'
+    case 'character':
+    case 'characters':
+      return 'character'
+    case 'prop':
+    case 'props':
+      return 'prop'
+    case 'weapon':
+    case 'weapons':
+      return 'weapon'
+    default:
+      return undefined
+  }
 }
 
 
@@ -126,14 +163,6 @@ function asWorldEntityString(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   return ''
-}
-
-function asWorldEntityKind(value: unknown): WorldEntityKindLabel | undefined {
-  const raw = asWorldEntityString(value).trim()
-  if (raw === '角色' || raw === '场景' || raw === '道具' || raw === '武器') {
-    return raw
-  }
-  return undefined
 }
 
 function normalizeWorldEntityRef(item: unknown): WorldEntityRef | null {
@@ -151,7 +180,8 @@ function normalizeWorldEntityRef(item: unknown): WorldEntityRef | null {
     asWorldEntityString(row.image_url).trim() ||
     asWorldEntityString(row.url).trim() ||
     undefined
-  const type = asWorldEntityKind(row.type ?? row['类型'])
+  // 「类型」为模型输出的中文列别名（读取宽容项），归一化后写盘为英文 id
+  const type = normalizeWorldEntityKind(row.type ?? row['类型']) // cjk-ok 中文列别名宽容解析
   return {
     name,
     ...(imageUrl ? { imageUrl } : {}),

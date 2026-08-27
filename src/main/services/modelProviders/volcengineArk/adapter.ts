@@ -28,6 +28,8 @@ import {
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
 import { parseVolcengineArkImageLayers } from '@shared/modelProviders/volcengineArk/layerDecomposition'
 import { rewriteAtMentionsForVolcengineArkVideoPrompt } from '@shared/modelProviders/volcengineArk/videoPromptMentions'
+import { fail, defErr } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
   createProviderHttpClient,
@@ -37,6 +39,13 @@ import {
   readHttpError,
   trimBaseUrl
 } from '../http'
+
+/** 本地双语文案：拉取方舟模型列表失败（上游响应原文作为 detail 原样嵌入） */
+const E_ARK_LIST_MODELS_FAILED = defErr<{ detail: string }>(
+  'provider.volcengine.listModelsFailed',
+  ({ detail }) => `拉取火山方舟模型列表失败: ${detail}`,
+  ({ detail }) => `Failed to fetch Volcengine Ark model list: ${detail}`
+)
 import {
   generateOpenAiCompatibleText
 } from '../openaiCompat'
@@ -110,7 +119,7 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
   kind: 'volcengine-ark',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient(provider)
     try {
       await client.get('/models', { timeout: 20_000 })
@@ -118,9 +127,11 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
       const raw = await readHttpError(err)
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型：${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败：${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -162,7 +173,7 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
         })
         .filter((m) => m.modality === modality)
     } catch (err) {
-      throw new Error(`拉取火山方舟模型列表失败: ${await readHttpError(err)}`)
+      throw fail(E_ARK_LIST_MODELS_FAILED, { detail: await readHttpError(err) })
     }
   },
 
@@ -223,14 +234,17 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       }>('/images/generations', body)
 
       const parsed = parseVolcengineArkImageLayers(data.data)
-      if (!parsed.images.length) throw new Error('模型未返回图片')
+      if (!parsed.images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return {
         images: parsed.images,
         model: data.model ?? modelId,
         ...(input.layerDecomposition ? { layers: parsed.layers } : {})
       }
     } catch (err) {
-      throw new Error(`图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -258,7 +272,7 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
         '/contents/generations/tasks',
         body
       )
-      if (!data?.id) throw new Error('未返回视频任务 id')
+      if (!data?.id) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId: data.id,
         pollingUrl: `${trimBaseUrl(provider.baseUrl)}/contents/generations/tasks/${data.id}`,
@@ -266,7 +280,10 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交视频生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -313,7 +330,10 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
 
       return { status, progress, error, downloadUrl }
     } catch (err) {
-      throw new Error(`轮询视频任务失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -333,13 +353,13 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

@@ -5,6 +5,8 @@ import type {
   GenerateSpeechResult,
   ModelProviderInstance
 } from '@shared/modelProvider'
+import { isAppError, fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import { projectService } from '../../projectService'
 import {
   assertMiniMaxBaseResp,
@@ -12,6 +14,34 @@ import {
   readMiniMaxHttpError,
   type MiniMaxBaseResp
 } from './http'
+
+// —— 音色设计双语文案（中文保持原文不变，英文为新增映射）——
+const E_MMVD_PROMPT_REQUIRED = defErrSimple(
+  'provider.minimax.voiceDesign.promptRequired',
+  '请提供音色描述（声音设计 prompt）',
+  'Provide a voice description (voice design prompt)'
+)
+const E_MMVD_NO_PREVIEW_AUDIO = defErrSimple(
+  'provider.minimax.voiceDesign.noPreviewAudio',
+  '音色设计未返回试听音频',
+  'Voice design returned no preview audio'
+)
+const E_MMVD_NO_VOICE_ID = defErrSimple(
+  'provider.minimax.voiceDesign.noVoiceId',
+  '音色设计未返回 voice_id',
+  'Voice design returned no voice_id'
+)
+const E_MMVD_INVALID_HEX = defErrSimple(
+  'provider.minimax.voiceDesign.invalidTrialAudioHex',
+  '音色设计返回的试听音频不是合法 hex',
+  'The preview audio returned by voice design is not valid hex'
+)
+/** 上游/网络错误包装句式：上游响应原文作为 detail 原样嵌入 */
+const E_MMVD_FAILED = defErr<{ detail: string }>(
+  'provider.minimax.voiceDesign.apiFailed',
+  ({ detail }) => `音色设计失败: ${detail}`,
+  ({ detail }) => `Voice design failed: ${detail}`
+)
 
 /** 官方示例试听文案（音色设计必填 preview_text，最长 500） */
 const DEFAULT_PREVIEW_TEXT =
@@ -26,7 +56,7 @@ function clip(text: string, max: number): string {
 function hexToBuffer(hex: string): Buffer {
   const cleaned = hex.trim().replace(/^0x/i, '').replace(/\s+/g, '')
   if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
-    throw new Error('音色设计返回的试听音频不是合法 hex')
+    throw fail(E_MMVD_INVALID_HEX)
   }
   return Buffer.from(cleaned, 'hex')
 }
@@ -36,7 +66,7 @@ async function persistSpeechBuffer(
   input: GenerateSpeechInput,
   voiceId: string
 ): Promise<GenerateSpeechResult> {
-  if (!buf.length) throw new Error('模型未返回音频数据')
+  if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
   const stamp = Date.now()
 
   const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'tts')
@@ -78,7 +108,7 @@ export async function generateMiniMaxVoiceDesign(
 ): Promise<GenerateSpeechResult> {
   const prompt = clip(input.input, 1000)
   if (!prompt) {
-    throw new Error('请提供音色描述（声音设计 prompt）')
+    throw fail(E_MMVD_PROMPT_REQUIRED)
   }
 
   const body: Record<string, unknown> = {
@@ -101,12 +131,23 @@ export async function generateMiniMaxVoiceDesign(
     assertMiniMaxBaseResp(data.base_resp, '音色设计')
     const voiceId = data.voice_id?.trim()
     const trial = data.trial_audio?.trim()
-    if (!trial) throw new Error('音色设计未返回试听音频')
-    if (!voiceId) throw new Error('音色设计未返回 voice_id')
+    if (!trial) throw fail(E_MMVD_NO_PREVIEW_AUDIO)
+    if (!voiceId) throw fail(E_MMVD_NO_VOICE_ID)
     const buf = hexToBuffer(trial)
     return persistSpeechBuffer(buf, input, voiceId)
   } catch (err) {
-    if (err instanceof Error && /音色设计|请提供/.test(err.message)) throw err
-    throw new Error(`音色设计失败: ${await readMiniMaxHttpError(err)}`)
+    if (
+      isAppError(err) &&
+      [
+        E_MMVD_PROMPT_REQUIRED.code,
+        E_MMVD_NO_PREVIEW_AUDIO.code,
+        E_MMVD_NO_VOICE_ID.code,
+        E_MMVD_INVALID_HEX.code
+      ].includes(err.code)
+    ) {
+      throw err
+    }
+    if (err instanceof Error && /音色设计|请提供|voice design/i.test(err.message)) throw err
+    throw fail(E_MMVD_FAILED, { detail: await readMiniMaxHttpError(err) })
   }
 }

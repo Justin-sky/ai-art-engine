@@ -1,18 +1,18 @@
 <template>
   <div class="char-refs-editor">
     <div class="head">
-      <span class="title">角色绑定</span>
+      <span class="title">{{ t('characterRefs.title') }}</span>
       <span class="count">{{ refs.length }}/{{ cap }}</span>
       <button
         type="button"
         class="import-btn"
         @click="togglePicker"
       >
-        {{ pickerOpen ? '收起' : '从世界目录导入' }}
+        {{ pickerOpen ? t('characterRefs.collapse') : t('characterRefs.importFromCatalog') }}
       </button>
     </div>
     <p class="hint">
-      绑定世界人物目录的角色参考图，生成时注入参考图以保证跨分镜同人。
+      {{ t('characterRefs.hint') }}
     </p>
 
     <div
@@ -38,7 +38,7 @@
         <button
           type="button"
           class="remove-btn"
-          :title="'移除'"
+          :title="t('characterRefs.removeTitle')"
           @click="removeRef(index)"
         >
           ×
@@ -49,7 +49,7 @@
       v-else
       class="empty"
     >
-      尚未绑定角色
+      {{ t('characterRefs.empty') }}
     </p>
 
     <div
@@ -60,13 +60,13 @@
         v-if="loading"
         class="picker-hint"
       >
-        正在加载世界角色目录…
+        {{ t('characterRefs.loadingCatalog') }}
       </p>
       <p
         v-else-if="available.length === 0"
         class="picker-hint"
       >
-        世界人物目录中没有已生成图片的角色
+        {{ t('characterRefs.catalogEmpty') }}
       </p>
       <div
         v-else
@@ -99,6 +99,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { WorldEntityRef } from '@shared/domain'
 import {
   DEFAULT_MAX_INPUT_REFERENCES,
@@ -106,6 +107,8 @@ import {
 } from '@shared/graph'
 import { loadWorldCharacterImages } from '../features/world/characterImageSource'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: WorldEntityRef[]

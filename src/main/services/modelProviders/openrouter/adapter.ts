@@ -18,6 +18,8 @@ import type {
 import { isTextCatalogModel, toOpenRouterInputReferenceBody } from '@shared/modelProvider'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -45,7 +47,7 @@ export const openRouterAdapter: ModelProviderAdapter = {
   kind: 'openrouter',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient(provider)
     try {
       await client.get('/key', { timeout: 20_000 })
@@ -61,18 +63,22 @@ export const openRouterAdapter: ModelProviderAdapter = {
           const probeStatus = axios.isAxiosError(probeErr) ? probeErr.response?.status : undefined
           const probeRaw = await readHttpError(probeErr)
           if (isAuthFailure(probeStatus, probeRaw)) {
-            throw new Error(
-              formatAuthError(`API Key 无效，已禁止拉取模型：${probeRaw}`, provider)
-            )
+            throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+              detail: formatAuthError(probeRaw, provider)
+            })
           }
-          throw new Error(`连接测试失败：${formatAuthError(probeRaw, provider)}`)
+          throw fail(PROVIDER_ERRORS.connectionTestFailed, {
+            detail: formatAuthError(probeRaw, provider)
+          })
         }
       }
 
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型：${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败：${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -149,7 +155,10 @@ export const openRouterAdapter: ModelProviderAdapter = {
         }
       }))
     } catch (err) {
-      throw new Error(`拉取模型列表失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'listModels',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -201,10 +210,13 @@ export const openRouterAdapter: ModelProviderAdapter = {
         })
         .filter(Boolean)
 
-      if (!images.length) throw new Error('模型未返回图片')
+      if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return { images, model: data.model ?? modelId }
     } catch (err) {
-      throw new Error(`图片生成失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -255,7 +267,7 @@ export const openRouterAdapter: ModelProviderAdapter = {
         status?: string
       }>('/videos', body, { validateStatus: (s) => s === 200 || s === 202 })
 
-      if (!data?.id) throw new Error('未返回视频任务 id')
+      if (!data?.id) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId: data.id,
         pollingUrl: data.polling_url || `${trimBaseUrl(provider.baseUrl)}/videos/${data.id}`,
@@ -263,7 +275,10 @@ export const openRouterAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交视频生成失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -299,7 +314,10 @@ export const openRouterAdapter: ModelProviderAdapter = {
         downloadUrl: data.unsigned_urls?.[0]
       }
     } catch (err) {
-      throw new Error(`轮询视频任务失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: await readHttpError(err)
+      })
     }
   },
 
@@ -316,13 +334,13 @@ export const openRouterAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

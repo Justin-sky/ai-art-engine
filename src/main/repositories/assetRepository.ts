@@ -1,6 +1,8 @@
 import { join } from 'path'
 import type { AssetInfo } from '@shared/domain'
 import { normalizeAssetType } from '@shared/domain'
+import { fail } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import {
   removeAssetFromTree,
   scanAssetTree,
@@ -21,7 +23,7 @@ export class AssetRepository {
   read(root: string, assetId: string): AssetInfo {
     const scan = scanAssetTree(root)
     const asset = scan.assets.find((a) => a.id === assetId)
-    if (!asset) throw new Error('资产不存在')
+    if (!asset) throw fail(MAIN_ERRORS.assetNotFound)
     return this.normalize(asset)
   }
 

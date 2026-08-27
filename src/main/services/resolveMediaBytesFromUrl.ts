@@ -1,4 +1,22 @@
 import axios from 'axios'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+
+// ── 媒体字节解析个性错误（axios / HTTP 原生报错作为 detail 透传）──
+const E_MEDIA_EMPTY_URL = defErrSimple(
+  'media.emptyUrl',
+  '空的媒体 URL',
+  'Media URL is empty'
+)
+const E_MEDIA_INVALID_URL = defErrSimple(
+  'media.invalidUrl',
+  '无效的媒体 URL（需要 data: 或 http(s)）',
+  'Invalid media URL (must be data: or http(s))'
+)
+const E_MEDIA_DOWNLOAD_FAILED = defErr<{ detail: string }>(
+  'media.downloadFailed',
+  ({ detail }) => `下载媒体失败: ${detail}`,
+  ({ detail }) => `Failed to download media: ${detail}`
+)
 
 export type ResolvedMediaBytes = {
   buf: Buffer
@@ -26,7 +44,7 @@ function extHintMime(url: string): string {
 /** 解析 data URL，或在主进程下载 http(s)（避免渲染进程 CORS） */
 export async function resolveMediaBytesFromUrl(rawInput: string): Promise<ResolvedMediaBytes> {
   const raw = rawInput.trim()
-  if (!raw) throw new Error('空的媒体 URL')
+  if (!raw) throw fail(E_MEDIA_EMPTY_URL)
 
   const dataMatch = /^data:([^;,]+)?(;base64)?,([\s\S]+)$/i.exec(raw)
   if (dataMatch) {
@@ -40,7 +58,7 @@ export async function resolveMediaBytesFromUrl(rawInput: string): Promise<Resolv
   }
 
   if (!/^https?:\/\//i.test(raw)) {
-    throw new Error('无效的媒体 URL（需要 data: 或 http(s)）')
+    throw fail(E_MEDIA_INVALID_URL)
   }
 
   try {
@@ -59,6 +77,7 @@ export async function resolveMediaBytesFromUrl(rawInput: string): Promise<Resolv
     return { buf: Buffer.from(response.data), mime }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
-    throw new Error(`下载媒体失败: ${detail}`)
+    // axios 原生错误保留 cause，消息作为 detail 嵌入
+    throw Object.assign(fail(E_MEDIA_DOWNLOAD_FAILED, { detail }), { cause: err })
   }
 }

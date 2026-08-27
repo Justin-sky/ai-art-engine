@@ -17,7 +17,7 @@
       <span
         class="status"
         :data-status="local.status"
-      >{{ local.status }}</span>
+      >{{ t(`review.${local.status}`) }}</span>
     </div>
 
     <label v-if="isRefNode && refNode">
@@ -145,8 +145,13 @@
         v-model="local.status"
         @change="persist"
       >
-        <option value="未审核">未审核</option>
-        <option value="已审核">已审核</option>
+        <option
+          v-for="opt in REVIEW_STATUS_OPTIONS"
+          :key="opt"
+          :value="opt"
+        >
+          {{ t(`review.${opt}`) }}
+        </option>
       </select>
     </label>
 
@@ -169,6 +174,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   asWorldRefList,
   readBoundBeatIdFromNodeParams,
+  REVIEW_STATUS_OPTIONS,
   type GraphNode,
   type BeatRow,
   type BeatWorldRef
@@ -240,7 +246,7 @@ const local = reactive({
   props: [] as BeatWorldRef[],
   weapons: [] as BeatWorldRef[],
   sourceExcerpt: '',
-  status: '未审核' as BeatRow['status']
+  status: 'unreviewed' as BeatRow['status']
 })
 
 const localNodeTitle = ref('')

@@ -2,6 +2,19 @@ import { app, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { IpcChannels } from '@shared/ipc'
 import type { AppUpdateCheckResult, AppUpdateEvent } from '@shared/update'
+import { defErrSimple, fail } from '@shared/errors/appError'
+
+// ── 更新服务个性错误（electron-updater 原生报错保持透传）──
+const E_UPDATE_DEV_CHECK_DISABLED = defErrSimple(
+  'update.devModeCheckDisabled',
+  '开发模式不检查更新',
+  'Update checks are disabled in development mode'
+)
+const E_UPDATE_DEV_INSTALL_BLOCKED = defErrSimple(
+  'update.devModeInstallBlocked',
+  '开发模式无法安装更新',
+  'Updates cannot be installed in development mode'
+)
 
 const STARTUP_DELAY_MS = 8_000
 
@@ -76,7 +89,7 @@ class UpdateService {
   async checkForUpdates(): Promise<AppUpdateCheckResult> {
     const currentVersion = this.getCurrentVersion()
     if (!app.isPackaged) {
-      const message = '开发模式不检查更新'
+      const message = fail(E_UPDATE_DEV_CHECK_DISABLED).message
       this.broadcast({ type: 'disabled', message })
       return { enabled: false, started: false, currentVersion, message }
     }
@@ -93,7 +106,7 @@ class UpdateService {
 
   quitAndInstall(): { ok: boolean; message?: string } {
     if (!app.isPackaged) {
-      return { ok: false, message: '开发模式无法安装更新' }
+      return { ok: false, message: fail(E_UPDATE_DEV_INSTALL_BLOCKED).message }
     }
     // quitAndInstall 会退出进程；若尚未下载完成则失败
     try {

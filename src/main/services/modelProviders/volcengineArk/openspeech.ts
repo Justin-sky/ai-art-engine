@@ -8,8 +8,53 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import { VOLCENGINE_OPENSPEECH_CREDENTIALS_URL } from '@shared/modelProvider'
+import { AppError, resolveAppErrorLocale, fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import { projectService } from '../../projectService'
 import { formatAuthError, readHttpError } from '../http'
+
+// —— 声音设计（voice_design）双语文案 ——
+const E_OS_MISSING_KEY = defErrSimple(
+  'provider.volcengine.voiceDesign.missingApiKey',
+  '请先填写火山方舟 / 豆包语音 API Key',
+  'Fill in the Volcengine Ark / Doubao speech API Key first'
+)
+const E_OS_SPEAKER_ID_REQUIRED = defErrSimple(
+  'provider.volcengine.voiceDesign.speakerIdRequired',
+  '请填写已购买的 speaker_id（声音代号，形如 S_xxx）。在设置 → 方舟 → 声音中手填并勾选。',
+  'Enter the purchased speaker_id (voice code shaped like S_xxx). Fill it in under Settings → Ark → Voice and enable it.'
+)
+const E_OS_PROMPT_OR_IMAGE_REQUIRED = defErrSimple(
+  'provider.volcengine.voiceDesign.promptOrImageRequired',
+  '请提供声音文本描述，或接入参考图片',
+  'Provide a voice text description or attach a reference image'
+)
+const E_OS_TRAINING = defErrSimple(
+  'provider.volcengine.voiceDesign.training',
+  '声音设计训练中，请稍后重试（status=Training）',
+  'Voice design is still training; please try again later (status=Training)'
+)
+const E_OS_FAILED_STATUS = defErrSimple(
+  'provider.volcengine.voiceDesign.failedStatus',
+  '声音设计失败（status=Failed）',
+  'Voice design failed (status=Failed)'
+)
+/** 上游接口报错：错误码标签（data.message 缺失时的兜底） */
+function errCodeLabel(code: number): string {
+  return resolveAppErrorLocale() === 'en-US' ? `error code ${code}` : `错误码 ${code}`
+}
+const E_OS_API_FAILED = defErr<{ detail: string; logId?: string }>(
+  'provider.volcengine.voiceDesign.apiFailed',
+  ({ detail, logId }) => `声音设计失败: ${detail}${logId ? `（X-Tt-Logid: ${logId}）` : ''}`,
+  ({ detail, logId }) => `Voice design failed: ${detail}${logId ? ` (X-Tt-Logid: ${logId})` : ''}`
+)
+const E_OS_NO_PREVIEW_AUDIO = defErr<{ logId?: string }>(
+  'provider.volcengine.voiceDesign.noPreviewAudio',
+  ({ logId }) =>
+    `声音设计未返回试听音频${logId ? `（X-Tt-Logid: ${logId}）` : ''}。请确认 speaker_id 仍有设计次数`,
+  ({ logId }) =>
+    `Voice design returned no preview audio${logId ? ` (X-Tt-Logid: ${logId})` : ''}. Confirm the speaker_id still has design quota left`
+)
 
 /** 豆包语音 openspeech（与方舟 ark Base URL 独立） */
 export const VOLCENGINE_OPENSPEECH_BASE_URL = 'https://openspeech.bytedance.com'
@@ -62,7 +107,7 @@ async function persistSpeechBuffer(
   input: GenerateSpeechInput,
   speakerId: string
 ): Promise<GenerateSpeechResult> {
-  if (!buf.length) throw new Error('模型未返回音频数据')
+  if (!buf.length) throw fail(PROVIDER_ERRORS.noAudioResult)
   const stamp = Date.now()
 
   const tmpDir = join(process.cwd(), '.aiartengine-tmp', 'tts')
@@ -113,14 +158,10 @@ export async function generateOpenspeechVoiceDesign(
   input: GenerateSpeechInput
 ): Promise<GenerateSpeechResult> {
   const apiKey = provider.apiKey.trim()
-  if (!apiKey) throw new Error('请先填写火山方舟 / 豆包语音 API Key')
+  if (!apiKey) throw fail(E_OS_MISSING_KEY)
 
   const speakerId = input.voice?.trim() || modelId.trim()
-  if (!speakerId) {
-    throw new Error(
-      '请填写已购买的 speaker_id（声音代号，形如 S_xxx）。在设置 → 方舟 → 声音中手填并勾选。'
-    )
-  }
+  if (!speakerId) throw fail(E_OS_SPEAKER_ID_REQUIRED)
 
   const textPrompt = clip(input.input, 200)
   const imageUrl = input.images?.map((u) => u.trim()).find(Boolean)
@@ -130,7 +171,7 @@ export async function generateOpenspeechVoiceDesign(
 
   // 文档：text_prompt 与 image_prompt 不能同时为空；同时存在时 image 优先
   if (!textPrompt && !hasImage) {
-    throw new Error('请提供声音文本描述，或接入参考图片')
+    throw fail(E_OS_PROMPT_OR_IMAGE_REQUIRED)
   }
 
   const prompt: Record<string, unknown> = {}
@@ -159,33 +200,34 @@ export async function generateOpenspeechVoiceDesign(
     })
 
     const logId = headers['x-tt-logid'] || headers['X-Tt-Logid']
+    const logIdParam: string | undefined = logId || undefined
     if (data?.code != null && data.code !== 0 && !data.demo_audio) {
-      const detail = data.message || `错误码 ${data.code}`
-      throw new Error(
-        `声音设计失败: ${detail}${logId ? `（X-Tt-Logid: ${logId}）` : ''}`
-      )
+      const detail = data.message || errCodeLabel(data.code)
+      throw fail(E_OS_API_FAILED, { detail, logId: logIdParam })
     }
 
     const status = data?.status
     if (status === 1 && !data?.demo_audio) {
-      throw new Error('声音设计训练中，请稍后重试（status=Training）')
+      throw fail(E_OS_TRAINING)
     }
     if (status === 3) {
-      throw new Error('声音设计失败（status=Failed）')
+      throw fail(E_OS_FAILED_STATUS)
     }
     if (!data?.demo_audio?.trim()) {
-      throw new Error(
-        `声音设计未返回试听音频${logId ? `（X-Tt-Logid: ${logId}）` : ''}。请确认 speaker_id 仍有设计次数`
-      )
+      throw fail(E_OS_NO_PREVIEW_AUDIO, { logId: logIdParam })
     }
 
     const buf = await downloadAudioUrl(data.demo_audio.trim())
     return persistSpeechBuffer(buf, input, speakerId)
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith('声音设计')) throw err
-    throw new Error(
-      `声音设计失败: ${formatAuthError(await readHttpError(err), provider)}`
-    )
+    if (
+      (err instanceof AppError &&
+        err.code.startsWith('provider.volcengine.voiceDesign.')) ||
+      (err instanceof Error && err.message.startsWith('声音设计'))
+    ) {
+      throw err
+    }
+    throw fail(E_OS_API_FAILED, { detail: formatAuthError(await readHttpError(err), provider) })
   }
 }
 

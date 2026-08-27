@@ -6,6 +6,8 @@ import {
   pickActiveProvider
 } from '@shared/modelProvider'
 import { settingsService } from '../settingsService'
+import { fail } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from './catalog'
 
 export function defaultBaseUrlForKind(kind: ModelProviderKind): string {
   return (
@@ -31,9 +33,7 @@ export function resolveActiveProvider(
     modelId
   )
   if (!picked) {
-    throw new Error(
-      `未配置可用的 ${modality} 模型提供商（需 API Key 或本地服务，并勾选至少一个模型）`
-    )
+    throw fail(PROVIDER_ERRORS.noActiveProvider, { modality })
   }
   return picked
 }

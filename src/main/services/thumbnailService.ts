@@ -7,13 +7,37 @@ import {
   thumbRelativePathFor
 } from '@shared/media/thumbnailPath'
 import { isImageFilePath, isVideoFilePath } from '@shared/import'
+import { fail, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { removeIfExists } from '../persistence/binaryStore'
+
+// ── 缩略图个性错误 ──
+const E_THUMB_EMPTY_PATH = defErrSimple(
+  'thumbnail.emptyPath',
+  '空路径',
+  'Path is empty'
+)
+const E_THUMB_SOURCE_MISSING = defErrSimple(
+  'thumbnail.sourceImageMissing',
+  '原图不存在',
+  'Source image not found'
+)
+const E_THUMB_DECODE_FAILED = defErrSimple(
+  'thumbnail.decodeFailed',
+  '无法解码图片',
+  'Failed to decode image'
+)
+const E_THUMB_VIDEO_FRAME_FAILED = defErrSimple(
+  'thumbnail.videoFrameExtractFailed',
+  '无法提取视频首帧',
+  'Failed to extract video first frame'
+)
 
 function assertInside(root: string, abs: string): string {
   const resolvedRoot = resolve(root) + sep
   const resolvedTarget = resolve(abs)
   if (!resolvedTarget.startsWith(resolvedRoot) && resolvedTarget !== resolve(root)) {
-    throw new Error('路径越界：操作必须在工程目录内')
+    throw fail(MAIN_ERRORS.pathOutsideProject)
   }
   return resolvedTarget
 }
@@ -138,10 +162,10 @@ export function peekExistingImageThumbnail(
 /** 若缩略图缺失或比原图旧，则生成；返回 thumb 相对路径（仅图片同步路径） */
 export function ensureImageThumbnail(root: string, sourceRelativePath: string): string {
   const sourceRel = sourceRelativePath.replace(/\\/g, '/').trim()
-  if (!sourceRel) throw new Error('空路径')
+  if (!sourceRel) throw fail(E_THUMB_EMPTY_PATH)
 
   const sourceAbs = assertInside(root, join(root, sourceRel))
-  if (!existsSync(sourceAbs)) throw new Error('原图不存在')
+  if (!existsSync(sourceAbs)) throw fail(E_THUMB_SOURCE_MISSING)
   if (!isImageFilePath(sourceAbs)) {
     return sourceRel
   }
@@ -153,7 +177,7 @@ export function ensureImageThumbnail(root: string, sourceRelativePath: string): 
 
   const image = loadNativeImageSync(sourceAbs)
   if (!image) {
-    throw new Error('无法解码图片')
+    throw fail(E_THUMB_DECODE_FAILED)
   }
   writeResizedPng(image, thumbAbs)
   return thumbRel
@@ -165,10 +189,10 @@ export async function ensureImageThumbnailAsync(
   sourceRelativePath: string
 ): Promise<string> {
   const sourceRel = sourceRelativePath.replace(/\\/g, '/').trim()
-  if (!sourceRel) throw new Error('空路径')
+  if (!sourceRel) throw fail(E_THUMB_EMPTY_PATH)
 
   const sourceAbs = assertInside(root, join(root, sourceRel))
-  if (!existsSync(sourceAbs)) throw new Error('媒体文件不存在')
+  if (!existsSync(sourceAbs)) throw fail(MAIN_ERRORS.fileNotFound)
   if (!isThumbnailableMediaPath(sourceAbs)) {
     return sourceRel
   }
@@ -180,7 +204,7 @@ export async function ensureImageThumbnailAsync(
 
   const image = await loadNativeImageAsync(sourceAbs)
   if (!image) {
-    throw new Error(isVideoFilePath(sourceAbs) ? '无法提取视频首帧' : '无法解码图片')
+    throw fail(isVideoFilePath(sourceAbs) ? E_THUMB_VIDEO_FRAME_FAILED : E_THUMB_DECODE_FAILED)
   }
   writeResizedPng(image, thumbAbs)
   return thumbRel

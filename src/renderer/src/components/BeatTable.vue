@@ -120,6 +120,7 @@
                 >
                   <input
                     class="ref-name"
+                    :title="t(FIELD_TYPE_LABEL_KEY[field])"
                     :value="refItem.name"
                     @change="
                       onRefNameChange(
@@ -177,6 +178,7 @@
                 >
                   <input
                     class="ref-name"
+                    :title="t(FIELD_TYPE_LABEL_KEY[field])"
                     :value="refItem.name"
                     @change="
                       onRefNameChange(
@@ -237,7 +239,7 @@
                   :key="opt"
                   :value="opt"
                 >
-                  {{ opt }}
+                  {{ t(`review.${opt}`) }}
                 </option>
               </select>
             </td>
@@ -294,11 +296,20 @@ type TextField =
   | (typeof CORE_TEXT_FIELDS)[number]
   | 'sourceExcerpt'
 
+/** 引用字段 → 世界元素规范 kind（持久化英文 id；旧文档中的中文值读取时归一化） */
 const FIELD_TYPE: Record<RefField, BeatWorldRef['type']> = {
-  locations: '场景',
-  characters: '角色',
-  props: '道具',
-  weapons: '武器'
+  locations: 'scene',
+  characters: 'character',
+  props: 'prop',
+  weapons: 'weapon'
+}
+
+/** 引用字段 → 类型标签 i18n 键（列头 / 悬停提示） */
+const FIELD_TYPE_LABEL_KEY: Record<RefField, string> = {
+  locations: 'world.kind.scene',
+  characters: 'world.kind.character',
+  props: 'world.kind.prop',
+  weapons: 'world.kind.weapon'
 }
 
 const props = defineProps<{
@@ -627,7 +638,9 @@ textarea {
   font-size: 13px;
 }
 
-.review-status[data-status='已审核'] {
+/* 规范英文 id 与旧文档残留的中文值都要命中 */
+.review-status[data-status='reviewed'],
+.review-status[data-status='已审核'] { /* cjk-ok 后半段选择器兼容旧文档残留的中文 data-status */
   color: var(--success, #3d9a6a);
 }
 </style>

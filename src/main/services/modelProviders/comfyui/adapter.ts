@@ -30,6 +30,8 @@ import {
   type ComfyApiWorkflow
 } from '@shared/modelProviders/comfyui/injectWorkflow'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr, defErrSimple, isAppError } from '@shared/errors/appError'
 import { sleep } from '../http'
 import { projectService } from '../../projectService'
 import {
@@ -40,6 +42,84 @@ import {
   createComfyUiLongClient,
   readComfyUiError
 } from './http'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_COMFY_WORKFLOW_NOT_API = defErr<{ name: string; detail: string }>(
+  'provider.comfyui.workflowNotApiFormat',
+  ({ name, detail }) =>
+    `workflow「${name}」已找到，但无法作为 ComfyUI API 使用：${detail}。请在 ComfyUI 里用 Save (API Format) 导出后覆盖同名 userdata 文件。`,
+  ({ name, detail }) =>
+    `Workflow "${name}" was found but cannot be used as a ComfyUI API workflow: ${detail}. Re-export it from ComfyUI with Save (API Format) and overwrite the userdata file.`
+)
+const E_COMFY_WORKFLOW_NOT_FOUND = defErr<{
+  name: string
+  origins: string
+  visibleNames: string[]
+  detail: string
+}>(
+  'provider.comfyui.workflowNotFound',
+  ({ name, origins, visibleNames, detail }) =>
+    `未找到 workflow「${name}」。请在设置里「拉取可用模型」后勾选本机已有的 workflow 名（不要用占位的 txt2img）。本机 userdata 在 ${origins}。${
+      visibleNames.length ? ` 当前 userdata 可见：${visibleNames.join('、')}。` : ''
+    }（${detail}）`,
+  ({ name, origins, visibleNames, detail }) =>
+    `Workflow "${name}" not found. In settings, fetch the available models and pick a workflow that exists on this machine (not the placeholder txt2img). Local userdata locations: ${origins}.${
+      visibleNames.length ? ` Currently visible in userdata: ${visibleNames.join(', ')}.` : ''
+    } (${detail})`
+)
+// 兜底 detail：没有任何一次请求产生过具体错误时挂在末尾
+const E_COMFY_WORKFLOW_CONTENT_MISSING = defErrSimple(
+  'provider.comfyui.workflowContentMissing',
+  '未获取到 workflow 内容',
+  'No workflow content could be fetched'
+)
+const E_COMFY_NO_JOB_ID = defErrSimple(
+  'provider.comfyui.noJobId',
+  '未返回 job id',
+  'No job id returned'
+)
+const E_COMFY_JOB_FAILED = defErrSimple(
+  'provider.comfyui.jobFailed',
+  'ComfyUI 任务失败',
+  'ComfyUI job failed'
+)
+const E_COMFY_JOB_TIMEOUT = defErrSimple(
+  'provider.comfyui.jobTimeout',
+  'ComfyUI 任务超时：仍未完成',
+  'ComfyUI job timed out: still unfinished'
+)
+const E_COMFY_CONNECTION_TEST_FAILED = defErr<{ detail: string; proxyUrl: string }>(
+  'provider.comfyui.connectionTestFailed',
+  ({ detail, proxyUrl }) =>
+    `连接测试失败：${detail}。本机请先启动 comfy-api-proxy（默认 ${proxyUrl}），云端填 https://cloud.comfy.org 并填写 API Key。`,
+  ({ detail, proxyUrl }) =>
+    `Connection test failed: ${detail}. Start comfy-api-proxy locally first (default ${proxyUrl}); for cloud use https://cloud.comfy.org with your API Key.`
+)
+const E_COMFY_NO_TEXT_CHAT = defErrSimple(
+  'provider.comfyui.unsupportedTextChat',
+  'ComfyUI 不支持文本对话；请用图片 / 视频 / 声音节点',
+  'ComfyUI does not support text chat; use image / video / audio nodes instead'
+)
+const E_COMFY_NO_IMAGE_OUTPUT = defErrSimple(
+  'provider.comfyui.noImageOutput',
+  '任务已完成但未返回图片',
+  'Job finished but returned no image'
+)
+const E_COMFY_NO_AUDIO_OUTPUT = defErrSimple(
+  'provider.comfyui.noAudioOutput',
+  '任务已完成但未返回音频',
+  'Job finished but returned no audio'
+)
+const E_COMFY_VIDEO_FAILED = defErrSimple(
+  'provider.comfyui.videoGenerationFailed',
+  '视频生成失败',
+  'Video generation failed'
+)
+const E_COMFY_SPEECH_FAILED = defErr<{ detail: string }>(
+  'provider.comfyui.speechFailed',
+  ({ detail }) => `ComfyUI 声音生成失败: ${detail}`,
+  ({ detail }) => `ComfyUI audio generation failed: ${detail}`
+)
 
 type ComfyJobStatus =
   | 'queued'
@@ -311,7 +391,7 @@ async function loadWorkflow(
       file.rel === withJson ||
       file.rel.endsWith(`/${withJson}`)
   )
-  let lastError = '未找到 workflow'
+  let lastError = fail(E_COMFY_WORKFLOW_CONTENT_MISSING).message
   let contentError = ''
   let readContent = false
   const tryUnwrap = (raw: unknown): ComfyApiWorkflow | null => {
@@ -353,16 +433,14 @@ async function loadWorkflow(
     }
   }
   if (readContent && contentError) {
-    throw new Error(
-      `workflow「${trimmed}」已找到，但无法作为 ComfyUI API 使用：${contentError}。请在 ComfyUI 里用 Save (API Format) 导出后覆盖同名 userdata 文件。`
-    )
+    throw fail(E_COMFY_WORKFLOW_NOT_API, { name: trimmed, detail: contentError })
   }
-  const available = listed.map((file) => file.id)
-  const found = available.length ? ` 当前 userdata 可见：${available.join('、')}。` : ''
-  const originHint = comfyUiUserdataOrigins(provider).join('、')
-  throw new Error(
-    `未找到 workflow「${trimmed}」。请在设置里「拉取可用模型」后勾选本机已有的 workflow 名（不要用占位的 txt2img）。本机 userdata 在 ${originHint}。${found}（${lastError}）`
-  )
+  throw fail(E_COMFY_WORKFLOW_NOT_FOUND, {
+    name: trimmed,
+    origins: comfyUiUserdataOrigins(provider).join('、'),
+    visibleNames: listed.map((file) => file.id),
+    detail: lastError
+  })
 }
 
 function extFromContentType(contentType: string): string {
@@ -462,7 +540,7 @@ async function submitJob(
   const { data } = await client.post<ComfyJob>('/api/v2/jobs', body, {
     headers: { 'Idempotency-Key': randomUUID() }
   })
-  if (!data?.id) throw new Error('未返回 job id')
+  if (!data?.id) throw fail(E_COMFY_NO_JOB_ID)
   return data
 }
 
@@ -489,12 +567,13 @@ async function waitForJob(
     const status = mapJobStatus(current.status)
     if (status === 'completed') return current
     if (status === 'failed') {
-      throw new Error(current.error?.message || 'ComfyUI 任务失败')
+      // 上游错误消息原样透出，缺省时才落本地化兜底文案
+      throw current.error?.message || fail(E_COMFY_JOB_FAILED)
     }
     await sleep(IMAGE_POLL_INTERVAL_MS)
     current = await getJob(provider, path)
   }
-  throw new Error('ComfyUI 任务超时：仍未完成')
+  throw fail(E_COMFY_JOB_TIMEOUT)
 }
 
 function roundToMultiple(value: number, multiple: number): number {
@@ -572,10 +651,10 @@ export const comfyUiAdapter: ModelProviderAdapter = {
     try {
       await client.get('/api/v2/jobs', { params: { limit: 1 } })
     } catch (err) {
-      const message = await readComfyUiError(err)
-      throw new Error(
-        `连接测试失败：${message}。本机请先启动 comfy-api-proxy（默认 ${comfyUiBaseUrl(provider)}），云端填 https://cloud.comfy.org 并填写 API Key。`
-      )
+      throw fail(E_COMFY_CONNECTION_TEST_FAILED, {
+        detail: await readComfyUiError(err),
+        proxyUrl: comfyUiBaseUrl(provider)
+      })
     }
   },
 
@@ -646,7 +725,7 @@ export const comfyUiAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    throw new Error('ComfyUI 不支持文本对话；请用图片 / 视频 / 声音节点')
+    throw fail(E_COMFY_NO_TEXT_CHAT)
   },
 
   async generateImage(
@@ -666,11 +745,15 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const submitted = await submitJob(provider, workflow)
       const done = await waitForJob(provider, submitted)
       const images = outputUrls(done, 'image')
-      if (!images.length) throw new Error('任务已完成但未返回图片')
+      if (!images.length) throw fail(E_COMFY_NO_IMAGE_OUTPUT)
       return { images, model: modelId }
     } catch (err) {
-      if (err instanceof Error && err.message.startsWith('未找到 workflow')) throw err
-      throw new Error(`ComfyUI 图片生成失败: ${await readComfyUiError(err)}`)
+      // workflow 缺失是配置问题，原样上抛，不再包一层生成失败
+      if (isAppError(err) && err.code === E_COMFY_WORKFLOW_NOT_FOUND.code) throw err
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: await readComfyUiError(err)
+      })
     }
   },
 
@@ -716,7 +799,10 @@ export const comfyUiAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交 ComfyUI 视频失败: ${await readComfyUiError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: await readComfyUiError(err)
+      })
     }
   },
 
@@ -729,10 +815,13 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const current = await getJob(provider, path)
       const status = mapJobStatus(current.status)
       const downloadUrl = outputUrls(current, 'video')[0]
-      const error = status === 'failed' ? current.error?.message || '视频生成失败' : undefined
+      const error = status === 'failed' ? current.error?.message || fail(E_COMFY_VIDEO_FAILED).message : undefined
       return { status, progress: jobProgress(current, status), error, downloadUrl }
     } catch (err) {
-      throw new Error(`轮询 ComfyUI 视频失败: ${await readComfyUiError(err)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: await readComfyUiError(err)
+      })
     }
   },
 
@@ -749,7 +838,7 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       const submitted = await submitJob(provider, workflow)
       const done = await waitForJob(provider, submitted)
       const url = outputUrls(done, 'audio')[0]
-      if (!url) throw new Error('任务已完成但未返回音频')
+      if (!url) throw fail(E_COMFY_NO_AUDIO_OUTPUT)
 
       const client = createComfyUiLongClient(provider)
       const { data, headers } = await client.get<ArrayBuffer>(url, { responseType: 'arraybuffer' })
@@ -782,7 +871,7 @@ export const comfyUiAdapter: ModelProviderAdapter = {
       }
       return { model: modelId, voice: input.voice || modelId, format, filePath: tmpPath }
     } catch (err) {
-      throw new Error(`ComfyUI 声音生成失败: ${await readComfyUiError(err)}`)
+      throw fail(E_COMFY_SPEECH_FAILED, { detail: await readComfyUiError(err) })
     }
   },
 
@@ -791,13 +880,13 @@ export const comfyUiAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

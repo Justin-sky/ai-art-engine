@@ -30,3 +30,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Check hardcoded CJK strings
+        run: node scripts/check-hardcoded-cjk.mjs --enforce

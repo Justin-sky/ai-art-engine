@@ -299,7 +299,7 @@
 
       <div
         class="horizontal-splitter"
-        title="拖动调整素材库宽度"
+        :title="t('script.timeline.resizeSourcesWidth')"
         @pointerdown="onPanelSplitterDown($event, 'left')"
       />
 
@@ -415,22 +415,22 @@
             {{ activeSubtitleText }}
             <span
               class="subtitle-handle corner-tl"
-              title="缩放字幕"
+              :title="t('script.timeline.subtitleScaleHint')"
               @pointerdown.stop="onSubtitleScaleDown"
             />
             <span
               class="subtitle-handle corner-tr"
-              title="缩放字幕"
+              :title="t('script.timeline.subtitleScaleHint')"
               @pointerdown.stop="onSubtitleScaleDown"
             />
             <span
               class="subtitle-handle corner-bl"
-              title="缩放字幕"
+              :title="t('script.timeline.subtitleScaleHint')"
               @pointerdown.stop="onSubtitleScaleDown"
             />
             <span
               class="subtitle-handle corner-br"
-              title="缩放字幕"
+              :title="t('script.timeline.subtitleScaleHint')"
               @pointerdown.stop="onSubtitleScaleDown"
             />
           </div>
@@ -454,7 +454,7 @@
       </section>
       <div
         class="horizontal-splitter"
-        title="拖动调整属性面板宽度"
+        :title="t('script.timeline.resizeInspectorWidth')"
         @pointerdown="onPanelSplitterDown($event, 'right')"
       />
       <aside class="panel inspector-panel">
@@ -4842,7 +4842,7 @@ async function exportTimeline(): Promise<void> {
     const needFallback =
       !result.ok &&
       !result.canceled &&
-      /ffmpeg|ENOENT|not found|无法启动/i.test(result.error)
+      /ffmpeg|ENOENT|not found|无法启动/i.test(result.error) // cjk-ok 跨语言错误兜底匹配（须含中英特征词）
 
     if (needFallback) {
       exportProgress.value = 0.05
@@ -4868,7 +4868,10 @@ async function exportTimeline(): Promise<void> {
       }
       const prevError = result.ok ? 'export failed' : result.error
       const fbError = fb.ok ? 'fallback failed' : fb.error
-      result = { ok: false, error: `${prevError}\n\n录制回退也失败：${fbError}` }
+      result = {
+        ok: false,
+        error: `${prevError}\n\n${t('script.timeline.recordFallbackFailed', { error: fbError })}`
+      }
     }
 
     if (result.ok) {

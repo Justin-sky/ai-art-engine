@@ -19,6 +19,8 @@ import {
 } from '@shared/modelProviders/openai/modelCapabilities'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -28,10 +30,21 @@ import {
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 
-function notSupported(feature: string): Promise<never> {
-  return Promise.reject(
-    new Error(`OpenAI 提供商暂未接入${feature}，当前仅支持文本与图片`)
-  )
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const NOT_SUPPORTED_FEATURES = {
+  soraVideo: { zh: '视频（Sora）', en: 'video (Sora)' },
+  speech: { zh: '语音合成', en: 'speech synthesis' }
+} as const
+
+const E_NOT_SUPPORTED = defErr<{ kind: keyof typeof NOT_SUPPORTED_FEATURES }>(
+  'provider.openai.unsupported-modality',
+  ({ kind }) => `OpenAI 提供商暂未接入${NOT_SUPPORTED_FEATURES[kind].zh}，当前仅支持文本与图片`,
+  ({ kind }) =>
+    `OpenAI does not support ${NOT_SUPPORTED_FEATURES[kind].en} yet; text and image only`
+)
+
+function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never> {
+  return Promise.reject(fail(E_NOT_SUPPORTED, { kind }))
 }
 
 async function fetchTextCatalog(provider: ModelProviderInstance): Promise<CatalogModel[]> {
@@ -46,7 +59,10 @@ async function fetchTextCatalog(provider: ModelProviderInstance): Promise<Catalo
       .filter(isOpenAiTextModelId)
       .map((id) => ({ id, name: id, modality: 'text' as const }))
   } catch (err) {
-    throw new Error(`拉取 OpenAI 文本模型列表失败: ${await readHttpError(err)}`)
+    throw fail(PROVIDER_ERRORS.actionFailed, {
+      action: 'listModels',
+      detail: await readHttpError(err)
+    })
   }
 }
 
@@ -90,7 +106,7 @@ function parseGeneratedImages(
       return ''
     })
     .filter(Boolean)
-  if (!images.length) throw new Error('OpenAI 未返回图片')
+  if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
   return { images, model: modelId }
 }
 
@@ -98,7 +114,7 @@ export const openAiAdapter: ModelProviderAdapter = {
   kind: 'openai',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient(provider)
     try {
       await client.get('/models', { timeout: 20_000 })
@@ -106,9 +122,11 @@ export const openAiAdapter: ModelProviderAdapter = {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
       const raw = await readHttpError(err)
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型: ${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败: ${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -167,7 +185,10 @@ export const openAiAdapter: ModelProviderAdapter = {
       }>('/images/generations', body)
       return parseGeneratedImages(data, modelId)
     } catch (err) {
-      throw new Error(`OpenAI 图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -176,14 +197,14 @@ export const openAiAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    return notSupported('视频（Sora）')
+    return notSupported('soraVideo')
   },
 
   pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    return notSupported('视频（Sora）')
+    return notSupported('soraVideo')
   },
 
   generateSpeech(
@@ -191,7 +212,7 @@ export const openAiAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('语音合成')
+    return notSupported('speech')
   },
 
   submitModel3d(
@@ -199,13 +220,13 @@ export const openAiAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

@@ -1,14 +1,22 @@
+import { defErrSimple, fail } from '@shared/errors/appError'
 import type { PortraitQualityState } from '@shared/graph'
 
 /** 本地确定性人像后期预览：Canvas 像素级磨皮 / 调色 / 锐化 / 颗粒 / 暗角。 */
 
 const PREVIEW_MAX_DIMENSION = 1280
 
+/** 预览源图加载失败（按界面语言输出；调用方目前静默降级，仅日志可见） */
+const ERR_PREVIEW_LOAD_FAILED = defErrSimple(
+  'graph.portraitQuality.previewLoadFailed',
+  '预览图加载失败',
+  'Failed to load preview image'
+)
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('预览图加载失败'))
+    img.onerror = () => reject(fail(ERR_PREVIEW_LOAD_FAILED))
     img.src = src
   })
 }

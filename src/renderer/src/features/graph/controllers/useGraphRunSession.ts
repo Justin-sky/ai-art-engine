@@ -418,7 +418,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           const raw = err instanceof Error ? err.message : String(err)
-          const error = formatProviderErrorForLog(raw)
+          const error = formatProviderErrorForLog(raw, options.locale?.())
           activeLogBridge?.recordApiCall({
             kind: 'generateImage',
             request,

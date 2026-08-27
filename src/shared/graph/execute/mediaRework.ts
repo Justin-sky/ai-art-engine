@@ -25,6 +25,8 @@ import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } fr
 import { collectImageGenerateSourceItems } from './mediaInputs'
 import { commitGeneratedImages, materializeGeneratedBatch, mergeGeneratedImages } from './materialize'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 export async function executeMediaReworkNode(
   ctx: NodeExecuteContext
@@ -118,7 +120,7 @@ export async function executeMediaReworkNode(
       throw new DOMException('Aborted', 'AbortError')
     }
     const images = (result.images ?? []).map((url) => url.trim()).filter(Boolean)
-    if (!images.length) throw new Error('模型未返回图片')
+    if (!images.length) throw fail(SHARED_ERRORS.noModelImage)
 
     const pack = buildMediaReviewPack()
     const reviewSystem = pickAgentPrompt(pack, ctx.locale, 'systemPrompt')
@@ -136,7 +138,7 @@ export async function executeMediaReworkNode(
       throw new DOMException('Aborted', 'AbortError')
     }
     finalReviewText = review.text.trim()
-    if (!finalReviewText) throw new Error('模型未返回质检结果')
+    if (!finalReviewText) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '质检结果', en: 'QC verdict' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
     const verdict = parseMediaReviewVerdict(finalReviewText)
     state = applyMediaReworkReview(state, verdict?.result ?? 'FAIL', verdict?.reason ?? finalReviewText)

@@ -26,6 +26,8 @@ import {
   mergeGeneratedImages
 } from './materialize'
 import { collectIncomingImageItems } from './mediaInputs'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
  * 生成帧动画序列图：参考图 + 动作描述 → 生图 API 生成 rows×cols 分格序列图。
@@ -103,13 +105,13 @@ export async function executeFrameAnimGenNode(
     batch.push({ id: `animGen:${node.id}:${stamp}:${index}`, dataUrl, createdAt })
   }
   if (!batch.length) {
-    throw new Error('模型未返回图片')
+    throw fail(SHARED_ERRORS.noModelImage)
   }
 
   const stampKey = `animGen:${node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
@@ -152,7 +154,7 @@ export async function executeAnim2dNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
   if (!ctx.composeImageGridCell) {
-    throw new Error('帧序列切分能力未注入')
+    throw fail(SHARED_ERRORS.capabilityFrameSplit)
   }
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
@@ -174,7 +176,7 @@ export async function executeAnim2dNode(
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {
-      throw new Error(`帧 ${cell} 切分失败`)
+      throw fail(SHARED_ERRORS.frameCellSplitFailed, { cell })
     }
     batch.push({
       id: `anim2d:${node.id}:${stamp}:${cell}`,
@@ -183,7 +185,7 @@ export async function executeAnim2dNode(
     })
   }
   if (!batch.length) {
-    throw new Error('帧序列切分失败')
+    throw fail(SHARED_ERRORS.frameSplitEmpty)
   }
 
   const materializedBatch = await materializeGeneratedBatch(
@@ -192,7 +194,7 @@ export async function executeAnim2dNode(
     `anim2d:${node.id}:${stamp}`
   )
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   // 普通播放节点：每次 cook 只保留本次切分结果，清除上一次的数据，不累积历史
   const generatedImages = dedupeGalleryIds([], materializedBatch, `anim2d:${node.id}:${stamp}:keep`)

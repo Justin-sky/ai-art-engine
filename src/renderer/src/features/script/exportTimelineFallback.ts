@@ -3,11 +3,17 @@
  * 覆盖视频轨画面、配音/音乐与字幕叠字。
  */
 import type { ScriptTimelineClip } from '@shared/graph'
+import i18n from '../../i18n'
 
 type ResolveSrc = (clip: {
   relativePath?: string
   assetId?: string
 }) => Promise<string>
+
+/** 运行时按当前界面语言取 timeline 文案（本模块在组件 setup 之外执行） */
+function tl(key: string): string {
+  return String(i18n.global.t(key))
+}
 
 export type TimelineRecorderExportInput = {
   clips: ScriptTimelineClip[]
@@ -98,7 +104,7 @@ export async function exportTimelineViaRecorder(
 ): Promise<TimelineRecorderExportResult> {
   const mime = pickMime()
   if (!mime) {
-    return { ok: false, error: '当前环境不支持 MediaRecorder，且未检测到 ffmpeg' }
+    return { ok: false, error: tl('script.timeline.recorderUnsupported') }
   }
 
   const duration = Math.max(1, input.durationSec)
@@ -116,7 +122,7 @@ export async function exportTimelineViaRecorder(
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
-  if (!ctx) return { ok: false, error: '无法创建画布' }
+  if (!ctx) return { ok: false, error: tl('script.timeline.canvasUnavailable') }
 
   const videoEl = document.createElement('video')
   videoEl.playsInline = true
@@ -313,7 +319,7 @@ export async function exportTimelineViaRecorder(
   }
 
   const blob = new Blob(chunks, { type: mime.split(';')[0] || 'video/webm' })
-  if (!blob.size) return { ok: false, error: '录制结果为空' }
+  if (!blob.size) return { ok: false, error: tl('script.timeline.recordEmpty') }
 
   const buffer = new Uint8Array(await blob.arrayBuffer())
   const fileName = (input.defaultFileName || `cut-${Date.now()}.webm`).replace(/\.mp4$/i, '.webm')
@@ -325,7 +331,7 @@ export async function exportTimelineViaRecorder(
       { name: 'All Files', extensions: ['*'] }
     ]
   })
-  if (!saved) return { ok: false, canceled: true, error: '已取消' }
+  if (!saved) return { ok: false, canceled: true, error: tl('script.timeline.recordCanceled') }
   input.onProgress?.(1)
   return { ok: true, filePath: saved, engine: 'recorder' }
 }

@@ -10,6 +10,8 @@ import { GraphPortType } from '../types'
 import { GRAPH_OUT_ALL_PORT_ID } from '../ports'
 import { catalogValue } from '../catalogValue'
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 import {
   dedupeGalleryIds,
   dualImageGalleryOutputs,
@@ -81,7 +83,10 @@ export async function materializeGeneratedBatch(
   }
   if (!next.length && lastError) {
     const detail = lastError instanceof Error ? lastError.message : String(lastError)
-    throw new Error(detail.includes('图片落盘失败') ? detail : `图片落盘失败: ${detail}`)
+    // 已是落盘失败包装（可能来自嵌套调用 / 其他语言环境）则原样透传，避免双重前缀
+    const isPersistError =
+      detail.includes('图片落盘失败') || detail.includes('Failed to save image to disk')  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
+    throw isPersistError ? new Error(detail) : fail(SHARED_ERRORS.persistImageFailed, { detail })
   }
   return next
 }

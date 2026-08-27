@@ -574,7 +574,7 @@ describe('comfyUiAdapter', () => {
       return Promise.reject(new Error(`unexpected GET ${url}`))
     })
     let uploadCount = 0
-    postMock.mockImplementation((url: string, body?: unknown) => {
+    postMock.mockImplementation((url: string, _body?: unknown) => {
       if (url === '/upload/image') {
         uploadCount += 1
         // 首帧先上传、尾帧后上传

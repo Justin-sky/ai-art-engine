@@ -8,6 +8,8 @@ import { isCanvasSafeImageSrc } from '../imageLayerSplit'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import { collectIncomingImageItems } from './mediaInputs'
 import { commitGeneratedImages, materializeGeneratedBatch } from './materialize'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 function imageItemRef(item: GraphImageItem): string {
   return item.relativePath?.trim() || item.dataUrl?.trim() || ''
@@ -68,7 +70,7 @@ export async function executeComicPageNode(
     batch,
     `comicPage:${ctx.node.id}`
   )
-  if (!materialized.length) throw new Error('图片落盘失败')
+  if (!materialized.length) throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   const previewPath = materialized[0]?.relativePath?.trim()
   return commitGeneratedImages(ctx, materialized, previewPath, {
     comicPage: serializeComicPage(filled)

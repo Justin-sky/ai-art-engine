@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios'
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import { OPENROUTER_DEFAULT_BASE_URL } from '@shared/modelProvider'
+import { resolveAppErrorLocale } from '@shared/errors/appError'
 
 export function trimBaseUrl(url: string): string {
   return (url || OPENROUTER_DEFAULT_BASE_URL).replace(/\/$/, '')
@@ -44,12 +45,17 @@ export function formatAuthError(message: string, provider: ModelProviderInstance
     lower.includes('user not found')
   if (!looksLikeMissingAuth) return message
 
+  const isEn = resolveAppErrorLocale() === 'en-US'
   const isOpenRouterHost = /openrouter\.ai/i.test(provider.baseUrl || '')
   const key = provider.apiKey.trim()
   if (isOpenRouterHost && key && !key.startsWith('sk-or-')) {
-    return `${message}（当前 Key 不像 OpenRouter 密钥：请到 openrouter.ai/keys 复制以 sk-or-v1- 开头的密钥，并确认已保存设置）`
+    return isEn
+      ? `${message} (This key does not look like an OpenRouter key: copy one starting with sk-or-v1- from openrouter.ai/keys and make sure settings are saved)`
+      : `${message}（当前 Key 不像 OpenRouter 密钥：请到 openrouter.ai/keys 复制以 sk-or-v1- 开头的密钥，并确认已保存设置）`
   }
-  return `${message}（请检查设置中的 API Key 是否正确、已保存，且提供商 Base URL 匹配）`
+  return isEn
+    ? `${message} (Check that the API Key in settings is correct and saved, and the provider Base URL matches)`
+    : `${message}（请检查设置中的 API Key 是否正确、已保存，且提供商 Base URL 匹配）`
 }
 
 export function isAuthFailure(status: number | undefined, message: string): boolean {

@@ -23,6 +23,8 @@ import type {
 } from '@shared/modelProvider'
 import { allowsEmptyApiKey } from '@shared/modelProvider'
 import { createProviderHttpClient } from './http'
+import { PROVIDER_ERRORS } from './catalog'
+import { fail, defErrSimple } from '@shared/errors/appError'
 import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
@@ -34,6 +36,28 @@ import {
 } from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_NO_PROJECT = defErrSimple(
+  'provider.facade.project-not-open',
+  '未打开工程',
+  'No project is open'
+)
+const E_VIDEO_GEN_FAILED = defErrSimple(
+  'provider.facade.video-generation-failed',
+  '视频生成失败',
+  'Video generation failed'
+)
+const E_MODEL3D_GEN_FAILED = defErrSimple(
+  'provider.facade.model3d-generation-failed',
+  '3D 模型生成失败',
+  '3D model generation failed'
+)
+const E_BAD_IMAGE_DATA_URL = defErrSimple(
+  'provider.common.badDataUrl',
+  '无法解析图片 data URL',
+  'Failed to parse image data URL'
+)
 
 /**
  * 模型生成门面：选型 → 派发到对应 ModelProviderAdapter → 编排落盘/对象存储。
@@ -66,7 +90,7 @@ class ModelProviderFacade {
     })
     // 本地服务（vLLM / Ollama / LM Studio / ComfyUI）无需 API Key
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) {
-      throw new Error('请先填写 API Key')
+      throw fail(PROVIDER_ERRORS.missingApiKey)
     }
     const adapter = getProviderAdapter(provider.providerKind)
     await adapter.assertAuth(provider)
@@ -169,7 +193,7 @@ class ModelProviderFacade {
   ): Promise<GenerateVideoResult> {
     // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
     const { graphBinding, ...genInput } = input
-    if (!projectService.isOpen()) throw new Error('未打开工程')
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
 
     let uploads: ObjectStorageUploadResult[] = []
 
@@ -206,7 +230,7 @@ class ModelProviderFacade {
 
       const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
       if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
-        throw new Error(settled.error ?? '视频生成失败')
+        throw new Error(settled.error ?? fail(E_VIDEO_GEN_FAILED).message)
       }
 
       return {
@@ -303,7 +327,7 @@ class ModelProviderFacade {
   async generateModel3d(input: GenerateModel3dInput): Promise<GenerateModel3dResult> {
     // 图节点绑定只用于任务服务回写，不进入供应商提交载荷
     const { graphBinding, ...genInput } = input
-    if (!projectService.isOpen()) throw new Error('未打开工程')
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
 
     let uploads: ObjectStorageUploadResult[] = []
 
@@ -340,7 +364,7 @@ class ModelProviderFacade {
 
       const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
       if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
-        throw new Error(settled.error ?? '3D 模型生成失败')
+        throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
       }
 
       return {
@@ -359,7 +383,7 @@ class ModelProviderFacade {
     model: string
     relativePath: string
   }> {
-    if (!projectService.isOpen()) throw new Error('未打开工程')
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const result = await this.generateImage(input)
     const first = result.images[0]
     const root = projectService.getRoot()
@@ -370,7 +394,7 @@ class ModelProviderFacade {
     let absPath: string
     if (first.startsWith('data:')) {
       const m = first.match(/^data:([^;]+);base64,(.+)$/)
-      if (!m) throw new Error('无法解析图片 data URL')
+      if (!m) throw fail(E_BAD_IMAGE_DATA_URL)
       const ext = m[1].includes('jpeg') || m[1].includes('jpg') ? 'jpg' : 'png'
       absPath = join(dir, `img-${stamp}.${ext}`)
       writeFileSync(absPath, Buffer.from(m[2], 'base64'))

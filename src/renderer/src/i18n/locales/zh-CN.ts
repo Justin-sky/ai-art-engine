@@ -20,6 +20,16 @@ export default {
     open: '打开',
     close: '关闭'
   },
+  characterRefs: {
+    title: '角色绑定',
+    importFromCatalog: '从世界目录导入',
+    collapse: '收起',
+    hint: '绑定世界人物目录的角色参考图，生成时注入参考图以保证跨分镜同人。',
+    removeTitle: '移除',
+    empty: '尚未绑定角色',
+    loadingCatalog: '正在加载世界角色目录…',
+    catalogEmpty: '世界人物目录中没有已生成图片的角色'
+  },
   aiWorkflow: {
     title: '一键工作流',
     shortAction: '一键工作流',
@@ -214,6 +224,10 @@ export default {
       arkVoiceCredentialsHint:
         '声音设计走豆包语音 openspeech，请填语音控制台 API Key（可与方舟 Key 不同），并手填已购 speaker_id：',
       fetchModels: '拉取可用模型',
+      preloadListModelsUnavailable:
+        'window.studio.listModels 不可用：请完全退出并重新运行 npm run dev（preload 变更不会热更新）',
+      capFirstFrame: '首帧',
+      capLastFrame: '尾帧',
       testingConnection: '正在验证 API Key…',
       loading: '拉取中…',
       catalogCount: '共 {n} 个模型',
@@ -902,7 +916,17 @@ export default {
       exportEmpty: '时间线为空，无法导出',
       exportSrt: '导出字幕 SRT',
       exportSrtDone: '字幕已导出：\n{path}',
-      exportSrtFailed: '字幕导出失败：{error}'
+      exportSrtFailed: '字幕导出失败：{error}',
+      resizeSourcesWidth: '拖动调整素材库宽度',
+      resizeInspectorWidth: '拖动调整属性面板宽度',
+      subtitleScaleHint: '缩放字幕',
+      recordFallbackFailed: '录制回退也失败：{error}',
+      recorderUnsupported: '当前环境不支持 MediaRecorder，且未检测到 ffmpeg',
+      canvasUnavailable: '无法创建画布',
+      recordEmpty: '录制结果为空',
+      recordCanceled: '已取消',
+      defaultVideoTitle: '视频 {index}',
+      defaultVoiceTitle: '声音 {index}'
     },
     pane: {
       resizeSplit: '拖动调整上下画布高度'
@@ -965,6 +989,7 @@ export default {
       createCamera: '创建相机',
       createEmpty: '创建空物体',
       createMenu: '创建物体',
+      aiBlockoutGroupName: 'AI 白模',
       deleteObject: '删除',
       copy: '复制',
       paste: '粘贴',
@@ -1301,6 +1326,155 @@ export default {
       }
     }
   },
+  divePipeline: {
+    episode: {
+      title: {
+        default: '剧集分镜流水线'
+      },
+      header: {
+        currentStep: '当前步骤：',
+        busyTasks: '任务运行中…',
+        viewTrace: '查看轨迹',
+        traceOpen: '打开本次流水线轨迹',
+        traceNone: '尚无本次轨迹',
+        refresh: '刷新',
+        refreshing: '刷新中…',
+        failPrefix: 'FAIL：',
+        failReasonTitle: '最近一次导演审核失败原因'
+      },
+      empty: {
+        noGraph:
+          '尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再点击顶部工具栏的「剧集流水线」打开本视图。',
+        beatsUnparsed: '节拍拆解有内容，但未能解析为表格格式',
+        beatsPending: '未生成（运行 breakdown 节点）',
+        anchorsUnparsed: '9宫格有内容，但未能解析',
+        anchorsPending: '未生成（运行 beatboard 节点）',
+        cellsUnparsed: '4宫格有内容，但未能解析',
+        cellsPending: '未生成（运行 sequence 节点）'
+      },
+      panel: {
+        beats: '节拍拆解',
+        boardDirect: '9宫格分镜表 · 直出视频'
+      },
+      action: {
+        directorReview: '导演审核',
+        generate: '生成',
+        regenerate: '重新生成',
+        generateMotion: '生成动态提示词',
+        generateMotionDirect: '生成9宫格动态提示词',
+        buildGrid4: '生成4宫格拼图',
+        buildGrid9: '生成9宫格拼图'
+      },
+      stageBusyTitle: {
+        breakdown: '节拍拆解生成中…',
+        beatboard: '9宫格分镜表生成中…',
+        sequence: '4宫格分镜表生成中…',
+        motion: '动态提示词生成中…'
+      },
+      task: {
+        stage: '分镜流水线·{stage}',
+        buildGrid4Group: '生成4宫格拼图·组{g}',
+        video: '动态视频·格{g}-{c}'
+      },
+      state: {
+        generating: '生成中…',
+        passedMark: '✓ 已通过',
+        awaitReview: '待审核',
+        generated: '已生成',
+        ranOnce: '已运行',
+        failed: '失败',
+        notGenerated: '未生成',
+        noImage: '未生成图',
+        completed: '已完成'
+      },
+      stepLabel: {
+        motionDirect: '9宫格动态提示词表'
+      },
+      stepHint: {
+        default: '流水线当前推进到的阶段',
+        breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
+        beatboardDirect: '9宫格分镜表已生成，正在推进 动画师·9宫格动态提示词表',
+        beatboardCells: '9宫格分镜表已生成，正在推进 4宫格动态分镜表',
+        readyDirect: '9宫格动态提示词表已生成，可逐格或一键生成 9 条直出视频',
+        sequenceCells: '4宫格动态分镜表已生成，正在推进 动态提示词表',
+        motionCells: '动态提示词表已生成，等待导演审核通过后完成',
+        completed: '全部阶段已通过'
+      },
+      cell: {
+        short: '格{n}',
+        key: '格{g}-{c}',
+        beatRef: '节拍{n}',
+        beatRefTitle: '关联节拍'
+      },
+      anchor: {
+        badge: '锚',
+        badgeTitle: '关键锚点（9宫格对应前 9 个锚）'
+      },
+      breadcrumb: {
+        direct: '场/节拍 #{beat} → 格{cell} → 9格直出视频',
+        cells: '场/节拍 #{beat} → 格{cell} → 动态格 {key}'
+      },
+      detail: {
+        grid4: '4宫格（{index}）',
+        motionDirect: '9宫格动态提示词',
+        motionCell: '动态提示词（{key}）',
+        videoOutput: '视频产物',
+        generateVideo: '生成这条视频',
+        regenVideo: '重新生成这条视频',
+        videoWaitRegen: '请等待重新生成完成后再生成视频',
+        videoRunning: '这条视频正在生成…',
+        videoNeedsPrompt: '请先生成动态提示词'
+      },
+      hint: {
+        backFromToolbar: '顶部工具栏的「剧集流水线」按钮可随时回到本视图；图片/视频在节点图中运行。'
+      }
+    },
+    agent: {
+      title: 'Agent 流水线',
+      summary: {
+        pending: '待处理 {n}',
+        pendingTitle: '待处理：质检 pending + 返工 running',
+        fail: 'FAIL {n}',
+        failTitle: '质检 FAIL 节点数',
+        exhausted: '达上限 {n}',
+        exhaustedTitle: '达上限仍未通过的返工节点数'
+      },
+      fail: {
+        latestTitle: '最近一次 FAIL / 达上限原因',
+        latestPrefix: '最近失败：'
+      },
+      empty: {
+        noNodes:
+          '当前画布尚未放置「质检（media.review）」或「返工（media.rework）」节点。运行生成节点后，在其下游接上质检节点即可自动质检；质检 FAIL 时由返工节点自动重试，直到 PASS 或达尝试上限。'
+      },
+      panel: {
+        review: '质检节点（media.review）',
+        rework: '返工节点（media.rework）',
+        noReview: '无质检节点',
+        noRework: '无返工节点',
+        locateHint: '点击定位到节点'
+      },
+      row: {
+        attempt: '第 {attempt}/{maxAttempts} 次'
+      },
+      status: {
+        review: {
+          pending: '待审核'
+        },
+        rework: {
+          running: '返工中',
+          passed: '已通过',
+          exhausted: '达上限'
+        }
+      }
+    },
+    uiSplit: {
+      loading: '正在打开 UI 界面拆分内图…',
+      error: {
+        noScreens: '请先生成界面提示词，再双击进入内图。'
+      }
+    }
+  },
   canvas: {
     toolbar: {
       grid: '网格',
@@ -1330,6 +1504,10 @@ export default {
       imageOnly: '画布仅支持拖入图片资产',
       noFile: '该图片尚未关联文件'
     }
+  },
+  review: {
+    unreviewed: '未审核',
+    reviewed: '已审核'
   },
   beat: {
     asset: {
@@ -1427,6 +1605,12 @@ export default {
       scenes: '场景',
       props: '道具',
       weapons: '武器'
+    },
+    kind: {
+      character: '角色',
+      scene: '场景',
+      prop: '道具',
+      weapon: '武器'
     },
     tableWindow: {
       loading: '正在打开世界元素表格…',
@@ -1661,7 +1845,14 @@ export default {
       beatboard: '9宫格分镜表',
       sequence: '4宫格动态分镜表',
       motion: '动态提示词表',
-      review: '导演审核'
+      review: '导演审核',
+      title: {
+        beatBreakdown: '节拍拆解表',
+        grid9Storyboard: '9宫格分镜表',
+        grid4Motion: '4宫格动态分镜表',
+        motionPrompt: '动态提示词表',
+        directorReview: '导演审核'
+      }
     },
     bundle: {
       title: '束',
@@ -1877,6 +2068,8 @@ export default {
     portraitQuality: {
       appMark: '人像质感调节',
       previewEmpty: '接入图片输入后可在此预览',
+      previewLoadFailed: '预览图加载失败',
+      compareLoadFailed: '图片加载失败',
       before: '原图',
       after: '效果',
       generated: '生成',
@@ -2260,7 +2453,9 @@ export default {
       expandImageGridShort: '展开',
       collapseImageGridShort: '折叠',
       enableLock: '锁定：跳过执行，保留上次结果',
-      disableLock: '解锁：下次运行将重新执行'
+      disableLock: '解锁：下次运行将重新执行',
+      directorReviewFail: '导演审核失败',
+      directorReviewPass: '导演审核通过'
     },
     nodeRole: {
       ref: '引用',
@@ -2693,6 +2888,9 @@ export default {
       },
       matte: {
         hint: '运行自动抠图；双击可 refinement。此处预览系统提示词与合并抠图提示词'
+      },
+      crop: {
+        hint: '双击节点调整裁剪框；运行节点在本地裁剪'
       },
       gridSplit: {
         hint: '双击选择宫格大小与单元格；运行节点直接切分原图，不调用大模型'

@@ -7,8 +7,32 @@ import {
   type ObjectStorageProviderInstance
 } from '@shared/objectStorage'
 import { getObjectStorageAdapter } from '../runtime'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { settingsService } from './settingsService'
 import { projectService } from './projectService'
+
+// ── 对象存储上传个性错误（SDK 原生报错一律作为 detail 透传）──
+const E_STORAGE_INVALID_DATA_URL = defErrSimple(
+  'storage.upload.invalidDataUrl',
+  '无效的 data URL',
+  'Invalid data URL'
+)
+const E_STORAGE_NO_ACTIVE_PROVIDER = defErrSimple(
+  'storage.upload.noActiveProvider',
+  '未配置可用的对象存储。请在设置 → 对象存储中添加火山引擎 TOS / 阿里云 OSS / 腾讯云 COS，并填写密钥与桶信息',
+  'No object storage is configured. Add Volcengine TOS / Aliyun OSS / Tencent COS in Settings → Object Storage, then fill in the keys and bucket'
+)
+const E_STORAGE_UPLOAD_FILE_MISSING = defErr<{ path: string }>(
+  'storage.upload.fileMissing',
+  ({ path }) => `待上传文件不存在: ${path}`,
+  ({ path }) => `File to upload does not exist: ${path}`
+)
+const E_STORAGE_EMPTY_MEDIA_PATH = defErrSimple(
+  'storage.upload.emptyMediaPath',
+  '空的媒体路径',
+  'Media path is empty'
+)
 
 export interface ObjectStorageLogEntry {
   level: 'info' | 'warn' | 'error'
@@ -56,7 +80,7 @@ function buildObjectKey(sourceLabel: string, ext: string): string {
 
 function bufferFromDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
   const match = /^data:([^;,]+)?(;base64)?,(.*)$/i.exec(dataUrl)
-  if (!match) throw new Error('无效的 data URL')
+  if (!match) throw fail(E_STORAGE_INVALID_DATA_URL)
   const mime = (match[1] || 'application/octet-stream').toLowerCase()
   const payload = match[3] || ''
   const buffer = match[2]
@@ -88,9 +112,7 @@ function bufferFromDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
 function requireActiveProvider(): ObjectStorageProviderInstance {
   const provider = pickActiveObjectStorage(settingsService.get().objectStorage)
   if (!provider) {
-    throw new Error(
-      '未配置可用的对象存储。请在设置 → 对象存储中添加火山引擎 TOS / 阿里云 OSS / 腾讯云 COS，并填写密钥与桶信息'
-    )
+    throw fail(E_STORAGE_NO_ACTIVE_PROVIDER)
   }
   return provider
 }
@@ -114,7 +136,7 @@ export async function uploadLocalFile(
 ): Promise<ObjectStorageUploadResult> {
   const logs: ObjectStorageLogEntry[] = []
   const onLog = options?.onLog
-  if (!existsSync(absPath)) throw new Error(`待上传文件不存在: ${absPath}`)
+  if (!existsSync(absPath)) throw fail(E_STORAGE_UPLOAD_FILE_MISSING, { path: absPath })
 
   const provider = requireActiveProvider()
   const bucket = getObjectStorageBucket(provider)
@@ -159,7 +181,7 @@ export async function ensureRemoteMediaUrl(
   options?: { sourceLabel?: string; onLog?: ObjectStorageLogFn; projectRoot?: string }
 ): Promise<{ url: string; uploaded?: ObjectStorageUploadResult }> {
   const trimmed = pathOrUrl.trim()
-  if (!trimmed) throw new Error('空的媒体路径')
+  if (!trimmed) throw fail(E_STORAGE_EMPTY_MEDIA_PATH)
 
   if (/^https?:\/\//i.test(trimmed)) {
     options?.onLog?.({
@@ -223,7 +245,7 @@ export async function uploadProjectMedia(
   relativePath: string,
   options?: { onLog?: ObjectStorageLogFn }
 ): Promise<ObjectStorageUploadResult> {
-  if (!projectService.isOpen()) throw new Error('未打开工程')
+  if (!projectService.isOpen()) throw fail(MAIN_ERRORS.noProject)
   const root = projectService.getRoot()
   const abs = join(root, relativePath.replace(/\\/g, '/'))
   return uploadLocalFile(abs, {

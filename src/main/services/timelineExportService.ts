@@ -8,8 +8,34 @@ import { tmpdir } from 'os'
 import { join, basename, extname } from 'path'
 import type { TimelineExportClip, TimelineExportInput, TimelineExportResult } from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { projectService } from './projectService'
 import { broadcastToAllWindows } from '../broadcast'
+
+// ── 时间线导出个性错误 ──
+// 渲染端 ScriptTimelineEditor 按 code === 'TIMELINE_FFMPEG_MISSING' 分支；zh 文案保留 FFmpeg 关键字
+const E_TIMELINE_FFMPEG_MISSING = defErrSimple(
+  'TIMELINE_FFMPEG_MISSING',
+  '无法启动 ffmpeg：未找到可执行文件。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。',
+  'FFmpeg executable was not found; install it or configure the path in Settings'
+)
+const E_TIMELINE_FFMPEG_LAUNCH_FAILED = defErr<{ detail: string }>(
+  'timeline.ffmpegLaunchFailed',
+  ({ detail }) => `无法启动 ffmpeg：${detail}。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。`,
+  ({ detail }) => `Could not start ffmpeg: ${detail}. Install ffmpeg onto PATH or set FFMPEG_PATH.`
+)
+const E_TIMELINE_FFMPEG_EXITED = defErr<{ stderr: string; exitCode: number | null }>(
+  'timeline.ffmpegExited',
+  ({ stderr, exitCode }) => stderr || `ffmpeg 退出码 ${exitCode}`,
+  ({ stderr, exitCode }) => stderr || `ffmpeg exited with code ${exitCode}`
+)
+const E_TIMELINE_NO_EXPORTABLE_CLIPS = defErrSimple(
+  'timeline.noExportableClips',
+  '时间线上没有可导出的视频或音频片段',
+  'The timeline has no exportable video or audio clips'
+)
+const E_TIMELINE_CANCELLED = defErrSimple('timeline.cancelled', '已取消', 'Cancelled')
 
 function escapeDrawtext(text: string): string {
   return text
@@ -71,11 +97,13 @@ function runFfmpeg(bin: string, args: string[], onTime?: (sec: number) => void):
       }
     })
     child.on('error', (err) => {
-      reject(new Error(`无法启动 ffmpeg：${err.message}。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。`))
+      // 保留原生 spawn 错误（ENOENT 等）作为 cause，文案保留 FFmpeg 关键字供渲染端兜底匹配
+      reject(Object.assign(fail(E_TIMELINE_FFMPEG_LAUNCH_FAILED, { detail: err.message }), { cause: err }))
     })
     child.on('close', (code) => {
+      // stderr 为 ffmpeg 原生输出，原样透传
       if (code === 0) resolve()
-      else reject(new Error(stderr.trim().slice(-900) || `ffmpeg 退出码 ${code}`))
+      else reject(fail(E_TIMELINE_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code }))
     })
   })
 }
@@ -361,7 +389,7 @@ async function encodeTimeline(
   }
 
   if (!mainVideos.length && !overlays.length && !audioOnlyInputs.length) {
-    throw new Error('时间线上没有可导出的视频或音频片段')
+    throw fail(E_TIMELINE_NO_EXPORTABLE_CLIPS)
   }
 
   const audios = [...audioOnlyInputs, ...overlays]
@@ -437,16 +465,14 @@ export async function exportScriptTimeline(
 ): Promise<TimelineExportResult> {
   try {
     if (!projectService.isOpen()) {
-      return { ok: false, error: '未打开工程' }
+      return { ok: false, error: fail(MAIN_ERRORS.noProject).message }
     }
 
     const bin = findFfmpegBin()
     const hasFfmpeg = await probeFfmpeg(bin)
     if (!hasFfmpeg) {
-      return {
-        ok: false,
-        error: '无法启动 ffmpeg：未找到可执行文件。请安装 ffmpeg 并加入 PATH，或设置 FFMPEG_PATH。'
-      }
+      // code = TIMELINE_FFMPEG_MISSING；消息含 FFmpeg 关键字，渲染端正则兜底仍可命中
+      return { ok: false, error: fail(E_TIMELINE_FFMPEG_MISSING).message }
     }
 
     const save = await dialog.showSaveDialog({
@@ -459,7 +485,7 @@ export async function exportScriptTimeline(
       properties: ['createDirectory', 'showOverwriteConfirmation']
     })
     if (save.canceled || !save.filePath) {
-      return { ok: false, canceled: true, error: '已取消' }
+      return { ok: false, canceled: true, error: fail(E_TIMELINE_CANCELLED).message }
     }
 
     let outPath = save.filePath

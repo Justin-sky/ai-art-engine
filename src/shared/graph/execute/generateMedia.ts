@@ -57,6 +57,8 @@ import {
   resolveNodeStyleImages,
   resolveStyleReferenceUrls
 } from './mediaInputs'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 export async function executeVoiceGenerateNode(
   ctx: NodeExecuteContext
@@ -141,7 +143,7 @@ export async function executeVoiceGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   if (!result.assetId || !result.relativePath) {
-    throw new Error('语音合成未返回资产')
+    throw fail(SHARED_ERRORS.ttsNoAsset)
   }
 
   const notes = [localNotes, incomingText].filter(Boolean).join('\n') || undefined
@@ -937,7 +939,7 @@ export async function executeImageGenerateNode(
   }
 
   if (!batch.length) {
-    throw new Error('模型未返回图片')
+    throw fail(SHARED_ERRORS.noModelImage)
   }
 
   // 按设定宽高比裁正画布：宫格画布裁正后每个格子几何上严格按该比例均分
@@ -960,7 +962,7 @@ export async function executeImageGenerateNode(
   const stampKey = `gen:${node.id}:${stamp}`
   const materializedBatch = await materializeGeneratedBatch(ctx, batch, stampKey)
   if (!materializedBatch.length) {
-    throw new Error('图片落盘失败')
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
   }
   const generatedImages = mergeGeneratedImages(ctx, materializedBatch, `${stampKey}:keep`)
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim())

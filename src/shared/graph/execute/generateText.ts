@@ -16,6 +16,8 @@ import { dualTextGalleryOutputs, flattenAssetValues, flattenImagesValues } from 
 import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
 import { commitInMemoryTextGallery, persistScreenplayGeneration } from './materialize'
 import { normalizeLocalScreenplayText, resolveMentionSources } from './context'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 
 export async function executeTextAssetRefNode(
   ctx: NodeExecuteContext
@@ -85,7 +87,7 @@ export async function executeScreenplayGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw new Error('模型未返回剧本文本')
+  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '剧本文本', en: 'script text' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   return await persistScreenplayGeneration(ctx, text)
 }
@@ -130,7 +132,7 @@ export async function executeGameSystemGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw new Error('模型未返回游戏系统策划案')
+  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '游戏系统策划案', en: 'game system design document' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   return await persistScreenplayGeneration(ctx, text)
 }
@@ -219,7 +221,7 @@ export async function executeImageToPromptNode(
     throw new DOMException('Aborted', 'AbortError')
   }
   const text = result.text.trim()
-  if (!text) throw new Error('模型未返回提示词')
+  if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '提示词', en: 'prompt' } })  // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
   return persistScreenplayGeneration(ctx, text)
 }

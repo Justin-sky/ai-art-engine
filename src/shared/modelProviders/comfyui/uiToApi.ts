@@ -1,3 +1,6 @@
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
+
 type ComfyApiNode = {
   class_type?: string
   inputs?: Record<string, unknown>
@@ -239,7 +242,7 @@ export function isComfyUiGraphWorkflow(raw: unknown): boolean {
 /** 把画布保存的 UI JSON（含 subgraph）转成 API prompt。 */
 export function convertComfyUiWorkflowToApi(raw: unknown): ComfyApiWorkflow {
   if (!isComfyUiGraphWorkflow(raw)) {
-    throw new Error('不是 ComfyUI UI 格式 workflow')
+    throw fail(SHARED_ERRORS.comfyuiNotUiFormat)
   }
   const graph = raw as {
     nodes?: UiNode[]
@@ -248,7 +251,7 @@ export function convertComfyUiWorkflowToApi(raw: unknown): ComfyApiWorkflow {
   }
   const prompt = convertGraph(graph, new Map(), '', new Map())
   if (!Object.keys(prompt).length) {
-    throw new Error('UI workflow 转换后没有可执行节点')
+    throw fail(SHARED_ERRORS.comfyuiNoExecutableNodes)
   }
   for (const node of Object.values(prompt)) {
     const inputs = node.inputs ?? {}

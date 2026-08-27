@@ -5,6 +5,8 @@ import {
   sortLayersForCompose,
   type ImageLayerSplitState
 } from '@shared/graph'
+import { SHARED_ERRORS } from '@shared/errors/catalog'
+import { fail } from '@shared/errors/appError'
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const url = src.trim()
@@ -26,11 +28,11 @@ export async function composeImageLayerStack(input: {
   const layers = sortLayersForCompose(input.state.layers).filter((layer) =>
     isLayerSplitLayerDrawable(input.state, layer)
   )
-  if (!layers.length) throw new Error('没有可合成的图层')
+  if (!layers.length) throw fail(SHARED_ERRORS.imageComposeNoLayers)
 
   const base = layers.find((layer) => isLayerSplitBase(layer)) ?? layers[0]!
   const baseUrl = input.layerUrls[base.imageId]?.trim() || input.layerUrls[base.id]?.trim()
-  if (!baseUrl) throw new Error('缺少底图，无法合成图层')
+  if (!baseUrl) throw fail(SHARED_ERRORS.imageComposeBaseMissing)
   const baseImg = await loadImage(baseUrl)
 
   const canvasWidth = Math.max(

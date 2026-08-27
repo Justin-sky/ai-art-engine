@@ -14,6 +14,7 @@ import {
 } from '@shared/graph'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
+import i18n from '../../i18n'
 import { graphRunHosts } from '../graph/model/graphRunHosts'
 
 function readScriptGraph(scriptAssetId: string): GraphDocument | null {
@@ -42,7 +43,9 @@ function videoItemToSource(item: GraphVideoItem, index: number): ScriptTimelineS
       : undefined
   return {
     id: relativePath || assetId || `video:${index}`,
-    title: asset?.name?.trim() || `视频 ${index + 1}`,
+    title:
+      asset?.name?.trim() ||
+      String(i18n.global.t('script.timeline.defaultVideoTitle', { index: index + 1 })),
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
     durationSec: undefined
@@ -65,7 +68,9 @@ function voiceItemToSource(item: GraphVoiceItem, index: number): ScriptTimelineS
       : undefined
   return {
     id: relativePath || assetId || `voice:${index}`,
-    title: asset?.name?.trim() || `声音 ${index + 1}`,
+    title:
+      asset?.name?.trim() ||
+      String(i18n.global.t('script.timeline.defaultVoiceTitle', { index: index + 1 })),
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
     durationSec: undefined,
@@ -111,7 +116,11 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
         seen.add(rel)
         sources.push({
           id: rel,
-          title: sourceNode.title?.trim() || `视频 ${sources.length + 1}`,
+          title:
+            sourceNode.title?.trim() ||
+            String(
+              i18n.global.t('script.timeline.defaultVideoTitle', { index: sources.length + 1 })
+            ),
           relativePath: rel
         })
       }

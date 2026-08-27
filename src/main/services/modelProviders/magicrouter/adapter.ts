@@ -20,6 +20,8 @@ import {
 } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { LONG_GENERATE_TIMEOUT_MS } from '../http'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr, defErrSimple, isAppError } from '@shared/errors/appError'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 import {
   createMagicRouterHttpClient,
@@ -93,10 +95,21 @@ function isVideoEdit(modelId: string): boolean {
   return /videoedit/i.test(modelId)
 }
 
-function notSupported(feature: string): Promise<never> {
-  return Promise.reject(
-    new Error(`MagicRouter 提供商暂未接入${feature}，当前仅支持文本 / 图片 / 视频`)
-  )
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_NOT_SUPPORTED = defErrSimple(
+  'provider.magicrouter.unsupported-speech',
+  'MagicRouter 提供商暂未接入语音合成，当前仅支持文本 / 图片 / 视频',
+  'MagicRouter does not support speech synthesis yet; text, image and video only'
+)
+
+const E_VIDEO_GEN_FAILED = defErr<{ errorCode?: string }>(
+  'provider.magicrouter.video-generation-failed',
+  ({ errorCode }) => `视频生成失败${errorCode ? `（${errorCode}）` : ''}`,
+  ({ errorCode }) => `Video generation failed${errorCode ? ` (${errorCode})` : ''}`
+)
+
+function notSupported(): Promise<never> {
+  return Promise.reject(fail(E_NOT_SUPPORTED))
 }
 
 export const magicRouterAdapter: ModelProviderAdapter = {
@@ -107,7 +120,9 @@ export const magicRouterAdapter: ModelProviderAdapter = {
     try {
       await client.get('/models/live', { timeout: 20_000 })
     } catch (err) {
-      throw new Error(`连接测试失败：${await readMagicRouterHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, {
+        detail: await readMagicRouterHttpError(err)
+      })
     }
   },
 
@@ -163,11 +178,15 @@ export const magicRouterAdapter: ModelProviderAdapter = {
           row.url?.trim() || (row.b64_json ? `data:image/png;base64,${row.b64_json}` : '')
         )
         .filter(Boolean)
-      if (!images.length) throw new Error('MagicRouter 未返回图片')
+      if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
       return { images, model: modelId }
     } catch (err) {
-      if (err instanceof Error && /未返回图片/.test(err.message)) throw err
-      throw new Error(`MagicRouter 图片生成失败: ${await readMagicRouterHttpError(err)}`)
+      // 结构性错误（如未返回图片）按原样抛出，仅对 HTTP 类失败套统一句式
+      if (isAppError(err)) throw err
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: await readMagicRouterHttpError(err)
+      })
     }
   },
 
@@ -205,7 +224,7 @@ export const magicRouterAdapter: ModelProviderAdapter = {
     try {
       const { data } = await client.post<MagicRouterVideoSubmitResp>('/videos/generations', body)
       const taskId = data.id?.trim()
-      if (!taskId) throw new Error('MagicRouter 未返回视频任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId: taskId,
         pollingUrl: `/videos/generations/${encodeURIComponent(taskId)}`,
@@ -213,8 +232,12 @@ export const magicRouterAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      if (err instanceof Error && /任务 id/.test(err.message)) throw err
-      throw new Error(`MagicRouter 提交视频失败: ${await readMagicRouterHttpError(err)}`)
+      // 结构性错误（如未返回任务 id）按原样抛出，仅对 HTTP 类失败套统一句式
+      if (isAppError(err)) throw err
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: await readMagicRouterHttpError(err)
+      })
     }
   },
 
@@ -231,7 +254,7 @@ export const magicRouterAdapter: ModelProviderAdapter = {
       const error =
         status === 'failed'
           ? data.error_message?.trim() ||
-            `视频生成失败${data.error_code ? `（${data.error_code}）` : ''}`
+            fail(E_VIDEO_GEN_FAILED, { errorCode: data.error_code }).message
           : undefined
 
       let progress = 15
@@ -242,13 +265,17 @@ export const magicRouterAdapter: ModelProviderAdapter = {
       let downloadUrl: string | undefined
       if (status === 'completed') {
         downloadUrl = data.video_url?.trim()
-        if (!downloadUrl) throw new Error('视频任务已完成但未返回下载地址')
+        if (!downloadUrl) throw fail(PROVIDER_ERRORS.videoResultNoUrl)
       }
 
       return { status, progress, error, downloadUrl }
     } catch (err) {
-      if (err instanceof Error && /下载地址/.test(err.message)) throw err
-      throw new Error(`MagicRouter 轮询视频任务失败: ${await readMagicRouterHttpError(err)}`)
+      // 结构性错误（如已完成但未返回下载地址）按原样抛出，仅对 HTTP 类失败套统一句式
+      if (isAppError(err)) throw err
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: await readMagicRouterHttpError(err)
+      })
     }
   },
 
@@ -257,7 +284,7 @@ export const magicRouterAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    return notSupported('语音合成')
+    return notSupported()
   },
 
   submitModel3d(
@@ -265,13 +292,13 @@ export const magicRouterAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

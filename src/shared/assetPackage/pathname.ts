@@ -1,5 +1,7 @@
 import type { AssetFolder, AssetInfo } from '../domain'
 import { normalizeFolders } from '../folderTree'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../errors/catalog'
 
 const WIN_RESERVED = new Set([
   'CON',
@@ -40,13 +42,13 @@ export function normalizePathSegment(name: string): string {
 export function assertSafePackagePathname(pathname: string): string {
   const normalized = pathname.normalize('NFC').replace(/\\/g, '/')
   if (!normalized.startsWith('Assets/')) {
-    throw new Error(`pathname 必须以 Assets/ 开头: ${pathname}`)
+    throw fail(SHARED_ERRORS.packagePathPrefix, { path: pathname })
   }
   if (normalized.includes('\0') || normalized.split('/').some((p) => p === '' || p === '.' || p === '..')) {
-    throw new Error(`非法 pathname: ${pathname}`)
+    throw fail(SHARED_ERRORS.packagePathInvalid, { path: pathname })
   }
   if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith('/')) {
-    throw new Error(`pathname 不能是绝对路径: ${pathname}`)
+    throw fail(SHARED_ERRORS.packagePathAbsolute, { path: pathname })
   }
   return normalized
 }
@@ -61,7 +63,7 @@ export function folderPathname(
   let cur: string | null = folderId
   const seen = new Set<string>()
   while (cur) {
-    if (seen.has(cur)) throw new Error(`文件夹环: ${cur}`)
+    if (seen.has(cur)) throw fail(SHARED_ERRORS.packageFolderCycle, { path: cur })
     seen.add(cur)
     const folder = byId.get(cur)
     if (!folder) break

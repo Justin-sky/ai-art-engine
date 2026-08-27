@@ -11,6 +11,8 @@ import type {
   GraphNodeParams,
   GraphNodeTypeId
 } from './types'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../errors/catalog'
 
 export interface GraphPlanNodeSpec {
   key: string
@@ -192,15 +194,15 @@ export function parseGraphPlanJson(text: string): GraphPlan {
   } catch {
     const start = raw.indexOf('{')
     const end = raw.lastIndexOf('}')
-    if (start < 0 || end <= start) throw new Error('模型未返回合法 JSON')
+    if (start < 0 || end <= start) throw fail(SHARED_ERRORS.planInvalidJson)
     parsed = JSON.parse(raw.slice(start, end + 1))
   }
-  if (!parsed || typeof parsed !== 'object') throw new Error('GraphPlan 必须是对象')
+  if (!parsed || typeof parsed !== 'object') throw fail(SHARED_ERRORS.planNotObject)
   const obj = parsed as Record<string, unknown>
   const nodesRaw = Array.isArray(obj.nodes) ? obj.nodes : null
   const edgesRaw = Array.isArray(obj.edges) ? obj.edges : null
-  if (!nodesRaw) throw new Error('GraphPlan.nodes 必须是数组')
-  if (!edgesRaw) throw new Error('GraphPlan.edges 必须是数组')
+  if (!nodesRaw) throw fail(SHARED_ERRORS.planNodesNotArray)
+  if (!edgesRaw) throw fail(SHARED_ERRORS.planEdgesNotArray)
 
   const nodes: GraphPlanNodeSpec[] = []
   for (const item of nodesRaw) {

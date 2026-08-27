@@ -4,6 +4,7 @@ import {
   applyEpisodeAgentReview,
   createEpisodeAgentState,
   EPISODE_AGENT_MOTION_9,
+  EPISODE_AGENT_STOCK_TITLES,
   episodeFailReasonForStep,
   extractEpisodeBeatNumber,
   formatEpisodeKeyframeSpanNotes,
@@ -19,7 +20,9 @@ import {
   selectEpisodeAnchor,
   selectEpisodeCell,
   selectEpisodeKeyframeSpans,
-  selectEpisodeMotion
+  selectEpisodeMotion,
+  titleMatchesEpisodeReview,
+  titleMatchesEpisodeStage
 } from '../src/shared/graph'
 
 const BEAT_BOARD = `# 9宫格核心锚点
@@ -340,20 +343,29 @@ describe('shortDrama agent pipeline preset', () => {
     const sourceTitles = (target: string | undefined): string[] =>
       edges.filter((edge) => edge.target === target).map((edge) => titleById.get(edge.source) ?? '')
     const reviewBreakdown = nodes.find((n) => n.params.episodeReviewTarget === 'breakdown')
+    // 一键工作流写盘的库存标题已是英文规范值
     expect(sourceTitles(reviewBreakdown?.id)).toEqual(
-      expect.arrayContaining(['剧本', '分镜师·节拍拆解表'])
+      expect.arrayContaining(['剧本', EPISODE_AGENT_STOCK_TITLES.breakdown])
     )
     expect(
       sourceTitles(nodes.find((n) => n.params.episodeReviewTarget === 'motion')?.id)
     ).toEqual(
       expect.arrayContaining([
         '剧本',
-        '分镜师·节拍拆解表',
-        '分镜师·9宫格分镜表',
-        '分镜师·4宫格动态分镜表',
-        '动画师·动态提示词表'
+        EPISODE_AGENT_STOCK_TITLES.breakdown,
+        EPISODE_AGENT_STOCK_TITLES.beatboard,
+        EPISODE_AGENT_STOCK_TITLES.sequence,
+        EPISODE_AGENT_STOCK_TITLES.motion
       ])
     )
+    // 旧版中文库存标题仍可被兜底匹配（legacy 回归用例）
+    expect(titleMatchesEpisodeStage('分镜师·节拍拆解表', 'breakdown')).toBe(true) // cjk-ok 旧标题
+    expect(titleMatchesEpisodeStage('分镜师·9宫格分镜表', 'beatboard')).toBe(true) // cjk-ok 旧标题
+    expect(titleMatchesEpisodeStage('分镜师·4宫格动态分镜表', 'sequence')).toBe(true) // cjk-ok 旧标题
+    expect(titleMatchesEpisodeStage('动画师·动态提示词表', 'motion')).toBe(true) // cjk-ok 旧标题
+    expect(titleMatchesEpisodeReview('导演审核·4宫格动态分镜表', 'sequence')).toBe(true) // cjk-ok 旧标题
+    expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.beatboard, 'beatboard')).toBe(true)
+    expect(titleMatchesEpisodeStage(EPISODE_AGENT_STOCK_TITLES.sequence, 'beatboard')).toBe(false)
     expect(
       edges.some((e) => e.sourcePort === 'out' && e.targetPort === 'in-text')
     ).toBe(true)

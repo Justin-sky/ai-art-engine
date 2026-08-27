@@ -4,7 +4,7 @@
       v-if="loading"
       class="hint"
     >
-      正在打开 UI 界面拆分内图…
+      {{ t('divePipeline.uiSplit.loading') }}
     </div>
     <AssetEditor
       v-else-if="innerAssetId"
@@ -45,7 +45,7 @@ const props = defineProps<{
 }>()
 
 const project = useProjectStore()
-const { locale } = useStudioI18n()
+const { locale, t } = useStudioI18n()
 const innerAssetId = ref('')
 const loading = ref(true)
 const errorText = ref('')
@@ -94,12 +94,12 @@ onMounted(async () => {
       return
     }
     if (!screens.length) {
-      errorText.value = '请先生成界面提示词，再双击进入内图。'
+      errorText.value = t('divePipeline.uiSplit.error.noScreens')
       return
     }
     const created = await window.studio.createAsset({
       type: 'subgraph',
-      name: `UI拆分·${node?.title?.trim() || props.nodeId}`,
+      name: `UI拆分·${node?.title?.trim() || props.nodeId}`, // cjk-ok 持久化资产名前缀（存的是名字不是标签）
       folderId: null,
       genParams: {
         graphJson: buildUiSplitInnerGraph(screens, locale.value),

@@ -80,7 +80,7 @@ export async function executeModel3dGenerateNode(
 
   // 构建提示词
   const instruction = expandInstructionMentions(instructionRaw, mentionSources)
-  let prompt = instruction || incomingText || ''
+  const prompt = instruction || incomingText || ''
   if (!prompt.trim() && !imageUrls.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }

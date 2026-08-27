@@ -3,6 +3,13 @@ import { basename, extname, join, resolve, sep } from 'path'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { importFileFilter } from '@shared/import'
 import type { SaveBinaryFilesToDirectoryInput } from '@shared/ipc'
+import { defErrSimple, fail } from '@shared/errors/appError'
+
+const E_SELECT_PROJECT_JSON = defErrSimple(
+  'dialog.selectProjectJson',
+  '请选择工程根目录下的 project.json',
+  'Choose project.json inside the project root directory'
+)
 
 class DialogService {
   async selectDirectory(): Promise<string | null> {
@@ -20,7 +27,7 @@ class DialogService {
     const path = result.filePaths[0]
     if (result.canceled || !path) return null
     if (basename(path) !== 'project.json') {
-      throw new Error('请选择工程根目录下的 project.json')
+      throw fail(E_SELECT_PROJECT_JSON)
     }
     return path
   }

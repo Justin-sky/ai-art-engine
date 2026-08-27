@@ -24,6 +24,8 @@ import {
   resolveDashScopeModelCapabilities
 } from '@shared/modelProviders/dashscope/modelCapabilities'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -35,6 +37,28 @@ import {
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
 import { dashscopeNativeApiBase } from './nativeBase'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_NO_TASK_OUTPUT = defErrSimple(
+  'provider.dashscope.no-task-output',
+  '任务查询未返回 output',
+  'Task query returned no output'
+)
+const E_VIDEO_GEN_FAILED = defErrSimple(
+  'provider.dashscope.video-generation-failed',
+  '视频生成失败',
+  'Video generation failed'
+)
+const E_HAPPYHORSE_R2V_NEEDS_IMAGE = defErrSimple(
+  'provider.dashscope.happyhorse-r2v-needs-image',
+  'HappyHorse 参考生视频至少需要 1 张参考图',
+  'HappyHorse reference-to-video requires at least 1 reference image'
+)
+const E_HAPPYHORSE_EDIT_NEEDS_VIDEO = defErrSimple(
+  'provider.dashscope.happyhorse-edit-needs-video',
+  'HappyHorse 视频编辑需要 1 段输入视频',
+  'HappyHorse video editing requires 1 input video'
+)
 
 type DashScopeTaskOutput = {
   task_id?: string
@@ -72,7 +96,7 @@ function mapDashScopeStatus(raw: string | undefined): VideoPollResult['status'] 
 }
 
 function createNativeClient(provider: ModelProviderInstance, timeoutMs = 120_000) {
-  if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+  if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
   return axios.create({
     baseURL: dashscopeNativeApiBase(provider.baseUrl),
     timeout: timeoutMs,
@@ -114,19 +138,19 @@ async function pollNativeTask(
       throw new Error(data.message || data.code)
     }
     const output = data.output
-    if (!output) throw new Error('任务查询未返回 output')
+    if (!output) throw fail(E_NO_TASK_OUTPUT)
     const status = mapDashScopeStatus(output.task_status)
     if (status === 'completed' || status === 'failed') return output
     await sleep(IMAGE_POLL_INTERVAL_MS)
   }
-  throw new Error('任务超时：仍未完成')
+  throw fail(PROVIDER_ERRORS.imageTimeout)
 }
 
 export const dashscopeAdapter: ModelProviderAdapter = {
   kind: 'dashscope',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key')
+    if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
     const client = createProviderHttpClient({
       ...provider,
       baseUrl: trimBaseUrl(provider.baseUrl || DASHSCOPE_DEFAULT_BASE_URL)
@@ -137,9 +161,11 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
       const raw = await readHttpError(err)
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型：${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败：${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -226,19 +252,23 @@ export const dashscopeAdapter: ModelProviderAdapter = {
         throw new Error(data.message || data.code)
       }
       const taskId = data.output?.task_id
-      if (!taskId) throw new Error('未返回图片任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noImageTaskId)
 
       const output = await pollNativeTask(provider, taskId)
       if (mapDashScopeStatus(output.task_status) === 'failed') {
-        throw new Error(output.message || output.code || '图片生成失败')
+        // 上游任务失败：message / code 原样透出，由外层统一句式包装
+        throw new Error(output.message || output.code || '')
       }
       const images = (output.results ?? [])
         .map((r) => r.url?.trim() ?? '')
         .filter(Boolean)
-      if (!images.length) throw new Error('图片任务已完成但未返回 URL')
+      if (!images.length) throw fail(PROVIDER_ERRORS.imageResultNoUrl)
       return { images, model: modelId }
     } catch (err) {
-      throw new Error(`图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -270,7 +300,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
 
     if (isHappyHorseR2v) {
       if (!imageRefs.length) {
-        throw new Error('HappyHorse 参考生视频至少需要 1 张参考图')
+        throw fail(E_HAPPYHORSE_R2V_NEEDS_IMAGE)
       }
       bodyInput.media = imageRefs.slice(0, 9).map((url) => ({
         type: 'reference_image',
@@ -278,7 +308,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       }))
     } else if (isHappyHorseEdit) {
       if (!videoRefs.length) {
-        throw new Error('HappyHorse 视频编辑需要 1 段输入视频')
+        throw fail(E_HAPPYHORSE_EDIT_NEEDS_VIDEO)
       }
       const media: Array<{ type: string; url: string }> = [
         { type: 'video', url: videoRefs[0]! }
@@ -336,7 +366,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
         throw new Error(data.message || data.code)
       }
       const taskId = data.output?.task_id
-      if (!taskId) throw new Error('未返回视频任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       const nativeBase = dashscopeNativeApiBase(provider.baseUrl)
       return {
         jobId: taskId,
@@ -345,7 +375,10 @@ export const dashscopeAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交视频生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -366,7 +399,9 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       const status = mapDashScopeStatus(output?.task_status)
       const downloadUrl = output?.video_url
       const error =
-        status === 'failed' ? output?.message || output?.code || '视频生成失败' : undefined
+        status === 'failed'
+          ? output?.message || output?.code || fail(E_VIDEO_GEN_FAILED).message
+          : undefined
 
       let progress = 15
       if (status === 'in_progress') progress = 55
@@ -374,7 +409,10 @@ export const dashscopeAdapter: ModelProviderAdapter = {
 
       return { status, progress, error, downloadUrl }
     } catch (err) {
-      throw new Error(`轮询视频任务失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -383,7 +421,10 @@ export const dashscopeAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('通义千问当前不支持语音生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, {
+      kind: 'voice',
+      name: { zh: '通义千问', en: 'Qwen (DashScope)' }
+    })
   },
 
   submitModel3d(
@@ -391,13 +432,13 @@ export const dashscopeAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

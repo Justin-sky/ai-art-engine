@@ -5946,7 +5946,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     editor.commands.setActiveScope(scope)
     editor.commands.recordExecuted({
       id: `director.remove.${crypto.randomUUID()}`,
-      label: '删除物体',
+      label: t('director.stage.deleteObject'),
       scope,
       execute: () =>
         applyStageSnapshot(afterObjects, afterCameras, afterActive, undefined, afterGroups),

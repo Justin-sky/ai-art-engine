@@ -21,15 +21,15 @@ function beat(overrides: Partial<BeatRow> = {}): BeatRow {
     time: '雨夜',
     durationHint: '短',
     location: '城市巷口',
-    locations: [{ name: '巷口', type: '场景' }],
-    characters: [{ name: '林晓', type: '角色' }],
+    locations: [{ name: '巷口', type: 'scene' }],
+    characters: [{ name: '林晓', type: 'character' }],
     action: '林晓走进巷口',
     conflict: '寻找失踪的同伴',
     atmosphere: '雨声急促',
-    props: [{ name: '雨伞', type: '道具' }],
+    props: [{ name: '雨伞', type: 'prop' }],
     weapons: [],
     sourceExcerpt: '雨夜，林晓撑伞走进巷口。',
-    status: '未审核',
+    status: 'unreviewed',
     ...overrides
   }
 }
@@ -70,7 +70,35 @@ describe('beatParse', () => {
       props: [{ name: '信件' }],
       weapons: [{ name: '短刀' }],
       sourceExcerpt: '两人在天台相遇。',
-      status: '已审核'
+      status: 'reviewed'
+    })
+  })
+
+  it('normalizes legacy persisted values to canonical ids', () => {
+    // 旧版本以中文状态 / 中文 kind 持久化；读取必须归一化为英文规范值
+    const rows = parseBeatJson(
+      JSON.stringify([
+        {
+          id: 'beat-legacy-1',
+          title: '旧文档',
+          order: 1,
+          status: '已审核',
+          characters: [{ name: '林晓', type: '角色' }],
+          locations: [{ name: '天台', type: '场景' }]
+        },
+        {
+          id: 'beat-legacy-2',
+          title: '同义词',
+          order: 2,
+          status: 'approved'
+        },
+        { id: 'beat-legacy-3', title: '未知值按默认处理', order: 3, status: 'garbage' }
+      ])
+    )
+    expect(rows?.map((row) => row.status)).toEqual(['reviewed', 'reviewed', 'unreviewed'])
+    expect(rows?.[0]).toMatchObject({
+      characters: [{ name: '林晓', type: 'character' }],
+      locations: [{ name: '天台', type: 'scene' }]
     })
   })
 
@@ -99,7 +127,7 @@ describe('beatParse', () => {
 
   it('round-trips rows and a single entity', () => {
     const source = beat({
-      locations: [{ name: '天台', imageUrl: 'Images/roof.png', type: '场景' }]
+      locations: [{ name: '天台', imageUrl: 'Images/roof.png', type: 'scene' }]
     })
     expect(parseBeatJson(stringifyBeatRows([source]))).toEqual([source])
     expect(parseBeatEntityJson(stringifyBeatEntity(source))).toEqual(source)
@@ -117,9 +145,10 @@ describe('beatParse', () => {
     ])
   })
 
-  it('merges while preserving reviewed rows', () => {
+  it('merges while preserving reviewed rows (canonical and legacy Chinese statuses)', () => {
     const previous = [
-      beat({ id: 'beat-a', title: '已审', action: '保留', status: '已审核' }),
+      // 已审核行以旧版中文状态进入（模拟旧文档），合并时同样必须保留
+      beat({ id: 'beat-a', title: '已审', action: '保留', status: '已审核' as never }),
       beat({ id: 'beat-b', title: '未审', order: 2 })
     ]
     const next = [
@@ -129,6 +158,21 @@ describe('beatParse', () => {
     const merged = mergeBeatRowsPreservingReviewed(previous, next)
     expect(merged?.[0]).toMatchObject({ title: '已审', action: '保留', status: '已审核' })
     expect(merged?.[1]).toMatchObject({ title: '未审新', action: '更新' })
+
+    const canonicalPrevious = [
+      beat({ id: 'beat-c', title: '已审C', action: '保留C', status: 'reviewed' }),
+      beat({ id: 'beat-d', title: '未审D', order: 2 }),
+      beat({ id: 'beat-e', title: '已审E', action: '保留E', status: 'reviewed', order: 3 })
+    ]
+    const canonicalNext = [beat({ id: 'beat-c', title: '改写C', action: '变化C' })]
+    const mergedCanonical = mergeBeatRowsPreservingReviewed(canonicalPrevious, canonicalNext)
+    expect(mergedCanonical?.[0]).toMatchObject({
+      title: '已审C',
+      action: '保留C',
+      status: 'reviewed'
+    })
+    // 上游没再出现的已审核行必须追加保留；未审核行不保留
+    expect(mergedCanonical?.map((row) => row.id)).toEqual(['beat-c', 'beat-e'])
   })
 
   it('uses beat prefix for generated stable ids', () => {

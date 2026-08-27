@@ -14,6 +14,8 @@ import type {
   ModelProviderKind
 } from '@shared/modelProvider'
 import type { ModelProviderAdapter, VideoPollResult } from './types'
+import { PROVIDER_ERRORS } from './catalog'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -29,15 +31,45 @@ import {
 } from '@shared/modelProviders/vllm/videoParams'
 import { resolveVllmModelCapabilities } from '@shared/modelProviders/vllm/modelCapabilities'
 
-function notSupported(displayName: string, feature: string): Promise<never> {
-  return Promise.reject(
-    new Error(`${displayName} 本地服务暂未接入${feature}，当前仅支持文本（多模态理解可在文本节点传图）`)
-  )
+// ── 本文件错误条目（catalog 未覆盖的个性文案；本地 OpenAI 兼容服务 vLLM / Ollama / LM Studio 共用）──
+type LocalFeature = { zh: string; en: string }
+const E_LOCAL_NOT_SUPPORTED = defErr<{ displayName: string; feature: LocalFeature }>(
+  'provider.local.notSupported',
+  ({ displayName, feature }) =>
+    `${displayName} 本地服务暂未接入${feature.zh}，当前仅支持文本（多模态理解可在文本节点传图）`,
+  ({ displayName, feature }) =>
+    `${displayName} local service does not support ${feature.en} yet; text only (multimodal understanding available by passing images to text nodes)`
+)
+const E_LOCAL_BAD_REFERENCE_DATA_URL = defErrSimple(
+  'provider.local.invalidReferenceDataUrl',
+  '无法解析参考媒体 data URL',
+  'Could not parse reference media data URL'
+)
+const E_LOCAL_AUTH_REJECTED = defErr<{ detail: string }>(
+  'provider.local.authRejected',
+  ({ detail }) => `服务拒绝了请求（可能要求 API Key）: ${detail}`,
+  ({ detail }) => `The service rejected the request (an API Key may be required): ${detail}`
+)
+const E_LOCAL_UNREACHABLE = defErr<{ displayName: string; baseUrl: string }>(
+  'provider.local.unreachable',
+  ({ displayName, baseUrl }) =>
+    `无法连接本地 ${displayName} 服务（${baseUrl}），请确认服务已启动且地址正确`,
+  ({ displayName, baseUrl }) =>
+    `Cannot reach local ${displayName} service (${baseUrl}); make sure it is running and the address is correct`
+)
+const E_VLLM_CONFLICTING_REFERENCES = defErrSimple(
+  'provider.vllm.conflictingVideoReferences',
+  'vLLM 视频生成暂不支持图片与视频参考同时使用，请只连接其中一种',
+  'vLLM video generation cannot combine image and video references; connect only one of them'
+)
+
+function notSupported(displayName: string, feature: LocalFeature): Promise<never> {
+  return Promise.reject(fail(E_LOCAL_NOT_SUPPORTED, { displayName, feature }))
 }
 
 function mediaDataUrlToBlob(ref: string): { blob: Blob; filename: string } {
   const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(ref.trim())
-  if (!m) throw new Error('无法解析参考媒体 data URL')
+  if (!m) throw fail(E_LOCAL_BAD_REFERENCE_DATA_URL)
   const mime = m[1] || 'image/png'
   const payload = m[3] ?? ''
   const buf = m[2]
@@ -78,7 +110,7 @@ function pickVllmVideoReferences(input: GenerateVideoInput): {
   const firstFrame = input.firstFrameImageUrl?.trim()
   if (firstFrame) image = image ?? firstFrame
   if (image && video) {
-    throw new Error('vLLM 视频生成暂不支持图片与视频参考同时使用，请只连接其中一种')
+    throw fail(E_VLLM_CONFLICTING_REFERENCES)
   }
   return { image, video, audio }
 }
@@ -110,11 +142,11 @@ export function createLocalOpenAiAdapter(
         const raw = await readHttpError(err)
         if (status === 404) return
         if (isAuthFailure(status, raw)) {
-          throw new Error(formatAuthError(`服务拒绝了请求（可能要求 API Key）: ${raw}`, provider))
+          throw new Error(
+            formatAuthError(fail(E_LOCAL_AUTH_REJECTED, { detail: raw }).message, provider)
+          )
         }
-        throw new Error(
-          `无法连接本地 ${displayName} 服务（${provider.baseUrl}），请确认服务已启动且地址正确`
-        )
+        throw fail(E_LOCAL_UNREACHABLE, { displayName, baseUrl: provider.baseUrl })
       }
     },
 
@@ -140,7 +172,10 @@ export function createLocalOpenAiAdapter(
       } catch (err) {
         // vLLM-Omni 的 /models 偶尔只列对话模型；视频目录回退为空，可手动填写模型 id
         if (supportsVideo) return []
-        throw new Error(`拉取 ${displayName} 模型列表失败: ${await readHttpError(err)}`)
+        throw fail(PROVIDER_ERRORS.actionFailed, {
+          action: 'listModels',
+          detail: await readHttpError(err)
+        })
       }
     },
 
@@ -157,7 +192,7 @@ export function createLocalOpenAiAdapter(
       _modelId: string,
       _input: GenerateImageInput
     ): Promise<GenerateImageResult> {
-      return notSupported(displayName, '图片生成')
+      return notSupported(displayName, { zh: '图片生成', en: 'image generation' })
     },
 
     async submitVideo(
@@ -165,7 +200,7 @@ export function createLocalOpenAiAdapter(
       modelId: string,
       input: GenerateVideoInput
     ): Promise<GenerateVideoJob> {
-      if (!videoEnabled) return notSupported(displayName, '视频生成')
+      if (!videoEnabled) return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
       const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
       const form = new FormData()
       form.append('prompt', input.prompt)
@@ -200,7 +235,7 @@ export function createLocalOpenAiAdapter(
         const { data } = await client.post<{ id?: string; status?: string }>('/videos', form, {
           headers: { 'Content-Type': undefined }
         })
-        if (!data?.id) throw new Error('vLLM 未返回视频任务 id')
+        if (!data?.id) throw fail(PROVIDER_ERRORS.noVideoTaskId)
         return {
           jobId: data.id,
           pollingUrl: `${trimBaseUrl(provider.baseUrl)}/videos/${data.id}`,
@@ -208,7 +243,10 @@ export function createLocalOpenAiAdapter(
           model: modelId
         }
       } catch (err) {
-        throw new Error(`提交 vLLM 视频生成失败: ${await readHttpError(err)}`)
+        throw fail(PROVIDER_ERRORS.actionFailed, {
+          action: 'videoSubmit',
+          detail: await readHttpError(err)
+        })
       }
     },
 
@@ -216,7 +254,7 @@ export function createLocalOpenAiAdapter(
       provider: ModelProviderInstance,
       job: { jobId: string; pollingUrl: string }
     ): Promise<VideoPollResult> {
-      if (!videoEnabled) return notSupported(displayName, '视频生成')
+      if (!videoEnabled) return notSupported(displayName, { zh: '视频生成', en: 'video generation' })
       const client = createProviderHttpClient(provider)
       try {
         const { data } = await client.get<{
@@ -253,7 +291,10 @@ export function createLocalOpenAiAdapter(
           downloadUrl: status === 'completed' ? `/videos/${job.jobId}/content` : undefined
         }
       } catch (err) {
-        throw new Error(`轮询 vLLM 视频任务失败: ${await readHttpError(err)}`)
+        throw fail(PROVIDER_ERRORS.actionFailed, {
+          action: 'videoPolling',
+          detail: await readHttpError(err)
+        })
       }
     },
 
@@ -262,7 +303,7 @@ export function createLocalOpenAiAdapter(
       _modelId: string,
       _input: GenerateSpeechInput
     ): Promise<GenerateSpeechResult> {
-      return notSupported(displayName, '语音合成')
+      return notSupported(displayName, { zh: '语音合成', en: 'speech synthesis' })
     },
 
     submitModel3d(
@@ -270,14 +311,14 @@ export function createLocalOpenAiAdapter(
       _modelId: string,
       _input: GenerateModel3dInput
     ): Promise<GenerateModel3dJob> {
-      return notSupported(displayName, '3D 模型生成')
+      return notSupported(displayName, { zh: '3D 模型生成', en: '3D model generation' })
     },
 
     pollModel3d(
       _provider: ModelProviderInstance,
       _job: { jobId: string; pollingUrl: string }
     ): Promise<VideoPollResult> {
-      return notSupported(displayName, '3D 模型生成')
+      return notSupported(displayName, { zh: '3D 模型生成', en: '3D model generation' })
     }
   }
 }

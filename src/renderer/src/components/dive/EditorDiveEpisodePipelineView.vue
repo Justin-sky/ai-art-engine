@@ -6,21 +6,21 @@
         <span
           class="step-chip"
           :title="stateStepTitle"
-        >当前步骤：{{ stateStepLabel }}</span>
+        >{{ t('divePipeline.episode.header.currentStep') }}{{ stateStepLabel }}</span>
       </div>
       <div class="header-actions">
         <span
           v-if="runningCount"
           class="busy-chip"
-        >任务运行中…</span>
+        >{{ t('divePipeline.episode.header.busyTasks') }}</span>
         <button
           class="ghost-button"
           type="button"
           :disabled="!lastPipelineRunId"
-          :title="lastPipelineRunId ? '打开本次流水线轨迹' : '尚无本次轨迹'"
+          :title="lastPipelineRunId ? t('divePipeline.episode.header.traceOpen') : t('divePipeline.episode.header.traceNone')"
           @click="openPipelineLog"
         >
-          查看轨迹
+          {{ t('divePipeline.episode.header.viewTrace') }}
         </button>
         <button
           class="ghost-button"
@@ -28,7 +28,7 @@
           :disabled="refreshing"
           @click="loadAll"
         >
-          {{ refreshing ? '刷新中…' : '刷新' }}
+          {{ refreshing ? t('divePipeline.episode.header.refreshing') : t('divePipeline.episode.header.refresh') }}
         </button>
       </div>
     </div>
@@ -39,9 +39,9 @@
     >
       <span
         class="fail-chip"
-        title="最近一次导演审核失败原因"
+        :title="t('divePipeline.episode.header.failReasonTitle')"
       >
-        FAIL：{{ headerFailReason }}
+        {{ t('divePipeline.episode.header.failPrefix') }}{{ headerFailReason }}
       </span>
     </div>
 
@@ -49,7 +49,7 @@
       v-if="!graphDoc"
       class="empty-hint"
     >
-      尚未找到工作流数据。请先运行一次「分镜师·节拍拆解表」节点，再点击顶部工具栏的「剧集流水线」打开本视图。
+      {{ t('divePipeline.episode.empty.noGraph') }}
     </div>
 
     <div
@@ -61,17 +61,17 @@
       <section class="panel beats-panel">
         <div class="panel-head">
           <h3>
-            节拍拆解
+            {{ t('divePipeline.episode.panel.beats') }}
             <span
               v-if="reviewResult('breakdown') === 'PASS'"
               class="pass-mark"
-            >✓ 已通过</span>
+            >{{ t('divePipeline.episode.state.passedMark') }}</span>
           </h3>
           <div class="panel-actions">
             <button
               type="button"
               :disabled="stageBusy('breakdown')"
-              :title="stageBusy('breakdown') ? '节拍拆解生成中…' : ''"
+              :title="stageBusy('breakdown') ? t('divePipeline.episode.stageBusyTitle.breakdown') : ''"
               @click="regenerateStage('breakdown')"
             >
               {{ stageActionLabel('breakdown') }}
@@ -83,7 +83,7 @@
               :disabled="!reviewReady('breakdown')"
               @click="runReview('breakdown')"
             >
-              导演审核
+              {{ t('divePipeline.episode.action.directorReview') }}
             </button>
           </div>
         </div>
@@ -107,8 +107,8 @@
               <span
                 v-if="isAnchorBeat(beat)"
                 class="anchor-badge"
-                title="关键锚点（9宫格对应前 9 个锚）"
-              >锚</span>
+                :title="t('divePipeline.episode.anchor.badgeTitle')"
+              >{{ t('divePipeline.episode.anchor.badge') }}</span>
             </span>
           </li>
           <li
@@ -133,17 +133,17 @@
       <section class="panel board-panel">
         <div class="panel-head">
           <h3>
-            {{ isDirect9 ? '9宫格分镜表 · 直出视频' : '9宫格分镜表' }}
+            {{ isDirect9 ? t('divePipeline.episode.panel.boardDirect') : t('graph.episodeAgent.title.grid9Storyboard') }}
             <span
               v-if="reviewResult('beatboard') === 'PASS'"
               class="pass-mark"
-            >✓ 已通过</span>
+            >{{ t('divePipeline.episode.state.passedMark') }}</span>
           </h3>
           <div class="panel-actions">
             <button
               type="button"
               :disabled="stageBusy('beatboard')"
-              :title="stageBusy('beatboard') ? '9宫格分镜表生成中…' : ''"
+              :title="stageBusy('beatboard') ? t('divePipeline.episode.stageBusyTitle.beatboard') : ''"
               @click="regenerateStage('beatboard')"
             >
               {{ stageActionLabel('beatboard') }}
@@ -155,12 +155,12 @@
               :disabled="!reviewReady('beatboard')"
               @click="runReview('beatboard')"
             >
-              导演审核
+              {{ t('divePipeline.episode.action.directorReview') }}
             </button>
             <button
               type="button"
               class="icon-button"
-              title="生成9宫格拼图"
+              :title="t('divePipeline.episode.action.buildGrid9')"
               @click="runAnchorImage"
             >
               <GridIcon
@@ -184,12 +184,12 @@
             @click="selectedAnchorIndex = anchor.index"
           >
             <span class="anchor-head">
-              <b>格{{ anchor.index }}</b>
+              <b>{{ t('divePipeline.episode.cell.short', { n: anchor.index }) }}</b>
               <span
                 v-if="anchor.beatId"
                 class="beat-ref"
-                title="关联节拍"
-              >节拍{{ anchor.beatId }}</span>
+                :title="t('divePipeline.episode.cell.beatRefTitle')"
+              >{{ t('divePipeline.episode.cell.beatRef', { n: anchor.beatId }) }}</span>
               <span class="status-badge">{{ anchorReviewLabel(anchor.index) }}</span>
             </span>
             <OverflowTip
@@ -207,7 +207,7 @@
             <span
               v-else
               class="anchor-empty"
-            >未生成图</span>
+            >{{ t('divePipeline.episode.state.noImage') }}</span>
           </button>
           <div
             v-if="!anchors9.length"
@@ -220,7 +220,7 @@
           v-if="anchors9.length"
           class="hint"
         >
-          顶部工具栏的「剧集流水线」按钮可随时回到本视图；图片/视频在节点图中运行。
+          {{ t('divePipeline.episode.hint.backFromToolbar') }}
         </p>
       </section>
 
@@ -237,9 +237,7 @@
       <section class="panel detail-panel">
         <div class="panel-head">
           <h3 class="breadcrumb">
-            {{ isDirect9
-              ? `场/节拍 #${activeBeat} → 格${selectedAnchorIndex} → 9格直出视频`
-              : `场/节拍 #${activeBeat} → 格${selectedAnchorIndex} → 动态格 ${selectedCellKey}` }}
+            {{ breadcrumbTitle }}
           </h3>
         </div>
 
@@ -249,17 +247,17 @@
         >
           <div class="detail-head">
             <h4>
-              4宫格（{{ selectedAnchorIndex }}）
+              {{ t('divePipeline.episode.detail.grid4', { index: selectedAnchorIndex }) }}
               <span
                 v-if="reviewResult('sequence') === 'PASS'"
                 class="pass-mark"
-              >✓ 已通过</span>
+              >{{ t('divePipeline.episode.state.passedMark') }}</span>
             </h4>
             <div class="panel-actions">
               <button
                 type="button"
                 :disabled="stageBusy('sequence')"
-                :title="stageBusy('sequence') ? '4宫格分镜表生成中…' : ''"
+                :title="stageBusy('sequence') ? t('divePipeline.episode.stageBusyTitle.sequence') : ''"
                 @click="regenerateStage('sequence')"
               >
                 {{ stageActionLabel('sequence') }}
@@ -271,12 +269,12 @@
                 :disabled="!reviewReady('sequence')"
                 @click="runReview('sequence')"
               >
-                导演审核
+                {{ t('divePipeline.episode.action.directorReview') }}
               </button>
               <button
                 type="button"
                 class="icon-button"
-                title="生成4宫格拼图"
+                :title="t('divePipeline.episode.action.buildGrid4')"
                 @click="runFourGridImage"
               >
                 <GridIcon
@@ -325,17 +323,17 @@
         >
           <div class="detail-head">
             <h4>
-              9宫格动态提示词
+              {{ t('divePipeline.episode.detail.motionDirect') }}
               <span
                 v-if="reviewResult('motion') === 'PASS'"
                 class="pass-mark"
-              >✓ 已通过</span>
+              >{{ t('divePipeline.episode.state.passedMark') }}</span>
             </h4>
             <div class="panel-actions">
               <button
                 type="button"
                 :disabled="stageBusy('motion')"
-                :title="stageBusy('motion') ? '动态提示词生成中…' : ''"
+                :title="stageBusy('motion') ? t('divePipeline.episode.stageBusyTitle.motion') : ''"
                 @click="regenerateStage('motion')"
               >
                 {{ stageActionLabel('motion', isDirect9) }}
@@ -348,7 +346,7 @@
                 :disabled="!reviewReady('motion')"
                 @click="runReview('motion')"
               >
-                导演审核
+                {{ t('divePipeline.episode.action.directorReview') }}
               </button>
             </div>
           </div>
@@ -361,14 +359,14 @@
           <span
             v-else
             class="video-path"
-          >{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
+          >{{ stageBusy('motion') ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
         </div>
 
         <div
           v-if="activeCellVideo"
           class="detail-block video-block"
         >
-          <h4>视频产物</h4>
+          <h4>{{ t('divePipeline.episode.detail.videoOutput') }}</h4>
           <MediaPreviewPlayer
             v-if="activeVideoUrl"
             kind="video"
@@ -388,15 +386,15 @@
             :title="videoActionTitle"
             @click="runCurrentVideo"
           >
-            {{ videoBusy ? '生成中…' : '重新生成这条视频' }}
+            {{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.detail.regenVideo') }}
           </button>
         </div>
         <div
           v-else
           class="detail-block video-block"
         >
-          <h4>视频产物</h4>
-          <span class="video-path">{{ videoBusy ? '生成中…' : '未生成' }}</span>
+          <h4>{{ t('divePipeline.episode.detail.videoOutput') }}</h4>
+          <span class="video-path">{{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
           <button
             class="ghost-button primary"
             :class="{ 'is-disabled': !canRunCurrentVideo }"
@@ -405,7 +403,7 @@
             :title="videoActionTitle"
             @click="runCurrentVideo"
           >
-            {{ videoBusy ? '生成中…' : '生成这条视频' }}
+            {{ videoBusy ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.detail.generateVideo') }}
           </button>
         </div>
 
@@ -415,17 +413,17 @@
         >
           <div class="detail-head">
             <h4>
-              动态提示词（{{ selectedCellKey }}）
+              {{ t('divePipeline.episode.detail.motionCell', { key: selectedCellKey }) }}
               <span
                 v-if="reviewResult('motion') === 'PASS'"
                 class="pass-mark"
-              >✓ 已通过</span>
+              >{{ t('divePipeline.episode.state.passedMark') }}</span>
             </h4>
             <div class="panel-actions">
               <button
                 type="button"
                 :disabled="stageBusy('motion')"
-                :title="stageBusy('motion') ? '动态提示词生成中…' : ''"
+                :title="stageBusy('motion') ? t('divePipeline.episode.stageBusyTitle.motion') : ''"
                 @click="regenerateStage('motion')"
               >
                 {{ stageActionLabel('motion', false) }}
@@ -438,7 +436,7 @@
                 :disabled="!reviewReady('motion')"
                 @click="runReview('motion')"
               >
-                导演审核
+                {{ t('divePipeline.episode.action.directorReview') }}
               </button>
             </div>
           </div>
@@ -451,7 +449,7 @@
           <span
             v-else
             class="video-path"
-          >{{ stageBusy('motion') ? '生成中…' : '未生成' }}</span>
+          >{{ stageBusy('motion') ? t('divePipeline.episode.state.generating') : t('divePipeline.episode.state.notGenerated') }}</span>
         </div>
       </section>
     </div>
@@ -490,11 +488,14 @@ import {
   parseEpisodeSequenceBoard,
   replaceEpisodeMotionPrompt,
   selectEpisodeAnchors,
+  titleMatchesEpisodeReview,
+  titleMatchesEpisodeStage,
   type EpisodeAgentState,
   type EpisodeAnchorRow,
   type EpisodeBeatRow,
   type EpisodeCellRow,
-  type EpisodeMotionRow
+  type EpisodeMotionRow,
+  type EpisodeStageKey
 } from '@shared/graph'
 import { readEpisodeAgentState } from '../../features/graph/episodeAgentStateIO'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
@@ -573,7 +574,7 @@ function onSplitterUp(): void {
 }
 
 const asset = computed(() => project.assets.find((item) => item.id === props.hostAssetId) ?? null)
-const assetTitle = computed(() => asset.value?.name ?? '剧集分镜流水线')
+const assetTitle = computed(() => asset.value?.name ?? String(t('divePipeline.episode.title.default')))
 
 const graphDoc = computed<GraphDocument | null>(() => {
   void refreshTick.value
@@ -599,61 +600,50 @@ function nodeByKey(key: string): GraphNode | undefined {
   return findEpisodeNode(key)
 }
 
-/** 阶段生成节点：优先按 episodeStep 参数匹配，其次按标题兜底（手动创建时可能没带参数） */
-function findStageNode(step: string, titleHint: string): GraphNode | undefined {
+/** 阶段生成节点：优先按 episodeStep 参数匹配，标题兜底走共享模块（新旧两代标题兼容） */
+function findStageNode(step: EpisodeStageKey): GraphNode | undefined {
   const all = nodes.value
   return (
     all.find((n) => n.typeId === 'prompt.optimize' && n.params?.episodeStep === step) ??
-    all.find(
-      (n) =>
-        n.typeId === 'prompt.optimize' &&
-        typeof n.title === 'string' &&
-        n.title.includes(titleHint)
-    )
+    all.find((n) => n.typeId === 'prompt.optimize' && titleMatchesEpisodeStage(n.title, step))
   )
 }
 
-/** 导演审核节点：优先按 episodeReviewTarget 匹配，其次按「审核 + 阶段名」标题兜底 */
-function findReviewNode(target: string, titleHint: string): GraphNode | undefined {
+/** 导演审核节点：优先按 episodeReviewTarget 匹配，标题兜底同上（须同时带审核标记与阶段片段） */
+function findReviewNode(target: EpisodeStageKey): GraphNode | undefined {
   const all = nodes.value
   return (
     all.find(
       (n) => n.typeId === 'prompt.optimize' && n.params?.episodeReviewTarget === target
     ) ??
-    all.find(
-      (n) =>
-        n.typeId === 'prompt.optimize' &&
-        typeof n.title === 'string' &&
-        n.title.includes('审核') &&
-        n.title.includes(titleHint)
-    )
+    all.find((n) => n.typeId === 'prompt.optimize' && titleMatchesEpisodeReview(n.title, target))
   )
 }
 
 function findEpisodeNode(kind: string): GraphNode | undefined {
   if (kind === 'breakdown') {
-    return findStageNode('breakdown', '节拍拆解')
+    return findStageNode('breakdown')
   }
   if (kind === 'beatboard') {
-    return findStageNode('beatboard', '9宫格')
+    return findStageNode('beatboard')
   }
   if (kind === 'sequence') {
-    return findStageNode('sequence', '4宫格')
+    return findStageNode('sequence')
   }
   if (kind === 'motion') {
-    return findStageNode('motion', '动态提示词')
+    return findStageNode('motion')
   }
   if (kind === 'review2') {
-    return findReviewNode('beatboard', '9宫格')
+    return findReviewNode('beatboard')
   }
   if (kind === 'review1') {
-    return findReviewNode('breakdown', '节拍拆解')
+    return findReviewNode('breakdown')
   }
   if (kind === 'review3') {
-    return findReviewNode('sequence', '4宫格')
+    return findReviewNode('sequence')
   }
   if (kind === 'review4') {
-    return findReviewNode('motion', '动态提示词')
+    return findReviewNode('motion')
   }
   const anchorMatch = /^anchor(\d+)$/.exec(kind)
   if (anchorMatch) {
@@ -665,25 +655,30 @@ function findEpisodeNode(kind: string): GraphNode | undefined {
   const imgMatch = /^img(\d+)$/.exec(kind)
   if (imgMatch) {
     const index = Number(imgMatch[1])
-    // 一键工作流：格图由「宫格提取·格N」（image.gridSplit 纯切分）产出
-    const gridSplit = nodes.value.find(
-      (n) =>
-        n.typeId === 'image.gridSplit' &&
-        typeof n.title === 'string' &&
-        n.title.includes(`宫格提取·格${index}`)
-    )
+    // 一键工作流：格图由「宫格提取·格N」（image.gridSplit 纯切分）产出；
+    // 新图优先按 anchorCellIndex 稳定参数定位，旧图回退按标题探测
+    const gridSplit =
+      nodes.value.find(
+        (n) => n.typeId === 'image.gridSplit' && n.params?.anchorCellIndex === index
+      ) ??
+      nodes.value.find(
+        (n) =>
+          n.typeId === 'image.gridSplit' &&
+          typeof n.title === 'string' &&
+          n.title.includes(`宫格提取·格${index}`) // cjk-ok 旧文档兼容探测
+      )
     const candidates = [
       gridSplit,
       nodes.value.find(
         (n) =>
           n.typeId === 'asset.image' &&
-          n.title?.includes(`锚点图·格${index}`)
+          n.title?.includes(`锚点图·格${index}`) // cjk-ok 旧文档兼容探测
       ),
       nodes.value.find(
         (n) =>
           n.typeId === 'asset.image' &&
           typeof n.params?.generateInstruction === 'string' &&
-          (n.params.generateInstruction as string).includes(`格${index} 的锚点分镜图`)
+          (n.params.generateInstruction as string).includes(`格${index} 的锚点分镜图`) // cjk-ok 旧文档兼容探测
       )
     ].filter((n): n is GraphNode => !!n)
     // 优先返回已生成图片的节点；都没有时按顺序取第一个（用于显示“未生成图”）
@@ -693,17 +688,22 @@ function findEpisodeNode(kind: string): GraphNode | undefined {
   if (videoMatch) {
     const g = Number(videoMatch[1])
     const c = Number(videoMatch[2])
+    const cellKey = `${g}-${c}`
+    // 新图优先按 motionCellIndex 稳定参数定位，旧图回退按中文标题 / 指令文案探测
     return (
+      nodes.value.find(
+        (n) => n.typeId === 'asset.video' && n.params?.motionCellIndex === cellKey
+      ) ??
       nodes.value.find(
         (n) =>
           n.typeId === 'asset.video' &&
-          n.title?.includes(`格${g}-${c}`)
+          n.title?.includes(`格${g}-${c}`) // cjk-ok 旧文档兼容探测
       ) ??
       nodes.value.find(
         (n) =>
           n.typeId === 'asset.video' &&
           typeof n.params?.generateInstruction === 'string' &&
-          (n.params.generateInstruction as string).includes(`格${g}-${c} 的动态视频`)
+          (n.params.generateInstruction as string).includes(`格${g}-${c} 的动态视频`) // cjk-ok 旧文档兼容探测
       )
     )
   }
@@ -818,22 +818,41 @@ const anchorCells = computed<EpisodeCellRow[]>(() =>
 
 const beatsEmptyLabel = computed(() =>
   nodeText('breakdown').trim()
-    ? '节拍拆解有内容，但未能解析为表格格式'
-    : '未生成（运行 breakdown 节点）'
+    ? t('divePipeline.episode.empty.beatsUnparsed')
+    : t('divePipeline.episode.empty.beatsPending')
 )
 const anchorsEmptyLabel = computed(() =>
   nodeText('beatboard').trim()
-    ? '9宫格有内容，但未能解析'
-    : '未生成（运行 beatboard 节点）'
+    ? t('divePipeline.episode.empty.anchorsUnparsed')
+    : t('divePipeline.episode.empty.anchorsPending')
 )
 const cellsEmptyLabel = computed(() =>
   nodeText('sequence').trim()
-    ? '4宫格有内容，但未能解析'
-    : '未生成（运行 sequence 节点）'
+    ? t('divePipeline.episode.empty.cellsUnparsed')
+    : t('divePipeline.episode.empty.cellsPending')
 )
 
+/** 当前选中动态格的展示键（渲染时解析，不参与持久化） */
 const selectedCellKey = computed(
-  () => `格${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
+  () =>
+    t('divePipeline.episode.cell.key', {
+      g: selectedCell.value.groupIndex,
+      c: selectedCell.value.cellIndex
+    }) as string
+)
+
+/** 详情面板面包屑标题 */
+const breadcrumbTitle = computed(() =>
+  isDirect9.value
+    ? t('divePipeline.episode.breadcrumb.direct', {
+        beat: activeBeat.value,
+        cell: selectedAnchorIndex.value
+      })
+    : t('divePipeline.episode.breadcrumb.cells', {
+        beat: activeBeat.value,
+        cell: selectedAnchorIndex.value,
+        key: `${selectedCell.value.groupIndex}-${selectedCell.value.cellIndex}`
+      })
 )
 
 const activeMotion = computed<EpisodeMotionRow | null>(() => {
@@ -904,22 +923,28 @@ const canRunCurrentVideo = computed(() => {
 })
 
 const videoActionTitle = computed(() => {
-  if (pipelineRegenBusy.value) return '请等待重新生成完成后再生成视频'
-  if (videoBusy.value) return '这条视频正在生成…'
-  if (!hasMotionText.value && !stageText('motion').trim()) return '请先生成动态提示词'
+  if (pipelineRegenBusy.value) return t('divePipeline.episode.detail.videoWaitRegen') as string
+  if (videoBusy.value) return t('divePipeline.episode.detail.videoRunning') as string
+  if (!hasMotionText.value && !stageText('motion').trim()) {
+    return t('divePipeline.episode.detail.videoNeedsPrompt') as string
+  }
   return ''
 })
 
 function stageActionLabel(target: ReviewTarget, direct9 = false): string {
-  if (stageBusy(target)) return '生成中…'
+  if (stageBusy(target)) return String(t('divePipeline.episode.state.generating'))
   const hasText = !!stageText(target).trim()
   if (target === 'motion' && direct9) {
-    return hasText ? '重新生成' : '生成9宫格动态提示词'
+    return hasText
+      ? String(t('divePipeline.episode.action.regenerate'))
+      : String(t('divePipeline.episode.action.generateMotionDirect'))
   }
   if (target === 'motion') {
-    return hasText ? '重新生成' : '生成动态提示词'
+    return hasText
+      ? String(t('divePipeline.episode.action.regenerate'))
+      : String(t('divePipeline.episode.action.generateMotion'))
   }
-  return hasText ? '重新生成' : '生成'
+  return hasText ? String(t('divePipeline.episode.action.regenerate')) : String(t('divePipeline.episode.action.generate'))
 }
 
 /** 当前格视频的可播放 URL（由 relativePath 解析并缓存） */
@@ -939,43 +964,44 @@ watch(
 )
 
 const stateStepLabel = computed(() => {
-  const map: Record<string, string> = isDirect9.value
-    ? {
-        breakdown: '节拍拆解表',
-        beatboard: '9宫格分镜表',
-        sequence: '9宫格动态提示词表',
-        motion: '9宫格动态提示词表',
-        completed: '已完成'
-      }
-    : {
-        breakdown: '节拍拆解表',
-        beatboard: '9宫格分镜表',
-        sequence: '4宫格动态分镜表',
-        motion: '动态提示词表',
-        completed: '已完成'
-      }
-  return map[agentState.value?.current_step ?? ''] ?? '—'
+  const step = agentState.value?.current_step ?? ''
+  if (step === 'breakdown') return String(t('graph.episodeAgent.title.beatBreakdown'))
+  if (step === 'beatboard') return String(t('graph.episodeAgent.title.grid9Storyboard'))
+  if (step === 'sequence') {
+    return isDirect9.value
+      ? String(t('divePipeline.episode.stepLabel.motionDirect'))
+      : String(t('graph.episodeAgent.title.grid4Motion'))
+  }
+  if (step === 'motion') {
+    return isDirect9.value
+      ? String(t('divePipeline.episode.stepLabel.motionDirect'))
+      : String(t('graph.episodeAgent.title.motionPrompt'))
+  }
+  if (step === 'completed') return String(t('divePipeline.episode.state.completed'))
+  return '—'
 })
 
-/** 当前步骤的悬停说明：流水线推进到的阶段 */
+/** 当前步骤的悬停说明：流水线推进到的阶段（内部步骤 id → i18n 键，渲染时解析） */
 const stateStepTitle = computed(() => {
-  const step = agentState.value?.current_step
-  const hints: Record<string, string> = isDirect9.value
-    ? {
-        breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
-        beatboard: '9宫格分镜表已生成，正在推进 动画师·9宫格动态提示词表',
-        sequence: '9宫格动态提示词表已生成，可逐格或一键生成 9 条直出视频',
-        motion: '9宫格动态提示词表已生成，可逐格或一键生成 9 条直出视频',
-        completed: '全部阶段已通过'
-      }
-    : {
-        breakdown: '节拍拆解表已生成，正在推进 9宫格分镜表',
-        beatboard: '9宫格分镜表已生成，正在推进 4宫格动态分镜表',
-        sequence: '4宫格动态分镜表已生成，正在推进 动态提示词表',
-        motion: '动态提示词表已生成，等待导演审核通过后完成',
-        completed: '全部阶段已通过'
-      }
-  return hints[step ?? ''] ?? '流水线当前推进到的阶段'
+  const step = agentState.value?.current_step ?? ''
+  if (step === 'breakdown') return String(t('divePipeline.episode.stepHint.breakdown'))
+  if (step === 'beatboard') {
+    return isDirect9.value
+      ? String(t('divePipeline.episode.stepHint.beatboardDirect'))
+      : String(t('divePipeline.episode.stepHint.beatboardCells'))
+  }
+  if (step === 'sequence') {
+    return isDirect9.value
+      ? String(t('divePipeline.episode.stepHint.readyDirect'))
+      : String(t('divePipeline.episode.stepHint.sequenceCells'))
+  }
+  if (step === 'motion') {
+    return isDirect9.value
+      ? String(t('divePipeline.episode.stepHint.readyDirect'))
+      : String(t('divePipeline.episode.stepHint.motionCells'))
+  }
+  if (step === 'completed') return String(t('divePipeline.episode.stepHint.completed'))
+  return String(t('divePipeline.episode.stepHint.default'))
 })
 
 function nodeRunStatus(key: string): GraphNodeRunState['status'] | undefined {
@@ -1032,19 +1058,21 @@ function anchorReviewLabel(index: number): string {
   if (status === 'PASS') return 'PASS'
   if (status === 'FAIL') return 'FAIL'
   const run = nodeRunStatus('review2')
-  if (run === 'done') return '待审核'
+  if (run === 'done') return String(t('divePipeline.episode.state.awaitReview'))
   // 审核未出结果时按本格图片是否已生成显示，避免“有图却标未生成”
-  return anchorImageUrl(index) ? '已生成' : '未生成'
+  return anchorImageUrl(index)
+    ? String(t('divePipeline.episode.state.generated'))
+    : String(t('divePipeline.episode.state.notGenerated'))
 }
 
 function cellVideoStatusLabel(cell: EpisodeCellRow): string {
   const key = `video${cell.groupIndex}-${cell.cellIndex}`
   const status = nodeRunStatus(key)
   const path = selectedVideoRelativePath(nodeByKey(key))
-  if (path) return '已生成'
-  if (status === 'done') return '已运行'
-  if (status === 'error') return '失败'
-  return '未生成'
+  if (path) return String(t('divePipeline.episode.state.generated'))
+  if (status === 'done') return String(t('divePipeline.episode.state.ranOnce'))
+  if (status === 'error') return String(t('divePipeline.episode.state.failed'))
+  return String(t('divePipeline.episode.state.notGenerated'))
 }
 
 function selectBeat(beat: EpisodeBeatRow): void {
@@ -1271,7 +1299,7 @@ function regenerateStage(target: ReviewTarget): void {
   // 级联失效：下游图/视频/审核不复用旧结果，后续生成自动从最新文本一致补跑
   invalidateDownstream(target)
   // “重新生成”强制执行目标节点，但继续复用其已完成上游。
-  const taskId = enqueueNode(nodeByKey(target), `分镜流水线·${target}`, true, undefined, {
+  const taskId = enqueueNode(nodeByKey(target), String(t('divePipeline.episode.task.stage', { stage: target })), true, undefined, {
     pipelineStage: target
   })
   if (taskId) regenerationTasks.set(taskId, target)
@@ -1286,22 +1314,26 @@ function runReview(target: ReviewTarget): void {
   graphEditorHosts.updateNode(hostId, reviewNode.id, { episodeReviewPending: false })
   refreshTick.value += 1
   void graphEditorHosts.flush(hostId)
-  enqueueNode(reviewNode, `分镜流水线·${REVIEW_NODE_KEY[target]}`, true, undefined, {
-    pipelineStage: `review.${target}`
-  })
+  enqueueNode(
+    reviewNode,
+    String(t('divePipeline.episode.task.stage', { stage: REVIEW_NODE_KEY[target] })),
+    true,
+    undefined,
+    { pipelineStage: `review.${target}` }
+  )
 }
 
 function runAnchorImage(): void {
   // 一键工作流：先跑「9宫格拼图·锚点画布」生成整张 9宫格，再一次性提取全部 9 格
   const board = nodes.value.find(
-    (n) => n.typeId === 'asset.image' && n.title?.includes('9宫格拼图')
+    (n) => n.typeId === 'asset.image' && n.title?.includes('9宫格拼图') // cjk-ok 旧文档标题探测
   )
   const extracts = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     .map((index) => nodeByKey(`img${index}`))
     .filter((n): n is GraphNode => !!n)
   enqueueNodes(
     [board, ...extracts].filter((n): n is GraphNode => !!n),
-    '生成9宫格拼图',
+    String(t('divePipeline.episode.action.buildGrid9')),
     false,
     undefined,
     { pipelineStage: 'image.grid9' }
@@ -1312,14 +1344,14 @@ function runAnchorImage(): void {
 function runFourGridImage(): void {
   const groupIndex = selectedAnchorIndex.value
   const board = nodes.value.find(
-    (n) => n.typeId === 'asset.image' && n.title?.includes(`4宫格拼图·组${groupIndex}`)
+    (n) => n.typeId === 'asset.image' && n.title?.includes(`4宫格拼图·组${groupIndex}`) // cjk-ok 旧文档标题探测
   )
   const extracts = [1, 2, 3, 4]
     .map((cellIndex) => cellImageNode(groupIndex, cellIndex))
     .filter((n): n is GraphNode => !!n)
   enqueueNodes(
     [board, ...extracts].filter((n): n is GraphNode => !!n),
-    `生成4宫格拼图·组${groupIndex}`,
+    String(t('divePipeline.episode.task.buildGrid4Group', { g: groupIndex })),
     false,
     undefined,
     { pipelineStage: 'image.grid4', cellKey: String(groupIndex) }
@@ -1331,10 +1363,16 @@ function runCurrentVideo(): void {
   const node = currentVideoNode()
   if (!node) return
   const { groupIndex, cellIndex } = selectedCell.value
-  enqueueNode(node, `动态视频·格${groupIndex}-${cellIndex}`, true, undefined, {
-    pipelineStage: 'video',
-    cellKey: `${groupIndex}-${cellIndex}`
-  })
+  enqueueNode(
+    node,
+    String(t('divePipeline.episode.task.video', { g: groupIndex, c: cellIndex })),
+    true,
+    undefined,
+    {
+      pipelineStage: 'video',
+      cellKey: `${groupIndex}-${cellIndex}`
+    }
+  )
 }
 
 async function fileUrl(relativePath: string | undefined): Promise<string> {
@@ -1367,7 +1405,7 @@ function cellImageNode(groupIndex: number, cellIndex: number): GraphNode | undef
     (n) =>
       n.typeId === 'image.gridSplit' &&
       typeof n.title === 'string' &&
-      n.title.includes(`宫格提取·组${groupIndex}-格${cellIndex}`)
+      n.title.includes(`宫格提取·组${groupIndex}-格${cellIndex}`) // cjk-ok 旧文档标题探测
   )
 }
 

@@ -1133,8 +1133,8 @@ function onThumbClick(chip: RefChip): void {
   }
   // 图片束引入的引用：自动插入强制参考「名称 严格参考@N」，名称从束内图片节点解析
   if (chipIntroducedViaImageBundle(chip)) {
-    const name = chip.title?.trim() || `图${chip.index}`
-    insertToken(`${name} 严格参考@${chip.index}`)
+    const name = chip.title?.trim() || `图${chip.index}` // cjk-ok 写入提示词的中文 token 约定，非 UI
+    insertToken(`${name} 严格参考@${chip.index}`) // cjk-ok 同上：@N→图N 由 mention 解析器往返约定
     return
   }
   insertToken(`@${chip.index}`)

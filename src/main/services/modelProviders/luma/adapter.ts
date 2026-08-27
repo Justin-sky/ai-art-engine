@@ -14,8 +14,62 @@ import type {
   ModelModality,
   ModelProviderInstance
 } from '@shared/modelProvider'
+import { resolveAppErrorLocale, fail, defErr, defErrSimple } from '@shared/errors/appError'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { createProviderHttpClient, isAuthFailure, readHttpError } from '../http'
+
+// —— 本地双语文案（中文保持原文不变，英文为新增映射）——
+const E_LUMA_CONNECTION_TEST_FAILED = defErr<{ detail: string }>(
+  'provider.luma.connectionTestFailed',
+  ({ detail }) => `Luma AI 连接测试失败: ${detail}`,
+  ({ detail }) => `Luma AI connection test failed: ${detail}`
+)
+const E_LUMA_TEXT_UNSUPPORTED = defErrSimple(
+  'provider.luma.textUnsupported',
+  'Luma AI 不支持文本生成',
+  'Luma AI does not support text generation'
+)
+const E_LUMA_IMAGE_UNSUPPORTED = defErrSimple(
+  'provider.luma.imageUnsupported',
+  'Luma AI 不支持图片生成',
+  'Luma AI does not support image generation'
+)
+const E_LUMA_VIDEO_UNSUPPORTED = defErrSimple(
+  'provider.luma.videoUnsupported',
+  'Luma AI 不支持视频生成',
+  'Luma AI does not support video generation'
+)
+const E_LUMA_SPEECH_UNSUPPORTED = defErrSimple(
+  'provider.luma.speechUnsupported',
+  'Luma AI 不支持语音合成',
+  'Luma AI does not support speech synthesis'
+)
+const E_LUMA_PROMPT_OR_REF_REQUIRED = defErrSimple(
+  'provider.luma.promptOrReferenceRequired',
+  'Luma AI 需要文本提示或参考图',
+  'Luma AI requires a text prompt or a reference image'
+)
+const E_LUMA_NO_TASK_ID = defErrSimple(
+  'provider.luma.noTaskId',
+  'Luma AI 未返回生成任务 id',
+  'Luma AI returned no generation task id'
+)
+/** 上游响应原文作为 detail 原样嵌入 */
+const E_LUMA_SUBMIT_3D_FAILED = defErr<{ detail: string }>(
+  'provider.luma.submitModel3dFailed',
+  ({ detail }) => `提交 Luma AI 3D 生成失败: ${detail}`,
+  ({ detail }) => `Submitting Luma AI 3D generation failed: ${detail}`
+)
+const E_LUMA_POLL_3D_FAILED = defErr<{ detail: string }>(
+  'provider.luma.pollModel3dFailed',
+  ({ detail }) => `轮询 Luma AI 3D 生成失败: ${detail}`,
+  ({ detail }) => `Polling Luma AI 3D generation failed: ${detail}`
+)
+
+/** 非 throw 场景（结果对象的 error 字段）按当前语言取文案 */
+function pickLumaBi(zh: string, en: string): string {
+  return resolveAppErrorLocale() === 'en-US' ? en : zh
+}
 
 /**
  * Luma Genie（Dream Machine）3D 模型生成适配器
@@ -45,7 +99,7 @@ export const lumaAdapter: ModelProviderAdapter = {
       if (axios.isAxiosError(err) && !isAuthFailure(err.response?.status, err.message)) {
         return
       }
-      throw new Error(`Luma AI 连接测试失败: ${await readHttpError(err)}`)
+      throw fail(E_LUMA_CONNECTION_TEST_FAILED, { detail: await readHttpError(err) })
     }
   },
 
@@ -67,7 +121,7 @@ export const lumaAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    throw new Error('Luma AI 不支持文本生成')
+    throw fail(E_LUMA_TEXT_UNSUPPORTED)
   },
 
   generateImage(
@@ -75,7 +129,7 @@ export const lumaAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateImageInput
   ): Promise<GenerateImageResult> {
-    throw new Error('Luma AI 不支持图片生成')
+    throw fail(E_LUMA_IMAGE_UNSUPPORTED)
   },
 
   async submitVideo(
@@ -83,14 +137,14 @@ export const lumaAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    throw new Error('Luma AI 不支持视频生成')
+    throw fail(E_LUMA_VIDEO_UNSUPPORTED)
   },
 
   async pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('Luma AI 不支持视频生成')
+    throw fail(E_LUMA_VIDEO_UNSUPPORTED)
   },
 
   generateSpeech(
@@ -98,7 +152,7 @@ export const lumaAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('Luma AI 不支持语音合成')
+    throw fail(E_LUMA_SPEECH_UNSUPPORTED)
   },
 
   async submitModel3d(
@@ -112,7 +166,7 @@ export const lumaAdapter: ModelProviderAdapter = {
       .filter(Boolean)
     const prompt = input.prompt?.trim() || ''
 
-    if (!refs.length && !prompt) throw new Error('Luma AI 需要文本提示或参考图')
+    if (!refs.length && !prompt) throw fail(E_LUMA_PROMPT_OR_REF_REQUIRED)
 
     const body: Record<string, unknown> = { prompt, format: 'glb' }
     // 图生3D：按官方语义尽力传递首图 URL（是否需先上传图片取 artifact id 待联调确认）
@@ -121,7 +175,7 @@ export const lumaAdapter: ModelProviderAdapter = {
     try {
       const { data } = await client.post<{ id?: string; state?: string }>('/generations', body)
       const taskId = data?.id
-      if (!taskId) throw new Error('Luma AI 未返回生成任务 id')
+      if (!taskId) throw fail(E_LUMA_NO_TASK_ID)
       return {
         jobId: taskId,
         pollingUrl: taskId,
@@ -129,7 +183,7 @@ export const lumaAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交 Luma AI 3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_LUMA_SUBMIT_3D_FAILED, { detail: await readHttpError(err) })
     }
   },
 
@@ -161,14 +215,16 @@ export const lumaAdapter: ModelProviderAdapter = {
         return {
           status: 'failed',
           progress: 100,
-          error: data?.failure_reason || 'Luma AI 3D 生成失败'
+          error:
+            data?.failure_reason ||
+            pickLumaBi('Luma AI 3D 生成失败', 'Luma AI 3D generation failed')
         }
       }
 
       const progress = status === 'in_progress' ? 55 : 15
       return { status, progress }
     } catch (err) {
-      throw new Error(`轮询 Luma AI 3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_LUMA_POLL_3D_FAILED, { detail: await readHttpError(err) })
     }
   }
 }

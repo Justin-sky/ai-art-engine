@@ -1,6 +1,8 @@
 import axios, { type AxiosInstance } from 'axios'
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import { MINIMAX_DEFAULT_BASE_URL } from '@shared/modelProvider'
+import { resolveAppErrorLocale, fail } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import { trimBaseUrl } from '../http'
 
 export type MiniMaxBaseResp = {
@@ -8,9 +10,14 @@ export type MiniMaxBaseResp = {
   status_msg?: string
 }
 
+/** 当前是否英文环境（上游文案检测保持原样，仅本地生成的句子分支双语言） */
+function isEn(): boolean {
+  return resolveAppErrorLocale() === 'en-US'
+}
+
 export function assertMiniMaxCredentials(provider: ModelProviderInstance): void {
   if (!provider.apiKey.trim()) {
-    throw new Error('请先填写 API Key')
+    throw fail(PROVIDER_ERRORS.missingApiKey)
   }
 }
 
@@ -30,10 +37,19 @@ export function createMiniMaxHttpClient(
   })
 }
 
+const MM_AUTH_HINT_ZH = '请检查 API Key 与 Base URL 是否正确'
+const MM_AUTH_HINT_EN = 'Check the API Key and Base URL'
+
 /** 按 MiniMax status_code / 文案给出可操作提示（避免余额不足时误导去改 Key） */
 export function formatMiniMaxError(message: string, statusCode?: number): string {
   const text = message.trim()
-  if (/账户余额不足，请前往 MiniMax|请检查 API Key 与 Base URL 是否正确/.test(text)) {
+  // 已带提示的文案原样放行（幂等保护；中英两套提示均识别）
+  if (
+    new RegExp(
+      `账户余额不足，请前往 MiniMax|${MM_AUTH_HINT_ZH}|insufficient minimax balance|${MM_AUTH_HINT_EN}`,
+      'i'
+    ).test(text)
+  ) {
     return text
   }
   const code =
@@ -49,13 +65,15 @@ export function formatMiniMaxError(message: string, statusCode?: number): string
     /insufficient\s*balance|余额不足|账户余额|balance\s*not\s*enough/i.test(lower)
   ) {
     const withCode = /\(1008\)|\b1008\b/.test(text) ? text : `${text} (1008)`
-    return `${withCode}（账户余额不足，请前往 MiniMax 控制台充值后再试）`
+    return isEn()
+      ? `${withCode} (Insufficient MiniMax balance — top up in the MiniMax console before retrying)`
+      : `${withCode}（账户余额不足，请前往 MiniMax 控制台充值后再试）`
   }
   if (
     code === 1004 ||
     /invalid\s*api\s*key|unauthorized|authentication|鉴权失败|密钥无效/i.test(lower)
   ) {
-    return `${text}（请检查 API Key 与 Base URL 是否正确）`
+    return isEn() ? `${text} (${MM_AUTH_HINT_EN})` : `${text}（${MM_AUTH_HINT_ZH}）`
   }
   if (code != null && !/\(\d{3,5}\)/.test(text) && !/\bcode[=:\s]*\d{3,5}\b/i.test(text)) {
     return `${text} (${code})`
@@ -70,7 +88,9 @@ export async function readMiniMaxHttpError(err: unknown): Promise<string> {
       | undefined
     const base = data?.base_resp
     if (base && typeof base.status_code === 'number' && base.status_code !== 0) {
-      const raw = base.status_msg || `MiniMax 错误 code=${base.status_code}`
+      const raw =
+        base.status_msg ||
+        (isEn() ? `MiniMax error code=${base.status_code}` : `MiniMax 错误 code=${base.status_code}`)
       return formatMiniMaxError(raw, base.status_code)
     }
     if (data?.message) return formatMiniMaxError(data.message)
@@ -80,15 +100,25 @@ export async function readMiniMaxHttpError(err: unknown): Promise<string> {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** base_resp.status_code !== 0 时抛错 */
+/** assertMiniMaxBaseResp 动作标签：调用方沿用中文动作 key，英文经此映射 */
+const MM_ACTION_LABELS: Record<string, string> = {
+  连接测试: 'Connection test',
+  拉取模型: 'Fetching models',
+  图片生成: 'Image generation',
+  提交视频生成: 'Submitting video generation',
+  轮询视频任务: 'Polling video task',
+  获取视频文件: 'Retrieving video file',
+  音色设计: 'Voice design'
+}
+
+/** base_resp.status_code !== 0 时抛错（中文措辞保持与旧版逐字一致） */
 export function assertMiniMaxBaseResp(base: MiniMaxBaseResp | undefined, action: string): void {
   if (!base) return
   if (typeof base.status_code === 'number' && base.status_code !== 0) {
-    throw new Error(
-      formatMiniMaxError(
-        `${action}失败：${base.status_msg || `code=${base.status_code}`}`,
-        base.status_code
-      )
-    )
+    const detail = base.status_msg || `code=${base.status_code}`
+    const composed = isEn()
+      ? `${MM_ACTION_LABELS[action] ?? action} failed: ${detail}`
+      : `${action}失败：${detail}`
+    throw new Error(formatMiniMaxError(composed, base.status_code))
   }
 }

@@ -940,6 +940,7 @@ import {
   EPISODE_AGENT_DIRECTOR,
   EPISODE_AGENT_MOTION,
   EPISODE_AGENT_SEQUENCE,
+  EPISODE_AGENT_STOCK_TITLES,
   catalogTextFromValue,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
@@ -948,6 +949,8 @@ import {
   WORLD_ELEMENT_KINDS
 } from '@shared/graph'
 import { isVideoJobActive, jobKind, type VideoJobRecord } from '@shared/videoJob'
+import { SHARED_ERRORS } from '@shared/errors/catalog'
+import { fail } from '@shared/errors/appError'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptAlert } from '../composables/useStudioPrompt'
 import { useEditorKernel } from '../editor/kernel'
@@ -3496,7 +3499,8 @@ const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
     label: t('graph.episodeAgent.breakdown'),
     icon: '✨',
     portTypeLabel: '',
-    title: '分镜师·节拍拆解表',
+    // 库存标题持久化英文规范值；展示层经 EPISODE_AGENT_TITLE_I18N 走 i18n
+    title: EPISODE_AGENT_STOCK_TITLES.breakdown,
     params: {
       episodeStep: 'breakdown',
       episodeScopeKey: 'ep01',
@@ -3509,7 +3513,7 @@ const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
     label: t('graph.episodeAgent.beatboard'),
     icon: '✨',
     portTypeLabel: '',
-    title: '分镜师·9宫格分镜表',
+    title: EPISODE_AGENT_STOCK_TITLES.beatboard,
     params: {
       episodeStep: 'beatboard',
       episodeScopeKey: 'ep01',
@@ -3522,7 +3526,7 @@ const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
     label: t('graph.episodeAgent.sequence'),
     icon: '✨',
     portTypeLabel: '',
-    title: '分镜师·4宫格动态分镜表',
+    title: EPISODE_AGENT_STOCK_TITLES.sequence,
     params: {
       episodeStep: 'sequence',
       episodeScopeKey: 'ep01',
@@ -3535,7 +3539,7 @@ const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
     label: t('graph.episodeAgent.motion'),
     icon: '✨',
     portTypeLabel: '',
-    title: '动画师·动态提示词表',
+    title: EPISODE_AGENT_STOCK_TITLES.motion,
     params: {
       episodeStep: 'motion',
       episodeScopeKey: 'ep01',
@@ -3548,7 +3552,7 @@ const EPISODE_AGENT_PRESET_ITEMS: AddableMenuItem[] = [
     label: t('graph.episodeAgent.review'),
     icon: '✨',
     portTypeLabel: '',
-    title: '导演审核',
+    title: EPISODE_AGENT_STOCK_TITLES.directorReview,
     params: {
       episodeScopeKey: 'ep01',
       generateSystemPrompt: EPISODE_AGENT_DIRECTOR.systemPromptZh,
@@ -7629,7 +7633,7 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
       return
     }
     if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
-      throw new Error('当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离')
+      throw fail(SHARED_ERRORS.layerSplitNoLayers)
     }
     const stamp = Date.now()
     const mapped = mapDecompositionToLayers({
@@ -7640,7 +7644,7 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
       asCanvasBase: false
     })
     if (!mapped.layers.length) {
-      throw new Error('图层分离失败：未得到有效图层')
+      throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
     const placed = placeLayersInParentRect(parent, mapped.layers, {
       width: mapped.canvasWidth,

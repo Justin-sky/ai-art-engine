@@ -22,6 +22,8 @@ import {
   listModelScopeCatalogModels,
   resolveModelScopeModelCapabilities
 } from '@shared/modelProviders/modelscope/modelCapabilities'
+import { fail, defErrSimple } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import {
   createProviderHttpClient,
@@ -33,6 +35,25 @@ import {
   trimBaseUrl
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
+
+// —— 本地双语文案（中文保持原文不变，英文为新增映射）——
+const E_MS_MISSING_KEY = defErrSimple(
+  'provider.modelscope.missingApiKey',
+  '请先填写 API Key（魔塔访问令牌）',
+  'Fill in the API Key (ModelScope access token) first'
+)
+const E_MS_IMAGE_FAILED = defErrSimple(
+  'provider.modelscope.imageTaskFailed',
+  '图片生成失败',
+  'Image generation failed'
+)
+const E_MS_IMAGE_RESULT_NO_URL = defErrSimple(
+  'provider.modelscope.imageResultNoUrl',
+  '图片任务已完成但未返回图片 URL',
+  'Image task finished but returned no image URLs'
+)
+/** 不支持模态句式使用的提供商名 */
+const MODELSCOPE_NAME = { zh: '魔塔', en: 'ModelScope' } as const
 
 const ASPECT_TO_SIZE: Record<string, string> = {
   '1:1': '1024x1024',
@@ -109,7 +130,10 @@ function mapImageTaskStatus(raw: unknown): 'completed' | 'failed' | 'pending' {
   return 'pending'
 }
 
-function taskErrorMessage(body: Record<string, unknown>): string {
+/**
+ * 上游任务失败原因原文（不经翻译）。返回 undefined 时由调用方落本地兜底文案。
+ */
+function taskErrorMessage(body: Record<string, unknown>): string | undefined {
   const error = body.error
   if (typeof error === 'string' && error.trim()) return error
   if (error && typeof error === 'object') {
@@ -122,7 +146,7 @@ function taskErrorMessage(body: Record<string, unknown>): string {
     if (typeof msg === 'string' && msg.trim()) return msg
   }
   if (typeof body.message === 'string' && body.message.trim()) return body.message
-  return '图片生成失败'
+  return undefined
 }
 
 async function pollImageTask(
@@ -137,22 +161,23 @@ async function pollImageTask(
     const status = mapImageTaskStatus(data.task_status ?? data.status)
     if (status === 'completed') {
       const urls = extractImageUrls(data)
-      if (!urls.length) throw new Error('图片任务已完成但未返回图片 URL')
+      if (!urls.length) throw fail(E_MS_IMAGE_RESULT_NO_URL)
       return urls
     }
     if (status === 'failed') {
-      throw new Error(taskErrorMessage(data))
+      const reason = taskErrorMessage(data)
+      throw reason ? new Error(reason) : fail(E_MS_IMAGE_FAILED)
     }
     await sleep(IMAGE_POLL_INTERVAL_MS)
   }
-  throw new Error('图片生成超时：任务仍未完成')
+  throw fail(PROVIDER_ERRORS.imageTimeout)
 }
 
 export const modelScopeAdapter: ModelProviderAdapter = {
   kind: 'modelscope',
 
   async assertAuth(provider) {
-    if (!provider.apiKey.trim()) throw new Error('请先填写 API Key（魔塔访问令牌）')
+    if (!provider.apiKey.trim()) throw fail(E_MS_MISSING_KEY)
     const client = providerClient(provider)
     try {
       await client.get('/models', { timeout: 20_000 })
@@ -160,9 +185,11 @@ export const modelScopeAdapter: ModelProviderAdapter = {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
       const raw = await readHttpError(err)
       if (isAuthFailure(status, raw)) {
-        throw new Error(formatAuthError(`API Key 无效，已禁止拉取模型：${raw}`, provider))
+        throw fail(PROVIDER_ERRORS.invalidApiKeyListModels, {
+          detail: formatAuthError(raw, provider)
+        })
       }
-      throw new Error(`连接测试失败：${formatAuthError(raw, provider)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: formatAuthError(raw, provider) })
     }
   },
 
@@ -247,14 +274,18 @@ export const modelScopeAdapter: ModelProviderAdapter = {
       const taskId = typeof data.task_id === 'string' ? data.task_id.trim() : ''
       if (!taskId) {
         if (immediate.length) return { images: immediate, model: modelId }
-        throw new Error(taskErrorMessage(data) || '未返回图片任务 id')
+        const reason = taskErrorMessage(data)
+        throw reason ? new Error(reason) : fail(E_MS_IMAGE_FAILED)
       }
 
       const images = await pollImageTask(provider, taskId)
       return { images, model: modelId }
     } catch (err) {
       if (err instanceof Error && !axios.isAxiosError(err)) throw err
-      throw new Error(`图片生成失败: ${formatAuthError(await readHttpError(err), provider)}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
     }
   },
 
@@ -263,14 +294,14 @@ export const modelScopeAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    throw new Error('魔塔当前不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'video', name: MODELSCOPE_NAME })
   },
 
   async pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('魔塔当前不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'video', name: MODELSCOPE_NAME })
   },
 
   async generateSpeech(
@@ -278,7 +309,7 @@ export const modelScopeAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('魔塔当前不支持语音生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, { kind: 'voice', name: MODELSCOPE_NAME })
   },
 
   submitModel3d(
@@ -286,13 +317,13 @@ export const modelScopeAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

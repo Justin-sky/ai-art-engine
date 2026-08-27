@@ -5,14 +5,23 @@
 import { copyFileSync, existsSync } from 'fs'
 import { basename, extname, join, resolve, sep } from 'path'
 import type { ExportAdVariantsInput, ExportAdVariantsResult } from '@shared/ipc'
+import { fail, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { projectService } from './projectService'
 import { dialogService } from './dialogService'
+
+// ── 广告变体导出个性错误 ──
+const E_AD_VARIANT_NOTHING_TO_EXPORT = defErrSimple(
+  'adVariant.nothingToExport',
+  '没有可导出的变体',
+  'No variants to export'
+)
 
 function assertInsideProject(root: string, target: string): string {
   const resolvedRoot = resolve(root) + sep
   const resolvedTarget = resolve(target)
   if (!resolvedTarget.startsWith(resolvedRoot)) {
-    throw new Error('路径越界：必须在工程目录内')
+    throw fail(MAIN_ERRORS.pathOutsideProject)
   }
   return resolvedTarget
 }
@@ -29,11 +38,11 @@ export async function exportAdVariants(
 ): Promise<ExportAdVariantsResult> {
   try {
     if (!projectService.isOpen()) {
-      return { ok: false, error: '未打开工程' }
+      return { ok: false, error: fail(MAIN_ERRORS.noProject).message }
     }
     const items = (input?.items ?? []).filter((it) => it && it.relativePath?.trim())
     if (!items.length) {
-      return { ok: false, error: '没有可导出的变体' }
+      return { ok: false, error: fail(E_AD_VARIANT_NOTHING_TO_EXPORT).message }
     }
 
     const directory = await dialogService.selectDirectory()

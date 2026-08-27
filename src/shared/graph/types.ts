@@ -564,9 +564,15 @@ export interface GraphNodeParams {
   cellIndex?: number
   /** 剧集 Agent 流水线：状态文件作用域键（通常为集编号，如 ep01） */
   episodeScopeKey?: string
+  /** 剧集 Agent 流水线：9 宫格提取节点（image.gridSplit）对应的锚点宫格编号（1..9）；替代按标题探测 */
+  anchorCellIndex?: number
+  /** 剧集 Agent 流水线：4 宫格提取节点对应的「组-格」编号（如 "2-3"；组 1..9、格 1..4） */
+  gridCellIndex?: string
+  /** 剧集 Agent 流水线：动态视频生成节点对应的「组-格」编号（如 "2-3"） */
+  motionCellIndex?: string
   /** 世界元素托管节点 id（四类画布同步用，勿与用户手搓节点冲突） */
   worldElementId?: string
-  /** 世界元素目录审核状态（未审核 | 已审核） */
+  /** 世界元素目录审核状态（unreviewed | reviewed；旧文档中的「未审核/已审核」读取时归一化） */
   reviewStatus?: string
   /** 媒体质检（导演 PASS/FAIL）：回标结果 */
   mediaReviewStatus?: 'PASS' | 'FAIL'

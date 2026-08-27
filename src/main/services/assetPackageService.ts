@@ -45,7 +45,30 @@ import { assetRepository } from '../repositories/assetRepository'
 import { folderRepository } from '../repositories/folderRepository'
 import { resolveFolderDirAbs, uniqueFileName } from '../repositories/assetTreeStore'
 import { runTransactionSync } from '../persistence/transactionRunner'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { projectService } from './projectService'
+
+// ── 本服务个性错误（双语条目）──
+const E_PACKAGE_NOTHING_TO_EXPORT = defErrSimple(
+  'assetPackage.nothingToExport',
+  '没有可导出的资产',
+  'No assets available for export'
+)
+const E_PACKAGE_NO_SELECTED_ENTRIES = defErrSimple(
+  'assetPackage.noSelectedEntries',
+  '未选择可导入的条目',
+  'No importable entries were selected'
+)
+const E_PACKAGE_DESTINATION_FOLDER_MISSING = defErrSimple(
+  'assetPackage.destinationFolderMissing',
+  '目标文件夹不存在',
+  'The destination folder does not exist'
+)
+const E_PACKAGE_UNSUPPORTED_ASSET_TYPE = defErr<{ type: string }>(
+  'assetPackage.unsupportedAssetType',
+  ({ type }) => `不支持导入资产类型: ${type}`,
+  ({ type }) => `Unsupported asset type for import: ${type}`
+)
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -186,7 +209,7 @@ class AssetPackageService {
     }
 
     if (exportAssetIds.size === 0 && structuralFolderIds.size === 0) {
-      throw new Error('没有可导出的资产')
+      throw fail(E_PACKAGE_NOTHING_TO_EXPORT)
     }
 
     const pathPlan: { guid: string; pathname: string }[] = []
@@ -426,7 +449,7 @@ class AssetPackageService {
       )
       entries = allEntries.filter((e) => allowed.has(e.guid))
       if (entries.length === 0) {
-        throw new Error('未选择可导入的条目')
+        throw fail(E_PACKAGE_NO_SELECTED_ENTRIES)
       }
     }
 
@@ -437,7 +460,7 @@ class AssetPackageService {
 
     const destinationFolderId = input.destinationFolderId ?? null
     if (destinationFolderId && !folderById.has(destinationFolderId)) {
-      throw new Error('目标文件夹不存在')
+      throw fail(E_PACKAGE_DESTINATION_FOLDER_MISSING)
     }
 
     const guidMap = new Map<string, string>()
@@ -533,7 +556,7 @@ class AssetPackageService {
     for (const entry of assetEntries) {
       const meta = entry.meta as AssetPackageAssetMeta
       if (!isAipackageAssetType(meta.asset.type)) {
-        throw new Error(`不支持导入资产类型: ${meta.asset.type}`)
+        throw fail(E_PACKAGE_UNSUPPORTED_ASSET_TYPE, { type: meta.asset.type })
       }
       const existing = assetById.get(meta.guid)
       if (!existing) {

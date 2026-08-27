@@ -1520,7 +1520,9 @@ function applySceneBlockoutObjects(
   mode: BlockoutLayoutMode
 ): number {
   const groupId = scene.createEmptyObject()
-  if (groupId) scene.updateObjectTransform(groupId, { name: 'AI 白模' })
+  if (groupId) {
+    scene.updateObjectTransform(groupId, { name: t('director.stage.aiBlockoutGroupName') })
+  }
   const yaw =
     typeof scene.stage.value.panoramaYaw === 'number' ? scene.stage.value.panoramaYaw : 0
   let created = 0

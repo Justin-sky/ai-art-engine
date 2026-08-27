@@ -61,6 +61,8 @@ import type {
   WriteAssetTextInput
 } from '@shared/ipc'
 import { renameReplaceSync } from '../persistence/atomicRename'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { settingsService } from './settingsService'
 import { autosaveRepository } from '../repositories/autosaveRepository'
 import { assetRepository } from '../repositories/assetRepository'
@@ -118,6 +120,85 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+// ── 本服务个性错误（双语条目；跨服务共性条目见 errors/messages.ts）──
+const E_PROJECT_EMPTY_NAME = defErrSimple(
+  'project.emptyName',
+  '工程名不能为空',
+  'Project name cannot be empty'
+)
+const E_PROJECT_TARGET_DIR_EXISTS = defErrSimple(
+  'project.targetDirExists',
+  '目标目录已存在',
+  'The target directory already exists'
+)
+const E_PROJECT_INVALID_FILE = defErrSimple(
+  'project.invalidFile',
+  '无效的工程文件',
+  'Invalid project file'
+)
+/** expected 为 assetTypeLabel 输出，已按设置语言本地化 */
+const E_PROJECT_ASSET_TYPE_MISMATCH = defErr<{ expected: string }>(
+  'project.assetTypeMismatch',
+  ({ expected }) => `文件类型与资产类型不匹配（需要 ${expected}）`,
+  ({ expected }) => `File type does not match asset type (expects ${expected})`
+)
+const E_PROJECT_POSE_NO_REIMPORT_MEDIA = defErrSimple(
+  'project.poseNoReimportableMedia',
+  '姿势资产没有可重新导入的媒体文件',
+  'Pose assets have no media file to reimport'
+)
+const E_PROJECT_NO_REIMPORT_MEDIA = defErrSimple(
+  'project.noReimportableMedia',
+  '没有可重新导入的媒体文件',
+  'No media file available for reimport'
+)
+const E_ASSET_FILE_MISSING = defErrSimple('asset.fileMissing', '文件不存在', 'File not found')
+const E_TEXT_WRITEBACK_SCREENPLAY_ONLY = defErrSimple(
+  'project.textWritebackScreenplayOnly',
+  '仅剧本资产支持文本写回',
+  'Only screenplay assets support text write-back'
+)
+const E_SCREENPLAY_NO_SIDECAR_TEXT = defErrSimple(
+  'project.screenplayNoSidecarText',
+  '该剧本没有旁挂文本文件',
+  'This screenplay has no sidecar text file'
+)
+const E_SIDECAR_NOT_EDITABLE_TEXT = defErrSimple(
+  'project.sidecarNotEditableText',
+  '旁挂文件不是可编辑的文本类型',
+  'The sidecar file is not an editable text type'
+)
+const E_ASSET_FILE_MISSING_ON_DISK = defErrSimple(
+  'project.assetFileMissingOnDisk',
+  '磁盘上找不到该资产文件',
+  'Asset file not found on disk'
+)
+const E_FOLDER_MISSING_ON_DISK = defErrSimple(
+  'project.folderMissingOnDisk',
+  '磁盘上找不到该目录',
+  'Folder not found on disk'
+)
+const E_SHELL_OPEN_FOLDER_FAILED = defErr<{ detail: string }>(
+  'fs.shellOpenFolderFailed',
+  ({ detail }) => `打开文件夹失败: ${detail}`,
+  ({ detail }) => `Failed to open folder: ${detail}`
+)
+const E_NO_ASSETS_SELECTED = defErrSimple(
+  'project.noAssetsSelected',
+  '未选择资产',
+  'No assets selected'
+)
+const E_NO_ORIGINAL_FILES_TO_COPY = defErrSimple(
+  'project.noOriginalFilesToCopy',
+  '没有可复制的原始资产文件',
+  'No original asset files to copy'
+)
+const E_META_WRITE_FAILED = defErr<{ name: string }>(
+  'project.metaWriteFailed',
+  ({ name }) => `资产元数据写入失败: ${name}`,
+  ({ name }) => `Failed to write asset metadata: ${name}`
+)
+
 /** 可宿主资产：写入 hostInterface + schemaVersion，并为内图确保 boundary proxy */
 function finalizeHostableAssetGenParams(
   type: AssetType,
@@ -152,7 +233,7 @@ function assertInsideProject(root: string, target: string): string {
   const resolvedRoot = resolve(root) + sep
   const resolvedTarget = resolve(target)
   if (!resolvedTarget.startsWith(resolvedRoot) && resolvedTarget !== resolve(root)) {
-    throw new Error('路径越界：操作必须在工程目录内')
+    throw fail(MAIN_ERRORS.pathOutsideProject)
   }
   return resolvedTarget
 }
@@ -166,12 +247,12 @@ class ProjectService {
   private config: ProjectConfig | null = null
 
   getRoot(): string {
-    if (!this.rootPath) throw new Error('未打开工程')
+    if (!this.rootPath) throw fail(MAIN_ERRORS.noProject)
     return this.rootPath
   }
 
   getConfig(): ProjectConfig {
-    if (!this.config) throw new Error('未打开工程')
+    if (!this.config) throw fail(MAIN_ERRORS.noProject)
     return this.config
   }
 
@@ -195,10 +276,10 @@ class ProjectService {
 
   createProject(input: CreateProjectInput): OpenProjectResult {
     const safeName = input.name.trim().replace(/[<>:"/\\|?*]/g, '_')
-    if (!safeName) throw new Error('工程名不能为空')
+    if (!safeName) throw fail(E_PROJECT_EMPTY_NAME)
 
     const root = join(input.parentDir, safeName)
-    if (existsSync(root)) throw new Error('目标目录已存在')
+    if (existsSync(root)) throw fail(E_PROJECT_TARGET_DIR_EXISTS)
 
     projectRepository.ensureScaffold(root)
 
@@ -239,7 +320,7 @@ class ProjectService {
   openProject(projectJsonPath: string): OpenProjectResult {
     const abs = resolve(projectJsonPath)
     if (!existsSync(abs) || basename(abs) !== 'project.json') {
-      throw new Error('无效的工程文件')
+      throw fail(E_PROJECT_INVALID_FILE)
     }
     const root = dirname(abs)
     const config = projectRepository.read(root)
@@ -475,7 +556,9 @@ class ProjectService {
     const detected = detectAssetType(input.filePath)
 
     if (!isAttachCompatible(asset.type, detected, input.filePath)) {
-      throw new Error(`文件类型与资产类型不匹配（需要 ${assetTypeLabel(asset.type, settingsService.get().language)}）`)
+      throw fail(E_PROJECT_ASSET_TYPE_MISMATCH, {
+        expected: assetTypeLabel(asset.type, settingsService.get().language)
+      })
     }
 
     const previous = { ...asset, genParams: asset.genParams ? { ...asset.genParams } : undefined }
@@ -555,7 +638,7 @@ class ProjectService {
       seen.add(assetId)
       const asset = scan.assets.find((item) => item.id === assetId)
       if (!asset) {
-        skipped.push({ id: assetId, name: assetId, reason: '资产不存在' })
+        skipped.push({ id: assetId, name: assetId, reason: fail(MAIN_ERRORS.assetNotFound).message })
         continue
       }
       try {
@@ -663,7 +746,7 @@ class ProjectService {
     asset: AssetInfo
   ): AssetInfo {
     if (isPoseModelAsset(asset)) {
-      throw new Error('姿势资产没有可重新导入的媒体文件')
+      throw fail(E_PROJECT_POSE_NO_REIMPORT_MEDIA)
     }
 
     const metaAbs = scan.metaAbsByAssetId.get(asset.id)
@@ -680,7 +763,7 @@ class ProjectService {
       if (existsSync(claimed)) mediaAbs = claimed
     }
     if (!mediaAbs) {
-      throw new Error('没有可重新导入的媒体文件')
+      throw fail(E_PROJECT_NO_REIMPORT_MEDIA)
     }
 
     const relativePath = toPosix(relative(root, mediaAbs))
@@ -703,7 +786,7 @@ class ProjectService {
   getAssetFileUrl(relativePath: string): string {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, relativePath))
-    if (!existsSync(abs)) throw new Error('文件不存在')
+    if (!existsSync(abs)) throw fail(E_ASSET_FILE_MISSING)
 
     const mtime = statSync(abs).mtimeMs
     // 图/音/视/文本统一走 studio-media，避免 base64 撑爆内存，并支持 fetch
@@ -724,14 +807,14 @@ class ProjectService {
   writeAssetText(input: WriteAssetTextInput): AssetInfo {
     const asset = this.readAsset(input.assetId)
     if (!isScreenplayAsset(asset.type)) {
-      throw new Error('仅剧本资产支持文本写回')
+      throw fail(E_TEXT_WRITEBACK_SCREENPLAY_ONLY)
     }
     const relativePath = asset.relativePath?.trim()
     if (!relativePath) {
-      throw new Error('该剧本没有旁挂文本文件')
+      throw fail(E_SCREENPLAY_NO_SIDECAR_TEXT)
     }
     if (!isTextFilePath(relativePath)) {
-      throw new Error('旁挂文件不是可编辑的文本类型')
+      throw fail(E_SIDECAR_NOT_EDITABLE_TEXT)
     }
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, relativePath))
@@ -844,7 +927,7 @@ class ProjectService {
     const root = this.getRoot()
     const scan = scanAssetTree(root)
     const asset = scan.assets.find((item) => item.id === assetId)
-    if (!asset) throw new Error('资产不存在')
+    if (!asset) throw fail(MAIN_ERRORS.assetNotFound)
 
     let abs: string | null = null
     if (asset.relativePath) {
@@ -855,7 +938,7 @@ class ProjectService {
       const metaAbs = scan.metaAbsByAssetId.get(assetId)
       if (metaAbs && existsSync(metaAbs)) abs = metaAbs
     }
-    if (!abs) throw new Error('磁盘上找不到该资产文件')
+    if (!abs) throw fail(E_ASSET_FILE_MISSING_ON_DISK)
     shell.showItemInFolder(abs)
   }
 
@@ -863,9 +946,10 @@ class ProjectService {
   async showFolderInFolder(folderId: string): Promise<void> {
     const root = this.getRoot()
     const dirAbs = resolveFolderDirAbs(root, folderId)
-    if (!existsSync(dirAbs)) throw new Error('磁盘上找不到该目录')
+    if (!existsSync(dirAbs)) throw fail(E_FOLDER_MISSING_ON_DISK)
     const error = await shell.openPath(dirAbs)
-    if (error) throw new Error(error)
+    // shell.openPath 返回的是 OS 原生错误字符串，作为 detail 嵌入句式
+    if (error) throw fail(E_SHELL_OPEN_FOLDER_FAILED, { detail: error })
   }
 
   /** 探测视频关键帧时间（秒）；无 ffprobe / 文件缺失时返回 null */
@@ -883,7 +967,7 @@ class ProjectService {
    */
   async copyAssetOriginalFiles(assetIds: string[]): Promise<{ copied: number; mode: 'files' | 'text' }> {
     const ids = [...new Set(assetIds.map((id) => id?.trim()).filter(Boolean))]
-    if (!ids.length) throw new Error('未选择资产')
+    if (!ids.length) throw fail(E_NO_ASSETS_SELECTED)
 
     const root = this.getRoot()
     const scan = scanAssetTree(root)
@@ -895,7 +979,7 @@ class ProjectService {
       const mediaAbs = assertInsideProject(root, join(root, asset.relativePath))
       if (existsSync(mediaAbs)) absPaths.push(mediaAbs)
     }
-    if (!absPaths.length) throw new Error('没有可复制的原始资产文件')
+    if (!absPaths.length) throw fail(E_NO_ORIGINAL_FILES_TO_COPY)
 
     const mode = await copyFilePathsToClipboard(absPaths)
     return { copied: absPaths.length, mode }
@@ -1098,7 +1182,7 @@ class ProjectService {
   }): AssetInfo {
     const root = this.getRoot()
     const abs = assertInsideProject(root, join(root, params.relativePath))
-    if (!existsSync(abs)) throw new Error('媒体文件不存在')
+    if (!existsSync(abs)) throw fail(MAIN_ERRORS.fileNotFound)
     const dirAbs = dirname(abs)
     const relDir = toPosix(relative(root, dirAbs)) || 'Assets'
     if (relDir === 'Assets' || relDir.startsWith('Assets/')) {
@@ -1133,7 +1217,7 @@ class ProjectService {
       console.warn('[asset] registerExistingMediaAsAsset writeAssetToTree failed; sidecar kept', metaAbs, err)
     }
     if (!existsSync(metaAbs)) {
-      throw new Error(`资产元数据写入失败: ${metaFileNameForMedia(mediaName)}`)
+      throw fail(E_META_WRITE_FAILED, { name: metaFileNameForMedia(mediaName) })
     }
     return asset
   }
@@ -1171,7 +1255,7 @@ class ProjectService {
     const root = this.getRoot()
     const asset = this.readAsset(input.assetId)
     const abs = assertInsideProject(root, join(root, input.relativePath))
-    if (!existsSync(abs)) throw new Error('媒体文件不存在')
+    if (!existsSync(abs)) throw fail(MAIN_ERRORS.fileNotFound)
     const posix = toPosix(relative(root, abs))
     asset.relativePath = posix
     if (asset.type === 'image' || asset.type === 'canvas') {

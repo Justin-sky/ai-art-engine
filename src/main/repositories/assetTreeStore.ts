@@ -28,6 +28,20 @@ import {
   isRealThumbnailPath,
   thumbRelativePathFor
 } from '@shared/media/thumbnailPath'
+import { fail, defErr } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
+
+// ── 资产树迁移个性错误 ──
+const E_ASSET_TREE_META_MISSING = defErr<{ asset: string }>(
+  'assetTree.metaMissing',
+  ({ asset }) => `资产元数据不存在: ${asset}`,
+  ({ asset }) => `Asset metadata not found: ${asset}`
+)
+const E_ASSET_TREE_MEDIA_MISSING = defErr<{ path: string }>(
+  'assetTree.mediaMissing',
+  ({ path }) => `媒体文件缺失: ${path}`,
+  ({ path }) => `Media file is missing: ${path}`
+)
 
 export interface AssetTreeScan {
   assets: AssetInfo[]
@@ -145,7 +159,7 @@ export function resolveFolderDirAbs(
   if (cached) return cached
   const fresh = scanAssetTree(root)
   const hit = fresh.dirAbsByFolderId.get(folderId)
-  if (!hit) throw new Error('目录不存在')
+  if (!hit) throw fail(MAIN_ERRORS.dirNotFound)
   return hit
 }
 
@@ -411,7 +425,7 @@ export function moveAssetBetweenFolders(
     if (existsSync(companion)) metaAbs = companion
   }
   if (!metaAbs || !existsSync(metaAbs)) {
-    throw new Error(`资产元数据不存在: ${asset.name || asset.id}`)
+    throw fail(E_ASSET_TREE_META_MISSING, { asset: asset.name || asset.id })
   }
 
   const next: AssetInfo = {
@@ -435,7 +449,7 @@ export function moveAssetBetweenFolders(
     if (existsSync(srcMedia)) {
       relocateFile(srcMedia, destMedia)
     } else if (!existsSync(destMedia)) {
-      throw new Error(`媒体文件缺失: ${asset.relativePath}`)
+      throw fail(E_ASSET_TREE_MEDIA_MISSING, { path: asset.relativePath })
     }
     next.relativePath = toPosix(relative(root, destMedia))
     if (next.type === 'image' || next.type === 'video') {

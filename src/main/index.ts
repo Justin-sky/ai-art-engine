@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { startMainRuntime } from './runtime'
+import { setAppErrorLocaleResolver } from '@shared/errors/appError'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
@@ -136,6 +137,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   registerMediaProtocol()
   settingsService.init()
+  setAppErrorLocaleResolver(() => settingsService.get().language)
   await startMainRuntime()
   registerIpcHandlers()
   updateService.init()

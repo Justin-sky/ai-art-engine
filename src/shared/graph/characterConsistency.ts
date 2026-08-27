@@ -4,6 +4,7 @@
  */
 
 import type { WorldEntityRef } from '../domain'
+import { normalizeWorldEntityKind } from '../domain'
 import { DEFAULT_MAX_INPUT_REFERENCES } from './imageGenerateParams'
 
 /** 角色参考图源：名字 → 参考图 URL（来自世界元素「角色」生成结果） */
@@ -27,7 +28,8 @@ export function characterReferenceImagesFromResults(
   const out: CharacterReferenceImage[] = []
   const seen = new Set<string>()
   for (const row of results ?? []) {
-    if ((row.type ?? '').trim() !== '角色') continue
+    // 兼容旧文档的中文 kind 值（'角色'），归一化到规范键
+    if (normalizeWorldEntityKind(row.type ?? '') !== 'character') continue
     const name = row.name?.trim() ?? ''
     const imageUrl = row.imageUrl?.trim() ?? ''
     if (!name || !imageUrl) continue

@@ -12,11 +12,55 @@ import type {
 import { isVideoJobActive, jobKind } from '@shared/videoJob'
 import { IpcChannels } from '@shared/ipc'
 import { findProviderById } from '@shared/modelProvider'
+import { fail, defErr, defErrSimple, type BiDef } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
 import { broadcastToAllWindows } from '../broadcast'
 import { videoJobRepository } from '../repositories/videoJobRepository'
 import { deleteUploads } from './objectStorageUploadService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
+
+// ── 视频任务个性错误（error 会持久化到任务记录并原样展示，两语文案需自然完整）──
+const E_VIDEOJOB_UNKNOWN_JOB = defErr<{ jobId: string }>(
+  'videoJob.unknownJob',
+  ({ jobId }) => `未知视频任务: ${jobId}`,
+  ({ jobId }) => `Unknown video job: ${jobId}`
+)
+const E_VIDEOJOB_GENERATE_FAILED = defErrSimple(
+  'videoJob.generateFailed',
+  '视频生成失败',
+  'Video generation failed'
+)
+const E_VIDEOJOB_CANCELLED = defErrSimple(
+  'videoJob.cancelled',
+  '已取消',
+  'Cancelled'
+)
+const E_VIDEOJOB_PROVIDER_REMOVED = defErrSimple(
+  'videoJob.providerRemoved',
+  '视频提供商已移除',
+  'The video provider has been removed'
+)
+const E_VIDEOJOB_PROVIDER_REMOVED_RESUMING = defErrSimple(
+  'videoJob.providerRemovedResuming',
+  '视频提供商已移除，无法继续轮询',
+  'The video provider has been removed; polling cannot continue'
+)
+const E_VIDEOJOB_MISSING_DOWNLOAD_URL = defErrSimple(
+  'videoJob.missingDownloadUrl',
+  '视频生成完成但未返回下载地址',
+  'Video generation finished but returned no download URL'
+)
+const E_VIDEOJOB_PROJECT_CLOSED = defErrSimple(
+  'videoJob.projectClosed',
+  '工程已关闭',
+  'Project has been closed'
+)
+
+/** 按当前语言取消息（任务记录里存的文案在调用时刻固化） */
+function msg(def: BiDef<undefined>): string {
+  return fail(def).message
+}
 
 const POLL_INTERVAL_MS = 5000
 
@@ -67,7 +111,7 @@ class VideoJobService {
   }
 
   create(input: CreateVideoJobInput): VideoJobRecord {
-    if (!projectService.isOpen()) throw new Error('未打开工程')
+    if (!projectService.isOpen()) throw fail(MAIN_ERRORS.noProject)
     const now = new Date().toISOString()
     const job: VideoJobRecord = {
       version: 1,
@@ -98,10 +142,10 @@ class VideoJobService {
   /** 阻塞直到终态（供 generateVideo IPC） */
   waitUntilSettled(localJobId: string): Promise<VideoJobRecord> {
     const current = this.get(localJobId)
-    if (!current) return Promise.reject(new Error(`未知视频任务: ${localJobId}`))
+    if (!current) return Promise.reject(fail(E_VIDEOJOB_UNKNOWN_JOB, { jobId: localJobId }))
     if (!isVideoJobActive(current.status)) {
       if (current.status === 'succeeded') return Promise.resolve(current)
-      return Promise.reject(new Error(current.error ?? '视频生成失败'))
+      return Promise.reject(new Error(current.error ?? msg(E_VIDEOJOB_GENERATE_FAILED)))
     }
 
     return new Promise((resolve, reject) => {
@@ -114,7 +158,7 @@ class VideoJobService {
       if (again && !isVideoJobActive(again.status)) {
         this.finishWaiters(
           again,
-          again.status === 'succeeded' ? undefined : new Error(again.error ?? '视频生成失败')
+          again.status === 'succeeded' ? undefined : new Error(again.error ?? msg(E_VIDEOJOB_GENERATE_FAILED))
         )
         return
       }
@@ -137,10 +181,10 @@ class VideoJobService {
       ...job,
       status: 'cancelled',
       progress: 100,
-      error: '已取消'
+      error: msg(E_VIDEOJOB_CANCELLED)
     })
     void this.cleanupUploads(next)
-    this.finishWaiters(next, new Error('已取消'))
+    this.finishWaiters(next, new Error(msg(E_VIDEOJOB_CANCELLED)))
     this.emitUpdated(next)
     videoJobRepository.pruneTerminal(root)
     return next
@@ -161,7 +205,7 @@ class VideoJobService {
           ...job,
           status: 'failed',
           progress: 100,
-          error: '视频提供商已移除，无法继续轮询'
+          error: msg(E_VIDEOJOB_PROVIDER_REMOVED_RESUMING)
         })
         void this.cleanupUploads(failed)
         this.emitUpdated(failed)
@@ -178,7 +222,7 @@ class VideoJobService {
     }
     this.polling.clear()
     for (const [id, list] of this.waiters) {
-      for (const w of list) w.reject(new Error('工程已关闭'))
+      for (const w of list) w.reject(new Error(msg(E_VIDEOJOB_PROJECT_CLOSED)))
       this.waiters.delete(id)
     }
   }
@@ -213,7 +257,7 @@ class VideoJobService {
         job.providerInstanceId
       )
       if (!provider) {
-        await this.failJob(localJobId, new Error('视频提供商已移除'))
+        await this.failJob(localJobId, new Error(msg(E_VIDEOJOB_PROVIDER_REMOVED)))
         return
       }
 
@@ -228,13 +272,13 @@ class VideoJobService {
       if (!job || !isVideoJobActive(job.status)) return
 
       if (result.status === 'failed') {
-        await this.failJob(localJobId, new Error(result.error ?? '视频生成失败'))
+        await this.failJob(localJobId, new Error(result.error ?? msg(E_VIDEOJOB_GENERATE_FAILED)))
         return
       }
 
       if (result.status === 'completed') {
         if (!result.downloadUrl) {
-          await this.failJob(localJobId, new Error('视频生成完成但未返回下载地址'))
+          await this.failJob(localJobId, new Error(msg(E_VIDEOJOB_MISSING_DOWNLOAD_URL)))
           return
         }
         await this.completeJob(job, provider, result.downloadUrl)
@@ -371,7 +415,7 @@ class VideoJobService {
     this.waiters.delete(job.localJobId)
     for (const w of list) {
       if (error || job.status === 'failed' || job.status === 'cancelled') {
-        w.reject(error ?? new Error(job.error ?? '视频生成失败'))
+        w.reject(error ?? new Error(job.error ?? msg(E_VIDEOJOB_GENERATE_FAILED)))
       } else {
         w.resolve(job)
       }

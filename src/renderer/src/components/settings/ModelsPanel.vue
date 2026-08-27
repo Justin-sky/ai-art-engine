@@ -709,9 +709,7 @@ async function refreshModels(
   const previous = catalogs[key] ? [...catalogs[key]] : []
   try {
     if (typeof window.studio?.listModels !== 'function') {
-      throw new Error(
-        'window.studio.listModels 不可用：请完全退出并重新运行 npm run dev（preload 变更不会热更新）'
-      )
+      throw new Error(t('settings.models.preloadListModelsUnavailable'))
     }
     // await 期间设置自动保存可能替换 providers，结束后按 id 取最新引用
     const latestBefore = props.models.providers.find((p) => p.id === providerId) ?? provider
@@ -912,7 +910,11 @@ function capabilitySummary(model: CatalogModel): string {
   if (durations?.length) parts.push(`${Math.min(...durations)}–${Math.max(...durations)}s`)
   if (frames?.length) {
     const labels = frames.map((f) =>
-      f === 'first_frame' ? '首帧' : f === 'last_frame' ? '尾帧' : f
+      f === 'first_frame'
+        ? t('settings.models.capFirstFrame')
+        : f === 'last_frame'
+          ? t('settings.models.capLastFrame')
+          : f
     )
     parts.push(labels.join('+'))
   }

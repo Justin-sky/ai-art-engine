@@ -1,7 +1,30 @@
 import { readFileSync, existsSync } from 'fs'
 import { fileURLToPath } from 'url'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { toMediaUrl } from './mediaUrl'
 import { projectService } from '../projectService'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_IMAGE_FILE_NOT_FOUND = defErr<{ path: string }>(
+  'provider.imageUrl.fileNotFound',
+  ({ path }) => `图片文件不存在: ${path}`,
+  ({ path }) => `Image file not found: ${path}`
+)
+const E_EMPTY_REFERENCE = defErrSimple(
+  'provider.imageUrl.emptyReference',
+  '空的图片引用',
+  'Empty image reference'
+)
+const E_STUDIO_MEDIA_NO_PATH = defErrSimple(
+  'provider.imageUrl.studioMediaNoPath',
+  'studio-media URL 缺少 path',
+  'studio-media URL is missing its path'
+)
+const E_STUDIO_MEDIA_UNPARSABLE = defErr<{ detail: string }>(
+  'provider.imageUrl.studioMediaUnparsable',
+  ({ detail }) => `无法解析 studio-media 图片：${detail}`,
+  ({ detail }) => `Could not resolve studio-media image: ${detail}`
+)
 
 function mimeFromPath(filePath: string): string {
   const ext = filePath.toLowerCase().split('.').pop() ?? ''
@@ -13,7 +36,7 @@ function mimeFromPath(filePath: string): string {
 }
 
 function dataUrlFromAbsPath(absPath: string): string {
-  if (!existsSync(absPath)) throw new Error(`图片文件不存在: ${absPath}`)
+  if (!existsSync(absPath)) throw fail(E_IMAGE_FILE_NOT_FOUND, { path: absPath })
   const buf = readFileSync(absPath)
   return `data:${mimeFromPath(absPath)};base64,${buf.toString('base64')}`
 }
@@ -24,7 +47,7 @@ function dataUrlFromAbsPath(absPath: string): string {
  */
 export function ensureApiImageUrl(pathOrUrl: string): string {
   const trimmed = pathOrUrl.trim()
-  if (!trimmed) throw new Error('空的图片引用')
+  if (!trimmed) throw fail(E_EMPTY_REFERENCE)
 
   if (trimmed.startsWith('data:') || /^https?:\/\//i.test(trimmed)) {
     return trimmed
@@ -34,12 +57,12 @@ export function ensureApiImageUrl(pathOrUrl: string): string {
     try {
       const u = new URL(trimmed)
       const abs = decodeURIComponent(u.searchParams.get('path') ?? '')
-      if (!abs) throw new Error('studio-media URL 缺少 path')
+      if (!abs) throw fail(E_STUDIO_MEDIA_NO_PATH)
       return dataUrlFromAbsPath(abs)
     } catch (err) {
-      throw new Error(
-        `无法解析 studio-media 图片：${err instanceof Error ? err.message : String(err)}`
-      )
+      throw fail(E_STUDIO_MEDIA_UNPARSABLE, {
+        detail: err instanceof Error ? err.message : String(err)
+      })
     }
   }
 

@@ -4,6 +4,7 @@ import {
 } from '../domain'
 import {
   DEFAULT_REVIEW_STATUS,
+  isReviewedStatus,
   normalizeReviewStatus,
   type ReviewStatus
 } from './reviewStatus'
@@ -242,7 +243,8 @@ export function mergeBeatRowsPreservingReviewed(
   const used = new Set<string>()
   const result: BeatRow[] = next.map((row) => {
     const prev = prevById.get(row.id)
-    if (prev?.status === '已审核') {
+    // 兼容旧文档残留的中文状态：一律经归一化判定「已审核」
+    if (prev && isReviewedStatus(prev.status)) {
       used.add(prev.id)
       return { ...prev }
     }
@@ -254,7 +256,7 @@ export function mergeBeatRowsPreservingReviewed(
   })
 
   for (const prev of previous) {
-    if (prev.status === '已审核' && !used.has(prev.id)) result.push({ ...prev })
+    if (isReviewedStatus(prev.status) && !used.has(prev.id)) result.push({ ...prev })
   }
   return result
 }

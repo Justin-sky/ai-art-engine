@@ -2,10 +2,19 @@ import {
   normalizeProjectStyleImages,
   type ProjectStyleImage
 } from '@shared/domain'
+import { defErr, fail } from '@shared/errors/appError'
 import { getDefaultStylePreset } from './defaultLibrary'
 
 /** 库缩略图 URL → data URL 缓存，避免每次生成重复 fetch */
 const libraryDataUrlCache = new Map<string, string>()
+
+/** 风格参考图全部解析失败（名称列表由两语言句式各自拼接） */
+const STYLE_IMAGES_LOAD_FAILED = defErr<{ names: string[] }>(
+  'stylePreset.imagesLoadFailed',
+  ({ names }) => `风格参考图无法加载（${names.join('、') || '未知'}），请重试或改用自定义上传图`,
+  ({ names }) =>
+    `Failed to load style reference images (${names.join(', ') || 'unknown'}); please retry or switch to custom uploads`
+)
 
 async function fetchAsDataUrl(url: string): Promise<string> {
   const res = await fetch(url)
@@ -56,9 +65,7 @@ export async function resolveStyleImageUrls(
   }
   // 配置了风格图却一张都解析不出时抛错，避免「提示词有风格、API 无参考图」静默失效
   if (items.length > 0 && urls.length === 0) {
-    throw new Error(
-      `风格参考图无法加载（${errors.join('、') || '未知'}），请重试或改用自定义上传图`
-    )
+    throw fail(STYLE_IMAGES_LOAD_FAILED, { names: errors })
   }
   return urls
 }

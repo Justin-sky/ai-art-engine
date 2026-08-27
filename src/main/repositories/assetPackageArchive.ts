@@ -9,6 +9,65 @@ import {
   AIPACKAGE_FORMAT,
   AIPACKAGE_FORMAT_VERSION
 } from '@shared/assetPackage/types'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { MAIN_ERRORS } from '../errors/messages'
+
+// ── 资产包完整性个性条目（共性家族见 errors/messages.ts）──
+const E_PACKAGE_CREATE_ENTRY_FAILED = defErrSimple(
+  'assetPackage.createEntryFailed',
+  '无法创建包条目',
+  'Failed to create the package entry'
+)
+const E_PACKAGE_PATHNAME_MISMATCH = defErr<{ guid: string }>(
+  'assetPackage.pathnameMismatch',
+  ({ guid }) => `pathname 与 manifest 不一致: ${guid}`,
+  ({ guid }) => `pathname does not match manifest: ${guid}`
+)
+const E_PACKAGE_PAYLOAD_CHECKSUM_FAILED = defErr<{ guid: string }>(
+  'assetPackage.payloadChecksumFailed',
+  ({ guid }) => `payload 校验失败: ${guid}`,
+  ({ guid }) => `Payload checksum mismatch: ${guid}`
+)
+const E_PACKAGE_META_CHECKSUM_FAILED = defErr<{ guid: string }>(
+  'assetPackage.metaChecksumFailed',
+  ({ guid }) => `meta 校验失败: ${guid}`,
+  ({ guid }) => `Meta checksum mismatch: ${guid}`
+)
+const E_PACKAGE_PAYLOAD_SIZE_MISMATCH = defErr<{ guid: string }>(
+  'assetPackage.payloadSizeMismatch',
+  ({ guid }) => `payload 大小不一致: ${guid}`,
+  ({ guid }) => `Payload size does not match manifest: ${guid}`
+)
+const E_PACKAGE_ENTRY_TOO_LARGE = defErr<{ guid: string }>(
+  'assetPackage.entryTooLarge',
+  ({ guid }) => `单条目过大: ${guid}`,
+  ({ guid }) => `Entry is too large: ${guid}`
+)
+const E_PACKAGE_INVALID_GENERATED_PATH = defErr<{ path: string }>(
+  'assetPackage.invalidGeneratedPath',
+  ({ path }) => `非法生成产物路径: ${path}`,
+  ({ path }) => `Invalid generated-output path: ${path}`
+)
+const E_PACKAGE_MISSING_GENERATED_FILE = defErr<{ path: string }>(
+  'assetPackage.missingGeneratedFile',
+  ({ path }) => `缺少生成产物: ${path}`,
+  ({ path }) => `Missing generated output: ${path}`
+)
+const E_PACKAGE_GENERATED_SIZE_MISMATCH = defErr<{ path: string }>(
+  'assetPackage.generatedSizeMismatch',
+  ({ path }) => `生成产物大小不一致: ${path}`,
+  ({ path }) => `Generated output size does not match manifest: ${path}`
+)
+const E_PACKAGE_GENERATED_TOO_LARGE = defErr<{ path: string }>(
+  'assetPackage.generatedTooLarge',
+  ({ path }) => `生成产物过大: ${path}`,
+  ({ path }) => `Generated output is too large: ${path}`
+)
+const E_PACKAGE_GENERATED_CHECKSUM_FAILED = defErr<{ path: string }>(
+  'assetPackage.generatedChecksumFailed',
+  ({ path }) => `生成产物校验失败: ${path}`,
+  ({ path }) => `Generated output checksum mismatch: ${path}`
+)
 
 export function sha256Buffer(data: Buffer): string {
   return createHash('sha256').update(data).digest('hex')
@@ -56,7 +115,7 @@ export async function writeAipackageArchive(
     const payloadSha = sha256Buffer(entry.payload)
     const metaSha = sha256Buffer(Buffer.from(metaJson, 'utf8'))
     const folder = zip.folder(entry.guid)
-    if (!folder) throw new Error('无法创建包条目')
+    if (!folder) throw fail(E_PACKAGE_CREATE_ENTRY_FAILED)
     folder.file('pathname', entry.pathname)
     folder.file('asset', entry.payload)
     folder.file('asset.meta', metaJson)
@@ -113,23 +172,23 @@ export async function readAipackageArchive(filePath: string): Promise<{
   const raw = readFileSync(filePath)
   // Soft zip-bomb guard: reject absurd ratios later via entry sizes
   if (raw.length > 2 * 1024 * 1024 * 1024) {
-    throw new Error('资产包过大')
+    throw fail(MAIN_ERRORS.packageTooLarge)
   }
   const zip = await JSZip.loadAsync(raw)
   const manifestFile = zip.file('manifest.json')
-  if (!manifestFile) throw new Error('缺少 manifest.json')
+  if (!manifestFile) throw fail(MAIN_ERRORS.packageMissingManifest)
   const manifest = JSON.parse(await manifestFile.async('string')) as AssetPackageManifest
   if (manifest.format !== AIPACKAGE_FORMAT) {
-    throw new Error(`未知资产包格式: ${String(manifest.format)}`)
+    throw fail(MAIN_ERRORS.packageUnknownFormat, { format: String(manifest.format) })
   }
   if (manifest.formatVersion !== AIPACKAGE_FORMAT_VERSION) {
-    throw new Error(`不支持的资产包版本: ${manifest.formatVersion}`)
+    throw fail(MAIN_ERRORS.packageUnsupportedVersion, { version: String(manifest.formatVersion) })
   }
   if (!Array.isArray(manifest.entries) || manifest.entries.length === 0) {
-    throw new Error('资产包条目为空')
+    throw fail(MAIN_ERRORS.packageEmptyEntries)
   }
   if (manifest.entries.length > 50_000) {
-    throw new Error('资产包条目过多')
+    throw fail(MAIN_ERRORS.packageTooManyEntries)
   }
 
   const entries: ReadPackageEntry[] = []
@@ -138,29 +197,29 @@ export async function readAipackageArchive(filePath: string): Promise<{
     const metaFile = zip.file(`${listed.guid}/asset.meta`)
     const assetFile = zip.file(`${listed.guid}/asset`)
     if (!pathnameFile || !metaFile || !assetFile) {
-      throw new Error(`包条目不完整: ${listed.guid}`)
+      throw fail(MAIN_ERRORS.packageIncompleteEntry, { guid: listed.guid })
     }
     const pathname = (await pathnameFile.async('string')).split(/\r?\n/)[0]?.trim() ?? ''
     const metaText = await metaFile.async('string')
     const payload = Buffer.from(await assetFile.async('uint8array'))
     if (pathname !== listed.pathname) {
-      throw new Error(`pathname 与 manifest 不一致: ${listed.guid}`)
+      throw fail(E_PACKAGE_PATHNAME_MISMATCH, { guid: listed.guid })
     }
     if (sha256Buffer(payload) !== listed.payloadSha256) {
-      throw new Error(`payload 校验失败: ${listed.guid}`)
+      throw fail(E_PACKAGE_PAYLOAD_CHECKSUM_FAILED, { guid: listed.guid })
     }
     if (sha256Buffer(Buffer.from(metaText, 'utf8')) !== listed.metaSha256) {
-      throw new Error(`meta 校验失败: ${listed.guid}`)
+      throw fail(E_PACKAGE_META_CHECKSUM_FAILED, { guid: listed.guid })
     }
     if (payload.length !== listed.payloadSize) {
-      throw new Error(`payload 大小不一致: ${listed.guid}`)
+      throw fail(E_PACKAGE_PAYLOAD_SIZE_MISMATCH, { guid: listed.guid })
     }
     if (payload.length > 512 * 1024 * 1024) {
-      throw new Error(`单条目过大: ${listed.guid}`)
+      throw fail(E_PACKAGE_ENTRY_TOO_LARGE, { guid: listed.guid })
     }
     const meta = JSON.parse(metaText) as AssetPackageMeta
     if (meta.guid !== listed.guid || meta.kind !== listed.kind) {
-      throw new Error(`meta 与 manifest 不一致: ${listed.guid}`)
+      throw fail(MAIN_ERRORS.packageMetaMismatch, { guid: listed.guid })
     }
     entries.push({
       guid: listed.guid,
@@ -174,26 +233,26 @@ export async function readAipackageArchive(filePath: string): Promise<{
   const generated: PackedGeneratedFile[] = []
   const listedGenerated = Array.isArray(manifest.generatedFiles) ? manifest.generatedFiles : []
   if (listedGenerated.length > 50_000) {
-    throw new Error('资产包生成产物过多')
+    throw fail(MAIN_ERRORS.packageTooManyOutputs)
   }
   for (const item of listedGenerated) {
     const relativePath = String(item.relativePath ?? '')
       .trim()
       .replace(/\\/g, '/')
     if (!relativePath || relativePath.includes('..') || relativePath.startsWith('/')) {
-      throw new Error(`非法生成产物路径: ${relativePath}`)
+      throw fail(E_PACKAGE_INVALID_GENERATED_PATH, { path: relativePath })
     }
     const file = zip.file(`generated/${relativePath}`)
-    if (!file) throw new Error(`缺少生成产物: ${relativePath}`)
+    if (!file) throw fail(E_PACKAGE_MISSING_GENERATED_FILE, { path: relativePath })
     const data = Buffer.from(await file.async('uint8array'))
     if (data.length !== item.size) {
-      throw new Error(`生成产物大小不一致: ${relativePath}`)
+      throw fail(E_PACKAGE_GENERATED_SIZE_MISMATCH, { path: relativePath })
     }
     if (data.length > 512 * 1024 * 1024) {
-      throw new Error(`生成产物过大: ${relativePath}`)
+      throw fail(E_PACKAGE_GENERATED_TOO_LARGE, { path: relativePath })
     }
     if (sha256Buffer(data) !== item.sha256) {
-      throw new Error(`生成产物校验失败: ${relativePath}`)
+      throw fail(E_PACKAGE_GENERATED_CHECKSUM_FAILED, { path: relativePath })
     }
     generated.push({ relativePath, data })
   }
@@ -213,20 +272,20 @@ export async function previewAipackageArchive(filePath: string): Promise<{
 }> {
   const raw = readFileSync(filePath)
   if (raw.length > 2 * 1024 * 1024 * 1024) {
-    throw new Error('资产包过大')
+    throw fail(MAIN_ERRORS.packageTooLarge)
   }
   const zip = await JSZip.loadAsync(raw)
   const manifestFile = zip.file('manifest.json')
-  if (!manifestFile) throw new Error('缺少 manifest.json')
+  if (!manifestFile) throw fail(MAIN_ERRORS.packageMissingManifest)
   const manifest = JSON.parse(await manifestFile.async('string')) as AssetPackageManifest
   if (manifest.format !== AIPACKAGE_FORMAT) {
-    throw new Error(`未知资产包格式: ${String(manifest.format)}`)
+    throw fail(MAIN_ERRORS.packageUnknownFormat, { format: String(manifest.format) })
   }
   if (manifest.formatVersion !== AIPACKAGE_FORMAT_VERSION) {
-    throw new Error(`不支持的资产包版本: ${manifest.formatVersion}`)
+    throw fail(MAIN_ERRORS.packageUnsupportedVersion, { version: String(manifest.formatVersion) })
   }
   if (!Array.isArray(manifest.entries) || manifest.entries.length === 0) {
-    throw new Error('资产包条目为空')
+    throw fail(MAIN_ERRORS.packageEmptyEntries)
   }
 
   const entries: Array<{
@@ -240,12 +299,12 @@ export async function previewAipackageArchive(filePath: string): Promise<{
     const pathnameFile = zip.file(`${listed.guid}/pathname`)
     const metaFile = zip.file(`${listed.guid}/asset.meta`)
     if (!pathnameFile || !metaFile) {
-      throw new Error(`包条目不完整: ${listed.guid}`)
+      throw fail(MAIN_ERRORS.packageIncompleteEntry, { guid: listed.guid })
     }
     const pathname = (await pathnameFile.async('string')).split(/\r?\n/)[0]?.trim() ?? ''
     const meta = JSON.parse(await metaFile.async('string')) as AssetPackageMeta
     if (meta.guid !== listed.guid || meta.kind !== listed.kind) {
-      throw new Error(`meta 与 manifest 不一致: ${listed.guid}`)
+      throw fail(MAIN_ERRORS.packageMetaMismatch, { guid: listed.guid })
     }
     entries.push({
       guid: listed.guid,

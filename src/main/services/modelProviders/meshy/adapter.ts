@@ -14,7 +14,36 @@ import type {
   ModelProviderInstance
 } from '@shared/modelProvider'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
+import { PROVIDER_ERRORS } from '../catalog'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { createProviderHttpClient, readHttpError } from '../http'
+
+// ── 本文件错误条目（catalog 未覆盖的个性文案）──
+const E_MESHY_NO_TEXT = defErrSimple(
+  'provider.meshy.unsupportedText',
+  'Meshy 不支持文本生成',
+  'Meshy does not support text generation'
+)
+const E_MESHY_NO_TASK_ID = defErrSimple(
+  'provider.meshy.noTaskId',
+  'Meshy 未返回任务 id',
+  'Meshy returned no task id'
+)
+const E_MESHY_SUBMIT_FAILED = defErr<{ detail: string }>(
+  'provider.meshy.submitFailed',
+  ({ detail }) => `提交 Meshy 3D 生成失败: ${detail}`,
+  ({ detail }) => `Failed to submit Meshy 3D generation: ${detail}`
+)
+const E_MESHY_POLL_FAILED = defErr<{ detail: string }>(
+  'provider.meshy.pollFailed',
+  ({ detail }) => `轮询 Meshy 3D 生成失败: ${detail}`,
+  ({ detail }) => `Failed to poll Meshy 3D generation: ${detail}`
+)
+const E_MESHY_GEN_FAILED = defErrSimple(
+  'provider.meshy.generationFailed',
+  'Meshy 3D 生成失败',
+  'Meshy 3D generation failed'
+)
 
 /**
  * Meshy 3D 模型生成适配器
@@ -47,7 +76,7 @@ export const meshyAdapter: ModelProviderAdapter = {
         timeout: 15_000
       })
     } catch (err) {
-      throw new Error(`Meshy 连接测试失败: ${await readHttpError(err)}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, { detail: await readHttpError(err) })
     }
   },
 
@@ -69,7 +98,7 @@ export const meshyAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    throw new Error('Meshy 不支持文本生成')
+    throw fail(E_MESHY_NO_TEXT)
   },
 
   generateImage(
@@ -77,7 +106,10 @@ export const meshyAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateImageInput
   ): Promise<GenerateImageResult> {
-    throw new Error('Meshy 不支持图片生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, {
+      kind: 'image',
+      name: { zh: 'Meshy', en: 'Meshy' }
+    })
   },
 
   async submitVideo(
@@ -85,14 +117,20 @@ export const meshyAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    throw new Error('Meshy 不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, {
+      kind: 'video',
+      name: { zh: 'Meshy', en: 'Meshy' }
+    })
   },
 
   async pollVideo(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('Meshy 不支持视频生成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, {
+      kind: 'video',
+      name: { zh: 'Meshy', en: 'Meshy' }
+    })
   },
 
   generateSpeech(
@@ -100,7 +138,10 @@ export const meshyAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('Meshy 不支持语音合成')
+    throw fail(PROVIDER_ERRORS.unsupportedModality, {
+      kind: 'speech',
+      name: { zh: 'Meshy', en: 'Meshy' }
+    })
   },
 
   async submitModel3d(
@@ -123,7 +164,7 @@ export const meshyAdapter: ModelProviderAdapter = {
           { images: refs }
         )
         const taskId = data?.result?.id
-        if (!taskId) throw new Error('Meshy 未返回多图生3D 任务 id')
+        if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
         return {
           jobId: taskId,
           pollingUrl: `multi-image-to-3d::${taskId}`,
@@ -142,7 +183,7 @@ export const meshyAdapter: ModelProviderAdapter = {
           }
         )
         const taskId = data?.result?.id
-        if (!taskId) throw new Error('Meshy 未返回图生3D 任务 id')
+        if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
         return {
           jobId: taskId,
           pollingUrl: `image-to-3d::${taskId}`,
@@ -160,7 +201,7 @@ export const meshyAdapter: ModelProviderAdapter = {
         }
       )
       const taskId = data?.result?.id
-      if (!taskId) throw new Error('Meshy 未返回文生3D 任务 id')
+      if (!taskId) throw fail(E_MESHY_NO_TASK_ID)
       return {
         jobId: taskId,
         pollingUrl: `text-to-3d::${taskId}`,
@@ -168,7 +209,7 @@ export const meshyAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交 Meshy 3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_MESHY_SUBMIT_FAILED, { detail: await readHttpError(err) })
     }
   },
 
@@ -205,14 +246,14 @@ export const meshyAdapter: ModelProviderAdapter = {
         return {
           status: 'failed',
           progress: 100,
-          error: data.error?.message || 'Meshy 3D 生成失败'
+          error: data.error?.message || fail(E_MESHY_GEN_FAILED).message
         }
       }
 
       const progress = data.progress ?? (status === 'in_progress' ? 55 : 15)
       return { status, progress }
     } catch (err) {
-      throw new Error(`轮询 Meshy 3D 生成失败: ${await readHttpError(err)}`)
+      throw fail(E_MESHY_POLL_FAILED, { detail: await readHttpError(err) })
     }
   }
 }

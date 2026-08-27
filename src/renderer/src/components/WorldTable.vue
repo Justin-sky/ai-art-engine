@@ -112,7 +112,7 @@
                   :key="opt"
                   :value="opt"
                 >
-                  {{ opt }}
+                  {{ t(`review.${opt}`) }}
                 </option>
               </select>
             </td>
@@ -471,7 +471,8 @@ td {
   background: var(--bg-elevated);
 }
 
-.review-status[data-status='已审核'] {
+.review-status[data-status='reviewed'],
+.review-status[data-status='已审核'] { /* cjk-ok 后半段选择器兼容旧文档残留的中文 data-status */
   color: #7dcea0;
 }
 

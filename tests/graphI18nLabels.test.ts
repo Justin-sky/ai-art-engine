@@ -36,6 +36,28 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.beat.select')).toBe('选择场')
   })
 
+  it('resolves persisted English enum ids to localized labels', () => {
+    const t = i18n.global.t
+    // 审核状态规范 id（review.unreviewed / review.reviewed）
+    expect(t('review.unreviewed')).toBe('未审核')
+    expect(t('review.reviewed')).toBe('已审核')
+    // 世界元素 kind 规范 id（world.kind.*）
+    expect(t('world.kind.character')).toBe('角色')
+    expect(t('world.kind.scene')).toBe('场景')
+    expect(t('world.kind.prop')).toBe('道具')
+    expect(t('world.kind.weapon')).toBe('武器')
+  })
+
+  it('resolves episode agent stock stage titles for both generations', () => {
+    const t = i18n.global.t
+    // 新一代：写盘英文库存标题 → i18n 键
+    expect(t('graph.episodeAgent.title.beatBreakdown')).toBe('节拍拆解表')
+    expect(t('graph.episodeAgent.title.grid9Storyboard')).toBe('9宫格分镜表')
+    expect(t('graph.episodeAgent.title.grid4Motion')).toBe('4宫格动态分镜表')
+    expect(t('graph.episodeAgent.title.motionPrompt')).toBe('动态提示词表')
+    expect(t('graph.episodeAgent.title.directorReview')).toBe('导演审核')
+  })
+
   it('resolves graph.port.types.* labels', () => {
     const t = i18n.global.t
     expect(t('graph.port.types.image')).toBe('图片')

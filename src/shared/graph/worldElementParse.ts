@@ -1,5 +1,6 @@
 import {
   DEFAULT_REVIEW_STATUS,
+  isReviewedStatus,
   normalizeReviewStatus,
   type ReviewStatus
 } from './reviewStatus'
@@ -22,7 +23,7 @@ export interface WorldElementItem {
   name: string
   /** 用于图片生成的详细提示词 */
   prompt: string
-  /** 审核状态：未审核 | 已审核 */
+  /** 审核状态规范值：unreviewed | reviewed（旧文档中的中文值读取时归一化） */
   status: ReviewStatus
 }
 
@@ -200,7 +201,8 @@ export function mergeWorldCatalogPreservingReviewed(
     const used = new Set<string>()
     for (const row of next[kind]) {
       const prev = prevById.get(row.id)
-      if (prev?.status === '已审核') {
+      // 兼容旧文档残留的中文状态：一律经归一化判定「已审核」
+      if (prev && isReviewedStatus(prev.status)) {
         result[kind].push({ ...prev })
         used.add(prev.id)
         continue
@@ -212,7 +214,7 @@ export function mergeWorldCatalogPreservingReviewed(
       used.add(row.id)
     }
     for (const prev of previous[kind]) {
-      if (prev.status === '已审核' && !used.has(prev.id)) {
+      if (isReviewedStatus(prev.status) && !used.has(prev.id)) {
         result[kind].push({ ...prev })
       }
     }

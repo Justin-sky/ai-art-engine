@@ -1,4 +1,5 @@
 import { writePsdUint8Array, type Layer, type Psd } from 'ag-psd'
+import { defErrSimple, fail } from '@shared/errors/appError'
 import {
   buildLayerSplitTree,
   isCanvasSafeImageSrc,
@@ -8,6 +9,18 @@ import {
   type ImageLayerSplitLayer,
   type ImageLayerSplitState
 } from '@shared/graph'
+
+/** PSD 导出侧错误：语境是「导出」而非执行期拆层，文案与 SHARED_ERRORS.layerSplit* 不同，单列条目 */
+const ERR_NO_EXPORTABLE_LAYERS = defErrSimple(
+  'graph.layerSplitPsd.noExportableLayers',
+  '没有可导出的图层',
+  'No layers to export'
+)
+const ERR_NO_BASE_LAYER = defErrSimple(
+  'graph.layerSplitPsd.missingBaseLayer',
+  '缺少底图，无法导出 PSD',
+  'Missing base layer; cannot export PSD'
+)
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const url = src.trim()
@@ -38,11 +51,11 @@ export async function layerSplitToPsdUint8Array(input: {
     input.layerUrls[layer.imageId]?.trim() || input.layerUrls[layer.id]?.trim() || ''
 
   const drawable = sortLayersForCompose(state.layers).filter((layer) => Boolean(urlFor(layer)))
-  if (!drawable.length) throw new Error('没有可导出的图层')
+  if (!drawable.length) throw fail(ERR_NO_EXPORTABLE_LAYERS)
 
   const base = drawable.find((layer) => isLayerSplitBase(layer)) ?? drawable[0]!
   const baseUrl = urlFor(base)
-  if (!baseUrl) throw new Error('缺少底图，无法导出 PSD')
+  if (!baseUrl) throw fail(ERR_NO_BASE_LAYER)
   const baseImg = await loadImage(baseUrl)
 
   const canvasWidth = Math.max(1, Math.round(state.canvasWidth) || baseImg.naturalWidth || 1)
@@ -92,7 +105,7 @@ export async function layerSplitToPsdUint8Array(input: {
       children: groupChildren
     })
   })
-  if (!children.length) throw new Error('没有可导出的图层')
+  if (!children.length) throw fail(ERR_NO_EXPORTABLE_LAYERS)
 
   const psd: Psd = {
     width: canvasWidth,

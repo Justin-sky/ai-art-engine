@@ -498,8 +498,8 @@ const exportMessage = ref('')
 const exportFailed = ref(false)
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectionKey = ref('')
-const generateModel = ref('')
-const generateProviderInstanceId = ref('')
+const selectedModel = ref('')
+const selectedProviderInstanceId = ref('')
 const handles: ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 const resolutions = LAYER_SPLIT_RESOLUTIONS
 let previewTimer: ReturnType<typeof setTimeout> | null = null
@@ -535,8 +535,8 @@ const dirty = computed(() => {
   const b = normalizeImageLayerSplit(draft)
   return (
     JSON.stringify(a) !== JSON.stringify(b) ||
-    generateModel.value !== (props.generateModel ?? '') ||
-    generateProviderInstanceId.value !== (props.generateProviderInstanceId ?? '')
+    selectedModel.value !== (props.generateModel ?? '') ||
+    selectedProviderInstanceId.value !== (props.generateProviderInstanceId ?? '')
   )
 })
 
@@ -1047,8 +1047,8 @@ function onSplitSelected(): void {
     layerId: layer.id,
     prompt: draft.prompt,
     resolution: draft.resolution,
-    generateModel: generateModel.value,
-    generateProviderInstanceId: generateProviderInstanceId.value,
+    generateModel: selectedModel.value,
+    generateProviderInstanceId: selectedProviderInstanceId.value,
     imageLayerSplit: normalizeImageLayerSplit(draft)
   })
 }
@@ -1206,8 +1206,8 @@ function onWindowBlur(): void {
 function buildSavePayload(): LayerSplitEditorSavePayload {
   return {
     ...imageLayerSplitToNodePatch(normalizeImageLayerSplit(draft)),
-    generateModel: generateModel.value,
-    generateProviderInstanceId: generateProviderInstanceId.value
+    generateModel: selectedModel.value,
+    generateProviderInstanceId: selectedProviderInstanceId.value
   }
 }
 
@@ -1223,8 +1223,8 @@ function emitPreview(): void {
 
 function onModelChange(): void {
   const opt = modelOptions.value.find((o) => o.key === selectionKey.value)
-  generateModel.value = opt?.model ?? ''
-  generateProviderInstanceId.value = opt?.providerInstanceId ?? ''
+  selectedModel.value = opt?.model ?? ''
+  selectedProviderInstanceId.value = opt?.providerInstanceId ?? ''
 }
 
 async function refreshModels(): Promise<void> {
@@ -1256,8 +1256,8 @@ watch(
     bindDiveHistory()
     hydrating.value = true
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
-    generateModel.value = props.generateModel ?? ''
-    generateProviderInstanceId.value = props.generateProviderInstanceId ?? ''
+    selectedModel.value = props.generateModel ?? ''
+    selectedProviderInstanceId.value = props.generateProviderInstanceId ?? ''
     void refreshModels()
     void nextTick(() => {
       fitDisplay()
@@ -1288,7 +1288,7 @@ watch(
 )
 
 watch(draft, () => emitPreview(), { deep: true })
-watch([generateModel, generateProviderInstanceId], () => emitPreview())
+watch([selectedModel, selectedProviderInstanceId], () => emitPreview())
 
 watch(
   () => [props.open, draft.canvasWidth, draft.canvasHeight] as const,

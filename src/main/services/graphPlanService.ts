@@ -13,8 +13,51 @@ import {
   type GraphPlanPreview
 } from '@shared/graph'
 import { modelProviderFacade } from './modelProviders'
+import { fail, defErrSimple } from '@shared/errors/appError'
 import { projectService } from './projectService'
 import type { AssetInfo } from '@shared/domain'
+
+// ── AI 规划管线个性错误（result.error 字段直接展示；模型输出内容不做翻译）──
+const E_GRAPHPLAN_SELECT_TEXT_MODEL = defErrSimple(
+  'graphPlan.selectTextModel',
+  '请选择文本模型',
+  'Select a text model first'
+)
+const E_GRAPHPLAN_EMPTY_MODEL_RESPONSE = defErrSimple(
+  'graphPlan.emptyModelResponse',
+  '模型未返回有效内容',
+  'Model returned no valid content'
+)
+const E_GRAPHPLAN_PRESET_NO_TEMPLATE = defErrSimple(
+  'graphPlan.presetNoSeedTemplate',
+  '当前预设没有固化模板',
+  'This preset has no seed template'
+)
+const E_GRAPHPLAN_SEED_NOT_MATERIALIZABLE = defErrSimple(
+  'graphPlan.seedNotMaterializable',
+  '模板无法物化',
+  'The seed template could not be materialized'
+)
+const E_GRAPHPLAN_PROMPT_REQUIRED = defErrSimple(
+  'graphPlan.promptRequired',
+  '请输入工作流描述或选择预设模板',
+  'Enter a workflow description or pick a preset template'
+)
+const E_GRAPHPLAN_NOT_MATERIALIZABLE = defErrSimple(
+  'graphPlan.notMaterializable',
+  '无法物化工作流',
+  'Could not materialize the workflow'
+)
+const E_GRAPHPLAN_OPEN_PROJECT_FIRST = defErrSimple(
+  'graphPlan.openProjectFirst',
+  '请先打开工程',
+  'Open a project first'
+)
+const E_GRAPHPLAN_NOTHING_TO_COMMIT = defErrSimple(
+  'graphPlan.nothingToCommit',
+  '没有可创建的工作流计划',
+  'No workflow plan to commit'
+)
 
 export interface PlanAiWorkflowInput extends GraphPlanMediaModelDefaults {
   prompt: string
@@ -151,7 +194,7 @@ async function requestPlan(
 ): Promise<string> {
   const model = input.model?.trim() || ''
   if (!model) {
-    throw new Error('请选择文本模型')
+    throw fail(E_GRAPHPLAN_SELECT_TEXT_MODEL)
   }
   const startedAt = Date.now()
   const request = {
@@ -174,13 +217,13 @@ async function requestPlan(
       model: result.model || model,
       request,
       response: text ? { text, model: result.model || model } : undefined,
-      error: text ? undefined : '模型未返回有效内容',
+      error: text ? undefined : fail(E_GRAPHPLAN_EMPTY_MODEL_RESPONSE).message,
       startedAt,
       durationMs: Math.max(0, endedAt - startedAt)
     })
     recorded = true
     if (!text) {
-      throw new Error('模型未返回有效内容')
+      throw fail(E_GRAPHPLAN_EMPTY_MODEL_RESPONSE)
     }
     return text
   } catch (err) {
@@ -208,7 +251,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
 
   if (input.useSeedOnly) {
     if (!seed) {
-      return { ok: false, warnings: [], error: '当前预设没有固化模板', apiCalls }
+      return { ok: false, warnings: [], error: fail(E_GRAPHPLAN_PRESET_NO_TEMPLATE).message, apiCalls }
     }
     const plan = withMediaDefaults(seed, input)
     const materialized = tryMaterialize(plan)
@@ -216,7 +259,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
       return {
         ok: false,
         warnings: materialized.warnings,
-        error: materialized.error || '模板无法物化',
+        error: materialized.error || fail(E_GRAPHPLAN_SEED_NOT_MATERIALIZABLE).message,
         apiCalls
       }
     }
@@ -231,7 +274,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
   }
 
   if (!prompt && !seed) {
-    return { ok: false, warnings: [], error: '请输入工作流描述或选择预设模板', apiCalls }
+    return { ok: false, warnings: [], error: fail(E_GRAPHPLAN_PROMPT_REQUIRED).message, apiCalls }
   }
 
   const system = buildSystemPrompt(seed)
@@ -303,7 +346,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
     return {
       ok: false,
       warnings,
-      error: materialized.error || '无法物化工作流',
+      error: materialized.error || fail(E_GRAPHPLAN_NOT_MATERIALIZABLE).message,
       apiCalls
     }
   }
@@ -325,10 +368,10 @@ export async function commitAiWorkflow(
   input: CommitAiWorkflowInput
 ): Promise<CommitAiWorkflowResult> {
   if (!projectService.isOpen()) {
-    return { ok: false, warnings: [], error: '请先打开工程' }
+    return { ok: false, warnings: [], error: fail(E_GRAPHPLAN_OPEN_PROJECT_FIRST).message }
   }
   if (!input.plan?.nodes?.length) {
-    return { ok: false, warnings: [], error: '没有可创建的工作流计划' }
+    return { ok: false, warnings: [], error: fail(E_GRAPHPLAN_NOTHING_TO_COMMIT).message }
   }
 
   const plan = withMediaDefaults(cloneGraphPlan(input.plan), input)
@@ -337,7 +380,7 @@ export async function commitAiWorkflow(
     return {
       ok: false,
       warnings: materialized.warnings,
-      error: materialized.error || '无法物化工作流'
+      error: materialized.error || fail(E_GRAPHPLAN_NOT_MATERIALIZABLE).message
     }
   }
 

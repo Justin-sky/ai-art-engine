@@ -15,6 +15,8 @@ import type {
 } from '@shared/modelProvider'
 import { KLING_DEFAULT_BASE_URL } from '@shared/modelProvider'
 import { listKlingCatalogModels } from '@shared/modelProviders/kling/modelCapabilities'
+import { resolveAppErrorLocale, fail, defErrSimple } from '@shared/errors/appError'
+import { PROVIDER_ERRORS } from '../catalog'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { trimBaseUrl } from '../http'
 import {
@@ -23,8 +25,36 @@ import {
   formatKlingError,
   readKlingHttpError,
   unwrapKlingData,
+  KLING_ACTIONS,
   type KlingApiEnvelope
 } from './http'
+
+// —— 本地双语文案（中文保持原文不变，英文为新增映射）——
+const E_KLING_IMAGE_RESULT_NO_URL = defErrSimple(
+  'provider.kling.imageResultNoUrl',
+  '图片任务已完成但未返回图片 URL',
+  'Image task finished but returned no image URLs'
+)
+const E_KLING_IMAGE_FAILED = defErrSimple(
+  'provider.kling.imageGenerationFailed',
+  '图片生成失败',
+  'Image generation failed'
+)
+const E_KLING_TEXT_UNSUPPORTED = defErrSimple(
+  'provider.kling.textUnsupported',
+  '可灵不支持文本生成',
+  'Kling does not support text generation'
+)
+const E_KLING_VOICE_UNSUPPORTED = defErrSimple(
+  'provider.kling.voiceUnsupported',
+  '可灵不支持语音生成',
+  'Kling does not support speech generation'
+)
+
+/** 非 throw 场景（结果对象的 error 字段）按当前语言取文案 */
+function pickKlingBi(zh: string, en: string): string {
+  return resolveAppErrorLocale() === 'en-US' ? en : zh
+}
 
 type KlingTaskData = {
   task_id?: string
@@ -71,21 +101,21 @@ async function pollImageTask(
     const { data: envelope } = await client.get<KlingApiEnvelope<KlingTaskData>>(
       `/v1/images/generations/${taskId}`
     )
-    const data = unwrapKlingData(envelope, '轮询图片任务')
+    const data = unwrapKlingData(envelope, KLING_ACTIONS.pollImage)
     const status = mapTaskStatus(data.task_status)
     if (status === 'completed') {
       const urls = (data.task_result?.images ?? [])
         .map((img) => img.url?.trim() ?? '')
         .filter(Boolean)
-      if (!urls.length) throw new Error('图片任务已完成但未返回图片 URL')
+      if (!urls.length) throw fail(E_KLING_IMAGE_RESULT_NO_URL)
       return urls
     }
     if (status === 'failed') {
-      throw new Error(data.task_status_msg || '图片生成失败')
+      throw data.task_status_msg ? new Error(data.task_status_msg) : fail(E_KLING_IMAGE_FAILED)
     }
     await sleep(IMAGE_POLL_INTERVAL_MS)
   }
-  throw new Error('图片生成超时：任务仍未完成')
+  throw fail(PROVIDER_ERRORS.imageTimeout)
 }
 
 export const klingAdapter: ModelProviderAdapter = {
@@ -102,7 +132,9 @@ export const klingAdapter: ModelProviderAdapter = {
         throw new Error(envelope.message || `code=${envelope.code}`)
       }
     } catch (err) {
-      throw new Error(`连接测试失败：${formatKlingError(await readKlingHttpError(err))}`)
+      throw fail(PROVIDER_ERRORS.connectionTestFailed, {
+        detail: formatKlingError(await readKlingHttpError(err))
+      })
     }
   },
 
@@ -115,7 +147,7 @@ export const klingAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    throw new Error('可灵不支持文本生成')
+    throw fail(E_KLING_TEXT_UNSUPPORTED)
   },
 
   async generateImage(
@@ -145,9 +177,9 @@ export const klingAdapter: ModelProviderAdapter = {
         '/v1/images/generations',
         body
       )
-      const data = unwrapKlingData(envelope, '提交图片生成')
+      const data = unwrapKlingData(envelope, KLING_ACTIONS.submitImage)
       const taskId = data.task_id
-      if (!taskId) throw new Error('未返回图片任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noImageTaskId)
 
       const immediate = (data.task_result?.images ?? [])
         .map((img) => img.url?.trim() ?? '')
@@ -160,7 +192,10 @@ export const klingAdapter: ModelProviderAdapter = {
       return { images, model: modelId }
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('可灵')) throw err
-      throw new Error(`图片生成失败: ${formatKlingError(await readKlingHttpError(err))}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'imageGenerate',
+        detail: formatKlingError(await readKlingHttpError(err))
+      })
     }
   },
 
@@ -195,9 +230,9 @@ export const klingAdapter: ModelProviderAdapter = {
 
     try {
       const { data: envelope } = await client.post<KlingApiEnvelope<KlingTaskData>>(path, body)
-      const data = unwrapKlingData(envelope, '提交视频生成')
+      const data = unwrapKlingData(envelope, KLING_ACTIONS.submitVideo)
       const taskId = data.task_id
-      if (!taskId) throw new Error('未返回视频任务 id')
+      if (!taskId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId: taskId,
         pollingUrl: `${base}${path}/${taskId}`,
@@ -205,7 +240,10 @@ export const klingAdapter: ModelProviderAdapter = {
         model: modelId
       }
     } catch (err) {
-      throw new Error(`提交视频生成失败: ${formatKlingError(await readKlingHttpError(err))}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoSubmit',
+        detail: formatKlingError(await readKlingHttpError(err))
+      })
     }
   },
 
@@ -219,11 +257,13 @@ export const klingAdapter: ModelProviderAdapter = {
         ? job.pollingUrl
         : `/v1/videos/text2video/${job.jobId}`
       const { data: envelope } = await client.get<KlingApiEnvelope<KlingTaskData>>(path)
-      const data = unwrapKlingData(envelope, '轮询视频任务')
+      const data = unwrapKlingData(envelope, KLING_ACTIONS.pollVideo)
       const status = mapTaskStatus(data.task_status)
       const downloadUrl = data.task_result?.videos?.[0]?.url
       const error =
-        status === 'failed' ? data.task_status_msg || '视频生成失败' : undefined
+        status === 'failed'
+          ? data.task_status_msg || pickKlingBi('视频生成失败', 'Video generation failed')
+          : undefined
 
       let progress = 15
       if (status === 'in_progress') progress = 55
@@ -231,7 +271,10 @@ export const klingAdapter: ModelProviderAdapter = {
 
       return { status, progress, error, downloadUrl }
     } catch (err) {
-      throw new Error(`轮询视频任务失败: ${formatKlingError(await readKlingHttpError(err))}`)
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'videoPolling',
+        detail: formatKlingError(await readKlingHttpError(err))
+      })
     }
   },
 
@@ -240,7 +283,7 @@ export const klingAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
-    throw new Error('可灵不支持语音生成')
+    throw fail(E_KLING_VOICE_UNSUPPORTED)
   },
 
   submitModel3d(
@@ -248,13 +291,13 @@ export const klingAdapter: ModelProviderAdapter = {
     _modelId: string,
     _input: GenerateModel3dInput
   ): Promise<GenerateModel3dJob> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   },
 
   pollModel3d(
     _provider: ModelProviderInstance,
     _job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    throw new Error('该提供商暂不支持 3D 模型生成')
+    throw fail(PROVIDER_ERRORS.unsupported3d)
   }
 }

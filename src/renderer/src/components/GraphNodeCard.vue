@@ -93,7 +93,12 @@
           v-if="reviewStatus"
           class="run-pill"
           :class="reviewStatus === 'FAIL' ? 'error' : 'done'"
-          :title="reviewReason || (reviewStatus === 'FAIL' ? '导演审核失败' : '导演审核通过')"
+          :title="
+            reviewReason ||
+            (reviewStatus === 'FAIL'
+              ? t('graph.node.directorReviewFail')
+              : t('graph.node.directorReviewPass'))
+          "
         >
           {{ reviewStatus === 'FAIL' ? 'FAIL' : 'PASS' }}
         </span>
