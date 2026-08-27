@@ -2798,7 +2798,7 @@ export default {
         exportDone: 'Exported {count} file(s)',
         exportCancel: 'Cancelled',
         emptyPanels: 'No panels yet',
-        gridHint: 'Click an empty cell to add a panel; drag bubbles to reposition',
+        gridHint: 'Click an empty cell to add a panel; drag an asset image onto a panel; drag bubbles to reposition',
         done: 'Done'
       },
       generate: {

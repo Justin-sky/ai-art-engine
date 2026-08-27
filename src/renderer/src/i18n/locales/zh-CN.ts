@@ -2777,7 +2777,7 @@ export default {
         exportDone: '已导出 {count} 张',
         exportCancel: '已取消',
         emptyPanels: '尚未添加分镜格',
-        gridHint: '点击空格添加分镜格，拖动气泡调整位置',
+        gridHint: '点击空格添加分镜格，从资产库拖入图片到分镜格，拖动气泡调整位置',
         done: '完成'
       },
       generate: {

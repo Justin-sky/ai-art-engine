@@ -33,6 +33,10 @@
       @pointermove="onPagePointerMove"
       @pointerup="onPagePointerUp"
       @pointercancel="onPagePointerUp"
+      @dragenter="onPageDragEnter"
+      @dragover="onPageDragOver"
+      @dragleave="onPageDragLeave"
+      @drop="onPageDrop"
     >
       <div
         v-if="norm.title"
@@ -47,7 +51,10 @@
           :key="`cell-${cell.row}-${cell.col}`"
           type="button"
           class="grid-cell"
-          :class="{ 'grid-cell--occupied': cell.occupied }"
+          :class="{
+            'grid-cell--occupied': cell.occupied,
+            'grid-cell--drag-over': editable && dragOverKey === `cell:${cell.row},${cell.col}`
+          }"
           :style="cellStyle(cell)"
           tabindex="-1"
         />
@@ -58,7 +65,10 @@
           v-for="panel in norm.panels"
           :key="panel.id"
           class="panel"
-          :class="{ 'panel--selected': selectedPanelId === panel.id && !selectedBubbleId }"
+          :class="{
+            'panel--selected': selectedPanelId === panel.id && !selectedBubbleId,
+            'panel--drag-over': editable && dragOverKey === `panel:${panel.id}`
+          }"
           :style="panelStyle(panel)"
         >
           <img
@@ -80,6 +90,14 @@
           >
             {{ panel.title }}
           </span>
+          <button
+            v-if="editable && selectedPanelId === panel.id && !selectedBubbleId && panel.imageUrl"
+            type="button"
+            class="panel-remove-img"
+            :title="t('graph.inspector.comicPage.clearImage')"
+            @pointerdown.stop
+            @click.stop="emit('remove-image', panel.id)"
+          >×</button>
         </div>
       </template>
       <span
@@ -127,6 +145,12 @@ import {
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import {
+  STUDIO_ASSET_DRAG_MIME,
+  STUDIO_ASSET_ID_DRAG_MIME,
+  STUDIO_ASSET_IDS_DRAG_MIME,
+  useWorkspaceStore
+} from '../stores/workspace'
 
 export type ComicPageCanvasHit =
   | { kind: 'none' }
@@ -147,9 +171,12 @@ const emit = defineEmits<{
   select: [hit: ComicPageCanvasHit]
   'move-bubble': [panelId: string, bubbleId: string, pos: { x: number; y: number }]
   'edit-end': []
+  'drop-image': [hit: ComicPageCanvasHit, imageUrl: string]
+  'remove-image': [panelId: string]
 }>()
 
 const { t } = useStudioI18n()
+const workspace = useWorkspaceStore()
 const pageEl = ref<HTMLElement | null>(null)
 const norm = computed<ComicPage>(() => normalizeComicPage(props.page))
 const rects = computed(() => comicPanelRects(norm.value))
@@ -252,7 +279,7 @@ watch(
   { immediate: true, deep: true }
 )
 
-function clientToPage(e: PointerEvent): { x: number; y: number } | null {
+function clientToPage(e: { clientX: number; clientY: number }): { x: number; y: number } | null {
   const el = pageEl.value
   if (!el) return null
   const box = el.getBoundingClientRect()
@@ -303,6 +330,69 @@ function onPagePointerUp(): void {
   const wasDragging = !!drag.value
   drag.value = null
   if (wasDragging) emit('edit-end')
+}
+
+/** 资产库拖入高亮目标：panel:<id> / cell:<row>,<col> */
+const dragOverKey = ref<string | null>(null)
+
+function isStudioAssetDrag(event: DragEvent): boolean {
+  if (workspace.draggingAsset) return true
+  const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : []
+  return (
+    types.includes(STUDIO_ASSET_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_ID_DRAG_MIME) ||
+    types.includes(STUDIO_ASSET_IDS_DRAG_MIME)
+  )
+}
+
+function dropTargetAt(pt: { x: number; y: number }): ComicPageCanvasHit {
+  const panel = findComicPanelAtPagePoint(norm.value, pt.x, pt.y)
+  if (panel) return { kind: 'panel', panelId: panel.id }
+  const cell = findComicCellAtPagePoint(norm.value, pt.x, pt.y)
+  if (cell) return { kind: 'cell', row: cell.row, col: cell.col }
+  return { kind: 'none' }
+}
+
+function dropTargetKey(hit: ComicPageCanvasHit): string | null {
+  if (hit.kind === 'panel') return `panel:${hit.panelId}`
+  if (hit.kind === 'cell') return `cell:${hit.row},${hit.col}`
+  return null
+}
+
+function onPageDragEnter(event: DragEvent): void {
+  if (!props.editable || !isStudioAssetDrag(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onPageDragOver(event: DragEvent): void {
+  if (!props.editable || !isStudioAssetDrag(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  const pt = clientToPage(event)
+  dragOverKey.value = pt ? dropTargetKey(dropTargetAt(pt)) : null
+}
+
+function onPageDragLeave(event: DragEvent): void {
+  const next = event.relatedTarget as Node | null
+  const zone = event.currentTarget as HTMLElement | null
+  if (next && zone?.contains(next)) return
+  dragOverKey.value = null
+}
+
+function onPageDrop(event: DragEvent): void {
+  dragOverKey.value = null
+  if (!props.editable || !isStudioAssetDrag(event)) return
+  const asset = workspace.resolveDraggedAsset(event)
+  if (!asset || asset.type !== 'image') return
+  const url = asset.relativePath?.trim()
+  if (!url) return
+  const pt = clientToPage(event)
+  if (!pt) return
+  const target = dropTargetAt(pt)
+  if (target.kind === 'none') return
+  event.preventDefault()
+  emit('drop-image', target, url)
 }
 
 const exporting = ref(false)
@@ -426,6 +516,10 @@ defineExpose({ exportPng })
 .grid-cell--occupied {
   border-color: transparent;
 }
+.grid-cell--drag-over {
+  border-color: var(--success, #16a34a);
+  background: color-mix(in srgb, var(--success, #16a34a) 14%, transparent);
+}
 .panel {
   position: absolute;
   overflow: hidden;
@@ -438,6 +532,33 @@ defineExpose({ exportPng })
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   z-index: 2;
+}
+.panel--drag-over {
+  outline: 2px solid var(--success, #16a34a);
+  outline-offset: -2px;
+  z-index: 2;
+}
+.panel-remove-img {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.panel-remove-img:hover {
+  background: var(--danger, #e05a5a);
 }
 .panel-img {
   display: block;

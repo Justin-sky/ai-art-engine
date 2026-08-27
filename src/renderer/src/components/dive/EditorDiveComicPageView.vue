@@ -58,6 +58,8 @@
         @select="onSelect"
         @move-bubble="onMoveBubble"
         @edit-end="persist"
+        @drop-image="onDropImage"
+        @remove-image="onRemoveImage"
       />
 
       <aside class="side">
@@ -367,14 +369,34 @@ function addEmptyPanel(): void {
   addPanelAtEmpty(empty.row, empty.col)
 }
 
-function addPanelAtEmpty(row: number, col: number): void {
+function addPanelAtEmpty(row: number, col: number, imageUrl?: string): void {
   const occupied = comicOccupiedCellKeys(page.value)
   if (occupied.has(`${row},${col}`)) return
-  const next = addComicPanel(page.value, { row, col })
+  const next = addComicPanel(page.value, { row, col, ...(imageUrl ? { imageUrl } : {}) })
   const added = next.panels.find((panel) => !page.value.panels.some((prev) => prev.id === panel.id))
   commit(next)
   selectedPanelId.value = added?.id ?? selectedPanelId.value
   selectedBubbleId.value = null
+}
+
+function onDropImage(hit: ComicPageCanvasHit, imageUrl: string): void {
+  if (hit.kind === 'panel') {
+    const panel = page.value.panels.find((item) => item.id === hit.panelId)
+    if (!panel) return
+    selectedPanelId.value = hit.panelId
+    selectedBubbleId.value = null
+    commit(upsertComicPanel(page.value, { ...panel, imageUrl }))
+    return
+  }
+  if (hit.kind === 'cell') {
+    addPanelAtEmpty(hit.row, hit.col, imageUrl)
+  }
+}
+
+function onRemoveImage(panelId: string): void {
+  const panel = page.value.panels.find((item) => item.id === panelId)
+  if (!panel) return
+  commit(upsertComicPanel(page.value, { ...panel, imageUrl: '' }))
 }
 
 function removeSelectedPanel(): void {
