@@ -72,7 +72,7 @@ describe('video frame ports', () => {
     }
   }
 
-  it('injects first/last ports and renames reference image', () => {
+  it('injects first/last ports and hides the reference image port', () => {
     const def = resolveNodeType(videoNode('first_last'))!
     const ports = resolveTypeDefPorts(def, videoNode('first_last').params, videoNode('first_last'))
     const ids = ports.filter((p) => p.direction === 'in').map((p) => p.id)
@@ -80,12 +80,21 @@ describe('video frame ports', () => {
       'in-text',
       VIDEO_FIRST_FRAME_PORT_ID,
       VIDEO_LAST_FRAME_PORT_ID,
-      'in-image',
       'in-video',
       'in-voice'
     ])
-    expect(ports.find((p) => p.id === 'in-image')?.label).toBe('Reference')
+    expect(ports.find((p) => p.id === 'in-image')).toBeUndefined()
     expect(ports.find((p) => p.id === VIDEO_FIRST_FRAME_PORT_ID)?.multiple).toBe(false)
+  })
+
+  it('keeps only the reference image port when frame mode is none', () => {
+    const def = resolveNodeType(videoNode('none'))!
+    const ports = resolveTypeDefPorts(def, videoNode('none').params, videoNode('none'))
+    const ids = ports.filter((p) => p.direction === 'in').map((p) => p.id)
+    expect(ids).toEqual(['in-text', 'in-image', 'in-video', 'in-voice'])
+    expect(ids).not.toContain(VIDEO_FIRST_FRAME_PORT_ID)
+    expect(ids).not.toContain(VIDEO_LAST_FRAME_PORT_ID)
+    expect(ports.find((p) => p.id === 'in-image')?.label).toBe('Reference')
   })
 
   it('getNodePorts follows generateFrameMode', () => {
@@ -105,13 +114,14 @@ describe('video frame ports', () => {
     const node = videoNode('first')
     const ports = getNodePorts(node).filter((p) => p.direction === 'in')
     const firstIdx = ports.findIndex((p) => p.id === VIDEO_FIRST_FRAME_PORT_ID)
-    const imageIdx = ports.findIndex((p) => p.id === 'in-image')
+    const videoIdx = ports.findIndex((p) => p.id === 'in-video')
     expect(firstIdx).toBeGreaterThanOrEqual(0)
-    expect(imageIdx).toBeGreaterThan(firstIdx)
+    expect(ports.findIndex((p) => p.id === 'in-image')).toBe(-1)
+    expect(videoIdx).toBeGreaterThan(firstIdx)
 
     const firstY = getNodePortCenter(node, 'left', VIDEO_FIRST_FRAME_PORT_ID).y
-    const imageY = getNodePortCenter(node, 'left', 'in-image').y
-    expect(imageY).toBeGreaterThan(firstY)
+    const videoY = getNodePortCenter(node, 'left', 'in-video').y
+    expect(videoY).toBeGreaterThan(firstY)
     // 端口在标题栏下方 body 区排布，首口 y 应大于标题栏高度
     expect(firstY).toBeGreaterThan(node.position.y + 30)
   })
@@ -137,6 +147,64 @@ describe('video frame ports', () => {
     expect(allowedVideoFramePortIds('first')).toEqual([VIDEO_FIRST_FRAME_PORT_ID])
     expect(pruneVideoFrameEdges(edges, 'v1', 'first').map((e) => e.id)).toEqual(['ff', 'ref'])
     expect(pruneVideoFrameEdges(edges, 'v1', 'none').map((e) => e.id)).toEqual(['ref'])
+  })
+})
+
+describe('video input port hiding by model limits', () => {
+  function videoNodeWithLimits(params: Record<string, unknown>): GraphNode {
+    return {
+      id: 'v1',
+      typeId: 'asset.video',
+      category: 'asset',
+      assetType: 'video',
+      position: { x: 0, y: 0 },
+      size: { w: 220, h: 180 },
+      params
+    }
+  }
+
+  function inPortIds(node: GraphNode): string[] {
+    return getNodePorts(node)
+      .filter((p) => p.direction === 'in')
+      .map((p) => p.id)
+  }
+
+  it('hides in-image when maxImages is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputImages: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-video', 'in-voice'])
+  })
+
+  it('hides in-video when maxVideos is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputVideos: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-voice'])
+  })
+
+  it('hides in-voice when maxVoices is 0', () => {
+    const node = videoNodeWithLimits({ generateMaxInputVoices: 0 })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-video'])
+  })
+
+  it('t2v (all zero) keeps only text input', () => {
+    const node = videoNodeWithLimits({
+      generateMaxInputImages: 0,
+      generateMaxInputVideos: 0,
+      generateMaxInputVoices: 0
+    })
+    expect(inPortIds(node)).toEqual(['in-text'])
+  })
+
+  it('keeps ports whose limit is above zero and omits the rest', () => {
+    const node = videoNodeWithLimits({
+      generateMaxInputImages: 5,
+      generateMaxInputVideos: 0,
+      generateMaxInputVoices: 1
+    })
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-voice'])
+  })
+
+  it('keeps all ports when limits are absent (backward compatible)', () => {
+    const node = videoNodeWithLimits({})
+    expect(inPortIds(node)).toEqual(['in-text', 'in-image', 'in-video', 'in-voice'])
   })
 })
 
@@ -219,6 +287,49 @@ describe('executeVideoGenerateNode frame mapping', () => {
     expect(arg.firstFrameImageUrl).toBe('data:image/png;base64,first')
     expect(arg.lastFrameImageUrl).toBe('data:image/png;base64,last')
     // 尾帧模式不可混参考图
+    expect(arg.inputReferences).toBeUndefined()
+  })
+
+  it('drops image refs when first frame mode is set', async () => {
+    const generateVideo = vi.fn(async () => ({
+      assetId: 'out-vid',
+      relativePath: 'videos/x.mp4',
+      model: 'm'
+    }))
+    const ctx: NodeExecuteContext = {
+      node: {
+        id: 'v1',
+        typeId: 'asset.video',
+        category: 'asset',
+        assetType: 'video',
+        position: { x: 0, y: 0 },
+        params: {
+          generateInstruction: '运镜推进',
+          generateFrameMode: 'first',
+          generateModel: 'm',
+          generateProviderInstanceId: 'p1'
+        }
+      },
+      inputs: {
+        [VIDEO_FIRST_FRAME_PORT_ID]: [
+          { kind: 'image', dataUrl: 'data:image/png;base64,first' }
+        ],
+        'in-image': [{ kind: 'image', dataUrl: 'data:image/png;base64,ref' }]
+      },
+      incomingByIndex: [
+        { index: 1, value: { kind: 'image', dataUrl: 'data:image/png;base64,ref' } }
+      ],
+      generateVideo,
+      resolveImageUrls: async (items) =>
+        items.map((item) => ('dataUrl' in item ? item.dataUrl ?? '' : '')).filter(Boolean)
+    }
+
+    await executeVideoGenerateNode(ctx)
+    expect(generateVideo).toHaveBeenCalledTimes(1)
+    const arg = generateVideo.mock.calls[0]![0]
+    expect(arg.firstFrameImageUrl).toBe('data:image/png;base64,first')
+    expect(arg.lastFrameImageUrl).toBeUndefined()
+    // 首帧模式同样不可混参考图
     expect(arg.inputReferences).toBeUndefined()
   })
 })

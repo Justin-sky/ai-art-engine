@@ -7,6 +7,9 @@ export type VideoJobStatus =
   | 'failed'
   | 'cancelled'
 
+/** 任务类型：视频 / 3D 模型 */
+export type VideoJobKind = 'video' | 'model3d'
+
 export type VideoJobSource = 'graph'
 
 /** 可落盘的对象存储临时参考（终态后删除） */
@@ -30,6 +33,8 @@ export interface VideoJobGraphBinding {
 
 export interface VideoJobRecord {
   version: 1
+  /** 任务类型；旧落盘记录无此字段，按 video 兜底 */
+  kind?: VideoJobKind
   localJobId: string
   providerJobId: string
   pollingUrl: string
@@ -56,4 +61,8 @@ export interface VideoJobRecord {
 
 export function isVideoJobActive(status: VideoJobStatus): boolean {
   return status === 'submitted' || status === 'running'
+}
+
+export function jobKind(job: VideoJobRecord): VideoJobKind {
+  return job.kind ?? 'video'
 }

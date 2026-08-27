@@ -2,6 +2,21 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [Unreleased]
+
+### Added
+
+- 3D 模型生成：新增 Meshy、Tripo、Rodin（Hyper3D）、Luma AI 四家提供商（文生 3D / 图生 3D，异步提交 → 轮询 → 下载）
+- 节点图新增「3D 模型生成」节点：文本 / 上游参考图 → 3D 模型资产（`model` 资产），结果可按引用接入下游
+- 导演台节点新增 3D 模型输入端口：连入模型生成结果后，dive 自动实例化到舞台场景
+- 3D 模型生成支持图节点回写绑定（宿主资产 id + 节点 id）：重启后可持久化、续拉与取消
+- ComfyUI 视频生成：r2v 多模态参考输入、视频 / 音频参考注入、首尾帧（`first_frame` / `last_frame`）注入、视频时长上限 15s、模型列表纯动态拉取（移除写死的模板目录）
+
+### Changed
+
+- 视频生成按模型上限隐藏限额为 0 的媒体入端口；首帧 / 首尾帧模式下参考图口与帧口互斥
+- 异步视频 / 3D 模型生成任务去超时，改为依赖轮询完成与取消
+
 ## [4.0.3] — 2026-08-21
 
 ### Added

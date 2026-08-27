@@ -31,6 +31,16 @@ const workflow = {
   '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512 } }
 }
 
+const r2vWorkflow = {
+  '1': {
+    class_type: 'WanImageToVideo',
+    inputs: { reference_image: ['10', 0], reference_video: ['11', 0], reference_audio: ['12', 0] }
+  },
+  '10': { class_type: 'LoadImage', inputs: { image: 'old.png' } },
+  '11': { class_type: 'VHS_LoadVideo', inputs: { video: 'old.mp4' } },
+  '12': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'old.wav' } }
+}
+
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
   return {
     id: 'comfy-1',
@@ -56,14 +66,11 @@ describe('comfyUiAdapter', () => {
     expect(getMock).toHaveBeenCalledWith('/api/v2/jobs', { params: { limit: 1 } })
   })
 
-  it('returns static catalogs and ignores text', async () => {
+  it('returns no models when userdata has no workflows and remote fails', async () => {
     getMock.mockRejectedValue(new Error('no templates'))
-    const images = await comfyUiAdapter.fetchCatalog(provider(), 'image')
-    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
-    const audio = await comfyUiAdapter.fetchCatalog(provider(), 'audio')
-    expect(images.some((m) => m.id === 'txt2img')).toBe(true)
-    expect(videos.some((m) => m.id === 'txt2vid')).toBe(true)
-    expect(audio.some((m) => m.id === 'txt2audio')).toBe(true)
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'image')).toEqual([])
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'video')).toEqual([])
+    expect(await comfyUiAdapter.fetchCatalog(provider(), 'audio')).toEqual([])
     expect(await comfyUiAdapter.fetchCatalog(provider(), 'text')).toEqual([])
   })
 
@@ -415,6 +422,183 @@ describe('comfyUiAdapter', () => {
     await expect(
       comfyUiAdapter.generateImage(provider(), 'my-flow', { prompt: 'a cat' })
     ).rejects.toThrow(/API 格式|Save \(API Format\)/)
+  })
+
+  it('infers media input capabilities from generate node sockets in fetchCatalog', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: r2vWorkflow })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    const r2v = videos.find((m) => m.id === 'r2v')
+    expect(r2v).toBeTruthy()
+    expect(r2v?.capabilities).toMatchObject({
+      max_input_images: 1,
+      max_input_videos: 1,
+      max_input_audios: 1
+    })
+  })
+
+  it('keeps r2v video/audio ports when graph inference only detects image', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v-partial.json')}`
+    // 生成节点只暴露了图片 socket，视频/音频参考经由未识别的负载节点注入，
+    // 推断只会命中 image —— 但 r2v profile 声明的 video/audio 口不应被误隐藏。
+    const partialWorkflow = {
+      '1': { class_type: 'WanImageToVideo', inputs: { reference_image: ['10', 0], prompt: 'x' } },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old.png' } }
+    }
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v-partial.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: partialWorkflow })
+      }
+      if (String(url).includes('/api/workflow_templates')) {
+        return Promise.reject(new Error('no templates'))
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    const videos = await comfyUiAdapter.fetchCatalog(provider(), 'video')
+    const r2v = videos.find((m) => m.id === 'r2v-partial')
+    expect(r2v).toBeTruthy()
+    expect(r2v?.capabilities).toMatchObject({
+      max_input_images: 1,
+      max_input_videos: 1,
+      max_input_audios: 1
+    })
+  })
+
+  it('splits submitVideo references by kind and injects into image/video/audio load nodes', async () => {
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/r2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/r2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: r2vWorkflow })
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    postMock.mockImplementation((url: string, body?: unknown) => {
+      if (url === '/upload/image') return Promise.reject(new Error('fallback'))
+      if (url === '/api/v2/assets') {
+        const form = body as FormData
+        const contentType = String(form.get('content_type') ?? '')
+        const name = contentType.includes('video')
+          ? 'ref-video.mp4'
+          : contentType.includes('audio')
+            ? 'ref-audio.wav'
+            : 'ref-image.png'
+        return Promise.resolve({ data: { file_path: name } })
+      }
+      if (url === '/api/v2/jobs') {
+        return Promise.resolve({
+          data: { id: 'job-r2v', status: 'queued', urls: { self: '/api/v2/jobs/job-r2v' } }
+        })
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`))
+    })
+
+    await comfyUiAdapter.submitVideo(provider(), 'r2v', {
+      prompt: 'run',
+      inputReferences: [
+        'data:image/png;base64,AA==',
+        { kind: 'video_url', url: 'data:video/mp4;base64,AA==' },
+        { kind: 'audio_url', url: 'data:audio/wav;base64,AA==' }
+      ]
+    })
+
+    const submit = postMock.mock.calls.find((call) => call[0] === '/api/v2/jobs')
+    expect(submit).toBeTruthy()
+    const body = submit?.[1] as { workflow: Record<string, { inputs: Record<string, unknown> }> }
+    expect(body.workflow['10']?.inputs.image).toBe('ref-image.png')
+    expect(body.workflow['11']?.inputs.video).toBe('ref-video.mp4')
+    expect(body.workflow['12']?.inputs.audio_file).toBe('ref-audio.wav')
+  })
+
+  it('submits i2v with first/last frame into MiniMax H3 socket LoadImage nodes', async () => {
+    const fl2vWorkflow = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { clip: ['13', 0], vae: ['11', 0], first_frame: ['10', 0], last_frame: ['12', 0] }
+      },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } }
+    }
+    const encoded = `/api/userdata/${encodeURIComponent('workflows/fl2v.json')}`
+    getMock.mockImplementation((url: string, config?: { params?: { dir?: string } }) => {
+      if (url === '/api/userdata' && config?.params?.dir === 'workflows') {
+        return Promise.resolve({ data: ['workflows/fl2v.json'] })
+      }
+      if (url === encoded || String(url).endsWith(encoded)) {
+        return Promise.resolve({ data: fl2vWorkflow })
+      }
+      if (
+        String(url).includes('/api/userdata') ||
+        String(url).includes('/v2/userdata') ||
+        String(url).includes('/userdata')
+      ) {
+        return Promise.reject(new Error('skip'))
+      }
+      return Promise.reject(new Error(`unexpected GET ${url}`))
+    })
+    let uploadCount = 0
+    postMock.mockImplementation((url: string, body?: unknown) => {
+      if (url === '/upload/image') {
+        uploadCount += 1
+        // 首帧先上传、尾帧后上传
+        return Promise.resolve({ data: { name: uploadCount === 1 ? 'first.png' : 'last.png' } })
+      }
+      if (url === '/api/v2/jobs') {
+        return Promise.resolve({
+          data: { id: 'job-fl2v', status: 'queued', urls: { self: '/api/v2/jobs/job-fl2v' } }
+        })
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`))
+    })
+
+    await comfyUiAdapter.submitVideo(provider(), 'fl2v', {
+      prompt: 'run',
+      firstFrameImageUrl: 'data:image/png;base64,AA==',
+      lastFrameImageUrl: 'data:image/png;base64,BB=='
+    })
+
+    const submit = postMock.mock.calls.find((call) => call[0] === '/api/v2/jobs')
+    expect(submit).toBeTruthy()
+    const body = submit?.[1] as { workflow: Record<string, { inputs: Record<string, unknown> }> }
+    expect(body.workflow['10']?.inputs.image).toBe('first.png')
+    expect(body.workflow['12']?.inputs.image).toBe('last.png')
   })
 
   it('falls back to ComfyUI :8188 for userdata when Base URL is the proxy', () => {

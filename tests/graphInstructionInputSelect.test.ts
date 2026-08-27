@@ -542,3 +542,79 @@ describe('generation input auto-include vs @ filter', () => {
     expect(selectIncomingValuesForInstruction(ctx, '只要 @1')).toEqual([a])
   })
 })
+
+describe('character reference injection', () => {
+  it('injects characterRefs after port refs and tags meta as character', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,aaa'],
+      model: 'm'
+    }))
+    const ctx = baseCtx({
+      node: {
+        ...imageNode('画一只猫'),
+        params: {
+          generateInstruction: '画一只猫',
+          characterRefs: [{ name: '小明', imageUrl: 'data:image/png;base64,ming' }]
+        }
+      },
+      inputs: {
+        'in-image': [{ kind: 'image', dataUrl: 'data:image/png;base64,port' }]
+      },
+      incomingByIndex: [
+        { index: 1, value: { kind: 'image', dataUrl: 'data:image/png;base64,port' } }
+      ],
+      generateImage
+    })
+    await executeImageGenerateNode(ctx)
+    const call = generateImage.mock.calls[0]![0]
+    expect(call.inputReferences).toEqual([
+      'data:image/png;base64,port',
+      'data:image/png;base64,ming'
+    ])
+    expect(call.inputReferenceMeta).toContainEqual({ source: 'character', name: '小明' })
+  })
+
+  it('resolves relative-path character imageUrl through resolveImageUrls', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,aaa'],
+      model: 'm'
+    }))
+    const ctx = baseCtx({
+      node: {
+        ...imageNode('画一只猫'),
+        params: {
+          generateInstruction: '画一只猫',
+          characterRefs: [{ name: '小明', imageUrl: 'Assets/Generated/Images/ming.png' }]
+        }
+      },
+      inputs: {},
+      resolveImageUrls: async (items) =>
+        items.map((item) => `resolved:${item.relativePath ?? item.dataUrl ?? ''}`),
+      generateImage
+    })
+    await executeImageGenerateNode(ctx)
+    const call = generateImage.mock.calls[0]![0]
+    expect(call.inputReferences).toEqual(['resolved:Assets/Generated/Images/ming.png'])
+  })
+
+  it('drops relative-path character refs when no resolveImageUrls is provided', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,aaa'],
+      model: 'm'
+    }))
+    const ctx = baseCtx({
+      node: {
+        ...imageNode('画一只猫'),
+        params: {
+          generateInstruction: '画一只猫',
+          characterRefs: [{ name: '小明', imageUrl: 'Assets/Generated/Images/ming.png' }]
+        }
+      },
+      inputs: {},
+      generateImage
+    })
+    await executeImageGenerateNode(ctx)
+    const call = generateImage.mock.calls[0]![0]
+    expect(call.inputReferences).toBeUndefined()
+  })
+})

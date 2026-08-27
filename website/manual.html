@@ -240,6 +240,22 @@
                   云端填 <code>https://cloud.comfy.org</code> 并填 Key。本机可空 Key。
                   完整步骤见 <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
                 </li>
+                <li>
+                  <strong>Meshy</strong>：文生 3D / 图生 3D（含多图生 3D，API Key，默认 Base URL
+                  <code>https://api.meshy.ai</code>）。
+                </li>
+                <li>
+                  <strong>Tripo</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.tripo3d.ai</code>）。
+                </li>
+                <li>
+                  <strong>Rodin（Hyper3D）</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.hyper3d.com/api/v2</code>）。
+                </li>
+                <li>
+                  <strong>Luma AI</strong>：文生 3D / 图生 3D（API Key，默认 Base URL
+                  <code>https://api.lumalabs.ai/dream-machine/v1</code>）。
+                </li>
               </ul>
             </li>
             <li>
@@ -379,6 +395,30 @@
                   ；本机安装 proxy 与 workflow 见
                   <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
                 </li>
+                <li>
+                  Meshy API Key：
+                  <a href="https://www.meshy.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://www.meshy.ai/</a
+                  >
+                </li>
+                <li>
+                  Tripo API Key：
+                  <a href="https://platform.tripo3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://platform.tripo3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Rodin（Hyper3D）API Key：
+                  <a href="https://hyper3d.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://hyper3d.ai/</a
+                  >
+                </li>
+                <li>
+                  Luma AI API Key：
+                  <a href="https://lumalabs.ai/" target="_blank" rel="noopener noreferrer"
+                    >https://lumalabs.ai/</a
+                  >
+                </li>
               </ul>
             </li>
             <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
@@ -388,7 +428,7 @@
               按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
-              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签）。
+              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；Meshy / Tripo / Rodin（Hyper3D） / Luma AI 仅 3D 模型页签）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>
@@ -760,7 +800,7 @@
 
           <h4>生成 / 资产类</h4>
           <ul>
-            <li> 图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 导演台编辑 · 画布编辑 · 模型（引用） </li>
+            <li> 图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 导演台编辑 · 画布编辑 · 3D 模型生成 · 模型（引用） </li>
           </ul>
 
           <h4>输出类</h4>
@@ -966,7 +1006,8 @@
           <h2>11. 导演台</h2>
           <p>
             导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
-            下游生成」。编辑节点提供两个<strong>方形</strong>输出口：站位图与动作视频。
+            下游生成」。编辑节点提供两个<strong>方形</strong>输出口（站位图与动作视频），并提供
+            <strong>3D 模型输入端口</strong>：连入 3D 模型生成结果后，dive 进入舞台会自动实例化到场景。
           </p>
 
           <h3>11.1 从节点打开</h3>

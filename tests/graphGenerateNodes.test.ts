@@ -9,6 +9,7 @@ import { graphOutputNodeId } from '../src/shared/graph/types'
 
 const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.image',
+  'asset.model3d',
   'asset.motion',
   'asset.screenplay',
   'asset.gameSystem',
@@ -19,6 +20,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.voice',
   'note.text',
   'play.script',
+  'image.adVariants',
   'image.crop',
   'image.emotion',
   'image.erase',
@@ -32,6 +34,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'image.redraw',
   'image.select',
   'media.bundle',
+  'media.review',
+  'media.rework',
   'video.select',
   'voice.select',
   'video.lipSync',
@@ -48,6 +52,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'beat.split',
   'ui.split',
   'beat.table',
+  'comic.page',
   'text.select',
   'world.gen',
   'world.extract',
@@ -95,11 +100,24 @@ describe('graph canvas menu nodes', () => {
     }
   })
 
-  it('director generate node exposes panorama input and shot outputs', () => {
+  it('comic.page has image in and gallery out ports', () => {
+    const node = createNodeFromType('comic.page', { x: 0, y: 0 })
+    const ports = getNodePorts(node)
+    expect(ports.map((port) => [port.id, port.direction, port.dataType])).toEqual([
+      ['in-image', 'in', 'image'],
+      ['out', 'out', 'image'],
+      ['out-all', 'out', 'images']
+    ])
+  })
+
+  it('director generate node exposes panorama + model inputs and shot outputs', () => {
     const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const ports = getNodePorts(node)
     const inPorts = ports.filter((port) => port.direction === 'in')
-    expect(inPorts.map((port) => [port.id, port.dataType])).toEqual([['in-panorama', 'image']])
+    expect(inPorts.map((port) => [port.id, port.dataType])).toEqual([
+      ['in-panorama', 'image'],
+      ['in-model', 'model']
+    ])
     expect(ports.some((port) => port.direction === 'out')).toBe(true)
   })
 

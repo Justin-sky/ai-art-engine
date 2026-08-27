@@ -193,6 +193,10 @@ export function isMultiAngleEditorNode(node: Pick<GraphNode, 'typeId'>): boolean
   return node.typeId === 'image.multiAngle'
 }
 
+export function isAdVariantsNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.adVariants'
+}
+
 export function isLightingEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.lighting'
 }
@@ -239,4 +243,8 @@ export function isGridSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean 
 
 export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.layerSplit'
+}
+
+export function isComicPageNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'comic.page'
 }

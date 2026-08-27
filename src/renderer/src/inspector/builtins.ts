@@ -19,6 +19,10 @@ import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
+import MediaReviewInspector from '../components/MediaReviewInspector.vue'
+import MediaReworkInspector from '../components/MediaReworkInspector.vue'
+import AdVariantsInspector from '../components/AdVariantsInspector.vue'
+import ComicPageInspector from '../components/ComicPageInspector.vue'
 import Anim2dInspector from '../components/Anim2dInspector.vue'
 import FrameAnimGenInspector from '../components/FrameAnimGenInspector.vue'
 import TablePassThroughInspector from '../components/TablePassThroughInspector.vue'
@@ -114,6 +118,26 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.promptOptimize',
     component: PromptOptimizeInspector,
     nodeTypeId: 'prompt.optimize'
+  },
+  {
+    id: 'studio.graph.mediaReview',
+    component: MediaReviewInspector,
+    nodeTypeId: 'media.review'
+  },
+  {
+    id: 'studio.graph.mediaRework',
+    component: MediaReworkInspector,
+    nodeTypeId: 'media.rework'
+  },
+  {
+    id: 'studio.graph.comicPage',
+    component: ComicPageInspector,
+    nodeTypeId: 'comic.page'
+  },
+  {
+    id: 'studio.graph.adVariants',
+    component: AdVariantsInspector,
+    nodeTypeId: 'image.adVariants'
   },
   {
     id: 'studio.graph.imageToPrompt',

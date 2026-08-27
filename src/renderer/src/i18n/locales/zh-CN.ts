@@ -1465,9 +1465,13 @@ export default {
       emptyCompleted: '暂无已完成的任务',
       emptyWorkflowActive: '暂无进行中的工作流',
       emptyWorkflowCompleted: '暂无已完成的工作流',
+      generationSection: '生成任务',
       videoSection: '视频生成',
       workflowSection: '工作流',
+      videoKind: '视频',
       videoUntitled: '视频任务',
+      model3dKind: '3D 模型',
+      model3dUntitled: '3D 模型任务',
       videoStopConfirmMessage: '确定取消该视频生成？供应商侧任务可能仍会继续计费。',
       stop: '停止',
       remove: '移除',
@@ -1596,6 +1600,10 @@ export default {
       open: '剧集流水线',
       openTitle: '打开剧集流水线总览（当前画布全局控制）'
     },
+    agentPipeline: {
+      open: 'Agent 流水线',
+      openTitle: '打开 Agent 流水线总览（质检 / 返工）'
+    },
     minimap: {
       title: '节点小地图（点击或拖拽定位）',
       empty: '暂无节点'
@@ -1642,7 +1650,10 @@ export default {
         prompt: '提示词',
         game: '游戏',
         motionFx: '动效',
-        model3d: '3D 模型'
+        model3d: '3D 模型',
+        comic: '漫画',
+        agent: 'Agent',
+        ad: '广告'
       }
     },
     episodeAgent: {
@@ -1690,6 +1701,72 @@ export default {
       hint: '多段文本以网格预览；双击卡片打开记事本查看全文。',
       openHint: '双击打开记事本',
       empty: '暂无文本输出，请先连接上游文本并执行'
+    },
+    adVariants: {
+      appMark: '广告变体',
+      presetGroups: {
+        general: '通用策略',
+        industry: '行业场景',
+        promotion: '促销直播'
+      },
+      presets: {
+        basicAb: '基础 A/B',
+        cameraAngle: '机位角度',
+        sceneTone: '场景色调',
+        audienceEmotion: '人群情绪',
+        copyStyle: '文案风格',
+        vertical: '竖屏信息流',
+        beauty: '美妆护肤',
+        electronics: '3C数码',
+        food: '食品饮料',
+        fashion: '服饰穿搭',
+        baby: '母婴亲子',
+        home: '家居',
+        auto: '汽车',
+        pet: '宠物',
+        education: '教育',
+        travel: '旅游',
+        health: '医疗健康',
+        realestate: '房产',
+        finance: '金融',
+        game: '游戏',
+        fitness: '运动健身',
+        daily: '家清日用',
+        beverage: '酒水饮料',
+        freshfood: '生鲜食材',
+        hotel: '酒店民宿',
+        livestream: '直播引流',
+        holiday: '节日促销'
+      },
+      product: '产品描述',
+      productPlaceholder: '例如：一瓶香水',
+      aspectRatio: '画幅比例（可选，如 1:1 / 9:16）',
+      aspectRatioPlaceholder: '留空使用默认',
+      dimensions: '变体维度',
+      addDimension: '新增维度',
+      dimensionHint: '每个维度一个「标签 + 若干取值（每行一个）」，单元格 = 取值笛卡尔积。',
+      dimensionEmpty: '暂无维度，点击「新增维度」开始',
+      dimensionLabelPlaceholder: '维度名，如 机位角度',
+      dimensionValuesPlaceholder: '每行一个取值',
+      removeDimension: '删除维度',
+      preview: '变体预览',
+      cellCount: '{n} 格',
+      previewEmpty: '先在上方添加维度并填写取值，会自动生成变体预览',
+      compare: '生成对比',
+      selectedCount: '{n} 入选',
+      exporting: '导出中…',
+      exportSelected: '导出入选',
+      compareEmptyHint: '运行该节点生成变体后，这里可并排对比并标记入选 / 淘汰。',
+      loading: '加载中…',
+      select: '入选',
+      reject: '淘汰',
+      clear: '清除',
+      clearAll: '清除全部结论',
+      save: '保存',
+      exportNoFiles: '没有可导出的文件',
+      exportSkipped: '（跳过 {n} 个）',
+      exportDone: '已导出 {copied} 个文件{skipped}到 {directory}',
+      exportFailed: '导出失败'
     },
     multiAngle: {
       appMark: '多角度编辑器',
@@ -2284,6 +2361,8 @@ export default {
       noMask: '请先在重绘编辑器中涂抹蒙版',
       lockNoCache: '已锁定，但没有可复用的上次结果；请先成功生成一次，或解锁',
       hostNoCacheCook: '没有可复用的宿主输出；请用圆形菜单「Cook 子图」执行内图',
+      comicPageEmpty: '请先在漫画页编辑器中添加分格，或连接上游图片后 Cook',
+      comicPageCompose: '漫画页合成失败（需要在界面中运行）',
       dismissHint: '点击关闭提示'
     },
     types: {
@@ -2314,7 +2393,12 @@ export default {
         text: '备注'
       },
       media: {
-        bundle: '束结'
+        bundle: '束结',
+        review: '媒体质检',
+        rework: '媒体返工'
+      },
+      comic: {
+        page: '漫画页'
       },
       play: {
         script: '文本'
@@ -2333,7 +2417,8 @@ export default {
         crop: '裁剪',
         gridSplit: '宫格切分',
         layerSplit: '图层分离',
-        toPrompt: '图片反推提示词'
+        toPrompt: '图片反推提示词',
+        adVariants: '广告变体'
       },
       video: {
         select: '选取视频',
@@ -2632,6 +2717,68 @@ export default {
         outActionsCount: '{n} 段',
         outActionsHint: '双击缩略图预览录制视频',
         outActionsEmpty: '暂无动作。在动画模式中录制后会显示在这里'
+      },
+      mediaReview: {
+        hint: '连接上游图片（或视频，按首帧审核），用视觉模型做导演 PASS/FAIL 质检',
+        instruction: '审核指令',
+        instructionPlaceholder: '可选：补充审核要点（如“检查手指数量、是否糊脸”）；留空用内置质检包',
+        status: '质检结论',
+        pending: '待审核',
+        pass: '通过',
+        fail: '不通过',
+        reason: 'FAIL 原因'
+      },
+      mediaRework: {
+        hint: '生成 → 质检 → 未通过则注入原因重生成，直到通过或达上限',
+        instruction: '生成指令',
+        instructionPlaceholder: '描述要生成的内容；返工会自动注入上次 FAIL 原因',
+        maxAttempts: '最大返工次数',
+        status: '返工状态',
+        running: '返工中',
+        passed: '已通过',
+        exhausted: '已达上限',
+        final: '最终质检',
+        lastReason: '最近原因'
+      },
+      adVariants: {
+        hint: '在此设置产品描述与画幅比例；双击节点打开变体编辑器配置维度、预览与对比。'
+      },
+      comicPage: {
+        hint: '双击节点进入漫画页编辑器；Cook 会按分格顺序填入上游空格图片并合成 PNG',
+        cardHint: '双击打开漫画页编辑器',
+        json: '页面 JSON',
+        invalidJson: 'JSON 解析失败（未写入节点，预览已回退为默认）',
+        reset: '重置为默认',
+        openEditor: '打开编辑器',
+        pageTitle: '页标题',
+        columns: '列',
+        rows: '行',
+        gutter: '间距',
+        width: '宽',
+        height: '高',
+        addPanel: '添加分格',
+        removePanel: '删除分格',
+        addBubble: '添加气泡',
+        removeBubble: '删除气泡',
+        panelSection: '选中分格',
+        bubbleSection: '选中气泡',
+        panelTitle: '分格标题',
+        panelImage: '图片路径',
+        panelFallback: '分镜格',
+        pickImage: '导入图片',
+        pickIncoming: '上游图片',
+        clearImage: '清除图片',
+        bubbleText: '台词',
+        bubblePlaceholder: '台词',
+        speaker: '说话人',
+        tail: '尾巴朝向',
+        exportPng: '导出 PNG',
+        exporting: '导出中…',
+        exportDone: '已导出 {count} 张',
+        exportCancel: '已取消',
+        emptyPanels: '尚未添加分镜格',
+        gridHint: '点击空格添加分镜格，拖动气泡调整位置',
+        done: '完成'
       },
       generate: {
         hint: '连接上游参考后，在此调整该类型的生成参数',

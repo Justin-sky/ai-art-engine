@@ -1469,9 +1469,13 @@ export default {
       emptyCompleted: 'No completed tasks',
       emptyWorkflowActive: 'No active workflows',
       emptyWorkflowCompleted: 'No completed workflows',
+      generationSection: 'Generation jobs',
       videoSection: 'Video generation',
       workflowSection: 'Workflows',
+      videoKind: 'Video',
       videoUntitled: 'Video job',
+      model3dKind: '3D model',
+      model3dUntitled: '3D model job',
       videoStopConfirmMessage:
         'Cancel this video job? The provider may still continue and bill the request.',
       stop: 'Stop',
@@ -1605,6 +1609,10 @@ export default {
       open: 'Episode pipeline',
       openTitle: 'Open the episode pipeline overview (global control for the current canvas)'
     },
+    agentPipeline: {
+      open: 'Agent pipeline',
+      openTitle: 'Open the agent pipeline overview (review / rework)'
+    },
     minimap: {
       title: 'Node minimap (click or drag to navigate)',
       empty: 'No nodes'
@@ -1651,7 +1659,10 @@ export default {
         prompt: 'Prompt',
         game: 'Game',
         motionFx: 'Motion FX',
-        model3d: '3D Model'
+        model3d: '3D Model',
+        comic: 'Comic',
+        agent: 'Agent',
+        ad: 'Ads'
       }
     },
     episodeAgent: {
@@ -1699,6 +1710,72 @@ export default {
       hint: 'Preview multiple texts in a grid; double-click a card to open the notepad.',
       openHint: 'Double-click to open notepad',
       empty: 'No text output yet. Connect upstream text and run first.'
+    },
+    adVariants: {
+      appMark: 'Ad variants',
+      presetGroups: {
+        general: 'General',
+        industry: 'Industry',
+        promotion: 'Promo & live'
+      },
+      presets: {
+        basicAb: 'Basic A/B',
+        cameraAngle: 'Camera angles',
+        sceneTone: 'Scene & tone',
+        audienceEmotion: 'Audience & emotion',
+        copyStyle: 'Copy styles',
+        vertical: 'Vertical feed',
+        beauty: 'Beauty',
+        electronics: 'Electronics',
+        food: 'Food & drink',
+        fashion: 'Fashion',
+        baby: 'Baby & mom',
+        home: 'Home',
+        auto: 'Auto',
+        pet: 'Pets',
+        education: 'Education',
+        travel: 'Travel',
+        health: 'Health',
+        realestate: 'Real estate',
+        finance: 'Finance',
+        game: 'Gaming',
+        fitness: 'Fitness',
+        daily: 'Household',
+        beverage: 'Beverages',
+        freshfood: 'Fresh food',
+        hotel: 'Hotel & stay',
+        livestream: 'Livestream',
+        holiday: 'Holiday'
+      },
+      product: 'Product description',
+      productPlaceholder: 'e.g. a bottle of perfume',
+      aspectRatio: 'Aspect ratio (optional, e.g. 1:1 / 9:16)',
+      aspectRatioPlaceholder: 'Leave blank for default',
+      dimensions: 'Variant dimensions',
+      addDimension: 'Add dimension',
+      dimensionHint: 'Each dimension is a label plus values (one per line); cells are the Cartesian product of all values.',
+      dimensionEmpty: 'No dimensions yet. Click "Add dimension" to start.',
+      dimensionLabelPlaceholder: 'Dimension name, e.g. camera angle',
+      dimensionValuesPlaceholder: 'One value per line',
+      removeDimension: 'Remove dimension',
+      preview: 'Variant preview',
+      cellCount: '{n} cells',
+      previewEmpty: 'Add dimensions and values above to generate the variant preview',
+      compare: 'Generation comparison',
+      selectedCount: '{n} selected',
+      exporting: 'Exporting…',
+      exportSelected: 'Export selected',
+      compareEmptyHint: 'Run this node to generate variants, then compare and mark selected / rejected here.',
+      loading: 'Loading…',
+      select: 'Select',
+      reject: 'Reject',
+      clear: 'Clear',
+      clearAll: 'Clear all verdicts',
+      save: 'Save',
+      exportNoFiles: 'No files to export',
+      exportSkipped: ' (skipped {n})',
+      exportDone: 'Exported {copied} files{skipped} to {directory}',
+      exportFailed: 'Export failed'
     },
     multiAngle: {
       appMark: 'Multi-angle editor',
@@ -2295,6 +2372,8 @@ export default {
         'Node is locked, but there is no reusable last result; generate once successfully, or unlock',
       hostNoCacheCook:
         'No reusable host output; use the radial menu “Cook subgraph” to run the inner graph',
+      comicPageEmpty: 'Add panels in the comic page editor, or connect upstream images and Cook',
+      comicPageCompose: 'Comic page compose failed (must run in the app UI)',
       dismissHint: 'Click to dismiss'
     },
     types: {
@@ -2325,7 +2404,12 @@ export default {
         text: 'Note'
       },
       media: {
-        bundle: 'Bundle'
+        bundle: 'Bundle',
+        review: 'Media review',
+        rework: 'Media rework'
+      },
+      comic: {
+        page: 'Comic page'
       },
       play: {
         script: 'Text'
@@ -2344,7 +2428,8 @@ export default {
         crop: 'Crop',
         gridSplit: 'Grid split',
         layerSplit: 'Layer split',
-        toPrompt: 'Image reverse prompt'
+        toPrompt: 'Image reverse prompt',
+        adVariants: 'Ad variants'
       },
       video: {
         select: 'Select video',
@@ -2652,6 +2737,69 @@ export default {
         outActionsCount: '{n}',
         outActionsHint: 'Double-click a thumbnail to preview the recording',
         outActionsEmpty: 'No actions yet. Record animation in the director stage to see them here'
+      },
+      mediaReview: {
+        hint: 'Connect upstream images (or video, reviewed by first frame) and run director PASS/FAIL review via a vision model',
+        instruction: 'Review instruction',
+        instructionPlaceholder:
+          'Optional review points (e.g. "check finger count / blurry face"); defaults to the built-in checklist',
+        status: 'Review verdict',
+        pending: 'Pending',
+        pass: 'Pass',
+        fail: 'Fail',
+        reason: 'FAIL reason'
+      },
+      mediaRework: {
+        hint: 'Generate → review → inject the FAIL reason and regenerate until passed or max attempts',
+        instruction: 'Generation instruction',
+        instructionPlaceholder: 'Describe what to generate; the last FAIL reason is injected on each retry',
+        maxAttempts: 'Max rework attempts',
+        status: 'Rework status',
+        running: 'Running',
+        passed: 'Passed',
+        exhausted: 'Exhausted',
+        final: 'Final verdict',
+        lastReason: 'Last reason'
+      },
+      adVariants: {
+        hint: 'Set product description and aspect ratio here; double-click the node to open the variant editor for dimensions, preview and comparison.'
+      },
+      comicPage: {
+        hint: 'Double-click the node to open the comic page editor. Cook fills empty panels from upstream images and composites a PNG.',
+        cardHint: 'Double-click to open the comic page editor',
+        json: 'Page JSON',
+        invalidJson: 'Invalid JSON (not saved; preview falls back to default)',
+        reset: 'Reset to default',
+        openEditor: 'Open editor',
+        pageTitle: 'Page title',
+        columns: 'Columns',
+        rows: 'Rows',
+        gutter: 'Gutter',
+        width: 'Width',
+        height: 'Height',
+        addPanel: 'Add panel',
+        removePanel: 'Remove panel',
+        addBubble: 'Add bubble',
+        removeBubble: 'Remove bubble',
+        panelSection: 'Selected panel',
+        bubbleSection: 'Selected bubble',
+        panelTitle: 'Panel title',
+        panelImage: 'Image path',
+        panelFallback: 'Panel',
+        pickImage: 'Import image',
+        pickIncoming: 'Upstream images',
+        clearImage: 'Clear image',
+        bubbleText: 'Dialogue',
+        bubblePlaceholder: 'Dialogue',
+        speaker: 'Speaker',
+        tail: 'Tail',
+        exportPng: 'Export PNG',
+        exporting: 'Exporting…',
+        exportDone: 'Exported {count} file(s)',
+        exportCancel: 'Cancelled',
+        emptyPanels: 'No panels yet',
+        gridHint: 'Click an empty cell to add a panel; drag bubbles to reposition',
+        done: 'Done'
       },
       generate: {
         hint: 'Connect upstream references, then adjust generation parameters for this type here.',

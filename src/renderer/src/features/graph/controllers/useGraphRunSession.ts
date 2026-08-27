@@ -29,7 +29,8 @@ import {
 import {
   resolveAssetImageUrl,
   resolveAssetMediaDataUrl,
-  resolveGraphImageUrls
+  resolveGraphImageUrls,
+  resolveVideoFirstFrameImageUrls
 } from '../model/resolveGraphImageUrls'
 import { resolveAssetText as resolveAssetTextById } from '../../media/resolveAssetText'
 import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
@@ -37,6 +38,7 @@ import { composeImageRedrawCanvas } from '../model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
 import { composeImageGridCell } from '../model/composeImageGridCell'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
+import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
@@ -84,6 +86,7 @@ export interface GraphRunSessionOptions {
       | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
     >
     outputDir?: string
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{
     assetId: string
     relativePath: string
@@ -117,6 +120,7 @@ export interface GraphRunSessionOptions {
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
+    graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
   }) => Promise<{ assetId: string; relativePath: string; model: string }>
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
@@ -156,6 +160,7 @@ export interface GraphRunSessionOptions {
   hasAsset?: (assetId: string) => boolean
   resolveAssetName?: (assetId: string) => string | undefined
   resolveHostAssetName?: () => string | undefined
+  resolveHostAssetId?: () => string | undefined
   resolveAssetText?: (assetId: string) => Promise<string | undefined>
   /** 场参考节点：按 boundBeatId 解析目录行 */
   resolveBeatUnit?: (
@@ -229,7 +234,10 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       GRAPH_LIPSYNC_NO_AUDIO: 'graph.run.lipSyncNoAudio',
       GRAPH_REDRAW_NO_MASK: 'graph.run.noMask',
       GRAPH_LOCK_NO_CACHE: 'graph.run.lockNoCache',
-      GRAPH_HOST_NO_CACHE_COOK: 'graph.run.hostNoCacheCook'
+      GRAPH_HOST_NO_CACHE_COOK: 'graph.run.hostNoCacheCook',
+      GRAPH_COMIC_PAGE_EMPTY: 'graph.run.comicPageEmpty',
+      COMIC_PAGE_COMPOSE_UNAVAILABLE: 'graph.run.comicPageCompose',
+      COMIC_PAGE_COMPOSE_FAILED: 'graph.run.comicPageCompose'
     }
     if (!code) return options.t('graph.run.failed')
     if (keys[code]) return options.t(keys[code])
@@ -441,6 +449,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         | string
         | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
       >
+      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -574,6 +583,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
       outputDir?: string
       name?: string
+      graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
     }) => {
       if (token !== runToken || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -681,6 +691,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         hasAsset: options.hasAsset,
         resolveAssetName: options.resolveAssetName,
         resolveHostAssetName: options.resolveHostAssetName,
+        resolveHostAssetId: options.resolveHostAssetId,
         resolveAssetText: options.resolveAssetText ?? resolveAssetTextById,
         resolveBeatUnit: options.resolveBeatUnit,
         collectWorldElementOutputs: options.collectWorldElementOutputs,
@@ -692,6 +703,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         importBeatCatalogJson: options.importBeatCatalogJson,
         runHostInnerGraph: options.runHostInnerGraph,
         resolveImageUrls: resolveGraphImageUrls,
+        resolveVideoFirstFrameImageUrls,
         resolveStyleImageUrls: resolveStyleImageUrls,
         resolveProjectStyleImages:
           options.resolveProjectStyleImages ?? (() => [] as ProjectStyleImage[]),
@@ -707,6 +719,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageCropCanvas,
         composeImageGridCell,
         composeImageLayerStack,
+        composeComicPageImage,
         normalizeImageAspectRatio,
         onNodePatch: (nodeId, patch) => {
           if (token !== runToken || signal.aborted) return

@@ -74,6 +74,16 @@
       @save="api.saveMultiAngle as never"
     />
 
+    <AdVariantsEditorDialog
+      v-else-if="viewId === 'node.adVariants' && api.adVariants.open"
+      :open="true"
+      :matrix="api.adVariants.matrix"
+      :generate-model="api.adVariants.generateModel"
+      :generate-provider-instance-id="api.adVariants.generateProviderInstanceId"
+      @close="onClose(api.closeAdVariants)"
+      @save="api.saveAdVariants as never"
+    />
+
     <LightingEditorDialog
       v-else-if="viewId === 'node.lighting' && api.lighting.open"
       :open="true"
@@ -253,6 +263,7 @@ import GraphSelectVoiceDialog from '../GraphSelectVoiceDialog.vue'
 import GraphSelectTextDialog from '../GraphSelectTextDialog.vue'
 import GraphTextsPreviewDialog from '../GraphTextsPreviewDialog.vue'
 import MultiAngleEditorDialog from '../MultiAngleEditorDialog.vue'
+import AdVariantsEditorDialog from '../AdVariantsEditorDialog.vue'
 import LightingEditorDialog from '../LightingEditorDialog.vue'
 import FramePullEditorDialog from '../FramePullEditorDialog.vue'
 import ReshootEditorDialog from '../ReshootEditorDialog.vue'
@@ -304,6 +315,8 @@ const toolOpen = computed(() => {
       return current.textsPreview.open
     case 'node.multiAngle':
       return current.multiAngle.open
+    case 'node.adVariants':
+      return current.adVariants.open
     case 'node.lighting':
       return current.lighting.open
     case 'node.framePull':
@@ -417,6 +430,9 @@ function closeCurrent(): void {
       break
     case 'node.multiAngle':
       current.closeMultiAngle()
+      break
+    case 'node.adVariants':
+      current.closeAdVariants()
       break
     case 'node.lighting':
       current.closeLighting()

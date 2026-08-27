@@ -759,16 +759,43 @@ export function fixCommonBlockoutMistakes(objects: AiSceneBlockoutObject[]): AiS
 }
 
 /**
- * 深度估计集成点。
- * 如果供应商提供了深度估计能力，在此将深度图 dataURL 注入到 prompt 中。
- * 当前为占位函数，可扩展为调用 Depth Anything / MiDaS 等模型。
+ * 构建单目深度分析 prompt，复用白模正在使用的视觉模型。
+ * 让模型只用一句话描述场景深度范围，作为白模 Z 摆放的先验。
  */
-export async function tryEnrichWithDepthMap(
-  _imageDataUrl: string,
-  _providerInstanceId?: string
-): Promise<{ depthMapUrl: string | null; depthDescription: string | null }> {
-  // TODO: 集成深度估计模型
-  // 1. 调用本地 ONNX 模型或远程 API 生成深度图
-  // 2. 返回深度图 data URL 和文字描述（如"最近距离 2m，最远 80m"）
-  return { depthMapUrl: null, depthDescription: null }
+export function buildDepthAnalysisPrompt(locale: string): string {
+  const zh = !locale.toLowerCase().startsWith('en')
+  return zh
+    ? '你是单目深度分析助手。看参考图，估计场景深度范围，只回复一行（40 字内）：\n最近 N 米，最远 M 米，中景约 K 米。不要解释。'
+    : 'You are a monocular depth analyst. Look at the reference image(s) and estimate the depth range. Reply with ONE line only (under 40 words):\nnearest N m, farthest M m, midground ~K m. No explanation.'
+}
+
+/**
+ * 深度估计集成点（best-effort，失败静默降级）。
+ * 用视觉 LLM 文本描述场景深度范围，注入到白模 prompt 中。
+ * depthMapUrl 预留：将来接真实深度图（ComfyUI / 远程 API）时在此返回。
+ */
+export async function tryEnrichWithDepthMap(input: {
+  images: string[]
+  providerInstanceId: string
+  model: string
+  locale: string
+}): Promise<{ depthMapUrl: string | null; depthDescription: string | null }> {
+  const images = (input.images ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 3)
+  if (!images.length || !input.providerInstanceId || !input.model) {
+    return { depthMapUrl: null, depthDescription: null }
+  }
+  try {
+    const result = await window.studio.generateText({
+      providerInstanceId: input.providerInstanceId,
+      model: input.model,
+      prompt: buildDepthAnalysisPrompt(input.locale),
+      images
+    })
+    const text = result?.text?.trim() ?? ''
+    if (!text) return { depthMapUrl: null, depthDescription: null }
+    return { depthMapUrl: null, depthDescription: text.slice(0, 200) }
+  } catch {
+    // best-effort：深度失败不阻塞白模
+    return { depthMapUrl: null, depthDescription: null }
+  }
 }

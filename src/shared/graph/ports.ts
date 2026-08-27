@@ -102,9 +102,54 @@ function injectVideoFramePorts(
     })
   }
   if (!framePorts.length) return next
+  // 首帧 / 首尾帧模式下参考图口与帧口互斥：隐藏 in-image，仅保留帧口；
+  // 无帧控制（none）不注入帧口，in-image 保持为参考图口。
   const insertAt = next.findIndex((port) => port.id === 'in-image')
-  if (insertAt < 0) return [...framePorts, ...next]
-  return [...next.slice(0, insertAt), ...framePorts, ...next.slice(insertAt)]
+  if (insertAt >= 0) {
+    next = next.filter((port) => port.id !== 'in-image')
+  }
+  const at = insertAt >= 0 ? insertAt : next.length
+  return [...next.slice(0, at), ...framePorts, ...next.slice(at)]
+}
+
+/**
+ * 视频生成：按模型声明上限隐藏「限额为 0」的媒体入端口。
+ * 只作用于通用参考口 in-image / in-video / in-voice；首/尾帧口由帧模式独立控制，不受影响。
+ */
+function hideZeroLimitVideoInputPorts(
+  ports: GraphPortDef[],
+  maxImages: number | undefined,
+  maxVideos: number | undefined,
+  maxVoices: number | undefined
+): GraphPortDef[] {
+  if (maxImages !== 0 && maxVideos !== 0 && maxVoices !== 0) return ports
+  return ports.filter((port) => {
+    if (port.direction !== 'in') return true
+    if (port.id === 'in-image') return maxImages !== 0
+    if (port.id === 'in-video') return maxVideos !== 0
+    if (port.id === 'in-voice') return maxVoices !== 0
+    return true
+  })
+}
+
+function readVideoInputLimit(
+  params:
+    | Pick<
+        GraphNodeParams,
+        | 'generateMaxInputImages'
+        | 'generateMaxInputVideos'
+        | 'generateMaxInputVoices'
+      >
+    | null
+    | undefined,
+  node:
+    | Pick<GraphNode, 'category' | 'params' | 'assetId' | 'typeId' | 'assetType'>
+    | null
+    | undefined,
+  key: 'generateMaxInputImages' | 'generateMaxInputVideos' | 'generateMaxInputVoices'
+): number | undefined {
+  const raw = params?.[key] ?? node?.params?.[key]
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
 }
 
 /** 对类型定义端口应用与 getNodePorts 相同的 inputDataType 覆盖规则 */
@@ -117,6 +162,9 @@ export function resolveTypeDefPorts(
     | 'assetRef'
     | 'assetHost'
     | 'generateFrameMode'
+    | 'generateMaxInputImages'
+    | 'generateMaxInputVideos'
+    | 'generateMaxInputVoices'
     | 'hostInputSlot'
     | 'hostBoundaryPort'
   > | null,
@@ -226,6 +274,12 @@ export function resolveTypeDefPorts(
       params?.generateFrameMode ?? node?.params?.generateFrameMode
     )
     ports = injectVideoFramePorts(ports, mode)
+    ports = hideZeroLimitVideoInputPorts(
+      ports,
+      readVideoInputLimit(params, node, 'generateMaxInputImages'),
+      readVideoInputLimit(params, node, 'generateMaxInputVideos'),
+      readVideoInputLimit(params, node, 'generateMaxInputVoices')
+    )
   }
   return ports
 }

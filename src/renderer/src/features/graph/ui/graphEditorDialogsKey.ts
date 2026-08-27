@@ -1,5 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type {
+  AdVariantMatrix,
   EmotionPadState,
   ImageCropState,
   ImageExpandState,
@@ -56,6 +57,12 @@ export type GraphEditorDialogsApi = {
     previewUrl: string
     panelPrompt: string
     camera: MultiAngleCameraState | null
+    generateModel: string
+    generateProviderInstanceId: string
+  }
+  adVariants: {
+    open: boolean
+    matrix: AdVariantMatrix | null
     generateModel: string
     generateProviderInstanceId: string
   }
@@ -162,6 +169,12 @@ export type GraphEditorDialogsApi = {
   closeMultiAngle: () => void
   previewMultiAngle: (payload: unknown) => void
   saveMultiAngle: (payload: unknown) => void
+  closeAdVariants: () => void
+  saveAdVariants: (payload: {
+    matrix: AdVariantMatrix
+    generateModel: string
+    generateProviderInstanceId: string
+  }) => void
   closeLighting: () => void
   previewLighting: (payload: unknown) => void
   saveLighting: (payload: unknown) => void

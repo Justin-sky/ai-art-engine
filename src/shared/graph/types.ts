@@ -5,7 +5,8 @@ import type {
   DirectorCameraVideo,
   DirectorViewerState,
   ProjectStyleImage,
-  StyleReferenceSubject
+  StyleReferenceSubject,
+  WorldEntityRef
 } from '../domain'
 import type { MultiAngleCameraState } from './multiAngleCamera'
 import type { LightingSetupState } from './lightingSetup'
@@ -19,6 +20,7 @@ import type { ImageMatteState } from './imageMatte'
 import type { ImageCropState } from './imageCrop'
 import type { ImageGridSplitState } from './imageGridSplit'
 import type { ImageLayerSplitState } from './imageLayerSplit'
+import type { AdVariantMatrix } from './adVariantMatrix'
 
 /** 按输出类型的规范单例 id */
 export const GRAPH_OUTPUT_NODE_IDS = {
@@ -288,6 +290,12 @@ export interface GraphNodeParams {
   generateAudio?: boolean
   /** 视频生成：帧模式 none | first | first_last */
   generateFrameMode?: 'none' | 'first' | 'first_last'
+  /** 视频生成：模型声明的图片输入口上限（0 隐藏 in-image；缺省显示） */
+  generateMaxInputImages?: number
+  /** 视频生成：模型声明的视频输入口上限（0 隐藏 in-video；缺省显示） */
+  generateMaxInputVideos?: number
+  /** 视频生成：模型声明的音频输入口上限（0 隐藏 in-voice；缺省显示） */
+  generateMaxInputVoices?: number
   /** 片段重拍：重拍区间起点（秒） */
   reshootStartSec?: number
   /** 片段重拍：重拍区间终点（秒） */
@@ -480,6 +488,10 @@ export interface GraphNodeParams {
    * 每次运行成功后强制切到最新一条。
    */
   selectedVoiceId?: string
+  /** 广告变体矩阵：产品 × 维度展开的生成矩阵（随节点落盘） */
+  adVariantMatrix?: Partial<AdVariantMatrix>
+  /** 角色一致性：绑定的角色引用（含 imageUrl），图片生成时注入 inputReferences */
+  characterRefs?: WorldEntityRef[]
   /** 多角度编辑器：机位参数 */
   multiAngleCamera?: Partial<MultiAngleCameraState>
   /** 多角度编辑器：最终提示词（机位句；promptEnabled 时含面板拼接） */
@@ -556,6 +568,20 @@ export interface GraphNodeParams {
   worldElementId?: string
   /** 世界元素目录审核状态（未审核 | 已审核） */
   reviewStatus?: string
+  /** 媒体质检（导演 PASS/FAIL）：回标结果 */
+  mediaReviewStatus?: 'PASS' | 'FAIL'
+  /** 媒体质检（导演 PASS/FAIL）：FAIL 原因 */
+  mediaReviewReason?: string
+  /** 媒体质检（导演 PASS/FAIL）：上游重新生成后等待再次审核 */
+  mediaReviewPending?: boolean
+  /** 媒体自动返工循环：最大尝试次数（含首次，默认 3） */
+  mediaReworkMaxAttempts?: number
+  /** 媒体自动返工循环：序列化状态 JSON（见 mediaRework.ts） */
+  mediaReworkState?: string
+  /** 媒体自动返工循环：终态（running / passed / exhausted） */
+  mediaReworkStatus?: 'running' | 'passed' | 'exhausted'
+  /** 漫画页：序列化 JSON 文本（见 comicPage.ts），由 ComicPageInspector 编辑/预览/导出 */
+  comicPage?: string
 }
 
 export interface GraphPortDef {

@@ -61,6 +61,39 @@ describe('comfyui injectWorkflow', () => {
     expect(sample['6']?.inputs?.text).toBe('old')
   })
 
+  it('injects video and audio filenames into VHS load nodes', () => {
+    const graph = {
+      '1': { class_type: 'VHS_LoadVideo', inputs: { video: 'a.mp4' } },
+      '2': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'a.wav' } },
+      '3': { class_type: 'LoadImage', inputs: { image: 'a.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'x',
+      imageFilenames: ['img.png'],
+      videoFilenames: ['vid.mp4'],
+      audioFilenames: ['aud.wav']
+    })
+    expect(next['1']?.inputs?.video).toBe('vid.mp4')
+    expect(next['2']?.inputs?.audio_file).toBe('aud.wav')
+    expect(next['3']?.inputs?.image).toBe('img.png')
+  })
+
+  it('assigns multiple video/audio filenames in node order', () => {
+    const graph = {
+      '1': { class_type: 'VHS_LoadVideo', inputs: { video: 'a.mp4' } },
+      '2': { class_type: 'VHS_LoadVideo', inputs: { video: 'b.mp4' } },
+      '3': { class_type: 'VHS_LoadAudio', inputs: { audio_file: 'a.wav' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'x',
+      videoFilenames: ['v1.mp4', 'v2.mp4'],
+      audioFilenames: ['a1.wav']
+    })
+    expect(next['1']?.inputs?.video).toBe('v1.mp4')
+    expect(next['2']?.inputs?.video).toBe('v2.mp4')
+    expect(next['3']?.inputs?.audio_file).toBe('a1.wav')
+  })
+
   it('maps aspect ratio to size', () => {
     expect(sizeFromAspectRatio('16:9', '1k')).toEqual({ width: 1280, height: 720 })
     expect(sizeFromAspectRatio('1:1', '2k')).toEqual({ width: 1536, height: 1536 })
@@ -100,6 +133,43 @@ describe('comfyui injectWorkflow', () => {
     expect(next['104']?.inputs?.length).toBe(124)
     // non-H3 stays on the legacy 16fps heuristic
     expect(next['10']?.inputs?.length).toBe(80)
+  })
+
+  it('injects first/last frame into their MiniMax H3 socket LoadImage nodes', () => {
+    const graph = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { clip: ['13', 0], vae: ['11', 0], first_frame: ['10', 0], last_frame: ['12', 0] }
+      },
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'a cat',
+      firstFrameFilenames: ['first.png'],
+      lastFrameFilenames: ['last.png']
+    })
+    expect(next['10']?.inputs?.image).toBe('first.png')
+    expect(next['12']?.inputs?.image).toBe('last.png')
+  })
+
+  it('routes first/last frame by socket regardless of node iteration order', () => {
+    const graph = {
+      '104': {
+        class_type: 'MiniMaxH3ImageToVideo',
+        inputs: { first_frame: ['12', 0], last_frame: ['10', 0] }
+      },
+      // 尾帧 LoadImage 排在首帧之前，注入仍应各就各位
+      '10': { class_type: 'LoadImage', inputs: { image: 'old-last.png' } },
+      '12': { class_type: 'LoadImage', inputs: { image: 'old-first.png' } }
+    }
+    const next = injectComfyWorkflow(graph, {
+      prompt: 'a cat',
+      firstFrameFilenames: ['first.png'],
+      lastFrameFilenames: ['last.png']
+    })
+    expect(next['10']?.inputs?.image).toBe('last.png')
+    expect(next['12']?.inputs?.image).toBe('first.png')
   })
 
   it('computes the MiniMax H3 native canvas', () => {

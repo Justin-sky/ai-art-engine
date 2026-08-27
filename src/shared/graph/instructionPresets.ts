@@ -19,6 +19,8 @@ export type InstructionPresetKind =
   | 'uiSplit'
   | 'frameAnimGen'
   | 'model3d'
+  | 'mediaReview'
+  | 'mediaRework'
 
 /** 预设页签（反推等跨行业模板用）；缺省不参与页签 UI */
 export type InstructionPresetTab = 'general' | 'game' | 'film' | 'character' | 'fx'
@@ -1521,7 +1523,9 @@ const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   beatUnitGen: [],
   uiSplit: [],
   frameAnimGen: [...FRAME_ANIM_GEN_CHARACTER_PRESETS, ...FRAME_ANIM_GEN_FX_PRESETS],
-  model3d: []
+  model3d: [],
+  mediaReview: [],
+  mediaRework: []
 }
 
 export function listInstructionPresets(kind: InstructionPresetKind): InstructionPreset[] {

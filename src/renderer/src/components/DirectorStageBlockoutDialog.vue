@@ -503,7 +503,7 @@ function onInstructionKeydown(event: KeyboardEvent): void {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 50%;
-  background: var(--bg-panel, #2a2a2a);
+  background: var(--bg-panel);
   color: var(--text-muted);
   font-size: 11px;
   line-height: 14px;

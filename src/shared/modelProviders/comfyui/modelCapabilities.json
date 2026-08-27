@@ -5,38 +5,6 @@
     ],
     "note": "Comfy API v2. Default Base URL is local comfy-api-proxy (127.0.0.1:8189). Cloud: https://cloud.comfy.org. Model id = API-format workflow name in ComfyUI userdata."
   },
-  "models": [
-    {
-      "id": "txt2img",
-      "name": "Text to Image",
-      "modality": "image",
-      "profile": "image-base"
-    },
-    {
-      "id": "img2img",
-      "name": "Image to Image",
-      "modality": "image",
-      "profile": "image-ref"
-    },
-    {
-      "id": "txt2vid",
-      "name": "Text to Video",
-      "modality": "video",
-      "profile": "video-base"
-    },
-    {
-      "id": "img2vid",
-      "name": "Image to Video",
-      "modality": "video",
-      "profile": "video-ref"
-    },
-    {
-      "id": "txt2audio",
-      "name": "Text to Audio",
-      "modality": "audio",
-      "profile": "audio-base"
-    }
-  ],
   "profiles": {
     "image-base": {
       "modality": "image",
@@ -76,7 +44,7 @@
       "capabilities": {
         "supported_resolutions": ["720p", "1080p"],
         "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
-        "supported_durations": [5, 8, 10],
+        "supported_durations": [5, 8, 10, 15],
         "supported_frame_images": [],
         "generate_audio": false,
         "max_input_images": 0,
@@ -93,14 +61,31 @@
       "capabilities": {
         "supported_resolutions": ["720p", "1080p"],
         "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
-        "supported_durations": [5, 8, 10],
-        "supported_frame_images": ["first_frame"],
+        "supported_durations": [5, 8, 10, 15],
+        "supported_frame_images": ["first_frame", "last_frame"],
         "generate_audio": false,
         "max_input_images": 1,
         "max_input_videos": 0,
         "max_input_audios": 0,
         "supported_parameters": {
           "input_references": { "max": 1 }
+        }
+      }
+    },
+    "video-r2v": {
+      "modality": "video",
+      "label": "ComfyUI Video (r2v)",
+      "capabilities": {
+        "supported_resolutions": ["720p", "1080p"],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_durations": [5, 8, 10, 15],
+        "supported_frame_images": [],
+        "generate_audio": false,
+        "max_input_images": 1,
+        "max_input_videos": 1,
+        "max_input_audios": 1,
+        "supported_parameters": {
+          "input_references": { "max": 3 }
         }
       }
     },

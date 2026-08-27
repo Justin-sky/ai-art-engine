@@ -32,6 +32,7 @@ import {
   executeNoteNode,
   executeOutputNode,
   executePlayScriptNode,
+  executeComicPageNode,
   executeHostInputSlotNode,
   executeBoundaryInputNode,
   executeBoundaryOutputNode,
@@ -47,6 +48,7 @@ import {
   executeSelectTextNode,
   executeSelectBeatNode,
   executeMultiAngleNode,
+  executeAdVariantsNode,
   executeLightingNode,
   executePortraitTextureNode,
   executeEmotionNode,
@@ -60,6 +62,8 @@ import {
   executeCropNode,
   executeGridSplitNode,
   executeLayerSplitNode,
+  executeMediaReviewNode,
+  executeMediaReworkNode,
   executeBeatSplitNode,
   executeBeatTableNode,
   executeBeatGenNode,
@@ -219,7 +223,7 @@ const ASSET_META: Array<{
   }
 ]
 
-/** 导演台编辑：全景背景图（单图）输入 + 站位（images）与动作（videos）输出 */
+/** 导演台编辑：全景背景图（单图）与 3D 模型输入 + 站位（images）与动作（videos）输出 */
 function motionProcessingPorts(): GraphPortDef[] {
   return [
     {
@@ -228,6 +232,13 @@ function motionProcessingPorts(): GraphPortDef[] {
       dataType: GraphPortType.image,
       multiple: false,
       label: '全景'
+    },
+    {
+      id: 'in-model',
+      direction: 'in',
+      dataType: GraphPortType.model,
+      multiple: false,
+      label: '模型'
     },
     {
       id: 'out-shots',
@@ -676,6 +687,34 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeNoteNode
   },
   {
+    typeId: 'comic.page',
+    category: 'note',
+    label: 'Comic page',
+    icon: '💬',
+    defaultTitle: 'Comic page',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Images'
+      },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({ comicPage: '' }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.comicPage',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeComicPageNode
+  },
+  {
     typeId: 'media.bundle',
     category: 'note',
     label: 'Bundle',
@@ -969,6 +1008,37 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeMultiAngleNode
+  },
+  {
+    typeId: 'image.adVariants',
+    category: 'note',
+    label: 'Ad variants',
+    icon: '🎨',
+    defaultTitle: 'Ad variants',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      adVariantMatrix: {
+        product: '',
+        dimensions: [],
+        cells: []
+      },
+      generateModel: '',
+      generateProviderInstanceId: '',
+      generateSystemPrompt: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.adVariants',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeAdVariantsNode
   },
   {
     typeId: 'image.lighting',
@@ -1504,6 +1574,64 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     card: 'media',
     contributeToGeneration: false,
     execute: executeImageToPromptNode
+  },
+  {
+    typeId: 'media.review',
+    category: 'note',
+    label: 'Media review',
+    icon: '🛡️',
+    defaultTitle: 'Media review',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in-image', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'Image' },
+      { id: 'in-video', direction: 'in', dataType: GraphPortType.video, multiple: true, label: 'Video' },
+      ...galleryOutPorts(GraphPortType.text)
+    ],
+    defaultParams: () => ({
+      text: '',
+      generatedTexts: [],
+      selectedTextId: '',
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      mediaReviewPending: true
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.mediaReview',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeMediaReviewNode
+  },
+  {
+    typeId: 'media.rework',
+    category: 'note',
+    label: 'Media rework',
+    icon: '🔁',
+    defaultTitle: 'Media rework',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: imageProcessingPorts(),
+    defaultParams: () => ({
+      text: '',
+      generatedImages: [],
+      selectedImageId: '',
+      generateInstruction: '',
+      generateSystemPrompt: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      mediaReworkMaxAttempts: 3
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.mediaRework',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeMediaReworkNode
   },
   {
     typeId: 'beat.split',

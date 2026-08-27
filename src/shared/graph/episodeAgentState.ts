@@ -3,6 +3,8 @@
  * 结构对齐 v4.0 规范：current_step / last_failed_reason / output_files。
  */
 
+import { nextAgentPipelineStage } from './agentPipeline'
+
 export type EpisodePipelineStep =
   | 'breakdown'
   | 'beatboard'
@@ -82,8 +84,7 @@ export function serializeEpisodeAgentState(state: EpisodeAgentState): string {
 }
 
 export function nextEpisodePipelineStep(step: Exclude<EpisodePipelineStep, 'completed'>): EpisodePipelineStep {
-  const idx = EPISODE_PIPELINE_STEPS.indexOf(step)
-  return EPISODE_PIPELINE_STEPS[idx + 1] ?? 'completed'
+  return nextAgentPipelineStage(EPISODE_PIPELINE_STEPS.slice(0, -1), step) as EpisodePipelineStep
 }
 
 /**

@@ -57,7 +57,7 @@
           class="section"
         >
           <h3 class="section-title">
-            {{ t('graph.tasks.videoSection') }}
+            {{ t('graph.tasks.generationSection') }}
           </h3>
           <ul class="task-list">
             <li
@@ -67,6 +67,10 @@
             >
               <div class="task-row-main">
                 <div class="task-meta">
+                  <span
+                    class="task-kind"
+                    :data-kind="job.kind ?? 'video'"
+                  >{{ jobKindLabel(job) }}</span>
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
                   <span
                     class="task-status"
@@ -184,7 +188,7 @@
           class="section"
         >
           <h3 class="section-title">
-            {{ t('graph.tasks.videoSection') }}
+            {{ t('graph.tasks.generationSection') }}
           </h3>
           <ul class="task-list">
             <li
@@ -194,6 +198,10 @@
             >
               <div class="task-row-main">
                 <div class="task-meta">
+                  <span
+                    class="task-kind"
+                    :data-kind="job.kind ?? 'video'"
+                  >{{ jobKindLabel(job) }}</span>
                   <span class="task-title">{{ videoJobTitle(job) }}</span>
                   <span
                     class="task-status"
@@ -315,7 +323,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import type { GraphNodeRunStatus } from '@shared/graph'
 import type { VideoJobRecord, VideoJobStatus } from '@shared/videoJob'
-import { isVideoJobActive } from '@shared/videoJob'
+import { isVideoJobActive, jobKind } from '@shared/videoJob'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
@@ -404,8 +412,16 @@ function videoStatusLabel(status: VideoJobStatus): string {
   return t(`graph.tasks.videoStatus.${status}`)
 }
 
+function jobKindLabel(job: VideoJobRecord): string {
+  return jobKind(job) === 'model3d' ? t('graph.tasks.model3dKind') : t('graph.tasks.videoKind')
+}
+
 function videoJobTitle(job: VideoJobRecord): string {
-  return job.name?.trim() || job.prompt.trim().slice(0, 48) || t('graph.tasks.videoUntitled')
+  if (job.name?.trim()) return job.name.trim()
+  if (job.prompt.trim()) return job.prompt.trim().slice(0, 48)
+  return jobKind(job) === 'model3d'
+    ? t('graph.tasks.model3dUntitled')
+    : t('graph.tasks.videoUntitled')
 }
 
 function flowTitle(task: GraphTask): string {
@@ -551,6 +567,23 @@ h2 {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.task-kind {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+}
+
+.task-kind[data-kind='model3d'] {
+  color: #b48cff;
+  border-color: rgba(180, 140, 255, 0.4);
+  background: rgba(180, 140, 255, 0.1);
 }
 
 .task-title {

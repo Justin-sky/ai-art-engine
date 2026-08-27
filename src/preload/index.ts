@@ -141,6 +141,7 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.DIALOG_SAVE_BINARY_FILES_TO_DIRECTORY, input),
 
   exportScriptTimeline: (input) => ipcRenderer.invoke(IpcChannels.TIMELINE_EXPORT, input),
+  exportAdVariants: (input) => ipcRenderer.invoke(IpcChannels.AD_VARIANT_EXPORT, input),
   onTimelineExportProgress: (callback) => {
     const listener = (_event: unknown, payload: { progress: number }): void => {
       callback(payload)

@@ -1,16 +1,15 @@
-import type { CatalogModel, ModelModality } from '@shared/modelProvider'
+import type { ModelModality } from '@shared/modelProvider'
+import {
+  LOAD_AUDIO_CLASSES,
+  LOAD_IMAGE_CLASSES,
+  LOAD_VIDEO_CLASSES,
+  type ComfyApiNode,
+  type ComfyApiWorkflow
+} from './injectWorkflow'
 import catalog from './modelCapabilities.json'
-
-export interface ComfyUiModelEntry {
-  id: string
-  name: string
-  modality: 'image' | 'video' | 'audio'
-  profile: string
-}
 
 export interface ComfyUiModelCapabilitiesCatalog {
   meta: { docs: string[]; note: string }
-  models: ComfyUiModelEntry[]
   profiles: Record<
     string,
     {
@@ -22,10 +21,6 @@ export interface ComfyUiModelCapabilitiesCatalog {
 }
 
 const data = catalog as ComfyUiModelCapabilitiesCatalog
-
-export function getComfyUiModelCapabilitiesCatalog(): ComfyUiModelCapabilitiesCatalog {
-  return data
-}
 
 function profileCapabilities(profileId: string): Record<string, unknown> | null {
   const profile = data.profiles[profileId]
@@ -140,36 +135,94 @@ export function inferComfyUiWorkflowModality(
   return 'image'
 }
 
+/**
+ * 从视频工作流推断支持的媒体输入类型（image / video / audio）。
+ * 命中 → 对应 max = 1（端口显示）；未命中 → 0（端口隐藏，如纯文生视频）。
+ * 找不到生成节点 / graph 为空 → 返回 null（无法推断，交由调用方回退）。
+ *
+ * 两个信号取并集：
+ * 1. 负载节点（LoadImage / VHS_LoadVideo / VHS_LoadAudio）——注入端 `injectComfyWorkflow`
+ *    实际写文件的目标，与「参考媒体往哪灌」一致，比 socket 键名更可靠；
+ * 2. 生成节点的 media 输入 socket 键名（image / start_image / reference_image、
+ *    reference_video / reference_audio …）。
+ * r2v 这类多模态参考工作流的视频/音频常经由 VHS_LoadVideo / VHS_LoadAudio 节点注入，
+ * 生成节点上未必有对应 socket，只靠 socket 会误判为纯文生视频。
+ */
+export function inferComfyUiMediaInputs(graph: ComfyApiWorkflow | null): {
+  maxImages: number
+  maxVideos: number
+  maxAudios: number
+} | null {
+  if (!graph) return null
+  let foundGenerate = false
+  let hasImage = false
+  let hasVideo = false
+  let hasAudio = false
+  let anyMediaSignal = false
+  for (const node of Object.values(graph)) {
+    if (!node || typeof node !== 'object') continue
+    const cls = String((node as ComfyApiNode).class_type ?? '').trim().toLowerCase()
+    if (!cls) continue
+
+    // 负载节点：注入端实际写文件的目标，优先级最高
+    if (LOAD_IMAGE_CLASSES.has(cls)) {
+      hasImage = true
+      anyMediaSignal = true
+    }
+    if (LOAD_VIDEO_CLASSES.has(cls)) {
+      hasVideo = true
+      anyMediaSignal = true
+    }
+    if (LOAD_AUDIO_CLASSES.has(cls)) {
+      hasAudio = true
+      anyMediaSignal = true
+    }
+
+    // 生成节点的 media socket 键名作为补充信号
+    if (!classMatches([cls], VIDEO_GENERATE_PATTERNS)) continue
+    foundGenerate = true
+    const inputs = (node as ComfyApiNode).inputs
+    if (!inputs || typeof inputs !== 'object') continue
+    for (const key of Object.keys(inputs)) {
+      const k = key.toLowerCase()
+      if (/image/.test(k)) {
+        hasImage = true
+        anyMediaSignal = true
+      } else if (/video/.test(k)) {
+        hasVideo = true
+        anyMediaSignal = true
+      } else if (/audio/.test(k)) {
+        hasAudio = true
+        anyMediaSignal = true
+      }
+    }
+  }
+  if (!foundGenerate) return null
+  // 生成节点 + 负载节点都没有任何 media 输入 → 纯文生视频
+  if (!anyMediaSignal) return { maxImages: 0, maxVideos: 0, maxAudios: 0 }
+  return { maxImages: hasImage ? 1 : 0, maxVideos: hasVideo ? 1 : 0, maxAudios: hasAudio ? 1 : 0 }
+}
+
 export function resolveComfyUiModelCapabilities(
   modelId: string,
   modality?: ModelModality
 ): Record<string, unknown> | null {
   const id = modelId.trim()
-  const entry = data.models.find((m) => m.id === id)
-  if (entry) return profileCapabilities(entry.profile)
 
   const inferred = modality === 'video' || modality === 'audio' || modality === 'image'
     ? modality
     : inferComfyUiWorkflowModality(id)
   if (inferred === 'audio') return profileCapabilities('audio-base')
   if (inferred === 'video') {
-    return /i2v|img2vid|image.?to.?video|ref/i.test(id)
+    // r2v（参考生视频）接受图片/视频/音频三类参考，i2v 只接受图片，先命中更具体的一支
+    if (/r2v|ref.?to.?video|reference.?to.?video/i.test(id)) {
+      return profileCapabilities('video-r2v')
+    }
+    return /i2v|img2vid|img2video|image2video|image.?to.?video|ref/i.test(id)
       ? profileCapabilities('video-ref')
       : profileCapabilities('video-base')
   }
   return /i2i|img2img|image.?to.?image|ref/i.test(id)
     ? profileCapabilities('image-ref')
     : profileCapabilities('image-base')
-}
-
-export function listComfyUiCatalogModels(modality: ModelModality): CatalogModel[] {
-  if (modality !== 'image' && modality !== 'video' && modality !== 'audio') return []
-  return data.models
-    .filter((m) => m.modality === modality)
-    .map((m) => ({
-      id: m.id,
-      name: m.name,
-      modality,
-      capabilities: resolveComfyUiModelCapabilities(m.id, modality) ?? undefined
-    }))
 }
