@@ -2762,6 +2762,9 @@ export default {
         removeBubble: '删除气泡',
         panelSection: '选中分格',
         bubbleSection: '选中气泡',
+        globalSection: '全局属性',
+        bgColor: '背景颜色',
+        bgTransparent: '透明（无底色）',
         panelTitle: '分格标题',
         panelImage: '图片路径',
         panelFallback: '分镜格',
@@ -2777,7 +2780,7 @@ export default {
         exportDone: '已导出 {count} 张',
         exportCancel: '已取消',
         emptyPanels: '尚未添加分镜格',
-        gridHint: '点击空格添加分镜格，从资产库拖入图片到分镜格，拖动气泡调整位置',
+        gridHint: '点击分镜格/气泡查看其属性；点工具栏「全局属性」按钮、空格或其他空白处返回页面属性。拖动选中分格的边缘/角落手柄调整大小，拖动气泡角部圆点缩放；从资产库拖图到空格自动建格',
         done: '完成'
       },
       generate: {

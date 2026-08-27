@@ -76,6 +76,13 @@ describe('createComicPage / normalizeComicPage', () => {
     })
     expect(page.panels[0]!.bubbles).toEqual([])
   })
+
+  it('keeps a trimmed backgroundColor and drops blank or non-string values', () => {
+    expect(normalizeComicPage({ backgroundColor: '  #ff0044 ' }).backgroundColor).toBe('#ff0044')
+    expect('backgroundColor' in normalizeComicPage({ backgroundColor: '   ' })).toBe(false)
+    expect('backgroundColor' in normalizeComicPage({ backgroundColor: 42 as unknown as string })).toBe(false)
+    expect('backgroundColor' in createComicPage()).toBe(false)
+  })
 })
 
 describe('comicPanelRects', () => {
@@ -143,6 +150,14 @@ describe('panel mutations', () => {
     const ids = page.panels.map((p) => p.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
+
+  it('keeps panel backgroundColor trimmed and drops blank values on upsert', () => {
+    let page = createComicPage({ columns: 2, rows: 2 })
+    page = addComicPanel(page, { id: 'p1', row: 0, col: 0, backgroundColor: ' #88ff00 ' })
+    expect(page.panels[0]!.backgroundColor).toBe('#88ff00')
+    page = upsertComicPanel(page, { ...page.panels[0]!, backgroundColor: '' })
+    expect('backgroundColor' in page.panels[0]!).toBe(false)
+  })
 })
 
 describe('bubble mutations', () => {
@@ -174,6 +189,16 @@ describe('bubble mutations', () => {
     page = addComicBubble(page, 'p1', { id: 'b1', text: '你好' })
     page = updateComicBubble(page, 'p1', 'b1', { text: '  ' })
     expect(page.panels[0]!.bubbles).toHaveLength(0)
+  })
+
+  it('clamps bubble scale into range and omits the default value', () => {
+    let page = pageWithPanel()
+    page = addComicBubble(page, 'p1', { id: 'b1', text: '你好', scale: 9 })
+    expect(page.panels[0]!.bubbles[0]!.scale).toBe(4)
+    page = updateComicBubble(page, 'p1', 'b1', { scale: 0.2 })
+    expect(page.panels[0]!.bubbles[0]!.scale).toBe(0.5)
+    page = updateComicBubble(page, 'p1', 'b1', { scale: 1 })
+    expect('scale' in page.panels[0]!.bubbles[0]!).toBe(false)
   })
 })
 
@@ -218,13 +243,22 @@ describe('serialize / parse / genParams', () => {
           col: 0,
           rowSpan: 1,
           colSpan: 1,
+          backgroundColor: '#202020',
           imageUrl: 'shots/a.png',
-          bubbles: [{ id: 'b1', text: '台词', speaker: '甲', x: 0.4, y: 0.6, tail: 'br' }]
+          bubbles: [{ id: 'b1', text: '台词', speaker: '甲', x: 0.4, y: 0.6, tail: 'br', scale: 1.5 }]
         }
       ]
     })
     const parsed = parseComicPage(serializeComicPage(page))
     expect(parsed).toEqual(page)
+  })
+
+  it('round-trips backgroundColor through serialize + parse', () => {
+    const page = createComicPage({ title: 'bg', backgroundColor: '#101010' })
+    expect(parseComicPage(serializeComicPage(page))?.backgroundColor).toBe('#101010')
+    // 清空后不再带该键（透明底）
+    const cleared = parseComicPage(serializeComicPage({ ...page, backgroundColor: '' }))
+    expect(cleared && 'backgroundColor' in cleared).toBe(false)
   })
 
   it('parses code-fenced JSON', () => {

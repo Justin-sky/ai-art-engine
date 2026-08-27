@@ -22,7 +22,13 @@ export interface ComicSpeechBubble {
   /** 锚点相对格左上角的归一化纵坐标（0~1） */
   y: number
   tail: ComicBubbleTail
+  /** 显示缩放（字号与整体尺寸等比）；缺省 1 */
+  scale?: number
 }
+
+/** 气泡缩放允许范围 */
+export const COMIC_BUBBLE_MIN_SCALE = 0.5
+export const COMIC_BUBBLE_MAX_SCALE = 4
 
 /** 分镜格：占据网格矩形，绑定一张图 + 若干气泡 */
 export interface ComicPanel {
@@ -33,6 +39,8 @@ export interface ComicPanel {
   col: number
   rowSpan: number
   colSpan: number
+  /** 分镜格背景色（任意 CSS 颜色）；缺省用默认占位灰 */
+  backgroundColor?: string
   /** 图片 URL（data:/http(s)/工程相对路径） */
   imageUrl?: string
   title?: string
@@ -42,6 +50,8 @@ export interface ComicPanel {
 /** 漫画页：网格规格 + 像素尺寸 + 面板集合 */
 export interface ComicPage {
   title?: string
+  /** 页面背景色（任意 CSS 颜色）；缺省透明 */
+  backgroundColor?: string
   columns: number
   rows: number
   /** 格间距（页面像素坐标系） */
@@ -108,13 +118,15 @@ function normalizeBubble(
   const tail: ComicBubbleTail =
     tailRaw === 'tr' || tailRaw === 'bl' || tailRaw === 'br' ? tailRaw : 'tl'
   const speaker = typeof bubble.speaker === 'string' ? bubble.speaker.trim() : ''
+  const scale = clampFloat(bubble.scale, COMIC_BUBBLE_MIN_SCALE, COMIC_BUBBLE_MAX_SCALE, 1)
   return {
     id,
     text,
     ...(speaker ? { speaker } : {}),
     x: clampFloat(bubble.x, 0, 1, 0.5),
     y: clampFloat(bubble.y, 0, 1, 0.5),
-    tail
+    tail,
+    ...(scale !== 1 ? { scale } : {})
   }
 }
 
@@ -139,6 +151,7 @@ function normalizePanel(
   )
   const imageUrl = typeof panel.imageUrl === 'string' ? panel.imageUrl.trim() : ''
   const title = typeof panel.title === 'string' ? panel.title.trim() : ''
+  const panelBg = typeof panel.backgroundColor === 'string' ? panel.backgroundColor.trim() : ''
   const rawBubbles = Array.isArray(panel.bubbles) ? panel.bubbles : []
   const bubbles: ComicSpeechBubble[] = []
   for (let i = 0; i < rawBubbles.length; i++) {
@@ -153,6 +166,7 @@ function normalizePanel(
     colSpan,
     ...(imageUrl ? { imageUrl } : {}),
     ...(title ? { title } : {}),
+    ...(panelBg ? { backgroundColor: panelBg } : {}),
     bubbles
   }
 }
@@ -171,8 +185,10 @@ export function normalizeComicPage(input: Partial<ComicPage> | null | undefined)
     if (panel) panels.push(panel)
   }
   const title = typeof input?.title === 'string' ? input.title.trim() : ''
+  const backgroundColor = typeof input?.backgroundColor === 'string' ? input.backgroundColor.trim() : ''
   return {
     ...(title ? { title } : {}),
+    ...(backgroundColor ? { backgroundColor } : {}),
     columns,
     rows,
     gutter,
@@ -486,7 +502,9 @@ export function findComicBubbleAtPagePoint(
 /** 改网格/画布规格；分镜格会被 clamp 进新网格 */
 export function withComicPageLayout(
   page: ComicPage,
-  patch: Partial<Pick<ComicPage, 'title' | 'columns' | 'rows' | 'gutter' | 'width' | 'height'>>
+  patch: Partial<
+    Pick<ComicPage, 'title' | 'backgroundColor' | 'columns' | 'rows' | 'gutter' | 'width' | 'height'>
+  >
 ): ComicPage {
   return normalizeComicPage({ ...normalizeComicPage(page), ...patch })
 }

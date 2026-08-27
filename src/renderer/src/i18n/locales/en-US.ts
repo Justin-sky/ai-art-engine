@@ -2783,6 +2783,9 @@ export default {
         removeBubble: 'Remove bubble',
         panelSection: 'Selected panel',
         bubbleSection: 'Selected bubble',
+        globalSection: 'Global properties',
+        bgColor: 'Background color',
+        bgTransparent: 'Transparent (no fill)',
         panelTitle: 'Panel title',
         panelImage: 'Image path',
         panelFallback: 'Panel',
@@ -2798,7 +2801,7 @@ export default {
         exportDone: 'Exported {count} file(s)',
         exportCancel: 'Cancelled',
         emptyPanels: 'No panels yet',
-        gridHint: 'Click an empty cell to add a panel; drag an asset image onto a panel; drag bubbles to reposition',
+        gridHint: 'Click a panel/bubble for its properties; use the Global properties toolbar button or blank space for page properties. Drag the selected panel edge/corner handles to resize, drag the bubble corner dot to scale; drag images onto empty cells to create panels',
         done: 'Done'
       },
       generate: {

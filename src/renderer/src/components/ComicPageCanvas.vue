@@ -28,7 +28,10 @@
         'comic-page--empty': !editable && norm.panels.length === 0,
         'comic-page--editable': editable
       }"
-      :style="{ aspectRatio: `${norm.width} / ${norm.height}` }"
+      :style="{
+        aspectRatio: `${norm.width} / ${norm.height}`,
+        ...(norm.backgroundColor ? { background: norm.backgroundColor } : {})
+      }"
       @pointerdown="onPagePointerDown"
       @pointermove="onPagePointerMove"
       @pointerup="onPagePointerUp"
@@ -69,7 +72,7 @@
             'panel--selected': selectedPanelId === panel.id && !selectedBubbleId,
             'panel--drag-over': editable && dragOverKey === `panel:${panel.id}`
           }"
-          :style="panelStyle(panel)"
+          :style="[panelStyle(panel), panelResizeOverlay(panel)]"
         >
           <img
             v-if="thumbs[panel.imageUrl ?? '']"
@@ -98,6 +101,21 @@
             @pointerdown.stop
             @click.stop="emit('remove-image', panel.id)"
           >×</button>
+          <!-- 调整大小手柄：右缘改列跨、下缘改行跨、右下角两者联动（跨格数随拖动吸附） -->
+          <template v-if="editable && selectedPanelId === panel.id && !selectedBubbleId">
+            <span
+              class="rs rs-r"
+              @pointerdown.stop.prevent="onPanelResizeDown($event, panel, 'x')"
+            />
+            <span
+              class="rs rs-b"
+              @pointerdown.stop.prevent="onPanelResizeDown($event, panel, 'y')"
+            />
+            <span
+              class="rs rs-br"
+              @pointerdown.stop.prevent="onPanelResizeDown($event, panel, 'xy')"
+            />
+          </template>
         </div>
       </template>
       <span
@@ -124,6 +142,14 @@
           {{ bubbleHit.bubble.speaker }}
         </span>
         <span class="text">{{ bubbleHit.bubble.text }}</span>
+        <!-- 缩放手柄：按住拖动等比缩放气泡 -->
+        <button
+          v-if="editable && selectedBubbleId === bubbleHit.bubble.id"
+          type="button"
+          class="bubble-resize"
+          tabindex="-1"
+          @pointerdown.stop.prevent="onBubbleScaleDown($event, bubbleHit.panel, bubbleHit.bubble)"
+        />
       </div>
     </div>
   </div>
@@ -132,6 +158,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  COMIC_BUBBLE_MAX_SCALE,
+  COMIC_BUBBLE_MIN_SCALE,
+  comicBubblePagePoint,
   comicPanelRects,
   findComicBubbleAtPagePoint,
   findComicCellAtPagePoint,
@@ -170,6 +199,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [hit: ComicPageCanvasHit]
   'move-bubble': [panelId: string, bubbleId: string, pos: { x: number; y: number }]
+  'resize-panel': [panelId: string, span: { colSpan: number; rowSpan: number }]
+  'resize-bubble': [panelId: string, bubbleId: string, scale: number]
   'edit-end': []
   'drop-image': [hit: ComicPageCanvasHit, imageUrl: string]
   'remove-image': [panelId: string]
@@ -236,12 +267,15 @@ function panelStyle(panel: ComicPanel): Record<string, string> {
   if (!rect) return {}
   const w = norm.value.width || 1
   const h = norm.value.height || 1
-  return {
+  const style: Record<string, string> = {
     left: `${(rect.x / w) * 100}%`,
     top: `${(rect.y / h) * 100}%`,
     width: `${(rect.width / w) * 100}%`,
     height: `${(rect.height / h) * 100}%`
   }
+  const bg = panel.backgroundColor?.trim()
+  if (bg) style.background = bg
+  return style
 }
 
 function cellStyle(cell: { row: number; col: number }): Record<string, string> {
@@ -267,7 +301,8 @@ function bubbleStyle(panel: ComicPanel, bubble: ComicSpeechBubble): Record<strin
   const y = rect.y + bubble.y * rect.height
   return {
     left: `${(x / w) * 100}%`,
-    top: `${(y / h) * 100}%`
+    top: `${(y / h) * 100}%`,
+    transform: `translate(-50%, -50%) scale(${bubble.scale ?? 1})`
   }
 }
 
@@ -290,22 +325,62 @@ function clientToPage(e: { clientX: number; clientY: number }): { x: number; y: 
   }
 }
 
-const drag = ref<{ panelId: string; bubbleId: string } | null>(null)
+/** 拖拽会话：拖动气泡 / 分镜格跨格调整 / 气泡缩放 */
+type CanvasDrag =
+  | { kind: 'bubble'; panelId: string; bubbleId: string }
+  | {
+      kind: 'panel-resize'
+      panelId: string
+      axis: 'x' | 'y' | 'xy'
+      startX: number
+      startY: number
+      /** 按下时的原始矩形快照（跨度换算基准） */
+      rect: { x: number; y: number; width: number; height: number }
+      col0: number
+      row0: number
+      lastColSpan: number
+      lastRowSpan: number
+    }
+  | {
+      kind: 'bubble-scale'
+      panelId: string
+      bubbleId: string
+      anchorX: number
+      anchorY: number
+      startDist: number
+      startScale: number
+      lastScale: number
+    }
+
+const drag = ref<CanvasDrag | null>(null)
+
+/** 拖动中分镜格的连续跟随尺寸（页面像素）；松手后清除并回到吸附跨度 */
+const panelResize = ref<{ panelId: string; width: number; height: number } | null>(null)
+
+function panelResizeOverlay(panel: ComicPanel): Record<string, string> {
+  const st = panelResize.value
+  if (!st || st.panelId !== panel.id) return {}
+  return {
+    width: `${(st.width / (norm.value.width || 1)) * 100}%`,
+    height: `${(st.height / (norm.value.height || 1)) * 100}%`
+  }
+}
 
 function onPagePointerDown(e: PointerEvent): void {
   if (!props.editable || e.button !== 0) return
   const pt = clientToPage(e)
   if (!pt) return
-  const bubble = findComicBubbleAtPagePoint(norm.value, pt.x, pt.y)
-  if (bubble) {
-    emit('select', { kind: 'bubble', panelId: bubble.panelId, bubbleId: bubble.bubbleId })
-    drag.value = bubble
-    pageEl.value?.setPointerCapture(e.pointerId)
-    e.preventDefault()
-    return
-  }
   const panel = findComicPanelAtPagePoint(norm.value, pt.x, pt.y)
   if (panel) {
+    // 气泡热区（锚点半径 48px）只有落在所属分镜格内部才优先，避免吞掉格间空白的点击
+    const bubble = findComicBubbleAtPagePoint(norm.value, pt.x, pt.y)
+    if (bubble && bubble.panelId === panel.id) {
+      emit('select', { kind: 'bubble', panelId: bubble.panelId, bubbleId: bubble.bubbleId })
+      drag.value = { kind: 'bubble', panelId: bubble.panelId, bubbleId: bubble.bubbleId }
+      pageEl.value?.setPointerCapture(e.pointerId)
+      e.preventDefault()
+      return
+    }
     emit('select', { kind: 'panel', panelId: panel.id })
     return
   }
@@ -318,18 +393,129 @@ function onPagePointerDown(e: PointerEvent): void {
 }
 
 function onPagePointerMove(e: PointerEvent): void {
-  if (!drag.value) return
+  const st = drag.value
+  if (!st) return
   const pt = clientToPage(e)
   if (!pt) return
-  const pos = pagePointToBubbleNorm(norm.value, drag.value.panelId, pt.x, pt.y)
-  if (!pos) return
-  emit('move-bubble', drag.value.panelId, drag.value.bubbleId, pos)
+
+  if (st.kind === 'bubble') {
+    const pos = pagePointToBubbleNorm(norm.value, st.panelId, pt.x, pt.y)
+    if (pos) emit('move-bubble', st.panelId, st.bubbleId, pos)
+    return
+  }
+
+  if (st.kind === 'panel-resize') {
+    const n = norm.value
+    const cellW = Math.max(1, (n.width - (n.columns - 1) * n.gutter) / n.columns)
+    const cellH = Math.max(1, (n.height - (n.rows - 1) * n.gutter) / n.rows)
+    // 先更新连续跟手预览（不吸附，随时可见变化）
+    const colsLeft = n.columns - st.col0
+    const rowsLeft = n.rows - st.row0
+    const maxW = colsLeft * cellW + (colsLeft - 1) * n.gutter
+    const maxH = rowsLeft * cellH + (rowsLeft - 1) * n.gutter
+    const dragW =
+      st.axis === 'y'
+        ? st.rect.width
+        : Math.min(maxW, Math.max(cellW * 0.5, st.rect.width + (pt.x - st.startX)))
+    const dragH =
+      st.axis === 'x'
+        ? st.rect.height
+        : Math.min(maxH, Math.max(cellH * 0.5, st.rect.height + (pt.y - st.startY)))
+    panelResize.value = { panelId: st.panelId, width: dragW, height: dragH }
+
+    // 跨度按单格节距吸附（含格间距）：span = round((原宽 + 拖动量 + gutter) / 节距)
+    const pitchW = cellW + n.gutter
+    const pitchH = cellH + n.gutter
+    let colSpan = st.lastColSpan
+    let rowSpan = st.lastRowSpan
+    if (st.axis !== 'y') {
+      colSpan = Math.min(
+        n.columns - st.col0,
+        Math.max(
+          1,
+          Math.round((st.rect.width + (pt.x - st.startX) + n.gutter) / pitchW)
+        )
+      )
+    }
+    if (st.axis !== 'x') {
+      rowSpan = Math.min(
+        n.rows - st.row0,
+        Math.max(
+          1,
+          Math.round((st.rect.height + (pt.y - st.startY) + n.gutter) / pitchH)
+        )
+      )
+    }
+    if (colSpan !== st.lastColSpan || rowSpan !== st.lastRowSpan) {
+      st.lastColSpan = colSpan
+      st.lastRowSpan = rowSpan
+      emit('resize-panel', st.panelId, { colSpan, rowSpan })
+    }
+    return
+  }
+
+  // bubble-scale：按距锚点距离的比例等比缩放
+  const dist = Math.max(8, Math.hypot(pt.x - st.anchorX, pt.y - st.anchorY))
+  const scale = Math.min(
+    COMIC_BUBBLE_MAX_SCALE,
+    Math.max(COMIC_BUBBLE_MIN_SCALE, (st.startScale * dist) / st.startDist)
+  )
+  const snapped = Math.round(scale * 100) / 100
+  if (snapped !== st.lastScale) {
+    st.lastScale = snapped
+    emit('resize-bubble', st.panelId, st.bubbleId, snapped)
+  }
 }
 
 function onPagePointerUp(): void {
   const wasDragging = !!drag.value
   drag.value = null
+  panelResize.value = null
   if (wasDragging) emit('edit-end')
+}
+
+/** 分镜格跨格调整：按住边缘/角落手柄拖动 */
+function onPanelResizeDown(e: PointerEvent, panel: ComicPanel, axis: 'x' | 'y' | 'xy'): void {
+  const rect = rects.value.get(panel.id)
+  const pt = clientToPage(e)
+  if (!rect || !pt) return
+  emit('select', { kind: 'panel', panelId: panel.id })
+  drag.value = {
+    kind: 'panel-resize',
+    panelId: panel.id,
+    axis,
+    startX: pt.x,
+    startY: pt.y,
+    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    col0: panel.col,
+    row0: panel.row,
+    lastColSpan: panel.colSpan,
+    lastRowSpan: panel.rowSpan
+  }
+  pageEl.value?.setPointerCapture(e.pointerId)
+}
+
+/** 气泡缩放：按距锚点距离等比缩放 */
+function onBubbleScaleDown(
+  e: PointerEvent,
+  panel: ComicPanel,
+  bubble: ComicSpeechBubble
+): void {
+  const anchor = comicBubblePagePoint(norm.value, panel.id, bubble.id)
+  const pt = clientToPage(e)
+  if (!anchor || !pt) return
+  emit('select', { kind: 'bubble', panelId: panel.id, bubbleId: bubble.id })
+  drag.value = {
+    kind: 'bubble-scale',
+    panelId: panel.id,
+    bubbleId: bubble.id,
+    anchorX: anchor.x,
+    anchorY: anchor.y,
+    startDist: Math.max(8, Math.hypot(pt.x - anchor.x, pt.y - anchor.y)),
+    startScale: bubble.scale ?? 1,
+    lastScale: bubble.scale ?? 1
+  }
+  pageEl.value?.setPointerCapture(e.pointerId)
 }
 
 /** 资产库拖入高亮目标：panel:<id> / cell:<row>,<col> */
@@ -495,7 +681,7 @@ defineExpose({ exportPng })
   position: relative;
   width: 100%;
   overflow: hidden;
-  background: #fdfdfd;
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
   touch-action: none;
@@ -559,6 +745,57 @@ defineExpose({ exportPng })
 }
 .panel-remove-img:hover {
   background: var(--danger, #e05a5a);
+}
+/* 分镜格大小调整手柄：右缘(列跨)/下缘(行跨)/右下角(联动) */
+.rs {
+  position: absolute;
+  z-index: 6;
+  background: var(--accent);
+  border: 1px solid rgb(255 255 255 / 0.9);
+  touch-action: none;
+}
+.rs-r {
+  right: 0;
+  top: 50%;
+  width: 7px;
+  height: 26px;
+  transform: translateY(-50%);
+  border-radius: 3px 0 0 3px;
+  cursor: ew-resize;
+}
+.rs-b {
+  bottom: 0;
+  left: 50%;
+  width: 26px;
+  height: 7px;
+  transform: translateX(-50%);
+  border-radius: 0 0 3px 3px;
+  cursor: ns-resize;
+}
+.rs-br {
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px 0 3px 0;
+  cursor: nwse-resize;
+}
+/* 气泡缩放手柄 */
+.bubble-resize {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  cursor: nwse-resize;
+  pointer-events: auto;
 }
 .panel-img {
   display: block;

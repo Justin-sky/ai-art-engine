@@ -3,6 +3,8 @@
  * 返回 PNG data URL。只做绘制；布局几何复用 @shared/graph/comicPage 的 comicPanelRects / comicBubblePagePoint。
  */
 import {
+  COMIC_BUBBLE_MAX_SCALE,
+  COMIC_BUBBLE_MIN_SCALE,
   comicBubblePagePoint,
   comicPanelRects,
   normalizeComicPage,
@@ -14,6 +16,7 @@ export interface ComicPageComposeOptions {
   page: ComicPage
   /** imageUrl → 可加载图片 URL（data:/http(s)/file）；缺省不加载任何图片（画占位） */
   resolveImage?: (imageUrl: string) => Promise<string>
+  /** 页面底色兜底参数；缺省跟随 page.backgroundColor，页面也未设置时为透明 */
   background?: string
   panelFill?: string
   borderColor?: string
@@ -126,7 +129,9 @@ export async function composeComicPageImage(
   input: ComicPageComposeOptions
 ): Promise<ComicPageComposeResult> {
   const page = normalizeComicPage(input.page)
-  const background = input.background ?? '#ffffff'
+  // 页面自带的背景色优先；未设置时回退调用方参数，最后透明底
+  const background =
+    page.backgroundColor?.trim() || input.background?.trim() || 'transparent'
   const panelFill = input.panelFill ?? '#f2f2f2'
   const borderColor = input.borderColor ?? '#d8d8d8'
   const bubbleFill = input.bubbleFill ?? '#ffffff'
@@ -140,8 +145,13 @@ export async function composeComicPageImage(
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('COMIC_PAGE_CANVAS_UNAVAILABLE')
 
-  ctx.fillStyle = background
-  ctx.fillRect(0, 0, width, height)
+  // 默认透明底：不铺白底，只清空画布，页面留白处导出后为 alpha=0
+  if (background === 'transparent') {
+    ctx.clearRect(0, 0, width, height)
+  } else {
+    ctx.fillStyle = background
+    ctx.fillRect(0, 0, width, height)
+  }
 
   const rects = comicPanelRects(page)
 
@@ -168,16 +178,15 @@ export async function composeComicPageImage(
   const padX = Math.round(fontPx * 0.7)
   const padY = Math.round(fontPx * 0.5)
   const maxBubbleWidth = Math.max(60, width * 0.3)
-  const textInner = maxBubbleWidth - padX * 2
 
   for (const panel of page.panels) {
     const rect = rects.get(panel.id)
     if (!rect) continue
 
-    // 面板：填充 + 描边 + 图片 / 占位标题
+    // 面板：填充 + 描边 + 图片 / 占位标题（未设置时用默认占位灰）
     ctx.save()
     pathRoundRect(ctx, rect.x, rect.y, rect.width, rect.height, 6)
-    ctx.fillStyle = panelFill
+    ctx.fillStyle = panel.backgroundColor?.trim() || panelFill
     ctx.fill()
     ctx.strokeStyle = borderColor
     ctx.lineWidth = 1
@@ -195,49 +204,61 @@ export async function composeComicPageImage(
     }
     ctx.restore()
 
-    // 气泡
+    // 气泡（scale 对字号、内边距、宽度上限整体等比缩放）
     for (const bubble of panel.bubbles) {
       const anchor = comicBubblePagePoint(page, panel.id, bubble.id)
       if (!anchor) continue
 
-      ctx.font = `${fontPx}px sans-serif`
-      const lines = wrapText(ctx, bubble.text, textInner)
+      const s = Math.min(
+        COMIC_BUBBLE_MAX_SCALE,
+        Math.max(COMIC_BUBBLE_MIN_SCALE, bubble.scale ?? 1)
+      )
+      const bFontPx = fontPx * s
+      const bSpeakerPx = speakerPx * s
+      const bLineHeight = lineHeight * s
+      const bPadX = padX * s
+      const bPadY = padY * s
+      const bMaxWidth = maxBubbleWidth * s
+      const bInner = bMaxWidth - bPadX * 2
+
+      ctx.font = `${bFontPx}px sans-serif`
+      const lines = wrapText(ctx, bubble.text, bInner)
       const speaker = bubble.speaker?.trim() || ''
-      ctx.font = `600 ${speakerPx}px sans-serif`
-      const speakerText = speaker ? truncateToFit(ctx, speaker, textInner) : ''
-      ctx.font = `${fontPx}px sans-serif`
+      ctx.font = `600 ${bSpeakerPx}px sans-serif`
+      const speakerText = speaker ? truncateToFit(ctx, speaker, bInner) : ''
+      ctx.font = `${bFontPx}px sans-serif`
       const lineW = Math.max(0, ...lines.map((line) => ctx.measureText(line).width))
       const speakerW = speakerText ? ctx.measureText(speakerText).width : 0
-      const bodyW = Math.min(maxBubbleWidth, Math.max(lineW, speakerW) + padX * 2)
-      const speakerH = speakerText ? speakerPx + 2 : 0
-      const bodyH = padY * 2 + speakerH + lines.length * lineHeight
+      const bodyW = Math.min(bMaxWidth, Math.max(lineW, speakerW) + bPadX * 2)
+      const speakerH = speakerText ? bSpeakerPx + 2 : 0
+      const bodyH = bPadY * 2 + speakerH + lines.length * bLineHeight
 
       const x = anchor.x - bodyW / 2
       const y = anchor.y - bodyH / 2
 
       // 主体（先画，尾巴再覆盖接缝，形成连续气泡）
-      pathRoundRect(ctx, x, y, bodyW, bodyH, Math.round(fontPx * 0.4))
+      pathRoundRect(ctx, x, y, bodyW, bodyH, Math.round(bFontPx * 0.4))
       ctx.fillStyle = bubbleFill
       ctx.fill()
       ctx.strokeStyle = borderColor
       ctx.lineWidth = 1
       ctx.stroke()
 
-      drawBubbleTail(ctx, x, y, bodyW, bodyH, bubble.tail, Math.max(6, Math.round(fontPx * 0.45)), bubbleFill)
+      drawBubbleTail(ctx, x, y, bodyW, bodyH, bubble.tail, Math.max(6, Math.round(bFontPx * 0.45)), bubbleFill)
 
       ctx.fillStyle = textColor
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      let cy = y + padY
+      let cy = y + bPadY
       if (speakerText) {
-        ctx.font = `600 ${speakerPx}px sans-serif`
-        ctx.fillText(speakerText, x + padX, cy)
+        ctx.font = `600 ${bSpeakerPx}px sans-serif`
+        ctx.fillText(speakerText, x + bPadX, cy)
         cy += speakerH
       }
-      ctx.font = `${fontPx}px sans-serif`
+      ctx.font = `${bFontPx}px sans-serif`
       for (const line of lines) {
-        ctx.fillText(line, x + padX, cy)
-        cy += lineHeight
+        ctx.fillText(line, x + bPadX, cy)
+        cy += bLineHeight
       }
     }
   }

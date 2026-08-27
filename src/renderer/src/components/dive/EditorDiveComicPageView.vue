@@ -3,6 +3,13 @@
     <header class="toolbar">
       <button
         type="button"
+        :disabled="showGlobal"
+        @click="showGlobalProps"
+      >
+        {{ t('graph.inspector.comicPage.globalSection') }}
+      </button>
+      <button
+        type="button"
         @click="addEmptyPanel"
       >
         {{ t('graph.inspector.comicPage.addPanel') }}
@@ -57,71 +64,97 @@
         :selected-bubble-id="selectedBubbleId"
         @select="onSelect"
         @move-bubble="onMoveBubble"
+        @resize-panel="onResizePanel"
+        @resize-bubble="onResizeBubble"
         @edit-end="persist"
         @drop-image="onDropImage"
         @remove-image="onRemoveImage"
       />
 
       <aside class="side">
-        <label>
-          {{ t('graph.inspector.comicPage.pageTitle') }}
-          <input
-            :value="page.title ?? ''"
-            @change="onMeta('title', ($event.target as HTMLInputElement).value)"
-          >
-        </label>
-        <div class="row">
+        <!-- 未选中分格/气泡（即点击了画布空白处）时显示页面全局属性 -->
+        <template v-if="showGlobal">
+          <h3>{{ t('graph.inspector.comicPage.globalSection') }}</h3>
           <label>
-            {{ t('graph.inspector.comicPage.columns') }}
+            {{ t('graph.inspector.comicPage.pageTitle') }}
             <input
-              type="number"
-              min="1"
-              max="12"
-              :value="page.columns"
-              @change="onMetaNumber('columns', $event)"
+              :value="page.title ?? ''"
+              @change="onPageTitle(($event.target as HTMLInputElement).value)"
             >
           </label>
+          <div class="row">
+            <label>
+              {{ t('graph.inspector.comicPage.columns') }}
+              <input
+                type="number"
+                min="1"
+                max="12"
+                :value="page.columns"
+                @change="onMetaNumber('columns', $event)"
+              >
+            </label>
+            <label>
+              {{ t('graph.inspector.comicPage.rows') }}
+              <input
+                type="number"
+                min="1"
+                max="12"
+                :value="page.rows"
+                @change="onMetaNumber('rows', $event)"
+              >
+            </label>
+          </div>
           <label>
-            {{ t('graph.inspector.comicPage.rows') }}
+            {{ t('graph.inspector.comicPage.gutter') }}
             <input
               type="number"
-              min="1"
-              max="12"
-              :value="page.rows"
-              @change="onMetaNumber('rows', $event)"
+              min="0"
+              :value="page.gutter"
+              @change="onMetaNumber('gutter', $event)"
             >
           </label>
-        </div>
-        <label>
-          {{ t('graph.inspector.comicPage.gutter') }}
-          <input
-            type="number"
-            min="0"
-            :value="page.gutter"
-            @change="onMetaNumber('gutter', $event)"
-          >
-        </label>
-        <div class="row">
+          <div class="row">
+            <label>
+              {{ t('graph.inspector.comicPage.width') }}
+              <input
+                type="number"
+                min="1"
+                :value="page.width"
+                @change="onMetaNumber('width', $event)"
+              >
+            </label>
+            <label>
+              {{ t('graph.inspector.comicPage.height') }}
+              <input
+                type="number"
+                min="1"
+                :value="page.height"
+                @change="onMetaNumber('height', $event)"
+              >
+            </label>
+          </div>
           <label>
-            {{ t('graph.inspector.comicPage.width') }}
+            {{ t('graph.inspector.comicPage.bgColor') }}
             <input
-              type="number"
-              min="1"
-              :value="page.width"
-              @change="onMetaNumber('width', $event)"
+              type="color"
+              class="color-input"
+              :title="page.backgroundColor?.trim() || t('graph.inspector.comicPage.bgTransparent')"
+              :value="pageBgHex"
+              @input="onBackgroundColor(($event.target as HTMLInputElement).value, false)"
+              @change="onBackgroundColor(($event.target as HTMLInputElement).value, true)"
             >
           </label>
-          <label>
-            {{ t('graph.inspector.comicPage.height') }}
-            <input
-              type="number"
-              min="1"
-              :value="page.height"
-              @change="onMetaNumber('height', $event)"
+          <div class="row">
+            <button
+              type="button"
+              :disabled="!page.backgroundColor?.trim()"
+              @click="onBackgroundColor('', true)"
             >
-          </label>
-        </div>
-        <p class="hint">{{ t('graph.inspector.comicPage.gridHint') }}</p>
+              {{ t('graph.inspector.comicPage.bgTransparent') }}
+            </button>
+          </div>
+          <p class="hint">{{ t('graph.inspector.comicPage.gridHint') }}</p>
+        </template>
 
         <template v-if="selectedPanel">
           <h3>{{ t('graph.inspector.comicPage.panelSection') }}</h3>
@@ -171,6 +204,29 @@
               @click="patchSelectedPanel({ imageUrl: '' })"
             >
               {{ t('graph.inspector.comicPage.clearImage') }}
+            </button>
+          </div>
+          <label>
+            {{ t('graph.inspector.comicPage.bgColor') }}
+            <input
+              type="color"
+              class="color-input"
+              :title="
+                selectedPanel.backgroundColor?.trim() ||
+                t('graph.inspector.comicPage.bgTransparent')
+              "
+              :value="panelBgHex"
+              @input="onPanelBackgroundColor(($event.target as HTMLInputElement).value, false)"
+              @change="onPanelBackgroundColor(($event.target as HTMLInputElement).value, true)"
+            >
+          </label>
+          <div class="row">
+            <button
+              type="button"
+              :disabled="!selectedPanel.backgroundColor?.trim()"
+              @click="onPanelBackgroundColor('', true)"
+            >
+              {{ t('graph.inspector.comicPage.bgTransparent') }}
             </button>
           </div>
           <div
@@ -279,6 +335,17 @@ const selectedBubble = computed(() => {
   return selectedPanel.value.bubbles.find((item) => item.id === selectedBubbleId.value) ?? null
 })
 
+/** 点击画布空白处（无选中分格/气泡）→ 显示页面全局属性 */
+const showGlobal = computed(() => !selectedPanel.value && !selectedBubble.value)
+
+/** 原生 color 控件只认 #rrggbb；未设置/透明/非六位十六进制时回退占位色 */
+function cssHexOrFallback(raw: string | null | undefined): string {
+  const value = raw?.trim() ?? ''
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : '#ffffff'
+}
+const pageBgHex = computed(() => cssHexOrFallback(page.value.backgroundColor))
+const panelBgHex = computed(() => cssHexOrFallback(selectedPanel.value?.backgroundColor))
+
 const incomingImages = computed(() => {
   void graphEditorHosts.revision.value
   const edges = [
@@ -350,8 +417,17 @@ function onClose(): void {
   editorDive.popTo(idx < 0 ? -1 : idx - 1)
 }
 
-function onMeta(key: 'title', value: string): void {
-  commit(withComicPageLayout(page.value, { [key]: value }))
+function onPageTitle(value: string): void {
+  commit(withComicPageLayout(page.value, { title: value }))
+}
+
+/** 取色实时拖动（persistNow=false）只刷预览不落盘，关闭/确认时才持久化 */
+function onBackgroundColor(value: string, persistNow: boolean): void {
+  commit(withComicPageLayout(page.value, { backgroundColor: value }), { persist: persistNow })
+}
+
+function onPanelBackgroundColor(value: string, persistNow: boolean): void {
+  patchSelectedPanel({ backgroundColor: value }, { persist: persistNow })
 }
 
 function onMetaNumber(
@@ -367,6 +443,12 @@ function addEmptyPanel(): void {
   const empty = findEmptyComicCell(page.value)
   if (!empty) return
   addPanelAtEmpty(empty.row, empty.col)
+}
+
+/** 回到页面全局属性（清空选中） */
+function showGlobalProps(): void {
+  selectedPanelId.value = null
+  selectedBubbleId.value = null
 }
 
 function addPanelAtEmpty(row: number, col: number, imageUrl?: string): void {
@@ -426,10 +508,10 @@ function removeSelectedBubble(): void {
   selectedBubbleId.value = null
 }
 
-function patchSelectedPanel(patch: Partial<ComicPanel>): void {
+function patchSelectedPanel(patch: Partial<ComicPanel>, options?: { persist?: boolean }): void {
   const current = selectedPanel.value
   if (!current) return
-  commit(upsertComicPanel(page.value, { ...current, ...patch }))
+  commit(upsertComicPanel(page.value, { ...current, ...patch }), options)
 }
 
 function onSpan(key: 'colSpan' | 'rowSpan', event: Event): void {
@@ -449,6 +531,22 @@ function onMoveBubble(panelId: string, bubbleId: string, pos: { x: number; y: nu
   commit(updateComicBubble(page.value, panelId, bubbleId, pos), { persist: false })
 }
 
+/** 分镜格跨格调整（拖动手柄过程中只刷预览，edit-end 统一持久化） */
+function onResizePanel(panelId: string, span: { colSpan: number; rowSpan: number }): void {
+  const panel = page.value.panels.find((item) => item.id === panelId)
+  if (!panel) return
+  if (panel.colSpan === span.colSpan && panel.rowSpan === span.rowSpan) return
+  commit(upsertComicPanel(page.value, { ...panel, ...span }), { persist: false })
+}
+
+/** 气泡缩放（拖动手柄过程中只刷预览，edit-end 统一持久化） */
+function onResizeBubble(panelId: string, bubbleId: string, scale: number): void {
+  const panel = page.value.panels.find((item) => item.id === panelId)
+  const bubble = panel?.bubbles.find((item) => item.id === bubbleId)
+  if (!bubble || (bubble.scale ?? 1) === scale) return
+  commit(updateComicBubble(page.value, panelId, bubbleId, { scale }), { persist: false })
+}
+
 function onSelect(hit: ComicPageCanvasHit): void {
   if (hit.kind === 'bubble') {
     selectedPanelId.value = hit.panelId
@@ -460,11 +558,7 @@ function onSelect(hit: ComicPageCanvasHit): void {
     selectedBubbleId.value = null
     return
   }
-  if (hit.kind === 'cell') {
-    const occupied = comicOccupiedCellKeys(page.value)
-    if (!occupied.has(`${hit.row},${hit.col}`)) addPanelAtEmpty(hit.row, hit.col)
-    return
-  }
+  // 点空白处/空格：不再自动建格，统一清选并显示全局属性（建格走工具栏或拖图入空格）
   selectedPanelId.value = null
   selectedBubbleId.value = null
 }
@@ -569,6 +663,12 @@ async function pickLocalImage(): Promise<void> {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.side input.color-input {
+  box-sizing: border-box;
+  height: 30px;
+  padding: 2px;
+  cursor: pointer;
 }
 .hint {
   margin: 0;
