@@ -686,8 +686,8 @@ export interface GenerateTextResult {
 
 /** 图片生成参考图元信息：用于执行日志展示来源与落盘路径，不落 data URL */
 export interface GraphImageReferenceMeta {
-  /** 来源：风格库 / 端口参考图 */
-  source: 'style' | 'port'
+  /** 来源：风格库 / 端口参考图 / 角色一致性 */
+  source: 'style' | 'port' | 'character'
   /** 端口参考图落盘相对路径（风格库条目通常无工程相对路径） */
   relativePath?: string
   /** 风格库条目名 / 自定义上传图名 */

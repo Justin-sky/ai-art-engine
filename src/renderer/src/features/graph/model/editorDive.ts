@@ -26,6 +26,7 @@ export type EditorDiveViewId =
   | 'node.selectVoice'
   | 'node.selectText'
   | 'node.multiAngle'
+  | 'node.adVariants'
   | 'node.lighting'
   | 'node.framePull'
   | 'node.reshoot'
@@ -39,6 +40,7 @@ export type EditorDiveViewId =
   | 'node.gridSplit'
   | 'node.layerSplit'
   | 'node.instruction'
+  | 'comic.page'
   | 'media.preview'
 
 export type EditorDiveNodeToolViewId = Extract<
@@ -50,6 +52,7 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.selectVoice'
   | 'node.selectText'
   | 'node.multiAngle'
+  | 'node.adVariants'
   | 'node.lighting'
   | 'node.framePull'
   | 'node.reshoot'
@@ -83,6 +86,7 @@ export type EditorDiveViewMeta =
       processingNodeId?: string
     }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
+  | { viewId: 'comic.page'; hostId: string; nodeId: string }
   | {
       viewId: EditorDiveNodeToolViewId
       hostId: string
@@ -164,6 +168,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'ui.split':
       return `${root}/view:ui.split:${meta.hostId}:${meta.nodeId}`
+    case 'comic.page':
+      return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
     case 'media.preview':
       return `${root}/view:media.preview:${meta.mediaKind}:${meta.relativePath || meta.url}`
     default:

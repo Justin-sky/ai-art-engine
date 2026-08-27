@@ -1106,6 +1106,7 @@ import { directorStageSceneKey } from '../features/director/stageSceneKey'
 import {
   buildSceneBlockoutSystemPrompt,
 	  buildSceneBlockoutUserPrompt,
+	  tryEnrichWithDepthMap,
 	  parseAiSceneBlockoutCall,
 	  fixCommonBlockoutMistakes,
 	  resolveBlockoutWorldPosition,
@@ -1589,17 +1590,6 @@ async function onGenerateBlockout(payload: {
           aspectRatio,
           eyeHeight
         })
-  const prompt = buildSceneBlockoutUserPrompt({
-    instruction: payload.instruction,
-    imageCount: images.length,
-    mode: layoutMode,
-    panoramaRadius,
-    panoramaYawDeg,
-    unwrapped: prepared.unwrapped,
-    fovDeg,
-    aspectRatio,
-    eyeHeight
-  })
 
   const runId = `ai-blockout-${crypto.randomUUID()}`
   runLogs.beginRun({
@@ -1613,6 +1603,39 @@ async function onGenerateBlockout(payload: {
 
   blockoutGenerating.value = true
   blockoutError.value = ''
+
+  // 深度预调用（best-effort，失败静默降级，绝不阻塞白模）
+  const depth = await tryEnrichWithDepthMap({
+    images,
+    providerInstanceId: payload.providerInstanceId,
+    model: payload.model,
+    locale: locale.value
+  })
+  if (depth.depthDescription) {
+    runLogs.append({
+      runId,
+      level: 'info',
+      kind: 'run_message',
+      mode: 'task',
+      nodeId: BLOCKOUT_LOG_NODE_ID,
+      nodeTitle: t('director.stage.blockoutLogTitle'),
+      message: depth.depthDescription,
+      status: 'done'
+    })
+  }
+
+  const prompt = buildSceneBlockoutUserPrompt({
+    instruction: payload.instruction,
+    imageCount: images.length,
+    mode: layoutMode,
+    panoramaRadius,
+    panoramaYawDeg,
+    unwrapped: prepared.unwrapped,
+    fovDeg,
+    aspectRatio,
+    eyeHeight,
+    depthDescription: depth.depthDescription ?? undefined
+  })
 
   const apiStarted = Date.now()
   try {

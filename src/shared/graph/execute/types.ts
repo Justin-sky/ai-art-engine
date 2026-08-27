@@ -333,6 +333,10 @@ export interface NodeExecuteContext {
   resolveImageUrls?: (
     items: Array<{ dataUrl?: string; relativePath?: string }>
   ) => Promise<string[]>
+  /** 将图执行输出的视频解析为「首帧」图片 data URL（供视觉质检/文本模型看图） */
+  resolveVideoFirstFrameImageUrls?: (
+    items: Array<{ dataUrl?: string; relativePath?: string }>
+  ) => Promise<string[]>
   /**
    * 将节点风格参考图解析为可供 API 使用的 data URL / http(s)。
    * 未注入时仅使用条目内已有的 dataUrl。
@@ -415,6 +419,11 @@ export interface NodeExecuteContext {
   composeImageLayerStack?: (input: {
     state: import('../imageLayerSplit').ImageLayerSplitState
     layerUrls: Record<string, string>
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */
+  composeComicPageImage?: (input: {
+    page: import('../comicPage').ComicPage
+    resolveImage?: (imageUrl: string) => Promise<string>
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 图片生成后按目标宽高比居中裁正（宫格画布保证每格比例） */
   normalizeImageAspectRatio?: (input: {
@@ -574,6 +583,7 @@ export interface GraphRunOptions {
   resolveHostAssetId?: NodeExecuteContext['resolveHostAssetId']
   resolveAssetText?: NodeExecuteContext['resolveAssetText']
   resolveImageUrls?: NodeExecuteContext['resolveImageUrls']
+  resolveVideoFirstFrameImageUrls?: NodeExecuteContext['resolveVideoFirstFrameImageUrls']
   resolveStyleImageUrls?: NodeExecuteContext['resolveStyleImageUrls']
   resolveProjectStyleImages?: NodeExecuteContext['resolveProjectStyleImages']
   resolveProjectGenerateSeed?: NodeExecuteContext['resolveProjectGenerateSeed']
@@ -587,6 +597,7 @@ export interface GraphRunOptions {
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
+  composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   resolveBeatUnit?: NodeExecuteContext['resolveBeatUnit']
   collectWorldElementOutputs?: NodeExecuteContext['collectWorldElementOutputs']

@@ -135,6 +135,9 @@ export const IpcChannels = {
   /** 主进程推送：成片导出进度 0~1 */
   TIMELINE_EXPORT_PROGRESS: 'timeline:export-progress',
 
+  /** 广告变体：导出入选单元格的生成图到用户选择目录 */
+  AD_VARIANT_EXPORT: 'ad-variant:export',
+
   /** 主进程推送：资产已写入（多窗口同步） */
   ASSET_UPDATED: 'asset:updated'
 } as const
@@ -395,6 +398,25 @@ export interface SaveBinaryFilesToDirectoryResult {
   written: number
 }
 
+/** 广告变体导出：单个待复制文件（工程内相对路径 → 目标文件名） */
+export interface ExportAdVariantFileInput {
+  relativePath: string
+  fileName: string
+}
+
+export interface ExportAdVariantsInput {
+  items: ExportAdVariantFileInput[]
+}
+
+export interface ExportAdVariantsResult {
+  ok: boolean
+  directory?: string
+  copied?: number
+  skipped?: number
+  canceled?: boolean
+  error?: string
+}
+
 export interface StudioApi {
   createProject: (input: CreateProjectInput) => Promise<OpenProjectResult>
   openProject: (projectJsonPath: string) => Promise<OpenProjectResult>
@@ -522,6 +544,9 @@ export interface StudioApi {
 
   /** 导出成片时间线为 MP4（需本机 ffmpeg） */
   exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
+
+  /** 导出入选广告变体的生成图到用户选择目录 */
+  exportAdVariants: (input: ExportAdVariantsInput) => Promise<ExportAdVariantsResult>
 
   /** 订阅成片导出进度（0~1） */
   onTimelineExportProgress: (callback: (payload: { progress: number }) => void) => () => void

@@ -469,6 +469,35 @@ export function resolveLightingSystemPrompt(raw: string | undefined, locale?: st
   return resolveOrDefault(raw, locale, defaultLightingSystemPrompt)
 }
 
+// ——— 广告变体 ———
+
+export const DEFAULT_AD_VARIANT_SYSTEM_PROMPT_EN = `You are a professional advertising creative director and product-image specialist for AIArtEngine.
+Generate commercial ad visuals for the given product across multiple variant cells.
+Keep the product identity, brand look, and overall visual quality consistent across all variants; only the specified dimension (camera angle, scene, tone, copy hook, style, etc.) changes per cell.
+Render the product accurately, with clean composition, correct lighting, and no deformation, garbled text, watermark, or extra products.
+Prefer high-end, platform-ready advertising quality with the product as the clear focal point and a fitting background.`
+
+export const DEFAULT_AD_VARIANT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的专业广告创意总监与产品图专家。
+针对给定产品，批量生成商业广告画面，覆盖多个变体单元格。
+所有变体之间须保持产品身份、品牌观感与整体画质一致，仅按每个单元格指定的维度（机位角度、场景、色调、文案钩子、风格等）发生变化。
+产品须准确还原，构图干净、光影正确，不得出现变形、乱码文字、水印或多余产品。
+优先输出适合投放的高品质广告画面，产品为视觉焦点，背景配合得当。`
+
+export function defaultAdVariantSystemPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_AD_VARIANT_SYSTEM_PROMPT_EN,
+    DEFAULT_AD_VARIANT_SYSTEM_PROMPT_ZH
+  )
+}
+
+export function resolveAdVariantSystemPrompt(
+  raw: string | undefined,
+  locale?: string
+): string {
+  return resolveOrDefault(raw, locale, defaultAdVariantSystemPrompt)
+}
+
 // ——— 人像质感精修 ———
 
 export const DEFAULT_PORTRAIT_TEXTURE_SYSTEM_PROMPT_EN = `You are a professional portrait finishing and skin-texture specialist for AIArtEngine.

@@ -48,6 +48,8 @@ export * from './host'
 export * from './generateMedia'
 export * from './generateModel3d'
 export * from './generateText'
+export * from './mediaReview'
+export * from './mediaRework'
 export {
   executeNoteNode,
   executePlayScriptNode,
@@ -55,9 +57,11 @@ export {
   executeBoundaryInputNode,
   executeBoundaryOutputNode
 } from './slots'
+export { executeComicPageNode } from './comicPage'
 export * from './narrative'
 export * from './select'
 export * from './imageEdit'
+export * from './adVariants'
 export * from './anim'
 export {
   executeScreenplayOutputNode,

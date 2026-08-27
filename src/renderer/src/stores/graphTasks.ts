@@ -39,7 +39,8 @@ import { resolveVideoGenerateCapabilitiesForRun } from '../features/graph/model/
 import {
   resolveAssetImageUrl,
   resolveAssetMediaDataUrl,
-  resolveGraphImageUrls
+  resolveGraphImageUrls,
+  resolveVideoFirstFrameImageUrls
 } from '../features/graph/model/resolveGraphImageUrls'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { enrichStyleImagesWithLibraryPrompts } from '../features/stylePresets/defaultLibrary'
@@ -50,6 +51,7 @@ import { composeImageRedrawCanvas } from '../features/graph/model/composeImageRe
 import { composeImageCropCanvas } from '../features/graph/model/composeImageCropCanvas'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
+import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import {
   prepareGraphDocumentForPersist
@@ -1276,6 +1278,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         resolveHostAssetId: () => taskHostAssetId(task.target),
         resolveAssetText,
         resolveImageUrls: resolveGraphImageUrls,
+        resolveVideoFirstFrameImageUrls,
         resolveStyleImageUrls,
         resolveProjectStyleImages: () =>
           normalizeProjectStyleImages(useProjectStore().config?.styleImages),
@@ -1291,6 +1294,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageCropCanvas,
         composeImageGridCell,
         composeImageLayerStack,
+        composeComicPageImage,
         normalizeImageAspectRatio,
         resolveWorldCatalogJson: () => {
           if (task.target.kind !== 'asset') return null

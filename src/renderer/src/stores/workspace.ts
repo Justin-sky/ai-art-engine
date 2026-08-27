@@ -160,6 +160,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return meta.title?.trim() || 'Preview'
       case 'ui.split':
         return String(i18n.global.t('graph.types.ui.split'))
+      case 'comic.page':
+        return String(i18n.global.t('graph.types.comic.page'))
       default:
         return meta.viewId
     }

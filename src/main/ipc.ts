@@ -18,6 +18,7 @@ import type {
   SaveGraphRunMediaInput,
   SaveGraphRunTextInput,
   ExportAssetPackageInput,
+  ExportAdVariantsInput,
   ImportAssetPackageInput,
   WriteAssetTextInput,
   PlanAiWorkflowInput,
@@ -36,6 +37,7 @@ import type {
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
 import { exportScriptTimeline } from './services/timelineExportService'
+import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
@@ -104,6 +106,7 @@ export function registerIpcHandlers(): void {
   })
 
   handle(IpcChannels.TIMELINE_EXPORT, (input: TimelineExportInput) => exportScriptTimeline(input))
+  handle(IpcChannels.AD_VARIANT_EXPORT, (input: ExportAdVariantsInput) => exportAdVariants(input))
 
   handle(IpcChannels.ASSET_LIST, () => projectService.listAssets())
   handle(IpcChannels.ASSET_IMPORT, (input: ImportAssetsInput) =>

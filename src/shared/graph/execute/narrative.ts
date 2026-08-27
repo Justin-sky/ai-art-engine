@@ -24,6 +24,7 @@ import {
   serializeEpisodeAgentState
 } from '../episodeAgentState'
 import { pickEpisodeAgentPrompt, resolveEpisodeDirectorReviewPack } from '../episodeAgentPrompts'
+import { parseAgentVerdict } from '../agentPrompts'
 import {
   parseEpisodeBeatBreakdown,
   selectEpisodeAnchor,
@@ -208,37 +209,7 @@ export async function executePromptOptimizeNode(
 export function parseEpisodeDirectorVerdict(
   text: string
 ): { result: 'PASS' | 'FAIL'; reason: string } | null {
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index]!.trim()
-    const match = /^##\s*结论\s*[:：]\s*(PASS|FAIL)\b/i.exec(line)
-    if (!match) continue
-    const result = match[1]!.toUpperCase() === 'PASS' ? 'PASS' : 'FAIL'
-    let reason = ''
-    if (result === 'FAIL') {
-      const normalized = line.replace(/（/g, '(').replace(/）/g, ')')
-      const inline = /\(原因\s*[:：]\s*([\s\S]*)\)/i.exec(normalized)
-      if (inline) {
-        reason = inline[1]!.trim()
-      } else {
-        const reasonLines: string[] = []
-        for (let next = index + 1; next < lines.length; next++) {
-          const nextLine = lines[next]!.trim()
-          if (/^##\s*/.test(nextLine)) break
-          if (!nextLine) continue
-          reasonLines.push(nextLine)
-          if (reasonLines.length >= 3) break
-        }
-        reason = reasonLines
-          .join(' ')
-          .replace(/^[-*]\s*/, '')
-          .replace(/^原因\s*[:：]\s*/i, '')
-          .trim()
-      }
-    }
-    return { result, reason }
-  }
-  return null
+  return parseAgentVerdict(text)
 }
 
 /**

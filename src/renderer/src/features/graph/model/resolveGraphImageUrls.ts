@@ -1,4 +1,5 @@
 import { useProjectStore } from '../../../stores/project'
+import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 
 /** 将图执行输出解析为 API 可用的 data URL / http(s)（不含 studio-media / file） */
 export async function resolveGraphImageUrls(
@@ -29,6 +30,34 @@ export async function resolveGraphImageUrls(
       urls.push(await window.studio.getAssetMediaDataUrl(relativePath))
     } catch {
       /* 跳过无法读取的路径 */
+    }
+  }
+  return urls
+}
+
+/**
+ * 将图执行输出的视频解析为「首帧」图片 data URL（供视觉质检/文本模型看图）。
+ * 首帧由主进程系统取帧（视频缩略图）保证；已是图片 data URL / http(s) 时原样返回。
+ */
+export async function resolveVideoFirstFrameImageUrls(
+  items: Array<{ dataUrl?: string; relativePath?: string }>
+): Promise<string[]> {
+  const urls: string[] = []
+  for (const item of items) {
+    const dataUrl = item.dataUrl?.trim()
+    if (dataUrl && (dataUrl.startsWith('data:image/') || /^https?:\/\//i.test(dataUrl))) {
+      urls.push(dataUrl)
+      continue
+    }
+    const relativePath = item.relativePath?.trim()
+    if (!relativePath) continue
+    try {
+      // 确保首帧缩略图已生成（视频走系统取帧），再把首帧 PNG 读成 data URL
+      await window.studio.getAssetPreviewUrl(relativePath)
+      const thumbUrl = await window.studio.getAssetMediaDataUrl(thumbRelativePathFor(relativePath))
+      if (thumbUrl) urls.push(thumbUrl)
+    } catch {
+      /* 跳过无法取帧的路径 */
     }
   }
   return urls

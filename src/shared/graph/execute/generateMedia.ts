@@ -5,6 +5,7 @@ import {
 } from '../../domain'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 import { expandInstructionMentions } from '../instructionMentions'
+import { resolveCharacterReferenceUrls } from '../characterConsistency'
 import { episodeFailReasonForStep, parseEpisodeAgentState } from '../episodeAgentState'
 import {
   resolveImageSystemPrompt,
@@ -875,8 +876,21 @@ export async function executeImageGenerateNode(
     .map((url) => url.trim())
     .filter(Boolean)
     .slice(0, rest)
-  const inputReferences = [...styleRefs, ...portRefs]
-  // 与 inputReferences 一一对应的元信息：来源（风格库/端口参考图）+ 落盘相对路径/名称
+  // 角色一致性：绑定角色引用（自带 imageUrl）注入 inputReferences，排在风格/端口之后
+  const characterRefs = node.params.characterRefs ?? []
+  const restAfterPort = Math.max(0, cap - styleRefs.length - portRefs.length)
+  const charRefUrls = resolveCharacterReferenceUrls(characterRefs, [], restAfterPort)
+  // imageUrl 可能是工程相对路径（world 目录落盘产物），复用端口参考图解析转成 data URL，
+  // 保证远端生成 API 可直接使用；无解析器时退回 data:/http(s) 白名单。
+  const charRefs = ctx.resolveImageUrls
+    ? (
+        await ctx.resolveImageUrls(
+          charRefUrls.map((url) => ({ dataUrl: url, relativePath: url }))
+        )
+      ).filter(Boolean)
+    : charRefUrls.filter((url) => url.startsWith('data:') || /^https?:\/\//i.test(url))
+  const inputReferences = [...styleRefs, ...portRefs, ...charRefs]
+  // 与 inputReferences 一一对应的元信息：来源（风格库/端口参考图/角色）+ 落盘相对路径/名称
   const inputReferenceMeta: GraphImageReferenceMeta[] = [
     ...styleImages.slice(0, styleRefs.length).map((item) => ({
       source: 'style' as const,
@@ -885,6 +899,10 @@ export async function executeImageGenerateNode(
     ...sourceItems.slice(0, portRefs.length).map((item) => ({
       source: 'port' as const,
       ...(item.relativePath?.trim() ? { relativePath: item.relativePath.trim() } : {})
+    })),
+    ...characterRefs.slice(0, charRefs.length).map((ref) => ({
+      source: 'character' as const,
+      name: ref.name?.trim() || undefined
     }))
   ]
 

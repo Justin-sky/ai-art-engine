@@ -39,6 +39,15 @@ describe('editorDive keys', () => {
     expect(tool).toContain('asset:x')
     expect(tool).toContain('n1')
 
+    const comic = editorDiveViewFrameKey('canvas-editor-c', {
+      viewId: 'comic.page',
+      hostId: 'asset:x',
+      nodeId: 'comic-1'
+    })
+    expect(comic).toContain('comic.page')
+    expect(comic).toContain('asset:x')
+    expect(comic).toContain('comic-1')
+
     const preview = editorDiveViewFrameKey('script-editor-x', {
       viewId: 'media.preview',
       mediaKind: 'image',

@@ -220,7 +220,7 @@
         </div>
 
         <img
-          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isLayerSplitEditorNode(node) || isFramePullNode(node)) && selectImagePreview"
+          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isLayerSplitEditorNode(node) || isFramePullNode(node) || isComicPageNode(node)) && selectImagePreview"
           :src="selectImagePreview"
           alt=""
           loading="lazy"
@@ -587,6 +587,7 @@ import {
   isReshootNode,
   isPluralGraphPortDataType,
   isMultiAngleEditorNode,
+  isAdVariantsNode,
   isLightingEditorNode,
   isPortraitTextureEditorNode,
   isEmotionEditorNode,
@@ -599,6 +600,7 @@ import {
   isCropEditorNode,
   isGridSplitEditorNode,
   isLayerSplitEditorNode,
+  isComicPageNode,
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
@@ -902,6 +904,10 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'lipSync'
     case 'video.reshoot':
       return 'reshoot'
+    case 'media.review':
+      return 'mediaReview'
+    case 'media.rework':
+      return 'mediaRework'
     case 'image.upscale':
       return 'image'
     case 'asset.voice':
@@ -1001,7 +1007,11 @@ function inPortTitle(port: GraphPortDef): string {
 }
 
 const instructionModality = computed((): GenerateModelModality => {
-  if (instructionKind.value === 'image' || instructionKind.value === 'frameAnimGen') {
+  if (
+    instructionKind.value === 'image' ||
+    instructionKind.value === 'frameAnimGen' ||
+    instructionKind.value === 'mediaRework'
+  ) {
     return 'image'
   }
   if (instructionKind.value === 'video' || instructionKind.value === 'lipSync') return 'video'
@@ -1029,6 +1039,12 @@ const instructionPlaceholder = computed(() => {
   if (instructionKind.value === 'model3d') {
     return t('graph.inspector.generate.model3dInstructionPlaceholder')
   }
+  if (instructionKind.value === 'mediaReview') {
+    return t('graph.inspector.mediaReview.instructionPlaceholder')
+  }
+  if (instructionKind.value === 'mediaRework') {
+    return t('graph.inspector.mediaRework.instructionPlaceholder')
+  }
   if (instructionKind.value === 'worldExtract') {
     return t('graph.inspector.generate.worldExtractInstructionPlaceholder')
   }
@@ -1053,12 +1069,16 @@ const instructionModelTitle = computed(() => {
   }
   if (instructionKind.value === 'voice') return t('graph.inspector.generate.voiceModel')
   if (instructionKind.value === 'model3d') return t('graph.inspector.generate.model3dModel')
+  if (instructionKind.value === 'mediaRework') return t('graph.inspector.generate.imageModel')
   return t('graph.inspector.generate.model')
 })
 
 /** 图片生成：模型旁展示生成参数（按模型能力动态） */
 const showImageGenerateParams = computed(
-  () => instructionKind.value === 'image' || instructionKind.value === 'frameAnimGen'
+  () =>
+    instructionKind.value === 'image' ||
+    instructionKind.value === 'frameAnimGen' ||
+    instructionKind.value === 'mediaRework'
 )
 
 /** 视频 / 对口型：模型旁展示生成参数（按时长/比例等能力动态） */
@@ -1302,7 +1322,8 @@ watch(
         isCropEditorNode(props.node) ||
         isGridSplitEditorNode(props.node) ||
         isLayerSplitEditorNode(props.node) ||
-        isFramePullNode(props.node),
+        isFramePullNode(props.node) ||
+        isComicPageNode(props.node),
       previewInViewport.value,
       previewPriority.value
     ] as const,
@@ -1541,6 +1562,7 @@ const previewHint = computed(() => {
   if (isCropEditorNode(props.node)) return t('graph.crop.hint')
   if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
   if (isLayerSplitEditorNode(props.node)) return t('graph.layerSplit.hint')
+  if (isComicPageNode(props.node)) return t('graph.inspector.comicPage.cardHint')
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
   if (isMissingLinkedAsset.value) return t('graph.assetMissing.hint')
   if (isAssetRef.value) {
@@ -1552,6 +1574,12 @@ const previewHint = computed(() => {
 
 const previewOpenHint = computed(() => {
   if (isAnim2dNode.value) return t('graph.anim2d.cardPlayHint')
+  if (props.node.typeId === 'media.review' || props.node.typeId === 'media.rework') {
+    return t('graph.generateNode.instructionHint')
+  }
+  if (props.node.typeId === 'comic.page') {
+    return t('graph.inspector.comicPage.cardHint')
+  }
   if (instructionKind.value === 'screenplay') return t('graph.generateNode.instructionHint')
   if (isScreenplayOutputNode.value) return t('graph.textsPreview.hint')
   if (isSelectTextNode(props.node)) return t('graph.selectText.hint')
@@ -2067,6 +2095,20 @@ function onPreviewDblClick(): void {
       return
     }
 
+    // 媒体质检 / 返工：双击展开/收起生成指令面板（与图片/视频生成节点一致）
+    if (props.node.typeId === 'media.review' || props.node.typeId === 'media.rework') {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+
+    // 漫画页：双击进入全屏可视化编辑器
+    if (isComicPageNode(props.node)) {
+      const hostId = props.hostId?.trim()
+      if (!hostId) return
+      await diveView({ viewId: 'comic.page', hostId, nodeId: props.node.id }, title)
+      return
+    }
+
     if (isDirectorProcessingNode(props.node)) {
       const directorAssetId = hostAssetId.value
       if (!directorAssetId) return
@@ -2103,6 +2145,10 @@ function onPreviewDblClick(): void {
     }
     if (isMultiAngleEditorNode(props.node)) {
       await diveNodeTool('node.multiAngle', title)
+      return
+    }
+    if (isAdVariantsNode(props.node)) {
+      await diveNodeTool('node.adVariants', title)
       return
     }
     if (isLightingEditorNode(props.node)) {

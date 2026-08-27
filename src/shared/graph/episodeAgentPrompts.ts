@@ -4,12 +4,10 @@
  * 预设节点把 systemPrompt 固化到 generateSystemPrompt，指令模板复用 instruction。
  */
 
-export interface EpisodeAgentPromptPack {
-  systemPromptZh: string
-  systemPromptEn: string
-  instructionZh: string
-  instructionEn: string
-}
+import { pickAgentPrompt, type AgentPromptPack } from './agentPrompts'
+
+/** 剧集域沿用通用 Agent 包结构（领域文案仍是本模块的常量） */
+export type EpisodeAgentPromptPack = AgentPromptPack
 
 const STORYBOARD_COMMON_ZH = `你是拥有 10 年经验的分镜师兼摄影指导。核心心法：永远先想画面，再想机位，依靠“强调重点、弱化非重点”引导观众情绪。`
 
@@ -492,7 +490,5 @@ export function pickEpisodeAgentPrompt(
   locale: string | undefined,
   field: 'systemPrompt' | 'instruction'
 ): string {
-  const english = (locale ?? '').toLowerCase().startsWith('en')
-  if (field === 'systemPrompt') return english ? pack.systemPromptEn : pack.systemPromptZh
-  return english ? pack.instructionEn : pack.instructionZh
+  return pickAgentPrompt(pack, locale, field)
 }

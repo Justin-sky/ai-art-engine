@@ -104,6 +104,7 @@ const viewRegistry: Record<string, Component> = {
   'node.selectVoice': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.selectText': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.multiAngle': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.adVariants': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.lighting': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.framePull': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.reshoot': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
@@ -115,7 +116,8 @@ const viewRegistry: Record<string, Component> = {
   'node.matte': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.crop': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.gridSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
-  'node.layerSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue'))
+  'node.layerSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue'))
 }
 
 const props = defineProps<{
@@ -204,6 +206,8 @@ const viewBindings = computed(() => {
     case 'node.instruction':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'ui.split':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'comic.page':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     default:
       return {

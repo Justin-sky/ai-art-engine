@@ -254,6 +254,15 @@
         >
           {{ t('graph.episodePipeline.open') }}
         </button>
+        <button
+          v-if="isAgentPipelineGraph"
+          type="button"
+          class="episode-pipeline-btn"
+          :title="t('graph.agentPipeline.openTitle')"
+          @click="openAgentPipeline"
+        >
+          {{ t('graph.agentPipeline.open') }}
+        </button>
         <span
           ref="zoomLabelEl"
           class="zoom"
@@ -680,6 +689,25 @@
         :host-asset-id="props.assetId ?? ''"
       />
     </StudioFloatingWindow>
+
+    <!-- Agent 流水线独立窗口：质检 / 返工节点总览 -->
+    <StudioFloatingWindow
+      v-if="agentPipelineOpen"
+      :open="true"
+      :title="agentPipelineTitle"
+      :z-index="1200"
+      :default-width="760"
+      :default-height="560"
+      :min-width="520"
+      :min-height="360"
+      body-class="pad-none"
+      @close="closeAgentPipeline"
+    >
+      <AgentPipelineView
+        :frame-key="'agent-pipeline'"
+        :host-asset-id="props.assetId ?? ''"
+      />
+    </StudioFloatingWindow>
   </div>
 </template>
 
@@ -873,6 +901,8 @@ import {
   type MultiAngleCameraState,
   multiAngleCameraToNodePatch,
   readMultiAngleCameraFromNode,
+  type AdVariantMatrix,
+  readAdVariantMatrixFromNode,
   type LightingSetupState,
   lightingSetupToNodePatch,
   readLightingSetupFromNode,
@@ -985,6 +1015,9 @@ const runLogsStore = useGraphRunLogsStore()
 const editor = useEditorKernel()
 const EpisodePipelineView = defineAsyncComponent(
   () => import('./dive/EditorDiveEpisodePipelineView.vue')
+)
+const AgentPipelineView = defineAsyncComponent(
+  () => import('./dive/EditorDiveAgentPipelineView.vue')
 )
 /** 挂载时绑定的工程根路径；切换工程后卸载时禁止写回旧图 */
 const boundRootPath = project.rootPath
@@ -2110,6 +2143,11 @@ const isEpisodePipelineGraph = computed(() =>
   )
 )
 
+/** 当前画布是否含 Agent 流水线节点（质检 media.review / 返工 media.rework） */
+const isAgentPipelineGraph = computed(() =>
+  graph.nodes.some((n) => n.typeId === 'media.review' || n.typeId === 'media.rework')
+)
+
 const toolbarSelectedIsOutput = computed(() => {
   const node = toolbarSelectedNode.value
   return !!node && isGraphOutputTerminalNode(node)
@@ -2152,6 +2190,10 @@ const episodePipelineOpen = ref(false)
 const episodePipelineTitle = computed(
   () => graphAsset.value?.name?.trim() || t('graph.episodePipeline.open')
 )
+const agentPipelineOpen = ref(false)
+const agentPipelineTitle = computed(
+  () => graphAsset.value?.name?.trim() || t('graph.agentPipeline.open')
+)
 
 /** 打开剧集流水线独立窗口：画布全局控制，不挂在任何节点上 */
 function openEpisodePipeline(): void {
@@ -2164,12 +2206,25 @@ function closeEpisodePipeline(): void {
   episodePipelineOpen.value = false
 }
 
-// 从宿主节点返回上级（dive 栈回退）时自动关闭剧集流水线窗口
+/** 打开 Agent 流水线独立窗口：投影质检 / 返工节点 */
+function openAgentPipeline(): void {
+  const assetId = props.assetId?.trim()
+  if (!assetId) return
+  agentPipelineOpen.value = true
+}
+
+function closeAgentPipeline(): void {
+  agentPipelineOpen.value = false
+}
+
+// 从宿主节点返回上级（dive 栈回退）时自动关闭流水线窗口
 watch(
   () => editorDive?.frames.length ?? 0,
   (length, prev) => {
-    if (!episodePipelineOpen.value) return
-    if (length < prev) closeEpisodePipeline()
+    if (length < prev) {
+      closeEpisodePipeline()
+      closeAgentPipeline()
+    }
   }
 )
 
@@ -3329,6 +3384,9 @@ type ResourceMenuGroupId = Extract<
   | 'game'
   | 'motionFx'
   | 'model3d'
+  | 'comic'
+  | 'agent'
+  | 'ad'
 
 /** 右键菜单按资源类型分组；组内顺序即展示顺序 */
 const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
@@ -3416,6 +3474,18 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'model3d',
     typeIds: ['asset.model3d']
+  },
+  {
+    id: 'comic',
+    typeIds: ['comic.page']
+  },
+  {
+    id: 'agent',
+    typeIds: ['media.review', 'media.rework']
+  },
+  {
+    id: 'ad',
+    typeIds: ['image.adVariants']
   }
 ]
 
@@ -3561,7 +3631,10 @@ const resourceAddableMenuGroups = computed(() => {
               group.id === 'prompt' ||
               group.id === 'game' ||
               group.id === 'motionFx' ||
-              group.id === 'model3d'
+              group.id === 'model3d' ||
+              group.id === 'comic' ||
+              group.id === 'agent' ||
+              group.id === 'ad'
             ? t(`graph.context.groups.${group.id}`)
           : assetTypeLabel(group.id),
       icon:
@@ -3581,6 +3654,12 @@ const resourceAddableMenuGroups = computed(() => {
                   ? ANIM2D_ASSET_ICON
                 : group.id === 'model3d'
                   ? '🧊'
+                : group.id === 'comic'
+                  ? '💬'
+                : group.id === 'agent'
+                  ? '🤖'
+                : group.id === 'ad'
+                  ? '📢'
                 : (ASSET_TYPE_ICONS[group.id] ?? '◇'),
       items
     }
@@ -6120,6 +6199,14 @@ const multiAngle = reactive({
   generateProviderInstanceId: '' as string
 })
 
+const adVariants = reactive({
+  open: false,
+  nodeId: '' as string,
+  matrix: null as AdVariantMatrix | null,
+  generateModel: '' as string,
+  generateProviderInstanceId: '' as string
+})
+
 async function resolveAssetFileUrl(relativePath?: string | null): Promise<string> {
   const path = relativePath?.trim()
   if (!path) return ''
@@ -6349,6 +6436,45 @@ function saveMultiAngle(
   multiAngle.generateProviderInstanceId = payload.generateProviderInstanceId
   recordGraphChange('multi-angle', before)
   closeMultiAngle()
+}
+
+async function onAdVariantsOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  adVariants.nodeId = nodeId
+  adVariants.matrix = readAdVariantMatrixFromNode(node.params)
+  adVariants.generateModel = node.params.generateModel ?? ''
+  adVariants.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  adVariants.open = true
+}
+
+function closeAdVariants(): void {
+  adVariants.open = false
+  adVariants.nodeId = ''
+  adVariants.matrix = null
+  adVariants.generateModel = ''
+  adVariants.generateProviderInstanceId = ''
+}
+
+function saveAdVariants(payload: {
+  matrix: AdVariantMatrix
+  generateModel: string
+  generateProviderInstanceId: string
+}): void {
+  const nodeId = adVariants.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = buildGraphJson()
+  node.params = {
+    ...node.params,
+    adVariantMatrix: payload.matrix,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId
+  }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('ad-variants', before)
+  closeAdVariants()
 }
 
 const lighting = reactive({
@@ -7608,6 +7734,7 @@ const graphDialogsApi = {
   selectText,
   textsPreview,
   multiAngle,
+  adVariants,
   lighting,
   framePull,
   reshoot,
@@ -7634,6 +7761,8 @@ const graphDialogsApi = {
   closeMultiAngle,
   previewMultiAngle,
   saveMultiAngle,
+  closeAdVariants,
+  saveAdVariants,
   closeLighting,
   previewLighting,
   saveLighting,
@@ -7999,6 +8128,7 @@ function registerNodeToolHost(): void {
       'node.selectVoice': (nodeId) => onSelectVoiceOpen(nodeId),
       'node.selectText': (nodeId) => onSelectTextOpen(nodeId),
       'node.multiAngle': (nodeId) => onMultiAngleOpen(nodeId),
+      'node.adVariants': (nodeId) => onAdVariantsOpen(nodeId),
       'node.lighting': (nodeId) => onLightingOpen(nodeId),
       'node.framePull': (nodeId) => onFramePullOpen(nodeId),
       'node.reshoot': (nodeId) => onReshootOpen(nodeId),

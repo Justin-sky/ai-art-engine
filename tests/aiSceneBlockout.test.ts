@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BUILD_SCENE_FUNCTION_NAME,
   blockoutGroundedCenterY,
+  buildDepthAnalysisPrompt,
   buildSceneBlockoutSystemPrompt,
   buildSceneBlockoutUserPrompt,
   isLikelyEquirectangularSize,
@@ -284,6 +285,22 @@ describe('aiSceneBlockout', () => {
     })
     expect(user).toContain('FOV ≈ 60°')
     expect(user).toContain('1.5')
+  })
+
+  it('builds a locale-aware single-line depth analysis prompt', () => {
+    const zh = buildDepthAnalysisPrompt('zh-CN')
+    expect(zh).toContain('单目深度分析')
+    expect(zh).toContain('最近')
+    expect(zh).toContain('最远')
+    expect(zh).toContain('米')
+
+    const en = buildDepthAnalysisPrompt('en-US')
+    expect(en).toContain('monocular depth analyst')
+    expect(en).toContain('nearest')
+    expect(en).toContain('farthest')
+
+    // 大小写不敏感地回退英文
+    expect(buildDepthAnalysisPrompt('EN')).toContain('monocular depth analyst')
   })
 
   it('grounds solids to y=0 without moving truly floating objects', () => {
