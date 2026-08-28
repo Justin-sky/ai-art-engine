@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、任务队列、场与剧集、成片时间线、导演台与快捷键。"
+      content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
     />
     <title>使用手册 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -16,7 +16,7 @@
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="manual.css?v=20260802-1" />
+    <link rel="stylesheet" href="manual.css?v=20260817-1" />
   </head>
   <body>
     <a class="skip" href="#manual">跳到手册正文</a>
@@ -29,6 +29,8 @@
       <nav class="nav" aria-label="主导航">
         <a href="index.html">首页</a>
         <a href="manual.html" aria-current="page">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html">短视频教程</a>
         <a href="guide-comfyui.html">ComfyUI 教程</a>
         <a href="index.html#download">下载</a>
         <a
@@ -49,6 +51,8 @@
         <nav class="mobile-nav" aria-label="移动端导航">
           <a href="index.html">首页</a>
           <a href="manual.html" aria-current="page">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
           <a href="index.html#download">下载</a>
           <a
@@ -101,8 +105,8 @@
           <p class="eyebrow">Docs · Operations</p>
           <h1>使用手册</h1>
           <p class="lede">
-            覆盖当前版本（<strong>4.0 Alpha</strong>）主要界面与组件：工程与模型配置、一键工作流、短剧分镜 Agent
-            流水线、宿主资产、节点图与任务队列、场与剧集、成片时间线、导演台与资产包。
+            覆盖当前版本（<strong>4.1</strong>）主要界面与组件：工程与模型配置、一键工作流、短剧分镜 Agent
+            流水线、宿主资产、节点图与任务队列、漫画页与广告变体矩阵、3D 模型生成与导演台、场与剧集、成片时间线、资产包。
             文案以应用内中文界面为准；视频演示见
             <a
               href="https://space.bilibili.com/3707036976024122"
@@ -117,7 +121,8 @@
           <h2>1. 概述与准备</h2>
           <p>
             AIArtEngine 是面向短剧、广告与成片制作的专业 AI 创作工具。工程与素材保存在你指定的本机目录；文本 /
-            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI 等）。
+            图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter 等），
+            3D 模型生成支持 Meshy、Tripo、Rodin（Hyper3D）、Luma AI 与 Lux3D。
             可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
           </p>
           <h3>首次使用建议</h3>
@@ -234,11 +239,19 @@
                 <li><strong>魔塔</strong>：文本 / 文生图（ModelScope 访问令牌，如 <code>ms-…</code>）。</li>
                 <li>
                   <strong>ComfyUI</strong>：图片 / 视频 / 声音，走 API 2（<code>POST /api/v2/jobs</code>）。
-                  模型 id = userdata 里的 <strong>API 格式 workflow 名</strong>（不是 checkpoint）。
+                  模型 id = userdata 里的 <strong>API 格式 workflow 名</strong>（不是 checkpoint），模型列表由服务动态拉取。
+                  视频 workflow 支持多模态参考（r2v）、视频 / 音频参考注入与首尾帧（<code>first_frame</code> /
+                  <code>last_frame</code>）注入，视频时长上限 15s。
                   本机默认 Base URL <code>http://127.0.0.1:8189</code>（需先装
                   <a href="guide-comfyui.html#local-proxy">comfy-api-proxy</a>，不要直连 8188）；
                   云端填 <code>https://cloud.comfy.org</code> 并填 Key。本机可空 Key。
                   完整步骤见 <a href="guide-comfyui.html">ComfyUI 接入教程</a>。
+                </li>
+                <li>
+                  <strong>MagicRouter</strong>：多供应商聚合网关（OpenAI 兼容），文本 / 图片 / 视频；
+                  需 <code>mr-</code> 开头 API Key，默认 Base URL
+                  <code>https://api.magicrouter.ai/v1</code>，模型目录由 <code>/models/live</code>
+                  拉取，视频为异步提交 / 轮询。
                 </li>
                 <li>
                   <strong>Meshy</strong>：文生 3D / 图生 3D（含多图生 3D，API Key，默认 Base URL
@@ -429,22 +442,28 @@
                     >https://labs.aholo3d.cn/</a
                   >
                 </li>
+                <li>
+                  MagicRouter API Key（<code>mr-</code> 开头）：
+                  <a href="https://www.magicrouter.ai/docs/api" target="_blank" rel="noopener noreferrer"
+                    >https://www.magicrouter.ai/docs/api</a
+                  >
+                </li>
               </ul>
             </li>
             <li>填写显示名称、Base URL、密钥（可显示/隐藏）。</li>
             <li>启用该提供商后，点击「拉取可用模型」（可灵 / MiniMax 部分模态 / 百炼图视频 / OpenAI 与智谱图片等为本地静态目录；vLLM / Ollama / LM Studio / ComfyUI 等本地服务无需密钥，直接拉取）。</li>
             <li>用筛选、全选/清空勾选需要的模型；也可手动添加模型 ID。</li>
             <li>
-              按模态配置：文本 / 图片 / 视频 / 声音（方舟声音页签会提示语音控制台链接，并手填
+              按模态配置：文本 / 图片 / 视频 / 声音 / 3D 模型（方舟声音页签会提示语音控制台链接，并手填
               <code>speaker_id</code>；可灵仅图片与视频页签；MiniMax 支持文本 / 图片 / 视频 / 音色设计；OpenAI 支持文本与图片；
               DeepSeek 仅文本；Kimi（月之暗面）仅文本；xAI（Grok）支持文本 / 图片 / 视频（视频为异步轮询）；Google（Gemini）支持文本 / Nano Banana 图片 / Veo 3.1 视频（异步轮询）；智谱支持 GLM 文本与 CogView 图片；vLLM 支持文本与视频（Wan T2V / I2V）；Ollama / LM Studio 仅文本（多模态理解可在文本节点传图）；
-              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签）。
+              魔塔仅文本与图片，文生图为异步任务；ComfyUI 支持图片 / 视频 / 声音，无文本页签；MagicRouter 支持文本 / 图片 / 视频；Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D 仅 3D 模型页签）。
             </li>
             <li>设置默认生成模型与默认声音（如需要）。提供商卡片可折叠以节省空间。</li>
           </ol>
           <div class="tip">
             API Key 保存在本机设置文件中（Windows 示例：
-            <code>%APPDATA%\aiartengine\aiartengine-settings.json</code>），不会上传到应用官方服务器。
+            <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>），不会上传到应用官方服务器。
           </div>
 
           <h3>3.3 对象存储</h3>
@@ -636,7 +655,8 @@
           <h3>6.2 预设与描述</h3>
           <ul>
             <li>
-              <strong>预设模板</strong>：游戏买量、角色设定、分镜出片、产品广告、短剧分镜、自定义等。带固化拓扑的预设可直接「预览模板」。
+              <strong>预设模板</strong>：游戏买量、游戏UI界面、角色设定、分镜出片、产品广告、短剧分镜、自定义等。带固化拓扑的预设可直接「预览模板」。其中「游戏UI界面」会创建
+              策划案生成 → UI 界面拆分 → UI 界面生成 的完整链路，UI 界面生成可 dive 进内图逐屏出图，配合全局风格参考统一界面风格。
             </li>
             <li>
               <strong>工作流描述</strong>：用自然语言说明目标（例如「剧本 → 分镜图 → 竖屏短视频」）；可先选预设再改描述。
@@ -759,6 +779,10 @@
             <li>滚轮缩放范围约 1%–1000%；点击缩放百分比可复位相关视图习惯。</li>
             <li>执行 / 停止 / 加入任务。</li>
             <li>
+              <strong>工程全局参数</strong>：节点图空白处右键打开「全局参数」——工程名称、画面风格（最多 4 张风格参考图，可从默认风格库选择或上传，含「UI 风格」等分类）、全局随机种子（图片 / 视频生成节点默认跟随，可在节点上单独关闭，便于同参数复现）与生成缓存根目录（结果默认写入
+              <code>Cache/Images</code>、<code>Cache/Videos</code> 等，不自动登记资产库）。
+            </li>
+            <li>
               <strong>指令编辑器引用预览</strong>：悬停引入节点缩略图时弹出预览——图片限尺寸显示，文本显示正文前段
               （剧本等旁挂 txt / md 内容会自动读取）。
             </li>
@@ -810,23 +834,84 @@
 
           <h4>生成 / 资产类</h4>
           <ul>
-            <li> 图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 导演台编辑 · 画布编辑 · 3D 模型生成 · 模型（引用） </li>
+            <li>
+              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 场生成 · 世界元素提取 · 策划案生成 ·
+              导演台编辑 · 画布编辑 · 3D 模型生成 · 2D 帧动画 · 模型（引用）· 宿主资产
+            </li>
+            <li>
+              <strong>3D 模型生成</strong>：文本 / 上游参考图 → 3D 模型资产（Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D，文生 3D / 图生 3D，部分支持多图生 3D）；
+              异步提交 → 轮询 → 下载，结果可接入导演台或下游继续加工，支持回写绑定持久化与取消。
+            </li>
+            <li>
+              <strong>宿主资产</strong>：把已有资产（图片 / 视频 / 声音 / 剧本 / 场 / 导演台等）作为节点引入当前画布，
+              输出口类型即该资产端口类型；双击宿主资产节点可 dive 进入其内部工作流（详见 <a href="#host">7.6 宿主资产与 Dive</a>）。
+            </li>
           </ul>
 
           <h4>输出类</h4>
           <ul>
-            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 场输出 · 世界元素输出</li>
+            <li>图片 / 视频 / 声音 / 剧本输出 · 导演台输出 · 场输出 · 世界元素输出 · 成片时间线</li>
           </ul>
 
           <h4>工具类</h4>
           <ul>
-            <li>备注 · 文本 · 选取图片 / 视频 / 声音 / 文本 · 宫格选择 · 动态格选择 · 提示词优化 · 图片反推提示词 · UI 界面拆分</li>
+            <li>
+              备注 · 文本 · 选取图片 / 视频 / 声音 / 文本 · 宫格选择 · 动态格选择 · 提示词优化 · 图片反推提示词 ·
+              UI 界面拆分 / UI 界面生成 · 生成帧动画序列图 · 漫画页 · 广告变体矩阵 · 媒体质检 · 媒体返工 · 束结
+            </li>
+            <li>
+              <strong>束结</strong>：把上游多路输出（图片 / 视频 / 声音等）收束为一组，便于整体接入输出或下游节点；
+              也可作为临时整理工具使用。
+            </li>
+          </ul>
+
+          <h4>动效（动效分组下）</h4>
+          <ul>
+            <li>
+              <strong>生成帧动画序列图</strong>：双击打开指令面板（角色 / 特效 / 武功预设，默认指令与系统提示词），
+              行列参数拼入提示词后用图片模型产出序列图；输出预览支持删除与选择输出图。
+            </li>
+            <li>
+              <strong>2D 帧动画</strong>：输入序列图，Inspector 设置行列参数，节点卡自动逐帧播放预览；
+              Cook 时清除上一次输出，不累积。
+            </li>
+          </ul>
+
+          <h4>漫画与广告</h4>
+          <ul>
+            <li>
+              <strong>漫画页</strong>：网格分镜格 + 台词气泡编辑器。从资产库拖图入格 / 本地导入 / 上游图片一键填入，
+              逐格可清除图片路径；分格大小用右缘 / 下缘 / 右下角手柄按单格跨数调整（连续跟手预览、松手吸附网格），
+              气泡可拖动移动、角部手柄等比缩放（0.5~4 倍）；点击空白处设置页面级与分格背景颜色。
+              导出 PNG 默认透明底；Cook 按阅读顺序回填上游图片并合成 PNG 进图库。
+            </li>
+            <li>
+              <strong>广告变体矩阵</strong>：设置产品描述与画幅比例后，双击进入变体维度配置与对比预览，
+              一次产出同主题多版本广告图。
+            </li>
+          </ul>
+
+          <h4>质检与返工（Agent 流水线）</h4>
+          <ul>
+            <li>
+              <strong>媒体质检</strong>：连接上游图片（或视频，按首帧审核），用视觉模型给出导演 PASS / FAIL
+              质检结论；可补充审核要点，留空用内置质检包。
+            </li>
+            <li>
+              <strong>媒体返工</strong>：生成 → 质检 → 未通过时自动注入 FAIL 原因重生成，直到 PASS 或达尝试上限；
+              顶栏「Agent 流水线总览」可集中查看质检 / 返工运行状态。
+            </li>
           </ul>
 
           <h4>图片编辑（图片分组下）</h4>
           <ul>
             <li>
-              多角度编辑 · 打光效果 · 人像质感调节 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 宫格切分
+              多角度编辑 · 打光效果 · 人像质感调节 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 宫格切分 · 图层分离
+            </li>
+            <li>
+              <strong>图层分离</strong>（Seedream 5.0 Pro <code>layer_decomposition</code>）：把图片拆成底图 +
+              最多 16 张透明 PNG，在 dive 编辑器中调整层级后本地重组；支持滚轮缩放与空格平移查看，
+              导出 PSD（保留层级、位置、尺寸、透明通道、名称与嵌套分组）或按分组建子目录的 PNG。
             </li>
             <li>
               精修 / 图片编辑在 Dive 中操作；选项与提示词会<strong>实时写回</strong>节点
@@ -852,7 +937,11 @@
 
           <h4>场 / 世界</h4>
           <ul>
-            <li>场拆解 / 表格 / 生成 / 参考 · 世界元素提取 / 表格 / 编辑 / 输出</li>
+            <li>场拆解 / 表格 / 生成 / 参考 · 选择场 · 世界元素提取 / 表格 / 编辑 / 输出</li>
+            <li>
+              <strong>选择场</strong>：从上游多个场中挑取一个（或按条件匹配）作为当前输出，
+              常用于多分支场流程中决定后续接哪一场。
+            </li>
           </ul>
 
           <h4>其它</h4>
@@ -882,7 +971,7 @@
             </li>
           </ol>
 
-          <h3>7.6 宿主资产与 Dive</h3>
+          <h3 id="host">7.6 宿主资产与 Dive</h3>
           <p>
             宿主资产（含一键工作流产物、选区封装等）在外层只暴露<strong>边界输入 / 边界输出</strong>；双击或 Dive
             进入内图编辑完整拓扑。
@@ -987,7 +1076,19 @@
             </li>
           </ul>
 
-          <h3>9.5 导出</h3>
+          <h3>9.5 画中画与转场</h3>
+          <ul>
+            <li>
+              <strong>画中画叠加</strong>：将视频拖到预览叠加层可叠加为画中画；可编辑位置 / 尺寸 / 不透明度 / 音量，
+              预览框比例可调，导出成片时同步合成。
+            </li>
+            <li>
+              <strong>转场</strong>：视频轨上两个片段重叠处出现蓝色手柄，拖动可调整重叠 / 转场时长；
+              可选择入场 / 出场转场效果，导出时一并跟进。
+            </li>
+          </ul>
+
+          <h3>9.6 导出</h3>
           <p>
             时间线工具栏提供导出成片。需本机可用 ffmpeg（或回退预览录制）；导出进度与结果路径会提示在界面中。
           </p>
@@ -1016,8 +1117,9 @@
           <h2>11. 导演台</h2>
           <p>
             导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
-            下游生成」。编辑节点提供两个<strong>方形</strong>输出口（站位图与动作视频），并提供
-            <strong>3D 模型输入端口</strong>：连入 3D 模型生成结果后，dive 进入舞台会自动实例化到场景。
+            下游生成」。编辑节点提供两个<strong>方形</strong>输出口（站位图与动作视频），并提供两类输入端口：
+            <strong>3D 模型输入端口</strong>——连入 3D 模型生成结果后，dive 进入舞台会自动实例化到场景；
+            <strong>全景图输入端口</strong>——连入全景图后，dive 时自动设为舞台背景。
           </p>
 
           <h3>11.1 从节点打开</h3>
@@ -1040,10 +1142,18 @@
           <h3>11.3 侧栏与对象</h3>
           <ul>
             <li>
-              左侧场景列表：层级、搜索、创建相机 / 空物体 / 基本体；拖动右缘可<strong>调整列表宽度</strong>（会记住本地设置）。
+              左侧场景列表：层级、搜索、创建相机 / 空物体 / 基础几何体（Cube、Sphere、圆柱、尖拱、圆环、平面等
+              20 余种）；拖动右缘可<strong>调整列表宽度</strong>（会记住本地设置）。
             </li>
-            <li>对象：删除、隐藏、显示名称、锁定；支持拖拽改父子关系。</li>
-            <li>属性 · <strong>姿势</strong>（FK / IK、预设、姿势资产）。</li>
+            <li>
+              <strong>AI 白模</strong>：提供透视 / 360 全景参考图（最多 3 张）与指令，由文本模型按基础几何体自动搭建场景白模，
+              适合快速落地透视与空间布局。
+            </li>
+            <li>对象：删除、隐藏、显示名称、锁定；支持拖拽改父子关系，层级列表支持<strong>多选拖拽</strong>改父级（整组移动并保留世界变换）；机位组可整组删除（连同预设相机，可撤销）。</li>
+            <li>
+              属性 · <strong>姿势</strong>（FK / IK、AI 姿势——自然语言生成骨骼旋转、常用姿势预设）·
+              <strong>材质贴图覆盖</strong>：可为物体替换基础贴图 / 法线贴图，支持移除、隐藏贴图槽或一键还原模型自带贴图。
+            </li>
           </ul>
 
           <h3>11.4 站位和动作</h3>
@@ -1065,6 +1175,9 @@
               移动到视图：<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>；与视图对齐：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>。
             </li>
             <li>全景：拖入背景图，调节缩放 / 平移 / 旋转、地面与天空色。</li>
+            <li>
+              也可把全景图连到导演台节点的全景输入端口（单图），dive 进入舞台时自动设为背景，无需手动拖入。
+            </li>
           </ul>
 
           <h3>11.6 动画模式与录制</h3>
@@ -1165,11 +1278,6 @@
                 <td>关键帧 · 删关键帧 · 播放/暂停</td>
               </tr>
               <tr>
-                <td>画布</td>
-                <td><kbd>F</kbd></td>
-                <td>聚焦画板</td>
-              </tr>
-              <tr>
                 <td>对话框</td>
                 <td><kbd>Esc</kbd></td>
                 <td>关闭常见浮窗</td>
@@ -1187,7 +1295,7 @@
           <h2>14. 关于与更新</h2>
           <p>路径：设置 → 通用 → 关于与更新。</p>
           <ul>
-            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（预发布如 <code>4.0.0-alpha.1</code> 会标为 prerelease）。</li>
+            <li><strong>当前版本</strong>：显示为 <code>v{version}</code>（预发布如 <code>4.1.0-beta.1</code> 会标为 prerelease）。</li>
             <li><strong>检查更新</strong>：查询 GitHub Releases；开发模式下会提示不检查更新。</li>
             <li>状态包括：正在检查、发现新版本并下载、已是最新、下载进度、失败提示。</li>
             <li>下载完成后可点击<strong>重启并安装</strong>。</li>
@@ -1210,8 +1318,12 @@
             <li>新建「场」→ 场拆解 → 场表格 → 场生成 / 视频生成；多条输出链可分别入队，共同上游会自动复用。</li>
             <li>打开<strong>成片时间线</strong>：拖入节点输出或导入素材 → 编排轨道 → 预览 / 导出成片。</li>
             <li>
-              新建「导演台」→ 双击打开舞台 → 截取站位 / 录制动作 → 从方形口
-              <code>out-shots</code> / <code>out-actions</code> 接到下游。
+              新建「导演台」→ 双击打开舞台 →（可选）用 3D 模型生成节点产出模型接入舞台、AI 白模搭场景 →
+              截取站位 / 录制动作 → 从方形口 <code>out-shots</code> / <code>out-actions</code> 接到下游。
+            </li>
+            <li>
+              需要漫画分镜或广告多版本时，在节点图添加「漫画页」或「广告变体矩阵」；生成链末端接「媒体质检 /
+              媒体返工」可自动把关并重试不达标结果。
             </li>
             <li>在资产库导入媒体，或导出 / 再导入 <code>.aipackage</code> 做迁移验证。</li>
             <li>设置中检查更新，保持客户端为最新版。</li>
@@ -1235,6 +1347,8 @@
         <nav class="foot-links" aria-label="页脚">
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
           <a href="index.html#download">下载</a>
           <a

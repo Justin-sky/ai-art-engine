@@ -16,7 +16,7 @@
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="manual.css?v=20260802-2" />
+    <link rel="stylesheet" href="manual.css?v=20260817-1" />
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -30,6 +30,7 @@
         <a href="index.html">首页</a>
         <a href="manual.html">使用手册</a>
         <a href="guide-video.html" aria-current="page">视频生成指南</a>
+        <a href="guide-short-video.html">短视频教程</a>
         <a href="guide-comfyui.html">ComfyUI 教程</a>
         <a href="index.html#download">下载</a>
         <a
@@ -51,6 +52,7 @@
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
           <a href="guide-video.html" aria-current="page">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
           <a href="index.html#download">下载</a>
           <a
@@ -282,13 +284,40 @@
       </article>
     </div>
 
-    <footer class="site-foot">
-      <p>
-        <a href="manual.html">使用手册</a>
-        ·
-        <a href="index.html">官网首页</a>
-        · QQ 群 647306826
-      </p>
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
     </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
   </body>
 </html>

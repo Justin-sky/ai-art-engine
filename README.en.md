@@ -27,6 +27,8 @@
   <p>
     <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>Manual</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>Video guide</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>Short-video guide</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI guide</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
@@ -84,14 +86,14 @@ npm run dist:win | dist:mac | dist:linux
 **AIArtEngine** is a professional AI creation tool for short drama, ads, and film: assets, shots, and a node graph in one desktop app — local-first projects, your API keys, your files.
 
 - **Local projects** — create / open / recent; JSON + media on disk  
-- **One-click workflow** — preset or AI-planned topology → reusable host asset (boundary I/O + Dive)  
-- **Assets** — image / video / audio; AssetRef GUIDs; `.aipackage`  
+- **One-click workflow** — presets (short-drama storyboard, game UI, game UA, product ad…) or AI-planned topology → reusable host asset (boundary I/O + Dive)  
+- **Assets** — image / video / audio / 3D model; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
-- **Node graph** — generation nodes; dual gallery outputs; ports must match (singular cannot connect to plural; select nodes accept list ports only); edge styles / minimap; task queue reuses shared upstream  
+- **Node graph** — text / image / video / audio / 3D model generation nodes with instruction panel & model params; generation lock, dual gallery outputs; ports must match (singular cannot connect to plural; select nodes accept list ports only); edge styles / minimap; task queue reuses shared upstream; comic page (panel grid + speech bubbles, transparent-PNG export), ad variant matrix, media QA / rework loop (auto-retry with FAIL reason injected), 2D frame animation & frame-anim sheet generation, layer separation (export PSD)  
 - **Host assets** — boundary ports outside, full graph inside via Dive  
-- **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`; 3D model input port auto-instantiates on dive  
-- **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
-- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL), Meshy / Tripo / Rodin (Hyper3D) / Luma AI / Lux3D (3D model generation, text-to-3D / image-to-3D)
+- **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`; 3D model input port auto-instantiates on dive; panorama input auto-set as background; AI scene blockout, 20+ primitives, material texture override (base / normal maps)  
+- **Timeline** — import/group clips, scrub tracks; picture-in-picture overlay (position / size / opacity / volume) & video-track transitions; preview selection vs full-timeline play; export  
+- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL), MagicRouter (OpenAI-compatible aggregator: text / image / video), Meshy / Tripo / Rodin (Hyper3D) / Luma AI / Lux3D (3D model generation, text-to-3D / image-to-3D)
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + Cordis internal plugins (windows / Inspector / nodes / skills / executors) + declarative external plugin list  
 
@@ -114,6 +116,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | Tongyi Qianwen | Text (compatible mode) / Wanxiang image & video (incl. HappyHorse) |
 | Model | ModelScope | Text / text-to-image (access token) |
 | Model | ComfyUI | Image / video / audio (API v2; local :8189 or cloud Base URL) |
+| Model | MagicRouter | Text / image / video (OpenAI-compatible aggregator, async video polling) |
 | Model | Meshy | Text-to-3D / image-to-3D (incl. multi-image, API key) |
 | Model | Tripo | Text-to-3D / image-to-3D (API key) |
 | Model | Rodin (Hyper3D) | Text-to-3D / image-to-3D (API key) |
@@ -170,8 +173,8 @@ npm run typecheck && npm test
 - **Release**: bump `package.json` + CHANGELOG, commit, then tag and push:
 
 ```bash
-git tag v2.0.2
-git push origin v2.0.2
+git tag v4.1.0
+git push origin v4.1.0
 ```
 
   CI verifies the tag (without `v`) matches `package.json`, then builds and publishes a [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases) (including `latest.yml` for auto-update).

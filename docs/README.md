@@ -7,7 +7,7 @@
 | 文档 | 说明 |
 |------|------|
 | [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html) | 工程、设置、一键工作流、节点图、时间线、导演台 |
-| [自由画布 · 视频](https://justin-sky.github.io/ai-art-engine/guide-video.html) | 参考视频与对象存储 |
+| [视频生成指南](https://justin-sky.github.io/ai-art-engine/guide-video.html) | 自由画布 · 视频生成与参考视频 |
 | [短视频教程](https://justin-sky.github.io/ai-art-engine/guide-short-video.html) | 短视频一键工作流 |
 | [ComfyUI 接入](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) | API 2 与本机 comfy-api-proxy |
 | [CHANGELOG.md](../CHANGELOG.md) | 版本变更 |
