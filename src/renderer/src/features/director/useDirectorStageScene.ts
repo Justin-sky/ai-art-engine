@@ -303,7 +303,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   const shadingMode = ref<DirectorShadingMode>(readShadingModePref())
   /** Shaded Wireframe 叠加线共用材质 */
   let shadingWireMaterial: THREE.LineBasicMaterial | null = null
-  /** Wireframe 模式替换材质：无贴图、无光照，只画三角网格 */
+  /** Wireframe 模式：只画正面三角边 */
   let shadingWireframeMaterial: THREE.MeshBasicMaterial | null = null
   /** Unity 式 Gizmos 全局开关与尺寸 */
   const gizmoSize = ref(1)
@@ -4942,16 +4942,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function shadingWireframeColor(): number {
-    return themePreference.value === 'light' ? 0x222222 : 0xe6e6e6
-  }
-
   function getShadingWireMaterial(): THREE.LineBasicMaterial {
     if (!shadingWireMaterial) {
       shadingWireMaterial = new THREE.LineBasicMaterial({
-        color: 0x111111,
+        color: 0x000000,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.55,
         depthTest: true
       })
     }
@@ -4961,15 +4957,31 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   function getShadingWireframeMaterial(): THREE.MeshBasicMaterial {
     if (!shadingWireframeMaterial) {
       shadingWireframeMaterial = new THREE.MeshBasicMaterial({
-        color: shadingWireframeColor(),
+        color: 0xffffff,
         wireframe: true,
+        side: THREE.FrontSide,
         fog: false,
-        toneMapped: false
+        toneMapped: false,
+        depthTest: true,
+        depthWrite: true
       })
-    } else {
-      shadingWireframeMaterial.color.setHex(shadingWireframeColor())
     }
     return shadingWireframeMaterial
+  }
+
+  function createTriangleWireOverlay(
+    mesh: THREE.Mesh,
+    material: THREE.LineBasicMaterial
+  ): THREE.LineSegments | null {
+    if (!mesh.geometry) return null
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(mesh.geometry),
+      material
+    )
+    wire.userData[SHADING_WIRE_OVERLAY_FLAG] = true
+    wire.renderOrder = (mesh.renderOrder || 0) + 1
+    wire.frustumCulled = false
+    return wire
   }
 
   function clearShadingWireOverlays(root: THREE.Object3D): void {
@@ -5006,25 +5018,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const mode = shadingMode.value
     if (mode === 'shaded') return
     const wireMat = mode === 'wireframe' ? getShadingWireframeMaterial() : null
+    const overlayMat = mode === 'shadedWireframe' ? getShadingWireMaterial() : null
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return
       if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
-      if (mode === 'wireframe' && wireMat) {
+      if (wireMat) {
         child.userData[SHADING_ORIG_MATERIAL_KEY] = child.material
         child.material = Array.isArray(child.material)
           ? child.material.map(() => wireMat)
           : wireMat
         return
       }
-      if (!child.geometry) return
-      const wire = new THREE.LineSegments(
-        new THREE.WireframeGeometry(child.geometry),
-        getShadingWireMaterial()
-      )
-      wire.userData[SHADING_WIRE_OVERLAY_FLAG] = true
-      wire.renderOrder = (child.renderOrder || 0) + 1
-      wire.frustumCulled = false
-      child.add(wire)
+      if (!overlayMat) return
+      const wire = createTriangleWireOverlay(child, overlayMat)
+      if (wire) child.add(wire)
     })
   }
 
@@ -8525,9 +8532,6 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   })
 
   watch(themePreference, () => {
-    if (shadingWireframeMaterial) {
-      shadingWireframeMaterial.color.setHex(shadingWireframeColor())
-    }
     applyPanoramaVisuals()
     requestRender()
   })
