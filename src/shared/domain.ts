@@ -677,28 +677,37 @@ export function isDirectorDeck(type: AssetType): boolean {
 export const DEFAULT_DIRECTOR_DECK_NAME = 'New Director Deck'
 export const DEFAULT_DIRECTOR_DECK_NAME_ZH = '新建导演台'
 
-export type StagePrimitive =
-  | 'arch'
-  | 'box'
-  | 'capsule'
-  | 'cone'
-  | 'cross'
-  | 'cylinder'
-  | 'disc'
-  | 'hemisphere'
-  | 'icosphere'
-  | 'octahedron'
-  | 'plane'
-  | 'pointedArch'
-  | 'prism'
-  | 'pyramid'
-  | 'quad'
-  | 'ring'
-  | 'sphere'
-  | 'tetrahedron'
-  | 'torus'
-  | 'tube'
-  | 'wedge'
+/**
+ * 舞台基础几何体的唯一清单：类型与落盘白名单都从这里派生，
+ * 新增几何体只需在此追加（makePrimitive 的 switch 由编译器兜底）。
+ */
+export const STAGE_PRIMITIVE_VALUES = [
+  'arch',
+  'box',
+  'capsule',
+  'cone',
+  'cross',
+  'cylinder',
+  'disc',
+  'hemisphere',
+  'icosphere',
+  'octahedron',
+  'plane',
+  'pointedArch',
+  'prism',
+  'pyramid',
+  'quad',
+  'ring',
+  'sphere',
+  'tetrahedron',
+  'torus',
+  'tube',
+  'wedge'
+] as const
+
+export type StagePrimitive = (typeof STAGE_PRIMITIVE_VALUES)[number]
+
+const STAGE_PRIMITIVE_SET: ReadonlySet<string> = new Set(STAGE_PRIMITIVE_VALUES)
 export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty'
 export type TransformMode = 'translate' | 'rotate' | 'scale'
 
@@ -1727,14 +1736,11 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
     id: o.id,
     name: o.name,
     kind,
+    // 白名单必须覆盖全部 StagePrimitive：遗漏的值会被丢成 undefined，
+    // 重建网格时退化为 prop 占位方块（历史 bug：cone/arch 等重开后全变 box）
     primitive:
-      o.primitive === 'box' ||
-      o.primitive === 'capsule' ||
-      o.primitive === 'cylinder' ||
-      o.primitive === 'sphere' ||
-      o.primitive === 'plane' ||
-      o.primitive === 'quad'
-        ? o.primitive
+      typeof o.primitive === 'string' && STAGE_PRIMITIVE_SET.has(o.primitive)
+        ? (o.primitive as StagePrimitive)
         : undefined,
     modelAssetId: typeof o.modelAssetId === 'string' ? o.modelAssetId : undefined,
     // Cache 产物不入资产库，丢了这条路径就只能退化成占位方块

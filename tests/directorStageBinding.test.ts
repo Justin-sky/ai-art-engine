@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultDirectorStage, getActiveDirectorCamera } from '../src/shared/domain'
+import {
+  createDefaultDirectorStage,
+  getActiveDirectorCamera,
+  STAGE_PRIMITIVE_VALUES,
+  type StagePrimitive
+} from '../src/shared/domain'
 import { createNodeFromType } from '../src/shared/graph'
 import {
   createFreshDirectorStage,
@@ -126,6 +131,30 @@ describe('directorStageBinding', () => {
     expect(overrides?.Body?.map).toBe('Images/skin.png')
     expect(overrides?.Body?.normalMap).toBeNull()
     expect(Object.keys(overrides ?? {})).toEqual(['Body'])
+  })
+
+  it('keeps every stage primitive across persist + reload (no box fallback)', () => {
+    const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
+    const stage = createFreshDirectorStage(node)
+    // 历史回归：normalizeStageObject 白名单漏掉 cone/arch 等，重开后全部退化为 prop 占位方块
+    stage.objects = STAGE_PRIMITIVE_VALUES.map((primitive: StagePrimitive, index: number) => ({
+      id: `prim-${primitive}`,
+      name: primitive,
+      kind: 'primitive' as const,
+      primitive,
+      position: { x: index, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 }
+    }))
+    const genParams = patchGenParamsWithNodeStage({}, node.id, stage)
+    const graphJson = { nodes: [node], edges: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
+    const resolved = resolveDirectorStageForNode(genParams, graphJson, node.id)
+    expect(resolved.objects).toHaveLength(STAGE_PRIMITIVE_VALUES.length)
+    for (const primitive of STAGE_PRIMITIVE_VALUES) {
+      const obj = resolved.objects.find((o) => o.id === `prim-${primitive}`)
+      expect(obj?.kind).toBe('primitive')
+      expect(obj?.primitive).toBe(primitive)
+    }
   })
 
   it('resets stage when owner node id no longer exists in graph', () => {
