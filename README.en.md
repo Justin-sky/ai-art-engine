@@ -41,26 +41,6 @@
 
 ---
 
-## Website
-
-Landing page sources live in `website/`:
-
-| Channel | URL |
-|---------|-----|
-| **GitHub Pages** | https://justin-sky.github.io/ai-art-engine/ |
-| **Alibaba Cloud OSS** (CN) | After deploy: custom domain / `publicBaseUrl` |
-
-Do not use paths with `/website/` (e.g. `.../website/index.html`) — they 404.
-
-```bash
-npm run site                   # local preview
-npm run site:deploy            # deploy website/ to Alibaba Cloud OSS
-```
-
-Copy `oss-website.example.json` to `oss-website.local.json`, fill AccessKey / bucket / region (e.g. `oss-cn-hangzhou`), then run `npm run site:deploy`. Bind a custom domain for HTML preview (default OSS domains may force download; mainland domains require ICP filing).
-
----
-
 <a id="download"></a>
 
 ## Download
