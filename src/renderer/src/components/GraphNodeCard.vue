@@ -418,6 +418,12 @@
             :empty-label="t('graph.inspector.generate.noModels')"
             @change="persistGenerateModel"
           />
+          <Model3dStyleSelect
+            v-if="showModel3dStyle"
+            :model-value="model3dStyle"
+            :title="t('graph.inspector.generate.model3dStyleHint')"
+            @update:model-value="persistModel3dStyle"
+          />
           <ImageGenerateParamsSelect
             v-if="showImageGenerateParams"
             v-model="imageGenerateParams"
@@ -523,6 +529,7 @@ import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
+import Model3dStyleSelect from './Model3dStyleSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -1989,6 +1996,21 @@ function persistGenerateModel(): void {
     generateModel: parsed?.model ?? '',
     generateProviderInstanceId: parsed?.providerInstanceId ?? ''
   })
+}
+
+/** Lux3D 文生3D 风格：仅当选中 3D 供应商为 lux3d 时展示 */
+const showModel3dStyle = computed(
+  () =>
+    instructionKind.value === 'model3d' &&
+    modelOptions.value.find((o) => o.key === selectedModelKey.value)?.providerKind === 'lux3d'
+)
+
+/** 未设置时展示服务端缺省风格（photorealistic）；选中后才落盘到节点参数 */
+const model3dStyle = computed(() => props.node.params.generateStyle || 'photorealistic')
+
+function persistModel3dStyle(value: string): void {
+  if (!props.hostId || !instructionKind.value) return
+  graphEditorHosts.updateNode(props.hostId, props.node.id, { generateStyle: value })
 }
 
 /** 视频模型端口上限 → 节点参数（同步驱动端口隐藏/显示）；同时剪掉已隐藏口的入边 */

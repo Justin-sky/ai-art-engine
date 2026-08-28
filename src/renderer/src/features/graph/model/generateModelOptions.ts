@@ -1,4 +1,8 @@
-import type { ModelModality, ModelProviderInstance } from '@shared/modelProvider'
+import type {
+  ModelModality,
+  ModelProviderInstance,
+  ModelProviderKind
+} from '@shared/modelProvider'
 import {
   allowsEmptyApiKey,
   isLocalOpenAiProvider,
@@ -11,6 +15,7 @@ export interface GenerateModelOption {
   key: string
   label: string
   providerInstanceId: string
+  providerKind: ModelProviderKind
   model: string
 }
 
@@ -123,6 +128,7 @@ export function buildModelOptions(
         key: modelKey(provider.id, model),
         label: `${provider.label} · ${model}`,
         providerInstanceId: provider.id,
+        providerKind: provider.providerKind,
         model
       })
     }

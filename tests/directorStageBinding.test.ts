@@ -80,6 +80,54 @@ describe('directorStageBinding', () => {
     expect(next.stage).toBeUndefined()
   })
 
+  it('keeps modelRelativePath across persist + reload', () => {
+    const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
+    const stage = createFreshDirectorStage(node)
+    stage.objects = [
+      {
+        id: 'model-1',
+        name: 'Generated model',
+        kind: 'model',
+        modelAssetId: 'cache-asset-1',
+        modelRelativePath: 'Cache/Models/output.glb',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 }
+      }
+    ]
+    const genParams = patchGenParamsWithNodeStage({}, node.id, stage)
+    const graphJson = { nodes: [node], edges: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
+    const resolved = resolveDirectorStageForNode(genParams, graphJson, node.id)
+    expect(resolved.objects[0]?.modelRelativePath).toBe('Cache/Models/output.glb')
+  })
+
+  it('keeps material texture overrides (including hidden slots) across persist + reload', () => {
+    const node = createNodeFromType('asset.motion', { x: 0, y: 0 })
+    const stage = createFreshDirectorStage(node)
+    stage.objects = [
+      {
+        id: 'model-1',
+        name: 'Generated model',
+        kind: 'model',
+        modelAssetId: 'cache-asset-1',
+        materialTextures: {
+          Body: { map: 'Images/skin.png', normalMap: null },
+          '': { map: 'Images/ignored.png' }
+        },
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 }
+      }
+    ]
+    const genParams = patchGenParamsWithNodeStage({}, node.id, stage)
+    const graphJson = { nodes: [node], edges: [], groups: [], viewport: { x: 0, y: 0, zoom: 1 } }
+    const resolved = resolveDirectorStageForNode(genParams, graphJson, node.id)
+    const overrides = resolved.objects[0]?.materialTextures
+    expect(overrides?.Body?.map).toBe('Images/skin.png')
+    expect(overrides?.Body?.normalMap).toBeNull()
+    expect(Object.keys(overrides ?? {})).toEqual(['Body'])
+  })
+
   it('resets stage when owner node id no longer exists in graph', () => {
     const oldNode = createNodeFromType('asset.motion', { x: 0, y: 0 })
     const newNode = createNodeFromType('asset.motion', { x: 120, y: 0 })

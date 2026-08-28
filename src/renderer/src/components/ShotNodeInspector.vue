@@ -122,6 +122,26 @@
       </section>
     </template>
 
+    <section
+      v-if="isModel3d"
+      class="model-preview-section"
+      :aria-label="t('graph.inspector.generate.modelPreview')"
+    >
+      <div class="section-head">
+        <span class="section-title">{{ t('graph.inspector.generate.modelPreview') }}</span>
+      </div>
+      <ModelPreview
+        v-if="modelPreviewPath"
+        :relative-path="modelPreviewPath"
+      />
+      <p
+        v-else
+        class="section-hint"
+      >
+        {{ t('graph.inspector.generate.modelPreviewEmpty') }}
+      </p>
+    </section>
+
     <GraphNodeOutputPreview
       v-if="node && hostId && !isImage && !isScreenplay && !isVoice && !isVideo"
       :node="node"
@@ -433,6 +453,7 @@ import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
+import ModelPreview from './ModelPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
@@ -573,6 +594,23 @@ const isVideo = computed(() => assetType.value === 'video')
 const isVoice = computed(() => assetType.value === 'voice')
 const isScreenplay = computed(() => assetType.value === 'screenplay')
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
+// 3D 生成节点类型为 model3d（GraphValue 里产物资产类型是 model，两者不同）
+const isModel3d = computed(() => assetType.value === 'model3d')
+
+/** 3D 节点最近一次生成的模型文件：run 输出 > 后台任务回写 previewRelativePath */
+const modelPreviewPath = computed((): string | null => {
+  const current = node.value
+  if (!current || !isModel3d.value) return null
+  // 触达 revision / 资产列表，保证 runStates 与回写参数变化时刷新
+  void graphEditorHosts.revision.value
+  void project.assets.length
+  const runOut = graphRunHosts.get(hostId.value)?.runStates?.[current.id]?.outputs?.out
+  if (runOut?.kind === 'asset' && runOut.assetType === 'model') {
+    const rel = runOut.relativePath?.trim()
+    if (rel) return rel
+  }
+  return current.params.previewRelativePath?.trim() || null
+})
 const generateModelTitle = computed(() => {
   if (isImage.value) return t('graph.inspector.generate.imageModel')
   if (isVideo.value) return t('graph.inspector.generate.videoModel')

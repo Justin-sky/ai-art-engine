@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { loadModelScene } from './loadModelScene'
+import { collectStageMaterialSlots } from './stageMaterialSlots'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
@@ -64,7 +65,10 @@ import {
   type DirectorViewMode,
   type DirectorViewerState,
   type StageObjectState,
+  type StageMaterialTextureOverrides,
   type StagePrimitive,
+  STAGE_TEXTURE_SLOTS,
+  type StageTextureSlot,
   type StageVec3,
   type TransformMode,
   type DirectorPosePreset,
@@ -138,7 +142,12 @@ import {
   resolveDirectorStageForNode,
   shouldResetDirectorStage
 } from './directorStageBinding'
-import { flattenAssetValues, flattenImagesValues, isDirectorProcessingNode } from '@shared/graph'
+import {
+  flattenAssetValues,
+  flattenImagesValues,
+  isDirectorProcessingNode,
+  type GraphValue
+} from '@shared/graph'
 import { resolveAssetFileUrl } from '../media/assetUrlCache'
 import { extractModelSceneDefaults } from './modelSceneDefaults'
 import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
@@ -5130,6 +5139,319 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     })
   }
 
+  // ---- 材质贴图覆盖（Unity 式贴图槽：按材质名设置 / 隐藏 / 还原 map 与 normalMap） ----
+
+  /** objectId → 材质键 → 槽 → 本功能创建的覆盖贴图（负责释放） */
+  const objectOverrideTextures = new Map<
+    string,
+    Map<string, Partial<Record<StageTextureSlot, THREE.Texture>>>
+  >()
+  /** objectId → 材质键 → 槽 → 覆盖前的原始贴图（移除覆盖时还原；网格重建后作废） */
+  const objectOriginalTextures = new Map<
+    string,
+    Map<string, Partial<Record<StageTextureSlot, THREE.Texture | null>>>
+  >()
+  /** 异步加载竞态令牌：`objectId|材质键|槽` → 最新令牌 */
+  const objectTextureLoadTokens = new Map<string, number>()
+
+  /** 枚举网格上的材质槽（遍历顺序稳定，供 collectStageMaterialSlots 合成材质键） */
+  function collectMeshMaterials(
+    root: THREE.Object3D
+  ): Array<{ material: THREE.Material; name?: string }> {
+    const out: Array<{ material: THREE.Material; name?: string }> = []
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      const materials = Array.isArray(child.material) ? child.material : [child.material]
+      for (const material of materials) {
+        if (material) out.push({ material, name: material.name })
+      }
+    })
+    return out
+  }
+
+  function readMaterialSlotTexture(
+    material: THREE.Material,
+    slot: StageTextureSlot
+  ): THREE.Texture | null {
+    const value = (material as THREE.MeshStandardMaterial)[slot]
+    return value instanceof THREE.Texture ? value : null
+  }
+
+  function getOverrideEntry(
+    objectId: string,
+    materialKey: string
+  ): Partial<Record<StageTextureSlot, THREE.Texture>> {
+    let byMaterial = objectOverrideTextures.get(objectId)
+    if (!byMaterial) {
+      byMaterial = new Map()
+      objectOverrideTextures.set(objectId, byMaterial)
+    }
+    let entry = byMaterial.get(materialKey)
+    if (!entry) {
+      entry = {}
+      byMaterial.set(materialKey, entry)
+    }
+    return entry
+  }
+
+  function getOriginalEntry(
+    objectId: string,
+    materialKey: string
+  ): Partial<Record<StageTextureSlot, THREE.Texture | null>> {
+    let byMaterial = objectOriginalTextures.get(objectId)
+    if (!byMaterial) {
+      byMaterial = new Map()
+      objectOriginalTextures.set(objectId, byMaterial)
+    }
+    let entry = byMaterial.get(materialKey)
+    if (!entry) {
+      entry = {}
+      byMaterial.set(materialKey, entry)
+    }
+    return entry
+  }
+
+  /** 释放为物体创建的覆盖贴图；clearOriginals 用于网格重建后作废原始贴图记录 */
+  function disposeObjectOverrideTextures(objectId: string, clearOriginals: boolean): void {
+    const byMaterial = objectOverrideTextures.get(objectId)
+    if (byMaterial) {
+      for (const entry of byMaterial.values()) {
+        for (const texture of Object.values(entry)) texture?.dispose()
+      }
+      objectOverrideTextures.delete(objectId)
+    }
+    if (clearOriginals) objectOriginalTextures.delete(objectId)
+    const prefix = `${objectId}|`
+    for (const tokenKey of [...objectTextureLoadTokens.keys()]) {
+      if (tokenKey.startsWith(prefix)) objectTextureLoadTokens.delete(tokenKey)
+    }
+  }
+
+  /** GLTF 几何 UV 以左上为原点（flipY=false）；内置几何体保持 three.js 默认 flipY=true */
+  function resolveStageTextureFlipY(obj: StageObjectState): boolean {
+    return !(obj.kind === 'model' && obj.modelAssetId)
+  }
+
+  async function loadStageTexture(
+    relativePath: string,
+    opts: { srgb: boolean; flipY: boolean }
+  ): Promise<THREE.Texture> {
+    const url = await resolveAssetFileUrl(relativePath)
+    if (!url) throw new Error(`asset url unavailable: ${relativePath}`)
+    const texture = await new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load(url, resolve, undefined, reject)
+    })
+    // 基础色贴图用 sRGB；法线贴图保持线性色彩空间
+    if (opts.srgb) texture.colorSpace = THREE.SRGBColorSpace
+    texture.flipY = opts.flipY
+    return texture
+  }
+
+  /** 把覆盖贴图写入材质槽：首次覆盖前记录原始贴图，替换时释放旧覆盖贴图 */
+  function writeObjectMaterialTexture(
+    objectId: string,
+    materialKey: string,
+    material: THREE.Material,
+    slot: StageTextureSlot,
+    texture: THREE.Texture
+  ): void {
+    const originals = getOriginalEntry(objectId, materialKey)
+    if (originals[slot] === undefined) {
+      originals[slot] = readMaterialSlotTexture(material, slot)
+    }
+    const overrides = getOverrideEntry(objectId, materialKey)
+    overrides[slot]?.dispose()
+    overrides[slot] = texture
+    ;(material as THREE.MeshStandardMaterial)[slot] = texture
+    material.needsUpdate = true
+  }
+
+  /** 显式隐藏单个槽：记录原始贴图后清空，用于隐藏模型自带的嵌入贴图 */
+  function hideObjectMaterialTexture(
+    objectId: string,
+    materialKey: string,
+    material: THREE.Material,
+    slot: StageTextureSlot
+  ): void {
+    const tokenKey = `${objectId}|${materialKey}|${slot}`
+    objectTextureLoadTokens.set(tokenKey, (objectTextureLoadTokens.get(tokenKey) ?? 0) + 1)
+    const originals = getOriginalEntry(objectId, materialKey)
+    if (originals[slot] === undefined) {
+      originals[slot] = readMaterialSlotTexture(material, slot)
+    }
+    const overrides = objectOverrideTextures.get(objectId)?.get(materialKey)
+    if (overrides?.[slot]) {
+      overrides[slot]?.dispose()
+      delete overrides[slot]
+    }
+    ;(material as THREE.MeshStandardMaterial)[slot] = null
+    material.needsUpdate = true
+  }
+
+  /** 移除单个槽的覆盖：还原原始贴图并释放我们的 Texture，同时作废在途加载 */
+  function restoreObjectMaterialTexture(
+    objectId: string,
+    materialKey: string,
+    material: THREE.Material,
+    slot: StageTextureSlot
+  ): void {
+    const tokenKey = `${objectId}|${materialKey}|${slot}`
+    objectTextureLoadTokens.set(tokenKey, (objectTextureLoadTokens.get(tokenKey) ?? 0) + 1)
+    const overrides = objectOverrideTextures.get(objectId)?.get(materialKey)
+    const original = objectOriginalTextures.get(objectId)?.get(materialKey)?.[slot]
+    if (overrides?.[slot]) {
+      overrides[slot]?.dispose()
+      delete overrides[slot]
+    }
+    ;(material as THREE.MeshStandardMaterial)[slot] = original ?? null
+    material.needsUpdate = true
+  }
+
+  /** 应用 / 替换单个材质槽的贴图覆盖（异步加载；竞态与网格重建安全） */
+  function applyObjectMaterialTexture(
+    objectId: string,
+    obj: StageObjectState,
+    material: THREE.Material,
+    materialKey: string,
+    slot: StageTextureSlot,
+    relativePath: string
+  ): void {
+    const tokenKey = `${objectId}|${materialKey}|${slot}`
+    const token = (objectTextureLoadTokens.get(tokenKey) ?? 0) + 1
+    objectTextureLoadTokens.set(tokenKey, token)
+    void loadStageTexture(relativePath, {
+      srgb: slot === 'map',
+      flipY: resolveStageTextureFlipY(obj)
+    })
+      .then((texture) => {
+        if (objectTextureLoadTokens.get(tokenKey) !== token) {
+          texture.dispose()
+          return
+        }
+        // 异步加载期间网格可能已重建：仅当材质仍在当前网格上时生效
+        const currentRoot = objectMeshes.get(objectId)
+        const stillThere =
+          !!currentRoot &&
+          collectStageMaterialSlots(collectMeshMaterials(currentRoot)).some(
+            (item) => item.material === material
+          )
+        if (!stillThere) {
+          texture.dispose()
+          return
+        }
+        writeObjectMaterialTexture(objectId, materialKey, material, slot, texture)
+        requestRender()
+      })
+      .catch(() => {
+        /* 贴图加载失败：保留原材质 */
+      })
+  }
+
+  /** 按物体状态把已保存的贴图覆盖应用到当前网格（网格注册后调用） */
+  function applyObjectTextureOverrides(objectId: string, obj: StageObjectState): void {
+    const root = objectMeshes.get(objectId)
+    const overrides = obj.materialTextures
+    if (!root || !overrides) return
+    // 材质实例不变时保留原始贴图记录，保证之后移除覆盖仍可还原
+    disposeObjectOverrideTextures(objectId, false)
+    for (const slotRef of collectStageMaterialSlots(collectMeshMaterials(root))) {
+      const entry = overrides[slotRef.key]
+      if (!entry) continue
+      for (const slot of STAGE_TEXTURE_SLOTS) {
+        const rel = entry[slot]
+        if (rel === null) {
+          hideObjectMaterialTexture(objectId, slotRef.key, slotRef.material, slot)
+          continue
+        }
+        if (!rel) continue
+        applyObjectMaterialTexture(objectId, obj, slotRef.material, slotRef.key, slot, rel)
+      }
+    }
+  }
+
+  /** 列出物体材质与贴图覆盖（inspector 用）；网格未就绪时回退到已保存的覆盖键 */
+  function listObjectMaterialSlots(objectId: string): Array<{
+    key: string
+    label: string
+    map?: string | null
+    normalMap?: string | null
+  }> {
+    const obj = stage.value.objects.find((o) => o.id === objectId)
+    if (!obj) return []
+    const overrides = obj.materialTextures ?? {}
+    const root = objectMeshes.get(objectId)
+    if (!root) {
+      return Object.entries(overrides).map(([key, entry]) => ({
+        key,
+        label: key,
+        ...(entry ?? {})
+      }))
+    }
+    const rows = collectStageMaterialSlots(collectMeshMaterials(root)).map((slotRef) => ({
+      key: slotRef.key,
+      label: slotRef.label,
+      ...(overrides[slotRef.key] ?? {})
+    }))
+    // 状态里存在但网格上已不存在的材质键（如模型被更换）：追加列出便于清理
+    for (const [key, entry] of Object.entries(overrides)) {
+      if (!rows.some((row) => row.key === key)) {
+        rows.push({ key, label: key, ...(entry ?? {}) })
+      }
+    }
+    return rows
+  }
+
+  /**
+   * Unity 式材质贴图槽写入，三态：
+   * - 相对路径：替换为该图片
+   * - `null`：显式隐藏该槽（清掉模型自带的嵌入贴图）
+   * - `undefined`：移除覆盖，还原模型自带贴图
+   */
+  function setObjectMaterialTexture(
+    id: string,
+    materialKey: string,
+    slot: StageTextureSlot,
+    relativePath: string | null | undefined
+  ): void {
+    const idx = stage.value.objects.findIndex((o) => o.id === id)
+    if (idx < 0) return
+    const obj = stage.value.objects[idx]
+    // 1) 持久化状态：空记录整体删除，避免残留空对象
+    const overrides: Record<string, StageMaterialTextureOverrides> = {
+      ...(obj.materialTextures ?? {})
+    }
+    const entry: StageMaterialTextureOverrides = { ...(overrides[materialKey] ?? {}) }
+    if (relativePath === undefined) delete entry[slot]
+    else entry[slot] = relativePath || null
+    if (Object.keys(entry).length > 0) overrides[materialKey] = entry
+    else delete overrides[materialKey]
+    const next = { ...obj }
+    if (Object.keys(overrides).length > 0) next.materialTextures = overrides
+    else delete next.materialTextures
+    stage.value.objects[idx] = next
+    // 2) 应用到网格
+    const root = objectMeshes.get(id)
+    if (root) {
+      const slotRef = collectStageMaterialSlots(collectMeshMaterials(root)).find(
+        (item) => item.key === materialKey
+      )
+      if (slotRef) {
+        if (relativePath) {
+          applyObjectMaterialTexture(id, next, slotRef.material, materialKey, slot, relativePath)
+        } else if (relativePath === null) {
+          hideObjectMaterialTexture(id, materialKey, slotRef.material, slot)
+        } else {
+          restoreObjectMaterialTexture(id, materialKey, slotRef.material, slot)
+        }
+      }
+    }
+    previewRevision.value += 1
+    requestRender()
+    schedulePersist()
+  }
+
+  // ---- 材质贴图覆盖结束 ----
+
   function updateObjectTransform(
     id: string,
     patch: Partial<Pick<StageObjectState, 'position' | 'rotation' | 'scale' | 'name' | 'color'>>
@@ -5413,6 +5735,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (parentMesh) parentMesh.add(mesh)
     else getStageRoot()?.add(mesh)
     objectMeshes.set(obj.id, mesh)
+    applyObjectTextureOverrides(obj.id, obj)
     stage.value.objects = [...stage.value.objects, obj]
     selectObject(obj.id)
     schedulePersist()
@@ -5509,9 +5832,24 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   async function createModelObject(
     modelAssetId: string,
     parentId: string | null = null,
-    position?: StageVec3
+    position?: StageVec3,
+    /** Cache 产物（如 in-model 端口的 3D 生成）不入资产库，用回传的 relativePath 直接实例化 */
+    incoming?: { relativePath?: string; name?: string }
   ): Promise<string | null> {
-    const model = project.assets.find((item) => item.id === modelAssetId && item.type === 'model')
+    const libraryModel = project.assets.find(
+      (item) => item.id === modelAssetId && item.type === 'model'
+    )
+    const model: Pick<AssetInfo, 'id' | 'type' | 'name' | 'relativePath' | 'genParams'> | null =
+      libraryModel ??
+      (incoming?.relativePath
+        ? {
+            id: modelAssetId,
+            type: 'model',
+            name: incoming.name?.trim() || t('director.stage.incomingModelName'),
+            relativePath: incoming.relativePath,
+            genParams: {}
+          }
+        : null)
     if (!model?.relativePath) return null
     if (isNonPlaceableModelAsset(model)) return null
 
@@ -5524,17 +5862,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const extracted = extractModelSceneDefaults(loaded.scene)
       xf = extracted.transform
       color = extracted.color
-      const nextGen: Record<string, unknown> = {
-        ...(model.genParams ?? {}),
-        transform: { ...xf },
-        color
+      if (libraryModel) {
+        const nextGen: Record<string, unknown> = {
+          ...(model.genParams ?? {}),
+          transform: { ...xf },
+          color
+        }
+        project.patchAssets([{ ...libraryModel, genParams: nextGen }])
+        void persistAssetRecord(libraryModel.id, { genParams: nextGen }).catch(() => {
+          /* ????????? patch */
+        })
       }
-      project.patchAssets([{ ...model, genParams: nextGen }])
-      void persistAssetRecord(model.id, { genParams: nextGen }).catch(() => {
-        /* ????????? patch */
-      })
-    } catch {
-      /* ??????????? genParams / ?? */
+    } catch (err) {
+      // 仅跳过 transform / 颜色提取，物体仍按模型类型创建
+      console.warn('[director-stage] 模型默认值提取失败:', model.relativePath, err)
     }
 
     const id = `model:${crypto.randomUUID()}`
@@ -5543,6 +5884,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       name: resolveUniqueObjectName(model.name),
       kind: 'model',
       modelAssetId: model.id,
+      modelRelativePath: model.relativePath,
       color,
       parentId: resolveCreateParentId(parentId),
       visible: true,
@@ -5692,6 +6034,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       disposeObject(mesh)
       objectMeshes.delete(id)
     }
+    disposeObjectOverrideTextures(id, true)
     const label = objectLabels.get(id)
     if (label) {
       label.parent?.remove(label)
@@ -6783,23 +7126,28 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       g.name = obj.name
       return { mesh: g, clips: [] }
     }
-    if (obj.kind === 'model' && obj.modelAssetId) {
-      const modelAsset = project.assets.find((a) => a.id === obj.modelAssetId)
-      if (modelAsset?.relativePath) {
+    if (obj.kind === 'model' && (obj.modelAssetId || obj.modelRelativePath)) {
+      const modelAsset = obj.modelAssetId
+        ? project.assets.find((a) => a.id === obj.modelAssetId)
+        : undefined
+      // 资产库查不到（Cache 产物）时回退到物化路径
+      const rel = modelAsset?.relativePath?.trim() || obj.modelRelativePath?.trim()
+      if (rel) {
         try {
-          const url = await window.studio.getAssetFileUrl(modelAsset.relativePath)
-          const loaded = await loadModelScene(url, modelAsset.relativePath)
+          const url = await window.studio.getAssetFileUrl(rel)
+          const loaded = await loadModelScene(url, rel)
           const root = loaded.scene
           root.name = obj.name
           instantiateObjectMaterials(root)
           // ??????????????????????????????
-          const assetColor = readModelAssetColor(modelAsset.genParams)
+          const assetColor = readModelAssetColor(modelAsset?.genParams)
           if (obj.color && (!assetColor || obj.color.toLowerCase() !== assetColor.toLowerCase())) {
             applyObjectColor(root, obj.color)
           }
           return { mesh: root, clips: loaded.animations.slice() }
-        } catch {
-          /* fallback */
+        } catch (err) {
+          // 模型加载失败会退化为占位方块，这里把真实原因打到控制台便于排查
+          console.warn('[director-stage] 模型加载失败，已用占位方块替代:', rel, err)
         }
       }
     }
@@ -6849,9 +7197,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     clearBonePoseOffsetCache()
     bindPoseSnapshots.clear()
     ikChainsByObject.clear()
-    for (const mesh of objectMeshes.values()) {
+    for (const [id, mesh] of objectMeshes) {
       mesh.removeFromParent()
       disposeObject(mesh)
+      disposeObjectOverrideTextures(id, true)
     }
     objectMeshes.clear()
     transform?.detach()
@@ -6870,6 +7219,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       mesh.visible = obj.visible !== false
       attachObjectNameLabel(obj, mesh)
       objectMeshes.set(obj.id, mesh)
+      applyObjectTextureOverrides(obj.id, obj)
       registerSkeletonRuntime(obj.id, mesh, clips)
       // ??????? bind ?? TRS????????????????? SET?
       snapshotObjectBindPose(obj.id, mesh)
@@ -7055,11 +7405,18 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
+  interface IncomingModelInfo {
+    assetId: string
+    /** Cache 产物不入资产库，实例化需要物化路径 */
+    relativePath?: string
+    name?: string
+  }
+
   /**
-   * 解析导演台节点 `in-model` 端口连接的上游 3D 模型资产 id。
+   * 解析导演台节点 `in-model` 端口连接的上游 3D 模型。
    * 优先取上游节点的已物化模型输出（runStates.out），其次取模型引用节点自身的 assetId。
    */
-  async function resolveIncomingModelAssetId(): Promise<string | null> {
+  async function resolveIncomingModel(): Promise<IncomingModelInfo | null> {
     const nodeId = boundProcessingNodeId()
     if (!nodeId) return null
     const doc = graphEditorHosts.getDocument(graphHostId.value)
@@ -7071,15 +7428,23 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const source = (doc.nodes ?? []).find((item) => item.id === edge.source)
     if (!source) return null
 
-    const runOut = doc.runStates?.[source.id]?.outputs?.out
-    if (runOut?.kind === 'asset' && runOut.assetType === 'model' && runOut.assetId) {
-      return runOut.assetId
+    const fromValue = (value: GraphValue): IncomingModelInfo | null => {
+      if (value.kind !== 'asset' || value.assetType !== 'model' || !value.assetId) return null
+      return {
+        assetId: value.assetId,
+        ...(value.relativePath?.trim() ? { relativePath: value.relativePath.trim() } : {}),
+        ...(value.title?.trim() ? { name: value.title.trim() } : {})
+      }
     }
+    const runOut = doc.runStates?.[source.id]?.outputs?.out
+    const direct = runOut ? fromValue(runOut) : null
+    if (direct) return direct
     for (const item of flattenAssetValues(runOut ? [runOut] : [])) {
-      if (item.assetType === 'model' && item.assetId) return item.assetId
+      const info = fromValue(item)
+      if (info) return info
     }
     if (source.assetType === 'model' && source.assetId) {
-      return source.assetId
+      return { assetId: source.assetId }
     }
     return null
   }
@@ -7088,17 +7453,31 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   /** dive 进入导演台时，把 `in-model` 端口的 3D 模型自动实例化到舞台模型列表（去重）。 */
   async function syncIncomingModel(): Promise<void> {
-    const modelAssetId = await resolveIncomingModelAssetId()
-    if (!modelAssetId) {
+    const incoming = await resolveIncomingModel()
+    if (!incoming) {
       appliedIncomingModelKey = ''
       return
     }
-    if (modelAssetId === appliedIncomingModelKey) return
-    appliedIncomingModelKey = modelAssetId
-    if (stage.value.objects.some((o) => o.kind === 'model' && o.modelAssetId === modelAssetId)) {
+    if (incoming.assetId === appliedIncomingModelKey) return
+    appliedIncomingModelKey = incoming.assetId
+    const existing = stage.value.objects.find(
+      (o) => o.kind === 'model' && o.modelAssetId === incoming.assetId
+    )
+    if (existing) {
+      // 旧数据可能丢了物化路径（Cache 产物查不到资产），补回后才不会退化成占位方块
+      if (incoming.relativePath && !existing.modelRelativePath?.trim()) {
+        stage.value.objects = stage.value.objects.map((o) =>
+          o.id === existing.id ? { ...o, modelRelativePath: incoming.relativePath } : o
+        )
+        schedulePersist()
+        await rebuildObjects()
+      }
       return
     }
-    await createModelObject(modelAssetId)
+    await createModelObject(incoming.assetId, null, undefined, {
+      relativePath: incoming.relativePath,
+      name: incoming.name
+    })
   }
 
   function clearFlyKeys(): void {
@@ -8156,6 +8535,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     canApplyComboPreset,
     getViewer,
     updateObjectTransform,
+    listObjectMaterialSlots,
+    setObjectMaterialTexture,
     setObjectVisible,
     setObjectLocked,
     setObjectNameVisible,

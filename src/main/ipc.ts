@@ -270,9 +270,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.AUTOSAVE_READ, (filter: Required<AutosaveFilter>) =>
     autosaveRepository.read(projectService.getRoot(), filter)
   )
-  handle(IpcChannels.AUTOSAVE_DISCARD, (filter?: AutosaveFilter) =>
+  handle(IpcChannels.AUTOSAVE_DISCARD, (filter?: AutosaveFilter) => {
+    // 丢弃自动保存是纯清理动作：无工程时无可清理，按 no-op 成功处理而非报错
+    if (!projectService.isOpen()) return
     autosaveRepository.discard(projectService.getRoot(), filter)
-  )
+  })
   handle(IpcChannels.PLUGIN_LIST, () => pluginRepository.list())
 
   handle(IpcChannels.GRAPH_SAVE_RUN_MEDIA, async (input: SaveGraphRunMediaInput) => {

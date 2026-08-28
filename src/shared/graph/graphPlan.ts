@@ -68,6 +68,7 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'generateQuality',
   'generateDuration',
   'generateCount',
+  'generateStyle',
   'generateSeed',
   'generateSeedUseGlobal',
   'generateFrameMode',

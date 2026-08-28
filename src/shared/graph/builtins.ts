@@ -433,6 +433,7 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
         return {
           generateModel: '',
           generateProviderInstanceId: '',
+          generateStyle: '',
           weight: meta.weight,
           volume: 1,
           muted: false,

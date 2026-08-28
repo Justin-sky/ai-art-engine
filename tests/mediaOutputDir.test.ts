@@ -12,6 +12,7 @@ describe('resolveMediaOutputDir (cache redesign)', () => {
     expect(resolveMediaOutputDir({ kind: 'video' })).toBe('Cache/Videos')
     expect(resolveMediaOutputDir({ kind: 'text' })).toBe('Cache/Texts')
     expect(resolveMediaOutputDir({ kind: 'voice' })).toBe('Cache/Voices')
+    expect(resolveMediaOutputDir({ kind: 'model' })).toBe('Cache/Models')
   })
 
   it('uses project cacheOutputDir root when set', () => {

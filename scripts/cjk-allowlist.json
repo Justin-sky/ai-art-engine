@@ -50,6 +50,10 @@
   "src/main/services/modelProviders/luma/adapter.ts": [
    "description: 'Luma Genie 3D 模型生成（文本/图片）'"
   ],
+  "src/main/services/modelProviders/lux3d/adapter.ts": [
+   "description: 'Lux3D G1 3D 模型生成（文本/图片/多图，质量优先）'",
+   "description: 'Lux3D G1-Turbo 3D 模型生成（文本/图片，速度优先）'"
+  ],
   "src/main/services/modelProviders/magicrouter/http.ts": [
    "const MAGICROUTER_AUTH_HINT_ZH = '请检查 MagicRouter API Key 是否正确、已保存'"
   ],

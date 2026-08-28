@@ -250,6 +250,8 @@ export const ASSET_VIDEO_OUTPUT_KIND_DIR = 'Videos'
 export const ASSET_TEXT_OUTPUT_KIND_DIR = 'Texts'
 /** Cache / 历史资产目录下的声音音频子目录名 */
 export const ASSET_VOICE_OUTPUT_KIND_DIR = 'Voices'
+/** Cache / 历史资产目录下的 3D 模型子目录名 */
+export const ASSET_MODEL_OUTPUT_KIND_DIR = 'Models'
 
 /** 规范化工程相对目录：去首尾斜杠、统一 `/`；空串视为未设置 */
 export function normalizeProjectRelativeDir(dir?: string | null): string {
@@ -285,10 +287,11 @@ export function resolveCacheOutputRoot(cacheOutputDir?: string | null): string {
 }
 
 /** 媒体种类对应的 Cache 子目录名 */
-export function mediaOutputKindDir(kind: 'image' | 'video' | 'text' | 'voice'): string {
+export function mediaOutputKindDir(kind: 'image' | 'video' | 'text' | 'voice' | 'model'): string {
   if (kind === 'video') return ASSET_VIDEO_OUTPUT_KIND_DIR
   if (kind === 'text') return ASSET_TEXT_OUTPUT_KIND_DIR
   if (kind === 'voice') return ASSET_VOICE_OUTPUT_KIND_DIR
+  if (kind === 'model') return ASSET_MODEL_OUTPUT_KIND_DIR
   return ASSET_IMAGE_OUTPUT_KIND_DIR
 }
 
@@ -340,13 +343,13 @@ export function formatGeneratedMediaStamp(date = new Date()): string {
 
 /**
  * 解析媒体输出目录：
- * 节点显式 mediaOutputDir > `{cacheOutputDir|Cache}/{Images|Videos|Texts|Voices}`。
+ * 节点显式 mediaOutputDir > `{cacheOutputDir|Cache}/{Images|Videos|Texts|Voices|Models}`。
  */
 export function resolveMediaOutputDir(input: {
   mediaOutputDir?: string | null
   /** 工程配置的缓存根；缺省 Cache */
   cacheOutputDir?: string | null
-  kind: 'image' | 'video' | 'text' | 'voice'
+  kind: 'image' | 'video' | 'text' | 'voice' | 'model'
 }): string {
   const explicit = normalizeProjectRelativeDir(input.mediaOutputDir)
   if (explicit) return explicit
@@ -769,12 +772,26 @@ export function detectModelPreviewMeta(
   }
 }
 
+/** 物体材质上可覆盖的贴图槽 */
+export type StageTextureSlot = 'map' | 'normalMap'
+
+export const STAGE_TEXTURE_SLOTS: readonly StageTextureSlot[] = ['map', 'normalMap']
+
+/**
+ * 单个材质的贴图覆盖：贴图槽 → 工程内图片相对路径。
+ *
+ * 三态：键缺失=沿用模型自带贴图；字符串=替换为该图片；`null`=显式隐藏（清掉自带贴图）。
+ */
+export type StageMaterialTextureOverrides = Partial<Record<StageTextureSlot, string | null>>
+
 export interface StageObjectState {
   id: string
   name: string
   kind: StageObjectKind
   primitive?: StagePrimitive
   modelAssetId?: string
+  /** 模型文件工程相对路径；Cache 产物（如 3D 生成）不入资产库时作回退 */
+  modelRelativePath?: string
   color?: string
   /** 父物体 id；空表示全景根下 */
   parentId?: string | null
@@ -789,6 +806,8 @@ export interface StageObjectState {
   scale: StageVec3
   /** 骨骼姿势偏移（局部欧拉角，弧度）；键为骨骼名 */
   bonePose?: Record<string, StageVec3>
+  /** 材质贴图覆盖（Unity 式贴图槽）：键为材质名（空名按枚举顺序合成 material-N） */
+  materialTextures?: Record<string, StageMaterialTextureOverrides>
   /** 用户保存的姿势预设 */
   posePresets?: DirectorPosePreset[]
   /** IK 目标槽手动覆盖（指定末端；links 可省略，运行时沿父链自动收集） */
@@ -1718,6 +1737,11 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
         ? o.primitive
         : undefined,
     modelAssetId: typeof o.modelAssetId === 'string' ? o.modelAssetId : undefined,
+    // Cache 产物不入资产库，丢了这条路径就只能退化成占位方块
+    modelRelativePath:
+      typeof o.modelRelativePath === 'string' && o.modelRelativePath.trim()
+        ? o.modelRelativePath
+        : undefined,
     color: typeof o.color === 'string' ? o.color : undefined,
     parentId,
     visible: o.visible === false ? false : true,
@@ -1728,9 +1752,36 @@ function normalizeStageObject(raw: unknown): StageObjectState | null {
     rotation: readVec3(o.rotation, { x: 0, y: 0, z: 0 }),
     scale: readVec3(o.scale, { x: 1, y: 1, z: 1 }),
     bonePose: readBonePose(o.bonePose),
+    // 丢了这份覆盖不只是贴图消失：舞台指纹会与落盘内容永久错配，触发反复重建网格
+    materialTextures: readMaterialTextures(o.materialTextures),
     posePresets: readPosePresets(o.posePresets),
     ikChains: readIkChains(o.ikChains)
   }
+}
+
+function readMaterialTextures(
+  raw: unknown
+): Record<string, StageMaterialTextureOverrides> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, StageMaterialTextureOverrides> = {}
+  for (const [materialKey, value] of Object.entries(raw as Record<string, unknown>)) {
+    const key = materialKey.trim()
+    if (!key || !value || typeof value !== 'object') continue
+    const source = value as Record<string, unknown>
+    const entry: StageMaterialTextureOverrides = {}
+    for (const slot of STAGE_TEXTURE_SLOTS) {
+      const slotValue = source[slot]
+      if (slotValue === null) {
+        entry[slot] = null
+        continue
+      }
+      if (typeof slotValue !== 'string') continue
+      const path = slotValue.trim()
+      if (path) entry[slot] = path
+    }
+    if (Object.keys(entry).length > 0) out[key] = entry
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function readBonePose(raw: unknown): Record<string, StageVec3> | undefined {

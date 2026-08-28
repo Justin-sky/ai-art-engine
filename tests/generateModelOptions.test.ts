@@ -62,6 +62,22 @@ describe('buildModelOptions', () => {
     expect(buildModelOptions(providers, 'audio').map((o) => o.model)).toEqual(['txt2audio'])
   })
 
+  it('includes lux3d for model3d and carries providerKind', () => {
+    const modalities = createEmptyModalityMap()
+    modalities.model3d.selectedModelIds = ['G1']
+    modalities.model3d.defaultModelId = 'G1'
+    const providers = [baseProvider({ id: 'l1', providerKind: 'lux3d', modalities })]
+    expect(buildModelOptions(providers, 'model3d')).toEqual([
+      {
+        key: 'l1::G1',
+        label: 'lux3d · G1',
+        providerInstanceId: 'l1',
+        providerKind: 'lux3d',
+        model: 'G1'
+      }
+    ])
+  })
+
   it('includes minimax for text, image, video and audio', () => {
     const modalities = createEmptyModalityMap()
     modalities.text.selectedModelIds = ['MiniMax-M3']

@@ -41,6 +41,8 @@ export const MAGICROUTER_DEFAULT_BASE_URL = 'https://api.magicrouter.ai/v1'
 export const HYPER3D_DEFAULT_BASE_URL = 'https://api.hyper3d.com/api/v2'
 /** Luma Genie（Dream Machine，3D 模型生成） */
 export const LUMA_DEFAULT_BASE_URL = 'https://api.lumalabs.ai/dream-machine/v1'
+/** AHOLO 开放平台 Lux3D（3D 模型生成；cn 区域，com 区域走 https://api.aholo3d.com） */
+export const LUX3D_DEFAULT_BASE_URL = 'https://api.aholo3d.cn'
 
 export type ModelProviderKind =
   | 'openrouter'
@@ -64,6 +66,7 @@ export type ModelProviderKind =
   | 'meshy'
   | 'hyper3d'
   | 'luma'
+  | 'lux3d'
 
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
@@ -201,6 +204,12 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'Luma AI',
     defaultBaseUrl: LUMA_DEFAULT_BASE_URL,
     credentialsUrl: 'https://lumalabs.ai/'
+  },
+  {
+    id: 'lux3d',
+    label: 'Lux3D',
+    defaultBaseUrl: LUX3D_DEFAULT_BASE_URL,
+    credentialsUrl: 'https://labs.aholo3d.cn/'
   }
 ]
 
@@ -389,7 +398,9 @@ export function isMagicRouterProvider(
 
 /** 支持 3D 模型生成（model3d）的提供商 kind */
 export function isModel3dProviderKind(kind: ModelProviderKind): boolean {
-  return kind === 'meshy' || kind === 'tripo' || kind === 'hyper3d' || kind === 'luma'
+  return (
+    kind === 'meshy' || kind === 'tripo' || kind === 'hyper3d' || kind === 'luma' || kind === 'lux3d'
+  )
 }
 
 /** 本机服务允许空 Key：vLLM / Ollama / LM Studio / ComfyUI（云端仍可填 Key） */
@@ -808,6 +819,12 @@ export interface GenerateModel3dInput {
   prompt: string
   model?: string
   providerInstanceId?: string
+  /**
+   * 风格（Lux3D 文生3D）：photorealistic / cartoon / anime /
+   * hand_painted / cyberpunk / fantasy / glass；缺省 photorealistic。
+   * 图生3D 无该参数，适配器会忽略。
+   */
+  style?: string
   /** 参考图（图生3D/多图生3D） */
   inputReferences?: GenerateVideoInputReference[]
   /** 落盘目录（相对工程根） */

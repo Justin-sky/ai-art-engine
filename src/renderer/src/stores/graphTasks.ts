@@ -1222,6 +1222,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             prompt: input.prompt,
             model: input.model,
             providerInstanceId: input.providerInstanceId,
+            style: input.style,
             inputReferenceCount: input.inputReferences?.length || undefined
           }
           try {

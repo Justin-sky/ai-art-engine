@@ -1289,7 +1289,9 @@ class ProjectService {
         ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'video' })
         : params.type === 'voice'
           ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'voice' })
-          : 'Assets')
+          : params.type === 'model'
+            ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'model' })
+            : 'Assets')
     const dirAbs = assertInsideProject(root, join(root, destDirRel))
     mkdirSync(dirAbs, { recursive: true })
     const underLibrary = isUnderAssetLibraryDir(destDirRel)

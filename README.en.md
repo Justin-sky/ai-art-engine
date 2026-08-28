@@ -6,7 +6,7 @@
   <p><b>Professional AI creation tool · short drama · ads · film</b></p>
   <p>
     Local-first projects · Shot & node-graph workflows<br />
-    OpenRouter · OpenAI · DeepSeek · Zhipu · Kimi · xAI · Google · vLLM · Ollama · LM Studio · Volcengine Ark · Kling · MiniMax · Tongyi Qianwen · ModelScope · ComfyUI · Meshy · Tripo · Rodin (Hyper3D) · Luma AI<br />
+    OpenRouter · OpenAI · DeepSeek · Zhipu · Kimi · xAI · Google · vLLM · Ollama · LM Studio · Volcengine Ark · Kling · MiniMax · Tongyi Qianwen · ModelScope · ComfyUI · Meshy · Tripo · Rodin (Hyper3D) · Luma AI · Lux3D<br />
     Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
 
@@ -91,7 +91,7 @@ npm run dist:win | dist:mac | dist:linux
 - **Host assets** — boundary ports outside, full graph inside via Dive  
 - **Director stage** — 3D pose shots & action recording (`Cache/Videos`); square ports `out-shots` / `out-actions`; 3D model input port auto-instantiates on dive  
 - **Timeline** — import/group clips, scrub tracks; preview selection vs full-timeline play; export  
-- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL), Meshy / Tripo / Rodin (Hyper3D) / Luma AI (3D model generation, text-to-3D / image-to-3D)
+- **Model providers** — OpenRouter, OpenAI (GPT text / gpt-image), DeepSeek (text), Zhipu (GLM text / CogView image), Kimi / Moonshot (text), xAI / Grok (text / image / video), Google / Gemini (text / image / video), local vLLM (text / Wan video), Ollama / LM Studio (text, OpenAI-compatible, no API key), Volcengine Ark (Seedream / Seedance / voice), Kling, MiniMax, Tongyi Qianwen (DashScope), ModelScope, ComfyUI (API v2: image / video / audio, local or cloud Base URL), Meshy / Tripo / Rodin (Hyper3D) / Luma AI / Lux3D (3D model generation, text-to-3D / image-to-3D)
 - **Object storage** — Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS (only one enabled at a time; for public reference media URLs)  
 - **Extensible** — Editor Kernel + Cordis internal plugins (windows / Inspector / nodes / skills / executors) + declarative external plugin list  
 
@@ -118,6 +118,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | Tripo | Text-to-3D / image-to-3D (API key) |
 | Model | Rodin (Hyper3D) | Text-to-3D / image-to-3D (API key) |
 | Model | Luma AI | Text-to-3D / image-to-3D (API key) |
+| Model | Lux3D | Text-to-3D / image-to-3D (incl. multi-image, G1 / G1-Turbo, API key) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
 
 Configure under **Settings → Models** / **Settings → Object storage**. Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) on port 8189 — do not point Base URL at 8188.

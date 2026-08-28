@@ -357,6 +357,80 @@
               >
             </span>
           </label>
+          <template v-if="objectMaterialRows.length">
+            <div class="section-label">
+              {{ t('director.stage.textures') }}
+            </div>
+            <div
+              v-for="row in objectMaterialRows"
+              :key="row.key"
+              class="material-textures"
+            >
+              <div class="material-name">
+                {{ row.label }}
+              </div>
+              <div
+                v-for="slotRow in row.slots"
+                :key="slotRow.slot"
+                class="texture-slot-row"
+              >
+                <span class="texture-slot-name">
+                  {{ t(slotRow.labelKey) }}
+                </span>
+                <span
+                  class="texture-slot-body"
+                  :class="{ filled: slotRow.path }"
+                  :title="t('director.stage.textureHint')"
+                  @dragover.prevent
+                  @drop.prevent="onTextureSlotDrop(row.key, slotRow.slot, $event)"
+                >
+                  <img
+                    v-if="slotRow.thumb"
+                    class="texture-thumb"
+                    :src="slotRow.thumb"
+                    :alt="row.label"
+                  >
+                  <span
+                    v-else-if="slotRow.path"
+                    class="texture-thumb texture-thumb-loading"
+                  >…</span>
+                  <span
+                    v-else-if="slotRow.hidden"
+                    class="texture-thumb texture-thumb-empty"
+                  >{{ t('director.stage.textureSlotHidden') }}</span>
+                  <span
+                    v-else
+                    class="texture-thumb texture-thumb-empty"
+                  >{{ t('director.stage.textureSlotEmpty') }}</span>
+                </span>
+                <button
+                  type="button"
+                  class="texture-clear"
+                  :class="{ active: slotRow.hidden }"
+                  :title="
+                    slotRow.hidden
+                      ? t('director.stage.textureShow')
+                      : t('director.stage.textureHide')
+                  "
+                  @click="toggleObjectTextureHidden(row.key, slotRow.slot, slotRow.hidden)"
+                >
+                  ⊘
+                </button>
+                <button
+                  v-if="slotRow.path || slotRow.hidden"
+                  type="button"
+                  class="texture-clear"
+                  :title="t('director.stage.textureReset')"
+                  @click="resetObjectTexture(row.key, slotRow.slot)"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <p class="texture-hint">
+              {{ t('director.stage.textureHint') }}
+            </p>
+          </template>
         </div>
         <div
           v-else
@@ -1081,8 +1155,10 @@ import {
   normalizeDirectorSkyColor,
   readDirectorSceneWorld,
   readModelAssetColor,
-  isPoseModelAsset
+  isPoseModelAsset,
+  type StageTextureSlot
 } from '@shared/domain'
+import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { vNumberScrub } from '../directives/numberScrub'
 import { themePreference } from '../editor/preferences'
@@ -1231,6 +1307,82 @@ const poseBoneNames = computed(() => {
   if (!id || !showPoseTab.value) return [] as string[]
   return scene.listObjectBones(id)
 })
+
+// ---- 材质贴图（Unity 式贴图槽：从资产库拖入图片设置，⊘ 隐藏自带贴图，✕ 还原） ----
+interface MaterialTextureSlotRow {
+  slot: StageTextureSlot
+  labelKey: string
+  path: string
+  hidden: boolean
+  thumb: string
+}
+interface MaterialTextureRow {
+  key: string
+  label: string
+  slots: MaterialTextureSlotRow[]
+}
+const textureThumbUrls = ref<Record<string, string>>({})
+const objectMaterialRows = computed<MaterialTextureRow[]>(() => {
+  void scene.previewRevision.value
+  const o = obj.value
+  if (!o) return []
+  return scene.listObjectMaterialSlots(o.id).map((row) => ({
+    key: row.key,
+    label: row.label,
+    slots: (
+      [
+        { slot: 'map', labelKey: 'director.stage.textureSlotMap', value: row.map },
+        {
+          slot: 'normalMap',
+          labelKey: 'director.stage.textureSlotNormal',
+          value: row.normalMap
+        }
+      ] as const
+    ).map((item) => {
+      const path = typeof item.value === 'string' ? item.value : ''
+      return {
+        slot: item.slot,
+        labelKey: item.labelKey,
+        path,
+        hidden: item.value === null,
+        thumb: path ? textureThumbUrls.value[path] ?? '' : ''
+      }
+    })
+  }))
+})
+watch(
+  () => objectMaterialRows.value.flatMap((row) => row.slots.map((item) => item.path)),
+  async (paths) => {
+    for (const rel of paths) {
+      if (!rel || textureThumbUrls.value[rel]) continue
+      const url = await resolveAssetPreviewUrl(rel)
+      if (url) textureThumbUrls.value[rel] = url
+    }
+  },
+  { immediate: true }
+)
+function onTextureSlotDrop(materialKey: string, slot: StageTextureSlot, event: DragEvent): void {
+  const o = obj.value
+  if (!o) return
+  const asset = workspace.resolveDraggedAsset(event)
+  if (!asset || asset.type !== 'image' || !asset.relativePath) return
+  scene.setObjectMaterialTexture(o.id, materialKey, slot, asset.relativePath)
+}
+/** 还原模型自带贴图（撤销替换或隐藏） */
+function resetObjectTexture(materialKey: string, slot: StageTextureSlot): void {
+  const o = obj.value
+  if (!o) return
+  scene.setObjectMaterialTexture(o.id, materialKey, slot, undefined)
+}
+function toggleObjectTextureHidden(
+  materialKey: string,
+  slot: StageTextureSlot,
+  hidden: boolean
+): void {
+  const o = obj.value
+  if (!o) return
+  scene.setObjectMaterialTexture(o.id, materialKey, slot, hidden ? undefined : null)
+}
 const canGenerateAiPose = computed(
   () =>
     !!aiPoseModelKey.value &&
@@ -3097,6 +3249,96 @@ input:not([type]):focus {
   grid-template-columns: 32px 1fr;
   align-items: center;
   gap: 8px;
+}
+
+.material-textures {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.material-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.texture-slot-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.texture-slot-name {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.texture-slot-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.texture-slot-body:hover {
+  border-color: var(--accent-fg);
+}
+
+.texture-thumb {
+  width: 100%;
+  height: 36px;
+  object-fit: cover;
+  display: block;
+}
+
+.texture-thumb-empty,
+.texture-thumb-loading {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.texture-clear {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.texture-clear:hover {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.texture-clear.active {
+  color: var(--accent-fg);
+  border-color: var(--accent-fg);
+}
+
+.texture-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
 }
 
 .color-control input[type='color'] {

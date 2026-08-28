@@ -84,13 +84,13 @@ type Waiter = {
   reject: (err: Error) => void
 }
 
-function resolveJobVideoOutputDir(job: VideoJobRecord): string {
+function resolveJobOutputDir(job: VideoJobRecord): string {
   return resolveMediaOutputDir({
     mediaOutputDir: job.outputDir,
     cacheOutputDir: projectService.isOpen()
       ? projectService.getConfig().cacheOutputDir
       : undefined,
-    kind: 'video'
+    kind: jobKind(job) === 'model3d' ? 'model' : 'video'
   })
 }
 
@@ -318,7 +318,8 @@ class VideoJobService {
     const dest = join(tmpDir, isModel3d ? 'output.glb' : 'output.mp4')
     await modelProviderFacade.downloadVideoToFile(provider, downloadUrl, dest)
 
-    const outputDir = isModel3d ? job.outputDir?.trim() || undefined : resolveJobVideoOutputDir(job)
+    // 与视频一致：显式 outputDir > 缓存根下 {Videos|Models}（3D 模型缺省 Cache/Models）
+    const outputDir = resolveJobOutputDir(job)
     const asset = projectService.attachExternalGeneratedFile({
       type: isModel3d ? 'model' : 'video',
       sourceFilePath: dest,

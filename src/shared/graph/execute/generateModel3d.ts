@@ -93,6 +93,7 @@ export async function executeModel3dGenerateNode(
     prompt,
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
+    style: node.params.generateStyle || undefined,
     inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
     name: node.title,
     graphBinding: {

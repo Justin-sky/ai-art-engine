@@ -267,6 +267,8 @@ export interface GraphNodeParams {
   generateQuality?: string
   /** 图片/全景生成：张数 n */
   generateCount?: number
+  /** 3D 模型生成：风格（Lux3D 文生3D photorealistic/cartoon/anime/hand_painted/cyberpunk/fantasy/glass） */
+  generateStyle?: string
   /** 图片/视频生成：随机种子（固定可复现，留空随机） */
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */

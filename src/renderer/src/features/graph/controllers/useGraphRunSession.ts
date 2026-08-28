@@ -580,6 +580,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       prompt: string
       model?: string
       providerInstanceId?: string
+      style?: string
       inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
       outputDir?: string
       name?: string
@@ -593,6 +594,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         prompt: input.prompt,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
+        style: input.style,
         inputReferenceCount: input.inputReferences?.length || undefined
       }
       try {

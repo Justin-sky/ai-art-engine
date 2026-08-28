@@ -53,6 +53,8 @@ export interface GraphRunLogApiCall {
     system?: string
     model?: string
     providerInstanceId?: string
+    /** 3D 生成：风格（Lux3D 文生3D） */
+    style?: string
     /** 多模态附图 / 参考图数量（不落 data URL，避免日志膨胀） */
     imageCount?: number
     aspectRatio?: string

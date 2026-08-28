@@ -282,6 +282,8 @@ export interface NodeExecuteContext {
     prompt: string
     model?: string
     providerInstanceId?: string
+    /** 风格（Lux3D 文生3D） */
+    style?: string
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
