@@ -71,6 +71,8 @@ import {
   type StageTextureSlot,
   type StageVec3,
   type TransformMode,
+  type DirectorShadingMode,
+  normalizeDirectorShadingMode,
   type DirectorPosePreset,
   type DirectorIkChainSpec,
   type DirectorIkChainSlotId,
@@ -295,6 +297,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   let selectionHelper: THREE.BoxHelper | null = null
   const SELECTION_BOUNDS_STORAGE_KEY = 'director.stage.selectionBoundsVisible'
   const selectionBoundsVisible = ref(readSelectionBoundsVisiblePref())
+  const SHADING_MODE_STORAGE_KEY = 'director.stage.shadingMode'
+  const SHADING_WIRE_OVERLAY_FLAG = 'directorShadingWireOverlay'
+  const SHADING_ORIG_MATERIAL_KEY = 'directorOrigMaterial'
+  const shadingMode = ref<DirectorShadingMode>(readShadingModePref())
+  /** Shaded Wireframe 叠加线共用材质 */
+  let shadingWireMaterial: THREE.LineBasicMaterial | null = null
+  /** Wireframe 模式替换材质：无贴图、无光照，只画三角网格 */
+  let shadingWireframeMaterial: THREE.MeshBasicMaterial | null = null
   /** Unity 式 Gizmos 全局开关与尺寸 */
   const gizmoSize = ref(1)
   const sceneLabelsVisible = ref(true)
@@ -1652,7 +1662,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function applyPanoramaVisuals(visibleOverride?: boolean): void {
-    const visible = visibleOverride ?? stage.value.panoramaVisible !== false
+    const visible =
+      (visibleOverride ?? stage.value.panoramaVisible !== false) &&
+      shadingMode.value !== 'wireframe'
     const sphere = resolvePanoramaSphere()
     const root = contentRoot ?? scene
     if (root) {
@@ -4922,6 +4934,120 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
+  function readShadingModePref(): DirectorShadingMode {
+    try {
+      return normalizeDirectorShadingMode(localStorage.getItem(SHADING_MODE_STORAGE_KEY))
+    } catch {
+      return 'shaded'
+    }
+  }
+
+  function shadingWireframeColor(): number {
+    return themePreference.value === 'light' ? 0x222222 : 0xe6e6e6
+  }
+
+  function getShadingWireMaterial(): THREE.LineBasicMaterial {
+    if (!shadingWireMaterial) {
+      shadingWireMaterial = new THREE.LineBasicMaterial({
+        color: 0x111111,
+        transparent: true,
+        opacity: 0.45,
+        depthTest: true
+      })
+    }
+    return shadingWireMaterial
+  }
+
+  function getShadingWireframeMaterial(): THREE.MeshBasicMaterial {
+    if (!shadingWireframeMaterial) {
+      shadingWireframeMaterial = new THREE.MeshBasicMaterial({
+        color: shadingWireframeColor(),
+        wireframe: true,
+        fog: false,
+        toneMapped: false
+      })
+    } else {
+      shadingWireframeMaterial.color.setHex(shadingWireframeColor())
+    }
+    return shadingWireframeMaterial
+  }
+
+  function clearShadingWireOverlays(root: THREE.Object3D): void {
+    const remove: THREE.Object3D[] = []
+    root.traverse((child) => {
+      if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) remove.push(child)
+    })
+    for (const overlay of remove) {
+      overlay.removeFromParent()
+      if (overlay instanceof THREE.LineSegments) {
+        overlay.geometry.dispose()
+      }
+    }
+  }
+
+  /** 还原线框模式替换掉的原材质，避免共享替换材质被 dispose，也保证贴图槽仍指向模型材质 */
+  function restoreShadingMaterials(root: THREE.Object3D): void {
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
+      const orig = child.userData[SHADING_ORIG_MATERIAL_KEY] as
+        | THREE.Material
+        | THREE.Material[]
+        | undefined
+      if (!orig) return
+      child.material = orig
+      delete child.userData[SHADING_ORIG_MATERIAL_KEY]
+    })
+  }
+
+  function applyShadingModeToObject(root: THREE.Object3D): void {
+    clearShadingWireOverlays(root)
+    restoreShadingMaterials(root)
+    const mode = shadingMode.value
+    if (mode === 'shaded') return
+    const wireMat = mode === 'wireframe' ? getShadingWireframeMaterial() : null
+    root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return
+      if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
+      if (mode === 'wireframe' && wireMat) {
+        child.userData[SHADING_ORIG_MATERIAL_KEY] = child.material
+        child.material = Array.isArray(child.material)
+          ? child.material.map(() => wireMat)
+          : wireMat
+        return
+      }
+      if (!child.geometry) return
+      const wire = new THREE.LineSegments(
+        new THREE.WireframeGeometry(child.geometry),
+        getShadingWireMaterial()
+      )
+      wire.userData[SHADING_WIRE_OVERLAY_FLAG] = true
+      wire.renderOrder = (child.renderOrder || 0) + 1
+      wire.frustumCulled = false
+      child.add(wire)
+    })
+  }
+
+  function applyShadingModeToAllObjects(): void {
+    for (const mesh of objectMeshes.values()) {
+      applyShadingModeToObject(mesh)
+    }
+    applyPanoramaVisuals()
+    requestRender()
+  }
+
+  function setShadingMode(mode: DirectorShadingMode): void {
+    const next = normalizeDirectorShadingMode(mode)
+    if (shadingMode.value === next) return
+    shadingMode.value = next
+    try {
+      localStorage.setItem(SHADING_MODE_STORAGE_KEY, next)
+    } catch {
+      /* ignore */
+    }
+    applyShadingModeToAllObjects()
+  }
+
   function clearSelectionHelper(): void {
     if (selectionHelper && scene) {
       scene.remove(selectionHelper)
@@ -5164,7 +5290,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const out: Array<{ material: THREE.Material; name?: string }> = []
     root.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return
-      const materials = Array.isArray(child.material) ? child.material : [child.material]
+      if (child.userData?.[SHADING_WIRE_OVERLAY_FLAG]) return
+      const raw = (child.userData[SHADING_ORIG_MATERIAL_KEY] as
+        | THREE.Material
+        | THREE.Material[]
+        | undefined) ?? child.material
+      const materials = Array.isArray(raw) ? raw : [raw]
       for (const material of materials) {
         if (material) out.push({ material, name: material.name })
       }
@@ -5739,6 +5870,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     else getStageRoot()?.add(mesh)
     objectMeshes.set(obj.id, mesh)
     applyObjectTextureOverrides(obj.id, obj)
+    applyShadingModeToObject(mesh)
     stage.value.objects = [...stage.value.objects, obj]
     selectObject(obj.id)
     schedulePersist()
@@ -7182,11 +7314,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   function disposeObject(obj: THREE.Object3D): void {
+    restoreShadingMaterials(obj)
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose()
         if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose())
         else child.material.dispose()
+      } else if (
+        child instanceof THREE.LineSegments &&
+        child.userData?.[SHADING_WIRE_OVERLAY_FLAG]
+      ) {
+        child.geometry.dispose()
       }
     })
   }
@@ -7271,6 +7409,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const poseId = poseSkeletonOverlay.getTargetObjectId()
       setPoseSkeletonVisible(poseId)
     }
+    applyShadingModeToAllObjects()
     previewRevision.value += 1
   }
 
@@ -8268,6 +8407,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
     panoramaTexture?.dispose()
     panoramaTexture = null
+    shadingWireMaterial?.dispose()
+    shadingWireMaterial = null
+    shadingWireframeMaterial?.dispose()
+    shadingWireframeMaterial = null
     if (grid) {
       contentRoot?.remove(grid)
       disposeGridHelper(grid)
@@ -8382,6 +8525,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   })
 
   watch(themePreference, () => {
+    if (shadingWireframeMaterial) {
+      shadingWireframeMaterial.color.setHex(shadingWireframeColor())
+    }
     applyPanoramaVisuals()
     requestRender()
   })
@@ -8600,6 +8746,8 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     selectionBoundsVisible,
     setSelectionBoundsVisible,
     toggleSelectionBoundsVisible,
+    shadingMode,
+    setShadingMode,
     gizmoSize,
     sceneLabelsVisible,
     cameraGizmosVisible,

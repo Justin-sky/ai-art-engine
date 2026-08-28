@@ -1147,6 +1147,12 @@ export default {
       viewFront: 'Front view',
       selectionBounds: 'Selection bounds',
       captureShot: 'Capture',
+      shadingMode: 'Shading Mode',
+      shading: {
+        shaded: 'Shaded',
+        wireframe: 'Wireframe',
+        shadedWireframe: 'Shaded Wireframe'
+      },
       cameraPreview: 'Camera preview',
       cameraPreviewHint: 'Floating live preview of selected cameras',
       cameraPreviewEmpty: 'Select one or more cameras in the hierarchy',

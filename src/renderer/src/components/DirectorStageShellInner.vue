@@ -156,6 +156,53 @@
         </div>
       </div>
       <div class="title-actions no-drag">
+        <div class="gizmos-root shading-root">
+          <button
+            type="button"
+            class="shots-trigger gizmos-trigger"
+            :class="{ open: shadingMenuOpen }"
+            :aria-expanded="shadingMenuOpen"
+            :title="t('director.stage.shadingMode')"
+            @click.stop="toggleShadingMenu"
+          >
+            <span
+              class="shots-trigger-icon"
+              v-html="SHADING_ICON"
+            />
+          </button>
+          <div
+            v-if="shadingMenuOpen"
+            ref="shadingMenuEl"
+            class="gizmos-menu shading-menu"
+            role="menu"
+            :aria-label="t('director.stage.shadingMode')"
+          >
+            <div class="gizmos-title">
+              {{ t('director.stage.shadingMode') }}
+            </div>
+            <button
+              v-for="option in shadingOptions"
+              :key="option.id"
+              type="button"
+              class="shading-item"
+              :class="{ active: scene.shadingMode.value === option.id }"
+              role="menuitem"
+              @click="onPickShading(option.id)"
+            >
+              <span
+                v-if="scene.shadingMode.value === option.id"
+                class="shading-check"
+                aria-hidden="true"
+              >✓</span>
+              <span
+                v-else
+                class="shading-check spacer"
+                aria-hidden="true"
+              />
+              <span>{{ t(option.labelKey) }}</span>
+            </button>
+          </div>
+        </div>
         <div class="gizmos-root">
           <button
             type="button"
@@ -310,7 +357,6 @@
           @capture="onCapture"
           @set-aspect-ratio="scene.setAspectRatio"
           @toggle-selection-bounds="scene.toggleSelectionBoundsVisible"
-          @apply-camera-preset="scene.applyCameraPreset"
         />
         <div
           v-if="scene.aspectRatio.value !== 'auto'"
@@ -340,7 +386,12 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
-import { fitDirectorAspectFrame, isPoseModelAsset } from '@shared/domain'
+import {
+  DIRECTOR_SHADING_MODES,
+  fitDirectorAspectFrame,
+  isPoseModelAsset,
+  type DirectorShadingMode
+} from '@shared/domain'
 import {
   DIRECTOR_COMBO_CAMERA_PRESETS,
   DIRECTOR_SHOT_CAMERA_PRESETS
@@ -363,6 +414,7 @@ import DirectorCameraPreviewPanel from './DirectorCameraPreviewPanel.vue'
 
 const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>`
 const GIZMOS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.6"/><ellipse cx="12" cy="12" rx="7.6" ry="3.1"/><ellipse cx="12" cy="12" rx="3.1" ry="7.6"/><path d="M4.4 12h15.2"/><path d="M12 4.4v15.2"/></svg>`
+const SHADING_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 20.2 8v8L12 20.6 3.8 16V8L12 3.4Z" fill="currentColor" fill-opacity="0.16"/><path d="M12 3.4 20.2 8v8L12 20.6 3.8 16V8L12 3.4Z"/><path d="M3.8 8 12 12.6 20.2 8"/><path d="M12 12.6V20.6"/><path d="M7.9 10.3v8.1"/><path d="M16.1 10.3v8.1"/><path d="M5.85 14.3h12.3"/></svg>`
 
 defineProps<{
   showClose?: boolean
@@ -391,6 +443,12 @@ const shotsPanelOpen = ref(false)
 const shotsPanelTab = ref<DirectorMediaGalleryTab>('shots')
 const gizmosMenuOpen = ref(false)
 const gizmosMenuEl = ref<HTMLElement | null>(null)
+const shadingMenuOpen = ref(false)
+const shadingMenuEl = ref<HTMLElement | null>(null)
+const shadingOptions = DIRECTOR_SHADING_MODES.map((id) => ({
+  id,
+  labelKey: `director.stage.shading.${id}` as const
+}))
 let resizeObserver: ResizeObserver | null = null
 
 const hasSelection = computed(
@@ -441,12 +499,20 @@ const aspectFrameStyle = computed(() => {
 
 function toggleViewMenu(): void {
   viewMenuOpen.value = !viewMenuOpen.value
-  if (viewMenuOpen.value) closeShotsPanel()
+  if (viewMenuOpen.value) {
+    closeShotsPanel()
+    closeShadingMenu()
+    gizmosMenuOpen.value = false
+  }
 }
 
 function togglePresetMenu(): void {
   presetMenuOpen.value = !presetMenuOpen.value
-  if (presetMenuOpen.value) closeShotsPanel()
+  if (presetMenuOpen.value) {
+    closeShotsPanel()
+    closeShadingMenu()
+    gizmosMenuOpen.value = false
+  }
   if (!presetMenuOpen.value) presetSubmenu.value = null
 }
 
@@ -462,12 +528,36 @@ function closeViewMenu(): void {
 
 function toggleShotsPanel(): void {
   shotsPanelOpen.value = !shotsPanelOpen.value
-  if (shotsPanelOpen.value) closeViewMenu()
+  if (shotsPanelOpen.value) {
+    closeViewMenu()
+    closeShadingMenu()
+    gizmosMenuOpen.value = false
+  }
+}
+
+function closeShadingMenu(): void {
+  shadingMenuOpen.value = false
+}
+
+function toggleShadingMenu(): void {
+  shadingMenuOpen.value = !shadingMenuOpen.value
+  if (shadingMenuOpen.value) {
+    closeShotsPanel()
+    gizmosMenuOpen.value = false
+  }
+}
+
+function onPickShading(mode: DirectorShadingMode): void {
+  scene.setShadingMode(mode)
+  closeShadingMenu()
 }
 
 function toggleGizmosMenu(): void {
   gizmosMenuOpen.value = !gizmosMenuOpen.value
-  if (gizmosMenuOpen.value) closeShotsPanel()
+  if (gizmosMenuOpen.value) {
+    closeShotsPanel()
+    closeShadingMenu()
+  }
 }
 
 function onGizmoSizeInput(event: Event): void {
@@ -545,8 +635,13 @@ function onDocumentPointerDown(event: PointerEvent): void {
   }
   if (gizmosMenuOpen.value) {
     if (gizmosMenuEl.value?.contains(target)) return
-    if (target?.closest('.gizmos-root')) return
+    if (target?.closest('.gizmos-root:not(.shading-root)')) return
     gizmosMenuOpen.value = false
+  }
+  if (shadingMenuOpen.value) {
+    if (shadingMenuEl.value?.contains(target)) return
+    if (target?.closest('.shading-root')) return
+    closeShadingMenu()
   }
 }
 
@@ -989,6 +1084,46 @@ async function onViewportDrop(event: DragEvent): Promise<void> {
 
 .gizmos-row.check input {
   accent-color: var(--accent);
+}
+
+.shading-menu {
+  min-width: 148px;
+  padding: 6px;
+}
+
+.shading-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.shading-item:hover {
+  background: var(--bg-hover);
+}
+
+.shading-item.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.shading-check {
+  width: 12px;
+  flex: 0 0 12px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.shading-check.spacer {
+  visibility: hidden;
 }
 
 .close-btn {

@@ -1141,6 +1141,12 @@ export default {
       viewFront: '前视图',
       selectionBounds: '选中包围盒',
       captureShot: '截屏',
+      shadingMode: '着色模式',
+      shading: {
+        shaded: '着色',
+        wireframe: '线框',
+        shadedWireframe: '着色线框'
+      },
       cameraPreview: '相机预览',
       cameraPreviewHint: '浮动显示所选相机的实时画面',
       cameraPreviewEmpty: '在左侧场景层级中选中一个或多个相机',

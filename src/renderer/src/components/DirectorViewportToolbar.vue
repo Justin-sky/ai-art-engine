@@ -172,24 +172,28 @@ function ratioLabel(id: DirectorAspectRatio): string {
   return id === 'auto' ? t('director.stage.aspectAuto') : id
 }
 
-function onSetMode(mode: TransformMode): void {
+function closeMenus(): void {
   ratioMenuOpen.value = false
+}
+
+function onSetMode(mode: TransformMode): void {
+  closeMenus()
   emit('setMode', mode)
 }
 function onSetStageMode(mode: DirectorStageEditMode): void {
-  ratioMenuOpen.value = false
+  closeMenus()
   emit('setStageEditMode', mode)
 }
 function onReset(): void {
-  ratioMenuOpen.value = false
+  closeMenus()
   emit('resetView')
 }
 function onCapture(): void {
-  ratioMenuOpen.value = false
+  closeMenus()
   emit('capture')
 }
 function onToggleSelectionBounds(): void {
-  ratioMenuOpen.value = false
+  closeMenus()
   emit('toggleSelectionBounds')
 }
 function toggleRatioMenu(): void {
@@ -205,7 +209,7 @@ function onDocumentPointerDown(event: PointerEvent): void {
   const target = event.target as HTMLElement | null
   if (ratioMenuEl.value?.contains(target)) return
   if (target?.closest('.toolbar-wrap')) return
-  ratioMenuOpen.value = false
+  closeMenus()
 }
 
 onMounted(() => document.addEventListener('pointerdown', onDocumentPointerDown))
@@ -285,6 +289,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPoin
   background: var(--panel-glass);
   border: 1px solid var(--border);
   box-shadow: 0 12px 32px var(--shadow);
+}
+
+.ratio-menu {
   min-width: 292px;
 }
 

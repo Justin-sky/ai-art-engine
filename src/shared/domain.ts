@@ -710,6 +710,20 @@ export type StagePrimitive = (typeof STAGE_PRIMITIVE_VALUES)[number]
 const STAGE_PRIMITIVE_SET: ReadonlySet<string> = new Set(STAGE_PRIMITIVE_VALUES)
 export type StageObjectKind = 'character' | 'prop' | 'model' | 'primitive' | 'empty'
 export type TransformMode = 'translate' | 'rotate' | 'scale'
+/** 导演台视口着色显示模式（对齐 Unity Scene View Shading Mode） */
+export type DirectorShadingMode = 'shaded' | 'wireframe' | 'shadedWireframe'
+
+export const DIRECTOR_SHADING_MODES: readonly DirectorShadingMode[] = [
+  'shaded',
+  'wireframe',
+  'shadedWireframe'
+] as const
+
+export function normalizeDirectorShadingMode(raw: unknown): DirectorShadingMode {
+  return DIRECTOR_SHADING_MODES.includes(raw as DirectorShadingMode)
+    ? (raw as DirectorShadingMode)
+    : 'shaded'
+}
 
 export interface StageVec3 {
   x: number
