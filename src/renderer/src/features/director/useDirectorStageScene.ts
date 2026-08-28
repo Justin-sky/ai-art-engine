@@ -4868,10 +4868,13 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!patch) return
     const nodeId = boundProcessingNodeId()
     const previousFingerprint = appliedStageFingerprint
-    const stored =
-      nodeId &&
-      (patch.genParams as { stagesByNodeId?: Record<string, unknown> }).stagesByNodeId?.[nodeId]
-    appliedStageFingerprint = fingerprintStage(stored)
+    // 指纹必须与资产 watch 里的 nextFingerprint 同表示（readDirectorStage normalize 后）。
+    // 若用落盘 raw 计算，只要 normalize 与 raw 有字段差异（如新建物体缺 nameVisible），
+    // 下一次资产写回就会被误判为外部变更 → 重载舞台 → frameShotCameraInDirectorView
+    // 把编辑器相机拉回机位后方，表现为“创建物体后视图突然缩放一下”。
+    appliedStageFingerprint = fingerprintStage(
+      resolveDirectorStageForNode(patch.genParams, patch.genParams?.graphJson, nodeId)
+    )
     try {
       skipAssetWatch = true
       await persistAssetRecord(options.directorAssetId, patch, {
@@ -6088,7 +6091,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
   }
 
-  function removeObject(id: string): boolean {
+  /**
+   * 删除单个对象/相机/机位组。
+   * persist=false 供批量删除（removeObjectsWithUndo）使用：循环内不落盘，
+   * 由调用方在全部删除完成后统一持久化一次——否则首次保存的快照只含
+   * 第一个删除（documents.save 对进行中的保存去重），其余删除会被丢掉，
+   * 落盘成“只删了一个”的中间态并触发舞台按旧数据重载。
+   */
+  function removeObject(id: string, persist = true): boolean {
     if (!canDeleteObject(id)) return false
     if (isCameraGroupId(id)) {
       // 机位组：删除组及其下的预设相机
@@ -6120,10 +6130,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       pruneStageAnimationForRemoved(new Set([id, ...groupCameraIds]))
       previewRevision.value += 1
       requestRender()
-      schedulePersist()
-      void directorDocument.save().catch(() => {
-        /* 持久化失败不阻塞 */
-      })
+      if (persist) {
+        schedulePersist()
+        void directorDocument.save().catch(() => {
+          /* 持久化失败不阻塞 */
+        })
+      }
       return true
     }
     if (isStageCameraId(id)) {
@@ -6132,15 +6144,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       const cameras = listCameras().filter((camera) => camera.id !== id)
       stage.value.cameras = cameras
       disposeShotCameraVisual(id)
-      if (wasActive) stage.value.activeCameraId = cameras[0].id
-      if (wasSelected) selectCamera(stage.value.activeCameraId ?? cameras[0].id)
+      if (wasActive) stage.value.activeCameraId = cameras[0]?.id ?? null
+      if (wasSelected) selectCamera(stage.value.activeCameraId ?? cameras[0]?.id ?? '')
       pruneStageAnimationForRemoved(new Set([id]))
       previewRevision.value += 1
       requestRender()
-      schedulePersist()
-      void directorDocument.save().catch(() => {
-        /* persistStageNow ????error */
-      })
+      if (persist) {
+        schedulePersist()
+        void directorDocument.save().catch(() => {
+          /* persistStageNow ????error */
+        })
+      }
       return true
     }
     const root = stage.value.objects.find((o) => o.id === id)
@@ -6200,10 +6214,12 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
     previewRevision.value += 1
     requestRender()
-    schedulePersist()
-    void directorDocument.save().catch(() => {
-      /* persistStageNow ????error */
-    })
+    if (persist) {
+      schedulePersist()
+      void directorDocument.save().catch(() => {
+        /* persistStageNow ????error */
+      })
+    }
     return true
   }
 
@@ -6275,10 +6291,16 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
 
     let removed = 0
+    // persist=false：循环内逐个落盘会与 documents.save 的去重竞态，
+    // 只有第一次保存（快照仅含第一个删除）真正执行，其余删除被丢弃
     for (const id of valid) {
-      if (removeObject(id)) removed += 1
+      if (removeObject(id, false)) removed += 1
     }
     if (!removed) return false
+    schedulePersist()
+    void directorDocument.save().catch(() => {
+      /* persistStageNow ????error */
+    })
 
     const afterObjects = cloneStageState(stage.value.objects)
     const afterCameras = cloneStageState(listCameras())
