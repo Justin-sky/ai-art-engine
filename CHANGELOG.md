@@ -2,7 +2,24 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
-## [Unreleased]
+## [4.1.1] — 2026-08-28
+
+### Added
+
+- 3D 模型生成新增 Lux3D（AHOLO）提供商：文生 3D 支持 7 种风格选择
+- 导演台物体支持材质贴图覆盖（基础贴图 / 法线贴图）：替换、隐藏、还原模型自带贴图
+- Cache 产物模型文件 `modelRelativePath` 回退加载，新增 Cache/Models 输出子目录
+
+### Fixed
+
+- 导演台基础几何体重开后全部变成占位方块：落盘白名单补齐全部 primitive
+- 导演台创建物体后视图跳动；多选删除只删掉一个
+
+### Changed
+
+- 错误消息全面中文化：新增统一错误目录（`src/shared/errors`）与主进程 `messages.ts`，主进程异常改为结构化 AppError 返回，renderer 按错误码提取用户可读中文
+- i18n 优化：硬编码中文迁移到语言包，新增 CI 检查（`check-hardcoded-cjk`），zh/en 语言包自动校验条目对等
+- 用户手册与官网文档全面修订（设置路径、快捷键、节点清单、教程页导航一致性）
 
 ## [4.1.0] — 2026-08-27
 
