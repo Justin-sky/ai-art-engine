@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
     <meta
       name="description"
       content="AIArtEngine — a professional AI creation tool for short drama, ads and film. One-Click Workflow, host assets, shots and episodes, node graph, director stage and final timeline; works with OpenRouter, OpenAI, Google, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope, ComfyUI, Meshy, Tripo, Rodin (Hyper3D), Luma AI, Lux3D and more, with text-to-3D / image-to-3D; local-first projects. Open source · GPL-3.0."
@@ -61,6 +76,7 @@
         >
       </nav>
       <a class="nav-lang" href="index.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
       <details class="mobile-menu">
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
@@ -111,8 +127,8 @@
         </div>
 
         <div class="coverflow reveal reveal-stage" style="--d: 0.1s" data-coverflow>
-          <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="Previous">‹</button>
           <div class="cf-stage">
+            <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="Previous">‹</button>
             <div class="cf-track">
               <figure class="cf-card">
                 <img src="assets/banner/node-graph.webp" alt="" width="1600" height="900" />
@@ -164,8 +180,8 @@
                 </figcaption>
               </figure>
             </div>
+            <button type="button" class="cf-nav cf-next" data-cf-next aria-label="Next">›</button>
           </div>
-          <button type="button" class="cf-nav cf-next" data-cf-next aria-label="Next">›</button>
           <div class="cf-dots" data-cf-dots role="tablist" aria-label="Slideshow"></div>
         </div>
 
@@ -602,6 +618,45 @@
       }
       window.addEventListener('scroll', onScroll, { passive: true })
       onScroll()
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
     </script>
   </body>
 </html>

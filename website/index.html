@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
     <meta
       name="description"
       content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。"
@@ -58,6 +74,7 @@
         >
       </nav>
       <a class="nav-lang" href="index.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
       <details class="mobile-menu">
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
@@ -106,8 +123,8 @@
         </div>
 
         <div class="coverflow reveal reveal-stage" style="--d: 0.1s" data-coverflow>
-          <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="上一张">‹</button>
           <div class="cf-stage">
+            <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="上一张">‹</button>
             <div class="cf-track">
               <figure class="cf-card">
                 <img src="assets/banner/node-graph.webp" alt="" width="1600" height="900" />
@@ -159,8 +176,8 @@
                 </figcaption>
               </figure>
             </div>
+            <button type="button" class="cf-nav cf-next" data-cf-next aria-label="下一张">›</button>
           </div>
-          <button type="button" class="cf-nav cf-next" data-cf-next aria-label="下一张">›</button>
           <div class="cf-dots" data-cf-dots role="tablist" aria-label="幻灯片"></div>
         </div>
 
@@ -574,6 +591,45 @@
       }
       window.addEventListener('scroll', onScroll, { passive: true })
       onScroll()
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
     </script>
   </body>
 </html>
