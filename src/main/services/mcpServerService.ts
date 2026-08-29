@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, appendFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
+import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import { createMcpProtocolHandler } from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
@@ -37,8 +38,8 @@ import { videoJobService } from './videoJobService'
  *
  * 端点约定：
  *   GET  /health          无需鉴权，仅供桥探测服务是否在线
- *   GET  /tools           工具元数据列表（供 tools/list）
- *   POST /tools/<name>    Body: { arguments } → { ok, result? , error? }
+ *   POST /mcp             streamable HTTP MCP 端点：单条 JSON-RPC（请求→200，
+ *                         通知→202 空体）；其余路径一律 404
  *
  * 鉴权：除 /health 外均需 `Authorization: Bearer <token>`；token 与端口写入
  * <userData>/mcp.json，应用退出时删除。
@@ -47,6 +48,12 @@ import { videoJobService } from './videoJobService'
 const MCP_DEFAULT_PORT = 43110
 const MCP_PORT_RANGE = 10
 const MCP_BODY_LIMIT = 8 * 1024 * 1024
+/** 生成并发闸门：同步生成调用同时上限与排队上限（环境变量可覆盖） */
+const MCP_GEN_LIMIT = Number(process.env.AIAE_MCP_GEN_LIMIT) || 3
+/** 审计日志单文件上限（超过滚动为 .1） */
+const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
+/** 纳入并发闸门的工具（同步等待的耗时生成/规划） */
+const GATED_TOOLS = new Set(['generate_image', 'generate_speech', 'workflow_plan'])
 
 interface McpToolDef {
   name: string
@@ -57,7 +64,10 @@ interface McpToolDef {
     properties: Record<string, unknown>
     required?: string[]
   }
-  handler: (args: Record<string, unknown>) => Promise<unknown> | unknown
+  handler: (
+    args: Record<string, unknown>,
+    ctx: { signal?: AbortSignal }
+  ) => Promise<unknown> | unknown
 }
 
 function readString(args: Record<string, unknown>, key: string): string {
@@ -237,7 +247,7 @@ const TOOL_DEFS: McpToolDef[] = [
       },
       required: []
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       assertProjectOpen()
       const input: PlanAiWorkflowInput = {
         prompt: optionalString(args, 'prompt') ?? '',
@@ -246,7 +256,7 @@ const TOOL_DEFS: McpToolDef[] = [
         model: optionalString(args, 'model'),
         generateAspectRatio: optionalString(args, 'generateAspectRatio')
       }
-      return planAiWorkflow(input)
+      return planAiWorkflow(input, { signal: ctx?.signal })
     }
   },
   {
@@ -416,16 +426,21 @@ const TOOL_DEFS: McpToolDef[] = [
         assetId,
         ops: args.ops
       })
-      for (let i = 0; i < 20; i++) {
-        await sleep(300)
-        const report = pendingMcpGraphEditResults.get(requestId)
-        if (!report) continue
-        if (report.ok) {
-          return { applied: report.applied ?? [], warnings: report.warnings ?? [] }
+      try {
+        for (let i = 0; i < 20; i++) {
+          await sleep(300)
+          const report = pendingMcpGraphEditResults.get(requestId)
+          if (!report) continue
+          if (report.ok) {
+            return { applied: report.applied ?? [], warnings: report.warnings ?? [] }
+          }
+          throw new Error(report.error ?? '图编辑失败')
         }
-        throw new Error(report.error ?? '图编辑失败')
+        throw new Error('渲染层未响应（请确认应用界面为最新版本）')
+      } finally {
+        // 一次性请求信道：无论结果如何都释放，避免残留
+        pendingMcpGraphEditResults.delete(requestId)
       }
-      throw new Error('渲染层未响应（请确认应用界面为最新版本）')
     }
   },
   {
@@ -513,6 +528,7 @@ const TOOL_DEFS: McpToolDef[] = [
       required: ['prompt']
     },
     handler: async (args) => {
+      assertProjectOpen()
       const input: GenerateImageInput & { name?: string } = {
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -549,6 +565,7 @@ const TOOL_DEFS: McpToolDef[] = [
       required: ['prompt']
     },
     handler: async (args) => {
+      assertProjectOpen()
       const input: GenerateVideoInput & { name?: string } = {
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -589,6 +606,7 @@ const TOOL_DEFS: McpToolDef[] = [
       required: ['prompt']
     },
     handler: async (args) => {
+      assertProjectOpen()
       const input: GenerateModel3dInput & { name?: string } = {
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
@@ -612,8 +630,24 @@ function assertProjectOpen(): void {
   }
 }
 
+/** 终态报告保留时长：task_status 在此期间仍可查到结果，超时自动回收 */
+const TASK_REPORT_RETENTION_MS = 10 * 60 * 1000
+
 /** MCP task_run 的渲染层回报（受理 / 终态），task_status 从这里读 */
 const pendingMcpTaskReports = new Map<string, McpTaskReportPayload>()
+const taskReportCleanups = new Map<string, NodeJS.Timeout>()
+
+/** 终态报告到期后自动清理，避免 Map 无限增长 */
+function scheduleTaskReportCleanup(mcpTaskId: string): void {
+  const prev = taskReportCleanups.get(mcpTaskId)
+  if (prev) clearTimeout(prev)
+  const timer = setTimeout(() => {
+    pendingMcpTaskReports.delete(mcpTaskId)
+    taskReportCleanups.delete(mcpTaskId)
+  }, TASK_REPORT_RETENTION_MS)
+  timer.unref?.()
+  taskReportCleanups.set(mcpTaskId, timer)
+}
 
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
 const pendingMcpGraphEditResults = new Map<string, McpGraphEditResultPayload>()
@@ -680,7 +714,71 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-async function handleToolCall(name: string, body: string): Promise<unknown> {
+let mcpAuditDir: string | null = null
+
+function initMcpAuditDir(): void {
+  mcpAuditDir = join(app.getPath('userData'), 'logs')
+  mkdirSync(mcpAuditDir, { recursive: true })
+}
+
+function truncateText(value: string, max = 200): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value
+}
+
+/** 参数摘要：长文本截断、对象折叠，避免审计日志膨胀或落敏感全文 */
+function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string') out[key] = truncateText(value)
+    else if (typeof value === 'number' || typeof value === 'boolean' || value === null) out[key] = value
+    else if (Array.isArray(value)) out[key] = `[${value.length} 项]`
+    else if (typeof value === 'object') out[key] = truncateText(JSON.stringify(value))
+  }
+  return out
+}
+
+/** MCP 操作审计：JSONL 追加写，超限滚动；失败不影响工具调用本身 */
+function appendMcpAudit(entry: {
+  tool: string
+  ok: boolean
+  durationMs: number
+  args: Record<string, unknown>
+  error?: unknown
+}): void {
+  if (!mcpAuditDir) return
+  try {
+    const path = join(mcpAuditDir, 'mcp-audit.jsonl')
+    try {
+      if (existsSync(path) && statSync(path).size > MCP_AUDIT_MAX_BYTES) {
+        renameSync(path, join(mcpAuditDir, 'mcp-audit.1.jsonl'))
+      }
+    } catch {
+      /* 滚动失败忽略 */
+    }
+    const line = JSON.stringify({
+      ts: new Date().toISOString(),
+      tool: entry.tool,
+      ok: entry.ok,
+      durationMs: entry.durationMs,
+      args: summarizeArgs(entry.args),
+      ...(entry.error !== undefined
+        ? { error: truncateText(String(entry.error), 300) }
+        : {})
+    })
+    appendFileSync(path, `${line}
+`)
+  } catch {
+    /* 审计写失败不影响工具调用 */
+  }
+}
+
+const genGate = new AsyncSemaphore(MCP_GEN_LIMIT, MCP_GEN_LIMIT * 2)
+
+async function handleToolCall(
+  name: string,
+  body: string,
+  ctx?: { signal?: AbortSignal }
+): Promise<unknown> {
   const tool = TOOL_DEFS.find((item) => item.name === name)
   if (!tool) throw new Error(`未知工具：${name}`)
   let args: Record<string, unknown> = {}
@@ -691,8 +789,29 @@ async function handleToolCall(name: string, body: string): Promise<unknown> {
       if (raw && typeof raw === 'object') args = raw as Record<string, unknown>
     }
   }
-  const result = await tool.handler(args)
-  return { ok: true, result }
+  const startedAt = Date.now()
+  const gated = GATED_TOOLS.has(name)
+  if (gated) {
+    const acquired = await genGate.acquire()
+    if (!acquired) {
+      throw new Error(
+        `生成并发已达上限（同时 ${MCP_GEN_LIMIT} 个、排队 ${genGate.waiting} 个），请稍后重试或调高 AIAE_MCP_GEN_LIMIT`
+      )
+    }
+  }
+  try {
+    const result = await tool.handler(args, { signal: ctx?.signal })
+    const durationMs = Date.now() - startedAt
+    const bytes = JSON.stringify(result).length
+    appendMcpAudit({ tool: name, ok: true, durationMs, args })
+    console.log(`[mcp] tool ${name} ok ${durationMs}ms ${bytes}B`)
+    return { ok: true, result }
+  } catch (err) {
+    appendMcpAudit({ tool: name, ok: false, durationMs: Date.now() - startedAt, args, error: err })
+    throw err
+  } finally {
+    if (gated) genGate.release()
+  }
 }
 
 /** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
@@ -706,9 +825,13 @@ const handleMcpProtocolMessage = createMcpProtocolHandler({
       description,
       inputSchema
     })),
-  callTool: async (name, args) => {
+  callTool: async (name, args, callCtx) => {
     try {
-      const payload = (await handleToolCall(name, JSON.stringify({ arguments: args }))) as {
+      const payload = (await handleToolCall(
+        name,
+        JSON.stringify({ arguments: args }),
+        callCtx
+      )) as {
         ok?: boolean
         result?: unknown
         error?: string
@@ -739,6 +862,7 @@ export async function startMcpServer(): Promise<void> {
   if (server) return
   const stored = readStoredMcpConfig()
   mcpServerVersion = String(updateService.getCurrentVersion())
+  initMcpAuditDir()
   // token 持久复用：HTTP 直连模式下客户端配置的 header 才能保持有效；
   // 要重置可删除 mcp.json 后重启应用
   mcpToken = stored.token ?? randomUUID()
@@ -754,6 +878,8 @@ export async function startMcpServer(): Promise<void> {
   ipcMain.handle(IpcChannels.MCP_TASK_REPORT, (_event, payload: McpTaskReportPayload) => {
     if (payload && typeof payload.mcpTaskId === 'string') {
       pendingMcpTaskReports.set(payload.mcpTaskId, payload)
+      // 终态（成功或失败）保留一段可查询时间后自动回收，避免 Map 无限增长
+      if (payload.phase !== 'accepted') scheduleTaskReportCleanup(payload.mcpTaskId)
     }
     return true
   })
@@ -806,6 +932,11 @@ export function stopMcpServer(): void {
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
+  // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
+  for (const timer of taskReportCleanups.values()) clearTimeout(timer)
+  taskReportCleanups.clear()
+  pendingMcpTaskReports.clear()
+  pendingMcpGraphEditResults.clear()
   if (mcpConfigPath) {
     try {
       rmSync(mcpConfigPath, { force: true })
@@ -846,39 +977,26 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
       sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'JSON 解析失败' } })
       return
     }
-    const response = await handleMcpProtocolMessage(message)
-    if (!response) {
-      res.writeHead(202, { 'Content-Type': 'application/json' })
-      res.end()
-      return
+    // 客户端断开连接即视为取消：中止进行中的长任务（如 workflow_plan）
+    const controller = new AbortController()
+    const onClose = (): void => {
+      if (!res.writableEnded) controller.abort()
     }
-    sendJson(res, 200, response)
+    req.on('close', onClose)
+    try {
+      const response = await handleMcpProtocolMessage(message, { signal: controller.signal })
+      if (!response) {
+        res.writeHead(202, { 'Content-Type': 'application/json' })
+        res.end()
+        return
+      }
+      sendJson(res, 200, response)
+    } finally {
+      req.off('close', onClose)
+    }
     return
   }
 
-  if (req.method === 'GET' && url === '/tools') {
-    sendJson(res, 200, {
-      tools: TOOL_DEFS.map(({ name, title, description, inputSchema }) => ({
-        name,
-        title,
-        description,
-        inputSchema
-      }))
-    })
-    return
-  }
-  const call = url.match(/^\/tools\/([A-Za-z0-9_-]+)$/)
-  if (req.method === 'POST' && call) {
-    const body = await readBody(req)
-    try {
-      sendJson(res, 200, await handleToolCall(decodeURIComponent(call[1]), body))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error(`[mcp tool ${call[1]}]`, message)
-      sendJson(res, 200, { ok: false, error: message })
-    }
-    return
-  }
   sendJson(res, 404, { ok: false, error: `未知端点：${req.method} ${url}` })
 }
 

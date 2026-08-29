@@ -130,4 +130,7 @@ HTTP 直连版（无需 Node.js，token 取自应用侧 mcp.json）：
 - 取消支持：HTTP 直连客户端断开连接，或任意传输发送 `notifications/cancelled`，会中止进行中的长任务
   （如 `workflow_plan` 的模型调用之间）；单次模型调用内部不可中断。
 - `task_status` 的报告（成功 / 失败终态）保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
-- 并发控制：当前未限制同时进行的生成任务数量，请避免并发触发大量耗时生成。
+- 并发闸门：`generate_image` / `generate_speech` / `workflow_plan` 同时最多 3 个（`AIAE_MCP_GEN_LIMIT`
+  可调），排队满直接返回错误；`generate_video` / `generate_model3d` 为提交即返回，不受闸门限制。
+- 操作审计：全部工具调用追加写 `<userData>/logs/mcp-audit.jsonl`（时间 / 工具 / 参数摘要 / 耗时 /
+  结果，参数超 200 字符截断，单文件 5MB 滚动），可回查 Agent 触发的每次生成与写入。

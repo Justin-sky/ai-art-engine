@@ -375,6 +375,12 @@
           <ul>
             <li>The service listens on <code>127.0.0.1</code> only, with token auth; file access is confined to the
               project root; secrets are never exposed.</li>
+            <li>Concurrency gate: <code>generate_image</code> / <code>generate_speech</code> /
+              <code>workflow_plan</code> run at most 3 concurrently (<code>AIAE_MCP_GEN_LIMIT</code> tunable);
+              excess queue is rejected with a friendly error.</li>
+            <li>Audit trail: every tool call is appended to
+              <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (args truncated, 5MB rotation) so generation and
+              writes can be audited.</li>
             <li><code>graph_edit</code> refuses graphs that are currently open in an editor to avoid clobbering
               in-memory state.</li>
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /

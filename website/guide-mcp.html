@@ -366,6 +366,10 @@
           <h2>6. 安全与当前限制</h2>
           <ul>
             <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内；密钥信息不对外暴露。</li>
+            <li>并发闸门：<code>generate_image</code> / <code>generate_speech</code> / <code>workflow_plan</code>
+              同时最多 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），排队满直接报错，防止 Agent 失控消耗额度。</li>
+            <li>操作审计：每次工具调用追加写
+              <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入可回查。</li>
             <li><code>graph_edit</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
             <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
             <li>接入方式两选一：<strong>HTTP 直连</strong>（无需 Node.js）或 <strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）。</li>
