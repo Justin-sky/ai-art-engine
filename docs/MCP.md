@@ -58,6 +58,7 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 | `task_run` | 运行一个已落盘的宿主资产工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |
 | `task_status` | 按 `mcpTaskId` 查询运行状态（running / done / error / stopped） | 应用运行 |
 | `video_job_list` / `video_job_get` | 异步视频生成任务状态 | 应用运行 |
+| `graph_edit` | 对宿主资产图应用节点 / 连线编辑操作批（类型与端口兼容性在应用内校验；图在编辑器中打开时拒绝） | 已打开工程 |
 | `models_list` | 已启用的模型提供商与各模态勾选模型（不含任何密钥） | 无（读设置） |
 | `generate_image` | 文生图 / 图生图，落盘为工程资产 | 已打开工程 + 图片模型 |
 | `generate_video` | 提交视频生成并登记资产（异步，可 `video_job_*` 跟踪） | 已打开工程 + 视频模型 |
@@ -68,7 +69,6 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 
 ## 当前限制（v0.1）
 
-- 图内节点级增删改（`node_upsert` / `edge_connect`）需要与打开中的编辑器协同，规划在后续版本。
 - 语音生成（`generate_speech`）暂未暴露：当前语音生成返回内容而非落盘资产。
 - `task_run` 依赖应用界面进程执行任务：请保持应用处于运行状态；同一图重复触发会按「进行中任务」去重。
 - 桥脚本目前仅随仓库分发（开发场景）；安装包内置与自动发现规划在后续版本。

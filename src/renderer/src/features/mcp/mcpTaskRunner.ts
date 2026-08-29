@@ -1,6 +1,9 @@
 import type { GraphDocument } from '@shared/graph'
+import { applyGraphEditOps, type McpGraphEditPayload } from '@shared/graph'
 import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
+import { persistAssetRecord } from '../../composables/useAssetRecord'
+import { isGraphEditorOpen } from './openGraphEditors'
 
 /**
  * MCP task_run 的渲染层执行入口：
@@ -66,6 +69,47 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
 
 let registered = false
 
+/** 图编辑操作批：读取落盘图 → 应用 ops → 持久化 + 同步界面 */
+async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
+  const reply = (ok: boolean, extra: { applied?: string[]; warnings?: string[]; error?: string } = {}): void => {
+    void window.studio?.reportMcpGraphEdit?.({ requestId: payload.requestId, ok, ...extra })
+  }
+  try {
+    const project = useProjectStore()
+    const asset = project.assets.find((item) => item.id === payload.assetId)
+    const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+      | GraphDocument
+      | undefined
+    if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+      reply(false, { error: '资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）' })
+      return
+    }
+    if (isGraphEditorOpen(payload.assetId)) {
+      reply(false, {
+        error: '该资产的图编辑器正在界面中打开，为避免互相覆盖请先关闭编辑器再远程编辑'
+      })
+      return
+    }
+    const result = applyGraphEditOps(graphJson, payload.ops)
+    if (!result.applied.length && result.warnings.length) {
+      reply(false, { applied: [], warnings: result.warnings, error: '全部操作未生效' })
+      return
+    }
+    const updated = await persistAssetRecord(payload.assetId, {
+      genParams: { ...(asset.genParams as Record<string, unknown>), graphJson: result.graph }
+    })
+    if (!updated) {
+      reply(false, { error: '持久化失败：资产不存在' })
+      return
+    }
+    reply(true, { applied: result.applied, warnings: result.warnings })
+  } catch (err) {
+    reply(false, { error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+let registered = false
+
 export function registerMcpTaskRunner(): void {
   if (registered) return
   registered = true
@@ -73,4 +117,9 @@ export function registerMcpTaskRunner(): void {
   window.studio.onMcpTaskRun((payload) => {
     void handleTaskRun(payload)
   })
+  if (typeof window.studio?.onMcpGraphEdit === 'function') {
+    window.studio.onMcpGraphEdit((payload) => {
+      void handleGraphEdit(payload)
+    })
+  }
 }

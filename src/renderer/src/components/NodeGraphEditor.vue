@@ -755,6 +755,7 @@ import {
 } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore, type GraphTaskTarget } from '../stores/graphTasks'
+import { registerOpenGraphEditor, unregisterOpenGraphEditor } from '../features/mcp/openGraphEditors'
 import { worldElementKindKey } from '../features/world/worldElementKindKey'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { compareNames } from '@shared/folderTree'
@@ -8153,6 +8154,7 @@ onMounted(() => {
   unregisterNodeTypes = onNodeTypeRegistryChanged(() => {
     nodeTypeRevision.value += 1
   })
+  if (props.assetId) registerOpenGraphEditor(props.assetId)
   // 节点工具宿主先注册：即使后续加载/初始化抛错，双击 dive 工具仍可用
   registerNodeToolHost()
   try {
@@ -8279,6 +8281,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (dropErrorTimer) clearTimeout(dropErrorTimer)
   if (isPanning) onPanEnd()
+  if (props.assetId) unregisterOpenGraphEditor(props.assetId)
   // 切单元 / 关面板会销毁画布：先停跑，避免会话悬空表现为「运行卡死」
   stopWorkflow()
   stopVideoJobUpdated?.()

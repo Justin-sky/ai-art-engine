@@ -12,6 +12,7 @@ import {
   IpcChannels,
   type CommitAiWorkflowInput,
   type CreateProjectInput,
+  type McpGraphEditResultPayload,
   type McpTaskReportPayload,
   type PlanAiWorkflowInput,
   type WriteAssetTextInput
@@ -361,6 +362,72 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'graph_edit',
+    title: '编辑节点图',
+    description:
+      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。图正在编辑器中打开时会拒绝。修改立即持久化并同步应用界面。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '宿主资产 id' },
+        ops: {
+          type: 'array',
+          description: '编辑操作批，按顺序执行',
+          items: {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                enum: ['node_upsert', 'node_update', 'node_delete', 'edge_connect', 'edge_delete']
+              },
+              nodeId: { type: 'string' },
+              typeId: { type: 'string', description: 'node_upsert 必填，如 asset.image / play.script' },
+              title: { type: 'string' },
+              params: { type: 'object', description: '节点参数（浅合并）' },
+              fromNodeId: { type: 'string' },
+              toNodeId: { type: 'string' },
+              fromPort: { type: 'string' },
+              toPort: { type: 'string' }
+            },
+            required: ['op']
+          }
+        }
+      },
+      required: ['assetId', 'ops']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+        | GraphDocument
+        | undefined
+      if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+        throw new Error('资产不存在或不含图文档（graph_edit 仅支持宿主资产子图）')
+      }
+      if (!Array.isArray(args.ops) || !args.ops.length) {
+        throw new Error('缺少编辑操作数组「ops」')
+      }
+      const requestId = randomUUID()
+      pendingMcpGraphEditResults.delete(requestId)
+      broadcastToAllWindows(IpcChannels.MCP_GRAPH_EDIT, {
+        requestId,
+        assetId,
+        ops: args.ops
+      })
+      for (let i = 0; i < 20; i++) {
+        await sleep(300)
+        const report = pendingMcpGraphEditResults.get(requestId)
+        if (!report) continue
+        if (report.ok) {
+          return { applied: report.applied ?? [], warnings: report.warnings ?? [] }
+        }
+        throw new Error(report.error ?? '图编辑失败')
+      }
+      throw new Error('渲染层未响应（请确认应用界面为最新版本）')
+    }
+  },
+  {
     name: 'models_list',
     title: '可用模型列表',
     description:
@@ -511,6 +578,9 @@ function assertProjectOpen(): void {
 /** MCP task_run 的渲染层回报（受理 / 终态），task_status 从这里读 */
 const pendingMcpTaskReports = new Map<string, McpTaskReportPayload>()
 
+/** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
+const pendingMcpGraphEditResults = new Map<string, McpGraphEditResultPayload>()
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 生成落盘后同步刷新应用界面中的资产卡片 */
@@ -578,6 +648,15 @@ export async function startMcpServer(): Promise<void> {
     }
     return true
   })
+  ipcMain.handle(
+    IpcChannels.MCP_GRAPH_EDIT_RESULT,
+    (_event, payload: McpGraphEditResultPayload) => {
+      if (payload && typeof payload.requestId === 'string') {
+        pendingMcpGraphEditResults.set(payload.requestId, payload)
+      }
+      return true
+    }
+  )
 
   for (let offset = 0; offset < MCP_PORT_RANGE; offset++) {
     const port = basePort + offset
@@ -617,6 +696,7 @@ export function stopMcpServer(): void {
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
+  ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
   if (mcpConfigPath) {
     try {
       rmSync(mcpConfigPath, { force: true })

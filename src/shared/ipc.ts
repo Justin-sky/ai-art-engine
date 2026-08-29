@@ -144,7 +144,11 @@ export const IpcChannels = {
   /** MCP：主进程派发工作流运行请求（main → 渲染层） */
   MCP_TASK_RUN: 'mcp:task-run',
   /** MCP：渲染层回报任务受理 / 终态（渲染层 → 主进程） */
-  MCP_TASK_REPORT: 'mcp:task-report'
+  MCP_TASK_REPORT: 'mcp:task-report',
+  /** MCP：主进程派发图编辑操作批（main → 渲染层） */
+  MCP_GRAPH_EDIT: 'mcp:graph-edit',
+  /** MCP：渲染层回报图编辑结果（渲染层 → 主进程） */
+  MCP_GRAPH_EDIT_RESULT: 'mcp:graph-edit-result'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -317,6 +321,49 @@ export interface McpTaskReportPayload {
   phase: McpTaskReportPhase
   taskId?: string
   status?: 'done' | 'error' | 'stopped'
+  error?: string
+}
+
+/** MCP：单条图编辑操作（见 shared/graph/mcpGraphEdit） */
+export type McpGraphEditOp =
+  | {
+      op: 'node_upsert'
+      nodeId?: string
+      typeId: string
+      title?: string
+      params?: Record<string, unknown>
+      x?: number
+      y?: number
+    }
+  | {
+      op: 'node_update'
+      nodeId: string
+      title?: string
+      params?: Record<string, unknown>
+    }
+  | { op: 'node_delete'; nodeId: string }
+  | {
+      op: 'edge_connect'
+      fromNodeId: string
+      toNodeId: string
+      fromPort?: string
+      toPort?: string
+    }
+  | { op: 'edge_delete'; fromNodeId: string; toNodeId: string }
+
+/** MCP：主进程 → 渲染层，请求对宿主资产图应用一批编辑操作 */
+export interface McpGraphEditPayload {
+  requestId: string
+  assetId: string
+  ops: McpGraphEditOp[]
+}
+
+/** MCP：渲染层 → 主进程，图编辑结果 */
+export interface McpGraphEditResultPayload {
+  requestId: string
+  ok: boolean
+  applied?: string[]
+  warnings?: string[]
   error?: string
 }
 
@@ -586,6 +633,12 @@ export interface StudioApi {
 
   /** MCP：渲染层回报任务受理 / 终态 */
   reportMcpTask: (payload: McpTaskReportPayload) => Promise<boolean>
+
+  /** MCP：订阅主进程派发的图编辑操作批 */
+  onMcpGraphEdit: (callback: (payload: McpGraphEditPayload) => void) => () => void
+
+  /** MCP：渲染层回报图编辑结果 */
+  reportMcpGraphEdit: (payload: McpGraphEditResultPayload) => Promise<boolean>
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string

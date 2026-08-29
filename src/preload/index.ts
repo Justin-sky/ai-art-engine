@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
-import type { McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
+import type { McpGraphEditResultPayload, McpGraphEditPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -176,6 +176,15 @@ const api: StudioApi = {
   },
   reportMcpTask: (payload: McpTaskReportPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_TASK_REPORT, payload),
+  onMcpGraphEdit: (callback) => {
+    const listener = (_event: unknown, payload: McpGraphEditPayload): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.MCP_GRAPH_EDIT, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_GRAPH_EDIT, listener)
+  },
+  reportMcpGraphEdit: (payload: McpGraphEditResultPayload) =>
+    ipcRenderer.invoke(IpcChannels.MCP_GRAPH_EDIT_RESULT, payload),
   /** Electron 35+ 拖放文件需通过 webUtils 获取本地路径 */
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }
