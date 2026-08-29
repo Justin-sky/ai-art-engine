@@ -675,6 +675,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       const result = await runGraph(graph, {
         signal,
         stepDelayMs: 100,
+        // 整图工作流容错：任一节点失败不整链中断（降级继续）；单节点调试保持严格
+        continueOnError: !opts.targetNodeId && !opts.onlyTargetNode,
         targetNodeId: opts.targetNodeId,
         onlyTargetNode: opts.onlyTargetNode,
         skipCompletedNodes: opts.skipCompletedNodes,

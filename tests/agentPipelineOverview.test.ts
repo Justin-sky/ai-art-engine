@@ -90,4 +90,39 @@ describe('agent pipeline overview', () => {
     expect(overview.pendingCount).toBe(0)
     expect(overview.lastFailReason).toBe('')
   })
+
+  it('projects run failures from runStates into the error panel', () => {
+    const nodes = [
+      createNodeFromType('play.script', { x: 0, y: 0 }, { id: 'n1', title: '脚本' }),
+      createNodeFromType('asset.image', { x: 0, y: 0 }, { id: 'n2' }),
+      createNodeFromType('media.review', { x: 0, y: 0 }, { id: 'n3', title: '质检' })
+    ]
+    const overview = buildAgentPipelineOverview(nodes, {
+      n1: { status: 'error', error: '模型限流' },
+      n2: { status: 'degraded', error: 'GRAPH_LOCK_NO_CACHE' }
+    })
+    expect(overview.errorRows).toHaveLength(2)
+    expect(overview.errorRows[0]).toMatchObject({
+      nodeId: 'n1',
+      title: '脚本',
+      status: 'error',
+      reason: '模型限流'
+    })
+    expect(overview.errorRows[1]).toMatchObject({
+      nodeId: 'n2',
+      status: 'degraded',
+      reason: 'GRAPH_LOCK_NO_CACHE'
+    })
+    expect(overview.errorCount).toBe(1)
+    expect(overview.degradedCount).toBe(1)
+    expect(overview.hasIssues).toBe(true)
+  })
+
+  it('reports no issues when runStates are absent', () => {
+    const overview = buildAgentPipelineOverview([createNodeFromType('asset.image', { x: 0, y: 0 })])
+    expect(overview.errorRows).toEqual([])
+    expect(overview.errorCount).toBe(0)
+    expect(overview.degradedCount).toBe(0)
+    expect(overview.hasIssues).toBe(false)
+  })
 })

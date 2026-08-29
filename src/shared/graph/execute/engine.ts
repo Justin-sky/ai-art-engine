@@ -295,7 +295,7 @@ async function executeOneNode(
   outputs: Map<string, Record<string, GraphValue>>,
   options: GraphRunOptions,
   states: Record<string, GraphNodeRunState>
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; degraded?: boolean } | { ok: false; error: string }> {
   const node = byId.get(nodeId)
   if (!node) return { ok: true }
 
@@ -321,6 +321,15 @@ async function executeOneNode(
       softResolveOptions
     )
     if (!locked) {
+      if (options.continueOnError === true) {
+        publish(
+          states,
+          nodeId,
+          { status: 'degraded', error: 'GRAPH_LOCK_NO_CACHE' },
+          options.onNodeUpdate
+        )
+        return { ok: true, degraded: true }
+      }
       publish(
         states,
         nodeId,
@@ -463,6 +472,15 @@ async function executeOneNode(
         : resolveLockedOutputs(node, prior, graph, softResolveOptions)
       const reused = fromInner ? { ...(cached ?? {}), ...fromInner } : cached
       if (!reused) {
+        if (options.continueOnError === true) {
+          publish(
+            states,
+            nodeId,
+            { status: 'degraded', error: 'GRAPH_HOST_NO_CACHE_COOK' },
+            options.onNodeUpdate
+          )
+          return { ok: true, degraded: true }
+        }
         publish(
           states,
           nodeId,
@@ -503,6 +521,27 @@ async function executeOneNode(
       return { ok: false, error: 'GRAPH_CANCELLED' }
     }
     const message = err instanceof Error ? err.message : String(err)
+    if (options.continueOnError === true) {
+      // 容错模式：优先用缓存/图库产物兜底输出，标记 degraded 后继续跑下游
+      const fallback = resolveLockedOutputs(
+        node,
+        options.priorNodeStates?.[nodeId],
+        graph,
+        softResolveOptions
+      )
+      if (fallback) {
+        outputs.set(nodeId, fallback)
+        publish(
+          states,
+          nodeId,
+          { status: 'degraded', error: message, outputs: fallback },
+          options.onNodeUpdate
+        )
+      } else {
+        publish(states, nodeId, { status: 'degraded', error: message }, options.onNodeUpdate)
+      }
+      return { ok: true, degraded: true }
+    }
     publish(states, nodeId, { status: 'error', error: message }, options.onNodeUpdate)
     return {
       ok: false,
@@ -721,11 +760,13 @@ export async function runGraph(
     ? contributionFromAssets(output.items)
     : undefined
 
+  const degradedNodeIds = order.filter((id) => states[id]?.status === 'degraded')
   return {
     ok: true,
     order,
     states,
     output,
-    contribution
+    contribution,
+    ...(degradedNodeIds.length ? { degradedNodeIds } : {})
   }
 }

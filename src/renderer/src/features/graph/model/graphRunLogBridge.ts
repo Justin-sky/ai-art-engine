@@ -104,7 +104,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
         ? (summarizeInputPortsForLog(state.inputs ?? {}) ?? {})
         : undefined
     const outputs =
-      state.status === 'done' || state.status === 'error'
+      state.status === 'done' || state.status === 'error' || state.status === 'degraded'
         ? summarizeOutputPortsForLog(state.outputs)
         : undefined
 
@@ -112,7 +112,7 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
       currentRunningNodeId = nodeId
       runningStartedAt.set(nodeId, now)
       inputsByNodeId.set(nodeId, inputs!)
-    } else if (state.status === 'done' || state.status === 'error') {
+    } else if (state.status === 'done' || state.status === 'error' || state.status === 'degraded') {
       const started = runningStartedAt.get(nodeId)
       if (started != null) {
         durationMs = Math.max(0, now - started)
@@ -125,7 +125,11 @@ export function createGraphRunLogBridge(options: GraphRunLogBridgeOptions): Grap
     }
 
     const level =
-      state.status === 'error' ? 'error' : state.status === 'skipped' ? 'warn' : 'info'
+      state.status === 'error'
+        ? 'error'
+        : state.status === 'degraded' || state.status === 'skipped'
+          ? 'warn'
+          : 'info'
 
     store.append({
       runId: options.runId,

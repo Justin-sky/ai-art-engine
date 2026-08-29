@@ -999,6 +999,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       const result = await runGraph(task.graph, {
         signal: task.abort.signal,
         stepDelayMs: 100,
+        // Agent 后台任务走容错模式：节点失败不整链中断，长链跑得完
+        continueOnError: true,
         skipCompletedNodes: task.skipCompletedNodes === true,
         priorNodeStates: task.priorNodeStates,
         cookAssetIdStack: task.cookAssetIdStack,

@@ -3,7 +3,7 @@
  * 投影成「规划 → 生成 → 质检 → 返工」流水线的可渲染视图。纯函数、无渲染环境依赖，
  * 供 NodeGraphEditor 顶栏「Agent 流水线」总览窗口消费。
  */
-import type { GraphNode } from './types'
+import type { GraphNode, GraphPersistedRunState } from './types'
 import { parseMediaReworkState, type MediaReworkStatus } from './mediaRework'
 
 export type AgentReviewStatus = 'pending' | 'PASS' | 'FAIL'
@@ -28,19 +28,36 @@ export interface AgentReworkRow {
   finalResult: 'PASS' | 'FAIL' | ''
 }
 
+export type AgentErrorStatus = 'error' | 'degraded'
+
+export interface AgentErrorRow {
+  nodeId: string
+  title: string
+  status: AgentErrorStatus
+  reason: string
+}
+
 export interface AgentPipelineOverview {
   reviewRows: AgentReviewRow[]
   reworkRows: AgentReworkRow[]
+  /** 最近一次运行的失败/降级节点（runStates 投影） */
+  errorRows: AgentErrorRow[]
   /** 待审核（质检 pending + 返工 running）节点数 */
   pendingCount: number
   /** 质检 FAIL 节点数 */
   failCount: number
   /** 达上限仍未通过的返工节点数 */
   exhaustedCount: number
+  /** 运行失败节点数 */
+  errorCount: number
+  /** 降级继续节点数 */
+  degradedCount: number
   /** 最近一次 FAIL / exhausted 原因（顶栏展示） */
   lastFailReason: string
   /** 图中是否存在 Agent 流水线节点（media.review / media.rework） */
   hasPipeline: boolean
+  /** 是否存在运行失败 / 降级节点 */
+  hasIssues: boolean
 }
 
 /** 是否 Agent 流水线节点（质检 / 返工） */
@@ -97,10 +114,36 @@ export function collectAgentReworkRows(nodes: readonly GraphNode[]): AgentRework
     })
 }
 
+/** 收集最近一次运行中的失败 / 降级节点（runStates 投影） */
+export function collectAgentErrorRows(
+  nodes: readonly GraphNode[],
+  runStates?: Record<string, GraphPersistedRunState>
+): AgentErrorRow[] {
+  if (!runStates) return []
+  return nodes
+    .filter((node) => {
+      const status = runStates[node.id]?.status
+      return status === 'error' || status === 'degraded'
+    })
+    .map((node) => {
+      const state = runStates[node.id]
+      return {
+        nodeId: node.id,
+        title: String(node.title?.trim() || node.typeId),
+        status: state?.status === 'degraded' ? 'degraded' : 'error',
+        reason: String(state?.error ?? '').trim()
+      }
+    })
+}
+
 /** 汇总质检 + 返工节点为流水线总览 */
-export function buildAgentPipelineOverview(nodes: readonly GraphNode[]): AgentPipelineOverview {
+export function buildAgentPipelineOverview(
+  nodes: readonly GraphNode[],
+  runStates?: Record<string, GraphPersistedRunState>
+): AgentPipelineOverview {
   const reviewRows = collectAgentReviewRows(nodes)
   const reworkRows = collectAgentReworkRows(nodes)
+  const errorRows = collectAgentErrorRows(nodes, runStates)
 
   let pendingCount = 0
   let failCount = 0
@@ -122,13 +165,20 @@ export function buildAgentPipelineOverview(nodes: readonly GraphNode[]): AgentPi
     }
   }
 
+  const errorCount = errorRows.filter((row) => row.status === 'error').length
+  const degradedCount = errorRows.length - errorCount
+
   return {
     reviewRows,
     reworkRows,
+    errorRows,
     pendingCount,
     failCount,
     exhaustedCount,
+    errorCount,
+    degradedCount,
     lastFailReason,
-    hasPipeline: reviewRows.length > 0 || reworkRows.length > 0
+    hasPipeline: reviewRows.length > 0 || reworkRows.length > 0,
+    hasIssues: errorRows.length > 0
   }
 }

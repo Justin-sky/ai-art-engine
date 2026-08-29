@@ -18,6 +18,16 @@
           class="summary-chip exhausted"
           :title="t('divePipeline.agent.summary.exhaustedTitle')"
         >{{ t('divePipeline.agent.summary.exhausted', { n: overview.exhaustedCount }) }}</span>
+        <span
+          v-if="overview.errorCount"
+          class="summary-chip fail"
+          :title="t('divePipeline.agent.summary.errorTitle')"
+        >{{ t('divePipeline.agent.summary.error', { n: overview.errorCount }) }}</span>
+        <span
+          v-if="overview.degradedCount"
+          class="summary-chip degraded"
+          :title="t('divePipeline.agent.summary.degradedTitle')"
+        >{{ t('divePipeline.agent.summary.degraded', { n: overview.degradedCount }) }}</span>
       </div>
     </div>
 
@@ -72,7 +82,9 @@
           <li
             v-if="!overview.reviewRows.length"
             class="empty-row"
-          >{{ t('divePipeline.agent.panel.noReview') }}</li>
+          >
+            {{ t('divePipeline.agent.panel.noReview') }}
+          </li>
         </ul>
       </section>
 
@@ -107,7 +119,45 @@
           <li
             v-if="!overview.reworkRows.length"
             class="empty-row"
-          >{{ t('divePipeline.agent.panel.noRework') }}</li>
+          >
+            {{ t('divePipeline.agent.panel.noRework') }}
+          </li>
+        </ul>
+      </section>
+
+      <!-- 运行异常（失败 / 降级） -->
+      <section class="panel">
+        <div class="panel-head">
+          <h3>
+            {{ t('divePipeline.agent.panel.errors') }}
+            <span class="count-badge">{{ overview.errorRows.length }}</span>
+          </h3>
+        </div>
+        <ul class="row-list">
+          <li
+            v-for="row in overview.errorRows"
+            :key="row.nodeId"
+            class="row-item"
+            :class="row.status"
+            :title="t('divePipeline.agent.panel.locateHint')"
+            @click="selectNode(row.nodeId)"
+          >
+            <span class="row-title">{{ row.title }}</span>
+            <span
+              class="status-badge"
+              :class="row.status"
+            >{{ errorStatusLabel(row.status) }}</span>
+            <span
+              v-if="row.reason"
+              class="reason"
+            >{{ row.reason }}</span>
+          </li>
+          <li
+            v-if="!overview.errorRows.length"
+            class="empty-row"
+          >
+            {{ t('divePipeline.agent.panel.noErrors') }}
+          </li>
         </ul>
       </section>
     </div>
@@ -151,7 +201,9 @@ const graphDoc = computed<GraphDocument | null>(() => {
   }
 })
 
-const overview = computed(() => buildAgentPipelineOverview(graphDoc.value?.nodes ?? []))
+const overview = computed(() =>
+  buildAgentPipelineOverview(graphDoc.value?.nodes ?? [], graphDoc.value?.runStates)
+)
 
 function selectNode(nodeId: string): void {
   workspace.selectGraphNode(nodeId, `asset:${props.hostAssetId}`)
@@ -168,6 +220,12 @@ function reworkStatusLabel(status: string): string {
   if (status === 'passed') return String(t('divePipeline.agent.status.rework.passed'))
   if (status === 'exhausted') return String(t('divePipeline.agent.status.rework.exhausted'))
   return String(t('divePipeline.agent.status.rework.running'))
+}
+
+function errorStatusLabel(status: string): string {
+  if (status === 'error') return String(t('divePipeline.agent.status.error'))
+  if (status === 'degraded') return String(t('divePipeline.agent.status.degraded'))
+  return status
 }
 </script>
 
@@ -225,7 +283,8 @@ function reworkStatusLabel(status: string): string {
   background: color-mix(in srgb, var(--danger, #c0392b) 16%, transparent);
   color: var(--danger, #c0392b);
 }
-.summary-chip.exhausted {
+.summary-chip.exhausted,
+.summary-chip.degraded {
   background: color-mix(in srgb, var(--warning, #f39c12) 18%, transparent);
   color: var(--warning, #f39c12);
 }
@@ -334,9 +393,15 @@ function reworkStatusLabel(status: string): string {
   color: #fff;
   background: var(--danger, #c0392b);
 }
-.status-badge.exhausted {
+.status-badge.exhausted,
+.status-badge.degraded {
   color: #fff;
   background: var(--warning, #f39c12);
+}
+
+.status-badge.error {
+  color: #fff;
+  background: var(--danger, #c0392b);
 }
 .status-badge.pending {
   color: var(--accent, #3498db);

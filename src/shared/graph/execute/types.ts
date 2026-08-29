@@ -17,7 +17,14 @@ import type {
 } from '../types'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 
-export type GraphNodeRunStatus = 'idle' | 'pending' | 'running' | 'done' | 'error' | 'skipped'
+export type GraphNodeRunStatus =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'error'
+  | 'degraded'
+  | 'skipped'
 
 export interface GraphAssetValue {
   kind: 'asset'
@@ -552,6 +559,12 @@ export interface GraphRunOptions {
    */
   skipCompletedNodes?: boolean
   /**
+   * 容错模式：节点执行失败时不整链中断，标记为 `degraded`（优先复用缓存/图库产物兜底），
+   * 下游继续执行，整条长链「跑得完」。适用于 Agent 流水线等长链工作流；
+   * 默认缺省保持严格模式（失败即中断并跳过下游）。
+   */
+  continueOnError?: boolean
+  /**
    * 是否 cook 嵌套子图（宿主内图 + 世界元素/分镜图/分镜视频批量子图）。
    * 默认：`onlyTargetNode` 时为 false（复用缓存 / 只收集已有结果），
    * 其余运行为 true。圆形菜单「Cook 子图」显式传 true。
@@ -637,4 +650,6 @@ export interface GraphRunResult {
   output?: GraphOutputValue
   contribution?: GraphGenerationContribution
   error?: string
+  /** 容错模式下降级继续的节点 id（ok 为 true 但存在未达标节点） */
+  degradedNodeIds?: string[]
 }

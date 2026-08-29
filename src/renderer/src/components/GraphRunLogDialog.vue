@@ -454,6 +454,7 @@ watch(
             event.kind === 'run_end' ||
             status === 'done' ||
             status === 'error' ||
+            status === 'degraded' ||
             status === 'skipped'
           )
         }) ?? events[events.length - 1]
@@ -518,6 +519,7 @@ function eventStatusLabel(event: GraphRunLogEvent): string {
     status === 'running' ||
     status === 'done' ||
     status === 'error' ||
+    status === 'degraded' ||
     status === 'skipped'
   ) {
     return nodeStatusLabel(status)

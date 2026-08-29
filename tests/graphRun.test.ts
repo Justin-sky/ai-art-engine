@@ -970,4 +970,93 @@ describe('graph run', () => {
     expect(worldCalls.at(-1)).toBe(true)
 
   })
+
+  it('strict mode fails the chain while continueOnError degrades and keeps running', async () => {
+    const graph = {
+      nodes: [
+        createNodeFromType('play.script', { x: 0, y: 0 }, {
+          id: 'a',
+          params: { text: 'A' }
+        }),
+        createNodeFromType('asset.screenplay', { x: 120, y: 0 }, {
+          id: 'b',
+          params: { generateInstruction: '写成完整剧本' }
+        }),
+        createNodeFromType('asset.screenplay', { x: 240, y: 0 }, {
+          id: 'c',
+          params: { generateInstruction: '写成完整剧本' }
+        })
+      ],
+      edges: [
+        { id: 'e1', source: 'a', target: 'b', sourcePort: 'out', targetPort: 'in' },
+        { id: 'e2', source: 'b', target: 'c', sourcePort: 'out', targetPort: 'in' }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+
+    // 严格模式（缺省）：b 失败即整链中断，c 被跳过
+    const strict = await runGraph(graph, {
+      stepDelayMs: 1,
+      targetNodeId: 'c',
+      generateText: vi.fn(async () => {
+        throw new Error('rate limited')
+      })
+    })
+    expect(strict.ok).toBe(false)
+    expect(strict.states.b?.status).toBe('error')
+    expect(strict.states.c?.status).toBe('skipped')
+
+    // 容错模式：b 降级，c 继续执行并成功
+    let calls = 0
+    const tolerant = await runGraph(graph, {
+      stepDelayMs: 1,
+      targetNodeId: 'c',
+      continueOnError: true,
+      generateText: vi.fn(async () => {
+        calls += 1
+        if (calls === 1) throw new Error('rate limited')
+        return { text: 'ok', model: 'm' }
+      })
+    })
+    expect(tolerant.ok, tolerant.error).toBe(true)
+    expect(tolerant.states.b?.status).toBe('degraded')
+    expect(tolerant.states.c?.status).toBe('done')
+    expect(tolerant.degradedNodeIds).toEqual(['b'])
+  })
+
+  it('continueOnError falls back to cached outputs when available', async () => {
+    const graph = {
+      nodes: [
+        createNodeFromType('asset.screenplay', { x: 0, y: 0 }, {
+          id: 'b',
+          params: { generateInstruction: '写成完整剧本' }
+        })
+      ],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+
+    const tolerant = await runGraph(graph, {
+      stepDelayMs: 1,
+      targetNodeId: 'b',
+      continueOnError: true,
+      priorNodeStates: {
+        b: {
+          status: 'done',
+          outputs: { out: { kind: 'text', text: 'cached script' } }
+        }
+      },
+      generateText: vi.fn(async () => {
+        throw new Error('boom')
+      })
+    })
+    expect(tolerant.ok).toBe(true)
+    expect(tolerant.states.b?.status).toBe('degraded')
+    expect(tolerant.states.b?.error).toBe('boom')
+    expect(tolerant.states.b?.outputs?.out).toMatchObject({
+      kind: 'text',
+      text: 'cached script'
+    })
+    expect(tolerant.degradedNodeIds).toEqual(['b'])
+  })
 })

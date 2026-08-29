@@ -13,6 +13,7 @@
       'force-chrome': forceShowChrome,
       'suppress-chrome': suppressChrome,
       'run-error': runStatus === 'error',
+      'run-degraded': runStatus === 'degraded',
       'run-running': runStatus === 'running',
       'instruction-open': instructionOpen,
       'preview-collapsed': previewCollapsed
@@ -95,9 +96,9 @@
           :class="reviewStatus === 'FAIL' ? 'error' : 'done'"
           :title="
             reviewReason ||
-            (reviewStatus === 'FAIL'
-              ? t('graph.node.directorReviewFail')
-              : t('graph.node.directorReviewPass'))
+              (reviewStatus === 'FAIL'
+                ? t('graph.node.directorReviewFail')
+                : t('graph.node.directorReviewPass'))
           "
         >
           {{ reviewStatus === 'FAIL' ? 'FAIL' : 'PASS' }}
@@ -1240,6 +1241,8 @@ const runStatusLabel = computed(() => {
       return t('graph.runStatus.done')
     case 'error':
       return t('graph.runStatus.error')
+    case 'degraded':
+      return t('graph.runStatus.degraded')
     default:
       return ''
   }
@@ -2817,6 +2820,10 @@ function formatTime(sec: number): string {
   border-color: #c45c5c;
 }
 
+.graph-node.run-degraded {
+  border-color: #d9a441;
+}
+
 .graph-node.run-running {
   border-color: var(--accent);
 }
@@ -3115,6 +3122,11 @@ function formatTime(sec: number): string {
 .run-pill.error {
   background: rgba(160, 50, 50, 0.3);
   color: var(--danger-muted);
+}
+
+.run-pill.degraded {
+  background: rgba(217, 164, 65, 0.22);
+  color: #e0b45c;
 }
 
 .preview {
