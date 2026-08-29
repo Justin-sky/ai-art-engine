@@ -178,7 +178,7 @@
           <ul>
             <li>On startup the app serves a token-protected tool service on <code>127.0.0.1</code> and writes
               connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below); the file
-              is removed on quit.</li>
+              is removed on quit. <strong>The token is reused across restarts</strong> — configure clients once.</li>
             <li>The bridge <code>scripts/mcp-bridge.mjs</code> is dependency-free: the agent client spawns it, and it
               translates the protocol and forwards calls.</li>
             <li>Communication stays on the loopback interface; everything except the health check requires the token.</li>
@@ -208,6 +208,13 @@
             </li>
             <li>Restart the agent session and the tools are ready. Other MCP-capable clients (Codex, Trae, …)
               use the same "command + args" configuration.</li>
+          </ol>
+          <p>
+            <strong>Option B: HTTP direct (no Node.js required)</strong> — clients that support streamable HTTP can
+            skip the bridge. The token lives in mcp.json (persisted):
+          </p>
+          <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+          <ol start="4">
           </ol>
         </section>
 
@@ -338,7 +345,7 @@
               in-memory state.</li>
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
               <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
-            <li>Bridge distribution: installers bundle it at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code> (Node.js 18+ required).</li>
+            <li>Two connection options: <strong>HTTP direct</strong> (no Node.js needed) or the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required).</li>
           </ul>
         </section>
       </article>

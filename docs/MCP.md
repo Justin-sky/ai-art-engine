@@ -10,8 +10,12 @@ Claude Code / Codex ──stdio(MCP)──▶ scripts/mcp-bridge.mjs ──HTTP�
 
 - 应用启动时在 `127.0.0.1` 起一个带 Bearer token 的本地工具服务，并把 `{ port, token, pid }` 写入
   `<userData>/mcp.json`（Windows 为 `%APPDATA%/aiartengine/mcp.json`），退出时删除。
-- `scripts/mcp-bridge.mjs` 是零依赖的 stdio MCP 桥：由 MCP 客户端拉起，读取 mcp.json（或环境变量）转发调用。
-- 通信仅限本机回环地址；除 `/health` 外全部需要 token。
+- **两种接入方式任选**：
+  - **stdio 桥**（兼容性最好，需 Node.js 18+）：`scripts/mcp-bridge.mjs` 由客户端拉起，
+    读取 mcp.json 转发调用；
+  - **HTTP 直连**（streamable HTTP，无需 Node）：客户端直连 `http://127.0.0.1:<端口>/mcp`。
+- 通信仅限本机回环地址；除 `/health` 外全部需要 token。**token 持久复用**（写在 mcp.json 里保持稳定，
+  客户端配置一次即可）；要重置删除 mcp.json 后重启应用。端口优先沿用上次的，保证 URL 稳定。
 
 ## 接入（Claude Code 为例）
 
@@ -37,6 +41,12 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 
 3. 重启会话，即可在对话中直接使用工具，例如：
    「列出我的最近工程」「打开这个工程，用行业模板 shortDrama 规划一条工作流并落盘」。
+
+**方式 B：HTTP 直连（无需 Node.js）**。token 取自 mcp.json（持久复用）：
+
+```bash
+claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer <token>"
+```
 
 > 环境变量覆盖：`AIAE_MCP_CONFIG` 指定 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`
 > 直连指定端口与 token。桥会依次尝试端口 43110–43119。

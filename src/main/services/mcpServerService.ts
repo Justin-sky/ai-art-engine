@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
+import { createMcpProtocolHandler } from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
   getAiWorkflowPresetPlan,
@@ -637,10 +638,59 @@ async function handleToolCall(name: string, body: string): Promise<unknown> {
   return { ok: true, result }
 }
 
+/** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
+const handleMcpProtocolMessage = createMcpProtocolHandler({
+  serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+  listTools: () =>
+    TOOL_DEFS.map(({ name, title, description, inputSchema }) => ({
+      name,
+      title,
+      description,
+      inputSchema
+    })),
+  callTool: async (name, args) => {
+    try {
+      const payload = (await handleToolCall(name, JSON.stringify({ arguments: args }))) as {
+        ok?: boolean
+        result?: unknown
+        error?: string
+      }
+      if (payload && payload.ok === false) return { error: payload.error ?? '未知错误' }
+      return { result: (payload as { result?: unknown }).result ?? null }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+})
+
+function readStoredMcpConfig(): { port?: number; token?: string } {
+  try {
+    const path = mcpConfigFile()
+    if (!existsSync(path)) return {}
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { port?: unknown; token?: unknown }
+    return {
+      port: typeof parsed.port === 'number' ? parsed.port : undefined,
+      token: typeof parsed.token === 'string' && parsed.token ? parsed.token : undefined
+    }
+  } catch {
+    return {}
+  }
+}
+
 export async function startMcpServer(): Promise<void> {
   if (server) return
-  const basePort = Number(process.env.AIAE_MCP_PORT) || MCP_DEFAULT_PORT
-  mcpToken = randomUUID()
+  const stored = readStoredMcpConfig()
+  // token 持久复用：HTTP 直连模式下客户端配置的 header 才能保持有效；
+  // 要重置可删除 mcp.json 后重启应用
+  mcpToken = stored.token ?? randomUUID()
+  // 端口偏好：优先上次使用的端口（HTTP 直连配置不变），再扫默认段
+  const preferred = Number(process.env.AIAE_MCP_PORT) || stored.port
+  const candidates: number[] = []
+  if (preferred) candidates.push(preferred)
+  for (let offset = 0; offset < MCP_PORT_RANGE; offset++) {
+    const port = (Number(process.env.AIAE_MCP_PORT) || MCP_DEFAULT_PORT) + offset
+    if (!candidates.includes(port)) candidates.push(port)
+  }
 
   ipcMain.handle(IpcChannels.MCP_TASK_REPORT, (_event, payload: McpTaskReportPayload) => {
     if (payload && typeof payload.mcpTaskId === 'string') {
@@ -658,8 +708,7 @@ export async function startMcpServer(): Promise<void> {
     }
   )
 
-  for (let offset = 0; offset < MCP_PORT_RANGE; offset++) {
-    const port = basePort + offset
+  for (const port of candidates) {
     const started = await new Promise<boolean>((resolve) => {
       const candidate = createServer((req, res) => {
         void onRequest(req, res).catch((err: unknown) => {
@@ -688,7 +737,7 @@ export async function startMcpServer(): Promise<void> {
       return
     }
   }
-  console.error(`[mcp] 端口 ${basePort}-${basePort + MCP_PORT_RANGE - 1} 均被占用，工具服务未启动`)
+  console.error(`[mcp] 候选端口均被占用（${candidates.join(', ')}），工具服务未启动`)
 }
 
 export function stopMcpServer(): void {
@@ -720,6 +769,32 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
     sendJson(res, 401, { ok: false, error: '未授权：缺少或错误的 Bearer token' })
     return
   }
+
+  /** MCP streamable HTTP 直连端点：POST 单条 JSON-RPC；通知回 202；GET/DELETE 不支持 */
+  if (url === '/mcp') {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { Allow: 'POST' })
+      res.end()
+      return
+    }
+    const body = await readBody(req)
+    let message: unknown
+    try {
+      message = JSON.parse(body)
+    } catch {
+      sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'JSON 解析失败' } })
+      return
+    }
+    const response = await handleMcpProtocolMessage(message)
+    if (!response) {
+      res.writeHead(202, { 'Content-Type': 'application/json' })
+      res.end()
+      return
+    }
+    sendJson(res, 200, response)
+    return
+  }
+
   if (req.method === 'GET' && url === '/tools') {
     sendJson(res, 200, {
       tools: TOOL_DEFS.map(({ name, title, description, inputSchema }) => ({

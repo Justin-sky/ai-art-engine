@@ -174,7 +174,7 @@
           </p>
           <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine 应用（127.0.0.1 工具服务）</code></pre>
           <ul>
-            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文），退出时自动删除。</li>
+            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文），退出时自动删除；<strong>token 持久复用</strong>，客户端配置一次即可。</li>
             <li>桥脚本 <code>scripts/mcp-bridge.mjs</code> 零依赖，由 Agent 客户端拉起，负责协议转换与转发。</li>
             <li>通信仅限本机回环地址；除健康检查外全部需要 token。</li>
           </ul>
@@ -202,6 +202,13 @@
 }</code></pre>
             </li>
             <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Codex、Trae 等）按同样的「command + args」方式配置。</li>
+          </ol>
+          <p>
+            <strong>方式 B：HTTP 直连（无需 Node.js）</strong>——支持 streamable HTTP 的客户端可跳过桥脚本，token 取自
+            mcp.json（持久复用）：
+          </p>
+          <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+          <ol start="4">
           </ol>
         </section>
 
@@ -329,7 +336,7 @@
             <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内；密钥信息不对外暴露。</li>
             <li><code>graph_edit</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
             <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
-            <li>桥脚本分发：安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>（无需单独装 Node 以外依赖）；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>（需 Node.js 18+）。</li>
+            <li>接入方式两选一：<strong>HTTP 直连</strong>（无需 Node.js）或 <strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）。</li>
           </ul>
         </section>
       </article>
