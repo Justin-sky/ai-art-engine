@@ -7,7 +7,10 @@ import { join, resolve } from 'node:path'
 
 const BRIDGE_PATH = resolve('scripts/mcp-bridge.mjs')
 
-/** 模拟 AiArtEngine 主进程工具服务的最小上游 */
+/**
+ * 模拟 AiArtEngine 应用内置的 /mcp 端点：桥是纯隧道，上游用与
+ * src/shared/mcpProtocol.ts 等价的最小实现应答（serverInfo / tools / call）。
+ */
 function startFakeUpstream(): Promise<{
   server: Server
   port: number
@@ -15,43 +18,96 @@ function startFakeUpstream(): Promise<{
 }> {
   return new Promise((resolvePromise) => {
     const server = createServer((req, res) => {
-      const send = (body: unknown): void => {
-        const payload = JSON.stringify(body)
-        res.writeHead(200, {
+      const send = (body: unknown, status = 200): void => {
+        const payload = body === null ? '' : JSON.stringify(body)
+        res.writeHead(status, {
           'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(payload)
         })
         res.end(payload)
       }
       if (req.url === '/health') return send({ ok: true, app: 'aiartengine' })
-      if (req.url === '/tools') {
-        return send({
-          tools: [
-            {
-              name: 'echo',
-              title: 'Echo',
-              description: '回显参数',
-              inputSchema: { type: 'object', properties: { text: { type: 'string' } } }
-            },
-            {
-              name: 'fail',
-              title: 'Fail',
-              description: '始终失败',
-              inputSchema: { type: 'object', properties: {} }
-            }
-          ]
-        })
-      }
-      const readBody = (done: (body: { arguments?: unknown }) => void): void => {
+      if (req.url === '/mcp' && req.method === 'POST') {
         let raw = ''
         req.on('data', (chunk) => (raw += chunk))
-        req.on('end', () => done(JSON.parse(raw || '{}')))
-      }
-      if (req.url === '/tools/echo') {
-        return readBody((body) => send({ ok: true, result: { echo: body.arguments ?? null } }))
-      }
-      if (req.url === '/tools/fail') {
-        return readBody(() => send({ ok: false, error: 'boom' }))
+        req.on('end', () => {
+          let message: Record<string, unknown>
+          try {
+            message = JSON.parse(raw) as Record<string, unknown>
+          } catch {
+            send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'JSON 解析失败' } })
+            return
+          }
+          const id = message.id
+          const method = typeof message.method === 'string' ? message.method : ''
+          const params = (message.params && typeof message.params === 'object'
+            ? message.params
+            : {}) as Record<string, unknown>
+          const isNotification = id === undefined || id === null
+          const rpcResult = (result: unknown): void => send({ jsonrpc: '2.0', id, result })
+          const rpcError = (code: number, text: string): void =>
+            send({ jsonrpc: '2.0', id, error: { code, message: text } })
+          switch (method) {
+            case 'initialize':
+              if (isNotification) return send(null, 202)
+              rpcResult({
+                protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2024-11-05',
+                capabilities: { tools: { listChanged: false } },
+                serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' }
+              })
+              return
+            case 'ping':
+              rpcResult({})
+              return
+            case 'tools/list':
+              rpcResult({
+                tools: [
+                  {
+                    name: 'echo',
+                    title: 'Echo',
+                    description: '回显参数',
+                    inputSchema: { type: 'object', properties: { text: { type: 'string' } } }
+                  },
+                  {
+                    name: 'fail',
+                    title: 'Fail',
+                    description: '始终失败',
+                    inputSchema: { type: 'object', properties: {} }
+                  }
+                ]
+              })
+              return
+            case 'tools/call': {
+              const name = typeof params.name === 'string' ? params.name : ''
+              if (!name) {
+                if (isNotification) return send(null, 202)
+                rpcError(-32602, 'tools/call 缺少 name')
+                return
+              }
+              if (isNotification) return send(null, 202)
+              if (name === 'echo') {
+                rpcResult({
+                  content: [{ type: 'text', text: JSON.stringify({ echo: params.arguments ?? null }, null, 2) }]
+                })
+                return
+              }
+              if (name === 'fail') {
+                rpcResult({ content: [{ type: 'text', text: '调用失败：boom' }], isError: true })
+                return
+              }
+              rpcError(-32602, `未知工具：${name}`)
+              return
+            }
+            case 'notifications/initialized':
+            case 'notifications/cancelled':
+              send(null, 202)
+              return
+            default:
+              if (isNotification) return send(null, 202)
+              rpcError(-32601, `未知方法：${method}`)
+          }
+        })
+        return
       }
       res.writeHead(404)
       res.end('{}')
@@ -70,7 +126,7 @@ function startFakeUpstream(): Promise<{
 
 type RpcResponse = Record<string, unknown>
 
-describe('mcp-bridge（stdio MCP 协议）', () => {
+describe('mcp-bridge（stdio ↔ /mcp 纯隧道）', () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>
   let configPath: string
   let child: ChildProcess

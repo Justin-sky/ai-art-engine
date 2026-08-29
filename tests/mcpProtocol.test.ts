@@ -92,4 +92,58 @@ describe('MCP 协议消息处理（shared）', () => {
       ((await handle({ jsonrpc: '2.0', id: 8, method: 'tools/call' }))?.error as { code: number }).code
     ).toBe(-32602)
   })
+
+  it('notifications/cancelled 中止进行中的 tools/call', async () => {
+    let aborted = false
+    const handle = createMcpProtocolHandler({
+      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+      listTools: () => [],
+      callTool: async (_name, _args, ctx) => {
+        await new Promise<void>((resolve) => {
+          ctx?.signal?.addEventListener('abort', () => {
+            aborted = true
+            resolve()
+          }, { once: true })
+        })
+        return { error: aborted ? 'aborted' : 'finished' }
+      }
+    })
+    // controller 在 callTool 被调用前即已登记（tools/call 分支同步注册）
+    const callPromise = handle({ jsonrpc: '2.0', id: 100, method: 'tools/call', params: { name: 'slow' } })
+    await handle({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 100 }
+    })
+    const res = await callPromise
+    expect(aborted).toBe(true)
+    expect((res?.result as { isError: boolean }).isError).toBe(true)
+  })
+
+  it('外部信号中止进行中的 tools/call（连接断开场景）', async () => {
+    let aborted = false
+    const handle = createMcpProtocolHandler({
+      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+      listTools: () => [],
+      callTool: async (_name, _args, ctx) => {
+        await new Promise<void>((resolve) => {
+          ctx?.signal?.addEventListener('abort', () => {
+            aborted = true
+            resolve()
+          }, { once: true })
+        })
+        return { result: { aborted } }
+      }
+    })
+    const controller = new AbortController()
+    const callPromise = handle(
+      { jsonrpc: '2.0', id: 101, method: 'tools/call', params: { name: 'slow' } },
+      { signal: controller.signal }
+    )
+    controller.abort()
+    const res = await callPromise
+    const result = res?.result as { content: Array<{ text: string }> }
+    expect(aborted).toBe(true)
+    expect(JSON.parse(result.content[0].text)).toEqual({ aborted: true })
+  })
 })
