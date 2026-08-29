@@ -24,13 +24,17 @@ function log(...args) {
   console.error('[aiartengine-mcp]', ...args)
 }
 
-function defaultConfigPath() {
+function defaultConfigPaths() {
+  // 开发态 userData 叫 aiartengine；打包后随 productName 变为 AIArtEngine
+  const names = ['aiartengine', 'AIArtEngine']
   const appData = process.env.APPDATA
-  if (appData) return join(appData, 'aiartengine', 'mcp.json')
+  if (appData) return names.map((name) => join(appData, name, 'mcp.json'))
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'aiartengine', 'mcp.json')
+    return names.map((name) =>
+      join(homedir(), 'Library', 'Application Support', name, 'mcp.json')
+    )
   }
-  return join(homedir(), '.config', 'aiartengine', 'mcp.json')
+  return names.map((name) => join(homedir(), '.config', name, 'mcp.json'))
 }
 
 function loadConfig() {
@@ -40,18 +44,21 @@ function loadConfig() {
       token: process.env.AIAE_MCP_TOKEN
     }
   }
-  const path = process.env.AIAE_MCP_CONFIG || defaultConfigPath()
-  if (!existsSync(path)) return null
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8'))
-    if (typeof parsed.port === 'number' && typeof parsed.token === 'string') {
-      return { port: parsed.port, token: parsed.token, path }
+  const candidates = process.env.AIAE_MCP_CONFIG
+    ? [process.env.AIAE_MCP_CONFIG]
+    : defaultConfigPaths()
+  for (const path of candidates) {
+    if (!existsSync(path)) continue
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8'))
+      if (typeof parsed.port === 'number' && typeof parsed.token === 'string') {
+        return { port: parsed.port, token: parsed.token, path }
+      }
+    } catch (err) {
+      log('读取配置失败:', path, err.message)
     }
-    return null
-  } catch (err) {
-    log('读取配置失败:', err.message)
-    return null
   }
+  return null
 }
 
 let config = loadConfig()

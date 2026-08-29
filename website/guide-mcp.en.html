@@ -338,8 +338,7 @@
               in-memory state.</li>
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
               <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
-            <li>The bridge currently ships with the repository (Node.js 18+ required); bundling inside the
-              installers is planned.</li>
+            <li>Bridge distribution: installers bundle it at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code> (Node.js 18+ required).</li>
           </ul>
         </section>
       </article>

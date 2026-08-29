@@ -18,6 +18,8 @@ files:
 extraResources:
   - from: resources/icon.png
     to: icon.png
+  - from: scripts/mcp-bridge.mjs
+    to: mcp-bridge.mjs
 win:
   target:
     - nsis

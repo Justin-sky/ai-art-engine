@@ -67,8 +67,9 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 安全约定：服务只监听 `127.0.0.1`、token 鉴权；文件读写被工程服务限制在工程根目录内；
 `settings_get` 类密钥信息不对外暴露。
 
-## 当前限制（v0.1）
+## 当前限制
 
 - 语音生成（`generate_speech`）暂未暴露：当前语音生成返回内容而非落盘资产。
 - `task_run` 依赖应用界面进程执行任务：请保持应用处于运行状态；同一图重复触发会按「进行中任务」去重。
-- 桥脚本目前仅随仓库分发（开发场景）；安装包内置与自动发现规划在后续版本。
+- 桥脚本分发：安装包内置在 `<安装目录>/resources/mcp-bridge.mjs`；开发场景用仓库内
+  `scripts/mcp-bridge.mjs`（需 Node.js 18+）。
