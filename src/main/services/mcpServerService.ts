@@ -612,6 +612,27 @@ function authorized(req: IncomingMessage): boolean {
   return req.headers.authorization === `Bearer ${mcpToken}`
 }
 
+let mcpPort = 0
+
+/** 本机允许的 Host / Origin（DNS rebinding 防护：MCP HTTP 传输规范要求） */
+function localAddresses(): string[] {
+  return [`127.0.0.1:${mcpPort}`, `localhost:${mcpPort}`, `[::1]:${mcpPort}`]
+}
+
+function rejectCrossOrigin(req: IncomingMessage, res: ServerResponse): boolean {
+  const host = (req.headers.host ?? '').toLowerCase()
+  if (!localAddresses().includes(host)) {
+    sendJson(res, 403, { ok: false, error: `非法 Host：${host || '(空)'}（DNS rebinding 防护）` })
+    return true
+  }
+  const origin = req.headers.origin
+  if (origin && !localAddresses().some((addr) => origin === `http://${addr}`)) {
+    sendJson(res, 403, { ok: false, error: `非法 Origin：${origin}（DNS rebinding 防护）` })
+    return true
+  }
+  return false
+}
+
 async function readBody(req: IncomingMessage): Promise<string> {
   let size = 0
   const chunks: Buffer[] = []
@@ -639,8 +660,9 @@ async function handleToolCall(name: string, body: string): Promise<unknown> {
 }
 
 /** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
+let mcpServerVersion = '0.0.0'
 const handleMcpProtocolMessage = createMcpProtocolHandler({
-  serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+  serverInfo: { name: 'aiartengine', title: 'AiArtEngine', get version() { return mcpServerVersion } },
   listTools: () =>
     TOOL_DEFS.map(({ name, title, description, inputSchema }) => ({
       name,
@@ -680,6 +702,7 @@ function readStoredMcpConfig(): { port?: number; token?: string } {
 export async function startMcpServer(): Promise<void> {
   if (server) return
   const stored = readStoredMcpConfig()
+  mcpServerVersion = String(updateService.getCurrentVersion())
   // token 持久复用：HTTP 直连模式下客户端配置的 header 才能保持有效；
   // 要重置可删除 mcp.json 后重启应用
   mcpToken = stored.token ?? randomUUID()
@@ -718,6 +741,7 @@ export async function startMcpServer(): Promise<void> {
       })
       candidate.on('error', () => resolve(false))
       candidate.listen(port, '127.0.0.1', () => {
+        mcpPort = port
         server = candidate
         resolve(true)
       })
@@ -761,6 +785,7 @@ export function stopMcpServer(): void {
 
 async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = (req.url ?? '/').split('?')[0]
+  if (rejectCrossOrigin(req, res)) return
   if (req.method === 'GET' && url === '/health') {
     sendJson(res, 200, { ok: true, app: 'aiartengine' })
     return

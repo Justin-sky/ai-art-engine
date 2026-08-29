@@ -141,7 +141,7 @@ async function handleMessage(message) {
     case 'initialize':
       return rpcResult(id, {
         protocolVersion: params?.protocolVersion || PROTOCOL_VERSION_FALLBACK,
-        capabilities: { tools: { listChanged: true } },
+        capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '0.1.0' }
       })
     case 'ping':
