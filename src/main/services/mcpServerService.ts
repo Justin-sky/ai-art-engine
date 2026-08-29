@@ -254,6 +254,23 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'folder_list',
+    title: '资产库文件夹',
+    description:
+      '列出当前工程的资产库文件夹（id / 名称 / 父级），generate_* 与 workflow_commit 的 folderId 参数从这里取。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: () => {
+      assertProjectOpen()
+      return {
+        folders: projectService.listFolders().map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId ?? null
+        }))
+      }
+    }
+  },
+  {
     name: 'workflow_list_presets',
     title: '行业模板列表',
     description: '列出一键工作流的行业模板（id 与标题），可作为 workflow_plan 的 presetId。',
@@ -303,7 +320,8 @@ const TOOL_DEFS: McpToolDef[] = [
       properties: {
         plan: { type: 'object', description: 'workflow_plan 返回的 plan 对象' },
         name: { type: 'string', description: '资产显示名，缺省用计划标题' },
-        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' }
+        generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['plan']
     },
@@ -314,7 +332,8 @@ const TOOL_DEFS: McpToolDef[] = [
       const input: CommitAiWorkflowInput = {
         plan: plan as CommitAiWorkflowInput['plan'],
         name: optionalString(args, 'name'),
-        generateAspectRatio: optionalString(args, 'generateAspectRatio')
+        generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+        folderId: optionalString(args, 'folderId')
       }
       const result = await commitAiWorkflow(input)
       if (!result.ok || !result.assetId) {
@@ -537,7 +556,9 @@ const TOOL_DEFS: McpToolDef[] = [
         model: { type: 'string', description: '音频模型 id（models_list 查询）' },
         providerInstanceId: { type: 'string', description: '提供商实例 id' },
         voice: { type: 'string', description: '音色（缺省用模型默认音色）' },
-        speed: { type: 'number', description: '语速' }
+        speed: { type: 'number', description: '语速' },
+        outputDir: { type: 'string', description: '工程内相对输出目录' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['input']
     },
@@ -550,7 +571,8 @@ const TOOL_DEFS: McpToolDef[] = [
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         voice: optionalString(args, 'voice'),
         speed: typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
-        name: optionalString(args, 'name')
+        name: optionalString(args, 'name'),
+        outputDir: optionalString(args, 'outputDir')
       }
       const result = await runGenActivity(
         'generate_speech',
@@ -559,6 +581,7 @@ const TOOL_DEFS: McpToolDef[] = [
         () => modelProviderFacade.generateSpeechAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
       )
+      if (result.assetId) applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
       return {
         assetId: result.assetId,
@@ -612,7 +635,9 @@ const TOOL_DEFS: McpToolDef[] = [
           type: 'array',
           items: { type: 'string' },
           description: '参考图 http(s) 地址（图生图）'
-        }
+        },
+        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Assets/Generated/Images）' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' }
       },
       required: ['prompt']
     },
@@ -627,7 +652,8 @@ const TOOL_DEFS: McpToolDef[] = [
         n: typeof args.n === 'number' && Number.isFinite(args.n) ? args.n : undefined,
         inputReferences: Array.isArray(args.referenceImageUrls)
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined
+          : undefined,
+        outputDir: optionalString(args, 'outputDir')
       }
       const result = await runGenActivity(
         'generate_image',
@@ -636,6 +662,7 @@ const TOOL_DEFS: McpToolDef[] = [
         () => modelProviderFacade.generateImageAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
       )
+      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
       return result
     }
@@ -655,7 +682,9 @@ const TOOL_DEFS: McpToolDef[] = [
         duration: { type: 'integer', description: '时长（秒）' },
         aspectRatio: { type: 'string', description: '如 9:16 / 16:9' },
         generateAudio: { type: 'boolean', description: '是否同步生成音频（部分模型）' },
-        firstFrameImageUrl: { type: 'string', description: '首帧图 http(s) 地址' }
+        firstFrameImageUrl: { type: 'string', description: '首帧图 http(s) 地址' },
+        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['prompt']
     },
@@ -669,7 +698,9 @@ const TOOL_DEFS: McpToolDef[] = [
         duration: typeof args.duration === 'number' && Number.isFinite(args.duration) ? args.duration : undefined,
         aspectRatio: optionalString(args, 'aspectRatio'),
         generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
-        firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl')
+        firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl'),
+        outputDir: optionalString(args, 'outputDir'),
+        folderId: optionalString(args, 'folderId')
       }
       const result = await runGenActivity(
         'generate_video',
@@ -678,6 +709,7 @@ const TOOL_DEFS: McpToolDef[] = [
         () => modelProviderFacade.generateVideo(input),
         (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
       )
+      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
       return result
     }
@@ -702,7 +734,8 @@ const TOOL_DEFS: McpToolDef[] = [
           type: 'array',
           items: { type: 'string' },
           description: '参考图 http(s) 地址（图生 3D / 多图生 3D）'
-        }
+        },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['prompt']
     },
@@ -716,7 +749,8 @@ const TOOL_DEFS: McpToolDef[] = [
         style: optionalString(args, 'style'),
         inputReferences: Array.isArray(args.referenceImageUrls)
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
-          : undefined
+          : undefined,
+        folderId: optionalString(args, 'folderId')
       }
       const result = await runGenActivity(
         'generate_model3d',
@@ -725,11 +759,23 @@ const TOOL_DEFS: McpToolDef[] = [
         () => modelProviderFacade.generateModel3d(input),
         (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
       )
+      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
       return result
     }
   }
 ]
+
+/** 校验 folderId 存在并把资产挂到该资产库文件夹（界面分类用） */
+function applyAssetFolder(assetId: string, folderId: string | undefined): void {
+  if (!folderId) return
+  const folders = projectService.listFolders()
+  if (!folders.some((folder) => folder.id === folderId)) {
+    throw new Error(`资产库文件夹不存在：${folderId}（用 folder_list 查询可用 id）`)
+  }
+  const asset = projectService.listAssets().find((item) => item.id === assetId)
+  if (asset) projectService.updateAsset({ ...asset, folderId })
+}
 
 function assertProjectOpen(): void {
   if (!projectService.isOpen()) {

@@ -1,6 +1,7 @@
 import axios from 'axios'
-import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import type {
@@ -383,7 +384,9 @@ class ModelProviderFacade {
     }
   }
 
-  async generateImageAsset(input: GenerateImageInput & { name?: string }): Promise<{
+  async generateImageAsset(
+    input: GenerateImageInput & { name?: string; outputDir?: string }
+  ): Promise<{
     assetId: string
     model: string
     relativePath: string
@@ -392,7 +395,11 @@ class ModelProviderFacade {
     const result = await this.generateImage(input)
     const first = result.images[0]
     const root = projectService.getRoot()
-    const dir = join(root, 'assets', 'generated', 'images')
+    // 指定 outputDir 时中间文件写系统临时目录，由 attach 统一拷入目标目录，
+    // 避免中间产物残留在默认目录
+    const dir = input.outputDir
+      ? mkdtempSync(join(tmpdir(), 'aiae-img-'))
+      : join(root, 'assets', 'generated', 'images')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
     const stamp = Date.now()
@@ -414,7 +421,8 @@ class ModelProviderFacade {
       type: 'image',
       sourceFilePath: absPath,
       name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,
-      prompt: input.prompt
+      prompt: input.prompt,
+      outputDir: input.outputDir
     })
     return { assetId: asset.id, model: result.model, relativePath: asset.relativePath }
   }
@@ -429,7 +437,9 @@ class ModelProviderFacade {
   }
 
   /** 语音生成 → 工程声音资产（与 generateImageAsset 同一落盘模式） */
-  async generateSpeechAsset(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {
+  async generateSpeechAsset(
+    input: GenerateSpeechInput & { outputDir?: string }
+  ): Promise<GenerateSpeechResult> {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const result = await this.generateSpeech(input)
     if (!result.filePath) throw fail(E_NO_SPEECH_FILE)
@@ -437,7 +447,8 @@ class ModelProviderFacade {
       type: 'voice',
       sourceFilePath: result.filePath,
       name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,
-      prompt: input.input
+      prompt: input.input,
+      outputDir: input.outputDir
     })
     return { ...result, assetId: asset.id, relativePath: asset.relativePath }
   }

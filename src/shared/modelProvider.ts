@@ -718,6 +718,8 @@ export interface GenerateImageInput {
   seed?: number
   /** 参考图 data URL 或 http(s) */
   inputReferences?: string[]
+  /** MCP：工程内相对输出目录（generateImageAsset 落盘位置，缺省 Assets/Generated/Images） */
+  outputDir?: string
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
   inputReferenceMeta?: GraphImageReferenceMeta[]
   /** Seedream 5.0 Pro：图层分离（layer_decomposition） */
@@ -778,6 +780,8 @@ export interface GenerateVideoInput {
   seed?: number
   /** data URL 或 http(s) */
   firstFrameImageUrl?: string
+  /** MCP：生成资产挂到的资产库文件夹 id */
+  folderId?: string
   lastFrameImageUrl?: string
   /**
    * 参考资源：图片全模型可用；video_url / audio_url 目前主要 Seedance 2.0 生效。
@@ -829,6 +833,8 @@ export interface GenerateModel3dInput {
   inputReferences?: GenerateVideoInputReference[]
   /** 落盘目录（相对工程根） */
   outputDir?: string
+  /** MCP：生成资产挂到的资产库文件夹 id */
+  folderId?: string
   /** 落盘文件名 stem */
   name?: string
   /** 图节点回写绑定 */

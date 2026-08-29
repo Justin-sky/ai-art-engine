@@ -154,6 +154,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `workflow_list_presets` | 行业模板列表（id + 标题） | 应用运行中 |
 | `workflow_plan` | 自然语言 → 工作流方案预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
 | `workflow_commit` | 把方案落盘为宿主资产，界面同步出现 | 已打开工程 |
+| `folder_list` | 列出资产库文件夹（generate_* 的 folderId 来源） | 已打开工程 |
 | `graph_read` | 读取宿主资产图结构（节点 id / 类型 / 标题 + 连线），graph_edit 前置 | 已打开工程 |
 | `task_run` | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |
 | `task_status` | 按 `mcpTaskId` 查运行状态（running / done / error / stopped） | 应用运行中 |
@@ -190,6 +191,8 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 ## 当前限制
 
 - **`task_run` 依赖应用界面进程**：请保持应用运行；同一张图重复触发会按「进行中任务」去重。
+- **资产分类**：`generate_*` 与 `workflow_commit` 支持 `folderId`（资产库文件夹，`folder_list` 查询）与
+  `outputDir`（工程内相对输出目录，缺省按类型 Assets/Generated/* 或 Cache/Videos）。
 - **并发闸门**：`generate_image` / `generate_speech` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
