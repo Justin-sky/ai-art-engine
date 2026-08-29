@@ -1496,7 +1496,11 @@ export default {
         fail: 'FAIL {n}',
         failTitle: 'Quality-check FAIL node count',
         exhausted: 'Exhausted {n}',
-        exhaustedTitle: 'Rework nodes exhausted without passing'
+        exhaustedTitle: 'Rework nodes exhausted without passing',
+        error: 'Errors {n}',
+        errorTitle: 'Nodes that failed to run',
+        degraded: 'Degraded {n}',
+        degradedTitle: 'Nodes continued with a degraded result; output may be suboptimal'
       },
       fail: {
         latestTitle: 'Reason of the last FAIL / exhaustion',
@@ -1509,8 +1513,10 @@ export default {
       panel: {
         review: 'Quality check nodes (media.review)',
         rework: 'Rework nodes (media.rework)',
+        errors: 'Run issues',
         noReview: 'No quality check nodes',
         noRework: 'No rework nodes',
+        noErrors: 'No run issues',
         locateHint: 'Click to locate the node'
       },
       row: {
@@ -1524,7 +1530,9 @@ export default {
           running: 'Reworking',
           passed: 'Passed',
           exhausted: 'Exhausted'
-        }
+        },
+        error: 'Failed',
+        degraded: 'Degraded'
       }
     },
     uiSplit: {
@@ -1749,6 +1757,7 @@ export default {
         running: 'Running',
         done: 'Done',
         error: 'Error',
+        degraded: 'Degraded',
         skipped: 'Skipped'
       }
     },
@@ -2590,7 +2599,8 @@ export default {
       pending: 'Pending',
       running: 'Running',
       done: 'Done',
-      error: 'Failed'
+      error: 'Failed',
+      degraded: 'Degraded'
     },
     preview: {
       audioError: 'Cannot play audio',
@@ -2997,7 +3007,14 @@ export default {
         pending: 'Pending',
         pass: 'Pass',
         fail: 'Fail',
-        reason: 'FAIL reason'
+        reason: 'FAIL reason',
+        reviewModel: 'Review model',
+        reviewModelHint: 'A vision model that can read the image; pick one with image input support',
+        reviewModelFallback: 'No review model set — falling back to the generate model; verdicts may be unreliable',
+        referenceCount: 'Reference image count',
+        referenceCountHint: 'The first N images are the comparison baseline (not scored); the rest are under review. Leave empty for auto',
+        score: 'Review score',
+        rounds: 'Rounds'
       },
       mediaRework: {
         hint: 'Generate → review → inject the FAIL reason and regenerate until passed or max attempts',
@@ -3009,7 +3026,29 @@ export default {
         passed: 'Passed',
         exhausted: 'Exhausted',
         final: 'Final verdict',
-        lastReason: 'Last reason'
+        lastReason: 'Last reason',
+        imageModel: 'Image model',
+        reviewModel: 'Review model',
+        reviewModelHint: 'Must be a vision model with image input; reviewing with an image model is blind judging',
+        reviewModelFallback: 'No review model set — falling back to the image model; verdicts may be unreliable',
+        imageModelFallbacks: 'Fallback image models',
+        reviewModelFallbacks: 'Fallback review models',
+        modelFallbacksHint: 'Used in order when the primary model call fails (rate limit / unavailable / timeout)',
+        strategy: 'Rework strategy',
+        strategyAuto: 'Auto escalate (recommended)',
+        strategyGuidance: 'Targeted fix',
+        strategyReseed: 'Re-stage composition',
+        strategyStronger: 'Reinforced constraints',
+        confirmFirst: 'Wait for confirmation after the first image',
+        confirmFirstHint: 'Shows you the first image before spending the remaining attempts unattended',
+        awaitingConfirm: 'Awaiting confirmation',
+        awaitingConfirmHint: 'Paused after the first image. Continue reworking, or accept the current result',
+        continueRework: 'Continue rework',
+        acceptCurrent: 'Accept current',
+        rounds: 'Rounds',
+        cost: 'Call cost',
+        score: 'Review score',
+        best: 'Best picked'
       },
       adVariants: {
         hint: 'Set product description and aspect ratio here; double-click the node to open the variant editor for dimensions, preview and comparison.'

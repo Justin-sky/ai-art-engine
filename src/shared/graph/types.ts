@@ -259,6 +259,11 @@ export interface GraphNodeParams {
   generateModel?: string
   /** 加工节点提供商实例 id */
   generateProviderInstanceId?: string
+  /**
+   * 加工节点备选模型链：首选模型调用失败（限流/不可用/超时）时依次自动切换。
+   * 每项为 modelKey（providerInstanceId::model），按数组顺序尝试。
+   */
+  generateModelFallbacks?: string[]
   /** 图片/全景生成：宽高比（如 16:9） */
   generateAspectRatio?: string
   /** 图片/全景生成：清晰度档位（如 1K / 2K / 4K） */
@@ -588,6 +593,37 @@ export interface GraphNodeParams {
   mediaReworkState?: string
   /** 媒体自动返工循环：终态（running / passed / exhausted） */
   mediaReworkStatus?: 'running' | 'passed' | 'exhausted'
+  /**
+   * 媒体质检：专用视觉模型 id。
+   * 缺省时回退 generateModel（旧图兼容）。返工节点必须显式配置，
+   * 否则会拿图像模型去跑文本质检——那是质检结论不可信的根因。
+   */
+  reviewModel?: string
+  /** 媒体质检：专用提供商实例 id（缺省回退 generateProviderInstanceId） */
+  reviewProviderInstanceId?: string
+  /**
+   * 媒体质检备选模型链：质检模型调用失败时依次自动切换，格式同 generateModelFallbacks。
+   * 质检卡住会让整条返工链空转，备选视觉模型可避免「一次 429 全链停摆」。
+   */
+  reviewModelFallbacks?: string[]
+  /**
+   * 媒体质检：前 N 张输入视为参考图（比对基准，不参与评分），其余为待审产物。
+   * 缺省自动判定：仅 1 张则全为产物；多张时首张作基准（用户通常把参考图接在最前）。
+   * 显式设 0 表示全部是待审产物。
+   */
+  mediaReviewReferenceCount?: number
+  /** 媒体质检：五维评分明细 JSON（见 mediaReview.ts MediaReviewScores） */
+  mediaReviewScores?: string
+  /** 媒体质检：程序判定的客观未通过项 JSON（见 mediaReview.ts MediaObjectiveIssue[]） */
+  mediaReviewObjectiveIssues?: string
+  /** 媒体返工：返工策略（auto=按轮次自动升级，或固定 guidance / reseed / stronger） */
+  mediaReworkStrategy?: 'auto' | 'guidance' | 'reseed' | 'stronger'
+  /** 媒体返工：首轮出图后暂停等待人工确认，确认后才继续后续返工 */
+  mediaReworkConfirmFirst?: boolean
+  /** 媒体返工：正等待人工确认（首轮已出图、尚未决定继续） */
+  mediaReworkAwaitingConfirm?: boolean
+  /** 媒体返工：各轮调用开销 JSON（见 mediaRework.ts MediaReworkCostEntry[]） */
+  mediaReworkCost?: string
   /** 漫画页：序列化 JSON 文本（见 comicPage.ts），由 ComicPageInspector 编辑/预览/导出 */
   comicPage?: string
 }
@@ -656,7 +692,7 @@ export interface GraphDocument {
 
 /** 可落盘的执行状态（outputs 中大图应为 relativePath，而非 dataUrl） */
 export interface GraphPersistedRunState {
-  status: 'idle' | 'pending' | 'running' | 'done' | 'error' | 'skipped'
+  status: 'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
   error?: string
   outputs?: Record<string, import('./execute/types').GraphValue>
 }

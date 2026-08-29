@@ -25,6 +25,7 @@ const EXEMPT_FILES = new Set([
   'src/main/services/modelProviders/catalog.ts',
   'src/shared/graph/agentPrompts.ts',
   'src/shared/graph/episodeAgentPrompts.ts',
+  'src/shared/graph/mediaReviewPrompts.ts',
   'src/shared/graph/instructionPresets.ts',
   'src/shared/graph/systemPromptSchemes.ts',
   'src/shared/graph/emotionPad.ts',

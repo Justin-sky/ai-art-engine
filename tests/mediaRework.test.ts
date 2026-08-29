@@ -89,7 +89,7 @@ describe('buildMediaReworkInstruction / mediaReworkLogLines', () => {
 
   it('renders english directive', () => {
     expect(buildMediaReworkInstruction('a cat', 'missing finger', 'en-US')).toContain(
-      'Fix the following issues'
+      'Last QC FAIL reason'
     )
   })
 
@@ -189,5 +189,59 @@ describe('executeMediaReworkNode', () => {
     })
     const result = await executeMediaReworkNode(baseCtx({ node }))
     expect(result.out.kind).toBe('images')
+  })
+
+  it('falls back to an alternate image model when the primary call fails', async () => {
+    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
+      params: {
+        generateInstruction: '一只猫',
+        generateModel: 'primary-model',
+        generateProviderInstanceId: 'provider-a',
+        generateModelFallbacks: ['provider-b::backup-model']
+      }
+    })
+    const generateImage = vi.fn(async (args: { model?: string }) => {
+      if (args.model === 'primary-model') throw new Error('rate limited')
+      return { images: ['data:image/png;base64,BBBB'], model: 'backup-model' }
+    })
+    const generateText = vi.fn(async () => ({ text: '## 结论: PASS', model: 'mock' }))
+
+    await executeMediaReworkNode(baseCtx({ node, generateImage, generateText }))
+
+    expect(generateImage).toHaveBeenCalledTimes(2)
+    expect(generateImage.mock.calls[1]![0]).toMatchObject({
+      model: 'backup-model',
+      providerInstanceId: 'provider-b'
+    })
+    // 换模型是可追溯的：本轮生效模型与切换次数都要落状态
+    const state = parseMediaReworkState(node.params.mediaReworkState)
+    expect(state?.iterations[0]).toMatchObject({ model: 'backup-model', modelSwitches: 1 })
+    expect(node.params.mediaReworkStatus).toBe('passed')
+  })
+
+  it('falls back to an alternate review model when the primary QC call fails', async () => {
+    const node = createNodeFromType('media.rework', { x: 0, y: 0 }, {
+      params: {
+        generateInstruction: '一只猫',
+        reviewModel: 'qc-a',
+        reviewProviderInstanceId: 'provider-a',
+        reviewModelFallbacks: ['provider-b::qc-b']
+      }
+    })
+    const generateImage = genImage()
+    const generateText = vi.fn(async (args: { model?: string }) => {
+      if (args.model === 'qc-a') throw new Error('model overloaded')
+      return { text: '## 结论: PASS', model: 'qc-b' }
+    })
+
+    await executeMediaReworkNode(baseCtx({ node, generateImage, generateText }))
+
+    expect(generateText).toHaveBeenCalledTimes(2)
+    expect(generateText.mock.calls[1]![0]).toMatchObject({
+      model: 'qc-b',
+      providerInstanceId: 'provider-b'
+    })
+    const state = parseMediaReworkState(node.params.mediaReworkState)
+    expect(state?.iterations[0]).toMatchObject({ reviewModel: 'qc-b', modelSwitches: 1 })
   })
 })

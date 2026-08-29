@@ -1485,7 +1485,11 @@ export default {
         fail: 'FAIL {n}',
         failTitle: '质检 FAIL 节点数',
         exhausted: '达上限 {n}',
-        exhaustedTitle: '达上限仍未通过的返工节点数'
+        exhaustedTitle: '达上限仍未通过的返工节点数',
+        error: '异常 {n}',
+        errorTitle: '运行失败的节点',
+        degraded: '降级 {n}',
+        degradedTitle: '失败后降级继续的节点，产物可能非最优'
       },
       fail: {
         latestTitle: '最近一次 FAIL / 达上限原因',
@@ -1498,8 +1502,10 @@ export default {
       panel: {
         review: '质检节点（media.review）',
         rework: '返工节点（media.rework）',
+        errors: '运行异常',
         noReview: '无质检节点',
         noRework: '无返工节点',
+        noErrors: '暂无运行异常',
         locateHint: '点击定位到节点'
       },
       row: {
@@ -1513,7 +1519,9 @@ export default {
           running: '返工中',
           passed: '已通过',
           exhausted: '达上限'
-        }
+        },
+        error: '失败',
+        degraded: '降级'
       }
     },
     uiSplit: {
@@ -1735,6 +1743,7 @@ export default {
         running: '运行',
         done: '完成',
         error: '失败',
+        degraded: '降级',
         skipped: '跳过'
       }
     },
@@ -2574,7 +2583,8 @@ export default {
       pending: '等待',
       running: '执行',
       done: '完成',
-      error: '失败'
+      error: '失败',
+      degraded: '降级'
     },
     preview: {
       audioError: '声音无法播放',
@@ -2972,7 +2982,14 @@ export default {
         pending: '待审核',
         pass: '通过',
         fail: '不通过',
-        reason: 'FAIL 原因'
+        reason: 'FAIL 原因',
+        reviewModel: '质检模型',
+        reviewModelHint: '用于看懂画面的视觉模型，须选择支持图像输入的模型',
+        reviewModelFallback: '未配置质检模型，当前回退到生成模型，结论可能不可信',
+        referenceCount: '参考图张数',
+        referenceCountHint: '前 N 张作为比对基准（不评分），其余为待审产物；留空自动判定',
+        score: '质检评分',
+        rounds: '轮次记录'
       },
       mediaRework: {
         hint: '生成 → 质检 → 未通过则注入原因重生成，直到通过或达上限',
@@ -2984,7 +3001,29 @@ export default {
         passed: '已通过',
         exhausted: '已达上限',
         final: '最终质检',
-        lastReason: '最近原因'
+        lastReason: '最近原因',
+        imageModel: '生图模型',
+        reviewModel: '质检模型',
+        reviewModelHint: '须选择支持图像输入的视觉模型；用生图模型做质检等于盲评',
+        reviewModelFallback: '未配置质检模型，当前回退到生图模型，结论可能不可信',
+        imageModelFallbacks: '备选生图模型',
+        reviewModelFallbacks: '备选质检模型',
+        modelFallbacksHint: '首选模型调用失败（限流 / 不可用 / 超时）时，按勾选顺序自动切换',
+        strategy: '返工策略',
+        strategyAuto: '自动升档（推荐）',
+        strategyGuidance: '针对性修正',
+        strategyReseed: '换构图重抽',
+        strategyStronger: '强化约束重解',
+        confirmFirst: '首轮出图后等人工确认',
+        confirmFirstHint: '开启后先出第一张交给你确认，避免无人值守一路烧到次数上限',
+        awaitingConfirm: '等待人工确认',
+        awaitingConfirmHint: '已出图并暂停。可继续返工，也可直接采用当前结果',
+        continueRework: '继续返工',
+        acceptCurrent: '采用当前结果',
+        rounds: '轮次记录',
+        cost: '调用开销',
+        score: '质检评分',
+        best: '已选最优'
       },
       adVariants: {
         hint: '在此设置产品描述与画幅比例；双击节点打开变体编辑器配置维度、预览与对比。'
