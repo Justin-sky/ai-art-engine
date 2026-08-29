@@ -187,7 +187,13 @@ describe('graphPlan materialize', () => {
       'storyboardVideo',
       'productAd',
       'gameUi',
-      'shortDrama'
+      'ecomAdDeep',
+      'game3dAsset',
+      'comicPublish',
+      'courseNarrate',
+      'directorPreviz',
+      'shortDrama',
+      'shortDrama9'
     ] as const) {
       const plan = getAiWorkflowPresetPlan(id)
       expect(plan, id).toBeTruthy()
@@ -197,6 +203,7 @@ describe('graphPlan materialize', () => {
       })
       expect(result.ok, `${id}: ${result.error}`).toBe(true)
       expect(result.document!.nodes.length).toBeGreaterThanOrEqual(plan!.nodes.length)
+      expect(result.warnings, `${id}: ${result.warnings.join('; ')}`).toEqual([])
     }
   })
 

@@ -106,6 +106,36 @@ export default {
         prompt:
           'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
       },
+      ecomAdDeep: {
+        title: 'E-commerce ads',
+        desc: 'Hero image → ad variants → rework → review',
+        prompt:
+          'Create an e-commerce ad workflow: text for selling points, image nodes for the product hero and usage scene; an ad-variants node on the hero image produces multiple ad versions in batch; a media-rework node auto-retries failing images per review feedback; a media-review node outputs the final verdict; plus a layer-split node to break the hero image into layers for editing detail-page text.'
+      },
+      game3dAsset: {
+        title: 'Game 3D assets',
+        desc: 'Text-to-3D → director deck → shots → showcase video',
+        prompt:
+          'Create a game 3D asset workflow: text holds the asset design; two 3D-model nodes generate the hero and prop GLB models; a director-deck node takes the model and dive auto-instances it on stage, where primitives or an AI blockout flesh out the scene and cameras are staged; shots (out-shots) go through a select node, and image-to-video renders the showcase clip.'
+      },
+      comicPublish: {
+        title: 'Comic publishing',
+        desc: 'Script → 3 panels → comic page layout & export',
+        prompt:
+          'Create a comic publishing workflow: text holds a per-panel comic script, three image nodes generate consistent-style panels that all feed a comic-page node; double-click the comic page to lay out panels, add speech bubbles, adjust the page background, and export with transparent background.'
+      },
+      courseNarrate: {
+        title: 'Knowledge talking-head',
+        desc: 'Lecture script → voice + talking video → lip sync',
+        prompt:
+          'Create a knowledge-course talking-head workflow: text holds the lecture script, an image node generates the presenter look, a voice node narrates the script, and a video node turns the presenter image into a talking video; a lip-sync node takes the talking video plus the narration and outputs a lip-aligned clip.'
+      },
+      directorPreviz: {
+        title: '3D blockout previz',
+        desc: 'Panorama reference → AI blockout → shots lock framing',
+        prompt:
+          'Create a 3D blockout previz workflow: an image node generates a 360 panorama mood reference wired into the director deck panorama port, dive sets it as stage background; use Generate 3D Blockout with reference images plus a one-line instruction to build the scene from primitives, stage cameras and capture shots; a select node picks a shot and image-to-video renders the previz clip, with the text node supplementing the video prompt.'
+      },
       shortDrama: {
         title: 'Short drama',
         desc: 'Script → beats → 9-grid → 4-grid → 36 motion videos (agent pipeline)',

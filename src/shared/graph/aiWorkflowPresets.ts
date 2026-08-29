@@ -337,6 +337,11 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'storyboardVideo',
   'productAd',
   'gameUi',
+  'ecomAdDeep',
+  'game3dAsset',
+  'comicPublish',
+  'courseNarrate',
+  'directorPreviz',
   'shortDrama',
   'shortDrama9',
   'custom'
@@ -538,6 +543,254 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     edges: [
       { from: 'gameSystem', to: 'uiSplit' },
       { from: 'uiSplit', to: 'uiGen' }
+    ]
+  },
+  ecomAdDeep: {
+    title: '电商带货·变体与质检',
+    nodes: [
+      {
+        key: 'copy',
+        typeId: 'play.script',
+        title: '卖点文案',
+        params: { text: '（产品名、核心卖点、优惠信息与 CTA）' }
+      },
+      {
+        key: 'hero',
+        typeId: 'asset.image',
+        title: '产品主视觉',
+        params: { generateInstruction: '电商产品英雄图，突出质感与卖点，干净背景' }
+      },
+      {
+        key: 'scene',
+        typeId: 'asset.image',
+        title: '使用场景图',
+        params: { generateInstruction: '产品真实使用场景，突出人群与使用氛围' }
+      },
+      { key: 'adVariants', typeId: 'image.adVariants', title: '广告变体矩阵' },
+      {
+        key: 'rework',
+        typeId: 'media.rework',
+        title: '媒体返工',
+        params: {
+          generateInstruction:
+            '保持产品形态与卖点信息一致，优化构图、清晰度与画面合规性'
+        }
+      },
+      {
+        key: 'review',
+        typeId: 'media.review',
+        title: '媒体质检',
+        params: {
+          generateInstruction:
+            '检查电商广告图：卖点是否清晰、有无违禁夸大表述、构图是否完整、文字是否可读，输出通过或修改意见'
+        }
+      },
+      { key: 'split', typeId: 'image.layerSplit', title: '图层分离' },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：运行「产品主视觉 / 使用场景图」→ 双击「广告变体矩阵」配置产品描述与变体维度，批量生成多版本 → 「媒体返工」按意见自动重试不达标结果 → 「媒体质检」输出最终审查结论。需要改详情页文字层时，把主视觉接入「图层分离」分层导出（PSD / PNG）。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'copy', to: 'hero' },
+      { from: 'copy', to: 'scene' },
+      { from: 'hero', to: 'adVariants' },
+      { from: 'adVariants', to: 'rework', fromPort: 'out', toPort: 'in-image' },
+      { from: 'rework', to: 'review', fromPort: 'out', toPort: 'in-image' },
+      { from: 'hero', to: 'split', fromPort: 'out', toPort: 'in' }
+    ]
+  },
+  game3dAsset: {
+    title: '游戏 3D 资产预演',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '资产设定',
+        params: { text: '（描述角色 / 道具 / 载具的外观、材质与比例）' }
+      },
+      {
+        key: 'modelMain',
+        typeId: 'asset.model3d',
+        title: '主角 3D 模型',
+        params: { generateInstruction: '按设定生成主角 3D 模型，结构完整，材质干净' }
+      },
+      {
+        key: 'modelProp',
+        typeId: 'asset.model3d',
+        title: '配套道具模型',
+        params: { generateInstruction: '按设定生成配套道具 3D 模型，比例与主角一致' }
+      },
+      { key: 'motion', typeId: 'asset.motion', title: '导演台预演' },
+      { key: 'select', typeId: 'image.select', title: '选站位图' },
+      {
+        key: 'video',
+        typeId: 'asset.video',
+        title: '资产展示视频',
+        params: {
+          generateInstruction: '基于站位图生成游戏资产展示视频，缓慢环绕运镜',
+          generateDuration: 8,
+          generateAspectRatio: '16:9'
+        }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：运行两个「3D 模型」节点生成 GLB → 连到「导演台预演」后双击进入舞台，模型自动实例化；在舞台里用基础几何体或「生成3D白模」补景、摆机位 → 截取站位图（out-shots）→ 经「选站位图」挑一张生成展示视频。配套道具模型可随时替换接入导演台。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'modelMain' },
+      { from: 'script', to: 'modelProp' },
+      { from: 'modelMain', to: 'motion', fromPort: 'out', toPort: 'in-model' },
+      { from: 'motion', to: 'select', fromPort: 'out-shots', toPort: 'in' },
+      { from: 'select', to: 'video', fromPort: 'out', toPort: 'in-image' }
+    ]
+  },
+  comicPublish: {
+    title: '漫画页出版',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '漫画剧本',
+        params: { text: '（按格写分镜：画面描述、台词、情绪与镜头）' }
+      },
+      {
+        key: 'panel1',
+        typeId: 'asset.image',
+        title: '分镜图 1',
+        params: { generateInstruction: '漫画第 1 格：按剧本绘制，统一画风与角色形象' }
+      },
+      {
+        key: 'panel2',
+        typeId: 'asset.image',
+        title: '分镜图 2',
+        params: { generateInstruction: '漫画第 2 格：承接第 1 格剧情，统一画风' }
+      },
+      {
+        key: 'panel3',
+        typeId: 'asset.image',
+        title: '分镜图 3',
+        params: { generateInstruction: '漫画第 3 格：收束本页剧情，统一画风' }
+      },
+      { key: 'page', typeId: 'comic.page', title: '漫画页' },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：先运行三张「分镜图」锁定角色与画风 → 双击「漫画页」进入编辑器，把分镜图拖入分格、加台词气泡、调页面背景色 → 导出成片（支持透明底 PNG）。分格与气泡支持手柄缩放。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'panel1' },
+      { from: 'script', to: 'panel2' },
+      { from: 'script', to: 'panel3' },
+      { from: 'panel1', to: 'page', fromPort: 'out', toPort: 'in-image' },
+      { from: 'panel2', to: 'page', fromPort: 'out', toPort: 'in-image' },
+      { from: 'panel3', to: 'page', fromPort: 'out', toPort: 'in-image' }
+    ]
+  },
+  courseNarrate: {
+    title: '知识课程口播',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '课程讲稿',
+        params: { text: '（分段写讲稿：开场钩子、知识点、总结与引导关注）' }
+      },
+      {
+        key: 'portrait',
+        typeId: 'asset.image',
+        title: '主讲人形象',
+        params: { generateInstruction: '知识博主半身像，正面对镜头，简洁背景，亲和气质' }
+      },
+      {
+        key: 'voice',
+        typeId: 'asset.voice',
+        title: '口播配音',
+        params: { generateInstruction: '亲和清晰的知识口播音色，语速平稳，按讲稿分段朗读' }
+      },
+      {
+        key: 'talking',
+        typeId: 'asset.video',
+        title: '口播视频',
+        params: {
+          generateInstruction: '主讲人对镜头讲话，半身构图，口型自然',
+          generateDuration: 10,
+          generateAspectRatio: '9:16'
+        }
+      },
+      { key: 'lipSync', typeId: 'video.lipSync', title: '口型同步' },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：先运行「主讲人形象」与「课程讲稿」→ 用形象生成「口播视频」（视频音量建议静音）→ 运行「口播配音」→ 把口播视频与配音接进「口型同步」运行，输出对口型的成片。配音不满意可只重跑配音，无需重做视频。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'portrait' },
+      { from: 'script', to: 'voice' },
+      { from: 'script', to: 'talking' },
+      { from: 'portrait', to: 'talking', fromPort: 'out', toPort: 'in-image' },
+      { from: 'talking', to: 'lipSync', fromPort: 'out', toPort: 'in-video' },
+      { from: 'voice', to: 'lipSync', fromPort: 'out', toPort: 'in-voice' }
+    ]
+  },
+  directorPreviz: {
+    title: '3D 白模预演',
+    nodes: [
+      {
+        key: 'brief',
+        typeId: 'play.script',
+        title: '分镜与场景需求',
+        params: { text: '（描述场景氛围、镜头景别与构图意图）' }
+      },
+      {
+        key: 'pano',
+        typeId: 'asset.image',
+        title: '全景氛围参考',
+        params: { generateInstruction: '生成场景 360 全景氛围图，透视与光线方向明确' }
+      },
+      { key: 'motion', typeId: 'asset.motion', title: '导演台·AI 白模' },
+      { key: 'select', typeId: 'image.select', title: '选站位图' },
+      {
+        key: 'video',
+        typeId: 'asset.video',
+        title: '预演成片',
+        params: {
+          generateInstruction: '按站位图构图生成预演视频，保持分镜景别',
+          generateDuration: 8
+        }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text: '流程：运行「全景氛围参考」→ 连到「导演台·AI 白模」的全景口，双击进入舞台自动设为背景 → 点「生成3D白模」，丢最多 3 张透视 / 360 全景参考图与一句话指令，AI 用基础几何体搭出整座场景（人物当 1.7m 比例尺）→ 摆机位、截站位图 → 「选站位图」后生成预演成片，构图提前锁死。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'brief', to: 'pano' },
+      { from: 'pano', to: 'motion', fromPort: 'out', toPort: 'in-panorama' },
+      { from: 'motion', to: 'select', fromPort: 'out-shots', toPort: 'in' },
+      { from: 'select', to: 'video', fromPort: 'out', toPort: 'in-image' },
+      { from: 'brief', to: 'video', fromPort: 'out', toPort: 'in-text' }
     ]
   },
   shortDrama: buildEpisodePipelinePlan('grid4'),
