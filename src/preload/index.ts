@@ -185,6 +185,23 @@ const api: StudioApi = {
   },
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_GRAPH_EDIT_RESULT, payload),
+  getMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_GET_INFO),
+  restartMcpServer: (input) => ipcRenderer.invoke(IpcChannels.MCP_RESTART, input),
+  onMcpActivityUpdated: (callback) => {
+    const listener = (_event: unknown, activity: import('@shared/ipc').McpActivity): void => {
+      callback(activity)
+    }
+    ipcRenderer.on(IpcChannels.MCP_ACTIVITY_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_ACTIVITY_UPDATED, listener)
+  },
+  onMcpActivityCleared: (callback) => {
+    const listener = (): void => {
+      callback()
+    }
+    ipcRenderer.on(IpcChannels.MCP_ACTIVITY_CLEARED, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_ACTIVITY_CLEARED, listener)
+  },
+  listMcpActivities: () => ipcRenderer.invoke(IpcChannels.MCP_ACTIVITY_LIST),
   /** Electron 35+ 拖放文件需通过 webUtils 获取本地路径 */
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }

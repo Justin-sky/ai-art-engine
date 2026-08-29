@@ -39,8 +39,10 @@ import { projectService } from './services/projectService'
 import { exportScriptTimeline } from './services/timelineExportService'
 import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
+import { mcpActivityService } from './services/mcpActivityService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
+import { getMcpServerInfo, restartMcpServer } from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
 import {
   commitAiWorkflow,
@@ -104,6 +106,7 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.PROJECT_CLOSE, () => {
     videoJobService.stopAllTimers()
+    mcpActivityService.clear()
     projectService.closeProject()
   })
 
@@ -256,6 +259,12 @@ export function registerIpcHandlers(): void {
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
   handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => settingsService.set(settings))
+
+  handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
+  handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>
+    restartMcpServer(input)
+  )
+  handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())

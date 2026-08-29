@@ -5,7 +5,7 @@ export type GraphRunLogLevel = 'info' | 'warn' | 'error'
 
 export type GraphRunLogEventKind = 'run_start' | 'run_end' | 'node_status' | 'run_message'
 
-export type GraphRunLogMode = 'workflow' | 'toNode' | 'nodeOnly' | 'task'
+export type GraphRunLogMode = 'workflow' | 'toNode' | 'nodeOnly' | 'task' | 'mcp'
 
 export type GraphRunLogSessionStatus = 'running' | 'done' | 'error' | 'stopped'
 

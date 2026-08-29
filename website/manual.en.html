@@ -2199,6 +2199,36 @@
             </div>
           </details>
 
+          <details class="trouble">
+            <summary>How do I let Claude Code and other AI assistants operate the app? (Install MCP)</summary>
+            <div class="trouble-body">
+              <p>
+                The app ships with an MCP tool service. Once connected, Claude Code and other AI agents can
+                <strong>plan workflows, edit node graphs, run generations and query tasks</strong> from a chat.
+                The app must be running first. Pick either of the two methods:
+              </p>
+              <ol>
+                <li>
+                  <strong>stdio bridge (recommended, needs Node.js 18+)</strong>: run
+                  <code>claude mcp add aiartengine -- node &lt;install-dir&gt;/resources/mcp-bridge.mjs</code>.
+                </li>
+                <li>
+                  <strong>HTTP direct (no Node.js needed)</strong>: open Settings → MCP and copy the
+                  “Claude Code connection command”, or run it manually as
+                  <code>claude mcp add --transport http aiartengine &lt;endpoint&gt; --header "Authorization: Bearer &lt;token&gt;"</code>
+                  (endpoint and token live in the app-side mcp.json and persist across restarts).
+                </li>
+              </ol>
+              <p>
+                After registering, <strong>restart the agent session</strong> for the tools to appear. The app-side
+                mcp.json (<code>%APPDATA%/aiartengine/mcp.json</code>) is maintained by the app — do
+                <strong>not edit it by hand</strong>. If the register command errors (e.g.
+                <code>Script not found</code>), your Claude Code install is usually broken — reinstall and retry.
+                Full steps and the tool list: <a href="guide-mcp.en.html">MCP guide</a>.
+              </p>
+            </div>
+          </details>
+
           <div class="tip">
             When diagnosing, <strong>run the same node with a different model</strong> — it's the fastest way
             to tell “an app problem” from “a model / account problem”.

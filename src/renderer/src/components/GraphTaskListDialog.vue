@@ -97,9 +97,44 @@
           </ul>
         </section>
 
+        <section
+          v-if="mcpActive.length"
+          class="section"
+        >
+          <h3 class="section-title">
+            {{ t('graph.tasks.mcpSection') }}
+          </h3>
+          <ul class="task-list">
+            <li
+              v-for="activity in mcpActive"
+              :key="activity.id"
+              class="task-row"
+            >
+              <div class="task-row-main">
+                <div class="task-meta">
+                  <span
+                    class="task-kind"
+                    :data-kind="activity.tool"
+                  >{{ mcpKindLabel(activity.tool) }}</span>
+                  <span class="task-title">{{ activity.title }}</span>
+                  <span
+                    class="task-status"
+                    :data-status="activity.status"
+                  >
+                    {{ mcpStatusLabel(activity.status) }}
+                  </span>
+                </div>
+                <p class="task-sub">
+                  {{ activity.model ?? t('graph.tasks.mcpDefaultModel') }}
+                </p>
+              </div>
+            </li>
+          </ul>
+        </section>
+
         <section class="section">
           <h3
-            v-if="activeVideoJobs.length"
+            v-if="activeVideoJobs.length || mcpActive.length"
             class="section-title"
           >
             {{ t('graph.tasks.workflowSection') }}
@@ -109,7 +144,7 @@
             class="empty"
           >
             {{
-              activeVideoJobs.length
+              activeVideoJobs.length || mcpActive.length
                 ? t('graph.tasks.emptyWorkflowActive')
                 : t('graph.tasks.emptyActive')
             }}
@@ -227,9 +262,59 @@
           </ul>
         </section>
 
+        <section
+          v-if="mcpRecent.length"
+          class="section"
+        >
+          <h3 class="section-title">
+            {{ t('graph.tasks.mcpSection') }}
+          </h3>
+          <ul class="task-list">
+            <li
+              v-for="activity in mcpRecent"
+              :key="activity.id"
+              class="task-row"
+            >
+              <div class="task-row-main">
+                <div class="task-meta">
+                  <span
+                    class="task-kind"
+                    :data-kind="activity.tool"
+                  >{{ mcpKindLabel(activity.tool) }}</span>
+                  <span class="task-title">{{ activity.title }}</span>
+                  <span
+                    class="task-status"
+                    :data-status="activity.status"
+                  >
+                    {{ mcpStatusLabel(activity.status) }}
+                  </span>
+                </div>
+                <p
+                  v-if="activity.error"
+                  class="task-sub error"
+                >
+                  {{ activity.error }}
+                </p>
+                <p
+                  v-else-if="activity.relativePath"
+                  class="task-sub"
+                >
+                  {{ activity.relativePath }}
+                </p>
+                <p
+                  v-else
+                  class="task-sub"
+                >
+                  {{ activity.model ?? t('graph.tasks.mcpDefaultModel') }}
+                </p>
+              </div>
+            </li>
+          </ul>
+        </section>
+
         <section class="section">
           <h3
-            v-if="recentTerminalVideoJobs.length"
+            v-if="recentTerminalVideoJobs.length || mcpRecent.length"
             class="section-title"
           >
             {{ t('graph.tasks.workflowSection') }}
@@ -239,7 +324,7 @@
             class="empty"
           >
             {{
-              recentTerminalVideoJobs.length
+              recentTerminalVideoJobs.length || mcpRecent.length
                 ? t('graph.tasks.emptyWorkflowCompleted')
                 : t('graph.tasks.emptyCompleted')
             }}
@@ -319,9 +404,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGraphTaskStore, type GraphTask, type GraphTaskStatus } from '../stores/graphTasks'
 import { useProjectStore } from '../stores/project'
+import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import type { GraphNodeRunStatus } from '@shared/graph'
+import type { McpActivityStatus, McpActivityTool } from '@shared/ipc'
 import type { VideoJobRecord, VideoJobStatus } from '@shared/videoJob'
 import { isVideoJobActive, jobKind } from '@shared/videoJob'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -332,6 +419,7 @@ type TaskTab = 'active' | 'completed'
 const { t } = useStudioI18n()
 const taskStore = useGraphTaskStore()
 const project = useProjectStore()
+const mcpActivities = useMcpActivitiesStore()
 const { tasks, completed, dialogOpen } = storeToRefs(taskStore)
 const activeTab = ref<TaskTab>('active')
 const videoJobs = ref<VideoJobRecord[]>([])
@@ -340,8 +428,18 @@ const activeVideoJobs = computed(() => videoJobs.value.filter((j) => isVideoJobA
 const recentTerminalVideoJobs = computed(() =>
   videoJobs.value.filter((j) => !isVideoJobActive(j.status)).slice(0, 20)
 )
-const activeCount = computed(() => tasks.value.length + activeVideoJobs.value.length)
-const completedCount = computed(() => completed.value.length + recentTerminalVideoJobs.value.length)
+const mcpActive = computed(() =>
+  mcpActivities.activities.filter((a) => a.status === 'running')
+)
+const mcpRecent = computed(() =>
+  mcpActivities.activities.filter((a) => a.status !== 'running').slice(0, 20)
+)
+const activeCount = computed(
+  () => tasks.value.length + activeVideoJobs.value.length + mcpActive.value.length
+)
+const completedCount = computed(
+  () => completed.value.length + recentTerminalVideoJobs.value.length + mcpRecent.value.length
+)
 
 let stopVideoJobUpdated: (() => void) | null = null
 
@@ -360,7 +458,10 @@ async function refreshVideoJobs(): Promise<void> {
 watch(
   dialogOpen,
   (open) => {
-    if (open) void refreshVideoJobs()
+    if (open) {
+      void refreshVideoJobs()
+      void mcpActivities.refresh()
+    }
   },
   { immediate: true }
 )
@@ -368,8 +469,13 @@ watch(
 watch(
   () => project.isOpen,
   (open) => {
-    if (open) void refreshVideoJobs()
-    else videoJobs.value = []
+    if (open) {
+      void refreshVideoJobs()
+      void mcpActivities.refresh()
+    } else {
+      videoJobs.value = []
+      mcpActivities.clear()
+    }
   }
 )
 
@@ -414,6 +520,14 @@ function videoStatusLabel(status: VideoJobStatus): string {
 
 function jobKindLabel(job: VideoJobRecord): string {
   return jobKind(job) === 'model3d' ? t('graph.tasks.model3dKind') : t('graph.tasks.videoKind')
+}
+
+function mcpKindLabel(tool: McpActivityTool): string {
+  return t(`graph.tasks.mcpKind.${tool}`)
+}
+
+function mcpStatusLabel(status: McpActivityStatus): string {
+  return t(`graph.tasks.mcpStatus.${status}`)
 }
 
 function videoJobTitle(job: VideoJobRecord): string {

@@ -47,6 +47,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from './stores/project'
+import { useMcpActivitiesStore } from './stores/mcpActivities'
 import { registerMcpTaskRunner } from './features/mcp/mcpTaskRunner'
 import { useStudioI18n } from './composables/useStudioI18n'
 import HomeView from './views/HomeView.vue'
@@ -65,6 +66,7 @@ const router = useRouter()
 const route = useRoute()
 const project = useProjectStore()
 const editor = useEditorKernel()
+const mcpActivities = useMcpActivitiesStore()
 
 const isSettings = computed(() => route.name === 'settings')
 const mainView = ref<'home' | 'studio'>('home')
@@ -115,6 +117,7 @@ function onEditorShortcut(event: KeyboardEvent): void {
 onMounted(() => {
   window.addEventListener('keydown', onEditorShortcut)
   registerMcpTaskRunner()
+  mcpActivities.setup()
   if (typeof window.studio?.onAssetUpdated === 'function') {
     stopAssetUpdated = window.studio.onAssetUpdated((asset) => {
       if (!project.isOpen) return
@@ -137,6 +140,7 @@ onBeforeUnmount(() => {
   stopAssetUpdated = null
   stopVideoJobUpdated?.()
   stopVideoJobUpdated = null
+  mcpActivities.teardown()
 })
 </script>
 
