@@ -11,12 +11,23 @@ npm run site
 
 | 路径 | 说明 |
 |------|------|
-| `index.html` | 官网首页 |
+| `index.html` | 官网首页（中文） |
 | `manual.html` | 使用手册（一键工作流、宿主资产、节点任务、成片时间线、导演台等） |
 | `guide-short-video.html` | 短视频制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
-| `manual.css` | 手册页样式 |
+| `index.en.html` · `manual.en.html` · `guide-short-video.en.html` · `guide-video.en.html` · `guide-comfyui.en.html` | 以上 5 个页面的英文版（统一 `.en.html` 后缀） |
+| `manual.css` | 手册与教程页样式（中英文共用） |
+| `styles.css` | 首页样式（中英文共用） |
+
+### 中英文页面
+
+两套页面一一对应，通过导航栏右侧的 `中文` / `EN` 胶囊按钮互切（`.nav-lang`）。要点：
+
+- 英文页内链全部指向 `.en.html`，中文页指向中文页，不会串语言。
+- 每个页面都声明 `hreflang`  alternate 链接，便于搜索引擎识别。
+- **内容是两份独立文件**，更新文案时请同步修改中英两版。
+- 新增页面时记得同时建 `.en.html`，并在两侧导航加入语言入口。
 
 开发文档在仓库 [`docs/`](../docs/README.md)（架构、节点图插件、资产模型）。用户手册 §7.1 已写明：端口类型必须相同，单数不能进复数。
 

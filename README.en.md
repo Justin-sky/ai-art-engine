@@ -25,11 +25,11 @@
   </p>
 
   <p>
-    <a href="https://justin-sky.github.io/ai-art-engine/"><b>Website</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>Manual</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>Video guide</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>Short-video guide</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI guide</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/index.en.html"><b>Website</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/manual.en.html"><b>Manual</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html"><b>Video guide</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html"><b>Short-video guide</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html"><b>ComfyUI guide</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#community"><b>Community</b></a> ·
@@ -104,7 +104,7 @@ npm run dist:win | dist:mac | dist:linux
 | Model | Lux3D | Text-to-3D / image-to-3D (incl. multi-image, G1 / G1-Turbo, API key) |
 | Object storage | TOS / OSS / COS | Upload + signed URLs; mutually exclusive enable |
 
-Configure under **Settings → Models** / **Settings → Object storage**. Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) on port 8189 — do not point Base URL at 8188.
+Configure under **Settings → Models** / **Settings → Object storage**. Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html) on port 8189 — do not point Base URL at 8188.
 
 ---
 
@@ -119,7 +119,7 @@ Configure under **Settings → Models** / **Settings → Object storage**. Local
 3. Add model providers (and optional object storage) in Settings  
 4. Use toolbar **One-click workflow**, or build chains in shots / node graph  
 
-Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (source: `website/manual.html`). Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html) on port 8189 — do not point Base URL at 8188.
+Full guide: [Manual](https://justin-sky.github.io/ai-art-engine/manual.en.html) (source: `website/manual.en.html`). Local ComfyUI needs [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html) on port 8189 — do not point Base URL at 8188.
 
 **From source**
 
@@ -140,7 +140,7 @@ npm run typecheck && npm test
 
 ## Docs
 
-- [Manual](https://justin-sky.github.io/ai-art-engine/manual.html) (`website/manual.html`)
+- [Manual](https://justin-sky.github.io/ai-art-engine/manual.en.html) (`website/manual.en.html`)
 - [Architecture](./docs/ARCHITECTURE.md) · [Graph plugins](./docs/GRAPH_PLUGINS.md) · [Docs index](./docs/README.md)
 - [Asset model](./docs/ASSET_MODEL.md) · [AssetRef](./docs/ASSET_REF.md) · [Asset package](./docs/ASSET_PACKAGE.md)
 - [Roadmap](./docs/ROADMAP.md) · [Changelog](./CHANGELOG.md)
@@ -171,7 +171,7 @@ Track bugs on [GitHub Issues](https://github.com/Justin-sky/ai-art-engine/issues
 
 ## Community
 
-- **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/)
+- **Website**: [justin-sky.github.io/ai-art-engine](https://justin-sky.github.io/ai-art-engine/index.en.html)
 - **Video tutorials**: [Bilibili space](https://space.bilibili.com/3707036976024122)
 - **QQ group**: 647306826 (scan to join)
 

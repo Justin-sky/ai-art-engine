@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="AIArtEngine guide: generate a workflow from the short-video template in One-Click Workflow, then finish storyboards, tiling and video generation in the Agent pipeline window."
+    />
+    <title>Short-Video Guide · AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Guide</a>
+        <a href="guide-short-video.en.html" aria-current="page">Short Video</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video tutorials</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-short-video.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html" aria-current="page">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#prep">Preparation</a></li>
+          <li><a href="#step-1">Step 1: Pick the short-video template</a></li>
+          <li><a href="#step-2">Step 2: Auto-generated workflow nodes</a></li>
+          <li><a href="#step-3">Step 3: Finish everything in the Agent pipeline</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html">← Back to the full manual</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Short Video</p>
+          <h1>Short-Video Guide</h1>
+          <p class="lede">
+            Produce a short video in three steps: let <strong>One-Click Workflow</strong> build the full node
+            graph from the short-video template, then complete storyboards, tiling, director review and video
+            generation inside the <strong>Agent pipeline window</strong> — no manual node wiring required.
+          </p>
+        </header>
+
+        <section id="prep">
+          <h2>1. Preparation</h2>
+          <ol>
+            <li>
+              <strong>Models</strong>: Settings → Models → add and enable a provider (Volcengine Ark, Kling,
+              MiniMax, Tongyi Qianwen, ModelScope, OpenRouter, …). Select and set defaults for the
+              <strong>text model</strong> (storyboard / prompts / review), the <strong>image model</strong>
+              (tiling and anchor images) and the <strong>video model</strong> (motion video).
+            </li>
+            <li>
+              <strong>Object storage (optional)</strong>: Settings → Object Storage → enable one of Volcengine
+              TOS / Alibaba Cloud OSS / Tencent Cloud COS. Recommended when videos need public URLs or are used
+              as reference videos; you can skip it for local preview only.
+            </li>
+            <li>Create or open a project from the home page and enter the workspace.</li>
+          </ol>
+          <div class="tip">
+            Make sure the provider account has enough credits — generation fails immediately when the balance
+            runs out.
+          </div>
+        </section>
+
+        <section id="step-1">
+          <h2>2. Step 1: Pick the short-video template</h2>
+          <ol>
+            <li>With the project open, click <strong>One-Click Workflow</strong> in the top bar.</li>
+            <li>
+              In <strong>preset templates</strong> choose “Short-drama storyboard (Agent pipeline)” — the
+              short-video template.
+            </li>
+            <li>
+              Click <strong>Preview template</strong> to inspect the generated nodes and links; you can pick a
+              preset first and then edit the “workflow description”.
+            </li>
+            <li>Confirm with <strong>Create workflow</strong>, then choose a save directory and name.</li>
+            <li>
+              A new <strong>host asset</strong> appears in the asset library — the short-video workflow is
+              ready.
+            </li>
+          </ol>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-1.png"
+              alt="Choosing the short-video template in One-Click Workflow"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              Figure 1: One-Click Workflow → choose the short-video template
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="step-2">
+          <h2>3. Step 2: Auto-generated workflow nodes</h2>
+          <p>Double-click the host asset to dive into the inner graph and see the chain the template built:</p>
+          <ol>
+            <li>
+              <strong>Script</strong> → <strong>Beat breakdown table</strong> (storyboard artist) →
+              <strong>9-grid storyboard table</strong>.
+            </li>
+            <li>
+              9-grid tiling: one node renders the whole 3×3 sheet, then splits it into 9 anchor images and
+              upscales them.
+            </li>
+            <li>
+              <strong>4-grid motion storyboard table</strong> → one 2×2 sheet per group → 36 motion cells
+              extracted and upscaled.
+            </li>
+            <li>
+              <strong>Motion prompt table</strong> (36 entries) → <strong>motion cell select</strong> →
+              <strong>36 motion videos</strong>.
+            </li>
+            <li>
+              Four director review nodes (<strong>review1~review4</strong>) are interleaved throughout (beats /
+              9-grid / 4-grid / motion prompts).
+            </li>
+          </ol>
+          <p>
+            The graph stays fully editable: change prompts, swap models, rewire edges. In daily use you never
+            need to run nodes one by one — jump straight to the Agent pipeline window in step 3.
+          </p>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-2.png"
+              alt="The short-video node graph generated by One-Click Workflow"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              Figure 2: The complete auto-generated workflow nodes
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="step-3">
+          <h2>4. Step 3: Finish everything in the Agent pipeline</h2>
+          <p>
+            Click <strong>“Episode Pipeline”</strong> in the top toolbar to open the Agent pipeline window —
+            every generation and review step happens here:
+          </p>
+          <ol>
+            <li>
+              <strong>Beat breakdown</strong> (left column): run <strong>Regenerate</strong> to produce the beat
+              table, then click <strong>Director review</strong>.
+            </li>
+            <li>
+              <strong>9-grid storyboard table</strong> (center): run <strong>Regenerate</strong> for the 9-grid
+              text; click the <strong>grid icon</strong> at the top-right to generate the whole 3×3 sheet and
+              split out all 9 cells in one go; then <strong>Director review</strong>.
+            </li>
+            <li>
+              <strong>4-grid</strong> (right column): run <strong>Regenerate</strong>; click the
+              <strong>2×2 grid icon</strong> to generate the current group's 2×2 sheet;
+              <strong>Director review</strong>. Motion prompts and video outputs are shown on the right.
+            </li>
+            <li>
+              <strong>Video</strong>: click <strong>Generate this video</strong> (or generate entries one by
+              one) and preview playback directly inside the window.
+            </li>
+            <li>
+              Drag the dividers between the three columns to resize them, so you can watch text and images side
+              by side.
+            </li>
+          </ol>
+          <div class="tip">
+            Recommended order: beat breakdown → 9-grid storyboard → generate 9-grid sheet → 4-grid motion
+            storyboard → generate 4-grid sheet → motion prompts → pass director review level by level → generate
+            videos. When a stage is regenerated, its downstream images / videos are invalidated and marked “Not
+            generated”; clicking generate again re-runs the chain from the latest text, so new text never pairs
+            with stale images.
+          </div>
+          <figure style="margin: 14px 0 20px">
+            <img
+              src="assets/short-video/step-3.png"
+              alt="Running storyboards, tiling and video inside the Agent pipeline window"
+              style="
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+              "
+            />
+            <figcaption style="margin-top: 8px; font-size: 12px; color: var(--mute)">
+              Figure 3: Storyboards, tiling and video in the Agent pipeline window
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="faq">
+          <h2>5. FAQ</h2>
+          <ul>
+            <li>
+              <strong>Which models are required?</strong> A text model is mandatory (storyboard / prompts /
+              director review); the image model renders tiling and anchor images; the video model renders motion
+              videos. Enable and set defaults for each under Settings → Models.
+            </li>
+            <li>
+              <strong>The video only shows a file path, no preview?</strong> Once generation finishes, the
+              pipeline window loads a playable preview automatically; if it still doesn't appear, click refresh
+              or reopen the pipeline window.
+            </li>
+            <li>
+              <strong>The director review button is greyed out?</strong> It lights up only after the matching
+              stage's <strong>Regenerate</strong> writes results back, so you never review stale content.
+            </li>
+            <li>
+              <strong>Generation failed?</strong> Check the model key, default models and account balance first;
+              the failure reason appears in the task queue or at the top of the window.
+            </li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+  </body>
+</html>

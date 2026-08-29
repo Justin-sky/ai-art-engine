@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="AIArtEngine guide: integrate ComfyUI API 2 — install comfy-api-proxy locally, prepare API-format workflows, run MiniMax H3 video, and connect Comfy Cloud."
+    />
+    <title>ComfyUI Integration Guide — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Guide</a>
+        <a href="guide-short-video.en.html">Short Video</a>
+        <a href="guide-comfyui.en.html" aria-current="page">ComfyUI</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video tutorials</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-comfyui.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html" aria-current="page">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#overview">How it connects</a></li>
+          <li><a href="#local-proxy">Install comfy-api-proxy locally</a></li>
+          <li><a href="#workflow">Prepare an API-format workflow</a></li>
+          <li><a href="#minimax-h3">MiniMax H3 video</a></li>
+          <li><a href="#settings">Add ComfyUI in this app</a></li>
+          <li><a href="#cloud">Comfy Cloud</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html#settings">← Back to the manual · Settings</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · ComfyUI</p>
+          <h1>ComfyUI Integration Guide</h1>
+          <p class="lede">
+            This app speaks only <strong>ComfyUI API 2</strong> (<code>POST /api/v2/jobs</code>). The default
+            local port 8188 doesn't expose it, so you need to run <strong>comfy-api-proxy</strong> alongside
+            (default 8189); for the cloud, just fill in <code>https://cloud.comfy.org</code>.
+          </p>
+        </header>
+
+        <section id="overview">
+          <h2>1. How it connects</h2>
+          <p>
+            In this app ComfyUI is a model provider, and the <strong>model id is the workflow file name</strong>
+            (not the checkpoint name). Images / video / audio all run through the same job: submit an API-format
+            graph → poll the job → collect results by output type.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Base URL</th>
+                <th>API Key</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Local</td>
+                <td><code>http://127.0.0.1:8189</code></td>
+                <td>Can be empty (the proxy has no auth by default)</td>
+              </tr>
+              <tr>
+                <td>Comfy Cloud</td>
+                <td><code>https://cloud.comfy.org</code></td>
+                <td>Required (the API needs a paid tier)</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tip">
+            Don't point the Base URL at <code>http://127.0.0.1:8188</code> or append <code>/v1</code>. Port 8188
+            is the legacy <code>/prompt</code> endpoint, which this app never uses.
+          </div>
+        </section>
+
+        <section id="local-proxy">
+          <h2>2. Install comfy-api-proxy locally</h2>
+          <p>
+            <a href="https://github.com/Comfy-Org/comfy-api-proxy" target="_blank" rel="noopener noreferrer"
+              >comfy-api-proxy</a
+            >
+            turns your local ComfyUI (8188) into API 2 (8189). It requires <strong>Python 3.10+</strong>.
+          </p>
+
+          <h3>2.1 Start ComfyUI first</h3>
+          <ol>
+            <li>Launch ComfyUI as usual and confirm <code>http://127.0.0.1:8188</code> opens in a browser.</li>
+            <li>
+              Put the checkpoints / LoRAs / video or audio models you need into ComfyUI's <code>models/</code>.
+            </li>
+          </ol>
+
+          <h3>2.2 Install and start the proxy</h3>
+          <p>In a separate terminal:</p>
+          <pre><code>pip install comfy-api-proxy
+comfy-api-proxy</code></pre>
+          <p>
+            By default it forwards <code>http://127.0.0.1:8188</code> to local port <strong>8189</strong>,
+            running in the foreground; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. To change the port or the ComfyUI
+            address:
+          </p>
+          <pre><code>comfy-api-proxy --comfyui http://127.0.0.1:8188 --port 8189</code></pre>
+          <p>
+            Optional: when it runs next to the ComfyUI install, pass the base directory so you can drop weights
+            into the model folders later:
+          </p>
+          <pre><code>comfy-api-proxy --comfyui http://127.0.0.1:8188 --port 8189 --comfyui-base-dir D:\ComfyUI</code></pre>
+          <p>On Windows, if <code>comfy-api-proxy</code> isn't recognized as a command, use:</p>
+          <pre><code>python -m comfy_api_proxy</code></pre>
+          <p>
+            or <code>py -3.12 -m pip install comfy-api-proxy</code> followed by
+            <code>py -3.12 -m comfy_api_proxy</code>.
+          </p>
+
+          <h3>2.3 Check the proxy is alive</h3>
+          <p>Open this in a browser or terminal:</p>
+          <pre><code>http://127.0.0.1:8189/api/v2/health</code></pre>
+          <p>
+            Any response means API 2 is ready. Clicking “Fetch models” in this app's settings also probes
+            <code>/api/v2/jobs</code> first.
+          </p>
+          <div class="tip">
+            The proxy binds <code>127.0.0.1</code> only. Don't expose 8189 to your LAN; if external access is
+            required, read the official <code>--token</code> / CORS notes first.
+          </div>
+        </section>
+
+        <section id="workflow">
+          <h2>3. Prepare an API-format workflow</h2>
+          <p>
+            At generation time the app fetches JSON from ComfyUI userdata by <strong>model id</strong>, then
+            writes in the prompt, size, seed and reference images. It must be
+            <strong>API format</strong> (nodes as <code>class_type</code> + <code>inputs</code>), not a canvas
+            export with <code>nodes</code> / <code>links</code>.
+          </p>
+          <ol>
+            <li>In ComfyUI settings, turn on <strong>Enable Dev mode Options</strong>.</li>
+            <li>
+              A <strong>Save (API Format)</strong> entry appears in the menu — export the current graph as JSON.
+            </li>
+            <li>
+              Name it by purpose, matching the model id you tick in settings. The built-in ids are:
+              <ul>
+                <li><code>txt2img</code> — text to image</li>
+                <li><code>img2img</code> — image to image (needs LoadImage)</li>
+                <li><code>txt2vid</code> — text to video</li>
+                <li><code>img2vid</code> — image to video</li>
+                <li><code>txt2audio</code> — text to audio</li>
+              </ul>
+            </li>
+            <li>
+              Drop the file into the ComfyUI user directory — any of these works (a trailing
+              <code>.json</code> is optional):
+              <ul>
+                <li><code>ComfyUI/user/default/txt2img.json</code></li>
+                <li><code>ComfyUI/user/default/workflows/txt2img.json</code></li>
+                <li><code>ComfyUI/user/default/aiartengine/txt2img.json</code></li>
+              </ul>
+            </li>
+          </ol>
+          <p>
+            The app writes the node prompt into the first positive <code>CLIPTextEncode</code> (titles
+            containing Negative count as negative), the size into <code>EmptyLatentImage</code>, the seed into
+            <code>KSampler</code> / <code>RandomNoise</code>, and uploaded reference images into
+            <code>LoadImage</code>.
+          </p>
+          <div class="tip">
+            You can also <strong>add</strong> existing workflow file names manually in settings — the five
+            built-in ids aren't mandatory. Checkpoint names in the graph must match files in your local
+            <code>models/</code>.
+          </div>
+        </section>
+
+        <section id="minimax-h3">
+          <h2>4. MiniMax H3 video</h2>
+          <p>
+            <strong>MiniMax H3</strong> is an open-weight video model; its official nodes ship with recent
+            ComfyUI builds (<code>comfy_extras/nodes_minimax_h3.py</code>), so
+            <strong>no third-party nodes are needed</strong>. It supports text-to-video (T2V), image-to-video
+            (I2V), first/last frame (FL2V) and multimodal reference (R2V), and can generate a native stereo
+            audio track.
+          </p>
+
+          <h3>4.1 Required model files</h3>
+          <p>
+            Pull these weights from ComfyUI's model downloader (names must match your local
+            <code>models/</code>):
+          </p>
+          <ul>
+            <li>H3 diffusion model (UNet)</li>
+            <li>Video VAE</li>
+            <li>Audio VAE (skip it if you don't generate sound)</li>
+            <li>CLIP (Qwen3-VL)</li>
+          </ul>
+
+          <h3>4.2 Built-in nodes</h3>
+          <ul>
+            <li>
+              <code>MiniMaxH3ImageToVideo</code> — text-to-video / first+last frame image-to-video
+              (<code>first_frame</code> / <code>last_frame</code>)
+            </li>
+            <li><code>MiniMaxH3ReferenceToVideo</code> — multimodal reference (image / video / audio)</li>
+            <li><code>EmptyMiniMaxH3LatentAV</code> — joint video + audio latent</li>
+            <li><code>MiniMaxH3AddGuide</code> — anchor image / audio guidance at a given frame</li>
+          </ul>
+
+          <h3>4.3 Hard size and frame constraints</h3>
+          <p>
+            H3 uses a 1×2×2 latent patch, so <strong>width / height must be a multiple of 32</strong>
+            (otherwise you'll see <code>shape … is invalid for input of size</code>); frame counts land on the
+            <strong>17k+5</strong> grid at 24&nbsp;fps.
+          </p>
+          <p>
+            This app handles it automatically: once H3 nodes are detected it snaps width/height to the nearest
+            multiple of 32, clamps them to the native canvas scale (768 short side / 768×1344 area cap), and
+            writes duration as 5s→124 frames, 8s→192 frames, 10s→243 frames. So even if your workflow carries a
+            <code>ResolutionSelector</code> or math nodes computing frame counts, they get overridden.
+          </p>
+
+          <h3>4.4 Suggested minimal I2V workflow</h3>
+          <ol>
+            <li>
+              <code>LoadImage</code> → <code>MiniMaxH3ImageToVideo</code>'s <code>first_frame</code>.
+            </li>
+            <li>
+              <code>MiniMaxH3ImageToVideo</code> takes CLIP and the video VAE; its positive output goes to
+              <code>BasicGuider</code>.
+            </li>
+            <li>
+              <code>LATENT</code> → sampler → <code>VAEDecode</code> → <code>SaveVideo</code> (add
+              <code>VAEDecodeAudio</code> if you want sound).
+            </li>
+            <li>
+              Export with <strong>Save (API Format)</strong>, name it e.g. <code>video_minimax_h3_i2v</code>,
+              and place it in <code>user/default/workflows/</code>.
+            </li>
+          </ol>
+          <p>
+            Official full examples and prompt writing:
+            <a href="https://docs.comfy.org/tutorials/video/minimax/minimax-h3" target="_blank" rel="noopener noreferrer"
+              >ComfyUI · MiniMax H3 tutorial</a
+            >.
+          </p>
+        </section>
+
+        <section id="settings">
+          <h2>5. Add ComfyUI in this app</h2>
+          <ol>
+            <li>Open <strong>Settings → Models → Add model provider → ComfyUI</strong>.</li>
+            <li>Set the Base URL to <code>http://127.0.0.1:8189</code> (local) or your cloud endpoint.</li>
+            <li>
+              Local setups can leave the key empty; if the proxy was started with <code>--token</code>, paste
+              that same string into API Key.
+            </li>
+            <li>
+              After enabling, click <strong>Fetch models</strong> on the <strong>Image / Video / Audio</strong>
+              tabs, tick what you need and set the defaults.
+            </li>
+            <li>
+              Once saved, entries such as <code>ComfyUI · txt2img</code> appear in the model dropdowns of image
+              / video / audio generation nodes.
+            </li>
+          </ol>
+          <p>
+            To run an image node: pick <code>txt2img</code>, write a prompt and execute. The task queue shows
+            submission and polling; on failure check the run log (missing nodes, missing weights and missing
+            workflows are all spelled out).
+          </p>
+        </section>
+
+        <section id="cloud">
+          <h2>6. Comfy Cloud</h2>
+          <ol>
+            <li>
+              Request an API Key from the
+              <a
+                href="https://docs.comfy.org/development/api-development/getting-an-api-key"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Comfy developer docs</a
+              >. The free tier usually can't call the API.
+            </li>
+            <li>In settings, change the Base URL to <code>https://cloud.comfy.org</code> and fill in the key.</li>
+            <li>
+              Workflows still must be API format; the cloud may also pull extra items from its template
+              directory.
+            </li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>7. FAQ</h2>
+          <ul>
+            <li>
+              <strong>Connection test failed / 404</strong>: ComfyUI runs on 8188 while this app calls 8189.
+              Make sure <code>comfy-api-proxy</code> is running and the Base URL isn't set to 8188.
+            </li>
+            <li>
+              <strong>Workflow not found</strong>: the file name doesn't match the model id, or the file isn't
+              API format. Re-export with Save (API Format) into <code>user/default/</code> or
+              <code>user/default/workflows/</code>. Job submission goes through the proxy on 8189, while
+              workflow reads use the “ComfyUI base address” in settings — fill that in and 8188 is never
+              contacted. If you move ComfyUI to 8190: set the base address to
+              <code>http://127.0.0.1:8190</code> and restart the proxy as
+              <code>comfy-api-proxy --comfyui http://127.0.0.1:8190 --port 8189</code>, otherwise video jobs
+              still hit the old 8188.
+            </li>
+            <li>
+              <strong>Missing nodes / models</strong>: the workflow's custom nodes and weights must already be
+              installed on this ComfyUI instance.
+            </li>
+            <li>
+              <strong>Image-to-image has no reference image</strong>: the workflow must contain
+              <code>LoadImage</code>, and you must connect a reference image to the node.
+            </li>
+            <li>
+              <strong>MiniMax H3 reports shape … is invalid for input of size</strong>: width/height isn't a
+              multiple of 32 (H3 latents use 1×2×2 patching). The app snaps and clamps them automatically; if
+              your hand-written workflow hard-codes a <code>ResolutionSelector</code> with values that aren't
+              multiples of 32, delete it or switch to multiples of 32.
+            </li>
+            <li>
+              <strong>An H3 workflow doesn't appear under Fetch models</strong>: put the API-format JSON into
+              <code>user/default/</code> or <code>user/default/workflows/</code> first, then click Fetch models
+              in settings again; the app classifies it as a model on the Video tab by node type.
+            </li>
+            <li>
+              <strong>Do I need the legacy /prompt endpoint?</strong> No — this app only maintains API 2.
+            </li>
+          </ul>
+          <p>
+            Official references:
+            <a href="https://docs.comfy.org/api-reference/v2/jobs/submit-a-workflow-for-execution" target="_blank" rel="noopener noreferrer">API 2 submit a job</a>
+            ·
+            <a href="https://github.com/Comfy-Org/comfy-api-proxy" target="_blank" rel="noopener noreferrer">comfy-api-proxy</a>
+            ·
+            <a href="https://docs.comfy.org/development/api-development/workflow-api-format" target="_blank" rel="noopener noreferrer">API-format workflow</a>.
+          </p>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+  </body>
+</html>

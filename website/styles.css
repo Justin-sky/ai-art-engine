@@ -151,6 +151,7 @@ button {
   display: flex;
   align-items: center;
   gap: 26px;
+  margin-left: auto;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-soft);
@@ -175,6 +176,37 @@ button {
   border-color: var(--blue);
   background: #fff;
   transform: translateY(-1px);
+}
+
+/* 语言切换入口（.nav 之外常驻，窄屏隐藏 .nav 时仍可见） */
+.nav-lang {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: 1px solid var(--line-hi);
+  border-radius: 999px;
+  color: var(--ink-soft) !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.65);
+  transition:
+    border-color 0.25s ease,
+    color 0.25s ease,
+    background 0.25s ease;
+}
+
+.nav-lang:hover {
+  border-color: var(--blue);
+  color: var(--blue-deep) !important;
+  background: #fff;
+}
+
+.mobile-nav .nav-lang {
+  justify-content: center;
+  margin-top: 8px;
 }
 
 .mobile-menu {
@@ -970,6 +1002,11 @@ button {
 
   .top .nav {
     display: none;
+  }
+
+  /* 导航折叠后，语言入口补位推到右侧，紧邻汉堡菜单 */
+  .nav-lang {
+    margin-left: auto;
   }
 
   .mobile-menu {

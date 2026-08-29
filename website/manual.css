@@ -12,6 +12,7 @@
   --max: 1120px;
   --pad: clamp(20px, 5vw, 48px);
   --display: 'Syne', system-ui, sans-serif;
+  --body: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --serif: 'Instrument Serif', Georgia, serif;
   --toc-w: 240px;
 }
@@ -31,9 +32,9 @@ body {
   overflow-x: clip;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--display);
-  font-weight: 500;
-  line-height: 1.55;
+  font-family: var(--body);
+  font-weight: 400;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -101,6 +102,7 @@ img {
   flex-wrap: wrap;
   gap: 14px 18px;
   align-items: center;
+  margin-left: auto;
   font-size: 0.92rem;
 }
 
@@ -118,6 +120,33 @@ img {
 .nav-src {
   color: var(--blue-deep) !important;
   font-weight: 700;
+}
+
+/* 语言切换入口（.nav 之外常驻，窄屏隐藏 .nav 时仍可见） */
+.nav-lang {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.nav-lang:hover {
+  border-color: var(--blue);
+  color: var(--blue-deep);
+  text-decoration: none;
+}
+
+.mobile-nav .nav-lang {
+  justify-content: center;
+  margin-top: 6px;
 }
 
 .mobile-menu {
@@ -403,6 +432,11 @@ img {
     display: none;
   }
 
+  /* 导航折叠后，语言入口补位推到右侧，紧邻汉堡菜单 */
+  .nav-lang {
+    margin-left: auto;
+  }
+
   .mobile-menu {
     position: static;
     display: block;
@@ -559,5 +593,154 @@ img {
 
   .foot-links {
     gap: 12px;
+  }
+}
+
+/* 阅读进度条 */
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  width: 0;
+  height: 3px;
+  background: var(--blue);
+  pointer-events: none;
+}
+
+/* 目录滚动高亮 */
+.toc a.active {
+  color: var(--blue-deep);
+  font-weight: 700;
+  background: var(--bg-soft);
+}
+
+/* 章节截图 */
+.manual figure.shot {
+  margin: 6px 0 18px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.manual figure.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.manual figure.shot figcaption {
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+  color: var(--mute);
+}
+
+.manual figure.shot figcaption strong {
+  color: var(--ink-soft);
+}
+
+/* 图片编辑小图网格（2×2） */
+.manual .shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 6px 0 18px;
+}
+
+.manual .shot-grid .shot {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .manual .shot-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 锚点跳转不被吸顶栏遮挡 */
+.manual h3[id],
+.manual h4[id] {
+  scroll-margin-top: 80px;
+}
+
+/* 章节标题强调线 */
+.manual section > h2 {
+  position: relative;
+  padding-top: 16px;
+}
+
+.manual section > h2::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--blue);
+}
+
+/* 有序步骤条（LibTV 式数字圆点） */
+.manual ol {
+  list-style: none;
+  counter-reset: step;
+  padding-left: 0;
+}
+
+.manual ol > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 34px;
+}
+
+.manual ol > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  color: var(--blue-deep);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 深色模式（跟随系统） */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1420;
+    --bg-soft: #1b2436;
+    --panel: #131b2a;
+    --ink: #e7ecf6;
+    --ink-soft: #b7c2d8;
+    --mute: #8291ab;
+    --line: rgba(231, 236, 246, 0.12);
+    --blue: #6f9bff;
+    --blue-deep: #93b1ff;
+  }
+
+  .top {
+    background: rgba(14, 20, 32, 0.92);
+  }
+
+  .skip {
+    color: var(--panel);
+  }
+
+  .tip {
+    background: rgba(111, 155, 255, 0.12);
+  }
+
+  .mobile-nav {
+    background: rgba(19, 27, 42, 0.98);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
   }
 }

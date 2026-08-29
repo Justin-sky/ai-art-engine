@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="AIArtEngine guide: build a minimal video generation chain on a free canvas — text-to-video, image-to-video, and connecting a local reference video to the model."
+    />
+    <title>Free Canvas: Video Generation &amp; Reference Video — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-video.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html" aria-current="page">Video Guide</a>
+        <a href="guide-short-video.en.html">Short Video</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video tutorials</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-video.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html" aria-current="page">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#prep">Preparation</a></li>
+          <li><a href="#create-canvas">Create a free canvas</a></li>
+          <li><a href="#add-nodes">Build a minimal video chain</a></li>
+          <li><a href="#ref-video">How to connect a reference video</a></li>
+          <li><a href="#frames">First/last frames and prompts</a></li>
+          <li><a href="#run">Run and inspect results</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="guide-short-video.en.html">Short-Video Guide →</a></li>
+          <li><a href="guide-comfyui.en.html">ComfyUI Guide →</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html">← Back to the full manual</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · Free Canvas</p>
+          <h1>Free Canvas: Video Generation &amp; Reference Video</h1>
+          <p class="lede">
+            Start from a new <strong>Free Canvas</strong> and build a minimal working video chain on a blank
+            node graph: text-to-video, image-to-video, and wiring a local reference video into the model. Ideal
+            for your first video run on canvas, without shots or the episode pipeline.
+          </p>
+        </header>
+
+        <section id="prep">
+          <h2>1. Preparation</h2>
+          <ol>
+            <li>
+              <strong>Models</strong>: Settings → Models → add and enable a provider (Volcengine Ark, Kling,
+              MiniMax, OpenRouter, …) → tick the models you want on the <strong>Video</strong> tab and set the
+              default video model.
+            </li>
+            <li>
+              <strong>Object storage (required for reference video)</strong>: Settings → Object Storage → add
+              and enable one of Volcengine TOS / Alibaba Cloud OSS / Tencent Cloud COS. A local reference video
+              is first uploaded to a publicly reachable URL (a signed URL for private buckets) so the model can
+              fetch it.
+            </li>
+            <li>
+              Make sure the provider account has credit — submission fails immediately when the balance is low
+              (e.g. MiniMax <code>1008</code>).
+            </li>
+          </ol>
+          <div class="tip">
+            You can skip object storage while doing pure text-to-video with no local reference video. The
+            moment you connect a project or imported video to the video port, an enabled object storage is
+            required.
+          </div>
+        </section>
+
+        <section id="create-canvas">
+          <h2>2. Create a free canvas</h2>
+          <ol>
+            <li>
+              With the project open, create a new <strong>Free Canvas</strong> from the workbench toolbar or the
+              asset library.
+            </li>
+            <li>
+              If a “Free Canvas” already exists, new ones are named “Free Canvas 2”, “Free Canvas 3”… The name
+              only distinguishes them in the asset library; you can rename the asset there.
+            </li>
+            <li>Double-click the Free Canvas asset to enter the blank <strong>node graph</strong> (host inner graph).</li>
+          </ol>
+          <div class="tip">
+            Renaming a node on the canvas only changes its display name in the current graph — it does
+            <strong>not</strong> rename the asset in the library. Rename the asset itself in the asset browser.
+          </div>
+        </section>
+
+        <section id="add-nodes">
+          <h2>3. Build a minimal video chain</h2>
+          <p>
+            Right-click on empty space in the Free Canvas graph (or press Space for the menu) and add / connect
+            nodes in this order:
+          </p>
+          <ol>
+            <li>
+              Add a <strong>Video Generation</strong> node. Pick the video model on the node or in the
+              Inspector, then write the generation prompt.
+            </li>
+            <li>
+              (Optional) Add a <strong>Text</strong> / Note node, or an upstream Prompt Optimizer, and connect
+              its text output to the Video Generation <strong>Text</strong> input.
+            </li>
+            <li>
+              (Optional) Add <strong>Select Video</strong>, or drag a video asset from the asset library as a
+              host / reference node, and connect its video output to the Video Generation
+              <strong>Video</strong> input (reference video).
+            </li>
+            <li>
+              (Optional) Connect an image node or asset to the <strong>Image / First frame / Last frame</strong>
+              port (depends on the model and frame mode — see the next section).
+            </li>
+            <li>
+              Add a <strong>Video Output</strong> node and wire the generation output into it for preview and
+              export.
+            </li>
+          </ol>
+          <p>Sketch (text-to-video + reference video):</p>
+          <pre
+            style="
+              margin: 0;
+              padding: 14px 16px;
+              border-radius: 10px;
+              background: var(--bg-soft);
+              border: 1px solid var(--line);
+              font-size: 13px;
+              line-height: 1.5;
+              overflow-x: auto;
+            "
+          >[Text / Prompt] ─────► [Video Generation] ─────► [Video Output]
+                                        ▲
+[Select Video / Video Asset] ──────────┘   (Video port = reference video)</pre>
+        </section>
+
+        <section id="ref-video">
+          <h2>4. How to connect a reference video</h2>
+          <p>
+            The Video Generation node's <strong>Video</strong> input is for a <strong>reference video</strong>:
+            the model can borrow motion, camera work, character actions or scene pacing (actual capability
+            varies by provider and model).
+          </p>
+          <ul>
+            <li>
+              <strong>Source</strong>: videos imported into the asset library, a Select Video node, upstream
+              generated videos, or another host's video output.
+            </li>
+            <li>
+              <strong>Upload</strong>: at run time, if the reference is still a local path / data URL, the app
+              uploads it through the currently enabled object storage and passes the URL to the model API.
+            </li>
+            <li>
+              <strong>Cleanup</strong>: temporary uploaded references are usually deleted once the task
+              finishes, so test files don't pile up in the bucket.
+            </li>
+            <li>
+              <strong>Multiple references</strong>: where the Video port accepts several links, you can attach
+              multiple reference clips (subject to actual model support).
+            </li>
+          </ul>
+          <div class="tip">
+            Use the full endpoint shown in your console for object storage (an <code>https://</code> prefix is
+            fine). The app handles the protocol correctly; if you ever hit an
+            <code>ENOTFOUND …https</code> error, upgrade to a build containing the TOS presign fix and retry.
+          </div>
+        </section>
+
+        <section id="frames">
+          <h2>5. First/last frames and prompts</h2>
+          <ul>
+            <li>
+              Pick the <strong>frame mode</strong> in the Video Generation node params:
+              <ul>
+                <li><strong>None</strong>: no forced first/last frame (pure text-to-video, or reference video / image only).</li>
+                <li><strong>First frame</strong>: exposes a first-frame image port — good for image-to-video and frozen openings.</li>
+                <li>
+                  <strong>First + last frame</strong>: constrains both the opening and closing shot (requires
+                  model support, e.g. some Hailuo / Kling capabilities).
+                </li>
+              </ul>
+            </li>
+            <li>
+              Use <code>@</code> in the prompt to reference connected upstream media (same as image generation)
+              and describe motion, camera and pacing.
+            </li>
+            <li>
+              Duration, resolution and audio options depend on the current model capability catalog;
+              unsupported options are ignored or disabled.
+            </li>
+            <li>
+              <strong>Frame Pulling</strong>: connect an upstream video to the Frame Pulling node and
+              double-click to open the pull station — browse frame by frame on the filmstrip, grab key frames
+              and annotate them; the grabbed frames can be wired into downstream generation nodes as
+              references.
+            </li>
+            <li>
+              <strong>Segment Reshoot</strong>: connect the source video to the Segment Reshoot node and
+              double-click to open the reshoot station — mark the start / end time to change and describe the
+              change (e.g. “make the umbrella transparent”); running it reshoots only that range (Seedance 2.5
+              timestamp-level editing) and leaves the rest untouched. The prompt box supports
+              <code>@</code> references to port media, and you can pick the video model on the right.
+            </li>
+          </ul>
+        </section>
+
+        <section id="run">
+          <h2>6. Run and inspect results</h2>
+          <ol>
+            <li>
+              Select the Video Generation or Video Output node → click <strong>Execute</strong> in the toolbar,
+              or hold <kbd>C</kbd> to open the execution ring.
+            </li>
+            <li>
+              You can also <strong>Add to Tasks</strong> on the output node and watch background progress in the
+              task list; upstream nodes shared by several chains are cooked only once.
+            </li>
+            <li>
+              On success, play it back in the node preview area: <strong>Back to start</strong> on the left, the
+              progress bar in the middle, and <strong>Play / Pause</strong> on the right.
+            </li>
+            <li>
+              To assemble a final cut, wire the result into the script asset's <strong>Final Timeline</strong>,
+              or export the media file.
+            </li>
+          </ol>
+        </section>
+
+        <section id="faq">
+          <h2>7. FAQ</h2>
+          <div class="table-scroll" role="region" aria-label="FAQ" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symptom</th>
+                  <th>Fix</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Object storage not configured</td>
+                  <td>Enable one of TOS / OSS / COS under Settings → Object Storage and fill in the keys and bucket.</td>
+                </tr>
+                <tr>
+                  <td><code>insufficient balance (1008)</code></td>
+                  <td>The provider account is out of credit — top it up in the matching console (not an API Key mistake).</td>
+                </tr>
+                <tr>
+                  <td><code>ENOTFOUND …https</code></td>
+                  <td>Usually a malformed TOS presigned hostname; retry on a newer client build.</td>
+                </tr>
+                <tr>
+                  <td>Renaming a node also renamed the asset</td>
+                  <td>Newer builds no longer rename the asset — update the client. Use the asset browser to rename library entries.</td>
+                </tr>
+                <tr>
+                  <td>Reference video has no effect</td>
+                  <td>Confirm it's connected to the Video port, that the model supports video reference, and check the upload summary in the run log.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            For the full interface reference see the <a href="manual.en.html">Manual</a>; model and object
+            storage details are in chapter 3 of the manual.
+          </p>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+    </script>
+  </body>
+</html>

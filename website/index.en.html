@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="AIArtEngine — a professional AI creation tool for short drama, ads and film. One-Click Workflow, host assets, shots and episodes, node graph, director stage and final timeline; works with OpenRouter, OpenAI, Google, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope, ComfyUI, Meshy, Tripo, Rodin (Hyper3D), Luma AI, Lux3D and more, with text-to-3D / image-to-3D; local-first projects. Open source · GPL-3.0."
+    />
+    <title>AIArtEngine — Professional AI Creation Tool</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=20260829-4" />
+  </head>
+  <body>
+    <div class="scroll-progress" aria-hidden="true"><i></i></div>
+    <a class="skip" href="#main">Skip to main content</a>
+
+    <header class="top">
+      <a class="brand" href="#top">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="#top">Interface</a>
+        <a href="#demo">Demo</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#download">Download</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Guide</a>
+        <a href="guide-short-video.en.html">Short Video</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video tutorials</a
+        >
+        <a href="#community">Community</a>
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="index.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="#top">Interface</a>
+          <a href="#demo">Demo</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#download">Download</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a href="#community">Community</a>
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-label="Hero">
+        <div class="hero-bg" aria-hidden="true">
+          <div class="hero-wash"></div>
+          <div class="hero-mesh"></div>
+        </div>
+
+        <div class="hero-body">
+          <p class="eyebrow reveal">AIArtEngine · Short drama · Ads · Film</p>
+          <h1 class="reveal" style="--d: 0.04s">Professional AI <em>creation tool</em></h1>
+          <p class="lede reveal" style="--d: 0.08s">
+            v4.0 Alpha: a Cordis plugin runtime where port types must match; One-Click Workflow builds
+            short-video chains, and the Agent pipeline window handles storyboards, tiling, review and video.
+            Assets · shots · node graph in a single orchestration flow — projects stay on your disk, models run
+            on your own keys.
+          </p>
+        </div>
+
+        <div class="coverflow reveal reveal-stage" style="--d: 0.1s" data-coverflow>
+          <button type="button" class="cf-nav cf-prev" data-cf-prev aria-label="Previous">‹</button>
+          <div class="cf-stage">
+            <div class="cf-track">
+              <figure class="cf-card">
+                <img src="assets/banner/node-graph.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Node graph</strong>
+                  <span>Generation chains, asset preview and task execution</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/storyboard.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Episode pipeline</strong>
+                  <span>Beat breakdown, 9-grid / 4-grid storyboards and director review</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/director-stage.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>3D director stage</strong>
+                  <span>Blocking shots, motion recording and camera views</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/multi-angle-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Multi-angle</strong>
+                  <span>Fast camera and framing switches</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/lighting-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Lighting</strong>
+                  <span>Fine control of light and atmosphere</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/mood-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Mood</strong>
+                  <span>Control the emotion and color grade of a shot</span>
+                </figcaption>
+              </figure>
+              <figure class="cf-card">
+                <img src="assets/banner/image-editor.webp" alt="" width="1600" height="900" />
+                <figcaption>
+                  <strong>Image edit</strong>
+                  <span>Local repaint and image revision</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+          <button type="button" class="cf-nav cf-next" data-cf-next aria-label="Next">›</button>
+          <div class="cf-dots" data-cf-dots role="tablist" aria-label="Slideshow"></div>
+        </div>
+
+        <div class="hero-foot">
+          <div class="cta reveal" style="--d: 0.14s">
+            <a class="btn btn-solid" href="#download">Download now</a>
+            <a class="btn btn-line" href="manual.en.html">Manual</a>
+            <a
+              class="btn btn-line"
+              href="https://space.bilibili.com/3707036976024122"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Video tutorials</a
+            >
+          </div>
+          <p class="hero-meta reveal" style="--d: 0.18s">
+            <span>Windows</span><i></i><span>macOS</span><i></i><span>Linux</span
+            ><i></i><span>GPL-3.0</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="statement">
+        <div class="statement-inner reveal reveal-blur">
+          <h2>A professional pipeline, with your files still on your disk.</h2>
+          <p>
+            From script and shots to node generation, the director stage and the final timeline — short drama,
+            ads and narrative films all share one workflow; projects are local-first and never forced into the
+            cloud. The short-drama Agent pipeline generates a complete node graph in one click, then handles
+            9-grid, 4-grid, director review and motion video inside a single pipeline window.
+          </p>
+        </div>
+      </section>
+
+      <section class="demo" id="demo" aria-label="Node graph demo">
+        <div class="demo-inner">
+          <div class="section-label reveal">Demo</div>
+          <h2 class="reveal">From node wiring to a finished cut</h2>
+          <p class="demo-lede reveal" style="--d: 0.06s">
+            One generation chain: reference image → character design sheet → select image → video generation.
+          </p>
+          <div class="demo-stage reveal reveal-stage" style="--d: 0.1s">
+            <figure class="demo-graph">
+              <img
+                src="assets/demo/demo.png"
+                alt="Node graph example: reference an image to generate a character sheet, then select images to generate video"
+                width="864"
+                height="496"
+                loading="lazy"
+              />
+              <figcaption>Node wiring</figcaption>
+            </figure>
+            <figure class="demo-video">
+              <video
+                src="assets/demo/video-output.mp4"
+                poster="assets/demo/video-poster.jpg"
+                autoplay
+                muted
+                loop
+                playsinline
+                controls
+                preload="metadata"
+              >
+                Your browser doesn't support video playback.
+              </video>
+              <figcaption>Video output</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow" id="workflow">
+        <div class="section-label reveal">Workflow</div>
+        <ol class="steps">
+          <li class="reveal">
+            <span class="n">01</span>
+            <div>
+              <h3>One-Click Workflow</h3>
+              <p>
+                Pick a preset (including the “short-drama storyboard” short-video template) or describe what you
+                need in one sentence, preview the topology and create a reusable host asset; drag it onto the
+                canvas to wire it up and run. See
+                <a href="manual.en.html#ai-workflow">Manual §6</a> and the
+                <a href="guide-short-video.en.html">Short-Video Guide</a>.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.05s">
+            <span class="n">02</span>
+            <div>
+              <h3>Asset library</h3>
+              <p>
+                Images, videos and voices are referenced by GUID, and asset packages can be imported and
+                exported.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.1s">
+            <span class="n">03</span>
+            <div>
+              <h3>Episode pipeline</h3>
+              <p>
+                Beat breakdown, 9-grid / 4-grid storyboard tables and director review turn narrative pacing into
+                shots.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.15s">
+            <span class="n">04</span>
+            <div>
+              <h3>Node generation</h3>
+              <p>
+                Text / image / video / voice / 3D model nodes; works with OpenRouter, OpenAI, Google, Volcengine
+                Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope, ComfyUI, Meshy, Tripo, Rodin (Hyper3D), Luma AI
+                and Lux3D, plus configurable multi-cloud object storage. Port types must match, and select nodes
+                only accept list ports.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.2s">
+            <span class="n">05</span>
+            <div>
+              <h3>Director stage</h3>
+              <p>
+                3D posing and cameras; supports a 3D model input port; capture blocking shots and record motion
+                clips, then feed them downstream through the square ports.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.25s">
+            <span class="n">06</span>
+            <div>
+              <h3>Final timeline</h3>
+              <p>
+                Place imported and node-produced media on tracks, preview the selected clip or play the whole
+                timeline, then export the cut.
+              </p>
+            </div>
+          </li>
+          <li class="reveal" style="--d: 0.3s">
+            <span class="n">07</span>
+            <div>
+              <h3>Agent pipeline</h3>
+              <p>
+                The short-drama template auto-generates script → beats → 9-grid → tiling → 4-grid → motion
+                prompts → 36 videos; drive everything from the Episode Pipeline window, where regenerating a
+                stage invalidates downstream stages and re-runs them consistently.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="download" id="download">
+        <div class="download-head">
+          <div class="section-label reveal">Download</div>
+          <h2 class="reveal">Get the installer</h2>
+        </div>
+        <ul class="dl-list">
+          <li class="reveal">
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">Windows</span>
+              <span class="dl-file">NSIS · .exe</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+          <li class="reveal" style="--d: 0.06s">
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">macOS</span>
+              <span class="dl-file">.dmg · pick x64 (Intel) or arm64 (Apple Silicon)</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+          <li class="reveal" style="--d: 0.12s">
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="dl-os">Linux</span>
+              <span class="dl-file">AppImage</span>
+              <span class="dl-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+        </ul>
+        <p class="dl-note reveal">
+          Pushing a <code>v*</code> tag lets GitHub Actions build multi-platform artifacts automatically. On
+          Intel Macs download the dmg whose filename contains <code>x64</code>; on Apple Silicon (M series) pick
+          <code>arm64</code>.
+        </p>
+      </section>
+
+      <section class="community" id="community">
+        <div class="community-head">
+          <div class="section-label reveal">Community</div>
+          <h2 class="reveal">Community &amp; feedback</h2>
+          <p class="community-lede reveal">
+            Join the QQ group to discuss usage, watch the video tutorials, or reach out by email.
+          </p>
+        </div>
+        <div class="community-body reveal" style="--d: 0.06s">
+          <figure class="community-qr">
+            <img
+              src="assets/qq-group.png"
+              alt="AIArtEngine QQ group QR code, group number 647306826"
+              width="280"
+              height="360"
+            />
+            <figcaption>Scan to join · Group 647306826</figcaption>
+          </figure>
+          <ul class="community-meta">
+            <li>
+              <span>QQ group</span>
+              <strong>647306826</strong>
+            </li>
+            <li>
+              <span>Video tutorials</span>
+              <a
+                href="https://space.bilibili.com/3707036976024122"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Bilibili channel</a
+              >
+            </li>
+            <li>
+              <span>Email</span>
+              <a href="mailto:284139554@qq.com">284139554@qq.com</a>
+            </li>
+            <li>
+              <span>Issues</span>
+              <a
+                href="https://github.com/Justin-sky/ai-art-engine/issues"
+                target="_blank"
+                rel="noopener noreferrer"
+                >GitHub Issues</a
+              >
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <div class="foot-brand">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </div>
+        <p>GPL-3.0 · Professional creation · Local projects · Open Source</p>
+        <div class="foot-links">
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a href="#community">Community</a>
+          <a href="mailto:284139554@qq.com">Email</a>
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener noreferrer"
+            >License</a
+          >
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      function initCoverflow(root) {
+        const cards = [...root.querySelectorAll('.cf-card')]
+        const dotsEl = root.querySelector('[data-cf-dots]')
+        const prev = root.querySelector('[data-cf-prev]')
+        const next = root.querySelector('[data-cf-next]')
+        let index = 0
+        let timer = null
+
+        if (dotsEl) {
+          dotsEl.innerHTML = cards
+            .map(
+              (_, i) =>
+                `<button type="button" class="cf-dot${i === 0 ? ' is-active' : ''}" aria-label="Slide ${i + 1}" data-i="${i}"></button>`
+            )
+            .join('')
+        }
+
+        function render() {
+          const n = cards.length
+          cards.forEach((card, i) => {
+            let offset = i - index
+            if (offset > n / 2) offset -= n
+            if (offset < -n / 2) offset += n
+            card.dataset.offset = String(offset)
+            card.classList.toggle('is-active', offset === 0)
+            card.style.zIndex = String(20 - Math.abs(offset))
+            card.setAttribute('aria-hidden', offset === 0 ? 'false' : 'true')
+          })
+          dotsEl?.querySelectorAll('.cf-dot').forEach((d, i) => d.classList.toggle('is-active', i === index))
+        }
+
+        function go(i) {
+          index = ((i % cards.length) + cards.length) % cards.length
+          render()
+          restart()
+        }
+
+        function restart() {
+          if (reduceMotion) return
+          clearInterval(timer)
+          timer = setInterval(() => go(index + 1), 4500)
+        }
+
+        prev?.addEventListener('click', () => go(index - 1))
+        next?.addEventListener('click', () => go(index + 1))
+        dotsEl?.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-i]')
+          if (btn) go(Number(btn.dataset.i))
+        })
+        cards.forEach((card, i) => {
+          card.addEventListener('click', () => {
+            if (Number(card.dataset.offset) !== 0) go(i)
+          })
+        })
+
+        let touchX = null
+        root.addEventListener(
+          'touchstart',
+          (e) => {
+            touchX = e.changedTouches[0].clientX
+          },
+          { passive: true }
+        )
+        root.addEventListener(
+          'touchend',
+          (e) => {
+            if (touchX == null) return
+            const dx = e.changedTouches[0].clientX - touchX
+            touchX = null
+            if (Math.abs(dx) < 36) return
+            go(index + (dx < 0 ? 1 : -1))
+          },
+          { passive: true }
+        )
+
+        root.addEventListener('mouseenter', () => clearInterval(timer))
+        root.addEventListener('mouseleave', restart)
+
+        render()
+        restart()
+      }
+
+      document.querySelectorAll('[data-coverflow]').forEach(initCoverflow)
+
+      document.querySelectorAll('a[href="#top"]').forEach((a) => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault()
+          window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+          history.pushState(null, '', '#top')
+        })
+      })
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue
+            e.target.classList.add('in')
+            if (e.target.matches('.steps li, .dl-list li')) {
+              e.target.style.setProperty('--stagger', `${[...e.target.parentElement.children].indexOf(e.target) * 40}ms`)
+            }
+          }
+        },
+        { rootMargin: '0px 0px -4% 0px', threshold: 0.06 }
+      )
+      document.querySelectorAll('.reveal, .steps li, .dl-list li').forEach((el) => {
+        if (!el.classList.contains('reveal')) el.classList.add('reveal-item')
+        io.observe(el)
+      })
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.hero .reveal').forEach((el) => el.classList.add('in'))
+      })
+
+      const progress = document.querySelector('.scroll-progress i')
+      const topBar = document.querySelector('.top')
+      const heroBg = document.querySelector('.hero-bg')
+
+      let ticking = false
+      function onScroll() {
+        if (ticking) return
+        ticking = true
+        requestAnimationFrame(() => {
+          const y = window.scrollY
+          const max = document.documentElement.scrollHeight - window.innerHeight
+          const p = max > 0 ? y / max : 0
+          if (progress) progress.style.transform = `scaleX(${p})`
+          topBar?.classList.toggle('is-scrolled', y > 24)
+
+          if (!reduceMotion && heroBg) {
+            const heroH = document.querySelector('.hero')?.offsetHeight || 1
+            const heroP = Math.min(1, Math.max(0, y / (heroH * 0.85)))
+            heroBg.style.transform = `translate3d(0, ${heroP * 48}px, 0)`
+          }
+          ticking = false
+        })
+      }
+      window.addEventListener('scroll', onScroll, { passive: true })
+      onScroll()
+    </script>
+  </body>
+</html>

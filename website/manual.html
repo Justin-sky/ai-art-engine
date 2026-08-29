@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
       content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
@@ -13,13 +14,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="manual.css?v=20260817-1" />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
   </head>
   <body>
     <a class="skip" href="#manual">跳到手册正文</a>
+    <div class="progress" aria-hidden="true"></div>
 
     <header class="top">
       <a class="brand" href="index.html">
@@ -46,6 +48,7 @@
           >GitHub</a
         >
       </nav>
+      <a class="nav-lang" href="manual.en.html" hreflang="en" lang="en">EN</a>
       <details class="mobile-menu">
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
@@ -698,6 +701,16 @@
           </ul>
 
           <h3 id="agent-pipeline">6.5 剧集流水线：Agent 流程窗口</h3>
+          <figure class="shot">
+            <img
+              src="assets/banner/storyboard.webp"
+              alt="剧集流水线窗口：节拍拆解、宫格分镜与导演审核"
+              width="1120"
+              height="760"
+              loading="lazy"
+            />
+            <figcaption><strong>剧集流水线</strong>：节拍拆解、9宫格 / 4宫格分镜与导演审核。</figcaption>
+          </figure>
           <p>
             通过一键工作流的「短剧分镜（Agent 流水线）」模板创建宿主资产后，可点击顶部工具栏的
             <strong>「剧集流水线」</strong>打开独立流程窗口，集中完成分镜、拼图、审核与视频生成。
@@ -730,6 +743,16 @@
 
         <section id="graph">
           <h2>7. 节点图</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/node-graph.webp"
+              alt="节点图界面：节点卡片与连线组成的生成链路"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>节点图</strong>：生成链路、资产预览与任务执行。</figcaption>
+          </figure>
           <p>
             节点图是核心生成编排界面。在剧本、场、画布、导演台、宿主资产等场景中，通过节点连线组织「输入 → 生成 →
             输出」链路。
@@ -912,6 +935,48 @@
           </ul>
 
           <h4>图片编辑（图片分组下）</h4>
+          <div class="shot-grid">
+            <figure class="shot">
+              <img
+                src="assets/banner/multi-angle-editor.webp"
+                alt="多角度编辑器：机位与构图快速切换"
+                width="958"
+                height="580"
+                loading="lazy"
+              />
+              <figcaption><strong>多角度编辑</strong>：机位与构图快速切换。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/lighting-editor.webp"
+                alt="打光效果编辑器：光影氛围精细调节"
+                width="1075"
+                height="619"
+                loading="lazy"
+              />
+              <figcaption><strong>打光效果</strong>：光影氛围精细调节。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/mood-editor.webp"
+                alt="情绪调节编辑器：画面情绪与色调控制"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption><strong>情绪调节</strong>：画面情绪与色调控制。</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="assets/banner/image-editor.webp"
+                alt="图片修改器：局部重绘与画面修订"
+                width="775"
+                height="634"
+                loading="lazy"
+              />
+              <figcaption><strong>图片修改</strong>：局部重绘与画面修订。</figcaption>
+            </figure>
+          </div>
           <ul>
             <li>
               多角度编辑 · 打光效果 · 人像质感调节 · 情绪调节 · 高清放大 · 扩图 · 重绘 · 擦除 · 抠图 · 裁剪 · 宫格切分 · 图层分离
@@ -1140,6 +1205,16 @@
 
         <section id="director">
           <h2>11. 导演台</h2>
+          <figure class="shot">
+            <img
+              src="assets/banner/director-stage.webp"
+              alt="3D 导演台舞台界面：角色、机位与站位截图"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>3D 导演台</strong>：站位截图、动作录制与机位视角。</figcaption>
+          </figure>
           <p>
             导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
             下游生成」。编辑节点提供两个<strong>方形</strong>输出口（站位图与动作视频），并提供两类输入端口：
@@ -1437,6 +1512,44 @@
       document.querySelectorAll('.mobile-nav a').forEach((link) => {
         link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
       })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
     </script>
   </body>
 </html>
