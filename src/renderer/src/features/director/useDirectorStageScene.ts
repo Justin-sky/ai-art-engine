@@ -6017,7 +6017,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
     } catch (err) {
       // 仅跳过 transform / 颜色提取，物体仍按模型类型创建
-      console.warn('[director-stage] 模型默认值提取失败:', model.relativePath, err)
+      console.warn('[director-stage] failed to extract model defaults:', model.relativePath, err)
     }
 
     const id = `model:${crypto.randomUUID()}`
@@ -7308,7 +7308,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           return { mesh: root, clips: loaded.animations.slice() }
         } catch (err) {
           // 模型加载失败会退化为占位方块，这里把真实原因打到控制台便于排查
-          console.warn('[director-stage] 模型加载失败，已用占位方块替代:', rel, err)
+          console.warn('[director-stage] failed to load model, using placeholder cube:', rel, err)
         }
       }
     }
