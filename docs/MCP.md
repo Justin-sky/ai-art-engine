@@ -51,7 +51,49 @@ claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header 
 > 环境变量覆盖：`AIAE_MCP_CONFIG` 指定 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`
 > 直连指定端口与 token。桥会依次尝试端口 43110–43119。
 
-## 工具清单（v0.1）
+### 配置模板（.mcp.json）
+
+放在仓库根目录的 `.mcp.json` 可随工程共享给团队（stdio 桥版，路径换成实际仓库位置）：
+
+```json
+{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"],
+      "env": {
+        "AIAE_MCP_CONFIG": "C:/Users/<你>/AppData/Roaming/aiartengine/mcp.json"
+      }
+    }
+  }
+}
+```
+
+HTTP 直连版（无需 Node.js，token 取自应用侧 mcp.json）：
+
+```json
+{
+  "mcpServers": {
+    "aiartengine": {
+      "type": "http",
+      "url": "http://127.0.0.1:43110/mcp",
+      "headers": {
+        "Authorization": "Bearer <应用侧 mcp.json 里的 token>"
+      }
+    }
+  }
+}
+```
+
+> 应用侧的连接信息文件（`%APPDATA%/aiartengine/mcp.json`）由应用自动写入与删除，**不要手改**：
+>
+> ```json
+> { "port": 43110, "token": "<uuid>", "pid": 12345, "version": "4.1.1" }
+> ```
+>
+> token 跨重启复用；要重置删除该文件后重启应用即可。
+
+## 工具清单
 
 | 工具 | 作用 | 依赖 |
 | --- | --- | --- |
@@ -83,3 +125,9 @@ claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header 
 - `task_run` 依赖应用界面进程执行任务：请保持应用处于运行状态；同一图重复触发会按「进行中任务」去重。
 - 桥脚本分发：安装包内置在 `<安装目录>/resources/mcp-bridge.mjs`；开发场景用仓库内
   `scripts/mcp-bridge.mjs`（需 Node.js 18+）。
+- 协议由应用内实现，桥为纯隧道：stdin 上每行 JSON-RPC 原样转发到 `/mcp`，通知（202 空体）不产生应答；
+  协议版本 / 工具清单因此与应用版本天然一致，无需与桥的版本对齐。
+- 取消支持：HTTP 直连客户端断开连接，或任意传输发送 `notifications/cancelled`，会中止进行中的长任务
+  （如 `workflow_plan` 的模型调用之间）；单次模型调用内部不可中断。
+- `task_status` 的报告（成功 / 失败终态）保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
+- 并发控制：当前未限制同时进行的生成任务数量，请避免并发触发大量耗时生成。

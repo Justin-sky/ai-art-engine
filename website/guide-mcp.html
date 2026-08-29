@@ -208,6 +208,38 @@
             mcp.json（持久复用）：
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+          <h3>配置模板（.mcp.json）</h3>
+          <p>
+            放在仓库根目录的 <code>.mcp.json</code> 可随工程共享给团队（stdio 桥版，路径换成实际仓库位置）：
+          </p>
+          <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"],
+      "env": {
+        "AIAE_MCP_CONFIG": "C:/Users/&lt;你&gt;/AppData/Roaming/aiartengine/mcp.json"
+      }
+    }
+  }
+}</code></pre>
+          <p>HTTP 直连版（无需 Node.js，token 取自应用侧 mcp.json）：</p>
+          <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "type": "http",
+      "url": "http://127.0.0.1:43110/mcp",
+      "headers": {
+        "Authorization": "Bearer &lt;应用侧 mcp.json 里的 token&gt;"
+      }
+    }
+  }
+}</code></pre>
+          <div class="tip">
+            应用侧的连接信息文件（<code>%APPDATA%/aiartengine/mcp.json</code>，结构
+            <code>{ "port": 43110, "token": "…", "pid": …, "version": "…" }</code>）由应用自动写入与删除，
+            <strong>不要手改</strong>；token 跨重启复用，要重置删除该文件后重启应用即可。
+          </div>
           <ol start="4">
           </ol>
         </section>

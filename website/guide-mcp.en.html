@@ -214,6 +214,40 @@
             skip the bridge. The token lives in mcp.json (persisted):
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+          <h3>Config template (.mcp.json)</h3>
+          <p>
+            A <code>.mcp.json</code> at the repository root can be shared with your team (stdio bridge variant —
+            adjust the path):
+          </p>
+          <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"],
+      "env": {
+        "AIAE_MCP_CONFIG": "C:/Users/&lt;you&gt;/AppData/Roaming/aiartengine/mcp.json"
+      }
+    }
+  }
+}</code></pre>
+          <p>HTTP direct variant (no Node.js required — token from the app-side mcp.json):</p>
+          <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "type": "http",
+      "url": "http://127.0.0.1:43110/mcp",
+      "headers": {
+        "Authorization": "Bearer &lt;token from the app-side mcp.json&gt;"
+      }
+    }
+  }
+}</code></pre>
+          <div class="tip">
+            The app-side connection file (<code>%APPDATA%/aiartengine/mcp.json</code>, structured
+            <code>{ "port": 43110, "token": "…", "pid": …, "version": "…" }</code>) is written and removed by the
+            app automatically — <strong>do not edit it by hand</strong>. The token is reused across restarts; delete
+            the file and restart the app to reset it.
+          </div>
           <ol start="4">
           </ol>
         </section>
