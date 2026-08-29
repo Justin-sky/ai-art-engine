@@ -2,12 +2,17 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app } from 'electron'
-import { AI_WORKFLOW_PRESET_IDS, getAiWorkflowPresetPlan } from '@shared/graph'
+import { app, ipcMain } from 'electron'
+import {
+  AI_WORKFLOW_PRESET_IDS,
+  getAiWorkflowPresetPlan,
+  type GraphDocument
+} from '@shared/graph'
 import {
   IpcChannels,
   type CommitAiWorkflowInput,
   type CreateProjectInput,
+  type McpTaskReportPayload,
   type PlanAiWorkflowInput,
   type WriteAssetTextInput
 } from '@shared/ipc'
@@ -297,6 +302,65 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'task_run',
+    title: '运行工作流',
+    description:
+      '在应用中运行一个已落盘的宿主资产工作流（一键工作流产出的子图资产），整图按拓扑序执行生成，输出写回资产。返回 mcpTaskId，用 task_status 轮询；应用界面任务列表会同步显示。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '宿主资产 id（asset_list 或 workflow_commit 返回）' }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+        | GraphDocument
+        | undefined
+      if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+        throw new Error('资产不存在或不含图文档（task_run 仅支持宿主资产子图）')
+      }
+      const mcpTaskId = randomUUID()
+      pendingMcpTaskReports.delete(mcpTaskId)
+      broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, { mcpTaskId, assetId })
+      // 等渲染层确认受理
+      for (let i = 0; i < 20; i++) {
+        await sleep(300)
+        const report = pendingMcpTaskReports.get(mcpTaskId)
+        if (report?.phase === 'accepted') {
+          return { mcpTaskId, taskId: report.taskId ?? null, state: 'running' }
+        }
+        if (report?.phase === 'failed') {
+          throw new Error(report.error ?? '任务受理失败')
+        }
+      }
+      return {
+        mcpTaskId,
+        state: 'dispatched',
+        note: '界面未确认受理（可能界面非最新版本）；可稍后用 task_status 查询'
+      }
+    }
+  },
+  {
+    name: 'task_status',
+    title: '任务状态',
+    description: '查询 task_run 返回的 mcpTaskId 当前执行状态（running / done / error / stopped）。',
+    inputSchema: {
+      type: 'object',
+      properties: { mcpTaskId: { type: 'string' } },
+      required: ['mcpTaskId']
+    },
+    handler: (args) => {
+      const mcpTaskId = readString(args, 'mcpTaskId')
+      const report = pendingMcpTaskReports.get(mcpTaskId)
+      if (!report) throw new Error('未知任务 id（或尚未受理）')
+      return report
+    }
+  },
+  {
     name: 'models_list',
     title: '可用模型列表',
     description:
@@ -444,6 +508,11 @@ function assertProjectOpen(): void {
   }
 }
 
+/** MCP task_run 的渲染层回报（受理 / 终态），task_status 从这里读 */
+const pendingMcpTaskReports = new Map<string, McpTaskReportPayload>()
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 /** 生成落盘后同步刷新应用界面中的资产卡片 */
 function broadcastAsset(assetId: string | undefined): void {
   if (!assetId) return
@@ -503,6 +572,13 @@ export async function startMcpServer(): Promise<void> {
   const basePort = Number(process.env.AIAE_MCP_PORT) || MCP_DEFAULT_PORT
   mcpToken = randomUUID()
 
+  ipcMain.handle(IpcChannels.MCP_TASK_REPORT, (_event, payload: McpTaskReportPayload) => {
+    if (payload && typeof payload.mcpTaskId === 'string') {
+      pendingMcpTaskReports.set(payload.mcpTaskId, payload)
+    }
+    return true
+  })
+
   for (let offset = 0; offset < MCP_PORT_RANGE; offset++) {
     const port = basePort + offset
     const started = await new Promise<boolean>((resolve) => {
@@ -540,6 +616,7 @@ export function stopMcpServer(): void {
   if (!server) return
   const closing = server
   server = null
+  ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   if (mcpConfigPath) {
     try {
       rmSync(mcpConfigPath, { force: true })

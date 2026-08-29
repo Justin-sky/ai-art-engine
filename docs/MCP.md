@@ -55,6 +55,8 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 | `workflow_list_presets` | 行业模板列表（id + 标题） | 应用运行 |
 | `workflow_plan` | 自然语言 → GraphPlan 预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
 | `workflow_commit` | 把 plan 落盘为宿主资产，界面同步出现 | 已打开工程 |
+| `task_run` | 运行一个已落盘的宿主资产工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |
+| `task_status` | 按 `mcpTaskId` 查询运行状态（running / done / error / stopped） | 应用运行 |
 | `video_job_list` / `video_job_get` | 异步视频生成任务状态 | 应用运行 |
 | `models_list` | 已启用的模型提供商与各模态勾选模型（不含任何密钥） | 无（读设置） |
 | `generate_image` | 文生图 / 图生图，落盘为工程资产 | 已打开工程 + 图片模型 |
@@ -66,9 +68,7 @@ claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
 
 ## 当前限制（v0.1）
 
-- 生成任务的整链编排（拓扑顺序执行、「加入任务」整链跑）由应用渲染层驱动，MCP 暂未暴露
-  `task_run`：落盘的工作流请在应用里加入任务运行；单次的图 / 视频 / 3D 生成已可用
-  `generate_*` 工具直接完成。
 - 图内节点级增删改（`node_upsert` / `edge_connect`）需要与打开中的编辑器协同，规划在后续版本。
 - 语音生成（`generate_speech`）暂未暴露：当前语音生成返回内容而非落盘资产。
+- `task_run` 依赖应用界面进程执行任务：请保持应用处于运行状态；同一图重复触发会按「进行中任务」去重。
 - 桥脚本目前仅随仓库分发（开发场景）；安装包内置与自动发现规划在后续版本。

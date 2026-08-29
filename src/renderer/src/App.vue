@@ -47,6 +47,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from './stores/project'
+import { registerMcpTaskRunner } from './features/mcp/mcpTaskRunner'
 import { useStudioI18n } from './composables/useStudioI18n'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
@@ -113,6 +114,7 @@ function onEditorShortcut(event: KeyboardEvent): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onEditorShortcut)
+  registerMcpTaskRunner()
   if (typeof window.studio?.onAssetUpdated === 'function') {
     stopAssetUpdated = window.studio.onAssetUpdated((asset) => {
       if (!project.isOpen) return

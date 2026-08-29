@@ -139,7 +139,12 @@ export const IpcChannels = {
   AD_VARIANT_EXPORT: 'ad-variant:export',
 
   /** 主进程推送：资产已写入（多窗口同步） */
-  ASSET_UPDATED: 'asset:updated'
+  ASSET_UPDATED: 'asset:updated',
+
+  /** MCP：主进程派发工作流运行请求（main → 渲染层） */
+  MCP_TASK_RUN: 'mcp:task-run',
+  /** MCP：渲染层回报任务受理 / 终态（渲染层 → 主进程） */
+  MCP_TASK_REPORT: 'mcp:task-report'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -296,6 +301,23 @@ export interface AttachAssetFileInput {
 export interface WriteAssetTextInput {
   assetId: string
   content: string
+}
+
+/** MCP：主进程 → 渲染层，请求运行宿主资产工作流 */
+export interface McpTaskRunPayload {
+  mcpTaskId: string
+  assetId: string
+}
+
+export type McpTaskReportPhase = 'accepted' | 'finished' | 'failed'
+
+/** MCP：渲染层 → 主进程，回报受理与终态（含图任务 id 供界面查看） */
+export interface McpTaskReportPayload {
+  mcpTaskId: string
+  phase: McpTaskReportPhase
+  taskId?: string
+  status?: 'done' | 'error' | 'stopped'
+  error?: string
 }
 
 export interface AttachAssetRelativeInput {
@@ -558,6 +580,12 @@ export interface StudioApi {
   onVideoJobUpdated: (
     callback: (job: import('./videoJob').VideoJobRecord) => void
   ) => () => void
+
+  /** MCP：订阅主进程派发的工作流运行请求（渲染层受理后经 reportMcpTask 回报） */
+  onMcpTaskRun: (callback: (payload: McpTaskRunPayload) => void) => () => void
+
+  /** MCP：渲染层回报任务受理 / 终态 */
+  reportMcpTask: (payload: McpTaskReportPayload) => Promise<boolean>
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string
