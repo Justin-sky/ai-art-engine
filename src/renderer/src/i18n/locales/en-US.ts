@@ -501,6 +501,7 @@ export default {
       tools: 'Tools',
       assets: 'Assets',
       inspector: 'Inspector',
+      chat: 'AI Chat',
       collapse: 'Collapse to the right',
       expand: 'Expand'
     },
@@ -508,6 +509,18 @@ export default {
       unsupported: 'No inspector is available for the selected object',
       emptyGlobals: 'No global parameters',
       multiAssets: '{count} assets selected'
+    },
+    chat: {
+      empty: 'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
+      placeholder: 'Type a task. Enter to send, Shift+Enter for a new line',
+      send: 'Send',
+      stop: 'Stop',
+      ready: 'Ready',
+      checking: 'Checking…',
+      unavailable: 'Unavailable',
+      toolRunning: 'Running',
+      toolDone: 'Done',
+      toolFailed: 'Failed'
     },
     editor: {
       asset: 'Asset Editor',

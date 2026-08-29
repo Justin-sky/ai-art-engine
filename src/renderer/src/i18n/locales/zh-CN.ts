@@ -500,6 +500,7 @@ export default {
       tools: '工具',
       assets: '资产',
       inspector: '参数',
+      chat: 'AI 对话',
       collapse: '收起到右侧',
       expand: '展开'
     },
@@ -507,6 +508,18 @@ export default {
       unsupported: '当前对象没有可用的检查器',
       emptyGlobals: '暂无全局参数',
       multiAssets: '已选择 {count} 个资产'
+    },
+    chat: {
+      empty: '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
+      placeholder: '输入任务，Enter 发送，Shift+Enter 换行',
+      send: '发送',
+      stop: '停止',
+      ready: '就绪',
+      checking: '检查中…',
+      unavailable: '不可用',
+      toolRunning: '执行中',
+      toolDone: '完成',
+      toolFailed: '失败'
     },
     editor: {
       asset: '资产编辑器',

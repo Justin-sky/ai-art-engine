@@ -2,17 +2,17 @@
   <aside
     class="studio-side-rail"
     role="toolbar"
-    :aria-label="`${t('studio.panel.assets')} / ${t('studio.panel.inspector')}`"
+    :aria-label="`${t('studio.panel.assets')} / ${t('studio.panel.inspector')} / ${t('studio.panel.chat')}`"
   >
     <button
       v-for="item in items"
       :key="item.id"
       type="button"
       class="rail-btn"
-      :class="{ 'is-active': !sidePanelCollapsed[item.id] }"
+      :class="{ 'is-active': isActive(item) }"
       :title="buttonTitle(item)"
       :aria-label="buttonTitle(item)"
-      :aria-pressed="!sidePanelCollapsed[item.id]"
+      :aria-pressed="isActive(item)"
       @click="onToggle(item.id)"
     >
       <span
@@ -25,8 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { DockviewApi } from 'dockview-vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import type { DockviewApi, IDockviewPanel } from 'dockview-vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   resolveSidePanelSizeOptions,
@@ -35,6 +35,10 @@ import {
   toggleSidePanelCollapsed,
   type SidePanelId
 } from '../editor/workbench/sidePanelCollapse'
+
+const CHAT_PANEL_ID = 'chat'
+const CHAT_PANEL_WIDTH = 320
+const CHAT_PANEL_MIN_WIDTH = 220
 
 const props = defineProps<{
   dockApi: DockviewApi | null
@@ -47,24 +51,107 @@ const RAIL_ICONS: Record<SidePanelId, string> = {
   inspector: '☰'
 }
 
-const items = computed(() =>
-  SIDE_PANEL_IDS.map((id) => ({
+type RailItem = {
+  id: SidePanelId | typeof CHAT_PANEL_ID
+  icon: string
+  label: string
+}
+
+/** chat 是普通 dock 面板，不参与侧栏收起体系；这里单独维护其开关状态 */
+const chatOpen = ref(false)
+
+const items = computed<RailItem[]>(() => [
+  ...SIDE_PANEL_IDS.map((id) => ({
     id,
     icon: RAIL_ICONS[id],
     label: t(`studio.panel.${id}`)
-  }))
-)
+  })),
+  { id: CHAT_PANEL_ID, icon: '◈', label: t('studio.panel.chat') }
+])
 
-function buttonTitle(item: { id: SidePanelId; label: string }): string {
-  const action = sidePanelCollapsed[item.id] ? t('studio.panel.expand') : t('studio.panel.collapse')
+function isActive(item: RailItem): boolean {
+  if (item.id === CHAT_PANEL_ID) return chatOpen.value
+  return !sidePanelCollapsed[item.id]
+}
+
+function buttonTitle(item: RailItem): string {
+  const action = isActive(item) ? t('studio.panel.collapse') : t('studio.panel.expand')
   return `${action} · ${item.label}`
 }
 
-function onToggle(id: SidePanelId): void {
+function onToggle(id: RailItem['id']): void {
+  if (id === CHAT_PANEL_ID) {
+    toggleChat()
+    return
+  }
   const api = props.dockApi?.getPanel(id)?.api
   if (!api) return
   toggleSidePanelCollapsed(api, resolveSidePanelSizeOptions(id))
 }
+
+function chatPanel(api: DockviewApi): IDockviewPanel | undefined {
+  return api.getPanel(CHAT_PANEL_ID)
+}
+
+function syncChatState(api: DockviewApi): void {
+  const panel = chatPanel(api)
+  chatOpen.value = !!panel && panel.api.isVisible
+}
+
+/** dockview 面板级 API 无 setVisible，需作用于所在 group（与侧栏收起一致） */
+function setChatVisible(panel: IDockviewPanel, visible: boolean): void {
+  panel.api.group?.api.setVisible(visible)
+}
+
+function toggleChat(): void {
+  const api = props.dockApi
+  if (!api) return
+  const panel = chatPanel(api)
+  if (!panel) {
+    api.addPanel({
+      id: CHAT_PANEL_ID,
+      component: 'chat',
+      title: t('studio.panel.chat'),
+      position: {
+        referencePanel:
+          api.getPanel('inspector')?.id ?? api.getPanel('assets')?.id ?? 'workspace',
+        direction: 'right'
+      },
+      initialWidth: CHAT_PANEL_WIDTH,
+      minimumWidth: CHAT_PANEL_MIN_WIDTH
+    })
+    syncChatState(api)
+    return
+  }
+  const nextVisible = !panel.api.isVisible
+  setChatVisible(panel, nextVisible)
+  if (nextVisible) panel.api.setActive()
+  syncChatState(api)
+}
+
+let disposables: Array<{ dispose(): void }> = []
+
+watch(
+  () => props.dockApi,
+  (api) => {
+    for (const d of disposables) d.dispose()
+    disposables = []
+    if (!api) return
+    syncChatState(api)
+    disposables = [
+      api.onDidLayoutChange(() => syncChatState(api)),
+      api.onDidRemovePanel((panel) => {
+        if (panel.id === CHAT_PANEL_ID) chatOpen.value = false
+      })
+    ]
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  for (const d of disposables) d.dispose()
+  disposables = []
+})
 </script>
 
 <style scoped>

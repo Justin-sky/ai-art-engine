@@ -153,6 +153,39 @@ function armStackNormalizeWindow(ms = 800): void {
   stackNormalizeUntil = Date.now() + ms
 }
 
+/** 资产与参数是否已合并为同一 Tab 组（同 group 即 Tab 切换） */
+function areSidePanelsTabbed(
+  dock: DockviewApi,
+  a: SidePanelId = 'assets',
+  b: SidePanelId = 'inspector'
+): boolean {
+  const pa = dock.getPanel(a)
+  const pb = dock.getPanel(b)
+  return !!pa?.group && !!pb?.group && pa.group === pb.group
+}
+
+/**
+ * Tab 合并组的可见性与激活项同步。
+ *
+ * 组由两个面板共享，因此这里绝不能走 group 级隐藏 / 0 宽收窄 / `studio-side-collapsed`
+ * 样式——那些都作用在共享 group 上，会把另一个面板一起压没。合并态下「收起」只表达为
+ * 切到另一个 Tab；两侧都收起时才整体隐藏组。
+ */
+function syncTabbedGroupActiveState(dock: DockviewApi, preferredId?: SidePanelId): void {
+  const activeId =
+    SIDE_PANEL_IDS.find((id) => id === preferredId && !sidePanelCollapsed[id]) ??
+    SIDE_PANEL_IDS.find((id) => !sidePanelCollapsed[id])
+  if (activeId) {
+    const panel = dock.getPanel(activeId)
+    if (!panel) return
+    setSidePanelGroupVisible(panel.api, true)
+    panel.api.setActive()
+    return
+  }
+  const first = dock.getPanel(SIDE_PANEL_IDS[0])
+  if (first) setSidePanelGroupVisible(first.api, false)
+}
+
 function areSidePanelsStackedVertically(
   assets: IDockviewPanel,
   inspector: IDockviewPanel
@@ -339,6 +372,9 @@ export function shouldPreventSidePanelOverlay(event: {
   if (event.kind === 'edge') return true
   if (!groupHasSidePanel(event.group)) return true
 
+  // 拖到对方面板内容区（center）：合并为 Tab 切换组
+  if (event.position === 'center') return false
+
   return event.position !== 'top' && event.position !== 'bottom'
 }
 
@@ -358,7 +394,7 @@ const SIDE_PANEL_STACK_OVERLAY = {
   size: { type: 'percentage' as const, value: 50 }
 }
 
-const SIDE_PANEL_STACK_ZONES = ['top', 'bottom'] as const
+const SIDE_PANEL_STACK_ZONES = ['top', 'bottom', 'center'] as const
 
 type DropTargetLike = {
   setTargetZones: (zones: string[]) => void
@@ -427,6 +463,22 @@ export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
     typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
   )
   configureSidePanelStackDropTargets(dock)
+
+  // 合并为 Tab 组：共享同一列，列宽归一化不适用（areSidePanelsStackedVertically 已同组短路）。
+  // dockview 会激活被拖入的面板，若它处于收起态需切回未收起的一侧。
+  if (areSidePanelsTabbed(dock)) {
+    syncTabbedGroupActiveState(dock, movedId)
+    // dockview 在下一帧才落定激活项，再同步一次
+    requestAnimationFrame(() => {
+      clearDockviewDropOverlays(
+        typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+      )
+      configureSidePanelStackDropTargets(dock)
+      syncTabbedGroupActiveState(dock, movedId)
+    })
+    return
+  }
+
   const targetId = otherSidePanelId(movedId)
   const columnWidth =
     pendingStackColumnWidth > 16
@@ -554,8 +606,18 @@ function otherSidePanelId(id: SidePanelId): SidePanelId {
  */
 function placeSidePanel(dock: DockviewApi, id: SidePanelId, expanding: boolean): void {
   const panel = dock.getPanel(id)
+  if (!panel) return
+
+  // Tab 合并组：收起 = 切到另一个 Tab，展开 = 切回本 Tab，两侧都收起则隐藏整组。
+  // 不做位移摆放、宽度收窄与 group 级收起样式——共享 group 上这些都会连带压没另一个面板。
+  // 该分支不依赖工作区面板，需先于 workspace 判空执行。
+  if (areSidePanelsTabbed(dock)) {
+    syncTabbedGroupActiveState(dock, expanding ? id : undefined)
+    return
+  }
+
   const workspace = dock.getPanel(WORKSPACE_PANEL_ID)
-  if (!panel || !workspace) return
+  if (!workspace) return
 
   if (expanding) {
     if (id === 'inspector' && sidePanelCollapsed.assets) {
@@ -604,6 +666,8 @@ function placeSidePanel(dock: DockviewApi, id: SidePanelId, expanding: boolean):
 
 /** moveTo 之后再断言一次收起隐藏，避免 0 宽组重新入局形成灰洞 */
 function reassertCollapsedHidden(dock: DockviewApi): void {
+  // Tab 合并组：收起的面板只是非活动 Tab，无几何处理（避免把共享列宽收窄成灰条）
+  if (areSidePanelsTabbed(dock)) return
   for (const id of SIDE_PANEL_IDS) {
     if (!sidePanelCollapsed[id]) continue
     const panel = dock.getPanel(id)
@@ -622,20 +686,30 @@ export function setSidePanelCollapsed(
   if (!isSidePanelId(id)) return
   const target = resolvePanel(api, panel)
   const dock = dockApiRef
+  // Tab 合并组：group 由两个面板共享，group 级隐藏 / 0 宽 / 收起样式会连带压没另一个面板
+  const tabbed = !!dock && areSidePanelsTabbed(dock)
 
   if (collapsed) {
     rememberCurrentWidth(api, id)
     sidePanelCollapsed[id] = true
     writeSideCollapsedPreference(id, true)
     if (dock) placeSidePanel(dock, id, false)
-    applyCollapsedState(api, resolvePanel(api, target), true)
-    if (dock) reassertCollapsedHidden(dock)
+    // placeSidePanel 已按收起状态切好 Tab（两侧都收起时隐藏整组），不能再做几何收起
+    if (!tabbed) {
+      applyCollapsedState(api, resolvePanel(api, target), true)
+      if (dock) reassertCollapsedHidden(dock)
+    }
     return
   }
 
   // 先放开约束并显示，再 move，避免新 group 继承收起态
   sidePanelCollapsed[id] = false
   writeSideCollapsedPreference(id, false)
+  if (tabbed) {
+    // Tab 合并组：只切回本 Tab 并保证组可见，不改写共享列的约束与宽度
+    if (dock) placeSidePanel(dock, id, true)
+    return
+  }
   const liveBeforeMove = resolvePanel(api, target)
   applyCollapsedState(api, liveBeforeMove, false, opts)
   if (dock) placeSidePanel(dock, id, true)
@@ -684,6 +758,27 @@ export function syncSidePanelCollapseState(
   optsFor: (id: SidePanelId) => SidePanelSizeOptions
 ): void {
   dockApiRef = dock
+
+  // Tab 合并组：组由两个面板共享，逐面板做 group 级收起会把另一个面板一起压没，
+  // 且 collapsed 会落 localStorage —— 刷新后整组消失。这里只同步状态位与 Tab 激活。
+  if (areSidePanelsTabbed(dock)) {
+    for (const id of SIDE_PANEL_IDS) {
+      const panel = dock.getPanel(id)
+      // 共享列宽仍记入展开宽度，拆开为独立面板后可沿用
+      if (panel) {
+        const width = readPanelWidth(panel.api)
+        if (width > 16) writeStoredWidth(id, width)
+      }
+      const preferCollapsed = readSideCollapsedPreference(id) || sidePanelCollapsed[id]
+      sidePanelCollapsed[id] = !!preferCollapsed
+      writeSideCollapsedPreference(id, !!preferCollapsed)
+    }
+    syncTabbedGroupActiveState(dock)
+    attachExpandedWidthWatchers(dock)
+    configureSidePanelStackDropTargets(dock)
+    return
+  }
+
   for (const id of SIDE_PANEL_IDS) {
     const panel = dock.getPanel(id)
     if (!panel) {

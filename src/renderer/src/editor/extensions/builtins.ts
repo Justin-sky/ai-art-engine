@@ -4,6 +4,7 @@ import { WORKSPACE_TOOLBAR_ITEMS } from '@shared/workspaceToolbar'
 import AssetBrowser from '../../components/AssetBrowser.vue'
 import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
 import AssetEditor from '../../components/AssetEditor.vue'
+import ChatPanel from '../../components/ChatPanel.vue'
 import DirectorEditor from '../../components/DirectorEditor.vue'
 import InspectorPanel from '../../components/InspectorPanel.vue'
 import WorldElementEditor from '../../components/WorldElementEditor.vue'
@@ -64,6 +65,10 @@ export const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   {
     id: 'inspector',
     createComponent: () => panel('DockInspector', () => h(InspectorPanel))
+  },
+  {
+    id: 'chat',
+    createComponent: () => panel('DockChat', () => h(ChatPanel))
   },
   {
     id: 'assetEditor',

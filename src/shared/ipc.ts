@@ -158,7 +158,15 @@ export const IpcChannels = {
   /** MCP：主进程清空旁路生成活动（工程关闭时） */
   MCP_ACTIVITY_CLEARED: 'mcp:activity-cleared',
   /** MCP：渲染层查询当前旁路生成活动列表 */
-  MCP_ACTIVITY_LIST: 'mcp:activity-list'
+  MCP_ACTIVITY_LIST: 'mcp:activity-list',
+  /** Harness：查询 DeepSeek Harness (dsh) 接入状态（Node / dsh / MCP / 密钥） */
+  HARNESS_STATUS: 'harness:status',
+  /** Harness：运行一次对话任务（main 进程 spawn dsh） */
+  HARNESS_RUN: 'harness:run',
+  /** Harness：中止当前任务 */
+  HARNESS_ABORT: 'harness:abort',
+  /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
+  HARNESS_EVENT: 'harness:event'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -412,6 +420,47 @@ export interface McpServerInfo {
   /** 工具服务 HTTP 端点，如 http://127.0.0.1:43110/mcp */
   endpoint: string
 }
+
+/** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
+export interface HarnessStatus {
+  /** 系统 Node 版本（dsh 建议 ^22.19 或 24+） */
+  nodeVersion: string
+  /** Node 版本是否满足 dsh 建议 */
+  nodeOk: boolean
+  /** dsh 是否已可用（npm 包已缓存，无需现场下载） */
+  dshReady: boolean
+  /** 应用 MCP 工具服务是否在运行 */
+  mcpRunning: boolean
+  /** 应用 MCP 工具服务端点（仅展示） */
+  mcpEndpoint?: string
+  /** 是否已配置 DeepSeek 文本模型密钥 */
+  hasDeepseekKey: boolean
+  /** 人话提示（缺 Node / 缺密钥 / MCP 未启动等） */
+  message?: string
+}
+
+/** Harness：一次对话任务输入（渲染层 → 主进程） */
+export interface HarnessRunInput {
+  /** 用户发给 agent 的任务文本 */
+  task: string
+  /** 可选：dsh 使用的模型 id（默认取 DeepSeek 已配置文本模型） */
+  model?: string
+}
+
+/** Harness：任务启动结果 */
+export interface HarnessRunResult {
+  started: boolean
+  message?: string
+}
+
+/** Harness：任务事件流（main → 渲染层） */
+export type HarnessEvent =
+  | { type: 'assistant'; text: string }
+  | { type: 'status'; text: string }
+  | { type: 'tool'; name: string; state: 'start' | 'done' | 'error'; detail?: string }
+  | { type: 'final'; text: string }
+  | { type: 'done'; runId: string }
+  | { type: 'error'; message: string }
 
 /** MCP：设置界面提交的配置修改（重启时应用） */
 export interface McpRestartInput {
@@ -710,6 +759,18 @@ export interface StudioApi {
 
   /** MCP：查询当前旁路生成活动列表 */
   listMcpActivities: () => Promise<McpActivity[]>
+
+  /** Harness：查询 DeepSeek Harness 接入状态 */
+  getHarnessStatus: () => Promise<HarnessStatus>
+
+  /** Harness：运行一次对话任务（事件通过 onHarnessEvent 推送） */
+  runHarnessTask: (input: HarnessRunInput) => Promise<HarnessRunResult>
+
+  /** Harness：中止当前任务 */
+  abortHarnessTask: () => Promise<void>
+
+  /** Harness：订阅任务事件流 */
+  onHarnessEvent: (callback: (event: HarnessEvent) => void) => () => void
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string

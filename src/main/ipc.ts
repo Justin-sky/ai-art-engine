@@ -40,6 +40,11 @@ import { exportScriptTimeline } from './services/timelineExportService'
 import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
+import {
+  abortHarnessTask,
+  getHarnessStatus,
+  runHarnessTask
+} from './services/deepseekHarnessService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import { getMcpServerInfo, restartMcpServer } from './services/mcpServerService'
@@ -265,6 +270,12 @@ export function registerIpcHandlers(): void {
     restartMcpServer(input)
   )
   handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
+
+  handle(IpcChannels.HARNESS_STATUS, () => getHarnessStatus())
+  handle(IpcChannels.HARNESS_RUN, (input: import('@shared/ipc').HarnessRunInput) =>
+    runHarnessTask(input)
+  )
+  handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())

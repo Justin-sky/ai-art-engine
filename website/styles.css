@@ -51,6 +51,7 @@ body {
   font-family: var(--display);
   font-weight: 500;
   line-height: 1.45;
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -282,7 +283,7 @@ button {
   line-height: 1.05;
   letter-spacing: -0.03em;
   color: var(--ink);
-  white-space: nowrap;
+  text-wrap: balance;
 }
 
 .hero h1 em {
@@ -295,7 +296,7 @@ button {
   font-size: clamp(1rem, 1.5vw, 1.12rem);
   color: var(--ink-soft);
   line-height: 1.55;
-  white-space: nowrap;
+  text-wrap: pretty;
 }
 
 .hero-foot {
@@ -575,7 +576,7 @@ button {
   font-weight: 400;
   line-height: 1.12;
   letter-spacing: -0.025em;
-  white-space: nowrap;
+  text-wrap: balance;
 }
 
 .statement p {
@@ -583,7 +584,7 @@ button {
   color: var(--ink-soft);
   font-size: 1.05rem;
   line-height: 1.65;
-  white-space: nowrap;
+  text-wrap: pretty;
 }
 
 .section-label {
@@ -691,6 +692,11 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+/* 文本列可收缩，避免长词 / 长链接把行撑出容器 */
+.steps li > div {
+  min-width: 0;
+}
+
 .steps .n {
   font-size: 13px;
   font-weight: 700;
@@ -711,7 +717,7 @@ button {
   color: var(--ink-soft);
   font-size: 0.98rem;
   line-height: 1.6;
-  white-space: nowrap;
+  text-wrap: pretty;
 }
 
 /* —— Download —— */
@@ -980,17 +986,6 @@ button {
   }
   to {
     background-position: 48px 48px, 48px 48px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .hero h1,
-  .lede,
-  .statement h2,
-  .statement p,
-  .steps p {
-    white-space: normal;
-    text-wrap: balance;
   }
 }
 

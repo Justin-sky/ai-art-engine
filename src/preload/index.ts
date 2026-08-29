@@ -202,6 +202,20 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.MCP_ACTIVITY_CLEARED, listener)
   },
   listMcpActivities: () => ipcRenderer.invoke(IpcChannels.MCP_ACTIVITY_LIST),
+
+  getHarnessStatus: () => ipcRenderer.invoke(IpcChannels.HARNESS_STATUS),
+  runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
+  abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
+  onHarnessEvent: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/ipc').HarnessEvent
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.HARNESS_EVENT, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.HARNESS_EVENT, listener)
+  },
   /** Electron 35+ 拖放文件需通过 webUtils 获取本地路径 */
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }

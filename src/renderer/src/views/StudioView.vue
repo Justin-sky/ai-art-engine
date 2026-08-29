@@ -775,19 +775,20 @@ function applySidePanelCollapseSync(api: DockviewApi): void {
   })
 }
 
-function corePanelTitles(): Record<(typeof PANEL_IDS)[number], string> {
+function corePanelTitles(): Record<(typeof PANEL_IDS)[number] | 'chat', string> {
   return {
     'workspace-tools': t('studio.panel.tools'),
     workspace: t('studio.panel.workspace'),
     assets: t('studio.panel.assets'),
-    inspector: t('studio.panel.inspector')
+    inspector: t('studio.panel.inspector'),
+    chat: t('studio.panel.chat')
   }
 }
 
 /** 布局持久化会存下旧语言标题，切换语言后需强制刷新 */
 function applyCorePanelTitles(api: DockviewApi): void {
   const titles = corePanelTitles()
-  for (const id of PANEL_IDS) {
+  for (const id of [...PANEL_IDS, 'chat'] as const) {
     const panel = api.getPanel(id)
     if (panel) panel.api.setTitle(titles[id])
   }
@@ -937,6 +938,21 @@ function ensureCorePanels(api: DockviewApi): void {
       initialWidth: inspectorInit.initialWidth,
       minimumWidth: inspectorInit.minimumWidth,
       ...(inspectorInit.maximumWidth != null ? { maximumWidth: inspectorInit.maximumWidth } : {})
+    })
+  }
+
+  // AI 对话面板：普通面板（不在 PANEL_IDS），用户可关闭；默认在参数面板右侧
+  if (!api.getPanel('chat')) {
+    api.addPanel({
+      id: 'chat',
+      component: 'chat',
+      title: titleMap.chat,
+      position: {
+        referencePanel: api.getPanel('inspector')?.id ?? centerId,
+        direction: 'right'
+      },
+      initialWidth: 320,
+      minimumWidth: 220
     })
   }
 
