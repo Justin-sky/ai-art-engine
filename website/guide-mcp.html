@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。"
+    />
+    <title>MCP 接入教程 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="MCP 接入教程 — AIArtEngine" />
+    <meta property="og:description" content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。" />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MCP 接入教程 — AIArtEngine" />
+    <meta name="twitter:description" content="AIArtEngine MCP 接入教程：把应用接入 Claude Code 等 AI Agent，用对话规划工作流、编辑节点图、运行生成与查询任务。" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+    <style>
+      pre.mcp-code {
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        margin: 0 0 14px;
+      }
+      pre.mcp-code code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="quickstart.html">快速上手</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html">短视频教程</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
+        <a href="guide-mcp.html" aria-current="page">MCP 接入</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >视频教程</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-mcp.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html" aria-current="page">MCP 接入</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li><a href="#what">MCP 是什么</a></li>
+          <li><a href="#setup">三步接入 Claude Code</a></li>
+          <li><a href="#tools">工具清单</a></li>
+          <li><a href="#examples">场景示例</a></li>
+          <li><a href="#env">配置与环境变量</a></li>
+          <li><a href="#security">安全与当前限制</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html">← 返回使用手册</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · MCP</p>
+          <h1>MCP 接入教程</h1>
+          <p class="lede">
+            把 AiArtEngine 接入 <strong>Claude Code</strong> 等 AI Agent：应用启动后自带一个本地
+            MCP 工具服务，Agent 可以直接<strong>规划工作流、编辑节点图、运行生成、查询任务</strong>——对标
+            LibTV CLI 的「产品即 Agent 工具」体验，但完全本地化，无需云账号授权。
+          </p>
+        </header>
+
+        <section id="what">
+          <h2>1. MCP 是什么</h2>
+          <p>
+            MCP（Model Context Protocol）是 AI Agent 调用外部工具的标准协议。接入后，你的编码
+            Agent 多了一组「AiArtEngine 工具」，对话即可驱动应用：
+          </p>
+          <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine 应用（127.0.0.1 工具服务）</code></pre>
+          <ul>
+            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文），退出时自动删除。</li>
+            <li>桥脚本 <code>scripts/mcp-bridge.mjs</code> 零依赖，由 Agent 客户端拉起，负责协议转换与转发。</li>
+            <li>通信仅限本机回环地址；除健康检查外全部需要 token。</li>
+          </ul>
+          <div class="tip">
+            前置条件：AiArtEngine 桌面应用处于运行状态；桥脚本需要 Node.js 18+；
+            <code>workflow_plan</code> 类工具依赖应用里已配置的文本模型。
+          </div>
+        </section>
+
+        <section id="setup">
+          <h2>2. 三步接入 Claude Code</h2>
+          <ol>
+            <li>启动 AiArtEngine 桌面应用。</li>
+            <li>
+              注册 MCP server（桥脚本在仓库内，把路径换成你的实际仓库位置）：
+              <pre class="mcp-code"><code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
+              或手动写入 MCP 配置文件：
+              <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"]
+    }
+  }
+}</code></pre>
+            </li>
+            <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Codex、Trae 等）按同样的「command + args」方式配置。</li>
+          </ol>
+        </section>
+
+        <section id="tools">
+          <h2>3. 工具清单</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>分组</th>
+                <th>工具</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td rowspan="4">工程与资产</td>
+                <td><code>app_status</code></td>
+                <td>版本、当前工程、资产数量</td>
+              </tr>
+              <tr>
+                <td><code>project_list</code> / <code>project_open</code> / <code>project_create</code></td>
+                <td>最近工程、打开、新建</td>
+              </tr>
+              <tr>
+                <td><code>asset_list</code> / <code>asset_read_file</code></td>
+                <td>资产列表、按相对路径读取工程内文件</td>
+              </tr>
+              <tr>
+                <td><code>asset_write_text</code></td>
+                <td>更新剧本 / 备注等文本资产（界面同步）</td>
+              </tr>
+              <tr>
+                <td rowspan="4">规划与运行</td>
+                <td><code>workflow_list_presets</code></td>
+                <td>12 个行业模板列表（id + 标题）</td>
+              </tr>
+              <tr>
+                <td><code>workflow_plan</code></td>
+                <td>自然语言 → 节点图计划（走应用已配置文本模型）</td>
+              </tr>
+              <tr>
+                <td><code>workflow_commit</code></td>
+                <td>计划落盘为宿主资产（界面同步出现）</td>
+              </tr>
+              <tr>
+                <td><code>task_run</code> / <code>task_status</code></td>
+                <td>运行宿主资产工作流、轮询执行状态（应用任务列表同步显示）</td>
+              </tr>
+              <tr>
+                <td rowspan="3">生成</td>
+                <td><code>generate_image</code></td>
+                <td>文生图 / 图生图，落盘为工程资产</td>
+              </tr>
+              <tr>
+                <td><code>generate_video</code></td>
+                <td>提交视频生成并登记资产（可 <code>video_job_*</code> 跟踪）</td>
+              </tr>
+              <tr>
+                <td><code>generate_model3d</code></td>
+                <td>文生 / 图生 3D，产出 GLB 资产</td>
+              </tr>
+              <tr>
+                <td rowspan="3">编辑与查询</td>
+                <td><code>graph_edit</code></td>
+                <td>对宿主资产图应用节点 / 连线编辑操作批（端口兼容性在应用内校验）</td>
+              </tr>
+              <tr>
+                <td><code>models_list</code></td>
+                <td>已启用模型提供商与各模态勾选模型（不含密钥）</td>
+              </tr>
+              <tr>
+                <td><code>video_job_list</code> / <code>video_job_get</code></td>
+                <td>异步视频任务状态</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="examples">
+          <h2>4. 场景示例</h2>
+          <p>接入后直接用自然语言下指令，Agent 会自动组合工具：</p>
+          <ul>
+            <li>「列出我的最近工程，打开第一个」→ <code>project_list</code> + <code>project_open</code></li>
+            <li>「用 shortDrama 模板规划一条工作流并落盘」→ <code>workflow_plan</code>（presetId=shortDrama）+ <code>workflow_commit</code></li>
+            <li>「运行刚才创建的工作流，完成后告诉我结果」→ <code>task_run</code> + <code>task_status</code> 轮询</li>
+            <li>「给这张图节点下面加一个配音节点并连上」→ <code>graph_edit</code>（node_upsert + edge_connect）</li>
+            <li>「用已配置的模型生成一张 9:16 的海报」→ <code>models_list</code> + <code>generate_image</code></li>
+          </ul>
+        </section>
+
+        <section id="env">
+          <h2>5. 配置与环境变量</h2>
+          <p>
+            桥默认读取 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS：
+            <code>~/Library/Application Support/aiartengine/</code>；Linux：
+            <code>~/.config/aiartengine/</code>）。需要覆盖时：
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>环境变量</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>AIAE_MCP_CONFIG</code></td>
+                <td>指定 mcp.json 的绝对路径</td>
+              </tr>
+              <tr>
+                <td><code>AIAE_MCP_PORT</code> + <code>AIAE_MCP_TOKEN</code></td>
+                <td>直连指定端口与 token（优先于配置文件）</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            应用会依次尝试端口 <code>43110</code>–<code>43119</code>，被占用自动顺延，实际端口以
+            mcp.json 为准。
+          </p>
+        </section>
+
+        <section id="security">
+          <h2>6. 安全与当前限制</h2>
+          <ul>
+            <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内；密钥信息不对外暴露。</li>
+            <li><code>graph_edit</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
+            <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
+            <li>桥脚本目前随仓库分发（需本机 Node.js 18+）；安装包内置在后续版本提供。</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="guide-mcp.html">MCP 接入</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'dark' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

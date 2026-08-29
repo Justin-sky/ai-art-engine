@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation."
+    />
+    <title>MCP Setup Guide — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <meta property="og:site_name" content="AIArtEngine" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="MCP Setup Guide — AIArtEngine" />
+    <meta property="og:description" content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation." />
+    <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MCP Setup Guide — AIArtEngine" />
+    <meta name="twitter:description" content="AiArtEngine MCP setup guide: connect the app to Claude Code and other AI agents to plan workflows, edit graphs, run generation and track tasks by conversation." />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
+    <style>
+      pre.mcp-code {
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        margin: 0 0 14px;
+      }
+      pre.mcp-code code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.html">Home</a>
+        <a href="quickstart.html">Quick Start</a>
+        <a href="manual.html">Manual</a>
+        <a href="guide-video.html">Video Guide</a>
+        <a href="guide-short-video.html">Short-video Guide</a>
+        <a href="guide-comfyui.html">ComfyUI Guide</a>
+        <a href="guide-mcp.html" aria-current="page">MCP Setup</a>
+        <a href="index.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video Tutorials</a
+        >
+        <a
+          href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a
+          class="nav-src"
+          href="https://github.com/Justin-sky/ai-art-engine"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="guide-mcp.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.html">Home</a>
+          <a href="quickstart.html">Quick Start</a>
+          <a href="manual.html">Manual</a>
+          <a href="guide-video.html">Video Guide</a>
+          <a href="guide-short-video.html">Short-video Guide</a>
+          <a href="guide-comfyui.html">ComfyUI Guide</a>
+          <a href="guide-mcp.html" aria-current="page">MCP Setup</a>
+          <a href="index.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video Tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#what">What is MCP</a></li>
+          <li><a href="#setup">Connect Claude Code in 3 steps</a></li>
+          <li><a href="#tools">Tool reference</a></li>
+          <li><a href="#examples">Example conversations</a></li>
+          <li><a href="#env">Configuration &amp; environment</a></li>
+          <li><a href="#security">Security &amp; limitations</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html">← Back to the manual</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Guide · MCP</p>
+          <h1>MCP Setup Guide</h1>
+          <p class="lede">
+            Connect AiArtEngine to <strong>Claude Code</strong> and other AI agents: the app ships a local
+            MCP tool service, so agents can <strong>plan workflows, edit graphs, run generation and track
+            tasks</strong> by conversation — the "product as an agent tool" experience, fully local with no
+            cloud account authorization.
+          </p>
+        </header>
+
+        <section id="what">
+          <h2>1. What is MCP</h2>
+          <p>
+            MCP (Model Context Protocol) is the standard protocol for AI agents to call external tools.
+            Once connected, your coding agent gains a set of "AiArtEngine tools" and can drive the app
+            through conversation:
+          </p>
+          <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine app (127.0.0.1 tool service)</code></pre>
+          <ul>
+            <li>On startup the app serves a token-protected tool service on <code>127.0.0.1</code> and writes
+              connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below); the file
+              is removed on quit.</li>
+            <li>The bridge <code>scripts/mcp-bridge.mjs</code> is dependency-free: the agent client spawns it, and it
+              translates the protocol and forwards calls.</li>
+            <li>Communication stays on the loopback interface; everything except the health check requires the token.</li>
+          </ul>
+          <div class="tip">
+            Prerequisites: the AiArtEngine desktop app must be running; the bridge needs Node.js 18+;
+            <code>workflow_plan</code>-style tools rely on a text model configured in the app.
+          </div>
+        </section>
+
+        <section id="setup">
+          <h2>2. Connect Claude Code in 3 steps</h2>
+          <ol>
+            <li>Start the AiArtEngine desktop app.</li>
+            <li>
+              Register the MCP server (the bridge lives in the repository — adjust the path):
+              <pre class="mcp-code"><code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code></pre>
+              or write it into your MCP config file manually:
+              <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"]
+    }
+  }
+}</code></pre>
+            </li>
+            <li>Restart the agent session and the tools are ready. Other MCP-capable clients (Codex, Trae, …)
+              use the same "command + args" configuration.</li>
+          </ol>
+        </section>
+
+        <section id="tools">
+          <h2>3. Tool reference</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Tool</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td rowspan="4">Projects &amp; assets</td>
+                <td><code>app_status</code></td>
+                <td>App version, current project, asset count</td>
+              </tr>
+              <tr>
+                <td><code>project_list</code> / <code>project_open</code> / <code>project_create</code></td>
+                <td>Recent projects, open, create</td>
+              </tr>
+              <tr>
+                <td><code>asset_list</code> / <code>asset_read_file</code></td>
+                <td>List assets, read files inside the project</td>
+              </tr>
+              <tr>
+                <td><code>asset_write_text</code></td>
+                <td>Update text assets (scripts / notes; synced to the UI)</td>
+              </tr>
+              <tr>
+                <td rowspan="4">Planning &amp; execution</td>
+                <td><code>workflow_list_presets</code></td>
+                <td>The 12 industry templates (id + title)</td>
+              </tr>
+              <tr>
+                <td><code>workflow_plan</code></td>
+                <td>Natural language → graph plan (uses the app's configured text model)</td>
+              </tr>
+              <tr>
+                <td><code>workflow_commit</code></td>
+                <td>Persist a plan as a host asset (appears in the UI)</td>
+              </tr>
+              <tr>
+                <td><code>task_run</code> / <code>task_status</code></td>
+                <td>Run a persisted workflow and poll its execution state</td>
+              </tr>
+              <tr>
+                <td rowspan="3">Generation</td>
+                <td><code>generate_image</code></td>
+                <td>Text-to-image / image-to-image, saved as a project asset</td>
+              </tr>
+              <tr>
+                <td><code>generate_video</code></td>
+                <td>Submit video generation as an asset (track via <code>video_job_*</code>)</td>
+              </tr>
+              <tr>
+                <td><code>generate_model3d</code></td>
+                <td>Text/image-to-3D producing a GLB asset</td>
+              </tr>
+              <tr>
+                <td rowspan="3">Editing &amp; queries</td>
+                <td><code>graph_edit</code></td>
+                <td>Apply node / edge edit batches to a host asset graph (validated in-app)</td>
+              </tr>
+              <tr>
+                <td><code>models_list</code></td>
+                <td>Enabled providers and per-modality models (no secrets)</td>
+              </tr>
+              <tr>
+                <td><code>video_job_list</code> / <code>video_job_get</code></td>
+                <td>Async video task status</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="examples">
+          <h2>4. Example conversations</h2>
+          <p>Once connected, just give natural-language instructions — the agent combines the tools:</p>
+          <ul>
+            <li>"List my recent projects and open the first one" → <code>project_list</code> + <code>project_open</code></li>
+            <li>"Plan a workflow from the shortDrama template and save it" → <code>workflow_plan</code> (presetId=shortDrama) + <code>workflow_commit</code></li>
+            <li>"Run the workflow I just created and report back" → <code>task_run</code> + <code>task_status</code> polling</li>
+            <li>"Add a voice node under this image node and wire it" → <code>graph_edit</code> (node_upsert + edge_connect)</li>
+            <li>"Generate a 9:16 poster with my configured model" → <code>models_list</code> + <code>generate_image</code></li>
+          </ul>
+        </section>
+
+        <section id="env">
+          <h2>5. Configuration &amp; environment</h2>
+          <p>
+            The bridge reads <code>%APPDATA%/aiartengine/mcp.json</code> by default (macOS:
+            <code>~/Library/Application Support/aiartengine/</code>; Linux:
+            <code>~/.config/aiartengine/</code>). To override:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Environment variable</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>AIAE_MCP_CONFIG</code></td>
+                <td>Absolute path to mcp.json</td>
+              </tr>
+              <tr>
+                <td><code>AIAE_MCP_PORT</code> + <code>AIAE_MCP_TOKEN</code></td>
+                <td>Connect directly with a given port and token (overrides the file)</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            The app tries ports <code>43110</code>–<code>43119</code> in order and skips occupied ones; the actual
+            port is whatever mcp.json contains.
+          </p>
+        </section>
+
+        <section id="security">
+          <h2>6. Security &amp; limitations</h2>
+          <ul>
+            <li>The service listens on <code>127.0.0.1</code> only, with token auth; file access is confined to the
+              project root; secrets are never exposed.</li>
+            <li><code>graph_edit</code> refuses graphs that are currently open in an editor to avoid clobbering
+              in-memory state.</li>
+            <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
+              <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
+            <li>The bridge currently ships with the repository (Node.js 18+ required); bundling inside the
+              installers is planned.</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.html">Home</a>
+          <a href="quickstart.html">Quick Start</a>
+          <a href="manual.html">Manual</a>
+          <a href="guide-video.html">Video Guide</a>
+          <a href="guide-short-video.html">Short-video Guide</a>
+          <a href="guide-comfyui.html">ComfyUI Guide</a>
+          <a href="guide-mcp.html">MCP Setup</a>
+          <a href="index.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video Tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'dark' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

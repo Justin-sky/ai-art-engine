@@ -60,4 +60,16 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"/>
     <lastmod>2026-08-29</lastmod>
   </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-mcp.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"/>
+    <lastmod>2026-08-29</lastmod>
+  </url>
+  <url>
+    <loc>https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"/>
+    <lastmod>2026-08-29</lastmod>
+  </url>
 </urlset>
