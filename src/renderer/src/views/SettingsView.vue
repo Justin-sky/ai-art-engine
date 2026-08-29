@@ -38,6 +38,14 @@
         <button
           type="button"
           class="top-tab"
+          :class="{ active: mainTab === 'mcp' }"
+          @click="mainTab = 'mcp'"
+        >
+          {{ t('settings.section.mcp') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
           :class="{ active: mainTab === 'plugins' }"
           @click="mainTab = 'plugins'"
         >
@@ -128,6 +136,157 @@
         <ObjectStoragePanel :object-storage="form.objectStorage" />
       </section>
 
+      <section
+        v-show="mainTab === 'mcp'"
+        class="models-section"
+      >
+        <h2>{{ t('settings.mcp.title') }}</h2>
+        <p class="hint">
+          <template v-if="mcpInfo">
+            <span class="mcp-running">{{ t('settings.mcp.running', { port: mcpInfo.port }) }}</span>
+            · {{ mcpInfo.endpoint }}
+          </template>
+          <template v-else>
+            {{ t('settings.mcp.notRunning') }}
+          </template>
+        </p>
+
+        <label>
+          {{ t('settings.mcp.port') }}
+          <div class="number-row">
+            <input
+              v-model.number="portInput"
+              type="number"
+              min="1"
+              max="65535"
+              :disabled="mcpBusy"
+            >
+            <button
+              type="button"
+              class="about-btn primary"
+              :disabled="mcpBusy"
+              @click="applyMcpRestart(false)"
+            >
+              {{ mcpBusy
+                ? t('settings.mcp.restarting')
+                : mcpInfo
+                  ? t('settings.mcp.restart')
+                  : t('settings.mcp.start') }}
+            </button>
+          </div>
+        </label>
+        <p class="hint">
+          {{ t('settings.mcp.portHint') }}
+        </p>
+
+        <div class="mcp-row">
+          <span class="about-label">{{ t('settings.mcp.token') }}</span>
+          <code class="mcp-value">{{ tokenVisible && mcpInfo ? mcpInfo.token : '••••••••••••••••' }}</code>
+          <button
+            v-if="mcpInfo"
+            type="button"
+            class="about-btn"
+            @click="tokenVisible = !tokenVisible"
+          >
+            {{ t(tokenVisible ? 'settings.mcp.hide' : 'settings.mcp.show') }}
+          </button>
+          <button
+            v-if="mcpInfo"
+            type="button"
+            class="about-btn"
+            @click="copyMcp(mcpInfo.token)"
+          >
+            {{ t('settings.mcp.copy') }}
+          </button>
+          <button
+            v-if="mcpInfo"
+            type="button"
+            class="about-btn"
+            :disabled="mcpBusy"
+            @click="applyMcpRestart(true)"
+          >
+            {{ t('settings.mcp.resetToken') }}
+          </button>
+          <button
+            v-if="mcpInfo && !tokenEditing"
+            type="button"
+            class="about-btn"
+            :disabled="mcpBusy"
+            @click="startTokenEdit"
+          >
+            {{ t('settings.mcp.editToken') }}
+          </button>
+        </div>
+
+        <div
+          v-if="tokenEditing"
+          class="mcp-row"
+        >
+          <span class="about-label">{{ t('settings.mcp.token') }}</span>
+          <input
+            v-model="tokenInput"
+            type="text"
+            class="mcp-token-input"
+            spellcheck="false"
+            :placeholder="t('settings.mcp.tokenPlaceholder')"
+            :disabled="mcpBusy"
+          >
+          <button
+            type="button"
+            class="about-btn"
+            :disabled="mcpBusy"
+            @click="applyTokenEdit"
+          >
+            {{ t('settings.mcp.saveToken') }}
+          </button>
+          <button
+            type="button"
+            class="about-btn"
+            :disabled="mcpBusy"
+            @click="tokenEditing = false"
+          >
+            {{ t('settings.mcp.cancelEdit') }}
+          </button>
+        </div>
+
+        <div
+          v-if="mcpInfo"
+          class="mcp-row"
+        >
+          <span class="about-label">{{ t('settings.mcp.endpoint') }}</span>
+          <code class="mcp-value">{{ mcpInfo.endpoint }}</code>
+          <button
+            type="button"
+            class="about-btn"
+            @click="copyMcp(mcpInfo.endpoint)"
+          >
+            {{ t('settings.mcp.copy') }}
+          </button>
+        </div>
+
+        <div
+          v-if="mcpInfo"
+          class="mcp-row"
+        >
+          <span class="about-label">{{ t('settings.mcp.command') }}</span>
+          <code class="mcp-value mcp-cmd">{{ claudeCommand }}</code>
+          <button
+            type="button"
+            class="about-btn"
+            @click="copyMcp(claudeCommand)"
+          >
+            {{ t('settings.mcp.copy') }}
+          </button>
+        </div>
+
+        <p
+          v-if="mcpInfo"
+          class="hint"
+        >
+          {{ t('settings.mcp.hint') }}
+        </p>
+      </section>
+
       <section v-show="mainTab === 'plugins'">
         <h2>{{ t('settings.section.plugins') }}</h2>
         <p class="hint">
@@ -175,7 +334,7 @@ import { useRouter } from 'vue-router'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
-import type { ExternalPluginManifest } from '@shared/ipc'
+import type { ExternalPluginManifest, McpServerInfo } from '@shared/ipc'
 import type { AppUpdateEvent } from '@shared/update'
 import { setAppLocale } from '../i18n'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -193,12 +352,84 @@ const saving = ref(false)
 const message = ref('')
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
-const mainTab = ref<'general' | 'models' | 'objectStorage' | 'plugins'>('general')
+const mainTab = ref<'general' | 'models' | 'objectStorage' | 'mcp' | 'plugins'>('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
 const updateReady = ref(false)
+const mcpInfo = ref<McpServerInfo | null>(null)
+const tokenVisible = ref(false)
+const tokenEditing = ref(false)
+const tokenInput = ref('')
+const portInput = ref<number | null>(null)
+const mcpBusy = ref(false)
 let stopUpdateListen: (() => void) | null = null
+
+/** Claude Code HTTP 直连注册命令（一键复制） */
+const claudeCommand = computed(() => {
+  if (!mcpInfo.value) return ''
+  return `claude mcp add --transport http aiartengine ${mcpInfo.value.endpoint} --header "Authorization: Bearer ${mcpInfo.value.token}"`
+})
+
+async function copyMcp(text: string): Promise<void> {
+  await window.studio.writeClipboardText(text)
+  message.value = t('settings.mcp.copied')
+  isError.value = false
+}
+
+/** 应用端口修改（resetToken=true 时同时重置 token）并重启/启动 MCP 服务 */
+async function applyMcpRestart(resetToken: boolean): Promise<void> {
+  if (mcpBusy.value) return
+  mcpBusy.value = true
+  message.value = t('settings.mcp.restarting')
+  isError.value = false
+  try {
+    const next = await window.studio.restartMcpServer({
+      ...(portInput.value ? { port: portInput.value } : {}),
+      resetToken
+    })
+    mcpInfo.value = next
+    portInput.value = next?.port ?? null
+    message.value = resetToken ? t('settings.mcp.tokenReset') : t('settings.mcp.restarted')
+    isError.value = false
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    mcpBusy.value = false
+  }
+}
+
+function startTokenEdit(): void {
+  tokenInput.value = mcpInfo.value?.token ?? ''
+  tokenEditing.value = true
+}
+
+/** 保存自定义 token：校验后经 MCP_RESTART 应用（服务热重启，旧 token 立即失效） */
+async function applyTokenEdit(): Promise<void> {
+  if (mcpBusy.value) return
+  const token = tokenInput.value.trim()
+  if (!/^\S{8,128}$/.test(token)) {
+    message.value = t('settings.mcp.tokenInvalid')
+    isError.value = true
+    return
+  }
+  mcpBusy.value = true
+  message.value = t('settings.mcp.restarting')
+  isError.value = false
+  try {
+    const next = await window.studio.restartMcpServer({ token })
+    mcpInfo.value = next
+    portInput.value = next?.port ?? null
+    tokenEditing.value = false
+    message.value = t('settings.mcp.tokenSaved')
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    mcpBusy.value = false
+  }
+}
 
 const updateStatusDefault = computed(() => t('settings.about.idle'))
 
@@ -408,14 +639,17 @@ watch(
 onMounted(async () => {
   updateStatus.value = updateStatusDefault.value
   stopUpdateListen = window.studio.onUpdateEvent(applyUpdateEvent)
-  const [s, installedPlugins, version] = await Promise.all([
+  const [s, installedPlugins, version, mcp] = await Promise.all([
     window.studio.getSettings(),
     window.studio.listPlugins(),
-    window.studio.getAppVersion()
+    window.studio.getAppVersion(),
+    window.studio.getMcpInfo()
   ])
   appVersion.value = version
   applyToForm(cloneSettings(s))
   plugins.value = installedPlugins
+  mcpInfo.value = mcp
+  portInput.value = mcp?.port ?? null
   await nextTick()
   suppressPersist.value = false
 })
@@ -628,5 +862,45 @@ label {
 
 .about-status {
   margin: 0;
+}
+
+.mcp-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mcp-running {
+  color: var(--success);
+}
+
+  .mcp-token-input {
+    flex: 1 1 240px;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  .mcp-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.mcp-cmd {
+  max-width: 520px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

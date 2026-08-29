@@ -177,8 +177,7 @@
           <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine app (127.0.0.1 tool service)</code></pre>
           <ul>
             <li>On startup the app serves a token-protected tool service on <code>127.0.0.1</code> and writes
-              connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below); the file
-              is removed on quit. <strong>The token is reused across restarts</strong> — configure clients once.</li>
+              connection info to <code>%APPDATA%/aiartengine/mcp.json</code> (macOS / Linux paths below). The file persists across restarts and <strong>the token stays stable</strong> — configure clients once; you can also edit the token in the app under Settings → MCP.</li>
             <li>The bridge <code>scripts/mcp-bridge.mjs</code> is dependency-free: the agent client spawns it, and it
               translates the protocol and forwards calls.</li>
             <li>Communication stays on the loopback interface; everything except the health check requires the token.</li>

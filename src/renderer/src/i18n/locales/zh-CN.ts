@@ -187,6 +187,7 @@ export default {
       general: '通用',
       models: '模型',
       objectStorage: '对象存储',
+      mcp: 'MCP',
       plugins: '扩展'
     },
     theme: '主题',
@@ -212,6 +213,34 @@ export default {
       error: '更新失败：{message}',
       disabled: '开发模式不检查更新',
       idle: '可检查 GitHub Releases 上的新版本'
+    },
+    mcp: {
+      title: 'MCP 接入',
+      status: '状态',
+      running: '运行中 · 端口 {port}',
+      notRunning: 'MCP 工具服务未启动，可填写端口后启动',
+      endpoint: '接入地址',
+      token: 'Token',
+      port: '监听端口',
+      portHint: '端口修改后点右侧按钮重启生效；若进程启动时设置了 AIAE_MCP_PORT 环境变量，以环境变量为准。',
+      start: '启动 MCP 服务',
+      restart: '重启 MCP 服务',
+      restarting: '重启中…',
+      restarted: 'MCP 服务已重启',
+      resetToken: '重置 Token',
+      tokenReset: 'Token 已重置，旧 Token 立即失效，请更新已接入的客户端配置',
+      editToken: '编辑',
+      tokenPlaceholder: '输入新 Token（8–128 位，不含空格）',
+      saveToken: '保存 Token',
+      cancelEdit: '取消',
+      tokenInvalid: 'Token 需为 8–128 位且不含空格',
+      tokenSaved: 'Token 已更新，请同步更新已接入客户端的配置',
+      show: '显示',
+      hide: '隐藏',
+      copy: '复制',
+      copied: '已复制到剪贴板',
+      command: 'Claude Code 接入命令',
+      hint: 'Token 跨重启复用（可在上方重置）。Token 相当于本机 MCP 服务的全部权限，请勿泄露。'
     },
     models: {
       addProvider: '添加模型提供商',
@@ -1745,6 +1774,19 @@ export default {
         error: '失败',
         degraded: '降级',
         skipped: '跳过'
+      },
+      mcpSection: 'MCP 生成',
+      mcpDefaultModel: '默认模型',
+      mcpStatus: {
+        running: '生成中',
+        done: '已完成',
+        error: '失败'
+      },
+      mcpKind: {
+        generate_image: '图片',
+        generate_video: '视频',
+        generate_speech: '语音',
+        generate_model3d: '3D 模型'
       }
     },
     logs: {
@@ -1775,7 +1817,8 @@ export default {
         workflow: '整图',
         toNode: '至节点',
         nodeOnly: '单节点',
-        task: '任务'
+        task: '任务',
+        mcp: 'MCP'
       },
       kind: {
         run_start: '开始',

@@ -174,7 +174,7 @@
           </p>
           <pre class="mcp-code"><code>Claude Code / Codex ──stdio(MCP)──▶ mcp-bridge.mjs ──HTTP──▶ AiArtEngine 应用（127.0.0.1 工具服务）</code></pre>
           <ul>
-            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文），退出时自动删除；<strong>token 持久复用</strong>，客户端配置一次即可。</li>
+            <li>应用每次启动会在 <code>127.0.0.1</code> 起一个带 Bearer token 的本地工具服务，连接信息写入 <code>%APPDATA%/aiartengine/mcp.json</code>（macOS / Linux 路径见下文）。文件跨重启保留，<strong>token 稳定不变</strong>，客户端配置一次即可；也可在应用「设置 → MCP 接入」中编辑 Token。</li>
             <li>桥脚本 <code>scripts/mcp-bridge.mjs</code> 零依赖，由 Agent 客户端拉起，负责协议转换与转发。</li>
             <li>通信仅限本机回环地址；除健康检查外全部需要 token。</li>
           </ul>

@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, appendFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, appendFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
@@ -15,6 +15,7 @@ import {
   type CommitAiWorkflowInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
+  type McpRestartInput,
   type McpServerInfo,
   type McpTaskReportPayload,
   type PlanAiWorkflowInput,
@@ -26,6 +27,7 @@ import type {
   GenerateVideoInput
 } from '@shared/modelProvider'
 import { modelProviderFacade } from './modelProviders'
+import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import { projectService } from './projectService'
@@ -82,6 +84,37 @@ function readString(args: Record<string, unknown>, key: string): string {
 function optionalString(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key]
   return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+/**
+ * 执行旁路生成并登记为界面可见的「MCP 生成」活动：
+ * 开始即广播 running，成功 / 失败广播终态（任务列表与执行日志同步展示）。
+ */
+async function runGenActivity<T>(
+  tool: import('@shared/ipc').McpActivityTool,
+  title: string,
+  model: string | undefined,
+  fn: () => Promise<T>,
+  describe: (result: T) => { assetId?: string; relativePath?: string }
+): Promise<T> {
+  const activityId = mcpActivityService.begin({ tool, title, model })
+  try {
+    const result = await fn()
+    mcpActivityService.end(activityId, { ok: true, ...describe(result) })
+    return result
+  } catch (err) {
+    mcpActivityService.end(activityId, {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    })
+    throw err
+  }
+}
+
+/** 活动展示标题：优先 name，否则截断 prompt 摘要 */
+function activityTitle(name: string | undefined, prompt: string): string {
+  const text = name?.trim() || prompt.trim()
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text
 }
 
 const TOOL_DEFS: McpToolDef[] = [
@@ -510,14 +543,22 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const result = await modelProviderFacade.generateSpeechAsset({
-        input: readString(args, 'input'),
+      const inputText = readString(args, 'input')
+      const input = {
+        input: inputText,
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         voice: optionalString(args, 'voice'),
         speed: typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
         name: optionalString(args, 'name')
-      })
+      }
+      const result = await runGenActivity(
+        'generate_speech',
+        activityTitle(input.name, inputText),
+        input.model,
+        () => modelProviderFacade.generateSpeechAsset(input),
+        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+      )
       broadcastAsset(result.assetId)
       return {
         assetId: result.assetId,
@@ -588,7 +629,13 @@ const TOOL_DEFS: McpToolDef[] = [
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
           : undefined
       }
-      const result = await modelProviderFacade.generateImageAsset(input)
+      const result = await runGenActivity(
+        'generate_image',
+        activityTitle(input.name, input.prompt),
+        input.model,
+        () => modelProviderFacade.generateImageAsset(input),
+        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+      )
       broadcastAsset(result.assetId)
       return result
     }
@@ -624,7 +671,13 @@ const TOOL_DEFS: McpToolDef[] = [
         generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
         firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl')
       }
-      const result = await modelProviderFacade.generateVideo(input)
+      const result = await runGenActivity(
+        'generate_video',
+        activityTitle(input.name, input.prompt),
+        input.model,
+        () => modelProviderFacade.generateVideo(input),
+        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+      )
       broadcastAsset(result.assetId)
       return result
     }
@@ -665,7 +718,13 @@ const TOOL_DEFS: McpToolDef[] = [
           ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
           : undefined
       }
-      const result = await modelProviderFacade.generateModel3d(input)
+      const result = await runGenActivity(
+        'generate_model3d',
+        activityTitle(input.name, input.prompt),
+        input.model,
+        () => modelProviderFacade.generateModel3d(input),
+        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+      )
       broadcastAsset(result.assetId)
       return result
     }
@@ -1003,6 +1062,65 @@ export async function startMcpServer(): Promise<void> {
   console.error(`[mcp] 候选端口均被占用（${candidates.join(', ')}），工具服务未启动`)
 }
 
+/** 关闭运行中的 MCP 服务（保留 mcp.json，供 restart 复用 token / 端口偏好） */
+async function closeMcpServer(): Promise<void> {
+  if (!server) return
+  const closing = server
+  server = null
+  ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
+  ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
+  // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
+  for (const timer of taskReportCleanups.values()) clearTimeout(timer)
+  taskReportCleanups.clear()
+  pendingMcpTaskReports.clear()
+  pendingMcpGraphEditResults.clear()
+  await new Promise<void>((resolve) => {
+    closing.close(() => resolve())
+  })
+}
+
+/** 设置界面：应用端口 / 重置 token 修改并重启工具服务（token 默认持久复用） */
+export async function restartMcpServer(input: McpRestartInput): Promise<McpServerInfo | null> {
+  const { port, resetToken } = input ?? {}
+  let nextPort: number | undefined
+  if (port !== undefined) {
+    nextPort = Math.trunc(Number(port))
+    if (!Number.isFinite(nextPort) || nextPort < 1 || nextPort > 65535) {
+      throw new Error('端口必须在 1–65535 之间')
+    }
+  }
+  // 自定义 token 优先（8–128 位、不含空白）；其次重置生成；否则保留当前 token，
+  // 保证已接入的客户端配置持续有效
+  const customToken = typeof input?.token === 'string' ? input.token.trim() : ''
+  if (customToken && !/^\S{8,128}$/.test(customToken)) {
+    throw new Error('token 需为 8–128 位且不含空白的字符串')
+  }
+  const nextToken = customToken
+    ? customToken
+    : resetToken
+      ? randomUUID()
+      : mcpToken || readStoredMcpConfig().token || randomUUID()
+  // 先落盘再启动：startMcpServer 会从 mcp.json 读取 token 与端口偏好
+  const configPath = mcpConfigFile()
+  mkdirSync(app.getPath('userData'), { recursive: true })
+  writeFileSync(
+    configPath,
+    JSON.stringify(
+      {
+        ...(nextPort !== undefined ? { port: nextPort } : {}),
+        token: nextToken,
+        pid: process.pid,
+        version: updateService.getCurrentVersion()
+      },
+      null,
+      2
+    )
+  )
+  await closeMcpServer()
+  await startMcpServer()
+  return getMcpServerInfo()
+}
+
 export function stopMcpServer(): void {
   if (!server) return
   const closing = server
@@ -1014,17 +1132,14 @@ export function stopMcpServer(): void {
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpGraphEditResults.clear()
-  if (mcpConfigPath) {
-    try {
-      rmSync(mcpConfigPath, { force: true })
-    } catch {
-      /* 配置文件清理失败可忽略 */
-    }
-    mcpConfigPath = ''
+  // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效；
+  // pid 字段可能过期，桥只读取 port + token，不受影响
+  mcpConfigPath = ''
+  if (closing) {
+    closing.close(() => {
+      /* 端口释放即可，无需回调逻辑 */
+    })
   }
-  closing.close(() => {
-    /* 端口释放即可，无需回调逻辑 */
-  })
 }
 
 async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {

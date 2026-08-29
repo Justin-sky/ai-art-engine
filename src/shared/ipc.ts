@@ -148,7 +148,17 @@ export const IpcChannels = {
   /** MCP：主进程派发图编辑操作批（main → 渲染层） */
   MCP_GRAPH_EDIT: 'mcp:graph-edit',
   /** MCP：渲染层回报图编辑结果（渲染层 → 主进程） */
-  MCP_GRAPH_EDIT_RESULT: 'mcp:graph-edit-result'
+  MCP_GRAPH_EDIT_RESULT: 'mcp:graph-edit-result',
+  /** MCP：渲染层查询工具服务状态（端口 / token / 接入命令，设置界面展示） */
+  MCP_GET_INFO: 'mcp:get-info',
+  /** MCP：设置界面应用端口 / 重置 token 修改并重启工具服务 */
+  MCP_RESTART: 'mcp:restart',
+  /** MCP：主进程推送旁路生成活动（生成中 / 完成 / 失败，任务列表与执行日志可见） */
+  MCP_ACTIVITY_UPDATED: 'mcp:activity-updated',
+  /** MCP：主进程清空旁路生成活动（工程关闭时） */
+  MCP_ACTIVITY_CLEARED: 'mcp:activity-cleared',
+  /** MCP：渲染层查询当前旁路生成活动列表 */
+  MCP_ACTIVITY_LIST: 'mcp:activity-list'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -324,6 +334,29 @@ export interface McpTaskReportPayload {
   error?: string
 }
 
+/** MCP：旁路生成活动类型（generate_* 等不进入工作流任务系统的直接生成） */
+export type McpActivityTool =
+  | 'generate_image'
+  | 'generate_video'
+  | 'generate_speech'
+  | 'generate_model3d'
+
+export type McpActivityStatus = 'running' | 'done' | 'error'
+
+/** MCP：一次旁路生成活动的界面可见记录（主进程维护，事件推送给渲染层） */
+export interface McpActivity {
+  id: string
+  tool: McpActivityTool
+  title: string
+  model?: string
+  status: McpActivityStatus
+  startedAt: number
+  finishedAt?: number
+  assetId?: string
+  relativePath?: string
+  error?: string
+}
+
 /** MCP：单条图编辑操作（见 shared/graph/mcpGraphEdit） */
 export type McpGraphEditOp =
   | {
@@ -365,6 +398,29 @@ export interface McpGraphEditResultPayload {
   applied?: string[]
   warnings?: string[]
   error?: string
+}
+
+/** MCP：工具服务当前状态（设置界面展示接入信息用） */
+export interface McpServerInfo {
+  running: boolean
+  /** 实际监听端口（应用在 43110–43119 中扫描） */
+  port: number
+  /** Bearer token；跨重启持久复用 */
+  token: string
+  /** 应用侧连接信息文件绝对路径（mcp.json，勿手改） */
+  configPath: string
+  /** 工具服务 HTTP 端点，如 http://127.0.0.1:43110/mcp */
+  endpoint: string
+}
+
+/** MCP：设置界面提交的配置修改（重启时应用） */
+export interface McpRestartInput {
+  /** 期望端口；写入 mcp.json 作为下次启动偏好，重启后生效（被占用时自动顺延） */
+  port?: number
+  /** true 时生成新 token 并写回 mcp.json，旧 token 立即作废 */
+  resetToken?: boolean
+  /** 自定义 token（8–128 位、不含空白）；提供时优先于 resetToken */
+  token?: string
 }
 
 export interface AttachAssetRelativeInput {
@@ -639,6 +695,21 @@ export interface StudioApi {
 
   /** MCP：渲染层回报图编辑结果 */
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) => Promise<boolean>
+
+  /** MCP：查询工具服务状态（端口 / token / 接入命令；未启动时返回 null） */
+  getMcpInfo: () => Promise<McpServerInfo | null>
+
+  /** MCP：应用端口 / 重置 token 修改并重启工具服务，返回重启后的状态 */
+  restartMcpServer: (input: McpRestartInput) => Promise<McpServerInfo | null>
+
+  /** MCP：订阅旁路生成活动更新（生成中 / 完成 / 失败） */
+  onMcpActivityUpdated: (callback: (activity: McpActivity) => void) => () => void
+
+  /** MCP：订阅旁路生成活动清空（工程关闭时） */
+  onMcpActivityCleared: (callback: () => void) => () => void
+
+  /** MCP：查询当前旁路生成活动列表 */
+  listMcpActivities: () => Promise<McpActivity[]>
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string

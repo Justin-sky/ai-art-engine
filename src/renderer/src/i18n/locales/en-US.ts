@@ -188,6 +188,7 @@ export default {
       general: 'General',
       models: 'Models',
       objectStorage: 'Object storage',
+      mcp: 'MCP',
       plugins: 'Extensions'
     },
     theme: 'Theme',
@@ -213,6 +214,34 @@ export default {
       error: 'Update failed: {message}',
       disabled: 'Updates are disabled in development',
       idle: 'Check GitHub Releases for a newer build'
+    },
+    mcp: {
+      title: 'MCP access',
+      status: 'Status',
+      running: 'Running · port {port}',
+      notRunning: 'MCP tool service is not running. Set a port and start it.',
+      endpoint: 'Endpoint',
+      token: 'Token',
+      port: 'Listen port',
+      portHint: 'Port changes take effect after restart. If AIAE_MCP_PORT was set at launch, it takes precedence.',
+      start: 'Start MCP service',
+      restart: 'Restart MCP service',
+      restarting: 'Restarting…',
+      restarted: 'MCP service restarted',
+      resetToken: 'Reset token',
+      tokenReset: 'Token reset — the old token is invalid immediately. Update your connected clients.',
+      editToken: 'Edit',
+      tokenPlaceholder: 'Enter a new token (8–128 chars, no spaces)',
+      saveToken: 'Save token',
+      cancelEdit: 'Cancel',
+      tokenInvalid: 'Token must be 8–128 characters with no spaces',
+      tokenSaved: 'Token updated — update the token in connected clients',
+      show: 'Show',
+      hide: 'Hide',
+      copy: 'Copy',
+      copied: 'Copied to clipboard',
+      command: 'Claude Code command',
+      hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.'
     },
     models: {
       addProvider: 'Add model provider',
@@ -1759,6 +1788,19 @@ export default {
         error: 'Error',
         degraded: 'Degraded',
         skipped: 'Skipped'
+      },
+      mcpSection: 'MCP generation',
+      mcpDefaultModel: 'Default model',
+      mcpStatus: {
+        running: 'Generating',
+        done: 'Done',
+        error: 'Failed'
+      },
+      mcpKind: {
+        generate_image: 'Image',
+        generate_video: 'Video',
+        generate_speech: 'Voice',
+        generate_model3d: '3D model'
       }
     },
     logs: {
@@ -1789,7 +1831,8 @@ export default {
         workflow: 'Full',
         toNode: 'To node',
         nodeOnly: 'Node only',
-        task: 'Task'
+        task: 'Task',
+        mcp: 'MCP'
       },
       kind: {
         run_start: 'Start',
