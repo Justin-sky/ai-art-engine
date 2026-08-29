@@ -58,6 +58,11 @@ const E_BAD_IMAGE_DATA_URL = defErrSimple(
   '无法解析图片 data URL',
   'Failed to parse image data URL'
 )
+const E_NO_SPEECH_FILE = defErrSimple(
+  'provider.facade.speech-file-missing',
+  '语音生成未返回音频文件',
+  'Speech generation returned no audio file'
+)
 
 /**
  * 模型生成门面：选型 → 派发到对应 ModelProviderAdapter → 编排落盘/对象存储。
@@ -421,6 +426,20 @@ class ModelProviderFacade {
       input.model
     )
     return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, input)
+  }
+
+  /** 语音生成 → 工程声音资产（与 generateImageAsset 同一落盘模式） */
+  async generateSpeechAsset(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+    const result = await this.generateSpeech(input)
+    if (!result.filePath) throw fail(E_NO_SPEECH_FILE)
+    const asset = projectService.attachExternalGeneratedFile({
+      type: 'voice',
+      sourceFilePath: result.filePath,
+      name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,
+      prompt: input.input
+    })
+    return { ...result, assetId: asset.id, relativePath: asset.relativePath }
   }
 }
 

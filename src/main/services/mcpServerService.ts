@@ -447,26 +447,18 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const speechName = optionalString(args, 'name')
-      const result = await modelProviderFacade.generateSpeech({
+      const result = await modelProviderFacade.generateSpeechAsset({
         input: readString(args, 'input'),
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
         voice: optionalString(args, 'voice'),
         speed: typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
-        name: speechName
+        name: optionalString(args, 'name')
       })
-      if (!result.filePath) throw new Error('语音生成未返回音频文件')
-      const { imported, skipped } = projectService.importAssets([result.filePath], null)
-      const asset = imported[0]
-      if (!asset) {
-        throw new Error(`音频导入失败：${skipped[0]?.reason ?? '未知原因'}`)
-      }
-      const finalAsset = speechName ? projectService.renameAsset(asset.id, speechName) : asset
-      broadcastAsset(finalAsset.id)
+      broadcastAsset(result.assetId)
       return {
-        assetId: finalAsset.id,
-        relativePath: finalAsset.relativePath,
+        assetId: result.assetId,
+        relativePath: result.relativePath,
         model: result.model,
         voice: result.voice
       }
