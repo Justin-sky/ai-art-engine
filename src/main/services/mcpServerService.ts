@@ -11,6 +11,12 @@ import {
   type PlanAiWorkflowInput,
   type WriteAssetTextInput
 } from '@shared/ipc'
+import type {
+  GenerateImageInput,
+  GenerateModel3dInput,
+  GenerateVideoInput
+} from '@shared/modelProvider'
+import { modelProviderFacade } from './modelProviders'
 import { broadcastToAllWindows } from '../broadcast'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import { projectService } from './projectService'
@@ -289,6 +295,146 @@ const TOOL_DEFS: McpToolDef[] = [
       if (!job) throw new Error('任务不存在')
       return job
     }
+  },
+  {
+    name: 'models_list',
+    title: '可用模型列表',
+    description:
+      '列出应用设置中已启用的模型提供商与各模态（text/image/video/audio/model3d）勾选的模型。generate_* 工具的 model / providerInstanceId 参数从这里取。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: () => ({
+      providers: settingsService
+        .get()
+        .models.providers.filter((provider) => provider.enabled)
+        .map((provider) => ({
+          providerInstanceId: provider.id,
+          label: provider.label,
+          providerKind: provider.providerKind,
+          modalities: Object.fromEntries(
+            (['text', 'image', 'video', 'audio', 'model3d'] as const).map((modality) => [
+              modality,
+              {
+                selected: provider.modalities[modality]?.selectedModelIds ?? [],
+                default: provider.modalities[modality]?.defaultModelId ?? ''
+              }
+            ])
+          )
+        }))
+    })
+  },
+  {
+    name: 'generate_image',
+    title: '生成图片',
+    description:
+      '用图片模型生成图片并落盘为工程资产（不进入节点图）。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回资产 id 与文件相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '画面描述' },
+        name: { type: 'string', description: '资产显示名' },
+        model: { type: 'string', description: '图片模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id（models_list 查询）' },
+        aspectRatio: { type: 'string', description: '如 1:1 / 16:9' },
+        n: { type: 'integer', description: '生成张数' },
+        referenceImageUrls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '参考图 http(s) 地址（图生图）'
+        }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      const input: GenerateImageInput & { name?: string } = {
+        prompt: readString(args, 'prompt'),
+        name: optionalString(args, 'name'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        aspectRatio: optionalString(args, 'aspectRatio'),
+        n: typeof args.n === 'number' && Number.isFinite(args.n) ? args.n : undefined,
+        inputReferences: Array.isArray(args.referenceImageUrls)
+          ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
+          : undefined
+      }
+      const result = await modelProviderFacade.generateImageAsset(input)
+      broadcastAsset(result.assetId)
+      return result
+    }
+  },
+  {
+    name: 'generate_video',
+    title: '生成视频',
+    description:
+      '提交视频生成任务并登记为工程资产（供应商异步任务由应用后台轮询；可用 video_job_list / video_job_get 跟踪进度）。返回资产 id 与相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '画面与运镜描述' },
+        name: { type: 'string', description: '资产显示名' },
+        model: { type: 'string', description: '视频模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        duration: { type: 'integer', description: '时长（秒）' },
+        aspectRatio: { type: 'string', description: '如 9:16 / 16:9' },
+        generateAudio: { type: 'boolean', description: '是否同步生成音频（部分模型）' },
+        firstFrameImageUrl: { type: 'string', description: '首帧图 http(s) 地址' }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      const input: GenerateVideoInput & { name?: string } = {
+        prompt: readString(args, 'prompt'),
+        name: optionalString(args, 'name'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        duration: typeof args.duration === 'number' && Number.isFinite(args.duration) ? args.duration : undefined,
+        aspectRatio: optionalString(args, 'aspectRatio'),
+        generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
+        firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl')
+      }
+      const result = await modelProviderFacade.generateVideo(input)
+      broadcastAsset(result.assetId)
+      return result
+    }
+  },
+  {
+    name: 'generate_model3d',
+    title: '生成 3D 模型',
+    description:
+      '文生 3D / 图生 3D（Meshy / Tripo / Rodin / Luma / Lux3D），产出 GLB 模型资产（供应商异步轮询）。返回资产 id 与相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '外观描述' },
+        name: { type: 'string', description: '资产显示名' },
+        model: { type: 'string', description: '3D 模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        style: {
+          type: 'string',
+          description: '风格：photorealistic / cartoon / anime / hand_painted / cyberpunk / fantasy / glass'
+        },
+        referenceImageUrls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '参考图 http(s) 地址（图生 3D / 多图生 3D）'
+        }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      const input: GenerateModel3dInput & { name?: string } = {
+        prompt: readString(args, 'prompt'),
+        name: optionalString(args, 'name'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        style: optionalString(args, 'style'),
+        inputReferences: Array.isArray(args.referenceImageUrls)
+          ? args.referenceImageUrls.filter((item): item is string => typeof item === 'string')
+          : undefined
+      }
+      const result = await modelProviderFacade.generateModel3d(input)
+      broadcastAsset(result.assetId)
+      return result
+    }
   }
 ]
 
@@ -296,6 +442,13 @@ function assertProjectOpen(): void {
   if (!projectService.isOpen()) {
     throw new Error('请先在应用中打开工程（或调用 project_open）')
   }
+}
+
+/** 生成落盘后同步刷新应用界面中的资产卡片 */
+function broadcastAsset(assetId: string | undefined): void {
+  if (!assetId) return
+  const asset = projectService.listAssets().find((item) => item.id === assetId)
+  if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
 }
 
 let server: Server | null = null
