@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
     <meta
       name="description"
       content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
@@ -22,6 +38,11 @@
   <body>
     <a class="skip" href="#manual">跳到手册正文</a>
     <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
 
     <header class="top">
       <a class="brand" href="index.html">
@@ -49,6 +70,7 @@
         >
       </nav>
       <a class="nav-lang" href="manual.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
       <details class="mobile-menu">
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
@@ -119,6 +141,21 @@
             >。
           </p>
         </header>
+
+        <div class="entry-cards" aria-label="新手路径">
+          <a class="entry-card" href="#workflow">
+            <strong>第一次用？</strong>
+            <span>从安装配置到出片的推荐端到端流程</span>
+          </a>
+          <a class="entry-card" href="guide-short-video.html">
+            <strong>短剧成片全流程</strong>
+            <span>剧集流水线专题：分镜、拼图、审核与视频</span>
+          </a>
+          <a class="entry-card" href="#shortcuts">
+            <strong>快捷键速查</strong>
+            <span>节点图、导演台与成片时间线高频操作</span>
+          </a>
+        </div>
 
         <section id="intro">
           <h2>1. 概述与准备</h2>
@@ -1549,6 +1586,114 @@
         window.addEventListener('scroll', spy, { passive: true })
         window.addEventListener('resize', spy)
         spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 章节标题点击复制链接
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = '点击复制本节链接'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('已复制本节链接'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+          showToast(THEME_META[next].label)
+        })
+        applyTheme()
       }
     </script>
   </body>

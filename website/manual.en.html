@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' || pref == null || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
     <meta
       name="description"
       content="AIArtEngine manual: projects, settings, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
@@ -24,6 +39,11 @@
   <body>
     <a class="skip" href="#manual">Skip to content</a>
     <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
 
     <header class="top">
       <a class="brand" href="index.en.html">
@@ -51,6 +71,7 @@
         >
       </nav>
       <a class="nav-lang" href="manual.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
       <details class="mobile-menu">
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
@@ -123,6 +144,21 @@
             >.
           </p>
         </header>
+
+        <div class="entry-cards" aria-label="Quick paths">
+          <a class="entry-card" href="#workflow">
+            <strong>First time here?</strong>
+            <span>The recommended end-to-end flow from setup to export</span>
+          </a>
+          <a class="entry-card" href="guide-short-video.html">
+            <strong>Short drama pipeline</strong>
+            <span>Episode pipeline: storyboards, grids, review and video</span>
+          </a>
+          <a class="entry-card" href="#shortcuts">
+            <strong>Keyboard shortcuts</strong>
+            <span>Graph, director stage and timeline at a glance</span>
+          </a>
+        </div>
 
         <section id="intro">
           <h2>1. Overview &amp; preparation</h2>
@@ -1862,6 +1898,113 @@
         window.addEventListener('resize', spy)
         spy()
       }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // Copy section link on heading click
+      const toast = document.createElement('div')
+      toast.className = 'toast'
+      toast.setAttribute('role', 'status')
+      document.body.appendChild(toast)
+      let toastTimer = 0
+      const showToast = (message) => {
+        toast.textContent = message
+        toast.classList.add('show')
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1600)
+      }
+      document
+        .querySelectorAll('.manual section[id] > h2, .manual h3[id], .manual h4[id]')
+        .forEach((heading) => {
+          const id = heading.id || heading.parentElement?.id
+          if (!id) return
+          heading.title = 'Click to copy a link to this section'
+          heading.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return
+            const url = location.origin + location.pathname + '#' + id
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(url).then(
+                () => showToast('Section link copied'),
+                () => showToast(url)
+              )
+            } else {
+              showToast(url)
+            }
+          })
+        })
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
     </script>
   </body>
 </html>
