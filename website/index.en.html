@@ -35,6 +35,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
   </head>
   <body>
     <div class="scroll-progress" aria-hidden="true"><i></i></div>
@@ -51,6 +52,7 @@
         <a href="#workflow">Workflow</a>
         <a href="#download">Download</a>
         <a href="manual.en.html">Manual</a>
+        <a href="quickstart.en.html">Quickstart</a>
         <a href="guide-video.en.html">Video Guide</a>
         <a href="guide-short-video.en.html">Short Video</a>
         <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -85,6 +87,7 @@
           <a href="#workflow">Workflow</a>
           <a href="#download">Download</a>
           <a href="manual.en.html">Manual</a>
+          <a href="quickstart.en.html">Quickstart</a>
           <a href="guide-video.en.html">Video Guide</a>
           <a href="guide-short-video.en.html">Short Video</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -188,14 +191,8 @@
         <div class="hero-foot">
           <div class="cta reveal" style="--d: 0.14s">
             <a class="btn btn-solid" href="#download">Download now</a>
+            <a class="btn btn-line" href="quickstart.en.html">Quickstart</a>
             <a class="btn btn-line" href="manual.en.html">Manual</a>
-            <a
-              class="btn btn-line"
-              href="https://space.bilibili.com/3707036976024122"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Video tutorials</a
-            >
           </div>
           <p class="hero-meta reveal" style="--d: 0.18s">
             <span>Windows</span><i></i><span>macOS</span><i></i><span>Linux</span
@@ -213,6 +210,32 @@
             cloud. The short-drama Agent pipeline generates a complete node graph in one click, then handles
             9-grid, 4-grid, director review and motion video inside a single pipeline window.
           </p>
+
+          <div class="path-grid">
+            <a class="path-card" href="quickstart.en.html">
+              <span class="path-tag">Getting started</span>
+              <strong>Get your first clip in 5 minutes</strong>
+              <span class="path-desc"
+                >Install → connect a model → pick a template → get a finished cut, without wiring a single node
+                by hand.</span
+              >
+            </a>
+            <a class="path-card" href="guide-short-video.en.html">
+              <span class="path-tag">Short drama / Shorts</span>
+              <strong>Run the full short-drama pipeline</strong>
+              <span class="path-desc"
+                >Storyboard, grid layout, director review and motion video, with a detailed walkthrough of the four
+                review nodes.</span
+              >
+            </a>
+            <a class="path-card" href="manual.en.html">
+              <span class="path-tag">Advanced / Reference</span>
+              <strong>Complete manual</strong>
+              <span class="path-desc"
+                >Core concepts, every screen explained, keyboard shortcuts and troubleshooting.</span
+              >
+            </a>
+          </div>
         </div>
       </section>
 
@@ -264,7 +287,7 @@
                 Pick a preset (including the “short-drama storyboard” short-video template) or describe what you
                 need in one sentence, preview the topology and create a reusable host asset; drag it onto the
                 canvas to wire it up and run. See
-                <a href="manual.en.html#ai-workflow">Manual §6</a> and the
+                <a href="manual.en.html#ai-workflow">Manual §7</a> and the
                 <a href="guide-short-video.en.html">Short-Video Guide</a>.
               </p>
             </div>
@@ -441,6 +464,7 @@
         <p>GPL-3.0 · Professional creation · Local projects · Open Source</p>
         <div class="foot-links">
           <a href="manual.en.html">Manual</a>
+          <a href="quickstart.en.html">Quickstart</a>
           <a href="guide-video.en.html">Video Guide</a>
           <a href="guide-short-video.en.html">Short Video</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -452,6 +476,12 @@
           >
           <a href="#community">Community</a>
           <a href="mailto:284139554@qq.com">Email</a>
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Changelog</a
+          >
           <a
             href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
             target="_blank"
@@ -658,5 +688,7 @@
         apply()
       })()
     </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
   </body>
 </html>

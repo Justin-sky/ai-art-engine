@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine quickstart: from installing the app and connecting a model provider to generating your first finished cut with a one-click workflow — a complete pipeline in 5 minutes."
+    />
+    <title>Quickstart — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+    <link rel="stylesheet" href="site.css?v=20260829" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">Skip to content</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="Back to top" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.en.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.en.html">Home</a>
+        <a href="quickstart.en.html" aria-current="page">Quickstart</a>
+        <a href="manual.en.html">Manual</a>
+        <a href="guide-video.en.html">Video Guide</a>
+        <a href="guide-short-video.en.html">Short Video</a>
+        <a href="guide-comfyui.en.html">ComfyUI</a>
+        <a href="index.en.html#download">Download</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Video tutorials</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="quickstart.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
+        <nav class="mobile-nav" aria-label="Mobile navigation">
+          <a href="index.en.html">Home</a>
+          <a href="quickstart.en.html" aria-current="page">Quickstart</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li class="toc-group">Before you start</li>
+          <li><a href="#before">1. What you need</a></li>
+          <li class="toc-group">Your first cut in five minutes</li>
+          <li><a href="#step-install">2. Install and launch</a></li>
+          <li><a href="#step-model">3. Connect a model provider</a></li>
+          <li><a href="#step-project">4. Create a project</a></li>
+          <li><a href="#step-workflow">5. Generate a pipeline from a template</a></li>
+          <li><a href="#step-run">6. Run it and get your first cut</a></li>
+          <li class="toc-group">Going further</li>
+          <li><a href="#next">7. Where to go next</a></li>
+          <li><a href="#faq">8. Stuck? Start here</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.en.html">→ Read the full manual</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Tutorial · Quickstart</p>
+          <h1>Quickstart</h1>
+          <p class="lede">
+            From installation to your first finished cut, <strong>without building a single node by hand</strong>.
+            Work through this page and you'll be able to run a complete AI generation pipeline on your own — and
+            know where every other feature lives.
+          </p>
+        </header>
+
+        <section id="before">
+          <h2>1. What you need</h2>
+          <ol>
+            <li>
+              <strong>An API key for at least one model provider</strong>. The app ships with no built-in models:
+              text, image and video generation all run through your own provider account (OpenRouter, DeepSeek,
+              Zhipu, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, …). For your first run, prepare
+              <strong>one text model plus one image model</strong> and add video models later.
+            </li>
+            <li>
+              <strong>An empty directory on your machine</strong> to hold your projects. Every asset and every
+              result stays on your own disk.
+            </li>
+            <li>
+              <strong>About 15 minutes</strong>. Most of that goes into the first-time model setup; every run
+              after that takes about 2 minutes.
+            </li>
+          </ol>
+          <div class="tip">
+            You <strong>don't need a discrete GPU</strong> when using cloud APIs — only local models (such as
+            ComfyUI or Ollama) require one.
+          </div>
+        </section>
+
+        <section id="step-install">
+          <h2>2. Install and launch</h2>
+          <ol>
+            <li>
+              Grab the installer for your platform from the <a href="index.en.html#download">download page</a>
+              (Windows / macOS Intel / macOS Apple silicon / Linux).
+            </li>
+            <li>
+              Follow the on-screen steps to finish installing. If your OS security policy blocks the first
+              launch, just allow the app to run in system settings.
+            </li>
+            <li>
+              Launching takes you to the <strong>home page</strong>. There is no traditional menu bar: the
+              top-left logo returns home, and the gear in the top-right opens <strong>Settings</strong>.
+            </li>
+          </ol>
+          <div class="tip">
+            To close the settings panel, click the empty overlay area or “Back” inside the panel.
+          </div>
+        </section>
+
+        <section id="step-model">
+          <h2>3. Connect a model provider (the crucial step)</h2>
+          <p>
+            Get this right and you'll hit almost no errors afterwards. Open
+            <strong>Settings → Models</strong> from the top-right:
+          </p>
+          <ol>
+            <li>Click <strong>Add model provider</strong>, pick your provider, paste the API key and save.</li>
+            <li>
+              Click <strong>Fetch models</strong>, then <strong>tick</strong> the models you want to use.
+            </li>
+            <li>
+              Assign the <strong>default models</strong> one by one: the text model (storyboard planning and
+              prompt rewriting), the image model (images) and the video model (motion video). The three may come
+              from different providers.
+            </li>
+            <li>
+              Make sure the account <strong>balance is sufficient</strong> — an insufficient balance fails
+              generation outright, and it's the most common problem for newcomers.
+            </li>
+          </ol>
+
+          <h3>Optional: configure object storage</h3>
+          <p>
+            Under Settings → Object storage, enable <strong>one</strong> of Volcengine TOS / Alibaba Cloud OSS /
+            Tencent Cloud COS (only one can be enabled at a time). It's only required when you need
+            <strong>video URLs</strong> or <strong>reference videos</strong>; you can skip it entirely for
+            purely local image generation.
+          </p>
+          <div class="tip">
+            Not sure which provider to pick? Start with <strong>OpenRouter</strong> or
+            <strong>DeepSeek</strong> as your text model (cheap and reliable), add one image model, and you can
+            run everything below.
+          </div>
+        </section>
+
+        <section id="step-project">
+          <h2>4. Create a project</h2>
+          <ol>
+            <li>Back on the home page, click <strong>New Project</strong>.</li>
+            <li>
+              Fill in the <strong>project name</strong>, then click <strong>Browse</strong> to choose the
+              <strong>storage directory</strong> (pick an empty folder).
+            </li>
+            <li>Click <strong>Create</strong> to enter the workspace.</li>
+          </ol>
+          <p>
+            A <code>project.json</code> is written to the project root; you can reopen the project any time with
+            “Open Project”. Copy the whole folder to back it up or move it to another machine.
+          </p>
+        </section>
+
+        <section id="step-workflow">
+          <h2>5. Generate a pipeline from a template</h2>
+          <p>
+            This is the quickest path in the app: <strong>no node dragging, no wiring</strong> — pick a template
+            and the system lays out the whole generation chain for you.
+          </p>
+          <ol>
+            <li>Click <strong>One-Click Workflow</strong> in the top bar.</li>
+            <li>
+              Pick one of the <strong>preset templates</strong>. For your first run we suggest:
+              <ul>
+                <li>
+                  <strong>Short-drama storyboard</strong> — the complete script → shots → video pipeline, and the
+                  best showcase of what the app can do;
+                </li>
+                <li>
+                  <strong>Storyboard to film</strong> — use it when you just want a batch of storyboard images
+                  fast;
+                </li>
+                <li>
+                  <strong>Product ads / e-commerce livestream</strong> — for product images and ad variants.
+                </li>
+              </ul>
+            </li>
+            <li>
+              You can also describe your goal in plain language in <strong>Workflow description</strong> — for
+              example <em>“one product selling point → 3 storyboard images → 15-second vertical video”</em> —
+              and let the AI plan it.
+            </li>
+            <li>
+              Click <strong>Preview template</strong> to inspect the generated nodes and link topology; when you
+              are happy with it, click <strong>Create workflow</strong>.
+            </li>
+            <li>
+              Choose a save directory and name, and a new <strong>host asset</strong> appears in the asset
+              library — that is your finished pipeline.
+            </li>
+          </ol>
+          <figure class="shot">
+            <img
+              src="assets/banner/node-graph.webp"
+              alt="Node graph: generation chains built from node cards and links"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>
+              Node graph: a template lays out the full “input → generate → output” chain for you.
+            </figcaption>
+          </figure>
+          <div class="tip">
+            A <strong>host asset</strong> is a reusable component: the outer layer only exposes inputs /
+            outputs, and double-clicking it dives into the inner node graph for fine-tuning. Create once, then
+            reuse it across projects.
+          </div>
+        </section>
+
+        <section id="step-run">
+          <h2>6. Run it and get your first cut</h2>
+          <ol>
+            <li>Drag the host asset you just created from the <strong>asset library</strong> onto the canvas.</li>
+            <li>
+              Feed the inputs: paste a story into the <strong>script</strong> node, or write a one-line premise
+              in a “Text” node.
+            </li>
+            <li>
+              Select the host node or one of its output ports and click <strong>Add to tasks</strong> (or
+              right-click → “Run”); the whole chain executes in order.
+            </li>
+            <li>
+              Inspect each step's output in the <strong>Inspector</strong> on the right; gallery nodes let you
+              switch between history entries, and the one you select becomes the <code>out</code> output.
+            </li>
+            <li>
+              Once you have your video or images, open the <strong>final timeline</strong>, drag the media onto
+              tracks, then preview and export the cut.
+            </li>
+          </ol>
+          <figure class="video-frame">
+            <video
+              src="assets/demo/video-output.mp4"
+              poster="assets/demo/video-poster.jpg"
+              controls
+              preload="none"
+            ></video>
+            <figcaption>Example output: a finished clip generated by the node chain.</figcaption>
+          </figure>
+
+          <h3>A faster route for short dramas</h3>
+          <p>
+            If you picked the <strong>short-drama storyboard</strong> template, open the Agent flow window with
+            <strong>Episode Pipeline</strong> in the top bar and work through storyboards, tiling, director
+            review and video generation step by step inside it — <strong>no need to go back to the node graph and
+            operate node by node</strong>. See the
+            <a href="guide-short-video.en.html">Short-Video Guide</a> for details.
+          </p>
+        </section>
+
+        <section id="next">
+          <h2>7. Where to go next</h2>
+          <p>You've now run a complete chain. Pick your next step based on your goal:</p>
+          <div class="path-grid">
+            <a class="path-card" href="guide-short-video.en.html">
+              <span class="path-tag">Short drama / short video</span>
+              <strong>Run a whole short-drama pipeline</strong>
+              <span class="path-desc"
+                >Storyboards, tiling, director review and motion video, with all four review nodes
+                explained.</span
+              >
+            </a>
+            <a class="path-card" href="guide-video.en.html">
+              <span class="path-tag">Video generation</span>
+              <strong>Free canvas and reference video</strong>
+              <span class="path-desc"
+                >Read this when you want to build chains yourself, use reference video, or control first and last
+                frames.</span
+              >
+            </a>
+            <a class="path-card" href="manual.en.html">
+              <span class="path-tag">Full reference</span>
+              <strong>Manual</strong>
+              <span class="path-desc"
+                >Item-by-item coverage of every screen and component, plus core concepts, shortcuts and
+                troubleshooting.</span
+              >
+            </a>
+            <a class="path-card" href="guide-comfyui.en.html">
+              <span class="path-tag">Local deployment</span>
+              <strong>Connect ComfyUI</strong>
+              <span class="path-desc"
+                >Follow this page to configure the proxy and API-format workflows when you want to run
+                open-source models on your own GPU.</span
+              >
+            </a>
+          </div>
+        </section>
+
+        <section id="faq">
+          <h2>8. Stuck? Start here</h2>
+          <details class="trouble">
+            <summary>Runs fail immediately, or it says the balance is insufficient</summary>
+            <div class="trouble-body">
+              <p>
+                Nine times out of ten it's the provider account: check that the balance is sufficient, the key is
+                correct and the model is ticked and enabled. Running the same node with a different model tells
+                you quickly whether it's an account problem or an app problem.
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>Links won't connect — it says the types don't match</summary>
+            <div class="trouble-body">
+              <p>
+                Ports <strong>distinguish singular from plural strictly</strong>: <code>image</code> can't go
+                into <code>images</code>. When a list input is required, wire from the upstream
+                <strong>square port</strong> (<code>out-all</code>) — the round <code>out</code> port won't
+                connect.
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>Characters change faces; shots don't match each other</summary>
+            <div class="trouble-body">
+              <p>
+                Fix it with <strong>reference images</strong> rather than longer descriptions: use an
+                <strong>anchor image</strong> to lock the face and costume, or register the character as a
+                <strong>world element</strong> shared across scenes. See
+                <a href="manual.en.html#concepts">Core concepts</a>.
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>More questions</summary>
+            <div class="trouble-body">
+              <p>
+                The full list lives in the manual's
+                <a href="manual.en.html#troubleshooting">Troubleshooting</a> chapter (sorted by how often they
+                come up). If it's still unresolved, reach out in QQ group <strong>647306826</strong> or on
+                <a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"
+                  >GitHub Issues</a
+                >.
+              </p>
+            </div>
+          </details>
+        </section>
+
+        <nav class="doc-pager" aria-label="Documentation navigation">
+          <a href="manual.en.html#concepts">
+            <span class="pager-dir">Understand the concepts first</span>
+            <span class="pager-title">Core concepts → Manual</span>
+          </a>
+          <a href="guide-short-video.en.html">
+            <span class="pager-dir">Next</span>
+            <span class="pager-title">Short-Video Guide →</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.en.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="Footer">
+          <a href="index.en.html">Home</a>
+          <a href="manual.en.html">Manual</a>
+          <a href="quickstart.en.html">Quickstart</a>
+          <a href="guide-video.en.html">Video Guide</a>
+          <a href="guide-short-video.en.html">Short Video</a>
+          <a href="guide-comfyui.en.html">ComfyUI</a>
+          <a href="index.en.html#download">Download</a>
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Changelog</a
+          >
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Video tutorials</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // Reading progress bar
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // Table of contents scrollspy
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // Back to top
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // Screenshot lightbox
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+    </script>
+    <script>
+      // 主题切换：跟随系统 → 浅色 → 深色
+      ;(function () {
+        var KEY = 'site.theme'
+        var btn = document.querySelector('.theme-toggle')
+        if (!btn) return
+        var root = document.documentElement
+        var en = (root.getAttribute('lang') || '').indexOf('en') === 0
+        var query = window.matchMedia('(prefers-color-scheme: dark)')
+        var META = {
+          auto: { icon: '◐', label: en ? 'Theme: system' : '主题：跟随系统' },
+          light: { icon: '☀', label: en ? 'Theme: light' : '主题：浅色' },
+          dark: { icon: '☾', label: en ? 'Theme: dark' : '主题：深色' }
+        }
+        function readPref() {
+          try {
+            var v = localStorage.getItem(KEY)
+            return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark'
+          } catch (e) { return 'auto' }
+        }
+        function apply() {
+          var pref = readPref()
+          root.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && query.matches))
+          root.classList.toggle('light', pref === 'light')
+          var meta = META[pref]
+          btn.textContent = meta.icon
+          btn.title = meta.label + (en ? ' (click to switch)' : '（点击切换）')
+          btn.setAttribute('aria-label', meta.label)
+        }
+        query.addEventListener('change', apply)
+        btn.addEventListener('click', function () {
+          var cur = readPref()
+          var next = cur === 'dark' ? 'light' : cur === 'light' ? 'auto' : 'dark'
+          try { localStorage.setItem(KEY, next) } catch (e) {}
+          apply()
+        })
+        apply()
+      })()
+    </script>
+    <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>

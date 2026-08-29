@@ -33,6 +33,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
   </head>
   <body>
     <div class="scroll-progress" aria-hidden="true"><i></i></div>
@@ -49,6 +50,7 @@
         <a href="#workflow">工作流</a>
         <a href="#download">下载</a>
         <a href="manual.html">使用手册</a>
+        <a href="quickstart.html">快速上手</a>
         <a href="guide-video.html">视频生成指南</a>
         <a href="guide-short-video.html">短视频教程</a>
         <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -83,6 +85,7 @@
           <a href="#workflow">工作流</a>
           <a href="#download">下载</a>
           <a href="manual.html">使用手册</a>
+          <a href="quickstart.html">快速上手</a>
           <a href="guide-video.html">视频生成指南</a>
           <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -184,14 +187,8 @@
         <div class="hero-foot">
           <div class="cta reveal" style="--d: 0.14s">
             <a class="btn btn-solid" href="#download">立即下载</a>
+            <a class="btn btn-line" href="quickstart.html">快速上手</a>
             <a class="btn btn-line" href="manual.html">使用手册</a>
-            <a
-              class="btn btn-line"
-              href="https://space.bilibili.com/3707036976024122"
-              target="_blank"
-              rel="noopener noreferrer"
-              >视频教程</a
-            >
           </div>
           <p class="hero-meta reveal" style="--d: 0.18s">
             <span>Windows</span><i></i><span>macOS</span><i></i><span>Linux</span
@@ -207,6 +204,24 @@
             从剧本与场到节点生成、导演台与成片时间线——短剧、广告与叙事成片同一套工作流；工程本地优先，不强制上云。
             短剧分镜 Agent 流水线可一键生成完整节点图，并在流程窗口中集中完成 9宫格、4宫格、导演审核与动态视频。
           </p>
+
+          <div class="path-grid">
+            <a class="path-card" href="quickstart.html">
+              <span class="path-tag">新手入门</span>
+              <strong>5 分钟出第一条片</strong>
+              <span class="path-desc">安装 → 接入模型 → 选模板 → 拿到成片，全程不用手动搭节点。</span>
+            </a>
+            <a class="path-card" href="guide-short-video.html">
+              <span class="path-tag">短剧 / 短视频</span>
+              <strong>跑通短剧全流程</strong>
+              <span class="path-desc">分镜、拼图、导演审核到动态视频，含四个审核节点详解。</span>
+            </a>
+            <a class="path-card" href="manual.html">
+              <span class="path-tag">进阶 / 查资料</span>
+              <strong>完整使用手册</strong>
+              <span class="path-desc">核心概念、全部界面说明、快捷键与故障排查。</span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -256,7 +271,7 @@
               <h3>一键工作流</h3>
               <p>
                 选预设（含「短剧分镜」短视频模板）或用一句话描述需求，预览拓扑后创建可复用宿主资产；拖入画布即可接线运行。详见
-                <a href="manual.html#ai-workflow">使用手册 §6</a> 与
+                <a href="manual.html#ai-workflow">使用手册 §7</a> 与
                 <a href="guide-short-video.html">短视频教程</a>。
               </p>
             </div>
@@ -414,6 +429,7 @@
         <p>GPL-3.0 · 专业创作 · 本地工程 · Open Source</p>
         <div class="foot-links">
           <a href="manual.html">使用手册</a>
+          <a href="quickstart.html">快速上手</a>
           <a href="guide-video.html">视频生成指南</a>
           <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -425,6 +441,12 @@
           >
           <a href="#community">交流</a>
           <a href="mailto:284139554@qq.com">邮箱</a>
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >更新日志</a
+          >
           <a
             href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
             target="_blank"
@@ -631,5 +653,7 @@
         apply()
       })()
     </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
   </body>
 </html>

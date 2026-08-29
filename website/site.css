@@ -1,0 +1,468 @@
+/* ==========================================================================
+   site.css —— 全站共享组件样式（搜索、复制按钮、目录分组、概念卡、排查折叠）
+   中英文页面共用，颜色全部走 manual.css / styles.css 定义的 CSS 变量，
+   因此自动适配浅色与深色主题。
+   注意：本文件需在各页面自有样式之后引入。
+   ========================================================================== */
+
+/* ---------- 顶栏搜索按钮 ---------- */
+.nav-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.nav-search:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* ---------- 搜索面板 ---------- */
+.sr-root {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 8vh, 96px) 16px 16px;
+}
+
+.sr-root[hidden] {
+  display: none !important;
+}
+
+.sr-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(9, 14, 24, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.sr-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%);
+  max-height: min(72vh, 620px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 30px 70px rgba(9, 14, 24, 0.35);
+  overflow: hidden;
+}
+
+.sr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sr-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.sr-input::placeholder {
+  color: var(--mute);
+}
+
+.sr-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sr-close:hover {
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+
+.sr-status {
+  padding: 8px 16px 0;
+  color: var(--mute);
+  font-size: 12px;
+}
+
+.sr-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.sr-item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sr-item:hover,
+.sr-item.is-active {
+  background: var(--bg-soft);
+  text-decoration: none;
+}
+
+.sr-item-page {
+  display: block;
+  color: var(--mute);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.sr-item-title {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sr-item-snippet {
+  display: block;
+  margin-top: 3px;
+  color: var(--mute);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.sr-item mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: rgba(47, 107, 255, 0.18);
+  color: var(--blue-deep);
+}
+
+.sr-foot {
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--mute);
+  font-size: 11px;
+}
+
+body.sr-open {
+  overflow: hidden;
+}
+
+/* ---------- 复制按钮 ---------- */
+pre,
+.prompt-block,
+[data-copy] {
+  position: relative;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--mute);
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+pre:hover .copy-btn,
+.prompt-block:hover .copy-btn,
+[data-copy]:hover .copy-btn,
+.copy-btn:focus-visible,
+.copy-btn.is-done {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.copy-btn.is-done {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+@media (hover: none) {
+  .copy-btn {
+    opacity: 1;
+  }
+}
+
+/* ---------- 提示词 / 代码块 ---------- */
+.prompt-block {
+  margin: 12px 0 18px;
+  padding: 12px 44px 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- 目录分组 ---------- */
+.toc .toc-group,
+.mobile-nav .toc-group {
+  margin: 16px 0 6px;
+  list-style: none;
+  color: var(--mute);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.toc .toc-group:first-child,
+.toc ol > .toc-group:first-child {
+  margin-top: 0;
+}
+
+/* ---------- 核心概念卡片 ---------- */
+.concept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.concept-card {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.concept-card h3 {
+  margin: 0 0 5px;
+  font-size: 0.94rem;
+}
+
+.concept-card p {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.concept-card .concept-meta {
+  display: block;
+  margin-top: 6px;
+  color: var(--blue-deep);
+  font-size: 0.78rem;
+}
+
+/* ---------- 故障排查折叠 ---------- */
+.trouble {
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.trouble > summary {
+  padding: 11px 14px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+.trouble > summary::-webkit-details-marker {
+  display: none;
+}
+
+.trouble > summary::before {
+  content: '＋';
+  display: inline-block;
+  width: 16px;
+  color: var(--blue);
+}
+
+.trouble[open] > summary::before {
+  content: '－';
+}
+
+.trouble-body {
+  padding: 0 14px 13px 30px;
+  color: var(--mute);
+  font-size: 0.87rem;
+  line-height: 1.7;
+}
+
+.trouble-body p {
+  margin: 0 0 8px;
+}
+
+.trouble-body p:last-child {
+  margin-bottom: 0;
+}
+
+.trouble-body strong {
+  color: var(--ink-soft);
+}
+
+/* ---------- 首页 / 手册的路径卡 ---------- */
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+  margin: 18px 0 8px;
+}
+
+.path-card {
+  display: block;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.path-card:hover {
+  border-color: var(--blue);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(9, 14, 24, 0.14);
+  text-decoration: none;
+}
+
+.path-card .path-tag {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(47, 107, 255, 0.12);
+  color: var(--blue-deep);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.path-card strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.path-card span.path-desc {
+  display: block;
+  margin-top: 5px;
+  color: var(--mute);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* ---------- 教程页之间的上下篇 ---------- */
+.doc-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 34px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.doc-pager a {
+  flex: 1 1 220px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc-pager a:hover {
+  border-color: var(--blue);
+  text-decoration: none;
+}
+
+.doc-pager .pager-dir {
+  display: block;
+  color: var(--mute);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.doc-pager .pager-title {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+/* ---------- 视频演示 ---------- */
+.video-frame {
+  margin: 16px 0 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-frame video,
+.video-frame iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+}
+
+.video-frame figcaption {
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--mute);
+  font-size: 12px;
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 720px) {
+  .sr-root {
+    padding: 12px;
+  }
+
+  .sr-dialog {
+    max-height: 84vh;
+  }
+
+  .concept-grid,
+  .path-grid {
+    grid-template-columns: 1fr;
+  }
+}

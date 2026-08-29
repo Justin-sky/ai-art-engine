@@ -35,6 +35,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
   </head>
   <body>
     <a class="skip" href="#manual">Skip to content</a>
@@ -53,6 +54,7 @@
       <nav class="nav" aria-label="Main navigation">
         <a href="index.en.html">Home</a>
         <a href="manual.en.html" aria-current="page">Manual</a>
+        <a href="quickstart.en.html">Quickstart</a>
         <a href="guide-video.en.html">Video Guide</a>
         <a href="guide-short-video.en.html">Short Video</a>
         <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -77,6 +79,7 @@
         <nav class="mobile-nav" aria-label="Mobile navigation">
           <a href="index.en.html">Home</a>
           <a href="manual.en.html" aria-current="page">Manual</a>
+          <a href="quickstart.en.html">Quickstart</a>
           <a href="guide-video.en.html">Video Guide</a>
           <a href="guide-short-video.en.html">Short Video</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -104,25 +107,36 @@
       <aside class="toc" aria-label="Table of contents">
         <h2>Contents</h2>
         <ol>
-          <li><a href="#intro">Overview &amp; preparation</a></li>
-          <li><a href="#home">Home &amp; projects</a></li>
-          <li><a href="#settings">Settings</a></li>
-          <li><a href="#workspace">Workspace</a></li>
-          <li><a href="#assets">Asset library</a></li>
-          <li><a href="#ai-workflow">One-Click Workflow</a></li>
-          <li><a href="#agent-pipeline">Episode pipeline · Agent window</a></li>
-          <li><a href="#graph">Node graph</a></li>
+          <li class="toc-group">Start</li>
+          <li><a href="#intro">1. Overview &amp; preparation</a></li>
+          <li><a href="#concepts">2. Core concepts</a></li>
+          <li><a href="quickstart.en.html">→ Quickstart (start here if you're new)</a></li>
+
+          <li class="toc-group">Basics</li>
+          <li><a href="#home">3. Home &amp; projects</a></li>
+          <li><a href="#settings">4. Settings</a></li>
+          <li><a href="#workspace">5. Workspace</a></li>
+          <li><a href="#assets">6. Asset library</a></li>
+
+          <li class="toc-group">Core features</li>
+          <li><a href="#ai-workflow">7. One-Click Workflow</a></li>
+          <li><a href="#agent-pipeline">7.5 Episode pipeline · Agent window</a></li>
+          <li><a href="#graph">8. Node graph</a></li>
+          <li><a href="#script-beat">9. Script &amp; shots</a></li>
+          <li><a href="#timeline">10. Final timeline</a></li>
+          <li><a href="#canvas">11. Canvas &amp; world elements</a></li>
+          <li><a href="#director">12. Director stage</a></li>
+
+          <li class="toc-group">Reference</li>
+          <li><a href="#package">13. Asset packages .aipackage</a></li>
+          <li><a href="#shortcuts">14. Shortcuts</a></li>
+          <li><a href="#troubleshooting">15. Troubleshooting</a></li>
+          <li><a href="#update">16. About &amp; updates</a></li>
+
+          <li class="toc-group">Guides</li>
+          <li><a href="guide-short-video.en.html">Short drama / short video pipeline</a></li>
           <li><a href="guide-video.en.html">Free canvas · video &amp; reference video</a></li>
-          <li><a href="guide-short-video.en.html">Short-video guide</a></li>
           <li><a href="guide-comfyui.en.html">ComfyUI guide</a></li>
-          <li><a href="#script-beat">Script &amp; shots</a></li>
-          <li><a href="#timeline">Final timeline</a></li>
-          <li><a href="#canvas">Canvas &amp; world elements</a></li>
-          <li><a href="#director">Director stage</a></li>
-          <li><a href="#package">Asset packages .aipackage</a></li>
-          <li><a href="#shortcuts">Shortcuts</a></li>
-          <li><a href="#update">About &amp; updates</a></li>
-          <li><a href="#workflow">Recommended end-to-end flow</a></li>
         </ol>
       </aside>
 
@@ -146,17 +160,21 @@
         </header>
 
         <div class="entry-cards" aria-label="Quick paths">
-          <a class="entry-card" href="#workflow">
+          <a class="entry-card" href="quickstart.en.html">
             <strong>First time here?</strong>
-            <span>The recommended end-to-end flow from setup to export</span>
+            <span>Follow the quickstart and ship your first film in 5 minutes</span>
           </a>
-          <a class="entry-card" href="guide-short-video.html">
+          <a class="entry-card" href="#concepts">
+            <strong>Learn a few concepts</strong>
+            <span>What host assets, anchor images and world elements mean</span>
+          </a>
+          <a class="entry-card" href="guide-short-video.en.html">
             <strong>Short drama pipeline</strong>
             <span>Episode pipeline: storyboards, grids, review and video</span>
           </a>
-          <a class="entry-card" href="#shortcuts">
-            <strong>Keyboard shortcuts</strong>
-            <span>Graph, director stage and timeline at a glance</span>
+          <a class="entry-card" href="#troubleshooting">
+            <strong>Something broken?</strong>
+            <span>Diagnose by symptom: balance, wiring, consistency</span>
           </a>
         </div>
 
@@ -191,8 +209,165 @@
           </div>
         </section>
 
+        <section id="concepts">
+          <h2>2. Core concepts</h2>
+          <p>
+            Spend two minutes on the words below and every screen afterwards will make sense. Data in this
+            app is organized as <strong>project → shot / episode → node graph → asset</strong>: the project
+            is the container, the node graph is the workshop, and assets are what comes out of it.
+          </p>
+
+          <div class="concept-grid">
+            <div class="concept-card">
+              <h3>Project</h3>
+              <p>
+                Everything that belongs to one piece of work, stored in a <strong>local directory you pick
+                yourself</strong>, with <code>project.json</code> at its root. Media never leaves your
+                machine — copy the whole folder to move to another computer.
+              </p>
+              <span class="concept-meta">See §3 Home &amp; projects</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Asset</h3>
+              <p>
+                The umbrella term for every output and piece of media in a project: scripts, beat tables,
+                storyboard images, anchor images, video, audio, 3D models and host assets. Browse and drag
+                them all from the <strong>asset library</strong>.
+              </p>
+              <span class="concept-meta">See §6 Asset library</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Host asset</h3>
+              <p>
+                A <strong>reusable component</strong> produced by One-Click Workflow. The outside exposes
+                only boundary inputs / outputs, while <strong>double-clicking dives into the full inner node
+                graph</strong> for fine-tuning. Build once, reuse across projects.
+              </p>
+              <span class="concept-meta">See §7 One-Click Workflow</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Node graph</h3>
+              <p>
+                The canvas where nodes and links describe “input → generate → output”. It is the
+                <strong>shared foundation</strong> of scripts, shots, canvases, the director stage and host
+                assets.
+              </p>
+              <span class="concept-meta">See §8 Node graph</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Port</h3>
+              <p>
+                A node's inlet or outlet. Ports <strong>strictly distinguish singular from plural</strong>:
+                <code>image</code> / <code>images</code>, <code>video</code> / <code>videos</code>,
+                <code>text</code> / <code>texts</code>. Different types never connect, and
+                <strong>singular can't go into plural</strong>. Round ports are usually a single
+                <code>out</code>; square ports are lists (<code>out-all</code>).
+              </p>
+              <span class="concept-meta">See §8.1 Add and connect</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Episode / shot / beat</h3>
+              <p>
+                An <strong>episode</strong> is made of several <strong>shots</strong>; a script is first
+                split into a <strong>beat breakdown table</strong>, then landed onto concrete shots. These
+                use the dedicated port types <code>world</code> / <code>worldEntities</code> /
+                <code>beat</code>, which must not be mixed with plain <code>text</code>.
+              </p>
+              <span class="concept-meta">See §9 Script &amp; shots</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Anchor image</h3>
+              <p>
+                A <strong>single reference image split out of a 9-grid / 4-grid sheet, cell by cell</strong>.
+                It locks a character's face, outfit and setting so every later storyboard stays consistent —
+                this is the key to keeping a short drama from “changing faces”.
+              </p>
+              <span class="concept-meta">See the Short-Video Guide</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>World element</h3>
+              <p>
+                A reusable setting entry: character, scene, prop. Attached to an episode and shared by every
+                shot, so you <strong>don't re-describe the same thing in every setup</strong> — another way
+                to keep consistency.
+              </p>
+              <span class="concept-meta">See §11 Canvas &amp; world elements</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Director stage</h3>
+              <p>
+                A 3D stage: place models, light the scene and frame the camera, then
+                <strong>capture blocking shots</strong> or <strong>record motion video</strong>, which come
+                out of the two square ports <code>out-shots</code> / <code>out-actions</code>.
+              </p>
+              <span class="concept-meta">See §12 Director stage</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Final timeline</h3>
+              <p>
+                A multi-track editing panel: drag node outputs or imported media onto tracks, arrange the
+                order, line up audio, then preview and export the finished film.
+              </p>
+              <span class="concept-meta">See §10 Final timeline</span>
+            </div>
+
+            <div class="concept-card">
+              <h3>Asset package <code>.aipackage</code></h3>
+              <p>
+                A format that <strong>packages assets together with their dependencies</strong> for export,
+                so you can migrate to another machine or share with collaborators — importing restores
+                everything as it was.
+              </p>
+              <span class="concept-meta">See §13 Asset packages</span>
+            </div>
+          </div>
+
+          <h3>2.1 How a short drama actually runs</h3>
+          <p>With the concepts above in place, the full data flow of the short-drama pipeline reads:</p>
+          <ol>
+            <li>
+              <strong>Script</strong> → broken down by a text model into a
+              <strong>beat breakdown table</strong> (beat).
+            </li>
+            <li>
+              Beat → <strong>9-grid storyboard table</strong>: one node generates a 3×3 sheet, then 9
+              <strong>anchor images</strong> are split out cell by cell and upscaled.
+            </li>
+            <li>
+              Anchor images → <strong>4-grid motion storyboard table</strong>: 2×2 sheets per group, split
+              into 36 motion cells and upscaled.
+            </li>
+            <li>
+              Motion cells → <strong>motion prompt table</strong> (36 entries) →
+              <strong>36 motion videos</strong>.
+            </li>
+            <li>
+              Four director review nodes, <strong>review1~review4</strong>, sit along the way; anything
+              below standard can be sent back for a re-run.
+            </li>
+            <li>
+              Videos → arranged on the <strong>final timeline</strong> → export the finished film.
+            </li>
+          </ol>
+          <div class="tip">
+            This flow ships as the “short-drama storyboard” template: pick it in
+            <strong>One-Click Workflow</strong> and all of the above is generated for you — no manual
+            wiring. See the <a href="guide-short-video.en.html">Short-Video Guide</a> and the
+            <a href="quickstart.en.html">Quickstart</a> for the full walkthrough.
+          </div>
+        </section>
+
         <section id="home">
-          <h2>2. Home &amp; projects</h2>
+          <h2>3. Home &amp; projects</h2>
           <h3>Create a project</h3>
           <ol>
             <li>Click <strong>New Project</strong>.</li>
@@ -220,10 +395,10 @@
         </section>
 
         <section id="settings">
-          <h2>3. Settings</h2>
+          <h2>4. Settings</h2>
           <p>Open Settings from the home page or the workspace top bar. Changes are saved automatically.</p>
 
-          <h3>3.1 General</h3>
+          <h3>4.1 General</h3>
           <ul>
             <li><strong>Theme</strong>: dark / light.</li>
             <li><strong>Language</strong>: 中文 (Chinese) / English.</li>
@@ -231,7 +406,7 @@
             <li><strong>About &amp; updates</strong>: view the version and check for updates (see below).</li>
           </ul>
 
-          <h3>3.2 Models</h3>
+          <h3>4.2 Models</h3>
           <ol>
             <li>
               Click <strong>Add model provider</strong>. Options include:
@@ -548,7 +723,7 @@
             server.
           </div>
 
-          <h3>3.3 Object storage</h3>
+          <h3>4.3 Object storage</h3>
           <p>
             Used to upload local files such as reference videos into publicly reachable URLs (signed links are
             used for private buckets).
@@ -598,7 +773,7 @@
             </li>
           </ul>
 
-          <h3>3.4 Extensions</h3>
+          <h3>4.4 Extensions</h3>
           <p>
             In-app extensions run on Cordis (<code>ctx.editor.*</code>) and can contribute nodes, cards,
             inspectors, skills and executor overrides; see
@@ -616,13 +791,13 @@
         </section>
 
         <section id="workspace">
-          <h2>4. Workspace</h2>
+          <h2>5. Workspace</h2>
           <p>
             Opening a project takes you to the workspace (named “Workspace” in the app navigation). The
             interface is a dockable multi-panel layout.
           </p>
 
-          <h3>4.1 Top bar</h3>
+          <h3>5.1 Top bar</h3>
           <ul>
             <li>
               Unsaved changes show <code>*</code> next to the title; press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save.
@@ -630,12 +805,12 @@
             <li><strong>↶ / ↷</strong>: undo / redo (also available as shortcuts).</li>
             <li>
               <strong>One-Click Workflow</strong>: generate a reusable host asset from a preset or AI planning
-              (see <a href="#ai-workflow">§6</a>).
+              (see <a href="#ai-workflow">§7</a>).
             </li>
             <li>
               <strong>Episode Pipeline</strong>: open the short-drama Agent pipeline window to work through
               9-grid, 4-grid, director review and video generation (see
-              <a href="#agent-pipeline">§6.5</a>).
+              <a href="#agent-pipeline">§7.5</a>).
             </li>
             <li><strong>Task list</strong> and <strong>Run log</strong>: background queue and model call logs.</li>
             <li>
@@ -648,7 +823,7 @@
             window, or close related tabs. Key panels can't be closed while nodes are running.
           </p>
 
-          <h3>4.2 The four panels</h3>
+          <h3>5.2 The four panels</h3>
           <div class="table-scroll" role="region" aria-label="The four panels" tabindex="0">
             <table>
             <thead>
@@ -681,7 +856,7 @@
             </table>
           </div>
 
-          <h3>4.3 Left toolbar: create assets</h3>
+          <h3>5.3 Left toolbar: create assets</h3>
           <p>
             Click an icon to create a draft asset, then press <kbd>Ctrl</kbd>+<kbd>S</kbd> after editing to
             write it to disk. You can create:
@@ -694,7 +869,7 @@
             also create a script, shot or director stage directly, or double-click a recent asset to open it.
           </p>
 
-          <h3>4.4 Right rail: assets / parameters</h3>
+          <h3>5.4 Right rail: assets / parameters</h3>
           <p>
             The far right of the workspace is a Rider-style vertical rail; the <strong>Assets</strong> and
             <strong>Parameters</strong> panels can be expanded or collapsed independently (a collapsed panel
@@ -714,7 +889,7 @@
         </section>
 
         <section id="assets">
-          <h2>5. Asset library</h2>
+          <h2>6. Asset library</h2>
           <h3>Browse and filter</h3>
           <ul>
             <li>Refresh next to the “Assets” title; search and type filters are supported.</li>
@@ -751,14 +926,14 @@
         </section>
 
         <section id="ai-workflow">
-          <h2>6. One-Click Workflow</h2>
+          <h2>7. One-Click Workflow</h2>
           <p>
             “One-Click Workflow” uses a <strong>preset template</strong> or <strong>AI planning</strong> to
             produce a reusable <strong>host asset</strong> (containing a complete node graph plus boundary I/O).
             Once created, drag it onto any canvas, feed it inputs and take its outputs like a component.
           </p>
 
-          <h3>6.1 How to open</h3>
+          <h3>7.1 How to open</h3>
           <ol>
             <li>Open any project to enter the workspace.</li>
             <li>Click <strong>One-Click Workflow</strong> in the top bar.</li>
@@ -768,7 +943,7 @@
             AI.
           </div>
 
-          <h3>6.2 Presets and description</h3>
+          <h3>7.2 Presets and description</h3>
           <ul>
             <li>
               <strong>Preset templates</strong> (covering the main capability nodes by industry): game user
@@ -801,7 +976,7 @@
             </li>
           </ul>
 
-          <h3>6.3 Preview → create</h3>
+          <h3>7.3 Preview → create</h3>
           <ol>
             <li>
               Click <strong>Preview template</strong> (fixed presets) or <strong>Generate preview with AI</strong>
@@ -820,17 +995,17 @@
             character sheets) each keep their own independent boundary output.
           </div>
 
-          <h3>6.4 Using it after creation</h3>
+          <h3>7.4 Using it after creation</h3>
           <ul>
             <li>Drag it from the asset library onto the canvas → connect upstream text / images to the host inputs.</li>
             <li>Double-click or Dive into the inner graph to fine-tune nodes, models and prompts.</li>
             <li>
               Select a boundary output or the host node and use “Add to tasks” to run the whole inner chain; it
-              can run in parallel with other chains (see <a href="#graph-tasks">§7.3</a>).
+              can run in parallel with other chains (see <a href="#graph-tasks">§8.3</a>).
             </li>
           </ul>
 
-          <h3 id="agent-pipeline">6.5 Episode pipeline: the Agent window</h3>
+          <h3 id="agent-pipeline">7.5 Episode pipeline: the Agent window</h3>
           <figure class="shot">
             <img
               src="assets/banner/storyboard.webp"
@@ -881,7 +1056,7 @@
         </section>
 
         <section id="graph">
-          <h2>7. Node graph</h2>
+          <h2>8. Node graph</h2>
           <figure class="shot">
             <img
               src="assets/banner/node-graph.webp"
@@ -897,7 +1072,7 @@
             host assets and similar scenes you wire nodes together into “input → generate → output” chains.
           </p>
 
-          <h3>7.1 Add and connect</h3>
+          <h3>8.1 Add and connect</h3>
           <ol>
             <li>
               Right-click <strong>empty canvas space</strong>, or press <kbd>Space</kbd>, then choose “Add node”.
@@ -946,7 +1121,7 @@
             Inspector).
           </p>
 
-          <h3>7.2 Toolbar and canvas interaction</h3>
+          <h3>8.2 Toolbar and canvas interaction</h3>
           <ul>
             <li>Select / pan · fit view · grid and snapping · align / distribute · auto layout.</li>
             <li><strong>Link style</strong>: curve / orthogonal / hidden (the preference is remembered).</li>
@@ -975,7 +1150,7 @@
             so they're never cropped by a different aspect ratio.
           </p>
 
-          <h3 id="graph-tasks">7.3 Execution and the task queue</h3>
+          <h3 id="graph-tasks">8.3 Execution and the task queue</h3>
           <div class="table-scroll" role="region" aria-label="Node execution methods" tabindex="0">
             <table>
             <thead>
@@ -1026,7 +1201,7 @@
             <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>.
           </p>
 
-          <h3>7.4 Node types at a glance</h3>
+          <h3>8.4 Node types at a glance</h3>
 
           <h4>Generation / assets</h4>
           <ul>
@@ -1045,7 +1220,7 @@
               <strong>Host asset</strong>: bring an existing asset (image / video / audio / script / shot /
               director stage, …) into the current canvas as a node — the output port type is that asset's port
               type; double-click a host asset node to dive into its internal workflow (see
-              <a href="#host">7.6 Host assets and Dive</a>).
+              <a href="#host">8.6 Host assets and Dive</a>).
             </li>
           </ul>
 
@@ -1215,7 +1390,7 @@
             <li>Graph plugin sample (loaded only for local debugging; absent from official installers)</li>
           </ul>
 
-          <h3>7.5 Typical node workflows</h3>
+          <h3>8.5 Typical node workflows</h3>
           <ol>
             <li>
               <strong>Script</strong>: create a script → pick a text model on the right → fill in “generation
@@ -1242,7 +1417,7 @@
             </li>
           </ol>
 
-          <h3 id="host">7.6 Host assets and Dive</h3>
+          <h3 id="host">8.6 Host assets and Dive</h3>
           <p>
             A host asset (including One-Click Workflow output and selection wrappers) exposes only
             <strong>boundary inputs / boundary outputs</strong> on the outside; double-click or Dive into it to
@@ -1266,16 +1441,16 @@
         </section>
 
         <section id="script-beat">
-          <h2>8. Script &amp; shots</h2>
+          <h2>9. Script &amp; shots</h2>
 
-          <h3>8.1 Script assets</h3>
+          <h3>9.1 Script assets</h3>
           <p>
             Generate and edit script content through the node graph. Connect the result to “script output” and
             pick a suitable text model and prompt in the parameter panel. Script assets can be dragged into
             other graphs as upstream.
           </p>
 
-          <h3>8.2 Shot assets</h3>
+          <h3>9.2 Shot assets</h3>
           <ul>
             <li>
               A shot (beat) replaces the old storyboard: narrative is organized per shot, then broken down and
@@ -1296,7 +1471,7 @@
             </li>
           </ul>
 
-          <h3>8.3 Storyboard thinking and prompt presets</h3>
+          <h3>9.3 Storyboard thinking and prompt presets</h3>
           <p>
             The old standalone “storyboard asset / camera blocking” has been removed — storyboarding now lives
             in shots and the Episode Pipeline: the beat breakdown table splits shots, the 9-grid / 4-grid
@@ -1334,13 +1509,13 @@
         </section>
 
         <section id="timeline">
-          <h2>9. Final timeline</h2>
+          <h2>10. Final timeline</h2>
           <p>
             The final timeline assembles shot / video node outputs and imported media into a timeline you can
             preview and export; it's usually opened on a <strong>script asset</strong>.
           </p>
 
-          <h3>9.1 Opening and layout</h3>
+          <h3>10.1 Opening and layout</h3>
           <ul>
             <li>
               Open the final timeline editor from a script-related flow (left: media library · center: preview ·
@@ -1354,7 +1529,7 @@
             </li>
           </ul>
 
-          <h3>9.2 Left-side media</h3>
+          <h3>10.2 Left-side media</h3>
           <ul>
             <li>
               <strong>Node inputs</strong>: video / audio collected from upstream nodes. They can't be deleted
@@ -1376,7 +1551,7 @@
             </li>
           </ul>
 
-          <h3>9.3 Placing and arranging</h3>
+          <h3>10.3 Placing and arranging</h3>
           <ul>
             <li>
               Drag from the list onto a track to place it; audio dropped on a video track lands on the
@@ -1399,7 +1574,7 @@
             <li>Subtitle track: you can <strong>add subtitles</strong> and edit their text.</li>
           </ul>
 
-          <h3>9.4 Playback</h3>
+          <h3>10.4 Playback</h3>
           <ul>
             <li>
               <strong>Center preview playback</strong>: plays only the currently selected video or audio clip
@@ -1411,7 +1586,7 @@
             </li>
           </ul>
 
-          <h3>9.5 Picture-in-picture and transitions</h3>
+          <h3>10.5 Picture-in-picture and transitions</h3>
           <ul>
             <li>
               <strong>Picture-in-picture overlay</strong>: drag a video onto the preview overlay to layer it as
@@ -1427,7 +1602,7 @@
             </li>
           </ul>
 
-          <h3>9.6 Subtitles</h3>
+          <h3>10.6 Subtitles</h3>
           <ul>
             <li>
               Select a subtitle clip and edit the text, <strong>font size</strong>, <strong>height</strong>
@@ -1440,7 +1615,7 @@
             </li>
           </ul>
 
-          <h3>9.7 Export</h3>
+          <h3>10.7 Export</h3>
           <p>
             The timeline toolbar offers <strong>Export film</strong>: set the resolution (preset or custom width
             / height), frame rate and bitrate. It prefers the local ffmpeg to mux an MP4 and falls back to WebM
@@ -1450,9 +1625,9 @@
         </section>
 
         <section id="canvas">
-          <h2>10. Canvas &amp; world elements</h2>
+          <h2>11. Canvas &amp; world elements</h2>
 
-          <h3>10.1 Canvas assets</h3>
+          <h3>11.1 Canvas assets</h3>
           <ul>
             <li>
               <strong>Free canvas</strong>: a blank node canvas — right-click to add nodes, or drag assets in
@@ -1462,7 +1637,7 @@
             </li>
           </ul>
 
-          <h3>10.2 World elements / shots</h3>
+          <h3>11.2 World elements / shots</h3>
           <ul>
             <li>
               Table view: world elements are character / scene / prop / weapon; the shot table has time / space /
@@ -1476,7 +1651,7 @@
         </section>
 
         <section id="director">
-          <h2>11. Director stage</h2>
+          <h2>12. Director stage</h2>
           <figure class="shot">
             <img
               src="assets/banner/director-stage.webp"
@@ -1498,7 +1673,7 @@
             connect a panorama image and it becomes the stage background when you dive in.
           </p>
 
-          <h3>11.1 Open from a node</h3>
+          <h3>12.1 Open from a node</h3>
           <ol>
             <li>Double-click a “director stage edit” node in the node graph to open the <strong>stage window</strong>.</li>
             <li>
@@ -1512,7 +1687,7 @@
             </li>
           </ol>
 
-          <h3>11.2 Viewport controls</h3>
+          <h3>12.2 Viewport controls</h3>
           <ul>
             <li>
               Left button selects · middle button pans · hold the right button for
@@ -1528,7 +1703,7 @@
             </li>
           </ul>
 
-          <h3>11.3 Sidebar and objects</h3>
+          <h3>12.3 Sidebar and objects</h3>
           <ul>
             <li>
               Left scene list: hierarchy, search, create camera / empty object / primitives (cube, sphere,
@@ -1554,7 +1729,7 @@
             </li>
           </ul>
 
-          <h3>11.4 Blocking and motion</h3>
+          <h3>12.4 Blocking and motion</h3>
           <p>The “Blocking &amp; motion” button in the title bar opens a panel with two categories:</p>
           <ul>
             <li>
@@ -1568,7 +1743,7 @@
             </li>
           </ul>
 
-          <h3>11.5 Views and panorama</h3>
+          <h3>12.5 Views and panorama</h3>
           <ul>
             <li>Director view / camera switching; six-way views; reset.</li>
             <li>
@@ -1596,7 +1771,7 @@
             </li>
           </ul>
 
-          <h3>11.6 Animation mode and recording</h3>
+          <h3>12.6 Animation mode and recording</h3>
           <ul>
             <li>Switch between panorama mode and animation mode.</li>
             <li>
@@ -1612,7 +1787,7 @@
         </section>
 
         <section id="package">
-          <h2>12. Asset packages <code>.aipackage</code></h2>
+          <h2>13. Asset packages <code>.aipackage</code></h2>
           <p>
             The format identifier is <code>com.aiartengine.asset-package</code>; packages move media and their
             dependencies between projects.
@@ -1641,7 +1816,7 @@
         </section>
 
         <section id="shortcuts">
-          <h2>13. Shortcuts</h2>
+          <h2>14. Shortcuts</h2>
           <div class="table-scroll" role="region" aria-label="Shortcuts" tabindex="0">
             <table>
             <thead>
@@ -1746,8 +1921,275 @@
           </div>
         </section>
 
+        <section id="troubleshooting">
+          <h2>15. Troubleshooting</h2>
+          <p>
+            Find your symptom below — entries are ordered by <strong>how often they happen</strong>, and the
+            vast majority of issues are solved within the first three. If you're still stuck, reach out in QQ
+            group <strong>647306826</strong>, by email at
+            <a href="mailto:284139554@qq.com">284139554@qq.com</a>, or on
+            <a
+              href="https://github.com/Justin-sky/ai-art-engine/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              >GitHub Issues</a
+            >
+            (attaching the run log gets you an answer much faster).
+          </p>
+
+          <details class="trouble">
+            <summary>“Insufficient balance”, or everything fails as soon as it runs</summary>
+            <div class="trouble-body">
+              <p>
+                Generation calls <strong>the model provider you configured yourself</strong>, and the provider
+                bills you for it. This app never collects payment on its behalf, so errors like this almost
+                always come from the provider account.
+              </p>
+              <p><strong>What to check, in order:</strong></p>
+              <ol>
+                <li>
+                  Sign in to the provider console and confirm the <strong>balance or remaining quota</strong>
+                  is sufficient (an exhausted free tier fails just the same).
+                </li>
+                <li>
+                  Settings → Models: confirm the key is correct, not expired and not revoked.
+                </li>
+                <li>
+                  Confirm the models you need are <strong>ticked and enabled</strong>, and that default text /
+                  image / video models are each set.
+                </li>
+                <li>
+                  Run the same node with a different model — that separates “an account problem” from “a
+                  single-model problem”.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Invalid key, 401 / 403, or the model list won't load</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Check for stray spaces or line breaks around the key; copying and pasting it again usually
+                  fixes it.
+                </li>
+                <li>
+                  Confirm the key has <strong>permission for the model in question</strong> on the provider
+                  side — some models require a separate application.
+                </li>
+                <li>
+                  If you use a proxy or relay service, make sure the relay address is complete (including the
+                  <code>/v1</code> path and similar).
+                </li>
+                <li>
+                  On a restricted network, configure a proxy in settings and retry; HTTPS interception on
+                  corporate networks also breaks fetching.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Links won't connect: “port type mismatch”</summary>
+            <div class="trouble-body">
+              <p>
+                Ports <strong>strictly distinguish singular from plural</strong>: mismatched types never
+                connect, and <strong>singular can't go into plural</strong> —
+                <code>image</code> won't go into <code>images</code>, and the same goes for
+                <code>video</code> / <code>voice</code> / <code>text</code>.
+              </p>
+              <p><strong>Common fixes:</strong></p>
+              <ol>
+                <li>
+                  When a node needs a list input (e.g. “Select image / video / audio / text”), connect from
+                  the upstream <strong>square port</strong> (<code>out-all</code>, or
+                  <code>out-shots</code> / <code>out-actions</code> on the director stage); the default round
+                  <code>out</code> won't connect.
+                </li>
+                <li>
+                  Structured directory ports use <code>world</code> / <code>worldEntities</code> /
+                  <code>beat</code> (world elements / world element entities / shot) and
+                  <strong>must not be mixed with plain <code>text</code></strong>.
+                </li>
+                <li>
+                  A script node's <code>text</code> also can't go straight into “Select text” — use the
+                  matching list port.
+                </li>
+              </ol>
+              <p>See <a href="#graph">§8 Node graph</a>.</p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>A node finished but produced nothing, or tasks stay queued</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Open the node's <strong>run log</strong> and read the actual error (most of the time the
+                  model returned an error or a parameter was invalid).
+                </li>
+                <li>
+                  Confirm <strong>upstream nodes ran successfully</strong>: if upstream never finished,
+                  downstream has no input.
+                </li>
+                <li>
+                  Check whether the task queue is saturated by another long job; pause or cancel queued tasks.
+                </li>
+                <li>
+                  Gallery generation nodes have two outputs, <code>out</code> (currently selected) and
+                  <code>out-all</code> (whole history). If you wired <code>out</code>, check in the Inspector
+                  that the item you expect is selected.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Characters “change faces”, or storyboards don't match</summary>
+            <div class="trouble-body">
+              <p>
+                This is the classic trap of pure text-to-image. Solve it with
+                <strong>references rather than repeating descriptions</strong>:
+              </p>
+              <ol>
+                <li>
+                  Use <strong>anchor images</strong>: split reference images out of a 9-grid / 4-grid sheet
+                  cell by cell, then feed them in as references for later generations to lock face, outfit and
+                  setting.
+                </li>
+                <li>
+                  Register characters, scenes and props as <strong>world elements</strong> so every shot
+                  shares one description instead of re-describing them each time.
+                </li>
+                <li>
+                  Check whether a node in the middle <strong>switched models or heavily rewrote the
+                  prompt</strong> — style drift usually comes from there.
+                </li>
+                <li>
+                  In the short-drama flow, make good use of the <strong>review1~review4</strong> review nodes
+                  to send sub-par results back in time.
+                </li>
+              </ol>
+              <p>
+                See <a href="#concepts">§2 Core concepts</a> and the
+                <a href="guide-short-video.en.html">Short-Video Guide</a>.
+              </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Images look soft, or the resolution is too low</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Append an <strong>HD upscale</strong> node at the end of the generation chain; the
+                  short-drama template already includes that step.
+                </li>
+                <li>
+                  Check the resolution setting on the generation node — some models need an explicit size.
+                </li>
+                <li>
+                  Avoid over-compression: watch the scale factor and export format when exporting.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Video doesn't move, the length is wrong, or a reference video is ignored</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm the <strong>motion prompt</strong> is filled in properly; a static description
+                  produces an almost static shot.
+                </li>
+                <li>
+                  Confirm the chosen video model supports the target duration and resolution.
+                </li>
+                <li>
+                  Reference videos need a <strong>publicly reachable URL</strong>: configure object storage
+                  (TOS / OSS / COS, <strong>only one enabled at a time</strong>). You can skip it for purely
+                  local previews, but reference-video features will be limited.
+                </li>
+                <li>See the <a href="guide-video.en.html">Video Guide</a>.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Object storage won't configure, or video URLs won't open</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>Only one</strong> object storage can be enabled at a time (Volcengine TOS /
+                  Alibaba Cloud OSS / Tencent Cloud COS) — disable the old one before enabling a new one.
+                </li>
+                <li>
+                  Check that the bucket permission is <strong>public read</strong>; links generated for a
+                  private bucket can't be opened from outside.
+                </li>
+                <li>
+                  Verify the AccessKey has read / write permission on that bucket and that the region is
+                  correct.
+                </li>
+                <li>
+                  Make sure a reachable public domain is filled in (CDN domains need to be ICP-filed).
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>ComfyUI won't connect, or reports a workflow format error</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm <strong>comfy-api-proxy is running</strong> locally and that the port matches the
+                  one configured in the app.
+                </li>
+                <li>Confirm ComfyUI itself is running and reachable.</li>
+                <li>
+                  You must use an <strong>API-format</strong> workflow (enable Dev Mode in ComfyUI and export
+                  with “Save (API Format)”); the UI format (which contains
+                  <code>nodes</code> / <code>links</code> arrays) won't work.
+                </li>
+                <li>See the <a href="guide-comfyui.en.html">ComfyUI guide</a>.</li>
+              </ol>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>Fails to start, blank screen, or update fails</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  Confirm the installer matches your system architecture (on macOS, Intel vs Apple silicon).
+                </li>
+                <li>
+                  If the first launch is blocked by system security policy, allow the app to run in System
+                  Settings.
+                </li>
+                <li>
+                  If an update fails, re-check under Settings → General → <strong>About &amp; updates</strong>,
+                  or download the release manually and install over it.
+                </li>
+                <li>
+                  If it still misbehaves, back up your project directory, reset the configuration and retry —
+                  and remember to attach logs and your OS version when reporting.
+                </li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="tip">
+            When diagnosing, <strong>run the same node with a different model</strong> — it's the fastest way
+            to tell “an app problem” from “a model / account problem”.
+          </div>
+        </section>
+
         <section id="update">
-          <h2>14. About &amp; updates</h2>
+          <h2>16. About &amp; updates</h2>
           <p>Path: Settings → General → About &amp; updates.</p>
           <ul>
             <li>
@@ -1763,65 +2205,16 @@
               progress, failure.
             </li>
             <li>When the download finishes you can click <strong>Restart and install</strong>.</li>
+            <li>
+              <strong>Changelog</strong>: the full version history lives in
+              <a
+                href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                >CHANGELOG</a
+              >.
+            </li>
           </ul>
-        </section>
-
-        <section id="workflow">
-          <h2>15. Recommended end-to-end flow</h2>
-          <ol>
-            <li>
-              Settings → Models (add keys and tick models) → optionally configure object storage (TOS / OSS /
-              COS; enable only one).
-            </li>
-            <li>
-              <strong>Fast path:</strong> top bar “One-Click Workflow” → pick a preset or use AI preview →
-              create a host asset → drag it onto the canvas, wire it up and add it to tasks.
-            </li>
-            <li>
-              <strong>Short video:</strong> pick the “short-drama storyboard” template in One-Click Workflow →
-              open the flow window with “Episode Pipeline” → generate the 9-grid sheet and 4-grid, pass
-              director review → generate motion videos (see
-              <a href="guide-short-video.en.html">Short-Video Guide</a>).
-            </li>
-            <li>
-              Or manually: create a project on the home page → create a “script” in the left column → run
-              generation → connect it to the script output.
-            </li>
-            <li>
-              Create a “shot” → shot breakdown → shot table → shot generation / video generation; several output
-              chains can be queued separately and shared upstream nodes are reused automatically.
-            </li>
-            <li>
-              Open the <strong>final timeline</strong>: drag in node outputs or import media → arrange tracks →
-              preview / export the film.
-            </li>
-            <li>
-              Create a “director stage” → double-click to open the stage → (optional) produce a model with the
-              3D model generation node and feed it into the stage, or build the scene with AI blockout → capture
-              blocking shots / record motion → wire the square ports <code>out-shots</code> /
-              <code>out-actions</code> downstream.
-            </li>
-            <li>
-              When you need comic panels or ad variants, add a “comic page” or “ad variant matrix” in the node
-              graph; attaching “media QC / media rework” at the end of a chain automatically gates quality and
-              retries failures.
-            </li>
-            <li>
-              Import media into the asset library, or export / re-import <code>.aipackage</code> to verify
-              migration.
-            </li>
-            <li>Check for updates in settings to stay on the latest client.</li>
-          </ol>
-          <p>
-            Feedback and community: QQ group <strong>647306826</strong> · email
-            <a href="mailto:284139554@qq.com">284139554@qq.com</a> ·
-            <a
-              href="https://github.com/Justin-sky/ai-art-engine/issues"
-              target="_blank"
-              rel="noopener noreferrer"
-              >GitHub Issues</a
-            >.
-          </p>
         </section>
       </article>
     </div>
@@ -1835,6 +2228,7 @@
         <nav class="foot-links" aria-label="Footer">
           <a href="index.en.html">Home</a>
           <a href="manual.en.html">Manual</a>
+          <a href="quickstart.en.html">Quickstart</a>
           <a href="guide-video.en.html">Video Guide</a>
           <a href="guide-short-video.en.html">Short Video</a>
           <a href="guide-comfyui.en.html">ComfyUI</a>
@@ -2006,5 +2400,7 @@
         apply()
       })()
     </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
   </body>
 </html>

@@ -33,6 +33,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="manual.css?v=20260829-4" />
+      <link rel="stylesheet" href="site.css?v=20260829" />
   </head>
   <body>
     <a class="skip" href="#manual">跳到正文</a>
@@ -45,6 +46,7 @@
       <nav class="nav" aria-label="主导航">
         <a href="index.html">首页</a>
         <a href="manual.html">使用手册</a>
+        <a href="quickstart.html">快速上手</a>
         <a href="guide-video.html" aria-current="page">视频生成指南</a>
         <a href="guide-short-video.html">短视频教程</a>
         <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -69,6 +71,7 @@
         <nav class="mobile-nav" aria-label="移动端导航">
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
+          <a href="quickstart.html">快速上手</a>
           <a href="guide-video.html" aria-current="page">视频生成指南</a>
           <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -295,10 +298,19 @@
           </div>
           <p>
             完整界面说明见
-            <a href="manual.html">使用手册</a>
-            ；模型与对象存储细节见手册第 3 章。
+            <a href="manual.html">使用手册</a>；模型与对象存储细节见手册第 4 章。
           </p>
         </section>
+        <nav class="doc-pager" aria-label="文档导航">
+          <a href="guide-short-video.html">
+            <span class="pager-dir">上一步</span>
+            <span class="pager-title">← 短视频教程</span>
+          </a>
+          <a href="guide-comfyui.html">
+            <span class="pager-dir">下一步</span>
+            <span class="pager-title">ComfyUI 教程 →</span>
+          </a>
+        </nav>
       </article>
     </div>
 
@@ -311,6 +323,7 @@
         <nav class="foot-links" aria-label="页脚">
           <a href="index.html">首页</a>
           <a href="manual.html">使用手册</a>
+          <a href="quickstart.html">快速上手</a>
           <a href="guide-video.html">视频生成指南</a>
           <a href="guide-short-video.html">短视频教程</a>
           <a href="guide-comfyui.html">ComfyUI 教程</a>
@@ -376,5 +389,7 @@
         apply()
       })()
     </script>
+      <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
   </body>
 </html>

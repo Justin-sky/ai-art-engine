@@ -11,14 +11,35 @@ npm run site
 
 | 路径 | 说明 |
 |------|------|
-| `index.html` | 官网首页（中文） |
-| `manual.html` | 使用手册（一键工作流、宿主资产、节点任务、成片时间线、导演台等） |
+| `index.html` | 官网首页（含按目标划分的三条入口路径） |
+| `quickstart.html` | 快速上手：安装 → 接入模型 → 模板生成 → 出片，新手主入口 |
+| `manual.html` | 使用手册（16 章，分入门 / 基础 / 核心能力 / 参考四组） |
 | `guide-short-video.html` | 短视频制作教程 |
 | `guide-video.html` | 自由画布 · 视频与参考视频 |
 | `guide-comfyui.html` | ComfyUI 接入教程（API 2、本机安装 comfy-api-proxy、API 格式 workflow） |
-| `index.en.html` · `manual.en.html` · `guide-short-video.en.html` · `guide-video.en.html` · `guide-comfyui.en.html` | 以上 5 个页面的英文版（统一 `.en.html` 后缀） |
+| `*.en.html` | 以上 6 个页面各有英文版（统一 `.en.html` 后缀） |
 | `manual.css` | 手册与教程页样式（中英文共用） |
 | `styles.css` | 首页样式（中英文共用） |
+| `site.css` | 全站共享组件样式（搜索面板、复制按钮、目录分组、概念卡、排查折叠、路径卡） |
+| `site-search.js` | 站内全文搜索（纯前端，Ctrl/Cmd+K 唤起，无需构建索引） |
+| `site-enhance.js` | 代码块一键复制、外链安全属性补全 |
+
+### 文档体系
+
+按 Diátaxis 四层组织，四种文档职责互不重叠：
+
+| 层 | 落点 | 回答的问题 |
+|----|------|-----------|
+| Tutorial 教程 | `quickstart.html` | 带新手走完一遍，5 分钟出片 |
+| How-to 操作指南 | 三个 `guide-*.html` | 怎么做某件具体的事 |
+| Reference 参考 | `manual.html` | 这个界面 / 组件是什么 |
+| Explanation 解释 | 手册 §2 核心概念 | 这些术语到底指什么 |
+
+手册目录分四组：`入门`（概述、核心概念、快速上手）→ `基础`（工程、设置、工作区、资产库）
+→ `核心能力`（一键工作流、节点图、剧本与场、时间线、画布、导演台）
+→ `参考`（资产包、快捷键、故障排查、关于与更新），另有独立的 `专题教程` 组外链三个 guide 页。
+
+新增内容时请对号入座：教人做事写 How-to，罗列界面写 Reference，解释术语写 Explanation，**不要混在一起**。
 
 ### 中英文页面
 

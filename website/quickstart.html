@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // 提前应用本地主题选择，避免加载闪烁
+      ;(function () {
+        try {
+          var pref = localStorage.getItem('site.theme')
+          if (
+            pref !== 'light' &&
+            (pref === 'dark' ||
+              pref == null ||
+              (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          ) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {}
+      })()
+    </script>
+    <meta
+      name="description"
+      content="AIArtEngine 快速上手：从安装、接入模型到一键工作流生成第一条成片，5 分钟跑通完整链路。"
+    />
+    <title>快速上手 — AIArtEngine</title>
+    <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/quickstart.en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/quickstart.html" />
+    <link rel="icon" href="assets/logo-mark.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="manual.css?v=20260829-4" />
+    <link rel="stylesheet" href="site.css?v=20260829" />
+  </head>
+  <body>
+    <a class="skip" href="#manual">跳到正文</a>
+    <div class="progress" aria-hidden="true"></div>
+    <button class="to-top" type="button" aria-label="返回顶部" hidden>↑</button>
+    <div class="lightbox" hidden>
+      <img alt="" />
+      <p class="lightbox-cap"></p>
+    </div>
+
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img src="assets/logo-mark.png" alt="" width="30" height="30" />
+        <span>AI Art Engine</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="index.html">首页</a>
+        <a href="quickstart.html" aria-current="page">快速上手</a>
+        <a href="manual.html">使用手册</a>
+        <a href="guide-video.html">视频生成指南</a>
+        <a href="guide-short-video.html">短视频教程</a>
+        <a href="guide-comfyui.html">ComfyUI 教程</a>
+        <a href="index.html#download">下载</a>
+        <a
+          href="https://space.bilibili.com/3707036976024122"
+          target="_blank"
+          rel="noopener noreferrer"
+          >视频教程</a
+        >
+        <a href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >Gitee</a
+        >
+        <a class="nav-src" href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+      <a class="nav-lang" href="quickstart.en.html" hreflang="en" lang="en">EN</a>
+      <button class="theme-toggle" type="button" aria-label="切换主题">◐</button>
+      <details class="mobile-menu">
+        <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html" aria-current="page">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer"
+            >GitHub</a
+          >
+        </nav>
+      </details>
+    </header>
+
+    <div class="manual-shell">
+      <aside class="toc" aria-label="目录">
+        <h2>目录</h2>
+        <ol>
+          <li class="toc-group">开始之前</li>
+          <li><a href="#before">1. 你需要准备什么</a></li>
+          <li class="toc-group">五分钟出第一条片</li>
+          <li><a href="#step-install">2. 安装与启动</a></li>
+          <li><a href="#step-model">3. 接入模型（最关键）</a></li>
+          <li><a href="#step-project">4. 新建工程</a></li>
+          <li><a href="#step-workflow">5. 用模板一键生成链路</a></li>
+          <li><a href="#step-run">6. 跑起来，拿到成片</a></li>
+          <li class="toc-group">继续深入</li>
+          <li><a href="#next">7. 下一步去哪</a></li>
+          <li><a href="#faq">8. 卡住了？先看这里</a></li>
+        </ol>
+        <p style="margin-top: 1.25rem; font-size: 12px; color: var(--mute)">
+          <a href="manual.html">→ 查阅完整手册</a>
+        </p>
+      </aside>
+
+      <article class="manual" id="manual">
+        <header class="manual-hero">
+          <p class="eyebrow">Tutorial · Quickstart</p>
+          <h1>快速上手</h1>
+          <p class="lede">
+            从安装到拿到第一条成片，<strong>全程不需要手动搭建任何一个节点</strong>。
+            跟着这一页走完，你就能独立跑通一条完整的 AI 生成链路，并理解后续所有功能的位置。
+          </p>
+        </header>
+
+        <section id="before">
+          <h2>1. 你需要准备什么</h2>
+          <ol>
+            <li>
+              <strong>至少一个模型提供商的密钥</strong>。本软件不内置模型，文本、图片、视频生成都由你自己的
+              提供商账号完成（OpenRouter、DeepSeek、智谱、火山方舟、可灵、MiniMax、通义千问
+              等均可）。首次体验建议先准备<strong>一个文本模型 + 一个图片模型</strong>，视频模型可后续再加。
+            </li>
+            <li>
+              <strong>本机上一个空目录</strong>，用于存放工程。所有素材与产出都保存在你自己的磁盘上。
+            </li>
+            <li>
+              <strong>约 15 分钟</strong>。其中大部分时间花在首次配置模型上，第二次起 2 分钟即可。
+            </li>
+          </ol>
+          <div class="tip">
+            使用云端 API 时<strong>不需要独立显卡</strong>；只有运行本地模型（如 ComfyUI、Ollama）才需要。
+          </div>
+        </section>
+
+        <section id="step-install">
+          <h2>2. 安装与启动</h2>
+          <ol>
+            <li>
+              到 <a href="index.html#download">下载页</a> 获取对应平台的安装包（Windows / macOS Intel /
+              macOS Apple 芯片 / Linux）。
+            </li>
+            <li>按系统提示完成安装。首次启动若被系统安全策略拦截，在系统设置中允许该应用运行即可。</li>
+            <li>
+              启动后是<strong>首页</strong>。界面没有传统菜单栏：顶栏 Logo 回首页，右上角齿轮打开<strong>设置</strong>。
+            </li>
+          </ol>
+          <div class="tip">
+            关闭设置面板：点击遮罩空白处，或点面板内的「返回」。
+          </div>
+        </section>
+
+        <section id="step-model">
+          <h2>3. 接入模型（最关键的一步）</h2>
+          <p>
+            这一步做对了，后面几乎不会遇到报错。打开右上角<strong>设置 → 模型</strong>：
+          </p>
+          <ol>
+            <li>点击<strong>添加提供商</strong>，选择你的服务商，粘贴 API 密钥并保存。</li>
+            <li>
+              点击<strong>拉取模型列表</strong>，在列表中<strong>勾选</strong>你要用的模型。
+            </li>
+            <li>
+              分别指定<strong>默认模型</strong>：文本模型（负责分镜规划与提示词改写）、图片模型（负责出图）、
+              视频模型（负责动态视频）。三者可以来自不同提供商。
+            </li>
+            <li>
+              确认账户<strong>余额充足</strong>——余额不足会直接导致生成失败，这是新手最常见的问题。
+            </li>
+          </ol>
+
+          <h3>可选：配置对象存储</h3>
+          <p>
+            设置 → 对象存储，启用火山 TOS / 阿里云 OSS / 腾讯云 COS <strong>其中之一</strong>（同时只能启用一个）。
+            只在需要<strong>视频外链</strong>或<strong>参考视频</strong>时才必须配置，纯本地出图可以先跳过。
+          </p>
+          <div class="tip">
+            不确定选哪家提供商？先用 <strong>OpenRouter</strong> 或 <strong>DeepSeek</strong>
+            作为文本模型（便宜且稳定），再配一个图片模型即可跑通下面的流程。
+          </div>
+        </section>
+
+        <section id="step-project">
+          <h2>4. 新建工程</h2>
+          <ol>
+            <li>回到首页，点击<strong>新建工程</strong>。</li>
+            <li>填写<strong>工程名称</strong>，点击<strong>浏览</strong>选择<strong>存储目录</strong>（选一个空文件夹）。</li>
+            <li>点击<strong>创建</strong>，进入工作区。</li>
+          </ol>
+          <p>
+            工程根目录会生成一个 <code>project.json</code>，之后随时可以通过「打开工程」选择它来恢复。
+            整个目录可以直接拷贝备份或迁移到别的机器。
+          </p>
+        </section>
+
+        <section id="step-workflow">
+          <h2>5. 用模板一键生成链路</h2>
+          <p>
+            这是本软件最省事的路径：<strong>不用拖节点、不用连线</strong>，选一个模板，系统自动铺好整条生成链路。
+          </p>
+          <ol>
+            <li>点击顶栏<strong>一键工作流</strong>。</li>
+            <li>
+              在<strong>预设模板</strong>里选一个。首次建议：
+              <ul>
+                <li><strong>短剧分镜</strong>——剧本 → 分镜 → 视频的完整流水线，最能体现能力；</li>
+                <li><strong>分镜出片</strong>——只想快速出一组分镜图时用它；</li>
+                <li><strong>产品广告 / 电商带货</strong>——做商品图与广告变体。</li>
+              </ul>
+            </li>
+            <li>
+              也可以直接在<strong>工作流描述</strong>里用自然语言写目标，例如
+              <em>「一句产品卖点 → 3 张分镜图 → 15 秒竖屏视频」</em>，再让 AI 规划。
+            </li>
+            <li>点击<strong>预览模板</strong>，查看自动生成的节点与连线拓扑；确认后点击<strong>创建工作流</strong>。</li>
+            <li>选择保存目录与名称，资产库中会出现一个新的<strong>宿主资产</strong>——这就是你的成品流水线。</li>
+          </ol>
+          <figure class="shot">
+            <img
+              src="assets/banner/node-graph.webp"
+              alt="节点图：由节点卡片与连线组成的生成链路"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>节点图：模板会自动铺好「输入 → 生成 → 输出」的完整链路。</figcaption>
+          </figure>
+          <div class="tip">
+            <strong>宿主资产</strong>是可复用组件：外层只暴露输入 / 输出，双击可进入内部节点图随意微调。
+            一次创建，之后多个工程反复使用。
+          </div>
+        </section>
+
+        <section id="step-run">
+          <h2>6. 跑起来，拿到成片</h2>
+          <ol>
+            <li>把刚创建的宿主资产从<strong>资产库</strong>拖到画布上。</li>
+            <li>
+              给输入口灌入内容：在<strong>剧本</strong>节点里粘贴一段故事，或用「文本」节点写一句话设定。
+            </li>
+            <li>
+              选中宿主节点或其输出口，点击<strong>加入任务</strong>（或右键「运行」），整条链路会依次执行。
+            </li>
+            <li>
+              在右侧 Inspector 中查看每一步的产出；图库节点可切换历史记录，选中的那条即为
+              <code>out</code> 输出。
+            </li>
+            <li>
+              拿到视频或图片后，打开<strong>成片时间线</strong>拖入素材编排轨道，即可预览并导出成片。
+            </li>
+          </ol>
+          <figure class="video-frame">
+            <video
+              src="assets/demo/video-output.mp4"
+              poster="assets/demo/video-poster.jpg"
+              controls
+              preload="none"
+            ></video>
+            <figcaption>示例输出：由节点链路生成的成片片段。</figcaption>
+          </figure>
+
+          <h3>做短剧的话走这条更快的路</h3>
+          <p>
+            如果你选的是<strong>短剧分镜</strong>模板，可以用顶栏<strong>剧集流水线</strong>打开 Agent
+            流程窗口，在窗口里按步骤完成分镜、拼图、导演审核与视频生成，<strong>无需回到节点图逐个节点操作</strong>。
+            详见 <a href="guide-short-video.html">短视频教程</a>。
+          </p>
+        </section>
+
+        <section id="next">
+          <h2>7. 下一步去哪</h2>
+          <p>到这里你已经跑通了一条完整链路。按你的目标选择下一步：</p>
+          <div class="path-grid">
+            <a class="path-card" href="guide-short-video.html">
+              <span class="path-tag">短剧 / 短视频</span>
+              <strong>跑一整条短剧流水线</strong>
+              <span class="path-desc">分镜、拼图、导演审核、动态视频，含四个审核节点的完整讲解。</span>
+            </a>
+            <a class="path-card" href="guide-video.html">
+              <span class="path-tag">视频生成</span>
+              <strong>自由画布与参考视频</strong>
+              <span class="path-desc">想自己搭链路、接参考视频、控制首尾帧时看这一页。</span>
+            </a>
+            <a class="path-card" href="manual.html">
+              <span class="path-tag">完整参考</span>
+              <strong>使用手册</strong>
+              <span class="path-desc">全部界面与组件的逐项说明，含核心概念、快捷键与故障排查。</span>
+            </a>
+            <a class="path-card" href="guide-comfyui.html">
+              <span class="path-tag">本地部署</span>
+              <strong>接入 ComfyUI</strong>
+              <span class="path-desc">想用本机显卡跑开源模型时，按这一页配置代理与 API 格式工作流。</span>
+            </a>
+          </div>
+        </section>
+
+        <section id="faq">
+          <h2>8. 卡住了？先看这里</h2>
+          <details class="trouble">
+            <summary>一执行就失败，或提示余额不足</summary>
+            <div class="trouble-body">
+              <p>
+                九成是提供商账户问题：检查余额是否充足、密钥是否正确、模型是否已勾选启用。
+                换一个模型跑同一节点，可以快速区分是账户问题还是软件问题。
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>连线连不上，提示类型不匹配</summary>
+            <div class="trouble-body">
+              <p>
+                端口<strong>严格区分单数与复数</strong>：<code>image</code> 进不了
+                <code>images</code>。需要列表输入时，请从上游的<strong>方形口</strong>（<code>out-all</code>）连线，
+                圆形 <code>out</code> 连不上。
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>角色「变脸」，分镜之间不一致</summary>
+            <div class="trouble-body">
+              <p>
+                靠<strong>参考图</strong>而不是反复描述来解决：使用锚点图锁定长相与服装，或把角色登记为<strong>世界元素</strong>
+                供各场共用。详见 <a href="manual.html#concepts">核心概念</a>。
+              </p>
+            </div>
+          </details>
+          <details class="trouble">
+            <summary>更多问题</summary>
+            <div class="trouble-body">
+              <p>
+                完整清单见手册的 <a href="manual.html#troubleshooting">故障排查</a> 章节（按出现频率排序）。
+                仍无法解决，可到 QQ 群 <strong>647306826</strong> 或
+                <a href="https://github.com/Justin-sky/ai-art-engine/issues" target="_blank" rel="noopener noreferrer"
+                  >GitHub Issues</a
+                >
+                反馈。
+              </p>
+            </div>
+          </details>
+        </section>
+
+        <nav class="doc-pager" aria-label="文档导航">
+          <a href="manual.html#concepts">
+            <span class="pager-dir">先理解概念</span>
+            <span class="pager-title">核心概念 → 使用手册</span>
+          </a>
+          <a href="guide-short-video.html">
+            <span class="pager-dir">下一步</span>
+            <span class="pager-title">短视频制作教程 →</span>
+          </a>
+        </nav>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <a class="foot-brand" href="index.html">
+          <img src="assets/logo-mark.png" alt="" width="22" height="22" />
+          AI Art Engine
+        </a>
+        <nav class="foot-links" aria-label="页脚">
+          <a href="index.html">首页</a>
+          <a href="quickstart.html">快速上手</a>
+          <a href="manual.html">使用手册</a>
+          <a href="guide-video.html">视频生成指南</a>
+          <a href="guide-short-video.html">短视频教程</a>
+          <a href="guide-comfyui.html">ComfyUI 教程</a>
+          <a href="index.html#download">下载</a>
+          <a
+            href="https://github.com/Justin-sky/ai-art-engine/blob/main/CHANGELOG.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >更新日志</a
+          >
+          <a
+            href="https://space.bilibili.com/3707036976024122"
+            target="_blank"
+            rel="noopener noreferrer"
+            >视频教程</a
+          >
+          <a
+            href="https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Gitee</a
+          >
+          <a href="https://github.com/Justin-sky/ai-art-engine" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <span>GPL-3.0</span>
+      </div>
+    </footer>
+    <script>
+      document.querySelectorAll('.mobile-nav a').forEach((link) => {
+        link.addEventListener('click', () => link.closest('.mobile-menu')?.removeAttribute('open'))
+      })
+
+      // 阅读进度条
+      const progressBar = document.querySelector('.progress')
+      if (progressBar) {
+        const updateProgress = () => {
+          const doc = document.documentElement
+          const max = doc.scrollHeight - window.innerHeight
+          progressBar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%'
+        }
+        window.addEventListener('scroll', updateProgress, { passive: true })
+        window.addEventListener('resize', updateProgress)
+        updateProgress()
+      }
+
+      // 目录滚动高亮（scrollspy）
+      const tocLinks = Array.from(document.querySelectorAll('.toc a[href^="#"]'))
+      const spyTargets = []
+      tocLinks.forEach((link) => {
+        const id = link.getAttribute('href').slice(1)
+        const el = id ? document.getElementById(id) : null
+        if (el) spyTargets.push({ el, link })
+      })
+      if (spyTargets.length) {
+        const spy = () => {
+          const y = window.scrollY + 90
+          let current = spyTargets[0]
+          for (const target of spyTargets) {
+            if (!target.el) continue
+            const top = target.el.getBoundingClientRect().top + window.scrollY
+            if (top <= y) current = target
+          }
+          if (!current) return
+          tocLinks.forEach((link) => link.classList.toggle('active', link === current.link))
+        }
+        window.addEventListener('scroll', spy, { passive: true })
+        window.addEventListener('resize', spy)
+        spy()
+      }
+
+      // 返回顶部
+      const toTop = document.querySelector('.to-top')
+      if (toTop) {
+        const toggleToTop = () => {
+          toTop.hidden = window.scrollY <= 600
+        }
+        window.addEventListener('scroll', toggleToTop, { passive: true })
+        toggleToTop()
+        toTop.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        })
+      }
+
+      // 截图点击放大
+      const lightbox = document.querySelector('.lightbox')
+      if (lightbox) {
+        const lightboxImg = lightbox.querySelector('img')
+        const lightboxCap = lightbox.querySelector('.lightbox-cap')
+        document.querySelectorAll('.manual figure.shot img').forEach((img) => {
+          img.addEventListener('click', () => {
+            if (!lightboxImg || !lightboxCap) return
+            lightboxImg.src = img.currentSrc || img.src
+            lightboxImg.alt = img.alt
+            lightboxCap.textContent =
+              img.closest('figure')?.querySelector('figcaption')?.textContent?.trim() || img.alt
+            lightbox.hidden = false
+          })
+        })
+        lightbox.addEventListener('click', () => {
+          lightbox.hidden = true
+        })
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+        })
+      }
+
+      // 主题切换：跟随系统 → 浅色 → 深色
+      const themeButton = document.querySelector('.theme-toggle')
+      if (themeButton) {
+        const rootEl = document.documentElement
+        const THEME_KEY = 'site.theme'
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        const THEME_META = {
+          auto: { icon: '◐', label: '主题：跟随系统' },
+          light: { icon: '☀', label: '主题：浅色' },
+          dark: { icon: '☾', label: '主题：深色' }
+        }
+        const readThemePref = () => {
+          try {
+            const stored = localStorage.getItem(THEME_KEY)
+            return stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'dark'
+          } catch (e) {
+            return 'dark'
+          }
+        }
+        const applyTheme = () => {
+          const pref = readThemePref()
+          rootEl.classList.toggle('dark', pref === 'dark' || (pref !== 'light' && darkQuery.matches))
+          rootEl.classList.toggle('light', pref === 'light')
+          const meta = THEME_META[pref]
+          themeButton.textContent = meta.icon
+          themeButton.title = meta.label + '（点击切换）'
+          themeButton.setAttribute('aria-label', meta.label)
+        }
+        darkQuery.addEventListener('change', applyTheme)
+        themeButton.addEventListener('click', () => {
+          const next = readThemePref() === 'dark' ? 'light' : readThemePref() === 'light' ? 'auto' : 'dark'
+          try {
+            localStorage.setItem(THEME_KEY, next)
+          } catch (e) {}
+          applyTheme()
+        })
+        applyTheme()
+      }
+    </script>
+    <script src="site-search.js" defer></script>
+    <script src="site-enhance.js" defer></script>
+  </body>
+</html>
