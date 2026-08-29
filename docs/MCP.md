@@ -1,0 +1,68 @@
+# MCP Server 接入指南
+
+AiArtEngine 内置一个本地 **MCP 工具服务**，让外部 AI Agent（Claude Code、Codex 等）可以直接操作你的工程：浏览资产、用自然语言规划并落盘节点图工作流、查询异步视频任务等。
+
+## 架构
+
+```
+Claude Code / Codex ──stdio(MCP)──▶ scripts/mcp-bridge.mjs ──HTTP──▶ AiArtEngine 应用（127.0.0.1 工具服务）
+```
+
+- 应用启动时在 `127.0.0.1` 起一个带 Bearer token 的本地工具服务，并把 `{ port, token, pid }` 写入
+  `<userData>/mcp.json`（Windows 为 `%APPDATA%/aiartengine/mcp.json`），退出时删除。
+- `scripts/mcp-bridge.mjs` 是零依赖的 stdio MCP 桥：由 MCP 客户端拉起，读取 mcp.json（或环境变量）转发调用。
+- 通信仅限本机回环地址；除 `/health` 外全部需要 token。
+
+## 接入（Claude Code 为例）
+
+1. 启动 AiArtEngine 桌面应用。
+2. 注册 MCP server（开发场景，桥在仓库内）：
+
+```bash
+claude mcp add aiartengine -- node <仓库绝对路径>/scripts/mcp-bridge.mjs
+```
+
+或手动写入 MCP 配置：
+
+```json
+{
+  "mcpServers": {
+    "aiartengine": {
+      "command": "node",
+      "args": ["C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs"]
+    }
+  }
+}
+```
+
+3. 重启会话，即可在对话中直接使用工具，例如：
+   「列出我的最近工程」「打开这个工程，用行业模板 shortDrama 规划一条工作流并落盘」。
+
+> 环境变量覆盖：`AIAE_MCP_CONFIG` 指定 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN`
+> 直连指定端口与 token。桥会依次尝试端口 43110–43119。
+
+## 工具清单（v0.1）
+
+| 工具 | 作用 | 依赖 |
+| --- | --- | --- |
+| `app_status` | 版本、当前工程、资产数量 | 应用运行 |
+| `project_list` | 最近工程路径列表 | 无（读配置） |
+| `project_open` | 打开工程 | 应用运行 |
+| `project_create` | 新建工程 | 应用运行 |
+| `asset_list` | 列出当前工程资产 | 已打开工程 |
+| `asset_read_file` | 按相对路径读取工程内文本文件 | 已打开工程 |
+| `asset_write_text` | 更新文本资产（剧本 / 备注），界面同步刷新 | 已打开工程 |
+| `workflow_list_presets` | 行业模板列表（id + 标题） | 应用运行 |
+| `workflow_plan` | 自然语言 → GraphPlan 预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
+| `workflow_commit` | 把 plan 落盘为宿主资产，界面同步出现 | 已打开工程 |
+| `video_job_list` / `video_job_get` | 异步视频生成任务状态 | 应用运行 |
+
+安全约定：服务只监听 `127.0.0.1`、token 鉴权；文件读写被工程服务限制在工程根目录内；
+`settings_get` 类密钥信息不对外暴露。
+
+## 当前限制（v0.1）
+
+- 生成任务的编排（拓扑顺序执行、「加入任务」整链跑）目前由应用渲染层驱动，MCP 暂未暴露；
+  工作流落盘后请在应用里加入任务运行，或等待 v0.2 的 `task_run`。
+- 图内节点级增删改（`node_upsert` / `edge_connect`）需要与打开中的编辑器协同，规划在 v0.2。
+- 桥脚本目前仅随仓库分发（开发场景）；安装包内置与自动发现规划在后续版本。

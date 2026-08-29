@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, protocol, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
+import { startMcpServer, stopMcpServer } from './services/mcpServerService'
 import { startMainRuntime } from './runtime'
 import { setAppErrorLocaleResolver } from '@shared/errors/appError'
 import { settingsService } from './services/settingsService'
@@ -140,6 +141,7 @@ app.whenReady().then(async () => {
   setAppErrorLocaleResolver(() => settingsService.get().language)
   await startMainRuntime()
   registerIpcHandlers()
+  await startMcpServer()
   updateService.init()
 
   app.on('browser-window-created', (_, window) => {
@@ -157,4 +159,8 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  stopMcpServer()
 })
