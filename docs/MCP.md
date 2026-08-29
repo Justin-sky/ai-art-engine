@@ -73,13 +73,13 @@ claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header 
 | `generate_image` | 文生图 / 图生图，落盘为工程资产 | 已打开工程 + 图片模型 |
 | `generate_video` | 提交视频生成并登记资产（异步，可 `video_job_*` 跟踪） | 已打开工程 + 视频模型 |
 | `generate_model3d` | 文生 3D / 图生 3D，产出 GLB 资产（异步） | 已打开工程 + 3D 模型 |
+| `generate_speech` | 台词转 MP3 并导入为声音资产 | 已打开工程 + 音频模型 |
 
 安全约定：服务只监听 `127.0.0.1`、token 鉴权；文件读写被工程服务限制在工程根目录内；
 `settings_get` 类密钥信息不对外暴露。
 
 ## 当前限制
 
-- 语音生成（`generate_speech`）暂未暴露：当前语音生成返回内容而非落盘资产。
 - `task_run` 依赖应用界面进程执行任务：请保持应用处于运行状态；同一图重复触发会按「进行中任务」去重。
 - 桥脚本分发：安装包内置在 `<安装目录>/resources/mcp-bridge.mjs`；开发场景用仓库内
   `scripts/mcp-bridge.mjs`（需 Node.js 18+）。

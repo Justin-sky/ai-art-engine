@@ -5,7 +5,7 @@
 
   <p><b>Professional AI creation tool · short drama · ads · film</b></p>
   <p>
-    Local-first projects · Shot & node-graph workflows<br />
+    Local-first projects · Shot & node-graph workflows · Built-in MCP Server drivable by Claude Code and other AI agents<br />
     OpenRouter · OpenAI · DeepSeek · Zhipu · Kimi · xAI · Google · vLLM · Ollama · LM Studio · Volcengine Ark · Kling · MiniMax · Tongyi Qianwen · ModelScope · ComfyUI · Meshy · Tripo · Rodin (Hyper3D) · Luma AI · Lux3D<br />
     Object storage: Volcengine TOS · Alibaba Cloud OSS · Tencent Cloud COS
   </p>
@@ -29,7 +29,7 @@
     <a href="https://justin-sky.github.io/ai-art-engine/manual.en.html"><b>Manual</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-video.en.html"><b>Video guide</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html"><b>Short-video guide</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html"><b>ComfyUI guide</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.en.html"><b>ComfyUI guide</b></a> · <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.en.html"><b>MCP Setup</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>Video tutorials</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="#community"><b>Community</b></a> ·

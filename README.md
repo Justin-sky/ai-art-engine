@@ -5,7 +5,7 @@
 
   <p><b>专业 AI 创作工具 · 短剧 · 广告 · 成片</b></p>
   <p>
-    本地工程与素材 · 分镜与节点图驱动生成<br />
+    本地工程与素材 · 分镜与节点图驱动生成 · 内置 MCP Server 可被 Claude Code 等 AI Agent 驱动<br />
     对接 OpenRouter · OpenAI · DeepSeek · 智谱 · Kimi · xAI · Google · vLLM · Ollama · LM Studio · 火山方舟 · 可灵 · MiniMax · 通义千问 · 魔塔 · ComfyUI · MagicRouter · Meshy · Tripo · Rodin（Hyper3D） · Luma AI · Lux3D<br />
     对象存储：火山 TOS · 阿里云 OSS · 腾讯云 COS
   </p>
@@ -30,7 +30,7 @@
     <a href="https://justin-sky.github.io/ai-art-engine/manual.html"><b>使用手册</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-video.html"><b>视频生成指南</b></a> ·
     <a href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html"><b>短视频教程</b></a> ·
-    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI 教程</b></a> ·
+    <a href="https://justin-sky.github.io/ai-art-engine/guide-comfyui.html"><b>ComfyUI 教程</b></a> · <a href="https://justin-sky.github.io/ai-art-engine/guide-mcp.html"><b>MCP 接入</b></a> ·
     <a href="https://space.bilibili.com/3707036976024122"><b>视频教程</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine/releases"><b>Download</b></a> ·
     <a href="https://github.com/Justin-sky/ai-art-engine"><b>GitHub</b></a> ·

@@ -429,6 +429,50 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'generate_speech',
+    title: '生成语音',
+    description:
+      '用音频模型（火山方舟 TTS / 声音设计等）把台词转成 MP3 并导入为工程声音资产。返回资产 id 与相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        input: { type: 'string', description: '台词 / 文本提示' },
+        name: { type: 'string', description: '资产显示名' },
+        model: { type: 'string', description: '音频模型 id（models_list 查询）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        voice: { type: 'string', description: '音色（缺省用模型默认音色）' },
+        speed: { type: 'number', description: '语速' }
+      },
+      required: ['input']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const speechName = optionalString(args, 'name')
+      const result = await modelProviderFacade.generateSpeech({
+        input: readString(args, 'input'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        voice: optionalString(args, 'voice'),
+        speed: typeof args.speed === 'number' && Number.isFinite(args.speed) ? args.speed : undefined,
+        name: speechName
+      })
+      if (!result.filePath) throw new Error('语音生成未返回音频文件')
+      const { imported, skipped } = projectService.importAssets([result.filePath], null)
+      const asset = imported[0]
+      if (!asset) {
+        throw new Error(`音频导入失败：${skipped[0]?.reason ?? '未知原因'}`)
+      }
+      const finalAsset = speechName ? projectService.renameAsset(asset.id, speechName) : asset
+      broadcastAsset(finalAsset.id)
+      return {
+        assetId: finalAsset.id,
+        relativePath: finalAsset.relativePath,
+        model: result.model,
+        voice: result.voice
+      }
+    }
+  },
+  {
     name: 'models_list',
     title: '可用模型列表',
     description:
