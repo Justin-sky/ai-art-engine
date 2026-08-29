@@ -1,5 +1,6 @@
 import type { GraphDocument } from '@shared/graph'
-import { applyGraphEditOps, type McpGraphEditPayload } from '@shared/graph'
+import { applyGraphEditOps } from '@shared/graph'
+import type { McpGraphEditPayload } from '@shared/ipc'
 import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
@@ -66,8 +67,6 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
     }
   }, 1500)
 }
-
-let registered = false
 
 /** 图编辑操作批：读取落盘图 → 应用 ops → 持久化 + 同步界面 */
 async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
