@@ -58,6 +58,11 @@ const E_GRAPHPLAN_NOTHING_TO_COMMIT = defErrSimple(
   '没有可创建的工作流计划',
   'No workflow plan to commit'
 )
+const E_GRAPHPLAN_CANCELLED = defErrSimple(
+  'graphPlan.cancelled',
+  '工作流规划已取消',
+  'Workflow planning cancelled'
+)
 
 export interface PlanAiWorkflowInput extends GraphPlanMediaModelDefaults {
   prompt: string
@@ -190,8 +195,11 @@ async function requestPlan(
   userPrompt: string,
   system: string,
   input: PlanAiWorkflowInput,
-  apiCalls: PlanAiWorkflowApiCall[]
+  apiCalls: PlanAiWorkflowApiCall[],
+  signal?: AbortSignal
 ): Promise<string> {
+  // 取消点：单次模型调用开始前检查（调用进行中需底层支持，本层保证不再发起后续轮次）
+  if (signal?.aborted) throw fail(E_GRAPHPLAN_CANCELLED)
   const model = input.model?.trim() || ''
   if (!model) {
     throw fail(E_GRAPHPLAN_SELECT_TEXT_MODEL)
@@ -244,7 +252,10 @@ async function requestPlan(
 /**
  * 自然语言 / 种子模板 → GraphPlan（不落盘）
  */
-export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAiWorkflowResult> {
+export async function planAiWorkflow(
+  input: PlanAiWorkflowInput,
+  options?: { signal?: AbortSignal }
+): Promise<PlanAiWorkflowResult> {
   const prompt = input.prompt?.trim() || ''
   const seed = resolveSeedPlan(input)
   const apiCalls: PlanAiWorkflowApiCall[] = []
@@ -284,7 +295,7 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
 
   let planText = ''
   try {
-    planText = await requestPlan(userPrompt, system, input, apiCalls)
+    planText = await requestPlan(userPrompt, system, input, apiCalls, options?.signal)
   } catch (err) {
     return {
       ok: false,
@@ -304,7 +315,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
         `${userPrompt}\n\n上次输出无法解析：${parseError}\n请只输出合法 JSON GraphPlan。`,
         system,
         input,
-        apiCalls
+        apiCalls,
+        options?.signal
       )
       plan = parseGraphPlanJson(planText)
     } catch (err2) {
@@ -327,7 +339,8 @@ export async function planAiWorkflow(input: PlanAiWorkflowInput): Promise<PlanAi
         `${userPrompt}\n\n上次计划存在问题：${materialized.error || '结构需修正'}\n警告：${warnings.join('；') || '无'}\n请修正 typeId 与连线后重新输出完整 GraphPlan JSON。`,
         system,
         input,
-        apiCalls
+        apiCalls,
+        options?.signal
       )
       plan = withMediaDefaults(parseGraphPlanJson(planText), input)
       materialized = tryMaterialize(plan)
