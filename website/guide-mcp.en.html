@@ -190,7 +190,8 @@
         </section>
 
         <section id="setup">
-          <h2>2. Connect Claude Code in 3 steps</h2>
+          <h2>2. Connect Claude Code in 3 steps (choose one of two)</h2>
+          <h3>Option A: stdio bridge (recommended)</h3>
           <ol>
             <li>Start the AiArtEngine desktop app.</li>
             <li>
@@ -209,16 +210,25 @@
             <li>Restart the agent session and the tools are ready. Other MCP-capable clients (Codex, Trae, …)
               use the same "command + args" configuration.</li>
           </ol>
+          <h3>Option B: HTTP direct (no Node.js required)</h3>
           <p>
-            <strong>Option B: HTTP direct (no Node.js required)</strong> — clients that support streamable HTTP can
-            skip the bridge. The token lives in mcp.json (persisted):
+            Clients that support streamable HTTP can skip the bridge. The token lives in mcp.json (persisted):
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
           <h3>Config template (.mcp.json)</h3>
           <p>
-            A <code>.mcp.json</code> at the repository root can be shared with your team (stdio bridge variant —
-            adjust the path):
+            <code>.mcp.json</code> is <strong>optional</strong> and must be <strong>created manually</strong> (nothing
+            generates it for you) — create a text file named <code>.mcp.json</code>, fill in the template below, and
+            place it in <strong>the root of the project where you run Claude Code</strong>. Commit it and your team
+            gets it on clone.
           </p>
+          <div class="tip">
+            Solo use doesn't need this file: just run
+            <code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code> and
+            Claude Code writes the config to <code>~/.claude.json</code> automatically. Pick either way — no need to
+            do both.
+          </div>
+          <p>stdio bridge variant (adjust the path):</p>
           <pre class="mcp-code"><code>{
   "mcpServers": {
     "aiartengine": {
@@ -385,7 +395,7 @@
               in-memory state.</li>
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
               <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
-            <li>Two connection options: <strong>HTTP direct</strong> (no Node.js needed) or the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required).</li>
+            <li>Two connection options: the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required) or <strong>HTTP direct</strong> (no Node.js needed).</li>
           </ul>
         </section>
       </article>

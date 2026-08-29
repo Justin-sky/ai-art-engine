@@ -185,7 +185,8 @@
         </section>
 
         <section id="setup">
-          <h2>2. 三步接入 Claude Code</h2>
+          <h2>2. 三步接入 Claude Code（两种方式任选其一）</h2>
+          <h3>方式 A：stdio 桥（推荐）</h3>
           <ol>
             <li>启动 AiArtEngine 桌面应用。</li>
             <li>
@@ -203,15 +204,24 @@
             </li>
             <li>重启 Agent 会话，工具即可使用。其他支持 MCP 的客户端（Codex、Trae 等）按同样的「command + args」方式配置。</li>
           </ol>
+          <h3>方式 B：HTTP 直连（无需 Node.js）</h3>
           <p>
-            <strong>方式 B：HTTP 直连（无需 Node.js）</strong>——支持 streamable HTTP 的客户端可跳过桥脚本，token 取自
+            支持 streamable HTTP 的客户端可跳过桥脚本，token 取自
             mcp.json（持久复用）：
           </p>
           <pre class="mcp-code"><code>claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
           <h3>配置模板（.mcp.json）</h3>
           <p>
-            放在仓库根目录的 <code>.mcp.json</code> 可随工程共享给团队（stdio 桥版，路径换成实际仓库位置）：
+            <code>.mcp.json</code> 是<strong>可选</strong>文件，需要你<strong>手动创建</strong>（没有程序会自动生成）——
+            新建一个名为 <code>.mcp.json</code> 的文本文件填入下面的内容，放在<strong>你运行 Claude Code 的项目根目录</strong>，
+            提交进 git 后团队克隆即用。
           </p>
+          <div class="tip">
+            单人使用不需要建这个文件：直接执行
+            <code>claude mcp add aiartengine -- node C:/path/to/ai-art-engine/scripts/mcp-bridge.mjs</code>，
+            Claude Code 会自动写入本机配置（<code>~/.claude.json</code>）。两种方式二选一，无需同时做。
+          </div>
+          <p>stdio 桥版（路径换成实际仓库位置）：</p>
           <pre class="mcp-code"><code>{
   "mcpServers": {
     "aiartengine": {
@@ -372,7 +382,7 @@
               <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入可回查。</li>
             <li><code>graph_edit</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
             <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
-            <li>接入方式两选一：<strong>HTTP 直连</strong>（无需 Node.js）或 <strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）。</li>
+            <li>接入方式两选一：<strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
           </ul>
         </section>
       </article>
