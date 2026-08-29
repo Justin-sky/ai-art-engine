@@ -558,7 +558,8 @@ const TOOL_DEFS: McpToolDef[] = [
         voice: { type: 'string', description: '音色（缺省用模型默认音色）' },
         speed: { type: 'number', description: '语速' },
         outputDir: { type: 'string', description: '工程内相对输出目录' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
+        extraParams: { type: 'object', description: '低频参数透传（如 responseFormat / 参考图），合并进底层生成输入' }
       },
       required: ['input']
     },
@@ -566,6 +567,7 @@ const TOOL_DEFS: McpToolDef[] = [
       assertProjectOpen()
       const inputText = readString(args, 'input')
       const input = {
+        ...extraParamsOf(args),
         input: inputText,
         model: optionalString(args, 'model'),
         providerInstanceId: optionalString(args, 'providerInstanceId'),
@@ -637,13 +639,15 @@ const TOOL_DEFS: McpToolDef[] = [
           description: '参考图 http(s) 地址（图生图）'
         },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Assets/Generated/Images）' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' }
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' },
+        extraParams: { type: 'object', description: '低频参数透传（如 seed / quality / resolution），合并进底层生成输入；同名常用参数以显式传参为准' }
       },
       required: ['prompt']
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateImageInput & { name?: string } = {
+      const input: GenerateImageInput & { name?: string; outputDir?: string } = {
+        ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -684,13 +688,15 @@ const TOOL_DEFS: McpToolDef[] = [
         generateAudio: { type: 'boolean', description: '是否同步生成音频（部分模型）' },
         firstFrameImageUrl: { type: 'string', description: '首帧图 http(s) 地址' },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
+        extraParams: { type: 'object', description: '低频参数透传（如 resolution / size / lastFrameImageUrl / seed），合并进底层生成输入' }
       },
       required: ['prompt']
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateVideoInput & { name?: string } = {
+      const input: GenerateVideoInput & { name?: string; outputDir?: string } = {
+        ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -735,13 +741,15 @@ const TOOL_DEFS: McpToolDef[] = [
           items: { type: 'string' },
           description: '参考图 http(s) 地址（图生 3D / 多图生 3D）'
         },
-        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
+        extraParams: { type: 'object', description: '低频参数透传（模型特有字段），合并进底层生成输入' }
       },
       required: ['prompt']
     },
     handler: async (args) => {
       assertProjectOpen()
-      const input: GenerateModel3dInput & { name?: string } = {
+      const input: GenerateModel3dInput & { name?: string; outputDir?: string } = {
+        ...extraParamsOf(args),
         prompt: readString(args, 'prompt'),
         name: optionalString(args, 'name'),
         model: optionalString(args, 'model'),
@@ -775,6 +783,15 @@ function applyAssetFolder(assetId: string, folderId: string | undefined): void {
   }
   const asset = projectService.listAssets().find((item) => item.id === assetId)
   if (asset) projectService.updateAsset({ ...asset, folderId })
+}
+
+/** 读取 extraParams 透传对象：剥离内部回写绑定字段，避免外部注入节点级回写 */
+function extraParamsOf(args: Record<string, unknown>): Record<string, unknown> {
+  const extra = args.extraParams && typeof args.extraParams === 'object'
+    ? { ...(args.extraParams as Record<string, unknown>) }
+    : {}
+  delete extra.graphBinding
+  return extra
 }
 
 function assertProjectOpen(): void {

@@ -193,6 +193,9 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - **`task_run` 依赖应用界面进程**：请保持应用运行；同一张图重复触发会按「进行中任务」去重。
 - **资产分类**：`generate_*` 与 `workflow_commit` 支持 `folderId`（资产库文件夹，`folder_list` 查询）与
   `outputDir`（工程内相对输出目录，缺省按类型 Assets/Generated/* 或 Cache/Videos）。
+- **低频参数透传**：`generate_*` 工具支持 `extraParams` 对象，把底层生成输入的全部字段
+  （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
+  显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。
 - **并发闸门**：`generate_image` / `generate_speech` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
