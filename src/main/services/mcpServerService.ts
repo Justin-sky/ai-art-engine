@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, appendFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
@@ -15,6 +15,7 @@ import {
   type CommitAiWorkflowInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
+  type McpServerInfo,
   type McpTaskReportPayload,
   type PlanAiWorkflowInput,
   type WriteAssetTextInput
@@ -373,6 +374,53 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'graph_read',
+    title: '读取节点图',
+    description:
+      '读取一个已落盘的宿主资产图的结构：节点（id / 类型 / 标题）与连线清单，供 graph_edit 前确认节点 id，或 task_run 前了解图内容。只读操作，图在编辑器中打开时也可调用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '宿主资产 id' },
+        includeParams: {
+          type: 'boolean',
+          description: 'true 时附带每个节点的完整参数（默认只返回结构摘要）'
+        }
+      },
+      required: ['assetId']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+        | GraphDocument
+        | undefined
+      if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+        throw new Error('资产不存在或不含图文档（仅支持宿主资产子图）')
+      }
+      const includeParams = args.includeParams === true
+      return {
+        assetId,
+        assetName: asset.name,
+        nodeCount: graphJson.nodes.length,
+        edgeCount: graphJson.edges.length,
+        nodes: graphJson.nodes.map((node) => ({
+          id: node.id,
+          typeId: node.typeId ?? '',
+          title: node.title ?? '',
+          ...(includeParams ? { params: node.params } : {})
+        })),
+        edges: graphJson.edges.map((edge) => ({
+          from: edge.source,
+          to: edge.target,
+          sourcePort: edge.sourcePort,
+          targetPort: edge.targetPort
+        }))
+      }
+    }
+  },
+  {
     name: 'graph_edit',
     title: '编辑节点图',
     description:
@@ -651,6 +699,19 @@ function scheduleTaskReportCleanup(mcpTaskId: string): void {
 
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
 const pendingMcpGraphEditResults = new Map<string, McpGraphEditResultPayload>()
+const graphEditResultCleanups = new Map<string, NodeJS.Timeout>()
+
+/** 回报已被等待方消费或超时后自动清理，与任务报告同一保留策略 */
+function scheduleGraphEditResultCleanup(requestId: string): void {
+  const prev = graphEditResultCleanups.get(requestId)
+  if (prev) clearTimeout(prev)
+  const timer = setTimeout(() => {
+    pendingMcpGraphEditResults.delete(requestId)
+    graphEditResultCleanups.delete(requestId)
+  }, TASK_REPORT_RETENTION_MS)
+  timer.unref?.()
+  graphEditResultCleanups.set(requestId, timer)
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -679,7 +740,10 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 function authorized(req: IncomingMessage): boolean {
-  return req.headers.authorization === `Bearer ${mcpToken}`
+  const header = Buffer.from(req.headers.authorization ?? '')
+  const expected = Buffer.from(`Bearer ${mcpToken}`)
+  // 常量时间比较，避免 token 的计时侧信道
+  return header.length === expected.length && timingSafeEqual(header, expected)
 }
 
 let mcpPort = 0
@@ -858,6 +922,18 @@ function readStoredMcpConfig(): { port?: number; token?: string } {
   }
 }
 
+/** MCP 工具服务当前状态：供设置界面展示接入地址 / token / 一键复制命令 */
+export function getMcpServerInfo(): McpServerInfo | null {
+  if (!server || !mcpPort) return null
+  return {
+    running: true,
+    port: mcpPort,
+    token: mcpToken,
+    configPath: mcpConfigPath,
+    endpoint: `http://127.0.0.1:${mcpPort}/mcp`
+  }
+}
+
 export async function startMcpServer(): Promise<void> {
   if (server) return
   const stored = readStoredMcpConfig()
@@ -888,6 +964,7 @@ export async function startMcpServer(): Promise<void> {
     (_event, payload: McpGraphEditResultPayload) => {
       if (payload && typeof payload.requestId === 'string') {
         pendingMcpGraphEditResults.set(payload.requestId, payload)
+        scheduleGraphEditResultCleanup(payload.requestId)
       }
       return true
     }

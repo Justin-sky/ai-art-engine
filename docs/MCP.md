@@ -154,6 +154,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `workflow_list_presets` | 行业模板列表（id + 标题） | 应用运行中 |
 | `workflow_plan` | 自然语言 → 工作流方案预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
 | `workflow_commit` | 把方案落盘为宿主资产，界面同步出现 | 已打开工程 |
+| `graph_read` | 读取宿主资产图结构（节点 id / 类型 / 标题 + 连线），graph_edit 前置 | 已打开工程 |
 | `task_run` | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |
 | `task_status` | 按 `mcpTaskId` 查运行状态（running / done / error / stopped） | 应用运行中 |
 
