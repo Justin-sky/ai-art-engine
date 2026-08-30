@@ -60,6 +60,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      # node-pty 等原生依赖经 node-gyp 重建，依赖 Python distutils（3.12+ 已移除）
+      - name: Set up Python 3.11 (node-gyp distutils)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: npm ci
 
