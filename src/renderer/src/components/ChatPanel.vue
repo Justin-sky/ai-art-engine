@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { HarnessEvent, HarnessStatus, McpActivity } from '@shared/ipc'
+import { modalityConfig } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
+
+const CHAT_MODEL_KEY = 'studio.chat.model'
 
 type ChatMsg =
   | { kind: 'user'; text: string }
@@ -22,6 +25,82 @@ const running = ref(false)
 const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
+/** 一个可选的文本模型（来自任一已启用且带密钥的 provider 的 text 模态） */
+interface ModelOption {
+  providerId: string
+  id: string
+  label: string
+  providerLabel: string
+}
+
+const modelOptions = ref<ModelOption[]>([])
+/** 当前选中项：`providerId::modelId` 组合键，避免不同 provider 下同 id 模型冲突 */
+const selectedKey = ref('')
+
+function modelKey(providerId: string, modelId: string): string {
+  return `${providerId}::${modelId}`
+}
+
+function splitModelKey(key: string): { providerId: string; modelId: string } {
+  const idx = key.indexOf('::')
+  return idx < 0
+    ? { providerId: '', modelId: key }
+    : { providerId: key.slice(0, idx), modelId: key.slice(idx + 2) }
+}
+
+/** 从设置汇总所有可用文本模型，并保留/回退当前选择 */
+async function loadModels(): Promise<void> {
+  try {
+    const settings = await window.studio.getSettings()
+    const providers = settings.models?.providers ?? []
+    const options: ModelOption[] = []
+    for (const p of providers) {
+      if (!p.enabled || !p.apiKey?.trim()) continue
+      const text = modalityConfig(p, 'text')
+      const catalog = text.catalog ?? {}
+      for (const id of text.selectedModelIds ?? []) {
+        if (!id.trim()) continue
+        options.push({
+          providerId: p.id,
+          id,
+          label: catalog[id]?.name?.trim() || id,
+          providerLabel: p.label || p.providerKind
+        })
+      }
+    }
+    modelOptions.value = options
+
+    const saved = localStorage.getItem(CHAT_MODEL_KEY)
+    if (saved && options.some((o) => modelKey(o.providerId, o.id) === saved)) {
+      selectedKey.value = saved
+      return
+    }
+    // 回退：DeepSeek 官方默认 → 该 provider 首个模型 → 全局首个模型
+    const ds = providers.find(
+      (p) => p.providerKind === 'deepseek' && p.enabled && p.apiKey?.trim()
+    )
+    if (ds) {
+      const def = modalityConfig(ds, 'text').defaultModelId?.trim()
+      if (def && options.some((o) => o.providerId === ds.id && o.id === def)) {
+        selectedKey.value = modelKey(ds.id, def)
+        return
+      }
+      const first = options.find((o) => o.providerId === ds.id)
+      if (first) {
+        selectedKey.value = modelKey(first.providerId, first.id)
+        return
+      }
+    }
+    selectedKey.value = options[0] ? modelKey(options[0].providerId, options[0].id) : ''
+  } catch {
+    modelOptions.value = []
+  }
+}
+
+watch(selectedKey, (value) => {
+  if (value) localStorage.setItem(CHAT_MODEL_KEY, value)
+})
+
 let stopEvent: (() => void) | null = null
 let stopActivity: (() => void) | null = null
 // MCP 活动 id → 已渲染的工具卡（会话内去重并原地更新状态）
@@ -40,6 +119,14 @@ const statusText = computed(() => {
   return s.message ?? t('studio.chat.unavailable')
 })
 const statusWarn = computed(() => !!status.value && !ready.value)
+/** dsh 工作区：当前打开的工程根目录（未打开工程时为空） */
+const workspace = computed(() => status.value?.workspace?.trim() ?? '')
+const workspaceLabel = computed(() => {
+  const w = workspace.value
+  if (!w) return ''
+  const parts = w.split(/[\\/]/).filter((s) => s.length > 0)
+  return parts[parts.length - 1] ?? w
+})
 
 function scrollToBottom(): void {
   void nextTick(() => {
@@ -97,11 +184,7 @@ function onHarnessEvent(event: HarnessEvent): void {
 function onMcpActivity(activity: McpActivity): void {
   if (!running.value) return
   const state =
-    activity.status === 'completed'
-      ? 'done'
-      : activity.status === 'failed'
-        ? 'error'
-        : 'start'
+    activity.status === 'done' ? 'done' : activity.status === 'error' ? 'error' : 'start'
   const prev = toolById.get(activity.id)
   if (prev) {
     prev.state = state
@@ -121,13 +204,23 @@ function onMcpActivity(activity: McpActivity): void {
 
 async function onSend(): Promise<void> {
   const task = draft.value.trim()
-  if (!task || running.value || !ready.value) return
+  if (!task || running.value) return
+  // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
+  if (!ready.value) {
+    pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
+    return
+  }
   draft.value = ''
   toolById.clear()
   messages.value.push({ kind: 'user', text: task })
   scrollToBottom()
   running.value = true
-  const result = await window.studio.runHarnessTask({ task })
+  const { providerId, modelId } = splitModelKey(selectedKey.value)
+  const result = await window.studio.runHarnessTask({
+    task,
+    model: modelId.trim() || undefined,
+    ...(providerId ? { providerId } : {})
+  })
   if (!result.started) {
     pushStatus(result.message ?? 'failed to start')
     running.value = false
@@ -142,6 +235,7 @@ onMounted(async () => {
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   status.value = await window.studio.getHarnessStatus()
+  await loadModels()
 })
 
 onBeforeUnmount(() => {
@@ -155,6 +249,7 @@ onBeforeUnmount(() => {
     <div class="chat-status" :class="{ warn: statusWarn }">
       <span class="dot" />
       <span class="status-text">{{ statusText }}</span>
+      <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
     </div>
 
     <div ref="listRef" class="chat-messages">
@@ -190,15 +285,26 @@ onBeforeUnmount(() => {
         @keydown.enter.exact.prevent="onSend"
       />
       <div class="chat-actions">
+        <div class="model-select-wrap">
+          <span class="model-label">{{ t('studio.chat.model') }}</span>
+          <select
+            v-model="selectedKey"
+            class="model-select"
+            :disabled="running || !modelOptions.length"
+            @focus="loadModels"
+          >
+            <option
+              v-for="m in modelOptions"
+              :key="modelKey(m.providerId, m.id)"
+              :value="modelKey(m.providerId, m.id)"
+            >{{ m.providerLabel }} · {{ m.label }}</option>
+          </select>
+          <span v-if="!modelOptions.length" class="model-empty">{{ t('studio.chat.noModel') }}</span>
+        </div>
         <button v-if="running" class="btn abort" @click="onAbort">
           {{ t('studio.chat.stop') }}
         </button>
-        <button
-          v-else
-          class="btn send"
-          :disabled="!draft.trim() || !ready"
-          @click="onSend"
-        >
+        <button v-else class="btn send" :disabled="!draft.trim()" @click="onSend">
           {{ t('studio.chat.send') }}
         </button>
       </div>
@@ -242,6 +348,21 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-status .chat-workspace {
+  flex: none;
+  margin-left: auto;
+  max-width: 40%;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .chat-messages {
@@ -414,8 +535,49 @@ onBeforeUnmount(() => {
 
 .chat-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.model-select-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.model-select-wrap .model-label {
+  flex: none;
+}
+
+.model-select-wrap .model-select {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.model-select-wrap .model-select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.model-select-wrap .model-empty {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn {

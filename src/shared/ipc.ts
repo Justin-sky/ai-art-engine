@@ -427,24 +427,29 @@ export interface HarnessStatus {
   nodeVersion: string
   /** Node 版本是否满足 dsh 建议 */
   nodeOk: boolean
-  /** dsh 是否已可用（npm 包已缓存，无需现场下载） */
+  /** dsh 是否已可用（内置运行体/本地安装，或 npx 已缓存） */
   dshReady: boolean
   /** 应用 MCP 工具服务是否在运行 */
   mcpRunning: boolean
   /** 应用 MCP 工具服务端点（仅展示） */
   mcpEndpoint?: string
   /** 是否已配置 DeepSeek 文本模型密钥 */
+  /** 是否已配置可用文本模型 provider（DeepSeek 或任意 OpenAI 兼容文本 provider） */
   hasDeepseekKey: boolean
   /** 人话提示（缺 Node / 缺密钥 / MCP 未启动等） */
   message?: string
+  /** dsh 工作区目录：当前打开的工程根目录；未打开工程时为 undefined（回退应用数据目录） */
+  workspace?: string
 }
 
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
   task: string
-  /** 可选：dsh 使用的模型 id（默认取 DeepSeek 已配置文本模型） */
+  /** 可选：dsh 使用的模型 id（默认取 provider 的默认文本模型） */
   model?: string
+  /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */
+  providerId?: string
 }
 
 /** Harness：任务启动结果 */

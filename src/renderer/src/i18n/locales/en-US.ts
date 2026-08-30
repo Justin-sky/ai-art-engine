@@ -520,7 +520,9 @@ export default {
       unavailable: 'Unavailable',
       toolRunning: 'Running',
       toolDone: 'Done',
-      toolFailed: 'Failed'
+      toolFailed: 'Failed',
+      model: 'Model',
+      noModel: 'No text model configured'
     },
     editor: {
       asset: 'Asset Editor',

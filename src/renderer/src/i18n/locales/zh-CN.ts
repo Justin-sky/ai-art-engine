@@ -519,7 +519,9 @@ export default {
       unavailable: '不可用',
       toolRunning: '执行中',
       toolDone: '完成',
-      toolFailed: '失败'
+      toolFailed: '失败',
+      model: '模型',
+      noModel: '未配置文本模型'
     },
     editor: {
       asset: '资产编辑器',

@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   IpcChannels,
@@ -9,8 +9,10 @@ import {
   type HarnessRunResult,
   type HarnessStatus
 } from '@shared/ipc'
+import { modalityConfig, type ModelProviderInstance } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
 import { getMcpServerInfo } from './mcpServerService'
+import { projectService } from './projectService'
 import { settingsService } from './settingsService'
 
 /**
@@ -21,13 +23,17 @@ import { settingsService } from './settingsService'
  * 让 agent 通过 Streamable HTTP 调用本应用自带的 MCP 工具服务——即「聊天窗口里调用 MCP」。
  *
  * 流程：
- *   Chat 面板 → HARNESS_RUN → spawn `npx @deepseek-ai/dsh --profile headless <task>`
+ *   Chat 面板 → HARNESS_RUN → spawn dsh `--profile headless <task>`
  *     → dsh 内嵌 mcp-client → GET/POST http://127.0.0.1:<port>/mcp (Bearer token)
  *     → 工具执行（generate_image 等）→ MCP 活动广播给渲染层做工具卡
  *   dsh stdout / stderr 按行转发为 HARNESS_EVENT（assistant / status / done / error）。
  *
- * 注意：dsh 是外部 npm 包，运行需要系统 Node ^22.19 或 24+（本服务通过 `npx` 拉起，
- * 与应用内 Electron 内置 Node 无关）。首次运行 npx 会现场拉包，耗时较长，状态会提示。
+ * dsh 运行体来源（按优先级）：
+ *   1. 安装包内置：构建时由 scripts/bundle-dsh.mjs 产出，随 extraResources 打入
+ *      `<resources>/dsh`，开箱即用，无需联网下载；
+ *   2. 工程本地安装：开发模式下 `node_modules/@deepseek-ai/dsh`；
+ *   3. npx 现场拉包（回退）：无内置且未安装时 `npx --yes @deepseek-ai/dsh`，耗时较长。
+ * dsh 由系统 Node ^22.19 或 24+ 执行（与应用内 Electron 内置 Node 无关）。
  */
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -53,21 +59,49 @@ function dshHome(): string {
   return join(app.getPath('userData'), 'dsh-harness')
 }
 
-/** 读取用户已配置的 DeepSeek 文本 provider（含密钥），供 dsh 使用 */
-function resolveDeepseekProvider(): {
+/**
+ * dsh 工作区：优先当前打开的工程根目录（agent 在工程内读写资产），
+ * 未打开工程时回退应用数据目录（仅可做纯对话）。
+ */
+function resolveWorkspace(): string {
+  const root = projectService.getOpenProjectState()?.rootPath?.trim()
+  if (root && existsSync(root)) return root
+  return app.getPath('userData')
+}
+
+/**
+ * 解析 dsh 使用的文本 provider（含密钥）。
+ * 优先指定 providerId；未指定时取 DeepSeek 官方，其次任意已配置文本模型的 provider。
+ * 任一 provider 的文本模型都可作为 agent 模型（OpenAI 兼容端点经 DEEPSEEK_BASE_URL 透传）。
+ */
+function resolveTextProvider(providerId?: string): {
   apiKey: string
   baseUrl?: string
   modelId: string
 } | null {
   const settings = settingsService.get()
   const providers = settings.models?.providers ?? []
-  const provider = providers.find(
-    (p) => p.providerKind === 'deepseek' && p.enabled && p.apiKey?.trim()
-  )
-  if (!provider) return null
-  const modelId = provider.modalities?.text?.selectedModelIds?.[0]?.trim() || 'deepseek-chat'
-  const baseUrl = provider.baseUrl?.trim()
-  return { apiKey: provider.apiKey.trim(), modelId, ...(baseUrl ? { baseUrl } : {}) }
+  const hasTextModels = (p: ModelProviderInstance): boolean =>
+    (modalityConfig(p, 'text').selectedModelIds?.length ?? 0) > 0
+  const pick = (p: ModelProviderInstance): ReturnType<typeof resolveTextProvider> => {
+    const text = modalityConfig(p, 'text')
+    const modelId =
+      (text.defaultModelId?.trim() && text.selectedModelIds.includes(text.defaultModelId)
+        ? text.defaultModelId.trim()
+        : undefined) ?? text.selectedModelIds[0]?.trim()
+    if (!modelId) return null
+    const baseUrl = p.baseUrl?.trim()
+    return { apiKey: p.apiKey.trim(), modelId, ...(baseUrl ? { baseUrl } : {}) }
+  }
+  if (providerId) {
+    const candidate = providers.find(
+      (p) => p.id === providerId && p.enabled && p.apiKey?.trim() && hasTextModels(p)
+    )
+    return candidate ? pick(candidate) : null
+  }
+  const pool = providers.filter((p) => p.enabled && p.apiKey?.trim() && hasTextModels(p))
+  const provider = pool.find((p) => p.providerKind === 'deepseek') ?? pool[0]
+  return provider ? pick(provider) : null
 }
 
 /** 检测系统 Node 版本（dsh 走系统 node，与应用内置版本无关） */
@@ -105,19 +139,59 @@ function detectDshCached(): boolean {
   return existsSync(join(npxDir, 'node_modules', DSH_PACKAGE))
 }
 
+/** dsh 包根目录的候选位置：安装包内置 resources → 工程本地 node_modules（开发模式） */
+function dshPackageRoots(): string[] {
+  const roots: string[] = []
+  if (process.resourcesPath) roots.push(join(process.resourcesPath, 'dsh', 'node_modules', DSH_PACKAGE))
+  roots.push(join(app.getAppPath(), 'node_modules', DSH_PACKAGE))
+  return roots
+}
+
+/** 读取包 package.json 的 bin 入口（bin 为字符串或对象，对象取首个值） */
+function readBinEntry(packageRoot: string): string | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+      bin?: string | Record<string, string>
+    }
+    if (typeof pkg.bin === 'string') return join(packageRoot, pkg.bin)
+    const first = pkg.bin ? Object.values(pkg.bin)[0] : ''
+    return first ? join(packageRoot, first) : null
+  } catch {
+    return null
+  }
+}
+
+/** 定位可用的 dsh 运行入口（内置优先，其次本地安装）；无可用返回 null */
+function resolveDshEntry(): string | null {
+  for (const root of dshPackageRoots()) {
+    if (!existsSync(root)) continue
+    const entry = readBinEntry(root)
+    if (entry && existsSync(entry)) return entry
+  }
+  return null
+}
+
 export async function getHarnessStatus(): Promise<HarnessStatus> {
   const nodeVersion = detectSystemNode()
   const nodeOk = isNodeVersionOk(nodeVersion)
   const mcp = getMcpServerInfo()
-  const provider = resolveDeepseekProvider()
-  const dshReady = nodeOk && detectDshCached()
+  const provider = resolveTextProvider()
+  const dshEntry = resolveDshEntry()
+  const dshReady = nodeOk && (!!dshEntry || detectDshCached())
 
   const hints: string[] = []
   if (!nodeVersion) hints.push('未检测到系统 Node，请先安装 Node.js 22.19+ 或 24+')
   else if (!nodeOk) hints.push(`系统 Node ${nodeVersion}，dsh 建议 ^22.19 或 24+`)
-  if (!dshReady) hints.push('首次发送消息时会自动下载 dsh（需联网，约 1–2 分钟）')
-  if (!provider) hints.push('尚未配置 DeepSeek API Key（模型设置中添加）')
+  if (!dshEntry && !detectDshCached()) {
+    hints.push('首次发送消息时会自动下载 dsh（需联网，约 1–2 分钟）')
+  }
+  if (!provider) hints.push('尚未配置文本模型或 API Key（模型设置中添加）')
   if (!mcp?.running) hints.push('MCP 工具服务未启动（设置中开启）')
+
+  // 仅打开工程时上报工作区（agent 以工程为工作区）；否则 UI 提示未打开工程
+  const projectRoot = projectService.getOpenProjectState()?.rootPath?.trim()
+  const workspace = projectRoot && existsSync(projectRoot) ? projectRoot : undefined
+  if (!workspace) hints.push('未打开工程：AI 工作区将回退为应用数据目录')
 
   return {
     nodeVersion: nodeVersion || '未知',
@@ -126,7 +200,8 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
     mcpRunning: !!mcp?.running,
     mcpEndpoint: mcp?.endpoint,
     hasDeepseekKey: !!provider,
-    message: hints.join('；') || undefined
+    message: hints.join('；') || undefined,
+    workspace
   }
 }
 
@@ -158,22 +233,34 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   if (!mcp?.running) {
     return { started: false, message: 'MCP 工具服务未运行，请先在设置中启动' }
   }
-  const provider = resolveDeepseekProvider()
+  const provider = resolveTextProvider(input?.providerId)
   if (!provider) {
-    return { started: false, message: '未配置 DeepSeek API Key，请先在模型设置中添加' }
+    return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
 
   writeDshConfig(mcp.endpoint)
+  const workspace = resolveWorkspace()
   const runId = String(++runSeq)
   emit({ type: 'status', text: '正在启动 DeepSeek Harness…' })
+  emit({
+    type: 'status',
+    text:
+      workspace === app.getPath('userData')
+        ? '未打开工程：AI 工作区为应用数据目录（建议先打开工程）'
+        : `工作区：${workspace}`
+  })
   emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
 
-  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  const dshEntry = resolveDshEntry()
+  const command = dshEntry ? 'node' : process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  const args = dshEntry
+    ? [dshEntry, '--profile', 'headless', task]
+    : ['--yes', DSH_PACKAGE, '--profile', 'headless', task]
   const proc = spawn(
-    npxBin,
-    ['--yes', DSH_PACKAGE, '--profile', 'headless', task],
+    command,
+    args,
     {
-      cwd: app.getPath('userData'),
+      cwd: workspace,
       windowsHide: true,
       shell: false,
       env: {
@@ -192,7 +279,6 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   let stdoutBuf = ''
   let sawOutput = false
   let finalText = ''
-  let lastAssistantAt = 0
 
   const onData = (chunk: Buffer | string, source: 'out' | 'err'): void => {
     stdoutBuf += String(chunk)
@@ -203,7 +289,6 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       if (!line) continue
       if (source === 'out') {
         sawOutput = true
-        lastAssistantAt = Date.now()
         finalText = (finalText ? finalText + '\n' : '') + line
         emit({ type: 'assistant', text: line + '\n' })
       } else {
@@ -233,10 +318,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     }
     emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (code !== 0 && !sawOutput) {
-      emit({
-        type: 'error',
-        message: `dsh 异常退出（code ${code}）。若为首次运行，请等待包下载完成后重试。`
-      })
+      const hint = dshEntry ? '请重试或查看上方状态信息' : '若为首次运行，请等待包下载完成后重试'
+      emit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
     } else {
       emit({ type: 'done', runId })
       // 保留 final 事件：渲染层可据此把「最终回答」与流式文本区分开
@@ -244,13 +327,15 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     }
   })
 
-  // npx 现场拉包可能耗时数分钟：超时兜底，避免子进程悬挂
-  const timeout = setTimeout(() => {
-    if (child !== proc) return
-    emit({ type: 'status', text: 'dsh 响应超时，正在中止（可重试）' })
-    proc.kill()
-  }, NPX_TIMEOUT_MS)
-  proc.once('close', () => clearTimeout(timeout))
+  // 仅 npx 现场拉包时保留超时兜底（下载可能悬挂）；内置运行体执行时长不可预测，交给用户手动中止
+  if (!dshEntry) {
+    const timeout = setTimeout(() => {
+      if (child !== proc) return
+      emit({ type: 'status', text: 'dsh 响应超时，正在中止（可重试）' })
+      proc.kill()
+    }, NPX_TIMEOUT_MS)
+    proc.once('close', () => clearTimeout(timeout))
+  }
 
   return { started: true }
 }
