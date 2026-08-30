@@ -31,7 +31,9 @@
    "name: input.name ?? `声音 ${new Date().toLocaleString()}`,"
   ],
   "src/main/services/modelProviders/facade.ts": [
-   "name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,"
+   "name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,",
+   "const LUX3D_BUSY_MARKERS = ['进行中的生成任务', '已有进行中', 'busy']",
+   "name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,"
   ],
   "src/main/services/modelProviders/http.ts": [
    ": `${message}（当前 Key 不像 OpenRouter 密钥：请到 openrouter.ai/keys 复制以 sk-or-v1- 开头的密钥，并确认已保存设置）`",
@@ -112,7 +114,8 @@
    "`上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`",
    "`跳过删除临时参考视频：${err instanceof Error ? err.message : String(err)}`",
    "`已删除临时参考视频：${item.sourceLabel || key}（${bucket}/${key}）`",
-   "`删除临时参考视频失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`"
+   "`删除临时参考视频失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`",
+   "`复用已上传的参考视频：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`"
   ],
   "src/main/services/timelineExportService.ts": [
    "title: '导出成片',"

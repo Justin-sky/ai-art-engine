@@ -18,7 +18,7 @@ export const PROJECT_ROOT = path.resolve(__dirname, '..')
 const SRC_ROOT = path.join(PROJECT_ROOT, 'src')
 const ALLOWLIST_PATH = path.join(PROJECT_ROOT, 'scripts', 'cjk-allowlist.json')
 
-/** 双语域数据：AI 提示词 / 预设内容 / 双语错误目录本身，不走 vue-i18n（团队既定约定） */
+/** 域数据：AI 提示词 / 预设内容 / 双语错误目录本身 / MCP 与 Agent 集成文本（工具描述、协议错误、任务返回、并发闸门与 dsh 配置提示），不走 vue-i18n（团队既定约定） */
 const EXEMPT_FILES = new Set([
   'src/shared/errors/catalog.ts',
   'src/main/errors/messages.ts',
@@ -30,7 +30,14 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/systemPromptSchemes.ts',
   'src/shared/graph/emotionPad.ts',
   'src/renderer/src/features/director/aiSceneBlockout.ts',
-  'src/renderer/src/features/director/aiPosePresets.ts'
+  'src/renderer/src/features/director/aiPosePresets.ts',
+  // MCP / Agent 集成域：展示给外部 Agent 与开发者，非 UI 文案
+  'src/main/services/deepseekHarnessService.ts',
+  'src/main/services/mcpServerService.ts',
+  'src/renderer/src/features/mcp/mcpTaskRunner.ts',
+  'src/shared/asyncSemaphore.ts',
+  'src/shared/graph/mcpGraphEdit.ts',
+  'src/shared/mcpProtocol.ts'
 ])
 const EXEMPT_DIR_PARTS = [['src', 'renderer', 'src', 'i18n', 'locales']]
 
