@@ -442,10 +442,18 @@ export interface HarnessStatus {
   workspace?: string
 }
 
+/** Harness：一条历史对话消息（user/assistant 文本，随任务回传作为模型上下文） */
+export interface HarnessHistoryMsg {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
   task: string
+  /** 可选：本次会话的历史对话（不晚于当前任务），用于模型记住之前的聊天内容 */
+  history?: HarnessHistoryMsg[]
   /** 可选：dsh 使用的模型 id（默认取 provider 的默认文本模型） */
   model?: string
   /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */

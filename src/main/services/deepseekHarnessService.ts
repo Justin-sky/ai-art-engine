@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import {
   IpcChannels,
   type HarnessEvent,
+  type HarnessHistoryMsg,
   type HarnessRunInput,
   type HarnessRunResult,
   type HarnessStatus
@@ -43,6 +44,10 @@ const MIN_NODE_MINOR = 19
 const NPX_TIMEOUT_MS = 120_000
 /** npx 现场拉包期间的进度提醒间隔：下载可能长时间无输出，避免界面看起来卡死 */
 const NPX_PROGRESS_HINT_MS = 20_000
+/** 随任务回传给模型的历史上下文：最多保留的消息条数（超出丢弃最旧轮次，避免 token 膨胀） */
+const MAX_HISTORY_MESSAGES = 20
+/** 单条历史消息文本长度上限（超出截断，保护上下文长度） */
+const MAX_HISTORY_TEXT_LENGTH = 2000
 
 let child: ChildProcess | null = null
 let runSeq = 0
@@ -638,10 +643,37 @@ function launchDsh(opts: {
   }
 }
 
+/**
+ * 把会话历史拼成上下文文本附到任务前，让模型记住之前的聊天内容。
+ *
+ * 背景：dsh 的 headless profile 是一次性进程（跑完即退、session 不复用），
+ * 自定义 runner 也只接收单个 task 文本；因此历史以「对话记录」文本形式注入，
+ * 模型据此理解上下文。只保留 user/assistant 文本（过滤 status / 工具卡），
+ * 并限制条数与单条长度，避免上下文无限膨胀。
+ */
+function buildTaskWithHistory(task: string, history?: HarnessHistoryMsg[]): string {
+  if (!history?.length) return task
+  const lines = history.slice(-MAX_HISTORY_MESSAGES).map((m) => {
+    const text =
+      m.text.length > MAX_HISTORY_TEXT_LENGTH
+        ? m.text.slice(0, MAX_HISTORY_TEXT_LENGTH) + '…'
+        : m.text
+    return `${m.role === 'user' ? '用户' : '助手'}：${text}`
+  })
+  return [
+    '以下是本次会话的历史对话（按时间先后排列，最后一条之后是当前请求）：',
+    ...lines,
+    '---',
+    task
+  ].join('\n')
+}
+
 export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRunResult> {
-  const task = String(input?.task ?? '').trim()
-  if (!task) return { started: false, message: '任务内容为空' }
+  const rawTask = String(input?.task ?? '').trim()
+  if (!rawTask) return { started: false, message: '任务内容为空' }
   if (child) return { started: false, message: '已有任务正在运行' }
+  // 历史上下文在此拼接，dsh 子进程只看到组装后的最终任务文本
+  const task = buildTaskWithHistory(rawTask, input?.history)
 
   const mcp = getMcpServerInfo()
   if (!mcp?.running) {
