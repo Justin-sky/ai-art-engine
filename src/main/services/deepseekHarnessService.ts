@@ -1,12 +1,12 @@
 import { app } from 'electron'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   IpcChannels,
   type HarnessEvent,
-  type HarnessHistoryMsg,
   type HarnessRunInput,
   type HarnessRunResult,
   type HarnessStatus
@@ -44,10 +44,6 @@ const MIN_NODE_MINOR = 19
 const NPX_TIMEOUT_MS = 120_000
 /** npx 现场拉包期间的进度提醒间隔：下载可能长时间无输出，避免界面看起来卡死 */
 const NPX_PROGRESS_HINT_MS = 20_000
-/** 随任务回传给模型的历史上下文：最多保留的消息条数（超出丢弃最旧轮次，避免 token 膨胀） */
-const MAX_HISTORY_MESSAGES = 20
-/** 单条历史消息文本长度上限（超出截断，保护上下文长度） */
-const MAX_HISTORY_TEXT_LENGTH = 2000
 
 let child: ChildProcess | null = null
 let runSeq = 0
@@ -358,20 +354,41 @@ async function run(ctx, task, io) {
   const sessions = ctx.get('sessions')
   if (agents === void 0 || defaultModel === void 0 || sessions === void 0) return
   const selection = defaultModel.currentSelection()
-  const { agent } = await agents.create({
-    sessionId: SessionId('session-' + randomUUID()),
-    meta: { cwd: process.cwd() },
-    agentOptions: {
-      provider: selection.provider,
-      model: selection.model
-    },
-    setup: (agentCtx) => {
-      installModelSelection(agentCtx, {
-        current: selection,
-        assembled: void 0
-      })
+  // 原生持久化 session：外部传入固定会话 id 时「有则恢复、无则创建」，
+  // 多轮对话是真实消息序列（含工具调用历史），模型通过会话恢复记住之前的聊天内容。
+  // 未传 id（回退）时仍按一次性会话处理，避免意外污染历史。
+  const sessionId = (process.env.AIART_SESSION_ID || '').trim() || 'session-' + randomUUID()
+  const agentOptions = { provider: selection.provider, model: selection.model }
+  const setup = (agentCtx) => {
+    installModelSelection(agentCtx, {
+      current: selection,
+      assembled: void 0
+    })
+  }
+  let agent
+  const persistence = ctx.get('sessionPersistence')
+  if (persistence !== void 0 && process.env.AIART_SESSION_ID?.trim()) {
+    try {
+      const resumed = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
+      agent = resumed.agent
+      io.stderr.write('[aiart-runner] resumed session: ' + sessionId + '\n')
+    } catch (error) {
+      io.stderr.write(
+        '[aiart-runner] resume failed: ' + (error instanceof Error ? error.message : String(error)) + '\n'
+      )
+      // 记录确实存在却恢复失败 = 会话数据损坏，直接失败（不可回退为同 id 新建，否则与旧日志冲突）
+      if ((await persistence.list()).some((h) => h.id === sessionId)) throw error
     }
-  })
+  }
+  if (agent === void 0) {
+    const created = await agents.create({
+      sessionId: SessionId(sessionId),
+      meta: { cwd: process.cwd() },
+      agentOptions,
+      setup
+    })
+    agent = created.agent
+  }
   await agent.whenIdle()
   const firstSeq = agent.session.seq
 
@@ -643,37 +660,12 @@ function launchDsh(opts: {
   }
 }
 
-/**
- * 把会话历史拼成上下文文本附到任务前，让模型记住之前的聊天内容。
- *
- * 背景：dsh 的 headless profile 是一次性进程（跑完即退、session 不复用），
- * 自定义 runner 也只接收单个 task 文本；因此历史以「对话记录」文本形式注入，
- * 模型据此理解上下文。只保留 user/assistant 文本（过滤 status / 工具卡），
- * 并限制条数与单条长度，避免上下文无限膨胀。
- */
-function buildTaskWithHistory(task: string, history?: HarnessHistoryMsg[]): string {
-  if (!history?.length) return task
-  const lines = history.slice(-MAX_HISTORY_MESSAGES).map((m) => {
-    const text =
-      m.text.length > MAX_HISTORY_TEXT_LENGTH
-        ? m.text.slice(0, MAX_HISTORY_TEXT_LENGTH) + '…'
-        : m.text
-    return `${m.role === 'user' ? '用户' : '助手'}：${text}`
-  })
-  return [
-    '以下是本次会话的历史对话（按时间先后排列，最后一条之后是当前请求）：',
-    ...lines,
-    '---',
-    task
-  ].join('\n')
-}
-
 export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawTask = String(input?.task ?? '').trim()
   if (!rawTask) return { started: false, message: '任务内容为空' }
   if (child) return { started: false, message: '已有任务正在运行' }
-  // 历史上下文在此拼接，dsh 子进程只看到组装后的最终任务文本
-  const task = buildTaskWithHistory(rawTask, input?.history)
+  // 历史由 dsh 原生持久化 session 恢复（见 runner 模板），任务文本直接透传用户原文
+  const task = rawTask
 
   const mcp = getMcpServerInfo()
   if (!mcp?.running) {
@@ -737,7 +729,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       DSH_MODEL: input.model?.trim() || provider.modelId,
       ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
       // MCP 插件配置里的 header 由该变量展开；name 为 /TOKEN/ 会被 dsh 清洗，故用 STUDIO_ 前缀
-      STUDIO_MCP_TOKEN: mcp.token
+      STUDIO_MCP_TOKEN: mcp.token,
+      // 原生持久化 session：runner 据此「有则恢复、无则创建」（见 AIART_RUNNER_TEMPLATE）
+      ...(input.sessionId?.trim() ? { AIART_SESSION_ID: input.sessionId.trim() } : {})
     } as NodeJS.ProcessEnv,
     runId,
     dshEntry
@@ -751,6 +745,37 @@ export function abortHarnessTask(): void {
   emit({ type: 'status', text: '已请求中止' })
   child.kill()
   child = null
+}
+
+/**
+ * 删除会话在磁盘上的持久化记录（`$DSH_HOME/sessions/<project>/<id>/`）。
+ *
+ * 前端删除会话后调用：否则 localStorage 里的会话没了，但 dsh 的 JSONL 日志仍在，
+ * 下次同 id 发消息会被「幽灵恢复」成已删除的对话。路径布局与
+ * dsh-session-persistence-jsonl 保持一致（root = dshHomePath('sessions')，按项目分目录）。
+ */
+export async function deleteHarnessSession(sessionId: string): Promise<void> {
+  const id = String(sessionId ?? '').trim()
+  // 只放行安全字符，防止把删除目标带出 sessions 目录
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) return
+  const sessionsRoot = join(dshHome(), 'sessions')
+  let entries
+  try {
+    entries = await readdir(sessionsRoot, { withFileTypes: true })
+  } catch {
+    return // 尚无任何会话记录
+  }
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        try {
+          await rm(join(sessionsRoot, entry.name, id), { recursive: true, force: true })
+        } catch {
+          // 单个项目目录清理失败不阻塞整体删除
+        }
+      })
+  )
 }
 
 /** 应用退出时清理子进程，避免残留 npx 拉起的 dsh */
