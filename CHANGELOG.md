@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.2] — 2026-08-30
+
+5.0.2 修复版：AI 对话面板多轮记忆升级为 dsh 原生持久化 session，模型读到的是真实消息序列（含工具调用历史），而非文本拼接的上下文。
+
+### Changed
+
+- AI 对话面板多轮上下文改为 dsh 原生持久化 session：将 `ChatSession.id` 传入 dsh，runner 对已有 JSONL 会话执行 resume（不存在则自动创建），多轮对话成为真实消息序列，含工具调用与崩溃恢复，删除文本拼接上下文路径
+- 删除 AI 对话会话时同步清理磁盘上的 dsh JSONL 记录，避免同 id 会话被"幽灵恢复"
+
+### Fixed
+
+- AI 对话面板多轮记忆失效：对话历史作为上下文传入模型，模型可引用前面轮次的对话内容与工具执行结果
+
 ## [5.0.1] — 2026-08-30
 
 5.0.1 修复版：长耗时生成（3D / 视频）不再被 MCP 超时误判为失败而重复提交，对象存储上传增加会话级幂等缓存。
