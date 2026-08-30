@@ -39,12 +39,25 @@ function installStage(version) {
   for (const f of ['package.json', 'package-lock.json']) rmSync(join(STAGE_DIR, f), { force: true })
   rmSync(join(STAGE_DIR, 'node_modules'), { recursive: true, force: true })
 
-  const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const res = spawnSync(
-    npmBin,
-    ['install', '--prefix', STAGE_DIR, '--no-audit', '--no-fund', '--no-save', `${DSH_PACKAGE}@${version}`],
-    { stdio: 'inherit' }
-  )
+  const args = [
+    'install',
+    '--prefix',
+    STAGE_DIR,
+    '--no-audit',
+    '--no-fund',
+    '--no-save',
+    `${DSH_PACKAGE}@${version}`
+  ]
+  // Windows 上无法直接 spawn npm.cmd（返回 EINVAL，status 为 null），
+  // 需经 cmd.exe /c 执行；含空格路径在命令串中加引号。
+  const res =
+    process.platform === 'win32'
+      ? spawnSync(
+          'cmd.exe',
+          ['/d', '/s', '/c', `npm ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`],
+          { stdio: 'inherit' }
+        )
+      : spawnSync('npm', args, { stdio: 'inherit' })
   if (res.status !== 0) process.exit(res.status ?? 1)
 }
 
