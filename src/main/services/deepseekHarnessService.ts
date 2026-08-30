@@ -245,6 +245,37 @@ function writeDshConfig(endpoint: string): void {
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
 }
 
+/** YAML 双引号标量：JSON 字符串字面量对 YAML 兼容，且天然处理转义 */
+function yamlScalar(value: string): string {
+  return JSON.stringify(value)
+}
+
+/**
+ * 写入 dsh 的 settings 文档（`$DSH_HOME/settings.yaml`），覆盖默认模型与端点。
+ *
+ * 背景：dsh 的模型选择不读取 `DSH_MODEL` 环境变量——`agentDefaultModel.currentSelection()`
+ * 只从 settings 的 `agent-default-model` 一节读取；未设置时回落到 dsh-base 插件配置里的
+ * 默认值 `deepseek-v4-flash`（provider `deepseek-official`）。该模型 ID 在 DeepSeek 官方
+ * 以外的 OpenAI 兼容端点（或前缀裁剪后）多不存在，导致每次对话都报 HTTP_404，且与用户
+ * 在面板里选中的模型无关。这里在每次任务前把用户选择的模型/端点写入 settings，覆盖默认值；
+ * API Key 仍经 `DEEPSEEK_API_KEY` 环境变量透传（dsh 的 llm-deepseek 默认读它）。
+ */
+function writeDshSettings(provider: { baseUrl?: string; modelId: string }): void {
+  const home = dshHome()
+  mkdirSync(home, { recursive: true })
+  const lines = [
+    '# AIArtEngine 生成的 dsh 设置（模型选择/端点），请勿手改。',
+    'agent-default-model:',
+    '  provider: deepseek-official',
+    `  model: ${yamlScalar(provider.modelId)}`
+  ]
+  if (provider.baseUrl?.trim()) {
+    lines.push('llm-deepseek:')
+    lines.push(`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`)
+  }
+  writeFileSync(join(home, 'settings.yaml'), lines.join('\n') + '\n', 'utf8')
+}
+
 /** 思考过程在 dsh stdout 中的包裹标记：自定义 runner 输出，主进程据此切分事件 */
 const REASONING_BEGIN = '===BEGIN_REASONING==='
 const REASONING_END = '===END_REASONING==='
@@ -617,6 +648,12 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
   writeDshConfig(mcp.endpoint)
+  // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
+  // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
+  writeDshSettings({
+    baseUrl: provider.baseUrl,
+    modelId: input.model?.trim() || provider.modelId
+  })
   const workspace = resolveWorkspace()
   const runId = String(++runSeq)
   lastStatusText = ''
@@ -659,6 +696,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       ...process.env,
       DSH_HOME: dshHome(),
       DEEPSEEK_API_KEY: provider.apiKey,
+      // 注意：dsh v0.1 不读取 DSH_MODEL（模型只走 settings.yaml 的 agent-default-model）。
+      // 保留该变量仅作兼容占位，实际选择见上方 writeDshSettings。
       DSH_MODEL: input.model?.trim() || provider.modelId,
       ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
       // MCP 插件配置里的 header 由该变量展开；name 为 /TOKEN/ 会被 dsh 清洗，故用 STUDIO_ 前缀
