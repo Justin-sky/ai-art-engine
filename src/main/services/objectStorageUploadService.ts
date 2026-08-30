@@ -127,6 +127,88 @@ function adapterOf(provider: ObjectStorageProviderInstance) {
   return getObjectStorageAdapter(provider.providerKind)
 }
 
+// ── 会话级幂等上传缓存 ──────────────────────────────────────────
+// 同一本地文件 / data URL 作为参考视频时只上传一次：重试 / 多入口（图节点、
+// AI 对话、Agent 重发）不再产生重复对象，URL 24h 预签名内直接复用。
+interface UploadCacheEntry {
+  result: ObjectStorageUploadResult
+  createdAt: number
+}
+
+/** 缓存条数上限，超限时先懒清过期、再淘汰最旧一半 */
+const UPLOAD_CACHE_MAX = 200
+/** 预签名 URL 有效期 24h，缓存保守上限 12h；超时懒清理后重新上传 */
+const UPLOAD_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const uploadCache = new Map<string, UploadCacheEntry>()
+
+/** 本地文件 key：绝对路径 + size + mtime，文件未变即可复用 */
+function fileUploadCacheKey(absPath: string, providerId: string, bucket: string): string | undefined {
+  try {
+    const st = statSync(absPath)
+    return `file:${providerId}:${bucket}:${absPath}:${st.size}:${st.mtimeMs}`
+  } catch {
+    return undefined
+  }
+}
+
+/** data URL key：内容 sha1（避免把超大 data URL 原样当 key） */
+function dataUploadCacheKey(buffer: Buffer, providerId: string, bucket: string): string {
+  const hash = createHash('sha1').update(buffer).digest('hex')
+  return `data:${providerId}:${bucket}:${hash}`
+}
+
+function lookupUploadCache(key: string | undefined): ObjectStorageUploadResult | undefined {
+  if (!key) return undefined
+  const entry = uploadCache.get(key)
+  if (!entry) return undefined
+  if (Date.now() - entry.createdAt > UPLOAD_CACHE_TTL_MS) {
+    uploadCache.delete(key)
+    return undefined
+  }
+  return entry.result
+}
+
+function storeUploadCache(key: string | undefined, result: ObjectStorageUploadResult): void {
+  if (!key) return
+  if (uploadCache.size >= UPLOAD_CACHE_MAX) {
+    const now = Date.now()
+    for (const [k, v] of uploadCache) {
+      if (now - v.createdAt > UPLOAD_CACHE_TTL_MS) uploadCache.delete(k)
+    }
+    if (uploadCache.size >= UPLOAD_CACHE_MAX) {
+      const dropCount = Math.ceil(uploadCache.size / 2)
+      let removed = 0
+      for (const k of uploadCache.keys()) {
+        if (removed++ >= dropCount) break
+        uploadCache.delete(k)
+      }
+    }
+  }
+  uploadCache.set(key, { result, createdAt: Date.now() })
+}
+
+/** 对象删除成功后使缓存失效，确保后续重新上传获得新对象 */
+function evictUploadCacheByObjectKey(objectKey: string): void {
+  for (const [k, v] of uploadCache) {
+    if (v.result.objectKey === objectKey) uploadCache.delete(k)
+  }
+}
+
+/** 缓存命中：克隆结果并追加一条复用日志（logs 展示与 onLog 回调均可见） */
+function cloneCachedUpload(
+  result: ObjectStorageUploadResult,
+  onLog: ObjectStorageLogFn | undefined
+): ObjectStorageUploadResult {
+  const cloned = { ...result, logs: [...result.logs] }
+  pushLog(
+    cloned.logs,
+    onLog,
+    'info',
+    `复用已上传的参考视频：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`
+  )
+  return cloned
+}
+
 /**
  * 上传本地文件到当前启用的对象存储，返回可供视频生成引用的 http(s) URL。
  */
@@ -193,12 +275,16 @@ export async function ensureRemoteMediaUrl(
   }
 
   if (trimmed.startsWith('data:')) {
-    const logs: ObjectStorageLogEntry[] = []
     const provider = requireActiveProvider()
+    const bucket = getObjectStorageBucket(provider)
     const { buffer, ext } = bufferFromDataUrl(trimmed)
     const sourceLabel = options?.sourceLabel?.trim() || 'data-url'
+    const cacheKey = dataUploadCacheKey(buffer, provider.id, bucket)
+    const cached = lookupUploadCache(cacheKey)
+    if (cached) return { url: cached.url, uploaded: cloneCachedUpload(cached, options?.onLog) }
+
+    const logs: ObjectStorageLogEntry[] = []
     const objectKey = buildObjectKey(sourceLabel, ext)
-    const bucket = getObjectStorageBucket(provider)
     pushLog(
       logs,
       options?.onLog,
@@ -213,19 +299,18 @@ export async function ensureRemoteMediaUrl(
       'info',
       `上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`
     )
-    return {
+    const result: ObjectStorageUploadResult = {
+      objectKey,
       url,
-      uploaded: {
-        objectKey,
-        url,
-        bytes: buffer.byteLength,
-        bucket,
-        providerId: provider.id,
-        providerLabel: provider.label,
-        sourceLabel,
-        logs
-      }
+      bytes: buffer.byteLength,
+      bucket,
+      providerId: provider.id,
+      providerLabel: provider.label,
+      sourceLabel,
+      logs
     }
+    storeUploadCache(cacheKey, result)
+    return { url, uploaded: result }
   }
 
   const root = options?.projectRoot ?? (projectService.isOpen() ? projectService.getRoot() : '')
@@ -233,10 +318,17 @@ export async function ensureRemoteMediaUrl(
     root && !trimmed.match(/^[A-Za-z]:[\\/]/) && !trimmed.startsWith('/')
       ? join(root, trimmed)
       : trimmed
+  const provider = requireActiveProvider()
+  const bucket = getObjectStorageBucket(provider)
+  const cacheKey = fileUploadCacheKey(abs, provider.id, bucket)
+  const cached = lookupUploadCache(cacheKey)
+  if (cached) return { url: cached.url, uploaded: cloneCachedUpload(cached, options?.onLog) }
+
   const uploaded = await uploadLocalFile(abs, {
     sourceLabel: options?.sourceLabel ?? basename(abs),
     onLog: options?.onLog
   })
+  storeUploadCache(cacheKey, uploaded)
   return { url: uploaded.url, uploaded }
 }
 
@@ -286,6 +378,7 @@ export async function deleteUploads(
     if (!bucket || !key) continue
     try {
       await adapter.deleteObject(provider, bucket, key)
+      evictUploadCacheByObjectKey(key)
       pushLog(
         logs,
         options?.onLog,
