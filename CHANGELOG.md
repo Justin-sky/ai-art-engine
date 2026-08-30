@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.3] — 2026-08-30
+
+5.0.3 修复版：一键工作流创建的节点标题不再有英文直显死角（任务列表、运行日志、note/演示卡片统一走 i18n 解析）；世界元素生成节点 dive 后正确播种出对应子图。
+
+### Fixed
+
+- 一键工作流创建的节点在任务列表、运行日志、note/演示卡片等入口直显英文复合标题（如 `Director Review · Beat Breakdown Table`）：新增 `graphNodeDisplayTitle` 统一解析层，画布卡片、属性面板、任务列表、运行日志全部改走 i18n 标签解析，兜底逻辑不再回退英文原文
+- 世界元素生成节点 dive 后没有创建出对应子节点：dive 时若子图为空，回退到资产级世界目录播种（`applyWorldCatalogOnOpen`），并在播种完成后才挂载子编辑器，避免空画布
+
+### Docs
+
+- 新增 MCP + AI 对话教程视频脚本（`docs/tutorial-script/mcp-ai-chat-tutorial-script.md`）
+
 ## [5.0.2] — 2026-08-30
 
 5.0.2 修复版：AI 对话面板多轮记忆升级为 dsh 原生持久化 session，模型读到的是真实消息序列（含工具调用历史），而非文本拼接的上下文。
