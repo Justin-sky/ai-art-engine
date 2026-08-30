@@ -40,17 +40,18 @@ describe('shouldPreventSidePanelOverlay', () => {
     ).toBe(false)
   })
 
-  it('blocks half-screen left/right/center overlays on the other side panel', () => {
+  it('blocks half-screen left/right overlays but allows center tab merge', () => {
     expect(
       shouldPreventSidePanelOverlay(
         event({ panelId: 'assets', position: 'left', groupPanels: ['inspector'] })
       )
     ).toBe(true)
+    // center = merge into the other side panel's group (tab group), so it is allowed
     expect(
       shouldPreventSidePanelOverlay(
         event({ panelId: 'assets', position: 'center', groupPanels: ['inspector'] })
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('blocks overlays onto workspace or edge docks', () => {
