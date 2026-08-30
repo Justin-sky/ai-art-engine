@@ -3,7 +3,7 @@ import { createMcpProtocolHandler } from '../src/shared/mcpProtocol'
 
 function makeHandler() {
   return createMcpProtocolHandler({
-    serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+    serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' },
     listTools: () => [
       { name: 'echo', title: 'Echo', description: '回显', inputSchema: { type: 'object' } }
     ],
@@ -96,7 +96,7 @@ describe('MCP 协议消息处理（shared）', () => {
   it('notifications/cancelled 中止进行中的 tools/call', async () => {
     let aborted = false
     const handle = createMcpProtocolHandler({
-      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' },
       listTools: () => [],
       callTool: async (_name, _args, ctx) => {
         await new Promise<void>((resolve) => {
@@ -123,7 +123,7 @@ describe('MCP 协议消息处理（shared）', () => {
   it('外部信号中止进行中的 tools/call（连接断开场景）', async () => {
     let aborted = false
     const handle = createMcpProtocolHandler({
-      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' },
+      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' },
       listTools: () => [],
       callTool: async (_name, _args, ctx) => {
         await new Promise<void>((resolve) => {

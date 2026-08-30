@@ -53,7 +53,7 @@ function startFakeUpstream(): Promise<{
               rpcResult({
                 protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2024-11-05',
                 capabilities: { tools: { listChanged: false } },
-                serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '4.1.1' }
+                serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' }
               })
               return
             case 'ping':

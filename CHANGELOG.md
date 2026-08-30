@@ -2,6 +2,32 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.0] — 2026-08-30
+
+5.0 正式版：外部 Agent（MCP）集成与 AI 对话面板，支持第三方工具调用本应用工作流。
+
+### Added
+
+- 内置 MCP 工具服务：外部 Agent（Claude Desktop / Cursor / 其他支持 MCP 的客户端）可通过 stdio 桥或 `/mcp` 端点（streamable HTTP 直连）调用本应用能力——规划/落盘工作流、管理工程资产、运行宿主资产工作流与状态回报
+- MCP 工具面：`models_list` 与 `generate_image` / `generate_video` / `generate_model3d` / `generate_speech` 语义生成工具；`graph_read` / `graph_edit` 读写宿主资产图（节点增删改/连线，端口校验+编辑器冲突保护）；`task_run` / `task_status` 运行工作流；`folder_list` 资产分类与 `folderId` / `outputDir` 落盘
+- MCP 稳定性：token 跨重启持久复用（退出保留 `mcp.json`）、设置界面可直接编辑/保存 Token；操作审计落盘（JSONL 截断/滚动）；生成并发闸门（默认 3 可调）；`generate_*` 支持 `extraParams` 低频参数透传；旁路生成活动在任务列表可见可查；Host/Origin 校验防 DNS rebinding
+- 新增 DeepSeek Harness AI 对话面板（MCP 工具调用）：应用内 AI 助手可边对话边调用 MCP 工具；dsh 运行体打包进安装包，无需额外安装 Node 环境
+- 任务容错模式：节点失败降级（continued）不整链中断，运行日志 / 流水线总览 / 节点状态同步
+- 媒体质检增强：专用质检模型 + 参考图/审核对象角色判定 + 五维评分，返工接入备选模型链与图片尺寸校验
+- 工作流规划支持取消（AbortSignal）：调用轮次间检查取消，取消不再发起新一轮模型调用
+- 一键工作流新增行业模板：电商带货 / 游戏 3D 资产 / 漫画出版 / 知识口播 / 3D 白模预演
+- 导演台新增着色模式与线框模式菜单
+- 官网重构：英文版页面与中英语言切换、全站深色主题、按 Diátaxis 四层重构文档体系、SEO 与社交分享优化（og 卡片图 / hreflang / robots / sitemap）、MCP 接入教程页
+
+### Fixed
+
+- AI 对话面板模型选择不生效：dsh 对话通道改为每次运行前将面板选中的模型写入 dsh `settings.yaml`（`agent-default-model` + `llm-deepseek.baseURL`），不再回落到内置默认 `deepseek-v4-flash`（多数 OpenAI 兼容端点不存在该模型，导致 `HTTP_404`）
+
+### Changed
+
+- 语音生成统一落盘为工程资产（`generateSpeechAsset`），与图片生成同一资产模型
+- MCP stdio 桥改纯隧道：协议收归应用 `/mcp` 统一处理，协议层支持 `notifications/cancelled` 与外部信号中止
+
 ## [4.1.1] — 2026-08-28
 
 ### Added
