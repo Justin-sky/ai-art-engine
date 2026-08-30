@@ -90,8 +90,51 @@ function collectPackages(entryName) {
     for (const dep of Object.keys(pkg.optionalDependencies ?? {})) {
       if (!seen.has(dep)) queue.push({ name: dep, optional: true })
     }
+    // peerDependencies 由 npm 自动安装进树，同样是运行所需（如 dsh-app-boot 的 cordis 插件），
+    // 缺失时按 optional 处理（跳过），由后续完整性校验兜底。
+    for (const dep of Object.keys(pkg.peerDependencies ?? {})) {
+      if (!seen.has(dep)) queue.push({ name: dep, optional: true })
+    }
   }
   return found
+}
+
+/** 完整性校验：产物 node_modules 中每个包声明的依赖与 peer 依赖都必须存在（扁平布局） */
+function verifyBundle() {
+  const nm = join(OUT_DIR, 'node_modules')
+  const has = (name) =>
+    existsSync(name.startsWith('@') ? join(nm, ...name.split('/')) : join(nm, name))
+  const missing = new Set()
+  for (const ent of readdirSync(nm, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue
+    const root = join(nm, ent.name)
+    const dirs = ent.name.startsWith('@')
+      ? readdirSync(root).map((n) => join(root, n))
+      : [root]
+    for (const dir of dirs) {
+      const pkgJson = join(dir, 'package.json')
+      if (!existsSync(pkgJson)) continue
+      const pkg = JSON.parse(readFileSync(pkgJson, 'utf8'))
+      // peerDependenciesMeta.optional=true 的 peer 不装也合法（如 ws 的 bufferutil、
+      // zustand 的 @types/react），运行时会降级，不视为缺失。
+      const optionalPeers = new Set(
+        Object.entries(pkg.peerDependenciesMeta ?? {})
+          .filter(([, m]) => m?.optional)
+          .map(([k]) => k)
+      )
+      for (const dep of Object.keys(pkg.dependencies ?? {})) {
+        if (!has(dep)) missing.add(dep)
+      }
+      for (const dep of Object.keys(pkg.peerDependencies ?? {})) {
+        if (!has(dep) && !optionalPeers.has(dep)) missing.add(dep)
+      }
+    }
+  }
+  if (missing.size > 0) {
+    console.error(`[bundle-dsh] 完整性校验失败，产物缺少依赖: ${[...missing].join(', ')}`)
+    process.exit(1)
+  }
+  console.log('[bundle-dsh] 完整性校验通过（所有包的直接依赖与 peer 依赖均已包含）')
 }
 
 /** 把依赖闭包复制到 stage 的扁平 node_modules，形成自包含树 */
@@ -153,6 +196,8 @@ function main() {
   mkdirSync(OUT_DIR, { recursive: true })
   cpSync(join(STAGE_DIR, 'node_modules'), join(OUT_DIR, 'node_modules'), { recursive: true })
   writeFileSync(join(OUT_DIR, 'package.json'), readFileSync(join(STAGE_DIR, 'package.json')))
+
+  verifyBundle()
 
   const mb = (dirSize(OUT_DIR) / 1024 / 1024).toFixed(1)
   console.log(`[bundle-dsh] 完成：${relative(ROOT, OUT_DIR)}（约 ${mb} MB）`)
