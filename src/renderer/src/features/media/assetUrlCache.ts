@@ -26,9 +26,14 @@ export async function resolveAssetFileUrl(relativePath: string): Promise<string>
   if (!key) return ''
   const hit = fileUrlCache.get(key)
   if (hit) return hit
-  const url = await window.studio.getAssetFileUrl(key)
-  fileUrlCache.set(key, url)
-  return url
+  try {
+    const url = await window.studio.getAssetFileUrl(key)
+    if (url) fileUrlCache.set(key, url)
+    return url
+  } catch {
+    // 文件缺失 / 路径已失效（如资产被搬移后残留旧路径）时返回空串，由调用方降级展示
+    return ''
+  }
 }
 
 /** 图片 / 视频会 ensure 缩略图（视频为首帧 PNG）；其它类型等同 file URL */

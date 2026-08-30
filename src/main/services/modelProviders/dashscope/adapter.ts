@@ -112,6 +112,12 @@ function snapVideoDuration(seconds: number | undefined): number {
   return Math.abs(seconds - 10) < Math.abs(seconds - 5) ? 10 : 5
 }
 
+/** HappyHorse 时长：官方支持 3~15 秒整数（默认 5），不吸附到 5/10 */
+function clampHappyHorseDuration(seconds: number | undefined): number {
+  if (seconds == null || !Number.isFinite(seconds)) return 5
+  return Math.min(15, Math.max(3, Math.round(seconds)))
+}
+
 function normalizeResolution(resolution: string | undefined): string | undefined {
   if (!resolution?.trim()) return undefined
   const r = resolution.trim().toUpperCase().replace(/P$/i, 'P')
@@ -345,7 +351,10 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       const resolution = normalizeResolution(input.resolution)
       if (resolution) parameters.resolution = resolution
     } else {
-      parameters.duration = snapVideoDuration(input.duration)
+      // HappyHorse 支持 3~15 秒整数；其余（万相系）仍按 5/10 档位
+      parameters.duration = isHappyHorse
+        ? clampHappyHorseDuration(input.duration)
+        : snapVideoDuration(input.duration)
       const resolution = normalizeResolution(input.resolution)
       if (resolution) parameters.resolution = resolution
       // HappyHorse 图生视频宽高比跟随首帧，不传 ratio；r2v 可传 ratio

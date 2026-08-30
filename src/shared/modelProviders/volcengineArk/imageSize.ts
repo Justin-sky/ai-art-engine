@@ -18,6 +18,9 @@ const SEEDREAM_TIER_BASE_PIXELS: Readonly<Record<string, number>> = {
   '4K': 4096
 }
 
+/** 通用分辨率档位（各 Seedream 型号只支持其中子集，见 modelCapabilities.json） */
+export const SEEDREAM_RESOLUTION_TIERS: readonly string[] = ['1K', '2K', '3K', '4K']
+
 /** 官方 2K 推荐像素表（宽×高），Seedream 3/4/4.5/5 通用 */
 const SEEDREAM_2K_PRESETS: Readonly<Record<string, { width: number; height: number }>> = {
   '1:1': { width: 2048, height: 2048 },
@@ -181,4 +184,30 @@ export function resolveSeedreamImageSize(
 
   // 分辨率未识别且无宽高比：保留原值（由上层决定是否下发）
   return res ?? undefined
+}
+
+/**
+ * 校验显式分辨率档位：像素宽高或已知档位（1K/2K/3K/4K）放行，
+ * 其余值（如 "512" / "low"）直接报错并给出模型可选档位。
+ *
+ * 背景：不同 Seedream 型号支持档位不同（5.0 仅 2K/3K/4K，4.5 仅 2K/4K，
+ * 3.x 仅 1K/2K）。若用户明确指定了模型不认识的档位，此前会静默按 2K 出图，
+ * 导致「要求最低分辨率 512，实际得到 2048×2048」且无任何提示。
+ * 已知档位但模型不支持（如 1K on Seedream 5.0）仍交由调用方宽容抬升到最低档，
+ * 以兼容节点图 UI 的 1K/2K/4K 档位选项。
+ */
+export function assertSeedreamResolutionSupported(
+  modelId: string,
+  resolution: string | undefined,
+  allowedValues?: readonly string[] | null
+): void {
+  const res = normalizeResolution(resolution)
+  if (!res) return
+  if (/^\d+x\d+$/.test(res)) return
+  if (SEEDREAM_RESOLUTION_TIERS.includes(res)) return
+  // cjk-ok：错误消息面向 dsh/用户的本地化文案，与错误目录（catalog）同属双语域
+  const hint = allowedValues?.length
+    ? `该模型可选：${allowedValues.join(' / ')}` // cjk-ok
+    : `可选：${SEEDREAM_RESOLUTION_TIERS.join(' / ')}` // cjk-ok
+  throw new Error(`模型 ${modelId} 不支持分辨率档位 "${resolution}"，${hint}`) // cjk-ok
 }

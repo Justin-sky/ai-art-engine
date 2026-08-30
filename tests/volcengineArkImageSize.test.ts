@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   SEEDREAM_MIN_PIXELS,
+  assertSeedreamResolutionSupported,
   resolveSeedreamImageSize
 } from '../src/shared/modelProviders/volcengineArk/imageSize'
 
@@ -83,5 +84,40 @@ describe('resolveSeedreamImageSize', () => {
   it('无任何参数时不下发 size', () => {
     expect(resolveSeedreamImageSize(undefined, undefined)).toBeUndefined()
     expect(resolveSeedreamImageSize('', '')).toBeUndefined()
+  })
+})
+
+describe('assertSeedreamResolutionSupported', () => {
+  const modelId = 'doubao-seedream-5-0-260128'
+
+  it('未指定分辨率或空值时放行', () => {
+    expect(() => assertSeedreamResolutionSupported(modelId, undefined)).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '  ')).not.toThrow()
+  })
+
+  it('像素宽高形式放行', () => {
+    expect(() => assertSeedreamResolutionSupported(modelId, '2048x2048')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '1024×1024')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '2560*1440')).not.toThrow()
+  })
+
+  it('已知档位放行（模型是否支持由上层宽容抬升）', () => {
+    expect(() => assertSeedreamResolutionSupported(modelId, '1K')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '2K')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, '4K')).not.toThrow()
+    expect(() => assertSeedreamResolutionSupported(modelId, ' 2k ')).not.toThrow()
+  })
+
+  it('非法档位（如 512 / low）抛错并列出模型可选档位', () => {
+    expect(() => assertSeedreamResolutionSupported(modelId, '512')).toThrowError(
+      /不支持分辨率档位 "512"/
+    )
+    expect(() => assertSeedreamResolutionSupported(modelId, 'low')).toThrowError(
+      /不支持分辨率档位 "low"/
+    )
+    expect(() =>
+      assertSeedreamResolutionSupported(modelId, '512', ['2K', '3K', '4K'])
+    ).toThrowError(/该模型可选：2K \/ 3K \/ 4K/)
   })
 })

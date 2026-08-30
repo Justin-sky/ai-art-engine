@@ -23,6 +23,7 @@ import {
 } from '@shared/modelProviders/volcengineArk/modelCapabilities'
 import {
   SEEDREAM_MIN_PIXELS,
+  assertSeedreamResolutionSupported,
   resolveSeedreamImageSize
 } from '@shared/modelProviders/volcengineArk/imageSize'
 import { rewriteAtMentionsForVolcengineArkImagePrompt } from '@shared/modelProviders/volcengineArk/imagePromptMentions'
@@ -198,6 +199,14 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       watermark: false
     }
     if (prompt.trim() || !input.layerDecomposition) body.prompt = prompt
+    // 显式分辨率档位校验：模型不认识的档位（如 512 / low）直接报错并列出可选值，
+    // 避免静默按 2K 出图造成「要求最低分辨率却得到 2048×2048」的误导。
+    const profileId = resolveVolcengineArkCapabilityProfileId(modelId)
+    const caps = resolveVolcengineArkModelCapabilities(modelId)
+    const allowedResolutions = (
+      caps as { supported_parameters?: { resolution?: { values?: string[] } } } | null
+    )?.supported_parameters?.resolution?.values
+    assertSeedreamResolutionSupported(modelId, input.resolution, allowedResolutions)
     if (input.layerDecomposition) {
       body.layer_decomposition = true
       const size = input.resolution?.trim()
@@ -207,7 +216,6 @@ export const volcengineArkAdapter: ModelProviderAdapter = {
       // Seedream size 只接受分辨率关键字或像素宽高；把 resolution + aspectRatio
       // 合并成像素值，避免传 16:9 被接口忽略、或传 2K 时模型自行决定比例。
       // 4.5 / 5 等模型要求总像素 ≥ 3686400：不足时按比例放大，避免接口直接拒绝。
-      const profileId = resolveVolcengineArkCapabilityProfileId(modelId)
       const minPixels = profileId === 'seedream-3' ? undefined : SEEDREAM_MIN_PIXELS
       const size = resolveSeedreamImageSize(input.resolution, input.aspectRatio, minPixels)
       if (size) body.size = size

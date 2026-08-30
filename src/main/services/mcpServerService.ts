@@ -21,6 +21,11 @@ import {
   type PlanAiWorkflowInput,
   type WriteAssetTextInput
 } from '@shared/ipc'
+import {
+  getObjectStorageBucket,
+  pickActiveObjectStorage,
+  type ObjectStorageProviderInstance
+} from '@shared/objectStorage'
 import type {
   GenerateImageInput,
   GenerateModel3dInput,
@@ -89,17 +94,21 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
 /**
  * 执行旁路生成并登记为界面可见的「MCP 生成」活动：
  * 开始即广播 running，成功 / 失败广播终态（任务列表与执行日志同步展示）。
+ * settle 在成功落盘后、终态广播前执行（如按 folderId 把资产搬移到资产库文件夹），
+ * 保证活动里记录的相对路径是资产最终落盘路径，界面预览不会指向失效路径。
  */
 async function runGenActivity<T>(
   tool: import('@shared/ipc').McpActivityTool,
   title: string,
   model: string | undefined,
   fn: () => Promise<T>,
-  describe: (result: T) => { assetId?: string; relativePath?: string }
+  describe: (result: T) => { assetId?: string; relativePath?: string },
+  settle?: (result: T) => void | Promise<void>
 ): Promise<T> {
   const activityId = mcpActivityService.begin({ tool, title, model })
   try {
     const result = await fn()
+    await settle?.(result)
     mcpActivityService.end(activityId, { ok: true, ...describe(result) })
     return result
   } catch (err) {
@@ -115,6 +124,22 @@ async function runGenActivity<T>(
 function activityTitle(name: string | undefined, prompt: string): string {
   const text = name?.trim() || prompt.trim()
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
+}
+
+/**
+ * 取资产最新的相对路径：资产可能已被 applyAssetFolder 按 folderId 搬移，
+ * 活动终态 / 工具返回值都必须用最终路径，否则界面预览会指向失效文件。
+ */
+function liveAssetRelativePath(result: { assetId?: string; relativePath?: string }): string | undefined {
+  if (!result.assetId) return result.relativePath
+  const live = projectService.listAssets().find((item) => item.id === result.assetId)
+  return live?.relativePath || result.relativePath
+}
+
+/** settle 钩子：把生成资产挂到 folder_list 返回的资产库文件夹（可能触发搬移） */
+function settleAssetFolder(assetId: string | undefined, folderId: string | undefined): void {
+  if (!folderId || !assetId) return
+  applyAssetFolder(assetId, folderId)
 }
 
 const TOOL_DEFS: McpToolDef[] = [
@@ -581,13 +606,13 @@ const TOOL_DEFS: McpToolDef[] = [
         activityTitle(input.name, inputText),
         input.model,
         () => modelProviderFacade.generateSpeechAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
       )
-      if (result.assetId) applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
       return {
         assetId: result.assetId,
-        relativePath: result.relativePath,
+        relativePath: liveAssetRelativePath(result),
         model: result.model,
         voice: result.voice
       }
@@ -620,6 +645,27 @@ const TOOL_DEFS: McpToolDef[] = [
     })
   },
   {
+    name: 'storage_status',
+    title: '对象存储状态',
+    description:
+      '查询对象存储配置状态：是否已配置、当前启用的提供商与桶、公网地址。generate_model3d / generate_video 传本地或相对路径参考图时需要对象存储转公网 URL，图片生成则不依赖；调用前可用本工具确认。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: () => {
+      const providers = settingsService.get().objectStorage.providers
+      const active = pickActiveObjectStorage({ providers })
+      return {
+        configured: providers.some((p) => p.enabled),
+        enabled: active != null,
+        provider: active ? { kind: active.providerKind, label: active.label } : null,
+        bucket: active ? getObjectStorageBucket(active) : null,
+        publicBaseUrl: active ? objectStoragePublicBaseUrl(active) : null,
+        note: active
+          ? null
+          : '未配置可用的对象存储：图片参考会内联为 data URL（无需上传）；视频/3D 参考需先在设置 → 对象存储中配置 TOS/OSS/COS'
+      }
+    }
+  },
+  {
     name: 'generate_image',
     title: '生成图片',
     description:
@@ -636,7 +682,8 @@ const TOOL_DEFS: McpToolDef[] = [
         referenceImageUrls: {
           type: 'array',
           items: { type: 'string' },
-          description: '参考图 http(s) 地址（图生图）'
+          description:
+            '参考图（图生图）：支持 http(s) 地址、data URL、工程内相对路径（如 Assets/Generated/Images/x.png）或本地绝对路径。相对/本地路径会自动读取为 data URL 内联发送，无需对象存储'
         },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Assets/Generated/Images）' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' },
@@ -664,11 +711,11 @@ const TOOL_DEFS: McpToolDef[] = [
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateImageAsset(input),
-        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
       )
-      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
-      return result
+      return { ...result, relativePath: liveAssetRelativePath(result) }
     }
   },
   {
@@ -686,7 +733,11 @@ const TOOL_DEFS: McpToolDef[] = [
         duration: { type: 'integer', description: '时长（秒）' },
         aspectRatio: { type: 'string', description: '如 9:16 / 16:9' },
         generateAudio: { type: 'boolean', description: '是否同步生成音频（部分模型）' },
-        firstFrameImageUrl: { type: 'string', description: '首帧图 http(s) 地址' },
+        firstFrameImageUrl: {
+          type: 'string',
+          description:
+            '首帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）'
+        },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: { type: 'object', description: '低频参数透传（如 resolution / size / lastFrameImageUrl / seed），合并进底层生成输入' }
@@ -713,11 +764,11 @@ const TOOL_DEFS: McpToolDef[] = [
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateVideo(input),
-        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
       )
-      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
-      return result
+      return { ...result, relativePath: liveAssetRelativePath(result) }
     }
   },
   {
@@ -739,7 +790,8 @@ const TOOL_DEFS: McpToolDef[] = [
         referenceImageUrls: {
           type: 'array',
           items: { type: 'string' },
-          description: '参考图 http(s) 地址（图生 3D / 多图生 3D）'
+          description:
+            '参考图（图生 3D / 多图生 3D）：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径。3D 供应商仅接受 http(s) 图片，相对/本地路径会自动上传到已配置的对象存储转换为公网 URL（未配置对象存储时报错，可用 storage_status 查询）'
         },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
         extraParams: { type: 'object', description: '低频参数透传（模型特有字段），合并进底层生成输入' }
@@ -765,16 +817,20 @@ const TOOL_DEFS: McpToolDef[] = [
         activityTitle(input.name, input.prompt),
         input.model,
         () => modelProviderFacade.generateModel3d(input),
-        (r) => ({ assetId: r.assetId, relativePath: r.relativePath })
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
       )
-      applyAssetFolder(result.assetId, optionalString(args, 'folderId'))
       broadcastAsset(result.assetId)
-      return result
+      return { ...result, relativePath: liveAssetRelativePath(result) }
     }
   }
 ]
 
-/** 校验 folderId 存在并把资产挂到该资产库文件夹（界面分类用） */
+/**
+ * 校验 folderId 存在并把资产挂到该资产库文件夹。
+ * 注意：updateAsset 在 folderId 变化时会 moveAssetBetweenFolders 把媒体文件
+ * 搬进文件夹目录并更新 relativePath，因此调用方必须在活动终态广播前处理并回填最终路径。
+ */
 function applyAssetFolder(assetId: string, folderId: string | undefined): void {
   if (!folderId) return
   const folders = projectService.listFolders()
@@ -798,6 +854,13 @@ function assertProjectOpen(): void {
   if (!projectService.isOpen()) {
     throw new Error('请先在应用中打开工程（或调用 project_open）')
   }
+}
+
+/** 取当前提供商实例的 publicBaseUrl（未填时返回空字符串） */
+function objectStoragePublicBaseUrl(provider: ObjectStorageProviderInstance): string {
+  if (provider.providerKind === 'aliyun-oss') return provider.oss.publicBaseUrl
+  if (provider.providerKind === 'tencent-cos') return provider.cos.publicBaseUrl
+  return provider.tos.publicBaseUrl
 }
 
 /** 终态报告保留时长：task_status 在此期间仍可查到结果，超时自动回收 */
