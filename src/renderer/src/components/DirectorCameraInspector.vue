@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ t('graph.types.asset.motion') }}</span>
-      <h2>{{ node.title || t('graph.types.asset.motion') }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
 
     <button
@@ -133,6 +133,7 @@ import { parseGraphHostContext } from '@shared/editorGlobals'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../editor/kernel'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -159,6 +160,7 @@ const node = computed(() => {
   if (!n || resolveNodeType(n)?.inspector !== 'camera') return null
   return n
 })
+const displayTitle = useNodeDisplayTitle(node, computed(() => t('graph.types.asset.motion')))
 
 /** 输出端口 out-shots：优先运行态，其次节点上的站位图 / 预览图 */
 const outImages = computed<GraphImageItem[]>(() => {

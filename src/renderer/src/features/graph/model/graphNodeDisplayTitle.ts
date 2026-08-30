@@ -79,6 +79,26 @@ export type GraphNodeDisplayTitleOptions = {
 }
 
 /**
+ * 节点类型展示名（非组件环境复用 useStudioI18n.graphTypeLabel 的等价逻辑）：
+ * asset.* 走 `graph.types.asset.<kind>`，其余走 `graph.types.<typeId>`，未命中回退 typeId。
+ */
+export function resolveGraphTypeLabel(
+  typeId: string,
+  t: (key: string, params?: Record<string, unknown>) => string,
+  te: (key: string) => boolean
+): string {
+  if (typeId.startsWith('asset.')) {
+    const kind = typeId.slice('asset.'.length)
+    const key = `graph.types.asset.${kind}`
+    if (te(key)) return t(key)
+    const typeName = te(`asset.type.${kind}`) ? t(`asset.type.${kind}`) : kind
+    return `${typeName}${t('graph.nodeRole.generate')}`
+  }
+  const key = `graph.types.${typeId}`
+  return te(key) ? t(key) : typeId
+}
+
+/**
  * 节点展示名：自定义标题优先；英文默认/scope 输出默认标题走 i18n（与画布卡片一致）。
  * 剧集 Agent 阶段节点的新旧两代库存标题同样走 i18n。
  */

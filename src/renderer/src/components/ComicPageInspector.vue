@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.comicPage.hint') }}
@@ -77,6 +77,7 @@ import {
 } from '@shared/graph'
 import ComicPageCanvas from './ComicPageCanvas.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { editorDiveKey } from '../features/graph/model/editorDive'
@@ -100,6 +101,7 @@ const hostId = computed(() => {
 })
 
 const typeLabel = computed(() => graphTypeLabel('comic.page'))
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const localTitle = ref('')
 const text = ref('')

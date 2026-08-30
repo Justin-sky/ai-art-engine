@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.worldGen.hint') }}
@@ -111,6 +111,7 @@ import {
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -193,6 +194,7 @@ const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNod
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.inspector.node.title')
 )
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const localTitle = ref('')
 const resolvedSrc = ref<Record<string, string>>({})

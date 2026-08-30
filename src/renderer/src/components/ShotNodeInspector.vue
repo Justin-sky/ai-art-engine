@@ -6,7 +6,7 @@
     <div class="head">
       <span class="role">{{ t('graph.nodeRole.generate') }}</span>
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.generate.hint') }}
@@ -455,6 +455,7 @@ import InstructionModelSelect from './InstructionModelSelect.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import ModelPreview from './ModelPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -589,6 +590,7 @@ const typeLabel = computed(() => {
   if (node.value?.typeId) return graphTypeLabel(node.value.typeId)
   return assetType.value ? assetTypeLabel(assetType.value) : t('graph.defaultNode')
 })
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const isImage = computed(() => assetType.value === 'image')
 const isVideo = computed(() => assetType.value === 'video')
 const isVoice = computed(() => assetType.value === 'voice')

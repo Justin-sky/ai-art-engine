@@ -4,7 +4,7 @@
     class="node-inspector"
   >
     <div class="head">
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ hint }}
@@ -102,6 +102,7 @@ import type { GraphNode } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -134,6 +135,7 @@ const cellIndex = computed(() => Number(node.value?.params?.cellIndex ?? 1))
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''
 )
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const hint = computed(() =>
   isAnchorSelect.value

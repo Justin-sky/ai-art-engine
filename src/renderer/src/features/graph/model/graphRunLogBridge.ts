@@ -1,7 +1,5 @@
 import {
-  getNodeType,
   hashPromptForLog,
-  resolveNodeType,
   summarizeInputPortsForLog,
   summarizeOutputPortsForLog,
   type GraphDocument,
@@ -13,13 +11,25 @@ import {
   type GraphRunResult
 } from '@shared/graph'
 import { useGraphRunLogsStore } from '../../../stores/graphRunLogs'
+import i18n from '../../../i18n'
+import {
+  resolveGraphNodeDisplayTitle,
+  resolveGraphTypeLabel
+} from './graphNodeDisplayTitle'
 
 function defaultNodeTitle(node: GraphNode | undefined, fallbackId: string): string {
   if (!node) return fallbackId
-  const custom = node.title?.trim()
-  if (custom) return custom
-  const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
-  return def?.label ?? node.typeId ?? node.id
+  return resolveGraphNodeDisplayTitle(node, {
+    scope: undefined,
+    t: (key, params) => String(i18n.global.t(key, params ?? {})),
+    graphTypeLabel: (typeId) =>
+      resolveGraphTypeLabel(
+        typeId,
+        (key, params) => String(i18n.global.t(key, params ?? {})),
+        (key) => i18n.global.te(key)
+      ),
+    fallbackId
+  })
 }
 
 function nodeTypeId(node: GraphNode | undefined): string | undefined {

@@ -75,8 +75,9 @@ import { computed, nextTick, ref, watch } from 'vue'
 import GraphNodeResizeHandle from '../../../components/GraphNodeResizeHandle.vue'
 import { getNodePorts, getNodeSize, type GraphNode } from '@shared/graph'
 import { useStudioI18n } from '../../../composables/useStudioI18n'
+import { resolveGraphNodeDisplayTitle } from '../../../features/graph/model/graphNodeDisplayTitle'
 
-const { t } = useStudioI18n()
+const { t, graphTypeLabel } = useStudioI18n()
 
 const props = defineProps<{
   node: GraphNode
@@ -104,7 +105,17 @@ const titleDraft = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const titleInputEl = ref<HTMLInputElement | null>(null)
 
-const displayTitle = computed(() => props.node.title?.trim() || t('graph.demo.title'))
+const displayTitle = computed(() => {
+  const custom = props.node.title?.trim()
+  if (custom) {
+    return resolveGraphNodeDisplayTitle(props.node, {
+      scope: undefined,
+      t,
+      graphTypeLabel
+    })
+  }
+  return t('graph.demo.title')
+})
 const displayText = computed(() => props.node.params.text?.trim() || t('graph.demo.placeholder'))
 
 watch(

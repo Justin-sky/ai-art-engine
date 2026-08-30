@@ -250,9 +250,15 @@ export async function applyWorldCatalog(
   nodeId?: string
 ): Promise<number> {
   const owner = catalogOwnerNodeId(nodeId)
-  // 新节点的子图必须由它自己的目录导入（运行/上游）填充，打开编辑视图不自动播种画布级目录
+  // 新节点的子图默认由它自己的目录导入（运行/上游）填充；
+  // 打开编辑视图（jsonText 为空）时，若该节点子图仍为空，回退播种资产级共享目录，
+  // 避免 dive 进 world.gen 节点后画布空白；子图已有内容则尊重用户编辑。
   if (owner !== LEGACY_WORLD_GEN_NODE_ID && !jsonText?.trim()) {
-    return 0
+    const own = catalogFromWorldGenParams(readWorldGenParams(worldAssetId), owner)
+    const hasOwnContent = WORLD_ELEMENT_KINDS.some((kind) => own[kind].length > 0)
+    if (hasOwnContent) return 0
+    jsonText = extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
+    if (!jsonText?.trim()) return 0
   }
   const text = jsonText?.trim() || extractWorldCatalogJsonText(readWorldAssetGraph(worldAssetId))
   const parsed = parseWorldElementCatalog(text)

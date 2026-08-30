@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.generate.hint') }}
@@ -96,6 +96,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import {
   loadGenerateModelOptions,
   preferredModelKey,
@@ -148,6 +149,17 @@ const typeLabel = computed(() => {
   if (isBeatUnitGen.value) return t('graph.types.beat.unitGen')
   if (isUiSplit.value) return t('graph.types.ui.split')
   return t('graph.types.prompt.optimize')
+})
+
+/** 库存英文标题（剧集 Agent 阶段节点 / 复合审核标题等）走 i18n，与节点卡片一致 */
+const displayTitle = computed(() => {
+  const current = node.value
+  if (!current) return typeLabel.value
+  return resolveGraphNodeDisplayTitle(current, {
+    scope: undefined,
+    t,
+    graphTypeLabel
+  })
 })
 
 const modelModality = computed((): GenerateModelModality => 'text')

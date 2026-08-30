@@ -31,6 +31,10 @@ import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { liftHostOutputsFromInnerGraph } from '../features/graph/model/liftHostOutputsFromInner'
 import { createGraphRunLogBridge } from '../features/graph/model/graphRunLogBridge'
 import {
+  resolveGraphNodeDisplayTitle,
+  resolveGraphTypeLabel
+} from '../features/graph/model/graphNodeDisplayTitle'
+import {
   readEpisodeAgentState,
   writeEpisodeAgentState
 } from '../features/graph/episodeAgentStateIO'
@@ -154,10 +158,16 @@ function nodeIcon(node: GraphNode): string {
 }
 
 function nodeTitle(node: GraphNode): string {
-  const custom = node.title?.trim()
-  if (custom) return custom
-  const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
-  return def?.label ?? node.typeId ?? node.id
+  return resolveGraphNodeDisplayTitle(node, {
+    scope: undefined,
+    t: (key, params) => String(i18n.global.t(key, params ?? {})),
+    graphTypeLabel: (typeId) =>
+      resolveGraphTypeLabel(
+        typeId,
+        (key, params) => String(i18n.global.t(key, params ?? {})),
+        (key) => i18n.global.te(key)
+      )
+  })
 }
 
 function resolveTaskTargets(graph: GraphDocument, targetNodeIds?: string[]): GraphNode[] {
@@ -982,7 +992,19 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       graph: task.graph,
       startMessage: 'task',
       pipelineStage: task.logMeta?.pipelineStage,
-      cellKey: task.logMeta?.cellKey
+      cellKey: task.logMeta?.cellKey,
+      resolveNodeTitle: (item, fallbackId) =>
+        resolveGraphNodeDisplayTitle(item, {
+          scope: undefined,
+          t: (key, params) => String(i18n.global.t(key, params ?? {})),
+          graphTypeLabel: (typeId) =>
+            resolveGraphTypeLabel(
+              typeId,
+              (key, params) => String(i18n.global.t(key, params ?? {})),
+              (key) => i18n.global.te(key)
+            ),
+          fallbackId
+        })
     })
     try {
       await waitForOlderSharedUpstreamPeers(task)
