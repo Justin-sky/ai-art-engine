@@ -20,8 +20,8 @@ export function authHeaders(apiKey: string): Record<string, string> {
   return headers
 }
 
-/** 文本 / 图片生成等长耗时请求统一超时（30 分钟） */
-export const LONG_GENERATE_TIMEOUT_MS = 1_800_000
+/** 文本 / 图片生成等长耗时请求统一超时（120 分钟） */
+export const LONG_GENERATE_TIMEOUT_MS = 7_200_000
 
 export function createProviderHttpClient(
   provider: ModelProviderInstance,

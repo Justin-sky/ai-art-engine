@@ -23,9 +23,9 @@ import type {
   ModelProviderKind
 } from '@shared/modelProvider'
 import { allowsEmptyApiKey } from '@shared/modelProvider'
-import { createProviderHttpClient } from './http'
+import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
-import { fail, defErrSimple } from '@shared/errors/appError'
+import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
 import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
@@ -64,6 +64,41 @@ const E_NO_SPEECH_FILE = defErrSimple(
   '语音生成未返回音频文件',
   'Speech generation returned no audio file'
 )
+
+/**
+ * Lux3D 上游同一实例仅允许 1 个进行中的 3D 生成任务：并发提交时创建接口返回
+ * 「已有进行中的生成任务」一类错误。这里不做串行排队，而是在冲突时退避等待
+ * 前一个任务结束并自动重试；非冲突失败（认证、参数、余额等）原样抛出，不重试。
+ */
+const E_LUX3D_SUBMIT_3D_FAILED_CODE = 'provider.lux3d.submitModel3dFailed'
+/** 上游并发冲突文案标记（来自 Lux3D 响应信封 m 字段，匹配其一即视为冲突） */
+const LUX3D_BUSY_MARKERS = ['进行中的生成任务', '已有进行中', 'busy']
+/** 冲突重试参数：退避 10s 起步翻倍，上限 5 分钟，最多 12 次（约 40 分钟覆盖窗口） */
+const LUX3D_BUSY_RETRY = { maxAttempts: 12, baseDelayMs: 10_000, maxDelayMs: 5 * 60_000 }
+
+/** 仅当 Lux3D 提交因「已有进行中的生成任务」被拒时返回 true */
+function isLux3dBusyError(err: unknown): boolean {
+  if (!isAppError(err) || err.code !== E_LUX3D_SUBMIT_3D_FAILED_CODE) return false
+  const detail = typeof (err.params as { detail?: unknown } | undefined)?.detail === 'string'
+    ? (err.params as { detail: string }).detail
+    : ''
+  const lower = detail.toLowerCase()
+  return LUX3D_BUSY_MARKERS.some((marker) => lower.includes(marker))
+}
+
+/** 并发冲突时退避等待自动重试；非冲突失败与重试耗尽时原样抛出 */
+async function retryLux3dOnBusy<T>(fn: () => Promise<T>): Promise<T> {
+  let delay = LUX3D_BUSY_RETRY.baseDelayMs
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt >= LUX3D_BUSY_RETRY.maxAttempts || !isLux3dBusyError(err)) throw err
+      await sleep(delay)
+      delay = Math.min(delay * 2, LUX3D_BUSY_RETRY.maxDelayMs)
+    }
+  }
+}
 
 /**
  * 模型生成门面：选型 → 派发到对应 ModelProviderAdapter → 编排落盘/对象存储。
@@ -340,47 +375,61 @@ class ModelProviderFacade {
     try {
       const prepared = await this.prepareModel3dInputReferencesForApi(genInput)
       uploads = prepared.uploads
-      const job = await this.submitModel3d(prepared.input)
       const { provider } = resolveActiveProvider('model3d', genInput.providerInstanceId, genInput.model)
-
-      const persisted = videoJobService.create({
-        kind: 'model3d',
-        providerJobId: job.jobId,
-        pollingUrl: job.pollingUrl,
-        providerInstanceId: provider.id,
-        model: job.model,
-        prompt: genInput.prompt,
-        name: genInput.name,
-        source: 'graph',
-        outputDir: genInput.outputDir,
-        graphBinding,
-        uploads: uploads.map((item) => ({
-          objectKey: item.objectKey,
-          url: item.url,
-          bytes: item.bytes,
-          bucket: item.bucket,
-          providerId: item.providerId,
-          providerLabel: item.providerLabel,
-          sourceLabel: item.sourceLabel
-        }))
-      })
-
-      // 已移交 videoJobService 管理对象清理，避免双重删除
-      uploads = []
-
-      const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
-      if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
-        throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
-      }
-
-      return {
-        assetId: settled.assetId,
-        relativePath: settled.relativePath,
-        model: settled.model
-      }
+      const run = (): Promise<GenerateModel3dResult> =>
+        this.submitModel3dAndSettle(provider, prepared.input, genInput, graphBinding, uploads)
+      // Lux3D 单并发：冲突时退避自动重试，其余失败原样抛出
+      return provider.providerKind === 'lux3d' ? retryLux3dOnBusy(run) : run()
     } catch (err) {
       if (uploads.length) await deleteUploads(uploads)
       throw err
+    }
+  }
+
+  /** 提交 3D 任务 → 持久化 job → 阻塞轮询到终态 → 返回资产（供 generateModel3d 调用） */
+  private async submitModel3dAndSettle(
+    provider: ModelProviderInstance,
+    submitInput: GenerateModel3dInput,
+    genInput: GenerateModel3dInput,
+    graphBinding: GenerateModel3dInput['graphBinding'],
+    uploads: ObjectStorageUploadResult[]
+  ): Promise<GenerateModel3dResult> {
+    const job = await this.submitModel3d(submitInput)
+
+    const persisted = videoJobService.create({
+      kind: 'model3d',
+      providerJobId: job.jobId,
+      pollingUrl: job.pollingUrl,
+      providerInstanceId: provider.id,
+      model: job.model,
+      prompt: genInput.prompt,
+      name: genInput.name,
+      source: 'graph',
+      outputDir: genInput.outputDir,
+      graphBinding,
+      uploads: uploads.map((item) => ({
+        objectKey: item.objectKey,
+        url: item.url,
+        bytes: item.bytes,
+        bucket: item.bucket,
+        providerId: item.providerId,
+        providerLabel: item.providerLabel,
+        sourceLabel: item.sourceLabel
+      }))
+    })
+
+    // 已移交 videoJobService 管理对象清理，避免双重删除
+    uploads = []
+
+    const settled = await videoJobService.waitUntilSettled(persisted.localJobId)
+    if (settled.status !== 'succeeded' || !settled.assetId || !settled.relativePath) {
+      throw new Error(settled.error ?? fail(E_MODEL3D_GEN_FAILED).message)
+    }
+
+    return {
+      assetId: settled.assetId,
+      relativePath: settled.relativePath,
+      model: settled.model
     }
   }
 

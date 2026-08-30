@@ -1339,3 +1339,120 @@ html.dark .mobile-nav {
 html.dark .theme-toggle {
   background: rgba(19, 27, 42, 0.65);
 }
+
+/* ===== 特色功能：AI 对话 + MCP ===== */
+#features {
+  scroll-margin-top: 72px;
+}
+
+.hl-features {
+  width: min(var(--max), 100%);
+  margin: 0 auto;
+  padding: clamp(64px, 10vw, 96px) var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+
+.hl-features h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(2rem, 4.2vw, 3.1rem);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+.hl-lede {
+  margin: 14px 0 0;
+  max-width: 720px;
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.hl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(16px, 2.5vw, 24px);
+  margin-top: clamp(28px, 4vw, 40px);
+}
+
+.hl-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(22px, 3vw, 30px) clamp(20px, 2.6vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(9, 14, 24, 0.08);
+}
+
+.hl-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(90deg, var(--blue), #8a5bff);
+}
+
+.hl-badge {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(47, 107, 255, 0.12);
+  color: var(--blue-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hl-card h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.55rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.hl-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+  line-height: 1.68;
+  text-wrap: pretty;
+}
+
+.hl-card code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(47, 107, 255, 0.1);
+  color: var(--blue-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+}
+
+.hl-link {
+  margin-top: auto;
+  align-self: flex-start;
+  color: var(--blue-deep);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.hl-link:hover {
+  text-decoration: underline;
+}
+
+html.dark .hl-card {
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 860px) {
+  .hl-grid {
+    grid-template-columns: 1fr;
+  }
+}

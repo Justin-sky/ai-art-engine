@@ -62,6 +62,7 @@
       </a>
       <nav class="nav" aria-label="主导航">
         <a href="#top">界面</a>
+        <a href="#features">特色</a>
         <a href="#demo">示例</a>
         <a href="#workflow">工作流</a>
         <a href="#download">下载</a>
@@ -98,6 +99,7 @@
         <summary aria-label="打开导航菜单"><span aria-hidden="true">☰</span> 菜单</summary>
         <nav class="mobile-nav" aria-label="移动端导航">
           <a href="#top">界面</a>
+          <a href="#features">特色</a>
           <a href="#demo">示例</a>
           <a href="#workflow">工作流</a>
           <a href="#download">下载</a>
@@ -241,6 +243,34 @@
               <span class="path-desc">核心概念、全部界面说明、快捷键与故障排查。</span>
             </a>
           </div>
+        </div>
+      </section>
+
+      <section class="hl-features" id="features" aria-label="特色功能">
+        <div class="section-label reveal">Highlights</div>
+        <h2 class="reveal">特色功能：AI 对话 + MCP</h2>
+        <p class="hl-lede reveal" style="--d: 0.06s">
+          AI 不是只陪你聊天——它能真正动手干活：应用内聊天即可驱动生成与工作流，Claude Code 等外部 Agent
+          也能直连操作你的工程。
+        </p>
+        <div class="hl-grid">
+          <article class="hl-card reveal" style="--d: 0.1s">
+            <span class="hl-badge">应用内 AI 助手</span>
+            <h3>AI 对话面板</h3>
+            <p>
+              在对话里 <code>@</code> 引用工程资产，让 Agent 调用 MCP 工具直接干活：生成图片 / 视频 / 3D /
+              语音、编辑节点图、运行工作流并查看状态。多会话历史，模型可选任意已配置的文本提供商。
+            </p>
+            <a class="hl-link" href="manual.html#ai-chat">查看使用手册 §5.5 →</a>
+          </article>
+          <article class="hl-card reveal" style="--d: 0.15s">
+            <span class="hl-badge">外部 Agent 可驱动</span>
+            <h3>MCP 工具服务</h3>
+            <p>
+              内置 MCP Server：Claude Code / Codex 等外部 AI Agent 可经 stdio 桥或 HTTP 直连操作你的工程——规划并落盘工作流、运行生成、读写资产与节点图。token 跨重启持久复用、操作审计、并发闸门。
+            </p>
+            <a class="hl-link" href="guide-mcp.html">MCP 接入教程 →</a>
+          </article>
         </div>
       </section>
 

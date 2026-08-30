@@ -62,6 +62,7 @@
       </a>
       <nav class="nav" aria-label="Main navigation">
         <a href="#top">Interface</a>
+        <a href="#features">Highlights</a>
         <a href="#demo">Demo</a>
         <a href="#workflow">Workflow</a>
         <a href="#download">Download</a>
@@ -98,6 +99,7 @@
         <summary aria-label="Open navigation menu"><span aria-hidden="true">☰</span> Menu</summary>
         <nav class="mobile-nav" aria-label="Mobile navigation">
           <a href="#top">Interface</a>
+          <a href="#features">Highlights</a>
           <a href="#demo">Demo</a>
           <a href="#workflow">Workflow</a>
           <a href="#download">Download</a>
@@ -255,6 +257,37 @@
               >
             </a>
           </div>
+        </div>
+      </section>
+
+      <section class="hl-features" id="features" aria-label="Highlights">
+        <div class="section-label reveal">Highlights</div>
+        <h2 class="reveal">AI chat + MCP, the headline features</h2>
+        <p class="hl-lede reveal" style="--d: 0.06s">
+          AI here does more than chat — it gets work done: drive generation and workflows right from an in-app
+          conversation, or let external agents like Claude Code connect to your project directly.
+        </p>
+        <div class="hl-grid">
+          <article class="hl-card reveal" style="--d: 0.1s">
+            <span class="hl-badge">In-app AI assistant</span>
+            <h3>AI chat panel</h3>
+            <p>
+              <code>@</code>-reference project assets in conversation and let the agent call MCP tools directly —
+              generate image / video / 3D / speech, edit node graphs, run workflows and track status. Multi-session
+              history; pick any configured text provider for the model.
+            </p>
+            <a class="hl-link" href="manual.en.html#ai-chat">Manual §5.5 →</a>
+          </article>
+          <article class="hl-card reveal" style="--d: 0.15s">
+            <span class="hl-badge">Driven by external agents</span>
+            <h3>MCP tool server</h3>
+            <p>
+              Built-in MCP Server: external AI agents such as Claude Code / Codex can drive your project over a
+              stdio bridge or direct HTTP — plan &amp; commit workflows, run generation, read/write assets and node
+              graphs. Stable tokens across restarts, audit log, concurrency gate.
+            </p>
+            <a class="hl-link" href="guide-mcp.en.html">MCP setup guide →</a>
+          </article>
         </div>
       </section>
 

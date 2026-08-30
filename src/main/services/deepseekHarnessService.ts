@@ -239,6 +239,10 @@ function writeDshConfig(endpoint: string): void {
     '      serverName: studio',
     '      transport: streamable-http',
     `      url: ${endpoint}`,
+    // dsh-mcp-client 默认单次工具调用超时 60s；generate_model3d / generate_video 等
+    // 是「提交后阻塞轮询到生成完成」的调用，Lux3D/视频生成常需数分钟，60s 必超时，
+    // 导致 Agent 误以为提交失败而重复提交。调到 120 分钟与 LONG_GENERATE_TIMEOUT_MS 对齐。
+    '      toolCallTimeoutMs: 7200000',
     '      headers:',
     '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"'
   ]

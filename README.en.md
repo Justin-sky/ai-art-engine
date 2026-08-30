@@ -65,9 +65,16 @@ npm run dist:win | dist:mac | dist:linux
 
 **AIArtEngine** is a professional AI creation tool for short drama, ads, and film: assets, shots, and a node graph in one desktop app — local-first projects, your API keys, your files.
 
-- **Local projects** — create / open / recent; JSON + media on disk  
+### Headline features: AI chat + MCP
+
+> Drive every generation and orchestration capability from an in-app conversation — or let external AI agents such as Claude Code / Codex connect straight to your project.
+
 - **AI chat panel** — in-app AI assistant (DeepSeek Harness runtime): `@`-reference project assets in conversation and let the agent call MCP tools directly — generate image / video / 3D / speech, edit node graphs, run workflows and track status; multi-session history; model picker over any configured text provider  
 - **MCP tool server** — built-in MCP Server so external agents like Claude Code / Codex can drive your project over stdio bridge or direct HTTP (plan & commit workflows, run generation, read/write assets and graphs); stable token across restarts, audit log, concurrency gate  
+
+### Full capabilities
+
+- **Local projects** — create / open / recent; JSON + media on disk  
 - **One-click workflow** — presets (short-drama storyboard, game UI, game UA, product ad, e-commerce, game 3D assets, comic publishing, knowledge voice-over, 3D blockout…) or AI-planned topology → reusable host asset (boundary I/O + Dive)  
 - **Assets** — image / video / audio / 3D model; AssetRef GUIDs; `.aipackage`  
 - **Shots & canvas** — params, Fabric composition, dockable layout  
