@@ -31,7 +31,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          # windows-latest 已迁移到 Visual Studio 2026，electron-builder 捆绑的
+          # node-gyp 无法识别（"Could not find any Visual Studio installation"），
+          # 固定 windows-2022（VS2022）确保 node-pty 等原生依赖可重建
+          - os: windows-2022
             platform: win
           - os: macos-latest
             platform: mac
