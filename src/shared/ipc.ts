@@ -165,6 +165,8 @@ export const IpcChannels = {
   HARNESS_RUN: 'harness:run',
   /** Harness：中止当前任务 */
   HARNESS_ABORT: 'harness:abort',
+  /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
+  HARNESS_DELETE_SESSION: 'harness:delete-session',
   /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
   HARNESS_EVENT: 'harness:event'
 } as const
@@ -442,18 +444,16 @@ export interface HarnessStatus {
   workspace?: string
 }
 
-/** Harness：一条历史对话消息（user/assistant 文本，随任务回传作为模型上下文） */
-export interface HarnessHistoryMsg {
-  role: 'user' | 'assistant'
-  text: string
-}
-
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
   task: string
-  /** 可选：本次会话的历史对话（不晚于当前任务），用于模型记住之前的聊天内容 */
-  history?: HarnessHistoryMsg[]
+  /**
+   * 可选：会话 id（对应前端 ChatSession.id）。
+   * dsh 据此「有则恢复、无则创建」持久化会话——多轮对话是真实消息序列
+   * （含工具调用历史），模型通过会话恢复天然记住之前的聊天内容。
+   */
+  sessionId?: string
   /** 可选：dsh 使用的模型 id（默认取 provider 的默认文本模型） */
   model?: string
   /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */
@@ -782,6 +782,9 @@ export interface StudioApi {
 
   /** Harness：中止当前任务 */
   abortHarnessTask: () => Promise<void>
+
+  /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
+  deleteHarnessSession: (sessionId: string) => Promise<void>
 
   /** Harness：订阅任务事件流 */
   onHarnessEvent: (callback: (event: HarnessEvent) => void) => () => void

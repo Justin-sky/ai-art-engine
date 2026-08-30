@@ -93,6 +93,8 @@ function onDeleteSession(): void {
   if (!session) return
   if (!window.confirm(t('studio.chat.deleteConfirm'))) return
   removeSession(session.id)
+  // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
+  window.studio.deleteHarnessSession(session.id).catch(() => undefined)
   loadActiveMessages()
   draft.value = ''
   scrollToBottom()
@@ -539,12 +541,6 @@ async function onSend(): Promise<void> {
     return
   }
   const task = buildTask(raw)
-  // 本次会话的历史上下文：仅取 user/assistant 文本，随任务回传给模型（不含当前这条）
-  const history = messages.value.flatMap((m) =>
-    m.kind === 'user' || m.kind === 'assistant'
-      ? [{ role: m.kind === 'user' ? ('user' as const) : ('assistant' as const), text: m.text }]
-      : []
-  )
   draft.value = ''
   referenced.value = []
   pendingReasoning = ''
@@ -558,7 +554,8 @@ async function onSend(): Promise<void> {
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const result = await window.studio.runHarnessTask({
     task,
-    history,
+    // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
+    sessionId: activeSession.value?.id,
     model: modelId.trim() || undefined,
     ...(providerId ? { providerId } : {})
   })

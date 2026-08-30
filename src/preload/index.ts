@@ -205,6 +205,7 @@ const api: StudioApi = {
 
   getHarnessStatus: () => ipcRenderer.invoke(IpcChannels.HARNESS_STATUS),
   runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
+  deleteHarnessSession: (sessionId) => ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SESSION, sessionId),
   abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
   onHarnessEvent: (callback) => {
     const listener = (

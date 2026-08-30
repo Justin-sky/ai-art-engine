@@ -42,6 +42,7 @@ import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
 import {
   abortHarnessTask,
+  deleteHarnessSession,
   getHarnessStatus,
   runHarnessTask
 } from './services/deepseekHarnessService'
@@ -276,6 +277,9 @@ export function registerIpcHandlers(): void {
     runHarnessTask(input)
   )
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
+  handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) =>
+    deleteHarnessSession(sessionId)
+  )
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())
