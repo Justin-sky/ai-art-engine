@@ -81,6 +81,11 @@ jobs:
       - name: Build app
         run: npm run build
 
+      # 生成自包含 dsh 运行体（out/dsh-bundle），供 extraResources 打入 <resources>/dsh。
+      # 缺少此步会导致安装包无内置 dsh，用户首启走 npx 联网下载（1–2 分钟）。
+      - name: Bundle dsh runtime
+        run: npm run bundle:dsh
+
       - name: Package (Windows)
         if: matrix.platform == 'win'
         env:
