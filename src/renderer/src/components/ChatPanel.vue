@@ -133,11 +133,13 @@ function onMentionConfirm(paths: string[]): void {
     .map((p) => `@${p}`)
     .join(' ')
   if (!insertText) return
-  // 插入引用后自动补一个空格，避免用户紧接着输入中文时被解析成同一路径（如
-  // `@x.png生成个3d模型`），也避免 buildTask 误判“未引用”而重复追加
+  // 插入引用后始终补一个空格：既避免用户紧接着输入中文时被解析成同一路径（如
+  // `@x.png生成个3d模型`），也避免光标留在 `@路径` 末尾时输入下一个字符再次触发
+  // 资产选择器（onComposeInput 的 /@[^\s@]*$/ 匹配）；发送前会 trim，末尾空格无影响。
+  // 仅当尾部已有空白或紧接另一个 @（连续引用）时不再补。
   const start = replaceAt ? at : pos
   const tail = text.slice(pos)
-  const sep = tail && !/^[\s@]/.test(tail) ? ' ' : ''
+  const sep = !/^[\s@]/.test(tail) ? ' ' : ''
   draft.value = text.slice(0, start) + insertText + sep + tail
   // 引用去重 + chips 预览（与内联文本同步维护）
   const existing = new Set(referenced.value.map((r) => r.path))
