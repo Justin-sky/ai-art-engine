@@ -539,6 +539,12 @@ async function onSend(): Promise<void> {
     return
   }
   const task = buildTask(raw)
+  // 本次会话的历史上下文：仅取 user/assistant 文本，随任务回传给模型（不含当前这条）
+  const history = messages.value.flatMap((m) =>
+    m.kind === 'user' || m.kind === 'assistant'
+      ? [{ role: m.kind === 'user' ? ('user' as const) : ('assistant' as const), text: m.text }]
+      : []
+  )
   draft.value = ''
   referenced.value = []
   pendingReasoning = ''
@@ -552,6 +558,7 @@ async function onSend(): Promise<void> {
   const { providerId, modelId } = splitModelKey(selectedKey.value)
   const result = await window.studio.runHarnessTask({
     task,
+    history,
     model: modelId.trim() || undefined,
     ...(providerId ? { providerId } : {})
   })
