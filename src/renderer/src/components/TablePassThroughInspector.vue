@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ hint }}
@@ -107,6 +107,7 @@ import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -145,6 +146,7 @@ const isBeatGen = computed(() => node.value?.typeId === 'beat.gen')
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.inspector.node.title')
 )
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const hint = computed(() => {
   const typeId = node.value?.typeId

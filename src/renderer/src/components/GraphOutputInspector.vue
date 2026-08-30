@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ outputLabel }}</span>
-      <h2>{{ node.title || outputLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
 
     <GraphNodeRunControl
@@ -213,13 +213,14 @@ import {
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useProjectStore } from '../stores/project'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const { t } = useStudioI18n()
+const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 const project = useProjectStore()
 const volume = ref(1)
@@ -279,6 +280,18 @@ const outputLabel = computed(() => {
   if (isVideoOutput.value) return t('graph.titles.assetOutput.video')
   if (node.value?.params.outputKind === 'image') return t('graph.titles.assetOutput.image')
   return t('graph.titles.assetOutput.scene')
+})
+/** 自定义标题走节点卡片同一 i18n 解析；无标题回退 outputLabel，保持原行为 */
+const displayTitle = computed(() => {
+  const current = node.value
+  if (current?.title?.trim()) {
+    return resolveGraphNodeDisplayTitle(current, {
+      scope: undefined,
+      t,
+      graphTypeLabel
+    })
+  }
+  return outputLabel.value
 })
 
 const resultText = computed(() => {

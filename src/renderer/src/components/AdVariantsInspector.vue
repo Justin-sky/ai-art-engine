@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.adVariants.hint') }}
@@ -82,6 +82,7 @@ import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -104,6 +105,7 @@ const hostId = computed(() => {
 })
 
 const typeLabel = computed(() => graphTypeLabel('image.adVariants'))
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 

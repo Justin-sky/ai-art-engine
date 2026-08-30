@@ -4,7 +4,7 @@
     class="node-inspector"
   >
     <div class="head">
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.inspector.framePull.hint') }}
@@ -42,6 +42,7 @@ import type { GraphImageItem } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -64,6 +65,7 @@ const hostId = computed(() => {
 })
 
 const typeLabel = computed(() => graphTypeLabel('video.framePull'))
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const frames = computed<GraphImageItem[]>(() => node.value?.params.generatedImages ?? [])
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)

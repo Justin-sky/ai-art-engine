@@ -5,7 +5,7 @@
   >
     <div class="head">
       <span class="type">{{ t('graph.demo.badge') }}</span>
-      <h2>{{ node.title || t('graph.demo.title') }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ t('graph.demo.inspector.hint') }}
@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useStudioI18n } from '../../../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../../../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../../kernel'
 import { graphEditorHosts } from '../../../features/graph/model/graphEditorHosts'
 
@@ -55,6 +56,7 @@ const node = computed(() => {
   const current = graphEditorHosts.getNode(selection.hostId, id)
   return current?.typeId === 'plugin.example.node' ? current : null
 })
+const displayTitle = useNodeDisplayTitle(node, computed(() => t('graph.demo.title')))
 
 watch(
   node,

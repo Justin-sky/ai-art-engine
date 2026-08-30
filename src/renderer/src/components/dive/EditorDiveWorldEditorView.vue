@@ -4,6 +4,7 @@
       <WorldEditorTabs v-model="activeTab" />
     </header>
     <WorldEditorBody
+      v-if="ready"
       ref="bodyRef"
       class="body"
       :world-asset-id="worldAssetId"
@@ -33,6 +34,8 @@ const props = defineProps<{
 const workspace = useWorkspaceStore()
 const bodyRef = ref<InstanceType<typeof WorldEditorBody> | null>(null)
 const activeTab = ref<WorldElementKind>(props.tab ?? 'characters')
+// 等播种完成后再挂载四类子图编辑器，确保 NodeGraphEditor 加载时读到已同步的节点
+const ready = ref(false)
 
 provide(worldElementKindKey, activeTab)
 
@@ -54,6 +57,7 @@ onMounted(async () => {
   } catch (error) {
     console.warn('[dive] applyWorldCatalog failed', error)
   }
+  ready.value = true
   workspace.focusProjectGlobals()
 })
 </script>

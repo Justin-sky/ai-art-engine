@@ -143,7 +143,7 @@
             v-for="node in preview.nodes"
             :key="node.key"
           >
-            <span class="node-title">{{ node.title }}</span>
+            <span class="node-title">{{ previewNodeTitle(node) }}</span>
             <span class="node-type">{{ node.typeId }}</span>
           </li>
         </ul>
@@ -208,7 +208,9 @@ import type { AiWorkflowPresetId } from '../features/aiWorkflow/presets'
 import { hasAiWorkflowPresetPlan } from '../features/aiWorkflow/presets'
 import type { GenerateModelOption } from '../features/graph/model/generateModelOptions'
 import type { AiWorkflowPreview } from '../composables/useAiCreateWorkflow'
+import type { GraphNode } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
@@ -243,7 +245,15 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { t } = useStudioI18n()
+const { t, graphTypeLabel } = useStudioI18n()
+
+/** 预览节点：库存英文标题（剧集 Agent 阶段 / 复合审核标题）走 i18n，与节点卡片一致 */
+function previewNodeTitle(node: { key: string; typeId: string; title: string }): string {
+  return resolveGraphNodeDisplayTitle(
+    { typeId: node.typeId, title: node.title } as GraphNode,
+    { scope: undefined, t, graphTypeLabel }
+  )
+}
 
 const busy = computed(() => props.generating || props.committing)
 const hasPreview = computed(() => !!props.preview)

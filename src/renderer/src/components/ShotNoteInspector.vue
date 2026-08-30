@@ -8,7 +8,7 @@
         class="type"
         :class="typeToneClass"
       >{{ typeLabel }}</span>
-      <h2>{{ node.title || typeLabel }}</h2>
+      <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
       {{ hintText }}
@@ -115,6 +115,7 @@ import { computed, ref, watch } from 'vue'
 import ExpandableTextarea from './ExpandableTextarea.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
@@ -175,6 +176,7 @@ const typeLabel = computed(() => {
   if (isInputSlot.value) return t('graph.inputInterface.badge')
   return isTextNode.value ? t('graph.scriptNode.title') : t('graph.note.title')
 })
+const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const hintText = computed(() => {
   if (isBoundaryInput.value) return t('graph.inspector.boundary.hintInput')

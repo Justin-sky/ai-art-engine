@@ -205,12 +205,13 @@ import {
   type GraphValue
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { graphPreviewLoadScheduler } from '../features/media/previewLoadScheduler'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const { t, te } = useStudioI18n()
+const { t, te, graphTypeLabel } = useStudioI18n()
 
 const props = defineProps<{
   node: GraphNode
@@ -555,7 +556,13 @@ const titleInputEl = ref<HTMLInputElement | null>(null)
 
 const displayTitle = computed(() => {
   const custom = props.node.title?.trim()
-  if (custom) return custom
+  if (custom) {
+    return resolveGraphNodeDisplayTitle(props.node, {
+      scope: undefined,
+      t,
+      graphTypeLabel
+    })
+  }
   const key = presentation.value?.defaultTitleKey
   return key ? t(key) : t('graph.note.title')
 })
