@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。"
+      content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。内置 AI 对话面板与 MCP 工具服务（Claude Code 等 Agent 可驱动）；一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。"
     />
     <title>AIArtEngine — 专业 AI 创作工具</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/" />
@@ -29,14 +29,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="AIArtEngine — 专业 AI 创作工具" />
-    <meta property="og:description" content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。" />
+    <meta property="og:description" content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。内置 AI 对话面板与 MCP 工具服务（Claude Code 等 Agent 可驱动）；一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/" />
     <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AIArtEngine — 专业 AI 创作工具" />
-    <meta name="twitter:description" content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。" />
+    <meta name="twitter:description" content="AIArtEngine — 专业 AI 创作工具，面向短剧、广告与成片制作。内置 AI 对话面板与 MCP 工具服务（Claude Code 等 Agent 可驱动）；一键工作流、宿主资产、场与剧集、节点图、导演台与成片时间线；对接 OpenRouter、OpenAI、Google、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、Meshy、Tripo、Rodin（Hyper3D）、Luma AI、Lux3D 等，支持文生 3D / 图生 3D；工程本地优先。开源 · GPL-3.0。" />
     <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
@@ -138,8 +138,8 @@
           <p class="eyebrow reveal">AIArtEngine · 短剧 · 广告 · 成片</p>
           <h1 class="reveal" style="--d: 0.04s">专业 AI <em>创作工具</em></h1>
           <p class="lede reveal" style="--d: 0.08s">
-            v4.1：一键工作流内置 12 个行业模板，短剧分镜 Agent 流水线自动完成分镜、拼图、审核与视频；3D 导演台支持
-            AI 建模与白模搭景。资产 · 场 · 节点图一体编排，工程在本机，模型用你的 Key。
+            v5.0：内置 MCP 工具服务，Claude Code 等 AI Agent 可直接驱动应用；AI 对话面板在聊天中
+            @ 引用资产并调用生成工具；一键工作流覆盖 12+ 行业模板。工程在本机，模型用你的 Key。
           </p>
         </div>
 
@@ -221,6 +221,7 @@
           <p>
             从剧本与场到节点生成、导演台与成片时间线——短剧、广告与叙事成片同一套工作流；工程本地优先，不强制上云。
             短剧分镜 Agent 流水线可一键生成完整节点图，并在流程窗口中集中完成 9宫格、4宫格、导演审核与动态视频。
+            内置 MCP 工具服务：应用内 AI 对话面板 @ 引用资产直接生成，Claude Code 等外部 Agent 也能在聊天里规划工作流、运行生成、读写节点图。
           </p>
 
           <div class="path-grid">

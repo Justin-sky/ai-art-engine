@@ -163,7 +163,7 @@
           <p class="eyebrow">Docs · Operations</p>
           <h1>使用手册</h1>
           <p class="lede">
-            覆盖当前版本（<strong>4.1</strong>）主要界面与组件：工程与模型配置、一键工作流、短剧分镜 Agent
+            覆盖当前版本（<strong>5.0</strong>）主要界面与组件：工程与模型配置、AI 对话与 MCP 接入、一键工作流、短剧分镜 Agent
             流水线、宿主资产、节点图与任务队列、漫画页与广告变体矩阵、3D 模型生成与导演台、场与剧集、成片时间线、资产包。
             文案以应用内中文界面为准；视频演示见
             <a
@@ -726,6 +726,31 @@
             <code>plugins</code> 下的<strong>声明式</strong>扩展。当前不会执行外部任意脚本，仅展示已声明的扩展信息。
             正式安装包默认不加载「图插件示例」演示。
           </p>
+
+          <h3>4.5 MCP 工具服务</h3>
+          <p>
+            应用内置 MCP 工具服务，供 <strong>Claude Code / Codex 等外部 AI Agent</strong>（以及内置
+            <a href="#ai-chat">AI 对话面板</a>）调用——规划并落盘工作流、运行生成、读写资产与节点图。
+            详细接入步骤见 <a href="guide-mcp.html">MCP 接入教程</a>。
+          </p>
+          <ul>
+            <li>
+              <strong>启动 / 重启</strong>：设置页显示运行状态与端口；端口默认 <code>43110</code>，被占用时依次尝试
+              43110–43119。修改端口或点击「重启」后应用工具服务会以新端口拉起。
+            </li>
+            <li>
+              <strong>Token</strong>：可显示 / 复制 / 编辑；<strong>跨重启保持不变</strong>，配置一次即可长期使用。
+              怀疑泄露时点「重置 Token」——重置后旧 token 立即失效，客户端需用新 token 重新注册。
+            </li>
+            <li>
+              <strong>接入命令</strong>：一键复制 <code>claude mcp add --transport http …</code> 命令，
+              在终端执行即可把应用注册为 Claude Code 的 MCP server（HTTP 直连，无需 Node.js）。
+            </li>
+          </ul>
+          <div class="tip">
+            工具服务只监听 <code>127.0.0.1</code> 本机回环，全部请求需带 Bearer token；文件读写限制在工程根目录内；
+            所有工具调用写入审计日志 <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（5MB 滚动）。
+          </div>
         </section>
 
         <section id="workspace">
@@ -768,6 +793,10 @@
                 <td>左侧窄栏，快捷新建各类资产草稿。</td>
               </tr>
               <tr>
+                <td>AI 对话</td>
+                <td>左侧窄栏底部「◈」按钮打开；应用内 AI 助手，可在对话中调用 MCP 工具（见 <a href="#ai-chat">§5.5</a>）。</td>
+              </tr>
+              <tr>
                 <td>工作区</td>
                 <td>中心编辑器；空态显示推荐流程与最近资产，打开资产后为标签页。</td>
               </tr>
@@ -805,6 +834,27 @@
             </li>
             <li>布局菜单保存的是展开几何；侧栏收起偏好单独记忆，不会把收起态写成零宽灰洞。</li>
           </ul>
+
+          <h3 id="ai-chat">5.5 AI 对话面板</h3>
+          <p>
+            左侧窄栏底部的 <strong>◈ AI 对话</strong> 打开应用内 AI 助手。它运行 DeepSeek Harness（dsh）
+            agent 运行时，能像外部 Agent 一样调用应用自带的 <a href="guide-mcp.html">MCP 工具服务</a>——
+            相当于<strong>在聊天窗口里直接驱动生成与工程操作</strong>。
+          </p>
+          <ul>
+            <li><strong>@ 引用资产</strong>：输入 <code>@</code> 弹出资产选择器，可把工程内图片 / 视频 / 声音 / 3D 模型
+              内联引用进指令（输入区会显示缩略图预览）。dsh 直接解析文本里的 <code>@路径</code>。</li>
+            <li><strong>调用生成工具</strong>：让助手「把 @bg.png 生成一张标题图存进工程」——它会调用
+              <code>generate_image</code> 等 MCP 工具，工具执行过程以卡片形式实时显示（生成中 / 完成 / 失败）。</li>
+            <li><strong>模型选择</strong>：面板底部可选用任一<strong>已配置密钥的文本模型</strong>（不限于 DeepSeek
+              官方）；选择会记住，下次打开沿用。</li>
+            <li><strong>多会话</strong>：输入框上方工具栏可新建 / 切换 / 删除会话，历史消息本地持久化。</li>
+            <li><strong>取消与状态</strong>：执行中可停止；dsh 的状态行与工具活动实时回显在面板中。</li>
+          </ul>
+          <div class="tip">
+            <strong>前提：</strong>AI 对话需要本机有 <strong>Node.js 22.19+</strong>（安装包已内置 dsh 运行体，
+            开发模式回退 npx 拉包）以及至少一个已启用并填好密钥的文本模型；未打开工程时仅可做纯对话。
+          </div>
         </section>
 
         <section id="assets">
@@ -1058,7 +1108,19 @@
             分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>；取消分组：<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>。
           </p>
 
-          <h3>8.4 节点类型一览</h3>
+          <h3>8.4 任务容错模式</h3>
+          <p>
+            <strong>单节点调试保持严格模式</strong>：节点失败立即中断并回报错误，便于定位问题。而
+            <strong>整图运行 / 加入任务 / Agent 流水线</strong>等长链场景会自动启用<strong>容错模式</strong>：
+            节点失败时优先用缓存或图库产物兜底，标记为 <code>degraded</code>（降级）后<strong>继续执行下游</strong>，
+            不整链中断——批跑长链路不会因单个节点抖动而全部重来。
+          </p>
+          <ul>
+            <li>降级节点在<strong>运行日志、流水线总览与节点状态</strong>中同步标出（<code>degraded</code> + 失败原因）。</li>
+            <li>适合：批量生成 / 质检返工等「部分失败可接受」的场景；排错时请用<strong>单节点执行</strong>保持失败即停。</li>
+          </ul>
+
+          <h3>8.5 节点类型一览</h3>
 
           <h4>生成 / 资产类</h4>
           <ul>
@@ -1219,7 +1281,7 @@
             <li>图插件示例（仅本地调试可加载，正式安装包默认不出现）</li>
           </ul>
 
-          <h3>8.5 典型节点工作流</h3>
+          <h3>8.6 典型节点工作流</h3>
           <ol>
             <li>
               <strong>剧本</strong>：新建剧本 → 右侧选文本模型 → 填「生成指令」→ 执行生成节点 → 接到「剧本输出」。
@@ -1825,6 +1887,22 @@
                 注册命令报错（如 <code>Script not found</code>）多为本机 Claude Code 安装异常，重装后再试。
                 详细步骤与工具清单见 <a href="guide-mcp.html">MCP 接入教程</a>。
               </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>AI 对话面板报错 / 模型不可用 / 一直转圈</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>模型不可用（HTTP_404 等）</strong>：对话面板的模型走「模型」下拉中选中的文本模型，
+                  模型 ID 以<strong>所选提供商实际存在的名称</strong>为准；改用已在提供商后台开通的模型，
+                  或换一家已配好 Key 的提供商。
+                </li>
+                <li><strong>未选模型 / 无可用模型</strong>：先在 设置 → 模型 中启用至少一个文本模型并填好密钥。</li>
+                <li><strong>一直转圈不执行</strong>：确认本机 Node.js ≥ 22.19（安装包已内置运行体）；查看面板状态行与日志。</li>
+                <li><strong>工具执行失败</strong>：检查工具卡片的错误信息，常见为工程未打开或 API Key 额度不足。</li>
+              </ol>
             </div>
           </details>
 

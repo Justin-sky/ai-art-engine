@@ -162,7 +162,8 @@
           <p class="eyebrow">Docs · Operations</p>
           <h1>Manual</h1>
           <p class="lede">
-            Covers the main screens and components of the current release (<strong>4.1</strong>): project and
+            Covers the main screens and components of the current release (<strong>5.0</strong>): project and
+            model configuration, AI chat &amp; MCP setup, one-click workflows, the short-drama agent pipeline
             model setup, One-Click Workflow, the short-drama Agent pipeline, host assets, the node graph and
             task queue, comic pages and the ad variant matrix, 3D model generation and the director stage,
             shots and episodes, the final timeline, and asset packages. Wording follows the in-app UI — switch
@@ -805,6 +806,36 @@
             directory. Arbitrary external scripts are never executed — only declared extension information is
             shown. Official installers don't load the “graph plugin sample” demo.
           </p>
+
+          <h3>4.5 MCP tool server</h3>
+          <p>
+            The app embeds an MCP tool server for <strong>external AI agents such as Claude Code / Codex</strong>
+            (and the built-in <a href="#ai-chat">AI chat panel</a>) — plan &amp; commit workflows, run
+            generation, read/write assets and node graphs. See the
+            <a href="guide-mcp.en.html">MCP setup guide</a> for full steps.
+          </p>
+          <ul>
+            <li>
+              <strong>Start / restart</strong>: the settings page shows run state and port; the default port is
+              <code>43110</code>, falling back through 43110–43119 when busy. Changing the port or clicking
+              “Restart” brings the server back on the new port.
+            </li>
+            <li>
+              <strong>Token</strong>: view / copy / edit are supported; it <strong>persists across restarts</strong>,
+              so configure once. Click “Reset token” if you suspect a leak — the old token is invalidated
+              immediately and clients must re-register with the new one.
+            </li>
+            <li>
+              <strong>Connect command</strong>: one-click copy of the <code>claude mcp add --transport http …</code>
+              command; run it in a terminal to register the app as a Claude Code MCP server (HTTP direct, no
+              Node.js needed).
+            </li>
+          </ul>
+          <div class="tip">
+            The tool server only listens on <code>127.0.0.1</code> loopback and every request needs a Bearer
+            token; file access is confined to the project root; every tool call is appended to the audit log
+            <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (5 MB rolling).
+          </div>
         </section>
 
         <section id="workspace">
@@ -855,6 +886,10 @@
                 <td>Narrow left column with shortcuts for creating asset drafts.</td>
               </tr>
               <tr>
+                <td>AI chat</td>
+                <td>Opened via the “◈” button at the bottom of the left column; an in-app AI assistant that can call MCP tools in conversation (see <a href="#ai-chat">§5.5</a>).</td>
+              </tr>
+              <tr>
                 <td>Workspace</td>
                 <td>
                   The central editor; the empty state shows the recommended flow and recent assets, and opened
@@ -903,6 +938,34 @@
               separately — a collapsed state is never written as a zero-width grey hole.
             </li>
           </ul>
+
+          <h3 id="ai-chat">5.5 AI chat panel</h3>
+          <p>
+            The <strong>◈ AI chat</strong> button at the bottom of the left column opens the in-app AI
+            assistant. It runs the DeepSeek Harness (dsh) agent runtime and can call the app’s built-in
+            <a href="guide-mcp.en.html">MCP tool server</a> exactly like an external agent — in other words,
+            <strong>drive generation and project operations right from the chat window</strong>.
+          </p>
+          <ul>
+            <li><strong>@-reference assets</strong>: type <code>@</code> to open an asset picker and inline
+              project images / videos / audio / 3D models into your instruction (the composer shows thumbnail
+              previews). dsh parses the <code>@path</code> references directly.</li>
+            <li><strong>Call generation tools</strong>: ask “generate a title image from @bg.png into the
+              project” — the assistant calls MCP tools like <code>generate_image</code>, and tool progress is
+              shown as live cards (running / done / failed).</li>
+            <li><strong>Model picker</strong>: at the bottom of the panel you can pick any
+              <strong>configured text model with a key</strong> (not limited to DeepSeek official); the choice
+              is remembered.</li>
+            <li><strong>Multi-session</strong>: the toolbar above the composer creates / switches / deletes
+              sessions; message history persists locally.</li>
+            <li><strong>Cancel &amp; status</strong>: you can stop a running turn; dsh status lines and tool
+              activity stream back into the panel in real time.</li>
+          </ul>
+          <div class="tip">
+            <strong>Prerequisites:</strong> AI chat needs <strong>Node.js 22.19+</strong> on the machine
+            (installers bundle the dsh runtime; dev mode falls back to npx) and at least one enabled text model
+            with a key; without an open project only pure conversation is available.
+          </div>
         </section>
 
         <section id="assets">
@@ -1218,7 +1281,23 @@
             <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd>.
           </p>
 
-          <h3>8.4 Node types at a glance</h3>
+          <h3>8.4 Fault-tolerant run mode</h3>
+          <p>
+            <strong>Single-node debugging stays strict</strong>: a failing node stops the run immediately and
+            reports the error, which is best for isolating problems. But long chains such as
+            <strong>whole-graph runs / add-to-tasks / agent pipelines</strong> automatically enable
+            <strong>fault-tolerant mode</strong>: a failing node falls back to cached or gallery outputs, is
+            marked <code>degraded</code>, and <strong>downstream keeps executing</strong> — a long batch doesn't
+            restart just because one node hiccupped.
+          </p>
+          <ul>
+            <li>Degraded nodes are flagged in the <strong>run log, pipeline overview and node state</strong>
+              (<code>degraded</code> + failure reason).</li>
+            <li>Best for “partial failure is acceptable” batch scenarios; when debugging, use
+              <strong>single-node execution</strong> to keep the strict fail-fast behavior.</li>
+          </ul>
+
+          <h3>8.5 Node types at a glance</h3>
 
           <h4>Generation / assets</h4>
           <ul>
@@ -1407,7 +1486,7 @@
             <li>Graph plugin sample (loaded only for local debugging; absent from official installers)</li>
           </ul>
 
-          <h3>8.5 Typical node workflows</h3>
+          <h3>8.6 Typical node workflows</h3>
           <ol>
             <li>
               <strong>Script</strong>: create a script → pick a text model on the right → fill in “generation
@@ -2226,6 +2305,26 @@
                 <code>Script not found</code>), your Claude Code install is usually broken — reinstall and retry.
                 Full steps and the tool list: <a href="guide-mcp.en.html">MCP guide</a>.
               </p>
+            </div>
+          </details>
+
+          <details class="trouble">
+            <summary>AI chat panel errors / model unavailable / spinner never ends</summary>
+            <div class="trouble-body">
+              <ol>
+                <li>
+                  <strong>Model unavailable (HTTP_404 etc.)</strong>: the chat panel uses the text model selected
+                  in the model dropdown — the model ID must match a name <strong>that actually exists at the
+                  chosen provider</strong>; switch to a model enabled on your provider account or to another
+                  provider whose key you've configured.
+                </li>
+                <li><strong>No model selected / none available</strong>: first enable at least one text model with
+                  its key under Settings → Models.</li>
+                <li><strong>Spinner never ends</strong>: make sure Node.js ≥ 22.19 on this machine (installers
+                  bundle the runtime); watch the panel status line and logs.</li>
+                <li><strong>Tool execution failed</strong>: check the error on the tool card — usually the project
+                  isn't open or the API key ran out of quota.</li>
+              </ol>
             </div>
           </details>
 

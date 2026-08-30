@@ -7,6 +7,17 @@
 - [ ] 批量生成
 - [ ] 时间线高级剪辑（多轨特效 / 转场库等）
 
+## 5.0.0（已发布）
+
+- [x] 内置 MCP 工具服务：stdio 桥 / HTTP 直连，外部 Agent 驱动工作流规划、生成与工程操作
+- [x] MCP 工具面：models_list / generate_image / generate_video / generate_model3d / generate_speech / graph_read / graph_edit / task_run / task_status / folder_list
+- [x] AI 对话面板（DeepSeek Harness 运行时）：对话中 @ 引用资产并调用 MCP 工具
+- [x] 任务容错模式：整图运行 / 任务队列节点失败降级（degraded）不整链中断
+- [x] 媒体质检增强：专用质检模型 + 五维评分，返工接入备选模型链
+- [x] 一键工作流新增行业模板：电商带货 / 游戏 3D 资产 / 漫画出版 / 知识口播 / 3D 白模预演
+- [x] 导演台着色模式 / 线框模式
+- [x] 官网重构：英文版 / 深色主题 / Diátaxis 文档体系 / MCP 教程页
+
 ## 4.1.0（已发布）
 
 - [x] 3D 模型生成：Meshy / Tripo / Rodin（Hyper3D）/ Luma AI（文生 3D / 图生 3D，异步提交 → 轮询 → 下载）

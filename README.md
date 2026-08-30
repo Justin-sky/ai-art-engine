@@ -81,11 +81,13 @@ npm run dist:linux  # Linux
 
 - **本地工程** — 新建 / 打开 / 最近列表，JSON + 媒体目录落盘，数据不出本机
 - **资产库** — 图片 / 视频 / 声音 / 3D 模型；AssetRef GUID；`.aipackage` 导入导出
+- **AI 对话面板** — 应用内 AI 助手（DeepSeek Harness 运行时）：在对话里 `@` 引用工程资产、让 Agent 调用 MCP 工具直接干活——生成图片 / 视频 / 3D / 语音、编辑节点图、运行工作流并查状态；多会话历史、模型可选任意已配置文本模型
+- **MCP 工具服务** — 内置 MCP Server，Claude Code / Codex 等外部 AI Agent 可经 stdio 桥或 HTTP 直连操作你的工程（规划并落盘工作流、运行生成、读写资产与节点图）；token 跨重启持久复用、操作审计、并发闸门
 - **分镜与画布** — 镜头参数、Fabric 构图、可停靠布局
-- **一键工作流** — 预设模板（短剧分镜、游戏UI界面、游戏买量、产品广告等）或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
-- **节点图生成** — 文本 / 图片 / 视频 / 声音 / 3D 模型节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游；漫画页（分镜格 + 台词气泡，导出透明 PNG）、广告变体矩阵、媒体质检 / 返工（生成 → 质检 → FAIL 自动注入原因重试）、2D 帧动画与帧动画序列图、图层分离（拆层后可导出 PSD）
+- **一键工作流** — 预设模板（短剧分镜、游戏UI界面、游戏买量、产品广告、电商带货、游戏3D资产、漫画出版、知识口播、3D白模预演等）或 AI 规划拓扑，一键创建可复用宿主资产（边界 I/O + Dive 内图）
+- **节点图生成** — 文本 / 图片 / 视频 / 声音 / 3D 模型节点，指令面板与模型参数；生成锁定、图库双输出口；端口类型必须相同（单数不能进复数，选取节点只收列表口）；连线样式 / 小地图；任务队列复用共同上游、**任务容错模式**（节点失败降级不整链中断）；漫画页（分镜格 + 台词气泡，导出透明 PNG）、广告变体矩阵、媒体质检 / 返工（专用质检模型五维评分 → FAIL 自动注入原因重试）、2D 帧动画与帧动画序列图、图层分离（拆层后可导出 PSD）
 - **宿主资产** — 外层暴露边界口，内图可 Dive；多汇点各建独立出口
-- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台；全景图输入自动设为背景；AI 白模搭场景、20+ 种基础几何体、材质贴图覆盖（基础 / 法线贴图）
+- **导演台** — 3D 站位截图与动作录制（写入 `Cache/Videos`）；方形口 `out-shots` / `out-actions`；3D 模型输入端口，dive 自动实例化到舞台；全景图输入自动设为背景；AI 白模搭场景、20+ 种基础几何体、材质贴图覆盖（基础 / 法线贴图）、着色模式与线框模式
 - **成片时间线** — 素材分组与上轨编排；画中画叠加（位置 / 尺寸 / 不透明度 / 音量）与视频轨转场；预览播选中 / 时间线整轨联播；导出成片
 - **多模型提供商** — OpenRouter、OpenAI（GPT 文本 / gpt-image 图片）、DeepSeek（文本）、智谱（GLM 文本 / CogView 图片）、Kimi / 月之暗面（文本）、xAI / Grok（文本 / 图片 / 视频）、Google / Gemini（文本 / 图片 / 视频）、本地 vLLM（文本 / Wan 视频）、Ollama / LM Studio（文本，OpenAI 兼容，无需 API Key）、火山方舟（Seedream / Seedance / 声音）、可灵、MiniMax、通义千问（DashScope）、魔塔（ModelScope）、ComfyUI（API 2：图片 / 视频 / 声音，本机或云端 Base URL）、MagicRouter（聚合网关：文本 / 图片 / 视频）、Meshy / Tripo / Rodin（Hyper3D） / Luma AI / Lux3D（3D 模型生成，文生 3D / 图生 3D）
 - **对象存储** — 火山引擎 TOS、阿里云 OSS、腾讯云 COS（同时仅可启用一个，用于参考视频等公网外链）
@@ -132,6 +134,7 @@ npm run dist:linux  # Linux
 2. 安装启动 → 新建工程  
 3. 设置里添加模型提供商并填写密钥；可选配置对象存储  
 4. 顶栏「一键工作流」快速出宿主资产，或在分镜 / 节点图中手搭链路  
+5. 点左侧窄栏「◈」打开 AI 对话，`@` 引用资产让助手直接生成；或按 [MCP 接入教程](https://justin-sky.github.io/ai-art-engine/guide-mcp.html) 接入 Claude Code 等外部 Agent  
 
 完整操作说明见 [使用手册](https://justin-sky.github.io/ai-art-engine/manual.html)（源码在 `website/manual.html`）。本机 ComfyUI 需先装 [comfy-api-proxy](https://justin-sky.github.io/ai-art-engine/guide-comfyui.html)（默认 8189），不要直连 8188。
 
@@ -178,8 +181,8 @@ npm run pack                    # 未封装目录，便于自测
 - **发版**：先改 `package.json` 与 CHANGELOG，提交后打 tag 并推送，例如：
 
 ```bash
-git tag v4.1.0
-git push origin v4.1.0
+git tag v5.0.0
+git push origin v5.0.0
 ```
 
   CI 会校验 tag（去掉 `v`）与 `package.json` 一致，再构建并发布 [GitHub Release](https://github.com/Justin-sky/ai-art-engine/releases)（含 `latest.yml` 等更新元数据）。
