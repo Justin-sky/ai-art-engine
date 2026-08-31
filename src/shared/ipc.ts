@@ -177,6 +177,14 @@ export const IpcChannels = {
   SKILLS_OPEN_DIR: 'skills:open-dir',
   /** Harness：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
   SKILLS_WRITE_TEMPLATE: 'skills:write-template',
+  /** Skills：查询内置技能模板库（应用内置 GraphSkill 提炼的可复用模板清单） */
+  SKILLS_LIST_TEMPLATES: 'skills:list-templates',
+  /** Skills：把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过） */
+  SKILLS_EXPORT_TEMPLATE: 'skills:export-template',
+  /** Skills：查询本次会话可用的技能清单（内置快照 + 用户自定义，供对话技能调试视图） */
+  SKILLS_GET_SESSION: 'skills:get-session',
+  /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
+  SKILLS_IMPORT_TO_GRAPH: 'skills:import-to-graph',
   /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
   HARNESS_EVENT: 'harness:event'
 } as const
@@ -528,6 +536,36 @@ export interface DshSkillsTemplateResult {
   skipped: boolean
 }
 
+/** Skills：内置技能模板库条目（应用内置 GraphSkill 提炼的可复用模板） */
+export interface SkillTemplate {
+  /** GraphSkill id */
+  id: string
+  /** 建议的 dsh 技能文件名（kebab-case，不含 .md） */
+  name: string
+  titleZh: string
+  titleEn: string
+  description: string
+  /** 渲染后的 SKILL.md 完整内容 */
+  content: string
+}
+
+/** Skills：会话中一个可用技能（对话技能调试视图展示） */
+export interface SessionSkill {
+  /** dsh 技能名（文件名去 .md） */
+  name: string
+  /** builtin=应用内置技能快照；custom=用户自定义 .md 技能 */
+  kind: 'builtin' | 'custom'
+  titleZh?: string
+  titleEn?: string
+  description: string
+}
+
+/** Skills：自定义 .md 技能反向导入 GraphSkill 的结果 */
+export interface SkillImportResult {
+  imported: string[]
+  skipped: { name: string; reason: string }[]
+}
+
 /** Harness：任务事件流（main → 渲染层） */
 export type HarnessEvent =
   | { type: 'assistant'; text: string }
@@ -875,6 +913,18 @@ export interface StudioApi {
 
   /** Skills：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
   writeDshSkillsTemplate: () => Promise<DshSkillsTemplateResult>
+
+  /** Skills：查询内置技能模板库（应用内置 GraphSkill 提炼的可复用模板） */
+  listSkillTemplates: () => Promise<SkillTemplate[]>
+
+  /** Skills：把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过） */
+  exportSkillTemplate: (id: string) => Promise<DshSkillsTemplateResult>
+
+  /** Skills：查询本次会话可用技能清单（内置快照 + 用户自定义，供对话技能调试视图） */
+  getSessionSkills: () => Promise<SessionSkill[]>
+
+  /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
+  importCustomSkillsToGraph: () => Promise<SkillImportResult>
 
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
   deleteHarnessSession: (sessionId: string) => Promise<void>

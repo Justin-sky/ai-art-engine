@@ -257,7 +257,16 @@ export default {
       writeTemplate: 'Create sample template',
       templateWritten: 'Sample template created: {file}',
       templateSkipped: 'Sample template already exists (not overwritten): {file}',
-      empty: 'The folder is empty. Click "Create sample template" to get a ready-to-use template.'
+      empty: 'The folder is empty. Click "Create sample template" to get a ready-to-use template.',
+      templateLibrary: 'Skill template library',
+      templateEmpty: 'No templates available',
+      exportTemplate: 'Export template',
+      templateExported: 'Template exported: {file}',
+      templateExportedSkipped: 'Template already exists (not overwritten): {file}',
+      importToGraph: 'Import as app skills',
+      imported: 'Imported {count} custom skill(s): {names}',
+      importSkipped: 'Import failed: {names}',
+      importEmpty: 'No custom skills in the skills folder to import'
     },
     models: {
       addProvider: 'Add model provider',
@@ -549,6 +558,10 @@ export default {
       modeCraft: 'Craft',
       modeAsk: 'Ask',
       modePlan: 'Plan',
+      skills: 'Skills',
+      skillsTitle: 'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
+      skillsMeta: 'Loaded {loaded}/{total}',
+      skillsEmpty: 'No skills available',
       promptContinue: 'Continue',
       promptCancel: 'Cancel',
       promptAnswered: 'Chosen: {answer}',
@@ -562,7 +575,8 @@ export default {
       deleteSession: 'Delete',
       deleteConfirm: 'Delete this session? Its history will be removed and cannot be restored.',
       // Note: vue-i18n parses a leading @ in a message as linked format; escape it with {'@'}
-      mentionButton: "{'@'} Assets",
+      // Button shows only @, full label lives in title (mentionTitle)
+      mentionButton: "{'@'}",
       mentionTitle: 'Reference assets',
       mentionSubtitle: 'Pick images / videos / audio to reference for the model',
       mentionHint: 'Click cards to select (multiple allowed)',

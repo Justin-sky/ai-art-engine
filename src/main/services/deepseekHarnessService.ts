@@ -15,9 +15,12 @@ import {
   type HarnessEvent,
   type HarnessRunInput,
   type HarnessRunResult,
-  type HarnessStatus
+  type HarnessStatus,
+  type SessionSkill,
+  type SkillImportResult,
+  type SkillTemplate
 } from '@shared/ipc'
-import { listGraphSkills, type GraphSkill } from '@shared/graph/graphSkills'
+import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
 import { modalityConfig, type ModelProviderInstance } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
 import { getMcpServerInfo } from './mcpServerService'
@@ -473,6 +476,164 @@ export function writeDshSkillsTemplate(): DshSkillsTemplateResult {
   if (existsSync(filePath)) return { filePath, skipped: true }
   writeFileSync(filePath, renderDshSkillsTemplate(), 'utf8')
   return { filePath, skipped: false }
+}
+
+/** 查询内置技能模板库：应用内置 GraphSkill 提炼为可复用 SKILL.md 模板 */
+export function listSkillTemplates(): SkillTemplate[] {
+  return listGraphSkills()
+    .map((skill) => {
+      const name = toDshSkillName(skill.id)
+      if (!name) return null
+      return {
+        id: skill.id,
+        name,
+        titleZh: skill.titleZh,
+        titleEn: skill.titleEn,
+        description: `${skill.titleEn} — ${skill.titleZh}`,
+        content: renderDshSkillMd(skill)
+      }
+    })
+    .filter((template): template is SkillTemplate => template !== null)
+}
+
+/** 把内置技能模板导出为技能目录中的 .example 模板文件（同名跳过，不覆盖用户内容） */
+export function exportSkillTemplate(id: string): DshSkillsTemplateResult {
+  const template = listSkillTemplates().find((item) => item.id === id)
+  if (!template) throw new Error(`Unknown skill template: ${id}`)
+  const skillsDir = join(dshHome(), 'skills')
+  mkdirSync(skillsDir, { recursive: true })
+  const filePath = join(skillsDir, `${template.name}.example`)
+  if (existsSync(filePath)) return { filePath, skipped: true }
+  writeFileSync(filePath, template.content, 'utf8')
+  return { filePath, skipped: false }
+}
+
+/** 解析 SKILL.md frontmatter（name / description），供会话技能清单与反向导入复用 */
+function parseDshSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n/)
+  if (!match) return {}
+  const result: Record<string, string> = {}
+  for (const line of match[1].split('\n')) {
+    const kv = line.match(/^([\w-]+):\s*(.*)$/)
+    if (kv) result[kv[1]] = kv[2].trim()
+  }
+  return { name: result.name, description: result.description }
+}
+
+/** 解析 SKILL.md 正文分节（### 系统提示（中文）等），供反向导入 GraphSkill 复用 */
+function parseDshSkillSections(content: string): {
+  systemPromptZh?: string
+  systemPromptEn?: string
+  instructionZh?: string
+  instructionEn?: string
+} {
+  const section = (heading: string): string | undefined => {
+    const start = content.indexOf(heading)
+    if (start < 0) return undefined
+    const bodyStart = start + heading.length
+    const next = content.indexOf('\n### ', bodyStart)
+    const raw = (next < 0 ? content.slice(bodyStart) : content.slice(bodyStart, next)).trim()
+    return raw || undefined
+  }
+  return {
+    systemPromptZh: section('### 系统提示（中文）'),
+    systemPromptEn: section('### System prompt (English)'),
+    instructionZh: section('### 生成指令（中文）'),
+    instructionEn: section('### Instruction (English)')
+  }
+}
+
+/** 查询本次会话可用的技能清单（内置快照 + 用户自定义 .md），供对话技能调试视图展示 */
+export function getSessionSkills(): SessionSkill[] {
+  const skills: SessionSkill[] = []
+  const builtinNames = new Set<string>()
+  for (const skill of listGraphSkills()) {
+    const name = toDshSkillName(skill.id)
+    if (!name) continue
+    builtinNames.add(name)
+    skills.push({
+      name,
+      kind: 'builtin',
+      titleZh: skill.titleZh,
+      titleEn: skill.titleEn,
+      description: `${skill.titleEn} — ${skill.titleZh}`
+    })
+  }
+  const skillsDir = join(dshHome(), 'skills')
+  const builtinFiles = new Set(readDshSkillsManifest().previous)
+  if (existsSync(skillsDir)) {
+    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
+      try {
+        const content = readFileSync(join(skillsDir, entry.name), 'utf8')
+        const frontmatter = parseDshSkillFrontmatter(content)
+        const name = frontmatter.name || entry.name.replace(/\.md$/, '')
+        if (builtinNames.has(name)) continue
+        skills.push({
+          name,
+          kind: 'custom',
+          description: frontmatter.description || name
+        })
+      } catch {
+        // 单个文件解析失败不阻塞清单
+      }
+    }
+  }
+  return skills
+}
+
+/** 反向同步：把用户自定义 .md 技能导入为应用 GraphSkill（保存 dispose，重复导入先清理） */
+const importedSkillDisposes = new Set<() => void>()
+export function importCustomSkillsToGraph(): SkillImportResult {
+  const imported: string[] = []
+  const skipped: { name: string; reason: string }[] = []
+  // 先清理上次导入的 GraphSkill（后注册优先，重复导入需先 dispose 才能回落到内置）
+  for (const dispose of importedSkillDisposes) {
+    try {
+      dispose()
+    } catch {
+      // 忽略清理失败
+    }
+  }
+  importedSkillDisposes.clear()
+  const skillsDir = join(dshHome(), 'skills')
+  const builtinFiles = new Set(readDshSkillsManifest().previous)
+  if (existsSync(skillsDir)) {
+    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md') || builtinFiles.has(entry.name)) continue
+      try {
+        const content = readFileSync(join(skillsDir, entry.name), 'utf8')
+        const frontmatter = parseDshSkillFrontmatter(content)
+        const name = frontmatter.name || entry.name.replace(/\.md$/, '')
+        const id = `dsh.${toDshSkillName(name)}`
+        if (!id || id === 'dsh.') {
+          skipped.push({ name: entry.name, reason: 'invalid skill name' })
+          continue
+        }
+        const sections = parseDshSkillSections(content)
+        const title = frontmatter.description || name
+        importedSkillDisposes.add(
+          registerGraphSkill({
+            id,
+            kind: 'system',
+            titleZh: title,
+            titleEn: name,
+            systemPromptZh: sections.systemPromptZh,
+            systemPromptEn: sections.systemPromptEn,
+            instructionZh: sections.instructionZh,
+            instructionEn: sections.instructionEn
+          })
+        )
+        imported.push(name)
+      } catch (error) {
+        skipped.push({
+          name: entry.name,
+          reason: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  }
+  return { imported, skipped }
 }
 
 /** 示例 SKILL.md 模板：dsh 格式（frontmatter name/description + 正文），复制重命名为 .md 即生效 */
