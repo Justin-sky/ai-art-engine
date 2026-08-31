@@ -937,6 +937,9 @@ export default {
       sources: 'Media library',
       refreshSources: 'Refresh inputs',
       autoPlace: 'Auto-place',
+      sourceNode: 'Source node',
+      locateNode: 'Locate in graph',
+      locateNodeHint: 'Locate this clip\'s source node in the graph (back to its generation branch)',
       sourceGridSize: 'Media tile size',
       sourceGroup: {
         input: 'Node inputs',
