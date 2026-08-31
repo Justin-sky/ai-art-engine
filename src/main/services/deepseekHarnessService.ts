@@ -1434,6 +1434,12 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   const patchPath = dshModules ? writeAiartHarness(dshModules, input.mode ?? 'craft') : null
   const args = dshEntry
     ? [
+        // cordis HMR 服务要求 loader.internal 可用：Node ≥22 下 require
+        // internal/modules/esm/loader 必须带 --expose-internals，否则 dsh 启动即抛
+        // "failed to apply loader entry … (cordis-plugin-hmr): --expose-internals is required for HMR service"。
+        // 内置 Node（Electron，Node 24）实测支持该 flag；系统 node ≥22 亦支持，
+        // 故只要走 node 直启（nodeCmd 非空）就注入。
+        ...(nodeCmd ? ['--expose-internals'] : []),
         dshEntry,
         '--profile',
         'headless',
