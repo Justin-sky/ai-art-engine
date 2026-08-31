@@ -46,6 +46,14 @@
         <button
           type="button"
           class="top-tab"
+          :class="{ active: mainTab === 'skills' }"
+          @click="mainTab = 'skills'"
+        >
+          {{ t('settings.section.skills') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
           :class="{ active: mainTab === 'plugins' }"
           @click="mainTab = 'plugins'"
         >
@@ -287,6 +295,14 @@
         </p>
       </section>
 
+      <section
+        v-show="mainTab === 'skills'"
+        class="models-section"
+      >
+        <h2>{{ t('settings.section.skills') }}</h2>
+        <SkillsPanel />
+      </section>
+
       <section v-show="mainTab === 'plugins'">
         <h2>{{ t('settings.section.plugins') }}</h2>
         <p class="hint">
@@ -342,6 +358,7 @@ import { applyAppTheme, applyEditorPreferences } from '../editor/preferences'
 import { invalidateGenerateModelSettingsCache } from '../features/graph/model/generateModelOptions'
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
+import SkillsPanel from '../components/settings/SkillsPanel.vue'
 
 const DEBOUNCE_MS = 500
 
@@ -352,7 +369,7 @@ const saving = ref(false)
 const message = ref('')
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
-const mainTab = ref<'general' | 'models' | 'objectStorage' | 'mcp' | 'plugins'>('general')
+const mainTab = ref<'general' | 'models' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'>('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)

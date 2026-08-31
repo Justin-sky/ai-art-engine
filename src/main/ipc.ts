@@ -43,8 +43,11 @@ import { mcpActivityService } from './services/mcpActivityService'
 import {
   abortHarnessTask,
   deleteHarnessSession,
+  getDshSkillsInfo,
   getHarnessStatus,
-  runHarnessTask
+  openDshSkillsDir,
+  runHarnessTask,
+  writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
@@ -280,6 +283,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) =>
     deleteHarnessSession(sessionId)
   )
+  handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
+  handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
+  handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())

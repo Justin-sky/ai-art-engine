@@ -167,6 +167,12 @@ export const IpcChannels = {
   HARNESS_ABORT: 'harness:abort',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
+  /** Harness：查询 dsh 自定义技能目录信息（路径 / 文件清单 / 内置技能数） */
+  SKILLS_GET_INFO: 'skills:get-info',
+  /** Harness：在系统文件管理器中打开 dsh 自定义技能目录 */
+  SKILLS_OPEN_DIR: 'skills:open-dir',
+  /** Harness：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
+  SKILLS_WRITE_TEMPLATE: 'skills:write-template',
   /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
   HARNESS_EVENT: 'harness:event'
 } as const
@@ -464,6 +470,31 @@ export interface HarnessRunInput {
 export interface HarnessRunResult {
   started: boolean
   message?: string
+}
+
+/** Skills：dsh 技能目录中的一个文件 */
+export interface DshSkillsFile {
+  fileName: string
+  /** builtin=应用内置技能快照生成；custom=用户自定义技能(.md)；template=示例模板 */
+  kind: 'builtin' | 'custom' | 'template'
+}
+
+/** Skills：dsh 技能目录信息（渲染层设置页展示用） */
+export interface DshSkillsInfo {
+  /** skills 目录绝对路径 */
+  dirPath: string
+  /** 内置技能数量（由应用自动管理） */
+  builtinCount: number
+  /** 目录下文件清单（不含 manifest） */
+  files: DshSkillsFile[]
+}
+
+/** Skills：写入示例模板结果 */
+export interface DshSkillsTemplateResult {
+  /** 写入（或已存在）的文件路径 */
+  filePath: string
+  /** true = 同名文件已存在、本次跳过未覆盖；false = 新写入 */
+  skipped: boolean
 }
 
 /** Harness：任务事件流（main → 渲染层） */
@@ -782,6 +813,15 @@ export interface StudioApi {
 
   /** Harness：中止当前任务 */
   abortHarnessTask: () => Promise<void>
+
+  /** Skills：查询 dsh 自定义技能目录信息 */
+  getDshSkillsInfo: () => Promise<DshSkillsInfo>
+
+  /** Skills：在系统文件管理器中打开 dsh 技能目录（不存在则先创建） */
+  openDshSkillsDir: () => Promise<void>
+
+  /** Skills：写入一个示例 SKILL.md 模板（同名已存在则跳过） */
+  writeDshSkillsTemplate: () => Promise<DshSkillsTemplateResult>
 
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
   deleteHarnessSession: (sessionId: string) => Promise<void>
