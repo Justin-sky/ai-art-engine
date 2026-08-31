@@ -358,7 +358,8 @@ function groupHasSidePanel(
 /**
  * 侧栏互拖时禁止 left/right/center 半屏 drop 预览：先悬停半屏再丢到对方下方
  * 时，dockview 锚点 overlay / 列宽容易留下灰框。仅允许上下叠放。
- * 拖到工作区/文档等非侧栏目标时一律不显示预览。
+ * 拖到工作区/文档等非侧栏目标时一律不显示预览；AI 对话页签（chat）除外，
+ * 允许把资产/参数窗口拖入其中合并或拆分。
  */
 export function shouldPreventSidePanelOverlay(event: {
   position: string
@@ -370,7 +371,11 @@ export function shouldPreventSidePanelOverlay(event: {
   if (!panelId || !isSidePanelId(panelId)) return false
 
   if (event.kind === 'edge') return true
-  if (!groupHasSidePanel(event.group)) return true
+  if (!groupHasSidePanel(event.group)) {
+    // 拖到 AI 对话页签（chat）时放行，其余非侧栏目标仍阻止
+    if (event.group?.panels?.some((panel) => panel.id === 'chat')) return false
+    return true
+  }
 
   // 拖到对方面板内容区（center）：合并为 Tab 切换组
   if (event.position === 'center') return false
