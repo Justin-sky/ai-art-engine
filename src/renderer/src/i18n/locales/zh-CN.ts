@@ -256,7 +256,16 @@ export default {
       writeTemplate: '生成示例模板',
       templateWritten: '示例模板已生成：{file}',
       templateSkipped: '示例模板已存在（未覆盖）：{file}',
-      empty: '目录为空。点击「生成示例模板」创建一份可用的模板。'
+      empty: '目录为空。点击「生成示例模板」创建一份可用的模板。',
+      templateLibrary: '技能模板库',
+      templateEmpty: '暂无可用模板',
+      exportTemplate: '导出模板',
+      templateExported: '模板已导出：{file}',
+      templateExportedSkipped: '模板已存在（未覆盖）：{file}',
+      importToGraph: '导入为应用技能',
+      imported: '已导入 {count} 个自定义技能：{names}',
+      importSkipped: '导入失败：{names}',
+      importEmpty: '技能目录中没有自定义技能可导入'
     },
     models: {
       addProvider: '添加模型提供商',
@@ -548,6 +557,10 @@ export default {
       modeCraft: 'Craft',
       modeAsk: 'Ask',
       modePlan: 'Plan',
+      skills: '技能',
+      skillsTitle: '本次会话可用技能（内置快照 + 自定义），模型调用 skill 工具时标记为已加载',
+      skillsMeta: '已加载 {loaded}/{total}',
+      skillsEmpty: '暂无可用技能',
       promptContinue: '继续',
       promptCancel: '取消',
       promptAnswered: '已选择：{answer}',
@@ -561,7 +574,8 @@ export default {
       deleteSession: '删除',
       deleteConfirm: '删除该会话？历史消息将一并移除，且不可恢复。',
       // 注意：vue-i18n 会把消息开头（token 起始）的 @ 解析为 linked format，须用 {'@'} 转义
-      mentionButton: "{'@'} 引用资产",
+      // 按钮仅保留 @ 符号，完整说明放 title（mentionTitle）
+      mentionButton: "{'@'}",
       mentionTitle: '引用资产',
       mentionSubtitle: '选择要作为模型参考的图片 / 视频 / 音频',
       mentionHint: '点击卡片选择，可多选',

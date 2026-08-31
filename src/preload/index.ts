@@ -219,6 +219,10 @@ const api: StudioApi = {
   getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
   openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),
   writeDshSkillsTemplate: () => ipcRenderer.invoke(IpcChannels.SKILLS_WRITE_TEMPLATE),
+  listSkillTemplates: () => ipcRenderer.invoke(IpcChannels.SKILLS_LIST_TEMPLATES),
+  exportSkillTemplate: (id) => ipcRenderer.invoke(IpcChannels.SKILLS_EXPORT_TEMPLATE, id),
+  getSessionSkills: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_SESSION),
+  importCustomSkillsToGraph: () => ipcRenderer.invoke(IpcChannels.SKILLS_IMPORT_TO_GRAPH),
   onHarnessEvent: (callback) => {
     const listener = (
       _event: unknown,

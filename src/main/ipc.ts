@@ -43,9 +43,13 @@ import { mcpActivityService } from './services/mcpActivityService'
 import {
   abortHarnessTask,
   deleteHarnessSession,
+  exportSkillTemplate,
   getDshSkillsInfo,
   getHarnessStatus,
+  getSessionSkills,
   handleAskUserResponse,
+  importCustomSkillsToGraph,
+  listSkillTemplates,
   openDshSkillsDir,
   runHarnessTask,
   writeDshSkillsTemplate
@@ -291,6 +295,10 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
+  handle(IpcChannels.SKILLS_LIST_TEMPLATES, () => listSkillTemplates())
+  handle(IpcChannels.SKILLS_EXPORT_TEMPLATE, (id: string) => exportSkillTemplate(id))
+  handle(IpcChannels.SKILLS_GET_SESSION, () => getSessionSkills())
+  handle(IpcChannels.SKILLS_IMPORT_TO_GRAPH, () => importCustomSkillsToGraph())
 
   // ask_user 用户选择回传：按 requestId 前缀分流。
   // - harness:  → dsh 原生 ask_user_question（runner 经 answerFile 等待）

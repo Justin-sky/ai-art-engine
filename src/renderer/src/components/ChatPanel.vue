@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
-import type { AskUserQuestion, ChatMode, HarnessEvent, HarnessStatus, McpActivity } from '@shared/ipc'
+import type {
+  AskUserQuestion,
+  ChatMode,
+  HarnessEvent,
+  HarnessStatus,
+  McpActivity,
+  SessionSkill
+} from '@shared/ipc'
 import { modalityConfig } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
@@ -256,14 +263,50 @@ function selectMode(value: ChatMode): void {
   mode.value = value
   modeOpen.value = false
 }
+/** 技能调试视图：会话可用技能清单（内置快照 + 用户自定义） */
+const skillsOpen = ref(false)
+const skillsDropdownRef = ref<HTMLElement | null>(null)
+const sessionSkills = ref<SessionSkill[]>([])
+/** 已加载技能 → 命中次数：skill 工具调用时累加，作为「命中依据」可视化 */
+const loadedSkills = reactive<Record<string, number>>({})
+const loadedSkillCount = computed(() => Object.keys(loadedSkills).length)
+const loadedSkillTotal = computed(() => {
+  let total = 0
+  for (const key in loadedSkills) total += loadedSkills[key]
+  return total
+})
+
+async function refreshSessionSkills(): Promise<void> {
+  try {
+    sessionSkills.value = await window.studio.getSessionSkills()
+  } catch {
+    // 技能清单拉取失败不阻塞对话，保持上次快照
+  }
+}
+
+/** skill 工具命中：detail 中带技能名（name / titleZh / titleEn）即标记为已加载 */
+function markSkillLoaded(detail?: string): void {
+  if (!detail) return
+  const needle = detail.toLowerCase()
+  for (const skill of sessionSkills.value) {
+    const candidates = [skill.name, skill.titleZh, skill.titleEn].filter(
+      (s): s is string => !!s && s.length > 0
+    )
+    if (candidates.some((s) => needle.includes(s.toLowerCase()))) {
+      loadedSkills[skill.name] = (loadedSkills[skill.name] ?? 0) + 1
+    }
+  }
+}
+
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value) return
+  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value && !skillsOpen.value) return
   if (e instanceof KeyboardEvent) {
     if (e.key === 'Escape') {
       modeOpen.value = false
       modelOpen.value = false
       sessionOpen.value = false
+      skillsOpen.value = false
     }
     return
   }
@@ -275,6 +318,9 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (sessionDropdownRef.value && !sessionDropdownRef.value.contains(e.target as Node)) {
     sessionOpen.value = false
+  }
+  if (skillsDropdownRef.value && !skillsDropdownRef.value.contains(e.target as Node)) {
+    skillsOpen.value = false
   }
 }
 const draft = ref('')
@@ -687,6 +733,8 @@ function onHarnessEvent(event: HarnessEvent): void {
           detail: event.detail
         })
       }
+      // 技能命中依据：skill 工具调用时在技能调试视图中标记「已加载」
+      if (event.name === 'skill') markSkillLoaded(event.detail)
       scrollToBottom()
       break
     }
@@ -830,6 +878,7 @@ onMounted(async () => {
   // 恢复历史会话（上次会话或新建），再订阅事件流
   loadHistory()
   loadActiveMessages()
+  void refreshSessionSkills()
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   stopAskUser = window.studio.onAskUser(handleAskUser)
@@ -1009,6 +1058,90 @@ onBeforeUnmount(() => {
 
     <div class="chat-input">
       <div class="chat-toolbar">
+        <!-- 技能调试视图：展示会话可用技能清单与已加载命中次数 -->
+        <div
+          ref="skillsDropdownRef"
+          class="skills-dropdown"
+          :class="{ open: skillsOpen }"
+        >
+          <button
+            type="button"
+            class="skills-trigger"
+            :class="{ active: skillsOpen }"
+            :title="t('studio.chat.skillsTitle')"
+            @click.stop="skillsOpen = !skillsOpen"
+          >
+            <svg
+              class="skills-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m22 2-2 6-2-6h4Z" />
+              <path d="M14 8 6 3l-4 4 5 8" />
+              <path d="M8 8 3 12" />
+              <circle cx="15" cy="19" r="4" />
+              <circle cx="19" cy="15" r="4" />
+              <path d="M3 21l3-3" />
+            </svg>
+            <span class="skills-label">{{ t('studio.chat.skills') }}</span>
+            <span
+              v-if="loadedSkillCount > 0"
+              class="skills-badge"
+            >{{ loadedSkillTotal }}</span>
+          </button>
+          <div
+            v-show="skillsOpen"
+            class="skills-menu"
+          >
+            <div class="skills-menu-head">
+              <span>{{ t('studio.chat.skillsTitle') }}</span>
+              <span
+                v-if="sessionSkills.length"
+                class="skills-menu-meta"
+              >
+                {{ t('studio.chat.skillsMeta', { loaded: loadedSkillCount, total: sessionSkills.length }) }}
+              </span>
+            </div>
+            <p
+              v-if="sessionSkills.length === 0"
+              class="skills-empty"
+            >
+              {{ t('studio.chat.skillsEmpty') }}
+            </p>
+            <ul
+              v-else
+              class="skills-list"
+            >
+              <li
+                v-for="skill in sessionSkills"
+                :key="skill.name"
+                class="skill-item"
+                :class="{ loaded: (loadedSkills[skill.name] ?? 0) > 0 }"
+              >
+                <span class="skill-check">
+                  {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
+                </span>
+                <span class="skill-item-main">
+                  <span class="skill-item-name">
+                    {{ skill.titleZh || skill.name }}
+                    <code v-if="!skill.titleZh || skill.kind === 'custom'">{{ skill.name }}</code>
+                  </span>
+                  <span class="skill-item-desc">{{ skill.description }}</span>
+                </span>
+                <span
+                  v-if="(loadedSkills[skill.name] ?? 0) > 0"
+                  class="skill-hit-count"
+                >
+                  ×{{ loadedSkills[skill.name] }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
         <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->
         <div
           ref="modeDropdownRef"
@@ -1238,6 +1371,7 @@ onBeforeUnmount(() => {
         <span class="toolbar-spacer" />
         <button
           class="tool-btn mention"
+          :title="t('studio.chat.mentionTitle')"
           :disabled="running"
           @click="mentionOpen = true"
         >
@@ -1585,6 +1719,7 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+  border: 1px solid var(--border);
   /* 覆盖全局 body { user-select: none }，支持拖选复制消息文字 */
   user-select: text;
   -webkit-user-select: text;
@@ -1606,6 +1741,7 @@ onBeforeUnmount(() => {
 
 .bubble.assistant {
   background: var(--bg-elevated);
+  /* 边线与任务清单卡片保持一致（var(--border)） */
   width: 100%;
 }
 
@@ -1808,6 +1944,179 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 技能调试视图下拉：会话可用技能清单 + 已加载命中次数 */
+.skills-dropdown {
+  position: relative;
+  flex: none;
+  flex-shrink: 0;
+}
+
+.skills-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 7px;
+  background: var(--bg-elevated, var(--bg-panel));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.skills-trigger:hover,
+.skills-trigger.active {
+  border-color: var(--text-muted);
+}
+
+.skills-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex: none;
+}
+
+.skills-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.skills-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent, #4f7cff);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  flex: none;
+}
+
+.skills-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  margin: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.skills-menu-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.skills-menu-meta {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.skills-empty {
+  padding: 12px 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.skills-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 7px;
+}
+
+.skill-item:hover {
+  background: var(--bg-elevated);
+}
+
+.skill-item.loaded {
+  background: var(--bg-elevated);
+}
+
+.skill-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: #fff;
+  background: var(--accent, #4f7cff);
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+}
+
+.skill-item:not(.loaded) .skill-check {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.skill-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.skill-item-name {
+  font-size: 12px;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skill-item-name code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.skill-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.skill-hit-count {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #4f7cff);
+  margin-top: 1px;
 }
 
 /* 三模式选择下拉（Craft / Ask / Plan，参考截图：图标方块 + 文字 + 箭头） */
@@ -2082,6 +2391,9 @@ onBeforeUnmount(() => {
   color: var(--accent-fg);
   border-color: var(--accent-45);
   background: var(--accent-18);
+  font-weight: 600;
+  min-width: 30px;
+  text-align: center;
 }
 
 .chat-toolbar .toolbar-spacer {
