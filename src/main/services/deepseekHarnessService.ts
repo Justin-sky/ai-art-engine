@@ -489,6 +489,8 @@ const TOOL_BEGIN = '===BEGIN_TOOL==='
 const TOOL_END = '===END_TOOL==='
 /** ask_user_question 提问标记：runner 把原生 userQuestions 提问转发给主进程（单行 JSON 载荷） */
 const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
+/** 上下文用量标记：runner 每轮 LLM 请求完成后输出（单行 JSON 载荷，provider usage） */
+const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
 
 /**
  * 自定义 headless runner 模板（ESM）。dsh 自带的 headless-runner 只打印最终
@@ -526,6 +528,7 @@ const REASONING_END = '===END_REASONING==='
 const TOOL_BEGIN = '===BEGIN_TOOL==='
 const TOOL_END = '===END_TOOL==='
 const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
+const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
 
 /** 从模型产出的原始参数 JSON 里提取一行可读摘要（取首个字符串字段值，失败则截断原文） */
 function summarizeToolArgs(raw) {
@@ -808,6 +811,15 @@ async function run(ctx, task, io) {
         }
         continue
       }
+      // provider 精确上下文用量：每轮 LLM 请求完成后 assistant/message 事件携带 usage，
+      // 通过 marker 转发给主进程 → 渲染层显示真实上下文占用
+      if (event.type === 'assistant/message' && event.data?.usage) {
+        const usage = event.data.usage
+        if (typeof usage.inputTokens === 'number' && usage.inputTokens >= 0) {
+          io.stdout.write(CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
+        }
+        continue
+      }
       if (event.type !== 'assistant/chunk') continue
       const chunk = event.data?.chunk
       if (!chunk) continue
@@ -991,7 +1003,8 @@ function launchDsh(opts: {
       REASONING_END.startsWith(s) ||
       s.startsWith(TOOL_BEGIN) ||
       s.startsWith(TOOL_END) ||
-      s.startsWith(ASK_USER_BEGIN))
+      s.startsWith(ASK_USER_BEGIN) ||
+      s.startsWith(CONTEXT_BEGIN))
 
   const emitAssistantDelta = (delta: string): void => {
     if (!delta) return
@@ -1045,6 +1058,23 @@ function launchDsh(opts: {
     }
   }
 
+  /** 解析 runner 输出的上下文用量标记（===BEGIN_CONTEXT=== + provider usage JSON），转发渲染层 */
+  const emitContextFromLine = (line: string): void => {
+    const payload = line.slice(CONTEXT_BEGIN.length).trim()
+    try {
+      const parsed = JSON.parse(payload)
+      if (typeof parsed.inputTokens !== 'number' || parsed.inputTokens < 0) return
+      const cacheRead =
+        typeof parsed.cacheReadTokens === 'number' && parsed.cacheReadTokens > 0 ? parsed.cacheReadTokens : 0
+      const cacheWrite =
+        typeof parsed.cacheWriteTokens === 'number' && parsed.cacheWriteTokens > 0 ? parsed.cacheWriteTokens : 0
+      emit({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) })
+      sawOutput = true
+    } catch {
+      // 载荷非 JSON：忽略，不阻塞对话
+    }
+  }
+
   const parseStdout = (until: number): void => {
     let i = parsedLen
     let start = i
@@ -1069,6 +1099,8 @@ function launchDsh(opts: {
             emitToolFromLine(line, 'done')
           } else if (line.startsWith(ASK_USER_BEGIN)) {
             emitAskUserFromLine(line)
+          } else if (line.startsWith(CONTEXT_BEGIN)) {
+            emitContextFromLine(line)
           } else {
             emitAssistantDelta(line + '\n')
           }
