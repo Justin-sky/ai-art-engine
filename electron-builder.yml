@@ -7,7 +7,7 @@ publish:
 directories:
   buildResources: build
 # 主应用为纯 JS（无 node-gyp 原生模块）；node-pty/koffi/sharp 等原生依赖仅供 dsh 运行时
-# （系统 Node 执行）使用，其二进制已随 dsh/dsh-bundle.zip 内置，无需为 Electron 重建。
+# （系统 Node 执行）使用，其二进制已随 <resources>/dsh 目录内置，无需为 Electron 重建。
 npmRebuild: false
 files:
   - '!**/.vscode/*'
@@ -20,7 +20,7 @@ files:
   # dsh 及其依赖只进 resources/dsh（系统 Node 执行，asar 内无法读取），避免重复打进 asar
   - '!node_modules/@deepseek-ai/**'
   - '!{.github,.git}'
-  # ---- dsh 独有依赖（已随 resources/dsh/dsh-bundle.zip 内置），避免在 asar 中重复打包 ----
+  # ---- dsh 独有依赖（已随 <resources>/dsh 目录内置），避免在 asar 中重复打包 ----
   - '!node_modules/@anthropic-ai/sdk/**'
   - '!node_modules/@aws-crypto/sha256-browser/**'
   - '!node_modules/@aws-crypto/sha256-js/**'
@@ -201,8 +201,7 @@ files:
   - '!node_modules/zustand/**'
   # ---- 以上由依赖闭包审计生成，勿手改 ----
   # out 残留与 asar 内重复/开发文件
-  - '!out/dsh-bundle.zip'
-  - '!out/dsh-bundle/**'
+  - '!out/dsh/**'
   - '!out/.dsh-stage/**'
   - '!resources/**'
   - '!{tests,examples,promotion,website,docs,scripts}/**'
@@ -215,12 +214,13 @@ extraResources:
     to: icon.png
   - from: scripts/mcp-bridge.mjs
     to: mcp-bridge.mjs
-  # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 压缩为单个
-  # out/dsh-bundle.zip，安装包只带这一文件——NSIS 安装无需逐个写一万三千个文件，
-  # 安装秒级完成；首次启动由 deepseekHarnessService.ensureDshUnpacked 解压到
-  # 用户数据目录（userData/dsh-runtime），再由系统 Node 拉起，故放 asar 外、不进 asar。
-  - from: out/dsh-bundle.zip
-    to: dsh/dsh-bundle.zip
+  # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 产出 out/dsh，
+  # 以目录形式随安装包分发到 <resources>/dsh，由系统/内置 Node 拉起，故放 asar 外。
+  # 随应用一起安装、一起升级，无需首启解压；未压缩文件交由 NSIS solid LZMA 统一压缩。
+  # 复制源指向目录下的 node_modules（而非目录本身）：electron-builder 26 在复制源为
+  # 目录根时会跳过 files 过滤，导致 dsh 整树被重复打进 asar。
+  - from: out/dsh/node_modules
+    to: dsh/node_modules
 win:
   target:
     - nsis

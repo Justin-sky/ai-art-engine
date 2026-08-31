@@ -1,11 +1,10 @@
 import { app, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import JSZip from 'jszip'
 import {
   IpcChannels,
   type AskUserAnswer,
@@ -194,127 +193,11 @@ function detectDshCached(): boolean {
   return existsSync(join(npxDir, 'node_modules', DSH_PACKAGE))
 }
 
-/** 解压后的 dsh 运行体根目录（userData 下；安装包内置 zip 首次启动解压至此） */
-function unpackedDshRoot(): string {
-  return join(app.getPath('userData'), 'dsh-runtime')
-}
 
-/** 安装包内置 dsh 压缩包（extraResources: dsh/dsh-bundle.zip）；开发模式下不存在 */
-function bundledDshZipPath(): string {
-  return join(process.resourcesPath, 'dsh', 'dsh-bundle.zip')
-}
 
-/** 解压完成标记：记录 zip 大小指纹，应用升级导致 zip 变化时自动重新解压 */
-const DSH_UNPACK_MARKER = '.aiart-dsh-unpack.json'
-
-function readUnpackMarker(): { zipSize: number } | null {
-  try {
-    return JSON.parse(readFileSync(join(unpackedDshRoot(), DSH_UNPACK_MARKER), 'utf8')) as {
-      zipSize: number
-    }
-  } catch {
-    return null
-  }
-}
-
-function writeUnpackMarker(zipSize: number): void {
-  writeFileSync(
-    join(unpackedDshRoot(), DSH_UNPACK_MARKER),
-    JSON.stringify({ zipSize, complete: true, at: Date.now() }, null, 2),
-    'utf8'
-  )
-}
-
-/** 已解压且与当前安装包 zip 匹配（大小指纹一致）时返回 true，免重复解压 */
-function isUnpackedCurrent(): boolean {
-  if (!existsSync(bundledDshZipPath())) return false
-  if (!existsSync(join(unpackedDshRoot(), 'node_modules', DSH_PACKAGE))) return false
-  const marker = readUnpackMarker()
-  if (!marker) return false
-  try {
-    return marker.zipSize === statSync(bundledDshZipPath()).size
-  } catch {
-    return false
-  }
-}
-
-/** 解压任务单飞：并发调用共享同一 Promise，避免重复解压 */
-let unpackPromise: Promise<boolean> | null = null
-
-/** 解压内置 dsh 运行体到用户数据目录；返回是否成功（失败时调用方回退本地/npx） */
-function unpackBundledDsh(): Promise<boolean> {
-  if (unpackPromise) return unpackPromise
-  unpackPromise = (async () => {
-    const root = unpackedDshRoot()
-    const zipPath = bundledDshZipPath()
-    try {
-      const zip = await JSZip.loadAsync(readFileSync(zipPath))
-      const files = Object.values(zip.files).filter((e) => !e.dir)
-      const total = files.length
-      emit({ type: 'status', text: '正在解压 dsh 运行体（首次启动，约需几秒到一分钟）…' })
-      // 先清空旧解压再全量写入（应用升级导致 zip 变化时在此重新解压）
-      rmSync(root, { recursive: true, force: true })
-      mkdirSync(root, { recursive: true })
-      let done = 0
-      const BATCH = 64
-      for (let i = 0; i < files.length; i += BATCH) {
-        const batch = files.slice(i, i + BATCH)
-        await Promise.all(
-          batch.map(async (entry) => {
-            const rel = entry.name.replace(/\\/g, '/')
-            const target = join(root, rel)
-            // 防目录穿越：zip 内路径必须落在解压根目录内
-            if (target !== root && !target.startsWith(root + sep)) return
-            if (entry.dir) {
-              mkdirSync(target, { recursive: true })
-              return
-            }
-            const data = await entry.async('nodebuffer')
-            mkdirSync(dirname(target), { recursive: true })
-            writeFileSync(target, data)
-          })
-        )
-        done += batch.length
-        emit({ type: 'unpack', count: done, total })
-      }
-      writeUnpackMarker(statSync(zipPath).size)
-      emit({ type: 'status', text: 'dsh 运行体就绪' })
-      console.log(`[aiart] dsh unpacked to ${root} (${done} files)`)
-      return true
-    } catch (error) {
-      console.warn('[aiart] dsh unpack failed:', error)
-      emit({ type: 'status', text: 'dsh 运行体解压失败，将尝试联网下载' })
-      return false
-    } finally {
-      unpackPromise = null
-    }
-  })()
-  return unpackPromise
-}
-
-/**
- * 确保内置 dsh 已解压（幂等，不阻塞查询）。
- * 返回 'ready' = 已解压可用；'unpacking' = 正在/已开始解压（进度经 unpack 事件推送）；
- * 'none' = 无内置包或解压失败（回退本地 node_modules / npx）。
- */
-function ensureDshUnpacked(): 'ready' | 'unpacking' | 'none' {
-  if (isUnpackedCurrent()) return 'ready'
-  if (!existsSync(bundledDshZipPath())) return 'none'
-  if (!unpackPromise) void unpackBundledDsh()
-  return 'unpacking'
-}
-
-/** 等待解压完成（runHarnessTask 在 spawn 前调用，避免解压未完成就错误回落 npx） */
-async function waitDshUnpacked(): Promise<boolean> {
-  if (isUnpackedCurrent()) return true
-  if (!existsSync(bundledDshZipPath())) return false
-  return unpackBundledDsh()
-}
-
-/** dsh 包根目录的候选位置：首次启动解压后的用户数据目录 → 安装包内置 resources（旧布局兼容）→ 工程本地 node_modules（开发模式） */
+/** dsh 包根目录的候选位置：安装包内置 resources/dsh → 工程本地 node_modules（开发模式） */
 function dshPackageRoots(): string[] {
   const roots: string[] = []
-  roots.push(join(unpackedDshRoot(), 'node_modules', DSH_PACKAGE))
   if (process.resourcesPath) roots.push(join(process.resourcesPath, 'dsh', 'node_modules', DSH_PACKAGE))
   roots.push(join(app.getAppPath(), 'node_modules', DSH_PACKAGE))
   return roots
@@ -344,23 +227,35 @@ function resolveDshEntry(): string | null {
   return null
 }
 
+/**
+ * 清理旧版本遗留：早期版本把 dsh 解压到 userData/dsh-runtime（约 200MB）。
+ * 现版本直接使用安装包内置的 <resources>/dsh，旧解压结果成为孤儿，首次查询状态时后台删除。
+ * 删除在后台进行（数万文件），不阻塞状态查询。
+ */
+let legacyCleanupStarted = false
+function cleanupLegacyUnpackedDsh(): void {
+  if (legacyCleanupStarted) return
+  legacyCleanupStarted = true
+  const legacy = join(app.getPath('userData'), 'dsh-runtime')
+  if (!existsSync(legacy)) return
+  void rm(legacy, { recursive: true, force: true }).catch((error) => {
+    console.warn('[aiart] legacy dsh-runtime cleanup failed:', error)
+  })
+}
+
 export async function getHarnessStatus(): Promise<HarnessStatus> {
+  cleanupLegacyUnpackedDsh()
   const usingEmbedded = isNodeVersionOk(embeddedNodeVersion())
   const nodeVersion = detectNodeVersion()
   const nodeOk = isNodeVersionOk(nodeVersion)
   const mcp = getMcpServerInfo()
   const provider = resolveTextProvider()
-  // 触发内置 dsh 解压（幂等，不阻塞本查询）：解压进度经 HARNESS_EVENT unpack 事件
-  // 推给渲染层，完成后渲染层重新拉取本状态。
-  const unpackState = ensureDshUnpacked()
   const dshEntry = resolveDshEntry()
   const dshReady = nodeOk && (!!dshEntry || detectDshCached())
 
   const hints: string[] = []
   if (!nodeOk) hints.push('未检测到可用 Node（请安装 Node.js 22.19+ 或 24+）')
-  if (unpackState === 'unpacking') {
-    hints.push('正在解压内置 dsh 运行体（首次启动，约需几秒到一分钟）…')
-  } else if (!dshEntry && !detectDshCached()) {
+  if (!dshEntry && !detectDshCached()) {
     hints.push('首次发送消息时会自动下载 dsh（需联网，约 1–2 分钟）')
   }
   if (!provider) hints.push('尚未配置文本模型或 API Key（模型设置中添加）')
@@ -1533,8 +1428,6 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   const workspace = resolveWorkspace()
   const runId = String(++runSeq)
   lastStatusText = ''
-  // 首次启动若内置 zip 尚未解压：先等解压完成，避免 dshEntry 为空而错误回落 npx 现场下载
-  await waitDshUnpacked()
   const dshEntry = resolveDshEntry()
   emitStatus(
     dshEntry

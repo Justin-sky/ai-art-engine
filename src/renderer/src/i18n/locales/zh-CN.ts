@@ -546,7 +546,6 @@ export default {
       stop: '停止',
       ready: '就绪',
       checking: '检查中…',
-      unpackHint: '正在解压内置 dsh 运行体（首次启动）',
       unavailable: '不可用',
       toolRunning: '执行中',
       toolDone: '完成',

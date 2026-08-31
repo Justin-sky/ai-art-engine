@@ -8,7 +8,8 @@
 
 ### Changed
 
-- **dsh 运行体裁剪**：`scripts/bundle-dsh.mjs` 复制依赖闭包时过滤非运行文件（`*.map`、`*.d.ts`、`test`/`docs`/`examples` 目录、`*.md`、点文件），保留 `LICENSE`、`CHANGELOG` 等合规文本；完整性校验与入口校验均通过，dsh 功能不受影响
+- **dsh 以目录形态直接进包，放弃 zip 解压方案**：早期 5.0.7 曾把 dsh 压成单文件 zip、首启解压到用户目录——升级会破坏运行体文件权限、解压需等待数秒且旧版解压结果在新版变更后成为 200MB 孤儿垃圾，故回退为 `resources/dsh` 目录直接进包：安装即用、随应用升级、权限继承安装目录；删除解压进度 UI 与相关 IPC；首次启动自动后台清理旧版遗留的 `userData/dsh-runtime`
+- **dsh 运行体裁剪（含误删防护）**：`scripts/bundle-dsh.mjs` 复制依赖闭包时过滤非运行文件（`*.map`、`*.d.ts`、`test`/`docs`/`examples` 目录、`*.md`、仓库/工具配置类点文件），保留 `LICENSE`、`CHANGELOG` 等合规文本；`dist/` 目录与数据类点文件（如 `.manifest.json`）受保护不过滤；新增**引用可达性校验**——扫描产物内全部 JS 的相对 `require`/`import`，对照源包区分「裁剪误删」与「可选引用」，误删即中止构建；裁剪后 dsh 131.4MB / 13586 文件，安装包 153.8MB（较早期全量版 -38%）
 
 ## [5.0.6] — 2026-08-31
 
