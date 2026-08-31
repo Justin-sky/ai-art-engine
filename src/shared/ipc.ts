@@ -157,6 +157,10 @@ export const IpcChannels = {
   MCP_ACTIVITY_UPDATED: 'mcp:activity-updated',
   /** MCP：主进程清空旁路生成活动（工程关闭时） */
   MCP_ACTIVITY_CLEARED: 'mcp:activity-cleared',
+  /** MCP：主进程派发 agent 的 ask_user 提问（main → 渲染层，展示选项列表供用户选择） */
+  MCP_ASK_USER: 'mcp:ask-user',
+  /** MCP：渲染层回报用户对 ask_user 提问的选择（渲染层 → 主进程） */
+  MCP_ASK_USER_RESPONSE: 'mcp:ask-user-response',
   /** MCP：渲染层查询当前旁路生成活动列表 */
   MCP_ACTIVITY_LIST: 'mcp:activity-list',
   /** Harness：查询 DeepSeek Harness (dsh) 接入状态（Node / dsh / MCP / 密钥） */
@@ -416,6 +420,23 @@ export interface McpGraphEditResultPayload {
   error?: string
 }
 
+/** MCP：主进程 → 渲染层，agent 通过 ask_user 工具向用户提问（渲染层展示选项列表） */
+export interface AskUserQuestion {
+  requestId: string
+  question: string
+  /** 可选选项（建议 2–6 项）；缺省时渲染层提供默认按钮（继续 / 取消） */
+  options?: string[]
+  /** 附加说明（可选） */
+  hint?: string
+}
+
+/** MCP：渲染层 → 主进程，用户对 ask_user 提问的选择 */
+export interface AskUserAnswer {
+  requestId: string
+  /** 用户选中的选项文本；用户取消 / 超时 / 会话已结束为 null */
+  answer: string | null
+}
+
 /** MCP：工具服务当前状态（设置界面展示接入信息用） */
 export interface McpServerInfo {
   running: boolean
@@ -450,10 +471,20 @@ export interface HarnessStatus {
   workspace?: string
 }
 
+/** Chat 面板的 agent 交互模式（类似 Cursor 的 Craft / Ask / Plan） */
+export type ChatMode = 'craft' | 'ask' | 'plan'
+
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
   task: string
+  /**
+   * 可选：agent 交互模式。
+   * - craft：完整 agent，可调用工具并生成资产（默认）
+   * - ask：仅回答问题，不调用工具 / 不修改任何文件
+   * - plan：先输出执行计划并用 ask_user 请求用户确认，确认后才动手
+   */
+  mode?: ChatMode
   /**
    * 可选：会话 id（对应前端 ChatSession.id）。
    * dsh 据此「有则恢复、无则创建」持久化会话——多轮对话是真实消息序列
@@ -796,6 +827,12 @@ export interface StudioApi {
 
   /** MCP：渲染层回报图编辑结果 */
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) => Promise<boolean>
+
+  /** MCP：订阅 agent 通过 ask_user 工具发起的提问（渲染层展示选项列表，经 answerAskUser 回传） */
+  onAskUser: (callback: (question: AskUserQuestion) => void) => () => void
+
+  /** MCP：回传用户对 ask_user 提问的选择 */
+  answerAskUser: (payload: AskUserAnswer) => Promise<boolean>
 
   /** MCP：查询工具服务状态（端口 / token / 接入命令；未启动时返回 null） */
   getMcpInfo: () => Promise<McpServerInfo | null>

@@ -45,13 +45,18 @@ import {
   deleteHarnessSession,
   getDshSkillsInfo,
   getHarnessStatus,
+  handleAskUserResponse,
   openDshSkillsDir,
   runHarnessTask,
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
-import { getMcpServerInfo, restartMcpServer } from './services/mcpServerService'
+import {
+  getMcpServerInfo,
+  receiveAskUserAnswer,
+  restartMcpServer
+} from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
 import {
   commitAiWorkflow,
@@ -286,6 +291,20 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
+
+  // ask_user 用户选择回传：按 requestId 前缀分流。
+  // - harness:  → dsh 原生 ask_user_question（runner 经 answerFile 等待）
+  // - 其他（mcp: 或自建 ask_user 工具）→ MCP 服务侧等待轮询
+  handle(IpcChannels.MCP_ASK_USER_RESPONSE, (payload: import('@shared/ipc').AskUserAnswer) => {
+    if (payload && typeof payload.requestId === 'string') {
+      if (payload.requestId.startsWith('harness:')) {
+        handleAskUserResponse(payload)
+      } else {
+        receiveAskUserAnswer(payload)
+      }
+    }
+    return true
+  })
 
   handle(IpcChannels.APP_GET_VERSION, () => updateService.getCurrentVersion())
   handle(IpcChannels.UPDATE_CHECK, () => updateService.checkForUpdates())

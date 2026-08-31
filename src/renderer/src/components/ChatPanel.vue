@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
-import type { HarnessEvent, HarnessStatus, McpActivity } from '@shared/ipc'
+import type { AskUserQuestion, ChatMode, HarnessEvent, HarnessStatus, McpActivity } from '@shared/ipc'
 import { modalityConfig } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
@@ -12,6 +12,8 @@ import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
+const CHAT_MODE_KEY = 'studio.chat.mode'
+const CHAT_MODES: ChatMode[] = ['craft', 'ask', 'plan']
 
 const { t } = useStudioI18n()
 
@@ -211,6 +213,40 @@ function buildTask(text: string): string {
 }
 
 const messages = ref<ChatMsg[]>([])
+/** 当前 agent 模式：craft（完整执行）/ ask（纯问答）/ plan（先规划后执行），持久化到本地 */
+const savedMode = localStorage.getItem(CHAT_MODE_KEY) as ChatMode | null
+const mode = ref<ChatMode>(savedMode && CHAT_MODES.includes(savedMode) ? savedMode : 'craft')
+watch(mode, (value) => {
+  localStorage.setItem(CHAT_MODE_KEY, value)
+})
+const modeOptions = computed(() =>
+  [
+    { value: 'craft' as ChatMode, label: t('studio.chat.modeCraft') },
+    { value: 'ask' as ChatMode, label: t('studio.chat.modeAsk') },
+    { value: 'plan' as ChatMode, label: t('studio.chat.modePlan') }
+  ]
+)
+/** 模式选择下拉的开合状态 */
+const modeOpen = ref(false)
+const modeDropdownRef = ref<HTMLElement | null>(null)
+const currentModeLabel = computed(
+  () => modeOptions.value.find((m) => m.value === mode.value)?.label ?? ''
+)
+function selectMode(value: ChatMode): void {
+  mode.value = value
+  modeOpen.value = false
+}
+/** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
+function onModeOutside(e: MouseEvent | KeyboardEvent): void {
+  if (!modeOpen.value) return
+  if (e instanceof KeyboardEvent) {
+    if (e.key === 'Escape') modeOpen.value = false
+    return
+  }
+  if (modeDropdownRef.value && !modeDropdownRef.value.contains(e.target as Node)) {
+    modeOpen.value = false
+  }
+}
 const draft = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const overlayRef = ref<HTMLElement | null>(null)
@@ -545,6 +581,40 @@ function onMcpActivity(activity: McpActivity): void {
   scrollToBottom()
 }
 
+let stopAskUser: (() => void) | null = null
+
+/** agent 通过 ask_user 工具发起提问：在消息流中插入一条「问题 + 选项按钮」卡 */
+function handleAskUser(question: AskUserQuestion): void {
+  if (messages.value.some((m) => m.kind === 'prompt' && m.requestId === question.requestId)) return
+  messages.value.push({
+    kind: 'prompt',
+    requestId: question.requestId,
+    question: question.question,
+    ...(question.options && question.options.length ? { options: question.options } : {}),
+    ...(question.hint ? { hint: question.hint } : {}),
+    answered: null
+  })
+  scrollToBottom()
+}
+
+/** prompt 卡的候选选项：缺省时提供默认按钮（继续 / 取消） */
+function promptOptions(msg: ChatMsg & { kind: 'prompt' }): string[] {
+  return msg.options?.length
+    ? msg.options
+    : [t('studio.chat.promptContinue'), t('studio.chat.promptCancel')]
+}
+
+/** 用户点击选项：回传选择给主进程（MCP ask_user 工具继续），并锁定按钮 */
+async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): Promise<void> {
+  if (msg.answered !== null && msg.answered !== undefined) return
+  msg.answered = option
+  try {
+    await window.studio.answerAskUser({ requestId: msg.requestId, answer: option })
+  } catch {
+    // 主进程侧已超时 / 会话已结束：按钮已锁定，无副作用
+  }
+}
+
 async function onSend(): Promise<void> {
   if (composing.value) return
   const raw = draft.value.trim()
@@ -574,7 +644,9 @@ async function onSend(): Promise<void> {
     // 会话 id：dsh 据此恢复/创建持久化 session，模型通过原生会话历史记住之前的聊天内容
     sessionId: activeSession.value?.id,
     model: modelId.trim() || undefined,
-    ...(providerId ? { providerId } : {})
+    ...(providerId ? { providerId } : {}),
+    // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
+    mode: mode.value
   })
   if (!result.started) {
     pushStatus(result.message ?? 'failed to start')
@@ -594,6 +666,10 @@ onMounted(async () => {
   loadActiveMessages()
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
+  stopAskUser = window.studio.onAskUser(handleAskUser)
+  // 模式选择下拉：点外部或 ESC 收起；用 document 监听，trigger 用 .stop 防止冒泡立即关
+  document.addEventListener('click', onModeOutside)
+  document.addEventListener('keydown', onModeOutside)
   // 打开面板即做一次环境预检，未就绪时在面板顶部与空状态区给出具体原因
   await refreshStatus()
   await loadModels()
@@ -602,6 +678,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopEvent?.()
   stopActivity?.()
+  stopAskUser?.()
+  document.removeEventListener('click', onModeOutside)
+  document.removeEventListener('keydown', onModeOutside)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
   // 卸载前把当前消息落盘，避免切换面板丢失最后一段对话
@@ -723,6 +802,36 @@ onBeforeUnmount(() => {
             {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
           </button>
         </div>
+        <div
+          v-else-if="msg.kind === 'prompt'"
+          class="msg-prompt"
+        >
+          <div class="prompt-question">{{ msg.question }}</div>
+          <div
+            v-if="msg.hint"
+            class="prompt-hint"
+          >
+            {{ msg.hint }}
+          </div>
+          <div class="prompt-options">
+            <button
+              v-for="opt in promptOptions(msg)"
+              :key="opt"
+              class="prompt-option"
+              :class="{ chosen: msg.answered === opt }"
+              :disabled="msg.answered !== null && msg.answered !== undefined"
+              @click="answerPrompt(msg, opt)"
+            >
+              {{ opt }}
+            </button>
+          </div>
+          <div
+            v-if="msg.answered !== null && msg.answered !== undefined"
+            class="prompt-answered"
+          >
+            {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
+          </div>
+        </div>
       </template>
       <div
         v-if="running"
@@ -734,6 +843,166 @@ onBeforeUnmount(() => {
 
     <div class="chat-input">
       <div class="chat-toolbar">
+        <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->
+        <div
+          ref="modeDropdownRef"
+          class="mode-dropdown"
+          :class="{ open: modeOpen }"
+          :title="t('studio.chat.modeTitle')"
+        >
+          <button
+            type="button"
+            class="mode-trigger"
+            :disabled="running"
+            @click.stop="modeOpen = !modeOpen"
+          >
+            <span
+              class="mode-icon-box"
+              :class="`mode-icon-${mode}`"
+            >
+              <svg
+                v-if="mode === 'craft'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+              </svg>
+              <svg
+                v-else-if="mode === 'ask'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
+              </svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect
+                  width="8"
+                  height="4"
+                  x="8"
+                  y="2"
+                  rx="1"
+                  ry="1"
+                />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <path d="m9 14 2 2 4-4" />
+              </svg>
+            </span>
+            <span class="mode-trigger-label">{{ currentModeLabel }}</span>
+            <svg
+              class="mode-chevron"
+              :class="{ rotated: modeOpen }"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <ul
+            v-show="modeOpen"
+            class="mode-menu"
+          >
+            <li
+              v-for="m in modeOptions"
+              :key="m.value"
+            >
+              <button
+                type="button"
+                class="mode-item"
+                :class="{ active: mode === m.value }"
+                @click.stop="selectMode(m.value)"
+              >
+                <span
+                  class="mode-icon-box"
+                  :class="`mode-icon-${m.value}`"
+                >
+                  <svg
+                    v-if="m.value === 'craft'"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+                  </svg>
+                  <svg
+                    v-else-if="m.value === 'ask'"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
+                  </svg>
+                  <svg
+                    v-else
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <rect
+                      width="8"
+                      height="4"
+                      x="8"
+                      y="2"
+                      rx="1"
+                      ry="1"
+                    />
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <path d="m9 14 2 2 4-4" />
+                  </svg>
+                </span>
+                <span class="mode-item-label">{{ m.label }}</span>
+                <svg
+                  v-if="mode === m.value"
+                  class="mode-check"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </div>
         <select
           :value="activeId"
           class="session-select"
@@ -1201,6 +1470,76 @@ onBeforeUnmount(() => {
   }
 }
 
+/* ask_user 提问卡：问题 + 选项按钮列表 + 已选状态 */
+.msg-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+}
+
+.prompt-question {
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.prompt-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prompt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prompt-option {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.prompt-option:hover:not(:disabled) {
+  border-color: var(--accent, var(--text-muted));
+}
+
+.prompt-option:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.prompt-option.chosen {
+  border-color: var(--accent, var(--text-muted));
+  background: var(--accent, var(--bg-panel));
+  font-weight: 600;
+}
+
+.prompt-answered {
+  font-size: 12px;
+  color: var(--text-muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .chat-input {
   border-top: 1px solid var(--border);
   padding: 8px;
@@ -1214,6 +1553,140 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 三模式选择下拉（Craft / Ask / Plan，参考截图：图标方块 + 文字 + 箭头） */
+.mode-dropdown {
+  position: relative;
+  flex: none;
+  flex-shrink: 0;
+}
+
+.mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-elevated, var(--bg-panel));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.mode-trigger:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.mode-trigger:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.mode-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex: none;
+  overflow: hidden;
+}
+
+.mode-icon-box svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* 三个模式图标方块同色（深色底 + 灰色图标），选中态由对勾与文字加粗体现 */
+.mode-icon-craft,
+.mode-icon-ask,
+.mode-icon-plan {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.mode-trigger-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mode-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  flex: none;
+  transition: transform 0.18s ease;
+}
+
+.mode-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.mode-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.mode-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.mode-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.mode-item.active {
+  color: var(--text);
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+
+.mode-item-label {
+  flex: 1;
+}
+
+.mode-check {
+  width: 13px;
+  height: 13px;
+  color: var(--accent, #8b5cf6);
+  flex: none;
 }
 
 .chat-toolbar .session-select {

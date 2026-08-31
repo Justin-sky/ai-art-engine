@@ -12,6 +12,7 @@ import {
 } from '@shared/graph'
 import {
   IpcChannels,
+  type AskUserAnswer,
   type CommitAiWorkflowInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
@@ -451,6 +452,54 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'ask_user',
+    title: '询问用户',
+    description:
+      '当需要用户选择或确认时调用（例如：方案 A/B 决策、是否继续执行、参数偏好等）。会向用户弹出问题与选项列表并等待其选择；返回用户选中的选项文本。不要在无关紧要的问题上使用，尽量一次给出 2~6 个自包含的选项。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: '向用户提出的问题（简明扼要）' },
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '候选选项（2~6 项，每项应自包含、用户可直接理解）'
+        },
+        hint: { type: 'string', description: '可选的补充说明' }
+      },
+      required: ['question']
+    },
+    handler: async (args) => {
+      const question = readString(args, 'question')
+      const rawOptions = args['options']
+      const options = Array.isArray(rawOptions)
+        ? rawOptions
+            .filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+            .map((item) => item.trim())
+            .slice(0, 6)
+        : []
+      const requestId = randomUUID()
+      pendingAskUserAnswers.delete(requestId)
+      broadcastToAllWindows(IpcChannels.MCP_ASK_USER, {
+        requestId,
+        question,
+        options: options.length >= 2 ? options : undefined,
+        hint: optionalString(args, 'hint')
+      })
+      // 等待渲染层回传用户选择（默认 5 分钟超时，agent 内部卡住时避免永久挂起）
+      for (let i = 0; i < 1000; i++) {
+        await sleep(300)
+        const answer = pendingAskUserAnswers.get(requestId)
+        if (answer) {
+          pendingAskUserAnswers.delete(requestId)
+          return { answer: answer.answer, cancelled: answer.answer === null }
+        }
+      }
+      pendingAskUserAnswers.delete(requestId)
+      return { answer: null, cancelled: true, reason: 'timeout' }
+    }
+  },
+  {
     name: 'graph_read',
     title: '读取节点图',
     description:
@@ -870,6 +919,22 @@ const TASK_REPORT_RETENTION_MS = 10 * 60 * 1000
 const pendingMcpTaskReports = new Map<string, McpTaskReportPayload>()
 const taskReportCleanups = new Map<string, NodeJS.Timeout>()
 
+/** MCP ask_user 的渲染层回报（用户选择 / 取消），ask_user 工具轮询这里 */
+const pendingAskUserAnswers = new Map<string, AskUserAnswer>()
+
+/**
+ * 渲染层回传 MCP ask_user 的用户选择（requestId 以 mcp: 开头，经 main/ipc.ts 分发到本方法）。
+ * 与 harness 侧原生 ask_user_question（harness: 前缀）走同一条 IPC 通道，按前缀分流。
+ */
+export function receiveAskUserAnswer(payload: AskUserAnswer): void {
+  if (payload && typeof payload.requestId === 'string') {
+    pendingAskUserAnswers.set(payload.requestId, {
+      requestId: payload.requestId,
+      answer: typeof payload.answer === 'string' ? payload.answer : null
+    })
+  }
+}
+
 /** 终态报告到期后自动清理，避免 Map 无限增长 */
 function scheduleTaskReportCleanup(mcpTaskId: string): void {
   const prev = taskReportCleanups.get(mcpTaskId)
@@ -1200,6 +1265,7 @@ async function closeMcpServer(): Promise<void> {
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpGraphEditResults.clear()
+  pendingAskUserAnswers.clear()
   await new Promise<void>((resolve) => {
     closing.close(() => resolve())
   })
@@ -1258,6 +1324,7 @@ export function stopMcpServer(): void {
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpGraphEditResults.clear()
+  pendingAskUserAnswers.clear()
   // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效；
   // pid 字段可能过期，桥只读取 port + token，不受影响
   mcpConfigPath = ''
