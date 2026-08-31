@@ -64,8 +64,9 @@ jobs:
           cache: npm
 
       # node-pty 等原生依赖经 node-gyp 重建，依赖 Python distutils（3.12+ 已移除）
+      # v6 起基于 Node 24（v5 用已弃用的 Node 20，runner 会强制升级并告警）
       - name: Set up Python 3.11 (node-gyp distutils)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
