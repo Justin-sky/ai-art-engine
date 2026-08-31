@@ -13,7 +13,8 @@
  * 版本从 package.json 的 dependencies 读取，保证与运行时解析入口一致。
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { cp } from 'node:fs/promises'
+import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -137,15 +138,41 @@ function verifyBundle() {
   console.log('[bundle-dsh] 完整性校验通过（所有包的直接依赖与 peer 依赖均已包含）')
 }
 
+/**
+ * 非运行必需文件过滤：减少安装包体积与文件数量，NSIS 安装解压更快。
+ * 被过滤的内容 Node 运行时完全用不到，npm 生态中公认可安全移除：
+ *  - sourcemap（*.map）、类型声明（*.d.ts）：仅开发/调试用
+ *  - test / docs / example 目录：仅仓库内容
+ *  - Markdown 文档与各类点文件（.gitignore 等）
+ * LICENSE / CHANGELOG 等小型文本文件予以保留（合规且开销极小）。
+ */
+const IGNORED_DIR_RE = /(^|[\\/])(test|tests|__tests__|docs?|example|examples)([\\/]|$)/
+const IGNORED_EXT_RE = /\.(map|md|markdown)$/i
+const IGNORED_D_TS_RE = /\.d\.ts$/i
+let filteredCount = 0
+let filteredBytes = 0
+function isRuntimeFile(src) {
+  const base = basename(src)
+  if (base.startsWith('.') || IGNORED_DIR_RE.test(src) || IGNORED_EXT_RE.test(base) || IGNORED_D_TS_RE.test(base)) {
+    filteredCount++
+    try {
+      const st = statSync(src)
+      filteredBytes += st.isDirectory() ? dirSize(src) : st.size
+    } catch {}
+    return false
+  }
+  return true
+}
+
 /** 把依赖闭包复制到 stage 的扁平 node_modules，形成自包含树 */
-function buildStage(packages, version) {
+async function buildStage(packages, version) {
   rmSync(STAGE_DIR, { recursive: true, force: true })
   mkdirSync(STAGE_DIR, { recursive: true })
   const stageNm = join(STAGE_DIR, 'node_modules')
   for (const [name, src] of packages) {
     const dest = join(stageNm, name)
     mkdirSync(dirname(dest), { recursive: true })
-    cpSync(src, dest, { recursive: true })
+    await cp(src, dest, { recursive: true, filter: isRuntimeFile })
   }
   writeFileSync(
     join(STAGE_DIR, 'package.json'),
@@ -176,13 +203,18 @@ function dirSize(root) {
   return total
 }
 
-function main() {
+async function main() {
   const version = resolveDshVersion()
   console.log(`[bundle-dsh] 从已安装依赖构建 ${DSH_PACKAGE}@${version} 自包含运行体…`)
 
   const packages = collectPackages(DSH_PACKAGE)
   console.log(`[bundle-dsh] 依赖闭包共 ${packages.size} 个包`)
-  buildStage(packages, version)
+  filteredCount = 0
+  filteredBytes = 0
+  await buildStage(packages, version)
+  if (filteredCount > 0) {
+    console.log(`[bundle-dsh] 已过滤非运行文件：${filteredCount} 项，约 ${(filteredBytes / 1024 / 1024).toFixed(1)} MB`)
+  }
 
   const packageRoot = join(STAGE_DIR, 'node_modules', DSH_PACKAGE)
   const entry = resolveEntry(packageRoot)
@@ -203,4 +235,7 @@ function main() {
   console.log(`[bundle-dsh] 完成：${relative(ROOT, OUT_DIR)}（约 ${mb} MB）`)
 }
 
-main()
+await main().catch((err) => {
+  console.error(`[bundle-dsh] 失败：${err instanceof Error ? err.stack ?? err.message : String(err)}`)
+  process.exit(1)
+})
