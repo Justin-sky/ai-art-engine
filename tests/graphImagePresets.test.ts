@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { listInstructionPresets } from '../src/shared/graph'
+// 注意：instructionPresets 不在 src/shared/graph 入口静态 re-export
+// （见 index.ts 注释，避免首屏解析大段模板），须从模块本体导入。
+import { listInstructionPresets } from '../src/shared/graph/instructionPresets'
 
 describe('image instruction presets', () => {
   it('exposes the requested image generation presets', () => {

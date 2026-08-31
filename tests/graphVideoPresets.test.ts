@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+// 注意：instructionPresets 不在 src/shared/graph 入口静态 re-export
+// （见 index.ts 注释，避免首屏解析大段模板），须从模块本体导入。
 import {
   getInstructionPreset,
   insertInstructionPresetText,
   listInstructionPresets
-} from '../src/shared/graph'
+} from '../src/shared/graph/instructionPresets'
 
 describe('video instruction presets', () => {
   it('exposes the planned video generation presets', () => {
