@@ -505,7 +505,9 @@ const contextTotal = computed<number>(() => {
   const m = currentModel.value
   if (!m) return 0
   const raw = m.contextLength
-  return Number.isFinite(raw) && (raw as number) > 0 ? (raw as number) : DEFAULT_CONTEXT_LENGTH
+  if (Number.isFinite(raw) && (raw as number) > 0) return raw as number
+  // 目录未携带 context_length 时，按模型 id 匹配常见上下文窗口兜底，避免大窗口模型被 64K 低估
+  return MODEL_CONTEXT_FALLBACK[m.id] ?? DEFAULT_CONTEXT_LENGTH
 })
 
 /** 把 token 数格式化为 "106.4K" 风格（<1K 显示整数，>=1K 一位小数 + K） */
