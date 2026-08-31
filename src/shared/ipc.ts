@@ -452,7 +452,7 @@ export interface McpServerInfo {
 
 /** Harness：DeepSeek Harness (dsh) 接入状态（Chat 面板顶部状态条展示） */
 export interface HarnessStatus {
-  /** 系统 Node 版本（dsh 建议 ^22.19 或 24+） */
+  /** 执行 dsh 所用 Node 版本（应用内置 Node 优先，显示为「内置」） */
   nodeVersion: string
   /** Node 版本是否满足 dsh 建议 */
   nodeOk: boolean

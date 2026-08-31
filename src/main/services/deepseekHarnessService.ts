@@ -42,7 +42,9 @@ import { settingsService } from './settingsService'
  *      `<resources>/dsh`，开箱即用，无需联网下载；
  *   2. 工程本地安装：开发模式下 `node_modules/@deepseek-ai/dsh`；
  *   3. npx 现场拉包（回退）：无内置且未安装时 `npx --yes @deepseek-ai/dsh`，耗时较长。
- * dsh 由系统 Node ^22.19 或 24+ 执行（与应用内 Electron 内置 Node 无关）。
+ * dsh 由内置 Node 执行：spawn Electron 二进制并注入 ELECTRON_RUN_AS_NODE=1，以纯 Node 模式运行
+ * （Electron 44 内置 Node 24.x，满足 ^22.19 或 24+），用户无需安装系统 Node；
+ * 仅在内置 Node 不可用（理论上不会）时回退系统 node。
  */
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -133,10 +135,30 @@ function resolveTextProvider(providerId?: string): {
   return provider ? pick(provider) : null
 }
 
-/** 检测系统 Node 版本（dsh 走系统 node，与应用内置版本无关） */
-function detectSystemNode(): string {
+/** Electron 内置 Node 版本（主进程 process.versions.node 即内置运行时版本） */
+function embeddedNodeVersion(): string {
+  return `v${process.versions.node ?? ''}`
+}
+
+/** 检测执行 dsh 所用的 Node 版本：优先内置 Node，否则回退系统 node */
+function detectNodeVersion(): string {
+  const embedded = embeddedNodeVersion()
+  if (isNodeVersionOk(embedded)) return embedded
   const res = spawnSync('node', ['--version'], { timeout: 5_000, encoding: 'utf8' })
   return res.status === 0 && res.stdout ? res.stdout.trim() : ''
+}
+
+/**
+ * 解析执行 dsh 所用的 Node 命令。
+ * 优先应用内置 Node：Electron 二进制 + ELECTRON_RUN_AS_NODE=1 即进入纯 Node 模式
+ * （Electron 44 内置 Node 24.x，满足 ^22.19 或 24+），用户无需安装系统 Node；
+ * 仅在内置 Node 版本不满足要求时回退系统 node。
+ */
+function resolveNodeCommand(): { command: string; env: NodeJS.ProcessEnv } {
+  if (isNodeVersionOk(embeddedNodeVersion())) {
+    return { command: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } }
+  }
+  return { command: 'node', env: {} }
 }
 
 function parseNodeVersion(version: string): { major: number; minor: number } | null {
@@ -201,7 +223,8 @@ function resolveDshEntry(): string | null {
 }
 
 export async function getHarnessStatus(): Promise<HarnessStatus> {
-  const nodeVersion = detectSystemNode()
+  const usingEmbedded = isNodeVersionOk(embeddedNodeVersion())
+  const nodeVersion = detectNodeVersion()
   const nodeOk = isNodeVersionOk(nodeVersion)
   const mcp = getMcpServerInfo()
   const provider = resolveTextProvider()
@@ -209,8 +232,7 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
   const dshReady = nodeOk && (!!dshEntry || detectDshCached())
 
   const hints: string[] = []
-  if (!nodeVersion) hints.push('未检测到系统 Node，请先安装 Node.js 22.19+ 或 24+')
-  else if (!nodeOk) hints.push(`系统 Node ${nodeVersion}，dsh 建议 ^22.19 或 24+`)
+  if (!nodeOk) hints.push('未检测到可用 Node（请安装 Node.js 22.19+ 或 24+）')
   if (!dshEntry && !detectDshCached()) {
     hints.push('首次发送消息时会自动下载 dsh（需联网，约 1–2 分钟）')
   }
@@ -223,7 +245,7 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
   if (!workspace) hints.push('未打开工程：AI 工作区将回退为应用数据目录')
 
   return {
-    nodeVersion: nodeVersion || '未知',
+    nodeVersion: usingEmbedded && nodeVersion ? `${nodeVersion}（内置）` : nodeVersion || '未知',
     nodeOk,
     dshReady,
     mcpRunning: !!mcp?.running,
@@ -1243,7 +1265,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   }
   emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
 
-  const command = dshEntry ? 'node' : process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  const nodeCmd = dshEntry ? resolveNodeCommand() : null
+  const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
   // 本地/内置 dsh 时可注入自定义 runner 输出思考过程；npx 现场拉包时无法预知
   // 依赖树位置，保持原 headless 行为（无 reasoning，不影响主流程）。
   const dshModules = dshEntry ? locateNodeModules(dshEntry) : null
@@ -1263,6 +1286,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     workspace,
     env: {
       ...process.env,
+      // 内置 Node 模式：让 Electron 二进制以纯 Node 运行 dsh（见 resolveNodeCommand）
+      ...(nodeCmd?.env ?? {}),
       DSH_HOME: dshHome(),
       DEEPSEEK_API_KEY: provider.apiKey,
       // 注意：dsh v0.1 不读取 DSH_MODEL（模型只走 settings.yaml 的 agent-default-model）。
