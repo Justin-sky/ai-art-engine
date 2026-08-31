@@ -2,6 +2,20 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.5] — 2026-08-31
+
+5.0.5 新版本：**dsh 运行时离线打包**——DeepSeek Harness 运行体与 Node 运行时随安装包内置，执行复用 Electron 内置 Node（`ELECTRON_RUN_AS_NODE`），用户无需安装系统 Node 22.19+，也不依赖 npx 联网拉包，开箱即用。
+
+### Added
+
+- **dsh 运行时离线打包**：dsh 运行体随应用分发，`resolveNodeCommand()` 优先使用内置 Node（Electron `process.execPath` + `ELECTRON_RUN_AS_NODE=1`），未命中才回退系统 `node`
+- harness 状态检测与提示同步更新：识别内置 Node（Electron 44 内置 Node 24.x），不再出现「请先安装 Node.js」引导
+- 文档同步：README（中/英）、dsh 使用文档、官网使用手册（中/英）均已更新
+
+### Docs
+
+- 路线图重构为按优先级划分的 P0 / P1 / P2 方向；P0「dsh 运行时离线打包」本次完成
+
 ## [5.0.4] — 2026-08-31
 
 5.0.4 新版本：引入 Skill 技能系统——对话 Agent 自动注入内置创作技能（分镜 / 导演审核 / 系统创作），并可在设置中添加自定义技能；AI 对话面板新增真实上下文用量环形进度、模型与会话下拉选中态对勾、任务列表内嵌消息流与提问弹窗。
