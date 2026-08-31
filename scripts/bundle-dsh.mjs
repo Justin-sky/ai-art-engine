@@ -1,26 +1,35 @@
 #!/usr/bin/env node
 /**
- * 生成自包含的 dsh（@deepseek-ai/dsh）运行体，供 electron-builder 作为 extraResources 打入安装包。
+ * 生成自包含的 dsh（@deepseek-ai/dsh）运行体压缩包，供 electron-builder 作为 extraResources 打入安装包。
  *
  * 背景：dsh 是外部 npm CLI（DeepSeek Harness），需要系统 Node 运行。应用打包时把它
- * 一起带到 `<resources>/dsh`，用户安装后开箱即用，不再依赖 npx 现场下载。
+ * 一起带到安装包内，用户安装后开箱即用，不再依赖 npx 现场下载。
  *
  * 做法：不重新 `npm install`。dsh 的依赖树有 60+ 个子包，在干净的 CI 上解析安装既慢
  * （数分钟）又吃内存（npm/arborist 超过默认 2GB heap 会 OOM）。改为直接复用主项目根
  * `node_modules` 中已解析好的依赖闭包（对 dependencies + optionalDependencies 做 BFS），
  * 复制到临时目录形成扁平、自包含的依赖树，再整体复制到 `out/dsh-bundle`。
  *
+ * 打包形态：不做任何文件过滤（npm 包会把运行时代码放在 doc/、examples/ 等看似文档的
+ * 目录里，如 yaml 的 dist/doc/directives.js，裁剪有误删风险），完整依赖闭包压缩为单个
+ * `out/dsh-bundle.zip` 打入安装包——NSIS 安装只写一个文件，安装秒级完成；首次启动时
+ * 由主进程（deepseekHarnessService.ensureDshUnpacked）解压到用户数据目录。
+ * 压缩用系统 tar（bsdtar，Windows 10+/macOS/Linux 均自带），原生速度且不吃 JS 内存。
+ *
  * 版本从 package.json 的 dependencies 读取，保证与运行时解析入口一致。
  */
+import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
-import { basename, dirname, join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const OUT_DIR = join(ROOT, 'out', 'dsh-bundle')
 const STAGE_DIR = join(ROOT, 'out', '.dsh-stage')
+/** 安装包实际携带的单文件（zip 内路径以 node_modules/ 开头，解压后即运行体根目录） */
+const ZIP_PATH = join(ROOT, 'out', 'dsh-bundle.zip')
 
 /** 主 package.json 中固定的 dsh 版本（单一事实来源） */
 function resolveDshVersion() {
@@ -138,33 +147,7 @@ function verifyBundle() {
   console.log('[bundle-dsh] 完整性校验通过（所有包的直接依赖与 peer 依赖均已包含）')
 }
 
-/**
- * 非运行必需文件过滤：减少安装包体积与文件数量，NSIS 安装解压更快。
- * 被过滤的内容 Node 运行时完全用不到，npm 生态中公认可安全移除：
- *  - sourcemap（*.map）、类型声明（*.d.ts）：仅开发/调试用
- *  - test / docs / example 目录：仅仓库内容
- *  - Markdown 文档与各类点文件（.gitignore 等）
- * LICENSE / CHANGELOG 等小型文本文件予以保留（合规且开销极小）。
- */
-const IGNORED_DIR_RE = /(^|[\\/])(test|tests|__tests__|docs?|example|examples)([\\/]|$)/
-const IGNORED_EXT_RE = /\.(map|md|markdown)$/i
-const IGNORED_D_TS_RE = /\.d\.ts$/i
-let filteredCount = 0
-let filteredBytes = 0
-function isRuntimeFile(src) {
-  const base = basename(src)
-  if (base.startsWith('.') || IGNORED_DIR_RE.test(src) || IGNORED_EXT_RE.test(base) || IGNORED_D_TS_RE.test(base)) {
-    filteredCount++
-    try {
-      const st = statSync(src)
-      filteredBytes += st.isDirectory() ? dirSize(src) : st.size
-    } catch {}
-    return false
-  }
-  return true
-}
-
-/** 把依赖闭包复制到 stage 的扁平 node_modules，形成自包含树 */
+/** 把依赖闭包复制到 stage 的扁平 node_modules，形成自包含树（全量复制，不做任何过滤） */
 async function buildStage(packages, version) {
   rmSync(STAGE_DIR, { recursive: true, force: true })
   mkdirSync(STAGE_DIR, { recursive: true })
@@ -172,7 +155,7 @@ async function buildStage(packages, version) {
   for (const [name, src] of packages) {
     const dest = join(stageNm, name)
     mkdirSync(dirname(dest), { recursive: true })
-    await cp(src, dest, { recursive: true, filter: isRuntimeFile })
+    await cp(src, dest, { recursive: true })
   }
   writeFileSync(
     join(STAGE_DIR, 'package.json'),
@@ -203,18 +186,28 @@ function dirSize(root) {
   return total
 }
 
+/**
+ * 压缩 OUT_DIR 为单个 zip（zip 内路径以 node_modules/ 开头，解压到目标目录即为运行体根）。
+ * 安装包只带这一个文件，NSIS 安装只需写一个文件，不再逐个解压一万三千个文件。
+ * 压缩用系统 tar（bsdtar，Windows 10 1803+/macOS/Linux 均自带），`-a` 按 .zip 扩展名选 zip 压缩器。
+ */
+function createZip() {
+  rmSync(ZIP_PATH, { force: true })
+  console.log('[bundle-dsh] 压缩依赖闭包为单文件（NSIS 安装只需写一个文件）…')
+  execFileSync('tar', ['-a', '-c', '-f', ZIP_PATH, '-C', OUT_DIR, 'node_modules'], {
+    stdio: 'inherit'
+  })
+  const mb = (statSync(ZIP_PATH).size / 1024 / 1024).toFixed(1)
+  console.log(`[bundle-dsh] 压缩完成：${relative(ROOT, ZIP_PATH)}（约 ${mb} MB）`)
+}
+
 async function main() {
   const version = resolveDshVersion()
   console.log(`[bundle-dsh] 从已安装依赖构建 ${DSH_PACKAGE}@${version} 自包含运行体…`)
 
   const packages = collectPackages(DSH_PACKAGE)
   console.log(`[bundle-dsh] 依赖闭包共 ${packages.size} 个包`)
-  filteredCount = 0
-  filteredBytes = 0
   await buildStage(packages, version)
-  if (filteredCount > 0) {
-    console.log(`[bundle-dsh] 已过滤非运行文件：${filteredCount} 项，约 ${(filteredBytes / 1024 / 1024).toFixed(1)} MB`)
-  }
 
   const packageRoot = join(STAGE_DIR, 'node_modules', DSH_PACKAGE)
   const entry = resolveEntry(packageRoot)
@@ -233,6 +226,8 @@ async function main() {
 
   const mb = (dirSize(OUT_DIR) / 1024 / 1024).toFixed(1)
   console.log(`[bundle-dsh] 完成：${relative(ROOT, OUT_DIR)}（约 ${mb} MB）`)
+
+  createZip()
 }
 
 await main().catch((err) => {

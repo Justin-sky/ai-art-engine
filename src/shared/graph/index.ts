@@ -37,7 +37,8 @@ export * from './runOutputPersist'
 export * from './assetPreviewPath'
 export * from './textOutput'
 export * from './instructionMentions'
-export * from './instructionPresets'
+// 注意：instructionPresets 仅由 GraphInstructionMentionEditor 按需动态导入
+// （避免首屏同步解析大段指令模板），不得在此静态 re-export，否则懒加载失效。
 export * from './presetVisual'
 export * from './systemPromptSchemes'
 export * from './userPromptSchemes'

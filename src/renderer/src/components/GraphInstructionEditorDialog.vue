@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { InstructionPresetKind } from '@shared/graph'
+import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
 import { estimateTokenCount } from '@shared/textTokens'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'

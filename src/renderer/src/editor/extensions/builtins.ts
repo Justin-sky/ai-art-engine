@@ -1,16 +1,24 @@
-import { defineComponent, h, markRaw } from 'vue'
+import { defineAsyncComponent, defineComponent, h, markRaw } from 'vue'
 import type { VueComponent } from 'dockview-vue'
 import { WORKSPACE_TOOLBAR_ITEMS } from '@shared/workspaceToolbar'
 import AssetBrowser from '../../components/AssetBrowser.vue'
 import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
-import AssetEditor from '../../components/AssetEditor.vue'
 import ChatPanel from '../../components/ChatPanel.vue'
-import DirectorEditor from '../../components/DirectorEditor.vue'
 import InspectorPanel from '../../components/InspectorPanel.vue'
-import WorldElementEditor from '../../components/WorldElementEditor.vue'
-import BeatAssetEditor from '../../components/BeatAssetEditor.vue'
 import WorkspaceMain from '../../components/WorkspaceMain.vue'
 import WorkspaceToolbar from '../../components/WorkspaceToolbar.vue'
+
+/**
+ * 各资源编辑器体积大且依赖 editor/graph 模型，必须异步加载：
+ * 1) 避免与主编辑器互相静态引用形成循环依赖；
+ * 2) 打开对应 dock 面板时才加载，减小首屏体积。
+ * 注意：不得改回静态 import，否则 EditorDiveChildHost / EditorDiveUiSplitView
+ * 中的动态导入将无法拆包。
+ */
+const AssetEditor = defineAsyncComponent(() => import('../../components/AssetEditor.vue'))
+const DirectorEditor = defineAsyncComponent(() => import('../../components/DirectorEditor.vue'))
+const WorldElementEditor = defineAsyncComponent(() => import('../../components/WorldElementEditor.vue'))
+const BeatAssetEditor = defineAsyncComponent(() => import('../../components/BeatAssetEditor.vue'))
 import { BUILTIN_INSPECTORS } from '../../inspector/builtins'
 import type { EditorWindowDefinition } from './types'
 import type {

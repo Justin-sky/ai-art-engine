@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import type { InstructionPresetKind } from '@shared/graph'
+import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'

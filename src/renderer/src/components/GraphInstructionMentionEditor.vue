@@ -333,7 +333,6 @@ import {
 } from '@shared/domain'
 import {
   buildInstructionFinalPromptPreview,
-  insertInstructionPresetText,
   resolveInstructionFinalPreviewKind,
   resolveInstructionVisual,
   resolveNodeTextContent,
@@ -349,11 +348,13 @@ import {
   type GraphNode,
   type GraphValue,
   type InstructionMentionSource,
-  type InstructionPreset,
-  type InstructionPresetKind,
-  type InstructionPresetTab,
   type PresetVisual
 } from '@shared/graph'
+import type {
+  InstructionPreset,
+  InstructionPresetKind,
+  InstructionPresetTab
+} from '@shared/graph/instructionPresets'
 import ExpandArrowsIcon from './icons/ExpandArrowsIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import PresetVisualGlyph from './PresetVisualGlyph.vue'
@@ -1234,9 +1235,10 @@ function visualForPreset(item: InstructionPreset): PresetVisual {
   return resolveInstructionVisual(item)
 }
 
-function applyPreset(item: InstructionPreset): void {
+async function applyPreset(item: InstructionPreset): Promise<void> {
   const current = props.modelValue ?? ''
   const position = editorRef.value?.getSelection().start ?? current.length
+  const { insertInstructionPresetText } = await import('@shared/graph/instructionPresets')
   const inserted = insertInstructionPresetText(current, item.body, position)
   emit('update:modelValue', inserted.text)
   emit('change')

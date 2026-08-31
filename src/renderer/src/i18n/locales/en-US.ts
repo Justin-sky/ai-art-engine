@@ -547,6 +547,7 @@ export default {
       stop: 'Stop',
       ready: 'Ready',
       checking: 'Checking…',
+      unpackHint: 'Extracting the bundled dsh runtime (first launch)',
       unavailable: 'Unavailable',
       toolRunning: 'Running',
       toolDone: 'Done',
