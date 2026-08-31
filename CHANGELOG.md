@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.7] — 2026-08-31
+
+5.0.7 体验优化版：缩小安装包、加快安装解压——内置 dsh 运行体（`resources/dsh`，约 200MB）只保留运行必需文件，剔除 sourcemap、类型声明、测试与文档目录、Markdown 与点文件后，文件数 -55%（29899 → 13517）、体积 -36%（204.5MB → 130.6MB）。NSIS 安装逐文件解压与杀软扫描开销随之大幅下降，全新安装明显更快，安装包下载也更小。
+
+### Changed
+
+- **dsh 运行体裁剪**：`scripts/bundle-dsh.mjs` 复制依赖闭包时过滤非运行文件（`*.map`、`*.d.ts`、`test`/`docs`/`examples` 目录、`*.md`、点文件），保留 `LICENSE`、`CHANGELOG` 等合规文本；完整性校验与入口校验均通过，dsh 功能不受影响
+
 ## [5.0.6] — 2026-08-31
 
 5.0.6 修复版：恢复安装包内置 dsh 运行体——electron-builder 26 的 copyDir 过滤会丢弃「复制源根目录下的 node_modules」，导致 5.0.4 / 5.0.5 安装包 `resources/dsh` 只残留 package.json，用户首启被迫走 npx 联网下载（1–2 分钟）。本版修复后安装包重新自带约 200MB dsh 运行体，开箱即用。
