@@ -8,6 +8,8 @@ import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
+import { promptConfirm } from '../composables/useStudioPrompt'
+import { estimateTokenCount } from '@shared/textTokens'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 
@@ -71,6 +73,8 @@ function cssBackgroundUrl(url: string): string {
 /** 从当前激活会话恢复消息 */
 function loadActiveMessages(): void {
   messages.value = activeSession.value?.messages ? [...activeSession.value.messages] : []
+  // 切换会话后 harness 报告的上文不再适用，回退本地估算兜底
+  harnessContextUsed.value = undefined
 }
 
 /** 切换会话：先保存当前，再加载目标 */
@@ -79,6 +83,8 @@ function onSessionChange(id: string): void {
   commitMessages([...messages.value])
   activateSession(id)
   loadActiveMessages()
+  // 切换可能打断输入法组合（compositionend 丢失时 composing 残留，导致 Enter 无法发送），复位之
+  composing.value = false
   scrollToBottom()
 }
 
@@ -87,19 +93,31 @@ function onNewSession(): void {
   createSession()
   loadActiveMessages()
   draft.value = ''
+  composing.value = false
   scrollToBottom()
+  void nextTick(() => inputRef.value?.focus())
 }
 
-function onDeleteSession(): void {
+async function onDeleteSession(): Promise<void> {
   const session = activeSession.value
   if (!session) return
-  if (!window.confirm(t('studio.chat.deleteConfirm'))) return
+  // 用自绘确认弹窗替代 window.confirm：Windows 上原生 confirm/alert 关闭后主窗口会丢失
+  // 键盘焦点（Electron 已知问题），导致输入框点击也无法聚焦，表现为「输入框不可输入」
+  const ok = await promptConfirm({
+    title: t('studio.chat.deleteSession'),
+    message: t('studio.chat.deleteConfirm'),
+    confirmLabel: t('common.delete')
+  })
+  if (!ok) return
   removeSession(session.id)
   // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
   window.studio.deleteHarnessSession(session.id).catch(() => undefined)
   loadActiveMessages()
   draft.value = ''
+  composing.value = false
   scrollToBottom()
+  // 确认弹窗关闭后重新聚焦输入框，双保险规避焦点丢失
+  void nextTick(() => inputRef.value?.focus())
 }
 
 /** 输入框内容变化：光标前是 @ 时弹出资产选择器（支持在指令文本中间引用） */
@@ -213,6 +231,8 @@ function buildTask(text: string): string {
 }
 
 const messages = ref<ChatMsg[]>([])
+/** harness provider 报告的最新真实上下文 token（每轮 LLM 请求完成后更新；切换会话后失效） */
+const harnessContextUsed = ref<number | undefined>(undefined)
 /** 当前 agent 模式：craft（完整执行）/ ask（纯问答）/ plan（先规划后执行），持久化到本地 */
 const savedMode = localStorage.getItem(CHAT_MODE_KEY) as ChatMode | null
 const mode = ref<ChatMode>(savedMode && CHAT_MODES.includes(savedMode) ? savedMode : 'craft')
@@ -238,13 +258,19 @@ function selectMode(value: ChatMode): void {
 }
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (!modeOpen.value) return
+  if (!modeOpen.value && !modelOpen.value) return
   if (e instanceof KeyboardEvent) {
-    if (e.key === 'Escape') modeOpen.value = false
+    if (e.key === 'Escape') {
+      modeOpen.value = false
+      modelOpen.value = false
+    }
     return
   }
   if (modeDropdownRef.value && !modeDropdownRef.value.contains(e.target as Node)) {
     modeOpen.value = false
+  }
+  if (modelDropdownRef.value && !modelDropdownRef.value.contains(e.target as Node)) {
+    modelOpen.value = false
   }
 }
 const draft = ref('')
@@ -337,6 +363,8 @@ interface ModelOption {
   id: string
   label: string
   providerLabel: string
+  /** 模型上下文窗口大小（token 数）；缺省时不显示上下文用量指示 */
+  contextLength?: number
 }
 
 const modelOptions = ref<ModelOption[]>([])
@@ -370,7 +398,9 @@ async function loadModels(): Promise<void> {
           providerId: p.id,
           id,
           label: catalog[id]?.name?.trim() || id,
-          providerLabel: p.label || p.providerKind
+          providerLabel: p.label || p.providerKind,
+          // OpenRouter 等目录把 context_length 放在 capabilities 里
+          contextLength: catalog[id]?.capabilities?.context_length as number | undefined
         })
       }
     }
@@ -405,6 +435,125 @@ async function loadModels(): Promise<void> {
 
 watch(selectedKey, (value) => {
   if (value) localStorage.setItem(CHAT_MODEL_KEY, value)
+})
+
+/** 当前选中的模型项（找不到时为 undefined） */
+const currentModel = computed<ModelOption | undefined>(() => {
+  const key = selectedKey.value
+  if (!key) return undefined
+  return modelOptions.value.find((o) => modelKey(o.providerId, o.id) === key)
+})
+/** 模型选择下拉的开合状态 */
+const modelOpen = ref(false)
+const modelDropdownRef = ref<HTMLElement | null>(null)
+function selectModel(key: string): void {
+  selectedKey.value = key
+  modelOpen.value = false
+}
+
+/**
+ * 常见文本模型上下文窗口（token）兜底：目录未携带 context_length 时使用，
+ * 覆盖主流 OpenAI 兼容 provider 的常见模型 id（DeepSeek / Kimi / xAI / 智谱 / 千问 等）
+ */
+const MODEL_CONTEXT_FALLBACK: Record<string, number> = {
+  'deepseek-chat': 65536,
+  'deepseek-reasoner': 65536,
+  'kimi-k2': 131072,
+  'kimi-k2-turbo': 131072,
+  'moonshot-v1-8k': 8192,
+  'moonshot-v1-32k': 32768,
+  'moonshot-v1-128k': 131072,
+  'glm-4': 131072,
+  'glm-4-plus': 131072,
+  'glm-4-flash': 131072,
+  'grok-3': 131072,
+  'grok-3-mini': 131072,
+  'grok-4': 131072,
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4.1': 1048576,
+  'gpt-4.1-mini': 1048576,
+  'o1': 200000,
+  'o3': 200000,
+  'claude-sonnet-4': 200000,
+  'claude-sonnet-4-5': 200000,
+  'claude-opus-4': 200000,
+  'gemini-2.5-flash': 1048576,
+  'gemini-2.5-pro': 1048576,
+  'qwen-max': 32768,
+  'qwen-plus': 131072,
+  'qwen-turbo': 1000000,
+  'qwen-long': 10000000
+}
+
+/** 未命中任何映射时的默认上下文窗口（token），与 DeepSeek 官方 64K 一致 */
+const DEFAULT_CONTEXT_LENGTH = 64000
+
+/** 当前模型的上下文窗口大小（token）；未选中模型时为 0（不显示用量指示） */
+const contextTotal = computed<number>(() => {
+  const m = currentModel.value
+  if (!m) return 0
+  const raw = m.contextLength
+  return Number.isFinite(raw) && (raw as number) > 0 ? (raw as number) : DEFAULT_CONTEXT_LENGTH
+})
+
+/** 把 token 数格式化为 "106.4K" 风格（<1K 显示整数，>=1K 一位小数 + K） */
+function formatTokenCount(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  if (n < 1000) return String(Math.round(n))
+  const k = n / 1000
+  const s = (Math.round(k * 10) / 10).toFixed(1)
+  return s.replace(/\.0$/, '') + 'K'
+}
+
+/**
+ * 估算当前会话已用 token：user / assistant 的 text + reasoning 累加，
+ * 草稿也会被一起发给模型，一并算入以便用户提前看到用量接近上限
+ */
+const contextUsed = computed<number>(() => {
+  // harness 每轮请求后报告真实上下文 token（含系统提示/工具定义/历史），优先使用；
+  // 尚无 harness 数据（空闲期、恢复历史会话）时回退本地估算
+  if (typeof harnessContextUsed.value === 'number' && harnessContextUsed.value >= 0) {
+    return harnessContextUsed.value
+  }
+  let text = ''
+  for (const m of messages.value) {
+    if (m.kind === 'user') text += m.text
+    else if (m.kind === 'assistant') {
+      text += m.text
+      if (m.reasoning) text += m.reasoning
+    }
+  }
+  if (draft.value) text += draft.value
+  return estimateTokenCount(text)
+})
+
+/** 上下文用量显示文本："106.4K / 168.0K · 63.3%"；无总量时为空串 */
+const contextUsageText = computed<string>(() => {
+  const total = contextTotal.value
+  if (!total) return ''
+  const used = contextUsed.value
+  const pct = Math.min(999, (used / total) * 100)
+  const pctStr = (Math.round(pct * 10) / 10).toFixed(1).replace(/\.0$/, '')
+  return `${formatTokenCount(used)} / ${formatTokenCount(total)} · ${pctStr}%`
+})
+
+/** 用量比例（0-1），驱动环形进度条与警告色 */
+const usageRatio = computed<number>(() => {
+  const total = contextTotal.value
+  if (!total) return 0
+  return Math.min(1, contextUsed.value / total)
+})
+
+/**
+ * 环形进度条百分比（如 "63.3%"），驱动 conic-gradient 进度。
+ * 会话初期 token 占比常不足 1%，弧线 <1px 几乎不可见；
+ * 因此有内容时至少显示 3% 的弧线，让进度增长有清晰反馈。
+ */
+const ringPct = computed<string>(() => {
+  const raw = usageRatio.value * 100
+  const pct = raw <= 0 ? 0 : Math.max(3, raw)
+  return `${Math.round(pct * 10) / 10}%`
 })
 
 /** 消息变化后防抖落盘历史会话（流式期间工具卡状态频繁更新，避免高频写 localStorage） */
@@ -531,6 +680,10 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'reasoning':
       // 思考过程：先于回答到达，暂存到下一次 assistant 消息上
       pendingReasoning = event.text
+      break
+    case 'context':
+      // provider 报告的精确输入上下文 token：多轮会话为最新一次 LLM 请求的完整输入
+      harnessContextUsed.value = event.used
       break
     case 'final': {
       // 流式期间文本已通过 assistant 事件实时显示，这里仅标记回答完成，避免覆盖丢失内容
@@ -1100,39 +1253,94 @@ onBeforeUnmount(() => {
       <div class="chat-actions">
         <div class="model-select-wrap">
           <span class="model-label">{{ t('studio.chat.model') }}</span>
-          <select
-            v-model="selectedKey"
-            class="model-select"
-            :disabled="running || !modelOptions.length"
-            @focus="loadModels"
+          <div
+            ref="modelDropdownRef"
+            class="model-dropdown"
+            :class="{ open: modelOpen }"
+            :title="currentModel ? `${currentModel.providerLabel} · ${currentModel.label}` : ''"
           >
-            <option
-              v-for="m in modelOptions"
-              :key="modelKey(m.providerId, m.id)"
-              :value="modelKey(m.providerId, m.id)"
+            <button
+              type="button"
+              class="model-trigger"
+              :disabled="running || !modelOptions.length"
+              @click.stop="modelOpen = !modelOpen"
+              @focus="loadModels"
             >
-              {{ m.providerLabel }} · {{ m.label }}
-            </option>
-          </select>
+              <span class="model-trigger-label">
+                {{ currentModel ? `${currentModel.providerLabel} · ${currentModel.label}` : t('studio.chat.noModel') }}
+              </span>
+              <svg
+                class="model-chevron"
+                :class="{ rotated: modelOpen }"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <ul v-show="modelOpen" class="model-menu">
+              <li v-for="m in modelOptions" :key="modelKey(m.providerId, m.id)">
+                <button
+                  type="button"
+                  class="model-item"
+                  :class="{ active: selectedKey === modelKey(m.providerId, m.id) }"
+                  @click.stop="selectModel(modelKey(m.providerId, m.id))"
+                >
+                  <span class="model-item-label">{{ m.providerLabel }} · {{ m.label }}</span>
+                  <svg
+                    v-if="selectedKey === modelKey(m.providerId, m.id)"
+                    class="model-check"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  ><path d="M20 6 9 17l-5-5" /></svg>
+                </button>
+              </li>
+            </ul>
+          </div>
           <span
             v-if="!modelOptions.length"
             class="model-empty"
           >{{ t('studio.chat.noModel') }}</span>
         </div>
+        <div
+          v-if="contextUsageText"
+          class="context-usage"
+          :class="{ warn: usageRatio >= 0.85, active: running }"
+          :title="contextUsageText"
+        >
+          <div
+            class="ctx-ring"
+            :style="{ '--ctx-pct': ringPct }"
+            aria-hidden="true"
+          />
+        </div>
         <button
           v-if="running"
-          class="btn abort"
+          class="btn icon-btn abort"
+          :title="t('studio.chat.stop')"
           @click="onAbort"
         >
-          {{ t('studio.chat.stop') }}
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+            <rect x="4" y="4" width="8" height="8" rx="1.5" />
+          </svg>
         </button>
         <button
           v-else
-          class="btn send"
+          class="btn icon-btn send"
           :disabled="!draft.trim()"
+          :title="t('studio.chat.send')"
           @click="onSend"
         >
-          {{ t('studio.chat.send') }}
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 12 V4" />
+            <path d="M4.5 7.5 L8 4 L11.5 7.5" />
+          </svg>
         </button>
       </div>
     </div>
@@ -1912,8 +2120,17 @@ onBeforeUnmount(() => {
   flex: none;
 }
 
-.model-select-wrap .model-select {
+.model-dropdown {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.model-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
   padding: 3px 6px;
   background: var(--bg-input);
@@ -1922,11 +2139,97 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   font: inherit;
   font-size: 12px;
+  cursor: pointer;
 }
 
-.model-select-wrap .model-select:disabled {
+.model-trigger:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+.model-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.model-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.model-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.model-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.model-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.model-item.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.model-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-check {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--accent);
 }
 
 .model-select-wrap .model-empty {
@@ -1970,5 +2273,60 @@ onBeforeUnmount(() => {
 .btn.abort {
   border-color: var(--danger);
   color: var(--danger-muted);
+}
+
+/* 圆形图标按钮（发送 / 停止），覆盖 .btn 默认 padding/border-radius */
+.btn.icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* 上下文用量指示（Cursor 风格：环形进度条 + 百分比 · 已用 / 总额） */
+.context-usage {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+/* 环形进度条：conic-gradient + mask 镂空成圆环，空用量时也显示完整淡环 */
+.ctx-ring {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) var(--ctx-pct), var(--accent-12) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 5px));
+}
+
+.context-usage.warn {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.context-usage.warn .ctx-ring {
+  background: conic-gradient(
+    var(--danger) var(--ctx-pct),
+    color-mix(in srgb, var(--danger) 12%, transparent) 0
+  );
+}
+
+/* 生成中：进度环缓慢旋转，表示正在使用上下文 */
+.context-usage.active .ctx-ring {
+  animation: ctx-ring-spin 1.2s linear infinite;
+}
+
+@keyframes ctx-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

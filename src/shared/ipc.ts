@@ -544,6 +544,15 @@ export type HarnessEvent =
   | { type: 'final'; text: string }
   | { type: 'done'; runId: string }
   | { type: 'error'; message: string }
+  | {
+      /**
+       * Harness provider 报告的最新一次 LLM 请求的真实输入上下文 token。
+       * 多轮会话下是最近一次请求的完整输入（含缓存命中/写入）；无该事件时渲染层回退本地估算。
+       */
+      type: 'context'
+      /** 当前上下文已用 token 数 */
+      used: number
+    }
 
 /** MCP：设置界面提交的配置修改（重启时应用） */
 export interface McpRestartInput {
