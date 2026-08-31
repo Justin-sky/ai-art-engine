@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
@@ -328,8 +329,10 @@ function renderDshSkillMd(skill: GraphSkill): string {
  * 注入模型可见的 `<available_skills>` 目录、提供 `skill` 加载工具——即 AI 对话里
  * 的 agent 能感知并加载应用内置技能（分镜拆解、9宫格、动态提示词等）。
  *
- * 每次任务前全量刷新：覆盖栈可能被插件 `registerGraphSkill` 动态增删，先按
- * manifest 清理上次生成的文件再写入，避免残留失效技能。
+ * 带签名指纹：覆盖栈可能被插件 `registerGraphSkill` 动态增删，但多数对话之间
+ * 技能并无变化。先算当前清单的 SHA-1 签名，与 manifest 记录的签名一致且上次
+ * 生成的文件都在时直接跳过，避免每次对话都做无谓的删写；变化才按 manifest
+ * 清理上次生成的文件再全量重写，避免残留失效技能。
  */
 function writeDshSkills(): void {
   try {
@@ -338,11 +341,28 @@ function writeDshSkills(): void {
     const skillsDir = join(home, 'skills')
     mkdirSync(skillsDir, { recursive: true })
     const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
+    // manifest 旧格式是 string[]，新格式为 { files, signature }，兼容两者
     let previous: string[] = []
+    let lastSignature = ''
     try {
-      previous = JSON.parse(readFileSync(manifestPath, 'utf8') || '[]') as string[]
+      const raw = JSON.parse(readFileSync(manifestPath, 'utf8') || '[]') as
+        | string[]
+        | { files?: unknown; signature?: unknown }
+      if (Array.isArray(raw)) previous = raw
+      else {
+        previous = Array.isArray(raw.files) ? (raw.files as string[]) : []
+        lastSignature = typeof raw.signature === 'string' ? raw.signature : ''
+      }
     } catch {
       previous = []
+    }
+    const signature = dshSkillsSignature()
+    // 技能没变且上次生成的文件都还在 → 跳过写盘，复用现有快照
+    if (
+      lastSignature === signature &&
+      previous.every((file) => existsSync(join(skillsDir, file)))
+    ) {
+      return
     }
     // 只清理上次由本函数生成的文件，用户自行放入的自定义技能不受影响
     for (const file of previous) {
@@ -357,11 +377,20 @@ function writeDshSkills(): void {
       generated.push(file)
       writeFileSync(join(skillsDir, file), renderDshSkillMd(skill), 'utf8')
     }
-    writeFileSync(manifestPath, JSON.stringify(generated), 'utf8')
+    writeFileSync(manifestPath, JSON.stringify({ files: generated, signature }), 'utf8')
   } catch (error) {
     // 技能快照失败不阻塞主流程（dsh 无技能也能对话）
     console.warn('[aiart] writeDshSkills failed:', error)
   }
+}
+
+/** 当前技能清单的指纹：任何技能 id / 渲染内容变化都会改变，用于跳过无谓写盘 */
+function dshSkillsSignature(): string {
+  const hash = createHash('sha1')
+  for (const skill of listGraphSkills()) {
+    hash.update(`${skill.id}\u0000${renderDshSkillMd(skill)}\u0000`)
+  }
+  return hash.digest('hex')
 }
 
 /** 思考过程在 dsh stdout 中的包裹标记：自定义 runner 输出，主进程据此切分事件 */
