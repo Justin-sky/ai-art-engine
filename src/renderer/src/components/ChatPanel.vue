@@ -258,11 +258,12 @@ function selectMode(value: ChatMode): void {
 }
 /** 点击下拉外部或按 ESC 收起菜单：注册在 document 上避免 trigger 内 stopPropagation 误关 */
 function onModeOutside(e: MouseEvent | KeyboardEvent): void {
-  if (!modeOpen.value && !modelOpen.value) return
+  if (!modeOpen.value && !modelOpen.value && !sessionOpen.value) return
   if (e instanceof KeyboardEvent) {
     if (e.key === 'Escape') {
       modeOpen.value = false
       modelOpen.value = false
+      sessionOpen.value = false
     }
     return
   }
@@ -271,6 +272,9 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (modelDropdownRef.value && !modelDropdownRef.value.contains(e.target as Node)) {
     modelOpen.value = false
+  }
+  if (sessionDropdownRef.value && !sessionDropdownRef.value.contains(e.target as Node)) {
+    sessionOpen.value = false
   }
 }
 const draft = ref('')
@@ -449,6 +453,13 @@ const modelDropdownRef = ref<HTMLElement | null>(null)
 function selectModel(key: string): void {
   selectedKey.value = key
   modelOpen.value = false
+}
+/** 会话选择下拉的开合状态 */
+const sessionOpen = ref(false)
+const sessionDropdownRef = ref<HTMLElement | null>(null)
+function selectSession(id: string): void {
+  onSessionChange(id)
+  sessionOpen.value = false
 }
 
 /**
@@ -1156,21 +1167,55 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
-        <select
-          :value="activeId"
-          class="session-select"
+        <div
+          ref="sessionDropdownRef"
+          class="session-dropdown"
+          :class="{ open: sessionOpen }"
           :title="t('studio.chat.sessionSelect')"
-          :disabled="running || !sessions.length"
-          @change="onSessionChange(($event.target as HTMLSelectElement).value)"
         >
-          <option
-            v-for="s in sessions"
-            :key="s.id"
-            :value="s.id"
+          <button
+            type="button"
+            class="session-trigger"
+            :disabled="running || !sessions.length"
+            @click.stop="sessionOpen = !sessionOpen"
           >
-            {{ s.title || t('studio.chat.newChat') }}
-          </option>
-        </select>
+            <span class="session-trigger-label">
+              {{ activeSession?.title || t('studio.chat.newChat') }}
+            </span>
+            <svg
+              class="session-chevron"
+              :class="{ rotated: sessionOpen }"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            ><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <ul v-show="sessionOpen" class="session-menu">
+            <li v-for="s in sessions" :key="s.id">
+              <button
+                type="button"
+                class="session-item"
+                :class="{ active: s.id === activeId }"
+                @click.stop="selectSession(s.id)"
+              >
+                <span class="session-item-label">{{ s.title || t('studio.chat.newChat') }}</span>
+                <svg
+                  v-if="s.id === activeId"
+                  class="session-check"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ><path d="M20 6 9 17l-5-5" /></svg>
+              </button>
+            </li>
+          </ul>
+        </div>
         <button
           class="tool-btn"
           :title="t('studio.chat.newSession')"
@@ -1897,8 +1942,17 @@ onBeforeUnmount(() => {
   flex: none;
 }
 
-.chat-toolbar .session-select {
+.session-dropdown {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.session-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
   padding: 3px 6px;
   background: var(--bg-input);
@@ -1907,11 +1961,97 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   font: inherit;
   font-size: 12px;
+  cursor: pointer;
 }
 
-.chat-toolbar .session-select:disabled {
+.session-trigger:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+.session-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.session-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.session-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.session-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  min-width: 180px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.session-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.session-item.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.session-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-check {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--accent);
 }
 
 .chat-toolbar .tool-btn {
