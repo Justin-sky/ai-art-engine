@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -11,6 +11,7 @@ import {
   type HarnessRunResult,
   type HarnessStatus
 } from '@shared/ipc'
+import { listGraphSkills, type GraphSkill } from '@shared/graph/graphSkills'
 import { modalityConfig, type ModelProviderInstance } from '@shared/modelProvider'
 import { broadcastToAllWindows } from '../broadcast'
 import { getMcpServerInfo } from './mcpServerService'
@@ -279,6 +280,88 @@ function writeDshSettings(provider: { baseUrl?: string; modelId: string }): void
     lines.push(`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`)
   }
   writeFileSync(join(home, 'settings.yaml'), lines.join('\n') + '\n', 'utf8')
+}
+
+/** dsh 的 skill 快照清单文件：记录上次生成的文件，下次写入前清理，避免残留失效技能 */
+const DSH_SKILLS_MANIFEST = '.aiart-skill-manifest.json'
+
+/** GraphSkill id → dsh 合法 skill 名（kebab-case，`/^[a-z0-9]+(?:-[a-z0-9]+)*$/`） */
+function toDshSkillName(id: string): string {
+  const kebab = id
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return kebab
+}
+
+/** 把一条 GraphSkill 渲染为 dsh 的 SKILL.md（frontmatter + 中英双语正文） */
+function renderDshSkillMd(skill: GraphSkill): string {
+  const name = toDshSkillName(skill.id)
+  const zhTitle = skill.titleZh || skill.id
+  const enTitle = skill.titleEn || skill.id
+  const description = `${enTitle} — ${zhTitle}`
+  const sections: string[] = []
+  if (skill.systemPromptZh) sections.push(`### 系统提示（中文）\n\n${skill.systemPromptZh}`)
+  if (skill.systemPromptEn) sections.push(`### System prompt (English)\n\n${skill.systemPromptEn}`)
+  if (skill.instructionZh) sections.push(`### 生成指令（中文）\n\n${skill.instructionZh}`)
+  if (skill.instructionEn) sections.push(`### Instruction (English)\n\n${skill.instructionEn}`)
+  const body = sections.length ? sections.join('\n\n') : `> 技能 ${name}：${description}`
+  return [
+    '---',
+    `name: ${name}`,
+    `description: ${JSON.stringify(description.replace(/[\r\n]+/g, ' '))}`,
+    '---',
+    '',
+    `# ${enTitle}`,
+    '',
+    body,
+    ''
+  ].join('\n')
+}
+
+/**
+ * 把应用内置 GraphSkill 目录快照成 dsh 的 SKILL.md 文件（`$DSH_HOME/skills`）。
+ *
+ * dsh 的 `skill-filesystem` 插件默认挂载且 `includeDefaultRoots: true`，会扫描
+ * `$DSH_HOME/skills` 目录下的 `*.md`（rank 400），并由 `tool-skill` 把技能清单
+ * 注入模型可见的 `<available_skills>` 目录、提供 `skill` 加载工具——即 AI 对话里
+ * 的 agent 能感知并加载应用内置技能（分镜拆解、9宫格、动态提示词等）。
+ *
+ * 每次任务前全量刷新：覆盖栈可能被插件 `registerGraphSkill` 动态增删，先按
+ * manifest 清理上次生成的文件再写入，避免残留失效技能。
+ */
+function writeDshSkills(): void {
+  try {
+    const home = dshHome()
+    mkdirSync(home, { recursive: true })
+    const skillsDir = join(home, 'skills')
+    mkdirSync(skillsDir, { recursive: true })
+    const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
+    let previous: string[] = []
+    try {
+      previous = JSON.parse(readFileSync(manifestPath, 'utf8') || '[]') as string[]
+    } catch {
+      previous = []
+    }
+    // 只清理上次由本函数生成的文件，用户自行放入的自定义技能不受影响
+    for (const file of previous) {
+      const target = join(skillsDir, file)
+      if (existsSync(target)) rmSync(target, { force: true })
+    }
+    const generated: string[] = []
+    for (const skill of listGraphSkills()) {
+      const name = toDshSkillName(skill.id)
+      if (!name) continue
+      const file = `${name}.md`
+      generated.push(file)
+      writeFileSync(join(skillsDir, file), renderDshSkillMd(skill), 'utf8')
+    }
+    writeFileSync(manifestPath, JSON.stringify(generated), 'utf8')
+  } catch (error) {
+    // 技能快照失败不阻塞主流程（dsh 无技能也能对话）
+    console.warn('[aiart] writeDshSkills failed:', error)
+  }
 }
 
 /** 思考过程在 dsh stdout 中的包裹标记：自定义 runner 输出，主进程据此切分事件 */
@@ -682,6 +765,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     baseUrl: provider.baseUrl,
     modelId: input.model?.trim() || provider.modelId
   })
+  // 把应用内置 GraphSkill 快照为 dsh 的 SKILL.md（$DSH_HOME/skills），
+  // 让 AI 对话里的 agent 能发现并加载应用技能（skill-filesystem 默认扫描该目录）。
+  writeDshSkills()
   const workspace = resolveWorkspace()
   const runId = String(++runSeq)
   lastStatusText = ''

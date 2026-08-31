@@ -27,6 +27,7 @@
 | [ASSET_PACKAGE.md](./ASSET_PACKAGE.md) | `.aipackage` 跨工程素材包 |
 | [ROADMAP.md](./ROADMAP.md) | 路线图 |
 | [MCP.md](./MCP.md) | MCP Server 接入：外部 Agent 驱动应用 |
+| [DEEPSEEK_HARNESS.md](./DEEPSEEK_HARNESS.md) | AI 对话面板（DeepSeek Harness 运行时）用户指南：像跟同事聊天一样指挥创作流水线 |
 | [examples/graph-extension](../examples/graph-extension/README.md) | 图插件骨架 |
 
 连线规则（与手册 §7.1 一致）：两端 `dataType` 必须相同；单数与复数不互通；选取节点只收列表口。
