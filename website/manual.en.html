@@ -21,7 +21,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine manual: projects, settings, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
+      content="AIArtEngine manual: projects, settings, AI chat and skills, One-Click Workflow, host assets, node graph, comic pages and the ad variant matrix, 3D model generation, task queue, shots and episodes, final timeline, director stage and shortcuts."
     />
     <title>Manual — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.en.html" />
@@ -965,6 +965,38 @@
             <strong>Prerequisites:</strong> AI chat needs <strong>Node.js 22.19+</strong> on the machine
             (installers bundle the dsh runtime; dev mode falls back to npx) and at least one enabled text model
             with a key; without an open project only pure conversation is available.
+          </div>
+
+          <h3 id="skills">5.6 Skills</h3>
+          <p>
+            The chat agent ships with a set of <strong>creation skills</strong> (derived from the app’s built-in
+            storyboard / director capabilities, injected automatically on each conversation); you can also add
+            your own skills under <strong>Settings → Custom skills</strong> to give the assistant a tailored way
+            of working.
+          </p>
+          <ul>
+            <li><strong>Built-in skills</strong>: storyboard / animation (9-grid storyboard table, beat breakdown
+              table, motion prompt table, 4-grid motion storyboard table, …), director review (storyboard / beat /
+              motion prompts), and system creation (script, image-from-prompt, image / video generation, voice,
+              emotion, lighting, multi-angle, upscale, redraw, erase, HD enhance, UI image, UI split, world
+              extraction, beat split, beat unit generation, plan, portrait texture, prompt optimization).
+              These are managed automatically — please don’t edit them.</li>
+            <li><strong>Custom skills</strong>: under <strong>Settings → Custom skills</strong> click
+              “Open folder” and drop in a <code>.md</code> file in dsh SKILL.md format (frontmatter
+              <code>name</code> / <code>description</code> + Markdown body; kebab-case filename such as
+              <code>my-skill.md</code>). It takes effect on the next conversation. “Create sample template”
+              gives you a ready-to-use reference.</li>
+            <li><strong>How skills work</strong>: the skill catalog is injected into the conversation context as
+              <code>&lt;available_skills&gt;</code>; when the agent judges a task matches, it loads the skill
+              file on demand as instructions — the skill defines the process and conventions (how to do it),
+              while MCP tools do the actual work (generate images, run workflows).</li>
+            <li>Node-graph nodes use the same skill system to define their behavior; API run logs annotate the
+              skill used by each node.</li>
+          </ul>
+          <div class="tip">
+            <strong>Skills vs tools:</strong> skills are the “job manual”, tools are the “hands”. Say “use the
+            storyboard skill to split this script into a 9-grid storyboard table” — the skill provides the
+            professional workflow (beat → framing → motion → prompt) and tools execute the generation.
           </div>
         </section>
 
