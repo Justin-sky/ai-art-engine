@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [5.0.6] — 2026-08-31
+
+5.0.6 修复版：恢复安装包内置 dsh 运行体——electron-builder 26 的 copyDir 过滤会丢弃「复制源根目录下的 node_modules」，导致 5.0.4 / 5.0.5 安装包 `resources/dsh` 只残留 package.json，用户首启被迫走 npx 联网下载（1–2 分钟）。本版修复后安装包重新自带约 200MB dsh 运行体，开箱即用。
+
+### Fixed
+
+- **dsh 内置运行体重新进包**：`extraResources` 复制源由 `out/dsh-bundle` 改为其下的 `node_modules`（复制源根即目录本身，绕过 electron-builder 26 的过滤缺陷），安装包恢复完整 dsh 运行体
+- 5.0.4 / 5.0.5 已安装用户可通过自动更新升级到 5.0.6 修复；已装 5.0.5 的升级请求会被 `latest.yml` 正常接收
+
 ## [5.0.5] — 2026-08-31
 
 5.0.5 新版本：**dsh 运行时离线打包**——DeepSeek Harness 运行体与 Node 运行时随安装包内置，执行复用 Electron 内置 Node（`ELECTRON_RUN_AS_NODE`），用户无需安装系统 Node 22.19+，也不依赖 npx 联网拉包，开箱即用。
