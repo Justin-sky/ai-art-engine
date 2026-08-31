@@ -25,6 +25,10 @@ export type ScriptTimelineSource = {
   mediaKind?: ScriptTimelineSourceMediaKind
   /** 仅 imported：所属分组；空/缺省=未分组 */
   groupId?: string | null
+  /** 仅 input：来源图节点 id（时间线上「重拍此镜头」定位用） */
+  nodeId?: string
+  /** 仅 input：来源图节点标题（展示/定位提示用） */
+  nodeTitle?: string
 }
 
 export type ScriptTimelineClip = {
@@ -34,6 +38,10 @@ export type ScriptTimelineClip = {
   title: string
   relativePath?: string
   assetId?: string
+  /** 来源图节点 id（回到对应节点图分支 / 时间线重拍） */
+  sourceNodeId?: string
+  /** 来源图节点标题（展示用） */
+  sourceNodeTitle?: string
   /** 字幕轨正文；无媒体时仅烧录/叠加此文本 */
   text?: string
   /** 轨道上的起始时间（秒） */
@@ -353,6 +361,14 @@ export function normalizeScriptTimelineSource(
   }
   if (typeof raw.durationSec === 'number' && Number.isFinite(raw.durationSec) && raw.durationSec > 0) {
     next.durationSec = raw.durationSec
+  }
+  if (origin === 'input') {
+    if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) {
+      next.nodeId = raw.nodeId.trim()
+    }
+    if (typeof raw.nodeTitle === 'string' && raw.nodeTitle.trim()) {
+      next.nodeTitle = raw.nodeTitle.trim()
+    }
   }
   if (origin === 'imported') {
     if (typeof raw.groupId === 'string' && raw.groupId.trim()) {

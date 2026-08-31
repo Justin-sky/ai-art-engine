@@ -494,6 +494,26 @@
             >
           </label>
           <template v-if="selectedClip.track === 'video'">
+            <template v-if="selectedClip.sourceNodeId">
+              <div class="inspector-section-title">
+                {{ t('script.timeline.sourceNode') }}
+              </div>
+              <div class="inspector-source-node">
+                <span
+                  class="source-node-title"
+                  :title="selectedClip.sourceNodeTitle || selectedClip.sourceNodeId"
+                >{{
+                  selectedClip.sourceNodeTitle || selectedClip.sourceNodeId
+                }}</span>
+                <button
+                  type="button"
+                  class="ghost-btn inspector-locate-btn"
+                  @click="locateClipSourceNode(selectedClip)"
+                >
+                  {{ t('script.timeline.locateNode') }}
+                </button>
+              </div>
+            </template>
             <div class="inspector-section-title">
               {{ t('script.timeline.transition') }}
             </div>
@@ -1150,6 +1170,14 @@
                    class="clip-title"
                    :class="{ 'on-media': clipHasVisual(clip) }"
                  >{{ clipDisplayTitle(clip) }}</span>
+                 <button
+                   v-if="clip.sourceNodeId"
+                   type="button"
+                   class="clip-source-locate"
+                   :title="t('script.timeline.locateNodeHint')"
+                   @pointerdown.stop
+                   @click.stop="locateClipSourceNode(clip)"
+                 >⧉</button>
                  <span
                    class="clip-handle right"
                    @pointerdown.stop="onClipResizeStart($event, clip, 'right')"
@@ -3000,6 +3028,8 @@ async function addSourceToTrack(
     title: source.title,
     relativePath: source.relativePath,
     assetId: source.assetId,
+    ...(source.nodeId?.trim() ? { sourceNodeId: source.nodeId.trim() } : {}),
+    ...(source.nodeTitle?.trim() ? { sourceNodeTitle: source.nodeTitle.trim() } : {}),
     startSec:
       startSec == null
         ? nextStartOnTrack(track)
@@ -3026,6 +3056,13 @@ async function addSourceToTrack(
     playheadSec.value = clip.startSec
     void syncPreviewToPlayhead()
   }
+}
+
+/** 定位到片段的来源图节点（回到对应节点图分支，可继续重拍/改参数） */
+function locateClipSourceNode(clip: ScriptTimelineClip | null | undefined): void {
+  const nodeId = clip?.sourceNodeId?.trim()
+  if (!nodeId) return
+  workspace.selectGraphNode(nodeId, `asset:${props.scriptAssetId}`)
 }
 
 function addBlankSubtitle(): void {
@@ -5284,6 +5321,23 @@ defineExpose({ flushSave: persist, reloadSources })
   line-height: 1.45;
 }
 
+.inspector-source-node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+.source-node-title {
+  font-size: 11px;
+  color: var(--text-primary, #e6e6e6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-locate-btn {
+  align-self: flex-start;
+}
+
 .inspector-field input[type='number'],
 .inspector-field input[type='range'],
 .inspector-field textarea {
@@ -6515,6 +6569,25 @@ defineExpose({ flushSave: persist, reloadSources })
   font-size: 14px;
   line-height: 1;
   z-index: 3;
+}
+
+.clip-source-locate {
+  position: absolute;
+  top: 2px;
+  right: 20px;
+  opacity: 0.75;
+  font-size: 11px;
+  line-height: 1;
+  z-index: 3;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+.clip-source-locate:hover {
+  opacity: 1;
+  background: rgba(64, 128, 255, 0.45);
 }
 
 .clip-handle {
