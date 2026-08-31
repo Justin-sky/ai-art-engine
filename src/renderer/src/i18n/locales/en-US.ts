@@ -542,6 +542,7 @@ export default {
       toolRunning: 'Running',
       toolDone: 'Done',
       toolFailed: 'Failed',
+      taskList: 'Tasks',
       model: 'Model',
       noModel: 'No text model configured',
       thinking: 'Thinking',

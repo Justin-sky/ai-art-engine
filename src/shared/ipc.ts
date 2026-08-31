@@ -501,7 +501,14 @@ export interface DshSkillsTemplateResult {
 export type HarnessEvent =
   | { type: 'assistant'; text: string }
   | { type: 'status'; text: string }
-  | { type: 'tool'; name: string; state: 'start' | 'done' | 'error'; detail?: string }
+  | {
+      type: 'tool'
+      /** 工具调用实例 ID（dsh 的 callId）：同一工具多次调用可区分；旧数据可能缺失 */
+      id?: string
+      name: string
+      state: 'start' | 'done' | 'error'
+      detail?: string
+    }
   | { type: 'reasoning'; text: string }
   | { type: 'final'; text: string }
   | { type: 'done'; runId: string }

@@ -541,6 +541,7 @@ export default {
       toolRunning: '执行中',
       toolDone: '完成',
       toolFailed: '失败',
+      taskList: '任务清单',
       model: '模型',
       noModel: '未配置文本模型',
       thinking: '思考过程',

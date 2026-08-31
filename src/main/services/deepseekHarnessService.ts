@@ -619,7 +619,7 @@ async function run(ctx, task, io) {
         if (typeof callId === 'string' && !pendingTools.has(callId)) {
           const name = event.data?.name || 'tool'
           pendingTools.set(callId, name)
-          io.stdout.write(TOOL_BEGIN + JSON.stringify({ name, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
+          io.stdout.write(TOOL_BEGIN + JSON.stringify({ name, callId, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
         }
         continue
       }
@@ -628,7 +628,7 @@ async function run(ctx, task, io) {
         if (typeof callId === 'string') {
           const name = pendingTools.get(callId) || 'tool'
           pendingTools.delete(callId)
-          io.stdout.write(TOOL_END + JSON.stringify({ name }) + '\n')
+          io.stdout.write(TOOL_END + JSON.stringify({ name, callId }) + '\n')
         }
         continue
       }
@@ -794,14 +794,17 @@ function launchDsh(opts: {
     const payload = line.slice(marker.length).trim()
     let name = 'tool'
     let detail: string | undefined
+    let id: string | undefined
     try {
       const parsed = JSON.parse(payload)
       if (typeof parsed.name === 'string' && parsed.name) name = parsed.name
       if (typeof parsed.detail === 'string' && parsed.detail) detail = parsed.detail
+      // callId 作为任务实例 ID 透传给渲染层，使同一工具多次调用可以区分并各自更新状态
+      if (typeof parsed.callId === 'string' && parsed.callId) id = parsed.callId
     } catch {
       // 载荷非 JSON 时退回通用工具名（不阻塞对话）
     }
-    emit({ type: 'tool', name, state, ...(detail ? { detail } : {}) })
+    emit({ type: 'tool', ...(id ? { id } : {}), name, state, ...(detail ? { detail } : {}) })
     sawOutput = true
   }
 

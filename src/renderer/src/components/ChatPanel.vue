@@ -221,6 +221,22 @@ const status = ref<HarnessStatus | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
 /**
+ * 任务清单：内嵌在消息流中，跟随各自任务的 user 消息展示（agent 风格 todo 卡）。
+ * 返回第 userIndex 条 user 消息之后、下一条 user 消息之前的工具/生成活动卡；
+ * 任务执行中状态实时更新，不持久化。
+ */
+function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
+  const list = messages.value
+  const out: Array<ChatMsg & { kind: 'tool' }> = []
+  for (let i = userIndex + 1; i < list.length; i++) {
+    const m = list[i]
+    if (m.kind === 'user') break
+    if (m.kind === 'tool') out.push(m)
+  }
+  return out
+}
+
+/**
  * 输入区覆盖层 HTML：转义后的指令文本，其中内联 `@路径` 渲染为行内图片/图标预览。
  * 引用 token 文本保留（透明）占位，保证与 textarea 的换行逐字对齐；
  * 预览图绝对定位、宽度不参与布局，因此不改变换行。
@@ -456,9 +472,9 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushStatus(event.text)
       break
     case 'tool': {
-      // dsh-agent 等 harness 工具卡：同一会话内按 key 去重，
+      // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
-      const key = `tool:${event.name}`
+      const key = `tool:${event.id ?? event.name}`
       const prev = findToolByKey(key)
       if (prev) {
         prev.state = event.state
@@ -468,6 +484,7 @@ function onHarnessEvent(event: HarnessEvent): void {
           kind: 'tool',
           key,
           name: event.name,
+          ...(event.id ? { id: event.id } : {}),
           state: event.state,
           detail: event.detail
         })
@@ -628,22 +645,47 @@ onBeforeUnmount(() => {
         v-for="(msg, i) in messages"
         :key="i"
       >
-        <div
-          v-if="msg.kind === 'user'"
-          class="msg-row user"
-        >
-          <div class="bubble user">
-            <span v-html="renderInlineRefs(msg.text)" />
-            <button
-              class="copy-btn"
-              :class="{ copied: copiedIndex === i }"
-              :title="t('studio.chat.copyTitle')"
-              @click.stop="copyMessage(i, msg.text)"
-            >
-              {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
-            </button>
+        <template v-if="msg.kind === 'user'">
+          <div class="msg-row user">
+            <div class="bubble user">
+              <span v-html="renderInlineRefs(msg.text)" />
+              <button
+                class="copy-btn"
+                :class="{ copied: copiedIndex === i }"
+                :title="t('studio.chat.copyTitle')"
+                @click.stop="copyMessage(i, msg.text)"
+              >
+                {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
+              </button>
+            </div>
           </div>
-        </div>
+          <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），状态实时更新 -->
+          <div
+            v-if="taskToolsAt(i).length"
+            class="task-list-card"
+          >
+            <div class="task-list-title">{{ t('studio.chat.taskList') }}</div>
+            <ul class="task-list">
+              <li
+                v-for="tm in taskToolsAt(i)"
+                :key="tm.key"
+                class="task-item"
+                :class="tm.state"
+                :title="tm.detail"
+              >
+                <span class="task-dot" />
+                <span class="task-name">{{ tm.name }}</span>
+                <span class="task-state">
+                  {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
+                </span>
+                <ChatAssetPreview
+                  v-if="tm.state === 'done' && tm.relativePath"
+                  :relative-path="tm.relativePath"
+                />
+              </li>
+            </ul>
+          </div>
+        </template>
         <div
           v-else-if="msg.kind === 'assistant'"
           class="msg-row assistant"
@@ -680,36 +722,6 @@ onBeforeUnmount(() => {
           >
             {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
           </button>
-        </div>
-        <div
-          v-else
-          class="msg-tool"
-          :class="msg.state"
-        >
-          <div class="msg-tool-head">
-            <span class="tool-icon" />
-            <span class="tool-name">{{ msg.name }}</span>
-            <span class="tool-state">
-              {{ msg.state === 'start' ? t('studio.chat.toolRunning') : msg.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
-            </span>
-            <span
-              v-if="msg.detail"
-              class="tool-detail"
-              :title="msg.detail"
-            >{{ msg.detail }}</span>
-            <button
-              class="copy-btn"
-              :class="{ copied: copiedIndex === i }"
-              :title="t('studio.chat.copyTitle')"
-              @click.stop="copyMessage(i, msg.detail || msg.name)"
-            >
-              {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
-            </button>
-          </div>
-          <ChatAssetPreview
-            v-if="msg.state === 'done' && msg.relativePath"
-            :relative-path="msg.relativePath"
-          />
         </div>
       </template>
       <div
@@ -918,6 +930,91 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
+/* 任务清单：内嵌在消息流中跟随任务消息展示（agent 风格 todo 卡），状态实时更新 */
+.task-list-card {
+  margin: 2px 0 0;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.task-list-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.task-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.task-item.start .task-dot {
+  background: var(--accent);
+  animation: task-pulse 1.2s ease-in-out infinite;
+}
+
+.task-item.done .task-dot {
+  background: var(--success);
+}
+
+.task-item.error .task-dot {
+  background: var(--danger);
+}
+
+@keyframes task-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.task-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-state {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* 任务清单内的资产预览更紧凑 */
+.task-list .chat-asset-preview .chat-asset-media {
+  max-height: 180px;
+}
+
 .chat-messages {
   flex: 1;
   min-height: 0;
@@ -1102,68 +1199,6 @@ onBeforeUnmount(() => {
     opacity: 1;
     transform: translateY(-3px);
   }
-}
-
-.msg-tool {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  padding: 5px 8px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-
-/* 状态行：icon + 名称 + 状态 + 详情；右侧预留复制按钮位置 */
-.msg-tool .msg-tool-head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding-right: 28px;
-}
-
-.msg-tool:hover .copy-btn {
-  opacity: 1;
-}
-
-.msg-tool .tool-icon {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--accent);
-}
-
-.msg-tool.done .tool-icon {
-  background: var(--success);
-}
-
-.msg-tool.error .tool-icon {
-  background: var(--danger);
-}
-
-.msg-tool .tool-name {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.msg-tool .tool-state {
-  flex: none;
-}
-
-.msg-tool .tool-detail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-input {
