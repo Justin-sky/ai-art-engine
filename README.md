@@ -167,7 +167,7 @@ npm install
 npm run dev
 ```
 
-需要 **Node.js 22+**。Electron 下载失败时可：
+开发构建需要 **Node.js 22+**（运行时已内置 Node，用户无需安装）。Electron 下载失败时可：
 
 ```bash
 set ELECTRON_MIRROR=https://cdn.npmmirror.com/binaries/electron/

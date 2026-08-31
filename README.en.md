@@ -140,7 +140,7 @@ npm install
 npm run dev
 ```
 
-Requires **Node.js 22+**.
+Building from source requires **Node.js 22+** (the app bundles its own Node runtime — end users don't need to install Node).
 
 ```bash
 npm run typecheck && npm test
