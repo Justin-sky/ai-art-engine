@@ -207,6 +207,9 @@ const api: StudioApi = {
   runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
   deleteHarnessSession: (sessionId) => ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SESSION, sessionId),
   abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),
+  getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
+  openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),
+  writeDshSkillsTemplate: () => ipcRenderer.invoke(IpcChannels.SKILLS_WRITE_TEMPLATE),
   onHarnessEvent: (callback) => {
     const listener = (
       _event: unknown,

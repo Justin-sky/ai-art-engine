@@ -1,12 +1,15 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   IpcChannels,
+  type DshSkillsFile,
+  type DshSkillsInfo,
+  type DshSkillsTemplateResult,
   type HarnessEvent,
   type HarnessRunInput,
   type HarnessRunResult,
@@ -341,21 +344,7 @@ function writeDshSkills(): void {
     const skillsDir = join(home, 'skills')
     mkdirSync(skillsDir, { recursive: true })
     const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
-    // manifest 旧格式是 string[]，新格式为 { files, signature }，兼容两者
-    let previous: string[] = []
-    let lastSignature = ''
-    try {
-      const raw = JSON.parse(readFileSync(manifestPath, 'utf8') || '[]') as
-        | string[]
-        | { files?: unknown; signature?: unknown }
-      if (Array.isArray(raw)) previous = raw
-      else {
-        previous = Array.isArray(raw.files) ? (raw.files as string[]) : []
-        lastSignature = typeof raw.signature === 'string' ? raw.signature : ''
-      }
-    } catch {
-      previous = []
-    }
+    const { previous, signature: lastSignature } = readDshSkillsManifest()
     const signature = dshSkillsSignature()
     // 技能没变且上次生成的文件都还在 → 跳过写盘，复用现有快照
     if (
@@ -391,6 +380,97 @@ function dshSkillsSignature(): string {
     hash.update(`${skill.id}\u0000${renderDshSkillMd(skill)}\u0000`)
   }
   return hash.digest('hex')
+}
+
+/** 读 dsh 技能 manifest（旧格式 string[] / 新格式 { files, signature } 均兼容） */
+function readDshSkillsManifest(): { previous: string[]; signature: string } {
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(dshHome(), 'skills', DSH_SKILLS_MANIFEST), 'utf8') || '[]'
+    ) as string[] | { files?: unknown; signature?: unknown }
+    if (Array.isArray(raw)) return { previous: raw, signature: '' }
+    return {
+      previous: Array.isArray(raw.files) ? (raw.files as string[]) : [],
+      signature: typeof raw.signature === 'string' ? raw.signature : ''
+    }
+  } catch {
+    return { previous: [], signature: '' }
+  }
+}
+
+/** dsh 示例技能模板文件名：不带 .md 后缀，避免被 dsh 的 skill-filesystem 扫描成真技能 */
+const DSH_SKILLS_TEMPLATE_FILE = 'my-skill.example'
+
+/** 查询 dsh 技能目录信息（渲染层设置页展示用） */
+export function getDshSkillsInfo(): DshSkillsInfo {
+  const skillsDir = join(dshHome(), 'skills')
+  const files: DshSkillsFile[] = []
+  if (existsSync(skillsDir)) {
+    const builtin = new Set(readDshSkillsManifest().previous)
+    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || entry.name === DSH_SKILLS_MANIFEST) continue
+      files.push({
+        fileName: entry.name,
+        kind: builtin.has(entry.name)
+          ? 'builtin'
+          : entry.name.endsWith('.md')
+            ? 'custom'
+            : 'template'
+      })
+    }
+  }
+  files.sort((a, b) => a.fileName.localeCompare(b.fileName))
+  return {
+    dirPath: skillsDir,
+    builtinCount: listGraphSkills().filter((skill) => !!toDshSkillName(skill.id)).length,
+    files
+  }
+}
+
+/** 在系统文件管理器中打开 dsh 技能目录（不存在则先创建） */
+export async function openDshSkillsDir(): Promise<void> {
+  const skillsDir = join(dshHome(), 'skills')
+  mkdirSync(skillsDir, { recursive: true })
+  const error = await shell.openPath(skillsDir)
+  if (error) throw new Error(error)
+}
+
+/** 写入一个示例 SKILL.md 模板；同名文件已存在时跳过（不覆盖用户可能改动过的内容） */
+export function writeDshSkillsTemplate(): DshSkillsTemplateResult {
+  const skillsDir = join(dshHome(), 'skills')
+  mkdirSync(skillsDir, { recursive: true })
+  const filePath = join(skillsDir, DSH_SKILLS_TEMPLATE_FILE)
+  if (existsSync(filePath)) return { filePath, skipped: true }
+  writeFileSync(filePath, renderDshSkillsTemplate(), 'utf8')
+  return { filePath, skipped: false }
+}
+
+/** 示例 SKILL.md 模板：dsh 格式（frontmatter name/description + 正文），复制重命名为 .md 即生效 */
+function renderDshSkillsTemplate(): string {
+  return [
+    '---',
+    'name: my-skill',
+    'description: 示例技能：演示 dsh 技能的写法。请根据实际用途改写技能名与描述。',
+    '---',
+    '',
+    '# 技能正文',
+    '',
+    '在这里编写技能的执行说明。模型调用本技能时，本文件会作为指令注入上下文。',
+    '',
+    '## 步骤',
+    '1. 明确技能目标',
+    '2. 列出执行步骤',
+    '3. 说明输出要求',
+    '',
+    '## 注意事项',
+    '- 描述要具体，避免模糊指令',
+    '- 需要遵守的约束写在这里',
+    '',
+    '---',
+    '提示：把本文件复制并重命名为「你的技能名.md」（小写字母 + 连字符）即生效；',
+    'frontmatter 的 name / description（文件开头两行）用于模型判断何时调用本技能。',
+    ''
+  ].join('\n')
 }
 
 /** 思考过程在 dsh stdout 中的包裹标记：自定义 runner 输出，主进程据此切分事件 */

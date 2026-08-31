@@ -189,6 +189,7 @@ export default {
       models: 'Models',
       objectStorage: 'Object storage',
       mcp: 'MCP',
+      skills: 'Custom skills',
       plugins: 'Extensions'
     },
     theme: 'Theme',
@@ -243,6 +244,21 @@ export default {
       command: 'Claude Code command',
       hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.'
     },
+    skills: {
+      hint: 'The AI chat agent discovers skills through dsh\'s skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don\'t edit them.',
+      dirPath: 'Skills directory',
+      builtinCount: '{count} built-in skills (managed automatically)',
+      kind: {
+        builtin: 'Built-in',
+        custom: 'Custom',
+        template: 'Template'
+      },
+      openDir: 'Open folder',
+      writeTemplate: 'Create sample template',
+      templateWritten: 'Sample template created: {file}',
+      templateSkipped: 'Sample template already exists (not overwritten): {file}',
+      empty: 'The folder is empty. Click "Create sample template" to get a ready-to-use template.'
+    },
     models: {
       addProvider: 'Add model provider',
       add: 'Add',
@@ -275,11 +291,16 @@ export default {
         lmstudio: 'Local server, no API key needed; LM Studio site:',
         'volcengine-ark': 'Get Ark API key (text / image / video):',
         kling: 'Get API key:',
+        meshy: 'Get Meshy API key:',
         minimax: 'Get API key:',
         dashscope: 'Get Bailian API key:',
         modelscope: 'Get access token:',
         comfyui: 'Local can omit the key; cloud API key:',
-        magicrouter: 'Get MagicRouter API key (starts with mr-):'
+        magicrouter: 'Get MagicRouter API key (starts with mr-):',
+        tripo: 'Get Tripo API key:',
+        hyper3d: 'Get Rodin (Hyper3D) API key:',
+        luma: 'Get Luma AI API key:',
+        lux3d: 'Get Lux3D API key:'
       },
       arkVoiceCredentialsHint:
         'Voice design uses Doubao openspeech — use the speech console API key (may differ from Ark) and enter a purchased speaker_id:',

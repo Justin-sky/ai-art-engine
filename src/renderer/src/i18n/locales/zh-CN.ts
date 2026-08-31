@@ -188,6 +188,7 @@ export default {
       models: '模型',
       objectStorage: '对象存储',
       mcp: 'MCP',
+      skills: '自定义技能',
       plugins: '扩展'
     },
     theme: '主题',
@@ -242,6 +243,21 @@ export default {
       command: 'Claude Code 接入命令',
       hint: 'Token 跨重启复用（可在上方重置）。Token 相当于本机 MCP 服务的全部权限，请勿泄露。'
     },
+    skills: {
+      hint: 'AI 对话的 agent 通过 dsh 技能机制感知技能：把符合 dsh SKILL.md 格式（frontmatter name / description + 正文）的 .md 文件放进下方目录，下次对话自动生效。应用内置技能由程序自动管理，请勿手动修改。',
+      dirPath: '技能目录',
+      builtinCount: '内置技能 {count} 个（程序自动管理）',
+      kind: {
+        builtin: '内置',
+        custom: '自定义',
+        template: '模板'
+      },
+      openDir: '打开目录',
+      writeTemplate: '生成示例模板',
+      templateWritten: '示例模板已生成：{file}',
+      templateSkipped: '示例模板已存在（未覆盖）：{file}',
+      empty: '目录为空。点击「生成示例模板」创建一份可用的模板。'
+    },
     models: {
       addProvider: '添加模型提供商',
       add: '添加',
@@ -274,11 +290,16 @@ export default {
         lmstudio: '本地服务无需 API Key；LM Studio 官网：',
         'volcengine-ark': '获取方舟 API Key（文本 / 图片 / 视频）：',
         kling: '获取 API Key：',
+        meshy: '获取 Meshy API Key：',
         minimax: '获取 API Key：',
         dashscope: '获取百炼 API Key：',
         modelscope: '获取访问令牌：',
         comfyui: '本机可空 Key；云端 API Key：',
-        magicrouter: '获取 MagicRouter API Key（mr- 开头）：'
+        magicrouter: '获取 MagicRouter API Key（mr- 开头）：',
+        tripo: '获取 Tripo API Key：',
+        hyper3d: '获取 Rodin（Hyper3D）API Key：',
+        luma: '获取 Luma AI API Key：',
+        lux3d: '获取 Lux3D API Key：'
       },
       arkVoiceCredentialsHint:
         '声音设计走豆包语音 openspeech，请填语音控制台 API Key（可与方舟 Key 不同），并手填已购 speaker_id：',
