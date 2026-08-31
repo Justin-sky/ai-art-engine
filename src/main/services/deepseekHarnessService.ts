@@ -367,6 +367,9 @@ function writeDshSkills(): void {
 /** 思考过程在 dsh stdout 中的包裹标记：自定义 runner 输出，主进程据此切分事件 */
 const REASONING_BEGIN = '===BEGIN_REASONING==='
 const REASONING_END = '===END_REASONING==='
+/** 工具调用标记：runner 在 skill/MCP 工具开始与结束时各输出一行（JSON 载荷） */
+const TOOL_BEGIN = '===BEGIN_TOOL==='
+const TOOL_END = '===END_TOOL==='
 
 /**
  * 自定义 headless runner 模板（ESM）。dsh 自带的 headless-runner 只打印最终
@@ -399,6 +402,22 @@ const Config = z.object({ task: z.string().required() })
 
 const REASONING_BEGIN = '===BEGIN_REASONING==='
 const REASONING_END = '===END_REASONING==='
+const TOOL_BEGIN = '===BEGIN_TOOL==='
+const TOOL_END = '===END_TOOL==='
+
+/** 从模型产出的原始参数 JSON 里提取一行可读摘要（取首个字符串字段值，失败则截断原文） */
+function summarizeToolArgs(raw) {
+  if (typeof raw !== 'string' || raw === '') return ''
+  try {
+    const parsed = JSON.parse(raw)
+    for (const value of Object.values(parsed)) {
+      if (typeof value === 'string' && value !== '') return value
+    }
+    return JSON.stringify(parsed)
+  } catch {
+    return raw.length > 40 ? raw.slice(0, 40) + '…' : raw
+  }
+}
 
 function summarize(events, firstSeq) {
   let started = false
@@ -477,13 +496,33 @@ async function run(ctx, task, io) {
 
   // 流式驱动：轮询事件日志，把 text-delta / reasoning-delta 实时写 stdout，
   // 思考内容包在 REASONING_BEGIN/END 标记之间（marker 独占一行，正文不换行）。
+  // 工具调用（skill / MCP 等）包在 TOOL_BEGIN/END 标记之间，每行一个 JSON 描述。
   let lastSeq = firstSeq
   let inReasoning = false
   let streamedText = false
+  const pendingTools = new Map() // callId -> name
   const flushEvents = () => {
     const events = agent.session.events
     for (; lastSeq < events.length; lastSeq++) {
       const event = events[lastSeq]
+      if (event.type === 'tool/call') {
+        const callId = event.data?.callId
+        if (typeof callId === 'string' && !pendingTools.has(callId)) {
+          const name = event.data?.name || 'tool'
+          pendingTools.set(callId, name)
+          io.stdout.write(TOOL_BEGIN + JSON.stringify({ name, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
+        }
+        continue
+      }
+      if (event.type === 'tool/result') {
+        const callId = event.data?.message?.source?.callId
+        if (typeof callId === 'string') {
+          const name = pendingTools.get(callId) || 'tool'
+          pendingTools.delete(callId)
+          io.stdout.write(TOOL_END + JSON.stringify({ name }) + '\n')
+        }
+        continue
+      }
       if (event.type !== 'assistant/chunk') continue
       const chunk = event.data?.chunk
       if (!chunk) continue
@@ -627,13 +666,34 @@ function launchDsh(opts: {
   let reasoningBuf = ''
 
   const isMarkerPrefix = (s: string): boolean =>
-    s.length > 0 && (REASONING_BEGIN.startsWith(s) || REASONING_END.startsWith(s))
+    s.length > 0 &&
+    (REASONING_BEGIN.startsWith(s) ||
+      REASONING_END.startsWith(s) ||
+      s.startsWith(TOOL_BEGIN) ||
+      s.startsWith(TOOL_END))
 
   const emitAssistantDelta = (delta: string): void => {
     if (!delta) return
     sawOutput = true
     finalText += delta
     emit({ type: 'assistant', text: delta })
+  }
+
+  /** 解析 runner 输出的工具调用标记行（===BEGIN/END_TOOL=== 前缀 + JSON 载荷） */
+  const emitToolFromLine = (line: string, state: 'start' | 'done'): void => {
+    const marker = state === 'start' ? TOOL_BEGIN : TOOL_END
+    const payload = line.slice(marker.length).trim()
+    let name = 'tool'
+    let detail: string | undefined
+    try {
+      const parsed = JSON.parse(payload)
+      if (typeof parsed.name === 'string' && parsed.name) name = parsed.name
+      if (typeof parsed.detail === 'string' && parsed.detail) detail = parsed.detail
+    } catch {
+      // 载荷非 JSON 时退回通用工具名（不阻塞对话）
+    }
+    emit({ type: 'tool', name, state, ...(detail ? { detail } : {}) })
+    sawOutput = true
   }
 
   const parseStdout = (until: number): void => {
@@ -654,6 +714,10 @@ function launchDsh(opts: {
           } else if (inReasoning) {
             reasoningBuf = reasoningBuf ? reasoningBuf + '\n' + line : line
             emit({ type: 'reasoning', text: reasoningBuf })
+          } else if (line.startsWith(TOOL_BEGIN)) {
+            emitToolFromLine(line, 'start')
+          } else if (line.startsWith(TOOL_END)) {
+            emitToolFromLine(line, 'done')
           } else {
             emitAssistantDelta(line + '\n')
           }
@@ -666,7 +730,7 @@ function launchDsh(opts: {
       const tail = stripAnsi(fullOut.slice(start, until))
       if (tail) {
         if (isMarkerPrefix(tail)) {
-          // 可能是 BEGIN/END 的半截，保留在 fullOut 等待后续数据
+          // 可能是 BEGIN/END/TOOL 的半截，保留在 fullOut 等待后续数据
         } else if (inReasoning) {
           reasoningBuf += tail
           emit({ type: 'reasoning', text: reasoningBuf })
