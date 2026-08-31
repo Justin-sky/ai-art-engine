@@ -22,7 +22,7 @@
     </script>
     <meta
       name="description"
-      content="AIArtEngine 使用手册：工程、设置、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
+      content="AIArtEngine 使用手册：工程、设置、AI 对话与技能、一键工作流、宿主资产、节点图、漫画页与广告变体矩阵、3D 模型生成、任务队列、场与剧集、成片时间线、导演台与快捷键。"
     />
     <title>使用手册 — AIArtEngine</title>
     <link rel="canonical" href="https://justin-sky.github.io/ai-art-engine/manual.html" />
@@ -854,6 +854,31 @@
           <div class="tip">
             <strong>前提：</strong>AI 对话需要本机有 <strong>Node.js 22.19+</strong>（安装包已内置 dsh 运行体，
             开发模式回退 npx 拉包）以及至少一个已启用并填好密钥的文本模型；未打开工程时仅可做纯对话。
+          </div>
+
+          <h3 id="skills">5.6 技能（Skills）</h3>
+          <p>
+            AI 对话的 Agent 携带一套<strong>创作技能</strong>（来自应用内置的分镜 / 导演台能力，对话时自动注入）；
+            你也可以在 <strong>设置 → 自定义技能</strong> 中添加自己的技能，让助手具备专属的工作方法。
+          </p>
+          <ul>
+            <li><strong>内置技能</strong>：分镜 / 动画（9 宫格分镜表、节拍拆解表、动态提示词表、4 宫格动态分镜表等）、
+              导演审核（分镜 / 节拍 / 动态提示词）、系统创作（剧本、图生提示词、图片 / 视频生成、声音、情绪、灯光、
+              多角度、扩图、重绘、抠图、高清放大、界面图、界面拆分、世界提取、节拍拆分、节拍单元生成、策划案、
+              肖像贴图、提示词优化、擦除）。程序自动管理，请勿手动修改。</li>
+            <li><strong>自定义技能</strong>：在 <strong>设置 → 自定义技能</strong> 中「打开目录」，把符合
+              dsh SKILL.md 格式（frontmatter <code>name</code> / <code>description</code> + Markdown 正文）的
+              <code>.md</code> 文件放进技能目录（文件名用小写字母 + 连字符，如 <code>my-skill.md</code>），
+              下次对话自动生效；可点击「生成示例模板」快速获得一份可用的写法参考。</li>
+            <li><strong>技能如何生效</strong>：技能清单以 <code>&lt;available_skills&gt;</code> 注入对话上下文，
+              Agent 判断任务匹配时按需加载技能文件作为指令——技能告诉它流程与规范（怎么做），
+              MCP 工具负责真正动手（生成图片、跑工作流），两者配合才能「说到做到」。</li>
+            <li>节点图节点使用同一套技能定义节点行为；API 调用日志中会标注节点所用的技能。</li>
+          </ul>
+          <div class="tip">
+            <strong>技能 vs 工具：</strong>技能是「职业手册」，工具是「手脚」。例如说
+            「用分镜技能把这段剧本拆成 9 宫格分镜表」——技能提供专业流程（节拍 → 机位 → 动态 → 提示词），
+            生成动作由工具执行。
           </div>
         </section>
 
