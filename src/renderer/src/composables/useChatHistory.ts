@@ -13,11 +13,13 @@ export type ChatMsg =
   | { kind: 'status'; text: string }
   | {
       kind: 'tool'
-      /** 会话内唯一标识：`tool:<name>`（dsh-agent）或 `mcp:<id>`（生成活动），用于原地更新状态 */
+      /** 会话内唯一标识：`tool:<id|name>`（dsh-agent 工具，优先 callId）或 `mcp:<id>`（生成活动），用于原地更新状态 */
       key: string
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string
+      /** 工具调用实例 ID（dsh callId）：同一工具多次调用可区分；旧数据可能缺失 */
+      id?: string
       /** MCP 生成活动关联资产的工程内相对路径：done 后在卡内直接预览（图片/视频/音频/3D） */
       relativePath?: string
     }
