@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
-import type { McpGraphEditResultPayload, McpGraphEditPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
+import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -185,6 +185,15 @@ const api: StudioApi = {
   },
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_GRAPH_EDIT_RESULT, payload),
+  onAskUser: (callback) => {
+    const listener = (_event: unknown, question: AskUserQuestion): void => {
+      callback(question)
+    }
+    ipcRenderer.on(IpcChannels.MCP_ASK_USER, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_ASK_USER, listener)
+  },
+  answerAskUser: (payload: AskUserAnswer) =>
+    ipcRenderer.invoke(IpcChannels.MCP_ASK_USER_RESPONSE, payload),
   getMcpInfo: () => ipcRenderer.invoke(IpcChannels.MCP_GET_INFO),
   restartMcpServer: (input) => ipcRenderer.invoke(IpcChannels.MCP_RESTART, input),
   onMcpActivityUpdated: (callback) => {

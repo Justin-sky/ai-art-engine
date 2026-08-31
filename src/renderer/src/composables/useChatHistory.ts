@@ -23,6 +23,18 @@ export type ChatMsg =
       /** MCP 生成活动关联资产的工程内相对路径：done 后在卡内直接预览（图片/视频/音频/3D） */
       relativePath?: string
     }
+  | {
+      kind: 'prompt'
+      /** ask_user 提问 id（MCP 侧 requestId），回传选择时使用 */
+      requestId: string
+      question: string
+      /** 选项列表（缺省时渲染层提供默认按钮） */
+      options?: string[]
+      /** 附加说明（可选） */
+      hint?: string
+      /** 用户选择结果（null=未答；非 null=已答） */
+      answered?: string | null
+    }
 
 export interface ChatSession {
   id: string
