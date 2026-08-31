@@ -9,6 +9,7 @@
 ### Fixed
 
 - **dsh 内置运行体重新进包**：`extraResources` 复制源由 `out/dsh-bundle` 改为其下的 `node_modules`（复制源根即目录本身，绕过 electron-builder 26 的过滤缺陷），安装包恢复完整 dsh 运行体
+- **dsh 启动不再因 HMR 插件崩溃**：dsh 0.1.1-rc.2 的 headless 启动会无条件创建 `cordis-plugin-hmr`，其要求 loader 能访问 Node 内部模块（`loader.internal`）。内置 Node（Electron 44 / Node 24）下此前未注入 `--expose-internals`，启动即抛 `failed to apply loader entry … (cordis-plugin-hmr): --expose-internals is required for HMR service`。现在以 Node 直启 dsh 时注入该 flag（内置/系统 Node ≥22 均支持），对话恢复正常
 - 5.0.4 / 5.0.5 已安装用户可通过自动更新升级到 5.0.6 修复；已装 5.0.5 的升级请求会被 `latest.yml` 正常接收
 
 ## [5.0.5] — 2026-08-31
