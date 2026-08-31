@@ -330,6 +330,8 @@ const overlayRef = ref<HTMLElement | null>(null)
 const composing = ref(false)
 const running = ref(false)
 const status = ref<HarnessStatus | null>(null)
+/** 首次启动解压内置 dsh 运行体的进度（0~1）；非解压中为 null */
+const unpackProgress = ref<number | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
 /**
@@ -763,6 +765,14 @@ function onHarnessEvent(event: HarnessEvent): void {
       pushStatus(event.message)
       running.value = false
       break
+    case 'unpack':
+      unpackProgress.value = event.total > 0 ? event.count / event.total : 1
+      // 解压完成：重新拉取状态（dshReady / message 随之刷新），并清除进度条
+      if (event.count >= event.total) {
+        unpackProgress.value = null
+        void refreshStatus()
+      }
+      break
   }
 }
 
@@ -912,6 +922,19 @@ onBeforeUnmount(() => {
     >
       <span class="dot" />
       <span class="status-text">{{ statusText }}</span>
+      <span
+        v-if="unpackProgress !== null"
+        class="chat-unpack"
+        :title="t('studio.chat.unpackHint')"
+      >
+        <span class="chat-unpack-bar">
+          <span
+            class="chat-unpack-fill"
+            :style="{ width: Math.round((unpackProgress ?? 0) * 100) + '%' }"
+          />
+        </span>
+        <span class="chat-unpack-pct">{{ Math.round((unpackProgress ?? 0) * 100) }}%</span>
+      </span>
       <span
         v-if="workspace"
         class="chat-workspace"
@@ -1571,6 +1594,34 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-status .chat-unpack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.chat-status .chat-unpack-bar {
+  width: 88px;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.chat-status .chat-unpack-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.chat-status .chat-unpack-pct {
+  min-width: 30px;
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-status .chat-workspace {

@@ -628,10 +628,10 @@ import {
   type GraphNodeRunState,
   type GraphNodeRunStatus,
   type ImageGenerateParams,
-  type InstructionPresetKind,
   type VideoGenerateParams,
   type VideoGeneratePortLimits
 } from '@shared/graph'
+import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useGraphScope } from '../composables/useGraphScope'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'

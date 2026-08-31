@@ -584,6 +584,17 @@ export type HarnessEvent =
   | { type: 'error'; message: string }
   | {
       /**
+       * 首次启动解压内置 dsh 运行体的进度（安装包只带 zip，首次使用前解压到用户数据目录）。
+       * 渲染层收到 progress = 1 时应重新拉取 harness 状态（getHarnessStatus）。
+       */
+      type: 'unpack'
+      /** 已解压文件数 */
+      count: number
+      /** 总文件数 */
+      total: number
+    }
+  | {
+      /**
        * Harness provider 报告的最新一次 LLM 请求的真实输入上下文 token。
        * 多轮会话下是最近一次请求的完整输入（含缓存命中/写入）；无该事件时渲染层回退本地估算。
        */

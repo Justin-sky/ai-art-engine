@@ -22,15 +22,12 @@ extraResources:
     to: icon.png
   - from: scripts/mcp-bridge.mjs
     to: mcp-bridge.mjs
-  # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 生成，
-  # 运行时由 deepseekHarnessService 用系统 Node 拉起，故放 asar 外、不进 asar。
-  # 注意：electron-builder 26 起 copyDir 的 filter 会硬编码丢弃「源根目录下的 node_modules」
-  # （app-builder-lib/out/util/filter.js: relative === 'node_modules' → false），
-  # 若 from 指向 out/dsh-bundle，其下的 node_modules（约 200MB）会被整个跳过、
-  # 只残留根 package.json，导致用户端 dshEntry 解析失败、被迫走 npx 联网下载。
-  # 因此 from 直接指向 node_modules 目录，拷贝时源根即目录本身，可绕过该过滤。
-  - from: out/dsh-bundle/node_modules
-    to: dsh/node_modules
+  # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 压缩为单个
+  # out/dsh-bundle.zip，安装包只带这一文件——NSIS 安装无需逐个写一万三千个文件，
+  # 安装秒级完成；首次启动由 deepseekHarnessService.ensureDshUnpacked 解压到
+  # 用户数据目录（userData/dsh-runtime），再由系统 Node 拉起，故放 asar 外、不进 asar。
+  - from: out/dsh-bundle.zip
+    to: dsh/dsh-bundle.zip
 win:
   target:
     - nsis
