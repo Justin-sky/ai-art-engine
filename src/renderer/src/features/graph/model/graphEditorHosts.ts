@@ -6,6 +6,7 @@ import {
   type GraphGroup,
   type GraphNode,
   type GraphNodeParams,
+  type GraphNodeTypeId,
   type GraphDocument
 } from '@shared/graph'
 
@@ -23,6 +24,17 @@ export interface BuildIncomingEdgeRefsOptions {
   excludeFramePorts?: boolean
 }
 
+/** 通过宿主图编辑器新建节点的请求 */
+export interface GraphEditorAddNodeInput {
+  typeId: GraphNodeTypeId
+  title?: string
+  params?: Partial<GraphNodeParams>
+  /** 世界坐标；省略时放在第一个上游节点右侧，无上游则落在视口中心 */
+  position?: { x: number; y: number }
+  /** 上游连线：从这些节点的输出口连到新节点的第一个兼容输入口 */
+  linkFrom?: { nodeId: string; portId?: string }[]
+}
+
 export interface GraphEditorHostApi {
   getNode: (nodeId: string) => GraphNode | null
   findNode?: (predicate: (node: GraphNode) => boolean) => GraphNode | null
@@ -35,6 +47,11 @@ export interface GraphEditorHostApi {
   /** 按 orderedEdgeIds 重排指向 nodeId 的入边（影响 @n 编号顺序） */
   reorderIncomingEdges?: (nodeId: string, orderedEdgeIds: string[]) => void
   updateNode: (nodeId: string, params: Partial<GraphNodeParams>, title?: string) => void
+  /**
+   * 在图上新建节点并接好上游连线，记入撤销栈。
+   * 返回新节点 id；节点类型未注册或宿主不支持时返回 null。
+   */
+  addNode?: (input: GraphEditorAddNodeInput) => string | null
   updateGroup?: (groupId: string, patch: { title?: string }) => void
   setNodeAsset: (
     nodeId: string,
@@ -254,6 +271,17 @@ class GraphEditorHostRegistry {
     host.updateNode(nodeId, params, title)
     // 参数变更（含本地风格图）需通知 Inspector / 指令编辑器重新解析
     this.bumpRevision()
+  }
+
+  /** 在图上新建节点并接好上游连线，记入撤销栈；返回新节点 id，失败返回 null */
+  addNode(
+    hostId: string | null | undefined,
+    input: GraphEditorAddNodeInput
+  ): string | null {
+    if (!hostId) return null
+    const nodeId = this.hosts.get(hostId)?.addNode?.(input) ?? null
+    if (nodeId) this.bumpRevision()
+    return nodeId
   }
 
   setNodeAsset(

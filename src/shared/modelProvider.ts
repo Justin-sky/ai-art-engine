@@ -910,6 +910,38 @@ export interface GenerateSpeechResult {
   relativePath?: string
 }
 
+/** 音频转写（语音识别）输入：工程内音频文件 + 可选模型/提供商 */
+export interface TranscribeAudioInput {
+  /** 工程内相对路径（主进程按工程根解析为绝对路径） */
+  relativePath?: string
+  /** 绝对路径（调试/外部文件；优先于 relativePath） */
+  absPath?: string
+  /** 转写模型 id；缺省由适配器决定（OpenAI 为 whisper-1） */
+  model?: string
+  /** 提供商实例 id；缺省自动选首个支持转写的已配置提供商 */
+  providerInstanceId?: string
+  /** 音频语言代码（如 zh / en），帮助识别准确率 */
+  language?: string
+  /** 提示词：用于纠正识别（可选，OpenAI whisper 支持） */
+  prompt?: string
+}
+
+/** 一条带时间戳的转写片段 */
+export interface TranscribeAudioSegment {
+  startSec: number
+  endSec: number
+  text: string
+}
+
+export interface TranscribeAudioResult {
+  /** 按时间排序的分段结果（服务未返回时间戳时只有一段） */
+  segments: TranscribeAudioSegment[]
+  /** 整段文本（未分词时的兜底内容） */
+  text?: string
+  model: string
+  language?: string
+}
+
 /** 从 AppSettings.models 解析当前可用提供商 + 默认模型 */
 export function pickActiveProvider(
   providers: ModelProviderInstance[],

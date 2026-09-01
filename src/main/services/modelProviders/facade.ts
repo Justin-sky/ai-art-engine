@@ -20,13 +20,16 @@ import type {
   GenerateVideoResult,
   ModelModality,
   ModelProviderInstance,
-  ModelProviderKind
+  ModelProviderKind,
+  TranscribeAudioInput,
+  TranscribeAudioResult
 } from '@shared/modelProvider'
-import { allowsEmptyApiKey } from '@shared/modelProvider'
+import { allowsEmptyApiKey, findProviderById } from '@shared/modelProvider'
 import { createProviderHttpClient, sleep } from './http'
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
 import { buildProviderSnapshot, resolveActiveProvider } from './resolve'
+import { settingsService } from '../settingsService'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
 import { ensureApiImageUrl, ensureApiImageUrls } from './apiImageUrl'
@@ -64,6 +67,27 @@ const E_NO_SPEECH_FILE = defErrSimple(
   '语音生成未返回音频文件',
   'Speech generation returned no audio file'
 )
+const E_TRANSCRIBE_NO_FILE = defErrSimple(
+  'provider.facade.transcribe-file-missing',
+  '找不到要转写的音频文件',
+  'Audio file to transcribe was not found'
+)
+const E_TRANSCRIBE_UNSUPPORTED = defErrSimple(
+  'provider.facade.transcribe-unsupported',
+  '当前模型提供商不支持音频转写（语音识别），请在设置中配置 OpenAI 提供商（whisper-1）',
+  'The selected provider does not support audio transcription; configure an OpenAI provider (whisper-1) in Settings'
+)
+const E_TRANSCRIBE_NO_MODEL = defErrSimple(
+  'provider.facade.transcribe-no-model',
+  '请为音频转写指定模型（如 whisper-1）',
+  'Please specify a transcription model (e.g. whisper-1)'
+)
+
+/** 支持转写的提供商 kind → 默认转写模型；未知 kind 返回空（由调用方/适配器兜底） */
+function defaultTranscribeModelId(kind: ModelProviderKind): string {
+  if (kind === 'openai') return 'whisper-1'
+  return ''
+}
 
 /**
  * Lux3D 上游同一实例仅允许 1 个进行中的 3D 生成任务：并发提交时创建接口返回
@@ -500,6 +524,48 @@ class ModelProviderFacade {
       outputDir: input.outputDir
     })
     return { ...result, assetId: asset.id, relativePath: asset.relativePath }
+  }
+
+  /**
+   * 音频转写（语音识别）：把本地音频文件转成带时间戳文本。
+   * 提供商不依赖「音频」模态勾选（如 OpenAI 目录无 audio 模态），
+   * 自动选择首个支持转写的已配置提供商。
+   */
+  private resolveTranscribeProvider(input: TranscribeAudioInput): {
+    provider: ModelProviderInstance
+    modelId: string
+  } {
+    const providers = settingsService.get().models.providers
+    const usable = (p: ModelProviderInstance): boolean =>
+      p.enabled && (p.apiKey.trim().length > 0 || allowsEmptyApiKey(p)) && Boolean(
+        getProviderAdapter(p.providerKind).transcribeAudio
+      )
+
+    let provider: ModelProviderInstance | undefined
+    const preferredId = input.providerInstanceId?.trim()
+    if (preferredId) {
+      const found = findProviderById(providers, preferredId)
+      if (found && usable(found)) provider = found
+    }
+    if (!provider) provider = providers.find(usable)
+    if (!provider) throw fail(PROVIDER_ERRORS.noActiveProvider, { modality: 'audio transcription' })
+
+    const modelId = input.model?.trim() || defaultTranscribeModelId(provider.providerKind)
+    if (!modelId) throw fail(E_TRANSCRIBE_NO_MODEL)
+    return { provider, modelId }
+  }
+
+  async transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioResult> {
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+    const absPath =
+      input.absPath?.trim() ||
+      (input.relativePath?.trim() ? join(projectService.getRoot(), input.relativePath.trim()) : '')
+    if (!absPath || !existsSync(absPath)) throw fail(E_TRANSCRIBE_NO_FILE)
+
+    const { provider, modelId } = this.resolveTranscribeProvider(input)
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.transcribeAudio) throw fail(E_TRANSCRIBE_UNSUPPORTED)
+    return adapter.transcribeAudio(provider, modelId, { ...input, absPath })
   }
 }
 

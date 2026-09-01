@@ -86,6 +86,7 @@ export type ProviderAction =
   | 'videoSubmit'
   | 'videoPolling'
   | 'connectionTest'
+  | 'transcribe'
 
 const ACTION_ZH: Record<ProviderAction, string> = {
   listModels: '拉取模型列表',
@@ -93,7 +94,8 @@ const ACTION_ZH: Record<ProviderAction, string> = {
   imageEditSubmit: '提交图片编辑',
   videoSubmit: '提交视频生成',
   videoPolling: '轮询视频任务',
-  connectionTest: '连接测试'
+  connectionTest: '连接测试',
+  transcribe: '音频转写'
 }
 const ACTION_EN: Record<ProviderAction, string> = {
   listModels: 'Listing models',
@@ -101,5 +103,6 @@ const ACTION_EN: Record<ProviderAction, string> = {
   imageEditSubmit: 'Submitting image edit',
   videoSubmit: 'Submitting video generation',
   videoPolling: 'Polling video task',
-  connectionTest: 'Connection test'
+  connectionTest: 'Connection test',
+  transcribe: 'Audio transcription'
 }

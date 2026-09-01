@@ -12,7 +12,9 @@ import type {
   GenerateVideoJob,
   ModelModality,
   ModelProviderInstance,
-  ModelProviderKind
+  ModelProviderKind,
+  TranscribeAudioInput,
+  TranscribeAudioResult
 } from '@shared/modelProvider'
 
 export type VideoPollResult = {
@@ -55,6 +57,15 @@ export interface ModelProviderAdapter {
     modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult>
+  /**
+   * 音频转写（语音识别）。可选：未实现时「配音转字幕」会提示该提供商不支持。
+   * 输入 absPath 已由门面解析为绝对路径。
+   */
+  transcribeAudio?(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: TranscribeAudioInput
+  ): Promise<TranscribeAudioResult>
   submitModel3d(
     provider: ModelProviderInstance,
     modelId: string,
