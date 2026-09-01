@@ -75,7 +75,7 @@ function buildObjectKey(sourceLabel: string, ext: string): string {
     .update(`${sourceLabel}:${Date.now()}:${randomUUID()}`)
     .digest('hex')
     .slice(0, 12)
-  return `aiartengine/video-refs/${day}/${hash}.${safeExt}`
+  return `aiartengine/media-refs/${day}/${hash}.${safeExt}`
 }
 
 function bufferFromDataUrl(dataUrl: string): { buffer: Buffer; ext: string } {
@@ -128,8 +128,8 @@ function adapterOf(provider: ObjectStorageProviderInstance) {
 }
 
 // ── 会话级幂等上传缓存 ──────────────────────────────────────────
-// 同一本地文件 / data URL 作为参考视频时只上传一次：重试 / 多入口（图节点、
-// AI 对话、Agent 重发）不再产生重复对象，URL 24h 预签名内直接复用。
+// 同一本地文件 / data URL 作为参考媒体（图/视频/3D 共用）时只上传一次：重试 /
+// 多入口（图节点、AI 对话、Agent 重发）不再产生重复对象，URL 24h 预签名内直接复用。
 interface UploadCacheEntry {
   result: ObjectStorageUploadResult
   createdAt: number
@@ -204,13 +204,13 @@ function cloneCachedUpload(
     cloned.logs,
     onLog,
     'info',
-    `复用已上传的参考视频：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`
+    `复用已上传的参考媒体：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`
   )
   return cloned
 }
 
 /**
- * 上传本地文件到当前启用的对象存储，返回可供视频生成引用的 http(s) URL。
+ * 上传本地文件到当前启用的对象存储，返回可供媒体生成引用的 http(s) URL。
  */
 export async function uploadLocalFile(
   absPath: string,
@@ -230,7 +230,7 @@ export async function uploadLocalFile(
     logs,
     onLog,
     'info',
-    `开始上传参考视频到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(bytes)}）`
+    `开始上传参考媒体到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(bytes)}）`
   )
 
   const started = Date.now()
@@ -268,7 +268,7 @@ export async function ensureRemoteMediaUrl(
   if (/^https?:\/\//i.test(trimmed)) {
     options?.onLog?.({
       level: 'info',
-      message: `参考视频已是远程 URL，跳过上传：${trimmed.slice(0, 120)}`,
+      message: `参考媒体已是远程 URL，跳过上传：${trimmed.slice(0, 120)}`,
       ts: Date.now()
     })
     return { url: trimmed }
@@ -289,7 +289,7 @@ export async function ensureRemoteMediaUrl(
       logs,
       options?.onLog,
       'info',
-      `开始上传 data URL 参考视频到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(buffer.byteLength)}）`
+      `开始上传 data URL 参考媒体到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(buffer.byteLength)}）`
     )
     const started = Date.now()
     const url = await adapterOf(provider).uploadBuffer(provider, buffer, objectKey)
@@ -332,7 +332,7 @@ export async function ensureRemoteMediaUrl(
   return { url: uploaded.url, uploaded }
 }
 
-/** 工程相对路径 → 对象存储公网/预签名 URL（供参考视频） */
+/** 工程相对路径 → 对象存储公网/预签名 URL（供参考媒体） */
 export async function uploadProjectMedia(
   relativePath: string,
   options?: { onLog?: ObjectStorageLogFn }
@@ -347,7 +347,7 @@ export async function uploadProjectMedia(
 }
 
 /**
- * 生成结束后清理临时参考视频对象。
+ * 生成结束后清理临时参考媒体对象。
  * 删除失败只记 warn，不抛错，避免掩盖生成结果。
  */
 export async function deleteUploads(
@@ -365,7 +365,7 @@ export async function deleteUploads(
       logs,
       options?.onLog,
       'warn',
-      `跳过删除临时参考视频：${err instanceof Error ? err.message : String(err)}`
+      `跳过删除临时参考媒体：${err instanceof Error ? err.message : String(err)}`
     )
     return logs
   }
@@ -383,14 +383,14 @@ export async function deleteUploads(
         logs,
         options?.onLog,
         'info',
-        `已删除临时参考视频：${item.sourceLabel || key}（${bucket}/${key}）`
+        `已删除临时参考媒体：${item.sourceLabel || key}（${bucket}/${key}）`
       )
     } catch (err) {
       pushLog(
         logs,
         options?.onLog,
         'warn',
-        `删除临时参考视频失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`
+        `删除临时参考媒体失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`
       )
     }
   }
