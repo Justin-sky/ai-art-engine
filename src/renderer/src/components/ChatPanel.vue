@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Directive } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
 import type {
   AskUserQuestion,
@@ -54,29 +54,6 @@ const referenced = ref<MentionAsset[]>([])
 const project = useProjectStore()
 let historyTimer: number | null = null
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-/** 供 CSS background-image:url() 内联样式使用的转义（防止引号/括号破坏属性） */
-function cssBackgroundUrl(url: string): string {
-  return url
-    .replace(/\\/g, '/')
-    .replace(/'/g, '%27')
-    .replace(/"/g, '%22')
-    .replace(/\(/g, '%28')
-    .replace(/\)/g, '%29')
-    .replace(/\s/g, '%20')
-}
 
 /** 从当前激活会话恢复消息 */
 function loadActiveMessages(): void {
@@ -100,7 +77,7 @@ function onNewSession(): void {
   commitMessages([...messages.value])
   createSession()
   loadActiveMessages()
-  draft.value = ''
+  resetEditor()
   composing.value = false
   scrollToBottom()
   void nextTick(() => inputRef.value?.focus())
@@ -121,19 +98,23 @@ async function onDeleteSession(): Promise<void> {
   // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
   window.studio.deleteHarnessSession(session.id).catch(() => undefined)
   loadActiveMessages()
-  draft.value = ''
+  resetEditor()
   composing.value = false
   scrollToBottom()
   // 确认弹窗关闭后重新聚焦输入框，双保险规避焦点丢失
   void nextTick(() => inputRef.value?.focus())
 }
 
-/** 输入框内容变化：光标前是 @ 时弹出资产选择器（支持在指令文本中间引用） */
-function onComposeInput(): void {
+/** 输入框内容变化：同步文本模型；光标前是 @ 时弹出资产选择器（支持在指令文本中间引用） */
+function onComposerInput(): void {
+  syncDraftFromEditor()
+  // 用户直接删除编辑区内的引用节点时，chips 同步移除
+  const text = draft.value
+  if (referenced.value.some((r) => !text.includes(`@${r.path}`))) {
+    referenced.value = referenced.value.filter((r) => text.includes(`@${r.path}`))
+  }
   if (mentionOpen.value || composing.value) return
-  const el = inputRef.value
-  const pos = el?.selectionStart ?? draft.value.length
-  const before = draft.value.slice(0, pos)
+  const before = textBeforeCursor()
   if (/@[^\s@]*$/.test(before)) mentionOpen.value = true
 }
 
@@ -177,61 +158,194 @@ function addReferencedPath(raw: string): void {
     })
 }
 
-/**
- * 在指定位置插入 `@路径`（自动补空格），并同步维护引用列表。
- * 插入后始终补一个空格：既避免用户紧接着输入中文时被解析成同一路径（如
- * `@x.png生成个3d模型`），也避免光标留在 `@路径` 末尾时输入下一个字符再次触发
- * 资产选择器（onComposeInput 的 /@[^\s@]*$/ 匹配）；发送前会 trim，末尾空格无影响。
- * 仅当尾部已有空白或紧接另一个 @（连续引用）时不再补。
- */
-function insertMentionAt(path: string, insertAt: number): number {
+/** 编辑区内容序列化为文本模型：图片引用 → `@相对路径`，块级元素/换行 → \n */
+function editorText(): string {
   const el = inputRef.value
-  const text = draft.value
-  const insertText = `@${path}`
-  const tail = text.slice(insertAt)
-  const sep = !/^[\s@]/.test(tail) ? ' ' : ''
-  draft.value = text.slice(0, insertAt) + insertText + sep + tail
-  addReferencedPath(path)
-  const cursor = insertAt + insertText.length + sep.length
-  void nextTick(() => {
-    if (!el) return
-    el.focus()
-    el.setSelectionRange(cursor, cursor)
-  })
-  // 返回插入后的光标位置，便于连续插入（如多张图片粘贴）时精确定位
-  return cursor
+  if (!el) return draft.value
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+    if (node.nodeName === 'BR') return '\n'
+    // 内联引用节点（span.editor-mention[data-path]，内嵌缩略图 img）→ 输出 @路径
+    if (node instanceof HTMLElement && node.classList.contains('editor-mention')) {
+      return node.dataset.path ? `@${node.dataset.path}` : ''
+    }
+    if (node instanceof HTMLImageElement) return node.dataset.path ? `@${node.dataset.path}` : ''
+    let out = ''
+    for (const c of node.childNodes) out += walk(c)
+    const tag = (node as HTMLElement).tagName
+    if (tag === 'DIV' || tag === 'P') out += '\n'
+    return out
+  }
+  return walk(el)
+}
+
+/** 编辑区 → draft 同步（编辑区是唯一数据源，发送/构建任务以 draft 文本为准） */
+function syncDraftFromEditor(): void {
+  draft.value = editorText()
+}
+
+/** 清空编辑区与草稿 */
+function resetEditor(): void {
+  const el = inputRef.value
+  if (el) el.replaceChildren()
+  draft.value = ''
+}
+
+/** 当前选区（无选区或选区在编辑区外时取编辑区末尾） */
+function getEditorRange(): Range | null {
+  const el = inputRef.value
+  if (!el) return null
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0)
+    if (el.contains(r.commonAncestorContainer)) return r
+  }
+  const r = document.createRange()
+  r.selectNodeContents(el)
+  r.collapse(false)
+  return r
+}
+
+/** 光标前的纯文本（用于 @ 选择器触发判断） */
+function textBeforeCursor(): string {
+  const el = inputRef.value
+  if (!el) return draft.value
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return editorText()
+  const range = sel.getRangeAt(0)
+  if (!el.contains(range.commonAncestorContainer)) return editorText()
+  const clone = range.cloneRange()
+  clone.selectNodeContents(el)
+  clone.setEnd(range.endContainer, range.endOffset)
+  return clone.toString()
+}
+
+/** 扩展名判断是否为图片（决定内联引用以缩略图还是文本 chip 展示） */
+function isImageLikePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(path)
+}
+
+/** 构造内联引用节点：图片显示缩略图（图文混排），其它资产显示 @路径 文本 chip */
+function createMentionNode(path: string): HTMLElement {
+  const span = document.createElement('span')
+  span.className = 'editor-mention'
+  span.dataset.path = path
+  span.title = path
+  span.contentEditable = 'false'
+  const name = path.split('/').pop() ?? path
+  if (isImageLikePath(path)) {
+    const img = document.createElement('img')
+    img.className = 'editor-mention-img'
+    img.alt = name
+    span.appendChild(img)
+    void resolveAssetPreviewUrl(path)
+      .then((url) => {
+        if (img.isConnected) img.src = url
+      })
+      .catch(() => {
+        if (img.isConnected) {
+          img.remove()
+          const label = document.createElement('span')
+          label.className = 'editor-mention-label'
+          label.textContent = `@${path}`
+          span.appendChild(label)
+        }
+      })
+  } else {
+    const label = document.createElement('span')
+    label.className = 'editor-mention-label'
+    label.textContent = `@${path}`
+    span.appendChild(label)
+  }
+  return span
 }
 
 /**
- * @ 选择器确认：把 `@相对路径` 内联插入指令文本（替换触发用的 @，未触发时插入光标处），
- * 同时维护 referenced 列表供 chips 预览；dsh 会直接解析文本中的内联引用。
+ * 在光标处插入内联引用节点（图片显示缩略图，非图片显示 @路径 chip），
+ * 节点后自动补一个不换行空格，避免与后续文本粘连并防止误触发 @ 选择器。
+ * 插入后光标移到补空格之后，便于连续插入（如多张图片粘贴）。
+ */
+function insertMentionNode(path: string): void {
+  const el = inputRef.value
+  if (!el) return
+  el.focus()
+  const range = getEditorRange()
+  if (!range) return
+  range.deleteContents()
+  const node = createMentionNode(path)
+  range.insertNode(node)
+  const space = document.createTextNode('\u00A0')
+  range.setStartAfter(node)
+  range.setEndAfter(node)
+  range.insertNode(space)
+  addReferencedPath(path)
+  syncDraftFromEditor()
+  const sel = window.getSelection()
+  if (sel) {
+    const r = document.createRange()
+    r.setStartAfter(space)
+    r.setEndAfter(space)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  }
+}
+
+/** 在光标处插入纯文本（粘贴文本时保持纯文本，不带富文本格式） */
+function insertPlainText(text: string): void {
+  const el = inputRef.value
+  if (!el) return
+  el.focus()
+  const range = getEditorRange()
+  if (!range) return
+  range.deleteContents()
+  const node = document.createTextNode(text)
+  range.insertNode(node)
+  syncDraftFromEditor()
+  const sel = window.getSelection()
+  if (sel) {
+    const r = document.createRange()
+    r.setStart(node, node.length)
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  }
+}
+
+/**
+ * @ 选择器确认：先删除光标前紧贴的触发用 @（若有），再把每个 `@相对路径`
+ * 以内联引用节点插入光标处，并维护 referenced 列表；dsh 会直接解析文本中的内联引用。
  */
 function onMentionConfirm(paths: string[]): void {
   mentionOpen.value = false
   const el = inputRef.value
-  const text = draft.value
-  const pos = el?.selectionStart ?? text.length
-  const at = text.lastIndexOf('@', pos - 1)
-  // 仅当 @ 紧贴光标左侧（触发点）时替换；否则按普通文本处理，引用插入到光标处
-  const replaceAt = at >= 0 && at === pos - 1
-  const insertText = paths
-    .map((p) => p.replace(/\\/g, '/').trim())
-    .filter((p) => p.length > 0)
-    .map((p) => `@${p}`)
-    .join(' ')
-  if (!insertText) return
-  const start = replaceAt ? at : pos
-  const tail = text.slice(start)
-  const sep = !/^[\s@]/.test(tail) ? ' ' : ''
-  draft.value = text.slice(0, start) + insertText + sep + tail
-  for (const p of paths) addReferencedPath(p)
-  // 光标移到插入内容（含补的空格）之后，便于继续输入
-  const cursor = start + insertText.length + sep.length
-  void nextTick(() => {
-    if (!el) return
-    el.focus()
-    el.setSelectionRange(cursor, cursor)
-  })
+  if (!el) return
+  el.focus()
+  // 删除触发点：光标前形如 `@xxx` 的片段（含 @ 本身）
+  const before = textBeforeCursor()
+  const sel = window.getSelection()
+  const m = before.match(/@[^\s@]*$/)
+  if (sel && sel.rangeCount > 0 && m) {
+    const r = sel.getRangeAt(0)
+    if (r.endOffset >= m[0].length) {
+      const cut = r.cloneRange()
+      cut.setStart(r.endContainer, r.endOffset - m[0].length)
+      cut.deleteContents()
+    }
+  }
+  for (const raw of paths) {
+    const path = raw.replace(/\\/g, '/').trim()
+    if (path) insertMentionNode(path)
+  }
+}
+
+/** 判断文本是否像单个本地媒体文件路径（Windows / Unix / file://） */
+function looksLikeMediaFilePath(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  if (/^file:\/\//i.test(t)) return true
+  const p = t.replace(/\\/g, '/')
+  if (!/^[A-Za-z]:\//.test(p) && !p.startsWith('/')) return false
+  return /\.(png|jpe?g|gif|webp|bmp|mp4|mov|webm|mp3|wav|m4a|ogg|glb|gltf|obj|fbx)$/i.test(p)
 }
 
 /** File → data URL（粘贴截图/图片读取） */
@@ -246,8 +360,9 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 /**
  * 输入框粘贴：支持截图 / 剪贴板图片。把图片落盘到工程资产库（Assets/Images/Paste），
- * 再以 `@相对路径` 内联引用插入光标处——复用资产引用链路，模型可将图片作为参考图使用。
- * 剪贴板同时含文本（如复制图文）时先按默认行为插入文本，再追加图片引用。
+ * 再以内联缩略图节点插入光标处（图文混排）——复用资产引用链路，模型可将图片作为参考图使用。
+ * 剪贴板同时含文本（如复制图文）时先插入纯文本，再追加图片引用；
+ * 若该文本只是文件系统路径，则跳过，避免裸路径残留。
  */
 async function onComposerPaste(event: ClipboardEvent): Promise<void> {
   if (running.value || composing.value) return
@@ -265,12 +380,7 @@ async function onComposerPaste(event: ClipboardEvent): Promise<void> {
   // 含图片时接管粘贴：避免把图片二进制 / 文件路径粘成文本
   event.preventDefault()
   const text = clipboard.getData('text/plain').trim()
-  const el = inputRef.value
-  let pos = el?.selectionStart ?? draft.value.length
-  if (text) {
-    draft.value = draft.value.slice(0, pos) + text + draft.value.slice(pos)
-    pos += text.length
-  }
+  if (text && !looksLikeMediaFilePath(text)) insertPlainText(text)
   for (const file of images) {
     try {
       const dataUrl = await readFileAsDataUrl(file)
@@ -283,26 +393,124 @@ async function onComposerPaste(event: ClipboardEvent): Promise<void> {
       if (!relativePath) continue
       // 落盘后刷新资产库，让新图出现在工程资产中；引用本身不依赖注册即可预览
       void project.scheduleRefreshLibrary()
-      pos = insertMentionAt(relativePath, pos)
+      insertMentionNode(relativePath)
     } catch (error) {
       console.error('[ChatPanel] paste image failed', error)
     }
   }
 }
 
-/** 移除引用：chips 同步删除指令文本中的内联 `@路径` */
+/**
+ * 输入框拖拽：支持从文件管理器拖入图片/视频/音频等媒体文件。
+ * 统一落盘到工程资产库并以内联引用节点插入，避免浏览器默认插入裸路径文本。
+ */
+async function onComposerDrop(event: DragEvent): Promise<void> {
+  if (running.value || composing.value) return
+  const files = event.dataTransfer?.files
+  if (!files?.length) return
+  const mediaFiles: File[] = []
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    if (!file) continue
+    if (
+      file.type.startsWith('image/') ||
+      file.type.startsWith('video/') ||
+      file.type.startsWith('audio/')
+    ) {
+      mediaFiles.push(file)
+    }
+  }
+  if (!mediaFiles.length) return
+  event.preventDefault()
+  for (const file of mediaFiles) {
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      if (!dataUrl) continue
+      const relativePath = await window.studio.saveGraphRunMedia({
+        dataUrl,
+        key: `drop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        outputDir: 'Assets/Images/Paste'
+      })
+      if (!relativePath) continue
+      void project.scheduleRefreshLibrary()
+      insertMentionNode(relativePath)
+    } catch (error) {
+      console.error('[ChatPanel] drop media failed', error)
+    }
+  }
+}
+
+/** 移除引用：chips 同步删除编辑区内的对应内联引用节点 */
 function removeMention(path: string): void {
   referenced.value = referenced.value.filter((r) => r.path !== path)
-  draft.value = draft.value
-    .replace(new RegExp(`@${escapeRegExp(path)}(?=[\\s@]|$)`, 'g'), '')
-    .replace(/ {2,}/g, ' ')
-    .trimStart()
+  const el = inputRef.value
+  if (!el) return
+  el.querySelectorAll<HTMLElement>('.editor-mention[data-path]').forEach((n) => {
+    if (n.dataset.path === path) n.remove()
+  })
+  syncDraftFromEditor()
 }
 
 /** 用户气泡富文本：转义后把内联 `@相对路径` 高亮为引用样式（仅展示，不改变原文本） */
-function renderInlineRefs(text: string): string {
+/** 判断路径是否为本地绝对路径（Windows 盘符路径或 Unix 绝对路径） */
+function isAbsoluteMediaPath(path: string): boolean {
+  const p = path.replace(/\\/g, '/')
+  return /^[A-Za-z]:\//.test(p) || p.startsWith('/')
+}
+
+/** 解析媒体预览 URL：工程相对路径走资产缩略图；本地绝对路径直接构造 studio-media URL */
+function resolveMediaUrl(path: string): Promise<string> {
+  const p = path.replace(/\\/g, '/')
+  if (isAbsoluteMediaPath(p)) {
+    return Promise.resolve(`studio-media://local/?path=${encodeURIComponent(p)}&t=${Date.now()}`)
+  }
+  return resolveAssetPreviewUrl(p)
+}
+
+/** 消息气泡文本渲染：`@image:路径` / `@图片路径` → 卡片大图，其它 `@路径` → 文本 chip */
+function renderMessageText(text: string): string {
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return esc.replace(/@([^\s@]+)/g, '<span class="inline-ref">@$1</span>')
+  return esc.replace(/@(?:(image:)\s*)?([^\s@]+)/g, (_m, prefix: string | undefined, raw: string) => {
+    const path = raw.replace(/\\/g, '/')
+    if (isImageLikePath(path)) {
+      const name = path.split('/').pop() ?? path
+      return `<div class="chat-msg-card"><img data-src="${path}" alt="${name}"><div class="chat-msg-card-name">${name}</div></div>`
+    }
+    return `<span class="inline-ref">@${prefix ?? ''}${raw}</span>`
+  })
+}
+
+/** 消息气泡内图片卡片：把 data-src 解析为预览 URL；加载失败/文件缺失回退为文本 chip */
+function resolveChatImages(root: HTMLElement): void {
+  root.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((img) => {
+    const path = img.dataset.src
+    if (!path) return
+    img.removeAttribute('data-src')
+    const fallback = (): void => {
+      if (!img.isConnected) return
+      const chip = document.createElement('span')
+      chip.className = 'inline-ref'
+      chip.textContent = `@${path}`
+      img.replaceWith(chip)
+    }
+    img.addEventListener('error', fallback, { once: true })
+    resolveMediaUrl(path)
+      .then((url) => {
+        if (!img.isConnected) return
+        if (!url) {
+          fallback()
+          return
+        }
+        img.src = url
+      })
+      .catch(fallback)
+  })
+}
+
+/** v-chat-img：v-html 更新后同步解析气泡内图片卡片 */
+const vChatImg: Directive = {
+  mounted: (el) => resolveChatImages(el),
+  updated: (el) => resolveChatImages(el)
 }
 
 /**
@@ -406,9 +614,8 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
 }
 const draft = ref('')
-const inputRef = ref<HTMLTextAreaElement | null>(null)
-const overlayRef = ref<HTMLElement | null>(null)
-/** 输入法组合期间：textareas 恢复实色显示并隐藏覆盖层，避免组合文本在透明层上闪烁 */
+const inputRef = ref<HTMLElement | null>(null)
+/** 输入法组合期间：跳过 @ 触发 / 粘贴接管，避免组合文本被误处理 */
 const composing = ref(false)
 const running = ref(false)
 const status = ref<HarnessStatus | null>(null)
@@ -428,45 +635,6 @@ function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
     if (m.kind === 'tool') out.push(m)
   }
   return out
-}
-
-/**
- * 输入区覆盖层 HTML：转义后的指令文本，其中内联 `@路径` 渲染为行内图片/图标预览。
- * 引用 token 文本保留（透明）占位，保证与 textarea 的换行逐字对齐；
- * 预览图绝对定位、宽度不参与布局，因此不改变换行。
- */
-const draftPreview = computed<string>(() => {
-  const esc = escapeHtml(draft.value)
-  // 长路径优先替换为占位符，避免短路径是长路径前缀时破坏已生成的嵌套结构
-  const refs = [...referenced.value].sort((a, b) => b.path.length - a.path.length)
-  const hits: Array<[string, MentionAsset]> = []
-  let html = esc
-  for (const r of refs) {
-    const token = escapeHtml(`@${r.path}`)
-    if (!html.includes(token)) continue
-    const ph = `\uE000${hits.length}\uE000`
-    html = html.split(token).join(ph)
-    hits.push([ph, r])
-  }
-  for (const [ph, r] of hits) {
-    const media = r.thumbUrl
-      ? `<span class="draft-ref-media" style="background-image:url('${cssBackgroundUrl(r.thumbUrl)}')"></span>`
-      : `<span class="draft-ref-media draft-ref-ico">${r.type === 'voice' ? '🎵' : '📄'}</span>`
-    html = html.split(ph).join(
-      `<span class="draft-ref" title="${escapeHtml(r.path)}">` +
-        `<span class="draft-ref-text">${escapeHtml(`@${r.path}`)}</span>${media}</span>`
-    )
-  }
-  return html
-})
-
-/** 覆盖层与 textarea 同步滚动（字体/行高一致，行序对齐） */
-function onComposerScroll(): void {
-  const el = inputRef.value
-  const ov = overlayRef.value
-  if (!el || !ov) return
-  ov.scrollTop = el.scrollTop
-  ov.scrollLeft = el.scrollLeft
 }
 
 function onCompositionEnd(): void {
@@ -1006,7 +1174,7 @@ async function onSend(): Promise<void> {
     return
   }
   const task = buildTask(raw)
-  draft.value = ''
+  resetEditor()
   referenced.value = []
   pendingReasoning = ''
   sessionStart = messages.value.length
@@ -1106,7 +1274,11 @@ onBeforeUnmount(() => {
         <template v-if="msg.kind === 'user'">
           <div class="msg-row user">
             <div class="bubble user">
-              <span v-html="renderInlineRefs(msg.text)" />
+              <div
+                class="bubble-text"
+                v-chat-img
+                v-html="renderMessageText(msg.text)"
+              />
               <button
                 class="copy-btn"
                 :class="{ copied: copiedIndex === i }"
@@ -1157,7 +1329,10 @@ onBeforeUnmount(() => {
               <summary>{{ t('studio.chat.thinking') }}</summary>
               <pre>{{ msg.reasoning }}</pre>
             </details>
-            <pre>{{ msg.text }}</pre>
+            <pre
+              v-chat-img
+              v-html="renderMessageText(msg.text)"
+            />
             <button
               class="copy-btn"
               :class="{ copied: copiedIndex === i }"
@@ -1199,7 +1374,11 @@ onBeforeUnmount(() => {
           v-else-if="msg.kind === 'status'"
           class="msg-status"
         >
-          {{ msg.text }}
+          <div
+            class="bubble-text"
+            v-chat-img
+            v-html="renderMessageText(msg.text)"
+          />
           <button
             class="copy-btn"
             :class="{ copied: copiedIndex === i }"
@@ -1213,13 +1392,17 @@ onBeforeUnmount(() => {
           v-else-if="msg.kind === 'prompt'"
           class="msg-prompt"
         >
-          <div class="prompt-question">{{ msg.question }}</div>
+          <div
+            class="prompt-question"
+            v-chat-img
+            v-html="renderMessageText(msg.question)"
+          />
           <div
             v-if="msg.hint"
             class="prompt-hint"
-          >
-            {{ msg.hint }}
-          </div>
+            v-chat-img
+            v-html="renderMessageText(msg.hint)"
+          />
           <div class="prompt-options">
             <button
               v-for="opt in promptOptions(msg)"
@@ -1604,21 +1787,17 @@ onBeforeUnmount(() => {
       </div>
       <div class="composer">
         <div
-          v-show="!composing"
-          ref="overlayRef"
-          class="composer-overlay"
-          v-html="draftPreview"
-        />
-        <textarea
           ref="inputRef"
-          v-model="draft"
-          rows="3"
-          :placeholder="t('studio.chat.placeholder')"
-          :disabled="running"
+          class="composer-editor"
           :class="{ composing }"
-          @input="onComposeInput"
-          @scroll="onComposerScroll"
+          :contenteditable="!running"
+          role="textbox"
+          :aria-label="t('studio.chat.placeholder')"
+          :data-placeholder="t('studio.chat.placeholder')"
+          @input="onComposerInput"
           @paste="onComposerPaste"
+          @drop.prevent="onComposerDrop"
+          @dragover.prevent
           @compositionstart="composing = true"
           @compositionend="onCompositionEnd"
           @keydown.enter.exact.prevent="onSend"
@@ -1935,15 +2114,11 @@ onBeforeUnmount(() => {
   background: var(--accent-18);
 }
 
-/* 用户气泡中内联的 @资产引用：高亮便于识别，非纯路径文本 */
-.bubble.user .inline-ref {
-  color: var(--accent-fg);
-  background: var(--accent-25);
-  border-radius: 3px;
-  padding: 0 3px;
-  word-break: break-all;
+.bubble-text {
+  word-break: break-word;
 }
 
+/* 用户气泡中内联的 @资产引用：高亮便于识别，非纯路径文本 */
 .bubble.assistant {
   background: var(--bg-elevated);
   /* 边线与任务清单卡片保持一致（var(--border)） */
@@ -2717,93 +2892,40 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
-/* 输入区：textarea 文本透明（由覆盖层显示），保留光标/滚动/选区，引用 token 仍可编辑 */
-.chat-input textarea {
-  position: relative;
-  z-index: 2;
+/* 输入区：contenteditable 富文本，支持文本与图片内联引用混排 */
+.composer-editor {
   width: 100%;
-  resize: none;
-  background: transparent;
-  color: transparent;
-  caret-color: var(--text);
+  min-height: 64px;
+  max-height: 180px;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.5;
-  box-sizing: border-box;
-  scrollbar-width: none;
-}
-
-/* 隐藏滚动条但不禁止滚动：保证内容宽度与覆盖层一致（滚动条会吃掉内容宽度导致换行错位） */
-.chat-input textarea::-webkit-scrollbar {
-  display: none;
-}
-
-.chat-input textarea:focus {
-  outline: none;
-  border-color: var(--accent-45);
-}
-
-/* 输入法组合期间：textarea 恢复实色，隐藏覆盖层，避免组合文本闪烁 */
-.chat-input textarea.composing {
-  color: var(--text);
-}
-
-.composer {
-  position: relative;
-}
-
-/* 覆盖层：与 textarea 同字体/内边距/换行，逐字对齐；仅展示不拦截事件 */
-.composer-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  overflow: hidden;
-  pointer-events: none;
   background: var(--bg-input);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 8px;
+  color: var(--text);
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   box-sizing: border-box;
+  outline: none;
 }
 
-/* 内联引用：透明文本保留宽度保证换行一致；预览图/图标绝对定位叠加显示 */
-.draft-ref {
-  position: relative;
-  display: inline-block;
-  vertical-align: text-bottom;
+.composer-editor:focus {
+  border-color: var(--accent-45);
 }
 
-.draft-ref-text {
-  color: transparent;
+/* 空输入时的占位提示 */
+.composer-editor:empty::before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--text) 38%, transparent);
+  pointer-events: none;
 }
 
-.draft-ref-media {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 18px;
-  max-width: 96px;
-  border-radius: 3px;
-  background-color: var(--bg-input);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-.draft-ref-ico {
-  font-size: 13px;
-  line-height: 18px;
-  background: none;
+/* 输入法组合期间：保持实色显示，避免组合文本闪烁 */
+.composer-editor.composing {
+  color: var(--text);
 }
 
 .chat-actions {
@@ -3035,5 +3157,84 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(360deg);
   }
+}
+</style>
+
+<style>
+/* 输入区内联引用节点由 createMentionNode 动态创建，不带 scoped 的 data-v 属性，
+   因此 scoped 样式对其不生效——这里用全局样式保证小缩略图正确渲染。
+   类名 .editor-mention* 足够独特，不影响其它组件。 */
+.editor-mention {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: text-bottom;
+  max-width: 140px;
+  margin: 0 1px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.editor-mention-img {
+  display: block;
+  width: auto;
+  height: 24px;
+  max-width: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--bg-input);
+}
+
+.editor-mention-label {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--accent-45);
+  border-radius: 4px;
+  background: var(--accent-18);
+  color: var(--accent-fg);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* 对话消息气泡内图片卡片：v-html 注入的节点同样不带 scoped 的 data-v 属性，
+   因此放在全局样式。用户要求发送出的图片以大卡片预览，不再用缩略图。 */
+.chat-msg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 240px;
+  margin: 6px 0;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.chat-msg-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.chat-msg-card-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 消息气泡内 `@路径` 文本 chip（v-html 注入，非 scoped；status/prompt 等消息同样适用） */
+.inline-ref {
+  color: var(--accent-fg);
+  background: var(--accent-25);
+  border-radius: 3px;
+  padding: 0 3px;
+  word-break: break-all;
 }
 </style>

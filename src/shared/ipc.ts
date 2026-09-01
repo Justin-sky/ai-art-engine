@@ -1,6 +1,6 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
-import type { TimelineExportInput, TimelineExportResult } from './graph'
+import type { TimelineExportInput, TimelineExportResult, GraphRunLogApiCall } from './graph'
 import type {
   CatalogModel,
   GenerateImageInput,
@@ -397,6 +397,8 @@ export interface McpActivity {
   assetId?: string
   relativePath?: string
   error?: string
+  /** 本次生成调用传入供应商的详细参数与结果摘要（终态时写入，桥接到执行日志 API 详情；id/ts 由日志会话生成） */
+  apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
 }
 
 /** MCP：单条图编辑操作（见 shared/graph/mcpGraphEdit） */

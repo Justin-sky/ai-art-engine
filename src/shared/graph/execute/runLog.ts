@@ -40,7 +40,13 @@ export type GraphRunLogPortSnapshot = {
 export interface GraphRunLogApiCall {
   id: string
   ts: number
-  kind: 'generateText' | 'generateImage' | 'generateVideo' | 'generateSpeech' | 'generateModel3d'
+  kind:
+    | 'generateText'
+    | 'generateImage'
+    | 'generateVideo'
+    | 'generateSpeech'
+    | 'generateMusic'
+    | 'generateModel3d'
   nodeId: string
   /** 节点 params.skillId；无则省略 */
   skillId?: string
@@ -68,6 +74,12 @@ export interface GraphRunLogApiCall {
     inputReferenceCount?: number
     /** 图片生成：参考图清单（来源 + 相对路径/名称，不落 data URL） */
     inputReferences?: GraphImageReferenceMeta[]
+    /** 视频/3D/图片生成：实际提交的参考图/参考视频/参考音频 URL 明细（data URL 记摘要，其余截断） */
+    inputReferenceUrls?: Array<{ kind?: string; url: string }>
+    /** 视频生成：首帧图（data URL 记摘要） */
+    firstFrameImageUrl?: string
+    /** 视频生成：尾帧图（data URL 记摘要） */
+    lastFrameImageUrl?: string
     /** Seedream 图层分离 */
     layerDecomposition?: boolean
     voice?: string
@@ -137,6 +149,40 @@ export interface GraphRunLogSession {
 export interface GraphRunLogMeta {
   pipelineStage?: string
   cellKey?: string
+}
+
+const URL_PREVIEW_MAX = 240
+
+/**
+ * 日志用媒体 URL 摘要：data URL 记类型 + 字节数，其余（http(s)/本地路径/相对路径）
+ * 保留可追踪内容并截断，避免日志膨胀。
+ */
+export function summarizeMediaUrlForLog(url: string): string {
+  const trimmed = url?.trim() ?? ''
+  if (!trimmed) return ''
+  if (trimmed.startsWith('data:')) {
+    const comma = trimmed.indexOf(',')
+    const head = comma > 0 ? trimmed.slice(0, Math.min(comma, 80)) : 'data:'
+    return `${head},${trimmed.length}B`
+  }
+  return trimmed.length > URL_PREVIEW_MAX ? `${trimmed.slice(0, URL_PREVIEW_MAX)}…(${trimmed.length})` : trimmed
+}
+
+/** 日志用参考列表摘要：string 或 {kind,url} 统一转成 {kind,url 摘要} */
+export function summarizeReferenceListForLog(
+  refs: Array<string | { kind?: string; url: string }> | undefined
+): Array<{ kind?: string; url: string }> | undefined {
+  if (!refs?.length) return undefined
+  const out: Array<{ kind?: string; url: string }> = []
+  for (const ref of refs) {
+    const url = typeof ref === 'string' ? ref.trim() : ref.url?.trim()
+    if (!url) continue
+    out.push({
+      ...(typeof ref !== 'string' && ref.kind ? { kind: ref.kind } : {}),
+      url: summarizeMediaUrlForLog(url)
+    })
+  }
+  return out.length ? out : undefined
 }
 
 /** FNV-1a 32-bit hex；仅用于 RunLog 对账，不参与跳过已完成 */

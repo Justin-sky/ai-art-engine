@@ -11,6 +11,8 @@ import {
   resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
+  summarizeMediaUrlForLog,
+  summarizeReferenceListForLog,
   topologicalSort,
   type GraphDocument,
   type GraphNode,
@@ -1068,7 +1070,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             system: input.system,
             model: input.model,
             providerInstanceId: input.providerInstanceId,
-            imageCount: input.images?.length || undefined
+            imageCount: input.images?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.images)
           }
           try {
             const value = await window.studio.generateText(input)
@@ -1102,6 +1105,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             seed: input.seed ?? null,
             inputReferenceCount: input.inputReferences?.length || undefined,
             inputReferences: input.inputReferenceMeta,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
             layerDecomposition: input.layerDecomposition || undefined
           }
           try {
@@ -1135,6 +1139,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             generateAudio?: boolean
             seed?: number | null
             inputReferenceCount?: number
+            inputReferenceUrls?: Array<{ kind?: string; url: string }>
+            firstFrameImageUrl?: string
+            lastFrameImageUrl?: string
             uploads?: Array<{
               sourceLabel: string
               objectKey: string
@@ -1150,7 +1157,14 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             duration: input.duration,
             generateAudio: input.generateAudio,
             seed: input.seed ?? null,
-            inputReferenceCount: input.inputReferences?.length || undefined
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+            firstFrameImageUrl: input.firstFrameImageUrl?.trim()
+              ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
+              : undefined,
+            lastFrameImageUrl: input.lastFrameImageUrl?.trim()
+              ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
+              : undefined
           }
           try {
             const project = useProjectStore()
@@ -1205,7 +1219,8 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             providerInstanceId: input.providerInstanceId,
             voice: input.voice,
             name: input.name,
-            imageCount: input.images?.length
+            imageCount: input.images?.length,
+            inputReferenceUrls: summarizeReferenceListForLog(input.images)
           }
           try {
             const project = useProjectStore()
@@ -1242,15 +1257,42 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         },
         generateModel3d: async (input) => {
           const startedAt = Date.now()
-          const request = {
+          const request: {
+            prompt: string
+            model?: string
+            providerInstanceId?: string
+            style?: string
+            inputReferenceCount?: number
+            inputReferenceUrls?: Array<{ kind?: string; url: string }>
+            uploads?: Array<{
+              sourceLabel: string
+              objectKey: string
+              bytes: number
+              urlPreview: string
+            }>
+          } = {
             prompt: input.prompt,
             model: input.model,
             providerInstanceId: input.providerInstanceId,
             style: input.style,
-            inputReferenceCount: input.inputReferences?.length || undefined
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
           }
           try {
             const value = await window.studio.generateModel3d(input)
+            if (value.uploads?.length) {
+              request.uploads = value.uploads.map((item) => ({
+                sourceLabel: item.sourceLabel,
+                objectKey: item.objectKey,
+                bytes: item.bytes,
+                urlPreview: item.url.slice(0, 120)
+              }))
+              for (const item of value.uploads) {
+                for (const log of item.logs) {
+                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+                }
+              }
+            }
             logBridge.recordApiCall({
               kind: 'generateModel3d',
               request,
