@@ -120,6 +120,8 @@ export const IpcChannels = {
   GRAPH_DELETE_RUN_MEDIA: 'graph:delete-run-media',
   /** 用工程内相对路径媒体挂到资产上 */
   ASSET_ATTACH_RELATIVE: 'asset:attach-relative',
+  /** 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产 */
+  ASSET_SAVE_PROJECT_FILE: 'asset:save-project-file',
   /** 将工程内媒体读成 data URL（视频/音频参考等） */
   ASSET_MEDIA_DATA_URL: 'asset:media-data-url',
   /** 将工程内参考视频上传到对象存储并返回可访问 URL */
@@ -613,6 +615,16 @@ export interface AttachAssetRelativeInput {
   relativePath: string
 }
 
+/** 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产 */
+export interface SaveProjectAssetInput {
+  /** 源文件工程内相对路径（如 Cache/Images/xxx.png） */
+  relativePath: string
+  /** 资产名称（不含扩展名）；缺省用源文件名 */
+  name?: string
+  /** 目标资产库文件夹 id；null / 缺省为 Assets 根目录 */
+  folderId?: string | null
+}
+
 export interface SaveGraphRunMediaInput {
   /** data: URL，或 http(s) 远程媒体地址（由主进程下载落盘） */
   dataUrl: string
@@ -751,6 +763,8 @@ export interface StudioApi {
   updateAsset: (asset: AssetInfo) => Promise<AssetInfo>
   attachAssetFile: (input: AttachAssetFileInput) => Promise<AssetInfo>
   attachAssetRelative: (input: AttachAssetRelativeInput) => Promise<AssetInfo>
+  /** 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产 */
+  saveProjectAsset: (input: SaveProjectAssetInput) => Promise<AssetInfo>
   getAssetFileUrl: (relativePath: string) => Promise<string>
   /** 预览级 URL（图片缩略图 / 视频首帧）；列表/节点卡应优先使用 */
   getAssetPreviewUrl: (relativePath: string) => Promise<string>

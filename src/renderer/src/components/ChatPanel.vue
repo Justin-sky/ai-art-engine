@@ -19,6 +19,7 @@ import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
 const CHAT_MODE_KEY = 'studio.chat.mode'
@@ -777,23 +778,104 @@ function onMcpActivity(activity: McpActivity): void {
     // 已有卡时无条件更新状态，即使任务已结束也可能收到延迟的 done/error 回调
     prev.state = state
     prev.detail = activity.error
-    // 完成且产出了资产：把落盘相对路径记到卡上，供卡内直接预览
+    // 完成且产出了资产：把落盘相对路径记到卡上（新数据由对话末尾的独立预览卡展示）
     if (state === 'done' && activity.relativePath) {
       prev.relativePath = activity.relativePath
     }
+  } else if (running.value) {
+    // 只有任务仍在运行时才新增 MCP 活动卡，避免结束时再产生孤立的工具卡
+    messages.value.push({
+      kind: 'tool',
+      key,
+      name: activity.title || activity.tool,
+      state,
+      detail: activity.error,
+      ...(state === 'done' && activity.relativePath ? { relativePath: activity.relativePath } : {})
+    })
+    scrollToBottom()
+  }
+  // 生成完成且产出了资产：在对话末尾追加独立预览卡（图片/视频/音频/3D），
+  // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡
+  if (state === 'done' && activity.relativePath && (prev || running.value)) {
+    pushAsset(`asset:${activity.id}`, activity.relativePath)
+  }
+}
+
+/** 生成完成的独立资产预览卡：同 key 去重，追加到对话末尾（原地更新路径以幂等处理延迟回调） */
+function pushAsset(key: string, relativePath: string): void {
+  const prev = messages.value.find(
+    (m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key === key
+  )
+  if (prev) {
+    prev.relativePath = relativePath
     return
   }
-  // 只有任务仍在运行时才新增 MCP 活动卡，避免结束时再产生孤立的工具卡
-  if (!running.value) return
-  messages.value.push({
-    kind: 'tool',
-    key,
-    name: activity.title || activity.tool,
-    state,
-    detail: activity.error,
-    ...(state === 'done' && activity.relativePath ? { relativePath: activity.relativePath } : {})
-  })
+  messages.value.push({ kind: 'asset', key, relativePath })
   scrollToBottom()
+}
+
+/** 是否已存在与任务卡 key（`mcp:<id>`）对应的独立资产卡（`asset:<id>`）：旧会话数据无独立卡时任务清单内回退展示预览 */
+function hasAssetCard(toolKey: string): boolean {
+  const assetKey = toolKey.startsWith('mcp:') ? `asset:${toolKey.slice('mcp:'.length)}` : ''
+  if (!assetKey) return false
+  return messages.value.some((m) => m.kind === 'asset' && m.key === assetKey)
+}
+
+/** 生成产物默认落 Cache/ 不进资产库：资产卡提供「保存到资产库」入口（弹窗选目录/文件名） */
+const saveDialogOpen = ref(false)
+const saveDialogDefaultName = ref('')
+const saveDialogDefaultFolderId = ref<string | null>(null)
+const saveDialogRef = ref<{ setSaving: (v: boolean) => void; setError: (m: string) => void } | null>(
+  null
+)
+const savingAssetKey = ref('')
+/** 本次会话已成功保存到资产库的资产卡 key（`asset:<id>`），按钮置为「已保存」并禁用 */
+const savedAssetKeys = ref<Set<string>>(new Set())
+let pendingSaveAssetKey = ''
+
+function isAssetSaved(key: string): boolean {
+  return savedAssetKeys.value.has(key)
+}
+
+/** 资产卡默认名称：取文件名 stem（去扩展名） */
+function assetDefaultName(relativePath: string): string {
+  return relativePath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'asset'
+}
+
+function openSaveAsset(msg: ChatMsg & { kind: 'asset' }): void {
+  if (isAssetSaved(msg.key)) return
+  pendingSaveAssetKey = msg.key
+  saveDialogDefaultName.value = assetDefaultName(msg.relativePath)
+  saveDialogDefaultFolderId.value = null
+  saveDialogOpen.value = true
+}
+
+function closeSaveAssetDialog(): void {
+  if (savingAssetKey.value) return
+  saveDialogOpen.value = false
+}
+
+/** 弹窗确认：把 Cache 产物复制到资产库目标文件夹并登记，成功后刷新资产浏览器 */
+async function onSaveAssetConfirm(payload: { name: string; folderId: string | null }): Promise<void> {
+  const target = messages.value.find((m) => m.kind === 'asset' && m.key === pendingSaveAssetKey)
+  if (!target || target.kind !== 'asset' || savingAssetKey.value) return
+  savingAssetKey.value = target.key
+  saveDialogRef.value?.setSaving(true)
+  try {
+    await window.studio.saveProjectAsset({
+      relativePath: target.relativePath,
+      name: payload.name,
+      folderId: payload.folderId
+    })
+    savedAssetKeys.value.add(target.key)
+    saveDialogOpen.value = false
+    // 资产库同步刷新：新资产在资产浏览器中立即可见
+    await project.scheduleRefreshLibrary()
+  } catch (err) {
+    saveDialogRef.value?.setError(err instanceof Error ? err.message : String(err))
+  } finally {
+    savingAssetKey.value = ''
+  }
 }
 
 let stopAskUser: (() => void) | null = null
@@ -973,8 +1055,9 @@ onBeforeUnmount(() => {
                 <span class="task-state">
                   {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
                 </span>
+                <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
                 <ChatAssetPreview
-                  v-if="tm.state === 'done' && tm.relativePath"
+                  v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
                   :relative-path="tm.relativePath"
                 />
               </li>
@@ -1002,6 +1085,33 @@ onBeforeUnmount(() => {
             >
               {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
             </button>
+          </div>
+        </div>
+        <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D）时追加到对话末尾，与任务清单的状态卡分离 -->
+        <div
+          v-else-if="msg.kind === 'asset'"
+          class="msg-row asset"
+        >
+          <div class="asset-card">
+            <ChatAssetPreview :relative-path="msg.relativePath" />
+            <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
+            <div class="asset-card-actions">
+              <button
+                class="save-btn"
+                :class="{ saved: isAssetSaved(msg.key) }"
+                :disabled="savingAssetKey === msg.key || isAssetSaved(msg.key)"
+                :title="t('studio.chat.saveToLibraryTitle')"
+                @click.stop="openSaveAsset(msg)"
+              >
+                {{
+                  isAssetSaved(msg.key)
+                    ? t('studio.chat.savedToLibrary')
+                    : savingAssetKey === msg.key
+                      ? t('common.saving')
+                      : t('studio.chat.saveToLibrary')
+                }}
+              </button>
+            </div>
           </div>
         </div>
         <div
@@ -1533,6 +1643,18 @@ onBeforeUnmount(() => {
       @confirm="onMentionConfirm"
       @cancel="mentionOpen = false"
     />
+
+    <!-- 保存生成产物到资产库：选择目标文件夹与文件名（复用全局保存资产弹窗） -->
+    <SaveAssetDialog
+      ref="saveDialogRef"
+      :open="saveDialogOpen"
+      :default-name="saveDialogDefaultName"
+      :default-folder-id="saveDialogDefaultFolderId"
+      :title="t('studio.chat.saveToLibraryTitle')"
+      :subtitle="t('studio.chat.saveToLibrarySubtitle')"
+      @confirm="onSaveAssetConfirm"
+      @cancel="closeSaveAssetDialog"
+    />
   </div>
 </template>
 
@@ -1744,6 +1866,54 @@ onBeforeUnmount(() => {
   background: var(--bg-elevated);
   /* 边线与任务清单卡片保持一致（var(--border)） */
   width: 100%;
+}
+
+/* 独立资产预览卡：生成完成（图片/视频/音频/3D）追加到对话末尾 */
+.msg-row.asset {
+  justify-content: flex-start;
+}
+
+.asset-card {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.asset-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.save-btn {
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.save-btn.saved {
+  color: var(--success);
+  border-color: var(--success);
+  cursor: default;
+}
+
+.save-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .bubble pre {

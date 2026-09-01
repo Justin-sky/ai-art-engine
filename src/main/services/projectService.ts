@@ -58,6 +58,7 @@ import type {
   OpenProjectResult,
   SaveGraphRunMediaInput,
   SaveGraphRunTextInput,
+  SaveProjectAssetInput,
   WriteAssetTextInput
 } from '@shared/ipc'
 import { renameReplaceSync } from '../persistence/atomicRename'
@@ -388,6 +389,59 @@ class ProjectService {
     }
 
     return { imported, skipped }
+  }
+
+  /**
+   * 将工程内文件（如 Cache 生成产物）复制到资产库并登记为资产。
+   * 与 importAssets 类似，但源是工程内相对路径（无需经过系统文件选择），
+   * 且支持自定义资产名称与目标文件夹。
+   */
+  saveProjectAsset(input: SaveProjectAssetInput): AssetInfo {
+    const root = this.getRoot()
+    const srcAbs = assertInsideProject(root, join(root, input.relativePath))
+    if (!existsSync(srcAbs)) throw fail(MAIN_ERRORS.fileNotFound)
+    const folderId = input.folderId ?? null
+    if (folderId) this.readFolder(folderId)
+    const dirAbs = resolveFolderDirAbs(root, folderId)
+    const type = detectAssetType(srcAbs)
+    const id = randomUUID()
+    const ext = extname(srcAbs).toLowerCase()
+    // 资产名：优先用户输入（去掉多余的扩展名），否则取源文件名 stem
+    const rawStem = input.name?.trim() || basename(srcAbs, ext) || type
+    const stem = ext && rawStem.toLowerCase().endsWith(ext) ? rawStem.slice(0, -ext.length) : rawStem
+    const fileName = uniqueFileName(dirAbs, `${normalizePathSegment(stem)}${ext}`)
+    const dest = join(dirAbs, fileName)
+    const ts = nowIso()
+    const asset: AssetInfo = {
+      id,
+      type,
+      name: stem,
+      relativePath: toPosix(relative(root, dest)),
+      folderId,
+      version: 1,
+      createdAt: ts,
+      updatedAt: ts
+    }
+    if (type === 'image' || type === 'video') {
+      asset.thumbnailPath = this.planAndScheduleImageThumbnail(asset.relativePath)
+    }
+    // 图/声/视/剧本文件：引用资产，不提供节点图编辑器（与导入保持一致）
+    if (isImportableFileRefAssetType(type)) {
+      asset.genParams = withImportedMediaRefParams()
+    }
+    runTransactionSync([
+      {
+        label: 'copy project asset media',
+        forward: () => copyFileAtomic(srcAbs, dest),
+        rollback: () => removeIfExists(dest)
+      },
+      {
+        label: 'write asset metadata',
+        forward: () => assetRepository.write(root, asset),
+        rollback: () => assetRepository.removeMetadata(root, asset.id)
+      }
+    ])
+    return asset
   }
 
   private importOneMediaFile(src: string, folderId: string | null): AssetInfo {
@@ -1268,7 +1322,7 @@ class ProjectService {
   }
 
   /**
-   * 将外部生成的文件写入工程：默认视频/语音 → Cache/{Videos|Voices}，其它 → Assets/。
+   * 将外部生成的文件写入工程：默认视频/语音/3D/图片 → Cache/{Videos|Voices|Models|Images}，其它 → Assets/。
    * Cache/ 下只落盘、返回内存 AssetInfo（不写 `.asset.json`）；Assets/ 下登记进库。
    */
   attachExternalGeneratedFile(params: {
@@ -1291,7 +1345,9 @@ class ProjectService {
           ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'voice' })
           : params.type === 'model'
             ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'model' })
-            : 'Assets')
+            : params.type === 'image'
+              ? resolveMediaOutputDir({ cacheOutputDir: cacheRoot, kind: 'image' })
+              : 'Assets')
     const dirAbs = assertInsideProject(root, join(root, destDirRel))
     mkdirSync(dirAbs, { recursive: true })
     const underLibrary = isUnderAssetLibraryDir(destDirRel)

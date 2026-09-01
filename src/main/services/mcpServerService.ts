@@ -718,12 +718,12 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'generate_image',
     title: '生成图片',
     description:
-      '用图片模型生成图片并落盘为工程资产（不进入节点图）。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回资产 id 与文件相对路径。',
+      '用图片模型生成图片并落盘到工程缓存目录（缺省 Cache/Images，不自动进资产库，与视频一致；需要进资产库时用界面「保存到资产库」或显式指定 Assets/ 下的 outputDir）。需要已打开工程；模型 / 提供商缺省时用应用当前选择。返回文件相对路径。',
     inputSchema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: '画面描述' },
-        name: { type: 'string', description: '资产显示名' },
+        name: { type: 'string', description: '文件显示名' },
         model: { type: 'string', description: '图片模型 id（models_list 查询）' },
         providerInstanceId: { type: 'string', description: '提供商实例 id（models_list 查询）' },
         aspectRatio: { type: 'string', description: '如 1:1 / 16:9' },
@@ -734,7 +734,10 @@ const TOOL_DEFS: McpToolDef[] = [
           description:
             '参考图（图生图）：支持 http(s) 地址、data URL、工程内相对路径（如 Assets/Generated/Images/x.png）或本地绝对路径。相对/本地路径会自动读取为 data URL 内联发送，无需对象存储'
         },
-        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Assets/Generated/Images）' },
+        outputDir: {
+          type: 'string',
+          description: '工程内相对输出目录（缺省 Cache/Images，只落盘不登记资产；指定 Assets/ 下目录则同时登记为资产）'
+        },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询），界面分类用' },
         extraParams: { type: 'object', description: '低频参数透传（如 seed / quality / resolution），合并进底层生成输入；同名常用参数以显式传参为准' }
       },

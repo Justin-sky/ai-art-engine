@@ -588,7 +588,11 @@ export default {
       mentionTypeVideo: 'Video',
       mentionTypeAudio: 'Audio',
       mentionTypeFile: 'File',
-      removeMention: 'Remove reference'
+      removeMention: 'Remove reference',
+      saveToLibrary: 'Save to asset library',
+      saveToLibraryTitle: 'Save generated result to asset library',
+      saveToLibrarySubtitle: 'Choose a target folder and file name',
+      savedToLibrary: 'Saved'
     },
     editor: {
       asset: 'Asset Editor',

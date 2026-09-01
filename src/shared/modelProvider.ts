@@ -718,7 +718,7 @@ export interface GenerateImageInput {
   seed?: number
   /** 参考图 data URL 或 http(s) */
   inputReferences?: string[]
-  /** MCP：工程内相对输出目录（generateImageAsset 落盘位置，缺省 Assets/Generated/Images） */
+  /** MCP：工程内相对输出目录（generateImageAsset 落盘位置，缺省 Cache/Images 只落盘不登记资产；指定 Assets/ 下目录则登记为资产） */
   outputDir?: string
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
   inputReferenceMeta?: GraphImageReferenceMeta[]

@@ -10,6 +10,7 @@ import type {
   DeleteFolderInput,
   ImportAssetsInput,
   ReimportAssetsInput,
+  SaveProjectAssetInput,
   AutosaveFilter,
   AutosaveWriteInput,
   SaveTextFileInput,
@@ -135,6 +136,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.ASSET_IMPORT, (input: ImportAssetsInput) =>
     projectService.importAssets(input.filePaths, input.folderId ?? null)
   )
+  handle(IpcChannels.ASSET_SAVE_PROJECT_FILE, (input: SaveProjectAssetInput) => {
+    const asset = projectService.saveProjectAsset(input)
+    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    return asset
+  })
   handle(IpcChannels.ASSET_REIMPORT, (input: ReimportAssetsInput) => {
     const result = projectService.reimportAssets(input.assetIds ?? [], {
       folderId: input.folderId

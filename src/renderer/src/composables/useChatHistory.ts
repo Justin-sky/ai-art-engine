@@ -20,8 +20,15 @@ export type ChatMsg =
       detail?: string
       /** 工具调用实例 ID（dsh callId）：同一工具多次调用可区分；旧数据可能缺失 */
       id?: string
-      /** MCP 生成活动关联资产的工程内相对路径：done 后在卡内直接预览（图片/视频/音频/3D） */
+      /** MCP 生成活动关联资产的工程内相对路径：done 后据此在对话末尾生成独立预览卡（图片/视频/音频/3D） */
       relativePath?: string
+    }
+  | {
+      kind: 'asset'
+      /** 会话内唯一标识：`asset:<mcp activity id>`，与对应工具卡的 `mcp:<id>` 同源，用于去重 */
+      key: string
+      /** 生成资产在工程内的相对路径（图片/视频/音频/3D） */
+      relativePath: string
     }
   | {
       kind: 'prompt'
