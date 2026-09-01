@@ -5,7 +5,7 @@
     :show-close="false"
     :z-index="3200"
     :default-width="400"
-    :default-height="current?.mode === 'prompt' ? 320 : 280"
+    :default-height="current?.mode === 'prompt' ? 360 : 280"
     :min-width="320"
     :min-height="200"
     @close="onBackdrop"
@@ -26,6 +26,25 @@
       @keydown.enter.prevent="onConfirm"
       @keydown.escape.prevent="onCancel"
     >
+    <label
+      v-if="current?.modelOptions?.length"
+      class="model-field"
+    >
+      <span>{{ t('common.model') }}</span>
+      <select
+        v-model="modelKey"
+        class="model-select"
+        @keydown.enter.prevent="onConfirm"
+      >
+        <option
+          v-for="opt in current.modelOptions"
+          :key="opt.key"
+          :value="opt.key"
+        >
+          {{ opt.label }}
+        </option>
+      </select>
+    </label>
 
     <template #footer>
       <button
@@ -59,6 +78,7 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 const { t } = useStudioI18n()
 const { current, confirm, cancel } = useStudioPromptHost()
 const textValue = ref('')
+const modelKey = ref('')
 const inputEl = ref<HTMLInputElement | null>(null)
 
 watch(
@@ -66,9 +86,11 @@ watch(
   async (state) => {
     if (!state || state.mode !== 'prompt') {
       textValue.value = ''
+      modelKey.value = ''
       return
     }
     textValue.value = state.defaultValue ?? ''
+    modelKey.value = state.modelKey
     // StudioFloatingWindow 双 rAF 后才挂 body，需等到 input 真正出现
     for (let i = 0; i < 12; i++) {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
@@ -84,7 +106,7 @@ watch(
 )
 
 function onConfirm(): void {
-  if (current.value?.mode === 'prompt') confirm(textValue.value)
+  if (current.value?.mode === 'prompt') confirm(textValue.value, modelKey.value)
   else confirm()
 }
 
@@ -123,6 +145,32 @@ function onBackdrop(): void {
 }
 
 .prompt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.model-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.model-select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.model-select:focus {
   outline: none;
   border-color: var(--accent);
 }
