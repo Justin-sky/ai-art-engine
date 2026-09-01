@@ -1907,7 +1907,50 @@
         <p class="smart-cut-subtitle">
           {{ t('script.timeline.smartCutHint') }}
         </p>
+        <div class="smart-cut-model-row">
+          <label class="smart-cut-field">
+            <span>{{ t('common.model') }}</span>
+            <select
+              v-model="smartCutModelKey"
+              :disabled="smartCutBusy"
+            >
+              <option
+                v-for="opt in smartCutModelOptions"
+                :key="opt.key"
+                :value="opt.key"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="smartCutBusy || !smartCutModelKey"
+            @click="regenerateSmartCut"
+          >
+            {{
+              smartCutBusy
+                ? t('script.timeline.smartCutRegenerating')
+                : smartCutEdits.length
+                  ? t('script.timeline.smartCutRegenerate')
+                  : t('script.timeline.smartCutStart')
+            }}
+          </button>
+        </div>
         <div class="smart-cut-list">
+          <p
+            v-if="smartCutBusy && !smartCutEdits.length"
+            class="smart-cut-empty"
+          >
+            {{ t('script.timeline.smartCutGenerating') }}
+          </p>
+          <p
+            v-else-if="!smartCutEdits.length"
+            class="smart-cut-empty"
+          >
+            {{ t('script.timeline.smartCutNotStarted') }}
+          </p>
           <div
             v-for="(edit, i) in smartCutEdits"
             :key="edit.sourceId"
@@ -1959,6 +2002,7 @@
           <button
             type="button"
             class="export-btn"
+            :disabled="!smartCutEdits.length"
             @click="applySmartCut"
           >
             {{ t('script.timeline.smartCutApply') }}
@@ -2011,7 +2055,13 @@ import {
   type SfxPreset,
   type SfxPresetCategory
 } from '../features/timeline/sfxPresets'
-import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
+import { promptAlert, promptConfirm, promptText, promptTextWithModel } from '../composables/useStudioPrompt'
+import {
+  loadGenerateModelOptions,
+  parseModelKey,
+  preferredModelKey,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
 import { editorDiveKey } from '../features/graph/model/editorDive'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
@@ -2098,6 +2148,9 @@ type SmartCutEditDraft = {
   transitionSec: number
 }
 const smartCutEdits = ref<SmartCutEditDraft[]>([])
+/** 智能粗剪可选文本模型（方案窗口内可切换后重新生成） */
+const smartCutModelOptions = ref<GenerateModelOption[]>([])
+const smartCutModelKey = ref('')
 /** 视频素材首帧预览 URL（与资产库列表同源） */
 const sourceThumbUrls = ref<Record<string, string>>({})
 const sourceGridSize = ref(72)
@@ -4105,25 +4158,34 @@ async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): P
  * 一键生成 BGM：描述音乐 → MiniMax 音乐模型产出 → 落盘 Cache/Music → 铺到音乐轨。
  * 复用 generateMusic 的同步管线（与图片/语音一致），失败给出引导文案。
  */
-/** 一键生成音效：描述 → MiniMax 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
+/** 一键生成音效：描述 → 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
 async function onGenerateSfx(): Promise<void> {
-  const prompt = await promptText({
+  const { options, selectedKey } = await loadGenerateModelOptions('audio')
+  const result = await promptTextWithModel({
     title: t('script.timeline.generateSfx'),
     message: t('script.timeline.generateSfxPrompt'),
-    placeholder: t('script.timeline.generateSfxPlaceholder')
+    placeholder: t('script.timeline.generateSfxPlaceholder'),
+    modelOptions: options,
+    initialModelKey: selectedKey
   })
-  if (!prompt || !prompt.trim()) return
-  await generateSfxCore(prompt.trim(), prompt.trim().slice(0, 24))
+  if (!result || !result.text.trim()) return
+  await generateSfxCore(result.text.trim(), result.text.trim().slice(0, 24), result.modelKey)
 }
 
 /** 音效生成核心：生成 → 上素材列表 → 铺音效轨；成功返回落盘 source，失败弹错返回 null */
-async function generateSfxCore(prompt: string, name?: string): Promise<ScriptTimelineSource | null> {
+async function generateSfxCore(
+  prompt: string,
+  name?: string,
+  modelKey?: string
+): Promise<ScriptTimelineSource | null> {
   sfxBusy.value = true
   try {
+    const parsed = modelKey ? parseModelKey(modelKey) : undefined
     const result = await window.studio.generateMusic({
       prompt,
       instrumental: true,
-      outputDir: 'Cache/Sfx'
+      outputDir: 'Cache/Sfx',
+      ...(parsed ? { providerInstanceId: parsed.providerInstanceId, model: parsed.model } : {})
     })
     const durationSec =
       result.durationMs && result.durationMs > 0
@@ -4262,27 +4324,32 @@ function mixMasterGainDbLabel(): string {
 }
 
 async function onGenerateBgm(): Promise<void> {
-  const prompt = await promptText({
+  const { options, selectedKey } = await loadGenerateModelOptions('audio')
+  const result = await promptTextWithModel({
     title: t('script.timeline.generateBgm'),
     message: t('script.timeline.generateBgmPrompt'),
-    placeholder: t('script.timeline.generateBgmPlaceholder')
+    placeholder: t('script.timeline.generateBgmPlaceholder'),
+    modelOptions: options,
+    initialModelKey: selectedKey
   })
-  if (!prompt || !prompt.trim()) return
+  if (!result || !result.text.trim()) return
   bgmBusy.value = true
   try {
-    const result = await window.studio.generateMusic({
-      prompt: prompt.trim(),
-      instrumental: true
+    const parsed = result.modelKey ? parseModelKey(result.modelKey) : undefined
+    const generated = await window.studio.generateMusic({
+      prompt: result.text.trim(),
+      instrumental: true,
+      ...(parsed ? { providerInstanceId: parsed.providerInstanceId, model: parsed.model } : {})
     })
     const durationSec =
-      result.durationMs && result.durationMs > 0
-        ? Math.round(result.durationMs / 1000)
+      generated.durationMs && generated.durationMs > 0
+        ? Math.round(generated.durationMs / 1000)
         : undefined
     const source: ScriptTimelineSource = {
       id: `bgm:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
-      title: (result.relativePath?.split('/').pop() || 'BGM').replace(/\.[^.]+$/, ''),
-      relativePath: result.relativePath,
-      assetId: result.assetId,
+      title: (generated.relativePath?.split('/').pop() || 'BGM').replace(/\.[^.]+$/, ''),
+      relativePath: generated.relativePath,
+      assetId: generated.assetId,
       origin: 'imported'
     }
     upsertImportedSource(source, 'voice', durationSec)
@@ -4959,13 +5026,35 @@ async function onSmartCut(): Promise<void> {
     typeof gen.generateProviderInstanceId === 'string' && gen.generateProviderInstanceId.trim()
       ? gen.generateProviderInstanceId.trim()
       : ''
-  if (!model) {
+  const { options, selectedKey } = await loadGenerateModelOptions(
+    'text',
+    preferredModelKey(providerInstanceId, model)
+  )
+  smartCutModelOptions.value = options
+  smartCutModelKey.value = selectedKey || ''
+  if (!options.length) {
     await promptAlert({
       title: t('script.timeline.smartCut'),
       message: t('script.timeline.smartCutNoModel')
     })
     return
   }
+  smartCutEdits.value = []
+  smartCutDialogOpen.value = true
+}
+
+/** 用当前选中的模型执行智能粗剪生成，失败返回 false（保留方案窗口便于换模型重试） */
+async function runSmartCut(): Promise<boolean> {
+  const parsed = smartCutModelKey.value ? parseModelKey(smartCutModelKey.value) : undefined
+  if (!parsed) {
+    await promptAlert({
+      title: t('script.timeline.smartCut'),
+      message: t('script.timeline.smartCutNoModel')
+    })
+    return false
+  }
+  const videos = videoSources.value
+  if (!videos.length) return false
   smartCutBusy.value = true
   try {
     const sources = videos.map((s) => ({
@@ -4981,14 +5070,18 @@ async function onSmartCut(): Promise<void> {
       durationSec: c.durationSec
     }))
     const prompt = buildSmartCutPrompt({ sources, currentClips: current, locale: locale.value })
-    const result = await window.studio.generateText({ prompt, providerInstanceId, model })
+    const result = await window.studio.generateText({
+      prompt,
+      providerInstanceId: parsed.providerInstanceId,
+      model: parsed.model
+    })
     const plan = parseSmartCutPlan(result?.text ?? '')
     if (!plan || !plan.edits.length) {
       await promptAlert({
         title: t('script.timeline.smartCut'),
         message: t('script.timeline.smartCutParseFailed')
       })
-      return
+      return false
     }
     smartCutEdits.value = plan.edits.map((e) => {
       const src = videos.find((v) => v.id === e.sourceId)
@@ -5001,7 +5094,7 @@ async function onSmartCut(): Promise<void> {
         transitionSec: e.transitionSec ?? SMART_CUT_DEFAULT_TRANSITION_SEC
       }
     })
-    smartCutDialogOpen.value = true
+    return true
   } catch (err) {
     await promptAlert({
       title: t('script.timeline.smartCut'),
@@ -5009,9 +5102,15 @@ async function onSmartCut(): Promise<void> {
         error: err instanceof Error ? err.message : String(err)
       })
     })
+    return false
   } finally {
     smartCutBusy.value = false
   }
+}
+
+/** 方案窗口内切换模型后重新生成 */
+async function regenerateSmartCut(): Promise<void> {
+  await runSmartCut()
 }
 
 function applySmartCut(): void {
@@ -8418,11 +8517,43 @@ defineExpose({ flushSave: persist, reloadSources })
   opacity: 0.75;
 }
 
+.smart-cut-model-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.smart-cut-model-row .smart-cut-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.smart-cut-model-row select {
+  width: 100%;
+}
+
+.smart-cut-model-row .ghost-btn {
+  flex: none;
+  height: 28px;
+}
+
 .smart-cut-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
+}
+
+.smart-cut-empty {
+  margin: 0;
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
 }
 
 .smart-cut-item {

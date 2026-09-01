@@ -1,4 +1,5 @@
 import { readonly, shallowRef } from 'vue'
+import type { GenerateModelOption } from '../features/graph/model/generateModelOptions'
 
 export type StudioPromptMode = 'alert' | 'confirm' | 'prompt'
 
@@ -12,6 +13,10 @@ export interface StudioPromptOptions {
   defaultValue?: string
   /** prompt 模式：输入框占位 */
   placeholder?: string
+  /** prompt 模式：可选模型下拉（传入后显示模型选择） */
+  modelOptions?: GenerateModelOption[]
+  /** prompt 模式：模型初始选中 key（不传则取首个） */
+  initialModelKey?: string
 }
 
 interface StudioPromptState extends Required<Pick<StudioPromptOptions, 'title' | 'message' | 'mode'>> {
@@ -19,19 +24,21 @@ interface StudioPromptState extends Required<Pick<StudioPromptOptions, 'title' |
   cancelLabel?: string
   defaultValue?: string
   placeholder?: string
-  resolve: (value: boolean | string | null) => void
+  modelOptions?: GenerateModelOption[]
+  modelKey: string
+  resolve: (value: boolean | string | null | { text: string; modelKey: string }) => void
 }
 
 const current = shallowRef<StudioPromptState | null>(null)
 
-function closePrompt(value: boolean | string | null): void {
+function closePrompt(value: boolean | string | null | { text: string; modelKey: string }): void {
   const active = current.value
   if (!active) return
   current.value = null
   active.resolve(value)
 }
 
-function openPrompt(options: StudioPromptOptions): Promise<boolean | string | null> {
+function openPrompt(options: StudioPromptOptions): Promise<boolean | string | null | { text: string; modelKey: string }> {
   // 若已有弹窗，先取消旧的，避免卡住
   if (current.value) closePrompt(false)
   return new Promise((resolve) => {
@@ -43,6 +50,8 @@ function openPrompt(options: StudioPromptOptions): Promise<boolean | string | nu
       cancelLabel: options.cancelLabel,
       defaultValue: options.defaultValue,
       placeholder: options.placeholder,
+      modelOptions: options.modelOptions,
+      modelKey: options.initialModelKey || options.modelOptions?.[0]?.key || '',
       resolve
     }
   })
@@ -68,13 +77,34 @@ export function promptText(
   })
 }
 
+/** 文本输入 + 可选模型选择（取消返回 null；确定返回文本与所选模型 key） */
+export function promptTextWithModel(
+  options: Omit<StudioPromptOptions, 'mode'> & { modelOptions: GenerateModelOption[] }
+): Promise<{ text: string; modelKey: string } | null> {
+  return openPrompt({ ...options, mode: 'prompt' }).then((v) => {
+    if (v && typeof v === 'object' && 'text' in v) {
+      return v as { text: string; modelKey: string }
+    }
+    return null
+  })
+}
+
 export function useStudioPromptHost() {
   return {
     current: readonly(current),
-    confirm: (value?: string) => {
-      const mode = current.value?.mode
-      if (mode === 'prompt') closePrompt(value ?? '')
-      else closePrompt(true)
+    confirm: (value?: string, modelKey?: string) => {
+      const state = current.value
+      if (!state) return
+      if (state.mode === 'prompt') {
+        // 传入 modelOptions（含空数组）视为「文本 + 模型」弹窗，返回对象
+        if (state.modelOptions !== undefined) {
+          closePrompt({ text: value ?? '', modelKey: modelKey ?? state.modelKey })
+        } else {
+          closePrompt(value ?? '')
+        }
+      } else {
+        closePrompt(true)
+      }
     },
     cancel: () => closePrompt(modeCancelValue())
   }
