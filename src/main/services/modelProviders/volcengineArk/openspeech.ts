@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { extname, join } from 'path'
 import axios from 'axios'
 import type {
   GenerateSpeechInput,
@@ -231,11 +231,118 @@ export async function generateOpenspeechVoiceDesign(
   }
 }
 
-/** 方舟层声音：仅 voice_design（手填已购 speaker_id） */
+/** 方舟层声音：传入克隆参考音频 → 声音复刻（few-shot）；否则 voice_design */
 export async function generateVolcengineOpenspeechSpeech(
   provider: ModelProviderInstance,
   modelId: string,
   input: GenerateSpeechInput
 ): Promise<GenerateSpeechResult> {
+  if (input.referenceAudio?.trim()) {
+    return cloneOpenspeechVoice(provider, modelId, input)
+  }
   return generateOpenspeechVoiceDesign(provider, modelId, input)
+}
+
+const VOICE_CLONE_PATH = '/api/v3/tts/voice_clone'
+const E_OS_CLONE_AUDIO_NOT_FOUND = defErrSimple(
+  'provider.volcengine.voiceClone.audioNotFound',
+  '克隆参考音频文件不存在',
+  'Clone reference audio file not found'
+)
+const E_OS_CLONE_NO_DEMO = defErrSimple(
+  'provider.volcengine.voiceClone.noDemo',
+  '声音复刻已完成（speaker_id 已生成），但暂未返回试听音频',
+  'Voice clone finished (speaker_id created) but no preview audio was returned'
+)
+const E_OS_CLONE_EMPTY_RESULT = defErrSimple(
+  'provider.volcengine.voiceClone.emptyResult',
+  '声音复刻未返回有效结果',
+  'Voice clone returned no usable result'
+)
+
+function resolveCloneAudioSource(referenceAudio: string):
+  | { kind: 'base64'; data: string; ext?: string }
+  | { kind: 'url'; url: string } {
+  const src = referenceAudio.trim()
+  if (src.startsWith('data:audio/')) {
+    return { kind: 'base64', data: src.slice(src.indexOf(',') + 1) }
+  }
+  if (/^https?:\/\//i.test(src)) return { kind: 'url', url: src }
+  if (!projectService.isOpen()) {
+    throw fail(
+      defErrSimple(
+        'provider.volcengine.voiceClone.noProject',
+        '未打开工程，无法读取工程内参考音频',
+        'No project is open; cannot read the in-project reference audio'
+      )
+    )
+  }
+  const abs = join(projectService.getRoot(), ...src.split('/'))
+  if (!existsSync(abs)) throw fail(E_OS_CLONE_AUDIO_NOT_FOUND)
+  const buf = readFileSync(abs)
+  return { kind: 'base64', data: buf.toString('base64'), ext: extname(src).replace(/^\./, '') }
+}
+
+/**
+ * 方舟声音复刻（few-shot voice clone）：以 10-30s 参考人声克隆新音色。
+ * 成功后回填角色音色档案（voice = 新 speaker_id），并落盘试听音频。
+ */
+export async function cloneOpenspeechVoice(
+  provider: ModelProviderInstance,
+  modelId: string,
+  input: GenerateSpeechInput
+): Promise<GenerateSpeechResult> {
+  void modelId
+  const apiKey = provider.apiKey.trim()
+  if (!apiKey) throw fail(E_OS_MISSING_KEY)
+  const source = resolveCloneAudioSource(input.referenceAudio!)
+  const format =
+    source.kind === 'base64' && source.ext ? (source.ext === 'wav' ? 'wav' : 'mp3') : 'mp3'
+
+  const body: Record<string, unknown> = {
+    audio: source.kind === 'base64' ? source.data : source.url,
+    text: clip(input.input, 200) || DEFAULT_VOICE_DESIGN_DEMO_TEXT,
+    prompt: { text_prompt: clip(input.voice ?? '', 200) },
+    language: 0,
+    audio_format: format
+  }
+
+  try {
+    const { data, headers } = await axios.post<{
+      code?: number
+      message?: string
+      speaker_id?: string
+      status?: number
+      demo_audio?: string
+    }>(`${VOLCENGINE_OPENSPEECH_BASE_URL}${VOICE_CLONE_PATH}`, body, {
+      headers: openspeechHeaders(apiKey),
+      timeout: 300_000,
+      validateStatus: () => true
+    })
+
+    const logId = headers['x-tt-logid'] || headers['X-Tt-Logid']
+    const logIdParam: string | undefined = logId || undefined
+    if (data?.code != null && data.code !== 0 && !data.speaker_id) {
+      throw fail(E_OS_API_FAILED, {
+        detail: data.message || errCodeLabel(data.code),
+        logId: logIdParam
+      })
+    }
+    if (data?.status === 1) {
+      throw fail(E_OS_TRAINING)
+    }
+    if (data?.status === 3) {
+      throw fail(E_OS_FAILED_STATUS)
+    }
+    const speakerId = data?.speaker_id?.trim()
+    if (!speakerId) throw fail(E_OS_CLONE_EMPTY_RESULT)
+    if (!data?.demo_audio?.trim()) throw fail(E_OS_CLONE_NO_DEMO)
+
+    const buf = await downloadAudioUrl(data.demo_audio.trim())
+    const result = await persistSpeechBuffer(buf, input, speakerId)
+    return result
+  } catch (err) {
+    if (err instanceof AppError) throw err
+    throw fail(E_OS_API_FAILED, { detail: formatAuthError(await readHttpError(err), provider) })
+  }
 }

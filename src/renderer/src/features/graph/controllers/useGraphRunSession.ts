@@ -30,7 +30,8 @@ import {
   resolveAssetImageUrl,
   resolveAssetMediaDataUrl,
   resolveGraphImageUrls,
-  resolveVideoFirstFrameImageUrls
+  resolveVideoFirstFrameImageUrls,
+  resolveVideoReviewFrameImageUrls
 } from '../model/resolveGraphImageUrls'
 import { resolveAssetText as resolveAssetTextById } from '../../media/resolveAssetText'
 import { composeImageExpandCanvas } from '../model/composeImageExpandCanvas'
@@ -708,6 +709,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         runHostInnerGraph: options.runHostInnerGraph,
         resolveImageUrls: resolveGraphImageUrls,
         resolveVideoFirstFrameImageUrls,
+        resolveVideoFrameImageUrls: resolveVideoReviewFrameImageUrls,
         resolveStyleImageUrls: resolveStyleImageUrls,
         resolveProjectStyleImages:
           options.resolveProjectStyleImages ?? (() => [] as ProjectStyleImage[]),

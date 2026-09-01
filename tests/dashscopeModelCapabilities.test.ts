@@ -32,7 +32,17 @@ describe('dashscope modelCapabilities', () => {
       )
     ).toBe(true)
     expect(listDashScopeCatalogModels('video').some((m) => m.id.includes('i2v'))).toBe(true)
-    expect(listDashScopeCatalogModels('audio')).toEqual([])
+    expect(listDashScopeCatalogModels('audio').some((m) => m.id === 'fun-music-v1')).toBe(true)
+    expect(listDashScopeCatalogModels('audio').some((m) => m.id === 'fun-music-preview')).toBe(true)
+  })
+
+  it('resolves audio music capabilities', () => {
+    const music = resolveDashScopeModelCapabilities('fun-music-v1', 'audio')
+    expect(music?.music).toBe(true)
+    expect(music?.instrumental).toBe(true)
+    expect(music?.lyrics).toBe(true)
+    const preview = resolveDashScopeModelCapabilities('fun-music-preview', 'audio')
+    expect(preview?.music).toBe(true)
   })
 
   it('resolves image/video capabilities', () => {
@@ -69,5 +79,7 @@ describe('dashscope modelCapabilities', () => {
     expect(classifyDashScopeModelModality({ id: 'wan2.7-i2v' })).toBe('video')
     expect(classifyDashScopeModelModality({ id: 'happyhorse-1.1-t2v' })).toBe('video')
     expect(classifyDashScopeModelModality({ id: 'kling/kling-v3-video-generation' })).toBe('video')
+    expect(classifyDashScopeModelModality({ id: 'fun-music-v1' })).toBe('audio')
+    expect(classifyDashScopeModelModality({ id: 'fun-music-preview' })).toBe('audio')
   })
 })

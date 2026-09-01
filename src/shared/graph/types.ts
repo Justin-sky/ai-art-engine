@@ -278,6 +278,10 @@ export interface GraphNodeParams {
   generateSeed?: number
   /** 图片/视频生成：是否跟随工程全局种子（默认 true；false 时用 generateSeed） */
   generateSeedUseGlobal?: boolean
+  /** 声音生成：角色音色档案中的角色名（跨镜头一致配音） */
+  generateSpeechCharacter?: string
+  /** 声音生成：克隆参考音频（工程内相对路径或 http(s) URL） */
+  generateSpeechReferenceAudio?: string
   /** 2D帧动画：帧行数 / 列数 */
   animRows?: number
   animCols?: number

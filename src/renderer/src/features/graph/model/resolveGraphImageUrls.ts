@@ -63,6 +63,41 @@ export async function resolveVideoFirstFrameImageUrls(
   return urls
 }
 
+/**
+ * 将图执行输出的视频按时间均匀抽帧为图片 data URL（质检多帧理解）。
+ * 依赖主进程 ffmpeg 按时间取帧；无 ffmpeg 或取帧失败时回退首帧缩略图。
+ */
+export async function resolveVideoReviewFrameImageUrls(
+  items: Array<{ dataUrl?: string; relativePath?: string }>,
+  count: number
+): Promise<string[]> {
+  const urls: string[] = []
+  for (const item of items) {
+    const dataUrl = item.dataUrl?.trim()
+    if (dataUrl && (dataUrl.startsWith('data:image/') || /^https?:\/\//i.test(dataUrl))) {
+      // 单帧来源（生成器直接输出）无法多帧采样，直接作为一帧使用
+      urls.push(dataUrl)
+      continue
+    }
+    const relativePath = item.relativePath?.trim()
+    if (!relativePath) continue
+    try {
+      const frames = await window.studio.extractVideoFrames(relativePath, count)
+      if (frames.length) {
+        urls.push(...frames)
+        continue
+      }
+      // 回退：首帧缩略图
+      await window.studio.getAssetPreviewUrl(relativePath)
+      const thumbUrl = await window.studio.getAssetMediaDataUrl(thumbRelativePathFor(relativePath))
+      if (thumbUrl) urls.push(thumbUrl)
+    } catch {
+      /* 跳过无法取帧的路径 */
+    }
+  }
+  return urls
+}
+
 /** 按资产 id 解析主文件为图片 data URL（供生成 API） */
 export async function resolveAssetImageUrl(assetId: string): Promise<string | undefined> {
   const project = useProjectStore()

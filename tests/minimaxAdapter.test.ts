@@ -64,6 +64,8 @@ describe('miniMaxAdapter', () => {
 
     const audios = await miniMaxAdapter.fetchCatalog(provider(), 'audio')
     expect(audios.some((m) => m.id === 'voice-design')).toBe(true)
+    expect(audios.some((m) => m.id === 'music-3.0')).toBe(true)
+    expect(audios.some((m) => m.id === 'music-2.6')).toBe(true)
 
     getMock.mockRejectedValueOnce(new Error('network'))
     const texts = await miniMaxAdapter.fetchCatalog(provider(), 'text')
@@ -117,6 +119,59 @@ describe('miniMaxAdapter', () => {
         preview_text: expect.any(String)
       })
     )
+  })
+
+  it('generateMusic posts music_generation and returns audio url', async () => {
+    postMock.mockResolvedValueOnce({
+      data: {
+        data: { audio: 'https://cdn.example.com/bgm.mp3' },
+        extra_info: { music_duration: 30000, music_sample_rate: 44100, music_channel: 2 },
+        base_resp: { status_code: 0 }
+      }
+    })
+    const result = await miniMaxAdapter.generateMusic!(provider(), 'music-3.0', {
+      prompt: '轻快明亮的电子配乐',
+      instrumental: true
+    })
+    expect(result.downloadUrl).toBe('https://cdn.example.com/bgm.mp3')
+    expect(result.durationMs).toBe(30000)
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/music_generation',
+      expect.objectContaining({
+        model: 'music-3.0',
+        prompt: '轻快明亮的电子配乐',
+        is_instrumental: true,
+        output_format: 'url',
+        aigc_watermark: false
+      })
+    )
+  })
+
+  it('generateMusic sends lyrics when provided', async () => {
+    postMock.mockResolvedValueOnce({
+      data: { data: { audio: 'https://cdn.example.com/song.mp3' }, base_resp: { status_code: 0 } }
+    })
+    await miniMaxAdapter.generateMusic!(provider(), 'music-3.0', {
+      prompt: '一首温柔的情歌',
+      lyrics: '[Verse]\n第一句',
+      instrumental: false
+    })
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/music_generation',
+      expect.objectContaining({ is_instrumental: false, lyrics: '[Verse]\n第一句' })
+    )
+  })
+
+  it('generateMusic rejects non-music model', async () => {
+    await expect(
+      miniMaxAdapter.generateMusic!(provider(), 'voice-design', { prompt: 'x' })
+    ).rejects.toThrow(/音乐模型/)
+  })
+
+  it('generateMusic rejects empty prompt', async () => {
+    await expect(
+      miniMaxAdapter.generateMusic!(provider(), 'music-3.0', { prompt: '   ' })
+    ).rejects.toThrow(/音乐描述/)
   })
 
   it('generateText uses openai compat under /v1', async () => {

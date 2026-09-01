@@ -11,6 +11,9 @@ import type {
   GenerateModel3dInput,
   GenerateModel3dJob,
   GenerateModel3dResult,
+  GenerateMusicAssetResult,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -40,6 +43,15 @@ import {
 } from '../objectStorageUploadService'
 import { projectService } from '../projectService'
 import { videoJobService } from '../videoJobService'
+import { resolveMediaOutputDir } from '@shared/domain'
+import {
+  findVoiceProfile,
+  normalizeVoiceProfiles,
+  resolveVoiceProfileParams,
+  VOICE_PROFILES_RELATIVE_PATH,
+  type VoiceProfile
+} from '@shared/voiceProfiles'
+import { defErr } from '@shared/errors/appError'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const E_NO_PROJECT = defErrSimple(
@@ -66,6 +78,17 @@ const E_NO_SPEECH_FILE = defErrSimple(
   'provider.facade.speech-file-missing',
   '语音生成未返回音频文件',
   'Speech generation returned no audio file'
+)
+const E_NO_VOICE_PROFILE = defErr<{ character: string }>(
+  'provider.facade.voice-profile-not-found',
+  ({ character }) => `角色音色档案中不存在「${character}」；请先为该角色建档（voice_profile_upsert：角色名 + 音色 id 或克隆参考音频）`,
+  ({ character }) =>
+    `No voice profile for character "${character}"; create one first (voice_profile_upsert: character + voice id or clone reference audio)`
+)
+const E_MUSIC_UNSUPPORTED = defErrSimple(
+  'provider.facade.music-unsupported',
+  '当前模型提供商不支持音乐生成，请在设置中配置 MiniMax 或通义千问（百炼 Fun-Music）提供商并勾选音乐模型（如 music-3.0 / fun-music-v1）',
+  'The selected provider does not support music generation; configure a MiniMax or DashScope (Bailian Fun-Music) provider with a music model (e.g. music-3.0 / fun-music-v1) in Settings'
 )
 const E_TRANSCRIBE_NO_FILE = defErrSimple(
   'provider.facade.transcribe-file-missing',
@@ -497,12 +520,40 @@ class ModelProviderFacade {
   }
 
   async generateSpeech(input: GenerateSpeechInput): Promise<GenerateSpeechResult> {
+    const resolved = await this.applyVoiceProfile(input)
     const { provider, modelId } = resolveActiveProvider(
       'audio',
-      input.providerInstanceId,
-      input.model
+      resolved.providerInstanceId,
+      resolved.model
     )
-    return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, input)
+    return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, resolved)
+  }
+
+  /** 按角色音色档案解析语音参数：角色已建档 → 未显式传的 voice / referenceAudio 取自档案 */
+  private async applyVoiceProfile(
+    input: GenerateSpeechInput
+  ): Promise<GenerateSpeechInput> {
+    const character = input.voiceProfile?.trim()
+    if (!character) return input
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+    const profiles = await this.readVoiceProfiles()
+    const profile = findVoiceProfile(profiles, character)
+    if (!profile) throw fail(E_NO_VOICE_PROFILE, { character })
+    const params = resolveVoiceProfileParams(profile, {
+      voice: input.voice,
+      referenceAudio: input.referenceAudio
+    })
+    return { ...input, ...params }
+  }
+
+  private async readVoiceProfiles(): Promise<VoiceProfile[]> {
+    try {
+      const raw = await projectService.readProjectFile(VOICE_PROFILES_RELATIVE_PATH)
+      if (!raw) return []
+      return normalizeVoiceProfiles(JSON.parse(raw))
+    } catch {
+      return []
+    }
   }
 
   /** 语音生成 → 工程声音资产（与 generateImageAsset 同一落盘模式） */
@@ -520,6 +571,54 @@ class ModelProviderFacade {
       outputDir: input.outputDir
     })
     return { ...result, assetId: asset.id, relativePath: asset.relativePath }
+  }
+
+  /**
+   * BGM / 音乐生成（同步）：选型 → 派发到适配器 → 返回音频下载地址。
+   * 未配置支持音乐的提供商/模型时给出引导文案。
+   */
+  async generateMusic(input: GenerateMusicInput): Promise<GenerateMusicResult> {
+    const { provider, modelId } = resolveActiveProvider(
+      'audio',
+      input.providerInstanceId,
+      input.model
+    )
+    const adapter = getProviderAdapter(provider.providerKind)
+    if (!adapter.generateMusic) throw fail(E_MUSIC_UNSUPPORTED)
+    return adapter.generateMusic(provider, modelId, input)
+  }
+
+  /** BGM 生成 → 工程声音资产：下载 → 落盘 Cache/Music（不自动进资产库，可手动入库） */
+  async generateMusicAsset(
+    input: GenerateMusicInput & { outputDir?: string }
+  ): Promise<GenerateMusicAssetResult> {
+    if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
+    const { provider } = resolveActiveProvider('audio', input.providerInstanceId, input.model)
+    const result = await this.generateMusic(input)
+
+    // 中间文件始终写系统临时目录，由 attachExternalGeneratedFile 统一拷入最终目录
+    const dir = mkdtempSync(join(tmpdir(), 'aiae-music-'))
+    const dest = join(dir, `music-${Date.now()}.mp3`)
+    await this.downloadVideoToFile(provider, result.downloadUrl, dest)
+
+    const outputDir = resolveMediaOutputDir({
+      mediaOutputDir: input.outputDir,
+      cacheOutputDir: projectService.getConfig().cacheOutputDir,
+      kind: 'music'
+    })
+    const asset = projectService.attachExternalGeneratedFile({
+      type: 'voice',
+      sourceFilePath: dest,
+      name: input.name ?? `生成音乐 ${new Date().toLocaleString()}`,
+      prompt: input.prompt,
+      outputDir
+    })
+    return {
+      assetId: asset.id,
+      relativePath: asset.relativePath,
+      model: result.model,
+      durationMs: result.durationMs
+    }
   }
 
   /**

@@ -31,6 +31,11 @@ import {
   mediaReviewSpecBlock
 } from '../mediaReviewPrompts'
 import { buildModelChain, parseModelChain, runWithModelFallback } from '../modelFallback'
+import {
+  buildVideoReviewFrameBlock,
+  buildVideoReviewFrameCaption,
+  VIDEO_REVIEW_FRAME_COUNT
+} from '../videoReview'
 import type { GraphNodeParams } from '../types'
 import { resolveMentionSources } from './context'
 import { flattenImagesValues, flattenVideosValues } from './gallery'
@@ -41,21 +46,28 @@ import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
 /** 视觉模型单次最多接收的图片数：过多既撑爆上下文也无益于判定 */
-const REVIEW_IMAGE_LIMIT = 4
+const REVIEW_IMAGE_LIMIT = 6
 
 interface MediaReviewInputImage {
   url: string
   role: MediaReviewRole
 }
 
+interface CollectedMediaReview {
+  images: MediaReviewInputImage[]
+  /** 视频抽帧图数（>1 时提示词追加「同一视频时间切片」说明） */
+  frameCount: number
+}
+
 /**
- * 收集上游媒体 → 可加载 URL 并标注角色（去重，最多 4 张以免请求过大）。
- * 视频不塞原片，改用主进程系统取帧得到首帧图片供视觉模型看图。
+ * 收集上游媒体 → 可加载 URL 并标注角色（去重，最多 6 张以免请求过大）。
+ * 图片优先、视频帧补位。视频默认按时间均匀抽帧（首帧 / 1/3 / 2/3 / 末帧）
+ * 供视觉模型检查运动、动作连贯性与转场；取帧不可用（无 ffmpeg）时回退首帧缩略图。
  */
 async function collectMediaReviewImages(
   ctx: NodeExecuteContext,
   referenceCount?: number
-): Promise<MediaReviewInputImage[]> {
+): Promise<CollectedMediaReview> {
   const incoming = collectIncomingValues(ctx.inputs)
   const imageItems = flattenImagesValues(incoming).filter(
     (item) =>
@@ -79,24 +91,31 @@ async function collectMediaReviewImages(
   }
 
   const frameUrls: string[] = []
-  if (videoItems.length && ctx.resolveVideoFirstFrameImageUrls) {
-    frameUrls.push(...(await ctx.resolveVideoFirstFrameImageUrls(videoItems)))
+  if (videoItems.length) {
+    if (ctx.resolveVideoFrameImageUrls) {
+      frameUrls.push(...(await ctx.resolveVideoFrameImageUrls(videoItems, VIDEO_REVIEW_FRAME_COUNT)))
+    } else if (ctx.resolveVideoFirstFrameImageUrls) {
+      frameUrls.push(...(await ctx.resolveVideoFirstFrameImageUrls(videoItems)))
+    }
   }
 
   const frameSet = new Set(frameUrls)
-  const combined = [...new Set([...imageUrls, ...frameUrls].filter(Boolean))].slice(
-    0,
-    REVIEW_IMAGE_LIMIT
-  )
-  const pictureCount = combined.filter((url) => !frameSet.has(url)).length
-  const roles = resolveMediaReviewRoles(pictureCount, referenceCount)
+  const all = [...new Set([...imageUrls, ...frameUrls].filter(Boolean))]
+  // 图片优先，视频帧补位，避免多帧把参考图挤出上下文
+  const imagePart = all.filter((url) => !frameSet.has(url)).slice(0, REVIEW_IMAGE_LIMIT)
+  const framePart = all
+    .filter((url) => frameSet.has(url))
+    .slice(0, Math.max(0, REVIEW_IMAGE_LIMIT - imagePart.length))
+  const combined = [...imagePart, ...framePart]
+  const roles = resolveMediaReviewRoles(imagePart.length, referenceCount)
 
   let pictureIndex = 0
-  return combined.map((url) => {
-    // 视频首帧恒为审核对象：它是产物，不该被当成风格基准
+  const images = combined.map((url) => {
+    // 视频帧恒为审核对象：它是产物，不该被当成风格基准
     if (frameSet.has(url)) return { url, role: 'artifact' as const }
     return { url, role: roles[pictureIndex++] ?? ('artifact' as const) }
   })
+  return { images, frameCount: framePart.length }
 }
 
 export async function executeMediaReviewNode(
@@ -121,7 +140,10 @@ export async function executeMediaReviewNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const images = await collectMediaReviewImages(ctx, node.params.mediaReviewReferenceCount)
+  const { images, frameCount } = await collectMediaReviewImages(
+    ctx,
+    node.params.mediaReviewReferenceCount
+  )
   if (!images.length) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
@@ -153,7 +175,11 @@ export async function executeMediaReviewNode(
     ctx.locale
   )
   const objective = mediaReviewObjectiveBlock(issueTexts, ctx.locale)
-  const prompt = [instruction, mediaReviewSpecBlock(spec, ctx.locale), identity, objective]
+  const frameBlock =
+    frameCount > 1
+      ? `${buildVideoReviewFrameCaption(ctx.locale)}：${buildVideoReviewFrameBlock(ctx.locale)}`
+      : ''
+  const prompt = [instruction, mediaReviewSpecBlock(spec, ctx.locale), identity, objective, frameBlock]
     .filter(Boolean)
     .join('\n\n')
 

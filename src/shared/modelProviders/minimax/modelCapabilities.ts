@@ -54,10 +54,16 @@ export function resolveMiniMaxModelCapabilities(
         ? 'image'
         : /voice|speech|tts/i.test(id)
           ? 'audio'
-          : 'text')
+          : /music/i.test(id)
+            ? 'audio'
+            : 'text')
 
   if (mod === 'text' || /^MiniMax-M/i.test(id)) return profileCapabilities('text-base')
-  if (mod === 'audio') return profileCapabilities('audio-voice-design')
+  if (mod === 'audio') {
+    return /music/i.test(id)
+      ? profileCapabilities('audio-music')
+      : profileCapabilities('audio-voice-design')
+  }
   if (mod === 'image') {
     return profileCapabilities(/live/i.test(id) ? 'image-live' : 'image-base')
   }

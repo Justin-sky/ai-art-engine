@@ -23,6 +23,22 @@ import {
   type WriteAssetTextInput
 } from '@shared/ipc'
 import {
+  appendMemorySection,
+  memorySectionTitle,
+  PROJECT_MEMORY_RELATIVE_PATH,
+  PROJECT_MEMORY_WRITE_LIMIT,
+  type ProjectMemorySectionId
+} from '@shared/projectMemory'
+import {
+  deleteVoiceProfile,
+  normalizeVoiceProfiles,
+  serializeVoiceProfiles,
+  upsertVoiceProfile,
+  VOICE_PROFILES_RELATIVE_PATH,
+  voiceProfilesToMarkdown,
+  type VoiceProfile
+} from '@shared/voiceProfiles'
+import {
   getObjectStorageBucket,
   pickActiveObjectStorage,
   type ObjectStorageProviderInstance
@@ -62,7 +78,7 @@ const MCP_GEN_LIMIT = Number(process.env.AIAE_MCP_GEN_LIMIT) || 3
 /** 审计日志单文件上限（超过滚动为 .1） */
 const MCP_AUDIT_MAX_BYTES = 5 * 1024 * 1024
 /** 纳入并发闸门的工具（同步等待的耗时生成/规划） */
-const GATED_TOOLS = new Set(['generate_image', 'generate_speech', 'workflow_plan'])
+const GATED_TOOLS = new Set(['generate_image', 'generate_speech', 'generate_music', 'workflow_plan'])
 
 interface McpToolDef {
   name: string
@@ -215,6 +231,168 @@ const TOOL_DEFS: McpToolDef[] = [
         rootPath: result.rootPath,
         projectName: result.config.name
       }
+    }
+  },
+  {
+    name: 'project_memory_read',
+    title: '读取项目记忆',
+    description:
+      '读取当前工程的 Agent 记忆文件内容（跨会话沉淀的风格 / 机位 / 角色一致性 / 其它偏好）。返回原始 Markdown 文本与是否存在。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => {
+      assertProjectOpen()
+      const content = await projectService.readProjectFile(PROJECT_MEMORY_RELATIVE_PATH)
+      return {
+        exists: content !== null,
+        path: PROJECT_MEMORY_RELATIVE_PATH,
+        content
+      }
+    }
+  },
+  {
+    name: 'project_memory_write',
+    title: '写入项目记忆',
+    description:
+      '整体覆盖写入当前工程的 Agent 记忆文件（Markdown）。一般建议用 project_memory_append 增量沉淀，仅在需要整体整理 / 重建记忆时使用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: '记忆文件完整 Markdown 内容（工程内 `.aiartengine/memory.md`）'
+        }
+      },
+      required: ['content']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const content = String(args.content ?? '').trim()
+      if (!content) throw new Error('记忆内容不能为空')
+      if (content.length > PROJECT_MEMORY_WRITE_LIMIT) {
+        throw new Error(`记忆内容超过上限 ${PROJECT_MEMORY_WRITE_LIMIT} 字符`)
+      }
+      const ok = await projectService.writeProjectFile({
+        relativePath: PROJECT_MEMORY_RELATIVE_PATH,
+        content
+      })
+      if (!ok) throw new Error('记忆文件写入失败（路径非法或工程未打开）')
+      return { path: PROJECT_MEMORY_RELATIVE_PATH, updatedAt: new Date().toISOString() }
+    }
+  },
+  {
+    name: 'project_memory_append',
+    title: '追加项目记忆',
+    description:
+      '向当前工程 Agent 记忆的指定分类追加一条偏好（风格 style / 机位 camera / 角色一致性 character / 其它 other）。' +
+      'Agent 在创作中沉淀重要偏好时使用；跨会话随对话自动加载生效。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section: {
+          type: 'string',
+          enum: ['style', 'camera', 'character', 'other'],
+          description: '记忆分类：style（风格）/ camera（机位与镜头）/ character（角色一致性）/ other（其它）'
+        },
+        content: {
+          type: 'string',
+          description: '要追加的偏好描述（一句话）'
+        }
+      },
+      required: ['content']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const sectionRaw = optionalString(args, 'section') ?? 'other'
+      const validSections: string[] = ['style', 'camera', 'character', 'other']
+      const section: ProjectMemorySectionId = validSections.includes(sectionRaw)
+        ? (sectionRaw as ProjectMemorySectionId)
+        : 'other'
+      const entry = optionalString(args, 'content')
+      if (!entry) throw new Error('缺少要追加的记忆内容')
+      if (entry.length > 2000) throw new Error('单条记忆超过 2000 字符上限')
+      const current = await projectService.readProjectFile(PROJECT_MEMORY_RELATIVE_PATH)
+      const next = appendMemorySection(current ?? '', section, entry)
+      if (next.length > PROJECT_MEMORY_WRITE_LIMIT) {
+        throw new Error(`记忆文件超过上限 ${PROJECT_MEMORY_WRITE_LIMIT} 字符`)
+      }
+      const ok = await projectService.writeProjectFile({
+        relativePath: PROJECT_MEMORY_RELATIVE_PATH,
+        content: next
+      })
+      if (!ok) throw new Error('记忆文件写入失败（路径非法或工程未打开）')
+      const title = memorySectionTitle(section)
+      return { path: PROJECT_MEMORY_RELATIVE_PATH, section, sectionTitle: title, added: entry }
+    }
+  },
+  {
+    name: 'voice_profile_list',
+    title: '角色音色档案',
+    description:
+      '列出当前工程的角色音色档案（角色 → 音色 id / 克隆参考音频），返回 Markdown 摘要与 JSON 明细。' +
+      '配音节点按角色名（generateSpeechCharacter）自动取用档案音色，实现跨镜头一致配音。',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => {
+      assertProjectOpen()
+      const profiles = await readVoiceProfiles()
+      return {
+        count: profiles.length,
+        summary: voiceProfilesToMarkdown(profiles),
+        profiles
+      }
+    }
+  },
+  {
+    name: 'voice_profile_upsert',
+    title: '新建 / 更新角色音色档案',
+    description:
+      '为角色建档或更新：character 必填；voice 为音色 id（MiniMax voice_id / 方舟 speaker_id，二选一与参考音频同有可）；' +
+      'referenceAudio 为克隆参考音频（工程内相对路径或 http(s) URL，10-30s 人声）；description 为音色描述。' +
+      '声音克隆成功后建议把新 speaker_id 回填到 voice。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        character: { type: 'string', description: '角色名（唯一键）' },
+        voice: { type: 'string', description: '音色 id（可选）' },
+        referenceAudio: { type: 'string', description: '克隆参考音频相对路径或 URL（可选）' },
+        description: { type: 'string', description: '音色描述（可选）' }
+      },
+      required: ['character']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const character = optionalString(args, 'character')?.trim()
+      if (!character) throw new Error('缺少角色名（character）')
+      const profiles = await readVoiceProfiles()
+      const next = upsertVoiceProfile(profiles, {
+        character,
+        voice: optionalString(args, 'voice'),
+        referenceAudio: optionalString(args, 'referenceAudio'),
+        description: optionalString(args, 'description')
+      })
+      await writeVoiceProfiles(next)
+      const created = next.find((p) => p.character === character)
+      return { character, profile: created }
+    }
+  },
+  {
+    name: 'voice_profile_delete',
+    title: '删除角色音色档案',
+    description: '删除指定角色的音色档案。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        character: { type: 'string', description: '角色名' }
+      },
+      required: ['character']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const character = optionalString(args, 'character')?.trim()
+      if (!character) throw new Error('缺少角色名（character）')
+      const profiles = await readVoiceProfiles()
+      const next = deleteVoiceProfile(profiles, character)
+      await writeVoiceProfiles(next)
+      return { character, removed: next.length !== profiles.length }
     }
   },
   {
@@ -668,6 +846,56 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'generate_music',
+    title: '生成 BGM / 音乐',
+    description:
+      '用音乐模型（MiniMax Music / 百炼 Fun-Music 等）按情绪与时长描述生成配乐并落盘到工程缓存目录（缺省 Cache/Music，不自动进资产库）。返回资产 id 与相对路径，可直接铺到时间线 music 轨。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '音乐描述：风格 / 情绪 / 场景（如「轻快明亮的电子配乐，适合 Vlog」）' },
+        name: { type: 'string', description: '资产显示名' },
+        model: { type: 'string', description: '音乐模型 id（models_list 查询，如 music-3.0 / fun-music-v1）' },
+        providerInstanceId: { type: 'string', description: '提供商实例 id' },
+        lyrics: { type: 'string', description: '歌词（纯音乐时省略；多段用 \\n 分隔，支持 [Intro]/[Verse]/[Chorus] 结构标签）' },
+        instrumental: { type: 'boolean', description: '是否纯音乐（无歌词 / 人声），缺省 true' },
+        outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Music）' },
+        folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
+        extraParams: { type: 'object', description: '低频参数透传（如 audio_setting），合并进底层生成输入' }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const inputText = readString(args, 'prompt')
+      const input = {
+        ...extraParamsOf(args),
+        prompt: inputText,
+        name: optionalString(args, 'name'),
+        model: optionalString(args, 'model'),
+        providerInstanceId: optionalString(args, 'providerInstanceId'),
+        lyrics: optionalString(args, 'lyrics'),
+        instrumental: typeof args.instrumental === 'boolean' ? args.instrumental : undefined,
+        outputDir: optionalString(args, 'outputDir')
+      }
+      const result = await runGenActivity(
+        'generate_music',
+        activityTitle(input.name, inputText),
+        input.model,
+        () => modelProviderFacade.generateMusicAsset(input),
+        (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+      )
+      broadcastAsset(result.assetId)
+      return {
+        assetId: result.assetId,
+        relativePath: liveAssetRelativePath(result),
+        model: result.model,
+        durationMs: result.durationMs
+      }
+    }
+  },
+  {
     name: 'models_list',
     title: '可用模型列表',
     description:
@@ -906,6 +1134,23 @@ function assertProjectOpen(): void {
   if (!projectService.isOpen()) {
     throw new Error('请先在应用中打开工程（或调用 project_open）')
   }
+}
+
+async function readVoiceProfiles(): Promise<VoiceProfile[]> {
+  try {
+    const raw = await projectService.readProjectFile(VOICE_PROFILES_RELATIVE_PATH)
+    return normalizeVoiceProfiles(raw ? JSON.parse(raw) : null)
+  } catch {
+    return []
+  }
+}
+
+async function writeVoiceProfiles(profiles: VoiceProfile[]): Promise<void> {
+  const ok = await projectService.writeProjectFile({
+    relativePath: VOICE_PROFILES_RELATIVE_PATH,
+    content: serializeVoiceProfiles(profiles)
+  })
+  if (!ok) throw new Error('角色音色档案写入失败')
 }
 
 /** 取当前提供商实例的 publicBaseUrl（未填时返回空字符串） */

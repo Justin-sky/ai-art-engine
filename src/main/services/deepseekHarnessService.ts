@@ -22,6 +22,10 @@ import {
 } from '@shared/ipc'
 import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
 import { modalityConfig, type ModelProviderInstance } from '@shared/modelProvider'
+import {
+  PROJECT_MEMORY_INJECT_LIMIT,
+  PROJECT_MEMORY_RELATIVE_PATH
+} from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
 import { getMcpServerInfo } from './mcpServerService'
 import { projectService } from './projectService'
@@ -1094,9 +1098,22 @@ function locateNodeModules(entry: string): string | null {
  * - craft：完整 agent，优先用 MCP 工具；需要用户选择/确认时用 ask_user 工具
  * - ask：纯问答，禁止调用工具与改动任何文件
  * - plan：先输出执行计划，用 ask_user 请求用户确认，确认后才允许执行工具
+ *
+ * projectMemory：工程级 Agent 记忆原文（`.aiartengine/memory.md`），
+ * 压缩为单行段注入，保证在 YAML 折叠块中安全并保留语义。
  */
-function buildPersona(mode: ChatMode): string[] {
+function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
+  const memory = projectMemory?.trim()
+  const memoryBlock = memory
+    ? [
+        '=== Project memory ===',
+        'The following is this project\'s persisted memory (style / camera / character / other preferences).',
+        'Always follow these preferences when generating content for this project.',
+        memory.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' | ')
+      ]
+    : []
   const base = [
+    ...memoryBlock,
     'You are a helpful assistant in AIArtEngine. You have access to MCP tools provided by the studio.',
     'Prefer using the available MCP tools to complete the user request.',
     'Only write code when no suitable tool is available.',
@@ -1134,7 +1151,11 @@ function buildPersona(mode: ChatMode): string[] {
  * 写自定义 runner 与 overlay patch（禁用原 headless-runner、注入 aiart-runner）。
  * 返回 patch 文件路径；任何一步失败返回 null（回退原 headless 行为，不影响主流程）。
  */
-function writeAiartHarness(dshNodeModules: string, mode: ChatMode = 'craft'): string | null {
+function writeAiartHarness(
+  dshNodeModules: string,
+  mode: ChatMode = 'craft',
+  projectMemory?: string | null
+): string | null {
   try {
     const home = dshHome()
     mkdirSync(home, { recursive: true })
@@ -1159,7 +1180,7 @@ function writeAiartHarness(dshNodeModules: string, mode: ChatMode = 'craft'): st
       '- id: system-prompt',
       '  config:',
       '    persona: >-',
-      ...buildPersona(mode).map((line) => `      ${line}`)
+      ...buildPersona(mode, projectMemory).map((line) => `      ${line}`)
     ]
     const patchPath = join(home, 'aiart.patch.yml')
     writeFileSync(patchPath, patch.join('\n') + '\n', 'utf8')
@@ -1450,7 +1471,19 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   // 本地/内置 dsh 时可注入自定义 runner 输出思考过程；npx 现场拉包时无法预知
   // 依赖树位置，保持原 headless 行为（无 reasoning，不影响主流程）。
   const dshModules = dshEntry ? locateNodeModules(dshEntry) : null
-  const patchPath = dshModules ? writeAiartHarness(dshModules, input.mode ?? 'craft') : null
+  // 工程级 Agent 记忆：读 `.aiartengine/memory.md` 注入 persona（读取失败不影响对话）
+  let projectMemory: string | null = null
+  if (dshModules && projectService.isOpen()) {
+    try {
+      const raw = await projectService.readProjectFile(PROJECT_MEMORY_RELATIVE_PATH)
+      if (raw) projectMemory = raw.slice(0, PROJECT_MEMORY_INJECT_LIMIT)
+    } catch {
+      projectMemory = null
+    }
+  }
+  const patchPath = dshModules
+    ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory)
+    : null
   const args = dshEntry
     ? [
         // cordis HMR 服务要求 loader.internal 可用：Node ≥22 下 require

@@ -4,7 +4,7 @@ import catalog from './modelCapabilities.json'
 export interface DashScopeModelEntry {
   id: string
   name: string
-  modality: 'text' | 'image' | 'video'
+  modality: 'text' | 'image' | 'video' | 'audio'
   profile: string
 }
 
@@ -18,7 +18,7 @@ export interface DashScopeModelCapabilitiesCatalog {
   profiles: Record<
     string,
     {
-      modality: 'text' | 'image' | 'video'
+      modality: 'text' | 'image' | 'video' | 'audio'
       label: string
       capabilities: Record<string, unknown>
     }
@@ -52,7 +52,10 @@ export function resolveDashScopeModelCapabilities(
       ? 'image'
       : /t2v|i2v|video/i.test(id)
         ? 'video'
-        : 'text')
+        : /fun-music|music/i.test(id)
+          ? 'audio'
+          : 'text')
+  if (mod === 'audio') return profileCapabilities('audio-music')
   if (mod === 'image') return profileCapabilities('image-t2i')
   if (mod === 'video') {
     if (/wan[-_.]?3/i.test(id)) return profileCapabilities('video-wan3')
@@ -81,7 +84,9 @@ export function resolveDashScopeModelCapabilities(
 }
 
 export function listDashScopeCatalogModels(modality: ModelModality): CatalogModel[] {
-  if (modality !== 'text' && modality !== 'image' && modality !== 'video') return []
+  if (modality !== 'text' && modality !== 'image' && modality !== 'video' && modality !== 'audio') {
+    return []
+  }
   return data.models
     .filter((m) => m.modality === modality)
     .map((m) => ({

@@ -65,6 +65,10 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.ASSET_SHOW_FOLDER, folderId),
   detectVideoKeyframes: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.VIDEO_DETECT_KEYFRAMES, relativePath),
+  extractVideoFrames: (relativePath: string, count: number) =>
+    ipcRenderer.invoke(IpcChannels.VIDEO_EXTRACT_FRAMES, { relativePath, count }),
+  separateAudio: (relativePath: string) =>
+    ipcRenderer.invoke(IpcChannels.AUDIO_SEPARATE, relativePath),
   copyAssetOriginalFiles: (assetIds: string[]) =>
     ipcRenderer.invoke(IpcChannels.ASSET_COPY_ORIGINAL_FILES, assetIds),
 
@@ -88,6 +92,7 @@ const api: StudioApi = {
   generateImage: (input) => ipcRenderer.invoke(IpcChannels.GEN_IMAGE, input),
   generateVideo: (input) => ipcRenderer.invoke(IpcChannels.GEN_VIDEO, input),
   generateSpeech: (input) => ipcRenderer.invoke(IpcChannels.GEN_SPEECH, input),
+  generateMusic: (input) => ipcRenderer.invoke(IpcChannels.GEN_MUSIC, input),
   generateModel3d: (input) => ipcRenderer.invoke(IpcChannels.GEN_MODEL3D, input),
   transcribeAudio: (input) => ipcRenderer.invoke(IpcChannels.TRANSCRIBE_AUDIO, input),
   planAiWorkflow: (input) => ipcRenderer.invoke(IpcChannels.GEN_AI_WORKFLOW_PLAN, input),

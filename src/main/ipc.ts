@@ -29,6 +29,7 @@ import type { TimelineExportInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
 import type {
   GenerateImageInput,
+  GenerateMusicInput,
   GenerateSpeechInput,
   GenerateTextInput,
   GenerateVideoInput,
@@ -211,6 +212,14 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.VIDEO_DETECT_KEYFRAMES, (relativePath: string) =>
     projectService.detectVideoKeyframes(relativePath)
   )
+  handle(
+    IpcChannels.VIDEO_EXTRACT_FRAMES,
+    (input: { relativePath: string; count: number }) =>
+      projectService.extractVideoFrames(input.relativePath, input.count)
+  )
+  handle(IpcChannels.AUDIO_SEPARATE, (relativePath: string) =>
+    projectService.separateAudio(relativePath)
+  )
   handle(IpcChannels.ASSET_COPY_ORIGINAL_FILES, (assetIds: string[]) =>
     projectService.copyAssetOriginalFiles(assetIds)
   )
@@ -261,6 +270,12 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GEN_SPEECH, (input: GenerateSpeechInput) =>
     modelProviderFacade.generateSpeech(input)
   )
+  handle(IpcChannels.GEN_MUSIC, async (input: GenerateMusicInput & { name?: string }) => {
+    const result = await modelProviderFacade.generateMusicAsset(input)
+    const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+    if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+    return result
+  })
   handle(
     IpcChannels.TRANSCRIBE_AUDIO,
     (input: import('@shared/modelProvider').TranscribeAudioInput) =>

@@ -30,10 +30,15 @@
   "src/main/services/modelProviders/comfyui/adapter.ts": [
    "name: input.name ?? `声音 ${new Date().toLocaleString()}`,"
   ],
+  "src/main/services/modelProviders/dashscope/adapter.ts": [
+   "/音乐模型|音乐描述|音乐生成失败|music model|music generation failed|开通|邀测|invite/i.test(err.message)"
+  ],
   "src/main/services/modelProviders/facade.ts": [
    "name: input.name ?? `生成图片 ${new Date().toLocaleString()}`,",
    "const LUX3D_BUSY_MARKERS = ['进行中的生成任务', '已有进行中', 'busy']",
    "name: input.name ?? `生成语音 ${new Date().toLocaleString()}`,"
+   ,
+   "name: input.name ?? `生成音乐 ${new Date().toLocaleString()}`,"
   ],
   "src/main/services/modelProviders/http.ts": [
    ": `${message}（当前 Key 不像 OpenRouter 密钥：请到 openrouter.ai/keys 复制以 sk-or-v1- 开头的密钥，并确认已保存设置）`",
@@ -73,7 +78,9 @@
    "assertMiniMaxBaseResp(data.base_resp, '提交视频生成')",
    "/海螺|首尾帧|图生视频|提交视频生成失败|submitting video generation failed/i.test(",
    "/下载地址|download url/i.test(err.message)",
-   "assertMiniMaxBaseResp(data.base_resp, '轮询视频任务')"
+   "assertMiniMaxBaseResp(data.base_resp, '轮询视频任务')",
+   "assertMiniMaxBaseResp(data.base_resp, '音乐生成')",
+   "/音乐模型|音乐描述|音乐生成失败|music model|music generation failed/i.test(err.message)"
   ],
   "src/main/services/modelProviders/minimax/http.ts": [
    "const MM_AUTH_HINT_ZH = '请检查 API Key 与 Base URL 是否正确'",
@@ -89,6 +96,8 @@
    "轮询视频任务: 'Polling video task',",
    "获取视频文件: 'Retrieving video file',",
    "音色设计: 'Voice design'",
+   "音色设计: 'Voice design',",
+   "音乐生成: 'Music generation'",
    ": `${action}失败：${detail}`"
   ],
   "src/main/services/modelProviders/minimax/voiceDesign.ts": [

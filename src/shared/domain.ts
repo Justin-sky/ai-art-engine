@@ -250,6 +250,10 @@ export const ASSET_VIDEO_OUTPUT_KIND_DIR = 'Videos'
 export const ASSET_TEXT_OUTPUT_KIND_DIR = 'Texts'
 /** Cache / 历史资产目录下的声音音频子目录名 */
 export const ASSET_VOICE_OUTPUT_KIND_DIR = 'Voices'
+/** Cache / 历史资产目录下的音乐音频子目录名 */
+export const ASSET_MUSIC_OUTPUT_KIND_DIR = 'Music'
+/** Cache / 历史资产目录下的音效音频子目录名 */
+export const ASSET_SFX_OUTPUT_KIND_DIR = 'Sfx'
 /** Cache / 历史资产目录下的 3D 模型子目录名 */
 export const ASSET_MODEL_OUTPUT_KIND_DIR = 'Models'
 
@@ -287,11 +291,15 @@ export function resolveCacheOutputRoot(cacheOutputDir?: string | null): string {
 }
 
 /** 媒体种类对应的 Cache 子目录名 */
-export function mediaOutputKindDir(kind: 'image' | 'video' | 'text' | 'voice' | 'model'): string {
+export function mediaOutputKindDir(
+  kind: 'image' | 'video' | 'text' | 'voice' | 'model' | 'music' | 'sfx'
+): string {
   if (kind === 'video') return ASSET_VIDEO_OUTPUT_KIND_DIR
   if (kind === 'text') return ASSET_TEXT_OUTPUT_KIND_DIR
   if (kind === 'voice') return ASSET_VOICE_OUTPUT_KIND_DIR
   if (kind === 'model') return ASSET_MODEL_OUTPUT_KIND_DIR
+  if (kind === 'music') return ASSET_MUSIC_OUTPUT_KIND_DIR
+  if (kind === 'sfx') return ASSET_SFX_OUTPUT_KIND_DIR
   return ASSET_IMAGE_OUTPUT_KIND_DIR
 }
 
@@ -349,7 +357,7 @@ export function resolveMediaOutputDir(input: {
   mediaOutputDir?: string | null
   /** 工程配置的缓存根；缺省 Cache */
   cacheOutputDir?: string | null
-  kind: 'image' | 'video' | 'text' | 'voice' | 'model'
+  kind: 'image' | 'video' | 'text' | 'voice' | 'model' | 'music' | 'sfx'
 }): string {
   const explicit = normalizeProjectRelativeDir(input.mediaOutputDir)
   if (explicit) return explicit

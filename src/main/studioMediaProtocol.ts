@@ -51,13 +51,27 @@ function nodeStreamToWeb(stream: ReturnType<typeof createReadStream>): ReadableS
   return Readable.toWeb(stream) as unknown as ReadableStream
 }
 
+/**
+ * 协议已注册 corsEnabled，仍需在响应侧放行 CORS：
+ * 渲染层用 <video crossOrigin="anonymous"> 抽帧到 canvas（时间线帧条）时，
+ * 缺 ACAO 头会把 canvas 标记为被污染，toDataURL 抛 SecurityError 导致帧条生成失败。
+ */
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': 'Range'
+}
+
 /** 为 studio-media:// 提供本地文件，带 Content-Type 与 Range（音视频预览必需）。 */
 export function handleStudioMediaRequest(request: Request): Response {
   try {
     const url = new URL(request.url)
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS })
+    }
     const filePath = decodeURIComponent(url.searchParams.get('path') ?? '')
     if (!filePath || !existsSync(filePath)) {
-      return new Response('Not Found', { status: 404 })
+      return new Response('Not Found', { status: 404, headers: CORS_HEADERS })
     }
 
     const { size } = statSync(filePath)
@@ -82,6 +96,7 @@ export function handleStudioMediaRequest(request: Request): Response {
           return new Response(nodeStreamToWeb(stream), {
             status: 206,
             headers: {
+              ...CORS_HEADERS,
               'Content-Type': mime,
               'Content-Length': String(chunkSize),
               'Content-Range': `bytes ${start}-${safeEnd}/${size}`,
@@ -97,6 +112,7 @@ export function handleStudioMediaRequest(request: Request): Response {
     return new Response(nodeStreamToWeb(stream), {
       status: 200,
       headers: {
+        ...CORS_HEADERS,
         'Content-Type': mime,
         'Content-Length': String(size),
         'Accept-Ranges': 'bytes',
@@ -105,6 +121,6 @@ export function handleStudioMediaRequest(request: Request): Response {
     })
   } catch (error) {
     console.error('[studio-media]', error)
-    return new Response('Bad Request', { status: 400 })
+    return new Response('Bad Request', { status: 400, headers: CORS_HEADERS })
   }
 }

@@ -306,6 +306,10 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     /** TTS 供应商声音 ID（API 字段名 voice）/ 方舟 speaker_id */
     voice?: string
+    /** 角色音色档案中的角色名（按档案解析 voice / referenceAudio） */
+    voiceProfile?: string
+    /** 声音克隆参考音频（工程内相对路径或 http(s) URL） */
+    referenceAudio?: string
     name?: string
     /** 声音设计参考图（data URL 或 http(s)） */
     images?: string[]
@@ -345,6 +349,11 @@ export interface NodeExecuteContext {
   /** 将图执行输出的视频解析为「首帧」图片 data URL（供视觉质检/文本模型看图） */
   resolveVideoFirstFrameImageUrls?: (
     items: Array<{ dataUrl?: string; relativePath?: string }>
+  ) => Promise<string[]>
+  /** 将视频按时间均匀抽帧为图片 data URL（质检多帧理解）；不可用时返回空数组 */
+  resolveVideoFrameImageUrls?: (
+    items: Array<{ dataUrl?: string; relativePath?: string }>,
+    count: number
   ) => Promise<string[]>
   /**
    * 将节点风格参考图解析为可供 API 使用的 data URL / http(s)。
@@ -599,6 +608,7 @@ export interface GraphRunOptions {
   resolveAssetText?: NodeExecuteContext['resolveAssetText']
   resolveImageUrls?: NodeExecuteContext['resolveImageUrls']
   resolveVideoFirstFrameImageUrls?: NodeExecuteContext['resolveVideoFirstFrameImageUrls']
+  resolveVideoFrameImageUrls?: NodeExecuteContext['resolveVideoFrameImageUrls']
   resolveStyleImageUrls?: NodeExecuteContext['resolveStyleImageUrls']
   resolveProjectStyleImages?: NodeExecuteContext['resolveProjectStyleImages']
   resolveProjectGenerateSeed?: NodeExecuteContext['resolveProjectGenerateSeed']

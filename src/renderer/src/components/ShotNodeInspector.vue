@@ -113,6 +113,36 @@
             @change="persistImageGenerateParams"
           />
         </div>
+        <div
+          v-if="isVoice"
+          class="voice-profile-row"
+        >
+          <label class="voice-profile-label">
+            {{ t('graph.inspector.generate.voiceProfile') }}
+            <select
+              :value="generateSpeechCharacter || ''"
+              @change="onVoiceCharacterChange"
+            >
+              <option value="">
+                {{ t('graph.inspector.generate.voiceProfileNone') }}
+              </option>
+              <option
+                v-for="profile in voiceProfiles"
+                :key="profile.character"
+                :value="profile.character"
+              >
+                {{ profile.character }}{{ profile.voice ? ` (${profile.voice})` : '' }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="mini-btn"
+            @click="openVoiceProfileDialog"
+          >
+            {{ t('graph.inspector.generate.voiceProfileManage') }}
+          </button>
+        </div>
         <p
           v-if="modelOptions.length === 0"
           class="hint"
@@ -406,6 +436,92 @@
       :editable="false"
       @close="textNotepadOpen = false"
     />
+    <div
+      v-if="voiceProfileDialogOpen"
+      class="voice-profile-dialog"
+      @click.self="voiceProfileDialogOpen = false"
+    >
+      <div class="voice-profile-dialog-panel">
+        <div class="voice-profile-dialog-title">
+          {{ t('graph.inspector.generate.voiceProfileManage') }}
+        </div>
+        <div
+          v-if="voiceProfiles.length"
+          class="voice-profile-list"
+        >
+          <div
+            v-for="profile in voiceProfiles"
+            :key="profile.character"
+            class="voice-profile-item"
+          >
+            <div class="voice-profile-item-main">
+              <div class="voice-profile-item-name">
+                {{ profile.character }}
+              </div>
+              <div class="voice-profile-item-meta">
+                <span v-if="profile.voice">
+                  {{ profile.voice }}
+                </span>
+                <span v-if="profile.referenceAudio">
+                  {{ profile.referenceAudio }}
+                </span>
+                <span v-if="profile.description">
+                  {{ profile.description }}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="ghost-btn"
+              @click="removeVoiceProfile(profile.character)"
+            >
+              {{ t('graph.inspector.generate.voiceProfileDelete') }}
+            </button>
+          </div>
+        </div>
+        <p
+          v-else
+          class="voice-profile-empty"
+        >
+          {{ t('graph.inspector.generate.voiceProfileEmpty') }}
+        </p>
+        <div class="voice-profile-form">
+          <input
+            v-model="voiceProfileForm.character"
+            :placeholder="t('graph.inspector.generate.voiceProfileCharacter')"
+          >
+          <input
+            v-model="voiceProfileForm.voice"
+            :placeholder="t('graph.inspector.generate.voiceProfileVoice')"
+          >
+          <input
+            v-model="voiceProfileForm.referenceAudio"
+            :placeholder="t('graph.inspector.generate.voiceProfileReferenceAudio')"
+          >
+          <input
+            v-model="voiceProfileForm.description"
+            :placeholder="t('graph.inspector.generate.voiceProfileDescription')"
+          >
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!voiceProfileForm.character.trim()"
+            @click="saveVoiceProfile"
+          >
+            {{ t('graph.inspector.generate.voiceProfileSave') }}
+          </button>
+        </div>
+        <div class="voice-profile-dialog-actions">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="voiceProfileDialogOpen = false"
+          >
+            {{ t('common.done') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
   <div
     v-else
@@ -416,7 +532,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import {
+  deleteVoiceProfile,
+  normalizeVoiceProfiles,
+  serializeVoiceProfiles,
+  upsertVoiceProfile,
+  VOICE_PROFILES_RELATIVE_PATH,
+  type VoiceProfile
+} from '@shared/voiceProfiles'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_EN,
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
@@ -1547,6 +1671,81 @@ function persistNodeStyleImages(useGlobal: boolean, images: ProjectStyleImage[])
   })
 }
 
+// ── 角色音色档案（跨镜头一致配音）──
+const voiceProfiles = ref<VoiceProfile[]>([])
+const voiceProfileDialogOpen = ref(false)
+const voiceProfileForm = reactive({
+  character: '',
+  voice: '',
+  referenceAudio: '',
+  description: ''
+})
+
+const generateSpeechCharacter = computed(() => {
+  const current = node.value
+  const value = current?.params?.generateSpeechCharacter
+  return typeof value === 'string' ? value.trim() : ''
+})
+
+async function refreshVoiceProfiles(): Promise<void> {
+  try {
+    const raw = await window.studio.readProjectFile(VOICE_PROFILES_RELATIVE_PATH)
+    voiceProfiles.value = normalizeVoiceProfiles(raw ? JSON.parse(raw) : null)
+  } catch {
+    voiceProfiles.value = []
+  }
+}
+
+function openVoiceProfileDialog(): void {
+  voiceProfileDialogOpen.value = true
+  void refreshVoiceProfiles()
+}
+
+function onVoiceCharacterChange(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  graphEditorHosts.updateNode(hid, current.id, { generateSpeechCharacter: value })
+}
+
+async function saveVoiceProfile(): Promise<void> {
+  const character = voiceProfileForm.character.trim()
+  if (!character) return
+  const next = upsertVoiceProfile(voiceProfiles.value, {
+    character,
+    voice: voiceProfileForm.voice.trim() || undefined,
+    referenceAudio: voiceProfileForm.referenceAudio.trim() || undefined,
+    description: voiceProfileForm.description.trim() || undefined
+  })
+  await window.studio.writeProjectFile({
+    relativePath: VOICE_PROFILES_RELATIVE_PATH,
+    content: serializeVoiceProfiles(next)
+  })
+  voiceProfiles.value = next
+  voiceProfileForm.character = ''
+  voiceProfileForm.voice = ''
+  voiceProfileForm.referenceAudio = ''
+  voiceProfileForm.description = ''
+}
+
+async function removeVoiceProfile(character: string): Promise<void> {
+  const next = deleteVoiceProfile(voiceProfiles.value, character)
+  await window.studio.writeProjectFile({
+    relativePath: VOICE_PROFILES_RELATIVE_PATH,
+    content: serializeVoiceProfiles(next)
+  })
+  voiceProfiles.value = next
+}
+
+watch(
+  () => node.value?.id,
+  () => {
+    void refreshVoiceProfiles()
+  },
+  { immediate: true }
+)
+
 function persistGenerateConfig(): void {
   const current = node.value
   const hid = hostId.value
@@ -1847,6 +2046,104 @@ textarea,
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.voice-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.voice-profile-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.voice-profile-label select {
+  width: 100%;
+}
+
+.voice-profile-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.voice-profile-dialog-panel {
+  width: min(460px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-profile-dialog-title {
+  font-weight: 600;
+}
+
+.voice-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-profile-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.voice-profile-item-main {
+  min-width: 0;
+}
+
+.voice-profile-item-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.voice-profile-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+  opacity: 0.65;
+  word-break: break-all;
+}
+
+.voice-profile-empty {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.voice-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-profile-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .generated-images,

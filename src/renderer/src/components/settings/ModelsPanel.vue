@@ -522,6 +522,9 @@ function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[]
   if (provider.providerKind === 'modelscope') {
     return ['text', 'image']
   }
+  if (provider.providerKind === 'dashscope') {
+    return ['text', 'image', 'video', 'audio']
+  }
   if (provider.providerKind === 'volcengine-ark') {
     return MODEL_MODALITIES.filter((m) => m !== 'model3d')
   }
@@ -786,7 +789,7 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
       capabilities = resolveMiniMaxModelCapabilities(id, modality) ?? undefined
     } else if (
       provider.providerKind === 'dashscope' &&
-      (modality === 'video' || modality === 'image' || modality === 'text')
+      (modality === 'video' || modality === 'image' || modality === 'text' || modality === 'audio')
     ) {
       capabilities = resolveDashScopeModelCapabilities(id, modality) ?? undefined
     } else if (

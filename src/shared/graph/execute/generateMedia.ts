@@ -124,12 +124,22 @@ export async function executeVoiceGenerateNode(
     typeof node.params.generateSpeechVoice === 'string'
       ? node.params.generateSpeechVoice.trim()
       : undefined
+  const speechCharacter =
+    typeof node.params.generateSpeechCharacter === 'string'
+      ? node.params.generateSpeechCharacter.trim()
+      : undefined
+  const speechReferenceAudio =
+    typeof node.params.generateSpeechReferenceAudio === 'string'
+      ? node.params.generateSpeechReferenceAudio.trim()
+      : undefined
 
   const result = await ctx.generateSpeech({
     input: prompt,
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined,
     voice: speechVoice || undefined,
+    voiceProfile: speechCharacter || undefined,
+    referenceAudio: speechReferenceAudio || undefined,
     name: buildGeneratedMediaFileKey({
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'voice',

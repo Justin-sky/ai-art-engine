@@ -8,9 +8,10 @@
       "https://platform.minimaxi.com/docs/api-reference/voice-design-design",
       "https://platform.minimaxi.com/docs/guides/video-generation",
       "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
-      "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-query"
+      "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-query",
+      "https://platform.minimaxi.com/document/music_generation"
     ],
-    "note": "Default Base URL: api.minimaxi.com (no /v1). Text: /v1/chat/completions. Image: /v1/image_generation. Voice design: /v1/voice_design. Video V1 (Hailuo): /v1/video_generation → query → files/retrieve. Video V2 (H3): POST /v2/video_generation → GET /v2/query/video_generation/{task_id}."
+    "note": "Default Base URL: api.minimaxi.com (no /v1). Text: /v1/chat/completions. Image: /v1/image_generation. Voice design: /v1/voice_design. Music: POST /v1/music_generation (sync, output_format=url). Video V1 (Hailuo): /v1/video_generation → query → files/retrieve. Video V2 (H3): POST /v2/video_generation → GET /v2/query/video_generation/{task_id}."
   },
   "models": [
     {
@@ -80,6 +81,18 @@
       "profile": "audio-voice-design"
     },
     {
+      "id": "music-3.0",
+      "name": "MiniMax Music 3.0",
+      "modality": "audio",
+      "profile": "audio-music"
+    },
+    {
+      "id": "music-2.6",
+      "name": "MiniMax Music 2.6",
+      "modality": "audio",
+      "profile": "audio-music"
+    },
+    {
       "id": "MiniMax-H3",
       "name": "海螺 H3",
       "modality": "video",
@@ -140,6 +153,15 @@
       "modality": "audio",
       "label": "MiniMax Voice Design",
       "capabilities": {}
+    },
+    "audio-music": {
+      "modality": "audio",
+      "label": "MiniMax Music (BGM)",
+      "capabilities": {
+        "music": true,
+        "instrumental": true,
+        "lyrics": true
+      }
     },
     "video-h3": {
       "modality": "video",
