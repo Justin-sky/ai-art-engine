@@ -573,6 +573,7 @@ export default {
       copy: 'Copy',
       copied: 'Copied',
       copyTitle: 'Copy full content',
+      scrollToBottom: 'Scroll to bottom',
       sessionSelect: 'Chat sessions',
       newChat: 'New chat',
       newSession: 'New',
