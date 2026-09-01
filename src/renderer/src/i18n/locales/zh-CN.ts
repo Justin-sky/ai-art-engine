@@ -587,7 +587,11 @@ export default {
       mentionTypeVideo: '视频',
       mentionTypeAudio: '音频',
       mentionTypeFile: '文件',
-      removeMention: '移除引用'
+      removeMention: '移除引用',
+      saveToLibrary: '保存到资产库',
+      saveToLibraryTitle: '将生成结果保存到资产库',
+      saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
+      savedToLibrary: '已保存'
     },
     editor: {
       asset: '资产编辑器',

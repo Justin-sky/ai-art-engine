@@ -49,6 +49,7 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.ASSET_ATTACH_FILE, input),
   attachAssetRelative: (input: AttachAssetRelativeInput) =>
     ipcRenderer.invoke(IpcChannels.ASSET_ATTACH_RELATIVE, input),
+  saveProjectAsset: (input) => ipcRenderer.invoke(IpcChannels.ASSET_SAVE_PROJECT_FILE, input),
   getAssetFileUrl: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_GET_FILE_URL, relativePath),
   getAssetPreviewUrl: (relativePath: string) =>

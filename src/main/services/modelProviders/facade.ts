@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs'
+import { createWriteStream, existsSync, mkdtempSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { pipeline } from 'stream/promises'
@@ -467,13 +467,9 @@ class ModelProviderFacade {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const result = await this.generateImage(input)
     const first = result.images[0]
-    const root = projectService.getRoot()
-    // 指定 outputDir 时中间文件写系统临时目录，由 attach 统一拷入目标目录，
-    // 避免中间产物残留在默认目录
-    const dir = input.outputDir
-      ? mkdtempSync(join(tmpdir(), 'aiae-img-'))
-      : join(root, 'assets', 'generated', 'images')
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    // 中间文件始终写系统临时目录，由 attachExternalGeneratedFile 统一拷入最终目录
+    // （未指定 outputDir 时缺省落 Cache/Images，不自动进资产库），避免未登记产物残留在资产库目录
+    const dir = mkdtempSync(join(tmpdir(), 'aiae-img-'))
 
     const stamp = Date.now()
     let absPath: string
