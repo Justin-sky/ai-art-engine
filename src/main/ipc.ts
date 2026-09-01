@@ -297,7 +297,8 @@ export function registerIpcHandlers(): void {
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
       nativeBaseUrl: input.nativeBaseUrl,
-      providerKind: input.providerKind
+      providerKind: input.providerKind,
+      apiStyle: input.apiStyle
     })
   )
 

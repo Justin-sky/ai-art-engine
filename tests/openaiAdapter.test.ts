@@ -19,12 +19,20 @@ vi.mock('axios', () => ({
   }
 }))
 
-vi.mock('../src/main/services/modelProviders/openaiCompat', () => ({
-  generateOpenAiCompatibleText: vi.fn(async (_p, modelId: string, input: { prompt: string }) => ({
-    text: `echo:${input.prompt}`,
-    model: modelId
-  }))
-}))
+vi.mock('../src/main/services/modelProviders/openaiCompat', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../src/main/services/modelProviders/openaiCompat')
+  >()
+  return {
+    ...actual,
+    generateOpenAiCompatibleText: vi.fn(
+      async (_p, modelId: string, input: { prompt: string }) => ({
+        text: `echo:${input.prompt}`,
+        model: modelId
+      })
+    )
+  }
+})
 
 import { openAiAdapter } from '../src/main/services/modelProviders/openai/adapter'
 

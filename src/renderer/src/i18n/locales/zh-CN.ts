@@ -272,16 +272,27 @@ export default {
     models: {
       addProvider: '添加模型提供商',
       add: '添加',
+      addedProvider: '已添加 {label}，请填写 Base URL / API Key 后点击「获取模型」',
       collapseProvider: '收起提供商',
       expandProvider: '展开提供商',
       emptyProviders:
-        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI 或 MagicRouter；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
+        '尚未添加提供商。可添加 OpenRouter、OpenAI、DeepSeek、智谱、Kimi（月之暗面）、xAI（Grok）、Google（Gemini）、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter 或自定义提供商（自选端点类型并填写 Base URL / API Key）；本地服务无需密钥，云端服务填写密钥后在各模态下勾选模型。',
       unifiedHint:
         '同一提供商只需填写一次密钥 / Base URL；文本、图片、视频、声音分别拉取并勾选。火山方舟声音为手填已购 speaker_id；可灵 / MiniMax / 通义千问用 API Key；魔塔用访问令牌（文本/文生图）；OpenAI 官方仅支持文本与图片，需要可访问 api.openai.com 的网络环境与账号；DeepSeek 仅支持文本；智谱支持 GLM 文本与 CogView 图片；Kimi（月之暗面）仅支持文本；xAI（Grok）支持文本 / 图片 / 视频；Google（Gemini）仅支持文本；vLLM / Ollama / LM Studio 为本地 OpenAI 兼容服务，无需 API Key；ComfyUI 走 API 2（本机 8189 或云端 Base URL），图片 / 视频 / 声音，本机可空 Key；MagicRouter 为多供应商聚合（OpenAI 兼容），支持文本 / 图片 / 视频，需 mr- 开头 API Key。',
       enabled: '启用',
       remove: '移除',
       label: '显示名称',
       baseUrl: 'API Base URL',
+      customApiStyle: '端点类型',
+      customApiStyleOptions: {
+        openai: 'OpenAI 兼容',
+        anthropic: 'Anthropic',
+        gemini: 'Gemini'
+      },
+      customApiStyleHint:
+        '当前端点类型：{style}。OpenAI 兼容覆盖多数中转站 / one-api / vLLM 等；Gemini 走 Google 官方 OpenAI 兼容层与多数 Gemini 网关；Anthropic 使用 Messages API（x-api-key 认证）。',
+      customBaseUrlPlaceholder:
+        '例如 https://api.openai.com/v1、https://generativelanguage.googleapis.com/v1beta/openai 或 https://api.anthropic.com',
       nativeBaseUrl: 'ComfyUI 本体地址',
       nativeBaseUrlPlaceholder: 'http://127.0.0.1:8188',
       nativeBaseUrlHint:
@@ -310,7 +321,9 @@ export default {
         tripo: '获取 Tripo API Key：',
         hyper3d: '获取 Rodin（Hyper3D）API Key：',
         luma: '获取 Luma AI API Key：',
-        lux3d: '获取 Lux3D API Key：'
+        lux3d: '获取 Lux3D API Key：',
+        custom:
+          '自定义提供商：选择端点类型后，填写端点 Base URL 与 API Key 即可拉取模型列表；无统一申请页。'
       },
       arkVoiceCredentialsHint:
         '声音设计走豆包语音 openspeech，请填语音控制台 API Key（可与方舟 Key 不同），并手填已购 speaker_id：',
@@ -438,6 +451,11 @@ export default {
         text: '本地 OpenAI 兼容服务（vLLM / Ollama / LM Studio）：无需 API Key，文本对话走 /chat/completions，模型目录由 /models 拉取；多模态理解可在文本节点传入图片。',
         video:
           'vLLM-Omni 视频生成（Wan T2V / I2V 等扩散模型）：异步任务走 /v1/videos，完成后下载成片；支持首帧图生视频与参考视频/音频；Ollama / LM Studio 不支持视频。'
+      },
+      customModalityHint: {
+        text: '文本对话走 /chat/completions（OpenAI 兼容 / Gemini）或 /v1/messages（Anthropic）；多模态理解可在文本节点直接传图。OpenAI 兼容 / Gemini 端点还支持图片生成，见「图片」页签。',
+        image:
+          '图片生成走 OpenAI 兼容 /images/generations 接口（如 gpt-image-1 / dall-e-3 / FLUX 等），参考图走 /images/edits。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。'
       }
     },
     objectStorage: {

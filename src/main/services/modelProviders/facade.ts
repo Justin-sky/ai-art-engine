@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import type {
   CatalogModel,
+  CustomApiStyle,
   GenerateImageInput,
   GenerateImageResult,
   GenerateModel3dInput,
@@ -167,6 +168,7 @@ class ModelProviderFacade {
       baseUrl?: string
       nativeBaseUrl?: string
       providerKind?: ModelProviderKind
+      apiStyle?: CustomApiStyle
     }
   ): Promise<CatalogModel[]> {
     const provider = buildProviderSnapshot({
@@ -174,7 +176,8 @@ class ModelProviderFacade {
       apiKey: overrides?.apiKey,
       baseUrl: overrides?.baseUrl,
       nativeBaseUrl: overrides?.nativeBaseUrl,
-      providerKind: overrides?.providerKind
+      providerKind: overrides?.providerKind,
+      apiStyle: overrides?.apiStyle
     })
     // 本地服务（vLLM / Ollama / LM Studio / ComfyUI）无需 API Key
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) {
@@ -192,13 +195,15 @@ class ModelProviderFacade {
     baseUrl?: string
     nativeBaseUrl?: string
     providerKind?: ModelProviderKind
+    apiStyle?: CustomApiStyle
   }): Promise<{ ok: true }> {
     const provider = buildProviderSnapshot({
       providerInstanceId: input.providerInstanceId,
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
       nativeBaseUrl: input.nativeBaseUrl,
-      providerKind: input.providerKind
+      providerKind: input.providerKind,
+      apiStyle: input.apiStyle
     })
     await getProviderAdapter(provider.providerKind).assertAuth(provider)
     return { ok: true }

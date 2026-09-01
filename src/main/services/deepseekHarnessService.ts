@@ -21,7 +21,12 @@ import {
   type SkillTemplate
 } from '@shared/ipc'
 import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
-import { modalityConfig, type ModelProviderInstance } from '@shared/modelProvider'
+import {
+  isCustomProvider,
+  modalityConfig,
+  resolveCustomApiStyle,
+  type ModelProviderInstance
+} from '@shared/modelProvider'
 import {
   PROJECT_MEMORY_INJECT_LIMIT,
   PROJECT_MEMORY_RELATIVE_PATH
@@ -131,13 +136,19 @@ function resolveTextProvider(providerId?: string): {
     const baseUrl = p.baseUrl?.trim()
     return { apiKey: p.apiKey.trim(), modelId, ...(baseUrl ? { baseUrl } : {}) }
   }
+  // dsh 经由 OpenAI 兼容端点透传：自定义提供商中 Anthropic 端点类型（Messages API）不可用作 agent 模型
+  const isDshCompatible = (p: ModelProviderInstance): boolean =>
+    !isCustomProvider(p) || resolveCustomApiStyle(p) !== 'anthropic'
   if (providerId) {
     const candidate = providers.find(
-      (p) => p.id === providerId && p.enabled && p.apiKey?.trim() && hasTextModels(p)
+      (p) =>
+        p.id === providerId && p.enabled && p.apiKey?.trim() && hasTextModels(p) && isDshCompatible(p)
     )
     return candidate ? pick(candidate) : null
   }
-  const pool = providers.filter((p) => p.enabled && p.apiKey?.trim() && hasTextModels(p))
+  const pool = providers.filter(
+    (p) => p.enabled && p.apiKey?.trim() && hasTextModels(p) && isDshCompatible(p)
+  )
   const provider = pool.find((p) => p.providerKind === 'deepseek') ?? pool[0]
   return provider ? pick(provider) : null
 }
