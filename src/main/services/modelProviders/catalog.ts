@@ -60,6 +60,16 @@ export const PROVIDER_ERRORS = {
     'provider.noAudioResult',
     '模型未返回音频数据',
     'The model returned no audio data'
+  ),
+  musicResultNoUrl: defErrSimple(
+    'provider.musicResultNoUrl',
+    '音乐生成完成但未返回下载地址',
+    'Music generation finished but returned no download URL'
+  ),
+  noMusicResult: defErrSimple(
+    'provider.noMusicResult',
+    '模型未返回音乐数据',
+    'The model returned no music data'
   )
 } satisfies Record<string, BiDef<never> | BiDef<undefined>>
 
@@ -87,6 +97,7 @@ export type ProviderAction =
   | 'videoPolling'
   | 'connectionTest'
   | 'transcribe'
+  | 'musicGenerate'
 
 const ACTION_ZH: Record<ProviderAction, string> = {
   listModels: '拉取模型列表',
@@ -95,7 +106,8 @@ const ACTION_ZH: Record<ProviderAction, string> = {
   videoSubmit: '提交视频生成',
   videoPolling: '轮询视频任务',
   connectionTest: '连接测试',
-  transcribe: '音频转写'
+  transcribe: '音频转写',
+  musicGenerate: '音乐生成'
 }
 const ACTION_EN: Record<ProviderAction, string> = {
   listModels: 'Listing models',
@@ -104,5 +116,6 @@ const ACTION_EN: Record<ProviderAction, string> = {
   videoSubmit: 'Submitting video generation',
   videoPolling: 'Polling video task',
   connectionTest: 'Connection test',
-  transcribe: 'Audio transcription'
+  transcribe: 'Audio transcription',
+  musicGenerate: 'Music generation'
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampMixEqGainDb,
+  clampTrackGain,
   contentEndSecOfTimeline,
   normalizeScriptTimelineSource,
   readScriptTimelineFromGenParams,
@@ -98,5 +100,67 @@ describe('contentEndSecOfTimeline', () => {
         { id: 'b', track: 'music', sourceId: 'm', title: 'b', startSec: 5, durationSec: 2 }
       ])
     ).toBe(7)
+  })
+})
+
+describe('sfx 轨 + 混音设置', () => {
+  it('sfx 轨 clip 可持久化读取', () => {
+    const clip: ScriptTimelineClip = {
+      id: 'sfx1',
+      track: 'sfx',
+      sourceId: 'sfx-src',
+      title: '雨声',
+      relativePath: 'Cache/Sfx/rain.mp3',
+      startSec: 2,
+      durationSec: 3,
+      volume: 0.8
+    }
+    const written = withScriptTimeline({}, { clips: [clip] })
+    const read = readScriptTimelineFromGenParams(written)
+    expect(read.clips).toHaveLength(1)
+    expect(read.clips[0].track).toBe('sfx')
+    expect(read.clips[0].volume).toBe(0.8)
+  })
+
+  it('混音设置（轨道增益 / 主增益 / EQ / 压缩）往返与越界收敛', () => {
+    const written = withScriptTimeline(
+      {},
+      {
+        clips: [],
+        settings: {
+          mixGains: { music: 1.5, voice: 0.3, sfx: 9 },
+          mixMasterGain: 1.2,
+          mixBassGainDb: 8,
+          mixTrebleGainDb: -99,
+          mixCompression: true
+        }
+      }
+    )
+    const read = readScriptTimelineFromGenParams(written)
+    const s = read.settings
+    expect(s?.mixGains?.music).toBe(1.5)
+    expect(s?.mixGains?.voice).toBe(0.3)
+    expect(s?.mixGains?.sfx).toBe(2)
+    expect(s?.mixMasterGain).toBe(1.2)
+    expect(s?.mixBassGainDb).toBe(8)
+    expect(s?.mixTrebleGainDb).toBe(-12)
+    expect(s?.mixCompression).toBe(true)
+  })
+
+  it('clampTrackGain / clampMixEqGainDb 边界', () => {
+    expect(clampTrackGain(0)).toBe(0)
+    expect(clampTrackGain(2.5)).toBe(2)
+    expect(clampTrackGain('abc' as unknown as number)).toBe(1)
+    expect(clampMixEqGainDb(-30)).toBe(-12)
+    expect(clampMixEqGainDb(30)).toBe(12)
+    expect(clampMixEqGainDb(undefined as unknown as number)).toBe(0)
+  })
+
+  it('exportPlatformId 持久化', () => {
+    const written = withScriptTimeline(
+      {},
+      { clips: [], settings: { exportPlatformId: 'douyin' } }
+    )
+    expect(readScriptTimelineFromGenParams(written).settings?.exportPlatformId).toBe('douyin')
   })
 })

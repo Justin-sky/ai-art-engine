@@ -134,7 +134,7 @@ export async function exportTimelineViaRecorder(
   const audioNodes: Array<{ el: HTMLAudioElement; source: MediaElementAudioSourceNode }> = []
 
   const voiceMusic = input.clips.filter(
-    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay'
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay' || c.track === 'sfx'
   )
   for (const clip of voiceMusic) {
     const el = new Audio()

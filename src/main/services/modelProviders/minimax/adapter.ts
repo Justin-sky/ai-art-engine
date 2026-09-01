@@ -4,6 +4,8 @@ import type {
   GenerateImageResult,
   GenerateModel3dInput,
   GenerateModel3dJob,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -71,6 +73,22 @@ type MiniMaxImageResp = {
   base_resp?: MiniMaxBaseResp
 }
 
+type MiniMaxMusicResp = {
+  data?: {
+    /** output_format=url 时为音频下载地址；hex 时为 hex 编码音频 */
+    audio?: string
+    status?: number
+  }
+  extra_info?: {
+    music_duration?: number
+    music_sample_rate?: number
+    music_channel?: number
+    bitrate?: number
+    music_size?: number
+  }
+  base_resp?: MiniMaxBaseResp
+}
+
 type MiniMaxV2ContentItem = Record<string, unknown>
 type MiniMaxV2Mode = 't2va' | 'i2va' | 'r2va'
 
@@ -111,6 +129,16 @@ const E_MM_NO_FILE_ID = defErrSimple(
   'provider.minimax.noFileId',
   '视频任务已完成但未返回 file_id',
   'Video task finished but returned no file_id'
+)
+const E_MM_NOT_MUSIC_MODEL = defErrSimple(
+  'provider.minimax.notMusicModel',
+  '请选择音乐模型（如 music-3.0 / music-2.6）生成 BGM',
+  'Please select a music model (e.g. music-3.0 / music-2.6) to generate BGM'
+)
+const E_MM_MUSIC_PROMPT_EMPTY = defErrSimple(
+  'provider.minimax.musicPromptEmpty',
+  '音乐描述不能为空',
+  'Music description must not be empty'
 )
 
 /** 非 throw 场景（结果对象的 error 字段）按当前语言取文案 */
@@ -582,7 +610,68 @@ export const miniMaxAdapter: ModelProviderAdapter = {
     _modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
+    if (input.referenceAudio?.trim()) {
+      throw fail(
+        defErrSimple(
+          'provider.minimax.voiceCloneUnsupported',
+          'MiniMax 语音暂不支持参考音频克隆；请改用火山方舟进行声音复刻，或为该角色填写音色 id（voice）',
+          'MiniMax speech does not support reference-audio cloning yet; use Volcengine Ark for voice clone, or set a voice id for this character'
+        )
+      )
+    }
     return generateMiniMaxVoiceDesign(provider, nativeApiBase(provider), input)
+  },
+
+  async generateMusic(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateMusicInput
+  ): Promise<GenerateMusicResult> {
+    // 防止误选语音/文本模型：音乐接口仅接受 music-* 模型
+    if (!/music/i.test(modelId)) {
+      throw fail(E_MM_NOT_MUSIC_MODEL)
+    }
+    const prompt = input.prompt.trim()
+    if (!prompt) throw fail(E_MM_MUSIC_PROMPT_EMPTY)
+
+    const client = createMiniMaxHttpClient({
+      ...provider,
+      baseUrl: nativeApiBase(provider)
+    })
+    const body: Record<string, unknown> = {
+      model: modelId,
+      prompt,
+      // BGM 场景默认纯音乐；带歌词时由调用方显式传 instrumental=false + lyrics
+      is_instrumental: input.instrumental ?? true,
+      output_format: 'url',
+      aigc_watermark: false
+    }
+    const lyrics = input.lyrics?.trim()
+    if (lyrics) body.lyrics = lyrics
+
+    try {
+      const { data } = await client.post<MiniMaxMusicResp>('/v1/music_generation', body)
+      assertMiniMaxBaseResp(data.base_resp, '音乐生成')
+      const audio = data.data?.audio?.trim()
+      if (!audio) throw fail(PROVIDER_ERRORS.noMusicResult)
+      const durationMs =
+        typeof data.extra_info?.music_duration === 'number' && data.extra_info.music_duration > 0
+          ? data.extra_info.music_duration
+          : undefined
+      return { model: modelId, downloadUrl: audio, durationMs }
+    } catch (err) {
+      if (isAppError(err) && err.code === PROVIDER_ERRORS.noMusicResult.code) throw err
+      if (
+        err instanceof Error &&
+        /音乐模型|音乐描述|音乐生成失败|music model|music generation failed/i.test(err.message)
+      ) {
+        throw err
+      }
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'musicGenerate',
+        detail: await readMiniMaxHttpError(err)
+      })
+    }
   },
 
   submitModel3d(

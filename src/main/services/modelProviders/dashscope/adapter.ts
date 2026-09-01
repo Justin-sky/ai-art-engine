@@ -5,6 +5,8 @@ import type {
   GenerateImageResult,
   GenerateModel3dInput,
   GenerateModel3dJob,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -25,7 +27,7 @@ import {
 } from '@shared/modelProviders/dashscope/modelCapabilities'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
-import { fail, defErrSimple } from '@shared/errors/appError'
+import { fail, defErrSimple, isAppError } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -59,6 +61,16 @@ const E_HAPPYHORSE_EDIT_NEEDS_VIDEO = defErrSimple(
   'HappyHorse 视频编辑需要 1 段输入视频',
   'HappyHorse video editing requires 1 input video'
 )
+const E_DS_NOT_MUSIC_MODEL = defErrSimple(
+  'provider.dashscope.notMusicModel',
+  '请选择音乐模型（如 fun-music-v1）生成 BGM；Fun-Music 为邀测模型，需先在百炼模型广场申请开通',
+  'Please select a music model (e.g. fun-music-v1) to generate BGM; Fun-Music is in invite-only beta, request access in Bailian Model Studio first'
+)
+const E_DS_MUSIC_PROMPT_EMPTY = defErrSimple(
+  'provider.dashscope.musicPromptEmpty',
+  '音乐描述不能为空',
+  'Music description must not be empty'
+)
 
 type DashScopeTaskOutput = {
   task_id?: string
@@ -74,6 +86,31 @@ type DashScopeTaskEnvelope = {
   code?: string
   message?: string
   output?: DashScopeTaskOutput
+}
+
+/** Fun-Music 音乐生成响应（非流式：直接返回音频 URL） */
+type FunMusicResp = {
+  request_id?: string
+  code?: string
+  message?: string
+  output?: {
+    audio?: {
+      url?: string
+      id?: string
+      data?: string
+      expires_at?: number
+    }
+    extra_info?: {
+      channels?: number
+      sample_rate?: string
+      lyrics?: string
+    }
+    finish_reason?: string | null
+  }
+  usage?: {
+    /** 音乐时长（秒），用于计费 */
+    duration?: number
+  }
 }
 
 const IMAGE_POLL_INTERVAL_MS = 2_500
@@ -176,7 +213,7 @@ export const dashscopeAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality: ModelModality): Promise<CatalogModel[]> {
-    if (modality === 'audio') return []
+    if (modality === 'audio') return listDashScopeCatalogModels('audio')
 
     if (modality === 'image' || modality === 'video') {
       return listDashScopeCatalogModels(modality)
@@ -434,6 +471,61 @@ export const dashscopeAdapter: ModelProviderAdapter = {
       kind: 'voice',
       name: { zh: '通义千问', en: 'Qwen (DashScope)' }
     })
+  },
+
+  async generateMusic(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateMusicInput
+  ): Promise<GenerateMusicResult> {
+    // 防止误选语音/文本模型：音乐接口仅接受 fun-music-* 模型
+    if (!/fun-music/i.test(modelId)) {
+      throw fail(E_DS_NOT_MUSIC_MODEL)
+    }
+    const prompt = input.prompt.trim()
+    if (!prompt) throw fail(E_DS_MUSIC_PROMPT_EMPTY)
+
+    const client = createNativeClient(provider, LONG_GENERATE_TIMEOUT_MS)
+    const bodyInput: Record<string, unknown> = {
+      prompt,
+      // BGM 场景默认纯音乐；带歌词时由调用方显式传 instrumental=false + lyrics
+      is_instrumental: input.instrumental ?? true
+    }
+    const lyrics = input.lyrics?.trim()
+    if (lyrics) bodyInput.lyrics = lyrics
+
+    try {
+      const { data } = await client.post<FunMusicResp>('/services/audio/music/generation', {
+        model: modelId,
+        input: bodyInput
+      })
+      if (data.code && !data.output?.audio?.url) {
+        throw new Error(data.message || data.code)
+      }
+      const url = data.output?.audio?.url?.trim()
+      if (!url) throw fail(PROVIDER_ERRORS.noMusicResult)
+      const durationSec = data.usage?.duration
+      return {
+        model: modelId,
+        downloadUrl: url,
+        durationMs:
+          typeof durationSec === 'number' && durationSec > 0
+            ? Math.round(durationSec * 1000)
+            : undefined
+      }
+    } catch (err) {
+      if (isAppError(err) && err.code === PROVIDER_ERRORS.noMusicResult.code) throw err
+      if (
+        err instanceof Error &&
+        /音乐模型|音乐描述|音乐生成失败|music model|music generation failed|开通|邀测|invite/i.test(err.message)
+      ) {
+        throw err
+      }
+      throw fail(PROVIDER_ERRORS.actionFailed, {
+        action: 'musicGenerate',
+        detail: formatAuthError(await readHttpError(err), provider)
+      })
+    }
   },
 
   submitModel3d(

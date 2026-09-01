@@ -1,5 +1,8 @@
 <template>
-  <div ref="rootEl" class="script-timeline">
+  <div
+    ref="rootEl"
+    class="script-timeline"
+  >
     <div
       class="workspace"
       :style="{
@@ -25,6 +28,37 @@
               @click="autoPlaceAll"
             >
               {{ t('script.timeline.autoPlace') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="bgmBusy"
+              @click="onGenerateBgm"
+            >
+              {{ bgmBusy ? '…' : t('script.timeline.generateBgm') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="sfxBusy"
+              @click="onGenerateSfx"
+            >
+              {{ sfxBusy ? '…' : t('script.timeline.generateSfx') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn"
+              @click="openSfxLibrary"
+            >
+              {{ t('script.timeline.sfxLibrary') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="smartCutBusy"
+              @click="onSmartCut"
+            >
+              {{ smartCutBusy ? '…' : t('script.timeline.smartCut') }}
             </button>
           </div>
         </div>
@@ -67,7 +101,10 @@
                 }}</span>
               </span>
               <span class="source-meta">
-                <span class="source-name" :title="src.title">{{ src.title }}</span>
+                <span
+                  class="source-name"
+                  :title="src.title"
+                >{{ src.title }}</span>
                 <span class="source-tags">
                   <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
                   <span
@@ -147,7 +184,10 @@
                     }}</span>
                   </span>
                   <span class="source-meta">
-                    <span class="source-name" :title="src.title">{{ src.title }}</span>
+                    <span
+                      class="source-name"
+                      :title="src.title"
+                    >{{ src.title }}</span>
                     <span class="source-tags">
                       <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
                       <span
@@ -217,7 +257,10 @@
                   }}</span>
                 </span>
                 <span class="source-meta">
-                  <span class="source-name" :title="src.title">{{ src.title }}</span>
+                  <span
+                    class="source-name"
+                    :title="src.title"
+                  >{{ src.title }}</span>
                   <span class="source-tags">
                     <span class="source-tag imported">{{
                       t('script.timeline.sourceGroup.importedTag')
@@ -304,7 +347,10 @@
       />
 
       <section class="panel preview-panel">
-        <div ref="previewStageEl" class="preview-stage">
+        <div
+          ref="previewStageEl"
+          class="preview-stage"
+        >
           <video
             v-if="previewSrc"
             ref="previewEl"
@@ -332,11 +378,15 @@
             :style="previewFrameStyle"
           >
             <span class="export-frame-label">{{ previewFrameRatioLabel }}</span>
+            <div
+              v-if="exportPlatform.id !== 'custom' && previewFrameRatioKey === 'export'"
+              class="export-safe-area"
+              :title="t('script.timeline.safeAreaHint')"
+              :style="exportSafeAreaStyle"
+            />
             <div class="overlay-layer">
               <video
                 v-if="activeMainTransitionClip"
-                class="transition-overlay-video"
-                :style="mainTransitionVideoStyle"
                 :ref="
                   (el) =>
                     bindTransitionVideo(
@@ -344,16 +394,18 @@
                       activeMainTransitionClipId
                     )
                 "
+                class="transition-overlay-video"
+                :style="mainTransitionVideoStyle"
                 playsinline
                 preload="metadata"
               />
               <video
                 v-for="clip in previewOverlayClips"
-                :key="clip.id"
                 v-show="isOverlayClipActive(clip)"
+                :key="clip.id"
+                :ref="(el) => bindOverlayVideo(el as HTMLVideoElement | null, clip.id)"
                 class="overlay-video"
                 :style="overlayVideoStyle(clip)"
-                :ref="(el) => bindOverlayVideo(el as HTMLVideoElement | null, clip.id)"
                 playsinline
                 preload="metadata"
                 @pointerdown.stop="onOverlayPointerDown($event, clip)"
@@ -404,13 +456,13 @@
             v-if="activeSubtitleText"
             class="subtitle-overlay"
             :title="t('script.timeline.subtitleResizeHint')"
-            @pointerdown.stop="onSubtitleMoveDown"
-            @wheel.prevent="onSubtitleWheel"
             :style="{
               fontSize: `${subtitleFontSize}px`,
               bottom: `${Math.max(0, subtitleYOffset)}px`,
               color: subtitleColor
             }"
+            @pointerdown.stop="onSubtitleMoveDown"
+            @wheel.prevent="onSubtitleWheel"
           >
             {{ activeSubtitleText }}
             <span
@@ -461,7 +513,10 @@
         <div class="panel-head">
           <span class="panel-title">{{ t('script.timeline.inspector') }}</span>
         </div>
-        <div v-if="selectedClip" class="inspector-body">
+        <div
+          v-if="selectedClip"
+          class="inspector-body"
+        >
           <div class="inspector-track">
             {{ trackLabel(selectedClip.track) }}
           </div>
@@ -736,7 +791,7 @@
               {{ t('script.timeline.overlayReset') }}
             </button>
           </template>
-          <template v-if="selectedClip.track === 'voice' || selectedClip.track === 'music'">
+          <template v-if="selectedClip.track === 'voice' || selectedClip.track === 'music' || selectedClip.track === 'sfx'">
             <label class="inspector-field">
               <span>{{ t('script.timeline.volume') }}</span>
               <input
@@ -786,12 +841,18 @@
             </label>
           </template>
         </div>
-        <div v-else class="inspector-body">
-          <div class="inspector-section-title">{{ t('script.timeline.exportSettings') }}</div>
+        <div
+          v-else
+          class="inspector-body"
+        >
+          <div class="inspector-section-title">
+            {{ t('script.timeline.exportSettings') }}
+          </div>
           <label class="inspector-field">
             <span>{{ t('script.timeline.exportResolution') }}</span>
             <select
               :value="exportResolutionKey"
+              :disabled="exportPlatformId !== 'custom'"
               @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
             >
               <option
@@ -813,7 +874,7 @@
                 min="320"
                 max="7680"
                 step="2"
-                :readonly="!isCustomResolution"
+                :disabled="!isCustomResolution"
               >
             </label>
             <label class="inspector-field">
@@ -824,14 +885,21 @@
                 min="180"
                 max="4320"
                 step="2"
-                :readonly="!isCustomResolution"
+                :disabled="!isCustomResolution"
               >
             </label>
           </div>
           <label class="inspector-field">
             <span>{{ t('script.timeline.exportFps') }}</span>
-            <select v-model.number="exportFps" @change="scheduleSave">
-              <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
+            <select
+              v-model.number="exportFps"
+              @change="scheduleSave"
+            >
+              <option
+                v-for="fps in EXPORT_FPS_OPTIONS"
+                :key="fps"
+                :value="fps"
+              >
                 {{ fps }}
               </option>
             </select>
@@ -863,7 +931,6 @@
       :style="{ height: `${timelineHeight}px` }"
     >
       <header class="timeline-bar">
-        <span class="timeline-bar-title">{{ t('script.dialog.timeline') }}</span>
         <div
           class="timeline-controls"
           @pointerdown.stop
@@ -963,15 +1030,6 @@
           <button
             type="button"
             class="ghost-btn"
-            :disabled="!canUndo"
-            :title="t('script.timeline.undo')"
-            @click="undo"
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            class="ghost-btn"
             :disabled="!canCopyClips"
             :title="t('script.timeline.copyClip')"
             @click="copySelectedClips"
@@ -990,6 +1048,15 @@
           <button
             type="button"
             class="ghost-btn"
+            :disabled="!canUndo"
+            :title="t('script.timeline.undo')"
+            @click="undo"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
             :disabled="!canRedo"
             :title="t('script.timeline.redo')"
             @click="redo"
@@ -997,6 +1064,14 @@
             ↷
           </button>
           <span class="zoom-readout">{{ Math.round(zoomFactor * 100) }}%</span>
+          <button
+            type="button"
+            class="ghost-btn"
+            :title="t('script.timeline.mixerHint')"
+            @click="openMixer"
+          >
+            🎚 {{ t('script.timeline.mixer') }}
+          </button>
           <button
             type="button"
             class="export-btn"
@@ -1028,6 +1103,19 @@
           <button
             type="button"
             class="ghost-btn"
+            :disabled="separatingAudio || !canSeparateAudio"
+            :title="t('script.timeline.separateAudioHint')"
+            @click="separateClipAudio"
+          >
+            {{
+              separatingAudio
+                ? t('script.timeline.separateAudioWorking')
+                : t('script.timeline.separateAudio')
+            }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
             :disabled="!canExportSrt"
             :title="t('script.timeline.exportSrt')"
             @click="exportSubtitles"
@@ -1051,7 +1139,8 @@
           :style="{
             width: `${TRACK_LABEL_W + laneWidth}px`,
             height: `${timelineInnerHeight}px`,
-            '--track-height': `${trackHeight}px`
+            '--track-height': `${trackHeight}px`,
+            '--bottom-pad': `${TIMELINE_BOTTOM_PAD}px`
           }"
         >
           <div class="ruler-row">
@@ -1089,6 +1178,7 @@
             :class="{
               'drag-over': dragOverTrack === track.kind,
               'hidden-track': hiddenTracks.has(track.kind),
+              'muted-track': mutedTracks.has(track.kind),
               'locked-track': lockedTracks.has(track.kind),
               'collapsed-track': collapsedTracks.has(track.kind)
             }"
@@ -1099,6 +1189,20 @@
           >
             <div class="track-label">
               <span>{{ track.label }}</span>
+              <button
+                v-if="trackHasAudio(track.kind)"
+                type="button"
+                class="track-state-btn track-mute-btn"
+                :class="{ 'muted-on': isTrackMuted(track.kind) }"
+                :title="
+                  isTrackMuted(track.kind)
+                    ? t('script.timeline.unmuteTrack')
+                    : t('script.timeline.muteTrack')
+                "
+                @click.stop="toggleTrackMuted(track.kind)"
+              >
+                {{ isTrackMuted(track.kind) ? '🔇' : '🔊' }}
+              </button>
               <button
                 type="button"
                 class="track-state-btn track-collapse-btn"
@@ -1186,43 +1290,55 @@
                   <span>{{ t('script.timeline.musicEmpty') }}</span>
                 </div>
               </template>
+              <template v-else-if="track.kind === 'sfx' && !clipsOn(track.kind).length">
+                <div class="lane-muted">
+                  <span>{{ t('script.timeline.sfxEmpty') }}</span>
+                </div>
+              </template>
               <button
                 v-for="clip in visibleClipsOn(track.kind)"
                 :key="clip.id"
                 type="button"
-                 class="clip"
-                 :class="{
-                   active: clip.id === activeClipId,
-                   selected: selectedClipIds.has(clip.id),
-                   subtitle: clip.track === 'subtitle',
-                   overlay: clip.track === 'overlay',
-                   dragging: clipDrag?.clipId === clip.id
-                 }"
+                class="clip"
+                :class="{
+                  active: clip.id === activeClipId,
+                  selected: selectedClipIds.has(clip.id),
+                  subtitle: clip.track === 'subtitle',
+                  overlay: clip.track === 'overlay',
+                  dragging: clipDrag?.clipId === clip.id
+                }"
                 :style="clipVisualStyle(clip)"
-                 @pointerdown.stop="onClipPointerDown($event, clip)"
-                 @dblclick.stop="onClipDblClick(clip)"
-               >
-                 <span
-                   class="clip-handle left"
-                   @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
-                 />
-                 <span
-                   v-if="clip.track !== 'video' && clip.track !== 'overlay'"
-                   class="clip-title"
-                   :class="{ 'on-media': clipHasVisual(clip) }"
-                 >{{ clipDisplayTitle(clip) }}</span>
-                 <button
-                   v-if="clip.nodeId"
-                   type="button"
-                   class="clip-source-locate"
-                   :title="t('script.timeline.locateNodeHint')"
-                   @pointerdown.stop
-                   @click.stop="locateClipSourceNode(clip)"
-                 >⧉</button>
-                 <span
-                   class="clip-handle right"
-                   @pointerdown.stop="onClipResizeStart($event, clip, 'right')"
-                 />
+                @pointerdown.stop="onClipPointerDown($event, clip)"
+                @dblclick.stop="onClipDblClick(clip)"
+              >
+                <span
+                  v-if="isAudioClip(clip)"
+                  class="clip-wave"
+                  :style="clipWaveStyle(clip)"
+                />
+                <span
+                  class="clip-handle left"
+                  @pointerdown.stop="onClipResizeStart($event, clip, 'left')"
+                />
+                <span
+                  v-if="clip.track !== 'video' && clip.track !== 'overlay'"
+                  class="clip-title"
+                  :class="{ 'on-media': clipHasVisual(clip) }"
+                >{{ clipDisplayTitle(clip) }}</span>
+                <button
+                  v-if="clip.nodeId"
+                  type="button"
+                  class="clip-source-locate"
+                  :title="t('script.timeline.locateNodeHint')"
+                  @pointerdown.stop
+                  @click.stop="locateClipSourceNode(clip)"
+                >
+                  ⧉
+                </button>
+                <span
+                  class="clip-handle right"
+                  @pointerdown.stop="onClipResizeStart($event, clip, 'right')"
+                />
                 <span
                   v-if="clip.track === 'video' && clip.nodeId"
                   class="clip-reshoot"
@@ -1232,13 +1348,13 @@
                 >
                   ⟲
                 </span>
-                 <span
-                   class="clip-remove"
+                <span
+                  class="clip-remove"
                   :title="t('script.timeline.removeClip')"
                   @pointerdown.stop
                   @click.stop="removeClip(clip.id)"
-              >
-                 ×
+                >
+                  ×
                 </span>
               </button>
               <template v-if="track.kind === 'video' && !hiddenTracks.has('video')">
@@ -1256,6 +1372,11 @@
           </div>
 
           <div
+            class="timeline-bottom-pad"
+            aria-hidden="true"
+          />
+
+          <div
             v-if="clipDragPreview && clipDragPreviewClip"
             class="clip-drag-ghost"
             :style="clipDragPreviewStyle"
@@ -1270,8 +1391,8 @@
           <div
             class="playhead"
             :style="{ left: `${TRACK_LABEL_W + timeToX(playheadSec)}px` }"
-            @pointerdown.stop="onPlayheadPointerDown"
             aria-hidden="true"
+            @pointerdown.stop="onPlayheadPointerDown"
           >
             <span class="playhead-cap" />
           </div>
@@ -1279,13 +1400,85 @@
       </div>
     </section>
 
-    <div v-if="exportDialogOpen" class="export-settings-mask" @click.self="closeExportDialog">
-      <div class="export-settings-panel" role="dialog" aria-modal="true">
-        <div class="export-settings-title">{{ t('script.timeline.exportSettings') }}</div>
+    <div
+      v-if="exportDialogOpen"
+      class="export-settings-mask"
+      @click.self="closeExportDialog"
+    >
+      <div
+        class="export-settings-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="export-settings-title">
+          {{ t('script.timeline.exportSettings') }}
+        </div>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.exportPlatform') }}</span>
+          <select
+            :value="exportPlatformId"
+            @change="onExportPlatformChange(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="platform in EXPORT_PLATFORMS"
+              :key="platform.id"
+              :value="platform.id"
+            >
+              {{ t(`script.timeline.platform.${platform.nameKey}`) }}
+              <template v-if="platform.id !== 'custom'">
+                — {{ t(`script.timeline.platform.${platform.frame}`) }} {{ platform.width }} × {{ platform.height }}
+              </template>
+            </option>
+          </select>
+        </label>
+        <div
+          v-if="exportPlatform.id !== 'custom'"
+          class="export-platform-info"
+        >
+          <span>
+            {{ t('script.timeline.platformSpec', {
+              width: exportPlatform.width,
+              height: exportPlatform.height,
+              fps: exportPlatform.fps,
+              bitrate: Math.round(exportPlatform.videoBitrateKbps / 1000)
+            }) }}
+          </span>
+          <span v-if="Number.isFinite(exportPlatform.maxDurationSec)">
+            {{ t('script.timeline.platformMaxDuration', { maxSec: Math.round(exportPlatform.maxDurationSec / 60) }) }}
+          </span>
+          <span
+            v-if="exportDurationOverLimit"
+            class="export-platform-warning"
+          >
+            {{ t('script.timeline.platformTooLong', {
+              maxSec: Math.round(exportPlatform.maxDurationSec / 60),
+              curSec: Math.round(totalDuration)
+            }) }}
+          </span>
+        </div>
+        <div
+          v-if="exportCompliance.warnings.length"
+          class="export-compliance"
+        >
+          <span
+            v-for="warning in exportCompliance.warnings"
+            :key="warning"
+            class="export-compliance-item"
+          >
+            ⚠ {{ warning }}
+          </span>
+        </div>
+        <div
+          v-else-if="exportPlatform.id !== 'custom'"
+          class="export-compliance ok"
+        >
+          <span>{{ t('script.timeline.exportCheckPass') }}</span>
+        </div>
         <label class="inspector-field">
           <span>{{ t('script.timeline.exportResolution') }}</span>
           <select
             :value="exportResolutionKey"
+            :disabled="exportPlatformId !== 'custom'"
             @change="onExportResolutionChange(($event.target as HTMLSelectElement).value)"
           >
             <option
@@ -1294,9 +1487,9 @@
               :value="`${res.w}x${res.h}`"
             >
               {{ res.label }}
-              </option>
-              <option value="custom">{{ t('script.timeline.customResolution') }}</option>
-            </select>
+            </option>
+            <option value="custom">{{ t('script.timeline.customResolution') }}</option>
+          </select>
         </label>
         <div class="export-custom-grid">
           <label class="inspector-field">
@@ -1307,7 +1500,7 @@
               min="320"
               max="7680"
               step="2"
-              :readonly="!isCustomResolution"
+              :disabled="!isCustomResolution"
             >
           </label>
           <label class="inspector-field">
@@ -1318,14 +1511,18 @@
               min="180"
               max="4320"
               step="2"
-              :readonly="!isCustomResolution"
+              :disabled="!isCustomResolution"
             >
           </label>
         </div>
         <label class="inspector-field">
           <span>{{ t('script.timeline.exportFps') }}</span>
           <select v-model.number="exportFps">
-            <option v-for="fps in EXPORT_FPS_OPTIONS" :key="fps" :value="fps">
+            <option
+              v-for="fps in EXPORT_FPS_OPTIONS"
+              :key="fps"
+              :value="fps"
+            >
               {{ fps }}
             </option>
           </select>
@@ -1340,12 +1537,314 @@
             step="500"
           >
         </label>
+        <div class="mixer-section-title">
+          {{ t('script.timeline.watermark') }}
+        </div>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.watermarkEnable') }}</span>
+          <input
+            type="checkbox"
+            :checked="watermarkEnabled"
+            @change="onWatermarkEnabledChange(($event.target as HTMLInputElement).checked)"
+          >
+        </label>
+        <template v-if="watermarkEnabled">
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.watermarkImage') }}</span>
+            <span class="watermark-pick-row">
+              <button
+                type="button"
+                class="ghost-btn"
+                @click="pickWatermarkImage"
+              >
+                {{ watermarkFileName || t('script.timeline.watermarkPick') }}
+              </button>
+              <button
+                v-if="watermarkSrc"
+                type="button"
+                class="ghost-btn"
+                :title="t('common.remove')"
+                @click="clearWatermark"
+              >
+                ×
+              </button>
+            </span>
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.watermarkOpacity') }}</span>
+            <span class="mixer-slider-row">
+              <input
+                v-model.number="watermarkOpacity"
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.05"
+                @change="scheduleSave"
+              >
+              <span class="mixer-value">{{ Math.round(watermarkOpacity * 100) }}%</span>
+            </span>
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.watermarkScale') }}</span>
+            <span class="mixer-slider-row">
+              <input
+                v-model.number="watermarkScale"
+                type="range"
+                min="0.05"
+                max="0.5"
+                step="0.01"
+                @change="scheduleSave"
+              >
+              <span class="mixer-value">{{ Math.round(watermarkScale * 100) }}%</span>
+            </span>
+          </label>
+          <label class="inspector-field">
+            <span>{{ t('script.timeline.watermarkPosition') }}</span>
+            <select
+              :value="watermarkPosition"
+              @change="onWatermarkPositionChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="br">{{ t('script.timeline.watermarkBr') }}</option>
+              <option value="bl">{{ t('script.timeline.watermarkBl') }}</option>
+              <option value="tr">{{ t('script.timeline.watermarkTr') }}</option>
+              <option value="tl">{{ t('script.timeline.watermarkTl') }}</option>
+            </select>
+          </label>
+        </template>
+        <div
+          v-if="lastExportError"
+          class="export-error-box"
+        >
+          <span class="export-error-title">
+            {{ t('script.timeline.exportRetryHint') }}
+          </span>
+          <code>{{ lastExportError }}</code>
+        </div>
         <div class="export-settings-actions">
-          <button type="button" class="ghost-btn" @click="closeExportDialog">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="closeExportDialog"
+          >
             {{ t('common.cancel') }}
           </button>
-          <button type="button" class="export-btn" @click="confirmExportDialog">
+          <button
+            type="button"
+            class="export-btn"
+            @click="confirmExportDialog"
+          >
             {{ t('script.timeline.export') }}
+          </button>
+        </div>
+        <input
+          ref="watermarkInputEl"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          @change="onWatermarkImagePicked"
+        >
+      </div>
+    </div>
+
+    <div
+      v-if="mixerOpen"
+      class="export-settings-mask"
+      @click.self="closeMixer"
+    >
+      <div
+        class="export-settings-panel mixer-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="export-settings-title">
+          {{ t('script.timeline.mixer') }}
+        </div>
+        <div class="mixer-section-title">
+          {{ t('script.timeline.mixerTrackGains') }}
+        </div>
+        <label
+          v-for="track in audioMixerTracks"
+          :key="track.kind"
+          class="inspector-field"
+        >
+          <span>{{ track.label }}</span>
+          <span class="mixer-slider-row">
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              :value="mixGains[track.kind] ?? 1"
+              @input="onMixGainChange(track.kind, Number(($event.target as HTMLInputElement).value))"
+            >
+            <span class="mixer-value">
+              {{ mixGainPercent(track.kind) }}% ({{ mixGainDbLabel(track.kind) }})
+            </span>
+          </span>
+        </label>
+        <div class="mixer-section-title">
+          {{ t('script.timeline.mixerMaster') }}
+        </div>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.mixerMasterGain') }}</span>
+          <span class="mixer-slider-row">
+            <input
+              v-model.number="mixMasterGain"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              @change="onMasterGainChange(mixMasterGain)"
+            >
+            <span class="mixer-value">
+              {{ Math.round(clampTrackGain(mixMasterGain) * 100) }}% ({{ mixMasterGainDbLabel() }})
+            </span>
+          </span>
+        </label>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.mixerBass') }}</span>
+          <span class="mixer-slider-row">
+            <input
+              v-model.number="mixBassGainDb"
+              type="range"
+              min="-12"
+              max="12"
+              step="0.5"
+              @change="onMixEqChange"
+            >
+            <span class="mixer-value">{{ Math.round(mixBassGainDb) }} dB</span>
+          </span>
+        </label>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.mixerTreble') }}</span>
+          <span class="mixer-slider-row">
+            <input
+              v-model.number="mixTrebleGainDb"
+              type="range"
+              min="-12"
+              max="12"
+              step="0.5"
+              @change="onMixEqChange"
+            >
+            <span class="mixer-value">{{ Math.round(mixTrebleGainDb) }} dB</span>
+          </span>
+        </label>
+        <label class="inspector-field">
+          <span>{{ t('script.timeline.mixerCompression') }}</span>
+          <input
+            type="checkbox"
+            :checked="mixCompression"
+            @change="onMixCompressionChange(($event.target as HTMLInputElement).checked)"
+          >
+        </label>
+        <div class="export-settings-actions">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="closeMixer"
+          >
+            {{ t('common.done') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="sfxLibraryOpen"
+      class="export-settings-mask"
+      @click.self="closeSfxLibrary"
+    >
+      <div
+        class="export-settings-panel sfx-library-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="export-settings-title">
+          {{ t('script.timeline.sfxLibrary') }}
+        </div>
+        <div class="sfx-library-tabs">
+          <button
+            v-for="cat in ['all', ...SFX_PRESET_CATEGORIES.map((c) => c.id)]"
+            :key="cat"
+            type="button"
+            class="ghost-btn"
+            :class="{ active: sfxLibraryCategory === cat }"
+            @click="setSfxLibraryCategory(cat as 'all' | SfxPresetCategory)"
+          >
+            {{ sfxLibraryCategoryLabels[cat as 'all' | SfxPresetCategory] }}
+          </button>
+        </div>
+        <div class="sfx-preset-grid">
+          <div
+            v-for="preset in filteredSfxPresets"
+            :key="preset.id"
+            class="sfx-preset-card"
+          >
+            <div class="sfx-preset-name">
+              {{ localizedText(locale, preset.name) }}
+            </div>
+            <div class="sfx-preset-prompt">
+              {{ localizedText(locale, preset.prompt) }}
+            </div>
+            <div class="sfx-preset-foot">
+              <span
+                v-if="preset.durationSec"
+                class="sfx-preset-duration"
+              >
+                ~{{ preset.durationSec }}s
+              </span>
+              <button
+                type="button"
+                class="ghost-btn"
+                :disabled="sfxBusy"
+                @click="onLibraryGenerateSfx(preset)"
+              >
+                {{ sfxBusy ? '…' : t('script.timeline.sfxLibraryGenerate') }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="mixer-section-title">
+          {{ t('script.timeline.sfxLibraryImport') }}
+        </div>
+        <div
+          v-if="projectAudioAssets.length"
+          class="sfx-library-assets"
+        >
+          <div
+            v-for="asset in projectAudioAssets"
+            :key="asset.id"
+            class="sfx-library-asset-row"
+          >
+            <span
+              class="sfx-library-asset-name"
+              :title="asset.relativePath"
+            >
+              {{ asset.name }}
+            </span>
+            <button
+              type="button"
+              class="ghost-btn"
+              :disabled="sfxBusy"
+              @click="onImportSfxAsset(asset)"
+            >
+              {{ t('script.timeline.sfxLibraryImportBtn') }}
+            </button>
+          </div>
+        </div>
+        <p
+          v-else
+          class="sfx-library-empty"
+        >
+          {{ t('script.timeline.sfxLibraryNoAssets') }}
+        </p>
+        <div class="export-settings-actions">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="closeSfxLibrary"
+          >
+            {{ t('common.done') }}
           </button>
         </div>
       </div>
@@ -1391,6 +1890,82 @@
         </div>
       </div>
     </div>
+
+    <div
+      v-if="smartCutDialogOpen"
+      class="smart-cut-mask"
+      @click.self="smartCutDialogOpen = false"
+    >
+      <div
+        class="smart-cut-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="smart-cut-title">
+          {{ t('script.timeline.smartCutTitle') }}
+        </div>
+        <p class="smart-cut-subtitle">
+          {{ t('script.timeline.smartCutHint') }}
+        </p>
+        <div class="smart-cut-list">
+          <div
+            v-for="(edit, i) in smartCutEdits"
+            :key="edit.sourceId"
+            class="smart-cut-item"
+          >
+            <span class="smart-cut-index">{{ i + 1 }}</span>
+            <div class="smart-cut-item-main">
+              <span
+                class="smart-cut-item-title"
+                :title="edit.title"
+              >{{ edit.title }}</span>
+              <span
+                v-if="edit.nodeTitle"
+                class="smart-cut-item-shot"
+              >{{ edit.nodeTitle }}</span>
+            </div>
+            <label class="smart-cut-field">
+              <span>{{ t('script.timeline.smartCutDuration') }}</span>
+              <input
+                v-model.number="edit.durationSec"
+                type="number"
+                min="0.5"
+                max="60"
+                step="0.5"
+              >
+            </label>
+            <label class="smart-cut-field">
+              <span>{{ t('script.timeline.transitionEffect') }}</span>
+              <select v-model="edit.transitionType">
+                <option
+                  v-for="tr in smartCutTransitions"
+                  :key="tr"
+                  :value="tr"
+                >
+                  {{ t(smartCutTransitionLabelKey(tr)) }}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="smart-cut-actions">
+          <button
+            type="button"
+            class="ghost-btn"
+            @click="smartCutDialogOpen = false"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="export-btn"
+            @click="applySmartCut"
+          >
+            {{ t('script.timeline.smartCutApply') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1398,6 +1973,14 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
+  clampMixEqGainDb,
+  clampTrackGain,
+  EXPORT_PLATFORMS,
+  exportPlatformById,
+  exportPlatformSafeRect,
+  exportPlatformSubtitleOffset,
+  isExportDurationOverLimit,
+  isSubtitleWithinSafeArea,
   normalizePlaybackRate,
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
@@ -1409,11 +1992,25 @@ import {
   type ScriptTimelineSourceGroup,
   type ScriptTimelineSourceMediaKind,
   type ScriptTimelineTrackKind,
-  type TimelineExportClip
+  type TimelineExportClip,
+  type TimelineMixGains,
+  applySmartCutPlan,
+  buildSmartCutPrompt,
+  parseSmartCutPlan,
+  SMART_CUT_DEFAULT_TRANSITION_SEC,
+  SMART_CUT_TRANSITIONS,
+  type SmartCutEdit
 } from '@shared/graph'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { persistAssetRecord } from '../composables/useAssetRecord'
+import {
+  localizedText,
+  SFX_PRESETS,
+  SFX_PRESET_CATEGORIES,
+  type SfxPreset,
+  type SfxPresetCategory
+} from '../features/timeline/sfxPresets'
 import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
 import { editorDiveKey } from '../features/graph/model/editorDive'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
@@ -1438,7 +2035,7 @@ const props = defineProps<{
   timelineNodeId?: string
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const project = useProjectStore()
 const drafts = useDraftStore()
 const workspace = useWorkspaceStore()
@@ -1450,6 +2047,8 @@ const DRAFT_MIME = 'application/x-aiart-timeline-source'
 /** 导入列表内整理分组用（与上轨 MIME 并存） */
 const SOURCE_MOVE_MIME = 'application/x-aiart-timeline-source-id'
 const TRACK_LABEL_W = 150
+/** 时间线轨道下方保留的空白区间高度（px），需与 .timeline-bottom-pad 高度保持一致 */
+const TIMELINE_BOTTOM_PAD = 32
 const PX_PER_SEC_MAX = 160
 const PX_PER_SEC_MIN = 4
 const ZOOM_MIN = 0.25
@@ -1478,11 +2077,27 @@ const redoStack = ref<ScriptTimelineClip[][]>([])
 const selectedClipIds = ref<Set<string>>(new Set())
 const timelineClipboard = ref<ScriptTimelineClip[]>([])
 const hiddenTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
+/** 静音轨道：预览与导出都不出声 */
+const mutedTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
 const lockedTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
 const collapsedTracks = ref<Set<ScriptTimelineTrackKind>>(new Set())
 let historyReady = false
 const HISTORY_LIMIT = 100
 const sourcesBusy = ref(false)
+const bgmBusy = ref(false)
+const sfxBusy = ref(false)
+const smartCutBusy = ref(false)
+const smartCutDialogOpen = ref(false)
+const smartCutTransitions = SMART_CUT_TRANSITIONS
+type SmartCutEditDraft = {
+  sourceId: string
+  title: string
+  nodeTitle?: string
+  durationSec: number
+  transitionType: string
+  transitionSec: number
+}
+const smartCutEdits = ref<SmartCutEditDraft[]>([])
 /** 视频素材首帧预览 URL（与资产库列表同源） */
 const sourceThumbUrls = ref<Record<string, string>>({})
 const sourceGridSize = ref(72)
@@ -1540,6 +2155,15 @@ const loopPlayback = ref(false)
 const exportWidth = ref(1280)
 const exportHeight = ref(720)
 const isCustomResolution = ref(false)
+const exportPlatformId = ref('custom')
+const watermarkEnabled = ref(false)
+const watermarkSrc = ref('')
+const watermarkOpacity = ref(0.8)
+const watermarkScale = ref(0.1)
+const watermarkPosition = ref<'br' | 'bl' | 'tr' | 'tl'>('br')
+/** 最近一次导出错误（供弹窗内展示与重试） */
+const lastExportError = ref('')
+const watermarkInputEl = ref<HTMLInputElement | null>(null)
 const exportResolutionKey = computed(() =>
   isCustomResolution.value
     ? 'custom'
@@ -1547,6 +2171,61 @@ const exportResolutionKey = computed(() =>
       ? `${exportWidth.value}x${exportHeight.value}`
       : 'custom'
 )
+const exportPlatform = computed(
+  () => exportPlatformById(exportPlatformId.value) ?? EXPORT_PLATFORMS[0]
+)
+/** 平台时长上限是否被当前工程时长超出 */
+const exportDurationOverLimit = computed(() =>
+  isExportDurationOverLimit(totalDuration.value, exportPlatform.value)
+)
+/** 平台安全区（按导出画幅换算为百分比定位，叠加在预览画框上） */
+/** 导出规格符合性检查：分辨率 / 时长 / 字幕安全区（仅平台预设生效） */
+const exportCompliance = computed(() => {
+  const spec = exportPlatform.value
+  if (spec.id === 'custom') return { warnings: [] as string[] }
+  const warnings: string[] = []
+  if (exportWidth.value !== spec.width || exportHeight.value !== spec.height) {
+    warnings.push(
+      t('script.timeline.exportCheckResolution', {
+        width: spec.width,
+        height: spec.height
+      })
+    )
+  }
+  if (exportFps.value !== spec.fps) {
+    warnings.push(t('script.timeline.exportCheckFps', { fps: spec.fps }))
+  }
+  if (exportDurationOverLimit.value) {
+    warnings.push(
+      t('script.timeline.exportCheckDuration', {
+        maxSec: Math.round(spec.maxDurationSec / 60)
+      })
+    )
+  }
+  if (
+    !isSubtitleWithinSafeArea(
+      exportHeight.value,
+      subtitleFontSize.value,
+      subtitleYOffset.value,
+      spec
+    )
+  ) {
+    warnings.push(t('script.timeline.exportCheckSubtitleSafe'))
+  }
+  return { warnings }
+})
+
+const exportSafeAreaStyle = computed(() => {
+  const spec = exportPlatform.value
+  if (spec.id === 'custom') return {}
+  const rect = exportPlatformSafeRect(exportWidth.value, exportHeight.value, spec)
+  return {
+    left: `${((rect.left / exportWidth.value) * 100).toFixed(2)}%`,
+    top: `${((rect.top / exportHeight.value) * 100).toFixed(2)}%`,
+    right: `${((1 - rect.right / exportWidth.value) * 100).toFixed(2)}%`,
+    bottom: `${((1 - rect.bottom / exportHeight.value) * 100).toFixed(2)}%`
+  }
+})
 const exportFps = ref(30)
 const exportVideoBitrateKbps = ref(5000)
 const subtitleFontSize = ref(36)
@@ -1556,6 +2235,13 @@ const previewFrameRatioKey = ref('export')
 const exporting = ref(false)
 const exportDialogOpen = ref(false)
 const exportProgress = ref(0)
+/** 混音器：轨道级增益（0~2） */
+const mixGains = ref<TimelineMixGains>({})
+const mixMasterGain = ref(1)
+const mixBassGainDb = ref(0)
+const mixTrebleGainDb = ref(0)
+const mixCompression = ref(false)
+const mixerOpen = ref(false)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
 const subtitleInputEl = ref<HTMLInputElement | null>(null)
 /** 当前可放置高亮的轨道 */
@@ -1611,6 +2297,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let clipVisualTimer: ReturnType<typeof setTimeout> | null = null
 let playSeq = 0
 const audioEls = new Map<string, HTMLAudioElement>()
+/** 因匿名跨源加载失败而降级为普通加载的音频元素（放弃 Web Audio 混音，改用元素音量） */
+const audioCorsFallback = new WeakSet<HTMLAudioElement>()
 const overlayEls = new Map<string, HTMLVideoElement>()
 const transitionVideoEls = new Map<string, HTMLVideoElement>()
 
@@ -1621,8 +2309,14 @@ const tracks = computed(() => [
   { kind: 'overlay' as const, label: t('script.timeline.track.overlay') },
   { kind: 'voice' as const, label: t('script.timeline.track.voice') },
   { kind: 'subtitle' as const, label: t('script.timeline.track.subtitle') },
-  { kind: 'music' as const, label: t('script.timeline.track.music') }
+  { kind: 'music' as const, label: t('script.timeline.track.music') },
+  { kind: 'sfx' as const, label: t('script.timeline.track.sfx') }
 ])
+
+/** 混音器里可调增益的轨道（subtitle 无音频） */
+const audioMixerTracks = computed(() =>
+  tracks.value.filter((track) => track.kind !== 'subtitle')
+)
 
 const timelineInnerHeight = computed(
   () =>
@@ -1631,7 +2325,8 @@ const timelineInnerHeight = computed(
       (sum, track) =>
         sum + (collapsedTracks.value.has(track.kind) ? 24 : trackHeight.value),
       0
-    )
+    ) +
+    TIMELINE_BOTTOM_PAD
 )
 
 function trackTopOffset(kind: ScriptTimelineTrackKind): number {
@@ -1663,7 +2358,8 @@ const selectedPlayableClip = computed(() => {
     clip.track === 'video' ||
     clip.track === 'overlay' ||
     clip.track === 'voice' ||
-    clip.track === 'music'
+    clip.track === 'music' ||
+    clip.track === 'sfx'
   ) {
     return clip
   }
@@ -1676,7 +2372,15 @@ const selectedClip = computed(
 
 const selectedAudioClip = computed(() => {
   const clip = selectedPlayableClip.value
-  return clip && (clip.track === 'voice' || clip.track === 'music') ? clip : null
+  return clip && (clip.track === 'voice' || clip.track === 'music' || clip.track === 'sfx')
+    ? clip
+    : null
+})
+
+/** 人声伴奏分离可用性：选中片段带可访问音源（视频/配音/音乐/音效轨均可） */
+const canSeparateAudio = computed(() => {
+  const clip = selectedPlayableClip.value
+  return !!clip && !!sourceRelativePath(clip)
 })
 
 const selectedOverlayClip = computed(() => {
@@ -2253,6 +2957,23 @@ function toggleTrackHidden(kind: ScriptTimelineTrackKind): void {
   scheduleSave()
 }
 
+/** 哪些轨道带声音：字幕轨没有音频，不给静音按钮 */
+function trackHasAudio(kind: ScriptTimelineTrackKind): boolean {
+  return kind !== 'subtitle'
+}
+
+function isTrackMuted(kind: ScriptTimelineTrackKind): boolean {
+  return mutedTracks.value.has(kind)
+}
+
+function toggleTrackMuted(kind: ScriptTimelineTrackKind): void {
+  const next = new Set(mutedTracks.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  mutedTracks.value = next
+  scheduleSave()
+}
+
 function toggleTrackLocked(kind: ScriptTimelineTrackKind): void {
   const next = new Set(lockedTracks.value)
   if (next.has(kind)) next.delete(kind)
@@ -2558,7 +3279,8 @@ function transitionHandleStyle(handle: {
   }
 }
 
-function clipVisualKey(clip: ScriptTimelineClip): string {
+/** 媒体身份：同一份文件（相对路径）复用解码结果，与片段长度/宽度无关 */
+function clipMediaIdentity(clip: ScriptTimelineClip): string {
   const rel =
     clip.relativePath?.trim().replace(/\\/g, '/') ||
     (clip.assetId
@@ -2568,24 +3290,39 @@ function clipVisualKey(clip: ScriptTimelineClip): string {
           .replace(/\\/g, '/')
       : '') ||
     ''
-  const identity = rel ? `path:${rel}` : `asset:${clip.assetId || clip.id}`
-  return `${identity}:${Math.round(clip.durationSec * 10)}`
+  return rel ? `path:${rel}` : `asset:${clip.assetId || clip.id}`
+}
+
+function clipVisualKey(clip: ScriptTimelineClip): string {
+  return `${clipMediaIdentity(clip)}:${Math.round(clip.durationSec * 10)}`
+}
+
+function isAudioClip(clip: ScriptTimelineClip): boolean {
+  return clip.track === 'voice' || clip.track === 'music' || clip.track === 'sfx'
+}
+
+/** 波形缓存 key：矢量波形与片段宽度 / 轨道高度无关，只跟音频文件和轨道配色有关 */
+function waveformDrawKey(clip: ScriptTimelineClip): string {
+  return `${clipMediaIdentity(clip)}:${clip.track}`
 }
 
 function clipHasVisual(clip: ScriptTimelineClip): boolean {
   if (clip.track === 'subtitle') return false
-  const key = clipVisualKey(clip)
-  return Boolean(
-    clipVideoStripUrls.value[key] || clipWaveformUrls.value[key]
-  )
+  const key = isAudioClip(clip) ? waveformDrawKey(clip) : clipVisualKey(clip)
+  return Boolean(clipVideoStripUrls.value[key] || clipWaveformUrls.value[key])
 }
 
 function clipVisualStyle(clip: ScriptTimelineClip): Record<string, string> {
   const style = clipStyle(clip)
   if (clip.track === 'subtitle') return style
+  if (isAudioClip(clip)) {
+    // 声音片段按轨道类型着色（人声绿 / 音乐青 / 音效橙），波形由 clipWaveStyle 单独叠加一层
+    const accent = AUDIO_TRACK_COLORS[clip.track]
+    if (accent) style['--clip-accent'] = accent
+    return style
+  }
   const key = clipVisualKey(clip)
   const strip = clipVideoStripUrls.value[key]
-  const waveform = clipWaveformUrls.value[key]
   if (clip.track === 'video' || clip.track === 'overlay') {
     if (strip) {
       style.backgroundImage = `url("${strip}")`
@@ -2593,16 +3330,28 @@ function clipVisualStyle(clip: ScriptTimelineClip): Record<string, string> {
       style.backgroundRepeat = 'repeat-x'
       style.backgroundPosition = 'left center'
     }
-    return style
   }
-  if (clip.track === 'voice' || clip.track === 'music') {
-    if (waveform) {
-      style.backgroundImage = `url("${waveform}")`
-      style.backgroundSize = '100% 100%'
-      style.backgroundRepeat = 'no-repeat'
-      style.backgroundPosition = 'center center'
-    }
-  }
+  return style
+}
+
+/**
+ * 声音片段的波形层样式。
+ * 波形只铺在音频真实覆盖的时长区间上：音频比片段短时右侧留空，
+ * 避免波形被拉满整条片段而与播放内容错位。
+ */
+function clipWaveStyle(clip: ScriptTimelineClip): Record<string, string> {
+  const style: Record<string, string> = {}
+  const url = clipWaveformUrls.value[waveformDrawKey(clip)]
+  if (!url) return style
+  const peaks = audioPeaksCache.get(clipMediaIdentity(clip))
+  const audioDuration = peaks?.duration ?? clip.durationSec
+  // 矢量图代表整段音频，按「音频时长 / 片段时长」横向铺开：
+  // 片段比音频短时只露出前一段（>100%），音频比片段短时右侧留空（<100%）
+  const ratio = audioDuration > 0 ? audioDuration / Math.max(0.001, clip.durationSec) : 1
+  style.backgroundImage = `url("${url}")`
+  style.backgroundSize = `${(ratio * 100).toFixed(2)}% 100%`
+  style.backgroundRepeat = 'no-repeat'
+  style.backgroundPosition = 'left center'
   return style
 }
 
@@ -2631,111 +3380,300 @@ async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | nu
   video.preload = 'auto'
   video.muted = true
   video.playsInline = true
-  await new Promise<void>((resolve, reject) => {
-    video.onloadedmetadata = () => resolve()
-    video.onerror = () => reject(new Error('video load failed'))
-    video.src = url
-  })
-  const duration = Number.isFinite(video.duration) && video.duration > 0
-    ? video.duration
-    : clip.durationSec || 1
-  const frameCount = Math.max(1, Math.min(10, Math.ceil(clip.durationSec / 1.5)))
-  const frameWidth = 112
-  const frameHeight = 62
-  const canvas = document.createElement('canvas')
-  canvas.width = frameWidth * frameCount
-  canvas.height = frameHeight
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  for (let i = 0; i < frameCount; i++) {
-    const target = Math.min(
-      duration - 0.05,
-      (i + 0.5) * (clip.durationSec / frameCount)
-    )
-    await seekVideoTo(video, target)
-    if (video.videoWidth > 0) {
-      const scale = Math.max(
-        frameWidth / video.videoWidth,
-        frameHeight / video.videoHeight
+  // studio-media 协议已放行 CORS：匿名跨源加载，否则抽帧后 canvas 被污染、toDataURL 抛 SecurityError
+  video.crossOrigin = 'anonymous'
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // 加超时兜底：损坏/缺失视频可能既不触发 loadedmetadata 也不触发 error，
+      // 若无超时会永久阻塞整个 refreshClipVisuals
+      const timer = window.setTimeout(() => {
+        video.onloadedmetadata = null
+        video.onerror = null
+        reject(new Error('video load timeout'))
+      }, 8000)
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timer)
+        resolve()
+      }
+      video.onerror = () => {
+        window.clearTimeout(timer)
+        reject(new Error('video load failed'))
+      }
+      video.src = url
+    })
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : clip.durationSec || 1
+    const frameCount = Math.max(1, Math.min(10, Math.ceil(clip.durationSec / 1.5)))
+    const frameWidth = 112
+    const frameHeight = 62
+    const canvas = document.createElement('canvas')
+    canvas.width = frameWidth * frameCount
+    canvas.height = frameHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    for (let i = 0; i < frameCount; i++) {
+      const target = Math.min(
+        duration - 0.05,
+        (i + 0.5) * (clip.durationSec / frameCount)
       )
-      const dw = video.videoWidth * scale
-      const dh = video.videoHeight * scale
-      ctx.drawImage(
-        video,
-        i * frameWidth + (frameWidth - dw) / 2,
-        (frameHeight - dh) / 2,
-        dw,
-        dh
-      )
+      await seekVideoTo(video, target)
+      if (video.videoWidth > 0) {
+        const scale = Math.max(
+          frameWidth / video.videoWidth,
+          frameHeight / video.videoHeight
+        )
+        const dw = video.videoWidth * scale
+        const dh = video.videoHeight * scale
+        ctx.drawImage(
+          video,
+          i * frameWidth + (frameWidth - dw) / 2,
+          (frameHeight - dh) / 2,
+          dw,
+          dh
+        )
+      }
     }
+    return canvas.toDataURL('image/jpeg', 0.72)
+  } catch {
+    // 单片段抽帧失败（文件缺失 / 编码不支持 / canvas 污染）时放弃该片段，不影响其余片段
+    return null
+  } finally {
+    video.removeAttribute('src')
+    video.load()
   }
-  video.removeAttribute('src')
-  video.load()
-  return canvas.toDataURL('image/jpeg', 0.72)
 }
 
-async function generateAudioWaveform(clip: ScriptTimelineClip): Promise<string | null> {
+/** 声音轨配色：人声绿 / 音乐青 / 音效橙（与 CSS 的 --clip-accent 同源） */
+const AUDIO_TRACK_COLORS: Partial<Record<ScriptTimelineTrackKind, string>> = {
+  voice: '#3ecf8e',
+  music: '#4cc9f0',
+  sfx: '#f9a03f'
+}
+
+/** 解码后缓存的音频包络：峰值 + RMS 各 AUDIO_PEAK_BUCKETS 个桶 */
+type AudioPeaks = {
+  /** 音频真实时长（秒） */
+  duration: number
+  peaks: Float32Array
+  rms: Float32Array
+}
+
+/**
+ * 包络桶数。波形以 SVG 矢量输出，1024 桶已足够平滑：
+ * 放大时是矢量的清晰折线，而不是位图被拉伸后的糊图。
+ */
+const AUDIO_PEAK_BUCKETS = 1024
+/** 每个桶最多扫描这么多采样点，把长音频的计算量压到常量级 */
+const AUDIO_PEAK_SCAN_LIMIT = 512
+/** 媒体身份 → 包络（同一份文件只解码一次） */
+const audioPeaksCache = new Map<string, AudioPeaks>()
+/** 仅用于 decodeAudioData 的 AudioContext */
+let decodeAudioCtx: AudioContext | null = null
+
+function getDecodeAudioCtx(): AudioContext | null {
+  if (decodeAudioCtx) return decodeAudioCtx
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) return null
+    decodeAudioCtx = new Ctor()
+  } catch {
+    decodeAudioCtx = null
+  }
+  return decodeAudioCtx
+}
+
+function closeDecodeAudioCtx(): void {
+  try {
+    void decodeAudioCtx?.close().catch(() => undefined)
+  } catch {
+    /* ignore */
+  }
+  decodeAudioCtx = null
+}
+
+/** 解码音频并算出峰值 / RMS 包络（按文件维度缓存，与片段宽度无关） */
+async function generateAudioPeaks(clip: ScriptTimelineClip): Promise<AudioPeaks | null> {
   const url = await resolveSrc(clip)
   if (!url) return null
+  const audioContext = getDecodeAudioCtx()
+  if (!audioContext) {
+    console.warn('[timeline] AudioContext unavailable, skip waveform')
+    return null
+  }
   try {
     const response = await fetch(url)
-    if (!response.ok) return null
-    const arrayBuffer = await response.arrayBuffer()
-    const AudioContextCtor =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext
-    if (!AudioContextCtor) return null
-    const audioContext = new AudioContextCtor()
-    try {
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-      const duration = audioBuffer.duration || clip.durationSec || 1
-      const clipDuration = Math.max(0.1, clip.durationSec || duration)
-      const channel = audioBuffer.getChannelData(0)
-      const sampleEnd = Math.min(
-        channel.length,
-        Math.max(1, Math.floor((clipDuration / duration) * channel.length))
-      )
-      const bars = 96
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.max(320, bars * 3)
-      canvas.height = 52
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return null
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      ctx.fillStyle = 'rgba(255,255,255,0.38)'
-      const bucketSize = Math.max(1, Math.floor(sampleEnd / bars))
-      for (let i = 0; i < bars; i++) {
-        let peak = 0
-        const start = i * bucketSize
-        const end = Math.min(sampleEnd, start + bucketSize)
-        for (let j = start; j < end; j += 1) {
-          const value = Math.abs(channel[j] ?? 0)
-          if (value > peak) peak = value
-        }
-        const h = Math.max(2, Math.round(peak * 40))
-        const x = i * 3
-        ctx.fillRect(x, (52 - h) / 2, 2, h)
-      }
-      return canvas.toDataURL('image/png')
-    } finally {
-      void audioContext.close()
+    if (!response.ok) {
+      console.warn(`[timeline] waveform fetch failed: ${response.status}`)
+      return null
     }
-  } catch {
+    const arrayBuffer = await response.arrayBuffer()
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+    const channels: Float32Array[] = []
+    for (let c = 0; c < audioBuffer.numberOfChannels; c += 1) {
+      channels.push(audioBuffer.getChannelData(c))
+    }
+    const length = audioBuffer.length
+    const peaks = new Float32Array(AUDIO_PEAK_BUCKETS)
+    const rms = new Float32Array(AUDIO_PEAK_BUCKETS)
+    if (length > 0 && channels.length > 0) {
+      const bucketSize = length / AUDIO_PEAK_BUCKETS
+      // 长音频按步长抽样：每桶扫描量封顶，避免几分钟的素材卡住主线程
+      const step = Math.max(1, Math.floor(bucketSize / AUDIO_PEAK_SCAN_LIMIT))
+      for (let i = 0; i < AUDIO_PEAK_BUCKETS; i += 1) {
+        const start = Math.floor(i * bucketSize)
+        const end = Math.min(length, Math.floor((i + 1) * bucketSize))
+        let peak = 0
+        let sumSq = 0
+        let count = 0
+        for (let j = start; j < end; j += step) {
+          for (let c = 0; c < channels.length; c += 1) {
+            const value = channels[c][j] ?? 0
+            const abs = value < 0 ? -value : value
+            if (abs > peak) peak = abs
+            sumSq += value * value
+            count += 1
+          }
+        }
+        peaks[i] = peak
+        rms[i] = count > 0 ? Math.sqrt(sumSq / count) : 0
+      }
+    }
+    return {
+      duration: audioBuffer.duration || clip.durationSec || 1,
+      peaks,
+      rms
+    }
+  } catch (err) {
+    console.warn('[timeline] audio peaks generation failed', err)
     return null
   }
 }
 
+/**
+ * 由每桶高度构造上下对称的闭合包络路径。
+ * 坐标取整 + 逗号分隔压缩体积；高度不变时只做水平延伸，静音段可省掉一半以上的点。
+ */
+function buildSvgEnvelopePath(heights: Float32Array, width: number, midY: number): string {
+  const base = Math.round(midY)
+  const n = heights.length
+  const parts: string[] = [`M0,${base}`]
+  // 上沿：只有高度变化时才需要竖直落点
+  let prev = Number.NaN
+  for (let i = 0; i < n; i += 1) {
+    const y = Math.round(midY - heights[i])
+    if (y !== prev) parts.push(`L${i},${y}`)
+    parts.push(`L${i + 1},${y}`)
+    prev = y
+  }
+  parts.push(`L${width},${base}`)
+  // 下沿：镜像回到起点
+  prev = Number.NaN
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const y = Math.round(midY + heights[i])
+    if (y !== prev) parts.push(`L${i + 1},${y}`)
+    parts.push(`L${i},${y}`)
+    prev = y
+  }
+  parts.push('Z')
+  return parts.join('')
+}
+
+/** 只转义 data URI 必需字符，避免 encodeURIComponent 让体积膨胀数倍 */
+function encodeSvgDataUri(svg: string): string {
+  return svg
+    .replace(/%/g, '%25')
+    .replace(/#/g, '%23')
+    .replace(/</g, '%3C')
+    .replace(/>/g, '%3E')
+    .replace(/\s{2,}/g, ' ')
+}
+
+/**
+ * 从包络重采样出「当前片段宽度」的波形图：
+ * - 只取 [fromSec, toSec] 区间，音频比片段短时右侧留空，波形不再铺满错位
+ * - 峰值归一化到轨道高度，小声素材也看得清
+ * - 外层峰值浅、内层 RMS 深，形成层次
+ */
+/**
+ * 把包络转成「整段音频」的 SVG 矢量波形。
+ * 矢量是关键：时间线放大时由浏览器按目标像素重新栅格化，
+ * 不会像预渲染位图那样被拉伸变糊；同一份 SVG 适配任意片段宽度与轨道高度。
+ */
+function renderWaveformSvg(data: AudioPeaks, color: string): string | null {
+  const buckets = AUDIO_PEAK_BUCKETS
+  const viewW = buckets
+  const viewH = 100
+  const midY = viewH / 2
+  const maxBarHeight = midY - 3
+
+  let maxPeak = 0
+  let maxRms = 0
+  for (let i = 0; i < buckets; i += 1) {
+    const p = data.peaks[i] ?? 0
+    if (p > maxPeak) maxPeak = p
+    const r = data.rms[i] ?? 0
+    if (r > maxRms) maxRms = r
+  }
+  // 峰值 / RMS 各自归一化：两层都饱满又保持层次（外层峰值 94%、内层 RMS 75%）
+  const peakScale = (maxBarHeight * 0.94) / Math.max(maxPeak, 0.05)
+  const rmsScale = (maxBarHeight * 0.75) / Math.max(maxRms, 0.02)
+  const peakHeights = new Float32Array(buckets)
+  const rmsHeights = new Float32Array(buckets)
+  for (let i = 0; i < buckets; i += 1) {
+    const ph = Math.min(maxBarHeight, (data.peaks[i] ?? 0) * peakScale)
+    peakHeights[i] = ph
+    rmsHeights[i] = Math.min(ph, (data.rms[i] ?? 0) * rmsScale)
+  }
+
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${viewW} ${viewH}' preserveAspectRatio='none'>` +
+    `<path d='${buildSvgEnvelopePath(peakHeights, viewW, midY)}' fill='${color}' fill-opacity='0.4'/>` +
+    `<path d='${buildSvgEnvelopePath(rmsHeights, viewW, midY)}' fill='${color}' fill-opacity='0.92'/>` +
+    `</svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeSvgDataUri(svg)}`
+}
+
+/** 以受限并发执行一批异步任务，互不阻塞；单个失败不影响其余 */
+async function runConcurrent<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let index = 0
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (index < items.length) {
+      const item = items[index]
+      index += 1
+      if (item === undefined) continue
+      try {
+        await worker(item)
+      } catch {
+        // 单个任务失败不影响并发池
+      }
+    }
+  })
+  await Promise.allSettled(runners)
+}
+
 async function refreshClipVisuals(): Promise<void> {
-  for (const clip of clips.value) {
-    if (clip.track === 'subtitle') continue
-    const key = clipVisualKey(clip)
-    const exists =
-      clipVideoStripUrls.value[key] || clipWaveformUrls.value[key]
-    if (exists || clipVisualBusy.has(key)) continue
-    clipVisualBusy.add(key)
-    try {
-      if (clip.track === 'video' || clip.track === 'overlay') {
+  const audioClips = clips.value.filter(isAudioClip)
+  const videoClips = clips.value.filter(
+    (clip) => clip.track === 'video' || clip.track === 'overlay'
+  )
+  // 音频波形与视频帧条并行生成，互不阻塞：音频不受视频抽帧拖累，反之亦然
+  await Promise.all([
+    runConcurrent(audioClips, 3, async (clip) => {
+      await ensureClipWaveform(clip)
+    }),
+    runConcurrent(videoClips, 2, async (clip) => {
+      const key = clipVisualKey(clip)
+      const busyKey = `video:${key}`
+      if (clipVisualBusy.has(busyKey) || clipVideoStripUrls.value[key]) return
+      clipVisualBusy.add(busyKey)
+      try {
         const strip = await generateVideoStrip(clip)
         if (strip) {
           clipVideoStripUrls.value = {
@@ -2743,19 +3681,63 @@ async function refreshClipVisuals(): Promise<void> {
             [key]: strip
           }
         }
-      } else if (clip.track === 'voice' || clip.track === 'music') {
-        const waveform = await generateAudioWaveform(clip)
-        if (waveform) {
-          clipWaveformUrls.value = {
-            ...clipWaveformUrls.value,
-            [key]: waveform
-          }
-        }
+      } finally {
+        clipVisualBusy.delete(busyKey)
       }
+    })
+  ])
+  gcWaveformUrls()
+}
+
+/**
+ * 两段式波形：先确保峰值包络（异步，按文件只解码一次），
+ * 再按当前片段宽度同步重绘——缩放时间线时不会重复 fetch + 解码。
+ */
+async function ensureClipWaveform(clip: ScriptTimelineClip): Promise<void> {
+  const identity = clipMediaIdentity(clip)
+  if (clipWaveformUrls.value[waveformDrawKey(clip)]) return
+  if (!audioPeaksCache.has(identity)) {
+    const busyKey = `audio:${identity}`
+    if (clipVisualBusy.has(busyKey)) return
+    clipVisualBusy.add(busyKey)
+    try {
+      const peaks = await generateAudioPeaks(clip)
+      if (peaks) audioPeaksCache.set(identity, peaks)
     } finally {
-      clipVisualBusy.delete(key)
+      clipVisualBusy.delete(busyKey)
     }
   }
+  paintClipWaveform(clip)
+}
+
+/** 由包络生成矢量波形：一次生成即可适配任意缩放，无需随宽度重绘 */
+function paintClipWaveform(clip: ScriptTimelineClip): void {
+  const drawKey = waveformDrawKey(clip)
+  if (clipWaveformUrls.value[drawKey]) return
+  const peaks = audioPeaksCache.get(clipMediaIdentity(clip))
+  if (!peaks) return
+  const svg = renderWaveformSvg(peaks, AUDIO_TRACK_COLORS[clip.track] ?? '#7dd3fc')
+  if (svg) {
+    clipWaveformUrls.value = { ...clipWaveformUrls.value, [drawKey]: svg }
+  }
+}
+
+/** 回收不再需要的波形绘制缓存（缩放 / 裁剪会不断产生新的宽度档位） */
+function gcWaveformUrls(): void {
+  const alive = new Set<string>()
+  for (const clip of clips.value) {
+    if (isAudioClip(clip)) alive.add(waveformDrawKey(clip))
+  }
+  let dirty = false
+  const next: Record<string, string> = {}
+  for (const [key, url] of Object.entries(clipWaveformUrls.value)) {
+    if (alive.has(key)) {
+      next[key] = url
+    } else {
+      dirty = true
+    }
+  }
+  if (dirty) clipWaveformUrls.value = next
 }
 
 function clamp01(value: number): number {
@@ -2840,6 +3822,7 @@ function loadPersisted(): void {
     .map((g) => normalizeScriptTimelineSourceGroup(g))
     .filter((g): g is ScriptTimelineSourceGroup => !!g)
   hiddenTracks.value = new Set(doc.hiddenTracks ?? [])
+  mutedTracks.value = new Set(doc.mutedTracks ?? [])
   lockedTracks.value = new Set(doc.lockedTracks ?? [])
   collapsedTracks.value = new Set(doc.collapsedTracks ?? [])
   // 清理指向已删分组的引用
@@ -2870,7 +3853,23 @@ function loadPersisted(): void {
   subtitleYOffset.value = settings?.subtitleYOffset ?? 80
   subtitleColor.value = settings?.subtitleColor ?? '#ffffff'
   previewFrameRatioKey.value = settings?.previewFrameRatio ?? 'export'
+  exportPlatformId.value = settings?.exportPlatformId ?? 'custom'
+  watermarkEnabled.value = settings?.watermarkEnabled === true
+  watermarkSrc.value = settings?.watermarkSrc ?? ''
+  watermarkOpacity.value = settings?.watermarkOpacity ?? 0.8
+  watermarkScale.value = settings?.watermarkScale ?? 0.1
+  watermarkPosition.value =
+    settings?.watermarkPosition === 'bl' ||
+    settings?.watermarkPosition === 'tr' ||
+    settings?.watermarkPosition === 'tl'
+      ? settings.watermarkPosition
+      : 'br'
   trackHeight.value = settings?.trackHeight ?? 52
+  mixGains.value = settings?.mixGains ?? {}
+  mixMasterGain.value = clampTrackGain(settings?.mixMasterGain ?? 1)
+  mixBassGainDb.value = clampMixEqGainDb(settings?.mixBassGainDb ?? 0)
+  mixTrebleGainDb.value = clampMixEqGainDb(settings?.mixTrebleGainDb ?? 0)
+  mixCompression.value = settings?.mixCompression === true
   undoStack.value = []
   redoStack.value = []
   selectedClipIds.value = new Set()
@@ -2892,6 +3891,7 @@ async function persist(): Promise<void> {
     sources: toPlain(sources.value) as ScriptTimelineSource[],
     sourceGroups: toPlain(sourceGroups.value) as ScriptTimelineSourceGroup[],
     hiddenTracks: [...hiddenTracks.value],
+    mutedTracks: [...mutedTracks.value],
     lockedTracks: [...lockedTracks.value],
     collapsedTracks: [...collapsedTracks.value],
     settings: {
@@ -2906,7 +3906,18 @@ async function persist(): Promise<void> {
       subtitleYOffset: subtitleYOffset.value,
       subtitleColor: subtitleColor.value,
       previewFrameRatio: previewFrameRatioKey.value,
-      trackHeight: trackHeight.value
+      exportPlatformId: exportPlatformId.value,
+      watermarkEnabled: watermarkEnabled.value,
+      watermarkSrc: watermarkSrc.value,
+      watermarkOpacity: watermarkOpacity.value,
+      watermarkScale: watermarkScale.value,
+      watermarkPosition: watermarkPosition.value,
+      trackHeight: trackHeight.value,
+      mixGains: mixGains.value,
+      mixMasterGain: mixMasterGain.value,
+      mixBassGainDb: mixBassGainDb.value,
+      mixTrebleGainDb: mixTrebleGainDb.value,
+      mixCompression: mixCompression.value
     }
   }
   const next = withScriptTimeline(readGenParams(), doc, props.timelineNodeId)
@@ -2948,6 +3959,62 @@ function onExportResolutionChange(value: string): void {
   scheduleSave()
 }
 
+const watermarkFileName = computed(() =>
+  watermarkSrc.value.split(/[\\/]/).pop()?.trim() || ''
+)
+
+/** 选择目标平台 → 自动套用分辨率 / 帧率 / 码率建议，并按安全区适配竖屏字幕偏移 */
+function onExportPlatformChange(id: string): void {
+  exportPlatformId.value = id
+  const spec = exportPlatformById(id)
+  if (spec && id !== 'custom') {
+    exportWidth.value = spec.width
+    exportHeight.value = spec.height
+    exportFps.value = spec.fps
+    exportVideoBitrateKbps.value = spec.videoBitrateKbps
+    isCustomResolution.value = false
+    previewFrameRatioKey.value = 'export'
+    if (spec.frame === 'portrait') {
+      subtitleYOffset.value = exportPlatformSubtitleOffset(spec.height, spec)
+    }
+  }
+  scheduleSave()
+}
+
+function onWatermarkEnabledChange(checked: boolean): void {
+  watermarkEnabled.value = checked
+  scheduleSave()
+}
+
+function pickWatermarkImage(): void {
+  watermarkInputEl.value?.click()
+}
+
+function onWatermarkImagePicked(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const path = window.studio.getPathForFile(file)
+  if (!path) return
+  watermarkSrc.value = path
+  watermarkEnabled.value = true
+  scheduleSave()
+}
+
+function clearWatermark(): void {
+  watermarkSrc.value = ''
+  watermarkEnabled.value = false
+  scheduleSave()
+}
+
+function onWatermarkPositionChange(value: string): void {
+  if (value === 'bl' || value === 'tr' || value === 'tl' || value === 'br') {
+    watermarkPosition.value = value
+  }
+  scheduleSave()
+}
+
 function applyPlaybackRate(): void {
   const el = previewEl.value
   if (el) el.playbackRate = playbackRate.value
@@ -2957,6 +4024,12 @@ function applyPlaybackRate(): void {
   for (const overlay of overlayEls.values()) {
     overlay.playbackRate = playbackRate.value
   }
+}
+
+/** 预览区 video 元素的原声（video / overlay 轨），轨道静音用 muted 控制 */
+function applyPreviewMuted(track: ScriptTimelineTrackKind = 'video'): void {
+  const el = previewEl.value
+  if (el) el.muted = mutedTracks.value.has(track)
 }
 
 function seekToStart(): void {
@@ -3016,6 +4089,208 @@ async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): P
     el.onerror = () => done(3)
     window.setTimeout(() => done(3), 4000)
   })
+}
+
+/**
+ * 一键生成 BGM：描述音乐 → MiniMax 音乐模型产出 → 落盘 Cache/Music → 铺到音乐轨。
+ * 复用 generateMusic 的同步管线（与图片/语音一致），失败给出引导文案。
+ */
+/** 一键生成音效：描述 → MiniMax 音乐模型 instrumental 产出 → 落盘 Cache/Sfx → 铺到音效轨。 */
+async function onGenerateSfx(): Promise<void> {
+  const prompt = await promptText({
+    title: t('script.timeline.generateSfx'),
+    message: t('script.timeline.generateSfxPrompt'),
+    placeholder: t('script.timeline.generateSfxPlaceholder')
+  })
+  if (!prompt || !prompt.trim()) return
+  await generateSfxCore(prompt.trim(), prompt.trim().slice(0, 24))
+}
+
+/** 音效生成核心：生成 → 上素材列表 → 铺音效轨；成功返回落盘 source，失败弹错返回 null */
+async function generateSfxCore(prompt: string, name?: string): Promise<ScriptTimelineSource | null> {
+  sfxBusy.value = true
+  try {
+    const result = await window.studio.generateMusic({
+      prompt,
+      instrumental: true,
+      outputDir: 'Cache/Sfx'
+    })
+    const durationSec =
+      result.durationMs && result.durationMs > 0
+        ? Math.round(result.durationMs / 1000)
+        : undefined
+    const source: ScriptTimelineSource = {
+      id: `sfx:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
+      title: name?.trim() || (result.relativePath?.split('/').pop() || 'SFX').replace(/\.[^.]+$/, ''),
+      relativePath: result.relativePath,
+      assetId: result.assetId,
+      origin: 'imported'
+    }
+    upsertImportedSource(source, 'voice', durationSec)
+    await addSourceToTrack(source, 'sfx', 0)
+    return source
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.generateSfx'),
+      message: t('script.timeline.generateSfxFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+    return null
+  } finally {
+    sfxBusy.value = false
+  }
+}
+
+/** ── 音效库：内置预设（转场 / UI / 环境）+ 资产库导入 ── */
+const sfxLibraryOpen = ref(false)
+const sfxLibraryCategory = ref<'all' | SfxPresetCategory>('all')
+
+const sfxLibraryCategoryLabels = computed<Record<'all' | SfxPresetCategory, string>>(() => {
+  const labels: Record<'all' | SfxPresetCategory, string> = {
+    all: t('script.timeline.sfxLibraryAll'),
+    ui: '',
+    transition: '',
+    ambient: ''
+  }
+  for (const meta of SFX_PRESET_CATEGORIES) labels[meta.id] = localizedText(locale.value, meta.label)
+  return labels
+})
+
+const filteredSfxPresets = computed(() =>
+  sfxLibraryCategory.value === 'all'
+    ? SFX_PRESETS
+    : SFX_PRESETS.filter((p) => p.category === sfxLibraryCategory.value)
+)
+
+/** 项目声音资产（voice 类型或音频扩展名），供「从资产库导入」 */
+const projectAudioAssets = computed(() => {
+  const audioExtRe = /\.(mp3|wav|m4a|aac|ogg|flac|webm|aiff|wma|opus)$/i
+  return project.assets.filter((a) => a.type === 'voice' || audioExtRe.test(a.relativePath))
+})
+
+function openSfxLibrary(): void {
+  sfxLibraryOpen.value = true
+}
+
+function closeSfxLibrary(): void {
+  sfxLibraryOpen.value = false
+}
+
+function setSfxLibraryCategory(category: 'all' | SfxPresetCategory): void {
+  sfxLibraryCategory.value = category
+}
+
+async function onLibraryGenerateSfx(preset: SfxPreset): Promise<void> {
+  if (sfxBusy.value) return
+  const name = localizedText(locale.value, preset.name)
+  const source = await generateSfxCore(localizedText(locale.value, preset.prompt), name)
+  if (!source) return
+  await promptAlert({
+    title: t('script.timeline.sfxLibrary'),
+    message: t('script.timeline.sfxLibraryGenerated', { name })
+  })
+}
+
+async function onImportSfxAsset(asset: AssetInfo): Promise<void> {
+  const source = assetToSource(asset)
+  if (!source) return
+  upsertImportedSource(source, 'voice')
+  await addSourceToTrack(source, 'sfx', 0)
+  await promptAlert({
+    title: t('script.timeline.sfxLibrary'),
+    message: t('script.timeline.sfxLibraryImported', { name: asset.name })
+  })
+}
+
+function openMixer(): void {
+  mixerOpen.value = true
+}
+
+function closeMixer(): void {
+  mixerOpen.value = false
+}
+
+/** 轨道增益（0~2）落库并调度保存 */
+function onMixGainChange(kind: ScriptTimelineTrackKind, value: number): void {
+  const clamped = clampTrackGain(value)
+  mixGains.value = { ...mixGains.value, [kind]: clamped }
+  scheduleSave()
+}
+
+function onMasterGainChange(value: number): void {
+  mixMasterGain.value = clampTrackGain(value)
+  scheduleSave()
+}
+
+function onMixEqChange(): void {
+  mixBassGainDb.value = clampMixEqGainDb(mixBassGainDb.value)
+  mixTrebleGainDb.value = clampMixEqGainDb(mixTrebleGainDb.value)
+  scheduleSave()
+}
+
+function onMixCompressionChange(value: boolean): void {
+  mixCompression.value = value
+  scheduleSave()
+}
+
+/** 轨道增益的百分比展示（0~200%） */
+function mixGainPercent(kind: ScriptTimelineTrackKind): number {
+  return Math.round(clampTrackGain(mixGains.value[kind] ?? 1) * 100)
+}
+
+function mixGainDbLabel(kind: ScriptTimelineTrackKind): string {
+  const g = clampTrackGain(mixGains.value[kind] ?? 1)
+  if (g <= 0.001) return '-∞'
+  return `${Math.round(20 * Math.log10(g))} dB`
+}
+
+function mixMasterGainDbLabel(): string {
+  const g = clampTrackGain(mixMasterGain.value)
+  if (g <= 0.001) return '-∞'
+  return `${Math.round(20 * Math.log10(g))} dB`
+}
+
+async function onGenerateBgm(): Promise<void> {
+  const prompt = await promptText({
+    title: t('script.timeline.generateBgm'),
+    message: t('script.timeline.generateBgmPrompt'),
+    placeholder: t('script.timeline.generateBgmPlaceholder')
+  })
+  if (!prompt || !prompt.trim()) return
+  bgmBusy.value = true
+  try {
+    const result = await window.studio.generateMusic({
+      prompt: prompt.trim(),
+      instrumental: true
+    })
+    const durationSec =
+      result.durationMs && result.durationMs > 0
+        ? Math.round(result.durationMs / 1000)
+        : undefined
+    const source: ScriptTimelineSource = {
+      id: `bgm:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
+      title: (result.relativePath?.split('/').pop() || 'BGM').replace(/\.[^.]+$/, ''),
+      relativePath: result.relativePath,
+      assetId: result.assetId,
+      origin: 'imported'
+    }
+    upsertImportedSource(source, 'voice', durationSec)
+    await addSourceToTrack(source, 'music', 0)
+    await promptAlert({
+      title: t('script.timeline.generateBgmDoneTitle'),
+      message: t('script.timeline.generateBgmDone', { name: source.title })
+    })
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.generateBgm'),
+      message: t('script.timeline.generateBgmFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  } finally {
+    bgmBusy.value = false
+  }
 }
 
 async function reloadSources(): Promise<void> {
@@ -3080,7 +4355,7 @@ async function addSourceToTrack(
   if (track === 'subtitle') {
     durationSec = durationSec > 0 ? Math.min(durationSec, 4) : 3
   } else if (!(durationSec > 0)) {
-    const media = track === 'voice' || track === 'music' ? 'audio' : 'video'
+    const media = track === 'voice' || track === 'music' || track === 'sfx' ? 'audio' : 'video'
     durationSec = await probeDuration(url, media)
   }
   const clip: ScriptTimelineClip = {
@@ -3640,6 +4915,115 @@ async function autoPlaceAll(): Promise<void> {
   }
 }
 
+function smartCutTransitionLabelKey(tr: string): string {
+  const map: Record<string, string> = {
+    none: 'None',
+    dissolve: 'Dissolve',
+    fade: 'Fade',
+    flash: 'Flash',
+    slideleft: 'SlideLeft',
+    slideright: 'SlideRight',
+    wipeleft: 'WipeLeft',
+    wiperight: 'WipeRight',
+    circleopen: 'CircleOpen'
+  }
+  return `script.timeline.transition${map[tr] ?? 'None'}`
+}
+
+async function onSmartCut(): Promise<void> {
+  if (!videoSources.value.length) await reloadSources()
+  const videos = videoSources.value
+  if (!videos.length) {
+    await promptAlert({
+      title: t('script.timeline.smartCut'),
+      message: t('script.timeline.smartCutNoVideo')
+    })
+    return
+  }
+  const gen = readGenParams()
+  const model =
+    typeof gen.generateModel === 'string' && gen.generateModel.trim()
+      ? gen.generateModel.trim()
+      : ''
+  const providerInstanceId =
+    typeof gen.generateProviderInstanceId === 'string' && gen.generateProviderInstanceId.trim()
+      ? gen.generateProviderInstanceId.trim()
+      : ''
+  if (!model) {
+    await promptAlert({
+      title: t('script.timeline.smartCut'),
+      message: t('script.timeline.smartCutNoModel')
+    })
+    return
+  }
+  smartCutBusy.value = true
+  try {
+    const sources = videos.map((s) => ({
+      id: s.id,
+      title: s.title,
+      durationSec: s.durationSec,
+      nodeTitle: s.nodeTitle
+    }))
+    const current = visibleClipsOn('video').map((c) => ({
+      title: c.title,
+      sourceId: c.sourceId,
+      startSec: c.startSec,
+      durationSec: c.durationSec
+    }))
+    const prompt = buildSmartCutPrompt({ sources, currentClips: current, locale: locale.value })
+    const result = await window.studio.generateText({ prompt, providerInstanceId, model })
+    const plan = parseSmartCutPlan(result?.text ?? '')
+    if (!plan || !plan.edits.length) {
+      await promptAlert({
+        title: t('script.timeline.smartCut'),
+        message: t('script.timeline.smartCutParseFailed')
+      })
+      return
+    }
+    smartCutEdits.value = plan.edits.map((e) => {
+      const src = videos.find((v) => v.id === e.sourceId)
+      return {
+        sourceId: e.sourceId,
+        title: src?.title ?? e.sourceId,
+        nodeTitle: src?.nodeTitle,
+        durationSec: e.durationSec ?? src?.durationSec ?? 3,
+        transitionType: e.transitionType ?? 'none',
+        transitionSec: e.transitionSec ?? SMART_CUT_DEFAULT_TRANSITION_SEC
+      }
+    })
+    smartCutDialogOpen.value = true
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.smartCut'),
+      message: t('script.timeline.smartCutFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  } finally {
+    smartCutBusy.value = false
+  }
+}
+
+function applySmartCut(): void {
+  const edits: SmartCutEdit[] = smartCutEdits.value.map((e) => ({
+    sourceId: e.sourceId,
+    durationSec: e.durationSec,
+    transitionType: (SMART_CUT_TRANSITIONS as readonly string[]).includes(e.transitionType)
+      ? (e.transitionType as SmartCutEdit['transitionType'])
+      : undefined,
+    transitionSec: e.transitionSec
+  }))
+  const applied = applySmartCutPlan({ clips: clips.value, sources: sources.value, plan: { edits } })
+  commitClips(applied.clips)
+  scheduleSave()
+  smartCutDialogOpen.value = false
+  const first = visibleClipsOn('video')[0]
+  if (first) {
+    activeClipId.value = first.id
+    void showClipPreview(first)
+  }
+}
+
 function removeClip(id: string): void {
   const clip = clips.value.find((c) => c.id === id)
   if (clip && lockedTracks.value.has(clip.track)) return
@@ -3725,7 +5109,8 @@ function trackKindAtClientY(clientY: number): ScriptTimelineTrackKind | null {
       kind === 'overlay' ||
       kind === 'voice' ||
       kind === 'subtitle' ||
-      kind === 'music'
+      kind === 'music' ||
+      kind === 'sfx'
     ) {
       return kind
     }
@@ -4030,7 +5415,7 @@ function hasExternalFiles(e: DragEvent): boolean {
 function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): boolean {
   if (kind === 'video') return asset.type === 'video'
   if (kind === 'overlay') return asset.type === 'video'
-  if (kind === 'voice' || kind === 'music') return asset.type === 'voice'
+  if (kind === 'voice' || kind === 'music' || kind === 'sfx') return asset.type === 'voice'
   if (kind === 'subtitle') return asset.type === 'video' || asset.type === 'voice'
   return false
 }
@@ -4041,7 +5426,11 @@ function resolveTargetTrack(
   requested: ScriptTimelineTrackKind
 ): ScriptTimelineTrackKind | null {
   if (canDropAssetOnTrack(asset, requested)) return requested
-  if (asset.type === 'voice') return requested === 'music' ? 'music' : 'voice'
+  if (asset.type === 'voice') {
+    if (requested === 'music') return 'music'
+    if (requested === 'sfx') return 'sfx'
+    return 'voice'
+  }
   if (asset.type === 'video') {
     if (requested === 'overlay') return 'overlay'
     return requested === 'subtitle' ? 'subtitle' : 'video'
@@ -4055,6 +5444,7 @@ function canAcceptExternalFilesOnTrack(kind: ScriptTimelineTrackKind): boolean {
     kind === 'overlay' ||
     kind === 'voice' ||
     kind === 'music' ||
+    kind === 'sfx' ||
     kind === 'subtitle'
   )
 }
@@ -4423,6 +5813,7 @@ function disposeAudioPool(): void {
     }
   }
   audioEls.clear()
+  disposePreviewAudioGraph()
 }
 
 function pauseOverlayVideos(): void {
@@ -4448,25 +5839,226 @@ function disposeOverlayVideos(): void {
   transitionVideoEls.clear()
 }
 
-function clipAudioVolumeAt(clip: ScriptTimelineClip, local: number): number {
-  let volume = Number.isFinite(clip.volume) ? clamp01(clip.volume!) : 1
+/** 片段淡入淡出系数（0~1），与导出 ffmpeg afade 对齐 */
+function fadeFactorAt(clip: ScriptTimelineClip, local: number): number {
   const fadeIn = Number.isFinite(clip.fadeInSec)
     ? Math.min(clip.durationSec, Math.max(0, clip.fadeInSec!))
     : 0
   const fadeOut = Number.isFinite(clip.fadeOutSec)
     ? Math.min(clip.durationSec, Math.max(0, clip.fadeOutSec!))
     : 0
-  if (fadeIn > 0 && local < fadeIn) volume *= local / fadeIn
+  let f = 1
+  if (fadeIn > 0 && local < fadeIn) f *= local / fadeIn
   const fadeStart = clip.durationSec - fadeOut
   if (fadeOut > 0 && local > fadeStart) {
-    volume *= Math.max(0, (clip.durationSec - local) / fadeOut)
+    f *= Math.max(0, (clip.durationSec - local) / fadeOut)
   }
-  return clamp01(volume)
+  return Math.max(0, Math.min(1, f))
+}
+
+/** ── 声音预览混音链路（与导出 ffmpeg 混音器一致：片段音量×轨道增益 → 主增益 → EQ → 可选压缩） ── */
+let previewAudioCtx: AudioContext | null = null
+let previewMasterBus: GainNode | null = null
+let previewBassFilter: BiquadFilterNode | null = null
+let previewTrebleFilter: BiquadFilterNode | null = null
+let previewCompressor: DynamicsCompressorNode | null = null
+/** audio 元素 → media source 节点（每个元素仅能创建一次） */
+const previewMediaSources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>()
+/** 片段 id → 轨道增益节点 */
+const previewClipGains = new Map<string, GainNode>()
+
+function getPreviewAudioCtx(): AudioContext | null {
+  if (previewAudioCtx) return previewAudioCtx
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) return null
+    const ctx = new Ctor()
+    const master = ctx.createGain()
+    master.gain.value = clampTrackGain(mixMasterGain.value)
+    const bass = ctx.createBiquadFilter()
+    bass.type = 'peaking'
+    bass.frequency.value = 120
+    bass.Q.value = 1
+    bass.gain.value = clampMixEqGainDb(mixBassGainDb.value)
+    const treble = ctx.createBiquadFilter()
+    treble.type = 'peaking'
+    treble.frequency.value = 8000
+    treble.Q.value = 1
+    treble.gain.value = clampMixEqGainDb(mixTrebleGainDb.value)
+    const comp = ctx.createDynamicsCompressor()
+    comp.threshold.value = -14 // 0.2 线性 ≈ -14 dB
+    comp.knee.value = 0
+    comp.ratio.value = 2
+    comp.attack.value = 0.02
+    comp.release.value = 0.25
+    previewAudioCtx = ctx
+    previewMasterBus = master
+    previewBassFilter = bass
+    previewTrebleFilter = treble
+    previewCompressor = comp
+    master.connect(bass)
+    bass.connect(treble)
+    treble.connect(ctx.destination)
+    updatePreviewCompressorRouting()
+    return ctx
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 创建并解锁 AudioContext。必须在用户手势的同步上下文中调用：
+ * 一旦 await（例如解析素材 URL 的 IPC）就会丢失手势，此时新建的 AudioContext 会停在
+ * suspended，而被它接管的音频（MediaElementSource）会完全无声。
+ */
+function unlockPreviewAudio(): void {
+  const ctx = getPreviewAudioCtx()
+  if (ctx && ctx.state === 'suspended') {
+    void ctx.resume().catch(() => undefined)
+  }
+}
+
+function updatePreviewCompressorRouting(): void {
+  const ctx = previewAudioCtx
+  if (!ctx || !previewTrebleFilter || !previewCompressor) return
+  try {
+    previewTrebleFilter.disconnect()
+    previewCompressor.disconnect()
+    if (mixCompression.value) {
+      previewTrebleFilter.connect(previewCompressor)
+      previewCompressor.connect(ctx.destination)
+    } else {
+      previewTrebleFilter.connect(ctx.destination)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 创建音频元素：默认匿名跨源加载。
+ * 不设 crossOrigin 的话素材会被判定为跨域污染，MediaElementSource 接管后会强制静音；
+ * 万一 CORS 加载失败，则自动降级为普通加载并放弃接管，保证至少还有声音。
+ */
+function createPreviewAudioEl(): HTMLAudioElement {
+  const el = new Audio()
+  el.preload = 'auto'
+  el.addEventListener(
+    'error',
+    () => {
+      if (audioCorsFallback.has(el) || !el.crossOrigin) return
+      audioCorsFallback.add(el)
+      const src = el.src
+      el.removeAttribute('crossorigin')
+      el.src = src
+      el.load()
+    },
+    { once: true }
+  )
+  el.crossOrigin = 'anonymous'
+  return el
+}
+
+/** 将片段 audio 元素接入共享预览混音链路，返回其增益节点（失败回退 null） */
+function ensurePreviewClipGain(clip: ScriptTimelineClip, el: HTMLAudioElement): GainNode | null {
+  const ctx = getPreviewAudioCtx()
+  if (!ctx || !previewMasterBus) return null
+  let node = previewClipGains.get(clip.id)
+  if (node) return node
+  // 上下文还没跑起来时不要接管元素音频：MediaElementSource 一旦创建就不可撤销，
+  // 而 suspended 的上下文会让元素彻底静音。此时回退到元素自身音量，保证有声。
+  if (ctx.state !== 'running') return null
+  // CORS 加载失败降级过的元素不再接管，保持元素音量回退
+  if (audioCorsFallback.has(el)) return null
+  let source = previewMediaSources.get(el)
+  if (!source) {
+    try {
+      source = ctx.createMediaElementSource(el)
+    } catch {
+      return null
+    }
+    previewMediaSources.set(el, source)
+  }
+  node = ctx.createGain()
+  node.gain.value = 1
+  source.connect(node)
+  node.connect(previewMasterBus)
+  previewClipGains.set(clip.id, node)
+  return node
+}
+
+/** 同步片段音量：clip.volume × 轨道增益 × 淡入淡出（与导出对齐；走 Web Audio 时元素自身音量恒 1） */
+function syncClipPreviewGain(clip: ScriptTimelineClip, el: HTMLAudioElement, local: number): void {
+  // 轨道静音优先级最高：直接压到 0，忽略片段音量与混音器增益
+  const target = mutedTracks.value.has(clip.track)
+    ? 0
+    : Math.min(
+        2,
+        (Number.isFinite(clip.volume) ? Math.min(2, Math.max(0, clip.volume!)) : 1) *
+          clampTrackGain(mixGains.value[clip.track]) *
+          fadeFactorAt(clip, local)
+      )
+  const node = ensurePreviewClipGain(clip, el)
+  if (node && previewAudioCtx) {
+    node.gain.setTargetAtTime(target, previewAudioCtx.currentTime, 0.02)
+    el.volume = 1
+  } else {
+    // Web Audio 不可用时退化为元素音量（仅 0~1）
+    el.volume = clamp01(target)
+  }
+}
+
+/** 同步主增益 / EQ / 压缩到当前混音器设置（播放 tick 中调用，开销极小） */
+function syncPreviewMixerSettings(): void {
+  const ctx = previewAudioCtx
+  if (!ctx) return
+  // 兜底：上下文若仍处于 suspended（被自动播放策略拦截），持续尝试恢复
+  if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined)
+  const t = ctx.currentTime
+  if (previewMasterBus) {
+    previewMasterBus.gain.setTargetAtTime(clampTrackGain(mixMasterGain.value), t, 0.02)
+  }
+  if (previewBassFilter) {
+    previewBassFilter.gain.setTargetAtTime(clampMixEqGainDb(mixBassGainDb.value), t, 0.02)
+  }
+  if (previewTrebleFilter) {
+    previewTrebleFilter.gain.setTargetAtTime(clampMixEqGainDb(mixTrebleGainDb.value), t, 0.02)
+  }
+  updatePreviewCompressorRouting()
+}
+
+function disposePreviewAudioGraph(): void {
+  for (const node of previewClipGains.values()) {
+    try {
+      node.disconnect()
+    } catch {
+      /* ignore */
+    }
+  }
+  previewClipGains.clear()
+  previewMediaSources.clear()
+  try {
+    previewMasterBus?.disconnect()
+    previewBassFilter?.disconnect()
+    previewTrebleFilter?.disconnect()
+    previewCompressor?.disconnect()
+    void previewAudioCtx?.close().catch(() => undefined)
+  } catch {
+    /* ignore */
+  }
+  previewAudioCtx = null
+  previewMasterBus = null
+  previewBassFilter = null
+  previewTrebleFilter = null
+  previewCompressor = null
 }
 
 async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
+  syncPreviewMixerSettings()
   const audioClips = clips.value.filter(
-    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay'
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay' || c.track === 'sfx'
   )
   const alive = new Set(audioClips.map((c) => c.id))
   for (const id of [...audioEls.keys()]) {
@@ -4482,20 +6074,29 @@ async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
       }
     }
     audioEls.delete(id)
+    const deadGain = previewClipGains.get(id)
+    if (deadGain) {
+      try {
+        deadGain.disconnect()
+      } catch {
+        /* ignore */
+      }
+      previewClipGains.delete(id)
+    }
+    if (dead) previewMediaSources.delete(dead)
   }
 
   for (const clip of audioClips) {
     let el = audioEls.get(clip.id)
     if (!el) {
-      el = new Audio()
-      el.preload = 'auto'
+      el = createPreviewAudioEl()
       audioEls.set(clip.id, el)
       el.src = await resolveSrc(clip)
     }
     const local = playheadSec.value - clip.startSec
     const inRange = local >= -0.05 && local < clip.durationSec
     el.playbackRate = playbackRate.value
-    el.volume = clipAudioVolumeAt(clip, Math.max(0, local))
+    syncClipPreviewGain(clip, el, Math.max(0, local))
     if (!inRange) {
       if (!el.paused) el.pause()
       continue
@@ -4617,6 +6218,8 @@ async function toggleTimelinePlay(): Promise<void> {
     return
   }
   stopPlayback()
+  // 在手势同步上下文中解锁音频上下文，之后的 await 会丢失手势
+  unlockPreviewAudio()
   playMode.value = 'timeline'
   playing.value = true
   const seq = ++playSeq
@@ -4633,6 +6236,8 @@ async function togglePreviewPlay(): Promise<void> {
   const clip = selectedPlayableClip.value
   if (!clip) return
   stopPlayback()
+  // 在手势同步上下文中解锁音频上下文，之后的 await 会丢失手势
+  unlockPreviewAudio()
   playMode.value = 'solo'
   playing.value = true
   const seq = ++playSeq
@@ -4653,6 +6258,7 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
       if (!el) break
       try {
         applyPlaybackRate()
+        applyPreviewMuted(clip.track)
         el.currentTime = 0
         await el.play()
       } catch {
@@ -4662,14 +6268,15 @@ async function runSoloClip(clip: ScriptTimelineClip, seq: number): Promise<void>
     } else {
       // 声音：用独立 audio，不带动其他轨
       previewSrc.value = ''
+      syncPreviewMixerSettings()
       let el = audioEls.get(clip.id)
       if (!el) {
-        el = new Audio()
-        el.preload = 'auto'
+        el = createPreviewAudioEl()
         audioEls.set(clip.id, el)
       }
       el.src = await resolveSrc(clip)
       el.playbackRate = playbackRate.value
+      syncClipPreviewGain(clip, el, 0)
       try {
         el.currentTime = 0
         await el.play()
@@ -4706,6 +6313,7 @@ function waitUntilAudioClipEnd(
       if (!playheadDrag.value) {
         playheadSec.value = clip.startSec + (el.currentTime || 0)
       }
+      syncClipPreviewGain(clip, el, el.currentTime || 0)
       if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
@@ -4951,6 +6559,7 @@ function updatePreviewFrameRect(): void {
 
 function onPreviewLoaded(): void {
   applyPlaybackRate()
+  applyPreviewMuted()
   const video = previewEl.value
   previewVideoMeta.value = {
     width: video?.videoWidth ?? 0,
@@ -4977,6 +6586,7 @@ function closeExportDialog(): void {
 
 function confirmExportDialog(): void {
   closeExportDialog()
+  lastExportError.value = ''
   scheduleSave()
   void exportTimeline()
 }
@@ -5025,6 +6635,16 @@ async function exportTimeline(): Promise<void> {
       subtitleFontSize: subtitleFontSize.value,
       subtitleYOffset: subtitleYOffset.value,
       subtitleColor: subtitleColor.value,
+      mixGains: mixGains.value,
+      mixMasterGain: mixMasterGain.value,
+      mixBassGainDb: mixBassGainDb.value,
+      mixTrebleGainDb: mixTrebleGainDb.value,
+      mixCompression: mixCompression.value,
+      mutedTracks: [...mutedTracks.value],
+      watermarkSrc: watermarkEnabled.value && watermarkSrc.value ? watermarkSrc.value : undefined,
+      watermarkOpacity: watermarkOpacity.value,
+      watermarkScale: watermarkScale.value,
+      watermarkPosition: watermarkPosition.value,
       defaultFileName
     })
 
@@ -5049,6 +6669,7 @@ async function exportTimeline(): Promise<void> {
         }
       })
       if (fb.ok) {
+        lastExportError.value = ''
         await promptAlert({
           title: t('script.timeline.export'),
           message: t('script.timeline.exportDoneFallback', { path: fb.filePath })
@@ -5064,12 +6685,14 @@ async function exportTimeline(): Promise<void> {
     }
 
     if (result.ok) {
+      lastExportError.value = ''
       if (result.assetId) await project.refreshAssets()
       await promptAlert({
         title: t('script.timeline.export'),
         message: t('script.timeline.exportDone', { path: result.filePath })
       })
     } else if (!result.canceled) {
+      lastExportError.value = result.error
       await promptAlert({
         title: t('script.timeline.export'),
         message: t('script.timeline.exportFailed', { error: result.error })
@@ -5077,6 +6700,7 @@ async function exportTimeline(): Promise<void> {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    lastExportError.value = message
     await promptAlert({
       title: t('script.timeline.export'),
       message: t('script.timeline.exportFailed', { error: message })
@@ -5095,6 +6719,66 @@ function formatSrtTimestamp(sec: number): string {
   const m = Math.floor(total / 60000) % 60
   const h = Math.floor(total / 3600000)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+/**
+ * 人声 / 伴奏分离：把选中片段（视频 / 配音 / 音乐 / 音效）的音源拆为对白与伴奏，
+ * 产物落 `Cache/Separated/<stem>/`，对齐原位置分别上配音轨（voice）与音乐轨（music），
+ * 之后可在混音器独立调节两轨比例后再混音导出。内置 ffmpeg 中置声道提取；
+ * 配置 `AUDIO_SEPARATION_API_URL` 后走第三方 AI 分离。
+ */
+const separatingAudio = ref(false)
+async function separateClipAudio(): Promise<void> {
+  const clip = selectedPlayableClip.value
+  const rel = clip ? sourceRelativePath(clip) : ''
+  if (!clip || !rel) {
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.separateAudioNoSource')
+    })
+    return
+  }
+  separatingAudio.value = true
+  try {
+    const result = await window.studio.separateAudio(rel)
+    const base =
+      clip.title?.trim() ||
+      rel.split('/').pop()?.replace(/\.[^.]+$/, '') ||
+      t('script.timeline.audio')
+    const durationSec = clip.durationSec > 0 ? clip.durationSec : undefined
+    const vocal: ScriptTimelineSource = {
+      id: `vocal:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
+      title: `${base} · ${t('script.timeline.separateVocal')}`,
+      relativePath: result.vocalRelativePath,
+      origin: 'imported'
+    }
+    const instrumental: ScriptTimelineSource = {
+      id: `instrumental:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
+      title: `${base} · ${t('script.timeline.separateInstrumental')}`,
+      relativePath: result.instrumentalRelativePath,
+      origin: 'imported'
+    }
+    upsertImportedSource(vocal, 'voice', durationSec)
+    upsertImportedSource(instrumental, 'voice', durationSec)
+    await addSourceToTrack(vocal, 'voice', clip.startSec)
+    await addSourceToTrack(instrumental, 'music', clip.startSec)
+    await promptAlert({
+      title: t('script.timeline.separateAudioDoneTitle'),
+      message:
+        result.provider === 'third-party'
+          ? t('script.timeline.separateAudioDone')
+          : `${t('script.timeline.separateAudioDone')}\n${t('script.timeline.separateAudioCenterNote')}`
+    })
+  } catch (err) {
+    await promptAlert({
+      title: t('script.timeline.separateAudioFailTitle'),
+      message: t('script.timeline.separateAudioFailed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    })
+  } finally {
+    separatingAudio.value = false
+  }
 }
 
 /**
@@ -5333,11 +7017,19 @@ watch(
     disposeOverlayVideos()
     sourceThumbUrls.value = {}
     sourceThumbPathById.clear()
+    // 换工程：波形绘制图与解码包络都作废，避免跨工程串用
+    clipWaveformUrls.value = {}
+    audioPeaksCache.clear()
     loadPersisted()
     await reloadSources()
     void refreshClipVisuals()
   }
 )
+
+// 视频轨原声走预览区 video 元素，静音切换后立即生效（声音轨由 syncClipPreviewGain 实时读取）
+watch(mutedTracks, () => {
+  applyPreviewMuted()
+})
 
 watch(
   clips,
@@ -5349,6 +7041,8 @@ watch(
   },
   { deep: false }
 )
+
+
 
 watch(
   () =>
@@ -5430,6 +7124,8 @@ onBeforeUnmount(() => {
   closeSourceCtx()
   if (saveTimer) clearTimeout(saveTimer)
   if (clipVisualTimer) clearTimeout(clipVisualTimer)
+  audioPeaksCache.clear()
+  closeDecodeAudioCtx()
   void persist()
 })
 
@@ -5575,6 +7271,18 @@ defineExpose({ flushSave: persist, reloadSources })
   background: var(--bg-hover);
   color: var(--text-muted);
   opacity: 0.62;
+}
+
+.inspector-field input:disabled {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.inspector-field select:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .inspector-empty {
@@ -6294,13 +8002,6 @@ defineExpose({ flushSave: persist, reloadSources })
   border-bottom: none;
 }
 
-.timeline-bar-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  flex-shrink: 0;
-}
-
 .timeline-controls {
   flex: 1;
   min-width: 0;
@@ -6419,6 +8120,210 @@ defineExpose({ flushSave: persist, reloadSources })
   margin-top: 4px;
 }
 
+.export-platform-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  opacity: 0.8;
+  padding: 2px 0 4px;
+}
+
+.export-platform-warning {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.export-compliance {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  padding: 2px 0 4px;
+}
+
+.export-compliance.ok {
+  color: #67c23a;
+}
+
+.export-compliance-item {
+  color: #e6a23c;
+}
+
+.watermark-pick-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.watermark-pick-row .ghost-btn {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-error-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px solid rgba(230, 162, 60, 0.4);
+  border-radius: 6px;
+  background: rgba(230, 162, 60, 0.08);
+  font-size: 12px;
+}
+
+.export-error-title {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.export-error-box code {
+  white-space: pre-wrap;
+  word-break: break-all;
+  opacity: 0.85;
+}
+
+.export-safe-area {
+  position: absolute;
+  border: 1px dashed rgba(255, 206, 84, 0.75);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mixer-panel {
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+}
+
+.sfx-library-panel {
+  width: min(680px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+}
+
+.sfx-library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sfx-library-tabs .ghost-btn.active {
+  border-color: #4a90d9;
+  color: #4a90d9;
+  font-weight: 600;
+}
+
+.sfx-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sfx-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.sfx-preset-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.sfx-preset-prompt {
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sfx-preset-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.sfx-preset-duration {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.sfx-library-assets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sfx-library-asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.sfx-library-asset-row:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.sfx-library-asset-name {
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sfx-library-empty {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.mixer-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+.mixer-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mixer-slider-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.mixer-value {
+  flex: none;
+  width: 88px;
+  font-size: 11px;
+  text-align: right;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
 .subtitle-edit-mask {
   position: absolute;
   inset: 0;
@@ -6463,6 +8368,125 @@ defineExpose({ flushSave: persist, reloadSources })
   gap: 8px;
 }
 
+.smart-cut-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: var(--overlay);
+}
+
+.smart-cut-panel {
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smart-cut-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.smart-cut-subtitle {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.smart-cut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.smart-cut-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.smart-cut-index {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg-panel);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.smart-cut-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smart-cut-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-cut-item-shot {
+  font-size: 11px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-cut-field {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.smart-cut-field input,
+.smart-cut-field select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  width: 110px;
+}
+
+.smart-cut-field input {
+  width: 84px;
+}
+
+.smart-cut-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .timeline-board {
   flex: none;
   overflow: hidden;
@@ -6477,6 +8501,20 @@ defineExpose({ flushSave: persist, reloadSources })
 .timeline-inner {
   position: relative;
   overflow: hidden;
+}
+
+.timeline-bottom-pad {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  height: var(--bottom-pad, 32px);
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  pointer-events: none;
+}
+
+.timeline-bottom-pad::before {
+  content: '';
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
 }
 
 .ruler-row,
@@ -6540,6 +8578,17 @@ defineExpose({ flushSave: persist, reloadSources })
   height: 22px;
   font-size: 0;
   line-height: 1;
+}
+
+/* 静音按钮：开启时用主色底提示当前轨道已静音 */
+.track-mute-btn.muted-on {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text);
+}
+
+/* 静音轨道：波形淡化，一眼看出这段不出声 */
+.muted-track .clip-wave {
+  opacity: 0.4;
 }
 
 .track-collapse-glyph {
@@ -6763,6 +8812,25 @@ defineExpose({ flushSave: persist, reloadSources })
   background: color-mix(in srgb, #4c9aff 20%, var(--bg-elevated));
 }
 
+/* 声音三轨按类型着色：人声绿 / 音乐青 / 音效橙（--clip-accent 由 clipVisualStyle 注入） */
+.clip.voice,
+.clip.music,
+.clip.sfx {
+  border-color: color-mix(in srgb, var(--clip-accent, var(--accent)) 55%, var(--border));
+  background: color-mix(in srgb, var(--clip-accent, var(--accent)) 20%, var(--bg-elevated));
+}
+
+/* 波形层独立铺在片段底部，不受片段 padding 影响；z-index 低于标题与裁剪手柄 */
+.clip-wave {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  background-position: left center;
+  pointer-events: none;
+}
+
 .clip-title {
   position: relative;
   z-index: 2;
@@ -6881,7 +8949,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .playhead {
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: var(--bottom-pad, 32px);
   width: 12px;
   border-left: 2px solid var(--success);
   pointer-events: auto;

@@ -5,6 +5,8 @@ import type {
   CatalogModel,
   GenerateImageInput,
   GenerateImageResult,
+  GenerateMusicAssetResult,
+  GenerateMusicInput,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -48,6 +50,10 @@ export const IpcChannels = {
   ASSET_SHOW_IN_FOLDER: 'asset:show-in-folder',
   ASSET_SHOW_FOLDER: 'asset:show-folder',
   VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
+  /** 视频按时间均匀抽帧（质检等多帧视觉理解） */
+  VIDEO_EXTRACT_FRAMES: 'video:extract-frames',
+  /** 人声 / 伴奏分离（内置 ffmpeg 中置声道或配置的第三方服务） */
+  AUDIO_SEPARATE: 'audio:separate',
   /** 将选中资产的原始媒体文件复制到系统剪贴板 */
   ASSET_COPY_ORIGINAL_FILES: 'asset:copy-original-files',
   /** 主进程写系统剪贴板文本（脱离主窗口的弹窗无文档焦点时 navigator.clipboard 不可用） */
@@ -69,6 +75,7 @@ export const IpcChannels = {
   GEN_IMAGE: 'gen:image',
   GEN_VIDEO: 'gen:video',
   GEN_SPEECH: 'gen:speech',
+  GEN_MUSIC: 'gen:music',
   GEN_MODEL3D: 'gen:model3d',
   /** AI 自由构图：仅规划预览，不落盘 */
   GEN_AI_WORKFLOW_PLAN: 'gen:ai-workflow-plan',
@@ -373,6 +380,7 @@ export type McpActivityTool =
   | 'generate_image'
   | 'generate_video'
   | 'generate_speech'
+  | 'generate_music'
   | 'generate_model3d'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
@@ -738,6 +746,14 @@ export interface ExportAdVariantsResult {
   error?: string
 }
 
+/** 人声 / 伴奏分离结果（产物落 `Cache/Separated/<stem>/`，可上时间线再混音） */
+export interface SeparateAudioResult {
+  vocalRelativePath: string
+  instrumentalRelativePath: string
+  /** 使用的分离方式：内置 ffmpeg 中置声道 / 配置的第三方服务 */
+  provider: 'ffmpeg-center' | 'third-party'
+}
+
 export interface StudioApi {
   createProject: (input: CreateProjectInput) => Promise<OpenProjectResult>
   openProject: (projectJsonPath: string) => Promise<OpenProjectResult>
@@ -789,6 +805,10 @@ export interface StudioApi {
   showFolderInFolder: (folderId: string) => Promise<void>
   /** 用主进程 ffprobe 探测视频关键帧时间（秒）；无 ffprobe 或失败时返回 null */
   detectVideoKeyframes: (relativePath: string) => Promise<number[] | null>
+  /** 视频按时间均匀抽帧（质检多帧理解）；无 ffmpeg 或失败时返回空数组 */
+  extractVideoFrames: (relativePath: string, count: number) => Promise<string[]>
+  /** 人声 / 伴奏分离：对白上 voice 轨、去 BGM 再混音 */
+  separateAudio: (relativePath: string) => Promise<SeparateAudioResult>
   /** 复制选中资产的原始媒体文件到系统剪贴板（非缩略图） */
   copyAssetOriginalFiles: (
     assetIds: string[]
@@ -818,6 +838,7 @@ export interface StudioApi {
     input: GenerateVideoInput & { name?: string }
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
+  generateMusic: (input: GenerateMusicInput) => Promise<GenerateMusicAssetResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
   /** 音频转写：本地音频文件 → 带时间戳文本（语音识别） */
   transcribeAudio: (input: TranscribeAudioInput) => Promise<TranscribeAudioResult>

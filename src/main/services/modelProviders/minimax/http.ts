@@ -108,7 +108,8 @@ const MM_ACTION_LABELS: Record<string, string> = {
   提交视频生成: 'Submitting video generation',
   轮询视频任务: 'Polling video task',
   获取视频文件: 'Retrieving video file',
-  音色设计: 'Voice design'
+  音色设计: 'Voice design',
+  音乐生成: 'Music generation'
 }
 
 /** base_resp.status_code !== 0 时抛错（中文措辞保持与旧版逐字一致） */

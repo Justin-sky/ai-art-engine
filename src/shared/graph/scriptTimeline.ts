@@ -1,5 +1,27 @@
 /** 成片时间线：存于剧本资产 genParams.scriptTimeline */
-export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music'
+export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music' | 'sfx'
+
+/** 混音轨级增益（0~2，1=原始音量；缺省按 1） */
+export type TimelineMixGains = Partial<Record<ScriptTimelineTrackKind, number>>
+
+export const MIX_GAIN_MIN = 0
+export const MIX_GAIN_MAX = 2
+export const MIX_EQ_GAIN_MIN_DB = -12
+export const MIX_EQ_GAIN_MAX_DB = 12
+
+/** 轨道增益 → 线性音量（clamp 到 [0,2]） */
+export function clampTrackGain(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return 1
+  return Math.min(MIX_GAIN_MAX, Math.max(MIX_GAIN_MIN, n))
+}
+
+/** EQ 增益（dB）clamp 到 [-12,12] */
+export function clampMixEqGainDb(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.min(MIX_EQ_GAIN_MAX_DB, Math.max(MIX_EQ_GAIN_MIN_DB, n))
+}
 
 /** 左侧素材来源：节点上游收集 vs 资产库/系统文件拖入 */
 export type ScriptTimelineSourceOrigin = 'input' | 'imported'
@@ -112,6 +134,28 @@ export type ScriptTimelineSettings = {
   previewFrameRatio?: string
   /** 时间线轨道高度（像素） */
   trackHeight?: number
+  /** 混音器：轨道级增益（0~2，1=原始音量；缺省按 1） */
+  mixGains?: TimelineMixGains
+  /** 混音器：主输出增益（0~2，1=原始音量） */
+  mixMasterGain?: number
+  /** 混音器：低频增益（dB，-12~12） */
+  mixBassGainDb?: number
+  /** 混音器：高频增益（dB，-12~12） */
+  mixTrebleGainDb?: number
+  /** 混音器：启用动态压缩 */
+  mixCompression?: boolean
+  /** 导出目标平台预设（douyin/kuaishou/shipinhao/tiktok/youtube/custom） */
+  exportPlatformId?: string
+  /** 水印：是否启用 */
+  watermarkEnabled?: boolean
+  /** 水印：图片本地路径 */
+  watermarkSrc?: string
+  /** 水印：不透明度 0~1 */
+  watermarkOpacity?: number
+  /** 水印：相对视频宽度比例 0.05~0.5 */
+  watermarkScale?: number
+  /** 水印：角落位置 br/bl/tr/tl */
+  watermarkPosition?: string
 }
 
 export type ScriptTimelineDocument = {
@@ -122,6 +166,8 @@ export type ScriptTimelineDocument = {
   sourceGroups?: ScriptTimelineSourceGroup[]
   /** 当前隐藏的轨道 */
   hiddenTracks?: ScriptTimelineTrackKind[]
+  /** 当前静音的轨道（预览与导出均不出声） */
+  mutedTracks?: ScriptTimelineTrackKind[]
   /** 当前锁定的轨道 */
   lockedTracks?: ScriptTimelineTrackKind[]
   /** 当前折叠的轨道 */
@@ -180,6 +226,26 @@ export type TimelineExportInput = {
   subtitleFontSize?: number
   subtitleYOffset?: number
   subtitleColor?: string
+  /** 混音器：轨道级增益（0~2） */
+  mixGains?: TimelineMixGains
+  /** 混音器：主输出增益（0~2） */
+  mixMasterGain?: number
+  /** 混音器：低频增益（dB） */
+  mixBassGainDb?: number
+  /** 混音器：高频增益（dB） */
+  mixTrebleGainDb?: number
+  /** 混音器：启用动态压缩 */
+  mixCompression?: boolean
+  /** 静音的轨道：这些轨道的声音不混入成片 */
+  mutedTracks?: ScriptTimelineTrackKind[]
+  /** 水印：图片文件绝对路径（启用时叠加到成片） */
+  watermarkSrc?: string
+  /** 水印：不透明度 0~1 */
+  watermarkOpacity?: number
+  /** 水印：相对视频宽度比例（0.05~0.5） */
+  watermarkScale?: number
+  /** 水印：角落位置 */
+  watermarkPosition?: 'br' | 'bl' | 'tr' | 'tl'
   /** 另存为默认文件名（不含路径） */
   defaultFileName?: string
 }
@@ -243,6 +309,9 @@ export function readScriptTimelineFromGenParams(
     hiddenTracks: Array.isArray(doc.hiddenTracks)
       ? doc.hiddenTracks.filter(isTrackKind)
       : [],
+    mutedTracks: Array.isArray(doc.mutedTracks)
+      ? doc.mutedTracks.filter(isTrackKind)
+      : [],
     lockedTracks: Array.isArray(doc.lockedTracks)
       ? doc.lockedTracks.filter(isTrackKind)
       : [],
@@ -269,6 +338,7 @@ export function withScriptTimeline(
       ...(timeline.sources?.length ? { sources: timeline.sources } : {}),
       ...(sourceGroups.length ? { sourceGroups } : {}),
       ...(timeline.hiddenTracks?.length ? { hiddenTracks: timeline.hiddenTracks } : {}),
+      ...(timeline.mutedTracks?.length ? { mutedTracks: timeline.mutedTracks } : {}),
       ...(timeline.lockedTracks?.length ? { lockedTracks: timeline.lockedTracks } : {}),
       ...(timeline.collapsedTracks?.length ? { collapsedTracks: timeline.collapsedTracks } : {}),
       ...(settings ? { settings } : {})
@@ -328,6 +398,45 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   if (typeof row.trackHeight === 'number' && Number.isFinite(row.trackHeight)) {
     next.trackHeight = Math.min(96, Math.max(36, Math.round(row.trackHeight)))
   }
+  if (row.mixGains && typeof row.mixGains === 'object') {
+    const mixGains: TimelineMixGains = {}
+    for (const key of Object.keys(row.mixGains) as Array<keyof TimelineMixGains>) {
+      const v = (row.mixGains as Record<string, unknown>)[key]
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        mixGains[key] = clampTrackGain(v)
+      }
+    }
+    if (Object.keys(mixGains).length) next.mixGains = mixGains
+  }
+  if (row.mixMasterGain != null) {
+    next.mixMasterGain = clampTrackGain(row.mixMasterGain)
+  }
+  if (row.mixBassGainDb != null) {
+    next.mixBassGainDb = clampMixEqGainDb(row.mixBassGainDb)
+  }
+  if (row.mixTrebleGainDb != null) {
+    next.mixTrebleGainDb = clampMixEqGainDb(row.mixTrebleGainDb)
+  }
+  if (typeof row.mixCompression === 'boolean') next.mixCompression = row.mixCompression
+  if (typeof row.exportPlatformId === 'string' && row.exportPlatformId.trim()) {
+    next.exportPlatformId = row.exportPlatformId
+  }
+  if (typeof row.watermarkEnabled === 'boolean') next.watermarkEnabled = row.watermarkEnabled
+  if (typeof row.watermarkSrc === 'string' && row.watermarkSrc.trim()) {
+    next.watermarkSrc = row.watermarkSrc
+  }
+  if (typeof row.watermarkOpacity === 'number') {
+    next.watermarkOpacity = Math.min(1, Math.max(0.05, row.watermarkOpacity))
+  }
+  if (typeof row.watermarkScale === 'number') {
+    next.watermarkScale = Math.min(0.5, Math.max(0.05, row.watermarkScale))
+  }
+  if (
+    typeof row.watermarkPosition === 'string' &&
+    ['br', 'bl', 'tr', 'tl'].includes(row.watermarkPosition)
+  ) {
+    next.watermarkPosition = row.watermarkPosition
+  }
   return Object.keys(next).length ? next : undefined
 }
 
@@ -386,7 +495,8 @@ function isTrackKind(value: unknown): value is ScriptTimelineTrackKind {
     value === 'overlay' ||
     value === 'voice' ||
     value === 'subtitle' ||
-    value === 'music'
+    value === 'music' ||
+    value === 'sfx'
   )
 }
 
@@ -403,6 +513,7 @@ function isClip(item: unknown): item is ScriptTimelineClip {
       row.track === 'overlay' ||
       row.track === 'voice' ||
       row.track === 'subtitle' ||
-      row.track === 'music')
+      row.track === 'music' ||
+      row.track === 'sfx')
   )
 }

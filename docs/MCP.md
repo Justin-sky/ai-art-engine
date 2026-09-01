@@ -142,6 +142,12 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `project_list` | 最近工程路径列表 | 无 |
 | `project_open` | 打开一个工程 | 应用运行中 |
 | `project_create` | 新建工程 | 应用运行中 |
+| `project_memory_read` | 读取当前工程的 Agent 记忆（`.aiartengine/memory.md`，跨会话偏好的完整 Markdown） | 已打开工程 |
+| `project_memory_append` | 向项目记忆指定分类追加一条偏好（style / camera / character / other），下一轮对话自动注入 | 已打开工程 |
+| `project_memory_write` | 整体覆盖写入项目记忆（Markdown，用于整理 / 重建） | 已打开工程 |
+| `voice_profile_list` | 列出角色音色档案（角色 → 音色 id / 克隆参考音频） | 已打开工程 |
+| `voice_profile_upsert` | 新建 / 更新角色音色档案（character + voice 或 referenceAudio + description） | 已打开工程 |
+| `voice_profile_delete` | 删除指定角色音色档案 | 已打开工程 |
 | `asset_list` | 列出当前工程的资产 | 已打开工程 |
 | `asset_read_file` | 按相对路径读取工程内文本文件 | 已打开工程 |
 | `asset_write_text` | 更新文本资产（剧本/备注），界面同步刷新 | 已打开工程 |
@@ -159,7 +165,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `task_run` | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |
 | `task_status` | 按 `mcpTaskId` 查运行状态（running / done / error / stopped） | 应用运行中 |
 
-### ③ 内容生成（图片 / 视频 / 3D / 语音）
+### ③ 内容生成（图片 / 视频 / 3D / 语音 / 音乐）
 
 | 工具 | 作用 | 前置条件 |
 |---|---|---|
@@ -167,6 +173,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `generate_video` | 提交视频生成并登记资产（异步，用 `video_job_*` 跟踪） | 已打开工程 + 视频模型 |
 | `generate_model3d` | 文生 3D / 图生 3D，产出 GLB 资产（异步） | 已打开工程 + 3D 模型 |
 | `generate_speech` | 台词转 MP3 并导入为声音资产 | 已打开工程 + 音频模型 |
+| `generate_music` | 按情绪 / 场景描述生成 BGM 并落盘 `Cache/Music`（同步），返回 `assetId` / `relativePath` / `durationMs`，可铺到时间线 music 轨 | 已打开工程 + 音乐模型（如 `music-3.0`） |
 | `video_job_list` / `video_job_get` | 查询异步视频生成任务的状态 | 应用运行中 |
 
 ### ④ 环境查询
@@ -196,7 +203,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - **低频参数透传**：`generate_*` 工具支持 `extraParams` 对象，把底层生成输入的全部字段
   （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
   显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。
-- **并发闸门**：`generate_image` / `generate_speech` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
+- **并发闸门**：`generate_image` / `generate_speech` / `generate_music` / `workflow_plan` 同时最多 3 个（可用环境变量 `AIAE_MCP_GEN_LIMIT` 调整），排队超限直接返回错误；`generate_video` / `generate_model3d` 提交即返回，不受闸门限制。
 - **取消粒度**：客户端断开连接，或发送 `notifications/cancelled`，会中止进行中的长任务（如 `workflow_plan` 在两次模型调用之间）；单次模型调用内部不可中断。
 - **状态报告有 TTL**：`task_status` 的成功/失败终态保留 10 分钟后自动清理，过期查询返回「未知任务 id」。
 - **环境变量覆盖**：`AIAE_MCP_CONFIG` 指定应用侧 mcp.json 路径；`AIAE_MCP_PORT` + `AIAE_MCP_TOKEN` 直接指定端口与 token（优先于文件）。

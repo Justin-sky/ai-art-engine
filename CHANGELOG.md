@@ -2,6 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [Unreleased] — 5.2 智能创作版（进行中）
+
+### Added
+
+- **音效库**：内置 22 个常用音效预设（转场 8 / UI 7 / 环境 7，中英双语，`features/timeline/sfxPresets.ts`），一键「生成并上轨」复用 AI 音效生成管线；分类浏览 + 资产库声音一键「导入上轨」
+- **项目级 Agent 记忆**：工程 `.aiartengine/memory.md` 跨会话沉淀项目偏好（风格 / 机位 / 角色一致性 / 其它），工程创建 / 打开时由配置自动生成基线，每轮对话注入 persona（截断 4000 字符）；MCP 工具 `project_memory_read / append / write`
+- **角色音色 / 声音克隆**：工程 `.aiartengine/voiceProfiles.json` 角色音色档案（角色 → 音色 id / 克隆参考音频），配音节点按角色（`generateSpeechCharacter`）自动取档实现跨镜头一致配音；`referenceAudio` 透传火山方舟声音复刻（few-shot voice clone）；声音节点检查器「角色音色」下拉 + 档案管理对话框；MCP 工具 `voice_profile_list / upsert / delete`
+- **智能剪辑（AI 粗剪）**：`shared/graph/smartCut.ts` 依据视频素材标题 / 分镜描述编排视频轨顺序、每段时长与转场；时间线「智能粗剪」调用剧本节点文本模型生成方案，预览对话框可调时长与转场后一键应用（仅重排视频轨，其他轨保留）
+- **视频级媒体理解**：媒体质检从视频首帧升级为多帧序列审核——`shared/graph/videoReview.ts` 按时间均匀抽帧（含首末帧），主进程 ffmpeg 按时间戳取帧（`video:extract-frames`），质检执行器图片优先、帧补位（上限 6 张），帧数 >1 时提示词追加「同一视频时间切片」说明，无 ffmpeg 自动回退首帧
+- **人声 / 伴奏分离**：时间线「人声伴奏分离」把选中片段音源拆为对白与伴奏（内置 ffmpeg 中置 / 侧置声道提取，`shared/graph/audioSeparation.ts` 纯函数），产物落 `Cache/Separated/<stem>/`，对齐原位置分别上配音轨与音乐轨，混音器调比例后再混音导出；第三方 AI 分离接入位已预留（配置 `AUDIO_SEPARATION_API_URL` 即启用）
+- **BGM 音乐生成接入百炼 Fun-Music**：MiniMax `music_generation` 自 2026-08-20 对新用户 / 免费用户停服，新增通义千问（DashScope）提供商 Fun-Music 音乐生成平替——注册 `fun-music-v1` / `fun-music-preview`（audio 模态，`/api/v1/services/audio/music/generation`，仅华北2北京，邀测需在百炼模型广场开通），设置页支持勾选 audio 模态、门面 / MCP / 时间线 BGM 生成链路自动选型；MiniMax 旧接口保留供历史付费用户继续使用
+
 ## [5.0.7] — 2026-08-31
 
 5.0.7 体验优化版：缩小安装包、加快安装解压——内置 dsh 运行体（`resources/dsh`，约 200MB）只保留运行必需文件，剔除 sourcemap、类型声明、测试与文档目录、Markdown 与点文件后，文件数 -55%（29899 → 13517）、体积 -36%（204.5MB → 130.6MB）。NSIS 安装逐文件解压与杀软扫描开销随之大幅下降，全新安装明显更快，安装包下载也更小。

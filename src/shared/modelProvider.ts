@@ -465,7 +465,7 @@ export function classifyDashScopeModelModality(model: {
   if (/t2v|i2v|video-synthesis|wan.*video|\bv2v\b|happyhorse|kling\/|kling-v3/.test(text)) {
     return 'video'
   }
-  if (/cosyvoice|sambert|\btts\b|speech/.test(text)) {
+  if (/cosyvoice|sambert|\btts\b|speech|fun-music|\bmusic\b/.test(text)) {
     return 'audio'
   }
   return 'text'
@@ -896,6 +896,13 @@ export interface GenerateSpeechInput {
    * 方舟 voice_design 使用首张：data URL → image_bytes，否则 image_url。
    */
   images?: string[]
+  /** 角色音色档案中的角色名：生成前按档案解析 voice / referenceAudio（未显式传时） */
+  voiceProfile?: string
+  /**
+   * 声音克隆参考音频：工程内相对路径或 http(s) URL（10-30s 人声）。
+   * 火山方舟 openspeech 走 few-shot 声音复刻；不支持的提供商将给出明确错误。
+   */
+  referenceAudio?: string
   /** 音频主落盘目录（相对工程根）；空则默认宿主资产下 Audio */
   outputDir?: string
 }
@@ -908,6 +915,43 @@ export interface GenerateSpeechResult {
   filePath?: string
   assetId?: string
   relativePath?: string
+}
+
+// ── 音乐 / BGM 生成 ──────────────────────────────────────────
+
+export interface GenerateMusicInput {
+  /** 音乐描述：风格 / 情绪 / 场景（如「轻快明亮的电子配乐，适合 Vlog 背景」） */
+  prompt: string
+  /** 歌词（纯音乐时可省略）；多段用 \n 分隔，支持 [Intro]/[Verse]/[Chorus] 等结构标签 */
+  lyrics?: string
+  /** 是否纯音乐（无歌词 / 人声）；缺省 true */
+  instrumental?: boolean
+  model?: string
+  providerInstanceId?: string
+  /** 输出目录（相对工程根）；缺省 Cache/Music */
+  outputDir?: string
+  /** 落盘文件名 stem */
+  name?: string
+  /** MCP：生成资产挂到的资产库文件夹 id */
+  folderId?: string
+}
+
+/** 门面层音乐生成原始结果（尚未落盘；downloadUrl 由门面下载后登记资产） */
+export interface GenerateMusicResult {
+  model: string
+  /** 音频下载地址（http(s)） */
+  downloadUrl: string
+  /** 音频时长（毫秒；服务端未返回时缺省） */
+  durationMs?: number
+}
+
+/** 已落盘的 BGM 音乐资产（复用 voice 资产类型，便于时间线 music 轨直接铺轨） */
+export interface GenerateMusicAssetResult {
+  /** 已登记的声音资产 id */
+  assetId: string
+  relativePath: string
+  model: string
+  durationMs?: number
 }
 
 /** 音频转写（语音识别）输入：工程内音频文件 + 可选模型/提供商 */

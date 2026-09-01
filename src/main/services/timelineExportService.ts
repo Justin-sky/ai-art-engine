@@ -6,7 +6,13 @@ import { dialog } from 'electron'
 import { existsSync, mkdtempSync, copyFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, basename, extname } from 'path'
-import type { TimelineExportClip, TimelineExportInput, TimelineExportResult } from '@shared/graph'
+import type {
+  ScriptTimelineTrackKind,
+  TimelineExportClip,
+  TimelineExportInput,
+  TimelineExportResult,
+  TimelineMixGains
+} from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
@@ -133,7 +139,22 @@ function buildFilterGraph(
   fps: number,
   subtitleFontSize: number,
   subtitleYOffset: number,
-  subtitleColor: string
+  subtitleColor: string,
+  mix?: {
+    mixGains?: TimelineMixGains
+    mixMasterGain?: number
+    mixBassGainDb?: number
+    mixTrebleGainDb?: number
+    mixCompression?: boolean
+    /** 静音轨道：这些轨道的声音不混入成片 */
+    mutedTracks?: ScriptTimelineTrackKind[]
+  },
+  watermark?: {
+    inputIndex: number
+    opacity: number
+    scale: number
+    position: 'br' | 'bl' | 'tr' | 'tl'
+  }
 ): { filter: string; mapVideo: string; mapAudio: string } {
   const filterParts: string[] = []
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
@@ -279,11 +300,42 @@ function buildFilterGraph(
     lastVideo = next
   }
 
+  if (watermark) {
+    const targetW = Math.max(
+      24,
+      Math.round(width * Math.min(0.5, Math.max(0.05, watermark.scale)))
+    )
+    const wmLabel = 'wm'
+    const wmOvLabel = 'wmoverlay'
+    const opacity = Math.min(1, Math.max(0.05, watermark.opacity))
+    filterParts.push(
+      `[${watermark.inputIndex}:v]scale=${targetW}:-1:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${wmLabel}]`
+    )
+    const margin = Math.max(12, Math.round(Math.min(width, height) * 0.03))
+    const positionMap: Record<'br' | 'bl' | 'tr' | 'tl', string> = {
+      br: `main_w-overlay_w-${margin}:main_h-overlay_h-${margin}`,
+      bl: `${margin}:main_h-overlay_h-${margin}`,
+      tr: `main_w-overlay_w-${margin}:${margin}`,
+      tl: `${margin}:${margin}`
+    }
+    filterParts.push(
+      `[${lastVideo}][${wmLabel}]overlay=${positionMap[watermark.position]}[${wmOvLabel}]`
+    )
+    lastVideo = wmOvLabel
+  }
+
   const audioMixInputs: string[] = [`[${baseAudioIndex}:a]`]
   for (const clip of audios) {
     const startMs = Math.max(0, Math.round(clip.startSec * 1000))
     const dur = Math.max(0.05, clip.durationSec)
-    const volume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
+    const clipVolume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
+    const trackGain = Number.isFinite(mix?.mixGains?.[clip.track])
+      ? Math.min(2, Math.max(0, mix!.mixGains![clip.track]!))
+      : 1
+    // 轨道静音优先级最高：高于片段音量与混音器轨道增益
+    const volume = mix?.mutedTracks?.includes(clip.track)
+      ? 0
+      : Math.min(2, clipVolume * trackGain)
     const fadeIn = Number.isFinite(clip.fadeInSec)
       ? Math.min(dur, Math.max(0, clip.fadeInSec!))
       : 0
@@ -294,7 +346,7 @@ function buildFilterGraph(
     const chain = [
       'atrim=0:' + dur,
       'asetpts=PTS-STARTPTS',
-      volume !== 1 ? `volume=${volume.toFixed(3)}` : '',
+      Math.abs(volume - 1) > 0.001 ? `volume=${volume.toFixed(3)}` : '',
       fadeIn > 0 ? `afade=t=in:st=0:d=${fadeIn.toFixed(3)}` : '',
       fadeOut > 0 ? `afade=t=out:st=${Math.max(0, dur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}` : '',
       `adelay=${startMs}|${startMs}`
@@ -306,8 +358,39 @@ function buildFilterGraph(
   }
 
   filterParts.push(
-    `${audioMixInputs.join('')}amix=inputs=${audioMixInputs.length}:duration=longest:dropout_transition=0:normalize=0[aout]`
+    `${audioMixInputs.join('')}amix=inputs=${audioMixInputs.length}:duration=longest:dropout_transition=0:normalize=0[amixout]`
   )
+
+  // 混音器后处理：主输出增益 → 基础 EQ（低频 / 高频）→ 可选动态压缩
+  const masterGain = Number.isFinite(mix?.mixMasterGain)
+    ? Math.min(2, Math.max(0, mix!.mixMasterGain!))
+    : 1
+  const bassDb = Number.isFinite(mix?.mixBassGainDb)
+    ? Math.min(12, Math.max(-12, mix!.mixBassGainDb!))
+    : 0
+  const trebleDb = Number.isFinite(mix?.mixTrebleGainDb)
+    ? Math.min(12, Math.max(-12, mix!.mixTrebleGainDb!))
+    : 0
+  const postChain: string[] = []
+  if (Math.abs(masterGain - 1) > 0.001) {
+    postChain.push(`volume=${masterGain.toFixed(3)}`)
+  }
+  if (Math.abs(bassDb) > 0.01) {
+    postChain.push(`equalizer=f=120:t=q:w=1:g=${bassDb.toFixed(2)}`)
+  }
+  if (Math.abs(trebleDb) > 0.01) {
+    postChain.push(`equalizer=f=8000:t=q:w=1:g=${trebleDb.toFixed(2)}`)
+  }
+  if (mix?.mixCompression) {
+    postChain.push(`acompressor=threshold=0.2:ratio=2:attack=20:release=250:makeup=1`)
+  }
+  if (postChain.length) {
+    const postLabel = 'amixpost'
+    filterParts.push(`[amixout]${postChain.join(',')}[${postLabel}]`)
+    filterParts.push(`[${postLabel}]anull[aout]`)
+  } else {
+    filterParts.push(`[amixout]anull[aout]`)
+  }
 
   if (rate !== 1) {
     const clamped = Math.min(2, Math.max(0.5, rate))
@@ -348,7 +431,9 @@ async function encodeTimeline(
 
   const mainVideoClips = input.clips.filter((c) => c.track === 'video')
   const overlayClips = input.clips.filter((c) => c.track === 'overlay')
-  const voiceMusicClips = input.clips.filter((c) => c.track === 'voice' || c.track === 'music')
+  const voiceMusicClips = input.clips.filter(
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'sfx'
+  )
   const subs = input.clips.filter((c) => c.track === 'subtitle' && (c.text?.trim() || c.title.trim()))
 
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
@@ -388,6 +473,13 @@ async function encodeTimeline(
     overlays.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
+  let watermarkInputIndex: number | undefined
+  const watermarkSrc = input.watermarkSrc?.trim()
+  if (watermarkSrc && existsSync(watermarkSrc)) {
+    args.push('-i', watermarkSrc)
+    watermarkInputIndex = inputIndex++
+  }
+
   if (!mainVideos.length && !overlays.length && !audioOnlyInputs.length) {
     throw fail(E_TIMELINE_NO_EXPORTABLE_CLIPS)
   }
@@ -406,7 +498,28 @@ async function encodeTimeline(
     fps,
     subtitleFontSize,
     subtitleYOffset,
-    subtitleColor
+    subtitleColor,
+    {
+      mixGains: input.mixGains,
+      mixMasterGain: input.mixMasterGain,
+      mixBassGainDb: input.mixBassGainDb,
+      mixTrebleGainDb: input.mixTrebleGainDb,
+      mixCompression: input.mixCompression,
+      mutedTracks: input.mutedTracks
+    },
+    watermarkInputIndex === undefined
+      ? undefined
+      : {
+          inputIndex: watermarkInputIndex,
+          opacity: input.watermarkOpacity ?? 0.8,
+          scale: input.watermarkScale ?? 0.1,
+          position:
+            input.watermarkPosition === 'bl' ||
+            input.watermarkPosition === 'tr' ||
+            input.watermarkPosition === 'tl'
+              ? input.watermarkPosition
+              : 'br'
+        }
   )
 
   args.push(

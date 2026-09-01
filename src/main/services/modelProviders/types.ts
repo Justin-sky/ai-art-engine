@@ -4,6 +4,8 @@ import type {
   GenerateImageResult,
   GenerateModel3dInput,
   GenerateModel3dJob,
+  GenerateMusicInput,
+  GenerateMusicResult,
   GenerateSpeechInput,
   GenerateSpeechResult,
   GenerateTextInput,
@@ -57,6 +59,15 @@ export interface ModelProviderAdapter {
     modelId: string,
     input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult>
+  /**
+   * 音乐 / BGM 生成。可选：未实现时门面提示该提供商不支持。
+   * 同步返回音频下载地址，由门面统一下载并登记资产。
+   */
+  generateMusic?(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: GenerateMusicInput
+  ): Promise<GenerateMusicResult>
   /**
    * 音频转写（语音识别）。可选：未实现时「配音转字幕」会提示该提供商不支持。
    * 输入 absPath 已由门面解析为绝对路径。

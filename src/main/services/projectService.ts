@@ -13,6 +13,8 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { randomBytes, randomUUID } from 'crypto'
 import { detectVideoKeyframes } from './ffprobeService'
+import { extractVideoFrames as extractVideoFramesImpl } from './videoFrameService'
+import { separateAudioStems } from './audioSeparationService'
 import {
   DEFAULT_RESOLUTION,
   ASSET_IMAGE_OUTPUT_KIND_DIR,
@@ -61,6 +63,10 @@ import type {
   SaveProjectAssetInput,
   WriteAssetTextInput
 } from '@shared/ipc'
+import {
+  buildInitialMemoryContent,
+  PROJECT_MEMORY_RELATIVE_PATH
+} from '@shared/projectMemory'
 import { renameReplaceSync } from '../persistence/atomicRename'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
@@ -299,6 +305,7 @@ class ProjectService {
 
     this.rootPath = root
     this.config = config
+    this.ensureProjectMemory(root, config)
 
     // 新工程默认创建自由画布
     this.createAsset({
@@ -327,6 +334,7 @@ class ProjectService {
     const config = projectRepository.read(root)
     this.rootPath = root
     this.config = config
+    this.ensureProjectMemory(root, config)
     settingsService.addRecent(abs)
 
     const assets = this.listAssets()
@@ -361,6 +369,22 @@ class ProjectService {
     config.updatedAt = nowIso()
     this.config = config
     projectRepository.write(root, config)
+  }
+
+  /**
+   * 工程级 Agent 记忆基线：工程目录下 `.aiartengine/memory.md` 不存在时，
+   * 由工程配置（名称 / 画幅 / 帧率 / 种子 / 风格预设 / 风格参考图）生成。
+   * 已存在则不覆盖（保留 Agent 与用户沉淀的内容）；失败不阻塞工程打开。
+   */
+  private ensureProjectMemory(root: string, config: ProjectConfig): void {
+    try {
+      const abs = join(root, ...PROJECT_MEMORY_RELATIVE_PATH.split('/'))
+      if (existsSync(abs)) return
+      mkdirSync(dirname(abs), { recursive: true })
+      writeFileSync(abs, buildInitialMemoryContent(config), 'utf-8')
+    } catch {
+      // 记忆初始化失败不阻塞工程流程
+    }
   }
 
   // ---- Assets ----
@@ -1013,6 +1037,30 @@ class ProjectService {
     const abs = assertInsideProject(root, join(root, relativePath.trim()))
     if (!existsSync(abs)) return null
     return detectVideoKeyframes(abs)
+  }
+
+  /** 视频按时间均匀抽帧（质检多帧理解）；无 ffmpeg / 文件缺失时返回空数组 */
+  async extractVideoFrames(relativePath: string, count: number): Promise<string[]> {
+    const root = this.getRoot()
+    if (!relativePath?.trim()) return []
+    const abs = assertInsideProject(root, join(root, relativePath.trim()))
+    if (!existsSync(abs)) return []
+    return extractVideoFramesImpl({
+      projectRoot: root,
+      relativePath: relativePath.trim(),
+      count: Number.isFinite(count) ? Math.floor(count) : 4
+    })
+  }
+
+  /** 人声 / 伴奏分离（内置 ffmpeg 中置声道，或配置第三方服务）；产物落 Cache/Separated */
+  async separateAudio(
+    relativePath: string
+  ): Promise<import('@shared/ipc').SeparateAudioResult> {
+    const root = this.getRoot()
+    if (!relativePath?.trim()) {
+      throw fail(MAIN_ERRORS.fileNotFound)
+    }
+    return separateAudioStems({ projectRoot: root, relativePath: relativePath.trim() })
   }
 
   /**
