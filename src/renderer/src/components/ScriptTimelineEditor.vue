@@ -930,7 +930,7 @@
       :class="{ collapsed: timelineCollapsed }"
       :style="{ height: `${timelineHeight}px` }"
     >
-      <header class="timeline-bar">
+      <header ref="timelineBarEl" class="timeline-bar">
         <div
           class="timeline-controls"
           @pointerdown.stop
@@ -2121,6 +2121,7 @@ const previewCanvasEl = ref<HTMLElement | null>(null)
 const previewFrameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
 const previewVideoMeta = ref({ width: 0, height: 0 })
 const timelineBoardEl = ref<HTMLElement | null>(null)
+const timelineBarEl = ref<HTMLElement | null>(null)
 const timelineCollapsed = ref(false)
 const timelineHeight = ref(336)
 const trackHeight = ref(52)
@@ -2328,6 +2329,15 @@ const timelineInnerHeight = computed(
     ) +
     TIMELINE_BOTTOM_PAD
 )
+
+/** 时间线面板最小高度：恰好显示到最末一条轨道下方（含头部栏），拖拽缩小到此为止 */
+const timelineMinHeight = computed(
+  () => (timelineBarEl.value?.offsetHeight ?? 36) + timelineInnerHeight.value
+)
+
+watch(timelineMinHeight, (min) => {
+  if (timelineHeight.value < min) timelineHeight.value = min
+})
 
 function trackTopOffset(kind: ScriptTimelineTrackKind): number {
   let top = 28
@@ -6904,7 +6914,10 @@ function onVerticalSplitterMove(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   const root = rootEl.value
   const max = Math.max(140, (root?.clientHeight ?? 480) - 120)
-  const next = Math.min(max, Math.max(120, session.startHeight + (session.startY - e.clientY)))
+  const next = Math.min(
+    Math.max(max, timelineMinHeight.value),
+    Math.max(timelineMinHeight.value, session.startHeight + (session.startY - e.clientY))
+  )
   timelineHeight.value = next
 }
 
