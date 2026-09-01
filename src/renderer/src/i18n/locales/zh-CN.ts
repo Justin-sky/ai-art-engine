@@ -545,7 +545,7 @@ export default {
     },
     chat: {
       empty: '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
-      placeholder: "输入任务，Enter 发送，Shift+Enter 换行；输入 {'@'} 引用工程资产",
+      placeholder: "输入任务，Enter 发送，Shift+Enter 换行；{'@'} 引用资产，支持粘贴截图/图片",
       send: '发送',
       stop: '停止',
       ready: '就绪',

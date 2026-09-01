@@ -546,7 +546,7 @@ export default {
     },
     chat: {
       empty: 'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
-      placeholder: "Type a task. Enter to send, Shift+Enter for a new line; type {'@'} to reference assets",
+      placeholder: "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
       send: 'Send',
       stop: 'Stop',
       ready: 'Ready',

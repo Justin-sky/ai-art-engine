@@ -145,6 +145,63 @@ function resolveMentionThumb(asset: AssetInfo): Promise<string> {
   return resolveAssetPreviewUrl(path)
 }
 
+/** 把单个相对路径加入已引用列表（去重），并异步填充缩略图 */
+function addReferencedPath(raw: string): void {
+  const path = raw.replace(/\\/g, '/').trim()
+  if (!path || referenced.value.some((r) => r.path === path)) return
+  const known = new Map(
+    project.assets.map((a) => [a.relativePath?.replace(/\\/g, '/').trim() ?? '', a])
+  )
+  const asset = known.get(path)
+  if (asset) {
+    referenced.value.push({ path, name: asset.name, type: asset.type, thumbUrl: '' })
+    void resolveMentionThumb(asset)
+      .then((url) => {
+        const item = referenced.value.find((r) => r.path === path)
+        if (item) item.thumbUrl = url
+      })
+      .catch(() => {
+        /* chips 保留图标 fallback */
+      })
+    return
+  }
+  // 资产库可能尚未刷新到该文件（如刚粘贴落盘），直接用相对路径请求预览图
+  referenced.value.push({ path, name: path.split('/').pop() ?? path, type: 'image', thumbUrl: '' })
+  void resolveAssetPreviewUrl(path)
+    .then((url) => {
+      const item = referenced.value.find((r) => r.path === path)
+      if (item) item.thumbUrl = url
+    })
+    .catch(() => {
+      /* chips 保留图标 fallback */
+    })
+}
+
+/**
+ * 在指定位置插入 `@路径`（自动补空格），并同步维护引用列表。
+ * 插入后始终补一个空格：既避免用户紧接着输入中文时被解析成同一路径（如
+ * `@x.png生成个3d模型`），也避免光标留在 `@路径` 末尾时输入下一个字符再次触发
+ * 资产选择器（onComposeInput 的 /@[^\s@]*$/ 匹配）；发送前会 trim，末尾空格无影响。
+ * 仅当尾部已有空白或紧接另一个 @（连续引用）时不再补。
+ */
+function insertMentionAt(path: string, insertAt: number): number {
+  const el = inputRef.value
+  const text = draft.value
+  const insertText = `@${path}`
+  const tail = text.slice(insertAt)
+  const sep = !/^[\s@]/.test(tail) ? ' ' : ''
+  draft.value = text.slice(0, insertAt) + insertText + sep + tail
+  addReferencedPath(path)
+  const cursor = insertAt + insertText.length + sep.length
+  void nextTick(() => {
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+  })
+  // 返回插入后的光标位置，便于连续插入（如多张图片粘贴）时精确定位
+  return cursor
+}
+
 /**
  * @ 选择器确认：把 `@相对路径` 内联插入指令文本（替换触发用的 @，未触发时插入光标处），
  * 同时维护 referenced 列表供 chips 预览；dsh 会直接解析文本中的内联引用。
@@ -163,43 +220,11 @@ function onMentionConfirm(paths: string[]): void {
     .map((p) => `@${p}`)
     .join(' ')
   if (!insertText) return
-  // 插入引用后始终补一个空格：既避免用户紧接着输入中文时被解析成同一路径（如
-  // `@x.png生成个3d模型`），也避免光标留在 `@路径` 末尾时输入下一个字符再次触发
-  // 资产选择器（onComposeInput 的 /@[^\s@]*$/ 匹配）；发送前会 trim，末尾空格无影响。
-  // 仅当尾部已有空白或紧接另一个 @（连续引用）时不再补。
   const start = replaceAt ? at : pos
-  const tail = text.slice(pos)
+  const tail = text.slice(start)
   const sep = !/^[\s@]/.test(tail) ? ' ' : ''
   draft.value = text.slice(0, start) + insertText + sep + tail
-  // 引用去重 + chips 预览（与内联文本同步维护）
-  const existing = new Set(referenced.value.map((r) => r.path))
-  const known = new Map(
-    project.assets.map((a) => [a.relativePath?.replace(/\\/g, '/').trim() ?? '', a])
-  )
-  for (const raw of paths) {
-    const path = raw.replace(/\\/g, '/').trim()
-    if (!path || existing.has(path)) continue
-    existing.add(path)
-    const asset = known.get(path)
-    if (!asset) {
-      referenced.value.push({
-        path,
-        name: path.split('/').pop() ?? path,
-        type: 'image',
-        thumbUrl: ''
-      })
-      continue
-    }
-    referenced.value.push({ path, name: asset.name, type: asset.type, thumbUrl: '' })
-    void resolveMentionThumb(asset)
-      .then((url) => {
-        const item = referenced.value.find((r) => r.path === path)
-        if (item) item.thumbUrl = url
-      })
-      .catch(() => {
-        /* chips 保留图标 fallback */
-      })
-  }
+  for (const p of paths) addReferencedPath(p)
   // 光标移到插入内容（含补的空格）之后，便于继续输入
   const cursor = start + insertText.length + sep.length
   void nextTick(() => {
@@ -207,6 +232,62 @@ function onMentionConfirm(paths: string[]): void {
     el.focus()
     el.setSelectionRange(cursor, cursor)
   })
+}
+
+/** File → data URL（粘贴截图/图片读取） */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error ?? new Error('read file failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * 输入框粘贴：支持截图 / 剪贴板图片。把图片落盘到工程资产库（Assets/Images/Paste），
+ * 再以 `@相对路径` 内联引用插入光标处——复用资产引用链路，模型可将图片作为参考图使用。
+ * 剪贴板同时含文本（如复制图文）时先按默认行为插入文本，再追加图片引用。
+ */
+async function onComposerPaste(event: ClipboardEvent): Promise<void> {
+  if (running.value || composing.value) return
+  const clipboard = event.clipboardData
+  if (!clipboard) return
+  const images: File[] = []
+  for (let i = 0; i < clipboard.items.length; i++) {
+    const item = clipboard.items[i]
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) images.push(file)
+    }
+  }
+  if (!images.length) return
+  // 含图片时接管粘贴：避免把图片二进制 / 文件路径粘成文本
+  event.preventDefault()
+  const text = clipboard.getData('text/plain').trim()
+  const el = inputRef.value
+  let pos = el?.selectionStart ?? draft.value.length
+  if (text) {
+    draft.value = draft.value.slice(0, pos) + text + draft.value.slice(pos)
+    pos += text.length
+  }
+  for (const file of images) {
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      if (!dataUrl) continue
+      const relativePath = await window.studio.saveGraphRunMedia({
+        dataUrl,
+        key: `paste_${Date.now()}`,
+        outputDir: 'Assets/Images/Paste'
+      })
+      if (!relativePath) continue
+      // 落盘后刷新资产库，让新图出现在工程资产中；引用本身不依赖注册即可预览
+      void project.scheduleRefreshLibrary()
+      pos = insertMentionAt(relativePath, pos)
+    } catch (error) {
+      console.error('[ChatPanel] paste image failed', error)
+    }
+  }
 }
 
 /** 移除引用：chips 同步删除指令文本中的内联 `@路径` */
@@ -1537,6 +1618,7 @@ onBeforeUnmount(() => {
           :class="{ composing }"
           @input="onComposeInput"
           @scroll="onComposerScroll"
+          @paste="onComposerPaste"
           @compositionstart="composing = true"
           @compositionend="onCompositionEnd"
           @keydown.enter.exact.prevent="onSend"
