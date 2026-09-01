@@ -67,6 +67,35 @@ export type ModelProviderKind =
   | 'hyper3d'
   | 'luma'
   | 'lux3d'
+  /** 自定义提供商：端点类型由实例级 apiStyle 决定 */
+  | 'custom'
+
+/**
+ * 自定义提供商的端点（协议）类型。
+ * - openai：OpenAI 兼容（/chat/completions + /models），覆盖绝大多数中转站 / one-api / vLLM 等
+ * - anthropic：Anthropic Messages API（/v1/messages + /v1/models），如 Claude 官方与 Anthropic 兼容代理
+ * - gemini：Gemini 兼容（走 Google 官方 OpenAI 兼容层与多数 Gemini 网关），/chat/completions + /models
+ */
+export type CustomApiStyle = 'openai' | 'anthropic' | 'gemini'
+
+export const DEFAULT_CUSTOM_API_STYLE: CustomApiStyle = 'openai'
+
+export function isCustomApiStyle(value: unknown): value is CustomApiStyle {
+  return value === 'openai' || value === 'anthropic' || value === 'gemini'
+}
+
+export function isCustomProvider(
+  provider: Pick<ModelProviderInstance, 'providerKind'> | ModelProviderKind | undefined | null
+): boolean {
+  if (!provider) return false
+  if (typeof provider === 'string') return provider === 'custom'
+  return provider.providerKind === 'custom'
+}
+
+/** 自定义提供商的端点类型：非法/缺失时回退 openai */
+export function resolveCustomApiStyle(provider: ModelProviderInstance): CustomApiStyle {
+  return isCustomApiStyle(provider.apiStyle) ? provider.apiStyle : DEFAULT_CUSTOM_API_STYLE
+}
 
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
@@ -210,6 +239,14 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
     label: 'Lux3D',
     defaultBaseUrl: LUX3D_DEFAULT_BASE_URL,
     credentialsUrl: 'https://labs.aholo3d.cn/'
+  },
+  {
+    id: 'custom',
+    label: '自定义',
+    /** Base URL 由用户填写，无默认端点 */
+    defaultBaseUrl: '',
+    /** 无统一申请页；提示文案见 settings.models.customApiStyleHint */
+    credentialsUrl: ''
   }
 ]
 
@@ -263,6 +300,8 @@ export interface ModelProviderInstance {
    * Base URL 仍是 comfy-api-proxy（默认 8189）；两套 ComfyUI 时填正在用的那套，例如 http://127.0.0.1:8188。
    */
   nativeBaseUrl?: string
+  /** 自定义提供商（providerKind === 'custom'）的端点类型；其它提供商忽略该字段 */
+  apiStyle?: CustomApiStyle
   enabled: boolean
   /** 各模态下的模型勾选与默认项 */
   modalities: ProviderModalityMap
@@ -593,6 +632,7 @@ export function createProviderInstance(
     apiKey: '',
     baseUrl: meta.defaultBaseUrl,
     nativeBaseUrl: '',
+    ...(kind === 'custom' ? { apiStyle: DEFAULT_CUSTOM_API_STYLE } : {}),
     enabled: true,
     modalities: createEmptyModalityMap()
   }
@@ -678,6 +718,8 @@ export interface ListModelsInput {
   /** ComfyUI 本体地址（读 workflow）；未保存时由设置页传入 */
   nativeBaseUrl?: string
   providerKind?: ModelProviderKind
+  /** 自定义提供商的端点类型；未保存时由设置页传入 */
+  apiStyle?: CustomApiStyle
 }
 
 export interface GenerateTextInput {
@@ -1135,6 +1177,9 @@ function normalizeProviderInstance(
       kind === 'comfyui' && typeof item.nativeBaseUrl === 'string' && item.nativeBaseUrl.trim()
         ? item.nativeBaseUrl.replace(/\/$/, '')
         : '',
+    ...(kind === 'custom'
+      ? { apiStyle: isCustomApiStyle(item.apiStyle) ? item.apiStyle : DEFAULT_CUSTOM_API_STYLE }
+      : {}),
     enabled: item.enabled !== false,
     modalities: normalizeModalityMap(item.modalities)
   }

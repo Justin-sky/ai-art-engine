@@ -23,9 +23,16 @@
         {{ t('settings.models.add') }}
       </button>
     </div>
+    <p
+      v-if="addFeedback"
+      class="add-feedback"
+    >
+      {{ addFeedback }}
+    </p>
     <p class="meta credentials-hint">
       {{ t(`settings.models.credentialsHint.${pendingProviderKind}`) }}
       <a
+        v-if="pendingProviderKind !== 'custom'"
         class="ext-link"
         :href="modelProviderCredentialsUrl(pendingProviderKind)"
         target="_blank"
@@ -44,6 +51,7 @@
 
     <article
       v-for="provider in providers"
+      :id="`provider-card-${provider.id}`"
       :key="provider.id"
       class="provider-card"
       :class="{ collapsed: isProviderCollapsed(provider.id) }"
@@ -101,10 +109,32 @@
           {{ t('settings.models.label') }}
           <input v-model="provider.label">
         </label>
+        <label v-if="isCustomProvider(provider)">
+          {{ t('settings.models.customApiStyle') }}
+          <select
+            v-model="provider.apiStyle"
+            class="api-style-select"
+          >
+            <option
+              v-for="style in CUSTOM_API_STYLES"
+              :key="style.value"
+              :value="style.value"
+            >
+              {{ t(`settings.models.customApiStyleOptions.${style.value}`) }}
+            </option>
+          </select>
+        </label>
+        <p
+          v-if="isCustomProvider(provider)"
+          class="meta"
+        >
+          {{ t('settings.models.customApiStyleHint', { style: t(`settings.models.customApiStyleOptions.${provider.apiStyle ?? 'openai'}`) }) }}
+        </p>
         <label>
           {{ t('settings.models.baseUrl') }}
           <input
             v-model="provider.baseUrl"
+            :placeholder="isCustomProvider(provider) ? t('settings.models.customBaseUrlPlaceholder') : undefined"
             spellcheck="false"
           >
         </label>
@@ -176,6 +206,7 @@
         <p class="meta credentials-hint">
           {{ t(`settings.models.credentialsHint.${provider.providerKind}`) }}
           <a
+            v-if="!isCustomProvider(provider)"
             class="ext-link"
             :href="modelProviderCredentialsUrl(provider.providerKind)"
             target="_blank"
@@ -443,7 +474,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import type { AppSettings } from '@shared/domain'
 import {
   MODEL_MODALITIES,
@@ -453,13 +484,16 @@ import {
   createProviderInstance,
   allowsEmptyApiKey,
   isComfyUiProvider,
+  isCustomProvider,
   isLocalOpenAiProvider,
   isModel3dProviderKind,
   isVllmProvider,
   modalityConfig,
   modelProviderCredentialsUrl,
+  resolveCustomApiStyle,
   syncModalityCatalogEntries,
   type CatalogModel,
+  type CustomApiStyle,
   type ModelModality,
   type ModelProviderInstance,
   type ModelProviderKindMeta,
@@ -484,8 +518,19 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 
+/** 自定义提供商的端点类型选项（与 @shared/modelProvider 的 CustomApiStyle 对齐） */
+const CUSTOM_API_STYLES: ReadonlyArray<{ value: CustomApiStyle }> = [
+  { value: 'openai' },
+  { value: 'anthropic' },
+  { value: 'gemini' }
+]
+
 /** OpenRouter 不展示音频；方舟展示「声音」；可灵图片/视频；MiniMax 文本/图片/视频/音色；魔塔文本+图片；xAI 与 Google 文本/图片/视频 */
 function settingsModalitiesFor(provider: ModelProviderInstance): ModelModality[] {
+  if (isCustomProvider(provider)) {
+    // Anthropic Messages API 无统一图片生成协议，仅开放文本；OpenAI 兼容 / Gemini 走 /images/generations
+    return resolveCustomApiStyle(provider) === 'anthropic' ? ['text'] : ['text', 'image']
+  }
   if (provider.providerKind === 'moonshot') {
     return ['text']
   }
@@ -623,6 +668,9 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
 
 function modalityHintText(provider: ModelProviderInstance): string {
   const mod = currentModality(provider)
+  if (isCustomProvider(provider)) {
+    return t(`settings.models.customModalityHint.${mod}`)
+  }
   if (provider.providerKind === 'moonshot') {
     return t(`settings.models.moonshotModalityHint.${mod}`)
   }
@@ -676,13 +724,45 @@ function toggleKeyReveal(providerId: string): void {
   revealedKeys[providerId] = !revealedKeys[providerId]
 }
 
+/** 添加后的成功反馈（短暂显示后自动消失） */
+const addFeedback = ref('')
+let addFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+function showAddFeedback(label: string): void {
+  addFeedback.value = t('settings.models.addedProvider', { label })
+  if (addFeedbackTimer) clearTimeout(addFeedbackTimer)
+  addFeedbackTimer = setTimeout(() => {
+    addFeedback.value = ''
+    addFeedbackTimer = null
+  }, 4000)
+}
+
+/** 滚动到新卡片，确保用户看到刚添加的提供商（默认已展开） */
+function scrollToProviderCard(providerId: string): void {
+  void nextTick(() => {
+    document.getElementById(`provider-card-${providerId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest'
+    })
+  })
+}
+
 function addProvider(): void {
   const provider = createProviderInstance(pendingProviderKind.value)
   // eslint-disable-next-line vue/no-mutating-props
   props.models.providers.push(provider)
   activeModality[provider.id] = settingsModalitiesFor(provider)[0] ?? 'text'
   collapsedProviders[provider.id] = false
+  showAddFeedback(provider.label)
+  scrollToProviderCard(provider.id)
 }
+
+onBeforeUnmount(() => {
+  if (addFeedbackTimer) {
+    clearTimeout(addFeedbackTimer)
+    addFeedbackTimer = null
+  }
+})
 
 function removeProvider(id: string): void {
   const idx = props.models.providers.findIndex((p) => p.id === id)
@@ -722,7 +802,8 @@ async function refreshModels(
       apiKey: latestBefore.apiKey,
       baseUrl: latestBefore.baseUrl,
       nativeBaseUrl: latestBefore.nativeBaseUrl,
-      providerKind: latestBefore.providerKind
+      providerKind: latestBefore.providerKind,
+      apiStyle: latestBefore.apiStyle
     })
     if (seq !== refreshSeqByKey[key]) return
 
@@ -948,6 +1029,13 @@ function capabilitySummary(model: CatalogModel): string {
 
 .credentials-hint {
   margin-top: -4px;
+}
+
+.add-feedback {
+  margin: 0;
+  color: var(--success);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ext-link {

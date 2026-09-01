@@ -1,8 +1,15 @@
-import type { ModelModality, ModelProviderInstance, ModelProviderKind } from '@shared/modelProvider'
+import type {
+  CustomApiStyle,
+  ModelModality,
+  ModelProviderInstance,
+  ModelProviderKind
+} from '@shared/modelProvider'
 import {
+  DEFAULT_CUSTOM_API_STYLE,
   MODEL_PROVIDER_KINDS,
   createEmptyModalityMap,
   findProviderById,
+  isCustomApiStyle,
   pickActiveProvider
 } from '@shared/modelProvider'
 import { settingsService } from '../settingsService'
@@ -45,10 +52,14 @@ export function buildProviderSnapshot(input: {
   baseUrl?: string
   nativeBaseUrl?: string
   providerKind?: ModelProviderKind
+  apiStyle?: CustomApiStyle
 }): ModelProviderInstance {
   const settings = settingsService.get()
   const saved = findProviderById(settings.models.providers, input.providerInstanceId)
   const kind = input.providerKind ?? saved?.providerKind ?? 'openrouter'
+  const apiStyle =
+    saved?.apiStyle ??
+    (isCustomApiStyle(input.apiStyle) ? input.apiStyle : DEFAULT_CUSTOM_API_STYLE)
   return {
     id: input.providerInstanceId,
     providerKind: kind,
@@ -56,6 +67,7 @@ export function buildProviderSnapshot(input: {
     apiKey: input.apiKey ?? saved?.apiKey ?? '',
     baseUrl: input.baseUrl ?? saved?.baseUrl ?? defaultBaseUrlForKind(kind),
     nativeBaseUrl: input.nativeBaseUrl ?? saved?.nativeBaseUrl ?? '',
+    ...(kind === 'custom' ? { apiStyle } : {}),
     enabled: saved?.enabled ?? true,
     modalities: saved?.modalities ?? createEmptyModalityMap()
   }

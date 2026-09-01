@@ -21,6 +21,7 @@ import { meshyAdapter } from '../services/modelProviders/meshy/adapter'
 import { hyper3dAdapter } from '../services/modelProviders/hyper3d/adapter'
 import { lumaAdapter } from '../services/modelProviders/luma/adapter'
 import { lux3dAdapter } from '../services/modelProviders/lux3d/adapter'
+import { customAdapter } from '../services/modelProviders/custom/adapter'
 
 function resolveProviderMeta(
   adapter: ModelProviderAdapter,
@@ -74,5 +75,6 @@ export const builtinProviderPlugins = [
   createProviderPlugin(meshyAdapter),
   createProviderPlugin(hyper3dAdapter),
   createProviderPlugin(lumaAdapter),
-  createProviderPlugin(lux3dAdapter)
+  createProviderPlugin(lux3dAdapter),
+  createProviderPlugin(customAdapter)
 ] as const
