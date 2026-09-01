@@ -255,6 +255,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.GEN_SPEECH, (input: GenerateSpeechInput) =>
     modelProviderFacade.generateSpeech(input)
   )
+  handle(
+    IpcChannels.TRANSCRIBE_AUDIO,
+    (input: import('@shared/modelProvider').TranscribeAudioInput) =>
+      modelProviderFacade.transcribeAudio(input)
+  )
   handle(IpcChannels.GEN_MODEL3D, async (input: GenerateModel3dInput) => {
     const result = await modelProviderFacade.generateModel3d(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)

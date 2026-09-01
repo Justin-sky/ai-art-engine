@@ -8209,6 +8209,53 @@ onMounted(() => {
         scheduleSave()
         recordGraphChange('update-node', before)
       },
+      addNode: (input) => {
+        if (!getNodeType(input.typeId)) return null
+        const before = buildGraphJson()
+        const linkFrom = input.linkFrom ?? []
+        const anchor = linkFrom.length
+          ? graph.nodes.find((node) => node.id === linkFrom[0]!.nodeId)
+          : undefined
+        const rect = viewportEl.value?.getBoundingClientRect()
+        const viewportCenter = rect
+          ? screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
+          : { x: 0, y: 0 }
+        const node = createNodeFromType(
+          input.typeId,
+          input.position ??
+            (anchor
+              ? {
+                  x: anchor.position.x + (anchor.size?.w ?? 260) + 90,
+                  y: anchor.position.y
+                }
+              : viewportCenter),
+          {
+            ...(input.params ? { params: input.params } : {}),
+            title: input.title ?? graphTypeLabel(input.typeId)
+          }
+        )
+        graph.nodes.push(node)
+        for (const src of linkFrom) {
+          const source = graph.nodes.find((item) => item.id === src.nodeId)
+          if (!source || !canConnectNodes(source, node, { sourcePort: src.portId || 'out' })) {
+            continue
+          }
+          const outPort = findOutPort(source, src.portId || undefined)
+          const inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
+          if (!outPort || !inPort) continue
+          graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+            sourceId: source.id,
+            targetId: node.id,
+            sourcePort: outPort.id,
+            targetPort: inPort.id,
+            edgeId: `edge-${crypto.randomUUID()}`
+          })
+        }
+        scheduleSave()
+        recordGraphChange('add-node', before)
+        requestPreviewVisibilityUpdate()
+        return node.id
+      },
       updateGroup: (groupId, patch) => {
         const group = graph.groups?.find((item) => item.id === groupId)
         if (!group) return

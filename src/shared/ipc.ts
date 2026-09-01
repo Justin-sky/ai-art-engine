@@ -14,7 +14,9 @@ import type {
   GenerateModel3dInput,
   GenerateModel3dResult,
   ListModelsInput,
-  ModelProviderKindMeta
+  ModelProviderKindMeta,
+  TranscribeAudioInput,
+  TranscribeAudioResult
 } from './modelProvider'
 import type { ObjectStorageKindMeta } from './objectStorage'
 
@@ -134,6 +136,8 @@ export const IpcChannels = {
   TIMELINE_EXPORT: 'timeline:export',
   /** 主进程推送：成片导出进度 0~1 */
   TIMELINE_EXPORT_PROGRESS: 'timeline:export-progress',
+  /** 音频转写（语音识别）：配音/音频文件 → 带时间戳文本 */
+  TRANSCRIBE_AUDIO: 'transcribe:audio',
 
   /** 广告变体：导出入选单元格的生成图到用户选择目录 */
   AD_VARIANT_EXPORT: 'ad-variant:export',
@@ -801,6 +805,8 @@ export interface StudioApi {
   ) => Promise<GenerateVideoResult>
   generateSpeech: (input: GenerateSpeechInput) => Promise<GenerateSpeechResult>
   generateModel3d: (input: GenerateModel3dInput) => Promise<GenerateModel3dResult>
+  /** 音频转写：本地音频文件 → 带时间戳文本（语音识别） */
+  transcribeAudio: (input: TranscribeAudioInput) => Promise<TranscribeAudioResult>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
   /** AI 自由构图：确认计划后落盘 */

@@ -495,6 +495,34 @@
           </label>
           <template v-if="selectedClip.track === 'video'">
             <div class="inspector-section-title">
+              {{ t('script.timeline.reshoot') }}
+            </div>
+            <div
+              v-if="selectedClipNode"
+              class="inspector-hint"
+            >
+              {{
+                t('script.timeline.reshootSource', {
+                  node: selectedClipNode.title?.trim() || selectedClipNode.id
+                })
+              }}
+            </div>
+            <button
+              v-if="canReshootClip"
+              type="button"
+              class="ghost-btn clip-reshoot-btn"
+              :title="t('script.timeline.reshootHint')"
+              @click="reshootSelectedClip"
+            >
+              {{ t('script.timeline.reshootClip') }}
+            </button>
+            <div
+              v-else
+              class="inspector-hint"
+            >
+              {{ t('script.timeline.reshootUnavailable') }}
+            </div>
+            <div class="inspector-section-title">
               {{ t('script.timeline.transition') }}
             </div>
             <label class="inspector-field">
@@ -967,6 +995,19 @@
           <button
             type="button"
             class="ghost-btn"
+            :disabled="subtitling || !canTranscribeVoice"
+            :title="t('script.timeline.subtitleFromVoiceHint')"
+            @click="transcribeVoiceToSubtitles"
+          >
+            {{
+              subtitling
+                ? t('script.timeline.subtitleFromVoiceWorking')
+                : t('script.timeline.subtitleFromVoice')
+            }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
             :disabled="!canExportSrt"
             :title="t('script.timeline.exportSrt')"
             @click="exportSubtitles"
@@ -1154,6 +1195,15 @@
                    class="clip-handle right"
                    @pointerdown.stop="onClipResizeStart($event, clip, 'right')"
                  />
+                <span
+                  v-if="clip.track === 'video' && clip.nodeId"
+                  class="clip-reshoot"
+                  :title="t('script.timeline.reshootClip')"
+                  @pointerdown.stop
+                  @click.stop="reshootClipFromCard(clip)"
+                >
+                  ⟲
+                </span>
                  <span
                    class="clip-remove"
                   :title="t('script.timeline.removeClip')"
@@ -1317,7 +1367,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   normalizePlaybackRate,
@@ -1337,6 +1387,9 @@ import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { persistAssetRecord } from '../composables/useAssetRecord'
 import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
+import { editorDiveKey } from '../features/graph/model/editorDive'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useDraftStore } from '../stores/drafts'
 import { useProjectStore } from '../stores/project'
@@ -1348,6 +1401,7 @@ import {
 } from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
+import { buildSubtitleClipsFromTranscription } from '../features/script/timelineSubtitleFromTranscription'
 import { toPlain } from '../utils/toPlain'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
@@ -1360,6 +1414,8 @@ const { t } = useStudioI18n()
 const project = useProjectStore()
 const drafts = useDraftStore()
 const workspace = useWorkspaceStore()
+/** dive 上下文；时间线作为 dive 视图打开时可用来退回节点图分支 */
+const diveContext = inject(editorDiveKey, null)
 const rootEl = ref<HTMLElement | null>(null)
 
 const DRAFT_MIME = 'application/x-aiart-timeline-source'
@@ -2211,6 +2267,12 @@ const canExportSrt = computed(() =>
   visibleClipsOn('subtitle').some((clip) => (clip.text || clip.title).trim())
 )
 
+/** 配音转字幕：是否有带媒体文件的配音片段 */
+const subtitling = ref(false)
+const canTranscribeVoice = computed(() =>
+  visibleClipsOn('voice').some((clip) => sourceRelativePath(clip))
+)
+
 function undo(): void {
   if (!canUndo.value) return
   redoStack.value.push(snapshotClips())
@@ -3000,6 +3062,7 @@ async function addSourceToTrack(
     title: source.title,
     relativePath: source.relativePath,
     assetId: source.assetId,
+    ...(source.nodeId ? { nodeId: source.nodeId } : {}),
     startSec:
       startSec == null
         ? nextStartOnTrack(track)
@@ -3408,6 +3471,94 @@ function onVideoTransitionTypeChange(value: string): void {
   scheduleSave()
 }
 
+/** 选中片段的来源节点（宿主图内）；导入素材或来源节点已删除时为空 */
+const selectedClipNode = computed(() => {
+  const nodeId = selectedClip.value?.nodeId
+  if (!nodeId) return null
+  void graphEditorHosts.revision.value
+  return graphEditorHosts.getNode(hostId.value, nodeId)
+})
+
+const canReshootClip = computed(() => !!selectedClip.value?.nodeId)
+
+/** dive 内退回最近的资产帧（节点图）；栈内没有资产帧则回根图 */
+function popBackToGraph(): void {
+  const frames = diveContext?.frames ?? []
+  let index = -1
+  for (let i = frames.length - 2; i >= 0; i--) {
+    if (frames[i]?.type === 'asset') {
+      index = i
+      break
+    }
+  }
+  diveContext?.popTo(index)
+}
+
+/** 回到节点图并选中片段来源节点，让用户在该分支上重拍 / 重跑 */
+function revealClipNodeInGraph(nodeId: string): void {
+  popBackToGraph()
+  workspace.selectGraphNode(nodeId, hostId.value)
+}
+
+/**
+ * 重拍编辑器只在 dive 的 node.reshoot 视图里渲染：
+ * 先让宿主节点图进入打开态，再切到该视图。
+ */
+async function openReshootEditor(nodeId: string): Promise<boolean> {
+  if (!diveContext) return false
+  const opened = await graphEditorNodeTools.open(hostId.value, 'node.reshoot', nodeId)
+  if (!opened) return false
+  await diveContext.diveView({ viewId: 'node.reshoot', hostId: hostId.value, nodeId })
+  return true
+}
+
+/** 找到来源节点下游已有的重拍节点（复用，避免每次重拍都新建一个） */
+function findDownstreamReshootNode(nodeId: string): string | null {
+  const doc = graphEditorHosts.getDocument(hostId.value)
+  if (!doc) return null
+  const typeById = new Map(doc.nodes.map((node) => [node.id, node.typeId]))
+  const hit = doc.edges.find(
+    (edge) => edge.source === nodeId && typeById.get(edge.target) === 'video.reshoot'
+  )
+  return hit?.target ?? null
+}
+
+/**
+ * 时间线「重拍此镜头」：
+ * - 来源节点本身是重拍节点 → 直接打开重拍编辑器
+ * - 其它来源 → 复用下游已有的重拍节点，没有则一键新建并接好上游，再打开重拍编辑器
+ * - 宿主不支持建节点时退回节点图并选中来源节点
+ */
+async function reshootSelectedClip(): Promise<void> {
+  const nodeId = selectedClip.value?.nodeId
+  if (!nodeId) return
+  if (selectedClipNode.value?.typeId === 'video.reshoot') {
+    await openReshootEditor(nodeId)
+    return
+  }
+  if (diveContext) {
+    const reshootNodeId =
+      findDownstreamReshootNode(nodeId) ??
+      graphEditorHosts.addNode(hostId.value, {
+        typeId: 'video.reshoot',
+        title: t('script.timeline.reshootNodeTitle', { shot: selectedClip.value?.title ?? '' }),
+        linkFrom: [{ nodeId }]
+      })
+    if (reshootNodeId) {
+      await openReshootEditor(reshootNodeId)
+      return
+    }
+  }
+  revealClipNodeInGraph(nodeId)
+}
+
+/** 片段卡片上的重拍按钮：先选中该片段再跳转，不依赖播放头选中态 */
+async function reshootClipFromCard(clip: ScriptTimelineClip): Promise<void> {
+  activeClipId.value = clip.id
+  selectedClipIds.value = new Set([clip.id])
+  await reshootSelectedClip()
+}
+
 function onSubtitleTextChange(value: string): void {
   const clip = selectedClip.value
   if (!clip || clip.track !== 'subtitle') return
@@ -3437,6 +3588,7 @@ async function autoPlaceAll(): Promise<void> {
       title: src.title,
       relativePath: src.relativePath,
       assetId: src.assetId,
+      ...(src.nodeId ? { nodeId: src.nodeId } : {}),
       startSec: cursor,
       durationSec
     })
@@ -4112,6 +4264,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
         title: payload.title,
         relativePath: payload.relativePath,
         assetId: payload.assetId,
+        nodeId: payload.nodeId,
         durationSec: payload.durationSec
       },
       kind,
@@ -4906,6 +5059,74 @@ function formatSrtTimestamp(sec: number): string {
   const m = Math.floor(total / 60000) % 60
   const h = Math.floor(total / 3600000)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+/**
+ * 配音转字幕：对配音轨每个带媒体的片段调用语音识别，把带时间戳的
+ * 转写结果对齐生成字幕轨片段。重复执行时，与配音片段时间重叠的旧字幕会被替换。
+ */
+async function transcribeVoiceToSubtitles(): Promise<void> {
+  const targets = visibleClipsOn('voice').filter((clip) => sourceRelativePath(clip))
+  if (!targets.length) {
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: t('script.timeline.subtitleFromVoiceNoVoice')
+    })
+    return
+  }
+  subtitling.value = true
+  try {
+    const added: ScriptTimelineClip[] = []
+    const replacedIds = new Set<string>()
+    const errors: string[] = []
+    for (const voice of targets) {
+      const rel = sourceRelativePath(voice)
+      let result: import('@shared/modelProvider').TranscribeAudioResult
+      try {
+        result = await window.studio.transcribeAudio({ relativePath: rel })
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err))
+        continue
+      }
+      const segments = result.segments?.length
+        ? result.segments
+        : result.text?.trim()
+          ? [{ startSec: 0, endSec: voice.durationSec, text: result.text.trim() }]
+          : []
+      const subs = buildSubtitleClipsFromTranscription(voice, segments, () => newClipId())
+      added.push(...subs)
+      // 与本次配音区间重叠的旧字幕视为待替换（避免重复点按钮字幕堆积）
+      const voiceStart = voice.startSec
+      const voiceEnd = voiceStart + voice.durationSec
+      for (const old of visibleClipsOn('subtitle')) {
+        const oldStart = old.startSec
+        const oldEnd = oldStart + old.durationSec
+        if (oldStart < voiceEnd && oldEnd > voiceStart) replacedIds.add(old.id)
+      }
+    }
+
+    if (added.length) {
+      commitClips([...clips.value.filter((c) => !replacedIds.has(c.id)), ...added])
+      activeClipId.value = added[0]!.id
+      scheduleSave()
+      await promptAlert({
+        title: t('script.dialog.timeline'),
+        message: errors.length
+          ? t('script.timeline.subtitleFromVoicePartial', { count: added.length, error: errors[0] })
+          : t('script.timeline.subtitleFromVoiceDone', { count: added.length })
+      })
+      return
+    }
+
+    await promptAlert({
+      title: t('script.dialog.timeline'),
+      message: errors.length
+        ? t('script.timeline.subtitleFromVoiceFailed', { error: errors[0] })
+        : t('script.timeline.subtitleFromVoiceEmpty')
+    })
+  } finally {
+    subtitling.value = false
+  }
 }
 
 async function exportSubtitles(): Promise<void> {
@@ -6515,6 +6736,25 @@ defineExpose({ flushSave: persist, reloadSources })
   font-size: 14px;
   line-height: 1;
   z-index: 3;
+}
+
+.clip-reshoot {
+  position: absolute;
+  top: 3px;
+  right: 18px;
+  opacity: 0.75;
+  font-size: 12px;
+  line-height: 1;
+  z-index: 3;
+}
+
+.clip-reshoot:hover {
+  opacity: 1;
+}
+
+.clip-reshoot-btn {
+  width: 100%;
+  margin-bottom: 2px;
 }
 
 .clip-handle {

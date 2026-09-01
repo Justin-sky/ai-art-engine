@@ -11,7 +11,9 @@ import type {
   GenerateTextResult,
   GenerateVideoInput,
   GenerateVideoJob,
-  ModelProviderInstance
+  ModelProviderInstance,
+  TranscribeAudioInput,
+  TranscribeAudioResult
 } from '@shared/modelProvider'
 import {
   isOpenAiTextModelId,
@@ -20,7 +22,7 @@ import {
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
-import { fail, defErr } from '@shared/errors/appError'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -29,6 +31,7 @@ import {
   readHttpError
 } from '../http'
 import { generateOpenAiCompatibleText } from '../openaiCompat'
+import { transcribeAudioViaOpenAiCompatible } from '../transcribe'
 
 // ── 本文件错误条目（catalog 未覆盖的个性文案）──
 const NOT_SUPPORTED_FEATURES = {
@@ -213,6 +216,24 @@ export const openAiAdapter: ModelProviderAdapter = {
     _input: GenerateSpeechInput
   ): Promise<GenerateSpeechResult> {
     return notSupported('speech')
+  },
+
+  async transcribeAudio(
+    provider: ModelProviderInstance,
+    modelId: string,
+    input: TranscribeAudioInput
+  ): Promise<TranscribeAudioResult> {
+    const absPath = input.absPath?.trim()
+    if (!absPath) {
+      throw fail(
+        defErrSimple(
+          'provider.openai.transcribeNoFile',
+          '音频转写缺少本地文件路径',
+          'Audio transcription is missing the local file path'
+        )
+      )
+    }
+    return transcribeAudioViaOpenAiCompatible(provider, modelId || 'whisper-1', input, absPath)
   },
 
   submitModel3d(

@@ -17,6 +17,11 @@ export type ScriptTimelineSource = {
   title: string
   relativePath?: string
   assetId?: string
+  /**
+   * 产出该素材的节点 id（宿主图内）。仅 input 素材有值，导入素材为空。
+   * 用于时间线「重拍此镜头」回到节点图对应分支。
+   */
+  nodeId?: string
   /** 元数据时长（秒）；未知时由预览探测补齐 */
   durationSec?: number
   /** 缺省按 input 兼容旧数据；拖入素材写 imported */
@@ -34,6 +39,8 @@ export type ScriptTimelineClip = {
   title: string
   relativePath?: string
   assetId?: string
+  /** 素材来源节点 id（宿主图内），随素材上轨继承；用于「重拍此镜头」定位回节点图 */
+  nodeId?: string
   /** 字幕轨正文；无媒体时仅烧录/叠加此文本 */
   text?: string
   /** 轨道上的起始时间（秒） */
@@ -350,6 +357,9 @@ export function normalizeScriptTimelineSource(
   }
   if (typeof raw.assetId === 'string' && raw.assetId.trim()) {
     next.assetId = raw.assetId.trim()
+  }
+  if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) {
+    next.nodeId = raw.nodeId.trim()
   }
   if (typeof raw.durationSec === 'number' && Number.isFinite(raw.durationSec) && raw.durationSec > 0) {
     next.durationSec = raw.durationSec
