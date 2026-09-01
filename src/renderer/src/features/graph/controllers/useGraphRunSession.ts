@@ -11,6 +11,8 @@ import {
   pickGraphRunSuccessMessageKey,
   runGraph,
   summarizeGraphRunOutput,
+  summarizeMediaUrlForLog,
+  summarizeReferenceListForLog,
   type GraphDocument,
   type GraphNodeParams,
   type GraphNodeRunState,
@@ -118,11 +120,23 @@ export interface GraphRunSessionOptions {
     prompt: string
     model?: string
     providerInstanceId?: string
+    style?: string
     inputReferences?: Array<{ kind: 'image_url' | 'video_url' | 'audio_url'; url: string }>
     outputDir?: string
     name?: string
     graphBinding?: { hostId?: string; nodeId?: string; assetId?: string; shotId?: string; canvasField?: string }
-  }) => Promise<{ assetId: string; relativePath: string; model: string }>
+  }) => Promise<{
+    assetId: string
+    relativePath: string
+    model: string
+    uploads?: Array<{
+      objectKey: string
+      url: string
+      bytes: number
+      sourceLabel: string
+      logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
+    }>
+  }>
   /** 当前界面语言（影响默认系统提示词等） */
   locale?: () => string
   /** 图宿主 id，用于执行日志关联 */
@@ -349,7 +363,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         system: input.system,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
-        imageCount: input.images?.length || undefined
+        imageCount: input.images?.length || undefined,
+        inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
       try {
         const value = await withAbortSignal(generateText(input), token, signal)
@@ -405,6 +420,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         seed: input.seed ?? null,
         inputReferenceCount: input.inputReferences?.length || undefined,
         inputReferences: input.inputReferenceMeta,
+        inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
         layerDecomposition: input.layerDecomposition || undefined
       }
       try {
@@ -446,6 +462,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       aspectRatio?: string
       generateAudio?: boolean
       seed?: number
+      firstFrameImageUrl?: string
+      lastFrameImageUrl?: string
       inputReferences?: Array<
         | string
         | { kind: 'image_url' | 'video_url' | 'audio_url'; url: string }
@@ -466,6 +484,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         generateAudio?: boolean
         seed?: number | null
         inputReferenceCount?: number
+        inputReferenceUrls?: Array<{ kind?: string; url: string }>
+        firstFrameImageUrl?: string
+        lastFrameImageUrl?: string
         uploads?: Array<{
           sourceLabel: string
           objectKey: string
@@ -481,7 +502,14 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         duration: input.duration,
         generateAudio: input.generateAudio,
         seed: input.seed ?? null,
-        inputReferenceCount: input.inputReferences?.length || undefined
+        inputReferenceCount: input.inputReferences?.length || undefined,
+        inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+        firstFrameImageUrl: input.firstFrameImageUrl?.trim()
+          ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
+          : undefined,
+        lastFrameImageUrl: input.lastFrameImageUrl?.trim()
+          ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
+          : undefined
       }
       try {
         const value = await withAbortSignal(generateVideo(input), token, signal)
@@ -544,7 +572,8 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         providerInstanceId: input.providerInstanceId,
         voice: input.voice,
         name: input.name,
-        imageCount: input.images?.length
+        imageCount: input.images?.length,
+        inputReferenceUrls: summarizeReferenceListForLog(input.images)
       }
       try {
         const value = await withAbortSignal(generateSpeech(input), token, signal)
@@ -591,15 +620,42 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const startedAt = Date.now()
-      const request = {
+      const request: {
+        prompt: string
+        model?: string
+        providerInstanceId?: string
+        style?: string
+        inputReferenceCount?: number
+        inputReferenceUrls?: Array<{ kind?: string; url: string }>
+        uploads?: Array<{
+          sourceLabel: string
+          objectKey: string
+          bytes: number
+          urlPreview: string
+        }>
+      } = {
         prompt: input.prompt,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
         style: input.style,
-        inputReferenceCount: input.inputReferences?.length || undefined
+        inputReferenceCount: input.inputReferences?.length || undefined,
+        inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
       }
       try {
         const value = await withAbortSignal(generateModel3d(input), token, signal)
+        if (value.uploads?.length) {
+          request.uploads = value.uploads.map((item) => ({
+            sourceLabel: item.sourceLabel,
+            objectKey: item.objectKey,
+            bytes: item.bytes,
+            urlPreview: item.url.slice(0, 120)
+          }))
+          for (const item of value.uploads) {
+            for (const log of item.logs) {
+              activeLogBridge?.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+            }
+          }
+        }
         activeLogBridge?.recordApiCall({
           kind: 'generateModel3d',
           request,

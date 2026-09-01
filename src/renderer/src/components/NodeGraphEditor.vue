@@ -945,6 +945,7 @@ import {
   catalogTextFromValue,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
+  summarizeReferenceListForLog,
   GraphPortType,
   GRAPH_OUT_ALL_PORT_ID,
   WORLD_ELEMENT_KINDS
@@ -7593,6 +7594,7 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     resolution: payload.resolution,
     inputReferenceCount: 1,
     inputReferences: [{ source: 'port' as const, name: layerLabel }],
+    inputReferenceUrls: summarizeReferenceListForLog([sourceUrl]),
     layerDecomposition: true
   }
 

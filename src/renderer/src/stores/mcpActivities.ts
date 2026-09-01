@@ -53,6 +53,9 @@ export const useMcpActivitiesStore = defineStore('mcpActivities', () => {
         ? `Generated · asset saved: ${activity.relativePath}`
         : 'Generation finished'
       logs.append({ runId: activity.id, kind: 'run_message', level: 'info', message })
+      if (activity.apiCall) {
+        logs.appendApiCall(activity.id, activity.apiCall)
+      }
       logs.endRun({ runId: activity.id, status: 'done' })
       return
     }

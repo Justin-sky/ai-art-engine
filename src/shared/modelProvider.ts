@@ -846,6 +846,14 @@ export interface GenerateModel3dResult {
   assetId: string
   relativePath: string
   model: string
+  /** 参考图上传到对象存储的记录（便于日志展示） */
+  uploads?: Array<{
+    objectKey: string
+    url: string
+    bytes: number
+    sourceLabel: string
+    logs: Array<{ level: 'info' | 'warn' | 'error'; message: string; ts: number }>
+  }>
 }
 
 export interface GenerateModel3dJob {

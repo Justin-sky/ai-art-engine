@@ -388,9 +388,15 @@ const selectedEvent = computed((): GraphRunLogEvent | null => {
 const selectedApiCalls = computed(() => {
   const session = selectedSession.value
   const event = selectedEvent.value
-  if (!session || !event?.nodeId) return []
+  if (!session || !event) return []
   const status = eventDisplayStatus(event)
   const sessionActive = session.status === 'running'
+  // MCP 会话事件无节点：运行中不展示，终态直接展示全部 API 调用
+  if (session.mode === 'mcp') {
+    if (status !== 'done' && status !== 'error' && sessionActive) return []
+    return session.apiCalls ?? []
+  }
+  if (!event.nodeId) return []
   if (status !== 'done' && status !== 'error' && sessionActive) return []
   return (session.apiCalls ?? []).filter((call) => call.nodeId === event.nodeId)
 })

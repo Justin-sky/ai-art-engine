@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { IpcChannels, type McpActivity, type McpActivityTool } from '@shared/ipc'
+import type { GraphRunLogApiCall } from '@shared/graph'
 import { broadcastToAllWindows } from '../broadcast'
 
 /**
@@ -37,19 +38,32 @@ class McpActivityService {
   /** 结束一次活动（成功 / 失败） */
   end(
     activityId: string,
-    input: { ok: boolean; assetId?: string; relativePath?: string; error?: string }
+    input: {
+      ok: boolean
+      assetId?: string
+      relativePath?: string
+      error?: string
+      apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
+    }
   ): void {
     const index = this.activities.findIndex((a) => a.id === activityId)
     if (index < 0) return
     const prev = this.activities[index]
     if (prev.status !== 'running') return
+    const finishedAt = Date.now()
     const next: McpActivity = {
       ...prev,
       status: input.ok ? 'done' : 'error',
-      finishedAt: Date.now(),
+      finishedAt,
       assetId: input.assetId,
       relativePath: input.relativePath,
-      error: input.error
+      error: input.error,
+      apiCall: input.apiCall
+        ? {
+            ...input.apiCall,
+            durationMs: input.apiCall.durationMs ?? Math.max(0, finishedAt - prev.startedAt)
+          }
+        : undefined
     }
     const copy = [...this.activities]
     copy[index] = next

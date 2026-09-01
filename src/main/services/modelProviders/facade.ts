@@ -476,7 +476,14 @@ class ModelProviderFacade {
     return {
       assetId: settled.assetId,
       relativePath: settled.relativePath,
-      model: settled.model
+      model: settled.model,
+      uploads: persisted.uploads?.map((item) => ({
+        objectKey: item.objectKey,
+        url: item.url,
+        bytes: item.bytes,
+        sourceLabel: item.sourceLabel,
+        logs: []
+      }))
     }
   }
 

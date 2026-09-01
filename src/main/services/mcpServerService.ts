@@ -8,7 +8,10 @@ import { createMcpProtocolHandler } from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
   getAiWorkflowPresetPlan,
-  type GraphDocument
+  summarizeMediaUrlForLog,
+  summarizeReferenceListForLog,
+  type GraphDocument,
+  type GraphRunLogApiCall
 } from '@shared/graph'
 import {
   IpcChannels,
@@ -120,13 +123,20 @@ async function runGenActivity<T>(
   model: string | undefined,
   fn: () => Promise<T>,
   describe: (result: T) => { assetId?: string; relativePath?: string },
-  settle?: (result: T) => void | Promise<void>
+  settle?: (result: T) => void | Promise<void>,
+  apiCall?: (
+    result: T
+  ) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined
 ): Promise<T> {
   const activityId = mcpActivityService.begin({ tool, title, model })
   try {
     const result = await fn()
     await settle?.(result)
-    mcpActivityService.end(activityId, { ok: true, ...describe(result) })
+    mcpActivityService.end(activityId, {
+      ok: true,
+      ...describe(result),
+      apiCall: apiCall?.(result)
+    })
     return result
   } catch (err) {
     mcpActivityService.end(activityId, {
@@ -834,7 +844,24 @@ const TOOL_DEFS: McpToolDef[] = [
         input.model,
         () => modelProviderFacade.generateSpeechAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        (r) => ({
+          kind: 'generateSpeech',
+          nodeId: 'mcp',
+          request: {
+            input: input.input,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            voice: input.voice,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            voice: r.voice,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
       )
       broadcastAsset(result.assetId)
       return {
@@ -884,7 +911,25 @@ const TOOL_DEFS: McpToolDef[] = [
         input.model,
         () => modelProviderFacade.generateMusicAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        (r) => ({
+          kind: 'generateMusic',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            lyrics: input.lyrics,
+            instrumental: input.instrumental,
+            name: input.name
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r),
+            durationMs: r.durationMs
+          }
+        })
       )
       broadcastAsset(result.assetId)
       return {
@@ -992,7 +1037,25 @@ const TOOL_DEFS: McpToolDef[] = [
         input.model,
         () => modelProviderFacade.generateImageAsset(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        (r) => ({
+          kind: 'generateImage',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            aspectRatio: input.aspectRatio,
+            n: input.n,
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
       )
       broadcastAsset(result.assetId)
       return { ...result, relativePath: liveAssetRelativePath(result) }
@@ -1016,11 +1079,16 @@ const TOOL_DEFS: McpToolDef[] = [
         firstFrameImageUrl: {
           type: 'string',
           description:
-            '首帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）'
+            '首帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）。用户消息含多张参考图时，第一张为首帧'
+        },
+        lastFrameImageUrl: {
+          type: 'string',
+          description:
+            '尾帧图：支持 http(s) 地址、data URL、工程内相对路径或本地绝对路径；本地文件会经对象存储转远程 URL（未配置对象存储时报错，可用 storage_status 查询）。用户消息含两张参考图生成视频时，第二张为尾帧'
         },
         outputDir: { type: 'string', description: '工程内相对输出目录（缺省 Cache/Videos）' },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' },
-        extraParams: { type: 'object', description: '低频参数透传（如 resolution / size / lastFrameImageUrl / seed），合并进底层生成输入' }
+        extraParams: { type: 'object', description: '低频参数透传（如 resolution / size / seed），合并进底层生成输入' }
       },
       required: ['prompt']
     },
@@ -1036,6 +1104,7 @@ const TOOL_DEFS: McpToolDef[] = [
         aspectRatio: optionalString(args, 'aspectRatio'),
         generateAudio: typeof args.generateAudio === 'boolean' ? args.generateAudio : undefined,
         firstFrameImageUrl: optionalString(args, 'firstFrameImageUrl'),
+        lastFrameImageUrl: optionalString(args, 'lastFrameImageUrl'),
         outputDir: optionalString(args, 'outputDir'),
         folderId: optionalString(args, 'folderId')
       }
@@ -1045,7 +1114,36 @@ const TOOL_DEFS: McpToolDef[] = [
         input.model,
         () => modelProviderFacade.generateVideo(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        (r) => ({
+          kind: 'generateVideo',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            duration: input.duration,
+            aspectRatio: input.aspectRatio,
+            generateAudio: input.generateAudio,
+            firstFrameImageUrl: input.firstFrameImageUrl?.trim()
+              ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
+              : undefined,
+            lastFrameImageUrl: input.lastFrameImageUrl?.trim()
+              ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
+              : undefined,
+            uploads: r.uploads?.map((item) => ({
+              sourceLabel: item.sourceLabel,
+              objectKey: item.objectKey,
+              bytes: item.bytes,
+              urlPreview: item.url.slice(0, 120)
+            }))
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
       )
       broadcastAsset(result.assetId)
       return { ...result, relativePath: liveAssetRelativePath(result) }
@@ -1098,7 +1196,30 @@ const TOOL_DEFS: McpToolDef[] = [
         input.model,
         () => modelProviderFacade.generateModel3d(input),
         (r) => ({ assetId: r.assetId, relativePath: liveAssetRelativePath(r) }),
-        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId'))
+        (r) => settleAssetFolder(r.assetId, optionalString(args, 'folderId')),
+        (r) => ({
+          kind: 'generateModel3d',
+          nodeId: 'mcp',
+          request: {
+            prompt: input.prompt,
+            model: input.model,
+            providerInstanceId: input.providerInstanceId,
+            style: input.style,
+            inputReferenceCount: input.inputReferences?.length || undefined,
+            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+            uploads: r.uploads?.map((item) => ({
+              sourceLabel: item.sourceLabel,
+              objectKey: item.objectKey,
+              bytes: item.bytes,
+              urlPreview: item.url.slice(0, 120)
+            }))
+          },
+          response: {
+            model: r.model,
+            assetId: r.assetId,
+            relativePath: liveAssetRelativePath(r)
+          }
+        })
       )
       broadcastAsset(result.assetId)
       return { ...result, relativePath: liveAssetRelativePath(result) }
