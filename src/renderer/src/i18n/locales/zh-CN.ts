@@ -934,6 +934,9 @@ export default {
       sources: '素材库',
       refreshSources: '刷新输入',
       autoPlace: '自动上轨',
+      sourceNode: '来源节点',
+      locateNode: '定位到节点图',
+      locateNodeHint: '在节点图中定位此片段的来源（回到对应生成分支）',
       sourceGridSize: '素材显示大小',
       sourceGroup: {
         input: '节点输入',

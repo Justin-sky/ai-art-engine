@@ -30,7 +30,8 @@ function readScriptGraph(scriptAssetId: string): GraphDocument | null {
 function videoItemToSource(
   item: GraphVideoItem,
   index: number,
-  nodeId?: string
+  nodeId?: string,
+  nodeTitle?: string
 ): ScriptTimelineSource | null {
   const relativePath = item.relativePath?.trim()
   const assetId = item.id?.trim()
@@ -52,15 +53,17 @@ function videoItemToSource(
       String(i18n.global.t('script.timeline.defaultVideoTitle', { index: index + 1 })),
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
-    ...(nodeId ? { nodeId } : {}),
-    durationSec: undefined
+    durationSec: undefined,
+    ...(nodeId?.trim() ? { nodeId: nodeId.trim() } : {}),
+    ...(nodeTitle?.trim() ? { nodeTitle: nodeTitle.trim() } : {})
   }
 }
 
 function voiceItemToSource(
   item: GraphVoiceItem,
   index: number,
-  nodeId?: string
+  nodeId?: string,
+  nodeTitle?: string
 ): ScriptTimelineSource | null {
   const relativePath = item.relativePath?.trim()
   const assetId = item.id?.trim()
@@ -82,9 +85,10 @@ function voiceItemToSource(
       String(i18n.global.t('script.timeline.defaultVoiceTitle', { index: index + 1 })),
     relativePath: relativePath || asset?.relativePath,
     assetId: asset?.id || assetId,
-    ...(nodeId ? { nodeId } : {}),
     durationSec: undefined,
-    mediaKind: 'voice'
+    mediaKind: 'voice',
+    ...(nodeId?.trim() ? { nodeId: nodeId.trim() } : {}),
+    ...(nodeTitle?.trim() ? { nodeTitle: nodeTitle.trim() } : {})
   }
 }
 
@@ -115,7 +119,7 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
     const upstreamOut = graphRunHosts.get(hostId)?.runStates?.[sourceNode.id]?.outputs?.out
     const videos = upstreamOut ? flattenVideosValues([upstreamOut]) : []
     for (const [i, item] of videos.entries()) {
-      const src = videoItemToSource(item, sources.length + i, sourceNode.id)
+      const src = videoItemToSource(item, sources.length + i, sourceNode.id, sourceNode.title)
       if (!src || seen.has(src.id)) continue
       seen.add(src.id)
       sources.push(src)
@@ -132,7 +136,8 @@ function collectFromValueVideos(doc: GraphDocument, hostId: string): ScriptTimel
               i18n.global.t('script.timeline.defaultVideoTitle', { index: sources.length + 1 })
             ),
           relativePath: rel,
-          nodeId: sourceNode.id
+          nodeId: sourceNode.id,
+          nodeTitle: sourceNode.title?.trim()
         })
       }
     }
@@ -147,8 +152,9 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
   const push = (
     relativePath: string | undefined,
     assetId: string | undefined,
-    title: string | undefined,
-    nodeId: string
+    title?: string,
+    nodeId?: string,
+    nodeTitle?: string
   ): void => {
     const key = assetId || relativePath || ''
     if (!key || seen.has(key)) return
@@ -156,7 +162,8 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     const src = videoItemToSource(
       { id: assetId, relativePath, createdAt: undefined },
       sources.length,
-      nodeId
+      nodeId,
+      nodeTitle
     )
     if (!src) return
     if (title) src.title = title
@@ -174,13 +181,13 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
     if (runOut) {
       const videos = flattenVideosValues([runOut])
-      for (const item of videos) push(item.relativePath, item.id, title, node.id)
+      for (const item of videos) push(item.relativePath, item.id, title, node.id, node.title)
     }
     for (const item of Array.isArray(params.generatedVideos) ? params.generatedVideos : []) {
-      push(item?.relativePath, item?.id, title, node.id)
+      push(item?.relativePath, item?.id, title, node.id, node.title)
     }
     const rel = params.previewRelativePath?.trim()
-    if (rel) push(rel, undefined, title, node.id)
+    if (rel) push(rel, undefined, title, node.id, node.title)
   }
   return sources
 }
@@ -191,8 +198,9 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
   const push = (
     relativePath: string | undefined,
     assetId: string | undefined,
-    title: string | undefined,
-    nodeId: string
+    title?: string,
+    nodeId?: string,
+    nodeTitle?: string
   ): void => {
     const key = assetId || relativePath || ''
     if (!key || seen.has(key)) return
@@ -200,7 +208,8 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     const src = voiceItemToSource(
       { id: assetId, relativePath, createdAt: undefined },
       sources.length,
-      nodeId
+      nodeId,
+      nodeTitle
     )
     if (!src) return
     if (title) src.title = title
@@ -218,13 +227,13 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     const runOut = graphRunHosts.get(hostId)?.runStates?.[node.id]?.outputs?.out
     if (runOut) {
       const voices = flattenVoicesValues([runOut])
-      for (const item of voices) push(item.relativePath, item.id, title, node.id)
+      for (const item of voices) push(item.relativePath, item.id, title, node.id, node.title)
     }
     for (const item of Array.isArray(params.generatedVoices) ? params.generatedVoices : []) {
-      push(item?.relativePath, item?.id, title, node.id)
+      push(item?.relativePath, item?.id, title, node.id, node.title)
     }
     const rel = params.previewRelativePath?.trim()
-    if (rel) push(rel, undefined, title, node.id)
+    if (rel) push(rel, undefined, title, node.id, node.title)
   }
   return sources
 }
