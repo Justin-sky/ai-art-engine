@@ -7306,6 +7306,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -7322,8 +7323,9 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .panel-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .source-size-range {
@@ -8002,6 +8004,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .timeline-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 4px 10px;
