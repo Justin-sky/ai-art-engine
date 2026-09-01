@@ -923,6 +923,19 @@ function scrollToBottom(): void {
   })
 }
 
+/** 消息流超出可视区且未贴底时显示「回到底部」箭头按钮 */
+const showScrollToBottom = ref(false)
+
+function onChatScroll(): void {
+  const el = listRef.value
+  if (!el) return
+  showScrollToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight > 48
+}
+
+function scrollToBottomSmooth(): void {
+  listRef.value?.scrollTo({ top: listRef.value.scrollHeight, behavior: 'smooth' })
+}
+
 function pushAssistant(text: string, replace = false): void {
   const last = messages.value[messages.value.length - 1]
   if (!replace && last?.kind === 'assistant' && !last.final) {
@@ -1251,31 +1264,87 @@ onBeforeUnmount(() => {
       >{{ workspaceLabel }}</span>
     </div>
 
-    <div
-      ref="listRef"
-      class="chat-messages"
-    >
+    <div class="chat-messages-wrap">
       <div
-        v-if="!messages.length"
-        class="chat-empty"
+        ref="listRef"
+        class="chat-messages"
+        @scroll="onChatScroll"
       >
-        {{ t('studio.chat.empty') }}
         <div
-          v-if="statusWarn && status?.message"
-          class="chat-empty-hint"
+          v-if="!messages.length"
+          class="chat-empty"
         >
-          {{ status.message }}
+          {{ t('studio.chat.empty') }}
+          <div
+            v-if="statusWarn && status?.message"
+            class="chat-empty-hint"
+          >
+            {{ status.message }}
+          </div>
         </div>
-      </div>
-      <template
-        v-for="(msg, i) in messages"
-        :key="i"
-      >
-        <template v-if="msg.kind === 'user'">
-          <div class="msg-row user">
-            <div class="bubble user">
-              <div
-                class="bubble-text"
+        <template
+          v-for="(msg, i) in messages"
+          :key="i"
+        >
+          <template v-if="msg.kind === 'user'">
+            <div class="msg-row user">
+              <div class="bubble user">
+                <div
+                  class="bubble-text"
+                  v-chat-img
+                  v-html="renderMessageText(msg.text)"
+                />
+                <button
+                  class="copy-btn"
+                  :class="{ copied: copiedIndex === i }"
+                  :title="t('studio.chat.copyTitle')"
+                  @click.stop="copyMessage(i, msg.text)"
+                >
+                  {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
+                </button>
+              </div>
+            </div>
+            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），状态实时更新 -->
+            <div
+              v-if="taskToolsAt(i).length"
+              class="task-list-card"
+            >
+              <div class="task-list-title">{{ t('studio.chat.taskList') }}</div>
+              <ul class="task-list">
+                <li
+                  v-for="tm in taskToolsAt(i)"
+                  :key="tm.key"
+                  class="task-item"
+                  :class="tm.state"
+                  :title="tm.detail"
+                >
+                  <span class="task-dot" />
+                  <span class="task-name">{{ tm.name }}</span>
+                  <span class="task-state">
+                    {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
+                  </span>
+                  <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
+                  <ChatAssetPreview
+                    v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
+                    :relative-path="tm.relativePath"
+                  />
+                </li>
+              </ul>
+            </div>
+          </template>
+          <div
+            v-else-if="msg.kind === 'assistant'"
+            class="msg-row assistant"
+          >
+            <div class="bubble assistant">
+              <details
+                v-if="msg.reasoning"
+                class="reasoning"
+              >
+                <summary>{{ t('studio.chat.thinking') }}</summary>
+                <pre>{{ msg.reasoning }}</pre>
+              </details>
+              <pre
                 v-chat-img
                 v-html="renderMessageText(msg.text)"
               />
@@ -1289,47 +1358,39 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），状态实时更新 -->
+          <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D）时追加到对话末尾，与任务清单的状态卡分离 -->
           <div
-            v-if="taskToolsAt(i).length"
-            class="task-list-card"
+            v-else-if="msg.kind === 'asset'"
+            class="msg-row asset"
           >
-            <div class="task-list-title">{{ t('studio.chat.taskList') }}</div>
-            <ul class="task-list">
-              <li
-                v-for="tm in taskToolsAt(i)"
-                :key="tm.key"
-                class="task-item"
-                :class="tm.state"
-                :title="tm.detail"
-              >
-                <span class="task-dot" />
-                <span class="task-name">{{ tm.name }}</span>
-                <span class="task-state">
-                  {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
-                </span>
-                <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
-                <ChatAssetPreview
-                  v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
-                  :relative-path="tm.relativePath"
-                />
-              </li>
-            </ul>
+            <div class="asset-card">
+              <ChatAssetPreview :relative-path="msg.relativePath" />
+              <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
+              <div class="asset-card-actions">
+                <button
+                  class="save-btn"
+                  :class="{ saved: isAssetSaved(msg.key) }"
+                  :disabled="savingAssetKey === msg.key || isAssetSaved(msg.key)"
+                  :title="t('studio.chat.saveToLibraryTitle')"
+                  @click.stop="openSaveAsset(msg)"
+                >
+                  {{
+                    isAssetSaved(msg.key)
+                      ? t('studio.chat.savedToLibrary')
+                      : savingAssetKey === msg.key
+                        ? t('common.saving')
+                        : t('studio.chat.saveToLibrary')
+                  }}
+                </button>
+              </div>
+            </div>
           </div>
-        </template>
-        <div
-          v-else-if="msg.kind === 'assistant'"
-          class="msg-row assistant"
-        >
-          <div class="bubble assistant">
-            <details
-              v-if="msg.reasoning"
-              class="reasoning"
-            >
-              <summary>{{ t('studio.chat.thinking') }}</summary>
-              <pre>{{ msg.reasoning }}</pre>
-            </details>
-            <pre
+          <div
+            v-else-if="msg.kind === 'status'"
+            class="msg-status"
+          >
+            <div
+              class="bubble-text"
               v-chat-img
               v-html="renderMessageText(msg.text)"
             />
@@ -1342,93 +1403,68 @@ onBeforeUnmount(() => {
               {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
             </button>
           </div>
-        </div>
-        <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D）时追加到对话末尾，与任务清单的状态卡分离 -->
-        <div
-          v-else-if="msg.kind === 'asset'"
-          class="msg-row asset"
-        >
-          <div class="asset-card">
-            <ChatAssetPreview :relative-path="msg.relativePath" />
-            <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
-            <div class="asset-card-actions">
+          <div
+            v-else-if="msg.kind === 'prompt'"
+            class="msg-prompt"
+          >
+            <div
+              class="prompt-question"
+              v-chat-img
+              v-html="renderMessageText(msg.question)"
+            />
+            <div
+              v-if="msg.hint"
+              class="prompt-hint"
+              v-chat-img
+              v-html="renderMessageText(msg.hint)"
+            />
+            <div class="prompt-options">
               <button
-                class="save-btn"
-                :class="{ saved: isAssetSaved(msg.key) }"
-                :disabled="savingAssetKey === msg.key || isAssetSaved(msg.key)"
-                :title="t('studio.chat.saveToLibraryTitle')"
-                @click.stop="openSaveAsset(msg)"
+                v-for="opt in promptOptions(msg)"
+                :key="opt"
+                class="prompt-option"
+                :class="{ chosen: msg.answered === opt }"
+                :disabled="msg.answered !== null && msg.answered !== undefined"
+                @click="answerPrompt(msg, opt)"
               >
-                {{
-                  isAssetSaved(msg.key)
-                    ? t('studio.chat.savedToLibrary')
-                    : savingAssetKey === msg.key
-                      ? t('common.saving')
-                      : t('studio.chat.saveToLibrary')
-                }}
+                {{ opt }}
               </button>
             </div>
-          </div>
-        </div>
-        <div
-          v-else-if="msg.kind === 'status'"
-          class="msg-status"
-        >
-          <div
-            class="bubble-text"
-            v-chat-img
-            v-html="renderMessageText(msg.text)"
-          />
-          <button
-            class="copy-btn"
-            :class="{ copied: copiedIndex === i }"
-            :title="t('studio.chat.copyTitle')"
-            @click.stop="copyMessage(i, msg.text)"
-          >
-            {{ copiedIndex === i ? t('studio.chat.copied') : t('studio.chat.copy') }}
-          </button>
-        </div>
-        <div
-          v-else-if="msg.kind === 'prompt'"
-          class="msg-prompt"
-        >
-          <div
-            class="prompt-question"
-            v-chat-img
-            v-html="renderMessageText(msg.question)"
-          />
-          <div
-            v-if="msg.hint"
-            class="prompt-hint"
-            v-chat-img
-            v-html="renderMessageText(msg.hint)"
-          />
-          <div class="prompt-options">
-            <button
-              v-for="opt in promptOptions(msg)"
-              :key="opt"
-              class="prompt-option"
-              :class="{ chosen: msg.answered === opt }"
-              :disabled="msg.answered !== null && msg.answered !== undefined"
-              @click="answerPrompt(msg, opt)"
+            <div
+              v-if="msg.answered !== null && msg.answered !== undefined"
+              class="prompt-answered"
             >
-              {{ opt }}
-            </button>
+              {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
+            </div>
           </div>
-          <div
-            v-if="msg.answered !== null && msg.answered !== undefined"
-            class="prompt-answered"
-          >
-            {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
-          </div>
+        </template>
+        <div
+          v-if="running"
+          class="msg-status running"
+        >
+          <span class="dots"><i /><i /><i /></span>
         </div>
-      </template>
-      <div
-        v-if="running"
-        class="msg-status running"
-      >
-        <span class="dots"><i /><i /><i /></span>
       </div>
+
+      <button
+        v-show="showScrollToBottom"
+        type="button"
+        class="chat-scroll-bottom"
+        :title="t('studio.chat.scrollToBottom')"
+        @click="scrollToBottomSmooth"
+      >
+        <svg
+          class="chat-scroll-bottom-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
     </div>
 
     <div class="chat-input">
@@ -2057,14 +2093,49 @@ onBeforeUnmount(() => {
   max-height: 180px;
 }
 
-.chat-messages {
+.chat-messages-wrap {
   flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.chat-messages {
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
   padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.chat-scroll-bottom {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.chat-scroll-bottom:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chat-scroll-bottom-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .chat-empty {
