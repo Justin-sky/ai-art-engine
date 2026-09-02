@@ -247,6 +247,7 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.AGENT_FORWARD_EVENT, listener)
   },
   runOrchestrator: (input) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_RUN, input),
+  planOrchestrator: (input) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_PLAN, input),
   listOrchestratorJobs: () => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_LIST),
   abortOrchestratorJob: (jobId) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_ABORT, jobId),
   onOrchestratorEvent: (callback) => {

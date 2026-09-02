@@ -648,14 +648,14 @@ export default {
       tab: '编排',
       title: '多 Agent 编排',
       subtitle:
-        '把总目标拆成一组「角色 + 环节」节点；按依赖顺序逐个执行，每个节点会收到总目标与前置节点产出，失败自动重试 1 次。',
+        '把总目标拆成一组「角色 + 环节」节点；依赖就绪的节点并行执行（同一 Agent 排队），每个节点会收到总目标与前置节点产出，失败自动重试 1 次。',
       newJob: '新建编排',
       jobTitle: '任务标题（可选）',
       jobTitlePlaceholder: '如：第一集脚本 → 分镜 → 逐镜配图',
       goal: '总目标',
       goalPlaceholder:
         '一句话描述这次协作要产出的最终结果，例如：为《都市夜行》第一集写分镜，并逐镜生成配图……',
-      nodesHint: '节点按定义顺序与依赖逐个执行；失败自动重试 1 次',
+      nodesHint: '依赖就绪的节点并行执行（同一 Agent 排队）；失败自动重试 1 次',
       addNode: '＋ 添加节点',
       removeNode: '移除该节点',
       nodeId: '节点 id',
@@ -694,7 +694,19 @@ export default {
       depOf: '依赖',
       error: '错误',
       time: '耗时',
-      goalShort: '总目标'
+      goalShort: '总目标',
+      autoPlan: '智能拆解',
+      autoPlanHint: '让策划 Agent 把总目标自动拆成可编辑的节点',
+      planning: '策划 Agent 正在拆解…',
+      planReplaceTitle: '替换现有节点',
+      planReplaceMessage: '用拆解结果替换当前已添加的 {n} 个节点？',
+      planSuccess: '已按拆解结果填充 {n} 个节点，可调整后开始编排',
+      noGoalPlan: '请先填写总目标，再进行智能拆解',
+      planFailed: '自动拆解失败',
+      viewFlow: '列表',
+      viewGraph: '连线图',
+      graphSelectHint: '点击节点查看环节说明与产出',
+      graphEmpty: '（暂无节点）'
     },
     editor: {
       asset: '资产编辑器',

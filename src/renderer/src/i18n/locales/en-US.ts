@@ -649,14 +649,14 @@ export default {
       tab: 'Orchestrator',
       title: 'Multi-Agent Orchestrator',
       subtitle:
-        'Split a goal into role + task nodes. Nodes run one by one in dependency order; each one receives the goal and the outputs of earlier nodes, retrying once on failure.',
+        'Split a goal into role + task nodes. Nodes whose dependencies are ready run in parallel (same agent queued); each one receives the goal and the outputs of earlier nodes, retrying once on failure.',
       newJob: 'New orchestration',
       jobTitle: 'Job title (optional)',
       jobTitlePlaceholder: 'e.g. Script → storyboard → per-shot art',
       goal: 'Goal',
       goalPlaceholder:
         'Describe in one sentence what this collaboration should deliver, e.g. write the storyboard for episode 1 of "City Night Run" and generate matching art for each shot…',
-      nodesHint: 'Nodes run one at a time in definition & dependency order; a failed node is retried once',
+      nodesHint: 'Nodes whose dependencies are ready run in parallel (same agent queued); a failed node is retried once',
       addNode: '+ Add node',
       removeNode: 'Remove node',
       nodeId: 'Node id',
@@ -695,7 +695,19 @@ export default {
       depOf: 'depends on',
       error: 'Error',
       time: 'Time',
-      goalShort: 'Goal'
+      goalShort: 'Goal',
+      autoPlan: 'Auto-plan',
+      autoPlanHint: 'Let the planner agent split the goal into editable nodes',
+      planning: 'Planner agent is decomposing…',
+      planReplaceTitle: 'Replace existing nodes',
+      planReplaceMessage: 'Replace the {n} manually added nodes with the AI plan?',
+      planSuccess: 'Filled in {n} nodes from the plan; tweak and start',
+      noGoalPlan: 'Enter a goal first to auto-plan',
+      planFailed: 'Auto-plan failed',
+      viewFlow: 'List',
+      viewGraph: 'Graph',
+      graphSelectHint: 'Click a node to inspect its instructions & output',
+      graphEmpty: '(no nodes)'
     },
     editor: {
       asset: 'Asset Editor',

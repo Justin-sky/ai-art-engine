@@ -234,7 +234,8 @@ window.studio.onHarnessEvent((e) => {
 | `agent:forward`（新，模式 B） | — | 转交 text/file/live |
 | `orchestrator:run`（新，模式 C） | — | 提交 DAG 任务（校验通过返回 jobId，异步执行） |
 | `orchestrator:list`（新，模式 C） | — | 列出内存中的编排 job（最新在前，含运行中） |
-| `orchestrator:abort`（新，模式 C） | — | 中止运行中的 job（kill 当前节点，其余置 skipped） |
+| `orchestrator:abort`（新，模式 C） | — | 中止运行中的 job（kill 全部运行中节点，其余置 skipped） |
+| `orchestrator:plan`（新，模式 C） | — | 总目标交给策划 Agent 拆解为可编辑节点 DAG（供 run 前人工微调） |
 | `orchestrator:event`（新，模式 C） | — | 广播 job 完整快照（渲染层据此增量刷新） |
 
 ## 11. 演进路线
@@ -254,12 +255,18 @@ window.studio.onHarnessEvent((e) => {
 > 拖拽连线交互留待后续迭代；一次转交（once）由目标面板以其会话直接发送，会话归属与普通消息一致。
 >
 > **M3** 已交付：`orchestrator:run`/`orchestrator:list`/`orchestrator:abort` + `orchestrator:event`
-> 四条通道、`agentOrchestrator.ts`（DAG 静态校验含无环检测、按依赖串行调度、node 幂等独立会话
-> `orch-<jobId>-<nodeId>-a<n>`、依赖产出文本注入、失败重试 1 次、中止 kill、汇总节点）；harness 增加
-> `silent` 静默运行（自动任务不污染用户会话 UI）与运行时终结订阅 `onAgentRuntimeSettled`。
-> 渲染层以 AgentPanel 固定「编排」标签落地（目标 + 角色节点编辑 + 依赖勾选 → job 记录：节点状态流、
-> 节点产出/错误可展开复制、最终汇总复制、运行中可中止）；节点由用户手工定义（人工 DAG），
-> 自动 planner 拆解、DAG 图可视化与跨 agent 并行执行留待后续迭代。
+> 四条通道、`agentOrchestrator.ts`（DAG 静态校验含无环检测、依赖就绪即并发派发——跨 agent 真并行、
+> 同一 agent 经队列锁串行、全局并行上限；node 幂等独立会话 `orch-<jobId>-<nodeId>-a<n>`、
+> 依赖产出文本注入、失败重试 1 次、中止 kill 全部运行节点、汇总节点）；harness 增加 `silent`
+> 静默运行（自动任务不污染用户会话 UI）与运行时终结订阅 `onAgentRuntimeSettled`。
+> 渲染层以 AgentPanel 固定「编排」标签落地（目标 + 角色节点编辑 + 依赖勾选 → job 记录：
+> 列表 / 分层连线图双视图、节点产出/错误可展开复制、最终汇总复制、运行中可中止）。
+>
+> **M3 迭代**（`orchestrator:plan` 等）补齐文档留待的后续项：自动拆解——总目标交给策划 Agent 拆成
+> 可编辑节点草案（id 归一 n1..nk + dependsOn 按新 id 重映射，解析失败给出可读错误）；跨 agent 真并行
+> 调度——agent 队列锁（含跨 job）+ `MAX_PARALLEL` 并发闸门，中止改为 kill 全部运行节点；DAG 连线图
+> 可视化——`renderer/utils/orchDagLayout.ts` 最长路径分层布局 + SVG 贝塞尔连线（依赖节点终态着色），
+> 点击图上节点在下方查看详情/产出。仍可迭代：图内拖拽改拓扑、自动拆分后的依赖自动校验与文件分配。
 
 ## 12. 风险与缓解
 

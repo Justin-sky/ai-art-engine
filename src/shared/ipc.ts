@@ -232,6 +232,8 @@ export const IpcChannels = {
 
   /** Orchestrator（模式 C）：提交一个多 agent 编排任务（总目标 → DAG 执行） */
   ORCHESTRATOR_RUN: 'orchestrator:run',
+  /** Orchestrator：把总目标交给策划 Agent 自动拆解为节点 DAG（返回可编辑节点列表） */
+  ORCHESTRATOR_PLAN: 'orchestrator:plan',
   /** Orchestrator：查询全部编排 job（含节点状态） */
   ORCHESTRATOR_LIST: 'orchestrator:list',
   /** Orchestrator：中止一个编排 job（运行中的节点 abort，未开始的节点取消） */
@@ -685,6 +687,21 @@ export interface OrchestratorNodeState {
 export interface OrchestratorRunResult {
   ok: boolean
   jobId?: string
+  message?: string
+}
+
+/** Orchestrator：自动拆解输入（渲染层 → 主进程，经策划 Agent 生成 DAG 草案） */
+export interface OrchestratorPlanInput {
+  /** 总目标：要拆解成节点 DAG 的协作目标 */
+  goal: string
+}
+
+/** Orchestrator：自动拆解结果（返回可编辑节点列表；失败时 ok=false + message） */
+export interface OrchestratorPlanResult {
+  ok: boolean
+  /** 拆解出的节点（id 已归一为 n1..nk，dependsOn 已按新 id 重映射，可继续人工编辑后提交） */
+  nodes?: OrchestratorNodeSpec[]
+  /** 失败原因（运行时错误文本，渲染层直接展示） */
   message?: string
 }
 
@@ -1191,6 +1208,9 @@ export interface StudioApi {
 
   /** Orchestrator（模式 C）：提交一个多 agent 编排任务（总目标 → DAG），立即返回 jobId */
   runOrchestrator: (input: OrchestratorRunInput) => Promise<OrchestratorRunResult>
+
+  /** Orchestrator：把总目标交给策划 Agent 自动拆解为节点 DAG（返回可编辑节点列表） */
+  planOrchestrator: (input: OrchestratorPlanInput) => Promise<OrchestratorPlanResult>
 
   /** Orchestrator：查询全部编排 job（含节点实时状态） */
   listOrchestratorJobs: () => Promise<OrchestratorJob[]>

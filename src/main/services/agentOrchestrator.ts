@@ -2,15 +2,22 @@
  * Agent 编排器（模式 C：自主协作 DAG）。
  *
  * 用户在 Orchestrator 面板提交「总目标 + 一组节点（agentId / instruction / dependsOn）」，
- * 主进程据此构造 DAG，串行调度执行：
+ * 主进程据此构造 DAG，按「依赖就绪即派发」的并行策略调度执行：
  *
  * - 节点幂等：每个节点使用独立 dsh 会话（`orch-<jobId>-<nodeId>-a<attempt>`），
  *   输入 = 总目标 + 角色指令 + 依赖节点最终文本（文件即协议的文本层）；
- * - 顺序推进：按依赖就绪顺序一次执行一个节点；依赖失败/被跳过 → 依赖方整体跳过；
+ * - 并行推进：每轮收集全部依赖已就绪的节点并发派发（跨 agent 真并行，全局并行上限
+ *   见 MAX_PARALLEL）；同一 agent 经模块级队列锁串行（dsh 单任务，多 job 并发派发到
+ *   同一 agent 也不会互相覆盖），等待 agent 空闲时才真正启动；
+ *   依赖失败/被跳过 → 依赖方整体跳过；
  * - 失败策略：节点出错（异常退出 / 未产出文本）重试 1 次，仍失败标记 failed；
- * - 中止：运行中的节点 kill，其余节点置 skipped，job 置 aborted；
+ * - 中止：所有运行中的节点 kill，其余节点置 skipped，job 置 aborted；
  * - 静默执行：节点任务走 runHarnessTask 的 silent=true，不向 HARNESS_EVENT 广播，
  *   避免污染用户在各 agent 标签上的会话 UI；进度仅经 ORCHESTRATOR_EVENT 推送。
+ *
+ * 自动拆解（planOrchestrator）：把「一句话总目标」交给策划 Agent 拆解为 DAG 节点草案，
+ * 返回渲染层可编辑的节点列表（id 归一为 n1..nk、依赖重映射）；该调用走策划 agent 的
+ * dsh 运行体，复用静默运行与 settle 订阅，但不创建 job。
  *
  * 事件归属：每个 job 变更即广播完整 job 快照（OrchestratorJobEvent），渲染层实时刷新。
  * 本服务模块被 main/ipc.ts 引入即完成 settle 订阅注册（与 agentBridge 同模式）。
@@ -19,12 +26,15 @@ import {
   IpcChannels,
   type OrchestratorJob,
   type OrchestratorJobEvent,
+  type OrchestratorNodeSpec,
   type OrchestratorNodeState,
+  type OrchestratorPlanInput,
+  type OrchestratorPlanResult,
   type OrchestratorRunInput,
   type OrchestratorRunResult
 } from '@shared/ipc'
 import { broadcastToAllWindows } from '../broadcast'
-import { agentRegistry } from './agentRegistry'
+import { agentRegistry, DEFAULT_AGENT_ID } from './agentRegistry'
 import {
   abortHarnessTask,
   deleteHarnessSession,
@@ -47,6 +57,12 @@ const POLL_IDLE_MS = 400
 const RETRY_COOL_DOWN_MS = 1500
 /** 汇总/最终文本同步到渲染层的长度上限（防超大文本卡 IPC） */
 const SUMMARY_LIMIT = 20000
+/** 同一时刻并发派发的节点上限（防同时拉起过多 dsh 进程挤爆慢机器；不同 agent 才真并行） */
+const MAX_PARALLEL = 4
+/** 自动拆解返回的节点数上限（保持可编辑、单轮可跑完） */
+const MAX_PLAN_NODES = 8
+/** 策划拆解会话 id 前缀（与节点会话区分，便于识别与清理） */
+const PLAN_SESSION_PREFIX = 'orch-plan'
 
 /** 内部 job 实体：共享层字段 + 中止标记 */
 type JobRecord = OrchestratorJob & { aborted: boolean }
@@ -223,6 +239,174 @@ export function runOrchestrator(input: OrchestratorRunInput): OrchestratorRunRes
   return { ok: true, jobId }
 }
 
+/* ── 自动拆解（planOrchestrator）：总目标 → 策划 Agent → DAG 节点草案 ── */
+
+let planSeq = 0
+
+/** 供拆解用的可选 agent 行（id / 显示名 / 职责简介），约束模型按真实角色选角 */
+function planAgentLines(): string {
+  return agentRegistry
+    .list()
+    .filter((a) => a.agentId !== DEFAULT_AGENT_ID)
+    .map((a) => {
+      const role = a.systemPrompt ? a.systemPrompt.replace(/\s+/g, ' ').slice(0, 80) : a.profile
+      return `- ${a.agentId} (${a.name}): ${role}`
+    })
+    .join('\n')
+}
+
+/** 组装拆解任务文本：输出格式约束严格，便于后端 JSON 解析 */
+function composePlanTask(goal: string): string {
+  const lines: string[] = []
+  lines.push('[编排拆解任务] 请把一个创作协作的「总目标」拆解成可执行的 Agent 分工 DAG。') // cjk-ok 任务文本（发送给策划 Agent 的拆解指令）
+  lines.push(`总目标：${goal}`) // cjk-ok 拆解指令文本（运行时拼入用户总目标）
+  lines.push('可选执行 Agent（id (显示名): 职责）：') // cjk-ok 拆解指令文本
+  lines.push(planAgentLines())
+  lines.push('要求：') // cjk-ok 拆解指令文本
+  lines.push('- 只输出一个 JSON 数组，禁止输出数组之外的任何文字、解释或代码块标记；') // cjk-ok 拆解指令文本
+  lines.push(
+    '- 数组每个元素是一个节点：{"id":"n1","agentId":"planner","instruction":"环节说明","dependsOn":[]}；' // cjk-ok 拆解指令文本
+  )
+  lines.push('- id 用 n1/n2/n3… 依次编号；agentId 必须是上面可选 Agent 中的 id；') // cjk-ok 拆解指令文本
+  lines.push('- instruction 用中文写清该环节要做什么、产出什么，具体可执行；') // cjk-ok 拆解指令文本
+  lines.push(
+    '- dependsOn 填本节点依赖的节点 id（首个节点通常为空数组），保证可并行分支与先后次序；' // cjk-ok 拆解指令文本
+  )
+  lines.push('- 拆 2~8 个节点，覆盖从策划到产出/审核的完整闭环；避免冗余环节。') // cjk-ok 任务文本（发送给策划 Agent 的拆解指令）
+  return lines.join('\n')
+}
+
+/** 从模型最终文本中抽取 JSON 数组（容忍 ```json 围栏与前后废话），解析失败抛错 */
+function extractPlanArray(raw: string): unknown {
+  let text = String(raw ?? '').trim()
+  const fence = text.match(/```[a-zA-Z]*\s*([\s\S]*?)```/)
+  if (fence) text = fence[1].trim()
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start >= 0 && end > start) text = text.slice(start, end + 1)
+  return JSON.parse(text)
+}
+
+/**
+ * 归一化拆解结果：id 一律重排为 n1..nk（模型输出 id 可能重复/非法），
+ * dependsOn 按「条目自身原始 id → 新 id」映射重建；非法 agent 或缺失说明的条目丢弃。
+ */
+function sanitizePlan(items: unknown): OrchestratorNodeSpec[] {
+  if (!Array.isArray(items)) return []
+  const agents = new Map(agentRegistry.list().map((a) => [a.agentId, a]))
+  const rawIds: string[] = []
+  const entries: Array<{ id: string; agentId: string; instruction: string }> = []
+  const count = Math.min(MAX_PLAN_NODES, items.length)
+  for (let i = 0; i < count; i++) {
+    const item = items[i]
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    const rawAgent = String(record.agentId ?? '').trim()
+    const agent =
+      agents.get(rawAgent) ?? [...agents.values()].find((a) => a.name === rawAgent) ?? null
+    if (!agent || agent.agentId === DEFAULT_AGENT_ID) continue
+    const instruction = String(record.instruction ?? '')
+      .trim()
+      .slice(0, 2000)
+    if (!instruction) continue
+    rawIds.push(String(record.id ?? '').trim())
+    entries.push({ id: `n${entries.length + 1}`, agentId: agent.agentId, instruction })
+  }
+  const rawToNew = new Map<string, string>()
+  for (let i = 0; i < entries.length; i++) {
+    if (rawIds[i]) rawToNew.set(rawIds[i], entries[i].id)
+  }
+  const nodes: OrchestratorNodeSpec[] = entries.map((e, i) => {
+    const rawItem = items[i] as Record<string, unknown> | undefined
+    const deps = Array.isArray(rawItem?.dependsOn) ? (rawItem.dependsOn as unknown[]) : []
+    const dependsOn: string[] = []
+    for (const dep of deps) {
+      const target = rawToNew.get(String(dep).trim())
+      if (target && target !== e.id) dependsOn.push(target)
+    }
+    return { ...e, dependsOn: [...new Set(dependsOn)] }
+  })
+  return nodes
+}
+
+/** 在目标 agent 上跑一次静默任务并等待 settle（planning 专用，不占用 pendingSettles 槽） */
+async function runPlanTask(
+  agentId: string,
+  task: string
+): Promise<{ ok: boolean; finalText?: string; error?: string }> {
+  const sessionId = `${PLAN_SESSION_PREFIX}-${Date.now().toString(36)}-${(++planSeq).toString(36)}`
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (r: { ok: boolean; finalText?: string; error?: string }): void => {
+      if (settled) return
+      settled = true
+      resolve(r)
+    }
+    const off = onAgentRuntimeSettled((info) => {
+      if (info.agentId !== agentId) return
+      off()
+      // 清理本次拆解会话，避免孤儿会话在磁盘上堆积
+      void deleteHarnessSession(sessionId, agentId).catch(() => undefined)
+      const finalText = info.finalText?.trim()
+      if (info.ok && finalText) finish({ ok: true, finalText })
+      else finish({ ok: false, error: info.error ?? '拆解任务未产出有效文本' }) // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    })
+    runHarnessTask({ agentId, task, sessionId, mode: 'craft', silent: true })
+      .then((res) => {
+        if (!res.started) {
+          off()
+          finish({ ok: false, error: res.message ?? '拆解任务启动失败' }) // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+        }
+      })
+      .catch((err) => {
+        off()
+        finish({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      })
+  })
+}
+
+/**
+ * 自动拆解：把总目标交给策划 Agent（缺省为内置 planner）拆成节点 DAG 草案。
+ * 与 runOrchestrator 同步校验不同：本函数需等模型返回，故为 async 并直接回传结果。
+ */
+export async function planOrchestrator(
+  input: OrchestratorPlanInput
+): Promise<OrchestratorPlanResult> {
+  const goal = String(input?.goal ?? '').trim()
+  if (!goal) {
+    return { ok: false, message: '总目标不能为空，请描述这次协作想达成的结果。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  const agents = agentRegistry.list().filter((a) => a.agentId !== DEFAULT_AGENT_ID)
+  const planner = agentRegistry.get('planner') ?? agents[0] ?? null
+  if (!planner) {
+    return { ok: false, message: '当前没有可用的非缺省 Agent，无法自动拆解。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  if (runtimeIsRunning(planner.agentId)) {
+    return { ok: false, message: `「${agentName(planner.agentId)}」Agent 正忙，请稍后再试。` } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  const run = await runPlanTask(planner.agentId, composePlanTask(goal))
+  if (!run.ok) {
+    return { ok: false, message: run.error ?? '自动拆解失败，请稍后重试。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  let parsed: unknown
+  try {
+    parsed = extractPlanArray(run.finalText ?? '')
+  } catch (err) {
+    return {
+      ok: false,
+      message: `自动拆解结果无法解析为节点列表：${err instanceof Error ? err.message : String(err)}` // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    }
+  }
+  const nodes = sanitizePlan(parsed)
+  if (!nodes.length) {
+    return {
+      ok: false,
+      message: '拆解结果未包含可用节点（Agent 不在可选列表或缺少环节说明），请调整总目标后重试。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    }
+  }
+  return { ok: true, nodes }
+}
+
 /** 全部 job（最新在前），返回只读快照 */
 export function listOrchestratorJobs(): OrchestratorJob[] {
   return [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map((job) => snapshot(job))
@@ -234,22 +418,56 @@ export function abortOrchestratorJob(jobId: string): boolean {
   if (!job || job.state !== 'running') return false
   job.aborted = true
   job.state = 'aborted'
-  const runningNode = job.nodes.find((n) => n.state === 'running')
-  // kill 运行中的 dsh 子进程 → close → settle → runNodeAttempt 返回 aborted 收尾
-  if (runningNode) void abortHarnessTask(runningNode.agentId)
+  const runningNodes = job.nodes.filter((n) => n.state === 'running')
+  // kill 所有运行中的 dsh 子进程 → close → settle → runNodeAttempt 返回 aborted 收尾
+  for (const node of runningNodes) void abortHarnessTask(node.agentId)
   publish(job)
   // 立即把未开始/运行中的节点置 skipped（kill 触发的 settle 到来前 UI 即可看到中止态）
   finalizeAborted(job)
   return true
 }
 
-/** 主循环：按依赖就绪顺序逐个执行节点，直到终态 */
+/* ── 并发闸门：agent 队列锁（同一 agent 的编排派发严格串行）+ 并行上限执行器 ── */
+const agentTails = new Map<string, Promise<void>>()
+
+/** 把 fn 排到指定 agent 的队列尾部：不同 agent 并行，同一 agent（含跨 job）严格串行 */
+async function withAgentLock<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = agentTails.get(agentId) ?? Promise.resolve()
+  const run = prev.then(fn, fn)
+  agentTails.set(
+    agentId,
+    run.then(
+      () => undefined,
+      () => undefined
+    )
+  )
+  return run
+}
+
+/** 以固定并发上限执行一批任务（少于上限则全部并行，超出按入队顺序排队） */
+async function runBatched<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<void> {
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (cursor < tasks.length) {
+      const task = tasks[cursor]
+      cursor += 1
+      await task()
+    }
+  })
+  await Promise.all(workers)
+}
+
+/** 主循环：反复「剔除失效依赖 → 并发执行全部就绪节点」，直到终态 */
 async function runJob(job: JobRecord): Promise<void> {
   try {
     while (job.state === 'running') {
-      const node = pickNextNode(job)
-      if (!node) break
-      await executeNode(job, node)
+      if (cascadeSkips(job)) continue
+      const ready = collectReady(job)
+      if (!ready.length) break
+      await runBatched(
+        ready.map((node) => () => withAgentLock(node.agentId, () => executeNode(job, node))),
+        MAX_PARALLEL
+      )
     }
     if (job.state === 'running') finalize(job)
     else finalizeAborted(job)
@@ -261,11 +479,8 @@ async function runJob(job: JobRecord): Promise<void> {
   }
 }
 
-/**
- * 扫描出下一个可执行节点；顺带把「依赖已失败/跳过」的节点标记为 skipped。
- * 返回 null 表示无节点可推进（全部终态，或防御性检测到死锁）。
- */
-function pickNextNode(job: JobRecord): OrchestratorNodeState | null {
+/** 把「依赖已失败/被跳过」的 pending 节点级联标记为 skipped；返回是否有变化 */
+function cascadeSkips(job: JobRecord): boolean {
   const byId = new Map(job.nodes.map((n) => [n.id, n]))
   const now = Date.now()
   let changed = false
@@ -276,17 +491,28 @@ function pickNextNode(job: JobRecord): OrchestratorNodeState | null {
       node.state = 'skipped'
       node.finishedAt = now
       changed = true
-      continue
     }
-    if (deps.length && !deps.every((d) => d.state === 'done')) continue // 依赖尚未完成
-    return node
   }
   if (changed) publish(job)
-  return null
+  return changed
+}
+
+/** 收集当前依赖已全部完成的 pending 节点（同一轮全部并发派发） */
+function collectReady(job: JobRecord): OrchestratorNodeState[] {
+  const byId = new Map(job.nodes.map((n) => [n.id, n]))
+  const ready: OrchestratorNodeState[] = []
+  for (const node of job.nodes) {
+    if (node.state !== 'pending') continue
+    const deps = node.dependsOn.map((id) => byId.get(id)).filter((d) => d != null)
+    if (!deps.length || deps.every((d) => d.state === 'done')) ready.push(node)
+  }
+  return ready
 }
 
 /** 执行一个节点：running →（重试至多 1 次）→ done / failed / skipped(abort) */
 async function executeNode(job: JobRecord, node: OrchestratorNodeState): Promise<void> {
+  // 排队等待 agent 锁期间 job 可能已被中止并置 skipped：直接退出，避免把终态节点拉回 running
+  if (job.state !== 'running') return
   node.state = 'running'
   node.startedAt = Date.now()
   node.attempts = Math.max(1, node.attempts)
