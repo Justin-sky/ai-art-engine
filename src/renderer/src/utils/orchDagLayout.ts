@@ -128,3 +128,42 @@ export function layoutDag(nodes: DagNodeLike[]): DagLayout {
     rowCount
   }
 }
+
+/** 新增一条依赖边（depId → dependentId，即 dependentId 依赖 depId）的可行性检查结果 */
+export type DependencyCheckResult =
+  | { ok: true }
+  | { ok: false; reason: 'self' | 'missing' | 'duplicate' | 'cycle' }
+
+/**
+ * 检查是否允许新增依赖边 depId → dependentId（让 dependentId 依赖 depId）。
+ * 供「迷你 DAG 画布」拖拽建边前校验，规则与主进程 runOrchestrator 校验保持一致：
+ * - self：不能依赖自身；
+ * - missing：两端必须都是已声明的节点；
+ * - duplicate：dependentId 已声明依赖 depId（重复边）；
+ * - cycle：若 depId 已（直接或间接）依赖 dependentId，补上这条边会形成环。
+ * 纯函数、无 Vue 依赖，可单测。
+ */
+export function canAddDependency(
+  nodes: readonly DagNodeLike[],
+  depId: string,
+  dependentId: string
+): DependencyCheckResult {
+  if (depId === dependentId) return { ok: false, reason: 'self' }
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const dep = byId.get(depId)
+  const dependent = byId.get(dependentId)
+  if (!dep || !dependent) return { ok: false, reason: 'missing' }
+  if ((dependent.dependsOn ?? []).includes(depId)) return { ok: false, reason: 'duplicate' }
+  // depId 沿 dependsOn 能走到 dependentId → depId 已依赖 dependentId，补边即成环
+  const seen = new Set<string>()
+  const stack = [depId]
+  while (stack.length) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    if (id === dependentId) return { ok: false, reason: 'cycle' }
+    const node = byId.get(id)
+    for (const next of node?.dependsOn ?? []) stack.push(next)
+  }
+  return { ok: true }
+}

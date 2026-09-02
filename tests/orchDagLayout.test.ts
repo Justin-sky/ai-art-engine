@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DAG_CHIP_H,
   DAG_CHIP_W,
+  canAddDependency,
   layoutDag,
   type DagNodeLike
 } from '../src/renderer/src/utils/orchDagLayout'
@@ -106,6 +107,69 @@ describe('layoutDag', () => {
       expect(pos.y + DAG_CHIP_H).toBeLessThanOrEqual(layout.canvasHeight)
       expect(id).toBeTruthy()
     }
+  })
+})
+
+describe('canAddDependency', () => {
+  // n1 与 n2 互不依赖（并行），n3 依赖 n1
+  const base: DagNodeLike[] = [
+    { id: 'n1', dependsOn: [] },
+    { id: 'n2', dependsOn: [] },
+    { id: 'n3', dependsOn: ['n1'] }
+  ]
+
+  it('合法新增：无依赖关系的两节点可建边', () => {
+    // 让 n3 额外依赖 n2（n3 此前不依赖 n2）
+    expect(canAddDependency(base, 'n2', 'n3')).toEqual({ ok: true })
+    // 让 n2 依赖 n1（此前 n2 无依赖）
+    expect(canAddDependency(base, 'n1', 'n2')).toEqual({ ok: true })
+  })
+
+  it('拒绝依赖自身', () => {
+    expect(canAddDependency(base, 'n2', 'n2')).toEqual({ ok: false, reason: 'self' })
+  })
+
+  it('拒绝未声明节点（悬空引用）', () => {
+    expect(canAddDependency(base, 'ghost', 'n2')).toEqual({ ok: false, reason: 'missing' })
+    expect(canAddDependency(base, 'n2', 'ghost')).toEqual({ ok: false, reason: 'missing' })
+  })
+
+  it('拒绝重复边：目标节点已依赖来源节点', () => {
+    expect(canAddDependency(base, 'n1', 'n3')).toEqual({ ok: false, reason: 'duplicate' })
+  })
+
+  it('拒绝直接成环：给已互相依赖的双方反向补边', () => {
+    // n2 依赖 n1，再让 n1 依赖 n2 → 环 n1↔n2
+    const pair: DagNodeLike[] = [
+      { id: 'n1', dependsOn: [] },
+      { id: 'n2', dependsOn: ['n1'] }
+    ]
+    expect(canAddDependency(pair, 'n2', 'n1')).toEqual({ ok: false, reason: 'cycle' })
+  })
+
+  it('拒绝传递成环：链上回溯补边', () => {
+    // n1→n2→n3（n3 依赖 n2、n2 依赖 n1）；让 n1 依赖 n3 → n1→n3→n2→n1 成环
+    const chain: DagNodeLike[] = [
+      { id: 'n1', dependsOn: [] },
+      { id: 'n2', dependsOn: ['n1'] },
+      { id: 'n3', dependsOn: ['n2'] }
+    ]
+    expect(canAddDependency(chain, 'n3', 'n1')).toEqual({ ok: false, reason: 'cycle' })
+  })
+
+  it('深层环也能检出（跨多级回路的反向边）', () => {
+    // a→b→c→d；让 a 依赖 d → a→d→c→b→a 成环
+    const deep: DagNodeLike[] = [
+      { id: 'a', dependsOn: [] },
+      { id: 'b', dependsOn: ['a'] },
+      { id: 'c', dependsOn: ['b'] },
+      { id: 'd', dependsOn: ['c'] }
+    ]
+    expect(canAddDependency(deep, 'd', 'a')).toEqual({ ok: false, reason: 'cycle' })
+    // 对照：新增「中间节点到更下游」的直接依赖是合法的（不产生环）
+    expect(canAddDependency(deep, 'b', 'd')).toEqual({ ok: true })
+    // c 已直接依赖 b → 重复边
+    expect(canAddDependency(deep, 'b', 'c')).toEqual({ ok: false, reason: 'duplicate' })
   })
 })
 

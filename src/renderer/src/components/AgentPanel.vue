@@ -395,7 +395,7 @@ async function onCancelPipe(id: string): Promise<void> {
   padding: 2px 8px 2px 6px;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 999px;
-  background: var(--bg-elevated, #1b2028);
+  background: var(--bg-elevated);
   font-size: 11px;
   color: var(--text-secondary, #9aa4b2);
   max-width: 320px;

@@ -9,7 +9,13 @@ import type {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { copyTextToClipboard } from '../utils/copyText'
-import { DAG_CHIP_W, layoutDag, type DagLayout } from '../utils/orchDagLayout'
+import {
+  DAG_CHIP_H,
+  DAG_CHIP_W,
+  canAddDependency,
+  layoutDag,
+  type DagLayout
+} from '../utils/orchDagLayout'
 
 /** 面板可编排节点上限（与主进程校验一致） */
 const MAX_NODES = 12
@@ -73,12 +79,113 @@ function removeNode(index: number): void {
   }
 }
 
-function toggleDep(index: number, depId: string): void {
-  const node = nodes.value[index]
-  if (!node) return
-  const deps = node.dependsOn ?? []
-  node.dependsOn = deps.includes(depId) ? deps.filter((d) => d !== depId) : [...deps, depId]
+/* ── 新建表单：迷你 DAG 画布（拖拽建立依赖 / 点击连线删除） ── */
+const draftCanvasEl = ref<HTMLDivElement | null>(null)
+const dragState = ref<{ fromId: string; x: number; y: number; overId: string | null } | null>(
+  null
+)
+const canvasMsg = ref('')
+const canvasMsgKind = ref<'warn' | 'info'>('info')
+let canvasMsgTimer: number | null = null
+let dragCleanup: (() => void) | null = null
+
+/** 画布拓扑数据（只取布局所需字段；节点增删/连线/改名都会实时重排） */
+const draftDagNodes = computed(() =>
+  nodes.value.map((n) => ({ id: n.id, dependsOn: n.dependsOn ?? [] }))
+)
+const draftLayout = computed(() => layoutDag(draftDagNodes.value))
+
+function agentColor(agentId: string): string | undefined {
+  return props.agents.find((a) => a.agentId === agentId)?.color
 }
+
+/** 指针位置 → 画布内容坐标（随滚动自动换算：内容盒 rect 随滚动位移） */
+function canvasPoint(e: PointerEvent): { x: number; y: number } {
+  const rect = draftCanvasEl.value?.getBoundingClientRect()
+  if (!rect) return { x: e.clientX, y: e.clientY }
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+}
+
+function beginDraftDrag(e: PointerEvent, fromId: string): void {
+  if (e.button !== 0 || dragState.value) return
+  e.preventDefault()
+  const pos = canvasPoint(e)
+  dragState.value = { fromId, x: pos.x, y: pos.y, overId: null }
+  const onMove = (ev: PointerEvent): void => {
+    const s = dragState.value
+    if (!s) return
+    const p = canvasPoint(ev)
+    s.x = p.x
+    s.y = p.y
+    const hit = (ev.target as Element | null)?.closest?.(
+      '[data-draft-node-id]'
+    ) as HTMLElement | null
+    s.overId = hit?.dataset.draftNodeId ?? null
+  }
+  const onUp = (): void => {
+    detachDraftDrag()
+    const s = dragState.value
+    dragState.value = null
+    if (s?.overId && s.overId !== s.fromId) applyDraftDrop(s.fromId, s.overId)
+  }
+  const onCancel = (): void => {
+    detachDraftDrag()
+    dragState.value = null
+  }
+  dragCleanup = () => {
+    window.removeEventListener('pointermove', onMove, true)
+    window.removeEventListener('pointerup', onUp, true)
+    window.removeEventListener('pointercancel', onCancel, true)
+    dragCleanup = null
+  }
+  window.addEventListener('pointermove', onMove, true)
+  window.addEventListener('pointerup', onUp, true)
+  window.addEventListener('pointercancel', onCancel, true)
+}
+
+function detachDraftDrag(): void {
+  dragCleanup?.()
+}
+
+/** 落点校验通过后建边：来源 A 拖到目标 B 上 → B 的 dependsOn 追加 A（箭头 A→B） */
+function applyDraftDrop(fromId: string, toId: string): void {
+  const check = canAddDependency(draftDagNodes.value, fromId, toId)
+  if (!check.ok) {
+    if (check.reason === 'cycle') {
+      showCanvasMsg(t('studio.orchestrator.canvasCycle'), 'warn')
+    }
+    return
+  }
+  const target = nodes.value.find((n) => n.id === toId)
+  if (target) target.dependsOn = [...(target.dependsOn ?? []), fromId]
+}
+
+/** 点击连线删除该依赖：从「目标节点」的 dependsOn 里移除来源节点 */
+function removeDraftEdge(fromId: string, toId: string): void {
+  const node = nodes.value.find((n) => n.id === toId)
+  if (!node) return
+  node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== fromId)
+}
+
+function showCanvasMsg(text: string, kind: 'warn' | 'info'): void {
+  canvasMsg.value = text
+  canvasMsgKind.value = kind
+  if (canvasMsgTimer) window.clearTimeout(canvasMsgTimer)
+  canvasMsgTimer = window.setTimeout(() => {
+    canvasMsg.value = ''
+  }, 2400)
+}
+
+/** 拖拽中的临时连线：从来源卡片右侧锚点到当前指针；悬停在非法落点（成环）变红 */
+const tempEdge = computed(() => {
+  const s = dragState.value
+  if (!s) return null
+  const from = draftLayout.value.posBy.get(s.fromId)
+  if (!from) return null
+  const path = edgePath(from.x + DAG_CHIP_W, from.y + DAG_CHIP_H / 2, s.x, s.y)
+  const invalid = Boolean(s.overId) && !canAddDependency(draftDagNodes.value, s.fromId, s.overId!).ok
+  return { path, invalid }
+})
 
 function onResizeTextarea(event: Event): void {
   const el = event.target as HTMLTextAreaElement
@@ -87,6 +194,9 @@ function onResizeTextarea(event: Event): void {
 }
 
 function clearForm(): void {
+  detachDraftDrag()
+  dragState.value = null
+  canvasMsg.value = ''
   goal.value = ''
   jobTitle.value = ''
   nodes.value = []
@@ -225,6 +335,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  detachDraftDrag()
+  if (canvasMsgTimer) window.clearTimeout(canvasMsgTimer)
   stopEvents?.()
 })
 
@@ -393,6 +505,102 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
       </div>
 
       <div
+        v-if="nodes.length >= 2"
+        class="draft-graph-area"
+      >
+        <div class="draft-graph-head">
+          <span class="draft-graph-title">{{ t('studio.orchestrator.canvasTitle') }}</span>
+          <span class="draft-graph-hint">{{ t('studio.orchestrator.canvasHint') }}</span>
+          <span
+            v-if="canvasMsg"
+            class="draft-graph-msg"
+            :class="canvasMsgKind"
+          >{{ canvasMsg }}</span>
+        </div>
+        <div class="draft-graph-scroll">
+          <div
+            ref="draftCanvasEl"
+            class="draft-graph"
+            :style="{
+              width: draftLayout.canvasWidth + 'px',
+              height: draftLayout.canvasHeight + 'px'
+            }"
+          >
+            <svg
+              class="graph-lines"
+              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
+            >
+              <path
+                v-for="edge in draftLayout.edges"
+                :key="`e:${edge.from}:${edge.to}`"
+                class="graph-edge draft-edge"
+                :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+              />
+            </svg>
+            <svg
+              class="graph-hit-layer"
+              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
+            >
+              <path
+                v-for="edge in draftLayout.edges"
+                :key="`h:${edge.from}:${edge.to}`"
+                class="edge-hit"
+                :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+                @click="removeDraftEdge(edge.from, edge.to)"
+              >
+                <title>{{ t('studio.orchestrator.canvasRemoveEdge') }}</title>
+              </path>
+            </svg>
+            <button
+              v-for="node in nodes"
+              :key="node.id"
+              type="button"
+              class="graph-chip draft-chip"
+              :class="{
+                'drag-from': dragState?.fromId === node.id,
+                'drag-over': dragState?.overId === node.id && dragState?.fromId !== node.id
+              }"
+              :data-draft-node-id="node.id"
+              :style="{
+                left: (draftLayout.posBy.get(node.id)?.x ?? 0) + 'px',
+                top: (draftLayout.posBy.get(node.id)?.y ?? 0) + 'px',
+                width: DAG_CHIP_W + 'px'
+              }"
+              :title="node.instruction || node.id"
+              @pointerdown="beginDraftDrag($event, node.id)"
+            >
+              <span
+                class="flow-dot"
+                :style="
+                  agentColor(node.agentId)
+                    ? { background: agentColor(node.agentId) }
+                    : undefined
+                "
+              />
+              <span class="graph-agent">{{ agentName(node.agentId) }}</span>
+              <span class="graph-id">{{ node.id }}</span>
+              <span
+                v-if="(node.dependsOn?.length ?? 0) > 0"
+                class="graph-deps-n"
+                :title="t('studio.orchestrator.canvasDeps')"
+              >{{ node.dependsOn?.length }}↑</span>
+            </button>
+            <svg
+              v-if="tempEdge"
+              class="graph-temp-layer"
+              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
+            >
+              <path
+                class="temp-edge"
+                :class="{ invalid: tempEdge.invalid }"
+                :d="tempEdge.path"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div
         v-if="selectableAgents.length"
         class="nodes-block"
       >
@@ -440,23 +648,6 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             :placeholder="t('studio.orchestrator.nodeInstructionPlaceholder')"
             @input="onResizeTextarea"
           />
-          <div
-            v-if="nodes.length > 1"
-            class="node-deps"
-          >
-            <span class="deps-title">{{ t('studio.orchestrator.nodeDeps') }}</span>
-            <button
-              v-for="other in nodes.filter((n) => n.id !== node.id)"
-              :key="other.id"
-              type="button"
-              class="dep-chip"
-              :class="{ on: node.dependsOn?.includes(other.id) }"
-              @click="toggleDep(index, other.id)"
-            >
-              {{ other.id }}
-            </button>
-            <span class="deps-hint">{{ t('studio.orchestrator.nodeDepsHint') }}</span>
-          </div>
         </div>
         <button
           type="button"
@@ -830,7 +1021,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   box-sizing: border-box;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 6px;
-  background: var(--bg-input, #1a1c1f);
+  background: var(--bg-input);
   color: var(--text-primary, #e6e9ef);
   font-family: inherit;
   font-size: 12px;
@@ -894,7 +1085,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   min-width: 0;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 6px;
-  background: var(--bg-input, #1a1c1f);
+  background: var(--bg-input);
   color: var(--text-primary, #e6e9ef);
   font-family: inherit;
   font-size: 12px;
@@ -921,37 +1112,6 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 }
 .node-instruction {
   line-height: 1.45;
-}
-.node-deps {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.deps-title {
-  font-size: 11px;
-  color: var(--text-tertiary, #5b6472);
-  flex: none;
-}
-.dep-chip {
-  flex: none;
-  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
-  background: transparent;
-  color: var(--text-secondary, #9aa4b2);
-  font-size: 11px;
-  font-family: var(--mono, 'Cascadia Code', Consolas, monospace);
-  border-radius: 999px;
-  padding: 1px 8px;
-  cursor: pointer;
-}
-.dep-chip.on {
-  background: color-mix(in srgb, var(--agent-color, #37b26c) 22%, transparent);
-  border-color: color-mix(in srgb, var(--agent-color, #37b26c) 50%, transparent);
-  color: var(--text-primary, #e6e9ef);
-}
-.deps-hint {
-  font-size: 10px;
-  color: var(--text-tertiary, #5b6472);
 }
 .form-warn {
   color: var(--warning, #f0b429);
@@ -998,6 +1158,118 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 .form-error {
   color: #e5484d;
   font-size: 11px;
+}
+
+/* ── 新建表单：依赖连线画布（迷你 DAG） ── */
+.draft-graph-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.18));
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+}
+.draft-graph-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.draft-graph-title {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-primary, #e6e9ef);
+}
+.draft-graph-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary, #5b6472);
+}
+.draft-graph-msg {
+  flex: none;
+  font-size: 11px;
+}
+.draft-graph-msg.warn {
+  color: #e5484d;
+}
+.draft-graph-msg.info {
+  color: #3dd68c;
+}
+.draft-graph-scroll {
+  overflow: auto;
+  max-height: 168px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.16));
+  border-radius: 6px;
+  background: var(--bg-input);
+}
+.draft-graph {
+  position: relative;
+  min-width: 100%;
+}
+.graph-hit-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.graph-temp-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 13;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.edge-hit:hover {
+  stroke: rgba(240, 180, 41, 0.35);
+}
+.draft-edge {
+  stroke-dasharray: 4 3;
+}
+.temp-edge {
+  fill: none;
+  stroke: #3dd68c;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.temp-edge.invalid {
+  stroke: #e5484d;
+}
+.draft-chip {
+  cursor: grab;
+}
+.draft-chip:active {
+  cursor: grabbing;
+}
+.draft-chip.drag-from {
+  border-color: #3dd68c;
+  box-shadow: 0 0 0 2px rgba(61, 214, 140, 0.35);
+}
+.draft-chip.drag-over {
+  border-color: #f0b429;
+  box-shadow: 0 0 0 2px rgba(240, 180, 41, 0.45);
+}
+.graph-deps-n {
+  flex: none;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-tertiary, #5b6472);
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 999px;
+  padding: 1px 5px;
 }
 
 /* ── 记录列表 ── */
@@ -1148,7 +1420,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   gap: 6px;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 999px;
-  background: var(--bg-elevated, #1b2028);
+  background: var(--bg-elevated);
   padding: 3px 10px 3px 8px;
   cursor: pointer;
   max-width: 100%;
@@ -1254,7 +1526,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   font-size: 11px;
   line-height: 1.6;
   color: var(--text-primary, #e6e9ef);
-  background: var(--bg-input, rgba(0, 0, 0, 0.22));
+  background: var(--bg-input);
   border-radius: 6px;
   padding: 8px;
   white-space: pre-wrap;
@@ -1324,7 +1596,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   padding: 2px;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 8px;
-  background: var(--bg-input, rgba(0, 0, 0, 0.22));
+  background: var(--bg-input);
   margin-bottom: 6px;
 }
 .view-chip {
@@ -1352,7 +1624,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   max-height: 320px;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.18));
   border-radius: 8px;
-  background: var(--bg-input, rgba(0, 0, 0, 0.14));
+  background: var(--bg-input);
 }
 .node-graph {
   position: relative;
@@ -1394,7 +1666,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   padding: 0 8px;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.3));
   border-radius: 8px;
-  background: var(--bg-elevated, #1b2028);
+  background: var(--bg-elevated);
   color: var(--text-primary, #e6e9ef);
   font-family: inherit;
   font-size: 11px;
