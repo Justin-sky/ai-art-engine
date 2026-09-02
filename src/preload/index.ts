@@ -107,6 +107,12 @@ const api: StudioApi = {
   getSettings: () => ipcRenderer.invoke(IpcChannels.SETTINGS_GET),
   setSettings: (settings: AppSettings) => ipcRenderer.invoke(IpcChannels.SETTINGS_SET, settings),
 
+  getYoloStatus: () => ipcRenderer.invoke(IpcChannels.YOLO_STATUS),
+  yoloDetect: (input) => ipcRenderer.invoke(IpcChannels.YOLO_DETECT, input),
+  yoloSegment: (input) => ipcRenderer.invoke(IpcChannels.YOLO_SEGMENT, input),
+  yoloPose: (input) => ipcRenderer.invoke(IpcChannels.YOLO_POSE, input),
+  openYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_OPEN_MODEL_DIR),
+
   getAppVersion: () => ipcRenderer.invoke(IpcChannels.APP_GET_VERSION),
   checkForUpdates: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK),
   installUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL),

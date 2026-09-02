@@ -7,7 +7,7 @@ import {
   type ObjectStorageProviderInstance
 } from '@shared/objectStorage'
 import { getObjectStorageAdapter } from '../runtime'
-import { fail, defErr, defErrSimple } from '@shared/errors/appError'
+import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { settingsService } from './settingsService'
 import { projectService } from './projectService'
@@ -32,6 +32,70 @@ const E_STORAGE_EMPTY_MEDIA_PATH = defErrSimple(
   'storage.upload.emptyMediaPath',
   '空的媒体路径',
   'Media path is empty'
+)
+
+// ── 上传日志文案（非 throw 场景，用 formatBi 按当前语言取值）──
+const L_STORAGE_REUSE_CACHED = defErr<{
+  sourceLabel: string
+  bucket: string
+  objectKey: string
+}>(
+  'storage.log.reuseCached',
+  ({ sourceLabel, bucket, objectKey }) =>
+    `复用已上传的参考媒体：${sourceLabel} → ${bucket}/${objectKey}（缓存命中，不重复上传）`,
+  ({ sourceLabel, bucket, objectKey }) =>
+    `Reusing uploaded reference media: ${sourceLabel} → ${bucket}/${objectKey} (cache hit, no re-upload)`
+)
+const L_STORAGE_START_UPLOAD = defErr<{
+  provider: string
+  sourceLabel: string
+  bucket: string
+  objectKey: string
+  size: string
+}>(
+  'storage.log.startUpload',
+  ({ provider, sourceLabel, bucket, objectKey, size }) =>
+    `开始上传参考媒体到 ${provider}：${sourceLabel} → ${bucket}/${objectKey}（${size}）`,
+  ({ provider, sourceLabel, bucket, objectKey, size }) =>
+    `Uploading reference media to ${provider}: ${sourceLabel} → ${bucket}/${objectKey} (${size})`
+)
+const L_STORAGE_START_DATA_UPLOAD = defErr<{
+  provider: string
+  sourceLabel: string
+  bucket: string
+  objectKey: string
+  size: string
+}>(
+  'storage.log.startDataUrlUpload',
+  ({ provider, sourceLabel, bucket, objectKey, size }) =>
+    `开始上传 data URL 参考媒体到 ${provider}：${sourceLabel} → ${bucket}/${objectKey}（${size}）`,
+  ({ provider, sourceLabel, bucket, objectKey, size }) =>
+    `Uploading data URL reference media to ${provider}: ${sourceLabel} → ${bucket}/${objectKey} (${size})`
+)
+const L_STORAGE_ALREADY_REMOTE = defErr<{ url: string }>(
+  'storage.log.alreadyRemote',
+  ({ url }) => `参考媒体已是远程 URL，跳过上传：${url}`,
+  ({ url }) => `Reference media is already a remote URL, skipping upload: ${url}`
+)
+const L_STORAGE_UPLOAD_DONE = defErr<{ ms: number; url: string }>(
+  'storage.log.uploadDone',
+  ({ ms, url }) => `上传完成（${ms}ms）：${url}`,
+  ({ ms, url }) => `Upload finished (${ms}ms): ${url}`
+)
+const L_STORAGE_SKIP_DELETE = defErr<{ reason: string }>(
+  'storage.log.skipDelete',
+  ({ reason }) => `跳过删除临时参考媒体：${reason}`,
+  ({ reason }) => `Skipped deleting temporary reference media: ${reason}`
+)
+const L_STORAGE_DELETED = defErr<{ label: string; bucket: string; key: string }>(
+  'storage.log.deleted',
+  ({ label, bucket, key }) => `已删除临时参考媒体：${label}（${bucket}/${key}）`,
+  ({ label, bucket, key }) => `Deleted temporary reference media: ${label} (${bucket}/${key})`
+)
+const L_STORAGE_DELETE_FAILED = defErr<{ bucket: string; key: string; reason: string }>(
+  'storage.log.deleteFailed',
+  ({ bucket, key, reason }) => `删除临时参考媒体失败：${bucket}/${key} — ${reason}`,
+  ({ bucket, key, reason }) => `Failed to delete temporary reference media: ${bucket}/${key} — ${reason}`
 )
 
 export interface ObjectStorageLogEntry {
@@ -204,7 +268,11 @@ function cloneCachedUpload(
     cloned.logs,
     onLog,
     'info',
-    `复用已上传的参考媒体：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`
+    formatBi(L_STORAGE_REUSE_CACHED, {
+      sourceLabel: result.sourceLabel,
+      bucket: result.bucket,
+      objectKey: result.objectKey
+    })
   )
   return cloned
 }
@@ -230,7 +298,13 @@ export async function uploadLocalFile(
     logs,
     onLog,
     'info',
-    `开始上传参考媒体到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(bytes)}）`
+    formatBi(L_STORAGE_START_UPLOAD, {
+      provider: provider.label,
+      sourceLabel,
+      bucket,
+      objectKey,
+      size: formatBytes(bytes)
+    })
   )
 
   const started = Date.now()
@@ -239,7 +313,10 @@ export async function uploadLocalFile(
     logs,
     onLog,
     'info',
-    `上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`
+    formatBi(L_STORAGE_UPLOAD_DONE, {
+      ms: Date.now() - started,
+      url: `${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`
+    })
   )
 
   return {
@@ -268,7 +345,7 @@ export async function ensureRemoteMediaUrl(
   if (/^https?:\/\//i.test(trimmed)) {
     options?.onLog?.({
       level: 'info',
-      message: `参考媒体已是远程 URL，跳过上传：${trimmed.slice(0, 120)}`,
+      message: formatBi(L_STORAGE_ALREADY_REMOTE, { url: trimmed.slice(0, 120) }),
       ts: Date.now()
     })
     return { url: trimmed }
@@ -289,7 +366,13 @@ export async function ensureRemoteMediaUrl(
       logs,
       options?.onLog,
       'info',
-      `开始上传 data URL 参考媒体到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(buffer.byteLength)}）`
+      formatBi(L_STORAGE_START_DATA_UPLOAD, {
+        provider: provider.label,
+        sourceLabel,
+        bucket,
+        objectKey,
+        size: formatBytes(buffer.byteLength)
+      })
     )
     const started = Date.now()
     const url = await adapterOf(provider).uploadBuffer(provider, buffer, objectKey)
@@ -297,7 +380,10 @@ export async function ensureRemoteMediaUrl(
       logs,
       options?.onLog,
       'info',
-      `上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`
+      formatBi(L_STORAGE_UPLOAD_DONE, {
+        ms: Date.now() - started,
+        url: `${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`
+      })
     )
     const result: ObjectStorageUploadResult = {
       objectKey,
@@ -365,7 +451,9 @@ export async function deleteUploads(
       logs,
       options?.onLog,
       'warn',
-      `跳过删除临时参考媒体：${err instanceof Error ? err.message : String(err)}`
+      formatBi(L_STORAGE_SKIP_DELETE, {
+        reason: err instanceof Error ? err.message : String(err)
+      })
     )
     return logs
   }
@@ -383,14 +471,18 @@ export async function deleteUploads(
         logs,
         options?.onLog,
         'info',
-        `已删除临时参考媒体：${item.sourceLabel || key}（${bucket}/${key}）`
+        formatBi(L_STORAGE_DELETED, { label: item.sourceLabel || key, bucket, key })
       )
     } catch (err) {
       pushLog(
         logs,
         options?.onLog,
         'warn',
-        `删除临时参考媒体失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`
+        formatBi(L_STORAGE_DELETE_FAILED, {
+          bucket,
+          key,
+          reason: err instanceof Error ? err.message : String(err)
+        })
       )
     }
   }

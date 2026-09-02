@@ -64,6 +64,8 @@ import {
   restartMcpServer
 } from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
+import { yoloService } from './yolo/yoloService'
+import type { YoloInferenceInput } from '@shared/yolo'
 import {
   commitAiWorkflow,
   planAiWorkflow
@@ -304,6 +306,13 @@ export function registerIpcHandlers(): void {
 
   handle(IpcChannels.SETTINGS_GET, () => settingsService.get())
   handle(IpcChannels.SETTINGS_SET, (settings: AppSettings) => settingsService.set(settings))
+
+  // Local vision (YOLO)
+  handle(IpcChannels.YOLO_STATUS, () => yoloService.status())
+  handle(IpcChannels.YOLO_DETECT, (input: YoloInferenceInput) => yoloService.detect(input))
+  handle(IpcChannels.YOLO_SEGMENT, (input: YoloInferenceInput) => yoloService.segment(input))
+  handle(IpcChannels.YOLO_POSE, (input: YoloInferenceInput) => yoloService.pose(input))
+  handle(IpcChannels.YOLO_OPEN_MODEL_DIR, () => yoloService.openModelDir())
 
   handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>

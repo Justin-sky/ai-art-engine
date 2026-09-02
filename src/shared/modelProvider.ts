@@ -100,6 +100,8 @@ export function resolveCustomApiStyle(provider: ModelProviderInstance): CustomAp
 export interface ModelProviderKindMeta {
   id: ModelProviderKind
   label: string
+  /** 需本地化的展示名（如「自定义」）走 vue-i18n；品牌名不设此字段 */
+  labelKey?: string
   defaultBaseUrl: string
   /** 控制台 / 密钥申请页，设置 UI 与手册共用 */
   credentialsUrl: string
@@ -242,7 +244,8 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   },
   {
     id: 'custom',
-    label: '自定义',
+    label: '自定义', // cjk-ok 落盘默认实例名（用户可改）；下拉与列表显示走 labelKey → vue-i18n
+    labelKey: 'settings.models.providerCustom',
     /** Base URL 由用户填写，无默认端点 */
     defaultBaseUrl: '',
     /** 无统一申请页；提示文案见 settings.models.customApiStyleHint */

@@ -7,6 +7,7 @@ import { startMainRuntime } from './runtime'
 import { setAppErrorLocaleResolver } from '@shared/errors/appError'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
+import { yoloService } from './yolo/yoloService'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
 import { resolveAppIconPath } from './appIcon'
 
@@ -163,4 +164,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   stopMcpServer()
+  yoloService.stop()
 })

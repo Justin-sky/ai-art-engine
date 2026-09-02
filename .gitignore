@@ -15,3 +15,5 @@ oss-website.local.json
 .aiartengine-tmp/
 .claude/
 *.stackdump
+# 随包内置的 YOLO 模型（约 33MB），构建前用 npm run fetch:yolo-models 拉取
+resources/yolo-models/*.onnx

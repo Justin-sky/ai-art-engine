@@ -209,9 +209,16 @@ files:
   - '!*.tsbuildinfo'
   - '!*.log'
   - '!.aiartengine-tmp'
+# onnxruntime-node 含预编译 .node 原生模块（N-API，无需 electron-rebuild），
+# 但 .node 文件不能直接从 asar 内 dlopen——需解包到 app.asar.unpacked 供加载。
+asarUnpack:
+  - node_modules/onnxruntime-node/**
 extraResources:
   - from: resources/icon.png
     to: icon.png
+  # 随包内置的 YOLO 模型（detect / segment / pose），首次启动同步到模型目录
+  - from: resources/yolo-models
+    to: yolo-models
   - from: scripts/mcp-bridge.mjs
     to: mcp-bridge.mjs
   # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 产出 out/dsh，

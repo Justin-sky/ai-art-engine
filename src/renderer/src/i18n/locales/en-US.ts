@@ -272,6 +272,7 @@ export default {
     },
     models: {
       addProvider: 'Add model provider',
+      providerCustom: 'Custom',
       add: 'Add',
       addedProvider: 'Added {label}. Fill in Base URL / API key, then click Fetch models.',
       collapseProvider: 'Collapse provider',

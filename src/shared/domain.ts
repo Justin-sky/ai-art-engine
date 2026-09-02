@@ -422,6 +422,20 @@ export function createDraftAssetId(): string {
   return `${DRAFT_ASSET_ID_PREFIX}${crypto.randomUUID()}`
 }
 
+/** 本地视觉（YOLO）设置 */
+export interface YoloSettings {
+  /** 是否启用本地视觉；未启用时 yolo:* 返回 ready=false */
+  enabled: boolean
+  /** 推理后端；'cpu' 开箱即用（'dml' 需另装 onnxruntime-directml） */
+  backend: 'cpu'
+  /** 模型目录；空 = 缺省 <userData>/yolo-models */
+  modelDir: string
+  /** 默认置信度阈值 */
+  confThreshold: number
+  /** 默认 NMS IoU 阈值 */
+  iouThreshold: number
+}
+
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
   theme: 'dark' | 'light'
@@ -449,6 +463,8 @@ export interface AppSettings {
     apiKey: string
     model: string
   }
+  /** 本地视觉（YOLO）：ONNX 本地推理 */
+  yolo: YoloSettings
 }
 
 export const DEFAULT_RESOLUTION: Resolution = { w: 1280, h: 720 }
@@ -1941,6 +1957,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
     endpoint: '',
     apiKey: '',
     model: 'gpt-4o-mini'
+  },
+  yolo: {
+    enabled: true,
+    backend: 'cpu',
+    modelDir: '',
+    confThreshold: 0.25,
+    iouThreshold: 0.45
   }
 }
 
