@@ -66,6 +66,7 @@ import {
 import {
   abortOrchestratorJob,
   listOrchestratorJobs,
+  planOrchestrator,
   runOrchestrator
 } from './services/agentOrchestrator'
 import { settingsService } from './services/settingsService'
@@ -361,6 +362,9 @@ export function registerIpcHandlers(): void {
   // 模式 C：多 Agent 编排（用户提交 DAG，主进程串行调度；进度经 ORCHESTRATOR_EVENT 推送）
   handle(IpcChannels.ORCHESTRATOR_RUN, (_ev, input: import('@shared/ipc').OrchestratorRunInput) =>
     runOrchestrator(input)
+  )
+  handle(IpcChannels.ORCHESTRATOR_PLAN, (_ev, input: import('@shared/ipc').OrchestratorPlanInput) =>
+    planOrchestrator(input)
   )
   handle(IpcChannels.ORCHESTRATOR_LIST, () => listOrchestratorJobs())
   handle(IpcChannels.ORCHESTRATOR_ABORT, (_ev, jobId: string) => abortOrchestratorJob(jobId))

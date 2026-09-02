@@ -9,6 +9,7 @@ import type {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { copyTextToClipboard } from '../utils/copyText'
+import { DAG_CHIP_W, layoutDag, type DagLayout } from '../utils/orchDagLayout'
 
 /** 面板可编排节点上限（与主进程校验一致） */
 const MAX_NODES = 12
@@ -31,7 +32,16 @@ const jobTitle = ref('')
 const nodes = ref<OrchestratorRunInput['nodes']>([])
 const formError = ref('')
 const submitting = ref(false)
+const planning = ref(false)
+const planInfo = ref('')
 let nodeSeq = 0
+
+/** 单条编排记录的展示模式（flow 列表 / graph 连线图）；未记录时按节点数给默认值 */
+const viewMode = ref<Record<string, 'flow' | 'graph'>>({})
+/** 连线图模式下选中的节点（jobId → nodeId），详情展示在图上 */
+const graphSel = ref<Record<string, string>>({})
+/** job 对象 → DAG 布局缓存（job 对象随事件替换，旧对象自然被 GC） */
+const layoutCache = new WeakMap<OrchestratorJob, DagLayout>()
 
 /** 可编排角色：缺省助手不参与（会与用户主会话互相干扰） */
 const selectableAgents = computed(() => props.agents.filter((a) => a.agentId !== 'default'))
@@ -81,6 +91,51 @@ function clearForm(): void {
   jobTitle.value = ''
   nodes.value = []
   formError.value = ''
+  planInfo.value = ''
+}
+
+/** 智能拆解：把总目标交给策划 Agent，用返回的节点草案填充下方表单（可继续编辑后运行） */
+async function onAutoPlan(): Promise<void> {
+  formError.value = ''
+  planInfo.value = ''
+  if (!goal.value.trim()) {
+    formError.value = t('studio.orchestrator.noGoalPlan')
+    return
+  }
+  if (planning.value || submitting.value) return
+  if (nodes.value.length) {
+    const ok = await promptConfirm({
+      title: t('studio.orchestrator.planReplaceTitle'),
+      message: t('studio.orchestrator.planReplaceMessage', { n: nodes.value.length }),
+      confirmLabel: t('studio.orchestrator.autoPlan')
+    })
+    if (!ok) return
+  }
+  planning.value = true
+  try {
+    const result = await window.studio.planOrchestrator({ goal: goal.value.trim() })
+    if (!result.ok) {
+      formError.value = result.message ?? t('studio.orchestrator.planFailed')
+      return
+    }
+    const planned = (result.nodes ?? []).map((n) => ({
+      id: n.id,
+      agentId: n.agentId,
+      instruction: n.instruction,
+      ...(n.dependsOn?.length ? { dependsOn: [...n.dependsOn] } : {})
+    }))
+    if (!planned.length) {
+      formError.value = t('studio.orchestrator.planFailed')
+      return
+    }
+    nodes.value = planned
+    nodeSeq = Math.max(nodeSeq, planned.length)
+    planInfo.value = t('studio.orchestrator.planSuccess', { n: planned.length })
+  } catch {
+    formError.value = t('studio.orchestrator.planFailed')
+  } finally {
+    planning.value = false
+  }
 }
 
 // agent 列表异步就绪后，为「早先创建但未选角色」的节点草稿回填默认角色
@@ -182,6 +237,59 @@ const sortedJobs = computed(() =>
   })
 )
 
+/** 记录当前展示模式；未设置过时按节点数给默认值（多节点默认看连线图） */
+function viewOf(job: OrchestratorJob): 'flow' | 'graph' {
+  return viewMode.value[job.jobId] ?? (job.nodes.length > 1 ? 'graph' : 'flow')
+}
+
+function setView(jobId: string, mode: 'flow' | 'graph'): void {
+  viewMode.value[jobId] = mode
+}
+
+/** 取（并缓存）job 的 DAG 布局：同一 job 对象在一次渲染内只算一次 */
+function layoutFor(job: OrchestratorJob): DagLayout {
+  let layout = layoutCache.get(job)
+  if (!layout) {
+    layout = layoutDag(job.nodes.map((n) => ({ id: n.id, dependsOn: n.dependsOn })))
+    layoutCache.set(job, layout)
+  }
+  return layout
+}
+
+/** 连线图：依赖节点（from）颜色决定连线色调，让失败/跳过快照一眼可见 */
+function edgeToneClass(job: OrchestratorJob, fromId: string): string {
+  const dep = job.nodes.find((n) => n.id === fromId)
+  if (!dep) return ''
+  if (dep.state === 'failed') return 'is-failed'
+  if (dep.state === 'skipped') return 'is-skipped'
+  if (dep.state === 'done') return 'is-done'
+  return ''
+}
+
+/** 连线图：贝塞尔路径（from 右侧中心 → to 左侧中心，始终向右） */
+function edgePath(fromX: number, fromY: number, toX: number, toY: number): string {
+  const mx = fromX + (toX - fromX) / 2
+  return `M ${fromX} ${fromY} C ${mx} ${fromY}, ${mx} ${toY}, ${toX} ${toY}`
+}
+
+interface GraphDetail {
+  node: OrchestratorNodeState
+  copyKey: string
+}
+
+/** 连线图：点击卡片选中/取消，选中后在图下展示该节点详情 */
+function onGraphChip(jobId: string, nodeId: string): void {
+  graphSel.value[jobId] = graphSel.value[jobId] === nodeId ? '' : nodeId
+}
+
+/** 连线图：返回 0/1 个选中节点详情（模板里用 v-for 规避可选访问） */
+function selectedNodeDetails(jobId: string, job: OrchestratorJob): GraphDetail[] {
+  const id = graphSel.value[jobId]
+  const node = id ? job.nodes.find((n) => n.id === id) : undefined
+  if (!node) return []
+  return [{ node, copyKey: `g:${jobId}:${node.id}` }]
+}
+
 function agentName(id: string): string {
   return props.agents.find((a) => a.agentId === id)?.name ?? id
 }
@@ -260,7 +368,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         v-model="jobTitle"
         class="text-input goal-input"
         :placeholder="t('studio.orchestrator.jobTitlePlaceholder')"
-      />
+      >
       <textarea
         v-model="goal"
         class="text-input goal-textarea"
@@ -268,25 +376,51 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         :placeholder="t('studio.orchestrator.goalPlaceholder')"
         @input="onResizeTextarea"
       />
+      <div class="plan-row">
+        <button
+          type="button"
+          class="action-btn ghost plan-btn"
+          :disabled="planning || submitting || !goal.trim() || !selectableAgents.length"
+          @click="onAutoPlan"
+        >
+          {{ planning ? t('studio.orchestrator.planning') : t('studio.orchestrator.autoPlan') }}
+        </button>
+        <span class="plan-hint">{{ t('studio.orchestrator.autoPlanHint') }}</span>
+        <span
+          v-if="planInfo"
+          class="plan-info"
+        >{{ planInfo }}</span>
+      </div>
 
-      <div v-if="selectableAgents.length" class="nodes-block">
+      <div
+        v-if="selectableAgents.length"
+        class="nodes-block"
+      >
         <div class="nodes-hint">
           {{ t('studio.orchestrator.nodesHint') }}
         </div>
-        <div v-for="(node, index) in nodes" :key="node.id" class="node-card">
+        <div
+          v-for="(node, index) in nodes"
+          :key="node.id"
+          class="node-card"
+        >
           <div class="node-head">
             <span class="node-index">{{ index + 1 }}</span>
             <input
               v-model="node.id"
               class="text-input node-id-input"
               :title="t('studio.orchestrator.nodeId')"
-            />
+            >
             <select
               v-model="node.agentId"
               class="node-agent-select"
               :title="t('studio.orchestrator.nodeAgent')"
             >
-              <option v-for="agent in selectableAgents" :key="agent.agentId" :value="agent.agentId">
+              <option
+                v-for="agent in selectableAgents"
+                :key="agent.agentId"
+                :value="agent.agentId"
+              >
                 {{ agent.name }}
               </option>
             </select>
@@ -306,7 +440,10 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             :placeholder="t('studio.orchestrator.nodeInstructionPlaceholder')"
             @input="onResizeTextarea"
           />
-          <div v-if="nodes.length > 1" class="node-deps">
+          <div
+            v-if="nodes.length > 1"
+            class="node-deps"
+          >
             <span class="deps-title">{{ t('studio.orchestrator.nodeDeps') }}</span>
             <button
               v-for="other in nodes.filter((n) => n.id !== node.id)"
@@ -328,12 +465,18 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
           @click="addNode"
         >
           {{ t('studio.orchestrator.addNode') }}
-          <span v-if="nodes.length >= MAX_NODES" class="limit-note">{{
+          <span
+            v-if="nodes.length >= MAX_NODES"
+            class="limit-note"
+          >{{
             t('studio.orchestrator.nodeLimit', { max: MAX_NODES })
           }}</span>
         </button>
       </div>
-      <div v-else class="form-warn">
+      <div
+        v-else
+        class="form-warn"
+      >
         {{ t('studio.orchestrator.noAgent') }}
       </div>
 
@@ -341,15 +484,23 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         <button
           type="button"
           class="action-btn primary"
-          :disabled="submitting || !selectableAgents.length || !nodes.length"
+          :disabled="submitting || planning || !selectableAgents.length || !nodes.length"
           @click="submit"
         >
           {{ submitting ? t('studio.orchestrator.submitting') : t('studio.orchestrator.run') }}
         </button>
-        <button type="button" class="action-btn ghost" :disabled="submitting" @click="clearForm">
+        <button
+          type="button"
+          class="action-btn ghost"
+          :disabled="submitting"
+          @click="clearForm"
+        >
           {{ t('studio.orchestrator.clear') }}
         </button>
-        <span v-if="formError" class="form-error">{{ formError }}</span>
+        <span
+          v-if="formError"
+          class="form-error"
+        >{{ formError }}</span>
       </div>
     </div>
 
@@ -358,18 +509,35 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
       <div class="jobs-head">
         <span class="jobs-title">
           {{ t('studio.orchestrator.jobs') }}
-          <span v-if="runningCount" class="running-badge">{{
+          <span
+            v-if="runningCount"
+            class="running-badge"
+          >{{
             t('studio.orchestrator.runningBadge', { n: runningCount })
           }}</span>
         </span>
       </div>
-      <div v-if="!sortedJobs.length" class="jobs-empty">
+      <div
+        v-if="!sortedJobs.length"
+        class="jobs-empty"
+      >
         {{ t('studio.orchestrator.jobsEmpty') }}
       </div>
-      <div v-for="job in sortedJobs" :key="job.jobId" class="job-card" :class="job.state">
-        <div class="job-head" @click="toggleJob(job.jobId)">
+      <div
+        v-for="job in sortedJobs"
+        :key="job.jobId"
+        class="job-card"
+        :class="job.state"
+      >
+        <div
+          class="job-head"
+          @click="toggleJob(job.jobId)"
+        >
           <span class="job-chevron">{{ openJob[job.jobId] ? '▾' : '▸' }}</span>
-          <span class="state-chip" :class="job.state">{{ stateLabel(job) }}</span>
+          <span
+            class="state-chip"
+            :class="job.state"
+          >{{ stateLabel(job) }}</span>
           <span class="job-title">{{ job.title || t('studio.orchestrator.noTitle') }}</span>
           <span class="job-meta">
             {{ fmtTime(job.createdAt) }}
@@ -385,43 +553,102 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             ■
           </button>
         </div>
-        <div v-if="openJob[job.jobId]" class="job-body">
-          <div v-if="job.goal" class="job-goal">
+        <div
+          v-if="openJob[job.jobId]"
+          class="job-body"
+        >
+          <div
+            v-if="job.goal"
+            class="job-goal"
+          >
             {{ job.goal }}
           </div>
-          <div v-if="job.error" class="job-error">
+          <div
+            v-if="job.error"
+            class="job-error"
+          >
             {{ t('studio.orchestrator.error') }}：{{ job.error }}
           </div>
 
-          <div class="node-flow">
-            <div v-for="(node, i) in job.nodes" :key="node.id" class="flow-row">
-              <div class="flow-node" :class="node.state" @click="toggleNode(job.jobId, node.id)">
+          <div
+            v-if="job.nodes.length > 1"
+            class="node-view-switch"
+          >
+            <button
+              type="button"
+              class="view-chip"
+              :class="{ on: viewOf(job) === 'flow' }"
+              @click="setView(job.jobId, 'flow')"
+            >
+              {{ t('studio.orchestrator.viewFlow') }}
+            </button>
+            <button
+              type="button"
+              class="view-chip"
+              :class="{ on: viewOf(job) === 'graph' }"
+              @click="setView(job.jobId, 'graph')"
+            >
+              {{ t('studio.orchestrator.viewGraph') }}
+            </button>
+          </div>
+
+          <div
+            v-if="viewOf(job) === 'flow'"
+            class="node-flow"
+          >
+            <div
+              v-for="(node, i) in job.nodes"
+              :key="node.id"
+              class="flow-row"
+            >
+              <div
+                class="flow-node"
+                :class="node.state"
+                @click="toggleNode(job.jobId, node.id)"
+              >
                 <span class="flow-dot" />
                 <span class="flow-agent">{{ agentName(node.agentId) }}</span>
                 <span class="flow-id">{{ node.id }}</span>
                 <span class="state-chip node">{{ nodeStateLabel(node.state) }}</span>
-                <span v-if="node.state === 'done'" class="flow-at">{{
+                <span
+                  v-if="node.state === 'done'"
+                  class="flow-at"
+                >{{
                   fmtTime(node.finishedAt)
                 }}</span>
                 <span
                   v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
                   class="flow-retry"
                   :title="nodeStateLabel('failed')"
-                  >↻{{ node.attempts }}</span
-                >
+                >↻{{ node.attempts }}</span>
               </div>
-              <div v-if="i < job.nodes.length - 1" class="flow-line" />
-              <div v-if="node.dependsOn.length" class="flow-deps">
+              <div
+                v-if="i < job.nodes.length - 1"
+                class="flow-line"
+              />
+              <div
+                v-if="node.dependsOn.length"
+                class="flow-deps"
+              >
                 {{ t('studio.orchestrator.depOf') }} {{ node.dependsOn.join(', ') }}
               </div>
-              <div v-if="openNode[nodeKey(job.jobId, node.id)]" class="flow-detail">
+              <div
+                v-if="openNode[nodeKey(job.jobId, node.id)]"
+                class="flow-detail"
+              >
                 <div class="detail-instruction">
                   {{ node.instruction }}
                 </div>
-                <div v-if="node.error" class="detail-error">
+                <div
+                  v-if="node.error"
+                  class="detail-error"
+                >
                   {{ t('studio.orchestrator.nodeError') }}：{{ node.error }}
                 </div>
-                <div v-if="node.finalText" class="detail-output">
+                <div
+                  v-if="node.finalText"
+                  class="detail-output"
+                >
                   <div class="detail-head">
                     <span>{{ t('studio.orchestrator.nodeOutput') }}</span>
                     <button
@@ -442,10 +669,115 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             </div>
           </div>
 
-          <div v-if="job.summary" class="summary-box">
+          <div
+            v-else
+            class="node-graph-area"
+          >
+            <div
+              v-if="job.nodes.length"
+              class="node-graph-scroll"
+            >
+              <div
+                class="node-graph"
+                :style="{
+                  width: layoutFor(job).canvasWidth + 'px',
+                  height: layoutFor(job).canvasHeight + 'px'
+                }"
+              >
+                <svg
+                  class="graph-lines"
+                  :viewBox="`0 0 ${layoutFor(job).canvasWidth} ${layoutFor(job).canvasHeight}`"
+                >
+                  <path
+                    v-for="edge in layoutFor(job).edges"
+                    :key="`${edge.from}:${edge.to}`"
+                    class="graph-edge"
+                    :class="edgeToneClass(job, edge.from)"
+                    :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+                  />
+                </svg>
+                <button
+                  v-for="node in job.nodes"
+                  :key="node.id"
+                  type="button"
+                  class="graph-chip"
+                  :class="[node.state, { selected: graphSel[job.jobId] === node.id }]"
+                  :style="{
+                    left: (layoutFor(job).posBy.get(node.id)?.x ?? 0) + 'px',
+                    top: (layoutFor(job).posBy.get(node.id)?.y ?? 0) + 'px',
+                    width: DAG_CHIP_W + 'px'
+                  }"
+                  :title="node.instruction"
+                  @click="onGraphChip(job.jobId, node.id)"
+                >
+                  <span class="flow-dot" />
+                  <span class="graph-agent">{{ agentName(node.agentId) }}</span>
+                  <span class="graph-id">{{ node.id }}</span>
+                  <span class="graph-state">{{ nodeStateLabel(node.state) }}</span>
+                  <span
+                    v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
+                    class="graph-retry"
+                  >↻{{ node.attempts }}</span>
+                </button>
+              </div>
+            </div>
+            <div
+              v-else
+              class="graph-empty"
+            >
+              {{ t('studio.orchestrator.graphEmpty') }}
+            </div>
+            <div class="graph-select-hint">
+              {{ t('studio.orchestrator.graphSelectHint') }}
+            </div>
+            <div
+              v-for="detail in selectedNodeDetails(job.jobId, job)"
+              :key="detail.node.id"
+              class="flow-detail graph-detail"
+            >
+              <div class="detail-instruction">
+                {{ detail.node.instruction }}
+              </div>
+              <div
+                v-if="detail.node.error"
+                class="detail-error"
+              >
+                {{ t('studio.orchestrator.nodeError') }}：{{ detail.node.error }}
+              </div>
+              <div
+                v-if="detail.node.finalText"
+                class="detail-output"
+              >
+                <div class="detail-head">
+                  <span>{{ t('studio.orchestrator.nodeOutput') }}</span>
+                  <button
+                    type="button"
+                    class="copy-btn"
+                    @click="onCopy(detail.node.finalText, detail.copyKey)"
+                  >
+                    {{
+                      copiedKey === detail.copyKey
+                        ? t('studio.orchestrator.copied')
+                        : t('studio.orchestrator.copy')
+                    }}
+                  </button>
+                </div>
+                <pre>{{ detail.node.finalText }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="job.summary"
+            class="summary-box"
+          >
             <div class="summary-head">
               <span class="summary-label">★ {{ t('studio.orchestrator.summary') }}</span>
-              <button type="button" class="copy-btn" @click="onCopy(job.summary, `s:${job.jobId}`)">
+              <button
+                type="button"
+                class="copy-btn"
+                @click="onCopy(job.summary, `s:${job.jobId}`)"
+              >
                 {{
                   copiedKey === `s:${job.jobId}`
                     ? t('studio.orchestrator.copied')
@@ -961,5 +1293,179 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   font-size: 12px;
   font-weight: 600;
   color: color-mix(in srgb, var(--agent-color, #37b26c) 80%, #fff);
+}
+/* 智能拆解行 */
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plan-btn {
+  flex: none;
+}
+.plan-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-tertiary, #5b6472);
+}
+.plan-info {
+  font-size: 11px;
+  color: #3dd68c;
+}
+/* 记录区：视图切换（列表 / 连线图） */
+.node-view-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.22));
+  margin-bottom: 6px;
+}
+.view-chip {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #9aa4b2);
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.view-chip.on {
+  background: color-mix(in srgb, var(--agent-color, #37b26c) 18%, transparent);
+  color: var(--text-primary, #e6e9ef);
+}
+/* 连线图（DAG 可视化） */
+.node-graph-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+.node-graph-scroll {
+  overflow: auto;
+  max-height: 320px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.18));
+  border-radius: 8px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.14));
+}
+.node-graph {
+  position: relative;
+  min-width: 100%;
+}
+.graph-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.graph-edge {
+  fill: none;
+  stroke: rgba(128, 128, 128, 0.45);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.graph-edge.is-done {
+  stroke: rgba(61, 214, 140, 0.7);
+  stroke-dasharray: none;
+}
+.graph-edge.is-failed {
+  stroke: rgba(229, 72, 77, 0.85);
+  stroke-dasharray: none;
+}
+.graph-edge.is-skipped {
+  stroke: rgba(128, 128, 128, 0.3);
+  stroke-dasharray: 2 3;
+}
+.graph-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+  background: var(--bg-elevated, #1b2028);
+  color: var(--text-primary, #e6e9ef);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.graph-chip:hover {
+  border-color: rgba(128, 128, 128, 0.6);
+}
+.graph-chip.selected {
+  border-color: color-mix(in srgb, var(--agent-color, #37b26c) 70%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-color, #37b26c) 55%, transparent);
+}
+.graph-chip.running {
+  border-color: color-mix(in srgb, var(--agent-color, #37b26c) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-color, #37b26c) 25%, transparent);
+}
+.graph-chip.running .flow-dot {
+  background: #3dd68c;
+  box-shadow: 0 0 6px #3dd68c;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.graph-chip.done .flow-dot {
+  background: #3dd68c;
+}
+.graph-chip.failed {
+  border-color: rgba(229, 72, 77, 0.55);
+}
+.graph-chip.failed .flow-dot {
+  background: #e5484d;
+}
+.graph-chip.skipped {
+  opacity: 0.6;
+}
+.graph-chip.pending .flow-dot {
+  background: var(--text-tertiary, #5b6472);
+}
+.graph-agent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.graph-id {
+  flex: none;
+  color: var(--text-tertiary, #5b6472);
+  font-family: var(--mono, 'Cascadia Code', Consolas, monospace);
+  font-size: 10px;
+}
+.graph-state {
+  flex: none;
+  font-size: 9px;
+  color: var(--text-tertiary, #5b6472);
+}
+.graph-retry {
+  flex: none;
+  font-size: 10px;
+  color: #e5484d;
+}
+.graph-empty {
+  font-size: 11px;
+  color: var(--text-tertiary, #5b6472);
+}
+.graph-select-hint {
+  font-size: 10px;
+  color: var(--text-tertiary, #5b6472);
+}
+.graph-detail {
+  margin: 0;
+  margin-top: 2px;
 }
 </style>
