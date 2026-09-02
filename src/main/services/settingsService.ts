@@ -77,6 +77,10 @@ class SettingsService {
       llm: {
         ...DEFAULT_SETTINGS.llm,
         ...(saved.llm ?? {})
+      },
+      yolo: {
+        ...DEFAULT_SETTINGS.yolo,
+        ...(saved.yolo ?? {})
       }
     }
   }
@@ -92,7 +96,11 @@ class SettingsService {
         )
       },
       models: normalizeModelsSettings(settings.models),
-      objectStorage: normalizeObjectStorageSettings(settings.objectStorage)
+      objectStorage: normalizeObjectStorageSettings(settings.objectStorage),
+      yolo: {
+        ...DEFAULT_SETTINGS.yolo,
+        ...(settings.yolo ?? {})
+      }
     }
     this.ensure().set('settings', normalized)
     this.syncWindowChrome()

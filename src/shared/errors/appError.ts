@@ -89,3 +89,15 @@ export function fail<P>(def: BiDef<P>, ...rest: P extends undefined ? [] : [P]):
   const fmtFn = lang === 'en-US' ? def.en : def.zh
   return new AppError(safeFormat(fmtFn, params, def.code), def.code, params)
 }
+
+/**
+ * 按当前语言格式化双语条目，不抛错。
+ * 用于日志 / 结果提示等**非 throw** 场景，与 fail() 共用同一套 defErr 条目；
+ * 格式化异常时同样回退为 code，保证文案永不悬空。
+ */
+export function formatBi<P>(def: BiDef<P>, ...rest: P extends undefined ? [] : [P]): string {
+  const params = rest[0]
+  const lang = resolveAppErrorLocale()
+  const fmtFn = lang === 'en-US' ? def.en : def.zh
+  return safeFormat(fmtFn, params, def.code)
+}

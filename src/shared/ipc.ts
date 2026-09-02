@@ -21,6 +21,13 @@ import type {
   TranscribeAudioResult
 } from './modelProvider'
 import type { ObjectStorageKindMeta } from './objectStorage'
+import type {
+  YoloDetectResult,
+  YoloInferenceInput,
+  YoloPoseResult,
+  YoloSegmentResult,
+  YoloStatus
+} from './yolo'
 
 export const IpcChannels = {
   // Project
@@ -98,6 +105,13 @@ export const IpcChannels = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+
+  // Local vision (YOLO): onnxruntime 本地推理，数据不出机
+  YOLO_STATUS: 'yolo:status',
+  YOLO_DETECT: 'yolo:detect',
+  YOLO_SEGMENT: 'yolo:segment',
+  YOLO_POSE: 'yolo:pose',
+  YOLO_OPEN_MODEL_DIR: 'yolo:open-model-dir',
 
   // App version & updates
   APP_GET_VERSION: 'app:get-version',
@@ -857,6 +871,17 @@ export interface StudioApi {
 
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: AppSettings) => Promise<AppSettings>
+
+  /** 查询本地视觉（YOLO）状态：推理进程 / 运行时 / 模型清单 */
+  getYoloStatus: () => Promise<YoloStatus>
+  /** 目标检测：本地 ONNX CPU 推理，输入图片路径 / dataUrl / RGBA */
+  yoloDetect: (input: YoloInferenceInput) => Promise<YoloDetectResult>
+  /** 实例分割：本地 ONNX CPU 推理，输出 mask 二值图 */
+  yoloSegment: (input: YoloInferenceInput) => Promise<YoloSegmentResult>
+  /** 人体姿态估计：本地 ONNX CPU 推理，输出 COCO 17 关键点 */
+  yoloPose: (input: YoloInferenceInput) => Promise<YoloPoseResult>
+  /** 在系统文件管理器中打开 YOLO 模型目录（不存在则创建）；返回目录路径 */
+  openYoloModelDir: () => Promise<string | null>
 
   getAppVersion: () => Promise<string>
   checkForUpdates: () => Promise<import('./update').AppUpdateCheckResult>

@@ -93,7 +93,6 @@ function emitStatus(text: string): void {
 
 /** 剥离 ANSI 颜色码 / 控制字符，保留可读文本 */
 function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
   return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\r/g, '')
 }
 

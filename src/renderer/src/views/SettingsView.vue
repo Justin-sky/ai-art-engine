@@ -576,7 +576,8 @@ function cloneSettings(source: AppSettings): AppSettings {
       toRaw(raw.objectStorage ?? DEFAULT_SETTINGS.objectStorage)
     ),
     seedance: { ...toRaw(raw.seedance) },
-    llm: { ...toRaw(raw.llm) }
+    llm: { ...toRaw(raw.llm) },
+    yolo: { ...DEFAULT_SETTINGS.yolo, ...toRaw(raw.yolo) }
   }
 }
 

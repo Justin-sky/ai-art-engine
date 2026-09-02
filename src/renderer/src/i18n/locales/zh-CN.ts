@@ -271,6 +271,7 @@ export default {
     },
     models: {
       addProvider: '添加模型提供商',
+      providerCustom: '自定义',
       add: '添加',
       addedProvider: '已添加 {label}，请填写 Base URL / API Key 后点击「获取模型」',
       collapseProvider: '收起提供商',

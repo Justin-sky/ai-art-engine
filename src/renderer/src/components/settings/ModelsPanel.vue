@@ -12,7 +12,7 @@
             v-for="p in providerKinds"
             :key="p.id"
             :value="p.id"
-          >{{ p.label }}</option>
+          >{{ p.labelKey ? t(p.labelKey) : p.label }}</option>
         </select>
       </label>
       <button

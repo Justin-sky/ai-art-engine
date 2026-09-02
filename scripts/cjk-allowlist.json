@@ -115,17 +115,6 @@
    "name: input.name ?? `声音 ${new Date().toLocaleString()}`,",
    "(err instanceof Error && err.message.startsWith('声音设计'))"
   ],
-  "src/main/services/objectStorageUploadService.ts": [
-   "`开始上传参考视频到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(bytes)}）`",
-   "`上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`",
-   "message: `参考视频已是远程 URL，跳过上传：${trimmed.slice(0, 120)}`,",
-   "`开始上传 data URL 参考视频到 ${provider.label}：${sourceLabel} → ${bucket}/${objectKey}（${formatBytes(buffer.byteLength)}）`",
-   "`上传完成（${Date.now() - started}ms）：${url.slice(0, 120)}${url.length > 120 ? '…' : ''}`",
-   "`跳过删除临时参考视频：${err instanceof Error ? err.message : String(err)}`",
-   "`已删除临时参考视频：${item.sourceLabel || key}（${bucket}/${key}）`",
-   "`删除临时参考视频失败：${bucket}/${key} — ${err instanceof Error ? err.message : String(err)}`",
-   "`复用已上传的参考视频：${result.sourceLabel} → ${result.bucket}/${result.objectKey}（缓存命中，不重复上传）`"
-  ],
   "src/main/services/timelineExportService.ts": [
    "title: '导出成片',"
   ],
