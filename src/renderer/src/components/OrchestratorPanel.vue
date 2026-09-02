@@ -12,11 +12,13 @@ import { copyTextToClipboard } from '../utils/copyText'
 import {
   DAG_CHIP_H,
   DAG_CHIP_W,
+  annotateDagNodes,
   canAddDependency,
   layoutDag,
   sanitizeDagDependencies,
   validateDagNodes,
   type DagLayout,
+  type DagNodeAnnotation,
   type DagNodeError
 } from '../utils/orchDagLayout'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
@@ -85,9 +87,7 @@ function removeNode(index: number): void {
 
 /* ── 新建表单：迷你 DAG 画布（拖拽建立依赖 / 点击连线删除） ── */
 const draftCanvasEl = ref<HTMLDivElement | null>(null)
-const dragState = ref<{ fromId: string; x: number; y: number; overId: string | null } | null>(
-  null
-)
+const dragState = ref<{ fromId: string; x: number; y: number; overId: string | null } | null>(null)
 const canvasMsg = ref('')
 const canvasMsgKind = ref<'warn' | 'info'>('info')
 let canvasMsgTimer: number | null = null
@@ -187,7 +187,8 @@ const tempEdge = computed(() => {
   const from = draftLayout.value.posBy.get(s.fromId)
   if (!from) return null
   const path = edgePath(from.x + DAG_CHIP_W, from.y + DAG_CHIP_H / 2, s.x, s.y)
-  const invalid = Boolean(s.overId) && !canAddDependency(draftDagNodes.value, s.fromId, s.overId!).ok
+  const invalid =
+    Boolean(s.overId) && !canAddDependency(draftDagNodes.value, s.fromId, s.overId!).ok
   return { path, invalid }
 })
 
@@ -195,6 +196,106 @@ function onResizeTextarea(event: Event): void {
   const el = event.target as HTMLTextAreaElement
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
+}
+
+/* ── 草稿就地标注：实时校验 → 节点级错误 + 无效依赖边（重复 id 按下标各归各） ── */
+
+const draftIssues = computed(() => annotateDagNodes(nodes.value))
+
+/** 取节点下标对应的就地标注（无则空标注） */
+function nodeIssues(index: number): DagNodeAnnotation {
+  return draftIssues.value.byIndex[index] ?? { errors: [], badDeps: [] }
+}
+
+/** 节点的问题总数（画布卡片角标 / 卡片计数用） */
+function nodeIssueCount(index: number): number {
+  const ann = nodeIssues(index)
+  return ann.errors.length + ann.badDeps.length
+}
+
+/** 节点问题摘要（画布卡片 ! 角标悬浮提示） */
+function nodeIssuesText(index: number): string {
+  const ann = nodeIssues(index)
+  const errTexts = ann.errors.map((e) => describeDagError(e))
+  const depTexts = ann.badDeps.map((b) => describeBadDep(b))
+  return [...errTexts, ...depTexts].join('；')
+}
+
+/** 无效依赖边文案（missing / cycle 各自成句，供就地标注行展示） */
+function describeBadDep(bad: DagNodeAnnotation['badDeps'][number]): string {
+  return bad.kind === 'missing'
+    ? t('studio.orchestrator.issueMissingDep', { dep: bad.dep })
+    : t('studio.orchestrator.issueCycleDep', { dep: bad.dep })
+}
+
+/** 画布连线是否属于无效依赖边（成环红边，可点击剔除） */
+function isInvalidDraftEdge(from: string, to: string): boolean {
+  return draftIssues.value.invalidEdgeKeys.has(`${from}\u0000${to}`)
+}
+
+/** 就地剔除某条无效依赖：从目标节点 dependsOn 移除来源 */
+function stripDraftDep(index: number, dep: string): void {
+  const node = nodes.value[index]
+  if (!node) return
+  node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== dep)
+}
+
+/** 生成不与现有节点冲突的新 id（修复非法/重复 id 用） */
+function freshNodeId(): string {
+  let candidate = ''
+  do {
+    nodeSeq += 1
+    candidate = `n${nodeSeq}`
+  } while (nodes.value.some((n) => n.id === candidate))
+  return candidate
+}
+
+/** 一键修复单个节点：剔除无效依赖、未选角色补默认、非法/重复 id 自动重命名 */
+function quickFixNode(index: number): void {
+  const node = nodes.value[index]
+  const ann = nodeIssues(index)
+  if (!node || (!ann.errors.length && !ann.badDeps.length)) return
+  let changed = false
+  const hasSelf = ann.errors.some((e) => e.kind === 'self-dep')
+  const drop = new Set(ann.badDeps.map((b) => b.dep))
+  if (hasSelf || drop.size) {
+    const before = node.dependsOn ?? []
+    const next = before.filter((d) => d !== node.id && !drop.has(d))
+    if (next.length !== before.length) {
+      node.dependsOn = next
+      changed = true
+    }
+  }
+  if (ann.errors.some((e) => e.kind === 'empty-agent')) {
+    const fallback = defaultAgent()
+    if (fallback) {
+      node.agentId = fallback
+      changed = true
+    }
+  }
+  if (ann.errors.some((e) => e.kind === 'bad-id' || e.kind === 'dup-id')) {
+    node.id = freshNodeId()
+    changed = true
+  }
+  if (changed) showCanvasMsg(t('studio.orchestrator.nodeFixed'), 'info')
+}
+
+/** 只有角色/id 类问题可点击定位到对应输入框（自依赖等就地无对应输入） */
+function isFocusableIssueKind(kind: DagNodeError['kind']): boolean {
+  return kind === 'empty-agent' || kind === 'bad-id' || kind === 'dup-id'
+}
+
+/** 点击问题行定位：id 类问题聚焦 id 输入框，角色问题聚焦角色下拉 */
+const nodesBlockEl = ref<HTMLDivElement | null>(null)
+function focusNodeIssue(index: number, kind: DagNodeError['kind']): void {
+  if (!isFocusableIssueKind(kind)) return
+  const card = nodesBlockEl.value?.querySelector(`[data-draft-index="${index}"]`)
+  if (!card) return
+  const target =
+    kind === 'empty-agent'
+      ? card.querySelector<HTMLSelectElement>('select.node-agent-select')
+      : card.querySelector<HTMLInputElement>('input.node-id-input')
+  target?.focus()
 }
 
 function clearForm(): void {
@@ -246,11 +347,13 @@ async function onAutoPlan(): Promise<void> {
     const repaired = sanitizeDagDependencies(planned)
     nodes.value = planned
     nodeSeq = Math.max(nodeSeq, planned.length)
+    // 剩余无法自动清洗的问题（缺角色 / 非法 / 重复 id 等）改为就地标注在节点上
+    const remaining = annotateDagNodes(planned)
+    const remain = remaining.errorCount + remaining.badDepCount
     const base = t('studio.orchestrator.planSuccess', { n: planned.length })
-    planInfo.value =
-      repaired > 0
-        ? `${base} ${t('studio.orchestrator.planRepaired', { n: repaired })}`
-        : base
+    planInfo.value = `${base}${repaired > 0 ? ' ' + t('studio.orchestrator.planRepaired', { n: repaired }) : ''}${
+      remain > 0 ? ' ' + t('studio.orchestrator.planRemainIssues', { n: remain }) : ''
+    }`
   } catch {
     formError.value = t('studio.orchestrator.planFailed')
   } finally {
@@ -479,7 +582,8 @@ function describeDagError(error: DagNodeError): string {
 }
 
 /** 可预览的产出文件扩展名（图/音/视；纯文本类只复制路径、不弹预览） */
-const PREVIEWABLE_FILE_RE = /\.(png|jpe?g|webp|gif|avif|bmp|mp4|webm|mov|mkv|mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i
+const PREVIEWABLE_FILE_RE =
+  /\.(png|jpe?g|webp|gif|avif|bmp|mp4|webm|mov|mkv|mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i
 
 function canPreviewFile(rel: string): boolean {
   return PREVIEWABLE_FILE_RE.test(rel)
@@ -533,7 +637,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         v-model="jobTitle"
         class="text-input goal-input"
         :placeholder="t('studio.orchestrator.jobTitlePlaceholder')"
-      >
+      />
       <textarea
         v-model="goal"
         class="text-input goal-textarea"
@@ -551,24 +655,16 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
           {{ planning ? t('studio.orchestrator.planning') : t('studio.orchestrator.autoPlan') }}
         </button>
         <span class="plan-hint">{{ t('studio.orchestrator.autoPlanHint') }}</span>
-        <span
-          v-if="planInfo"
-          class="plan-info"
-        >{{ planInfo }}</span>
+        <span v-if="planInfo" class="plan-info">{{ planInfo }}</span>
       </div>
 
-      <div
-        v-if="nodes.length >= 2"
-        class="draft-graph-area"
-      >
+      <div v-if="nodes.length >= 2" class="draft-graph-area">
         <div class="draft-graph-head">
           <span class="draft-graph-title">{{ t('studio.orchestrator.canvasTitle') }}</span>
           <span class="draft-graph-hint">{{ t('studio.orchestrator.canvasHint') }}</span>
-          <span
-            v-if="canvasMsg"
-            class="draft-graph-msg"
-            :class="canvasMsgKind"
-          >{{ canvasMsg }}</span>
+          <span v-if="canvasMsg" class="draft-graph-msg" :class="canvasMsgKind">{{
+            canvasMsg
+          }}</span>
         </div>
         <div class="draft-graph-scroll">
           <div
@@ -587,6 +683,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                 v-for="edge in draftLayout.edges"
                 :key="`e:${edge.from}:${edge.to}`"
                 class="graph-edge draft-edge"
+                :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
                 :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
               />
             </svg>
@@ -598,6 +695,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                 v-for="edge in draftLayout.edges"
                 :key="`h:${edge.from}:${edge.to}`"
                 class="edge-hit"
+                :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
                 :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
                 @click="removeDraftEdge(edge.from, edge.to)"
               >
@@ -605,13 +703,14 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
               </path>
             </svg>
             <button
-              v-for="node in nodes"
+              v-for="(node, index) in nodes"
               :key="node.id"
               type="button"
               class="graph-chip draft-chip"
               :class="{
                 'drag-from': dragState?.fromId === node.id,
-                'drag-over': dragState?.overId === node.id && dragState?.fromId !== node.id
+                'drag-over': dragState?.overId === node.id && dragState?.fromId !== node.id,
+                'has-issue': nodeIssueCount(index) > 0
               }"
               :data-draft-node-id="node.id"
               :style="{
@@ -619,15 +718,15 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                 top: (draftLayout.posBy.get(node.id)?.y ?? 0) + 'px',
                 width: DAG_CHIP_W + 'px'
               }"
-              :title="node.instruction || node.id"
+              :title="
+                nodeIssueCount(index) > 0 ? nodeIssuesText(index) : node.instruction || node.id
+              "
               @pointerdown="beginDraftDrag($event, node.id)"
             >
               <span
                 class="flow-dot"
                 :style="
-                  agentColor(node.agentId)
-                    ? { background: agentColor(node.agentId) }
-                    : undefined
+                  agentColor(node.agentId) ? { background: agentColor(node.agentId) } : undefined
                 "
               />
               <span class="graph-agent">{{ agentName(node.agentId) }}</span>
@@ -636,27 +735,22 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                 v-if="(node.dependsOn?.length ?? 0) > 0"
                 class="graph-deps-n"
                 :title="t('studio.orchestrator.canvasDeps')"
-              >{{ node.dependsOn?.length }}↑</span>
+                >{{ node.dependsOn?.length }}↑</span
+              >
+              <span v-if="nodeIssueCount(index) > 0" class="chip-issue">!</span>
             </button>
             <svg
               v-if="tempEdge"
               class="graph-temp-layer"
               :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
             >
-              <path
-                class="temp-edge"
-                :class="{ invalid: tempEdge.invalid }"
-                :d="tempEdge.path"
-              />
+              <path class="temp-edge" :class="{ invalid: tempEdge.invalid }" :d="tempEdge.path" />
             </svg>
           </div>
         </div>
       </div>
 
-      <div
-        v-if="selectableAgents.length"
-        class="nodes-block"
-      >
+      <div v-if="selectableAgents.length" ref="nodesBlockEl" class="nodes-block">
         <div class="nodes-hint">
           {{ t('studio.orchestrator.nodesHint') }}
         </div>
@@ -664,6 +758,8 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
           v-for="(node, index) in nodes"
           :key="node.id"
           class="node-card"
+          :class="{ 'has-issue': nodeIssueCount(index) > 0 }"
+          :data-draft-index="index"
         >
           <div class="node-head">
             <span class="node-index">{{ index + 1 }}</span>
@@ -671,17 +767,13 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
               v-model="node.id"
               class="text-input node-id-input"
               :title="t('studio.orchestrator.nodeId')"
-            >
+            />
             <select
               v-model="node.agentId"
               class="node-agent-select"
               :title="t('studio.orchestrator.nodeAgent')"
             >
-              <option
-                v-for="agent in selectableAgents"
-                :key="agent.agentId"
-                :value="agent.agentId"
-              >
+              <option v-for="agent in selectableAgents" :key="agent.agentId" :value="agent.agentId">
                 {{ agent.name }}
               </option>
             </select>
@@ -693,6 +785,51 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             >
               ×
             </button>
+          </div>
+          <div v-if="nodeIssueCount(index) > 0" class="node-issues">
+            <div class="node-issues-head">
+              <span class="node-issues-count">
+                {{ t('studio.orchestrator.issuesCount', { n: nodeIssueCount(index) }) }}
+              </span>
+              <button
+                type="button"
+                class="issue-fix"
+                :title="t('studio.orchestrator.fixNodeTip')"
+                @click="quickFixNode(index)"
+              >
+                {{ t('studio.orchestrator.fixNode') }}
+              </button>
+            </div>
+            <div class="node-issues-list">
+              <div v-for="issue in nodeIssues(index).errors" :key="issue.kind" class="issue-row">
+                <span
+                  class="issue-text"
+                  :class="{ locatable: isFocusableIssueKind(issue.kind) }"
+                  :title="
+                    isFocusableIssueKind(issue.kind)
+                      ? t('studio.orchestrator.issueLocate')
+                      : undefined
+                  "
+                  @click="focusNodeIssue(index, issue.kind)"
+                  >{{ describeDagError(issue) }}</span
+                >
+              </div>
+              <div
+                v-for="bad in nodeIssues(index).badDeps"
+                :key="`${bad.kind}:${bad.dep}`"
+                class="issue-row dep"
+              >
+                <span class="issue-text">{{ describeBadDep(bad) }}</span>
+                <button
+                  type="button"
+                  class="issue-strip"
+                  :title="t('studio.orchestrator.stripDepTip')"
+                  @click="stripDraftDep(index, bad.dep)"
+                >
+                  {{ t('studio.orchestrator.stripDep') }}
+                </button>
+              </div>
+            </div>
           </div>
           <textarea
             v-model="node.instruction"
@@ -709,18 +846,12 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
           @click="addNode"
         >
           {{ t('studio.orchestrator.addNode') }}
-          <span
-            v-if="nodes.length >= MAX_NODES"
-            class="limit-note"
-          >{{
+          <span v-if="nodes.length >= MAX_NODES" class="limit-note">{{
             t('studio.orchestrator.nodeLimit', { max: MAX_NODES })
           }}</span>
         </button>
       </div>
-      <div
-        v-else
-        class="form-warn"
-      >
+      <div v-else class="form-warn">
         {{ t('studio.orchestrator.noAgent') }}
       </div>
 
@@ -733,18 +864,10 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         >
           {{ submitting ? t('studio.orchestrator.submitting') : t('studio.orchestrator.run') }}
         </button>
-        <button
-          type="button"
-          class="action-btn ghost"
-          :disabled="submitting"
-          @click="clearForm"
-        >
+        <button type="button" class="action-btn ghost" :disabled="submitting" @click="clearForm">
           {{ t('studio.orchestrator.clear') }}
         </button>
-        <span
-          v-if="formError"
-          class="form-error"
-        >{{ formError }}</span>
+        <span v-if="formError" class="form-error">{{ formError }}</span>
       </div>
     </div>
 
@@ -753,35 +876,18 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
       <div class="jobs-head">
         <span class="jobs-title">
           {{ t('studio.orchestrator.jobs') }}
-          <span
-            v-if="runningCount"
-            class="running-badge"
-          >{{
+          <span v-if="runningCount" class="running-badge">{{
             t('studio.orchestrator.runningBadge', { n: runningCount })
           }}</span>
         </span>
       </div>
-      <div
-        v-if="!sortedJobs.length"
-        class="jobs-empty"
-      >
+      <div v-if="!sortedJobs.length" class="jobs-empty">
         {{ t('studio.orchestrator.jobsEmpty') }}
       </div>
-      <div
-        v-for="job in sortedJobs"
-        :key="job.jobId"
-        class="job-card"
-        :class="job.state"
-      >
-        <div
-          class="job-head"
-          @click="toggleJob(job.jobId)"
-        >
+      <div v-for="job in sortedJobs" :key="job.jobId" class="job-card" :class="job.state">
+        <div class="job-head" @click="toggleJob(job.jobId)">
           <span class="job-chevron">{{ openJob[job.jobId] ? '▾' : '▸' }}</span>
-          <span
-            class="state-chip"
-            :class="job.state"
-          >{{ stateLabel(job) }}</span>
+          <span class="state-chip" :class="job.state">{{ stateLabel(job) }}</span>
           <span class="job-title">{{ job.title || t('studio.orchestrator.noTitle') }}</span>
           <span class="job-meta">
             {{ fmtTime(job.createdAt) }}
@@ -797,27 +903,15 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             ■
           </button>
         </div>
-        <div
-          v-if="openJob[job.jobId]"
-          class="job-body"
-        >
-          <div
-            v-if="job.goal"
-            class="job-goal"
-          >
+        <div v-if="openJob[job.jobId]" class="job-body">
+          <div v-if="job.goal" class="job-goal">
             {{ job.goal }}
           </div>
-          <div
-            v-if="job.error"
-            class="job-error"
-          >
+          <div v-if="job.error" class="job-error">
             {{ t('studio.orchestrator.error') }}：{{ job.error }}
           </div>
 
-          <div
-            v-if="job.nodes.length > 1"
-            class="node-view-switch"
-          >
+          <div v-if="job.nodes.length > 1" class="node-view-switch">
             <button
               type="button"
               class="view-chip"
@@ -836,63 +930,35 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             </button>
           </div>
 
-          <div
-            v-if="viewOf(job) === 'flow'"
-            class="node-flow"
-          >
-            <div
-              v-for="(node, i) in job.nodes"
-              :key="node.id"
-              class="flow-row"
-            >
-              <div
-                class="flow-node"
-                :class="node.state"
-                @click="toggleNode(job.jobId, node.id)"
-              >
+          <div v-if="viewOf(job) === 'flow'" class="node-flow">
+            <div v-for="(node, i) in job.nodes" :key="node.id" class="flow-row">
+              <div class="flow-node" :class="node.state" @click="toggleNode(job.jobId, node.id)">
                 <span class="flow-dot" />
                 <span class="flow-agent">{{ agentName(node.agentId) }}</span>
                 <span class="flow-id">{{ node.id }}</span>
                 <span class="state-chip node">{{ nodeStateLabel(node.state) }}</span>
-                <span
-                  v-if="node.state === 'done'"
-                  class="flow-at"
-                >{{
+                <span v-if="node.state === 'done'" class="flow-at">{{
                   fmtTime(node.finishedAt)
                 }}</span>
                 <span
                   v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
                   class="flow-retry"
                   :title="nodeStateLabel('failed')"
-                >↻{{ node.attempts }}</span>
+                  >↻{{ node.attempts }}</span
+                >
               </div>
-              <div
-                v-if="i < job.nodes.length - 1"
-                class="flow-line"
-              />
-              <div
-                v-if="node.dependsOn.length"
-                class="flow-deps"
-              >
+              <div v-if="i < job.nodes.length - 1" class="flow-line" />
+              <div v-if="node.dependsOn.length" class="flow-deps">
                 {{ t('studio.orchestrator.depOf') }} {{ node.dependsOn.join(', ') }}
               </div>
-              <div
-                v-if="openNode[nodeKey(job.jobId, node.id)]"
-                class="flow-detail"
-              >
+              <div v-if="openNode[nodeKey(job.jobId, node.id)]" class="flow-detail">
                 <div class="detail-instruction">
                   {{ node.instruction }}
                 </div>
-                <div
-                  v-if="node.error"
-                  class="detail-error"
-                >
+                <div v-if="node.error" class="detail-error">
                   {{ t('studio.orchestrator.nodeError') }}：{{ node.error }}
                 </div>
-                <div
-                  v-if="node.finalText"
-                  class="detail-output"
-                >
+                <div v-if="node.finalText" class="detail-output">
                   <div class="detail-head">
                     <span>{{ t('studio.orchestrator.nodeOutput') }}</span>
                     <button
@@ -909,10 +975,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                   </div>
                   <pre>{{ node.finalText }}</pre>
                 </div>
-                <div
-                  v-if="node.outputFiles?.length"
-                  class="detail-files"
-                >
+                <div v-if="node.outputFiles?.length" class="detail-files">
                   <div class="detail-head">
                     <span>{{ t('studio.orchestrator.outputFiles') }}</span>
                     <button
@@ -937,9 +1000,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                       v-for="file in node.outputFiles"
                       :key="file"
                       class="output-file-item"
-                      @click="
-                        onCopy(file, outputFileKey(nodeKey(job.jobId, node.id), file))
-                      "
+                      @click="onCopy(file, outputFileKey(nodeKey(job.jobId, node.id), file))"
                     >
                       <span class="output-file-path">{{ file }}</span>
                       <button
@@ -951,11 +1012,10 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                         {{ t('studio.orchestrator.previewFile') }}
                       </button>
                       <span
-                        v-if="
-                          copiedKey === outputFileKey(nodeKey(job.jobId, node.id), file)
-                        "
+                        v-if="copiedKey === outputFileKey(nodeKey(job.jobId, node.id), file)"
                         class="output-file-copied"
-                      >{{ t('studio.orchestrator.copied') }}</span>
+                        >{{ t('studio.orchestrator.copied') }}</span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -963,14 +1023,8 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             </div>
           </div>
 
-          <div
-            v-else
-            class="node-graph-area"
-          >
-            <div
-              v-if="job.nodes.length"
-              class="node-graph-scroll"
-            >
+          <div v-else class="node-graph-area">
+            <div v-if="job.nodes.length" class="node-graph-scroll">
               <div
                 class="node-graph"
                 :style="{
@@ -1011,14 +1065,12 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                   <span
                     v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
                     class="graph-retry"
-                  >↻{{ node.attempts }}</span>
+                    >↻{{ node.attempts }}</span
+                  >
                 </button>
               </div>
             </div>
-            <div
-              v-else
-              class="graph-empty"
-            >
+            <div v-else class="graph-empty">
               {{ t('studio.orchestrator.graphEmpty') }}
             </div>
             <div class="graph-select-hint">
@@ -1032,16 +1084,10 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
               <div class="detail-instruction">
                 {{ detail.node.instruction }}
               </div>
-              <div
-                v-if="detail.node.error"
-                class="detail-error"
-              >
+              <div v-if="detail.node.error" class="detail-error">
                 {{ t('studio.orchestrator.nodeError') }}：{{ detail.node.error }}
               </div>
-              <div
-                v-if="detail.node.finalText"
-                class="detail-output"
-              >
+              <div v-if="detail.node.finalText" class="detail-output">
                 <div class="detail-head">
                   <span>{{ t('studio.orchestrator.nodeOutput') }}</span>
                   <button
@@ -1058,10 +1104,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                 </div>
                 <pre>{{ detail.node.finalText }}</pre>
               </div>
-              <div
-                v-if="detail.node.outputFiles?.length"
-                class="detail-files"
-              >
+              <div v-if="detail.node.outputFiles?.length" class="detail-files">
                 <div class="detail-head">
                   <span>{{ t('studio.orchestrator.outputFiles') }}</span>
                   <button
@@ -1086,9 +1129,7 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                     v-for="file in detail.node.outputFiles"
                     :key="file"
                     class="output-file-item"
-                    @click="
-                      onCopy(file, outputFileKey(detail.copyKey, file))
-                    "
+                    @click="onCopy(file, outputFileKey(detail.copyKey, file))"
                   >
                     <span class="output-file-path">{{ file }}</span>
                     <button
@@ -1102,24 +1143,18 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                     <span
                       v-if="copiedKey === outputFileKey(detail.copyKey, file)"
                       class="output-file-copied"
-                    >{{ t('studio.orchestrator.copied') }}</span>
+                      >{{ t('studio.orchestrator.copied') }}</span
+                    >
                   </li>
                 </ul>
               </div>
             </div>
           </div>
 
-          <div
-            v-if="job.summary"
-            class="summary-box"
-          >
+          <div v-if="job.summary" class="summary-box">
             <div class="summary-head">
               <span class="summary-label">★ {{ t('studio.orchestrator.summary') }}</span>
-              <button
-                type="button"
-                class="copy-btn"
-                @click="onCopy(job.summary, `s:${job.jobId}`)"
-              >
+              <button type="button" class="copy-btn" @click="onCopy(job.summary, `s:${job.jobId}`)">
                 {{
                   copiedKey === `s:${job.jobId}`
                     ? t('studio.orchestrator.copied')
@@ -1264,6 +1299,82 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 .node-instruction {
   line-height: 1.45;
 }
+/* 草稿就地标注：节点卡片问题框 */
+.node-card.has-issue {
+  border-color: rgba(229, 72, 77, 0.5);
+}
+.node-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid rgba(229, 72, 77, 0.35);
+  border-radius: 6px;
+  background: rgba(229, 72, 77, 0.08);
+  padding: 4px 6px;
+}
+.node-issues-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.node-issues-count {
+  font-size: 10px;
+  color: #e5484d;
+  font-weight: 600;
+}
+.issue-fix {
+  flex: none;
+  border: 1px solid rgba(229, 72, 77, 0.45);
+  border-radius: 5px;
+  background: transparent;
+  color: #e5484d;
+  font-size: 10px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.issue-fix:hover {
+  background: rgba(229, 72, 77, 0.18);
+}
+.node-issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.issue-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #f2b8b8;
+}
+.issue-row .issue-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.issue-text.locatable {
+  cursor: pointer;
+}
+.issue-text.locatable:hover {
+  color: #fff;
+  text-decoration: underline dotted;
+}
+.issue-strip {
+  flex: none;
+  border: none;
+  border-radius: 4px;
+  background: rgba(229, 72, 77, 0.2);
+  color: #ffd7d7;
+  font-size: 10px;
+  padding: 0 6px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.issue-strip:hover {
+  background: rgba(229, 72, 77, 0.38);
+}
 .form-warn {
   color: var(--warning, #f0b429);
   font-size: 11px;
@@ -1390,6 +1501,13 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 .draft-edge {
   stroke-dasharray: 4 3;
 }
+.draft-edge.invalid {
+  stroke: rgba(229, 72, 77, 0.9);
+  stroke-dasharray: none;
+}
+.edge-hit.invalid:hover {
+  stroke: rgba(229, 72, 77, 0.4);
+}
 .temp-edge {
   fill: none;
   stroke: #3dd68c;
@@ -1421,6 +1539,25 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.3));
   border-radius: 999px;
   padding: 1px 5px;
+}
+/* 草稿就地标注：画布卡片问题角标 */
+.draft-chip.has-issue {
+  border-color: rgba(229, 72, 77, 0.65);
+  box-shadow: 0 0 0 1px rgba(229, 72, 77, 0.35);
+}
+.chip-issue {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* ── 记录列表 ── */
