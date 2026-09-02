@@ -618,6 +618,18 @@ export default {
       saveToLibrarySubtitle: 'Choose a target folder and file name',
       savedToLibrary: 'Saved'
     },
+    agents: {
+      running: 'Running',
+      addTitle: 'New Agent',
+      newTitle: 'New Agent',
+      newName: 'Agent name',
+      newNamePlaceholder: 'e.g. Storyboarder',
+      newPrompt: 'Role description (optional)',
+      newPromptPlaceholder: 'Describe what this agent does…',
+      removeTitle: 'Delete this agent',
+      removeMessage: 'Delete agent "{name}"? Its chat history will also be removed.',
+      removeConfirm: 'Delete'
+    },
     editor: {
       asset: 'Asset Editor',
       screenplay: 'Screenplay',

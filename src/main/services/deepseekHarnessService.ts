@@ -66,29 +66,67 @@ const NPX_TIMEOUT_MS = 120_000
 /** npx 现场拉包期间的进度提醒间隔：下载可能长时间无输出，避免界面看起来卡死 */
 const NPX_PROGRESS_HINT_MS = 20_000
 
-let child: ChildProcess | null = null
-let runSeq = 0
-/** 最近一次下发的 status 文本，用于合并连续重复行，避免同文刷屏 */
-let lastStatusText = ''
-/** 已提示过的工作区路径：仅在切换时提示，避免每条消息都重复输出 */
-let workspaceNotified = ''
-/**
- * 待回传的 ask_user_question 提问：requestId（harness: 前缀）→ 回答文件与题号。
- * 渲染层选择经 MCP_ASK_USER_RESPONSE 回传 → handleAskUserResponse 写 answerFile，
- * runner 侧 provider 轮询读到后 resolve 给 agent。
- */
-const harnessAskUserRequests = new Map<string, { runId: string; answerFile: string; questionId: string }>()
+/** 缺省 agent id：未显式指定 agentId 的调用（历史行为） */
+const DEFAULT_AGENT_ID = 'default'
 
-function emit(event: HarnessEvent): void {
-  broadcastToAllWindows(IpcChannels.HARNESS_EVENT, event)
+/** 一个 agent 的一次活跃运行时（一个 dsh 子进程 + 随进程状态） */
+interface AgentRuntime {
+  child: ChildProcess | null
+  /** 该 agent 已启动过的任务序号（dsh runId，用于 ask_user 归属与去重） */
+  runSeq: number
+  /** 最近一次下发的 status 文本，用于合并连续重复行，避免同文刷屏 */
+  lastStatusText: string
+  /** 已提示过的工作区路径：仅在切换时提示，避免每条消息都重复输出 */
+  workspaceNotified: string
+  /**
+   * 待回传的 ask_user_question 提问：requestId（harness: 前缀）→ 回答文件与题号。
+   * 渲染层选择经 MCP_ASK_USER_RESPONSE 回传 → handleAskUserResponse 写 answerFile，
+   * runner 侧 provider 轮询读到后 resolve 给 agent。
+   */
+  askUserRequests: Map<string, { runId: string; answerFile: string; questionId: string }>
+}
+
+/** 全部 agent 运行时：多 agent 并发时互不干扰；缺省 agent 保持历史行为 */
+const runtimes = new Map<string, AgentRuntime>()
+
+/** 获取（必要时创建）指定 agent 的运行时上下文 */
+function runtimeFor(agentId: string): AgentRuntime {
+  let rt = runtimes.get(agentId)
+  if (!rt) {
+    rt = {
+      child: null,
+      runSeq: 0,
+      lastStatusText: '',
+      workspaceNotified: '',
+      askUserRequests: new Map()
+    }
+    runtimes.set(agentId, rt)
+  }
+  return rt
+}
+
+/** agentId 合法性：文件系统安全（用于 $DSH_HOME/agents/<id> 目录名），与 agentRegistry 保持一致 */
+const AGENT_ID_RE = /^[A-Za-z0-9._-]{1,32}$/
+
+/** 校验并规范化 agentId：非法返回 null */
+function normalizeAgentId(agentId?: string): string | null {
+  const id = String(agentId ?? '').trim() || DEFAULT_AGENT_ID
+  return AGENT_ID_RE.test(id) ? id : null
+}
+
+function emit(event: HarnessEvent, agentId?: string): void {
+  broadcastToAllWindows(IpcChannels.HARNESS_EVENT, {
+    ...event,
+    ...(agentId && agentId !== DEFAULT_AGENT_ID ? { agentId } : {})
+  })
 }
 
 /** 下发一条状态行；与上一行完全相同的文本会被合并，只保留一次 */
-function emitStatus(text: string): void {
+function emitStatus(text: string, rt: AgentRuntime, agentId: string): void {
   if (!text) return
-  if (text === lastStatusText) return
-  lastStatusText = text
-  emit({ type: 'status', text })
+  if (text === rt.lastStatusText) return
+  rt.lastStatusText = text
+  emit({ type: 'status', text }, agentId)
 }
 
 /** 剥离 ANSI 颜色码 / 控制字符，保留可读文本 */
@@ -99,6 +137,16 @@ function stripAnsi(text: string): string {
 /** dsh 配置根目录（userData 下，避免污染工程目录） */
 function dshHome(): string {
   return join(app.getPath('userData'), 'dsh-harness')
+}
+
+/**
+ * 指定 agent 的专属 dsh 目录（`$DSH_HOME/agents/<agentId>`）。
+ * settings.yaml / sessions / skills 均落在该目录内，多 agent 并发时
+ * 配置互不覆盖、会话互不串号；缺省 agent 保持历史根目录路径。
+ */
+function agentHome(agentId: string): string {
+  if (!agentId || agentId === DEFAULT_AGENT_ID) return dshHome()
+  return join(dshHome(), 'agents', agentId)
 }
 
 /**
@@ -293,8 +341,7 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
 }
 
 /** 生成 dsh 的 home 级配置：注册 mcp-client 插件，指向本应用 MCP 工具服务 */
-function writeDshConfig(endpoint: string): void {
-  const home = dshHome()
+function writeDshConfig(endpoint: string, home: string = dshHome()): void {
   mkdirSync(home, { recursive: true })
   // !!js 为 dsh 的 YAML 特殊语法：标签值必须是「合法 JS 表达式」，由 cordis-plugin-loader
   // 在加载配置时 eval 求值。环境变量在 spawn 时注入（token 不进命令行，也不落盘）。
@@ -336,8 +383,10 @@ function yamlScalar(value: string): string {
  * 在面板里选中的模型无关。这里在每次任务前把用户选择的模型/端点写入 settings，覆盖默认值；
  * API Key 仍经 `DEEPSEEK_API_KEY` 环境变量透传（dsh 的 llm-deepseek 默认读它）。
  */
-function writeDshSettings(provider: { baseUrl?: string; modelId: string }): void {
-  const home = dshHome()
+function writeDshSettings(
+  provider: { baseUrl?: string; modelId: string },
+  home: string = dshHome()
+): void {
   mkdirSync(home, { recursive: true })
   const lines = [
     '# AIArtEngine 生成的 dsh 设置（模型选择/端点），请勿手改。',
@@ -403,14 +452,13 @@ function renderDshSkillMd(skill: GraphSkill): string {
  * 生成的文件都在时直接跳过，避免每次对话都做无谓的删写；变化才按 manifest
  * 清理上次生成的文件再全量重写，避免残留失效技能。
  */
-function writeDshSkills(): void {
+function writeDshSkills(home: string = dshHome()): void {
   try {
-    const home = dshHome()
     mkdirSync(home, { recursive: true })
     const skillsDir = join(home, 'skills')
     mkdirSync(skillsDir, { recursive: true })
     const manifestPath = join(skillsDir, DSH_SKILLS_MANIFEST)
-    const { previous, signature: lastSignature } = readDshSkillsManifest()
+    const { previous, signature: lastSignature } = readDshSkillsManifest(home)
     const signature = dshSkillsSignature()
     // 技能没变且上次生成的文件都还在 → 跳过写盘，复用现有快照
     if (
@@ -449,10 +497,10 @@ function dshSkillsSignature(): string {
 }
 
 /** 读 dsh 技能 manifest（旧格式 string[] / 新格式 { files, signature } 均兼容） */
-function readDshSkillsManifest(): { previous: string[]; signature: string } {
+function readDshSkillsManifest(home: string = dshHome()): { previous: string[]; signature: string } {
   try {
     const raw = JSON.parse(
-      readFileSync(join(dshHome(), 'skills', DSH_SKILLS_MANIFEST), 'utf8') || '[]'
+      readFileSync(join(home, 'skills', DSH_SKILLS_MANIFEST), 'utf8') || '[]'
     ) as string[] | { files?: unknown; signature?: unknown }
     if (Array.isArray(raw)) return { previous: raw, signature: '' }
     return {
@@ -1240,10 +1288,10 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
 function writeAiartHarness(
   dshNodeModules: string,
   mode: ChatMode = 'craft',
-  projectMemory?: string | null
+  projectMemory?: string | null,
+  home: string = dshHome()
 ): string | null {
   try {
-    const home = dshHome()
     mkdirSync(home, { recursive: true })
     const runnerPath = join(home, 'aiart-headless-runner.mjs')
     writeFileSync(
@@ -1289,11 +1337,16 @@ function launchDsh(opts: {
   env: NodeJS.ProcessEnv
   runId: string
   dshEntry: string | null
+  /** 归属 agent（事件路由 / 运行时状态定位） */
+  agentId: string
 }): void {
-  const { command, args, workspace, env, runId, dshEntry } = opts
+  const { command, args, workspace, env, runId, dshEntry, agentId } = opts
+  const rt = runtimeFor(agentId)
   const proc = spawn(command, args, { cwd: workspace, windowsHide: true, shell: false, env })
-  child = proc
+  rt.child = proc
   const startedAt = Date.now()
+  /** 本进程事件统一带 agentId，渲染层据此分流 */
+  const agentEmit = (e: HarnessEvent): void => emit(e, agentId)
 
   let sawOutput = false
   let finalText = ''
@@ -1319,7 +1372,7 @@ function launchDsh(opts: {
     if (!delta) return
     sawOutput = true
     finalText += delta
-    emit({ type: 'assistant', text: delta })
+    agentEmit({ type: 'assistant', text: delta })
   }
 
   /** 解析 runner 输出的工具调用标记行（===BEGIN/END_TOOL=== 前缀 + JSON 载荷） */
@@ -1338,7 +1391,7 @@ function launchDsh(opts: {
     } catch {
       // 载荷非 JSON 时退回通用工具名（不阻塞对话）
     }
-    emit({ type: 'tool', ...(id ? { id } : {}), name, state, ...(detail ? { detail } : {}) })
+    emit({ type: 'tool', ...(id ? { id } : {}), name, state, ...(detail ? { detail } : {}) }, agentId)
     sawOutput = true
   }
 
@@ -1348,7 +1401,7 @@ function launchDsh(opts: {
     try {
       const parsed = JSON.parse(payload)
       if (typeof parsed.requestId !== 'string' || typeof parsed.question !== 'string') return
-      harnessAskUserRequests.set(parsed.requestId, {
+      rt.askUserRequests.set(parsed.requestId, {
         runId,
         answerFile: typeof parsed.answerFile === 'string' ? parsed.answerFile : '',
         questionId: typeof parsed.questionId === 'string' ? parsed.questionId : 'q1'
@@ -1356,6 +1409,7 @@ function launchDsh(opts: {
       broadcastToAllWindows(IpcChannels.MCP_ASK_USER, {
         requestId: parsed.requestId,
         question: parsed.question,
+        agentId,
         ...(typeof parsed.hint === 'string' && parsed.hint ? { hint: parsed.hint } : {}),
         ...(Array.isArray(parsed.options) && parsed.options.length
           ? { options: parsed.options }
@@ -1377,7 +1431,7 @@ function launchDsh(opts: {
         typeof parsed.cacheReadTokens === 'number' && parsed.cacheReadTokens > 0 ? parsed.cacheReadTokens : 0
       const cacheWrite =
         typeof parsed.cacheWriteTokens === 'number' && parsed.cacheWriteTokens > 0 ? parsed.cacheWriteTokens : 0
-      emit({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) })
+      emit({ type: 'context', used: Math.round(parsed.inputTokens + cacheRead + cacheWrite) }, agentId)
       sawOutput = true
     } catch {
       // 载荷非 JSON：忽略，不阻塞对话
@@ -1398,10 +1452,10 @@ function launchDsh(opts: {
             sawOutput = true
           } else if (inReasoning && line === REASONING_END) {
             inReasoning = false
-            emit({ type: 'reasoning', text: reasoningBuf })
+            agentEmit({ type: 'reasoning', text: reasoningBuf })
           } else if (inReasoning) {
             reasoningBuf = reasoningBuf ? reasoningBuf + '\n' + line : line
-            emit({ type: 'reasoning', text: reasoningBuf })
+            agentEmit({ type: 'reasoning', text: reasoningBuf })
           } else if (line.startsWith(TOOL_BEGIN)) {
             emitToolFromLine(line, 'start')
           } else if (line.startsWith(TOOL_END)) {
@@ -1425,7 +1479,7 @@ function launchDsh(opts: {
           // 可能是 BEGIN/END/TOOL 的半截，保留在 fullOut 等待后续数据
         } else if (inReasoning) {
           reasoningBuf += tail
-          emit({ type: 'reasoning', text: reasoningBuf })
+          agentEmit({ type: 'reasoning', text: reasoningBuf })
         } else {
           emitAssistantDelta(tail)
         }
@@ -1445,10 +1499,10 @@ function launchDsh(opts: {
         // 过滤 runner 的调试输出（tools 列表等），避免每次任务刷屏进聊天面板；
         // 但 error/fail 级别行（如 ask-user provider 异常）要透传状态栏，便于定位问题
         if (line.startsWith('[aiart-runner]')) {
-          if (/error|fail|abort/i.test(line)) emitStatus(line)
+          if (/error|fail|abort/i.test(line)) emitStatus(line, rt, agentId)
           continue
         }
-        emitStatus(line)
+        emitStatus(line, rt, agentId)
       }
       return
     }
@@ -1459,44 +1513,44 @@ function launchDsh(opts: {
   proc.stdout?.on('data', (chunk) => onData(chunk, 'out'))
   proc.stderr?.on('data', (chunk) => onData(chunk, 'err'))
   proc.on('error', (err) => {
-    if (child === proc) child = null
-    emit({ type: 'error', message: `dsh 启动失败：${err.message}` })
+    if (rt.child === proc) rt.child = null
+    agentEmit({ type: 'error', message: `dsh 启动失败：${err.message}` })
   })
   proc.on('close', (code) => {
-    if (child === proc) child = null
+    if (rt.child === proc) rt.child = null
     // 清理本次运行的待回传提问（任务结束，agent 侧等待会走超时分支返回空答案）
-    for (const [id, entry] of harnessAskUserRequests) {
-      if (entry.runId === runId) harnessAskUserRequests.delete(id)
+    for (const [id, entry] of rt.askUserRequests) {
+      if (entry.runId === runId) rt.askUserRequests.delete(id)
     }
     // 末尾未换行的残段最后解析一次；若思考段因异常未闭合，补发一次
     if (parsedLen < fullOut.length) parseStdout(fullOut.length)
-    if (inReasoning) emit({ type: 'reasoning', text: reasoningBuf })
+    if (inReasoning) agentEmit({ type: 'reasoning', text: reasoningBuf })
     const failed = code !== 0 && !sawOutput
-    emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
+    agentEmit({ type: 'tool', name: 'dsh-agent', state: 'done' })
     if (failed) {
       const hint = dshEntry
         ? '请重试或查看上方状态信息'
         : '若为首次运行，请等待包下载完成后重试'
-      emit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
+      agentEmit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
     } else {
-      emit({ type: 'done', runId })
+      agentEmit({ type: 'done', runId })
       // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」
-      if (finalText) emit({ type: 'final', text: finalText })
+      if (finalText) agentEmit({ type: 'final', text: finalText })
     }
   })
 
   // 仅 npx 现场拉包时保留超时兜底（下载可能悬挂）；内置运行体执行时长不可预测，交给用户手动中止
   if (!dshEntry) {
     const timeout = setTimeout(() => {
-      if (child !== proc) return
-      emitStatus('dsh 响应超时，正在中止（可重试）')
+      if (rt.child !== proc) return
+      emitStatus('dsh 响应超时，正在中止（可重试）', rt, agentId)
       proc.kill()
     }, NPX_TIMEOUT_MS)
     // 文本带等待秒数：emitStatus 会合并完全相同的相邻行，固定文案只会出现一次
     const progress = setInterval(() => {
-      if (child !== proc) return
+      if (rt.child !== proc) return
       const waited = Math.round((Date.now() - startedAt) / 1000)
-      emitStatus(`仍在准备 dsh 运行体（首次运行需联网下载，已等待 ${waited}s）…`)
+      emitStatus(`仍在准备 dsh 运行体（首次运行需联网下载，已等待 ${waited}s）…`, rt, agentId)
     }, NPX_PROGRESS_HINT_MS)
     const stopTimers = (): void => {
       clearTimeout(timeout)
@@ -1510,7 +1564,11 @@ function launchDsh(opts: {
 export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRunResult> {
   const rawTask = String(input?.task ?? '').trim()
   if (!rawTask) return { started: false, message: '任务内容为空' }
-  if (child) return { started: false, message: '已有任务正在运行' }
+  // 目标 agent：缺省 'default'；非法 id 拒绝（防止路径注入到 $DSH_HOME/agents）
+  const agentId = normalizeAgentId(input?.agentId)
+  if (!agentId) return { started: false, message: 'Agent 标识不合法' }
+  const rt = runtimeFor(agentId)
+  if (rt.child) return { started: false, message: '该 Agent 已有任务正在运行' }
   // 历史由 dsh 原生持久化 session 恢复（见 runner 模板），任务文本直接透传用户原文
   const task = rawTask
 
@@ -1522,35 +1580,44 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   if (!provider) {
     return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
-  writeDshConfig(mcp.endpoint)
+  // 每个 agent 使用独立 dsh 目录：settings / sessions / skills / runner 互不覆盖
+  const home = agentHome(agentId)
+  writeDshConfig(mcp.endpoint, home)
   // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
   // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
-  writeDshSettings({
-    baseUrl: provider.baseUrl,
-    modelId: input.model?.trim() || provider.modelId
-  })
+  writeDshSettings(
+    {
+      baseUrl: provider.baseUrl,
+      modelId: input.model?.trim() || provider.modelId
+    },
+    home
+  )
   // 把应用内置 GraphSkill 快照为 dsh 的 SKILL.md（$DSH_HOME/skills），
   // 让 AI 对话里的 agent 能发现并加载应用技能（skill-filesystem 默认扫描该目录）。
-  writeDshSkills()
+  writeDshSkills(home)
   const workspace = resolveWorkspace()
-  const runId = String(++runSeq)
-  lastStatusText = ''
+  const runId = String(++rt.runSeq)
+  rt.lastStatusText = ''
   const dshEntry = resolveDshEntry()
   emitStatus(
     dshEntry
       ? '正在启动 DeepSeek Harness…'
-      : '首次运行：正在准备 dsh 运行体（需联网，约 1–2 分钟）'
+      : '首次运行：正在准备 dsh 运行体（需联网，约 1–2 分钟）',
+    rt,
+    agentId
   )
   // 工作区只在切换时提示一次，避免每条消息都重复输出同一行
-  if (workspaceNotified !== workspace) {
-    workspaceNotified = workspace
+  if (rt.workspaceNotified !== workspace) {
+    rt.workspaceNotified = workspace
     emitStatus(
       workspace === app.getPath('userData')
         ? '未打开工程：AI 工作区为应用数据目录（建议先打开工程）'
-        : `工作区：${workspace}`
+        : `工作区：${workspace}`,
+      rt,
+      agentId
     )
   }
-  emit({ type: 'tool', name: 'dsh-agent', state: 'start' })
+  emit({ type: 'tool', name: 'dsh-agent', state: 'start' }, agentId)
 
   const nodeCmd = dshEntry ? resolveNodeCommand() : null
   const command = nodeCmd?.command ?? (process.platform === 'win32' ? 'npx.cmd' : 'npx')
@@ -1568,7 +1635,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     }
   }
   const patchPath = dshModules
-    ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory)
+    ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory, home)
     : null
   const args = dshEntry
     ? [
@@ -1593,7 +1660,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       ...process.env,
       // 内置 Node 模式：让 Electron 二进制以纯 Node 运行 dsh（见 resolveNodeCommand）
       ...(nodeCmd?.env ?? {}),
-      DSH_HOME: dshHome(),
+      DSH_HOME: home,
       DEEPSEEK_API_KEY: provider.apiKey,
       // 注意：dsh v0.1 不读取 DSH_MODEL（模型只走 settings.yaml 的 agent-default-model）。
       // 保留该变量仅作兼容占位，实际选择见上方 writeDshSettings。
@@ -1602,6 +1669,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       // MCP 插件配置里的 header 由该变量展开；name 为 /TOKEN/ 会被 dsh 清洗，故用 STUDIO_ 前缀
       STUDIO_MCP_TOKEN: mcp.token,
       // 原生持久化 session：runner 据此「有则恢复、无则创建」（见 AIART_RUNNER_TEMPLATE）
+      // 会话文件落在 agent 专属 $DSH_HOME/agents/<id>/sessions 下，多 agent 天然不串号
       ...(input.sessionId?.trim() ? { AIART_SESSION_ID: input.sessionId.trim() } : {}),
       // ask_user_question 提问的临时目录与本次运行 id：runner 经 answerFile 与主进程交换用户选择
       AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
@@ -1610,17 +1678,21 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       AIART_MODE: input.mode ?? 'craft'
     } as NodeJS.ProcessEnv,
     runId,
-    dshEntry
+    dshEntry,
+    agentId
   })
 
   return { started: true }
 }
 
-export function abortHarnessTask(): void {
-  if (!child) return
-  emit({ type: 'status', text: '已请求中止' })
-  child.kill()
-  child = null
+export function abortHarnessTask(agentId?: string): void {
+  const id = normalizeAgentId(agentId)
+  if (!id) return
+  const rt = runtimeFor(id)
+  if (!rt.child) return
+  emit({ type: 'status', text: '已请求中止' }, id)
+  rt.child.kill()
+  rt.child = null
 }
 
 /**
@@ -1628,28 +1700,35 @@ export function abortHarnessTask(): void {
  * 把选择写入 answerFile，runner 侧 provider 轮询读到后把答案返回给 agent。
  */
 export function handleAskUserResponse(payload: AskUserAnswer): void {
-  const entry = harnessAskUserRequests.get(payload.requestId)
-  if (!entry || !entry.answerFile) return
-  harnessAskUserRequests.delete(payload.requestId)
-  try {
-    mkdirSync(dirname(entry.answerFile), { recursive: true })
-    writeFileSync(
-      entry.answerFile,
-      JSON.stringify({
-        answers: [
-          {
-            id: entry.questionId,
-            selected:
-              typeof payload.answer === 'string' && payload.answer !== ''
-                ? [payload.answer]
-                : []
-          }
-        ]
-      }),
-      'utf8'
-    )
-  } catch {
-    // 写文件失败：runner 侧 5 分钟超时返回空答案，agent 正常继续
+  // requestId（harness: 前缀）全局唯一；优先按 payload.agentId 定位，找不到则遍历全部 agent
+  const candidates: AgentRuntime[] = payload.agentId
+    ? [runtimeFor(normalizeAgentId(payload.agentId) ?? DEFAULT_AGENT_ID)]
+    : [...runtimes.values()]
+  for (const rt of candidates) {
+    const entry = rt.askUserRequests.get(payload.requestId)
+    if (!entry || !entry.answerFile) continue
+    rt.askUserRequests.delete(payload.requestId)
+    try {
+      mkdirSync(dirname(entry.answerFile), { recursive: true })
+      writeFileSync(
+        entry.answerFile,
+        JSON.stringify({
+          answers: [
+            {
+              id: entry.questionId,
+              selected:
+                typeof payload.answer === 'string' && payload.answer !== ''
+                  ? [payload.answer]
+                  : []
+            }
+          ]
+        }),
+        'utf8'
+      )
+    } catch {
+      // 写文件失败：runner 侧 5 分钟超时返回空答案，agent 正常继续
+    }
+    return
   }
 }
 
@@ -1660,11 +1739,13 @@ export function handleAskUserResponse(payload: AskUserAnswer): void {
  * 下次同 id 发消息会被「幽灵恢复」成已删除的对话。路径布局与
  * dsh-session-persistence-jsonl 保持一致（root = dshHomePath('sessions')，按项目分目录）。
  */
-export async function deleteHarnessSession(sessionId: string): Promise<void> {
+export async function deleteHarnessSession(sessionId: string, agentId?: string): Promise<void> {
   const id = String(sessionId ?? '').trim()
   // 只放行安全字符，防止把删除目标带出 sessions 目录
   if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) return
-  const sessionsRoot = join(dshHome(), 'sessions')
+  const normalized = normalizeAgentId(agentId)
+  if (!normalized) return
+  const sessionsRoot = join(agentHome(normalized), 'sessions')
   let entries
   try {
     entries = await readdir(sessionsRoot, { withFileTypes: true })
@@ -1684,10 +1765,18 @@ export async function deleteHarnessSession(sessionId: string): Promise<void> {
   )
 }
 
-/** 应用退出时清理子进程，避免残留 npx 拉起的 dsh */
+/** 查询指定 agent 当前是否有任务在跑（agent:list 聚合运行时状态用） */
+export function runtimeIsRunning(agentId: string): boolean {
+  const rt = runtimes.get(agentId)
+  return rt ? rt.child !== null : false
+}
+
+/** 应用退出时清理全部 agent 的子进程，避免残留 npx 拉起的 dsh */
 app.on('will-quit', () => {
-  if (child) {
-    child.kill()
-    child = null
+  for (const rt of runtimes.values()) {
+    if (rt.child) {
+      rt.child.kill()
+      rt.child = null
+    }
   }
 })

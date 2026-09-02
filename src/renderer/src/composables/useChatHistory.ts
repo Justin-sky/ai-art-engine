@@ -58,9 +58,17 @@ const MAX_MESSAGES_PER_SESSION = 600
 /** 会话标题长度上限 */
 const MAX_TITLE_LENGTH = 24
 
-function readSessions(): ChatSession[] {
+/** 会话历史按 agent 分命名空间：缺省 agent 沿用旧 key（兼容历史数据），其余 agent 各自独立 */
+function sessionsKey(agentId: string): string {
+  return !agentId || agentId === 'default' ? SESSIONS_KEY : `${SESSIONS_KEY}.${agentId}`
+}
+function activeKey(agentId: string): string {
+  return !agentId || agentId === 'default' ? ACTIVE_KEY : `${ACTIVE_KEY}.${agentId}`
+}
+
+function readSessions(agentId: string): ChatSession[] {
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY)
+    const raw = localStorage.getItem(sessionsKey(agentId))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -73,7 +81,7 @@ function readSessions(): ChatSession[] {
   }
 }
 
-function writeSessions(sessions: ChatSession[]): void {
+function writeSessions(sessions: ChatSession[], agentId: string): void {
   try {
     // 单会话消息过多时按需截断，避免 localStorage 超限
     const trimmed = sessions.map((s) =>
@@ -84,7 +92,7 @@ function writeSessions(sessions: ChatSession[]): void {
           }
         : s
     )
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(trimmed))
+    localStorage.setItem(sessionsKey(agentId), JSON.stringify(trimmed))
   } catch {
     // 存储失败（如超出配额）不阻塞聊天：历史只是尽力而为
   }
@@ -103,14 +111,14 @@ function titleFromMessages(messages: ChatMsg[]): string {
   return text.length > MAX_TITLE_LENGTH ? text.slice(0, MAX_TITLE_LENGTH) + '…' : text
 }
 
-export function useChatHistory() {
+export function useChatHistory(agentId = 'default') {
   const sessions = ref<ChatSession[]>([])
   const activeId = ref('')
 
   /** 打开面板时加载本地历史，恢复上次会话；无任何历史则创建一个空会话 */
   function load(): void {
-    sessions.value = readSessions()
-    const saved = localStorage.getItem(ACTIVE_KEY)
+    sessions.value = readSessions(agentId)
+    const saved = localStorage.getItem(activeKey(agentId))
     if (saved && sessions.value.some((s) => s.id === saved)) {
       activeId.value = saved
     } else if (sessions.value.length) {
@@ -121,7 +129,7 @@ export function useChatHistory() {
         { id: activeId.value, title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }
       ]
     }
-    localStorage.setItem(ACTIVE_KEY, activeId.value)
+    localStorage.setItem(activeKey(agentId), activeId.value)
   }
 
   /** 当前会话（始终存在；调用前需先 load） */
@@ -130,7 +138,7 @@ export function useChatHistory() {
   )
 
   function persist(): void {
-    writeSessions(sessions.value)
+    writeSessions(sessions.value, agentId)
   }
 
   /** 新建空会话并激活 */
@@ -145,7 +153,7 @@ export function useChatHistory() {
     }
     sessions.value = [session, ...sessions.value]
     activeId.value = session.id
-    localStorage.setItem(ACTIVE_KEY, session.id)
+    localStorage.setItem(activeKey(agentId), session.id)
     persist()
   }
 
@@ -155,9 +163,9 @@ export function useChatHistory() {
     if (activeId.value === id) {
       activeId.value = sessions.value[0]?.id ?? ''
       if (activeId.value) {
-        localStorage.setItem(ACTIVE_KEY, activeId.value)
+        localStorage.setItem(activeKey(agentId), activeId.value)
       } else {
-        localStorage.removeItem(ACTIVE_KEY)
+        localStorage.removeItem(activeKey(agentId))
         create()
         return
       }
@@ -169,7 +177,7 @@ export function useChatHistory() {
   function activate(id: string): void {
     if (!sessions.value.some((s) => s.id === id)) return
     activeId.value = id
-    localStorage.setItem(ACTIVE_KEY, id)
+    localStorage.setItem(activeKey(agentId), id)
   }
 
   /** 把消息写入当前会话（覆盖式，供外层在状态变化后调用） */

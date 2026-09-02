@@ -617,6 +617,18 @@ export default {
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
       savedToLibrary: '已保存'
     },
+    agents: {
+      running: '运行中',
+      addTitle: '新建 Agent',
+      newTitle: '新建 Agent',
+      newName: 'Agent 名称',
+      newNamePlaceholder: '如：分镜师',
+      newPrompt: '角色描述（可选）',
+      newPromptPlaceholder: '描述该 Agent 的职责与工作方式…',
+      removeTitle: '删除该 Agent',
+      removeMessage: '删除 Agent「{name}」？其会话历史将一并移除。',
+      removeConfirm: '删除'
+    },
     editor: {
       asset: '资产编辑器',
       screenplay: '剧本',

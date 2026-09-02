@@ -54,8 +54,10 @@ import {
   listSkillTemplates,
   openDshSkillsDir,
   runHarnessTask,
+  runtimeIsRunning,
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
+import { agentRegistry, toAgentRuntimeStatus } from './services/agentRegistry'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -324,10 +326,22 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.HARNESS_RUN, (input: import('@shared/ipc').HarnessRunInput) =>
     runHarnessTask(input)
   )
-  handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
-  handle(IpcChannels.HARNESS_DELETE_SESSION, (sessionId: string) =>
-    deleteHarnessSession(sessionId)
+  handle(IpcChannels.HARNESS_ABORT, (_ev, agentId?: string) => abortHarnessTask(agentId))
+  handle(IpcChannels.HARNESS_DELETE_SESSION, (_ev, sessionId: string, agentId?: string) =>
+    deleteHarnessSession(sessionId, agentId)
   )
+  handle(IpcChannels.AGENT_LIST, () => {
+    const configs = agentRegistry.list()
+    return toAgentRuntimeStatus(configs, (agentId) => Boolean(runtimeIsRunning(agentId)))
+  })
+  handle(IpcChannels.AGENT_SAVE_CONFIG, (_ev, config: import('@shared/ipc').AgentConfig) => {
+    const configs = agentRegistry.save(config)
+    return toAgentRuntimeStatus(configs, (agentId) => Boolean(runtimeIsRunning(agentId)))
+  })
+  handle(IpcChannels.AGENT_REMOVE, (_ev, agentId: string) => {
+    const configs = agentRegistry.remove(agentId)
+    return toAgentRuntimeStatus(configs, (agentId) => Boolean(runtimeIsRunning(agentId)))
+  })
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
