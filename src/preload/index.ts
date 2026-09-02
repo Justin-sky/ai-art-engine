@@ -246,6 +246,19 @@ const api: StudioApi = {
     ipcRenderer.on(IpcChannels.AGENT_FORWARD_EVENT, listener)
     return () => ipcRenderer.removeListener(IpcChannels.AGENT_FORWARD_EVENT, listener)
   },
+  runOrchestrator: (input) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_RUN, input),
+  listOrchestratorJobs: () => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_LIST),
+  abortOrchestratorJob: (jobId) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_ABORT, jobId),
+  onOrchestratorEvent: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/ipc').OrchestratorJobEvent
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.ORCHESTRATOR_EVENT, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.ORCHESTRATOR_EVENT, listener)
+  },
   getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
   openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),
   writeDshSkillsTemplate: () => ipcRenderer.invoke(IpcChannels.SKILLS_WRITE_TEMPLATE),

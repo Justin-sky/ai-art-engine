@@ -90,6 +90,12 @@ interface AgentRuntime {
   lastFinalAt: number
   /** 最近一次任务使用的会话 id（模式 B 自动转交时接续 B 的会话上下文） */
   lastSessionId: string
+  /**
+   * 本次运行是否静默（编排/转交等自动运行置位）：该 agent 的 HARNESS_EVENT 广播被抑制，
+   * 避免 Orchestrator 节点的流式输出污染用户在某 agent 标签上的会话 UI；
+   * 进程结束（close/error）时由收尾逻辑复位。
+   */
+  silent: boolean
 }
 
 /** 全部 agent 运行时：多 agent 并发时互不干扰；缺省 agent 保持历史行为 */
@@ -107,7 +113,8 @@ function runtimeFor(agentId: string): AgentRuntime {
       askUserRequests: new Map(),
       lastFinalText: '',
       lastFinalAt: 0,
-      lastSessionId: ''
+      lastSessionId: '',
+      silent: false
     }
     runtimes.set(agentId, rt)
   }
@@ -128,6 +135,32 @@ export function onAgentRuntimeDone(
 ): () => void {
   runtimeDoneHandlers.add(handler)
   return () => runtimeDoneHandlers.delete(handler)
+}
+
+/**
+ * 任务「终结」订阅（Orchestrator 据此感知一次 node 派发的终态，含成功/失败/无产出）。
+ * 与 onAgentRuntimeDone 的区别：进程每次收尾（close/启动失败）都会触发，无论是否产出最终文本。
+ */
+export interface AgentRuntimeSettled {
+  agentId: string
+  runId: string
+  /** 本次任务使用的 dsh 会话 id（Orchestrator 用独立会话区分自己的 node 派发） */
+  sessionId?: string
+  /** true = 进程正常收尾且产生了最终文本（ok=false 时请读 error 判断原因） */
+  ok: boolean
+  /** 成功时的最终文本 */
+  finalText?: string
+  /** 失败/异常时的错误说明 */
+  error?: string
+}
+const runtimeSettledHandlers = new Set<(info: AgentRuntimeSettled) => void>()
+
+/** 订阅某 agent 任务终结（返回取消函数）；每次 dsh 进程收尾触发一次 */
+export function onAgentRuntimeSettled(
+  handler: (info: AgentRuntimeSettled) => void
+): () => void {
+  runtimeSettledHandlers.add(handler)
+  return () => runtimeSettledHandlers.delete(handler)
 }
 
 /** 查询某 agent 最近一次成功完成的最终文本（面板「转交最近回答」用；无完成返回 null） */
@@ -154,6 +187,12 @@ function normalizeAgentId(agentId?: string): string | null {
 }
 
 function emit(event: HarnessEvent, agentId?: string): void {
+  // 静默运行（Orchestrator 自动派发）：不向渲染层广播本 agent 的流式事件，
+  // 避免污染用户会话 UI；进程收尾时由 finishRun 复位 silent。
+  if (agentId) {
+    const rt = runtimes.get(agentId)
+    if (rt?.silent) return
+  }
   broadcastToAllWindows(IpcChannels.HARNESS_EVENT, {
     ...event,
     ...(agentId && agentId !== DEFAULT_AGENT_ID ? { agentId } : {})
@@ -1397,6 +1436,21 @@ function launchDsh(opts: {
   let parsedLen = 0
   let inReasoning = false
   let reasoningBuf = ''
+  /** 收尾已触发标志：error + close 双路径下只广播一次 settle */
+  let settleFired = false
+  /** 本次运行收尾：广播 settle 订阅方（Orchestrator 等）并复位静默标记 */
+  const finishRun = (info: AgentRuntimeSettled): void => {
+    if (settleFired) return
+    settleFired = true
+    rt.silent = false
+    for (const handler of runtimeSettledHandlers) {
+      try {
+        handler(info)
+      } catch {
+        // 订阅方异常不影响 dsh 进程收尾
+      }
+    }
+  }
 
   const isMarkerPrefix = (s: string): boolean =>
     s.length > 0 &&
@@ -1553,7 +1607,9 @@ function launchDsh(opts: {
   proc.stderr?.on('data', (chunk) => onData(chunk, 'err'))
   proc.on('error', (err) => {
     if (rt.child === proc) rt.child = null
-    agentEmit({ type: 'error', message: `dsh 启动失败：${err.message}` })
+    const message = `dsh 启动失败：${err.message}`
+    agentEmit({ type: 'error', message })
+    finishRun({ agentId, runId, sessionId: rt.lastSessionId || undefined, ok: false, error: message })
   })
   proc.on('close', (code) => {
     if (rt.child === proc) rt.child = null
@@ -1570,7 +1626,15 @@ function launchDsh(opts: {
       const hint = dshEntry
         ? '请重试或查看上方状态信息'
         : '若为首次运行，请等待包下载完成后重试'
-      agentEmit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
+      const message = `dsh 异常退出（code ${code}）。${hint}。`
+      agentEmit({ type: 'error', message })
+      finishRun({
+        agentId,
+        runId,
+        sessionId: rt.lastSessionId || undefined,
+        ok: false,
+        error: message
+      })
     } else {
       agentEmit({ type: 'done', runId })
       // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」；
@@ -1587,6 +1651,14 @@ function launchDsh(opts: {
           }
         }
       }
+      // 无论是否产出最终文本，都通知 settle 订阅方（Orchestrator 据此收尾节点）
+      finishRun({
+        agentId,
+        runId,
+        sessionId: rt.lastSessionId || undefined,
+        ok: Boolean(finalText),
+        ...(finalText ? { finalText } : {})
+      })
     }
   })
 
@@ -1651,6 +1723,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   rt.lastStatusText = ''
   // 记录本次会话 id：自动转交（模式 B）派发给本 agent 时据此接续会话上下文
   rt.lastSessionId = input.sessionId?.trim() || ''
+  // 静默运行（Orchestrator 自动派发）：进程结束前本 agent 的 HARNESS_EVENT 全部抑制
+  rt.silent = input.silent === true
   const dshEntry = resolveDshEntry()
   emitStatus(
     dshEntry
