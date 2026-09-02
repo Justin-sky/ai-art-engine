@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  annotateDagNodes,
   sanitizeDagDependencies,
   validateDagNodes,
   type DagCheckNode
@@ -103,12 +104,76 @@ describe('sanitizeDagDependencies', () => {
 
   it('多环嵌套仍可逐步破环到无环', () => {
     // n1→n2→n1 与 n2→n3→n2 两个环交叠
-    const nodes: DagCheckNode[] = [
-      node('n1', ['n2']),
-      node('n2', ['n1', 'n3']),
-      node('n3', ['n2'])
-    ]
+    const nodes: DagCheckNode[] = [node('n1', ['n2']), node('n2', ['n1', 'n3']), node('n3', ['n2'])]
     sanitizeDagDependencies(nodes)
     expect(validateDagNodes(nodes).ok).toBe(true)
+  })
+})
+
+describe('annotateDagNodes', () => {
+  it('合法节点集：hasIssues=false，各节点无标注', () => {
+    const nodes = [node('n1'), node('n2', ['n1']), node('n3', ['n1', 'n2'])]
+    const ann = annotateDagNodes(nodes)
+    expect(ann.hasIssues).toBe(false)
+    expect(ann.errorCount).toBe(0)
+    expect(ann.badDepCount).toBe(0)
+    expect(ann.invalidEdgeKeys.size).toBe(0)
+    expect(ann.byIndex.every((a) => a.errors.length === 0 && a.badDeps.length === 0)).toBe(true)
+  })
+
+  it('节点级错误按下标归集：bad-id / dup-id / empty-agent / self-dep', () => {
+    const nodes: DagCheckNode[] = [
+      { id: 'n1', agentId: 'a', dependsOn: ['n1'] }, // idx0：self-dep
+      { id: 'n1', agentId: '', dependsOn: [] }, // idx1：dup-id + empty-agent
+      { id: 'bad id', agentId: 'a', dependsOn: [] }, // idx2：bad-id
+      { id: 'n2', agentId: 'a', dependsOn: [] } // idx3：干净
+    ]
+    const ann = annotateDagNodes(nodes)
+    expect(ann.errorCount).toBe(4)
+    expect(ann.byIndex[0]!.errors.map((e) => e.kind)).toEqual(['self-dep'])
+    expect(ann.byIndex[1]!.errors.map((e) => e.kind)).toEqual(['dup-id', 'empty-agent'])
+    expect(ann.byIndex[2]!.errors.map((e) => e.kind)).toEqual(['bad-id'])
+    expect(ann.byIndex[3]!.errors).toHaveLength(0)
+  })
+
+  it('未显式提供 agentId 的节点不误报 empty-agent', () => {
+    const ann = annotateDagNodes([{ id: 'n1', dependsOn: [] }])
+    expect(ann.hasIssues).toBe(false)
+  })
+
+  it('missing 依赖归到发出它的节点，并进入 invalidEdgeKeys；self 边不产生连线键', () => {
+    const ann = annotateDagNodes([node('n1', ['ghost']), node('n2', ['n1'])])
+    expect(ann.byIndex[0]!.badDeps).toEqual([{ dep: 'ghost', kind: 'missing' }])
+    expect(ann.byIndex[1]!.badDeps).toHaveLength(0)
+    expect(ann.invalidEdgeKeys).toEqual(new Set(['n1\u0000ghost']))
+    expect(ann.badDepCount).toBe(1)
+  })
+
+  it('环上每个节点都拿到自己的破环候选边（n3→n4→n5→n3）', () => {
+    const ann = annotateDagNodes([node('n3', ['n4']), node('n4', ['n5']), node('n5', ['n3'])])
+    expect(ann.badDepCount).toBe(3)
+    expect(ann.byIndex[0]!.badDeps).toEqual([{ dep: 'n4', kind: 'cycle' }])
+    expect(ann.byIndex[1]!.badDeps).toEqual([{ dep: 'n5', kind: 'cycle' }])
+    expect(ann.byIndex[2]!.badDeps).toEqual([{ dep: 'n3', kind: 'cycle' }])
+    expect(ann.invalidEdgeKeys).toEqual(new Set(['n3\u0000n4', 'n4\u0000n5', 'n5\u0000n3']))
+    // 逐条剔除任一边后节点集应无环（与 validate 破环候选口径一致）
+    for (const e of ['n3\u0000n4', 'n4\u0000n5', 'n5\u0000n3']) {
+      const [id, dep] = e.split('\u0000')
+      const stripped = [node('n3', ['n4']), node('n4', ['n5']), node('n5', ['n3'])].map((n) =>
+        n.id === id ? { ...n, dependsOn: n.dependsOn.filter((d) => d !== dep) } : n
+      )
+      expect(validateDagNodes(stripped).ok).toBe(true)
+    }
+  })
+
+  it('重复 id 与重复依赖不重复计数（边去重）', () => {
+    const ann = annotateDagNodes([
+      { id: 'n1', agentId: 'a', dependsOn: ['n1', 'ghost', 'ghost'] },
+      { id: 'n1', agentId: 'a', dependsOn: [] }
+    ])
+    expect(ann.byIndex[0]!.errors.map((e) => e.kind)).toEqual(['self-dep'])
+    expect(ann.byIndex[1]!.errors.map((e) => e.kind)).toEqual(['dup-id'])
+    expect(ann.byIndex[0]!.badDeps).toEqual([{ dep: 'ghost', kind: 'missing' }])
+    expect(ann.badDepCount).toBe(1)
   })
 })

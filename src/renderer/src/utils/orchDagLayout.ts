@@ -131,8 +131,7 @@ export function layoutDag(nodes: DagNodeLike[]): DagLayout {
 
 /** 新增一条依赖边（depId → dependentId，即 dependentId 依赖 depId）的可行性检查结果 */
 export type DependencyCheckResult =
-  | { ok: true }
-  | { ok: false; reason: 'self' | 'missing' | 'duplicate' | 'cycle' }
+  { ok: true } | { ok: false; reason: 'self' | 'missing' | 'duplicate' | 'cycle' }
 
 /**
  * 检查是否允许新增依赖边 depId → dependentId（让 dependentId 依赖 depId）。
@@ -226,7 +225,9 @@ function cycleNodes(nodes: readonly DagCheckNode[]): string[] {
       if (left === 0) queue.push(next)
     }
   }
-  return peeled < nodes.length ? [...indegree.keys()].filter((id) => (indegree.get(id) ?? 0) > 0) : []
+  return peeled < nodes.length
+    ? [...indegree.keys()].filter((id) => (indegree.get(id) ?? 0) > 0)
+    : []
 }
 
 /** 环上依赖边全集：残余节点（无法剥除，必与环纠缠）之间的互相依赖边 */
@@ -318,4 +319,104 @@ export function sanitizeDagDependencies(nodes: DagCheckNode[]): number {
     if (!changed) break
   }
   return removed
+}
+
+/* ── 草稿就地标注：把校验结果归集到「每个节点」与其「无效依赖边」 ── */
+
+/** 一条需要剔除/注意的无效依赖边（自依赖作为节点级错误处理，不在此列） */
+export interface DagBadDep {
+  /** 被依赖的节点 id（可能未定义：missing） */
+  dep: string
+  /** missing：依赖了未定义节点；cycle：该边参与成环（破环候选） */
+  kind: 'missing' | 'cycle'
+}
+
+/** 单个节点的就地标注：节点级错误 + 需处理的无效依赖边 */
+export interface DagNodeAnnotation {
+  /** 节点级错误：bad-id / dup-id / empty-agent / self-dep（按出现顺序） */
+  errors: DagNodeError[]
+  /** 该节点发出的无效依赖（missing / cycle），可逐条剔除 */
+  badDeps: DagBadDep[]
+}
+
+export interface DagAnnotations {
+  /** 与 nodes 同序对齐（重复 id 按出现下标各自归属，互不污染） */
+  byIndex: DagNodeAnnotation[]
+  /** 无效依赖边集（missing/cycle），键 `${id}\u0000${dep}`（self 无可见连线不在此列） */
+  invalidEdgeKeys: Set<string>
+  /** 节点级错误总数 */
+  errorCount: number
+  /** 无效依赖边总数 */
+  badDepCount: number
+  /** 存在任一笔需要处理的问题 */
+  hasIssues: boolean
+}
+
+/**
+ * 把校验结果归集为「每个节点自己需要处理的问题」：
+ * - 节点级错误只列 4 类可直接展示的：bad-id / dup-id / empty-agent / self-dep；
+ * - missing / cycle 作为 badDeps 逐条给出（可由「剔除该依赖」或一键修复就地处理）；
+ * - 按下标归集而非按 id 归集：重复 id 的两个节点各归各的，不会互相污染。
+ * 纯函数、无 Vue 依赖，可单测。供 auto-plan 写回与手工编辑时的就地标注/修复使用。
+ */
+export function annotateDagNodes(nodes: readonly DagCheckNode[]): DagAnnotations {
+  const byIndex: DagNodeAnnotation[] = Array.from({ length: nodes.length }, () => ({
+    errors: [],
+    badDeps: []
+  }))
+  const firstAt = new Map<string, number>()
+  const anchors = new Set<number>()
+  for (let i = 0; i < nodes.length; i++) {
+    const id = String(nodes[i]?.id ?? '')
+    if (!NODE_ID_RE.test(id)) {
+      byIndex[i]!.errors.push({ id, kind: 'bad-id' })
+    } else if (firstAt.has(id)) {
+      byIndex[i]!.errors.push({ id, kind: 'dup-id' })
+    } else {
+      firstAt.set(id, i)
+      anchors.add(i)
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(nodes[i], 'agentId') &&
+      !String(nodes[i]!.agentId ?? '').trim()
+    ) {
+      byIndex[i]!.errors.push({ id, kind: 'empty-agent' })
+    }
+    if ((nodes[i]?.dependsOn ?? []).includes(id)) {
+      byIndex[i]!.errors.push({ id, kind: 'self-dep' })
+    }
+  }
+  const byId = new Map<string, number>()
+  for (const i of anchors) byId.set(String(nodes[i]!.id), i)
+  const residual = new Set(cycleNodes(nodes))
+  const invalidEdgeKeys = new Set<string>()
+  const seen = new Set<string>()
+  let badDepCount = 0
+  for (let i = 0; i < nodes.length; i++) {
+    const id = String(nodes[i]?.id ?? '')
+    for (const dep of nodes[i]?.dependsOn ?? []) {
+      if (dep === id) continue
+      const key = `${id}\u0000${dep}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (!byId.has(dep)) {
+        byIndex[i]!.badDeps.push({ dep, kind: 'missing' })
+        invalidEdgeKeys.add(key)
+        badDepCount += 1
+      } else if (residual.has(id) && residual.has(dep)) {
+        byIndex[i]!.badDeps.push({ dep, kind: 'cycle' })
+        invalidEdgeKeys.add(key)
+        badDepCount += 1
+      }
+    }
+  }
+  let errorCount = 0
+  for (const a of byIndex) errorCount += a.errors.length
+  return {
+    byIndex,
+    invalidEdgeKeys,
+    errorCount,
+    badDepCount,
+    hasIssues: errorCount + badDepCount > 0
+  }
 }
