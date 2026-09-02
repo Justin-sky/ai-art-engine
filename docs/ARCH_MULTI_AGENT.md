@@ -232,7 +232,10 @@ window.studio.onHarnessEvent((e) => {
 | `agent:list`（新） | — | 已注册 AgentConfig + 活跃 runtime 状态 |
 | `agent:save-config`（新） | — | 设置页管理 AgentConfig |
 | `agent:forward`（新，模式 B） | — | 转交 text/file/live |
-| `orchestrator:run`（新，模式 C） | — | 提交 DAG 任务 |
+| `orchestrator:run`（新，模式 C） | — | 提交 DAG 任务（校验通过返回 jobId，异步执行） |
+| `orchestrator:list`（新，模式 C） | — | 列出内存中的编排 job（最新在前，含运行中） |
+| `orchestrator:abort`（新，模式 C） | — | 中止运行中的 job（kill 当前节点，其余置 skipped） |
+| `orchestrator:event`（新，模式 C） | — | 广播 job 完整快照（渲染层据此增量刷新） |
 
 ## 11. 演进路线
 
@@ -249,6 +252,14 @@ window.studio.onHarnessEvent((e) => {
 > 最近完成文本/会话（`onAgentRuntimeDone`/`getAgentLastFinal`/`getAgentLastSessionId`）。
 > 渲染层以「消息 ⤳ 转交对话框（目标 + 附加指令 + 附文件 + 自动转交开关）+ AgentPanel 管道状态条」落地，
 > 拖拽连线交互留待后续迭代；一次转交（once）由目标面板以其会话直接发送，会话归属与普通消息一致。
+>
+> **M3** 已交付：`orchestrator:run`/`orchestrator:list`/`orchestrator:abort` + `orchestrator:event`
+> 四条通道、`agentOrchestrator.ts`（DAG 静态校验含无环检测、按依赖串行调度、node 幂等独立会话
+> `orch-<jobId>-<nodeId>-a<n>`、依赖产出文本注入、失败重试 1 次、中止 kill、汇总节点）；harness 增加
+> `silent` 静默运行（自动任务不污染用户会话 UI）与运行时终结订阅 `onAgentRuntimeSettled`。
+> 渲染层以 AgentPanel 固定「编排」标签落地（目标 + 角色节点编辑 + 依赖勾选 → job 记录：节点状态流、
+> 节点产出/错误可展开复制、最终汇总复制、运行中可中止）；节点由用户手工定义（人工 DAG），
+> 自动 planner 拆解、DAG 图可视化与跨 agent 并行执行留待后续迭代。
 
 ## 12. 风险与缓解
 

@@ -63,6 +63,11 @@ import {
   forwardAgent,
   listAgentPipes
 } from './services/agentBridge'
+import {
+  abortOrchestratorJob,
+  listOrchestratorJobs,
+  runOrchestrator
+} from './services/agentOrchestrator'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -353,6 +358,12 @@ export function registerIpcHandlers(): void {
   )
   handle(IpcChannels.AGENT_PIPE_LIST, () => listAgentPipes())
   handle(IpcChannels.AGENT_PIPE_CANCEL, (_ev, pipeId: string) => cancelAgentPipe(pipeId))
+  // 模式 C：多 Agent 编排（用户提交 DAG，主进程串行调度；进度经 ORCHESTRATOR_EVENT 推送）
+  handle(IpcChannels.ORCHESTRATOR_RUN, (_ev, input: import('@shared/ipc').OrchestratorRunInput) =>
+    runOrchestrator(input)
+  )
+  handle(IpcChannels.ORCHESTRATOR_LIST, () => listOrchestratorJobs())
+  handle(IpcChannels.ORCHESTRATOR_ABORT, (_ev, jobId: string) => abortOrchestratorJob(jobId))
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())

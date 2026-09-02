@@ -228,7 +228,16 @@ export const IpcChannels = {
   /** Agents（模式 B）：取消一条自动转交管道 */
   AGENT_PIPE_CANCEL: 'agent:pipe-cancel',
   /** Agents（模式 B）：主进程推送「自动转交已派发」，渲染层据此把任务写入 B 的会话 UI */
-  AGENT_FORWARD_EVENT: 'agent:forward-event'
+  AGENT_FORWARD_EVENT: 'agent:forward-event',
+
+  /** Orchestrator（模式 C）：提交一个多 agent 编排任务（总目标 → DAG 执行） */
+  ORCHESTRATOR_RUN: 'orchestrator:run',
+  /** Orchestrator：查询全部编排 job（含节点状态） */
+  ORCHESTRATOR_LIST: 'orchestrator:list',
+  /** Orchestrator：中止一个编排 job（运行中的节点 abort，未开始的节点取消） */
+  ORCHESTRATOR_ABORT: 'orchestrator:abort',
+  /** Orchestrator：主进程推送 job 状态变化（节点推进 / 终态），渲染层实时刷新 DAG */
+  ORCHESTRATOR_EVENT: 'orchestrator:event'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -613,6 +622,77 @@ export interface AgentForwardEvent {
   at: number
 }
 
+/** Orchestrator（模式 C）：一个多 agent 编排任务（总目标 → DAG） */
+export interface OrchestratorRunInput {
+  /** 总目标：发给每个节点的任务都会带上这段目标，节点在目标约束下完成自己的角色 */
+  goal: string
+  /** 参与本次编排的节点列表（按依赖关系构成 DAG） */
+  nodes: OrchestratorNodeSpec[]
+  /** 任务标题（UI 展示用，缺省自动截取目标前 24 字） */
+  title?: string
+}
+
+/** Orchestrator：DAG 中一个节点的静态定义 */
+export interface OrchestratorNodeSpec {
+  /** 节点 id（job 内唯一，如 'n1'；`^[A-Za-z0-9._-]{1,32}$`） */
+  id: string
+  /** 执行该节点的 agent */
+  agentId: string
+  /** 角色提示：告诉该 agent 在本任务中扮演什么、要产出什么（节点幂等的关键输入之一） */
+  instruction: string
+  /** 依赖节点 id（缺省无依赖；依赖全部完成后本节点才可运行） */
+  dependsOn?: string[]
+}
+
+/** Orchestrator：job 的运行状态（主进程维护并随事件推给渲染层） */
+export interface OrchestratorJob {
+  jobId: string
+  title: string
+  goal: string
+  state: 'running' | 'done' | 'failed' | 'aborted'
+  /** 创建时间戳 */
+  createdAt: number
+  /** 结束时间戳（未结束时缺省） */
+  finishedAt?: number
+  /** 各节点实时状态（按定义顺序；与节点 id 对应） */
+  nodes: OrchestratorNodeState[]
+  /** job 级错误说明（state=failed 时有值） */
+  error?: string
+  /** 汇总文本：最终汇总节点完成后填充 */
+  summary?: string
+}
+
+/** Orchestrator：单个节点的实时状态 */
+export interface OrchestratorNodeState {
+  id: string
+  agentId: string
+  instruction: string
+  dependsOn: string[]
+  state: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+  /** 已尝试次数（失败重试 1 次） */
+  attempts: number
+  /** 节点最终文本（成功后填充） */
+  finalText?: string
+  /** 错误说明（失败后填充） */
+  error?: string
+  /** 节点开始时间戳 */
+  startedAt?: number
+  /** 节点结束时间戳 */
+  finishedAt?: number
+}
+
+/** Orchestrator：提交结果 */
+export interface OrchestratorRunResult {
+  ok: boolean
+  jobId?: string
+  message?: string
+}
+
+/** Orchestrator：主进程 → 渲染层，job 状态变化（节点推进 / 终态） */
+export interface OrchestratorJobEvent {
+  job: OrchestratorJob
+}
+
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
@@ -640,6 +720,12 @@ export interface HarnessRunInput {
    * 不同 agent 可并发运行任务。
    */
   agentId?: string
+  /**
+   * 可选：静默运行（Orchestrator 等自动派发置位）。
+   * true 时该 agent 本次运行的 HARNESS_EVENT 流式事件不向渲染层广播，
+   * 避免自动任务的输出污染用户会话 UI；任务结束由主进程内部复位。
+   */
+  silent?: boolean
 }
 
 /** Harness：任务启动结果 */
@@ -1102,6 +1188,18 @@ export interface StudioApi {
 
   /** Agents（模式 B）：订阅自动转交派发事件（B 面板写入会话 UI） */
   onAgentForward: (callback: (event: AgentForwardEvent) => void) => () => void
+
+  /** Orchestrator（模式 C）：提交一个多 agent 编排任务（总目标 → DAG），立即返回 jobId */
+  runOrchestrator: (input: OrchestratorRunInput) => Promise<OrchestratorRunResult>
+
+  /** Orchestrator：查询全部编排 job（含节点实时状态） */
+  listOrchestratorJobs: () => Promise<OrchestratorJob[]>
+
+  /** Orchestrator：中止一个编排 job（运行中的节点 abort，未开始的节点取消） */
+  abortOrchestratorJob: (jobId: string) => Promise<boolean>
+
+  /** Orchestrator：订阅 job 状态变化（节点推进 / 终态） */
+  onOrchestratorEvent: (callback: (event: OrchestratorJobEvent) => void) => () => void
 
   /** Skills：查询 dsh 自定义技能目录信息 */
   getDshSkillsInfo: () => Promise<DshSkillsInfo>

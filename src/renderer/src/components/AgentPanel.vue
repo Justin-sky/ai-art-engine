@@ -2,10 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { AgentPipeInfo, AgentRuntimeStatus } from '@shared/ipc'
 import ChatPanel from './ChatPanel.vue'
+import OrchestratorPanel from './OrchestratorPanel.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm, promptText } from '../composables/useStudioPrompt'
 
 const { t } = useStudioI18n()
+
+/** 编排标签的虚拟 agentId（不映射真实 agent，仅用于面板内切换） */
+const ORCH_KEY = '@orchestrator'
 
 /** 全部 agent（含运行状态），来自主进程 agentRegistry */
 const agents = ref<AgentRuntimeStatus[]>([])
@@ -20,6 +24,9 @@ const pipes = ref<AgentPipeInfo[]>([])
 /** 各标签 ChatPanel 实例（转交 once 时切过去后直接以目标会话发送） */
 const panelRefs = new Map<string, ChatPanelExpose>()
 let stopForward: (() => void) | null = null
+/** 编排标签的运行状态点（主进程 job 事件驱动） */
+const orchRunning = ref(false)
+let stopOrchEvents: (() => void) | null = null
 
 interface ChatPanelExpose {
   sendExternally?: (text: string) => Promise<boolean>
@@ -58,10 +65,22 @@ onMounted(() => {
   stopForward = window.studio.onAgentForward(() => {
     void refreshPipes()
   })
+  // 编排 job 推进 → 刷新「编排」标签运行点 + agent 占用状态点（节点 silent，不影响会话 UI）
+  stopOrchEvents = window.studio.onOrchestratorEvent(({ job }) => {
+    orchRunning.value = job.state === 'running'
+    void refresh()
+  })
+  void window.studio
+    .listOrchestratorJobs()
+    .then((list) => {
+      orchRunning.value = list.some((job) => job.state === 'running')
+    })
+    .catch(() => undefined)
 })
 
 onBeforeUnmount(() => {
   stopForward?.()
+  stopOrchEvents?.()
 })
 
 /** 展示用：agent 名（找不到 id 时显示 id 本身） */
@@ -204,6 +223,19 @@ async function onCancelPipe(id: string): Promise<void> {
       >
         ＋
       </button>
+      <button
+        type="button"
+        class="agent-tab orch-tab"
+        :class="{ active: activeId === ORCH_KEY }"
+        :title="t('studio.orchestrator.title')"
+        @click="onTabClick(ORCH_KEY)"
+      >
+        <span
+          class="agent-dot"
+          :class="{ running: orchRunning }"
+        />
+        <span class="agent-name">{{ t('studio.orchestrator.tab') }}</span>
+      </button>
     </div>
     <div
       v-if="pipes.length"
@@ -235,7 +267,7 @@ async function onCancelPipe(id: string): Promise<void> {
     <div class="agent-body">
       <KeepAlive :max="6">
         <ChatPanel
-          v-if="activeAgent"
+          v-if="activeAgent && activeId !== ORCH_KEY"
           :key="activeAgent.agentId"
           :agent-id="activeAgent.agentId"
           :agents="agents"
@@ -243,6 +275,11 @@ async function onCancelPipe(id: string): Promise<void> {
           @forward-request="handleForwardRequest"
         />
       </KeepAlive>
+      <OrchestratorPanel
+        v-if="activeId === ORCH_KEY"
+        :agents="agents"
+        @status-change="refresh"
+      />
     </div>
   </div>
 </template>

@@ -6,6 +6,7 @@
 
 ### Added
 
+- **多 Agent 编排（自主协作 DAG）**：AI 对话面板 Agent 标签栏新增固定「编排」标签——提交「总目标 + 角色节点」（执行 Agent / 环节说明 / 依赖勾选）即生成任务 DAG；主进程按依赖串行调度，每个节点用独立 dsh 会话执行并自动注入前置节点产出文本，失败自动重试 1 次，可一键中止；「编排记录」实时展示节点状态流、节点产出 / 失败原因与最终汇总（均可复制）；节点任务静默运行不污染各角色会话历史（新通道 `orchestrator:run/list/abort/event`）
 - **音效库**：内置 22 个常用音效预设（转场 8 / UI 7 / 环境 7，中英双语，`features/timeline/sfxPresets.ts`），一键「生成并上轨」复用 AI 音效生成管线；分类浏览 + 资产库声音一键「导入上轨」
 - **项目级 Agent 记忆**：工程 `.aiartengine/memory.md` 跨会话沉淀项目偏好（风格 / 机位 / 角色一致性 / 其它），工程创建 / 打开时由配置自动生成基线，每轮对话注入 persona（截断 4000 字符）；MCP 工具 `project_memory_read / append / write`
 - **角色音色 / 声音克隆**：工程 `.aiartengine/voiceProfiles.json` 角色音色档案（角色 → 音色 id / 克隆参考音频），配音节点按角色（`generateSpeechCharacter`）自动取档实现跨镜头一致配音；`referenceAudio` 透传火山方舟声音复刻（few-shot voice clone）；声音节点检查器「角色音色」下拉 + 档案管理对话框；MCP 工具 `voice_profile_list / upsert / delete`
