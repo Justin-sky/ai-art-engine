@@ -266,7 +266,13 @@ window.studio.onHarnessEvent((e) => {
 > 可编辑节点草案（id 归一 n1..nk + dependsOn 按新 id 重映射，解析失败给出可读错误）；跨 agent 真并行
 > 调度——agent 队列锁（含跨 job）+ `MAX_PARALLEL` 并发闸门，中止改为 kill 全部运行节点；DAG 连线图
 > 可视化——`renderer/utils/orchDagLayout.ts` 最长路径分层布局 + SVG 贝塞尔连线（依赖节点终态着色），
-> 点击图上节点在下方查看详情/产出。仍可迭代：图内拖拽改拓扑、自动拆分后的依赖自动校验与文件分配。
+> 点击图上节点在下方查看详情/产出。
+>
+> **M3 收官-A（编排拓扑画布，拖拽连线）**：新建编排表单把节点依赖从复选框勾选升级为迷你 DAG 画布——
+> 复用 `orchDagLayout.ts` 自动布局实时呈现节点与依赖连线，拖动节点 A 落到节点 B 即建立「B 等 A 完成」
+> 依赖（A→B，成环/自依赖在落点前拦截并给出提示），点击连线删除该依赖；纯函数
+> `canAddDependency`（self/missing/duplicate/cycle 四类校验，与主进程 runOrchestrator 口径一致）配单测。
+> 仍可迭代：自动拆分后的依赖自动校验与文件分配、节点草稿就地标注修复。
 
 ## 12. 风险与缓解
 
