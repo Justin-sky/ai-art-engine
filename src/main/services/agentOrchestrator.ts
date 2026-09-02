@@ -33,6 +33,9 @@ import {
   type OrchestratorRunInput,
   type OrchestratorRunResult
 } from '@shared/ipc'
+import { resolveCacheOutputRoot } from '@shared/domain'
+import { readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { broadcastToAllWindows } from '../broadcast'
 import { agentRegistry, DEFAULT_AGENT_ID } from './agentRegistry'
 import {
@@ -42,11 +45,16 @@ import {
   runHarnessTask,
   runtimeIsRunning
 } from './deepseekHarnessService'
+import { projectService } from './projectService'
 
 /** 节点 id 合法性：与会话 id 拼接要求文件系统安全 */
 const NODE_ID_RE = /^[A-Za-z0-9._-]{1,32}$/
 /** 单个 job 的节点数上限（防手滑超长） */
 const MAX_NODES = 16
+/** 单个节点最多上报给 UI/下游的产出文件数（防止刷屏） */
+const MAX_OUTPUT_FILES = 24
+/** 注入下游任务文本的产出文件提示上限（图片 @ 附件过多会挤爆上下文） */
+const DOWNSTREAM_FILE_HINT_LIMIT = 10
 /** 节点失败重试次数上限（含首次；即失败后最多重试 1 次） */
 const MAX_ATTEMPTS = 2
 /** 内存保留的 job 历史条数（仅清理已终态的旧 job） */
@@ -64,8 +72,16 @@ const MAX_PLAN_NODES = 8
 /** 策划拆解会话 id 前缀（与节点会话区分，便于识别与清理） */
 const PLAN_SESSION_PREFIX = 'orch-plan'
 
-/** 内部 job 实体：共享层字段 + 中止标记 */
-type JobRecord = OrchestratorJob & { aborted: boolean }
+/** 节点产出文件采集：job 级基线 + 已认领集合（只供内部调度使用，不随快照外发） */
+interface JobFileTracker {
+  /** 首个节点运行前，工程产出目录下全部文件的快照 */
+  baseline: Set<string>
+  /** 已归属到某节点的文件（防止并行节点重复认领同一文件） */
+  claimed: Set<string>
+}
+
+/** 内部 job 实体：共享层字段 + 中止标记 + 文件采集状态 */
+type JobRecord = OrchestratorJob & { aborted: boolean; files?: JobFileTracker }
 
 /** 一次节点派发的终态（settle 后由 runNodeAttempt 归一化） */
 type AttemptOutcome =
@@ -132,6 +148,52 @@ function expectSettle(agentId: string): Promise<{
 
 function cancelExpectation(agentId: string): void {
   pendingSettles.delete(agentId)
+}
+
+/* ── 节点产出文件采集：工程产出目录（Cache/Assets）在节点运行窗口内的新增文件 ── */
+
+/** 产出文件扫描根（相对工程根）：缓存根（可配置，缺省 Cache）+ 资产库（Assets） */
+function outputScanRoots(): string[] {
+  return [resolveCacheOutputRoot(projectService.getConfig()?.cacheOutputDir), 'Assets']
+}
+
+/** 递归收集相对目录下全部文件的工程内相对路径（目录不存在/不可读则跳过） */
+function collectDirFiles(root: string, relDir: string, acc: Set<string>): void {
+  let entries
+  try {
+    entries = readdirSync(join(root, relDir), { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name
+    if (entry.isDirectory()) collectDirFiles(root, rel, acc)
+    else if (entry.isFile()) acc.add(rel)
+  }
+}
+
+/** 扫描当前工程产出目录全部文件相对路径（未打开工程 → 空集） */
+function scanOutputFiles(): Set<string> {
+  const state = projectService.getOpenProjectState()
+  const root = state?.rootPath?.trim()
+  if (!root) return new Set()
+  const acc = new Set<string>()
+  for (const relDir of outputScanRoots()) collectDirFiles(root, relDir, acc)
+  return acc
+}
+
+/** 结算节点运行窗口的新增产出：当前快照 − job 基线 − 已认领；认领后才返回 */
+function collectNodeOutputFiles(job: JobRecord): string[] {
+  const tracker = job.files
+  if (!tracker) return []
+  const fresh: string[] = []
+  for (const rel of scanOutputFiles()) {
+    if (tracker.baseline.has(rel) || tracker.claimed.has(rel)) continue
+    tracker.claimed.add(rel)
+    fresh.push(rel)
+  }
+  // 排序后截断：名字稳定且避免极端多文件刷屏（claimed 已在前面全量登记，防后续节点误认领）
+  return fresh.sort().slice(0, MAX_OUTPUT_FILES)
 }
 
 /* ── job 生命周期 ── */
@@ -460,6 +522,10 @@ async function runBatched<T>(tasks: Array<() => Promise<T>>, limit: number): Pro
 /** 主循环：反复「剔除失效依赖 → 并发执行全部就绪节点」，直到终态 */
 async function runJob(job: JobRecord): Promise<void> {
   try {
+    // 首次进入调度前取产出目录基线快照：此后各节点完成时 diff 出各自新增的产出文件
+    if (job.state === 'running' && !job.files) {
+      job.files = { baseline: scanOutputFiles(), claimed: new Set() }
+    }
     while (job.state === 'running') {
       if (cascadeSkips(job)) continue
       const ready = collectReady(job)
@@ -590,7 +656,12 @@ async function runNodeAttempt(
   void deleteHarnessSession(sessionId, agentId).catch(() => undefined)
   if (job.state !== 'running') return { kind: 'aborted' }
   const finalText = settle.finalText?.trim()
-  if (settle.ok && finalText) return { kind: 'ok', finalText }
+  if (settle.ok && finalText) {
+    // 结算本节点运行窗口内新增的产出文件（并行节点按完成顺序认领，文件不会重复归属）
+    const files = collectNodeOutputFiles(job)
+    if (files.length) node.outputFiles = files
+    return { kind: 'ok', finalText }
+  }
   return { kind: 'failed', error: settle.error ?? '节点未产出有效文本（结果为空）' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
 }
 
@@ -609,6 +680,22 @@ function composeNodeTask(job: JobRecord, node: OrchestratorNodeState): string {
     lines.push('以下是已完成环节的产出，请直接基于这些内容继续推进，不要重复已完成的工作：') // cjk-ok 任务文本（发送给模型的内容）
     for (const dep of deps) {
       lines.push(`\n【${dep.id} · ${agentName(dep.agentId)} 的产出】\n${dep.finalText}`) // cjk-ok 任务文本（发送给模型的内容）
+    }
+    // 上游环节产出文件（工程内相对路径）清单：让模型按需读取/引用，而不只是依赖文本
+    const fileLines: string[] = []
+    for (const dep of deps) {
+      const files = (dep.outputFiles ?? []).slice(0, DOWNSTREAM_FILE_HINT_LIMIT)
+      if (!files.length) continue
+      fileLines.push(`【${dep.id} · ${agentName(dep.agentId)} 产出的文件】`) // cjk-ok 任务文本（发送给模型的内容）
+      for (const file of files) fileLines.push(`- ${file}`)
+      const total = (dep.outputFiles ?? []).length
+      if (total > files.length) {
+        fileLines.push(`- …（共 ${total} 个文件，其余略）`) // cjk-ok 任务文本（发送给模型的内容）
+      }
+    }
+    if (fileLines.length) {
+      lines.push('以下是上游环节产出的文件（工程内相对路径）。如需引用这些文件，请直接使用其相对路径（图片可用 @相对路径 语法引用）。') // cjk-ok 任务文本（发送给模型的内容）
+      lines.push(...fileLines)
     }
   }
   lines.push('现在开始执行你的环节。若需要调用工具或生成文件，请直接操作。') // cjk-ok 任务文本（发送给模型的内容）
