@@ -615,7 +615,20 @@ export default {
       saveToLibrary: '保存到资产库',
       saveToLibraryTitle: '将生成结果保存到资产库',
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
-      savedToLibrary: '已保存'
+      savedToLibrary: '已保存',
+      close: '关闭',
+      cancel: '取消',
+      forwardTitle: '转交给其他 Agent',
+      forwardTo: '目标 Agent',
+      forwardLive: '自动转交：本 Agent 每次完成任务后，把最终结果自动发给目标 Agent',
+      forwardText: '转交内容',
+      forwardInstruction: '附加指令（可选）：置于每次转交内容之前，说明对目标 Agent 的要求',
+      forwardInstructionHint: '如：请根据以下方案执行。留空则直接转发完成结果',
+      forwardFile: '附带工作区文件（可选）',
+      forwardFilePlaceholder: '工程内相对路径，如 Cache/Images/xxx.png',
+      forwardSend: '转交并让目标 Agent 运行',
+      forwardSetup: '建立自动转交',
+      forwardBusy: '该 Agent 正在运行任务，无法接收转交'
     },
     agents: {
       running: '运行中',
@@ -627,7 +640,9 @@ export default {
       newPromptPlaceholder: '描述该 Agent 的职责与工作方式…',
       removeTitle: '删除该 Agent',
       removeMessage: '删除 Agent「{name}」？其会话历史将一并移除。',
-      removeConfirm: '删除'
+      removeConfirm: '删除',
+      pipes: '自动转交管道',
+      pipeCancelTitle: '取消该自动转交管道'
     },
     editor: {
       asset: '资产编辑器',

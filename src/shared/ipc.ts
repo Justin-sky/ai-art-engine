@@ -220,7 +220,15 @@ export const IpcChannels = {
   /** Agents：新增 / 更新一个自定义 agent 配置 */
   AGENT_SAVE_CONFIG: 'agent:save-config',
   /** Agents：删除一个自定义 agent 配置（内置预设不可删） */
-  AGENT_REMOVE: 'agent:remove'
+  AGENT_REMOVE: 'agent:remove',
+  /** Agents（模式 B）：建立一条 A→B 自动转交管道 —— A 每次完成任务，主进程把最终文本自动派发给 B */
+  AGENT_FORWARD: 'agent:forward',
+  /** Agents（模式 B）：查询活动中的自动转交管道 */
+  AGENT_PIPE_LIST: 'agent:pipe-list',
+  /** Agents（模式 B）：取消一条自动转交管道 */
+  AGENT_PIPE_CANCEL: 'agent:pipe-cancel',
+  /** Agents（模式 B）：主进程推送「自动转交已派发」，渲染层据此把任务写入 B 的会话 UI */
+  AGENT_FORWARD_EVENT: 'agent:forward-event'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -552,6 +560,57 @@ export interface AgentRuntimeStatus {
   builtin?: boolean
   /** true = 该 agent 当前有任务在跑 */
   running: boolean
+}
+
+/** Agents（模式 B）：一条 A→B 自动转交管道（live 订阅） */
+export interface AgentPipeInfo {
+  /** 管道唯一 id（用于取消） */
+  id: string
+  /** 源 agent（完成者）：每次任务完成触发转交 */
+  from: string
+  /** 目标 agent：收到转交任务 */
+  to: string
+  /** 可选：附加指令（置于转交内容之前，可对 B 说明处理方式） */
+  instruction?: string
+  /** 可选：附带工作区文件（工程内相对路径，如 Cache/Images/xxx.png），提示 B 读取参考 */
+  file?: string
+  /** 最近一次派发时间戳（尚无派发时缺省） */
+  lastAt?: number
+  /** 最近一次派发结果说明（如「目标正在运行，已跳过」） */
+  lastMessage?: string
+}
+
+/** Agents（模式 B）：建立 / 更新一条自动转交管道（`agent:forward`） */
+export interface AgentForwardInput {
+  /** 源 agent id（缺省 'default'） */
+  from?: string
+  /** 目标 agent id（必填，且 ≠ from） */
+  to: string
+  /** 附加指令（可选）：每次派发给 B 的任务都会带上这段说明 */
+  instruction?: string
+  /** 附带工作区文件（可选）：工程内相对路径，每次派发都提示 B 读取参考 */
+  file?: string
+}
+
+/** Agents（模式 B）：建立管道结果 */
+export interface AgentForwardResult {
+  ok: boolean
+  message?: string
+  pipe?: AgentPipeInfo
+}
+
+/** Agents（模式 B）：主进程 → 渲染层，自动转交已派发（to 面板据此把任务写入会话 UI） */
+export interface AgentForwardEvent {
+  /** 本次转交内容所属管道（agentId + 源 agent 名已写入文本，此处仅供定位） */
+  pipeId: string
+  from: string
+  to: string
+  /** 已合成的完整任务文本（B 收到的任务） */
+  text: string
+  /** B 侧 dsh 会话 id（缺失表示 B 首次被转交、无既有会话） */
+  sessionId?: string
+  /** 派发时间戳 */
+  at: number
 }
 
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
@@ -1031,6 +1090,18 @@ export interface StudioApi {
 
   /** Agents：删除一个自定义 agent 配置（内置预设不可删） */
   removeAgent: (agentId: string) => Promise<AgentRuntimeStatus[]>
+
+  /** Agents（模式 B）：建立一条 A→B 自动转交管道（A 每次完成任务自动派发给 B）；重复管道更新配置 */
+  forwardToAgent: (input: AgentForwardInput) => Promise<AgentForwardResult>
+
+  /** Agents（模式 B）：查询活动中的自动转交管道 */
+  listAgentPipes: () => Promise<AgentPipeInfo[]>
+
+  /** Agents（模式 B）：取消一条自动转交管道（返回剩余管道） */
+  cancelAgentPipe: (pipeId: string) => Promise<AgentPipeInfo[]>
+
+  /** Agents（模式 B）：订阅自动转交派发事件（B 面板写入会话 UI） */
+  onAgentForward: (callback: (event: AgentForwardEvent) => void) => () => void
 
   /** Skills：查询 dsh 自定义技能目录信息 */
   getDshSkillsInfo: () => Promise<DshSkillsInfo>

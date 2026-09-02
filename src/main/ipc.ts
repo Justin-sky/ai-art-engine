@@ -58,6 +58,11 @@ import {
   writeDshSkillsTemplate
 } from './services/deepseekHarnessService'
 import { agentRegistry, toAgentRuntimeStatus } from './services/agentRegistry'
+import {
+  cancelAgentPipe,
+  forwardAgent,
+  listAgentPipes
+} from './services/agentBridge'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -342,6 +347,12 @@ export function registerIpcHandlers(): void {
     const configs = agentRegistry.remove(agentId)
     return toAgentRuntimeStatus(configs, (agentId) => Boolean(runtimeIsRunning(agentId)))
   })
+  // 模式 B：A→B 自动转交管道（建立/更新 + 查询 + 取消；派发事件经 AGENT_FORWARD_EVENT 推送）
+  handle(IpcChannels.AGENT_FORWARD, (_ev, input: import('@shared/ipc').AgentForwardInput) =>
+    forwardAgent(input)
+  )
+  handle(IpcChannels.AGENT_PIPE_LIST, () => listAgentPipes())
+  handle(IpcChannels.AGENT_PIPE_CANCEL, (_ev, pipeId: string) => cancelAgentPipe(pipeId))
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())

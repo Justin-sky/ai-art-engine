@@ -616,7 +616,20 @@ export default {
       saveToLibrary: 'Save to asset library',
       saveToLibraryTitle: 'Save generated result to asset library',
       saveToLibrarySubtitle: 'Choose a target folder and file name',
-      savedToLibrary: 'Saved'
+      savedToLibrary: 'Saved',
+      close: 'Close',
+      cancel: 'Cancel',
+      forwardTitle: 'Forward to another Agent',
+      forwardTo: 'Target Agent',
+      forwardLive: 'Auto-forward: send this Agent\u2019s final result to the target automatically after each task',
+      forwardText: 'Content to forward',
+      forwardInstruction: 'Extra instruction (optional): prepended to each forwarded result',
+      forwardInstructionHint: 'e.g. Execute based on the plan below. Leave empty to forward the result as-is',
+      forwardFile: 'Attach workspace file (optional)',
+      forwardFilePlaceholder: 'Path relative to project root, e.g. Cache/Images/xxx.png',
+      forwardSend: 'Forward & run on target',
+      forwardSetup: 'Set up auto-forward',
+      forwardBusy: 'This agent is already running a task'
     },
     agents: {
       running: 'Running',
@@ -628,7 +641,9 @@ export default {
       newPromptPlaceholder: 'Describe what this agent does…',
       removeTitle: 'Delete this agent',
       removeMessage: 'Delete agent "{name}"? Its chat history will also be removed.',
-      removeConfirm: 'Delete'
+      removeConfirm: 'Delete',
+      pipes: 'Auto-forward pipelines',
+      pipeCancelTitle: 'Cancel this pipeline'
     },
     editor: {
       asset: 'Asset Editor',
