@@ -3,7 +3,7 @@ import type { VueComponent } from 'dockview-vue'
 import { WORKSPACE_TOOLBAR_ITEMS } from '@shared/workspaceToolbar'
 import AssetBrowser from '../../components/AssetBrowser.vue'
 import AssetCanvasEditor from '../../components/AssetCanvasEditor.vue'
-import ChatPanel from '../../components/ChatPanel.vue'
+import AgentPanel from '../../components/AgentPanel.vue'
 import InspectorPanel from '../../components/InspectorPanel.vue'
 import WorkspaceMain from '../../components/WorkspaceMain.vue'
 import WorkspaceToolbar from '../../components/WorkspaceToolbar.vue'
@@ -76,7 +76,7 @@ export const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
   },
   {
     id: 'chat',
-    createComponent: () => panel('DockChat', () => h(ChatPanel))
+    createComponent: () => panel('DockChat', () => h(AgentPanel))
   },
   {
     id: 'assetEditor',

@@ -213,7 +213,14 @@ export const IpcChannels = {
   /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
   SKILLS_IMPORT_TO_GRAPH: 'skills:import-to-graph',
   /** Harness：任务事件流（main → 渲染层，assistant / status / tool / done / error） */
-  HARNESS_EVENT: 'harness:event'
+  HARNESS_EVENT: 'harness:event',
+
+  /** Agents：查询全部 agent 配置与运行状态（多 agent 面板标签栏用） */
+  AGENT_LIST: 'agent:list',
+  /** Agents：新增 / 更新一个自定义 agent 配置 */
+  AGENT_SAVE_CONFIG: 'agent:save-config',
+  /** Agents：删除一个自定义 agent 配置（内置预设不可删） */
+  AGENT_REMOVE: 'agent:remove'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -466,6 +473,8 @@ export interface AskUserQuestion {
   options?: string[]
   /** 附加说明（可选） */
   hint?: string
+  /** 提问所属 agent；缺省 = 'default'，多 agent 面板据此过滤 */
+  agentId?: string
 }
 
 /** MCP：渲染层 → 主进程，用户对 ask_user 提问的选择 */
@@ -473,6 +482,8 @@ export interface AskUserAnswer {
   requestId: string
   /** 用户选中的选项文本；用户取消 / 超时 / 会话已结束为 null */
   answer: string | null
+  /** 提问所属 agent（回传时原样带上，便于主进程定位）；缺省 = 'default' */
+  agentId?: string
 }
 
 /** MCP：工具服务当前状态（设置界面展示接入信息用） */
@@ -512,6 +523,37 @@ export interface HarnessStatus {
 /** Chat 面板的 agent 交互模式（类似 Cursor 的 Craft / Ask / Plan） */
 export type ChatMode = 'craft' | 'ask' | 'plan'
 
+/** Agent 的静态配置（多 agent 协作的角色定义；随应用设置持久化） */
+export interface AgentConfig {
+  /** 全局唯一 id（`^[A-Za-z0-9._-]{1,32}$`）；缺省 agent 固定为 'default' */
+  agentId: string
+  /** 面板标签显示名（如「策划」「绘图」「审核」） */
+  name: string
+  /** 角色类型：内置预设 craft/ask/plan 复用现有 dsh system-prompt 切换；custom 为自定义 */
+  profile: 'craft' | 'ask' | 'plan' | 'custom'
+  /** 可选：追加到 persona 的职责描述（custom 必填；内置预设缺省用各自默认 persona） */
+  systemPrompt?: string
+  /** 可选：专属文本模型 id（缺省走全局默认文本模型） */
+  model?: string
+  /** 可选：模型所属 provider 实例 id */
+  providerId?: string
+  /** 面板标识色（#rrggbb）；缺省按 profile 取默认色 */
+  color?: string
+  /** 内置预设不可删除 */
+  builtin?: boolean
+}
+
+/** Agent 运行时状态（agent:list 返回，供面板展示运行中 / 排队） */
+export interface AgentRuntimeStatus {
+  agentId: string
+  name: string
+  profile: AgentConfig['profile']
+  color?: string
+  builtin?: boolean
+  /** true = 该 agent 当前有任务在跑 */
+  running: boolean
+}
+
 /** Harness：一次对话任务输入（渲染层 → 主进程） */
 export interface HarnessRunInput {
   /** 用户发给 agent 的任务文本 */
@@ -533,6 +575,12 @@ export interface HarnessRunInput {
   model?: string
   /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */
   providerId?: string
+  /**
+   * 可选：目标 agent（缺省 'default'）。
+   * 每个 agent 拥有独立的 dsh 运行时与持久化目录（settings/sessions/skills 互不影响），
+   * 不同 agent 可并发运行任务。
+   */
+  agentId?: string
 }
 
 /** Harness：任务启动结果 */
@@ -598,8 +646,8 @@ export interface SkillImportResult {
 
 /** Harness：任务事件流（main → 渲染层） */
 export type HarnessEvent =
-  | { type: 'assistant'; text: string }
-  | { type: 'status'; text: string }
+  | { type: 'assistant'; text: string; agentId?: string }
+  | { type: 'status'; text: string; agentId?: string }
   | {
       type: 'tool'
       /** 工具调用实例 ID（dsh 的 callId）：同一工具多次调用可区分；旧数据可能缺失 */
@@ -607,12 +655,12 @@ export type HarnessEvent =
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string
+      agentId?: string
     }
-  | { type: 'reasoning'; text: string }
-  | { type: 'final'; text: string }
-  | { type: 'done'; runId: string }
-  | { type: 'error'; message: string }
-
+  | { type: 'reasoning'; text: string; agentId?: string }
+  | { type: 'final'; text: string; agentId?: string }
+  | { type: 'done'; runId: string; agentId?: string }
+  | { type: 'error'; message: string; agentId?: string }
   | {
       /**
        * Harness provider 报告的最新一次 LLM 请求的真实输入上下文 token。
@@ -621,6 +669,7 @@ export type HarnessEvent =
       type: 'context'
       /** 当前上下文已用 token 数 */
       used: number
+      agentId?: string
     }
 
 /** MCP：设置界面提交的配置修改（重启时应用） */
@@ -971,8 +1020,17 @@ export interface StudioApi {
   /** Harness：运行一次对话任务（事件通过 onHarnessEvent 推送） */
   runHarnessTask: (input: HarnessRunInput) => Promise<HarnessRunResult>
 
-  /** Harness：中止当前任务 */
-  abortHarnessTask: () => Promise<void>
+  /** Harness：中止指定 agent 的当前任务（缺省 agentId = 'default'） */
+  abortHarnessTask: (agentId?: string) => Promise<void>
+
+  /** Agents：查询全部 agent 配置与运行状态 */
+  listAgents: () => Promise<AgentRuntimeStatus[]>
+
+  /** Agents：新增 / 更新一个自定义 agent 配置（返回保存后的完整列表） */
+  saveAgentConfig: (config: AgentConfig) => Promise<AgentRuntimeStatus[]>
+
+  /** Agents：删除一个自定义 agent 配置（内置预设不可删） */
+  removeAgent: (agentId: string) => Promise<AgentRuntimeStatus[]>
 
   /** Skills：查询 dsh 自定义技能目录信息 */
   getDshSkillsInfo: () => Promise<DshSkillsInfo>
@@ -995,8 +1053,8 @@ export interface StudioApi {
   /** Skills：把用户自定义 .md 技能反向导入为应用 GraphSkill（双向同步工具） */
   importCustomSkillsToGraph: () => Promise<SkillImportResult>
 
-  /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复） */
-  deleteHarnessSession: (sessionId: string) => Promise<void>
+  /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id，删完不可恢复）；可按 agent 限定 */
+  deleteHarnessSession: (sessionId: string, agentId?: string) => Promise<void>
 
   /** Harness：订阅任务事件流 */
   onHarnessEvent: (callback: (event: HarnessEvent) => void) => () => void

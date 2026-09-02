@@ -27,7 +27,11 @@ const CHAT_MODES: ChatMode[] = ['craft', 'ask', 'plan']
 
 const { t } = useStudioI18n()
 
-/** 历史会话：多会话持久化 + 输入框上方工具栏切换 */
+/** 所属 agent：缺省 'default'。多 agent 面板为每个标签挂载一个实例，事件按 agentId 分流 */
+const props = defineProps<{ agentId?: string }>()
+const agentId = props.agentId ?? 'default'
+
+/** 历史会话：多会话持久化 + 输入框上方工具栏切换（会话历史按 agent 分命名空间） */
 const {
   sessions,
   activeId,
@@ -38,7 +42,7 @@ const {
   remove: removeSession,
   activate: activateSession,
   commitMessages
-} = useChatHistory()
+} = useChatHistory(agentId)
 
 /** @ 资产引用弹窗与已引用资产（工程内相对路径） */
 const mentionOpen = ref(false)
@@ -95,8 +99,8 @@ async function onDeleteSession(): Promise<void> {
   })
   if (!ok) return
   removeSession(session.id)
-  // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」
-  window.studio.deleteHarnessSession(session.id).catch(() => undefined)
+  // 同步清理磁盘上的 dsh 持久化记录，避免同 id 会话被「幽灵恢复」（按 agent 限定命名空间）
+  window.studio.deleteHarnessSession(session.id, agentId).catch(() => undefined)
   loadActiveMessages()
   resetEditor()
   composing.value = false
@@ -971,6 +975,8 @@ async function refreshStatus(): Promise<void> {
 }
 
 function onHarnessEvent(event: HarnessEvent): void {
+  // 只处理本 agent 的事件：default agent 的事件不带 agentId，按 'default' 匹配
+  if ((event.agentId ?? 'default') !== agentId) return
   switch (event.type) {
     case 'assistant':
       pushAssistant(event.text)
@@ -1144,6 +1150,8 @@ let stopAskUser: (() => void) | null = null
 
 /** agent 通过 ask_user 工具发起提问：在消息流中插入一条「问题 + 选项按钮」卡 */
 function handleAskUser(question: AskUserQuestion): void {
+  // 只处理本 agent 的提问
+  if ((question.agentId ?? 'default') !== agentId) return
   if (messages.value.some((m) => m.kind === 'prompt' && m.requestId === question.requestId)) return
   messages.value.push({
     kind: 'prompt',
@@ -1168,7 +1176,7 @@ async function answerPrompt(msg: ChatMsg & { kind: 'prompt' }, option: string): 
   if (msg.answered !== null && msg.answered !== undefined) return
   msg.answered = option
   try {
-    await window.studio.answerAskUser({ requestId: msg.requestId, answer: option })
+    await window.studio.answerAskUser({ requestId: msg.requestId, answer: option, agentId })
   } catch {
     // 主进程侧已超时 / 会话已结束：按钮已锁定，无副作用
   }
@@ -1204,6 +1212,8 @@ async function onSend(): Promise<void> {
     sessionId: activeSession.value?.id,
     model: modelId.trim() || undefined,
     ...(providerId ? { providerId } : {}),
+    // 目标 agent：主进程按其路由到独立 dsh 运行时与持久化目录
+    agentId,
     // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
     mode: mode.value
   })
@@ -1216,7 +1226,7 @@ async function onSend(): Promise<void> {
 }
 
 async function onAbort(): Promise<void> {
-  await window.studio.abortHarnessTask()
+  await window.studio.abortHarnessTask(agentId)
 }
 
 onMounted(async () => {
