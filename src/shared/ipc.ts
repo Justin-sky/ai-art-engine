@@ -675,6 +675,8 @@ export interface OrchestratorNodeState {
   attempts: number
   /** 节点最终文本（成功后填充） */
   finalText?: string
+  /** 节点运行期间产出的文件（工程内相对路径，成功后填充；供下游节点读取与用户在详情查看） */
+  outputFiles?: string[]
   /** 错误说明（失败后填充） */
   error?: string
   /** 节点开始时间戳 */

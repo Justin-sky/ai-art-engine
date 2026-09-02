@@ -14,8 +14,12 @@ import {
   DAG_CHIP_W,
   canAddDependency,
   layoutDag,
-  type DagLayout
+  sanitizeDagDependencies,
+  validateDagNodes,
+  type DagLayout,
+  type DagNodeError
 } from '../utils/orchDagLayout'
+import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 /** 面板可编排节点上限（与主进程校验一致） */
 const MAX_NODES = 12
@@ -232,15 +236,21 @@ async function onAutoPlan(): Promise<void> {
       id: n.id,
       agentId: n.agentId,
       instruction: n.instruction,
-      ...(n.dependsOn?.length ? { dependsOn: [...n.dependsOn] } : {})
+      dependsOn: n.dependsOn?.length ? [...n.dependsOn] : []
     }))
     if (!planned.length) {
       formError.value = t('studio.orchestrator.planFailed')
       return
     }
+    // 拆解结果写回前兜底清洗：剔除 self / 悬空 / 成环依赖，保证节点集可直接提交
+    const repaired = sanitizeDagDependencies(planned)
     nodes.value = planned
     nodeSeq = Math.max(nodeSeq, planned.length)
-    planInfo.value = t('studio.orchestrator.planSuccess', { n: planned.length })
+    const base = t('studio.orchestrator.planSuccess', { n: planned.length })
+    planInfo.value =
+      repaired > 0
+        ? `${base} ${t('studio.orchestrator.planRepaired', { n: repaired })}`
+        : base
   } catch {
     formError.value = t('studio.orchestrator.planFailed')
   } finally {
@@ -268,18 +278,25 @@ async function submit(): Promise<void> {
     return
   }
   if (submitting.value) return
+  const payloadNodes = nodes.value.map((n, index) => ({
+    // id 留空时自动补位，避免主进程校验报「id 非法」
+    id: String(n.id ?? '').trim() || `n${index + 1}`,
+    agentId: n.agentId,
+    instruction: n.instruction,
+    dependsOn: n.dependsOn?.length ? [...n.dependsOn] : []
+  }))
+  // 提交前整体校验（口径与主进程 runOrchestrator 一致），命中即内联定位首个问题
+  const dagCheck = validateDagNodes(payloadNodes)
+  if (!dagCheck.ok) {
+    formError.value = describeDagError(dagCheck.errors[0]!)
+    return
+  }
   submitting.value = true
   try {
     const result = await window.studio.runOrchestrator({
       goal: goal.value.trim(),
       ...(jobTitle.value.trim() ? { title: jobTitle.value.trim() } : {}),
-      nodes: nodes.value.map((n, index) => ({
-        // id 留空时自动补位，避免主进程校验报「id 非法」
-        id: String(n.id ?? '').trim() || `n${index + 1}`,
-        agentId: n.agentId,
-        instruction: n.instruction,
-        ...(n.dependsOn?.length ? { dependsOn: [...n.dependsOn] } : {})
-      }))
+      nodes: payloadNodes
     })
     if (!result.ok) {
       formError.value = result.message ?? t('studio.orchestrator.runError')
@@ -440,6 +457,42 @@ function toggleNode(jobId: string, nodeId: string): void {
 
 function nodeKey(jobId: string, nodeId: string): string {
   return `${jobId}:${nodeId}`
+}
+
+/** 节点集校验错误 → 内联文案（formError 展示，先让用户看到首个需修正的问题） */
+function describeDagError(error: DagNodeError): string {
+  const id = error.id.trim() || t('studio.orchestrator.unnamedNode')
+  switch (error.kind) {
+    case 'bad-id':
+      return t('studio.orchestrator.valBadId', { id })
+    case 'dup-id':
+      return t('studio.orchestrator.valDupId', { id })
+    case 'empty-agent':
+      return t('studio.orchestrator.valNoAgent', { id })
+    case 'self-dep':
+      return t('studio.orchestrator.valSelfDep', { id })
+    case 'missing-dep':
+      return t('studio.orchestrator.valMissingDep', { id, dep: error.dep })
+    case 'cycle':
+      return t('studio.orchestrator.valCycle', { id })
+  }
+}
+
+/** 可预览的产出文件扩展名（图/音/视；纯文本类只复制路径、不弹预览） */
+const PREVIEWABLE_FILE_RE = /\.(png|jpe?g|webp|gif|avif|bmp|mp4|webm|mov|mkv|mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i
+
+function canPreviewFile(rel: string): boolean {
+  return PREVIEWABLE_FILE_RE.test(rel)
+}
+
+/** 预览工程内产出文件（getAssetFileUrl → studio-media，图片/视频/音频自适应） */
+async function previewOutputFile(rel: string, title?: string): Promise<void> {
+  await openFullImagePreview({ relativePath: rel, title: title ?? rel })
+}
+
+/** 产出文件行的复制反馈 key（同一节点详情内唯一） */
+function outputFileKey(scope: string, file: string): string {
+  return `${scope}:of:${file}`
 }
 
 async function onCopy(text: string | undefined, key: string): Promise<void> {
@@ -856,6 +909,56 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                   </div>
                   <pre>{{ node.finalText }}</pre>
                 </div>
+                <div
+                  v-if="node.outputFiles?.length"
+                  class="detail-files"
+                >
+                  <div class="detail-head">
+                    <span>{{ t('studio.orchestrator.outputFiles') }}</span>
+                    <button
+                      type="button"
+                      class="copy-btn"
+                      @click="
+                        onCopy(
+                          node.outputFiles.join('\n'),
+                          outputFileKey(nodeKey(job.jobId, node.id), '__all__')
+                        )
+                      "
+                    >
+                      {{
+                        copiedKey === outputFileKey(nodeKey(job.jobId, node.id), '__all__')
+                          ? t('studio.orchestrator.copied')
+                          : t('studio.orchestrator.copyAll')
+                      }}
+                    </button>
+                  </div>
+                  <ul class="output-file-list">
+                    <li
+                      v-for="file in node.outputFiles"
+                      :key="file"
+                      class="output-file-item"
+                      @click="
+                        onCopy(file, outputFileKey(nodeKey(job.jobId, node.id), file))
+                      "
+                    >
+                      <span class="output-file-path">{{ file }}</span>
+                      <button
+                        v-if="canPreviewFile(file)"
+                        type="button"
+                        class="output-file-preview"
+                        @click.stop="previewOutputFile(file)"
+                      >
+                        {{ t('studio.orchestrator.previewFile') }}
+                      </button>
+                      <span
+                        v-if="
+                          copiedKey === outputFileKey(nodeKey(job.jobId, node.id), file)
+                        "
+                        class="output-file-copied"
+                      >{{ t('studio.orchestrator.copied') }}</span>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -954,6 +1057,54 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
                   </button>
                 </div>
                 <pre>{{ detail.node.finalText }}</pre>
+              </div>
+              <div
+                v-if="detail.node.outputFiles?.length"
+                class="detail-files"
+              >
+                <div class="detail-head">
+                  <span>{{ t('studio.orchestrator.outputFiles') }}</span>
+                  <button
+                    type="button"
+                    class="copy-btn"
+                    @click="
+                      onCopy(
+                        detail.node.outputFiles.join('\n'),
+                        outputFileKey(detail.copyKey, '__all__')
+                      )
+                    "
+                  >
+                    {{
+                      copiedKey === outputFileKey(detail.copyKey, '__all__')
+                        ? t('studio.orchestrator.copied')
+                        : t('studio.orchestrator.copyAll')
+                    }}
+                  </button>
+                </div>
+                <ul class="output-file-list">
+                  <li
+                    v-for="file in detail.node.outputFiles"
+                    :key="file"
+                    class="output-file-item"
+                    @click="
+                      onCopy(file, outputFileKey(detail.copyKey, file))
+                    "
+                  >
+                    <span class="output-file-path">{{ file }}</span>
+                    <button
+                      v-if="canPreviewFile(file)"
+                      type="button"
+                      class="output-file-preview"
+                      @click.stop="previewOutputFile(file)"
+                    >
+                      {{ t('studio.orchestrator.previewFile') }}
+                    </button>
+                    <span
+                      v-if="copiedKey === outputFileKey(detail.copyKey, file)"
+                      class="output-file-copied"
+                    >{{ t('studio.orchestrator.copied') }}</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
@@ -1546,6 +1697,65 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 }
 .copy-btn:hover {
   color: var(--text-primary, #e6e9ef);
+}
+/* 节点产出文件列表（flow 详情与 graph 详情共用） */
+.detail-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.output-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.output-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.18));
+  background: var(--bg-input);
+  border-radius: 5px;
+  padding: 2px 4px 2px 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.output-file-item:hover {
+  border-color: color-mix(in srgb, var(--agent-color, #37b26c) 55%, transparent);
+}
+.output-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono, 'Cascadia Code', Consolas, monospace);
+  font-size: 10px;
+  color: var(--text-secondary, #9aa4b2);
+}
+.output-file-preview {
+  flex: none;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
+  background: transparent;
+  color: var(--text-tertiary, #5b6472);
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.output-file-preview:hover {
+  color: var(--text-primary, #e6e9ef);
+}
+.output-file-copied {
+  flex: none;
+  font-size: 10px;
+  color: #3dd68c;
 }
 .summary-box {
   border: 1px solid color-mix(in srgb, var(--agent-color, #37b26c) 40%, transparent);

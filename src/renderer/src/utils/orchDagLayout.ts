@@ -167,3 +167,155 @@ export function canAddDependency(
   }
   return { ok: true }
 }
+
+/* ── 节点集整体校验（提交前 / 自动拆解写回前） ── */
+
+/** 参与整体校验的节点最小形态（dependsOn 可缺省；agentId 显式提供且为空才算未选角色） */
+export interface DagCheckNode {
+  id: string
+  agentId?: string
+  dependsOn?: string[]
+}
+
+/** 编排节点集校验的单条错误（每条可定位到节点；missing-dep 还携带悬空依赖目标） */
+export type DagNodeError =
+  | { id: string; kind: 'bad-id' }
+  | { id: string; kind: 'dup-id' }
+  | { id: string; kind: 'empty-agent' }
+  | { id: string; kind: 'self-dep' }
+  | { id: string; kind: 'missing-dep'; dep: string }
+  | { id: string; kind: 'cycle' }
+
+export interface DagNodesCheck {
+  ok: boolean
+  /** 按「节点级 → 依赖边 → 环」顺序排列的错误（errors[0] 即首个需修正的问题） */
+  errors: DagNodeError[]
+  /** 建议剔除的依赖边（self / missing / 破环候选），sanitizeDagDependencies 据此清洗 */
+  invalidDeps: Array<{ id: string; dep: string }>
+}
+
+/** 节点 id 合法性与主进程 runOrchestrator 一致：字母/数字/._-，1..32 位 */
+const NODE_ID_RE = /^[A-Za-z0-9._-]{1,32}$/
+
+/**
+ * 拓扑剥离法：返回未能剥除的节点 id（空 → 无环）。
+ * 只统计「声明内且非自指」的依赖：自环边与指向未定义节点的悬空边已被
+ * validateDagNodes 单独报错，这里忽略它们以免把可修错误误判成环。
+ */
+function cycleNodes(nodes: readonly DagCheckNode[]): string[] {
+  const byId = new Set(nodes.map((n) => String(n?.id ?? '')))
+  const indegree = new Map<string, number>()
+  const dependents = new Map<string, string[]>()
+  for (const node of nodes) {
+    const deps = (node.dependsOn ?? []).filter((dep) => dep !== node.id && byId.has(dep))
+    indegree.set(node.id, deps.length)
+    for (const dep of deps) {
+      const list = dependents.get(dep) ?? []
+      list.push(node.id)
+      dependents.set(dep, list)
+    }
+  }
+  const queue = [...indegree.entries()].filter(([, n]) => n === 0).map(([id]) => id)
+  let peeled = 0
+  while (queue.length) {
+    const id = queue.shift()!
+    peeled += 1
+    for (const next of dependents.get(id) ?? []) {
+      const left = (indegree.get(next) ?? 1) - 1
+      indegree.set(next, left)
+      if (left === 0) queue.push(next)
+    }
+  }
+  return peeled < nodes.length ? [...indegree.keys()].filter((id) => (indegree.get(id) ?? 0) > 0) : []
+}
+
+/** 环上依赖边全集：残余节点（无法剥除，必与环纠缠）之间的互相依赖边 */
+function cycleEdges(nodes: readonly DagCheckNode[]): Array<{ id: string; dep: string }> {
+  const residual = new Set(cycleNodes(nodes))
+  if (!residual.size) return []
+  const edges: Array<{ id: string; dep: string }> = []
+  for (const node of nodes) {
+    if (!residual.has(node.id)) continue
+    for (const dep of node.dependsOn ?? []) {
+      if (dep !== node.id && residual.has(dep)) edges.push({ id: node.id, dep })
+    }
+  }
+  return edges
+}
+
+/**
+ * 校验编排节点集是否可直接提交。口径与主进程 runOrchestrator 静态校验保持一致：
+ * - bad-id / dup-id：id 非法（字母/数字/._-，≤32 位）或重复；
+ * - empty-agent：节点显式提供了 agentId 但为空（未选角色）；
+ * - self-dep：依赖自身；missing-dep：依赖了未定义的节点；
+ * - cycle：依赖关系成环（invalidDeps 给出破环候选边）。
+ * 纯函数、无 Vue 依赖，可单测。
+ */
+export function validateDagNodes(nodes: readonly DagCheckNode[]): DagNodesCheck {
+  const errors: DagNodeError[] = []
+  const invalidDeps: Array<{ id: string; dep: string }> = []
+  const seen = new Set<string>()
+  const byId = new Map<string, DagCheckNode>()
+  for (const node of nodes) {
+    const id = String(node?.id ?? '')
+    if (!NODE_ID_RE.test(id)) {
+      errors.push({ id, kind: 'bad-id' })
+    } else if (seen.has(id)) {
+      errors.push({ id, kind: 'dup-id' })
+    } else {
+      seen.add(id)
+      byId.set(id, node)
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(node, 'agentId') &&
+      !String(node.agentId ?? '').trim()
+    ) {
+      errors.push({ id, kind: 'empty-agent' })
+    }
+  }
+  for (const node of nodes) {
+    const id = String(node?.id ?? '')
+    for (const dep of node.dependsOn ?? []) {
+      if (dep === id) {
+        errors.push({ id, kind: 'self-dep' })
+        invalidDeps.push({ id, dep })
+      } else if (!byId.has(dep)) {
+        errors.push({ id, kind: 'missing-dep', dep })
+        invalidDeps.push({ id, dep })
+      }
+    }
+  }
+  const cyc = cycleNodes(nodes)
+  if (cyc.length) {
+    // 环错误只报一次：用第一个残余节点定位（剥离法残余必含环上节点）
+    errors.push({ id: cyc[0]!, kind: 'cycle' })
+    invalidDeps.push(...cycleEdges(nodes))
+  }
+  return { ok: errors.length === 0, errors, invalidDeps }
+}
+
+/**
+ * 就地剔除节点集里的全部非法依赖边（self / missing / 破环候选），返回剔除边数。
+ * 用于「自动拆解结果写回表单前」的兜底清洗，保证清洗后的节点集可直接提交。
+ * 注意：就地修改传入数组各元素的 dependsOn；不处理 id / agent 自身的错误。
+ */
+export function sanitizeDagDependencies(nodes: DagCheckNode[]): number {
+  let removed = 0
+  for (let guard = 0; guard < 64; guard++) {
+    const check = validateDagNodes(nodes)
+    if (check.ok || !check.invalidDeps.length) break
+    const drop = new Set(check.invalidDeps.map((d) => `${d.id}\u0000${d.dep}`))
+    let changed = false
+    for (const node of nodes) {
+      const deps = node.dependsOn ?? []
+      const kept = deps.filter((dep) => !drop.has(`${node.id}\u0000${dep}`))
+      if (kept.length !== deps.length) {
+        removed += deps.length - kept.length
+        node.dependsOn = kept
+        changed = true
+      }
+    }
+    if (!changed) break
+  }
+  return removed
+}
