@@ -238,6 +238,8 @@ export const IpcChannels = {
   ORCHESTRATOR_LIST: 'orchestrator:list',
   /** Orchestrator：中止一个编排 job（运行中的节点 abort，未开始的节点取消） */
   ORCHESTRATOR_ABORT: 'orchestrator:abort',
+  /** Orchestrator：断点续跑失败/中止的 job（done 节点保留，未完成节点重新执行） */
+  ORCHESTRATOR_RERUN: 'orchestrator:rerun',
   /** Orchestrator：主进程推送 job 状态变化（节点推进 / 终态），渲染层实时刷新 DAG */
   ORCHESTRATOR_EVENT: 'orchestrator:event'
 } as const
@@ -1219,6 +1221,12 @@ export interface StudioApi {
 
   /** Orchestrator：中止一个编排 job（运行中的节点 abort，未开始的节点取消） */
   abortOrchestratorJob: (jobId: string) => Promise<boolean>
+
+  /**
+   * Orchestrator：断点续跑失败/中止的编排 job——已完成（done）节点保留产出，
+   * 失败/跳过等未完成节点重置后重新执行（job 顶回 running，通过事件推送进度）。
+   */
+  rerunOrchestratorJob: (jobId: string) => Promise<OrchestratorRunResult>
 
   /** Orchestrator：订阅 job 状态变化（节点推进 / 终态） */
   onOrchestratorEvent: (callback: (event: OrchestratorJobEvent) => void) => () => void

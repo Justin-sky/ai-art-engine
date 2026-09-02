@@ -7,7 +7,7 @@ import type {
   OrchestratorRunInput
 } from '@shared/ipc'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { promptConfirm } from '../composables/useStudioPrompt'
+import { promptAlert, promptConfirm } from '../composables/useStudioPrompt'
 import { copyTextToClipboard } from '../utils/copyText'
 import {
   DAG_CHIP_H,
@@ -773,6 +773,26 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
     // 主进程不可用时忽略；job 状态会经事件/列表刷新
   }
 }
+
+/** 断点续跑失败/中止的 job：done 节点保留产出，失败/跳过节点重置后重新执行 */
+async function onRerun(job: OrchestratorJob): Promise<void> {
+  const isAborted = job.state === 'aborted'
+  const label = t(isAborted ? 'studio.orchestrator.rerunAborted' : 'studio.orchestrator.rerunFailed')
+  const ok = await promptConfirm({
+    title: label,
+    message: t('studio.orchestrator.rerunConfirm'),
+    confirmLabel: t('studio.orchestrator.rerun')
+  })
+  if (!ok) return
+  try {
+    const res = await window.studio.rerunOrchestratorJob(job.jobId)
+    if (!res.ok) {
+      await promptAlert({ title: t('studio.orchestrator.rerunFail'), message: res.message ?? '' })
+    }
+  } catch {
+    // 主进程不可用时忽略；job 状态会经事件/列表刷新
+  }
+}
 </script>
 
 <template>
@@ -1076,6 +1096,19 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             @click.stop="onAbort(job)"
           >
             ■
+          </button>
+          <button
+            v-if="job.state === 'failed' || job.state === 'aborted'"
+            type="button"
+            class="icon-btn rerun-btn"
+            :title="
+              job.state === 'aborted'
+                ? t('studio.orchestrator.rerunAborted')
+                : t('studio.orchestrator.rerunFailed')
+            "
+            @click.stop="onRerun(job)"
+          >
+            ↻
           </button>
         </div>
         <div v-if="openJob[job.jobId]" class="job-body">
@@ -1857,6 +1890,13 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 }
 .abort-btn:hover {
   background: rgba(229, 72, 77, 0.15);
+}
+.rerun-btn {
+  color: var(--accent, #4f8cff);
+  font-size: 13px;
+}
+.rerun-btn:hover {
+  background: rgba(79, 140, 255, 0.15);
 }
 .job-body {
   border-top: 1px solid var(--panel-border, rgba(128, 128, 128, 0.15));
