@@ -4,10 +4,6 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type { ObjectStorageProviderInstance } from '../src/shared/objectStorage'
 import { startMainRuntime, stopMainRuntime } from '../src/main/runtime'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import type { ObjectStorageProviderInstance } from '../src/shared/objectStorage'
 
 const tosMocks = vi.hoisted(() => ({
   putObjectFromFile: vi.fn().mockResolvedValue(undefined),
@@ -15,7 +11,7 @@ const tosMocks = vi.hoisted(() => ({
   deleteObject: vi.fn().mockResolvedValue(undefined),
   getPreSignedUrl: vi
     .fn()
-    .mockReturnValue('https://signed.example/aiartengine/video-refs/obj.mp4'),
+    .mockReturnValue('https://signed.example/aiartengine/media-refs/obj.mp4'),
   ctorArgs: [] as Array<Record<string, unknown>>
 }))
 
@@ -103,7 +99,7 @@ describe('objectStorageUploadService', () => {
     tosMocks.putObject.mockResolvedValue(undefined)
     tosMocks.deleteObject.mockResolvedValue(undefined)
     tosMocks.getPreSignedUrl.mockReturnValue(
-      'https://signed.example/aiartengine/video-refs/obj.mp4'
+      'https://signed.example/aiartengine/media-refs/obj.mp4'
     )
     serviceMocks.getSettings.mockReturnValue({
       objectStorage: { providers: [makeProvider()] }
@@ -144,7 +140,7 @@ describe('objectStorageUploadService', () => {
       const arg = tosMocks.putObjectFromFile.mock.calls[0][0]
       expect(arg.bucket).toBe('demo-bucket')
       expect(arg.filePath).toBe(sampleFile)
-      expect(arg.key).toMatch(/^aiartengine\/video-refs\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{12}\.mp4$/)
+      expect(arg.key).toMatch(/^aiartengine\/media-refs\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{12}\.mp4$/)
 
       expect(tosMocks.getPreSignedUrl).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -153,7 +149,7 @@ describe('objectStorageUploadService', () => {
           method: 'GET'
         })
       )
-      expect(result.url).toBe('https://signed.example/aiartengine/video-refs/obj.mp4')
+      expect(result.url).toBe('https://signed.example/aiartengine/media-refs/obj.mp4')
       expect(result.bytes).toBe(Buffer.byteLength('fake-mp4-bytes'))
       expect(result.bucket).toBe('demo-bucket')
       expect(result.providerId).toBe('tos-1')
@@ -305,10 +301,10 @@ describe('objectStorageUploadService', () => {
       ])
 
       expect(tosMocks.deleteObject).toHaveBeenCalledTimes(2)
-      expect(logs.some((l) => l.level === 'warn' && /删除临时参考视频失败/.test(l.message))).toBe(
+      expect(logs.some((l) => l.level === 'warn' && /删除临时参考媒体失败/.test(l.message))).toBe(
         true
       )
-      expect(logs.some((l) => l.level === 'info' && /已删除临时参考视频：ok/.test(l.message))).toBe(
+      expect(logs.some((l) => l.level === 'info' && /已删除临时参考媒体：ok/.test(l.message))).toBe(
         true
       )
     })
