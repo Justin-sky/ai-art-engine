@@ -250,6 +250,7 @@ const api: StudioApi = {
   planOrchestrator: (input) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_PLAN, input),
   listOrchestratorJobs: () => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_LIST),
   abortOrchestratorJob: (jobId) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_ABORT, jobId),
+  rerunOrchestratorJob: (jobId) => ipcRenderer.invoke(IpcChannels.ORCHESTRATOR_RERUN, jobId),
   onOrchestratorEvent: (callback) => {
     const listener = (
       _event: unknown,

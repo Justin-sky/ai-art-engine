@@ -37,6 +37,7 @@ import { resolveCacheOutputRoot } from '@shared/domain'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { broadcastToAllWindows } from '../broadcast'
+import { resetNodesForRerun } from '@shared/orchestratorRerun'
 import { agentRegistry, DEFAULT_AGENT_ID } from './agentRegistry'
 import {
   abortHarnessTask,
@@ -297,7 +298,7 @@ export function runOrchestrator(input: OrchestratorRunInput): OrchestratorRunRes
     if (finished.length) jobs.delete(finished[0].jobId)
   }
   publish(job)
-  void runJob(job)
+  void launchRun(job)
   return { ok: true, jobId }
 }
 
@@ -487,6 +488,64 @@ export function abortOrchestratorJob(jobId: string): boolean {
   // 立即把未开始/运行中的节点置 skipped（kill 触发的 settle 到来前 UI 即可看到中止态）
   finalizeAborted(job)
   return true
+}
+
+/**
+ * 断点续跑失败 / 中止的编排 job：done 节点保留产出不重复执行，failed / skipped 等
+ * 未完成节点重置为 pending 后重新进入调度（复用 runJob 主循环），供用户从失败处 / 
+ * 中断处继续推进整个 DAG。
+ */
+export async function rerunOrchestratorJob(jobId: string): Promise<OrchestratorRunResult> {
+  const job = jobs.get(String(jobId ?? ''))
+  if (!job) {
+    return { ok: false, message: '未找到该编排记录，可能已被清理。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  const nodes = resetNodesForRerun(job)
+  if (!nodes) {
+    return {
+      ok: false,
+      message:
+        job.state === 'running'
+          ? '任务运行中，如需重跑请先中止当前运行。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+          : '该编排已全部完成，无需续跑；如需完整重跑请在新建表单中重新提交。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    }
+  }
+  // 先等旧调度循环完全收尾（中止后的节点执行可能仍在 unwind），避免同 job 双循环并发
+  const prev = runLoops.get(job.jobId)
+  if (prev) await prev
+  if (jobs.get(job.jobId) !== job || !canRerunAgain(job)) {
+    return { ok: false, message: '该记录状态已变化，请刷新后重试。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  // 顶回 running：清掉终态痕迹（error/summary/finishedAt），避免 runJob 提前收尾或旧结果残留
+  job.state = 'running'
+  job.nodes = nodes
+  delete job.error
+  delete job.summary
+  delete job.finishedAt
+  job.aborted = false
+  // 续跑窗口重新取文件基线：done 节点既有产出视为基线，本轮新产出按新窗口归属
+  job.files = { baseline: scanOutputFiles(), claimed: new Set() }
+  publish(job)
+  void launchRun(job)
+  return { ok: true, jobId: job.jobId }
+}
+
+/** rerun 等待旧循环期间被其它操作抢先（如用户又中止/清了 job）则放弃启动 */
+function canRerunAgain(job: JobRecord): boolean {
+  if (jobs.get(job.jobId) !== job) return false
+  return job.state === 'failed' || job.state === 'aborted'
+}
+
+/** 每个 job 只允许一个调度循环在跑：续跑/重跑会排到旧循环收尾之后，天然串行 */
+const runLoops = new Map<string, Promise<void>>()
+function launchRun(job: JobRecord): Promise<void> {
+  const prev = runLoops.get(job.jobId) ?? Promise.resolve()
+  const next = prev.then(() => runJob(job))
+  runLoops.set(job.jobId, next)
+  void next.finally(() => {
+    if (runLoops.get(job.jobId) === next) runLoops.delete(job.jobId)
+  })
+  return next
 }
 
 /* ── 并发闸门：agent 队列锁（同一 agent 的编排派发严格串行）+ 并行上限执行器 ── */
