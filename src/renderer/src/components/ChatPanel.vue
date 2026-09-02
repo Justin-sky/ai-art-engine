@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Directive } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
 import type {
+  AgentForwardEvent,
+  AgentRuntimeStatus,
   AskUserQuestion,
   ChatMode,
   HarnessEvent,
@@ -28,8 +30,20 @@ const CHAT_MODES: ChatMode[] = ['craft', 'ask', 'plan']
 const { t } = useStudioI18n()
 
 /** 所属 agent：缺省 'default'。多 agent 面板为每个标签挂载一个实例，事件按 agentId 分流 */
-const props = defineProps<{ agentId?: string }>()
+const props = defineProps<{
+  agentId?: string
+  /** 全部 agent（含运行状态）：多 agent 面板传入以启用「转交」；单独使用时为空 */
+  agents?: AgentRuntimeStatus[] | null
+}>()
 const agentId = props.agentId ?? 'default'
+
+/** 转交请求（模式 B）：once 由 AgentPanel 切到目标标签后经 sendExternally 发送；live 则建立自动管道 */
+const emit = defineEmits<{
+  (
+    e: 'forward-request',
+    payload: { to: string; text: string; file?: string; live?: boolean }
+  ): void
+}>()
 
 /** 历史会话：多会话持久化 + 输入框上方工具栏切换（会话历史按 agent 分命名空间） */
 const {
@@ -534,6 +548,78 @@ function buildTask(text: string): string {
 const messages = ref<ChatMsg[]>([])
 /** harness provider 报告的最新真实上下文 token（每轮 LLM 请求完成后更新；切换会话后失效） */
 const harnessContextUsed = ref<number | undefined>(undefined)
+
+/** —— 转交（模式 B：把回答/任务发给其他 Agent） —— */
+/** 父级未传 agent 列表时现场拉取（独立使用场景的回退） */
+const localAgents = ref<AgentRuntimeStatus[] | null>(null)
+const allAgents = computed<AgentRuntimeStatus[]>(() => props.agents ?? localAgents.value ?? [])
+/** 可转交目标：排除自己（仅自己时无入口） */
+const forwardTargets = computed(() => allAgents.value.filter((a) => a.agentId !== agentId))
+const forwardOpen = ref(false)
+/** 转交正文（once）或附加指令（live，可空） */
+const forwardText = ref('')
+/** 目标 agent id */
+const forwardTo = ref('')
+/** true = 建立自动转交管道：本 agent 每次完成任务后把结果自动发给目标 */
+const forwardLive = ref(false)
+/** 附带工作区文件（工程内相对路径，可选） */
+const forwardFile = ref('')
+const forwardBusy = ref(false)
+
+async function openForward(text?: string): Promise<void> {
+  if (!allAgents.value.length) {
+    try {
+      localAgents.value = await window.studio.listAgents()
+    } catch {
+      localAgents.value = []
+    }
+  }
+  if (!forwardTargets.value.length) return
+  forwardText.value = text ?? ''
+  forwardTo.value = forwardTargets.value[0]!.agentId
+  forwardLive.value = false
+  forwardFile.value = ''
+  forwardOpen.value = true
+}
+
+function closeForward(): void {
+  if (forwardBusy.value) return
+  forwardOpen.value = false
+}
+
+/** 提交转交：once → 切到目标标签以其会话发送；live → 请求主进程建立自动管道 */
+async function submitForward(): Promise<void> {
+  const to = forwardTo.value
+  if (!to || forwardBusy.value) return
+  const file = forwardFile.value.trim() || undefined
+  if (forwardLive.value) {
+    forwardBusy.value = true
+    try {
+      emit('forward-request', { to, text: forwardText.value.trim(), file, live: true })
+      forwardOpen.value = false
+    } finally {
+      forwardBusy.value = false
+    }
+    return
+  }
+  const body = forwardText.value.trim()
+  if (!body) return
+  // once：给目标 agent 的任务文本 = 来源说明 + 正文 + 可选文件参考
+  const fromName = allAgents.value.find((a) => a.agentId === agentId)?.name ?? agentId
+  const parts: string[] = []
+  parts.push(`[来自「${fromName}」Agent 的转交任务]`) // cjk-ok 转交任务文本（发送给模型的任务内容）
+  parts.push(body)
+  if (file) {
+    parts.push(`请先读取并参考工程工作区内的文件：${file}（相对工程根目录的路径）`) // cjk-ok 转交任务文本（发送给模型的任务内容）
+  }
+  forwardBusy.value = true
+  try {
+    emit('forward-request', { to, text: parts.join('\n\n'), live: false })
+    forwardOpen.value = false
+  } finally {
+    forwardBusy.value = false
+  }
+}
 /** 当前 agent 模式：craft（完整执行）/ ask（纯问答）/ plan（先规划后执行），持久化到本地 */
 const savedMode = localStorage.getItem(CHAT_MODE_KEY) as ChatMode | null
 const mode = ref<ChatMode>(savedMode && CHAT_MODES.includes(savedMode) ? savedMode : 'craft')
@@ -884,6 +970,7 @@ watch(
 
 let stopEvent: (() => void) | null = null
 let stopActivity: (() => void) | null = null
+let stopForward: (() => void) | null = null
 /** 本次任务在消息数组中的起点：状态更新只作用于该索引之后的工具卡，避免跨任务误更新重名卡 */
 let sessionStart = 0
 /** 本次任务已收到但尚未绑定到 assistant 消息的思考过程文本（runner 先输出 reasoning 再输出回答） */
@@ -1186,17 +1273,31 @@ async function onSend(): Promise<void> {
   if (composing.value) return
   const raw = draft.value.trim()
   if (!raw || running.value) return
+  const task = buildTask(raw)
+  resetEditor()
+  referenced.value = []
+  await sendTask(task)
+}
+
+/**
+ * 以本 agent 当前会话发送一条任务（用户输入与「转交」共用一条发送路径：
+ * 推送 user 消息 → 置运行态 → runHarnessTask；失败返回 false）。
+ */
+async function sendTask(task: string): Promise<boolean> {
+  if (!task) return false
+  if (running.value) {
+    // 转交等外部触发发送时给出明确反馈，而不是静默丢弃
+    pushStatus(t('studio.chat.forwardBusy'))
+    return false
+  }
   // 发送前重新预检一次（Node 版本 / dsh 运行体 / MCP 服务 / 模型），
   // 不用挂载时的旧快照判断，避免按过期的“就绪”放行后才发现环境缺失
   await refreshStatus()
   // 环境未就绪时不静默丢弃：把原因作为状态消息告知用户
   if (!ready.value) {
     pushStatus(status.value?.message ?? t('studio.chat.unavailable'))
-    return
+    return false
   }
-  const task = buildTask(raw)
-  resetEditor()
-  referenced.value = []
   pendingReasoning = ''
   sessionStart = messages.value.length
   messages.value.push({ kind: 'user', text: task })
@@ -1222,7 +1323,29 @@ async function onSend(): Promise<void> {
     running.value = false
     // 启动被主进程预检查拒绝（如 MCP 已停、Node 不达标），同步状态栏
     void refreshStatus()
+    return false
   }
+  return true
+}
+
+/**
+ * 自动转交派发（模式 B live）：主进程已把任务派给本 agent 的 dsh 运行时，
+ * 这里只把任务文本写入会话 UI（保证用户看得到 B 收到了什么）。
+ */
+function onAgentForward(event: AgentForwardEvent): void {
+  if (event.to !== agentId) return
+  // 目标会话优先切到主进程记录的那个（存在时），保证 UI 与 dsh 会话一致
+  if (event.sessionId && sessions.value.some((s) => s.id === event.sessionId)) {
+    if (activeId.value !== event.sessionId) {
+      activateSession(event.sessionId)
+      loadActiveMessages()
+    }
+  }
+  messages.value.push({ kind: 'user', text: event.text })
+  running.value = true
+  commitMessages([...messages.value])
+  persistHistory()
+  scrollToBottom()
 }
 
 async function onAbort(): Promise<void> {
@@ -1237,6 +1360,7 @@ onMounted(async () => {
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
   stopActivity = window.studio.onMcpActivityUpdated(onMcpActivity)
   stopAskUser = window.studio.onAskUser(handleAskUser)
+  stopForward = window.studio.onAgentForward(onAgentForward)
   // 模式选择下拉：点外部或 ESC 收起；用 document 监听，trigger 用 .stop 防止冒泡立即关
   document.addEventListener('click', onModeOutside)
   document.addEventListener('keydown', onModeOutside)
@@ -1249,6 +1373,7 @@ onBeforeUnmount(() => {
   stopEvent?.()
   stopActivity?.()
   stopAskUser?.()
+  stopForward?.()
   document.removeEventListener('click', onModeOutside)
   document.removeEventListener('keydown', onModeOutside)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
@@ -1256,6 +1381,12 @@ onBeforeUnmount(() => {
   // 卸载前把当前消息落盘，避免切换面板丢失最后一段对话
   commitMessages([...messages.value])
   persistHistory()
+})
+
+// 暴露给外层（AgentPanel 的「转交」流程使用）：以本面板当前会话发送一条任务 / 读取当前会话 id
+defineExpose({
+  sendExternally: (text: string): Promise<boolean> => sendTask(String(text ?? '').trim()),
+  getActiveSessionId: (): string | undefined => activeId.value || undefined
 })
 </script>
 
@@ -1358,6 +1489,14 @@ onBeforeUnmount(() => {
                 v-chat-img
                 v-html="renderMessageText(msg.text)"
               />
+              <button
+                v-if="forwardTargets.length > 0"
+                class="forward-btn"
+                :title="t('studio.chat.forwardTitle')"
+                @click.stop="openForward(msg.text)"
+              >
+                ⤳
+              </button>
               <button
                 class="copy-btn"
                 :class="{ copied: copiedIndex === i }"
@@ -1962,6 +2101,76 @@ onBeforeUnmount(() => {
       @confirm="onSaveAssetConfirm"
       @cancel="closeSaveAssetDialog"
     />
+
+    <!-- 转交（模式 B）：把本条回答 / 任务交给其他 Agent -->
+    <Teleport to="body">
+      <div
+        v-if="forwardOpen"
+        class="forward-mask"
+        @click.self="closeForward"
+      >
+        <div
+          class="forward-dialog"
+          @keydown.esc="closeForward"
+        >
+          <div class="forward-head">
+            {{ t('studio.chat.forwardTitle') }}
+            <button
+              class="forward-x"
+              :title="t('studio.chat.close')"
+              @click="closeForward"
+            >×</button>
+          </div>
+          <label class="forward-field">
+            <span class="forward-label">{{ t('studio.chat.forwardTo') }}</span>
+            <select v-model="forwardTo">
+              <option
+                v-for="a in forwardTargets"
+                :key="a.agentId"
+                :value="a.agentId"
+              >{{ a.name }}（{{ a.agentId }}）</option>
+            </select>
+          </label>
+          <label class="forward-field forward-live">
+            <input
+              v-model="forwardLive"
+              type="checkbox"
+            />
+            <span>{{ t('studio.chat.forwardLive') }}</span>
+          </label>
+          <label class="forward-field">
+            <span class="forward-label">
+              {{ forwardLive ? t('studio.chat.forwardInstruction') : t('studio.chat.forwardText') }}
+            </span>
+            <textarea
+              v-model="forwardText"
+              rows="5"
+              :placeholder="forwardLive ? t('studio.chat.forwardInstructionHint') : ''"
+            />
+          </label>
+          <label class="forward-field">
+            <span class="forward-label">{{ t('studio.chat.forwardFile') }}</span>
+            <input
+              v-model="forwardFile"
+              :placeholder="t('studio.chat.forwardFilePlaceholder')"
+            />
+          </label>
+          <div class="forward-actions">
+            <button
+              class="btn"
+              @click="closeForward"
+            >{{ t('studio.chat.cancel') }}</button>
+            <button
+              class="btn primary"
+              :disabled="forwardBusy || !forwardTo || (!forwardLive && !forwardText.trim())"
+              @click="submitForward"
+            >
+              {{ forwardLive ? t('studio.chat.forwardSetup') : t('studio.chat.forwardSend') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -2315,6 +2524,116 @@ onBeforeUnmount(() => {
   opacity: 1;
   color: var(--success);
   border-color: var(--success);
+}
+
+.forward-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.msg-row:hover .forward-btn {
+  opacity: 1;
+}
+
+.forward-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* 转交对话框（Teleport 到 body，仍是本组件作用域） */
+.forward-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.forward-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(460px, calc(100vw - 48px));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.forward-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.forward-x {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.forward-x:hover {
+  color: var(--text);
+}
+
+.forward-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.forward-field select,
+.forward-field textarea,
+.forward-field input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.forward-label {
+  color: var(--text-muted);
+}
+
+.forward-live {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.forward-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .msg-status {

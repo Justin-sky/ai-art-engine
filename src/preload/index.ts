@@ -233,6 +233,19 @@ const api: StudioApi = {
   listAgents: () => ipcRenderer.invoke(IpcChannels.AGENT_LIST),
   saveAgentConfig: (config) => ipcRenderer.invoke(IpcChannels.AGENT_SAVE_CONFIG, config),
   removeAgent: (agentId) => ipcRenderer.invoke(IpcChannels.AGENT_REMOVE, agentId),
+  forwardToAgent: (input) => ipcRenderer.invoke(IpcChannels.AGENT_FORWARD, input),
+  listAgentPipes: () => ipcRenderer.invoke(IpcChannels.AGENT_PIPE_LIST),
+  cancelAgentPipe: (pipeId) => ipcRenderer.invoke(IpcChannels.AGENT_PIPE_CANCEL, pipeId),
+  onAgentForward: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/ipc').AgentForwardEvent
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.AGENT_FORWARD_EVENT, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.AGENT_FORWARD_EVENT, listener)
+  },
   getDshSkillsInfo: () => ipcRenderer.invoke(IpcChannels.SKILLS_GET_INFO),
   openDshSkillsDir: () => ipcRenderer.invoke(IpcChannels.SKILLS_OPEN_DIR),
   writeDshSkillsTemplate: () => ipcRenderer.invoke(IpcChannels.SKILLS_WRITE_TEMPLATE),

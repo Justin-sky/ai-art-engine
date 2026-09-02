@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import type { AgentRuntimeStatus } from '@shared/ipc'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { AgentPipeInfo, AgentRuntimeStatus } from '@shared/ipc'
 import ChatPanel from './ChatPanel.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm, promptText } from '../composables/useStudioPrompt'
@@ -15,6 +15,24 @@ const activeId = ref('default')
 const activeAgent = computed(
   () => agents.value.find((a) => a.agentId === activeId.value) ?? null
 )
+/** 自动转交管道（模式 B live）：A ⇢ B，主进程在 A 完成后自动派发 */
+const pipes = ref<AgentPipeInfo[]>([])
+/** 各标签 ChatPanel 实例（转交 once 时切过去后直接以目标会话发送） */
+const panelRefs = new Map<string, ChatPanelExpose>()
+let stopForward: (() => void) | null = null
+
+interface ChatPanelExpose {
+  sendExternally?: (text: string) => Promise<boolean>
+  getActiveSessionId?: () => string | undefined
+}
+
+function setChatPanel(id: string, el: unknown): void {
+  if (el && typeof el === 'object') {
+    panelRefs.set(id, el as ChatPanelExpose)
+  } else {
+    panelRefs.delete(id)
+  }
+}
 
 async function refresh(): Promise<void> {
   try {
@@ -25,7 +43,35 @@ async function refresh(): Promise<void> {
   }
 }
 
-onMounted(refresh)
+async function refreshPipes(): Promise<void> {
+  try {
+    pipes.value = await window.studio.listAgentPipes()
+  } catch {
+    pipes.value = []
+  }
+}
+
+onMounted(() => {
+  void refresh()
+  void refreshPipes()
+  // 任意自动转交派发后刷新管道条（lastAt / lastMessage 变化）
+  stopForward = window.studio.onAgentForward(() => {
+    void refreshPipes()
+  })
+})
+
+onBeforeUnmount(() => {
+  stopForward?.()
+})
+
+/** 展示用：agent 名（找不到 id 时显示 id 本身） */
+function agentName(id: string): string {
+  return agents.value.find((a) => a.agentId === id)?.name ?? id
+}
+
+function agentColor(id: string): string | undefined {
+  return agents.value.find((a) => a.agentId === id)?.color
+}
 
 /** 新建自定义 agent：两步输入（名称 → 角色描述），保存后切到新标签 */
 async function onAdd(): Promise<void> {
@@ -81,6 +127,45 @@ function onTabClick(id: string): void {
   activeId.value = id
   void refresh()
 }
+
+/**
+ * 处理子面板的转交请求（模式 B）：
+ * - live：请主进程建立 A→B 自动管道；
+ * - once：切到目标标签，等其挂载后以目标会话直接发送（会话归属与普通消息一致）。
+ */
+async function handleForwardRequest(p: {
+  to: string
+  text: string
+  file?: string
+  live?: boolean
+}): Promise<void> {
+  if (p.live) {
+    await window.studio.forwardToAgent({
+      from: activeId.value,
+      to: p.to,
+      instruction: p.text || undefined,
+      file: p.file || undefined
+    })
+    await refreshPipes()
+    return
+  }
+  if (!agents.value.some((a) => a.agentId === p.to)) return
+  activeId.value = p.to
+  await nextTick()
+  const panel = panelRefs.get(p.to)
+  if (!panel?.sendExternally) return
+  await panel.sendExternally(p.text)
+  void refresh()
+}
+
+/** 取消一条自动转交管道 */
+async function onCancelPipe(id: string): Promise<void> {
+  try {
+    pipes.value = await window.studio.cancelAgentPipe(id)
+  } catch {
+    // 主进程暂不可用：忽略
+  }
+}
 </script>
 
 <template>
@@ -120,12 +205,42 @@ function onTabClick(id: string): void {
         ＋
       </button>
     </div>
+    <div
+      v-if="pipes.length"
+      class="agent-pipes"
+    >
+      <span class="pipes-title">{{ t('studio.agents.pipes') }}</span>
+      <span
+        v-for="pipe in pipes"
+        :key="pipe.id"
+        class="pipe-chip"
+      >
+        <i
+          class="pipe-dot"
+          :style="agentColor(pipe.from) ? { '--pipe-color': agentColor(pipe.from) } : undefined"
+        />
+        <span class="pipe-route">{{ agentName(pipe.from) }} ⇢ {{ agentName(pipe.to) }}</span>
+        <span
+          v-if="pipe.lastMessage"
+          class="pipe-note"
+          :title="pipe.lastMessage"
+        >{{ pipe.lastMessage }}</span>
+        <button
+          class="pipe-cancel"
+          :title="t('studio.agents.pipeCancelTitle')"
+          @click="onCancelPipe(pipe.id)"
+        >×</button>
+      </span>
+    </div>
     <div class="agent-body">
       <KeepAlive :max="6">
         <ChatPanel
           v-if="activeAgent"
           :key="activeAgent.agentId"
           :agent-id="activeAgent.agentId"
+          :agents="agents"
+          :ref="(el) => { if (activeAgent) setChatPanel(activeAgent.agentId, el) }"
+          @forward-request="handleForwardRequest"
         />
       </KeepAlive>
     </div>
@@ -218,6 +333,67 @@ function onTabClick(id: string): void {
 .agent-add:hover {
   color: var(--text-primary, #e6e9ef);
   border-color: var(--text-secondary, #9aa4b2);
+}
+.agent-pipes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--panel-border, rgba(128, 128, 128, 0.2));
+  background: color-mix(in srgb, var(--panel-border, rgba(128, 128, 128, 0.2)) 30%, transparent);
+}
+.pipes-title {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-tertiary, #5b6472);
+  white-space: nowrap;
+}
+.pipe-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 2px 8px 2px 6px;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
+  border-radius: 999px;
+  background: var(--bg-elevated, #1b2028);
+  font-size: 11px;
+  color: var(--text-secondary, #9aa4b2);
+  max-width: 320px;
+}
+.pipe-route {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pipe-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pipe-color, #37b26c);
+  flex: none;
+}
+.pipe-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-tertiary, #5b6472);
+  font-size: 10px;
+}
+.pipe-cancel {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary, #5b6472);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pipe-cancel:hover {
+  color: #e5484d;
 }
 .agent-body {
   flex: 1;

@@ -84,6 +84,12 @@ interface AgentRuntime {
    * runner 侧 provider 轮询读到后 resolve 给 agent。
    */
   askUserRequests: Map<string, { runId: string; answerFile: string; questionId: string }>
+  /** 最近一次成功完成的最终文本（模式 B 转交 / 面板「转交最近回答」的数据源） */
+  lastFinalText: string
+  /** 最近一次成功完成的时间戳（排序/展示用；0 = 尚无完成） */
+  lastFinalAt: number
+  /** 最近一次任务使用的会话 id（模式 B 自动转交时接续 B 的会话上下文） */
+  lastSessionId: string
 }
 
 /** 全部 agent 运行时：多 agent 并发时互不干扰；缺省 agent 保持历史行为 */
@@ -98,11 +104,44 @@ function runtimeFor(agentId: string): AgentRuntime {
       runSeq: 0,
       lastStatusText: '',
       workspaceNotified: '',
-      askUserRequests: new Map()
+      askUserRequests: new Map(),
+      lastFinalText: '',
+      lastFinalAt: 0,
+      lastSessionId: ''
     }
     runtimes.set(agentId, rt)
   }
   return rt
+}
+
+/**
+ * 任务「成功完成」订阅（agentBridge 据此实现 A→B 自动转交管道）。
+ * 仅在 agent 产出最终文本（finalText 非空）时触发；异常退出不触发。
+ */
+const runtimeDoneHandlers = new Set<
+  (info: { agentId: string; finalText: string; runId: string; sessionId?: string }) => void
+>()
+
+/** 订阅某 agent 任务成功完成（返回取消函数）；无最终文本（异常/空回答）不触发 */
+export function onAgentRuntimeDone(
+  handler: (info: { agentId: string; finalText: string; runId: string; sessionId?: string }) => void
+): () => void {
+  runtimeDoneHandlers.add(handler)
+  return () => runtimeDoneHandlers.delete(handler)
+}
+
+/** 查询某 agent 最近一次成功完成的最终文本（面板「转交最近回答」用；无完成返回 null） */
+export function getAgentLastFinal(agentId: string): { text: string; at: number } | null {
+  const rt = runtimes.get(normalizeAgentId(agentId) ?? DEFAULT_AGENT_ID)
+  if (!rt || !rt.lastFinalText || !rt.lastFinalAt) return null
+  return { text: rt.lastFinalText, at: rt.lastFinalAt }
+}
+
+/** 查询某 agent 最近一次任务的会话 id（自动转交接续 B 上下文用） */
+export function getAgentLastSessionId(agentId: string): string | undefined {
+  const rt = runtimes.get(normalizeAgentId(agentId) ?? DEFAULT_AGENT_ID)
+  const sid = rt?.lastSessionId?.trim()
+  return sid || undefined
 }
 
 /** agentId 合法性：文件系统安全（用于 $DSH_HOME/agents/<id> 目录名），与 agentRegistry 保持一致 */
@@ -1534,8 +1573,20 @@ function launchDsh(opts: {
       agentEmit({ type: 'error', message: `dsh 异常退出（code ${code}）。${hint}。` })
     } else {
       agentEmit({ type: 'done', runId })
-      // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」
-      if (finalText) agentEmit({ type: 'final', text: finalText })
+      // 流式期间已把文本通过 assistant 事件实时下发，final 仅标记「回答已完成」；
+      // 同时记录该 agent 的最近完成（自动转交管道的数据源）并通知订阅方
+      if (finalText) {
+        agentEmit({ type: 'final', text: finalText })
+        rt.lastFinalText = finalText
+        rt.lastFinalAt = Date.now()
+        for (const handler of runtimeDoneHandlers) {
+          try {
+            handler({ agentId, finalText, runId, sessionId: rt.lastSessionId || undefined })
+          } catch {
+            // 订阅方异常不影响 dsh 进程收尾
+          }
+        }
+      }
     }
   })
 
@@ -1598,6 +1649,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   const workspace = resolveWorkspace()
   const runId = String(++rt.runSeq)
   rt.lastStatusText = ''
+  // 记录本次会话 id：自动转交（模式 B）派发给本 agent 时据此接续会话上下文
+  rt.lastSessionId = input.sessionId?.trim() || ''
   const dshEntry = resolveDshEntry()
   emitStatus(
     dshEntry

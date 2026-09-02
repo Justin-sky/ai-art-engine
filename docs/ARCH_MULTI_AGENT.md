@@ -244,6 +244,12 @@ window.studio.onHarnessEvent((e) => {
 
 每个里程碑独立可回退：M1 不改动任何 M2/M3 涉及的文件。
 
+> 落地记录：**M1** 已随 60a92b8 交付；**M2** 已交付：`agent:forward`/`agent:pipe-list`/`agent:pipe-cancel`/`agent:forward-event`
+> 四条通道、`agentBridge.ts`（A 完成自动派发、B 忙则跳过不抢占、接续 B 最近会话）、harness 记录每 agent
+> 最近完成文本/会话（`onAgentRuntimeDone`/`getAgentLastFinal`/`getAgentLastSessionId`）。
+> 渲染层以「消息 ⤳ 转交对话框（目标 + 附加指令 + 附文件 + 自动转交开关）+ AgentPanel 管道状态条」落地，
+> 拖拽连线交互留待后续迭代；一次转交（once）由目标面板以其会话直接发送，会话归属与普通消息一致。
+
 ## 12. 风险与缓解
 
 | 风险 | 影响 | 缓解 |
