@@ -666,6 +666,8 @@ export default {
         'Tell this agent what to do and what to produce, e.g. expand the storyboard above into drawing prompts (keep character design and global params consistent)',
       run: 'Start',
       submitting: 'Submitting…',
+      undo: 'Undo draft edit',
+      redo: 'Redo draft edit',
       clear: 'Clear form',
       noGoal: 'Please enter a goal first',
       noAgent: 'No orchestration-ready agents (need at least one non-default role; create one in the tab bar above)',

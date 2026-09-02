@@ -21,6 +21,15 @@ import {
   type DagNodeAnnotation,
   type DagNodeError
 } from '../utils/orchDagLayout'
+import {
+  createDraftHistory,
+  draftRedo,
+  draftUndo,
+  equalsDraftSnapshot,
+  pushDraftHistory,
+  type DraftHistory,
+  type DraftSnapshot
+} from '../utils/draftHistory'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 /** 面板可编排节点上限（与主进程校验一致） */
@@ -48,6 +57,63 @@ const planning = ref(false)
 const planInfo = ref('')
 let nodeSeq = 0
 
+/* ── 草稿撤销/重做：goal/title/nodes 整份快照入栈（编辑前捕获，内容未变不入栈） ── */
+const history = ref<DraftHistory>(createDraftHistory())
+const canUndoDraft = computed(() => history.value.past.length > 0)
+const canRedoDraft = computed(() => history.value.future.length > 0)
+
+/** 取当前表单快照（纯值复制，避免与响应式代理共享可变引用） */
+function snapshotForm(): DraftSnapshot {
+  return {
+    goal: goal.value,
+    jobTitle: jobTitle.value,
+    nodes: nodes.value.map((n) => ({
+      id: String(n.id ?? ''),
+      agentId: n.agentId,
+      instruction: n.instruction,
+      dependsOn: [...(n.dependsOn ?? [])]
+    }))
+  }
+}
+
+/** 用快照整份恢复草稿（撤销 / 重做共用） */
+function applyFormSnapshot(s: DraftSnapshot): void {
+  detachDraftDrag()
+  dragState.value = null
+  goal.value = s.goal
+  jobTitle.value = s.jobTitle
+  nodes.value = s.nodes.map((n) => ({
+    id: n.id,
+    agentId: n.agentId,
+    instruction: n.instruction,
+    dependsOn: [...(n.dependsOn ?? [])]
+  }))
+}
+
+/** 执行一次可撤销编辑：先跑变更，确有差异才把「编辑前快照」入栈（新分支会清空 future） */
+function recordEdit(edit: () => void): void {
+  const before = snapshotForm()
+  edit()
+  if (equalsDraftSnapshot(before, snapshotForm())) return
+  history.value = pushDraftHistory(history.value, before)
+}
+
+function undoDraft(): void {
+  const res = draftUndo(history.value, snapshotForm())
+  if (!res) return
+  history.value = res.history
+  planInfo.value = ''
+  applyFormSnapshot(res.snapshot)
+}
+
+function redoDraft(): void {
+  const res = draftRedo(history.value, snapshotForm())
+  if (!res) return
+  history.value = res.history
+  planInfo.value = ''
+  applyFormSnapshot(res.snapshot)
+}
+
 /** 单条编排记录的展示模式（flow 列表 / graph 连线图）；未记录时按节点数给默认值 */
 const viewMode = ref<Record<string, 'flow' | 'graph'>>({})
 /** 连线图模式下选中的节点（jobId → nodeId），详情展示在图上 */
@@ -65,24 +131,28 @@ function defaultAgent(): string {
 
 function addNode(): void {
   if (nodes.value.length >= MAX_NODES) return
-  nodeSeq += 1
-  nodes.value.push({
-    id: `n${nodeSeq}`,
-    agentId: defaultAgent(),
-    instruction: '',
-    dependsOn: []
+  recordEdit(() => {
+    nodeSeq += 1
+    nodes.value.push({
+      id: `n${nodeSeq}`,
+      agentId: defaultAgent(),
+      instruction: '',
+      dependsOn: []
+    })
   })
 }
 
 function removeNode(index: number): void {
-  const removedId = nodes.value[index]?.id
-  nodes.value.splice(index, 1)
-  // 同步清理其他节点对该节点的依赖引用
-  if (removedId) {
-    for (const node of nodes.value) {
-      node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== removedId)
+  recordEdit(() => {
+    const removedId = nodes.value[index]?.id
+    nodes.value.splice(index, 1)
+    // 同步清理其他节点对该节点的依赖引用
+    if (removedId) {
+      for (const node of nodes.value) {
+        node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== removedId)
+      }
     }
-  }
+  })
 }
 
 /* ── 新建表单：迷你 DAG 画布（拖拽建立依赖 / 点击连线删除） ── */
@@ -160,15 +230,19 @@ function applyDraftDrop(fromId: string, toId: string): void {
     }
     return
   }
-  const target = nodes.value.find((n) => n.id === toId)
-  if (target) target.dependsOn = [...(target.dependsOn ?? []), fromId]
+  recordEdit(() => {
+    const target = nodes.value.find((n) => n.id === toId)
+    if (target) target.dependsOn = [...(target.dependsOn ?? []), fromId]
+  })
 }
 
 /** 点击连线删除该依赖：从「目标节点」的 dependsOn 里移除来源节点 */
 function removeDraftEdge(fromId: string, toId: string): void {
-  const node = nodes.value.find((n) => n.id === toId)
-  if (!node) return
-  node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== fromId)
+  recordEdit(() => {
+    const node = nodes.value.find((n) => n.id === toId)
+    if (!node) return
+    node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== fromId)
+  })
 }
 
 function showCanvasMsg(text: string, kind: 'warn' | 'info'): void {
@@ -196,6 +270,45 @@ function onResizeTextarea(event: Event): void {
   const el = event.target as HTMLTextAreaElement
   el.style.height = 'auto'
   el.style.height = `${el.scrollHeight}px`
+}
+
+/* ── 表单字段提交（change/blur 才写入模型并记一次撤销；打字过程中不逐键入栈） ── */
+function onJobTitleChange(event: Event): void {
+  const v = (event.target as HTMLInputElement).value
+  recordEdit(() => {
+    jobTitle.value = v
+  })
+}
+
+function onGoalChange(event: Event): void {
+  const v = (event.target as HTMLTextAreaElement).value
+  recordEdit(() => {
+    goal.value = v
+  })
+}
+
+function onNodeIdChange(index: number, event: Event): void {
+  const v = (event.target as HTMLInputElement).value
+  recordEdit(() => {
+    const node = nodes.value[index]
+    if (node) node.id = v
+  })
+}
+
+function onNodeAgentChange(index: number, event: Event): void {
+  const v = (event.target as HTMLSelectElement).value
+  recordEdit(() => {
+    const node = nodes.value[index]
+    if (node) node.agentId = v
+  })
+}
+
+function onNodeInstructionChange(index: number, event: Event): void {
+  const v = (event.target as HTMLTextAreaElement).value
+  recordEdit(() => {
+    const node = nodes.value[index]
+    if (node) node.instruction = v
+  })
 }
 
 /* ── 草稿就地标注：实时校验 → 节点级错误 + 无效依赖边（重复 id 按下标各归各） ── */
@@ -235,9 +348,11 @@ function isInvalidDraftEdge(from: string, to: string): boolean {
 
 /** 就地剔除某条无效依赖：从目标节点 dependsOn 移除来源 */
 function stripDraftDep(index: number, dep: string): void {
-  const node = nodes.value[index]
-  if (!node) return
-  node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== dep)
+  recordEdit(() => {
+    const node = nodes.value[index]
+    if (!node) return
+    node.dependsOn = (node.dependsOn ?? []).filter((d) => d !== dep)
+  })
 }
 
 /** 生成不与现有节点冲突的新 id（修复非法/重复 id 用） */
@@ -255,29 +370,31 @@ function quickFixNode(index: number): void {
   const node = nodes.value[index]
   const ann = nodeIssues(index)
   if (!node || (!ann.errors.length && !ann.badDeps.length)) return
-  let changed = false
-  const hasSelf = ann.errors.some((e) => e.kind === 'self-dep')
-  const drop = new Set(ann.badDeps.map((b) => b.dep))
-  if (hasSelf || drop.size) {
-    const before = node.dependsOn ?? []
-    const next = before.filter((d) => d !== node.id && !drop.has(d))
-    if (next.length !== before.length) {
-      node.dependsOn = next
+  recordEdit(() => {
+    let changed = false
+    const hasSelf = ann.errors.some((e) => e.kind === 'self-dep')
+    const drop = new Set(ann.badDeps.map((b) => b.dep))
+    if (hasSelf || drop.size) {
+      const before = node.dependsOn ?? []
+      const next = before.filter((d) => d !== node.id && !drop.has(d))
+      if (next.length !== before.length) {
+        node.dependsOn = next
+        changed = true
+      }
+    }
+    if (ann.errors.some((e) => e.kind === 'empty-agent')) {
+      const fallback = defaultAgent()
+      if (fallback) {
+        node.agentId = fallback
+        changed = true
+      }
+    }
+    if (ann.errors.some((e) => e.kind === 'bad-id' || e.kind === 'dup-id')) {
+      node.id = freshNodeId()
       changed = true
     }
-  }
-  if (ann.errors.some((e) => e.kind === 'empty-agent')) {
-    const fallback = defaultAgent()
-    if (fallback) {
-      node.agentId = fallback
-      changed = true
-    }
-  }
-  if (ann.errors.some((e) => e.kind === 'bad-id' || e.kind === 'dup-id')) {
-    node.id = freshNodeId()
-    changed = true
-  }
-  if (changed) showCanvasMsg(t('studio.orchestrator.nodeFixed'), 'info')
+    if (changed) showCanvasMsg(t('studio.orchestrator.nodeFixed'), 'info')
+  })
 }
 
 /** 只有角色/id 类问题可点击定位到对应输入框（自依赖等就地无对应输入） */
@@ -302,11 +419,13 @@ function clearForm(): void {
   detachDraftDrag()
   dragState.value = null
   canvasMsg.value = ''
-  goal.value = ''
-  jobTitle.value = ''
-  nodes.value = []
   formError.value = ''
-  planInfo.value = ''
+  recordEdit(() => {
+    goal.value = ''
+    jobTitle.value = ''
+    nodes.value = []
+    planInfo.value = ''
+  })
 }
 
 /** 智能拆解：把总目标交给策划 Agent，用返回的节点草案填充下方表单（可继续编辑后运行） */
@@ -345,8 +464,11 @@ async function onAutoPlan(): Promise<void> {
     }
     // 拆解结果写回前兜底清洗：剔除 self / 悬空 / 成环依赖，保证节点集可直接提交
     const repaired = sanitizeDagDependencies(planned)
-    nodes.value = planned
-    nodeSeq = Math.max(nodeSeq, planned.length)
+    // 写回记一次撤销：undo 可回到智能拆解前的草稿（手工微调 / 上一份拆解皆可回退）
+    recordEdit(() => {
+      nodes.value = planned
+      nodeSeq = Math.max(nodeSeq, planned.length)
+    })
     // 剩余无法自动清洗的问题（缺角色 / 非法 / 重复 id 等）改为就地标注在节点上
     const remaining = annotateDagNodes(planned)
     const remain = remaining.errorCount + remaining.badDepCount
@@ -445,8 +567,35 @@ function upsertJob(job: OrchestratorJob): void {
   }
 }
 
+/** Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y：仅在焦点位于本面板（且不在输入控件内）时接管草稿撤销/重做；
+ *  输入控件内交回浏览器原生文本撤销；面板外不拦截，避免误伤其他编辑器的撤销栈 */
+function onFormKeydown(event: KeyboardEvent): void {
+  if (event.isComposing) return
+  const mod = event.ctrlKey || event.metaKey
+  if (!mod) return
+  const target = event.target as HTMLElement | null
+  if (!target?.closest('.orch-panel')) return
+  if (target.closest('input, textarea, select, [contenteditable="true"]')) return
+  const key = event.key.toLowerCase()
+  if (key === 'z') {
+    const redo = event.shiftKey
+    const can = redo ? canRedoDraft.value : canUndoDraft.value
+    if (!can) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if (redo) redoDraft()
+    else undoDraft()
+  } else if (key === 'y') {
+    if (!canRedoDraft.value) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    redoDraft()
+  }
+}
+
 onMounted(() => {
   void refreshJobs()
+  window.addEventListener('keydown', onFormKeydown, true)
   stopEvents = window.studio.onOrchestratorEvent(({ job }) => {
     upsertJob(job)
     // 节点运行/结束会改变 agent 占用状态，让父层刷新标签运行点
@@ -455,6 +604,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onFormKeydown, true)
   detachDraftDrag()
   if (canvasMsgTimer) window.clearTimeout(canvasMsgTimer)
   stopEvents?.()
@@ -634,16 +784,18 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
         <span class="form-subtitle">{{ t('studio.orchestrator.subtitle') }}</span>
       </div>
       <input
-        v-model="jobTitle"
+        :value="jobTitle"
         class="text-input goal-input"
         :placeholder="t('studio.orchestrator.jobTitlePlaceholder')"
+        @change="onJobTitleChange"
       />
       <textarea
-        v-model="goal"
+        :value="goal"
         class="text-input goal-textarea"
         rows="2"
         :placeholder="t('studio.orchestrator.goalPlaceholder')"
         @input="onResizeTextarea"
+        @change="onGoalChange"
       />
       <div class="plan-row">
         <button
@@ -764,14 +916,16 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
           <div class="node-head">
             <span class="node-index">{{ index + 1 }}</span>
             <input
-              v-model="node.id"
+              :value="node.id"
               class="text-input node-id-input"
               :title="t('studio.orchestrator.nodeId')"
+              @change="onNodeIdChange(index, $event)"
             />
             <select
-              v-model="node.agentId"
+              :value="node.agentId"
               class="node-agent-select"
               :title="t('studio.orchestrator.nodeAgent')"
+              @change="onNodeAgentChange(index, $event)"
             >
               <option v-for="agent in selectableAgents" :key="agent.agentId" :value="agent.agentId">
                 {{ agent.name }}
@@ -832,11 +986,12 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
             </div>
           </div>
           <textarea
-            v-model="node.instruction"
+            :value="node.instruction"
             class="text-input node-instruction"
             rows="1"
             :placeholder="t('studio.orchestrator.nodeInstructionPlaceholder')"
             @input="onResizeTextarea"
+            @change="onNodeInstructionChange(index, $event)"
           />
         </div>
         <button
@@ -856,6 +1011,26 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
       </div>
 
       <div class="form-actions">
+        <div class="history-group">
+          <button
+            type="button"
+            class="action-btn ghost history-btn"
+            :disabled="!canUndoDraft"
+            :title="`${t('studio.orchestrator.undo')} (Ctrl+Z)`"
+            @click="undoDraft"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            class="action-btn ghost history-btn"
+            :disabled="!canRedoDraft"
+            :title="`${t('studio.orchestrator.redo')} (Ctrl+Shift+Z)`"
+            @click="redoDraft"
+          >
+            ↷
+          </button>
+        </div>
         <button
           type="button"
           class="action-btn primary"
@@ -1384,6 +1559,18 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.history-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+.history-btn {
+  min-width: 28px;
+  padding: 4px 6px;
+  font-size: 14px;
+  line-height: 1;
 }
 .action-btn {
   border-radius: 6px;
