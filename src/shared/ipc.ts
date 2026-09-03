@@ -240,6 +240,8 @@ export const IpcChannels = {
   ORCHESTRATOR_ABORT: 'orchestrator:abort',
   /** Orchestrator：断点续跑失败/中止的 job（done 节点保留，未完成节点重新执行） */
   ORCHESTRATOR_RERUN: 'orchestrator:rerun',
+  /** Orchestrator：节点级单跑——只重跑指定节点及其被阻塞的下游（done 节点保留） */
+  ORCHESTRATOR_RERUN_NODE: 'orchestrator:rerun-node',
   /** Orchestrator：主进程推送 job 状态变化（节点推进 / 终态），渲染层实时刷新 DAG */
   ORCHESTRATOR_EVENT: 'orchestrator:event'
 } as const
@@ -1227,6 +1229,12 @@ export interface StudioApi {
    * 失败/跳过等未完成节点重置后重新执行（job 顶回 running，通过事件推送进度）。
    */
   rerunOrchestratorJob: (jobId: string) => Promise<OrchestratorRunResult>
+
+  /**
+   * Orchestrator：节点级单跑——在失败/中止的编排记录里只重跑指定节点及其
+   * 被级联阻塞的下游（done 节点保留产出），job 顶回 running 并通过事件推送进度。
+   */
+  rerunOrchestratorNode: (jobId: string, nodeId: string) => Promise<OrchestratorRunResult>
 
   /** Orchestrator：订阅 job 状态变化（节点推进 / 终态） */
   onOrchestratorEvent: (callback: (event: OrchestratorJobEvent) => void) => () => void

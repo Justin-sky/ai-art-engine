@@ -68,6 +68,7 @@ import {
   listOrchestratorJobs,
   planOrchestrator,
   rerunOrchestratorJob,
+  rerunOrchestratorNode,
   runOrchestrator
 } from './services/agentOrchestrator'
 import { settingsService } from './services/settingsService'
@@ -370,6 +371,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.ORCHESTRATOR_LIST, () => listOrchestratorJobs())
   handle(IpcChannels.ORCHESTRATOR_ABORT, (_ev, jobId: string) => abortOrchestratorJob(jobId))
   handle(IpcChannels.ORCHESTRATOR_RERUN, (_ev, jobId: string) => rerunOrchestratorJob(jobId))
+  handle(IpcChannels.ORCHESTRATOR_RERUN_NODE, (_ev, jobId: string, nodeId: string) =>
+    rerunOrchestratorNode(jobId, nodeId)
+  )
   handle(IpcChannels.SKILLS_GET_INFO, () => getDshSkillsInfo())
   handle(IpcChannels.SKILLS_OPEN_DIR, () => openDshSkillsDir())
   handle(IpcChannels.SKILLS_WRITE_TEMPLATE, () => writeDshSkillsTemplate())
