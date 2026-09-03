@@ -10,6 +10,7 @@
 - **编排拓扑画布（拖拽连线）**：新建编排表单把节点依赖从复选框勾选升级为迷你 DAG 画布——按自动分层布局实时呈现节点与依赖连线，拖动节点 A 落到节点 B 即建立「B 等 A 完成」依赖（A→B），落点前做自依赖 / 循环校验并即时提示，点击连线删除依赖；校验逻辑收敛为纯函数 `canAddDependency`（与主进程 runOrchestrator 校验口径一致）并配单元测试，同时清理 `OrchestratorPanel` / `AgentPanel` 深色硬编码 CSS fallback 使主题审计恢复全绿
 - **编排草稿撤销 / 重做**：新建编排表单的所有手工编辑（增删节点、画布连线增删、一键修复、自动拆解写回、清空表单、字段提交）以「goal / 标题 / 节点整份快照」为粒度进入撤销栈（`renderer/utils/draftHistory.ts` 纯函数，容量 50，配单元测试）；字段输入改为提交式写入（打字不逐键入栈），操作区「撤销 / 重做」按钮 + Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y（仅焦点位于面板且不在输入控件内接管，不干扰输入原生撤销与其他编辑器撤销栈）
 - **编排记录断点续跑**：失败/中止的编排记录一键续跑——已完成节点保留产出、失败/跳过节点重置后重新执行并重建汇总（`shared/orchestratorRerun.ts` 纯函数 + `orchestrator:rerun` 通道，per-job 调度链保证不并发双跑），编排记录头部 ↻ 续跑按钮
+- **编排记录再来一轮**：已结束记录（含 done）可一键「再来一轮」——把该编排的 goal/节点整单回填到上方新建表单（`renderer/utils/orchJobReuse.ts` 纯转换，剥离运行态字段、按上限截断），覆盖草稿有二次确认、回填可撤销；微调后即开启全新一轮，与断点续跑语义互补
 - **音效库**：内置 22 个常用音效预设（转场 8 / UI 7 / 环境 7，中英双语，`features/timeline/sfxPresets.ts`），一键「生成并上轨」复用 AI 音效生成管线；分类浏览 + 资产库声音一键「导入上轨」
 - **项目级 Agent 记忆**：工程 `.aiartengine/memory.md` 跨会话沉淀项目偏好（风格 / 机位 / 角色一致性 / 其它），工程创建 / 打开时由配置自动生成基线，每轮对话注入 persona（截断 4000 字符）；MCP 工具 `project_memory_read / append / write`
 - **角色音色 / 声音克隆**：工程 `.aiartengine/voiceProfiles.json` 角色音色档案（角色 → 音色 id / 克隆参考音频），配音节点按角色（`generateSpeechCharacter`）自动取档实现跨镜头一致配音；`referenceAudio` 透传火山方舟声音复刻（few-shot voice clone）；声音节点检查器「角色音色」下拉 + 档案管理对话框；MCP 工具 `voice_profile_list / upsert / delete`
