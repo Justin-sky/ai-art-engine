@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   AgentRuntimeStatus,
   OrchestratorJob,
@@ -31,6 +31,8 @@ import {
   type DraftSnapshot
 } from '../utils/draftHistory'
 import { orchestratorJobToDraft } from '../utils/orchJobReuse'
+import { canRerunOrchestratorNode, resetNodesForNodeRerun } from '@shared/orchestratorNodeRerun'
+import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 /** 面板可编排节点上限（与主进程校验一致） */
@@ -597,6 +599,7 @@ function onFormKeydown(event: KeyboardEvent): void {
 onMounted(() => {
   void refreshJobs()
   window.addEventListener('keydown', onFormKeydown, true)
+  window.addEventListener('mousedown', onPanelMouseDown, true)
   stopEvents = window.studio.onOrchestratorEvent(({ job }) => {
     upsertJob(job)
     // 节点运行/结束会改变 agent 占用状态，让父层刷新标签运行点
@@ -606,6 +609,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onFormKeydown, true)
+  window.removeEventListener('mousedown', onPanelMouseDown, true)
   detachDraftDrag()
   if (canvasMsgTimer) window.clearTimeout(canvasMsgTimer)
   stopEvents?.()
@@ -822,6 +826,113 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
     nodeSeq = Math.max(nodeSeq, maxN)
   })
   planInfo.value = t('studio.orchestrator.reuseLoaded')
+}
+
+/* ── 节点级单跑：右键记录内节点 → 浮层菜单 → 定点重跑该节点及其被阻塞的下游 ── */
+
+interface NodeCtxMenu {
+  jobId: string
+  nodeId: string
+  x: number
+  y: number
+}
+
+const nodeMenu = ref<NodeCtxMenu | null>(null)
+const nodeMenuEl = ref<HTMLElement | null>(null)
+
+/** 右键弹菜单：仅终态 job（running/done 都不提供节点级单跑入口） */
+function openNodeMenu(e: MouseEvent, job: OrchestratorJob, nodeId: string): void {
+  if (job.state === 'running' || job.state === 'done') return
+  void showNodeMenu(job.jobId, nodeId, e.clientX, e.clientY)
+}
+
+async function showNodeMenu(jobId: string, nodeId: string, x: number, y: number): Promise<void> {
+  nodeMenu.value = { jobId, nodeId, x, y }
+  await nextTick()
+  const el = nodeMenuEl.value
+  if (!el || !nodeMenu.value) return
+  const placed = placeFixedMenu(el, x, y)
+  if (placed.x !== nodeMenu.value.x || placed.y !== nodeMenu.value.y) {
+    nodeMenu.value = { ...nodeMenu.value, ...placed }
+  }
+}
+
+function closeNodeMenu(): void {
+  nodeMenu.value = null
+}
+
+/** 浮层展示的目标节点（每次渲染从最新 job 取，避免菜单持有过期快照） */
+const menuTarget = computed<OrchestratorNodeState | undefined>(() => {
+  const m = nodeMenu.value
+  if (!m) return undefined
+  return jobs.value.find((j) => j.jobId === m.jobId)?.nodes.find((n) => n.id === m.nodeId)
+})
+
+/** 浮层展示的目标 job（菜单可单跑/禁用的判定依据） */
+const menuJob = computed<OrchestratorJob | undefined>(() => {
+  const m = nodeMenu.value
+  if (!m) return undefined
+  return jobs.value.find((j) => j.jobId === m.jobId)
+})
+
+/** 该节点当前是否可单跑（依赖已完成、自身未完成、job 为失败/中止态） */
+const menuCanRerun = computed<boolean>(() => {
+  const m = nodeMenu.value
+  const job = menuJob.value
+  if (!m || !job) return false
+  return canRerunOrchestratorNode(job, m.nodeId)
+})
+
+/** 受影响（将一起重置）的节点数；仅 menuCanRerun 为 true 时有意义 */
+const menuRerunCount = computed<number>(() => {
+  const m = nodeMenu.value
+  const job = menuJob.value
+  if (!m || !job) return 0
+  const reset = resetNodesForNodeRerun(job, m.nodeId)
+  return reset?.rerunCount ?? 0
+})
+
+/** 菜单禁用时的说明文案 */
+const menuBlockedHint = computed<string>(() => {
+  const m = nodeMenu.value
+  const job = menuJob.value
+  if (!m) return ''
+  if (!job) return ''
+  if (job.state === 'done') return t('studio.orchestrator.rerunNodeBlockedJobDone')
+  const node = menuTarget.value
+  if (!node) return ''
+  if (node.state === 'done') return t('studio.orchestrator.rerunNodeBlockedNodeDone')
+  return t('studio.orchestrator.rerunNodeBlockedDeps')
+})
+
+/** 确认后调主进程单跑；失败弹错误提示 */
+async function onMenuRerunNode(): Promise<void> {
+  const m = nodeMenu.value
+  const job = menuJob.value
+  if (!m || !job || !menuCanRerun.value) return
+  const ok = await promptConfirm({
+    title: t('studio.orchestrator.rerunNode'),
+    message: t('studio.orchestrator.rerunNodeConfirm', { n: menuRerunCount.value }),
+    confirmLabel: t('studio.orchestrator.rerunNode')
+  })
+  if (!ok) return
+  closeNodeMenu()
+  try {
+    const res = await window.studio.rerunOrchestratorNode(job.jobId, m.nodeId)
+    if (!res.ok) {
+      await promptAlert({ title: t('studio.orchestrator.rerunNodeFail'), message: res.message ?? '' })
+    }
+  } catch {
+    // 主进程不可用时忽略；job 状态会经事件/列表刷新
+  }
+}
+
+/** 点击浮层外任意处关闭节点菜单 */
+function onPanelMouseDown(e: MouseEvent): void {
+  const target = e.target as HTMLElement | null
+  if (!target) return
+  if (nodeMenuEl.value && target.closest('.orch-node-menu')) return
+  closeNodeMenu()
 }
 </script>
 
@@ -1179,7 +1290,12 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
 
           <div v-if="viewOf(job) === 'flow'" class="node-flow">
             <div v-for="(node, i) in job.nodes" :key="node.id" class="flow-row">
-              <div class="flow-node" :class="node.state" @click="toggleNode(job.jobId, node.id)">
+              <div
+                class="flow-node"
+                :class="node.state"
+                @click="toggleNode(job.jobId, node.id)"
+                @contextmenu.prevent.stop="openNodeMenu($event, job, node.id)"
+              >
                 <span class="flow-dot" />
                 <span class="flow-agent">{{ agentName(node.agentId) }}</span>
                 <span class="flow-id">{{ node.id }}</span>
@@ -1304,6 +1420,7 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
                   }"
                   :title="node.instruction"
                   @click="onGraphChip(job.jobId, node.id)"
+                  @contextmenu.prevent.stop="openNodeMenu($event, job, node.id)"
                 >
                   <span class="flow-dot" />
                   <span class="graph-agent">{{ agentName(node.agentId) }}</span>
@@ -1412,6 +1529,40 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
             <pre>{{ job.summary }}</pre>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 节点级单跑右键菜单 -->
+    <div
+      v-if="nodeMenu"
+      ref="nodeMenuEl"
+      class="orch-node-menu"
+      :style="{ left: nodeMenu.x + 'px', top: nodeMenu.y + 'px' }"
+    >
+      <div class="orch-node-menu-head">
+        <span class="orch-node-menu-title">
+          {{ menuTarget?.id ?? '' }}
+          <span class="orch-node-menu-agent">{{
+            menuTarget ? agentName(menuTarget.agentId) : ''
+          }}</span>
+        </span>
+        <span v-if="menuTarget" class="state-chip node" :class="menuTarget.state">{{
+          menuTarget ? nodeStateLabel(menuTarget.state) : ''
+        }}</span>
+      </div>
+      <button
+        type="button"
+        class="orch-node-menu-action"
+        :disabled="!menuCanRerun"
+        :title="menuCanRerun ? t('studio.orchestrator.rerunNodeTip') : menuBlockedHint"
+        @click="onMenuRerunNode"
+      >
+        <span class="orch-node-menu-icon">↻</span>
+        <span class="orch-node-menu-label">{{ t('studio.orchestrator.rerunNode') }}</span>
+        <span v-if="menuCanRerun" class="orch-node-menu-count">×{{ menuRerunCount }}</span>
+      </button>
+      <div v-if="!menuCanRerun" class="orch-node-menu-blocked">
+        {{ menuBlockedHint }}
       </div>
     </div>
   </div>
@@ -2361,5 +2512,80 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
 .graph-detail {
   margin: 0;
   margin-top: 2px;
+}
+
+/* 节点级单跑右键菜单 */
+.orch-node-menu {
+  position: fixed;
+  z-index: 4000;
+  min-width: 200px;
+  max-width: 300px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.orch-node-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.orch-node-menu-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orch-node-menu-agent {
+  margin-left: 6px;
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.orch-node-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.orch-node-menu-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.orch-node-menu-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.orch-node-menu-icon {
+  flex: none;
+  color: var(--accent);
+}
+.orch-node-menu-count {
+  flex: none;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.orch-node-menu-blocked {
+  padding: 0 8px 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 </style>

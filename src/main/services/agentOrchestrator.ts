@@ -37,6 +37,7 @@ import { resolveCacheOutputRoot } from '@shared/domain'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { broadcastToAllWindows } from '../broadcast'
+import { resetNodesForNodeRerun } from '@shared/orchestratorNodeRerun'
 import { resetNodesForRerun } from '@shared/orchestratorRerun'
 import { agentRegistry, DEFAULT_AGENT_ID } from './agentRegistry'
 import {
@@ -492,7 +493,7 @@ export function abortOrchestratorJob(jobId: string): boolean {
 
 /**
  * 断点续跑失败 / 中止的编排 job：done 节点保留产出不重复执行，failed / skipped 等
- * 未完成节点重置为 pending 后重新进入调度（复用 runJob 主循环），供用户从失败处 / 
+ * 未完成节点重置为 pending 后重新进入调度（复用 runJob 主循环），供用户从失败处 /
  * 中断处继续推进整个 DAG。
  */
 export async function rerunOrchestratorJob(jobId: string): Promise<OrchestratorRunResult> {
@@ -510,11 +511,67 @@ export async function rerunOrchestratorJob(jobId: string): Promise<OrchestratorR
           : '该编排已全部完成，无需续跑；如需完整重跑请在新建表单中重新提交。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
     }
   }
-  // 先等旧调度循环完全收尾（中止后的节点执行可能仍在 unwind），避免同 job 双循环并发
+  return relaunchOrchestratorNodes(job, nodes, '该记录状态已变化，请刷新后重试。')
+}
+
+/**
+ * 节点级单跑：失败 / 中止的编排记录里，只重跑指定节点及其被级联阻塞的下游
+ * （done 节点保留产出不重复执行），用于定点重试某个环节而不是整单续跑。
+ */
+export async function rerunOrchestratorNode(
+  jobId: string,
+  nodeId: string
+): Promise<OrchestratorRunResult> {
+  const job = jobs.get(String(jobId ?? ''))
+  if (!job) {
+    return { ok: false, message: '未找到该编排记录，可能已被清理。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+  }
+  const reset = resetNodesForNodeRerun(job, String(nodeId ?? ''))
+  if (!reset) {
+    if (job.state === 'running') {
+      return {
+        ok: false,
+        message: '任务运行中，如需单跑请先中止当前运行。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+      }
+    }
+    if (job.state === 'done') {
+      return {
+        ok: false,
+        message: '该编排已全部完成；如需重跑某节点请整单「再来一轮」。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+      }
+    }
+    const target = job.nodes.find((n) => n.id === nodeId)
+    if (!target) {
+      return { ok: false, message: '未找到该节点，可能已被清理。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    }
+    if (target.state === 'done') {
+      return {
+        ok: false,
+        message: '该节点已完成，无需单跑；如需重跑请使用整单「再来一轮」。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+      }
+    }
+    return {
+      ok: false,
+      message: '该节点的前置环节尚未完成，请先单跑失败的上游节点，或改用整单续跑。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    }
+  }
+  return relaunchOrchestratorNodes(job, reset.nodes, '该记录状态已变化，请刷新后重试。')
+}
+
+/**
+ * 终态 job 顶回 running 的公共收尾：先等旧调度循环完全收尾（避免同 job 双循环并发），
+ * 再校验期间未被其它操作抢先；顶回 running、替换节点集、清终态痕迹、重建文件采集基线，
+ * 最后重发事件并排队启动新一轮 runJob。
+ */
+async function relaunchOrchestratorNodes(
+  job: JobRecord,
+  nodes: OrchestratorNodeState[],
+  staleMessage: string
+): Promise<OrchestratorRunResult> {
   const prev = runLoops.get(job.jobId)
   if (prev) await prev
   if (jobs.get(job.jobId) !== job || !canRerunAgain(job)) {
-    return { ok: false, message: '该记录状态已变化，请刷新后重试。' } // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
+    return { ok: false, message: staleMessage }
   }
   // 顶回 running：清掉终态痕迹（error/summary/finishedAt），避免 runJob 提前收尾或旧结果残留
   job.state = 'running'
