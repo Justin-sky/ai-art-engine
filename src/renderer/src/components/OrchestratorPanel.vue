@@ -30,6 +30,7 @@ import {
   type DraftHistory,
   type DraftSnapshot
 } from '../utils/draftHistory'
+import { orchestratorJobToDraft } from '../utils/orchJobReuse'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 /** 面板可编排节点上限（与主进程校验一致） */
@@ -793,6 +794,35 @@ async function onRerun(job: OrchestratorJob): Promise<void> {
     // 主进程不可用时忽略；job 状态会经事件/列表刷新
   }
 }
+
+/** 再来一轮：把一条已结束记录的 goal/title/nodes 整单回填到上方新建表单（可微调后整单重跑） */
+async function onReuseJob(job: OrchestratorJob): Promise<void> {
+  const snap = orchestratorJobToDraft(job, MAX_NODES)
+  const current = snapshotForm()
+  const hasDraft = Boolean(current.goal.trim() || current.jobTitle.trim() || current.nodes.length)
+  if (hasDraft && !equalsDraftSnapshot(current, snap)) {
+    const ok = await promptConfirm({
+      title: t('studio.orchestrator.reuseConfirmTitle'),
+      message: t('studio.orchestrator.reuseConfirmMessage'),
+      confirmLabel: t('studio.orchestrator.reuseJob')
+    })
+    if (!ok) return
+  }
+  formError.value = ''
+  planInfo.value = ''
+  // 回填走撤销栈：可一步 undo 回到回填前的草稿
+  recordEdit(() => {
+    applyFormSnapshot(snap)
+    // 避免之后「新增节点」的自增 id 撞上回填的 nX 类 id
+    let maxN = 0
+    for (const n of snap.nodes) {
+      const m = /^n(\d+)$/.exec(n.id)
+      if (m) maxN = Math.max(maxN, Number(m[1]))
+    }
+    nodeSeq = Math.max(nodeSeq, maxN)
+  })
+  planInfo.value = t('studio.orchestrator.reuseLoaded')
+}
 </script>
 
 <template>
@@ -1109,6 +1139,15 @@ async function onRerun(job: OrchestratorJob): Promise<void> {
             @click.stop="onRerun(job)"
           >
             ↻
+          </button>
+          <button
+            v-if="job.state !== 'running'"
+            type="button"
+            class="copy-btn reuse-job-btn"
+            :title="t('studio.orchestrator.reuseTip')"
+            @click.stop="onReuseJob(job)"
+          >
+            {{ t('studio.orchestrator.reuseJob') }}
           </button>
         </div>
         <div v-if="openJob[job.jobId]" class="job-body">
@@ -2061,6 +2100,15 @@ async function onRerun(job: OrchestratorJob): Promise<void> {
 }
 .copy-btn:hover {
   color: var(--text-primary, #e6e9ef);
+}
+/* 再来一轮：整单回填到新建表单（区别于 ↻ 续跑，文本型按钮语义更明确） */
+.reuse-job-btn {
+  color: var(--accent, #4f8cff);
+  border-color: color-mix(in srgb, var(--accent, #4f8cff) 40%, transparent);
+}
+.reuse-job-btn:hover {
+  color: var(--accent, #4f8cff);
+  background: rgba(79, 140, 255, 0.12);
 }
 /* 节点产出文件列表（flow 详情与 graph 详情共用） */
 .detail-files {

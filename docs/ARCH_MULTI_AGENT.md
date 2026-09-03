@@ -291,6 +291,12 @@ window.studio.onHarnessEvent((e) => {
 > 采集基线按新一轮重建）；纯逻辑收敛为 `shared/orchestratorRerun.ts`（配单测），主进程
 > `orchestrator:rerun` 复用 runJob 主循环并以 per-job run 链保证与中止/收尾不并发双跑。
 > 编排记录头部对 failed/aborted 记录显示 ↻ 续跑按钮（running 时消失，转回可中止态）。
+>
+> **M3 收官-E（编排记录再来一轮 / 整单重跑）**：每条已结束记录（done/failed/aborted）头部新增
+> 「再来一轮」——把记录的 goal/title/nodes **整单回填**到上方新建表单（纯转换
+> `renderer/utils/orchJobReuse.ts`，剥离节点运行态字段、依赖数组浅拷贝、按表单上限截断，
+> 配单测），覆盖表单已有内容时二次确认，回填走撤销栈可一键还原；回填后表单内自增 id
+> 同步避让 nX 节点。语义与 ↻ 续跑互补：续跑保留 done 节点补跑，再来一轮则是全新一轮。
 
 ## 12. 风险与缓解
 
