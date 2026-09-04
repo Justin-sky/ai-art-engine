@@ -33,6 +33,8 @@ const EXEMPT_FILES = new Set([
   'src/renderer/src/features/director/aiPosePresets.ts',
   'src/shared/graph/smartCut.ts',
   'src/shared/graph/videoReview.ts',
+  // YOLO COCO 标签双语数据字典（labelZh 写回资产 meta，非 UI 文案）
+  'src/shared/yolo.ts',
   // 主进程媒体处理服务：分离失败文案直接透传 UI（与渲染端 i18n 标题成对使用）
   'src/main/services/audioSeparationService.ts',
   // MCP / Agent 集成域：展示给外部 Agent 与开发者，非 UI 文案

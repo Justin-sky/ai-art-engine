@@ -926,6 +926,13 @@ export default {
         bones: 'Bone offsets ({n})',
         empty: 'This pose has no bone data'
       },
+      vision: {
+        title: 'Vision tags',
+        empty: 'No objects detected',
+        pending: 'Not ready yet (auto-retried when the project opens)',
+        weakPrefix: 'maybe ',
+        weakHint: 'Low confidence, may not be accurate'
+      },
       transform: {
         position: 'Position',
         rotation: 'Rotation (°)',

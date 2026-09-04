@@ -9,6 +9,7 @@ import {
   type ObjectStorageSettings
 } from './objectStorage'
 import type { ProjectStyleImage } from './stylePresets'
+import type { VisionAssetTags } from './visionTags'
 
 export type { ProjectStyleImage, StylePresetCategory, StyleReferenceSubject } from './stylePresets'
 export {
@@ -406,6 +407,8 @@ export interface AssetInfo {
   prompt?: string
   notes?: string
   genParams?: Record<string, unknown>
+  /** 本地视觉（YOLO）打标结果：入库 / 打开工程时对图片与视频首帧自动检测生成 */
+  visionTags?: VisionAssetTags
   version: number
   createdAt: string
   updatedAt: string

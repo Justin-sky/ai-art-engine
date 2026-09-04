@@ -122,6 +122,10 @@ import {
 import { isRealThumbnailPath } from '@shared/media/thumbnailPath'
 import { resolveMediaBytesFromUrl } from './resolveMediaBytesFromUrl'
 import { copyFilePathsToClipboard } from './clipboardFileCopy'
+import { VISION_TAG_RETRY_INTERVAL_MS } from '@shared/visionTags'
+import { scheduleAssetVisionTag } from './assetVisionTagger'
+import { broadcastToAllWindows } from '../broadcast'
+import { IpcChannels } from '@shared/ipc'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -339,6 +343,7 @@ class ProjectService {
 
     const assets = this.listAssets()
     this.scheduleMissingThumbnails(assets)
+    this.scheduleMissingVisionTags(assets)
 
     return {
       rootPath: root,
@@ -465,6 +470,8 @@ class ProjectService {
         rollback: () => assetRepository.removeMetadata(root, asset.id)
       }
     ])
+    // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响入库）
+    this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
     return asset
   }
 
@@ -511,6 +518,8 @@ class ProjectService {
         rollback: () => assetRepository.removeMetadata(root, asset.id)
       }
     ])
+    // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响导入）
+    this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
     return asset
   }
 
@@ -654,8 +663,11 @@ class ProjectService {
         : null
     if (backup && oldAbs) copyFileSync(oldAbs, backup)
     asset.relativePath = toPosix(relative(root, destination))
-    if (detected === 'image' || detected === 'video') {
+    // 媒体内容替换后旧视觉标签失效：先清掉（写盘前），待新文件落盘后重新排队打标
+    const mediaReplaced = detected === 'image' || detected === 'video'
+    if (mediaReplaced) {
       asset.thumbnailPath = this.planAndScheduleImageThumbnail(asset.relativePath)
+      delete asset.visionTags
     }
     asset.updatedAt = nowIso()
     try {
@@ -678,6 +690,9 @@ class ProjectService {
       if (backup) removeIfExists(backup)
     }
     if (oldAbs && oldAbs !== destination) removeIfExists(oldAbs)
+    if (mediaReplaced) {
+      this.queueVisionTagWriteBack(asset.id, detected, asset.relativePath)
+    }
     return asset
   }
 
@@ -728,6 +743,14 @@ class ProjectService {
           reason: err instanceof Error ? err.message : String(err)
         })
       }
+    }
+
+    // 重新导入 / 收养的图片视频媒体可能已变化：重新打标（低频操作，允许覆盖旧标签）
+    for (const asset of reimported) {
+      if (asset.type !== 'image' && asset.type !== 'video') continue
+      const rel = asset.relativePath?.trim()
+      if (!rel) continue
+      this.queueVisionTagWriteBack(asset.id, asset.type, rel)
     }
 
     return {
@@ -998,6 +1021,54 @@ class ProjectService {
           /* logged in schedule */
         })
     }
+  }
+
+  /**
+   * 打开工程后为缺少「已完成视觉打标」结果的图片 / 视频资产排队补打标。
+   * 只有 status==='ok' 视为完成；skipped（模型暂不可用等）随每次打开工程重试，模型就绪后自动补齐。
+   */
+  scheduleMissingVisionTags(assets: AssetInfo[]): void {
+    const now = Date.now()
+    for (const asset of assets) {
+      if (asset.type !== 'image' && asset.type !== 'video') continue
+      const last = asset.visionTags
+      if (last?.status === 'ok') continue
+      // 上次 skipped 距今不足节流窗口（模型未就绪 / 视频抽帧失败等）：
+      // 避免批量永久失败随每次打开工程全量空转，跳过本次补漏
+      if (last?.status === 'skipped' && last.runAt) {
+        const lastRun = Date.parse(last.runAt)
+        if (Number.isFinite(lastRun) && now - lastRun < VISION_TAG_RETRY_INTERVAL_MS) continue
+      }
+      const rel = asset.relativePath?.trim()
+      if (!rel) continue
+      this.queueVisionTagWriteBack(asset.id, asset.type, rel)
+    }
+  }
+
+  /**
+   * 对图片 / 视频资产排队视觉打标；结果写回旁挂 meta 并广播刷新素材卡。
+   * 写回前重读最新 meta 做竞态防护（资产被删 / 移动 / 换工程时放弃）。
+   */
+  private queueVisionTagWriteBack(assetId: string, mediaType: AssetType, rel: string): void {
+    if (mediaType !== 'image' && mediaType !== 'video') return
+    const root = this.getRoot()
+    void scheduleAssetVisionTag(root, rel)
+      .then((tags) => {
+        if (!tags) return
+        try {
+          const latest = this.readAsset(assetId)
+          if (latest.type !== mediaType || latest.relativePath !== rel) return
+          latest.visionTags = tags
+          latest.updatedAt = nowIso()
+          this.writeAsset(latest)
+          broadcastToAllWindows(IpcChannels.ASSET_UPDATED, latest)
+        } catch {
+          /* asset may be removed / project switched during detection */
+        }
+      })
+      .catch(() => {
+        /* logged in tagger */
+      })
   }
 
   /** 在系统文件管理器中定位资产文件（优先媒体，否则旁挂 meta） */

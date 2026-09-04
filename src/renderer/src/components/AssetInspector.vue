@@ -43,6 +43,46 @@
       :asset="asset"
     />
 
+    <section
+      v-if="asset.visionTags"
+      class="vision-section"
+    >
+      <div class="section-label">
+        {{ t('asset.inspector.vision.title') }}
+      </div>
+      <ul
+        v-if="asset.visionTags.status === 'ok' && asset.visionTags.summary.length"
+        class="vision-tags"
+      >
+        <li
+          v-for="tag in asset.visionTags.summary"
+          :key="tag.label"
+          class="vision-tag"
+          :class="{ weak: isWeakVisionTag(tag.maxConfidence) }"
+          :title="visionTagTitle(tag)"
+        >
+          <span>{{ visionTagLabel(tag) }}</span>
+          <span
+            v-if="tag.count > 1"
+            class="vision-tag-count"
+          >×{{ tag.count }}</span>
+          <span class="vision-tag-conf">{{ Math.round(tag.maxConfidence * 100) }}%</span>
+        </li>
+      </ul>
+      <p
+        v-else-if="asset.visionTags.status === 'ok'"
+        class="hint"
+      >
+        {{ t('asset.inspector.vision.empty') }}
+      </p>
+      <p
+        v-else
+        class="hint"
+      >
+        {{ asset.visionTags.error || t('asset.inspector.vision.pending') }}
+      </p>
+    </section>
+
     <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
@@ -441,6 +481,7 @@ import {
 import type { GraphNode, GraphValue } from '@shared/graph'
 import { isAssetRefInputHostType, resolveAssetPreviewMediaPath } from '@shared/graph'
 import { isAudioFilePath, isVideoFilePath } from '@shared/import'
+import { isWeakVisionTag, type VisionObjectTag } from '@shared/visionTags'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -812,6 +853,21 @@ const promptPlaceholder = computed(() => {
   }
 })
 
+/** 弱置信度标签加「疑似」前缀，与可靠标签区分 */
+function visionTagLabel(tag: VisionObjectTag): string {
+  return isWeakVisionTag(tag.maxConfidence)
+    ? `${t('asset.inspector.vision.weakPrefix')}${tag.labelZh}`
+    : tag.labelZh
+}
+
+/** 悬停详情：弱标签附低置信度说明 */
+function visionTagTitle(tag: VisionObjectTag): string {
+  const base = `${tag.label} · ${Math.round(tag.maxConfidence * 100)}%`
+  return isWeakVisionTag(tag.maxConfidence)
+    ? `${base} · ${t('asset.inspector.vision.weakHint')}`
+    : base
+}
+
 function readGenString(gen: Record<string, unknown> | undefined, key: string): string {
   const v = gen?.[key]
   return typeof v === 'string' ? v : ''
@@ -1122,6 +1178,45 @@ async function persist(): Promise<void> {
   font-size: 11px;
   color: var(--text-muted);
   letter-spacing: 0.04em;
+}
+
+.vision-section {
+  display: grid;
+  gap: 8px;
+}
+
+.vision-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vision-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-18);
+  color: var(--accent-fg);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.vision-tag-count,
+.vision-tag-conf {
+  opacity: 0.8;
+}
+
+/* 弱置信度标签：COCO 无细分类时的强行归类（如蝴蝶→bird），弱化展示避免误导 */
+.vision-tag.weak {
+  background: color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .model-tabs {

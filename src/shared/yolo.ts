@@ -113,6 +113,27 @@ export const YOLO_COCO_LABELS: string[] = [
   'toothbrush'
 ]
 
+/** COCO 80 类中文名（与 YOLO_COCO_LABELS 顺序一一对应，素材打标/检索展示用） */
+export const YOLO_COCO_LABELS_ZH: string[] = [
+  '人物', '自行车', '汽车', '摩托车', '飞机', '公交车', '火车', '卡车', '船',
+  '交通灯', '消防栓', '停车标志', '停车计时器', '长椅', '鸟', '猫',
+  '狗', '马', '羊', '牛', '大象', '熊', '斑马', '长颈鹿', '背包',
+  '雨伞', '手提包', '领带', '行李箱', '飞盘', '滑雪板', '单板', '球类',
+  '风筝', '棒球棒', '棒球手套', '滑板', '冲浪板', '网球拍',
+  '瓶子', '酒杯', '杯子', '叉子', '刀', '勺子', '碗', '香蕉', '苹果',
+  '三明治', '橙子', '西兰花', '胡萝卜', '热狗', '披萨', '甜甜圈', '蛋糕', '椅子',
+  '沙发', '盆栽', '床', '餐桌', '马桶', '电视', '笔记本电脑', '鼠标',
+  '遥控器', '键盘', '手机', '微波炉', '烤箱', '烤面包机', '水槽',
+  '冰箱', '书', '钟表', '花瓶', '剪刀', '泰迪熊', '吹风机',
+  '牙刷'
+]
+
+/** COCO 英文标签 → 中文展示名；未知标签原样返回 */
+export function cocoLabelZh(label: string): string {
+  const index = YOLO_COCO_LABELS.indexOf(label)
+  return index >= 0 && index < YOLO_COCO_LABELS_ZH.length ? YOLO_COCO_LABELS_ZH[index] : label
+}
+
 /** COCO 姿态 17 关键点名称（顺序与模型输出一致） */
 export const YOLO_POSE_KEYPOINT_NAMES: string[] = [
   'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear', 'left_shoulder',

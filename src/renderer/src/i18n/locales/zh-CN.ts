@@ -923,6 +923,13 @@ export default {
         bones: '骨骼偏移（{n}）',
         empty: '该姿势没有骨骼数据'
       },
+      vision: {
+        title: '对象标签',
+        empty: '未检出对象',
+        pending: '暂未生成（打开工程后自动重试）',
+        weakPrefix: '疑似',
+        weakHint: '置信度较低，识别可能不准确'
+      },
       transform: {
         position: '位置 (Position)',
         rotation: '旋转 (Rotation °)',

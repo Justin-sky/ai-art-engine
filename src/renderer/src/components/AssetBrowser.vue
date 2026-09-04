@@ -305,6 +305,22 @@
             <div class="name">
               {{ asset.name }}
             </div>
+            <div
+              v-if="showThumbs && assetVisionChips(asset).length"
+              class="vision-tags"
+              :title="assetVisionTooltip(asset)"
+            >
+              <span
+                v-for="chip in assetVisionChips(asset)"
+                :key="chip.key"
+                class="vision-tag"
+                :class="{ weak: chip.weak }"
+              >{{ chip.text }}</span>
+              <span
+                v-if="assetVisionExtra(asset) > 0"
+                class="vision-tag more"
+              >+{{ assetVisionExtra(asset) }}</span>
+            </div>
             <button
               type="button"
               class="del"
@@ -711,6 +727,7 @@ import {
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { openImportedMediaRefPreview } from '../features/media/openFullImagePreview'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
+import { isWeakVisionTag } from '@shared/visionTags'
 import FolderTreeIcon from './FolderTreeIcon.vue'
 import RefreshIcon from './icons/RefreshIcon.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
@@ -810,6 +827,53 @@ function assetLabel(asset: AssetInfo): string {
     if (asset.type === 'screenplay') return t('asset.type.screenplayRef')
   }
   return assetTypeLabel(asset.type)
+}
+
+// ── 本地视觉打标展示（asset.visionTags，由主进程 YOLO 入库时生成）──
+
+/** 素材卡最多展示的标签 chip 数 */
+const VISION_TAG_MAX_CHIPS = 3
+
+function assetVisionOkTags(asset: AssetInfo): { labelZh: string; count: number; maxConfidence: number }[] {
+  return asset.visionTags?.status === 'ok' ? (asset.visionTags.summary ?? []) : []
+}
+
+function assetVisionChips(asset: AssetInfo): Array<{ key: string; text: string; weak: boolean }> {
+  return assetVisionOkTags(asset)
+    .slice(0, VISION_TAG_MAX_CHIPS)
+    .map((tag) => ({
+      key: tag.labelZh,
+      text: visionTagText(tag),
+      weak: isWeakVisionTag(tag.maxConfidence)
+    }))
+}
+
+/** 弱置信度标签加「疑似」前缀（COCO 无细分类时的强归类，如蝴蝶→bird） */
+function visionTagText(tag: { labelZh: string; count: number; maxConfidence: number }): string {
+  const name = isWeakVisionTag(tag.maxConfidence)
+    ? `${t('asset.inspector.vision.weakPrefix')}${tag.labelZh}`
+    : tag.labelZh
+  return tag.count > 1 ? `${name}×${tag.count}` : name
+}
+
+function assetVisionExtra(asset: AssetInfo): number {
+  return Math.max(0, assetVisionOkTags(asset).length - VISION_TAG_MAX_CHIPS)
+}
+
+function assetVisionTooltip(asset: AssetInfo): string {
+  const tags = assetVisionOkTags(asset)
+  if (!tags.length) return ''
+  return tags
+    .map((tag) => {
+      const base =
+        tag.count > 1
+          ? `${tag.labelZh}×${tag.count} · ${Math.round(tag.maxConfidence * 100)}%`
+          : `${tag.labelZh} · ${Math.round(tag.maxConfidence * 100)}%`
+      return isWeakVisionTag(tag.maxConfidence)
+        ? `${t('asset.inspector.vision.weakPrefix')}${base} · ${t('asset.inspector.vision.weakHint')}`
+        : base
+    })
+    .join('\n')
 }
 
 const query = ref('')
@@ -1205,11 +1269,21 @@ const visibleAssets = computed(() => {
     .filter((a) => {
       if (!searching && (a.folderId ?? null) !== currentFolderId.value) return false
       if (typeFilter.value !== 'all' && a.type !== typeFilter.value) return false
-      if (searching && !a.name.toLowerCase().includes(q)) return false
+      if (searching && !assetMatchesSearch(a, q)) return false
       return true
     })
     .sort((a, b) => compareNames(a.name, b.name))
 })
+
+/** 资产检索：名称 + 本地视觉打标标签（英文 COCO label / 中文名），为语义检索（P1）打基础 */
+function assetMatchesSearch(asset: AssetInfo, q: string): boolean {
+  if (asset.name.toLowerCase().includes(q)) return true
+  const summary = asset.visionTags?.summary ?? []
+  return summary.some(
+    (tag) =>
+      tag.label.toLowerCase().includes(q) || (tag.labelZh ?? '').toLowerCase().includes(q)
+  )
+}
 
 function folderPathLabel(folderId: string | null | undefined): string {
   const root = t('asset.browser.assetsRoot')
@@ -3395,6 +3469,43 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+}
+
+/* 本地视觉打标标签 chips（图片 / 视频素材卡） */
+.vision-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  margin-top: 3px;
+  min-height: 0;
+}
+
+.vision-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 1.6;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--wash-12);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.vision-tag.more {
+  background: var(--accent-18);
+  color: var(--accent-fg);
+}
+
+/* 弱置信度标签（疑似）：空心虚线弱化，与实心可靠标签区分 */
+.vision-tag.weak {
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-muted) 26%, transparent);
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  font-style: italic;
 }
 
 .grid.list .card.drop-over {
