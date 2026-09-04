@@ -1075,6 +1075,15 @@ async function run(ctx, task, io) {
   let streamedText = false
   const pendingTools = new Map() // callId -> name
   const flushEvents = () => {
+    // 思考区只容纳纯 reasoning：正文 / 工具标记 / 上下文标记出现前必须先闭合 END，
+    // 否则整段正文和 marker 都会留在 REASONING 区内，被主进程当思考转发，
+    // 渲染层因永远等不到 assistant 事件而不显示（表现为「DeepSeek 无回应」）。
+    const closeReasoning = () => {
+      if (inReasoning) {
+        inReasoning = false
+        io.stdout.write('\n' + REASONING_END + '\n')
+      }
+    }
     const events = agent.session.events
     for (; lastSeq < events.length; lastSeq++) {
       const event = events[lastSeq]
@@ -1083,7 +1092,9 @@ async function run(ctx, task, io) {
         if (typeof callId === 'string' && !pendingTools.has(callId)) {
           const name = event.data?.name || 'tool'
           pendingTools.set(callId, name)
-          io.stdout.write(TOOL_BEGIN + JSON.stringify({ name, callId, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
+          closeReasoning()
+          // marker 前强制换行：正文 text-delta 常不换行，直接拼接会被主进程当普通文本转发
+          io.stdout.write('\n' + TOOL_BEGIN + JSON.stringify({ name, callId, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
         }
         continue
       }
@@ -1092,7 +1103,7 @@ async function run(ctx, task, io) {
         if (typeof callId === 'string') {
           const name = pendingTools.get(callId) || 'tool'
           pendingTools.delete(callId)
-          io.stdout.write(TOOL_END + JSON.stringify({ name, callId }) + '\n')
+          io.stdout.write('\n' + TOOL_END + JSON.stringify({ name, callId }) + '\n')
         }
         continue
       }
@@ -1101,7 +1112,9 @@ async function run(ctx, task, io) {
       if (event.type === 'assistant/message' && event.data?.usage) {
         const usage = event.data.usage
         if (typeof usage.inputTokens === 'number' && usage.inputTokens >= 0) {
-          io.stdout.write(CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
+          closeReasoning()
+          // marker 前强制换行：紧跟在无换行结尾的正文后时保证独占一行，否则会被拼进正文显示
+          io.stdout.write('\n' + CONTEXT_BEGIN + JSON.stringify(usage) + '\n')
         }
         continue
       }
@@ -1116,6 +1129,8 @@ async function run(ctx, task, io) {
         io.stdout.write(chunk.text)
       } else if (chunk.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
         streamedText = true
+        // 正文必须出现在 REASONING 区之外：先闭合思考区再写正文（见 closeReasoning 注释）
+        closeReasoning()
         io.stdout.write(chunk.text)
       }
     }
@@ -1282,6 +1297,7 @@ function writeAiartHarness(
  * dsh 的 headless profile 是一次性的（跑完即退），所以每条任务必然一个新进程；
  * 任务本身执行失败不重试——那会重复消耗 token，且用户意图已经明确失败。
  */
+
 function launchDsh(opts: {
   command: string
   args: string[]
