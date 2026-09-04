@@ -330,6 +330,11 @@ async function onCancelPipe(id: string): Promise<void> {
   border-radius: 50%;
   background: var(--text-tertiary, #5b6472);
   flex: none;
+  transition: background 0.15s ease;
+}
+/* 选中 tab 时圆点跟随该 Agent 主题色（不加发光，与「运行中」状态区分） */
+.agent-tab.active .agent-dot {
+  background: var(--agent-color, #37b26c);
 }
 .agent-dot.running {
   background: var(--agent-color, #37b26c);

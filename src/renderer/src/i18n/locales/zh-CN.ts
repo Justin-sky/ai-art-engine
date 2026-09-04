@@ -225,7 +225,8 @@ export default {
       endpoint: '接入地址',
       token: 'Token',
       port: '监听端口',
-      portHint: '端口修改后点右侧按钮重启生效；若进程启动时设置了 AIAE_MCP_PORT 环境变量，以环境变量为准。',
+      portHint:
+        '端口修改后点右侧按钮重启生效；若进程启动时设置了 AIAE_MCP_PORT 环境变量，以环境变量为准。',
       start: '启动 MCP 服务',
       restart: '重启 MCP 服务',
       restarting: '重启中…',
@@ -364,13 +365,15 @@ export default {
         text: '用于剧本与对话生成，对应 OpenRouter /api/v1/models。',
         image: '用于文生图 / 图生图，对应 /api/v1/images/models。',
         video: '用于分镜视频生成，对应 /api/v1/videos/models。',
-        audio: '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
+        audio:
+          '用于 TTS 语音合成，对应 /api/v1/models?output_modalities=speech 与 /api/v1/audio/speech。',
         model3d: '用于 3D 模型生成，从文本和/或参考图生成 GLB 模型。'
       },
       arkModalityHint: {
         text: '火山方舟对话模型（豆包等），Base URL 默认 https://ark.cn-beijing.volces.com/api/v3，对应 /chat/completions。',
         image: 'Seedream 等图片模型，调用 /images/generations。列表按接入点名称启发式筛选。',
-        video: 'Seedance 等视频模型，调用 /contents/generations/tasks。参考图/视频需可公网访问（可用对象存储 TOS）。',
+        video:
+          'Seedance 等视频模型，调用 /contents/generations/tasks。参考图/视频需可公网访问（可用对象存储 TOS）。',
         audio:
           '豆包语音 openspeech「声音设计」（X-Api-Key）。不拉取模型目录；请在上方使用语音控制台 API Key，并手填已购 speaker_id（如 S_xxx）。生成时用节点指令作为声音描述。'
       },
@@ -441,8 +444,7 @@ export default {
           'ComfyUI API 2 声音：同一套 /api/v2/jobs，收取 type=audio 的输出。请使用 txt2audio 等 API 格式 workflow。'
       },
       magicrouterModalityHint: {
-        text:
-          'MagicRouter 多供应商聚合（OpenAI 兼容），默认 Base URL 为 api.magicrouter.ai/v1，对应 /chat/completions；目录由 /models/live 拉取。',
+        text: 'MagicRouter 多供应商聚合（OpenAI 兼容），默认 Base URL 为 api.magicrouter.ai/v1，对应 /chat/completions；目录由 /models/live 拉取。',
         image:
           'MagicRouter 文生图 / 图生编辑，调用 /images/generations（参考图走 image / images 字段）；目录由 /models/live 拉取。',
         video:
@@ -563,7 +565,8 @@ export default {
       multiAssets: '已选择 {count} 个资产'
     },
     chat: {
-      empty: '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
+      empty:
+        '向 DeepSeek Harness 描述任务，它会通过 MCP 调用本应用的生成工具（图片 / 视频 / 语音 / 3D 等）。',
       placeholder: "输入任务，Enter 发送，Shift+Enter 换行；{'@'} 引用资产，支持粘贴截图/图片",
       send: '发送',
       stop: '停止',
@@ -676,9 +679,13 @@ export default {
       canvasCycle: '无法建立该依赖：会形成循环',
       canvasRemoveEdge: '点击删除这条依赖',
       canvasDeps: '前置依赖数',
+      canvasResizeHint: '上下拖动调整画布高度，双击恢复默认；Ctrl/⌘ + 滚轮缩放',
+      graphResizeHint: '上下拖动调整节点图高度，双击恢复默认；Ctrl/⌘ + 滚轮缩放',
+      zoomReset: '点击恢复 100%',
       runError: '启动编排失败',
       runningBadge: '{n} 个编排正在运行',
       jobs: '编排记录',
+      splitterHint: '上下拖动可调整「新建编排」与「编排记录」的高度；双击恢复自动布局',
       jobsEmpty: '还没有编排记录。先在上方定义目标与节点，然后「开始编排」。',
       noTitle: '（未命名编排）',
       abortJob: '中止本次编排',
@@ -691,11 +698,18 @@ export default {
       reuseJob: '再来一轮',
       reuseTip: '把该编排的目标与节点整单回填到上方新建表单，可微调后重新开始一轮。',
       reuseConfirmTitle: '覆盖当前草稿？',
-      reuseConfirmMessage: '新建表单已有内容，回填该编排会覆盖当前草稿（可用撤销恢复）。确定继续吗？',
+      reuseConfirmMessage:
+        '新建表单已有内容，回填该编排会覆盖当前草稿（可用撤销恢复）。确定继续吗？',
       reuseLoaded: '已回填该编排到表单，可微调后整单重跑。',
+      rerunWhole: '整单重跑',
+      rerunWholeTip: '不经表单，直接用该编排相同的目标与节点再跑一轮（不动当前草稿）。',
+      rerunWholeConfirm:
+        '将按该编排相同的目标与节点直接开启一轮新运行，当前草稿不受影响。确定开始吗？',
+      rerunWholeFail: '整单重跑失败',
       rerunNode: '单跑此节点',
       rerunNodeTip: '只重跑该节点及其被阻塞的下游节点，已完成节点保留产出',
-      rerunNodeConfirm: '将重置该节点及受其影响的下游共 {n} 个节点重新执行；已完成节点保留产出。确定单跑吗？',
+      rerunNodeConfirm:
+        '将重置该节点及受其影响的下游共 {n} 个节点重新执行；已完成节点保留产出。确定单跑吗？',
       rerunNodeFail: '单跑失败',
       rerunNodeBlockedJobDone: '该编排已全部完成，无需单跑。',
       rerunNodeBlockedNodeDone: '该节点已完成，无需单跑；如需重跑请整单「再来一轮」。',
@@ -977,8 +991,7 @@ export default {
       rename: '重命名目录',
       delete: '删除目录（内容上移）',
       deleteWithContents: '删除目录及内容',
-      deleteWithContentsConfirm:
-        '将永久删除目录「{name}」及其内 {count} 个资产。此操作不可撤销。',
+      deleteWithContentsConfirm: '将永久删除目录「{name}」及其内 {count} 个资产。此操作不可撤销。',
       deleteWithContentsConfirmScripts:
         '将永久删除目录「{name}」及其内 {count} 个资产（含脚本及其分镜）。此操作不可撤销。',
       deleteFailed: '无法删除目录'
@@ -1309,7 +1322,8 @@ export default {
       exportSrtDone: '字幕已导出：\n{path}',
       exportSrtFailed: '字幕导出失败：{error}',
       subtitleFromVoice: '配音转字幕',
-      subtitleFromVoiceHint: '把配音轨片段转写为字幕，自动按时间对齐生成字幕轨片段（需配置支持语音识别的模型提供商）',
+      subtitleFromVoiceHint:
+        '把配音轨片段转写为字幕，自动按时间对齐生成字幕轨片段（需配置支持语音识别的模型提供商）',
       subtitleFromVoiceWorking: '转写中…',
       subtitleFromVoiceNoVoice: '配音轨没有带音频文件的片段，无法转写',
       subtitleFromVoiceDone: '已从配音生成 {count} 条字幕',
@@ -1317,11 +1331,14 @@ export default {
       subtitleFromVoiceFailed: '配音转字幕失败：{error}',
       subtitleFromVoiceEmpty: '转写结果为空，未生成字幕',
       separateAudio: '人声伴奏分离',
-      separateAudioHint: '把选中片段音源分离为对白与伴奏，对齐原位置分别上配音轨与音乐轨（内置中置声道提取）',
+      separateAudioHint:
+        '把选中片段音源分离为对白与伴奏，对齐原位置分别上配音轨与音乐轨（内置中置声道提取）',
       separateAudioWorking: '分离中…',
       separateAudioDoneTitle: '分离完成',
-      separateAudioDone: '对白已上配音轨、伴奏已上音乐轨（位置与原片段对齐），可在混音器调节两轨比例后导出',
-      separateAudioCenterNote: '本次使用内置中置声道分离（适合人声居中的素材）；配置 AUDIO_SEPARATION_API_URL 可启用第三方 AI 分离服务。',
+      separateAudioDone:
+        '对白已上配音轨、伴奏已上音乐轨（位置与原片段对齐），可在混音器调节两轨比例后导出',
+      separateAudioCenterNote:
+        '本次使用内置中置声道分离（适合人声居中的素材）；配置 AUDIO_SEPARATION_API_URL 可启用第三方 AI 分离服务。',
       separateAudioNoSource: '选中片段没有可用音源',
       separateAudioFailed: '分离失败：{error}',
       separateVocal: '人声',
@@ -1530,8 +1547,7 @@ export default {
       textureReset: '还原模型自带贴图',
       textureHide: '隐藏该贴图槽',
       textureShow: '恢复显示该贴图槽',
-      textureHint:
-        '从资产库拖入图片到贴图槽；⊘ 隐藏模型自带贴图，✕ 还原。仅对当前物体生效。',
+      textureHint: '从资产库拖入图片到贴图槽；⊘ 隐藏模型自带贴图，✕ 还原。仅对当前物体生效。',
       incomingModelName: '输入 3D 模型',
       selectHint: '在左侧或视口中选择对象',
       viewDirector: '导演视角',
@@ -1673,15 +1689,15 @@ export default {
       blockoutNoModels: '暂无可用文本模型',
       blockoutSystemLabel: '系统提示词',
       blockoutInstructionLabel: '指令',
-      blockoutDefaultInstruction:
-        '分析参考图中的场景元素，用基础几何体还原整个场景布局。',
+      blockoutDefaultInstruction: '分析参考图中的场景元素，用基础几何体还原整个场景布局。',
       blockoutDefaultInstructionPerspective:
         '尽量按参考图还原：圆拱用 arch（不要转 90°），圆锥塔尖用 cone（尖朝上，底面正圆），圆塔身用 cylinder 不要用 prism；拱门留空，用人物当 1.7m 比例尺。',
       blockoutDefaultInstructionPanorama:
         '这是 360° 等距柱状全景。按图中方位把物体围在观察者周围，不要当成透视照片堆在相机正前方。',
       blockoutRun: '创建场景',
       blockoutRunning: '正在生成场景…',
-      blockoutHint: '透视或 360 全景都可。将最多 3 张参考图与指令发给文本模型，按返回的 function call 用基础几何体搭建白模',
+      blockoutHint:
+        '透视或 360 全景都可。将最多 3 张参考图与指令发给文本模型，按返回的 function call 用基础几何体搭建白模',
       blockoutNoImage: '请先添加至少一张场景参考图',
       blockoutParseFailed: '模型未返回有效的场景数据',
       blockoutDone: '已创建 {count} 个白模物体',
@@ -2098,11 +2114,14 @@ export default {
       stopConfirmTitle: '停止任务',
       stopConfirmMessage: '确定停止该工作流？停止后将移至「已完成」页签。',
       duplicateTitle: '无法重复添加',
-      duplicateMessage: '同一输出分支已在任务列表中执行，请等待完成或停止后再试。不同边界输出可同时加入并行执行。',
+      duplicateMessage:
+        '同一输出分支已在任务列表中执行，请等待完成或停止后再试。不同边界输出可同时加入并行执行。',
       enqueueFailedTitle: '无法加入任务',
-      enqueueFailedNoTarget: '当前画布无法确定任务目标（缺少分镜或剧本上下文），请从剧本进入分镜视频后再试。',
+      enqueueFailedNoTarget:
+        '当前画布无法确定任务目标（缺少分镜或剧本上下文），请从剧本进入分镜视频后再试。',
       nodeRunBlockedTitle: '无法执行节点',
-      nodeRunBlockedMessage: '该工作流正在任务列表中执行，完成或停止前不能单独执行节点或执行上游节点。',
+      nodeRunBlockedMessage:
+        '该工作流正在任务列表中执行，完成或停止前不能单独执行节点或执行上游节点。',
       status: {
         pending: '排队中',
         running: '执行中',
@@ -2718,7 +2737,8 @@ export default {
     layerSplit: {
       appMark: '图层分离',
       hint: '运行节点调用 Seedream 5.0 Pro 拆层；双击进入画布调整层级与位置',
-      needRun: '请先连接上游图片并运行节点。模型会拆出底图和透明图层，之后可在此拖动、缩放与调整叠放顺序。',
+      needRun:
+        '请先连接上游图片并运行节点。模型会拆出底图和透明图层，之后可在此拖动、缩放与调整叠放顺序。',
       noSelection: '未选中图层',
       layers: '图层',
       emptyLayers: '尚未拆层。运行节点后会显示各图层。',
@@ -2766,7 +2786,8 @@ export default {
     },
     anim2d: {
       inspectorHint: '接入上游帧动画序列图；运行本节点按行列切分为单帧，下方可逐帧播放预览',
-      genInspectorHint: '双击节点打开指令面板选择预设与动作描述；此处设置行列数与系统提示词，运行后生成序列图',
+      genInspectorHint:
+        '双击节点打开指令面板选择预设与动作描述；此处设置行列数与系统提示词，运行后生成序列图',
       cardPlayHint: '双击播放 / 暂停序列帧',
       rows: '行',
       cols: '列',
@@ -3212,7 +3233,7 @@ export default {
       revealInAssets: '在资产窗口中定位',
       current: '当前：',
       noAssets: '资产库中暂无「{type}」类型资产，请先创建或导入。',
-        note: {
+      note: {
         hint: '画布便签；双击节点可在记事本中查看与编辑',
         title: '标题',
         body: '备注内容',
@@ -3319,7 +3340,8 @@ export default {
         markEnd: '标记终点 {time}',
         start: '起点（秒）',
         end: '终点（秒）',
-        segmentHint: '在视频上定位后点「标记起点 / 标记终点」，或直接输入秒数；区间默认按 mm:ss 写入指令',
+        segmentHint:
+          '在视频上定位后点「标记起点 / 标记终点」，或直接输入秒数；区间默认按 mm:ss 写入指令',
         instruction: '修改要求',
         instructionPlaceholder: '例如：将人物手中的黑色雨伞改成透明雨伞',
         model: '视频模型',
@@ -3328,7 +3350,8 @@ export default {
       },
       lipSync: {
         hint: '连接角色图或参考视频 + 声音；有视频时优先对视频中角色对口型。在节点下方可填表演指令，并选 Seedance 2.0',
-        modelHint: '请选择 Seedance 2.0 / 2.0 Fast 等支持参考音频的模型；模型与时长比例在节点指令面板中设置'
+        modelHint:
+          '请选择 Seedance 2.0 / 2.0 Fast 等支持参考音频的模型；模型与时长比例在节点指令面板中设置'
       },
       expand: {
         hint: '双击节点放置原图；此处预览系统提示词与合并提示词'
@@ -3372,7 +3395,8 @@ export default {
       mediaReview: {
         hint: '连接上游图片（或视频，按首帧审核），用视觉模型做导演 PASS/FAIL 质检',
         instruction: '审核指令',
-        instructionPlaceholder: '可选：补充审核要点（如“检查手指数量、是否糊脸”）；留空用内置质检包',
+        instructionPlaceholder:
+          '可选：补充审核要点（如“检查手指数量、是否糊脸”）；留空用内置质检包',
         status: '质检结论',
         pending: '待审核',
         pass: '通过',
@@ -3460,7 +3484,8 @@ export default {
         exportDone: '已导出 {count} 张',
         exportCancel: '已取消',
         emptyPanels: '尚未添加分镜格',
-        gridHint: '点击分镜格/气泡查看其属性；点工具栏「全局属性」按钮、空格或其他空白处返回页面属性。拖动选中分格的边缘/角落手柄调整大小，拖动气泡角部圆点缩放；从资产库拖图到空格自动建格',
+        gridHint:
+          '点击分镜格/气泡查看其属性；点工具栏「全局属性」按钮、空格或其他空白处返回页面属性。拖动选中分格的边缘/角落手柄调整大小，拖动气泡角部圆点缩放；从资产库拖图到空格自动建格',
         done: '完成'
       },
       generate: {
@@ -3512,11 +3537,11 @@ export default {
         lipSyncInstructionPlaceholder:
           '可选：补充表演/镜头说明（图→图片1+音频1；视频→视频1+音频1）；推荐 Seedance 2.0',
         voiceInstructionPlaceholder: "描述声音（文本）；可接图片参考；可用 {'@'} 引用连线资源",
-        model3dInstructionPlaceholder: "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
+        model3dInstructionPlaceholder:
+          "描述要生成的 3D 模型；可接参考图进行图生 3D；可用 {'@'} 引用连线资源",
         worldExtractInstructionPlaceholder:
           "从文本提取角色/场景/道具/武器；可用 {'@'} 引用上方连线资源",
-        beatSplitInstructionPlaceholder:
-          "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
+        beatSplitInstructionPlaceholder: "将剧本拆解为场；可用 {'@'} 引用上方连线资源",
         uiSplitInstructionPlaceholder:
           "将策划案中的 UI 拆为独立界面详细提示词；可用 {'@'} 引用上方连线资源",
         beatUnitGenInstructionPlaceholder:
@@ -3706,7 +3731,8 @@ export default {
         instructionDialogTitle: '生成指令',
         instructionDialogHint: "支持 {'@'} 引用连线资源与预设模板",
         instructionDialogDone: '完成',
-        executeHint: '执行本节点（生成）会调用上方模型生成剧本；右侧「剧本输出」节点只透传结果，不调 API',
+        executeHint:
+          '执行本节点（生成）会调用上方模型生成剧本；右侧「剧本输出」节点只透传结果，不调 API',
         configureModelsHint: '请先在设置中配置可用的文本模型（需 API Key 并勾选模型）',
         configureImageModelsHint: '请先在设置中配置可用的图片模型（需 API Key 并勾选模型）',
         configureAudioModelsHint: '请先在设置 → 方舟 → 声音中手填并勾选已购买的 speaker_id',
@@ -3729,7 +3755,7 @@ export default {
           seedPlaceholder: '留空随机',
           seedRandom: '随机',
           seedSummary: 'seed {n}',
-          seedUseGlobal: '使用全局种子',
+          seedUseGlobal: '使用全局种子'
         },
         videoParams: {
           title: '视频生成参数',
@@ -3774,8 +3800,7 @@ export default {
         generatedTextsOpen: '双击打开记事本',
         generatedVoices: '已生成声音',
         generatedVoicesCount: '{n} 条',
-        generatedVoicesHint:
-          '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
+        generatedVoicesHint: '每次执行追加新音频并自动选中最新；单击设为当前输出（out），× 删除',
         generatedVoicesEmpty: '暂无生成结果。执行本节点后会显示在这里',
         generatedVoicesDelete: '删除此声音',
         setAsOutput: '设为当前输出',

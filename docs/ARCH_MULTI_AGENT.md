@@ -304,6 +304,13 @@ window.studio.onHarnessEvent((e) => {
 > done 时允许单跑；主进程 `orchestrator:rerun-node` 复用续跑的 relaunch 收尾顶回 running 重跑
 > 该分支。语义粒度从「整单续跑」细化到「定点重试一个环节」，与 ↻ 续跑 / 「再来一轮」形成三档互补：
 > 整单补跑 → 定点重试 → 全新一轮。
+>
+> **M3 收官-G（编排记录整单重跑直接提交）**：done 记录头部新增「整单重跑」主操作——跳过「再来一轮」
+> 的表单回填环节（不覆盖 / 不触碰当前草稿），确认后直接把该记录的 goal/title/nodes 原样交回
+> `runOrchestrator` 通道开启一轮全新 job。纯转换 `orchestratorJobToRunInput`
+> （`renderer/utils/orchJobReuse.ts` 内，剥离节点运行态字段、不截断节点、title 缺省时省略，
+> 配单测）复用自 `orchestratorJobToDraft` 的静态定义收敛逻辑；新 job 经既有
+> ORCHESTRATOR_EVENT 通道推入列表顶部。与「再来一轮」形成互补：前者原样直跑、后者回填可微调。
 
 ## 12. 风险与缓解
 

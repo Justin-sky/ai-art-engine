@@ -30,7 +30,7 @@ import {
   type DraftHistory,
   type DraftSnapshot
 } from '../utils/draftHistory'
-import { orchestratorJobToDraft } from '../utils/orchJobReuse'
+import { orchestratorJobToDraft, orchestratorJobToRunInput } from '../utils/orchJobReuse'
 import { canRerunOrchestratorNode, resetNodesForNodeRerun } from '@shared/orchestratorNodeRerun'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
@@ -39,6 +39,81 @@ import { openFullImagePreview } from '../features/media/openFullImagePreview'
 const MAX_NODES = 12
 
 const { t } = useStudioI18n()
+
+/* ── 「新建编排」/「编排记录」分隔条：上下拖动调整两区高度 ── */
+/** 拖拽后的分区比例持久化键（组件会随 tab 切换卸载重建） */
+const ORCH_FORM_AREA_KEY = 'orch-form-area-pct'
+
+const panelEl = ref<HTMLElement | null>(null)
+/** 表单区高度占面板的百分比；null 表示自动（按内容自适应，默认不超过 45%） */
+const formAreaPct = ref<number | null>(null)
+const isSplitting = ref(false)
+const SPLIT_MIN_PCT = 12
+const SPLIT_MAX_PCT = 75
+const splitStartY = ref(0)
+const splitStartPct = ref(0)
+
+const formAreaStyle = computed<Record<string, string> | undefined>(() =>
+  formAreaPct.value == null
+    ? undefined
+    : { flexBasis: `${formAreaPct.value}%`, maxHeight: `${formAreaPct.value}%` }
+)
+
+function clampSplitPct(pct: number): number {
+  return Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct))
+}
+
+/** 记住用户拖出的分区比例（仅拖拽/复位结束时写入，避免拖拽过程频繁写盘） */
+function persistFormArea(): void {
+  const v = formAreaPct.value
+  if (v == null) localStorage.removeItem(ORCH_FORM_AREA_KEY)
+  else localStorage.setItem(ORCH_FORM_AREA_KEY, String(clampSplitPct(v)))
+}
+
+function beginSplitDrag(e: PointerEvent): void {
+  if (e.button !== 0) return
+  const handle = e.currentTarget as HTMLElement | null
+  const panel = panelEl.value
+  if (!handle || !panel) return
+  handle.setPointerCapture(e.pointerId)
+  isSplitting.value = true
+  document.body.classList.add('orch-split-dragging')
+  splitStartY.value = e.clientY
+  if (formAreaPct.value == null) {
+    // 自动状态下以表单当前实际高度为起点，避免首次拖动跳变
+    const formEl = handle.previousElementSibling as HTMLElement | null
+    const total = panel.clientHeight || 1
+    splitStartPct.value = formEl ? (formEl.offsetHeight / total) * 100 : SPLIT_MIN_PCT
+  } else {
+    splitStartPct.value = formAreaPct.value
+  }
+}
+
+function moveSplitDrag(e: PointerEvent): void {
+  if (!isSplitting.value) return
+  const panel = panelEl.value
+  if (!panel) return
+  const total = panel.clientHeight || 1
+  const deltaY = e.clientY - splitStartY.value
+  formAreaPct.value = clampSplitPct(splitStartPct.value + (deltaY / total) * 100)
+}
+
+function endSplitDrag(): void {
+  if (!isSplitting.value) return
+  isSplitting.value = false
+  document.body.classList.remove('orch-split-dragging')
+  persistFormArea()
+}
+
+/** 双击分隔条：恢复自动布局（表单按内容自适应） */
+function resetFormArea(): void {
+  formAreaPct.value = null
+  persistFormArea()
+}
+
+// 恢复上次拖拽的分区比例（clamp 后依旧生效）
+const savedPct = Number(localStorage.getItem(ORCH_FORM_AREA_KEY))
+if (Number.isFinite(savedPct)) formAreaPct.value = clampSplitPct(savedPct)
 
 const props = defineProps<{
   /** 全部 agent（含运行状态）；面板据此渲染角色下拉 */
@@ -166,6 +241,97 @@ const canvasMsgKind = ref<'warn' | 'info'>('info')
 let canvasMsgTimer: number | null = null
 let dragCleanup: (() => void) | null = null
 
+/* ── 画布可视尺寸与缩放（草稿画布 / 运行中节点图通用） ── */
+/** 画布可视高度默认值与可调范围 */
+const DRAFT_GRAPH_H = 168
+const NODE_GRAPH_H = 320
+const GRAPH_H_MIN = 80
+const GRAPH_H_MAX = 720
+/** 画布缩放范围与步进 */
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 2
+const ZOOM_STEP = 0.1
+
+const draftGraphH = ref(DRAFT_GRAPH_H)
+const draftZoom = ref(1)
+/** 运行中节点图：可视高度所有 job 共用，缩放按 jobId 独立 */
+const jobGraphH = ref(NODE_GRAPH_H)
+const jobZoom = ref<Record<string, number>>({})
+
+function clampGraphH(v: number): number {
+  return Math.min(GRAPH_H_MAX, Math.max(GRAPH_H_MIN, Math.round(v)))
+}
+function clampZoom(z: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
+}
+/** 运行中节点图的缩放系数（按 job 独立，缺省 1） */
+function zoomOf(jobId: string): number {
+  return jobZoom.value[jobId] ?? 1
+}
+/** 点击缩放百分比标签：恢复 100% */
+function resetDraftZoom(): void {
+  draftZoom.value = 1
+}
+function resetJobZoom(jobId: string): void {
+  const next = { ...jobZoom.value }
+  delete next[jobId]
+  jobZoom.value = next
+}
+/** Ctrl/⌘ + 滚轮缩放；普通滚轮仍走容器滚动，便于查看超出内容 */
+function onDraftWheel(e: WheelEvent): void {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  draftZoom.value = clampZoom(draftZoom.value - Math.sign(e.deltaY) * ZOOM_STEP)
+}
+function onJobWheel(e: WheelEvent, jobId: string): void {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const next = clampZoom(zoomOf(jobId) - Math.sign(e.deltaY) * ZOOM_STEP)
+  jobZoom.value = { ...jobZoom.value, [jobId]: next }
+}
+
+/* ── 画布高度分隔条拖动（'draft' = 草稿画布，'job' = 运行中节点图） ── */
+type ResizeTarget = 'draft' | 'job'
+const resizing = ref<ResizeTarget | null>(null)
+let resizeStartY = 0
+let resizeStartH = 0
+
+function graphHOf(t: ResizeTarget): number {
+  return t === 'draft' ? draftGraphH.value : jobGraphH.value
+}
+function setGraphH(t: ResizeTarget, v: number): void {
+  const h = clampGraphH(v)
+  if (t === 'draft') draftGraphH.value = h
+  else jobGraphH.value = h
+}
+function resetGraphH(t: ResizeTarget): void {
+  setGraphH(t, t === 'draft' ? DRAFT_GRAPH_H : NODE_GRAPH_H)
+}
+function beginResize(e: PointerEvent, t: ResizeTarget): void {
+  if (e.button !== 0 || resizing.value) return
+  e.preventDefault()
+  resizing.value = t
+  resizeStartY = e.clientY
+  resizeStartH = graphHOf(t)
+  document.body.classList.add('orch-resize-dragging')
+  window.addEventListener('pointermove', onResizeMove, true)
+  window.addEventListener('pointerup', endResize, true)
+  window.addEventListener('pointercancel', endResize, true)
+}
+function onResizeMove(e: PointerEvent): void {
+  const t = resizing.value
+  if (!t) return
+  setGraphH(t, resizeStartH + (e.clientY - resizeStartY))
+}
+function endResize(): void {
+  if (!resizing.value) return
+  resizing.value = null
+  document.body.classList.remove('orch-resize-dragging')
+  window.removeEventListener('pointermove', onResizeMove, true)
+  window.removeEventListener('pointerup', endResize, true)
+  window.removeEventListener('pointercancel', endResize, true)
+}
+
 /** 画布拓扑数据（只取布局所需字段；节点增删/连线/改名都会实时重排） */
 const draftDagNodes = computed(() =>
   nodes.value.map((n) => ({ id: n.id, dependsOn: n.dependsOn ?? [] }))
@@ -176,11 +342,16 @@ function agentColor(agentId: string): string | undefined {
   return props.agents.find((a) => a.agentId === agentId)?.color
 }
 
-/** 指针位置 → 画布内容坐标（随滚动自动换算：内容盒 rect 随滚动位移） */
+/**
+ * 指针位置 → 画布内容坐标（随滚动自动换算：内容盒 rect 随滚动位移）。
+ * 画布被缩放时 rect 已是缩放后的尺寸，故要除以缩放系数换回未缩放的内容坐标，
+ * 保证拖拽建边 / 连线吸附在任意缩放下都对准节点。
+ */
 function canvasPoint(e: PointerEvent): { x: number; y: number } {
   const rect = draftCanvasEl.value?.getBoundingClientRect()
   if (!rect) return { x: e.clientX, y: e.clientY }
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  const z = draftZoom.value || 1
+  return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z }
 }
 
 function beginDraftDrag(e: PointerEvent, fromId: string): void {
@@ -192,12 +363,15 @@ function beginDraftDrag(e: PointerEvent, fromId: string): void {
     const s = dragState.value
     if (!s) return
     const p = canvasPoint(ev)
-    s.x = p.x
-    s.y = p.y
     const hit = (ev.target as Element | null)?.closest?.(
       '[data-draft-node-id]'
     ) as HTMLElement | null
-    s.overId = hit?.dataset.draftNodeId ?? null
+    dragState.value = {
+      fromId: s.fromId,
+      x: p.x,
+      y: p.y,
+      overId: hit?.dataset.draftNodeId ?? null
+    }
   }
   const onUp = (): void => {
     detachDraftDrag()
@@ -257,13 +431,22 @@ function showCanvasMsg(text: string, kind: 'warn' | 'info'): void {
   }, 2400)
 }
 
-/** 拖拽中的临时连线：从来源卡片右侧锚点到当前指针；悬停在非法落点（成环）变红 */
+/** 拖拽中的临时连线：从来源卡片右侧锚点到当前指针；悬停在目标卡片上时吸附到其左侧中心，非法落点（成环）变红 */
 const tempEdge = computed(() => {
   const s = dragState.value
   if (!s) return null
   const from = draftLayout.value.posBy.get(s.fromId)
   if (!from) return null
-  const path = edgePath(from.x + DAG_CHIP_W, from.y + DAG_CHIP_H / 2, s.x, s.y)
+  let toX = s.x
+  let toY = s.y
+  if (s.overId && s.overId !== s.fromId) {
+    const to = draftLayout.value.posBy.get(s.overId)
+    if (to) {
+      toX = to.x
+      toY = to.y + DAG_CHIP_H / 2
+    }
+  }
+  const path = edgePath(from.x + DAG_CHIP_W, from.y + DAG_CHIP_H / 2, toX, toY)
   const invalid =
     Boolean(s.overId) && !canAddDependency(draftDagNodes.value, s.fromId, s.overId!).ok
   return { path, invalid }
@@ -611,8 +794,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onFormKeydown, true)
   window.removeEventListener('mousedown', onPanelMouseDown, true)
   detachDraftDrag()
+  endResize()
   if (canvasMsgTimer) window.clearTimeout(canvasMsgTimer)
   stopEvents?.()
+  document.body.classList.remove('orch-split-dragging')
 })
 
 /** 展示用排序：运行中的置顶，其余按创建时间倒序 */
@@ -782,7 +967,9 @@ async function onAbort(job: OrchestratorJob): Promise<void> {
 /** 断点续跑失败/中止的 job：done 节点保留产出，失败/跳过节点重置后重新执行 */
 async function onRerun(job: OrchestratorJob): Promise<void> {
   const isAborted = job.state === 'aborted'
-  const label = t(isAborted ? 'studio.orchestrator.rerunAborted' : 'studio.orchestrator.rerunFailed')
+  const label = t(
+    isAborted ? 'studio.orchestrator.rerunAborted' : 'studio.orchestrator.rerunFailed'
+  )
   const ok = await promptConfirm({
     title: label,
     message: t('studio.orchestrator.rerunConfirm'),
@@ -826,6 +1013,33 @@ async function onReuseJob(job: OrchestratorJob): Promise<void> {
     nodeSeq = Math.max(nodeSeq, maxN)
   })
   planInfo.value = t('studio.orchestrator.reuseLoaded')
+}
+
+/**
+ * 整单重跑直接提交：把一条已完成记录的 goal/title/nodes 原样提交一轮新 job。
+ * 与「再来一轮」的区别：不经上方新建表单、不覆盖当前草稿（也无需撤销恢复），
+ * 确认后直接把记录的静态定义交回 runOrchestrator 通道。
+ */
+async function onRerunWhole(job: OrchestratorJob): Promise<void> {
+  const ok = await promptConfirm({
+    title: t('studio.orchestrator.rerunWhole'),
+    message: t('studio.orchestrator.rerunWholeConfirm'),
+    confirmLabel: t('studio.orchestrator.rerunWhole')
+  })
+  if (!ok) return
+  try {
+    const res = await window.studio.runOrchestrator(orchestratorJobToRunInput(job))
+    if (!res.ok) {
+      await promptAlert({
+        title: t('studio.orchestrator.rerunWholeFail'),
+        message: res.message ?? ''
+      })
+    } else {
+      void refreshJobs()
+    }
+  } catch {
+    // 主进程不可用时忽略；job 状态会经事件/列表刷新
+  }
 }
 
 /* ── 节点级单跑：右键记录内节点 → 浮层菜单 → 定点重跑该节点及其被阻塞的下游 ── */
@@ -920,7 +1134,10 @@ async function onMenuRerunNode(): Promise<void> {
   try {
     const res = await window.studio.rerunOrchestratorNode(job.jobId, m.nodeId)
     if (!res.ok) {
-      await promptAlert({ title: t('studio.orchestrator.rerunNodeFail'), message: res.message ?? '' })
+      await promptAlert({
+        title: t('studio.orchestrator.rerunNodeFail'),
+        message: res.message ?? ''
+      })
     }
   } catch {
     // 主进程不可用时忽略；job 状态会经事件/列表刷新
@@ -937,9 +1154,9 @@ function onPanelMouseDown(e: MouseEvent): void {
 </script>
 
 <template>
-  <div class="orch-panel">
+  <div ref="panelEl" class="orch-panel">
     <!-- 新建编排 -->
-    <div class="orch-form">
+    <div class="orch-form" :style="formAreaStyle">
       <div class="form-title">
         {{ t('studio.orchestrator.newJob') }}
         <span class="form-subtitle">{{ t('studio.orchestrator.subtitle') }}</span>
@@ -975,91 +1192,126 @@ function onPanelMouseDown(e: MouseEvent): void {
         <div class="draft-graph-head">
           <span class="draft-graph-title">{{ t('studio.orchestrator.canvasTitle') }}</span>
           <span class="draft-graph-hint">{{ t('studio.orchestrator.canvasHint') }}</span>
+          <button
+            v-if="draftZoom !== 1"
+            type="button"
+            class="graph-zoom-tag"
+            :title="t('studio.orchestrator.zoomReset')"
+            @click="resetDraftZoom"
+          >
+            {{ Math.round(draftZoom * 100) }}%
+          </button>
           <span v-if="canvasMsg" class="draft-graph-msg" :class="canvasMsgKind">{{
             canvasMsg
           }}</span>
         </div>
-        <div class="draft-graph-scroll">
+        <div
+          class="draft-graph-scroll"
+          :style="{ maxHeight: draftGraphH + 'px' }"
+          @wheel="onDraftWheel"
+        >
           <div
-            ref="draftCanvasEl"
-            class="draft-graph"
+            class="graph-zoom"
             :style="{
-              width: draftLayout.canvasWidth + 'px',
-              height: draftLayout.canvasHeight + 'px'
+              width: draftLayout.canvasWidth * draftZoom + 'px',
+              height: draftLayout.canvasHeight * draftZoom + 'px'
             }"
           >
-            <svg
-              class="graph-lines"
-              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
-            >
-              <path
-                v-for="edge in draftLayout.edges"
-                :key="`e:${edge.from}:${edge.to}`"
-                class="graph-edge draft-edge"
-                :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
-                :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
-              />
-            </svg>
-            <svg
-              class="graph-hit-layer"
-              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
-            >
-              <path
-                v-for="edge in draftLayout.edges"
-                :key="`h:${edge.from}:${edge.to}`"
-                class="edge-hit"
-                :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
-                :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
-                @click="removeDraftEdge(edge.from, edge.to)"
-              >
-                <title>{{ t('studio.orchestrator.canvasRemoveEdge') }}</title>
-              </path>
-            </svg>
-            <button
-              v-for="(node, index) in nodes"
-              :key="node.id"
-              type="button"
-              class="graph-chip draft-chip"
-              :class="{
-                'drag-from': dragState?.fromId === node.id,
-                'drag-over': dragState?.overId === node.id && dragState?.fromId !== node.id,
-                'has-issue': nodeIssueCount(index) > 0
-              }"
-              :data-draft-node-id="node.id"
+            <div
+              ref="draftCanvasEl"
+              class="draft-graph"
               :style="{
-                left: (draftLayout.posBy.get(node.id)?.x ?? 0) + 'px',
-                top: (draftLayout.posBy.get(node.id)?.y ?? 0) + 'px',
-                width: DAG_CHIP_W + 'px'
+                width: draftLayout.canvasWidth + 'px',
+                height: draftLayout.canvasHeight + 'px',
+                transform: draftZoom === 1 ? undefined : `scale(${draftZoom})`
               }"
-              :title="
-                nodeIssueCount(index) > 0 ? nodeIssuesText(index) : node.instruction || node.id
-              "
-              @pointerdown="beginDraftDrag($event, node.id)"
             >
-              <span
-                class="flow-dot"
-                :style="
-                  agentColor(node.agentId) ? { background: agentColor(node.agentId) } : undefined
-                "
-              />
-              <span class="graph-agent">{{ agentName(node.agentId) }}</span>
-              <span class="graph-id">{{ node.id }}</span>
-              <span
-                v-if="(node.dependsOn?.length ?? 0) > 0"
-                class="graph-deps-n"
-                :title="t('studio.orchestrator.canvasDeps')"
-                >{{ node.dependsOn?.length }}↑</span
+              <svg
+                class="graph-lines"
+                :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
               >
-              <span v-if="nodeIssueCount(index) > 0" class="chip-issue">!</span>
-            </button>
-            <svg
-              v-if="tempEdge"
-              class="graph-temp-layer"
-              :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
-            >
-              <path class="temp-edge" :class="{ invalid: tempEdge.invalid }" :d="tempEdge.path" />
-            </svg>
+                <path
+                  v-for="edge in draftLayout.edges"
+                  :key="`e:${edge.from}:${edge.to}`"
+                  class="graph-edge draft-edge"
+                  :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
+                  :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+                />
+              </svg>
+              <svg
+                class="graph-hit-layer"
+                :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
+              >
+                <path
+                  v-for="edge in draftLayout.edges"
+                  :key="`h:${edge.from}:${edge.to}`"
+                  class="edge-hit"
+                  :class="{ invalid: isInvalidDraftEdge(edge.from, edge.to) }"
+                  :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+                  @click="removeDraftEdge(edge.from, edge.to)"
+                >
+                  <title>{{ t('studio.orchestrator.canvasRemoveEdge') }}</title>
+                </path>
+              </svg>
+              <button
+                v-for="(node, index) in nodes"
+                :key="node.id"
+                type="button"
+                class="graph-chip draft-chip"
+                :class="{
+                  'drag-from': dragState?.fromId === node.id,
+                  'drag-over': dragState?.overId === node.id && dragState?.fromId !== node.id,
+                  'has-issue': nodeIssueCount(index) > 0
+                }"
+                :data-draft-node-id="node.id"
+                :style="{
+                  left: (draftLayout.posBy.get(node.id)?.x ?? 0) + 'px',
+                  top: (draftLayout.posBy.get(node.id)?.y ?? 0) + 'px',
+                  width: DAG_CHIP_W + 'px'
+                }"
+                :title="
+                  nodeIssueCount(index) > 0 ? nodeIssuesText(index) : node.instruction || node.id
+                "
+                @pointerdown="beginDraftDrag($event, node.id)"
+              >
+                <span
+                  class="flow-dot"
+                  :style="
+                    agentColor(node.agentId) ? { background: agentColor(node.agentId) } : undefined
+                  "
+                />
+                <span class="graph-agent">{{ agentName(node.agentId) }}</span>
+                <span class="graph-id">{{ node.id }}</span>
+                <span
+                  v-if="(node.dependsOn?.length ?? 0) > 0"
+                  class="graph-deps-n"
+                  :title="t('studio.orchestrator.canvasDeps')"
+                  >{{ node.dependsOn?.length }}↑</span
+                >
+                <span v-if="nodeIssueCount(index) > 0" class="chip-issue">!</span>
+              </button>
+              <svg
+                v-if="tempEdge"
+                class="graph-temp-layer"
+                :viewBox="`0 0 ${draftLayout.canvasWidth} ${draftLayout.canvasHeight}`"
+              >
+                <path class="temp-edge" :class="{ invalid: tempEdge.invalid }" :d="tempEdge.path" />
+              </svg>
+            </div>
           </div>
+        </div>
+        <!-- 分隔条：上下拖动调整画布可视高度，双击恢复默认 -->
+        <div
+          class="graph-resizer"
+          :class="{ active: resizing === 'draft' }"
+          role="separator"
+          aria-orientation="horizontal"
+          :aria-label="t('studio.orchestrator.canvasResizeHint')"
+          :title="t('studio.orchestrator.canvasResizeHint')"
+          @pointerdown="beginResize($event, 'draft')"
+          @dblclick="resetGraphH('draft')"
+        >
+          <span class="splitter-grip" />
         </div>
       </div>
 
@@ -1067,105 +1319,112 @@ function onPanelMouseDown(e: MouseEvent): void {
         <div class="nodes-hint">
           {{ t('studio.orchestrator.nodesHint') }}
         </div>
-        <div
-          v-for="(node, index) in nodes"
-          :key="node.id"
-          class="node-card"
-          :class="{ 'has-issue': nodeIssueCount(index) > 0 }"
-          :data-draft-index="index"
-        >
-          <div class="node-head">
-            <span class="node-index">{{ index + 1 }}</span>
-            <input
-              :value="node.id"
-              class="text-input node-id-input"
-              :title="t('studio.orchestrator.nodeId')"
-              @change="onNodeIdChange(index, $event)"
-            />
-            <select
-              :value="node.agentId"
-              class="node-agent-select"
-              :title="t('studio.orchestrator.nodeAgent')"
-              @change="onNodeAgentChange(index, $event)"
-            >
-              <option v-for="agent in selectableAgents" :key="agent.agentId" :value="agent.agentId">
-                {{ agent.name }}
-              </option>
-            </select>
-            <button
-              type="button"
-              class="icon-btn danger"
-              :title="t('studio.orchestrator.removeNode')"
-              @click="removeNode(index)"
-            >
-              ×
-            </button>
-          </div>
-          <div v-if="nodeIssueCount(index) > 0" class="node-issues">
-            <div class="node-issues-head">
-              <span class="node-issues-count">
-                {{ t('studio.orchestrator.issuesCount', { n: nodeIssueCount(index) }) }}
-              </span>
+        <div class="nodes-grid">
+          <div
+            v-for="(node, index) in nodes"
+            :key="node.id"
+            class="node-card"
+            :class="{ 'has-issue': nodeIssueCount(index) > 0 }"
+            :data-draft-index="index"
+          >
+            <div class="node-head">
+              <span class="node-index">{{ index + 1 }}</span>
+              <input
+                :value="node.id"
+                class="text-input node-id-input"
+                :title="t('studio.orchestrator.nodeId')"
+                @change="onNodeIdChange(index, $event)"
+              />
+              <select
+                :value="node.agentId"
+                class="node-agent-select"
+                :title="t('studio.orchestrator.nodeAgent')"
+                @change="onNodeAgentChange(index, $event)"
+              >
+                <option
+                  v-for="agent in selectableAgents"
+                  :key="agent.agentId"
+                  :value="agent.agentId"
+                >
+                  {{ agent.name }}
+                </option>
+              </select>
               <button
                 type="button"
-                class="issue-fix"
-                :title="t('studio.orchestrator.fixNodeTip')"
-                @click="quickFixNode(index)"
+                class="icon-btn danger"
+                :title="t('studio.orchestrator.removeNode')"
+                @click="removeNode(index)"
               >
-                {{ t('studio.orchestrator.fixNode') }}
+                ×
               </button>
             </div>
-            <div class="node-issues-list">
-              <div v-for="issue in nodeIssues(index).errors" :key="issue.kind" class="issue-row">
-                <span
-                  class="issue-text"
-                  :class="{ locatable: isFocusableIssueKind(issue.kind) }"
-                  :title="
-                    isFocusableIssueKind(issue.kind)
-                      ? t('studio.orchestrator.issueLocate')
-                      : undefined
-                  "
-                  @click="focusNodeIssue(index, issue.kind)"
-                  >{{ describeDagError(issue) }}</span
-                >
-              </div>
-              <div
-                v-for="bad in nodeIssues(index).badDeps"
-                :key="`${bad.kind}:${bad.dep}`"
-                class="issue-row dep"
-              >
-                <span class="issue-text">{{ describeBadDep(bad) }}</span>
+            <div v-if="nodeIssueCount(index) > 0" class="node-issues">
+              <div class="node-issues-head">
+                <span class="node-issues-count">
+                  {{ t('studio.orchestrator.issuesCount', { n: nodeIssueCount(index) }) }}
+                </span>
                 <button
                   type="button"
-                  class="issue-strip"
-                  :title="t('studio.orchestrator.stripDepTip')"
-                  @click="stripDraftDep(index, bad.dep)"
+                  class="issue-fix"
+                  :title="t('studio.orchestrator.fixNodeTip')"
+                  @click="quickFixNode(index)"
                 >
-                  {{ t('studio.orchestrator.stripDep') }}
+                  {{ t('studio.orchestrator.fixNode') }}
                 </button>
               </div>
+              <div class="node-issues-list">
+                <div v-for="issue in nodeIssues(index).errors" :key="issue.kind" class="issue-row">
+                  <span
+                    class="issue-text"
+                    :class="{ locatable: isFocusableIssueKind(issue.kind) }"
+                    :title="
+                      isFocusableIssueKind(issue.kind)
+                        ? t('studio.orchestrator.issueLocate')
+                        : undefined
+                    "
+                    @click="focusNodeIssue(index, issue.kind)"
+                    >{{ describeDagError(issue) }}</span
+                  >
+                </div>
+                <div
+                  v-for="bad in nodeIssues(index).badDeps"
+                  :key="`${bad.kind}:${bad.dep}`"
+                  class="issue-row dep"
+                >
+                  <span class="issue-text">{{ describeBadDep(bad) }}</span>
+                  <button
+                    type="button"
+                    class="issue-strip"
+                    :title="t('studio.orchestrator.stripDepTip')"
+                    @click="stripDraftDep(index, bad.dep)"
+                  >
+                    {{ t('studio.orchestrator.stripDep') }}
+                  </button>
+                </div>
+              </div>
             </div>
+            <textarea
+              :value="node.instruction"
+              class="text-input node-instruction"
+              rows="1"
+              :placeholder="t('studio.orchestrator.nodeInstructionPlaceholder')"
+              @input="onResizeTextarea"
+              @change="onNodeInstructionChange(index, $event)"
+            />
           </div>
-          <textarea
-            :value="node.instruction"
-            class="text-input node-instruction"
-            rows="1"
-            :placeholder="t('studio.orchestrator.nodeInstructionPlaceholder')"
-            @input="onResizeTextarea"
-            @change="onNodeInstructionChange(index, $event)"
-          />
+          <button
+            type="button"
+            class="node-add-card"
+            :disabled="nodes.length >= MAX_NODES"
+            @click="addNode"
+          >
+            <span class="node-add-plus">+</span>
+            <span>{{ t('studio.orchestrator.addNode') }}</span>
+            <span v-if="nodes.length >= MAX_NODES" class="limit-note">{{
+              t('studio.orchestrator.nodeLimit', { max: MAX_NODES })
+            }}</span>
+          </button>
         </div>
-        <button
-          type="button"
-          class="action-btn ghost"
-          :disabled="nodes.length >= MAX_NODES"
-          @click="addNode"
-        >
-          {{ t('studio.orchestrator.addNode') }}
-          <span v-if="nodes.length >= MAX_NODES" class="limit-note">{{
-            t('studio.orchestrator.nodeLimit', { max: MAX_NODES })
-          }}</span>
-        </button>
       </div>
       <div v-else class="form-warn">
         {{ t('studio.orchestrator.noAgent') }}
@@ -1205,6 +1464,24 @@ function onPanelMouseDown(e: MouseEvent): void {
         </button>
         <span v-if="formError" class="form-error">{{ formError }}</span>
       </div>
+    </div>
+
+    <!-- 分隔条：上下拖动调整新建编排/编排记录两区高度（双击恢复自动） -->
+    <div
+      class="orch-splitter"
+      role="separator"
+      aria-orientation="horizontal"
+      :aria-label="t('studio.orchestrator.splitterHint')"
+      :title="t('studio.orchestrator.splitterHint')"
+      :class="{ active: isSplitting }"
+      @pointerdown="beginSplitDrag"
+      @pointermove="moveSplitDrag"
+      @pointerup="endSplitDrag"
+      @pointercancel="endSplitDrag"
+      @lostpointercapture="endSplitDrag"
+      @dblclick="resetFormArea"
+    >
+      <span class="splitter-grip" />
     </div>
 
     <!-- 编排记录 -->
@@ -1250,6 +1527,15 @@ function onPanelMouseDown(e: MouseEvent): void {
             @click.stop="onRerun(job)"
           >
             ↻
+          </button>
+          <button
+            v-if="job.state === 'done'"
+            type="button"
+            class="copy-btn rerun-whole-btn"
+            :title="t('studio.orchestrator.rerunWholeTip')"
+            @click.stop="onRerunWhole(job)"
+          >
+            {{ t('studio.orchestrator.rerunWhole') }}
           </button>
           <button
             v-if="job.state !== 'running'"
@@ -1387,58 +1673,95 @@ function onPanelMouseDown(e: MouseEvent): void {
           </div>
 
           <div v-else class="node-graph-area">
-            <div v-if="job.nodes.length" class="node-graph-scroll">
+            <div
+              v-if="job.nodes.length"
+              class="node-graph-scroll"
+              :style="{ maxHeight: jobGraphH + 'px' }"
+              @wheel="onJobWheel($event, job.jobId)"
+            >
               <div
-                class="node-graph"
+                class="graph-zoom"
                 :style="{
-                  width: layoutFor(job).canvasWidth + 'px',
-                  height: layoutFor(job).canvasHeight + 'px'
+                  width: layoutFor(job).canvasWidth * zoomOf(job.jobId) + 'px',
+                  height: layoutFor(job).canvasHeight * zoomOf(job.jobId) + 'px'
                 }"
               >
-                <svg
-                  class="graph-lines"
-                  :viewBox="`0 0 ${layoutFor(job).canvasWidth} ${layoutFor(job).canvasHeight}`"
-                >
-                  <path
-                    v-for="edge in layoutFor(job).edges"
-                    :key="`${edge.from}:${edge.to}`"
-                    class="graph-edge"
-                    :class="edgeToneClass(job, edge.from)"
-                    :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
-                  />
-                </svg>
-                <button
-                  v-for="node in job.nodes"
-                  :key="node.id"
-                  type="button"
-                  class="graph-chip"
-                  :class="[node.state, { selected: graphSel[job.jobId] === node.id }]"
+                <div
+                  class="node-graph"
                   :style="{
-                    left: (layoutFor(job).posBy.get(node.id)?.x ?? 0) + 'px',
-                    top: (layoutFor(job).posBy.get(node.id)?.y ?? 0) + 'px',
-                    width: DAG_CHIP_W + 'px'
+                    width: layoutFor(job).canvasWidth + 'px',
+                    height: layoutFor(job).canvasHeight + 'px',
+                    transform: zoomOf(job.jobId) === 1 ? undefined : `scale(${zoomOf(job.jobId)})`
                   }"
-                  :title="node.instruction"
-                  @click="onGraphChip(job.jobId, node.id)"
-                  @contextmenu.prevent.stop="openNodeMenu($event, job, node.id)"
                 >
-                  <span class="flow-dot" />
-                  <span class="graph-agent">{{ agentName(node.agentId) }}</span>
-                  <span class="graph-id">{{ node.id }}</span>
-                  <span class="graph-state">{{ nodeStateLabel(node.state) }}</span>
-                  <span
-                    v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
-                    class="graph-retry"
-                    >↻{{ node.attempts }}</span
+                  <svg
+                    class="graph-lines"
+                    :viewBox="`0 0 ${layoutFor(job).canvasWidth} ${layoutFor(job).canvasHeight}`"
                   >
-                </button>
+                    <path
+                      v-for="edge in layoutFor(job).edges"
+                      :key="`${edge.from}:${edge.to}`"
+                      class="graph-edge"
+                      :class="edgeToneClass(job, edge.from)"
+                      :d="edgePath(edge.fromX, edge.fromY, edge.toX, edge.toY)"
+                    />
+                  </svg>
+                  <button
+                    v-for="node in job.nodes"
+                    :key="node.id"
+                    type="button"
+                    class="graph-chip"
+                    :class="[node.state, { selected: graphSel[job.jobId] === node.id }]"
+                    :style="{
+                      left: (layoutFor(job).posBy.get(node.id)?.x ?? 0) + 'px',
+                      top: (layoutFor(job).posBy.get(node.id)?.y ?? 0) + 'px',
+                      width: DAG_CHIP_W + 'px'
+                    }"
+                    :title="node.instruction"
+                    @click="onGraphChip(job.jobId, node.id)"
+                    @contextmenu.prevent.stop="openNodeMenu($event, job, node.id)"
+                  >
+                    <span class="flow-dot" />
+                    <span class="graph-agent">{{ agentName(node.agentId) }}</span>
+                    <span class="graph-id">{{ node.id }}</span>
+                    <span class="graph-state">{{ nodeStateLabel(node.state) }}</span>
+                    <span
+                      v-if="node.attempts > 1 && (node.state === 'done' || node.state === 'failed')"
+                      class="graph-retry"
+                      >↻{{ node.attempts }}</span
+                    >
+                  </button>
+                </div>
               </div>
             </div>
             <div v-else class="graph-empty">
               {{ t('studio.orchestrator.graphEmpty') }}
             </div>
+            <!-- 分隔条：上下拖动调整节点图可视高度，双击恢复默认 -->
+            <div
+              v-if="job.nodes.length"
+              class="graph-resizer"
+              :class="{ active: resizing === 'job' }"
+              role="separator"
+              aria-orientation="horizontal"
+              :aria-label="t('studio.orchestrator.graphResizeHint')"
+              :title="t('studio.orchestrator.graphResizeHint')"
+              @pointerdown="beginResize($event, 'job')"
+              @dblclick="resetGraphH('job')"
+            >
+              <span class="splitter-grip" />
+            </div>
             <div class="graph-select-hint">
               {{ t('studio.orchestrator.graphSelectHint') }}
+              <button
+                v-if="zoomOf(job.jobId) !== 1"
+                type="button"
+                class="graph-zoom-tag"
+                :title="t('studio.orchestrator.zoomReset')"
+                @click="resetJobZoom(job.jobId)"
+              >
+                {{ Math.round(zoomOf(job.jobId) * 100) }}%
+              </button>
             </div>
             <div
               v-for="detail in selectedNodeDetails(job.jobId, job)"
@@ -1587,6 +1910,33 @@ function onPanelMouseDown(e: MouseEvent): void {
   max-height: 45%;
   overflow-y: auto;
 }
+.orch-splitter {
+  flex: none;
+  height: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+}
+.splitter-grip {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--panel-border, rgba(128, 128, 128, 0.32));
+  transition: background 0.12s ease;
+  pointer-events: none;
+}
+.orch-splitter:hover .splitter-grip,
+.orch-splitter.active .splitter-grip {
+  background: color-mix(in srgb, var(--agent-color, #37b26c) 65%, transparent);
+}
+:global(body.orch-split-dragging) {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
 .form-title {
   font-size: 13px;
   font-weight: 600;
@@ -1631,6 +1981,13 @@ function onPanelMouseDown(e: MouseEvent): void {
   font-size: 11px;
   color: var(--text-tertiary, #5b6472);
 }
+/* 节点卡片网格：按面板宽度自适应列数，窄面板自动回落单列 */
+.nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 6px;
+  align-items: start;
+}
 .node-card {
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.2));
   border-radius: 8px;
@@ -1639,11 +1996,13 @@ function onPanelMouseDown(e: MouseEvent): void {
   flex-direction: column;
   gap: 5px;
   background: var(--bg-panel-soft, rgba(128, 128, 128, 0.06));
+  min-width: 0;
 }
 .node-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .node-index {
   flex: none;
@@ -1658,14 +2017,14 @@ function onPanelMouseDown(e: MouseEvent): void {
   font-size: 11px;
 }
 .node-id-input {
-  width: 72px;
+  width: 58px;
   flex: none;
   font-family: var(--mono, 'Cascadia Code', Consolas, monospace);
   font-size: 11px;
   padding: 3px 6px;
 }
 .node-agent-select {
-  flex: 1;
+  flex: 1 1 84px;
   min-width: 0;
   border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 6px;
@@ -1696,6 +2055,38 @@ function onPanelMouseDown(e: MouseEvent): void {
 }
 .node-instruction {
   line-height: 1.45;
+  max-height: 96px;
+  overflow-y: auto;
+}
+/* 「添加节点」作为网格末尾的虚线卡片，与节点卡片并排且不额外占一整行 */
+.node-add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  padding: 6px;
+  border: 1px dashed var(--panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary, #5b6472);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+.node-add-card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--agent-color, #37b26c) 60%, transparent);
+  color: var(--text-primary, #e6e9ef);
+}
+.node-add-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.node-add-plus {
+  font-size: 15px;
+  line-height: 1;
 }
 /* 草稿就地标注：节点卡片问题框 */
 .node-card.has-issue {
@@ -1881,7 +2272,53 @@ function onPanelMouseDown(e: MouseEvent): void {
 }
 .draft-graph {
   position: relative;
-  min-width: 100%;
+  transform-origin: 0 0;
+}
+/*
+ * 缩放占位层：按「逻辑尺寸 × 缩放系数」撑开滚动区，画布本身用 transform 缩放，
+ * 内部逻辑坐标不变（拖拽建边 / 连线吸附无需逐处换算）。居中放在这一层，
+ * 画布必须紧贴左上角，否则 transform-origin: 0 0 缩放后内容会偏移并溢出。
+ */
+.graph-zoom {
+  position: relative;
+  margin: 0 auto;
+}
+/* 画布高度分隔条：上下拖动调整可视高度，双击恢复默认 */
+.graph-resizer {
+  flex: none;
+  height: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+}
+.graph-resizer:hover .splitter-grip,
+.graph-resizer.active .splitter-grip {
+  background: color-mix(in srgb, var(--agent-color, #37b26c) 65%, transparent);
+}
+:global(body.orch-resize-dragging) {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+/* 当前缩放百分比（点击恢复 100%） */
+.graph-zoom-tag {
+  flex: none;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-tertiary, #5b6472);
+  background: transparent;
+  border: 1px solid var(--panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 999px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+.graph-zoom-tag:hover {
+  color: var(--text-primary, #e6e9ef);
+  border-color: rgba(128, 128, 128, 0.6);
 }
 .graph-hit-layer {
   position: absolute;
@@ -2261,6 +2698,17 @@ function onPanelMouseDown(e: MouseEvent): void {
   color: var(--accent, #4f8cff);
   background: rgba(79, 140, 255, 0.12);
 }
+/* 整单重跑直接提交：done 记录头部的主操作，实底强调（区别于回填表单的「再来一轮」） */
+.rerun-whole-btn {
+  color: var(--accent, #4f8cff);
+  border-color: color-mix(in srgb, var(--accent, #4f8cff) 60%, transparent);
+  background: rgba(79, 140, 255, 0.16);
+  font-weight: 600;
+}
+.rerun-whole-btn:hover {
+  color: var(--accent, #4f8cff);
+  background: rgba(79, 140, 255, 0.26);
+}
 /* 节点产出文件列表（flow 详情与 graph 详情共用） */
 .detail-files {
   display: flex;
@@ -2401,7 +2849,7 @@ function onPanelMouseDown(e: MouseEvent): void {
 }
 .node-graph {
   position: relative;
-  min-width: 100%;
+  transform-origin: 0 0;
 }
 .graph-lines {
   position: absolute;
