@@ -511,7 +511,7 @@ export async function rerunOrchestratorJob(jobId: string): Promise<OrchestratorR
           : '该编排已全部完成，无需续跑；如需完整重跑请在新建表单中重新提交。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
     }
   }
-  return relaunchOrchestratorNodes(job, nodes, '该记录状态已变化，请刷新后重试。')
+  return relaunchOrchestratorNodes(job, nodes, '该记录状态已变化，请刷新后重试。') // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
 }
 
 /**
@@ -555,7 +555,7 @@ export async function rerunOrchestratorNode(
       message: '该节点的前置环节尚未完成，请先单跑失败的上游节点，或改用整单续跑。' // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
     }
   }
-  return relaunchOrchestratorNodes(job, reset.nodes, '该记录状态已变化，请刷新后重试。')
+  return relaunchOrchestratorNodes(job, reset.nodes, '该记录状态已变化，请刷新后重试。') // cjk-ok 运行时错误文本（沿用 harness 服务的既有文案风格）
 }
 
 /**

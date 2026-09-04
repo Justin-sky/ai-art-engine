@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { OrchestratorJob, OrchestratorNodeState } from '../src/shared/ipc'
-import { orchestratorJobToDraft } from '../src/renderer/src/utils/orchJobReuse'
+import {
+  orchestratorJobToDraft,
+  orchestratorJobToRunInput
+} from '../src/renderer/src/utils/orchJobReuse'
 
 function node(
   id: string,
@@ -99,5 +102,53 @@ describe('orchestratorJobToDraft', () => {
     const draft = orchestratorJobToDraft(source, 12)
     expect(draft.nodes[0]!.instruction).toBe('do n1')
     expect('startedAt' in draft.nodes[0]!).toBe(false)
+  })
+})
+
+describe('orchestratorJobToRunInput', () => {
+  it('goal / title / 节点静态定义原样转为 runOrchestrator 入参', () => {
+    const source = job('done', [
+      node('n1', 'done', { dependsOn: [] }),
+      node('n2', 'done', { dependsOn: ['n1'] })
+    ], {
+      goal: '做一部短片',
+      title: '我的短片'
+    })
+    const input = orchestratorJobToRunInput(source)
+    expect(input).toEqual({
+      goal: '做一部短片',
+      title: '我的短片',
+      nodes: [
+        { id: 'n1', agentId: 'planner', instruction: 'do n1', dependsOn: [] },
+        { id: 'n2', agentId: 'planner', instruction: 'do n2', dependsOn: ['n1'] }
+      ]
+    })
+  })
+
+  it('运行态字段不回流，节点全部保留（不截断）', () => {
+    const source = job('done', [
+      node('n1', 'done', {
+        attempts: 2,
+        finalText: '产出文本',
+        outputFiles: ['Cache/a.webp'],
+        startedAt: 1,
+        finishedAt: 2
+      }),
+      node('n2', 'skipped', { error: 'x', attempts: 1 })
+    ])
+    const input = orchestratorJobToRunInput(source)
+    expect(input.nodes).toHaveLength(2)
+    for (const n of input.nodes) {
+      expect(Object.keys(n).sort()).toEqual(
+        ['agentId', 'dependsOn', 'id', 'instruction'].sort()
+      )
+    }
+    expect(input.nodes[0]!.instruction).toBe('do n1')
+  })
+
+  it('title 缺省时省略该字段（与表单回填的 jobTitle 语义区分）', () => {
+    const source = job('done', [node('n1', 'done')], { title: '' })
+    const input = orchestratorJobToRunInput(source)
+    expect(input.title).toBeUndefined()
   })
 })

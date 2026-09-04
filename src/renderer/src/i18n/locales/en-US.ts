@@ -226,13 +226,15 @@ export default {
       endpoint: 'Endpoint',
       token: 'Token',
       port: 'Listen port',
-      portHint: 'Port changes take effect after restart. If AIAE_MCP_PORT was set at launch, it takes precedence.',
+      portHint:
+        'Port changes take effect after restart. If AIAE_MCP_PORT was set at launch, it takes precedence.',
       start: 'Start MCP service',
       restart: 'Restart MCP service',
       restarting: 'Restarting…',
       restarted: 'MCP service restarted',
       resetToken: 'Reset token',
-      tokenReset: 'Token reset — the old token is invalid immediately. Update your connected clients.',
+      tokenReset:
+        'Token reset — the old token is invalid immediately. Update your connected clients.',
       editToken: 'Edit',
       tokenPlaceholder: 'Enter a new token (8–128 chars, no spaces)',
       saveToken: 'Save token',
@@ -247,7 +249,7 @@ export default {
       hint: 'The token is reused across restarts (reset it above). Treat it as full access to the local MCP service — do not share it.'
     },
     skills: {
-      hint: 'The AI chat agent discovers skills through dsh\'s skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don\'t edit them.',
+      hint: "The AI chat agent discovers skills through dsh's skill system: drop a .md file in dsh SKILL.md format (frontmatter name / description + body) into the folder below and it takes effect on the next chat. Built-in skills are managed automatically — please don't edit them.",
       dirPath: 'Skills directory',
       builtinCount: '{count} built-in skills (managed automatically)',
       kind: {
@@ -292,7 +294,7 @@ export default {
         gemini: 'Gemini'
       },
       customApiStyleHint:
-        'Endpoint type: {style}. OpenAI compatible covers most relay services / one-api / vLLM; Gemini uses Google\'s official OpenAI-compatible layer and most Gemini gateways; Anthropic uses the Messages API (x-api-key auth).',
+        "Endpoint type: {style}. OpenAI compatible covers most relay services / one-api / vLLM; Gemini uses Google's official OpenAI-compatible layer and most Gemini gateways; Anthropic uses the Messages API (x-api-key auth).",
       customBaseUrlPlaceholder:
         'e.g. https://api.openai.com/v1, https://generativelanguage.googleapis.com/v1beta/openai, or https://api.anthropic.com',
       nativeBaseUrl: 'ComfyUI native URL',
@@ -346,8 +348,10 @@ export default {
       manualModelAdd: 'Add & select',
       manualSpeakerPlaceholder: 'Enter purchased speaker_id (e.g. S_xxx)',
       manualSpeakerAdd: 'Add & select',
-      emptyCatalog: 'Catalog is empty. Enter a model ID manually, or check the provider and API key.',
-      emptyRemoteKeepPrevious: 'Remote returned an empty list; kept the previous catalog. Try again later.',
+      emptyCatalog:
+        'Catalog is empty. Enter a model ID manually, or check the provider and API key.',
+      emptyRemoteKeepPrevious:
+        'Remote returned an empty list; kept the previous catalog. Try again later.',
       filterNoMatch: 'No models match this filter. Clear the filter and try again.',
       clearFilter: 'Clear filter',
       emptySpeakers: 'No speakers yet. Enter a purchased speaker_id and select it.',
@@ -370,8 +374,10 @@ export default {
       },
       arkModalityHint: {
         text: 'Volcengine Ark chat models (Doubao, etc.). Default Base URL https://ark.cn-beijing.volces.com/api/v3 via /chat/completions.',
-        image: 'Seedream image models via /images/generations. Catalog filtered by endpoint name heuristics.',
-        video: 'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
+        image:
+          'Seedream image models via /images/generations. Catalog filtered by endpoint name heuristics.',
+        video:
+          'Seedance video models via /contents/generations/tasks. Reference media must be publicly reachable (TOS helps).',
         audio:
           'Doubao openspeech voice design (X-Api-Key). No model fetch — use the speech console API key above and enter a purchased speaker_id (e.g. S_xxx). Node instruction is used as the design prompt.'
       },
@@ -401,7 +407,8 @@ export default {
       },
       modelscopeModalityHint: {
         text: 'ModelScope API-Inference chat. Default Base URL is api-inference.modelscope.cn/v1; use an access token (ms-…).',
-        image: 'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
+        image:
+          'ModelScope text-to-image via /v1/images/generations; model ids look like org/model_name.'
       },
       openaiModalityHint: {
         text: 'OpenAI official chat models (GPT family). Default Base URL is api.openai.com/v1 via /chat/completions; the text catalog is fetched from GET /models.',
@@ -442,8 +449,7 @@ export default {
           'ComfyUI API v2 audio uses the same /api/v2/jobs path and collects type=audio outputs. Use a txt2audio API-format workflow.'
       },
       magicrouterModalityHint: {
-        text:
-          'MagicRouter multi-provider aggregator (OpenAI-compatible). Default Base URL is api.magicrouter.ai/v1 via /chat/completions; the catalog is fetched from /models/live.',
+        text: 'MagicRouter multi-provider aggregator (OpenAI-compatible). Default Base URL is api.magicrouter.ai/v1 via /chat/completions; the catalog is fetched from /models/live.',
         image:
           'MagicRouter text-to-image / image editing via /images/generations (reference images use the image / images fields); the catalog is fetched from /models/live.',
         video:
@@ -462,7 +468,8 @@ export default {
     },
     objectStorage: {
       hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, and Tencent Cloud COS.',
-      singleEnabledHint: 'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
+      singleEnabledHint:
+        'Only one object storage provider can be enabled at a time; enabling one turns the others off.',
       addProvider: 'Add object storage',
       add: 'Add',
       collapseProvider: 'Collapse provider',
@@ -564,8 +571,10 @@ export default {
       multiAssets: '{count} assets selected'
     },
     chat: {
-      empty: 'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
-      placeholder: "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
+      empty:
+        'Describe a task to DeepSeek Harness; it can call this app\u2019s generation tools (image / video / voice / 3D) over MCP.',
+      placeholder:
+        "Type a task. Enter to send, Shift+Enter for a new line; {'@'} references assets, paste screenshots/images",
       send: 'Send',
       stop: 'Stop',
       ready: 'Ready',
@@ -582,7 +591,8 @@ export default {
       modeAsk: 'Ask',
       modePlan: 'Plan',
       skills: 'Skills',
-      skillsTitle: 'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
+      skillsTitle:
+        'Skills available in this session (built-in snapshot + custom); marked as loaded when the model calls the skill tool',
       skillsMeta: 'Loaded {loaded}/{total}',
       skillsEmpty: 'No skills available',
       promptContinue: 'Continue',
@@ -605,7 +615,8 @@ export default {
       mentionSubtitle: 'Pick images / videos / audio to reference for the model',
       mentionHint: 'Click cards to select (multiple allowed)',
       mentionPicked: '{n} assets selected',
-      mentionEmpty: 'No referenceable assets in the project yet; import images / videos / audio first',
+      mentionEmpty:
+        'No referenceable assets in the project yet; import images / videos / audio first',
       mentionNoMatch: 'No matching assets',
       mentionTypeAll: 'All',
       mentionTypeImage: 'Image',
@@ -621,10 +632,12 @@ export default {
       cancel: 'Cancel',
       forwardTitle: 'Forward to another Agent',
       forwardTo: 'Target Agent',
-      forwardLive: 'Auto-forward: send this Agent\u2019s final result to the target automatically after each task',
+      forwardLive:
+        'Auto-forward: send this Agent\u2019s final result to the target automatically after each task',
       forwardText: 'Content to forward',
       forwardInstruction: 'Extra instruction (optional): prepended to each forwarded result',
-      forwardInstructionHint: 'e.g. Execute based on the plan below. Leave empty to forward the result as-is',
+      forwardInstructionHint:
+        'e.g. Execute based on the plan below. Leave empty to forward the result as-is',
       forwardFile: 'Attach workspace file (optional)',
       forwardFilePlaceholder: 'Path relative to project root, e.g. Cache/Images/xxx.png',
       forwardSend: 'Forward & run on target',
@@ -656,7 +669,8 @@ export default {
       goal: 'Goal',
       goalPlaceholder:
         'Describe in one sentence what this collaboration should deliver, e.g. write the storyboard for episode 1 of "City Night Run" and generate matching art for each shot…',
-      nodesHint: 'Nodes whose dependencies are ready run in parallel (same agent queued); a failed node is retried once',
+      nodesHint:
+        'Nodes whose dependencies are ready run in parallel (same agent queued); a failed node is retried once',
       addNode: '+ Add node',
       removeNode: 'Remove node',
       nodeId: 'Node id',
@@ -670,7 +684,8 @@ export default {
       redo: 'Redo draft edit',
       clear: 'Clear form',
       noGoal: 'Please enter a goal first',
-      noAgent: 'No orchestration-ready agents (need at least one non-default role; create one in the tab bar above)',
+      noAgent:
+        'No orchestration-ready agents (need at least one non-default role; create one in the tab bar above)',
       nodeLimit: 'At most {max} nodes',
       canvasTitle: 'Dependency canvas',
       canvasHint:
@@ -678,9 +693,16 @@ export default {
       canvasCycle: 'Cannot add: it would create a circular dependency',
       canvasRemoveEdge: 'Click to remove this dependency',
       canvasDeps: 'Upstream dependencies',
+      canvasResizeHint:
+        'Drag up/down to resize the canvas; double-click to reset; Ctrl/⌘ + wheel to zoom',
+      graphResizeHint:
+        'Drag up/down to resize the graph; double-click to reset; Ctrl/⌘ + wheel to zoom',
+      zoomReset: 'Click to reset to 100%',
       runError: 'Failed to start orchestration',
       runningBadge: '{n} orchestration running',
       jobs: 'Jobs',
+      splitterHint:
+        'Drag up/down to resize the new-job form and job list; double-click to restore auto layout',
       jobsEmpty: 'No orchestration jobs yet. Define a goal and nodes above, then press Start.',
       noTitle: '(untitled job)',
       abortJob: 'Abort this job',
@@ -688,21 +710,31 @@ export default {
       rerun: 'Resume',
       rerunFailed: 'Rerun failed nodes',
       rerunAborted: 'Continue run',
-      rerunConfirm: 'Completed nodes stay unchanged; failed/unfinished nodes will re-run. Resume this job?',
+      rerunConfirm:
+        'Completed nodes stay unchanged; failed/unfinished nodes will re-run. Resume this job?',
       rerunFail: 'Resume failed',
       reuseJob: 'One more round',
       reuseTip: 'Load this job goal and nodes back into the form above to tweak and run it again.',
       reuseConfirmTitle: 'Replace current draft?',
-      reuseConfirmMessage: 'The form already has content. Loading this job will overwrite it (undo available). Continue?',
+      reuseConfirmMessage:
+        'The form already has content. Loading this job will overwrite it (undo available). Continue?',
       reuseLoaded: 'Job loaded into the form — tweak it, then run a fresh round.',
+      rerunWhole: 'Run whole round',
+      rerunWholeTip:
+        'Skip the form and start another run with the same goal and nodes as this job (current draft untouched).',
+      rerunWholeConfirm:
+        'Start a fresh run with the same goal and nodes as this job? Your current form draft is not affected.',
+      rerunWholeFail: 'Whole-round run failed',
       rerunNode: 'Run this node',
-      rerunNodeTip: 'Re-run only this node and its blocked downstream nodes; completed nodes keep their output',
+      rerunNodeTip:
+        'Re-run only this node and its blocked downstream nodes; completed nodes keep their output',
       rerunNodeConfirm:
         'This will reset this node and {n} affected downstream nodes and re-run them; completed nodes keep their output. Run this node?',
       rerunNodeFail: 'Node run failed',
       rerunNodeBlockedJobDone: 'This job is already complete — nothing to run.',
       rerunNodeBlockedNodeDone: 'This node is already done; to re-run it use "One more round".',
-      rerunNodeBlockedDeps: 'Upstream dependencies of this node are not finished yet — fix the failed upstream node first.',
+      rerunNodeBlockedDeps:
+        'Upstream dependencies of this node are not finished yet — fix the failed upstream node first.',
       copy: 'Copy',
       copied: 'Copied',
       copySummary: 'Copy summary',
@@ -733,7 +765,8 @@ export default {
       noGoalPlan: 'Enter a goal first to auto-plan',
       planFailed: 'Auto-plan failed',
       planRepaired: '(auto-fixed {n} invalid dependency references)',
-      valBadId: 'Node "{id}" has an invalid id: only letters, digits, . _ - allowed, up to 32 chars',
+      valBadId:
+        'Node "{id}" has an invalid id: only letters, digits, . _ - allowed, up to 32 chars',
       valDupId: 'Duplicate node id: {id}; rename it before submitting',
       valNoAgent: 'Node "{id}" has no agent selected',
       valSelfDep: 'Node "{id}" cannot depend on itself',
@@ -1104,9 +1137,11 @@ export default {
       refreshSources: 'Refresh inputs',
       autoPlace: 'Auto-place',
       generateBgm: 'Generate BGM',
-      generateBgmHint: 'Describe the music (style / mood / scene); it will be placed on the music track',
+      generateBgmHint:
+        'Describe the music (style / mood / scene); it will be placed on the music track',
       generateBgmPlaceholder: 'Upbeat bright electronic score for a Vlog background',
-      generateBgmPrompt: 'Describe the BGM you want (style, mood, scene, optionally tempo/duration)',
+      generateBgmPrompt:
+        'Describe the BGM you want (style, mood, scene, optionally tempo/duration)',
       generateBgmDoneTitle: 'BGM generated',
       generateBgmDone: 'Generated "{name}" and placed it on the music track',
       generateBgmFailed: 'BGM generation failed: {error}',
@@ -1118,9 +1153,12 @@ export default {
       generateSfxFailed: 'SFX generation failed: {error}',
       smartCut: 'Smart cut',
       smartCutTitle: 'AI rough cut',
-      smartCutHint: 'The AI reordered the video track from titles and shot descriptions. Adjust duration and transitions below.',
-      smartCutNoVideo: 'No video sources available. Collect sources from output nodes or drag in videos first.',
-      smartCutNoModel: 'No text generation model configured. Choose a model on the screenplay node first.',
+      smartCutHint:
+        'The AI reordered the video track from titles and shot descriptions. Adjust duration and transitions below.',
+      smartCutNoVideo:
+        'No video sources available. Collect sources from output nodes or drag in videos first.',
+      smartCutNoModel:
+        'No text generation model configured. Choose a model on the screenplay node first.',
       smartCutParseFailed: 'The AI did not return a valid cut plan. Try again or switch model.',
       smartCutFailed: 'Smart cut failed: {error}',
       smartCutDuration: 'Duration (s)',
@@ -1129,18 +1167,20 @@ export default {
       smartCutRegenerating: 'Generating…',
       smartCutGenerating: 'Generating the cut plan…',
       smartCutStart: 'Generate',
-      smartCutNotStarted: 'Click "Generate" to have AI reorder clips and set durations automatically',
+      smartCutNotStarted:
+        'Click "Generate" to have AI reorder clips and set durations automatically',
       sfxLibrary: 'SFX library',
       sfxLibraryAll: 'All',
       sfxLibraryGenerate: 'Generate & place',
       sfxLibraryImport: 'Import from asset library',
       sfxLibraryImportBtn: 'Import & place',
-      sfxLibraryNoAssets: 'No usable audio assets yet (import sound / audio files into the asset library first)',
+      sfxLibraryNoAssets:
+        'No usable audio assets yet (import sound / audio files into the asset library first)',
       sfxLibraryGenerated: 'Generated SFX and placed it on the SFX track: {name}',
       sfxLibraryImported: 'Imported SFX and placed it on the SFX track: {name}',
       sourceNode: 'Source node',
       locateNode: 'Locate in graph',
-      locateNodeHint: 'Locate this clip\'s source node in the graph (back to its generation branch)',
+      locateNodeHint: "Locate this clip's source node in the graph (back to its generation branch)",
       sourceGridSize: 'Media tile size',
       sourceGroup: {
         input: 'Node inputs',
@@ -1231,7 +1271,8 @@ export default {
       transitionWipeDown: 'Wipe down',
       transitionCircleOpen: 'Circle open',
       transitionCircleClose: 'Circle close',
-      transitionDragHint: 'Drag the blue handle between two video clips to adjust overlap/duration.',
+      transitionDragHint:
+        'Drag the blue handle between two video clips to adjust overlap/duration.',
       overlayTransform: 'Picture-in-picture transform',
       overlayX: 'Position X %',
       overlayY: 'Position Y %',
@@ -1452,7 +1493,8 @@ export default {
       },
       tabProps: 'Properties',
       tabPose: 'Pose',
-      poseHint: 'Skeleton joints and bones are shown in the viewport. Select a joint below or in the view to adjust the pose.',
+      poseHint:
+        'Skeleton joints and bones are shown in the viewport. Select a joint below or in the view to adjust the pose.',
       poseBones: 'Bones ({n})',
       poseBonesEmpty: 'This model has no editable bones',
       poseViewportHint: 'Click a green joint in the viewport, then drag the rotate gizmo to pose',
@@ -1487,7 +1529,8 @@ export default {
       poseAiGenerate: 'Generate AI pose',
       poseAiGenerating: 'Generating…',
       poseAiApplied: 'Applied {matched}/{total} bones',
-      poseAiParseFailed: 'Could not parse the model reply as a pose function call. Try another model or rewrite the prompt.',
+      poseAiParseFailed:
+        'Could not parse the model reply as a pose function call. Try another model or rewrite the prompt.',
       poseAiNoMatch: 'Returned bone names do not match this character',
       poseAiFailed: 'Generation failed: {error}',
       poseAiLog: {
@@ -1719,7 +1762,8 @@ export default {
         addTrack: 'New Track',
         cameraCutTrack: 'Camera Cut',
         cameraCutTag: 'CUT',
-        cameraCutHint: 'Add a camera cut track: activates the camera whose segment covers the playhead',
+        cameraCutHint:
+          'Add a camera cut track: activates the camera whose segment covers the playhead',
         cameraCutAddHint: 'Add a segment for the active camera at the playhead',
         cameraCutRemoveHint: 'Remove the selected camera segment',
         cameraCutDropHint: 'Drag cameras here (or use + to add the active camera)',
@@ -1844,7 +1888,8 @@ export default {
           '9-grid storyboard table generated; advancing to the 4-grid motion storyboard table',
         readyDirect:
           '9-grid motion prompt table generated; generate all 9 direct videos cell by cell or in one click',
-        sequenceCells: '4-grid motion storyboard table generated; advancing to the motion prompt table',
+        sequenceCells:
+          '4-grid motion storyboard table generated; advancing to the motion prompt table',
         motionCells: 'Motion prompt table generated; completes once director review passes',
         completed: 'All stages approved'
       },
@@ -2126,7 +2171,8 @@ export default {
       enqueueFailedNoTarget:
         'Cannot resolve a task target for this canvas (missing shot or script context). Open shot video from the script and try again.',
       nodeRunBlockedTitle: 'Cannot run node',
-      nodeRunBlockedMessage: 'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
+      nodeRunBlockedMessage:
+        'This workflow is running in the task list. Individual or upstream node runs are disabled until it finishes or is stopped.',
       status: {
         pending: 'Queued',
         running: 'Running',
@@ -2413,7 +2459,8 @@ export default {
       aspectRatioPlaceholder: 'Leave blank for default',
       dimensions: 'Variant dimensions',
       addDimension: 'Add dimension',
-      dimensionHint: 'Each dimension is a label plus values (one per line); cells are the Cartesian product of all values.',
+      dimensionHint:
+        'Each dimension is a label plus values (one per line); cells are the Cartesian product of all values.',
       dimensionEmpty: 'No dimensions yet. Click "Add dimension" to start.',
       dimensionLabelPlaceholder: 'Dimension name, e.g. camera angle',
       dimensionValuesPlaceholder: 'One value per line',
@@ -2425,7 +2472,8 @@ export default {
       selectedCount: '{n} selected',
       exporting: 'Exporting…',
       exportSelected: 'Export selected',
-      compareEmptyHint: 'Run this node to generate variants, then compare and mark selected / rejected here.',
+      compareEmptyHint:
+        'Run this node to generate variants, then compare and mark selected / rejected here.',
       loading: 'Loading…',
       select: 'Select',
       reject: 'Reject',
@@ -2611,7 +2659,8 @@ export default {
     upscale: {
       systemPrompt: 'System prompt',
       mergedPrompt: 'Merged prompt',
-      promptEmpty: 'No merged prompt yet. Write the upscale instruction in the node instruction box.'
+      promptEmpty:
+        'No merged prompt yet. Write the upscale instruction in the node instruction box.'
     },
     expand: {
       appMark: 'Image expand',
@@ -2743,13 +2792,15 @@ export default {
     layerSplit: {
       appMark: 'Layer split',
       hint: 'Run the node to decompose with Seedream 5.0 Pro; double-click to reorder and move layers',
-      needRun: 'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
+      needRun:
+        'Connect an upstream image and run the node. The model returns a base image plus transparent layers you can drag, resize, and restack here.',
       noSelection: 'No layer selected',
       layers: 'Layers',
       emptyLayers: 'No layers yet. Run the node to decompose the image.',
       layerCount: '{n} layers',
       prompt: 'Decompose prompt',
-      promptPlaceholder: 'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
+      promptPlaceholder:
+        'Optional: name the elements to isolate. Leave empty to detect subjects, text, and decorations automatically.',
       resolution: 'Resolution',
       sendBack: 'Send backward',
       bringForward: 'Bring forward',
@@ -2790,8 +2841,10 @@ export default {
       exportPsdFilter: 'Photoshop PSD'
     },
     anim2d: {
-      inspectorHint: 'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
-      genInspectorHint: 'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
+      inspectorHint:
+        'Feed in a frame-animation sheet from upstream; run this node to split frames and preview playback below',
+      genInspectorHint:
+        'Double-click the node to open the instruction panel for presets and action; set rows/cols and system prompt here, then run to generate the sheet',
       cardPlayHint: 'Double-click to play / pause the frame sequence',
       rows: 'Rows',
       cols: 'Cols',
@@ -2961,7 +3014,8 @@ export default {
       instructionHint: 'Double-click to edit generation instruction'
     },
     error: {
-      selfAssetDrop: 'Cannot drop this asset into its own workflow — that would create a circular dependency',
+      selfAssetDrop:
+        'Cannot drop this asset into its own workflow — that would create a circular dependency',
       alreadyOnGraph: 'This host asset is already on the canvas',
       unsupportedDrop: 'This canvas does not accept this asset type',
       dropPathFailed: 'Could not read dropped file paths. Import into the library first.',
@@ -3174,7 +3228,8 @@ export default {
       textHint: 'Controls the final text output of this workflow.',
       connectHint: 'Connect reference nodes here to form the final output.',
       resultText: 'Run result',
-      resultPlaceholder: 'After you run the node, aggregated screenplay text appears here and can be edited',
+      resultPlaceholder:
+        'After you run the node, aggregated screenplay text appears here and can be edited',
       exportScreenplay: 'Export screenplay…',
       exportVideo: 'Export video…',
       exportImages: 'Batch export…',
@@ -3329,7 +3384,8 @@ export default {
       framePull: {
         hint: 'Double-click the node to open the frame puller: < and > step frames, Space toggles playback. Capture frames and add notes there.',
         openHint: 'Double-click to open the frame puller',
-        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        noSource:
+          'Connect an upstream video (a video generation node after running, or a video asset)',
         capture: 'Capture frame',
         clear: 'Clear frames',
         captured: '{n} captured',
@@ -3346,15 +3402,18 @@ export default {
       },
       reshoot: {
         hint: 'Connect a source video and double-click the node to open the reshoot desk: locate the start and end times to edit, write the change, and run — only that segment is regenerated while the rest stays intact. Works best with Seedance 2.5 (timestamp-level video editing)',
-        noSource: 'Connect an upstream video (a video generation node after running, or a video asset)',
+        noSource:
+          'Connect an upstream video (a video generation node after running, or a video asset)',
         segment: 'Reshoot segment',
         markStart: 'Mark start {time}',
         markEnd: 'Mark end {time}',
         start: 'Start (s)',
         end: 'End (s)',
-        segmentHint: 'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
+        segmentHint:
+          'Seek the video, then click "Mark start / Mark end", or type seconds directly; the range is written into the prompt as mm:ss',
         instruction: 'Change',
-        instructionPlaceholder: 'e.g. change the black umbrella in the character’s hand to a transparent one',
+        instructionPlaceholder:
+          'e.g. change the black umbrella in the character’s hand to a transparent one',
         model: 'Video model',
         range: 'Reshoot range {range}',
         done: 'Done'
@@ -3414,17 +3473,21 @@ export default {
         fail: 'Fail',
         reason: 'FAIL reason',
         reviewModel: 'Review model',
-        reviewModelHint: 'A vision model that can read the image; pick one with image input support',
-        reviewModelFallback: 'No review model set — falling back to the generate model; verdicts may be unreliable',
+        reviewModelHint:
+          'A vision model that can read the image; pick one with image input support',
+        reviewModelFallback:
+          'No review model set — falling back to the generate model; verdicts may be unreliable',
         referenceCount: 'Reference image count',
-        referenceCountHint: 'The first N images are the comparison baseline (not scored); the rest are under review. Leave empty for auto',
+        referenceCountHint:
+          'The first N images are the comparison baseline (not scored); the rest are under review. Leave empty for auto',
         score: 'Review score',
         rounds: 'Rounds'
       },
       mediaRework: {
         hint: 'Generate → review → inject the FAIL reason and regenerate until passed or max attempts',
         instruction: 'Generation instruction',
-        instructionPlaceholder: 'Describe what to generate; the last FAIL reason is injected on each retry',
+        instructionPlaceholder:
+          'Describe what to generate; the last FAIL reason is injected on each retry',
         maxAttempts: 'Max rework attempts',
         status: 'Rework status',
         running: 'Running',
@@ -3434,20 +3497,25 @@ export default {
         lastReason: 'Last reason',
         imageModel: 'Image model',
         reviewModel: 'Review model',
-        reviewModelHint: 'Must be a vision model with image input; reviewing with an image model is blind judging',
-        reviewModelFallback: 'No review model set — falling back to the image model; verdicts may be unreliable',
+        reviewModelHint:
+          'Must be a vision model with image input; reviewing with an image model is blind judging',
+        reviewModelFallback:
+          'No review model set — falling back to the image model; verdicts may be unreliable',
         imageModelFallbacks: 'Fallback image models',
         reviewModelFallbacks: 'Fallback review models',
-        modelFallbacksHint: 'Used in order when the primary model call fails (rate limit / unavailable / timeout)',
+        modelFallbacksHint:
+          'Used in order when the primary model call fails (rate limit / unavailable / timeout)',
         strategy: 'Rework strategy',
         strategyAuto: 'Auto escalate (recommended)',
         strategyGuidance: 'Targeted fix',
         strategyReseed: 'Re-stage composition',
         strategyStronger: 'Reinforced constraints',
         confirmFirst: 'Wait for confirmation after the first image',
-        confirmFirstHint: 'Shows you the first image before spending the remaining attempts unattended',
+        confirmFirstHint:
+          'Shows you the first image before spending the remaining attempts unattended',
         awaitingConfirm: 'Awaiting confirmation',
-        awaitingConfirmHint: 'Paused after the first image. Continue reworking, or accept the current result',
+        awaitingConfirmHint:
+          'Paused after the first image. Continue reworking, or accept the current result',
         continueRework: 'Continue rework',
         acceptCurrent: 'Accept current',
         rounds: 'Rounds',
@@ -3495,7 +3563,8 @@ export default {
         exportDone: 'Exported {count} file(s)',
         exportCancel: 'Cancelled',
         emptyPanels: 'No panels yet',
-        gridHint: 'Click a panel/bubble for its properties; use the Global properties toolbar button or blank space for page properties. Drag the selected panel edge/corner handles to resize, drag the bubble corner dot to scale; drag images onto empty cells to create panels',
+        gridHint:
+          'Click a panel/bubble for its properties; use the Global properties toolbar button or blank space for page properties. Drag the selected panel edge/corner handles to resize, drag the bubble corner dot to scale; drag images onto empty cells to create panels',
         done: 'Done'
       },
       generate: {
@@ -3517,7 +3586,8 @@ export default {
         voiceProfileNone: 'None (describe the voice)',
         voiceProfileManage: 'Manage voice profiles',
         voiceProfileDelete: 'Delete',
-        voiceProfileEmpty: 'No character voice profiles yet; create one below (character + voice id or clone reference audio)',
+        voiceProfileEmpty:
+          'No character voice profiles yet; create one below (character + voice id or clone reference audio)',
         voiceProfileCharacter: 'Character name (required)',
         voiceProfileVoice: 'Voice id (MiniMax voice_id / Ark speaker_id)',
         voiceProfileReferenceAudio: 'Clone reference audio (in-project path or URL)',
@@ -3538,13 +3608,17 @@ export default {
         },
         noModels: 'No models available',
         systemPrompt: 'System prompt',
-        systemPromptPlaceholder: 'Define the model role and output rules; leave empty to use the built-in default',
+        systemPromptPlaceholder:
+          'Define the model role and output rules; leave empty to use the built-in default',
         instruction: 'Instruction',
-        instructionPlaceholder: "Expand or rewrite into a full screenplay; use {'@'} to cite connected inputs",
-        imageInstructionPlaceholder: "Describe the image generation intent; use {'@'} to cite connected inputs",
+        instructionPlaceholder:
+          "Expand or rewrite into a full screenplay; use {'@'} to cite connected inputs",
+        imageInstructionPlaceholder:
+          "Describe the image generation intent; use {'@'} to cite connected inputs",
         toPromptInstructionPlaceholder:
           'Generate a structured Chinese prompt from the image, covering subject, environment, lighting, camera language, and style keywords.',
-        videoInstructionPlaceholder: "Describe the video generation intent; use {'@'} to cite connected inputs",
+        videoInstructionPlaceholder:
+          "Describe the video generation intent; use {'@'} to cite connected inputs",
         lipSyncInstructionPlaceholder:
           'Optional performance / camera notes (image→图片1+音频1; video→视频1+音频1); Seedance 2.0 recommended',
         voiceInstructionPlaceholder:
@@ -3744,12 +3818,15 @@ export default {
         instructionDialogTitle: 'Generation instruction',
         instructionDialogHint: "Use {'@'} to cite connected inputs and apply presets",
         instructionDialogDone: 'Done',
-        executeHint: 'Running this generation node calls the model above. The “Screenplay output” node only passes results through (no API).',
-        configureModelsHint: 'Configure a text model in Settings (API key + at least one selected model)',
-        configureImageModelsHint: 'Configure an image model in Settings (API key + at least one selected model)',
-        configureAudioModelsHint:
-          'Add a purchased speaker_id under Settings → Ark → Voice first',
-        configureVideoModelsHint: 'Configure a video model in Settings (API key + at least one selected model)',
+        executeHint:
+          'Running this generation node calls the model above. The “Screenplay output” node only passes results through (no API).',
+        configureModelsHint:
+          'Configure a text model in Settings (API key + at least one selected model)',
+        configureImageModelsHint:
+          'Configure an image model in Settings (API key + at least one selected model)',
+        configureAudioModelsHint: 'Add a purchased speaker_id under Settings → Ark → Voice first',
+        configureVideoModelsHint:
+          'Configure a video model in Settings (API key + at least one selected model)',
         imageParams: {
           title: 'Image generation params',
           placeholder: 'Params',
@@ -3768,7 +3845,7 @@ export default {
           seedPlaceholder: 'Empty = random',
           seedRandom: 'Random',
           seedSummary: 'seed {n}',
-          seedUseGlobal: 'Use global seed',
+          seedUseGlobal: 'Use global seed'
         },
         videoParams: {
           title: 'Video generation params',
