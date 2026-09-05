@@ -97,7 +97,7 @@
             v-model.number="threshold"
             type="range"
             min="0.1"
-            max="0.9"
+            max="1"
             step="0.05"
           >
         </label>
