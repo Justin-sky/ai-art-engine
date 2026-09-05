@@ -425,6 +425,22 @@ export interface NodeExecuteContext {
     sourceDataUrl: string
     state: import('../imageCrop').ImageCropState
   }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /** 本地抠图：YOLO 实例分割 → 透明通道 PNG（personOnly 只留 person 实例）。 */
+  composeImageCutoutCanvas?: (input: {
+    sourceDataUrl: string
+    state: import('../imageCutout').ImageCutoutState
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /** 智能构图：检测人物主体 → 按目标画幅 + 留白策略裁出 PNG。 */
+  composeImageComposeCanvas?: (input: {
+    sourceDataUrl: string
+    state: import('../imageCompose').ImageComposeState
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    /** 本次命中的主体框等运行信息，可写回节点 params 供下次免重复推理 */
+    state?: Partial<import('../imageCompose').ImageComposeState>
+  }>
   /** 宫格：裁出单个宫格 PNG。 */
   composeImageGridCell?: (input: {
     sourceDataUrl: string
@@ -622,6 +638,8 @@ export interface GraphRunOptions {
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
+  composeImageCutoutCanvas?: NodeExecuteContext['composeImageCutoutCanvas']
+  composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']

@@ -986,6 +986,7 @@ export default {
     threshold: '掩码阈值',
     feather: '边缘羽化',
     crop: '裁剪到主体',
+    personOnly: '只保留人物',
     result: '结果',
     resultEmpty: '识别后在此预览透明 PNG',
     save: '保存到资产库',
@@ -2622,6 +2623,15 @@ export default {
         original: '原图比例',
         custom: '自定义'
       }
+    },
+    cutout: {
+      appMark: '本地抠图',
+      hint: '运行节点：本地识别主体并抠成透明 PNG（不调模型）',
+      personOnly: '只保留人物'
+    },
+    compose: {
+      appMark: '智能构图',
+      hint: '运行节点：自动检测人物并按画幅 / 留白策略重构图（不调模型）'
     },
     gridSplit: {
       appMark: '宫格切分',

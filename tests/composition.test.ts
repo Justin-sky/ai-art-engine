@@ -10,7 +10,6 @@ import {
 
 const VERT: ComposeTargetFrame = { id: '9:16', width: 1080, height: 1920, safeAreaRatio: 0.1 }
 const SQUARE: ComposeTargetFrame = { id: '1:1', width: 1024, height: 1024, safeAreaRatio: 0.08 }
-const HORIZ: ComposeTargetFrame = { id: '16:9', width: 1920, height: 1080, safeAreaRatio: 0.05 }
 
 const PORTRAIT_IMG = { imageWidth: 1080, imageHeight: 1920 }
 const LANDSCAPE_IMG = { imageWidth: 1920, imageHeight: 1080 }

@@ -71,7 +71,7 @@ export function loadImageElement(url: string): Promise<HTMLImageElement> {
 }
 
 /** 把 <img> 画到 canvas 取 RGBA；超过上限时等比缩小以省 IPC */
-function imageToRaw(
+export function imageToRaw(
   img: HTMLImageElement,
   maxSide: number
 ): { width: number; height: number; rgba: Uint8Array } {

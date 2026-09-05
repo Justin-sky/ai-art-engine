@@ -18,6 +18,8 @@ import type { ImageRedrawState } from './imageRedraw'
 import type { ImageEraseState } from './imageErase'
 import type { ImageMatteState } from './imageMatte'
 import type { ImageCropState } from './imageCrop'
+import type { ImageCutoutState } from './imageCutout'
+import type { ImageComposeState } from './imageCompose'
 import type { ImageGridSplitState } from './imageGridSplit'
 import type { ImageLayerSplitState } from './imageLayerSplit'
 import type { AdVariantMatrix } from './adVariantMatrix'
@@ -551,6 +553,10 @@ export interface GraphNodeParams {
   imageMatte?: Partial<ImageMatteState>
   /** 裁剪参数 */
   imageCrop?: Partial<ImageCropState>
+  /** 本地抠图参数（节点图版一键抠图） */
+  imageCutout?: Partial<ImageCutoutState>
+  /** 智能构图参数（节点图版一键构图） */
+  imageCompose?: Partial<ImageComposeState>
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图层分离（Seedream layer_decomposition） */

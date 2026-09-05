@@ -60,6 +60,8 @@ import {
   executeEraseNode,
   executeMatteNode,
   executeCropNode,
+  executeCutoutNode,
+  executeComposeNode,
   executeGridSplitNode,
   executeLayerSplitNode,
   executeMediaReviewNode,
@@ -1454,6 +1456,68 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeCropNode
+  },
+  {
+    typeId: 'image.cutout',
+    category: 'note',
+    label: 'Image cutout',
+    icon: '👤',
+    defaultTitle: 'Image cutout',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageCutout: {
+        confThreshold: 0.25,
+        threshold: 0.5,
+        feather: 2,
+        cropToSubject: true,
+        personOnly: true
+      }
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.cutout',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeCutoutNode
+  },
+  {
+    typeId: 'image.compose',
+    category: 'note',
+    label: 'Smart compose',
+    icon: '▣',
+    defaultTitle: 'Smart compose',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageCompose: {
+        aspectId: '9:16',
+        strategy: 'headroom',
+        confThreshold: 0.5,
+        subjectBox: null,
+        detectedWidth: 0,
+        detectedHeight: 0,
+        detectedConf: 0
+      }
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.compose',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeComposeNode
   },
   {
     typeId: 'image.gridSplit',

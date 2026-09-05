@@ -61,6 +61,7 @@ export { executeComicPageNode } from './comicPage'
 export * from './narrative'
 export * from './select'
 export * from './imageEdit'
+export * from './imageLocal'
 export * from './adVariants'
 export * from './anim'
 export {

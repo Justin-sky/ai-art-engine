@@ -989,6 +989,7 @@ export default {
     threshold: 'Mask threshold',
     feather: 'Edge feather',
     crop: 'Crop to subject',
+    personOnly: 'People only',
     result: 'Result',
     resultEmpty: 'The transparent PNG preview shows up here after detection',
     save: 'Save to library',
@@ -2644,6 +2645,15 @@ export default {
         original: 'Original ratio',
         custom: 'Custom'
       }
+    },
+    cutout: {
+      appMark: 'Cutout',
+      hint: 'Run the node to detect subjects locally and cut out a transparent PNG (no model call)',
+      personOnly: 'People only'
+    },
+    compose: {
+      appMark: 'Smart framing',
+      hint: 'Run the node to auto-detect the person and reframe by frame / strategy (no model call)'
     },
     gridSplit: {
       appMark: 'Grid split',

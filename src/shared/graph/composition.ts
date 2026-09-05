@@ -131,7 +131,7 @@ export function composeSubjectCrop(params: {
   if (anchorY > y0 + bh) y0 = Math.min(1 - bh, anchorY - bh * 0.5)
 
   // 横向以主体中心对齐
-  let x0 = clamp(cx - bw / 2, 0, 1 - bw)
+  const x0 = clamp(cx - bw / 2, 0, 1 - bw)
 
   const crop: ComposeCropRect = {
     cropX: x0,
