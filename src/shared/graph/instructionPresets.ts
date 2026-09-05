@@ -1505,6 +1505,18 @@ const FRAME_ANIM_GEN_FX_PRESETS: InstructionPreset[] = [
     titleKey: 'graph.inspector.generate.presets.frameAnimFx.impact',
     tab: 'fx',
     body: '2D 游戏打击特效：命中点爆出星形闪光与短促放射线条，向四周扩散，快速消失'
+  },
+  {
+    id: 'fx.hit',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.hit',
+    tab: 'fx',
+    body: '2D 游戏命中受击特效序列：依次为命中瞬间白闪、放射状火花与碎屑飞溅、烟雾扩散、余烬消散，短促有力'
+  },
+  {
+    id: 'fx.projectile',
+    titleKey: 'graph.inspector.generate.presets.frameAnimFx.projectile',
+    tab: 'fx',
+    body: '2D 游戏投射物特效序列：能量弹从出现凝聚、加速飞行并拉出拖尾光迹、命中目标爆开并消散，包含完整发射周期'
   }
 ]
 

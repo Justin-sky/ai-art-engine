@@ -40,6 +40,7 @@
     <GraphTaskListDialog />
     <GraphRunLogDialog />
     <MediaPreviewDialog />
+    <CutoutDialog />
   </div>
 </template>
 
@@ -57,6 +58,7 @@ import StudioPromptDialog from './components/StudioPromptDialog.vue'
 import GraphTaskListDialog from './components/GraphTaskListDialog.vue'
 import GraphRunLogDialog from './components/GraphRunLogDialog.vue'
 import MediaPreviewDialog from './components/MediaPreviewDialog.vue'
+import CutoutDialog from './components/CutoutDialog.vue'
 import ProjectOpenMenu from './components/ProjectOpenMenu.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'

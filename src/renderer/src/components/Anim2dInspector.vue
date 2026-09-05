@@ -41,7 +41,31 @@
           @change="onColsChange"
         >
       </label>
+      <label class="field field-key">
+        <span>{{ t('graph.anim2d.bgKey') }}</span>
+        <select
+          :value="keyColor"
+          class="key-select"
+          @change="onKeyColorChange"
+        >
+          <option value="">
+            {{ t('graph.anim2d.bgKeyNone') }}
+          </option>
+          <option value="black">
+            {{ t('graph.anim2d.bgKeyBlack') }}
+          </option>
+          <option value="white">
+            {{ t('graph.anim2d.bgKeyWhite') }}
+          </option>
+        </select>
+      </label>
     </div>
+    <p
+      v-if="keyColor"
+      class="hint"
+    >
+      {{ t('graph.anim2d.bgKeyHint') }}
+    </p>
 
     <section
       v-if="cells.length > 1"
@@ -140,7 +164,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ANIM2D_MAX_DIM,
   anim2dCellKeys,
-  readAnim2dFromNode
+  readAnim2dFromNode,
+  readAnimKeyColorFromNode
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
@@ -175,6 +200,9 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
+const keyColor = computed(() =>
+  node.value ? readAnimKeyColorFromNode(node.value.params) : ''
+)
 
 function clampDim(n: number): number {
   return Math.min(ANIM2D_MAX_DIM, Math.max(1, Math.floor(n) || 1))
@@ -195,6 +223,11 @@ function onColsChange(e: Event): void {
   const n = Number((e.target as HTMLInputElement).value)
   if (!Number.isFinite(n)) return
   patchParams({ animCols: clampDim(n) })
+}
+
+function onKeyColorChange(e: Event): void {
+  const value = (e.target as HTMLSelectElement).value as '' | 'black' | 'white'
+  patchParams({ animKeyColor: value === 'black' || value === 'white' ? value : '' })
 }
 
 type AnimCell = { key: string; dataUrl: string }
@@ -317,6 +350,7 @@ async function refreshCells(): Promise<void> {
       return
     }
     const next: AnimCell[] = []
+    const keyColorValue = readAnimKeyColorFromNode(current.params)
     for (const cell of anim2dCellKeys(s.rows, s.cols)) {
       if (token !== cellToken) return
       try {
@@ -324,7 +358,8 @@ async function refreshCells(): Promise<void> {
           sourceDataUrl: sourceUrl,
           state: { rows: s.rows, cols: s.cols, selected: [] },
           cellKey: cell,
-          edgeInset: 'auto'
+          edgeInset: 'auto',
+          ...(keyColorValue ? { chromaKey: { color: keyColorValue } } : {})
         })
         if (composed.dataUrl) next.push({ key: cell, dataUrl: composed.dataUrl })
       } catch {
@@ -345,6 +380,7 @@ watch(
     () => node.value?.id ?? '',
     () => hostId.value,
     () => `${state.value.rows}x${state.value.cols}`,
+    () => readAnimKeyColorFromNode(node.value?.params),
     () => {
       const grid = node.value?.params?.animGridImage as
         | { dataUrl?: string; relativePath?: string }
@@ -527,6 +563,8 @@ onBeforeUnmount(stopPlayback)
 .config-row {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
 }
 
 .field {
@@ -537,8 +575,8 @@ onBeforeUnmount(stopPlayback)
   color: var(--text-muted);
 }
 
-.field input {
-  width: 76px;
+.field input,
+.field-key select {
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -546,5 +584,13 @@ onBeforeUnmount(stopPlayback)
   background: var(--bg-input);
   color: var(--text);
   font-size: 13px;
+}
+
+.field input {
+  width: 76px;
+}
+
+.field-key select {
+  min-width: 150px;
 }
 </style>

@@ -1,4 +1,5 @@
 import {
+  applyChromaKey,
   autoGridCellEdgeInsetPx,
   gridCellPixelRect,
   normalizeImageGridSplit,
@@ -25,6 +26,8 @@ export async function composeImageGridCell(input: {
    * `'auto'`：按格子尺寸估算（约 1.5%）。
    */
   edgeInset?: number | 'auto'
+  /** 色度键：裁出宫格后把接近纯黑/纯白的像素转透明（2D 特效黑底/白底 → 透明 PNG） */
+  chromaKey?: { color: 'black' | 'white'; threshold?: number; feather?: number }
 }): Promise<{ dataUrl: string; width: number; height: number; cellKey: string }> {
   const state = normalizeImageGridSplit(input.state)
   const parsed = parseCellKey(input.cellKey)
@@ -51,6 +54,15 @@ export async function composeImageGridCell(input: {
   // 关闭平滑，避免裁边像素被插值成发灰/发糊的「假边」
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(img, sx, sy, width, height, 0, 0, width, height)
+  const key = input.chromaKey
+  if (key) {
+    const imageData = ctx.getImageData(0, 0, width, height)
+    applyChromaKey(imageData.data, key.color, {
+      threshold: key.threshold,
+      feather: key.feather
+    })
+    ctx.putImageData(imageData, 0, 0)
+  }
   return {
     dataUrl: canvas.toDataURL('image/png'),
     width,

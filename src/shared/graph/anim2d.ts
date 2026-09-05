@@ -23,6 +23,46 @@ export interface Anim2dState {
 
 export const DEFAULT_ANIM2D_STATE: Anim2dState = { rows: 1, cols: 4 }
 
+/**
+ * 特效序列透明化使用的背景模式：
+ * - `''`/`none`：不约束背景；
+ * - `black`：生成/切帧按纯黑背景处理（发光特效最稳，键控时近黑像素转透明）；
+ * - `white`：生成/切帧按纯白背景处理（暗色/描边特效适用）。
+ */
+export type AnimKeyColor = '' | 'black' | 'white'
+export const ANIM_KEY_COLOR_DEFAULT: AnimKeyColor = ''
+
+export function normalizeAnimKeyColor(raw: unknown): AnimKeyColor {
+  return raw === 'black' || raw === 'white' ? raw : ANIM_KEY_COLOR_DEFAULT
+}
+
+export function readAnimKeyColorFromNode(
+  params: { animKeyColor?: unknown } | null | undefined
+): AnimKeyColor {
+  return normalizeAnimKeyColor(params?.animKeyColor)
+}
+
+export function animKeyColorToNodePatch(keyColor: AnimKeyColor): { animKeyColor: AnimKeyColor } {
+  return { animKeyColor: normalizeAnimKeyColor(keyColor) }
+}
+
+/** 生成侧背景约束句子：序列图整底为纯黑/纯白，便于切帧键控透明 */
+export function buildAnimKeyColorPrompt(
+  keyColor: AnimKeyColor,
+  locale?: string
+): string {
+  const mode = normalizeAnimKeyColor(keyColor)
+  if (!mode) return ''
+  if (locale?.startsWith('en')) {
+    return mode === 'black'
+      ? 'The background of the entire sequence image must be solid pure black (#000000): no scene, ground, environment lighting, props, text or framing; only the glowing effect itself, with clear boundaries between the effect and the background.'
+      : 'The background of the entire sequence image must be solid pure white (#FFFFFF): no scene, ground, environment lighting, props, text or framing; only the effect itself, with clear boundaries between the effect and the background.'
+  }
+  return mode === 'black'
+    ? '整张序列图背景必须为纯黑色（#000000）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体与发光，特效与背景边界清晰。'
+    : '整张序列图背景必须为纯白色（#FFFFFF）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体，特效与背景边界清晰。'
+}
+
 function clampDim(n: unknown): number {
   const v = Math.floor(Number(n))
   if (!Number.isFinite(v)) return 4

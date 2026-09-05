@@ -13,7 +13,9 @@ import {
 import {
   anim2dCellKeys,
   buildAnim2dGridInstruction,
+  buildAnimKeyColorPrompt,
   readAnim2dFromNode,
+  readAnimKeyColorFromNode,
   resolveAnim2dPreset,
   resolveFrameAnimGenSystemPrompt,
   type Anim2dState
@@ -39,11 +41,13 @@ export async function executeFrameAnimGenNode(
   const { node } = ctx
   const state = readAnim2dFromNode(node.params)
   const preset = resolveAnim2dPreset(node.params.animPresetId)
+  const keyColor = readAnimKeyColorFromNode(node.params)
   const instructionRaw = node.params.generateInstruction?.trim() || preset?.prompt || ''
   const system = resolveFrameAnimGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
   const userPrompt = [
     instructionRaw,
-    buildAnim2dGridInstruction(state.rows, state.cols, ctx.locale)
+    buildAnim2dGridInstruction(state.rows, state.cols, ctx.locale),
+    buildAnimKeyColorPrompt(keyColor, ctx.locale)
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -117,7 +121,8 @@ export async function executeFrameAnimGenNode(
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
     animRows: state.rows,
     animCols: state.cols,
-    animPresetId: node.params.animPresetId || ''
+    animPresetId: node.params.animPresetId || '',
+    animKeyColor: keyColor
   })
 }
 
@@ -130,6 +135,8 @@ export async function executeAnim2dNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const assetId = node.params.animAssetId?.trim()
+  // 特效透明化：外层可显式设键控背景；未设时回退内层 frame.animGen 的键控设定
+  const ownKeyColor = readAnimKeyColorFromNode(node.params)
   // 普通播放节点：优先取 in 端口序列图；旧数据无输入时回退内图产物
   const incoming = await collectIncomingImageItems(ctx)
   let gridItem: (GraphImageItem & { assetId?: string }) | undefined = incoming[0]
@@ -139,6 +146,7 @@ export async function executeAnim2dNode(
   // 行列：有内图时沿用内图层帧生成行列，否则用本节点 Inspector 行列
   const innerState = assetId ? softResolveAnim2dInnerState(ctx, assetId) : undefined
   const state = innerState ?? readAnim2dFromNode(node.params)
+  const keyColor = ownKeyColor || innerState?.keyColor || ''
   if (!gridItem) {
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
@@ -172,7 +180,9 @@ export async function executeAnim2dNode(
       state: { rows: state.rows, cols: state.cols, selected: [] },
       cellKey: cell,
       // 序列图常带格线/黑边：整数切格后再按格子尺寸内缩
-      edgeInset: 'auto'
+      edgeInset: 'auto',
+      // 特效黑底/白底键控透明：仅当明确设置了 animKeyColor 时启用
+      ...(keyColor ? { chromaKey: { color: keyColor } } : {})
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {
@@ -205,7 +215,8 @@ export async function executeAnim2dNode(
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
     animRows: state.rows,
     animCols: state.cols,
-    animGridImage: Object.keys(gridImageParams).length ? gridImageParams : undefined
+    animGridImage: Object.keys(gridImageParams).length ? gridImageParams : undefined,
+    ...(keyColor ? { animKeyColor: keyColor } : {})
   })
 }
 
@@ -250,11 +261,11 @@ async function softResolveAnim2dGridImage(
   return undefined
 }
 
-/** 从 dive 子图资产读取「生成帧动画序列图」节点的行列参数（单一数据源） */
+/** 从 dive 子图资产读取「生成帧动画序列图」节点的行列与键控参数（单一数据源） */
 function softResolveAnim2dInnerState(
   ctx: NodeExecuteContext,
   assetId: string
-): Anim2dState | undefined {
+): (Anim2dState & { keyColor: ReturnType<typeof readAnimKeyColorFromNode> }) | undefined {
   const liveDoc = ctx.resolveLiveAssetGraph?.(assetId)
   const gen = ctx.resolveAssetGenParams?.(assetId)
   const raw = liveDoc ?? gen?.graphJson
@@ -264,5 +275,8 @@ function softResolveAnim2dInnerState(
   const doc = raw as GraphDocument
   const genNode = doc.nodes.find((n) => n.typeId === 'frame.animGen')
   if (!genNode) return undefined
-  return readAnim2dFromNode(genNode.params)
+  return {
+    ...readAnim2dFromNode(genNode.params),
+    keyColor: readAnimKeyColorFromNode(genNode.params)
+  }
 }

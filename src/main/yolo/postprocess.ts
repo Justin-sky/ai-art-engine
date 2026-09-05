@@ -154,18 +154,24 @@ export function parseSegOutput(
   return { candidates: nms(candidates, iouThr), maskProto: proto }
 }
 
-/** 把 32 维 mask 系数与 proto 合成为 [maskHw²] 的 0/1 mask（sigmoid > 0.5） */
+/**
+ * 把 32 维 mask 系数与 proto 合成为 [maskHw²] 的 mask。
+ * - soft=false：0/1 二值（sigmoid > 0.5 阈值化）
+ * - soft=true：0~255 的 sigmoid 概率，抠图据此做置信度阈值与边缘羽化
+ */
 export function composeMask(
   maskWeights: Float32Array,
   proto: Float32Array,
-  maskHw: number
+  maskHw: number,
+  soft = false
 ): Uint8Array {
   const area = maskHw * maskHw
   const out = new Uint8Array(area)
   for (let i = 0; i < area; i++) {
     let acc = 0
     for (let m = 0; m < 32; m++) acc += maskWeights[m] * proto[m * area + i]
-    out[i] = sigmoid(acc) > 0.5 ? 1 : 0
+    const p = sigmoid(acc)
+    out[i] = soft ? Math.round(p * 255) : p > 0.5 ? 1 : 0
   }
   return out
 }

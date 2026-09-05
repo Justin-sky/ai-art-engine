@@ -930,6 +930,11 @@ export default {
         weakPrefix: '疑似',
         weakHint: '置信度较低，识别可能不准确'
       },
+      cutout: {
+        title: '本地抠图',
+        open: '一键抠图',
+        hint: '本地实例分割抠出主体，输出透明 PNG 并存进资产库'
+      },
       transform: {
         position: '位置 (Position)',
         rotation: '旋转 (Rotation °)',
@@ -959,6 +964,29 @@ export default {
       model: '描述模型用途…',
       default: '可选描述…'
     }
+  },
+  cutout: {
+    title: '本地抠图',
+    source: '源图',
+    noSource: '没有可抠的源图',
+    analyze: '开始识别',
+    analyzing: '识别中…',
+    rerun: '重新识别',
+    inferenceMs: '推理 {ms}ms',
+    subjects: '检出主体（{n}）',
+    empty: '未检出可抠主体，试试调低检测置信度',
+    notAnalyzed: '点「开始识别」检出画面主体',
+    params: '参数',
+    detectConf: '检测置信度',
+    threshold: '掩码阈值',
+    feather: '边缘羽化',
+    crop: '裁剪到主体',
+    result: '结果',
+    resultEmpty: '识别后在此预览透明 PNG',
+    save: '保存到资产库',
+    saving: '保存中…',
+    saveToTitle: '保存到资产库',
+    saveToSubtitle: '选择目标文件夹并输入文件名'
   },
   script: {
     dialog: {
@@ -2643,6 +2671,11 @@ export default {
       rows: '行',
       cols: '列',
       preset: '动画预设',
+      bgKey: '特效透明化',
+      bgKeyHint: '按底色键控透明：生成时把序列图整底设为纯色，切帧后近色像素转透明，输出可直接进引擎的透明帧',
+      bgKeyNone: '不处理（保留原背景）',
+      bgKeyBlack: '纯黑背景 → 透明',
+      bgKeyWhite: '纯白背景 → 透明',
       systemPrompt: '系统提示词',
       systemPromptPlaceholder: '可选：自定义生图系统提示词（留空使用默认）',
       action: '动作描述',
@@ -3437,7 +3470,9 @@ export default {
             embers: '火星',
             bubbles: '气泡',
             slash: '斩击',
-            impact: '打击'
+            impact: '打击',
+            hit: '命中受击',
+            projectile: '投射物'
           },
           frameAnimWushu: {
             xianglong: '降龙十八掌',

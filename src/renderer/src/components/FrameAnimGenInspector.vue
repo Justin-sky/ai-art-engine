@@ -44,6 +44,25 @@
     </div>
 
     <label class="field">
+      <span>{{ t('graph.anim2d.bgKey') }}</span>
+      <select
+        :value="keyColor"
+        @change="onKeyColorChange"
+      >
+        <option value="">
+          {{ t('graph.anim2d.bgKeyNone') }}
+        </option>
+        <option value="black">
+          {{ t('graph.anim2d.bgKeyBlack') }}
+        </option>
+        <option value="white">
+          {{ t('graph.anim2d.bgKeyWhite') }}
+        </option>
+      </select>
+      <small class="field-note">{{ t('graph.anim2d.bgKeyHint') }}</small>
+    </label>
+
+    <label class="field">
       <span>{{ t('graph.anim2d.systemPrompt') }}</span>
       <textarea
         v-model="systemPrompt"
@@ -75,6 +94,7 @@ import { computed, ref, watch } from 'vue'
 import {
   ANIM2D_MAX_DIM,
   readAnim2dFromNode,
+  readAnimKeyColorFromNode,
   resolveFrameAnimGenSystemPrompt
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -110,6 +130,9 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
+const keyColor = computed(() =>
+  node.value ? readAnimKeyColorFromNode(node.value.params) : ''
+)
 const systemPrompt = ref('')
 
 watch(
@@ -139,6 +162,11 @@ function onColsChange(e: Event): void {
   const n = Number((e.target as HTMLInputElement).value)
   if (!Number.isFinite(n)) return
   patchParams({ animCols: clampDim(n) })
+}
+
+function onKeyColorChange(e: Event): void {
+  const value = (e.target as HTMLSelectElement).value as '' | 'black' | 'white'
+  patchParams({ animKeyColor: value === 'black' || value === 'white' ? value : '' })
 }
 
 function persistSystemPrompt(): void {
@@ -216,6 +244,17 @@ function onClearOutput(): void {
 
 .field input {
   width: 76px;
+}
+
+.field select {
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.field-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 .field textarea {

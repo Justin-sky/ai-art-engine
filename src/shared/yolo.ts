@@ -18,6 +18,16 @@ export interface YoloBox {
   height: number
 }
 
+/** letterbox 画布几何：原图 → 640 画布的缩放与填充（与 YOLO 前处理一致） */
+export interface YoloLetterboxGeometry {
+  /** 画布边长（模型输入 640） */
+  size: number
+  /** 原图 → 画布的缩放系数 */
+  scale: number
+  padX: number
+  padY: number
+}
+
 export interface YoloSkeletonPoint {
   x: number
   y: number
@@ -32,9 +42,25 @@ export interface YoloDetectResult {
   inferenceMs: number
 }
 
-/** 实例分割结果：mask 与对应 box 等长，data 为 0/1 二值（mask 分辨率 160x160，待上层放大） */
+/**
+ * 实例分割结果：mask 与对应 box 等长。
+ *
+ * mask 是 maskHw×maskHw（由模型 proto 反推，通常 160）的网格，
+ * 覆盖完整的 640×640 letterbox 画布（不是 box 内的局部图），
+ * 上层需按 letterbox 几何（scale / padX / padY）把它放大回原图坐标，
+ * 纯函数见 ./cutout.ts（一键抠图复用同一套换算）。
+ *
+ * data 语义由请求入参 softMask 决定：
+ * - 缺省 false：0/1 二值（sigmoid > 0.5 阈值化）
+ * - true：0~255 的 sigmoid 概率，供抠图做置信度阈值与边缘羽化
+ */
 export interface YoloSegmentResult extends YoloDetectResult {
   masks: Array<{ width: number; height: number; data: Uint8Array }>
+  /**
+   * mask 网格所在的 letterbox 画布几何（把 mask 放大回原图坐标用）。
+   * 原图像素 x → letterbox 坐标 x * scale + padX；mask 网格覆盖整个 size 画布。
+   */
+  letterbox?: YoloLetterboxGeometry
 }
 
 /** 姿态估计结果：skeletons[i] 为 COCO 17 关键点 */
@@ -62,6 +88,11 @@ export interface YoloInferenceInput {
   iouThreshold?: number
   /** 置信度阈值，默认 0.25 */
   confThreshold?: number
+  /**
+   * 仅分割任务：mask 输出 sigmoid 概率（0~255）而非 0/1 二值。
+   * 抠图需要软边做置信度阈值 + 边缘羽化时开启；缺省保持二值以省带宽。
+   */
+  softMask?: boolean
 }
 
 /** 模型目录中的一个可用模型 */

@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   ANIM2D_PRESETS,
+  ANIM_KEY_COLOR_DEFAULT,
   anim2dCellKeys,
+  animKeyColorToNodePatch,
   buildAnim2dGridInstruction,
   buildAnim2dInnerGraph,
+  buildAnimKeyColorPrompt,
   normalizeAnim2dState,
+  normalizeAnimKeyColor,
   readAnim2dFromNode,
+  readAnimKeyColorFromNode,
   resolveAnim2dPreset
 } from '../src/shared/graph'
 
@@ -19,6 +24,37 @@ describe('anim2d state', () => {
 
   it('builds row-major cell keys', () => {
     expect(anim2dCellKeys(2, 3)).toEqual(['1-1', '1-2', '1-3', '2-1', '2-2', '2-3'])
+  })
+})
+
+describe('anim2d key color (特效透明化)', () => {
+  it('normalizes only black/white', () => {
+    expect(normalizeAnimKeyColor('black')).toBe('black')
+    expect(normalizeAnimKeyColor('white')).toBe('white')
+    expect(normalizeAnimKeyColor('green')).toBe(ANIM_KEY_COLOR_DEFAULT)
+    expect(normalizeAnimKeyColor(undefined)).toBe(ANIM_KEY_COLOR_DEFAULT)
+    expect(readAnimKeyColorFromNode({ animKeyColor: 'white' })).toBe('white')
+    expect(readAnimKeyColorFromNode({})).toBe('')
+  })
+
+  it('round-trips node patch', () => {
+    expect(animKeyColorToNodePatch('black')).toEqual({ animKeyColor: 'black' })
+    expect(animKeyColorToNodePatch('nope')).toEqual({ animKeyColor: '' })
+  })
+
+  it('builds empty prompt for no key', () => {
+    expect(buildAnimKeyColorPrompt('')).toBe('')
+  })
+
+  it('builds zh/en prompts for black & white', () => {
+    const zhBlack = buildAnimKeyColorPrompt('black')
+    expect(zhBlack).toContain('纯黑色')
+    const zhWhite = buildAnimKeyColorPrompt('white', 'zh-CN')
+    expect(zhWhite).toContain('纯白色')
+    const enBlack = buildAnimKeyColorPrompt('black', 'en-US')
+    expect(enBlack).toContain('pure black')
+    const enWhite = buildAnimKeyColorPrompt('white', 'en')
+    expect(enWhite).toContain('pure white')
   })
 })
 

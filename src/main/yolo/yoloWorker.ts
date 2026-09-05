@@ -133,8 +133,15 @@ async function runInfer(
       masks: parsed.candidates.map((c) => ({
         width: maskHw,
         height: maskHw,
-        data: composeMask(c.maskWeights!, parsed.maskProto!, maskHw)
-      }))
+        data: composeMask(c.maskWeights!, parsed.maskProto!, maskHw, params.softMask === true)
+      })),
+      // mask 覆盖整张 letterbox 画布，上层放大回原图需要这份几何
+      letterbox: {
+        size: YOLO_INPUT_SIZE,
+        scale: lb.scale,
+        padX: lb.padX,
+        padY: lb.padY
+      }
     }
     return result
   }

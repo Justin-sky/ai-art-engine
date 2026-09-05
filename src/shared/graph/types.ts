@@ -295,6 +295,8 @@ export interface GraphNodeParams {
   animGraphVersion?: number
   /** 2D帧动画：序列图预览（dataUrl 或 relativePath） */
   animGridImage?: { dataUrl?: string; relativePath?: string }
+  /** 2D帧动画：特效透明化背景模式（''|black|white），生成/切帧按纯色背景键控透明 */
+  animKeyColor?: '' | 'black' | 'white'
   /** 视频生成：输出时长（秒） */
   generateDuration?: number
   /** 视频生成：是否生成音频（模型支持时） */

@@ -432,6 +432,8 @@ export interface NodeExecuteContext {
     cellKey: string
     /** 向内收缩像素；`'auto'` 按格子尺寸估算，用于去掉序列图格线/黑边 */
     edgeInset?: number | 'auto'
+    /** 色度键：把接近纯黑/纯白的像素转透明（2D 特效黑底/白底 → 透明 PNG） */
+    chromaKey?: { color: 'black' | 'white'; threshold?: number; feather?: number }
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
   /** 图层分离：按 z_index 与 bounding box 把底图+透明层合成一张 PNG。 */
   composeImageLayerStack?: (input: {

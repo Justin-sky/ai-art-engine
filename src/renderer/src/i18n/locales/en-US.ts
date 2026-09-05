@@ -933,6 +933,11 @@ export default {
         weakPrefix: 'maybe ',
         weakHint: 'Low confidence, may not be accurate'
       },
+      cutout: {
+        title: 'Local cutout',
+        open: 'Cut out subject',
+        hint: 'Segment the subject locally and save it as a transparent PNG asset'
+      },
       transform: {
         position: 'Position',
         rotation: 'Rotation (°)',
@@ -962,6 +967,29 @@ export default {
       model: 'Describe model usage…',
       default: 'Optional description…'
     }
+  },
+  cutout: {
+    title: 'Local cutout',
+    source: 'Source',
+    noSource: 'No source image to cut out',
+    analyze: 'Detect',
+    analyzing: 'Detecting…',
+    rerun: 'Re-detect',
+    inferenceMs: 'inference {ms}ms',
+    subjects: 'Detected subjects ({n})',
+    empty: 'No subject detected — try lowering the detection confidence',
+    notAnalyzed: 'Press "Detect" to find subjects in the image',
+    params: 'Parameters',
+    detectConf: 'Detection confidence',
+    threshold: 'Mask threshold',
+    feather: 'Edge feather',
+    crop: 'Crop to subject',
+    result: 'Result',
+    resultEmpty: 'The transparent PNG preview shows up here after detection',
+    save: 'Save to library',
+    saving: 'Saving…',
+    saveToTitle: 'Save to library',
+    saveToSubtitle: 'Choose a target folder and file name'
   },
   script: {
     dialog: {
@@ -2665,6 +2693,11 @@ export default {
       rows: 'Rows',
       cols: 'Cols',
       preset: 'Preset',
+      bgKey: 'FX transparency',
+      bgKeyHint: 'Chroma key by background color: generate the sheet on a solid-color background, then near-key pixels turn transparent when splitting frames — engine-ready transparent frames',
+      bgKeyNone: 'Off (keep original)',
+      bgKeyBlack: 'Black bg → transparent',
+      bgKeyWhite: 'White bg → transparent',
       systemPrompt: 'System prompt',
       systemPromptPlaceholder: 'Optional: custom system prompt for generation (empty = default)',
       action: 'Action',
@@ -3472,7 +3505,9 @@ export default {
             embers: 'Embers',
             bubbles: 'Bubbles',
             slash: 'Slash',
-            impact: 'Impact'
+            impact: 'Impact',
+            hit: 'Hit',
+            projectile: 'Projectile'
           },
           frameAnimWushu: {
             xianglong: 'Dragon-Subduing Palms',

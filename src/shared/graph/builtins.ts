@@ -1762,6 +1762,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       animInstruction: '',
       animAssetId: '',
       animGraphVersion: ANIM2D_INNER_GRAPH_VERSION,
+      animKeyColor: '',
       text: ''
     }),
     addable: true,

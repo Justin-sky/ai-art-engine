@@ -617,6 +617,7 @@ import {
   portLimitMaxForDataType,
   readImageGenerateParamsFromNode,
   readAnim2dFromNode,
+  readAnimKeyColorFromNode,
   readVideoGenerateParamsFromNode,
   resolveNodeTextContent,
   resolveNodeType,
@@ -2630,6 +2631,7 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
   }
   if (!sourceUrl) sourceUrl = previewUrl.value || ''
   if (!sourceUrl) return
+  const keyColor = readAnimKeyColorFromNode(props.node.params)
   const next: string[] = []
   for (const key of anim2dCellKeys(s.rows, s.cols)) {
     try {
@@ -2637,7 +2639,8 @@ async function loadCardAnimFramesFromSequence(): Promise<void> {
         sourceDataUrl: sourceUrl,
         state: { rows: s.rows, cols: s.cols, selected: [] },
         cellKey: key,
-        edgeInset: 'auto'
+        edgeInset: 'auto',
+        ...(keyColor ? { chromaKey: { color: keyColor } } : {})
       })
       if (composed.dataUrl?.trim()) next.push(composed.dataUrl.trim())
     } catch {

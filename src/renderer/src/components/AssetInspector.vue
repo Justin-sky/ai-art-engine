@@ -13,7 +13,10 @@
       <span
         class="icon"
         :title="typeLabel"
-      >{{ typeIcon }}</span>
+      ><WorkspaceItemIcon
+          :icon="typeIcon"
+          :size="20"
+        /></span>
     </div>
 
     <label>
@@ -80,6 +83,26 @@
         class="hint"
       >
         {{ asset.visionTags.error || t('asset.inspector.vision.pending') }}
+      </p>
+    </section>
+
+    <section
+      v-if="cutoutSourcePath"
+      class="cutout-section"
+    >
+      <div class="section-label">
+        {{ t('asset.inspector.cutout.title') }}
+      </div>
+      <button
+        type="button"
+        class="cutout-btn"
+        :disabled="!cutoutUrl"
+        @click="openCutout"
+      >
+        {{ t('asset.inspector.cutout.open') }}
+      </button>
+      <p class="hint">
+        {{ t('asset.inspector.cutout.hint') }}
       </p>
     </section>
 
@@ -486,12 +509,15 @@ import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
+import { resolveAssetFileUrl } from '../features/media/assetUrlCache'
+import { openCutoutDialog } from '../features/yolo/cutoutDialog'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import ModelPreview from './ModelPreview.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
 import AssetMediaPreview from './AssetMediaPreview.vue'
 import AssetHostInterfacePanel from './AssetHostInterfacePanel.vue'
+import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import type { ModelSceneDefaults } from '../features/director/modelSceneDefaults'
 
 const project = useProjectStore()
@@ -868,6 +894,34 @@ function visionTagTitle(tag: VisionObjectTag): string {
     : base
 }
 
+/** 一键抠图：仅图片资产且有落盘的源图文件时可用 */
+const cutoutSourcePath = computed(() => {
+  const a = asset.value
+  if (!a || a.type !== 'image') return ''
+  return a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+})
+
+const cutoutUrl = ref('')
+
+watch(
+  cutoutSourcePath,
+  async (path) => {
+    cutoutUrl.value = path ? await resolveAssetFileUrl(path) : ''
+  },
+  { immediate: true }
+)
+
+function openCutout(): void {
+  const a = asset.value
+  if (!a || !cutoutUrl.value) return
+  openCutoutDialog({
+    url: cutoutUrl.value,
+    name: a.name,
+    relativePath: cutoutSourcePath.value,
+    assetId: a.id
+  })
+}
+
 function readGenString(gen: Record<string, unknown> | undefined, key: string): string {
   const v = gen?.[key]
   return typeof v === 'string' ? v : ''
@@ -1183,6 +1237,31 @@ async function persist(): Promise<void> {
 .vision-section {
   display: grid;
   gap: 8px;
+}
+
+.cutout-section {
+  display: grid;
+  gap: 8px;
+}
+
+.cutout-btn {
+  justify-self: start;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cutout-btn:hover:not(:disabled) {
+  background: #2f6fd0;
+}
+
+.cutout-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .vision-tags {
