@@ -117,6 +117,8 @@ const viewRegistry: Record<string, Component> = {
   'node.crop': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.gridSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.layerSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.cutout': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.compose': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue'))
 }
 

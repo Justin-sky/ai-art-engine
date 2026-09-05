@@ -17,6 +17,8 @@ export interface ImageCutoutState {
   cropToSubject: boolean
   /** 只保留 person 类实例；false 保留全部检测实例 */
   personOnly: boolean
+  /** 用户在抠图工具里勾选保留的检测实例下标；null/空 = 按 personOnly 默认规则 */
+  selected: number[] | null
 }
 
 export const DEFAULT_IMAGE_CUTOUT: ImageCutoutState = {
@@ -24,7 +26,8 @@ export const DEFAULT_IMAGE_CUTOUT: ImageCutoutState = {
   threshold: 0.5,
   feather: 2,
   cropToSubject: true,
-  personOnly: true
+  personOnly: true,
+  selected: null
 }
 
 const MIN_FEATHER = 0
@@ -38,12 +41,18 @@ export function normalizeImageCutout(
   raw?: Partial<ImageCutoutState> | null
 ): ImageCutoutState {
   const base = { ...DEFAULT_IMAGE_CUTOUT, ...(raw ?? {}) }
+  const selected = Array.isArray(base.selected)
+    ? base.selected
+        .filter((n) => Number.isFinite(n) && n >= 0)
+        .map((n) => Math.trunc(n))
+    : null
   return {
     confThreshold: clamp(Number(base.confThreshold), 0.05, 0.9),
     threshold: clamp(Number(base.threshold), 0.05, 1),
     feather: Math.round(clamp(Number(base.feather), MIN_FEATHER, MAX_FEATHER)),
     cropToSubject: base.cropToSubject !== false,
-    personOnly: base.personOnly !== false
+    personOnly: base.personOnly !== false,
+    selected: selected && selected.length > 0 ? selected : null
   }
 }
 

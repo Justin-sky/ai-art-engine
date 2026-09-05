@@ -917,7 +917,9 @@ import {
   type ImageRedrawState,
   type ImageEraseState,
   type ImageMatteState,
+  type ImageComposeState,
   type ImageCropState,
+  type ImageCutoutState,
   type ImageGridSplitState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
@@ -925,7 +927,9 @@ import {
   readImageRedrawFromNode,
   readImageEraseFromNode,
   readImageMatteFromNode,
+  readImageComposeFromNode,
   readImageCropFromNode,
+  readImageCutoutFromNode,
   readImageGridSplitFromNode,
   readImageLayerSplitFromNode,
   nestLayerSplitResult,
@@ -984,7 +988,8 @@ import { useGraphNodeInteraction } from '../graph/useGraphNodeInteraction'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
   clearAssetUrlCaches,
-  resolveAssetFileUrl as resolveCachedAssetFileUrl
+  resolveAssetFileUrl as resolveCachedAssetFileUrl,
+  resolveAssetPreviewUrl as resolveCachedAssetPreviewUrl
 } from '../features/media/assetUrlCache'
 import {
   graphEditorHosts,
@@ -3421,7 +3426,9 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'image.matte',
       'image.crop',
       'image.gridSplit',
-      'image.layerSplit'
+      'image.layerSplit',
+      'image.cutout',
+      'image.compose'
     ]
   },
   {
@@ -6294,6 +6301,22 @@ async function resolveNodeUpstreamPreviewUrl(nodeId: string): Promise<string> {
       }
     }
   }
+
+  // 兜底：上游形态较宽（宿主内图、world 生成、引用资产等）时，主分支可能全部 miss。
+  // 复用 select-image 的收集逻辑（与 runStates/params 路径一致）取首个可用的上游图。
+  for (const item of collectSelectImageItems(nodeId)) {
+    const dataUrl = item.dataUrl?.trim()
+    if (dataUrl) return dataUrl
+    const url = await resolveAssetFileUrl(item.relativePath)
+    if (url) return url
+    // 原图文件不可读时退回缩略图预览（卡片同款），仅用于 UI 叠框，避免源图完全缺失
+    try {
+      const preview = await resolveCachedAssetPreviewUrl(item.relativePath ?? '')
+      if (preview) return preview
+    } catch {
+      /* 忽略，继续找下一个候选 */
+    }
+  }
   return ''
 }
 
@@ -6316,6 +6339,8 @@ async function resolveNodeEditorSourceUrl(
   return resolveNodeUpstreamPreviewUrl(nodeId)
 }
 
+/** 编辑窗源图加载超时：上游图解析迟迟不返回时先放行，避免工具页无限停在「加载源图中」 */
+const EDITOR_SOURCE_URL_TIMEOUT_MS = 6000
 /** 编辑窗先打开，再异步填源图；关闭或换节点时丢弃过期结果 */
 let editorSourceLoadSeq = 0
 async function fillEditorSourceUrl(
@@ -6325,7 +6350,25 @@ async function fillEditorSourceUrl(
   options?: { preferUpstream?: boolean }
 ): Promise<void> {
   const seq = ++editorSourceLoadSeq
-  const url = await resolveNodeEditorSourceUrl(nodeId, options)
+  const load = (async () => {
+    try {
+      return await resolveNodeEditorSourceUrl(nodeId, options)
+    } catch {
+      return ''
+    }
+  })()
+  const timedOut = await Promise.race([
+    load.then(() => false),
+    new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(true), EDITOR_SOURCE_URL_TIMEOUT_MS)
+    )
+  ])
+  if (seq !== editorSourceLoadSeq || !isCurrent()) return
+  // 超时：先以空源图放行（工具页据此显示「无上游」提示），真实结果稍后到达仍会回填
+  if (timedOut) {
+    assign('')
+  }
+  const url = await load
   if (seq !== editorSourceLoadSeq || !isCurrent()) return
   assign(url)
 }
@@ -7303,6 +7346,183 @@ function flushCrop(): void {
   recordGraphChange('crop', before)
 }
 
+const cutout = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageCutoutState | null,
+  historyBefore: null as GraphDocument | null,
+  sourceUrl: '',
+  sourceLoading: false
+})
+
+async function onCutoutOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  cutout.nodeId = nodeId
+  cutout.setup = readImageCutoutFromNode(node.params)
+  cutout.sourceUrl = ''
+  cutout.sourceLoading = true
+  cutout.historyBefore = buildGraphJson()
+  cutout.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      cutout.sourceUrl = url
+      cutout.sourceLoading = false
+    },
+    () => cutout.open && cutout.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (cutout.open && cutout.nodeId === nodeId) cutout.sourceLoading = false
+}
+
+function closeCutout(): void {
+  cutout.open = false
+  cutout.nodeId = ''
+  cutout.setup = null
+  cutout.historyBefore = null
+  cutout.sourceUrl = ''
+  cutout.sourceLoading = false
+}
+
+/** 工具页产物物化：把 dataUrl 存为节点可持久化的相对路径产物，并写回 generatedImages / preview 字段 */
+async function materializeToolResult(
+  node: GraphNode,
+  dataUrl: string | undefined,
+  kind: 'cutout' | 'compose'
+): Promise<Record<string, unknown>> {
+  const params: Record<string, unknown> = {}
+  const url = dataUrl?.trim()
+  if (!url) return params
+  try {
+    const stamp = Date.now()
+    const id = `${kind}:${node.id}:${stamp}`
+    const relativePath = await saveGraphRunMediaForNode({
+      dataUrl: url,
+      key: `${kind}:${node.id}:${stamp}`,
+      node,
+      hostAssetId: props.assetId ?? null
+    })
+    const previous = (node.params.generatedImages ?? []).filter(
+      (item) => item.id?.trim() !== id
+    )
+    const item: GraphImageItem = {
+      id,
+      dataUrl: '',
+      createdAt: new Date().toISOString(),
+      relativePath
+    }
+    params.generatedImages = [...previous, item]
+    params.selectedImageId = id
+    params.previewDataUrl = undefined
+    params.previewRelativePath = relativePath
+  } catch (err) {
+    console.warn(`[graph] save ${kind} media failed, keep params only`, err)
+  }
+  return params
+}
+
+/** 保存抠图工具编辑：把参数（含勾选实例）与产物一起写回节点，卡片立即显示结果 */
+async function saveCutout(payload: {
+  imageCutout: ImageCutoutState
+  dataUrl?: string
+}): Promise<void> {
+  const nodeId = cutout.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = cutout.historyBefore ?? buildGraphJson()
+  const mediaParams = await materializeToolResult(node, payload.dataUrl, 'cutout')
+  node.params = {
+    ...node.params,
+    imageCutout: payload.imageCutout,
+    ...mediaParams
+  }
+  cutout.setup = payload.imageCutout
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('cutout', before)
+  closeCutout()
+}
+
+/** dive 面包屑回退前结束抠图编辑，补记撤销命令（与 crop 一致）。 */
+function flushCutout(): void {
+  if (!cutout.open) return
+  const before = cutout.historyBefore
+  if (!before) return
+  cutout.historyBefore = null
+  recordGraphChange('cutout', before)
+}
+
+const compose = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageComposeState | null,
+  historyBefore: null as GraphDocument | null,
+  sourceUrl: '',
+  sourceLoading: false
+})
+
+async function onComposeOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  compose.nodeId = nodeId
+  compose.setup = readImageComposeFromNode(node.params)
+  compose.sourceUrl = ''
+  compose.sourceLoading = true
+  compose.historyBefore = buildGraphJson()
+  compose.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      compose.sourceUrl = url
+      compose.sourceLoading = false
+    },
+    () => compose.open && compose.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (compose.open && compose.nodeId === nodeId) compose.sourceLoading = false
+}
+
+function closeCompose(): void {
+  compose.open = false
+  compose.nodeId = ''
+  compose.setup = null
+  compose.historyBefore = null
+  compose.sourceUrl = ''
+  compose.sourceLoading = false
+}
+
+/** 保存智能构图工具编辑：参数（含主体框缓存）与产物一起写回节点，卡片立即显示结果 */
+async function saveCompose(payload: {
+  imageCompose: ImageComposeState
+  dataUrl?: string
+}): Promise<void> {
+  const nodeId = compose.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = compose.historyBefore ?? buildGraphJson()
+  const mediaParams = await materializeToolResult(node, payload.dataUrl, 'compose')
+  node.params = {
+    ...node.params,
+    imageCompose: payload.imageCompose,
+    ...mediaParams
+  }
+  compose.setup = payload.imageCompose
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('compose', before)
+  closeCompose()
+}
+
+/** dive 面包屑回退前结束构图编辑，补记撤销命令（与 cutout 一致）。 */
+function flushCompose(): void {
+  if (!compose.open) return
+  const before = compose.historyBefore
+  if (!before) return
+  compose.historyBefore = null
+  recordGraphChange('compose', before)
+}
+
 const gridSplit = reactive({
   open: false,
   nodeId: '' as string,
@@ -7754,6 +7974,8 @@ const graphDialogsApi = {
   crop,
   gridSplit,
   layerSplit,
+  cutout,
+  compose,
   closeTextNotepad,
   saveTextNotepad,
   closeSelectImage,
@@ -7805,7 +8027,13 @@ const graphDialogsApi = {
   previewLayerSplit,
   saveLayerSplit,
   splitSelectedLayerSplit,
-  flushLayerSplit
+  flushLayerSplit,
+  closeCutout,
+  saveCutout,
+  flushCutout,
+  closeCompose,
+  saveCompose,
+  flushCompose
 } as GraphEditorDialogsApi
 
 provide(graphEditorDialogsKey, graphDialogsApi)
@@ -8147,7 +8375,9 @@ function registerNodeToolHost(): void {
       'node.matte': (nodeId) => onMatteOpen(nodeId),
       'node.crop': (nodeId) => onCropOpen(nodeId),
       'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId),
-      'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId)
+      'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId),
+      'node.cutout': (nodeId) => onCutoutOpen(nodeId),
+      'node.compose': (nodeId) => onComposeOpen(nodeId)
     }
   })
 }

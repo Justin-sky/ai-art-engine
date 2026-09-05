@@ -245,6 +245,14 @@ export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean
   return node.typeId === 'image.layerSplit'
 }
 
+export function isCutoutNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.cutout'
+}
+
+export function isComposeNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.compose'
+}
+
 export function isComicPageNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'comic.page'
 }

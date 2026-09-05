@@ -2,10 +2,12 @@ import type { InjectionKey } from 'vue'
 import type {
   AdVariantMatrix,
   EmotionPadState,
+  ImageComposeState,
   ImageCropState,
   ImageExpandState,
   ImageEraseState,
   ImageGridSplitState,
+  ImageCutoutState,
   ImageLayerSplitState,
   ImageLayerSplitNestedRequest,
   ImageMatteState,
@@ -144,6 +146,18 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  cutout: {
+    open: boolean
+    setup: ImageCutoutState | null
+    sourceUrl: string
+    sourceLoading: boolean
+  }
+  compose: {
+    open: boolean
+    setup: ImageComposeState | null
+    sourceUrl: string
+    sourceLoading: boolean
+  }
   layerSplit: {
     open: boolean
     setup: ImageLayerSplitState | null
@@ -206,6 +220,14 @@ export type GraphEditorDialogsApi = {
   saveGridSplit: (payload: unknown) => void
   /** dive 面包屑回退前提交网格拆分的实时预览编辑，补记撤销命令 */
   flushGridSplit: () => void
+  closeCutout: () => void
+  saveCutout: (payload: { imageCutout: ImageCutoutState; dataUrl?: string }) => void | Promise<void>
+  /** dive 面包屑回退前结束抠图编辑，补记撤销命令 */
+  flushCutout: () => void
+  closeCompose: () => void
+  saveCompose: (payload: { imageCompose: ImageComposeState; dataUrl?: string }) => void | Promise<void>
+  /** dive 面包屑回退前结束构图编辑，补记撤销命令 */
+  flushCompose: () => void
   closeLayerSplit: () => void
   previewLayerSplit: (payload: unknown) => void
   saveLayerSplit: (payload: unknown) => void

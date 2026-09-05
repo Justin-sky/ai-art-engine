@@ -995,14 +995,20 @@ export default {
     save: 'Save to library',
     saving: 'Saving…',
     saveToTitle: 'Save to library',
-    saveToSubtitle: 'Choose a target folder and file name'
+    saveToSubtitle: 'Choose a target folder and file name',
+    loadingSource: 'Loading source image…',
+    apply: 'Apply to node',
+    applyHint: 'Parameters and selected subjects are written to the current node'
   },
   compose: {
     title: 'Smart framing',
     subject: 'Subject',
     subjects: 'People detected ({n})',
     noPerson: 'No person detected in this image — framing is unavailable',
+    noSource: 'No upstream image found — connect an image to the node on the canvas first',
     noTags: 'Vision tags are not ready yet — wait for the library to finish tagging and retry',
+    detecting: 'Detecting people in the source image…',
+    loadingSource: 'Loading source image…',
     source: 'Frame preview',
     sourceLegend: 'Yellow = active subject · green = crop frame · grey dashed = safe area',
     frame: 'Target frame',
@@ -1021,7 +1027,9 @@ export default {
     save: 'Save to asset library',
     saving: 'Saving…',
     saveToTitle: 'Save to asset library',
-    saveToSubtitle: 'Choose a target folder and file name'
+    saveToSubtitle: 'Choose a target folder and file name',
+    apply: 'Apply to node',
+    applyHint: 'Subject, frame and strategy are written to the current node'
   },
   script: {
     dialog: {
@@ -3036,6 +3044,8 @@ export default {
         crop: 'Crop',
         gridSplit: 'Grid split',
         layerSplit: 'Layer split',
+        cutout: 'Cutout',
+        compose: 'Smart framing',
         toPrompt: 'Image reverse prompt',
         adVariants: 'Ad variants'
       },

@@ -992,14 +992,20 @@ export default {
     save: '保存到资产库',
     saving: '保存中…',
     saveToTitle: '保存到资产库',
-    saveToSubtitle: '选择目标文件夹并输入文件名'
+    saveToSubtitle: '选择目标文件夹并输入文件名',
+    loadingSource: '加载源图中…',
+    apply: '应用到节点',
+    applyHint: '参数与勾选的主体将写入当前节点'
   },
   compose: {
     title: '智能构图',
     subject: '主体',
     subjects: '人物主体（{n}）',
     noPerson: '画面中未检测到人物主体，无法构图',
+    noSource: '未检测到上游图片，请在画布为该节点接入图片后再试',
     noTags: '素材尚未完成视觉打标，稍后在素材库等待打标完成再试',
+    detecting: '检测人物主体中…',
+    loadingSource: '加载源图中…',
     source: '构图预览',
     sourceLegend: '黄框＝当前主体，绿框＝构图裁切范围，灰虚线＝安全区',
     frame: '目标画幅',
@@ -1018,7 +1024,9 @@ export default {
     save: '保存到资产库',
     saving: '保存中…',
     saveToTitle: '保存到资产库',
-    saveToSubtitle: '选择目标文件夹并输入文件名'
+    saveToSubtitle: '选择目标文件夹并输入文件名',
+    apply: '应用到节点',
+    applyHint: '主体、画幅与策略将写入当前节点'
   },
   script: {
     dialog: {
@@ -3011,6 +3019,8 @@ export default {
         crop: '裁剪',
         gridSplit: '宫格切分',
         layerSplit: '图层分离',
+        cutout: '本地抠图',
+        compose: '智能构图',
         toPrompt: '图片反推提示词',
         adVariants: '广告变体'
       },

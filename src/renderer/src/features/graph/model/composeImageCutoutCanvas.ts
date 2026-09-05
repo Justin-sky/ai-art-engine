@@ -20,8 +20,13 @@ export async function composeImageCutoutCanvas(input: {
     state.confThreshold
   )
 
+  // 优先使用抠图工具里用户勾选的实例；勾选失效（检测结果漂移）时回退默认规则
+  const picked = (state.selected ?? [])
+    .filter((index) => analysis.instances.some((it) => it.index === index))
   let selected: number[]
-  if (state.personOnly) {
+  if (picked.length) {
+    selected = picked
+  } else if (state.personOnly) {
     selected = analysis.instances
       .filter((it) => it.label === 'person')
       .map((it) => it.index)

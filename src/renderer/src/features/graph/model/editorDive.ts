@@ -39,6 +39,8 @@ export type EditorDiveViewId =
   | 'node.crop'
   | 'node.gridSplit'
   | 'node.layerSplit'
+  | 'node.cutout'
+  | 'node.compose'
   | 'node.instruction'
   | 'comic.page'
   | 'media.preview'
@@ -65,6 +67,8 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.crop'
   | 'node.gridSplit'
   | 'node.layerSplit'
+  | 'node.cutout'
+  | 'node.compose'
   | 'node.instruction'
 >
 

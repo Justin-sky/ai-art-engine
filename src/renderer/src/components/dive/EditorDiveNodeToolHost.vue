@@ -214,6 +214,26 @@
       @save="api.saveGridSplit as never"
     />
 
+    <CutoutNodeToolDialog
+      v-else-if="viewId === 'node.cutout' && api.cutout.open"
+      :open="true"
+      :setup="api.cutout.setup"
+      :source-url="api.cutout.sourceUrl"
+      :source-loading="api.cutout.sourceLoading"
+      @close="onClose(api.closeCutout)"
+      @save="api.saveCutout as never"
+    />
+
+    <ComposeNodeToolDialog
+      v-else-if="viewId === 'node.compose' && api.compose.open"
+      :open="true"
+      :setup="api.compose.setup"
+      :source-url="api.compose.sourceUrl"
+      :source-loading="api.compose.sourceLoading"
+      @close="onClose(api.closeCompose)"
+      @save="api.saveCompose as never"
+    />
+
     <LayerSplitEditorDialog
       v-else-if="viewId === 'node.layerSplit' && api.layerSplit.open"
       :open="true"
@@ -274,6 +294,8 @@ import RedrawEditorDialog from '../RedrawEditorDialog.vue'
 import CropEditorDialog from '../CropEditorDialog.vue'
 import GridSplitEditorDialog from '../GridSplitEditorDialog.vue'
 import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
+import CutoutNodeToolDialog from '../CutoutNodeToolDialog.vue'
+import ComposeNodeToolDialog from '../ComposeNodeToolDialog.vue'
 
 const props = defineProps<{
   frameKey: string
@@ -341,6 +363,10 @@ const toolOpen = computed(() => {
       return current.gridSplit.open
     case 'node.layerSplit':
       return current.layerSplit.open
+    case 'node.cutout':
+      return current.cutout.open
+    case 'node.compose':
+      return current.compose.open
     default:
       return false
   }
@@ -363,6 +389,12 @@ useEditorDiveFrameFlush(
         break
       case 'node.gridSplit':
         current.flushGridSplit()
+        break
+      case 'node.cutout':
+        current.flushCutout()
+        break
+      case 'node.compose':
+        current.flushCompose()
         break
       default:
         break
@@ -469,6 +501,12 @@ function closeCurrent(): void {
       break
     case 'node.layerSplit':
       current.closeLayerSplit()
+      break
+    case 'node.cutout':
+      current.closeCutout()
+      break
+    case 'node.compose':
+      current.closeCompose()
       break
     default:
       break
