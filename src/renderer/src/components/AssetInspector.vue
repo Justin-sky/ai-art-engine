@@ -106,6 +106,26 @@
       </p>
     </section>
 
+    <section
+      v-if="cutoutSourcePath"
+      class="cutout-section"
+    >
+      <div class="section-label">
+        {{ t('asset.inspector.compose.title') }}
+      </div>
+      <button
+        type="button"
+        class="cutout-btn"
+        :disabled="!cutoutUrl"
+        @click="openComposer"
+      >
+        {{ t('asset.inspector.compose.open') }}
+      </button>
+      <p class="hint">
+        {{ t('asset.inspector.compose.hint') }}
+      </p>
+    </section>
+
     <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
@@ -511,6 +531,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { resolveAssetFileUrl } from '../features/media/assetUrlCache'
 import { openCutoutDialog } from '../features/yolo/cutoutDialog'
+import { openComposerDialog } from '../features/composition/compositionDialog'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import ModelPreview from './ModelPreview.vue'
@@ -919,6 +940,25 @@ function openCutout(): void {
     name: a.name,
     relativePath: cutoutSourcePath.value,
     assetId: a.id
+  })
+}
+
+function openComposer(): void {
+  const a = asset.value
+  if (!a || !cutoutUrl.value) return
+  const tags = a.visionTags
+  const persons = (tags?.objects ?? []).filter((o) => o.label === 'person')
+  const tagged =
+    tags?.status === 'ok' && Number(tags?.imageWidth) > 0 && Number(tags?.imageHeight) > 0
+  openComposerDialog({
+    url: cutoutUrl.value,
+    name: a.name,
+    relativePath: cutoutSourcePath.value,
+    assetId: a.id,
+    imageWidth: tags?.imageWidth,
+    imageHeight: tags?.imageHeight,
+    persons,
+    tagged
   })
 }
 

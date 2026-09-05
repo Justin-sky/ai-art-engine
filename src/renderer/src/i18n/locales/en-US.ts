@@ -938,6 +938,11 @@ export default {
         open: 'Cut out subject',
         hint: 'Segment the subject locally and save it as a transparent PNG asset'
       },
+      compose: {
+        title: 'Smart framing',
+        open: 'Smart framing',
+        hint: 'Detect the person and reframe to a target aspect, saving the crop as a PNG asset'
+      },
       transform: {
         position: 'Position',
         rotation: 'Rotation (°)',
@@ -989,6 +994,32 @@ export default {
     save: 'Save to library',
     saving: 'Saving…',
     saveToTitle: 'Save to library',
+    saveToSubtitle: 'Choose a target folder and file name'
+  },
+  compose: {
+    title: 'Smart framing',
+    subject: 'Subject',
+    subjects: 'People detected ({n})',
+    noPerson: 'No person detected in this image — framing is unavailable',
+    noTags: 'Vision tags are not ready yet — wait for the library to finish tagging and retry',
+    source: 'Frame preview',
+    sourceLegend: 'Yellow = active subject · green = crop frame · grey dashed = safe area',
+    frame: 'Target frame',
+    frame9_16: '9:16 portrait',
+    frame1_1: '1:1 square',
+    frame16_9: '16:9 landscape',
+    strategy: 'Strategy',
+    strategyCenter: 'Centered',
+    strategyCenterHint: 'Align the subject center with the frame center',
+    strategyHeadroom: 'Headroom',
+    strategyHeadroomHint: 'Keep headroom above and place the subject in the lower third',
+    safeArea: 'Safe-area guides',
+    clipped: 'Note: the current crop cuts off part of the subject (usually feet or sides)',
+    output: 'Framed result',
+    outputEmpty: 'Pick a subject and frame to preview the reframed crop here',
+    save: 'Save to asset library',
+    saving: 'Saving…',
+    saveToTitle: 'Save to asset library',
     saveToSubtitle: 'Choose a target folder and file name'
   },
   script: {

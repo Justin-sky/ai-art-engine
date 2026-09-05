@@ -291,7 +291,6 @@ export function defringeRgba(
   const minA = opts.minAlpha ?? 0.05
   const maxA = opts.maxAlpha ?? 0.95
   const strength = clamp(opts.strength ?? 0.9, 0, 1)
-  const limit = Math.min(alpha.length, width * height)
   const dirX = [1, -1, 0, 0]
   const dirY = [0, 0, 1, -1]
   for (let y = 0; y < height; y++) {
