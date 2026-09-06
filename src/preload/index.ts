@@ -67,6 +67,16 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.VIDEO_DETECT_KEYFRAMES, relativePath),
   extractVideoFrames: (relativePath: string, count: number) =>
     ipcRenderer.invoke(IpcChannels.VIDEO_EXTRACT_FRAMES, { relativePath, count }),
+  grabVideoFramesAtTimestamps: (
+    relativePath: string,
+    timestamps: number[],
+    options?: { width?: number }
+  ) =>
+    ipcRenderer.invoke(IpcChannels.VIDEO_GRAB_TIMESTAMPS, {
+      relativePath,
+      timestamps,
+      options
+    }),
   analyzeVideoBeats: (assetId: string) =>
     ipcRenderer.invoke(IpcChannels.VIDEO_BEAT_ANALYZE, assetId),
   installFfmpeg: () => ipcRenderer.invoke(IpcChannels.FFMPEG_INSTALL),

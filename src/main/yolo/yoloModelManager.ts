@@ -17,7 +17,6 @@
 import { BrowserWindow, dialog } from 'electron'
 import { createWriteStream, existsSync } from 'fs'
 import { mkdir, rename, stat, unlink } from 'fs/promises'
-import { once } from 'events'
 import { join } from 'path'
 import { IpcChannels } from '@shared/ipc'
 import type { YoloModelDownloadProgress, YoloModelOperationResult } from '@shared/yolo'
@@ -103,11 +102,21 @@ export async function downloadYoloModel(modelId: string): Promise<YoloModelOpera
           totalBytes: total > 0 ? total : undefined
         })
         if (!ok) {
-          const outcome = await Promise.race([
-            once(writer, 'drain').then(() => 'drain' as const),
-            once(writer, 'error').then(() => 'error' as const)
-          ])
-          if (outcome === 'error' || writerError) throw writerError ?? new Error('写入中断') // cjk-ok
+          // 等待可写缓冲排空。error 一次性监听在 drain 先到时若不主动移除，
+          // 会按背压次数向同一 WriteStream 永久累积 error 监听器（MaxListeners 告警）。
+          await new Promise<void>((resolve, reject) => {
+            const onDrain = (): void => {
+              writer.removeListener('error', onError)
+              resolve()
+            }
+            const onError = (err: Error): void => {
+              writer.removeListener('drain', onDrain)
+              reject(err)
+            }
+            writer.once('drain', onDrain)
+            writer.once('error', onError)
+          })
+          if (writerError) throw writerError // cjk-ok
         }
       }
       await new Promise<void>((resolve, reject) => {

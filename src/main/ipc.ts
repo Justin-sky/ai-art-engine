@@ -232,6 +232,18 @@ export function registerIpcHandlers(): void {
     (input: { relativePath: string; count: number }) =>
       projectService.extractVideoFrames(input.relativePath, input.count)
   )
+  handle(
+    IpcChannels.VIDEO_GRAB_TIMESTAMPS,
+    (input: {
+      relativePath: string
+      timestamps: number[]
+      options?: { width?: number }
+    }) => projectService.grabVideoFramesAtTimestamps(
+      input.relativePath,
+      input.timestamps,
+      input.options
+    )
+  )
   handle(IpcChannels.VIDEO_BEAT_ANALYZE, (assetId: string) =>
     projectService.analyzeVideoBeats(assetId)
   )

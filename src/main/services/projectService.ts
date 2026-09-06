@@ -13,7 +13,10 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { randomBytes, randomUUID } from 'crypto'
 import { detectVideoKeyframes } from './ffprobeService'
-import { extractVideoFrames as extractVideoFramesImpl } from './videoFrameService'
+import {
+  extractVideoFrames as extractVideoFramesImpl,
+  grabFramesAtTimestamps as grabFramesAtTimestampsImpl
+} from './videoFrameService'
 import { separateAudioStems } from './audioSeparationService'
 import {
   DEFAULT_RESOLUTION,
@@ -1215,6 +1218,24 @@ class ProjectService {
       projectRoot: root,
       relativePath: relativePath.trim(),
       count: Number.isFinite(count) ? Math.floor(count) : 4
+    })
+  }
+
+  /** 视频指定时间点抽帧（姿态进导演台等）；无 ffmpeg / 文件缺失时返回空数组 */
+  async grabVideoFramesAtTimestamps(
+    relativePath: string,
+    timestamps: number[],
+    options?: { width?: number }
+  ): Promise<Array<{ timeSec: number; dataUrl: string }>> {
+    const root = this.getRoot()
+    if (!relativePath?.trim() || !Array.isArray(timestamps) || !timestamps.length) return []
+    const abs = assertInsideProject(root, join(root, relativePath.trim()))
+    if (!existsSync(abs)) return []
+    return grabFramesAtTimestampsImpl({
+      projectRoot: root,
+      relativePath: relativePath.trim(),
+      timestamps,
+      width: options?.width
     })
   }
 

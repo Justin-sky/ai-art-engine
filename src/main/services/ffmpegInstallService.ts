@@ -17,7 +17,6 @@
 import { app } from 'electron'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { once } from 'events'
 import { createWriteStream, existsSync } from 'fs'
 import { copyFile, mkdir, readdir, rm } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -138,11 +137,21 @@ async function downloadTo(url: string, destAbs: string): Promise<void> {
         totalBytes: total > 0 ? total : undefined
       })
       if (!ok) {
-        const outcome = await Promise.race([
-          once(writer, 'drain').then(() => 'drain' as const),
-          once(writer, 'error').then(() => 'error' as const)
-        ])
-        if (outcome === 'error' || writerError) throw writerError ?? new Error('ffmpeg download aborted')
+        // 等待可写缓冲排空。error 一次性监听在 drain 先到时若不主动移除，
+        // 会按背压次数向同一 WriteStream 永久累积 error 监听器（MaxListeners 告警）。
+        await new Promise<void>((resolve, reject) => {
+          const onDrain = (): void => {
+            writer.removeListener('error', onError)
+            resolve()
+          }
+          const onError = (err: Error): void => {
+            writer.removeListener('drain', onDrain)
+            reject(err)
+          }
+          writer.once('drain', onDrain)
+          writer.once('error', onError)
+        })
+        if (writerError) throw writerError ?? new Error('ffmpeg download aborted')
       }
     }
     await new Promise<void>((resolve, reject) => {

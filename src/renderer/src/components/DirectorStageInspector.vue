@@ -436,6 +436,18 @@
           v-else
           class="fields pose-panel"
         >
+          <div class="pose-media-open-row">
+            <button
+              type="button"
+              class="pose-media-open-btn"
+              :disabled="obj.locked || !poseBoneNames.length"
+              :title="t('director.stage.poseFromMediaHint')"
+              @click="openPoseFromMediaDialog"
+            >
+              <span class="pose-media-open-icon">+</span>
+              {{ t('director.stage.poseFromMediaOpen') }}
+            </button>
+          </div>
           <div class="section-label">
             {{ t('director.stage.poseAssets') }}
           </div>
@@ -1137,6 +1149,15 @@
     @close="closeBlockoutDialog"
     @generate="onGenerateBlockout"
   />
+
+  <DirectorPoseFromMediaDialog
+    :open="poseFromMediaOpen"
+    :scene="scene"
+    :object-id="obj?.id ?? ''"
+    :object-name="obj?.name ?? ''"
+    :object-locked="obj?.locked ?? false"
+    @close="closePoseFromMediaDialog"
+  />
 </template>
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -1206,6 +1227,7 @@ import {
 } from '../stores/workspace'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import DirectorStageBlockoutDialog from './DirectorStageBlockoutDialog.vue'
+import DirectorPoseFromMediaDialog from './DirectorPoseFromMediaDialog.vue'
 
 withDefaults(
   defineProps<{
@@ -1241,6 +1263,7 @@ const BLOCKOUT_LOG_NODE_ID = 'director.blockout'
 const blockoutDialogOpen = ref(false)
 const blockoutGenerating = ref(false)
 const blockoutError = ref('')
+const poseFromMediaOpen = ref(false)
 
 const posX = ref(0)
 const posY = ref(0)
@@ -1665,6 +1688,16 @@ function openBlockoutDialog(): void {
 function closeBlockoutDialog(): void {
   if (blockoutGenerating.value) return
   blockoutDialogOpen.value = false
+}
+
+function openPoseFromMediaDialog(): void {
+  const o = obj.value
+  if (!o || o.locked) return
+  poseFromMediaOpen.value = true
+}
+
+function closePoseFromMediaDialog(): void {
+  poseFromMediaOpen.value = false
 }
 
 function applySceneBlockoutObjects(
@@ -2935,6 +2968,37 @@ onBeforeUnmount(() => {
 .pose-preset-save-btn:hover:not(:disabled),
 .pose-preset-reset-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg-elevated) 92%, white 8%);
+}
+
+.pose-media-open-row {
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.pose-media-open-btn {
+  flex: 1;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pose-media-open-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pose-media-open-icon {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .pose-asset-actions {

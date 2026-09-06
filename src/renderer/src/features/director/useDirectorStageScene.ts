@@ -132,6 +132,7 @@ import {
   encodeBonePoseNormalized,
   mapNormalizedPoseToTargetBones
 } from './poseAsset'
+import type { ImagePoseBindBone } from './imagePoseSolver'
 import {
   createPoseSkeletonOverlay,
   objectHasSkeleton,
@@ -3449,6 +3450,97 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       else next[name] = { x: rot.x, y: rot.y, z: rot.z }
     }
     patchObjectBonePose(objectId, Object.keys(next).length ? next : undefined)
+  }
+
+  /**
+   * 目标角色「可编辑主链骨骼」的 bind 局部 TRS（名称 / 几何父骨 / 位置 / 四元数）。
+   * 供图片/视频姿势解算器（imagePoseSolver）作为 bind 参考；无绑定快照时返回空数组。
+   */
+  function listObjectPoseBindBones(objectId: string): ImagePoseBindBone[] {
+    const mesh = objectMeshes.get(objectId)
+    const snapshot = bindPoseSnapshots.get(objectId)
+    if (!mesh || !snapshot) return []
+    const bones = collectPoseEditBones(mesh)
+    const boneSet = new Set(bones)
+    const out: ImagePoseBindBone[] = []
+    for (const bone of bones) {
+      const name = bone.name?.trim()
+      if (!name) continue
+      const rec = snapshot.get(name)
+      if (!rec) continue
+      const parent = findNearestPoseBoneParent(bone, boneSet)
+      out.push({
+        name,
+        parentName: parent?.name?.trim() || null,
+        position: { x: rec.position.x, y: rec.position.y, z: rec.position.z },
+        quaternion: {
+          x: rec.quaternion.x,
+          y: rec.quaternion.y,
+          z: rec.quaternion.z,
+          w: rec.quaternion.w
+        }
+      })
+    }
+    return out
+  }
+
+  /** 回读网格骨骼当前已生效的局部偏移（相对 bind 快照），换算成角度。
+   * 用于应用姿势后校验「数据是否真正作用到了网格骨骼」；与 stage.bonePose 数据层无关。 */
+  function readAppliedObjectBonePoseDeg(
+    objectId: string,
+    names: string[]
+  ): { name: string; x: number; y: number; z: number }[] {
+    const mesh = objectMeshes.get(objectId)
+    const snapshot = bindPoseSnapshots.get(objectId)
+    if (!mesh || !snapshot) return []
+    const byName = skinningBonesByName(mesh)
+    const offsetQ = new THREE.Quaternion()
+    const euler = new THREE.Euler()
+    const out: { name: string; x: number; y: number; z: number }[] = []
+    for (const raw of names) {
+      const name = raw.trim()
+      if (!name) continue
+      const bone = byName.get(name)
+      const rec = snapshot.get(name)
+      if (!bone || !rec) continue
+      boneOffsetFromBase(rec.quaternion, bone.quaternion, offsetQ)
+      euler.setFromQuaternion(offsetQ, 'XYZ')
+      out.push({
+        name,
+        x: Number(((euler.x * 180) / Math.PI).toFixed(0)),
+        y: Number(((euler.y * 180) / Math.PI).toFixed(0)),
+        z: Number(((euler.z * 180) / Math.PI).toFixed(0))
+      })
+    }
+    return out
+  }
+
+  /**
+   * 以 replace 语义整图替换对象的骨骼姿势，并登记一次可撤销历史。
+   * 用于「从图片/视频识别姿势并作为起始姿势」这类一次性整姿操作。
+   */
+  function setObjectBonePoseWithUndo(
+    objectId: string,
+    bonePose: Record<string, StageVec3> | undefined,
+    label: string
+  ): boolean {
+    const obj = stage.value.objects.find((item) => item.id === objectId)
+    if (!obj || obj.locked) return false
+    const before = cloneBonePoseMap(obj.bonePose)
+    patchObjectBonePose(objectId, bonePose ? cloneBonePoseMap(bonePose) : undefined)
+    const after = cloneBonePoseMap(
+      stage.value.objects.find((item) => item.id === objectId)?.bonePose
+    )
+    const scope = `director-stage:${options.directorAssetId}`
+    editor.commands.setActiveScope(scope)
+    editor.commands.recordExecuted({
+      id: `director.pose.${crypto.randomUUID()}`,
+      label,
+      scope,
+      execute: () => patchObjectBonePose(objectId, cloneBonePoseMap(after)),
+      undo: () => patchObjectBonePose(objectId, cloneBonePoseMap(before))
+    })
+    return true
   }
 
   function listObjectPosePresets(objectId: string): DirectorPosePreset[] {
@@ -8771,6 +8863,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setObjectBonePoseDeg,
     patchObjectBonePose,
     applyObjectBonePoseMap,
+    listObjectPoseBindBones,
+    readAppliedObjectBonePoseDeg,
+    setObjectBonePoseWithUndo,
     setSelectedPoseBone,
     selectedPoseBone,
     poseEditMode,

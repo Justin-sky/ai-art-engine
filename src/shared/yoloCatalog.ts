@@ -48,9 +48,25 @@ const RAW_ENTRIES: RawCatalogEntry[] = [
   { kind: 'pose', scale: 'x', approxMb: 225 }
 ]
 
+/**
+ * 官方 GitHub release 资产的文件名后缀（与随包内置 yolo11n-*.onnx 命名一致）：
+ * - detect → 无后缀（yolo11s.onnx）
+ * - segment → -seg（官方是 yolo11s-seg.onnx，不是 -segment）
+ * - pose → -pose（yolo11s-pose.onnx）
+ */
+function onnxSuffixFor(kind: YoloTaskKind): string {
+  switch (kind) {
+    case 'detect':
+      return ''
+    case 'segment':
+      return '-seg'
+    case 'pose':
+      return '-pose'
+  }
+}
+
 function catalogEntryFor(kind: YoloTaskKind, scale: string, approxMb: number): YoloCatalogModel {
-  const suffix = kind === 'detect' ? '' : `-${kind}`
-  const id = `yolo11${scale}${suffix}`
+  const id = `yolo11${scale}${onnxSuffixFor(kind)}`
   const fileName = `${id}.onnx`
   return {
     id,

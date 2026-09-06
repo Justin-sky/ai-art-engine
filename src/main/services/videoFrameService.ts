@@ -131,12 +131,14 @@ function errSummary(err: unknown): string {
   return String(err)
 }
 
-/** 抓单帧为 PNG dataUrl；tsSec 为 null 时不 seek（取视频首帧） */
+/** 抓单帧为 PNG dataUrl；tsSec 为 null 时不 seek（取视频首帧）；width 控制输出帧宽（缺省 480，姿态检测等需要更大） */
 async function grabFrameAt(
   bin: string,
   fileAbs: string,
-  tsSec: number | null
+  tsSec: number | null,
+  width = 480
 ): Promise<string | null> {
+  const safeWidth = Number.isFinite(width) ? Math.max(160, Math.min(1920, Math.floor(width))) : 480
   const args = ['-v', 'error']
   if (tsSec !== null) args.push('-ss', String(tsSec))
   args.push(
@@ -145,7 +147,7 @@ async function grabFrameAt(
     '-frames:v',
     '1',
     '-vf',
-    'scale=480:-2',
+    `scale=${safeWidth}:-2`,
     '-f',
     'image2pipe',
     '-vcodec',
@@ -225,6 +227,8 @@ export async function grabFramesAtTimestamps(params: {
   projectRoot: string
   relativePath: string
   timestamps: number[]
+  /** 输出帧宽（px）；缺省 480。姿态检测等需更清晰人像时传更大值 */
+  width?: number
 }): Promise<Array<{ timeSec: number; dataUrl: string }>> {
   const abs = join(params.projectRoot, params.relativePath)
   if (!existsSync(abs)) return []
@@ -236,7 +240,7 @@ export async function grabFramesAtTimestamps(params: {
   if (!(await probeFfmpegAvailable(bin))) return []
   const frames: Array<{ timeSec: number; dataUrl: string }> = []
   for (const ts of timestamps) {
-    const frame = await grabFrameAt(bin, abs, ts)
+    const frame = await grabFrameAt(bin, abs, ts, params.width)
     if (frame) frames.push({ timeSec: ts, dataUrl: frame })
   }
   return frames

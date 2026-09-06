@@ -68,6 +68,8 @@ export const IpcChannels = {
   VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
   /** 视频按时间均匀抽帧（质检等多帧视觉理解） */
   VIDEO_EXTRACT_FRAMES: 'video:extract-frames',
+  /** 视频指定时间点抽帧（姿态进导演台等需要精确取帧，返回带 timeSec 的帧） */
+  VIDEO_GRAB_TIMESTAMPS: 'video:grab-timestamps',
   /** 视频人/物打点：抽帧逐帧检测并写回 meta.videoBeats（右键菜单 / 智能剪辑按需触发） */
   VIDEO_BEAT_ANALYZE: 'video:beat-analyze',
   /** 主进程推送：视频打点进行中状态（导入自动打点，busy=true 入队/执行 / false 结束，UI 驱动素材卡角标） */
@@ -856,6 +858,12 @@ export interface StudioApi {
   detectVideoKeyframes: (relativePath: string) => Promise<number[] | null>
   /** 视频按时间均匀抽帧（质检多帧理解）；无 ffmpeg 或失败时返回空数组 */
   extractVideoFrames: (relativePath: string, count: number) => Promise<string[]>
+  /** 视频指定时间点抽帧（姿态进导演台取帧）；无 ffmpeg / 文件缺失时返回空数组 */
+  grabVideoFramesAtTimestamps: (
+    relativePath: string,
+    timestamps: number[],
+    options?: { width?: number }
+  ) => Promise<Array<{ timeSec: number; dataUrl: string }>>
   /**
    * 视频人 / 物打点（assetId → 抽帧逐帧 YOLO → 空镜 / 单人 / 群像时间线段）。
    * 结果写回该资产旁挂 meta 的 `videoBeats` 字段并广播 asset:updated；
