@@ -171,3 +171,40 @@ export const YOLO_POSE_KEYPOINT_NAMES: string[] = [
   'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist',
   'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
 ]
+
+// ── 模型下载与管理契约（主进程下载服务 + 设置页模型管理共用） ───────────────
+
+/** 可下载模型目录条目（官方 catalog 数据见 @shared/yoloCatalog） */
+export interface YoloCatalogModel {
+  /** 文件名去扩展名，与模型目录扫描命名一致（如 yolo11s / yolo11x-seg） */
+  id: string
+  kind: YoloTaskKind
+  /** 落盘文件名：<id>.onnx */
+  fileName: string
+  /** 官方直链（GitHub release assets，tag 固定便于长期有效） */
+  url: string
+  /** 估算体积 MB（fp32 ONNX 约值；精确值以下载 content-length 为准） */
+  sizeMb: number
+}
+
+/** 模型下载 / 删除等操作的统一结果（message 为用户可见文案，透传渲染层） */
+export interface YoloModelOperationResult {
+  ok: boolean
+  message?: string
+  /** 下载被用户主动取消（区别于失败；渲染层据此用中性地文案而不是错误提示） */
+  cancelled?: boolean
+}
+
+export type YoloModelDownloadPhase = 'downloading' | 'verifying' | 'done' | 'cancelled' | 'error'
+
+/** yolo:model-download-progress 主进程 → 渲染层实时推送 */
+export interface YoloModelDownloadProgress {
+  modelId: string
+  phase: YoloModelDownloadPhase
+  /** downloading 阶段 0~100 */
+  percent?: number
+  loadedBytes?: number
+  totalBytes?: number
+  /** error / cancelled 阶段说明 */
+  message?: string
+}

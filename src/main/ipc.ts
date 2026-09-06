@@ -25,7 +25,7 @@ import type {
   PlanAiWorkflowInput,
   CommitAiWorkflowInput
 } from '@shared/ipc'
-import type { TimelineExportInput } from '@shared/graph'
+import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
 import type {
   GenerateImageInput,
@@ -39,9 +39,11 @@ import type {
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
 import { exportScriptTimeline } from './services/timelineExportService'
+import { renderTimelineTransitionPreview } from './services/timelineTransitionPreviewService'
 import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
+import { installFfmpeg } from './services/ffmpegInstallService'
 import {
   abortHarnessTask,
   deleteHarnessSession,
@@ -64,6 +66,14 @@ import {
   restartMcpServer
 } from './services/mcpServerService'
 import { modelProviderFacade, toMediaUrl } from './services/modelProviders'
+import { YOLO_CATALOG } from '@shared/yoloCatalog'
+import {
+  cancelYoloModelDownload,
+  chooseYoloModelDir,
+  deleteYoloModel,
+  downloadYoloModel,
+  setYoloModelDir
+} from './yolo/yoloModelManager'
 import { yoloService } from './yolo/yoloService'
 import type { YoloInferenceInput } from '@shared/yolo'
 import {
@@ -133,6 +143,9 @@ export function registerIpcHandlers(): void {
   })
 
   handle(IpcChannels.TIMELINE_EXPORT, (input: TimelineExportInput) => exportScriptTimeline(input))
+  handle(IpcChannels.TIMELINE_TRANSITION_PREVIEW, (input: TimelineTransitionPreviewInput) =>
+    renderTimelineTransitionPreview(input)
+  )
   handle(IpcChannels.AD_VARIANT_EXPORT, (input: ExportAdVariantsInput) => exportAdVariants(input))
 
   handle(IpcChannels.ASSET_LIST, () => projectService.listAssets())
@@ -219,6 +232,10 @@ export function registerIpcHandlers(): void {
     (input: { relativePath: string; count: number }) =>
       projectService.extractVideoFrames(input.relativePath, input.count)
   )
+  handle(IpcChannels.VIDEO_BEAT_ANALYZE, (assetId: string) =>
+    projectService.analyzeVideoBeats(assetId)
+  )
+  handle(IpcChannels.FFMPEG_INSTALL, () => installFfmpeg())
   handle(IpcChannels.AUDIO_SEPARATE, (relativePath: string) =>
     projectService.separateAudio(relativePath)
   )
@@ -313,6 +330,12 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.YOLO_SEGMENT, (input: YoloInferenceInput) => yoloService.segment(input))
   handle(IpcChannels.YOLO_POSE, (input: YoloInferenceInput) => yoloService.pose(input))
   handle(IpcChannels.YOLO_OPEN_MODEL_DIR, () => yoloService.openModelDir())
+  handle(IpcChannels.YOLO_MODEL_CATALOG, () => YOLO_CATALOG)
+  handle(IpcChannels.YOLO_MODEL_DOWNLOAD, (modelId: string) => downloadYoloModel(modelId))
+  handle(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL, () => cancelYoloModelDownload())
+  handle(IpcChannels.YOLO_MODEL_DELETE, (modelId: string) => deleteYoloModel(modelId))
+  handle(IpcChannels.YOLO_MODEL_DIR_CHOOSE, () => chooseYoloModelDir())
+  handle(IpcChannels.YOLO_MODEL_DIR_SET, (dir: string) => setYoloModelDir(dir))
 
   handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>

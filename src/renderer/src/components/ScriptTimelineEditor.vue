@@ -356,6 +356,7 @@
             ref="previewEl"
             class="preview-video"
             :src="previewSrc"
+            :style="previewVideoTransitionStyle ?? undefined"
             playsinline
             preload="metadata"
             @ended="onPreviewEnded"
@@ -548,6 +549,18 @@
               "
             >
           </label>
+          <div
+            v-if="selectedClip.sourceOffsetSec"
+            class="inspector-field readonly"
+            :title="t('script.timeline.sourceOffsetSecTip')"
+          >
+            <span>{{ t('script.timeline.sourceOffsetSec') }}</span>
+            <input
+              type="text"
+              :value="formatTime(selectedClip.sourceOffsetSec)"
+              readonly
+            >
+          </div>
           <template v-if="selectedClip.track === 'video'">
             <template v-if="selectedClip.nodeId">
               <div class="inspector-section-title">
@@ -1966,6 +1979,10 @@
                 v-if="edit.nodeTitle"
                 class="smart-cut-item-shot"
               >{{ edit.nodeTitle }}</span>
+              <span
+                v-if="smartCutBeatNote(edit)"
+                class="smart-cut-beat-note"
+              >{{ smartCutBeatNote(edit) }}</span>
             </div>
             <label class="smart-cut-field">
               <span>{{ t('script.timeline.smartCutDuration') }}</span>
@@ -2014,8 +2031,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
+import type { VideoBeatTags } from '@shared/videoBeats'
 import {
   clampMixEqGainDb,
   clampTrackGain,
@@ -2039,6 +2057,7 @@ import {
   type TimelineExportClip,
   type TimelineMixGains,
   applySmartCutPlan,
+  beatCutWindowForDuration,
   buildSmartCutPrompt,
   parseSmartCutPlan,
   SMART_CUT_DEFAULT_TRANSITION_SEC,
@@ -2350,11 +2369,27 @@ const overlayDrag = ref<{
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let clipVisualTimer: ReturnType<typeof setTimeout> | null = null
 let playSeq = 0
+/** 序列播放中正在为下一段切换 src（旧元素仍在播放）时置真，
+ * 期间禁止 timeupdate 用「旧元素时间 × 新片段时间轴」错误推进播放头，
+ * 否则会导致转场 overlay 提前摘除、闪回上一片段的一帧 */
+let clipSwitchPending = false
 const audioEls = new Map<string, HTMLAudioElement>()
 /** 因匿名跨源加载失败而降级为普通加载的音频元素（放弃 Web Audio 混音，改用元素音量） */
 const audioCorsFallback = new WeakSet<HTMLAudioElement>()
 const overlayEls = new Map<string, HTMLVideoElement>()
 const transitionVideoEls = new Map<string, HTMLVideoElement>()
+
+/** ffmpeg 微渲染完成的转场窗口（key = 可复现签名；参数一变自动换 key 重渲染） */
+interface TransitionPreviewEntry {
+  key: string
+  url: string
+  durationSec: number
+}
+const transitionPreviewCache = new Map<string, TransitionPreviewEntry>()
+const transitionPreviewInflight = new Map<string, Promise<boolean>>()
+const transitionPreviewFailed = new Set<string>()
+/** 渲染就绪/失败后自增，驱动样式 computed 与暂停态重同步 */
+const transitionPreviewTick = ref(0)
 
 const hostId = computed(() => `asset:${props.scriptAssetId}`)
 
@@ -2455,24 +2490,24 @@ const previewOverlayClips = computed(() => visibleClipsOn('overlay'))
 
 const activeMainTransition = computed(() => {
   const list = visibleClipsOn('video')
-  const index = list.findIndex(
-    (clip) =>
-      playheadSec.value >= clip.startSec &&
-      playheadSec.value < clip.startSec + clip.durationSec
-  )
-  const from = index >= 0 ? list[index] : null
-  const to = index >= 0 && index + 1 < list.length ? list[index + 1] : null
-  if (!from || !to) return null
-  if (!(to.transitionInSec && to.transitionInSec > 0)) return null
-  const fromEnd = from.startSec + from.durationSec
-  if (to.startSec >= fromEnd) return null
-  if (
-    playheadSec.value < to.startSec ||
-    playheadSec.value > fromEnd + 0.12
-  ) {
-    return null
+  // 从后往前找：如果两个转场窗口重叠（如 A-B 与 B-C），优先取最近开始的。
+  for (let i = list.length - 2; i >= 0; i--) {
+    const from = list[i]!
+    const to = list[i + 1]!
+    if (!(to.transitionInSec && to.transitionInSec > 0)) continue
+    const fromEnd = from.startSec + from.durationSec
+    if (to.startSec >= fromEnd) continue
+    // 转场窗口在 A 实际结束后保留一小段余量：主 <video> 换源期间播放头被
+    // 冻结在 fromEnd 上、B 就位前不会前进，overlay 自然会一直盖住；
+    // 这里只需留出 1~2 帧余量，避免 B 已开播后 overlay 还长时间静止造成跳变。
+    if (
+      playheadSec.value >= to.startSec &&
+      playheadSec.value <= fromEnd + 0.12
+    ) {
+      return { from, to }
+    }
   }
-  return { from, to }
+  return null
 })
 
 const activeMainTransitionClip = computed(
@@ -2482,6 +2517,14 @@ const activeMainTransitionClip = computed(
 const activeMainTransitionClipId = computed(
   () => activeMainTransition.value?.to.id ?? ''
 )
+
+/** 当前转场窗口是否已有就绪的 ffmpeg 微渲染片段（与导出一致的画面） */
+const activeTransitionPreviewEntry = computed(() => {
+  void transitionPreviewTick.value
+  const transition = activeMainTransition.value
+  if (!transition) return null
+  return transitionPreviewCache.get(transitionPreviewKeyFor(transition)) ?? null
+})
 
 const mainTransitionVideoStyle = computed(() => {
   const transition = activeMainTransition.value
@@ -2497,6 +2540,14 @@ const mainTransitionVideoStyle = computed(() => {
   const style: Record<string, string> = {
     display: 'block',
     opacity: '1'
+  }
+  // ffmpeg 微渲染就绪：整个窗口已由渲染片段覆盖（含 pad 画幅），不再需要 CSS 模拟；
+  // object-fit 用 fill 抹平偶数化宽高带来的亚像素缝隙，比例误差 <0.1% 无感
+  if (activeTransitionPreviewEntry.value) {
+    style.transform = 'none'
+    style.clipPath = 'none'
+    style.objectFit = 'fill'
+    return style
   }
   if (
     type === 'dissolve' ||
@@ -2528,6 +2579,27 @@ const mainTransitionVideoStyle = computed(() => {
     style.clipPath = `circle(${(1 - progress) * 75}% at 50% 50%)`
   }
   return style
+})
+
+/**
+ * 转场期间把主视频（A）钳制到导出框画布内，与转场叠加层（B）共享同一几何，
+ * 否则 A 铺满舞台而 B 只在导出框内，会出现“B 被缩放叠在小窗里”的假象。
+ * A 在框内同样 object-fit: contain（等价导出端 scale+pad 黑边语义）。
+ * 当预览以导出画幅为基准（previewFrameRatioKey === 'export'，默认）时全程保持钳制，
+ * 保证转场进/出点画布一致不跳变。
+ */
+const previewVideoTransitionStyle = computed<Record<string, string> | null>(() => {
+  const rect = previewFrameRect.value
+  if (!(rect.width > 1) || !(rect.height > 1)) return null
+  if (previewFrameRatioKey.value !== 'export' && !activeMainTransition.value) return null
+  return {
+    position: 'absolute',
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    objectFit: 'contain'
+  }
 })
 
 const videoTransitionHandles = computed(() => {
@@ -3418,6 +3490,29 @@ function clipWaveStyle(clip: ScriptTimelineClip): Record<string, string> {
   return style
 }
 
+/** 片段在源文件内的取段起点（秒）；打点选段片段 > 0，其余为 0（从源头部播放） */
+function sourceOffsetOf(clip?: { sourceOffsetSec?: number } | null): number {
+  const n = Number(clip?.sourceOffsetSec)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.round(n * 10) / 10
+}
+
+/** 片段本地时间（相对轨上片段起点，0 = 取段窗口起点）→ 源文件 media currentTime */
+function mediaTimeForClip(
+  clip: { sourceOffsetSec?: number } | null | undefined,
+  localSec: number
+): number {
+  return Math.max(0, (Number(localSec) || 0) + sourceOffsetOf(clip))
+}
+
+/** 源文件 media currentTime → 片段本地时间（用于反推播放头 / 判定片段结束） */
+function localTimeForClip(
+  clip: { sourceOffsetSec?: number } | null | undefined,
+  mediaSec: number
+): number {
+  return Math.max(0, (Number(mediaSec) || 0) - sourceOffsetOf(clip))
+}
+
 function seekVideoTo(video: HTMLVideoElement, time: number): Promise<void> {
   return new Promise((resolve) => {
     const done = () => {
@@ -3433,6 +3528,25 @@ function seekVideoTo(video: HTMLVideoElement, time: number): Promise<void> {
       done()
     }
     window.setTimeout(done, 1200)
+  })
+}
+
+/** 等待 <video> 换源后进入可用状态：metadata / error / 超时，先到先回 */
+function waitForVideoLoad(el: HTMLVideoElement, timeoutMs = 2000): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      el.removeEventListener('loadedmetadata', finish)
+      el.removeEventListener('error', finish)
+      resolve()
+    }
+    el.addEventListener('loadedmetadata', finish)
+    el.addEventListener('error', finish)
+    window.setTimeout(finish, timeoutMs)
+    // 源可能已在缓存中就绪（不会再触发事件）：同步判定后直接放行
+    if (el.readyState >= 1) finish()
   })
 }
 
@@ -3478,7 +3592,7 @@ async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | nu
     for (let i = 0; i < frameCount; i++) {
       const target = Math.min(
         duration - 0.05,
-        (i + 0.5) * (clip.durationSec / frameCount)
+        (i + 0.5) * (clip.durationSec / frameCount) + sourceOffsetOf(clip)
       )
       await seekVideoTo(video, target)
       if (video.videoWidth > 0) {
@@ -5113,15 +5227,47 @@ async function regenerateSmartCut(): Promise<void> {
   await runSmartCut()
 }
 
+/** 取某时间线素材关联的视频打点数据（无打点 / 未入库素材返回 null） */
+function beatsForSourceId(sourceId: string): VideoBeatTags | null {
+  const source = sources.value.find((s) => s.id === sourceId)
+  const assetId = source?.assetId?.trim()
+  if (!assetId) return null
+  return project.assets.find((a) => a.id === assetId)?.videoBeats ?? null
+}
+
+/** 方案行提示：该素材按打点自动取段（跳过空镜头 / 收敛到可用画面） */
+function smartCutBeatNote(edit: SmartCutEditDraft): string {
+  const win = beatCutWindowForDuration(beatsForSourceId(edit.sourceId), edit.durationSec)
+  if (!win) return ''
+  const one = (n: number): string => (Math.round(n * 10) / 10).toFixed(1)
+  if (win.trimmedToAvailable) {
+    return t('script.timeline.smartCutBeatShorter', { dur: one(win.durationSec) })
+  }
+  if (win.offsetSec <= 0.05) return ''
+  return t('script.timeline.smartCutBeatPick', {
+    from: one(win.offsetSec),
+    dur: one(win.durationSec)
+  })
+}
+
 function applySmartCut(): void {
-  const edits: SmartCutEdit[] = smartCutEdits.value.map((e) => ({
-    sourceId: e.sourceId,
-    durationSec: e.durationSec,
-    transitionType: (SMART_CUT_TRANSITIONS as readonly string[]).includes(e.transitionType)
-      ? (e.transitionType as SmartCutEdit['transitionType'])
-      : undefined,
-    transitionSec: e.transitionSec
-  }))
+  const edits: SmartCutEdit[] = smartCutEdits.value.map((e) => {
+    const edit: SmartCutEdit = {
+      sourceId: e.sourceId,
+      durationSec: e.durationSec,
+      transitionType: (SMART_CUT_TRANSITIONS as readonly string[]).includes(e.transitionType)
+        ? (e.transitionType as SmartCutEdit['transitionType'])
+        : undefined,
+      transitionSec: e.transitionSec
+    }
+    // 打点消费：若该素材已打点，把取段起点 / 实际时长收敛到人物等有效画面窗口
+    const win = beatCutWindowForDuration(beatsForSourceId(e.sourceId), e.durationSec)
+    if (win) {
+      edit.sourceOffsetSec = win.offsetSec
+      edit.durationSec = win.durationSec
+    }
+    return edit
+  })
   const applied = applySmartCutPlan({ clips: clips.value, sources: sources.value, plan: { edits } })
   commitClips(applied.clips)
   scheduleSave()
@@ -5188,7 +5334,7 @@ async function showClipPreview(clip: ScriptTimelineClip): Promise<void> {
   if (!el) return
   applyPlaybackRate()
   try {
-    el.currentTime = 0
+    el.currentTime = mediaTimeForClip(clip, 0)
   } catch {
     /* ignore */
   }
@@ -6240,8 +6386,9 @@ async function syncPreviewToPlayhead(): Promise<void> {
   if (!el) return
   applyPlaybackRate()
   const local = Math.max(0, playheadSec.value - clip.startSec)
+  const media = mediaTimeForClip(clip, local)
   try {
-    if (Math.abs(el.currentTime - local) > 0.2) el.currentTime = local
+    if (Math.abs(el.currentTime - media) > 0.2) el.currentTime = media
   } catch {
     /* ignore */
   }
@@ -6263,9 +6410,10 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
     if (!el.getAttribute('src')) {
       el.src = await resolveSrc(clip)
     }
+    const media = mediaTimeForClip(clip, Math.max(0, local))
     try {
-      if (Math.abs(el.currentTime - Math.max(0, local)) > 0.25) {
-        el.currentTime = Math.max(0, local)
+      if (Math.abs(el.currentTime - media) > 0.25) {
+        el.currentTime = media
       }
     } catch {
       /* ignore */
@@ -6281,18 +6429,55 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
   if (transition) {
     const el = transitionVideoEls.get(transition.to.id)
     if (el) {
+      // 微渲染就绪时用与导出一致的 ffmpeg 画面；未就绪退化为 CSS 模拟（保留预览能力）
+      const entry = activeTransitionPreviewEntry.value
+      void ensureTransitionPreview(transition)
       const local = playheadSec.value - transition.to.startSec
-      const inRange = local >= -0.05 && local < transition.to.durationSec
+      const prevUrl = el.dataset.transitionSrc
+      const targetUrl = entry
+        ? entry.url
+        : prevUrl || (await resolveSrc(transition.to)) || ''
+      const media = entry
+        ? Math.min(Math.max(0, local), Math.max(0, entry.durationSec - 0.001))
+        : mediaTimeForClip(transition.to, Math.max(0, local))
+      const inRange = entry
+        ? local >= -0.05 && local < entry.durationSec + 0.05
+        : local >= -0.05 && local < transition.to.durationSec
       el.playbackRate = playbackRate.value
       if (!inRange) {
         if (!el.paused) el.pause()
       } else {
-        if (!el.getAttribute('src')) {
-          el.src = await resolveSrc(transition.to)
+        const changedSrc = el.dataset.transitionSrc !== targetUrl
+        if (changedSrc) {
+          el.dataset.transitionSrc = targetUrl
+          el.src = targetUrl
+        }
+        if (changedSrc && targetUrl) {
+          // 新源首次加载后把帧校准到当前窗口位置（暂停在窗口中间时不能只显示首帧）
+          el.dataset.pendingSeek = String(media)
+          el.addEventListener(
+            'loadedmetadata',
+            () => {
+              const pending = Number(el.dataset.pendingSeek)
+              el.dataset.pendingSeek = ''
+              if (!Number.isFinite(pending)) return
+              try {
+                if (Math.abs(el.currentTime - pending) > 0.2) {
+                  el.currentTime = Math.max(
+                    0,
+                    Math.min(pending, Math.max(0, el.duration - 0.001))
+                  )
+                }
+              } catch {
+                /* ignore */
+              }
+            },
+            { once: true }
+          )
         }
         try {
-          if (Math.abs(el.currentTime - Math.max(0, local)) > 0.25) {
-            el.currentTime = Math.max(0, local)
+          if (Math.abs(el.currentTime - media) > 0.25) {
+            el.currentTime = media
           }
         } catch {
           /* ignore */
@@ -6311,10 +6496,146 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
   }
 }
 
+// ── ffmpeg 转场微渲染：预览 = 导出（主进程复用与 timelineExportService 同源 xfade 几何） ──
+function transitionPreviewKeyFor(transition: {
+  from: ScriptTimelineClip
+  to: ScriptTimelineClip
+}): string {
+  const { from, to } = transition
+  return [
+    from.id,
+    resolveClipRelativePath(from) ?? '',
+    from.sourceOffsetSec ?? 0,
+    from.startSec,
+    from.durationSec,
+    to.id,
+    resolveClipRelativePath(to) ?? '',
+    to.sourceOffsetSec ?? 0,
+    to.startSec,
+    to.durationSec,
+    to.transitionType ?? 'none',
+    to.transitionInSec ?? 0,
+    exportWidth.value,
+    exportHeight.value,
+    exportFps.value
+  ].join('|')
+}
+
+/** 输出分辨率：保持导出画幅，单边封顶 1280，节省预览渲染/解码开销 */
+function transitionPreviewDims(): { width: number; height: number } {
+  const w = Math.max(2, Math.round(exportWidth.value || 1280))
+  const h = Math.max(2, Math.round(exportHeight.value || 720))
+  const s = Math.min(1, 1280 / Math.max(w, h))
+  return {
+    width: Math.max(2, Math.round((w * s) / 2) * 2),
+    height: Math.max(2, Math.round((h * s) / 2) * 2)
+  }
+}
+
+function toTransitionPreviewClip(clip: ScriptTimelineClip): TimelineExportClip {
+  const offset = sourceOffsetOf(clip)
+  return {
+    track: clip.track,
+    relativePath: resolveClipRelativePath(clip),
+    title: clip.title,
+    text: clip.text,
+    startSec: clip.startSec,
+    durationSec: clip.durationSec,
+    ...(offset > 0 ? { sourceOffsetSec: offset } : {}),
+    transitionInSec: clip.transitionInSec,
+    transitionOutSec: clip.transitionOutSec,
+    transitionType: clip.transitionType
+  }
+}
+
+/** 请求微渲染；幂等（已就绪直接返回、in-flight 复用、失败不再重试同一签名） */
+async function ensureTransitionPreview(transition: {
+  from: ScriptTimelineClip
+  to: ScriptTimelineClip
+}): Promise<TransitionPreviewEntry | null> {
+  const key = transitionPreviewKeyFor(transition)
+  const cached = transitionPreviewCache.get(key)
+  if (cached) return cached
+  if (transitionPreviewFailed.has(key)) return null
+  let promise = transitionPreviewInflight.get(key)
+  if (!promise) {
+    promise = (async (): Promise<boolean> => {
+      try {
+        const dims = transitionPreviewDims()
+        const result = await window.studio.renderTimelineTransitionPreview({
+          left: toTransitionPreviewClip(transition.from),
+          right: toTransitionPreviewClip(transition.to),
+          width: dims.width,
+          height: dims.height,
+          fps: exportFps.value
+        })
+        if (result.ok) {
+          transitionPreviewCache.set(key, {
+            key,
+            url: result.url,
+            durationSec: result.durationSec
+          })
+          // 防止缓存无限增长：淘汰最旧签名
+          while (transitionPreviewCache.size > 40) {
+            const firstKey = transitionPreviewCache.keys().next().value
+            if (firstKey === undefined) break
+            transitionPreviewCache.delete(firstKey)
+          }
+        } else {
+          transitionPreviewFailed.add(key)
+        }
+      } catch {
+        transitionPreviewFailed.add(key)
+      } finally {
+        transitionPreviewTick.value += 1
+      }
+      return transitionPreviewCache.has(key)
+    })()
+    transitionPreviewInflight.set(key, promise)
+    void promise.finally(() => transitionPreviewInflight.delete(key))
+  }
+  await promise
+  return transitionPreviewCache.get(key) ?? null
+}
+
+/** 预取：当前窗口 + playhead 前方 1s 内即将进入的转场窗口 */
+function scheduleTransitionPreview(): void {
+  const current = activeMainTransition.value
+  if (current) void ensureTransitionPreview(current)
+  const p = playheadSec.value
+  const list = visibleClipsOn('video')
+  for (let i = 0; i < list.length - 1; i++) {
+    const from = list[i]!
+    const to = list[i + 1]!
+    if (!(to.transitionInSec && to.transitionInSec > 0)) continue
+    const fromEnd = from.startSec + from.durationSec
+    if (to.startSec >= fromEnd) continue
+    if (current && current.from.id === from.id) break
+    if (to.startSec >= p - 0.02 && to.startSec <= p + 1) {
+      void ensureTransitionPreview({ from, to })
+    }
+  }
+}
+
+// playhead 变化（播放/拖动）时顺带预取即将到来的转场微渲染
+watch(
+  playheadSec,
+  () => {
+    scheduleTransitionPreview()
+  },
+  { flush: 'post' }
+)
+
+// 渲染就绪/失败：暂停态下重同步一次，把 overlay 换成 ffmpeg 渲染片段
+watch(transitionPreviewTick, () => {
+  if (!playing.value) void syncOverlayVideosToPlayhead(false)
+})
+
 function stopPlayback(): void {
   playing.value = false
   playMode.value = null
   playSeq += 1
+  clipSwitchPending = false
   previewEl.value?.pause()
   stopAllAudio()
   pauseOverlayVideos()
@@ -6468,6 +6789,13 @@ async function runSequence(seq: number): Promise<void> {
   const playFrom = async (startIndex: number, localOffset: number): Promise<void> => {
     for (let i = startIndex; i < list.length; i++) {
       if (seq !== playSeq || !playing.value) return
+      // 进入切换窗口：旧元素仍在播放、随后要经历 resolveSrc/预加载等 await，
+      // 期间屏蔽 timeupdate（旧元素时间不能用新片段时间轴推进），并立刻停住旧元素
+      clipSwitchPending = true
+      if (i > startIndex) {
+        const oldEl = previewEl.value
+        if (oldEl && !oldEl.paused) oldEl.pause()
+      }
       const clip = list[i]!
       activeClipId.value = clip.id
       let startLocal = localOffset
@@ -6484,6 +6812,12 @@ async function runSequence(seq: number): Promise<void> {
           ? Math.max(clip.startSec, list[i - 1]!.startSec + list[i - 1]!.durationSec)
           : clip.startSec + startLocal
       playheadSec.value = startAt
+      if (i > startIndex) {
+        // 切换一旦开始，播放头已定位于旧片段末尾：把转场 overlay 立即校准到
+        // 窗口末帧（100% 新片段），避免换源期间它停在“快结束但没结束”的中间帧，
+        // 残留旧片段画面形成闪帧。
+        void syncOverlayVideosToPlayhead(true)
+      }
       const nextUrl = await resolveSrc(clip)
       if (i > startIndex) {
         const preloader = document.createElement('video')
@@ -6504,22 +6838,41 @@ async function runSequence(seq: number): Promise<void> {
           window.setTimeout(finish, 800)
         })
         try {
-          preloader.currentTime = startLocal
+          preloader.currentTime = mediaTimeForClip(clip, startLocal)
         } catch {
           /* ignore */
         }
       }
+      const switchedSource = nextUrl !== previewSrc.value
       previewSrc.value = nextUrl
       await nextTick()
       const el = previewEl.value
       if (!el) continue
+      if (!nextUrl) continue
+      // 换源瞬间旧帧已被释放；若新源在解码完成前就 play()，会先呈现 B 首帧再跳
+      // 到入点，表现成“切第二个片段闪一下”。改为：暂停住 → 等元数据 → 精确
+      // seek 到入点 → 再播放。解码间隙由仍在显示的 overlay 转场画面遮挡，
+      // overlay 撤掉时主画面已就位在正确帧上，切换不闪。
+      const media = mediaTimeForClip(clip, startLocal)
       try {
+        el.pause()
         applyPlaybackRate()
-        el.currentTime = startLocal
+        if (switchedSource) {
+          // 真实换源时显式重启加载：确保 loadedmetadata 一定来自新源，
+          // 避免误读旧源残留的 readyState（否则可能在 B 尚未就绪时就继续）
+          el.load()
+        }
+        await waitForVideoLoad(el)
+        if (el.readyState >= 1 && Math.abs(el.currentTime - media) > 0.1) {
+          await seekVideoTo(el, media)
+        }
         await el.play()
       } catch {
+        clipSwitchPending = false
         continue
       }
+      // 新片段已开始播放（元素时间轴已属于该片段），恢复 timeupdate 驱动
+      clipSwitchPending = false
       await waitUntilClipEnd(el, clip, seq)
     }
   }
@@ -6567,10 +6920,11 @@ function waitUntilClipEnd(
         resolve()
         return
       }
-      playheadSec.value = clip.startSec + (el.currentTime || 0)
+      const ct = el.currentTime || 0
+      playheadSec.value = clip.startSec + ct
       if (syncAudio) void syncAudioToPlayhead(true)
       if (syncAudio) void syncOverlayVideosToPlayhead(true)
-      if (el.ended || el.currentTime >= clip.durationSec - 0.05) {
+      if (el.ended || ct >= clip.durationSec - 0.05) {
         cleanup()
         resolve()
         return
@@ -6592,6 +6946,8 @@ function onPreviewEnded(): void {
 function onPreviewTimeUpdate(): void {
   if (!playing.value) return
   if (playheadDrag.value) return
+  // 片段切换中：元素仍是旧片段源，此刻的 currentTime 属于旧片段，不能推进新片段播放头
+  if (clipSwitchPending) return
   // solo 声音由 audio 回调推进
   if (
     playMode.value === 'solo' &&
@@ -6603,7 +6959,8 @@ function onPreviewTimeUpdate(): void {
   const clip = clips.value.find((c) => c.id === activeClipId.value)
   const el = previewEl.value
   if (!clip || !el) return
-  playheadSec.value = clip.startSec + (el.currentTime || 0)
+  const ph = clip.startSec + localTimeForClip(clip, el.currentTime || 0)
+  playheadSec.value = ph
   void syncOverlayVideosToPlayhead(true)
 }
 
@@ -6720,6 +7077,7 @@ async function exportTimeline(): Promise<void> {
         title: c.title,
         startSec: c.startSec,
         durationSec: c.durationSec,
+        ...(sourceOffsetOf(c) > 0 ? { sourceOffsetSec: sourceOffsetOf(c) } : {}),
         volume: c.volume,
         fadeInSec: c.fadeInSec,
         fadeOutSec: c.fadeOutSec,
@@ -6744,7 +7102,7 @@ async function exportTimeline(): Promise<void> {
       subtitleFontSize: subtitleFontSize.value,
       subtitleYOffset: subtitleYOffset.value,
       subtitleColor: subtitleColor.value,
-      mixGains: mixGains.value,
+      mixGains: toRaw(mixGains.value),
       mixMasterGain: mixMasterGain.value,
       mixBassGainDb: mixBassGainDb.value,
       mixTrebleGainDb: mixTrebleGainDb.value,
@@ -7870,6 +8228,9 @@ defineExpose({ flushSave: persist, reloadSources })
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* CSS 模拟转场时，B 片段需以黑色填充未覆盖区域（与导出端 pad 黑边对齐），
+     否则 A 画面会从 B 的 letterbox 黑边处透出来，变成“缩放叠加”假象 */
+  background: #000;
   pointer-events: none;
   z-index: 1;
 }
@@ -8598,6 +8959,15 @@ defineExpose({ flushSave: persist, reloadSources })
 .smart-cut-item-shot {
   font-size: 11px;
   opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-cut-beat-note {
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.9;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

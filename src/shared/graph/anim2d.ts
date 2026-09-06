@@ -59,8 +59,8 @@ export function buildAnimKeyColorPrompt(
       : 'The background of the entire sequence image must be solid pure white (#FFFFFF): no scene, ground, environment lighting, props, text or framing; only the effect itself, with clear boundaries between the effect and the background.'
   }
   return mode === 'black'
-    ? '整张序列图背景必须为纯黑色（#000000）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体与发光，特效与背景边界清晰。'
-    : '整张序列图背景必须为纯白色（#FFFFFF）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体，特效与背景边界清晰。'
+    ? '整张序列图背景必须为纯黑色（#000000）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体与发光，特效与背景边界清晰。' // cjk-ok：AI 提示域数据，与 en 分支成对
+    : '整张序列图背景必须为纯白色（#FFFFFF）：不要任何场景、地面、环境光照、道具、文字或画框；只保留特效本体，特效与背景边界清晰。' // cjk-ok：AI 提示域数据，与 en 分支成对
 }
 
 function clampDim(n: unknown): number {

@@ -67,6 +67,19 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.VIDEO_DETECT_KEYFRAMES, relativePath),
   extractVideoFrames: (relativePath: string, count: number) =>
     ipcRenderer.invoke(IpcChannels.VIDEO_EXTRACT_FRAMES, { relativePath, count }),
+  analyzeVideoBeats: (assetId: string) =>
+    ipcRenderer.invoke(IpcChannels.VIDEO_BEAT_ANALYZE, assetId),
+  installFfmpeg: () => ipcRenderer.invoke(IpcChannels.FFMPEG_INSTALL),
+  onFfmpegInstallProgress: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/videoBeats').FfmpegInstallProgress
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.FFMPEG_INSTALL_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.FFMPEG_INSTALL_PROGRESS, listener)
+  },
   separateAudio: (relativePath: string) =>
     ipcRenderer.invoke(IpcChannels.AUDIO_SEPARATE, relativePath),
   copyAssetOriginalFiles: (assetIds: string[]) =>
@@ -112,6 +125,22 @@ const api: StudioApi = {
   yoloSegment: (input) => ipcRenderer.invoke(IpcChannels.YOLO_SEGMENT, input),
   yoloPose: (input) => ipcRenderer.invoke(IpcChannels.YOLO_POSE, input),
   openYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_OPEN_MODEL_DIR),
+  getYoloModelCatalog: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_CATALOG),
+  downloadYoloModel: (modelId: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD, modelId),
+  cancelYoloModelDownload: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL),
+  deleteYoloModel: (modelId: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DELETE, modelId),
+  chooseYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DIR_CHOOSE),
+  setYoloModelDir: (dir: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DIR_SET, dir),
+  onYoloModelDownloadProgress: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/yolo').YoloModelDownloadProgress
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.YOLO_MODEL_DOWNLOAD_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.YOLO_MODEL_DOWNLOAD_PROGRESS, listener)
+  },
 
   getAppVersion: () => ipcRenderer.invoke(IpcChannels.APP_GET_VERSION),
   checkForUpdates: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK),
@@ -155,6 +184,8 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.DIALOG_SAVE_BINARY_FILES_TO_DIRECTORY, input),
 
   exportScriptTimeline: (input) => ipcRenderer.invoke(IpcChannels.TIMELINE_EXPORT, input),
+  renderTimelineTransitionPreview: (input) =>
+    ipcRenderer.invoke(IpcChannels.TIMELINE_TRANSITION_PREVIEW, input),
   exportAdVariants: (input) => ipcRenderer.invoke(IpcChannels.AD_VARIANT_EXPORT, input),
   onTimelineExportProgress: (callback) => {
     const listener = (_event: unknown, payload: { progress: number }): void => {
@@ -169,6 +200,13 @@ const api: StudioApi = {
     }
     ipcRenderer.on(IpcChannels.ASSET_UPDATED, listener)
     return () => ipcRenderer.removeListener(IpcChannels.ASSET_UPDATED, listener)
+  },
+  onVideoBeatBusyChanged: (callback) => {
+    const listener = (_event: unknown, payload: { assetId: string; busy: boolean }): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.VIDEO_BEAT_BUSY, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.VIDEO_BEAT_BUSY, listener)
   },
   onVideoJobUpdated: (callback) => {
     const listener = (

@@ -87,6 +87,12 @@ jobs:
       - name: Bundle dsh runtime
         run: npm run bundle:dsh
 
+      # 下载各平台静态 ffmpeg/ffprobe 到 out/ffmpeg/<arch>，由 extraResources 打入
+      # <resources>/ffmpeg（视频打点/抽帧/导出开箱即用）。mac 双架构各取一份。
+      - name: Fetch ffmpeg binaries (Windows)
+        if: matrix.platform == 'win'
+        run: npm run fetch:ffmpeg
+
       - name: Package (Windows)
         if: matrix.platform == 'win'
         env:
@@ -103,6 +109,11 @@ jobs:
             echo "Unsigned Windows build (no WIN_CSC_* secrets)"
           fi
           npx electron-builder --win --publish never
+
+      - name: Fetch ffmpeg binaries (macOS x64 + arm64)
+        if: matrix.platform == 'mac'
+        # evermeet 构建为 x86_64：Apple Silicon 走 Rosetta 2；需原生 arm64 时设 FFMPEG_DARWIN_URL
+        run: npm run fetch:ffmpeg -- --arch x64 --arch arm64
 
       - name: Package (macOS)
         if: matrix.platform == 'mac'
@@ -132,6 +143,10 @@ jobs:
           fi
           # macos-latest 为 arm64；显式打 x64+arm64，供 Intel / Apple Silicon 分别下载
           npx electron-builder --mac --x64 --arm64 --publish never "${EXTRA_ARGS[@]}"
+
+      - name: Fetch ffmpeg binaries (Linux)
+        if: matrix.platform == 'linux'
+        run: npm run fetch:ffmpeg
 
       - name: Package (Linux)
         if: matrix.platform == 'linux'

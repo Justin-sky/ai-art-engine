@@ -117,7 +117,7 @@ async function detectOnce(root: string, rel: string): Promise<VisionAssetTags | 
         return {
           v: 1,
           status: 'skipped',
-          error: '视频取帧失败（系统解码不可用且 ffmpeg 缺失）',
+          error: '视频取帧失败（系统解码不可用且 ffmpeg 缺失）', // cjk-ok：主进程状态透传，渲染层负责展示
           runAt: new Date().toISOString(),
           summary: [],
           objects: []

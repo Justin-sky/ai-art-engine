@@ -4,6 +4,7 @@
  */
 import { stripJsonCodeFence } from '@shared/graph'
 import type { ScriptTimelineClip, ScriptTimelineSource } from './scriptTimeline'
+import type { VideoBeatKind, VideoBeatSegment, VideoBeatTags } from '../videoBeats'
 
 /** 智能粗剪允许的转场白名单（ScriptTimelineClip.transitionType 子集） */
 export const SMART_CUT_TRANSITIONS = [
@@ -47,10 +48,103 @@ export interface SmartCutEdit {
   sourceId: string
   /** 保留时长（秒）；缺省用素材原始时长 */
   durationSec?: number
+  /** 源文件内的取段起点（秒）；打点智能剪辑据此避开空镜头、只取人物/内容段 */
+  sourceOffsetSec?: number
   /** 转场效果；缺省 none */
   transitionType?: SmartCutTransitionType
   /** 转场时长（秒）；缺省 0.4 */
   transitionSec?: number
+}
+
+/**
+ * 打点取段结果：把一段「期望时长」的粗剪片段放进素材的可见内容窗口内，
+ * 起点落在打点分段上（跳过头尾 / 中间的纯空镜）。
+ */
+export interface BeatCutWindow {
+  /** 在源文件内的取段起点（秒） */
+  offsetSec: number
+  /** 实际可用的片段时长（秒）；内容不足时收敛到窗口可用长度 */
+  durationSec: number
+  /** 素材可用内容窗口不足期望时长，durationSec 已被收敛 */
+  trimmedToAvailable: boolean
+}
+
+const BEAT_EMPTY_KIND: VideoBeatKind = 'empty'
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/**
+ * 依据视频打点分段计算某段期望时长在源内的最优取段窗口。
+ *
+ * 语义：把相邻的「非空镜」打点段合并成内容窗口（人物 / 有物段一律视为可用画面），
+ * 在能完整容纳期望时长的窗口里取最早一个（自然跳过片头片尾空镜）；
+ * 若所有内容窗口都放不下期望时长，则取最长窗口并把时长收敛到它的长度。
+ *
+ * 返回 null 表示没有打点数据或素材几乎无可用内容，调用方应退回到「源文件 0 秒起整段」。
+ */
+export function beatCutWindowForDuration(
+  beats: VideoBeatTags | null | undefined,
+  wantDurationSec: number
+): BeatCutWindow | null {
+  const want = Number(wantDurationSec)
+  if (!Number.isFinite(want) || want <= 0) return null
+  if (!beats || beats.status !== 'ok' || !Array.isArray(beats.segments)) return null
+
+  const segs = beats.segments.filter(isContentBeatSegment)
+  if (!segs.length) return null
+
+  // 源总时长（优先打点记录时长，缺失时用最末段边界兜底）
+  const recorded = Number(beats.durationSec)
+  const sourceEnd =
+    Number.isFinite(recorded) && recorded > 0
+      ? recorded
+      : Math.max(0, ...segs.map((s) => s.toSec))
+
+  // 相邻内容段合并成连续窗口（人物段与有物段相邻算同一可用区间）
+  const windows: Array<{ from: number; to: number }> = []
+  for (const seg of segs) {
+    const from = round1(Math.max(0, Math.min(sourceEnd, seg.fromSec)))
+    const to = round1(Math.max(from, Math.min(sourceEnd, seg.toSec)))
+    const last = windows[windows.length - 1]
+    if (last && from <= last.to + 0.001) last.to = Math.max(last.to, to)
+    else windows.push({ from, to })
+  }
+
+  // 1) 找最早能完整容纳期望时长的窗口
+  for (const w of windows) {
+    const len = round1(w.to - w.from)
+    if (len + 0.001 >= want) {
+      return {
+        offsetSec: w.from,
+        durationSec: round1(Math.min(want, len)),
+        trimmedToAvailable: false
+      }
+    }
+  }
+
+  // 2) 内容不足：取最长窗口收敛时长（过短视为无可用画面）
+  let longest = windows[0]
+  for (const w of windows) {
+    if (w.to - w.from > longest.to - longest.from) longest = w
+  }
+  const available = round1(longest.to - longest.from)
+  if (available < SMART_CUT_MIN_DURATION_SEC) return null
+  return {
+    offsetSec: longest.from,
+    durationSec: available,
+    trimmedToAvailable: true
+  }
+}
+
+function isContentBeatSegment(seg: VideoBeatSegment): boolean {
+  if (!seg || seg.kind === BEAT_EMPTY_KIND) return false
+  return (
+    Number.isFinite(seg.fromSec) &&
+    Number.isFinite(seg.toSec) &&
+    seg.toSec > seg.fromSec
+  )
 }
 
 export interface SmartCutPlan {
@@ -68,6 +162,13 @@ export interface SmartCutPromptInput {
 
 function clampDuration(n: number): number {
   return Math.min(SMART_CUT_MAX_DURATION_SEC, Math.max(SMART_CUT_MIN_DURATION_SEC, n))
+}
+
+/** 源内取段起点：非法 / 过小时归一为 0（从源文件开头整段） */
+function sanitizeSourceOffsetSec(value: unknown): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(3600, Math.round(n * 10) / 10)
 }
 
 function isTransition(value: unknown): value is SmartCutTransitionType {
@@ -208,6 +309,7 @@ export function applySmartCutPlan(input: ApplySmartCutInput): ApplySmartCutResul
     const rawDuration =
       edit.durationSec ?? (typeof source.durationSec === 'number' ? source.durationSec : 3)
     const durationSec = clampDuration(rawDuration)
+    const sourceOffsetSec = sanitizeSourceOffsetSec(edit.sourceOffsetSec)
     const transitionType = edit.transitionType ?? 'none'
     const clip: ScriptTimelineClip = {
       id: newClipId(index),
@@ -218,6 +320,7 @@ export function applySmartCutPlan(input: ApplySmartCutInput): ApplySmartCutResul
       ...(source.assetId?.trim() ? { assetId: source.assetId.trim() } : {}),
       ...(source.nodeId?.trim() ? { nodeId: source.nodeId.trim() } : {}),
       ...(source.nodeTitle?.trim() ? { nodeTitle: source.nodeTitle.trim() } : {}),
+      ...(sourceOffsetSec > 0 ? { sourceOffsetSec } : {}),
       startSec: cursor,
       durationSec
     }

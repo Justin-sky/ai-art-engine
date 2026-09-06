@@ -189,6 +189,7 @@ export default {
     section: {
       general: 'General',
       models: 'Models',
+      yolo: 'Local vision',
       objectStorage: 'Object storage',
       mcp: 'MCP',
       skills: 'Custom skills',
@@ -458,6 +459,46 @@ export default {
         text: 'Text chat goes through /chat/completions (OpenAI compatible / Gemini) or /v1/messages (Anthropic); multimodal understanding works by passing images into a text node. OpenAI-compatible / Gemini endpoints also support image generation — see the Image tab.',
         image:
           'Image generation uses the OpenAI-compatible /images/generations endpoint (e.g. gpt-image-1 / dall-e-3 / FLUX); reference images go through /images/edits. The catalog does not auto-detect image models — add the image model id below and select it.'
+      }
+    },
+    yoloModels: {
+      intro:
+        'Local vision (YOLO) runs object detection, instance segmentation and human pose estimation on-device. Asset tagging, semantic search and video beat detection call it automatically; inference happens locally and assets never leave your machine.',
+      statusReady: 'Inference engine ready',
+      statusBusy: 'Inference engine unavailable',
+      refresh: 'Refresh',
+      enabled: 'Enable local vision',
+      dirTitle: 'Model directory',
+      dirHint:
+        'Defaults to the app user-data folder; point it at any folder to reuse existing YOLO ONNX models. For each task the largest model in the directory is used automatically.',
+      dirLabel: 'Model directory path',
+      applyDir: 'Apply',
+      chooseDir: 'Browse…',
+      openDir: 'Reveal in Explorer',
+      resetDir: 'Reset to default',
+      dirApplied: 'Model directory updated and rescanned.',
+      dirResetDefault: 'Restored the default model directory.',
+      confLabel: 'Detection confidence',
+      iouLabel: 'NMS IoU',
+      installedTitle: 'Installed models',
+      installedEmpty: 'No models yet. Drop yolo11*.onnx files into the model directory or download larger variants below.',
+      defaultPickHint: 'The largest model per task is picked automatically, so downloading a bigger variant makes it the default right away.',
+      autoPick: 'Auto-selected',
+      autoPickTitle: 'Default model for this task',
+      delete: 'Delete',
+      deleteConfirm: 'Click again to confirm',
+      catalogTitle: 'Downloadable models',
+      catalogHint:
+        'Official fp32 ONNX exports from Ultralytics (ultralytics/assets v8.4.0), produced by the same export pipeline as the bundled models. s = lightweight, m = balanced, l/x = high accuracy (x ≈ 230–250 MB; latency and memory grow with size).',
+      installedTag: 'Installed',
+      downloadingTag: 'Downloading…',
+      verifyingTag: 'Verifying…',
+      download: 'Download',
+      cancelDownload: 'Cancel',
+      kind: {
+        detect: 'Object detection',
+        segment: 'Instance segmentation',
+        pose: 'Pose estimation'
       }
     },
     objectStorage: {
@@ -807,6 +848,9 @@ export default {
         copyOriginal: 'Copy original files',
         reimport: 'Reimport',
         rename: 'Rename',
+        videoBeat: 'Video beat analysis',
+        videoBeatAgain: 'Re-run video beats',
+        videoBeatBusy: 'Analyzing…',
         findReferences: 'Find references',
         delete: 'Delete',
         deleteSelected: 'Delete {count} items'
@@ -821,7 +865,19 @@ export default {
       deleteConfirmMany: 'Delete {count} selected assets?',
       deleteReferencedConfirm: 'Deleting will leave broken references. Delete anyway?',
       selectedCount: '{count} selected',
-      refMark: 'Ref'
+      refMark: 'Ref',
+      videoBeatAnalyzing: 'Detecting people & objects frame by frame…',
+      videoBeatSummary:
+        'Beats: empty {empty} · solo {solo} · group {group} segments · seen {names}',
+      videoBeatFailed:
+        'Beat analysis failed: video unavailable or local inference is not ready. Try again later.',
+      videoBeatInstallAction: 'Download & install ffmpeg',
+      videoBeatInstallRunIn: 'Run this command in your terminal ({term}):',
+      videoBeatInstallAutoHint:
+        'Click "Download & install" to fetch a portable ffmpeg (~100 MB) into the app data folder (no admin needed); beat analysis restarts automatically.',
+      videoBeatInstalling: 'Downloading & installing ffmpeg (~100 MB)…',
+      videoBeatInstallingExtract: 'Extracting & installing…',
+      videoBeatInstallOpenPage: 'Open download page'
     },
     package: {
       exportTitle: 'Export package',
@@ -932,6 +988,24 @@ export default {
         pending: 'Not ready yet (auto-retried when the project opens)',
         weakPrefix: 'maybe ',
         weakHint: 'Low confidence, may not be accurate'
+      },
+      videoBeat: {
+        title: 'Video beat tags',
+        analyze: 'Analyze',
+        reAnalyze: 'Re-analyze',
+        analyzing: 'Analyzing…',
+        noneHint: 'Detect people & objects in the shot and build a clickable timeline strip',
+        failed: 'Beat tagging failed: video unavailable or local inference not ready.',
+        noObjects: 'No people or objects detected',
+        stripHint: 'Shot segments · click to seek',
+        segmentHint: '{kind} {from}\u2013{to}{objects}',
+        kinds: {
+          empty: 'Empty shot',
+          objects: 'Objects',
+          personSolo: 'Solo person',
+          personGroup: 'People'
+        },
+        occurrenceHint: '{name} · first seen ~{sec}s · hit in {count} frames'
       },
       cutout: {
         title: 'Local cutout',
@@ -1067,6 +1141,8 @@ export default {
       smartCutGenerating: 'Generating the cut plan…',
       smartCutStart: 'Generate',
       smartCutNotStarted: 'Click "Generate" to have AI reorder clips and set durations automatically',
+      smartCutBeatPick: 'Beat-picked shot: skipped empty shots, {from}s in-source · {dur}s',
+      smartCutBeatShorter: 'Not enough usable frames; trimmed to {dur}s by beat detection',
       sfxLibrary: 'SFX library',
       sfxLibraryAll: 'All',
       sfxLibraryGenerate: 'Generate & place',
@@ -1118,6 +1194,8 @@ export default {
       inspectorEmpty: 'Select a timeline clip to inspect',
       startSec: 'Start time',
       durationSec: 'Clip duration',
+      sourceOffsetSec: 'In-source start',
+      sourceOffsetSecTip: 'This clip is trimmed from that point in the source file to skip the empty intro (video beat analysis)',
       hideTrack: 'Hide track',
       showTrack: 'Show track',
       muteTrack: 'Mute track',

@@ -17,6 +17,14 @@ export interface StudioPromptOptions {
   modelOptions?: GenerateModelOption[]
   /** prompt 模式：模型初始选中 key（不传则取首个） */
   initialModelKey?: string
+  /** 可选择：附带一个「动作」按钮（如打开外部链接），点击打开 actionUrl */
+  actionLabel?: string
+  /** 动作按钮点击后调用 window.open(url, '_blank')（主进程拦截后转系统浏览器） */
+  actionUrl?: string
+  /** 初始进度 0~100（提供后弹窗显示进度条，可配合 updateCurrentPromptProgress 实时刷新） */
+  progress?: number
+  /** 进度条右侧补充文本（如「48.2 / 107.3 MB」或阶段说明） */
+  progressLabel?: string
 }
 
 interface StudioPromptState extends Required<Pick<StudioPromptOptions, 'title' | 'message' | 'mode'>> {
@@ -26,6 +34,10 @@ interface StudioPromptState extends Required<Pick<StudioPromptOptions, 'title' |
   placeholder?: string
   modelOptions?: GenerateModelOption[]
   modelKey: string
+  actionLabel?: string
+  actionUrl?: string
+  progress?: number
+  progressLabel?: string
   resolve: (value: boolean | string | null | { text: string; modelKey: string }) => void
 }
 
@@ -52,6 +64,10 @@ function openPrompt(options: StudioPromptOptions): Promise<boolean | string | nu
       placeholder: options.placeholder,
       modelOptions: options.modelOptions,
       modelKey: options.initialModelKey || options.modelOptions?.[0]?.key || '',
+      actionLabel: options.actionLabel,
+      actionUrl: options.actionUrl,
+      progress: options.progress,
+      progressLabel: options.progressLabel,
       resolve
     }
   })
@@ -87,6 +103,18 @@ export function promptTextWithModel(
     }
     return null
   })
+}
+
+/** 立即关闭当前弹窗（按取消语义 resolve false）——供「后台任务完成时自动收起提示」等场景使用 */
+export function dismissCurrentPrompt(): void {
+  closePrompt(false)
+}
+
+/** 实时刷新当前弹窗的进度值（shallowRef 需整体替换对象才触发响应） */
+export function updateCurrentPromptProgress(progress: number, label?: string): void {
+  const active = current.value
+  if (!active) return
+  current.value = { ...active, progress, progressLabel: label }
 }
 
 export function useStudioPromptHost() {

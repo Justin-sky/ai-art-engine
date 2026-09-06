@@ -1643,6 +1643,7 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 .single img {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   max-height: 240px;
   object-fit: contain;
   background: var(--graph-preview-bg);
@@ -1756,13 +1757,13 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 
 .media-card img {
   width: 100%;
-  height: auto;
-  max-height: 240px;
+  height: 100%;
   object-fit: contain;
   display: block;
   background: var(--graph-preview-bg);
 }
 
+.media-card[data-kind='image'],
 .media-card[data-kind='video'] {
   aspect-ratio: 16 / 10;
 }

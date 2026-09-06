@@ -10,6 +10,8 @@ import {
 } from '@shared/domain'
 import { isAudioFilePath, isImageFilePath, isVideoFilePath } from '@shared/import'
 import { resolveAssetPreviewMediaPath } from '@shared/graph'
+import { cocoLabelZh } from '@shared/yolo'
+import type { VideoBeatKind, VideoBeatSegment, VideoBeatTags } from '@shared/videoBeats'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -98,6 +100,72 @@ const progressValue = computed(() => {
   if (!duration.value) return 0
   return Math.round((currentTime.value / duration.value) * 1000)
 })
+
+// ── 视频打点（asset.videoBeats）：镜头分段可视化，色块可点击跳转 ──────────
+
+/** 打点结果：仅视频资产 + 成功且有分段时存在 */
+const beatTags = computed<VideoBeatTags | null>(() => {
+  const a = props.asset
+  if (a.type !== 'video') return null
+  const tags = a.videoBeats
+  if (!tags || tags.status !== 'ok' || !tags.segments?.length) return null
+  return tags
+})
+
+/** 时间条总长（秒）：优先实际媒体时长，未加载时回退打点记录时长 */
+const beatTotalSec = computed(() => {
+  if (duration.value > 0) return duration.value
+  const recorded = beatTags.value?.durationSec ?? 0
+  return recorded > 0 ? recorded : 0
+})
+
+const beatStripVisible = computed(() => !!beatTags.value && beatTotalSec.value > 0)
+
+const BEAT_KIND_KEY: Record<VideoBeatKind, string> = {
+  empty: 'empty',
+  objects: 'objects',
+  'person-solo': 'personSolo',
+  'person-group': 'personGroup'
+}
+
+function beatKindZh(kind: VideoBeatKind): string {
+  return t(`asset.inspector.videoBeat.kinds.${BEAT_KIND_KEY[kind] ?? 'empty'}`)
+}
+
+/** 分段相对定位：from/to 秒 → 左偏移与宽度百分比 */
+function beatSegmentStyle(seg: VideoBeatSegment): Record<string, string> {
+  const total = beatTotalSec.value
+  if (!total) return {}
+  const left = Math.min(100, Math.max(0, (seg.fromSec / total) * 100))
+  const right = Math.min(100, Math.max(0, (seg.toSec / total) * 100))
+  return { left: `${left}%`, width: `${Math.max(0, right - left)}%` }
+}
+
+function beatSegmentTitle(seg: VideoBeatSegment): string {
+  const objects = [...new Set(seg.labels.map((l) => cocoLabelZh(l) || l))]
+    .filter(Boolean)
+    .join('、')
+  return t('asset.inspector.videoBeat.segmentHint', {
+    kind: beatKindZh(seg.kind),
+    from: formatTime(seg.fromSec),
+    to: formatTime(seg.toSec),
+    objects: objects ? ` · ${objects}` : ''
+  })
+}
+
+/** 点击分段条按比例跳转播放 */
+function seekFromBeatStrip(e: MouseEvent): void {
+  const el = activeMediaEl.value
+  const total = beatTotalSec.value
+  if (!el || !total) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  if (!rect.width) return
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+  el.currentTime = ratio * total
+  currentTime.value = el.currentTime
+  seeking.value = false
+  syncMediaClock(el)
+}
 
 const typeIcon = computed(() => ASSET_TYPE_ICONS[props.asset.type] ?? '📄')
 
@@ -600,6 +668,23 @@ onBeforeUnmount(() => {
             @change="onSeekChange"
           >
         </div>
+
+        <div
+          v-if="beatStripVisible"
+          class="beat-strip"
+          role="slider"
+          :title="t('asset.inspector.videoBeat.stripHint')"
+          @click="seekFromBeatStrip"
+        >
+          <span
+            v-for="(seg, i) in beatTags!.segments"
+            :key="i"
+            class="beat-seg"
+            :class="`kind-${seg.kind}`"
+            :style="beatSegmentStyle(seg)"
+            :title="beatSegmentTitle(seg)"
+          />
+        </div>
       </div>
     </div>
 
@@ -721,6 +806,7 @@ onBeforeUnmount(() => {
 .media-wrap img {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   max-height: 240px;
   object-fit: contain;
   background: var(--graph-preview-bg);
@@ -776,6 +862,7 @@ onBeforeUnmount(() => {
 .video-stage .video-poster {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   max-height: 240px;
   object-fit: contain;
   background: var(--graph-preview-bg);
@@ -943,5 +1030,37 @@ onBeforeUnmount(() => {
   line-height: 1.45;
   color: var(--graph-text-preview);
   font-family: inherit;
+}
+
+/* 视频打点镜头分段条 */
+.beat-strip {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--graph-tool-button) 45%, transparent);
+}
+.beat-strip:hover {
+  opacity: 0.9;
+}
+.beat-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.beat-seg.kind-empty {
+  background: color-mix(in srgb, var(--graph-text-muted) 40%, transparent);
+}
+.beat-seg.kind-objects {
+  background: color-mix(in srgb, #4d9fff 82%, transparent);
+}
+.beat-seg.kind-person-solo {
+  background: color-mix(in srgb, #2fbf71 85%, transparent);
+}
+.beat-seg.kind-person-group {
+  background: color-mix(in srgb, #ff9f43 90%, transparent);
 }
 </style>

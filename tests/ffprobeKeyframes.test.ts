@@ -14,6 +14,12 @@ describe('ffprobe keyframe parser', () => {
     ).toEqual([0.25, 0.5])
   })
 
+  it('parses ffprobe 9.x layout (key_frame first, trailing empty col)', () => {
+    expect(
+      parseKeyframeTimes('1,0.000000,\n0,0.041667\n0,0.500000\n1,1.000000\n0,1.041667\n')
+    ).toEqual([0, 1])
+  })
+
   it('returns empty for empty input', () => {
     expect(parseKeyframeTimes('')).toEqual([])
   })

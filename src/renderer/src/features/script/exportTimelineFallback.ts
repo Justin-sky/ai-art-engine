@@ -83,6 +83,18 @@ function clipVolumeAt(clip: ScriptTimelineClip, local: number): number {
   return Math.min(1, Math.max(0, volume))
 }
 
+/** 片段在源文件内的取段起点（秒）；无打点取段时返回 0（从源头部播放） */
+function sourceOffsetOf(clip: { sourceOffsetSec?: number }): number {
+  const n = Number(clip.sourceOffsetSec)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.round(n * 10) / 10
+}
+
+/** 片段本地时间（相对取段窗口起点）→ 源文件 media currentTime */
+function mediaTimeOfClip(clip: { sourceOffsetSec?: number }, localSec: number): number {
+  return Math.max(0, (Number(localSec) || 0) + sourceOffsetOf(clip))
+}
+
 function clipVideoOpacityAt(clip: ScriptTimelineClip, local: number): number {
   const fadeIn = Number.isFinite(clip.transitionInSec)
     ? Math.min(clip.durationSec, Math.max(0, clip.transitionInSec!))
@@ -195,9 +207,10 @@ export async function exportTimelineViaRecorder(
         await videoEl.play().catch(() => undefined)
       }
       const local = Math.max(0, t - vClip.startSec)
-      if (Math.abs(videoEl.currentTime - local) > 0.25) {
+      const media = mediaTimeOfClip(vClip, local)
+      if (Math.abs(videoEl.currentTime - media) > 0.25) {
         try {
-          videoEl.currentTime = local
+          videoEl.currentTime = media
         } catch {
           /* ignore */
         }
@@ -236,9 +249,9 @@ export async function exportTimelineViaRecorder(
         overlayVideos.set(clip.id, el)
         await el.play().catch(() => undefined)
       }
-      if (Math.abs(el.currentTime - local) > 0.25) {
+      if (Math.abs(el.currentTime - mediaTimeOfClip(clip, local)) > 0.25) {
         try {
-          el.currentTime = local
+          el.currentTime = mediaTimeOfClip(clip, local)
         } catch {
           /* ignore */
         }

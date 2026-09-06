@@ -16,6 +16,17 @@
     >
       {{ current.message }}
     </p>
+    <div
+      v-if="current && typeof current.progress === 'number'"
+      class="progress-wrap"
+    >
+      <progress
+        class="progress"
+        :value="current.progress"
+        max="100"
+      />
+      <span class="progress-label">{{ current.progress }}%<template v-if="current.progressLabel"> · {{ current.progressLabel }}</template></span>
+    </div>
     <input
       v-if="current?.mode === 'prompt'"
       ref="inputEl"
@@ -53,6 +64,14 @@
         @click="onCancel"
       >
         {{ current.cancelLabel || t('common.cancel') }}
+      </button>
+      <button
+        v-if="current?.actionUrl"
+        type="button"
+        class="action"
+        @click="onAction"
+      >
+        {{ current.actionLabel || 'Open' }}
       </button>
       <button
         type="button"
@@ -114,6 +133,13 @@ function onCancel(): void {
   cancel()
 }
 
+function onAction(): void {
+  const url = current.value?.actionUrl
+  if (!url) return
+  // 主进程 setWindowOpenHandler 对外部 URL 拦截后转系统浏览器打开
+  window.open(url, '_blank')
+}
+
 function onBackdrop(): void {
   // 确认/输入框点遮罩视为取消；提示框点遮罩等同知道了
   if (current.value?.mode === 'confirm' || current.value?.mode === 'prompt') cancel()
@@ -173,5 +199,30 @@ function onBackdrop(): void {
 .model-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.action {
+  margin-right: auto;
+}
+
+.progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.progress {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 </style>

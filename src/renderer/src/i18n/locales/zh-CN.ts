@@ -188,6 +188,7 @@ export default {
     section: {
       general: '通用',
       models: '模型',
+      yolo: '本地视觉',
       objectStorage: '对象存储',
       mcp: 'MCP',
       skills: '自定义技能',
@@ -457,6 +458,46 @@ export default {
         text: '文本对话走 /chat/completions（OpenAI 兼容 / Gemini）或 /v1/messages（Anthropic）；多模态理解可在文本节点直接传图。OpenAI 兼容 / Gemini 端点还支持图片生成，见「图片」页签。',
         image:
           '图片生成走 OpenAI 兼容 /images/generations 接口（如 gpt-image-1 / dall-e-3 / FLUX 等），参考图走 /images/edits。目录不自动识别图片模型，请在下方手动填写图片模型 id 并勾选。'
+      }
+    },
+    yoloModels: {
+      intro:
+        '本地视觉（YOLO）在设备端完成目标检测 / 实例分割 / 人体姿态估计，素材打标、语义检索与视频打点自动调用；推理全程在本地进行，不上传素材。',
+      statusReady: '推理引擎就绪',
+      statusBusy: '推理引擎不可用',
+      refresh: '刷新',
+      enabled: '启用本地视觉',
+      dirTitle: '模型目录',
+      dirHint:
+        '默认位于应用用户数据目录；可改为任意文件夹以复用已有的 YOLO ONNX 模型（识别时按任务自动选用目录中体积最大的模型）。',
+      dirLabel: '模型目录路径',
+      applyDir: '应用',
+      chooseDir: '选择目录…',
+      openDir: '打开文件夹',
+      resetDir: '恢复默认',
+      dirApplied: '模型目录已更新，已重新扫描模型。',
+      dirResetDefault: '已恢复默认模型目录。',
+      confLabel: '检测置信度阈值',
+      iouLabel: 'NMS IoU 阈值',
+      installedTitle: '已安装模型',
+      installedEmpty: '暂无模型。可将 yolo11*.onnx 放入模型目录，或在下方下载更大档位。',
+      defaultPickHint: '同一任务自动选用目录中体积最大的模型（下载更大的档位后会立即成为默认）。',
+      autoPick: '当前自动选用',
+      autoPickTitle: '该任务默认将使用此模型',
+      delete: '删除',
+      deleteConfirm: '再点一次确认删除',
+      catalogTitle: '可下载模型',
+      catalogHint:
+        '由 Ultralytics 官方发布（ultralytics/assets v8.4.0 的 fp32 ONNX），与内置模型同一导出管线，下载后即可本地推理。s 轻量、m 均衡、l/x 高精度（x 约 230–250 MB，推理耗时与内存占用随档位显著增加）。',
+      installedTag: '已安装',
+      downloadingTag: '下载中…',
+      verifyingTag: '校验中…',
+      download: '下载',
+      cancelDownload: '取消下载',
+      kind: {
+        detect: '目标检测',
+        segment: '实例分割',
+        pose: '姿态估计'
       }
     },
     objectStorage: {
@@ -804,6 +845,9 @@ export default {
         copyOriginal: '复制原始文件',
         reimport: '重新导入',
         rename: '重命名',
+        videoBeat: '视频打点',
+        videoBeatAgain: '重新打点',
+        videoBeatBusy: '打点中…',
         findReferences: '查找引用',
         delete: '删除',
         deleteSelected: '删除 {count} 项'
@@ -818,7 +862,18 @@ export default {
       deleteConfirmMany: '确定删除已选的 {count} 项资产？',
       deleteReferencedConfirm: '删除后这些引用将失效。仍要删除吗？',
       selectedCount: '已选 {count} 项',
-      refMark: '引用'
+      refMark: '引用',
+      videoBeatAnalyzing: '正在逐帧识别镜头中的人物与物体…',
+      videoBeatSummary:
+        '已打点：空镜 {empty} 段 · 单人 {solo} 段 · 群像 {group} 段 · 出现对象 {names}',
+      videoBeatFailed: '打点失败：视频不可用或本机推理组件未就绪，请稍后重试。',
+      videoBeatInstallAction: '一键下载安装',
+      videoBeatInstallRunIn: '在系统终端（{term}）运行以下命令：',
+      videoBeatInstallAutoHint:
+        '点击「一键下载安装」将自动下载便携版 ffmpeg（约 100 MB）到应用数据目录，无需管理员权限；完成后将自动重新打点。',
+      videoBeatInstalling: '正在下载并安装 ffmpeg（约 100 MB），完成后将自动重新打点…',
+      videoBeatInstallingExtract: '正在解压并安装到应用目录…',
+      videoBeatInstallOpenPage: '打开下载页'
     },
     package: {
       exportTitle: '导出资产包',
@@ -929,6 +984,24 @@ export default {
         pending: '暂未生成（打开工程后自动重试）',
         weakPrefix: '疑似',
         weakHint: '置信度较低，识别可能不准确'
+      },
+      videoBeat: {
+        title: '视频打点',
+        analyze: '打点',
+        reAnalyze: '重新打点',
+        analyzing: '打点中…',
+        noneHint: '识别镜头中的人物与物体，生成可点击跳转的分段时间条',
+        failed: '打点失败：视频不可用或本机推理组件未就绪。',
+        noObjects: '未检出任何人物 / 物体',
+        stripHint: '镜头分段 · 点击跳转到对应时间',
+        segmentHint: '{kind} {from}–{to}{objects}',
+        kinds: {
+          empty: '空镜',
+          objects: '物体',
+          personSolo: '单人',
+          personGroup: '群像'
+        },
+        occurrenceHint: '{name} · 首次出现约 {sec}s · 命中 {count} 帧'
       },
       cutout: {
         title: '本地抠图',
@@ -1063,6 +1136,8 @@ export default {
       smartCutGenerating: '正在生成剪辑方案…',
       smartCutStart: '开始生成',
       smartCutNotStarted: '点击「开始生成」自动规划视频轨的剪辑顺序与时长',
+      smartCutBeatPick: '打点取段：跳过空镜头，取源内 {from}s 起 · {dur}s',
+      smartCutBeatShorter: '素材有效画面不足，已按打点收敛为 {dur}s',
       sfxLibrary: '音效库',
       sfxLibraryAll: '全部',
       sfxLibraryGenerate: '生成并上轨',
@@ -1113,6 +1188,8 @@ export default {
       inspectorEmpty: '选中一个时间线片段查看参数',
       startSec: '开始时间',
       durationSec: '片段时长',
+      sourceOffsetSec: '源内起点',
+      sourceOffsetSecTip: '此片段按视频打点从源文件的该时间点起取段（自动跳过片头空镜）',
       hideTrack: '隐藏轨道',
       showTrack: '显示轨道',
       muteTrack: '静音轨道',

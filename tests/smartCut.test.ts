@@ -162,4 +162,19 @@ describe('smartCut.applySmartCutPlan', () => {
     const { clips } = applySmartCutPlan({ clips: [], sources: SOURCES, plan })
     expect(clips[0]!.transitionType).toBeUndefined()
   })
+
+  it('打点选段写入 sourceOffsetSec，非法偏移归一为 0', () => {
+    const plan: SmartCutPlan = {
+      edits: [
+        { sourceId: 'b', durationSec: 3, sourceOffsetSec: 2.53 },
+        { sourceId: 'a', sourceOffsetSec: -1 },
+        { sourceId: 'c', sourceOffsetSec: 99999 }
+      ]
+    }
+    const { clips } = applySmartCutPlan({ clips: [], sources: SOURCES, plan })
+    expect(clips[0]!.sourceOffsetSec).toBe(2.5)
+    expect(clips[1]!.sourceOffsetSec).toBeUndefined()
+    // 超大偏移被钳到 3600 秒上界
+    expect(clips[2]!.sourceOffsetSec).toBe(3600)
+  })
 })

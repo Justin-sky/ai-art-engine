@@ -123,7 +123,9 @@ import { isRealThumbnailPath } from '@shared/media/thumbnailPath'
 import { resolveMediaBytesFromUrl } from './resolveMediaBytesFromUrl'
 import { copyFilePathsToClipboard } from './clipboardFileCopy'
 import { VISION_TAG_RETRY_INTERVAL_MS } from '@shared/visionTags'
+import { VIDEO_BEAT_AUTO_RETRY_MS, type VideoBeatTags } from '@shared/videoBeats'
 import { scheduleAssetVisionTag } from './assetVisionTagger'
+import { scheduleAssetVideoBeats } from './videoBeatTagger'
 import { broadcastToAllWindows } from '../broadcast'
 import { IpcChannels } from '@shared/ipc'
 
@@ -253,9 +255,15 @@ function detectAssetType(filePath: string): AssetType {
   return detectImportAssetType(filePath)
 }
 
+/** 自动视频打点同时「排队 + 执行」的上限：超出则本次放弃（低优先级静默任务，避免大批量导入打满推理） */
+const AUTO_VIDEO_BEAT_MAX_PENDING = 12
+
 class ProjectService {
   private rootPath: string | null = null
   private config: ProjectConfig | null = null
+
+  /** 自动打点进行中的资产 id（已入队或执行中；手动打点不在此列，由渲染层自行维护） */
+  private autoVideoBeatBusy = new Set<string>()
 
   getRoot(): string {
     if (!this.rootPath) throw fail(MAIN_ERRORS.noProject)
@@ -472,6 +480,8 @@ class ProjectService {
     ])
     // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响入库）
     this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
+    // 视频入库后低优先级自动打点：抽帧逐帧检测出空镜 / 单人 / 群像时间线（静默失败，不影响入库）
+    this.queueAutoVideoBeatsIfDue(asset.id)
     return asset
   }
 
@@ -520,6 +530,8 @@ class ProjectService {
     ])
     // 入库后对图片 / 视频异步做本地视觉打标（fire-and-forget，失败不影响导入）
     this.queueVisionTagWriteBack(asset.id, asset.type, asset.relativePath)
+    // 视频导入后低优先级自动打点：抽帧逐帧检测出空镜 / 单人 / 群像时间线（静默失败，不影响导入）
+    this.queueAutoVideoBeatsIfDue(asset.id)
     return asset
   }
 
@@ -668,6 +680,8 @@ class ProjectService {
     if (mediaReplaced) {
       asset.thumbnailPath = this.planAndScheduleImageThumbnail(asset.relativePath)
       delete asset.visionTags
+      // 视频打点是逐帧时间线结果：媒体替换后旧线段全部失效（不自动重跑，按需触发）
+      delete asset.videoBeats
     }
     asset.updatedAt = nowIso()
     try {
@@ -1069,6 +1083,87 @@ class ProjectService {
       .catch(() => {
         /* logged in tagger */
       })
+  }
+
+  /**
+   * 视频媒体就绪（导入等）后的低优先级自动打点：
+   * - 已有完成结果 / 最近失败在节流窗口内 / 自动队列已满 → 本次跳过（右键仍可手动触发）；
+   * - 入队即广播 busy（素材卡角标显示打点中），结束写回 meta 并广播资产更新。
+   * 自动任务与手动打点共用同一排队，且只在没有手动任务等待时执行（tagger 内 low-priority 语义）。
+   */
+  private queueAutoVideoBeatsIfDue(assetId: string): void {
+    if (this.autoVideoBeatBusy.has(assetId)) return
+    if (this.autoVideoBeatBusy.size >= AUTO_VIDEO_BEAT_MAX_PENDING) return
+    let asset: AssetInfo
+    try {
+      asset = this.readAsset(assetId)
+    } catch {
+      return // 资产已被移除 / 工程切换
+    }
+    if (asset.type !== 'video') return
+    const rel = asset.relativePath?.trim()
+    if (!rel) return
+    const last = asset.videoBeats
+    if (last?.status === 'ok') return
+    // 上次 skipped 距今不足节流窗口（模型未就绪 / ffmpeg 缺失等）：避免同一资产反复自动空转
+    if (last?.status === 'skipped' && last.runAt) {
+      const lastRun = Date.parse(last.runAt)
+      if (Number.isFinite(lastRun) && Date.now() - lastRun < VIDEO_BEAT_AUTO_RETRY_MS) return
+    }
+    const root = this.getRoot()
+    this.autoVideoBeatBusy.add(assetId)
+    broadcastToAllWindows(IpcChannels.VIDEO_BEAT_BUSY, { assetId, busy: true })
+    void scheduleAssetVideoBeats(root, rel, { auto: true })
+      .then((tags) => {
+        if (!tags) return
+        try {
+          const latest = this.readAsset(assetId)
+          if (latest.type !== 'video' || latest.relativePath?.trim() !== rel) return
+          latest.videoBeats = tags
+          latest.updatedAt = nowIso()
+          this.writeAsset(latest)
+          broadcastToAllWindows(IpcChannels.ASSET_UPDATED, latest)
+        } catch {
+          /* asset removed / project switched during detection */
+        }
+      })
+      .catch(() => {
+        /* logged in tagger */
+      })
+      .finally(() => {
+        this.autoVideoBeatBusy.delete(assetId)
+        broadcastToAllWindows(IpcChannels.VIDEO_BEAT_BUSY, { assetId, busy: false })
+      })
+  }
+
+  /**
+   * 视频人 / 物打点（右键菜单 / 智能剪辑按需触发）：
+   * ffmpeg 按均匀时间戳抽帧 → 逐帧本地 YOLO 检测 → 聚合出空镜 / 单人 / 群像时间线段，
+   * 结果写回旁挂 meta 的 `videoBeats` 并广播刷新素材卡 / 时间线。
+   * 重复触发复用同一次排队分析（tagger 内按路径去重）；
+   * 资产非视频 / 已被移除 / 切换工程时返回 null；环境性失败返回 status 'skipped' 占位。
+   */
+  async analyzeVideoBeats(assetId: string): Promise<VideoBeatTags | null> {
+    try {
+      const asset = this.readAsset(assetId)
+      if (asset.type !== 'video') return null
+      const rel = asset.relativePath?.trim()
+      if (!rel) return null
+      const root = this.getRoot()
+      const tags = await scheduleAssetVideoBeats(root, rel)
+      if (!tags) return null
+      // 写回前重读最新 meta 做竞态防护：资产被删 / 移动 / 换工程时放弃
+      const latest = this.readAsset(assetId)
+      if (latest.type !== 'video' || latest.relativePath?.trim() !== rel) return null
+      latest.videoBeats = tags
+      latest.updatedAt = nowIso()
+      this.writeAsset(latest)
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, latest)
+      return tags
+    } catch {
+      /* asset removed / project switched during analysis */
+      return null
+    }
   }
 
   /** 在系统文件管理器中定位资产文件（优先媒体，否则旁挂 meta） */

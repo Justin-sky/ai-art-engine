@@ -1,6 +1,12 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
-import type { TimelineExportInput, TimelineExportResult, GraphRunLogApiCall } from './graph'
+import type {
+  TimelineExportInput,
+  TimelineExportResult,
+  TimelineTransitionPreviewInput,
+  TimelineTransitionPreviewResult,
+  GraphRunLogApiCall
+} from './graph'
 import type {
   CatalogModel,
   GenerateImageInput,
@@ -22,8 +28,11 @@ import type {
 } from './modelProvider'
 import type { ObjectStorageKindMeta } from './objectStorage'
 import type {
+  YoloCatalogModel,
   YoloDetectResult,
   YoloInferenceInput,
+  YoloModelDownloadProgress,
+  YoloModelOperationResult,
   YoloPoseResult,
   YoloSegmentResult,
   YoloStatus
@@ -59,6 +68,14 @@ export const IpcChannels = {
   VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
   /** 视频按时间均匀抽帧（质检等多帧视觉理解） */
   VIDEO_EXTRACT_FRAMES: 'video:extract-frames',
+  /** 视频人/物打点：抽帧逐帧检测并写回 meta.videoBeats（右键菜单 / 智能剪辑按需触发） */
+  VIDEO_BEAT_ANALYZE: 'video:beat-analyze',
+  /** 主进程推送：视频打点进行中状态（导入自动打点，busy=true 入队/执行 / false 结束，UI 驱动素材卡角标） */
+  VIDEO_BEAT_BUSY: 'video:beat-busy',
+  /** ffmpeg 一键安装：缺失时主进程自动下载便携版到应用数据目录（win 自动，mac/linux 引导） */
+  FFMPEG_INSTALL: 'ffmpeg:install',
+  /** 主进程推送：ffmpeg 一键安装进度（下载 / 解压阶段） */
+  FFMPEG_INSTALL_PROGRESS: 'ffmpeg:install-progress',
   /** 人声 / 伴奏分离（内置 ffmpeg 中置声道或配置的第三方服务） */
   AUDIO_SEPARATE: 'audio:separate',
   /** 将选中资产的原始媒体文件复制到系统剪贴板 */
@@ -112,6 +129,20 @@ export const IpcChannels = {
   YOLO_SEGMENT: 'yolo:segment',
   YOLO_POSE: 'yolo:pose',
   YOLO_OPEN_MODEL_DIR: 'yolo:open-model-dir',
+  /** 官方模型下载目录（detect/segment/pose × s/m/l/x） */
+  YOLO_MODEL_CATALOG: 'yolo:model-catalog',
+  /** 下载目录模型到模型目录（单任务；成功后 yolo:status 即时可见） */
+  YOLO_MODEL_DOWNLOAD: 'yolo:model-download',
+  /** 取消进行中的模型下载 */
+  YOLO_MODEL_DOWNLOAD_CANCEL: 'yolo:model-download-cancel',
+  /** 主进程推送：模型下载实时进度 */
+  YOLO_MODEL_DOWNLOAD_PROGRESS: 'yolo:model-download-progress',
+  /** 删除模型目录中的某 .onnx（内置随包模型删除后不会被自动复活） */
+  YOLO_MODEL_DELETE: 'yolo:model-delete',
+  /** 弹系统目录选择器挑选模型目录（不落设置，返回空表示取消） */
+  YOLO_MODEL_DIR_CHOOSE: 'yolo:model-dir-choose',
+  /** 立即把模型目录写入持久化设置（空字符串 = 恢复默认；随后 yolo:status 即按新目录扫描） */
+  YOLO_MODEL_DIR_SET: 'yolo:model-dir-set',
 
   // App version & updates
   APP_GET_VERSION: 'app:get-version',
@@ -159,6 +190,8 @@ export const IpcChannels = {
   TIMELINE_EXPORT: 'timeline:export',
   /** 主进程推送：成片导出进度 0~1 */
   TIMELINE_EXPORT_PROGRESS: 'timeline:export-progress',
+  /** 转场窗口 ffmpeg 微渲染（编辑器预览：预览=导出的同一条 xfade 流水线） */
+  TIMELINE_TRANSITION_PREVIEW: 'timeline:transition-preview',
   /** 音频转写（语音识别）：配音/音频文件 → 带时间戳文本 */
   TRANSCRIBE_AUDIO: 'transcribe:audio',
 
@@ -823,6 +856,18 @@ export interface StudioApi {
   detectVideoKeyframes: (relativePath: string) => Promise<number[] | null>
   /** 视频按时间均匀抽帧（质检多帧理解）；无 ffmpeg 或失败时返回空数组 */
   extractVideoFrames: (relativePath: string, count: number) => Promise<string[]>
+  /**
+   * 视频人 / 物打点（assetId → 抽帧逐帧 YOLO → 空镜 / 单人 / 群像时间线段）。
+   * 结果写回该资产旁挂 meta 的 `videoBeats` 字段并广播 asset:updated；
+   * 资产非视频 / 工程切换导致放弃时返回 null；skipped 为环境性失败占位。
+   */
+  analyzeVideoBeats: (assetId: string) => Promise<import('./videoBeats').VideoBeatTags | null>
+  /** 一键安装 ffmpeg（视频打点缺 ffmpeg 时调用；耗时可达数分钟） */
+  installFfmpeg: () => Promise<import('./videoBeats').VideoBeatInstallResult>
+  /** 订阅 ffmpeg 一键安装的实时进度（下载 / 解压阶段；返回取消订阅函数） */
+  onFfmpegInstallProgress: (
+    callback: (payload: import('./videoBeats').FfmpegInstallProgress) => void
+  ) => () => void
   /** 人声 / 伴奏分离：对白上 voice 轨、去 BGM 再混音 */
   separateAudio: (relativePath: string) => Promise<SeparateAudioResult>
   /** 复制选中资产的原始媒体文件到系统剪贴板（非缩略图） */
@@ -882,6 +927,22 @@ export interface StudioApi {
   yoloPose: (input: YoloInferenceInput) => Promise<YoloPoseResult>
   /** 在系统文件管理器中打开 YOLO 模型目录（不存在则创建）；返回目录路径 */
   openYoloModelDir: () => Promise<string | null>
+  /** 官方可下载模型目录（detect/segment/pose × s/m/l/x，数据见 @shared/yoloCatalog） */
+  getYoloModelCatalog: () => Promise<YoloCatalogModel[]>
+  /** 下载目录模型到模型目录（单任务；耗时取决于体积与网络，进度经 onYoloModelDownloadProgress 推送） */
+  downloadYoloModel: (modelId: string) => Promise<YoloModelOperationResult>
+  /** 取消进行中的模型下载 */
+  cancelYoloModelDownload: () => Promise<void>
+  /** 删除模型目录中的某模型文件（内置随包模型删除后不会自动复活） */
+  deleteYoloModel: (modelId: string) => Promise<YoloModelOperationResult>
+  /** 弹系统目录选择器挑选 YOLO 模型目录；不写设置（由调用方结合 setSettings 落盘）；取消返回 null */
+  chooseYoloModelDir: () => Promise<string | null>
+  /** 立即把模型目录写入持久化设置（空字符串 = 恢复默认）；随后 getYoloStatus 即按新目录扫描 */
+  setYoloModelDir: (dir: string) => Promise<void>
+  /** 订阅模型下载实时进度（返回取消订阅函数） */
+  onYoloModelDownloadProgress: (
+    callback: (payload: YoloModelDownloadProgress) => void
+  ) => () => void
 
   getAppVersion: () => Promise<string>
   checkForUpdates: () => Promise<import('./update').AppUpdateCheckResult>
@@ -918,6 +979,11 @@ export interface StudioApi {
   /** 导出成片时间线为 MP4（需本机 ffmpeg） */
   exportScriptTimeline: (input: TimelineExportInput) => Promise<TimelineExportResult>
 
+  /** 渲染单个转场重叠窗口为可播放预览片段（与导出同一条 xfade 流水线；需本机 ffmpeg） */
+  renderTimelineTransitionPreview: (
+    input: TimelineTransitionPreviewInput
+  ) => Promise<TimelineTransitionPreviewResult>
+
   /** 导出入选广告变体的生成图到用户选择目录 */
   exportAdVariants: (input: ExportAdVariantsInput) => Promise<ExportAdVariantsResult>
 
@@ -926,6 +992,11 @@ export interface StudioApi {
 
   /** 订阅资产落盘更新（多窗口同步内存中的 assets） */
   onAssetUpdated: (callback: (asset: AssetInfo) => void) => () => void
+
+  /** 订阅视频打点进行中状态（自动打点：入队 / 执行开始 busy=true，结束 busy=false） */
+  onVideoBeatBusyChanged: (
+    callback: (payload: { assetId: string; busy: boolean }) => void
+  ) => () => void
 
   /** 订阅持久化视频任务状态 */
   onVideoJobUpdated: (

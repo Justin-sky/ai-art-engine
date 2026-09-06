@@ -30,6 +30,14 @@
         <button
           type="button"
           class="top-tab"
+          :class="{ active: mainTab === 'yolo' }"
+          @click="mainTab = 'yolo'"
+        >
+          {{ t('settings.section.yolo') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
           :class="{ active: mainTab === 'objectStorage' }"
           @click="mainTab = 'objectStorage'"
         >
@@ -135,6 +143,14 @@
         class="models-section"
       >
         <ModelsPanel :models="form.models" />
+      </section>
+
+      <section
+        v-show="mainTab === 'yolo'"
+        class="models-section"
+      >
+        <h2>{{ t('settings.section.yolo') }}</h2>
+        <YoloModelsPanel v-model:yolo="form.yolo" />
       </section>
 
       <section
@@ -359,6 +375,7 @@ import { invalidateGenerateModelSettingsCache } from '../features/graph/model/ge
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
 import SkillsPanel from '../components/settings/SkillsPanel.vue'
+import YoloModelsPanel from '../components/settings/YoloModelsPanel.vue'
 
 const DEBOUNCE_MS = 500
 
@@ -369,7 +386,7 @@ const saving = ref(false)
 const message = ref('')
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
-const mainTab = ref<'general' | 'models' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'>('general')
+const mainTab = ref<'general' | 'models' | 'yolo' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'>('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
@@ -588,6 +605,8 @@ function applyToForm(cloned: AppSettings): void {
   Object.assign(form.editor, cloned.editor)
   Object.assign(form.seedance, cloned.seedance)
   Object.assign(form.llm, cloned.llm)
+  // yolo 目录等属于持久化设置，必须回填否则打开设置页保存会静默覆盖为默认值
+  Object.assign(form.yolo, cloned.yolo)
   // 就地替换 providers，避免拉取模型 await 期间整表替换导致设置页引用失效
   form.models.providers.splice(0, form.models.providers.length, ...cloned.models.providers)
   form.objectStorage.providers.splice(

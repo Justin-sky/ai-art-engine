@@ -22,6 +22,7 @@
             :src="videoUrl"
             playsinline
             preload="auto"
+            crossorigin="anonymous"
             @loadedmetadata="onLoaded"
             @durationchange="onLoaded"
             @timeupdate="onTimeUpdate"
@@ -462,8 +463,8 @@ async function scheduleFilmstrip(): Promise<void> {
   const token = ++filmstripToken
   if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
 
-  // 同源视频已缓存胶片条：直接复用，避免重复抽帧（v3：关键帧胶片条；旧缓存自动作废）
-  const cacheKey = `${hashString(videoUrl.value)}:v3`
+  // 同源视频已缓存胶片条：直接复用，避免重复抽帧（v4：关键帧探测复用 bundled 定位；旧缓存自动作废）
+  const cacheKey = `${hashString(videoUrl.value)}:v4`
   const cached = cachedFilmstrip.value
   if (cached.length && node.value?.params.frameFilmstripKey === cacheKey) {
     filmstrip.value = cached

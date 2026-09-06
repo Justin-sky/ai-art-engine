@@ -17,6 +17,7 @@ import { IpcChannels } from '@shared/ipc'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { projectService } from './projectService'
+import { findFfmpegBin } from './videoFrameService'
 import { broadcastToAllWindows } from '../broadcast'
 
 // ── 时间线导出个性错误 ──
@@ -76,20 +77,6 @@ function findDrawtextFont(): string | null {
   return candidates.find((p) => existsSync(p)) ?? null
 }
 
-function findFfmpegBin(): string {
-  const env = process.env.FFMPEG_PATH?.trim()
-  if (env && existsSync(env)) return env
-  const bundled = [
-    join(process.resourcesPath || '', 'ffmpeg.exe'),
-    join(process.resourcesPath || '', 'ffmpeg'),
-    'C:\\ffmpeg\\bin\\ffmpeg.exe'
-  ]
-  for (const bin of bundled) {
-    if (existsSync(bin)) return bin
-  }
-  return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
-}
-
 function runFfmpeg(bin: string, args: string[], onTime?: (sec: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { windowsHide: true })
@@ -112,6 +99,13 @@ function runFfmpeg(bin: string, args: string[], onTime?: (sec: number) => void):
       else reject(fail(E_TIMELINE_FFMPEG_EXITED, { stderr: stderr.trim().slice(-900), exitCode: code }))
     })
   })
+}
+
+/** 片段在源文件内的取段起点（秒）；无打点选段时为 0（从源头部整段截取） */
+function clipSourceOffsetSec(clip: { sourceOffsetSec?: number }): number {
+  const n = Number(clip.sourceOffsetSec)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.round(Math.min(3600, n) * 100) / 100
 }
 
 function resolveClipPath(clip: TimelineExportClip): string | null {
@@ -159,96 +153,228 @@ function buildFilterGraph(
   const filterParts: string[] = []
   filterParts.push(`[${baseVideoIndex}:v]format=yuv420p[base]`)
 
+  // ── 主视频轨：逐段拼接（每段独立裁剪，最后一次性 concat），杜绝链式 xfade 的累计漂移 ──
+  // 片段时间线转场语义（与预览一致）：相邻片段 A(前) / B(后) 有重叠窗口
+  // overlap = A.end − B.start（>0 才可能有转场）。B.transitionInSec 记录生效转场时长，
+  // 预览在窗口内把 B 按 progress 叠加在 A 之上。导出同样在该窗口用 xfade 合成。
   const orderedMainVideos = [...mainVideos].sort(
     (a, b) => a.startSec - b.startSec
   )
   let lastVideo = 'base'
+  const mainClipEnd = (c: TimelineExportClip): number =>
+    c.startSec + Math.max(0.05, c.durationSec)
+
   if (orderedMainVideos.length) {
-    let currentLabel: string | null = null
-    let currentStartSec = 0
-    let currentDurationSec = 0
+    const count = orderedMainVideos.length
+    // 片段间可支持的转场（与 ffmpeg xfade 的类型一一对应；值即 xfade transition 名）
+    const xfadeMap: Record<string, string> = {
+      dissolve: 'dissolve',
+      fade: 'fadeblack',
+      fadeout: 'fadeblack',
+      fadein: 'fadeblack',
+      flash: 'fadewhite',
+      slideleft: 'slideleft',
+      slideright: 'slideright',
+      slideup: 'slideup',
+      slidedown: 'slidedown',
+      wipeleft: 'wipeleft',
+      wiperight: 'wiperight',
+      wipeup: 'wipeup',
+      wipedown: 'wipedown',
+      circleopen: 'circleopen',
+      circleclose: 'circleclose'
+    }
+    const xfadeTransitionName = (type: string | undefined): string | null =>
+      xfadeMap[type ?? ''] ?? null
 
-    for (const [index, clip] of orderedMainVideos.entries()) {
-      const dur = Math.max(0.05, clip.durationSec)
-      const normalizedLabel = `main${index}`
-      filterParts.push(
-        `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${normalizedLabel}]`
+    // 逐对计算：几何重叠量 + 实际生效转场时长
+    // （生效时长 = min(重叠量, B.transitionInSec, A/B 各自时长)，type 必须可 xfade）
+    const overlapAfter: number[] = []
+    const transDur: number[] = []
+    for (let i = 0; i < count - 1; i++) {
+      const left = orderedMainVideos[i]!
+      const right = orderedMainVideos[i + 1]!
+      const overlap = Math.max(0, mainClipEnd(left) - right.startSec)
+      overlapAfter.push(overlap)
+      const inSec = Math.max(0, right.transitionInSec ?? 0)
+      const supported =
+        overlap > 0.001 &&
+        inSec > 0.001 &&
+        xfadeTransitionName(right.transitionType) !== null
+      transDur.push(
+        supported
+          ? Math.min(
+              overlap,
+              inSec,
+              Math.max(0.05, left.durationSec),
+              Math.max(0.05, right.durationSec)
+            )
+          : 0
       )
-
-      if (!currentLabel) {
-        currentLabel = normalizedLabel
-        currentStartSec = Math.max(0, clip.startSec)
-        currentDurationSec = dur
-        continue
-      }
-
-      const clipStart = Math.max(0, clip.startSec)
-      const transitionIn = Math.min(
-        dur,
-        Math.max(0, clip.transitionInSec ?? 0)
-      )
-      const type = clip.transitionType ?? 'none'
-      const xfadeMap: Record<string, string> = {
-        dissolve: 'dissolve',
-        fade: 'fadeblack',
-        fadeout: 'fadeblack',
-        fadein: 'fadeblack',
-        flash: 'fadewhite',
-        slideleft: 'slideleft',
-        slideright: 'slideright',
-        slideup: 'slideup',
-        slidedown: 'slidedown',
-        wipeleft: 'wipeleft',
-        wiperight: 'wiperight',
-        wipeup: 'wipeup',
-        wipedown: 'wipedown',
-        circleopen: 'circleopen',
-        circleclose: 'circleclose'
-      }
-      const transitionName = xfadeMap[type] ?? 'fade'
-
-      const currentEnd = currentStartSec + currentDurationSec
-      const gap = Math.max(0, clipStart - currentEnd)
-      if (gap > 0) {
-        const paddedLabel = `${currentLabel}gap${index}`
-        filterParts.push(
-          `[${currentLabel}]tpad=stop_mode=add:stop_duration=${gap.toFixed(3)}:color=black[${paddedLabel}]`
-        )
-        currentLabel = paddedLabel
-        currentDurationSec += gap
-      }
-
-      const offset = Math.max(0, clipStart - currentStartSec)
-      const maxTransition = Math.min(
-        currentDurationSec - offset,
-        dur,
-        transitionIn
-      )
-      const transitionDuration = Math.max(0, maxTransition)
-      const xfadeLabel = `xfade${index}`
-      if (transitionDuration > 0) {
-        filterParts.push(
-          `[${currentLabel}][${normalizedLabel}]xfade=transition=${transitionName}:duration=${transitionDuration.toFixed(3)}:offset=${Math.max(0, offset).toFixed(3)}[${xfadeLabel}]`
-        )
-      } else {
-        filterParts.push(
-          `[${currentLabel}][${normalizedLabel}]concat=n=2:v=1:a=0[${xfadeLabel}]`
-        )
-      }
-      currentLabel = xfadeLabel
-      currentDurationSec =
-        currentDurationSec + dur - transitionDuration
     }
 
-    const firstStart = orderedMainVideos[0]!.startSec
-    const shiftedMain = 'mainshifted'
-    filterParts.push(
-      `[${currentLabel}]setpts=PTS+${Math.max(0, firstStart).toFixed(3)}/TB[${shiftedMain}]`
-    )
-    filterParts.push(
-      `[base][${shiftedMain}]overlay=0:0[mainbase]`
-    )
-    lastVideo = 'mainbase'
+    // 片段内容窗口规划：每个片段可能被切为 头窗(前向转场) / 主体 / 尾窗(后向转场)
+    // 三部分互不重叠（主体跳过被转场占用的头尾），几何与片段自身时长严格对齐，杜绝漂移
+    type MainWindow = { kind: 'head' | 'body' | 'tail'; start: number; dur: number; port: string }
+    const windowPlans: Array<{ wins: MainWindow[] }> = []
+    for (let i = 0; i < count; i++) {
+      const clip = orderedMainVideos[i]!
+      const dur = Math.max(0.05, clip.durationSec)
+      const prev = i > 0 ? orderedMainVideos[i - 1]! : null
+      const overlapPrev = prev ? Math.max(0, mainClipEnd(prev) - clip.startSec) : 0
+      const dPrev = i > 0 ? transDur[i - 1]! : 0
+      const overlapNext = i < count - 1 ? overlapAfter[i]! : 0
+      const dNext = i < count - 1 ? transDur[i]! : 0
+
+      const wins: MainWindow[] = []
+      // 前向转场：本片段头部 [0, dPrev) 在交叉段中被播放
+      if (i > 0 && dPrev > 0.001) {
+        wins.push({ kind: 'head', start: 0, dur: dPrev, port: '' })
+      }
+      // 主体（独白部分）：跳过被前转场占用的头部与后转场占用的尾部
+      const bodyStart =
+        i === 0
+          ? 0
+          : overlapPrev > 0.001
+            ? dPrev > 0.001
+              ? dPrev
+              : overlapPrev
+            : 0
+      const bodyEnd =
+        dNext > 0.001 ? Math.max(0, dur - Math.min(overlapNext, dur)) : dur
+      if (bodyEnd - bodyStart > 0.001) {
+        wins.push({ kind: 'body', start: bodyStart, dur: bodyEnd - bodyStart, port: '' })
+      }
+      // 后向转场：本片段尾部在交叉段中继续播放到自身结束
+      if (i < count - 1 && dNext > 0.001) {
+        const tailStart = Math.min(dur, Math.max(0, dur - overlapNext))
+        const tailDur = Math.min(dNext, Math.max(0, dur - tailStart))
+        if (tailDur > 0.001) {
+          wins.push({ kind: 'tail', start: tailStart, dur: tailDur, port: '' })
+        }
+      }
+      windowPlans.push({ wins })
+    }
+
+    // 同一源文件可能被裁成多个窗口：先 split 显式分流，避免同输入流被多个 filter 隐式复用
+    let srcIdx = 0
+    for (let i = 0; i < count; i++) {
+      const plan = windowPlans[i]!
+      if (!plan.wins.length) continue
+      if (plan.wins.length === 1) {
+        plan.wins[0]!.port = `${orderedMainVideos[i]!.inputIndex}:v`
+        continue
+      }
+      const ports: string[] = []
+      for (let k = 0; k < plan.wins.length; k++) ports.push(`msrc${srcIdx++}`)
+      filterParts.push(
+        `[${orderedMainVideos[i]!.inputIndex}:v]split=${ports.length}${ports.map((p) => `[${p}]`).join('')}`
+      )
+      plan.wins.forEach((w, k) => {
+        w.port = ports[k]!
+      })
+    }
+
+    // 待拼接段（按时间先后顺序）：主体段 / 黑场段 / 转场 xfade 段
+    const segments: string[] = []
+    let segIdx = 0
+
+    const windowPlan = (i: number, kind: MainWindow['kind']): MainWindow | undefined =>
+      windowPlans[i]!.wins.find((w) => w.kind === kind)
+
+    const normalizedVideo = (
+      srcPort: string,
+      srcStart: number,
+      segDur: number,
+      label: string
+    ): void => {
+      filterParts.push(
+        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + segDur).toFixed(3)},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[${label}]`
+      )
+    }
+
+    /** 从规划窗口中裁一段：srcStart 为该片段在源文件内的绝对时间 */
+    const trimWindow = (i: number, kind: MainWindow['kind'], label: string): void => {
+      const w = windowPlan(i, kind)
+      if (!w) return
+      const clip = orderedMainVideos[i]!
+      normalizedVideo(w.port, clipSourceOffsetSec(clip) + w.start, w.dur, label)
+    }
+
+    /** 相邻两段的重叠转场段：A 的尾窗 + B 的头窗各裁 overlap 窗口后做一次独立 xfade */
+    const addCrossSegment = (boundary: number): void => {
+      const right = orderedMainVideos[boundary + 1]!
+      const tail = windowPlan(boundary, 'tail')
+      const head = windowPlan(boundary + 1, 'head')
+      if (!tail || !head) return
+      const aLabel = `crossa${segIdx}`
+      const bLabel = `crossb${segIdx}`
+      const outLabel = `cross${segIdx++}`
+      trimWindow(boundary, 'tail', aLabel)
+      trimWindow(boundary + 1, 'head', bLabel)
+      const name = xfadeTransitionName(right.transitionType) ?? 'dissolve'
+      const dur = Math.min(tail.dur, head.dur)
+      filterParts.push(
+        `[${aLabel}][${bLabel}]xfade=transition=${name}:duration=${dur.toFixed(3)}:offset=0[${outLabel}]`
+      )
+      segments.push(outLabel)
+    }
+
+    /** 主体内容段 */
+    const addContentSegment = (i: number): void => {
+      const w = windowPlan(i, 'body')
+      if (!w) return
+      const label = `mainseg${segIdx++}`
+      trimWindow(i, 'body', label)
+      segments.push(label)
+    }
+
+    /** 片段之间的黑场（时间线上有间隙时按实际时长补齐，保证后续时间轴不错位） */
+    const addBlackSegment = (segDur: number): void => {
+      if (segDur <= 0.001) return
+      const label = `blackseg${segIdx++}`
+      filterParts.push(
+        `color=c=black:s=${width}x${height}:r=${fps}:d=${segDur.toFixed(3)},format=yuv420p[${label}]`
+      )
+      segments.push(label)
+    }
+
+    // 按时间顺序输出各段：前段与后段的交叉段（或间隙黑场）→ 后段主体 → …… → 一次 concat
+    for (let i = 0; i < count; i++) {
+      const clip = orderedMainVideos[i]!
+      const prev = i > 0 ? orderedMainVideos[i - 1]! : null
+      const overlapPrev = prev ? Math.max(0, mainClipEnd(prev) - clip.startSec) : 0
+      const dPrev = i > 0 ? transDur[i - 1]! : 0
+
+      if (i > 0 && dPrev > 0.001) {
+        addCrossSegment(i - 1)
+      } else if (i > 0 && overlapPrev <= 0.001) {
+        const gap = clip.startSec - mainClipEnd(prev!)
+        if (gap > 0.001) addBlackSegment(gap)
+      }
+      addContentSegment(i)
+    }
+
+    if (segments.length) {
+      const chainLabel =
+        segments.length === 1
+          ? segments[0]!
+          : (() => {
+              const label = 'mainconcat'
+              filterParts.push(
+                `${segments.map((s) => `[${s}]`).join('')}concat=n=${segments.length}:v=1:a=0[${label}]`
+              )
+              return label
+            })()
+      // concat 链从 0 起，整体平移到时间线真实起点后再叠到黑色底上
+      const firstStart = Math.max(0, orderedMainVideos[0]!.startSec)
+      const shiftedMain = 'mainshifted'
+      filterParts.push(
+        `[${chainLabel}]setpts=PTS+${firstStart.toFixed(3)}/TB[${shiftedMain}]`
+      )
+      filterParts.push(`[base][${shiftedMain}]overlay=0:0[mainbase]`)
+      lastVideo = 'mainbase'
+    }
   }
 
   for (const clip of overlays) {
@@ -276,8 +402,9 @@ function buildFilterGraph(
     const vLabel = `pip${clip.inputIndex}`
     const ovLabel = `pipov${clip.inputIndex}`
     const prev = lastVideo
+    const srcStart = clipSourceOffsetSec(clip)
     filterParts.push(
-      `[${clip.inputIndex}:v]trim=0:${dur},setpts=PTS-STARTPTS,scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
+      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + dur).toFixed(3)}` : `0:${dur}`},setpts=PTS-STARTPTS,scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
     )
     filterParts.push(
       `[${prev}][${vLabel}]overlay=${x}:${y}:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`

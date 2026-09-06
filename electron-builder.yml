@@ -219,6 +219,11 @@ extraResources:
   # 随包内置的 YOLO 模型（detect / segment / pose），首次启动同步到模型目录
   - from: resources/yolo-models
     to: yolo-models
+  # 随包内置的 ffmpeg/ffprobe（视频打点/抽帧/导出无需用户自装，mac/Linux 开箱即用）。
+  # 二进制不提交 git：打包前由 scripts/fetch-ffmpeg.mjs 下载解压到 out/ffmpeg/<arch>
+  # （见 package.json fetch:ffmpeg）；${arch} 宏使 mac x64/arm64 各自打入对应目录。
+  - from: out/ffmpeg/${arch}
+    to: ffmpeg
   - from: scripts/mcp-bridge.mjs
     to: mcp-bridge.mjs
   # dsh 运行体（DeepSeek Harness）：构建时由 scripts/bundle-dsh.mjs 产出 out/dsh，

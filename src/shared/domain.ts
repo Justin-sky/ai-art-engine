@@ -9,9 +9,11 @@ import {
   type ObjectStorageSettings
 } from './objectStorage'
 import type { ProjectStyleImage } from './stylePresets'
+import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
 
 export type { ProjectStyleImage, StylePresetCategory, StyleReferenceSubject } from './stylePresets'
+export type { VideoBeatTags } from './videoBeats'
 export {
   MAX_STYLE_IMAGES,
   DEFAULT_STYLE_IMAGE_WEIGHT,
@@ -409,6 +411,8 @@ export interface AssetInfo {
   genParams?: Record<string, unknown>
   /** 本地视觉（YOLO）打标结果：入库 / 打开工程时对图片与视频首帧自动检测生成 */
   visionTags?: VisionAssetTags
+  /** 视频人/物打点结果：抽帧逐帧检测聚合出的空镜/单人/群像时间线段（仅 video，按需触发） */
+  videoBeats?: VideoBeatTags
   version: number
   createdAt: string
   updatedAt: string

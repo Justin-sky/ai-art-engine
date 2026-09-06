@@ -281,6 +281,12 @@
                 class="ref-mark"
                 :title="assetLabel(asset)"
               >{{ t('asset.browser.refMark') }}</span>
+              <span
+                v-if="videoBeatBadge(asset)"
+                class="beat-mark"
+                :class="videoBeatBadge(asset)!.tone"
+                :title="videoBeatBadge(asset)!.title"
+              >{{ videoBeatBadge(asset)!.text }}</span>
             </div>
             <span
               v-else-if="thumbUrls[asset.id]"
@@ -584,6 +590,18 @@
             <span class="ctx-label">{{ t('asset.browser.context.rename') }}</span>
           </button>
           <button
+            v-if="contextMenuVideoBeatAsset"
+            type="button"
+            :disabled="contextMenuVideoBeatBusy"
+            @click="analyzeContextMenuVideoBeats"
+          >
+            <span
+              class="ctx-icon"
+              aria-hidden="true"
+            >🎬</span>
+            <span class="ctx-label">{{ contextMenuVideoBeatLabel }}</span>
+          </button>
+          <button
             type="button"
             @click="findContextMenuReferences"
           >
@@ -717,7 +735,13 @@ import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore, STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { promptAlert, promptConfirm, promptText } from '../composables/useStudioPrompt'
+import {
+  dismissCurrentPrompt,
+  promptAlert,
+  promptConfirm,
+  promptText,
+  updateCurrentPromptProgress
+} from '../composables/useStudioPrompt'
 import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
@@ -728,6 +752,7 @@ import { resolveAssetText } from '../features/media/resolveAssetText'
 import { openImportedMediaRefPreview } from '../features/media/openFullImagePreview'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
+import type { VideoBeatTags } from '@shared/videoBeats'
 import FolderTreeIcon from './FolderTreeIcon.vue'
 import RefreshIcon from './icons/RefreshIcon.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
@@ -1275,13 +1300,63 @@ const visibleAssets = computed(() => {
     .sort((a, b) => compareNames(a.name, b.name))
 })
 
-/** 资产检索：名称 + 本地视觉打标标签（英文 COCO label / 中文名），为语义检索（P1）打基础 */
+/** 镜头检索：把「空镜 / 人物出镜 / 单人 / 群像 / 有物」等口语词映射到视频打点分段类型 */
+function beatsMatchSearchQuery(
+  beats: { status?: string; segments?: Array<{ kind: string }> } | null | undefined,
+  q: string
+): boolean {
+  if (!beats || beats.status !== 'ok') return false
+  const kinds = new Set((beats.segments ?? []).map((s) => s.kind))
+  const anyPerson = kinds.has('person-solo') || kinds.has('person-group')
+  const includes = (...words: string[]): boolean => words.some((w) => q.includes(w))
+  const is = (...words: string[]): boolean => words.includes(q)
+  // 空镜段
+  if ((includes('空镜', '空镜头', '无人', '没人') || is('empty')) && kinds.has('empty')) // cjk-ok：镜头段检索自然语言词
+    return true
+  // 群像段
+  if (
+    (includes('群像', '人群', '多人', '人潮') || is('group', 'crowd', 'group shot')) && // cjk-ok：镜头段检索自然语言词
+    kinds.has('person-group')
+  ) {
+    return true
+  }
+  // 单人段
+  if (
+    (includes('单人', '独自', '独白', '个人') || is('solo', 'alone')) && // cjk-ok：镜头段检索自然语言词
+    kinds.has('person-solo')
+  ) {
+    return true
+  }
+  // 人物出镜（人像 / 有人物的画面）
+  if (
+    (includes('人物', '有人', '出镜', '现身', '主角', '演员', '人像') || // cjk-ok：镜头段检索自然语言词
+      is('person', 'people', 'someone', 'human', 'anyone')) &&
+    anyPerson
+  ) {
+    return true
+  }
+  // 有物无人的物体段
+  if (
+    (includes('物体', '物件', '静物', '有物', '特写物') || is('object', 'close-up')) && // cjk-ok：镜头段检索自然语言词
+    kinds.has('objects')
+  ) {
+    return true
+  }
+  return false
+}
+
+/** 资产检索：名称 + 本地视觉打标标签 + 视频打点出现对象（英文 COCO label / 中文名）+ 镜头段语义词（空镜 / 人物 / 群像），为语义检索（P1）打基础 */
 function assetMatchesSearch(asset: AssetInfo, q: string): boolean {
   if (asset.name.toLowerCase().includes(q)) return true
-  const summary = asset.visionTags?.summary ?? []
-  return summary.some(
-    (tag) =>
-      tag.label.toLowerCase().includes(q) || (tag.labelZh ?? '').toLowerCase().includes(q)
+  const hit = (summary: Array<{ label: string; labelZh?: string }> | undefined): boolean =>
+    (summary ?? []).some(
+      (tag) =>
+        tag.label.toLowerCase().includes(q) || (tag.labelZh ?? '').toLowerCase().includes(q)
+    )
+  return (
+    hit(asset.visionTags?.summary) ||
+    hit(asset.videoBeats?.summary) ||
+    beatsMatchSearchQuery(asset.videoBeats, q)
   )
 }
 
@@ -1328,6 +1403,200 @@ const contextMenuCanRevealInFolder = computed(() => {
   if (isDraftAssetId(menu.value.targetId)) return false
   return project.assets.some((a) => a.id === menu.value!.targetId)
 })
+
+// ── 视频人 / 物打点入口（asset.videoBeats，右键按需触发）──────────
+
+/** 正在打点分析中的视频资产 id（驱动菜单禁用与素材卡角标） */
+const analyzingVideoBeatIds = ref<Set<string>>(new Set())
+
+/** 自动打点（导入入库后主进程低优先级触发）busy 广播订阅；null = 未订阅 / API 不可用 */
+let stopAutoVideoBeatBusy: (() => void) | null = null
+
+/** 合并主进程自动打点进行中状态到角标集合（手动触发仍由 runVideoBeatAnalysis 本地维护） */
+function applyAutoVideoBeatBusy(assetId: string, busy: boolean): void {
+  const next = new Set(analyzingVideoBeatIds.value)
+  if (busy) next.add(assetId)
+  else next.delete(assetId)
+  analyzingVideoBeatIds.value = next
+}
+
+/** 右键菜单当前目标资产 */
+function contextMenuTargetAsset(): AssetInfo | null {
+  if (menu.value?.kind !== 'asset' || !menu.value.targetId) return null
+  return project.assets.find((a) => a.id === menu.value!.targetId) ?? null
+}
+
+/** 可打点的右键目标：带媒体文件的本机视频资产 */
+const contextMenuVideoBeatAsset = computed<AssetInfo | null>(() => {
+  const asset = contextMenuTargetAsset()
+  if (!asset || asset.type !== 'video') return null
+  if (isDraftAssetId(asset.id)) return null
+  if (!asset.relativePath?.trim()) return null
+  return asset
+})
+
+const contextMenuVideoBeatBusy = computed(() => {
+  const asset = contextMenuVideoBeatAsset.value
+  return asset != null && analyzingVideoBeatIds.value.has(asset.id)
+})
+
+const contextMenuVideoBeatLabel = computed(() => {
+  const asset = contextMenuVideoBeatAsset.value
+  if (!asset) return ''
+  if (analyzingVideoBeatIds.value.has(asset.id)) {
+    return t('asset.browser.context.videoBeatBusy')
+  }
+  return asset.videoBeats?.status === 'ok'
+    ? t('asset.browser.context.videoBeatAgain')
+    : t('asset.browser.context.videoBeat')
+})
+
+function videoBeatSummaryText(beats: VideoBeatTags): string {
+  const empty = beats.segments.filter((s) => s.kind === 'empty').length
+  const solo = beats.segments.filter((s) => s.kind === 'person-solo').length
+  const group = beats.segments.filter((s) => s.kind === 'person-group').length
+  const names = [...new Set(beats.summary.map((item) => item.labelZh))].slice(0, 6).join('、')
+  return t('asset.browser.videoBeatSummary', {
+    empty,
+    solo,
+    group,
+    names: names || t('common.none')
+  })
+}
+
+/** 素材卡角标：打点中（旋转）/ 已打点 / 打点失败 */
+function videoBeatBadge(
+  asset: AssetInfo
+): { tone: 'running' | 'ok' | 'skip'; text: string; title: string } | null {
+  if (asset.type !== 'video') return null
+  if (analyzingVideoBeatIds.value.has(asset.id)) {
+    return { tone: 'running', text: '', title: t('asset.browser.videoBeatAnalyzing') }
+  }
+  const beats = asset.videoBeats
+  if (!beats) return null
+  if (beats.status === 'ok') {
+    return { tone: 'ok', text: '✓', title: videoBeatSummaryText(beats) }
+  }
+  return { tone: 'skip', text: '⚠', title: beats.error || t('asset.browser.videoBeatFailed') }
+}
+
+/** ffmpeg 一键安装成功后待自动重试打点的资产 id（由 runVideoBeatAnalysis 的 finally 消费） */
+let videoBeatRetryAfterInstall: string | null = null
+
+/** 对视频资产执行一次打点；null = 资产被移除 / 切换工程，调用方静默处理 */
+async function runVideoBeatAnalysis(assetId: string): Promise<void> {
+  if (analyzingVideoBeatIds.value.has(assetId)) return
+  const asset = project.assets.find((a) => a.id === assetId)
+  if (!asset || asset.type !== 'video' || !asset.relativePath?.trim()) return
+  analyzingVideoBeatIds.value = new Set([...analyzingVideoBeatIds.value, assetId])
+  try {
+    const tags = await window.studio.analyzeVideoBeats(assetId)
+    if (!tags) return
+    if (tags.status === 'skipped') {
+      const hint = tags.install
+      const fallback = tags.error || t('asset.browser.videoBeatFailed')
+      if (!hint) {
+        await promptAlert({ title: t('asset.browser.context.videoBeat'), message: fallback })
+        return
+      }
+      const runIn = t('asset.browser.videoBeatInstallRunIn', { term: hint.commandLabel })
+      const guide = `${fallback}\n\n${runIn}\n${hint.command}`
+      const go = await promptConfirm({
+        title: t('asset.browser.context.videoBeat'),
+        message: hint.autoInstall
+          ? `${guide}\n\n${t('asset.browser.videoBeatInstallAutoHint')}`
+          : guide,
+        confirmLabel: hint.autoInstall
+          ? t('asset.browser.videoBeatInstallAction')
+          : t('asset.browser.videoBeatInstallOpenPage'),
+        cancelLabel: t('common.cancel')
+      })
+      if (!go) return
+      if (!hint.autoInstall) {
+        // 平台不支持自动安装：打开下载页（主进程 setWindowOpenHandler 转系统浏览器）
+        window.open(hint.url, '_blank')
+        return
+      }
+      await runInstallFfmpegFlow(assetId)
+      return
+    }
+    await promptAlert({
+      title: t('asset.browser.context.videoBeat'),
+      message: videoBeatSummaryText(tags)
+    })
+  } catch (e) {
+    await promptAlert({
+      title: t('asset.browser.context.videoBeat'),
+      message: e instanceof Error ? e.message : String(e)
+    })
+  } finally {
+    analyzingVideoBeatIds.value = new Set(
+      [...analyzingVideoBeatIds.value].filter((id) => id !== assetId)
+    )
+    if (videoBeatRetryAfterInstall === assetId) {
+      videoBeatRetryAfterInstall = null
+      // 一键安装成功后的自动重试：等 busy 清理后再跑，避免被自身闸门吞掉
+      void runVideoBeatAnalysis(assetId)
+    }
+  }
+}
+
+/** 字节数格式化为可读文本（安装进度弹窗旁注） */
+function formatBytes(n: number | undefined): string {
+  if (!n) return ''
+  if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.round(n / 1024)} KB`
+}
+
+/** 一键安装 ffmpeg：弹「安装中」进度提示 → 订阅主进程进度刷新 → 收起提示 → 成功则标记自动重试打点 */
+async function runInstallFfmpegFlow(assetId: string): Promise<void> {
+  const title = t('asset.browser.context.videoBeat')
+  void promptAlert({
+    title,
+    message: t('asset.browser.videoBeatInstalling'),
+    progress: 0
+  })
+  const unsub = window.studio.onFfmpegInstallProgress((p) => {
+    if (p.phase === 'downloading' && typeof p.percent === 'number') {
+      updateCurrentPromptProgress(
+        p.percent,
+        p.totalBytes
+          ? `${formatBytes(p.loadedBytes)} / ${formatBytes(p.totalBytes)}`
+          : formatBytes(p.loadedBytes)
+      )
+    } else if (p.phase === 'extracting') {
+      updateCurrentPromptProgress(100, t('asset.browser.videoBeatInstallingExtract'))
+    }
+  })
+  try {
+    const result = await window.studio.installFfmpeg()
+    dismissCurrentPrompt()
+    if (!result.ok) {
+      await promptAlert({
+        title,
+        message: result.message,
+        actionLabel: result.downloadUrl ? t('asset.browser.videoBeatInstallOpenPage') : undefined,
+        actionUrl: result.downloadUrl
+      })
+      return
+    }
+    await promptAlert({ title, message: result.message })
+    videoBeatRetryAfterInstall = assetId
+  } catch (err) {
+    dismissCurrentPrompt()
+    await promptAlert({ title, message: err instanceof Error ? err.message : String(err) })
+  } finally {
+    unsub()
+  }
+}
+
+async function analyzeContextMenuVideoBeats(): Promise<void> {
+  const asset = contextMenuVideoBeatAsset.value
+  closeMenu()
+  if (!asset) return
+  await runVideoBeatAnalysis(asset.id)
+}
 
 watch(
   () => visibleAssets.value.map((asset) => asset.id).join('\n'),
@@ -2803,9 +3072,16 @@ onMounted(() => {
   window.addEventListener('mousedown', onGlobalPointerDown)
   window.addEventListener('keydown', onKeyDown)
   if (project.isOpen) void project.refreshFolders()
+  if (typeof window.studio?.onVideoBeatBusyChanged === 'function') {
+    stopAutoVideoBeatBusy = window.studio.onVideoBeatBusyChanged(({ assetId, busy }) => {
+      applyAutoVideoBeatBusy(assetId, busy)
+    })
+  }
 })
 
 onBeforeUnmount(() => {
+  stopAutoVideoBeatBusy?.()
+  stopAutoVideoBeatBusy = null
   window.removeEventListener('mousedown', onGlobalPointerDown)
   window.removeEventListener('keydown', onKeyDown)
   isSplitterDragging.value = false
@@ -3456,6 +3732,53 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+/* 视频打点状态角标（缩略卡右下；打点中为旋转圆环，ok/skip 为圆形标记） */
+.beat-mark {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 1;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.beat-mark.ok {
+  background: color-mix(in srgb, var(--accent) 82%, transparent);
+}
+
+.beat-mark.skip {
+  background: color-mix(in srgb, var(--danger) 82%, transparent);
+}
+
+.beat-mark.running {
+  min-width: 14px;
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-top-color: var(--accent);
+  box-shadow: none;
+  animation: beatSpin 0.8s linear infinite;
+}
+
+@keyframes beatSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .badge {
   color: var(--text-muted);
   font-size: 11px;
@@ -3583,6 +3906,15 @@ onBeforeUnmount(() => {
 
 .ctx-menu button.danger {
   color: var(--danger);
+}
+
+.ctx-menu button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ctx-menu button:disabled:hover {
+  background: transparent;
 }
 
 .ctx-icon {

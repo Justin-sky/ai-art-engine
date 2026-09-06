@@ -82,6 +82,12 @@ const E_TEXT_REQUEST_TIMEOUT = defErr<{ sec: number }>(
   ({ sec }) => `Request timed out after ${sec}s. Retry for long outputs, or switch to a faster text model`
 )
 
+const E_TEXT_REQUEST_ABORTED = defErrSimple(
+  'provider.openai-compat.text-request-aborted',
+  '请求被中断（网络波动或连接被重置），请稍后重试',
+  'Request was aborted (network fluctuation or connection reset); please retry'
+)
+
 const E_ARK_TEXT_INTERNAL = defErr<{ requestId?: string }>(
   'provider.openai-compat.ark-text-internal-error',
   ({ requestId }) =>
@@ -195,27 +201,40 @@ function buildChatMessages(input: GenerateTextInput): ChatMessage[] {
 }
 
 function isRetryableTextError(err: unknown): boolean {
-  if (!axios.isAxiosError(err)) return false
-  if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.code === 'EAI_AGAIN') {
+  // 非 axios 错误：连接被中断（raw 'aborted' / DOMException AbortError 等）→ 值得重试
+  if (!axios.isAxiosError(err)) {
+    const message = err instanceof Error ? err.message.toLowerCase() : ''
+    return message === 'aborted' || message.includes('abort')
+  }
+  const axiosErr = err
+  const httpMessage = axiosErr.message.toLowerCase()
+  if (
+    axiosErr.code === 'ECONNRESET' ||
+    axiosErr.code === 'ETIMEDOUT' ||
+    axiosErr.code === 'EAI_AGAIN' ||
+    axiosErr.code === 'ECONNABORTED' ||
+    axiosErr.code === 'ERR_CANCELED' ||
+    httpMessage === 'aborted' ||
+    httpMessage.includes('abort')
+  ) {
     return true
   }
-  const status = err.response?.status
+  const status = axiosErr.response?.status
   if (status === 500 || status === 502 || status === 503 || status === 529) return true
-  const raw = err.response?.data as
+  const raw = axiosErr.response?.data as
     | { error?: { code?: string; message?: string } | string; message?: string }
     | undefined
   const code =
     raw?.error && typeof raw.error === 'object' ? String(raw.error.code ?? '') : ''
-  const message =
+  const respMessage =
     (raw?.error && typeof raw.error === 'object' ? raw.error.message : undefined) ||
     (typeof raw?.error === 'string' ? raw.error : undefined) ||
     raw?.message ||
-    err.message ||
     ''
   return (
     /InternalServiceError/i.test(code) ||
-    /internal\s*(service\s*)?error/i.test(message) ||
-    /overloaded|temporarily unavailable|try again later/i.test(message)
+    /internal\s*(service\s*)?error/i.test(respMessage) ||
+    /overloaded|temporarily unavailable|try again later/i.test(respMessage)
   )
 }
 
@@ -242,6 +261,16 @@ async function formatTextGenerateFailure(
   err: unknown,
   provider: ModelProviderInstance
 ): Promise<string> {
+  const rawMessage = err instanceof Error ? err.message : ''
+  const lowerMessage = rawMessage.toLowerCase()
+  if (
+    lowerMessage === 'aborted' ||
+    lowerMessage.includes('abort') ||
+    (axios.isAxiosError(err) && err.code === 'ERR_CANCELED')
+  ) {
+    return fail(E_TEXT_REQUEST_ABORTED).message
+  }
+
   if (axios.isAxiosError(err) && err.code === 'ECONNABORTED') {
     const sec = Math.round(LONG_GENERATE_TIMEOUT_MS / 1000)
     return fail(E_TEXT_REQUEST_TIMEOUT, { sec }).message

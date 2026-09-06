@@ -444,6 +444,7 @@ async function onAttach(): Promise<void> {
 .preview video {
   max-width: 100%;
   max-height: 240px;
+  aspect-ratio: 16 / 9;
   display: block;
 }
 

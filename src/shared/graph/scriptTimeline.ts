@@ -69,6 +69,8 @@ export type ScriptTimelineClip = {
   /** 轨道上的起始时间（秒） */
   startSec: number
   durationSec: number
+  /** 视频 / 叠加轨片段在源文件内的取段起点（秒）；缺省 0 = 从源文件开头（打点智能剪辑选段时写入） */
+  sourceOffsetSec?: number
   /** 声音/音乐轨片段音量（0~1） */
   volume?: number
   /** 淡入时长（秒） */
@@ -186,6 +188,8 @@ export type TimelineExportClip = {
   title: string
   startSec: number
   durationSec: number
+  /** 源文件内的取段起点（秒），缺省 0；打点选段片段在导出按此偏移后截取 */
+  sourceOffsetSec?: number
   volume?: number
   fadeInSec?: number
   fadeOutSec?: number
@@ -253,6 +257,26 @@ export type TimelineExportInput = {
 export type TimelineExportResult =
   | { ok: true; filePath: string; assetId?: string; engine: 'ffmpeg' }
   | { ok: false; canceled?: boolean; error: string }
+
+/**
+ * 转场窗口 ffmpeg 微渲染请求（编辑器预览用）。
+ * 语义与导出 buildFilterGraph 的单段 cross 段完全一致：A 尾窗(实际转场时长) + B 头窗(整个重叠窗口)
+ * 做一次 xfade(duration=转场时长, offset=0)，输出覆盖 [B.startSec, A.endSec] 的整段预览画面。
+ */
+export type TimelineTransitionPreviewInput = {
+  /** 前段 A：转场尾窗来源（srcOff + duration - overlap 处取 d 秒参与交叉淡化） */
+  left: TimelineExportClip
+  /** 后段 B：转场头窗来源（srcOff 处取 overlap 秒，淡化结束后继续播放） */
+  right: TimelineExportClip
+  /** 输出宽（预览画幅；主进程会按等比钳制到上限） */
+  width?: number
+  height?: number
+  fps?: number
+}
+
+export type TimelineTransitionPreviewResult =
+  | { ok: true; /** studio-media 可播放 URL */ url: string; /** 覆盖窗口时长（秒）= overlap */ durationSec: number }
+  | { ok: false; /** 无转场 / ffmpeg 缺失 / 渲染失败 */ error: string }
 
 export const SCRIPT_TIMELINE_PARAM_KEY = 'scriptTimeline'
 export const SCRIPT_TIMELINE_NODE_PREFIX = 'scriptTimeline:'
