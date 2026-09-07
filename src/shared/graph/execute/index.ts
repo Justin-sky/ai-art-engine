@@ -62,6 +62,7 @@ export * from './narrative'
 export * from './select'
 export * from './imageEdit'
 export * from './imageLocal'
+export * from './stageLocal'
 export * from './adVariants'
 export * from './anim'
 export {

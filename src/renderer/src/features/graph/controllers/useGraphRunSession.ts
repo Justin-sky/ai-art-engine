@@ -42,6 +42,7 @@ import { composeImageCropCanvas } from '../model/composeImageCropCanvas'
 import { composeImageCutoutCanvas } from '../model/composeImageCutoutCanvas'
 import { composeImageAlignCanvas } from '../model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../model/composeImageComposeCanvas'
+import { composeStage2dCanvas } from '../model/composeStage2dCanvas'
 import { composeImageGridCell } from '../model/composeImageGridCell'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
@@ -785,6 +786,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageCutoutCanvas,
         composeImageAlignCanvas,
         composeImageComposeCanvas,
+        composeStage2dCanvas,
         composeImageGridCell,
         composeImageLayerStack,
         composeComicPageImage,

@@ -446,6 +446,10 @@ export interface NodeExecuteContext {
     /** 本次命中的主体框等运行信息，可写回节点 params 供下次免重复推理 */
     state?: Partial<import('../imageCompose').ImageComposeState>
   }>
+  /** 2D 舞台叠绘：把场景内多精灵层按 z 序合成一帧 PNG（层 sourceUrl 需已解析为可绘制 URL）。 */
+  composeStage2dCanvas?: (input: {
+    state: import('../stage2d').Stage2dSceneState
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 宫格：裁出单个宫格 PNG。 */
   composeImageGridCell?: (input: {
     sourceDataUrl: string
@@ -646,6 +650,7 @@ export interface GraphRunOptions {
   composeImageCutoutCanvas?: NodeExecuteContext['composeImageCutoutCanvas']
   composeImageAlignCanvas?: NodeExecuteContext['composeImageAlignCanvas']
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
+  composeStage2dCanvas?: NodeExecuteContext['composeStage2dCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']

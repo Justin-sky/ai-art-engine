@@ -429,6 +429,7 @@ async function executeOneNode(
     composeImageCutoutCanvas: options.composeImageCutoutCanvas,
     composeImageAlignCanvas: options.composeImageAlignCanvas,
     composeImageComposeCanvas: options.composeImageComposeCanvas,
+    composeStage2dCanvas: options.composeStage2dCanvas,
     composeImageGridCell: options.composeImageGridCell,
     composeImageLayerStack: options.composeImageLayerStack,
     composeComicPageImage: options.composeComicPageImage,

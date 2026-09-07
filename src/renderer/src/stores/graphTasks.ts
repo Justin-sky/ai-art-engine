@@ -58,6 +58,7 @@ import { composeImageCropCanvas } from '../features/graph/model/composeImageCrop
 import { composeImageCutoutCanvas } from '../features/graph/model/composeImageCutoutCanvas'
 import { composeImageAlignCanvas } from '../features/graph/model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../features/graph/model/composeImageComposeCanvas'
+import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
@@ -1365,6 +1366,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageCutoutCanvas,
         composeImageAlignCanvas,
         composeImageComposeCanvas,
+        composeStage2dCanvas,
         composeImageGridCell,
         composeImageLayerStack,
         composeComicPageImage,

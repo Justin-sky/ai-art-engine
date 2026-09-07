@@ -63,6 +63,7 @@ import {
   executeCutoutNode,
   executeAlignNode,
   executeComposeNode,
+  executeStage2dNode,
   executeGridSplitNode,
   executeLayerSplitNode,
   executeMediaReviewNode,
@@ -1535,6 +1536,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultParams: () => ({
       stage2dScene: createDefaultStage2dScene()
     }),
+    execute: executeStage2dNode,
     addable: true,
     deletable: true,
     inspector: 'none',
