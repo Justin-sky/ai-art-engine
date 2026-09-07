@@ -333,6 +333,64 @@
           </div>
 
           <div class="section-label">
+            {{ t('stage2d.spineExportTitle') }}
+          </div>
+          <p
+            v-if="!rig.joints.length"
+            class="hint"
+          >
+            {{ t('stage2d.actionNoRig') }}
+          </p>
+          <p
+            v-else-if="!attachLayers.length"
+            class="hint"
+          >
+            {{ t('stage2d.spineNoAttach') }}
+          </p>
+          <template v-else>
+            <div class="row export-controls">
+              <label class="field">
+                <span>{{ t('stage2d.spineExportName') }}</span>
+                <input
+                  v-model="spineExportName"
+                  type="text"
+                  :disabled="spineBusy"
+                  @keydown.enter="exportSpineSkeleton"
+                >
+              </label>
+              <button
+                type="button"
+                class="primary"
+                :disabled="spineBusy"
+                @click="exportSpineSkeleton"
+              >
+                ⬇️ {{ t('stage2d.spineExportButton') }}
+              </button>
+            </div>
+            <p class="hint">
+              {{ t('stage2d.spineExportNote') }}
+            </p>
+            <p
+              v-if="spineBusy"
+              class="export-status"
+            >
+              {{ t('stage2d.spineExporting') }}
+            </p>
+            <p
+              v-else-if="spineError"
+              class="export-status error"
+            >
+              {{ spineError }}
+            </p>
+            <p
+              v-else-if="spineMsg"
+              class="export-status ok"
+            >
+              {{ spineMsg }}
+            </p>
+          </template>
+
+          <div class="section-label">
             {{ t('stage2d.exportTitle') }}
           </div>
           <p
@@ -899,6 +957,7 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
+import { composeStage2dSpineExport } from '../features/graph/model/composeStage2dSpineExport'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
@@ -1519,6 +1578,70 @@ const exportBusy = ref(false)
 const exportProgress = ref(0)
 const exportDone = ref(false)
 const exportError = ref('')
+
+/** Spine 骨架包导出：把挂到关节的可见部件层导出为 skeleton.json + atlas + 部件 PNG */
+const spineExportName = ref('')
+const spineBusy = ref(false)
+const spineMsg = ref('')
+const spineError = ref('')
+/** 已挂到关节且可见的层（导出 Spine 包的先决条件） */
+const attachLayers = computed(() =>
+  rig.value.attachments.filter((attachment) =>
+    scene.value.layers.some(
+      (layer) => layer.id === attachment.layerId && layer.visible && layer.sourceUrl.trim()
+    )
+  )
+)
+
+async function exportSpineSkeleton(): Promise<void> {
+  if (spineBusy.value) return
+  if (!rig.value.joints.length || !attachLayers.value.length) return
+  stopActionPlayback()
+  spineBusy.value = true
+  spineMsg.value = ''
+  spineError.value = ''
+  try {
+    const sceneState = normalizeStage2dScene(scene.value)
+    const baseName = spineExportName.value.trim() || 'skeleton'
+    const result = await composeStage2dSpineExport({
+      state: sceneState,
+      rig: rig.value,
+      pose: pose.value,
+      resolveLayerUrl,
+      baseName
+    })
+    if (!result || !result.files.length) {
+      throw new Error(t('stage2d.spineNoAttach'))
+    }
+    // 部件页 PNG 走工程媒体落盘（Assets/ 子目录自动建目录、注册为图片资产并刷新）
+    const subDir = `Assets/2D/Spine/${result.skeletonName}`
+    for (const file of result.files) {
+      await window.studio.saveGraphRunMedia({
+        dataUrl: file.dataUrl,
+        key: file.fileName.replace(/\.png$/i, ''),
+        outputDir: subDir
+      })
+    }
+    // skeleton.json 与 atlas 是同目录工程文件（不进素材库，供引擎/Spine 直接导入）
+    await window.studio.writeProjectFile({
+      relativePath: `${subDir}/${result.skeletonName}.json`,
+      content: result.jsonText
+    })
+    await window.studio.writeProjectFile({
+      relativePath: `${subDir}/${result.skeletonName}.atlas`,
+      content: result.atlasText
+    })
+    await project.scheduleRefreshLibrary()
+    spineMsg.value = t('stage2d.spineExportDone', {
+      count: result.files.length,
+      path: subDir
+    })
+  } catch (err) {
+    spineError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    spineBusy.value = false
+  }
+}
 
 const exportFrameCount = computed(() => {
   const action = actionCurrent.value

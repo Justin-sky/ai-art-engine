@@ -1218,6 +1218,15 @@ export default {
     actionFreezeTip: 'Keep the current sampled frame as your pose',
     actionStatus: '{now}s / {total}s',
     actionPaused: 'paused',
+    spineExportTitle: 'Spine skeleton pack',
+    spineExportName: 'Pack name',
+    spineExportButton: 'Export Spine pack',
+    spineExportNote:
+      'Exports joint-attached visible part layers as skeleton.json + .atlas + part PNGs (current pose folded into the setup pose; parts keep their original orientation)',
+    spineExporting: 'Assembling Spine skeleton pack…',
+    spineNoAttach:
+      'Drop a part image onto the canvas in the “Layers” tab, then select the target joint in the “Rig” tab and bind the layer to it',
+    spineExportDone: 'Written to {path} ({count} part pages + skeleton.json + .atlas); library refreshed',
     exportTitle: 'Export action frames (transparent PNG)',
     exportNeedAction: 'Pick an action in “Action preview” above first',
     exportFps: 'FPS',
