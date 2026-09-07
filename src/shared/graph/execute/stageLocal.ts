@@ -23,6 +23,7 @@ import {
   stage2dSceneToNodePatch,
   stageSceneWithUpstreamSources
 } from '../stage2d'
+import { readStage2dPoseFromNode, readStage2dRigFromNode } from '../stage2dRig'
 
 /** 可直接交给 <img> 绘制的层源；其余视为项目相对路径，经 resolver 读成 dataUrl */
 const DIRECT_DRAWABLE_URL = /^(data:|https?:\/\/|blob:)/i
@@ -61,6 +62,8 @@ export async function executeStage2dNode(
   const incoming = await collectIncomingImageItems(ctx)
 
   // 上游精灵（如级联 image.align 输出）按序自动成层；无上游则合成既有层
+  const rig = readStage2dRigFromNode(ctx.node.params)
+  const pose = readStage2dPoseFromNode(ctx.node.params, rig)
   const scene = incoming.length
     ? stageSceneWithUpstreamSources(
         initial,
@@ -101,7 +104,7 @@ export async function executeStage2dNode(
       sourceUrl: layerUrls[index] ?? ''
     }))
   })
-  const composed = await ctx.composeStage2dCanvas({ state: composeScene })
+  const composed = await ctx.composeStage2dCanvas({ state: composeScene, rig, pose })
   if (!composed.dataUrl) {
     throw fail(SHARED_ERRORS.imageCropEmpty)
   }

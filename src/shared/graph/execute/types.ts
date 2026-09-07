@@ -446,9 +446,11 @@ export interface NodeExecuteContext {
     /** 本次命中的主体框等运行信息，可写回节点 params 供下次免重复推理 */
     state?: Partial<import('../imageCompose').ImageComposeState>
   }>
-  /** 2D 舞台叠绘：把场景内多精灵层按 z 序合成一帧 PNG（层 sourceUrl 需已解析为可绘制 URL）。 */
+  /** 2D 舞台叠绘：把场景内多精灵层按 z 序合成一帧 PNG（层 sourceUrl 需已解析为可绘制 URL）；rig/pose 存在时挂到关节的层按 FK 结果旋转落位。 */
   composeStage2dCanvas?: (input: {
     state: import('../stage2d').Stage2dSceneState
+    rig?: import('../stage2dRig').Stage2dRig | null
+    pose?: import('../stage2dRig').Stage2dPose | null
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 宫格：裁出单个宫格 PNG。 */
   composeImageGridCell?: (input: {

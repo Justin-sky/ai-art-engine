@@ -16,6 +16,8 @@ import type {
   LightingSetupState,
   MultiAngleCameraState,
   PortraitQualityState,
+  Stage2dPose,
+  Stage2dRig,
   Stage2dSceneState
 } from '@shared/graph'
 
@@ -169,6 +171,8 @@ export type GraphEditorDialogsApi = {
   stage2d: {
     open: boolean
     setup: Stage2dSceneState | null
+    setupRig: Stage2dRig | null
+    setupPose: Stage2dPose | null
   }
   layerSplit: {
     open: boolean
@@ -247,6 +251,8 @@ export type GraphEditorDialogsApi = {
   closeStage2d: () => void
   saveStage2d: (payload: {
     stage2dScene: Stage2dSceneState
+    stage2dRig?: Stage2dRig
+    stage2dPose?: Stage2dPose
     dataUrl?: string
   }) => void | Promise<void>
   /** dive 面包屑回退前结束 2D 舞台编辑，补记撤销命令 */

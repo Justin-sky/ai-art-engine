@@ -248,6 +248,8 @@
       v-else-if="viewId === 'node.stage2d' && api.stage2d.open"
       :open="true"
       :setup="api.stage2d.setup"
+      :setup-rig="api.stage2d.setupRig"
+      :setup-pose="api.stage2d.setupPose"
       @close="onClose(api.closeStage2d)"
       @save="api.saveStage2d as never"
     />

@@ -924,9 +924,13 @@ import {
   type ImageGridSplitState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
+  type Stage2dPose,
+  type Stage2dRig,
   type Stage2dSceneState,
   readImageAlignFromNode,
   readStage2dSceneFromNode,
+  readStage2dRigFromNode,
+  readStage2dPoseFromNode,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -7598,14 +7602,19 @@ const stage2d = reactive({
   open: false,
   nodeId: '' as string,
   setup: null as Stage2dSceneState | null,
+  setupRig: null as Stage2dRig | null,
+  setupPose: null as Stage2dPose | null,
   historyBefore: null as GraphDocument | null
 })
 
 function onStage2dOpen(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
+  const rig = readStage2dRigFromNode(node.params)
   stage2d.nodeId = nodeId
   stage2d.setup = readStage2dSceneFromNode(node.params)
+  stage2d.setupRig = rig
+  stage2d.setupPose = readStage2dPoseFromNode(node.params, rig)
   stage2d.historyBefore = buildGraphJson()
   stage2d.open = true
 }
@@ -7614,12 +7623,16 @@ function closeStage2d(): void {
   stage2d.open = false
   stage2d.nodeId = ''
   stage2d.setup = null
+  stage2d.setupRig = null
+  stage2d.setupPose = null
   stage2d.historyBefore = null
 }
 
 /** 保存 2D 舞台编辑：舞台参数与合成帧一起写回节点，卡片立即显示结果 */
 async function saveStage2d(payload: {
   stage2dScene: Stage2dSceneState
+  stage2dRig?: Stage2dRig
+  stage2dPose?: Stage2dPose
   dataUrl?: string
 }): Promise<void> {
   const nodeId = stage2d.nodeId
@@ -7627,12 +7640,17 @@ async function saveStage2d(payload: {
   if (!node) return
   const before = stage2d.historyBefore ?? buildGraphJson()
   const mediaParams = await materializeToolResult(node, payload.dataUrl, 'stage2d')
+  const rig = payload.stage2dRig ?? readStage2dRigFromNode(node.params)
   node.params = {
     ...node.params,
     stage2dScene: payload.stage2dScene,
+    stage2dRig: rig,
+    stage2dPose: payload.stage2dPose ?? {},
     ...mediaParams
   }
   stage2d.setup = payload.stage2dScene
+  stage2d.setupRig = rig
+  stage2d.setupPose = payload.stage2dPose ?? {}
   scheduleSave()
   graphEditorHosts.bumpRevision()
   recordGraphChange('stage2d', before)

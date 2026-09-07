@@ -15,79 +15,293 @@
       class="stage2d"
     >
       <section class="pane layers-pane">
-        <div class="section-label">
-          {{ t('stage2d.layers') }}
-        </div>
-        <ul class="layers">
-          <li
-            v-for="(layer, index) in layers"
-            :key="layer.id"
-            class="layer"
-            :class="{ active: layer.id === selectedId, hidden: !layer.visible }"
-            @click="selectedId = layer.id"
+        <div class="tabs">
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: tab === 'layers' }"
+            @click="tab = 'layers'"
           >
-            <img
-              v-if="thumbUrls[layer.id]"
-              :src="thumbUrls[layer.id]"
-              alt=""
+            {{ t('stage2d.tabLayers') }}
+          </button>
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: tab === 'rig' }"
+            @click="tab = 'rig'"
+          >
+            {{ t('stage2d.tabRig') }}
+          </button>
+        </div>
+
+        <template v-if="tab === 'layers'">
+          <ul class="layers">
+            <li
+              v-for="(layer, index) in layers"
+              :key="layer.id"
+              class="layer"
+              :class="{ active: layer.id === selectedId, hidden: !layer.visible }"
+              @click="selectedId = layer.id"
             >
-            <span
-              v-else
-              class="thumb-fallback"
-            >🖼</span>
-            <span
-              class="name"
-              :title="layer.sourceUrl"
-            >{{ layer.name }}</span>
-            <button
-              type="button"
-              class="icon"
-              :title="t('stage2d.moveUp')"
-              :disabled="index === 0"
-              @click.stop="move(layer.id, -1)"
+              <img
+                v-if="thumbUrls[layer.id]"
+                :src="thumbUrls[layer.id]"
+                alt=""
+              >
+              <span
+                v-else
+                class="thumb-fallback"
+              >🖼</span>
+              <span
+                class="name"
+                :title="layer.sourceUrl"
+              >{{ layer.name }}</span>
+              <button
+                type="button"
+                class="icon"
+                :title="t('stage2d.moveUp')"
+                :disabled="index === 0"
+                @click.stop="move(layer.id, -1)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :title="t('stage2d.moveDown')"
+                :disabled="index === layers.length - 1"
+                @click.stop="move(layer.id, 1)"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :title="layer.visible ? t('stage2d.hide') : t('stage2d.show')"
+                @click.stop="toggleVisible(layer.id)"
+              >
+                {{ layer.visible ? '👁' : '⃝' }}
+              </button>
+              <button
+                type="button"
+                class="icon danger"
+                :title="t('stage2d.remove')"
+                @click.stop="remove(layer.id)"
+              >
+                ✕
+              </button>
+            </li>
+          </ul>
+          <p
+            v-if="!layers.length"
+            class="hint"
+          >
+            {{ t('stage2d.noLayer') }}
+          </p>
+          <button
+            type="button"
+            class="primary"
+            @click="pickerOpen = true"
+          >
+            {{ t('stage2d.addLayer') }}
+          </button>
+        </template>
+
+        <template v-else>
+          <div class="section-label">
+            {{ t('stage2d.joints') }}
+          </div>
+          <ul class="layers">
+            <li
+              v-for="joint in rig.joints"
+              :key="joint.id"
+              class="layer"
+              :class="{ active: joint.id === selectedJointId }"
+              @click="selectedJointId = joint.id"
             >
-              ↑
-            </button>
-            <button
-              type="button"
-              class="icon"
-              :title="t('stage2d.moveDown')"
-              :disabled="index === layers.length - 1"
-              @click.stop="move(layer.id, 1)"
+              <span class="thumb-fallback">●</span>
+              <span
+                class="name"
+                :title="joint.id"
+              >
+                {{ joint.name }}
+                <small v-if="joint.parentId">→ {{ jointName(joint.parentId) }}</small>
+              </span>
+              <button
+                type="button"
+                class="icon danger"
+                :title="t('stage2d.removeJoint')"
+                @click.stop="removeJoint(joint.id)"
+              >
+                ✕
+              </button>
+            </li>
+          </ul>
+          <p
+            v-if="!rig.joints.length"
+            class="hint"
+          >
+            {{ t('stage2d.noJoint') }}
+          </p>
+          <button
+            type="button"
+            class="primary"
+            @click="addJoint"
+          >
+            ＋ {{ t('stage2d.addJoint') }}
+          </button>
+
+          <template v-if="selectedJoint">
+            <div class="section-label">
+              {{ t('stage2d.jointParams') }}
+            </div>
+            <label class="field">
+              <span>{{ t('stage2d.jointName') }}</span>
+              <input
+                type="text"
+                :value="selectedJoint.name"
+                @change="patchJointName($event)"
+              >
+            </label>
+            <label class="field">
+              <span>{{ t('stage2d.parentJoint') }}</span>
+              <select
+                :value="selectedJoint.parentId ?? ''"
+                @change="patchJointParent($event)"
+              >
+                <option value="">
+                  {{ t('stage2d.parentNone') }}
+                </option>
+                <option
+                  v-for="candidate in parentCandidates"
+                  :key="candidate.id"
+                  :value="candidate.id"
+                >
+                  {{ candidate.name }}
+                </option>
+              </select>
+            </label>
+            <div class="grid2">
+              <label class="field">
+                <span>X</span>
+                <input
+                  type="number"
+                  step="1"
+                  :value="selectedJoint.x"
+                  @change="patchJointBind('x', $event)"
+                >
+              </label>
+              <label class="field">
+                <span>Y</span>
+                <input
+                  type="number"
+                  step="1"
+                  :value="selectedJoint.y"
+                  @change="patchJointBind('y', $event)"
+                >
+              </label>
+            </div>
+            <label class="slider">
+              <span>
+                {{ t('stage2d.poseRot') }}<b>{{ Math.round(poseValue) }}°</b>
+              </span>
+              <input
+                type="range"
+                min="-180"
+                max="180"
+                step="1"
+                :value="poseValue"
+                @input="setJointPose($event)"
+              >
+            </label>
+            <div class="row">
+              <button
+                type="button"
+                class="icon"
+                :disabled="!Object.keys(pose).length"
+                @click="resetPose"
+              >
+                {{ t('stage2d.resetPose') }}
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :disabled="!selected"
+                :title="t('stage2d.bindTip')"
+                @click="bindSelectedLayer"
+              >
+                {{ t('stage2d.bindLayer') }}
+              </button>
+            </div>
+          </template>
+
+          <div class="section-label">
+            {{ t('stage2d.attachments') }}
+          </div>
+          <div
+            v-if="!rig.attachments.length"
+            class="hint"
+          >
+            {{ t('stage2d.noAttach') }}
+          </div>
+          <ul class="attach-list">
+            <li
+              v-for="attach in rig.attachments"
+              :key="attach.layerId"
             >
-              ↓
-            </button>
-            <button
-              type="button"
-              class="icon"
-              :title="layer.visible ? t('stage2d.hide') : t('stage2d.show')"
-              @click.stop="toggleVisible(layer.id)"
-            >
-              {{ layer.visible ? '👁' : '⃝' }}
-            </button>
-            <button
-              type="button"
-              class="icon danger"
-              :title="t('stage2d.remove')"
-              @click.stop="remove(layer.id)"
-            >
-              ✕
-            </button>
-          </li>
-        </ul>
-        <p
-          v-if="!layers.length"
-          class="hint"
-        >
-          {{ t('stage2d.noLayer') }}
-        </p>
-        <button
-          type="button"
-          class="primary"
-          @click="pickerOpen = true"
-        >
-          {{ t('stage2d.addLayer') }}
-        </button>
+              <select
+                :title="t('stage2d.bindLayer')"
+                :value="attach.layerId"
+                @change="patchAttachLayer(attach.layerId, $event)"
+              >
+                <option
+                  v-for="layer in layers"
+                  :key="layer.id"
+                  :value="layer.id"
+                >
+                  {{ layer.name }}
+                </option>
+              </select>
+              <select
+                :title="t('stage2d.bindJoint')"
+                :value="attach.jointId"
+                @change="patchAttachJoint(attach.layerId, $event)"
+              >
+                <option
+                  v-for="joint in rig.joints"
+                  :key="joint.id"
+                  :value="joint.id"
+                >
+                  {{ joint.name }}
+                </option>
+              </select>
+              <button
+                type="button"
+                class="icon danger"
+                :title="t('stage2d.unbind')"
+                @click="unbindLayer(attach.layerId)"
+              >
+                ✕
+              </button>
+              <span class="attach-xy">
+                <input
+                  type="number"
+                  step="1"
+                  :value="attach.offsetX"
+                  :title="`${t('stage2d.offsetX')}`"
+                  @change="patchAttachOffset(attach.layerId, 'offsetX', $event)"
+                >
+                <input
+                  type="number"
+                  step="1"
+                  :value="attach.offsetY"
+                  :title="`${t('stage2d.offsetY')}`"
+                  @change="patchAttachOffset(attach.layerId, 'offsetY', $event)"
+                >
+              </span>
+            </li>
+          </ul>
+        </template>
       </section>
 
       <section class="pane stage-pane">
@@ -168,6 +382,38 @@
                 <div class="line hcenter" />
               </template>
             </div>
+            <svg
+              v-if="tab === 'rig' && rig.joints.length"
+              class="rig-overlay"
+              :viewBox="`0 0 ${scene.canvasWidth} ${scene.canvasHeight}`"
+              preserveAspectRatio="none"
+            >
+              <g class="bones">
+                <line
+                  v-for="(seg, index) in rigSegments"
+                  :key="index"
+                  :x1="seg.x1"
+                  :y1="seg.y1"
+                  :x2="seg.x2"
+                  :y2="seg.y2"
+                />
+              </g>
+              <g class="joints">
+                <circle
+                  v-for="item in rigJoints"
+                  :key="item.jointId"
+                  class="joint"
+                  :class="{ selected: item.jointId === selectedJointId }"
+                  :cx="item.x"
+                  :cy="item.y"
+                  r="7"
+                  @pointerdown.prevent.stop="startJointDrag(item.jointId, $event)"
+                  @pointermove.prevent.stop="moveJointDrag($event)"
+                  @pointerup.prevent.stop="endJointDrag($event)"
+                  @pointercancel="endJointDrag($event)"
+                />
+              </g>
+            </svg>
           </div>
           <p
             v-if="!layers.length"
@@ -365,8 +611,16 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { stage2dGroundY } from '@shared/gameAssets'
 import {
+  computeStage2dRigTransforms,
+  createStage2dJoint,
+  normalizeStage2dRig,
+  stage2dGroundY,
+  type Stage2dPose,
+  type Stage2dRig
+} from '@shared/gameAssets'
+import {
+  normalizeStage2dPose,
   normalizeStage2dScene,
   DEFAULT_STAGE2D_SCENE,
   type Stage2dSceneState
@@ -383,18 +637,32 @@ type StageLayer = Stage2dSceneState['layers'][number]
 const props = defineProps<{
   open: boolean
   setup?: Stage2dSceneState | null
+  setupRig?: Stage2dRig | null
+  setupPose?: Stage2dPose | null
 }>()
 
 const emit = defineEmits<{
   close: []
-  save: [payload: { stage2dScene: Stage2dSceneState; dataUrl?: string }]
+  save: [
+    payload: {
+      stage2dScene: Stage2dSceneState
+      stage2dRig: Stage2dRig
+      stage2dPose: Stage2dPose
+      dataUrl?: string
+    }
+  ]
 }>()
 
 const { t } = useStudioI18n()
 const project = useProjectStore()
 
 const scene = ref<Stage2dSceneState>(normalizeStage2dScene(props.setup ?? undefined))
+const rig = ref<Stage2dRig>(normalizeStage2dRig(props.setupRig ?? undefined))
+const pose = ref<Stage2dPose>(normalizeStage2dPose(rig.value, props.setupPose ?? null))
 const selectedId = ref('')
+/** 左栏分页：层（叠放与落位）/ 骨骼（装配与摆姿） */
+const tab = ref<'layers' | 'rig'>('layers')
+const selectedJointId = ref('')
 const thumbUrls = ref<Record<string, string>>({})
 const previewUrl = ref('')
 const error = ref('')
@@ -422,11 +690,15 @@ const groundY = computed(() => {
   return y < 0 ? Math.round(scene.value.canvasHeight / 2) : y
 })
 
-/** 每次会话先把舞台状态对准节点当前 stage2dScene */
+/** 每次会话先把舞台 / 骨骼 / 摆姿对准节点当前参数 */
 function applySetup(): void {
   const next = normalizeStage2dScene(props.setup ?? DEFAULT_STAGE2D_SCENE)
   scene.value = next
   selectedId.value = next.layers[0]?.id ?? ''
+  rig.value = normalizeStage2dRig(props.setupRig ?? undefined)
+  pose.value = normalizeStage2dPose(rig.value, props.setupPose ?? null)
+  selectedJointId.value = rig.value.joints[0]?.id ?? ''
+  tab.value = 'layers'
   void nextTick(fitView)
 }
 
@@ -561,6 +833,224 @@ function resetLayerOffset(): void {
   patchLayer(selected.value.id, { offset: { x: 0, y: 0 } })
 }
 
+/* ---------------- 骨骼装配与摆姿（2D rig） ---------------- */
+
+const selectedJoint = computed(
+  () => rig.value.joints.find((joint) => joint.id === selectedJointId.value) ?? null
+)
+
+/** 可作父关节的候选项（排除自身） */
+const parentCandidates = computed(() => {
+  const id = selectedJoint.value?.id
+  return rig.value.joints.filter((joint) => joint.id !== id)
+})
+
+/** 关节世界变换（FK 实时结果，随摆姿更新） */
+const rigJoints = computed(() => computeStage2dRigTransforms(rig.value, pose.value))
+
+/** 骨骼连线（父→子世界坐标，供视口叠层） */
+const rigSegments = computed(() => {
+  const jointById = new Map(rig.value.joints.map((joint) => [joint.id, joint]))
+  const transformById = new Map(rigJoints.value.map((item) => [item.jointId, item]))
+  const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+  for (const item of rigJoints.value) {
+    const parentId = jointById.get(item.jointId)?.parentId
+    const parent = parentId ? transformById.get(parentId) : undefined
+    if (parent) segments.push({ x1: parent.x, y1: parent.y, x2: item.x, y2: item.y })
+  }
+  return segments
+})
+
+function jointName(id: string | null): string {
+  if (!id) return ''
+  return rig.value.joints.find((joint) => joint.id === id)?.name ?? id
+}
+
+/** 关节当前生效旋转：优先摆姿覆盖值，否则用绑定旋转 */
+const poseValue = computed(() => {
+  const joint = selectedJoint.value
+  if (!joint) return 0
+  return pose.value[joint.id] ?? joint.rotation
+})
+
+function commitRig(next: Stage2dRig): void {
+  rig.value = normalizeStage2dRig(next)
+  // 关节被删后清理对应摆姿，避免残留引用
+  const keep = new Set(rig.value.joints.map((joint) => joint.id))
+  const kept = Object.fromEntries(Object.entries(pose.value).filter(([id]) => keep.has(id)))
+  pose.value = kept
+}
+
+function addJoint(): void {
+  const parentId = selectedJoint.value?.id ?? null
+  let index = rig.value.joints.length + 1
+  let id = `joint-${index}`
+  while (rig.value.joints.some((joint) => joint.id === id)) {
+    index += 1
+    id = `joint-${index}`
+  }
+  const joint = createStage2dJoint({
+    id,
+    name: `Joint ${index}`,
+    parentId,
+    x: 0,
+    y: parentId ? -60 : 0
+  })
+  commitRig({ ...rig.value, joints: [...rig.value.joints, joint] })
+  selectedJointId.value = id
+}
+
+function removeJoint(id: string): void {
+  commitRig({ ...rig.value, joints: rig.value.joints.filter((joint) => joint.id !== id) })
+  if (selectedJointId.value === id) {
+    selectedJointId.value = rig.value.joints[0]?.id ?? ''
+  }
+}
+
+function patchJoint(patch: Partial<Stage2dRig['joints'][number]>): void {
+  const joint = selectedJoint.value
+  if (!joint) return
+  commitRig({
+    ...rig.value,
+    joints: rig.value.joints.map((item) => (item.id === joint.id ? { ...item, ...patch } : item))
+  })
+}
+
+function patchJointName(event: Event): void {
+  patchJoint({ name: (event.target as HTMLInputElement).value })
+}
+
+function patchJointParent(event: Event): void {
+  patchJoint({ parentId: (event.target as HTMLSelectElement).value || null })
+}
+
+function patchJointBind(key: 'x' | 'y', event: Event): void {
+  patchJoint({ [key]: Number((event.target as HTMLInputElement).value) || 0 })
+}
+
+function setJointPose(event: Event): void {
+  const joint = selectedJoint.value
+  if (!joint) return
+  pose.value = {
+    ...pose.value,
+    [joint.id]: Number((event.target as HTMLInputElement).value) || 0
+  }
+}
+
+function resetPose(): void {
+  pose.value = {}
+}
+
+/** 把当前选中的层挂到选中关节（同一层只能挂一个关节） */
+function bindSelectedLayer(): void {
+  const layer = selected.value
+  const joint = selectedJoint.value
+  if (!layer || !joint) return
+  const attachments = rig.value.attachments.filter((item) => item.layerId !== layer.id)
+  commitRig({
+    ...rig.value,
+    attachments: [
+      ...attachments,
+      { layerId: layer.id, jointId: joint.id, offsetX: 0, offsetY: 0, rotation: 0 }
+    ]
+  })
+}
+
+function unbindLayer(layerId: string): void {
+  commitRig({
+    ...rig.value,
+    attachments: rig.value.attachments.filter((item) => item.layerId !== layerId)
+  })
+}
+
+function patchAttachLayer(prevLayerId: string, event: Event): void {
+  const target = (event.target as HTMLSelectElement).value
+  const seen = new Set<string>()
+  const attachments = rig.value.attachments
+    .map((item) => (item.layerId === prevLayerId ? { ...item, layerId: target } : item))
+    .filter((item) => {
+      if (seen.has(item.layerId)) return false
+      seen.add(item.layerId)
+      return true
+    })
+  commitRig({ ...rig.value, attachments })
+}
+
+function patchAttachJoint(layerId: string, event: Event): void {
+  const jointId = (event.target as HTMLSelectElement).value
+  commitRig({
+    ...rig.value,
+    attachments: rig.value.attachments.map((item) =>
+      item.layerId === layerId ? { ...item, jointId } : item
+    )
+  })
+}
+
+function patchAttachOffset(layerId: string, key: 'offsetX' | 'offsetY', event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value) || 0
+  commitRig({
+    ...rig.value,
+    attachments: rig.value.attachments.map((item) =>
+      item.layerId === layerId ? { ...item, [key]: value } : item
+    )
+  })
+}
+
+/* 视口拖关节摆姿：以关节为圆心转（FK 驱动子链与挂件） */
+let poseDrag: { jointId: string; baseAngle: number; baseRotation: number } | null = null
+
+function screenToScene(clientX: number, clientY: number): { x: number; y: number } {
+  const el = viewportEl.value
+  if (!el) return { x: 0, y: 0 }
+  const rect = el.getBoundingClientRect()
+  const mx = clientX - rect.left
+  const my = clientY - rect.top
+  const cx = rect.width / 2
+  const cy = rect.height / 2
+  return {
+    x: scene.value.canvasWidth / 2 + (mx - cx - panX.value) / zoom.value,
+    y: scene.value.canvasHeight / 2 + (my - cy - panY.value) / zoom.value
+  }
+}
+
+function wrapDeg(deg: number): number {
+  return ((((deg + 180) % 360) + 360) % 360) - 180
+}
+
+function startJointDrag(jointId: string, event: PointerEvent): void {
+  const item = rigJoints.value.find((entry) => entry.jointId === jointId)
+  if (!item) return
+  selectedJointId.value = jointId
+  const joint = rig.value.joints.find((entry) => entry.id === jointId)
+  const point = screenToScene(event.clientX, event.clientY)
+  poseDrag = {
+    jointId,
+    baseAngle: (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI,
+    baseRotation: pose.value[jointId] ?? joint?.rotation ?? 0
+  }
+  ;(event.currentTarget as Element).setPointerCapture?.(event.pointerId)
+}
+
+function moveJointDrag(event: PointerEvent): void {
+  const drag = poseDrag
+  if (!drag) return
+  const item = rigJoints.value.find((entry) => entry.jointId === drag.jointId)
+  if (!item) return
+  const point = screenToScene(event.clientX, event.clientY)
+  const angle = (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI
+  const delta = angle - drag.baseAngle
+  pose.value = {
+    ...pose.value,
+    [drag.jointId]: wrapDeg(drag.baseRotation + delta)
+  }
+}
+
+function endJointDrag(event: PointerEvent): void {
+  if (!poseDrag) return
+  ;(event.currentTarget as Element).releasePointerCapture?.(event.pointerId)
+  poseDrag = null
+}
+
 function patchLayerFit(event: Event): void {
   if (!selected.value) return
   const checked = (event.target as HTMLInputElement).checked
@@ -581,6 +1071,11 @@ function move(id: string, delta: number): void {
 function remove(id: string): void {
   commit({ ...scene.value, layers: layers.value.filter((layer) => layer.id !== id) })
   if (selectedId.value === id) selectedId.value = layers.value[0]?.id ?? ''
+  // 层被移除时同步解绑（避免挂点指向不存在的层）
+  commitRig({
+    ...rig.value,
+    attachments: rig.value.attachments.filter((item) => item.layerId !== id)
+  })
 }
 
 function toggleVisible(id: string): void {
@@ -643,7 +1138,11 @@ async function render(): Promise<void> {
     layers: layers.value.map((layer, index) => ({ ...layer, sourceUrl: urls[index] ?? '' }))
   })
   try {
-    const out = await composeStage2dCanvas({ state: composeScene })
+    const out = await composeStage2dCanvas({
+      state: composeScene,
+      rig: rig.value,
+      pose: pose.value
+    })
     if (token !== renderToken) return
     previewUrl.value = out.dataUrl
     error.value = ''
@@ -664,6 +1163,8 @@ function scheduleRender(): void {
 function save(): void {
   emit('save', {
     stage2dScene: normalizeStage2dScene(scene.value),
+    stage2dRig: normalizeStage2dRig(rig.value),
+    stage2dPose: normalizeStage2dPose(normalizeStage2dRig(rig.value), pose.value),
     ...(previewUrl.value ? { dataUrl: previewUrl.value } : {})
   })
 }
@@ -704,6 +1205,11 @@ watch(scene, () => {
   scheduleRender()
 })
 
+watch([rig, pose], () => {
+  if (!props.open) return
+  scheduleRender()
+})
+
 // 画布尺寸变了重新适配视口（舞台画幅切换后无需手动缩放）
 watch(
   () => [scene.value.canvasWidth, scene.value.canvasHeight],
@@ -733,6 +1239,28 @@ watch(
 
 .layers-pane {
   min-height: 0;
+  overflow-y: auto;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .section-label {
@@ -885,6 +1413,75 @@ watch(
   right: 0;
   top: 50%;
   height: 1px;
+}
+
+.rig-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.rig-overlay .bones line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-opacity: 0.55;
+}
+
+.rig-overlay .joints circle {
+  fill: color-mix(in srgb, var(--accent) 55%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.rig-overlay .joints circle:hover {
+  fill: var(--accent);
+}
+
+.rig-overlay .joints circle.selected {
+  fill: var(--accent);
+  stroke: var(--on-accent);
+  stroke-width: 2.5;
+}
+
+.attach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attach-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.attach-list select {
+  width: 92px;
+  max-width: 92px;
+  font-size: 11px;
+}
+
+.attach-xy {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.attach-xy input {
+  width: 46px;
+  font-size: 11px;
 }
 
 .empty-hint {

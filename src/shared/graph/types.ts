@@ -561,6 +561,10 @@ export interface GraphNodeParams {
   imageAlign?: Partial<import('./imageAlign').ImageAlignState>
   /** 2D 舞台场景参数（5.5「2D 导演台」：统一画布 + 按 z 序精灵层叠放，随节点图持久化） */
   stage2dScene?: Partial<import('./stage2d').Stage2dSceneState>
+  /** 2D 骨骼装配（5.5 骨骼摆姿：关节层级 + 部件挂点，随节点图持久化） */
+  stage2dRig?: Partial<import('./stage2dRig').Stage2dRig>
+  /** 摆姿：关节 id → 旋转覆盖值（不改写绑定旋转） */
+  stage2dPose?: import('./stage2dRig').Stage2dPose | null
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图层分离（Seedream layer_decomposition） */
