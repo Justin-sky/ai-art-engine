@@ -41,6 +41,7 @@ export type EditorDiveViewId =
   | 'node.layerSplit'
   | 'node.cutout'
   | 'node.compose'
+  | 'node.align'
   | 'node.instruction'
   | 'comic.page'
   | 'media.preview'
@@ -69,6 +70,7 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.layerSplit'
   | 'node.cutout'
   | 'node.compose'
+  | 'node.align'
   | 'node.instruction'
 >
 

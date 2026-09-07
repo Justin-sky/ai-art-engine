@@ -234,6 +234,16 @@
       @save="api.saveCompose as never"
     />
 
+    <AlignNodeToolDialog
+      v-else-if="viewId === 'node.align' && api.align.open"
+      :open="true"
+      :setup="api.align.setup"
+      :source-url="api.align.sourceUrl"
+      :source-loading="api.align.sourceLoading"
+      @close="onClose(api.closeAlign)"
+      @save="api.saveAlign as never"
+    />
+
     <LayerSplitEditorDialog
       v-else-if="viewId === 'node.layerSplit' && api.layerSplit.open"
       :open="true"
@@ -296,6 +306,7 @@ import GridSplitEditorDialog from '../GridSplitEditorDialog.vue'
 import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
 import CutoutNodeToolDialog from '../CutoutNodeToolDialog.vue'
 import ComposeNodeToolDialog from '../ComposeNodeToolDialog.vue'
+import AlignNodeToolDialog from '../AlignNodeToolDialog.vue'
 
 const props = defineProps<{
   frameKey: string
@@ -367,6 +378,8 @@ const toolOpen = computed(() => {
       return current.cutout.open
     case 'node.compose':
       return current.compose.open
+    case 'node.align':
+      return current.align.open
     default:
       return false
   }
@@ -395,6 +408,9 @@ useEditorDiveFrameFlush(
         break
       case 'node.compose':
         current.flushCompose()
+        break
+      case 'node.align':
+        current.flushAlign()
         break
       default:
         break
@@ -507,6 +523,9 @@ function closeCurrent(): void {
       break
     case 'node.compose':
       current.closeCompose()
+      break
+    case 'node.align':
+      current.closeAlign()
       break
     default:
       break

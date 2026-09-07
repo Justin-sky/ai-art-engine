@@ -1105,6 +1105,18 @@ export default {
     apply: 'Apply to node',
     applyHint: 'Subject, frame and strategy are written to the current node'
   },
+  align: {
+    title: 'Sprite align',
+    source: 'Source',
+    loadingSource: 'Loading source image…',
+    noSource: 'No upstream transparent PNG found — connect an image to the node first',
+    sourceHint: 'The source should carry an alpha channel (e.g. a local cutout); the aligned sprite is placed on a uniform canvas',
+    params: 'Parameters',
+    result: 'Aligned result',
+    resultEmpty: 'Connect a source to preview the uniform-canvas output here',
+    apply: 'Apply to node',
+    applyHint: 'Canvas and anchor parameters are written to the current node'
+  },
   script: {
     dialog: {
       timeline: 'Timeline',
@@ -2795,8 +2807,7 @@ export default {
       anchorGround: 'Ground',
       subjectHeight: 'Subject height',
       groundGap: 'Ground gap',
-      fitWidth: 'Shrink if wider than canvas',
-      output: 'Output'
+      fitWidth: 'Shrink if wider than canvas'
     },
     compose: {
       appMark: 'Smart framing',

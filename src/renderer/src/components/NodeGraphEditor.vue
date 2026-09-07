@@ -920,9 +920,11 @@ import {
   type ImageComposeState,
   type ImageCropState,
   type ImageCutoutState,
+  type ImageAlignState,
   type ImageGridSplitState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
+  readImageAlignFromNode,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -7389,7 +7391,7 @@ function closeCutout(): void {
 async function materializeToolResult(
   node: GraphNode,
   dataUrl: string | undefined,
-  kind: 'cutout' | 'compose'
+  kind: 'cutout' | 'compose' | 'align'
 ): Promise<Record<string, unknown>> {
   const params: Record<string, unknown> = {}
   const url = dataUrl?.trim()
@@ -7521,6 +7523,76 @@ function flushCompose(): void {
   if (!before) return
   compose.historyBefore = null
   recordGraphChange('compose', before)
+}
+
+const align = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as ImageAlignState | null,
+  historyBefore: null as GraphDocument | null,
+  sourceUrl: '',
+  sourceLoading: false
+})
+
+async function onAlignOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  align.nodeId = nodeId
+  align.setup = readImageAlignFromNode(node.params)
+  align.sourceUrl = ''
+  align.sourceLoading = true
+  align.historyBefore = buildGraphJson()
+  align.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      align.sourceUrl = url
+      align.sourceLoading = false
+    },
+    () => align.open && align.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (align.open && align.nodeId === nodeId) align.sourceLoading = false
+}
+
+function closeAlign(): void {
+  align.open = false
+  align.nodeId = ''
+  align.setup = null
+  align.historyBefore = null
+  align.sourceUrl = ''
+  align.sourceLoading = false
+}
+
+/** 保存精灵对齐工具编辑：参数与产物一起写回节点，卡片立即显示结果 */
+async function saveAlign(payload: {
+  imageAlign: ImageAlignState
+  dataUrl?: string
+}): Promise<void> {
+  const nodeId = align.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = align.historyBefore ?? buildGraphJson()
+  const mediaParams = await materializeToolResult(node, payload.dataUrl, 'align')
+  node.params = {
+    ...node.params,
+    imageAlign: payload.imageAlign,
+    ...mediaParams
+  }
+  align.setup = payload.imageAlign
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('align', before)
+  closeAlign()
+}
+
+/** dive 面包屑回退前结束对齐编辑，补记撤销命令（与 cutout 一致）。 */
+function flushAlign(): void {
+  if (!align.open) return
+  const before = align.historyBefore
+  if (!before) return
+  align.historyBefore = null
+  recordGraphChange('align', before)
 }
 
 const gridSplit = reactive({
@@ -7976,6 +8048,7 @@ const graphDialogsApi = {
   layerSplit,
   cutout,
   compose,
+  align,
   closeTextNotepad,
   saveTextNotepad,
   closeSelectImage,
@@ -8033,7 +8106,10 @@ const graphDialogsApi = {
   flushCutout,
   closeCompose,
   saveCompose,
-  flushCompose
+  flushCompose,
+  closeAlign,
+  saveAlign,
+  flushAlign
 } as GraphEditorDialogsApi
 
 provide(graphEditorDialogsKey, graphDialogsApi)
@@ -8377,7 +8453,8 @@ function registerNodeToolHost(): void {
       'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId),
       'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId),
       'node.cutout': (nodeId) => onCutoutOpen(nodeId),
-      'node.compose': (nodeId) => onComposeOpen(nodeId)
+      'node.compose': (nodeId) => onComposeOpen(nodeId),
+      'node.align': (nodeId) => onAlignOpen(nodeId)
     }
   })
 }

@@ -2126,16 +2126,9 @@ function onPreviewDblClick(): void {
   void (async () => {
     const title = displayTitle.value
 
-    // 精灵对齐：note 分类但产出对齐图，双击弹原图大预览，勿走记事本
+    // 精灵对齐：note 分类但产出对齐图，双击下钻对齐工具（源图 + 画布 / 锚点参数 + 实时结果），勿走记事本
     if (props.node.typeId === 'image.align') {
-      const gallery = props.node.params.generatedImages ?? []
-      const lastItem = gallery[gallery.length - 1]
-      const relativePath =
-        props.node.params.previewRelativePath?.trim() || lastItem?.relativePath?.trim()
-      const dataUrl = lastItem?.dataUrl?.trim()
-      if (relativePath || dataUrl) {
-        await openFullImagePreview({ relativePath, dataUrl, title })
-      }
+      await diveNodeTool('node.align', title)
       return
     }
 

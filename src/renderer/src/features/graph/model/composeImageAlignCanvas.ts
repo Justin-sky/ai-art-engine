@@ -6,15 +6,7 @@ import {
   computeSpriteAlignPlan,
   extractAlphaBounds
 } from '@shared/gameAssets'
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('ALIGN_SOURCE_LOAD_FAILED'))
-    img.src = src
-  })
-}
+import { loadImageElement } from '../../yolo/cutout'
 
 /**
  * 精灵统一对齐像素合成：透明 PNG 主体（alpha 外接框）→ 统一画布等比摆放
@@ -26,7 +18,7 @@ export async function composeImageAlignCanvas(input: {
   state: ImageAlignState
 }): Promise<{ dataUrl: string; width: number; height: number }> {
   const state = normalizeImageAlign(input.state)
-  const img = await loadImage(input.sourceDataUrl)
+  const img = await loadImageElement(input.sourceDataUrl)
   const sw = img.naturalWidth || 1
   const sh = img.naturalHeight || 1
 

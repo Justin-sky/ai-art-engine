@@ -1101,6 +1101,18 @@ export default {
     apply: '应用到节点',
     applyHint: '主体、画幅与策略将写入当前节点'
   },
+  align: {
+    title: '精灵对齐',
+    source: '源图',
+    loadingSource: '加载源图中…',
+    noSource: '未检测到上游透明 PNG，请在画布为该节点接入图片后再试',
+    sourceHint: '源图应带透明通道（如本地抠图产物），对齐后按统一画布缩放摆放',
+    params: '参数',
+    result: '对齐结果',
+    resultEmpty: '接入源图后在此实时预览统一画布输出',
+    apply: '应用到节点',
+    applyHint: '画布与锚点参数将写入当前节点'
+  },
   script: {
     dialog: {
       timeline: '成片时间线',
@@ -2772,8 +2784,7 @@ export default {
       anchorGround: '脚底地面',
       subjectHeight: '主体高度占比',
       groundGap: '地面留白占比',
-      fitWidth: '超宽自动收缩进画布',
-      output: '输出'
+      fitWidth: '超宽自动收缩进画布'
     },
     compose: {
       appMark: '智能构图',

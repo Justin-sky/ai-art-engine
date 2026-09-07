@@ -2,6 +2,7 @@ import type { InjectionKey } from 'vue'
 import type {
   AdVariantMatrix,
   EmotionPadState,
+  ImageAlignState,
   ImageComposeState,
   ImageCropState,
   ImageExpandState,
@@ -158,6 +159,12 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  align: {
+    open: boolean
+    setup: ImageAlignState | null
+    sourceUrl: string
+    sourceLoading: boolean
+  }
   layerSplit: {
     open: boolean
     setup: ImageLayerSplitState | null
@@ -228,6 +235,10 @@ export type GraphEditorDialogsApi = {
   saveCompose: (payload: { imageCompose: ImageComposeState; dataUrl?: string }) => void | Promise<void>
   /** dive 面包屑回退前结束构图编辑，补记撤销命令 */
   flushCompose: () => void
+  closeAlign: () => void
+  saveAlign: (payload: { imageAlign: ImageAlignState; dataUrl?: string }) => void | Promise<void>
+  /** dive 面包屑回退前结束对齐编辑，补记撤销命令 */
+  flushAlign: () => void
   closeLayerSplit: () => void
   previewLayerSplit: (payload: unknown) => void
   saveLayerSplit: (payload: unknown) => void

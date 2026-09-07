@@ -119,6 +119,7 @@ const viewRegistry: Record<string, Component> = {
   'node.layerSplit': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.cutout': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'node.compose': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
+  'node.align': defineAsyncComponent(() => import('./dive/EditorDiveNodeToolHost.vue')),
   'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue'))
 }
 
