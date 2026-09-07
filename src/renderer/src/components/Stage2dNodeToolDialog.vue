@@ -192,6 +192,12 @@
                   {{ t('stage2d.actionNone') }}
                 </option>
                 <option
+                  v-if="customAction"
+                  :value="CUSTOM_ACTION_ID"
+                >
+                  {{ actionLabel(CUSTOM_ACTION_ID) }}
+                </option>
+                <option
                   v-for="item in actionPresets"
                   :key="item.id"
                   :value="item.id"
@@ -232,6 +238,13 @@
                 {{ t('stage2d.actionFreeze') }}
               </button>
             </div>
+            <button
+              type="button"
+              class="action-video-btn"
+              @click="openVideoActionDialog"
+            >
+              🎬 {{ t('stage2dVideo.actionFromVideo') }}
+            </button>
             <p
               v-if="actionMode !== 'off' && actionCurrent"
               class="action-status"
@@ -779,6 +792,13 @@
     @close="poseDialogOpen = false"
     @applied="applySolvedPose"
   />
+
+  <Stage2dActionFromVideoDialog
+    :open="videoActionOpen"
+    :rig="rig"
+    @close="videoActionOpen = false"
+    @applied="applyVideoAction"
+  />
 </template>
 
 <script setup lang="ts">
@@ -787,11 +807,13 @@ import {
   computeStage2dRigTransforms,
   createHumanoidStage2dRig,
   createStage2dJoint,
+  normalizeStage2dAction,
   normalizeStage2dRig,
   sampleStage2dAction,
   stage2dActionPresetById,
   stage2dGroundY,
   STAGE2D_ACTION_PRESETS,
+  type Stage2dAction,
   type Stage2dPose,
   type Stage2dRig
 } from '@shared/gameAssets'
@@ -807,6 +829,7 @@ import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2d
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
+import Stage2dActionFromVideoDialog from './Stage2dActionFromVideoDialog.vue'
 import Stage2dPoseFromImageDialog from './Stage2dPoseFromImageDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
@@ -817,6 +840,7 @@ const props = defineProps<{
   setup?: Stage2dSceneState | null
   setupRig?: Stage2dRig | null
   setupPose?: Stage2dPose | null
+  setupAction?: Stage2dAction | null
 }>()
 
 const emit = defineEmits<{
@@ -826,6 +850,7 @@ const emit = defineEmits<{
       stage2dScene: Stage2dSceneState
       stage2dRig: Stage2dRig
       stage2dPose: Stage2dPose
+      stage2dAction?: Stage2dAction | null
       dataUrl?: string
     }
   ]
@@ -886,6 +911,9 @@ function applySetup(): void {
   selectedId.value = next.layers[0]?.id ?? ''
   rig.value = normalizeStage2dRig(props.setupRig ?? undefined)
   pose.value = normalizeStage2dPose(rig.value, props.setupPose ?? null)
+  cancelActionLoop()
+  customAction.value = props.setupAction ? normalizeStage2dAction(props.setupAction) : null
+  actionId.value = customAction.value ? CUSTOM_ACTION_ID : ''
   selectedJointId.value = rig.value.joints[0]?.id ?? ''
   tab.value = 'layers'
   void nextTick(fitView)
@@ -1162,7 +1190,10 @@ function resetPose(): void {
   pose.value = {}
 }
 
-/* 动作试播：内置动作循环播放期间用采样 pose 实时驱动骨骼与挂件（只预览不改数据） */
+/* 动作试播：内置动作循环播放期间用采样 pose 实时驱动骨骼与挂件（只预览不改数据）。
+   自定义动作（参考视频逐帧转骨架关键帧动画等）随节点 params 持久化，
+   以「custom」伪预设走同一套下拉 / 试播 / 定格 / 导出链路。 */
+const CUSTOM_ACTION_ID = 'custom'
 const actionId = ref('')
 const actionMode = ref<'off' | 'playing' | 'paused'>('off')
 const actionClock = ref(0)
@@ -1171,9 +1202,27 @@ let actionSavedPose: Stage2dPose | null = null
 let actionRaf = 0
 
 const actionPresets = STAGE2D_ACTION_PRESETS
-const actionCurrent = computed(() => stage2dActionPresetById(actionId.value))
+/** 会话中的自定义动作：下拉选中「custom」时被播放 / 定格 / 导出 */
+const customAction = ref<Stage2dAction | null>(null)
+/** 「从视频生成动作」浮窗 */
+const videoActionOpen = ref(false)
+
+type PlayableStage2dAction = Stage2dAction & { id: string }
+const actionCurrent = computed<PlayableStage2dAction | null>(() => {
+  if (actionId.value === CUSTOM_ACTION_ID) {
+    const custom = customAction.value
+    return custom ? { ...custom, id: CUSTOM_ACTION_ID } : null
+  }
+  return stage2dActionPresetById(actionId.value)
+})
 
 function actionLabel(id: string): string {
+  if (id === CUSTOM_ACTION_ID) {
+    const custom = customAction.value
+    return custom?.name
+      ? `${t('stage2dVideo.actionCustom')} · ${custom.name}`
+      : t('stage2dVideo.actionCustom')
+  }
   const label = t(`stage2d.actions.${id}`)
   return typeof label === 'string' && label && label !== `stage2d.actions.${id}` ? label : id
 }
@@ -1263,6 +1312,25 @@ function onActionPick(event: Event): void {
     actionMode.value = 'playing'
     startActionLoop()
   }
+}
+
+function openVideoActionDialog(): void {
+  stopActionPlayback()
+  videoActionOpen.value = true
+}
+
+/** 视频生成的动作：作为「custom」动作直接进入试播（不自动落 params，点保存才随节点持久化） */
+function applyVideoAction(action: Stage2dAction): void {
+  const normalized = normalizeStage2dAction(action)
+  videoActionOpen.value = false
+  if (!normalized.keyframes.length) return
+  stopActionPlayback()
+  customAction.value = normalized
+  actionSavedPose = { ...pose.value }
+  actionClock.value = 0
+  actionId.value = CUSTOM_ACTION_ID
+  actionMode.value = 'playing'
+  startActionLoop()
 }
 
 /* 动作帧导出：按帧率把试播动作 cook 成透明 PNG 帧，逐帧资产 + 拼一张水平 sheet */
@@ -1558,6 +1626,10 @@ function save(): void {
     stage2dScene: normalizeStage2dScene(scene.value),
     stage2dRig: normalizeStage2dRig(rig.value),
     stage2dPose: normalizeStage2dPose(normalizeStage2dRig(rig.value), pose.value),
+    stage2dAction:
+      actionId.value === CUSTOM_ACTION_ID
+        ? normalizeStage2dAction(customAction.value ?? null)
+        : null,
     ...(previewUrl.value ? { dataUrl: previewUrl.value } : {})
   })
 }
@@ -1625,6 +1697,11 @@ onBeforeUnmount(() => {
 <style scoped>
 .action-controls {
   align-items: center;
+}
+
+.action-video-btn {
+  width: 100%;
+  margin-top: 2px;
 }
 
 .action-status {

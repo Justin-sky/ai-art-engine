@@ -927,10 +927,13 @@ import {
   type Stage2dPose,
   type Stage2dRig,
   type Stage2dSceneState,
+  type Stage2dAction,
   readImageAlignFromNode,
   readStage2dSceneFromNode,
   readStage2dRigFromNode,
   readStage2dPoseFromNode,
+  readStage2dActionFromNode,
+  stage2dActionToNodePatch,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -7604,6 +7607,7 @@ const stage2d = reactive({
   setup: null as Stage2dSceneState | null,
   setupRig: null as Stage2dRig | null,
   setupPose: null as Stage2dPose | null,
+  setupAction: null as Stage2dAction | null,
   historyBefore: null as GraphDocument | null
 })
 
@@ -7615,6 +7619,7 @@ function onStage2dOpen(nodeId: string): void {
   stage2d.setup = readStage2dSceneFromNode(node.params)
   stage2d.setupRig = rig
   stage2d.setupPose = readStage2dPoseFromNode(node.params, rig)
+  stage2d.setupAction = readStage2dActionFromNode(node.params)
   stage2d.historyBefore = buildGraphJson()
   stage2d.open = true
 }
@@ -7625,6 +7630,7 @@ function closeStage2d(): void {
   stage2d.setup = null
   stage2d.setupRig = null
   stage2d.setupPose = null
+  stage2d.setupAction = null
   stage2d.historyBefore = null
 }
 
@@ -7633,6 +7639,7 @@ async function saveStage2d(payload: {
   stage2dScene: Stage2dSceneState
   stage2dRig?: Stage2dRig
   stage2dPose?: Stage2dPose
+  stage2dAction?: Stage2dAction | null
   dataUrl?: string
 }): Promise<void> {
   const nodeId = stage2d.nodeId
@@ -7646,11 +7653,13 @@ async function saveStage2d(payload: {
     stage2dScene: payload.stage2dScene,
     stage2dRig: rig,
     stage2dPose: payload.stage2dPose ?? {},
+    ...stage2dActionToNodePatch(payload.stage2dAction),
     ...mediaParams
   }
   stage2d.setup = payload.stage2dScene
   stage2d.setupRig = rig
   stage2d.setupPose = payload.stage2dPose ?? {}
+  stage2d.setupAction = payload.stage2dAction ?? null
   scheduleSave()
   graphEditorHosts.bumpRevision()
   recordGraphChange('stage2d', before)

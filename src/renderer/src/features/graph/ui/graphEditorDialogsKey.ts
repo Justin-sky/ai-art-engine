@@ -18,7 +18,8 @@ import type {
   PortraitQualityState,
   Stage2dPose,
   Stage2dRig,
-  Stage2dSceneState
+  Stage2dSceneState,
+  Stage2dAction
 } from '@shared/graph'
 
 /** 图编辑器 Dialog 层：状态在父组件，但模板隔离，避免 open 时整图重渲 */
@@ -173,6 +174,7 @@ export type GraphEditorDialogsApi = {
     setup: Stage2dSceneState | null
     setupRig: Stage2dRig | null
     setupPose: Stage2dPose | null
+    setupAction: Stage2dAction | null
   }
   layerSplit: {
     open: boolean
@@ -253,6 +255,7 @@ export type GraphEditorDialogsApi = {
     stage2dScene: Stage2dSceneState
     stage2dRig?: Stage2dRig
     stage2dPose?: Stage2dPose
+    stage2dAction?: Stage2dAction | null
     dataUrl?: string
   }) => void | Promise<void>
   /** 导出 2D 骨骼动作帧序列：逐帧透明 PNG + 单张水平 sheet 落盘为工程资产（不入节点 params） */

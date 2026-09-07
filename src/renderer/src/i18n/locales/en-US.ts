@@ -1,5 +1,26 @@
 /** English UI messages */
 export default {
+  stage2dVideo: {
+    actionCustom: 'Custom action',
+    actionFromVideo: 'Generate action from video',
+    dialogTitle: 'Generate bone action from a reference video',
+    video: 'Reference video',
+    videoEmpty: 'No video assets yet — drop a reference performance video into the library first',
+    fps: 'FPS',
+    flip: 'Mirror',
+    loop: 'Loop',
+    sampling: 'Sample {count} frames uniformly at {fps}fps (video {seconds})',
+    start: 'Generate action',
+    busy: 'Processing {done}/{total}…',
+    name: 'Action name',
+    apply: 'Apply',
+    doneInfo: 'Generated a {count}-frame bone keyframe action ({seconds}). Apply it to preview in the stage, then hit Save to persist with the node.',
+    actionDefaultName: 'Reference action',
+    errorNoVideo: 'Pick a reference video and wait until it loads',
+    errorVideoOpen: 'Failed to read video: {message}',
+    errorPose: 'No frames could drive the bones from this video — try a higher FPS, a more centered actor, or toggle Mirror and retry.',
+    errorRun: 'Action generation failed; see console for details'
+  },
   sheetPreview: {
     title: 'Frame sequence preview',
     rows: 'Rows',

@@ -250,6 +250,7 @@
       :setup="api.stage2d.setup"
       :setup-rig="api.stage2d.setupRig"
       :setup-pose="api.stage2d.setupPose"
+      :setup-action="api.stage2d.setupAction"
       @close="onClose(api.closeStage2d)"
       @save="api.saveStage2d as never"
       @export-frames="api.exportStage2dFrames as never"

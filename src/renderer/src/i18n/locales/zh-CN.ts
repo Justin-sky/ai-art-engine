@@ -1,5 +1,26 @@
 /** 中文界面文案 */
 export default {
+  stage2dVideo: {
+    actionCustom: '自定义动作',
+    actionFromVideo: '从视频生成动作',
+    dialogTitle: '从表演视频生成动作',
+    video: '参考视频',
+    videoEmpty: '工程里还没有视频资产——先在素材库放一条表演参考视频',
+    fps: '帧率',
+    flip: '镜像',
+    loop: '循环',
+    sampling: '将按 {fps}fps 均匀采样 {count} 帧（视频共 {seconds}）',
+    start: '生成动作',
+    busy: '处理中 {done}/{total}…',
+    name: '动作名',
+    apply: '应用',
+    doneInfo: '已生成 {count} 帧骨骼关键帧动作（{seconds}），点「应用」回到舞台试播；点右下角「保存」即可随节点持久化',
+    actionDefaultName: '参考动作',
+    errorNoVideo: '先选择参考视频并等它读取完成',
+    errorVideoOpen: '读取视频失败：{message}',
+    errorPose: '没有从参考视频里解出可驱动骨骼的姿态帧——可尝试提高帧率、让演员更居中或切换「镜像」后再试',
+    errorRun: '动作生成失败，详情见控制台'
+  },
   sheetPreview: {
     title: '帧动画试播',
     rows: '行',

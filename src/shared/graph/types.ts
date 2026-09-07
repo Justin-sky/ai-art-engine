@@ -565,6 +565,8 @@ export interface GraphNodeParams {
   stage2dRig?: Partial<import('./stage2dRig').Stage2dRig>
   /** 摆姿：关节 id → 旋转覆盖值（不改写绑定旋转） */
   stage2dPose?: import('./stage2dRig').Stage2dPose | null
+  /** 自定义关键帧动作（参考视频逐帧转骨架关键帧动画等；内置预设不落节点） */
+  stage2dAction?: import('./stage2dAction').Stage2dAction | null
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图层分离（Seedream layer_decomposition） */
