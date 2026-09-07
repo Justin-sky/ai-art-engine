@@ -74,6 +74,20 @@ describe('stage2dGroundY / createStage2dLayer', () => {
     expect(a.sourceUrl).toBe('sprites/a.png')
     expect(a.visible).toBe(true)
     expect(a.align).toMatchObject({ anchor: 'ground', fitWithinWidth: true })
+    expect(a.offset).toEqual({ x: 0, y: 0 })
+  })
+
+  it('层偏移归一化：旧场景缺字段补 0，非数字 / 越界夹取', () => {
+    const s = normalizeStage2dScene({
+      layers: [
+        { id: 'a', sourceUrl: 'sprites/a.png' },
+        { id: 'b', sourceUrl: 'sprites/b.png', offset: { x: Number.NaN, y: 999999 } },
+        { id: 'c', sourceUrl: 'sprites/c.png', offset: { x: -999999, y: 12.6 } }
+      ]
+    })
+    expect(s.layers[0]!.offset).toEqual({ x: 0, y: 0 })
+    expect(s.layers[1]!.offset).toEqual({ x: 0, y: 8192 })
+    expect(s.layers[2]!.offset).toEqual({ x: -8192, y: 13 })
   })
 })
 
@@ -118,6 +132,28 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
     // dst 中心应在画布中心 250 / 256（dstW 为奇数时允许 ±0.5 取整差）
     expect(Math.abs(plan.dstY + plan.dstH / 2 - 250)).toBeLessThanOrEqual(1)
     expect(Math.abs(plan.dstX + plan.dstW / 2 - 256)).toBeLessThanOrEqual(1)
+  })
+
+  it('层微调偏移叠加在锚点落位之上（尺寸不变、仅平移）', () => {
+    const layer = {
+      id: 'a',
+      name: 'A',
+      sourceUrl: 'sprites/a.png',
+      align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+      visible: true
+    }
+    const base = computeStage2dLayerPlacements(
+      makeScene({ canvasHeight: 400, groundRatio: 0.1, layers: [layer] }),
+      [sourceA]
+    )[0]!.plan!
+    const moved = computeStage2dLayerPlacements(
+      makeScene({ canvasHeight: 400, groundRatio: 0.1, layers: [{ ...layer, offset: { x: 24, y: -16 } }] }),
+      [sourceA]
+    )[0]!.plan!
+    expect(moved.dstX).toBe(base.dstX + 24)
+    expect(moved.dstY).toBe(base.dstY - 16)
+    expect(moved.dstW).toBe(base.dstW)
+    expect(moved.dstH).toBe(base.dstH)
   })
 
   it('空 bounds 的源返回 plan=null（不崩溃）', () => {

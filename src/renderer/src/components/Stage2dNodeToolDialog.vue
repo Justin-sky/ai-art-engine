@@ -91,24 +91,93 @@
       </section>
 
       <section class="pane stage-pane">
-        <div class="section-label">
-          {{ t('stage2d.result') }}
+        <div class="stage-bar">
+          <div class="section-label">
+            {{ t('stage2d.result') }}
+          </div>
+          <div class="modes">
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: mode === 'pan' }"
+              @click="mode = 'pan'"
+            >
+              {{ t('stage2d.pan') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: mode === 'move' }"
+              :disabled="!selected"
+              @click="mode = 'move'"
+            >
+              {{ t('stage2d.move') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: showGuides }"
+              @click="showGuides = !showGuides"
+            >
+              {{ t('stage2d.guides') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              @click="fitView"
+            >
+              {{ t('stage2d.resetView') }}
+            </button>
+            <span class="zoom">{{ Math.round(zoom * 100) }}%</span>
+          </div>
         </div>
-        <div class="stage checker">
-          <img
-            v-if="previewUrl"
-            :src="previewUrl"
-            alt=""
+        <div
+          ref="viewportEl"
+          class="viewport checker"
+          @wheel.prevent="onWheel"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerUp"
+        >
+          <div
+            class="canvas-wrap"
+            :style="{
+              width: `${scene.canvasWidth}px`,
+              height: `${scene.canvasHeight}px`,
+              transform: `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${zoom})`
+            }"
           >
+            <img
+              v-if="previewUrl"
+              :src="previewUrl"
+              alt=""
+              draggable="false"
+            >
+            <div
+              v-if="showGuides"
+              class="guides"
+            >
+              <div
+                v-if="scene.anchor === 'ground'"
+                class="line ground"
+                :style="{ top: `${groundY}px` }"
+              />
+              <template v-else>
+                <div class="line vcenter" />
+                <div class="line hcenter" />
+              </template>
+            </div>
+          </div>
           <p
-            v-else
-            class="hint"
+            v-if="!layers.length"
+            class="hint empty-hint"
           >
             {{ t('stage2d.resultEmpty') }}
           </p>
         </div>
         <p class="apply-hint">
-          {{ layers.length ? `${scene.canvasWidth}×${scene.canvasHeight}` : '' }}
+          {{ scene.canvasWidth }}×{{ scene.canvasHeight }} · {{ t('stage2d.dragHint') }}
         </p>
       </section>
 
@@ -238,6 +307,34 @@
             >
             <span>{{ t('stage2d.fitWidth') }}</span>
           </label>
+          <div class="grid2">
+            <label class="field">
+              <span>{{ t('stage2d.offsetX') }}</span>
+              <input
+                type="number"
+                step="1"
+                :value="selected.offset.x"
+                @change="patchLayerOffset('x', $event)"
+              >
+            </label>
+            <label class="field">
+              <span>{{ t('stage2d.offsetY') }}</span>
+              <input
+                type="number"
+                step="1"
+                :value="selected.offset.y"
+                @change="patchLayerOffset('y', $event)"
+              >
+            </label>
+          </div>
+          <button
+            type="button"
+            class="icon"
+            :disabled="!selected.offset.x && !selected.offset.y"
+            @click="resetLayerOffset"
+          >
+            {{ t('stage2d.resetOffset') }}
+          </button>
         </template>
 
         <div class="row">
@@ -267,7 +364,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { stage2dGroundY } from '@shared/gameAssets'
 import {
   normalizeStage2dScene,
   DEFAULT_STAGE2D_SCENE,
@@ -301,6 +399,13 @@ const thumbUrls = ref<Record<string, string>>({})
 const previewUrl = ref('')
 const error = ref('')
 const pickerOpen = ref(false)
+/** 正交视口：缩放 / 平移（屏幕 px）；拖拽模式（平移视口 / 微调选中层） */
+const viewportEl = ref<HTMLElement | null>(null)
+const zoom = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const mode = ref<'pan' | 'move'>('pan')
+const showGuides = ref(true)
 /** 渲染请求递增号：连续调参时丢弃过期结果 */
 let renderToken = 0
 /** 缩略图请求递增号：与渲染互不干扰，避免互相取消 */
@@ -311,12 +416,88 @@ const layers = computed(() => scene.value.layers)
 const selected = computed(
   () => layers.value.find((layer) => layer.id === selectedId.value) ?? null
 )
+/** 舞台 ground 基线（视口参考线，随画布 / 地面比例变化） */
+const groundY = computed(() => {
+  const y = stage2dGroundY(scene.value)
+  return y < 0 ? Math.round(scene.value.canvasHeight / 2) : y
+})
 
 /** 每次会话先把舞台状态对准节点当前 stage2dScene */
 function applySetup(): void {
   const next = normalizeStage2dScene(props.setup ?? DEFAULT_STAGE2D_SCENE)
   scene.value = next
   selectedId.value = next.layers[0]?.id ?? ''
+  void nextTick(fitView)
+}
+
+/** 视口适配：整幅舞台装进视口并居中 */
+function fitView(): void {
+  const el = viewportEl.value
+  if (!el) return
+  const w = el.clientWidth - 32
+  const h = el.clientHeight - 32
+  if (w <= 0 || h <= 0) return
+  const next = Math.min(w / scene.value.canvasWidth, h / scene.value.canvasHeight, 4)
+  zoom.value = Math.max(0.05, Math.min(8, next))
+  panX.value = 0
+  panY.value = 0
+}
+
+/** 滚轮缩放：保持光标下的舞台点不动 */
+function onWheel(event: WheelEvent): void {
+  const el = viewportEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const cx = rect.width / 2
+  const cy = rect.height / 2
+  const mx = event.clientX - rect.left
+  const my = event.clientY - rect.top
+  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
+  const next = Math.max(0.05, Math.min(8, zoom.value * factor))
+  const halfW = scene.value.canvasWidth / 2
+  const halfH = scene.value.canvasHeight / 2
+  // 光标处的舞台坐标（相对画布左上）
+  const px = halfW + (mx - cx - panX.value) / zoom.value
+  const py = halfH + (my - cy - panY.value) / zoom.value
+  panX.value = mx - cx - (px - halfW) * next
+  panY.value = my - cy - (py - halfH) * next
+  zoom.value = next
+}
+
+let dragging = false
+let lastX = 0
+let lastY = 0
+
+function onPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return
+  dragging = true
+  lastX = event.clientX
+  lastY = event.clientY
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+}
+
+function onPointerMove(event: PointerEvent): void {
+  if (!dragging) return
+  const dx = event.clientX - lastX
+  const dy = event.clientY - lastY
+  lastX = event.clientX
+  lastY = event.clientY
+  const layer = selected.value
+  if (mode.value === 'move' && layer) {
+    // 屏幕位移换算回舞台像素（除以缩放）
+    patchLayer(layer.id, {
+      offset: { x: layer.offset.x + dx / zoom.value, y: layer.offset.y + dy / zoom.value }
+    })
+    return
+  }
+  panX.value += dx
+  panY.value += dy
+}
+
+function onPointerUp(event: PointerEvent): void {
+  if (!dragging) return
+  dragging = false
+  ;(event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId)
 }
 
 function commit(next: Stage2dSceneState): void {
@@ -363,6 +544,21 @@ function patchLayerRatio(key: 'contentHeightRatio' | 'groundRatio', event: Event
   if (!selected.value) return
   const value = Number((event.target as HTMLInputElement).value)
   patchLayer(selected.value.id, { align: { ...selected.value.align, [key]: value } })
+}
+
+/** 手动微调：数值输入（舞台像素系，右 / 下为正） */
+function patchLayerOffset(key: 'x' | 'y', event: Event): void {
+  if (!selected.value) return
+  const raw = Number((event.target as HTMLInputElement).value)
+  const value = Number.isFinite(raw) ? raw : 0
+  patchLayer(selected.value.id, {
+    offset: { ...selected.value.offset, [key]: value }
+  })
+}
+
+function resetLayerOffset(): void {
+  if (!selected.value) return
+  patchLayer(selected.value.id, { offset: { x: 0, y: 0 } })
 }
 
 function patchLayerFit(event: Event): void {
@@ -413,6 +609,7 @@ function addFromAssets(assetIds: string[]): void {
       groundRatio: scene.value.groundRatio,
       fitWithinWidth: true
     },
+    offset: { x: 0, y: 0 },
     visible: true
   }))
   commit({ ...scene.value, layers: [...layers.value, ...added] })
@@ -506,6 +703,14 @@ watch(scene, () => {
   void resolveThumbs()
   scheduleRender()
 })
+
+// 画布尺寸变了重新适配视口（舞台画幅切换后无需手动缩放）
+watch(
+  () => [scene.value.canvasWidth, scene.value.canvasHeight],
+  () => {
+    if (props.open) fitView()
+  }
+)
 </script>
 
 <style scoped>
@@ -597,22 +802,98 @@ watch(scene, () => {
   color: var(--text-secondary);
 }
 
-.stage {
+.stage-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom {
+  min-width: 44px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.viewport {
+  position: relative;
   flex: 1;
-  min-height: 260px;
+  min-height: 280px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-input);
+  touch-action: none;
+  cursor: grab;
 }
 
-.stage img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+.viewport:active {
+  cursor: grabbing;
+}
+
+.canvas-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+}
+
+.canvas-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+}
+
+.guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--wash-16) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wash-16) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.line {
+  position: absolute;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.line.ground {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.line.vcenter {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+.line.hcenter {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.empty-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
 }
 
 /* 透明 PNG 棋盘底：wash 叠色跨主题自适应 */

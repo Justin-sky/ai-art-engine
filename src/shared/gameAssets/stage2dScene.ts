@@ -53,6 +53,11 @@ export interface Stage2dLayer {
   sourceUrl: string
   /** 该精灵自己的对齐参数（继承上游 image.align / 资产 meta，缺省画布中心） */
   align: Stage2dLayerAlign
+  /**
+   * 锚点落位后的手动微调（舞台画布像素系，右 / 下为正）。
+   * 自动落位为主、微调为辅：换锚点 / 调比例不丢微调量。
+   */
+  offset: Stage2dLayerOffset
   /** 是否可见 */
   visible: boolean
 }
@@ -66,6 +71,12 @@ export interface Stage2dLayerAlign {
   groundRatio: number
   /** 等比缩放后主体宽度超画布时，是否收缩到画布内 */
   fitWithinWidth: boolean
+}
+
+/** 层在锚点落位之后的手动微调（舞台画布像素系，右 / 下为正） */
+export interface Stage2dLayerOffset {
+  x: number
+  y: number
 }
 
 export const DEFAULT_STAGE2D_SCENE: Stage2dSceneState = {
@@ -88,6 +99,14 @@ function clampInt(n: number, min: number, max: number, fallback: number): number
   return Math.round(clamp(v, min, max))
 }
 
+/** 层微调偏移归一化：非数字回落 0，越界夹取到 ±画布上限 */
+function normalizeLayerOffset(raw?: Partial<Stage2dLayerOffset> | null): Stage2dLayerOffset {
+  return {
+    x: clampInt(Number(raw?.x) || 0, -MAX_CANVAS, MAX_CANVAS, 0),
+    y: clampInt(Number(raw?.y) || 0, -MAX_CANVAS, MAX_CANVAS, 0)
+  }
+}
+
 function normalizeLayerAlign(raw?: Partial<Stage2dLayerAlign> | null): Stage2dLayerAlign {
   return {
     anchor: raw?.anchor === 'center' ? 'center' : 'ground',
@@ -106,12 +125,17 @@ function normalizeLayerAlign(raw?: Partial<Stage2dLayerAlign> | null): Stage2dLa
 }
 
 /**
+ * 归一化入参：层字段允许缺失（旧版持久化场景无 offset 等字段也要能吃下）。
+ */
+export type Stage2dSceneInput = Partial<Omit<Stage2dSceneState, 'layers'>> & {
+  layers?: Array<Partial<Stage2dLayer> | null>
+}
+
+/**
  * 场景归一化：画布与逐层字段夹取到合法范围；剔除无源层。
  * 层序保持传入顺序（作为 z 序基准）。
  */
-export function normalizeStage2dScene(
-  raw?: Partial<Stage2dSceneState> | null
-): Stage2dSceneState {
+export function normalizeStage2dScene(raw?: Stage2dSceneInput | null): Stage2dSceneState {
   const base = { ...DEFAULT_STAGE2D_SCENE, ...(raw ?? {}) }
   const layers: Stage2dLayer[] = Array.isArray(base.layers)
     ? base.layers
@@ -121,6 +145,7 @@ export function normalizeStage2dScene(
           name: String(l.name ?? l.id?.trim() ?? `Layer ${index + 1}`),
           sourceUrl: String(l.sourceUrl ?? ''),
           align: normalizeLayerAlign(l.align),
+          offset: normalizeLayerOffset(l.offset),
           visible: l.visible !== false
         }))
         .filter((l) => !!l.sourceUrl)
@@ -158,6 +183,7 @@ export function createStage2dLayer(input: {
     name: String(input.name || input.sourceUrl || 'Layer'),
     sourceUrl: String(input.sourceUrl ?? ''),
     align,
+    offset: { x: 0, y: 0 },
     visible: true
   }
 }
@@ -210,6 +236,10 @@ export function computeStage2dLayerPlacements(
         fitWithinWidth: layer.align.fitWithinWidth
       }
     )
-    return { layer, plan, bounds: src.bounds }
+    // 手动微调叠加在锚点落位之上（自动落位为主、微调为辅）
+    const shifted = plan
+      ? { ...plan, dstX: plan.dstX + layer.offset.x, dstY: plan.dstY + layer.offset.y }
+      : null
+    return { layer, plan: shifted, bounds: src.bounds }
   })
 }

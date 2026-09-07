@@ -71,6 +71,8 @@ export function stageSceneWithUpstreamSources(
         groundRatio: base.groundRatio,
         fitWithinWidth: true
       },
+      // 微调偏移沿用既有同序层（重跑不抖动）
+      offset: existed?.offset ?? { x: 0, y: 0 },
       visible: existed?.visible ?? true
     })
   })
