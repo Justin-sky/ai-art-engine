@@ -2387,7 +2387,7 @@ export default {
         prompt: 'Prompt',
         game: 'Game',
         motionFx: '2D',
-        model3d: '3D Model',
+        model3d: '3D',
         comic: 'Comic',
         agent: 'Agent',
         ad: 'Ads'
@@ -3148,7 +3148,7 @@ export default {
         canvas: 'Canvas edit',
         video: 'Video generation',
         voice: 'Voice generation',
-        motion: 'Director deck edit',
+        motion: '3D Director Deck',
         model: 'Model',
         screenplay: 'Screenplay generation',
         gameSystem: 'Plan generation',

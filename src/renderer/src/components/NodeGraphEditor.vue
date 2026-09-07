@@ -3478,16 +3478,12 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['asset.world', 'world.extract', 'world.table', 'world.gen']
   },
   {
-    id: 'motion',
-    typeIds: ['asset.motion']
-  },
-  {
     id: 'episode',
     typeIds: ['episode.anchorSelect', 'episode.cellSelect']
   },
   {
     id: 'model3d',
-    typeIds: ['asset.model3d']
+    typeIds: ['asset.model3d', 'asset.motion']
   },
   {
     id: 'comic',

@@ -2363,7 +2363,7 @@ export default {
         prompt: '提示词',
         game: '游戏',
         motionFx: '2D',
-        model3d: '3D 模型',
+        model3d: '3D',
         comic: '漫画',
         agent: 'Agent',
         ad: '广告'
@@ -3122,7 +3122,7 @@ export default {
         canvas: '画布编辑',
         video: '视频生成',
         voice: '声音生成',
-        motion: '导演台编辑',
+        motion: '3D导演台',
         model: '模型',
         screenplay: '剧本生成',
         gameSystem: '策划案生成',
