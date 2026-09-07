@@ -255,11 +255,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return useProjectStore().assets.find((a) => a.id === assetId) ?? null
   }
 
-  /** 模型 / 导入的图声视引用：仅 Inspector，无独立编辑窗口。 */
+  /** 模型 / 2D 动作 / 导入的图声视引用：仅 Inspector，无独立编辑窗口。 */
   function canOpenEditorForAssetId(assetId: string): boolean {
     const asset = resolveAssetById(assetId)
     if (!asset) return true
     if (asset.type === 'model') return false
+    // 2D 动作资产是纯 JSON 文档，暂无独立编辑页；由 stage.2d 节点对话框保存/载入
+    if (asset.type === 'motion2d') return false
     if (isImportedMediaRefAsset(asset)) return false
     return true
   }
@@ -280,8 +282,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       openAssetEditor(assetId)
       return
     }
-    // 引用型媒体 / 模型：选中并显示 Inspector，不打开编辑页
-    if (asset.type === 'model' || isImportedMediaRefAsset(asset)) {
+    // 引用型媒体 / 模型 / 2D 动作文档：选中并显示 Inspector，不打开编辑页
+    if (asset.type === 'model' || asset.type === 'motion2d' || isImportedMediaRefAsset(asset)) {
       selectAsset(assetId)
       revealAssetInBrowser(assetId)
       return

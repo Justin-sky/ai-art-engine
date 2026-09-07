@@ -813,7 +813,8 @@ export default {
       world: 'World Elements',
       beat: 'Beat Units',
       subgraph: 'Host Asset',
-      model3d: '3D Model'
+      model3d: '3D Model',
+      motion2d: '2D Motion'
     },
     create: {
       image: 'New Image',
@@ -828,6 +829,7 @@ export default {
       beat: 'New Beat Units',
       subgraph: 'New Host Asset',
       model3d: 'New 3D Model',
+      motion2d: 'New 2D Motion',
       default: 'New Asset',
       freeCanvasNameTitle: 'New Free Canvas',
       freeCanvasNameMessage:
@@ -1244,6 +1246,17 @@ export default {
     posePersonName: 'Person {n}',
     poseNoPoseModel: 'No pose model installed yet (download one in the model hub)',
     poseYoloUnavailable: 'Pose service unavailable',
+    actionSaveAsset: 'Save as action asset',
+    actionLoadAsset: 'Load from library',
+    actionAssetName: 'Action asset name',
+    actionAssetConfirm: 'Save to library',
+    actionLoadPickHint: 'Pick an action to load…',
+    actionLoadEmpty: 'No 2D action assets in the library yet',
+    actionAssetSaved: 'Saved to library as “{name}” — reusable on any 2D-bone node',
+    actionAssetLoadDone: 'Loaded “{asset}”: {matched}/{total} joints matched, previewing',
+    actionAssetLoadMismatch: '“{asset}” joint set does not match this rig — not loaded',
+    actionAssetLoadEmptyAction: '“{asset}” has no keyframes yet — author one in a 2D-bone editor first',
+    actionAssetFail: 'Failed to save action asset: {message}',
     poseFileMissing: 'Asset file is missing or unreadable',
     poseDetectError: 'Detection failed — try a clearer photo',
     poseRigNoDrivable: 'No drivable joints in the rig: name joints chest/shoulder/elbow/wrist/hip/knee/ankle (with L/R, e.g. shoulderL), or use the humanoid template',

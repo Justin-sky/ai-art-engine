@@ -91,6 +91,10 @@ import {
   metaFileNameForMedia,
   toPosix
 } from '@shared/assetStorage/layout'
+import {
+  createDefaultStage2dActionAssetPack,
+  stage2dActionAssetGenParams
+} from '@shared/gameAssets/stage2dActionAsset'
 import { readJsonFile, writeJsonAtomic } from '../repositories/jsonFile'
 import { normalizePathSegment } from '@shared/assetPackage/pathname'
 import { dialogService } from './dialogService'
@@ -596,6 +600,13 @@ class ProjectService {
     }
     if (input.type === 'motion' && !asset.genParams?.stage) {
       asset.genParams = { ...(asset.genParams ?? {}), stage: createDefaultDirectorStage() }
+    }
+    // 2D 动作资产：默认播种标准人形装配 + 空动作包（内容由 stage.2d 编辑器「存为动作资产」写入）
+    if (input.type === 'motion2d' && !asset.genParams?.stage2dActionAsset) {
+      asset.genParams = {
+        ...(asset.genParams ?? {}),
+        ...stage2dActionAssetGenParams(createDefaultStage2dActionAssetPack())
+      }
     }
     // 新建图/视/声/剧本：默认「生成节点 → 输出节点」（导入引用文件不走此处）
     if (!asset.genParams?.graphJson) {

@@ -245,6 +245,76 @@
             >
               🎬 {{ t('stage2dVideo.actionFromVideo') }}
             </button>
+            <div class="row asset-action-row">
+              <button
+                type="button"
+                class="icon"
+                :disabled="!actionCurrent || assetActionBusy"
+                :title="t('stage2d.actionSaveAsset')"
+                @click="beginSaveActionAsset"
+              >
+                💾 {{ t('stage2d.actionSaveAsset') }}
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :disabled="assetActionBusy"
+                :title="t('stage2d.actionLoadAsset')"
+                @click="toggleLoadActionAsset"
+              >
+                📥 {{ t('stage2d.actionLoadAsset') }}
+              </button>
+            </div>
+            <select
+              v-if="assetLoadPickerOpen"
+              class="asset-pick-select"
+              :value="motionLoadSel"
+              @change="onMotionLoadChange"
+            >
+              <option value="">
+                {{
+                  motionAssets.length
+                    ? t('stage2d.actionLoadPickHint')
+                    : t('stage2d.actionLoadEmpty')
+                }}
+              </option>
+              <option
+                v-for="item in motionAssets"
+                :key="item.id"
+                :value="item.id"
+              >
+                {{ item.name }}
+              </option>
+            </select>
+            <div
+              v-if="assetActionSavingOpen"
+              class="row asset-save-row"
+            >
+              <label class="field">
+                <span>{{ t('stage2d.actionAssetName') }}</span>
+                <input
+                  v-model="assetActionName"
+                  type="text"
+                  :disabled="assetActionBusy"
+                  @keydown.enter="confirmSaveActionAsset"
+                >
+              </label>
+              <button
+                type="button"
+                class="primary"
+                :disabled="assetActionBusy || !assetActionName.trim()"
+                @click="confirmSaveActionAsset"
+              >
+                {{ t('stage2d.actionAssetConfirm') }}
+              </button>
+            </div>
+            <p
+              v-if="assetActionMsg"
+              class="asset-action-msg"
+              :class="`kind-${assetActionMsgKind}`"
+            >
+              {{ assetActionMsg }}
+            </p>
             <p
               v-if="actionMode !== 'off' && actionCurrent"
               class="action-status"
@@ -810,6 +880,9 @@ import {
   normalizeStage2dAction,
   normalizeStage2dRig,
   sampleStage2dAction,
+  packStage2dActionAsset,
+  readStage2dActionAssetFromGenParams,
+  stage2dActionAssetGenParams,
   stage2dActionPresetById,
   stage2dGroundY,
   STAGE2D_ACTION_PRESETS,
@@ -1333,6 +1406,112 @@ function applyVideoAction(action: Stage2dAction): void {
   startActionLoop()
 }
 
+/* 动作资产容器：动作 + 创作装配可存成素材库 motion2d 资产，跨节点 / rig 载回复用 */
+const motionAssets = computed(() =>
+  project.assets.filter((asset) => asset.type === 'motion2d' && !asset.relativePath)
+)
+const assetActionSavingOpen = ref(false)
+const assetActionBusy = ref(false)
+const assetActionName = ref('')
+const assetLoadPickerOpen = ref(false)
+const motionLoadSel = ref('')
+const assetActionMsg = ref('')
+const assetActionMsgKind = ref<'ok' | 'warn' | 'error'>('ok')
+
+function setAssetActionMsg(text: string, kind: 'ok' | 'warn' | 'error' = 'ok'): void {
+  assetActionMsg.value = text
+  assetActionMsgKind.value = kind
+}
+
+function beginSaveActionAsset(): void {
+  const action = actionCurrent.value
+  if (!action) return
+  assetActionName.value = action.name?.trim() || actionLabel(action.id)
+  assetActionMsg.value = ''
+  assetActionSavingOpen.value = !assetActionSavingOpen.value
+}
+
+async function confirmSaveActionAsset(): Promise<void> {
+  const action = actionCurrent.value
+  if (!action || assetActionBusy.value) return
+  const name = assetActionName.value.trim()
+  if (!name) {
+    setAssetActionMsg(t('validation.nameRequired'), 'error')
+    return
+  }
+  assetActionBusy.value = true
+  try {
+    const pack = packStage2dActionAsset({
+      action: { ...action, name },
+      rig: rig.value,
+      pose: pose.value
+    })
+    const created = await window.studio.createAsset({
+      type: 'motion2d',
+      name,
+      genParams: stage2dActionAssetGenParams(pack)
+    })
+    await project.refreshAssets()
+    assetActionSavingOpen.value = false
+    setAssetActionMsg(t('stage2d.actionAssetSaved', { name: created.name }), 'ok')
+  } catch (err) {
+    console.error('[stage2d action asset] save failed:', err)
+    setAssetActionMsg(t('stage2d.actionAssetFail', { message: String(err) }), 'error')
+  } finally {
+    assetActionBusy.value = false
+  }
+}
+
+function toggleLoadActionAsset(): void {
+  assetActionMsg.value = ''
+  if (assetLoadPickerOpen.value) {
+    assetLoadPickerOpen.value = false
+    motionLoadSel.value = ''
+    return
+  }
+  motionLoadSel.value = ''
+  assetLoadPickerOpen.value = true
+}
+
+function onMotionLoadChange(event: Event): void {
+  const id = (event.target as HTMLSelectElement).value
+  const picked = id ? motionAssets.value.find((asset) => asset.id === id) : undefined
+  assetLoadPickerOpen.value = false
+  motionLoadSel.value = ''
+  if (!picked) return
+  const pack = readStage2dActionAssetFromGenParams(picked.genParams)
+  const action = normalizeStage2dAction(pack?.action)
+  if (!action.keyframes.length) {
+    setAssetActionMsg(t('stage2d.actionAssetLoadEmptyAction', { asset: picked.name }), 'warn')
+    return
+  }
+  const referenced = new Set<string>()
+  for (const frame of action.keyframes) {
+    for (const jointId of Object.keys(frame.pose)) referenced.add(jointId)
+  }
+  const rigIds = new Set(rig.value.joints.map((joint) => joint.id))
+  const matched = [...referenced].filter((jointId) => rigIds.has(jointId)).length
+  if (referenced.size > 0 && matched === 0) {
+    setAssetActionMsg(t('stage2d.actionAssetLoadMismatch', { asset: picked.name }), 'warn')
+    return
+  }
+  stopActionPlayback()
+  customAction.value = action
+  actionSavedPose = { ...pose.value }
+  actionClock.value = 0
+  actionId.value = CUSTOM_ACTION_ID
+  actionMode.value = 'playing'
+  startActionLoop()
+  setAssetActionMsg(
+    t('stage2d.actionAssetLoadDone', {
+      asset: picked.name,
+      matched: String(matched),
+      total: String(referenced.size)
+    }),
+    'ok'
+  )
+}
+
 /* 动作帧导出：按帧率把试播动作 cook 成透明 PNG 帧，逐帧资产 + 拼一张水平 sheet */
 const fpsOptions = [6, 8, 10, 12, 15, 24]
 const exportFps = ref(12)
@@ -1661,6 +1840,10 @@ watch(
       cancelActionLoop()
       previewUrl.value = ''
       error.value = ''
+      assetActionSavingOpen.value = false
+      assetLoadPickerOpen.value = false
+      motionLoadSel.value = ''
+      assetActionMsg.value = ''
       return
     }
     applySetup()
@@ -1702,6 +1885,63 @@ onBeforeUnmount(() => {
 .action-video-btn {
   width: 100%;
   margin-top: 2px;
+}
+
+.asset-action-row {
+  margin-top: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.asset-action-row .icon {
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+.asset-pick-select {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.asset-save-row {
+  margin-top: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.asset-save-row .field {
+  flex: 1;
+  min-width: 150px;
+}
+
+.asset-save-row .field span {
+  font-size: 11px;
+}
+
+.asset-save-row input {
+  min-width: 0;
+}
+
+.asset-save-row .primary {
+  font-size: 11px;
+}
+
+.asset-action-msg {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.asset-action-msg.kind-ok {
+  color: var(--accent);
+}
+
+.asset-action-msg.kind-warn {
+  color: var(--warning);
+}
+
+.asset-action-msg.kind-error {
+  color: var(--danger);
 }
 
 .action-status {

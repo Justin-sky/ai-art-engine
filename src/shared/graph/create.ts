@@ -23,6 +23,7 @@ const ASSET_NODE_TITLES: Record<AssetType, string> = {
   video: 'Video',
   voice: 'voice',
   motion: 'Director Deck',
+  motion2d: '2D Motion',
   model: 'Model',
   model3d: '3D Model',
   screenplay: 'Screenplay',

@@ -60,6 +60,7 @@ export type AssetType =
   | 'video'
   | 'voice'
   | 'motion'
+  | 'motion2d'
   | 'model'
   | 'model3d'
   | 'screenplay'
@@ -481,6 +482,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   video: 'Video',
   voice: 'Voice',
   motion: 'Director Deck',
+  motion2d: '2D Motion',
   model: 'Model',
   model3d: '3D Model',
   screenplay: 'Screenplay',
@@ -497,6 +499,7 @@ export const ASSET_TYPE_LABELS_ZH: Record<AssetType, string> = {
   video: '视频',
   voice: '声音',
   motion: '导演台',
+  motion2d: '2D 动作',
   model: '模型',
   model3d: '3D 模型',
   screenplay: '剧本',
@@ -529,6 +532,7 @@ export const ASSET_TYPE_ICONS: Record<AssetType, string> = {
   video: VIDEO_ASSET_ICON,
   voice: '🔊',
   motion: '🎬',
+  motion2d: '🏃',
   model: '🧊',
   model3d: '🧊',
   screenplay: '📜',
