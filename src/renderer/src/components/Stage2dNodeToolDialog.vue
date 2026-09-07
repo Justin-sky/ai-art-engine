@@ -108,6 +108,24 @@
         </template>
 
         <template v-else>
+          <div class="rig-toolbar">
+            <button
+              type="button"
+              class="primary"
+              :title="t('stage2d.rigTemplateTip')"
+              @click="useHumanoidTemplate"
+            >
+              {{ t('stage2d.rigTemplate') }}
+            </button>
+            <button
+              type="button"
+              class="primary"
+              :title="t('stage2d.rigFromImageTip')"
+              @click="poseDialogOpen = true"
+            >
+              {{ t('stage2d.rigFromImage') }}
+            </button>
+          </div>
           <div class="section-label">
             {{ t('stage2d.joints') }}
           </div>
@@ -607,12 +625,20 @@
     @confirm="addFromAssets"
     @cancel="pickerOpen = false"
   />
+
+  <Stage2dPoseFromImageDialog
+    :open="poseDialogOpen"
+    :rig="rig"
+    @close="poseDialogOpen = false"
+    @applied="applySolvedPose"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import {
   computeStage2dRigTransforms,
+  createHumanoidStage2dRig,
   createStage2dJoint,
   normalizeStage2dRig,
   stage2dGroundY,
@@ -630,6 +656,7 @@ import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanv
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
+import Stage2dPoseFromImageDialog from './Stage2dPoseFromImageDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 type StageLayer = Stage2dSceneState['layers'][number]
@@ -667,6 +694,8 @@ const thumbUrls = ref<Record<string, string>>({})
 const previewUrl = ref('')
 const error = ref('')
 const pickerOpen = ref(false)
+/** 从图片反解起始姿势的浮窗 */
+const poseDialogOpen = ref(false)
 /** 正交视口：缩放 / 平移（屏幕 px）；拖拽模式（平移视口 / 微调选中层） */
 const viewportEl = ref<HTMLElement | null>(null)
 const zoom = ref(1)
@@ -879,6 +908,34 @@ function commitRig(next: Stage2dRig): void {
   const keep = new Set(rig.value.joints.map((joint) => joint.id))
   const kept = Object.fromEntries(Object.entries(pose.value).filter(([id]) => keep.has(id)))
   pose.value = kept
+}
+
+/** 按当前画布建一个标准人形骨骼（命名遵循 pose 反解约定） */
+function useHumanoidTemplate(): void {
+  const s = scene.value
+  const rawGround = stage2dGroundY(s)
+  const feetY =
+    rawGround >= 0
+      ? Math.max(8, Math.min(Math.round(rawGround), s.canvasHeight - 8))
+      : Math.max(8, s.canvasHeight - 8)
+  const height = Math.max(60, Math.min(feetY - 8, s.canvasWidth * 0.7, s.canvasHeight * 0.92))
+  const next = createHumanoidStage2dRig({
+    x: Math.round(s.canvasWidth / 2),
+    groundY: feetY,
+    height: Math.round(height)
+  })
+  rig.value = next
+  pose.value = {}
+  selectedJointId.value = next.joints.find((joint) => joint.id === 'pelvis')?.id ?? next.joints[0]?.id ?? ''
+  tab.value = 'rig'
+  render()
+}
+
+/** 应用「从图片反解」得到的平面姿势并关掉子浮窗 */
+function applySolvedPose(payload: { pose: Stage2dPose }): void {
+  pose.value = normalizeStage2dPose(rig.value, payload.pose)
+  poseDialogOpen.value = false
+  render()
 }
 
 function addJoint(): void {
@@ -1413,6 +1470,11 @@ watch(
   right: 0;
   top: 50%;
   height: 1px;
+}
+
+.rig-toolbar {
+  display: flex;
+  gap: 6px;
 }
 
 .rig-overlay {
