@@ -430,6 +430,11 @@ export interface NodeExecuteContext {
     sourceDataUrl: string
     state: import('../imageCutout').ImageCutoutState
   }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /** 精灵统一对齐：透明 PNG 按统一画布 + 中心/脚底锚点等比摆放。 */
+  composeImageAlignCanvas?: (input: {
+    sourceDataUrl: string
+    state: import('../imageAlign').ImageAlignState
+  }) => Promise<{ dataUrl: string; width: number; height: number }>
   /** 智能构图：检测人物主体 → 按目标画幅 + 留白策略裁出 PNG。 */
   composeImageComposeCanvas?: (input: {
     sourceDataUrl: string
@@ -639,6 +644,7 @@ export interface GraphRunOptions {
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']
   composeImageCutoutCanvas?: NodeExecuteContext['composeImageCutoutCanvas']
+  composeImageAlignCanvas?: NodeExecuteContext['composeImageAlignCanvas']
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']

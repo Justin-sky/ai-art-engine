@@ -2350,7 +2350,7 @@ export default {
         text: '文本',
         prompt: '提示词',
         game: '游戏',
-        motionFx: '动效',
+        motionFx: '2D',
         model3d: '3D 模型',
         comic: '漫画',
         agent: 'Agent',
@@ -2762,6 +2762,19 @@ export default {
       hint: '运行节点：本地识别主体并抠成透明 PNG（不调模型）',
       personOnly: '只保留人物'
     },
+    align: {
+      appMark: '精灵对齐',
+      hint: '运行节点：把透明主体等比摆上统一画布，按中心 / 脚底锚点就位（本地像素处理，不调模型）',
+      canvasWidth: '画布宽',
+      canvasHeight: '画布高',
+      anchor: '锚点',
+      anchorCenter: '中心',
+      anchorGround: '脚底地面',
+      subjectHeight: '主体高度占比',
+      groundGap: '地面留白占比',
+      fitWidth: '超宽自动收缩进画布',
+      output: '输出'
+    },
     compose: {
       appMark: '智能构图',
       hint: '运行节点：自动检测人物并按画幅 / 留白策略重构图（不调模型）'
@@ -3145,6 +3158,7 @@ export default {
         gridSplit: '宫格切分',
         layerSplit: '图层分离',
         cutout: '本地抠图',
+        align: '精灵对齐',
         compose: '智能构图',
         toPrompt: '图片反推提示词',
         adVariants: '广告变体'

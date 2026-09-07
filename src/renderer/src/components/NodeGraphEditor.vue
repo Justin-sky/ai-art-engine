@@ -3457,7 +3457,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'motionFx',
-    typeIds: ['frame.animGen', 'anim.2d']
+    typeIds: ['frame.animGen', 'anim.2d', 'image.align']
   },
   {
     id: 'beat',

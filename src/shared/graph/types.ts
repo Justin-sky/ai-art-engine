@@ -557,6 +557,8 @@ export interface GraphNodeParams {
   imageCutout?: Partial<ImageCutoutState>
   /** 智能构图参数（节点图版一键构图） */
   imageCompose?: Partial<ImageComposeState>
+  /** 精灵统一对齐参数（透明 PNG 上统一画布 + 锚点） */
+  imageAlign?: Partial<import('./imageAlign').ImageAlignState>
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图层分离（Seedream layer_decomposition） */

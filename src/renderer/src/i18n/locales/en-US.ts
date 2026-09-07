@@ -2374,7 +2374,7 @@ export default {
         text: 'Text',
         prompt: 'Prompt',
         game: 'Game',
-        motionFx: 'Motion FX',
+        motionFx: '2D',
         model3d: '3D Model',
         comic: 'Comic',
         agent: 'Agent',
@@ -2785,6 +2785,19 @@ export default {
       hint: 'Run the node to detect subjects locally and cut out a transparent PNG (no model call)',
       personOnly: 'People only'
     },
+    align: {
+      appMark: 'Sprite align',
+      hint: 'Run the node to fit the transparent subject onto a uniform canvas, anchored by center or ground (local pixels, no model call)',
+      canvasWidth: 'Canvas width',
+      canvasHeight: 'Canvas height',
+      anchor: 'Anchor',
+      anchorCenter: 'Center',
+      anchorGround: 'Ground',
+      subjectHeight: 'Subject height',
+      groundGap: 'Ground gap',
+      fitWidth: 'Shrink if wider than canvas',
+      output: 'Output'
+    },
     compose: {
       appMark: 'Smart framing',
       hint: 'Run the node to auto-detect the person and reframe by frame / strategy (no model call)'
@@ -3171,6 +3184,7 @@ export default {
         gridSplit: 'Grid split',
         layerSplit: 'Layer split',
         cutout: 'Cutout',
+        align: 'Sprite align',
         compose: 'Smart framing',
         toPrompt: 'Image reverse prompt',
         adVariants: 'Ad variants'

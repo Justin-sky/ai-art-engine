@@ -56,6 +56,7 @@ import { composeImageExpandCanvas } from '../features/graph/model/composeImageEx
 import { composeImageRedrawCanvas } from '../features/graph/model/composeImageRedrawCanvas'
 import { composeImageCropCanvas } from '../features/graph/model/composeImageCropCanvas'
 import { composeImageCutoutCanvas } from '../features/graph/model/composeImageCutoutCanvas'
+import { composeImageAlignCanvas } from '../features/graph/model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../features/graph/model/composeImageComposeCanvas'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
@@ -1362,6 +1363,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageRedrawCanvas,
         composeImageCropCanvas,
         composeImageCutoutCanvas,
+        composeImageAlignCanvas,
         composeImageComposeCanvas,
         composeImageGridCell,
         composeImageLayerStack,

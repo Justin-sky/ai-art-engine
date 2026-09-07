@@ -15,6 +15,7 @@ import EraseInspector from '../components/EraseInspector.vue'
 import MatteInspector from '../components/MatteInspector.vue'
 import CropInspector from '../components/CropInspector.vue'
 import CutoutProcessInspector from '../components/CutoutProcessInspector.vue'
+import AlignProcessInspector from '../components/AlignProcessInspector.vue'
 import ComposeProcessInspector from '../components/ComposeProcessInspector.vue'
 import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
@@ -276,6 +277,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.cutout',
     component: CutoutProcessInspector,
     nodeTypeId: 'image.cutout'
+  },
+  {
+    id: 'studio.graph.align',
+    component: AlignProcessInspector,
+    nodeTypeId: 'image.align'
   },
   {
     id: 'studio.graph.compose',

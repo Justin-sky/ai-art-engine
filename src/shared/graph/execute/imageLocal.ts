@@ -18,6 +18,7 @@ import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 import { readImageCutoutFromNode } from '../imageCutout'
 import { readImageComposeFromNode } from '../imageCompose'
+import { readImageAlignFromNode } from '../imageAlign'
 
 /** 解析可合成的首张上游图 url；无 resolveImageUrls 时退回 dataUrl / 资产引用 */
 async function resolveFirstSourceUrl(
@@ -116,6 +117,70 @@ export async function executeCutoutNode(
   )
   return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
     imageCutout: state
+  })
+}
+
+/**
+ * 精灵统一对齐：把上游透明 PNG 的主体（alpha 外接框）按统一画布
+ * 等比缩放并以「中心 / 脚底」锚点就位，产出引擎可直接消费的游戏资产。
+ * 像素合成（extractAlphaBounds → computeSpriteAlignPlan → drawImage）
+ * 由宿主注入的 `composeImageAlignCanvas` 提供，几何可离线单测。
+ */
+export async function executeAlignNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const sourceItems = await collectIncomingImageItems(ctx)
+  if (!sourceItems.length) {
+    throw new Error('GRAPH_PROCESS_NO_INPUT')
+  }
+
+  const state = readImageAlignFromNode(ctx.node.params)
+  const sourceUrl = await resolveFirstSourceUrl(ctx, sourceItems)
+  await ensureAlive(ctx)
+
+  if (!ctx.composeImageAlignCanvas) {
+    // 无合成注入时透传，便于离线
+    const picked = sourceItems[0]!
+    ctx.node.params = { ...ctx.node.params, imageAlign: state }
+    ctx.patchNode?.({ params: { imageAlign: state } })
+    return commitGeneratedImages(
+      ctx,
+      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
+      picked.relativePath?.trim()
+    )
+  }
+
+  const composed = await ctx.composeImageAlignCanvas({
+    sourceDataUrl: sourceUrl,
+    state
+  })
+  if (!composed.dataUrl) {
+    throw fail(SHARED_ERRORS.imageCropEmpty)
+  }
+  await ensureAlive(ctx)
+
+  const createdAt = new Date().toISOString()
+  const stamp = Date.now()
+  const item: GraphImageItem = {
+    id: `align:${ctx.node.id}:${stamp}`,
+    dataUrl: composed.dataUrl,
+    createdAt
+  }
+  const materializedBatch = await materializeGeneratedBatch(
+    ctx,
+    [item],
+    `align:${ctx.node.id}:${stamp}`
+  )
+  if (!materializedBatch.length) {
+    throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
+  }
+  const generatedImages = mergeGeneratedImages(
+    ctx,
+    materializedBatch,
+    `align:${ctx.node.id}:${stamp}:keep`
+  )
+  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
+    imageAlign: state
   })
 }
 

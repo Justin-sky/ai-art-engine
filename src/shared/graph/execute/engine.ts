@@ -427,6 +427,7 @@ async function executeOneNode(
     composeImageRedrawCanvas: options.composeImageRedrawCanvas,
     composeImageCropCanvas: options.composeImageCropCanvas,
     composeImageCutoutCanvas: options.composeImageCutoutCanvas,
+    composeImageAlignCanvas: options.composeImageAlignCanvas,
     composeImageComposeCanvas: options.composeImageComposeCanvas,
     composeImageGridCell: options.composeImageGridCell,
     composeImageLayerStack: options.composeImageLayerStack,

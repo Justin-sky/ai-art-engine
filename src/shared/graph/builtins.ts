@@ -61,6 +61,7 @@ import {
   executeMatteNode,
   executeCropNode,
   executeCutoutNode,
+  executeAlignNode,
   executeComposeNode,
   executeGridSplitNode,
   executeLayerSplitNode,
@@ -1486,6 +1487,37 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeCutoutNode
+  },
+  {
+    typeId: 'image.align',
+    category: 'note',
+    label: 'Sprite align',
+    icon: '⊟',
+    defaultTitle: 'Sprite align',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      imageAlign: {
+        canvasWidth: 1024,
+        canvasHeight: 1024,
+        anchor: 'ground',
+        contentHeightRatio: 0.9,
+        groundRatio: 0.06,
+        fitWithinWidth: true
+      }
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.align',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeAlignNode
   },
   {
     typeId: 'image.compose',
