@@ -255,6 +255,14 @@ export type GraphEditorDialogsApi = {
     stage2dPose?: Stage2dPose
     dataUrl?: string
   }) => void | Promise<void>
+  /** 导出 2D 骨骼动作帧序列：逐帧透明 PNG + 单张水平 sheet 落盘为工程资产（不入节点 params） */
+  exportStage2dFrames: (payload: {
+    actionId: string
+    fps: number
+    duration: number
+    frames: string[]
+    sheet: string | null
+  }) => void | Promise<void>
   /** dive 面包屑回退前结束 2D 舞台编辑，补记撤销命令 */
   flushStage2d: () => void
   closeLayerSplit: () => void

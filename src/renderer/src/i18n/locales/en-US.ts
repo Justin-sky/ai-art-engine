@@ -1178,6 +1178,13 @@ export default {
     actionFreezeTip: 'Keep the current sampled frame as your pose',
     actionStatus: '{now}s / {total}s',
     actionPaused: 'paused',
+    exportTitle: 'Export action frames (transparent PNG)',
+    exportNeedAction: 'Pick an action in “Action preview” above first',
+    exportFps: 'FPS',
+    exportButton: 'Export frames',
+    exportFramesNote: '{count} frames × {fps} fps ({seconds}s, seamless loop)',
+    exporting: 'Exporting {done}/{total}…',
+    exportDone: 'Exported {count} PNG frames + 1 sheet to library',
     actions: {
       idle: 'Idle breathing',
       wave: 'Wave',

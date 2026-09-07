@@ -249,6 +249,73 @@
             </p>
           </div>
 
+          <div class="section-label">
+            {{ t('stage2d.exportTitle') }}
+          </div>
+          <p
+            v-if="!rig.joints.length"
+            class="hint"
+          >
+            {{ t('stage2d.actionNoRig') }}
+          </p>
+          <p
+            v-else-if="!actionCurrent"
+            class="hint"
+          >
+            {{ t('stage2d.exportNeedAction') }}
+          </p>
+          <template v-else>
+            <div class="row export-controls">
+              <label class="field">
+                <span>{{ t('stage2d.exportFps') }}</span>
+                <select v-model.number="exportFps">
+                  <option
+                    v-for="fps in fpsOptions"
+                    :key="fps"
+                    :value="fps"
+                  >
+                    {{ fps }}
+                  </option>
+                </select>
+              </label>
+              <button
+                type="button"
+                class="primary"
+                :disabled="exportBusy"
+                @click="exportActionFrames"
+              >
+                {{ t('stage2d.exportButton') }}
+              </button>
+            </div>
+            <p class="hint">
+              {{
+                t('stage2d.exportFramesNote', {
+                  count: exportFrameCount,
+                  fps: exportFps,
+                  seconds: formatActionTime(actionCurrent.duration ?? 0)
+                })
+              }}
+            </p>
+            <p
+              v-if="exportBusy"
+              class="export-status"
+            >
+              {{ t('stage2d.exporting', { done: exportProgress, total: exportFrameCount }) }}
+            </p>
+            <p
+              v-else-if="exportError"
+              class="export-status error"
+            >
+              {{ exportError }}
+            </p>
+            <p
+              v-else-if="exportDone"
+              class="export-status ok"
+            >
+              {{ t('stage2d.exportDone', { count: exportFrameCount }) }}
+            </p>
+          </template>
+
           <template v-if="selectedJoint">
             <div class="section-label">
               {{ t('stage2d.jointParams') }}
@@ -736,6 +803,7 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
+import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
@@ -759,6 +827,15 @@ const emit = defineEmits<{
       stage2dRig: Stage2dRig
       stage2dPose: Stage2dPose
       dataUrl?: string
+    }
+  ]
+  'export-frames': [
+    payload: {
+      actionId: string
+      fps: number
+      duration: number
+      frames: string[]
+      sheet: string | null
     }
   ]
 }>()
@@ -1188,6 +1265,74 @@ function onActionPick(event: Event): void {
   }
 }
 
+/* 动作帧导出：按帧率把试播动作 cook 成透明 PNG 帧，逐帧资产 + 拼一张水平 sheet */
+const fpsOptions = [6, 8, 10, 12, 15, 24]
+const exportFps = ref(12)
+const exportBusy = ref(false)
+const exportProgress = ref(0)
+const exportDone = ref(false)
+const exportError = ref('')
+
+const exportFrameCount = computed(() => {
+  const action = actionCurrent.value
+  return action ? Math.max(1, Math.round((action.duration ?? 1) * exportFps.value)) : 0
+})
+
+async function exportActionFrames(): Promise<void> {
+  const action = actionCurrent.value
+  if (!action || exportBusy.value) return
+  if (!rig.value.joints.length) return
+  stopActionPlayback()
+  exportBusy.value = true
+  exportDone.value = false
+  exportError.value = ''
+  exportProgress.value = 0
+  try {
+    // 与编辑器预览同源：先把工程内层源解析成可绘 URL 再交给合成层
+    const sceneState = normalizeStage2dScene(scene.value)
+    const resolved = await Promise.all(
+      sceneState.layers.map((layer) => resolveLayerUrl(layer.sourceUrl))
+    )
+    const composeScene = normalizeStage2dScene({
+      ...sceneState,
+      layers: sceneState.layers.map((layer, index) => ({
+        ...layer,
+        sourceUrl: resolved[index] ?? ''
+      }))
+    })
+    const count = exportFrameCount.value
+    const duration = action.duration ?? 0
+    const framePoses: Stage2dPose[] = []
+    for (let index = 0; index < count; index++) {
+      const t = duration > 0 ? (index * duration) / count : 0
+      framePoses.push(sampleStage2dAction(action, t))
+    }
+    const frames: string[] = []
+    for (let index = 0; index < framePoses.length; index++) {
+      const out = await composeStage2dCanvas({
+        state: composeScene,
+        rig: rig.value,
+        pose: framePoses[index]
+      })
+      frames.push(out.dataUrl)
+      exportProgress.value = index + 1
+    }
+    const sheet = await composeStage2dFrameSheet({ frameUrls: frames })
+    emit('export-frames', {
+      actionId: action.id,
+      fps: exportFps.value,
+      duration,
+      frames,
+      sheet: sheet?.dataUrl ?? null
+    })
+    exportDone.value = true
+  } catch (err) {
+    exportError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    exportBusy.value = false
+  }
+}
+
 /** 把当前选中的层挂到选中关节（同一层只能挂一个关节） */
 function bindSelectedLayer(): void {
   const layer = selected.value
@@ -1487,6 +1632,21 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.4;
   opacity: 0.75;
+}
+
+.export-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.export-status.ok {
+  color: var(--success);
+}
+
+.export-status.error {
+  color: var(--danger);
 }
 
 .stage2d {

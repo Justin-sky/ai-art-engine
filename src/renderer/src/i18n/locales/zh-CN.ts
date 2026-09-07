@@ -1174,6 +1174,13 @@ export default {
     actionFreezeTip: '把当前采样帧定格为你的摆姿',
     actionStatus: '{now}s / {total}s',
     actionPaused: '已暂停',
+    exportTitle: '导出动作帧（透明 PNG）',
+    exportNeedAction: '先在上方的「动作试播」里选一个动作',
+    exportFps: '帧率',
+    exportButton: '导出序列帧',
+    exportFramesNote: '{count} 帧 × {fps} fps（{seconds}s，首尾衔接可无缝循环）',
+    exporting: '正在导出 {done}/{total} …',
+    exportDone: '已导出 {count} 帧 PNG + 1 张序列 sheet，素材库自动刷新',
     actions: {
       idle: '待机呼吸',
       wave: '挥手',

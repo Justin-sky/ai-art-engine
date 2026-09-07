@@ -7657,6 +7657,44 @@ async function saveStage2d(payload: {
   closeStage2d()
 }
 
+/**
+ * 导出 2D 骨骼动作帧序列：逐帧透明 PNG + 单张水平 sheet 落盘为工程图片资产。
+ * 不入节点 params / generatedImages（动画帧是给引擎复用的资产，不是本节点产物）；
+ * 输出目录默认 `Assets/2D`（可随节点 mediaOutputDir 配置），落资产库自动刷新。
+ */
+async function exportStage2dFrames(payload: {
+  actionId: string
+  fps: number
+  duration: number
+  frames: string[]
+  sheet: string | null
+}): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === stage2d.nodeId)
+  if (!node || !payload.frames.length) return
+  const configured = node.params.mediaOutputDir
+  const outputDir =
+    typeof configured === 'string' && configured.trim() ? configured.trim() : 'Assets/2D'
+  const baseKey = `stage2d-anim-${payload.actionId}`
+  for (let index = 0; index < payload.frames.length; index++) {
+    await saveGraphRunMediaForNode({
+      dataUrl: payload.frames[index],
+      key: `${baseKey}-${String(index + 1).padStart(3, '0')}`,
+      outputDir,
+      node,
+      hostAssetId: props.assetId ?? null
+    })
+  }
+  if (payload.sheet) {
+    await saveGraphRunMediaForNode({
+      dataUrl: payload.sheet,
+      key: `${baseKey}-sheet`,
+      outputDir,
+      node,
+      hostAssetId: props.assetId ?? null
+    })
+  }
+}
+
 /** dive 面包屑回退前结束 2D 舞台编辑，补记撤销命令 */
 function flushStage2d(): void {
   if (!stage2d.open) return
@@ -8184,6 +8222,7 @@ const graphDialogsApi = {
   flushAlign,
   closeStage2d,
   saveStage2d,
+  exportStage2dFrames,
   flushStage2d
 } as GraphEditorDialogsApi
 

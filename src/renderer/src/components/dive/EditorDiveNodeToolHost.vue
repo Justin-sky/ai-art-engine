@@ -252,6 +252,7 @@
       :setup-pose="api.stage2d.setupPose"
       @close="onClose(api.closeStage2d)"
       @save="api.saveStage2d as never"
+      @export-frames="api.exportStage2dFrames as never"
     />
 
     <LayerSplitEditorDialog
