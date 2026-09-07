@@ -169,6 +169,86 @@
             ＋ {{ t('stage2d.addJoint') }}
           </button>
 
+          <div class="section-label">
+            {{ t('stage2d.actionTitle') }}
+          </div>
+          <p
+            v-if="!rig.joints.length"
+            class="hint"
+          >
+            {{ t('stage2d.actionNoRig') }}
+          </p>
+          <div
+            v-else
+            class="action-player"
+          >
+            <label class="field">
+              <span>{{ t('stage2d.actionPick') }}</span>
+              <select
+                :value="actionId"
+                @change="onActionPick($event)"
+              >
+                <option value="">
+                  {{ t('stage2d.actionNone') }}
+                </option>
+                <option
+                  v-for="item in actionPresets"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ actionLabel(item.id) }}
+                </option>
+              </select>
+            </label>
+            <div class="row action-controls">
+              <button
+                type="button"
+                class="primary"
+                :disabled="!actionCurrent"
+                @click="toggleActionPlay"
+              >
+                {{
+                  actionMode === 'playing'
+                    ? t('stage2d.actionPause')
+                    : t('stage2d.actionPlay')
+                }}
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :disabled="actionMode === 'off'"
+                :title="t('stage2d.actionStopTip')"
+                @click="stopActionPlayback"
+              >
+                ■
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :disabled="actionMode === 'off'"
+                :title="t('stage2d.actionFreezeTip')"
+                @click="freezeActionFrame"
+              >
+                {{ t('stage2d.actionFreeze') }}
+              </button>
+            </div>
+            <p
+              v-if="actionMode !== 'off' && actionCurrent"
+              class="action-status"
+            >
+              {{ actionLabel(actionCurrent.id) }} ·
+              {{
+                t('stage2d.actionStatus', {
+                  now: formatActionTime(actionClock),
+                  total: formatActionTime(actionCurrent.duration ?? 0)
+                })
+              }}
+              <span v-if="actionMode === 'paused'">
+                · {{ t('stage2d.actionPaused') }}
+              </span>
+            </p>
+          </div>
+
           <template v-if="selectedJoint">
             <div class="section-label">
               {{ t('stage2d.jointParams') }}
@@ -635,13 +715,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   computeStage2dRigTransforms,
   createHumanoidStage2dRig,
   createStage2dJoint,
   normalizeStage2dRig,
+  sampleStage2dAction,
+  stage2dActionPresetById,
   stage2dGroundY,
+  STAGE2D_ACTION_PRESETS,
   type Stage2dPose,
   type Stage2dRig
 } from '@shared/gameAssets'
@@ -912,6 +995,7 @@ function commitRig(next: Stage2dRig): void {
 
 /** 按当前画布建一个标准人形骨骼（命名遵循 pose 反解约定） */
 function useHumanoidTemplate(): void {
+  stopActionPlayback()
   const s = scene.value
   const rawGround = stage2dGroundY(s)
   const feetY =
@@ -933,6 +1017,7 @@ function useHumanoidTemplate(): void {
 
 /** 应用「从图片反解」得到的平面姿势并关掉子浮窗 */
 function applySolvedPose(payload: { pose: Stage2dPose }): void {
+  stopActionPlayback()
   pose.value = normalizeStage2dPose(rig.value, payload.pose)
   poseDialogOpen.value = false
   render()
@@ -986,6 +1071,7 @@ function patchJointBind(key: 'x' | 'y', event: Event): void {
 }
 
 function setJointPose(event: Event): void {
+  stopActionPlayback()
   const joint = selectedJoint.value
   if (!joint) return
   pose.value = {
@@ -995,7 +1081,111 @@ function setJointPose(event: Event): void {
 }
 
 function resetPose(): void {
+  stopActionPlayback()
   pose.value = {}
+}
+
+/* 动作试播：内置动作循环播放期间用采样 pose 实时驱动骨骼与挂件（只预览不改数据） */
+const actionId = ref('')
+const actionMode = ref<'off' | 'playing' | 'paused'>('off')
+const actionClock = ref(0)
+let actionAnchorMs = 0
+let actionSavedPose: Stage2dPose | null = null
+let actionRaf = 0
+
+const actionPresets = STAGE2D_ACTION_PRESETS
+const actionCurrent = computed(() => stage2dActionPresetById(actionId.value))
+
+function actionLabel(id: string): string {
+  const label = t(`stage2d.actions.${id}`)
+  return typeof label === 'string' && label && label !== `stage2d.actions.${id}` ? label : id
+}
+
+function formatActionTime(sec: number): string {
+  const value = Math.max(0, sec)
+  return `${Math.round(value * 10) / 10}`
+}
+
+/** 清掉 rAF 循环并复位试播状态（不触碰 pose / 不恢复） */
+function cancelActionLoop(): void {
+  if (actionRaf) cancelAnimationFrame(actionRaf)
+  actionRaf = 0
+  actionMode.value = 'off'
+  actionClock.value = 0
+  actionSavedPose = null
+}
+
+function actionTick(now: number): void {
+  const action = actionCurrent.value
+  if (!action) {
+    cancelActionLoop()
+    return
+  }
+  actionClock.value = (now - actionAnchorMs) / 1000
+  pose.value = sampleStage2dAction(action, actionClock.value)
+  actionRaf = requestAnimationFrame(actionTick)
+}
+
+function startActionLoop(): void {
+  cancelAnimationFrame(actionRaf)
+  actionRaf = 0
+  actionAnchorMs = performance.now() - actionClock.value * 1000
+  actionRaf = requestAnimationFrame(actionTick)
+}
+
+function toggleActionPlay(): void {
+  if (!actionCurrent.value || !rig.value.joints.length) return
+  if (actionMode.value === 'playing') {
+    cancelAnimationFrame(actionRaf)
+    actionRaf = 0
+    actionMode.value = 'paused'
+    return
+  }
+  if (actionMode.value === 'paused') {
+    actionMode.value = 'playing'
+    startActionLoop()
+    return
+  }
+  actionSavedPose = { ...pose.value }
+  actionClock.value = 0
+  actionMode.value = 'playing'
+  startActionLoop()
+}
+
+/** 停止试播并回到进入播放前的用户摆姿 */
+function stopActionPlayback(): void {
+  if (actionMode.value === 'off' && !actionRaf) return
+  const restore = actionSavedPose
+  cancelActionLoop()
+  if (restore) pose.value = restore
+}
+
+/** 把当前采样帧定格为用户的摆姿并退出试播（暂停态用已停的时钟值） */
+function freezeActionFrame(): void {
+  const action = actionCurrent.value
+  if (actionMode.value === 'off' || !action) return
+  pose.value = sampleStage2dAction(action, actionClock.value)
+  cancelActionLoop()
+}
+
+/** 动作下拉切换：播放中无缝换动作从头循环；清空则停止并恢复试播前摆姿 */
+function onActionPick(event: Event): void {
+  const id = (event.target as HTMLSelectElement).value
+  const wasPlaying = actionMode.value !== 'off'
+  if (wasPlaying) {
+    // 只停当前循环，保留「进入播放前」的摆姿快照供停止时恢复
+    cancelAnimationFrame(actionRaf)
+    actionRaf = 0
+    actionMode.value = 'off'
+    actionClock.value = 0
+  } else {
+    stopActionPlayback()
+  }
+  actionId.value = id
+  if (id && wasPlaying) {
+    actionMode.value = 'playing'
+    startActionLoop()
+  }
 }
 
 /** 把当前选中的层挂到选中关节（同一层只能挂一个关节） */
@@ -1075,6 +1265,7 @@ function wrapDeg(deg: number): number {
 }
 
 function startJointDrag(jointId: string, event: PointerEvent): void {
+  stopActionPlayback()
   const item = rigJoints.value.find((entry) => entry.jointId === jointId)
   if (!item) return
   selectedJointId.value = jointId
@@ -1241,10 +1432,16 @@ async function resolveThumbs(): Promise<void> {
   thumbUrls.value = next
 }
 
+// 切离「骨骼」页时停掉动作试播（避免后台空转并还原试播前摆姿）
+watch(tab, (value) => {
+  if (value !== 'rig') stopActionPlayback()
+})
+
 watch(
   () => props.open,
   (open) => {
     if (!open) {
+      cancelActionLoop()
       previewUrl.value = ''
       error.value = ''
       return
@@ -1274,9 +1471,24 @@ watch(
     if (props.open) fitView()
   }
 )
+
+onBeforeUnmount(() => {
+  cancelActionLoop()
+})
 </script>
 
 <style scoped>
+.action-controls {
+  align-items: center;
+}
+
+.action-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.75;
+}
+
 .stage2d {
   display: grid;
   grid-template-columns: 280px 1fr 300px;
