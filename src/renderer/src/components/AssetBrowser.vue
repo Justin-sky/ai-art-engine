@@ -602,6 +602,17 @@
             <span class="ctx-label">{{ contextMenuVideoBeatLabel }}</span>
           </button>
           <button
+            v-if="contextMenuSheetPreviewAsset"
+            type="button"
+            @click="openSheetPlayForContextAsset"
+          >
+            <span
+              class="ctx-icon"
+              aria-hidden="true"
+            >🎞️</span>
+            <span class="ctx-label">{{ t('asset.browser.context.sheetPlay') }}</span>
+          </button>
+          <button
             type="button"
             @click="findContextMenuReferences"
           >
@@ -746,8 +757,11 @@ import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
   invalidateAssetUrlCache,
+  resolveAssetFileUrl,
   resolveAssetPreviewUrl
 } from '../features/media/assetUrlCache'
+import { openFrameSheetPreviewDialog } from '../features/media/frameSheetPreviewDialog'
+import { resolveAssetFrameSheetGrid } from '../features/media/resolveAssetFrameSheetGrid'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { openImportedMediaRefPreview } from '../features/media/openFullImagePreview'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
@@ -1435,6 +1449,15 @@ const contextMenuVideoBeatAsset = computed<AssetInfo | null>(() => {
   return asset
 })
 
+/** 可帧动画试播的右键目标：带原图文件的本机图片资产（多帧 sheet / 任意网格图） */
+const contextMenuSheetPreviewAsset = computed<AssetInfo | null>(() => {
+  const asset = contextMenuTargetAsset()
+  if (!asset || asset.type !== 'image') return null
+  if (isDraftAssetId(asset.id)) return null
+  if (!asset.relativePath?.trim()) return null
+  return asset
+})
+
 const contextMenuVideoBeatBusy = computed(() => {
   const asset = contextMenuVideoBeatAsset.value
   return asset != null && analyzingVideoBeatIds.value.has(asset.id)
@@ -1596,6 +1619,21 @@ async function analyzeContextMenuVideoBeats(): Promise<void> {
   closeMenu()
   if (!asset) return
   await runVideoBeatAnalysis(asset.id)
+}
+
+async function openSheetPlayForContextAsset(): Promise<void> {
+  const asset = contextMenuSheetPreviewAsset.value
+  closeMenu()
+  if (!asset) return
+  const url = await resolveAssetFileUrl(asset.relativePath)
+  if (!url) return
+  const grid = resolveAssetFrameSheetGrid(asset)
+  openFrameSheetPreviewDialog({
+    url,
+    title: asset.name || asset.relativePath,
+    rows: grid?.rows ?? null,
+    cols: grid?.cols ?? null
+  })
 }
 
 watch(

@@ -1,5 +1,20 @@
 /** 中文界面文案 */
 export default {
+  sheetPreview: {
+    title: '帧动画试播',
+    rows: '行',
+    cols: '列',
+    fps: '帧率',
+    play: '播放',
+    pause: '暂停',
+    loop: '循环',
+    frame: '第 {current} / {total} 帧',
+    overview: '整张网格（点击跳帧）',
+    loading: '加载中…',
+    loadFailed: '图片加载失败',
+    singleFrameHint: '当前是单帧。在右侧填行 / 列把这张图切成序列帧，即可按帧率循环试播',
+    gridTip: '帧动画生成图会自动识别行列；普通 PNG 请按帧排版手动填写'
+  },
   common: {
     browse: '浏览',
     cancel: '取消',
@@ -848,6 +863,7 @@ export default {
         videoBeat: '视频打点',
         videoBeatAgain: '重新打点',
         videoBeatBusy: '打点中…',
+        sheetPlay: '帧动画试播',
         findReferences: '查找引用',
         delete: '删除',
         deleteSelected: '删除 {count} 项'

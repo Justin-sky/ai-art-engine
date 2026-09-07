@@ -42,6 +42,7 @@
     <MediaPreviewDialog />
     <CutoutDialog />
     <ComposerDialog />
+    <FrameSheetPreviewDialog />
   </div>
 </template>
 
@@ -61,6 +62,7 @@ import GraphRunLogDialog from './components/GraphRunLogDialog.vue'
 import MediaPreviewDialog from './components/MediaPreviewDialog.vue'
 import CutoutDialog from './components/CutoutDialog.vue'
 import ComposerDialog from './components/ComposerDialog.vue'
+import FrameSheetPreviewDialog from './components/FrameSheetPreviewDialog.vue'
 import ProjectOpenMenu from './components/ProjectOpenMenu.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'

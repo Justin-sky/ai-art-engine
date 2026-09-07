@@ -1,5 +1,20 @@
 /** English UI messages */
 export default {
+  sheetPreview: {
+    title: 'Frame sequence preview',
+    rows: 'Rows',
+    cols: 'Cols',
+    fps: 'FPS',
+    play: 'Play',
+    pause: 'Pause',
+    loop: 'Loop',
+    frame: 'Frame {current} / {total}',
+    overview: 'Full sheet (click to jump)',
+    loading: 'Loading…',
+    loadFailed: 'Failed to load image',
+    singleFrameHint: 'This is a single frame. Enter rows / cols on the right to cut this image into a frame sheet and preview it.',
+    gridTip: 'Rows / cols are auto-detected for generated frame animations; set them manually for plain PNG sheets.'
+  },
   common: {
     browse: 'Browse',
     cancel: 'Cancel',
@@ -851,6 +866,7 @@ export default {
         videoBeat: 'Video beat analysis',
         videoBeatAgain: 'Re-run video beats',
         videoBeatBusy: 'Analyzing…',
+        sheetPlay: 'Frame sequence preview',
         findReferences: 'Find references',
         delete: 'Delete',
         deleteSelected: 'Delete {count} items'
