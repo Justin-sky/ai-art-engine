@@ -15,7 +15,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.asset.video')).toBe('视频生成')
     expect(t('graph.types.asset.voice')).toBe('声音生成')
     expect(t('graph.types.asset.screenplay')).toBe('剧本生成')
-    expect(t('graph.types.asset.motion')).toBe('导演台编辑')
+    expect(t('graph.types.asset.motion')).toBe('3D导演台')
     expect(t('graph.types.world.extract')).toBe('世界元素提取')
     expect(t('graph.types.world.table')).toBe('世界元素审核')
     expect(t('graph.types.world.gen')).toBe('世界元素生成')

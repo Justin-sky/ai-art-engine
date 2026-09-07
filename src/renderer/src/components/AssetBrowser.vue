@@ -613,6 +613,17 @@
             <span class="ctx-label">{{ t('asset.browser.context.sheetPlay') }}</span>
           </button>
           <button
+            v-if="contextMenuMotion2dPreviewAsset"
+            type="button"
+            @click="openMotion2dPlayForContextAsset"
+          >
+            <span
+              class="ctx-icon"
+              aria-hidden="true"
+            >🏃</span>
+            <span class="ctx-label">{{ t('asset.browser.context.motion2dPlay') }}</span>
+          </button>
+          <button
             type="button"
             @click="findContextMenuReferences"
           >
@@ -764,6 +775,7 @@ import { openFrameSheetPreviewDialog } from '../features/media/frameSheetPreview
 import { resolveAssetFrameSheetGrid } from '../features/media/resolveAssetFrameSheetGrid'
 import { resolveAssetText } from '../features/media/resolveAssetText'
 import { openImportedMediaRefPreview } from '../features/media/openFullImagePreview'
+import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
 import type { VideoBeatTags } from '@shared/videoBeats'
@@ -1458,6 +1470,14 @@ const contextMenuSheetPreviewAsset = computed<AssetInfo | null>(() => {
   return asset
 })
 
+/** 可骨架试播的右键目标：2D 动作资产（自带装配快照 + 动作帧） */
+const contextMenuMotion2dPreviewAsset = computed<AssetInfo | null>(() => {
+  const asset = contextMenuTargetAsset()
+  if (!asset || asset.type !== 'motion2d') return null
+  if (isDraftAssetId(asset.id)) return null
+  return asset
+})
+
 const contextMenuVideoBeatBusy = computed(() => {
   const asset = contextMenuVideoBeatAsset.value
   return asset != null && analyzingVideoBeatIds.value.has(asset.id)
@@ -1634,6 +1654,13 @@ async function openSheetPlayForContextAsset(): Promise<void> {
     rows: grid?.rows ?? null,
     cols: grid?.cols ?? null
   })
+}
+
+function openMotion2dPlayForContextAsset(): void {
+  const asset = contextMenuMotion2dPreviewAsset.value
+  closeMenu()
+  if (!asset) return
+  openMotion2dActionPreviewDialog({ assetId: asset.id, title: asset.name })
 }
 
 watch(
@@ -2182,6 +2209,11 @@ async function onAssetDblClick(assetId: string): Promise<void> {
   }
   if (isImportedMediaRefAsset(asset)) {
     await openImportedMediaRefPreview(asset)
+    return
+  }
+  // 2D 动作资产：用资产自带的装配快照 + 动作帧开试播浮窗（无独立编辑页）
+  if (asset.type === 'motion2d') {
+    openMotion2dActionPreviewDialog({ assetId: asset.id, title: asset.name })
     return
   }
   openEditor(assetId)
