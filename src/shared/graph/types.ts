@@ -559,6 +559,8 @@ export interface GraphNodeParams {
   imageCompose?: Partial<ImageComposeState>
   /** 精灵统一对齐参数（透明 PNG 上统一画布 + 锚点） */
   imageAlign?: Partial<import('./imageAlign').ImageAlignState>
+  /** 2D 舞台场景参数（5.5「2D 导演台」：统一画布 + 按 z 序精灵层叠放，随节点图持久化） */
+  stage2dScene?: Partial<import('./stage2d').Stage2dSceneState>
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图层分离（Seedream layer_decomposition） */

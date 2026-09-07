@@ -3207,6 +3207,9 @@ export default {
       frame: {
         animGen: '生成帧动画序列图'
       },
+      stage: {
+        '2d': '2D 舞台'
+      },
       episode: {
         anchorSelect: '宫格选择',
         cellSelect: '动态格选择'

@@ -839,7 +839,7 @@ async function applyPose(): Promise<void> {
       skeleton: skel,
       flip: flip.value,
       driveTorso: driveTorso.value,
-      // 与叠加层同一置信度下限：低于阈值的关键点不画也不驱动（所见即所驱）
+      // 与叠加层同一置信度下限：低于阈值的关键点不画也不驱动（所见即所驱） cjk-ok
       minConfidence: POSE_KEYPOINT_MIN_CONF
     })
     if (!solved.drivenBones.length) {

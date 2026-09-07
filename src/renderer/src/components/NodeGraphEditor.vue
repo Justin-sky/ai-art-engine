@@ -3459,7 +3459,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'motionFx',
-    typeIds: ['frame.animGen', 'anim.2d', 'image.align']
+    typeIds: ['frame.animGen', 'anim.2d', 'image.align', 'stage.2d']
   },
   {
     id: 'beat',

@@ -3233,6 +3233,9 @@ export default {
       frame: {
         animGen: 'Generate Frame Animation Sheet'
       },
+      stage: {
+        '2d': '2D Stage'
+      },
       episode: {
         anchorSelect: 'Anchor select',
         cellSelect: 'Dynamic cell select'

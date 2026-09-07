@@ -17,6 +17,7 @@
 - **BGM 音乐生成接入百炼 Fun-Music**：MiniMax `music_generation` 自 2026-08-20 对新用户 / 免费用户停服，新增通义千问（DashScope）提供商 Fun-Music 音乐生成平替——注册 `fun-music-v1` / `fun-music-preview`（audio 模态，`/api/v1/services/audio/music/generation`，仅华北2北京，邀测需在百炼模型广场开通），设置页支持勾选 audio 模态、门面 / MCP / 时间线 BGM 生成链路自动选型；MiniMax 旧接口保留供历史付费用户继续使用
 - **本地一键抠图（离线）**：内置 YOLO 实例分割升级为软掩码通道——掩码以整张 letterbox 画布的网格随 letterbox 几何回传，渲染层 `shared/yoloCutout.ts` 纯函数管线完成网格 → 原图坐标双线性采样、多实例取 max 合并、置信度阈值二值化与可分离盒式羽化（均有单测）；资产检查器图片条目新增「本地抠图」一键入口：自动识别画面主体、多主体勾选保留、掩码阈值 / 边缘羽化 / 裁剪到主体可调，透明棋盘格实时预览后保存为透明 PNG 落 `Assets/Cutouts` 自动入库，供图流程与时间线 overlay 直接使用；png/jpeg 直接走主进程解码保持原分辨率，webp 等由渲染层 canvas 解码兜底
 - **精灵统一对齐（2D 游戏资产 5.4 起步）**：`shared/gameAssets` 统一对齐纯函数层——由透明通道求主体外接框，按统一画布等比缩放并以中心 / 脚底锚点就位（`spriteGeometry.ts`），多帧平移去抖估计（掩码 + 灰度代价搜索），`spriteManifest.ts` 构建带锚点的 sprite-batch 清单（全带单测）；节点图新增「精灵对齐」`image.align` 节点（承接本地抠图产物）——参数态 `imageAlign`（画布 / 锚点 / 主体高度占比 / 地面留白 / 超宽收缩），执行器经渲染层 `composeImageAlignCanvas` 本地像素合成、下钻检查器可调参数并预览，为角色差分 / 特效序列 / 骨骼拆件 / UI 部件提供统一几何前置
+- **2D 舞台场景落地（5.5「2D 导演台」起步）**：`shared/gameAssets/stage2dScene` 舞台共享层——统一画布 + 按 z 序精灵层叠放的场景状态 / 归一化夹取 / 逐层锚点落位放置计划（复用精灵统一对齐几何、ground 层共踩同一地面基线，带单测）；节点图新增「2D 舞台」`stage.2d` 节点——参数态 `stage2dScene` 入 GraphNodeParams 随 free canvas 图持久化，新建节点播种默认舞台场景，右键「2D」分组可添加，为多精灵按锚点就位 / 换装拼接 / 骨骼摆姿预览的独立平面舞台铺好共享地基
 
 ## [5.0.7] — 2026-08-31
 
