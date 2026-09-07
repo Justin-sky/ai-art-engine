@@ -244,6 +244,14 @@
       @save="api.saveAlign as never"
     />
 
+    <Stage2dNodeToolDialog
+      v-else-if="viewId === 'node.stage2d' && api.stage2d.open"
+      :open="true"
+      :setup="api.stage2d.setup"
+      @close="onClose(api.closeStage2d)"
+      @save="api.saveStage2d as never"
+    />
+
     <LayerSplitEditorDialog
       v-else-if="viewId === 'node.layerSplit' && api.layerSplit.open"
       :open="true"
@@ -307,6 +315,7 @@ import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
 import CutoutNodeToolDialog from '../CutoutNodeToolDialog.vue'
 import ComposeNodeToolDialog from '../ComposeNodeToolDialog.vue'
 import AlignNodeToolDialog from '../AlignNodeToolDialog.vue'
+import Stage2dNodeToolDialog from '../Stage2dNodeToolDialog.vue'
 
 const props = defineProps<{
   frameKey: string
@@ -380,6 +389,8 @@ const toolOpen = computed(() => {
       return current.compose.open
     case 'node.align':
       return current.align.open
+    case 'node.stage2d':
+      return current.stage2d.open
     default:
       return false
   }
@@ -411,6 +422,9 @@ useEditorDiveFrameFlush(
         break
       case 'node.align':
         current.flushAlign()
+        break
+      case 'node.stage2d':
+        current.flushStage2d()
         break
       default:
         break
@@ -526,6 +540,9 @@ function closeCurrent(): void {
       break
     case 'node.align':
       current.closeAlign()
+      break
+    case 'node.stage2d':
+      current.closeStage2d()
       break
     default:
       break

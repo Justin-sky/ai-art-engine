@@ -96,6 +96,20 @@ describe('graph text output', () => {
     ).toBe(false)
   })
 
+  it('does not treat stage.2d (note category but image output) as text capable', () => {
+    // note 分类默认为可记事本，但 2D 舞台产出舞台帧图像，须排除以免双击开记事本
+    expect(
+      isNodeTextCapable(
+        baseNode({
+          id: 'stage',
+          category: 'note',
+          typeId: 'stage.2d',
+          params: { stage2dScene: undefined }
+        })
+      )
+    ).toBe(false)
+  })
+
   it('prefers live run output, then persisted fields', () => {
     const screenplay = baseNode({
       id: 'edit',

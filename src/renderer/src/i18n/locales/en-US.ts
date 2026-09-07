@@ -1117,6 +1117,31 @@ export default {
     apply: 'Apply to node',
     applyHint: 'Canvas and anchor parameters are written to the current node'
   },
+  stage2d: {
+    title: '2D stage',
+    layers: 'Sprite layers (top to bottom = z-order, later layers cover earlier ones)',
+    addLayer: 'Add sprite',
+    noLayer: 'No sprite layer yet — use "Add sprite" to pick one from the asset library',
+    moveUp: 'Up',
+    moveDown: 'Down',
+    remove: 'Remove',
+    show: 'Show',
+    hide: 'Hide',
+    scene: 'Stage parameters',
+    layer: 'Selected layer',
+    layerName: 'Layer name',
+    canvas: 'Uniform canvas',
+    anchor: 'Anchor',
+    anchorGround: 'Ground (all layers share one ground line)',
+    anchorCenter: 'Center',
+    subjectHeight: 'Content height',
+    groundGap: 'Ground gap',
+    fitWidth: 'Fit within canvas width',
+    result: 'Stage preview',
+    resultEmpty: 'Add sprites to preview the composited stage here',
+    apply: 'Apply to node',
+    applyHint: 'Stage canvas, anchors and per-layer parameters are written to the node, and the frame shows on the card right away'
+  },
   script: {
     dialog: {
       timeline: 'Timeline',

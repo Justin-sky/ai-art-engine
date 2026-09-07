@@ -1113,6 +1113,31 @@ export default {
     apply: '应用到节点',
     applyHint: '画布与锚点参数将写入当前节点'
   },
+  stage2d: {
+    title: '2D 舞台',
+    layers: '精灵层（列表自上而下为层序，后层覆盖前层）',
+    addLayer: '添加精灵',
+    noLayer: '还没有精灵层，点「添加精灵」从资产库选图',
+    moveUp: '上移',
+    moveDown: '下移',
+    remove: '移除',
+    show: '显示',
+    hide: '隐藏',
+    scene: '舞台参数',
+    layer: '选中层参数',
+    layerName: '层名',
+    canvas: '统一画布',
+    anchor: '锚点',
+    anchorGround: '脚底对齐（各层共踩同一地平线）',
+    anchorCenter: '中心对齐',
+    subjectHeight: '内容占高',
+    groundGap: '地面留白',
+    fitWidth: '限制在画布宽度内',
+    result: '舞台预览',
+    resultEmpty: '添加精灵后在此实时预览舞台合成结果',
+    apply: '应用到节点',
+    applyHint: '舞台画布、锚点与各层参数将写入当前节点，产物立即显示在卡片'
+  },
   script: {
     dialog: {
       timeline: '成片时间线',

@@ -42,6 +42,7 @@ export type EditorDiveViewId =
   | 'node.cutout'
   | 'node.compose'
   | 'node.align'
+  | 'node.stage2d'
   | 'node.instruction'
   | 'comic.page'
   | 'media.preview'
@@ -71,6 +72,7 @@ export type EditorDiveNodeToolViewId = Extract<
   | 'node.cutout'
   | 'node.compose'
   | 'node.align'
+  | 'node.stage2d'
   | 'node.instruction'
 >
 

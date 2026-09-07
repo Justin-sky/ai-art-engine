@@ -2132,6 +2132,12 @@ function onPreviewDblClick(): void {
       return
     }
 
+    // 2D 舞台：双击下钻舞台编辑器（多精灵层叠放 / 锚点落位 / 实时合成），勿走记事本
+    if (props.node.typeId === 'stage.2d') {
+      await diveNodeTool('node.stage2d', title)
+      return
+    }
+
     // 2D帧动画：双击播放/暂停序列帧，勿走 note 分类的记事本
     if (isAnim2dNode.value) {
       await toggleCardAnimPreview()

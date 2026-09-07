@@ -15,7 +15,8 @@ import type {
   ImageRedrawState,
   LightingSetupState,
   MultiAngleCameraState,
-  PortraitQualityState
+  PortraitQualityState,
+  Stage2dSceneState
 } from '@shared/graph'
 
 /** 图编辑器 Dialog 层：状态在父组件，但模板隔离，避免 open 时整图重渲 */
@@ -165,6 +166,10 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  stage2d: {
+    open: boolean
+    setup: Stage2dSceneState | null
+  }
   layerSplit: {
     open: boolean
     setup: ImageLayerSplitState | null
@@ -239,6 +244,13 @@ export type GraphEditorDialogsApi = {
   saveAlign: (payload: { imageAlign: ImageAlignState; dataUrl?: string }) => void | Promise<void>
   /** dive 面包屑回退前结束对齐编辑，补记撤销命令 */
   flushAlign: () => void
+  closeStage2d: () => void
+  saveStage2d: (payload: {
+    stage2dScene: Stage2dSceneState
+    dataUrl?: string
+  }) => void | Promise<void>
+  /** dive 面包屑回退前结束 2D 舞台编辑，补记撤销命令 */
+  flushStage2d: () => void
   closeLayerSplit: () => void
   previewLayerSplit: (payload: unknown) => void
   saveLayerSplit: (payload: unknown) => void

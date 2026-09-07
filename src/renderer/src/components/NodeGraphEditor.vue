@@ -924,7 +924,9 @@ import {
   type ImageGridSplitState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
+  type Stage2dSceneState,
   readImageAlignFromNode,
+  readStage2dSceneFromNode,
   readImageExpandFromNode,
   readImageRedrawFromNode,
   readImageEraseFromNode,
@@ -7387,7 +7389,7 @@ function closeCutout(): void {
 async function materializeToolResult(
   node: GraphNode,
   dataUrl: string | undefined,
-  kind: 'cutout' | 'compose' | 'align'
+  kind: 'cutout' | 'compose' | 'align' | 'stage2d'
 ): Promise<Record<string, unknown>> {
   const params: Record<string, unknown> = {}
   const url = dataUrl?.trim()
@@ -7589,6 +7591,61 @@ function flushAlign(): void {
   if (!before) return
   align.historyBefore = null
   recordGraphChange('align', before)
+}
+
+/** 2D 舞台：舞台场景随节点 params 持久化，层源为资产相对路径（弹窗内解析成可绘 URL） */
+const stage2d = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as Stage2dSceneState | null,
+  historyBefore: null as GraphDocument | null
+})
+
+function onStage2dOpen(nodeId: string): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  stage2d.nodeId = nodeId
+  stage2d.setup = readStage2dSceneFromNode(node.params)
+  stage2d.historyBefore = buildGraphJson()
+  stage2d.open = true
+}
+
+function closeStage2d(): void {
+  stage2d.open = false
+  stage2d.nodeId = ''
+  stage2d.setup = null
+  stage2d.historyBefore = null
+}
+
+/** 保存 2D 舞台编辑：舞台参数与合成帧一起写回节点，卡片立即显示结果 */
+async function saveStage2d(payload: {
+  stage2dScene: Stage2dSceneState
+  dataUrl?: string
+}): Promise<void> {
+  const nodeId = stage2d.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  const before = stage2d.historyBefore ?? buildGraphJson()
+  const mediaParams = await materializeToolResult(node, payload.dataUrl, 'stage2d')
+  node.params = {
+    ...node.params,
+    stage2dScene: payload.stage2dScene,
+    ...mediaParams
+  }
+  stage2d.setup = payload.stage2dScene
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('stage2d', before)
+  closeStage2d()
+}
+
+/** dive 面包屑回退前结束 2D 舞台编辑，补记撤销命令 */
+function flushStage2d(): void {
+  if (!stage2d.open) return
+  const before = stage2d.historyBefore
+  if (!before) return
+  stage2d.historyBefore = null
+  recordGraphChange('stage2d', before)
 }
 
 const gridSplit = reactive({
@@ -8045,6 +8102,7 @@ const graphDialogsApi = {
   cutout,
   compose,
   align,
+  stage2d,
   closeTextNotepad,
   saveTextNotepad,
   closeSelectImage,
@@ -8105,7 +8163,10 @@ const graphDialogsApi = {
   flushCompose,
   closeAlign,
   saveAlign,
-  flushAlign
+  flushAlign,
+  closeStage2d,
+  saveStage2d,
+  flushStage2d
 } as GraphEditorDialogsApi
 
 provide(graphEditorDialogsKey, graphDialogsApi)
@@ -8450,7 +8511,8 @@ function registerNodeToolHost(): void {
       'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId),
       'node.cutout': (nodeId) => onCutoutOpen(nodeId),
       'node.compose': (nodeId) => onComposeOpen(nodeId),
-      'node.align': (nodeId) => onAlignOpen(nodeId)
+      'node.align': (nodeId) => onAlignOpen(nodeId),
+      'node.stage2d': (nodeId) => onStage2dOpen(nodeId)
     }
   })
 }
