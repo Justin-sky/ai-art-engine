@@ -139,7 +139,9 @@ jobs:
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=false
             EXTRA_ARGS+=(--config.mac.identity=null)
-            echo "Unsigned macOS build (no MAC_CSC_* secrets)"
+            # afterPack 钩子会对 .app 做 ad-hoc 签名（arm64 必需），否则 Apple Silicon 上
+            # 完全未签名的包会报「已损坏，无法打开」；对外正式分发仍需签名+公证。
+            echo "Ad-hoc signed macOS build (no MAC_CSC_* secrets)"
           fi
           # macos-latest 为 arm64；显式打 x64+arm64，供 Intel / Apple Silicon 分别下载
           npx electron-builder --mac --x64 --arm64 --publish never "${EXTRA_ARGS[@]}"

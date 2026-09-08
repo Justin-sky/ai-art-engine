@@ -6,6 +6,10 @@ publish:
   repo: ai-art-engine
 directories:
   buildResources: build
+# mac 未签名分支（无 MAC_CSC_LINK，CI 以 --config.mac.identity=null 打包）的兜底：
+# afterPack 阶段对 .app 做 ad-hoc 签名——Apple Silicon 强制 arm64 可执行文件至少要
+# 有 ad-hoc 签名，否则产物会被判「已损坏，无法打开」（有正式证书时钩子自动跳过）。
+afterPack: scripts/adhoc-sign-mac.cjs
 # 主应用为纯 JS（无 node-gyp 原生模块）；node-pty/koffi/sharp 等原生依赖仅供 dsh 运行时
 # （系统 Node 执行）使用，其二进制已随 <resources>/dsh 目录内置，无需为 Electron 重建。
 npmRebuild: false
