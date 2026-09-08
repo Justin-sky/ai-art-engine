@@ -66,11 +66,10 @@ export async function composeStage2dCanvas(input: {
     ? computeStage2dAttachmentTransforms(input.rig, input.pose ?? null)
     : []
   const rigByLayer = new Map(rigTransforms.map((item) => [item.layerId, item]))
+  // 全部层都要探源：部件层（frame）需要参考层（可能是隐藏的整图层）的计划几何
   const probes = await Promise.all(
     scene.layers.map((layer) =>
-      layer.visible && layer.sourceUrl.trim()
-        ? probeStageSprite(layer.sourceUrl)
-        : Promise.resolve(null)
+      layer.sourceUrl.trim() ? probeStageSprite(layer.sourceUrl) : Promise.resolve(null)
     )
   )
   const sourceInfos = scene.layers.map((_, index) => {
@@ -90,7 +89,8 @@ export async function composeStage2dCanvas(input: {
   placements.forEach((placement, index) => {
     const probe = probes[index]
     const { plan } = placement
-    if (!probe || !plan) return
+    // 隐藏层不绘出（整图层拆件后隐藏，仅保留其几何给部件层继承）
+    if (!probe || !plan || !placement.layer.visible) return
     const rigged = rigByLayer.get(placement.layer.id)
     if (!rigged) {
       // 只搬主体框内容（自动丢弃半透明孤立点 / 残留边）
@@ -107,10 +107,16 @@ export async function composeStage2dCanvas(input: {
       )
       return
     }
-    // 挂到骨骼的层：以自身锚点（ground=底边中点 / center=中心）对准挂点，再随关节旋转
-    const anchorX = plan.dstW / 2
-    const anchorY =
-      placement.layer.align.anchor === 'center' ? plan.dstH / 2 : plan.dstH
+    // 挂到骨骼的层：以自身枢轴（缺省 ground=底边中点 / center=中心）对准挂点，再随关节旋转
+    const bw = Math.max(1, plan.bounds.width)
+    const bh = Math.max(1, plan.bounds.height)
+    const layerPivot = placement.layer.pivot
+    const anchorX = layerPivot ? (layerPivot.x / bw) * plan.dstW : plan.dstW / 2
+    const anchorY = layerPivot
+      ? (layerPivot.y / bh) * plan.dstH
+      : placement.layer.align.anchor === 'center'
+        ? plan.dstH / 2
+        : plan.dstH
     ctx.save()
     ctx.translate(rigged.x, rigged.y)
     ctx.rotate((rigged.rotation * Math.PI) / 180)

@@ -1185,8 +1185,9 @@ export default {
     offsetY: 'Offset Y',
     resetOffset: 'Reset offset',
     dragHint: 'Wheel to zoom; "Pan" drags the view, "Nudge" drags the selected layer',
-    tabLayers: 'Layers',
     tabRig: 'Rig',
+    tabAction: 'Actions',
+    tabExport: 'Export',
     joints: 'Joints',
     noJoint: 'No joints yet — add a root joint first',
     addJoint: 'Add joint',
@@ -1227,6 +1228,15 @@ export default {
     spineNoAttach:
       'Drop a part image onto the canvas in the “Layers” tab, then select the target joint in the “Rig” tab and bind the layer to it',
     spineExportDone: 'Written to {path} ({count} part pages + skeleton.json + .atlas); library refreshed',
+    autoCut: 'Auto-cut parts from whole image',
+    autoCutHint:
+      'Slices the whole illustration into part layers along the skeleton joints and attaches them automatically (build/align a humanoid rig on the Rig tab first; cut happens at the bind pose and resets the pose, so the canvas shows the original image afterwards)',
+    autoCutNeedRig: 'Build and roughly align a humanoid rig on the Rig tab first, then auto-cut',
+    autoCutNeedLayer:
+      'No whole layer to cut (drag in a whole transparent illustration first; it must not already be attached to a joint)',
+    autoCutFail: 'Auto-cut failed: content too small / missing key joints / layer could not be decoded',
+    autoCutDone:
+      'Cut into {count} parts and attached them to the skeleton (verify on the Rig tab, or export the Spine pack directly)',
     exportTitle: 'Export action frames (transparent PNG)',
     exportNeedAction: 'Pick an action in “Action preview” above first',
     exportFps: 'FPS',

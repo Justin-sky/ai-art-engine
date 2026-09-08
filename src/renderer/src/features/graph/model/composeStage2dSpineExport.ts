@@ -84,10 +84,11 @@ export async function composeStage2dSpineExport(input: {
   const pose = input.pose ?? null
   if (!scene.layers.length || !rig.attachments.length) return null
 
-  // 逐层解码（与 composeStage2dCanvas 同口径：只探测可见层；先经 resolver 得到可绘 URL）
+  // 逐层解码（与 composeStage2dCanvas 同口径：全部层都探源，含隐藏整图层——
+  // 部件层 frame 需要参考层的计划几何；先经 resolver 得到可绘 URL）
   const probes = await Promise.all(
     scene.layers.map(async (layer) => {
-      if (!layer.visible || !layer.sourceUrl.trim()) return null
+      if (!layer.sourceUrl.trim()) return null
       const url = await input.resolveLayerUrl(layer.sourceUrl)
       return url ? probeStageSprite(url) : null
     })
@@ -109,13 +110,22 @@ export async function composeStage2dSpineExport(input: {
     const layer = scene.layers[layerIndex]
     const probe = probes[layerIndex]
     const { plan } = placements[layerIndex]
-    // 与纯函数过滤口径一致（尺寸非正不产出），保证页与几何元数据 1:1
-    if (!probe || !plan || plan.dstW < 1 || plan.dstH < 1) continue
+    // 与纯函数过滤口径一致（尺寸非正不产出），保证页与几何元数据 1:1；
+    // 只导出可见部件层（拆件后的整图层隐藏，不出页）
+    if (!layer.visible || !probe || !plan || plan.dstW < 1 || plan.dstH < 1) continue
+    // 枢轴（内容像素系，相对本层内容框左上角）→ 页像素：pivot * pageW / bounds.width
+    const bw = Math.max(1, plan.bounds.width)
+    const bh = Math.max(1, plan.bounds.height)
+    const layerPivot = layer.pivot
+    const pivotPageX = layerPivot ? (layerPivot.x / bw) * plan.dstW : undefined
+    const pivotPageY = layerPivot ? (layerPivot.y / bh) * plan.dstH : undefined
     parts.push({
       layerId: layer.id,
       name: layer.name,
       jointId: attachment.jointId,
       anchor: layer.align.anchor === 'center' ? 'center' : 'ground',
+      pivotX: pivotPageX,
+      pivotY: pivotPageY,
       dstWidth: plan.dstW,
       dstHeight: plan.dstH,
       offsetX: attachment.offsetX,

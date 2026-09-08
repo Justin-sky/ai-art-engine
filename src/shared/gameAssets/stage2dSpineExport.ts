@@ -41,6 +41,14 @@ export interface Stage2dSpinePartInput {
   jointId: string
   /** 该层锚点语义（ground=图像底边中点为挂点 / center=中心为挂点） */
   anchor: 'center' | 'ground'
+  /**
+   * 枢轴像素（可选，页图像坐标 y-down，原点左上）。拆件部件的挂点常在
+   * 图内任意位置（如头部件挂在脖子、大腿挂在髋），center / ground 只是
+   * (dstW/2, dstH/2) 与 (dstW/2, dstH) 两个特例；带枢轴时优先。
+   */
+  pivotX?: number
+  /** 枢轴像素（页图像坐标 y-down，原点左上） */
+  pivotY?: number
   /** 部件页图像像素宽（= plan.dstW） */
   dstWidth: number
   /** 部件页图像像素高（= plan.dstH） */
@@ -196,11 +204,20 @@ export function buildStage2dSpineData(input: Stage2dSpineBuildInput): Stage2dSpi
 
     slots.push({ name: slotName, bone: attachBone })
 
-    // region 图中心相对 attach 骨原点：center=挂点即中心；ground=图像底边中点
-    // 为挂点 → 中心上移半高（Spine y-up 的 +y）。渲染层按放置计划把
-    // plan.bounds 源区裁出并缩放到 pageWidth/pageHeight 即得页图像。
-    const regionX = 0
-    const regionY = part.anchor === 'center' ? 0 : round1(dstH / 2)
+    // region 图中心相对 attach 骨原点：挂点 = 图内枢轴像素（anchor 语义只是
+    // 枢轴的两个特例）。枢轴 (px,py)（y-down、原点左上）→ Spine y-up 偏移：
+    //   regionX = dstW/2 - px （图中心相对枢轴的横向偏移，翻转不改变）
+    //   regionY = py - dstH/2 （ground 特例 py=dstH → +dstH/2；center → 0）
+    // 渲染层按放置计划把 plan.bounds 源区裁出并缩放到 pageWidth/pageHeight
+    // 即得页图像。
+    const pivotX = Number.isFinite(Number(part.pivotX)) ? Number(part.pivotX) : dstW / 2
+    const pivotY = Number.isFinite(Number(part.pivotY))
+      ? Number(part.pivotY)
+      : part.anchor === 'center'
+        ? dstH / 2
+        : dstH
+    const regionX = round1(dstW / 2 - pivotX)
+    const regionY = round1(pivotY - dstH / 2)
     const region: SpineJson = {
       x: regionX,
       y: regionY,

@@ -14,90 +14,75 @@
       v-if="open"
       class="stage2d"
     >
-      <section class="pane layers-pane">
-        <div class="tabs">
-          <button
-            type="button"
-            class="tab"
-            :class="{ on: tab === 'layers' }"
-            @click="tab = 'layers'"
-          >
-            {{ t('stage2d.tabLayers') }}
-          </button>
-          <button
-            type="button"
-            class="tab"
-            :class="{ on: tab === 'rig' }"
-            @click="tab = 'rig'"
-          >
-            {{ t('stage2d.tabRig') }}
-          </button>
+      <section class="pane layers-col">
+        <div class="section-label">
+          {{ t('stage2d.layers') }}
         </div>
-
-        <template v-if="tab === 'layers'">
-          <ul class="layers">
-            <li
-              v-for="(layer, index) in layers"
-              :key="layer.id"
-              class="layer"
-              :class="{ active: layer.id === selectedId, hidden: !layer.visible }"
-              @click="selectedId = layer.id"
-            >
-              <img
-                v-if="thumbUrls[layer.id]"
-                :src="thumbUrls[layer.id]"
-                alt=""
-              >
-              <span
-                v-else
-                class="thumb-fallback"
-              >🖼</span>
-              <span
-                class="name"
-                :title="layer.sourceUrl"
-              >{{ layer.name }}</span>
-              <button
-                type="button"
-                class="icon"
-                :title="t('stage2d.moveUp')"
-                :disabled="index === 0"
-                @click.stop="move(layer.id, -1)"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :title="t('stage2d.moveDown')"
-                :disabled="index === layers.length - 1"
-                @click.stop="move(layer.id, 1)"
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :title="layer.visible ? t('stage2d.hide') : t('stage2d.show')"
-                @click.stop="toggleVisible(layer.id)"
-              >
-                {{ layer.visible ? '👁' : '⃝' }}
-              </button>
-              <button
-                type="button"
-                class="icon danger"
-                :title="t('stage2d.remove')"
-                @click.stop="remove(layer.id)"
-              >
-                ✕
-              </button>
-            </li>
-          </ul>
-          <p
-            v-if="!layers.length"
-            class="hint"
+        <ul class="layers">
+          <li
+            v-for="(layer, index) in layers"
+            :key="layer.id"
+            class="layer"
+            :class="{ active: layer.id === selectedId, hidden: !layer.visible }"
+            @click="selectedId = layer.id"
           >
-            {{ t('stage2d.noLayer') }}
-          </p>
+            <img
+              v-if="thumbUrls[layer.id]"
+              :src="thumbUrls[layer.id]"
+              alt=""
+            >
+            <span
+              v-else
+              class="thumb-fallback"
+            >🖼</span>
+            <span
+              class="name"
+              :title="layer.sourceUrl"
+            >{{ layer.name }}</span>
+            <button
+              type="button"
+              class="icon"
+              :title="t('stage2d.moveUp')"
+              :disabled="index === 0"
+              @click.stop="move(layer.id, -1)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :title="t('stage2d.moveDown')"
+              :disabled="index === layers.length - 1"
+              @click.stop="move(layer.id, 1)"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :title="layer.visible ? t('stage2d.hide') : t('stage2d.show')"
+              @click.stop="toggleVisible(layer.id)"
+            >
+              {{ layer.visible ? '👁' : '⃝' }}
+            </button>
+            <button
+              type="button"
+              class="icon danger"
+              :title="t('stage2d.remove')"
+              @click.stop="remove(layer.id)"
+            >
+              ✕
+            </button>
+          </li>
+        </ul>
+        <p
+          v-if="!layers.length"
+          class="hint"
+        >
+          {{ t('stage2d.noLayer') }}
+        </p>
+
+        <div class="tool-ops">
           <button
             type="button"
             class="primary"
@@ -105,635 +90,23 @@
           >
             {{ t('stage2d.addLayer') }}
           </button>
-        </template>
-
-        <template v-else>
-          <div class="rig-toolbar">
-            <button
-              type="button"
-              class="primary"
-              :title="t('stage2d.rigTemplateTip')"
-              @click="useHumanoidTemplate"
-            >
-              {{ t('stage2d.rigTemplate') }}
-            </button>
-            <button
-              type="button"
-              class="primary"
-              :title="t('stage2d.rigFromImageTip')"
-              @click="poseDialogOpen = true"
-            >
-              {{ t('stage2d.rigFromImage') }}
-            </button>
-          </div>
-          <div class="section-label">
-            {{ t('stage2d.joints') }}
-          </div>
-          <ul class="layers">
-            <li
-              v-for="joint in rig.joints"
-              :key="joint.id"
-              class="layer"
-              :class="{ active: joint.id === selectedJointId }"
-              @click="selectedJointId = joint.id"
-            >
-              <span class="thumb-fallback">●</span>
-              <span
-                class="name"
-                :title="joint.id"
-              >
-                {{ joint.name }}
-                <small v-if="joint.parentId">→ {{ jointName(joint.parentId) }}</small>
-              </span>
-              <button
-                type="button"
-                class="icon danger"
-                :title="t('stage2d.removeJoint')"
-                @click.stop="removeJoint(joint.id)"
-              >
-                ✕
-              </button>
-            </li>
-          </ul>
-          <p
-            v-if="!rig.joints.length"
-            class="hint"
-          >
-            {{ t('stage2d.noJoint') }}
-          </p>
           <button
             type="button"
             class="primary"
-            @click="addJoint"
+            :disabled="autoCutBusy"
+            :title="t('stage2d.autoCutHint')"
+            @click="autoCutWholeLayer"
           >
-            ＋ {{ t('stage2d.addJoint') }}
+            ✂️ {{ t('stage2d.autoCut') }}
           </button>
-
-          <div class="section-label">
-            {{ t('stage2d.actionTitle') }}
-          </div>
-          <p
-            v-if="!rig.joints.length"
-            class="hint"
-          >
-            {{ t('stage2d.actionNoRig') }}
-          </p>
-          <div
-            v-else
-            class="action-player"
-          >
-            <label class="field">
-              <span>{{ t('stage2d.actionPick') }}</span>
-              <select
-                :value="actionId"
-                @change="onActionPick($event)"
-              >
-                <option value="">
-                  {{ t('stage2d.actionNone') }}
-                </option>
-                <option
-                  v-if="customAction"
-                  :value="CUSTOM_ACTION_ID"
-                >
-                  {{ actionLabel(CUSTOM_ACTION_ID) }}
-                </option>
-                <option
-                  v-for="item in actionPresets"
-                  :key="item.id"
-                  :value="item.id"
-                >
-                  {{ actionLabel(item.id) }}
-                </option>
-              </select>
-            </label>
-            <div class="row action-controls">
-              <button
-                type="button"
-                class="primary"
-                :disabled="!actionCurrent"
-                @click="toggleActionPlay"
-              >
-                {{
-                  actionMode === 'playing'
-                    ? t('stage2d.actionPause')
-                    : t('stage2d.actionPlay')
-                }}
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :disabled="actionMode === 'off'"
-                :title="t('stage2d.actionStopTip')"
-                @click="stopActionPlayback"
-              >
-                ■
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :disabled="actionMode === 'off'"
-                :title="t('stage2d.actionFreezeTip')"
-                @click="freezeActionFrame"
-              >
-                {{ t('stage2d.actionFreeze') }}
-              </button>
-            </div>
-            <button
-              type="button"
-              class="action-video-btn"
-              @click="openVideoActionDialog"
-            >
-              🎬 {{ t('stage2dVideo.actionFromVideo') }}
-            </button>
-            <div class="row asset-action-row">
-              <button
-                type="button"
-                class="icon"
-                :disabled="!actionCurrent || assetActionBusy"
-                :title="t('stage2d.actionSaveAsset')"
-                @click="beginSaveActionAsset"
-              >
-                💾 {{ t('stage2d.actionSaveAsset') }}
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :disabled="assetActionBusy"
-                :title="t('stage2d.actionLoadAsset')"
-                @click="toggleLoadActionAsset"
-              >
-                📥 {{ t('stage2d.actionLoadAsset') }}
-              </button>
-            </div>
-            <select
-              v-if="assetLoadPickerOpen"
-              class="asset-pick-select"
-              :value="motionLoadSel"
-              @change="onMotionLoadChange"
-            >
-              <option value="">
-                {{
-                  motionAssets.length
-                    ? t('stage2d.actionLoadPickHint')
-                    : t('stage2d.actionLoadEmpty')
-                }}
-              </option>
-              <option
-                v-for="item in motionAssets"
-                :key="item.id"
-                :value="item.id"
-              >
-                {{ item.name }}
-              </option>
-            </select>
-            <div
-              v-if="assetActionSavingOpen"
-              class="row asset-save-row"
-            >
-              <label class="field">
-                <span>{{ t('stage2d.actionAssetName') }}</span>
-                <input
-                  v-model="assetActionName"
-                  type="text"
-                  :disabled="assetActionBusy"
-                  @keydown.enter="confirmSaveActionAsset"
-                >
-              </label>
-              <button
-                type="button"
-                class="primary"
-                :disabled="assetActionBusy || !assetActionName.trim()"
-                @click="confirmSaveActionAsset"
-              >
-                {{ t('stage2d.actionAssetConfirm') }}
-              </button>
-            </div>
-            <p
-              v-if="assetActionMsg"
-              class="asset-action-msg"
-              :class="`kind-${assetActionMsgKind}`"
-            >
-              {{ assetActionMsg }}
-            </p>
-            <p
-              v-if="actionMode !== 'off' && actionCurrent"
-              class="action-status"
-            >
-              {{ actionLabel(actionCurrent.id) }} ·
-              {{
-                t('stage2d.actionStatus', {
-                  now: formatActionTime(actionClock),
-                  total: formatActionTime(actionCurrent.duration ?? 0)
-                })
-              }}
-              <span v-if="actionMode === 'paused'">
-                · {{ t('stage2d.actionPaused') }}
-              </span>
-            </p>
-          </div>
-
-          <div class="section-label">
-            {{ t('stage2d.spineExportTitle') }}
-          </div>
-          <p
-            v-if="!rig.joints.length"
-            class="hint"
-          >
-            {{ t('stage2d.actionNoRig') }}
-          </p>
-          <p
-            v-else-if="!attachLayers.length"
-            class="hint"
-          >
-            {{ t('stage2d.spineNoAttach') }}
-          </p>
-          <template v-else>
-            <div class="row export-controls">
-              <label class="field">
-                <span>{{ t('stage2d.spineExportName') }}</span>
-                <input
-                  v-model="spineExportName"
-                  type="text"
-                  :disabled="spineBusy"
-                  @keydown.enter="exportSpineSkeleton"
-                >
-              </label>
-              <button
-                type="button"
-                class="primary"
-                :disabled="spineBusy"
-                @click="exportSpineSkeleton"
-              >
-                ⬇️ {{ t('stage2d.spineExportButton') }}
-              </button>
-            </div>
-            <p class="hint">
-              {{ t('stage2d.spineExportNote') }}
-            </p>
-            <p
-              v-if="spineBusy"
-              class="export-status"
-            >
-              {{ t('stage2d.spineExporting') }}
-            </p>
-            <p
-              v-else-if="spineError"
-              class="export-status error"
-            >
-              {{ spineError }}
-            </p>
-            <p
-              v-else-if="spineMsg"
-              class="export-status ok"
-            >
-              {{ spineMsg }}
-            </p>
-          </template>
-
-          <div class="section-label">
-            {{ t('stage2d.exportTitle') }}
-          </div>
-          <p
-            v-if="!rig.joints.length"
-            class="hint"
-          >
-            {{ t('stage2d.actionNoRig') }}
-          </p>
-          <p
-            v-else-if="!actionCurrent"
-            class="hint"
-          >
-            {{ t('stage2d.exportNeedAction') }}
-          </p>
-          <template v-else>
-            <div class="row export-controls">
-              <label class="field">
-                <span>{{ t('stage2d.exportFps') }}</span>
-                <select v-model.number="exportFps">
-                  <option
-                    v-for="fps in fpsOptions"
-                    :key="fps"
-                    :value="fps"
-                  >
-                    {{ fps }}
-                  </option>
-                </select>
-              </label>
-              <button
-                type="button"
-                class="primary"
-                :disabled="exportBusy"
-                @click="exportActionFrames"
-              >
-                {{ t('stage2d.exportButton') }}
-              </button>
-            </div>
-            <p class="hint">
-              {{
-                t('stage2d.exportFramesNote', {
-                  count: exportFrameCount,
-                  fps: exportFps,
-                  seconds: formatActionTime(actionCurrent.duration ?? 0)
-                })
-              }}
-            </p>
-            <p
-              v-if="exportBusy"
-              class="export-status"
-            >
-              {{ t('stage2d.exporting', { done: exportProgress, total: exportFrameCount }) }}
-            </p>
-            <p
-              v-else-if="exportError"
-              class="export-status error"
-            >
-              {{ exportError }}
-            </p>
-            <p
-              v-else-if="exportDone"
-              class="export-status ok"
-            >
-              {{ t('stage2d.exportDone', { count: exportFrameCount }) }}
-            </p>
-          </template>
-
-          <template v-if="selectedJoint">
-            <div class="section-label">
-              {{ t('stage2d.jointParams') }}
-            </div>
-            <label class="field">
-              <span>{{ t('stage2d.jointName') }}</span>
-              <input
-                type="text"
-                :value="selectedJoint.name"
-                @change="patchJointName($event)"
-              >
-            </label>
-            <label class="field">
-              <span>{{ t('stage2d.parentJoint') }}</span>
-              <select
-                :value="selectedJoint.parentId ?? ''"
-                @change="patchJointParent($event)"
-              >
-                <option value="">
-                  {{ t('stage2d.parentNone') }}
-                </option>
-                <option
-                  v-for="candidate in parentCandidates"
-                  :key="candidate.id"
-                  :value="candidate.id"
-                >
-                  {{ candidate.name }}
-                </option>
-              </select>
-            </label>
-            <div class="grid2">
-              <label class="field">
-                <span>X</span>
-                <input
-                  type="number"
-                  step="1"
-                  :value="selectedJoint.x"
-                  @change="patchJointBind('x', $event)"
-                >
-              </label>
-              <label class="field">
-                <span>Y</span>
-                <input
-                  type="number"
-                  step="1"
-                  :value="selectedJoint.y"
-                  @change="patchJointBind('y', $event)"
-                >
-              </label>
-            </div>
-            <label class="slider">
-              <span>
-                {{ t('stage2d.poseRot') }}<b>{{ Math.round(poseValue) }}°</b>
-              </span>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                step="1"
-                :value="poseValue"
-                @input="setJointPose($event)"
-              >
-            </label>
-            <div class="row">
-              <button
-                type="button"
-                class="icon"
-                :disabled="!Object.keys(pose).length"
-                @click="resetPose"
-              >
-                {{ t('stage2d.resetPose') }}
-              </button>
-              <button
-                type="button"
-                class="icon"
-                :disabled="!selected"
-                :title="t('stage2d.bindTip')"
-                @click="bindSelectedLayer"
-              >
-                {{ t('stage2d.bindLayer') }}
-              </button>
-            </div>
-          </template>
-
-          <div class="section-label">
-            {{ t('stage2d.attachments') }}
-          </div>
-          <div
-            v-if="!rig.attachments.length"
-            class="hint"
-          >
-            {{ t('stage2d.noAttach') }}
-          </div>
-          <ul class="attach-list">
-            <li
-              v-for="attach in rig.attachments"
-              :key="attach.layerId"
-            >
-              <select
-                :title="t('stage2d.bindLayer')"
-                :value="attach.layerId"
-                @change="patchAttachLayer(attach.layerId, $event)"
-              >
-                <option
-                  v-for="layer in layers"
-                  :key="layer.id"
-                  :value="layer.id"
-                >
-                  {{ layer.name }}
-                </option>
-              </select>
-              <select
-                :title="t('stage2d.bindJoint')"
-                :value="attach.jointId"
-                @change="patchAttachJoint(attach.layerId, $event)"
-              >
-                <option
-                  v-for="joint in rig.joints"
-                  :key="joint.id"
-                  :value="joint.id"
-                >
-                  {{ joint.name }}
-                </option>
-              </select>
-              <button
-                type="button"
-                class="icon danger"
-                :title="t('stage2d.unbind')"
-                @click="unbindLayer(attach.layerId)"
-              >
-                ✕
-              </button>
-              <span class="attach-xy">
-                <input
-                  type="number"
-                  step="1"
-                  :value="attach.offsetX"
-                  :title="`${t('stage2d.offsetX')}`"
-                  @change="patchAttachOffset(attach.layerId, 'offsetX', $event)"
-                >
-                <input
-                  type="number"
-                  step="1"
-                  :value="attach.offsetY"
-                  :title="`${t('stage2d.offsetY')}`"
-                  @change="patchAttachOffset(attach.layerId, 'offsetY', $event)"
-                >
-              </span>
-            </li>
-          </ul>
-        </template>
-      </section>
-
-      <section class="pane stage-pane">
-        <div class="stage-bar">
-          <div class="section-label">
-            {{ t('stage2d.result') }}
-          </div>
-          <div class="modes">
-            <button
-              type="button"
-              class="icon"
-              :class="{ on: mode === 'pan' }"
-              @click="mode = 'pan'"
-            >
-              {{ t('stage2d.pan') }}
-            </button>
-            <button
-              type="button"
-              class="icon"
-              :class="{ on: mode === 'move' }"
-              :disabled="!selected"
-              @click="mode = 'move'"
-            >
-              {{ t('stage2d.move') }}
-            </button>
-            <button
-              type="button"
-              class="icon"
-              :class="{ on: showGuides }"
-              @click="showGuides = !showGuides"
-            >
-              {{ t('stage2d.guides') }}
-            </button>
-            <button
-              type="button"
-              class="icon"
-              @click="fitView"
-            >
-              {{ t('stage2d.resetView') }}
-            </button>
-            <span class="zoom">{{ Math.round(zoom * 100) }}%</span>
-          </div>
         </div>
-        <div
-          ref="viewportEl"
-          class="viewport checker"
-          @wheel.prevent="onWheel"
-          @pointerdown="onPointerDown"
-          @pointermove="onPointerMove"
-          @pointerup="onPointerUp"
-          @pointercancel="onPointerUp"
+        <p
+          v-if="autoCutMsg"
+          class="hint"
+          :class="{ warn: autoCutMsgKind === 'warn', error: autoCutMsgKind === 'error' }"
         >
-          <div
-            class="canvas-wrap"
-            :style="{
-              width: `${scene.canvasWidth}px`,
-              height: `${scene.canvasHeight}px`,
-              transform: `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${zoom})`
-            }"
-          >
-            <img
-              v-if="previewUrl"
-              :src="previewUrl"
-              alt=""
-              draggable="false"
-            >
-            <div
-              v-if="showGuides"
-              class="guides"
-            >
-              <div
-                v-if="scene.anchor === 'ground'"
-                class="line ground"
-                :style="{ top: `${groundY}px` }"
-              />
-              <template v-else>
-                <div class="line vcenter" />
-                <div class="line hcenter" />
-              </template>
-            </div>
-            <svg
-              v-if="tab === 'rig' && rig.joints.length"
-              class="rig-overlay"
-              :viewBox="`0 0 ${scene.canvasWidth} ${scene.canvasHeight}`"
-              preserveAspectRatio="none"
-            >
-              <g class="bones">
-                <line
-                  v-for="(seg, index) in rigSegments"
-                  :key="index"
-                  :x1="seg.x1"
-                  :y1="seg.y1"
-                  :x2="seg.x2"
-                  :y2="seg.y2"
-                />
-              </g>
-              <g class="joints">
-                <circle
-                  v-for="item in rigJoints"
-                  :key="item.jointId"
-                  class="joint"
-                  :class="{ selected: item.jointId === selectedJointId }"
-                  :cx="item.x"
-                  :cy="item.y"
-                  r="7"
-                  @pointerdown.prevent.stop="startJointDrag(item.jointId, $event)"
-                  @pointermove.prevent.stop="moveJointDrag($event)"
-                  @pointerup.prevent.stop="endJointDrag($event)"
-                  @pointercancel="endJointDrag($event)"
-                />
-              </g>
-            </svg>
-          </div>
-          <p
-            v-if="!layers.length"
-            class="hint empty-hint"
-          >
-            {{ t('stage2d.resultEmpty') }}
-          </p>
-        </div>
-        <p class="apply-hint">
-          {{ scene.canvasWidth }}×{{ scene.canvasHeight }} · {{ t('stage2d.dragHint') }}
+          {{ autoCutMsg }}
         </p>
-      </section>
-
-      <section class="pane">
         <div class="section-label">
           {{ t('stage2d.scene') }}
         </div>
@@ -888,17 +261,676 @@
             {{ t('stage2d.resetOffset') }}
           </button>
         </template>
-
-        <div class="row">
-          <span class="hint">{{ error }}</span>
+      </section>
+      <section class="pane stage-pane">
+        <div class="stage-bar">
+          <div class="section-label">
+            {{ t('stage2d.result') }}
+          </div>
+          <div class="modes">
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: mode === 'pan' }"
+              @click="mode = 'pan'"
+            >
+              {{ t('stage2d.pan') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: mode === 'move' }"
+              :disabled="!selected"
+              @click="mode = 'move'"
+            >
+              {{ t('stage2d.move') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              :class="{ on: showGuides }"
+              @click="showGuides = !showGuides"
+            >
+              {{ t('stage2d.guides') }}
+            </button>
+            <button
+              type="button"
+              class="icon"
+              @click="fitView"
+            >
+              {{ t('stage2d.resetView') }}
+            </button>
+            <button
+              type="button"
+              class="primary stage-apply"
+              :title="t('stage2d.applyHint')"
+              @click="save"
+            >
+              {{ t('stage2d.apply') }}
+            </button>
+            <span class="zoom">{{ Math.round(zoom * 100) }}%</span>
+          </div>
+        </div>
+        <div
+          ref="viewportEl"
+          class="viewport checker"
+          @wheel.prevent="onWheel"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerUp"
+        >
+          <div
+            class="canvas-wrap"
+            :style="{
+              width: `${scene.canvasWidth}px`,
+              height: `${scene.canvasHeight}px`,
+              transform: `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${zoom})`
+            }"
+          >
+            <img
+              v-if="previewUrl"
+              :src="previewUrl"
+              alt=""
+              draggable="false"
+            >
+            <div
+              v-if="showGuides"
+              class="guides"
+            >
+              <div
+                v-if="scene.anchor === 'ground'"
+                class="line ground"
+                :style="{ top: `${groundY}px` }"
+              />
+              <template v-else>
+                <div class="line vcenter" />
+                <div class="line hcenter" />
+              </template>
+            </div>
+            <svg
+              v-if="(panel === 'rig' || panel === 'action') && rig.joints.length"
+              class="rig-overlay"
+              :viewBox="`0 0 ${scene.canvasWidth} ${scene.canvasHeight}`"
+              preserveAspectRatio="none"
+            >
+              <g class="bones">
+                <line
+                  v-for="(seg, index) in rigSegments"
+                  :key="index"
+                  :x1="seg.x1"
+                  :y1="seg.y1"
+                  :x2="seg.x2"
+                  :y2="seg.y2"
+                />
+              </g>
+              <g class="joints">
+                <circle
+                  v-for="item in rigJoints"
+                  :key="item.jointId"
+                  class="joint"
+                  :class="{ selected: item.jointId === selectedJointId }"
+                  :cx="item.x"
+                  :cy="item.y"
+                  r="7"
+                  @pointerdown.prevent.stop="startJointDrag(item.jointId, $event)"
+                  @pointermove.prevent.stop="moveJointDrag($event)"
+                  @pointerup.prevent.stop="endJointDrag($event)"
+                  @pointercancel="endJointDrag($event)"
+                />
+              </g>
+            </svg>
+          </div>
+          <p
+            v-if="!layers.length"
+            class="hint empty-hint"
+          >
+            {{ t('stage2d.resultEmpty') }}
+          </p>
+        </div>
+        <p class="apply-hint">
+          {{ scene.canvasWidth }}×{{ scene.canvasHeight }} · {{ t('stage2d.dragHint') }}
+        </p>
+      </section>
+      <section class="pane tools-pane">
+        <div class="tabs">
           <button
             type="button"
-            class="primary"
-            @click="save"
+            class="tab"
+            :class="{ on: panel === 'rig' }"
+            @click="panel = 'rig'"
           >
-            {{ t('stage2d.apply') }}
+            {{ t('stage2d.tabRig') }}
+          </button>
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: panel === 'action' }"
+            @click="panel = 'action'"
+          >
+            {{ t('stage2d.tabAction') }}
+          </button>
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: panel === 'export' }"
+            @click="panel = 'export'"
+          >
+            {{ t('stage2d.tabExport') }}
           </button>
         </div>
+
+        <div class="tools-scroll">
+          <template v-if="panel === 'rig'">
+            <div class="rig-toolbar">
+              <button
+                type="button"
+                class="primary"
+                :title="t('stage2d.rigTemplateTip')"
+                @click="useHumanoidTemplate"
+              >
+                {{ t('stage2d.rigTemplate') }}
+              </button>
+              <button
+                type="button"
+                class="primary"
+                :title="t('stage2d.rigFromImageTip')"
+                @click="poseDialogOpen = true"
+              >
+                {{ t('stage2d.rigFromImage') }}
+              </button>
+            </div>
+            <div class="section-label">
+              {{ t('stage2d.joints') }}
+            </div>
+            <ul class="layers">
+              <li
+                v-for="joint in rig.joints"
+                :key="joint.id"
+                class="layer"
+                :class="{ active: joint.id === selectedJointId }"
+                @click="selectedJointId = joint.id"
+              >
+                <span class="thumb-fallback">●</span>
+                <span
+                  class="name"
+                  :title="joint.id"
+                >
+                  {{ joint.name }}
+                  <small v-if="joint.parentId">→ {{ jointName(joint.parentId) }}</small>
+                </span>
+                <button
+                  type="button"
+                  class="icon danger"
+                  :title="t('stage2d.removeJoint')"
+                  @click.stop="removeJoint(joint.id)"
+                >
+                  ✕
+                </button>
+              </li>
+            </ul>
+            <p
+              v-if="!rig.joints.length"
+              class="hint"
+            >
+              {{ t('stage2d.noJoint') }}
+            </p>
+            <button
+              type="button"
+              class="primary"
+              @click="addJoint"
+            >
+              ＋ {{ t('stage2d.addJoint') }}
+            </button>
+            <template v-if="selectedJoint">
+              <div class="section-label">
+                {{ t('stage2d.jointParams') }}
+              </div>
+              <label class="field">
+                <span>{{ t('stage2d.jointName') }}</span>
+                <input
+                  type="text"
+                  :value="selectedJoint.name"
+                  @change="patchJointName($event)"
+                >
+              </label>
+              <label class="field">
+                <span>{{ t('stage2d.parentJoint') }}</span>
+                <select
+                  :value="selectedJoint.parentId ?? ''"
+                  @change="patchJointParent($event)"
+                >
+                  <option value="">
+                    {{ t('stage2d.parentNone') }}
+                  </option>
+                  <option
+                    v-for="candidate in parentCandidates"
+                    :key="candidate.id"
+                    :value="candidate.id"
+                  >
+                    {{ candidate.name }}
+                  </option>
+                </select>
+              </label>
+              <div class="grid2">
+                <label class="field">
+                  <span>X</span>
+                  <input
+                    type="number"
+                    step="1"
+                    :value="selectedJoint.x"
+                    @change="patchJointBind('x', $event)"
+                  >
+                </label>
+                <label class="field">
+                  <span>Y</span>
+                  <input
+                    type="number"
+                    step="1"
+                    :value="selectedJoint.y"
+                    @change="patchJointBind('y', $event)"
+                  >
+                </label>
+              </div>
+              <label class="slider">
+                <span>
+                  {{ t('stage2d.poseRot') }}<b>{{ Math.round(poseValue) }}°</b>
+                </span>
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  :value="poseValue"
+                  @input="setJointPose($event)"
+                >
+              </label>
+              <div class="row">
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="!Object.keys(pose).length"
+                  @click="resetPose"
+                >
+                  {{ t('stage2d.resetPose') }}
+                </button>
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="!selected"
+                  :title="t('stage2d.bindTip')"
+                  @click="bindSelectedLayer"
+                >
+                  {{ t('stage2d.bindLayer') }}
+                </button>
+              </div>
+            </template>
+            <div class="section-label">
+              {{ t('stage2d.attachments') }}
+            </div>
+            <div
+              v-if="!rig.attachments.length"
+              class="hint"
+            >
+              {{ t('stage2d.noAttach') }}
+            </div>
+            <ul class="attach-list">
+              <li
+                v-for="attach in rig.attachments"
+                :key="attach.layerId"
+              >
+                <select
+                  :title="t('stage2d.bindLayer')"
+                  :value="attach.layerId"
+                  @change="patchAttachLayer(attach.layerId, $event)"
+                >
+                  <option
+                    v-for="layer in layers"
+                    :key="layer.id"
+                    :value="layer.id"
+                  >
+                    {{ layer.name }}
+                  </option>
+                </select>
+                <select
+                  :title="t('stage2d.bindJoint')"
+                  :value="attach.jointId"
+                  @change="patchAttachJoint(attach.layerId, $event)"
+                >
+                  <option
+                    v-for="joint in rig.joints"
+                    :key="joint.id"
+                    :value="joint.id"
+                  >
+                    {{ joint.name }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="icon danger"
+                  :title="t('stage2d.unbind')"
+                  @click="unbindLayer(attach.layerId)"
+                >
+                  ✕
+                </button>
+                <span class="attach-xy">
+                  <input
+                    type="number"
+                    step="1"
+                    :value="attach.offsetX"
+                    :title="`${t('stage2d.offsetX')}`"
+                    @change="patchAttachOffset(attach.layerId, 'offsetX', $event)"
+                  >
+                  <input
+                    type="number"
+                    step="1"
+                    :value="attach.offsetY"
+                    :title="`${t('stage2d.offsetY')}`"
+                    @change="patchAttachOffset(attach.layerId, 'offsetY', $event)"
+                  >
+                </span>
+              </li>
+            </ul>
+          </template>
+
+          <template v-else-if="panel === 'action'">
+            <div class="section-label">
+              {{ t('stage2d.actionTitle') }}
+            </div>
+            <p
+              v-if="!rig.joints.length"
+              class="hint"
+            >
+              {{ t('stage2d.actionNoRig') }}
+            </p>
+            <div
+              v-else
+              class="action-player"
+            >
+              <label class="field">
+                <span>{{ t('stage2d.actionPick') }}</span>
+                <select
+                  :value="actionId"
+                  @change="onActionPick($event)"
+                >
+                  <option value="">
+                    {{ t('stage2d.actionNone') }}
+                  </option>
+                  <option
+                    v-if="customAction"
+                    :value="CUSTOM_ACTION_ID"
+                  >
+                    {{ actionLabel(CUSTOM_ACTION_ID) }}
+                  </option>
+                  <option
+                    v-for="item in actionPresets"
+                    :key="item.id"
+                    :value="item.id"
+                  >
+                    {{ actionLabel(item.id) }}
+                  </option>
+                </select>
+              </label>
+              <div class="row action-controls">
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="!actionCurrent"
+                  @click="toggleActionPlay"
+                >
+                  {{
+                    actionMode === 'playing'
+                      ? t('stage2d.actionPause')
+                      : t('stage2d.actionPlay')
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="actionMode === 'off'"
+                  :title="t('stage2d.actionStopTip')"
+                  @click="stopActionPlayback"
+                >
+                  ■
+                </button>
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="actionMode === 'off'"
+                  :title="t('stage2d.actionFreezeTip')"
+                  @click="freezeActionFrame"
+                >
+                  {{ t('stage2d.actionFreeze') }}
+                </button>
+              </div>
+              <button
+                type="button"
+                class="action-video-btn"
+                @click="openVideoActionDialog"
+              >
+                🎬 {{ t('stage2dVideo.actionFromVideo') }}
+              </button>
+              <div class="row asset-action-row">
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="!actionCurrent || assetActionBusy"
+                  :title="t('stage2d.actionSaveAsset')"
+                  @click="beginSaveActionAsset"
+                >
+                  💾 {{ t('stage2d.actionSaveAsset') }}
+                </button>
+                <button
+                  type="button"
+                  class="icon"
+                  :disabled="assetActionBusy"
+                  :title="t('stage2d.actionLoadAsset')"
+                  @click="toggleLoadActionAsset"
+                >
+                  📥 {{ t('stage2d.actionLoadAsset') }}
+                </button>
+              </div>
+              <select
+                v-if="assetLoadPickerOpen"
+                class="asset-pick-select"
+                :value="motionLoadSel"
+                @change="onMotionLoadChange"
+              >
+                <option value="">
+                  {{
+                    motionAssets.length
+                      ? t('stage2d.actionLoadPickHint')
+                      : t('stage2d.actionLoadEmpty')
+                  }}
+                </option>
+                <option
+                  v-for="item in motionAssets"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ item.name }}
+                </option>
+              </select>
+              <div
+                v-if="assetActionSavingOpen"
+                class="row asset-save-row"
+              >
+                <label class="field">
+                  <span>{{ t('stage2d.actionAssetName') }}</span>
+                  <input
+                    v-model="assetActionName"
+                    type="text"
+                    :disabled="assetActionBusy"
+                    @keydown.enter="confirmSaveActionAsset"
+                  >
+                </label>
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="assetActionBusy || !assetActionName.trim()"
+                  @click="confirmSaveActionAsset"
+                >
+                  {{ t('stage2d.actionAssetConfirm') }}
+                </button>
+              </div>
+              <p
+                v-if="assetActionMsg"
+                class="asset-action-msg"
+                :class="`kind-${assetActionMsgKind}`"
+              >
+                {{ assetActionMsg }}
+              </p>
+              <p
+                v-if="actionMode !== 'off' && actionCurrent"
+                class="action-status"
+              >
+                {{ actionLabel(actionCurrent.id) }} ·
+                {{
+                  t('stage2d.actionStatus', {
+                    now: formatActionTime(actionClock),
+                    total: formatActionTime(actionCurrent.duration ?? 0)
+                  })
+                }}
+                <span v-if="actionMode === 'paused'">
+                  · {{ t('stage2d.actionPaused') }}
+                </span>
+              </p>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="section-label">
+              {{ t('stage2d.spineExportTitle') }}
+            </div>
+            <p
+              v-if="!rig.joints.length"
+              class="hint"
+            >
+              {{ t('stage2d.actionNoRig') }}
+            </p>
+            <p
+              v-else-if="!attachLayers.length"
+              class="hint"
+            >
+              {{ t('stage2d.spineNoAttach') }}
+            </p>
+            <template v-else>
+              <div class="row export-controls">
+                <label class="field">
+                  <span>{{ t('stage2d.spineExportName') }}</span>
+                  <input
+                    v-model="spineExportName"
+                    type="text"
+                    :disabled="spineBusy"
+                    @keydown.enter="exportSpineSkeleton"
+                  >
+                </label>
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="spineBusy"
+                  @click="exportSpineSkeleton"
+                >
+                  ⬇️ {{ t('stage2d.spineExportButton') }}
+                </button>
+              </div>
+              <p class="hint">
+                {{ t('stage2d.spineExportNote') }}
+              </p>
+              <p
+                v-if="spineBusy"
+                class="export-status"
+              >
+                {{ t('stage2d.spineExporting') }}
+              </p>
+              <p
+                v-else-if="spineError"
+                class="export-status error"
+              >
+                {{ spineError }}
+              </p>
+              <p
+                v-else-if="spineMsg"
+                class="export-status ok"
+              >
+                {{ spineMsg }}
+              </p>
+            </template>
+            <div class="section-label">
+              {{ t('stage2d.exportTitle') }}
+            </div>
+            <p
+              v-if="!rig.joints.length"
+              class="hint"
+            >
+              {{ t('stage2d.actionNoRig') }}
+            </p>
+            <p
+              v-else-if="!actionCurrent"
+              class="hint"
+            >
+              {{ t('stage2d.exportNeedAction') }}
+            </p>
+            <template v-else>
+              <div class="row export-controls">
+                <label class="field">
+                  <span>{{ t('stage2d.exportFps') }}</span>
+                  <select v-model.number="exportFps">
+                    <option
+                      v-for="fps in fpsOptions"
+                      :key="fps"
+                      :value="fps"
+                    >
+                      {{ fps }}
+                    </option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  class="primary"
+                  :disabled="exportBusy"
+                  @click="exportActionFrames"
+                >
+                  {{ t('stage2d.exportButton') }}
+                </button>
+              </div>
+              <p class="hint">
+                {{
+                  t('stage2d.exportFramesNote', {
+                    count: exportFrameCount,
+                    fps: exportFps,
+                    seconds: formatActionTime(actionCurrent.duration ?? 0)
+                  })
+                }}
+              </p>
+              <p
+                v-if="exportBusy"
+                class="export-status"
+              >
+                {{ t('stage2d.exporting', { done: exportProgress, total: exportFrameCount }) }}
+              </p>
+              <p
+                v-else-if="exportError"
+                class="export-status error"
+              >
+                {{ exportError }}
+              </p>
+              <p
+                v-else-if="exportDone"
+                class="export-status ok"
+              >
+                {{ t('stage2d.exportDone', { count: exportFrameCount }) }}
+              </p>
+            </template>
+          </template>
+        </div>
+
+        <p
+          v-if="error"
+          class="hint error"
+        >
+          {{ error }}
+        </p>
         <p class="apply-hint">
           {{ t('stage2d.applyHint') }}
         </p>
@@ -945,6 +977,7 @@ import {
   stage2dGroundY,
   STAGE2D_ACTION_PRESETS,
   type Stage2dAction,
+  type Stage2dLayer,
   type Stage2dPose,
   type Stage2dRig
 } from '@shared/gameAssets'
@@ -958,6 +991,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { composeStage2dSpineExport } from '../features/graph/model/composeStage2dSpineExport'
+import { autoCutStage2dLayer } from '../features/graph/model/composeStage2dAutoCut'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
@@ -1004,8 +1038,8 @@ const scene = ref<Stage2dSceneState>(normalizeStage2dScene(props.setup ?? undefi
 const rig = ref<Stage2dRig>(normalizeStage2dRig(props.setupRig ?? undefined))
 const pose = ref<Stage2dPose>(normalizeStage2dPose(rig.value, props.setupPose ?? null))
 const selectedId = ref('')
-/** 左栏分页：层（叠放与落位）/ 骨骼（装配与摆姿） */
-const tab = ref<'layers' | 'rig'>('layers')
+/** 布局：左栏常驻图层列表＋层操作/舞台与对齐参数；右侧子页＝骨骼（装配与摆姿）/ 动作（试播与资产）/ 导出 */
+const panel = ref<'rig' | 'action' | 'export'>('rig')
 const selectedJointId = ref('')
 const thumbUrls = ref<Record<string, string>>({})
 const previewUrl = ref('')
@@ -1047,7 +1081,7 @@ function applySetup(): void {
   customAction.value = props.setupAction ? normalizeStage2dAction(props.setupAction) : null
   actionId.value = customAction.value ? CUSTOM_ACTION_ID : ''
   selectedJointId.value = rig.value.joints[0]?.id ?? ''
-  tab.value = 'layers'
+  panel.value = 'rig'
   void nextTick(fitView)
 }
 
@@ -1248,7 +1282,7 @@ function useHumanoidTemplate(): void {
   rig.value = next
   pose.value = {}
   selectedJointId.value = next.joints.find((joint) => joint.id === 'pelvis')?.id ?? next.joints[0]?.id ?? ''
-  tab.value = 'rig'
+  panel.value = 'rig'
   render()
 }
 
@@ -1592,6 +1626,63 @@ const attachLayers = computed(() =>
     )
   )
 )
+
+/** 自动拆件：把整图立绘沿骨骼关节切成部件并自动挂点 */
+const autoCutBusy = ref(false)
+const autoCutMsg = ref('')
+const autoCutMsgKind = ref<'ok' | 'warn' | 'error'>('ok')
+function setAutoCutMsg(text: string, kind: 'ok' | 'warn' | 'error' = 'ok'): void {
+  autoCutMsg.value = text
+  autoCutMsgKind.value = kind
+}
+async function autoCutWholeLayer(): Promise<void> {
+  if (autoCutBusy.value) return
+  setAutoCutMsg('', 'ok')
+  if (!rig.value.joints.length) {
+    setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
+    return
+  }
+  const attachedIds = new Set(rig.value.attachments.map((attachment) => attachment.layerId))
+  const wholeLayer = (layer: Stage2dLayer) =>
+    layer.visible && !layer.frame && !attachedIds.has(layer.id)
+  const frameLayer =
+    (selected.value && wholeLayer(selected.value) ? selected.value : null) ??
+    scene.value.layers.find((layer) => wholeLayer(layer)) ??
+    null
+  if (!frameLayer) {
+    setAutoCutMsg(t('stage2d.autoCutNeedLayer'), 'warn')
+    return
+  }
+  stopActionPlayback()
+  autoCutBusy.value = true
+  try {
+    // 拆件以绑定姿势为参考：先复位摆姿，切完后画布（绑定姿势）即原图
+    pose.value = normalizeStage2dPose(rig.value, null)
+    const result = await autoCutStage2dLayer({
+      state: scene.value,
+      rig: rig.value,
+      frameLayerId: frameLayer.id,
+      resolveLayerUrl
+    })
+    if (!result || result.partCount < 1) {
+      setAutoCutMsg(t('stage2d.autoCutFail'), 'warn')
+      return
+    }
+    scene.value = result.state
+    rig.value = result.rig
+    const firstPart = result.state.layers.find(
+      (layer) => layer.id !== frameLayer.id && layer.visible
+    )
+    if (firstPart) selectedId.value = firstPart.id
+    render()
+    setAutoCutMsg(t('stage2d.autoCutDone', { count: String(result.partCount) }), 'ok')
+  } catch (err) {
+    console.error('[stage2d auto cut] failed:', err)
+    setAutoCutMsg(err instanceof Error ? err.message : String(err), 'error')
+  } finally {
+    autoCutBusy.value = false
+  }
+}
 
 async function exportSpineSkeleton(): Promise<void> {
   if (spineBusy.value) return
@@ -1951,9 +2042,9 @@ async function resolveThumbs(): Promise<void> {
   thumbUrls.value = next
 }
 
-// 切离「骨骼」页时停掉动作试播（避免后台空转并还原试播前摆姿）
-watch(tab, (value) => {
-  if (value !== 'rig') stopActionPlayback()
+// 切离「动作」页时停掉动作试播（避免后台空转并还原试播前摆姿）
+watch(panel, (value) => {
+  if (value !== 'action') stopActionPlayback()
 })
 
 watch(
@@ -2091,12 +2182,13 @@ onBeforeUnmount(() => {
 
 .stage2d {
   display: grid;
-  grid-template-columns: 280px 1fr 300px;
-  gap: 16px;
+  grid-template-columns: 300px minmax(0, 1fr) 356px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
   height: 100%;
   min-height: 0;
-  padding: 16px;
-  overflow: auto;
+  padding: 14px;
+  overflow: hidden;
 }
 
 .pane {
@@ -2106,9 +2198,52 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.layers-pane {
+.layers-col {
   min-height: 0;
   overflow-y: auto;
+  padding-right: 2px;
+}
+
+.layers-col .layers {
+  flex: none;
+}
+
+.layers-col > .section-label:first-child {
+  margin-top: 0;
+}
+
+.stage-pane {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tools-pane {
+  min-height: 0;
+}
+
+.tools-pane .tabs {
+  flex-shrink: 0;
+}
+
+.tools-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.tool-ops {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tool-ops .primary {
+  flex: 1;
+  white-space: nowrap;
 }
 
 .tabs {
@@ -2137,12 +2272,13 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+  margin: 12px 0 8px;
 }
 
 .layers {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-height: 0;
   margin: 0;
@@ -2154,8 +2290,9 @@ onBeforeUnmount(() => {
 .layer {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-input);
@@ -2204,6 +2341,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.stage-bar .stage-apply {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .modes {
@@ -2453,6 +2595,14 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
+.hint.warn {
+  color: var(--warning, #c9842a);
+}
+
+.hint.error {
+  color: var(--danger);
+}
+
 .apply-hint {
   margin: 0;
   font-size: 11px;
@@ -2477,6 +2627,12 @@ onBeforeUnmount(() => {
 .icon:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.icon.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .icon.danger:hover {

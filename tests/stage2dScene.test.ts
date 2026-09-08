@@ -168,3 +168,84 @@ describe('computeStage2dLayerPlacements：逐层锚点落位', () => {
     expect(p[0]!.bounds).toBeNull()
   })
 })
+
+describe('部件层 frame：共享整图层放置几何（拆件/换装差分地基）', () => {
+  const frameLayer = {
+    id: 'whole',
+    name: '整图层',
+    sourceUrl: 'sprites/whole.png',
+    align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+    visible: true
+  }
+
+  it('frame 子层贴回参考层内的裁剪矩形（同缩放、不各自重排）', () => {
+    const scene = makeScene({
+      canvasHeight: 400,
+      groundRatio: 0.1,
+      layers: [
+        frameLayer,
+        {
+          id: 'head',
+          name: '头',
+          sourceUrl: 'sprites/head.png',
+          align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+          visible: true,
+          frame: { layerId: 'whole', crop: { x: 20, y: 10, width: 40, height: 50 } },
+          pivot: { x: 20, y: 50 }
+        }
+      ]
+    })
+    const p = computeStage2dLayerPlacements(scene, [
+      sourceA,
+      { srcWidth: 40, srcHeight: 50, bounds: { x: 0, y: 0, width: 40, height: 50 } }
+    ])
+    const fp = p[0]!.plan!
+    const child = p[1]!.plan!
+    expect(child.scale).toBeCloseTo(fp.scale, 5)
+    expect(child.bounds).toEqual({ x: 0, y: 0, width: 40, height: 50 })
+    expect(child.dstX).toBe(fp.dstX + Math.round(20 * fp.scale))
+    expect(child.dstY).toBe(fp.dstY + Math.round(10 * fp.scale))
+    expect(child.dstW).toBe(Math.max(1, Math.round(40 * fp.scale)))
+    expect(child.dstH).toBe(Math.max(1, Math.round(50 * fp.scale)))
+  })
+
+  it('frame 参考层自身不可再是部件层、缺失引用与自引用都回退普通层', () => {
+    const s = normalizeStage2dScene({
+      layers: [
+        { id: 'a', sourceUrl: 'sprites/a.png' },
+        { id: 'b', sourceUrl: 'sprites/b.png', frame: { layerId: 'missing', crop: null } },
+        { id: 'c', sourceUrl: 'sprites/c.png', frame: { layerId: 'c', crop: null } }
+      ]
+    })
+    expect(s.layers[1]!.frame).toBeNull()
+    expect(s.layers[2]!.frame).toBeNull()
+  })
+
+  it('frame 子层的整图层隐藏后仍按参考层几何摆放（probe 全量化前置）', () => {
+    const scene = makeScene({
+      canvasHeight: 400,
+      groundRatio: 0.1,
+      layers: [
+        { ...frameLayer, visible: false },
+        {
+          id: 'head',
+          name: '头',
+          sourceUrl: 'sprites/head.png',
+          align: { anchor: 'ground', contentHeightRatio: 0.8, groundRatio: 0.1, fitWithinWidth: true },
+          visible: true,
+          frame: { layerId: 'whole', crop: { x: 0, y: 0, width: 200, height: 300 } },
+          pivot: { x: 100, y: 300 }
+        }
+      ]
+    })
+    const p = computeStage2dLayerPlacements(scene, [
+      sourceA,
+      { srcWidth: 200, srcHeight: 300, bounds: { x: 0, y: 0, width: 200, height: 300 } }
+    ])
+    const fp = p[0]!.plan!
+    const child = p[1]!.plan!
+    expect(fp.dstW).toBeGreaterThan(0)
+    expect(child).not.toBeNull()
+    expect(child.scale).toBeCloseTo(fp.scale, 5)
+  })
+})

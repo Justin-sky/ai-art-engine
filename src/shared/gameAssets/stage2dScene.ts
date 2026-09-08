@@ -58,8 +58,36 @@ export interface Stage2dLayer {
    * 自动落位为主、微调为辅：换锚点 / 调比例不丢微调量。
    */
   offset: Stage2dLayerOffset
+  /**
+   * 部件层（可选）：本层内容是「参考层」（frame.layerId，同场景另一层）
+   * 内容区的裁剪矩形。放置几何不再按自身 bounds 独立缩放，而是完整继承
+   * 参考层的缩放与落位（同图等比同框），因此拆件 / 换装差分部件能精确
+   * 贴回原图位置而不会各自重新 fit。crop 坐标系 = 参考层 alpha 外接框
+   * 内容坐标（0,0 为参考层内容左上角）。
+   */
+  frame?: Stage2dLayerFrameSpec | null
+  /**
+   * 挂骨骼时的枢轴（可选）：部件内容区内的一个像素（y-down）。
+   * 绑定层绘制时把该像素对准挂点再随关节旋转——center（图中心）与
+   * ground（图底边中点）只是 pivot 的两个特例；带枢轴时优先于 align.anchor。
+   */
+  pivot?: Stage2dLayerPivot | null
   /** 是否可见 */
   visible: boolean
+}
+
+/** 部件层对参考层（整图层）的共享几何引用 */
+export interface Stage2dLayerFrameSpec {
+  /** 内容参考层 id（同场景其他层，须先于本层完成放置） */
+  layerId: string
+  /** 本层内容 = 参考层内容区内的裁剪矩形（参考层内容坐标，px）；缺省整区 */
+  crop: SpriteBounds | null
+}
+
+/** 部件枢轴：内容区内的像素（相对本层自身内容框左上角，y-down） */
+export interface Stage2dLayerPivot {
+  x: number
+  y: number
 }
 
 /** 层对齐参数：与 image.align 的 ImageAlignState 同构，但 anchor 单用 */
@@ -124,6 +152,31 @@ function normalizeLayerAlign(raw?: Partial<Stage2dLayerAlign> | null): Stage2dLa
   }
 }
 
+function normalizeFrameSpec(raw?: Stage2dLayerFrameSpec | null): Stage2dLayerFrameSpec | null {
+  const layerId = String(raw?.layerId ?? '').trim()
+  if (!layerId) return null
+  const cropRaw = raw?.crop
+  if (!cropRaw || typeof cropRaw !== 'object') return { layerId, crop: null }
+  const x = Number(cropRaw.x)
+  const y = Number(cropRaw.y)
+  const width = Number(cropRaw.width)
+  const height = Number(cropRaw.height)
+  const crop: SpriteBounds = {
+    x: Number.isFinite(x) ? Math.max(0, Math.floor(x)) : 0,
+    y: Number.isFinite(y) ? Math.max(0, Math.floor(y)) : 0,
+    width: Number.isFinite(width) ? Math.max(1, Math.floor(width)) : 1,
+    height: Number.isFinite(height) ? Math.max(1, Math.floor(height)) : 1
+  }
+  return { layerId, crop }
+}
+
+function normalizePivot(raw?: Stage2dLayerPivot | null): Stage2dLayerPivot | null {
+  const x = Number(raw?.x)
+  const y = Number(raw?.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return { x: Math.max(0, x), y: Math.max(0, y) }
+}
+
 /**
  * 归一化入参：层字段允许缺失（旧版持久化场景无 offset 等字段也要能吃下）。
  */
@@ -133,11 +186,12 @@ export type Stage2dSceneInput = Partial<Omit<Stage2dSceneState, 'layers'>> & {
 
 /**
  * 场景归一化：画布与逐层字段夹取到合法范围；剔除无源层。
- * 层序保持传入顺序（作为 z 序基准）。
+ * 层序保持传入顺序（作为 z 序基准）。frame 引用自身 / 无效层时回退为
+ * 普通层（防止共享几何自环）。
  */
 export function normalizeStage2dScene(raw?: Stage2dSceneInput | null): Stage2dSceneState {
   const base = { ...DEFAULT_STAGE2D_SCENE, ...(raw ?? {}) }
-  const layers: Stage2dLayer[] = Array.isArray(base.layers)
+  const sourceLayers: Stage2dLayer[] = Array.isArray(base.layers)
     ? base.layers
         .filter((l): l is Stage2dLayer => !!l && typeof l === 'object')
         .map((l, index) => ({
@@ -146,10 +200,18 @@ export function normalizeStage2dScene(raw?: Stage2dSceneInput | null): Stage2dSc
           sourceUrl: String(l.sourceUrl ?? ''),
           align: normalizeLayerAlign(l.align),
           offset: normalizeLayerOffset(l.offset),
+          frame: normalizeFrameSpec(l.frame),
+          pivot: normalizePivot(l.pivot),
           visible: l.visible !== false
         }))
         .filter((l) => !!l.sourceUrl)
     : []
+  const layerIds = new Set(sourceLayers.map((layer) => layer.id))
+  const layers = sourceLayers.map((layer) => {
+    const frame = layer.frame
+    if (frame && frame.layerId !== layer.id && layerIds.has(frame.layerId)) return layer
+    return { ...layer, frame: null }
+  })
   return {
     canvasWidth: clampInt(base.canvasWidth, MIN_CANVAS, MAX_CANVAS, DEFAULT_STAGE2D_SCENE.canvasWidth),
     canvasHeight: clampInt(
@@ -220,7 +282,7 @@ export function computeStage2dLayerPlacements(
   perLayerSource: Array<{ srcWidth: number; srcHeight: number; bounds: SpriteBounds | null }>
 ): Stage2dLayerPlacement[] {
   const s = normalizeStage2dScene(scene)
-  return s.layers.map((layer, index) => {
+  const placements: Stage2dLayerPlacement[] = s.layers.map((layer, index) => {
     const src = perLayerSource[index]
     if (!src || !src.bounds) {
       return { layer, plan: null, bounds: src?.bounds ?? null }
@@ -241,5 +303,51 @@ export function computeStage2dLayerPlacements(
       ? { ...plan, dstX: plan.dstX + layer.offset.x, dstY: plan.dstY + layer.offset.y }
       : null
     return { layer, plan: shifted, bounds: src.bounds }
+  })
+  // 部件层（frame）：放置几何继承参考层的缩放与落位（同图等比同框）
+  return s.layers.map((layer, index) => {
+    const base = placements[index]
+    const frame = layer.frame
+    if (!frame || !frame.crop || frame.layerId === layer.id) return base
+    const frameIndex = s.layers.findIndex((l) => l.id === frame.layerId)
+    const framePlacement = frameIndex >= 0 ? placements[frameIndex] : null
+    if (
+      frameIndex < 0 ||
+      frameIndex === index ||
+      !framePlacement ||
+      !framePlacement.plan ||
+      !framePlacement.bounds ||
+      s.layers[frameIndex].frame // 参考层自身不可再是部件层（避免链式）
+    ) {
+      return base
+    }
+    const fp = framePlacement.plan
+    const crop = frame.crop
+    // 参考层内容坐标 → 画布：内容坐标 0,0 对应参考层 bounds 左上角，即 fp.dstX/dstY。
+    // 用参考层自身的精确 scale（不要用取整后的 dstW/bounds.width 反推，避免子像素误差）
+    const scale = fp.scale > 0 ? fp.scale : 0
+    if (!(scale > 0)) return base
+    const dstX = fp.dstX + Math.round(crop.x * scale)
+    const dstY = fp.dstY + Math.round(crop.y * scale)
+    const dstW = Math.max(1, Math.round(crop.width * scale))
+    const dstH = Math.max(1, Math.round(crop.height * scale))
+    const src = perLayerSource[index]
+    const plan: SpriteAlignPlan = {
+      canvasWidth: s.canvasWidth,
+      canvasHeight: s.canvasHeight,
+      anchor: 'ground',
+      anchorX: Math.round(s.canvasWidth / 2),
+      anchorY: fp.groundY,
+      groundY: fp.groundY,
+      bounds: { x: 0, y: 0, width: crop.width, height: crop.height },
+      scale,
+      dstX,
+      dstY,
+      dstW,
+      dstH,
+      srcWidth: Math.round(src?.srcWidth ?? crop.width),
+      srcHeight: Math.round(src?.srcHeight ?? crop.height)
+    }
+    return { layer, plan, bounds: src?.bounds ?? { x: 0, y: 0, width: crop.width, height: crop.height } }
   })
 }
