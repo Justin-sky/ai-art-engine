@@ -349,8 +349,9 @@
               </template>
             </div>
             <svg
-              v-if="(panel === 'rig' || panel === 'action') && rig.joints.length"
+              v-if="rigOverlayVisible"
               class="rig-overlay"
+              :class="{ readonly: panel !== 'rig' }"
               :viewBox="`0 0 ${scene.canvasWidth} ${scene.canvasHeight}`"
               preserveAspectRatio="none"
             >
@@ -369,7 +370,10 @@
                   v-for="item in rigJoints"
                   :key="item.jointId"
                   class="joint"
-                  :class="{ selected: item.jointId === selectedJointId }"
+                  :class="{
+                    selected: item.jointId === selectedJointId,
+                    'handle-move': rigTool === 'move'
+                  }"
                   :cx="item.x"
                   :cy="item.y"
                   r="7"
@@ -389,7 +393,12 @@
           </p>
         </div>
         <p class="apply-hint">
-          {{ scene.canvasWidth }}×{{ scene.canvasHeight }} · {{ t('stage2d.dragHint') }}
+          {{ scene.canvasWidth }}×{{ scene.canvasHeight }} ·
+          {{
+            panel === 'rig' && rig.joints.length
+              ? t('stage2d.rigStageHint')
+              : t('stage2d.dragHint')
+          }}
         </p>
       </section>
       <section class="pane tools-pane">
@@ -431,15 +440,39 @@
               >
                 {{ t('stage2d.rigTemplate') }}
               </button>
-              <button
-                type="button"
-                class="primary"
-                :title="t('stage2d.rigFromImageTip')"
-                @click="poseDialogOpen = true"
-              >
-                {{ t('stage2d.rigFromImage') }}
-              </button>
             </div>
+            <template v-if="rig.joints.length">
+              <div class="section-label">
+                {{ t('stage2d.rigToolLabel') }}
+              </div>
+              <div class="rig-tools">
+                <button
+                  type="button"
+                  class="tab"
+                  :class="{ on: rigTool === 'move' }"
+                  :title="t('stage2d.rigToolMoveTip')"
+                  @click="rigTool = 'move'"
+                >
+                  ✥ {{ t('stage2d.rigToolMove') }}
+                </button>
+                <button
+                  type="button"
+                  class="tab"
+                  :class="{ on: rigTool === 'rotate' }"
+                  :title="t('stage2d.rigToolRotateTip')"
+                  @click="rigTool = 'rotate'"
+                >
+                  ⟲ {{ t('stage2d.rigToolRotate') }}
+                </button>
+              </div>
+              <p class="hint rig-tool-hint">
+                {{
+                  rigTool === 'move'
+                    ? t('stage2d.rigToolMoveHint')
+                    : t('stage2d.rigToolRotateHint')
+                }}
+              </p>
+            </template>
             <div class="section-label">
               {{ t('stage2d.joints') }}
             </div>
@@ -946,13 +979,6 @@
     @cancel="pickerOpen = false"
   />
 
-  <Stage2dPoseFromImageDialog
-    :open="poseDialogOpen"
-    :rig="rig"
-    @close="poseDialogOpen = false"
-    @applied="applySolvedPose"
-  />
-
   <Stage2dActionFromVideoDialog
     :open="videoActionOpen"
     :rig="rig"
@@ -996,7 +1022,6 @@ import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
 import Stage2dActionFromVideoDialog from './Stage2dActionFromVideoDialog.vue'
-import Stage2dPoseFromImageDialog from './Stage2dPoseFromImageDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 type StageLayer = Stage2dSceneState['layers'][number]
@@ -1045,8 +1070,6 @@ const thumbUrls = ref<Record<string, string>>({})
 const previewUrl = ref('')
 const error = ref('')
 const pickerOpen = ref(false)
-/** 从图片反解起始姿势的浮窗 */
-const poseDialogOpen = ref(false)
 /** 正交视口：缩放 / 平移（屏幕 px）；拖拽模式（平移视口 / 微调选中层） */
 const viewportEl = ref<HTMLElement | null>(null)
 const zoom = ref(1)
@@ -1286,14 +1309,6 @@ function useHumanoidTemplate(): void {
   render()
 }
 
-/** 应用「从图片反解」得到的平面姿势并关掉子浮窗 */
-function applySolvedPose(payload: { pose: Stage2dPose }): void {
-  stopActionPlayback()
-  pose.value = normalizeStage2dPose(rig.value, payload.pose)
-  poseDialogOpen.value = false
-  render()
-}
-
 function addJoint(): void {
   const parentId = selectedJoint.value?.id ?? null
   let index = rig.value.joints.length + 1
@@ -1415,6 +1430,13 @@ function actionTick(now: number): void {
   }
   actionClock.value = (now - actionAnchorMs) / 1000
   pose.value = sampleStage2dAction(action, actionClock.value)
+  // 播放时每帧必须立即重绘；走 scheduleRender 的 120ms 防抖会导致
+  // pose 持续更新时渲染被无限推迟，表现为骨骼 SVG 在动、皮肤画布不动。
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
+  }
+  void render()
   actionRaf = requestAnimationFrame(actionTick)
 }
 
@@ -1849,8 +1871,70 @@ function patchAttachOffset(layerId: string, key: 'offsetX' | 'offsetY', event: E
   })
 }
 
-/* 视口拖关节摆姿：以关节为圆心转（FK 驱动子链与挂件） */
-let poseDrag: { jointId: string; baseAngle: number; baseRotation: number } | null = null
+/* 视口手柄改绑定姿势（装配）：工具决定拖关节圆点的效果。
+   移动 = 平移该骨骼点（世界位移换算回父关节局部系写绑定 x/y，整条子链跟随）；
+   旋转 = 以关节为圆心转（FK 驱动子链），把生效角的增量写进绑定 rotation。 */
+const rigTool = ref<'move' | 'rotate'>('move')
+const rigOverlayVisible = computed(
+  () => (panel.value === 'rig' || panel.value === 'action') && rig.value.joints.length > 0
+)
+
+interface RigJointDrag {
+  jointId: string
+  tool: 'move' | 'rotate'
+  /** 按下时指针的舞台坐标（保持抓取点不漂移） */
+  startPointerX: number
+  startPointerY: number
+  /** 按下时该关节的世界坐标 */
+  startJointX: number
+  startJointY: number
+  /** 父关节（无父时用 rig.root）的世界坐标与旋转：世界位移 ↔ 绑定局部偏移换算基准 */
+  parentX: number
+  parentY: number
+  parentRotation: number
+  /** 旋转工具：最近一次指针绕关节中心的方位角（按步进累积，避免跨 ±180° 跳变） */
+  lastAngle: number
+  /** 旋转工具：已写出的绑定旋转（起点含按下时生效的摆姿覆盖） */
+  rotationAcc: number
+}
+
+let jointDrag: RigJointDrag | null = null
+
+function rotateXY(x: number, y: number, deg: number): { x: number; y: number } {
+  const rad = (deg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  return { x: x * cos - y * sin, y: x * sin + y * cos }
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/** 关节父级的世界坐标系（含摆姿）；无父关节时取 rig.root（rotation 固定为 0） */
+function parentFrameOf(joint: Stage2dRig['joints'][number]): {
+  x: number
+  y: number
+  rotation: number
+} {
+  if (joint.parentId) {
+    const parent = rigJoints.value.find((entry) => entry.jointId === joint.parentId)
+    if (parent) return { x: parent.x, y: parent.y, rotation: parent.rotation }
+  }
+  return { x: rig.value.root.x, y: rig.value.root.y, rotation: 0 }
+}
+
+function commitJointPatch(
+  jointId: string,
+  patch: Partial<Pick<Stage2dRig['joints'][number], 'x' | 'y' | 'rotation'>>
+): void {
+  commitRig({
+    ...rig.value,
+    joints: rig.value.joints.map((item) =>
+      item.id === jointId ? { ...item, ...patch } : item
+    )
+  })
+}
 
 function screenToScene(clientX: number, clientY: number): { x: number; y: number } {
   const el = viewportEl.value
@@ -1871,38 +1955,64 @@ function wrapDeg(deg: number): number {
 }
 
 function startJointDrag(jointId: string, event: PointerEvent): void {
+  // 绑定姿势只在「骨骼」页可编辑；动作页叠层只读预览
+  if (panel.value !== 'rig') return
   stopActionPlayback()
-  const item = rigJoints.value.find((entry) => entry.jointId === jointId)
-  if (!item) return
-  selectedJointId.value = jointId
   const joint = rig.value.joints.find((entry) => entry.id === jointId)
+  const item = rigJoints.value.find((entry) => entry.jointId === jointId)
+  if (!joint || !item) return
+  selectedJointId.value = jointId
   const point = screenToScene(event.clientX, event.clientY)
-  poseDrag = {
+  const parent = parentFrameOf(joint)
+  jointDrag = {
     jointId,
-    baseAngle: (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI,
-    baseRotation: pose.value[jointId] ?? joint?.rotation ?? 0
+    tool: rigTool.value,
+    startPointerX: point.x,
+    startPointerY: point.y,
+    startJointX: item.x,
+    startJointY: item.y,
+    parentX: parent.x,
+    parentY: parent.y,
+    parentRotation: parent.rotation,
+    lastAngle: (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI,
+    rotationAcc: pose.value[jointId] ?? joint.rotation
   }
   ;(event.currentTarget as Element).setPointerCapture?.(event.pointerId)
 }
 
 function moveJointDrag(event: PointerEvent): void {
-  const drag = poseDrag
+  const drag = jointDrag
   if (!drag) return
-  const item = rigJoints.value.find((entry) => entry.jointId === drag.jointId)
-  if (!item) return
   const point = screenToScene(event.clientX, event.clientY)
-  const angle = (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI
-  const delta = angle - drag.baseAngle
-  pose.value = {
-    ...pose.value,
-    [drag.jointId]: wrapDeg(drag.baseRotation + delta)
+  if (drag.tool === 'rotate') {
+    const item = rigJoints.value.find((entry) => entry.jointId === drag.jointId)
+    if (!item) return
+    const angle = (Math.atan2(point.y - item.y, point.x - item.x) * 180) / Math.PI
+    // 相邻指针方位的差分累计，跨 ±180° 边界时不会反向甩动
+    const step = wrapDeg(angle - drag.lastAngle)
+    drag.lastAngle = angle
+    if (!step) return
+    drag.rotationAcc = wrapDeg(drag.rotationAcc + step)
+    // 摆姿覆盖会让绑定旋转看不出变化：目标角写入绑定的同时清掉该关节覆盖（画面连续不跳）
+    commitJointPatch(drag.jointId, { rotation: drag.rotationAcc })
+    if (pose.value[drag.jointId] !== undefined) {
+      const rest = { ...pose.value }
+      delete rest[drag.jointId]
+      pose.value = rest
+    }
+    return
   }
+  // 移动：目标世界点 = 按下时关节世界点 + 指针位移，换算成父局部绑定偏移写入
+  const targetX = drag.startJointX + (point.x - drag.startPointerX)
+  const targetY = drag.startJointY + (point.y - drag.startPointerY)
+  const local = rotateXY(targetX - drag.parentX, targetY - drag.parentY, -drag.parentRotation)
+  commitJointPatch(drag.jointId, { x: round1(local.x), y: round1(local.y) })
 }
 
 function endJointDrag(event: PointerEvent): void {
-  if (!poseDrag) return
+  if (!jointDrag) return
   ;(event.currentTarget as Element).releasePointerCapture?.(event.pointerId)
-  poseDrag = null
+  jointDrag = null
 }
 
 function patchLayerFit(event: Event): void {
@@ -2395,15 +2505,20 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* 双色参考网格：白主线 + 右/下 1px 暗影，亮、暗画面上都能看清 */
   background-image:
-    linear-gradient(to right, var(--wash-16) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--wash-16) 1px, transparent 1px);
+    linear-gradient(to right, var(--on-media-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--on-media-line) 1px, transparent 1px),
+    linear-gradient(to right, transparent 1px, var(--on-media-line-shadow) 1px, transparent 2px),
+    linear-gradient(to bottom, transparent 1px, var(--on-media-line-shadow) 1px, transparent 2px);
   background-size: 64px 64px;
 }
 
 .line {
   position: absolute;
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent);
+  /* 外衬环提升与画布/图片内容的对比，参考线更醒目 */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-input) 65%, transparent);
 }
 
 .line.ground {
@@ -2431,6 +2546,20 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
+.rig-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.rig-tools .tab {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.rig-tool-hint {
+  line-height: 1.5;
+}
+
 .rig-overlay {
   position: absolute;
   inset: 0;
@@ -2455,6 +2584,16 @@ onBeforeUnmount(() => {
 
 .rig-overlay .joints circle:hover {
   fill: var(--accent);
+}
+
+.rig-overlay .joints circle.handle-move {
+  cursor: move;
+}
+
+/* 动作页只读预览：关节圆点仅示意，不拦截视口平移 */
+.rig-overlay.readonly .joints circle {
+  pointer-events: none;
+  cursor: default;
 }
 
 .rig-overlay .joints circle.selected {
@@ -2651,6 +2790,15 @@ button.primary {
 }
 
 button.primary:hover {
+  background: var(--accent-hover);
+}
+
+button.primary.on {
+  outline: 2px solid var(--on-accent);
+  outline-offset: -2px;
+}
+
+button.primary.on:hover {
   background: var(--accent-hover);
 }
 </style>

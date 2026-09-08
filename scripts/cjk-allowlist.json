@@ -145,6 +145,7 @@
    "video: '视频',",
    "voice: '声音',",
    "motion: '导演台',",
+   "motion2d: '2D 动作',",
    "model: '模型',",
    "model3d: '3D 模型',",
    "screenplay: '剧本',",
@@ -802,6 +803,18 @@
    "`${joined}\\n上述编号图仅借鉴画风（色调、媒介、笔触、光影氛围、材质质感），` +",
    "`严禁迁移其中的人脸、五官、身份特征、体态、服饰细节、道具与构图；` +",
    "`主体与构图以用户提示词及其他参考为准。`"
+  ],
+  "src/renderer/src/features/graph/model/composeStage2dAutoCut.ts": [
+   "{ id: 'head', name: '头', jointId: 'neck', pointIds: ['neck', 'head'] },",
+   "{ id: 'torso', name: '躯干', jointId: 'pelvis', pointIds: ['pelvis', 'chest', 'neck'] },",
+   "{ id: 'upperarmL', name: '上臂L', jointId: 'shoulderL', pointIds: ['shoulderL', 'elbowL'] },",
+   "{ id: 'forearmL', name: '前臂L', jointId: 'elbowL', pointIds: ['elbowL', 'wristL'] },",
+   "{ id: 'upperarmR', name: '上臂R', jointId: 'shoulderR', pointIds: ['shoulderR', 'elbowR'] },",
+   "{ id: 'forearmR', name: '前臂R', jointId: 'elbowR', pointIds: ['elbowR', 'wristR'] },",
+   "{ id: 'thighL', name: '大腿L', jointId: 'hipL', pointIds: ['hipL', 'kneeL'] },",
+   "{ id: 'shinL', name: '小腿L', jointId: 'kneeL', pointIds: ['kneeL', 'ankleL'] },",
+   "{ id: 'thighR', name: '大腿R', jointId: 'hipR', pointIds: ['hipR', 'kneeR'] },",
+   "{ id: 'shinR', name: '小腿R', jointId: 'kneeR', pointIds: ['kneeR', 'ankleR'] }"
   ]
  }
 }
