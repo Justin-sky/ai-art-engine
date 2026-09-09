@@ -732,6 +732,13 @@ async function exportParts(): Promise<void> {
       sourceHeight: doc.sourceHeight,
       parts: doc.parts
     })
+    // 让清单 fileName 与实际落盘文件一致（同名二次导出时 uniqueFileName 会追加序号）
+    for (let i = 0; i < manifest.parts.length; i += 1) {
+      const rel = saved[i]
+      if (!rel) continue
+      const fileName = rel.slice(rel.lastIndexOf('/') + 1)
+      if (fileName) manifest.parts[i]!.fileName = fileName
+    }
     await window.studio.writeProjectFile({
       relativePath: `${outDir}/ui-kit.json`,
       content: JSON.stringify(manifest, null, 2)
