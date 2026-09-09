@@ -44,6 +44,7 @@
     <ComposerDialog />
     <FrameSheetPreviewDialog />
     <Motion2dActionPreviewDialog />
+    <UiKitExtractDialog />
   </div>
 </template>
 
@@ -65,6 +66,7 @@ import CutoutDialog from './components/CutoutDialog.vue'
 import ComposerDialog from './components/ComposerDialog.vue'
 import FrameSheetPreviewDialog from './components/FrameSheetPreviewDialog.vue'
 import Motion2dActionPreviewDialog from './components/Motion2dActionPreviewDialog.vue'
+import UiKitExtractDialog from './components/UiKitExtractDialog.vue'
 import ProjectOpenMenu from './components/ProjectOpenMenu.vue'
 import { useEditorKernel } from './editor/kernel'
 import { executeEditorCommand } from './editor/extensions'

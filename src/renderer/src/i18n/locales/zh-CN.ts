@@ -1,5 +1,57 @@
 /** 中文界面文案 */
 export default {
+  uiKitExtract: {
+    title: '提取 UI 部件（九宫格）',
+    action: '提取 UI 部件',
+    actionHint: '框选整屏 UI 里的可复用控件，标注 9-slice 切边 / 安全边距，导出透明 PNG + ui-kit 清单进资产库',
+    partsTitle: '部件（{n}）',
+    toolBox: '框选新部件',
+    toolSelect: '选中',
+    stageTitle: '整屏图',
+    stageHint: '选「框选新部件」后，在图上按住拖拽即可画出一个控件范围',
+    loading: '图片加载中…',
+    loadFail: '源图加载失败，无法提取部件',
+    emptyParts: '还没有部件：在源图上按住拖拽框选一个控件即可',
+    partParams: '标注参数',
+    noSelection: '先框选一个部件，再在右侧标注类型 / 切边 / 安全边距',
+    export: '导出到资产库',
+    exporting: '导出中…',
+    needParts: '还没有部件，先在图上框选一个控件',
+    saved: '已导出 {count} 个部件到 {dir}（透明 PNG + ui-kit.json 清单），素材库已刷新',
+    saveFail: '导出失败：{message}',
+    delete: '删除此部件',
+    fields: {
+      kind: '类型',
+      name: '文件名主干',
+      rect: '裁剪框（源图像素）',
+      border: '9-slice 切边（px）',
+      safe: '安全边距（px）',
+      borderHint: '四边原样保留、不随拉伸变形，仅中央区域铺满',
+      safeHint: '引擎叠本地化文字时建议的内容留白',
+      x: 'X',
+      y: 'Y',
+      width: '宽',
+      height: '高',
+      left: '左',
+      top: '上',
+      right: '右',
+      bottom: '下'
+    },
+    kind: {
+      panel: '面板底',
+      button: '按钮',
+      input: '输入框',
+      tab: '页签',
+      popup: '弹窗'
+    },
+    preview: {
+      label: '九宫格拉伸预览',
+      factor: '拉伸倍率',
+      wide: '横向拉伸（宽 ×{n}）',
+      tall: '纵向拉伸（高 ×{n}）',
+      crop: '部件原图'
+    }
+  },
   stage2dVideo: {
     actionCustom: '自定义动作',
     actionFromVideo: '从视频生成动作',

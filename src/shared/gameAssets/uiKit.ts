@@ -128,7 +128,7 @@ function normalizeInset(value: unknown): UiKitInset {
 }
 
 /** 把切边 / 安全边距夹取到部件矩形内：左右合计不越界、上下合计不越界 */
-function clampInsetToSize(inset: UiKitInset, width: number, height: number): UiKitInset {
+export function clampInsetToSize(inset: UiKitInset, width: number, height: number): UiKitInset {
   const w = Math.max(1, width)
   const h = Math.max(1, height)
   const maxSide = (side: number, limit: number): number => Math.min(limit, Math.max(0, side))

@@ -1,5 +1,60 @@
 /** English UI messages */
 export default {
+  uiKitExtract: {
+    title: 'Extract UI Parts (9-slice)',
+    action: 'Extract UI Parts',
+    actionHint:
+      'Box-select reusable widgets in the full-screen UI, mark 9-slice borders / safe insets, and export transparent PNGs + a ui-kit manifest into the asset library',
+    partsTitle: 'Parts ({n})',
+    toolBox: 'Box New Part',
+    toolSelect: 'Select',
+    stageTitle: 'Source Screen',
+    stageHint: 'Pick "Box New Part", then press and drag on the image to outline a widget',
+    loading: 'Loading image…',
+    loadFail: 'Failed to load the source image',
+    emptyParts: 'No parts yet: press and drag on the source image to box-select one',
+    partParams: 'Part Annotation',
+    noSelection:
+      'Box-select a widget first, then set its kind / 9-slice borders / safe insets on the right',
+    export: 'Export to Asset Library',
+    exporting: 'Exporting…',
+    needParts: 'No parts yet — box-select a widget on the image first',
+    saved:
+      'Exported {count} parts to {dir} (transparent PNGs + ui-kit.json manifest); asset library refreshed',
+    saveFail: 'Export failed: {message}',
+    delete: 'Delete Part',
+    fields: {
+      kind: 'Kind',
+      name: 'File name stem',
+      rect: 'Crop box (source px)',
+      border: '9-slice borders (px)',
+      safe: 'Safe insets (px)',
+      borderHint: 'Four edges keep their size; only the center stretches',
+      safeHint: 'Recommended padding for the engine to overlay localized text',
+      x: 'X',
+      y: 'Y',
+      width: 'W',
+      height: 'H',
+      left: 'Left',
+      top: 'Top',
+      right: 'Right',
+      bottom: 'Bottom'
+    },
+    kind: {
+      panel: 'Panel',
+      button: 'Button',
+      input: 'Input',
+      tab: 'Tab',
+      popup: 'Popup'
+    },
+    preview: {
+      label: '9-slice Stretch Preview',
+      factor: 'Stretch factor',
+      wide: 'Horizontal (width ×{n})',
+      tall: 'Vertical (height ×{n})',
+      crop: 'Part source'
+    }
+  },
   stage2dVideo: {
     actionCustom: 'Custom action',
     actionFromVideo: 'Generate action from video',

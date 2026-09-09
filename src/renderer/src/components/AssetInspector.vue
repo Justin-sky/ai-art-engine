@@ -14,9 +14,9 @@
         class="icon"
         :title="typeLabel"
       ><WorkspaceItemIcon
-          :icon="typeIcon"
-          :size="20"
-        /></span>
+        :icon="typeIcon"
+        :size="20"
+      /></span>
     </div>
 
     <label>
@@ -123,6 +123,26 @@
       </button>
       <p class="hint">
         {{ t('asset.inspector.compose.hint') }}
+      </p>
+    </section>
+
+    <section
+      v-if="cutoutSourcePath"
+      class="cutout-section"
+    >
+      <div class="section-label">
+        {{ t('uiKitExtract.title') }}
+      </div>
+      <button
+        type="button"
+        class="cutout-btn"
+        :disabled="!cutoutUrl"
+        @click="openUiKitExtract"
+      >
+        {{ t('uiKitExtract.action') }}
+      </button>
+      <p class="hint">
+        {{ t('uiKitExtract.actionHint') }}
       </p>
     </section>
 
@@ -531,6 +551,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useEditorKernel } from '../editor/kernel'
 import { resolveAssetFileUrl } from '../features/media/assetUrlCache'
 import { openCutoutDialog } from '../features/yolo/cutoutDialog'
+import { openUiKitExtractDialog } from '../features/uiKit/uiKitExtractDialog'
 import { openComposerDialog } from '../features/composition/compositionDialog'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
@@ -936,6 +957,17 @@ function openCutout(): void {
   const a = asset.value
   if (!a || !cutoutUrl.value) return
   openCutoutDialog({
+    url: cutoutUrl.value,
+    name: a.name,
+    relativePath: cutoutSourcePath.value,
+    assetId: a.id
+  })
+}
+
+function openUiKitExtract(): void {
+  const a = asset.value
+  if (!a || !cutoutUrl.value) return
+  openUiKitExtractDialog({
     url: cutoutUrl.value,
     name: a.name,
     relativePath: cutoutSourcePath.value,
