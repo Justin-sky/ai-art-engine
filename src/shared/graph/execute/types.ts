@@ -464,6 +464,23 @@ export interface NodeExecuteContext {
     /** 色度键：把接近纯黑/纯白的像素转透明（2D 特效黑底/白底 → 透明 PNG） */
     chromaKey?: { color: 'black' | 'white'; threshold?: number; feather?: number }
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
+  /**
+   * 图标包：整版图标表按名单逐格裁切 → 采样色键控透明 → 统一画布中心对齐，
+   * 返回按名单命名的一组透明 PNG（本地像素合成，不调用模型）。
+   */
+  composeImageIconPackSheet?: (input: {
+    sourceDataUrl: string
+    state: import('../iconPack').IconPackState
+    /** 名单顺序即整版表逐行格位顺序（每行一枚） */
+    names: string[]
+    signal?: AbortSignal | null
+  }) => Promise<{
+    items: Array<{ cellKey: string; name: string; dataUrl: string; width: number; height: number }>
+    /** 统一画布边长（方形） */
+    canvasSize: number
+    /** 实际键控背景色（keyColor='none' 时为 null） */
+    background: { r: number; g: number; b: number } | null
+  }>
   /** 图层分离：按 z_index 与 bounding box 把底图+透明层合成一张 PNG。 */
   composeImageLayerStack?: (input: {
     state: import('../imageLayerSplit').ImageLayerSplitState
@@ -656,6 +673,7 @@ export interface GraphRunOptions {
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
   composeStage2dCanvas?: NodeExecuteContext['composeStage2dCanvas']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
+  composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']

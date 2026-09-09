@@ -226,7 +226,7 @@
         </div>
 
         <img
-          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isLayerSplitEditorNode(node) || isCutoutNode(node) || isComposeNode(node) || isFramePullNode(node) || isComicPageNode(node)) && selectImagePreview"
+          v-else-if="(isFrameAnimGenNode || isSelectImageNode(node) || isMultiAngleEditorNode(node) || isLightingEditorNode(node) || isPortraitTextureEditorNode(node) || isEmotionEditorNode(node) || isUpscaleEditorNode(node) || isExpandEditorNode(node) || isRedrawEditorNode(node) || isEraseEditorNode(node) || isMatteEditorNode(node) || isCropEditorNode(node) || isGridSplitEditorNode(node) || isIconPackEditorNode(node) || isLayerSplitEditorNode(node) || isCutoutNode(node) || isComposeNode(node) || isFramePullNode(node) || isComicPageNode(node)) && selectImagePreview"
           :src="selectImagePreview"
           alt=""
           loading="lazy"
@@ -612,6 +612,7 @@ import {
   isMatteEditorNode,
   isCropEditorNode,
   isGridSplitEditorNode,
+  isIconPackEditorNode,
   isLayerSplitEditorNode,
   isCutoutNode,
   isComposeNode,
@@ -1339,6 +1340,7 @@ watch(
         isMatteEditorNode(props.node) ||
         isCropEditorNode(props.node) ||
         isGridSplitEditorNode(props.node) ||
+        isIconPackEditorNode(props.node) ||
         isLayerSplitEditorNode(props.node) ||
         isCutoutNode(props.node) ||
         isComposeNode(props.node) ||
@@ -1581,6 +1583,7 @@ const previewHint = computed(() => {
   if (isMatteEditorNode(props.node)) return t('graph.matte.hint')
   if (isCropEditorNode(props.node)) return t('graph.crop.hint')
   if (isGridSplitEditorNode(props.node)) return t('graph.gridSplit.hint')
+  if (isIconPackEditorNode(props.node)) return t('graph.iconPack.hint')
   if (isLayerSplitEditorNode(props.node)) return t('graph.layerSplit.hint')
   if (isCutoutNode(props.node)) return t('graph.cutout.hint')
   if (isComposeNode(props.node)) return t('graph.compose.hint')
@@ -2242,6 +2245,10 @@ function onPreviewDblClick(): void {
     }
     if (isGridSplitEditorNode(props.node)) {
       await diveNodeTool('node.gridSplit', title)
+      return
+    }
+    if (isIconPackEditorNode(props.node)) {
+      await diveNodeTool('node.iconPack', title)
       return
     }
     if (isLayerSplitEditorNode(props.node)) {

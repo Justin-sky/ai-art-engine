@@ -431,6 +431,7 @@ async function executeOneNode(
     composeImageComposeCanvas: options.composeImageComposeCanvas,
     composeStage2dCanvas: options.composeStage2dCanvas,
     composeImageGridCell: options.composeImageGridCell,
+    composeImageIconPackSheet: options.composeImageIconPackSheet,
     composeImageLayerStack: options.composeImageLayerStack,
     composeComicPageImage: options.composeComicPageImage,
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,

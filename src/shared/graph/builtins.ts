@@ -65,6 +65,7 @@ import {
   executeComposeNode,
   executeStage2dNode,
   executeGridSplitNode,
+  executeIconPackNode,
   executeLayerSplitNode,
   executeMediaReviewNode,
   executeMediaReworkNode,
@@ -90,6 +91,7 @@ import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
 import { ANIM2D_INNER_GRAPH_VERSION, DEFAULT_ANIM2D_STATE } from './anim2d'
+import { DEFAULT_ICON_PACK } from './iconPack'
 import { createDefaultStage2dScene } from './stage2d'
 import { WORLD_GEN_IMAGE_OUT_PORTS } from './worldElementParse'
 import {
@@ -1603,6 +1605,37 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeGridSplitNode
+  },
+  {
+    typeId: 'image.iconPack',
+    category: 'note',
+    label: 'Icon pack',
+    icon: '◳',
+    defaultTitle: 'Icon pack',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Names'
+      },
+      ...galleryOutPorts(GraphPortType.image)
+    ],
+    defaultParams: () => ({
+      iconPack: { ...DEFAULT_ICON_PACK }
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.iconPack',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeIconPackNode
   },
   {
     typeId: 'image.layerSplit',

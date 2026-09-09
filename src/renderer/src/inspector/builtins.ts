@@ -20,6 +20,7 @@ import ComposeProcessInspector from '../components/ComposeProcessInspector.vue'
 import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import EpisodeSelectInspector from '../components/EpisodeSelectInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
+import IconPackInspector from '../components/IconPackInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import MediaReviewInspector from '../components/MediaReviewInspector.vue'
@@ -317,6 +318,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.gridSplit',
     component: GridSplitInspector,
     nodeTypeId: 'image.gridSplit'
+  },
+  {
+    id: 'studio.graph.iconPack',
+    component: IconPackInspector,
+    nodeTypeId: 'image.iconPack'
   },
   {
     id: 'studio.graph.layerSplit',

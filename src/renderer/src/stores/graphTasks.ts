@@ -60,6 +60,7 @@ import { composeImageAlignCanvas } from '../features/graph/model/composeImageAli
 import { composeImageComposeCanvas } from '../features/graph/model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
@@ -1368,6 +1369,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageComposeCanvas,
         composeStage2dCanvas,
         composeImageGridCell,
+        composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
         normalizeImageAspectRatio,

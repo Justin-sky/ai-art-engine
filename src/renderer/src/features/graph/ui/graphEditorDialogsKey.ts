@@ -8,6 +8,7 @@ import type {
   ImageExpandState,
   ImageEraseState,
   ImageGridSplitState,
+  IconPackState,
   ImageCutoutState,
   ImageLayerSplitState,
   ImageLayerSplitNestedRequest,
@@ -151,6 +152,12 @@ export type GraphEditorDialogsApi = {
     sourceUrl: string
     sourceLoading: boolean
   }
+  iconPack: {
+    open: boolean
+    setup: IconPackState | null
+    sourceUrl: string
+    sourceLoading: boolean
+  }
   cutout: {
     open: boolean
     setup: ImageCutoutState | null
@@ -238,6 +245,11 @@ export type GraphEditorDialogsApi = {
   saveGridSplit: (payload: unknown) => void
   /** dive 面包屑回退前提交网格拆分的实时预览编辑，补记撤销命令 */
   flushGridSplit: () => void
+  closeIconPack: () => void
+  previewIconPack: (payload: unknown) => void
+  saveIconPack: (payload: unknown) => void
+  /** dive 面包屑回退前提交图标包参数编辑，补记撤销命令 */
+  flushIconPack: () => void
   closeCutout: () => void
   saveCutout: (payload: { imageCutout: ImageCutoutState; dataUrl?: string }) => void | Promise<void>
   /** dive 面包屑回退前结束抠图编辑，补记撤销命令 */

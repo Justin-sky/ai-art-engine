@@ -9,6 +9,8 @@
  */
 export * from './spriteGeometry'
 export * from './spriteManifest'
+export * from './iconPackKeying'
+export * from './iconPackManifest'
 export * from './stage2dScene'
 export * from './stage2dRig'
 export * from './stage2dPoseSolve'

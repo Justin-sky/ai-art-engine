@@ -44,6 +44,7 @@ import { composeImageAlignCanvas } from '../model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../model/composeStage2dCanvas'
 import { composeImageGridCell } from '../model/composeImageGridCell'
+import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
@@ -788,6 +789,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageComposeCanvas,
         composeStage2dCanvas,
         composeImageGridCell,
+        composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,
         normalizeImageAspectRatio,

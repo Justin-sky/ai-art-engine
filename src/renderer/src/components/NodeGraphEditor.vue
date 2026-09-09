@@ -922,6 +922,7 @@ import {
   type ImageCutoutState,
   type ImageAlignState,
   type ImageGridSplitState,
+  type IconPackState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
   type Stage2dPose,
@@ -942,6 +943,7 @@ import {
   readImageCropFromNode,
   readImageCutoutFromNode,
   readImageGridSplitFromNode,
+  readIconPackFromNode,
   readImageLayerSplitFromNode,
   nestLayerSplitResult,
   mapDecompositionToLayers,
@@ -3437,6 +3439,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'image.matte',
       'image.crop',
       'image.gridSplit',
+      'image.iconPack',
       'image.layerSplit',
       'image.cutout',
       'image.compose'
@@ -7786,6 +7789,79 @@ function flushGridSplit(): void {
   recordGraphChange('gridSplit', before)
 }
 
+const iconPack = reactive({
+  open: false,
+  nodeId: '' as string,
+  setup: null as IconPackState | null,
+  historyBefore: null as GraphDocument | null,
+  sourceUrl: '',
+  sourceLoading: false
+})
+
+async function onIconPackOpen(nodeId: string): Promise<void> {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  iconPack.nodeId = nodeId
+  iconPack.setup = readIconPackFromNode(node.params)
+  iconPack.sourceUrl = ''
+  iconPack.sourceLoading = true
+  iconPack.historyBefore = buildGraphJson()
+  iconPack.open = true
+  await fillEditorSourceUrl(
+    nodeId,
+    (url) => {
+      iconPack.sourceUrl = url
+      iconPack.sourceLoading = false
+    },
+    () => iconPack.open && iconPack.nodeId === nodeId,
+    { preferUpstream: true }
+  )
+  if (iconPack.open && iconPack.nodeId === nodeId) iconPack.sourceLoading = false
+}
+
+function closeIconPack(): void {
+  iconPack.open = false
+  iconPack.nodeId = ''
+  iconPack.setup = null
+  iconPack.historyBefore = null
+  iconPack.sourceUrl = ''
+  iconPack.sourceLoading = false
+}
+
+function previewIconPack(payload: { iconPack: IconPackState }): void {
+  const node = graph.nodes.find((n) => n.id === iconPack.nodeId)
+  if (!node) return
+  node.params = { ...node.params, ...payload }
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+}
+
+function saveIconPack(payload: { iconPack: IconPackState }): void {
+  const nodeId = iconPack.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  // 图标包参数走实时预览：before 必须取开窗快照，否则预览已改写参数、before≈after 会被判等跳过
+  const before = iconPack.historyBefore ?? buildGraphJson()
+  node.params = {
+    ...node.params,
+    ...payload
+  }
+  iconPack.setup = payload.iconPack
+  scheduleSave()
+  graphEditorHosts.bumpRevision()
+  recordGraphChange('iconPack', before)
+  closeIconPack()
+}
+
+/** dive 面包屑回退前提交图标包参数编辑，补记撤销命令。详见 flushLayerSplit。 */
+function flushIconPack(): void {
+  if (!iconPack.open) return
+  const before = iconPack.historyBefore
+  if (!before) return
+  iconPack.historyBefore = null
+  recordGraphChange('iconPack', before)
+}
+
 const layerSplit = reactive({
   open: false,
   nodeId: '' as string,
@@ -8163,6 +8239,7 @@ const graphDialogsApi = {
   matte,
   crop,
   gridSplit,
+  iconPack,
   layerSplit,
   cutout,
   compose,
@@ -8215,6 +8292,10 @@ const graphDialogsApi = {
   previewGridSplit,
   saveGridSplit,
   flushGridSplit,
+  closeIconPack,
+  previewIconPack,
+  saveIconPack,
+  flushIconPack,
   closeLayerSplit,
   previewLayerSplit,
   saveLayerSplit,
@@ -8574,6 +8655,7 @@ function registerNodeToolHost(): void {
       'node.matte': (nodeId) => onMatteOpen(nodeId),
       'node.crop': (nodeId) => onCropOpen(nodeId),
       'node.gridSplit': (nodeId) => onGridSplitOpen(nodeId),
+      'node.iconPack': (nodeId) => onIconPackOpen(nodeId),
       'node.layerSplit': (nodeId) => onLayerSplitOpen(nodeId),
       'node.cutout': (nodeId) => onCutoutOpen(nodeId),
       'node.compose': (nodeId) => onComposeOpen(nodeId),

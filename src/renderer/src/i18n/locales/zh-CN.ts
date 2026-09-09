@@ -197,9 +197,9 @@ export default {
       },
       gameIcons: {
         title: '游戏图标包',
-        desc: '图标清单 → 3×3 整版表 ×3 → 宫格切分',
+        desc: '名单 ×3 → 3×3 整版表 ×3 → 切格 / 透明打包',
         prompt:
-          '创建一个游戏图标批量工作流：文本节点放画风主题与三类图标名单（技能 / 道具 / 状态，每类最多 9 枚，顺序即切格顺序）；三个图片节点分别按名单绘制 3×3 均匀九宫格的技能 / 道具 / 状态图标整版表（方形卡片，统一线宽 / 圆角 / 最小可读规范，不画文字）；每个整版节点接一个宫格切分节点，按同样行列把整版表切成 9 枚独立方形图标，顺序自左向右逐行与名单一致。'
+          '创建一个游戏图标批量工作流：一个文本节点放画风主题，另三个文本节点分别放技能 / 道具 / 状态三类图标名单（每类最多 9 枚，每行一枚，名单顺序即整版表逐行格位）；三个整版图片节点按画风主题与各自名单绘制 3×3 均匀九宫格整版表（方形卡片，统一线宽 / 圆角 / 最小可读规范，不画文字，名单不足 9 枚时其余格为纯色空白底）；每版接一个宫格切分节点用于格位目检；每版再接一个 image.iconPack 图标打包节点（整版图 + 该类名单文本）：逐格裁切 → 对纯色底采样色键控透明 → 修剪并对齐到统一方形画布（锚点居中）→ 按名单命名导出 PNG，并输出 engine 可读的图标包清单。'
       },
       ecomAdDeep: {
         title: '电商带货',
@@ -3051,6 +3051,38 @@ export default {
         p25: '25宫格 (5×5)'
       }
     },
+    iconPack: {
+      appMark: '图标包',
+      hint: '双击调整打包参数（网格 / 键控 / 画布）；运行节点按名单逐格切分、键控透明并按名单落盘 PNG',
+      editorHint: '参数会实时写回节点；保存后运行节点即按名单打包。键控优先 auto（名单未满时从空白格采样底色），也可指定黑 / 白底，均保留边缘羽化。',
+      noSource: '请先连接上游整版图标表图片',
+      gridSection: '整版网格',
+      rows: '行',
+      cols: '列',
+      cellsHint: '{n} 格 · 名单第 1 枚位于格位 1-1',
+      keyingSection: '透明键控',
+      keyColor: '键控底色',
+      keyColorMode: {
+        auto: '自动采样',
+        black: '黑色',
+        white: '白色',
+        none: '不抠底'
+      },
+      distance: '键控容差',
+      feather: '边缘羽化',
+      edgeInset: '向内收缩',
+      edgeInsetAuto: '自动',
+      canvasSection: '输出画布',
+      canvas: '画布边长',
+      canvasAuto: '按主体自动',
+      gridLabel: '网格',
+      keyColorLabel: '键控底色',
+      keyingRangeLabel: '容差 · 羽化',
+      edgeLabel: '向内收缩',
+      canvasLabel: '画布边长',
+      outputDirLabel: '输出目录',
+      manifestLabel: '最近清单'
+    },
     layerSplit: {
       appMark: '图层分离',
       hint: '运行节点调用 Seedream 5.0 Pro 拆层；双击进入画布调整层级与位置',
@@ -3405,6 +3437,7 @@ export default {
         matte: '抠图',
         crop: '裁剪',
         gridSplit: '宫格切分',
+        iconPack: '图标包',
         layerSplit: '图层分离',
         cutout: '本地抠图',
         align: '精灵对齐',
@@ -3694,6 +3727,9 @@ export default {
       },
       gridSplit: {
         hint: '双击选择宫格大小与单元格；运行节点直接切分原图，不调用大模型'
+      },
+      iconPack: {
+        hint: '双击调整键控与画布参数；运行节点按名单逐格键控透明并命名落盘 PNG'
       },
       layerSplit: {
         hint: '运行节点用 Seedream 5.0 Pro 拆层。双击进入画布：拖动移动、角点缩放、列表调整叠放顺序。选中一层可继续拆分，结果收进分组。提示词或分辨率变化后会重新拆层。'

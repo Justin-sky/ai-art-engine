@@ -214,6 +214,17 @@
       @save="api.saveGridSplit as never"
     />
 
+    <IconPackEditorDialog
+      v-else-if="viewId === 'node.iconPack' && api.iconPack.open"
+      :open="true"
+      :setup="api.iconPack.setup"
+      :source-url="api.iconPack.sourceUrl"
+      :source-loading="api.iconPack.sourceLoading"
+      @close="onClose(api.closeIconPack)"
+      @update="api.previewIconPack as never"
+      @save="api.saveIconPack as never"
+    />
+
     <CutoutNodeToolDialog
       v-else-if="viewId === 'node.cutout' && api.cutout.open"
       :open="true"
@@ -315,6 +326,7 @@ import ExpandEditorDialog from '../ExpandEditorDialog.vue'
 import RedrawEditorDialog from '../RedrawEditorDialog.vue'
 import CropEditorDialog from '../CropEditorDialog.vue'
 import GridSplitEditorDialog from '../GridSplitEditorDialog.vue'
+import IconPackEditorDialog from '../IconPackEditorDialog.vue'
 import LayerSplitEditorDialog from '../LayerSplitEditorDialog.vue'
 import CutoutNodeToolDialog from '../CutoutNodeToolDialog.vue'
 import ComposeNodeToolDialog from '../ComposeNodeToolDialog.vue'
@@ -385,6 +397,8 @@ const toolOpen = computed(() => {
       return current.crop.open
     case 'node.gridSplit':
       return current.gridSplit.open
+    case 'node.iconPack':
+      return current.iconPack.open
     case 'node.layerSplit':
       return current.layerSplit.open
     case 'node.cutout':
@@ -417,6 +431,9 @@ useEditorDiveFrameFlush(
         break
       case 'node.gridSplit':
         current.flushGridSplit()
+        break
+      case 'node.iconPack':
+        current.flushIconPack()
         break
       case 'node.cutout':
         current.flushCutout()
@@ -532,6 +549,9 @@ function closeCurrent(): void {
       break
     case 'node.gridSplit':
       current.closeGridSplit()
+      break
+    case 'node.iconPack':
+      current.closeIconPack()
       break
     case 'node.layerSplit':
       current.closeLayerSplit()

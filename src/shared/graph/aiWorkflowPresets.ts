@@ -554,12 +554,21 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     title: '游戏图标包',
     nodes: [
       {
-        key: 'script',
+        key: 'scriptTheme',
         typeId: 'play.script',
-        title: '图标清单与风格',
+        title: '画风主题',
         params: {
           text:
-            '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。\n技能图标：火焰斩、冰霜护盾、雷击、冲刺、治疗术、狂暴、破甲、圣光祝福\n道具图标：体力药水、金币袋、钥匙、魔法卷轴、地图、护身符\n状态图标：中毒、灼烧、冰冻、护盾、眩晕、虚弱、流血\n说明：每类名单不超过 9 枚，整版表按名单顺序排 3×3 均匀网格，自左向右、逐行排列。'
+            '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。'
+        }
+      },
+      {
+        key: 'skillNames',
+        typeId: 'play.script',
+        title: '技能图标名单',
+        params: {
+          text:
+            '火焰斩\n冰霜护盾\n雷击\n冲刺\n治疗术\n狂暴\n破甲\n圣光祝福'
         }
       },
       {
@@ -568,7 +577,7 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         title: '技能图标·整版',
         params: {
           generateInstruction:
-            '按「图标清单与风格」中“技能图标”名单，绘制一张 3 行 × 3 列均匀九宫格的技能图标整版表：每格一枚独立技能图标（如火焰斩、治疗术等），格子自左向右、逐行对应名单顺序。' +
+            '按名单顺序，绘制一张 3 行 × 3 列均匀九宫格的技能图标整版表（战斗招式风格）：每格一枚独立技能图标，格子自左向右、逐行对应名单顺序。' +
             ICON_SHEET_SPEC_TAIL,
           generateAspectRatio: '1:1'
         }
@@ -586,12 +595,37 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         }
       },
       {
+        key: 'skillPack',
+        typeId: 'image.iconPack',
+        title: '技能图标·打包',
+        params: {
+          iconPack: {
+            rows: 3,
+            cols: 3,
+            edgeInset: 'auto',
+            keyColor: 'auto',
+            distance: 40,
+            feather: 34,
+            canvasSize: 0
+          },
+          mediaOutputDir: 'Assets/IconPacks/skill'
+        }
+      },
+      {
+        key: 'itemNames',
+        typeId: 'play.script',
+        title: '道具图标名单',
+        params: {
+          text: '体力药水\n金币袋\n钥匙\n魔法卷轴\n地图\n护身符'
+        }
+      },
+      {
         key: 'itemSheet',
         typeId: 'asset.image',
         title: '道具图标·整版',
         params: {
           generateInstruction:
-            '按「图标清单与风格」中“道具图标”名单，绘制一张 3 行 × 3 列均匀九宫格的道具图标整版表：每格一枚独立道具图标（如体力药水、金币袋等），格子自左向右、逐行对应名单顺序。' +
+            '按名单顺序，绘制一张 3 行 × 3 列均匀九宫格的道具图标整版表（物品物件风格）：每格一枚独立道具图标，格子自左向右、逐行对应名单顺序。' +
             ICON_SHEET_SPEC_TAIL,
           generateAspectRatio: '1:1'
         }
@@ -609,12 +643,37 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         }
       },
       {
+        key: 'itemPack',
+        typeId: 'image.iconPack',
+        title: '道具图标·打包',
+        params: {
+          iconPack: {
+            rows: 3,
+            cols: 3,
+            edgeInset: 'auto',
+            keyColor: 'auto',
+            distance: 40,
+            feather: 34,
+            canvasSize: 0
+          },
+          mediaOutputDir: 'Assets/IconPacks/item'
+        }
+      },
+      {
+        key: 'statusNames',
+        typeId: 'play.script',
+        title: '状态图标名单',
+        params: {
+          text: '中毒\n灼烧\n冰冻\n护盾\n眩晕\n虚弱\n流血'
+        }
+      },
+      {
         key: 'statusSheet',
         typeId: 'asset.image',
         title: '状态图标·整版',
         params: {
           generateInstruction:
-            '按「图标清单与风格」中“状态图标”名单，绘制一张 3 行 × 3 列均匀九宫格的状态图标整版表：每格一枚独立状态图标（如中毒、灼烧等），格子自左向右、逐行对应名单顺序。' +
+            '按名单顺序，绘制一张 3 行 × 3 列均匀九宫格的状态图标整版表（状态徽记风格）：每格一枚独立状态图标，格子自左向右、逐行对应名单顺序。' +
             ICON_SHEET_SPEC_TAIL,
           generateAspectRatio: '1:1'
         }
@@ -632,22 +691,48 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
         }
       },
       {
+        key: 'statusPack',
+        typeId: 'image.iconPack',
+        title: '状态图标·打包',
+        params: {
+          iconPack: {
+            rows: 3,
+            cols: 3,
+            edgeInset: 'auto',
+            keyColor: 'auto',
+            distance: 40,
+            feather: 34,
+            canvasSize: 0
+          },
+          mediaOutputDir: 'Assets/IconPacks/status'
+        }
+      },
+      {
         key: 'note',
         typeId: 'note.text',
         title: '使用说明',
         params: {
           text:
-            '使用流程：1) 在「图标清单与风格」填画风主题与三类图标名单（每类 ≤9 枚，名单顺序即切格顺序）；2) 为工程选择「UI / 图标」风格参考图，保证技能 / 道具 / 状态三版同一画风；3) 运行三个「·整版」节点生成 3×3 图标整版表（方形卡片）；4) 运行对应「·切格」节点，得到每枚独立方形图标，顺序自左向右逐行与名单一致（如 1-1 = 名单第 1 枚）。单枚不满意时改写对应整版格位内容后重跑该版。图标透明底与统一锚点 / 尺寸对齐留待「精灵对齐 / 资产出口」环节细化。'
+            '使用流程：1) 在「画风主题」填主题句；在「技能/道具/状态图标名单」各填一枚一行的名单（每类 ≤9 枚，名单顺序即整版表逐行格位，如 1-1 = 第 1 枚；改名单后对应「·整版」需重跑）；2) 为工程选择「UI / 图标」风格参考图，保证三类同一画风；3) 运行各「·整版」节点生成 3×3 方形卡片整版表；4) 运行各「·打包」节点：从整版逐格裁切 → 采样纯色底键控透明 → 修剪并统一画布中心对齐 → 按名单命名 PNG 落盘 Assets/IconPacks/…，并同目录写 icons.txt 清单（含 cellKey↔名单映射、文件名、锚点）；5) 「·切格」节点仅用于单枚检查/精修（逐枚 dive 后续再做）。打包前建议先跑一次「·切格」目检格位；若名单占满 9 枚无空白格，键控自动退回版面外框采样。'
         }
       }
     ],
     edges: [
-      { from: 'script', to: 'skillSheet' },
+      { from: 'scriptTheme', to: 'skillSheet' },
+      { from: 'skillNames', to: 'skillSheet' },
       { from: 'skillSheet', to: 'skillSplit' },
-      { from: 'script', to: 'itemSheet' },
+      { from: 'skillNames', to: 'skillPack' },
+      { from: 'skillSheet', to: 'skillPack' },
+      { from: 'scriptTheme', to: 'itemSheet' },
+      { from: 'itemNames', to: 'itemSheet' },
       { from: 'itemSheet', to: 'itemSplit' },
-      { from: 'script', to: 'statusSheet' },
-      { from: 'statusSheet', to: 'statusSplit' }
+      { from: 'itemNames', to: 'itemPack' },
+      { from: 'itemSheet', to: 'itemPack' },
+      { from: 'scriptTheme', to: 'statusSheet' },
+      { from: 'statusNames', to: 'statusSheet' },
+      { from: 'statusSheet', to: 'statusSplit' },
+      { from: 'statusNames', to: 'statusPack' },
+      { from: 'statusSheet', to: 'statusPack' }
     ]
   },
   ecomAdDeep: {

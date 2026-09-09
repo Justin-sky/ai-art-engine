@@ -201,9 +201,9 @@ export default {
       },
       gameIcons: {
         title: 'Game icon pack',
-        desc: 'Name lists → 3×3 icon sheets ×3 → grid split',
+        desc: 'Name lists ×3 → 3×3 icon sheets ×3 → split / transparent pack',
         prompt:
-          'Create a batch game-icon workflow: a text node holds the art-style theme plus three ordered name lists (skill / item / status, at most 9 each; list order is the split order); three image nodes each draw a 3×3 uniform icon sheet for one list (square cards, consistent stroke width / corner radius / minimum-readable spec, no text); each sheet feeds a grid-split node that cuts the sheet into 9 separate square icons in the same left-to-right, top-to-bottom order as the list.'
+          'Create a batch game-icon workflow: one text node holds the art-style theme; three more text nodes each hold one ordered name list (skill / item / status, at most 9 each, one name per line; list order is the left-to-right, top-to-bottom cell order of the sheet). Three sheet image nodes each draw a 3×3 uniform icon sheet from the theme plus its own list (square cards, consistent stroke width / corner radius / minimum-readable spec, no text; any cell beyond the list must stay a solid blank color). Each sheet feeds a grid-split node for visual cell checking, and each sheet also feeds an image.iconPack node (sheet image + that class name list) that crops per cell, chroma-keys the solid background to transparent via sampled color, trims and centers every icon on a shared square canvas (centered anchor), and exports PNGs named after the list plus an engine-readable icon-pack manifest.'
       },
       ecomAdDeep: {
         title: 'E-commerce ads',
@@ -3084,6 +3084,38 @@ export default {
         p25: '25-grid (5×5)'
       }
     },
+    iconPack: {
+      appMark: 'Icon pack',
+      hint: 'Double-click to tweak packing options (grid / keying / canvas); run the node to cut cells, key transparency, and save PNGs named after the list',
+      editorHint: 'Changes write back to the node live; after saving, run the node to repack. Keying prefers auto (samples blank-cell color when the list is short); black / white backgrounds also work and feathering is preserved.',
+      noSource: 'Connect the upstream icon-sheet image first',
+      gridSection: 'Sheet grid',
+      rows: 'Rows',
+      cols: 'Cols',
+      cellsHint: '{n} cells · the 1st list entry maps to cell 1-1',
+      keyingSection: 'Transparent keying',
+      keyColor: 'Key color',
+      keyColorMode: {
+        auto: 'Auto sample',
+        black: 'Black',
+        white: 'White',
+        none: 'No keying'
+      },
+      distance: 'Key tolerance',
+      feather: 'Edge feather',
+      edgeInset: 'Inset trim',
+      edgeInsetAuto: 'Auto',
+      canvasSection: 'Output canvas',
+      canvas: 'Canvas size',
+      canvasAuto: 'Auto by subject',
+      gridLabel: 'Grid',
+      keyColorLabel: 'Key color',
+      keyingRangeLabel: 'Tolerance · feather',
+      edgeLabel: 'Inset trim',
+      canvasLabel: 'Canvas size',
+      outputDirLabel: 'Output folder',
+      manifestLabel: 'Latest manifest'
+    },
     layerSplit: {
       appMark: 'Layer split',
       hint: 'Run the node to decompose with Seedream 5.0 Pro; double-click to reorder and move layers',
@@ -3441,6 +3473,7 @@ export default {
         matte: 'Matte',
         crop: 'Crop',
         gridSplit: 'Grid split',
+        iconPack: 'Icon pack',
         layerSplit: 'Layer split',
         cutout: 'Cutout',
         align: 'Sprite align',
@@ -3736,6 +3769,9 @@ export default {
       },
       gridSplit: {
         hint: 'Double-click to choose grid size and cells. Run the node to split tiles locally without an AI model.'
+      },
+      iconPack: {
+        hint: 'Double-click to tune keying and canvas options. Run the node to key cells to transparent and save PNGs named after the list.'
       },
       layerSplit: {
         hint: 'Run the node to decompose with Seedream 5.0 Pro. Double-click to drag, resize, and restack layers. Select a layer to split it further into a group. Changing the prompt or resolution triggers a new decompose.'

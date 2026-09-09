@@ -571,6 +571,12 @@ export interface GraphNodeParams {
   stage2dAction?: import('./stage2dAction').Stage2dAction | null
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
+  /** 图标包导出（image.iconPack）：逐格键控透明 / 统一画布 / 命名打包参数 */
+  iconPack?: Partial<import('./iconPack').IconPackState>
+  /** 图标包最近一次运行清单（manifest 回写，供检查 / 排障） */
+  iconPackManifest?: unknown
+  /** 图标包 manifest 落盘相对路径（icons 文本，与 PNG 同目录） */
+  iconPackManifestRelativePath?: string
   /** 图层分离（Seedream layer_decomposition） */
   imageLayerSplit?: Partial<ImageLayerSplitState>
   /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */

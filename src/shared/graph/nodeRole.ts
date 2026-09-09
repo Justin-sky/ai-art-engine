@@ -241,6 +241,10 @@ export function isGridSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean 
   return node.typeId === 'image.gridSplit'
 }
 
+export function isIconPackEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'image.iconPack'
+}
+
 export function isLayerSplitEditorNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'image.layerSplit'
 }
