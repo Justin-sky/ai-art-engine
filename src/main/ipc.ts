@@ -43,7 +43,10 @@ import { renderTimelineTransitionPreview } from './services/timelineTransitionPr
 import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
-import { installFfmpeg } from './services/ffmpegInstallService'
+import {
+  getFfmpegRuntimeStatus,
+  installFfmpeg
+} from './services/ffmpegInstallService'
 import {
   abortHarnessTask,
   deleteHarnessSession,
@@ -248,6 +251,7 @@ export function registerIpcHandlers(): void {
     projectService.analyzeVideoBeats(assetId)
   )
   handle(IpcChannels.FFMPEG_INSTALL, () => installFfmpeg())
+  handle(IpcChannels.FFMPEG_STATUS, () => getFfmpegRuntimeStatus())
   handle(IpcChannels.AUDIO_SEPARATE, (relativePath: string) =>
     projectService.separateAudio(relativePath)
   )

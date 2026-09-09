@@ -38,6 +38,14 @@
         <button
           type="button"
           class="top-tab"
+          :class="{ active: mainTab === 'ffmpeg' }"
+          @click="mainTab = 'ffmpeg'"
+        >
+          {{ t('settings.section.ffmpeg') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
           :class="{ active: mainTab === 'objectStorage' }"
           @click="mainTab = 'objectStorage'"
         >
@@ -151,6 +159,14 @@
       >
         <h2>{{ t('settings.section.yolo') }}</h2>
         <YoloModelsPanel v-model:yolo="form.yolo" />
+      </section>
+
+      <section
+        v-show="mainTab === 'ffmpeg'"
+        class="models-section"
+      >
+        <h2>{{ t('settings.section.ffmpeg') }}</h2>
+        <FfmpegPanel />
       </section>
 
       <section
@@ -362,7 +378,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
@@ -376,6 +392,7 @@ import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
 import SkillsPanel from '../components/settings/SkillsPanel.vue'
 import YoloModelsPanel from '../components/settings/YoloModelsPanel.vue'
+import FfmpegPanel from '../components/settings/FfmpegPanel.vue'
 
 const DEBOUNCE_MS = 500
 
@@ -386,7 +403,9 @@ const saving = ref(false)
 const message = ref('')
 const isError = ref(false)
 const plugins = ref<ExternalPluginManifest[]>([])
-const mainTab = ref<'general' | 'models' | 'yolo' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'>('general')
+const mainTab = ref<
+  'general' | 'models' | 'yolo' | 'ffmpeg' | 'objectStorage' | 'mcp' | 'skills' | 'plugins'
+>('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
@@ -398,6 +417,32 @@ const tokenInput = ref('')
 const portInput = ref<number | null>(null)
 const mcpBusy = ref(false)
 let stopUpdateListen: (() => void) | null = null
+
+const SETTINGS_TAB_QUERY_VALUES = new Set([
+  'general',
+  'models',
+  'yolo',
+  'ffmpeg',
+  'objectStorage',
+  'mcp',
+  'skills',
+  'plugins'
+])
+const route = useRoute()
+// 调用点（如缺 ffmpeg 时的「去设置下载」）以 route.query.tab 定位到具体 tab；
+// 定位后清除 query，避免下次打开设置页仍停留在上次被引导的 tab。
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (typeof tab === 'string' && SETTINGS_TAB_QUERY_VALUES.has(tab)) {
+      mainTab.value = tab as typeof mainTab.value
+      if (route.query.tab === tab) {
+        void router.replace({ query: {} })
+      }
+    }
+  },
+  { immediate: true }
+)
 
 /** Claude Code HTTP 直连注册命令（一键复制） */
 const claudeCommand = computed(() => {

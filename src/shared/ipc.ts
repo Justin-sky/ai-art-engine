@@ -74,10 +74,12 @@ export const IpcChannels = {
   VIDEO_BEAT_ANALYZE: 'video:beat-analyze',
   /** 主进程推送：视频打点进行中状态（导入自动打点，busy=true 入队/执行 / false 结束，UI 驱动素材卡角标） */
   VIDEO_BEAT_BUSY: 'video:beat-busy',
-  /** ffmpeg 一键安装：缺失时主进程自动下载便携版到应用数据目录（win 自动，mac/linux 引导） */
+  /** ffmpeg 一键安装：缺失时主进程自动下载便携版到应用私有目录（win 自动，mac/linux 引导） */
   FFMPEG_INSTALL: 'ffmpeg:install',
   /** 主进程推送：ffmpeg 一键安装进度（下载 / 解压阶段） */
   FFMPEG_INSTALL_PROGRESS: 'ffmpeg:install-progress',
+  /** 查询 ffmpeg/ffprobe 运行时状态（安装包不再内置，设置页按需下载引导用） */
+  FFMPEG_STATUS: 'ffmpeg:status',
   /** 人声 / 伴奏分离（内置 ffmpeg 中置声道或配置的第三方服务） */
   AUDIO_SEPARATE: 'audio:separate',
   /** 将选中资产的原始媒体文件复制到系统剪贴板 */
@@ -870,7 +872,9 @@ export interface StudioApi {
    * 资产非视频 / 工程切换导致放弃时返回 null；skipped 为环境性失败占位。
    */
   analyzeVideoBeats: (assetId: string) => Promise<import('./videoBeats').VideoBeatTags | null>
-  /** 一键安装 ffmpeg（视频打点缺 ffmpeg 时调用；耗时可达数分钟） */
+  /** 查询 ffmpeg/ffprobe 运行时状态（来源 / 版本 / 是否可一键安装；设置页展示） */
+  getFfmpegStatus: () => Promise<import('./videoBeats').FfmpegRuntimeStatus>
+  /** 一键下载安装 ffmpeg（缺 ffmpeg 时由设置页 / 调用点引导触发；耗时可达数分钟） */
   installFfmpeg: () => Promise<import('./videoBeats').VideoBeatInstallResult>
   /** 订阅 ffmpeg 一键安装的实时进度（下载 / 解压阶段；返回取消订阅函数） */
   onFfmpegInstallProgress: (

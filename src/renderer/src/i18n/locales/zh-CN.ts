@@ -283,10 +283,40 @@ export default {
       general: '通用',
       models: '模型',
       yolo: '本地视觉',
+      ffmpeg: 'ffmpeg 工具',
       objectStorage: '对象存储',
       mcp: 'MCP',
       skills: '自定义技能',
       plugins: '扩展'
+    },
+    ffmpeg: {
+      notBundledHint:
+        '为减小安装包体积，ffmpeg / ffprobe 不再随应用分发，请按需下载；也可自行安装并加入 PATH。安装后即可使用「视频打点、取帧、成片导出、人声分离」等功能。',
+      detecting: '正在检测…',
+      ready: '已就绪',
+      missing: '未安装',
+      installingBadge: '下载安装中…',
+      installingNow: '正在下载 ffmpeg（约 100 MB）…',
+      extractingNow: '正在解压安装…',
+      sourceLabel: '生效来源',
+      sourceEnv: '环境变量',
+      sourceBundled: '随包内置（旧版残留）',
+      sourcePrivate: '应用私有目录',
+      sourcePath: '系统 PATH',
+      sourceNone: '未检测到',
+      needInstallHint: '本机尚未检测到可用的 ffmpeg / ffprobe，可任选一种方式：',
+      install: '下载并安装 ffmpeg',
+      installHint:
+        '自动下载官方 Windows 便携版（含 ffmpeg/ffprobe/ffplay）到应用私有目录，全程无需管理员权限。',
+      openDownloadPage: '打开下载页',
+      commandHint: '在系统终端（{term}）中运行以下命令：',
+      copyCommand: '复制命令',
+      copied: '已复制到剪贴板',
+      refresh: '重新检测',
+      refreshFailed: '检测 ffmpeg 状态失败，请重试。',
+      installDone: '下载安装完成，可直接使用视频功能。',
+      installFailed: '安装未完成：可打开下载页手动下载。',
+      goSettings: '去设置下载 ffmpeg'
     },
     theme: '主题',
     themeDark: '暗色',
@@ -965,13 +995,9 @@ export default {
       videoBeatSummary:
         '已打点：空镜 {empty} 段 · 单人 {solo} 段 · 群像 {group} 段 · 出现对象 {names}',
       videoBeatFailed: '打点失败：视频不可用或本机推理组件未就绪，请稍后重试。',
-      videoBeatInstallAction: '一键下载安装',
-      videoBeatInstallRunIn: '在系统终端（{term}）运行以下命令：',
-      videoBeatInstallAutoHint:
-        '点击「一键下载安装」将自动下载便携版 ffmpeg（约 100 MB）到应用数据目录，无需管理员权限；完成后将自动重新打点。',
-      videoBeatInstalling: '正在下载并安装 ffmpeg（约 100 MB），完成后将自动重新打点…',
-      videoBeatInstallingExtract: '正在解压并安装到应用目录…',
-      videoBeatInstallOpenPage: '打开下载页'
+      videoBeatGuideFfmpeg:
+        '当前未检测到 ffmpeg / ffprobe。安装包已不再内置：点击「去设置下载」，到「设置 → ffmpeg 工具」页安装后，再回来重新打点。',
+      videoBeatGoSettings: '去设置下载'
     },
     package: {
       exportTitle: '导出资产包',
@@ -1528,7 +1554,7 @@ export default {
       exporting: '导出中 {progress}%',
       exportDone: '成片已导出：\n{path}',
       exportDoneFallback:
-        '未检测到 ffmpeg，已用预览录制导出 WebM：\n{path}\n\n安装 ffmpeg 并加入 PATH（或设置 FFMPEG_PATH）可导出更高质量 MP4。',
+        '未检测到 ffmpeg，已用预览录制导出 WebM：\n{path}\n\n到「设置 → ffmpeg 工具」下载安装 ffmpeg（或加入 PATH）后，可导出更高质量 MP4。',
       exportFailed: '导出失败：{error}',
       exportEmpty: '时间线为空，无法导出',
       mixer: '混音器',

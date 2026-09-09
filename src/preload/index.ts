@@ -79,6 +79,7 @@ const api: StudioApi = {
     }),
   analyzeVideoBeats: (assetId: string) =>
     ipcRenderer.invoke(IpcChannels.VIDEO_BEAT_ANALYZE, assetId),
+  getFfmpegStatus: () => ipcRenderer.invoke(IpcChannels.FFMPEG_STATUS),
   installFfmpeg: () => ipcRenderer.invoke(IpcChannels.FFMPEG_INSTALL),
   onFfmpegInstallProgress: (callback) => {
     const listener = (

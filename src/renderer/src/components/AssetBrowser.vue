@@ -769,12 +769,11 @@ import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore, STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
-  dismissCurrentPrompt,
   promptAlert,
   promptConfirm,
-  promptText,
-  updateCurrentPromptProgress
+  promptText
 } from '../composables/useStudioPrompt'
+import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
 import { toPlain } from '../utils/toPlain'
 import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
@@ -867,6 +866,7 @@ const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
 const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
+const { openSettingsPanel } = useSettingsPanelNavigator()
 
 /** 右键新建项：按显示名 Unity NaturalCompare（与资产目录一致） */
 const toolbarCreateItems = computed(() =>
@@ -1544,8 +1544,10 @@ function videoBeatBadge(
   return { tone: 'skip', text: '⚠', title: beats.error || t('asset.browser.videoBeatFailed') }
 }
 
-/** ffmpeg 一键安装成功后待自动重试打点的资产 id（由 runVideoBeatAnalysis 的 finally 消费） */
-let videoBeatRetryAfterInstall: string | null = null
+/** 打开设置页并定位到 ffmpeg 下载面板（应用层不再内置 / 不再弹内联安装流程） */
+async function openFfmpegSettings(): Promise<void> {
+  await openSettingsPanel('ffmpeg')
+}
 
 /** 对视频资产执行一次打点；null = 资产被移除 / 切换工程，调用方静默处理 */
 async function runVideoBeatAnalysis(assetId: string): Promise<void> {
@@ -1563,25 +1565,16 @@ async function runVideoBeatAnalysis(assetId: string): Promise<void> {
         await promptAlert({ title: t('asset.browser.context.videoBeat'), message: fallback })
         return
       }
-      const runIn = t('asset.browser.videoBeatInstallRunIn', { term: hint.commandLabel })
-      const guide = `${fallback}\n\n${runIn}\n${hint.command}`
+      // ffmpeg/ffprobe 缺失：引导前往「设置 → ffmpeg 工具」下载后回来重新打点
+      const guide = `${fallback}\n\n${t('asset.browser.videoBeatGuideFfmpeg')}`
       const go = await promptConfirm({
         title: t('asset.browser.context.videoBeat'),
-        message: hint.autoInstall
-          ? `${guide}\n\n${t('asset.browser.videoBeatInstallAutoHint')}`
-          : guide,
-        confirmLabel: hint.autoInstall
-          ? t('asset.browser.videoBeatInstallAction')
-          : t('asset.browser.videoBeatInstallOpenPage'),
+        message: guide,
+        confirmLabel: t('asset.browser.videoBeatGoSettings'),
         cancelLabel: t('common.cancel')
       })
       if (!go) return
-      if (!hint.autoInstall) {
-        // 平台不支持自动安装：打开下载页（主进程 setWindowOpenHandler 转系统浏览器）
-        window.open(hint.url, '_blank')
-        return
-      }
-      await runInstallFfmpegFlow(assetId)
+      await openFfmpegSettings()
       return
     }
     await promptAlert({
@@ -1597,61 +1590,6 @@ async function runVideoBeatAnalysis(assetId: string): Promise<void> {
     analyzingVideoBeatIds.value = new Set(
       [...analyzingVideoBeatIds.value].filter((id) => id !== assetId)
     )
-    if (videoBeatRetryAfterInstall === assetId) {
-      videoBeatRetryAfterInstall = null
-      // 一键安装成功后的自动重试：等 busy 清理后再跑，避免被自身闸门吞掉
-      void runVideoBeatAnalysis(assetId)
-    }
-  }
-}
-
-/** 字节数格式化为可读文本（安装进度弹窗旁注） */
-function formatBytes(n: number | undefined): string {
-  if (!n) return ''
-  if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-  return `${Math.round(n / 1024)} KB`
-}
-
-/** 一键安装 ffmpeg：弹「安装中」进度提示 → 订阅主进程进度刷新 → 收起提示 → 成功则标记自动重试打点 */
-async function runInstallFfmpegFlow(assetId: string): Promise<void> {
-  const title = t('asset.browser.context.videoBeat')
-  void promptAlert({
-    title,
-    message: t('asset.browser.videoBeatInstalling'),
-    progress: 0
-  })
-  const unsub = window.studio.onFfmpegInstallProgress((p) => {
-    if (p.phase === 'downloading' && typeof p.percent === 'number') {
-      updateCurrentPromptProgress(
-        p.percent,
-        p.totalBytes
-          ? `${formatBytes(p.loadedBytes)} / ${formatBytes(p.totalBytes)}`
-          : formatBytes(p.loadedBytes)
-      )
-    } else if (p.phase === 'extracting') {
-      updateCurrentPromptProgress(100, t('asset.browser.videoBeatInstallingExtract'))
-    }
-  })
-  try {
-    const result = await window.studio.installFfmpeg()
-    dismissCurrentPrompt()
-    if (!result.ok) {
-      await promptAlert({
-        title,
-        message: result.message,
-        actionLabel: result.downloadUrl ? t('asset.browser.videoBeatInstallOpenPage') : undefined,
-        actionUrl: result.downloadUrl
-      })
-      return
-    }
-    await promptAlert({ title, message: result.message })
-    videoBeatRetryAfterInstall = assetId
-  } catch (err) {
-    dismissCurrentPrompt()
-    await promptAlert({ title, message: err instanceof Error ? err.message : String(err) })
-  } finally {
-    unsub()
   }
 }
 

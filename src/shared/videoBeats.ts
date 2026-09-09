@@ -107,6 +107,37 @@ export interface FfmpegInstallProgress {
   totalBytes?: number
 }
 
+/** ffmpeg / ffprobe 二进制生效来源（设置页状态徽标用） */
+export type FfmpegRuntimeSource = 'env' | 'bundled' | 'private' | 'path' | 'none'
+
+/** ffmpeg / ffprobe 运行时状态（主进程 → 设置页「通用工具 ffmpeg」） */
+export interface FfmpegRuntimeStatus {
+  /** ffmpeg 与 ffprobe 均解析到可运行来源 */
+  available: boolean
+  /** ffmpeg 实际生效来源（'none' = 未检测到） */
+  source: FfmpegRuntimeSource
+  /** 生效的 ffmpeg 可执行文件（绝对路径或命令名）；不可用为 null */
+  ffmpegPath: string | null
+  /** 生效的 ffprobe 可执行文件；不可用为 null */
+  ffprobePath: string | null
+  /** ffmpeg -version 首行；不可用为 null */
+  ffmpegVersion: string | null
+  /** ffprobe -version 首行；不可用为 null */
+  ffprobeVersion: string | null
+  /** 一键下载安装进行中 */
+  installing: boolean
+  /** 当前系统是否支持应用内一键下载安装（false → 引导下载页 / 终端命令） */
+  autoInstallSupported: boolean
+  /** 一键下载的安装落盘目录（应用私有 ffmpeg 目录） */
+  installDir: string
+  /** 手动下载引导页 URL */
+  downloadUrl: string
+  /** 终端安装命令示例 */
+  command: string
+  /** 命令所在终端名（PowerShell / Terminal） */
+  commandLabel: string
+}
+
 /**
  * 落盘到 `.asset.json` 的 `videoBeats` 字段形状。
  * 扫树读取时未知字段原样保留，可作为 AssetInfo 新顶层可选字段安全落盘。

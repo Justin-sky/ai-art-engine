@@ -1,18 +1,17 @@
 /**
- * ffmpeg 一键安装（主进程侧）。
+ * ffmpeg / ffprobe 运行时获取与状态查询（主进程侧）。
  *
- * 发布版安装包已随包内置 ffmpeg/ffprobe（<resources>/ffmpeg，构建前由
- * scripts/fetch-ffmpeg.mjs 拉取各平台静态构建），正常用户无需触发本流程；
- * 本服务仅作兜底：开发环境 / 未随包分发的旧构建等场景。
+ * 新版安装包不再内置 ffmpeg/ffprobe（减小体积）：用户在「设置 → 通用工具 ffmpeg」
+ * 面板下载，或自行安装（PATH / 环境变量 FFMPEG_PATH、FFPROBE_PATH）。本服务：
+ *  - getFfmpegRuntimeStatus()：探测当前可用来源与版本，供设置页展示；
+ *  - installFfmpeg()：Windows 自动下载 gyan.dev 官方便携包（essentials build，
+ *    含 ffmpeg/ffprobe/ffplay）到应用私有目录 `%LOCALAPPDATA%/ai-art-engine/ffmpeg/bin`，
+ *    全程免管理员权限、不写系统 PATH；macOS / Linux 无内置下载，返回引导页 URL。
  *
- * Windows：自动下载 gyan.dev 官方便携包（essentials build，含 ffmpeg/ffprobe/ffplay），
- * 解压后把可执行文件放到应用私有目录 `%LOCALAPPDATA%/ai-art-engine/ffmpeg/bin`，
- * 全程免管理员权限、不写系统 PATH —— 视频打点 / 取帧 / 导出等定位函数探测该目录即可直接使用。
+ * 二进制探测顺序（与 services/videoFrameService 保持一致）：
+ * 环境变量 > 随包内置残留（旧版本升级后遗留）> 应用私有安装目录 > 系统 PATH。
  *
- * 下载期间通过 FFMPEG_INSTALL_PROGRESS 向所有窗口广播实时进度（UI「安装中」弹窗显示进度条）；
- * macOS / Linux 无内置兜底下载，返回引导页 URL 供 UI 打开下载页或复制终端命令。
- *
- * 结果 message 为用户可见文案（透传渲染层弹窗展示）。
+ * 下载期间通过 FFMPEG_INSTALL_PROGRESS 向所有窗口广播实时进度；结果 message 为用户可见文案。
  */
 import { app } from 'electron'
 import { execFile } from 'child_process'
@@ -20,9 +19,15 @@ import { promisify } from 'util'
 import { createWriteStream, existsSync } from 'fs'
 import { copyFile, mkdir, readdir, rm } from 'fs/promises'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { IpcChannels } from '@shared/ipc'
-import type { FfmpegInstallProgress, VideoBeatInstallResult } from '@shared/videoBeats'
+import {
+  ffmpegInstallHintFor,
+  type FfmpegInstallProgress,
+  type FfmpegRuntimeSource,
+  type FfmpegRuntimeStatus,
+  type VideoBeatInstallResult
+} from '@shared/videoBeats'
 import { broadcastToAllWindows } from '../broadcast'
 
 const execFileAsync = promisify(execFile)
@@ -92,17 +97,122 @@ async function binWorks(bin: string): Promise<boolean> {
   }
 }
 
-/** ffmpeg 是否已可用（随包内置 resources、私有安装目录或 PATH） */
-async function isFfmpegReady(): Promise<boolean> {
-  const bundled = [
-    join(bundledFfmpegDir(), exeName('ffmpeg')),
-    join(process.resourcesPath || '', exeName('ffmpeg')),
-    ffmpegPrivateBin('ffmpeg')
-  ]
-  for (const bin of bundled) {
-    if (await binWorks(bin)) return true
+/** 读取可执行文件版本首行（ffmpeg version x / ffprobe version x），失败返回 null */
+async function binVersion(bin: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(bin, ['-version'], {
+      timeout: 5_000,
+      windowsHide: true,
+      maxBuffer: 256 * 1024
+    })
+    return (stdout.split(/\r?\n/, 1)[0] || '').trim() || null
+  } catch {
+    return null
   }
-  return binWorks(exeName('ffmpeg'))
+}
+
+/** ffmpeg 可执行文件所在目录；PATH 命令名 / 无父目录时返回 null */
+function dirOf(bin: string): string | null {
+  if (!bin) return null
+  const dir = dirname(bin)
+  if (!dir || dir === '.') return null
+  return dir
+}
+
+export interface RuntimeBinProbe {
+  bin: string
+  source: FfmpegRuntimeSource
+}
+
+/**
+ * 按 环境变量 → 随包内置残留 → 私有安装目录 → 显式 legacy 路径 → PATH 的顺序探测 ffmpeg。
+ * source = none 表示纯命令名兜底（是否真可用交由调用方判断）。
+ */
+async function resolveFfmpegBin(): Promise<RuntimeBinProbe> {
+  const exe = exeName('ffmpeg')
+  const env = process.env.FFMPEG_PATH?.trim()
+  if (env && existsSync(env)) return { bin: env, source: 'env' }
+  const resDir = process.resourcesPath || ''
+  const bundled: Array<{ bin: string; source: FfmpegRuntimeSource }> = [
+    { bin: join(resDir, 'ffmpeg', exe), source: 'bundled' },
+    { bin: join(resDir, exe), source: 'bundled' },
+    { bin: join(bundledFfmpegDir(), exe), source: 'bundled' }
+  ]
+  for (const item of bundled) {
+    if (existsSync(item.bin)) return item
+  }
+  const priv = ffmpegPrivateBin('ffmpeg')
+  if (existsSync(priv)) return { bin: priv, source: 'private' }
+  const legacy = process.platform === 'win32' ? 'C:\\ffmpeg\\bin\\ffmpeg.exe' : ''
+  if (legacy && existsSync(legacy)) return { bin: legacy, source: 'path' }
+  if (await binWorks(exe)) return { bin: exe, source: 'path' }
+  return { bin: exe, source: 'none' }
+}
+
+/** ffprobe 探测：优先与 ffmpeg 同目录（便携包 / 私有目录 / legacy 布局），再查私有与 PATH */
+async function resolveFfprobeBin(ffmpegDir: string | null): Promise<RuntimeBinProbe> {
+  const exe = exeName('ffprobe')
+  const env = process.env.FFPROBE_PATH?.trim()
+  if (env && existsSync(env)) return { bin: env, source: 'env' }
+  if (ffmpegDir) {
+    const adjacent = join(ffmpegDir, exe)
+    if (existsSync(adjacent)) return { bin: adjacent, source: 'private' }
+  }
+  const resDir = process.resourcesPath || ''
+  const bundled: Array<{ bin: string; source: FfmpegRuntimeSource }> = [
+    { bin: join(resDir, 'ffmpeg', exe), source: 'bundled' },
+    { bin: join(resDir, exe), source: 'bundled' },
+    { bin: join(bundledFfmpegDir(), exe), source: 'bundled' }
+  ]
+  for (const item of bundled) {
+    if (existsSync(item.bin)) return item
+  }
+  const priv = ffmpegPrivateBin('ffprobe')
+  if (existsSync(priv)) return { bin: priv, source: 'private' }
+  if (await binWorks(exe)) return { bin: exe, source: 'path' }
+  return { bin: exe, source: 'none' }
+}
+
+/** ffmpeg 是否已可用（ffmpeg 与 ffprobe 均能解析到可运行来源） */
+async function isFfmpegReady(): Promise<boolean> {
+  const ffmpeg = await resolveFfmpegBin()
+  if (ffmpeg.source === 'none') return false
+  const ffprobe = await resolveFfprobeBin(dirOf(ffmpeg.bin))
+  return ffprobe.source !== 'none'
+}
+
+/** 一键安装进行中（供 IPC 状态查询；避免设置页与其他窗口重复触发下载） */
+export function isFfmpegInstalling(): boolean {
+  return installing
+}
+
+/**
+ * 查询 ffmpeg / ffprobe 运行时状态（设置页「通用工具 ffmpeg」展示；也用于缺工具调用点引导）。
+ */
+export async function getFfmpegRuntimeStatus(): Promise<FfmpegRuntimeStatus> {
+  const hint = ffmpegInstallHintFor(process.platform)
+  const ffmpeg = await resolveFfmpegBin()
+  const ffprobe = await resolveFfprobeBin(dirOf(ffmpeg.bin))
+  const ffmpegUsable = ffmpeg.source !== 'none'
+  const ffprobeUsable = ffprobe.source !== 'none'
+  const [ffmpegVersion, ffprobeVersion] = await Promise.all([
+    ffmpegUsable ? binVersion(ffmpeg.bin) : Promise.resolve(null),
+    ffprobeUsable ? binVersion(ffprobe.bin) : Promise.resolve(null)
+  ])
+  return {
+    available: ffmpegUsable && ffprobeUsable,
+    source: ffmpeg.source,
+    ffmpegPath: ffmpegUsable ? ffmpeg.bin : null,
+    ffprobePath: ffprobeUsable ? ffprobe.bin : null,
+    ffmpegVersion,
+    ffprobeVersion,
+    installing,
+    autoInstallSupported: hint.autoInstall,
+    installDir: ffmpegPrivateDir(),
+    downloadUrl: hint.url,
+    command: hint.command,
+    commandLabel: hint.commandLabel
+  }
 }
 
 /**
@@ -223,7 +333,7 @@ async function installFfmpegWin(): Promise<VideoBeatInstallResult> {
       return { ok: false, message: 'ffmpeg 已下载但校验失败，请稍后重试；或打开下载页手动安装。', downloadUrl: manualPageUrl() } // cjk-ok 直接透传 UI
     }
     broadcastInstallProgress({ phase: 'done' })
-    return { ok: true, message: 'ffmpeg 安装完成，正在重新打点…' } // cjk-ok 直接透传 UI
+    return { ok: true, message: 'ffmpeg/ffprobe 下载安装完成，可直接使用视频功能。' } // cjk-ok 直接透传 UI
   } catch (err) {
     return { ok: false, message: `ffmpeg 安装失败：${errDetail(err)}`, downloadUrl: manualPageUrl() } // cjk-ok 直接透传 UI
   } finally {

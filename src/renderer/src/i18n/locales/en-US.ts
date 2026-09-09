@@ -287,10 +287,40 @@ export default {
       general: 'General',
       models: 'Models',
       yolo: 'Local vision',
+      ffmpeg: 'ffmpeg tools',
       objectStorage: 'Object storage',
       mcp: 'MCP',
       skills: 'Custom skills',
       plugins: 'Extensions'
+    },
+    ffmpeg: {
+      notBundledHint:
+        'To keep the installer small, ffmpeg/ffprobe are no longer bundled. Download them on demand, or install yourself and add to PATH — video beat tagging, frame extraction, timeline export and audio separation will then work.',
+      detecting: 'Checking…',
+      ready: 'Ready',
+      missing: 'Not installed',
+      installingBadge: 'Installing…',
+      installingNow: 'Downloading ffmpeg (~100 MB)…',
+      extractingNow: 'Extracting & installing…',
+      sourceLabel: 'Source',
+      sourceEnv: 'Environment variable',
+      sourceBundled: 'Bundled (legacy build)',
+      sourcePrivate: 'App-private directory',
+      sourcePath: 'System PATH',
+      sourceNone: 'Not detected',
+      needInstallHint: 'No usable ffmpeg/ffprobe detected. Either:',
+      install: 'Download & install ffmpeg',
+      installHint:
+        'Downloads the official Windows portable build (ffmpeg/ffprobe/ffplay) into the app-private directory — no admin rights needed.',
+      openDownloadPage: 'Open download page',
+      commandHint: 'Run in your terminal ({term}):',
+      copyCommand: 'Copy command',
+      copied: 'Copied to clipboard',
+      refresh: 'Re-check',
+      refreshFailed: 'Failed to check the ffmpeg status. Try again.',
+      installDone: 'Installed. Video features are ready to use.',
+      installFailed: 'Install did not complete — open the download page to install manually.',
+      goSettings: 'Open ffmpeg settings'
     },
     theme: 'Theme',
     themeDark: 'Dark',
@@ -972,13 +1002,9 @@ export default {
         'Beats: empty {empty} · solo {solo} · group {group} segments · seen {names}',
       videoBeatFailed:
         'Beat analysis failed: video unavailable or local inference is not ready. Try again later.',
-      videoBeatInstallAction: 'Download & install ffmpeg',
-      videoBeatInstallRunIn: 'Run this command in your terminal ({term}):',
-      videoBeatInstallAutoHint:
-        'Click "Download & install" to fetch a portable ffmpeg (~100 MB) into the app data folder (no admin needed); beat analysis restarts automatically.',
-      videoBeatInstalling: 'Downloading & installing ffmpeg (~100 MB)…',
-      videoBeatInstallingExtract: 'Extracting & installing…',
-      videoBeatInstallOpenPage: 'Open download page'
+      videoBeatGuideFfmpeg:
+        'No usable ffmpeg/ffprobe detected. ffmpeg is no longer bundled — tap "Open settings" and install it on the ffmpeg tools page, then run beat analysis again.',
+      videoBeatGoSettings: 'Open settings'
     },
     package: {
       exportTitle: 'Export package',
@@ -1546,7 +1572,7 @@ export default {
       exporting: 'Exporting {progress}%',
       exportDone: 'Exported:\n{path}',
       exportDoneFallback:
-        'ffmpeg not found — exported WebM via preview capture:\n{path}\n\nInstall ffmpeg on PATH (or set FFMPEG_PATH) for higher-quality MP4.',
+        'ffmpeg not found — exported WebM via preview capture:\n{path}\n\nInstall ffmpeg under Settings → ffmpeg tools (or add it to PATH) for higher-quality MP4 exports.',
       exportFailed: 'Export failed: {error}',
       exportEmpty: 'Timeline is empty',
       mixer: 'Mixer',

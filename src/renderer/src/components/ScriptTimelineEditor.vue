@@ -943,7 +943,10 @@
       :class="{ collapsed: timelineCollapsed }"
       :style="{ height: `${timelineHeight}px` }"
     >
-      <header ref="timelineBarEl" class="timeline-bar">
+      <header
+        ref="timelineBarEl"
+        class="timeline-bar"
+      >
         <div
           class="timeline-controls"
           @pointerdown.stop
@@ -2095,6 +2098,7 @@ import {
 } from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
+import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
 import { buildSubtitleClipsFromTranscription } from '../features/script/timelineSubtitleFromTranscription'
 import { toPlain } from '../utils/toPlain'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
@@ -2108,6 +2112,7 @@ const { t, locale } = useStudioI18n()
 const project = useProjectStore()
 const drafts = useDraftStore()
 const workspace = useWorkspaceStore()
+const { openSettingsPanel } = useSettingsPanelNavigator()
 /** dive 上下文；时间线作为 dive 视图打开时可用来退回节点图分支 */
 const diveContext = inject(editorDiveKey, null)
 const rootEl = ref<HTMLElement | null>(null)
@@ -7137,10 +7142,14 @@ async function exportTimeline(): Promise<void> {
       })
       if (fb.ok) {
         lastExportError.value = ''
-        await promptAlert({
+        // 回退已成功但受限于缺 ffmpeg：给出前往「设置 → ffmpeg 工具」下载的引导
+        const goSettings = await promptConfirm({
           title: t('script.timeline.export'),
-          message: t('script.timeline.exportDoneFallback', { path: fb.filePath })
+          message: t('script.timeline.exportDoneFallback', { path: fb.filePath }),
+          confirmLabel: t('settings.ffmpeg.goSettings'),
+          cancelLabel: t('common.gotIt')
         })
+        if (goSettings) await openSettingsPanel('ffmpeg')
         return
       }
       const prevError = result.ok ? 'export failed' : result.error
