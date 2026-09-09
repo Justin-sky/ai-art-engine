@@ -2,7 +2,12 @@ import {
   buildIconPackManifest,
   sanitizeIconStem
 } from '../../gameAssets'
-import { iconPackCellKeyAt, readIconPackFromNode } from '../iconPack'
+import {
+  iconPackCellKeyAt,
+  iconPackCellRefinesToOverrides,
+  readIconPackFromNode,
+  readIconPackRefinesFromNode
+} from '../iconPack'
 import type { NodeExecuteContext, GraphValue } from './types'
 import { collectIncomingImageItems } from './mediaInputs'
 import { flattenTextsValues } from './gallery'
@@ -46,10 +51,14 @@ export async function executeIconPackNode(ctx: NodeExecuteContext): Promise<Reco
   if (!ctx.composeImageIconPackSheet) {
     throw new Error('ICON_PACK_CANVAS_UNAVAILABLE')
   }
+  const cellOverrides = iconPackCellRefinesToOverrides(
+    readIconPackRefinesFromNode(ctx.node.params)
+  )
   const result = await ctx.composeImageIconPackSheet({
     sourceDataUrl: sourceUrl,
     state,
     names,
+    ...(Object.keys(cellOverrides).length ? { cellOverrides } : {}),
     signal: ctx.signal
   })
 

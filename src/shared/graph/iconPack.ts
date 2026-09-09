@@ -119,3 +119,70 @@ export function parseIconNameLines(rawText: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#') && !line.startsWith('//'))
 }
+
+/** 解析格位 key（1-1 → row1/col1）；非法输入返回 null */
+export function parseIconCellKey(cellKey: string): { row1: number; col1: number } | null {
+  const m = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(String(cellKey ?? ''))
+  if (!m) return null
+  const row1 = Number(m[1])
+  const col1 = Number(m[2])
+  if (!Number.isInteger(row1) || !Number.isInteger(col1) || row1 < 1 || col1 < 1) return null
+  return { row1, col1 }
+}
+
+/**
+ * 单枚回炉覆盖（「逐枚精修」）：cellKey → 该枚的精修后方形卡片图 dataURL。
+ * 挂 image.iconPack 节点参数 `iconPackCellRefines`，再跑打包即用精修图
+ * 顶替对应格位重出该枚透明 PNG；其余格仍从整版裁切，互不影响。
+ */
+export interface IconPackCellRefine {
+  cellKey: string
+  dataUrl: string
+  /** 回炉时间（ISO）；用于区分多轮精修 */
+  updatedAt?: string
+}
+
+export type IconPackCellRefines = Record<string, IconPackCellRefine>
+
+const ICON_DATA_URL_PREFIX = 'data:image/'
+
+/** 归一化回炉覆盖参数：仅保留格位 key 合法且 dataUrl 以 data:image/ 开头的条目 */
+export function normalizeIconPackCellRefines(
+  raw?: Partial<Record<string, string | Partial<IconPackCellRefine>>> | null
+): IconPackCellRefines {
+  const out: IconPackCellRefines = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [key, value] of Object.entries(raw)) {
+    if (!parseIconCellKey(key)) continue
+    const dataUrl =
+      typeof value === 'string'
+        ? value.trim()
+        : typeof value?.dataUrl === 'string'
+          ? value.dataUrl.trim()
+          : ''
+    if (!dataUrl.startsWith(ICON_DATA_URL_PREFIX)) continue
+    out[key] = {
+      cellKey: key,
+      dataUrl,
+      updatedAt: typeof value === 'object' && typeof value.updatedAt === 'string' ? value.updatedAt : undefined
+    }
+  }
+  return out
+}
+
+export function readIconPackRefinesFromNode(params: {
+  iconPackCellRefines?: Partial<Record<string, string | Partial<IconPackCellRefine>>>
+}): IconPackCellRefines {
+  return normalizeIconPackCellRefines(params.iconPackCellRefines)
+}
+
+/** 回炉覆盖 → 画布合成入参（cellKey → 精修图 dataURL） */
+export function iconPackCellRefinesToOverrides(
+  refines: IconPackCellRefines
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [cellKey, refine] of Object.entries(refines ?? {})) {
+    if (refine?.dataUrl) out[cellKey] = refine.dataUrl
+  }
+  return out
+}

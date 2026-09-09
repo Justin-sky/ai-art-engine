@@ -36,6 +36,12 @@ export async function composeImageIconPackSheet(input: {
   state: IconPackState
   /** 名单顺序即整版表逐行格位顺序；不足 rows×cols 的尾部格子视为空白格 */
   names: string[]
+  /**
+   * 单枚回炉覆盖：cellKey → 精修后的单张方形卡片图 dataURL。
+   * 覆盖格不再从整版裁切，改用精修图独立走同一条键控透明 / 主体修剪 / 统一对齐出口；
+   * 其余格照旧从整版裁切。背景采样仍以整版为准，保证整包底色一致。
+   */
+  cellOverrides?: Record<string, string>
   signal?: AbortSignal | null
 }): Promise<{
   items: Array<{ cellKey: string; name: string; dataUrl: string; width: number; height: number }>
@@ -112,21 +118,43 @@ export async function composeImageIconPackSheet(input: {
     const name = names[index]!
     const r1 = Math.floor(index / cols) + 1
     const c1 = (index % cols) + 1
-    const base = gridCellPixelRect(sw, sh, rows, cols, r1, c1)
-    const insetPx =
-      state.edgeInset === 'auto'
-        ? autoGridCellEdgeInsetPx(base.width, base.height)
-        : Math.max(0, Math.floor(Number(state.edgeInset) || 0))
-    const rect = insetPx
-      ? gridCellPixelRect(sw, sh, rows, cols, r1, c1, { edgeInsetPx: insetPx })
-      : base
+    const cellKey = `${r1}-${c1}`
+
+    // —— 格图源：默认整版裁切；存在回炉覆盖时改用该枚精修单图 ——
+    let drawImg: HTMLImageElement = img
+    let rect: { sx: number; sy: number; width: number; height: number }
+    const overrideUrl = input.cellOverrides?.[cellKey]
+    if (overrideUrl) {
+      const overrideImg = await loadImage(overrideUrl)
+      const ow = overrideImg.naturalWidth || 1
+      const oh = overrideImg.naturalHeight || 1
+      const overrideInsetPx =
+        state.edgeInset === 'auto'
+          ? autoGridCellEdgeInsetPx(ow, oh)
+          : Math.max(0, Math.floor(Number(state.edgeInset) || 0))
+      const overrideBase = { sx: 0, sy: 0, width: ow, height: oh }
+      rect = overrideInsetPx
+        ? gridCellPixelRect(ow, oh, 1, 1, 1, 1, { edgeInsetPx: overrideInsetPx })
+        : overrideBase
+      drawImg = overrideImg
+    } else {
+      const base = gridCellPixelRect(sw, sh, rows, cols, r1, c1)
+      const insetPx =
+        state.edgeInset === 'auto'
+          ? autoGridCellEdgeInsetPx(base.width, base.height)
+          : Math.max(0, Math.floor(Number(state.edgeInset) || 0))
+      rect = insetPx
+        ? gridCellPixelRect(sw, sh, rows, cols, r1, c1, { edgeInsetPx: insetPx })
+        : base
+    }
+
     const cellCanvas = document.createElement('canvas')
     cellCanvas.width = Math.max(1, rect.width)
     cellCanvas.height = Math.max(1, rect.height)
     const cellCtx = cellCanvas.getContext('2d')
     if (!cellCtx) throw new Error('ICON_PACK_CANVAS_UNAVAILABLE')
     cellCtx.imageSmoothingEnabled = false
-    cellCtx.drawImage(img, rect.sx, rect.sy, rect.width, rect.height, 0, 0, rect.width, rect.height)
+    cellCtx.drawImage(drawImg, rect.sx, rect.sy, rect.width, rect.height, 0, 0, rect.width, rect.height)
 
     if (keyEnabled) {
       const data = cellCtx.getImageData(0, 0, rect.width, rect.height)

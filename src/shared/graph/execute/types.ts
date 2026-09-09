@@ -473,6 +473,11 @@ export interface NodeExecuteContext {
     state: import('../iconPack').IconPackState
     /** 名单顺序即整版表逐行格位顺序（每行一枚） */
     names: string[]
+    /**
+     * 单枚回炉覆盖：cellKey → 该枚精修后的单张方形卡片图 dataURL。
+     * 覆盖格不再从整版裁切，改用精修图独立走同一条键控透明 / 主体修剪 / 统一对齐出口。
+     */
+    cellOverrides?: Record<string, string>
     signal?: AbortSignal | null
   }) => Promise<{
     items: Array<{ cellKey: string; name: string; dataUrl: string; width: number; height: number }>
