@@ -97,7 +97,8 @@
   - [x] 已落地：九宫格 UI 部件共享核心层（`shared/gameAssets/uiKit`）——部件类型（面板底 / 按钮 / 输入框 / 页签 / 弹窗）→ 命名规范前缀与文件主干安全化去重、源图框选矩形归一化、9-slice 切边与安全边距数据模型与夹取、`computeNineSliceCells` 九宫格拉伸网格几何（角块 / 边块原样不拉伸、仅中央区铺满，目标小于切边时自动收缩角块且中央区不为负，等大绘制逐格一一对应）、`uiKit` manifest 构建（部件 rect / 切边 / 安全边距 / 落盘 fileName 契约）。单测覆盖见 `tests/uiKit.test.ts`（13 项，含「九宫格任意缩放不变形」验收口径的网格几何断言）
   - [x] 已落地：素材库「UI 部件提取」交互标注工具（`UiKitExtractDialog`，图片资产右键与检查器入口）——整屏图缩放 / 平移视图上「框选新部件 / 选中」标注：拖拽框选控件（自动夹取进源图）→ 类型（面板底 / 按钮 / 输入框 / 页签 / 弹窗）与命名规范主干（实时显示落盘名）→ 裁剪框 / 9-slice 切边 / 安全边距数值标注（超界自动夹取），右侧带部件原图 + 横向 / 纵向拉伸的 9-slice 即时预览（复用核心层网格几何，所见即所得）；导出走 `saveGraphRunMedia` 逐部件透明 PNG 落 `Assets/UIKits/<sourceName>/`（自动登记进素材库）+ `writeProjectFile` 落 `ui-kit.json` 清单
   - [x] 已落地：gameUi 整屏出图「带字精修 + 空字底图」双轨输出（`uiSplitParse` 内图结构 v5）——ui.split 拆分时每屏输出 `prompt`（带字精修）与 `cleanPrompt`（空字底图）两套生图提示词（中英拆分提示词与示例、字段契约同步）；dive 内图每屏两条链：带字轨「提示词边界 → image → 图片边界」+ 底图轨（cleanPrompt 烘焙进 image 自身指令、无多余输入边界），两轨共用同一套 9:16 / 全局风格参考 / uiImage 系统提示词保证同屏同构；`cleanPrompt` 随 texts 载荷透传（`GraphTextItem` / `uiScreens` / `generatedTexts` 类型扩展），dive 重建不丢；旧模型仅出单轨时构建期兜底派生空字约束（`buildTextlessUiPrompt` 中英后缀）；输出口每屏两枚（`图片·` 带字 / `底图·` 空字），引擎直接取底图叠本地化文字、绕开 AI 像素文字；host 接口 / 边界归一化 / 持久化均同步（`tests/uiSplitExecute.test.ts` 17 项）
-  - > 待办：批量图标包（技能 / 道具 / 状态，统一线宽 / 圆角 / 最小可读尺寸规范）。
+  - [x] 已落地：批量图标包「整版表 + 宫格切分」一键工作流首版（`aiWorkflowPresets` 新增 `gameIcons` 预设）——「图标清单与风格」文本节点放画风主题与技能 / 道具 / 状态三类名单（每类 ≤9，顺序即切格顺序），三类各接一个 `asset.image` 整版节点绘制 3×3 均匀九宫格方形卡片图标表（统一规范尾句：等线宽描边、同一圆角与内边距比例、主体简洁高对比 16px 可辨、不画文字 / 网格线 / 外框，空余格纯色空白），每版再接 `image.gridSplit` 切成 9 枚独立方形图标，自左向右逐行与名单一致；风格经「风格参考图 → UI/图标」统一，i18n 与预设物化测试同步（`graphPlanMaterialize.test.ts` 12 项）
+  - > 待办：整版切格产物按 cellKey 落命名 manifest、纯色底本地键控抠透明并接统一对齐出口，交付引擎透明 PNG 图标包；单枚不满意的逐枚精修 / dive 后续。
 
 ### 5.5「2D 导演台」— P0 近期
 

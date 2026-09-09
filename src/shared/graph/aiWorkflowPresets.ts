@@ -5,6 +5,10 @@ import { EPISODE_AGENT_STOCK_TITLES } from './episodeStageTitles'
 /** 剧集 Agent 流水线：状态作用域键（集编号），生成后可改 */
 const EPISODE_SCOPE_KEY = 'ep01'
 
+/** 批量图标整版表统一规范尾句（线宽 / 圆角 / 内边距 / 最小可读），追加到每类图标整版节点指令 */
+const ICON_SHEET_SPEC_TAIL =
+  ' 图标统一规范：等线宽描边、同一圆角与内边距比例、主体简洁高对比（缩小到 16px 仍可辨）、每格一枚完整图标、不画任何文字、不画网格线与外框；名单不足 9 枚时其余格为纯色空白底。'
+
 /** 导演审核复合标题：前缀 + 目标阶段英文名（与旧中文「导演审核·X」同构） */
 function directorReviewTitle(target: keyof typeof EPISODE_AGENT_STOCK_TITLES): string {
   return target === 'directorReview'
@@ -337,6 +341,7 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'storyboardVideo',
   'productAd',
   'gameUi',
+  'gameIcons',
   'ecomAdDeep',
   'game3dAsset',
   'comicPublish',
@@ -543,6 +548,106 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
     edges: [
       { from: 'gameSystem', to: 'uiSplit' },
       { from: 'uiSplit', to: 'uiGen' }
+    ]
+  },
+  gameIcons: {
+    title: '游戏图标包',
+    nodes: [
+      {
+        key: 'script',
+        typeId: 'play.script',
+        title: '图标清单与风格',
+        params: {
+          text:
+            '画风主题（示例）：暖色 2D 卡通、浅色卡片底、描边统一——可按需改写主题句，正式风格以「风格参考图 → UI/图标」为准。\n技能图标：火焰斩、冰霜护盾、雷击、冲刺、治疗术、狂暴、破甲、圣光祝福\n道具图标：体力药水、金币袋、钥匙、魔法卷轴、地图、护身符\n状态图标：中毒、灼烧、冰冻、护盾、眩晕、虚弱、流血\n说明：每类名单不超过 9 枚，整版表按名单顺序排 3×3 均匀网格，自左向右、逐行排列。'
+        }
+      },
+      {
+        key: 'skillSheet',
+        typeId: 'asset.image',
+        title: '技能图标·整版',
+        params: {
+          generateInstruction:
+            '按「图标清单与风格」中“技能图标”名单，绘制一张 3 行 × 3 列均匀九宫格的技能图标整版表：每格一枚独立技能图标（如火焰斩、治疗术等），格子自左向右、逐行对应名单顺序。' +
+            ICON_SHEET_SPEC_TAIL,
+          generateAspectRatio: '1:1'
+        }
+      },
+      {
+        key: 'skillSplit',
+        typeId: 'image.gridSplit',
+        title: '技能图标·切格',
+        params: {
+          imageGridSplit: {
+            rows: 3,
+            cols: 3,
+            selected: []
+          }
+        }
+      },
+      {
+        key: 'itemSheet',
+        typeId: 'asset.image',
+        title: '道具图标·整版',
+        params: {
+          generateInstruction:
+            '按「图标清单与风格」中“道具图标”名单，绘制一张 3 行 × 3 列均匀九宫格的道具图标整版表：每格一枚独立道具图标（如体力药水、金币袋等），格子自左向右、逐行对应名单顺序。' +
+            ICON_SHEET_SPEC_TAIL,
+          generateAspectRatio: '1:1'
+        }
+      },
+      {
+        key: 'itemSplit',
+        typeId: 'image.gridSplit',
+        title: '道具图标·切格',
+        params: {
+          imageGridSplit: {
+            rows: 3,
+            cols: 3,
+            selected: []
+          }
+        }
+      },
+      {
+        key: 'statusSheet',
+        typeId: 'asset.image',
+        title: '状态图标·整版',
+        params: {
+          generateInstruction:
+            '按「图标清单与风格」中“状态图标”名单，绘制一张 3 行 × 3 列均匀九宫格的状态图标整版表：每格一枚独立状态图标（如中毒、灼烧等），格子自左向右、逐行对应名单顺序。' +
+            ICON_SHEET_SPEC_TAIL,
+          generateAspectRatio: '1:1'
+        }
+      },
+      {
+        key: 'statusSplit',
+        typeId: 'image.gridSplit',
+        title: '状态图标·切格',
+        params: {
+          imageGridSplit: {
+            rows: 3,
+            cols: 3,
+            selected: []
+          }
+        }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '使用说明',
+        params: {
+          text:
+            '使用流程：1) 在「图标清单与风格」填画风主题与三类图标名单（每类 ≤9 枚，名单顺序即切格顺序）；2) 为工程选择「UI / 图标」风格参考图，保证技能 / 道具 / 状态三版同一画风；3) 运行三个「·整版」节点生成 3×3 图标整版表（方形卡片）；4) 运行对应「·切格」节点，得到每枚独立方形图标，顺序自左向右逐行与名单一致（如 1-1 = 名单第 1 枚）。单枚不满意时改写对应整版格位内容后重跑该版。图标透明底与统一锚点 / 尺寸对齐留待「精灵对齐 / 资产出口」环节细化。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'script', to: 'skillSheet' },
+      { from: 'skillSheet', to: 'skillSplit' },
+      { from: 'script', to: 'itemSheet' },
+      { from: 'itemSheet', to: 'itemSplit' },
+      { from: 'script', to: 'statusSheet' },
+      { from: 'statusSheet', to: 'statusSplit' }
     ]
   },
   ecomAdDeep: {

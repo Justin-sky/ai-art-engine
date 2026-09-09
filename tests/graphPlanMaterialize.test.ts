@@ -187,6 +187,7 @@ describe('graphPlan materialize', () => {
       'storyboardVideo',
       'productAd',
       'gameUi',
+      'gameIcons',
       'ecomAdDeep',
       'game3dAsset',
       'comicPublish',

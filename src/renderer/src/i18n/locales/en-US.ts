@@ -199,6 +199,12 @@ export default {
         prompt:
           'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
       },
+      gameIcons: {
+        title: 'Game icon pack',
+        desc: 'Name lists → 3×3 icon sheets ×3 → grid split',
+        prompt:
+          'Create a batch game-icon workflow: a text node holds the art-style theme plus three ordered name lists (skill / item / status, at most 9 each; list order is the split order); three image nodes each draw a 3×3 uniform icon sheet for one list (square cards, consistent stroke width / corner radius / minimum-readable spec, no text); each sheet feeds a grid-split node that cuts the sheet into 9 separate square icons in the same left-to-right, top-to-bottom order as the list.'
+      },
       ecomAdDeep: {
         title: 'E-commerce ads',
         desc: 'Hero image → ad variants → rework → review',
