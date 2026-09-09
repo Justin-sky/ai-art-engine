@@ -209,6 +209,8 @@
       :setup="api.gridSplit.setup"
       :source-url="api.gridSplit.sourceUrl"
       :source-loading="api.gridSplit.sourceLoading"
+      :host-id="hostId"
+      :node-id="nodeId"
       @close="onClose(api.closeGridSplit)"
       @update="api.previewGridSplit as never"
       @save="api.saveGridSplit as never"

@@ -10,6 +10,7 @@ import {
 } from '../iconPack'
 import type { NodeExecuteContext, GraphValue } from './types'
 import { collectIncomingImageItems } from './mediaInputs'
+import { collectIncomingValues } from './incoming'
 import { flattenTextsValues } from './gallery'
 import { commitGeneratedImages } from './materialize'
 

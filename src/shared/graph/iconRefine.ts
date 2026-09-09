@@ -74,7 +74,7 @@ function textLinesOf(node: GraphNode | undefined): string[] {
     .filter((line) => line && !line.startsWith('#') && !line.startsWith('//'))
 }
 
-function isTextProvider(node: GraphNode | undefined): boolean {
+function isTextProvider(node: GraphNode | undefined): node is GraphNode {
   return Boolean(node && typeof node.params?.text === 'string')
 }
 

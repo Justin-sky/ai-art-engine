@@ -3049,7 +3049,23 @@ export default {
         p9: '9宫格 (3×3)',
         p16: '16宫格 (4×4)',
         p25: '25宫格 (5×5)'
-      }
+      },
+      refineBar: '单枚回炉精修',
+      refineOriginal: '当前原格',
+      refineResult: '精修结果',
+      refineNoPack: '未找到与本格同源打包节点：需图标包节点与整版图同源连接后才能回炉写回',
+      refineNoModelHint: '整版节点未配置生成模型 / 服务：若生成失败请先到整版图片节点配置模型',
+      refineHint: '不满意点（留空则按同版风格重画）',
+      refineHintPh: '例如：主体太糊、描边断线',
+      refinePrompt: '精修指令（可编辑）',
+      refineRun: '精修并写回打包',
+      refineRunning: '精修生成中…',
+      refineCancel: '取消',
+      refineClose: '关闭',
+      refineUnresolved: '无法解析该格位上下文（未连接整版图 / 打包节点）',
+      refineNoResult: '模型未返回本地图片',
+      refineSuccess: '已精修格位 {cell}（{name}）并写回打包节点，正在重新打包…',
+      refineFailedPrefix: '精修失败'
     },
     iconPack: {
       appMark: '图标包',

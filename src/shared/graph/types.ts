@@ -577,6 +577,8 @@ export interface GraphNodeParams {
   iconPackManifest?: unknown
   /** 图标包 manifest 落盘相对路径（icons 文本，与 PNG 同目录） */
   iconPackManifestRelativePath?: string
+  /** 图标包单枚回炉覆盖（逐枚精修）：cellKey → 精修后单图 dataURL，再跑打包即顶替对应格位 */
+  iconPackCellRefines?: import('./iconPack').IconPackCellRefines
   /** 图层分离（Seedream layer_decomposition） */
   imageLayerSplit?: Partial<ImageLayerSplitState>
   /** 场参考节点绑定的 BeatRow.id；拖入单元栏时写入 */

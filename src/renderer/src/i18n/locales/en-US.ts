@@ -3082,7 +3082,23 @@ export default {
         p9: '9-grid (3×3)',
         p16: '16-grid (4×4)',
         p25: '25-grid (5×5)'
-      }
+      },
+      refineBar: 'Refine a cell',
+      refineOriginal: 'Current cell',
+      refineResult: 'Refined result',
+      refineNoPack: 'No sibling icon-pack node found for this cell: an icon-pack node sourced from the same sheet image is required to write the refined tile back',
+      refineNoModelHint: 'No generation model configured on the sheet node: if generation fails, set a model on the sheet image node first',
+      refineHint: 'What to fix (leave empty to redraw in the sheet style)',
+      refineHintPh: 'e.g. subject is blurry, strokes broken',
+      refinePrompt: 'Refine prompt (editable)',
+      refineRun: 'Refine & repack',
+      refineRunning: 'Refining…',
+      refineCancel: 'Cancel',
+      refineClose: 'Close',
+      refineUnresolved: 'Cannot resolve this cell context (missing connected sheet / icon-pack node)',
+      refineNoResult: 'The model returned no local image',
+      refineSuccess: 'Cell {cell} ({name}) refined and written back to the pack; repacking…',
+      refineFailedPrefix: 'Refine failed'
     },
     iconPack: {
       appMark: 'Icon pack',

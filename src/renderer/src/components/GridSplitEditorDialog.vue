@@ -80,6 +80,25 @@
       </div>
 
       <div
+        v-if="cells.length && !refineOpen"
+        class="refine-bar"
+      >
+        <span class="refine-label">{{ t('graph.gridSplit.refineBar') }}</span>
+        <div class="refine-cells">
+          <button
+            v-for="cell in cells"
+            :key="`refine-${cell.key}`"
+            type="button"
+            class="refine-chip"
+            :title="cell.key"
+            @click="openRefine(cell.key)"
+          >
+            {{ cell.key }}
+          </button>
+        </div>
+      </div>
+
+      <div
         ref="stageEl"
         class="stage"
         @click="gridMenuOpen = false"
@@ -129,6 +148,120 @@
           </button>
         </div>
       </div>
+
+      <div
+        v-if="refineOpen"
+        class="refine-overlay"
+        @click.self="closeRefine"
+      >
+        <div class="refine-panel">
+          <div class="refine-head">
+            <div class="refine-title">
+              {{ refineTitleText }}
+            </div>
+            <button
+              type="button"
+              class="refine-x"
+              :title="t('graph.gridSplit.refineClose')"
+              @click="closeRefine"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="refine-body">
+            <div
+              v-if="originalPreviewUrl || resultUrl"
+              class="refine-previews"
+            >
+              <figure
+                v-if="originalPreviewUrl"
+                class="refine-fig"
+              >
+                <img
+                  :src="originalPreviewUrl"
+                  alt=""
+                  draggable="false"
+                >
+                <figcaption>{{ t('graph.gridSplit.refineOriginal') }}</figcaption>
+              </figure>
+              <figure
+                v-if="resultUrl"
+                class="refine-fig"
+              >
+                <img
+                  :src="resultUrl"
+                  alt=""
+                  draggable="false"
+                >
+                <figcaption>{{ t('graph.gridSplit.refineResult') }}</figcaption>
+              </figure>
+            </div>
+
+            <p
+              v-if="!refineCtx?.pack"
+              class="refine-note danger"
+            >
+              {{ t('graph.gridSplit.refineNoPack') }}
+            </p>
+            <p
+              v-else-if="!modelConfigured"
+              class="refine-note warn"
+            >
+              {{ t('graph.gridSplit.refineNoModelHint') }}
+            </p>
+
+            <label class="refine-field">
+              <span>{{ t('graph.gridSplit.refineHint') }}</span>
+              <textarea
+                v-model="hintText"
+                rows="2"
+                :placeholder="t('graph.gridSplit.refineHintPh')"
+              />
+            </label>
+
+            <label class="refine-field">
+              <span>{{ t('graph.gridSplit.refinePrompt') }}</span>
+              <textarea
+                v-model="promptText"
+                rows="7"
+                spellcheck="false"
+              />
+            </label>
+
+            <p
+              v-if="refineError"
+              class="refine-note danger"
+            >
+              {{ refineError }}
+            </p>
+            <p
+              v-if="refineDone"
+              class="refine-note ok"
+            >
+              {{ refineDone }}
+            </p>
+          </div>
+
+          <div class="refine-foot">
+            <button
+              type="button"
+              class="btn-ghost"
+              @click="closeRefine"
+            >
+              {{ t('graph.gridSplit.refineCancel') }}
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="busy || !canRunRefine"
+              @click="runRefine"
+            >
+              {{ busy ? t('graph.gridSplit.refineRunning') : t('graph.gridSplit.refineRun') }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </StudioFloatingWindow>
 </template>
@@ -139,13 +272,20 @@ import {
   DEFAULT_IMAGE_GRID_SPLIT,
   GRID_SPLIT_MAX,
   GRID_SPLIT_PRESETS,
+  buildIconRefineInstruction,
   cellKey,
   imageGridSplitToNodePatch,
   normalizeImageGridSplit,
+  readIconPackRefinesFromNode,
+  resolveIconRefineContext,
+  type IconRefineContext,
   type ImageGridSplitState
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
+import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
+import { graphRunHosts } from '../features/graph/model/graphRunHosts'
+import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 
 export type GridSplitEditorSavePayload = ReturnType<typeof imageGridSplitToNodePatch>
 
@@ -154,6 +294,10 @@ const props = defineProps<{
   setup?: Partial<ImageGridSplitState> | null
   sourceUrl?: string
   sourceLoading?: boolean
+  /** 宿主图编辑器注册 id（dive 宿主提供）：单枚回炉读写宿主图 / 触发打包节点重跑 */
+  hostId?: string
+  /** 当前 image.gridSplit 节点 id（dive 宿主提供） */
+  nodeId?: string
 }>()
 
 const emit = defineEmits<{
@@ -162,7 +306,7 @@ const emit = defineEmits<{
   save: [payload: GridSplitEditorSavePayload]
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const windowTitle = computed(() => t('graph.gridSplit.appMark'))
 
 const draft = reactive<ImageGridSplitState>(normalizeImageGridSplit())
@@ -324,6 +468,171 @@ watch(
   { immediate: true }
 )
 
+// —— 单枚回炉精修：dive 内 AI 重绘选中格，写回同源 iconPack 节点并重跑打包 ——
+const refineOpen = ref(false)
+const refineCellKey = ref('')
+const refineCtx = ref<IconRefineContext | null>(null)
+const originalPreviewUrl = ref('')
+const resultUrl = ref('')
+const busy = ref(false)
+const refineError = ref('')
+const refineDone = ref('')
+const hintText = ref('')
+const promptText = ref('')
+const isEnglish = computed(() => String(locale.value ?? '').toLowerCase().startsWith('en'))
+
+const refineTitleText = computed(() => {
+  const name = refineCtx.value?.name?.trim()
+  const base = refineCellKey.value
+    ? `${t('graph.gridSplit.refineBar')} · ${refineCellKey.value}`
+    : t('graph.gridSplit.refineBar')
+  return name ? `${base} · ${name}` : base
+})
+
+const modelConfigured = computed(() => {
+  const ctx = refineCtx.value
+  if (!ctx?.sheetNodeId) return true
+  const sheet = graphEditorHosts.getNode(props.hostId, ctx.sheetNodeId)
+  const params = (sheet?.params ?? {}) as Record<string, unknown>
+  return typeof params.generateModel === 'string' && params.generateModel.trim().length > 0
+})
+
+const canRunRefine = computed(() =>
+  Boolean(
+    props.open &&
+      props.sourceUrl &&
+      refineCtx.value?.pack &&
+      promptText.value.trim() &&
+      !busy.value
+  )
+)
+
+function rebuildRefinePrompt(): void {
+  const ctx = refineCtx.value
+  if (!ctx) return
+  promptText.value = buildIconRefineInstruction(ctx, {
+    locale: isEnglish.value ? 'en' : 'zh',
+    hint: hintText.value.trim() || undefined
+  })
+}
+
+async function openRefine(cell: string): Promise<void> {
+  refineCellKey.value = cell
+  refineError.value = ''
+  refineDone.value = ''
+  resultUrl.value = ''
+  originalPreviewUrl.value = ''
+  hintText.value = ''
+  refineCtx.value = null
+  promptText.value = ''
+  refineOpen.value = true
+
+  if (!props.hostId || !props.nodeId || !props.sourceUrl) {
+    refineError.value = t('graph.gridSplit.refineUnresolved')
+    return
+  }
+
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  const ctx = resolveIconRefineContext(doc, props.nodeId, cell)
+  refineCtx.value = ctx
+  if (!ctx) {
+    refineError.value = t('graph.gridSplit.refineUnresolved')
+    return
+  }
+  rebuildRefinePrompt()
+  if (!ctx.pack) return
+
+  try {
+    const crop = await composeImageGridCell({
+      sourceDataUrl: props.sourceUrl,
+      state: normalizeImageGridSplit(draft),
+      cellKey: cell,
+      edgeInset: 'auto'
+    })
+    originalPreviewUrl.value = crop.dataUrl
+  } catch {
+    originalPreviewUrl.value = ''
+  }
+}
+
+function closeRefine(): void {
+  refineOpen.value = false
+  refineCellKey.value = ''
+  refineCtx.value = null
+  originalPreviewUrl.value = ''
+  resultUrl.value = ''
+  hintText.value = ''
+  promptText.value = ''
+  refineError.value = ''
+  refineDone.value = ''
+  busy.value = false
+}
+
+watch(hintText, () => {
+  if (refineOpen.value && refineCtx.value) rebuildRefinePrompt()
+})
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) closeRefine()
+  }
+)
+
+async function runRefine(): Promise<void> {
+  const ctx = refineCtx.value
+  if (!ctx?.pack || !props.sourceUrl || busy.value) return
+  busy.value = true
+  refineError.value = ''
+  refineDone.value = ''
+  const cell = ctx.cellKey
+
+  // 复用整版节点的生成模型/服务，保证画风一致
+  const sheet = ctx.sheetNodeId ? graphEditorHosts.getNode(props.hostId, ctx.sheetNodeId) : null
+  const sheetParams = (sheet?.params ?? {}) as Record<string, unknown>
+  const model = typeof sheetParams.generateModel === 'string' ? sheetParams.generateModel.trim() : ''
+  const provider =
+    typeof sheetParams.generateProviderInstanceId === 'string'
+      ? sheetParams.generateProviderInstanceId.trim()
+      : ''
+
+  try {
+    const res = await window.studio.generateImage({
+      prompt: promptText.value,
+      ...(model ? { model } : {}),
+      ...(provider ? { providerInstanceId: provider } : {}),
+      aspectRatio: '1:1',
+      quality: 'high',
+      n: 1,
+      inputReferences: originalPreviewUrl.value ? [originalPreviewUrl.value] : undefined
+    })
+    const dataUrl = String(res?.images?.[0] ?? '').trim()
+    if (!dataUrl.startsWith('data:image/')) {
+      throw new Error(t('graph.gridSplit.refineNoResult'))
+    }
+
+    // 写回同源 iconPack：仅替换本格覆盖，其余格不受影响
+    const packNode = graphEditorHosts.getNode(props.hostId, ctx.pack.nodeId)
+    const prev = readIconPackRefinesFromNode(packNode?.params as never)
+    const next = { ...prev, [cell]: { cellKey: cell, dataUrl, updatedAt: new Date().toISOString() } }
+    graphEditorHosts.updateNode(props.hostId, ctx.pack.nodeId, { iconPackCellRefines: next } as never)
+
+    resultUrl.value = dataUrl
+    const runHost = graphRunHosts.get(props.hostId)
+    runHost?.toggleNodeRun(ctx.pack.nodeId)
+    refineDone.value = t('graph.gridSplit.refineSuccess', {
+      cell,
+      name: ctx.name?.trim() || cell
+    })
+  } catch (err) {
+    refineError.value = `${t('graph.gridSplit.refineFailedPrefix')}：${
+      err instanceof Error ? err.message : String(err)
+    }`
+  } finally {
+    busy.value = false
+  }
+}
+
 function save(): void {
   emit('save', buildSavePayload())
 }
@@ -331,6 +640,7 @@ function save(): void {
 function onClose(): void {
   gridMenuOpen.value = false
   if (dirty.value) save()
+  if (refineOpen.value) closeRefine()
   emit('close')
 }
 </script>
@@ -535,5 +845,223 @@ function onClose(): void {
   padding: 2px 6px;
   border-radius: 4px;
   line-height: 1.2;
+}
+
+/* —— 单枚回炉精修 —— */
+.refine-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.refine-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.refine-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 72px;
+  overflow-y: auto;
+}
+
+.refine-chip {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.refine-chip:hover {
+  border-color: #4a90e2;
+  background: var(--bg-hover);
+}
+
+.refine-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.refine-panel {
+  display: flex;
+  flex-direction: column;
+  width: 580px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 32px);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.refine-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.refine-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refine-x {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.refine-x:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.refine-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.refine-previews {
+  display: flex;
+  gap: 12px;
+}
+
+.refine-fig {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.refine-fig img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--graph-preview-bg);
+}
+
+.refine-fig figcaption {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.refine-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.refine-field > span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.refine-field textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 54px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.refine-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.refine-note.danger {
+  color: #e74c3c;
+}
+
+.refine-note.warn {
+  color: #d9a441;
+}
+
+.refine-note.ok {
+  color: #27ae60;
+}
+
+.refine-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-ghost {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  border: none;
+  border-radius: 8px;
+  background: #4a90e2;
+  color: #fff;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #3a7bd5;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
