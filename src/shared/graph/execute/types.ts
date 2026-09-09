@@ -67,6 +67,8 @@ export interface GraphTextItem {
   createdAt?: string
   /** 物化后的工程相对路径（对齐图片 dataUrl→relativePath） */
   relativePath?: string
+  /** UI 界面拆分：空字底图轨提示词（双轨出图用，随 texts 载荷透传） */
+  cleanPrompt?: string
 }
 
 /** 剧本生成 → 剧本输出等文本数组 */

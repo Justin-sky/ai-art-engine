@@ -859,7 +859,7 @@ function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefin
 
 async function persistUiSplitGeneration(
   ctx: NodeExecuteContext,
-  screens: Array<{ id: string; title: string; prompt: string }>
+  screens: Array<{ id: string; title: string; prompt: string; cleanPrompt?: string }>
 ): Promise<Record<string, GraphValue>> {
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
@@ -867,6 +867,8 @@ async function persistUiSplitGeneration(
     id: screen.id || `ui-screen:${stamp}:${index}`,
     title: screen.title,
     text: screen.prompt,
+    // 空字底图轨提示词随 texts 载荷透传，dive 重建内图时可保留双轨
+    cleanPrompt: screen.cleanPrompt?.trim() || undefined,
     createdAt
   }))
   // 每次拆分结果整体替换图库，避免新旧界面混在一起

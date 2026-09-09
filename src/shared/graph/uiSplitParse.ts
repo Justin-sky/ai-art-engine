@@ -15,27 +15,59 @@ export interface UiScreenPromptItem {
   id: string
   title: string
   prompt: string
+  /**
+   * 空字底图轨提示词（可选）：与 prompt 同布局同控件但不绘制任何文字，
+   * 供引擎叠加本地化文字、绕开 AI 像素文字。
+   * 缺省时构建内图用 buildTextlessUiPrompt 兜底派生。
+   */
+  cleanPrompt?: string
+}
+
+/** 空字底图兜底派生：在提示词末尾追加“不绘制任何文字 / 文字位留空占位”约束 */
+export const UI_TEXTLESS_SUFFIX_ZH =
+  '。本图须作为空字底图使用：不得绘制任何文字——所有文案、数字、符号、字母徽标一律省略，' +
+  '文字所在位置只以空白面板、色条或槽位占位呈现，不得出现任何可读字符，' +
+  '其余布局、控件、状态与视觉层级与本图带字版完全一致'
+export const UI_TEXTLESS_SUFFIX_EN =
+  '. This image must be a textless base layer: do NOT draw any text at all — omit every label, number, ' +
+  'symbol or letter badge, leaving each word position as an empty panel, bar or well placeholder only; ' +
+  'nothing readable may appear. Keep the rest of the layout, controls, states and visual hierarchy ' +
+  'exactly as in the text version.'
+
+/** 依据提示词语言追加空字约束（中文提示词用中文后缀，其余用英文后缀） */
+export function buildTextlessUiPrompt(prompt: string): string {
+  const trimmed = prompt.trim()
+  if (!trimmed) return trimmed
+  const hasCjk = /[\u4e00-\u9fff]/.test(trimmed)
+  return `${trimmed}${hasCjk ? UI_TEXTLESS_SUFFIX_ZH : UI_TEXTLESS_SUFFIX_EN}`
 }
 
 /**
  * 把输入端口收到的提示词载荷直接展开为界面列表。
  * 供 ui.gen 执行与 dive 打开共用：dive 时无需先 cook，直接按端口数组展开。
+ * cleanPrompt 可选随载荷透传（空字底图轨提示词，缺失时由构建层兜底派生）。
  */
 export function screensFromUiGenIncoming(
   values: unknown[]
 ): UiScreenPromptItem[] {
-  const raw: Array<{ title: string; prompt: string }> = []
+  const raw: Array<{ title: string; prompt: string; cleanPrompt?: string }> = []
   for (const value of values) {
     if (!value || typeof value !== 'object') continue
     const entry = value as { kind?: unknown; text?: unknown; items?: unknown }
     if (entry.kind === 'texts' && Array.isArray(entry.items)) {
       for (const item of entry.items) {
-        const rec = (item ?? {}) as { title?: unknown; text?: unknown }
+        const rec = (item ?? {}) as {
+          title?: unknown
+          text?: unknown
+          cleanPrompt?: unknown
+        }
         const prompt = typeof rec.text === 'string' ? rec.text.trim() : ''
         if (prompt) {
           raw.push({
             title: typeof rec.title === 'string' ? rec.title.trim() : '',
-            prompt
+            prompt,
+            cleanPrompt:
+              typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined
           })
         }
       }
@@ -46,46 +78,71 @@ export function screensFromUiGenIncoming(
   return raw.map((item, index) => ({
     id: `ui-${index + 1}`,
     title: item.title || `界面 ${index + 1}`,
-    prompt: item.prompt
+    prompt: item.prompt,
+    cleanPrompt: item.cleanPrompt
   }))
 }
 
-/** UI界面拆分 dive 内图槽位上限（每条提示词一条输出链） */
+/** UI界面拆分 dive 内图槽位上限（按屏数计，每屏双轨输出：带字精修 + 空字底图） */
 export const UI_SPLIT_SLOT_CAP = 12
 
 /**
  * dive 内图结构版本：边界节点/连线结构变化时递增，
  * 使已存在的内图资产在下一次 dive 时按新结构重建。
+ * v5：每屏从单轨升级为双轨——带字精修链 + 空字底图链（cleanPrompt）。
  */
-export const UI_SPLIT_INNER_GRAPH_VERSION = 4
+export const UI_SPLIT_INNER_GRAPH_VERSION = 5
 
-/** ui.split 内图资产的宿主接口：每条链一个提示词输入口 + 一个图片输出口 */
+/** 带字轨输出口 id：out-<slot>（保持既有槽位语义，旧数据兼容） */
+export function uiSplitOutPortId(slot: number): string {
+  return `out-${slot}`
+}
+
+/** 空字底图轨输出口 id：out-<slot>-clean */
+export function uiSplitCleanOutPortId(slot: number): string {
+  return `out-${slot}-clean`
+}
+
+/**
+ * ui.split 内图资产的宿主接口：每屏一个提示词输入口；
+ * 输出口每屏两个（带字精修图 + 空字底图，供引擎叠本地化文字）。
+ */
 export function buildUiSplitHostInterface(
   screens: UiScreenPromptItem[]
 ): HostInterfaceDocument {
   const cap = Math.min(UI_SPLIT_SLOT_CAP, screens.length)
   const items = screens.slice(0, cap)
-  return {
-    version: HOST_INTERFACE_FORMAT_VERSION,
-    inputs: items.map((screen, i) => ({
-      id: `in-${i + 1}`,
-      label: `提示词·${screen.title}`,
-      dataType: GraphPortType.text,
-      multiple: false
-    })),
-    outputs: items.map((screen, i) => ({
-      id: `out-${i + 1}`,
-      label: `图片·${screen.title}`,
-      dataType: GraphPortType.image,
-      multiple: false
-    }))
-  }
+  const inputs = items.map((screen, i) => ({
+    id: `in-${i + 1}`,
+    label: `提示词·${screen.title}`,
+    dataType: GraphPortType.text,
+    multiple: false
+  }))
+  const outputs = items.flatMap((screen, i) => {
+    const slot = i + 1
+    return [
+      {
+        id: uiSplitOutPortId(slot),
+        label: `图片·${screen.title}`,
+        dataType: GraphPortType.image,
+        multiple: false
+      },
+      {
+        id: uiSplitCleanOutPortId(slot),
+        label: `底图·${screen.title}`,
+        dataType: GraphPortType.image,
+        multiple: false
+      }
+    ]
+  })
+  return { version: HOST_INTERFACE_FORMAT_VERSION, inputs, outputs }
 }
 
 /**
- * 构建 ui.split 的 dive 内图：每个界面一条链
- * 提示词输入边界 → 图像生成（asset.image）→ 图片输出边界。
- * 提示词直接烘焙进边界节点 params.text，图像节点用空指令接收上游文本。
+ * 构建 ui.split 的 dive 内图：每屏两条链——双轨输出。
+ * - 带字精修轨：提示词输入边界 → 图像生成（asset.image）→ 图片输出边界。
+ * - 空字底图轨：图像生成（asset.image，cleanPrompt 直接烘焙为 generateInstruction）→ 底图输出边界。
+ * 两轨共用同一套生成参数（9:16、全局风格参考 UI、uiImage 系统提示词），保证画面一一对应。
  */
 export function buildUiSplitInnerGraph(
   screens: UiScreenPromptItem[],
@@ -97,17 +154,26 @@ export function buildUiSplitInnerGraph(
   // 游戏 UI 生成专用系统提示词：对齐风格参考图的 UI 元素/界面风格/控件/配色等细节，
   // 不影响标准图片生成的默认系统提示词
   const uiImageSystemPrompt = resolveUiImageSystemPrompt(undefined, locale)
+  const cleanBaseParams = {
+    generateAspectRatio: '9:16',
+    styleImagesUseGlobal: true,
+    styleReferenceSubject: 'ui' as const,
+    generateSystemPrompt: uiImageSystemPrompt
+  }
   for (let i = 0; i < cap; i += 1) {
     const screen = screens[i]!
     const slot = i + 1
     const y = 80 * i + 40
     const portIn = `in-${slot}`
-    const portOut = `out-${slot}`
+    const portOut = uiSplitOutPortId(slot)
+    const portOutClean = uiSplitCleanOutPortId(slot)
     // 用规范边界 id：资产打开时 ensureBoundaryProxyNodes 按接口补齐/复用，
     // 自定义 id 会导致同一端口出现两套边界节点且连线错位
     const inId = boundaryInputNodeId(portIn)
     const imgId = `ui-img-${slot}`
     const outId = boundaryOutputNodeId(portOut)
+    const cleanImgId = `ui-img-clean-${slot}`
+    const cleanOutId = boundaryOutputNodeId(portOutClean)
 
     nodes.push({
       id: inId,
@@ -125,19 +191,16 @@ export function buildUiSplitInnerGraph(
         text: screen.prompt
       }
     })
+    // 标题对齐输出口 label（wireDanglingOutsToBoundaryOutputs 按标题配对出口，
+    // 双轨同屏两个图片口时避免跨轨串线）
     nodes.push(
       createNodeFromType(
         'asset.image',
         { x: 260, y },
         {
           id: imgId,
-          title: `UI图·${screen.title}`,
-          params: {
-            generateAspectRatio: '9:16',
-            styleImagesUseGlobal: true,
-            styleReferenceSubject: 'ui',
-            generateSystemPrompt: uiImageSystemPrompt
-          }
+          title: `图片·${screen.title}`,
+          params: cleanBaseParams
         }
       )
     )
@@ -156,6 +219,37 @@ export function buildUiSplitInnerGraph(
         }
       }
     })
+    // 空字底图轨：无输入边界，cleanPrompt 直接烘焙进图像节点指令（执行时不再取上游文本）
+    const cleanPrompt = screen.cleanPrompt?.trim() || buildTextlessUiPrompt(screen.prompt)
+    nodes.push(
+      createNodeFromType(
+        'asset.image',
+        { x: 700, y },
+        {
+          id: cleanImgId,
+          title: `底图·${screen.title}`,
+          params: {
+            ...cleanBaseParams,
+            generateInstruction: cleanPrompt
+          }
+        }
+      )
+    )
+    nodes.push({
+      id: cleanOutId,
+      typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+      category: 'note',
+      position: { x: 920, y },
+      title: `底图·${screen.title}`,
+      params: {
+        previewCollapsed: true,
+        hostBoundaryPort: {
+          portId: portOutClean,
+          dataType: GraphPortType.image,
+          multiple: false
+        }
+      }
+    })
     edges.push({
       id: `ui-e-in-${slot}`,
       source: inId,
@@ -168,6 +262,13 @@ export function buildUiSplitInnerGraph(
       id: `ui-e-out-${slot}`,
       source: imgId,
       target: outId,
+      sourcePort: 'out',
+      targetPort: 'in'
+    })
+    edges.push({
+      id: `ui-e-clean-${slot}`,
+      source: cleanImgId,
+      target: cleanOutId,
       sourcePort: 'out',
       targetPort: 'in'
     })
@@ -215,6 +316,7 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
     const row = parsed[i]
     let title = ''
     let prompt = ''
+    let cleanPrompt = ''
     let id = ''
     if (typeof row === 'string') {
       prompt = row.trim()
@@ -227,13 +329,18 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
         asString(obj.text) ||
         asString(obj.content) ||
         asString(obj.description)
+      // 空字底图轨：模型直接输出两套提示词时随行携带
+      cleanPrompt =
+        asString(obj.cleanPrompt) || asString(obj.textlessPrompt) || asString(obj.clean)
       id = asString(obj.id)
     }
     if (!prompt) continue
     let nextId = id || slugify(title, i)
     if (seen.has(nextId)) nextId = `${nextId}-${i + 1}`
     seen.add(nextId)
-    items.push({ id: nextId, title, prompt })
+    const item: UiScreenPromptItem = { id: nextId, title, prompt }
+    if (cleanPrompt) item.cleanPrompt = cleanPrompt
+    items.push(item)
   }
   return items
 }
@@ -265,7 +372,8 @@ function parseUiScreenMarkdownList(text: string): UiScreenPromptItem[] {
 }
 
 /**
- * 解析 UI 界面拆分模型输出：JSON 数组，每项含 title + prompt（或纯字符串）。
+ * 解析 UI 界面拆分模型输出：JSON 数组，每项含 title + prompt（可含 cleanPrompt 空字轨），
+ * 或纯字符串。
  */
 export function parseUiScreenPrompts(raw: string): UiScreenPromptItem[] {
   const text = stripJsonCodeFence(raw)

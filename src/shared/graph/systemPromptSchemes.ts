@@ -995,20 +995,24 @@ Rules:
 - Do not invent systems absent from the source; you may flesh out layout/control details that are necessary for a drawable UI.
 - Each prompt must be a self-contained image-generation brief for that one screen: purpose, layout regions, key controls and states, visual hierarchy, and readable labels if the source uses them.
 - NEVER include visual-style, material, lighting or color descriptions in any prompt. Forbidden words include (not limited to): sci-fi, cyber, fantasy, realistic, cartoon, mechanical, metal, glass, translucent, blur, glow, gradient, thin lines, sharp edges, dark, neon, tech-feel and other art-style/material words. Even if the source document states a visual style, strip it out entirely — all visual presentation must come from the style reference image. Describe only structure, regions, control types and states, content, labels, and hierarchy; functional feedback is allowed, visual-effect descriptions (e.g. glowing on hover) are not.
-- Each prompt must end with a one-sentence style-lock clause: "Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow the reference's look only, never copy its specific screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
+- Each screen must ship TWO prompts as a dual-track output (the engine overlays localizable text on the clean base layer to avoid AI pixel text):
+  - "prompt": the full text version with all copy rendered as readable text.
+  - "cleanPrompt": the TEXTLESS base layer — identical layout, regions, controls, states and visual hierarchy, but NO readable glyph may appear anywhere: every label, number, symbol and letter badge is omitted and each copy position stays an empty panel, bar, well or slot-shaped placeholder.
+- Both "prompt" and "cleanPrompt" must end with a one-sentence style-lock clause: "Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow the reference's look only, never copy its specific screen content)", and screens in the same document must share one consistent visual system so no screen drifts.
 - Prefer concrete layout language (top bar / content / bottom actions, cards, lists, tabs) over vague adjectives.
 - Output must be complete and readable: no garbled text, no "?", ellipsis or placeholder substitutes, no truncated prompts.
 - id is a stable English kebab slug prefixed with ui-.
 
 Return ONLY a bare JSON array — do not wrap it in an object (never output {"screens": [...]}) and do not use a markdown list. Every object must contain exactly:
-id, title, prompt
+id, title, prompt, cleanPrompt
 
 Example:
 [
   {
     "id": "ui-main-hud",
     "title": "Main HUD",
-    "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark"
+    "prompt": "Mobile game main HUD: top resource bar with gold/energy, center character viewport, bottom five-tab navigation (Home/Battle/Bag/Shop/Social), clean and high-readability. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark",
+    "cleanPrompt": "Mobile game main HUD textless base layer: top resource bar with gold/energy slots, center character viewport, bottom five-tab navigation wells (Home/Battle/Bag/Shop/Social) — no readable text anywhere, every label position stays an empty panel or bar placeholder, no glyph rendered. Strictly follow the style reference image in every visual detail — UI element shapes, interface style, control widgets, color palette, materials and lighting (borrow its look only, never copy its specific screen content), sharing one control and finish system with the other screens, no watermark"
   }
 ]`
 
@@ -1021,20 +1025,24 @@ export const DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH = `你是 AIArtEngine 的资深�
 - 不得编造策划案未出现的系统；可为可绘制性补足必要的布局与控件细节。
 - 每条 prompt 必须是该界面自洽的生图说明：界面用途、区域划分、关键控件与状态、视觉层级；文案标签沿用原文语言。
 - 禁止在 prompt 中出现任何视觉风格 / 材质 / 光影 / 配色描述。违禁词包括但不限于：科幻、赛博、写实、卡通、机械、金属、玻璃、半透明、模糊、发光、渐变、细线、锐利边角、暗黑、霓虹、科技感等画风与材质词。即使策划案中写了视觉风格要求，也必须一律剔除，所有视觉呈现都交给风格参考图。prompt 只允许描述：布局区域、控件类型与状态、内容与文案、层级关系；功能交互可以写，视觉效果描述（如悬停发光）禁止写。
-- 每条 prompt 必须以一句风格锁定语结尾：「严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容）」；同一策划案的所有界面必须共用同一套控件体系、配色与视觉层级，防止各屏风格漂移。
+- 每屏必须输出双轨两套提示词（引擎在空字底图上叠本地化文字，绕开 AI 像素文字）：
+  - prompt：完整带字版——布局与文案都按原文清晰可读绘制。
+  - cleanPrompt：空字底图版——布局、区域、控件、状态与视觉层级与 prompt 完全一致，但整图不得出现任何可读文字 / 数字 / 符号 / 字母徽标：文案所在位置只保留空白面板、色条、槽位等无字占位，不渲染任何字形。
+- prompt 与 cleanPrompt 都必须以一句风格锁定语结尾：「严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容）」；同一策划案的所有界面必须共用同一套控件体系、配色与视觉层级，防止各屏风格漂移。
 - 用具体布局语言（顶栏 / 主内容 / 底栏操作、卡片、列表、页签），避免空泛形容词。
 - 输出必须完整无乱码：中英文文本完整可读，禁止用问号、省略号、占位符替代文字，禁止截断 prompt。
 - id 使用 ui- 前缀的稳定英文短横线标识。
 
 只输出 JSON 数组本身，不要用对象包裹（禁止输出 {"screens": [...]} 这类形式），不要用 markdown 列表，不要代码块、解释或附加文字。每个对象必须且只能包含：
-id、title、prompt
+id、title、prompt、cleanPrompt
 
 示例：
 [
   {
     "id": "ui-main-hud",
     "title": "主界面 HUD",
-    "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印"
+    "prompt": "手游主界面 HUD：顶部金币/体力资源条，中央角色展示区，底部五个页签导航（主城/战斗/背包/商店/社交），清晰高可读。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印",
+    "cleanPrompt": "手游主界面 HUD 空字底图：顶部金币/体力资源条槽位，中央角色展示区，底部五个页签导航槽位（主城/战斗/背包/商店/社交）——不绘制任何文字，所有文案位置只保留空白面板或色条占位，不出现任何可读字形。严格参考风格参考图的所有视觉细节——UI 元素造型、界面风格、控件样式、配色方案、材质与光影（仅借鉴参考图的界面风格，不复制其具体界面内容），并与本方案其它界面共用同一套控件体系与质感，无水印"
   }
 ]`
 

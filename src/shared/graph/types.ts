@@ -445,6 +445,8 @@ export interface GraphNodeParams {
     text: string
     createdAt?: string
     relativePath?: string
+    /** UI 界面拆分：该条目的空字底图轨提示词（随 texts 载荷透传，避免 dive 重建时丢失） */
+    cleanPrompt?: string
   }>
   /**
    * 声音生成节点：历次生成累计的音频（重新执行追加，可在 Inspector 删除）。
@@ -492,8 +494,8 @@ export interface GraphNodeParams {
   selectedTextId?: string
   /** 选择场节点：当前选中的 BeatRow.id */
   selectedBeatId?: string
-  /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链） */
-  uiScreens?: Array<{ id: string; title: string; prompt: string }>
+  /** UI 界面拆分：拆分出的界面提示词数组（每条对应 dive 内图一条输出链，可含空字底图轨 cleanPrompt） */
+  uiScreens?: Array<{ id: string; title: string; prompt: string; cleanPrompt?: string }>
   /** UI 界面拆分：dive 内图对应的子图资产 id（懒创建） */
   uiSplitAssetId?: string
   /** UI 界面拆分：dive 内图结构版本（结构变化时递增，旧资产强制重建） */
