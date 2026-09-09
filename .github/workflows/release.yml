@@ -87,12 +87,6 @@ jobs:
       - name: Bundle dsh runtime
         run: npm run bundle:dsh
 
-      # 下载各平台静态 ffmpeg/ffprobe 到 out/ffmpeg/<arch>，由 extraResources 打入
-      # <resources>/ffmpeg（视频打点/抽帧/导出开箱即用）。mac 双架构各取一份。
-      - name: Fetch ffmpeg binaries (Windows)
-        if: matrix.platform == 'win'
-        run: npm run fetch:ffmpeg
-
       - name: Package (Windows)
         if: matrix.platform == 'win'
         env:
@@ -109,11 +103,6 @@ jobs:
             echo "Unsigned Windows build (no WIN_CSC_* secrets)"
           fi
           npx electron-builder --win --publish never
-
-      - name: Fetch ffmpeg binaries (macOS x64 + arm64)
-        if: matrix.platform == 'mac'
-        # evermeet 构建为 x86_64：Apple Silicon 走 Rosetta 2；需原生 arm64 时设 FFMPEG_DARWIN_URL
-        run: npm run fetch:ffmpeg -- --arch x64 --arch arm64
 
       - name: Package (macOS)
         if: matrix.platform == 'mac'
@@ -146,10 +135,6 @@ jobs:
           # macos-latest 为 arm64；显式打 x64+arm64，供 Intel / Apple Silicon 分别下载
           npx electron-builder --mac --x64 --arm64 --publish never "${EXTRA_ARGS[@]}"
 
-      - name: Fetch ffmpeg binaries (Linux)
-        if: matrix.platform == 'linux'
-        run: npm run fetch:ffmpeg
-
       - name: Package (Linux)
         if: matrix.platform == 'linux'
         run: npx electron-builder --linux --publish never
@@ -167,6 +152,134 @@ jobs:
             dist/*.blockmap
           if-no-files-found: warn
           retention-days: 30
+
+      # ---- 静默安装 + 启动冒烟（产物先上传，冒烟失败时仍可下载分析）----
+      # 任一步失败 → build job 失败 → 依赖它的 release job 不执行，标签不会被发布。
+      - name: Smoke test — silent install & launch (Windows)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem 'dist\*-Setup-*.exe' -ErrorAction Stop | Select-Object -First 1
+          Write-Host "SMOKE installing: $($setup.Name)"
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "NSIS silent install failed (exit code $($p.ExitCode))" }
+
+          # NSIS 默认 per-user 安装到 %LOCALAPPDATA%\Programs\<productName>，主程序 AIArtEngine.exe；
+          # oneClick 装完会默认自动拉起应用，先清理残余，再手动启动一次做存活检测。
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\AIArtEngine\AIArtEngine.exe'
+          if (-not (Test-Path $exe)) {
+            # 兜底 1：读 HKCU 卸载注册表 DisplayIcon（记录主程序绝对路径）
+            $icon = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+              ForEach-Object { Get-ItemProperty $_.PSPath } |
+              Where-Object { $_.DisplayName -eq 'AIArtEngine' -and $_.DisplayIcon } |
+              Select-Object -First 1 -ExpandProperty DisplayIcon
+            if ($icon) { $exe = ($icon -split ',')[0] }
+          }
+          if (-not (Test-Path $exe)) {
+            # 兜底 2：在安装目录内找主程序（排除卸载器）
+            $exe = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs\AIArtEngine') -Filter '*.exe' -ErrorAction SilentlyContinue |
+              Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $exe -or -not (Test-Path $exe)) { throw "Installed app not found (last tried: $exe)" }
+          Write-Host "SMOKE app exe: $exe"
+
+          # 关闭装完自动拉起的实例并等待完全退出，避免单实例锁导致误判
+          Get-Process AIArtEngine -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $deadline = (Get-Date).AddSeconds(15)
+          while ((Get-Process AIArtEngine -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+          }
+          if (Get-Process AIArtEngine -ErrorAction SilentlyContinue) { throw 'Auto-launched instance still running; abort smoke' }
+
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          if ($app.HasExited) {
+            Write-Host "SMOKE_FAIL app exited early with code $($app.ExitCode)" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host 'SMOKE_OK app still running after 15s'
+          Stop-Process -Id $app.Id -Force
+
+      - name: Smoke test — mount dmg & launch (macOS)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # macos-latest 现为 arm64：优先测本机架构 dmg（Intel 包需 Rosetta，CI 不装，跳过）
+          DMG="$(ls dist/*.dmg 2>/dev/null | grep 'arm64' | head -n1 || true)"
+          [ -n "$DMG" ] || DMG="$(ls dist/*.dmg 2>/dev/null | head -n1 || true)"
+          [ -n "$DMG" ] || { echo 'SMOKE_FAIL no .dmg found' >&2; exit 1; }
+          echo "SMOKE dmg: $DMG"
+          MNT="$RUNNER_TEMP/aiartengine-dmg"
+          OUT="$RUNNER_TEMP/aiartengine-smoke"
+          rm -rf "$MNT" "$OUT"
+          mkdir -p "$MNT" "$OUT"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
+          cp -R "$MNT"/*.app "$OUT/"
+          hdiutil detach "$MNT" >/dev/null
+          APP="$(ls -d "$OUT"/*.app | head -n1)"
+          BIN="$APP/Contents/MacOS/AIArtEngine"
+          [ -x "$BIN" ] || { echo "SMOKE_FAIL binary missing: $BIN" >&2; exit 1; }
+          echo "SMOKE launching: $BIN"
+          "$BIN" > /tmp/smoke.log 2>&1 &
+          PID=$!
+          sleep 15
+          set +e
+          kill -0 "$PID" 2>/dev/null
+          ALIVE=$?
+          set -e
+          if [ "$ALIVE" -eq 0 ]; then
+            echo 'SMOKE_OK app still running after 15s'
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          else
+            wait "$PID" 2>/dev/null
+            RC=$?
+            echo "SMOKE_FAIL app exited early (code $RC)" >&2
+            cat /tmp/smoke.log >&2
+            exit 1
+          fi
+
+      - name: Smoke test — run AppImage (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMG="$(ls dist/*.AppImage 2>/dev/null | head -n1 || true)"
+          [ -n "$IMG" ] || { echo 'SMOKE_FAIL no .AppImage found' >&2; exit 1; }
+          echo "SMOKE AppImage: $IMG"
+          chmod +x "$IMG"
+          # GitHub ubuntu runner 无 FUSE：APPIMAGE_EXTRACT_AND_RUN=1 强制解包运行；
+          # Electron 需系统 GUI 库与显示服务器，缺则先补（包名兼容 22.04/24.04 的 t64 迁移）。
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq xvfb libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+              libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+              libasound2t64 libpango-1.0-0t64 libcairo2 libgtk-3-0t64 libegl1 libgl1 libxss1 libxtst6 libnotify4; then
+            sudo apt-get install -y -qq xvfb libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+              libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+              libpango-1.0-0 libcairo2 libgtk-3-0 libegl1 libgl1 libxss1 libxtst6 libnotify4 || \
+              echo 'WARN: apt GUI libs unavailable; proceeding and relying on preinstalled deps'
+          fi
+          xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" --no-sandbox > /tmp/smoke.log 2>&1 &
+          PID=$!
+          sleep 15
+          set +e
+          kill -0 "$PID" 2>/dev/null
+          ALIVE=$?
+          set -e
+          if [ "$ALIVE" -eq 0 ]; then
+            echo 'SMOKE_OK app still running after 15s'
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          else
+            wait "$PID" 2>/dev/null
+            RC=$?
+            echo "SMOKE_FAIL app exited early (code $RC)" >&2
+            cat /tmp/smoke.log >&2
+            exit 1
+          fi
 
   release:
     name: GitHub Release
