@@ -9,7 +9,7 @@ import type {
   McpActivity,
   SessionSkill
 } from '@shared/ipc'
-import { modalityConfig } from '@shared/modelProvider'
+import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
@@ -697,7 +697,8 @@ async function loadModels(): Promise<void> {
         options.push({
           providerId: p.id,
           id,
-          label: catalog[id]?.name?.trim() || id,
+          // 目录只返回 id 的 provider（如 DeepSeek）用内置展示名兜底
+          label: catalog[id]?.name?.trim() || providerModelDisplayName(p.providerKind, id),
           providerLabel: p.label || p.providerKind,
           // OpenRouter 等目录把 context_length 放在 capabilities 里
           contextLength: catalog[id]?.capabilities?.context_length as number | undefined
@@ -763,8 +764,8 @@ function selectSession(id: string): void {
  * 覆盖主流 OpenAI 兼容 provider 的常见模型 id（DeepSeek / Kimi / xAI / 智谱 / 千问 等）
  */
 const MODEL_CONTEXT_FALLBACK: Record<string, number> = {
-  'deepseek-chat': 65536,
-  'deepseek-reasoner': 65536,
+  'deepseek-flash': 1048576,
+  'deepseek-v4-pro': 1048576,
   'kimi-k2': 131072,
   'kimi-k2-turbo': 131072,
   'moonshot-v1-8k': 8192,
@@ -793,7 +794,7 @@ const MODEL_CONTEXT_FALLBACK: Record<string, number> = {
   'qwen-long': 10000000
 }
 
-/** 未命中任何映射时的默认上下文窗口（token），与 DeepSeek 官方 64K 一致 */
+/** 未命中任何映射时的默认上下文窗口（token），取主流文本模型的保守下限 */
 const DEFAULT_CONTEXT_LENGTH = 64000
 
 /** 当前模型的上下文窗口大小（token）；未选中模型时为 0（不显示用量指示） */

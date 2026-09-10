@@ -449,7 +449,7 @@
               :key="id"
               :value="id"
             >
-              {{ id }}
+              {{ defaultModelDisplayName(provider, id) }}
             </option>
           </select>
         </label>
@@ -664,6 +664,15 @@ function currentModality(provider: ModelProviderInstance): ModelModality {
   const allowed = settingsModalitiesFor(provider)
   const mod = activeModality[provider.id] ?? allowed[0] ?? 'text'
   return allowed.includes(mod) ? mod : (allowed[0] ?? 'text')
+}
+
+/** 默认生成模型下拉：优先展示目录快照里的 name（如 DeepSeek V4.1 Flash），否则回退 id */
+function defaultModelDisplayName(
+  provider: ModelProviderInstance,
+  modelId: string
+): string {
+  const cfg = modalityConfig(provider, currentModality(provider))
+  return cfg.catalog?.[modelId]?.name?.trim() || modelId
 }
 
 function modalityHintText(provider: ModelProviderInstance): string {

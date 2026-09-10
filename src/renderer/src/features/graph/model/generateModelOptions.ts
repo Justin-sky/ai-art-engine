@@ -1,4 +1,5 @@
 import type {
+  ModalityModelConfig,
   ModelModality,
   ModelProviderInstance,
   ModelProviderKind
@@ -8,7 +9,8 @@ import {
   isLocalOpenAiProvider,
   isModel3dProviderKind,
   isVllmProvider,
-  modalityConfig
+  modalityConfig,
+  providerModelDisplayName
 } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
@@ -17,6 +19,23 @@ export interface GenerateModelOption {
   providerInstanceId: string
   providerKind: ModelProviderKind
   model: string
+}
+
+/**
+ * 生成模型下拉的展示名：优先设置里缓存的目录名（拉取目录时写入），
+ * 其次 provider 内置展示名（目录只返回 id 的 provider，如 DeepSeek 的 deepseek-flash），
+ * 最后回退 id；若 provider 名已出现在展示名开头则不重复拼接。
+ */
+function resolveModelOptionLabel(
+  provider: ModelProviderInstance,
+  config: ModalityModelConfig,
+  modelId: string
+): string {
+  const cachedName = config.catalog?.[modelId]?.name?.trim()
+  const display = cachedName || providerModelDisplayName(provider.providerKind, modelId)
+  const providerLabel = provider.label.trim()
+  if (!providerLabel || display.toLowerCase().startsWith(providerLabel.toLowerCase())) return display
+  return `${providerLabel} · ${display}`
 }
 
 export function modelKey(providerInstanceId: string, model: string): string {
@@ -126,7 +145,7 @@ export function buildModelOptions(
       if (!model.trim()) continue
       options.push({
         key: modelKey(provider.id, model),
-        label: `${provider.label} · ${model}`,
+        label: resolveModelOptionLabel(provider, sel, model),
         providerInstanceId: provider.id,
         providerKind: provider.providerKind,
         model

@@ -1,6 +1,7 @@
 import axios from 'axios'
-import type {
-  GenerateImageInput,
+import {
+  providerModelDisplayName,
+  type GenerateImageInput,
   GenerateImageResult,
   GenerateModel3dInput,
   GenerateModel3dJob,
@@ -41,7 +42,7 @@ function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never>
   return Promise.reject(fail(E_NOT_SUPPORTED, { kind }))
 }
 
-/** DeepSeek 官方仅提供对话模型（deepseek-chat / deepseek-reasoner） */
+/** DeepSeek 官方仅提供对话模型（deepseek-flash / deepseek-v4-pro，旧名 deepseek-v4-flash 等已下线仅作路由） */
 function isDeepSeekTextModelId(modelId: string): boolean {
   return /^deepseek-/i.test(modelId.trim())
 }
@@ -75,7 +76,11 @@ export const deepSeekAdapter: ModelProviderAdapter = {
         .map((m) => String(m.id ?? '').trim())
         .filter(Boolean)
         .filter(isDeepSeekTextModelId)
-        .map((id) => ({ id, name: id, modality: 'text' as const }))
+        .map((id) => ({
+          id,
+          name: providerModelDisplayName('deepseek', id),
+          modality: 'text' as const
+        }))
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {
         action: 'listModels',

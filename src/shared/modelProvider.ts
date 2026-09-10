@@ -583,6 +583,26 @@ function cloneJsonRecord(value: unknown): Record<string, unknown> | undefined {
   }
 }
 
+/**
+ * 部分 provider 的官方目录只返回模型 id、不返回展示名（如 DeepSeek 的 GET /models），
+ * 这里补一份「id → 人话名」映射，设置列表与生成模型下拉共用；
+ * 未命中的 id 原样返回，保证新模型上线时仍可见（只是名字等于 id）。
+ */
+const PROVIDER_MODEL_DISPLAY_NAMES: Partial<Record<ModelProviderKind, Record<string, string>>> = {
+  deepseek: {
+    'deepseek-flash': 'DeepSeek V4.1 Flash',
+    'deepseek-v4-pro': 'DeepSeek V4 Pro',
+    'deepseek-v4-flash': 'DeepSeek V4 Flash (legacy alias → V4.1 Flash)',
+    'deepseek-v4-flash-vision-exp': 'DeepSeek V4 Flash Vision (legacy alias → V4.1 Flash)'
+  }
+}
+
+/** 目录不提供展示名时的兜底：命中内置映射返回人话名，否则原样返回 id */
+export function providerModelDisplayName(kind: ModelProviderKind, modelId: string): string {
+  const id = modelId.trim()
+  return PROVIDER_MODEL_DISPLAY_NAMES[kind]?.[id.toLowerCase()] ?? id
+}
+
 export function catalogEntryFromModel(
   model: Pick<CatalogModel, 'id' | 'name' | 'capabilities'>
 ): SavedCatalogModelEntry {
@@ -1093,7 +1113,8 @@ function newLocalId(): string {
 
 function normalizeSavedCatalog(
   raw: unknown,
-  selected: string[]
+  selected: string[],
+  kind: ModelProviderKind
 ): Record<string, SavedCatalogModelEntry> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const src = raw as Record<string, unknown>
@@ -1102,14 +1123,19 @@ function normalizeSavedCatalog(
     const item = src[id]
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const row = item as Record<string, unknown>
-    const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : id
+    const savedName = typeof row.name === 'string' ? row.name.trim() : ''
+    // 目录只返回 id 的 provider（如 DeepSeek）旧快照里 name 等于 id，这里换成内置展示名
+    const name = savedName && savedName !== id ? savedName : providerModelDisplayName(kind, id)
     const capabilities = cloneJsonRecord(row.capabilities)
     out[id] = { id, name, ...(capabilities ? { capabilities } : {}) }
   }
   return Object.keys(out).length ? out : undefined
 }
 
-function normalizeModalityConfig(raw?: Partial<ModalityModelConfig> | null): ModalityModelConfig {
+function normalizeModalityConfig(
+  raw: Partial<ModalityModelConfig> | null | undefined,
+  kind: ModelProviderKind
+): ModalityModelConfig {
   const selected = Array.isArray(raw?.selectedModelIds)
     ? raw.selectedModelIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
     : []
@@ -1117,7 +1143,7 @@ function normalizeModalityConfig(raw?: Partial<ModalityModelConfig> | null): Mod
     typeof raw?.defaultModelId === 'string' && selected.includes(raw.defaultModelId)
       ? raw.defaultModelId
       : (selected[0] ?? '')
-  const catalog = normalizeSavedCatalog(raw?.catalog, selected)
+  const catalog = normalizeSavedCatalog(raw?.catalog, selected, kind)
   return {
     selectedModelIds: selected,
     defaultModelId,
@@ -1125,15 +1151,18 @@ function normalizeModalityConfig(raw?: Partial<ModalityModelConfig> | null): Mod
   }
 }
 
-function normalizeModalityMap(raw?: Partial<ProviderModalityMap> | null): ProviderModalityMap {
+function normalizeModalityMap(
+  raw: Partial<ProviderModalityMap> | null | undefined,
+  kind: ModelProviderKind
+): ProviderModalityMap {
   const empty = createEmptyModalityMap()
   if (!raw || typeof raw !== 'object') return empty
   return {
-    text: normalizeModalityConfig(raw.text),
-    image: normalizeModalityConfig(raw.image),
-    video: normalizeModalityConfig(raw.video),
-    audio: normalizeModalityConfig(raw.audio),
-    model3d: normalizeModalityConfig(raw.model3d)
+    text: normalizeModalityConfig(raw.text, kind),
+    image: normalizeModalityConfig(raw.image, kind),
+    video: normalizeModalityConfig(raw.video, kind),
+    audio: normalizeModalityConfig(raw.audio, kind),
+    model3d: normalizeModalityConfig(raw.model3d, kind)
   }
 }
 
@@ -1184,6 +1213,6 @@ function normalizeProviderInstance(
       ? { apiStyle: isCustomApiStyle(item.apiStyle) ? item.apiStyle : DEFAULT_CUSTOM_API_STYLE }
       : {}),
     enabled: item.enabled !== false,
-    modalities: normalizeModalityMap(item.modalities)
+    modalities: normalizeModalityMap(item.modalities, kind)
   }
 }

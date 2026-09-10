@@ -537,7 +537,7 @@ export default {
           'OpenAI image models (gpt-image-1 / gpt-image-2). Text-to-image via /images/generations; reference-image edits via /images/edits (max 1). Fixed sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto.'
       },
       deepseekModalityHint: {
-        text: 'DeepSeek chat models (deepseek-chat / deepseek-reasoner), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
+        text: 'DeepSeek chat models (deepseek-flash = V4.1 Flash / deepseek-v4-pro), OpenAI-compatible. Default Base URL is api.deepseek.com via /chat/completions; the text catalog is fetched from GET /models.'
       },
       moonshotModalityHint: {
         text: 'Kimi chat models (kimi-k2 family / moonshot-v1 family), OpenAI-compatible. Default Base URL is api.moonshot.cn/v1 via /chat/completions; the text catalog is fetched from GET /models.'

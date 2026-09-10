@@ -533,7 +533,7 @@ export default {
           'OpenAI 图片模型（gpt-image-1 / gpt-image-2）：文生图走 /images/generations，参考图编辑走 /images/edits（最多 1 张）；固定 size 为 1024x1024 / 1536x1024 / 1024x1536 / auto。'
       },
       deepseekModalityHint: {
-        text: 'DeepSeek 对话模型（deepseek-chat / deepseek-reasoner），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
+        text: 'DeepSeek 对话模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro），OpenAI 兼容，默认 Base URL 为 api.deepseek.com，对应 /chat/completions；文本目录由 GET /models 拉取。'
       },
       moonshotModalityHint: {
         text: 'Kimi 对话模型（kimi-k2 系列 / moonshot-v1 系列），OpenAI 兼容，默认 Base URL 为 api.moonshot.cn/v1，对应 /chat/completions；文本目录由 GET /models 拉取。'
