@@ -25,13 +25,26 @@ export const HIDE_CHILD_WINDOWS_HOOK_FILENAME = 'aiart-hide-child-windows.cjs'
  *
  * node 直启 dsh 时命令行 flag 已足够，这份 env 是为了覆盖两条 CLI 摸不到的路径：
  * npx 现场拉包（无 dsh 入口，只能靠环境变量）与 dsh 内部再拉起的 Node 子进程。
- * 路径含空格（用户名带空格时 dsh home 必然含空格）用双引号包裹——Node 解析
- * NODE_OPTIONS 时只认双引号。
+ *
+ * 写进 NODE_OPTIONS 的路径有两条实测出来的规矩（都不是 Windows 的规矩，是 Node
+ * 解析这个环境变量时的规矩）：
+ * - 反斜杠必须换成正斜杠。Node 分词 NODE_OPTIONS 时把 `\` 当转义符直接吃掉，
+ *   Windows 原生路径 `C:\Users\PS\...` 会变成 `C:UsersPS...`，预载失败并抛
+ *   MODULE_NOT_FOUND（requireStack: internal/preload）。正斜杠路径在 Windows 上
+ *   一样是绝对路径，Node 与 require 都能正常解析。
+ * - 路径含空格（用户名带空格时 dsh home 必然含空格）必须双引号包裹。
+ *
+ * 命令行 `--require` 参数没有这层解析，所以仍用系统原生路径（见 harness 服务）。
  */
 export function appendNodeRequireOption(current: string | undefined, hookPath: string): string {
-  const entry = `--require "${hookPath}"`
+  const entry = `--require "${toNodeOptionsPath(hookPath)}"`
   const trimmed = current?.trim()
   return trimmed ? `${trimmed} ${entry}` : entry
+}
+
+/** NODE_OPTIONS 里的路径一律用正斜杠（反斜杠会被 Node 当转义符吃掉） */
+export function toNodeOptionsPath(path: string): string {
+  return path.replace(/\\/g, '/')
 }
 
 /** hook 源码：自包含 CJS，幂等（重复执行只装一次） */

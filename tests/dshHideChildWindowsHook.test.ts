@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest'
 import {
   appendNodeRequireOption,
   HIDE_CHILD_WINDOWS_HOOK_FILENAME,
-  HIDE_CHILD_WINDOWS_HOOK_SOURCE
+  HIDE_CHILD_WINDOWS_HOOK_SOURCE,
+  toNodeOptionsPath
 } from '../src/main/services/dshHideChildWindowsHook'
 
 /**
@@ -215,6 +216,36 @@ describe('dsh 隐藏子进程窗口 hook', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('真实 Node 预载：NODE_OPTIONS 里的 hook（Windows 原生路径）不炸 MODULE_NOT_FOUND', () => {
+    // 回归：早前把 `C:\Users\...\hook.cjs` 原样写进 NODE_OPTIONS，Node 分词时吃掉
+    // 所有反斜杠 → 子进程启动即 Cannot find module 'C:UsersPSAppData...'（internal/preload）。
+    // tmpdir 在 Windows 上就是反斜杠路径，正好覆盖这条链路。
+    const dir = mkdtempSync(join(tmpdir(), 'aiart-hook-env-'))
+    const hookPath = join(dir, HIDE_CHILD_WINDOWS_HOOK_FILENAME)
+    writeFileSync(hookPath, HIDE_CHILD_WINDOWS_HOOK_SOURCE, 'utf8')
+    const probe = [
+      "const cp = require('node:child_process')",
+      "const MARK = Symbol.for('aiart.hideChildWindows.patched')",
+      "process.stdout.write(JSON.stringify({ patched: cp.spawn[MARK] === true, exec: cp.exec[MARK] === true }))"
+    ].join(';')
+
+    try {
+      const res = spawnSync(process.execPath, ['-e', probe], {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: {
+          ...process.env,
+          NODE_OPTIONS: appendNodeRequireOption(process.env.NODE_OPTIONS, hookPath)
+        }
+      })
+      expect(res.status, res.stderr).toBe(0)
+      expect(res.stderr).not.toContain('MODULE_NOT_FOUND')
+      expect(JSON.parse(res.stdout)).toEqual({ patched: true, exec: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('appendNodeRequireOption', () => {
@@ -229,5 +260,18 @@ describe('appendNodeRequireOption', () => {
     expect(appendNodeRequireOption('--max-old-space-size=4096', 'C:/hook.cjs')).toBe(
       '--max-old-space-size=4096 --require "C:/hook.cjs"'
     )
+  })
+
+  it('Windows 原生路径换成正斜杠：Node 分词 NODE_OPTIONS 会把 \\ 当转义符吃掉', () => {
+    const native = 'C:\\Users\\PS\\AppData\\Roaming\\aiart-engine\\dsh-harness\\hook.cjs'
+    expect(appendNodeRequireOption(undefined, native)).toBe(
+      '--require "C:/Users/PS/AppData/Roaming/aiart-engine/dsh-harness/hook.cjs"'
+    )
+    expect(appendNodeRequireOption('--no-warnings', native)).toBe(
+      '--no-warnings --require "C:/Users/PS/AppData/Roaming/aiart-engine/dsh-harness/hook.cjs"'
+    )
+    // 已经是正斜杠的路径（含 UNC 双斜杠开头）不动
+    expect(toNodeOptionsPath('C:/hook.cjs')).toBe('C:/hook.cjs')
+    expect(toNodeOptionsPath('\\\\server\\share\\hook.cjs')).toBe('//server/share/hook.cjs')
   })
 })

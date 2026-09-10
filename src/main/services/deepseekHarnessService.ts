@@ -1650,7 +1650,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       // 内置 Node 模式：让 Electron 二进制以纯 Node 运行 dsh（见 resolveNodeCommand）
       ...(nodeCmd?.env ?? {}),
       // npx 现场拉包路径没有命令行 flag 可注入，且 dsh 内部再拉起的 Node 子进程
-      // 也要生效：统一走 NODE_OPTIONS 兜底（hook 自带幂等哨兵，重复预载无副作用）
+      // 也要生效：统一走 NODE_OPTIONS 兜底（hook 自带幂等哨兵，重复预载无副作用）。
+      // 注意 NODE_OPTIONS 里的路径由 appendNodeRequireOption 换成正斜杠——Node 分词
+      // 这个变量时会把反斜杠当转义符吃掉，原生 Windows 路径会导致预载直接失败。
       ...(hideWindowsHook
         ? { NODE_OPTIONS: appendNodeRequireOption(process.env.NODE_OPTIONS, hideWindowsHook) }
         : {}),
