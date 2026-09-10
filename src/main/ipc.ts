@@ -25,6 +25,7 @@ import type {
   PlanAiWorkflowInput,
   CommitAiWorkflowInput
 } from '@shared/ipc'
+import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
 import { assetPackageService } from './services/assetPackageService'
 import type {
@@ -38,6 +39,7 @@ import type {
 } from '@shared/modelProvider'
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
+import { readGitFileDiff, readGitStatus } from './services/gitService'
 import { exportScriptTimeline } from './services/timelineExportService'
 import { renderTimelineTransitionPreview } from './services/timelineTransitionPreviewService'
 import { exportAdVariants } from './services/adVariantExportService'
@@ -358,6 +360,9 @@ export function registerIpcHandlers(): void {
     restartMcpServer(input)
   )
   handle(IpcChannels.MCP_ACTIVITY_LIST, () => mcpActivityService.list())
+
+  handle(IpcChannels.GIT_STATUS, () => readGitStatus())
+  handle(IpcChannels.GIT_FILE_DIFF, (input: GitFileDiffInput) => readGitFileDiff(input))
 
   handle(IpcChannels.HARNESS_STATUS, () => getHarnessStatus())
   handle(IpcChannels.HARNESS_RUN, (input: import('@shared/ipc').HarnessRunInput) =>

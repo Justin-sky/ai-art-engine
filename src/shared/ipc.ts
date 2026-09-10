@@ -1,4 +1,5 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
+import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type {
   TimelineExportInput,
@@ -239,6 +240,10 @@ export const IpcChannels = {
   HARNESS_ABORT: 'harness:abort',
   /** Harness：删除会话在磁盘上的持久化记录（对应前端 ChatSession.id） */
   HARNESS_DELETE_SESSION: 'harness:delete-session',
+  /** Git：采集工程当前变更（对话「变更预览」用；只读，不写仓库） */
+  GIT_STATUS: 'git:status',
+  /** Git：读取单文件统一 diff（未跟踪文件返回主进程合成的新增全文） */
+  GIT_FILE_DIFF: 'git:file-diff',
   /** Harness：查询 dsh 自定义技能目录信息（路径 / 文件清单 / 内置技能数） */
   SKILLS_GET_INFO: 'skills:get-info',
   /** Harness：在系统文件管理器中打开 dsh 自定义技能目录 */
@@ -1129,6 +1134,12 @@ export interface StudioApi {
 
   /** Harness：订阅任务事件流 */
   onHarnessEvent: (callback: (event: HarnessEvent) => void) => () => void
+
+  /** Git：采集工程当前变更（AI 对话的变更预览用；只读，不写仓库） */
+  getGitStatus: () => Promise<GitStatusResult>
+
+  /** Git：读取单个文件的统一 diff（未跟踪文件返回合成的新增全文） */
+  getGitFileDiff: (input: GitFileDiffInput) => Promise<GitFileDiffResult>
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string

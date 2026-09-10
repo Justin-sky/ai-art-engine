@@ -6,11 +6,23 @@
  * 面板关闭 / 应用重启后，下次打开恢复上次会话。
  */
 import { computed, ref } from 'vue'
+import type { GitChangeFile } from '@shared/git'
 
 export type ChatMsg =
   | { kind: 'user'; text: string }
   | { kind: 'assistant'; text: string; final?: boolean; reasoning?: string }
   | { kind: 'status'; text: string }
+  | {
+      kind: 'changes'
+      /** 会话内唯一标识：`changes:<时间戳>`（同一轮只插一条，刷新时原地更新） */
+      key: string
+      /** 本轮变化文件快照（相对工程根；行级 diff 由卡片点开时按需拉取，不落 localStorage） */
+      files: GitChangeFile[]
+      /** 最近一次采集时刻（卡片显示「更新于 …」） */
+      at: number
+      /** 变更所在分支（detached / 未知为空） */
+      branch?: string
+    }
   | {
       kind: 'tool'
       /** 会话内唯一标识：`tool:<id|name>`（dsh-agent 工具，优先 callId）或 `mcp:<id>`（生成活动），用于原地更新状态 */

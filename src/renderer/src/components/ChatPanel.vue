@@ -17,7 +17,9 @@ import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
+import { fingerprintMap, selectChangedFiles } from '@shared/git'
 import ChatAssetPreview from './ChatAssetPreview.vue'
+import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 
@@ -1022,12 +1024,107 @@ function onHarnessEvent(event: HarnessEvent): void {
     }
     case 'done':
       running.value = false
+      // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
+      void captureGitChanges()
       break
     case 'error':
       pushStatus(event.message)
       running.value = false
       break
 
+  }
+}
+
+/**
+ * Git 变更预览：只读拉取工程当前变更（vs HEAD），在对话中展示「这一轮 agent 改了什么」。
+ * 基线指纹在发送前建立，运行结束时只筛出真正有变化的文件，因此每一轮最多出一张卡。
+ */
+let gitBaseline = new Map<string, string>()
+/** 采集互斥：done 回调与卡片「刷新」可能同时触发 */
+let gitChangesBusy = false
+/** 工程不可预览时的原因只说明一次，避免每轮都刷提示 */
+let gitUnavailableNotified = false
+
+// 切换 / 关闭工程后旧基线失效（相对路径相同也可能已是另一个仓库），清空并允许重新提示
+watch(
+  () => project.rootPath,
+  () => {
+    gitBaseline = new Map()
+    gitUnavailableNotified = false
+  }
+)
+
+/** 发送前静默记录基线（不插卡）；失败时退化为「下次采集视为首轮」 */
+async function resetGitBaseline(): Promise<void> {
+  try {
+    const status = await window.studio.getGitStatus()
+    gitBaseline = status.isRepo ? fingerprintMap(status.files) : new Map()
+  } catch {
+    gitBaseline = new Map()
+  }
+}
+
+/** 运行结束：采集本轮变更，确有改动才插入预览卡（无改动不打扰） */
+async function captureGitChanges(): Promise<void> {
+  if (gitChangesBusy) return
+  gitChangesBusy = true
+  try {
+    const status = await window.studio.getGitStatus()
+    if (!status.isRepo) {
+      // 不可预览（未装 git / 非仓库）时说明一次原因，否则用户会以为功能没生效
+      if (!gitUnavailableNotified && status.reason !== 'no-project') {
+        gitUnavailableNotified = true
+        pushStatus(
+          t(
+            status.reason === 'no-git'
+              ? 'studio.chat.gitChangesNoGit'
+              : 'studio.chat.gitChangesNotRepo'
+          )
+        )
+      }
+      return
+    }
+    const changed = selectChangedFiles(gitBaseline, status.files)
+    gitBaseline = fingerprintMap(status.files)
+    if (!changed.length) return
+    messages.value.push({
+      kind: 'changes',
+      key: `changes:${Date.now()}`,
+      files: changed,
+      at: Date.now(),
+      ...(status.branch ? { branch: status.branch } : {})
+    })
+    scrollToBottom()
+    commitMessages([...messages.value])
+    persistHistory()
+  } catch {
+    // 预览是旁路能力：读不到就跳过，不打断会话
+  } finally {
+    gitChangesBusy = false
+  }
+}
+
+/** 卡片「刷新」：重采当前变更并原地更新该卡（无新变化时只刷新时间戳） */
+async function refreshGitChanges(target: Extract<ChatMsg, { kind: 'changes' }>): Promise<void> {
+  if (gitChangesBusy) return
+  gitChangesBusy = true
+  try {
+    const status = await window.studio.getGitStatus()
+    if (!status.isRepo) return
+    const changed = selectChangedFiles(gitBaseline, status.files)
+    gitBaseline = fingerprintMap(status.files)
+    if (changed.length) {
+      const merged = new Map(target.files.map((file) => [file.path, file]))
+      for (const file of changed) merged.set(file.path, file)
+      target.files = [...merged.values()]
+    }
+    target.at = Date.now()
+    commitMessages([...messages.value])
+    persistHistory()
+  } catch {
+    // 同上：失败静默，保留原有快照
+  } finally {
+    gitChangesBusy = false
   }
 }
 
@@ -1191,6 +1288,8 @@ async function onSend(): Promise<void> {
   resetEditor()
   referenced.value = []
   pendingReasoning = ''
+  // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
+  void resetGitBaseline()
   sessionStart = messages.value.length
   messages.value.push({ kind: 'user', text: task })
   scrollToBottom()
@@ -1385,6 +1484,18 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
+          </div>
+          <!-- Git 变更预览卡：一轮运行结束且确有改动时追加，展示 agent 改了哪些文件 -->
+          <div
+            v-else-if="msg.kind === 'changes'"
+            class="msg-row changes"
+          >
+            <ChatChangesCard
+              :files="msg.files"
+              :at="msg.at"
+              :branch="msg.branch"
+              @refresh="refreshGitChanges(msg)"
+            />
           </div>
           <div
             v-else-if="msg.kind === 'status'"
