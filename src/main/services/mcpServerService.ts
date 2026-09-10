@@ -608,6 +608,17 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       const mcpTaskId = randomUUID()
       pendingMcpTaskReports.delete(mcpTaskId)
+      // 登记为界面可见的旁路活动：终点由渲染层回报本轮产物相对路径后收尾，
+      // 任务列表 / 执行日志 / AI 对话流三处共用这一条记录出预览
+      pendingMcpTaskActivities.set(
+        mcpTaskId,
+        mcpActivityService.begin({
+          tool: 'task_run',
+          title: `运行工作流 · ${asset.name}`,
+          detail: '按拓扑序执行整图，产物写回资产',
+          assetId
+        })
+      )
       broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, { mcpTaskId, assetId })
       // 等渲染层确认受理
       for (let i = 0; i < 20; i++) {
@@ -1436,6 +1447,9 @@ const TASK_REPORT_RETENTION_MS = 10 * 60 * 1000
 const pendingMcpTaskReports = new Map<string, McpTaskReportPayload>()
 const taskReportCleanups = new Map<string, NodeJS.Timeout>()
 
+/** mcpTaskId → 旁路活动 id：task_run 的产物路径随终态回报到达时据此收尾活动 */
+const pendingMcpTaskActivities = new Map<string, string>()
+
 /** MCP ask_user 的渲染层回报（用户选择 / 取消），ask_user 工具轮询这里 */
 const pendingAskUserAnswers = new Map<string, AskUserAnswer>()
 
@@ -1462,6 +1476,26 @@ function scheduleTaskReportCleanup(mcpTaskId: string): void {
   }, TASK_REPORT_RETENTION_MS)
   timer.unref?.()
   taskReportCleanups.set(mcpTaskId, timer)
+}
+
+/**
+ * task_run 终态收尾：把渲染层回报的本轮产物写进旁路活动
+ * （relativePath 供单产物消费方，relativePaths 供对话流出多张预览卡）。
+ * 受理失败 / 停止等异常路径同样收尾，避免活动一直挂在「运行中」。
+ */
+function settleMcpTaskActivity(report: McpTaskReportPayload): void {
+  const activityId = pendingMcpTaskActivities.get(report.mcpTaskId)
+  if (!activityId) return
+  pendingMcpTaskActivities.delete(report.mcpTaskId)
+  const relativePaths = (report.relativePaths ?? []).filter(
+    (path): path is string => typeof path === 'string' && !!path.trim()
+  )
+  const ok = report.phase === 'finished' && report.status === 'done'
+  mcpActivityService.end(activityId, {
+    ok,
+    ...(relativePaths.length ? { relativePath: relativePaths[0], relativePaths } : {}),
+    ...(report.error ? { error: report.error } : {})
+  })
 }
 
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
@@ -1743,7 +1777,10 @@ export async function startMcpServer(): Promise<void> {
     if (payload && typeof payload.mcpTaskId === 'string') {
       pendingMcpTaskReports.set(payload.mcpTaskId, payload)
       // 终态（成功或失败）保留一段可查询时间后自动回收，避免 Map 无限增长
-      if (payload.phase !== 'accepted') scheduleTaskReportCleanup(payload.mcpTaskId)
+      if (payload.phase !== 'accepted') {
+        settleMcpTaskActivity(payload)
+        scheduleTaskReportCleanup(payload.mcpTaskId)
+      }
     }
     return true
   })
@@ -1813,6 +1850,7 @@ async function closeMcpServer(): Promise<void> {
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
+  pendingMcpTaskActivities.clear()
   pendingMcpGraphEditResults.clear()
   pendingMcpGraphIconRefineResults.clear()
   pendingAskUserAnswers.clear()
@@ -1874,6 +1912,7 @@ export function stopMcpServer(): void {
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
+  pendingMcpTaskActivities.clear()
   pendingMcpGraphEditResults.clear()
   pendingMcpGraphIconRefineResults.clear()
   pendingAskUserAnswers.clear()

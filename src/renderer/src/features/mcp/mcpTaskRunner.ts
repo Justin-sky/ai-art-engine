@@ -1,5 +1,5 @@
 import type { GraphDocument } from '@shared/graph'
-import { applyGraphEditOps } from '@shared/graph'
+import { applyGraphEditOps, collectRunMediaPaths } from '@shared/graph'
 import type { McpGraphEditPayload, McpGraphIconRefinePayload } from '@shared/ipc'
 import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
@@ -16,8 +16,37 @@ import { isGraphEditorOpen } from './openGraphEditors'
 
 type ReportPhase = 'accepted' | 'finished' | 'failed'
 
-function report(mcpTaskId: string, phase: ReportPhase, extra: { taskId?: string; status?: 'done' | 'error' | 'stopped'; error?: string } = {}): void {
+function report(
+  mcpTaskId: string,
+  phase: ReportPhase,
+  extra: {
+    taskId?: string
+    status?: 'done' | 'error' | 'stopped'
+    error?: string
+    /** 本轮产出的媒体相对路径（作品级优先）：主进程据此把活动收尾成可预览产物 */
+    relativePaths?: string[]
+  } = {}
+): void {
   void window.studio?.reportMcpTask?.({ mcpTaskId, phase, ...extra })
+}
+
+/** 终态后等写回落盘的时长上限：产物 dataUrl 物化成相对路径后路径才齐全 */
+const MEDIA_COLLECT_WRITE_BACK_TIMEOUT_MS = 30_000
+
+/** 终态任务的本轮产物路径：先等写回完成，超时则按当前状态尽力收集 */
+async function collectFinishedTaskMediaPaths(
+  taskStore: ReturnType<typeof useGraphTaskStore>,
+  taskId: string
+): Promise<string[]> {
+  await Promise.race([
+    taskStore.waitForTaskIds([taskId]),
+    new Promise<void>((resolve) =>
+      window.setTimeout(resolve, MEDIA_COLLECT_WRITE_BACK_TIMEOUT_MS)
+    )
+  ])
+  const snapshot = taskStore.getTaskRunSnapshot(taskId)
+  if (!snapshot) return []
+  return collectRunMediaPaths(snapshot.graph, snapshot.runStates)
 }
 
 async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): Promise<void> {
@@ -59,12 +88,19 @@ async function handleTaskRun(payload: { mcpTaskId: string; assetId: string }): P
       return
     }
     if (task.status === 'done' || task.status === 'error' || task.status === 'stopped') {
+      const status = task.status
+      const error = status === 'error' ? task.message || undefined : undefined
       window.clearInterval(timer)
-      report(payload.mcpTaskId, 'finished', {
-        taskId: result.id,
-        status: task.status,
-        error: task.status === 'error' ? task.message || undefined : undefined
-      })
+      void (async () => {
+        // 产物相对路径要等写回落盘后才齐全，收集完再回报终态
+        const relativePaths = await collectFinishedTaskMediaPaths(taskStore, result.id)
+        report(payload.mcpTaskId, 'finished', {
+          taskId: result.id,
+          status,
+          error,
+          ...(relativePaths.length ? { relativePaths } : {})
+        })
+      })()
     }
   }, 1500)
 }

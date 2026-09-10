@@ -1128,20 +1128,33 @@ async function refreshGitChanges(target: Extract<ChatMsg, { kind: 'changes' }>):
   }
 }
 
+/** 活动产出的媒体相对路径：多产物清单优先，单产物字段保持兼容；按顺序去重 */
+function activityMediaPaths(activity: McpActivity): string[] {
+  const paths = [activity.relativePath, ...(activity.relativePaths ?? [])]
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const path of paths) {
+    const value = path?.trim()
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
+}
+
 /** 工具调用卡：dsh 通过 MCP 触发的生成活动，会话期间实时呈现 */
 function onMcpActivity(activity: McpActivity): void {
   const state =
     activity.status === 'done' ? 'done' : activity.status === 'error' ? 'error' : 'start'
   const key = `mcp:${activity.id}`
   const prev = findToolByKey(key)
+  const mediaPaths = state === 'done' ? activityMediaPaths(activity) : []
   if (prev) {
     // 已有卡时无条件更新状态，即使任务已结束也可能收到延迟的 done/error 回调
     prev.state = state
     prev.detail = activity.error
     // 完成且产出了资产：把落盘相对路径记到卡上（新数据由对话末尾的独立预览卡展示）
-    if (state === 'done' && activity.relativePath) {
-      prev.relativePath = activity.relativePath
-    }
+    if (mediaPaths.length) prev.relativePath = mediaPaths[0]
   } else if (running.value) {
     // 只有任务仍在运行时才新增 MCP 活动卡，避免结束时再产生孤立的工具卡
     messages.value.push({
@@ -1150,14 +1163,17 @@ function onMcpActivity(activity: McpActivity): void {
       name: activity.title || activity.tool,
       state,
       detail: activity.error,
-      ...(state === 'done' && activity.relativePath ? { relativePath: activity.relativePath } : {})
+      ...(mediaPaths.length ? { relativePath: mediaPaths[0] } : {})
     })
     scrollToBottom()
   }
   // 生成完成且产出了资产：在对话末尾追加独立预览卡（图片/视频/音频/3D），
-  // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡
-  if (state === 'done' && activity.relativePath && (prev || running.value)) {
-    pushAsset(`asset:${activity.id}`, activity.relativePath)
+  // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡；
+  // 一次运行产出多件（如工作流同时出 GIF 与成片）时逐条出卡
+  if (mediaPaths.length && (prev || running.value)) {
+    mediaPaths.forEach((path, index) => {
+      pushAsset(index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`, path)
+    })
   }
 }
 

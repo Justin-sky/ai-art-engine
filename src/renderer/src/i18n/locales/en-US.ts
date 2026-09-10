@@ -2538,7 +2538,8 @@ export default {
         generate_speech: 'Voice',
         generate_music: 'Music',
         generate_model3d: '3D model',
-        graph_icon_refine: 'Icon refine'
+        graph_icon_refine: 'Icon refine',
+        task_run: 'Workflow'
       }
     },
     logs: {

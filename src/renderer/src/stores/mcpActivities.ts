@@ -49,8 +49,11 @@ export const useMcpActivitiesStore = defineStore('mcpActivities', () => {
       return
     }
     if (activity.status === 'done') {
-      const message = activity.relativePath
-        ? `Generated · asset saved: ${activity.relativePath}`
+      const paths = [activity.relativePath, ...(activity.relativePaths ?? [])].filter(
+        (path): path is string => !!path?.trim()
+      )
+      const message = paths.length
+        ? `Generated · asset saved: ${paths.join(', ')}`
         : 'Generation finished'
       logs.append({ runId: activity.id, kind: 'run_message', level: 'info', message })
       if (activity.apiCall) {

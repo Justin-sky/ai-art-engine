@@ -433,9 +433,14 @@ export interface McpTaskReportPayload {
   taskId?: string
   status?: 'done' | 'error' | 'stopped'
   error?: string
+  /**
+   * 终态时本轮图产出的媒体相对路径（作品级优先，如 GIF / 拼版 / 成片）。
+   * 主进程据此把活动收尾成可预览产物，对话流与任务列表随即出资产卡。
+   */
+  relativePaths?: string[]
 }
 
-/** MCP：旁路活动类型（generate_* 直接生成、graph_icon_refine 单枚回炉等不进入工作流任务系统的操作） */
+/** MCP：旁路活动类型（generate_* 直接生成、graph_icon_refine 单枚回炉、task_run 工作流运行等） */
 export type McpActivityTool =
   | 'generate_image'
   | 'generate_video'
@@ -443,6 +448,7 @@ export type McpActivityTool =
   | 'generate_music'
   | 'generate_model3d'
   | 'graph_icon_refine'
+  | 'task_run'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 
@@ -459,6 +465,8 @@ export interface McpActivity {
   finishedAt?: number
   assetId?: string
   relativePath?: string
+  /** 一次运行产出多件媒体时的完整清单（relativePath 为其中首条，兼容单产物消费方） */
+  relativePaths?: string[]
   error?: string
   /** 本次生成调用传入供应商的详细参数与结果摘要（终态时写入，桥接到执行日志 API 详情；id/ts 由日志会话生成） */
   apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>

@@ -828,6 +828,18 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
   }
 
   /**
+   * 任务图与运行态快照：对外 tasks / completed 快照刻意不含 graph，
+   * 而 MCP 回报本轮产物路径需要按端口与节点参数定位媒体（GIF / 拼版 / 成片）。
+   */
+  function getTaskRunSnapshot(
+    taskId: string
+  ): { graph: GraphDocument; runStates: Record<string, GraphNodeRunState> } | null {
+    const task = findTaskById(taskId)
+    if (!task) return null
+    return { graph: task.graph, runStates: { ...task.runStates } }
+  }
+
+  /**
    * 宿主内图：整链入队任务列表，等待完成后映射出口。
    * 同资产已有进行中任务则等待该任务。
    */
@@ -1615,6 +1627,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     enqueueWorldElementBatch,
     enqueueBeatUnitBatch,
     waitForTaskIds,
+    getTaskRunSnapshot,
     runHostInnerGraph,
     removeTask,
     stopAndRemove,

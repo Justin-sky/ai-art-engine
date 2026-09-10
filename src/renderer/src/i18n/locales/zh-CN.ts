@@ -2504,7 +2504,8 @@ export default {
         generate_speech: '语音',
         generate_music: '音乐',
         generate_model3d: '3D 模型',
-        graph_icon_refine: '图标精修'
+        graph_icon_refine: '图标精修',
+        task_run: '工作流'
       }
     },
     logs: {

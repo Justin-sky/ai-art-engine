@@ -52,6 +52,8 @@ class McpActivityService {
       ok: boolean
       assetId?: string
       relativePath?: string
+      /** 多件产物时的完整清单（relativePath 通常取其首条） */
+      relativePaths?: string[]
       error?: string
       apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
     }
@@ -61,12 +63,14 @@ class McpActivityService {
     const prev = this.activities[index]
     if (prev.status !== 'running') return
     const finishedAt = Date.now()
+    const relativePaths = input.relativePaths?.filter((path) => !!path?.trim())
     const next: McpActivity = {
       ...prev,
       status: input.ok ? 'done' : 'error',
       finishedAt,
       assetId: input.assetId,
       relativePath: input.relativePath,
+      relativePaths: relativePaths?.length ? [...relativePaths] : undefined,
       error: input.error,
       apiCall: input.apiCall
         ? {
