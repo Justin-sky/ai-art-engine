@@ -543,7 +543,7 @@ import {
 } from '@shared/domain'
 import type { GraphNode, GraphValue } from '@shared/graph'
 import { isAssetRefInputHostType, resolveAssetPreviewMediaPath } from '@shared/graph'
-import { isAudioFilePath, isVideoFilePath } from '@shared/import'
+import { isAnimatedImageFilePath, isAudioFilePath, isVideoFilePath } from '@shared/import'
 import { isWeakVisionTag, type VisionObjectTag } from '@shared/visionTags'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -936,11 +936,13 @@ function visionTagTitle(tag: VisionObjectTag): string {
     : base
 }
 
-/** 一键抠图：仅图片资产且有落盘的源图文件时可用 */
+/** 一键抠图：仅图片资产且有落盘的源图文件时可用；动图（GIF）只支持静态首帧，故隐藏入口 */
 const cutoutSourcePath = computed(() => {
   const a = asset.value
   if (!a || a.type !== 'image') return ''
-  return a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+  const rel = a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+  if (rel && isAnimatedImageFilePath(rel)) return ''
+  return rel
 })
 
 const cutoutUrl = ref('')

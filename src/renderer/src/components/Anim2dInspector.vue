@@ -111,7 +111,27 @@
           >
           <span>{{ t('graph.anim2d.loop') }}</span>
         </label>
+        <button
+          type="button"
+          class="anim-play"
+          :disabled="gifBusy"
+          @click="exportGif"
+        >
+          {{ gifBusy ? t('graph.anim2d.exportGifBusy') : t('graph.anim2d.exportGif') }}
+        </button>
       </div>
+      <p
+        v-if="gifError"
+        class="hint err"
+      >
+        {{ gifError }}
+      </p>
+      <p
+        v-else
+        class="hint"
+      >
+        {{ gifStatus || t('graph.anim2d.exportGifNote', { fps }) }}
+      </p>
       <div class="frame-grid">
         <button
           v-for="(cell, index) in cells"
@@ -175,6 +195,8 @@ import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
+import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -314,6 +336,45 @@ function onFpsChange(e: Event): void {
 
 function onLoopChange(e: Event): void {
   loop.value = (e.target as HTMLInputElement).checked
+}
+
+const gifBusy = ref(false)
+const gifStatus = ref('')
+const gifError = ref('')
+
+/**
+ * 把当前切好的帧按帧率合成 GIF 并落盘为工程图片资产（默认 `Assets/2D`）。
+ * 帧序、透明键控结果都取自预览用的同一份 cells，保证「所见即所得」。
+ */
+async function exportGif(): Promise<void> {
+  const current = node.value
+  if (!current || gifBusy.value || cells.value.length < 2) return
+  gifBusy.value = true
+  gifStatus.value = ''
+  gifError.value = ''
+  try {
+    const gif = await composeAnim2dGif({
+      frameUrls: cells.value.map((cell) => cell.dataUrl),
+      fps: fps.value,
+      loop: loop.value
+    })
+    if (!gif) throw new Error('ANIM2D_GIF_NO_FRAMES')
+    const configured = current.params?.mediaOutputDir
+    const relativePath = await saveGraphRunMediaForNode({
+      dataUrl: gif.dataUrl,
+      key: `anim2d-gif-${state.value.rows}x${state.value.cols}`,
+      outputDir:
+        typeof configured === 'string' && configured.trim() ? configured.trim() : 'Assets/2D',
+      node: current
+    })
+    gifStatus.value = t('graph.anim2d.exportGifDone', { path: relativePath })
+  } catch (err) {
+    gifError.value = t('graph.anim2d.exportGifFailed', {
+      error: err instanceof Error ? err.message : String(err)
+    })
+  } finally {
+    gifBusy.value = false
+  }
 }
 
 async function resolveGridImageUrl(): Promise<string> {
@@ -484,8 +545,17 @@ onBeforeUnmount(stopPlayback)
   cursor: pointer;
 }
 
-.anim-play:hover {
+.anim-play:hover:not(:disabled) {
   background: var(--bg-hover);
+}
+
+.anim-play:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint.err {
+  color: var(--danger);
 }
 
 .anim-field,

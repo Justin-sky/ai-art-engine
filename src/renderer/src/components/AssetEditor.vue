@@ -167,7 +167,7 @@ import EditorDiveBar from './EditorDiveBar.vue'
 import EditorDiveChildHost from './EditorDiveChildHost.vue'
 import { isEditorDiveViewFrame } from '../features/graph/model/editorDive'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
-import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import { resolveAssetPlaybackUrl } from '../features/media/assetUrlCache'
 
 const props = defineProps<{
   assetId: string
@@ -247,7 +247,7 @@ watch(
     try {
       const url =
         a.type === 'image'
-          ? await resolveAssetPreviewUrl(a.relativePath)
+          ? await resolveAssetPlaybackUrl(a.relativePath)
           : await window.studio.getAssetFileUrl(a.relativePath)
       if (token !== previewLoadToken) return
       previewUrl.value = url

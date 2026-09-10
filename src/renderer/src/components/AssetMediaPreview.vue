@@ -17,6 +17,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   resolveAssetFileUrl,
+  resolveAssetPlaybackUrl,
   resolveAssetPreviewUrl
 } from '../features/media/assetUrlCache'
 import { resolveAssetText } from '../features/media/resolveAssetText'
@@ -268,7 +269,8 @@ async function loadPreview(): Promise<void> {
     if (kind.value === 'image') {
       const imagePath = a.relativePath?.trim() || path || ''
       if (!imagePath) return
-      const url = await resolveAssetPreviewUrl(imagePath)
+      // 动图（GIF）走原文件才能播动画；静态图继续用缩略图
+      const url = await resolveAssetPlaybackUrl(imagePath)
       if (token !== loadToken) return
       previewUrl.value = url
       return

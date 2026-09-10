@@ -3234,6 +3234,11 @@ export default {
       loop: 'Loop',
       loading: 'Building frame preview…',
       emptyPreview: 'No preview yet: connect an upstream sheet and run this node',
+      exportGif: 'Export GIF',
+      exportGifBusy: 'Building GIF…',
+      exportGifDone: 'GIF exported: {path}',
+      exportGifFailed: 'GIF export failed: {error}',
+      exportGifNote: 'Renders at the current {fps} fps, keeping transparent frames',
       presets: {
         idle: 'Idle',
         walk: 'Walk',

@@ -3201,6 +3201,11 @@ export default {
       loop: '循环',
       loading: '正在切分预览…',
       emptyPreview: '暂无预览：请接入上游序列图并运行本节点',
+      exportGif: '导出 GIF',
+      exportGifBusy: '正在合成 GIF…',
+      exportGifDone: '已导出 GIF：{path}',
+      exportGifFailed: '导出 GIF 失败：{error}',
+      exportGifNote: '按当前帧率 {fps} fps 合成，透明背景保留',
       presets: {
         idle: '待机',
         walk: '行走',

@@ -1,6 +1,8 @@
 import type { AssetType } from './domain'
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
+/** 动画图片：预览必须读原文件，静态缩略图只剩首帧 */
+const ANIMATED_IMAGE_EXT = new Set(['.gif'])
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm'])
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a'])
 const MODEL_EXT = new Set(['.glb', '.gltf', '.fbx'])
@@ -37,6 +39,11 @@ function fileExt(filePath: string): string {
 
 export function isImageFilePath(filePath: string): boolean {
   return IMAGE_EXT.has(fileExt(filePath))
+}
+
+/** 是否为动画图片（GIF）：预览必须走原文件，缩略图只保留首帧 */
+export function isAnimatedImageFilePath(filePath: string): boolean {
+  return ANIMATED_IMAGE_EXT.has(fileExt(filePath))
 }
 
 export function isVideoFilePath(filePath: string): boolean {
