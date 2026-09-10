@@ -32,6 +32,11 @@ import {
   PROJECT_MEMORY_RELATIVE_PATH
 } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
+import {
+  appendNodeRequireOption,
+  HIDE_CHILD_WINDOWS_HOOK_FILENAME,
+  HIDE_CHILD_WINDOWS_HOOK_SOURCE
+} from './dshHideChildWindowsHook'
 import { getMcpServerInfo } from './mcpServerService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
@@ -161,7 +166,12 @@ function embeddedNodeVersion(): string {
 function detectNodeVersion(): string {
   const embedded = embeddedNodeVersion()
   if (isNodeVersionOk(embedded)) return embedded
-  const res = spawnSync('node', ['--version'], { timeout: 5_000, encoding: 'utf8' })
+  // windowsHide: 宿主是 GUI 进程（没有控制台），不隐藏就会闪一个控制台窗口
+  const res = spawnSync('node', ['--version'], {
+    timeout: 5_000,
+    encoding: 'utf8',
+    windowsHide: true
+  })
   return res.status === 0 && res.stdout ? res.stdout.trim() : ''
 }
 
@@ -194,7 +204,11 @@ function isNodeVersionOk(version: string): boolean {
 
 /** npm 缓存目录（用于判断 dsh 是否已缓存、免现场下载） */
 function npmCacheDir(): string {
-  const res = spawnSync('npm', ['config', 'get', 'cache'], { timeout: 5_000, encoding: 'utf8' })
+  const res = spawnSync('npm', ['config', 'get', 'cache'], {
+    timeout: 5_000,
+    encoding: 'utf8',
+    windowsHide: true
+  })
   return res.status === 0 && res.stdout ? res.stdout.trim() : ''
 }
 
@@ -1292,6 +1306,28 @@ function writeAiartHarness(
 }
 
 /**
+ * 写「隐藏子进程控制台窗口」预载 hook，返回其绝对路径（失败返回 null）。
+ *
+ * dsh 的子进程服务在 Windows 上 spawn 时不传 windowsHide，而宿主是 GUI 进程
+ * （没有控制台窗口），于是 agent 每执行一条命令都会新建一个可见控制台窗口——
+ * 用户看到的就是对话过程中频繁闪黑窗。上游修好前由这层 hook 兜底：它把
+ * child_process 各启动 API 的 windowsHide 默认置为 true，只改这一个选项。
+ * 内容固定，已存在且一致时跳过写入，避免每条消息都做无谓写盘。
+ */
+function writeHideChildWindowsHook(): string | null {
+  try {
+    const home = dshHome()
+    mkdirSync(home, { recursive: true })
+    const hookPath = join(home, HIDE_CHILD_WINDOWS_HOOK_FILENAME)
+    const exists = existsSync(hookPath) && readFileSync(hookPath, 'utf8') === HIDE_CHILD_WINDOWS_HOOK_SOURCE
+    if (!exists) writeFileSync(hookPath, HIDE_CHILD_WINDOWS_HOOK_SOURCE, 'utf8')
+    return hookPath
+  } catch {
+    return null
+  }
+}
+
+/**
  * 拉起一次 dsh 进程：spawn、按行转发输出、处理结束。
  *
  * dsh 的 headless profile 是一次性的（跑完即退），所以每条任务必然一个新进程；
@@ -1586,6 +1622,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   const patchPath = dshModules
     ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory)
     : null
+  // 隐藏 dsh 子进程的控制台窗口（见 dshHideChildWindowsHook）
+  const hideWindowsHook = writeHideChildWindowsHook()
   const args = dshEntry
     ? [
         // cordis HMR 服务要求 loader.internal 可用：Node ≥22 下 require
@@ -1594,6 +1632,8 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
         // 内置 Node（Electron，Node 24）实测支持该 flag；系统 node ≥22 亦支持，
         // 故只要走 node 直启（nodeCmd 非空）就注入。
         ...(nodeCmd ? ['--expose-internals'] : []),
+        // Windows 上 dsh 执行命令会弹控制台窗口，预载 hook 把 windowsHide 默认置 true
+        ...(nodeCmd && hideWindowsHook ? ['--require', hideWindowsHook] : []),
         dshEntry,
         '--profile',
         'headless',
@@ -1609,6 +1649,11 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       ...process.env,
       // 内置 Node 模式：让 Electron 二进制以纯 Node 运行 dsh（见 resolveNodeCommand）
       ...(nodeCmd?.env ?? {}),
+      // npx 现场拉包路径没有命令行 flag 可注入，且 dsh 内部再拉起的 Node 子进程
+      // 也要生效：统一走 NODE_OPTIONS 兜底（hook 自带幂等哨兵，重复预载无副作用）
+      ...(hideWindowsHook
+        ? { NODE_OPTIONS: appendNodeRequireOption(process.env.NODE_OPTIONS, hideWindowsHook) }
+        : {}),
       DSH_HOME: dshHome(),
       DEEPSEEK_API_KEY: provider.apiKey,
       // 注意：dsh v0.1 不读取 DSH_MODEL（模型只走 settings.yaml 的 agent-default-model）。
