@@ -213,6 +213,10 @@ export const IpcChannels = {
   MCP_GRAPH_EDIT: 'mcp:graph-edit',
   /** MCP：渲染层回报图编辑结果（渲染层 → 主进程） */
   MCP_GRAPH_EDIT_RESULT: 'mcp:graph-edit-result',
+  /** MCP：主进程派发单枚图标精修回炉（main → 渲染层） */
+  MCP_GRAPH_ICON_REFINE: 'mcp:graph-icon-refine',
+  /** MCP：渲染层回报精修回炉结果（渲染层 → 主进程） */
+  MCP_GRAPH_ICON_REFINE_RESULT: 'mcp:graph-icon-refine-result',
   /** MCP：渲染层查询工具服务状态（端口 / token / 接入命令，设置界面展示） */
   MCP_GET_INFO: 'mcp:get-info',
   /** MCP：设置界面应用端口 / 重置 token 修改并重启工具服务 */
@@ -426,13 +430,14 @@ export interface McpTaskReportPayload {
   error?: string
 }
 
-/** MCP：旁路生成活动类型（generate_* 等不进入工作流任务系统的直接生成） */
+/** MCP：旁路活动类型（generate_* 直接生成、graph_icon_refine 单枚回炉等不进入工作流任务系统的操作） */
 export type McpActivityTool =
   | 'generate_image'
   | 'generate_video'
   | 'generate_speech'
   | 'generate_music'
   | 'generate_model3d'
+  | 'graph_icon_refine'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 
@@ -442,6 +447,8 @@ export interface McpActivity {
   tool: McpActivityTool
   title: string
   model?: string
+  /** 运行中补充说明（各工具自定义，如精修的修正点）；界面优先于 model 展示 */
+  detail?: string
   status: McpActivityStatus
   startedAt: number
   finishedAt?: number
@@ -492,6 +499,39 @@ export interface McpGraphEditResultPayload {
   ok: boolean
   applied?: string[]
   warnings?: string[]
+  error?: string
+}
+
+/** MCP：主进程 → 渲染层，请求对「整版切分 → 图标包」链路里的某一枚做精修回炉 */
+export interface McpGraphIconRefinePayload {
+  requestId: string
+  assetId: string
+  /** image.gridSplit 节点 id（要回炉的格位所在切分节点） */
+  splitNodeId: string
+  /** 格位 key，如 1-1 / 2-3 */
+  cellKey: string
+  /** 针对不满意点的修正说明（缺省按整版同规范重画） */
+  hint?: string
+  /** 完整生图指令（覆盖默认指令与 hint） */
+  prompt?: string
+  /** 默认生图指令语言（缺省 zh） */
+  locale?: 'zh' | 'en'
+  /** 完成后是否重跑同源打包节点（缺省 true） */
+  repack?: boolean
+}
+
+/** MCP：渲染层 → 主进程，精修回炉结果 */
+export interface McpGraphIconRefineResultPayload {
+  requestId: string
+  ok: boolean
+  cellKey?: string
+  name?: string
+  packNodeId?: string
+  /** 实际使用的生图指令 */
+  prompt?: string
+  /** 精修结果是否已由重跑打包节点顶替成图（repack 关闭或没跑成时为 false） */
+  repacked?: boolean
+  warning?: string
   error?: string
 }
 
@@ -1026,6 +1066,12 @@ export interface StudioApi {
 
   /** MCP：渲染层回报图编辑结果 */
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) => Promise<boolean>
+
+  /** MCP：订阅主进程派发的单枚图标精修回炉请求 */
+  onMcpGraphIconRefine: (callback: (payload: McpGraphIconRefinePayload) => void) => () => void
+
+  /** MCP：渲染层回报精修回炉结果 */
+  reportMcpGraphIconRefine: (payload: McpGraphIconRefineResultPayload) => Promise<boolean>
 
   /** MCP：订阅 agent 通过 ask_user 工具发起的提问（渲染层展示选项列表，经 answerAskUser 回传） */
   onAskUser: (callback: (question: AskUserQuestion) => void) => () => void

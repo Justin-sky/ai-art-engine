@@ -21,12 +21,22 @@ class McpActivityService {
   }
 
   /** 开始一次活动，返回 activityId（调用方负责在终态时 end） */
-  begin(input: { tool: McpActivityTool; title: string; model?: string }): string {
+  begin(input: {
+    tool: McpActivityTool
+    title: string
+    model?: string
+    /** 运行中补充说明（如精修的修正点），界面优先于 model 展示 */
+    detail?: string
+    /** 运行中即可定位的关联资产（精修的目标资产已存在）：素材库卡片据此显示「进行中」角标 */
+    assetId?: string
+  }): string {
     const activity: McpActivity = {
       id: `mcp-activity-${randomUUID()}`,
       tool: input.tool,
       title: input.title,
       model: input.model,
+      detail: input.detail,
+      assetId: input.assetId,
       status: 'running',
       startedAt: Date.now()
     }

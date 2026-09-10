@@ -125,7 +125,11 @@
                   </span>
                 </div>
                 <p class="task-sub">
-                  {{ activity.model ?? t('graph.tasks.mcpDefaultModel') }}
+                  {{
+                    activity.detail ??
+                      activity.model ??
+                      t('graph.tasks.mcpDefaultModel')
+                  }}
                 </p>
               </div>
             </li>
@@ -698,6 +702,12 @@ h2 {
   color: #b48cff;
   border-color: rgba(180, 140, 255, 0.4);
   background: rgba(180, 140, 255, 0.1);
+}
+
+.task-kind[data-kind='graph_icon_refine'] {
+  color: #7fd4a5;
+  border-color: rgba(127, 212, 165, 0.4);
+  background: rgba(127, 212, 165, 0.1);
 }
 
 .task-title {

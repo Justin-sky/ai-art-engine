@@ -296,7 +296,7 @@
                 <td>Library folders (source of folderId for generation tools)</td>
               </tr>
               <tr>
-                <td rowspan="5">Planning &amp; execution</td>
+                <td rowspan="6">Planning &amp; execution</td>
                 <td><code>workflow_list_presets</code></td>
                 <td>The 12 industry templates (id + title)</td>
               </tr>
@@ -311,6 +311,10 @@
               <tr>
                 <td><code>task_run</code> / <code>task_status</code></td>
                 <td>Run a persisted workflow and poll its execution state</td>
+              </tr>
+              <tr>
+                <td><code>graph_node_types</code></td>
+                <td>Addable node types (typeId / label / ports / default params; the graph_edit whitelist)</td>
               </tr>
               <tr>
                 <td><code>graph_read</code></td>
@@ -330,9 +334,13 @@
                 <td>Text/image-to-3D producing a GLB asset</td>
               </tr>
               <tr>
-                <td rowspan="3">Editing &amp; queries</td>
+                <td rowspan="4">Editing &amp; queries</td>
                 <td><code>graph_edit</code></td>
                 <td>Apply node / edge edit batches to a host asset graph (validated in-app)</td>
+              </tr>
+              <tr>
+                <td><code>graph_icon_refine</code></td>
+                <td>Redraw a single icon, write it back as a per-cell override, then re-run packing (same pipeline as the dialog; the run shows up in the task list and as a spinner on the asset card)</td>
               </tr>
               <tr>
                 <td><code>models_list</code></td>
@@ -354,6 +362,8 @@
             <li>"Plan a workflow from the shortDrama template and save it" → <code>workflow_plan</code> (presetId=shortDrama) + <code>workflow_commit</code></li>
             <li>"Run the workflow I just created and report back" → <code>task_run</code> + <code>task_status</code> polling</li>
             <li>"Add a voice node under this image node and wire it" → <code>graph_edit</code> (node_upsert + edge_connect)</li>
+            <li>"What nodes can this graph take? Which type packs icons?" → <code>graph_node_types</code> (typeId + ports + default params)</li>
+            <li>"Icon #3 in the pack looks blurry — redraw just that one" → <code>graph_icon_refine</code> (cellKey + hint; writes back and re-packs)</li>
             <li>"Generate a 9:16 poster with my configured model" → <code>models_list</code> + <code>generate_image</code></li>
           </ul>
         </section>
@@ -400,8 +410,8 @@
             <li>Audit trail: every tool call is appended to
               <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code> (args truncated, 5MB rotation) so generation and
               writes can be audited.</li>
-            <li><code>graph_edit</code> refuses graphs that are currently open in an editor to avoid clobbering
-              in-memory state.</li>
+            <li><code>graph_edit</code> / <code>graph_icon_refine</code> refuse graphs that are currently open in an
+              editor to avoid clobbering in-memory state.</li>
             <li><code>workflow_plan</code> runs an LLM and may take tens of seconds; <code>generate_video</code> /
               <code>generate_model3d</code> are async — track them with <code>video_job_*</code>.</li>
             <li>Two connection options: the <strong>stdio bridge</strong> (bundled in installers at <code>&lt;install dir&gt;/resources/mcp-bridge.mjs</code>; for development use the in-repo <code>scripts/mcp-bridge.mjs</code>, Node.js 18+ required) or <strong>HTTP direct</strong> (no Node.js needed).</li>

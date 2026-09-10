@@ -5,8 +5,10 @@ import {
   buildIconRefineInstruction,
   parseIconCellKey,
   refineCategoryOf,
-  resolveIconRefineContext
+  resolveIconRefineContext,
+  withIconPackCellRefine
 } from '../src/shared/graph/iconRefine'
+import { readIconPackRefinesFromNode } from '../src/shared/graph/iconPack'
 
 /**
  * image.gridSplit 单枚「逐枚精修回炉」上下文解析契约：
@@ -162,5 +164,83 @@ describe('单枚精修指令组装', () => {
     const instruction = buildIconRefineInstruction(ctx, { locale: 'zh' })
     expect(instruction).toContain('2-2')
     expect(instruction).not.toContain('null')
+  })
+})
+
+describe('单枚精修结果写回（withIconPackCellRefine）', () => {
+  it('只替换本格覆盖，其余格位与其它参数不动，且原文档不可变', () => {
+    const doc = buildGameIconsDoc()
+    const pack = doc.nodes.find((n) => n.id === 'pack')!
+    pack.params = {
+      ...pack.params,
+      iconPackCellRefines: { '1-1': { cellKey: '1-1', dataUrl: 'data:image/png;base64,AAA' } }
+    }
+    const edgesBefore = JSON.stringify(doc.edges)
+
+    const next = withIconPackCellRefine(doc, {
+      packNodeId: 'pack',
+      cellKey: '1-3',
+      dataUrl: 'data:image/png;base64,BBB',
+      updatedAt: '2026-09-10T00:00:00.000Z'
+    })
+
+    const refines = readIconPackRefinesFromNode(next.nodes.find((n) => n.id === 'pack')!.params)
+    expect(Object.keys(refines).sort()).toEqual(['1-1', '1-3'])
+    expect(refines['1-1']!.dataUrl).toBe('data:image/png;base64,AAA')
+    expect(refines['1-3']).toEqual({
+      cellKey: '1-3',
+      dataUrl: 'data:image/png;base64,BBB',
+      updatedAt: '2026-09-10T00:00:00.000Z'
+    })
+    // 同一格重复精修：后一次顶替前一次
+    const again = withIconPackCellRefine(next, {
+      packNodeId: 'pack',
+      cellKey: '1-3',
+      dataUrl: 'data:image/png;base64,CCC'
+    })
+    expect(
+      readIconPackRefinesFromNode(again.nodes.find((n) => n.id === 'pack')!.params)['1-3']!.dataUrl
+    ).toBe('data:image/png;base64,CCC')
+
+    // 原文档未被就地修改
+    expect(
+      readIconPackRefinesFromNode(doc.nodes.find((n) => n.id === 'pack')!.params)['1-3']
+    ).toBeUndefined()
+    expect(JSON.stringify(doc.edges)).toBe(edgesBefore)
+    expect(next.nodes.find((n) => n.id === 'split')).toBe(doc.nodes.find((n) => n.id === 'split'))
+  })
+
+  it('格位 key 非法 / dataUrl 非 data:image / 节点缺失时原样返回', () => {
+    const doc = buildGameIconsDoc()
+    expect(
+      withIconPackCellRefine(doc, { packNodeId: 'pack', cellKey: 'a-b', dataUrl: 'data:image/png;base64,AAA' })
+    ).toBe(doc)
+    expect(
+      withIconPackCellRefine(doc, { packNodeId: 'pack', cellKey: '1-1', dataUrl: 'https://x/y.png' })
+    ).toBe(doc)
+    expect(
+      withIconPackCellRefine(doc, { packNodeId: 'missing', cellKey: '1-1', dataUrl: 'data:image/png;base64,AAA' })
+    ).toBe(doc)
+  })
+
+  it('写回时归一化丢弃旧脏条目（与打包执行器读取口径一致）', () => {
+    const doc = buildGameIconsDoc()
+    const pack = doc.nodes.find((n) => n.id === 'pack')!
+    pack.params = {
+      ...pack.params,
+      iconPackCellRefines: {
+        '1-1': { cellKey: '1-1', dataUrl: 'data:image/png;base64,AAA' },
+        'bad-key': { cellKey: 'bad-key', dataUrl: 'data:image/png;base64,XXX' },
+        '2-2': { cellKey: '2-2', dataUrl: 'https://x/y.png' }
+      } as never
+    }
+    const next = withIconPackCellRefine(doc, {
+      packNodeId: 'pack',
+      cellKey: '1-2',
+      dataUrl: 'data:image/png;base64,DDD'
+    })
+    expect(
+      Object.keys(readIconPackRefinesFromNode(next.nodes.find((n) => n.id === 'pack')!.params)).sort()
+    ).toEqual(['1-1', '1-2'])
   })
 })

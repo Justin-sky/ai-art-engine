@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
-import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
+import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpGraphIconRefinePayload, McpGraphIconRefineResultPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -247,6 +247,15 @@ const api: StudioApi = {
   },
   reportMcpGraphEdit: (payload: McpGraphEditResultPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_GRAPH_EDIT_RESULT, payload),
+  onMcpGraphIconRefine: (callback) => {
+    const listener = (_event: unknown, payload: McpGraphIconRefinePayload): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.MCP_GRAPH_ICON_REFINE, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_GRAPH_ICON_REFINE, listener)
+  },
+  reportMcpGraphIconRefine: (payload: McpGraphIconRefineResultPayload) =>
+    ipcRenderer.invoke(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT, payload),
   onAskUser: (callback) => {
     const listener = (_event: unknown, question: AskUserQuestion): void => {
       callback(question)

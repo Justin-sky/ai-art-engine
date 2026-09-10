@@ -115,7 +115,7 @@ describe('image.iconPack 执行产物契约', () => {
       } as never
     )
 
-    expect(result.ok, (result as any).error).toBe(true)
+    expect(result.ok, result.error).toBe(true)
 
     // 1) 画布合成收到整版图 URL 与完整名单（含 2 行开始的第 4 枚，跨行格位 2-1）
     expect(composeCalls).toHaveLength(1)
@@ -193,7 +193,7 @@ describe('image.iconPack 执行产物契约', () => {
       } as never
     )
 
-    expect(result.ok, (result as any).error).toBe(true)
+    expect(result.ok, result.error).toBe(true)
     expect(composeCalls[0]!.names).toEqual(['火焰斩', '治疗术'])
     expect(savedMedia.map((m) => m.key)).toEqual(['火焰斩', '治疗术'])
     const manifest = JSON.parse(texts[0]!.content) as {
@@ -242,7 +242,7 @@ describe('image.iconPack 执行产物契约', () => {
       } as never
     )
 
-    expect(result.ok, (result as any).error).toBe(true)
+    expect(result.ok, result.error).toBe(true)
     // 画布合成收到整版图 + 完整名单 + 单格覆盖图
     expect(composeCalls).toHaveLength(1)
     expect(composeCalls[0]!.names).toEqual(NAME_LINES)

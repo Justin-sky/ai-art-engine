@@ -142,7 +142,8 @@ describe('uiKit 九宫格拉伸网格（验收：任意缩放不变形）', () =
 
   it('缩小到小于双边切边总和的目标时：角块按目标收缩、中央区不为负、不越界', () => {
     const cells = computeNineSliceCells(src.width, src.height, part.border, 30, 14)
-    const [tl, tc, tr, cl, cc, cr, bl, bc, br] = cells
+    // 九宫格顺序固定为 3×3 row-major：本用例只校验角块与中央区，其余位置留空不绑定
+    const [tl, tc, tr, cl, cc, , , , br] = cells
     expect(cc.dst.width).toBeGreaterThanOrEqual(0)
     expect(cc.dst.height).toBeGreaterThanOrEqual(0)
     expect(tl.dst.x).toBe(0)

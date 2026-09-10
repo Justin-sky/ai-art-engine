@@ -1,6 +1,7 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
 import { listAddableNodeTypes } from './registry'
+import type { GraphAddScope } from './scopes'
 import type { GraphDocument, GraphEdge, GraphNode, GraphNodeTypeId } from './types'
 
 /**
@@ -42,6 +43,13 @@ export interface McpGraphEditResult {
   applied: string[]
   warnings: string[]
 }
+
+/**
+ * graph_edit 的校验作用域（宿主资产子图）：node_upsert 只接受该作用域下
+ * 可添加的节点类型。MCP 的 graph_node_types 清单工具复用本常量，
+ * 保证「清单里能查到的」与「graph_edit 能建的」始终同源。
+ */
+export const MCP_GRAPH_EDIT_SCOPE: GraphAddScope = 'subgraphAsset'
 
 /** 输出与边界节点承载宿主接口，远端删除会破坏资产契约 */
 function isProtectedNode(node: GraphNode): boolean {
@@ -199,7 +207,9 @@ export function applyGraphEditOps(
     nodes: [...graph.nodes],
     edges: [...graph.edges]
   }
-  const addable = new Set(listAddableNodeTypes('subgraphAsset').map((def) => def.typeId))
+  const addable = new Set(
+    listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => def.typeId)
+  )
   const applied: string[] = []
   const warnings: string[] = []
   for (const op of ops) {

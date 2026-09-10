@@ -62,7 +62,7 @@ describe('image.iconPack 多口输入取值', () => {
       } as never
     )
 
-    expect(result.ok, (result as any).error).toBe(true)
+    expect(result.ok, result.error).toBe(true)
     expect(captured.url).toBe('data:image/png;base64,AAAA')
     expect(captured.names).toEqual(['火焰斩', '冰霜护盾', '雷击', '治疗术'])
   })

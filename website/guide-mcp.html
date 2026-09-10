@@ -289,7 +289,7 @@
                 <td>资产库文件夹列表（生成工具 folderId 的来源）</td>
               </tr>
               <tr>
-                <td rowspan="5">规划与运行</td>
+                <td rowspan="6">规划与运行</td>
                 <td><code>workflow_list_presets</code></td>
                 <td>12 个行业模板列表（id + 标题）</td>
               </tr>
@@ -304,6 +304,10 @@
               <tr>
                 <td><code>task_run</code> / <code>task_status</code></td>
                 <td>运行宿主资产工作流、轮询执行状态（应用任务列表同步显示）</td>
+              </tr>
+              <tr>
+                <td><code>graph_node_types</code></td>
+                <td>可添加节点类型清单（typeId / 名称 / 端口 / 默认参数，graph_edit 建节点白名单）</td>
               </tr>
               <tr>
                 <td><code>graph_read</code></td>
@@ -323,9 +327,13 @@
                 <td>文生 / 图生 3D，产出 GLB 资产</td>
               </tr>
               <tr>
-                <td rowspan="3">编辑与查询</td>
+                <td rowspan="4">编辑与查询</td>
                 <td><code>graph_edit</code></td>
                 <td>对宿主资产图应用节点 / 连线编辑操作批（端口兼容性在应用内校验）</td>
+              </tr>
+              <tr>
+                <td><code>graph_icon_refine</code></td>
+                <td>单枚图标精修回炉：重画某一枚 → 写回打包节点逐枚覆盖 → 重跑打包（与弹窗同一口径；调用期间任务列表与素材库卡片角标可见运行中活动）</td>
               </tr>
               <tr>
                 <td><code>models_list</code></td>
@@ -347,6 +355,8 @@
             <li>「用 shortDrama 模板规划一条工作流并落盘」→ <code>workflow_plan</code>（presetId=shortDrama）+ <code>workflow_commit</code></li>
             <li>「运行刚才创建的工作流，完成后告诉我结果」→ <code>task_run</code> + <code>task_status</code> 轮询</li>
             <li>「给这张图节点下面加一个配音节点并连上」→ <code>graph_edit</code>（node_upsert + edge_connect）</li>
+            <li>「这张图还能加哪些节点？图标包打包用哪个类型？」→ <code>graph_node_types</code>（typeId + 端口 + 默认参数）</li>
+            <li>「图标包第 3 枚的剑画糊了，重画这一枚」→ <code>graph_icon_refine</code>（cellKey + hint，自动写回并重跑打包）</li>
             <li>「用已配置的模型生成一张 9:16 的海报」→ <code>models_list</code> + <code>generate_image</code></li>
           </ul>
         </section>
@@ -390,7 +400,7 @@
               同时最多 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），排队满直接报错，防止 Agent 失控消耗额度。</li>
             <li>操作审计：每次工具调用追加写
               <code>&lt;userData&gt;/logs/mcp-audit.jsonl</code>（参数截断、5MB 滚动），生成与写入可回查。</li>
-            <li><code>graph_edit</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
+            <li><code>graph_edit</code> / <code>graph_icon_refine</code> 对正在编辑器中打开的图会拒绝修改，避免与编辑器内存态互相覆盖。</li>
             <li><code>workflow_plan</code> 走 LLM，耗时可能数十秒；<code>generate_video</code> / <code>generate_model3d</code> 为异步任务，用 <code>video_job_*</code> 跟踪。</li>
             <li>接入方式两选一：<strong>stdio 桥</strong>（安装包内置在 <code>&lt;安装目录&gt;/resources/mcp-bridge.mjs</code>；开发场景用仓库内 <code>scripts/mcp-bridge.mjs</code>，需 Node.js 18+）或 <strong>HTTP 直连</strong>（无需 Node.js）。</li>
           </ul>

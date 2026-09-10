@@ -53,10 +53,10 @@
       >
         {{ t('studio.toolbar.tasks') }}
         <span
-          v-if="taskStore.runningCount > 0"
+          v-if="busyCount > 0"
           class="tasks-badge"
         >
-          {{ taskStore.runningCount }}
+          {{ busyCount }}
         </span>
       </button>
       <button
@@ -281,6 +281,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useDraftStore } from '../stores/drafts'
 import { useGraphTaskStore } from '../stores/graphTasks'
 import { useGraphRunLogsStore } from '../stores/graphRunLogs'
+import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
 import SaveLayoutDialog from '../components/SaveLayoutDialog.vue'
@@ -360,6 +361,18 @@ const drafts = useDraftStore()
 const editor = useEditorKernel()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
+const mcpActivities = useMcpActivitiesStore()
+
+/**
+ * 任务按钮角标：工作流任务 + 运行中的 MCP 旁路活动（外部 Agent 触发的
+ * 生成 / 单枚图标精修回炉等）。MCP 活动不进工作流任务系统，
+ * 若不计入角标，Agent 触发期间界面上将毫无提示。
+ */
+const busyCount = computed(
+  () =>
+    taskStore.runningCount +
+    mcpActivities.activities.filter((activity) => activity.status === 'running').length
+)
 
 /**
  * 工具栏 ↶↷：内嵌 dive 编辑器（图层分离等）打开时代理到其草稿历史，

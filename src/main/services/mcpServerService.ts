@@ -7,7 +7,10 @@ import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import { createMcpProtocolHandler } from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
+  MCP_GRAPH_EDIT_SCOPE,
   getAiWorkflowPresetPlan,
+  getNodeType,
+  listAddableNodeTypes,
   summarizeMediaUrlForLog,
   summarizeReferenceListForLog,
   type GraphDocument,
@@ -19,6 +22,7 @@ import {
   type CommitAiWorkflowInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
+  type McpGraphIconRefineResultPayload,
   type McpRestartInput,
   type McpServerInfo,
   type McpTaskReportPayload,
@@ -688,6 +692,54 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'graph_node_types',
+    title: '节点类型清单',
+    description:
+      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。只读操作，无需打开工程。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        typeId: { type: 'string', description: '只查该节点类型；缺省返回全部可添加类型' },
+        includeParams: {
+          type: 'boolean',
+          description: 'true 时附带每种节点的默认参数（可作 node_upsert 的 params 起点；默认 false）'
+        }
+      },
+      required: []
+    },
+    handler: (args) => {
+      const typeId = optionalString(args, 'typeId')?.trim()
+      const includeParams = args.includeParams === true
+      const defs = listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE)
+      const matched = typeId ? defs.filter((def) => def.typeId === typeId) : defs
+      const types = matched.map((def) => ({
+        typeId: def.typeId,
+        label: def.label,
+        category: def.category,
+        ...(def.assetType ? { assetType: def.assetType } : {}),
+        ports: def.ports.map((port) => ({
+          id: port.id,
+          direction: port.direction,
+          dataType: port.dataType,
+          multiple: port.multiple === true,
+          ...(port.label ? { label: port.label } : {})
+        })),
+        ...(includeParams ? { params: def.defaultParams() } : {})
+      }))
+      if (typeId && !types.length) {
+        return {
+          scope: MCP_GRAPH_EDIT_SCOPE,
+          total: 0,
+          types: [],
+          note: getNodeType(typeId)
+            ? `节点类型「${typeId}」存在但不可添加（输出 / 边界等节点由图自带），graph_edit 会跳过它`
+            : `未知节点类型「${typeId}」；省略 typeId 可获取全部可添加类型`
+        }
+      }
+      return { scope: MCP_GRAPH_EDIT_SCOPE, total: types.length, types }
+    }
+  },
+  {
     name: 'graph_read',
     title: '读取节点图',
     description:
@@ -802,6 +854,101 @@ const TOOL_DEFS: McpToolDef[] = [
       } finally {
         // 一次性请求信道：无论结果如何都释放，避免残留
         pendingMcpGraphEditResults.delete(requestId)
+      }
+    }
+  },
+  {
+    name: 'graph_icon_refine',
+    title: '单枚图标精修回炉',
+    description:
+      '对「整版图标表 → 宫格切分 → 图标包打包」链路里的某一枚做精修回炉：按整版画风与命名规范（可用 hint 指出不满意点，或直接给 prompt）重画这一枚方形图标卡片，写回同源打包节点的逐枚覆盖（iconPackCellRefines），并默认重跑打包节点、用精修图顶替该格 PNG。生图在应用界面（渲染层）执行，需该资产的图编辑器处于关闭状态；耗时较长（一次生图 + 一次打包重跑）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '宿主资产 id（asset_list 查询）' },
+        splitNodeId: {
+          type: 'string',
+          description: 'image.gridSplit 节点 id（要回炉的格位所在切分节点，graph_read 查询）'
+        },
+        cellKey: { type: 'string', description: '格位 key，形如 1-1 / 2-3（行-列）' },
+        hint: { type: 'string', description: '针对不满意点的修正说明（缺省按整版同规范重画）' },
+        prompt: { type: 'string', description: '完整生图指令（给出时覆盖默认指令与 hint）' },
+        repack: { type: 'boolean', description: '完成后是否重跑同源打包节点（默认 true）' },
+        locale: { type: 'string', enum: ['zh', 'en'], description: '默认生图指令语言（默认 zh）' }
+      },
+      required: ['assetId', 'splitNodeId', 'cellKey']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const splitNodeId = readString(args, 'splitNodeId')
+      const cellKey = readString(args, 'cellKey')
+      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
+        | GraphDocument
+        | undefined
+      if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
+        throw new Error('资产不存在或不含图文档（graph_icon_refine 仅支持宿主资产子图）')
+      }
+      const hint = optionalString(args, 'hint')
+      // 登记为界面可见的「MCP 生成」活动：外部 Agent 触发回炉时，
+      // 任务按钮出现角标、任务列表出现运行中条目、执行日志出现会话（含终态）
+      const activityId = mcpActivityService.begin({
+        tool: 'graph_icon_refine',
+        title: `${asset.name} · 第 ${cellKey} 格`,
+        detail: hint ? `修正：${hint}` : '按整版画风重画这一枚',
+        // 运行中即带上资产：该图编辑器此时必然关闭（上面已校验），素材库卡片角标
+        // 是用户在应用里唯一能直接看到「这一枚正在被重画」的地方
+        assetId
+      })
+      const requestId = randomUUID()
+      pendingMcpGraphIconRefineResults.delete(requestId)
+      broadcastToAllWindows(IpcChannels.MCP_GRAPH_ICON_REFINE, {
+        requestId,
+        assetId,
+        splitNodeId,
+        cellKey,
+        hint,
+        prompt: optionalString(args, 'prompt'),
+        locale: args.locale === 'en' ? 'en' : 'zh',
+        repack: args.repack !== false
+      })
+      try {
+        const deadline = Date.now() + MCP_GRAPH_ICON_REFINE_TIMEOUT_MS
+        while (Date.now() < deadline) {
+          await sleep(MCP_GRAPH_ICON_REFINE_POLL_MS)
+          const report = pendingMcpGraphIconRefineResults.get(requestId)
+          if (!report) continue
+          if (!report.ok) throw new Error(report.error ?? '精修回炉失败')
+          const result = {
+            cellKey: report.cellKey ?? cellKey,
+            name: report.name ?? null,
+            packNodeId: report.packNodeId ?? '',
+            prompt: report.prompt ?? '',
+            repacked: report.repacked === true,
+            ...(report.warning ? { warning: report.warning } : {})
+          }
+          mcpActivityService.end(activityId, {
+            ok: true,
+            assetId,
+            // 精修产物落在该资产自身文件上（重跑打包后覆盖），指向它便于界面定位
+            relativePath: asset.relativePath || undefined
+          })
+          return result
+        }
+        throw new Error(
+          '精修回炉超时：渲染层仍在生成或重跑打包，可在应用任务列表查看进度（结果已写回图文档时无需重试）'
+        )
+      } catch (err) {
+        mcpActivityService.end(activityId, {
+          ok: false,
+          assetId,
+          error: err instanceof Error ? err.message : String(err)
+        })
+        throw err
+      } finally {
+        // 一次性请求信道：无论结果如何都释放，避免残留
+        pendingMcpGraphIconRefineResults.delete(requestId)
       }
     }
   },
@@ -1332,6 +1479,27 @@ function scheduleGraphEditResultCleanup(requestId: string): void {
   graphEditResultCleanups.set(requestId, timer)
 }
 
+/**
+ * MCP graph_icon_refine 的渲染层回报：精修要跑一次生图（数十秒级）并重跑打包节点，
+ * 因此轮询预算远比 graph_edit 宽松（10 分钟），用 1s 间隔探测。
+ */
+const MCP_GRAPH_ICON_REFINE_TIMEOUT_MS = 10 * 60 * 1000
+const MCP_GRAPH_ICON_REFINE_POLL_MS = 1000
+
+const pendingMcpGraphIconRefineResults = new Map<string, McpGraphIconRefineResultPayload>()
+const graphIconRefineResultCleanups = new Map<string, NodeJS.Timeout>()
+
+function scheduleGraphIconRefineResultCleanup(requestId: string): void {
+  const prev = graphIconRefineResultCleanups.get(requestId)
+  if (prev) clearTimeout(prev)
+  const timer = setTimeout(() => {
+    pendingMcpGraphIconRefineResults.delete(requestId)
+    graphIconRefineResultCleanups.delete(requestId)
+  }, TASK_REPORT_RETENTION_MS)
+  timer.unref?.()
+  graphIconRefineResultCleanups.set(requestId, timer)
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 生成落盘后同步刷新应用界面中的资产卡片 */
@@ -1588,6 +1756,16 @@ export async function startMcpServer(): Promise<void> {
       return true
     }
   )
+  ipcMain.handle(
+    IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT,
+    (_event, payload: McpGraphIconRefineResultPayload) => {
+      if (payload && typeof payload.requestId === 'string') {
+        pendingMcpGraphIconRefineResults.set(payload.requestId, payload)
+        scheduleGraphIconRefineResultCleanup(payload.requestId)
+      }
+      return true
+    }
+  )
 
   for (const port of candidates) {
     const started = await new Promise<boolean>((resolve) => {
@@ -1629,11 +1807,13 @@ async function closeMcpServer(): Promise<void> {
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
+  ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
   // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpGraphEditResults.clear()
+  pendingMcpGraphIconRefineResults.clear()
   pendingAskUserAnswers.clear()
   await new Promise<void>((resolve) => {
     closing.close(() => resolve())
@@ -1688,11 +1868,13 @@ export function stopMcpServer(): void {
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
+  ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
   // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpGraphEditResults.clear()
+  pendingMcpGraphIconRefineResults.clear()
   pendingAskUserAnswers.clear()
   // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效；
   // pid 字段可能过期，桥只读取 port + token，不受影响

@@ -13,7 +13,13 @@
  * 以及据此组装「单枚精修」的生图指令。
  */
 import { readImageGridSplitFromNode } from './imageGridSplit'
-import { parseIconCellKey, readIconPackFromNode } from './iconPack'
+import {
+  normalizeIconPackCellRefines,
+  parseIconCellKey,
+  readIconPackFromNode,
+  readIconPackRefinesFromNode,
+  type IconPackCellRefines
+} from './iconPack'
 import type { GraphDocument, GraphEdge, GraphNode } from './types'
 
 export { parseIconCellKey } from './iconPack'
@@ -204,6 +210,35 @@ export function resolveIconRefineContext(
         : undefined,
     themeTexts,
     pack: packRef
+  }
+}
+
+/**
+ * 把「某一枚的精修结果」并入同源打包节点的回炉覆盖，返回新文档（不可变）。
+ *
+ * 只改 packNodeId 对应节点的 `iconPackCellRefines`：其余格位、节点参数与连线原样不动，
+ * 且经 normalizeIconPackCellRefines 归一化（丢弃格位 key 非法 / 非 data:image 的旧脏条目，
+ * 与打包执行器读取口径一致）。格位 key 非法、dataUrl 非 data:image、节点不存在时原样返回。
+ */
+export function withIconPackCellRefine(
+  doc: GraphDocument,
+  input: { packNodeId: string; cellKey: string; dataUrl: string; updatedAt?: string }
+): GraphDocument {
+  const packNode = findNode(doc, input.packNodeId)
+  const dataUrl = input.dataUrl?.trim() ?? ''
+  if (!packNode || !parseIconCellKey(input.cellKey) || !dataUrl.startsWith('data:image/')) return doc
+
+  const next: IconPackCellRefines = normalizeIconPackCellRefines({
+    ...readIconPackRefinesFromNode(packNode.params),
+    [input.cellKey]: { cellKey: input.cellKey, dataUrl, updatedAt: input.updatedAt }
+  })
+  return {
+    ...doc,
+    nodes: doc.nodes.map((node) =>
+      node.id === packNode.id
+        ? { ...node, params: { ...node.params, iconPackCellRefines: next } }
+        : node
+    )
   }
 }
 

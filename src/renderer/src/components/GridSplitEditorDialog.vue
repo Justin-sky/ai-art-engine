@@ -276,7 +276,6 @@ import {
   cellKey,
   imageGridSplitToNodePatch,
   normalizeImageGridSplit,
-  readIconPackRefinesFromNode,
   resolveIconRefineContext,
   type IconRefineContext,
   type ImageGridSplitState
@@ -286,6 +285,7 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { IconRefineError, runIconRefine } from '../features/graph/model/runIconRefine'
 
 export type GridSplitEditorSavePayload = ReturnType<typeof imageGridSplitToNodePatch>
 
@@ -579,55 +579,52 @@ watch(
   }
 )
 
+/** 精修失败原因码 → 弹窗文案（可定位性问题用专门文案，其余带原始报错） */
+function refineErrorText(err: unknown): string {
+  if (err instanceof IconRefineError) {
+    if (err.code === 'unresolved') return t('graph.gridSplit.refineUnresolved')
+    if (err.code === 'no-pack') return t('graph.gridSplit.refineNoPack')
+    if (err.code === 'no-source') return t('graph.gridSplit.refineNoSource')
+    if (err.code === 'no-result') return t('graph.gridSplit.refineNoResult')
+  }
+  return `${t('graph.gridSplit.refineFailedPrefix')}：${
+    err instanceof Error ? err.message : String(err)
+  }`
+}
+
 async function runRefine(): Promise<void> {
   const ctx = refineCtx.value
   if (!ctx?.pack || !props.sourceUrl || busy.value) return
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  if (!doc || !props.nodeId) return
   busy.value = true
   refineError.value = ''
   refineDone.value = ''
-  const cell = ctx.cellKey
-
-  // 复用整版节点的生成模型/服务，保证画风一致
-  const sheet = ctx.sheetNodeId ? graphEditorHosts.getNode(props.hostId, ctx.sheetNodeId) : null
-  const sheetParams = (sheet?.params ?? {}) as Record<string, unknown>
-  const model = typeof sheetParams.generateModel === 'string' ? sheetParams.generateModel.trim() : ''
-  const provider =
-    typeof sheetParams.generateProviderInstanceId === 'string'
-      ? sheetParams.generateProviderInstanceId.trim()
-      : ''
 
   try {
-    const res = await window.studio.generateImage({
+    // 与 MCP graph_icon_refine 同一执行口径（上下文 / 指令 / 裁切 / 模型克隆 / 写回）
+    const result = await runIconRefine({
+      document: doc,
+      splitNodeId: props.nodeId,
+      cellKey: ctx.cellKey,
+      locale: isEnglish.value ? 'en' : 'zh',
       prompt: promptText.value,
-      ...(model ? { model } : {}),
-      ...(provider ? { providerInstanceId: provider } : {}),
-      aspectRatio: '1:1',
-      quality: 'high',
-      n: 1,
-      inputReferences: originalPreviewUrl.value ? [originalPreviewUrl.value] : undefined
+      referenceDataUrl: originalPreviewUrl.value
     })
-    const dataUrl = String(res?.images?.[0] ?? '').trim()
-    if (!dataUrl.startsWith('data:image/')) {
-      throw new Error(t('graph.gridSplit.refineNoResult'))
-    }
 
     // 写回同源 iconPack：仅替换本格覆盖，其余格不受影响
-    const packNode = graphEditorHosts.getNode(props.hostId, ctx.pack.nodeId)
-    const prev = readIconPackRefinesFromNode(packNode?.params as never)
-    const next = { ...prev, [cell]: { cellKey: cell, dataUrl, updatedAt: new Date().toISOString() } }
-    graphEditorHosts.updateNode(props.hostId, ctx.pack.nodeId, { iconPackCellRefines: next } as never)
+    graphEditorHosts.updateNode(props.hostId, result.packNodeId, {
+      iconPackCellRefines: result.cellRefines
+    } as never)
 
-    resultUrl.value = dataUrl
-    const runHost = graphRunHosts.get(props.hostId)
-    runHost?.toggleNodeRun(ctx.pack.nodeId)
+    resultUrl.value = result.dataUrl
+    graphRunHosts.get(props.hostId)?.toggleNodeRun(result.packNodeId)
     refineDone.value = t('graph.gridSplit.refineSuccess', {
-      cell,
-      name: ctx.name?.trim() || cell
+      cell: result.cellKey,
+      name: result.name?.trim() || result.cellKey
     })
   } catch (err) {
-    refineError.value = `${t('graph.gridSplit.refineFailedPrefix')}：${
-      err instanceof Error ? err.message : String(err)
-    }`
+    refineError.value = refineErrorText(err)
   } finally {
     busy.value = false
   }

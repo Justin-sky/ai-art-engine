@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { applyGraphEditOps, type McpGraphEditOp } from '../src/shared/graph/mcpGraphEdit'
-import { materializeGraphPlan, type GraphPlan } from '../src/shared/graph'
+import {
+  applyGraphEditOps,
+  MCP_GRAPH_EDIT_SCOPE,
+  type McpGraphEditOp
+} from '../src/shared/graph/mcpGraphEdit'
+import { listAddableNodeTypes, materializeGraphPlan, type GraphPlan } from '../src/shared/graph'
 
 function buildSampleGraph(): { graph: NonNullable<ReturnType<typeof materializeGraphPlan>['document']> } {
   const plan: GraphPlan = {
@@ -114,5 +118,38 @@ describe('applyGraphEditOps（MCP 图编辑）', () => {
       { op: 'node_upsert', nodeId: 'extra', typeId: 'asset.voice', title: '配音' }
     ])
     expect(graph.nodes.length).toBe(before)
+  })
+})
+
+/**
+ * graph_node_types（MCP 节点类型清单工具）与 graph_edit 共用
+ * MCP_GRAPH_EDIT_SCOPE 白名单，这里锁定「清单 == 可建集合」这一契约。
+ */
+describe('MCP_GRAPH_EDIT_SCOPE（清单工具与 graph_edit 同源）', () => {
+  it('清单内含新节点类型，且清单里的类型 graph_edit 全部能建', () => {
+    const addable = listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE)
+    const ids = addable.map((def) => def.typeId)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids).toContain('stage.2d')
+    expect(ids).toContain('image.gridSplit')
+    expect(ids).toContain('image.iconPack')
+    const { graph } = buildSampleGraph()
+    const ops: McpGraphEditOp[] = addable.map((def) => ({
+      op: 'node_upsert',
+      nodeId: `mcp-${def.typeId}`,
+      typeId: def.typeId
+    }))
+    const result = applyGraphEditOps(graph, ops)
+    expect(result.applied).toHaveLength(addable.length)
+    expect(result.warnings).toEqual([])
+  })
+
+  it('清单外的类型（输出节点）被 graph_edit 跳过', () => {
+    const ids = listAddableNodeTypes(MCP_GRAPH_EDIT_SCOPE).map((def) => def.typeId)
+    expect(ids).not.toContain('output.video')
+    const { graph } = buildSampleGraph()
+    const result = applyGraphEditOps(graph, [{ op: 'node_upsert', typeId: 'output.video' }])
+    expect(result.applied).toEqual([])
+    expect(result.warnings.some((warning) => warning.includes('不可添加'))).toBe(true)
   })
 })

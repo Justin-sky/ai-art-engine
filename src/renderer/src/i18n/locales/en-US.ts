@@ -997,6 +997,8 @@ export default {
       deleteReferencedConfirm: 'Deleting will leave broken references. Delete anyway?',
       selectedCount: '{count} selected',
       refMark: 'Ref',
+      mcpRefining: 'MCP icon refine running: redrawing this icon and re-packing…',
+      mcpGenerating: 'MCP generation running…',
       videoBeatAnalyzing: 'Detecting people & objects frame by frame…',
       videoBeatSummary:
         'Beats: empty {empty} · solo {solo} · group {group} segments · seen {names}',
@@ -2511,7 +2513,8 @@ export default {
         generate_video: 'Video',
         generate_speech: 'Voice',
         generate_music: 'Music',
-        generate_model3d: '3D model'
+        generate_model3d: '3D model',
+        graph_icon_refine: 'Icon refine'
       }
     },
     logs: {
@@ -3122,6 +3125,7 @@ export default {
       refineCancel: 'Cancel',
       refineClose: 'Close',
       refineUnresolved: 'Cannot resolve this cell context (missing connected sheet / icon-pack node)',
+      refineNoSource: 'No sheet image resolved: run the sheet image node first to generate / persist it',
       refineNoResult: 'The model returned no local image',
       refineSuccess: 'Cell {cell} ({name}) refined and written back to the pack; repacking…',
       refineFailedPrefix: 'Refine failed'

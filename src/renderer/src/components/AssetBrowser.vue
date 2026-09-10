@@ -282,11 +282,11 @@
                 :title="assetLabel(asset)"
               >{{ t('asset.browser.refMark') }}</span>
               <span
-                v-if="videoBeatBadge(asset)"
+                v-if="cardBadge(asset)"
                 class="beat-mark"
-                :class="videoBeatBadge(asset)!.tone"
-                :title="videoBeatBadge(asset)!.title"
-              >{{ videoBeatBadge(asset)!.text }}</span>
+                :class="cardBadge(asset)!.tone"
+                :title="cardBadge(asset)!.title"
+              >{{ cardBadge(asset)!.text }}</span>
             </div>
             <span
               v-else-if="thumbUrls[asset.id]"
@@ -308,6 +308,11 @@
                 :size="16"
               />
             </span>
+            <span
+              v-if="!showThumbs && mcpActivityBadge(asset)"
+              class="list-activity-mark"
+              :title="mcpActivityBadge(asset)!.title"
+            />
             <div class="name">
               {{ asset.name }}
             </div>
@@ -766,6 +771,7 @@ import {
 } from '../editor/extensions'
 import { useEditorKernel } from '../editor/kernel'
 import { useProjectStore } from '../stores/project'
+import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useWorkspaceStore, STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME } from '../stores/workspace'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
@@ -862,6 +868,7 @@ interface NameDialog {
 }
 
 const project = useProjectStore()
+const mcpActivities = useMcpActivitiesStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const { createAsset, openAssetEditor } = useAssetCreation()
@@ -1528,10 +1535,15 @@ function videoBeatSummaryText(beats: VideoBeatTags): string {
   })
 }
 
-/** 素材卡角标：打点中（旋转）/ 已打点 / 打点失败 */
-function videoBeatBadge(
-  asset: AssetInfo
-): { tone: 'running' | 'ok' | 'skip'; text: string; title: string } | null {
+/** 素材卡角标：旋转（进行中）/ ✓ 已打点 / ⚠ 打点失败 */
+interface CardBadge {
+  tone: 'running' | 'ok' | 'skip' | 'activity'
+  text: string
+  title: string
+}
+
+/** 素材卡角标：视频打点中（旋转）/ 已打点 / 打点失败 */
+function videoBeatBadge(asset: AssetInfo): CardBadge | null {
   if (asset.type !== 'video') return null
   if (analyzingVideoBeatIds.value.has(asset.id)) {
     return { tone: 'running', text: '', title: t('asset.browser.videoBeatAnalyzing') }
@@ -1542,6 +1554,33 @@ function videoBeatBadge(
     return { tone: 'ok', text: '✓', title: videoBeatSummaryText(beats) }
   }
   return { tone: 'skip', text: '⚠', title: beats.error || t('asset.browser.videoBeatFailed') }
+}
+
+/**
+ * 素材卡角标：MCP 旁路活动（单枚图标精修回炉、外部 Agent 直接生成）进行中。
+ * 精修要求该资产的图编辑器处于关闭状态（MCP 拒绝与编辑器内存态互相覆盖），
+ * 所以卡片角标是用户在应用里唯一能直接看到「这一枚正在被重画」的地方。
+ */
+function mcpActivityBadge(asset: AssetInfo): CardBadge | null {
+  const running = mcpActivities.activities.find(
+    (activity) => activity.status === 'running' && activity.assetId === asset.id
+  )
+  if (!running) return null
+  const label = t(
+    running.tool === 'graph_icon_refine'
+      ? 'asset.browser.mcpRefining'
+      : 'asset.browser.mcpGenerating'
+  )
+  return {
+    tone: 'activity',
+    text: '',
+    title: running.detail ? `${label} · ${running.detail}` : label
+  }
+}
+
+/** 素材卡同一位置只挂一个角标：MCP 活动优先于视频打点态 */
+function cardBadge(asset: AssetInfo): CardBadge | null {
+  return mcpActivityBadge(asset) ?? videoBeatBadge(asset)
 }
 
 /** 打开设置页并定位到 ffmpeg 下载面板（应用层不再内置 / 不再弹内联安装流程） */
@@ -3564,6 +3603,19 @@ onBeforeUnmount(() => {
   margin-left: 2px;
 }
 
+/* 列表模式：MCP 旁路活动进行中（缩略图模式由卡片右下角角标承担同样提示）。
+   放在名称前而非绝对定位：列表项是 flex 行且名称 flex:1，绝对定位会压住删除按钮。 */
+.grid.list .list-activity-mark {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-top-color: var(--accent);
+  animation: beatSpin 0.8s linear infinite;
+}
+
 .folder-thumb {
   display: flex;
   align-items: center;
@@ -3805,7 +3857,8 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--danger) 82%, transparent);
 }
 
-.beat-mark.running {
+.beat-mark.running,
+.beat-mark.activity {
   min-width: 14px;
   width: 14px;
   height: 14px;

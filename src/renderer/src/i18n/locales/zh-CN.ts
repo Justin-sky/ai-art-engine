@@ -991,6 +991,8 @@ export default {
       deleteReferencedConfirm: '删除后这些引用将失效。仍要删除吗？',
       selectedCount: '已选 {count} 项',
       refMark: '引用',
+      mcpRefining: 'MCP 单枚图标精修中：正在重画这一枚并重跑打包…',
+      mcpGenerating: 'MCP 生成中…',
       videoBeatAnalyzing: '正在逐帧识别镜头中的人物与物体…',
       videoBeatSummary:
         '已打点：空镜 {empty} 段 · 单人 {solo} 段 · 群像 {group} 段 · 出现对象 {names}',
@@ -2479,7 +2481,8 @@ export default {
         generate_video: '视频',
         generate_speech: '语音',
         generate_music: '音乐',
-        generate_model3d: '3D 模型'
+        generate_model3d: '3D 模型',
+        graph_icon_refine: '图标精修'
       }
     },
     logs: {
@@ -3089,6 +3092,7 @@ export default {
       refineCancel: '取消',
       refineClose: '关闭',
       refineUnresolved: '无法解析该格位上下文（未连接整版图 / 打包节点）',
+      refineNoSource: '未解析到整版源图：请先运行整版图片节点生成 / 落盘整版图',
       refineNoResult: '模型未返回本地图片',
       refineSuccess: '已精修格位 {cell}（{name}）并写回打包节点，正在重新打包…',
       refineFailedPrefix: '精修失败'
