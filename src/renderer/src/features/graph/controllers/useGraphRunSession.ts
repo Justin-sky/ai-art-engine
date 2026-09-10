@@ -43,7 +43,9 @@ import { composeImageCutoutCanvas } from '../model/composeImageCutoutCanvas'
 import { composeImageAlignCanvas } from '../model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../model/composeStage2dCanvas'
+import { composeStage2dFrameSheet } from '../model/composeStage2dFrameSheet'
 import { composeImageGridCell } from '../model/composeImageGridCell'
+import { composeAnim2dGif } from '../model/composeAnim2dGif'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
@@ -788,7 +790,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageAlignCanvas,
         composeImageComposeCanvas,
         composeStage2dCanvas,
+        composeStage2dFrameSheet,
         composeImageGridCell,
+        composeGifFrames: composeAnim2dGif,
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,

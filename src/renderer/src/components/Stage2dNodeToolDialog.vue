@@ -936,6 +936,21 @@
                   })
                 }}
               </p>
+              <p class="hint">
+                {{ t('stage2d.exportNodeHint') }}
+              </p>
+              <!-- 节点产物回显：运行节点（含 AI / 工作流）产出后，这里直接能看到帧数与 sheet 落点 -->
+              <p
+                v-if="(setupAnimFrameCount ?? 0) > 0"
+                class="hint"
+              >
+                {{
+                  t('stage2d.exportNodeOutput', {
+                    count: setupAnimFrameCount ?? 0,
+                    path: setupAnimSheetPath || t('stage2d.exportNodeOutputPending')
+                  })
+                }}
+              </p>
               <p
                 v-if="exportBusy"
                 class="export-status"
@@ -1010,6 +1025,7 @@ import {
 import {
   normalizeStage2dPose,
   normalizeStage2dScene,
+  normalizeStage2dAnimFps,
   DEFAULT_STAGE2D_SCENE,
   type Stage2dSceneState
 } from '@shared/graph'
@@ -1032,6 +1048,12 @@ const props = defineProps<{
   setupRig?: Stage2dRig | null
   setupPose?: Stage2dPose | null
   setupAction?: Stage2dAction | null
+  /** 节点上已设置的动作帧导出帧率（0 = 未开启；打开时回填导出下拉） */
+  setupAnimFps?: number | null
+  /** 最近一次运行产出的动作帧数（0 = 尚未产出，用于回显节点产物） */
+  setupAnimFrameCount?: number | null
+  /** 最近一次运行产出的帧序列 sheet 工程相对路径（'' = 尚未产出） */
+  setupAnimSheetPath?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -2171,6 +2193,9 @@ watch(
       return
     }
     applySetup()
+    // 节点已设帧率（= 运行产出动作帧序列的帧率）时回填：手动导出与节点产物保持同一档
+    const storedFps = normalizeStage2dAnimFps(props.setupAnimFps)
+    if (storedFps > 0) exportFps.value = storedFps
     void resolveThumbs()
     void render()
   },

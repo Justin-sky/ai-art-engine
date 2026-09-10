@@ -182,6 +182,12 @@ export type GraphEditorDialogsApi = {
     setupRig: Stage2dRig | null
     setupPose: Stage2dPose | null
     setupAction: Stage2dAction | null
+    /** 节点已设置的动作帧导出帧率（0 = 未开启，仅用于回填对话框） */
+    setupAnimFps: number
+    /** 最近一次运行产出的动作帧数（0 = 尚未产出，用于回显节点产物） */
+    setupAnimFrameCount: number
+    /** 最近一次运行产出的帧序列 sheet 工程相对路径（'' = 尚未产出） */
+    setupAnimSheetPath: string
   }
   layerSplit: {
     open: boolean

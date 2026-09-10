@@ -454,6 +454,21 @@ export interface NodeExecuteContext {
     rig?: import('../stage2dRig').Stage2dRig | null
     pose?: import('../stage2dRig').Stage2dPose | null
   }) => Promise<{ dataUrl: string; width: number; height: number }>
+  /**
+   * 2D 骨骼动作帧序列 → sheet：把逐帧图片按自适应列数拼成一张拼版 PNG。
+   * 未注入时动作帧序列仍会逐帧落盘，只是不额外产出 sheet。
+   */
+  composeStage2dFrameSheet?: (input: {
+    frameUrls: string[]
+  }) => Promise<{
+    dataUrl: string
+    frameWidth: number
+    frameHeight: number
+    /** 为压到单图上限所做的整体缩放（1 = 未缩放） */
+    scale: number
+    rows: number
+    columns: number
+  } | null>
   /** 宫格：裁出单个宫格 PNG。 */
   composeImageGridCell?: (input: {
     sourceDataUrl: string
@@ -464,6 +479,22 @@ export interface NodeExecuteContext {
     /** 色度键：把接近纯黑/纯白的像素转透明（2D 特效黑底/白底 → 透明 PNG） */
     chromaKey?: { color: 'black' | 'white'; threshold?: number; feather?: number }
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
+  /**
+   * 2D 帧动画 → GIF：把逐帧图片合成为动图 dataUrl（渲染层 canvas 编码）。
+   * 未注入或返回 null 时不产出 GIF，节点保持纯切帧行为。
+   */
+  composeGifFrames?: (input: {
+    frameUrls: string[]
+    fps: number
+    /** 缺省循环播放 */
+    loop?: boolean
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    frameCount: number
+    byteLength: number
+  } | null>
   /**
    * 图标包：整版图标表按名单逐格裁切 → 采样色键控透明 → 统一画布中心对齐，
    * 返回按名单命名的一组透明 PNG（本地像素合成，不调用模型）。
@@ -677,7 +708,9 @@ export interface GraphRunOptions {
   composeImageAlignCanvas?: NodeExecuteContext['composeImageAlignCanvas']
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
   composeStage2dCanvas?: NodeExecuteContext['composeStage2dCanvas']
+  composeStage2dFrameSheet?: NodeExecuteContext['composeStage2dFrameSheet']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
+  composeGifFrames?: NodeExecuteContext['composeGifFrames']
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']

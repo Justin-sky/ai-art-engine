@@ -1346,6 +1346,9 @@ export default {
     exportFps: '帧率',
     exportButton: '导出序列帧',
     exportFramesNote: '{count} 帧 × {fps} fps（{seconds}s，首尾衔接可无缝循环）',
+    exportNodeHint: '帧率会写入本节点：运行节点（含 AI / 工作流）即按此帧率产出「动作帧序列 + sheet」节点产物，可从图库与输出端口取用',
+    exportNodeOutput: '最近一次运行产出 {count} 帧 + 1 张 sheet（{path}），已落盘到工程资产库',
+    exportNodeOutputPending: '尚未产出 sheet',
     exporting: '正在导出 {done}/{total} …',
     exportDone: '已导出 {count} 帧 PNG + 1 张序列 sheet，素材库自动刷新',
     actions: {
@@ -3225,6 +3228,11 @@ export default {
       exportGifDone: '已导出 GIF：{path}',
       exportGifFailed: '导出 GIF 失败：{error}',
       exportGifNote: '按当前帧率 {fps} fps 合成，透明背景保留',
+      runGifFps: '运行输出 GIF',
+      runGifOff: '关闭',
+      runGifHint:
+        '开启后运行本节点会按该帧率把切好的帧合成 GIF 动图并落盘为工程资产（MCP / 工作流同样生效）',
+      runGifDone: '已输出 GIF：{path}（{frames} 帧 @ {fps} fps）',
       presets: {
         idle: '待机',
         walk: '行走',

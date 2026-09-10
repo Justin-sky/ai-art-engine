@@ -1360,6 +1360,11 @@ export default {
     exportFps: 'FPS',
     exportButton: 'Export frames',
     exportFramesNote: '{count} frames × {fps} fps ({seconds}s, seamless loop)',
+    exportNodeHint:
+      'The frame rate is written into this node: running it (editor, AI or workflow) produces the frame sequence + sheet node outputs, readable from the gallery and output ports',
+    exportNodeOutput:
+      'Last run produced {count} frames + a sheet ({path}), saved as project assets',
+    exportNodeOutputPending: 'sheet not produced yet',
     exporting: 'Exporting {done}/{total}…',
     exportDone: 'Exported {count} PNG frames + 1 sheet to library',
     actions: {
@@ -3258,6 +3263,11 @@ export default {
       exportGifDone: 'GIF exported: {path}',
       exportGifFailed: 'GIF export failed: {error}',
       exportGifNote: 'Renders at the current {fps} fps, keeping transparent frames',
+      runGifFps: 'GIF on run',
+      runGifOff: 'Off',
+      runGifHint:
+        'When enabled, running this node composes the split frames into a GIF at this fps and saves it as a project asset (applies to MCP / workflows too)',
+      runGifDone: 'GIF output: {path} ({frames} frames @ {fps} fps)',
       presets: {
         idle: 'Idle',
         walk: 'Walk',

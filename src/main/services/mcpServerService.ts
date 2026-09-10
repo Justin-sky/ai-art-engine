@@ -717,6 +717,7 @@ const TOOL_DEFS: McpToolDef[] = [
         label: def.label,
         category: def.category,
         ...(def.assetType ? { assetType: def.assetType } : {}),
+        ...(def.description ? { description: def.description } : {}),
         ports: def.ports.map((port) => ({
           id: port.id,
           direction: port.direction,

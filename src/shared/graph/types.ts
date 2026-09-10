@@ -299,6 +299,17 @@ export interface GraphNodeParams {
   animGridImage?: { dataUrl?: string; relativePath?: string }
   /** 2D帧动画：特效透明化背景模式（''|black|white），生成/切帧按纯色背景键控透明 */
   animKeyColor?: '' | 'black' | 'white'
+  /**
+   * 2D帧动画：运行后输出 GIF 的帧率（0 = 关闭，只切帧）。
+   * 合成发生在渲染层（浏览器 canvas），由 `ctx.composeGifFrames` 注入。
+   */
+  animGifFps?: number
+  /** 2D帧动画：最近一次运行产出的 GIF 工程相对路径 */
+  animGifRelativePath?: string
+  /** 2D帧动画：最近一次运行产出的 GIF 规格（供 Inspector 展示） */
+  animGifFrameCount?: number
+  animGifWidth?: number
+  animGifHeight?: number
   /** 视频生成：输出时长（秒） */
   generateDuration?: number
   /** 视频生成：是否生成音频（模型支持时） */
@@ -569,6 +580,18 @@ export interface GraphNodeParams {
   stage2dPose?: import('./stage2dRig').Stage2dPose | null
   /** 自定义关键帧动作（参考视频逐帧转骨架关键帧动画等；内置预设不落节点） */
   stage2dAction?: import('./stage2dAction').Stage2dAction | null
+  /** 2D 舞台动作帧导出帧率（0 = 关闭，只出单帧舞台图；> 0 时运行节点额外产出帧序列 + sheet） */
+  stage2dAnimFps?: number
+  /** 2D 舞台最近一次运行产出的逐帧 PNG 工程相对路径（与 out-frames 同批） */
+  stage2dAnimFramePaths?: string[]
+  /** 2D 舞台最近一次运行产出的帧序列 sheet 工程相对路径（out-sheet） */
+  stage2dAnimSheetRelativePath?: string
+  /** 2D 舞台最近一次运行产出的帧数（供节点卡片 / Inspector 展示） */
+  stage2dAnimFrameCount?: number
+  /** 2D 舞台最近一次运行产出的 sheet 列数（拼版信息，供引擎按格切帧） */
+  stage2dAnimSheetColumns?: number
+  /** 2D 舞台最近一次运行产出的 sheet 行数 */
+  stage2dAnimSheetRows?: number
   /** 宫格切分 / 局部放大 */
   imageGridSplit?: Partial<ImageGridSplitState>
   /** 图标包导出（image.iconPack）：逐格键控透明 / 统一画布 / 命名打包参数 */

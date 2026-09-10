@@ -934,6 +934,8 @@ import {
   readStage2dRigFromNode,
   readStage2dPoseFromNode,
   readStage2dActionFromNode,
+  readStage2dAnimFpsFromNode,
+  normalizeStage2dAnimFps,
   stage2dActionToNodePatch,
   readImageExpandFromNode,
   readImageRedrawFromNode,
@@ -7611,6 +7613,9 @@ const stage2d = reactive({
   setupRig: null as Stage2dRig | null,
   setupPose: null as Stage2dPose | null,
   setupAction: null as Stage2dAction | null,
+  setupAnimFps: 0,
+  setupAnimFrameCount: 0,
+  setupAnimSheetPath: '',
   historyBefore: null as GraphDocument | null
 })
 
@@ -7623,6 +7628,9 @@ function onStage2dOpen(nodeId: string): void {
   stage2d.setupRig = rig
   stage2d.setupPose = readStage2dPoseFromNode(node.params, rig)
   stage2d.setupAction = readStage2dActionFromNode(node.params)
+  stage2d.setupAnimFps = readStage2dAnimFpsFromNode(node.params)
+  stage2d.setupAnimFrameCount = node.params.stage2dAnimFrameCount ?? 0
+  stage2d.setupAnimSheetPath = node.params.stage2dAnimSheetRelativePath ?? ''
   stage2d.historyBefore = buildGraphJson()
   stage2d.open = true
 }
@@ -7634,6 +7642,9 @@ function closeStage2d(): void {
   stage2d.setupRig = null
   stage2d.setupPose = null
   stage2d.setupAction = null
+  stage2d.setupAnimFps = 0
+  stage2d.setupAnimFrameCount = 0
+  stage2d.setupAnimSheetPath = ''
   stage2d.historyBefore = null
 }
 
@@ -7671,7 +7682,10 @@ async function saveStage2d(payload: {
 
 /**
  * 导出 2D 骨骼动作帧序列：逐帧透明 PNG + 单张水平 sheet 落盘为工程图片资产。
- * 不入节点 params / generatedImages（动画帧是给引擎复用的资产，不是本节点产物）；
+ *
+ * 帧率会回写节点参数 `stage2dAnimFps`：之后运行本节点（编辑器 / Agent / 工作流）
+ * 即按同一帧率产出 out-frames / out-sheet 节点产物，手动导出与节点产出口径一致；
+ * 帧与 sheet 仍不进 generatedImages（单帧舞台图的口径不变）。
  * 输出目录默认 `Assets/2D`（可随节点 mediaOutputDir 配置），落资产库自动刷新。
  */
 async function exportStage2dFrames(payload: {
@@ -7683,6 +7697,13 @@ async function exportStage2dFrames(payload: {
 }): Promise<void> {
   const node = graph.nodes.find((n) => n.id === stage2d.nodeId)
   if (!node || !payload.frames.length) return
+  // 帧率回写节点：让「运行节点」产出的帧序列 + sheet 与本次手动导出保持同一档
+  const animFps = normalizeStage2dAnimFps(payload.fps)
+  if (animFps > 0 && node.params.stage2dAnimFps !== animFps) {
+    node.params = { ...node.params, stage2dAnimFps: animFps }
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+  }
   const configured = node.params.mediaOutputDir
   const outputDir =
     typeof configured === 'string' && configured.trim() ? configured.trim() : 'Assets/2D'

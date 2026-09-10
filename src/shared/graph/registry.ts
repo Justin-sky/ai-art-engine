@@ -31,6 +31,8 @@ export interface NodeTypeDefinition {
   sizeLimits: { minW: number; minH: number; maxW: number; maxH: number }
   ports: GraphPortDef[]
   defaultParams: () => GraphNodeParams
+  /** 能力说明：graph_node_types 会随节点类型返回给外部 Agent，用于解释端口与关键参数 */
+  description?: string
   /** 右键菜单可添加（全局开关；scope 白名单见 graph-policy） */
   addable?: boolean
   /** 从该资产类型拖入/创建时使用 */

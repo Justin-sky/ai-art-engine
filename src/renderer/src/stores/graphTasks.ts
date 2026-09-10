@@ -59,7 +59,9 @@ import { composeImageCutoutCanvas } from '../features/graph/model/composeImageCu
 import { composeImageAlignCanvas } from '../features/graph/model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../features/graph/model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
+import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import { composeImageLayerStack } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
@@ -1368,7 +1370,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageAlignCanvas,
         composeImageComposeCanvas,
         composeStage2dCanvas,
+        composeStage2dFrameSheet,
         composeImageGridCell,
+        composeGifFrames: composeAnim2dGif,
         composeImageIconPackSheet,
         composeImageLayerStack,
         composeComicPageImage,

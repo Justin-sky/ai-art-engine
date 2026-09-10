@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANIM2D_GIF_FPS_MAX,
+  ANIM2D_GIF_FPS_OFF,
   ANIM2D_PRESETS,
   ANIM_KEY_COLOR_DEFAULT,
   anim2dCellKeys,
+  animGifFpsToNodePatch,
   animKeyColorToNodePatch,
   buildAnim2dGridInstruction,
   buildAnim2dInnerGraph,
   buildAnimKeyColorPrompt,
   normalizeAnim2dState,
+  normalizeAnimGifFps,
   normalizeAnimKeyColor,
   readAnim2dFromNode,
+  readAnimGifFpsFromNode,
   readAnimKeyColorFromNode,
   resolveAnim2dPreset
 } from '../src/shared/graph'
@@ -71,6 +76,23 @@ describe('anim2d presets', () => {
     expect(zh).toContain('8 帧')
     const en = buildAnim2dGridInstruction(1, 4, 'en-US')
     expect(en).toContain('4 frames')
+  })
+})
+
+describe('anim2d gif output', () => {
+  it('normalizes gif fps (0 = off) with upper clamp', () => {
+    expect(normalizeAnimGifFps(undefined)).toBe(ANIM2D_GIF_FPS_OFF)
+    expect(normalizeAnimGifFps(0)).toBe(ANIM2D_GIF_FPS_OFF)
+    expect(normalizeAnimGifFps(-4)).toBe(ANIM2D_GIF_FPS_OFF)
+    expect(normalizeAnimGifFps('8')).toBe(8)
+    expect(normalizeAnimGifFps(99)).toBe(ANIM2D_GIF_FPS_MAX)
+    expect(readAnimGifFpsFromNode({ animGifFps: 12 })).toBe(12)
+    expect(readAnimGifFpsFromNode({})).toBe(ANIM2D_GIF_FPS_OFF)
+  })
+
+  it('round-trips gif fps node patch', () => {
+    expect(animGifFpsToNodePatch(6)).toEqual({ animGifFps: 6 })
+    expect(animGifFpsToNodePatch('nope')).toEqual({ animGifFps: ANIM2D_GIF_FPS_OFF })
   })
 })
 

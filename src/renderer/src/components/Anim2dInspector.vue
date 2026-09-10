@@ -67,6 +67,36 @@
       {{ t('graph.anim2d.bgKeyHint') }}
     </p>
 
+    <label class="field field-key">
+      <span>{{ t('graph.anim2d.runGifFps') }}</span>
+      <select
+        :value="gifFps"
+        class="key-select"
+        @change="onGifFpsChange"
+      >
+        <option :value="0">
+          {{ t('graph.anim2d.runGifOff') }}
+        </option>
+        <option
+          v-for="f in FPS_OPTIONS"
+          :key="f"
+          :value="f"
+        >{{ f }}</option>
+      </select>
+    </label>
+    <p
+      v-if="gifFps > 0"
+      class="hint"
+    >
+      {{ t('graph.anim2d.runGifHint') }}
+    </p>
+    <p
+      v-if="gifOutput"
+      class="hint"
+    >
+      {{ gifOutput }}
+    </p>
+
     <section
       v-if="cells.length > 1"
       class="anim-section"
@@ -184,7 +214,9 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ANIM2D_MAX_DIM,
   anim2dCellKeys,
+  animGifFpsToNodePatch,
   readAnim2dFromNode,
+  readAnimGifFpsFromNode,
   readAnimKeyColorFromNode
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -251,6 +283,25 @@ function onKeyColorChange(e: Event): void {
   const value = (e.target as HTMLSelectElement).value as '' | 'black' | 'white'
   patchParams({ animKeyColor: value === 'black' || value === 'white' ? value : '' })
 }
+
+/** 运行后输出 GIF 的帧率（0 = 关闭）：节点参数单一数据源 */
+const gifFps = computed(() => (node.value ? readAnimGifFpsFromNode(node.value.params) : 0))
+
+function onGifFpsChange(e: Event): void {
+  patchParams(animGifFpsToNodePatch(Number((e.target as HTMLSelectElement).value)))
+}
+
+/** 上次运行产出的 GIF（落盘路径 + 规格）；未产出时为空串 */
+const gifOutput = computed(() => {
+  const current = node.value
+  const relativePath = current?.params.animGifRelativePath?.trim()
+  if (!current || !relativePath) return ''
+  return t('graph.anim2d.runGifDone', {
+    path: relativePath,
+    frames: current.params.animGifFrameCount ?? 0,
+    fps: current.params.animGifFps ?? 0
+  })
+})
 
 type AnimCell = { key: string; dataUrl: string }
 const cells = ref<AnimCell[]>([])

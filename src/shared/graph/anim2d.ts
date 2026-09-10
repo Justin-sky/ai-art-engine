@@ -46,6 +46,29 @@ export function animKeyColorToNodePatch(keyColor: AnimKeyColor): { animKeyColor:
   return { animKeyColor: normalizeAnimKeyColor(keyColor) }
 }
 
+/** GIF 输出端口 id（2D帧动画运行后按帧率合成动图的产物） */
+export const ANIM2D_GIF_OUT_PORT_ID = 'out-gif'
+/** GIF 帧率关闭值：0 表示只切帧、不合成 GIF */
+export const ANIM2D_GIF_FPS_OFF = 0
+/** 默认关闭：GIF 编码耗时随帧数与体积增长，按需开启 */
+export const ANIM2D_GIF_FPS_DEFAULT = ANIM2D_GIF_FPS_OFF
+export const ANIM2D_GIF_FPS_MAX = 24
+
+/** 帧率归一化：非数字 / ≤0 → 0（关闭）；超过上限截断到 ANIM2D_GIF_FPS_MAX */
+export function normalizeAnimGifFps(raw: unknown): number {
+  const v = Math.floor(Number(raw))
+  if (!Number.isFinite(v) || v <= ANIM2D_GIF_FPS_OFF) return ANIM2D_GIF_FPS_OFF
+  return Math.min(ANIM2D_GIF_FPS_MAX, v)
+}
+
+export function readAnimGifFpsFromNode(params: { animGifFps?: unknown } | null | undefined): number {
+  return normalizeAnimGifFps(params?.animGifFps)
+}
+
+export function animGifFpsToNodePatch(fps: unknown): { animGifFps: number } {
+  return { animGifFps: normalizeAnimGifFps(fps) }
+}
+
 /** 生成侧背景约束句子：序列图整底为纯黑/纯白，便于切帧键控透明 */
 export function buildAnimKeyColorPrompt(
   keyColor: AnimKeyColor,

@@ -161,7 +161,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `workflow_plan` | 自然语言 → 工作流方案预览（走应用已配置的文本模型，耗时可能数十秒） | 已打开工程 + 文本模型 |
 | `workflow_commit` | 把方案落盘为宿主资产，界面同步出现 | 已打开工程 |
 | `folder_list` | 列出资产库文件夹（generate_* 的 folderId 来源） | 已打开工程 |
-| `graph_node_types` | 可添加节点类型清单（typeId / 名称 / 分类 / 端口 / 可选默认参数），即 graph_edit 建节点的白名单，供 Agent 自发现节点 | 应用运行中 |
+| `graph_node_types` | 可添加节点类型清单（typeId / 名称 / 分类 / 端口 / 能力说明 / 可选默认参数），即 graph_edit 建节点的白名单，供 Agent 自发现节点；能力说明会点出关键参数语义，如 `anim.2d` 设 `animGifFps` > 0 后运行即额外输出 GIF 动图（`out-gif` 端口 + 落盘资产）、`stage.2d` 设 `stage2dAnimFps` > 0 且带自定义动作时运行即额外输出逐帧 PNG 序列与拼版 sheet（`out-frames` / `out-sheet` 端口 + 落盘资产） | 应用运行中 |
 | `graph_read` | 读取宿主资产图结构（节点 id / 类型 / 标题 + 连线），graph_edit 前置 | 已打开工程 |
 | `graph_icon_refine` | 单枚图标精修回炉：按整版画风重画某一枚（hint / prompt 可指定），写回同源打包节点的逐枚覆盖并默认重跑打包（耗时较长：一次生图 + 一次打包重跑；调用期间任务列表与素材库资产卡片角标可见运行中活动） | 已打开工程，且该图未在编辑器中打开 |
 | `task_run` | 运行已落盘的工作流（整图拓扑序执行，输出写回资产），返回 `mcpTaskId` | 已打开工程 + 应用界面运行 |

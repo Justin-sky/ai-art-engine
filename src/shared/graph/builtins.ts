@@ -90,9 +90,19 @@ import {
 import { DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH, DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH } from './systemPromptSchemes'
 import { DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH, DEFAULT_UI_SPLIT_USER_PROMPT_ZH } from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
-import { ANIM2D_INNER_GRAPH_VERSION, DEFAULT_ANIM2D_STATE } from './anim2d'
+import {
+  ANIM2D_GIF_FPS_DEFAULT,
+  ANIM2D_GIF_OUT_PORT_ID,
+  ANIM2D_INNER_GRAPH_VERSION,
+  DEFAULT_ANIM2D_STATE
+} from './anim2d'
 import { DEFAULT_ICON_PACK } from './iconPack'
 import { createDefaultStage2dScene } from './stage2d'
+import {
+  STAGE2D_ANIM_FPS_DEFAULT,
+  STAGE2D_FRAMES_OUT_PORT_ID,
+  STAGE2D_SHEET_OUT_PORT_ID
+} from './stage2dAction'
 import { WORLD_GEN_IMAGE_OUT_PORTS } from './worldElementParse'
 import {
   ASSET_DIRECTOR_OUTPUT_TITLE,
@@ -1529,14 +1539,33 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     label: '2D stage',
     icon: '▦',
     defaultTitle: '2D stage',
+    description:
+      '2D 舞台叠绘：上游精灵自动成层，按 z 序合成一帧 PNG（out 当前帧 / out-all 历史帧）。节点带自定义动作（stage2dAction）时，把 stage2dAnimFps 设为 6~24（0 = 关闭），运行后按该帧率逐帧采样动作，额外产出「动作帧序列」（out-frames：逐帧透明 PNG 图库）与「帧序列 sheet」（out-sheet：一张拼版 PNG，含 rows / columns 记录）；帧与 sheet 全部落盘为工程图片资产，可直接交给引擎播放。未设动作或帧率为 0 时只出单帧。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image)
+      ...galleryOutPorts(GraphPortType.image),
+      // 运行产出（帧率 > 0 且有自定义动作时）：与单帧舞台图分开走独立端口，
+      // 避免下游「收集上游图片」把一整套动作帧当成素材序列吃进去
+      {
+        id: STAGE2D_FRAMES_OUT_PORT_ID,
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'Frames'
+      },
+      {
+        id: STAGE2D_SHEET_OUT_PORT_ID,
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'Sheet'
+      }
     ],
     defaultParams: () => ({
-      stage2dScene: createDefaultStage2dScene()
+      stage2dScene: createDefaultStage2dScene(),
+      stage2dAnimFps: STAGE2D_ANIM_FPS_DEFAULT
     }),
     execute: executeStage2dNode,
     addable: true,
@@ -1903,11 +1932,21 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     label: '2D帧动画',
     icon: ANIM2D_ASSET_ICON,
     defaultTitle: '2D帧动画',
+    description:
+      '按行列切分序列图得到逐帧 PNG（out / out-all）；animGifFps > 0 时运行后额外把帧合成 GIF 动图（out-gif 端口）并落盘为工程资产；animKeyColor 可把纯色背景键控为透明。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
-      ...galleryOutPorts(GraphPortType.image)
+      ...galleryOutPorts(GraphPortType.image),
+      /** 运行后按帧率合成的 GIF 动图（animGifFps > 0 时产出） */
+      {
+        id: ANIM2D_GIF_OUT_PORT_ID,
+        direction: 'out',
+        dataType: GraphPortType.image,
+        multiple: false,
+        label: 'GIF'
+      }
     ],
     defaultParams: () => ({
       animRows: DEFAULT_ANIM2D_STATE.rows,
@@ -1917,6 +1956,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       animAssetId: '',
       animGraphVersion: ANIM2D_INNER_GRAPH_VERSION,
       animKeyColor: '',
+      animGifFps: ANIM2D_GIF_FPS_DEFAULT,
       text: ''
     }),
     addable: true,

@@ -12,15 +12,18 @@ import {
 } from '../imageGenerateParams'
 import {
   anim2dCellKeys,
+  ANIM2D_GIF_OUT_PORT_ID,
   buildAnim2dGridInstruction,
   buildAnimKeyColorPrompt,
   readAnim2dFromNode,
+  readAnimGifFpsFromNode,
   readAnimKeyColorFromNode,
   resolveAnim2dPreset,
   resolveFrameAnimGenSystemPrompt,
   type Anim2dState
 } from '../anim2d'
-import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
+import type { GraphImageItem, GraphImageValue, GraphValue, NodeExecuteContext } from './types'
+import { buildGeneratedMediaFileKey } from '../../domain'
 import { dedupeGalleryIds } from './gallery'
 import {
   commitGeneratedImages,
@@ -212,12 +215,66 @@ export async function executeAnim2dNode(
     ...(gridItem.dataUrl?.trim() ? { dataUrl: gridItem.dataUrl.trim() } : {}),
     ...(gridItem.relativePath?.trim() ? { relativePath: gridItem.relativePath.trim() } : {})
   }
-  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
-    animRows: state.rows,
-    animCols: state.cols,
-    animGridImage: Object.keys(gridImageParams).length ? gridImageParams : undefined,
-    ...(keyColor ? { animKeyColor: keyColor } : {})
+  const gif = await composeAnim2dGifOutput(ctx, batch, readAnimGifFpsFromNode(node.params))
+  const outputs = commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    {
+      animRows: state.rows,
+      animCols: state.cols,
+      animGridImage: Object.keys(gridImageParams).length ? gridImageParams : undefined,
+      ...(keyColor ? { animKeyColor: keyColor } : {}),
+      ...gif.params
+    }
+  )
+  return gif.value ? { ...outputs, [ANIM2D_GIF_OUT_PORT_ID]: gif.value } : outputs
+}
+
+/**
+ * 运行后输出 GIF（可选）：用本节点切好的帧（已键控透明）合成动图并落盘为工程资产。
+ * 帧率为 0、帧数不足两帧或渲染层未注入合成能力时不产出，保持纯切帧行为。
+ * GIF 编码在渲染层 canvas 完成（见 composeAnim2dGif），shared 侧只经 ctx 能力调用。
+ */
+async function composeAnim2dGifOutput(
+  ctx: NodeExecuteContext,
+  frames: GraphImageItem[],
+  fps: number
+): Promise<{ value?: GraphImageValue; params: Record<string, unknown> }> {
+  if (fps <= 0 || !ctx.composeGifFrames || !ctx.saveRunMedia) return { params: {} }
+  const frameUrls = frames
+    .map((item) => item.dataUrl?.trim() ?? '')
+    .filter((url): url is string => Boolean(url))
+  // 单帧动图没有播放价值
+  if (frameUrls.length < 2) return { params: {} }
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const gif = await ctx.composeGifFrames({ frameUrls, fps, loop: true })
+  if (!gif?.dataUrl) return { params: {} }
+  if (ctx.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  const stem = ctx.node.title?.trim() || ctx.node.typeId || 'anim2d'
+  const relativePath = await ctx.saveRunMedia({
+    dataUrl: gif.dataUrl,
+    key: buildGeneratedMediaFileKey({
+      hostAssetName: ctx.resolveHostAssetName?.(),
+      nodeTitle: `${stem}-gif`
+    }),
+    outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
+    node: ctx.node
   })
+  return {
+    value: { kind: 'image', dataUrl: '', relativePath },
+    params: {
+      animGifRelativePath: relativePath,
+      animGifFps: fps,
+      animGifFrameCount: gif.frameCount,
+      animGifWidth: gif.width,
+      animGifHeight: gif.height
+    }
+  }
 }
 
 /** 从 dive 子图资产软解析序列图输出边界（边界输出未运行也可从上游取到） */

@@ -21,9 +21,19 @@ import {
   normalizeStage2dScene,
   readStage2dSceneFromNode,
   stage2dSceneToNodePatch,
-  stageSceneWithUpstreamSources
+  stageSceneWithUpstreamSources,
+  type Stage2dSceneState
 } from '../stage2d'
-import { readStage2dPoseFromNode, readStage2dRigFromNode } from '../stage2dRig'
+import { readStage2dPoseFromNode, readStage2dRigFromNode, type Stage2dRig } from '../stage2dRig'
+import {
+  STAGE2D_FRAMES_OUT_PORT_ID,
+  STAGE2D_SHEET_OUT_PORT_ID,
+  buildStage2dFrameTimes,
+  readStage2dActionFromNode,
+  readStage2dAnimFpsFromNode
+} from '../stage2dAction'
+import { sampleStage2dAction } from '../../gameAssets/stage2dAction'
+import { buildGeneratedMediaFileKey } from '../../domain'
 
 /** 可直接交给 <img> 绘制的层源；其余视为项目相对路径，经 resolver 读成 dataUrl */
 const DIRECT_DRAWABLE_URL = /^(data:|https?:\/\/|blob:)/i
@@ -130,10 +140,123 @@ export async function executeStage2dNode(
     materializedBatch,
     `stage:${ctx.node.id}:${stamp}:keep`
   )
-  return commitGeneratedImages(
+  // 动作帧序列产物：节点设了帧率且带自定义动作时逐帧采样合成，走独立出口
+  // out-frames / out-sheet，不改变单帧舞台图（out / out-all）的既有语义。
+  const frames = await composeStage2dActionFrames(ctx, {
+    scene: composeScene,
+    rig,
+    stamp
+  })
+  const outputs = commitGeneratedImages(
     ctx,
     generatedImages,
     materializedBatch[0]?.relativePath?.trim(),
-    sceneChanged ? patch : undefined
+    { ...(sceneChanged ? patch : {}), ...frames.params }
   )
+  return frames.outputs ? { ...outputs, ...frames.outputs } : outputs
+}
+
+/**
+ * 动作帧序列产物：按节点帧率逐帧采样动作 → 逐帧透明 PNG + 一张拼版 sheet。
+ *
+ * 帧率为 0 / 无自定义动作 / 无骨骼装配 / 宿主未注入合成能力时不产出，节点保持
+ * 「只出单帧舞台图」的原行为；单帧合成或落盘失败只跳过该帧，附加产物绝不牵连
+ * 整轮 cook（与动图 GIF 产物同一容错口径）。
+ */
+async function composeStage2dActionFrames(
+  ctx: NodeExecuteContext,
+  input: { scene: Stage2dSceneState; rig: Stage2dRig; stamp: number }
+): Promise<{ outputs?: Record<string, GraphValue>; params: Record<string, unknown> }> {
+  const fps = readStage2dAnimFpsFromNode(ctx.node.params)
+  if (fps <= 0) return { params: {} }
+  const action = readStage2dActionFromNode(ctx.node.params)
+  if (!action || !input.rig.joints.length) return { params: {} }
+
+  const composeCanvas = ctx.composeStage2dCanvas
+  const composeSheet = ctx.composeStage2dFrameSheet
+  const saveMedia = ctx.saveRunMedia
+  if (!composeCanvas || !saveMedia) return { params: {} }
+
+  const times = buildStage2dFrameTimes(action.duration ?? 0, fps)
+  const createdAt = new Date().toISOString()
+  const stem = ctx.node.title?.trim() || ctx.node.typeId || 'stage2d'
+  const actionName = action.name?.trim() || 'action'
+  const baseKey = `${stem}-anim-${actionName}`
+  const outputDir = ctx.node.params.mediaOutputDir?.trim() || undefined
+
+  const frames: Array<{ dataUrl: string; relativePath: string }> = []
+  for (const [index, time] of times.entries()) {
+    await ensureAlive(ctx)
+    const pose = sampleStage2dAction(action, time)
+    const composed = await composeCanvas({ state: input.scene, rig: input.rig, pose })
+    const dataUrl = composed.dataUrl?.trim()
+    if (!dataUrl) continue
+    try {
+      const relativePath = await saveMedia({
+        dataUrl,
+        key: buildGeneratedMediaFileKey({
+          hostAssetName: ctx.resolveHostAssetName?.(),
+          nodeTitle: `${baseKey}-${String(index + 1).padStart(3, '0')}`
+        }),
+        outputDir,
+        node: ctx.node
+      })
+      if (relativePath?.trim()) frames.push({ dataUrl, relativePath: relativePath.trim() })
+    } catch (err) {
+      console.warn('[graph] save stage2d action frame failed', err)
+    }
+  }
+  if (!frames.length) return { params: {} }
+
+  const params: Record<string, unknown> = {
+    stage2dAnimFps: fps,
+    stage2dAnimFramePaths: frames.map((frame) => frame.relativePath),
+    stage2dAnimFrameCount: frames.length
+  }
+  const outputs: Record<string, GraphValue> = {
+    [STAGE2D_FRAMES_OUT_PORT_ID]: {
+      kind: 'images',
+      items: frames.map((frame, index) => ({
+        id: `stage2d-frames:${ctx.node.id}:${input.stamp}:${index}`,
+        dataUrl: '',
+        createdAt,
+        relativePath: frame.relativePath
+      }))
+    }
+  }
+
+  if (composeSheet) {
+    try {
+      const sheet = await composeSheet({ frameUrls: frames.map((frame) => frame.dataUrl) })
+      const sheetDataUrl = sheet?.dataUrl?.trim()
+      if (sheetDataUrl) {
+        const savedSheetPath = await saveMedia({
+          dataUrl: sheetDataUrl,
+          key: buildGeneratedMediaFileKey({
+            hostAssetName: ctx.resolveHostAssetName?.(),
+            nodeTitle: `${baseKey}-sheet`
+          }),
+          outputDir,
+          node: ctx.node
+        })
+        const sheetPath = savedSheetPath?.trim()
+        if (sheetPath) {
+          params.stage2dAnimSheetRelativePath = sheetPath
+          params.stage2dAnimSheetColumns = sheet?.columns
+          params.stage2dAnimSheetRows = sheet?.rows
+          outputs[STAGE2D_SHEET_OUT_PORT_ID] = {
+            kind: 'image',
+            dataUrl: '',
+            createdAt,
+            relativePath: sheetPath
+          }
+        }
+      }
+    } catch (err) {
+      // sheet 拼版失败不影响已产出的逐帧 PNG
+      console.warn('[graph] compose stage2d frame sheet failed', err)
+    }
+  }
+
+  return { outputs, params }
 }
