@@ -262,5 +262,23 @@ mac:
   # 产物名带架构，避免 Intel / Apple Silicon 装错包
   artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
+  # 免安装 AppImage + Debian/Ubuntu 安装包（deb）。
+  # deb 安装到 /opt/AIArtEngine，可被 dpkg 干净卸载；CI 会做「安装 → 启动 → 卸载」冒烟。
   target:
     - AppImage
+    - deb
+deb:
+  # deb 控制文件要求 Maintainer；electron-builder 在没有 author.email 时会直接报错。
+  maintainer: 'AIArtEngine <aiartengine@users.noreply.github.com>'
+  # 24.04 起 libgtk-3-0 / libatspi2.0-0 更名为 *t64，只写旧名会导致 Ubuntu 24.04+
+  # `dpkg -i` 依赖不可满足而安装失败，故用 OR 链同时兼容旧新命名。
+  depends:
+    - libgtk-3-0 | libgtk-3-0t64 | libgtk-4-1
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0 | libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0

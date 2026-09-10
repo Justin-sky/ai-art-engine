@@ -10,6 +10,7 @@ import { updateService } from './services/updateService'
 import { yoloService } from './yolo/yoloService'
 import { handleStudioMediaRequest } from './studioMediaProtocol'
 import { resolveAppIconPath } from './appIcon'
+import { markSmokeRuntimeStarted, signalSmokeReady } from './smokeReady'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -71,6 +72,7 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
     mainWindow.focus()
+    signalSmokeReady('window-ready-to-show')
   })
 
   // Fallback: ensure window becomes visible even if ready-to-show is missed
@@ -83,6 +85,11 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('[did-fail-load]', code, desc, url)
+  })
+
+  // 渲染主文档加载完成即视为可服务（比 ready-to-show 更可靠，headless/CI 下同样触发）
+  mainWindow.webContents.on('did-finish-load', () => {
+    signalSmokeReady('renderer-loaded')
   })
 
   mainWindow.webContents.on('console-message', (event) => {
@@ -141,6 +148,7 @@ app.whenReady().then(async () => {
   settingsService.init()
   setAppErrorLocaleResolver(() => settingsService.get().language)
   await startMainRuntime()
+  markSmokeRuntimeStarted()
   registerIpcHandlers()
   await startMcpServer()
   updateService.init()

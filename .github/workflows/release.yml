@@ -73,6 +73,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # deb 打包依赖 fakeroot（app-builder 内部走 dpkg 兼容路径）；Ubuntu runner 多数已带，
+      # 显式安装一次避免镜像变更导致下游打包失败。
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fakeroot
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -147,6 +153,7 @@ jobs:
             dist/*.exe
             dist/*.dmg
             dist/*.AppImage
+            dist/*.deb
             dist/*.zip
             dist/*.yml
             dist/*.blockmap
@@ -192,54 +199,121 @@ jobs:
           }
           if (Get-Process AIArtEngine -ErrorAction SilentlyContinue) { throw 'Auto-launched instance still running; abort smoke' }
 
+          # 就绪探活：主进程在首个窗口加载完成后写就绪文件（见 src/main/smokeReady.ts），
+          # 比固定 sleep 更能证明「UI 真的起来了」；同时监测进程是否提前退出。
+          $readyFile = Join-Path $env:RUNNER_TEMP 'aiartengine-ready-win.json'
+          Remove-Item $readyFile -ErrorAction SilentlyContinue
+          $env:AIART_SMOKE_READY_FILE = $readyFile
           $app = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 15
-          $app.Refresh()
-          if ($app.HasExited) {
-            Write-Host "SMOKE_FAIL app exited early with code $($app.ExitCode)" -ForegroundColor Red
-            exit 1
+          $ready = $false
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Date) -lt $deadline) {
+            $app.Refresh()
+            if ($app.HasExited) { throw "SMOKE_FAIL app exited early with code $($app.ExitCode)" }
+            if (Test-Path $readyFile) { $ready = $true; break }
+            Start-Sleep -Milliseconds 500
           }
-          Write-Host 'SMOKE_OK app still running after 15s'
+          if (-not $ready) { throw 'SMOKE_FAIL app did not reach ready state within 60s' }
+          Write-Host "SMOKE_OK app ready: $(Get-Content $readyFile -Raw)"
           Stop-Process -Id $app.Id -Force
+          Remove-Item Env:AIART_SMOKE_READY_FILE -ErrorAction SilentlyContinue
 
       - name: Smoke test — mount dmg & launch (macOS)
         if: matrix.platform == 'mac'
         shell: bash
         run: |
           set -euo pipefail
-          # macos-latest 现为 arm64：优先测本机架构 dmg（Intel 包需 Rosetta，CI 不装，跳过）
-          DMG="$(ls dist/*.dmg 2>/dev/null | grep 'arm64' | head -n1 || true)"
-          [ -n "$DMG" ] || DMG="$(ls dist/*.dmg 2>/dev/null | head -n1 || true)"
-          [ -n "$DMG" ] || { echo 'SMOKE_FAIL no .dmg found' >&2; exit 1; }
-          echo "SMOKE dmg: $DMG"
-          MNT="$RUNNER_TEMP/aiartengine-dmg"
-          OUT="$RUNNER_TEMP/aiartengine-smoke"
-          rm -rf "$MNT" "$OUT"
-          mkdir -p "$MNT" "$OUT"
-          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
-          cp -R "$MNT"/*.app "$OUT/"
-          hdiutil detach "$MNT" >/dev/null
-          APP="$(ls -d "$OUT"/*.app | head -n1)"
-          BIN="$APP/Contents/MacOS/AIArtEngine"
-          [ -x "$BIN" ] || { echo "SMOKE_FAIL binary missing: $BIN" >&2; exit 1; }
-          echo "SMOKE launching: $BIN"
-          "$BIN" > /tmp/smoke.log 2>&1 &
-          PID=$!
-          sleep 15
-          set +e
-          kill -0 "$PID" 2>/dev/null
-          ALIVE=$?
-          set -e
-          if [ "$ALIVE" -eq 0 ]; then
-            echo 'SMOKE_OK app still running after 15s'
+
+          # 启动 + 就绪探活：主进程在首个窗口加载完成后写就绪文件（src/main/smokeReady.ts）。
+          # 比固定 sleep 更强：既能捕获「启动即崩」，也能捕获「窗口起不来」。
+          launch_app_smoke() {
+            local APP="$1" LABEL="$2"
+            local BIN="$APP/Contents/MacOS/AIArtEngine"
+            local READY="$RUNNER_TEMP/aiartengine-ready-$LABEL.json"
+            local LOG="$RUNNER_TEMP/aiartengine-smoke-$LABEL.log"
+            if [ ! -x "$BIN" ]; then
+              echo "SMOKE_FAIL[$LABEL] binary missing: $BIN" >&2
+              exit 1
+            fi
+            rm -f "$READY"
+            echo "SMOKE[$LABEL] launching: $BIN"
+            AIART_SMOKE_READY_FILE="$READY" "$BIN" >"$LOG" 2>&1 &
+            local PID=$!
+            local DEADLINE=$((SECONDS + 60))
+            while [ "$SECONDS" -lt "$DEADLINE" ]; do
+              if ! kill -0 "$PID" 2>/dev/null; then
+                local RC=0
+                wait "$PID" 2>/dev/null || RC=$?
+                echo "SMOKE_FAIL[$LABEL] app exited early (code $RC)" >&2
+                cat "$LOG" >&2 || true
+                exit 1
+              fi
+              if [ -f "$READY" ]; then break; fi
+              sleep 1
+            done
+            if [ ! -f "$READY" ]; then
+              echo "SMOKE_FAIL[$LABEL] app did not reach ready state within 60s" >&2
+              tail -n 80 "$LOG" >&2 || true
+              exit 1
+            fi
+            echo "SMOKE_OK[$LABEL] app ready: $(cat "$READY")"
             kill "$PID" 2>/dev/null || true
             wait "$PID" 2>/dev/null || true
-          else
-            wait "$PID" 2>/dev/null
-            RC=$?
-            echo "SMOKE_FAIL app exited early (code $RC)" >&2
-            cat /tmp/smoke.log >&2
+          }
+
+          run_dmg_smoke() {
+            local DMG="$1" LABEL="$2"
+            local MNT="$RUNNER_TEMP/aiartengine-dmg-$LABEL"
+            local OUT="$RUNNER_TEMP/aiartengine-dmg-out-$LABEL"
+            echo "SMOKE[$LABEL] dmg: $DMG"
+            rm -rf "$MNT" "$OUT"
+            mkdir -p "$MNT" "$OUT"
+            hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
+            cp -R "$MNT"/*.app "$OUT/"
+            hdiutil detach "$MNT" >/dev/null
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL"
+          }
+
+          # electron-updater 的增量/全量更新走 zip 通道：解包结构应与 dmg 内 .app 一致
+          run_zip_smoke() {
+            local ZIP="$1" LABEL="$2"
+            local OUT="$RUNNER_TEMP/aiartengine-zip-out-$LABEL"
+            echo "SMOKE[$LABEL] zip: $ZIP"
+            rm -rf "$OUT"
+            mkdir -p "$OUT"
+            ditto -x -k "$ZIP" "$OUT"
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL"
+          }
+
+          # arm64（本机架构）：产物必带，缺失即视为打包异常
+          ARM64_DMG="$(ls dist/*arm64*.dmg 2>/dev/null | head -n1 || true)"
+          if [ -z "$ARM64_DMG" ]; then
+            echo 'SMOKE_FAIL no arm64 .dmg found' >&2
             exit 1
+          fi
+          run_dmg_smoke "$ARM64_DMG" 'dmg-arm64'
+
+          ARM64_ZIP="$(ls dist/*arm64*.zip 2>/dev/null | head -n1 || true)"
+          if [ -n "$ARM64_ZIP" ]; then
+            run_zip_smoke "$ARM64_ZIP" 'zip-arm64'
+          else
+            echo 'WARN: no arm64 .zip found, skipping updater-channel smoke'
+          fi
+
+          # Intel (x64) 包：macos-latest 为 arm64，需 Rosetta 2 才能执行；装不上则跳过并告警
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo 'SMOKE: Rosetta 2 unavailable, installing for x64 smoke'
+            sudo softwareupdate --install-rosetta --agree-to-license || echo 'WARN: Rosetta install failed'
+          fi
+          X64_DMG="$(ls dist/*x64*.dmg 2>/dev/null | head -n1 || true)"
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            if [ -n "$X64_DMG" ]; then
+              run_dmg_smoke "$X64_DMG" 'dmg-x64'
+            else
+              echo 'WARN: no x64 .dmg found, skipping Intel smoke'
+            fi
+          else
+            echo 'WARN: skipping x64 .dmg smoke (Rosetta unavailable)'
           fi
 
       - name: Smoke test — run AppImage (Linux)
@@ -262,24 +336,91 @@ jobs:
               libpango-1.0-0 libcairo2 libgtk-3-0 libegl1 libgl1 libxss1 libxtst6 libnotify4 || \
               echo 'WARN: apt GUI libs unavailable; proceeding and relying on preinstalled deps'
           fi
-          xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" --no-sandbox > /tmp/smoke.log 2>&1 &
+          # 就绪探活：主进程在首个窗口加载完成后写就绪文件（src/main/smokeReady.ts）。
+          READY="$RUNNER_TEMP/aiartengine-ready-linux.json"
+          LOG="$RUNNER_TEMP/aiartengine-smoke-linux.log"
+          rm -f "$READY"
+          AIART_SMOKE_READY_FILE="$READY" xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$IMG" --no-sandbox >"$LOG" 2>&1 &
           PID=$!
-          sleep 15
-          set +e
-          kill -0 "$PID" 2>/dev/null
-          ALIVE=$?
-          set -e
-          if [ "$ALIVE" -eq 0 ]; then
-            echo 'SMOKE_OK app still running after 15s'
-            kill "$PID" 2>/dev/null || true
-            wait "$PID" 2>/dev/null || true
-          else
-            wait "$PID" 2>/dev/null
-            RC=$?
-            echo "SMOKE_FAIL app exited early (code $RC)" >&2
-            cat /tmp/smoke.log >&2
+          DEADLINE=$((SECONDS + 60))
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              RC=0
+              wait "$PID" 2>/dev/null || RC=$?
+              echo "SMOKE_FAIL app exited early (code $RC)" >&2
+              cat "$LOG" >&2 || true
+              exit 1
+            fi
+            if [ -f "$READY" ]; then break; fi
+            sleep 1
+          done
+          if [ ! -f "$READY" ]; then
+            echo 'SMOKE_FAIL app did not reach ready state within 60s' >&2
+            tail -n 80 "$LOG" >&2 || true
             exit 1
           fi
+          echo "SMOKE_OK app ready: $(cat "$READY")"
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+
+      # deb 走「真实安装 → 启动 → 卸载」全链路：这是 Fedora 之外的 Linux 桌面主路径，
+      # AppImage 免安装运行无法覆盖（安装目录、desktop 入口、依赖、卸载器）。
+      - name: Smoke test — install deb, launch & uninstall (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEB="$(ls dist/*.deb 2>/dev/null | head -n1 || true)"
+          if [ -z "$DEB" ]; then
+            echo 'SMOKE_FAIL no .deb found' >&2
+            exit 1
+          fi
+          echo "SMOKE installing deb: $DEB"
+          # dpkg 不解析依赖：依赖未满足时交由 apt 补齐（t64 重命名已在 deb.depends 里做 OR 兼容）
+          sudo dpkg -i "$DEB" || sudo apt-get -f install -y -qq
+
+          BIN="$(find /opt -maxdepth 3 -type f -name AIArtEngine -perm -u+x 2>/dev/null | head -n1 || true)"
+          if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+            echo 'SMOKE_FAIL installed binary missing under /opt' >&2
+            exit 1
+          fi
+          echo "SMOKE installed binary: $BIN"
+
+          READY="$RUNNER_TEMP/aiartengine-ready-deb.json"
+          LOG="$RUNNER_TEMP/aiartengine-smoke-deb.log"
+          rm -f "$READY"
+          AIART_SMOKE_READY_FILE="$READY" xvfb-run -a "$BIN" --no-sandbox >"$LOG" 2>&1 &
+          PID=$!
+          DEADLINE=$((SECONDS + 60))
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              RC=0
+              wait "$PID" 2>/dev/null || RC=$?
+              echo "SMOKE_FAIL deb app exited early (code $RC)" >&2
+              cat "$LOG" >&2 || true
+              exit 1
+            fi
+            if [ -f "$READY" ]; then break; fi
+            sleep 1
+          done
+          if [ ! -f "$READY" ]; then
+            echo 'SMOKE_FAIL deb app did not reach ready state within 60s' >&2
+            tail -n 80 "$LOG" >&2 || true
+            exit 1
+          fi
+          echo "SMOKE_OK deb app ready: $(cat "$READY")"
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+
+          # 卸载冒烟：安装包必须能被干净移除（用户卸载路径同样是交付质量的一部分）
+          PKG="$(dpkg-deb -f "$DEB" Package)"
+          echo "SMOKE removing package: $PKG"
+          sudo dpkg -r "$PKG"
+          if [ -e "$BIN" ]; then
+            echo "SMOKE_FAIL binary still present after removal: $BIN" >&2
+            exit 1
+          fi
+          echo 'SMOKE_OK deb uninstall clean'
 
   release:
     name: GitHub Release
