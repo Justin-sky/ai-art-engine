@@ -499,6 +499,12 @@ export function handleSidePanelMoved(dock: DockviewApi, movedId: string): void {
     configureSidePanelStackDropTargets(dock)
     scheduleStackedColumnNormalize(dock, columnWidth)
     reassertCollapsedHidden(dock)
+    // 防御性激活：dockview v7.0.2 把面板拖进新组后，偶发 body 不渲染只剩灰洞（与
+    // Vue 面板挂载时机有关，v7.0.3 起改用 Teleport 修复；此处保留双保险）。显式
+    // setActive 可确保该组的 active panel 被设置，从而触发内容渲染。
+    for (const id of SIDE_PANEL_IDS) {
+      dock.getPanel(id)?.api.setActive()
+    }
   })
 }
 
