@@ -226,8 +226,11 @@ jobs:
 
           # 启动 + 就绪探活：主进程在首个窗口加载完成后写就绪文件（src/main/smokeReady.ts）。
           # 比固定 sleep 更强：既能捕获「启动即崩」，也能捕获「窗口起不来」。
+          # 第 3 参 TIMEOUT 默认 60s。原生架构下 6.0.0 实测 dmg/zip 均数秒就绪，60s 足够；
+          # 但 arm64 runner 上跑 x64 产物要走 Rosetta 2，首次翻译整个 Electron 框架、
+          # 并逐个 dylib 过代码签名校验，冷启动远超原生，必须单独放宽（见下方 x64 分支）。
           launch_app_smoke() {
-            local APP="$1" LABEL="$2"
+            local APP="$1" LABEL="$2" TIMEOUT="${3:-60}"
             local BIN="$APP/Contents/MacOS/AIArtEngine"
             local READY="$RUNNER_TEMP/aiartengine-ready-$LABEL.json"
             local LOG="$RUNNER_TEMP/aiartengine-smoke-$LABEL.log"
@@ -236,10 +239,11 @@ jobs:
               exit 1
             fi
             rm -f "$READY"
-            echo "SMOKE[$LABEL] launching: $BIN"
+            echo "SMOKE[$LABEL] launching (timeout ${TIMEOUT}s): $BIN"
+            local STARTED=$SECONDS
             AIART_SMOKE_READY_FILE="$READY" "$BIN" >"$LOG" 2>&1 &
             local PID=$!
-            local DEADLINE=$((SECONDS + 60))
+            local DEADLINE=$((SECONDS + TIMEOUT))
             while [ "$SECONDS" -lt "$DEADLINE" ]; do
               if ! kill -0 "$PID" 2>/dev/null; then
                 local RC=0
@@ -252,17 +256,18 @@ jobs:
               sleep 1
             done
             if [ ! -f "$READY" ]; then
-              echo "SMOKE_FAIL[$LABEL] app did not reach ready state within 60s" >&2
+              echo "SMOKE_FAIL[$LABEL] app did not reach ready state within ${TIMEOUT}s" >&2
               tail -n 80 "$LOG" >&2 || true
               exit 1
             fi
-            echo "SMOKE_OK[$LABEL] app ready: $(cat "$READY")"
+            # 记录实际耗时：就绪时间持续贴近上限时能提前发现（而不是等它某天压线失败）
+            echo "SMOKE_OK[$LABEL] app ready in $((SECONDS - STARTED))s: $(cat "$READY")"
             kill "$PID" 2>/dev/null || true
             wait "$PID" 2>/dev/null || true
           }
 
           run_dmg_smoke() {
-            local DMG="$1" LABEL="$2"
+            local DMG="$1" LABEL="$2" TIMEOUT="${3:-60}"
             local MNT="$RUNNER_TEMP/aiartengine-dmg-$LABEL"
             local OUT="$RUNNER_TEMP/aiartengine-dmg-out-$LABEL"
             echo "SMOKE[$LABEL] dmg: $DMG"
@@ -271,18 +276,18 @@ jobs:
             hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
             cp -R "$MNT"/*.app "$OUT/"
             hdiutil detach "$MNT" >/dev/null
-            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL"
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT"
           }
 
           # electron-updater 的增量/全量更新走 zip 通道：解包结构应与 dmg 内 .app 一致
           run_zip_smoke() {
-            local ZIP="$1" LABEL="$2"
+            local ZIP="$1" LABEL="$2" TIMEOUT="${3:-60}"
             local OUT="$RUNNER_TEMP/aiartengine-zip-out-$LABEL"
             echo "SMOKE[$LABEL] zip: $ZIP"
             rm -rf "$OUT"
             mkdir -p "$OUT"
             ditto -x -k "$ZIP" "$OUT"
-            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL"
+            launch_app_smoke "$(ls -d "$OUT"/*.app | head -n1)" "$LABEL" "$TIMEOUT"
           }
 
           # arm64（本机架构）：产物必带，缺失即视为打包异常
@@ -308,7 +313,11 @@ jobs:
           X64_DMG="$(ls dist/*x64*.dmg 2>/dev/null | head -n1 || true)"
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
             if [ -n "$X64_DMG" ]; then
-              run_dmg_smoke "$X64_DMG" 'dmg-x64'
+              # 300s 而非 60s：6.0.0 实测 arm64 产物数秒就绪，而 x64 产物在 Rosetta 下
+              # 60s 内未就绪（进程存活、只是没启动完，故报 did not reach ready state）。
+              # 这是翻译 + 签名校验的一次性冷启动开销，不是应用缺陷；放宽只影响上限，
+              # 「启动即崩」仍由循环里的 kill -0 立刻抓到。
+              run_dmg_smoke "$X64_DMG" 'dmg-x64' 300
             else
               echo 'WARN: no x64 .dmg found, skipping Intel smoke'
             fi
