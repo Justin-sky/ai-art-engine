@@ -261,12 +261,18 @@ export const ASSET_SFX_OUTPUT_KIND_DIR = 'Sfx'
 /** Cache / 历史资产目录下的 3D 模型子目录名 */
 export const ASSET_MODEL_OUTPUT_KIND_DIR = 'Models'
 
-/** 规范化工程相对目录：去首尾斜杠、统一 `/`；空串视为未设置 */
+/**
+ * 规范化工程相对目录：统一 `/`、去掉前导 `./` 或 `/` 与尾部斜杠；空串视为未设置。
+ *
+ * 前导斜杠必须去掉：`/Assets/Hero` 这种绝对式写法在 `join(root, …)` 下会被解析成
+ * `<root>/Assets/Hero`（真的写进资产库），但 `isUnderAssetLibraryDir('/Assets/Hero')`
+ * 却判否——写盘与入库口径就此分叉，文件落进 `Assets/` 却拿不到旁挂元数据。
+ */
 export function normalizeProjectRelativeDir(dir?: string | null): string {
   return (dir ?? '')
     .trim()
     .replace(/\\/g, '/')
-    .replace(/^\.\/+/, '')
+    .replace(/^\.?\/+/, '')
     .replace(/\/+$/, '')
 }
 
@@ -322,6 +328,23 @@ export function isUnderCacheOutputDir(
 export function isUnderAssetLibraryDir(relativePathOrDir?: string | null): boolean {
   const posix = normalizeProjectRelativeDir(relativePathOrDir)
   return posix === 'Assets' || posix.startsWith('Assets/')
+}
+
+/**
+ * 落盘目录是否登记为资产：写进 `Assets/` 且不在工程缓存根下才算入库。
+ *
+ * 调用方必须传**实际写入目录**（由落盘绝对路径反推），而不是原始入参字符串——
+ * 入参可能来自节点参数 / Agent（`/Assets/…`、`\\Assets\\…` 等写法），一旦判定口径
+ * 与写盘口径不一致，文件就会静静躺在 `Assets/` 里而素材库看不到（没有旁挂元数据）。
+ */
+export function shouldRegisterOutputInAssetLibrary(
+  dirRelativeToProject?: string | null,
+  cacheOutputDir?: string | null
+): boolean {
+  return (
+    isUnderAssetLibraryDir(dirRelativeToProject) &&
+    !isUnderCacheOutputDir(dirRelativeToProject, cacheOutputDir)
+  )
 }
 
 /**

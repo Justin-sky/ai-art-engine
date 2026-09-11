@@ -3,7 +3,9 @@ import {
   buildGeneratedMediaFileKey,
   isUnderAssetLibraryDir,
   isUnderCacheOutputDir,
-  resolveMediaOutputDir
+  normalizeProjectRelativeDir,
+  resolveMediaOutputDir,
+  shouldRegisterOutputInAssetLibrary
 } from '../src/shared/domain'
 
 describe('resolveMediaOutputDir (cache redesign)', () => {
@@ -54,6 +56,41 @@ describe('cache registration gates', () => {
   it('respects custom cache root', () => {
     expect(isUnderCacheOutputDir('Work/Out/Videos', 'Work/Out')).toBe(true)
     expect(isUnderCacheOutputDir('Cache/Videos', 'Work/Out')).toBe(false)
+  })
+})
+
+describe('normalizeProjectRelativeDir', () => {
+  it('统一斜杠并去掉前导 / 与 ./（绝对式写法按工程相对目录处理）', () => {
+    expect(normalizeProjectRelativeDir('/Assets/UIKits/Home')).toBe('Assets/UIKits/Home')
+    expect(normalizeProjectRelativeDir('\\Assets\\UIKits\\Home\\')).toBe('Assets/UIKits/Home')
+    expect(normalizeProjectRelativeDir('./Assets/UIKits/Home')).toBe('Assets/UIKits/Home')
+    expect(normalizeProjectRelativeDir('  Assets/UIKits/Home  ')).toBe('Assets/UIKits/Home')
+    expect(normalizeProjectRelativeDir('Assets/2D/Spine/x')).toBe('Assets/2D/Spine/x')
+    expect(normalizeProjectRelativeDir('/')).toBe('')
+    expect(normalizeProjectRelativeDir('')).toBe('')
+  })
+
+  it('保留 .. 段（越界交给 assertInsideProject 拦）', () => {
+    expect(normalizeProjectRelativeDir('../Assets')).toBe('../Assets')
+  })
+})
+
+describe('shouldRegisterOutputInAssetLibrary', () => {
+  it('前导斜杠 / 反斜杠的资产库目录同样入库', () => {
+    // 回归：`/Assets/UIKits/x` 会被 join 解析成 <root>/Assets/UIKits/x 真的写进资产库，
+    // 但旧判定（startsWith('Assets/')）判否，落盘文件拿不到 .asset.json、素材库看不到
+    expect(shouldRegisterOutputInAssetLibrary('/Assets/UIKits/x')).toBe(true)
+    expect(shouldRegisterOutputInAssetLibrary('\\Assets\\UIKits\\x')).toBe(true)
+    expect(shouldRegisterOutputInAssetLibrary('Assets/2D/Spine/skeleton')).toBe(true)
+    expect(shouldRegisterOutputInAssetLibrary('Assets/UIKits/Home/')).toBe(true)
+  })
+
+  it('缓存根与库外目录不入库', () => {
+    expect(shouldRegisterOutputInAssetLibrary('Cache/Images')).toBe(false)
+    expect(shouldRegisterOutputInAssetLibrary('/Cache/Images')).toBe(false)
+    expect(shouldRegisterOutputInAssetLibrary('Assets/Cache/Images', 'Assets/Cache')).toBe(false)
+    expect(shouldRegisterOutputInAssetLibrary('Output/Images')).toBe(false)
+    expect(shouldRegisterOutputInAssetLibrary('')).toBe(false)
   })
 })
 

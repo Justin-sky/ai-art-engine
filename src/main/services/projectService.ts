@@ -28,10 +28,9 @@ import {
   isImportableFileRefAssetType,
   isPoseModelAsset,
   isScreenplayAsset,
-  isUnderAssetLibraryDir,
-  isUnderCacheOutputDir,
   normalizeProjectRelativeDir,
   resolveCacheOutputRoot,
+  shouldRegisterOutputInAssetLibrary,
   resolveUniqueAssetName,
   resolveMediaOutputDir,
   withImportedMediaRefParams,
@@ -1377,19 +1376,21 @@ class ProjectService {
       `${cacheRoot}/${ASSET_IMAGE_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
-    const underLibrary = isUnderAssetLibraryDir(outDir)
-    const underCache = isUnderCacheOutputDir(outDir, this.config?.cacheOutputDir)
-    if (underLibrary && !underCache) {
-      ensureAssetRelativeFolderChain(root, outDir)
+    // 入库判定与实际写入目录同源：outDir 来自节点参数 / Agent，写法差异（前导斜杠等）
+    // 一旦让判定与写盘分叉，文件会静静落在 Assets/ 里却拿不到旁挂元数据（素材库看不到）
+    const dirRel = toPosix(relative(root, dirAbs)) || outDir
+    const register = shouldRegisterOutputInAssetLibrary(dirRel, this.config?.cacheOutputDir)
+    if (register) {
+      ensureAssetRelativeFolderChain(root, dirRel)
     }
     const fileName = uniqueFileName(dirAbs, `${safeStem}${ext}`)
-    const relativePath = `${outDir}/${fileName}`.replace(/\\/g, '/')
+    const relativePath = `${dirRel}/${fileName}`.replace(/\\/g, '/')
     const abs = assertInsideProject(root, join(root, relativePath))
     writeFileSync(abs, buf)
 
     const assetType = assetTypeFromMime(mime)
     let asset: AssetInfo | null = null
-    if (assetType && underLibrary && !underCache) {
+    if (assetType && register) {
       asset = this.registerExistingMediaAsAsset({
         relativePath,
         type: assetType,
@@ -1451,18 +1452,19 @@ class ProjectService {
       `${cacheRoot}/${ASSET_TEXT_OUTPUT_KIND_DIR}`
     const dirAbs = assertInsideProject(root, join(root, outDir))
     mkdirSync(dirAbs, { recursive: true })
-    const underLibrary = isUnderAssetLibraryDir(outDir)
-    const underCache = isUnderCacheOutputDir(outDir, this.config?.cacheOutputDir)
-    if (underLibrary && !underCache) {
-      ensureAssetRelativeFolderChain(root, outDir)
+    // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库
+    const dirRel = toPosix(relative(root, dirAbs)) || outDir
+    const register = shouldRegisterOutputInAssetLibrary(dirRel, this.config?.cacheOutputDir)
+    if (register) {
+      ensureAssetRelativeFolderChain(root, dirRel)
     }
     const fileName = uniqueFileName(dirAbs, `${safeStem}.txt`)
-    const relativePath = `${outDir}/${fileName}`.replace(/\\/g, '/')
+    const relativePath = `${dirRel}/${fileName}`.replace(/\\/g, '/')
     const abs = assertInsideProject(root, join(root, relativePath))
     writeFileSync(abs, content, 'utf-8')
 
     let asset: AssetInfo | null = null
-    if (underLibrary && !underCache) {
+    if (register) {
       asset = this.registerExistingMediaAsAsset({
         relativePath,
         type: 'screenplay',
@@ -1569,7 +1571,8 @@ class ProjectService {
 
   /**
    * 将外部生成的文件写入工程：默认视频/语音/3D/图片 → Cache/{Videos|Voices|Models|Images}，其它 → Assets/。
-   * Cache/ 下只落盘、返回内存 AssetInfo（不写 `.asset.json`）；Assets/ 下登记进库。
+   * 实际落盘在 `Assets/`（且不在缓存根下）才写 `.asset.json` 登记进库；其它目录只落盘、
+   * 返回内存 AssetInfo（库外落盘的文件素材库扫不到，登记了也只会在重启后消失）。
    */
   attachExternalGeneratedFile(params: {
     type: AssetType
@@ -1596,10 +1599,11 @@ class ProjectService {
               : 'Assets')
     const dirAbs = assertInsideProject(root, join(root, destDirRel))
     mkdirSync(dirAbs, { recursive: true })
-    const underLibrary = isUnderAssetLibraryDir(destDirRel)
-    const underCache = isUnderCacheOutputDir(destDirRel, cacheRoot)
-    if (underLibrary && !underCache) {
-      ensureAssetRelativeFolderChain(root, destDirRel)
+    // 与 saveGraphRunMedia 同一口径：按实际写入目录判定是否入库
+    const dirRel = toPosix(relative(root, dirAbs)) || destDirRel
+    const register = shouldRegisterOutputInAssetLibrary(dirRel, cacheRoot)
+    if (register) {
+      ensureAssetRelativeFolderChain(root, dirRel)
     }
 
     const fileName = uniqueFileName(
@@ -1609,7 +1613,7 @@ class ProjectService {
     const destAbs = join(dirAbs, fileName)
     copyFileSync(params.sourceFilePath, destAbs)
     const relativePath = toPosix(relative(root, destAbs))
-    if (underCache) {
+    if (!register) {
       const ts = nowIso()
       return {
         id: randomUUID(),

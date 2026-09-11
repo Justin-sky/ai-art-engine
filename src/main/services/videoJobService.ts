@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import type { AssetInfo } from '@shared/domain'
-import { isUnderCacheOutputDir, resolveMediaOutputDir } from '@shared/domain'
+import { resolveMediaOutputDir, shouldRegisterOutputInAssetLibrary } from '@shared/domain'
 import type {
   VideoJobGraphBinding,
   VideoJobKind,
@@ -343,8 +343,13 @@ class VideoJobService {
     await this.cleanupUploads(job)
     this.finishWaiters(next)
     this.emitUpdated(next)
-    // Cache/ 产物不进资产库，避免把内存 AssetInfo 广播进库
-    if (!isUnderCacheOutputDir(outputDir, projectService.getConfig().cacheOutputDir)) {
+    // 只有真的登记进资产库的产物才广播（Cache/ 与库外目录只返回内存 AssetInfo）
+    if (
+      shouldRegisterOutputInAssetLibrary(
+        outputDir,
+        projectService.getConfig().cacheOutputDir
+      )
+    ) {
       broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
     }
     videoJobRepository.pruneTerminal(root)

@@ -950,7 +950,8 @@ const TOOL_DEFS: McpToolDef[] = [
         },
         outputDir: {
           type: 'string',
-          description: '输出目录（工程内相对路径，默认 Assets/UIKits/<源图名>）'
+          description:
+            '输出目录（工程内相对路径，必须落在资产库内、以 Assets/ 开头，默认 Assets/UIKits/<源图名>；部件需入库才能在素材库看到）'
         }
       },
       required: ['assetId', 'parts']

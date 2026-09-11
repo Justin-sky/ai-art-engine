@@ -30,6 +30,11 @@ import {
   type AssetQcIssue,
   type AssetQcMetrics
 } from '@shared/gameAssets'
+import {
+  isUnderAssetLibraryDir,
+  normalizeProjectRelativeDir,
+  type AssetInfo
+} from '@shared/domain'
 import type { McpRenderJobKind, McpRenderJobPayload } from '@shared/ipc'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { useProjectStore } from '../../stores/project'
@@ -52,6 +57,51 @@ async function resolveLayerUrl(sourceUrl: string): Promise<string> {
     return await resolveAssetPreviewUrl(raw)
   } catch {
     return ''
+  }
+}
+
+/**
+ * 部件输出目录必须落在资产库（`Assets/`）内。
+ *
+ * 部件是「给人用的素材」：主进程只在落盘目录属于资产库时写旁挂 `.asset.json` 登记，
+ * 库外目录只会静静落盘、素材库扫不到。Agent 传 `outputDir` 时各种写法都收（前导斜杠、
+ * 反斜杠、尾斜杠统一归一），归一后仍不在库内就拒绝并说明用法，别退回静默半成功。
+ */
+function resolveLibraryOutDir(dir: string, fallback: string): string {
+  const posix = normalizeProjectRelativeDir(dir)
+  if (!posix) return fallback
+  if (!isUnderAssetLibraryDir(posix)) {
+    throw new Error(`outputDir 必须落在资产库内（以 Assets/ 开头）：${dir}；默认目录为 ${fallback}`)
+  }
+  return posix
+}
+
+/** 素材库可刷新 + 可枚举的宿主（用于落盘后复查部件是否真的入库） */
+interface LibraryHost {
+  assets: AssetInfo[]
+  scheduleRefreshLibrary(delayMs?: number): Promise<void>
+}
+
+/**
+ * 落盘后复查部件确实进了素材库。
+ *
+ * `saveGraphRunMedia` 只回相对路径、登记与否由主进程按目录判定，一旦判定口径出岔
+ * （库外目录 / 被缓存根覆盖），作业会「文件写好了但素材库里没有」静默半成功——
+ * 这里显式复查并报错，把原因交回 Agent / 用户。
+ */
+async function assertPartsImported(
+  project: LibraryHost,
+  savedPaths: string[],
+  dir: string
+): Promise<void> {
+  await project.scheduleRefreshLibrary()
+  const missing = savedPaths.filter(
+    (rel) => !project.assets.some((asset) => asset.relativePath === rel)
+  )
+  if (missing.length) {
+    throw new Error(
+      `部件已落盘但没进素材库（${dir}）：${missing.join('、')}；请确认输出目录在资产库内且未被工程缓存根目录覆盖`
+    )
   }
 }
 
@@ -109,7 +159,10 @@ async function handleStage2dSpineExport(args: Record<string, unknown>): Promise<
     throw new Error('没有可导出的部件：需要把可见部件层挂到关节上（挂点层），平面几何才成立')
   }
 
-  const dir = `Assets/2D/Spine/${result.skeletonName}`
+  const dir = resolveLibraryOutDir(
+    `Assets/2D/Spine/${result.skeletonName}`,
+    'Assets/2D/Spine'
+  )
   const files: string[] = []
   for (const file of result.files) {
     const saved = await window.studio.saveGraphRunMedia({
@@ -123,7 +176,7 @@ async function handleStage2dSpineExport(args: Record<string, unknown>): Promise<
   const atlasPath = `${dir}/${result.skeletonName}.atlas`
   await window.studio.writeProjectFile({ relativePath: skeletonPath, content: result.jsonText })
   await window.studio.writeProjectFile({ relativePath: atlasPath, content: result.atlasText })
-  await project.scheduleRefreshLibrary()
+  await assertPartsImported(project, files, dir)
 
   return {
     assetId,
@@ -168,11 +221,10 @@ async function handleUiKitExtract(args: Record<string, unknown>): Promise<unknow
     )
   }
 
-  const outDir =
-    readString(args.outputDir)
-      .trim()
-      .replace(/\\/g, '/')
-      .replace(/\/+$/, '') || `Assets/UIKits/${doc.sourceName}`
+  const outDir = resolveLibraryOutDir(
+    readString(args.outputDir),
+    `Assets/UIKits/${doc.sourceName}`
+  )
 
   const saved: string[] = []
   for (const part of doc.parts) {
@@ -203,7 +255,7 @@ async function handleUiKitExtract(args: Record<string, unknown>): Promise<unknow
     relativePath: manifestPath,
     content: JSON.stringify(manifest, null, 2)
   })
-  await project.scheduleRefreshLibrary()
+  await assertPartsImported(project, saved, outDir)
 
   return {
     assetId,
