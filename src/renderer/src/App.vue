@@ -52,8 +52,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from './stores/project'
+import { useWorkspaceStore } from './stores/workspace'
 import { useMcpActivitiesStore } from './stores/mcpActivities'
 import { registerMcpTaskRunner } from './features/mcp/mcpTaskRunner'
+import { registerMcpRenderJobRunner } from './features/mcp/renderJobHandlers'
 import { useStudioI18n } from './composables/useStudioI18n'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
@@ -75,12 +77,15 @@ const { t } = useStudioI18n()
 const router = useRouter()
 const route = useRoute()
 const project = useProjectStore()
+const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const mcpActivities = useMcpActivitiesStore()
 
 const isSettings = computed(() => route.name === 'settings')
 const mainView = ref<'home' | 'studio'>('home')
 let stopAssetUpdated: (() => void) | null = null
+let stopAssetRemoved: (() => void) | null = null
+let stopFoldersUpdated: (() => void) | null = null
 let stopVideoJobUpdated: (() => void) | null = null
 
 watch(
@@ -127,6 +132,7 @@ function onEditorShortcut(event: KeyboardEvent): void {
 onMounted(() => {
   window.addEventListener('keydown', onEditorShortcut)
   registerMcpTaskRunner()
+  registerMcpRenderJobRunner()
   mcpActivities.setup()
   if (typeof window.studio?.onAssetUpdated === 'function') {
     stopAssetUpdated = window.studio.onAssetUpdated((asset) => {
@@ -135,6 +141,21 @@ onMounted(() => {
       project.patchAssets([asset])
       // 新图片/视频资产入库后自动刷新资产库
       if (!existed) void project.scheduleRefreshLibrary()
+    })
+  }
+  if (typeof window.studio?.onAssetRemoved === 'function') {
+    stopAssetRemoved = window.studio.onAssetRemoved((assetId) => {
+      if (!project.isOpen) return
+      // 旁路（MCP）删除的资产：先关闭它的编辑器面板，避免留下悬空编辑窗
+      workspace.closeEditorsForAssetIds([assetId])
+      project.removeAssetLocal(assetId)
+    })
+  }
+  if (typeof window.studio?.onFoldersUpdated === 'function') {
+    stopFoldersUpdated = window.studio.onFoldersUpdated(() => {
+      if (!project.isOpen) return
+      // 目录树变化常伴随批量资产入库（如资产包导入），一并刷新资产列表
+      void project.scheduleRefreshLibrary()
     })
   }
   if (typeof window.studio?.onVideoJobUpdated === 'function') {
@@ -148,6 +169,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEditorShortcut)
   stopAssetUpdated?.()
   stopAssetUpdated = null
+  stopAssetRemoved?.()
+  stopAssetRemoved = null
+  stopFoldersUpdated?.()
+  stopFoldersUpdated = null
   stopVideoJobUpdated?.()
   stopVideoJobUpdated = null
   mcpActivities.teardown()

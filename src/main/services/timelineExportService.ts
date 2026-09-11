@@ -3,9 +3,9 @@
  */
 import { spawn } from 'child_process'
 import { dialog } from 'electron'
-import { existsSync, mkdtempSync, copyFileSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, copyFileSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, basename, extname } from 'path'
+import { join, basename, dirname, extname } from 'path'
 import type {
   ScriptTimelineTrackKind,
   TimelineExportClip,
@@ -17,6 +17,7 @@ import { IpcChannels } from '@shared/ipc'
 import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { projectService } from './projectService'
+import { buildPreviewFramePlan } from '@shared/graph/timelinePreview'
 import { findFfmpegBin } from './videoFrameService'
 import { broadcastToAllWindows } from '../broadcast'
 
@@ -43,6 +44,21 @@ const E_TIMELINE_NO_EXPORTABLE_CLIPS = defErrSimple(
   'The timeline has no exportable video or audio clips'
 )
 const E_TIMELINE_CANCELLED = defErrSimple('timeline.cancelled', '已取消', 'Cancelled')
+const E_TIMELINE_NO_PREVIEW_FRAMES = defErrSimple(
+  'timeline.noPreviewFrames',
+  '没有可抽帧的时间点',
+  'No timestamps to capture'
+)
+const E_TIMELINE_PREVIEW_FAILED = defErrSimple(
+  'timeline.previewFailed',
+  '抽帧失败：ffmpeg 没有产出画面（时间点可能落在成片内容之外）',
+  'Frame capture failed: ffmpeg produced no picture'
+)
+
+/** 预览帧默认宽度：够看清构图与字幕，又不至于让 base64 响应过大 */
+const PREVIEW_FRAME_WIDTH = 640
+/** 预览帧 JPEG 质量（ffmpeg -q:v：数值越小质量越高、体积越大） */
+const PREVIEW_JPEG_QUALITY = 4
 
 function escapeDrawtext(text: string): string {
   return text
@@ -528,12 +544,24 @@ function buildFilterGraph(
   return { filter: filterParts.join(';'), mapVideo: `[${lastVideo}]`, mapAudio: '[aout]' }
 }
 
-async function encodeTimeline(
-  bin: string,
-  input: TimelineExportInput,
-  outPath: string,
-  onProgress?: (ratio: number) => void
-): Promise<void> {
+/**
+ * 准备输入参数与滤镜图（导出 MP4 与抽帧预览共用同一条流水线）。
+ *
+ * 两条链路拿到同一份 filter：预览看到的画面与导出严格一致，
+ * 不会出现「预览好看、导出难看」的口径差——转场预览微渲染遵循的也是这条约定。
+ */
+function prepareTimelinePipeline(input: TimelineExportInput): {
+  args: string[]
+  filter: string
+  mapVideo: string
+  mapAudio: string
+  duration: number
+  rate: number
+  width: number
+  height: number
+  fps: number
+  videoBitrateKbps: number
+} {
   const duration = Math.max(1, input.durationSec)
   const rate = input.playbackRate && input.playbackRate > 0 ? input.playbackRate : 1
   const width = Math.min(7680, Math.max(320, Math.round(input.width ?? 1280)))
@@ -649,13 +677,23 @@ async function encodeTimeline(
         }
   )
 
-  args.push(
+  return { args, filter, mapVideo, mapAudio, duration, rate, width, height, fps, videoBitrateKbps }
+}
+
+async function encodeTimeline(
+  bin: string,
+  input: TimelineExportInput,
+  outPath: string,
+  onProgress?: (ratio: number) => void
+): Promise<void> {
+  const pipeline = prepareTimelinePipeline(input)
+  pipeline.args.push(
     '-filter_complex',
-    filter,
+    pipeline.filter,
     '-map',
-    mapVideo,
+    pipeline.mapVideo,
     '-map',
-    mapAudio,
+    pipeline.mapAudio,
     '-c:v',
     'libx264',
     '-pix_fmt',
@@ -665,16 +703,16 @@ async function encodeTimeline(
     '-b:a',
     '192k',
     '-b:v',
-    `${videoBitrateKbps}k`,
+    `${pipeline.videoBitrateKbps}k`,
     '-movflags',
     '+faststart',
     '-t',
-    String(duration / rate),
+    String(pipeline.duration / pipeline.rate),
     outPath
   )
 
-  await runFfmpeg(bin, args, (sec) => {
-    onProgress?.(Math.min(0.99, sec / Math.max(0.1, duration / rate)))
+  await runFfmpeg(bin, pipeline.args, (sec) => {
+    onProgress?.(Math.min(0.99, sec / Math.max(0.1, pipeline.duration / pipeline.rate)))
   })
 }
 
@@ -700,6 +738,107 @@ function probeFfmpeg(bin: string): Promise<boolean> {
   })
 }
 
+/** 抽帧预览的单帧：timeSec 是它在成片时间线上的位置 */
+export type TimelinePreviewFrame = { timeSec: number; dataUrl: string }
+
+export type TimelinePreviewResult =
+  | { ok: true; frames: TimelinePreviewFrame[]; width: number }
+  | { ok: false; error: string }
+
+/**
+ * 抽帧预览：用导出同一条滤镜图，在指定时间点各取一帧（JPEG）。
+ *
+ * - 与「先导出 MP4 再抽帧」的区别：不落中间视频、不编码整片，只解码到最晚的那个时间点；
+ * - 与逐帧 `-ss` 重跑的区别：一次解码、多路输出（split + trim），抽 6 帧不是跑 6 遍；
+ * - 输出 JPEG 而不是 PNG：单帧体积小一个量级，回给 Agent 的响应不至于撑爆。
+ *
+ * 时间点靠后时要解码到那个位置，长片会慢——调用方（`timeline_preview`）负责提示。
+ */
+export async function renderTimelineFrames(
+  input: TimelineExportInput,
+  timestamps: number[],
+  options?: { width?: number; quality?: number }
+): Promise<TimelinePreviewResult> {
+  try {
+    if (!projectService.isOpen()) {
+      return { ok: false, error: fail(MAIN_ERRORS.noProject).message }
+    }
+    if (!timestamps.length) {
+      return { ok: false, error: fail(E_TIMELINE_NO_PREVIEW_FRAMES).message }
+    }
+
+    const bin = findFfmpegBin()
+    if (!(await probeFfmpeg(bin))) {
+      return { ok: false, error: fail(E_TIMELINE_FFMPEG_MISSING).message }
+    }
+
+    const pipeline = prepareTimelinePipeline(input)
+    const frameWidth = Math.min(
+      1280,
+      Math.max(160, Math.round(options?.width ?? PREVIEW_FRAME_WIDTH))
+    )
+    const quality = Math.min(12, Math.max(2, Math.round(options?.quality ?? PREVIEW_JPEG_QUALITY)))
+
+    const framePlan = buildPreviewFramePlan({
+      mapVideo: pipeline.mapVideo,
+      timestamps,
+      width: frameWidth
+    })
+
+    const workDir = mkdtempSync(join(tmpdir(), 'aiart-preview-'))
+    try {
+      const args = [
+        ...pipeline.args,
+        '-filter_complex',
+        `${pipeline.filter};${framePlan.filterParts.join(';')}`
+      ]
+      const files = framePlan.outputs.map((_, index) => join(workDir, `frame-${index}.jpg`))
+      framePlan.outputs.forEach((output, index) => {
+        // -update 1：单文件名输出单帧，明确让 image2 muxer 覆盖同一个文件而不是去找序号
+        args.push(
+          '-map',
+          `[${output.label}]`,
+          '-frames:v',
+          '1',
+          '-update',
+          '1',
+          '-q:v',
+          String(quality),
+          files[index]
+        )
+      })
+      // 滤镜图里的音频链末端 pad 必须有人接：未连接的 filter 输出会让 ffmpeg 直接报错。
+      // 接到 null muxer 并用 -t 收在最晚的抽帧点上——音频只解码到那一刻，不拖慢抽帧。
+      args.push('-map', pipeline.mapAudio, '-t', Math.max(...timestamps).toFixed(3), '-f', 'null', '-')
+
+      await runFfmpeg(bin, args)
+
+      const frames: TimelinePreviewFrame[] = []
+      files.forEach((file, index) => {
+        if (!existsSync(file)) return
+        const buf = readFileSync(file)
+        if (!buf.length) return
+        frames.push({
+          timeSec: framePlan.outputs[index].timeSec,
+          dataUrl: `data:image/jpeg;base64,${buf.toString('base64')}`
+        })
+      })
+      if (!frames.length) {
+        return { ok: false, error: fail(E_TIMELINE_PREVIEW_FAILED).message }
+      }
+      return { ok: true, frames, width: frameWidth }
+    } finally {
+      try {
+        rmSync(workDir, { recursive: true, force: true })
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 export async function exportScriptTimeline(
   input: TimelineExportInput
 ): Promise<TimelineExportResult> {
@@ -715,21 +854,32 @@ export async function exportScriptTimeline(
       return { ok: false, error: fail(E_TIMELINE_FFMPEG_MISSING).message }
     }
 
-    const save = await dialog.showSaveDialog({
-      title: '导出成片',
-      defaultPath: input.defaultFileName || 'timeline-export.mp4',
-      filters: [
-        { name: 'MP4', extensions: ['mp4'] },
-        { name: 'All Files', extensions: ['*'] }
-      ],
-      properties: ['createDirectory', 'showOverwriteConfirmation']
-    })
-    if (save.canceled || !save.filePath) {
-      return { ok: false, canceled: true, error: fail(E_TIMELINE_CANCELLED).message }
+    // 目标路径：Agent / 无界面链路直接给绝对路径（不弹对话框），界面上仍走「另存为」
+    let outPath: string
+    const targetPath = input.targetPath?.trim()
+    if (targetPath) {
+      outPath = extname(targetPath) ? targetPath : `${targetPath}.mp4`
+      try {
+        mkdirSync(dirname(outPath), { recursive: true })
+      } catch {
+        /* 父目录创建失败由后续写入报错暴露 */
+      }
+    } else {
+      const save = await dialog.showSaveDialog({
+        title: '导出成片',
+        defaultPath: input.defaultFileName || 'timeline-export.mp4',
+        filters: [
+          { name: 'MP4', extensions: ['mp4'] },
+          { name: 'All Files', extensions: ['*'] }
+        ],
+        properties: ['createDirectory', 'showOverwriteConfirmation']
+      })
+      if (save.canceled || !save.filePath) {
+        return { ok: false, canceled: true, error: fail(E_TIMELINE_CANCELLED).message }
+      }
+      outPath = save.filePath
+      if (!extname(outPath)) outPath = `${outPath}.mp4`
     }
-
-    let outPath = save.filePath
-    if (!extname(outPath)) outPath = `${outPath}.mp4`
 
     broadcastToAllWindows(IpcChannels.TIMELINE_EXPORT_PROGRESS, { progress: 0.02 })
 

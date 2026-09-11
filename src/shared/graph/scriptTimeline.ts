@@ -252,6 +252,11 @@ export type TimelineExportInput = {
   watermarkPosition?: 'br' | 'bl' | 'tr' | 'tl'
   /** 另存为默认文件名（不含路径） */
   defaultFileName?: string
+  /**
+   * 目标文件绝对路径（无界面 / Agent 链路必填）：给出时不弹「另存为」对话框，
+   * 直接写该路径（缺扩展名自动补 .mp4，自动创建父目录）。
+   */
+  targetPath?: string
 }
 
 export type TimelineExportResult =

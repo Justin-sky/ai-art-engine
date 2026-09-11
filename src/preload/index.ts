@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannels, type StudioApi } from '@shared/ipc'
 import type { AppSettings, AssetInfo, ProjectConfig } from '@shared/domain'
-import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpGraphIconRefinePayload, McpGraphIconRefineResultPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
+import type { AskUserAnswer, AskUserQuestion, McpGraphEditResultPayload, McpGraphEditPayload, McpGraphIconRefinePayload, McpGraphIconRefineResultPayload, McpRenderJobPayload, McpRenderJobResultPayload, McpTaskReportPayload, McpTaskRunPayload } from '@shared/ipc'
 import type {
   AttachAssetFileInput,
   AttachAssetRelativeInput,
@@ -212,6 +212,20 @@ const api: StudioApi = {
     ipcRenderer.on(IpcChannels.ASSET_UPDATED, listener)
     return () => ipcRenderer.removeListener(IpcChannels.ASSET_UPDATED, listener)
   },
+  onAssetRemoved: (callback) => {
+    const listener = (_event: unknown, assetId: string): void => {
+      callback(assetId)
+    }
+    ipcRenderer.on(IpcChannels.ASSET_REMOVED, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.ASSET_REMOVED, listener)
+  },
+  onFoldersUpdated: (callback) => {
+    const listener = (): void => {
+      callback()
+    }
+    ipcRenderer.on(IpcChannels.FOLDERS_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.FOLDERS_UPDATED, listener)
+  },
   onVideoBeatBusyChanged: (callback) => {
     const listener = (_event: unknown, payload: { assetId: string; busy: boolean }): void => {
       callback(payload)
@@ -256,6 +270,15 @@ const api: StudioApi = {
   },
   reportMcpGraphIconRefine: (payload: McpGraphIconRefineResultPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT, payload),
+  onMcpRenderJob: (callback) => {
+    const listener = (_event: unknown, payload: McpRenderJobPayload): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.MCP_RENDER_JOB, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.MCP_RENDER_JOB, listener)
+  },
+  reportMcpRenderJob: (payload: McpRenderJobResultPayload) =>
+    ipcRenderer.invoke(IpcChannels.MCP_RENDER_JOB_RESULT, payload),
   onAskUser: (callback) => {
     const listener = (_event: unknown, question: AskUserQuestion): void => {
       callback(question)

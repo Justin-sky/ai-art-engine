@@ -275,7 +275,7 @@
             </thead>
             <tbody>
               <tr>
-                <td rowspan="4">Projects &amp; assets</td>
+                <td rowspan="11">Projects &amp; assets</td>
                 <td><code>app_status</code></td>
                 <td>App version, current project, asset count</td>
               </tr>
@@ -292,8 +292,89 @@
                 <td>Update text assets (scripts / notes; synced to the UI)</td>
               </tr>
               <tr>
+                <td><code>folder_create</code></td>
+                <td>Create a library folder, returns <code>folderId</code></td>
+              </tr>
+              <tr>
+                <td><code>asset_create</code></td>
+                <td>Create an asset (script / game design doc / world / storyboard / canvas / image / video / voice / 2D action)</td>
+              </tr>
+              <tr>
+                <td><code>asset_import</code></td>
+                <td>Import local files by absolute path (image / video / audio / text, up to 50 per call)</td>
+              </tr>
+              <tr>
+                <td><code>asset_rename</code></td>
+                <td>Rename an asset (synced to the UI)</td>
+              </tr>
+              <tr>
+                <td><code>asset_move</code></td>
+                <td>Move an asset between library folders (media files move with it)</td>
+              </tr>
+              <tr>
+                <td><code>asset_delete</code></td>
+                <td>Remove an asset from the library (refuses when still referenced)</td>
+              </tr>
+              <tr>
                 <td><code>folder_list</code></td>
                 <td>Library folders (source of folderId for generation tools)</td>
+              </tr>
+              <tr>
+                <td rowspan="14">Delivery &amp; post</td>
+                <td><code>transcribe_audio</code></td>
+                <td>Transcribe audio / video into timestamped segments (subtitle draft)</td>
+              </tr>
+              <tr>
+                <td><code>audio_separate</code></td>
+                <td>Separate vocals / instrumental (outputs under <code>Cache/Separated/</code>)</td>
+              </tr>
+              <tr>
+                <td><code>storage_upload</code></td>
+                <td>Upload project media to object storage, returns a shareable URL</td>
+              </tr>
+              <tr>
+                <td><code>asset_package_export</code></td>
+                <td>Export a <code>.aipackage</code> delivery pack (headless calls pass an absolute path)</td>
+              </tr>
+              <tr>
+                <td><code>asset_package_import</code></td>
+                <td>Import a <code>.aipackage</code> pack (optionally a guid subset)</td>
+              </tr>
+              <tr>
+                <td><code>stage2d_spine_export</code></td>
+                <td>Export a 2D stage rig as a Spine skeleton pack (part pages + skeleton.json + .atlas)</td>
+              </tr>
+              <tr>
+                <td><code>ui_kit_extract</code></td>
+                <td>Slice a full-screen UI sheet into part PNGs plus a ui-kit.json nine-slice manifest</td>
+              </tr>
+              <tr>
+                <td><code>asset_qc</code></td>
+                <td>Engine-readiness check for image assets (holes / fringe / debris / edge clipping / size / naming, read-only)</td>
+              </tr>
+              <tr>
+                <td><code>asset_qc_fix</code></td>
+                <td>Edge decontamination rework into a new asset, with before/after metrics</td>
+              </tr>
+              <tr>
+                <td><code>timeline_read</code></td>
+                <td>Read the timeline: clips / settings / total duration, filterable by track</td>
+              </tr>
+              <tr>
+                <td><code>timeline_rough_cut</code></td>
+                <td>Smart rough cut: squeeze silences out by transcript and ripple the whole sequence, plan-only by default</td>
+              </tr>
+              <tr>
+                <td><code>timeline_export</code></td>
+                <td>Render the timeline to MP4 (transitions / mixing / burned-in subtitles / watermark)</td>
+              </tr>
+              <tr>
+                <td><code>timeline_edit</code></td>
+                <td>Edit the timeline: lay media on tracks / adjust volume, transitions, subtitle text / remove clips / rebuild subtitles from a transcript</td>
+              </tr>
+              <tr>
+                <td><code>timeline_preview</code></td>
+                <td>See the picture: frames captured from the same filter graph as the export, returned to multimodal clients</td>
               </tr>
               <tr>
                 <td rowspan="6">Planning &amp; execution</td>
@@ -403,7 +484,8 @@
           <h2>6. Security &amp; limitations</h2>
           <ul>
             <li>The service listens on <code>127.0.0.1</code> only, with token auth; file access is confined to the
-              project root; secrets are never exposed.</li>
+              project root (the single exception is <code>asset_import</code>, which reads absolute paths you pass in
+              and copies them into the project); secrets are never exposed.</li>
             <li>Concurrency gate: <code>generate_image</code> / <code>generate_speech</code> /
               <code>workflow_plan</code> run at most 3 concurrently (<code>AIAE_MCP_GEN_LIMIT</code> tunable);
               excess queue is rejected with a friendly error.</li>

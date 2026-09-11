@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, readFileSync, statSync, appendFileSync, renameSy
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
-import { createMcpProtocolHandler } from '@shared/mcpProtocol'
+import type { AssetInfo } from '@shared/domain'
+import { UI_KIT_PART_KINDS } from '@shared/gameAssets'
+import { createMcpProtocolHandler, type McpToolImage } from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
@@ -14,15 +16,44 @@ import {
   summarizeMediaUrlForLog,
   summarizeReferenceListForLog,
   type GraphDocument,
-  type GraphRunLogApiCall
+  contentEndSecOfTimeline,
+  readScriptTimelineFromGenParams,
+  type GraphRunLogApiCall,
+  type ScriptTimelineClip,
+  type ScriptTimelineDocument,
+  type ScriptTimelineTrackKind,
+  type TimelineExportClip,
+  type TimelineExportInput
 } from '@shared/graph'
+import {
+  planTimelineRoughCut,
+  type TimelineRoughCutWarning
+} from '@shared/graph/timelineCut'
+import {
+  applyTimelineEdits,
+  type TimelineClipDraft,
+  type TimelineClipPatch,
+  type TimelineEditFailure,
+  type TimelineEditOperation
+} from '@shared/graph/timelineEdit'
+import {
+  DEFAULT_PREVIEW_FRAMES,
+  MAX_PREVIEW_FRAMES,
+  planPreviewTimestamps,
+  type TimelinePreviewNote
+} from '@shared/graph/timelinePreview'
+import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
 import {
   IpcChannels,
   type AskUserAnswer,
   type CommitAiWorkflowInput,
+  type CreateFolderInput,
   type CreateProjectInput,
   type McpGraphEditResultPayload,
   type McpGraphIconRefineResultPayload,
+  type McpRenderJobKind,
+  type McpRenderJobPayload,
+  type McpRenderJobResultPayload,
   type McpRestartInput,
   type McpServerInfo,
   type McpTaskReportPayload,
@@ -46,6 +77,14 @@ import {
   type VoiceProfile
 } from '@shared/voiceProfiles'
 import {
+  MCP_ASSET_IMPORT_LIMIT,
+  MCP_CREATABLE_ASSET_TYPES,
+  isMcpCreatableAssetType,
+  normalizeImportFilePaths,
+  normalizeProjectRelativePath,
+  normalizeStringList
+} from '@shared/mcpAssetWrite'
+import {
   getObjectStorageBucket,
   pickActiveObjectStorage,
   type ObjectStorageProviderInstance
@@ -53,16 +92,20 @@ import {
 import type {
   GenerateImageInput,
   GenerateModel3dInput,
-  GenerateVideoInput
+  GenerateVideoInput,
+  TranscribeAudioSegment
 } from '@shared/modelProvider'
 import { modelProviderFacade } from './modelProviders'
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import { commitAiWorkflow, planAiWorkflow } from './graphPlanService'
 import { projectService } from './projectService'
+import { assetPackageService } from './assetPackageService'
+import { uploadProjectMedia } from './objectStorageUploadService'
 import { settingsService } from './settingsService'
 import { updateService } from './updateService'
 import { videoJobService } from './videoJobService'
+import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
 
 /**
  * 本地 MCP 工具服务：在 127.0.0.1 上暴露一组工具端点，供 stdio MCP 桥
@@ -469,6 +512,847 @@ const TOOL_DEFS: McpToolDef[] = [
       const updated = projectService.writeAssetText(input)
       broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
       return { id: updated.id, updatedAt: updated.updatedAt }
+    }
+  },
+  {
+    name: 'folder_create',
+    title: '新建资产库文件夹',
+    description:
+      '在当前工程的资产库中新建文件夹，返回文件夹 id（可作为 asset_import / asset_create / generate_* 的 folderId）。应用的目录树会同步刷新。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '文件夹名称' },
+        parentId: { type: 'string', description: '父文件夹 id（可选，缺省建在资产库根目录）' }
+      },
+      required: ['name']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const input: CreateFolderInput = {
+        name: readString(args, 'name'),
+        parentId: optionalString(args, 'parentId') ?? null
+      }
+      const folder = projectService.createFolder(input)
+      broadcastToAllWindows(IpcChannels.FOLDERS_UPDATED, null)
+      return { folderId: folder.id, name: folder.name, parentId: folder.parentId ?? null }
+    }
+  },
+  {
+    name: 'asset_create',
+    title: '新建资产',
+    description:
+      '在资产库新建一个资产，返回资产 id，应用界面同步出现。支持类型：screenplay 剧本 / gameSystem 策划案 / world 世界观 / beat 分镜 / subgraph 子图 / canvas 自由画布 / image 图片 / video 视频 / voice 声音 / motion2d 2D 动作。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: '资产类型（见工具描述白名单）' },
+        name: { type: 'string', description: '资产名称（可选，缺省按类型自动命名）' },
+        folderId: { type: 'string', description: '目标资产库文件夹 id（可选，缺省放资产库根目录）' },
+        prompt: { type: 'string', description: '初始提示词 / 摘要（可选）' },
+        notes: { type: 'string', description: '备注（可选）' }
+      },
+      required: ['type']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const type = readString(args, 'type').trim()
+      if (!isMcpCreatableAssetType(type)) {
+        throw new Error(
+          `不支持的资产类型：${type}（可选：${MCP_CREATABLE_ASSET_TYPES.join(' / ')}）`
+        )
+      }
+      const folderId = optionalString(args, 'folderId') ?? null
+      assertFolderExists(folderId)
+      const asset = projectService.createAsset({
+        type,
+        name: optionalString(args, 'name'),
+        folderId,
+        prompt: optionalString(args, 'prompt'),
+        notes: optionalString(args, 'notes')
+      })
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      return {
+        assetId: asset.id,
+        type: asset.type,
+        name: asset.name,
+        folderId: asset.folderId ?? null
+      }
+    }
+  },
+  {
+    name: 'asset_import',
+    title: '导入素材',
+    description:
+      '把本机绝对路径上的媒体文件导入当前工程资产库（图片 / 视频 / 音频 / 文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePaths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `本机绝对路径列表（最多 ${MCP_ASSET_IMPORT_LIMIT} 条）`
+        },
+        folderId: { type: 'string', description: '目标资产库文件夹 id（可选，缺省放资产库根目录）' }
+      },
+      required: ['filePaths']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const filePaths = normalizeImportFilePaths(args.filePaths)
+      if (!filePaths.length) {
+        throw new Error('缺少必填参数「filePaths」（非空的本机绝对路径字符串数组）')
+      }
+      if (filePaths.length > MCP_ASSET_IMPORT_LIMIT) {
+        throw new Error(
+          `单次最多导入 ${MCP_ASSET_IMPORT_LIMIT} 个文件（本次 ${filePaths.length} 个），请分批调用`
+        )
+      }
+      const folderId = optionalString(args, 'folderId') ?? null
+      assertFolderExists(folderId)
+      const result = projectService.importAssets(filePaths, folderId)
+      for (const asset of result.imported) {
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      }
+      return {
+        imported: result.imported.map((asset) => ({
+          assetId: asset.id,
+          type: asset.type,
+          name: asset.name,
+          relativePath: asset.relativePath
+        })),
+        skipped: result.skipped
+      }
+    }
+  },
+  {
+    name: 'asset_rename',
+    title: '重命名资产',
+    description: '修改资产名称，应用界面同步刷新。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string' },
+        name: { type: 'string', description: '新名称（空白字符会被裁剪）' }
+      },
+      required: ['assetId', 'name']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const updated = projectService.renameAsset(
+        readString(args, 'assetId'),
+        readString(args, 'name')
+      )
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
+      return { assetId: updated.id, name: updated.name }
+    }
+  },
+  {
+    name: 'asset_move',
+    title: '移动资产',
+    description:
+      '把资产移动到指定资产库文件夹（省略 folderId 表示移回资产库根目录）；媒体文件随目录一起搬移，返回搬移后的相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string' },
+        folderId: { type: 'string', description: '目标文件夹 id；省略即移回资产库根目录' }
+      },
+      required: ['assetId']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const asset = findAssetOrThrow(readString(args, 'assetId'))
+      const folderId = optionalString(args, 'folderId') ?? null
+      assertFolderExists(folderId)
+      const updated = projectService.updateAsset({ ...asset, folderId })
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
+      return {
+        assetId: updated.id,
+        folderId: updated.folderId ?? null,
+        relativePath: updated.relativePath
+      }
+    }
+  },
+  {
+    name: 'asset_delete',
+    title: '删除资产',
+    description:
+      '从资产库移除资产（连同其元数据；源媒体文件保留在工程目录内）。默认拒绝删除仍被其他资产 / 节点引用的资产，确认影响后传 force=true 强制删除。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string' },
+        force: { type: 'boolean', description: '被引用时是否强制删除（默认 false）' }
+      },
+      required: ['assetId']
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const asset = projectService.listAssets().find((item) => item.id === assetId)
+      if (!asset) return { assetId, deleted: false, reason: '资产不存在（可能已被删除）' }
+      const { hits } = projectService.findAssetReferences([assetId])
+      if (hits.length && args.force !== true) {
+        const sites = hits
+          .slice(0, 5)
+          .map((hit) => hit.site.assetName)
+          .join('、')
+        throw new Error(
+          `资产「${asset.name}」被 ${hits.length} 处引用（${sites}），确认无影响后传 force=true 强制删除`
+        )
+      }
+      projectService.deleteAsset(assetId)
+      broadcastToAllWindows(IpcChannels.ASSET_REMOVED, assetId)
+      return { assetId, name: asset.name, deleted: true, referencedBy: hits.length }
+    }
+  },
+  {
+    name: 'transcribe_audio',
+    title: '转写音频 / 视频',
+    description:
+      '把工程内的音频 / 视频文件转写成带时间戳的分段文本（台词表 / 字幕底稿），返回 segments（startSec / endSec / text）与整段文本。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '音频 / 视频资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内相对路径（与 assetId 二选一）' },
+        language: { type: 'string', description: '音频语言代码（如 zh / en），可提升准确率' },
+        prompt: { type: 'string', description: '提示词：纠正专有名词识别（可选）' },
+        model: { type: 'string', description: '转写模型 id（可选，缺省由适配器决定）' }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { relativePath } = resolveProjectRelativePath(args, '音频 / 视频')
+      const result = await modelProviderFacade.transcribeAudio({
+        relativePath,
+        language: optionalString(args, 'language'),
+        prompt: optionalString(args, 'prompt'),
+        model: optionalString(args, 'model')
+      })
+      return {
+        relativePath,
+        model: result.model,
+        language: result.language ?? null,
+        text: result.text ?? null,
+        segments: result.segments
+      }
+    }
+  },
+  {
+    name: 'audio_separate',
+    title: '人声 / 伴奏分离',
+    description:
+      '对工程内的音频做音源分离，产出人声与伴奏两条音轨（落工程 Cache/Separated/，不登记进资产库），返回两条相对路径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '声音资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内相对路径（与 assetId 二选一）' }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { relativePath } = resolveProjectRelativePath(args, '音频')
+      return projectService.separateAudio(relativePath)
+    }
+  },
+  {
+    name: 'storage_upload',
+    title: '上传素材到对象存储',
+    description:
+      '把工程内的媒体文件上传到已配置的对象存储，返回可分享的公网 / 预签名 URL（用于交付、外部评审）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '要上传的资产 id（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内相对路径（与 assetId 二选一）' }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { relativePath } = resolveProjectRelativePath(args, '媒体')
+      const uploaded = await uploadProjectMedia(relativePath)
+      return {
+        relativePath,
+        url: uploaded.url,
+        objectKey: uploaded.objectKey ?? null,
+        bytes: uploaded.bytes ?? null,
+        sourceLabel: uploaded.sourceLabel ?? null
+      }
+    }
+  },
+  {
+    name: 'asset_package_export',
+    title: '导出资产包',
+    description:
+      '把指定资产 / 文件夹（可选带依赖与生成缓存）打包成 .aipackage 交付包。必须给绝对路径 targetPath，不走「另存为」对话框。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetPath: { type: 'string', description: '输出绝对路径（缺扩展名时自动补 .aipackage）' },
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要打包的资产 id（与 folderIds 至少给一个）'
+        },
+        folderIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要打包的资产库文件夹 id（含子文件夹）'
+        },
+        includeDependencies: { type: 'boolean', description: '是否收集依赖资产（默认 true）' },
+        includeGeneratedOutputs: { type: 'boolean', description: '是否一并打包生成缓存（默认 false）' }
+      },
+      required: ['targetPath']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetIds = normalizeStringList(args.assetIds)
+      const folderIds = normalizeStringList(args.folderIds)
+      if (!assetIds.length && !folderIds.length) {
+        throw new Error('请至少提供 assetIds 或 folderIds 之一（先建好文件夹本身不算内容）')
+      }
+      for (const id of assetIds) findAssetOrThrow(id)
+      for (const id of folderIds) assertFolderExists(id)
+      return assetPackageService.exportPackage({
+        assetIds,
+        folderIds,
+        includeDependencies: args.includeDependencies !== false,
+        includeGeneratedOutputs: args.includeGeneratedOutputs === true,
+        targetPath: readString(args, 'targetPath').trim()
+      })
+    }
+  },
+  {
+    name: 'asset_package_import',
+    title: '导入资产包',
+    description:
+      '把 .aipackage 交付包导入当前工程（可按 guid 选子集、可选是否带依赖），返回逐条 导入 / 复用 / 重映射 报告，界面素材库同步刷新。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        packPath: { type: 'string', description: '资产包绝对路径（必须提供，不弹「打开」对话框）' },
+        destinationFolderId: { type: 'string', description: '导入到指定资产库文件夹（可选）' },
+        selectedGuids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '仅导入这些 guid（省略 = 包内全部；会自动补齐祖先文件夹）'
+        },
+        includeDependencies: { type: 'boolean', description: '是否一并导入依赖（默认 true）' }
+      },
+      required: ['packPath']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const destinationFolderId = optionalString(args, 'destinationFolderId') ?? null
+      assertFolderExists(destinationFolderId)
+      const selectedGuids = normalizeStringList(args.selectedGuids)
+      const result = await assetPackageService.importPackage({
+        packPath: readString(args, 'packPath').trim(),
+        destinationFolderId,
+        selectedGuids: selectedGuids.length ? selectedGuids : undefined,
+        includeDependencies: args.includeDependencies !== false
+      })
+      if (result.importedAssets || result.importedFolders) {
+        broadcastToAllWindows(IpcChannels.FOLDERS_UPDATED, null)
+      }
+      return {
+        importedAssets: result.importedAssets,
+        importedFolders: result.importedFolders,
+        reusedFolders: result.reusedFolders,
+        reused: result.reused,
+        remapped: result.remapped,
+        restoredGenerated: result.restoredGenerated,
+        items: result.items.slice(0, 50)
+      }
+    }
+  },
+  {
+    name: 'stage2d_spine_export',
+    title: '导出 Spine 骨架包',
+    description:
+      '把宿主资产图里 stage.2d「2D 舞台」节点的骨骼装配导出成 Spine 可用的骨架包：挂到关节的部件按放置计划裁成独立透明 PNG 页，加 skeleton.json 与 .atlas，落 Assets/2D/Spine/<包名>/。图编辑器正在界面中打开时会被拒绝（编辑器里可能有未落盘的装配 / 摆姿，导出的会是旧状态）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '宿主资产 id（含 stage.2d 节点的图）' },
+        nodeId: { type: 'string', description: '指定 2D 舞台节点 id（图里有多个时必须指定）' },
+        baseName: { type: 'string', description: '骨架包名（默认 skeleton）' }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId').trim()
+      findAssetOrThrow(assetId)
+      const nodeId = optionalString(args, 'nodeId')?.trim()
+      const baseName = optionalString(args, 'baseName')?.trim()
+      return runRenderJob('stage2d-spine-export', {
+        assetId,
+        ...(nodeId ? { nodeId } : {}),
+        ...(baseName ? { baseName } : {})
+      })
+    }
+  },
+  {
+    name: 'ui_kit_extract',
+    title: '提取 UI 部件（九宫格）',
+    description:
+      '把整屏 UI 效果图按框选矩形逐部件裁成透明 PNG 落资产库（Assets/UIKits/<源图名>/），同目录写出 ui-kit.json 九宫格清单（含每部件 border / safe 边距，可直接给引擎做九宫格拉伸）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '整屏 UI 图片资产 id' },
+        parts: {
+          type: 'array',
+          description: '部件列表（源图像素坐标；面板 / 按钮 / 输入框 / 页签 / 弹窗）',
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: [...UI_KIT_PART_KINDS], description: '部件类型' },
+              name: { type: 'string', description: '部件名（同时作为落盘文件名，建议 kebab-case）' },
+              rect: {
+                type: 'object',
+                description: '源图内的像素矩形（左上角坐标 + 宽高）',
+                properties: {
+                  x: { type: 'number' },
+                  y: { type: 'number' },
+                  width: { type: 'number' },
+                  height: { type: 'number' }
+                },
+                required: ['x', 'y', 'width', 'height']
+              },
+              border: {
+                type: 'object',
+                description: '九宫格边距（像素，可选）',
+                properties: {
+                  left: { type: 'number' },
+                  top: { type: 'number' },
+                  right: { type: 'number' },
+                  bottom: { type: 'number' }
+                }
+              },
+              safe: {
+                type: 'object',
+                description: '安全区（像素，可选）',
+                properties: {
+                  left: { type: 'number' },
+                  top: { type: 'number' },
+                  right: { type: 'number' },
+                  bottom: { type: 'number' }
+                }
+              }
+            },
+            required: ['kind', 'name', 'rect']
+          }
+        },
+        outputDir: {
+          type: 'string',
+          description: '输出目录（工程内相对路径，默认 Assets/UIKits/<源图名>）'
+        }
+      },
+      required: ['assetId', 'parts']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId').trim()
+      findAssetOrThrow(assetId)
+      const parts = Array.isArray(args.parts) ? args.parts : []
+      if (!parts.length) throw new Error('请给出至少一个部件（parts）')
+      const outputDir = optionalString(args, 'outputDir')?.trim()
+      return runRenderJob('ui-kit-extract', {
+        assetId,
+        parts,
+        ...(outputDir ? { outputDir } : {})
+      })
+    }
+  },
+  {
+    name: 'asset_qc',
+    title: '资产规范质检',
+    description:
+      '对图片资产做「能不能直接进引擎」的本地像素体检（不耗模型、不写盘、不改资产）：抠图漏底（主体内部透明孔洞）、边缘白边 / 光晕残留（半透明过渡像素偏亮或偏暗，量化指标 lumaDelta）、半透明碎屑、主体贴边可能已被裁切、空图、尺寸超 8192、命名规范（默认不查，naming=true 才查）。一次最多 40 个资产。返回每个资产的问题码 + 证据数值（metrics / bounds / coverage），以及可自动返工的问题码清单——要真修请调 asset_qc_fix。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '单个体检的图片资产 id' },
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '批量体检的图片资产 id 列表（与 assetId 二选一，上限 40）'
+        },
+        naming: { type: 'boolean', description: '是否附带命名规范检查（默认 false）' }
+      }
+    },
+    handler: (args) => runAssetQcTool(args, false)
+  },
+  {
+    name: 'asset_qc_fix',
+    title: '资产质检返工（去边缘污染）',
+    description:
+      '对图片资产执行安全返工：按反混合公式剔除半透明边缘里残留的背景色（白边 / 轮廓光晕），修完自动再体检一遍，返回值里给出修复前后对比（fixed.resolved / fixed.metrics）。只修「边缘白边」这一项安全缺陷，且产出**新资产**落 Assets/QC/<原名>/，不覆盖原件。抠图漏底（镂空可能是刻意设计）、主体贴边、命名只报告不自动改（改名请用 asset_rename）。一次最多 40 个资产。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '要返工的图片资产 id' },
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '批量返工的图片资产 id 列表（与 assetId 二选一，上限 40）'
+        },
+        naming: { type: 'boolean', description: '是否附带命名规范检查（默认 false）' }
+      }
+    },
+    handler: (args) => runAssetQcTool(args, true)
+  },
+  {
+    name: 'timeline_read',
+    title: '读取成片时间线',
+    description:
+      '读剧本资产里的成片时间线：返回片段列表（轨道 / 起止秒 / 源内取段起点 / 字幕文本 / 音量 / 淡入淡出 / 转场 / 画中画位置）、时间线设置（导出画布、帧率、码率、字幕样式、混音增益、水印）与总时长。所有时间坐标都是秒。可用 track 只看某条轨（video / overlay / voice / subtitle / music / sfx），用 limit 限制返回片段数。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '剧本资产 id（用 asset_list 查询）' },
+        nodeId: {
+          type: 'string',
+          description: '时间线节点 id（同一资产挂多条时间线时用；缺省读默认时间线）'
+        },
+        track: {
+          type: 'string',
+          enum: ['video', 'overlay', 'voice', 'subtitle', 'music', 'sfx'],
+          description: '只看某条轨'
+        },
+        limit: { type: 'number', description: '最多返回多少条片段（默认 200，上限 1000）' }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const nodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const track = optionalString(args, 'track')?.trim()
+      const filtered = track ? doc.clips.filter((clip) => String(clip.track) === track) : doc.clips
+      const limit = Math.min(1000, Math.max(1, Math.round(Number(args.limit) || 200)))
+      const clips = filtered.slice(0, limit)
+      const trackCounts: Record<string, number> = {}
+      for (const clip of doc.clips) {
+        trackCounts[clip.track] = (trackCounts[clip.track] ?? 0) + 1
+      }
+      return {
+        assetId,
+        assetName: asset.name,
+        nodeId: nodeId ?? null,
+        durationSec: contentEndSecOfTimeline(doc.clips),
+        declaredDurationSec: doc.settings?.durationSec ?? null,
+        clipCount: doc.clips.length,
+        returnedClipCount: clips.length,
+        truncated: filtered.length > clips.length,
+        trackCounts,
+        mutedTracks: doc.mutedTracks ?? [],
+        settings: doc.settings ?? {},
+        clips
+      }
+    }
+  },
+  {
+    name: 'timeline_rough_cut',
+    title: '智能粗剪（按转写挤掉静默）',
+    description:
+      '按配音转写把成片时间线里的静默挤掉：每句语音前后各留呼吸边距，净静默超过阈值的段落连同其它轨一起剪掉并整体前移（ripple），字幕 / 音乐 / 特效轨同步跟随；被切开的片段会按取段起点正确重算，转场与淡入淡出只保留在片段真正的首尾。只动配音轨覆盖的时间段，配音轨之外（空镜、纯音乐）一律不碰；某条配音片段一句语音都没匹配上时整段保留——宁可漏剪，不可误剪。默认 dry-run 只回计划摘要（beforeSec / afterSec / removedSec / cuts），apply=true 才写回剧本资产（需该剧本的时间线编辑器已关闭）。segments 请先用 transcribe_audio 转写配音资产后原样传入（源文件时间戳，会按片段 sourceOffsetSec 自动平移）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '剧本资产 id' },
+        segments: {
+          type: 'array',
+          description: '配音转写分段（transcribe_audio 的 segments 原样传入）',
+          items: {
+            type: 'object',
+            properties: {
+              startSec: { type: 'number', description: '语音起始（源文件秒）' },
+              endSec: { type: 'number', description: '语音结束（源文件秒）' },
+              text: { type: 'string', description: '该句文本（本工具不读，仅便于原样透传）' }
+            },
+            required: ['startSec', 'endSec']
+          }
+        },
+        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        paddingSec: { type: 'number', description: '每句语音前后保留的呼吸边距（秒，默认 0.2）' },
+        minSilenceSec: { type: 'number', description: '净静默达到该时长才剪（秒，默认 0.8）' },
+        apply: { type: 'boolean', description: '是否把计划写回时间线（默认 false，只回计划不落盘）' }
+      },
+      required: ['assetId', 'segments']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const nodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      if (!doc.clips.length) {
+        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段（先在界面里把素材铺上轨）`)
+      }
+      const segments = readSpeechSegments(args.segments)
+      const paddingSec = Number(args.paddingSec)
+      const minSilenceSec = Number(args.minSilenceSec)
+      const plan = planTimelineRoughCut({
+        clips: doc.clips,
+        segments,
+        options: {
+          ...(Number.isFinite(paddingSec) ? { paddingSec } : {}),
+          ...(Number.isFinite(minSilenceSec) ? { minSilenceSec } : {})
+        }
+      })
+      const summary = {
+        beforeSec: plan.beforeSec,
+        afterSec: plan.afterSec,
+        removedSec: plan.removedSec,
+        speechSec: plan.speechSec,
+        cutCount: plan.cuts.length,
+        cuts: plan.cuts.slice(0, 50),
+        cutsTruncated: plan.cuts.length > 50,
+        splitCount: plan.splitCount,
+        droppedCount: plan.droppedCount,
+        warnings: plan.warnings.map(roughCutWarningText)
+      }
+      if (args.apply !== true || !plan.cuts.length) {
+        return { applied: false, ...summary }
+      }
+      await runRenderJob('timeline-document-apply', {
+        assetId,
+        ...(nodeId ? { nodeId } : {}),
+        document: { ...doc, clips: plan.clips }
+      })
+      return { applied: true, ...summary }
+    }
+  },
+  {
+    name: 'timeline_export',
+    title: '导出成片（ffmpeg）',
+    description:
+      '把剧本资产的时间线合成 MP4：视频轨拼接 + 转场 + 画中画叠加 + 配音 / 音乐混音（含音量与淡入淡出）+ 字幕烧录 + 水印。需要系统可用 ffmpeg（设置页可一键安装）。无界面链路必须给绝对路径 targetPath（缺扩展名自动补 .mp4、自动建父目录）；界面上走「另存为」对话框。产物会登记为工程内的视频资产。耗时随总时长与分辨率增长，长片可能数分钟。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '剧本资产 id' },
+        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        targetPath: {
+          type: 'string',
+          description: '输出文件绝对路径（无界面链路必填，如 D:/out/final.mp4）'
+        }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const nodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      if (!doc.clips.length) {
+        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段，无从导出`)
+      }
+      const targetPath = optionalString(args, 'targetPath')?.trim()
+      const input = buildTimelineExportInput(doc, {
+        defaultFileName: `${asset.name}.mp4`,
+        ...(targetPath ? { targetPath } : {})
+      })
+      const durationSec = input.durationSec
+      if (durationSec <= 0) throw new Error('时间线内容时长为 0，无从导出')
+      const result = await exportScriptTimeline(input)
+      if (!result.ok) {
+        if (result.canceled) {
+          throw new Error('导出已取消：无界面 / Agent 链路必须显式传绝对路径 targetPath')
+        }
+        throw new Error(result.error)
+      }
+      return {
+        ok: true,
+        filePath: result.filePath,
+        assetId: result.assetId ?? null,
+        durationSec,
+        clipCount: input.clips.length
+      }
+    }
+  },
+  {
+    name: 'timeline_edit',
+    title: '编辑成片时间线',
+    description:
+      '在剧本资产的时间线上增删改片段，四类指令按 operations 顺序执行：add（铺素材上轨；每枚给 track 与 durationSec，assetId 会自动补媒体路径与标题，缺 startSec 时自动排到该轨轨尾、多枚依次紧接）/ update（按片段 id 改字段：音量 / 淡入淡出 / 转场 / 时长 / 字幕文本 / 画中画位置；传 null 表示清除该字段）/ remove（按 id 删）/ subtitles（把 transcribe_audio 的分段铺成字幕，按配音片段的取段起点对齐；默认替换该配音区间上的旧字幕，mode=append 则只追加）。单条指令失败只记入 failures 并继续执行其余指令，返回里带 added / removed 的片段 id。默认 dry-run 只回报告，apply=true 才写回剧本资产（需该剧本的时间线编辑器已关闭）。片段 id 用 timeline_read 查；粗剪会切分片段并改名（clip-1 → clip-1~2），重排后再编辑请重新读一次。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '剧本资产 id' },
+        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        operations: {
+          type: 'array',
+          description: '按顺序执行的编辑指令',
+          items: {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                enum: ['add', 'update', 'remove', 'subtitles'],
+                description: '指令类型'
+              },
+              clips: {
+                type: 'array',
+                description:
+                  'add：要铺的片段。每项需含 track（video / overlay / voice / subtitle / music / sfx）与 durationSec，可用 assetId 或工程内相对路径 relativePath 指定媒体，startSec 缺省排到该轨轨尾；也支持 volume / fadeInSec / overlayX 等片段字段',
+                items: { type: 'object' }
+              },
+              gapSec: {
+                type: 'number',
+                description: 'add：片段之间（以及与轨内既有内容之间）留的空隙秒数，默认 0'
+              },
+              clipId: { type: 'string', description: 'update：要改的片段 id' },
+              patch: {
+                type: 'object',
+                description:
+                  'update：要改的字段（text / title / startSec / durationSec / sourceOffsetSec / volume / opacity / fadeInSec / fadeOutSec / overlayX / overlayY / overlayWidth / overlayHeight / transitionInSec / transitionOutSec / transitionType；传 null 表示清除）'
+              },
+              clipIds: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'remove：要删的片段 id 列表'
+              },
+              voiceClipId: {
+                type: 'string',
+                description: 'subtitles：配音轨片段 id（字幕按它的位置与取段起点对齐）'
+              },
+              segments: {
+                type: 'array',
+                description: 'subtitles：transcribe_audio 返回的分段原样传入（需要 text）',
+                items: {
+                  type: 'object',
+                  properties: {
+                    startSec: { type: 'number', description: '源文件时间戳（秒）' },
+                    endSec: { type: 'number' },
+                    text: { type: 'string' }
+                  },
+                  required: ['startSec', 'endSec', 'text']
+                }
+              },
+              mode: {
+                type: 'string',
+                enum: ['replace', 'append'],
+                description: 'subtitles：replace（默认，替换该配音区间上的旧字幕）或 append（直接追加）'
+              }
+            },
+            required: ['op']
+          }
+        },
+        apply: { type: 'boolean', description: '是否写回时间线（默认 false，只回报告不落盘）' }
+      },
+      required: ['assetId', 'operations']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const nodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rows = readTimelineEditRows(args.operations)
+      // 同一批编辑共用一份 id 工厂：新增片段与字幕片段不会撞名
+      const makeClipId = mcpClipIdFactory()
+      const operations = buildTimelineEditOperations(rows, doc, makeClipId)
+      const result = applyTimelineEdits(doc, operations, { makeClipId })
+      const beforeIds = new Set(doc.clips.map((clip) => clip.id))
+      const afterIds = new Set(result.document.clips.map((clip) => clip.id))
+      const summary = {
+        assetId,
+        assetName: asset.name,
+        beforeClipCount: doc.clips.length,
+        afterClipCount: result.document.clips.length,
+        added: result.added,
+        updated: result.updated,
+        removed: result.removed,
+        addedClipIds: result.document.clips
+          .filter((clip) => !beforeIds.has(clip.id))
+          .map((clip) => clip.id),
+        removedClipIds: doc.clips.filter((clip) => !afterIds.has(clip.id)).map((clip) => clip.id),
+        durationSec: contentEndSecOfTimeline(result.document.clips),
+        failures: result.failures.map(timelineEditFailureText)
+      }
+      const changed = result.added + result.updated + result.removed > 0
+      if (args.apply !== true || !changed) {
+        return { applied: false, ...summary }
+      }
+      await runRenderJob('timeline-document-apply', {
+        assetId,
+        ...(nodeId ? { nodeId } : {}),
+        document: result.document
+      })
+      return { applied: true, ...summary }
+    }
+  },
+  {
+    name: 'timeline_preview',
+    title: '看成片画面（抽帧）',
+    description:
+      '把剧本资产的时间线渲染成几张静帧直接回给你看——与 timeline_export 走同一条 ffmpeg 滤镜图，转场 / 画中画 / 烧录字幕 / 水印都会出现在画面里，所以「预览看到的就是成片」。默认按成片时长均匀抽 3 帧（取每格中心，避开开头淡入与结尾淡出）；也可以用 atSec 定点检查某一刻（比如刚加的转场落在 12.5 秒）。每张图带自己的时间点，图随本次响应回给客户端：多模态客户端能直接看到画面，纯文本客户端只会看到时间点列表。需要系统可用 ffmpeg；时间点越靠后解码越久，抽几帧比导出一次便宜得多，但仍不是瞬时。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '剧本资产 id' },
+        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        count: {
+          type: 'number',
+          description: `均匀抽帧数（1~${MAX_PREVIEW_FRAMES}，默认 ${DEFAULT_PREVIEW_FRAMES}）；给了 atSec 时忽略`
+        },
+        atSec: {
+          type: 'array',
+          items: { type: 'number' },
+          description: `指定抽帧时间点（秒，最多 ${MAX_PREVIEW_FRAMES} 个）：越界会夹到片内，重复的会合并`
+        },
+        width: { type: 'number', description: '预览帧宽（160~1280，默认 640）' }
+      },
+      required: ['assetId']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = readString(args, 'assetId')
+      const nodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      if (!doc.clips.length) {
+        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段，没有可预览的画面`)
+      }
+      const input = buildTimelineExportInput(doc)
+      const plan = planPreviewTimestamps({
+        durationSec: input.durationSec,
+        ...(args.count !== undefined ? { count: Number(args.count) } : {}),
+        ...(Array.isArray(args.atSec) ? { atSec: args.atSec.map((sec) => Number(sec)) } : {})
+      })
+      if (!plan.timestamps.length) {
+        const reason = plan.notes
+          .map(previewNoteText)
+          .filter(Boolean)
+          .join('；')
+        throw new Error(reason || '没有可抽帧的画面')
+      }
+      const width = Number(args.width)
+      const result = await renderTimelineFrames(input, plan.timestamps, {
+        ...(Number.isFinite(width) ? { width } : {})
+      })
+      if (!result.ok) throw new Error(result.error)
+      return {
+        ok: true,
+        assetId,
+        assetName: asset.name,
+        durationSec: input.durationSec,
+        frameWidth: result.width,
+        frames: result.frames.map((frame) => ({
+          timeSec: frame.timeSec,
+          at: formatTimelineSec(frame.timeSec)
+        })),
+        notes: [
+          ...plan.notes.map(previewNoteText).filter(Boolean),
+          `${result.frames.length} 张画面已随本次响应回给客户端（纯文本客户端只能看到上面的时间点）`
+        ],
+        mcpImages: result.frames.map((frame) => frame.dataUrl)
+      }
     }
   },
   {
@@ -1393,12 +2277,381 @@ const TOOL_DEFS: McpToolDef[] = [
  */
 function applyAssetFolder(assetId: string, folderId: string | undefined): void {
   if (!folderId) return
+  assertFolderExists(folderId)
+  const asset = projectService.listAssets().find((item) => item.id === assetId)
+  if (asset) projectService.updateAsset({ ...asset, folderId })
+}
+
+/** 校验资产库文件夹 id 存在（不存在直接报错，避免资产落进无效目录） */
+function assertFolderExists(folderId: string | null): void {
+  if (!folderId) return
   const folders = projectService.listFolders()
   if (!folders.some((folder) => folder.id === folderId)) {
     throw new Error(`资产库文件夹不存在：${folderId}（用 folder_list 查询可用 id）`)
   }
+}
+
+function findAssetOrThrow(assetId: string): AssetInfo {
   const asset = projectService.listAssets().find((item) => item.id === assetId)
-  if (asset) projectService.updateAsset({ ...asset, folderId })
+  if (!asset) throw new Error(`资产不存在：${assetId}（用 asset_list 查询可用 id）`)
+  return asset
+}
+
+/** 读取字符串数组参数（去空值并去重）；非数组返回空数组 */
+function readStringList(args: Record<string, unknown>, key: string): string[] {
+  const value = args[key]
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+        .map((item) => item.trim())
+    )
+  ]
+}
+
+/**
+ * 资产规范质检 / 返工的公共入口：本进程只做资产存在性校验与参数整形，
+ * 真正的逐像素判定与（可选）返工在渲染层跑——要解码整图，走渲染层作业通道往返。
+ */
+async function runAssetQcTool(args: Record<string, unknown>, fix: boolean): Promise<unknown> {
+  assertProjectOpen()
+  const assetId = optionalString(args, 'assetId')?.trim()
+  const assetIds = readStringList(args, 'assetIds')
+  if (!assetId && !assetIds.length) {
+    throw new Error('请给出 assetId 或 assetIds（要体检的图片资产）')
+  }
+  if (assetId) findAssetOrThrow(assetId)
+  return runRenderJob('asset-qc', {
+    ...(assetId ? { assetId } : { assetIds }),
+    naming: args.naming === true,
+    ...(fix ? { fix: true } : {})
+  })
+}
+
+/**
+ * 时间线文档 → 导出输入。
+ *
+ * `timeline_export`（出片）与 `timeline_preview`（抽帧预览）共用这一份映射：
+ * 预览必须带上与成片相同的画布尺寸、字幕字号/颜色、水印与倍速，否则就成了「预览看着对、导出不对」——
+ * 预览的全部价值就在于它等于成片。
+ */
+function buildTimelineExportInput(
+  doc: ScriptTimelineDocument,
+  extra?: { defaultFileName?: string; targetPath?: string }
+): TimelineExportInput {
+  const settings = doc.settings ?? {}
+  return {
+    clips: doc.clips.map(toExportClip),
+    durationSec: contentEndSecOfTimeline(doc.clips),
+    ...(extra?.defaultFileName ? { defaultFileName: extra.defaultFileName } : {}),
+    ...(extra?.targetPath ? { targetPath: extra.targetPath } : {}),
+    ...(settings.playbackRate ? { playbackRate: settings.playbackRate } : {}),
+    ...(settings.exportWidth ? { width: settings.exportWidth } : {}),
+    ...(settings.exportHeight ? { height: settings.exportHeight } : {}),
+    ...(settings.exportFps ? { fps: settings.exportFps } : {}),
+    ...(settings.exportVideoBitrateKbps
+      ? { videoBitrateKbps: settings.exportVideoBitrateKbps }
+      : {}),
+    ...(settings.subtitleFontSize ? { subtitleFontSize: settings.subtitleFontSize } : {}),
+    ...(settings.subtitleColor ? { subtitleColor: settings.subtitleColor } : {}),
+    ...(settings.watermarkEnabled && settings.watermarkSrc
+      ? { watermarkSrc: settings.watermarkSrc }
+      : {}),
+    ...(doc.mutedTracks?.length ? { mutedTracks: doc.mutedTracks } : {})
+  }
+}
+
+/** 抽帧规划的 note → 面向 Agent 的可读说明 */
+function previewNoteText(note: TimelinePreviewNote): string {
+  switch (note.code) {
+    case 'empty-timeline':
+      return '时间线内容时长为 0，没有可抽帧的画面'
+    case 'invalid-timestamps-dropped':
+      return `${note.count} 个时间点不是有限数字，已忽略`
+    case 'timestamps-clamped':
+      return `${note.count} 个时间点超出成片时长，已夹到片内（成片 ${note.durationSec.toFixed(2)} 秒）`
+    case 'timestamps-truncated':
+      return `一次最多抽 ${note.limit} 帧，已取前 ${note.limit} 个（共给了 ${note.requested} 个时间点）`
+    case 'frame-count-clamped':
+      return `抽帧数已从 ${note.requested} 夹到 ${note.applied}（可用范围 1~${MAX_PREVIEW_FRAMES}）`
+    default:
+      return ''
+  }
+}
+
+/** 秒 → 成片时间码（m:ss.t），给返回结构里的人读字段 */
+function formatTimelineSec(sec: number): string {
+  const total = Math.max(0, sec)
+  const minutes = Math.floor(total / 60)
+  const seconds = total - minutes * 60
+  return `${minutes}:${seconds.toFixed(1).padStart(4, '0')}`
+}
+
+/**
+ * 工具结果里可携带的「给客户端看的图」：data URL 数组，固定放在 `mcpImages` 键上。
+ *
+ * 工具只管把图塞进这个键，转成 MCP image content 交给协议层（`mcpProtocol`）；
+ * 这里把它摘出来，避免 base64 混进文本结果。纯文本客户端拿不到图，仍能从文本读到时间点与说明。
+ */
+const MCP_IMAGES_KEY = 'mcpImages'
+
+function splitToolImages(result: unknown): { result: unknown; images: McpToolImage[] } {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return { result, images: [] }
+  }
+  const record = result as Record<string, unknown>
+  const raw = record[MCP_IMAGES_KEY]
+  if (!Array.isArray(raw) || !raw.length) return { result, images: [] }
+  const images: McpToolImage[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const match = /^data:([^;,]+);base64,(.+)$/.exec(item)
+    if (!match) continue
+    images.push({ mimeType: match[1], data: match[2] })
+  }
+  const rest = { ...record }
+  delete rest[MCP_IMAGES_KEY]
+  return { result: rest, images }
+}
+
+/** 读剧本资产的时间线文档；资产不存在直接抛错 */
+function readTimelineDoc(
+  assetId: string,
+  nodeId?: string
+): { asset: AssetInfo; doc: ScriptTimelineDocument } {
+  const asset = findAssetOrThrow(assetId)
+  return { asset, doc: readScriptTimelineFromGenParams(asset.genParams, nodeId) }
+}
+
+/** 时间线片段 → 导出链路认识的片段（只挑导出用得到的字段） */
+function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
+  return {
+    track: clip.track,
+    title: clip.title,
+    startSec: clip.startSec,
+    durationSec: clip.durationSec,
+    ...(clip.relativePath ? { relativePath: clip.relativePath } : {}),
+    ...(clip.text ? { text: clip.text } : {}),
+    ...(clip.sourceOffsetSec != null ? { sourceOffsetSec: clip.sourceOffsetSec } : {}),
+    ...(clip.volume != null ? { volume: clip.volume } : {}),
+    ...(clip.fadeInSec != null ? { fadeInSec: clip.fadeInSec } : {}),
+    ...(clip.fadeOutSec != null ? { fadeOutSec: clip.fadeOutSec } : {}),
+    ...(clip.overlayX != null ? { overlayX: clip.overlayX } : {}),
+    ...(clip.overlayY != null ? { overlayY: clip.overlayY } : {}),
+    ...(clip.overlayWidth != null ? { overlayWidth: clip.overlayWidth } : {}),
+    ...(clip.overlayHeight != null ? { overlayHeight: clip.overlayHeight } : {}),
+    ...(clip.opacity != null ? { opacity: clip.opacity } : {}),
+    ...(clip.transitionInSec != null ? { transitionInSec: clip.transitionInSec } : {}),
+    ...(clip.transitionOutSec != null ? { transitionOutSec: clip.transitionOutSec } : {}),
+    ...(clip.transitionType ? { transitionType: clip.transitionType } : {})
+  }
+}
+
+/** 粗剪 warning 码 → 面向 Agent 的可读说明 */
+function roughCutWarningText(warning: TimelineRoughCutWarning): string {
+  switch (warning.code) {
+    case 'no-voice-clips':
+      return '时间线上没有配音轨片段：粗剪的依据是配音转写，请先把配音铺到 voice 轨'
+    case 'clip-without-speech':
+      return `配音片段 ${warning.clipId ?? ''} 内没有匹配到转写分段，已整段保留（可能本就是纯音乐 / 环境音，或转写时间戳对不上）`
+    case 'no-speech-detected':
+      return '全部配音片段都没匹配到语音：转写结果可能为空，或 segments 的时间戳不属于该配音源文件'
+    case 'nothing-to-cut':
+      return '按当前阈值没有可剪的静默（这本来就很紧凑，或可以放宽 minSilenceSec）'
+    default:
+      return warning.code
+  }
+}
+
+/** 读取转写分段（含文本）；缺字段直接报错，避免拿半个计划去剪时间线 / 生成字幕 */
+function readSpeechSegments(value: unknown): TranscribeAudioSegment[] {
+  if (!Array.isArray(value) || !value.length) {
+    throw new Error(
+      '缺少转写分段「segments」：请先用 transcribe_audio 转写配音资产，把它返回的 segments 原样传进来'
+    )
+  }
+  return value.map((item, index) => {
+    const row = (item ?? {}) as Record<string, unknown>
+    const startSec = Number(row.startSec)
+    const endSec = Number(row.endSec)
+    if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) {
+      throw new Error(`第 ${index + 1} 个 segment 缺少合法的 startSec / endSec（秒）`)
+    }
+    return { startSec, endSec, text: typeof row.text === 'string' ? row.text : '' }
+  })
+}
+
+/** 时间线编辑指令的类型名（`subtitles` 在主进程展开成区间替换 + 新增） */
+const TIMELINE_EDIT_OPS = ['add', 'update', 'remove', 'subtitles'] as const
+
+/** 主进程口径的片段 id 工厂：前缀带时间戳，同一批编辑内不重名 */
+function mcpClipIdFactory(): (track: ScriptTimelineTrackKind, index: number) => string {
+  const stamp = Date.now().toString(36)
+  return (track, index) => `clip:${stamp}:${track}:${index}`
+}
+
+/**
+ * 读取编辑指令行；op 不认识 / 不是对象直接报错。
+ *
+ * 与「单条失败只记 failure」的分工：这里是**调用方把 API 用错了**（必须整体重发），
+ * 而 id 找不到、时长非法属于**数据问题**，交给共享层记 failure 继续跑其余的指令。
+ */
+function readTimelineEditRows(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value) || !value.length) {
+    throw new Error(
+      '缺少编辑指令「operations」：至少给一条 { op: "add" | "update" | "remove" | "subtitles" }'
+    )
+  }
+  return value.map((item, index) => {
+    const label = `第 ${index + 1} 条 operation`
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`${label} 不是对象`)
+    }
+    const row = item as Record<string, unknown>
+    const op = typeof row.op === 'string' ? row.op.trim() : ''
+    if (!TIMELINE_EDIT_OPS.includes(op as (typeof TIMELINE_EDIT_OPS)[number])) {
+      throw new Error(
+        `${label} 的 op 不认识：${op || '(空)'}（可用 ${TIMELINE_EDIT_OPS.join(' / ')}）`
+      )
+    }
+    return row
+  })
+}
+
+/** 片段草稿：把 assetId 解析成工程内相对路径与标题（Agent 不必自己查路径） */
+function resolveTimelineDraft(value: unknown, label: string): TimelineClipDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} 不是对象：需含 track 与 durationSec`)
+  }
+  const row = { ...(value as Record<string, unknown>) }
+  const track = typeof row.track === 'string' ? row.track.trim() : ''
+  if (!track) throw new Error(`${label} 缺少 track（video / overlay / voice / subtitle / music / sfx）`)
+  const durationSec = Number(row.durationSec)
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    throw new Error(`${label} 缺少合法的 durationSec（秒，需大于 0）`)
+  }
+  const assetId = typeof row.assetId === 'string' ? row.assetId.trim() : ''
+  if (assetId) {
+    const asset = findAssetOrThrow(assetId)
+    if (!asset.relativePath) {
+      throw new Error(`${label} 的资产「${asset.name}」没有媒体文件（数据型资产不能铺轨）`)
+    }
+    row.assetId = assetId
+    row.relativePath = asset.relativePath
+    if (typeof row.title !== 'string' || !row.title.trim()) row.title = asset.name
+  }
+  return row as unknown as TimelineClipDraft
+}
+
+/** 把指令行解析成共享层认识的编辑指令（资产引用解析 + 字幕展开成区间替换） */
+function buildTimelineEditOperations(
+  rows: Record<string, unknown>[],
+  doc: ScriptTimelineDocument,
+  makeClipId: (track: ScriptTimelineTrackKind, index: number) => string
+): TimelineEditOperation[] {
+  const operations: TimelineEditOperation[] = []
+  rows.forEach((row, index) => {
+    const label = `第 ${index + 1} 条 operation`
+    if (row.op === 'add') {
+      const clips = Array.isArray(row.clips) ? row.clips : []
+      if (!clips.length) throw new Error(`${label}（add）缺少 clips 数组：至少给一枚要铺的片段`)
+      const gapSec = Number(row.gapSec)
+      operations.push({
+        op: 'add',
+        clips: clips.map((item, at) => resolveTimelineDraft(item, `${label} 第 ${at + 1} 枚片段`)),
+        ...(Number.isFinite(gapSec) ? { gapSec: Math.max(0, gapSec) } : {})
+      })
+      return
+    }
+    if (row.op === 'update') {
+      const clipId = typeof row.clipId === 'string' ? row.clipId.trim() : ''
+      if (!clipId) throw new Error(`${label}（update）缺少 clipId（用 timeline_read 查片段 id）`)
+      const patch = row.patch
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+        throw new Error(`${label}（update）缺少 patch 对象：把要改的字段放进去`)
+      }
+      operations.push({ op: 'update', clipId, patch: patch as TimelineClipPatch })
+      return
+    }
+    if (row.op === 'remove') {
+      const clipIds = readStringList(row, 'clipIds')
+      if (!clipIds.length) throw new Error(`${label}（remove）缺少 clipIds 数组`)
+      operations.push({ op: 'remove', clipIds })
+      return
+    }
+    // subtitles：转写分段 → 字幕片段；replace 模式顺手替换与该配音区间重叠的旧字幕
+    const voiceClipId = typeof row.voiceClipId === 'string' ? row.voiceClipId.trim() : ''
+    if (!voiceClipId) {
+      throw new Error(`${label}（subtitles）缺少 voiceClipId：先 timeline_read 看配音轨片段 id`)
+    }
+    const voice = doc.clips.find((clip) => clip.id === voiceClipId)
+    if (!voice) throw new Error(`${label}（subtitles）配音片段不存在：${voiceClipId}`)
+    if (voice.track !== 'voice') {
+      throw new Error(`${label}（subtitles）片段 ${voiceClipId} 在 ${voice.track} 轨上，不是配音轨`)
+    }
+    const subtitleClips = buildSubtitleClipsFromTranscription(
+      voice,
+      readSpeechSegments(row.segments),
+      (at) => makeClipId('subtitle', at)
+    )
+    if (!subtitleClips.length) {
+      throw new Error(
+        `${label}（subtitles）转写分段里没有可用文本，没有生成任何字幕（检查 segments 的 text 是否为空）`
+      )
+    }
+    const drafts = subtitleClips.map((clip) => ({ ...clip }))
+    if (row.mode === 'append') {
+      operations.push({ op: 'add', clips: drafts })
+      return
+    }
+    operations.push({
+      op: 'replaceRange',
+      track: 'subtitle',
+      range: { startSec: voice.startSec, endSec: voice.startSec + voice.durationSec },
+      clips: drafts
+    })
+  })
+  return operations
+}
+
+/** 编辑失败码 → 面向 Agent 的可读说明 */
+function timelineEditFailureText(failure: TimelineEditFailure): string {
+  const target = failure.target ? `「${failure.target}」` : ''
+  switch (failure.code) {
+    case 'clip-not-found':
+      return `${failure.op} ${target}：片段不在时间线上——粗剪会切分片段并改名（如 clip-1 → clip-1~2），重排后请重新 timeline_read 拿最新 id`
+    case 'invalid-track':
+      return `${failure.op} ${target}：轨道名不认识（可用 video / overlay / voice / subtitle / music / sfx）`
+    case 'invalid-duration':
+      return `${failure.op} ${target}：时长必须大于 0 秒`
+    case 'empty-patch':
+      return `${failure.op} ${target}：patch 里没有可识别的字段（id / track 不能改，换轨请 remove + add）`
+    default:
+      return `${failure.op} ${target}：${failure.code}`
+  }
+}
+
+/**
+ * 解析「工程内媒体文件」入参：优先 assetId（取其 relativePath），其次 relativePath。
+ * 拒绝绝对路径与 `..` 越界，保证 MCP 不会读到工程根目录之外。
+ */
+function resolveProjectRelativePath(
+  args: Record<string, unknown>,
+  label: string
+): { relativePath: string; assetId: string | null } {
+  const assetId = optionalString(args, 'assetId') ?? null
+  if (assetId) {
+    const asset = findAssetOrThrow(assetId)
+    const resolved = normalizeProjectRelativePath(asset.relativePath ?? '')
+    if (!resolved) throw new Error(`资产「${asset.name}」还没有${label}文件（relativePath 为空）`)
+    return { relativePath: resolved, assetId }
+  }
+  const raw = optionalString(args, 'relativePath')
+  if (!raw) throw new Error(`缺少 assetId 或 relativePath（用于定位${label}文件，二选一）`)
+  const resolved = normalizeProjectRelativePath(raw)
+  if (!resolved) throw new Error('relativePath 必须是工程内相对路径（不接受绝对路径或 .. 越界）')
+  return { relativePath: resolved, assetId: null }
 }
 
 /** 读取 extraParams 透传对象：剥离内部回写绑定字段，避免外部注入节点级回写 */
@@ -1533,6 +2786,54 @@ function scheduleGraphIconRefineResultCleanup(requestId: string): void {
   }, TASK_REPORT_RETENTION_MS)
   timer.unref?.()
   graphIconRefineResultCleanups.set(requestId, timer)
+}
+
+/** 渲染层能力作业：等待上限（导出类作业含像素拼装与多文件落盘，给足预算） */
+const MCP_RENDER_JOB_TIMEOUT_MS = 5 * 60 * 1000
+const MCP_RENDER_JOB_POLL_MS = 800
+
+const pendingMcpRenderJobResults = new Map<string, McpRenderJobResultPayload>()
+const renderJobResultCleanups = new Map<string, NodeJS.Timeout>()
+
+function scheduleRenderJobResultCleanup(jobId: string): void {
+  const prev = renderJobResultCleanups.get(jobId)
+  if (prev) clearTimeout(prev)
+  const timer = setTimeout(() => {
+    pendingMcpRenderJobResults.delete(jobId)
+    renderJobResultCleanups.delete(jobId)
+  }, TASK_REPORT_RETENTION_MS)
+  timer.unref?.()
+  renderJobResultCleanups.set(jobId, timer)
+}
+
+/**
+ * 派发一项渲染层能力作业并等结果（canvas 拼装 / 落盘在渲染层做，本进程只转发与超时）。
+ *
+ * 界面未响应（旧版界面 / 无窗口）时抛错而不是静默返回空结果——Agent 需要知道
+ * 「这条能力当前用不了」，而不是拿到一个空壳成功。
+ */
+async function runRenderJob<T = unknown>(
+  kind: McpRenderJobKind,
+  args: Record<string, unknown>,
+  timeoutMs = MCP_RENDER_JOB_TIMEOUT_MS
+): Promise<T> {
+  const jobId = randomUUID()
+  pendingMcpRenderJobResults.delete(jobId)
+  const payload: McpRenderJobPayload = { jobId, kind, args }
+  broadcastToAllWindows(IpcChannels.MCP_RENDER_JOB, payload)
+  try {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      await sleep(MCP_RENDER_JOB_POLL_MS)
+      const report = pendingMcpRenderJobResults.get(jobId)
+      if (!report) continue
+      if (!report.ok) throw new Error(report.error ?? '渲染层作业失败')
+      return report.result as T
+    }
+    throw new Error('渲染层未响应（请确认应用界面为最新版本）')
+  } finally {
+    pendingMcpRenderJobResults.delete(jobId)
+  }
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -1723,7 +3024,12 @@ const handleMcpProtocolMessage = createMcpProtocolHandler({
         error?: string
       }
       if (payload && payload.ok === false) return { error: payload.error ?? '未知错误' }
-      return { result: (payload as { result?: unknown }).result ?? null }
+      // 工具把「要回给客户端看的图」放在 result.mcpImages 上：这里摘出来交给协议层转成 image content
+      const outcome = splitToolImages((payload as { result?: unknown }).result ?? null)
+      return {
+        result: outcome.result,
+        ...(outcome.images.length ? { images: outcome.images } : {})
+      }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -1804,6 +3110,16 @@ export async function startMcpServer(): Promise<void> {
       return true
     }
   )
+  ipcMain.handle(
+    IpcChannels.MCP_RENDER_JOB_RESULT,
+    (_event, payload: McpRenderJobResultPayload) => {
+      if (payload && typeof payload.jobId === 'string') {
+        pendingMcpRenderJobResults.set(payload.jobId, payload)
+        scheduleRenderJobResultCleanup(payload.jobId)
+      }
+      return true
+    }
+  )
 
   for (const port of candidates) {
     const started = await new Promise<boolean>((resolve) => {
@@ -1846,13 +3162,17 @@ async function closeMcpServer(): Promise<void> {
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
+  ipcMain.removeHandler(IpcChannels.MCP_RENDER_JOB_RESULT)
   // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
+  for (const timer of renderJobResultCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
+  renderJobResultCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpTaskActivities.clear()
   pendingMcpGraphEditResults.clear()
   pendingMcpGraphIconRefineResults.clear()
+  pendingMcpRenderJobResults.clear()
   pendingAskUserAnswers.clear()
   await new Promise<void>((resolve) => {
     closing.close(() => resolve())
@@ -1908,13 +3228,17 @@ export function stopMcpServer(): void {
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
+  ipcMain.removeHandler(IpcChannels.MCP_RENDER_JOB_RESULT)
   // 清理进行中请求的等待状态与终态回收 timer，避免 stop 后残留
   for (const timer of taskReportCleanups.values()) clearTimeout(timer)
+  for (const timer of renderJobResultCleanups.values()) clearTimeout(timer)
   taskReportCleanups.clear()
+  renderJobResultCleanups.clear()
   pendingMcpTaskReports.clear()
   pendingMcpTaskActivities.clear()
   pendingMcpGraphEditResults.clear()
   pendingMcpGraphIconRefineResults.clear()
+  pendingMcpRenderJobResults.clear()
   pendingAskUserAnswers.clear()
   // 应用退出：保留 mcp.json——token 跨重启稳定，桥 / HTTP 直连配置持续有效；
   // pid 字段可能过期，桥只读取 port + token，不受影响

@@ -10,7 +10,7 @@
 - [x] **成片时间线升级为可剪辑面板**（承接既有「时间线高级剪辑」规划）
   - [x] 多轨非线性时间轴：video / overlay / voice / subtitle / music 五轨（`scriptTimeline`），素材源支持图节点收集与资产库 / 系统文件拖入
   - [x] 转场库：镜头间转场预设与上轨
-  - [x] 语音识别自动字幕：音频转写分段时间戳对齐配音轨生成字幕片段（`timelineSubtitleFromTranscription`）
+  - [x] 语音识别自动字幕：音频转写分段时间戳对齐配音轨生成字幕片段（`timelineSubtitle`，已下沉共享层供编辑器与 MCP 共用）
   - [x] 时间线上直接「重拍此镜头」：片段溯源到图节点，回到对应节点图分支
   - [x] 成片导出合成：系统 ffmpeg 混流视频轨 + 配音 / 音乐 + 字幕烧录（`timelineExportService`）
 

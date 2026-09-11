@@ -322,19 +322,26 @@ class AssetPackageService {
 
     const defaultName =
       (input.defaultName?.trim() || 'assets').replace(/[<>:"/\\|?*]/g, '_') || 'assets'
-    const save = await dialog.showSaveDialog({
-      title: '导出资产包',
-      defaultPath: `${defaultName}.${AIPACKAGE_EXTENSION}`,
-      filters: [{ name: 'AIArtEngine Asset Package', extensions: [AIPACKAGE_EXTENSION] }],
-      properties: ['createDirectory', 'showOverwriteConfirmation']
-    })
-    if (save.canceled || !save.filePath) {
-      return { path: null, exportedAssets: 0, exportedFolders: 0, exportedGenerated: 0, skipped }
+    let outPath: string
+    if (input.targetPath?.trim()) {
+      // 无界面链路（MCP / CLI）：直接写入指定路径，跳过「另存为」对话框
+      outPath = input.targetPath.trim()
+    } else {
+      const save = await dialog.showSaveDialog({
+        title: '导出资产包',
+        defaultPath: `${defaultName}.${AIPACKAGE_EXTENSION}`,
+        filters: [{ name: 'AIArtEngine Asset Package', extensions: [AIPACKAGE_EXTENSION] }],
+        properties: ['createDirectory', 'showOverwriteConfirmation']
+      })
+      if (save.canceled || !save.filePath) {
+        return { path: null, exportedAssets: 0, exportedFolders: 0, exportedGenerated: 0, skipped }
+      }
+      outPath = save.filePath
     }
-    let outPath = save.filePath
     if (!outPath.toLowerCase().endsWith(`.${AIPACKAGE_EXTENSION}`)) {
       outPath = `${outPath}.${AIPACKAGE_EXTENSION}`
     }
+    mkdirSync(dirname(outPath), { recursive: true })
 
     await writeAipackageArchive(outPath, {
       name: defaultName,

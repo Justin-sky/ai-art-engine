@@ -88,6 +88,11 @@ export interface ExportAssetPackageInput {
   includeGeneratedOutputs?: boolean
   /** 另存为默认名 */
   defaultName?: string
+  /**
+   * 直接写入该绝对路径（含扩展名），跳过「另存为」对话框——供 MCP / 无界面链路使用。
+   * 缺省仍走系统另存为对话框。
+   */
+  targetPath?: string
 }
 
 export interface ExportAssetPackageResult {

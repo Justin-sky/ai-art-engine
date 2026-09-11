@@ -8,6 +8,7 @@
  * stage2dAction 是「动作与循环预览」的 pose 关键帧插值循环纯函数层。
  */
 export * from './spriteGeometry'
+export * from './assetQc'
 export * from './spriteManifest'
 export * from './iconPackKeying'
 export * from './iconPackManifest'

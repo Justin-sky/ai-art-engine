@@ -126,6 +126,25 @@ describe('check-hardcoded-cjk: regex literal state', () => {
     expect(hits[0].line).toBe(2)
   })
 
+  it('regex after assignment with trailing space is not division', () => {
+    const src = [
+      'const blocked = /[\\s_/\\\\:*?"<>|]/',
+      '// 这行注释应被剥离',
+      "const keep = '保留'"
+    ].join('\n')
+    expect(stripCommentsPerLine(src)[1]).toBe('')
+    const hits = scanText(src)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].line).toBe(3)
+  })
+
+  it('regex after keyword with trailing space stays inert', () => {
+    const src = ['if (!ok) return /a"b/ // 尾注', "const keep = '保留'"].join('\n')
+    const hits = scanText(src)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].line).toBe(2)
+  })
+
   it('division after identifier is not treated as regex', () => {
     const src = ["const r = total / count / ratio", "const s = '保留'"]
     const hits = scanText(src.join('\n'))

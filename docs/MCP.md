@@ -9,6 +9,14 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - 「列出我最近的工程」→ `project_list`
 - 「打开工程 `demo`，用 `shortDrama` 模板规划一条工作流并落盘」→ `workflow_plan` + `workflow_commit`
 - 「把剧本里第 3 段改成……并更新资产」→ `asset_read_file` + `asset_write_text`
+- 「把 `D:\art\icons` 里的图标导入工程，新建个 IconPacks 文件夹整理好」→ `folder_create` + `asset_import` + `asset_move`
+- 「把这段语音转写成字幕底稿，再打包成资产包发给同事」→ `transcribe_audio` + `asset_package_export`
+- 「把 2D 舞台那套骨骼装配导成 Spine 包，部件要独立透明页」→ `stage2d_spine_export`
+- 「这张 UI 效果图里的按钮和面板切出来，按钮给 12px 九宫格边距」→ `ui_kit_extract`
+- 「把角色差分图体检一遍，白边和光晕清理干净再用」→ `asset_qc` + `asset_qc_fix`
+- 「把这条口播里的停顿静默剪掉，再导出成片」→ `transcribe_audio` + `timeline_rough_cut` + `timeline_export`
+- 「把这 5 张分镜图铺到视频轨、每张 3 秒，台词按转写铺成字幕」→ `timeline_edit`
+- 「铺完了，让我看看画面对不对」→ `timeline_preview`
 - 「生成一张标题图 / 一段口播音频，存进工程」→ `generate_image` / `generate_speech`
 - 「刚才提交的视频生成好了吗？」→ `task_status` / `video_job_get`
 
@@ -151,6 +159,26 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 | `asset_list` | 列出当前工程的资产 | 已打开工程 |
 | `asset_read_file` | 按相对路径读取工程内文本文件 | 已打开工程 |
 | `asset_write_text` | 更新文本资产（剧本/备注），界面同步刷新 | 已打开工程 |
+| `folder_create` | 新建资产库文件夹，返回 `folderId`（供 `asset_import` / `asset_create` / `generate_*` 归档用） | 已打开工程 |
+| `asset_create` | 新建资产（剧本 / 策划案 / 世界观 / 分镜 / 子图 / 自由画布 / 图片 / 视频 / 声音 / 2D 动作），界面同步出现 | 已打开工程 |
+| `asset_import` | 把本机绝对路径的媒体文件导入资产库（图片 / 视频 / 音频 / 文本，单次上限 50 条），返回逐条结果与跳过原因 | 已打开工程 |
+| `asset_rename` | 重命名资产 | 已打开工程 |
+| `asset_move` | 把资产移动到指定文件夹（省略 `folderId` 即移回资产库根目录，媒体文件随目录搬移） | 已打开工程 |
+| `asset_delete` | 从资产库移除资产（默认拒绝删除仍被引用的资产，`force: true` 强制） | 已打开工程 |
+| `transcribe_audio` | 把工程内音频 / 视频转写成带时间戳的分段文本（台词表 / 字幕底稿） | 已打开工程 |
+| `audio_separate` | 人声 / 伴奏分离，两条音轨落 `Cache/Separated/` | 已打开工程 |
+| `storage_upload` | 上传工程内媒体到对象存储，返回可分享的公网 / 预签名 URL | 已打开工程，且已配置对象存储 |
+| `asset_package_export` | 导出 `.aipackage` 交付包（可选带依赖与生成缓存；无界面链路需给绝对 `targetPath`） | 已打开工程 |
+| `asset_package_import` | 导入 `.aipackage` 交付包（可按 guid 选子集），界面素材库同步刷新 | 已打开工程 |
+| `stage2d_spine_export` | 把 2D 舞台的骨骼装配导出成 Spine 骨架包（部件透明页 + `skeleton.json` + `.atlas`） | 已打开工程，且应用的界面已打开 |
+| `ui_kit_extract` | 按框选矩形把整屏 UI 图切成部件 PNG，并写 `ui-kit.json` 九宫格清单 | 已打开工程，且应用的界面已打开 |
+| `asset_qc` | 图片资产「引擎就绪」体检：抠图漏底 / 边缘白边 / 碎屑 / 贴边 / 空图 / 尺寸 / 命名（只读，不写盘） | 已打开工程，且应用的界面已打开 |
+| `asset_qc_fix` | 去边缘污染返工（去白边 / 光晕），产出新资产落 `Assets/QC/<原名>/`，附修复前后对比 | 已打开工程，且应用的界面已打开 |
+| `timeline_read` | 读剧本资产的成片时间线：片段（轨道 / 起止秒 / 取段起点 / 字幕 / 音量 / 转场）、设置、总时长，可按轨过滤 | 已打开工程 |
+| `timeline_rough_cut` | 智能粗剪：按配音转写挤掉静默并全线前移（ripple），字幕 / 音乐轨跟随；默认只回计划 | 已打开工程（`apply: true` 时还需该剧本的时间线编辑器已关闭） |
+| `timeline_export` | 时间线合成 MP4（拼接 / 转场 / 画中画 / 混音 / 烧字幕 / 水印） | 已打开工程，且系统可用 ffmpeg（无界面链路需传 `targetPath`） |
+| `timeline_edit` | 时间线增删改：铺素材上轨 / 改音量·转场·字幕文本 / 删片段 / 用转写重建字幕 | 已打开工程（`apply: true` 时还需该剧本的时间线编辑器已关闭） |
+| `timeline_preview` | 看成片画面：按导出同一条滤镜图渲染几张静帧（可均匀抽 / 定点抽），画面随响应回给多模态客户端 | 已打开工程，且系统可用 ffmpeg |
 | `graph_edit` | 对节点图做编辑操作批（节点/连线，应用内校验类型与端口兼容性） | 已打开工程，且该图未在编辑器中打开 |
 
 ### ② 工作流：规划 → 落盘 → 运行
@@ -191,7 +219,7 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 
 - 工具服务**只监听 `127.0.0.1`**（本机回环），外部机器无法访问。
 - 除健康检查外，所有请求必须带 `Authorization: Bearer <token>`。
-- 文件读写被限制在工程根目录内，无法越权访问其他路径。
+- 文件读写被限制在工程根目录内，无法越权访问其他路径。唯一例外是 `asset_import`：它按你（或你授权的 Agent）给出的**绝对路径**读取工程外文件并复制进工程，不接受目录扫描，单次最多 50 条。
 - 密钥类信息（`models_list` 等）**不对外暴露**。
 - 全部工具调用追加写入审计日志 `<userData>/logs/mcp-audit.jsonl`（时间 / 工具 / 参数摘要 / 耗时 / 结果，参数超 200 字符截断，单文件 5MB 滚动），可回查 Agent 触发的每次生成与写入。
 
@@ -202,6 +230,31 @@ AiArtEngine 内置了一个 **MCP 工具服务**（MCP 是"模型上下文协议
 - **`task_run` 依赖应用界面进程**：请保持应用运行；同一张图重复触发会按「进行中任务」去重。
 - **资产分类**：`generate_*` 与 `workflow_commit` 支持 `folderId`（资产库文件夹，`folder_list` 查询）与
   `outputDir`（工程内相对输出目录，缺省按类型 Assets/Generated/* 或 Cache/Videos）。
+- **删除是「出库」不是物理删除**：`asset_delete` 与界面删除同口径——只移除资产元数据（含缩略图登记），源媒体文件仍保留在工程目录内；
+  被其他资产 / 节点引用时默认拒绝并回传引用来源，确认无影响后传 `force: true` 强制。资产名重复时 `asset_create` 会自动去重命名。
+- **无界面链路不走系统对话框**：`asset_package_export` 必须传绝对路径 `targetPath`（自动补 `.aipackage`、自动建父目录），
+  `asset_package_import` 必须传绝对路径 `packPath`；界面上两者仍走「另存为 / 打开」对话框，两条链路互不影响。
+- **媒体路径边界**：`transcribe_audio` / `audio_separate` / `storage_upload` 只接受 `assetId` 或工程内相对路径，
+  绝对路径与含 `..` 的路径会被直接拒绝（`asset_import` 是唯一允许读工程外文件的工具，且只复制进工程）。
+- **渲染层能力需要界面在场**：`stage2d_spine_export` / `ui_kit_extract` / `asset_qc` / `asset_qc_fix` 要跑 canvas 与落盘，
+  作业由界面进程执行——应用没开界面（或界面版本过旧）时会明确报错，不会静默产出空壳结果；导出骨架包沿用
+  「图编辑器打开时拒绝」的保护，避免导出编辑器里未落盘的旧装配。
+- **质检只读、返工不覆盖原件**：`asset_qc` 逐像素判完只回报告，不写盘也不改资产；`asset_qc_fix` 只修「边缘白边残留」
+  这一项安全缺陷（按反混合公式去掉半透明边缘里的背景色），产出新资产落 `Assets/QC/<原名>/`，原件保留可回溯。
+  抠图漏底（镂空可能是刻意设计）、主体贴边、命名只报告不自动改——改画布会动到所有下游引用，改名请走 `asset_rename`。
+- **时间线写入要避开编辑器**：`timeline_rough_cut` 与 `timeline_edit` 的 `apply` 都会重写剧本资产的时间线，而时间线编辑器
+  在界面里打开时一律拒绝写入——编辑器内存态与它的自动保存会把远端改动覆盖掉（与 `graph_edit` 同一保护口径），
+  先关掉时间线再让 Agent 改。两个工具默认都是 `apply: false`：先看计划 / 报告，确认了再落盘。
+  另外粗剪只依据**配音轨**的转写，配音轨之外的时间段（空镜、纯音乐）不会被剪。
+- **时间线编辑按片段 id 定位**：`timeline_edit` 的 `update` / `remove` 都要 id，从 `timeline_read` 拿；
+  粗剪会切分片段并改名（`clip-1` → `clip-1~2`），所以重排之后要重新读一次 ids。
+  单条指令失败不会中断其余指令，原因逐条回在 `failures` 里（id 找不到、时长 ≤ 0 等），
+  返回的 `addedClipIds` / `removedClipIds` 是后续编辑的抓手。
+- **工具能回图片，旧客户端只是看不到**：`timeline_preview` 的画面以 MCP image content 随响应回给客户端，
+  多模态客户端（Claude Desktop / Codex 等）能直接看到；纯文本客户端只会读到时间点列表与说明，不会报错——
+  图放在结果的旁路字段里，不混进文本结果，也不会被审计日志记下 base64。
+  预览与 `timeline_export` 走**同一条 ffmpeg 滤镜图**，所以「预览看到的就是成片」，不是另画一套近似预览；
+  代价是它要真渲染：时间点越靠后解码越久（抽几帧比导出一次便宜得多，但不是瞬时）。
 - **低频参数透传**：`generate_*` 工具支持 `extraParams` 对象，把底层生成输入的全部字段
   （如图片 `seed` / `quality`、视频 `resolution` / `lastFrameImageUrl`）合并进生成请求；
   显式传参优先于透传值，内部回写绑定字段（graphBinding）会被自动剥离。

@@ -206,6 +206,12 @@ export const IpcChannels = {
   /** 主进程推送：资产已写入（多窗口同步） */
   ASSET_UPDATED: 'asset:updated',
 
+  /** 主进程推送：资产已从资产库移除（多窗口同步，载荷为资产 id） */
+  ASSET_REMOVED: 'asset:removed',
+
+  /** 主进程推送：资产库文件夹已变化（多窗口同步，载荷为空） */
+  FOLDERS_UPDATED: 'folders:updated',
+
   /** MCP：主进程派发工作流运行请求（main → 渲染层） */
   MCP_TASK_RUN: 'mcp:task-run',
   /** MCP：渲染层回报任务受理 / 终态（渲染层 → 主进程） */
@@ -218,6 +224,10 @@ export const IpcChannels = {
   MCP_GRAPH_ICON_REFINE: 'mcp:graph-icon-refine',
   /** MCP：渲染层回报精修回炉结果（渲染层 → 主进程） */
   MCP_GRAPH_ICON_REFINE_RESULT: 'mcp:graph-icon-refine-result',
+  /** MCP：主进程派发渲染层能力作业（Spine 导出 / UI 部件提取等需 canvas 与界面上下文的工具，main → 渲染层） */
+  MCP_RENDER_JOB: 'mcp:render-job',
+  /** MCP：渲染层回报能力作业结果（渲染层 → 主进程） */
+  MCP_RENDER_JOB_RESULT: 'mcp:render-job-result',
   /** MCP：渲染层查询工具服务状态（端口 / token / 接入命令，设置界面展示） */
   MCP_GET_INFO: 'mcp:get-info',
   /** MCP：设置界面应用端口 / 重置 token 修改并重启工具服务 */
@@ -545,6 +555,40 @@ export interface McpGraphIconRefineResultPayload {
   /** 精修结果是否已由重跑打包节点顶替成图（repack 关闭或没跑成时为 false） */
   repacked?: boolean
   warning?: string
+  error?: string
+}
+
+/** 渲染层能力作业清单（新增能力在此登记，主进程与渲染层共用同一份） */
+export const MCP_RENDER_JOB_KINDS = [
+  'stage2d-spine-export',
+  'ui-kit-extract',
+  'asset-qc',
+  'timeline-document-apply'
+] as const
+
+/** 渲染层能力作业类型 */
+export type McpRenderJobKind = (typeof MCP_RENDER_JOB_KINDS)[number]
+
+/**
+ * MCP：主进程 → 渲染层，派发一项「渲染层能力作业」。
+ *
+ * 有些工具只能跑在渲染层（要 canvas / 图片解码 / 界面上下文）：Spine 骨架包导出、
+ * UI 部件提取等。这类能力不各开一条通道，统一走本作业通道——`kind` 决定执行哪项能力，
+ * `args` 是该能力的入参，渲染层执行完经 `reportMcpRenderJob` 回包。
+ */
+export interface McpRenderJobPayload {
+  jobId: string
+  kind: McpRenderJobKind
+  /** 能力入参（各 kind 自定结构，渲染层侧负责校验与兜底） */
+  args: Record<string, unknown>
+}
+
+/** MCP：渲染层 → 主进程，能力作业结果 */
+export interface McpRenderJobResultPayload {
+  jobId: string
+  ok: boolean
+  /** ok=true 时的能力返回值（各 kind 自定结构） */
+  result?: unknown
   error?: string
 }
 
@@ -1058,6 +1102,12 @@ export interface StudioApi {
   /** 订阅资产落盘更新（多窗口同步内存中的 assets） */
   onAssetUpdated: (callback: (asset: AssetInfo) => void) => () => void
 
+  /** 订阅资产移除（多窗口同步内存中的 assets） */
+  onAssetRemoved: (callback: (assetId: string) => void) => () => void
+
+  /** 订阅资产库文件夹变化（多窗口同步目录树） */
+  onFoldersUpdated: (callback: () => void) => () => void
+
   /** 订阅视频打点进行中状态（自动打点：入队 / 执行开始 busy=true，结束 busy=false） */
   onVideoBeatBusyChanged: (
     callback: (payload: { assetId: string; busy: boolean }) => void
@@ -1085,6 +1135,12 @@ export interface StudioApi {
 
   /** MCP：渲染层回报精修回炉结果 */
   reportMcpGraphIconRefine: (payload: McpGraphIconRefineResultPayload) => Promise<boolean>
+
+  /** MCP：订阅主进程派发的渲染层能力作业（Spine 导出 / UI 部件提取） */
+  onMcpRenderJob: (callback: (payload: McpRenderJobPayload) => void) => () => void
+
+  /** MCP：渲染层回报能力作业结果 */
+  reportMcpRenderJob: (payload: McpRenderJobResultPayload) => Promise<boolean>
 
   /** MCP：订阅 agent 通过 ask_user 工具发起的提问（渲染层展示选项列表，经 answerAskUser 回传） */
   onAskUser: (callback: (question: AskUserQuestion) => void) => () => void

@@ -56,6 +56,38 @@ describe('MCP 协议消息处理（shared）', () => {
     expect(JSON.parse(result.content[0].text)).toEqual({ name: 'echo', args: { a: 1 } })
   })
 
+  it('工具返回的图片变成 image content（文本在前，空数据不入 content）', async () => {
+    const handle = createMcpProtocolHandler({
+      serverInfo: { name: 'aiartengine', version: '6.0.0' },
+      listTools: () => [],
+      callTool: async () => ({
+        result: { frameCount: 2 },
+        images: [
+          { data: 'QUJD', mimeType: 'image/jpeg' },
+          { data: '', mimeType: 'image/jpeg' }
+        ]
+      })
+    })
+    const res = await handle({
+      jsonrpc: '2.0',
+      id: 200,
+      method: 'tools/call',
+      params: { name: 'timeline_preview' }
+    })
+    const result = res?.result as {
+      content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>
+    }
+    // 空 data 的那张被丢掉，所以是文本 + 一张图
+    expect(result.content).toHaveLength(2)
+    expect(result.content[0].type).toBe('text')
+    expect(JSON.parse(result.content[0].text ?? '')).toEqual({ frameCount: 2 })
+    expect(result.content[1]).toMatchObject({
+      type: 'image',
+      data: 'QUJD',
+      mimeType: 'image/jpeg'
+    })
+  })
+
   it('tools/call 业务失败标记 isError，抛错映射 -32603', async () => {
     const handle = makeHandler()
     const failed = await handle({

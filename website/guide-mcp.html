@@ -268,7 +268,7 @@
             </thead>
             <tbody>
               <tr>
-                <td rowspan="4">工程与资产</td>
+                <td rowspan="11">工程与资产</td>
                 <td><code>app_status</code></td>
                 <td>版本、当前工程、资产数量</td>
               </tr>
@@ -285,8 +285,89 @@
                 <td>更新剧本 / 备注等文本资产（界面同步）</td>
               </tr>
               <tr>
+                <td><code>folder_create</code></td>
+                <td>新建资产库文件夹，返回 <code>folderId</code></td>
+              </tr>
+              <tr>
+                <td><code>asset_create</code></td>
+                <td>新建资产（剧本 / 策划案 / 世界观 / 分镜 / 画布 / 图片 / 视频 / 声音 / 2D 动作）</td>
+              </tr>
+              <tr>
+                <td><code>asset_import</code></td>
+                <td>把本机绝对路径的素材导入资产库（图片 / 视频 / 音频 / 文本，单次上限 50）</td>
+              </tr>
+              <tr>
+                <td><code>asset_rename</code></td>
+                <td>重命名资产（界面同步）</td>
+              </tr>
+              <tr>
+                <td><code>asset_move</code></td>
+                <td>资产归档：在资产库内移动（媒体文件随目录搬移）</td>
+              </tr>
+              <tr>
+                <td><code>asset_delete</code></td>
+                <td>从资产库移除资产（默认拒绝删除仍被引用的资产）</td>
+              </tr>
+              <tr>
                 <td><code>folder_list</code></td>
                 <td>资产库文件夹列表（生成工具 folderId 的来源）</td>
+              </tr>
+              <tr>
+                <td rowspan="14">交付与后期</td>
+                <td><code>transcribe_audio</code></td>
+                <td>音频 / 视频转写为带时间戳的分段文本（字幕底稿）</td>
+              </tr>
+              <tr>
+                <td><code>audio_separate</code></td>
+                <td>人声 / 伴奏分离（产物落 <code>Cache/Separated/</code>）</td>
+              </tr>
+              <tr>
+                <td><code>storage_upload</code></td>
+                <td>上传工程内媒体到对象存储，返回可分享 URL</td>
+              </tr>
+              <tr>
+                <td><code>asset_package_export</code></td>
+                <td>导出 <code>.aipackage</code> 交付包（无界面链路需给绝对路径）</td>
+              </tr>
+              <tr>
+                <td><code>asset_package_import</code></td>
+                <td>导入 <code>.aipackage</code> 交付包（可按 guid 选子集）</td>
+              </tr>
+              <tr>
+                <td><code>stage2d_spine_export</code></td>
+                <td>2D 舞台骨骼装配导出成 Spine 骨架包（部件透明页 + skeleton.json + .atlas）</td>
+              </tr>
+              <tr>
+                <td><code>ui_kit_extract</code></td>
+                <td>整屏 UI 图切成部件 PNG，并写 ui-kit.json 九宫格清单</td>
+              </tr>
+              <tr>
+                <td><code>asset_qc</code></td>
+                <td>图片资产引擎就绪体检（漏底 / 白边 / 碎屑 / 贴边 / 尺寸 / 命名，只读）</td>
+              </tr>
+              <tr>
+                <td><code>asset_qc_fix</code></td>
+                <td>边缘去污染返工，产出新资产并给出修复前后对比</td>
+              </tr>
+              <tr>
+                <td><code>timeline_read</code></td>
+                <td>读成片时间线：片段 / 设置 / 总时长，可按轨过滤</td>
+              </tr>
+              <tr>
+                <td><code>timeline_rough_cut</code></td>
+                <td>智能粗剪：按配音转写挤掉静默并全线前移，默认只回计划</td>
+              </tr>
+              <tr>
+                <td><code>timeline_export</code></td>
+                <td>时间线合成 MP4（转场 / 混音 / 烧字幕 / 水印）</td>
+              </tr>
+              <tr>
+                <td><code>timeline_edit</code></td>
+                <td>时间线增删改：铺素材上轨 / 改音量转场字幕 / 删片段 / 按转写重建字幕</td>
+              </tr>
+              <tr>
+                <td><code>timeline_preview</code></td>
+                <td>看成片画面：按导出同一条滤镜图抽帧，画面直接回给多模态客户端</td>
               </tr>
               <tr>
                 <td rowspan="6">规划与运行</td>
@@ -395,7 +476,8 @@
         <section id="security">
           <h2>6. 安全与当前限制</h2>
           <ul>
-            <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内；密钥信息不对外暴露。</li>
+            <li>服务只监听 <code>127.0.0.1</code>，token 鉴权；文件读写被限制在工程根目录内（唯一例外是
+              <code>asset_import</code>：按你给出的绝对路径读取工程外文件并复制进工程）；密钥信息不对外暴露。</li>
             <li>并发闸门：<code>generate_image</code> / <code>generate_speech</code> / <code>workflow_plan</code>
               同时最多 3 个（<code>AIAE_MCP_GEN_LIMIT</code> 可调），排队满直接报错，防止 Agent 失控消耗额度。</li>
             <li>操作审计：每次工具调用追加写

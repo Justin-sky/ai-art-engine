@@ -2067,6 +2067,7 @@ import {
   SMART_CUT_TRANSITIONS,
   type SmartCutEdit
 } from '@shared/graph'
+import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
 import { detectImportAssetType, isImportablePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { persistAssetRecord } from '../composables/useAssetRecord'
@@ -2099,7 +2100,10 @@ import {
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
 import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
-import { buildSubtitleClipsFromTranscription } from '../features/script/timelineSubtitleFromTranscription'
+import {
+  registerOpenTimelineEditor,
+  unregisterOpenTimelineEditor
+} from '../features/mcp/openTimelineEditors'
 import { toPlain } from '../utils/toPlain'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 
@@ -7477,6 +7481,8 @@ function onTimelineKeydown(e: KeyboardEvent): void {
 }
 
 onMounted(async () => {
+  // 登记「时间线正被界面编辑」：Agent 改时间线前会据此拒绝写入，避免与自动保存互相覆盖
+  if (!isDraftAssetId(props.scriptAssetId)) registerOpenTimelineEditor(props.scriptAssetId)
   loadPersisted()
   await reloadSources()
   const first = visibleClipsOn('video')[0]
@@ -7490,7 +7496,10 @@ onMounted(async () => {
 
 watch(
   () => props.scriptAssetId,
-  async () => {
+  async (next, prev) => {
+    // 换剧本资产：占用登记要跟着搬，否则旧资产会一直被判定为「编辑器打开」
+    if (prev && !isDraftAssetId(prev)) unregisterOpenTimelineEditor(prev)
+    if (next && !isDraftAssetId(next)) registerOpenTimelineEditor(next)
     stopPlayback()
     disposeAudioPool()
     disposeOverlayVideos()
@@ -7579,6 +7588,7 @@ function bindPreviewStage(): void {
 }
 
 onBeforeUnmount(() => {
+  unregisterOpenTimelineEditor(props.scriptAssetId)
   stopPlayback()
   disposeAudioPool()
   disposeOverlayVideos()

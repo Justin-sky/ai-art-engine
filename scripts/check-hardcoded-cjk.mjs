@@ -41,6 +41,7 @@ const EXEMPT_FILES = new Set([
   'src/main/services/deepseekHarnessService.ts',
   'src/main/services/mcpServerService.ts',
   'src/renderer/src/features/mcp/mcpTaskRunner.ts',
+  'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',
   'src/shared/graph/mcpGraphEdit.ts',
   'src/shared/mcpProtocol.ts'
@@ -99,16 +100,22 @@ function walk(dir, out) {
   }
 }
 
-/** 判断 code 态中刚消费的尾部上下文后紧跟的 '/' 是否应按正则字面量启动解析（防除法误判） */
+/**
+ * 判断 code 态中刚消费的尾部上下文后紧跟的 '/' 是否应按正则字面量启动解析（防除法误判）。
+ * 先剥离尾部空白：`x = /re/`、`return /re/` 与 `x = 1 / 2` 只差一个空格，
+ * 不剥离会让前者被当成除法——正则里的引号随即把状态机带进字符串态，
+ * 之后整段注释都会被当作代码误报。
+ */
 function nextStartsRegex(codeTail) {
-  if (!codeTail) return true
-  const last = codeTail.slice(-1)
+  const tail = codeTail.replace(/\s+$/, '')
+  if (!tail) return true
+  const last = tail.slice(-1)
   if (REGEX_PRECEDERS.has(last)) return true
   if (/[A-Za-z0-9_$]/.test(last)) {
-    const m = codeTail.match(/(?:[A-Za-z0-9_$]+)$/)
-    if (m && REGEX_KEYWORD_RE.test(codeTail)) {
-      const beforeIdx = codeTail.length - m[0].length - 1
-      const before = beforeIdx >= 0 ? codeTail[beforeIdx] : ''
+    const m = tail.match(/(?:[A-Za-z0-9_$]+)$/)
+    if (m && REGEX_KEYWORD_RE.test(tail)) {
+      const beforeIdx = tail.length - m[0].length - 1
+      const before = beforeIdx >= 0 ? tail[beforeIdx] : ''
       return !/[A-Za-z0-9_$]/.test(before)
     }
     return false

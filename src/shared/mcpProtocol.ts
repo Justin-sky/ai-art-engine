@@ -11,9 +11,23 @@ export interface McpToolDescriptor {
   inputSchema: unknown
 }
 
+/** 随工具结果回给客户端的图片（MCP image content） */
+export interface McpToolImage {
+  /** base64 数据（不含 data: 前缀） */
+  data: string
+  /** 如 image/jpeg、image/png */
+  mimeType: string
+}
+
 export interface McpToolCallOutcome {
   /** 成功时的返回值（会被 JSON 序列化进 content[0].text） */
   result?: unknown
+  /**
+   * 随文本一起回给客户端的图片：多模态客户端能直接「看」到画面，
+   * 纯文本客户端只会拿到 result 里的文字说明（不会因此失败）。
+   * 图片刻意不走 result——base64 会把文本结果撑爆，且会污染审计日志的字节统计。
+   */
+  images?: McpToolImage[]
   /** 失败消息（isError = true） */
   error?: string
 }
@@ -135,9 +149,16 @@ export function createMcpProtocolHandler(options: McpProtocolHandlerOptions) {
                 isError: true
               })
             }
-            return rpcResult(msg.id, {
-              content: [{ type: 'text', text: JSON.stringify(outcome.result ?? null, null, 2) }]
-            })
+            const content: Array<Record<string, unknown>> = [
+              { type: 'text', text: JSON.stringify(outcome.result ?? null, null, 2) }
+            ]
+            // 图片排在文本之后：客户端先读到文字说明，再看到画面
+            for (const image of outcome.images ?? []) {
+              if (image?.data) {
+                content.push({ type: 'image', data: image.data, mimeType: image.mimeType })
+              }
+            }
+            return rpcResult(msg.id, { content })
           } finally {
             if (controller) {
               pendingRequests.delete(msg.id)
