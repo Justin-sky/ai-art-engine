@@ -2,7 +2,9 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
-## [Unreleased] — 5.2 智能创作版（进行中）
+## [6.0.0] — 2026-09-11
+
+6.0.0 正式版（首个 6.0 稳定版）：内容为 6.0.0-alpha1 预发布验证过的同一批能力的完整快照，把 5.2「智能创作版」～5.5「2D 导演台」几条主线的落地成果一并交付——Agent 侧补齐项目级记忆、角色音色 / 声音克隆、智能粗剪与视频级媒体理解；本地视觉侧把内置 YOLO 从「能力底座」做成素材打标 / 一键抠图 / 精灵统一对齐等日常工具；2D 侧从舞台场景、骨骼装配摆姿一路做到动作资产容器、独立试播、帧序列 / sheet / GIF 产物与 Spine 骨架包导出；MCP 与工作流侧补齐节点类型自发现（`graph_node_types`）、单枚图标精修回炉、运行产物回注对话流与 Git 变更预览。相对 alpha1 另含两处 Windows 对话链路修复（执行命令时反复弹出的命令行窗口，以及 `NODE_OPTIONS` 预载路径被反斜杠转义吃掉导致的子进程 `MODULE_NOT_FOUND`）。本版为正式版（非 prerelease），会进入客户端自动更新的 `latest` 通道。
 
 ### Added
 
@@ -48,7 +50,7 @@
 
 ## [6.0.0-alpha1] — 2026-09-09
 
-6.0.0-alpha1 内部预发布（首个 6.0 alpha 构建）：内容为当前 `main` 上 [Unreleased]（5.2 智能创作版）的完整快照。本版主要用于验证 GitHub Actions 三平台自动构建 → 静默安装 + 启动冒烟 → GitHub Release 自动发布全链路；预发布版本会标为 GitHub prerelease，不会被作为 `latest` 推给 5.x 稳定版用户。
+6.0.0-alpha1 内部预发布（首个 6.0 alpha 构建）：内容为当前 `main` 上 [6.0.0]（5.2 智能创作版）的完整快照。本版主要用于验证 GitHub Actions 三平台自动构建 → 静默安装 + 启动冒烟 → GitHub Release 自动发布全链路；预发布版本会标为 GitHub prerelease，不会被作为 `latest` 推给 5.x 稳定版用户。
 
 ## [5.0.7] — 2026-08-31
 
