@@ -1463,13 +1463,21 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.studio-dock {
+/*
+ * dockview-vue 7.0.4 起 DockviewVue 的根节点是 Fragment（dock 容器 div + 面板 Teleport 宿主），
+ * 而父组件的 scoped 属性只会落到「单根」子组件的根元素上——所以内层 div 只拿得到 class
+ * `studio-dock`，拿不到 `data-v-*`，直接写 `.studio-dock` 的 scoped 规则会全部失配
+ * （dock 被压成 0 宽：竖栏贴左边、中间整片空白且点不动）。
+ * 因此这里一律从本组件自己的元素 `.studio-main` 用 `:deep()` 穿下去，
+ * 编译结果 `.studio-main[data-v-*] .studio-dock …` 能稳定命中。新增规则请沿用该前缀。
+ */
+.studio-main :deep(.studio-dock) {
   flex: 1;
   min-height: 0;
   min-width: 0;
 }
 
-.studio-dock :deep(.panel-fill) {
+.studio-main :deep(.studio-dock .panel-fill) {
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -1478,46 +1486,46 @@ onBeforeUnmount(() => {
   background: var(--bg-panel);
 }
 
-.studio-dock :deep(.dv-tabs-and-actions-container) {
+.studio-main :deep(.studio-dock .dv-tabs-and-actions-container) {
   background: var(--bg-elevated);
 }
 
 /* 标签栏可滚动，但不显示横向滚动条 */
-.studio-dock :deep(.dv-tabs-and-actions-container .dv-tabs-container) {
+.studio-main :deep(.studio-dock .dv-tabs-and-actions-container .dv-tabs-container) {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.studio-dock :deep(.dv-tabs-and-actions-container .dv-tabs-container::-webkit-scrollbar) {
+.studio-main :deep(.studio-dock .dv-tabs-and-actions-container .dv-tabs-container::-webkit-scrollbar) {
   display: none;
   width: 0;
   height: 0;
 }
 
-.studio-dock :deep(.dv-tabs-and-actions-container .dv-scrollbar-horizontal) {
+.studio-main :deep(.studio-dock .dv-tabs-and-actions-container .dv-scrollbar-horizontal) {
   display: none !important;
 }
 
-.studio-dock :deep(.dv-groupview) {
+.studio-main :deep(.studio-dock .dv-groupview) {
   background: var(--bg);
 }
 
-.studio-dock :deep(.dv-panel) {
+.studio-main :deep(.studio-dock .dv-panel) {
   background: var(--bg-panel);
 }
 
-.studio-dock :deep(.dv-floating-titlebar) {
+.studio-main :deep(.studio-dock .dv-floating-titlebar) {
   background: var(--bg-elevated);
 }
 
-.studio-dock :deep(.locked-tab) {
+.studio-main :deep(.studio-dock .locked-tab) {
   padding: 0 10px;
   display: flex;
   align-items: center;
   height: 100%;
 }
 
-.studio-dock :deep(.editor-tab) {
+.studio-main :deep(.studio-dock .editor-tab) {
   position: relative;
   display: flex;
   align-items: center;
@@ -1530,14 +1538,14 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
-.studio-dock :deep(.editor-tab .dv-default-tab-content) {
+.studio-main :deep(.studio-dock .editor-tab .dv-default-tab-content) {
   flex: 1 1 auto;
   min-width: 0;
   margin-right: 0;
   padding-right: 2px;
 }
 
-.studio-dock :deep(.editor-tab .dv-default-tab-action) {
+.studio-main :deep(.studio-dock .editor-tab .dv-default-tab-action) {
   position: absolute;
   top: 2px;
   right: 2px;
@@ -1551,53 +1559,53 @@ onBeforeUnmount(() => {
   line-height: 0;
 }
 
-.studio-dock :deep(.editor-tab .dv-default-tab-action .editor-tab-close-icon) {
+.studio-main :deep(.studio-dock .editor-tab .dv-default-tab-action .editor-tab-close-icon) {
   width: 8px;
   height: 8px;
   display: block;
 }
 
 /* 覆盖 dockview：选中标签也仅在悬停时显示关闭按钮 */
-.studio-dock :deep(.dv-tab .editor-tab .dv-default-tab-action) {
+.studio-main :deep(.studio-dock .dv-tab .editor-tab .dv-default-tab-action) {
   visibility: hidden;
 }
 
-.studio-dock :deep(.dv-tab:hover .editor-tab .dv-default-tab-action) {
+.studio-main :deep(.studio-dock .dv-tab:hover .editor-tab .dv-default-tab-action) {
   visibility: visible;
 }
 
 @media (hover: none) {
-  .studio-dock :deep(.dv-tab .editor-tab .dv-default-tab-action) {
+  .studio-main :deep(.studio-dock .dv-tab .editor-tab .dv-default-tab-action) {
     visibility: visible;
   }
 }
 
-.studio-dock :deep(.editor-tab-icon) {
+.studio-main :deep(.studio-dock .editor-tab-icon) {
   flex-shrink: 0;
   font-size: 12px;
   line-height: 1;
 }
 
-.studio-dock :deep(.editor-tab-content) {
+.studio-main :deep(.studio-dock .editor-tab-content) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.studio-dock :deep(.workspace-tools-shell) {
+.studio-main :deep(.studio-dock .workspace-tools-shell) {
   height: 100%;
   min-height: 0;
   overflow: visible;
   background: var(--bg-elevated);
 }
 
-.studio-dock :deep(.workspace-tools-shell .workspace-toolbar) {
+.studio-main :deep(.studio-dock .workspace-tools-shell .workspace-toolbar) {
   height: 100%;
   border-right: none;
 }
 
 /* setVisible 是主路径；若组仍残留在布局里，用 CSS 压掉 0 宽灰条 */
-.studio-dock :deep(.dv-groupview.studio-side-collapsed) {
+.studio-main :deep(.studio-dock .dv-groupview.studio-side-collapsed) {
   border: none !important;
   min-width: 0 !important;
   max-width: 0 !important;
@@ -1608,7 +1616,7 @@ onBeforeUnmount(() => {
 }
 
 /* 拖放结束后偶发残留的锚点容器不应再挡交互 */
-.studio-dock :deep(.dv-drop-target-container:empty) {
+.studio-main :deep(.studio-dock .dv-drop-target-container:empty) {
   display: none !important;
 }
 </style>

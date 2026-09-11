@@ -157,6 +157,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .studio-side-rail {
   flex-shrink: 0;
+  order: 1;
   width: 28px;
   height: 100%;
   box-sizing: border-box;
