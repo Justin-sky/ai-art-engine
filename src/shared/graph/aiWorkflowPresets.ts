@@ -349,6 +349,7 @@ export const AI_WORKFLOW_PRESET_IDS = [
   'directorPreviz',
   'shortDrama',
   'shortDrama9',
+  'anim2dGif',
   'custom'
 ] as const
 
@@ -982,6 +983,41 @@ const PRESET_PLANS: Record<Exclude<AiWorkflowPresetId, 'custom'>, GraphPlan> = {
       { from: 'select', to: 'video', fromPort: 'out', toPort: 'in-image' },
       { from: 'brief', to: 'video', fromPort: 'out', toPort: 'in-text' }
     ]
+  },
+  anim2dGif: {
+    title: '2D 帧动画（GIF）',
+    nodes: [
+      {
+        key: 'sheet',
+        typeId: 'asset.image',
+        title: '动作序列图',
+        params: {
+          generateInstruction:
+            '为同一角色生成「行走」动作的序列图（sprite sheet）：一张图内按 1 行 4 列分格，帧序从左到右，格子无缝拼接、无边框与分隔线，各格角色的外观、体型、配色与画风完全一致，仅姿态不同'
+        }
+      },
+      {
+        key: 'anim',
+        typeId: 'anim.2d',
+        title: '2D帧动画',
+        params: {
+          animRows: 1,
+          animCols: 4,
+          animPresetId: 'walk',
+          animInstruction: '角色侧面行走循环：完整步态周期，四肢摆动自然，各帧外形一致',
+          animGifFps: 12
+        }
+      },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '出图说明',
+        params: {
+          text: '运行后「2D帧动画」节点逐格切出帧 PNG，并经 out-gif 端口产出 GIF 动图（animGifFps=12）；改 animPresetId / animRows / animCols 可换动作与帧数。'
+        }
+      }
+    ],
+    edges: [{ from: 'sheet', to: 'anim' }]
   },
   shortDrama: buildEpisodePipelinePlan('grid4'),
   shortDrama9: buildEpisodePipelinePlan('grid9')

@@ -1591,7 +1591,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_node_types',
     title: '节点类型清单',
     description:
-      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。只读操作，无需打开工程。',
+      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。需要 2D 帧动画 / GIF 动图时查 `anim.2d`：一张按行列分格的序列图（sprite sheet）从 in 端口接入，按 animRows / animCols 逐格切成帧 PNG；animGifFps（1–24，默认 0 = 只切帧）> 0 时额外经 out-gif 端口产出 GIF 动图并落盘为工程资产；动作预设与自定义描述见 animPresetId / animInstruction。只读操作，无需打开工程。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1687,7 +1687,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_edit',
     title: '编辑节点图',
     description:
-      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。图正在编辑器中打开时会拒绝。修改立即持久化并同步应用界面。',
+      '对一个已落盘的宿主资产图应用一批编辑操作（node_upsert / node_update / node_delete / edge_connect / edge_delete）。端口兼容性与类型合法性在应用内校验，未通过的操作跳过并记入 warnings。图正在编辑器中打开时会拒绝。修改立即持久化并同步应用界面。可借此搭建生成链路，如「图片节点出序列图 → 2D 帧动画（anim.2d，animGifFps > 0 时运行产出 GIF 动图）」；可建节点类型清单见 graph_node_types。',
     inputSchema: {
       type: 'object',
       properties: {

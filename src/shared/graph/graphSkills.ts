@@ -50,12 +50,14 @@ import {
   defaultWorldExtractSystemPrompt
 } from './systemPromptSchemes'
 import type { GraphNodeParams } from './types'
+import { resolveFrameAnimGenSystemPrompt } from './anim2d'
 
 export type GraphSkillKind =
   | 'episode'
   | 'episode-review'
   | 'episode-image'
   | 'episode-video'
+  | 'anim2d'
   | 'system'
 
 /** 解析入口指针；实现仍在 episodeBoardParse 等文件，此处不搬家 */
@@ -75,6 +77,12 @@ export interface GraphSkill {
   systemPromptEn?: string
   instructionZh?: string
   instructionEn?: string
+  /**
+   * dsh 技能快照（SKILL.md）里给 Agent 看的「用法」说明：怎么把这个能力变成产物。
+   * 只进技能文件，不参与 applyGraphSkill 写入节点 params（避免操作说明污染生成提示词）。
+   */
+  usageZh?: string
+  usageEn?: string
   parse?: GraphSkillParseKind
 }
 
@@ -103,6 +111,20 @@ const VIDEO_GRID4_EN =
 
 const VIDEO_GRID9_EN =
   'From the reference first-frame image and the upstream motion prompts, generate an image-to-video clip: preserve the character identity, outfit, hairstyle, scene, key-light direction, and composition tone from the reference image; strictly follow the timeline, camera movement, subject action, full dialogue, and ambient sound in the motion prompt.'
+
+/** 2D 帧动画：动作描述模板（{action} / {rows} / {cols} 由 applyGraphSkill 的 vars 插值） */
+const ANIM2D_FRAMES_INSTRUCTION_ZH =
+  '为同一角色生成「{action}」动作的序列图（sprite sheet）：在一张图内按 {rows}×{cols} 分格绘制一个完整动作周期，帧序从左到右、从上到下；所有格子中角色的外观、体型、配色与画风完全一致，仅姿态变化，帧间过渡自然。'
+
+const ANIM2D_FRAMES_INSTRUCTION_EN =
+  'Generate a sprite sheet of the "{action}" action for the same character: draw one complete action cycle inside a single image as a {rows}×{cols} grid, frame order left to right then top to bottom; keep the character\'s look, proportions, palette and art style identical across every cell, changing only the pose, with smooth transitions between frames.'
+
+/** 2D 帧动画：dsh 技能快照里的操作说明（GIF 产出的完整链路，不进节点 params） */
+const ANIM2D_FRAMES_USAGE_ZH =
+  '用法：在节点图里添加「2D帧动画」节点（typeId `anim.2d`），把一张按 rows×cols 分格的序列图（sprite sheet）接到 in 端口，设 animRows / animCols 与动作预设 animPresetId（或自定义 animInstruction），再把 animGifFps 设为 8–12 后运行：节点逐格切出帧 PNG，并额外经 out-gif 端口产出 GIF 动图（随运行落盘为工程资产）。还没有序列图时，可上游接一个按分格绘制的图片节点，或 dive 进本节点内图用生图 API 生成。走 MCP 时：graph_node_types 查端口与默认参数、graph_edit 建节点 / 连线 / 设参、task_run 运行。'
+
+const ANIM2D_FRAMES_USAGE_EN =
+  'Usage: add a "2D frame animation" node (typeId `anim.2d`), wire a rows×cols sprite sheet into its `in` port, and set animRows / animCols plus the action preset animPresetId (or a custom animInstruction); then set animGifFps to 8–12 and run — the node slices per-frame PNGs and additionally emits a GIF through the `out-gif` port, persisted as a project asset. When no sprite sheet exists yet, either wire an upstream image node that draws the grid, or dive into this node\'s inner graph and generate it with the image API. Over MCP: graph_node_types for ports and default params, graph_edit to create / connect / configure nodes, task_run to run.'
 
 function fromEpisodePack(
   id: string,
@@ -250,6 +272,19 @@ const BUILTIN_SKILLS: GraphSkill[] = [
     titleEn: 'Motion video · 9-grid',
     instructionZh: VIDEO_GRID9_ZH,
     instructionEn: VIDEO_GRID9_EN
+  },
+  {
+    // 2D 帧动画（anim.2d 节点）：参考图 + 动作描述 → 序列图 → 逐帧 PNG / GIF 动图
+    id: 'anim2d.frames',
+    kind: 'anim2d',
+    titleZh: '2D 帧动画（GIF）',
+    titleEn: '2D frame animation (GIF)',
+    systemPromptZh: resolveFrameAnimGenSystemPrompt(undefined, 'zh-CN'),
+    systemPromptEn: resolveFrameAnimGenSystemPrompt(undefined, 'en-US'),
+    instructionZh: ANIM2D_FRAMES_INSTRUCTION_ZH,
+    instructionEn: ANIM2D_FRAMES_INSTRUCTION_EN,
+    usageZh: ANIM2D_FRAMES_USAGE_ZH,
+    usageEn: ANIM2D_FRAMES_USAGE_EN
   },
   fromSystemDefault('system.screenplay', '剧本', 'Screenplay', defaultScreenplaySystemPrompt),
   fromSystemDefault('system.gameSystem', '策划案', 'Game system', defaultGameSystemSystemPrompt),

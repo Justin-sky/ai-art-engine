@@ -247,6 +247,12 @@ export default {
         prompt:
           'Create a short-drama agent-pipeline workflow that skips 4-grid expansion: a text node holds the episode script; storyboard-artist nodes produce the beat breakdown and 9-grid beat board; one 9-grid canvas is split into 9 anchor images; an animator node decomposes one motion prompt for each of the 9 cells, and each motion prompt drives one image-to-video clip together with its anchor image (9 clips total); director-review nodes after the beat breakdown and 9-grid board output PASS/FAIL, with failures written to agent-state.json and appended on rerun.'
       },
+      anim2dGif: {
+        title: '2D frame anim',
+        desc: 'Sprite sheet → per-frame PNGs + GIF',
+        prompt:
+          'Create a 2D frame-animation workflow: an image node generates a sprite sheet of the character walking as a 1×4 grid (seamless cells, identical character across cells), wired into the `in` port of a 2D frame animation node; the node slices the grid into frames and, with animGifFps set to 12, additionally emits a GIF on run.'
+      },
       custom: {
         title: 'Custom',
         desc: 'Clear and write your own',

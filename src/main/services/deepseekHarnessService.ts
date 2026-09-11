@@ -380,13 +380,16 @@ function toDshSkillName(id: string): string {
   return kebab
 }
 
-/** 把一条 GraphSkill 渲染为 dsh 的 SKILL.md（frontmatter + 中英双语正文） */
+/** 把一条 GraphSkill 渲染为 dsh 的 SKILL.md（frontmatter + 用法 + 中英双语正文） */
 function renderDshSkillMd(skill: GraphSkill): string {
   const name = toDshSkillName(skill.id)
   const zhTitle = skill.titleZh || skill.id
   const enTitle = skill.titleEn || skill.id
   const description = `${enTitle} — ${zhTitle}`
   const sections: string[] = []
+  // 用法置顶：Agent 加载技能后先看到「怎么用、产物是什么」，再看提示词正文
+  if (skill.usageZh) sections.push(`### 用法（中文）\n\n${skill.usageZh}`)
+  if (skill.usageEn) sections.push(`### Usage (English)\n\n${skill.usageEn}`)
   if (skill.systemPromptZh) sections.push(`### 系统提示（中文）\n\n${skill.systemPromptZh}`)
   if (skill.systemPromptEn) sections.push(`### System prompt (English)\n\n${skill.systemPromptEn}`)
   if (skill.instructionZh) sections.push(`### 生成指令（中文）\n\n${skill.instructionZh}`)
@@ -568,8 +571,10 @@ function parseDshSkillFrontmatter(content: string): { name?: string; description
   return { name: result.name, description: result.description }
 }
 
-/** 解析 SKILL.md 正文分节（### 系统提示（中文）等），供反向导入 GraphSkill 复用 */
+/** 解析 SKILL.md 正文分节（### 用法（中文）/ ### 系统提示（中文）等），供反向导入 GraphSkill 复用 */
 function parseDshSkillSections(content: string): {
+  usageZh?: string
+  usageEn?: string
   systemPromptZh?: string
   systemPromptEn?: string
   instructionZh?: string
@@ -584,6 +589,8 @@ function parseDshSkillSections(content: string): {
     return raw || undefined
   }
   return {
+    usageZh: section('### 用法（中文）'),
+    usageEn: section('### Usage (English)'),
     systemPromptZh: section('### 系统提示（中文）'),
     systemPromptEn: section('### System prompt (English)'),
     instructionZh: section('### 生成指令（中文）'),
@@ -666,6 +673,8 @@ export function importCustomSkillsToGraph(): SkillImportResult {
             kind: 'system',
             titleZh: title,
             titleEn: name,
+            usageZh: sections.usageZh,
+            usageEn: sections.usageEn,
             systemPromptZh: sections.systemPromptZh,
             systemPromptEn: sections.systemPromptEn,
             instructionZh: sections.instructionZh,
