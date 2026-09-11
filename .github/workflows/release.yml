@@ -379,9 +379,16 @@ jobs:
           # dpkg 不解析依赖：依赖未满足时交由 apt 补齐（t64 重命名已在 deb.depends 里做 OR 兼容）
           sudo dpkg -i "$DEB" || sudo apt-get -f install -y -qq
 
-          BIN="$(find /opt -maxdepth 3 -type f -name AIArtEngine -perm -u+x 2>/dev/null | head -n1 || true)"
+          # 可执行名在 Linux 上取的是 package.json 的 name 小写形式，而不是 productName：
+          # app-builder-lib/out/linuxPackager.js 里 executableName 缺省为
+          # appInfo.sanitizedName.toLowerCase()（本仓库 name=aiartengine → aiartengine），
+          # productName 只决定安装目录（/opt/AIArtEngine）。AppImage 冒烟直接跑 .AppImage
+          # 文件、不查内部可执行名，所以只有这条链路会踩到大小写差异，必须用 -iname。
+          BIN="$(find /opt -maxdepth 3 -type f -iname AIArtEngine -perm -u+x 2>/dev/null | head -n1 || true)"
           if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
             echo 'SMOKE_FAIL installed binary missing under /opt' >&2
+            echo 'SMOKE: 列出 /opt 下的可执行文件，便于定位命名差异:' >&2
+            find /opt -maxdepth 3 -type f -perm -u+x 2>/dev/null | head -n 20 >&2 || true
             exit 1
           fi
           echo "SMOKE installed binary: $BIN"
