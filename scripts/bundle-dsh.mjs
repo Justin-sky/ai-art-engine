@@ -330,6 +330,64 @@ function dirSize(root) {
   return total
 }
 
+/**
+ * 预置「隐藏 ACL 沙箱子进程控制台窗口」补丁（Windows 链路）。
+ *
+ * 上游 dsh 的 Windows 沙箱用受限令牌 + CreateProcessAsUserW 拉子进程，且刻意不用
+ * CREATE_NO_WINDOW / CREATE_NEW_CONSOLE——受限令牌下带控制台隔离的子进程会以
+ * STATUS_DLL_INIT_FAILED（0xC0000142）死掉（上游 spawn 模块注释即此实测结论）。宿主是
+ * GUI 进程、dsh 自身也没有控制台可共享时，受限子进程只能新建一个控制台窗口，表现就是
+ * 每条沙箱命令弹一次黑窗。这里把产物里的 STARTUPINFO 改成
+ * STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW + SW_HIDE，让新窗口不显示，安装包出厂即好。
+ *
+ * 与运行时的同一处补丁（src/main/services/dshSandboxConsolePatch.ts）保持字面量一致——
+ * 构建脚本不能 import TS，两处由 tests/dshSandboxConsolePatch.test.ts 的防漂移断言锁住。
+ * 找不到调用点就跳过：上游换了实现不该让打包失败（补丁只是体验优化）。
+ */
+function patchAclSandboxConsoleWindow() {
+  const libDir = join(OUT_DIR, 'node_modules', '@deepseek-ai', 'dsh-sandbox-windows-acl', 'lib')
+  if (!existsSync(libDir)) {
+    console.log('[bundle-dsh] 产物中没有 ACL 沙箱包，跳过控制台窗口补丁')
+    return
+  }
+  const encodeCall = /encodeStartupInfo\(\s*startupInfo,\s*\{([\s\S]*?)\}\)/g
+  const pristineFlags = /(\r?\n)([ \t]*)dwFlags:\s*256,/
+  const jsFiles = []
+  const walk = (dir) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, ent.name)
+      if (ent.isDirectory()) walk(p)
+      else if (/\.[cm]?js$/.test(ent.name)) jsFiles.push(p)
+    }
+  }
+  walk(libDir)
+
+  let files = 0
+  let sites = 0
+  for (const file of jsFiles) {
+    const source = readFileSync(file, 'utf8')
+    if (!source.includes('dwFlags: 256')) continue
+    const patched = source.replace(encodeCall, (call, fields) => {
+      if (!pristineFlags.test(fields)) return call
+      const patchedFields = fields.replace(
+        pristineFlags,
+        (_match, eol, indent) => `${eol}${indent}dwFlags: 257,${eol}${indent}wShowWindow: 0,`
+      )
+      sites += 1
+      const start = call.indexOf(fields)
+      return call.slice(0, start) + patchedFields + call.slice(start + fields.length)
+    })
+    if (patched === source) continue
+    writeFileSync(file, patched, 'utf8')
+    files += 1
+  }
+  console.log(
+    sites > 0
+      ? `[bundle-dsh] 已预置 ACL 沙箱控制台隐藏补丁：${files} 个文件 / ${sites} 处 spawn`
+      : '[bundle-dsh] 提示：ACL 沙箱包存在但没有可改写的 STARTUPINFO 调用点，跳过控制台窗口补丁'
+  )
+}
+
 async function main() {
   const version = resolveDshVersion()
   console.log(`[bundle-dsh] 从已安装依赖构建 ${DSH_PACKAGE}@${version} 自包含运行体…`)
@@ -357,6 +415,7 @@ async function main() {
   mkdirSync(OUT_DIR, { recursive: true })
   cpSync(join(STAGE_DIR, 'node_modules'), join(OUT_DIR, 'node_modules'), { recursive: true })
   writeFileSync(join(OUT_DIR, 'package.json'), readFileSync(join(STAGE_DIR, 'package.json')))
+  patchAclSandboxConsoleWindow()
 
   verifyBundle()
   verifyReachableRequires(packages)

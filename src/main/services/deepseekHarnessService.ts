@@ -37,6 +37,7 @@ import {
   HIDE_CHILD_WINDOWS_HOOK_FILENAME,
   HIDE_CHILD_WINDOWS_HOOK_SOURCE
 } from './dshHideChildWindowsHook'
+import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
 import { getMcpServerInfo } from './mcpServerService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
@@ -1328,6 +1329,33 @@ function writeHideChildWindowsHook(): string | null {
 }
 
 /**
+ * ACL 沙箱控制台补丁的应用记录：同一棵依赖树只尝试一次。补丁本身幂等（第二次读到的
+ * 就是已补丁内容），失败也不值得重试——只读安装目录不会中途变成可写。
+ */
+const aclConsolePatchApplied = new Set<string>()
+
+/**
+ * 给 dsh 依赖树里的 ACL 沙箱打「隐藏控制台窗口」补丁。
+ *
+ * writeHideChildWindowsHook 管不到沙箱链路：ACL 沙箱的子进程由原生 CreateProcessAsUserW
+ * 创建（不经过 Node 的 spawn），受限令牌下又不能用 CREATE_NO_WINDOW，于是宿主没有控制台时
+ * 它会新建一个可见控制台窗口。详见 dshSandboxConsolePatch 的说明。写盘失败只记一行日志，
+ * 补丁只是体验优化，绝不影响对话。
+ */
+function applyAclConsolePatch(dshModules: string): void {
+  if (aclConsolePatchApplied.has(dshModules)) return
+  aclConsolePatchApplied.add(dshModules)
+  const report = patchAclSandboxConsole(dshModules)
+  if (report.failedFiles > 0) {
+    console.warn(
+      '[aiart] acl sandbox console patch not applied (read-only install?):',
+      dshModules,
+      `${report.failedFiles} file(s)`
+    )
+  }
+}
+
+/**
  * 拉起一次 dsh 进程：spawn、按行转发输出、处理结束。
  *
  * dsh 的 headless profile 是一次性的（跑完即退），所以每条任务必然一个新进程；
@@ -1622,7 +1650,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   const patchPath = dshModules
     ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory)
     : null
-  // 隐藏 dsh 子进程的控制台窗口（见 dshHideChildWindowsHook）
+  // 隐藏 dsh 子进程的控制台窗口：非沙箱命令走预载 hook（dshHideChildWindowsHook），
+  // 沙箱内命令走运行体补丁（dshSandboxConsolePatch）。两条都必须在下拉 dsh 之前就位。
+  if (dshModules) applyAclConsolePatch(dshModules)
   const hideWindowsHook = writeHideChildWindowsHook()
   const args = dshEntry
     ? [
