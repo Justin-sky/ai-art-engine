@@ -145,6 +145,7 @@
           type="button"
           class="anim-play"
           :disabled="gifBusy"
+          :title="t('graph.anim2d.exportGifHint')"
           @click="exportGif"
         >
           {{ gifBusy ? t('graph.anim2d.exportGifBusy') : t('graph.anim2d.exportGif') }}
@@ -207,6 +208,17 @@
   >
     {{ t('graph.inspector.node.empty') }}
   </div>
+
+  <SaveAssetDialog
+    ref="gifSaveRef"
+    :open="gifSaveOpen"
+    :default-name="gifSaveDefaultName"
+    :title="t('graph.anim2d.exportGifTitle')"
+    :subtitle="t('graph.anim2d.exportGifSubtitle')"
+    :z-index="2600"
+    @confirm="onGifSaveConfirm"
+    @cancel="closeGifSave"
+  />
 </template>
 
 <script setup lang="ts">
@@ -219,16 +231,18 @@ import {
   readAnimGifFpsFromNode,
   readAnimKeyColorFromNode
 } from '@shared/graph'
+import { resolveCacheOutputRoot } from '@shared/domain'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
+import SaveAssetDialog from './SaveAssetDialog.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
+import { useProjectStore } from '../stores/project'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
-import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
-import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
+import { composeAnim2dGif, type Anim2dGifResult } from '../features/graph/model/composeAnim2dGif'
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -393,38 +407,79 @@ const gifBusy = ref(false)
 const gifStatus = ref('')
 const gifError = ref('')
 
+/** 资源库保存对话框：目标文件夹（资产库目录）与文件名由用户在此选择 */
+const project = useProjectStore()
+const gifSaveOpen = ref(false)
+const gifSaveDefaultName = ref('')
+const gifSaveRef = ref<InstanceType<typeof SaveAssetDialog> | null>(null)
+const gifSaving = ref(false)
+
 /**
- * 把当前切好的帧按帧率合成 GIF 并落盘为工程图片资产（默认 `Assets/2D`）。
- * 帧序、透明键控结果都取自预览用的同一份 cells，保证「所见即所得」。
+ * 用当前预览的同一份 cells 按面板帧率合成 GIF；帧序、透明键控结果与预览一致。
+ * 合成不出帧时抛 `ANIM2D_GIF_NO_FRAMES`，由调用方转成可读提示。
  */
-async function exportGif(): Promise<void> {
-  const current = node.value
-  if (!current || gifBusy.value || cells.value.length < 2) return
+async function composeGifFromCells(): Promise<Anim2dGifResult> {
+  const gif = await composeAnim2dGif({
+    frameUrls: cells.value.map((cell) => cell.dataUrl),
+    fps: fps.value,
+    loop: loop.value
+  })
+  if (!gif) throw new Error('ANIM2D_GIF_NO_FRAMES')
+  return gif
+}
+
+/**
+ * 点「导出 GIF」：先弹资源库保存对话框（选目录 + 命名），确认后才合成落盘。
+ * 帧序、透明键控结果取自预览用的同一份 cells，保证「所见即所得」。
+ */
+function exportGif(): void {
+  if (!node.value || gifBusy.value || cells.value.length < 2) return
+  gifError.value = ''
+  gifSaveDefaultName.value = `anim2d-gif-${state.value.rows}x${state.value.cols}`
+  gifSaveOpen.value = true
+}
+
+function closeGifSave(): void {
+  if (gifSaving.value) return
+  gifSaveOpen.value = false
+}
+
+/**
+ * 保存对话框确认：合成 GIF → 落到缓存目录暂存（不进资产库）→ 交由
+ * `saveProjectAsset` 复制进所选资源库文件夹并登记为图片资产 → 刷新素材库。
+ * 合成或落盘失败时把错误留在对话框里，用户可改目录 / 名称重试。
+ */
+async function onGifSaveConfirm(payload: { name: string; folderId: string | null }): Promise<void> {
+  if (!node.value || gifSaving.value) return
+  gifSaving.value = true
   gifBusy.value = true
   gifStatus.value = ''
   gifError.value = ''
+  gifSaveRef.value?.setSaving(true)
   try {
-    const gif = await composeAnim2dGif({
-      frameUrls: cells.value.map((cell) => cell.dataUrl),
-      fps: fps.value,
-      loop: loop.value
-    })
-    if (!gif) throw new Error('ANIM2D_GIF_NO_FRAMES')
-    const configured = current.params?.mediaOutputDir
-    const relativePath = await saveGraphRunMediaForNode({
+    const gif = await composeGifFromCells()
+    const cacheRoot = resolveCacheOutputRoot(project.config?.cacheOutputDir)
+    const stagedPath = await window.studio.saveGraphRunMedia({
       dataUrl: gif.dataUrl,
-      key: `anim2d-gif-${state.value.rows}x${state.value.cols}`,
-      outputDir:
-        typeof configured === 'string' && configured.trim() ? configured.trim() : 'Assets/2D',
-      node: current
+      key: `anim2d-gif-${Date.now()}`,
+      outputDir: `${cacheRoot}/Gifs`
     })
-    gifStatus.value = t('graph.anim2d.exportGifDone', { path: relativePath })
+    const asset = await window.studio.saveProjectAsset({
+      relativePath: stagedPath,
+      name: payload.name,
+      folderId: payload.folderId
+    })
+    await project.scheduleRefreshLibrary()
+    gifSaveOpen.value = false
+    gifStatus.value = t('graph.anim2d.exportGifDone', {
+      path: asset.relativePath || asset.name
+    })
   } catch (err) {
-    gifError.value = t('graph.anim2d.exportGifFailed', {
-      error: err instanceof Error ? err.message : String(err)
-    })
+    gifSaveRef.value?.setError(err instanceof Error ? err.message : String(err))
   } finally {
+    gifSaving.value = false
     gifBusy.value = false
+    gifSaveRef.value?.setSaving(false)
   }
 }
 
@@ -502,6 +557,8 @@ watch(
   ],
   () => {
     activeIndex.value = 0
+    // 换节点即放弃未确认的导出：对话框里的目录 / 名称是给上一个节点选的
+    if (!gifSaving.value) gifSaveOpen.value = false
     void refreshCells()
   },
   { immediate: true }

@@ -79,7 +79,7 @@
           v-else
           class="thumb thumb-fallback"
         >
-          <span class="fallback-icon">{{ asset.type === 'video' ? '🎬' : '🖼️' }}</span>
+          <span class="fallback-icon">{{ fallbackIcon(asset) }}</span>
           <span class="type-badge">{{ typeLabel(asset) }}</span>
         </div>
         <span
@@ -114,6 +114,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AssetInfo, AssetType } from '@shared/domain'
+import { isAnimatedImageFilePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
@@ -121,10 +122,23 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 /** 可被 @ 引用的资产类型：图片 / 视频 / 音频（voice 为工程语音资产） */
 const MENTION_TYPES: ReadonlySet<AssetType> = new Set(['image', 'video', 'voice'])
-const TYPE_LABEL_KEY: Record<string, string> = {
+/**
+ * 引用分类：GIF 在资产模型里仍是 image 类型，但选择器里单列一类，
+ * 避免和一堆静态图混在一起挑不出来。
+ */
+type MentionKind = 'all' | 'image' | 'gif' | 'video' | 'voice'
+type MentionAssetKind = Exclude<MentionKind, 'all'>
+const KIND_LABEL_KEY: Record<MentionAssetKind, string> = {
   image: 'studio.chat.mentionTypeImage',
+  gif: 'studio.chat.mentionTypeGif',
   video: 'studio.chat.mentionTypeVideo',
   voice: 'studio.chat.mentionTypeAudio'
+}
+
+/** 资产 → 引用分类（动图扩展名从图片里拆出来；非图片类型原样返回） */
+function mentionKindOf(asset: AssetInfo): MentionAssetKind {
+  if (asset.type !== 'image') return asset.type as MentionAssetKind
+  return isAnimatedImageFilePath(asset.relativePath ?? '') ? 'gif' : 'image'
 }
 
 const props = defineProps<{
@@ -141,7 +155,7 @@ const emit = defineEmits<{
 const { t } = useStudioI18n()
 const project = useProjectStore()
 const query = ref('')
-const typeFilter = ref<'all' | 'image' | 'video' | 'voice'>('all')
+const typeFilter = ref<MentionKind>('all')
 const pending = ref<Set<string>>(new Set())
 const thumbUrls = ref<Record<string, string>>({})
 let thumbToken = 0
@@ -149,6 +163,7 @@ let thumbToken = 0
 const tabs = computed(() => [
   { value: 'all' as const, label: t('studio.chat.mentionTypeAll') },
   { value: 'image' as const, label: t('studio.chat.mentionTypeImage') },
+  { value: 'gif' as const, label: t('studio.chat.mentionTypeGif') },
   { value: 'video' as const, label: t('studio.chat.mentionTypeVideo') },
   { value: 'voice' as const, label: t('studio.chat.mentionTypeAudio') }
 ])
@@ -162,19 +177,28 @@ const excluded = computed(() => new Set(props.excludedPaths.map((p) => p.replace
 const visibleAssets = computed(() => {
   const q = query.value.trim().toLowerCase()
   return mentionAssets.value.filter((asset) => {
-    if (typeFilter.value !== 'all' && asset.type !== typeFilter.value) return false
+    if (typeFilter.value !== 'all' && mentionKindOf(asset) !== typeFilter.value) return false
     if (!q) return true
     return asset.name.toLowerCase().includes(q)
   })
 })
 
-function countByType(type: 'all' | AssetType): number {
+function countByType(type: MentionKind): number {
   if (type === 'all') return mentionAssets.value.length
-  return mentionAssets.value.filter((a) => a.type === type).length
+  return mentionAssets.value.filter((a) => mentionKindOf(a) === type).length
 }
 
+/** 卡片右上角徽标：动图显示 GIF，而非笼统的「图片」 */
 function typeLabel(asset: AssetInfo): string {
-  return t(TYPE_LABEL_KEY[asset.type] ?? 'studio.chat.mentionTypeFile')
+  return t(KIND_LABEL_KEY[mentionKindOf(asset)])
+}
+
+/** 无缩略图时的占位图标 */
+function fallbackIcon(asset: AssetInfo): string {
+  const kind = mentionKindOf(asset)
+  if (kind === 'video') return '🎬'
+  if (kind === 'gif') return '🎞️'
+  return '🖼️'
 }
 
 watch(

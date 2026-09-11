@@ -12,6 +12,7 @@ import type {
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
+import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
@@ -482,7 +483,10 @@ function renderMessageText(text: string): string {
   })
 }
 
-/** 消息气泡内图片卡片：把 data-src 解析为预览 URL；加载失败/文件缺失回退为文本 chip */
+/**
+ * 消息气泡内图片卡片：把 data-src 解析为预览 URL；加载失败/文件缺失回退为文本 chip。
+ * 动图（GIF）沿用资产卡口径：静态缩略图先顶上，进入视口后才换原文件播动画。
+ */
 function resolveChatImages(root: HTMLElement): void {
   root.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((img) => {
     const path = img.dataset.src
@@ -504,6 +508,8 @@ function resolveChatImages(root: HTMLElement): void {
           return
         }
         img.src = url
+        // 动图（GIF）：先显示静态缩略图，进入视口后才换原文件播动画
+        attachAnimatedImagePlayback(img, path, url)
       })
       .catch(fallback)
   })

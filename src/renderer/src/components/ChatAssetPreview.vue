@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ModelPreview from './ModelPreview.vue'
 import {
-  resolveAssetFileUrl,
-  resolveAssetPreviewUrl
-} from '../features/media/assetUrlCache'
+  isAnimatedPlaybackPath,
+  observeInView,
+  pickChatImageSrc
+} from '../features/media/animatedImagePlayback'
+import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
@@ -32,6 +34,35 @@ const previewUrl = ref('')
 const resolved = ref(false)
 let disposed = false
 
+/** 动图（GIF）：缩略图只剩首帧，进入视口后才换原文件播动画 */
+const animated = computed(() => isAnimatedPlaybackPath(props.relativePath))
+const animatedVisible = ref(false)
+const imageRef = ref<HTMLImageElement>()
+let stopObservingView: (() => void) | null = null
+
+/** 动图取原文件，其余仍是缩略图优先（非动图行为与改动前一致） */
+const imageSrc = computed(() =>
+  pickChatImageSrc({
+    relativePath: props.relativePath,
+    previewUrl: previewUrl.value,
+    fileUrl: fileUrl.value,
+    playback: animatedVisible.value
+  })
+)
+
+/** 元素挂载后再观察视口，避免一屏多张动图同时解码原文件 */
+function observePlayback(el: HTMLElement | null | undefined): void {
+  stopObservingView?.()
+  stopObservingView = null
+  animatedVisible.value = false
+  if (!el || !animated.value) return
+  stopObservingView = observeInView(el, (visible) => {
+    animatedVisible.value = visible
+  })
+}
+
+watch(imageRef, observePlayback, { flush: 'post' })
+
 onMounted(async () => {
   // 3D 模型由 ModelPreview 自行加载；未知类型不需要媒体 URL
   if (kind.value === 'model' || kind.value === 'file') return
@@ -50,6 +81,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
+  stopObservingView?.()
+  stopObservingView = null
 })
 
 /** 图片点击：复用资产全图预览弹窗 */
@@ -66,8 +99,9 @@ async function onImageClick(): Promise<void> {
     <template v-if="kind === 'image'">
       <img
         v-if="fileUrl"
+        ref="imageRef"
         class="chat-asset-media"
-        :src="previewUrl || fileUrl"
+        :src="imageSrc"
         alt=""
         @click="onImageClick"
       />
