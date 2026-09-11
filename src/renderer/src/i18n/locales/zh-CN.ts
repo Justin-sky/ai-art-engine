@@ -905,6 +905,7 @@ export default {
       video: '视频',
       voice: '声音',
       imageRef: '引用图片',
+      psdSource: 'PSD 源文件',
       videoRef: '引用视频',
       voiceRef: '引用声音',
       screenplayRef: '引用剧本',
@@ -988,6 +989,7 @@ export default {
       context: {
         openEditor: '打开编辑器',
         showInFolder: '在文件夹中打开',
+        openWithPhotoshop: '用 Photoshop 打开',
         copyOriginal: '复制原始文件',
         reimport: '重新导入',
         rename: '重命名',
@@ -1062,6 +1064,7 @@ export default {
       noPreview: '暂无预览',
       loadingPreview: '正在加载预览…',
       noMedia: '尚未关联媒体文件',
+      psdSourceHint: '未能生成该 PSD 的合成预览，双击可用 Photoshop 等本机程序打开',
       descPlaceholder: '描述该资产的用途、风格、约束…',
       draftHint: 'Ctrl+S 选择目录与文件名后保存',
       notFound: '资产不存在或已删除',

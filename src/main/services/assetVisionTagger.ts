@@ -18,7 +18,11 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'fs'
 import { join } from 'path'
 import { nativeImage, type NativeImage } from 'electron'
-import { isImageFilePath, isVideoFilePath } from '@shared/import'
+import {
+  isImageFilePath,
+  isLayeredSourceImageFilePath,
+  isVideoFilePath
+} from '@shared/import'
 import { cocoLabelZh } from '@shared/yolo'
 import type { YoloDetectResult } from '@shared/yolo'
 import {
@@ -101,6 +105,10 @@ export function hasPendingVisionTag(root: string, relativePath: string): boolean
 async function detectOnce(root: string, rel: string): Promise<VisionAssetTags | null> {
   const abs = join(root, rel)
   if (!existsSync(abs)) return null
+  // PSD 等分层源文件：画面要经合成解码才有（数百毫秒 + 数十 MB 内存），而打标只在
+  // 缩略图尺度上跑，收益不对等，暂不参与入库打标——不写 skipped 状态，
+  // 免得素材卡长出「打标失败」角标
+  if (isLayeredSourceImageFilePath(abs)) return null
   if (!isImageFilePath(abs) && !isVideoFilePath(abs)) return null
 
   try {

@@ -543,7 +543,12 @@ import {
 } from '@shared/domain'
 import type { GraphNode, GraphValue } from '@shared/graph'
 import { isAssetRefInputHostType, resolveAssetPreviewMediaPath } from '@shared/graph'
-import { isAnimatedImageFilePath, isAudioFilePath, isVideoFilePath } from '@shared/import'
+import {
+  isAnimatedImageFilePath,
+  isAudioFilePath,
+  isLayeredSourceImageFilePath,
+  isVideoFilePath
+} from '@shared/import'
 import { isWeakVisionTag, type VisionObjectTag } from '@shared/visionTags'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -807,6 +812,10 @@ const graphPreviewHostId = computed(() => {
 })
 const typeLabel = computed(() => {
   if (!asset.value) return ''
+  // PSD 等设计源文件：类型单独标注，与可解码图片区分开
+  if (isLayeredSourceImageFilePath(asset.value.relativePath || '')) {
+    return t('asset.type.psdSource')
+  }
   if (isPoseModelAsset(asset.value)) return t('asset.type.modelPose')
   if (isAnimationModelAsset(asset.value) || modelMeta.value?.animationOnly) {
     return t('asset.type.modelAnimation')
@@ -941,6 +950,9 @@ const cutoutSourcePath = computed(() => {
   const a = asset.value
   if (!a || a.type !== 'image') return ''
   const rel = a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+  // PSD 等分层源文件：像素要经合成解码才有，且这些能力按原图文件取像素，
+  // 抠图 / 智能构图 / UI 部件提取一律不开放
+  if (rel && isLayeredSourceImageFilePath(rel)) return ''
   if (rel && isAnimatedImageFilePath(rel)) return ''
   return rel
 })

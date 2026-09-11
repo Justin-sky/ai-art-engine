@@ -61,6 +61,8 @@ const api: StudioApi = {
     ipcRenderer.invoke(IpcChannels.OBJECT_STORAGE_UPLOAD_MEDIA, relativePath),
   showAssetInFolder: (assetId: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_SHOW_IN_FOLDER, assetId),
+  openAssetWithDefaultApp: (relativePath: string) =>
+    ipcRenderer.invoke(IpcChannels.ASSET_OPEN_WITH_DEFAULT_APP, relativePath),
   showFolderInFolder: (folderId: string) =>
     ipcRenderer.invoke(IpcChannels.ASSET_SHOW_FOLDER, folderId),
   detectVideoKeyframes: (relativePath: string) =>

@@ -6,7 +6,12 @@ import {
   isRealThumbnailPath,
   thumbRelativePathFor
 } from '@shared/media/thumbnailPath'
-import { isImageFilePath, isVideoFilePath } from '@shared/import'
+import {
+  isImageFilePath,
+  isLayeredSourceImageFilePath,
+  isVideoFilePath
+} from '@shared/import'
+import { encodeRgbaPng, readPsdCompositeFile } from './psdCompositeService'
 import { fail, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { removeIfExists } from '../persistence/binaryStore'
@@ -48,6 +53,21 @@ function isUsable(image: NativeImage): boolean {
   return width > 0 && height > 0
 }
 
+/**
+ * 分层源文件（PSD）的预览边长：合成解码一次要数百毫秒，解出即落盘复用，
+ * 所以给得比普通缩略图大——素材卡与放大预览共用这一份。
+ */
+const LAYERED_PREVIEW_MAX_EDGE = 1024
+
+/** 该源文件对应的预览边长 */
+function previewMaxEdgeFor(sourceAbs: string): number {
+  return isLayeredSourceImageFilePath(sourceAbs) ? LAYERED_PREVIEW_MAX_EDGE : THUMB_MAX_EDGE
+}
+
+/**
+ * 可主动生成缩略图的媒体：图片（含 PSD 分层源文件）/ 视频。
+ * 分层源文件只能走异步链路——合成解码会把主进程占住数百毫秒，同步 IPC 里跑不动。
+ */
 function isThumbnailableMediaPath(filePath: string): boolean {
   return isImageFilePath(filePath) || isVideoFilePath(filePath)
 }
@@ -55,6 +75,8 @@ function isThumbnailableMediaPath(filePath: string): boolean {
 /** createFromPath 对部分 JPG/路径会失败；优先 buffer，再回退 path */
 function loadNativeImageSync(sourceAbs: string): NativeImage | null {
   if (isVideoFilePath(sourceAbs)) return null
+  // 分层源文件（PSD）nativeImage 必然解空，省掉 buffer → path 两次白试
+  if (isLayeredSourceImageFilePath(sourceAbs)) return null
   try {
     const buf = readFileSync(sourceAbs)
     const fromBuf = nativeImage.createFromBuffer(buf)
@@ -102,17 +124,35 @@ async function loadNativeImageAsync(sourceAbs: string): Promise<NativeImage | nu
   }
   const sync = loadNativeImageSync(sourceAbs)
   if (sync) return sync
+  // 分层源文件（PSD）：应用内合成解码；解不出再落到系统缩略图兜底
+  if (isLayeredSourceImageFilePath(sourceAbs)) {
+    const composite = loadLayeredSourcePreview(sourceAbs)
+    if (composite) return composite
+  }
   return createSystemThumbnail(sourceAbs)
 }
 
-function writeResizedPng(image: NativeImage, thumbAbs: string): void {
+/** 分层源文件（PSD）：合成解码 → PNG → NativeImage；解不出画面时返回 null */
+function loadLayeredSourcePreview(sourceAbs: string): NativeImage | null {
+  const composite = readPsdCompositeFile(sourceAbs)
+  if (!composite) return null
+  try {
+    const image = nativeImage.createFromBuffer(encodeRgbaPng(composite))
+    return isUsable(image) ? image : null
+  } catch (err) {
+    console.warn('[thumbnail] psd composite encode failed', sourceAbs, err)
+    return null
+  }
+}
+
+function writeResizedPng(image: NativeImage, thumbAbs: string, maxEdge: number): void {
   const { width, height } = image.getSize()
-  const maxEdge = Math.max(width, height)
+  const longest = Math.max(width, height)
   const resized =
-    maxEdge > THUMB_MAX_EDGE
+    longest > maxEdge
       ? image.resize({
-          width: Math.max(1, Math.round((width * THUMB_MAX_EDGE) / maxEdge)),
-          height: Math.max(1, Math.round((height * THUMB_MAX_EDGE) / maxEdge)),
+          width: Math.max(1, Math.round((width * maxEdge) / longest)),
+          height: Math.max(1, Math.round((height * maxEdge) / longest)),
           quality: 'better'
         })
       : image
@@ -150,7 +190,9 @@ export function peekExistingImageThumbnail(
   if (!sourceRel) return null
   try {
     const sourceAbs = assertInside(root, join(root, sourceRel))
-    if (!existsSync(sourceAbs) || !isThumbnailableMediaPath(sourceAbs)) return null
+    if (!existsSync(sourceAbs)) return null
+    // 这里是「只看有没有」的探测：只认已落盘的缩略图，不触发生成
+    if (!isImageFilePath(sourceAbs) && !isVideoFilePath(sourceAbs)) return null
     const thumbRel = thumbRelativePathFor(sourceRel)
     const thumbAbs = assertInside(root, join(root, thumbRel))
     return existingThumbRel(sourceAbs, sourceRel, thumbAbs, thumbRel)
@@ -159,14 +201,17 @@ export function peekExistingImageThumbnail(
   }
 }
 
-/** 若缩略图缺失或比原图旧，则生成；返回 thumb 相对路径（仅图片同步路径） */
+/**
+ * 若缩略图缺失或比原图旧，则生成；返回 thumb 相对路径（同步入口，仅原生可解图片）。
+ * PSD 等分层源文件必须走 ensureImageThumbnailAsync——合成解码不能在同步 IPC 里跑。
+ */
 export function ensureImageThumbnail(root: string, sourceRelativePath: string): string {
   const sourceRel = sourceRelativePath.replace(/\\/g, '/').trim()
   if (!sourceRel) throw fail(E_THUMB_EMPTY_PATH)
 
   const sourceAbs = assertInside(root, join(root, sourceRel))
   if (!existsSync(sourceAbs)) throw fail(E_THUMB_SOURCE_MISSING)
-  if (!isImageFilePath(sourceAbs)) {
+  if (!isImageFilePath(sourceAbs) || isLayeredSourceImageFilePath(sourceAbs)) {
     return sourceRel
   }
 
@@ -179,11 +224,14 @@ export function ensureImageThumbnail(root: string, sourceRelativePath: string): 
   if (!image) {
     throw fail(E_THUMB_DECODE_FAILED)
   }
-  writeResizedPng(image, thumbAbs)
+  writeResizedPng(image, thumbAbs, previewMaxEdgeFor(sourceAbs))
   return thumbRel
 }
 
-/** 异步版：图片同步失败或视频时用系统 createThumbnailFromPath（视频取首帧/海报） */
+/**
+ * 异步版：图片同步失败或视频时用系统 createThumbnailFromPath（视频取首帧/海报）；
+ * 分层源文件（PSD）走应用内合成解码。
+ */
 export async function ensureImageThumbnailAsync(
   root: string,
   sourceRelativePath: string
@@ -196,6 +244,10 @@ export async function ensureImageThumbnailAsync(
   if (!isThumbnailableMediaPath(sourceAbs)) {
     return sourceRel
   }
+  // 解过一次且失败：会话内不再重试，免得每次预览都白等一轮合成解码
+  if (layeredDecodeFailed.has(jobKey(root, sourceRel))) {
+    throw fail(E_THUMB_DECODE_FAILED)
+  }
 
   const thumbRel = thumbRelativePathFor(sourceRel)
   const thumbAbs = assertInside(root, join(root, thumbRel))
@@ -204,9 +256,12 @@ export async function ensureImageThumbnailAsync(
 
   const image = await loadNativeImageAsync(sourceAbs)
   if (!image) {
+    if (isLayeredSourceImageFilePath(sourceAbs)) {
+      layeredDecodeFailed.add(jobKey(root, sourceRel))
+    }
     throw fail(isVideoFilePath(sourceAbs) ? E_THUMB_VIDEO_FRAME_FAILED : E_THUMB_DECODE_FAILED)
   }
-  writeResizedPng(image, thumbAbs)
+  writeResizedPng(image, thumbAbs, previewMaxEdgeFor(sourceAbs))
   return thumbRel
 }
 
@@ -237,6 +292,11 @@ const queue: ThumbJob[] = []
 let active = 0
 const MAX_CONCURRENT = 2
 const warnedDecode = new Set<string>()
+/**
+ * 分层源文件（PSD）合成解码失败的路径（会话内不再重试）：
+ * 解一次数百毫秒且注定失败的文件，不该被每次预览请求反复拖住主进程。
+ */
+const layeredDecodeFailed = new Set<string>()
 
 function jobKey(root: string, sourceRel: string): string {
   return `${root}::${sourceRel.replace(/\\/g, '/')}`

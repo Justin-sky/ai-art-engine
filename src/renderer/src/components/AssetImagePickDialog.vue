@@ -91,6 +91,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AssetInfo } from '@shared/domain'
+import { isLayeredSourceImageFilePath } from '@shared/import'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
@@ -117,7 +118,13 @@ const thumbUrls = ref<Record<string, string>>({})
 let thumbToken = 0
 
 const imageAssets = computed(() =>
-  project.assets.filter((asset) => asset.type === 'image' && asset.relativePath)
+  project.assets.filter(
+    (asset) =>
+      asset.type === 'image' &&
+      asset.relativePath &&
+      // PSD 等分层源文件不能作为生成输入：下游按原文件取像素，而它解不出画面
+      !isLayeredSourceImageFilePath(asset.relativePath)
+  )
 )
 
 const visibleAssets = computed(() => {

@@ -65,6 +65,8 @@ export const IpcChannels = {
   /** 将文本写回资产旁挂文件（剧本 txt 等） */
   ASSET_WRITE_TEXT: 'asset:write-text',
   ASSET_SHOW_IN_FOLDER: 'asset:show-in-folder',
+  /** 用系统默认程序打开资产文件（PSD 等分层源文件交 Photoshop 等） */
+  ASSET_OPEN_WITH_DEFAULT_APP: 'asset:open-with-default-app',
   ASSET_SHOW_FOLDER: 'asset:show-folder',
   VIDEO_DETECT_KEYFRAMES: 'video:detect-keyframes',
   /** 视频按时间均匀抽帧（质检等多帧视觉理解） */
@@ -951,6 +953,8 @@ export interface StudioApi {
   }>
   /** 在系统文件管理器中显示资产对应文件（媒体或 meta） */
   showAssetInFolder: (assetId: string) => Promise<void>
+  /** 用系统默认程序打开资产文件（PSD 等分层源文件交 Photoshop 等） */
+  openAssetWithDefaultApp: (relativePath: string) => Promise<void>
   /** 在系统文件管理器中打开目录对应的真实磁盘文件夹 */
   showFolderInFolder: (folderId: string) => Promise<void>
   /** 用主进程 ffprobe 探测视频关键帧时间（秒）；无 ffprobe 或失败时返回 null */

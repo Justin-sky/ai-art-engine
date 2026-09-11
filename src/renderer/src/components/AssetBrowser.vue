@@ -554,6 +554,17 @@
             <span class="ctx-label">{{ t('asset.browser.context.showInFolder') }}</span>
           </button>
           <button
+            v-if="contextMenuAssetCount === 1 && contextMenuCanOpenWithDefaultApp"
+            type="button"
+            @click="openContextAssetWithDefaultApp"
+          >
+            <span
+              class="ctx-icon"
+              aria-hidden="true"
+            >🖌️</span>
+            <span class="ctx-label">{{ t('asset.browser.context.openWithPhotoshop') }}</span>
+          </button>
+          <button
             type="button"
             @click="copyContextMenuOriginalFiles"
           >
@@ -790,9 +801,13 @@ import {
 import { openFrameSheetPreviewDialog } from '../features/media/frameSheetPreviewDialog'
 import { resolveAssetFrameSheetGrid } from '../features/media/resolveAssetFrameSheetGrid'
 import { resolveAssetText } from '../features/media/resolveAssetText'
-import { openImportedMediaRefPreview } from '../features/media/openFullImagePreview'
+import {
+  openFullImagePreview,
+  openImportedMediaRefPreview
+} from '../features/media/openFullImagePreview'
 import { openMotion2dActionPreviewDialog } from '../features/media/motion2dActionPreviewDialog'
 import { openUiKitExtractDialog } from '../features/uiKit/uiKitExtractDialog'
+import { isLayeredSourceImageFilePath } from '@shared/import'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
 import { isWeakVisionTag } from '@shared/visionTags'
 import type { VideoBeatTags } from '@shared/videoBeats'
@@ -887,6 +902,8 @@ function assetIcon(asset: AssetInfo): string {
 }
 
 function assetLabel(asset: AssetInfo): string {
+  // PSD 等设计源文件：卡片不按「图片」示人——它解不出画面，也不能直接送模型
+  if (isLayeredSourceImageFilePath(asset.relativePath || '')) return t('asset.type.psdSource')
   if (isAnimationModelAsset(asset)) return t('asset.type.modelAnimation')
   if (isPoseModelAsset(asset)) return t('asset.type.modelPose')
   if (isFreeCanvasAsset(asset)) return t('asset.type.freeCanvas')
@@ -1449,6 +1466,13 @@ const contextMenuCanRevealInFolder = computed(() => {
   return project.assets.some((a) => a.id === menu.value!.targetId)
 })
 
+/** 右键目标是否为需回本机程序打开的资产（PSD 等分层源文件） */
+const contextMenuCanOpenWithDefaultApp = computed(() => {
+  if (menu.value?.kind !== 'asset' || !menu.value.targetId) return false
+  const asset = project.assets.find((a) => a.id === menu.value!.targetId)
+  return !!asset && isLayeredSourceImageFilePath(asset.relativePath || '')
+})
+
 // ── 视频人 / 物打点入口（asset.videoBeats，右键按需触发）──────────
 
 /** 正在打点分析中的视频资产 id（驱动菜单禁用与素材卡角标） */
@@ -1486,6 +1510,8 @@ const contextMenuSheetPreviewAsset = computed<AssetInfo | null>(() => {
   if (!asset || asset.type !== 'image') return null
   if (isDraftAssetId(asset.id)) return null
   if (!asset.relativePath?.trim()) return null
+  // PSD 等分层源文件：没有可直接播放的帧画面，不提供帧试播
+  if (isLayeredSourceImageFilePath(asset.relativePath)) return null
   return asset
 })
 
@@ -1503,6 +1529,8 @@ const contextMenuUiKitAsset = computed<AssetInfo | null>(() => {
   if (!asset || asset.type !== 'image') return null
   if (isDraftAssetId(asset.id)) return null
   if (!asset.relativePath?.trim()) return null
+  // PSD 等分层源文件：像素要经合成解码才有，不提供 UI 部件提取
+  if (isLayeredSourceImageFilePath(asset.relativePath)) return null
   return asset
 })
 
@@ -2214,6 +2242,14 @@ async function saveScreenplayNotepad(text: string): Promise<void> {
 async function onAssetDblClick(assetId: string): Promise<void> {
   const asset = project.assets.find((a) => a.id === assetId)
   if (!asset) return
+  // PSD 等分层源文件：双击看合成图预览（拿不到合成图时由预览入口降级交系统默认程序）
+  if (isLayeredSourceImageFilePath(asset.relativePath || '')) {
+    await openFullImagePreview({
+      relativePath: asset.relativePath,
+      title: asset.name
+    })
+    return
+  }
   // 导入的引用剧本：记事本；新建剧本：打开编辑器（对齐图片）
   if (isScreenplayAsset(asset.type) && isImportedMediaRefAsset(asset)) {
     await openScreenplayNotepad(asset)
@@ -2229,6 +2265,29 @@ async function onAssetDblClick(assetId: string): Promise<void> {
     return
   }
   openEditor(assetId)
+}
+
+/** PSD 等分层源文件：交系统默认程序（通常是 Photoshop）打开 */
+async function openAssetWithSystemApp(asset: AssetInfo): Promise<void> {
+  const relativePath = asset.relativePath?.trim()
+  if (!relativePath) return
+  try {
+    await window.studio.openAssetWithDefaultApp(relativePath)
+  } catch (e) {
+    await promptAlert({
+      title: t('asset.browser.context.openWithPhotoshop'),
+      message: e instanceof Error ? e.message : String(e)
+    })
+  }
+}
+
+async function openContextAssetWithDefaultApp(): Promise<void> {
+  const assetId = menu.value?.kind === 'asset' ? menu.value.targetId : null
+  closeMenu()
+  if (!assetId) return
+  const asset = project.assets.find((a) => a.id === assetId)
+  if (!asset) return
+  await openAssetWithSystemApp(asset)
 }
 
 async function showContextAssetInFolder(): Promise<void> {

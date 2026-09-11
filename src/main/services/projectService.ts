@@ -114,6 +114,7 @@ import {
   isAudioFilePath,
   isImageFilePath,
   isImportablePath,
+  isLayeredSourceImageFilePath,
   isModelFilePath,
   isTextFilePath,
   isVideoFilePath
@@ -201,6 +202,11 @@ const E_SHELL_OPEN_FOLDER_FAILED = defErr<{ detail: string }>(
   'fs.shellOpenFolderFailed',
   ({ detail }) => `打开文件夹失败: ${detail}`,
   ({ detail }) => `Failed to open folder: ${detail}`
+)
+const E_SHELL_OPEN_FILE_FAILED = defErr<{ detail: string }>(
+  'fs.shellOpenFileFailed',
+  ({ detail }) => `打开文件失败: ${detail}`,
+  ({ detail }) => `Failed to open file: ${detail}`
 )
 const E_NO_ASSETS_SELECTED = defErrSimple(
   'project.noAssetsSelected',
@@ -465,6 +471,7 @@ class ProjectService {
       createdAt: ts,
       updatedAt: ts
     }
+    // 图片 / 视频规划缩略图（PSD 也在内：后台合成解码成 PNG 后落盘）
     if (type === 'image' || type === 'video') {
       asset.thumbnailPath = this.planAndScheduleImageThumbnail(asset.relativePath)
     }
@@ -514,6 +521,7 @@ class ProjectService {
       updatedAt: ts
     }
 
+    // 图片 / 视频规划缩略图（PSD 也在内：后台合成解码成 PNG 后落盘）
     if (type === 'image' || type === 'video') {
       asset.thumbnailPath = this.planAndScheduleImageThumbnail(asset.relativePath)
     }
@@ -901,6 +909,7 @@ class ProjectService {
       folderId: this.folderIdForDirAbs(root, dirname(mediaAbs)) ?? asset.folderId ?? null,
       updatedAt: nowIso()
     }
+    // 图片 / 视频规划缩略图（PSD 也在内：后台合成解码成 PNG 后落盘）
     if (next.type === 'image' || next.type === 'video') {
       next.thumbnailPath = this.planAndScheduleImageThumbnail(relativePath)
     }
@@ -978,6 +987,21 @@ class ProjectService {
       return this.getAssetFileUrl(posix)
     }
 
+    // 分层源文件（PSD）：原文件 Chromium 解不了，预览只能走应用内合成解码出的 PNG。
+    // 已有缩略图直接用；否则等一次合成解码（结果落盘，之后秒开）；解不出返回空串，
+    // 由界面按类型徽章展示。
+    if (isLayeredSourceImageFilePath(abs)) {
+      const existing = peekExistingImageThumbnail(root, posix)
+      if (existing) return this.getAssetFileUrl(existing)
+      try {
+        const thumbRel = await scheduleEnsureThumbnail(root, posix)
+        return this.getAssetFileUrl(thumbRel)
+      } catch (err) {
+        warnThumbnailOnce(posix, err)
+        return ''
+      }
+    }
+
     if (isVideoFilePath(abs)) {
       const existing = peekExistingImageThumbnail(root, posix)
       if (existing) return this.getAssetFileUrl(existing)
@@ -1018,6 +1042,8 @@ class ProjectService {
       if (asset.type !== 'image' && asset.type !== 'video') continue
       const rel = asset.relativePath?.trim()
       if (!rel) continue
+      // 分层源文件（PSD）同样排队：合成解码出的 PNG 一次落盘长期复用，
+      // 否则老工程里缺缩略图的 PSD 只能等用户逐个打开检查器时才现解
       if (isRealThumbnailPath(asset.thumbnailPath, rel)) {
         const thumbAbs = join(root, asset.thumbnailPath!)
         if (existsSync(thumbAbs)) continue
@@ -1058,6 +1084,9 @@ class ProjectService {
     const now = Date.now()
     for (const asset of assets) {
       if (asset.type !== 'image' && asset.type !== 'video') continue
+      // PSD 等分层源文件不排队：画面要经合成解码才有，打标只在缩略图尺度上跑、收益不对等
+      const mediaRel = asset.relativePath?.trim()
+      if (mediaRel && isLayeredSourceImageFilePath(mediaRel)) continue
       const last = asset.visionTags
       if (last?.status === 'ok') continue
       // 上次 skipped 距今不足节流窗口（模型未就绪 / 视频抽帧失败等）：
@@ -1197,6 +1226,20 @@ class ProjectService {
     }
     if (!abs) throw fail(E_ASSET_FILE_MISSING_ON_DISK)
     shell.showItemInFolder(abs)
+  }
+
+  /**
+   * 用系统默认程序打开工程内资产文件（PSD → Photoshop 等）。
+   * 面向「应用内只能看合成图、改不了图层」的分层源文件：素材库里能管、能引用、能预览，
+   * 改图层仍回本机程序，不必自己翻工程目录找。
+   */
+  async openAssetWithDefaultApp(relativePath: string): Promise<void> {
+    const root = this.getRoot()
+    const abs = assertInsideProject(root, join(root, relativePath))
+    if (!existsSync(abs)) throw fail(E_ASSET_FILE_MISSING)
+    const error = await shell.openPath(abs)
+    // 与 showFolderInFolder 同口径：openPath 返回 OS 原生错误字符串，作为 detail 嵌入句式
+    if (error) throw fail(E_SHELL_OPEN_FILE_FAILED, { detail: error })
   }
 
   /** 在系统文件管理器中打开目录对应的真实磁盘文件夹 */

@@ -1,3 +1,4 @@
+import { isLayeredSourceImageFilePath } from '@shared/import'
 import { openMediaPreviewDialog } from './mediaPreviewDialog'
 
 function detectMediaKind(url: string, relativePath?: string | null): 'image' | 'video' | 'audio' {
@@ -11,7 +12,8 @@ function detectMediaKind(url: string, relativePath?: string | null): 'image' | '
 
 /**
  * Inspector / 列表缩略图双击：浮动弹窗预览（不进 Dive 面包屑）。
- * 优先 relativePath（getAssetFileUrl → studio-media 原图），否则 dataUrl。
+ * 优先 relativePath（getAssetFileUrl → studio-media 原图），否则 dataUrl；
+ * 分层源文件（PSD）原文件解不了，改取主进程合成解码出的预览图。
  */
 export async function openFullImagePreview(source: {
   dataUrl?: string | null
@@ -19,14 +21,30 @@ export async function openFullImagePreview(source: {
   title?: string | null
 }): Promise<void> {
   const relativePath = source.relativePath?.trim() || ''
+  const layeredSource = isLayeredSourceImageFilePath(relativePath)
+
   let url = source.dataUrl?.trim() || ''
 
   if (relativePath && !url) {
     try {
-      url = (await window.studio.getAssetFileUrl(relativePath)) || ''
+      url =
+        ((layeredSource
+          ? await window.studio.getAssetPreviewUrl(relativePath)
+          : await window.studio.getAssetFileUrl(relativePath)) || '')
     } catch {
       url = ''
     }
+  }
+
+  // 分层源文件（PSD）连合成预览都拿不到（无合成数据 / 解码失败）：弹窗只会是破图，
+  // 改交系统默认程序（Photoshop）打开
+  if (!url && layeredSource) {
+    try {
+      await window.studio.openAssetWithDefaultApp(relativePath)
+    } catch (error) {
+      console.warn('[asset] open layered source with default app failed', error)
+    }
+    return
   }
 
   if (!url && !relativePath) return

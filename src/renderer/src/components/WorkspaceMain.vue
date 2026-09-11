@@ -122,7 +122,8 @@ const RECENT_LIMIT = 8
 const project = useProjectStore()
 const { openAssetEditor } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
-const { t, assetTypeLabel, assetCreateName, toolbarCreateLabel } = useStudioI18n()
+const { t, assetTypeLabel, assetDisplayTypeLabel, assetCreateName, toolbarCreateLabel } =
+  useStudioI18n()
 const busyId = ref<string | null>(null)
 
 const createItems = computed(() =>
@@ -138,7 +139,7 @@ const recentAssets = computed(() => {
 function recentTypeLabel(asset: AssetInfo): string {
   if (isAnimationModelAsset(asset)) return t('asset.type.modelAnimation')
   if (isFreeCanvasAsset(asset)) return t('asset.type.freeCanvas')
-  return assetTypeLabel(asset.type)
+  return assetDisplayTypeLabel(asset)
 }
 
 function createItemLabel(item: ResolvedWorkspaceToolbarItem): string {

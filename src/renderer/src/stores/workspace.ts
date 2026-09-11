@@ -10,6 +10,7 @@ import {
   isBeatAsset,
   type AssetInfo
 } from '@shared/domain'
+import { isLayeredSourceImageFilePath } from '@shared/import'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
 import i18n from '../i18n'
@@ -263,6 +264,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     // 2D 动作资产是纯 JSON 文档，暂无独立编辑页；由 stage.2d 节点对话框保存/载入
     if (asset.type === 'motion2d') return false
     if (isImportedMediaRefAsset(asset)) return false
+    // PSD 等分层源文件：应用内没有能承载它的编辑器（双击走合成图预览），不开编辑器
+    if (isLayeredSourceImageFilePath(asset.relativePath || '')) return false
     return true
   }
 

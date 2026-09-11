@@ -910,6 +910,7 @@ export default {
       video: 'Video',
       voice: 'Voice',
       imageRef: 'Image Reference',
+      psdSource: 'PSD Source',
       videoRef: 'Video Reference',
       voiceRef: 'Voice Reference',
       screenplayRef: 'Screenplay Reference',
@@ -994,6 +995,7 @@ export default {
       context: {
         openEditor: 'Open editor',
         showInFolder: 'Open in folder',
+        openWithPhotoshop: 'Open with Photoshop',
         copyOriginal: 'Copy original files',
         reimport: 'Reimport',
         rename: 'Rename',
@@ -1069,6 +1071,7 @@ export default {
       noPreview: 'No preview',
       loadingPreview: 'Loading preview…',
       noMedia: 'No media file linked yet',
+      psdSourceHint: 'Could not render a composite preview for this PSD — double-click to open in Photoshop',
       descPlaceholder: 'Describe purpose, style, constraints…',
       draftHint: 'Ctrl+S to choose folder and file name, then save',
       notFound: 'Asset missing or deleted',

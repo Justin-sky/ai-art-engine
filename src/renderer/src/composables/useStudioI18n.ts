@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AssetType } from '@shared/domain'
+import { isLayeredSourceImageFilePath } from '@shared/import'
 
 /** Typed helpers for common domain labels */
 export function useStudioI18n() {
@@ -9,6 +10,20 @@ export function useStudioI18n() {
   function assetTypeLabel(type: AssetType | string): string {
     const key = `asset.type.${type}`
     return te(key) ? String(t(key)) : String(type)
+  }
+
+  /**
+   * 展示用类型名：PSD 等分层源文件单独标注，不与可直接解码的图片混为一类——
+   * 它的画面要靠主进程合成解码，抠图 / 智能构图 / UI 部件提取等像素级能力一律不开放。
+   */
+  function assetDisplayTypeLabel(asset: {
+    type: AssetType | string
+    relativePath?: string | null
+  }): string {
+    if (isLayeredSourceImageFilePath(asset.relativePath || '')) {
+      return String(t('asset.type.psdSource'))
+    }
+    return assetTypeLabel(asset.type)
   }
 
   function assetCreateName(type: AssetType): string {
@@ -47,6 +62,7 @@ export function useStudioI18n() {
     te,
     locale: localeRef,
     assetTypeLabel,
+    assetDisplayTypeLabel,
     assetCreateName,
     toolbarCreateLabel,
     graphTypeLabel,

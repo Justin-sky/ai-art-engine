@@ -226,6 +226,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.ASSET_SHOW_IN_FOLDER, (assetId: string) =>
     projectService.showAssetInFolder(assetId)
   )
+  handle(IpcChannels.ASSET_OPEN_WITH_DEFAULT_APP, (relativePath: string) =>
+    projectService.openAssetWithDefaultApp(relativePath)
+  )
   handle(IpcChannels.ASSET_SHOW_FOLDER, (folderId: string) =>
     projectService.showFolderInFolder(folderId)
   )

@@ -8,7 +8,12 @@ import {
   isPoseModelAsset,
   type AssetInfo
 } from '@shared/domain'
-import { isAudioFilePath, isImageFilePath, isVideoFilePath } from '@shared/import'
+import {
+  isAudioFilePath,
+  isImageFilePath,
+  isLayeredSourceImageFilePath,
+  isVideoFilePath
+} from '@shared/import'
 import { resolveAssetPreviewMediaPath } from '@shared/graph'
 import { cocoLabelZh } from '@shared/yolo'
 import type { VideoBeatKind, VideoBeatSegment, VideoBeatTags } from '@shared/videoBeats'
@@ -30,7 +35,10 @@ const props = defineProps<{
 
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
-const { t, assetTypeLabel } = useStudioI18n()
+const { t, assetDisplayTypeLabel } = useStudioI18n()
+
+/** 类型名按资产口径展示：PSD 等源文件不叫「图片」 */
+const displayTypeLabel = computed(() => assetDisplayTypeLabel(props.asset))
 
 const canRevealAsset = computed(() => {
   const id = props.asset.id?.trim()
@@ -421,6 +429,11 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
 
 
 const emptyHint = computed(() => {
+  // PSD 等分层源文件：正常走图片预览（合成图）；只有合成预览失败才落到这里，
+  // 说明原因与打开方式，而不是笼统的「无预览」
+  if (isLayeredSourceImageFilePath(props.asset.relativePath || '')) {
+    return t('asset.editor.psdSourceHint')
+  }
   if (kind.value === 'video' || kind.value === 'voice') {
     const playPath = pickPlayableMediaPath(
       kind.value,
@@ -581,7 +594,7 @@ onBeforeUnmount(() => {
         v-else
         class="placeholder"
       >
-        <span>{{ assetTypeLabel(asset.type) }}</span>
+        <span>{{ displayTypeLabel }}</span>
         <p>{{ emptyHint }}</p>
       </div>
     </div>
@@ -618,7 +631,7 @@ onBeforeUnmount(() => {
           v-else
           class="placeholder"
         >
-          <span>{{ assetTypeLabel(asset.type) }}</span>
+          <span>{{ displayTypeLabel }}</span>
           <p>{{ videoPlaceholderText }}</p>
         </div>
       </div>
@@ -708,7 +721,7 @@ onBeforeUnmount(() => {
         v-else
         class="placeholder"
       >
-        <span>{{ assetTypeLabel(asset.type) }}</span>
+        <span>{{ displayTypeLabel }}</span>
         <p>{{ emptyHint }}</p>
       </div>
     </div>
