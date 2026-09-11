@@ -385,17 +385,31 @@ jobs:
             exit 1
           fi
           echo "SMOKE installing deb: $DEB"
-          # dpkg 不解析依赖：依赖未满足时交由 apt 补齐（t64 重命名已在 deb.depends 里做 OR 兼容）
-          sudo dpkg -i "$DEB" || sudo apt-get -f install -y -qq
+          # 用 apt 装本地 deb，由它一并解析依赖（t64 重命名已在 deb.depends 里做 OR 兼容）。
+          # 不再用 `dpkg -i || apt-get -f install`：前者在依赖缺失时必然失败，会把
+          # 「needrestart is being skipped since dpkg has failed」这类噪声打进日志，
+          # 让「安装到底成功没有」变得含糊——6.0.0 排障时就被它带偏过一次。
+          sudo apt-get install -y -qq ./"$DEB"
 
-          # 可执行名在 Linux 上取的是 package.json 的 name 小写形式，而不是 productName：
-          # app-builder-lib/out/linuxPackager.js 里 executableName 缺省为
-          # appInfo.sanitizedName.toLowerCase()（本仓库 name=aiartengine → aiartengine），
-          # productName 只决定安装目录（/opt/AIArtEngine）。AppImage 冒烟直接跑 .AppImage
-          # 文件、不查内部可执行名，所以只有这条链路会踩到大小写差异，必须用 -iname。
-          BIN="$(find /opt -maxdepth 3 -type f -iname AIArtEngine -perm -u+x 2>/dev/null | head -n1 || true)"
+          # 安装成败不看上一条命令的退出码，直接查 dpkg 记的包状态（权威判据）。
+          # 包名同时用来推导入口名：Linux 上 executableName 取的是 package.json name 的
+          # 小写形式（app-builder-lib/out/linuxPackager.js），productName 只决定 /opt 下的
+          # 安装目录名——两者大小写不同（aiartengine vs AIArtEngine），硬编码任一个都会踩坑。
+          PKG="$(dpkg-deb -f "$DEB" Package)"
+          STATUS="$(dpkg-query -W -f='${Status}' "$PKG" 2>/dev/null || true)"
+          if [ "$STATUS" != 'install ok installed' ]; then
+            echo "SMOKE_FAIL package not installed properly: $PKG -> '${STATUS:-<none>}'" >&2
+            exit 1
+          fi
+
+          # 优先用用户真正的入口：postinst 经 update-alternatives 建的 /usr/bin/<executable>；
+          # 取不到再按包名去 /opt 兜底（postinst 在无 update-alternatives 时退化成软链）。
+          BIN="/usr/bin/$PKG"
+          if [ ! -x "$BIN" ]; then
+            BIN="$(find /opt -maxdepth 3 -type f -perm -u+x 2>/dev/null | awk -v p="$PKG" 'tolower($NF) == tolower(p)' | head -n1 || true)"
+          fi
           if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
-            echo 'SMOKE_FAIL installed binary missing under /opt' >&2
+            echo "SMOKE_FAIL installed binary missing (expected /usr/bin/$PKG)" >&2
             echo 'SMOKE: 列出 /opt 下的可执行文件，便于定位命名差异:' >&2
             find /opt -maxdepth 3 -type f -perm -u+x 2>/dev/null | head -n 20 >&2 || true
             exit 1
@@ -429,7 +443,6 @@ jobs:
           wait "$PID" 2>/dev/null || true
 
           # 卸载冒烟：安装包必须能被干净移除（用户卸载路径同样是交付质量的一部分）
-          PKG="$(dpkg-deb -f "$DEB" Package)"
           echo "SMOKE removing package: $PKG"
           sudo dpkg -r "$PKG"
           if [ -e "$BIN" ]; then
