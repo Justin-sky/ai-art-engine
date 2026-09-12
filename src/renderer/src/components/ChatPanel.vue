@@ -18,6 +18,7 @@ import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
+import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
 import { fingerprintMap, selectChangedFiles } from '@shared/git'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
@@ -221,11 +222,6 @@ function textBeforeCursor(): string {
   clone.selectNodeContents(el)
   clone.setEnd(range.endContainer, range.endOffset)
   return clone.toString()
-}
-
-/** 扩展名判断是否为图片（决定内联引用以缩略图还是文本 chip 展示） */
-function isImageLikePath(path: string): boolean {
-  return /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(path)
 }
 
 /** 构造内联引用节点：图片显示缩略图（图文混排），其它资产显示 @路径 文本 chip */
@@ -470,17 +466,23 @@ function resolveMediaUrl(path: string): Promise<string> {
   return resolveAssetPreviewUrl(p)
 }
 
-/** 消息气泡文本渲染：`@image:路径` / `@图片路径` → 卡片大图，其它 `@路径` → 文本 chip */
-function renderMessageText(text: string): string {
-  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return esc.replace(/@(?:(image:)\s*)?([^\s@]+)/g, (_m, prefix: string | undefined, raw: string) => {
-    const path = raw.replace(/\\/g, '/')
-    if (isImageLikePath(path)) {
-      const name = path.split('/').pop() ?? path
-      return `<div class="chat-msg-card"><img data-src="${path}" alt="${name}"><div class="chat-msg-card-name">${name}</div></div>`
-    }
-    return `<span class="inline-ref">@${prefix ?? ''}${raw}</span>`
-  })
+/** 助手气泡：Markdown 渲染（标题 / 列表 / 代码块 / 表格等），内联引用与图片卡片沿用既有语义 */
+function renderChatBody(text: string): string {
+  return renderChatMarkdown(text, { copyCode: t('studio.chat.copyCode') })
+}
+
+/**
+ * 气泡内代码块复制：节点由 v-html 注入且数量不定，统一用事件委托处理；
+ * 代码原文直接取同组 <code> 的文本，不必把内容再塞进属性。
+ */
+async function onCodeCopyClick(event: MouseEvent): Promise<void> {
+  const button = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-copy-code]')
+  if (!button) return
+  const code = button.closest('.md-code')?.querySelector('code')?.textContent ?? ''
+  if (!code) return
+  if (!(await copyTextToClipboard(code))) return
+  button.classList.add('copied')
+  window.setTimeout(() => button.classList.remove('copied'), 1200)
 }
 
 /**
@@ -1457,7 +1459,7 @@ onBeforeUnmount(() => {
                 <div
                   class="bubble-text"
                   v-chat-img
-                  v-html="renderMessageText(msg.text)"
+                  v-html="renderInlineChatRefs(msg.text)"
                 />
                 <button
                   class="copy-btn"
@@ -1540,9 +1542,11 @@ onBeforeUnmount(() => {
                 <summary>{{ t('studio.chat.thinking') }}</summary>
                 <pre>{{ msg.reasoning }}</pre>
               </details>
-              <pre
+              <div
                 v-chat-img
-                v-html="renderMessageText(msg.text)"
+                class="md-body"
+                @click="onCodeCopyClick"
+                v-html="renderChatBody(msg.text)"
               />
               <button
                 class="copy-btn"
@@ -1600,7 +1604,7 @@ onBeforeUnmount(() => {
             <div
               class="bubble-text"
               v-chat-img
-              v-html="renderMessageText(msg.text)"
+              v-html="renderInlineChatRefs(msg.text)"
             />
             <button
               class="copy-btn"
@@ -1618,13 +1622,13 @@ onBeforeUnmount(() => {
             <div
               class="prompt-question"
               v-chat-img
-              v-html="renderMessageText(msg.question)"
+              v-html="renderInlineChatRefs(msg.question)"
             />
             <div
               v-if="msg.hint"
               class="prompt-hint"
               v-chat-img
-              v-html="renderMessageText(msg.hint)"
+              v-html="renderInlineChatRefs(msg.hint)"
             />
             <div class="prompt-options">
               <button
@@ -3582,5 +3586,193 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   padding: 0 3px;
   word-break: break-all;
+}
+
+/* 图片卡片本体是 span（避免块级元素出现在 <p> 里被浏览器拆包），卡片名要显式占一行 */
+.chat-msg-card-name {
+  display: block;
+}
+
+/* 助手气泡的 Markdown 正文（v-html 注入，非 scoped）。
+   气泡本身是 pre-wrap（保留用户输入的换行），Markdown 的块级元素要改回普通空白处理。 */
+.md-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.md-body > :first-child {
+  margin-top: 0;
+}
+
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0 0 8px;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.md-body h1 {
+  font-size: 16px;
+}
+
+.md-body h2 {
+  font-size: 15px;
+}
+
+.md-body h3 {
+  font-size: 14px;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.md-body li {
+  margin: 2px 0;
+}
+
+.md-body blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+}
+
+.md-body hr {
+  height: 1px;
+  margin: 10px 0;
+  border: none;
+  background: var(--border);
+}
+
+.md-body a.md-link {
+  color: var(--accent-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.md-body th,
+.md-body td {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.md-body th {
+  background: var(--bg-panel);
+  font-weight: 600;
+}
+
+.md-code-inline {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.md-code {
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.md-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px 2px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-input);
+}
+
+.md-code-lang {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.md-code-lang:empty {
+  display: none;
+}
+
+.md-code-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.md-code-copy:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.md-code-copy .md-icon-done {
+  display: none;
+}
+
+.md-code-copy.copied {
+  color: var(--success);
+}
+
+.md-code-copy.copied .md-icon-copy {
+  display: none;
+}
+
+.md-code-copy.copied .md-icon-done {
+  display: block;
+}
+
+/* 代码块正文：按行展示（长行横向滚动），不受气泡普通换行处理影响 */
+.md-body .md-pre {
+  margin: 0;
+  padding: 8px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  word-break: normal;
+  color: var(--text);
+  background: none;
+}
+
+.md-body .md-pre code {
+  font-family: inherit;
 }
 </style>

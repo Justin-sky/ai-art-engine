@@ -763,6 +763,7 @@ export default {
       copy: '复制',
       copied: '已复制',
       copyTitle: '复制全部内容',
+      copyCode: '复制代码',
       scrollToBottom: '回到底部',
       sessionSelect: '历史会话',
       newChat: '新会话',
