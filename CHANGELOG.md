@@ -20,6 +20,8 @@
 
 ### Fixed
 
+- **修复升级 dsh 后同一会话发第二条消息必然失败（界面只报「dsh 异常退出（code 1）」，且重试永远无效）**：0.1.5 把 `SessionPersistence.list()` 的返回从「会话头数组」改成了快照数组（每项形如 `{ header: { id }, revision, sizeBytes }`，见 `dsh-session-persistence-jsonl` 的 `list()`），而自定义 runner 判存仍按旧形状直接读 `h.id`——该字段恒为 `undefined`，于是每次都判定「会话不存在」并走 `agents.create`，撞上磁盘上已有的记录抛 `session "s_xxx" already exists`；进程在写出任何 stdout 之前就退出 1，主进程只看到「非零退出 + 无输出」，界面于是弹出与真实原因毫不相干的通用提示，而会话记录一直留在 `$DSH_HOME/sessions/` 里，所以「请重试」永远不会成功（首条消息能成功，是从零走 `create` 的路径）。判存改为优先 `persistence.stat(id)`——只探查这一条、不遍历整个会话目录（实测：会话目录里任何一条头部与目录名不匹配的坏日志都会让 `list()` 整体抛错，从而连坐掉所有会话），老后端没有 `stat` 时回退 `list()` 并对新旧两种形状都做匹配。实测修复后同一会话 id 打印 `[aiart-runner] resumed session: ...` 正常走 resume（多轮历史恢复），新 id 仍走 create
+
 - **修复图层记录畸形的 PSD 一张画面都出不来（素材卡与检查器一直停在「未能生成该 PSD 的合成预览」）**：`psdCompositeService` 此前只走 ag-psd 的 `readPsd`——`skipLayerImageData` 只跳过图层**像素**，图层**记录**仍要完整解析，而 `readLayerRecord` 一读到 `top > bottom` / `left > right` 就抛 `Invalid layer size`，整份文件直接被判死；偏偏非 Photoshop 工具写出的 PSD 常有这类畸形记录（实测用户导入的 `背包主界面-原神风.psd`：1280×720 / RGB / 8bit，色彩模式与压缩方式都没问题，卡住的只是图层记录），而它的合成图其实完好无损。修法是在直读之后加一层降级：按段长度前缀把 Header / Color Mode Data / Image Resources 原样保留、Layer & Mask 段的长度前缀置 0 整体丢弃、再接上原 Image Data 段重读一次（`stripLayerAndMaskSection`）——合成图与图层本就是彼此独立的段，预览只需要前者；常规文件仍走首次直读、零额外开销，只有两条路都失败才打一行带原因的日志（此前失败原因是静默吞掉的，现场只能看到「解不出画面」）。该刀只对 PSD（version 1）生效：PSB 的段长度是八字节、布局不同，直接放弃并回落系统缩略图兜底。新增用例用「top 被改到 bottom 之下」的畸形图层记录复现该场景，并先断言 ag-psd 直读确实抛错，避免测试退化成重复覆盖直读路径
 
 ## [6.1.0] — 2026-09-11

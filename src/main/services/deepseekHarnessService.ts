@@ -1082,7 +1082,18 @@ async function run(ctx, task, io) {
   const persistence = ctx.get('sessionPersistence')
   const hasSessionId = process.env.AIART_SESSION_ID?.trim()
   if (persistence !== void 0 && hasSessionId) {
-    const exists = (await persistence.list()).some((h) => h.id === sessionId)
+    // 0.1.5 起 list() 返回的是快照对象（{ header: { id }, revision, sizeBytes }），
+    // 旧版直接返回会话头（{ id }）：只认 h.id 会在 0.1.5 下永远判定「不存在」，
+    // 于是同一会话再发消息必然撞上 create，报 session "..." already exists 后退出 1
+    // （界面表现为「dsh 异常退出（code 1）」，且因为记录一直在，重试永远不会成功）。
+    // stat(id) 只探查这一条、不遍历整个会话目录（别的会话日志损坏也不会连坐），能用就优先用；
+    // 老后端没有 stat 时回退 list()，并对新旧两种返回形状都做匹配。
+    const exists =
+      typeof persistence.stat === 'function'
+        ? (await persistence.stat(SessionId(sessionId))) !== void 0
+        : (await persistence.list()).some(
+            (entry) => (entry?.id ?? entry?.sessionId ?? entry?.header?.id) === sessionId
+          )
     if (exists) {
       try {
         const resumed = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
