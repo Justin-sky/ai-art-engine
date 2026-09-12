@@ -30,6 +30,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const OUT_DIR = join(ROOT, 'out', 'dsh')
 const STAGE_DIR = join(ROOT, 'out', '.dsh-stage')
+/**
+ * 沙箱受限进程实现所在包，按「新位置优先」排序。
+ * dsh 0.1.5 起 STARTUPINFO 编码从 dsh-sandbox-windows-acl 抽到 dsh-win32-process；
+ * 与运行时补丁（src/main/services/dshSandboxConsolePatch.ts 的 SANDBOX_SPAWN_PACKAGES）保持一致。
+ */
+const SANDBOX_SPAWN_PACKAGES = ['@deepseek-ai/dsh-win32-process', '@deepseek-ai/dsh-sandbox-windows-acl']
 
 /** 主 package.json 中固定的 dsh 版本（单一事实来源） */
 function resolveDshVersion() {
@@ -331,7 +337,7 @@ function dirSize(root) {
 }
 
 /**
- * 预置「隐藏 ACL 沙箱子进程控制台窗口」补丁（Windows 链路）。
+ * 预置「隐藏沙箱 / 受限子进程控制台窗口」补丁（Windows 链路）。
  *
  * 上游 dsh 的 Windows 沙箱用受限令牌 + CreateProcessAsUserW 拉子进程，且刻意不用
  * CREATE_NO_WINDOW / CREATE_NEW_CONSOLE——受限令牌下带控制台隔离的子进程会以
@@ -340,51 +346,59 @@ function dirSize(root) {
  * 每条沙箱命令弹一次黑窗。这里把产物里的 STARTUPINFO 改成
  * STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW + SW_HIDE，让新窗口不显示，安装包出厂即好。
  *
+ * dsh 0.1.5 起 STARTUPINFO 编码从 dsh-sandbox-windows-acl 抽到 dsh-win32-process，
+ * 因此两个位置都扫（新位置在前）。
+ *
  * 与运行时的同一处补丁（src/main/services/dshSandboxConsolePatch.ts）保持字面量一致——
  * 构建脚本不能 import TS，两处由 tests/dshSandboxConsolePatch.test.ts 的防漂移断言锁住。
  * 找不到调用点就跳过：上游换了实现不该让打包失败（补丁只是体验优化）。
  */
 function patchAclSandboxConsoleWindow() {
-  const libDir = join(OUT_DIR, 'node_modules', '@deepseek-ai', 'dsh-sandbox-windows-acl', 'lib')
-  if (!existsSync(libDir)) {
-    console.log('[bundle-dsh] 产物中没有 ACL 沙箱包，跳过控制台窗口补丁')
+  const libDirs = SANDBOX_SPAWN_PACKAGES.map((name) =>
+    join(OUT_DIR, 'node_modules', ...name.split('/'), 'lib')
+  ).filter((dir) => existsSync(dir))
+  if (libDirs.length === 0) {
+    console.log('[bundle-dsh] 产物中没有沙箱受限进程包，跳过控制台窗口补丁')
     return
   }
   const encodeCall = /encodeStartupInfo\(\s*startupInfo,\s*\{([\s\S]*?)\}\)/g
   const pristineFlags = /(\r?\n)([ \t]*)dwFlags:\s*256,/
-  const jsFiles = []
-  const walk = (dir) => {
-    for (const ent of readdirSync(dir, { withFileTypes: true })) {
-      const p = join(dir, ent.name)
-      if (ent.isDirectory()) walk(p)
-      else if (/\.[cm]?js$/.test(ent.name)) jsFiles.push(p)
-    }
-  }
-  walk(libDir)
 
   let files = 0
   let sites = 0
-  for (const file of jsFiles) {
-    const source = readFileSync(file, 'utf8')
-    if (!source.includes('dwFlags: 256')) continue
-    const patched = source.replace(encodeCall, (call, fields) => {
-      if (!pristineFlags.test(fields)) return call
-      const patchedFields = fields.replace(
-        pristineFlags,
-        (_match, eol, indent) => `${eol}${indent}dwFlags: 257,${eol}${indent}wShowWindow: 0,`
-      )
-      sites += 1
-      const start = call.indexOf(fields)
-      return call.slice(0, start) + patchedFields + call.slice(start + fields.length)
-    })
-    if (patched === source) continue
-    writeFileSync(file, patched, 'utf8')
-    files += 1
+  for (const libDir of libDirs) {
+    const jsFiles = []
+    const walk = (dir) => {
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, ent.name)
+        if (ent.isDirectory()) walk(p)
+        else if (/\.[cm]?js$/.test(ent.name)) jsFiles.push(p)
+      }
+    }
+    walk(libDir)
+
+    for (const file of jsFiles) {
+      const source = readFileSync(file, 'utf8')
+      if (!source.includes('dwFlags: 256')) continue
+      const patched = source.replace(encodeCall, (call, fields) => {
+        if (!pristineFlags.test(fields)) return call
+        const patchedFields = fields.replace(
+          pristineFlags,
+          (_match, eol, indent) => `${eol}${indent}dwFlags: 257,${eol}${indent}wShowWindow: 0,`
+        )
+        sites += 1
+        const start = call.indexOf(fields)
+        return call.slice(0, start) + patchedFields + call.slice(start + fields.length)
+      })
+      if (patched === source) continue
+      writeFileSync(file, patched, 'utf8')
+      files += 1
+    }
   }
   console.log(
     sites > 0
-      ? `[bundle-dsh] 已预置 ACL 沙箱控制台隐藏补丁：${files} 个文件 / ${sites} 处 spawn`
-      : '[bundle-dsh] 提示：ACL 沙箱包存在但没有可改写的 STARTUPINFO 调用点，跳过控制台窗口补丁'
+      ? `[bundle-dsh] 已预置沙箱控制台隐藏补丁：${files} 个文件 / ${sites} 处 spawn`
+      : '[bundle-dsh] 提示：沙箱受限进程包存在但没有可改写的 STARTUPINFO 调用点，跳过控制台窗口补丁'
   )
 }
 
@@ -424,7 +438,30 @@ async function main() {
   console.log(`[bundle-dsh] 完成：${relative(ROOT, OUT_DIR)}（约 ${mb} MB）`)
 }
 
-await main().catch((err) => {
-  console.error(`[bundle-dsh] 失败：${err instanceof Error ? err.stack ?? err.message : String(err)}`)
-  process.exit(1)
-})
+/**
+ * 暂存树只是构建中间产物（out/dsh 的一份完整副本，约 130 MB），产出复制完毕后即删，
+ * 否则每次打包都会在工作区多留一份。失败时也删：暂存内容可从 node_modules 重新生成。
+ * @returns 是否已删除
+ */
+function cleanupStage() {
+  try {
+    rmSync(STAGE_DIR, { recursive: true, force: true })
+    return true
+  } catch (err) {
+    // 收尾失败不影响构建结论：暂存目录可随时重建，也不该掩盖真正的构建错误
+    console.warn(
+      `[bundle-dsh] 暂存目录清理失败，可手动删除 ${relative(ROOT, STAGE_DIR)}：${err instanceof Error ? err.message : String(err)}`
+    )
+    return false
+  }
+}
+
+await main()
+  .then(() => {
+    if (cleanupStage()) console.log(`[bundle-dsh] 已清理暂存目录 ${relative(ROOT, STAGE_DIR)}`)
+  })
+  .catch((err) => {
+    cleanupStage()
+    console.error(`[bundle-dsh] 失败：${err instanceof Error ? err.stack ?? err.message : String(err)}`)
+    process.exit(1)
+  })

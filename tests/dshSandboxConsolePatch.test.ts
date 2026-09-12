@@ -15,6 +15,8 @@ import {
   ACL_PATCHED_FLAGS,
   ACL_PATCHED_SHOW_WINDOW,
   ACL_SANDBOX_PACKAGE,
+  SANDBOX_SPAWN_PACKAGES,
+  WIN32_PROCESS_PACKAGE,
   patchAclConsoleSource,
   patchAclSandboxConsole
 } from '../src/main/services/dshSandboxConsolePatch'
@@ -61,24 +63,30 @@ const FIXTURE = [
   'encodeStartupInfo(other, { cb: 104 });'
 ].join('\n')
 
-/** 真实沙箱产物里那个带内容 hash 的 JS 文件（没装依赖时为 undefined） */
-const aclLibDir = join(process.cwd(), 'node_modules', ...ACL_SANDBOX_PACKAGE.split('/'), 'lib')
-const aclSourcePath = existsSync(aclLibDir)
+/**
+ * 真实沙箱产物：dsh 0.1.5 起 STARTUPINFO 编码（含带 hash 的文件名）都在
+ * `@deepseek-ai/dsh-win32-process/lib/index.js`，没装依赖时为 undefined。
+ */
+const win32ProcessLibDir = join(process.cwd(), 'node_modules', ...WIN32_PROCESS_PACKAGE.split('/'), 'lib')
+const win32ProcessSourcePath = existsSync(win32ProcessLibDir)
   ? (() => {
-      const name = readdirSync(aclLibDir).find((entry) => /^types-.*\.js$/.test(entry))
-      return name ? join(aclLibDir, name) : undefined
+      const name = readdirSync(win32ProcessLibDir).find((entry) => /\.js$/.test(entry))
+      return name ? join(win32ProcessLibDir, name) : undefined
     })()
   : undefined
 
-/** 临时依赖树：<tmp>/node_modules/@deepseek-ai/dsh-sandbox-windows-acl/lib/types-xxx.js */
-function makeTempModulesDir(source: string): {
+/** 临时依赖树：<tmp>/node_modules/<packageName>/lib/types-xxx.js（packageName 可换成新位置） */
+function makeTempModulesDir(
+  source: string,
+  packageName: string = ACL_SANDBOX_PACKAGE
+): {
   modulesDir: string
   file: string
   cleanup: () => void
 } {
   const root = mkdtempSync(join(tmpdir(), 'aiart-acl-patch-'))
   const modulesDir = join(root, 'node_modules')
-  const libDir = join(modulesDir, ...ACL_SANDBOX_PACKAGE.split('/'), 'lib')
+  const libDir = join(modulesDir, ...packageName.split('/'), 'lib')
   mkdirSync(libDir, { recursive: true })
   const file = join(libDir, 'types-abc123.js')
   writeFileSync(file, source, 'utf8')
@@ -148,10 +156,48 @@ describe('ACL 沙箱控制台补丁（依赖树落盘）', () => {
     }
   })
 
+  it.skipIf(process.platform !== 'win32')('dsh 0.1.5 的新位置（dsh-win32-process）同样命中写盘', () => {
+    const { modulesDir, file, cleanup } = makeTempModulesDir(FIXTURE, WIN32_PROCESS_PACKAGE)
+    try {
+      expect(patchAclSandboxConsole(modulesDir)).toEqual({
+        present: true,
+        patchedFiles: 1,
+        patchedSites: 2,
+        alreadyFiles: 0,
+        failedFiles: 0
+      })
+      expect(readFileSync(file, 'utf8')).toContain('dwFlags: 257,')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it.skipIf(process.platform !== 'win32')('新旧两个包同在一棵树时都扫，各自计数', () => {
+    const { modulesDir, file, cleanup } = makeTempModulesDir(FIXTURE)
+    try {
+      const newLibDir = join(modulesDir, ...WIN32_PROCESS_PACKAGE.split('/'), 'lib')
+      mkdirSync(newLibDir, { recursive: true })
+      writeFileSync(join(newLibDir, 'index.js'), FIXTURE, 'utf8')
+
+      expect(patchAclSandboxConsole(modulesDir)).toEqual({
+        present: true,
+        patchedFiles: 2,
+        patchedSites: 4,
+        alreadyFiles: 0,
+        failedFiles: 0
+      })
+      expect(readFileSync(file, 'utf8')).toContain('dwFlags: 257,')
+    } finally {
+      cleanup()
+    }
+  })
+
   it.skipIf(process.platform !== 'win32')('依赖树里没有沙箱包时返回未命中，且不抛错', () => {
     const { modulesDir, cleanup } = makeTempModulesDir(FIXTURE)
     try {
-      rmSync(join(modulesDir, ...ACL_SANDBOX_PACKAGE.split('/')), { recursive: true, force: true })
+      for (const packageName of SANDBOX_SPAWN_PACKAGES) {
+        rmSync(join(modulesDir, ...packageName.split('/')), { recursive: true, force: true })
+      }
       expect(patchAclSandboxConsole(modulesDir)).toEqual({
         present: false,
         patchedFiles: 0,
@@ -165,9 +211,9 @@ describe('ACL 沙箱控制台补丁（依赖树落盘）', () => {
   })
 })
 
-describe.skipIf(!aclSourcePath)('ACL 沙箱控制台补丁（真实运行体产物）', () => {
+describe.skipIf(!win32ProcessSourcePath)('ACL 沙箱控制台补丁（真实运行体产物）', () => {
   it('上游产物可被改写两处，改写后仍是合法 ESM 且只动这两处', () => {
-    const source = readFileSync(aclSourcePath!, 'utf8')
+    const source = readFileSync(win32ProcessSourcePath!, 'utf8')
     const { source: patched, sites } = patchAclConsoleSource(source)
 
     if (sites === 0) {
@@ -205,9 +251,15 @@ describe('构建期补丁与运行时补丁的口径一致（防漂移）', () =
     expect(script).toContain('dwFlags: 256')
     expect(script).toContain(ACL_PATCHED_FLAGS)
     expect(script).toContain(ACL_PATCHED_SHOW_WINDOW)
+    // 上游把编码点搬到 dsh-win32-process 后，两个位置都要覆盖（构建期与运行期一致）
+    expect(script).toContain(WIN32_PROCESS_PACKAGE)
+    expect(script).toContain(ACL_SANDBOX_PACKAGE)
     // 构建脚本顺带覆盖了运行时补丁模块本身，防止「改了运行时忘了构建期」
-    expect(
-      readFileSync(join(process.cwd(), 'src/main/services/dshSandboxConsolePatch.ts'), 'utf8')
-    ).toContain(ACL_SANDBOX_PACKAGE)
+    const service = readFileSync(
+      join(process.cwd(), 'src/main/services/dshSandboxConsolePatch.ts'),
+      'utf8'
+    )
+    expect(service).toContain(ACL_SANDBOX_PACKAGE)
+    expect(service).toContain(WIN32_PROCESS_PACKAGE)
   })
 })

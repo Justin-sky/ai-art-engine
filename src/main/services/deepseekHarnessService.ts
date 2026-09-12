@@ -756,7 +756,7 @@ const imp = (id) => import(pathToFileURL(require.resolve(id)).href)
 const { default: z } = await imp('@deepseek-ai/schemastery')
 const { installModelSelection } = await imp('@deepseek-ai/dsh-agent')
 const { createUserMessage } = await imp('@deepseek-ai/dsh-llm')
-const { SessionId } = await imp('@deepseek-ai/dsh-session')
+const { SessionId, SessionSeq } = await imp('@deepseek-ai/dsh-session')
 const { defineTool } = await imp('@deepseek-ai/dsh-tools')
 
 const name = 'aiart-headless-runner'
@@ -804,13 +804,17 @@ function clipToolArgs(raw) {
   return text.length > 4000 ? text.slice(0, 4000) + '…' : text
 }
 
-function summarize(events, firstSeq) {
+/**
+ * 汇总本轮最终结果（最终文本 + 结束原因）。
+ * dsh 0.1.5 起日志读取入口为 eventAt(seq)：session.events 数组属性已移除。
+ */
+function summarize(session, firstSeq) {
   let started = false
   let text = ''
   let reason
-  const reasoning = []
-  for (const event of events) {
-    if (event.seq < firstSeq) continue
+  for (let seq = firstSeq; seq <= session.seq; seq++) {
+    const event = session.eventAt(SessionSeq(seq))
+    if (event === void 0) continue
     if (event.type === 'turn/start') {
       started = true
       continue
@@ -823,15 +827,10 @@ function summarize(events, firstSeq) {
         .map((block) => block.text)
         .join('')
       if (joined !== '') text = joined
-      for (const block of content) {
-        if (block.type === 'reasoning' && typeof block.text === 'string' && block.text !== '') {
-          reasoning.push(block.text)
-        }
-      }
     }
     if (event.type === 'turn/end') reason = event.data.reason
   }
-  return { text, reason, reasoning: reasoning.join('\n') }
+  return { text, reason }
 }
 
 /** dsh attachment 支持的图片类型 → mediaType（与渲染层 isImageLikePath 一致，但仅限可提交格式） */
@@ -1111,26 +1110,69 @@ async function run(ctx, task, io) {
   await agent.whenIdle()
   const firstSeq = agent.session.seq
 
-  // 流式驱动：轮询事件日志，把 text-delta / reasoning-delta 实时写 stdout，
-  // 思考内容包在 REASONING_BEGIN/END 标记之间（marker 独占一行，正文不换行）。
+  // 流式驱动分两路：实时帧事件推正文 / 思考增量，轮询事件日志推工具与用量标记。
+  // 思考内容包在 REASONING_BEGIN/END 标记之间（marker 独占一行，正文不换行）；
   // 工具调用（skill / MCP 等）包在 TOOL_BEGIN/END 标记之间，每行一个 JSON 描述。
   let lastSeq = firstSeq
   let inReasoning = false
   let streamedText = false
   const pendingTools = new Map() // callId -> name
-  const flushEvents = () => {
-    // 思考区只容纳纯 reasoning：正文 / 工具标记 / 上下文标记出现前必须先闭合 END，
-    // 否则整段正文和 marker 都会留在 REASONING 区内，被主进程当思考转发，
-    // 渲染层因永远等不到 assistant 事件而不显示（表现为「DeepSeek 无回应」）。
-    const closeReasoning = () => {
-      if (inReasoning) {
-        inReasoning = false
-        io.stdout.write('\n' + REASONING_END + '\n')
-      }
+  // 思考区只容纳纯 reasoning：正文 / 工具标记 / 上下文标记出现前必须先闭合 END，
+  // 否则整段正文和 marker 都会留在 REASONING 区内，被主进程当思考转发，
+  // 渲染层因永远等不到 assistant 事件而不显示（表现为「DeepSeek 无回应」）。
+  const closeReasoning = () => {
+    if (inReasoning) {
+      inReasoning = false
+      io.stdout.write('\n' + REASONING_END + '\n')
     }
-    const events = agent.session.events
-    for (; lastSeq < events.length; lastSeq++) {
-      const event = events[lastSeq]
+  }
+  // dsh 0.1.5 起增量不再落会话日志（assistant/chunk 事件已移除），改由实时帧事件推送：
+  // 正文 / 思考增量即时写 stdout，与轮询日志得到的工具 / 用量 marker 拼成同一条流。
+  const offStream = ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
+    if (subject !== agent) return
+    if (frame.type !== 'chunk') {
+      // start / end：本轮模型尝试开始或结束，先闭合思考区
+      closeReasoning()
+      return
+    }
+    const chunk = frame.chunk
+    // 兜底：事件监听里抛错会顺着 emit 冒到 agent loop，宁可少写一段增量也不能中断对话
+    if (chunk === void 0) return
+    switch (chunk.type) {
+      case 'reasoning-delta':
+        if (chunk.text === '') return
+        if (!inReasoning) {
+          inReasoning = true
+          io.stdout.write(REASONING_BEGIN + '\n')
+        }
+        io.stdout.write(chunk.text)
+        return
+      case 'block-start':
+        if (chunk.blockType !== 'reasoning') closeReasoning()
+        return
+      case 'block-end':
+        if (chunk.block === void 0 || chunk.block.type !== 'reasoning') closeReasoning()
+        return
+      case 'text-delta':
+        if (chunk.text === '') return
+        streamedText = true
+        // 正文必须出现在 REASONING 区之外：先闭合思考区再写正文（见 closeReasoning 注释）
+        closeReasoning()
+        io.stdout.write(chunk.text)
+        return
+      case 'usage':
+        return
+      default:
+        // tool-call-delta / finish：模型正文与思考都已停下，闭合思考区，
+        // 保证随后写入的 TOOL / CONTEXT marker 落在思考区外
+        closeReasoning()
+    }
+  })
+  const flushEvents = () => {
+    // 0.1.5 起日志读取入口为 eventAt(seq)；seq 连续递增，超出末尾时返回 undefined
+    for (; lastSeq < agent.session.seq; lastSeq++) {
+      const event = agent.session.eventAt(SessionSeq(lastSeq))
+      if (event === void 0) continue
       if (event.type === 'tool/call') {
         const callId = event.data?.callId
         if (typeof callId === 'string' && !pendingTools.has(callId)) {
@@ -1163,21 +1205,6 @@ async function run(ctx, task, io) {
         }
         continue
       }
-      if (event.type !== 'assistant/chunk') continue
-      const chunk = event.data?.chunk
-      if (!chunk) continue
-      if (chunk.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
-        if (!inReasoning) {
-          inReasoning = true
-          io.stdout.write(REASONING_BEGIN + '\n')
-        }
-        io.stdout.write(chunk.text)
-      } else if (chunk.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text !== '') {
-        streamedText = true
-        // 正文必须出现在 REASONING 区之外：先闭合思考区再写正文（见 closeReasoning 注释）
-        closeReasoning()
-        io.stdout.write(chunk.text)
-      }
     }
   }
 
@@ -1192,10 +1219,20 @@ async function run(ctx, task, io) {
     await agent.whenIdle()
   } finally {
     clearInterval(timer)
+    offStream()
   }
   flushEvents()
   if (inReasoning) io.stdout.write('\n' + REASONING_END + '\n')
-  const outcome = summarize(agent.session.events, firstSeq)
+  // 收尾 flush（与官方 runner 一致）：本轮事件写入 jsonl，下次 resume 才读得到完整历史；
+  // 失败只记日志，不影响已经产出的回答
+  try {
+    await sessions.flush(agent.session)
+  } catch (error) {
+    io.stderr.write(
+      '[aiart-runner] session flush failed: ' + (error instanceof Error ? error.message : String(error)) + '\n'
+    )
+  }
+  const outcome = summarize(agent.session, firstSeq)
   // 兜底：没有任何 text delta 时（异常/纯工具轮次），用最终消息补齐一次
   if (!streamedText && outcome.text) io.stdout.write(outcome.text + '\n')
   if (outcome.reason?.kind === 'error') {
@@ -1235,7 +1272,7 @@ function locateNodeModules(entry: string): string | null {
 }
 
 /**
- * 按 Chat 面板模式生成 dsh system-prompt persona（YAML 折叠块延续行，缩进 6 空格）。
+ * 按 Chat 面板模式生成 dsh system-prompt personaPrefix（YAML 折叠块延续行，缩进 6 空格）。
  * - craft：完整 agent，优先用 MCP 工具；需要用户选择/确认时用 ask_user 工具
  * - ask：纯问答，禁止调用工具与改动任何文件
  * - plan：先输出执行计划，用 ask_user 请求用户确认，确认后才允许执行工具
@@ -1325,7 +1362,8 @@ function writeAiartHarness(
       '        task: !!js ctx.headlessStartup.task',
       '- id: system-prompt',
       '  config:',
-      '    persona: >-',
+      // dsh 0.1.5 起 system-prompt 的配置键由 persona 改名为 personaPrefix（旧键会被 schema 丢弃）
+      '    personaPrefix: >-',
       ...buildPersona(mode, projectMemory).map((line) => `      ${line}`)
     ]
     const patchPath = join(home, 'aiart.patch.yml')

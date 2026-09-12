@@ -19,12 +19,22 @@
  * 上游修好（或 dsh 换实现）后本补丁自然失效：找不到调用点就静默跳过，绝不抛错、绝不
  * 拖累对话。独立成模块（不 import electron）是为了可被单测直接加载验证；模块内不出现
  * 中文字符串字面量（硬编码中文守卫），注释不受限。
+ *
+ * dsh 0.1.5 起 `CreateProcessAsUserW` + STARTUPINFO 编码被抽到新包
+ * `@deepseek-ai/dsh-win32-process`（ACL 沙箱包改为依赖它），因此补丁要同时覆盖新旧两个
+ * 包的位置：任一包缺失都只是「没这条链路」，不报错。
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** ACL 沙箱包名（scoped，按 / 分段拼目录） */
+/** ACL 沙箱包名（scoped，按 / 分段拼目录）：0.1.4 及更早的 spawn 实现位置 */
 export const ACL_SANDBOX_PACKAGE = '@deepseek-ai/dsh-sandbox-windows-acl'
+
+/** 受限进程包名：0.1.5 起 STARTUPINFO 编码实际所在位置 */
+export const WIN32_PROCESS_PACKAGE = '@deepseek-ai/dsh-win32-process'
+
+/** 需要扫描的包，按「新位置优先」排序（先命中新包即可覆盖沙箱链路） */
+export const SANDBOX_SPAWN_PACKAGES = [WIN32_PROCESS_PACKAGE, ACL_SANDBOX_PACKAGE]
 
 /** 补丁标志之一：命中说明该文件已经打过补丁（幂等判定锚点） */
 export const ACL_PATCHED_FLAGS = 'dwFlags: 257'
@@ -81,7 +91,10 @@ export function patchAclConsoleSource(source: string): AclConsoleSourcePatch {
 }
 
 /**
- * 对一棵 dsh 依赖树（其 `node_modules` 目录）里的 ACL 沙箱包打补丁。
+ * 对一棵 dsh 依赖树（其 `node_modules` 目录）里的沙箱 spawn 实现打补丁。
+ *
+ * 遍历 {@link SANDBOX_SPAWN_PACKAGES}：新包（dsh-win32-process）与旧包
+ * （dsh-sandbox-windows-acl）各扫一遍，命中即改写，互不干扰（同一份实现不会同时出现在两处）。
  *
  * 只读失败、写盘失败、目录不存在都在此消化：调用方拿到的是报告而不是异常——补丁只是
  * 体验优化，任何情况下都不该影响对话。
@@ -96,10 +109,17 @@ export function patchAclSandboxConsole(dshModulesDir: string): AclConsolePatchRe
   }
   if (process.platform !== 'win32') return report
 
-  const libDir = join(dshModulesDir, ...ACL_SANDBOX_PACKAGE.split('/'), 'lib')
-  if (!existsSync(libDir)) return report
-  report.present = true
+  for (const packageName of SANDBOX_SPAWN_PACKAGES) {
+    const libDir = join(dshModulesDir, ...packageName.split('/'), 'lib')
+    if (!existsSync(libDir)) continue
+    report.present = true
+    patchSandboxLibDir(libDir, report)
+  }
+  return report
+}
 
+/** 对单个包的 `lib/` 目录逐文件打补丁，结果累加进 report（单文件失败不影响其它文件） */
+function patchSandboxLibDir(libDir: string, report: AclConsolePatchReport): void {
   for (const file of listSandboxJsFiles(libDir)) {
     try {
       const source = readFileSync(file, 'utf8')
@@ -119,10 +139,9 @@ export function patchAclSandboxConsole(dshModulesDir: string): AclConsolePatchRe
       console.warn('[aiart] acl sandbox console patch failed:', file, error)
     }
   }
-  return report
 }
 
-/** 列出沙箱包 `lib/` 下的 JS 文件（当前只有 lib/types-<hash>.js 一处，递归以适配上游改名） */
+/** 列出沙箱包 `lib/` 下的 JS 文件（递归以适配上游改名与文件拆分） */
 function listSandboxJsFiles(dir: string): string[] {
   const files: string[] = []
   const walk = (current: string): void => {
