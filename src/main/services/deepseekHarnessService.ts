@@ -770,18 +770,38 @@ const TOOL_END = '===END_TOOL==='
 const ASK_USER_BEGIN = '===BEGIN_ASK_USER==='
 const CONTEXT_BEGIN = '===BEGIN_CONTEXT==='
 
-/** 从模型产出的原始参数 JSON 里提取一行可读摘要（取首个字符串字段值，失败则截断原文） */
+/** 优先用作一行摘要的参数键；找不到时退而取最短字符串，避免把 write 的长 content 当成摘要 */
+const SUMMARY_KEYS = ['path', 'pattern', 'query', 'name', 'title', 'description', 'prompt', 'command', 'url', 'file', 'dir', 'relativePath']
+
+/** 从模型产出的原始参数 JSON 里提取一行可读摘要；超长截断，失败则截断原文 */
 function summarizeToolArgs(raw) {
   if (typeof raw !== 'string' || raw === '') return ''
   try {
     const parsed = JSON.parse(raw)
-    for (const value of Object.values(parsed)) {
-      if (typeof value === 'string' && value !== '') return value
+    for (const key of SUMMARY_KEYS) {
+      const value = parsed[key]
+      if (typeof value === 'string' && value !== '') return value.length > 80 ? value.slice(0, 80) + '…' : value
     }
-    return JSON.stringify(parsed)
+    const candidates = Object.values(parsed)
+      .filter((v) => typeof v === 'string' && v !== '')
+      .sort((a, b) => a.length - b.length)
+    if (candidates.length) {
+      const value = candidates[0]
+      return value.length > 80 ? value.slice(0, 80) + '…' : value
+    }
+    const json = JSON.stringify(parsed)
+    return json.length > 80 ? json.slice(0, 80) + '…' : json
   } catch {
-    return raw.length > 40 ? raw.slice(0, 40) + '…' : raw
+    return raw.length > 80 ? raw.slice(0, 80) + '…' : raw
   }
+}
+
+/** 工具调用原始参数（JSON 字符串）：透传给渲染层在任务清单展示详细参数，超长时截断避免日志与存储膨胀 */
+function clipToolArgs(raw) {
+  if (raw === undefined || raw === null || raw === '') return ''
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw)
+  if (typeof text !== 'string' || text === '') return ''
+  return text.length > 4000 ? text.slice(0, 4000) + '…' : text
 }
 
 function summarize(events, firstSeq) {
@@ -1118,7 +1138,8 @@ async function run(ctx, task, io) {
           pendingTools.set(callId, name)
           closeReasoning()
           // marker 前强制换行：正文 text-delta 常不换行，直接拼接会被主进程当普通文本转发
-          io.stdout.write('\n' + TOOL_BEGIN + JSON.stringify({ name, callId, detail: summarizeToolArgs(event.data?.arguments) }) + '\n')
+          // detail = 一行摘要（保留兼容），args = 原始参数 JSON（任务清单展示详细参数）
+          io.stdout.write('\n' + TOOL_BEGIN + JSON.stringify({ name, callId, detail: summarizeToolArgs(event.data?.arguments), args: clipToolArgs(event.data?.arguments) }) + '\n')
         }
         continue
       }
@@ -1417,17 +1438,27 @@ function launchDsh(opts: {
     const payload = line.slice(marker.length).trim()
     let name = 'tool'
     let detail: string | undefined
+    let args: string | undefined
     let id: string | undefined
     try {
       const parsed = JSON.parse(payload)
       if (typeof parsed.name === 'string' && parsed.name) name = parsed.name
       if (typeof parsed.detail === 'string' && parsed.detail) detail = parsed.detail
+      // 原始参数 JSON：渲染层解析成键值对，在任务清单里展示 Agent 实际执行的详细参数
+      if (typeof parsed.args === 'string' && parsed.args) args = parsed.args
       // callId 作为任务实例 ID 透传给渲染层，使同一工具多次调用可以区分并各自更新状态
       if (typeof parsed.callId === 'string' && parsed.callId) id = parsed.callId
     } catch {
       // 载荷非 JSON 时退回通用工具名（不阻塞对话）
     }
-    emit({ type: 'tool', ...(id ? { id } : {}), name, state, ...(detail ? { detail } : {}) })
+    emit({
+      type: 'tool',
+      ...(id ? { id } : {}),
+      name,
+      state,
+      ...(detail ? { detail } : {}),
+      ...(args ? { args } : {})
+    })
     sawOutput = true
   }
 

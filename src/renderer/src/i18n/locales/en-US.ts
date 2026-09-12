@@ -749,6 +749,7 @@ export default {
       toolDone: 'Done',
       toolFailed: 'Failed',
       taskList: 'Tasks',
+      toolParams: 'Params',
       model: 'Model',
       noModel: 'No text model configured',
       modeTitle: 'Agent mode: Craft (act) / Ask (chat) / Plan (plan first, then execute)',

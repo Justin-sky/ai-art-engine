@@ -2,7 +2,7 @@ import { createNodeFromType } from './create'
 import { autoLayoutNodes } from './layout'
 import { normalizeScopedGraph } from './normalize'
 import { canConnectNodes, getNodePorts } from './ports'
-import { listAddableNodeTypes } from './registry'
+import { listAddableNodeTypes, type NodeTypeDefinition } from './registry'
 import type { GraphAddScope } from './scopes'
 import type {
   GraphDocument,
@@ -56,6 +56,11 @@ export interface GraphPlanCatalogEntry {
   ports: Array<{ id: string; direction: 'in' | 'out'; dataType: string }>
 }
 
+/**
+ * 跨节点的通用参数键（不经节点类型声明也要放行）。
+ * 节点私有参数不在这里登记——由 declaredParamKeys 从 defaultParams() 自动识别；
+ * 加新节点/新通用参数时若漏了本表，物化会给出 warning（见 pickAllowedParams），不会静默丢参。
+ */
 const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'text',
   'generateInstruction',
@@ -75,6 +80,8 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'generateAudio',
   'notes',
   'label',
+  /** 通用落盘目录：各生成/持久化节点都从 node.params.mediaOutputDir 读取（见 resolveMediaOutputDir） */
+  'mediaOutputDir',
   'inputDataType',
   'episodeStep',
   'episodeReviewTarget',
@@ -83,6 +90,10 @@ const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'anchorIndex',
   'cellGroupIndex',
   'cellIndex',
+  /** 剧集流水线节点定位参数（与 anchorIndex / cellIndex 同一族，预设计划会写入） */
+  'anchorCellIndex',
+  'gridCellIndex',
+  'motionCellIndex',
   'episodeScopeKey',
   'imageGridSplit',
   'imageLayerSplit'
@@ -169,15 +180,39 @@ export function buildGraphPlanCatalog(scope: GraphAddScope = 'subgraphAsset'): G
     }))
 }
 
-function pickAllowedParams(raw: Record<string, unknown> | undefined): Partial<GraphNodeParams> {
-  if (!raw || typeof raw !== 'object') return {}
-  const next: Partial<GraphNodeParams> = {}
-  for (const [key, value] of Object.entries(raw)) {
-    if (!ALLOWED_PARAM_KEYS.has(key)) continue
-    if (value === undefined) continue
-    ;(next as Record<string, unknown>)[key] = value
+/**
+ * 目标节点类型自己声明的参数键（defaultParams 的键）。
+ * ALLOWED_PARAM_KEYS 是公共生成参数，覆盖不到节点私有参数（如 anim.2d 的
+ * animCols / animGifFps），两者取并集才不会误杀合法参数。
+ */
+function declaredParamKeys(def: NodeTypeDefinition): Set<string> {
+  try {
+    return new Set(Object.keys(def.defaultParams() ?? {}))
+  } catch {
+    return new Set()
   }
-  return next
+}
+
+/**
+ * 过滤节点参数，并回报被丢弃的键。
+ * 丢弃必须上报：静默丢弃会回落默认值，出现「任务跑完 but 产物不对」的假成功。
+ */
+function pickAllowedParams(
+  raw: Record<string, unknown> | undefined,
+  declaredKeys: ReadonlySet<string>
+): { params: Partial<GraphNodeParams>; dropped: string[] } {
+  if (!raw || typeof raw !== 'object') return { params: {}, dropped: [] }
+  const params: Partial<GraphNodeParams> = {}
+  const dropped: string[] = []
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined) continue
+    if (!ALLOWED_PARAM_KEYS.has(key) && !declaredKeys.has(key)) {
+      dropped.push(key)
+      continue
+    }
+    ;(params as Record<string, unknown>)[key] = value
+  }
+  return { params, dropped }
 }
 
 function stripCodeFence(text: string): string {
@@ -298,16 +333,23 @@ export function materializeGraphPlan(
       warnings.push(`重复节点 key「${key}」已跳过`)
       continue
     }
-    if (!addable.has(spec.typeId)) {
+    const def = addable.get(spec.typeId)
+    if (!def) {
       warnings.push(`未知或不可添加类型「${spec.typeId}」（key=${key}）`)
       continue
+    }
+    const { params, dropped } = pickAllowedParams(spec.params, declaredParamKeys(def))
+    if (dropped.length) {
+      warnings.push(
+        `节点「${key}」(${spec.typeId}) 未声明参数 ${dropped.join(', ')}，已忽略并回落默认值`
+      )
     }
     const node = createNodeFromType(spec.typeId as GraphNodeTypeId, {
       x: col * 280,
       y: 80
     }, {
       title: spec.title?.trim() || undefined,
-      params: pickAllowedParams(spec.params)
+      params
     })
     keyToId.set(key, node.id)
     nodes.push(node)

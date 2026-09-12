@@ -16,7 +16,7 @@
    "2. 节点数 4～12；形成从输入到输出的完整数据流。",
    "3. 边的 from/to 使用节点 key；端口 dataType 必须相同（image≠images，单数不能进复数口）。",
    "4. 不要编造 assetId；不要填写 generateModel / generateProviderInstanceId（由客户端注入）。",
-   "5. 可用 params 仅限：text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType。",
+   "5. params 用节点声明的键：公共生成参数为 text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType；节点私有参数（如 anim.2d 的 animRows / animCols / animGifFps）按 typeId 语义填写。编造的键会被忽略。",
    "6. 常见链：play.script / prompt.optimize → asset.image → asset.video；备注用 note.text。",
    "7. 输出严格为此 JSON 形状：",
    "{\"title\":\"短标题\",\"nodes\":[{\"key\":\"a\",\"typeId\":\"...\",\"title\":\"可选\",\"params\":{}}],\"edges\":[{\"from\":\"a\",\"to\":\"b\",\"fromPort\":\"out\",\"toPort\":\"in\"}]}",
@@ -515,11 +515,13 @@
    "warnings.push(`未知或不可添加类型「${spec.typeId}」（key=${key}）`)",
    "error: '没有可用节点，无法物化工作流'",
    "warnings.push(`边 ${spec.from}→${spec.to} 引用了不存在的节点`)",
-   "`边 ${spec.from}→${spec.to} 端口不兼容` +"
+   "`边 ${spec.from}→${spec.to} 端口不兼容` +",
+   "`节点「${key}」(${spec.typeId}) 未声明参数 ${dropped.join(', ')}，已忽略并回落默认值`"
   ],
   "src/shared/graph/graphSkills.ts": [
    "'为同一角色生成「{action}」动作的序列图（sprite sheet）：在一张图内按 {rows}×{cols} 分格绘制一个完整动作周期，帧序从左到右、从上到下；所有格子中角色的外观、体型、配色与画风完全一致，仅姿态变化，帧间过渡自然。'",
-   "'用法：在节点图里添加「2D帧动画」节点（typeId `anim.2d`），把一张按 rows×cols 分格的序列图（sprite sheet）接到 in 端口，设 animRows / animCols 与动作预设 animPresetId（或自定义 animInstruction），再把 animGifFps 设为 8–12 后运行：节点逐格切出帧 PNG，并额外经 out-gif 端口产出 GIF 动图（随运行落盘为工程资产）。还没有序列图时，可上游接一个按分格绘制的图片节点，或 dive 进本节点内图用生图 API 生成。走 MCP 时：graph_node_types 查端口与默认参数、graph_edit 建节点 / 连线 / 设参、task_run 运行。'",
+   "'用法：在节点图里添加「2D帧动画」节点（typeId `anim.2d`），把一张按 rows×cols 分格的序列图（sprite sheet）接到 in 端口，设 animRows / animCols 与动作预设 animPresetId（或自定义 animInstruction），再把 animGifFps 设为 8–12 后运行：节点逐格切出帧 PNG，并额外经 out-gif 端口产出 GIF 动图（随运行落盘为工程资产）。还没有序列图时，可上游接一个按分格绘制的图片节点，或 dive 进本节点内图用生图 API 生成。' +",
+   "'走 MCP 时最少 3 次调用，且不必先调 workflow_plan（workflow_commit 直接收手写 plan）：① workflow_commit({ plan, name }) —— plan 为 {\"title\":\"2D 帧动画\",\"nodes\":[{\"key\":\"sheet\",\"typeId\":\"asset.image\",\"params\":{\"generateInstruction\":\"为同一角色生成「<动作>」动作的序列图：一张图内按 <rows> 行 <cols> 列分格，帧序从左到右、从上到下，各格角色的外观、体型、配色与画风完全一致，仅姿态不同\"}},{\"key\":\"anim\",\"typeId\":\"anim.2d\",\"params\":{\"animRows\":<rows>,\"animCols\":<cols>,\"animPresetId\":\"walk\",\"animInstruction\":\"<动作循环描述>\",\"animGifFps\":12}}],\"edges\":[{\"from\":\"sheet\",\"to\":\"anim\"}]}，返回 assetId；② task_run({ assetId }) 返回 mcpTaskId；③ task_status({ mcpTaskId }) 取产物（生图加编码约 30–90 秒，可能要轮询若干次）。animRows / animCols 必须与序列图实际行列一致，animGifFps 必须显式给出且大于 0（默认 0 只切帧、不出 GIF）。只有改动已存在的资产时才用 graph_node_types / graph_read / graph_edit。'",
    "titleZh: '2D 帧动画（GIF）',",
    "'每格独立成幅、无缝拼接，格与格之间不要边框、分隔线或白边；每格内容必须严格铺满自己的格子区域，格子边界即画面边界，不得内缩、留边距或留白；整张画布严格保持生成设置中的宽高比，无文字水印。'",
    "const GRID9_IMAGE_ZH = `基于上游 9宫格分镜表生成一张 3×3 九宫格拼图画布：9 格按表内顺序依次对应 9 个核心锚点，人物服饰、主光方向、场景严格按表内描述保持绝对一致；${GRID_FILL_ZH}`",

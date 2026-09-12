@@ -745,6 +745,7 @@ export default {
       toolDone: '完成',
       toolFailed: '失败',
       taskList: '任务清单',
+      toolParams: '参数',
       model: '模型',
       noModel: '未配置文本模型',
       modeTitle: 'Agent 模式：Craft（执行）/ Ask（问答）/ Plan（先规划后执行）',

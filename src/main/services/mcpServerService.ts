@@ -1417,13 +1417,33 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'workflow_commit',
     title: '落盘工作流',
     description:
-      '把 workflow_plan 返回的 plan 落盘为工程内的宿主资产（应用界面会同步出现该资产）。返回资产 id。',
+      '把一张 GraphPlan 落盘为工程内的宿主资产（应用界面会同步出现该资产）。plan 可来自 workflow_plan，也可直接手写（跳过规划，少一次调用）；节点 params 会按目标节点类型声明的键校验，未声明的键被忽略并出现在返回的 warnings 里，不会静默丢弃。返回资产 id 与 warnings。',
     inputSchema: {
       type: 'object',
       properties: {
-        plan: { type: 'object', description: 'workflow_plan 返回的 plan 对象' },
+        plan: {
+          type: 'object',
+          description:
+            'GraphPlan：{ title?, nodes: [{ key, typeId, title?, params? }], edges: [{ from, to, fromPort?, toPort? }] }'
+        },
         name: { type: 'string', description: '资产显示名，缺省用计划标题' },
         generateAspectRatio: { type: 'string', description: '统一宽高比，如 9:16' },
+        imageModel: {
+          type: 'string',
+          description: '图片模型 id：写入计划中未指定 generateModel 的图片生成/高清放大节点'
+        },
+        imageProviderInstanceId: {
+          type: 'string',
+          description: '图片模型所属提供商实例 id，可选（自定义提供商模型需要）'
+        },
+        videoModel: {
+          type: 'string',
+          description: '视频模型 id：写入计划中未指定 generateModel 的视频生成节点'
+        },
+        videoProviderInstanceId: {
+          type: 'string',
+          description: '视频模型所属提供商实例 id，可选（自定义提供商模型需要）'
+        },
         folderId: { type: 'string', description: '资产库文件夹 id（folder_list 查询）' }
       },
       required: ['plan']
@@ -1436,6 +1456,10 @@ const TOOL_DEFS: McpToolDef[] = [
         plan: plan as CommitAiWorkflowInput['plan'],
         name: optionalString(args, 'name'),
         generateAspectRatio: optionalString(args, 'generateAspectRatio'),
+        imageModel: optionalString(args, 'imageModel'),
+        imageProviderInstanceId: optionalString(args, 'imageProviderInstanceId'),
+        videoModel: optionalString(args, 'videoModel'),
+        videoProviderInstanceId: optionalString(args, 'videoProviderInstanceId'),
         folderId: optionalString(args, 'folderId')
       }
       const result = await commitAiWorkflow(input)
@@ -1444,7 +1468,11 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       const asset = projectService.listAssets().find((item) => item.id === result.assetId)
       if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-      return { assetId: result.assetId, name: asset?.name ?? input.name ?? null }
+      return {
+        assetId: result.assetId,
+        name: asset?.name ?? input.name ?? null,
+        warnings: result.warnings
+      }
     }
   },
   {

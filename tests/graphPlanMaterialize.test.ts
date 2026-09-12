@@ -180,6 +180,45 @@ describe('graphPlan materialize', () => {
     expect(split.params.imageGridSplit).not.toHaveProperty('resolution')
   })
 
+  it('keeps params declared by the node type itself (anim.2d)', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [
+          {
+            key: 'anim',
+            typeId: 'anim.2d',
+            params: { animRows: 2, animCols: 5, animGifFps: 12, animPresetId: 'walk' }
+          }
+        ],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(result.warnings).toEqual([])
+    const anim = result.document!.nodes.find((n) => n.typeId === 'anim.2d')!
+    expect(anim.params.animRows).toBe(2)
+    expect(anim.params.animCols).toBe(5)
+    expect(anim.params.animGifFps).toBe(12)
+  })
+
+  it('warns instead of silently dropping undeclared params', () => {
+    const result = materializeGraphPlan(
+      {
+        nodes: [{ key: 'anim', typeId: 'anim.2d', params: { animCol: 5, bogus: 1 } }],
+        edges: []
+      },
+      { scope: 'subgraphAsset', assetType: 'subgraph' }
+    )
+    expect(result.ok, result.error).toBe(true)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toContain('animCol')
+    expect(result.warnings[0]).toContain('bogus')
+    // 被丢弃的键回落节点默认值（漏报会让「任务跑完但产物不对」变成静默失败）
+    const anim = result.document!.nodes.find((n) => n.typeId === 'anim.2d')!
+    expect(anim.params.animCols).toBe(4)
+  })
+
   it('materializes every curated preset seed plan', () => {
     for (const id of [
       'gameUaVideo',

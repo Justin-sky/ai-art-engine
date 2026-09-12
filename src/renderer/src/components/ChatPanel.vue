@@ -645,6 +645,45 @@ function taskToolsAt(userIndex: number): Array<ChatMsg & { kind: 'tool' }> {
   return out
 }
 
+/** 任务清单里展示的一条工具参数（键值对） */
+interface ToolArgEntry {
+  key: string
+  value: string
+}
+
+/** 单个参数值的展示文本：字符串原样、对象/数组转紧凑 JSON；超长截断避免撑爆卡片 */
+function formatToolArgValue(value: unknown): string {
+  let text: string
+  if (typeof value === 'string') {
+    text = value
+  } else {
+    const json = JSON.stringify(value)
+    text = json === undefined ? String(value) : json
+  }
+  return text.length > 600 ? text.slice(0, 600) + '…' : text
+}
+
+/**
+ * 工具调用详细参数：解析 runner 透传的 args JSON 为键值对，供任务清单逐条展示。
+ * 解析失败或非对象时退化为单条原文，保证仍能看到 Agent 实际传入的命令参数。
+ */
+function toolArgs(tm: ChatMsg & { kind: 'tool' }): ToolArgEntry[] {
+  const raw = tm.args?.trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return [{ key: 'args', value: formatToolArgValue(parsed) }]
+    }
+    return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({
+      key,
+      value: formatToolArgValue(value)
+    }))
+  } catch {
+    return [{ key: 'args', value: formatToolArgValue(raw) }]
+  }
+}
+
 function onCompositionEnd(): void {
   composing.value = false
 }
@@ -994,7 +1033,10 @@ function onHarnessEvent(event: HarnessEvent): void {
       const prev = findToolByKey(key)
       if (prev) {
         prev.state = event.state
-        prev.detail = event.detail
+        // 摘要在 done 事件里可能缺省，仅在携带时覆盖，避免清掉 start 已记的详情
+        if (event.detail !== undefined) prev.detail = event.detail
+        // 详细参数只在 start 事件下发，保留不覆盖
+        if (event.args !== undefined) prev.args = event.args
       } else {
         messages.value.push({
           kind: 'tool',
@@ -1002,7 +1044,8 @@ function onHarnessEvent(event: HarnessEvent): void {
           name: event.name,
           ...(event.id ? { id: event.id } : {}),
           state: event.state,
-          detail: event.detail
+          ...(event.detail !== undefined ? { detail: event.detail } : {}),
+          ...(event.args !== undefined ? { args: event.args } : {})
         })
       }
       // 技能命中依据：skill 工具调用时在技能调试视图中标记「已加载」
@@ -1445,6 +1488,37 @@ onBeforeUnmount(() => {
                   <span class="task-state">
                     {{ tm.state === 'start' ? t('studio.chat.toolRunning') : tm.state === 'done' ? t('studio.chat.toolDone') : t('studio.chat.toolFailed') }}
                   </span>
+                  <!-- 详细参数/摘要：执行中自动展开，命令完成后折叠为一行摘要，可手动点开展开 -->
+                  <details
+                    v-if="toolArgs(tm).length || tm.detail"
+                    class="task-params"
+                    :open="tm.state === 'start'"
+                  >
+                    <summary class="task-params-summary">
+                      {{ tm.detail || t('studio.chat.toolParams') }}
+                    </summary>
+                    <div
+                      v-if="toolArgs(tm).length"
+                      class="task-param-list"
+                    >
+                      <span
+                        v-for="p in toolArgs(tm)"
+                        :key="p.key"
+                        class="task-param"
+                        :title="`${p.key}: ${p.value}`"
+                      >
+                        <span class="task-param-key">{{ p.key }}</span>
+                        <span class="task-param-value">{{ p.value }}</span>
+                      </span>
+                    </div>
+                    <div
+                      v-else-if="tm.detail"
+                      class="task-detail"
+                      :title="tm.detail"
+                    >
+                      {{ tm.detail }}
+                    </div>
+                  </details>
                   <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
                   <ChatAssetPreview
                     v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
@@ -2220,6 +2294,73 @@ onBeforeUnmount(() => {
 .task-state {
   font-size: 11px;
   flex-shrink: 0;
+}
+
+/* 任务清单：工具调用详细参数（键值对），整行换行；执行中展开、完成后折叠 */
+.task-params {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 2px 0 0 16px;
+}
+
+.task-params-summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task-params[open] > .task-params-summary {
+  margin-bottom: 2px;
+}
+
+.task-param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.task-param {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-param-key {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+.task-param-key::after {
+  content: ':';
+}
+
+.task-param-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 无参数工具：折叠块内展开后展示 runner 给出的一行摘要 */
+.task-params .task-detail {
+  padding: 4px 6px;
+  border-left: 2px solid var(--border);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* 任务清单内的资产预览更紧凑 */

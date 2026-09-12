@@ -743,6 +743,8 @@ export type HarnessEvent =
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string
+      /** 工具调用原始参数（JSON 字符串，仅 start 事件携带）：任务清单据此展示详细参数 */
+      args?: string
     }
   | { type: 'reasoning'; text: string }
   | { type: 'final'; text: string }

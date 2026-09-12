@@ -30,6 +30,8 @@ export type ChatMsg =
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string
+      /** 工具调用原始参数（JSON 字符串，仅 start 事件携带）：任务清单据此展示详细参数 */
+      args?: string
       /** 工具调用实例 ID（dsh callId）：同一工具多次调用可区分；旧数据可能缺失 */
       id?: string
       /** MCP 生成活动关联资产的工程内相对路径：done 后据此在对话末尾生成独立预览卡（图片/视频/音频/3D） */
