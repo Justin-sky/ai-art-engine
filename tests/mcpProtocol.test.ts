@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createMcpProtocolHandler } from '../src/shared/mcpProtocol'
+import { createMcpProtocolHandler, type McpRequestContext } from '../src/shared/mcpProtocol'
 
 function makeHandler() {
   return createMcpProtocolHandler({
@@ -177,5 +177,38 @@ describe('MCP 协议消息处理（shared）', () => {
     const result = res?.result as { content: Array<{ text: string }> }
     expect(aborted).toBe(true)
     expect(JSON.parse(result.content[0].text)).toEqual({ aborted: true })
+  })
+
+  it('请求上下文（模式 / runId）透传给 listTools 与 callTool', async () => {
+    const listCtx: Array<McpRequestContext | undefined> = []
+    const callCtx: Array<McpRequestContext | undefined> = []
+    const handle = createMcpProtocolHandler({
+      serverInfo: { name: 'aiartengine', title: 'AiArtEngine', version: '5.0.0' },
+      listTools: (ctx) => {
+        listCtx.push(ctx)
+        return []
+      },
+      callTool: async (_name, _args, ctx) => {
+        callCtx.push(ctx)
+        return { result: null }
+      }
+    })
+
+    await handle({ jsonrpc: '2.0', id: 300, method: 'tools/list' }, { mode: 'plan', runId: 'r-1' })
+    expect(listCtx[0]).toMatchObject({ mode: 'plan', runId: 'r-1' })
+
+    await handle(
+      { jsonrpc: '2.0', id: 301, method: 'tools/call', params: { name: 'asset_list' } },
+      { mode: 'plan', runId: 'r-1' }
+    )
+    // 模式 / runId 保留，同时挂上本次调用的取消信号（notifications/cancelled 与连接断开都走它）
+    expect(callCtx[0]).toMatchObject({ mode: 'plan', runId: 'r-1' })
+    expect(callCtx[0]?.signal).toBeInstanceOf(AbortSignal)
+
+    // 外部客户端（stdio 桥 / HTTP 直连）不带上下文：listTools 收到 undefined，调用也不附模式
+    await handle({ jsonrpc: '2.0', id: 302, method: 'tools/list' })
+    expect(listCtx[1]).toBeUndefined()
+    await handle({ jsonrpc: '2.0', id: 303, method: 'tools/call', params: { name: 'asset_list' } })
+    expect(callCtx[1]?.mode).toBeUndefined()
   })
 })

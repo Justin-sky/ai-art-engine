@@ -22,6 +22,11 @@ import {
 } from '@shared/ipc'
 import { listGraphSkills, registerGraphSkill, type GraphSkill } from '@shared/graph/graphSkills'
 import {
+  accessHeaders,
+  isCancelAnswer,
+  normalizeChatMode
+} from '@shared/mcpModeAccess'
+import {
   isCustomProvider,
   modalityConfig,
   resolveCustomApiStyle,
@@ -38,7 +43,12 @@ import {
   HIDE_CHILD_WINDOWS_HOOK_SOURCE
 } from './dshHideChildWindowsHook'
 import { patchAclSandboxConsole } from './dshSandboxConsolePatch'
-import { getMcpServerInfo } from './mcpServerService'
+import {
+  confirmHarnessRunAccess,
+  getMcpServerInfo,
+  registerHarnessRunAccess,
+  releaseHarnessRunAccess
+} from './mcpServerService'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
 
@@ -307,8 +317,14 @@ export async function getHarnessStatus(): Promise<HarnessStatus> {
   }
 }
 
-/** 生成 dsh 的 home 级配置：注册 mcp-client 插件，指向本应用 MCP 工具服务 */
-function writeDshConfig(endpoint: string): void {
+/**
+ * 生成 dsh 的 home 级配置：注册 mcp-client 插件，指向本应用 MCP 工具服务。
+ *
+ * mode / runId 随请求头下发：面板模式在 MCP 服务端是硬约束（Ask 不给任何工具、Plan 未确认前
+ * 只留只读工具，见 shared/mcpModeAccess.ts），不再只靠 persona 提示；runId 供 Plan 回查
+ * 「用户是否已确认计划」。配置每轮重写，所以这两个头天然是一次运行一个值。
+ */
+function writeDshConfig(endpoint: string, mode: ChatMode, runId: string): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
   // !!js 为 dsh 的 YAML 特殊语法：标签值必须是「合法 JS 表达式」，由 cordis-plugin-loader
@@ -331,7 +347,15 @@ function writeDshConfig(endpoint: string): void {
     // 导致 Agent 误以为提交失败而重复提交。调到 120 分钟与 LONG_GENERATE_TIMEOUT_MS 对齐。
     '      toolCallTimeoutMs: 7200000',
     '      headers:',
-    '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"'
+    '        Authorization: !!js "`Bearer ${process.env.STUDIO_MCP_TOKEN}`"',
+    // 面板模式与本次运行 id：MCP 侧据此收窄工具面并拒绝越权调用。
+    // 值一律经 yamlScalar 序列化成 YAML 字符串：dsh-mcp-client 的 headers schema 是
+    // `{ [key: string]: string }`，裸写纯数字的 runId 会被 YAML 解析成 number，整棵插件树
+    // 校验失败、dsh 直接起不来（实测报 invalid config: ... but got {"x-aiart-run-id":1}）。
+    // 载荷由 accessHeaders 产出（值类型锁死为 string），这里只负责 YAML 序列化。
+    ...Object.entries(accessHeaders(mode, runId)).map(
+      ([key, value]) => `        ${key}: ${yamlScalar(value)}`
+    )
   ]
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
 }
@@ -1012,54 +1036,56 @@ async function run(ctx, task, io) {
       })
     )
   }
-  if (userQuestions?.registerProvider) {
-    userQuestions.registerProvider({
-      async ask(request) {
-        // 兜底：provider 内部任何异常都不向 agent 抛「工具出问题」，而是记录到 stderr 并返回空答案，
-        // 便于主进程日志/状态栏定位（[aiart-runner] 错误行会透传显示）。
+  /**
+   * 应答一次 ask_user_question：把问题经 stdout marker 转给主进程 → 渲染层出选项，
+   * 用户选完后主进程写 answerFile，这里轮询读取并把答案还给 agent。
+   *
+   * 兜底：任何异常都不向 agent 抛「工具出问题」，而是记一行 stderr 并返回空答案
+   * （主进程会把 [aiart-runner] 错误行透传显示，便于定位）。
+   */
+  const answerAskUserQuestion = async (request) => {
+    const first = request?.questions?.[0]
+    if (!first) return { answers: [] }
+    try {
+      const runId = process.env.AIART_RUN_ID || 'run'
+      const requestId = 'harness:' + runId + ':' + randomUUID()
+      const answerFile = join(
+        process.env.AIART_ASK_DIR || '',
+        'aiart-ask-' + requestId.replace(/[^a-zA-Z0-9_-]/g, '-') + '.json'
+      )
+      io.stdout.write(
+        ASK_USER_BEGIN +
+          JSON.stringify({
+            requestId,
+            questionId: first.id,
+            question: first.question,
+            ...(first.header ? { hint: first.header } : {}),
+            options: (first.options ?? []).map((option) => option.label),
+            answerFile
+          }) +
+          '\n'
+      )
+      const deadline = Date.now() + 5 * 60 * 1000
+      while (Date.now() < deadline) {
+        // 本轮被中止（用户停止 / 进程收尾）时不干等满 5 分钟，直接以空答案收尾
+        if (request?.signal?.aborted) return { answers: [{ id: first.id, selected: [] }] }
         try {
-          const first = request.questions?.[0]
-          if (!first) return { answers: [] }
-          const runId = process.env.AIART_RUN_ID || 'run'
-          const requestId = 'harness:' + runId + ':' + randomUUID()
-          const answerFile = join(
-            process.env.AIART_ASK_DIR || '',
-            'aiart-ask-' + requestId.replace(/[^a-zA-Z0-9_-]/g, '-') + '.json'
-          )
-          io.stdout.write(
-            ASK_USER_BEGIN +
-              JSON.stringify({
-                requestId,
-                questionId: first.id,
-                question: first.question,
-                ...(first.header ? { hint: first.header } : {}),
-                options: (first.options ?? []).map((option) => option.label),
-                answerFile
-              }) +
-              '\n'
-          )
-          const deadline = Date.now() + 5 * 60 * 1000
-          while (Date.now() < deadline) {
-            try {
-              const raw = readFileSync(answerFile, 'utf8')
-              return JSON.parse(raw)
-            } catch {
-              // 回答文件尚未写入，继续等待
-            }
-            await new Promise((resolve) => setTimeout(resolve, 250))
-          }
-          return { answers: [{ id: first.id, selected: [] }] }
-        } catch (error) {
-          io.stderr.write(
-            '[aiart-runner] ask-user provider error: ' +
-              (error instanceof Error ? error.message : String(error)) +
-              '\n'
-          )
-          const first = request.questions?.[0]
-          return { answers: first ? [{ id: first.id, selected: [] }] : [] }
+          const raw = readFileSync(answerFile, 'utf8')
+          return JSON.parse(raw)
+        } catch {
+          // 回答文件尚未写入，继续等待
         }
+        await new Promise((resolve) => setTimeout(resolve, 250))
       }
-    })
+      return { answers: [{ id: first.id, selected: [] }] }
+    } catch (error) {
+      io.stderr.write(
+        '[aiart-runner] ask-user answerer error: ' +
+          (error instanceof Error ? error.message : String(error)) +
+          '\n'
+      )
+      return { answers: [{ id: first.id, selected: [] }] }
+    }
   }
   await ctx.get('loader')?.await()
   const agents = ctx.get('agents')
@@ -1077,6 +1103,26 @@ async function run(ctx, task, io) {
       current: selection,
       assembled: void 0
     })
+    // 0.1.5 起 userQuestions 是 waterfall 服务（'user-questions/request'），应答方靠监听该事件注册；
+    // 服务类上已经没有 registerProvider——旧写法会被静默跳过（条件为假，连报错都没有），
+    // 于是 ask_user_question 一调用就抛 UserQuestionError「no user-questions answerer accepted
+    // the request」(NO_PROVIDER)。Plan 模式正好依赖这个工具做「计划确认」，因此整条 Plan 流程
+    // 卡死在提问那一步：模型拿不到用户确认，只能退回纯文字回答。
+    //
+    // 事件按 Agent 作用域派发（dsh-scope 的 invariant 取 args[0].agent），所以监听必须挂在
+    // agent 作用域的 ctx 上（就是这个 setup 回调），挂到根 ctx 收不到。返回答案即终止水流，
+    // 不调 next，避免落到服务内置的 noAnswerer。
+    agentCtx.on('user-questions/request', (request) =>
+      answerAskUserQuestion(request).catch((error) => {
+        io.stderr.write(
+          '[aiart-runner] ask-user answerer failed: ' +
+            (error instanceof Error ? error.message : String(error)) +
+            '\n'
+        )
+        const first = request?.questions?.[0]
+        return { answers: first ? [{ id: first.id, selected: [] }] : [] }
+      })
+    )
   }
   let agent
   const persistence = ctx.get('sessionPersistence')
@@ -1314,7 +1360,12 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'For video generation with reference images: a single image is the first frame (firstFrameImageUrl);',
     'when the user provides two images, the first one is the first frame and the second one is the last frame',
     '(lastFrameImageUrl). The image order in your user message follows the order the user attached them.',
-    'Pass the @path text of each image to the matching generate_video argument instead of inventing URLs.'
+    'Pass the @path text of each image to the matching generate_video argument instead of inventing URLs.',
+    // 同一会话里模式可以逐轮切换（面板上换一下再发就行），而模型会顺手沿用上一轮的模式自述：
+    // 实测 Ask 轮说过「我在 Ask 模式」后，同一会话切到 Plan 的下一轮它仍照抄这句话（即使这一轮的
+    // system prompt 已是 Plan、工具面也已换成只读）。这里明确「以本轮说法为准」，并禁止复述旧结论。
+    'The mode stated for the current turn is authoritative: the user may switch modes between turns of this same session.',
+    'Never carry over a previous turn\'s mode name, and never repeat an earlier claim that tools are unavailable unless this turn says so.'
   ]
   if (mode === 'ask') {
     return [
@@ -1331,7 +1382,13 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
       'After presenting the plan, call the ask_user_question tool to ask the user whether to proceed,',
       'offering self-contained options such as "Proceed", "Adjust", and "Cancel".',
       'Only after the user confirms may you call other MCP tools to execute the plan.',
-      'Do NOT modify files or generate assets before the user confirms the plan.'
+      'Do NOT modify files or generate assets before the user confirms the plan.',
+      // dsh 自带的 plan-mode 插件同样把 exit_plan_mode 挂在工具面里（官方注释：工具目录不随模式变化，
+      // 为的是请求缓存稳定），但它要求 dsh 自己的 session 处于 plan 模式；面板这套 Plan 不走那条路，
+      // 调它必报「exit_plan_mode is only available in plan mode」。点名禁掉，免得模型在「提交计划」
+      // 这一步选错工具，然后回头怀疑当前模式。
+      'The harness also exposes an exit_plan_mode tool: this panel does not run the harness plan mode, so never call it.',
+      'Confirm the plan with ask_user_question only.'
     ]
   }
   return [
@@ -1629,10 +1686,13 @@ function launchDsh(opts: {
   proc.stderr?.on('data', (chunk) => onData(chunk, 'err'))
   proc.on('error', (err) => {
     if (child === proc) child = null
+    releaseHarnessRunAccess(runId)
     emit({ type: 'error', message: `dsh 启动失败：${err.message}` })
   })
   proc.on('close', (code) => {
     if (child === proc) child = null
+    // 运行结束即释放模式授权登记（Plan 的「已确认」只在本条消息内有效）
+    releaseHarnessRunAccess(runId)
     // 清理本次运行的待回传提问（任务结束，agent 侧等待会走超时分支返回空答案）
     for (const [id, entry] of harnessAskUserRequests) {
       if (entry.runId === runId) harnessAskUserRequests.delete(id)
@@ -1691,7 +1751,12 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   if (!provider) {
     return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
-  writeDshConfig(mcp.endpoint)
+  // 运行 id 与模式要先定下来：两者都要写进 mcp-client 的请求头（Plan 模式据此回查
+  // 「用户是否已确认计划」），并登记到 MCP 侧的运行授权表（请求到达时按 runId 查）
+  const runId = String(++runSeq)
+  const mode = normalizeChatMode(input.mode)
+  writeDshConfig(mcp.endpoint, mode, runId)
+  registerHarnessRunAccess(runId, mode)
   // dsh 不读 DSH_MODEL 环境变量，模型必须写进 settings.yaml，否则始终用内置默认
   // deepseek-v4-flash（多数端点不存在 → HTTP_404），与面板选择无关。
   writeDshSettings({
@@ -1702,7 +1767,6 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
   // 让 AI 对话里的 agent 能发现并加载应用技能（skill-filesystem 默认扫描该目录）。
   writeDshSkills()
   const workspace = resolveWorkspace()
-  const runId = String(++runSeq)
   lastStatusText = ''
   const dshEntry = resolveDshEntry()
   emitStatus(
@@ -1737,7 +1801,7 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
     }
   }
   const patchPath = dshModules
-    ? writeAiartHarness(dshModules, input.mode ?? 'craft', projectMemory)
+    ? writeAiartHarness(dshModules, mode, projectMemory)
     : null
   // 隐藏 dsh 子进程的控制台窗口：非沙箱命令走预载 hook（dshHideChildWindowsHook），
   // 沙箱内命令走运行体补丁（dshSandboxConsolePatch）。两条都必须在下拉 dsh 之前就位。
@@ -1788,8 +1852,9 @@ export async function runHarnessTask(input: HarnessRunInput): Promise<HarnessRun
       // ask_user_question 提问的临时目录与本次运行 id：runner 经 answerFile 与主进程交换用户选择
       AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
       AIART_RUN_ID: runId,
-      // 当前模式：Ask 模式下 runner 不注册 ask_user_question 工具（persona 只禁 MCP 工具，拦不住原生工具）
-      AIART_MODE: input.mode ?? 'craft'
+      // 当前模式：Ask 模式下 runner 不注册 ask_user_question 工具（persona 只禁 MCP 工具，拦不住原生工具）；
+      // 同一模式也经请求头下发，MCP 侧据此收窄工具面（两端都禁，persona 只是提示）
+      AIART_MODE: mode
     } as NodeJS.ProcessEnv,
     runId,
     dshEntry
@@ -1813,6 +1878,9 @@ export function handleAskUserResponse(payload: AskUserAnswer): void {
   const entry = harnessAskUserRequests.get(payload.requestId)
   if (!entry || !entry.answerFile) return
   harnessAskUserRequests.delete(payload.requestId)
+  // Plan 模式：用户对计划给出任何非「取消」的选择即视为确认，本条消息内放行写 / 生成类工具
+  // （MCP 侧按请求头里的 runId 回查这个标记，见 mcpServerService.confirmHarnessRunAccess）
+  if (!isCancelAnswer(payload.answer)) confirmHarnessRunAccess(entry.runId)
   try {
     mkdirSync(dirname(entry.answerFile), { recursive: true })
     writeFileSync(

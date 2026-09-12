@@ -6,7 +6,20 @@ import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import type { AssetInfo } from '@shared/domain'
 import { UI_KIT_PART_KINDS } from '@shared/gameAssets'
-import { createMcpProtocolHandler, type McpToolImage } from '@shared/mcpProtocol'
+import {
+  denialReasonForTool,
+  isToolVisible,
+  MCP_MODE_HEADER,
+  MCP_RUN_ID_HEADER,
+  normalizeChatMode,
+  toolAccessOf,
+  type McpAccessView
+} from '@shared/mcpModeAccess'
+import {
+  createMcpProtocolHandler,
+  type McpRequestContext,
+  type McpToolImage
+} from '@shared/mcpProtocol'
 import {
   AI_WORKFLOW_PRESET_IDS,
   MCP_GRAPH_EDIT_SCOPE,
@@ -46,6 +59,7 @@ import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubti
 import {
   IpcChannels,
   type AskUserAnswer,
+  type ChatMode,
   type CommitAiWorkflowInput,
   type CreateFolderInput,
   type CreateProjectInput,
@@ -2898,6 +2912,20 @@ function authorized(req: IncomingMessage): boolean {
   return header.length === expected.length && timingSafeEqual(header, expected)
 }
 
+/**
+ * 解析请求头里的对话模式上下文（`X-AIArt-Mode` / `X-AIArt-Run-Id`）。
+ * 只有对话面板那条 mcp-client 配置会带（writeDshConfig 每轮重写）；stdio 桥 / HTTP 直连的
+ * 外部 Agent 不带 → 返回空上下文 = 完全不做模式限制。
+ */
+function requestModeContext(req: IncomingMessage): { mode?: ChatMode; runId?: string } {
+  const rawMode = req.headers[MCP_MODE_HEADER]
+  const value = Array.isArray(rawMode) ? rawMode[0] : rawMode
+  if (!value) return {}
+  const rawRunId = req.headers[MCP_RUN_ID_HEADER]
+  const runId = (Array.isArray(rawRunId) ? rawRunId[0] : rawRunId)?.trim()
+  return { mode: normalizeChatMode(value), ...(runId ? { runId } : {}) }
+}
+
 let mcpPort = 0
 
 /** 本机允许的 Host / Origin（DNS rebinding 防护：MCP HTTP 传输规范要求） */
@@ -3030,18 +3058,66 @@ async function handleToolCall(
   }
 }
 
+/**
+ * 对话面板每次运行的授权状态：runId → 模式 + 用户是否已确认计划。
+ * deepseekHarnessService 在 spawn 前登记、用户经 ask_user 确认计划时置位、进程退出时释放；
+ * 工具面按请求头里的 runId 回查这里（模式与 runId 由 writeDshConfig 写进 mcp-client 的请求头）。
+ * 用 Map 而不是全局开关：面板会话与外部 Agent 共用同一个服务，模式必须绑在请求上。
+ */
+const harnessRunAccess = new Map<string, { mode: ChatMode; confirmed: boolean }>()
+
+/** 登记一次对话运行的授权状态（spawn dsh 前调用） */
+export function registerHarnessRunAccess(runId: string, mode: ChatMode): void {
+  harnessRunAccess.set(runId, { mode, confirmed: false })
+}
+
+/** 用户确认了本次运行的计划：本条消息内放行写 / 生成类工具（Plan 模式） */
+export function confirmHarnessRunAccess(runId: string): void {
+  const state = harnessRunAccess.get(runId)
+  if (state) state.confirmed = true
+}
+
+/** 运行结束（进程退出 / 中止）释放登记，避免 Map 随会话累积 */
+export function releaseHarnessRunAccess(runId: string): void {
+  harnessRunAccess.delete(runId)
+}
+
+/** 把请求头里的模式 + runId 折算成授权视图；无模式声明的请求（外部客户端）不做任何限制 */
+function accessViewFor(ctx?: McpRequestContext): McpAccessView {
+  if (!ctx?.mode) return {}
+  const state = ctx.runId ? harnessRunAccess.get(ctx.runId) : undefined
+  return { mode: ctx.mode, confirmed: state?.confirmed ?? false }
+}
+
+/** 被模式拦截的调用同样进审计：模型试图越权本身就是值得回查的线索 */
+function auditDeniedToolCall(name: string, args: Record<string, unknown>, reason: string): void {
+  appendMcpAudit({ tool: name, ok: false, durationMs: 0, args, error: reason })
+  console.log(`[mcp] tool ${name} denied by chat mode: ${reason}`)
+}
+
 /** MCP 协议处理（streamable HTTP /mcp 端点与 stdio 桥共用同一工具面） */
 let mcpServerVersion = '0.0.0'
 const handleMcpProtocolMessage = createMcpProtocolHandler({
   serverInfo: { name: 'aiartengine', title: 'AiArtEngine', get version() { return mcpServerVersion } },
-  listTools: () =>
-    TOOL_DEFS.map(({ name, title, description, inputSchema }) => ({
-      name,
-      title,
-      description,
-      inputSchema
-    })),
+  listTools: (ctx) => {
+    const view = accessViewFor(ctx)
+    return TOOL_DEFS.filter(({ name }) => isToolVisible(toolAccessOf(name), view)).map(
+      ({ name, title, description, inputSchema }) => ({
+        name,
+        title,
+        description,
+        inputSchema
+      })
+    )
+  },
   callTool: async (name, args, callCtx) => {
+    // 模式硬约束：Ask 不给任何工具、Plan 未确认前只放只读——工具清单里没有的东西被调用（模型幻觉 /
+    // 陈旧清单）同样要挡住，否则收窄 tools/list 只是「看不见」，不是「做不到」
+    const denial = denialReasonForTool(toolAccessOf(name), accessViewFor(callCtx))
+    if (denial) {
+      auditDeniedToolCall(name, args, denial)
+      return { error: denial }
+    }
     try {
       const payload = (await handleToolCall(
         name,
@@ -3313,7 +3389,10 @@ async function onRequest(req: IncomingMessage, res: ServerResponse): Promise<voi
     }
     req.on('close', onClose)
     try {
-      const response = await handleMcpProtocolMessage(message, { signal: controller.signal })
+      const response = await handleMcpProtocolMessage(message, {
+        signal: controller.signal,
+        ...requestModeContext(req)
+      })
       if (!response) {
         res.writeHead(202, { 'Content-Type': 'application/json' })
         res.end()

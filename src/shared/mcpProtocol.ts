@@ -4,6 +4,21 @@
  * stdio 桥（scripts/mcp-bridge.mjs）是纯隧道，不处理协议，全部交由本模块。
  */
 
+import type { ChatMode } from './ipc'
+
+/**
+ * 单次 MCP 请求的上下文：传输层（HTTP 请求头）解析得到，协议层原样透传给工具面。
+ * 授权分级（Ask / Plan 的工具收窄与拒绝）就建立在这两个字段上，见 shared/mcpModeAccess.ts。
+ */
+export interface McpRequestContext {
+  /** 取消信号：HTTP 连接断开、notifications/cancelled 均经此中断进行中的调用 */
+  signal?: AbortSignal
+  /** 请求方声明的对话模式（请求头 `X-AIArt-Mode`）；缺省 = 外部客户端，不受面板模式约束 */
+  mode?: ChatMode
+  /** 对话面板某次运行的标识（请求头 `X-AIArt-Run-Id`）：Plan 模式据此查询用户是否已确认计划 */
+  runId?: string
+}
+
 export interface McpToolDescriptor {
   name: string
   title?: string
@@ -34,13 +49,14 @@ export interface McpToolCallOutcome {
 
 export interface McpProtocolHandlerOptions {
   serverInfo: { name: string; title?: string; version: string }
+  /** 列工具时带上请求上下文：按模式收窄（Ask 为空、Plan 未确认只给只读） */
   listTools:
-    | (() => Promise<McpToolDescriptor[]>)
-    | (() => McpToolDescriptor[])
+    | ((ctx?: McpRequestContext) => Promise<McpToolDescriptor[]>)
+    | ((ctx?: McpRequestContext) => McpToolDescriptor[])
   callTool: (
     name: string,
     args: Record<string, unknown>,
-    ctx?: { signal?: AbortSignal }
+    ctx?: McpRequestContext
   ) => Promise<McpToolCallOutcome>
   /** 支持的协议版本；协商时回退到第一项 */
   supportedProtocolVersions?: string[]
@@ -71,7 +87,7 @@ export function createMcpProtocolHandler(options: McpProtocolHandlerOptions) {
 
   async function handleMessage(
     message: unknown,
-    ctx?: { signal?: AbortSignal }
+    ctx?: McpRequestContext
   ): Promise<Record<string, unknown> | null> {
     if (!message || typeof message !== 'object') {
       return rpcError(null, -32600, '无效请求：不是 JSON-RPC 消息')
@@ -111,7 +127,7 @@ export function createMcpProtocolHandler(options: McpProtocolHandlerOptions) {
         }
         case 'tools/list': {
           if (isNotification) return null
-          return rpcResult(msg.id, { tools: await options.listTools() })
+          return rpcResult(msg.id, { tools: await options.listTools(ctx) })
         }
         case 'tools/call': {
           const name = typeof params.name === 'string' ? params.name : ''
@@ -137,11 +153,12 @@ export function createMcpProtocolHandler(options: McpProtocolHandlerOptions) {
             }
           }
           try {
-            const outcome = await options.callTool(
-              name,
-              args,
-              controller ? { signal: controller.signal } : ctx?.signal ? { signal: ctx.signal } : undefined
-            )
+            // 模式 / runId 与取消信号一起带给工具面：前者决定放行与否，后者用于中断长任务
+            const signal = controller ? controller.signal : ctx?.signal
+            const outcome = await options.callTool(name, args, {
+              ...ctx,
+              ...(signal ? { signal } : {})
+            })
             if (isNotification) return null
             if (outcome.error !== undefined) {
               return rpcResult(msg.id, {

@@ -44,6 +44,7 @@ const EXEMPT_FILES = new Set([
   'src/renderer/src/features/mcp/renderJobHandlers.ts',
   'src/shared/asyncSemaphore.ts',
   'src/shared/graph/mcpGraphEdit.ts',
+  'src/shared/mcpModeAccess.ts',
   'src/shared/mcpProtocol.ts'
 ])
 const EXEMPT_DIR_PARTS = [['src', 'renderer', 'src', 'i18n', 'locales']]
