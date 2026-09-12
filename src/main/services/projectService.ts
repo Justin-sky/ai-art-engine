@@ -107,6 +107,7 @@ import {
   scanAssetTree,
   uniqueFileName
 } from '../repositories/assetTreeStore'
+import { assetWatchService } from './assetWatchService'
 
 import {
   detectImportAssetType,
@@ -340,6 +341,7 @@ class ProjectService {
 
     const projectJson = join(root, 'project.json')
     settingsService.addRecent(projectJson)
+    this.startAssetWatcher(root)
 
     return {
       rootPath: root,
@@ -364,6 +366,7 @@ class ProjectService {
     const assets = this.listAssets()
     this.scheduleMissingThumbnails(assets)
     this.scheduleMissingVisionTags(assets)
+    this.startAssetWatcher(root)
 
     return {
       rootPath: root,
@@ -374,6 +377,7 @@ class ProjectService {
   }
 
   closeProject(): void {
+    assetWatchService.stop()
     this.rootPath = null
     this.config = null
   }
@@ -387,6 +391,47 @@ class ProjectService {
       assets: this.listAssets(),
       folders: this.listFolders()
     }
+  }
+
+  /** Starts a lightweight chokidar watcher on Assets/ for files added outside the app. */
+  private startAssetWatcher(root: string): void {
+    assetWatchService.start(root, (dirAbsList) => {
+      // Defer the actual scan to the next tick so the watcher callback returns immediately.
+      setTimeout(() => this.onAssetWatchRefresh(dirAbsList), 0)
+    })
+  }
+
+  /** Reconcile directories touched by the file watcher: adopt orphan media files. */
+  private onAssetWatchRefresh(dirAbsList: string[]): void {
+    if (!dirAbsList.length) return
+    const root = this.getRoot()
+    const topLevelDirs = this.normalizeChangedDirs(dirAbsList)
+    let adoptedCount = 0
+    for (const dirAbs of topLevelDirs) {
+      try {
+        const relDir = toPosix(relative(root, dirAbs))
+        ensureAssetRelativeFolderChain(root, relDir)
+        const batch = this.repairOrphanMediaMetas(root, relDir)
+        adoptedCount += batch.length
+      } catch (err) {
+        console.warn('[assetWatch] repair failed:', dirAbs, err)
+      }
+    }
+    if (adoptedCount > 0) {
+      broadcastToAllWindows(IpcChannels.FOLDERS_UPDATED, null)
+    }
+  }
+
+  /** Remove nested dirs so a subdir rescan does not duplicate its parent's scan. */
+  private normalizeChangedDirs(dirAbsList: string[]): string[] {
+    const sorted = Array.from(dirAbsList).sort()
+    const top: string[] = []
+    for (const d of sorted) {
+      if (!top.length || !d.startsWith(top[top.length - 1] + sep)) {
+        top.push(d)
+      }
+    }
+    return top
   }
 
   saveConfig(config: ProjectConfig): void {
