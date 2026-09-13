@@ -29,7 +29,12 @@ import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
 import { fingerprintMap, selectChangedFiles } from '@shared/git'
-import { normalizeOutputPathKey, selectRoundOutputs } from '@shared/outputScan'
+import {
+  MAX_ROUND_OUTPUT_FILES,
+  groupRoundOutputs,
+  normalizeOutputPathKey,
+  selectRoundOutputs
+} from '@shared/outputScan'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -1184,16 +1189,19 @@ async function refreshGitChanges(target: Extract<ChatMsg, { kind: 'changes' }>):
   }
 }
 
-/** 已在对话里出过产物卡的路径：产物卡与工具卡（旧数据的卡内预览）都算，同一文件不重复出卡 */
+/** 已在对话里出过产物卡的路径：产物卡（含卡内折叠的同批次产物）与工具卡（旧数据的卡内预览）都算，同一文件不重复出卡 */
 function shownOutputPaths(): Set<string> {
   const shown = new Set<string>()
+  const add = (relativePath: string): void => {
+    const key = normalizeOutputPathKey(relativePath)
+    if (key) shown.add(key)
+  }
   for (const msg of messages.value) {
     if (msg.kind === 'asset') {
-      const key = normalizeOutputPathKey(msg.relativePath)
-      if (key) shown.add(key)
+      add(msg.relativePath)
+      for (const related of msg.relatedPaths ?? []) add(related)
     } else if (msg.kind === 'tool' && msg.relativePath) {
-      const key = normalizeOutputPathKey(msg.relativePath)
-      if (key) shown.add(key)
+      add(msg.relativePath)
     }
   }
   return shown
@@ -1201,9 +1209,13 @@ function shownOutputPaths(): Set<string> {
 
 let roundOutputBusy = false
 /**
- * 运行结束：扫描本轮直接落盘到 `Output/` 与 `Cache/` 的产物，逐条追加产物卡。
+ * 运行结束：扫描本轮直接落盘到 `Output/` 与 `Cache/` 的产物，按批次追加产物卡。
  * 补的是 **不经 MCP 活动** 的那部分产出（脚本写出的 SVG / 帧序列等）——它们此前
  * 只进工程目录、对话里一张卡都没有；已由活动卡展示过的路径跳过，超出上限只提示数量。
+ *
+ * 同一次跑动常在几十毫秒内连出多份文件（矢量源 / 烘焙位图 / 帧序列，再叠上节点参数
+ * 预览的物化副本），逐文件出卡会在对话流里连排多张几乎相同的图——因此按批次聚合成
+ * 一张卡（`groupRoundOutputs`），卡内以「含 N 个产物」角标展开成员。
  */
 async function captureRoundOutputs(): Promise<void> {
   if (roundOutputBusy || !roundStartAt || !project.isOpen) return
@@ -1212,14 +1224,22 @@ async function captureRoundOutputs(): Promise<void> {
   try {
     const { files } = await window.studio.scanProjectOutputs({ sinceMs: roundStartAt })
     if (!files.length) return
-    const { picked, hidden } = selectRoundOutputs(files, {
+    const { picked, hidden: overflow } = selectRoundOutputs(files, {
       sinceMs: roundStartAt,
-      exclude: shownOutputPaths()
+      exclude: shownOutputPaths(),
+      limit: MAX_ROUND_OUTPUT_FILES
     })
+    const { cards, hidden: folded } = groupRoundOutputs(picked)
+    if (!cards.length) return
     const stamp = Date.now()
-    picked.forEach((file, index) => {
-      pushAsset(`asset:scan:${stamp}:${index}`, file.relativePath)
+    cards.forEach((card, index) => {
+      pushAsset(
+        `asset:scan:${stamp}:${index}`,
+        card.primary.relativePath,
+        card.related.map((file) => file.relativePath)
+      )
     })
+    const hidden = overflow + folded
     if (hidden > 0) pushStatus(t('studio.chat.roundOutputsMore', { count: hidden }))
   } catch {
     // 扫盘是旁路能力：读不到就跳过，不打断会话
@@ -1278,16 +1298,47 @@ function onMcpActivity(activity: McpActivity): void {
 }
 
 /** 生成完成的独立资产预览卡：同 key 去重，追加到对话末尾（原地更新路径以幂等处理延迟回调） */
-function pushAsset(key: string, relativePath: string): void {
+function pushAsset(key: string, relativePath: string, relatedPaths: string[] = []): void {
   const prev = messages.value.find(
     (m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key === key
   )
   if (prev) {
     prev.relativePath = relativePath
+    if (relatedPaths.length) prev.relatedPaths = relatedPaths
+    else delete prev.relatedPaths
     return
   }
-  messages.value.push({ kind: 'asset', key, relativePath })
+  messages.value.push({
+    kind: 'asset',
+    key,
+    relativePath,
+    ...(relatedPaths.length ? { relatedPaths } : {})
+  })
   scrollToBottom()
+}
+
+/** 已展开成员清单的产物卡 key：同批次产物默认折叠，避免又变成一列几乎相同的图 */
+const expandedAssetGroups = ref<Set<string>>(new Set())
+
+function isAssetGroupOpen(key: string): boolean {
+  return expandedAssetGroups.value.has(key)
+}
+
+/** 卡内产物总数：代表产物自己 + 折叠的同批次产物 */
+function assetGroupCount(msg: ChatMsg & { kind: 'asset' }): number {
+  return (msg.relatedPaths?.length ?? 0) + 1
+}
+
+function toggleAssetGroup(key: string): void {
+  const next = new Set(expandedAssetGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  expandedAssetGroups.value = next
+}
+
+/** 卡内成员按文件名展示（含扩展名）：区分同一批次里的矢量源 / 位图 / 帧序列 */
+function assetFileName(relativePath: string): string {
+  return normalizeOutputPathKey(relativePath).split('/').pop() || relativePath
 }
 
 /** 是否已存在与任务卡 key（`mcp:<id>`）对应的独立资产卡（`asset:<id>`）：旧会话数据无独立卡时任务清单内回退展示预览 */
@@ -1305,13 +1356,13 @@ const saveDialogRef = ref<{
   setSaving: (v: boolean) => void
   setError: (m: string) => void
 } | null>(null)
-const savingAssetKey = ref('')
-/** 本次会话已成功保存到资产库的资产卡 key（`asset:<id>`），按钮置为「已保存」并禁用 */
-const savedAssetKeys = ref<Set<string>>(new Set())
-let pendingSaveAssetKey = ''
+const savingAssetPath = ref('')
+/** 本次会话已成功保存到资产库的产物路径：一张卡里折叠的每份产物各自判定「已保存」并禁用 */
+const savedAssetPaths = ref<Set<string>>(new Set())
+let pendingSavePath = ''
 
-function isAssetSaved(key: string): boolean {
-  return savedAssetKeys.value.has(key)
+function isAssetSaved(relativePath: string): boolean {
+  return savedAssetPaths.value.has(normalizeOutputPathKey(relativePath))
 }
 
 /** 资产卡默认名称：取文件名 stem（去扩展名） */
@@ -1324,16 +1375,17 @@ function assetDefaultName(relativePath: string): string {
   )
 }
 
-function openSaveAsset(msg: ChatMsg & { kind: 'asset' }): void {
-  if (isAssetSaved(msg.key)) return
-  pendingSaveAssetKey = msg.key
-  saveDialogDefaultName.value = assetDefaultName(msg.relativePath)
+function openSaveAsset(relativePath: string): void {
+  const path = normalizeOutputPathKey(relativePath)
+  if (!path || isAssetSaved(path)) return
+  pendingSavePath = path
+  saveDialogDefaultName.value = assetDefaultName(path)
   saveDialogDefaultFolderId.value = null
   saveDialogOpen.value = true
 }
 
 function closeSaveAssetDialog(): void {
-  if (savingAssetKey.value) return
+  if (savingAssetPath.value) return
   saveDialogOpen.value = false
 }
 
@@ -1342,24 +1394,24 @@ async function onSaveAssetConfirm(payload: {
   name: string
   folderId: string | null
 }): Promise<void> {
-  const target = messages.value.find((m) => m.kind === 'asset' && m.key === pendingSaveAssetKey)
-  if (!target || target.kind !== 'asset' || savingAssetKey.value) return
-  savingAssetKey.value = target.key
+  const path = pendingSavePath
+  if (!path || savingAssetPath.value) return
+  savingAssetPath.value = path
   saveDialogRef.value?.setSaving(true)
   try {
     await window.studio.saveProjectAsset({
-      relativePath: target.relativePath,
+      relativePath: path,
       name: payload.name,
       folderId: payload.folderId
     })
-    savedAssetKeys.value.add(target.key)
+    savedAssetPaths.value.add(path)
     saveDialogOpen.value = false
     // 资产库同步刷新：新资产在资产浏览器中立即可见
     await project.scheduleRefreshLibrary()
   } catch (err) {
     saveDialogRef.value?.setError(err instanceof Error ? err.message : String(err))
   } finally {
-    savingAssetKey.value = ''
+    savingAssetPath.value = ''
   }
 }
 
@@ -1588,19 +1640,49 @@ onBeforeUnmount(() => {
           <div v-else-if="msg.kind === 'asset'" class="msg-row asset">
             <div class="asset-card">
               <ChatAssetPreview :relative-path="msg.relativePath" />
+              <!-- 同批次产物（矢量源 / 烘焙位图 / 帧序列等）折叠在同一张卡里：展开后逐份仍可单独入库 -->
+              <ul v-if="isAssetGroupOpen(msg.key)" class="asset-card-group">
+                <li v-for="path in msg.relatedPaths ?? []" :key="path">
+                  <span class="asset-group-name" :title="path">{{ assetFileName(path) }}</span>
+                  <button
+                    class="save-btn"
+                    :class="{ saved: isAssetSaved(path) }"
+                    :disabled="savingAssetPath === path || isAssetSaved(path)"
+                    :title="t('studio.chat.saveToLibraryTitle')"
+                    @click.stop="openSaveAsset(path)"
+                  >
+                    {{
+                      isAssetSaved(path)
+                        ? t('studio.chat.savedToLibrary')
+                        : savingAssetPath === path
+                          ? t('common.saving')
+                          : t('studio.chat.saveToLibrary')
+                    }}
+                  </button>
+                </li>
+              </ul>
               <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口 -->
               <div class="asset-card-actions">
                 <button
+                  v-if="msg.relatedPaths?.length"
+                  class="group-btn"
+                  :class="{ open: isAssetGroupOpen(msg.key) }"
+                  :title="t('studio.chat.assetGroupTitle')"
+                  @click.stop="toggleAssetGroup(msg.key)"
+                >
+                  {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
+                </button>
+                <button
                   class="save-btn"
-                  :class="{ saved: isAssetSaved(msg.key) }"
-                  :disabled="savingAssetKey === msg.key || isAssetSaved(msg.key)"
+                  :class="{ saved: isAssetSaved(msg.relativePath) }"
+                  :disabled="savingAssetPath === msg.relativePath || isAssetSaved(msg.relativePath)"
                   :title="t('studio.chat.saveToLibraryTitle')"
-                  @click.stop="openSaveAsset(msg)"
+                  @click.stop="openSaveAsset(msg.relativePath)"
                 >
                   {{
-                    isAssetSaved(msg.key)
+                    isAssetSaved(msg.relativePath)
                       ? t('studio.chat.savedToLibrary')
-                      : savingAssetKey === msg.key
+                      : savingAssetPath === msg.relativePath
                         ? t('common.saving')
                         : t('studio.chat.saveToLibrary')
                   }}
@@ -2460,8 +2542,67 @@ onBeforeUnmount(() => {
 
 .asset-card-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 6px;
   margin-top: 6px;
+}
+
+/* 同批次产物清单：默认收起，靠「含 N 个产物」角标展开，避免对话流里连排几乎相同的图 */
+.asset-card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asset-card-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+}
+
+.asset-group-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-btn {
+  margin-right: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.group-btn::before {
+  content: '▸';
+  margin-right: 4px;
+  font-size: 9px;
+}
+
+.group-btn.open::before {
+  content: '▾';
+}
+
+.group-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .save-btn {

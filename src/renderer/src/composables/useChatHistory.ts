@@ -41,8 +41,10 @@ export type ChatMsg =
       kind: 'asset'
       /** 会话内唯一标识：`asset:<mcp activity id>`，与对应工具卡的 `mcp:<id>` 同源，用于去重 */
       key: string
-      /** 生成资产在工程内的相对路径（图片/视频/音频/3D） */
+      /** 生成资产在工程内的相对路径（图片/视频/音频/3D）：同批次产物里最早写入的一份，用作卡片预览 */
       relativePath: string
+      /** 同一批次一起落盘的其它产物（扫盘聚合出卡时携带，写入时间升序）：卡内折叠展示，逐份可单独入库 */
+      relatedPaths?: string[]
     }
   | {
       kind: 'prompt'

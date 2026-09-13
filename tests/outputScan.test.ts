@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_ROUND_OUTPUT_CARDS,
+  generatedAssetKeyOf,
+  groupRoundOutputs,
   isScannedOutputPath,
   normalizeOutputPathKey,
   selectRoundOutputs,
@@ -131,5 +133,150 @@ describe('产物扫盘：本轮筛选', () => {
     const { picked, hidden } = selectRoundOutputs(files, { sinceMs: 0 })
     expect(picked).toHaveLength(MAX_ROUND_OUTPUT_CARDS)
     expect(hidden).toBe(5)
+  })
+})
+
+describe('产物扫盘：同批次聚合出卡', () => {
+  function file(relativePath: string, mtimeMs: number, size = 1024): ProjectOutputFile {
+    return { relativePath, mtimeMs, size }
+  }
+
+  /** 走一遍真实链路：先筛选再聚合 */
+  function cardsOf(files: ProjectOutputFile[], options?: { limit?: number; maxMembers?: number }) {
+    const { picked } = selectRoundOutputs(files, { sinceMs: 0 })
+    return groupRoundOutputs(picked, options)
+  }
+
+  it('同一资产的矢量源与烘焙位图合成一张卡（代表文件取最早写入的一份）', () => {
+    const { cards, hidden } = cardsOf([
+      file('Cache/Images/人像 v3_SVG 源_20260913-151235371.svg', 1_000_000),
+      file('Cache/Images/人像 v3_烘焙预览 PNG_20260913-151235504.png', 1_000_133)
+    ])
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.primary.relativePath).toBe(
+      'Cache/Images/人像 v3_SVG 源_20260913-151235371.svg'
+    )
+    expect(cards[0]!.related.map((f) => f.relativePath)).toEqual([
+      'Cache/Images/人像 v3_烘焙预览 PNG_20260913-151235504.png'
+    ])
+    expect(hidden).toBe(0)
+  })
+
+  it('节点参数预览副本（无资产名前缀）按紧窗口挂进同批次', () => {
+    const { cards } = cardsOf([
+      file('Cache/Images/人像 v3_SVG 源_20260913-151235371.svg', 1_000_000),
+      file('Cache/Images/node-6548078e_param-preview.svg', 1_000_050)
+    ])
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.related.map((f) => f.relativePath)).toEqual([
+      'Cache/Images/node-6548078e_param-preview.svg'
+    ])
+  })
+
+  it('预览副本先落盘时同样归并，并由随后的同源产物补上批次身份', () => {
+    const { cards } = cardsOf([
+      file('Cache/Images/node-abc_param-preview.svg', 1_000_000),
+      file('Cache/Images/人像 v3_SVG 源_20260913-151235371.svg', 1_000_120),
+      // 第三份与第二份同源：组身份已由第二份补上，因此必须与第二份同前缀才继续归并
+      file('Cache/Images/人像 v3_烘焙预览 PNG_20260913-151235504.png', 1_000_260)
+    ])
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.primary.relativePath).toBe('Cache/Images/node-abc_param-preview.svg')
+    expect(cards[0]!.related).toHaveLength(2)
+  })
+
+  it('预览副本与产物相隔过久（超过紧窗口）则单独成卡', () => {
+    const { cards } = cardsOf([
+      file('Cache/Images/人像 v3_SVG 源_20260913-151235371.svg', 1_000_000),
+      file('Cache/Images/node-6548078e_param-preview.svg', 1_003_000)
+    ])
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.related).toHaveLength(0)
+  })
+
+  it('不同资产（v3 / v4）分批出卡', () => {
+    const { cards } = cardsOf([
+      file('Cache/Images/人像 v3_SVG 源_20260913-151235371.svg', 1_000_000),
+      file('Cache/Images/人像 v3_烘焙预览 PNG_20260913-151235504.png', 1_000_133),
+      file('Cache/Images/人像 v4_SVG 源_20260913-151542077.svg', 1_180_077),
+      file('Cache/Images/人像 v4_烘焙预览 PNG_20260913-151542194.png', 1_180_194)
+    ])
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.primary.relativePath).toBe(
+      'Cache/Images/人像 v3_SVG 源_20260913-151235371.svg'
+    )
+    expect(cards[0]!.related).toHaveLength(1)
+    expect(cards[1]!.primary.relativePath).toBe(
+      'Cache/Images/人像 v4_SVG 源_20260913-151542077.svg'
+    )
+    expect(cards[1]!.related).toHaveLength(1)
+  })
+
+  it('带序号的帧序列与 GIF 同属一批（前缀相同即归并）', () => {
+    const { cards, hidden } = cardsOf([
+      file('Cache/Images/人像 v6_烘焙预览 PNG_20260913-152625969_1.png', 1_000_000),
+      file('Cache/Images/人像 v6_烘焙预览 PNG_20260913-152625969_2.png', 1_000_100),
+      file('Cache/Images/人像 v6_烘焙预览 PNG-gif_20260913-152626030.gif', 1_000_200)
+    ])
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.related).toHaveLength(2)
+    expect(hidden).toBe(0)
+  })
+
+  it('同源间距拉开（超过同源窗口）即开下一张卡', () => {
+    const { cards } = cardsOf([
+      file('Cache/Images/人像 v3_A_20260913-151235371.svg', 1_000_000),
+      file('Cache/Images/人像 v3_B_20260913-151400000.png', 1_000_000 + 15_000)
+    ])
+    expect(cards).toHaveLength(2)
+  })
+
+  it('单卡成员上限：超出的文件只计数', () => {
+    const files = Array.from({ length: 20 }, (_, i) =>
+      file(`Cache/Images/人像 v6_烘焙预览 PNG_20260913-152625969_${i + 1}.png`, 1_000_000 + i * 50)
+    )
+    const { cards, hidden } = cardsOf(files, { maxMembers: 3 })
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.primary.relativePath).toContain('_1.png')
+    expect(cards[0]!.related).toHaveLength(2)
+    expect(hidden).toBe(17)
+  })
+
+  it('卡上限：整批被挡下时只计数', () => {
+    const { cards, hidden } = cardsOf(
+      [
+        file('Cache/Images/人像 v3_A_20260913-151235371.svg', 1_000_000),
+        file('Cache/Images/人像 v3_B_20260913-151235504.png', 1_000_133),
+        file('Cache/Images/人像 v4_A_20260913-151542077.svg', 1_180_077),
+        file('Cache/Images/人像 v4_B_20260913-151542194.png', 1_180_194)
+      ],
+      { limit: 1 }
+    )
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.primary.relativePath).toContain('v3_A')
+    expect(hidden).toBe(2)
+  })
+
+  it('空输入不产卡', () => {
+    expect(cardsOf([])).toEqual({ cards: [], hidden: 0 })
+  })
+})
+
+describe('产物扫盘：批次聚合键', () => {
+  it('按生成媒体命名取资产名前缀（时间戳与序号都不算）', () => {
+    expect(generatedAssetKeyOf('Cache/Images/鹈鹕_SVG 源_20260913-151235371.svg')).toBe('鹈鹕')
+    expect(generatedAssetKeyOf('Cache/Images/鹈鹕_烘焙预览 PNG_20260913-152625969_3.png')).toBe(
+      '鹈鹕'
+    )
+    expect(generatedAssetKeyOf('Cache\\Images\\人像 v3_SVG 源_20260913-151235371.svg')).toBe(
+      '人像 v3'
+    )
+  })
+
+  it('非生成命名（agent 手写 / 节点参数预览）返回 null，交给时间窗口兜底', () => {
+    expect(generatedAssetKeyOf('Cache/Images/node-6548078e_param-preview.svg')).toBeNull()
+    expect(generatedAssetKeyOf('Cache/Images/frame-001.png')).toBeNull()
+    expect(generatedAssetKeyOf('Cache/Images/只有资产名.png')).toBeNull()
+    expect(generatedAssetKeyOf('Output/_20260913-151235371.svg')).toBeNull()
   })
 })

@@ -811,6 +811,9 @@ export default {
       saveToLibraryTitle: 'Save generated result to asset library',
       saveToLibrarySubtitle: 'Choose a target folder and file name',
       savedToLibrary: 'Saved',
+      assetGroupCount: '{count} outputs',
+      assetGroupTitle:
+        'Show or hide the other outputs written in the same run (vector source / baked bitmap / frames)',
       roundOutputsMore:
         '{count} more outputs exceeded the display limit and are not listed in the chat (see the asset library or the project folder)',
       gitChangesTitle: 'Changes',

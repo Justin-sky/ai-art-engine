@@ -796,6 +796,8 @@ export default {
       saveToLibraryTitle: '将生成结果保存到资产库',
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
       savedToLibrary: '已保存',
+      assetGroupCount: '含 {count} 个产物',
+      assetGroupTitle: '展开或收起同一次跑动一起落盘的其它产物（矢量源 / 烘焙位图 / 帧序列等）',
       roundOutputsMore:
         '另有 {count} 个产物超出展示上限、未在对话里逐条列出（可在素材库或工程目录查看）',
       gitChangesTitle: '变更预览',
