@@ -98,6 +98,8 @@ import {
 import {
   MCP_ASSET_IMPORT_LIMIT,
   MCP_CREATABLE_ASSET_TYPES,
+  assetImportActivityDetail,
+  assetImportActivityTitle,
   isMcpCreatableAssetType,
   normalizeImportFilePaths,
   normalizeProjectRelativePath,
@@ -187,17 +189,25 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
  * 开始即广播 running，成功 / 失败广播终态（任务列表与执行日志同步展示）。
  * settle 在成功落盘后、终态广播前执行（如按 folderId 把资产搬移到资产库文件夹），
  * 保证活动里记录的相对路径是资产最终落盘路径，界面预览不会指向失效路径。
+ * describe 可回报多件产物（relativePaths）：会话流按清单逐条出资产卡（导入等批量场景）。
+ * detail 是运行中补充说明，供无 model 可展示的活动代替副标题（如导入的首个文件名）。
  */
 async function runGenActivity<T>(
   tool: import('@shared/ipc').McpActivityTool,
   title: string,
   model: string | undefined,
   fn: () => Promise<T>,
-  describe: (result: T) => { assetId?: string; relativePath?: string },
+  describe: (result: T) => {
+    assetId?: string
+    relativePath?: string
+    /** 一次调用产出多件产物时的完整清单（relativePath 取首条，兼容单产物消费方） */
+    relativePaths?: string[]
+  },
   settle?: (result: T) => void | Promise<void>,
-  apiCall?: (result: T) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined
+  apiCall?: (result: T) => Omit<GraphRunLogApiCall, 'id' | 'ts'> | undefined,
+  detail?: string
 ): Promise<T> {
-  const activityId = mcpActivityService.begin({ tool, title, model })
+  const activityId = mcpActivityService.begin({ tool, title, model, detail })
   try {
     const result = await fn()
     await settle?.(result)
@@ -613,7 +623,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'asset_import',
     title: '导入素材',
     description:
-      '把本机绝对路径上的媒体文件导入当前工程资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新；导入的 SVG 归图片资产，可直接接入 svg.anim 烘焙节点转位图序列。',
+      '把本机绝对路径上的媒体文件导入当前工程资产库（图片（含 PSD / SVG 矢量图）/ 视频 / 音频 / 3D 模型 / 剧本文本，按扩展名判定类型），返回逐条导入结果与跳过原因；界面资产库同步刷新，导入同时登记为「素材导入」活动并逐条回报工程内相对路径（导入的素材随即以资产卡出现在对话流）；导入的 SVG 归图片资产，可直接接入 svg.anim 烘焙节点转位图序列。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -626,7 +636,7 @@ const TOOL_DEFS: McpToolDef[] = [
       },
       required: ['filePaths']
     },
-    handler: (args) => {
+    handler: async (args) => {
       assertProjectOpen()
       const filePaths = normalizeImportFilePaths(args.filePaths)
       if (!filePaths.length) {
@@ -639,10 +649,36 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       const folderId = optionalString(args, 'folderId') ?? null
       assertFolderExists(folderId)
-      const result = projectService.importAssets(filePaths, folderId)
-      for (const asset of result.imported) {
-        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
-      }
+      // 登记为界面可见的 MCP 活动：导入此前只进资产库、不进会话流，Agent 导入的 SVG / 图片
+      // 在对话里没有任何产物卡（文件确实进了工程，用户却以为这一步没发生）；现按导入结果
+      // 逐条回报工程内相对路径，对话流随即出资产卡（SVG 由 ChatAssetPreview 直接渲染）
+      const result = await runGenActivity(
+        'asset_import',
+        assetImportActivityTitle(filePaths.length),
+        undefined,
+        async () => {
+          const imported = projectService.importAssets(filePaths, folderId)
+          for (const asset of imported.imported) {
+            broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+          }
+          return imported
+        },
+        (r) => {
+          const relativePaths = r.imported
+            .map((asset) =>
+              liveAssetRelativePath({ assetId: asset.id, relativePath: asset.relativePath })
+            )
+            .filter((path): path is string => !!path?.trim())
+          return {
+            assetId: r.imported[0]?.id,
+            relativePath: relativePaths[0],
+            relativePaths
+          }
+        },
+        undefined,
+        undefined,
+        assetImportActivityDetail(filePaths)
+      )
       return {
         imported: result.imported.map((asset) => ({
           assetId: asset.id,

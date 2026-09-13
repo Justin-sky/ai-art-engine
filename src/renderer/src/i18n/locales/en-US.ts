@@ -811,6 +811,8 @@ export default {
       saveToLibraryTitle: 'Save generated result to asset library',
       saveToLibrarySubtitle: 'Choose a target folder and file name',
       savedToLibrary: 'Saved',
+      roundOutputsMore:
+        '{count} more outputs exceeded the display limit and are not listed in the chat (see the asset library or the project folder)',
       gitChangesTitle: 'Changes',
       gitChangesCount: '{count} files',
       gitChangesRefresh: 'Refresh',
@@ -2587,7 +2589,7 @@ export default {
         degraded: 'Degraded',
         skipped: 'Skipped'
       },
-      mcpSection: 'MCP generation',
+      mcpSection: 'MCP activity',
       mcpDefaultModel: 'Default model',
       mcpStatus: {
         running: 'Generating',
@@ -2601,7 +2603,8 @@ export default {
         generate_music: 'Music',
         generate_model3d: '3D model',
         graph_icon_refine: 'Icon refine',
-        task_run: 'Workflow'
+        task_run: 'Workflow',
+        asset_import: 'Import'
       }
     },
     logs: {

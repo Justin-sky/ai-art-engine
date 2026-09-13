@@ -796,6 +796,8 @@ export default {
       saveToLibraryTitle: '将生成结果保存到资产库',
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',
       savedToLibrary: '已保存',
+      roundOutputsMore:
+        '另有 {count} 个产物超出展示上限、未在对话里逐条列出（可在素材库或工程目录查看）',
       gitChangesTitle: '变更预览',
       gitChangesCount: '{count} 个文件',
       gitChangesRefresh: '刷新',
@@ -2524,7 +2526,7 @@ export default {
         degraded: '降级',
         skipped: '跳过'
       },
-      mcpSection: 'MCP 生成',
+      mcpSection: 'MCP 活动',
       mcpDefaultModel: '默认模型',
       mcpStatus: {
         running: '生成中',
@@ -2538,7 +2540,8 @@ export default {
         generate_music: '音乐',
         generate_model3d: '3D 模型',
         graph_icon_refine: '图标精修',
-        task_run: '工作流'
+        task_run: '工作流',
+        asset_import: '素材导入'
       }
     },
     logs: {

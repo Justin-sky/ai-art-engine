@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   MCP_ASSET_IMPORT_LIMIT,
   MCP_CREATABLE_ASSET_TYPES,
+  assetImportActivityDetail,
+  assetImportActivityTitle,
   isMcpCreatableAssetType,
   normalizeImportFilePaths,
   normalizeProjectRelativePath,
@@ -102,5 +104,25 @@ describe('MCP 资产写入：工程内相对路径', () => {
 
   it('拒绝空串', () => {
     expect(normalizeProjectRelativePath('   ')).toBeNull()
+  })
+})
+
+describe('MCP 资产写入：导入活动文案', () => {
+  it('标题带本次提交的路径数', () => {
+    expect(assetImportActivityTitle(1)).toBe('导入 1 个素材')
+    expect(assetImportActivityTitle(12)).toBe('导入 12 个素材')
+  })
+
+  it('单件补充说明取文件名（正反斜杠都认）', () => {
+    expect(assetImportActivityDetail(['D:/art/a.svg'])).toBe('a.svg')
+    expect(assetImportActivityDetail(['D:\\art\\icons\\b.png'])).toBe('b.png')
+  })
+
+  it('多件补充说明带首个文件名与总数', () => {
+    expect(assetImportActivityDetail(['D:/art/a.svg', 'D:/art/b.svg'])).toBe('a.svg 等 2 个文件')
+  })
+
+  it('空列表回落到空串（不出现 undefined 副标题）', () => {
+    expect(assetImportActivityDetail([])).toBe('')
   })
 })

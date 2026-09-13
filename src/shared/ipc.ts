@@ -1,5 +1,6 @@
 import type { AppSettings, AssetFolder, AssetInfo, AssetType, ProjectConfig } from './domain'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
+import type { ProjectOutputFile } from './outputScan'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type {
   TimelineExportInput,
@@ -256,6 +257,8 @@ export const IpcChannels = {
   GIT_STATUS: 'git:status',
   /** Git：读取单文件统一 diff（未跟踪文件返回主进程合成的新增全文） */
   GIT_FILE_DIFF: 'git:file-diff',
+  /** 工程：扫描本轮直接落盘的产物（`Output/` / `Cache/` 下的媒体，对话产物卡用；只读） */
+  PROJECT_SCAN_OUTPUTS: 'project:scan-outputs',
   /** Harness：查询 dsh 自定义技能目录信息（路径 / 文件清单 / 内置技能数） */
   SKILLS_GET_INFO: 'skills:get-info',
   /** Harness：在系统文件管理器中打开 dsh 自定义技能目录 */
@@ -452,7 +455,11 @@ export interface McpTaskReportPayload {
   relativePaths?: string[]
 }
 
-/** MCP：旁路活动类型（generate_* 直接生成、graph_icon_refine 单枚回炉、task_run 工作流运行等） */
+/**
+ * MCP：旁路活动类型（generate_* 直接生成、graph_icon_refine 单枚回炉、task_run 工作流运行、
+ * asset_import 批量导入等）。活动是会话流产物卡的唯一来源：只有这些工具回报的相对路径
+ * 能让对话流出现可预览的资产卡，Agent 经原生工具直接落盘的文件不在其中。
+ */
 export type McpActivityTool =
   | 'generate_image'
   | 'generate_video'
@@ -461,6 +468,7 @@ export type McpActivityTool =
   | 'generate_model3d'
   | 'graph_icon_refine'
   | 'task_run'
+  | 'asset_import'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
 
@@ -768,6 +776,16 @@ export interface McpRestartInput {
   resetToken?: boolean
   /** 自定义 token（8–128 位、不含空白）；提供时优先于 resetToken */
   token?: string
+}
+
+/** 对话产物扫盘：只收该时刻（本轮开始时刻，毫秒）之后写入 / 更新的产物 */
+export interface ProjectScanOutputsInput {
+  sinceMs: number
+}
+
+export interface ProjectScanOutputsResult {
+  /** 命中的产物候选（未截断；出卡上限与「已展示过」去重在渲染层按会话状态再筛） */
+  files: ProjectOutputFile[]
 }
 
 export interface AttachAssetRelativeInput {
@@ -1203,6 +1221,9 @@ export interface StudioApi {
 
   /** Git：读取单个文件的统一 diff（未跟踪文件返回合成的新增全文） */
   getGitFileDiff: (input: GitFileDiffInput) => Promise<GitFileDiffResult>
+
+  /** 工程：扫描本轮直接落盘的产物（`Output/` 与 `Cache/` 下的可预览媒体；只读，不写盘） */
+  scanProjectOutputs: (input: ProjectScanOutputsInput) => Promise<ProjectScanOutputsResult>
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string

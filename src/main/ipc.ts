@@ -23,7 +23,8 @@ import type {
   ImportAssetPackageInput,
   WriteAssetTextInput,
   PlanAiWorkflowInput,
-  CommitAiWorkflowInput
+  CommitAiWorkflowInput,
+  ProjectScanOutputsInput
 } from '@shared/ipc'
 import type { GitFileDiffInput } from '@shared/git'
 import type { TimelineExportInput, TimelineTransitionPreviewInput } from '@shared/graph'
@@ -40,6 +41,7 @@ import type {
 import { listRegisteredObjectStorageKinds, listRegisteredProviderKinds } from './runtime'
 import { projectService } from './services/projectService'
 import { readGitFileDiff, readGitStatus } from './services/gitService'
+import { scanProjectOutputFiles } from './services/outputScanService'
 import { exportScriptTimeline } from './services/timelineExportService'
 import { renderTimelineTransitionPreview } from './services/timelineTransitionPreviewService'
 import { exportAdVariants } from './services/adVariantExportService'
@@ -359,6 +361,9 @@ export function registerIpcHandlers(): void {
 
   handle(IpcChannels.GIT_STATUS, () => readGitStatus())
   handle(IpcChannels.GIT_FILE_DIFF, (input: GitFileDiffInput) => readGitFileDiff(input))
+  handle(IpcChannels.PROJECT_SCAN_OUTPUTS, (input: ProjectScanOutputsInput) => ({
+    files: scanProjectOutputFiles(input)
+  }))
 
   handle(IpcChannels.HARNESS_STATUS, () => getHarnessStatus())
   handle(IpcChannels.HARNESS_RUN, (input: import('@shared/ipc').HarnessRunInput) =>

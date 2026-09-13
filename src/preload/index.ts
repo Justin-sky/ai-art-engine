@@ -318,6 +318,7 @@ const api: StudioApi = {
   runHarnessTask: (input) => ipcRenderer.invoke(IpcChannels.HARNESS_RUN, input),
   getGitStatus: () => ipcRenderer.invoke(IpcChannels.GIT_STATUS),
   getGitFileDiff: (input) => ipcRenderer.invoke(IpcChannels.GIT_FILE_DIFF, input),
+  scanProjectOutputs: (input) => ipcRenderer.invoke(IpcChannels.PROJECT_SCAN_OUTPUTS, input),
   deleteHarnessSession: (sessionId) =>
     ipcRenderer.invoke(IpcChannels.HARNESS_DELETE_SESSION, sessionId),
   abortHarnessTask: () => ipcRenderer.invoke(IpcChannels.HARNESS_ABORT),

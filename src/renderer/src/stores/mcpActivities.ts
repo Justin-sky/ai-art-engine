@@ -44,7 +44,10 @@ export const useMcpActivitiesStore = defineStore('mcpActivities', () => {
         runId: activity.id,
         title: activity.title,
         mode: 'mcp',
-        message: `MCP ${activity.tool} · ${activity.model ?? 'default model'}`
+        // 没有 model 的活动（导入等）不写「default model」——那句话对它们没有意义
+        message: activity.model
+          ? `MCP ${activity.tool} · ${activity.model}`
+          : `MCP ${activity.tool}`
       })
       return
     }
@@ -52,9 +55,13 @@ export const useMcpActivitiesStore = defineStore('mcpActivities', () => {
       const paths = [activity.relativePath, ...(activity.relativePaths ?? [])].filter(
         (path): path is string => !!path?.trim()
       )
+      // 导入不是生成：日志用 Import 口径，避免把「把已有文件收进工程」写成模型产出
+      const imported = activity.tool === 'asset_import'
       const message = paths.length
-        ? `Generated · asset saved: ${paths.join(', ')}`
-        : 'Generation finished'
+        ? `${imported ? 'Imported' : 'Generated'} · asset saved: ${paths.join(', ')}`
+        : imported
+          ? 'Import finished'
+          : 'Generation finished'
       logs.append({ runId: activity.id, kind: 'run_message', level: 'info', message })
       if (activity.apiCall) {
         logs.appendApiCall(activity.id, activity.apiCall)

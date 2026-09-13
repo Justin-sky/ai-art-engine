@@ -62,3 +62,21 @@ export function normalizeStringList(value: unknown): string[] {
 export function normalizeImportFilePaths(value: unknown): string[] {
   return normalizeStringList(value)
 }
+
+/**
+ * `asset_import` 活动标题：本次提交的路径数（逐条成败由返回值 `imported` / `skipped` 给出）。
+ * 导入活动没有 model 可展示，标题要独自说明「这一步在做什么」。
+ */
+export function assetImportActivityTitle(count: number): string {
+  return `导入 ${count} 个素材` // cjk-ok: MCP 活动标题（与 mcpServerService 同域，非 vue-i18n 文案）
+}
+
+/**
+ * `asset_import` 活动补充说明：首个文件名（多件时带总数），供任务列表副标题展示。
+ * 路径都取不到基名时回落到原文，避免出现空白副标题。
+ */
+export function assetImportActivityDetail(filePaths: string[]): string {
+  const first = filePaths[0] ?? ''
+  const name = first.replace(/\\/g, '/').split('/').pop() || first
+  return filePaths.length > 1 ? `${name} 等 ${filePaths.length} 个文件` : name // cjk-ok: MCP 活动副标题
+}

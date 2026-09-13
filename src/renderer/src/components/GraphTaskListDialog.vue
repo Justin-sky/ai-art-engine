@@ -563,6 +563,12 @@ h2 {
   background: rgba(127, 212, 165, 0.1);
 }
 
+.task-kind[data-kind='asset_import'] {
+  color: #7fb2f0;
+  border-color: rgba(127, 178, 240, 0.4);
+  background: rgba(127, 178, 240, 0.1);
+}
+
 .task-title {
   font-size: 13px;
   font-weight: 600;

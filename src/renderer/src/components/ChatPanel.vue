@@ -29,6 +29,7 @@ import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
 import { fingerprintMap, selectChangedFiles } from '@shared/git'
+import { normalizeOutputPathKey, selectRoundOutputs } from '@shared/outputScan'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -934,6 +935,8 @@ let stopEvent: (() => void) | null = null
 let stopActivity: (() => void) | null = null
 /** 本次任务在消息数组中的起点：状态更新只作用于该索引之后的工具卡，避免跨任务误更新重名卡 */
 let sessionStart = 0
+/** 本轮产物扫盘基线：发送前记录时刻，运行结束后只收这之后落盘的 Output / Cache 媒体 */
+let roundStartAt = 0
 /** 本次任务已收到但尚未绑定到 assistant 消息的思考过程文本（runner 先输出 reasoning 再输出回答） */
 let pendingReasoning = ''
 
@@ -1076,10 +1079,14 @@ function onHarnessEvent(event: HarnessEvent): void {
       running.value = false
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
       void captureGitChanges()
+      // 同时扫本轮直接落盘的产物（Output / Cache 下的媒体），逐条追加产物卡
+      void captureRoundOutputs()
       break
     case 'error':
       pushStatus(event.message)
       running.value = false
+      // 失败前可能已经有产物落盘：同样扫一遍，别让「跑到一半报错」这一轮彻底没有卡
+      void captureRoundOutputs()
       break
   }
 }
@@ -1174,6 +1181,50 @@ async function refreshGitChanges(target: Extract<ChatMsg, { kind: 'changes' }>):
     // 同上：失败静默，保留原有快照
   } finally {
     gitChangesBusy = false
+  }
+}
+
+/** 已在对话里出过产物卡的路径：产物卡与工具卡（旧数据的卡内预览）都算，同一文件不重复出卡 */
+function shownOutputPaths(): Set<string> {
+  const shown = new Set<string>()
+  for (const msg of messages.value) {
+    if (msg.kind === 'asset') {
+      const key = normalizeOutputPathKey(msg.relativePath)
+      if (key) shown.add(key)
+    } else if (msg.kind === 'tool' && msg.relativePath) {
+      const key = normalizeOutputPathKey(msg.relativePath)
+      if (key) shown.add(key)
+    }
+  }
+  return shown
+}
+
+let roundOutputBusy = false
+/**
+ * 运行结束：扫描本轮直接落盘到 `Output/` 与 `Cache/` 的产物，逐条追加产物卡。
+ * 补的是 **不经 MCP 活动** 的那部分产出（脚本写出的 SVG / 帧序列等）——它们此前
+ * 只进工程目录、对话里一张卡都没有；已由活动卡展示过的路径跳过，超出上限只提示数量。
+ */
+async function captureRoundOutputs(): Promise<void> {
+  if (roundOutputBusy || !roundStartAt || !project.isOpen) return
+  if (typeof window.studio?.scanProjectOutputs !== 'function') return
+  roundOutputBusy = true
+  try {
+    const { files } = await window.studio.scanProjectOutputs({ sinceMs: roundStartAt })
+    if (!files.length) return
+    const { picked, hidden } = selectRoundOutputs(files, {
+      sinceMs: roundStartAt,
+      exclude: shownOutputPaths()
+    })
+    const stamp = Date.now()
+    picked.forEach((file, index) => {
+      pushAsset(`asset:scan:${stamp}:${index}`, file.relativePath)
+    })
+    if (hidden > 0) pushStatus(t('studio.chat.roundOutputsMore', { count: hidden }))
+  } catch {
+    // 扫盘是旁路能力：读不到就跳过，不打断会话
+  } finally {
+    roundOutputBusy = false
   }
 }
 
@@ -1364,6 +1415,8 @@ async function onSend(): Promise<void> {
   pendingReasoning = ''
   // 发送前记录 git 变更基线：运行结束后据此对比出「这一轮改了什么」
   void resetGitBaseline()
+  // 同一时刻记产物扫盘基线：运行结束后只收这之后落盘到 Output / Cache 的媒体
+  roundStartAt = Date.now()
   sessionStart = messages.value.length
   messages.value.push({ kind: 'user', text: task })
   scrollToBottom()
