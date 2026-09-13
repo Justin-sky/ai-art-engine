@@ -11,16 +11,22 @@
  *
  * 用法：先 `npm run build`，再 `node scripts/check-pack-externals.mjs`。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-const bundles = ['main/index.js', 'main/yoloWorker.js', 'preload/index.js']
+// out/main 与 out/preload 下的全部产物（含 chunks/ 拆分出的异步 chunk，漏扫会留盲区）
+const bundles = ['main', 'preload']
   .map((entry) => join(root, 'out', entry))
-  .filter((file) => existsSync(file))
+  .filter((dir) => existsSync(dir))
+  .flatMap((dir) =>
+    readdirSync(dir, { recursive: true, encoding: 'utf8' })
+      .filter((entry) => entry.endsWith('.js'))
+      .map((entry) => join(dir, entry))
+  )
 
 if (bundles.length === 0) {
   console.error('[check-pack-externals] 找不到 out/ 产物，请先执行 npm run build')
